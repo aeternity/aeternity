@@ -23,6 +23,7 @@
 
 
 -export([generate/3,
+         get_miner_instances/0,
          verify/4]).
 
 
@@ -32,7 +33,7 @@
 -endif.
 -include("pow.hrl").
 
--define(DEFAULT_CUCKOO_ENV, {"mean29-generic", "-t 1", 29, false}).
+-define(DEFAULT_CUCKOO_ENV, {"mean29-generic", "-t 1", 29, false, 1}).
 
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
 -define(info(F, A),  epoch_pow_cuckoo:info(F, A)).
@@ -77,7 +78,22 @@ generate(Data, Target, Nonce) when Nonce >= 0,
     Hash = aec_hash:hash(pow, Data),
     ?debug("Generating solution for data hash ~p and nonce ~p with target ~p.",
            [Hash, Nonce, Target]),
-    generate_int(Hash, Nonce, Target).
+    Instances = get_miner_instances(),
+    generate(Hash, Nonce, Target, Instances).
+
+generate(Hash, Nonce, Target, 1) ->
+    generate_int(Hash, Nonce, Target, undefined);
+generate(Hash, Nonce, Target, N) ->
+    Self = self(),
+    Fun = fun(I) -> Self ! {self(), try generate_int(Hash, Nonce + I, Target, I)
+                                    catch _:_ -> {error, no_solution} end}
+          end,
+    Pids = [ spawn_link(fun() -> Fun(D) end) || D <- lists:seq(0, N - 1) ],
+    Results = [ receive {Pid, Res} -> Res after 10000 -> {error, timeout} end || Pid <- Pids ],
+    case [ Ok || {ok, _} = Ok <- Results ] of
+        [Ok | _] -> Ok;
+        []       -> {error, no_solution}
+    end.
 
 %%------------------------------------------------------------------------------
 %% Proof of Work verification (with difficulty check)
@@ -105,7 +121,15 @@ verify(Data, Nonce, Evd, Target) when is_list(Evd),
 %%------------------------------------------------------------------------------
 
 get_options() ->
-    {_, _, _, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
+    {_, _, _, _, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
+
+get_miner_instances() ->
+    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"instances">>]) of
+        {ok, Instances} -> Instances;
+        undefined ->
+            {_, _, _, _, Instances} = get_options(),
+            Instances
+    end.
 
 get_miner_options() ->
     case
@@ -116,7 +140,7 @@ get_miner_options() ->
         {{ok, BinB}, {ok, ExtraArgsB}} ->
             {binary_to_list(BinB), binary_to_list(ExtraArgsB)};
         {undefined, undefined} -> %% Both or neither - enforced by user config schema.
-            {Bin, ExtraArgs, _, _} = get_options(),
+            {Bin, ExtraArgs, _, _, _} = get_options(),
             {Bin, ExtraArgs}
     end.
 
@@ -125,7 +149,7 @@ get_edge_bits() ->
         {ok, EdgeBits} ->
             EdgeBits;
         undefined ->
-            {_, _, EdgeBits, _} = get_options(),
+            {_, _, EdgeBits, _, _} = get_options(),
             EdgeBits
     end.
 
@@ -134,21 +158,22 @@ get_hex_encoded_header() ->
         {ok, HexEncodedHeader} ->
             HexEncodedHeader;
         undefined ->
-            {_, _, _, HexEncodedHeader} = get_options(),
+            {_, _, _, HexEncodedHeader, _} = get_options(),
             HexEncodedHeader
     end.
 
 %%------------------------------------------------------------------------------
 %% Proof of Work generation: use the hash provided
 %%------------------------------------------------------------------------------
--spec generate_int(Hash :: binary(), Nonce :: aec_pow:nonce(), Target :: aec_pow:sci_int()) ->
+-spec generate_int(Hash :: binary(), Nonce :: aec_pow:nonce(),
+                   Target :: aec_pow:sci_int(), Instance :: undefined | non_neg_integer()) ->
                           {'ok', Nonce2 :: aec_pow:nonce(),
                            Solution :: pow_cuckoo_solution()} |
                           {'error', term()}.
-generate_int(Hash, Nonce, Target) ->
+generate_int(Hash, Nonce, Target, Instance) ->
     Header = pack_header_and_nonce(Hash, Nonce),
 
-    case generate_int(Header, Target) of
+    case generate_int(Header, Target, Instance) of
         {ok, Soln} ->
             {ok, {Nonce, Soln}};
         {error, no_value} ->
@@ -164,19 +189,24 @@ generate_int(Hash, Nonce, Target) ->
 %%   Proof of Work generation from a hex-encoded 80-byte buffer
 %% @end
 %%------------------------------------------------------------------------------
--spec generate_int(Headr :: string(), Target :: aec_pow:sci_int()) ->
+-spec generate_int(Headr :: string(), Target :: aec_pow:sci_int(),
+                   Instance :: undefined | non_neg_integer()) ->
                           {'ok', Solution :: pow_cuckoo_solution()} |
                           {'error', term()}.
-generate_int(Header, Target) ->
-    {MinerBin, MinerExtraArgs} = get_miner_options(),
+generate_int(Header, Target, Instance) ->
+    {MinerBin, MinerExtraArgs0} = get_miner_options(),
+    MinerExtraArgs = case Instance of
+                         undefined -> MinerExtraArgs0;
+                         I         -> MinerExtraArgs0 ++ " -d " ++ integer_to_list(I)
+                     end,
     EncodedHeader =
         case get_hex_encoded_header() of
             true -> hex_string(Header);
             false -> Header
         end,
-    generate_int(EncodedHeader, Target, MinerBin, MinerExtraArgs).
+    generate_int_(EncodedHeader, Target, MinerBin, MinerExtraArgs).
 
-generate_int(Header, Target, MinerBin, MinerExtraArgs) ->
+generate_int_(Header, Target, MinerBin, MinerExtraArgs) ->
     BinDir = aecuckoo:bin_dir(),
     Cmd = lists:concat(["./", MinerBin,
                         " -h ", Header, " ", MinerExtraArgs]),

@@ -431,6 +431,11 @@
                                 "nice" : {
                                     "description" : "Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority. Keep it unset to inherit parent process priority.",
                                     "type": "integer"
+                                },
+                                "instances" : {
+                                    "description" : "Miner instances in case of Multi-GPU mining",
+                                    "type" : "integer",
+                                    "default": 1
                                 }
                             }
                         }
