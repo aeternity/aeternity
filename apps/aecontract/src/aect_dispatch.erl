@@ -24,9 +24,11 @@
             error:undef -> ok
         end).
 -define(DEBUG_LOG(Format, Data), begin lager:debug(Format, Data), ?TEST_LOG(Format, Data) end).
+-define(ST(), erlang:get_stacktrace()).
 -else.
 -define(TEST_LOG(Format, Data), ok).
 -define(DEBUG_LOG(Format, Data), lager:debug(Format, Data)).
+-define(ST(), {}).
 -endif.
 
 %% -- Running contract code off chain ---------------------------------------
@@ -122,7 +124,7 @@ run_common(#{  amount      := Value
         InitState ->
             %% TODO: Nicer error handling - do more in check.
             %% Update gas_used depending on exit type.
-            try aevm_eeevm:eval(InitState) of
+            case aevm_eeevm:eval(InitState) of
                 {ok, ResultState} ->
                     GasLeft = aevm_eeevm_state:gas(ResultState),
                     GasUsed = Gas - GasLeft,
@@ -133,26 +135,19 @@ run_common(#{  amount      := Value
                       create_call(GasUsed, ok, Out, Log, Call),
                       aec_vm_chain:get_trees(ChainState)
                     };
-                {revert, ResultState} ->
-                    GasLeft = aevm_eeevm_state:gas(ResultState),
+                {revert, Out, GasLeft} ->
                     GasUsed = Gas - GasLeft,
-                    Out = aevm_eeevm_state:out(ResultState),
                     {create_call(GasUsed, revert, Out, [], Call), Trees};
-                {error, Error, _} ->
-                    %% Execution resulting in VM exception.
-                    %% Gas used, but other state not affected.
-                    %% TODO: Use up the right amount of gas depending on error
-                    GasUsed = Gas,
-                    %% TODO: Store error code in state tree
-                    {create_call(GasUsed, error, Error, [], Call), Trees}
-            catch T:E ->
-                ?DEBUG_LOG("Return error ~p:~p~n", [T,E]),
-                {create_call(Gas, error, [], Call), Trees}
+                {error, What, GasLeft} ->
+                    %% If we ran out of gas in a recursive call there
+                    %% might still be gas held back by the caller.
+                    GasUsed = Gas - GasLeft,
+                    {create_call(GasUsed, error, What, [], Call), Trees}
             end
-    catch T:E ->
-            %% TODO: Clarify whether this case can be reached with valid chain state and sanitized input transaction.
-            ?DEBUG_LOG("Init error ~p:~p~n~p~n", [T,E,erlang:get_stacktrace()]),
-            {create_call(Gas, error, [], Call), Trees}
+    catch
+        throw:{init_error, What} ->
+            ?DEBUG_LOG("Init error ~p", [What]),
+            {create_call(Gas, error, What, [], Call), Trees}
     end.
 
 create_call(GasUsed, Type, Value, Log, Call) when Type == ok; Type == revert ->
@@ -166,11 +161,15 @@ create_call(GasUsed, Type, Log, Call) ->
     Call1 = aect_call:set_log(Log, Call),
     aect_call:set_gas_used(GasUsed, aect_call:set_return_type(Type, Call1)).
 
+%% c.f. aec_vm_chain:binary_to_error/1
 error_to_binary(out_of_gas) -> <<"out_of_gas">>;
 error_to_binary(out_of_stack) -> <<"out_of_stack">>;
 error_to_binary(not_allowed_off_chain) -> <<"not_allowed_off_chain">>;
 error_to_binary(bad_call_data) -> <<"bad_call_data">>;
+error_to_binary(unknown_error) -> <<"unknown_error">>;
+error_to_binary(unknown_contract) -> <<"unknown_contract">>;
 error_to_binary(unknown_function) -> <<"unknown_function">>;
+error_to_binary(reentrant_call) -> <<"reentrant_call">>;
 error_to_binary({illegal_instruction, OP}) when is_integer(OP), 0 =< OP, OP =< 255 ->
     X = <<_:2/bytes>> = list_to_binary(io_lib:format("~2.16.0B",[OP])),
     <<"illegal_instruction_", X:2/bytes>>;

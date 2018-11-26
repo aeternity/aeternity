@@ -242,7 +242,7 @@ get_store(#{ running := Contract, store := Store }) ->
 set_store(Data, State = #{ running := Contract, store := Store }) ->
     State#{ store => Store#{ Contract => Data } }.
 
-call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Caller}) ->
+call_contract(<<Contract:256>>, Gas, Value, CallData, _, S = #{running := Caller}) ->
     case maps:is_key(Contract, S) of
         true ->
             #{environment := Env0} = S,
@@ -250,16 +250,15 @@ call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Calle
             Res = execute_call(Contract, CallData, S, Env),
             case Res of
                 {ok, Ret, #{ accounts := Accounts }} ->
-                    {ok, aevm_chain_api:call_result(Ret, 0), S#{ accounts := Accounts }};
+                    {aevm_chain_api:call_result(Ret, 0), S#{ accounts := Accounts }};
                 {error, out_of_gas, _} ->
                     io:format("  result = out_of_gas\n"),
-                    {ok, aevm_chain_api:call_exception(out_of_gas, 0), S}
+                    {aevm_chain_api:call_exception(out_of_gas, 0), S}
             end;
         false ->
             io:format("  oops, no such contract!\n"),
-            {error, {no_such_contract, Contract}}
+            {aevm_chain_api:call_exception(unknown_contract, Gas), S}
     end.
-
 
 oracle_register(PubKey = <<Account:256>>, <<Sign:256>>, QueryFee, TTL, QueryFormat, ResponseFormat, State) ->
     io:format("oracle_register(~p, ~p, ~p, ~p, ~p, ~p)\n", [Account, Sign, QueryFee, TTL, QueryFormat, ResponseFormat]),

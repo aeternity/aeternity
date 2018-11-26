@@ -9,7 +9,7 @@
 
 -export_type([call_result/0, exception/0, store/0]).
 
--export([call_result/2, call_exception/2,
+-export([call_result/2, call_exception/2, call_revert/2,
          return_value/1, gas_spent/1]).
 
 -type(pubkey() :: binary()).
@@ -19,10 +19,12 @@
 
 -type store() :: aect_contracts:store().
 
--type exception() :: out_of_gas | {revert, binary()}.
+-type exception() :: atom().
 
 -record(call_result, { result    :: binary() | exception()
-                     , gas_spent :: non_neg_integer() }).
+                     , gas_spent :: non_neg_integer()
+                     , type      :: exception | revert | ok
+                     }).
 
 -opaque call_result() :: #call_result{}.
 
@@ -190,7 +192,7 @@
                         CallData :: binary(),
                         CallStack :: [non_neg_integer()],
                         State :: chain_state()) ->
-                    {ok, call_result(), chain_state()} | {error, term()}.
+                    {call_result(), chain_state()}.
 
 -callback get_store(chain_state()) -> store().
 -callback set_store(store(), chain_state()) -> chain_state().
@@ -198,18 +200,22 @@
 %% -- Call results -----------------------------------------------------------
 
 -spec call_result(binary(), non_neg_integer()) -> call_result().
-call_result(Result, GasSpent) ->
-    #call_result{ result = Result, gas_spent = GasSpent }.
+call_result(Result, GasSpent) when is_binary(Result) ->
+    #call_result{ result = Result, gas_spent = GasSpent, type = ok }.
 
 -spec call_exception(exception(), non_neg_integer()) -> call_result().
-call_exception(Exception, GasSpent) ->
-    #call_result{ result = Exception, gas_spent = GasSpent }.
+call_exception(Exception, GasSpent) when is_atom(Exception) ->
+    #call_result{ result = Exception, gas_spent = GasSpent, type = exception}.
 
--spec return_value(call_result()) -> {ok, binary()} | {error, exception()}.
-return_value(#call_result{ result = Res }) when is_binary(Res) ->
-    {ok, Res};
-return_value(#call_result{ result = Err }) ->
-    {error, Err}.
+-spec call_revert(binary(), non_neg_integer()) -> call_result().
+call_revert(Slogan, GasSpent) when is_binary(Slogan)->
+    #call_result{ result = Slogan, gas_spent = GasSpent, type = revert}.
+
+-spec return_value(call_result()) -> {ok, binary()}
+                                   | {error, exception()}
+                                   | {revert, binary()}.
+return_value(#call_result{ result = Res, type = Type }) ->
+    {Type, Res}.
 
 -spec gas_spent(call_result()) -> non_neg_integer().
 gas_spent(#call_result{ gas_spent = Gas }) -> Gas.
