@@ -277,8 +277,8 @@ heap_to_binary(Type, Ptr, State) ->
 spend_gas(Gas, State) ->
     TotalGas = gas(State),
     case TotalGas - Gas of
-        GasLeft when GasLeft >  0 -> set_gas(GasLeft, State);
-        GasLeft when GasLeft =< 0 -> aevm_eeevm:eval_error(out_of_gas)
+        GasLeft when GasLeft >=  0 -> set_gas(GasLeft, State);
+        GasLeft when GasLeft < 0 -> aevm_eeevm:eval_error(out_of_gas)
     end.
 
 heap_to_heap(Type, Ptr, State) ->
