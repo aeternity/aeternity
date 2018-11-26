@@ -69,10 +69,6 @@ groups() ->
        type_error_contract,
        remote_gas_test_contract,
        null                                     %This allows to end with ,
-      ]},
-     {remote, [],
-      [
-       remote_gas_test_contract
       ]}
     ].
 
