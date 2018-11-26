@@ -1,6 +1,6 @@
 # About this release
 
-[This release][this-release] is the third release candidate.
+[This release][this-release] is the fourth release candidate.
 It:
 * Enables signing of micro blocks when using configuration `autostart: false`
 * Makes the number of nodes to gossip to configurable
