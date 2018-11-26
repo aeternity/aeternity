@@ -42,6 +42,7 @@ In order to configure who receives fees from mining on a node, you must configur
 If you don't have your public key yet, you can use provided `keys_gen` tool, that will generate a public-private key pair for you.
 The key pair will be encrypted with a password that you shall pass to `keys_gen` tool (below assumes the node is deployed in directory `/tmp/node`):
 
+NOTE: This way of generating a key-pair is only for testing purpose, use a proper wallet/mechanism for your mainnet tokens!
 
 ```bash
 cd /tmp/node
@@ -69,6 +70,17 @@ Generated keypair with encoded pubkey: ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8Msc
 
 In the example the generated public key is `ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq`, but do not use it in your config!
 This is just an example value to show what public key format you should expect after running `bin/epoch keys_gen` command.
+
+## Network ID
+
+The testnet (internally called UAT) has the network ID `ae_uat` - this is set in the configuration:
+
+```yaml
+fork_management:
+    network_id: ae_uat
+```
+
+The network ID defaults to `ae_mainnet`.
 
 ## Instructions
 
@@ -112,6 +124,9 @@ mining:
 chain:
     persist: true
     db_path: ./my_db
+
+fork_management:
+    network_id: ae_uat
 ```
 
 The node automatically creates the directory `db_path`, for storing the blockchain, if not present.

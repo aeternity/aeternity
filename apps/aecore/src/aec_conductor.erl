@@ -732,8 +732,6 @@ bump_nonce(C = #candidate{ nonce = N }) ->
 start_micro_signing(#state{keys_ready = false} = State) ->
     %% We need to get the keys first
     wait_for_keys(State);
-start_micro_signing(#state{mining_state = 'stopped'} = State) ->
-    State;
 start_micro_signing(#state{consensus = #consensus{leader = true}, micro_block_candidate = undefined} = State) ->
     %% We have to wait for a new block candidate first.
     State;
