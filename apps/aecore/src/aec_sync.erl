@@ -33,6 +33,7 @@
 -endif.
 
 -define(MAX_HEADERS_PER_CHUNK, 100).
+-define(DEFAULT_MAX_GOSSIP, 10).
 
 %%%=============================================================================
 %%% API
@@ -205,7 +206,8 @@ handle_info({gproc_ps_event, Event, #{info := Info}},
     %% FUTURE: Forward blocks only to outbound connections.
     %% Take a random subset (possibly empty) of peers that agree with us
     %% on chain height to forward blocks and transactions to.
-    PeerIds = [ aec_peers:peer_id(P) || P <- aec_peers:get_random(10) ],
+    MaxGossip = max_gossip(),
+    PeerIds = [ aec_peers:peer_id(P) || P <- aec_peers:get_random(MaxGossip) ],
     NonSyncingPeerIds = [ P || P <- PeerIds, not peer_in_sync(State, P) ],
     case Event of
         block_to_publish ->
@@ -843,3 +845,8 @@ get_worker_for_peer(#state{ sync_tasks = STs }, PeerId) ->
         [] -> false;
         [Pid | _] -> {ok, Pid}
     end.
+
+max_gossip() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"max_gossip">>],
+                               aecore, sync_max_gossip,
+                               ?DEFAULT_MAX_GOSSIP).

@@ -114,6 +114,12 @@
                     "type" : "integer",
                     "default": 10
                 },
+                "max_gossip" : {
+                    "description" : "Maximum number of peers to gossip blocks and transactions to",
+                    "type" : "integer",
+                    "minimum": 0,
+                    "default": 10
+                },
                 "single_outbound_per_group" : {
                     "description" : "If the extra outbound connections should be to nodes from different address groups (IP netmask /16)",
                     "type" : "boolean",
@@ -410,12 +416,12 @@
                                 "extra_args" : {
                                     "description" : "Extra arguments to pass to the miner executable binary. The safest choice is specifying no arguments i.e. empty string.",
                                     "type" : "string",
-                                    "default": "-t 5"
+                                    "default": "-t 1"
                                 },
                                 "edge_bits" : {
                                     "description" : "Number of bits used for representing an edge in the Cuckoo Cycle problem. It affects both PoW generation (mining) and verification. WARNING: Changing this makes the node incompatible with the chain of other nodes in the network, do not change from the default unless you know what you are doing.",
                                     "type": "integer",
-                                    "default": 30
+                                    "default": 29
                                 },
                                 "hex_encoded_header" : {
                                     "description" : "Hexadecimal encode the header argument that is send to the miner executable. CUDA executables expect hex encoded header.",
