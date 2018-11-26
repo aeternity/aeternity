@@ -52,5 +52,6 @@ spend(_Recipient, _Amount, _S)  -> {error, cant_spend_with_dummy_chain}.
 -spec call_contract(aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), binary(),
                     [non_neg_integer()], chain_state()) ->
         {ok, aevm_chain_api:call_result(), chain_state()} | {error, term()}.
-call_contract(_, _, _, _, _, _) -> {error, cant_call_contracts_with_dummy_chain}.
+call_contract(_, Gas, _, _, _, State) ->
+    {aevm_chain_api:call_exception(cant_call_contracts_with_dummy_chain, Gas), State}.
 
