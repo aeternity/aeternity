@@ -709,7 +709,7 @@ apply_call_transaction(Tx, Gas, #state{tx_env = Env} = State) ->
                     {aevm_chain_api:call_result(Bin, GasUsed), State1}
             end;
         {error, Atom} when is_atom(Atom) ->
-            ReturnAtom = binary_to_error(atom_to_binary(Atom, latin1)),
+            ReturnAtom = binary_to_error(atom_to_binary(Atom, utf8)),
             {aevm_chain_api:call_exception(ReturnAtom, Gas), State}
     end.
 
