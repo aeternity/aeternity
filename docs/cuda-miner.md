@@ -78,6 +78,15 @@ mining:
             hex_encoded_header: true
 ```
 
+If you have multiple GPU cards they can be addressed using the `-d <n>` flag with the cuda-miner. So if you want to use multiple cards
+for GPU mining you can add another configuration option (for example if you have two (2) GPU-cards):
+```
+mining:
+    cuckoo:
+        miner:
+            instances: 2
+```
+
 After configuration could be started (or restarted if it's already running):
 
 ```
