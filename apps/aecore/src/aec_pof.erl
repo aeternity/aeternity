@@ -34,7 +34,7 @@
               hash/0
              ]).
 
--spec new(aec_headers:header(), aec_headers:header(), aec_keys:pubkey()) -> pof().
+-spec new(aec_headers:header(), aec_headers:header(), miner_pubkey()) -> pof().
 new(Header1, Header2, PubKey) ->
     #{header1 => Header1, header2 => Header2, pubkey => PubKey}.
 
