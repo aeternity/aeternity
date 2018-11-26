@@ -742,8 +742,9 @@
             "properties" : {
                 "network_id" : {
                     "description" :
-                    "Identification of the network in case of hard forks.",
-                    "type" : "string"}
+                    "Identification of the network in case of hard forks.Use 'ae_uat' for testnet and 'ae_mainnet' ",
+                    "type" : "string",
+                    "default" : "ae_uat"}
             }
         }
     },
