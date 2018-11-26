@@ -443,6 +443,11 @@
                                     "description" : "Number of tries to do in each miner context - WARNING: it should be set so the miner process runs for 3-5s or else the node risk missing out on new micro blocks.",
                                     "type": "integer",
                                     "default": 1
+                                },
+                                "instances" : {
+                                    "description" : "Miner instances in case of Multi-GPU mining",
+                                    "type" : "integer",
+                                    "default": 1
                                 }
                             }
                         }
