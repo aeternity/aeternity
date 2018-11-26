@@ -151,6 +151,7 @@ tab_vsn(_) -> 1.
 tab_type(_) -> set.
 
 tab_copies(disc) -> {rocksdb_copies, [node()]};
+tab_copies(disc_legacy) -> {disc_copies, [node()]};
 tab_copies(ram ) -> {ram_copies , [node()]}.
 
 clear_db() ->
@@ -612,6 +613,7 @@ wait_for_tables(Tabs, Sofar, _, _) ->
 check_db() ->
     try
         Mode = case application:get_env(aecore, persist, false) of
+                   legacy -> disc_legacy;
                    true  -> disc;
                    false -> ram
                end,
@@ -696,6 +698,14 @@ ensure_schema_storage_mode(ram) ->
         {true, Dir} ->
             lager:warning("Will not use existing Mnesia db (~s)", [Dir]),
             set_dummy_mnesia_dir(Dir);
+        false ->
+            ok
+    end;
+ensure_schema_storage_mode(disc_legacy) ->
+    case disc_db_exists() of
+        {true, Dir} ->
+            lager:warning("Will use existing Mnesia db (~s)", [Dir]),
+            existing_schema;
         false ->
             ok
     end;
