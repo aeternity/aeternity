@@ -9,6 +9,12 @@ contract RemoteValueOnErr =
     value : int) : int =
     r.err(value = value)
 
+  public function callErrLimitGas(
+    r : ValueOnErr,
+    value : int,
+    gas : int) : int =
+    r.err(value = value, gas = gas)
+
   public function callOk(
     r : ValueOnErr,
     value : int) : int =

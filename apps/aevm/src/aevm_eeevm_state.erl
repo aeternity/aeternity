@@ -177,8 +177,7 @@ init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
         ?AEVM_01_Sophia_01 ->
             case is_reentrant_call(State) of
                 true -> %% Sophia doesn't allow reentrant calls
-                    lager:debug("** Attempted reentrant call\n"),
-                    set_gas(0, State);
+                    init_error(reentrant_call);
                 false ->
                     %% We need to import the state first, since the map ids in the store are fixed.
                     State2 = import_state_from_store(Store, State1),
@@ -197,10 +196,14 @@ init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
                             aevm_eeevm_stack:push(Ptr, State3);
                         {error, Err} ->
                             lager:debug("Invalid calldata: ~p\n", [Err]),
-                            set_gas(0, State2)
+                            init_error(bad_call_data)
                     end
             end
     end.
+
+-spec init_error(atom()) -> no_return().
+init_error(What) ->
+    throw({init_error, What}).
 
 is_reentrant_call(State) ->
     lists:member(address(State), call_stack(State)).
@@ -250,7 +253,7 @@ do_revert(Us0, Us1, State0) ->
                 {error, _} = Err ->
                     lager:error("Error reading revert value: ~p\n~s",
                                  [Err, format_mem(mem(State0))]),
-                    set_gas(0, State0)   %% Consume all gas on failure
+                    aevm_eeevm:eval_error(out_of_gas)
             end;
         ?AEVM_01_Solidity_01 ->
             {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State0),
@@ -273,7 +276,10 @@ heap_to_binary(Type, Ptr, State) ->
 
 spend_gas(Gas, State) ->
     TotalGas = gas(State),
-    set_gas(max(0, TotalGas - Gas), State).
+    case TotalGas - Gas of
+        GasLeft when GasLeft >  0 -> set_gas(GasLeft, State);
+        GasLeft when GasLeft =< 0 -> aevm_eeevm:eval_error(out_of_gas)
+    end.
 
 heap_to_heap(Type, Ptr, State) ->
     Heap  = mem(State),
@@ -305,9 +311,9 @@ return_contract_call_result(To, Input, Addr,_Size, ReturnData, Type, State) ->
                         {ok, Out} ->
                             write_heap_value(Out, State);
                         {error, _} = Err ->
-                            lager:error("Failed to decode primot return value\n"
+                            lager:error("Failed to decode primop return value\n"
                                         "~p\n", [Err]),
-                            {0, set_gas(0, State)}
+                            aevm_eeevm:eval_error(out_of_gas)
                     end;
                 false ->
                     NextId = aevm_eeevm_maps:next_id(maps(State)),
@@ -317,7 +323,7 @@ return_contract_call_result(To, Input, Addr,_Size, ReturnData, Type, State) ->
                         {error, _} = Err ->
                             lager:error("Failed to decode contract return value\n"
                                         "~p\n", [Err]),
-                            {0, set_gas(0, State)}
+                            aevm_eeevm:eval_error(out_of_gas)
                     end
             end
     end.
@@ -383,7 +389,7 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                             {ok, Arg, GasUsed} = heap_to_binary(DataType, ArgPtr, State),
                             {Arg, OutType, spend_gas(GasUsed, State)};
                         error ->
-                            input_error_return(Store, HeapValue, State)
+                            aevm_eeevm:eval_error(out_of_gas)
                     end;
                 false ->
                     %% The first element in the arg tuple is the function hash
@@ -397,16 +403,10 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                             {ok, Arg, GasUsed} = heap_to_binary(DataType, ArgPtr, State),
                             {Arg, OutType, spend_gas(GasUsed, State)};
                         {error, _Err} ->
-                            input_error_return(Store, HeapValue, State)
+                            aevm_eeevm:eval_error(out_of_gas)
                     end
             end
     end.
-
-input_error_return(Store, HeapValue, State) ->
-    %% This will fail later anyway.
-    DataType = {tuple, [word]},
-    {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
-    {Arg, word, set_gas(0, State)}.
 
 -spec write_heap_value(aeso_data:heap_value(), state()) -> {non_neg_integer(), state()}.
 write_heap_value(HeapValue, State) ->
@@ -421,21 +421,18 @@ write_heap_value(HeapValue, State) ->
 call_contract(Caller, Target, CallGas, Value, Data, State) ->
     case vm_version(State) of
         ?AEVM_01_Sophia_01 when Target == ?PRIM_CALLS_CONTRACT ->
-            Res = aevm_ae_primops:call(CallGas, Value, Data, State),
-            Res;
+            aevm_ae_primops:call(CallGas, Value, Data, State);
         _ ->
             CallStack  = [Caller | call_stack(State)],
             TargetKey  = <<Target:256>>,
             ChainAPI   = chain_api(State),
             ChainState = chain_state(State),
-            case ChainAPI:call_contract(TargetKey, CallGas, Value, Data, CallStack, ChainState) of
-                {ok, Res, ChainState1} ->
-                    GasSpent = aevm_chain_api:gas_spent(Res),
-                    Return   = aevm_chain_api:return_value(Res),
-                    {ok, Return, GasSpent, set_chain_state(ChainState1, State)};
-                {error, Err} ->
-                    {error, Err}
-            end
+            {Res, ChainState1} =
+                ChainAPI:call_contract(TargetKey, CallGas, Value, Data,
+                                       CallStack, ChainState),
+            GasSpent = aevm_chain_api:gas_spent(Res),
+            {Tag, Return} = aevm_chain_api:return_value(Res),
+            {Tag, Return, GasSpent, set_chain_state(ChainState1, State)}
     end.
 
 

@@ -636,12 +636,14 @@ get_contract_fun_types(Target, VMVersion, TypeHash, State) ->
 %% @doc Call another contract.
 -spec call_contract(aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), binary(),
                     [non_neg_integer()], chain_state()) ->
-        {ok, aevm_chain_api:call_result(), chain_state()} | {error, term()}.
+        {aevm_chain_api:call_result(), chain_state()}.
 call_contract(Target, Gas, Value, CallData, CallStack,
               State = #state{account = ContractKey}) ->
     Trees = get_top_trees(State),
     CT = aec_trees:contracts(Trees),
     case aect_state_tree:lookup_contract(Target, CT, [no_store]) of  %% skip store, we look it up later
+        none ->
+            {aevm_chain_api:call_exception(unknown_contract, Gas), State};
         {value, Contract} ->
             AT = aec_trees:accounts(Trees),
             {value, ContractAccount} = aec_accounts_trees:lookup(ContractKey, AT),
@@ -658,26 +660,7 @@ call_contract(Target, Gas, Value, CallData, CallStack,
                                     gas_price   => 0,
                                     call_data   => CallData,
                                     call_stack  => CallStack }),
-            case apply_call_transaction(CallTx, State) of
-                {ok, Call, State1} ->
-                    GasUsed = aect_call:gas_used(Call),
-                    Result  =
-                        case aect_call:return_type(Call) of
-                            error ->
-                                Bin = aect_call:return_value(Call),
-                                ReturnAtom = binary_to_error(Bin),
-                                aevm_chain_api:call_exception(ReturnAtom, GasUsed);
-                            revert ->
-                                Bin = aect_call:return_value(Call),
-                                aevm_chain_api:call_exception({revert, Bin}, GasUsed);
-                            ok ->
-                                Bin = aect_call:return_value(Call),
-                                aevm_chain_api:call_result(Bin, GasUsed)
-                        end,
-                    {ok, Result, State1};
-                {error, _} = E -> E
-            end;
-        none -> {error, {no_such_contract, Target}}
+            apply_call_transaction(CallTx, Gas, State)
     end.
 
 %% -- Internal functions -----------------------------------------------------
@@ -706,14 +689,28 @@ do_set_store(Store, PubKey, Trees) ->
         end,
     aect_state_tree:enter_contract(NewContract, ContractsTree).
 
-apply_call_transaction(Tx, #state{tx_env = Env} = State) ->
+apply_call_transaction(Tx, Gas, #state{tx_env = Env} = State) ->
     Trees = get_top_trees(State),
     case aetx:check(Tx, Trees, Env) of
         {ok, Trees1} ->
             {ok, Call, Trees2} = aetx:custom_apply(process_call, Tx, Trees1, Env),
             State1 = set_top_trees(State, Trees2),
-            {ok, Call, State1};
-        {error, _} = E -> E
+            GasUsed = aect_call:gas_used(Call),
+            case aect_call:return_type(Call) of
+                error ->
+                    Bin = aect_call:return_value(Call),
+                    ReturnAtom = binary_to_error(Bin),
+                    {aevm_chain_api:call_exception(ReturnAtom, GasUsed), State1};
+                revert ->
+                    Bin = aect_call:return_value(Call),
+                    {aevm_chain_api:call_revert(Bin, GasUsed), State1};
+                ok ->
+                    Bin = aect_call:return_value(Call),
+                    {aevm_chain_api:call_result(Bin, GasUsed), State1}
+            end;
+        {error, Atom} when is_atom(Atom) ->
+            ReturnAtom = binary_to_error(atom_to_binary(Atom, latin1)),
+            {aevm_chain_api:call_exception(ReturnAtom, Gas), State}
     end.
 
 apply_transaction(Tx, #state{tx_env = Env } = State) ->
@@ -798,11 +795,14 @@ on_chain_only(State, Fun) ->
     end.
 
 %% c.f. aect_dispatch:error_to_binary/1
+binary_to_error(<<"bad_call_data">>) -> bad_call_data;
 binary_to_error(<<"out_of_gas">>) -> out_of_gas;
 binary_to_error(<<"out_of_stack">>) -> out_of_stack;
 binary_to_error(<<"not_allowed_off_chain">>) -> not_allowed_off_chain;
-binary_to_error(<<"bad_call_data">>) -> bad_call_data;
+binary_to_error(<<"reentrant_call">>) -> reentrant_call;
 binary_to_error(<<"unknown_function">>) -> unknown_function;
+binary_to_error(<<"unknown_contract">>) -> unknown_contract;
+binary_to_error(<<"unknown_error">>) -> unknown_error;
 binary_to_error(E) ->
-    ?DEBUG_LOG("Unknown error: ~p\n", [E]),
+    ?DEBUG_LOG("**** Unknown error: ~p\n", [E]),
     unknown_error.

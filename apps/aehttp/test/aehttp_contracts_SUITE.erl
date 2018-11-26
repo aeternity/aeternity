@@ -1124,7 +1124,7 @@ remote_gas_test_contract(Config) ->
                    args_to_binary([DecC2Pub, 2, 3]), error),
     force_fun_calls(Node),
     Balance3 = get_balance(APub),
-    809936 = Balance2 - Balance3,
+    809933 = Balance2 - Balance3,
 
     %% Check that store/state not changed (we tried to write 2).
     call_get(APub, APriv, EncC2Pub,  1),
