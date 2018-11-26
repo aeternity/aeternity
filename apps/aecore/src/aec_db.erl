@@ -235,6 +235,8 @@ backend_mode(_            , #{persist := false} = M) -> M#{module => mnesia,
                                                            alias => ram_copies};
 backend_mode(<<"rocksdb">>, #{persist := true } = M) -> M#{module => mnesia_rocksdb,
                                                            alias => rocksdb_copies};
+backend_mode(<<"leveled">>, #{persist := true } = M) -> M#{module => mnesia_leveled,
+                                                           alias => leveled_copies};
 backend_mode(<<"mnesia">> , #{persist := true } = M) -> M#{module => mnesia,
                                                            alias => disc_copies}.
 
