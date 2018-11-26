@@ -468,7 +468,7 @@ test_received_block_signing() ->
     [_GB, KB1] = aec_test_utils:gen_blocks_only_chain(2, preset_accounts(Keys)),
     ?assertEqual(ok, ?TEST_MODULE:post_block(KB1)),
 
-    KB1 = wait_for_block_to_publish(),
+    {_, KB1} = wait_for_block_to_publish(),
     assert_leader(true),
     assert_generation_state(running),
     wait_for_top_block_hash(block_hash(KB1)),
@@ -477,7 +477,7 @@ test_received_block_signing() ->
     %% Single tx should trigger micro block
     ok = aec_tx_pool:push(tx(Keys)),
 
-    NewBlock = wait_for_block_to_publish(),
+    {_, NewBlock} = wait_for_block_to_publish(),
     wait_for_top_block_hash(block_hash(NewBlock)),
     ?assertEqual(false, aec_blocks:is_key_block(NewBlock)),
 
@@ -557,7 +557,9 @@ expect_publish_event_hashes([],_AllowMissing) ->
     ok;
 expect_publish_event_hashes(Expected, AllowMissing) ->
     receive
-        {gproc_ps_event, block_to_publish, #{info := Block}} ->
+        {gproc_ps_event, block_to_publish, #{info := Info}} ->
+            {Type, Block} = Info,
+            ?assertEqual(true, lists:member(Type, [received, created])),
             Hash = block_hash(Block),
             NewExpected = Expected -- [Hash],
             case lists:member(Hash, Expected) of

@@ -556,11 +556,11 @@ maybe_publish_top(block_synced,_TopBlock) ->
 maybe_publish_top(block_received, TopBlock) ->
     %% The received block pushed by a network peer changed the
     %% top. Publish the new top.
-    aec_events:publish(block_to_publish, TopBlock);
+    aec_events:publish(block_to_publish, {received, TopBlock});
 maybe_publish_top(micro_block_received, TopBlock) ->
     %% The received micro block pushed by a network peer changed the
     %% top. Publish the new top.
-    aec_events:publish(block_to_publish, TopBlock).
+    aec_events:publish(block_to_publish, {received, TopBlock}).
 
 maybe_publish_block(block_synced,_Block) ->
     %% We don't publish blocks pulled from network. Otherwise on
@@ -575,11 +575,11 @@ maybe_publish_block(BlockReceived,_Block)
 maybe_publish_block(block_created = T, Block) ->
     aec_events:publish(T, Block),
     %% This is a block we created ourselves. Always publish.
-    aec_events:publish(block_to_publish, Block);
+    aec_events:publish(block_to_publish, {created, Block});
 maybe_publish_block(micro_block_created = T, Block) ->
     aec_events:publish(T, Block),
     %% This is a block we created ourselves. Always publish.
-    aec_events:publish(block_to_publish, Block).
+    aec_events:publish(block_to_publish, {created, Block}).
 
 
 
