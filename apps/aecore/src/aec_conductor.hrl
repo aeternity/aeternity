@@ -36,5 +36,6 @@
                 workers                 = []              :: workers(),
                 consensus                                 :: #consensus{},
                 beneficiary                               :: <<_:(32*8)>>,  % Maybe move beneficiary out of conductor's state
-                fraud_list              = []              :: list({binary(), aec_pof:pof()})
+                fraud_list              = []              :: list({binary(), aec_pof:pof()}),
+                pending_key_block                         :: aec_blocks:block() | 'undefined'
                }).
