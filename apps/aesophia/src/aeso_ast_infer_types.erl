@@ -60,7 +60,7 @@
 -type field_info() :: #field_info{}.
 
 -define(PRINT_TYPES(Fmt, Args),
-	when_option(pp_types, fun () -> io:format(Fmt, Args) end)).
+        when_option(pp_types, fun () -> io:format(Fmt, Args) end)).
 
 %% Environment containing language primitives
 -spec global_env() -> [{string(), aeso_syntax:type()}].
@@ -352,8 +352,8 @@ infer_letrec(Env, {letrec, Attrs, Defs}) ->
             Expect = typesig_to_fun_t(TypeSig),
             unify(Got, Expect, {check_typesig, Name, Got, Expect}),
             solve_field_constraints(),
-	    ?PRINT_TYPES("Checked ~s : ~s\n",
-			 [Name, pp(dereference_deep(Got))]),
+            ?PRINT_TYPES("Checked ~s : ~s\n",
+                         [Name, pp(dereference_deep(Got))]),
             Res
           end || LF <- Defs ],
     destroy_and_report_unsolved_constraints(),
@@ -1316,10 +1316,11 @@ create_type_errors() ->
 
 destroy_and_report_type_errors() ->
     Errors   = ets_tab2list(type_errors),
+    %% io:format("Type errors now: ~p\n", [Errors]),
     PPErrors = [ pp_error(Err) || Err <- Errors ],
     ets_delete(type_errors),
-    [ error({type_errors, [lists:flatten(Err) || Err <- PPErrors]})
-      || Errors /= [] ].
+    Errors /= [] andalso
+        error({type_errors, [lists:flatten(Err) || Err <- PPErrors]}).
 
 pp_error({cannot_unify, A, B, When}) ->
     io_lib:format("Cannot unify ~s\n"

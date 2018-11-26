@@ -13,7 +13,9 @@
                     {ok, aeso_syntax:ast()}
                         | {error, {aeso_parse_lib:pos(),
                                    atom(),
-                                   term()}}.
+                                   term()}}
+                        | {error, {aeso_parse_lib:pos(),
+                                   atom()}}.
 string(String) ->
   parse_and_scan(file(), String).
 
