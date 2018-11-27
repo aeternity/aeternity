@@ -33,7 +33,7 @@
 -endif.
 
 -define(MAX_HEADERS_PER_CHUNK, 100).
--define(DEFAULT_MAX_GOSSIP, 10).
+-define(DEFAULT_MAX_GOSSIP, 16).
 
 %%%=============================================================================
 %%% API

@@ -62,7 +62,16 @@ miner() -> <<0:?MINER_PUB_BYTES/unit:8>>.
 
 beneficiary() -> <<0:?BENEFICIARY_PUB_BYTES/unit:8>>.
 
-target() -> ?HIGHEST_TARGET_SCI.
+-ifdef(TEST).
+target() ->
+   ?HIGHEST_TARGET_SCI.
+-else.
+target() ->
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> -> 16#1F1F1F1F;
+        _                -> ?HIGHEST_TARGET_SCI
+    end.
+-endif.
 
 %% Returns the genesis block and the state trees.
 %%

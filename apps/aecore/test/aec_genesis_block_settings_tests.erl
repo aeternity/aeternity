@@ -6,7 +6,7 @@
 -define(TEST_MODULE, aec_genesis_block_settings).
 -define(ROOT_DIR, "/tmp").
 -define(DIR, ?ROOT_DIR ++ "/.genesis").
--define(FILENAME, ?DIR ++ "/accounts.json").
+-define(FILENAME, ?DIR ++ "/accounts_test.json").
 
 %%%===================================================================
 %%% Test cases
