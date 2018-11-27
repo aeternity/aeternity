@@ -85,7 +85,8 @@ generate(Hash, Nonce, Target, 1) ->
     generate_int(Hash, Nonce, Target, undefined);
 generate(Hash, Nonce, Target, N) ->
     Self = self(),
-    Fun = fun(I) -> Self ! {self(), try generate_int(Hash, Nonce + I, Target, I)
+    Fun = fun(I) -> Self ! {self(), try N1 = (Nonce + I) band ?MAX_NONCE,
+                                        generate_int(Hash, N1, Target, I)
                                     catch _:_ -> {error, no_solution} end}
           end,
     Pids = [ spawn_link(fun() -> Fun(D) end) || D <- lists:seq(0, N - 1) ],
