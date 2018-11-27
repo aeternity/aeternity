@@ -239,7 +239,7 @@ contributors_messages_hash() ->
     %% This is generated using messages_hash tool:
     %%  > cd /tmp/node
     %%  > bin/epoch messages_hash
-    <<187,28,88,2,112,181,185,35,1,70,213,105,185,131,118,173,177,98,185,164,178,72,209,13,79,55,219,47,2,242,180,213>>.
+    <<158,79,89,57,49,136,245,229,211,220,44,167,79,151,117,42,149,176,13,160,196,61,156,179,95,106,250,133,59,93,3,170>>.
 
 -spec locked_coins_holder_account() -> aec_keys:pubkey().
 locked_coins_holder_account() -> ?LOCKED_COINS_ACCOUNT.
