@@ -305,8 +305,6 @@ jobs:
       - run:
           name: Test
           command: |
-            echo "epoch_cookie" > ~/.erlang.cookie
-            chmod 400 ~/.erlang.cookie
             epmd -daemon
             make test CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
       # Isolates the junit.xml report because additional files in _build/test/logs
