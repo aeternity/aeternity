@@ -15,6 +15,7 @@
         , unmock_block_target_validation/0
         , mock_fast_cuckoo_pow/0
         , mock_fast_and_deterministic_cuckoo_pow/0
+        , mock_prebuilt_cuckoo_pow/1
         , mock_genesis/0
         , mock_genesis/1
         , unmock_genesis/0
@@ -103,6 +104,17 @@ mock_fast_cuckoo_pow() ->
 
 mock_fast_and_deterministic_cuckoo_pow() ->
     mock_cuckoo_pow({"mean15-generic", "", 15, false, 10, 1}).
+
+mock_prebuilt_cuckoo_pow(MinerBin) ->
+    meck:expect(
+      aeu_env, find_config, 2,
+      fun
+          ([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"executable_group">>], _) ->
+              {ok, <<"aecuckooprebuilt">>};
+          (CfgKey, Opts) ->
+              meck:passthrough([CfgKey, Opts])
+      end),
+    mock_cuckoo_pow({MinerBin, "", 15, false, 1, 1}).
 
 mock_cuckoo_pow({_MinerBin, _MinerExtraArgs, _EdgeBits, _EncodedHeader, _Repeats, _Instances} = Cfg) ->
     meck:expect(aeu_env, get_env, 3,

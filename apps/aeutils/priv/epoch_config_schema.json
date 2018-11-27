@@ -414,8 +414,14 @@
                                 "edge_bits"
                             ],
                             "properties" : {
+                                "executable_group" : {
+                                    "description" : "Group of executable binaries of the miner.",
+                                    "type" : "string",
+                                    "enum" : [ "aecuckoo", "aecuckooprebuilt" ],
+                                    "default": "aecuckoo"
+                                },
                                 "executable" : {
-                                    "description" : "Executable binary of the miner. Options are: \"mean29-generic\" (memory-intensive), \"mean29-avx2\" (memory-intensive, benefits from faster CPU supporting AVX2 instructions), \"lean29-generic\" (CPU-intensive, useful if memory-constrained), \"lean29-avx2\" (CPU-intensive, useful if memory-constrained, benefits from faster CPU supporting AVX2 instructions).",
+                                    "description" : "Executable binary of the miner. If the executable group is 'aecuckoo', the options are: \"mean29-generic\" (memory-intensive), \"mean29-avx2\" (memory-intensive, benefits from faster CPU supporting AVX2 instructions), \"lean29-generic\" (CPU-intensive, useful if memory-constrained), \"lean29-avx2\" (CPU-intensive, useful if memory-constrained, benefits from faster CPU supporting AVX2 instructions). For the other executable groups, please refer to the user documentation.",
                                     "type" : "string",
                                     "default": "mean29-generic"
                                 },
