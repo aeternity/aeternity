@@ -67,7 +67,10 @@ target() ->
    ?HIGHEST_TARGET_SCI.
 -else.
 target() ->
-    16#1F1F1F1F.
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> -> 16#1F1F1F1F;
+        _                -> ?HIGHEST_TARGET_SCI
+    end.
 -endif.
 
 %% Returns the genesis block and the state trees.

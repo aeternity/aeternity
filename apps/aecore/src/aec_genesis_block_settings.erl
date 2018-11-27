@@ -37,8 +37,20 @@ preset_accounts() ->
 
 -spec read_presets() -> {ok, binary()}| {error, atom(), string()}.
 read_presets() ->
-    PresetAccountsFile = filename:join([dir(), "accounts.json"]),
+    PresetAccountsFile = filename:join([dir(), accounts_json_file()]),
     case file:read_file(PresetAccountsFile) of
         {ok, _} = OK -> OK;
         {error, Err} -> {error, {Err, PresetAccountsFile}}
     end.
+
+
+-ifdef(TEST).
+accounts_json_file() ->
+    "accounts_test.json".
+-else.
+accounts_json_file() ->
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> -> "accounts.json";
+        _                -> "accounts_test.json"
+    end.
+-endif.
