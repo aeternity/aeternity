@@ -18,13 +18,13 @@ def sign(message, private_key):
     return private_key.sign(message).signature
 
 def sign_encode_tx(packed_tx, private_key):
-    signature = sign("ae_mainnet" + packed_tx, private_key)
+    signature = sign("ae_network_id" + packed_tx, private_key)
     signed_encoded = common.encode_signed_tx(packed_tx, [bytearray(signature)])
     return signed_encoded
 
 def sign_verify_encode_tx(packed_tx, private_key, public_key):
-    signature = sign("ae_mainnet" + packed_tx, private_key)
-    assert verify(signature, "ae_mainnet" + packed_tx, public_key)
+    signature = sign("ae_network_id" + packed_tx, private_key)
+    assert verify(signature, "ae_network_id" + packed_tx, public_key)
     signed_encoded = common.encode_signed_tx(packed_tx, [bytearray(signature)])
     return signed_encoded
 
@@ -34,4 +34,3 @@ def tx_hash_from_signed_encoded(signed_encoded):
 
 def verify(signature, message, public_key):
     return public_key.verify(message, signature)
-

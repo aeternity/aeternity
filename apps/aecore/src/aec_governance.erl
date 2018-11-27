@@ -40,7 +40,7 @@
         #{?PROTOCOL_VERSION => ?GENESIS_HEIGHT
          }).
 
--define(NETWORK_ID, <<"ae_mainnet">>).
+-define(NETWORK_ID, <<"ae_network_id">>).
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 17).
 -define(TIMESTAMP_MEDIAN_BLOCKS, 11).
 -define(EXPECTED_BLOCK_MINE_RATE_MINUTES, 3).

@@ -80,7 +80,7 @@ fork_management:
     network_id: ae_uat
 ```
 
-The network ID defaults to `ae_mainnet`.
+The network ID defaults to `ae_network_id`.
 
 ## Instructions
 

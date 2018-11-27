@@ -148,4 +148,4 @@ metrics:
           actions: log,send
 
 fork_management:
-    network_id: "ae_mainnet"
+    network_id: "ae_network_id"
