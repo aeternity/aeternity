@@ -60,13 +60,14 @@ If the node successfully mines a block, you shall read log entries like the foll
 ... Block mined: Height = 1; Hash = ...
 ```
 
-### Verify that node connected to the testnet
 
-Verify that your node sees the same longest blockchain as the testnet.
+### Verify that node is connected to the roma network
 
-Inspect the current top of the blockchain as seen by the testnet:
+Verify that your node sees the same longest blockchain as the roma network.
+
+Inspect the current top of the blockchain as seen by the roma network:
 ```bash
-curl http://52.10.46.160:3013/v2/blocks/top || curl http://18.195.109.60:3013/v2/blocks/top
+curl http://35.178.61.73:3013/v2/blocks/top
 ```
 
 Inspect the current top of the blockchain as seen by your node:
@@ -74,14 +75,14 @@ Inspect the current top of the blockchain as seen by your node:
 curl http://127.0.0.1:3013/v2/blocks/top
 ```
 
-Verify that the height is the same; it may take a few minutes for your node to catch up with the testnet blockchain.
+Verify that the height is the same; it may take a few minutes for your node to catch up with the roma network blockchain.
 
-### Verify that node mines on same chain as the testnet
+### Verify that node mines on same chain as the roma network
 
-After the node is successfully connected to the testnet, you could verify that it is mining on the same chain as the rest of the network.
+After the node is successfully connected to the roma network, you could verify that it is mining on the same chain as the rest of the network.
 You can validate it observing the `hash` of the `/blocks/top` of the remote nodes:
 ```bash
-$ curl http://52.10.46.160:3013/v2/blocks/top
+$ curl http://35.178.61.73:3013/v2/blocks/top
 {"key_block":{"hash":"kh_2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy","height":...}}
 ```
 
