@@ -62,7 +62,13 @@ miner() -> <<0:?MINER_PUB_BYTES/unit:8>>.
 
 beneficiary() -> <<0:?BENEFICIARY_PUB_BYTES/unit:8>>.
 
-target() -> ?HIGHEST_TARGET_SCI.
+-ifdef(TEST).
+target() ->
+   ?HIGHEST_TARGET_SCI.
+-else.
+target() ->
+    16#1F1F1F1F.
+-endif.
 
 %% Returns the genesis block and the state trees.
 %%
