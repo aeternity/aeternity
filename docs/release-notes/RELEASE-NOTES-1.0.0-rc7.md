@@ -5,6 +5,7 @@ It:
 * Updates genesis accounts
 * Sets target for the genesis block
 * Increases the amount of nodes that new information is gossiped to 
+* Restricts the listen address of the operations TCP port (Distributed Erlang) to localhost (`127.0.0.1`).
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v1.0.0-rc7
 
