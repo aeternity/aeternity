@@ -117,7 +117,7 @@ mock_genesis() ->
     mock_genesis(preset_accounts()).
 
 mock_genesis(PresetAccounts) ->
-    meck:new(aec_genesis_block_settings, []),
+    meck:new(aec_genesis_block_settings, [passthrough]),
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
     ok.
 
