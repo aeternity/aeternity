@@ -1,6 +1,6 @@
 -include("pow.hrl").
 
--define(PROTOCOL_VERSION, 32).
+-define(PROTOCOL_VERSION, 1).
 -define(GENESIS_VERSION, ?PROTOCOL_VERSION).
 -define(GENESIS_HEIGHT, 0).
 -define(GENESIS_TIME, 0).
