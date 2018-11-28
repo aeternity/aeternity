@@ -58,7 +58,7 @@ mining:
     # Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.
     attempt_timeout: 3600000
     # Expected mine rate (milliseconds) between blocks. Used in governance.
-    expected_mine_rate: 300000
+    expected_mine_rate: 180000
     # Public key of beneficiary account that will receive fees from mining on a node.
     beneficiary: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999"
     cuckoo:
