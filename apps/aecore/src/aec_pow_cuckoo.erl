@@ -41,6 +41,7 @@
 -define(error(F, A), epoch_pow_cuckoo:error(F, A)).
 
 -record(state, {os_pid :: integer() | undefined,
+                port :: pid() | undefined,
                 buffer = [] :: string(),
                 target :: aec_pow:sci_int() | undefined,
                 parser :: output_parser_fun()}).
@@ -309,27 +310,14 @@ generate_int(Hash, Nonce, Target, #miner_config{} = Config, Instance) ->
     generate_int(EncodedHash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config).
 
 generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config) ->
-    Repeats = get_repeats(Config),
-    Cmd = lists:concat(["./", MinerBin,
-                        " -h ", Hash,
-                        " -n ", Nonce,
-                        " -r ", Repeats,
-                        " ", MinerExtraArgs]),
-    ?info("Executing cmd: ~p", [Cmd]),
+    Repeats = integer_to_list(get_miner_repeats()),
+    Args = ["-h", Hash, "-n", integer_to_list(Nonce), "-r", Repeats | string:tokens(MinerExtraArgs, " ")],
+    ?info("Executing cmd '~s ~s'", [MinerBin, lists:concat(lists:join(" ", Args))]),
     Old = process_flag(trap_exit, true),
-    DefaultOptions = [{stdout, self()},
-                      {stderr, self()},
-                      {cd, MinerBinDir},
-                      {env, [{"SHELL", "/bin/sh"}]},
-                      monitor],
-    Options =
-        case get_nice(Config) of
-            undefined -> DefaultOptions;
-            Niceness  -> DefaultOptions ++ [{nice, Niceness}]
-        end,
-    try exec:run(Cmd, Options) of
-        {ok, _ErlPid, OsPid} ->
+    try exec_run(MinerBin, MinerBinDir, Args) of
+        {ok, Port, OsPid} ->
             wait_for_result(#state{os_pid = OsPid,
+                                   port = Port,
                                    buffer = [],
                                    parser = fun parse_generation_result/2,
                                    target = Target})
@@ -501,30 +489,24 @@ pack_header_and_nonce(Hash, Nonce) when byte_size(Hash) == 32 ->
 -spec wait_for_result(#state{}) ->
             {'ok', aec_pow:nonce(), pow_cuckoo_solution()} | {'error', term()}.
 wait_for_result(#state{os_pid = OsPid,
+                       port = Port,
                        buffer = Buffer} = State) ->
     receive
-        {stdout, OsPid, Msg} ->
+        {Port, {data, Msg}} ->
             Str = binary_to_list(Msg),
             {Lines, NewBuffer} = handle_fragmented_lines(Str, Buffer),
             (State#state.parser)(Lines, State#state{buffer = NewBuffer});
-        {stderr, OsPid, Msg} ->
-            ?error("ERROR: ~s", [Msg]),
+        {Port, {exit_status, 0}} ->
             wait_for_result(State);
         {'EXIT',_From, shutdown} ->
             %% Someone is telling us to stop
             stop_execution(OsPid),
             exit(shutdown);
-        {'DOWN', OsPid, process, _, normal} ->
+        {'EXIT', Port, normal} ->
             %% Process ended but no value found
             {error, no_value};
-        {'DOWN', OsPid, process, _, Reason} ->
-            %% Abnormal termination
-            Reason2 = case Reason of
-                          {exit_status, ExStat} -> exec:status(ExStat);
-                          _                     -> Reason
-                      end,
-            ?error("OS process died: ~p", [Reason2]),
-            {error, {execution_failed, Reason2}}
+        _Other ->
+            wait_for_result(State)
     end.
 
 %%------------------------------------------------------------------------------
@@ -570,7 +552,7 @@ parse_generation_result([], State) ->
 parse_generation_result(["Solution" ++ NonceValuesStr | Rest], #state{os_pid = OsPid,
                                                                  target = Target} = State) ->
     [NonceStr | SolStrs] =  string:tokens(NonceValuesStr, " "),
-    Soln = [list_to_integer(V, 16) || V <- SolStrs],
+    Soln = [list_to_integer(string:trim(V, both, [$\r]), 16) || V <- SolStrs],
     case {length(Soln), test_target(Soln, Target)} of
         {42, true} ->
             stop_execution(OsPid),
@@ -592,8 +574,7 @@ parse_generation_result(["Solution" ++ NonceValuesStr | Rest], #state{os_pid = O
             ?debug("Failed to meet target (~p)", [Target]),
             parse_generation_result(Rest, State)
     end;
-parse_generation_result([Msg | T], State) ->
-    ?debug("~s", [Msg]),
+parse_generation_result([_Msg | T], State) ->
     parse_generation_result(T, State).
 
 parse_nonce_str(S) ->
@@ -608,7 +589,7 @@ parse_nonce_str(S) ->
 %%------------------------------------------------------------------------------
 -spec stop_execution(integer()) -> ok.
 stop_execution(OsPid) ->
-    case exec:kill(OsPid, 9) of
+    case exec_kill(OsPid) of
         {error, Reason} ->
             ?debug("Failed to stop mining OS process ~p: ~p (may have already finished).",
                    [OsPid, Reason]);
@@ -634,6 +615,41 @@ get_node_size() ->
 -spec node_size(non_neg_integer()) -> non_neg_integer().
 node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits > 31 -> 8;
 node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits >  0 -> 4.
+
+exec_run(Cmd, Dir, Args) ->
+    PortSettings = [
+                    binary,
+                    exit_status,
+                    hide,
+                    in,
+                    overlapped_io,
+                    stderr_to_stdout,
+                    {args, Args},
+                    {cd, Dir}
+                   ],
+    PortName = {spawn_executable, os:find_executable(Cmd, Dir)},
+    Port = erlang:open_port(PortName, PortSettings),
+    {os_pid, OsPid} = erlang:port_info(Port, os_pid),
+    ?debug("External mining process started with OS pid ~p", [OsPid]),
+    {ok, Port, OsPid}.
+
+exec_kill(OsPid) ->
+    case is_unix() of
+        true ->
+            os:cmd(io_lib:format("kill -9 ~p", [OsPid])),
+            ok;
+        false ->
+            os:cmd(io_lib:format("taskkill /PID ~p /T /F", [OsPid])),
+            ok
+    end.
+
+is_unix() ->
+    case erlang:system_info(system_architecture) of
+        "win32" ->
+            false;
+        _ ->
+            true
+    end.
 
 %%------------------------------------------------------------------------------
 %% White paper, section 9: rather than adjusting the nodes/edges ratio, a

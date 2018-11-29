@@ -22,8 +22,7 @@ pow_test_() ->
     {setup,
      fun() ->
              ok = meck:new(aeu_env, [passthrough]),
-             aec_test_utils:mock_fast_and_deterministic_cuckoo_pow(),
-             ok = application:ensure_started(erlexec)
+             aec_test_utils:mock_fast_and_deterministic_cuckoo_pow()
      end,
      fun(_) ->
              ok = meck:unload(aeu_env)
@@ -34,7 +33,7 @@ pow_test_() ->
                 Target = ?HIGHEST_TARGET_SCI,
                 Nonce = ?TEST_HIGH_NONCE,
                 [Config] = ?TEST_MODULE:get_miner_configs(),
-                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined),
+                Res = spawn_worker(fun() -> ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined) end),
                 {ok, {Nonce, Soln}} = Res,
                 ?assertMatch(L when length(L) == 42, Soln),
 
@@ -49,16 +48,20 @@ pow_test_() ->
                 Target = 16#01010000,
                 Nonce = ?TEST_HIGH_NONCE,
                 [Config] = ?TEST_MODULE:get_miner_configs(),
-                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined),
-                ?assertEqual({error, no_solution}, Res),
+                Res1 = spawn_worker(fun() ->
+                                            ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined)
+                                    end),
+                ?assertEqual({error, no_solution}, Res1),
 
                 %% Any attempts to verify such nonce with a solution
                 %% found with high target threshold shall fail.
                 %%
                 %% Obtain solution with high target threshold ...
                 HighTarget = ?HIGHEST_TARGET_SCI,
-                {ok, {Nonce, Soln2}} =
-                    ?TEST_MODULE:generate(?TEST_BIN, HighTarget, Nonce, Config, undefined),
+                Res2 = spawn_worker(fun() ->
+                                            ?TEST_MODULE:generate(?TEST_BIN, HighTarget, Nonce, Config, undefined)
+                                    end),
+                {ok, {Nonce, Soln2}} = Res2,
                 ?assertMatch(L when length(L) == 42, Soln2),
                 %% ... then attempt to verify such solution (and
                 %% nonce) with the low target threshold (shall fail).
@@ -70,7 +73,7 @@ pow_test_() ->
                Target = ?HIGHEST_TARGET_SCI,
                Nonce = ?TEST_HIGH_NONCE,
                [Config] = ?TEST_MODULE:get_miner_configs(),
-               Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined),
+               Res = spawn_worker(fun() -> ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined) end),
                {ok, {Nonce, Soln}} = Res,
                ?assertMatch(L when length(L) == 42, Soln),
 
@@ -85,7 +88,7 @@ pow_test_() ->
                Nonce = 1,
                [Config] = ?TEST_MODULE:get_miner_configs(),
                ?assertMatch({error, no_solution},
-                            ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined)),
+               spawn_worker(fun() -> ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined) end)),
 
                DummySoln = lists:seq(0, 41),
                ?assertMatch(L when length(L) == 42, DummySoln),
@@ -111,9 +114,6 @@ pow_test_() ->
     }.
 
 misc_test_() ->
-    {setup,
-     fun() -> ok end ,
-     fun(_) -> ok end,
      [{"Conversion of a solution to binary",
        fun() ->
                Soln = [5936046,6000450,9980569,10770186,11256679,11557293,
@@ -128,36 +128,35 @@ misc_test_() ->
                ?assertEqual(42*NodeSize, size(?TEST_MODULE:solution_to_binary(
                                                  lists:sort(Soln), NodeSize * 8, <<>>)))
        end}
-     ]
-    }.
+     ].
 
 kill_ospid_miner_test_() ->
-    {setup,
-     fun() ->
-           ok = application:ensure_started(erlexec)
-     end,
-     fun(_) ->
-           application:stop(erlexec)
-     end,
      [ {"Run miner in OS and kill it by killing parent",
        fun() ->
             [Config] = ?TEST_MODULE:get_miner_configs(),
             Self = self(),
-            ?assertEqual([], exec:which_children()),  %% no zombies around
             Pid = spawn(fun() ->
-                          Self ! {aec_pow_cuckoo:generate(?TEST_BIN, 12837272, 128253, Config, undefined), self()}
+                          Self ! {?TEST_MODULE:generate(?TEST_BIN, 12837272, 128253, Config, undefined), self()}
                       end),
             timer:sleep(200),                        %% give some time to start the miner OS pid
-            ?assertEqual(1, length(exec:which_children())),  %% We did create a new one.
+            %% We did create a new one.
+            ?assertNotMatch([], os:cmd("ps -e | grep mean29- | grep -v grep")),
             exit(Pid, shutdown),
             timer:sleep(1000),                       %% give it some time to kill the miner OS pid
-            ?assertEqual([], exec:which_children()), %% at least erlexec believes it died
-
-            Res = os:cmd("ps | grep mean29-generic | grep -v grep"),
-            ?assertMatch([], Res)
+            ?assertMatch([], os:cmd("ps -e | grep mean29- | grep -v grep"))
         end}
-     ]
-    }.
+     ].
+
+
+% This code is partially from aec_conductor
+
+spawn_worker(Fun) ->
+    Wrapper = wrap_worker_fun(Fun),
+    {Pid, _Ref} = spawn_monitor(Wrapper),
+    receive
+        {worker_reply, Pid, Res} ->
+            Res
+    end.
 
 prebuilt_miner_test_() ->
     {foreach,
@@ -178,5 +177,11 @@ prebuilt_miner_test_() ->
                             ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined))
        end}
      ]}.
+
+wrap_worker_fun(Fun) ->
+    Server = self(),
+    fun() ->
+            Server ! {worker_reply, self(), Fun()}
+    end.
 
 -endif.

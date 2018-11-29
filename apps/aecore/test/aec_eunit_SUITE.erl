@@ -10,11 +10,10 @@
 -include_lib("common_test/include/ct.hrl").
 -compile({parse_transform, ct_eunit_xform}).
 
--define(STARTED_APPS_WHITELIST, [erlexec, runtime_tools, parse_trans, folsom, bear, setup, hut]).
--define(TO_BE_STOPPED_APPS_BLACKLIST, [erlexec]).
+-define(STARTED_APPS_WHITELIST, [runtime_tools, parse_trans, folsom, bear, setup, hut]).
+-define(TO_BE_STOPPED_APPS_BLACKLIST, []).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server, %% by test framework
-         exec_app, exec, %% by erlexec
          inet_gethost_native_sup, inet_gethost_native, %% by inet
          prfTarg, runtime_tools_sup, %% by eper
          dets_sup, dets,  %% by mnesia

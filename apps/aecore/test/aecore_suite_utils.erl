@@ -11,7 +11,7 @@
          make_shortcut/1,
          shortcut_dir/1]).
 
--export([cmd/1,
+-export([cmd/3, cmd/4,
          cmd_res/1,
          set_env/4,
          unset_env/3]).
@@ -163,16 +163,16 @@ start_node(N, Config) ->
     MyDir = filename:dirname(code:which(?MODULE)),
     ConfigFilename = proplists:get_value(config_name, Config, "default"),
     Flags = ["-pa ", MyDir, " -config ./" ++ ConfigFilename],
-    cmd(["(cd ", node_shortcut(N, Config),
-         " && ERL_FLAGS=\"", Flags, "\"",
-         " EPOCH_CONFIG=./data/epoch.json"
-         " RUNNER_LOG_DIR=`pwd`/log"
-         " CODE_LOADING_MODE=interactive"
-         " ./bin/epoch start)"]).
+    cmd("epoch", node_shortcut(N, Config) ++ "/bin", ["start"],
+        [
+         {"ERL_FLAGS", Flags},
+         {"EPOCH_CONFIG", "../data/epoch.json"},
+         {"RUNNER_LOG_DIR","`pwd`/log"},
+         {"CODE_LOADING_MODE", "interactive"}
+        ]).
 
 stop_node(N, Config) ->
-    cmd(["(cd ", node_shortcut(N, Config),
-         " && ./bin/epoch stop)"]).
+    cmd("epoch", node_shortcut(N, Config) ++ "/bin", ["stop"]).
 
 get_node_db_config(Rpc) when is_function(Rpc, 3) ->
     IsDbPersisted = Rpc(application, get_env, [aecore, persist, false]),
@@ -192,9 +192,7 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
     ct:log("Deleting Mnesia Dir ~p", [MnesiaDir]),
     {true, _} = {filelib:is_file(MnesiaDir), MnesiaDir},
     {true, _} = {filelib:is_dir(MnesiaDir), MnesiaDir},
-    RmMnesiaDir = "rm -r '" ++ MnesiaDir ++ "'",
-    ct:log("Running command ~p", [RmMnesiaDir]),
-    os:cmd(RmMnesiaDir),
+    os:cmd("rm", ".", ["-r", "'" ++ MnesiaDir ++ "'"]),
     {false, _} = {filelib:is_file(MnesiaDir), MnesiaDir},
     ok.
 
@@ -617,9 +615,11 @@ symlink(From, To) ->
     ct:log("symlinked ~s to ~s", [From, To]),
     ok.
 
-cmd(C) ->
+cmd(Cmd, Dir, Args) ->
+    cmd(Cmd, Dir, Args, []).
+cmd(C, Dir, Args, Env) ->
     Cmd = binary_to_list(iolist_to_binary(C)),
-    CmdRes = exec:run(Cmd, [sync, stdout, stderr]),
+    CmdRes = cmd_run(Cmd, Dir, Args, Env),
     {Fmt, Args} =
         case cmd_res(CmdRes) of
             {Out, "", []}    -> {"> ~s~n~s", [Cmd, Out]};
@@ -629,6 +629,32 @@ cmd(C) ->
         end,
     ct:log(Fmt, Args),
     CmdRes.
+
+cmd_run(Cmd, Dir, Args, Env) ->
+    Opts = [
+            {env, Env},
+            exit_status,
+            in,
+            overlapped_io,
+            stderr_to_stdout,
+            stream,
+            {args, Args},
+            {cd, Dir},
+            use_stdio
+           ],
+    ct:log("Running command ~p in ~p with ~p", [Cmd, Dir, Args]),
+    Port = erlang:open_port({spawn_executable, os:find_executable(Cmd, Dir)}, Opts),
+    WaitFun = fun(Fun, P, Res) ->
+                     receive
+                         {P, {exit_status, 0}} ->
+                             {ok, Res};
+                         {P, {exit_status, Err}} ->
+                             {error, Err};
+                         {P, {data, Msg}} ->
+                             Fun(Fun, P, Res ++ Msg)
+                     end
+             end,
+    WaitFun(WaitFun, Port, "").
 
 cmd_res({_, L}) ->
     {Err,_L1} = take(stderr, L, ""),

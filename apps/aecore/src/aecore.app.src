@@ -29,7 +29,6 @@
     sha3,
     enacl,
     enoise,
-    erlexec,
     jsx,
     unicode_util_compat, %% to be removed, not needed in OTP 20
     idna,
