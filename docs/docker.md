@@ -47,22 +47,7 @@ Note that if you want to use the default miner, remove the `mining.cuckoo` secti
 
 #### Generating beneficiary account for the first time
 
-If you don't have your beneficiary account public key yet, but you have Docker image, you can use `keys_gen` tool to generate public-private keypair from the inside of the Docker container.
-
-Assuming:
-* `/tmp/generated_keys` is a directory on you local machine;
-* you change `my_password` in the command below to your password that will protect your public-private keypair,
-
-run:
-```
-docker run --entrypoint=/bin/bash \
-    -v /tmp/generated_keys:/home/epoch/node/generated_keys \
-    aeternity/epoch \
-    -c './bin/epoch keys_gen my_password'
-```
-Your generated keypair will be located in `/tmp/generated_keys` on your machine, and your public key to be put in the configuration file will be printed in the console.
-
-For more details see [configuration documentation beneficiary section](configuration.md#beneficiary-account).
+Please refer to [the beneficiary section in the configuration documentation](configuration.md#beneficiary-account).
 
 #### External Peer Address
 
