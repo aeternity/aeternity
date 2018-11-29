@@ -30,7 +30,7 @@
 -define(EPOCH_CONFIG_FILE, "/home/epoch/epoch.yaml").
 -define(EPOCH_LOG_FOLDER, "/home/epoch/node/log").
 -define(EPOCH_KEYS_FOLDER, "/home/epoch/node/keys").
--define(EPOCH_GENESIS_FILE, "/home/epoch/node/data/aecore/.genesis/accounts.json").
+-define(EPOCH_GENESIS_FILE, "/home/epoch/node/data/aecore/.genesis/accounts_test.json").
 -define(EPOCH_MINE_RATE, 1000).
 -define(EPOCH_MAX_INBOUND, 100).
 -define(EXT_HTTP_PORT, 3013).
@@ -252,7 +252,7 @@ setup_node(Spec, BackendState) ->
             false ->
                 maps:get(genesis, Spec, undefined);
             GenesisAccounts ->
-                AccountsFile = filename:join([TempDir, "accounts.json"]),
+                AccountsFile = filename:join([TempDir, "accounts_test.json"]),
                 ok = file:write_file(AccountsFile, jsx:encode(GenesisAccounts)),
                 log(NodeState, "Genesis file ~p", [AccountsFile]),
                 AccountsFile

@@ -138,15 +138,14 @@ make_call(From, To, Value, Arg, S) ->
     CallData  = call_data(integer_to_binary(Arg)),
     Gas       = 10000,
     CallStack = [],
-    CallRes   = aec_vm_chain:call_contract(To, Gas, Value, CallData, CallStack, S),
+    {CallRes, S1} = aec_vm_chain:call_contract(To, Gas, Value, CallData, CallStack, S),
     case C1Bal1 >= Value of
         _ when Value < 0 ->
-            {error, negative_amount} = CallRes,
+            {exception, unknown_error} = aevm_chain_api:return_value(CallRes),
             S;
         true ->
-            {ok, Res, S1} = CallRes,
-            GasUsed  = aevm_chain_api:gas_spent(Res),
-            {ok, <<Arg:256>>} = aevm_chain_api:return_value(Res),
+            GasUsed  = aevm_chain_api:gas_spent(CallRes),
+            {ok, <<Arg:256>>} = aevm_chain_api:return_value(CallRes),
             true     = GasUsed > 0,
             true     = GasUsed =< Gas,
             C1Bal2   = aec_vm_chain:get_balance(From, S1),
@@ -155,6 +154,6 @@ make_call(From, To, Value, Arg, S) ->
             C2Bal2   = C2Bal1 + Value,
             S1;
         false ->
-            {error, insufficient_funds} = CallRes,
+            {exception, unknown_error} = aevm_chain_api:return_value(CallRes),
             S
     end.

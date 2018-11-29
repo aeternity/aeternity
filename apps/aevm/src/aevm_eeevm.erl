@@ -19,6 +19,9 @@
 -module(aevm_eeevm).
 -export([eval/1]).
 
+%% TODO: This should move
+-export([eval_error/1]).
+
 %% Exports for tracing. TODO: move to aevm_eeevm_code
 -export([code_get_op/2]).
 
@@ -40,10 +43,11 @@
             %% Enable setting up node with "test" rebar profile.
             error:undef -> ok
         end).
+-define(DEBUG_LOG(Format, Data), begin lager:debug(Format, Data), ?TEST_LOG(Format, Data) end).
 -else.
 -define(TEST_LOG(Format, Data), ok).
+-define(DEBUG_LOG(Format, Data), lager:debug(Format, Data)).
 -endif.
-
 
 %% Main eval loop.
 %%
@@ -56,8 +60,8 @@ eval(State) ->
                 {ok, State2}  -> {ok, State2};
                 {error, What} -> {error, What, State1}
             end;
-        {revert, State1} ->
-            {revert, State1};
+        {revert, Msg, GasLeft} ->
+            {revert, Msg, GasLeft};
         {error, What, State1} ->
             %% Don't save state on error.
             {error, What, State1}
@@ -73,23 +77,16 @@ eval_code(State = #{ address := 0 }) ->
 eval_code(State) ->
     try {ok, loop(aevm_eeevm_state:cp(State), valid_jumpdests(State))}
     catch
-        throw:?aevm_eval_error(What, StateOut) ->
-            ?TEST_LOG("Code evaluation error at ~s",
-                      [aeb_disassemble:format_address(aevm_eeevm_state:cp(StateOut))]),
-	    %% Throw away new storage on error.
-            {error, What, old_store(State, StateOut)};
+        throw:?aevm_eval_error(What, GasLeft) ->
+            {error, What, GasLeft};
         throw:?AEVM_SIGNAL(Signal, StateOut) ->
-            handle_signal(Signal, State, StateOut)
+            handle_signal(Signal, StateOut)
     end.
 
-old_store(StateIn, StateOut) ->
-    aevm_eeevm_state:set_storage(
-      aevm_eeevm_state:storage(StateIn), StateOut).
-
-handle_signal(revert, StateIn, StateOut) ->
-    {revert, old_store(StateIn, StateOut)}.
-
-
+handle_signal(revert, StateOut) ->
+    GasOut = aevm_eeevm_state:gas(StateOut),
+    Msg    = aevm_eeevm_state:out(StateOut),
+    {revert, Msg, GasOut}.
 
 valid_jumpdests(State) ->
     Code = aevm_eeevm_state:code(State),
@@ -133,7 +130,7 @@ loop(CP, StateIn) ->
             State  = trace(CP, StateIn),
             case is_valid_instruction(OP, aevm_eeevm_state:vm_version(State)) of
                 true -> ok;
-                false -> eval_error({illegal_instruction, OP}, State)
+                false -> eval_error({illegal_instruction, OP})
             end,
             State0 = spend_op_gas(OP, State),
             case OP of
@@ -684,7 +681,7 @@ loop(CP, StateIn) ->
                     JumpDests =  aevm_eeevm_state:jumpdests(State1),
                     case maps:get(Us0, JumpDests, false) of
                     true  -> next_instruction(Us0-1, State, State1);
-                    false -> eval_error({{invalid_jumpdest, Us0}}, State1)
+                    false -> eval_error({{invalid_jumpdest, Us0}})
                     end;
                 ?JUMPI ->
                     %% 0x57 JUMPI δ=2 α=0
@@ -700,7 +697,7 @@ loop(CP, StateIn) ->
                                 true ->
                                     next_instruction(Us0-1, State, State2);
                                 false ->
-                                    eval_error({{invalid_jumpdest, Us0}}, State1)
+                                    eval_error({{invalid_jumpdest, Us0}})
                             end;
                        true -> next_instruction(CP, State, State2)
                     end;
@@ -1427,7 +1424,7 @@ data_get_bytes(Address, Size, State) ->
     Data = aevm_eeevm_state:data(State),
     try aevm_eeevm_utils:bin_copy(Address, Size, Data)
     catch error:system_limit ->
-        eval_error(out_of_memory, State)
+        eval_error(out_of_memory)
     end.
 
 %% Get a binary of size Size bytes from return data.
@@ -1489,7 +1486,7 @@ spend_gas_common(_Resource, Gas, State) ->
         true ->  aevm_eeevm_state:set_gas(GasLimit - Gas, State);
         false ->
             ?TEST_LOG("Out of gas spending ~p gas for ~p", [Gas, _Resource]),
-            eval_error(out_of_gas, State)
+            eval_error(out_of_gas)
     end.
 
 %% ------------------------------------------------------------------------
@@ -1558,7 +1555,8 @@ recursive_call1(StateIn, Op) ->
     State1            = spend_call_gas(State0, Op),
     Gascap            = aevm_gas:call_cap(Op, State0),
 
-    {_Gas, State2}    = pop(State1), %% Peeked elsewhere.
+    {Gas, State2}     = pop(State1), %% Peeked elsewhere.
+    GasIsLimited      = Gas =/= aevm_eeevm_state:gas(StateIn),
     {To, State3}      = pop(State2),
     {Value, State4}   = case Op of
                             ?CALL         -> pop(State3);
@@ -1575,19 +1573,19 @@ recursive_call1(StateIn, Op) ->
         true  -> ok;
         false ->
             ?TEST_LOG("Out of gas before call", []),
-            eval_error(out_of_gas, State8)
+            eval_error(out_of_gas)
     end,
     Address = aevm_eeevm_state:address(State8),
     AddressBalance = aevm_eeevm_state:accountbalance(Address, State8),
     case Value =< AddressBalance of
-        true  -> recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend, OutT);
+        true  -> recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend, OutT, GasIsLimited);
         false ->
             ?TEST_LOG("Excessive value operand ~p for address ~p, that has balance ~p", [Value, Address, AddressBalance]),
-            {0, aevm_eeevm_state:set_gas(0, State8)}
             %% Consume all gas on failed contract call.
+            eval_error(out_of_gas)
     end.
 
-recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend, OutType) ->
+recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend, OutType, GasIsLimited) ->
     Dest = case Op of
                ?CALL -> To;
                ?CALLCODE -> aevm_eeevm_state:address(State8);
@@ -1601,9 +1599,12 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend,
     %% ensures that a call recipient will always have enough gas to
     %% log that it received funds."
     %%  -- https://github.com/ethereum/wiki/wiki/Subtleties
-    Stipend = case Value =/= 0 of
-                  true -> maps:get('GCALLSTIPEND', maps:get(gas_table, State8));
-                  false -> 0
+    %% Only used for tests in Solidity VM
+    VmVersion = aevm_eeevm_state:vm_version(State8),
+    Stipend = case {VmVersion, Value =/= 0} of
+                  {?AEVM_01_Solidity_01, true} ->
+                      maps:get('GCALLSTIPEND', maps:get(gas_table, State8));
+                  _ -> 0
               end,
     CallGas = Stipend + Gascap,
     Caller = case Op of
@@ -1622,40 +1623,42 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend,
                                                         }, State9),
             {1, State10};
         false ->
-             %% State9 =
-             %%     aevm_eeevm_state:add_callcreates(#{ data => I
-             %%                                       , destination => Dest
-             %%                                       , gasLimit => CallGas
-             %%                                       , value => Value
-             %%                                       }, State8),
-            {OutGas, ReturnState, R} =
-                case aevm_eeevm_state:call_contract(Caller, Dest, CallGas, Value, I, State8) of
-                    {ok, Res, GasSpent, OutState1} when 0 =< GasSpent, GasSpent =< CallGas ->
-                        {CallGas - GasSpent, OutState1, Res};
-                    {error, ?AEVM_PRIMOP_ERR_REASON_OOG(_OogResource, _OogGas, State9)} ->
-                        ?TEST_LOG("Out of gas spending ~p gas for ~p", [_OogGas, _OogResource]),
-                        eval_error(out_of_gas, State9);
-                    {error, not_allowed_off_chain} ->
-                        ?TEST_LOG("Not allowed calling this contract off-chain", []),
-                        eval_error(not_allowed_off_chain, State8);
-                    {error, _Err} ->
-                        ?TEST_LOG("Invalid call error ~p", [_Err]),
-                        {0, State8, {error, invalid_call}}
-                end,
-            %% TODO: how to handle trace of call?
-            %% CallTrace = aevm_eeevm_state:trace(OutState),
-            %% ReturnState1 = aevm_eeevm_state:add_trace(CallTrace, State9),
-            GasAfterCall = GasAfterSpend  + max(0, OutGas - Stipend),
-            ReturnState2 = aevm_eeevm_state:set_gas(GasAfterCall, ReturnState),
-            case R of
-                {ok, Message} ->
-                    aevm_eeevm_state:return_contract_call_result(Dest, I, OOffset, OSize, Message, OutType, ReturnState2);
-                {error, {revert, RevertMsg}} ->
-                    ReturnState3 = aevm_eeevm_state:set_out(RevertMsg, ReturnState2),
-                    throw(?REVERT_SIGNAL(ReturnState3));
-                {error, _} ->
-                    {0, aevm_eeevm_state:set_gas(0, ReturnState2)}
-                    %% Consume all gas on failed contract call.
+            case aevm_eeevm_state:call_contract(Caller, Dest, CallGas, Value, I, State8) of
+                {ok, Return, GasSpent, OutState} when 0 =< GasSpent, GasSpent =< CallGas ->
+                    GasAfterCall = GasAfterSpend  + max(0, CallGas - GasSpent - Stipend),
+                    ReturnState = aevm_eeevm_state:set_gas(GasAfterCall, OutState),
+                    aevm_eeevm_state:return_contract_call_result(
+                      Dest, I, OOffset, OSize, Return, OutType, ReturnState);
+                {exception, What, GasSpent,_OutState1} ->
+                    ?TEST_LOG("Contract call exception ~p (~p spent)", [What, GasSpent]),
+                    case VmVersion of
+                        ?AEVM_01_Solidity_01 ->
+                            eval_error(What);
+                        ?AEVM_01_Sophia_01 when CallGas =:= GasSpent, not GasIsLimited ->
+                            %% When the gas IS NOT explicitly limited,
+                            %% and all gas was consumed in the call,
+                            %% all gas in the current execution is consumed.
+                            eval_error(What);
+                        ?AEVM_01_Sophia_01 when GasIsLimited ->
+                            %% When the gas IS explicitly limited, or
+                            %% there was an exception below in the call stack
+                            %% in a call that WAS explicitly limited,
+                            %% we only consume the gas of the exception.
+                            GasAfterFailedCall = GasAfterSpend  + max(0, CallGas - GasSpent - Stipend),
+                            eval_call_error(What, GasAfterFailedCall)
+                    end;
+                {revert, RevertMsg, GasSpent, OutState} ->
+                    ?TEST_LOG("Contract call revert ~p (~p spent)", [RevertMsg, GasSpent]),
+                    GasAfterCall = GasAfterSpend  + max(0, CallGas - GasSpent - Stipend),
+                    ReturnState1 = aevm_eeevm_state:set_gas(GasAfterCall, OutState),
+                    ReturnState2 = aevm_eeevm_state:set_out(RevertMsg, ReturnState1),
+                    throw(?REVERT_SIGNAL(ReturnState2));
+                {primop_error, Reason} when Reason =:= not_allowed_off_chain ->
+                    ?TEST_LOG("Primop error ~p", [Reason]),
+                    eval_error(Reason);
+                {primop_error,_What} ->
+                    ?TEST_LOG("Primop error ~p", [_What]),
+                    eval_error(out_of_gas)
             end
     end.
 
@@ -1663,6 +1666,10 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend,
 %% Error handling
 %% ------------------------------------------------------------------------
 
--spec eval_error(_, _) -> no_return().
-eval_error(What, State) ->
-    throw(?aevm_eval_error(What, State)).
+-spec eval_error(_) -> no_return().
+eval_error(What) ->
+    throw(?aevm_eval_error(What, 0)).
+
+-spec eval_call_error(ErrorReason :: any(), GasLeft :: non_neg_integer()) -> no_return().
+eval_call_error(What, GasLeft) ->
+    throw(?aevm_eval_error(What, GasLeft)).

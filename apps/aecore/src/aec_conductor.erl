@@ -210,12 +210,19 @@ handle_call({add_synced_block, Block},_From, State) ->
     {Reply, State1} = handle_synced_block(Block, State),
     {reply, Reply, State1};
 handle_call(get_key_block_candidate,_From, State) ->
-    Res =
-        case State#state.key_block_candidate of
-            #candidate{block=Block} -> {ok, Block};
-            undefined               -> {error, not_found}
+    {Res, State1} =
+        case State#state.pending_key_block of
+            undefined ->
+                get_pending_key_block(aec_chain:top_block_hash(), State);
+            Block ->
+                case {aec_chain:top_block_hash(), aec_blocks:prev_hash(State#state.pending_key_block)} of
+                    {OldHash, OldHash} ->
+                        {{ok, Block}, State};
+                    {NewHash, _OldHash} ->
+                        get_pending_key_block(NewHash, State)
+                end
         end,
-    {reply, Res, State};
+    {reply, Res, State1};
 handle_call({post_block, Block},_From, State) ->
     {Reply, State1} = handle_post_block(Block, State),
     {reply, Reply, State1};
@@ -549,11 +556,11 @@ maybe_publish_top(block_synced,_TopBlock) ->
 maybe_publish_top(block_received, TopBlock) ->
     %% The received block pushed by a network peer changed the
     %% top. Publish the new top.
-    aec_events:publish(block_to_publish, TopBlock);
+    aec_events:publish(block_to_publish, {received, TopBlock});
 maybe_publish_top(micro_block_received, TopBlock) ->
     %% The received micro block pushed by a network peer changed the
     %% top. Publish the new top.
-    aec_events:publish(block_to_publish, TopBlock).
+    aec_events:publish(block_to_publish, {received, TopBlock}).
 
 maybe_publish_block(block_synced,_Block) ->
     %% We don't publish blocks pulled from network. Otherwise on
@@ -568,11 +575,11 @@ maybe_publish_block(BlockReceived,_Block)
 maybe_publish_block(block_created = T, Block) ->
     aec_events:publish(T, Block),
     %% This is a block we created ourselves. Always publish.
-    aec_events:publish(block_to_publish, Block);
+    aec_events:publish(block_to_publish, {created, Block});
 maybe_publish_block(micro_block_created = T, Block) ->
     aec_events:publish(T, Block),
     %% This is a block we created ourselves. Always publish.
-    aec_events:publish(block_to_publish, Block).
+    aec_events:publish(block_to_publish, {created, Block}).
 
 
 
@@ -947,3 +954,10 @@ setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) 
         false -> State2
     end.
 
+get_pending_key_block(undefined, State) ->
+    {{error, not_found}, State};
+get_pending_key_block(TopHash, #state{beneficiary = Beneficiary} = State) ->
+    case aec_block_key_candidate:create(TopHash, Beneficiary) of
+        {ok, Block} -> {{ok, Block}, State#state{ pending_key_block = Block }};
+        {error, _}  -> {{error, not_found}, State}
+    end.

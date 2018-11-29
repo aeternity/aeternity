@@ -119,17 +119,6 @@ references:
         mv _build/prod/rel/epoch/epoch-$(cat VERSION).tar.gz ${PACKAGE_TARBALL:?}
 
   package_tests_workspace: &package_tests_workspace /tmp/package_tests
-  test_package: &test_package
-    run:
-      name: Test Package Tarball
-      environment:
-        PACKAGES_DIR: *packages_workspace
-        PACKAGE_TESTS_DIR: *package_tests_workspace
-      command: |
-        epmd -daemon
-        make python-env
-        mkdir ${PACKAGE_TESTS_DIR:?}
-        make python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} TARBALL=${PACKAGE_TARBALL:?}
 
   store_package_artifacts: &store_package_artifacts
     store_artifacts:
@@ -382,7 +371,6 @@ jobs:
       - checkout
       - *set_package_path
       - *build_package
-      - *test_package
       - store_artifacts:
           path: /tmp/package_tests/node1/log
       - store_artifacts:
@@ -435,7 +423,6 @@ jobs:
             brew install file://`pwd`/deployment/homebrew/erlang.rb
       - *set_package_path
       - *build_package
-      - *test_package
       - store_artifacts:
           path: /tmp/package_tests/node1/log
       - store_artifacts:

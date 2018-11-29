@@ -121,7 +121,7 @@ execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState, Opti
         {ok, #{ out := RetVal, chain_state := S }} ->
             {ok, RetVal, S};
         Err = {error, _, _}      -> Err;
-        Rev = {revert,_}         -> Rev
+        Rev = {revert,_, _}      -> Rev
     end.
 
 make_call(Contract, Fun, Type, Args, Env, Options) ->
@@ -193,7 +193,7 @@ reverting_call(Contract, Fun, Type, Args, Env, Options) ->
             exit({expected_revert, {ok, Words}});
         {error, Err, _} ->
             exit({expected_revert, {error, Err}});
-        {revert, _} ->
+        {revert, _, _} ->
             revert
     end.
 
@@ -536,7 +536,7 @@ get_contract_fun_types(<<Contract:256>>,_VMVersion, TypeHash, S) ->
     end.
 
 
-call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Caller}) ->
+call_contract(<<Contract:256>>, Gas, Value, CallData, _, S = #{running := Caller}) ->
     case maps:is_key(Contract, S) of
         true ->
             #{environment := Env0} = S,
@@ -544,14 +544,14 @@ call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Calle
             Res = execute_call(Contract, CallData, S, Env),
             case Res of
                 {ok, Ret, #{ accounts := Accounts }} ->
-                    {ok, aevm_chain_api:call_result(Ret, 0), S#{ accounts := Accounts }};
+                    {aevm_chain_api:call_result(Ret, 0), S#{ accounts := Accounts }};
                 {error, out_of_gas, _} ->
                     io:format("  result = out_of_gas\n"),
-                    {ok, aevm_chain_api:call_exception(out_of_gas, 0), S}
+                    {aevm_chain_api:call_exception(out_of_gas, 0), S}
             end;
         false ->
             io:format("  oops, no such contract!\n"),
-            {error, {no_such_contract, Contract}}
+            {aevm_chain_api:call_exception(unknown_contract, Gas), S}
     end.
 
 oracle_register_tx(PubKey = <<Account:256>>, QueryFee, TTL, QFormat, RFormat, VMVersion,_State) ->

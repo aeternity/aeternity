@@ -37,6 +37,7 @@
          simple_storage_contract/1,
          spend_test_contract/1,
          stack_contract/1,
+         remote_gas_test_contract/1,
          null/1
         ]).
 
@@ -66,6 +67,7 @@ groups() ->
        fundme_contract,
        erc20_token_contract,
        compiler_error_contract,
+       remote_gas_test_contract,
        null                                     %This allows to end with ,
       ]}
     ].
@@ -95,7 +97,9 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
-init_per_group(contracts, Config) ->
+
+
+init_for_contracts(Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(NodeName),
@@ -129,6 +133,9 @@ init_per_group(contracts, Config) ->
                             priv_key => DPrivkey,
                             start_amt => StartAmt}},
     [{accounts,Accounts},{node_name,NodeName}|Config].
+
+init_per_group(contracts, Config) -> init_for_contracts(Config);
+init_per_group(remote, Config) -> init_for_contracts(Config).
 
 end_per_group(_Group, Config) ->
     RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
@@ -1087,6 +1094,67 @@ compiler_error_contract(_Config) ->
 
     ok.
 
+
+remote_gas_test_contract(Config) ->
+    %% Set an account.
+    Node = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APub,
+                 priv_key := APriv}} = proplists:get_value(accounts, Config),
+
+    init_fun_calls(),
+
+    %% Set up two contracts.
+    %% Compile test contract "remote_gas_test.aes".
+    Code = compile_test_contract("remote_gas_test"),
+
+    {EncC1Pub,_,_} =
+        create_compute_contract(Node, APub, APriv, Code, args_to_binary([0]),
+                                #{amount => 200}),
+
+
+    {EncC2Pub,DecC2Pub,_} =
+        create_compute_contract(Node, APub, APriv, Code, args_to_binary([100])),
+
+
+    force_fun_calls(Node),
+    Balance0 = get_balance(APub),
+    call_get(APub, APriv, EncC1Pub,  0),
+    call_get(APub, APriv, EncC2Pub,  100),
+    force_fun_calls(Node),
+    Balance1 = get_balance(APub),
+    1600476 = Balance0 - Balance1,
+
+    %% Test remote call with limited gas
+    %% Call contract remote set function with limited gas
+    [] = call_func(APub, APriv, EncC1Pub, <<"call">>,
+                   args_to_binary([DecC2Pub, 1, 80000])),
+    call_get(APub, APriv, EncC2Pub,  1),
+    force_fun_calls(Node),
+    Balance2 = get_balance(APub),
+    1610687 = Balance1 - Balance2,
+
+    %% Test remote call with limited gas (3) that fails (out of gas).
+    [] = call_func(APub, APriv, EncC1Pub, <<"call">>,
+                   args_to_binary([DecC2Pub, 2, 3]), error),
+    force_fun_calls(Node),
+    Balance3 = get_balance(APub),
+    809933 = Balance2 - Balance3,
+
+    %% Check that store/state not changed (we tried to write 2).
+    call_get(APub, APriv, EncC2Pub,  1),
+    force_fun_calls(Node),
+    Balance4 = get_balance(APub),
+
+    %% Test remote call with limited gas that fails (invald call).
+    [] = call_func(APub, APriv, EncC1Pub, <<"call">>,
+                   args_to_binary([APub, 2, 1]), error),
+    force_fun_calls(Node),
+    Balance5 = get_balance(APub),
+    900000 = Balance4 - Balance5,
+
+    ok.
+
 %% Data structure functions.
 word(Val) -> #{<<"type">> => <<"word">>, <<"value">> => Val}.
 
@@ -1339,7 +1407,7 @@ contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
                               vm_version => 1,  %?AEVM_01_Sophia_01
                               deposit => 2,
                               amount => 0,      %Initial balance
-                              gas => 100000,     %May need a lot of gas
+                              gas => 100000,   %May need a lot of gas
                               gas_price => 1,
                               fee => 1400000,
                               nonce => Nonce,
@@ -1373,7 +1441,7 @@ contract_call_compute_tx(Pubkey, Privkey, Nonce, EncodedContractPubkey,
                               contract_id => EncodedContractPubkey,
                               vm_version => 1,  %?AEVM_01_Sophia_01
                               amount => 0,
-                              gas => 100000,     %May need a lot of gas
+                              gas => 100000,    %May need a lot of gas
                               gas_price => 1,
                               fee => 800000,
                               nonce => Nonce,

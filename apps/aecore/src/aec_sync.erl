@@ -33,7 +33,7 @@
 -endif.
 
 -define(MAX_HEADERS_PER_CHUNK, 100).
--define(DEFAULT_MAX_GOSSIP, 10).
+-define(DEFAULT_MAX_GOSSIP, 16).
 
 %%%=============================================================================
 %%% API
@@ -211,8 +211,13 @@ handle_info({gproc_ps_event, Event, #{info := Info}},
     NonSyncingPeerIds = [ P || P <- PeerIds, not peer_in_sync(State, P) ],
     case Event of
         block_to_publish ->
-            Block = Info,
-            enqueue(block, Block, NonSyncingPeerIds);
+            case Info of
+                {created, Block} ->
+                    PeerIds1 = [ aec_peers:peer_id(P) || P <- aec_peers:connected_peers(all) ],
+                    enqueue(block, Block, PeerIds1);
+                {received, Block} ->
+                    enqueue(block, Block, NonSyncingPeerIds)
+            end;
         tx_created when GossipTxs ->
             %% If we allow http requests creating transactions when we are catching up
             %% with other chains, we just keep them in mempool

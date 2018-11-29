@@ -71,7 +71,7 @@ end_per_suite(_Config) -> ok.
 %=== TEST CASES ================================================================
 
 %% This is keypair of an account set in genesis config file
-%% (see https://github.com/aeternity/epoch/blob/master/data/aecore/.genesis/accounts.json),
+%% (see https://github.com/aeternity/epoch/blob/master/data/aecore/.genesis/accounts_test.json),
 %% so beneficiary configuration in epoch.yaml (mining > beneficiary param) does not matter.
 patron() ->
     #{ pubkey => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,

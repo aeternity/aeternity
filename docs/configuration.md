@@ -73,6 +73,7 @@ This is just an example value to show what public key format you should expect a
 
 ## Network ID
 
+The release package is preconfigured with Roma network_id. Please change the configuration to interact with testnet.
 The testnet (internally called UAT) has the network ID `ae_uat` - this is set in the configuration:
 
 ```yaml
@@ -80,7 +81,7 @@ fork_management:
     network_id: ae_uat
 ```
 
-The network ID defaults to `ae_mainnet`.
+For Roma network the network ID defaults to `ae_mainnet`.
 
 ## Instructions
 
@@ -126,7 +127,8 @@ chain:
     db_path: ./my_db
 
 fork_management:
-    network_id: ae_uat
+    network_id: ae_mainnet
+
 ```
 
 The node automatically creates the directory `db_path`, for storing the blockchain, if not present.

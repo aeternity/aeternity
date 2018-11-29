@@ -701,14 +701,23 @@ call_contract_error_value(_Cfg) ->
     %% Check no transfer of value in calls that err.
     {{{error, <<"out_of_gas">>}, GasUsed3}, S3} = call_contract(Acc1, IdC, err, word, {}, DefaultOpts#{amount := 5, return_gas_used => true}, S2),
     ?assertEqual(G, GasUsed3),
-    ?assertEqual(Bal(Acc1, S2) - (F + G), Bal(Acc1, S3)),
+    ?assertEqual(Bal(Acc1, S2) - (F + GasUsed3), Bal(Acc1, S3)),
     ?assertEqual(Bal(RemC, S2), Bal(RemC, S3)),
     ?assertEqual(Bal(IdC, S2), Bal(IdC, S3)),
     {{{error, <<"out_of_gas">>}, GasUsed4}, S4} = call_contract(Acc1, RemC, callErr, word, {IdC, 7}, DefaultOpts#{amount := 13, return_gas_used => true}, S3),
     ?assertEqual(G, GasUsed4),
-    ?assertEqual(Bal(Acc1, S3) - (F + G), Bal(Acc1, S4)),
+    ?assertEqual(Bal(Acc1, S3) - (F + GasUsed4), Bal(Acc1, S4)),
     ?assertEqual(Bal(RemC, S3), Bal(RemC, S4)),
     ?assertEqual(Bal(IdC, S3), Bal(IdC, S4)),
+    %% Check that you can limit the amount of gas in an error call
+    LimitedGas = 1234,
+    {{{error, <<"out_of_gas">>}, GasUsed5}, S5} = call_contract(Acc1, RemC, callErrLimitGas, word, {IdC, 7, LimitedGas}, DefaultOpts#{amount := 13, return_gas_used => true}, S4),
+    ?assert(GasUsed5 < G),
+    ct:pal("Bal(Acc1, S4): ~p", [Bal(Acc1, S4)]),
+    ct:pal("GasUsed: ~p", [GasUsed5]),
+    ?assertEqual(Bal(Acc1, S4) - (F + GasUsed5), Bal(Acc1, S5)),
+    ?assertEqual(Bal(RemC, S4), Bal(RemC, S5)),
+    ?assertEqual(Bal(IdC, S4), Bal(IdC, S5)),
     ok.
 
 %%%===================================================================
@@ -975,7 +984,7 @@ sophia_no_reentrant(_Cfg) ->
     Acc   = ?call(new_account, 10000000),
     IdC   = ?call(create_contract, Acc, identity, {}),
     RemC  = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
-    Err   = {error, <<"out_of_gas">>},
+    Err   = {error, <<"reentrant_call">>},
             %% Should fail due to reentrancy
     Err   = ?call(call_contract, Acc, RemC, staged_call, word, {IdC, RemC, 77}),
     ok.

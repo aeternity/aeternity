@@ -33,26 +33,24 @@
 -define(TEST_LOG(Format, Data), ok).
 -endif.
 
--spec call(Gas::non_neg_integer(), Value::non_neg_integer(), Data::binary(), StateIn) ->
-                  {ok, ReturnValue, GasSpent::non_neg_integer(), StateOut} |
-                  {error, Reason} when
-      StateIn :: State,
-      StateOut :: State,
-      State :: aevm_eeevm_state:state(),
-      ReturnValue :: {ok, binary()} | {error, any()},
-      Reason :: ?AEVM_PRIMOP_ERR_REASON_OOG(OogResource, OogGas, State)
-              | any(),
+-spec call(Gas::non_neg_integer(), Value :: non_neg_integer(), Data::binary(), StateIn) ->
+                  {ok, binary(), GasSpent :: non_neg_integer(), StateOut} |
+                  {primop_error, Reason} when
+      State       :: aevm_eeevm_state:state(),
+      StateIn     :: State,
+      StateOut    :: State,
+      Reason      :: ?AEVM_PRIMOP_ERR_REASON_OOG(OogResource, OogGas, State) | any(),
       OogResource :: any(),
-      OogGas :: pos_integer().
+      OogGas      :: pos_integer().
 %% Wrapper function for logging error in tests.
 call(Gas, Value, Data, State) ->
     case call_(Gas, Value, Data, State) of
-        {ok, _, _, _} = Ok ->
-            Ok;
-        {error, _} = Err ->
-            ?TEST_LOG("Primop call error ~p~n~p:~p(~p, ~p, ~p, State)",
-                      [Err, ?MODULE, ?FUNCTION_NAME, Gas, Value, Data]),
-            Err
+        {ok, {ok, Return}, GasUsed, State1} ->
+            {ok, Return, GasUsed, State1};
+        {ok, {error, Return},_GasUsed,_State1} ->
+            {primop_error, Return};
+        {error, Return} ->
+            {primop_error, Return}
     end.
 
 call_(Gas, Value, Data, StateIn) ->

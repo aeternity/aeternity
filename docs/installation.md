@@ -71,5 +71,5 @@ Create a directory and unpack the downloaded package (you may need to amend the 
 ```bash
 mkdir /tmp/node
 cd /tmp/node
-tar xf ~/Downloads/epoch-1.0.0-rc4-osx-10.13.6.tar.gz
+tar xf ~/Downloads/epoch-1.0.0-osx-10.13.6.tar.gz
 ```
