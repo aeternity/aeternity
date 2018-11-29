@@ -16,7 +16,7 @@ or just [follow the progress of the project in Pivotal Tracker][pivotal].
 If you are interested in participating in a security bounty, check our
 [HackerOne Aeternity Bounty Program][hackerone].
 
-[release-notes]: https://github.com/aeternity/epoch/tree/master/docs/release-notes
+[release-notes]: /docs/release-notes
 [pivotal]: https://www.pivotaltracker.com/n/projects/2124891
 [hackerone]: https://hackerone.com/aeternity
 
@@ -53,33 +53,33 @@ See the documenation on how to:
 * [install the epoch node on Windows][installation-windows]
 * [install CUDA miner on Ubuntu][installation-cuda-miner]
 
-[installation-release-binary]: https://github.com/aeternity/epoch/blob/master/docs/installation.md
-[installation-windows]: https://github.com/aeternity/epoch/blob/master/docs/installation-windows.md
-[installation-cuda-miner]: https://github.com/aeternity/epoch/blob/master/docs/cuda-miner.md
+[installation-release-binary]: /docs/installation.md
+[installation-windows]: /docs/installation-windows.md
+[installation-cuda-miner]: /docs/cuda-miner.md
 
 ## Building from source
 
 See [the documentation on how to build the epoch node from source][building-from-source].
 
-[building-from-source]: https://github.com/aeternity/epoch/blob/master/docs/build.md
+[building-from-source]: /docs/build.md
 
 ## Configuration
 
 See [the documentation on how to configure the epoch node][configuration].
 
-[configuration]: https://github.com/aeternity/epoch/blob/master/docs/configuration.md
+[configuration]: /docs/configuration.md
 
 ## Running the node
 
 See [the documentation on how to operate the epoch node][operation].
 
-[operation]: https://github.com/aeternity/epoch/blob/master/docs/operation.md
+[operation]: /docs/operation.md
 
 ## Docker
 
 See [the documentation on how to run the epoch node if you prefer Docker][docker].
 
-[docker]: https://github.com/aeternity/epoch/blob/master/docs/docker.md
+[docker]: /docs/docker.md
 
 # Additional resources
 
