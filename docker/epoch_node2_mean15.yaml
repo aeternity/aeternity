@@ -25,3 +25,6 @@ mining:
             executable: mean15-generic
             extra_args: ""
             edge_bits: 15
+
+fork_management:
+    network_id: ae_docker
