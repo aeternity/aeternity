@@ -1,0 +1,1 @@
+* Details the Sophia compiler error reason, returned in the HTTP response body of path `/debug/contracts/code/compile`.
