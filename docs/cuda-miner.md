@@ -87,7 +87,10 @@ mining:
             instances: 2
 ```
 
-After configuration could be started (or restarted if it's already running):
+*Note:* You should not have `-d` in `extra_args` if you are using the `instances` configuration option, it will be added automatically
+by the node.
+
+After updating the configuration, the node should be started (or restarted if it's already running):
 
 ```
 ~/node/bin/epoch start
