@@ -10,13 +10,12 @@ Comes with a naming system, for developerability.
 
 Written in Erlang.
 
-To install and run the epoch node, see the [release notes][release-notes]
+To install and run the epoch node, see the instructions [below](#how-to-start)
 or just [follow the progress of the project in Pivotal Tracker][pivotal].
 
 If you are interested in participating in a security bounty, check our
 [HackerOne Aeternity Bounty Program][hackerone].
 
-[release-notes]: /docs/release-notes
 [pivotal]: https://www.pivotaltracker.com/n/projects/2124891
 [hackerone]: https://hackerone.com/aeternity
 
@@ -35,8 +34,7 @@ The description of API:
 
 # How to start
 
-We [publish packages][packages] for major platforms on GitHub.
-
+We [publish packages][releases] for major platforms on GitHub.
 Each release comes with [release notes][release-notes] describing the
 installation and configuration instructions of the epoch node.
 
@@ -44,7 +42,13 @@ Below is an overview of the installation process for different platforms,
 building the package from source, configuration and operation of the epoch
 node.
 
-[packages]: https://github.com/aeternity/epoch/releases
+[releases]: https://github.com/aeternity/epoch/releases
+[release-notes]: /docs/release-notes
+
+Please use the [latest published stable release][releases] rather than the [`master` branch][master].
+The `master` branch tracks the ongoing efforts towards the next stable release to be published though it is not guaranteed to be stable.
+
+[master]: https://github.com/aeternity/epoch/tree/master
 
 ## Installation
 
