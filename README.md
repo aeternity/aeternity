@@ -4,19 +4,18 @@ A new blockchain for æpps.
 
 Optimized for scalability via smart contracts inside state-channels.
 
-Has a build-in oracle for integration with real-world data.
+Has a built-in oracle for integration with real-world data.
 
 Comes with a naming system, for developerability.
 
 Written in Erlang.
 
-To install and run the epoch node, see the [release notes][release-notes]
+To install and run the epoch node, see the instructions [below](#how-to-start)
 or just [follow the progress of the project in Pivotal Tracker][pivotal].
 
 If you are interested in participating in a security bounty, check our
 [HackerOne Aeternity Bounty Program][hackerone].
 
-[release-notes]: https://github.com/aeternity/epoch/tree/master/docs/release-notes
 [pivotal]: https://www.pivotaltracker.com/n/projects/2124891
 [hackerone]: https://hackerone.com/aeternity
 
@@ -35,8 +34,7 @@ The description of API:
 
 # How to start
 
-We [publish packages][packages] for major platforms on GitHub.
-
+We [publish packages][releases] for major platforms on GitHub.
 Each release comes with [release notes][release-notes] describing the
 installation and configuration instructions of the epoch node.
 
@@ -44,7 +42,13 @@ Below is an overview of the installation process for different platforms,
 building the package from source, configuration and operation of the epoch
 node.
 
-[packages]: https://github.com/aeternity/epoch/releases
+[releases]: https://github.com/aeternity/epoch/releases
+[release-notes]: /docs/release-notes
+
+Please use the [latest published stable release][releases] rather than the [`master` branch][master].
+The `master` branch tracks the ongoing efforts towards the next stable release to be published though it is not guaranteed to be stable.
+
+[master]: https://github.com/aeternity/epoch/tree/master
 
 ## Installation
 
@@ -53,33 +57,33 @@ See the documenation on how to:
 * [install the epoch node on Windows][installation-windows]
 * [install CUDA miner on Ubuntu][installation-cuda-miner]
 
-[installation-release-binary]: https://github.com/aeternity/epoch/blob/master/docs/installation.md
-[installation-windows]: https://github.com/aeternity/epoch/blob/master/docs/installation-windows.md
-[installation-cuda-miner]: https://github.com/aeternity/epoch/blob/master/docs/cuda-miner.md
+[installation-release-binary]: /docs/installation.md
+[installation-windows]: /docs/installation-windows.md
+[installation-cuda-miner]: /docs/cuda-miner.md
 
 ## Building from source
 
 See [the documentation on how to build the epoch node from source][building-from-source].
 
-[building-from-source]: https://github.com/aeternity/epoch/blob/master/docs/build.md
+[building-from-source]: /docs/build.md
 
 ## Configuration
 
 See [the documentation on how to configure the epoch node][configuration].
 
-[configuration]: https://github.com/aeternity/epoch/blob/master/docs/configuration.md
+[configuration]: /docs/configuration.md
 
 ## Running the node
 
 See [the documentation on how to operate the epoch node][operation].
 
-[operation]: https://github.com/aeternity/epoch/blob/master/docs/operation.md
+[operation]: /docs/operation.md
 
 ## Docker
 
 See [the documentation on how to run the epoch node if you prefer Docker][docker].
 
-[docker]: https://github.com/aeternity/epoch/blob/master/docs/docker.md
+[docker]: /docs/docker.md
 
 # Additional resources
 
