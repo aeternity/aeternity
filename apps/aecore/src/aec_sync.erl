@@ -207,7 +207,7 @@ handle_info({gproc_ps_event, Event, #{info := Info}},
     %% Take a random subset (possibly empty) of peers that agree with us
     %% on chain height to forward blocks and transactions to.
     MaxGossip = max_gossip(),
-    PeerIds = [ aec_peers:peer_id(P) || P <- aec_peers:get_random(MaxGossip) ],
+    PeerIds = [ aec_peers:peer_id(P) || P <- aec_peers:get_random_connected(MaxGossip) ],
     NonSyncingPeerIds = [ P || P <- PeerIds, not peer_in_sync(State, P) ],
     case Event of
         block_to_publish ->
