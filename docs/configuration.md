@@ -39,20 +39,14 @@ the WebSocket endpoint is not exposed.
 
 In order to configure who receives fees from mining on a node, you must configure a beneficiary public key.
 
-If you don't have your public key yet, you can use provided `keys_gen` tool, that will generate a public-private key pair for you.
-The key pair will be encrypted with a password that you shall pass to `keys_gen` tool (below assumes the node is deployed in directory `/tmp/node`):
+If you don't have your public key yet, you can generate a public/private key pair by using any one of the following tools:
+* [AirGap wallet](https://airgap.it/).
 
-NOTE: This way of generating a key-pair is only for testing purpose, use a proper wallet/mechanism for your mainnet tokens!
+#### Generating a beneficiary account for testing purposes only
 
-```bash
-cd /tmp/node
-bin/epoch keys_gen PASSWORD
-```
-The output should be:
-```
-Generated keypair with encoded pubkey: YOUR_PUBLIC_KEY
-```
+An alternative tool `keys_gen` for generating a public-private key pair **for testing purposes only** is included in the package.
 
+The key pair will be encrypted with a password that you shall pass to `keys_gen` tool (below assumes the node is deployed in directory `/tmp/node`).
 Generated public-private key pair will be located in `/tmp/node/generated_keys`, and public key is to be put in epoch configuration file (`mining` > `beneficiary` parameter).
 
 Do make sure you back up `/tmp/node/generated_keys` (and remember the password): if you destroy the node, you can setup a new node and use the same account (public key) as a beneficiary.
@@ -62,14 +56,14 @@ e.g.
 
 ```bash
 cd /tmp/node
-bin/epoch keys_gen my_secret_password
+bin/epoch keys_gen my_secret_password ## This way of generating a key-pair is only for testing purpose, use a proper wallet/mechanism for your mainnet tokens: e.g., [AirGap wallet](https://airgap.it/).
 ```
 ```
 Generated keypair with encoded pubkey: ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq
 ```
 
-In the example the generated public key is `ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq`, but do not use it in your config!
-This is just an example value to show what public key format you should expect after running `bin/epoch keys_gen` command.
+In the example the generated public key is `ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq`, but **do not use it in your config**!
+This is just an **example** value to show what public key format you should expect after running `bin/epoch keys_gen` command.
 
 ## Network ID
 
