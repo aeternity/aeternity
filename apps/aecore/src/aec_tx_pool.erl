@@ -407,7 +407,7 @@ check_candidate(Db, #dbs{gc_db = GCDb} = Dbs,
                 AccountsTree, Height, Gas, Acc) ->
     Tx1 = aetx_sign:tx(Tx),
     TxTTL = aetx:ttl(Tx1),
-    TxGas = aetx:gas(Tx1, Height),
+    TxGas = aetx:gas_limit(Tx1, Height),
     case Height < TxTTL andalso TxGas > 0 andalso ok =:= int_check_nonce(Tx, AccountsTree, check_candidate) of
         true ->
             case Gas - TxGas of
