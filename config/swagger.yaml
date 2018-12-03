@@ -2734,6 +2734,8 @@ definitions:
         type: integer
         format: int64
         minimum: 0
+      network_id:
+        type: string
     required:
       - genesis_key_block_hash
       - solutions
@@ -2745,6 +2747,7 @@ definitions:
       - node_revision
       - peer_count
       - pending_transactions_count
+      - network_id
   Protocol:
     type: object
     properties:

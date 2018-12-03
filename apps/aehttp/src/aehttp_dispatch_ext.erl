@@ -561,7 +561,8 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"node_version">>               => NodeVersion,
        <<"node_revision">>              => NodeRevision,
        <<"peer_count">>                 => PeerCount,
-       <<"pending_transactions_count">> => PendingTxsCount}};
+       <<"pending_transactions_count">> => PendingTxsCount,
+       <<"network_id">>                 => aec_governance:get_network_id()}};
 
 handle_request_('GetContractCallFromTx', Req, _Context) ->
     ParseFuns = [read_required_params([tx_hash]),
