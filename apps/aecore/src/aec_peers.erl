@@ -38,6 +38,7 @@
 -export([available_peers/0, available_peers/1]).
 -export([blocked_peers/0]).
 -export([get_random/1, get_random/2]).
+-export([get_random_connected/1]).
 -export([get_connection/1]).
 
 %% Utility functions.
@@ -263,6 +264,12 @@ get_random(N, Exclude)
        (N =:= all) orelse (is_integer(N) andalso N >= 0) ->
     gen_server:call(?MODULE, {get_random, N, Exclude}).
 
+
+%% @doc Gets up to N random connected peers.
+-spec get_random_connected(pos_integer()) -> [peer_info()].
+get_random_connected(N) when (is_integer(N) andalso N > 0) ->
+    gen_server:call(?MODULE, {get_random_connected, N}).
+
 %% @doc Gets a connection PID from a peer identifier.
 -spec get_connection(peer_id()) -> {ok, pid()} | {error, term()}.
 get_connection(PeerId) ->
@@ -411,6 +418,8 @@ handle_call({get_random, N, Exclude}, _From, State0) ->
     {Subset, State} = pool_random_subset(N, Exclude, State0),
     Result = [ peer_info(P) || {_, P} <- Subset ],
     {reply, Result, State};
+handle_call({get_random_connected, N}, _From, State) ->
+    {reply, random_connected_peers(N, all, State), State};
 handle_call({connection_failed, PeerId, PeerCon}, _From, State0) ->
     State = on_connection_failed(PeerId, PeerCon, State0),
     {reply, ok, update_peer_metrics(schedule_connect(State))};
@@ -657,6 +666,13 @@ connected_peers(inbound, #state{ conns = Conns }) ->
 connected_peers(outbound, #state{ conns = Conns }) ->
     [ peer_info(P) || #conn{ peer = P, type = outbound, state = connected }
                       <- maps:values(Conns) ].
+
+-spec random_connected_peers(N :: pos_integer(), all | inbound | outbound, state())
+    -> [peer_info()].
+random_connected_peers(N, Tag, State) ->
+    Keyed = [{rand:uniform(), P} || P <- connected_peers(Tag, State)],
+    Sorted = lists:keysort(1, Keyed),
+    [P || {_, P} <- lists:sublist(Sorted, N)].
 
 -spec available_peers(both | verified | unverified, state()) -> [peer_info()].
 available_peers(Tag, #state{ pool = Pool }) ->

@@ -549,7 +549,7 @@ handle_request_('GetStatus', _Params, _Context) ->
                  end, [], aec_governance:protocols()),
     NodeVersion = aeu_info:get_version(),
     NodeRevision = aeu_info:get_revision(),
-    PeerCount = length(aec_peers:get_random(all)),
+    PeerCount = aec_peers:count(peers),
     PendingTxsCount = aec_tx_pool:size(),
     {200, [],
      #{<<"genesis_key_block_hash">>     => aehttp_api_encoder:encode(key_block_hash, GenesisBlockHash),
