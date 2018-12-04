@@ -24,6 +24,7 @@
 %% external endpoints
 -export([
          abort_test_contract/1,
+         compiler_error_contract/1,
          counter_contract/1,
          dutch_auction_contract/1,
          environment_contract/1,
@@ -36,7 +37,6 @@
          simple_storage_contract/1,
          spend_test_contract/1,
          stack_contract/1,
-         type_error_contract/1,
          remote_gas_test_contract/1,
          null/1
         ]).
@@ -66,7 +66,7 @@ groups() ->
        dutch_auction_contract,
        fundme_contract,
        erc20_token_contract,
-       type_error_contract,
+       compiler_error_contract,
        remote_gas_test_contract,
        null                                     %This allows to end with ,
       ]}
@@ -1061,18 +1061,37 @@ erc20_token_contract(Config) ->
 
     ok.
 
-type_error_contract(_Cfg) ->
-    {ok, 403, #{<<"reason">> := Error}} =
+%% compiler_error_contract(Config)
+%%  Check HTTP output from compiler errors.
+
+compiler_error_contract(_Config) ->
+    %% Test syntax error.
+    {ok,403,#{<<"reason">> := SyntaxError}} =
+        get_contract_bytecode(<<"contract Fail = function fail(x : string) == x + 1">>),
+    <<"** Parse errors\n\n",_/binary>> = SyntaxError,
+
+    %% Test type error.
+    {ok,403,#{<<"reason">> := TypeError}} =
         get_contract_bytecode(<<"contract Fail = function fail(x : string) = x + 1">>),
-    Error =
-        <<"** Type errors\n\n"
-          "Cannot unify string\n"
-          "         and int\n"
-          "when checking the application at line 1, column 47 of\n"
-          "  (+) : (int, int) => int\n"
-          "to arguments\n"
-          "  x : string\n"
-          "  1 : int\n">>,
+    TypeError = <<"** Type errors\n\n"
+                  "Cannot unify string\n"
+                  "         and int\n"
+                  "when checking the application at line 1, column 47 of\n"
+                  "  (+) : (int, int) => int\n"
+                  "to arguments\n"
+                  "  x : string\n"
+                  "  1 : int\n">>,
+
+    %% Test code gen error.
+    {ok,403,#{<<"reason">> := GenError}} =
+        get_contract_bytecode(<<"contract Fail =\n  function fail(x : address) = Chain.balance">>),
+    <<"** Code errors\n\n",_/binary>> = GenError,
+
+    %% This generates a function_clause error.
+    {ok,403,#{<<"reason">> := DeclError}} =
+        get_contract_bytecode(<<"contract Fail =\n  type sune\n  function fail(x : address) = Chain.balance">>),
+    <<"Error: function_clause",_/binary>> = DeclError,
+
     ok.
 
 

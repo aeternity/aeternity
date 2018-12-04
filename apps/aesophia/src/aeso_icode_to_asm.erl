@@ -95,6 +95,11 @@ convert(#{ contract_name := _ContractName
          DispatchCode,
          Code]).
 
+%% Generate error on correct format.
+
+gen_error(Error) ->
+    error({code_errors, [Error]}).
+
 make_args(Args) ->
     [{var_ref, [I-1 + $a]} || I <- lists:seq(1, length(Args))].
 
@@ -156,7 +161,7 @@ assemble_expr(Funs, Stack, _TailPosition, {var_ref, Id}) ->
     end;
 assemble_expr(_, _, _, {missing_field, Format, Args}) ->
     io:format(Format, Args),
-    error(missing_field);
+    gen_error(missing_field);
 assemble_expr(_Funs, _Stack, _, {integer, N}) ->
     push(N);
 assemble_expr(Funs, Stack, _, {tuple, Cpts}) ->
@@ -619,7 +624,7 @@ lookup_fun(Funs, Name) ->
     case [Ref || {Name1, _, Ref} <- Funs,
                  Name == Name1] of
         [Ref] -> Ref;
-        []    -> error({undefined_function, Name})
+        []    -> gen_error({undefined_function, Name})
     end.
 
 is_top_level_fun(Stack, {var_ref, Id}) ->
@@ -635,7 +640,7 @@ lookup_var(N, Id, [{Id, _Type}|_]) ->
 lookup_var(N, Id, [_|Stack]) ->
     lookup_var(N + 1, Id, Stack);
 lookup_var(_, Id, []) ->
-    error({var_not_in_scope, Id}).
+    gen_error({var_not_in_scope, Id}).
 
 %% Smart instruction generation
 
@@ -743,7 +748,7 @@ use_labels(_, {'JUMPDEST', _}) ->
 use_labels(Labels, {push_label, Ref}) ->
     case proplists:get_value(Ref, Labels) of
         undefined ->
-            error({undefined_label, Ref});
+            gen_error({undefined_label, Ref});
         Addr when is_integer(Addr) ->
             [i(?PUSH3),
              Addr div 65536, (Addr div 256) rem 256, Addr rem 256]

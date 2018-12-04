@@ -112,7 +112,7 @@ string(Lexer, Stack, String, Pos) ->
     string(Lexer, Stack, Lines, Pos, []).
 
 string(_Lexers, [], [Line | _Rest], Pos, _Acc) ->
-    {error, {scan_error_no_state, Pos, Line}};
+    {error, {{Line,Pos}, scan_error_no_state}};
 string(_Lexers, _Stack, [], _Pos, Acc) ->
     {ok, lists:reverse(Acc)};
 string(Lexers, [State | Stack], [Line | Lines], Pos, Acc) ->
@@ -130,7 +130,7 @@ string(Lexers, [State | Stack], [Line | Lines], Pos, Acc) ->
                      end,
             string(Lexers, Stack1, [Line1 | Lines], Pos1, Acc1);
         end_of_file -> string(Lexers, [State | Stack], Lines, next_pos("\n", Pos), Acc);
-        error       -> {error, {scan_error, Pos, Line}}
+        error       -> {error, {{Line,Pos}, scan_error}}
     end.
 
 %% -- Internal functions -----------------------------------------------------
