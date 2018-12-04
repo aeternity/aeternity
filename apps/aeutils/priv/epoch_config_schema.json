@@ -336,6 +336,13 @@
                     "description" :
                     "If true, all changes to the chain are written to disk.",
                     "type" : "boolean" },
+                "db_backend" : {
+                    "description" : "Choice of database backend.",
+                    "type" : "string",
+                    "pattern" : "^([a-z]+|([a-z0-9\\*]+:[a-z]+)|([a-z0-9\\*]+:[a-z]+(\\h*\\|\\h*[a-z0-9\\*]+:[a-z]+))+)$",
+                    "example" : "'rocksdb' OR 'unix:rocksdb' OR 'unix:rocksdb|*:mnesia",
+                    "default" : "unix:rocksdb|*:mnesia"
+                },
                 "db_path"   : {
                     "description" :
                     "The directory where the chain is persisted to disk.",
