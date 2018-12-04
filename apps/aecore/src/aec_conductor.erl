@@ -173,20 +173,19 @@ init(Options) ->
     TopKeyBlockHash = aec_chain:top_key_block_hash(),
     Consensus = #consensus{micro_block_cycle = aec_governance:micro_block_cycle(),
                            leader = false},
-    {ok, Beneficiary} = get_beneficiary(),
     State1 = #state{ top_block_hash = TopBlockHash,
                      top_key_block_hash = TopKeyBlockHash,
-                     consensus = Consensus,
-                     beneficiary = Beneficiary},
+                     consensus = Consensus},
     State2 = set_option(autostart, Options, State1),
+    {ok, State3} = set_beneficiary(State2),
 
     aec_metrics:try_update([ae,epoch,aecore,chain,height],
                             aec_blocks:height(aec_chain:top_block())),
-    epoch_mining:info("Miner process initilized ~p", [State2]),
+    epoch_mining:info("Miner process initilized ~p", [State3]),
     aec_events:subscribe(candidate_block),
     %% NOTE: The init continues at handle_info(init_continue, State).
     self() ! init_continue,
-    {ok, State2}.
+    {ok, State3}.
 
 init_chain_state() ->
     case aec_chain:genesis_hash() of
@@ -209,6 +208,8 @@ reinit_chain_state() ->
 handle_call({add_synced_block, Block},_From, State) ->
     {Reply, State1} = handle_synced_block(Block, State),
     {reply, Reply, State1};
+handle_call(get_key_block_candidate,_From, #state{beneficiary = undefined} = State) ->
+    {reply, {error, beneficiary_not_configured}, State};
 handle_call(get_key_block_candidate,_From, State) ->
     {Res, State1} =
         case State#state.pending_key_block of
@@ -237,6 +238,9 @@ handle_call(stop_mining,_From, State = #state{ consensus = Cons }) ->
 handle_call(start_mining,_From, #state{mining_state = 'running'} = State) ->
     epoch_mining:info("Mining running"),
     {reply, ok, State};
+handle_call(start_mining,_From, State = #state{ beneficiary = undefined }) ->
+    epoch_mining:error("Cannot start mining - beneficiary not configured"),
+    {reply, {error, beneficiary_not_configured}, State};
 handle_call(start_mining,_From, State = #state{ consensus = Cons }) ->
     epoch_mining:info("Mining started"),
     State1 = start_mining(State#state{mining_state = 'running', consensus = Cons#consensus{leader = false}}),
@@ -313,19 +317,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-get_beneficiary() ->
-    case aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary">>], aecore, beneficiary) of
-        {ok, EncodedBeneficiary} ->
-            case aehttp_api_encoder:safe_decode(account_pubkey, EncodedBeneficiary) of
-                {ok, _Beneficiary} = Result ->
-                    Result;
-                {error, Reason} ->
-                    {error, {beneficiary_error, Reason}}
-            end;
-        undefined ->
-            {error, beneficiary_not_configured}
-    end.
-
 try_fetch_and_make_candidate() ->
     case aec_block_generator:get_candidate() of
         {ok, Block} ->
@@ -365,6 +356,35 @@ get_option(Opt, Options) ->
     case proplists:lookup(Opt, Options) of
         none -> application:get_env(aecore, Opt);
         {_, Val} -> {ok, Val}
+    end.
+
+set_beneficiary(#state{mining_state = MiningState} = State) ->
+    case get_beneficiary() of
+        {ok, Beneficiary} ->
+            {ok, State#state{beneficiary = Beneficiary}};
+        {error, beneficiary_not_configured} = Error ->
+            case MiningState of
+                running ->
+                    lager:error("Beneficiary must be configured with (autostart) mining on"),
+                    Error;
+                stopped ->
+                    {ok, State}
+            end;
+        {error, _Reason} = Error ->
+            Error
+    end.
+
+get_beneficiary() ->
+    case aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary">>], aecore, beneficiary) of
+        {ok, EncodedBeneficiary} ->
+            case aehttp_api_encoder:safe_decode(account_pubkey, EncodedBeneficiary) of
+                {ok, _Beneficiary} = Result ->
+                    Result;
+                {error, Reason} ->
+                    {error, {beneficiary_error, Reason}}
+            end;
+        undefined ->
+            {error, beneficiary_not_configured}
     end.
 
 %%%===================================================================
@@ -657,10 +677,11 @@ handle_wait_for_keys_reply(timeout, State) ->
 start_mining(#state{keys_ready = false} = State) ->
     %% We need to get the keys first
     wait_for_keys(State);
-start_mining(#state{key_block_candidate = undefined} = State) ->
-    %% If the mining is turned off, the key block candidate is still created, but
-    %% not mined. The candidate can be retrieved via the API and other nodes can
-    %% mine it.
+start_mining(#state{key_block_candidate = undefined,
+                    beneficiary         = Beneficiary} = State) when Beneficiary =/= undefined ->
+    %% If the mining is turned off and beneficiary is configured,
+    %% the key block candidate is still created, but not mined.
+    %% The candidate can be retrieved via the API and other nodes can mine it.
     State1 = kill_all_workers_with_tag(create_key_block_candidate, State),
     create_key_block_candidate(State1);
 start_mining(#state{mining_state = stopped} = State) ->

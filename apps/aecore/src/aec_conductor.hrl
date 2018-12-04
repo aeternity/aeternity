@@ -30,12 +30,12 @@
                 micro_block_candidate                     :: #candidate{} | 'undefined',
                 blocked_tags            = []              :: ordsets:ordset(atom()),
                 keys_ready              = false           :: boolean(),
-                mining_state            = running         :: mining_state(),
+                mining_state            = stopped         :: mining_state(),
                 top_block_hash                            :: binary() | 'undefined',
                 top_key_block_hash                        :: binary() | 'undefined',
                 workers                 = []              :: workers(),
                 consensus                                 :: #consensus{},
-                beneficiary                               :: <<_:(32*8)>>,  % Maybe move beneficiary out of conductor's state
+                beneficiary                               :: <<_:(32*8)>> | 'undefined',
                 fraud_list              = []              :: list({binary(), aec_pof:pof()}),
                 pending_key_block                         :: aec_blocks:block() | 'undefined'
                }).
