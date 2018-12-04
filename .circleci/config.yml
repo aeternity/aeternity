@@ -648,6 +648,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - system-tests
             tags:
               only: /^v.*$/
 
@@ -657,6 +658,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - system-tests
                 - master
 
       - deploy_api_docs:
@@ -678,6 +680,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - system-tests
 
       - test:
           requires:
@@ -687,6 +690,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - system-tests
 
       - eunit:
           requires:
@@ -696,6 +700,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - system-tests
             tags:
               only: /^v.*$/
 
@@ -707,6 +712,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - system-tests
             tags:
               only: /^v.*$/
 
@@ -718,8 +724,14 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - system-tests
             tags:
               only: /^v.*$/
+
+      - docker_system_tests:
+          filters:
+            branches:
+              only: system-tests
 
       - static_analysis:
           requires:
@@ -729,6 +741,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - system-tests
             tags:
               only: /^v.*$/
 
@@ -740,11 +753,15 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - system-tests
             tags:
               only: /^v.*$/
 
       - linux_package:
           filters:
+            branches:
+              ignore:
+                - system-tests
             tags:
               only: /^v.*$/
 
@@ -752,6 +769,9 @@ workflows:
           requires:
             - linux_package
           filters:
+            branches:
+              ignore:
+                - system-tests
             tags:
               only: /^v.*$/
 
