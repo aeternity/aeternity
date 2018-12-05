@@ -6,7 +6,7 @@ This document describes how to configure your epoch node installed using a relea
 
 ### Peer-to-peer network
 
-**It is very important that a node not only can connect to other nodes, but that can accepts incoming connections as well, the more peer connections (both inbound+outbound) the node have the better will be it's overall p2p network latency (i.e. block propagation time).**
+**It is very important that a node not only can connect to other nodes, but that can accept incoming connections as well: the more peer connections (both inbound+outbound) the node has, the better its overall p2p network latency (i.e. block propagation time) will be.**
 
 By default node listen on TCP port **3015**. It can be changed by `sync` > `port` parameter in the configuration file in case for some reason that port cannot be used (e.g. already used by other service).
 
