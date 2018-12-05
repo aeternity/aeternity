@@ -179,9 +179,11 @@ references:
             ]
           }
       command: |
-        if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
-          HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
-          curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data "${HOOK_DATA:?}"
+        if [ -n "$CIRCLE_BRANCH" ]; then
+          if [ "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
+            HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
+            curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data "${HOOK_DATA:?}"
+          fi
         fi
       when: on_fail
 
@@ -202,9 +204,11 @@ references:
             ]
           }
       command: |
-        if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
-          HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
-          curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL_SYSTEM_TEST:?} --data "${HOOK_DATA:?}"
+        if [ -n "$CIRCLE_BRANCH" ]; then
+          if [ "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
+            HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
+            curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL_SYSTEM_TEST:?} --data "${HOOK_DATA:?}"
+          fi
         fi
       when: on_fail
 
@@ -474,7 +478,7 @@ jobs:
       - *docker_compose_healthcheck
       - *docker_compose_logs
 
-  docker_test_push_master:
+  docker_test_push_branch:
     <<: *machine_config
     steps:
       - checkout
@@ -795,7 +799,7 @@ workflows:
             branches:
               only: master
 
-      - docker_test_push_master:
+      - docker_test_push_branch:
           requires:
             - test
             - eunit
@@ -805,7 +809,8 @@ workflows:
             - rebar_lock_check
           filters:
             branches:
-              only: master
+              only:
+                - master
 
       - deploy_dev1:
           requires:
