@@ -166,7 +166,7 @@ references:
     run:
       name: Send failure notification
       environment:
-        NOTIFY_BRANCH: PT-162452107-ci-next--preparation
+        NOTIFY_BRANCH: master
         HOOK_TEMPLATE: |
           {
             "text": "CircleCI job **%s** failed on branch **%s** by @%s",
@@ -191,7 +191,7 @@ references:
     run:
       name: Send failure notification on system test
       environment:
-        NOTIFY_BRANCH: PT-162452107-ci-next--preparation
+        NOTIFY_BRANCH: master
         HOOK_TEMPLATE: |
           {
             "text": "CircleCI job **%s** failed on branch **%s** by @%s",
