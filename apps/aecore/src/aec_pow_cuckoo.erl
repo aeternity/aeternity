@@ -74,10 +74,21 @@ generate(Data, Target, Nonce) when Nonce >= 0,
                                    Nonce =< ?MAX_NONCE ->
     %% Hash Data and convert the resulting binary to a base64 string for Cuckoo
     %% Since this hash is purely internal, we don't use api encoding
-    Hash = aec_hash:hash(pow, Data),
+    Hash   = aec_hash:hash(pow, Data),
+    Hash64 = base64:encode_to_string(Hash),
     ?debug("Generating solution for data hash ~p and nonce ~p with target ~p.",
            [Hash, Nonce, Target]),
-    generate_int(Hash, Nonce, Target).
+
+    case generate_int(Hash64, Nonce, Target) of
+        {ok, Soln} ->
+            {ok, {Nonce, Soln}};
+        {error, no_value} ->
+            ?debug("No cuckoo solution found", []),
+            {error, no_solution};
+        {error, Reason} ->
+            %% Executable failed (segfault, not found, etc.): let miner decide
+            {error, {runtime, Reason}}
+    end.
 
 %%------------------------------------------------------------------------------
 %% Proof of Work verification (with difficulty check)
@@ -142,44 +153,20 @@ get_hex_encoded_header() ->
 %% Proof of Work generation: use the hash provided
 %%------------------------------------------------------------------------------
 -spec generate_int(Hash :: binary(), Nonce :: aec_pow:nonce(), Target :: aec_pow:sci_int()) ->
-                          {'ok', Nonce2 :: aec_pow:nonce(),
-                           Solution :: pow_cuckoo_solution()} |
-                          {'error', term()}.
+            {'ok', Nonce2 :: aec_pow:nonce(), Solution :: pow_cuckoo_solution()} |
+            {'error', term()}.
 generate_int(Hash, Nonce, Target) ->
-    Header = pack_header_and_nonce(Hash, Nonce),
-
-    case generate_int(Header, Target) of
-        {ok, Soln} ->
-            {ok, {Nonce, Soln}};
-        {error, no_value} ->
-            ?debug("No cuckoo solution found", []),
-            {error, no_solution};
-        {error, Reason} ->
-            %% Executable failed (segfault, not found, etc.): let miner decide
-            {error, {runtime, Reason}}
-    end.
-
-%%------------------------------------------------------------------------------
-%% @doc
-%%   Proof of Work generation from a hex-encoded 80-byte buffer
-%% @end
-%%------------------------------------------------------------------------------
--spec generate_int(Headr :: string(), Target :: aec_pow:sci_int()) ->
-                          {'ok', Solution :: pow_cuckoo_solution()} |
-                          {'error', term()}.
-generate_int(Header, Target) ->
     {MinerBin, MinerExtraArgs} = get_miner_options(),
-    EncodedHeader =
+    EncodedHash =
         case get_hex_encoded_header() of
-            true -> hex_string(Header);
-            false -> Header
+            true  -> hex_string(Hash);
+            false -> Hash
         end,
-    generate_int(EncodedHeader, Target, MinerBin, MinerExtraArgs).
+    generate_int(EncodedHash, Nonce, Target, MinerBin, MinerExtraArgs).
 
-generate_int(Header, Target, MinerBin, MinerExtraArgs) ->
+generate_int(Hash, Nonce, Target, MinerBin, MinerExtraArgs) ->
     BinDir = aecuckoo:bin_dir(),
-    Cmd = lists:concat(["./", MinerBin,
-                        " -h ", Header, " ", MinerExtraArgs]),
+    Cmd = lists:concat(["./", MinerBin, " -h ", Hash, " -n ", Nonce, " ", MinerExtraArgs]),
     ?info("Executing cmd: ~p", [Cmd]),
     Old = process_flag(trap_exit, true),
     DefaultOptions = [{stdout, self()},
