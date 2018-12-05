@@ -782,7 +782,8 @@ workflows:
       - osx_package:
           filters:
             branches:
-              only: master
+              only:
+                - master
             tags:
               only: /^v.*$/
 
