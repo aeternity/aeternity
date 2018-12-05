@@ -298,6 +298,7 @@ jobs:
       - run:
           name: Test
           command: |
+            exit 1
             epmd -daemon
             make test CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
       # Isolates the junit.xml report because additional files in _build/test/logs
@@ -566,6 +567,7 @@ jobs:
           name: System Smoke Tests
           no_output_timeout: 1h
           command: |
+            exit 1
             sudo -u ubuntu -E -H make smoke-test-run
       - *collect_system_test_host_logs
       - *fail_notification_system_test
