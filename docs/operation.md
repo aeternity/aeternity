@@ -20,6 +20,16 @@ It is recommended that the node has at least 4 GB of memory available.
 
 When it starts, the node checks the maximum number of open files (`ulimit -n`) and warns if below the recommended limit: proper max number of open files is essential to managing network connections and you should make sure you configure it in the session where you start the node.
 
+#### ulimit settings
+- OPEN_FILES_RECOMMENDED=24576
+- `sudo vi /etc/security/limits.d/epoch.conf`
+add this two lines:
+```
+<username_which_is_running_epoch>  soft nofile 512000
+<username_which_is_running_epoch>  hard nofile 512000
+```
+Replace <username_which_is_running_epoch> with a user under which you are running epoch. Then re-login or reboot. If you are using systemd you must look for systemd config paramsLimitNOFILE=65536
+
 Start the node:
 ```bash
 cd /tmp/node
