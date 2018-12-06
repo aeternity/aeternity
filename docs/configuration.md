@@ -6,15 +6,49 @@ This document describes how to configure your epoch node installed using a relea
 
 ### Peer-to-peer network
 
-In order for your node to join the testnet, you need to specify in the configuration file, how peers (on the Internet) can contact your node - specifically the TCP port (`sync` > `port` parameter).
+**It is very important that a node not only can connect to other nodes, but that can accept incoming connections as well: the more peer connections (both inbound+outbound) the node has, the better its overall p2p network latency (i.e. block propagation time) will be.**
 
-(You do not need to specify the host at which your node can be contacted from the Internet, as each peer you ping will infer that from the address of the inbound TCP connection.)
+By default node listen on TCP port **3015**. It can be changed by `sync` > `port` parameter in the configuration file in case for some reason that port cannot be used (e.g. already used by other service).
 
-Please notice that, if your node is behind a firewall, you need to open a TCP port in your firewall (`sync` > `port` parameter) and map that port to the one the node actually listens on (`sync` > `port` parameter - the same). If the publicly available port needs to be different from the internal one, you need to set (`sync` > `external_port`) accordingly.
+#### Firewalls
 
-The following example configuration assumes that:
-* The listening TCP port on your public IP address is `3015`;
-* The listening TCP port on your node is `3115`.
+Example setup: `node (firewall) <-> firewall <-> Internet`
+
+If the node is behind a firewall that port  (default 3015 or the one set in the configuration) should be opened for inbound TCP connections.
+
+
+Note that the port may need to be opened both on the host machine running the node and any external device (firewall/router) that route the network traffic.
+Unfortunately all firewall configurations are different and common steps cannot be provided here, one should follow the documentation of their equipment/software "how to open firewall port".
+
+#### NAT
+
+Example setup: `node <-> NAT (router) <-> Internet`
+
+If the node is behind NAT (e.g. home router) the port should be forwarded on that device to accept incoming connections from Internet and route it to the node.
+
+Unfortunately all router configurations are different and common steps cannot be provided here, one should follow the documentation of their equipment/software "how to forward ports".
+
+##### Advanced NAT
+
+This is advanced configuration and should be used with caution because it can cause node misconfiguration and bad p2p connectivity.
+In case the sync port (3015 by default) cannot be used as external forwarding port the `sync` > `external_port` configuration parameter can be used to change it. This is the port that the node will advertise to the network to be reached over Internet.
+
+Example scheme: `node (sync > port) <-> router (sync > external_port) <-> Internet`
+
+#### Port Check
+
+After you have started the epoch application, you can verify the validity of your setup and configuration correctness by, for example, running the external node port check (assuming the default port 3015):
+
+```bash
+nc -zv $(curl -s https://api.ipify.org) 3015
+```
+
+Example output:
+```
+Connection to 35.178.61.73 3015 port [tcp/*] succeeded!
+```
+
+Where the IP address should be the external IP address of the node under test (it's one of the seed nodes in this example).
 
 ### Channels
 
@@ -82,21 +116,20 @@ For Roma network the network ID defaults to `ae_mainnet`.
 The instructions below assume that:
 * The node is deployed in directory `/tmp/node`;
 * You already know your `beneficiary` account public key (if you don't, see [Beneficiary account section](#beneficiary-account));
-* No custom peers are specified under the `peers:` key in the config. If the `peers:` key is undefined, the *testnet* seed peers (built-in in the package source) are used.
+* No custom peers are specified under the `peers:` key in the config. If the `peers:` key is undefined, the *Roma network* seed peers (built-in in the package source) are used.
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
 Create the file `/tmp/node/epoch.yaml` with the below content.
 Make sure you amend:
 * the `mining` > `beneficiary` parameter, i.e. replace `encoded_beneficiary_pubkey_to_be_replaced` with your public key;
-* the `sync` > `port` parameter with your actual value:
+* the `sync` > `port` parameter with your actual value if you need to change it
 * set `autostart: false` if you have not yet synced with the blockchain to improve sync performance. Change this value to `autostart: true` and [configure your miner](#Miner-Configuration) when you are in sync, then restart the node.
 
 ```yaml
 ---
 sync:
-    port: 3115
-    external_port: 3015
+    port: 3015
 
 keys:
     dir: keys
