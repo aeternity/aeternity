@@ -1174,7 +1174,7 @@ post_key_block(_CurrentBlockType, Config) ->
 
 mine_key_block(HeaderBin, Target, Nonce, Attempts) when Attempts > 0 ->
     case rpc(aec_mining, mine, [HeaderBin, Target, Nonce]) of
-        {ok, {Nonce, _PowEvidence}} = Res ->
+        {ok, {_Nonce, _PowEvidence}} = Res ->
             Res;
         {error, no_solution} ->
             mine_key_block(HeaderBin, Target, aec_pow:next_nonce(Nonce), Attempts - 1)

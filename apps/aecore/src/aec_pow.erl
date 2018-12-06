@@ -132,7 +132,11 @@ pick_nonce() ->
 
 -spec next_nonce(aec_pow:nonce()) -> aec_pow:nonce().
 next_nonce(N) ->
-    (N + 1) band ?MAX_NONCE.
+    Step = aec_pow_cuckoo:get_miner_repeats(),
+    case N + 2 * Step < ?MAX_NONCE of
+        true  -> N + Step;
+        false -> 0
+    end.
 
 %%------------------------------------------------------------------------------
 %% Test if binary is under the target threshold

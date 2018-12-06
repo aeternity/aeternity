@@ -49,7 +49,7 @@ smoke_test(Config) ->
 
     LibDir = ?TEST_MODULE:lib_dir(),
     MinBin = ?TEST_MODULE:bin(atom_to_list(Miner)),
-    Cmd = io_lib:format("'~s' -n ~B | grep '^Solution '", [MinBin, Nonce]),
+    Cmd = io_lib:format("'~s' -n ~B | grep '^Solution'", [MinBin, Nonce]),
     ct:log("Command: ~s~n", [Cmd]),
     CmdRes = lib:nonl(os:cmd(Cmd)),
     ct:log("Command result: ~s~n", [CmdRes]),
