@@ -63,8 +63,8 @@ handle_request_json(Req0, State = #state{
             Req = cowboy_req:reply(400, #{}, Body, Req1),
             {stop, Req, State}
     catch error:Error ->
-            lager:error("Unexpected validate result: ~p / ~p",
-                        [Error, erlang:get_stacktrace()]),
+            lager:warning("Unexpected validate result: ~p / ~p",
+                          [Error, erlang:get_stacktrace()]),
             Body = jsx:encode(to_error({validation_error, <<>>, <<>>})),
             {stop, cowboy_req:reply(400, #{}, Body, Req0), State}
     end.
