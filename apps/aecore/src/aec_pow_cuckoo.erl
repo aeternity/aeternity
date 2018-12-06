@@ -101,8 +101,16 @@ generate(Hash, Nonce, Target, N) ->
     Fun = fun(I) -> Self ! {self(), try generate_int(Hash, Nonce + I*Repeats, Target, I)
                                     catch _:_ -> {error, no_solution} end}
           end,
-    Pids = [ spawn_link(fun() -> Fun(D) end) || D <- lists:seq(0, N - 1) ],
-    Results = [ receive {Pid, Res} -> Res after 10000 -> {error, timeout} end || Pid <- Pids ],
+    Pids = [ begin
+                Pid = spawn_link(fun() -> Fun(D) end),
+                %% Try to avoid congestion on memory bus etc.
+                %% The best value will be system dependent, so experimentation
+                %% is suggested!
+                timer:sleep(100),
+                Pid
+             end || D <- lists:seq(0, N - 1) ],
+    Results = [ receive {Pid, Res} -> Res
+                after 10000 -> {error, timeout} end || Pid <- Pids ],
     case [ Ok || {ok, _} = Ok <- Results ] of
         [Ok | _] -> Ok;
         []       -> {error, no_solution}
