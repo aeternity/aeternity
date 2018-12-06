@@ -4,9 +4,9 @@
         ]).
 
 create_tables(Mode) ->
-    Specs = lists:flatten([M:table_specs(Mode) || M <- modules()]),
-    [{atomic, ok} = mnesia:create_table(Tab, Spec)
-     || {Tab, Spec} <- Specs].
+    % Pre-checking tables to ensure we are not re-creating ETS tables
+    Specs = lists:flatten([M:table_specs(Mode) || {missing_table, M} <- check_tables([])]),
+    [{atomic, ok} = mnesia:create_table(Tab, Spec) || {Tab, Spec} <- Specs].
 
 check_tables(Acc) ->
     lists:foldl(

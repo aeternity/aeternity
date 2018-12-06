@@ -1,6 +1,8 @@
 CORE = rel/epoch/bin/epoch
 VER := $(shell cat VERSION)
 
+REBAR ?= ./rebar3
+
 EUNIT_VM_ARGS = $(CURDIR)/config/eunit.vm.args
 EUNIT_TEST_FLAGS ?=
 
@@ -9,6 +11,13 @@ ST_CT_FLAGS = --logdir system_test/logs
 ST_CT_DIR = --dir system_test
 ST_CT_LOCALDIR = --dir system_test/only_local
 
+SWAGGER_CODEGEN_CLI_V = 2.3.1
+SWAGGER_CODEGEN_CLI = swagger/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
+SWAGGER_CODEGEN = java -jar $(SWAGGER_CODEGEN_CLI)
+SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
+
+$(SWAGGER_ENDPOINTS_SPEC):
+	$(REBAR) swagger_endpoints
 
 null  :=
 space := $(null) # space
@@ -55,7 +64,7 @@ SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
 all:	local-build
 
 console:
-	@./rebar3 shell --config config/dev.config --sname epoch
+	@$(REBAR) as local shell --config config/dev.config --sname epoch
 
 local-build: KIND=local
 local-build: internal-build
@@ -158,23 +167,28 @@ dev3-clean: internal-clean
 dev3-distclean: KIND=dev3
 dev3-distclean: internal-distclean
 
-dialyzer-install:
-	@./rebar3 tree
-	@./rebar3 dialyzer -u true -s false
+dialyzer-install: $(SWAGGER_ENDPOINTS_SPEC)
+	@$(REBAR) tree
+	@$(REBAR) dialyzer -u true -s false
 
-dialyzer:
-	@./rebar3 dialyzer
+dialyzer: $(SWAGGER_ENDPOINTS_SPEC)
+	@$(REBAR) dialyzer
 
-test:
+ct: KIND=test
+ct: internal-build
 	@EPOCH_PROCESSES="$$(ps -fea | grep bin/epoch | grep -v grep)"; \
 	if [ $$(printf "%b" "$${EPOCH_PROCESSES}" | wc -l) -gt 0 ] ; then \
 		(printf "%b\n%b\n" "Failed testing: another Epoch node is already running" "$${EPOCH_PROCESSES}" >&2; exit 1);\
 	else \
-		./rebar3 as test do release, ct $(CT_TEST_FLAGS) --sys_config config/test.config; \
+		$(REBAR) ct $(CT_TEST_FLAGS) --sys_config config/test.config; \
 	fi
 
-eunit:
-	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS)" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
+REVISION:
+	@git rev-parse HEAD > $@
+
+eunit: KIND=test
+eunit: internal-build
+	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS)" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
 
 all-tests: eunit test
 
@@ -196,17 +210,20 @@ docker-clean:
 
 smoke-test: docker smoke-test-run
 
-smoke-test-run:
-	@./rebar3 as system_test do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
+smoke-test-run: KIND=system_test
+smoke-test-run: internal-build
+	@$(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
 
-local-system-test:
-	@./rebar3 as system_test do ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) --dir system_test/only_local $(CT_TEST_FLAGS)
+local-system-test: KIND=system_test
+local-system-test: internal-build
+	@$(REBAR) as $(KIND) do ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) --dir system_test/only_local $(CT_TEST_FLAGS)
 
-system-test:
-	@./rebar3 as system_test do ct $(ST_CT_DIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
+system-test: KIND=system_test
+system-test: internal-build
+	@$(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
 
 aevm-test: aevm-test-deps
-	@./rebar3 eunit --application=aevm
+	@$(REBAR) eunit --application=aevm
 
 aevm-test-deps: $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests
 aevm-test-deps:
@@ -231,17 +248,12 @@ python-single-uat: swagger
 python-release-test: swagger
 	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" TARBALL=$(TARBALL) VER=$(VER) $(MAKE) release-test; )
 
-SWAGGER_CODEGEN_CLI_V = 2.3.1
-SWAGGER_CODEGEN_CLI = swagger/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
-SWAGGER_CODEGEN = java -jar $(SWAGGER_CODEGEN_CLI)
-
-swagger: config/swagger.yaml $(SWAGGER_CODEGEN_CLI)
+swagger: config/swagger.yaml $(SWAGGER_CODEGEN_CLI) $(SWAGGER_ENDPOINTS_SPEC)
 	@$(SWAGGER_CODEGEN) generate -i $< -l erlang-server -o $(SWTEMP)
 	@echo "Swagger tempdir: $(SWTEMP)"
 	@( mkdir -p $(HTTP_APP)/priv && cp $(SWTEMP)/priv/swagger.json $(HTTP_APP)/priv/; )
 	@( cd $(HTTP_APP) && $(MAKE) updateswagger; )
 	@rm -fr $(SWTEMP)
-	@./rebar3 swagger_endpoints
 	@$(SWAGGER_CODEGEN) generate -i $< -l python -o $(SWTEMP)
 	@echo "Swagger python tempdir: $(SWTEMP)"
 	@cp -r $(SWTEMP)/swagger_client $(PYTHON_TESTS)
@@ -281,7 +293,9 @@ killall:
 	@pkill -9 beam || true
 
 clean:
-	@./rebar3 clean
+	@$(REBAR) clean
+	@-rm REVISION
+	@-rm $(SWAGGER_ENDPOINTS_SPEC)
 	( cd apps/aesophia/test/contracts && $(MAKE) clean; )
 	( cd $(HTTP_APP) && $(MAKE) clean; )
 	@$(MAKE) multi-distclean
@@ -311,13 +325,15 @@ multi-build: dev1-build
 .SECONDEXPANSION:
 
 internal-compile-deps: $$(KIND)
-	@./rebar3 as $(KIND) compile --deps-only
+	@$(REBAR) as $(KIND) compile --deps-only
 
 internal-package: $$(KIND)
-	@./rebar3 as $(KIND) tar
+internal-package: REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
+	@$(REBAR) as $(KIND) tar
 
 internal-build: $$(KIND)
-	@./rebar3 as $(KIND) release
+internal-build: REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
+	@$(REBAR) as $(KIND) release
 
 internal-start: $$(KIND)
 	@./_build/$(KIND)/$(CORE) start
@@ -355,4 +371,5 @@ compile-aes:
 	swagger swagger-docs swagger-check swagger-version-check \
 	rebar-lock-check \
 	compile-aes\
-	python-env python-ws-test python-uats python-single-uat python-release-test
+	python-env python-ws-test python-uats python-single-uat python-release-test \
+	REVISION

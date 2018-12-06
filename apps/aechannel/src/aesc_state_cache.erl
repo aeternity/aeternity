@@ -40,8 +40,8 @@
 -record(pch, {id, pubkeys = [], state}).
 
 -define(SERVER, ?MODULE).
--define(TAB, ?MODULE).
--define(PTAB, ?MODULE).
+-define(TAB, aesc_state_cache_ch).
+-define(PTAB, aesc_state_cache).
 
 new(ChId, PubKey, State) ->
     gen_server:call(?SERVER, {new, ChId, PubKey, self(), State}).
@@ -66,7 +66,7 @@ minimum_depth_achieved(_, ChId, close, _) ->
 
 table_specs(Mode) ->
     [
-     {?MODULE, [
+     {?PTAB, [
                  aec_db:tab_copies(Mode)
                , {type, ordered_set}
                , {record_name, pch}
@@ -86,7 +86,7 @@ table_vsn(_) -> 1.
 start_link() ->
     case ets:info(?TAB, name) of
         undefined ->
-            ets:new(?MODULE, [ordered_set, public, named_table,
+            ets:new(?TAB, [ordered_set, public, named_table,
                               {keypos, #ch.id}]);
         _ ->
             ok
