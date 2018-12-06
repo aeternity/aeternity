@@ -27,7 +27,7 @@ NVCC ?= nvcc -std=c++11
 # end Flags from upstream
 
 REPO = https://github.com/aeternity/cuckoo.git
-COMMIT = 58f2e7770d84397f24cdca095795bd12aa4227a0
+COMMIT = 81435b2cb86a63c5e7ea0251d01d836ec54c4f74
 
 .PHONY: all
 all: $(EXECUTABLES)

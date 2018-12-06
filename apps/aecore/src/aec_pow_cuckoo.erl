@@ -23,6 +23,7 @@
 
 
 -export([generate/3,
+         get_miner_repeats/0,
          verify/4]).
 
 
@@ -32,7 +33,7 @@
 -endif.
 -include("pow.hrl").
 
--define(DEFAULT_CUCKOO_ENV, {"mean29-generic", "-t 1", 29, false}).
+-define(DEFAULT_CUCKOO_ENV, {"mean29-generic", "-t 1", 29, false, 1}).
 
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
 -define(info(F, A),  epoch_pow_cuckoo:info(F, A)).
@@ -116,7 +117,15 @@ verify(Data, Nonce, Evd, Target) when is_list(Evd),
 %%------------------------------------------------------------------------------
 
 get_options() ->
-    {_, _, _, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
+    {_, _, _, _, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
+
+get_miner_repeats() ->
+    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"repeats">>]) of
+        {ok, Repeats} -> Repeats;
+        undefined ->
+            {_, _, _, _, Repeats} = get_options(),
+            Repeats
+    end.
 
 get_miner_options() ->
     case
@@ -127,7 +136,7 @@ get_miner_options() ->
         {{ok, BinB}, {ok, ExtraArgsB}} ->
             {binary_to_list(BinB), binary_to_list(ExtraArgsB)};
         {undefined, undefined} -> %% Both or neither - enforced by user config schema.
-            {Bin, ExtraArgs, _, _} = get_options(),
+            {Bin, ExtraArgs, _, _, _} = get_options(),
             {Bin, ExtraArgs}
     end.
 
@@ -136,7 +145,7 @@ get_edge_bits() ->
         {ok, EdgeBits} ->
             EdgeBits;
         undefined ->
-            {_, _, EdgeBits, _} = get_options(),
+            {_, _, EdgeBits, _, _} = get_options(),
             EdgeBits
     end.
 
@@ -145,7 +154,7 @@ get_hex_encoded_header() ->
         {ok, HexEncodedHeader} ->
             HexEncodedHeader;
         undefined ->
-            {_, _, _, HexEncodedHeader} = get_options(),
+            {_, _, _, HexEncodedHeader, _} = get_options(),
             HexEncodedHeader
     end.
 
@@ -166,7 +175,12 @@ generate_int(Hash, Nonce, Target) ->
 
 generate_int(Hash, Nonce, Target, MinerBin, MinerExtraArgs) ->
     BinDir = aecuckoo:bin_dir(),
-    Cmd = lists:concat(["./", MinerBin, " -h ", Hash, " -n ", Nonce, " ", MinerExtraArgs]),
+    Repeats = get_miner_repeats(),
+    Cmd = lists:concat(["./", MinerBin,
+                        " -h ", Hash,
+                        " -n ", Nonce,
+                        " -r ", Repeats,
+                        " ", MinerExtraArgs]),
     ?info("Executing cmd: ~p", [Cmd]),
     Old = process_flag(trap_exit, true),
     DefaultOptions = [{stdout, self()},

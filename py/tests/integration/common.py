@@ -83,19 +83,21 @@ def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
     ext_api = external_api(node)
     int_api = internal_api(node)
 
+    top0 = ext_api.get_current_key_block()
     bal0 = get_account_balance(ext_api, beneficiary['enc_pubk'])
 
     # populate the chain so node had mined some blocks and has tokens
     # to spend
     wait_until_height(ext_api, blocks_to_mine)
-    top = ext_api.get_current_key_block()
-    assert_equals(top.height >= blocks_to_mine, True)
+    top1 = ext_api.get_current_key_block()
+    assert_equals(top1.height >= blocks_to_mine, True)
     # Now the node has at least blocks_to_mine blocks mined
 
     bal1 = get_account_balance(ext_api, beneficiary['enc_pubk'])
-    assert_equals(bal1 > bal0, True)
+    if top1.height > top0.height:
+        assert_equals(bal1 > bal0, True)
 
-    return (root_dir, ext_api, int_api, top)
+    return (root_dir, ext_api, int_api, top1)
 
 def install_user_config(root_dir, file_name, conf):
     user_config = os.path.join(root_dir, file_name)

@@ -437,6 +437,11 @@
                                 "nice" : {
                                     "description" : "Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority. Keep it unset to inherit parent process priority.",
                                     "type": "integer"
+                                },
+                                "repeats" : {
+                                    "description" : "Number of tries to do in each miner context - WARNING: it should be set so the miner process runs for 3-5s or else the node risk missing out on new micro blocks.",
+                                    "type": "integer",
+                                    "default": 1
                                 }
                             }
                         }
