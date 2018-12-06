@@ -37,7 +37,7 @@ Example scheme: `node (sync > port) <-> router (sync > external_port) <-> Intern
 
 #### Port Check
 
-In order to validate your setup and configuration correctness one can run the external node port check (assuming the default port 3015):
+After you have started the epoch application, you can verify the validity of your setup and configuration correctness by, for example, running the external node port check (assuming the default port 3015):
 
 ```bash
 nc -zv $(curl -s https://api.ipify.org) 3015
