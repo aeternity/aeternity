@@ -99,7 +99,7 @@ generate(Hash, Nonce, Target, N) ->
     Self = self(),
     Repeats = get_miner_repeats(),
     Fun = fun(I) -> Self ! {self(), try generate_int(Hash, Nonce + I*Repeats, Target, I)
-                                    catch _:_ -> {error, no_solution} end}
+                                    catch E:R -> {error, {E, R}} end}
           end,
     Pids = [ begin
                 Pid = spawn_link(fun() -> Fun(D) end),
@@ -113,7 +113,7 @@ generate(Hash, Nonce, Target, N) ->
                 after 10000 -> {error, timeout} end || Pid <- Pids ],
     case [ Ok || {ok, _, _} = Ok <- Results ] of
         [Ok | _] -> Ok;
-        []       -> {error, no_solution}
+        []       -> {error, no_value}
     end.
 
 %%------------------------------------------------------------------------------
