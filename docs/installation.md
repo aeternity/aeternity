@@ -68,6 +68,8 @@ It is recommended that the partition where the node directory is has at least 10
 Open a Terminal window or get to the command line.
 
 Create a directory and unpack the downloaded package (you may need to amend the directory and/or file name of the package):
+WARNING IF YOU USE /tmp/node and reboot your mac the folder is deleted, so you will lost your keys if you didn't backup them.
+Also you have to download and setup all from scratch!!!
 ```bash
 mkdir /tmp/node
 cd /tmp/node
