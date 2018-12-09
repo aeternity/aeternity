@@ -181,7 +181,7 @@ mining:
     beneficiary: "beneficiary_pubkey_to_be_replaced"
     autostart: true
 ```
-in the yaml.epoch configuration file.
+in the epoch.yaml configuration file.
 
 Your mining setup needs to meet your hardware capacity. Therefore, you need to make a choice in how you want to configure your miner. You can read the documentation on setting up CUDA mining, or you can use all but one of the cores on your computer to mine (keep one core available for transaction gossiping, synchronising, etc).
 If you have 16 cores, you could (loosely spoken) assign 14 of them to mining using the following configuration:
