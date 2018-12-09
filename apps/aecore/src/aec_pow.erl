@@ -84,7 +84,7 @@
 %%%=============================================================================
 
 -callback generate(Data :: aec_hash:hashable(), Difficulty :: aec_pow:sci_int(),
-                   Nonce :: aec_pow:nonce()) ->
+                   Nonce :: aec_pow:nonce(), non_neg_integer()) ->
     aec_pow:pow_result().
 
 -callback verify(Data :: aec_hash:hashable(), Nonce :: aec_pow:nonce(),
@@ -132,10 +132,10 @@ pick_nonce() ->
 
 -spec next_nonce(aec_pow:nonce()) -> aec_pow:nonce().
 next_nonce(N) ->
-    Step = aec_pow_cuckoo:get_miner_repeats() * aec_pow_cuckoo:get_miner_instances(),
+    Step = aec_pow_cuckoo:get_miner_repeats(),
     case N + 2 * Step < ?MAX_NONCE of
         true  -> N + Step;
-        false -> 0
+        false -> pick_nonce()
     end.
 
 %%------------------------------------------------------------------------------

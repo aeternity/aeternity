@@ -22,7 +22,7 @@
 -behaviour(aec_pow).
 
 
--export([generate/3,
+-export([generate/4,
          get_miner_repeats/0,
          get_miner_instances/0,
          verify/4]).
@@ -47,7 +47,7 @@
 
 -type pow_cuckoo_solution() :: [integer()].
 -type output_parser_fun() :: fun((list(string()), #state{}) ->
-                                      {'ok', term(), term()} | {'error', term()}).
+                                        {'ok', term(), term()} | {'error', term()}).
 
 %%%=============================================================================
 %%% API
@@ -71,18 +71,16 @@
 %%  Very slow below 3 threads, not improving significantly above 5, let us take 5.
 %%------------------------------------------------------------------------------
 -spec generate(Data :: aec_hash:hashable(), Target :: aec_pow:sci_int(),
-               Nonce :: aec_pow:nonce()) -> aec_pow:pow_result().
-generate(Data, Target, Nonce) when Nonce >= 0,
-                                   Nonce =< ?MAX_NONCE ->
+               Nonce :: aec_pow:nonce(), non_neg_integer()) -> aec_pow:pow_result().
+generate(Data, Target, Nonce, MinerInstance) when Nonce >= 0,
+                                                  Nonce =< ?MAX_NONCE ->
     %% Hash Data and convert the resulting binary to a base64 string for Cuckoo
     %% Since this hash is purely internal, we don't use api encoding
     Hash   = aec_hash:hash(pow, Data),
     Hash64 = base64:encode_to_string(Hash),
     ?debug("Generating solution for data hash ~p and nonce ~p with target ~p.",
            [Hash, Nonce, Target]),
-
-    Instances = get_miner_instances(),
-    case generate(Hash64, Nonce, Target, Instances) of
+    case generate_int(Hash64, Nonce, Target, MinerInstance) of
         {ok, Nonce1, Soln} ->
             {ok, {Nonce1, Soln}};
         {error, no_value} ->
@@ -91,29 +89,6 @@ generate(Data, Target, Nonce) when Nonce >= 0,
         {error, Reason} ->
             %% Executable failed (segfault, not found, etc.): let miner decide
             {error, {runtime, Reason}}
-    end.
-
-generate(Hash, Nonce, Target, 1) ->
-    generate_int(Hash, Nonce, Target, undefined);
-generate(Hash, Nonce, Target, N) ->
-    Self = self(),
-    Repeats = get_miner_repeats(),
-    Fun = fun(I) -> Self ! {self(), try generate_int(Hash, Nonce + I*Repeats, Target, I)
-                                    catch E:R -> {error, {E, R}} end}
-          end,
-    Pids = [ begin
-                Pid = spawn_link(fun() -> Fun(D) end),
-                %% Try to avoid congestion on memory bus etc.
-                %% The best value will be system dependent, so experimentation
-                %% is suggested!
-                timer:sleep(100),
-                Pid
-             end || D <- lists:seq(0, N - 1) ],
-    Results = [ receive {Pid, Res} -> Res
-                after 10000 -> {error, timeout} end || Pid <- Pids ],
-    case [ Ok || {ok, _, _} = Ok <- Results ] of
-        [Ok | _] -> Ok;
-        []       -> {error, no_value}
     end.
 
 %%------------------------------------------------------------------------------
@@ -195,16 +170,12 @@ get_hex_encoded_header() ->
 %% Proof of Work generation: use the hash provided
 %%------------------------------------------------------------------------------
 -spec generate_int(Hash :: string(), Nonce :: aec_pow:nonce(),
-                   Target :: aec_pow:sci_int(), Instance :: undefined | non_neg_integer()) ->
-            {'ok', Nonce2 :: aec_pow:nonce(), Solution :: pow_cuckoo_solution()} |
-            {'error', term()}.
+                   Target :: aec_pow:sci_int(), Instance :: non_neg_integer()) ->
+                          {'ok', Nonce2 :: aec_pow:nonce(), Solution :: pow_cuckoo_solution()} |
+                          {'error', term()}.
 generate_int(Hash, Nonce, Target, Instance) ->
     {MinerBin, MinerExtraArgs0} = get_miner_options(),
-    MinerExtraArgs =
-        case Instance of
-            undefined -> MinerExtraArgs0;
-            I         -> MinerExtraArgs0 ++ " -d " ++ integer_to_list(I)
-        end,
+    MinerExtraArgs = MinerExtraArgs0 ++ " -d " ++ integer_to_list(Instance),
     EncodedHash =
         case get_hex_encoded_header() of
             true  -> hex_string(Hash);
@@ -228,10 +199,10 @@ generate_int(Hash, Nonce, Target, MinerBin, MinerExtraArgs) ->
                       {env, [{"SHELL", "/bin/sh"}]},
                       monitor],
     Options =
-      case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"nice">>]) of
-          {ok, Niceness} -> DefaultOptions ++ [{nice, Niceness}];
-          undefined -> DefaultOptions
-      end,
+        case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"nice">>]) of
+            {ok, Niceness} -> DefaultOptions ++ [{nice, Niceness}];
+            undefined -> DefaultOptions
+        end,
     try exec:run(Cmd, Options) of
         {ok, _ErlPid, OsPid} ->
             wait_for_result(#state{os_pid = OsPid,
@@ -298,7 +269,7 @@ verify_proof_(Header, Solution, EdgeBits) ->
                       Uv0 = sipnode(K0, K1, K2, K3, N, 0, EdgeMask),
                       Uv1 = sipnode(K0, K1, K2, K3, N, 1, EdgeMask),
                       {Xor0C bxor Uv0, Xor1C bxor Uv1, N, [{Uv0, Uv1} | UvsC]}
-               end, {16#0, 16#0, -1, []}, Solution),
+              end, {16#0, 16#0, -1, []}, Solution),
         case Xor0 bor Xor1 of
             0 ->
                 %% check cycle
@@ -321,22 +292,22 @@ sipnode(K0, K1, K2, K3, Proof, UOrV, EdgeMask) ->
     (SipHash bsl 1) bor UOrV.
 
 check_cycle(Nodes0) ->
-  Nodes = lists:keysort(2, Nodes0),
-  {Evens0, Odds} = lists:unzip(Nodes),
-  Evens  = lists:sort(Evens0), %% Odd nodes are already sorted...
-  UEvens = lists:usort(Evens),
-  UOdds  = lists:usort(Odds),
-  %% Check that all nodes appear exactly twice (i.e. each node has
-  %% exactly two edges).
-  case length(UEvens) == (?PROOFSIZE div 2) andalso
+    Nodes = lists:keysort(2, Nodes0),
+    {Evens0, Odds} = lists:unzip(Nodes),
+    Evens  = lists:sort(Evens0), %% Odd nodes are already sorted...
+    UEvens = lists:usort(Evens),
+    UOdds  = lists:usort(Odds),
+    %% Check that all nodes appear exactly twice (i.e. each node has
+    %% exactly two edges).
+    case length(UEvens) == (?PROOFSIZE div 2) andalso
         length(UOdds) == (?PROOFSIZE div 2) andalso
         UOdds == Odds -- UOdds andalso UEvens == Evens -- UEvens of
-      false ->
-          {error, ?POW_BRANCH};
-      true  ->
-          [{X0, Y0}, {X1, Y0} | Nodes1] = Nodes,
-          check_cycle(X0, X1, Nodes1)
-  end.
+        false ->
+            {error, ?POW_BRANCH};
+        true  ->
+            [{X0, Y0}, {X1, Y0} | Nodes1] = Nodes,
+            check_cycle(X0, X1, Nodes1)
+    end.
 
 %% If we reach the end in the last step everything is fine
 check_cycle(X, X, []) ->
@@ -359,9 +330,9 @@ find_node(X, [{X, Y}, {X1, Y} | Nodes], Acc) ->
 find_node(X, [{X1, Y}, {X, Y} | Nodes], Acc) ->
     {X, X1, Nodes ++ Acc};
 find_node(X, [{X, _Y} | _], _Acc) ->
-  {error, ?POW_DEAD_END};
+    {error, ?POW_DEAD_END};
 find_node(X, [N1, N2 | Nodes], Acc) ->
-  find_node(X, Nodes, [N1, N2 | Acc]).
+    find_node(X, Nodes, [N1, N2 | Acc]).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -404,7 +375,7 @@ pack_header_and_nonce(Hash, Nonce) when byte_size(Hash) == 32 ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec wait_for_result(#state{}) ->
-            {'ok', aec_pow:nonce(), pow_cuckoo_solution()} | {'error', term()}.
+                             {'ok', aec_pow:nonce(), pow_cuckoo_solution()} | {'error', term()}.
 wait_for_result(#state{os_pid = OsPid,
                        buffer = Buffer} = State) ->
     receive
@@ -468,12 +439,12 @@ handle_fragmented_lines(Str, Buffer) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec parse_generation_result(list(string()), #state{}) ->
-            {'ok', Nonce :: aec_pow:nonce(), Solution :: pow_cuckoo_solution()} |
-            {'error', term()}.
+                                     {'ok', Nonce :: aec_pow:nonce(), Solution :: pow_cuckoo_solution()} |
+                                     {'error', term()}.
 parse_generation_result([], State) ->
     wait_for_result(State);
 parse_generation_result(["Solution" ++ NonceValuesStr | Rest], #state{os_pid = OsPid,
-                                                                 target = Target} = State) ->
+                                                                      target = Target} = State) ->
     [NonceStr | SolStrs] =  string:tokens(NonceValuesStr, " "),
     Soln = [list_to_integer(V, 16) || V <- SolStrs],
     case {length(Soln), test_target(Soln, Target)} of
@@ -546,7 +517,7 @@ node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits >  0 -> 4.
 %% is restricted to be under the target value (0 < target < 2^256).
 %%------------------------------------------------------------------------------
 -spec test_target(Soln :: pow_cuckoo_solution(), Target :: aec_pow:sci_int()) ->
-                             boolean().
+                         boolean().
 test_target(Soln, Target) ->
     test_target(Soln, Target, get_node_size()).
 
@@ -565,4 +536,3 @@ solution_to_binary([], _Bits, Acc) ->
     Acc;
 solution_to_binary([H | T], Bits, Acc) ->
     solution_to_binary(T, Bits, <<Acc/binary, H:Bits>>).
-
