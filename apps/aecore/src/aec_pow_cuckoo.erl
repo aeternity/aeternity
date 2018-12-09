@@ -22,7 +22,7 @@
 -behaviour(aec_pow).
 
 
--export([generate/3,
+-export([generate/4,
          get_miner_repeats/0,
          get_miner_instances/0,
          verify/4]).
@@ -47,7 +47,7 @@
 
 -type pow_cuckoo_solution() :: [integer()].
 -type output_parser_fun() :: fun((list(string()), #state{}) ->
-                                      {'ok', term(), term()} | {'error', term()}).
+                                        {'ok', term(), term()} | {'error', term()}).
 
 %%%=============================================================================
 %%% API
@@ -71,18 +71,16 @@
 %%  Very slow below 3 threads, not improving significantly above 5, let us take 5.
 %%------------------------------------------------------------------------------
 -spec generate(Data :: aec_hash:hashable(), Target :: aec_pow:sci_int(),
-               Nonce :: aec_pow:nonce()) -> aec_pow:pow_result().
-generate(Data, Target, Nonce) when Nonce >= 0,
-                                   Nonce =< ?MAX_NONCE ->
+               Nonce :: aec_pow:nonce(), aec_pow:miner_instance()) -> aec_pow:pow_result().
+generate(Data, Target, Nonce, MinerInstance) when Nonce >= 0,
+                                                  Nonce =< ?MAX_NONCE ->
     %% Hash Data and convert the resulting binary to a base64 string for Cuckoo
     %% Since this hash is purely internal, we don't use api encoding
     Hash   = aec_hash:hash(pow, Data),
     Hash64 = base64:encode_to_string(Hash),
     ?debug("Generating solution for data hash ~p and nonce ~p with target ~p.",
            [Hash, Nonce, Target]),
-
-    Instances = get_miner_instances(),
-    case generate(Hash64, Nonce, Target, Instances) of
+    case generate_int(Hash64, Nonce, Target, MinerInstance) of
         {ok, Nonce1, Soln} ->
             {ok, {Nonce1, Soln}};
         {error, no_value} ->
@@ -91,29 +89,6 @@ generate(Data, Target, Nonce) when Nonce >= 0,
         {error, Reason} ->
             %% Executable failed (segfault, not found, etc.): let miner decide
             {error, {runtime, Reason}}
-    end.
-
-generate(Hash, Nonce, Target, 1) ->
-    generate_int(Hash, Nonce, Target, undefined);
-generate(Hash, Nonce, Target, N) ->
-    Self = self(),
-    Repeats = get_miner_repeats(),
-    Fun = fun(I) -> Self ! {self(), try generate_int(Hash, Nonce + I*Repeats, Target, I)
-                                    catch E:R -> {error, {E, R}} end}
-          end,
-    Pids = [ begin
-                Pid = spawn_link(fun() -> Fun(D) end),
-                %% Try to avoid congestion on memory bus etc.
-                %% The best value will be system dependent, so experimentation
-                %% is suggested!
-                timer:sleep(100),
-                Pid
-             end || D <- lists:seq(0, N - 1) ],
-    Results = [ receive {Pid, Res} -> Res
-                after 10000 -> {error, timeout} end || Pid <- Pids ],
-    case [ Ok || {ok, _, _} = Ok <- Results ] of
-        [Ok | _] -> Ok;
-        []       -> {error, no_value}
     end.
 
 %%------------------------------------------------------------------------------
@@ -160,6 +135,12 @@ get_miner_instances() ->
             Instances
     end.
 
+is_miner_instance_addressation_enabled() ->
+    case get_miner_instances() of
+        1 -> false;
+        N when N > 1 -> true
+    end.
+
 get_miner_options() ->
     case
         {aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"executable">>]),
@@ -195,16 +176,15 @@ get_hex_encoded_header() ->
 %% Proof of Work generation: use the hash provided
 %%------------------------------------------------------------------------------
 -spec generate_int(Hash :: string(), Nonce :: aec_pow:nonce(),
-                   Target :: aec_pow:sci_int(), Instance :: undefined | non_neg_integer()) ->
-            {'ok', Nonce2 :: aec_pow:nonce(), Solution :: pow_cuckoo_solution()} |
-            {'error', term()}.
+                   Target :: aec_pow:sci_int(), Instance :: non_neg_integer()) ->
+                          {'ok', Nonce2 :: aec_pow:nonce(), Solution :: pow_cuckoo_solution()} |
+                          {'error', term()}.
 generate_int(Hash, Nonce, Target, Instance) ->
     {MinerBin, MinerExtraArgs0} = get_miner_options(),
-    MinerExtraArgs =
-        case Instance of
-            undefined -> MinerExtraArgs0;
-            I         -> MinerExtraArgs0 ++ " -d " ++ integer_to_list(I)
-        end,
+    MinerExtraArgs = case is_miner_instance_addressation_enabled() of
+                         true  -> MinerExtraArgs0 ++ " -d " ++ integer_to_list(Instance);
+                         false -> MinerExtraArgs0
+                     end,
     EncodedHash =
         case get_hex_encoded_header() of
             true  -> hex_string(Hash);
@@ -565,4 +545,3 @@ solution_to_binary([], _Bits, Acc) ->
     Acc;
 solution_to_binary([H | T], Bits, Acc) ->
     solution_to_binary(T, Bits, <<Acc/binary, H:Bits>>).
-

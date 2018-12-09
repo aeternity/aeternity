@@ -74,17 +74,20 @@
 %% over the actual one. Always positive.
 -type difficulty() :: integer().
 
+-type miner_instance() :: non_neg_integer().
+
 -export_type([sci_int/0,
               difficulty/0,
               pow_evidence/0,
-              pow_result/0]).
+              pow_result/0,
+              miner_instance/0]).
 
 %%%=============================================================================
 %%% Behaviour
 %%%=============================================================================
 
 -callback generate(Data :: aec_hash:hashable(), Difficulty :: aec_pow:sci_int(),
-                   Nonce :: aec_pow:nonce()) ->
+                   Nonce :: aec_pow:nonce(), MinerInstance :: aec_pow:miner_instance()) ->
     aec_pow:pow_result().
 
 -callback verify(Data :: aec_hash:hashable(), Nonce :: aec_pow:nonce(),
@@ -132,7 +135,7 @@ pick_nonce() ->
 
 -spec next_nonce(aec_pow:nonce()) -> aec_pow:nonce().
 next_nonce(N) ->
-    Step = aec_pow_cuckoo:get_miner_repeats() * aec_pow_cuckoo:get_miner_instances(),
+    Step = aec_pow_cuckoo:get_miner_repeats(),
     case N + 2 * Step < ?MAX_NONCE of
         true  -> N + Step;
         false -> 0
