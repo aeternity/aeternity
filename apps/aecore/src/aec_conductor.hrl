@@ -28,7 +28,7 @@
 
 -type miner_instance()  :: non_neg_integer().
 -type instance_state()  :: pid() | 'available'.
--type miner_instances() :: list({miner_instance(), instance_state()}) | 'single_instance'.
+-type miner_instances() :: list({miner_instance(), instance_state()}).
 
 -record(state, {key_block_candidates              :: list({candidate_hash(), #candidate{}}) | 'undefined',
                 micro_block_candidate             :: #candidate{} | 'undefined',
