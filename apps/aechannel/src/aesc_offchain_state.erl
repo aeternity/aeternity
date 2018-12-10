@@ -3,10 +3,12 @@
 -include_lib("apps/aecore/include/blocks.hrl").
 -include("apps/aecontract/src/aecontract.hrl").
 
+-define(NO_TX, no_tx).
+
 -record(state, { trees                  :: aec_trees:trees()
                , calls                  :: aect_call_state_tree:tree()
-               , signed_txs = []        :: [aetx_sign:signed_tx()]
-               , half_signed_txs = []   :: [aetx_sign:signed_tx()]
+               , signed_tx = ?NO_TX     :: aetx_sign:signed_tx() | ?NO_TX
+               , half_signed_tx = ?NO_TX:: aetx_sign:signed_tx() | ?NO_TX
               }).
 
 -opaque state() :: #state{}.
@@ -34,6 +36,7 @@
 -export([get_contract_call/4,
          prune_calls/1
         ]).
+
 
 -spec new(map()) -> {ok, state()}.
 new(Opts) ->
@@ -88,11 +91,11 @@ hash(#state{trees=Trees}) ->
 my_pubkey(#{role := responder, responder := R}) -> R;
 my_pubkey(#{role := initiator, initiator := I}) -> I.
 
-is_latest_signed_tx(SignedTx, #state{signed_txs = [LatestSignedTx|_]}) ->
+is_latest_signed_tx(_SignedTx, #state{signed_tx = ?NO_TX}) ->
+    false;
+is_latest_signed_tx(SignedTx, #state{signed_tx = LatestSignedTx}) ->
     aetx_sign:serialize_to_binary(SignedTx)
-        == aetx_sign:serialize_to_binary(LatestSignedTx);
-is_latest_signed_tx(_, _) ->
-    false.
+        == aetx_sign:serialize_to_binary(LatestSignedTx).
 
 %% update_tx checks
 check_initial_state({previous_round, N}, _) ->
@@ -132,14 +135,14 @@ check_reestablish_tx(SignedTx, State) ->
 check_update_tx(SignedTx, State, OnChainTrees, OnChainEnv, Opts) ->
     check_update_tx_(none, SignedTx, State, OnChainTrees, OnChainEnv, Opts).
 
-check_update_tx_(F, SignedTx, #state{signed_txs = Txs}=State, OnChainTrees,
-                 OnChainEnv, Opts) ->
+check_update_tx_(F, SignedTx, #state{signed_tx = OldSignedTx}=State, OnChainTrees,
+                 OnChainEnv, Opts) when OldSignedTx =/= ?NO_TX ->
     lager:debug("check_update_tx(State = ~p)", [State]),
     Tx = aetx_sign:tx(SignedTx),
     {Mod, TxI} = aetx:specialize_callback(Tx),
     lager:debug("Tx = ~p", [Tx]),
     case Mod:round(TxI) - 1 of
-        0 when Txs == [] ->
+        0 when OldSignedTx == ?NO_TX ->
             lager:debug("previous round = 0", []),
             check_update_tx_(F, Mod, TxI, State, OnChainTrees, OnChainEnv, Opts);
         PrevRound ->
@@ -188,9 +191,10 @@ prune_calls(State) ->
 
 -spec make_update_tx(list(aesc_offchain_update:update()), state(),
                      aec_trees:trees(), aetx_env:env(), map()) -> aetx:tx().
-make_update_tx(Updates, #state{signed_txs=[SignedTx|_], trees=Trees},
-               OnChainTrees, OnChainEnv, Opts) ->
-    Tx = aetx_sign:tx(SignedTx),
+make_update_tx(Updates, #state{signed_tx = LastSignedTx, trees=Trees},
+               OnChainTrees, OnChainEnv, Opts)
+    when LastSignedTx =/= ?NO_TX ->
+    Tx = aetx_sign:tx(LastSignedTx),
     {Mod, TxI} = aetx:specialize_callback(Tx),
     ChannelPubKey = Mod:channel_pubkey(TxI),
 
@@ -229,13 +233,13 @@ run_extra_checks(F, Mod, Tx) when is_function(F, 2) ->
 
 -spec add_signed_tx(aetx_sign:signed_tx(), state(), aec_trees:trees(),
                     aetx_env:env(), map()) -> state().
-add_signed_tx(SignedTx, #state{signed_txs=Txs0}=State, OnChainTrees,
+add_signed_tx(SignedTx, #state{}=State, OnChainTrees,
               OnChainEnv, Opts) ->
     true = mutually_signed(SignedTx), % ensure it is mutually signed
     Tx = aetx_sign:tx(SignedTx),
     case aetx:specialize_callback(Tx) of
         {aesc_create_tx, _} ->
-            State#state{signed_txs=[SignedTx | Txs0], half_signed_txs=[]};
+            State#state{signed_tx = SignedTx, half_signed_tx = ?NO_TX};
         {Mod, TxI} ->
             Reserve = maps:get(channel_reserve, Opts, 0),
             {Trees, Calls} =
@@ -262,33 +266,36 @@ add_signed_tx(SignedTx, #state{signed_txs=Txs0}=State, OnChainTrees,
                     {aect_call_state_tree:prune_without_backend(State#state.trees),
                      State#state.calls},
                     Mod:updates(TxI)),
-            State#state{signed_txs=[SignedTx | Txs0], half_signed_txs=[],
+            State#state{signed_tx = SignedTx, half_signed_tx = ?NO_TX,
                         trees=Trees, calls=Calls}
     end.
 
 -spec add_half_signed_tx(aetx_sign:signed_tx(), state()) -> state().
-add_half_signed_tx(SignedTx, #state{half_signed_txs=Txs0}=State) ->
-    State#state{half_signed_txs=[SignedTx | Txs0]}.
+add_half_signed_tx(SignedTx, #state{}=State) ->
+    State#state{half_signed_tx = SignedTx}.
 
 -spec get_latest_half_signed_tx(state()) -> aetx_sign:signed_tx().
-get_latest_half_signed_tx(#state{half_signed_txs=[Tx| _]}) ->
+get_latest_half_signed_tx(#state{half_signed_tx = Tx}) when Tx =/= ?NO_TX ->
     Tx.
 
 -spec get_latest_signed_tx(state()) -> {non_neg_integer(), aetx_sign:signed_tx()}.
-get_latest_signed_tx(#state{signed_txs=[SignedTx|_]}) ->
-    {tx_round(aetx_sign:tx(SignedTx)), SignedTx}.
+get_latest_signed_tx(#state{signed_tx = LastSignedTx})
+    when LastSignedTx =/= ?NO_TX ->
+    {tx_round(aetx_sign:tx(LastSignedTx)), LastSignedTx}.
 
 -spec get_fallback_state(state()) -> {non_neg_integer(), state()}.
-get_fallback_state(#state{signed_txs=[SignedTx|_]}=State) -> %% half_signed_txs= []?
-    {tx_round(aetx_sign:tx(SignedTx)), State#state{half_signed_txs=[]}}.
+get_fallback_state(#state{signed_tx = LastSignedTx}=State)
+    when LastSignedTx =/= ?NO_TX ->
+    {tx_round(aetx_sign:tx(LastSignedTx)), State#state{half_signed_tx = ?NO_TX}}.
 
 tx_round(Tx) ->
     {Mod, TxI} = aetx:specialize_callback(Tx),
     Mod:round(TxI).
 
 -spec fallback_to_stable_state(state()) -> state().
-fallback_to_stable_state(#state{signed_txs=[_|_]}=State) ->
-    State#state{half_signed_txs=[]}.
+fallback_to_stable_state(#state{signed_tx = LastSignedTx}=State)
+    when LastSignedTx =/= ?NO_TX ->
+    State#state{half_signed_tx = ?NO_TX}.
 
 -spec mutually_signed(aetx_sign:signed_tx()) -> boolean().
 mutually_signed(SignedTx) ->
