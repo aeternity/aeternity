@@ -524,7 +524,7 @@ cleanup_after_worker(Info) ->
     ok.
 
 kill_worker(Pid, Info, State) ->
-    State1 = state_cleanup_after_worker(State, Info, Pid),
+    State1 = state_cleanup_after_worker(State, Info#worker_info.tag, Pid),
     ok     = cleanup_after_worker(Info),
     exit(Pid, shutdown),
     %% Flush messages from this worker.
