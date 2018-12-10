@@ -434,7 +434,7 @@ dispatch_worker(Tag, Fun, State) ->
             State;
         false ->
             {Pid, Info} = spawn_worker(Tag, Fun),
-            State1 = block_tag(Tag, State),
+            State1 = maybe_block_tag(Tag, State),
             Workers = orddict:store(Pid, Info, State1#state.workers),
             State2 = State1#state{workers = Workers},
             case Tag of
@@ -446,8 +446,16 @@ dispatch_worker(Tag, Fun, State) ->
 is_tag_blocked(Tag, State) ->
     ordsets:is_element(Tag, State#state.blocked_tags).
 
-block_tag(Tag, #state{blocked_tags = B} = State) ->
-    State#state{blocked_tags = ordsets:add_element(Tag, B)}.
+maybe_block_tag(Tag, #state{blocked_tags = B} = State) ->
+    case tag_concurrency(Tag) of
+        concurrent -> State;
+        singleton  -> State#state{blocked_tags = ordsets:add_element(Tag, B)}
+    end.
+
+tag_concurrency(mining)                     -> concurrent;
+tag_concurrency(create_key_block_candidate) -> singleton;
+tag_concurrency(micro_sleep)                -> singleton;
+tag_concurrency(wait_for_keys)              -> singleton.
 
 spawn_worker(Tag, Fun) ->
     Timeout = worker_timeout(Tag),
@@ -562,7 +570,7 @@ available_miner_instance(#state{miner_instances = MinerInstances}) ->
     get_first_available_instance(MinerInstances).
 
 get_first_available_instance([]) ->
-    all_busy;
+    none;
 get_first_available_instance([{Instance, available} | _Instances]) ->
     Instance;
 get_first_available_instance([_Instance | Instances]) ->
@@ -572,10 +580,10 @@ register_miner_instance(#state{miner_instances = MinerInstances0} = State, Insta
     MinerInstances = lists:keyreplace(Instance, 1, MinerInstances0, {Instance, Pid}),
     State#state{miner_instances = MinerInstances}.
 
-deregister_miner_instance(#state{miner_instances = MinerInstances0} = S, Pid) ->
+deregister_miner_instance(#state{miner_instances = MinerInstances0} = State, Pid) ->
     {Instance, Pid} = lists:keyfind(Pid, 2, MinerInstances0),
     MinerInstances = lists:keyreplace(Pid, 2, MinerInstances0, {Instance, available}),
-    S#state{miner_instances = MinerInstances}.
+    State#state{miner_instances = MinerInstances}.
 
 %%%===================================================================
 %%% Preemption of workers if the top of the chain changes.
@@ -705,12 +713,12 @@ start_mining(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}} 
     create_key_block_candidate(State);
 start_mining(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]} = State) ->
     case available_miner_instance(State) of
-        all_busy -> State;
+        none -> State;
         Instance ->
             epoch_mining:info("Starting miner"),
-            Nonce     = Candidate#candidate.nonce,
-            Target    = aec_blocks:target(Candidate#candidate.block),
-            Info      = [{top_block_hash, State#state.top_block_hash}],
+            Nonce  = Candidate#candidate.nonce,
+            Target = aec_blocks:target(Candidate#candidate.block),
+            Info   = [{top_block_hash, State#state.top_block_hash}],
             aec_events:publish(start_mining, Info),
             Fun = fun() ->
                           {aec_mining:mine(HeaderBin, Target, Nonce, Instance)
@@ -762,7 +770,7 @@ handle_mining_reply({{error, {runtime, Reason}}, HeaderBin}, State) ->
 
 retry_mining(S = #state{ key_block_candidates = [{HeaderBin, Candidate} | Candidates]}, HeaderBin) ->
     start_mining(S#state{ key_block_candidates = [{HeaderBin, bump_nonce(Candidate)} | Candidates] });
-retry_mining(S = #state { key_block_candidates = Candidates}, HeaderBin) ->
+retry_mining(S = #state { key_block_candidates = Candidates}, HeaderBin) when is_list(Candidates) ->
     case proplists:get_value(HeaderBin, Candidates) of
         undefined ->
             create_key_block_candidate(S);
@@ -848,8 +856,8 @@ create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_has
                                   top_block_hash       = TopHash} = State) ->
     %% We have the most recent candidate already. Just start mining.
     start_mining(State);
-create_key_block_candidate(#state{top_block_hash       = TopHash,
-                                  beneficiary          = Beneficiary} = State) ->
+create_key_block_candidate(#state{top_block_hash = TopHash,
+                                  beneficiary    = Beneficiary} = State) ->
     epoch_mining:info("Creating key block candidate on the top"),
     Fun = fun() ->
                   {aec_block_key_candidate:create(TopHash, Beneficiary), TopHash}
