@@ -174,10 +174,10 @@ init(Options) ->
     Consensus = #consensus{micro_block_cycle = aec_governance:micro_block_cycle(),
                            leader = false},
     {ok, Beneficiary} = get_beneficiary(),
-    State1 = #state{ top_block_hash     = TopBlockHash
-                   , top_key_block_hash = TopKeyBlockHash
-                   , consensus          = Consensus
-                   , beneficiary        = Beneficiary},
+    State1 = #state{ top_block_hash     = TopBlockHash,
+                     top_key_block_hash = TopKeyBlockHash,
+                     consensus          = Consensus,
+                     beneficiary        = Beneficiary},
     State2 = set_option(autostart, Options, State1),
     State3 = init_miner_instances(State2),
 
@@ -339,13 +339,13 @@ try_fetch_and_make_candidate() ->
 make_key_candidate(Block) ->
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
     Nonce     = aec_pow:pick_nonce(),
-    {HeaderBin, #candidate{ block     = Block
-                          , nonce     = Nonce
-                          , top_hash  = aec_blocks:prev_hash(Block) }}.
+    {HeaderBin, #candidate{ block    = Block,
+                            nonce    = Nonce,
+                            top_hash = aec_blocks:prev_hash(Block) }}.
 
 make_micro_candidate(Block) ->
-    #candidate{ block = Block
-              , top_hash = aec_blocks:prev_hash(Block) }.
+    #candidate{ block    = Block,
+                top_hash = aec_blocks:prev_hash(Block) }.
 
 %%%===================================================================
 %%% Handle init options
@@ -367,8 +367,6 @@ get_option(Opt, Options) ->
 %%% Handle monitor messages
 
 handle_monitor_message(Ref, Pid, Why, State) ->
-    Workers = State#state.workers,
-    Blocked = State#state.blocked_tags,
     case lookup_worker(Ref, Pid, State) of
         not_found ->
             epoch_mining:info("Got unknown monitor DOWN message: ~p",
@@ -376,14 +374,10 @@ handle_monitor_message(Ref, Pid, Why, State) ->
             State;
         {ok, Tag} ->
             epoch_mining:error("Worker died: ~p", [{Tag, Pid, Why}]),
-            State1 = case Tag of
-                         mining -> deregister_miner_instance(State, Pid);
-                         _Other -> State
-                     end,
-            State2 = State1#state{workers      = orddict:erase(Pid, Workers),
-                                  blocked_tags = ordsets:del_element(Tag, Blocked)
-                                 },
-            start_mining(State2)
+            State1 = state_cleanup_after_worker(State, Tag, Pid),
+            State2 = maybe_unblock_tag(Tag, State1),
+            State3 = erase_worker(Pid, State2),
+            start_mining(State3)
     end.
 
 %%%===================================================================
@@ -437,10 +431,7 @@ dispatch_worker(Tag, Fun, State) ->
             State1 = maybe_block_tag(Tag, State),
             Workers = orddict:store(Pid, Info, State1#state.workers),
             State2 = State1#state{workers = Workers},
-            case Tag of
-                mining -> {State2, Pid}; %% For mining worker return its Pid for miner_instances handling
-                _      -> State2
-            end
+            {State2, Pid}
     end.
 
 is_tag_blocked(Tag, State) ->
@@ -450,6 +441,12 @@ maybe_block_tag(Tag, #state{blocked_tags = B} = State) ->
     case tag_concurrency(Tag) of
         concurrent -> State;
         singleton  -> State#state{blocked_tags = ordsets:add_element(Tag, B)}
+    end.
+
+maybe_unblock_tag(Tag, #state{blocked_tags = B} = State) ->
+    case tag_concurrency(Tag) of
+        concurrent -> State;
+        singleton  -> State#state{blocked_tags = ordsets:del_element(Tag, B)}
     end.
 
 tag_concurrency(mining)                     -> concurrent;
@@ -490,16 +487,14 @@ wrap_worker_fun(Fun) ->
 
 handle_worker_reply(Pid, Reply, State) ->
     Workers = State#state.workers,
-    Blocked = State#state.blocked_tags,
     case orddict:find(Pid, Workers) of
         {ok, Info} ->
             Tag = Info#worker_info.tag,
-            State1 = state_cleanup_after_worker(State, Info, Pid),
-            cleanup_after_worker(Info),
-            State2 = State1#state{workers      = orddict:erase(Pid, Workers),
-                                  blocked_tags = ordsets:del_element(Tag, Blocked)
-                                 },
-            worker_reply(Tag, Reply, State2);
+            State1 = state_cleanup_after_worker(State, Tag, Pid),
+            ok     = cleanup_after_worker(Info),
+            State2 = maybe_unblock_tag(Tag, State1),
+            State3 = erase_worker(Pid, State2),
+            worker_reply(Tag, Reply, State3);
         error ->
             epoch_mining:info("Got unsolicited worker reply: ~p",
                               [{Pid, Reply}]),
@@ -515,9 +510,9 @@ worker_reply(micro_sleep, Res, State) ->
 worker_reply(wait_for_keys, Res, State) ->
     handle_wait_for_keys_reply(Res, State).
 
-state_cleanup_after_worker(State, #worker_info{tag = mining}, Pid) ->
+state_cleanup_after_worker(State, mining, Pid) ->
     deregister_miner_instance(State, Pid);
-state_cleanup_after_worker(State, _, _) ->
+state_cleanup_after_worker(State, _Tag, _Pid) ->
     State.
 
 cleanup_after_worker(Info) ->
@@ -529,19 +524,14 @@ cleanup_after_worker(Info) ->
     ok.
 
 kill_worker(Pid, Info, State) ->
-    Workers = State#state.workers,
-    Blocked = State#state.blocked_tags,
     State1 = state_cleanup_after_worker(State, Info, Pid),
-    cleanup_after_worker(Info),
+    ok     = cleanup_after_worker(Info),
     exit(Pid, shutdown),
     %% Flush messages from this worker.
     receive {worker_reply, Pid, _} -> ok
     after 0 -> ok end,
-    State1#state{workers = orddict:erase(Pid, Workers),
-                 blocked_tags = ordsets:del_element(
-                                  Info#worker_info.tag,
-                                  Blocked)
-                }.
+    State2 = maybe_unblock_tag(Info#worker_info.tag, State1),
+    erase_worker(Pid, State2).
 
 kill_all_workers(#state{workers = Workers} = State) ->
     lists:foldl(
@@ -558,6 +548,9 @@ kill_all_workers_with_tag(Tag, #state{workers = Workers} = State) ->
                   false -> S
               end
       end, State, Workers).
+
+erase_worker(Pid, #state{workers = Workers} = State) ->
+    State#state{workers = orddict:erase(Pid, Workers)}.
 
 %%%===================================================================
 %%% Miner instances handling
@@ -670,7 +663,8 @@ maybe_publish_block(micro_block_created = T, Block) ->
 
 wait_for_keys(State) ->
     Fun = fun wait_for_keys_worker/0,
-    dispatch_worker(wait_for_keys, Fun, State).
+    {State1, _Pid} = dispatch_worker(wait_for_keys, Fun, State),
+    State1.
 
 wait_for_keys_worker() ->
     wait_for_keys_worker(?WAIT_FOR_KEYS_RETRIES).
@@ -711,11 +705,12 @@ start_mining(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}} 
     %% Candidate generated with stale top hash.
     %% Regenerate the candidate.
     create_key_block_candidate(State);
-start_mining(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]} = State) ->
+start_mining(#state{key_block_candidates = [{HeaderBin, Candidate0} | Candidates]} = State) ->
     case available_miner_instance(State) of
         none -> State;
         Instance ->
-            epoch_mining:info("Starting miner"),
+            epoch_mining:info("Starting miner on top of ~p", [State#state.top_block_hash]),
+            Candidate = bump_nonce(Candidate0),
             Nonce  = Candidate#candidate.nonce,
             Target = aec_blocks:target(Candidate#candidate.block),
             Info   = [{top_block_hash, State#state.top_block_hash}],
@@ -728,8 +723,12 @@ start_mining(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]
             State1 = State#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]},
             {State2, Pid} = dispatch_worker(mining, Fun, State1),
             State3 = register_miner_instance(State2, Instance, Pid),
+            epoch_mining:info("Miner ~p started", [Pid]),
             start_mining(State3)
     end.
+
+bump_nonce(C = #candidate{ nonce = N }) ->
+    C#candidate{ nonce = aec_pow:next_nonce(N) }.
 
 handle_mining_reply(_Reply, #state{key_block_candidates = undefined} = State) ->
     %% Something invalidated the block candidates already
@@ -768,23 +767,20 @@ handle_mining_reply({{error, {runtime, Reason}}, HeaderBin}, State) ->
 %%%===================================================================
 %%% Retry mining when we failed to find a solution.
 
-retry_mining(S = #state{ key_block_candidates = [{HeaderBin, Candidate} | Candidates]}, HeaderBin) ->
-    start_mining(S#state{ key_block_candidates = [{HeaderBin, bump_nonce(Candidate)} | Candidates] });
-retry_mining(S = #state { key_block_candidates = Candidates}, HeaderBin) when is_list(Candidates) ->
+retry_mining(S = #state{key_block_candidates = [{HeaderBin, _Candidate} | _Candidates]}, HeaderBin) ->
+    start_mining(S);
+retry_mining(S = #state {key_block_candidates = Candidates}, HeaderBin) when is_list(Candidates) ->
     case proplists:get_value(HeaderBin, Candidates) of
         undefined ->
             create_key_block_candidate(S);
         #candidate{refs = 1} ->
-            create_key_block_candidate(S#state{key_block_candidates = Candidates});
+            create_key_block_candidate(S#state{key_block_candidates = proplists:delete(HeaderBin, Candidates)});
         #candidate{refs = N} = C when N > 1 ->
             Candidates1 = lists:keyreplace(HeaderBin, 1, Candidates, {HeaderBin, C#candidate{refs = N - 1}}),
             create_key_block_candidate(S#state{key_block_candidates = Candidates1})
     end;
 retry_mining(S = #state {key_block_candidates = undefined}, _) ->
     start_mining(S).
-
-bump_nonce(C = #candidate{ nonce = N }) ->
-    C#candidate{ nonce = aec_pow:next_nonce(N) }.
 
 %%%===================================================================
 %%% Worker: Start signing microblocks
@@ -839,7 +835,8 @@ start_micro_sleep(#state{consensus = #consensus{leader = true, micro_block_cycle
     Fun = fun() ->
                   timer:sleep(Timeout)
           end,
-    dispatch_worker(micro_sleep, Fun, State);
+    {State1, _Pid} = dispatch_worker(micro_sleep, Fun, State),
+    State1;
 start_micro_sleep(State) ->
     State.
 
@@ -862,7 +859,8 @@ create_key_block_candidate(#state{top_block_hash = TopHash,
     Fun = fun() ->
                   {aec_block_key_candidate:create(TopHash, Beneficiary), TopHash}
           end,
-    dispatch_worker(create_key_block_candidate, Fun, State).
+    {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
+    State1.
 
 handle_key_block_candidate_reply({{ok, KeyBlockCandidate}, TopHash},
                                  #state{top_block_hash = TopHash,

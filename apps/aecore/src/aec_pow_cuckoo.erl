@@ -135,6 +135,12 @@ get_miner_instances() ->
             Instances
     end.
 
+is_miner_instance_addressation_enabled() ->
+    case get_miner_instances() of
+        1 -> false;
+        N when N > 1 -> true
+    end.
+
 get_miner_options() ->
     case
         {aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"executable">>]),
@@ -175,7 +181,10 @@ get_hex_encoded_header() ->
                           {'error', term()}.
 generate_int(Hash, Nonce, Target, Instance) ->
     {MinerBin, MinerExtraArgs0} = get_miner_options(),
-    MinerExtraArgs = MinerExtraArgs0 ++ " -d " ++ integer_to_list(Instance),
+    MinerExtraArgs = case is_miner_instance_addressation_enabled() of
+                         true  -> MinerExtraArgs0 ++ " -d " ++ integer_to_list(Instance);
+                         false -> MinerExtraArgs0
+                     end,
     EncodedHash =
         case get_hex_encoded_header() of
             true  -> hex_string(Hash);
