@@ -208,10 +208,10 @@ generate_int(Hash, Nonce, Target, MinerBin, MinerExtraArgs) ->
                       {env, [{"SHELL", "/bin/sh"}]},
                       monitor],
     Options =
-        case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"nice">>]) of
-            {ok, Niceness} -> DefaultOptions ++ [{nice, Niceness}];
-            undefined -> DefaultOptions
-        end,
+      case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"nice">>]) of
+          {ok, Niceness} -> DefaultOptions ++ [{nice, Niceness}];
+          undefined -> DefaultOptions
+      end,
     try exec:run(Cmd, Options) of
         {ok, _ErlPid, OsPid} ->
             wait_for_result(#state{os_pid = OsPid,
@@ -278,7 +278,7 @@ verify_proof_(Header, Solution, EdgeBits) ->
                       Uv0 = sipnode(K0, K1, K2, K3, N, 0, EdgeMask),
                       Uv1 = sipnode(K0, K1, K2, K3, N, 1, EdgeMask),
                       {Xor0C bxor Uv0, Xor1C bxor Uv1, N, [{Uv0, Uv1} | UvsC]}
-              end, {16#0, 16#0, -1, []}, Solution),
+               end, {16#0, 16#0, -1, []}, Solution),
         case Xor0 bor Xor1 of
             0 ->
                 %% check cycle
@@ -301,22 +301,22 @@ sipnode(K0, K1, K2, K3, Proof, UOrV, EdgeMask) ->
     (SipHash bsl 1) bor UOrV.
 
 check_cycle(Nodes0) ->
-    Nodes = lists:keysort(2, Nodes0),
-    {Evens0, Odds} = lists:unzip(Nodes),
-    Evens  = lists:sort(Evens0), %% Odd nodes are already sorted...
-    UEvens = lists:usort(Evens),
-    UOdds  = lists:usort(Odds),
-    %% Check that all nodes appear exactly twice (i.e. each node has
-    %% exactly two edges).
-    case length(UEvens) == (?PROOFSIZE div 2) andalso
+  Nodes = lists:keysort(2, Nodes0),
+  {Evens0, Odds} = lists:unzip(Nodes),
+  Evens  = lists:sort(Evens0), %% Odd nodes are already sorted...
+  UEvens = lists:usort(Evens),
+  UOdds  = lists:usort(Odds),
+  %% Check that all nodes appear exactly twice (i.e. each node has
+  %% exactly two edges).
+  case length(UEvens) == (?PROOFSIZE div 2) andalso
         length(UOdds) == (?PROOFSIZE div 2) andalso
         UOdds == Odds -- UOdds andalso UEvens == Evens -- UEvens of
-        false ->
-            {error, ?POW_BRANCH};
-        true  ->
-            [{X0, Y0}, {X1, Y0} | Nodes1] = Nodes,
-            check_cycle(X0, X1, Nodes1)
-    end.
+      false ->
+          {error, ?POW_BRANCH};
+      true  ->
+          [{X0, Y0}, {X1, Y0} | Nodes1] = Nodes,
+          check_cycle(X0, X1, Nodes1)
+  end.
 
 %% If we reach the end in the last step everything is fine
 check_cycle(X, X, []) ->
@@ -339,9 +339,9 @@ find_node(X, [{X, Y}, {X1, Y} | Nodes], Acc) ->
 find_node(X, [{X1, Y}, {X, Y} | Nodes], Acc) ->
     {X, X1, Nodes ++ Acc};
 find_node(X, [{X, _Y} | _], _Acc) ->
-    {error, ?POW_DEAD_END};
+  {error, ?POW_DEAD_END};
 find_node(X, [N1, N2 | Nodes], Acc) ->
-    find_node(X, Nodes, [N1, N2 | Acc]).
+  find_node(X, Nodes, [N1, N2 | Acc]).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -384,7 +384,7 @@ pack_header_and_nonce(Hash, Nonce) when byte_size(Hash) == 32 ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec wait_for_result(#state{}) ->
-                             {'ok', aec_pow:nonce(), pow_cuckoo_solution()} | {'error', term()}.
+            {'ok', aec_pow:nonce(), pow_cuckoo_solution()} | {'error', term()}.
 wait_for_result(#state{os_pid = OsPid,
                        buffer = Buffer} = State) ->
     receive
@@ -448,12 +448,12 @@ handle_fragmented_lines(Str, Buffer) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec parse_generation_result(list(string()), #state{}) ->
-                                     {'ok', Nonce :: aec_pow:nonce(), Solution :: pow_cuckoo_solution()} |
-                                     {'error', term()}.
+            {'ok', Nonce :: aec_pow:nonce(), Solution :: pow_cuckoo_solution()} |
+            {'error', term()}.
 parse_generation_result([], State) ->
     wait_for_result(State);
 parse_generation_result(["Solution" ++ NonceValuesStr | Rest], #state{os_pid = OsPid,
-                                                                      target = Target} = State) ->
+                                                                 target = Target} = State) ->
     [NonceStr | SolStrs] =  string:tokens(NonceValuesStr, " "),
     Soln = [list_to_integer(V, 16) || V <- SolStrs],
     case {length(Soln), test_target(Soln, Target)} of
@@ -526,7 +526,7 @@ node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits >  0 -> 4.
 %% is restricted to be under the target value (0 < target < 2^256).
 %%------------------------------------------------------------------------------
 -spec test_target(Soln :: pow_cuckoo_solution(), Target :: aec_pow:sci_int()) ->
-                         boolean().
+                             boolean().
 test_target(Soln, Target) ->
     test_target(Soln, Target, get_node_size()).
 
