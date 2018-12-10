@@ -780,7 +780,7 @@ retry_mining(S = #state { key_block_candidates = Candidates}, HeaderBin) when is
             Candidates1 = lists:keyreplace(HeaderBin, 1, Candidates, {HeaderBin, C#candidate{refs = N - 1}}),
             create_key_block_candidate(S#state{key_block_candidates = Candidates1})
     end;
-retry_mining(S, _) ->
+retry_mining(S = #state {key_block_candidates = undefined}, _) ->
     start_mining(S).
 
 bump_nonce(C = #candidate{ nonce = N }) ->
