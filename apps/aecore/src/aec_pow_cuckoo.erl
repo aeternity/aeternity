@@ -71,7 +71,7 @@
 %%  Very slow below 3 threads, not improving significantly above 5, let us take 5.
 %%------------------------------------------------------------------------------
 -spec generate(Data :: aec_hash:hashable(), Target :: aec_pow:sci_int(),
-               Nonce :: aec_pow:nonce(), non_neg_integer()) -> aec_pow:pow_result().
+               Nonce :: aec_pow:nonce(), aec_pow:miner_instance()) -> aec_pow:pow_result().
 generate(Data, Target, Nonce, MinerInstance) when Nonce >= 0,
                                                   Nonce =< ?MAX_NONCE ->
     %% Hash Data and convert the resulting binary to a base64 string for Cuckoo

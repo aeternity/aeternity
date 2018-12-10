@@ -26,9 +26,8 @@
                     micro_block_cycle             :: integer()
                     }).
 
--type miner_instance()  :: non_neg_integer().
 -type instance_state()  :: pid() | 'available'.
--type miner_instances() :: list({miner_instance(), instance_state()}).
+-type miner_instances() :: list({aec_pow:miner_instance(), instance_state()}).
 
 -record(state, {key_block_candidates              :: list({candidate_hash(), #candidate{}}) | 'undefined',
                 micro_block_candidate             :: #candidate{} | 'undefined',

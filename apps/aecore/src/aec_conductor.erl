@@ -731,11 +731,11 @@ bump_nonce(C = #candidate{ nonce = N }) ->
     C#candidate{ nonce = aec_pow:next_nonce(N) }.
 
 handle_mining_reply(_Reply, #state{key_block_candidates = undefined} = State) ->
-    %% Something invalidated the block candidates already
+    %% Something invalidated the block candidates already.
     start_mining(State);
 handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
     Candidates = State#state.key_block_candidates,
-    %% Check that the solution is for one of the valid candidates
+    %% Check that the solution is for one of the valid candidates.
     case proplists:get_value(HeaderBin, Candidates) of
         #candidate{block = CandidateBlock} ->
             aec_metrics:try_update([ae,epoch,aecore,mining,blocks_mined], 1),
@@ -755,7 +755,7 @@ handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
     end;
 handle_mining_reply({{error, no_solution}, HeaderBin}, State) ->
     aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
-    epoch_mining:debug("Failed to mine block, no solution retrying."),
+    epoch_mining:debug("Failed to mine block, no solution; retrying."),
     retry_mining(State, HeaderBin);
 handle_mining_reply({{error, {runtime, Reason}}, HeaderBin}, State) ->
     aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
@@ -767,9 +767,10 @@ handle_mining_reply({{error, {runtime, Reason}}, HeaderBin}, State) ->
 %%%===================================================================
 %%% Retry mining when we failed to find a solution.
 
-retry_mining(S = #state{key_block_candidates = [{HeaderBin, _Candidate} | _Candidates]}, HeaderBin) ->
-    start_mining(S);
-retry_mining(S = #state {key_block_candidates = Candidates}, HeaderBin) when is_list(Candidates) ->
+retry_mining(S = #state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]}, HeaderBin) ->
+    Candidate1 = Candidate#candidate{refs = Candidate#candidate.refs - 1},
+    start_mining(S#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]});
+retry_mining(S = #state{key_block_candidates = Candidates}, HeaderBin) when is_list(Candidates) ->
     case proplists:get_value(HeaderBin, Candidates) of
         undefined ->
             create_key_block_candidate(S);
@@ -779,7 +780,7 @@ retry_mining(S = #state {key_block_candidates = Candidates}, HeaderBin) when is_
             Candidates1 = lists:keyreplace(HeaderBin, 1, Candidates, {HeaderBin, C#candidate{refs = N - 1}}),
             create_key_block_candidate(S#state{key_block_candidates = Candidates1})
     end;
-retry_mining(S = #state {key_block_candidates = undefined}, _) ->
+retry_mining(S = #state{key_block_candidates = undefined}, _) ->
     start_mining(S).
 
 %%%===================================================================
