@@ -272,7 +272,7 @@ verify_proof_(Header, Solution, EdgeBits) ->
         end
     catch
         throw:{error, Reason} ->
-            epoch_pow_cuckoo:error("Proof verification failed for ~p: ~p", [Solution, Reason]),
+            epoch_pow_cuckoo:info("Proof verification failed for ~p: ~p", [Solution, Reason]),
             false
     end.
 
