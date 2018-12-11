@@ -64,11 +64,12 @@ Assuming configuration file location is `~/.aeternity/myepoch.yaml`:
 
 To start a docker node and join the testnet run:
 ```bash
-docker run -d --name epoch_node0 -p 3013:3013 \
-    -v ~/.aeternity/myepoch.yaml:/home/epoch/myepoch.yaml \
-    -e EPOCH_CONFIG=/home/epoch/myepoch.yaml \
+docker run -d --name epoch_node0 -P \
+    -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml \
     aeternity/epoch
 ```
+
+**Please note that it will expose all docker container ports to the host machine**
 
 Verify the node is running:
 ```bash
@@ -79,9 +80,8 @@ curl localhost:3013/v2/blocks/top
 
 Arguments can also be passed to epoch node, for example to enable API debug endpoints:
 ```bash
-docker run -d -p 3013:3013 \
-    -v ~/.aeternity/myepoch.yaml:/home/epoch/myepoch.yaml \
-    -e EPOCH_CONFIG=/home/epoch/myepoch.yaml \
+docker run -d -P \
+    -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml \
     aeternity/epoch -aehttp enable_debug_endpoints true
 ```
 
@@ -110,12 +110,10 @@ To persist blockchain data and node keys between container runs, use [Docker vol
 
 
 ```bash
-docker run -d -p 3013:3013 \
-    -v ~/.aeternity/myepoch.yaml:/home/epoch/myepoch.yaml \
-    -e EPOCH_CONFIG=/home/epoch/myepoch.yaml \
+docker run -d -P \
+    -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml \
     --hostname node0 \
     -v ~/.aeternity/db:/home/epoch/node/data/mnesia \
-    -v ~/.aeternity/keys:/home/epoch/node/keys \
     aeternity/epoch
 ```
 
