@@ -11,6 +11,7 @@
          get/2,
          lookup/2,
          new_with_backend/1,
+         gc_old_nodes/1,
          enter/2]).
 
 %% API - Merkle tree
@@ -58,6 +59,10 @@ empty_with_backend() ->
 -spec new_with_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_backend(Hash) ->
     aeu_mtrees:new_with_backend(Hash, aec_db_backends:accounts_backend()).
+
+-spec gc_old_nodes(tree()) -> tree().
+gc_old_nodes(Tree) ->
+    aeu_mtrees:gc_old_nodes(Tree).
 
 -spec get(aec_keys:pubkey(), tree()) -> aec_accounts:account().
 get(Pubkey, Tree) ->
