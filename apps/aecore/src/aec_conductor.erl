@@ -820,6 +820,8 @@ handle_micro_sleep_reply(ok, State) ->
 create_key_block_candidate(#state{keys_ready = false} = State) ->
     %% Keys are needed for creating a candidate
     wait_for_keys(State);
+create_key_block_candidate(#state{beneficiary = undefined} = State) ->
+    State;
 create_key_block_candidate(#state{top_block_hash = TopHash,
                                   beneficiary    = Beneficiary} = State) ->
     epoch_mining:info("Creating key block candidate on the top"),
