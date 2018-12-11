@@ -365,7 +365,6 @@
         "mining" : {
             "type" : "object",
             "additionalProperties" : false,
-            "required" : ["beneficiary"],
             "properties" : {
                 "autostart" : {
                     "description" :
@@ -379,7 +378,7 @@
                 },
                 "beneficiary" : {
                     "description" :
-                    "Public key of beneficiary account that will receive fees from mining on a node.",
+                    "Public key of beneficiary account that will receive fees from mining on a node. Required when 'mining.autostart' is set to 'true'.",
                     "type" : "string",
                     "example" : "ak_DummyPubKeyDoNotEverUse999999999999999999999999999",
                     "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*$"

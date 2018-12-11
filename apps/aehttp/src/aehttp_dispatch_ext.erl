@@ -166,6 +166,8 @@ handle_request_('GetPendingKeyBlock', _Req, _Context) ->
                 error ->
                     {404, [], #{reason => <<"Block not found">>}}
             end;
+        {error, beneficiary_not_configured} ->
+            {400, [], #{reason => <<"Beneficiary not configured">>}};
         {error, _} ->
             {404, [], #{reason => <<"Block not found">>}}
     end;

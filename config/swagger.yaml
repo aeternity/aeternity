@@ -144,6 +144,10 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/KeyBlock'
+        '400':
+          description: 'Beneficiary not configured'
+          schema:
+            $ref: '#/definitions/Error'
         '404':
           description: 'Block not found'
           schema:
@@ -1581,6 +1585,10 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/PubKey'
+        '404':
+          description: 'Beneficiary error'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /debug/accounts/node:
     get:

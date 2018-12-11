@@ -444,8 +444,12 @@ handle_request_('PostOracleRespond', #{'OracleRespondTx' := Req}, _Context) ->
     process_request(ParseFuns, Req);
 
 handle_request_('GetNodeBeneficiary', _, _Context) ->
-    {ok, Pubkey} = aec_conductor:get_beneficiary(),
-    {200, [], #{pub_key => aehttp_api_encoder:encode(account_pubkey, Pubkey)}};
+    case aec_conductor:get_beneficiary() of
+        {ok, PubKey} ->
+            {200, [], #{pub_key => aehttp_api_encoder:encode(account_pubkey, PubKey)}};
+        {error, Reason} ->
+            {404, [], #{reason =>  atom_to_binary(Reason, utf8)}}
+    end;
 
 handle_request_('GetNodePubkey', _, _Context) ->
     case aec_keys:pubkey() of
