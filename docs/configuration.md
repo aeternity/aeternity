@@ -84,12 +84,13 @@ For Roma network the network ID defaults to `ae_mainnet`.
 ## Instructions
 
 The instructions below assume that:
-* The node is deployed in directory `/tmp/node`;
+
+* The node is deployed in directory `~/aeternity/node`;
 * No custom peers are specified under the `peers` key in the config. If the `peers` key is undefined, the *Roma network* seed peers (built-in in the package source) are used.
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
-Create the file `/tmp/node/epoch.yaml` with the below content.
+Create the file `~/aeternity/node/epoch.yaml` with the below content.
 Make sure you amend the `sync` > `port` parameter with your actual value.
 
 ```yaml
@@ -132,7 +133,7 @@ Note that YAML files have significant whitespace so make sure that you indent th
 
 You can validate the configuration file before starting the node:
 ```bash
-cd /tmp/node
+cd ~/aeternity/node
 bin/epoch check_config epoch.yaml
 ```
 You shall read output like the following:
@@ -181,16 +182,16 @@ If you don't have your public key yet, you can generate a public/private key pai
 
 An alternative tool `keys_gen` for generating a public-private key pair **for testing purposes only** is included in the package.
 
-The key pair will be encrypted with a password that you shall pass to `keys_gen` tool (below assumes the node is deployed in directory `/tmp/node`).
-Generated public-private key pair will be located in `/tmp/node/generated_keys`, and public key is to be put in epoch configuration file (`mining` > `beneficiary` parameter).
+The key pair will be encrypted with a password that you shall pass to `keys_gen` tool (below assumes the node is deployed in directory `~/aeternity/node`).
+Generated public-private key pair will be located in `~/aeternity/node/generated_keys`, and public key is to be put in epoch configuration file (`mining` > `beneficiary` parameter).
 
-Do make sure you back up `/tmp/node/generated_keys` (and remember the password): if you destroy the node, you can setup a new node and use the same account (public key) as a beneficiary.
+Do make sure you back up `~/aeternity/node/generated_keys` (and remember the password): if you destroy the node, you can setup a new node and use the same account (public key) as a beneficiary.
 You shall not share the private key (or the password) with anyone.
 
 e.g.
 
 ```bash
-cd /tmp/node
+cd ~/aeternity/node
 bin/epoch keys_gen my_secret_password ## This way of generating a key-pair is only for testing purpose, use a proper wallet/mechanism for your mainnet tokens: e.g., [AirGap wallet](https://airgap.it/).
 ```
 ```

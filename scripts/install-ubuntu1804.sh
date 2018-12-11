@@ -17,7 +17,7 @@ fi
 
 RELEASE_FILE="https://github.com/aeternity/epoch/releases/download/v${RELEASE_VERSION}/epoch-${RELEASE_VERSION}-ubuntu-x86_64.tar.gz"
 TEMP_RELEASE_FILE=${TEMP_RELEASE_FILE:=/tmp/epoch.tgz}
-TARGET_DIR=${TARGET_DIR:=$HOME/epoch}
+TARGET_DIR=${TARGET_DIR:=$HOME/aeternity/node}
 EPOCH_CONFIG=${EPOCH_CONFIG:=$TARGET_DIR/epoch.yaml}
 
 echo -e "\nATTENTION: This script will delete the directory ${TARGET_DIR} if it exists. You should back up any contents before continuing.\n"

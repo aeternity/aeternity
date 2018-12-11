@@ -5,7 +5,7 @@ This document describes how to start your epoch node installed using a release b
 ## Assumptions
 
 The instructions below assume that:
-* The node is deployed in directory `/tmp/node`;
+* The node is deployed in directory `~/aeternity/node`;
 * beneficiary account is set under `mining` > `beneficiary` in the config (see [configuration documentation](configuration.md));
 * No custom peers are specified under the `peers:` key in the config. If the `peers:` key is undefined, the *testnet* seed peers (built-in in the package source) are used.
 * The external HTTP endpoint of the user API of the node can be contacted at 127.0.0.1 port 3013.
@@ -22,7 +22,7 @@ When it starts, the node checks the maximum number of open files (`ulimit -n`) a
 
 Start the node:
 ```bash
-cd /tmp/node
+cd ~/aeternity/node
 bin/epoch start
 ```
 
@@ -37,14 +37,14 @@ If the node is unresponsive, inspect the `log` directory for errors.
 
 Back up the peer key pair:
 ```bash
-cp -pr /tmp/node/keys ~/my_epoch_keys
+cp -pr ~/aeternity/node/keys ~/my_epoch_keys
 ```
 
 ### Verify that node mines
 
 Inspect the mining log file of the node:
 ```bash
-less /tmp/node/log/epoch_mining.log
+less ~/aeternity/node/log/epoch_mining.log
 ```
 
 If the node is mining, you shall read log entries like the following:

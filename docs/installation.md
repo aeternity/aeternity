@@ -62,14 +62,14 @@ In case you have installed either of them in a non-default path, you could use s
 
 ## Deploy node
 
-In the instructions below, the node is deployed in directory `/tmp/node`: you may prefer to deploy the node in an alternative (and less ephemeral) location - e.g. a `node` directory inside your home directory - by amending the instructions accordingly.
+In the instructions below, the node is deployed in directory `~/aeternity/node`: you may prefer to deploy the node in an alternative location by amending the instructions accordingly.
 It is recommended that the partition where the node directory is has at least 10 GB free: this is needed for the chain and the log files.
 
 Open a Terminal window or get to the command line.
 
 Create a directory and unpack the downloaded package (you may need to amend the directory and/or file name of the package):
 ```bash
-mkdir /tmp/node
-cd /tmp/node
+mkdir -p ~/aeternity/node
+cd ~/aeternity/node
 tar xf ~/Downloads/epoch-1.1.0-osx-10.13.6.tar.gz
 ```
