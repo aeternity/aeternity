@@ -84,6 +84,43 @@ After configuration could be started (or restarted if it's already running):
 ~/node/bin/epoch start
 ```
 
+### Mining efficiency
+
+There is quite a bit of overhead starting the GPU miner, thus running single
+mining attempts is not the best option. Therefore there is the configuration
+option `repeats: N` which will make multiple mining attempts (with different
+nonces) in one miner context. However, this option has to be used with CAUTION,
+the total run-time of the miner should preferrably not exceed 5 seconds. The
+reason being that with the short block interval of BitCoin NG micro blocks (3
+seconds) - we risk mining on old blocks otherwise. (And thereby missing out on
+the reward collected from the transaction fees in the micro blocks.)
+
+To fine tune the parameter, you should try running the miner in a shell
+```
+$ time ~/node/lib/aecuckoo-0.1.0/priv/bin/cuda29 -r 5
+...
+real 0m4.634s
+user ...
+sys  ...
+```
+Here it took 4.6s, which is rather close to 5s, so maybe `4` is the best value
+for this node.
+
+Repeats are configured like this:
+```yaml
+mining:
+    cuckoo:
+        miner:
+            executable: cuda29
+            repeats: 4
+            extra_args: ""
+            edge_bits: 29
+            hex_encoded_header: true
+```
+
+**Don't be tempted to use `-r` as `extra_args`** the `epoch` node will **not**
+handle nonces correctly in this case.
+
 ### Multiple GPU devices
 
 The address of a GPU device used by the miner can be set with `-d` argument, for example to set device with address 0:

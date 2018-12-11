@@ -33,7 +33,7 @@ groups() ->
     ].
 
 init_per_group(smoke_tests_15, Config) ->
-    [{nonce, 28} | Config];
+    [{nonce, 91} | Config];
 init_per_group(mean15, Config) ->
     [{miner, 'mean15-generic'} | Config];
 init_per_group(lean15, Config) ->
@@ -49,13 +49,13 @@ smoke_test(Config) ->
 
     LibDir = ?TEST_MODULE:lib_dir(),
     MinBin = ?TEST_MODULE:bin(atom_to_list(Miner)),
-    Cmd = io_lib:format("'~s' -n ~B | grep '^Solution '", [MinBin, Nonce]),
+    Cmd = io_lib:format("'~s' -n ~B | grep '^Solution'", [MinBin, Nonce]),
     ct:log("Command: ~s~n", [Cmd]),
     CmdRes = lib:nonl(os:cmd(Cmd)),
     ct:log("Command result: ~s~n", [CmdRes]),
 
     Solution = lists:map(fun(X) -> list_to_integer(X, 16) end, tl(string:tokens(CmdRes, " "))),
-    HeaderEquivalent = <<0:((80-4)*8), Nonce:32/little-unsigned-integer>>,
+    HeaderEquivalent = <<0:(44*8), (base64:encode(<<Nonce:64/little-unsigned-integer>>))/binary, 0:(24*8)>>,
 
     42 = length(Solution),
     true = aec_pow_cuckoo:verify_proof_(HeaderEquivalent, Solution, 15),
