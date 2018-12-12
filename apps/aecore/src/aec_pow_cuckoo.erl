@@ -41,7 +41,7 @@
 -define(error(F, A), epoch_pow_cuckoo:error(F, A)).
 
 -record(state, {os_pid :: integer() | undefined,
-                port :: pid() | undefined,
+                port :: port() | undefined,
                 buffer = [] :: string(),
                 target :: aec_pow:sci_int() | undefined,
                 parser :: output_parser_fun()}).
@@ -589,14 +589,9 @@ parse_nonce_str(S) ->
 %%------------------------------------------------------------------------------
 -spec stop_execution(integer()) -> ok.
 stop_execution(OsPid) ->
-    case exec_kill(OsPid) of
-        {error, Reason} ->
-            ?debug("Failed to stop mining OS process ~p: ~p (may have already finished).",
-                   [OsPid, Reason]);
-        R ->
-            ?debug("Mining OS process ~p stopped successfully: ~p",
-                   [OsPid, R])
-    end.
+    exec_kill(OsPid),
+    ?debug("Mining OS process ~p stopped", [OsPid]),
+    ok.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -616,6 +611,7 @@ get_node_size() ->
 node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits > 31 -> 8;
 node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits >  0 -> 4.
 
+-spec exec_run(string(), string(), list(string())) -> {ok, Port :: port(), OsPid :: integer()}.
 exec_run(Cmd, Dir, Args) ->
     PortSettings = [
                     binary,
@@ -628,11 +624,17 @@ exec_run(Cmd, Dir, Args) ->
                     {cd, Dir}
                    ],
     PortName = {spawn_executable, os:find_executable(Cmd, Dir)},
-    Port = erlang:open_port(PortName, PortSettings),
-    {os_pid, OsPid} = erlang:port_info(Port, os_pid),
-    ?debug("External mining process started with OS pid ~p", [OsPid]),
-    {ok, Port, OsPid}.
+    try
+        Port = erlang:open_port(PortName, PortSettings),
+        {os_pid, OsPid} = erlang:port_info(Port, os_pid),
+        ?debug("External mining process started with OS pid ~p", [OsPid]),
+        {ok, Port, OsPid}
+    catch
+        C:E ->
+            {error, {port_error, {C, E}}}
+    end.
 
+-spec exec_kill(integer()) -> ok.
 exec_kill(OsPid) ->
     case is_unix() of
         true ->
@@ -643,6 +645,7 @@ exec_kill(OsPid) ->
             ok
     end.
 
+-spec is_unix() -> boolean().
 is_unix() ->
     case erlang:system_info(system_architecture) of
         "win32" ->
