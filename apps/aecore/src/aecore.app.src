@@ -41,6 +41,7 @@
     aechannel,
     aecontract,
     aens,
+    aefate,
     ranch
   ]},
   {env, [
