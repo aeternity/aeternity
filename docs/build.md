@@ -120,11 +120,11 @@ make prod-package
 
 Once the packaging is done, the package is created in the `_build/prod/rel/epoch/` directory, e.g. `_build/prod/rel/epoch/epoch-${VERSION:?}.tar.gz`.
 
-To deploy the package for example in `/tmp/node` one should just unarchive it to that directory:
+To deploy the package for example in `~/aeternity/node` one should just unarchive it to that directory:
 
 ```bash
-mkdir /tmp/node
-tar xf _build/prod/rel/epoch/epoch-${VERSION:?}.tar.gz -C /tmp/node
+mkdir -p ~/aeternity/node
+tar xf _build/prod/rel/epoch/epoch-${VERSION:?}.tar.gz -C ~/aeternity/node
 ```
 
 Make sure beneficiary account is set in configuration, as this is mandatory to successfully start a node.
@@ -134,7 +134,7 @@ See [configuration documentation](configuration.md) for configuration details.
 
 Then start the node:
 ```bash
-/tmp/node/bin/epoch start
+~/aeternity/node/bin/epoch start
 ```
 
 See [operation documentation](operation.md) for more details.
