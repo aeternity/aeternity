@@ -1173,7 +1173,7 @@ post_key_block(_CurrentBlockType, Config) ->
     ok.
 
 mine_key_block(HeaderBin, Target, Nonce, Attempts) when Attempts > 0 ->
-    case rpc(aec_mining, mine, [HeaderBin, Target, Nonce]) of
+    case rpc(aec_mining, mine, [HeaderBin, Target, Nonce, 0]) of
         {ok, {_Nonce, _PowEvidence}} = Res ->
             Res;
         {error, no_solution} ->

@@ -78,7 +78,19 @@ mining:
             hex_encoded_header: true
 ```
 
-After configuration could be started (or restarted if it's already running):
+If you have multiple GPU cards they can be addressed using the `-d <n>` flag with the cuda-miner. So if you want to use multiple cards
+for GPU mining you can add another configuration option (for example if you have two (2) GPU-cards):
+```
+mining:
+    cuckoo:
+        miner:
+            instances: 2
+```
+
+*Note:* You should not have `-d` in `extra_args` if you are using the `instances` configuration option, it will be added automatically
+by the node.
+
+After updating the configuration, the node should be started (or restarted if it's already running):
 
 ```
 ~/node/bin/epoch start

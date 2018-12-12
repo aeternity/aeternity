@@ -22,8 +22,9 @@
 -behaviour(aec_pow).
 
 
--export([generate/3,
+-export([generate/4,
          get_miner_repeats/0,
+         get_miner_instances/0,
          verify/4]).
 
 
@@ -33,7 +34,7 @@
 -endif.
 -include("pow.hrl").
 
--define(DEFAULT_CUCKOO_ENV, {"mean29-generic", "-t 1", 29, false, 1}).
+-define(DEFAULT_CUCKOO_ENV, {"mean29-generic", "-t 1", 29, false, 1, 1}).
 
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
 -define(info(F, A),  epoch_pow_cuckoo:info(F, A)).
@@ -46,7 +47,7 @@
 
 -type pow_cuckoo_solution() :: [integer()].
 -type output_parser_fun() :: fun((list(string()), #state{}) ->
-                                      {'ok', term(), term()} | {'error', term()}).
+                                        {'ok', term(), term()} | {'error', term()}).
 
 %%%=============================================================================
 %%% API
@@ -70,17 +71,16 @@
 %%  Very slow below 3 threads, not improving significantly above 5, let us take 5.
 %%------------------------------------------------------------------------------
 -spec generate(Data :: aec_hash:hashable(), Target :: aec_pow:sci_int(),
-               Nonce :: aec_pow:nonce()) -> aec_pow:pow_result().
-generate(Data, Target, Nonce) when Nonce >= 0,
-                                   Nonce =< ?MAX_NONCE ->
+               Nonce :: aec_pow:nonce(), aec_pow:miner_instance()) -> aec_pow:pow_result().
+generate(Data, Target, Nonce, MinerInstance) when Nonce >= 0,
+                                                  Nonce =< ?MAX_NONCE ->
     %% Hash Data and convert the resulting binary to a base64 string for Cuckoo
     %% Since this hash is purely internal, we don't use api encoding
     Hash   = aec_hash:hash(pow, Data),
     Hash64 = base64:encode_to_string(Hash),
     ?debug("Generating solution for data hash ~p and nonce ~p with target ~p.",
            [Hash, Nonce, Target]),
-
-    case generate_int(Hash64, Nonce, Target) of
+    case generate_int(Hash64, Nonce, Target, MinerInstance) of
         {ok, Nonce1, Soln} ->
             {ok, {Nonce1, Soln}};
         {error, no_value} ->
@@ -117,14 +117,28 @@ verify(Data, Nonce, Evd, Target) when is_list(Evd),
 %%------------------------------------------------------------------------------
 
 get_options() ->
-    {_, _, _, _, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
+    {_, _, _, _, _, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
 
 get_miner_repeats() ->
     case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"repeats">>]) of
         {ok, Repeats} -> Repeats;
         undefined ->
-            {_, _, _, _, Repeats} = get_options(),
+            {_, _, _, _, Repeats, _} = get_options(),
             Repeats
+    end.
+
+get_miner_instances() ->
+    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"instances">>]) of
+        {ok, Instances} -> Instances;
+        undefined ->
+            {_, _, _, _, _, Instances} = get_options(),
+            Instances
+    end.
+
+is_miner_instance_addressation_enabled() ->
+    case get_miner_instances() of
+        1 -> false;
+        N when N > 1 -> true
     end.
 
 get_miner_options() ->
@@ -136,7 +150,7 @@ get_miner_options() ->
         {{ok, BinB}, {ok, ExtraArgsB}} ->
             {binary_to_list(BinB), binary_to_list(ExtraArgsB)};
         {undefined, undefined} -> %% Both or neither - enforced by user config schema.
-            {Bin, ExtraArgs, _, _, _} = get_options(),
+            {Bin, ExtraArgs, _, _, _, _} = get_options(),
             {Bin, ExtraArgs}
     end.
 
@@ -145,7 +159,7 @@ get_edge_bits() ->
         {ok, EdgeBits} ->
             EdgeBits;
         undefined ->
-            {_, _, EdgeBits, _, _} = get_options(),
+            {_, _, EdgeBits, _, _, _} = get_options(),
             EdgeBits
     end.
 
@@ -154,18 +168,23 @@ get_hex_encoded_header() ->
         {ok, HexEncodedHeader} ->
             HexEncodedHeader;
         undefined ->
-            {_, _, _, HexEncodedHeader, _} = get_options(),
+            {_, _, _, HexEncodedHeader, _, _} = get_options(),
             HexEncodedHeader
     end.
 
 %%------------------------------------------------------------------------------
 %% Proof of Work generation: use the hash provided
 %%------------------------------------------------------------------------------
--spec generate_int(Hash :: string(), Nonce :: aec_pow:nonce(), Target :: aec_pow:sci_int()) ->
-            {'ok', Nonce2 :: aec_pow:nonce(), Solution :: pow_cuckoo_solution()} |
-            {'error', term()}.
-generate_int(Hash, Nonce, Target) ->
-    {MinerBin, MinerExtraArgs} = get_miner_options(),
+-spec generate_int(Hash :: string(), Nonce :: aec_pow:nonce(),
+                   Target :: aec_pow:sci_int(), Instance :: non_neg_integer()) ->
+                          {'ok', Nonce2 :: aec_pow:nonce(), Solution :: pow_cuckoo_solution()} |
+                          {'error', term()}.
+generate_int(Hash, Nonce, Target, Instance) ->
+    {MinerBin, MinerExtraArgs0} = get_miner_options(),
+    MinerExtraArgs = case is_miner_instance_addressation_enabled() of
+                         true  -> MinerExtraArgs0 ++ " -d " ++ integer_to_list(Instance);
+                         false -> MinerExtraArgs0
+                     end,
     EncodedHash =
         case get_hex_encoded_header() of
             true  -> hex_string(Hash);
@@ -526,4 +545,3 @@ solution_to_binary([], _Bits, Acc) ->
     Acc;
 solution_to_binary([H | T], Bits, Acc) ->
     solution_to_binary(T, Bits, <<Acc/binary, H:Bits>>).
-

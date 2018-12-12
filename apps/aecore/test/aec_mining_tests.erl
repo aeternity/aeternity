@@ -41,7 +41,7 @@ mine_block_test_() ->
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
 
                  Target = aec_blocks:target(BlockCandidate),
-                 {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(HeaderBin, Target, Nonce),
+                 {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(HeaderBin, Target, Nonce, 0),
 
                  Block = aec_blocks:set_nonce_and_pow(BlockCandidate, Nonce1, Evd),
 
@@ -62,7 +62,7 @@ mine_block_test_() ->
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
                  ?assertEqual({error, no_solution},
-                              ?TEST_MODULE:mine(HeaderBin, Target, Nonce))
+                              ?TEST_MODULE:mine(HeaderBin, Target, Nonce, 0))
          end}}
       ]}.
 
