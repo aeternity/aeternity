@@ -11,7 +11,7 @@
          make_shortcut/1,
          shortcut_dir/1]).
 
--export([cmd/3, cmd/4,
+-export([cmd/3, cmd/4, cmd/5,
          cmd_res/1,
          set_env/4,
          unset_env/3]).
@@ -163,7 +163,7 @@ start_node(N, Config) ->
     MyDir = filename:dirname(code:which(?MODULE)),
     ConfigFilename = proplists:get_value(config_name, Config, "default"),
     Flags = ["-pa ", MyDir, " -config ./" ++ ConfigFilename],
-    cmd("epoch", node_shortcut(N, Config) ++ "/bin", ["start"],
+    cmd("epoch", node_shortcut(N, Config), "bin", ["start"],
         [
          {"ERL_FLAGS", Flags},
          {"EPOCH_CONFIG", "../data/epoch.json"},
@@ -172,7 +172,7 @@ start_node(N, Config) ->
         ]).
 
 stop_node(N, Config) ->
-    cmd("epoch", node_shortcut(N, Config) ++ "/bin", ["stop"]).
+    cmd("epoch", node_shortcut(N, Config), "bin", ["stop"]).
 
 get_node_db_config(Rpc) when is_function(Rpc, 3) ->
     IsDbPersisted = Rpc(application, get_env, [aecore, persist, false]),
@@ -616,21 +616,25 @@ symlink(From, To) ->
     ok.
 
 cmd(Cmd, Dir, Args) ->
-    cmd(Cmd, Dir, Args, []).
-cmd(C, Dir, Args, Env) ->
+    cmd(Cmd, Dir, ".", Args, []).
+cmd(Cmd, Dir, BinDir, Args) ->
+    cmd(Cmd, Dir, BinDir, Args, []).
+cmd(C, Dir, BinDir, Args, Env) ->
     Cmd = binary_to_list(iolist_to_binary(C)),
-    CmdRes = cmd_run(Cmd, Dir, Args, Env),
-    {Fmt, Args} =
+    CmdRes = cmd_run(Cmd, Dir, BinDir, Args, Env),
+    {Fmt, FmtArgs} =
         case cmd_res(CmdRes) of
-            {Out, "", []}    -> {"> ~s~n~s", [Cmd, Out]};
-            {Out, Err, []}   -> {"> ~s~n~s~nERR: ~n", [Cmd, Out, Err]};
-            {Out, Err, Rest} ->
-                {"> ~s~n~s~nERR: ~s~nRest = ~p", [Cmd, Out, Err, Rest]}
+            {0, Out, "", []} ->
+                {"> ~s~n~s", [Cmd, Out]};
+            {ErrCode, Out, Err, []} ->
+                {"> ~s~n~s~nERR ~p: ~s~n", [Cmd, Out, ErrCode, Err]};
+            {ErrCode, Out, Err, Rest} ->
+                {"> ~s~n~s~nERR ~p: ~s~nRest = ~p", [Cmd, Out, ErrCode, Err, Rest]}
         end,
-    ct:log(Fmt, Args),
+    ct:log(Fmt, FmtArgs),
     CmdRes.
 
-cmd_run(Cmd, Dir, Args, Env) ->
+cmd_run(Cmd, Dir, BinDir, Args, Env) ->
     Opts = [
             {env, Env},
             exit_status,
@@ -643,23 +647,24 @@ cmd_run(Cmd, Dir, Args, Env) ->
             use_stdio
            ],
     ct:log("Running command ~p in ~p with ~p", [Cmd, Dir, Args]),
-    Port = erlang:open_port({spawn_executable, os:find_executable(Cmd, Dir)}, Opts),
+    Bin = os:find_executable(Cmd, filename:join(Dir, BinDir)),
+    Port = erlang:open_port({spawn_executable, Bin}, Opts),
     WaitFun = fun(Fun, P, Res) ->
                      receive
                          {P, {exit_status, 0}} ->
-                             {ok, Res};
+                             {ok, 0, Res};
                          {P, {exit_status, Err}} ->
-                             {error, Err};
+                             {error, Err, Res};
                          {P, {data, Msg}} ->
                              Fun(Fun, P, Res ++ Msg)
                      end
              end,
     WaitFun(WaitFun, Port, "").
 
-cmd_res({_, L}) ->
-    {Err,_L1} = take(stderr, L, ""),
-    {Out,L2} = take(stdout, L, ""),
-    {Out, Err, L2}.
+cmd_res({_, Code, L}) ->
+    {Err, _L1} = take(stderr, L, ""),
+    {Out, L2} = take(stdout, L, ""),
+    {Code, Out, Err, L2}.
 
 take(K, L, Def) ->
     case lists:keytake(K, 1, L) of
