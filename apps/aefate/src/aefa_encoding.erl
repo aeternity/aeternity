@@ -5,10 +5,9 @@
 -module(aefa_encoding).
 
 -export([ deserialize/1
-        , serialize/1]).
-
-%% Very experimental:
--compile([export_all]).
+        , serialize/1
+        , types_to_typereps/1
+        , deserialize_typereps/2]).
 
 %% Definition of tag scheme.
 %% This has to follow the protocol specification.
@@ -33,7 +32,7 @@
 -define(FALSE        , 2#01111111). %% 0111
 %%                                  %% 1000     FREE
 -define(ADDRESS      , 2#10011111). %% 1001     [32 bytes]
--define(VARIANT      , 2#10101111). %% 1010     RLP encoded size + [RLP encoded size + [typereps]]
+-define(VARIANT      , 2#10101111). %% 1010     encoded tag + encoded values
 -define(NIL          , 2#10111111). %% 1011     Empty list
 %%                                  %% 1100     FREE
 -define(EMPTY_MAP    , 2#11011111). %% 1101
@@ -147,6 +146,7 @@ deserialize_type_parameters(N, <<S,Es/binary>>) ->
 %% Serialize
 %% Fate Data -> binary()
 %% Note: The type Fate Data is not final yet.
+-spec serialize(aefa_data:fate_type()) -> binary().
 serialize(true)        -> <<?TRUE>>;
 serialize(false)       -> <<?FALSE>>;
 serialize([])          -> <<?NIL>>;     %% ! Untyped
@@ -219,6 +219,7 @@ serialize_integer(I) when is_integer(I) ->
        Sign =:= ?POS_SIGN -> <<?POS_BIG_INT, (rlp_integer(Abs - ?SMALL_INT_SIZE))/binary>>
     end.
 
+-spec deserialize(binary()) -> aefa_data:fate_type().
 deserialize(B) ->
     {T, <<>>} = deserialize2(B),
     T.
@@ -289,15 +290,6 @@ deserialize2(<<?VARIANT, Rest/binary>>) ->
     {{tuple, Values}, Rest2} = deserialize2(Rest1),
     {{variant, Tag, Values}, Rest2}.
 
-deserialize_variant_cases(0, Rest) ->
-    {[], Rest};
-deserialize_variant_cases(N, Rest) ->
-    {BSize, Rest1} = aeu_rlp:decode_one(Rest),
-    Size = binary:decode_unsigned(BSize),
-    {TList, Rest2} = deserialize_typereps(Size, Rest1),
-    {CaseList, Rest3} = deserialize_variant_cases(N-1, Rest2),
-    {[TList|CaseList], Rest3}.
-
 deserialize_typereps(0, Rest) ->
     {[], Rest};
 deserialize_typereps(N, Rest) ->
@@ -306,14 +298,8 @@ deserialize_typereps(N, Rest) ->
     {[T|List], Rest3}.
 
 
-
-%% variant type : 10101111 + RLP encoded size + [RLP encoded size + [typereps]]
-
 insert_kv([], M) -> M;
 insert_kv([K,V|R], M) -> insert_kv(R, maps:put(K, V, M)).
-
-
-
 
 deserialize_elements(0, Rest) ->
     {[], Rest};
@@ -321,10 +307,3 @@ deserialize_elements(N, Es) ->
     {E, Rest} = deserialize2(Es),
     {Tail, Rest2} = deserialize_elements(N-1, Rest),
     {[E|Tail], Rest2}.
-
-
-
-
-
-
-
