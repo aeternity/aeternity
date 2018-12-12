@@ -142,10 +142,10 @@ is_miner_instance_addressation_enabled() ->
     end.
 
 get_miner_options() ->
-    {ok, BinGroup} =
-        aeu_env:find_config(
-          [<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"executable_group">>],
-          [user_config, schema_default]),
+    {ok, BinGroup} = {ok, <<"aecuckoo">>},
+%%        aeu_env:find_config(
+%%          [<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"executable_group">>],
+%%          [user_config, schema_default]),
     {MinerBin, MinerExtraArgs} =
         case {aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"executable">>]),
               aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"extra_args">>])}
