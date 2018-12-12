@@ -1,0 +1,10 @@
+mining:
+    autostart: true
+    beneficiary: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999"
+    cuckoo:
+        miner:
+            executable_group: aecuckooprebuilt
+            executable: cuda29
+            extra_args: ""
+            edge_bits: 29
+            hex_encoded_header: true

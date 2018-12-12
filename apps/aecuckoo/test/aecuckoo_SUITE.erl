@@ -44,10 +44,8 @@ end_per_group(_Group, _Config) ->
 
 smoke_test(Config) ->
     Nonce = ?config(nonce, Config),
-    ExpectedVerifierCycleHash = ?config(cyclehash, Config),
     Miner = ?config(miner, Config),
 
-    LibDir = ?TEST_MODULE:lib_dir(),
     MinBin = ?TEST_MODULE:bin(atom_to_list(Miner)),
     Cmd = io_lib:format("'~s' -n ~B | grep '^Solution'", [MinBin, Nonce]),
     ct:log("Command: ~s~n", [Cmd]),

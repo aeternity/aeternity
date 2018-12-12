@@ -119,6 +119,8 @@ mining:
     beneficiary: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999"
     cuckoo:
         miner:
+            # Group of executable binaries of the miner.
+            executable_group: aecuckoo
             # Executable binary of the miner.
             executable: mean29-generic
             # Extra arguments to pass to the miner executable binary.
