@@ -39,7 +39,6 @@
 -define(SHORT_STRING ,       2#01). %% xxxxxx0  [bytes], 0 < size < 64
 %%                                           11  Set below
 -define(SHORT_LIST   ,     2#0011). %% xxxx00   [encoded elements],  0 < length < 16
-%%                                     000001   FREE
 %%                                     xxxx01   FREE
 -define(LONG_TUPLE   , 2#00001011). %% 000010   RLP encoded (size - 16) + [encoded elements],
 -define(SHORT_TUPLE  ,     2#1011). %% xxxx10   [encoded elements], 0  <  size < 16
@@ -133,7 +132,6 @@ serialize(?FATE_VARIANT(Tag, Values)) when 0 =< Tag
 
 
 %% -----------------------------------------------------
-
 
 rlp_integer(S) when S >= 0 ->
     aeser_rlp:encode(binary:encode_unsigned(S)).

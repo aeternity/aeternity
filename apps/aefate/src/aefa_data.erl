@@ -13,6 +13,7 @@
 -type fate_map()     :: ?FATE_MAP_T.
 -type fate_string()  :: ?FATE_STRING_T.
 -type fate_address() :: ?FATE_ADDRESS_T.
+
 -type fate_variant() :: ?FATE_VARIANT_T.
 
 -type fate_void()    :: ?FATE_VOID_T.
@@ -36,6 +37,7 @@
       | fate_void(). %% Not sure we need this.
 
 -export_type([fate_type/0]).
+
 -export([ make_integer/1
         , make_boolean/1
         , make_list/1
