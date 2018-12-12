@@ -231,14 +231,14 @@ types_to_typereps(Types) ->
 serialize_integer(S) -> aeu_rlp:encode(binary:encode_unsigned(S)).
 
 
-serialize_pos_int(I) when is_integer(I), I > 0 ->
+serialize_pos_int(I) when is_integer(I), I >= 0 ->
     if I < 64 ->
             <<0:1, I:6, 0:1>>;
        true ->
             <<?PINT, (serialize_integer(I))/binary>>
     end.
 
-serialize_neg_int(I) when is_integer(I), I >0 ->
+serialize_neg_int(I) when is_integer(I), I > 0 ->
     if I < 64 ->
             <<1:1, I:6, 0:1>>;
        true ->
