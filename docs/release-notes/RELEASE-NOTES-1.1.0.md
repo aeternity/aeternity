@@ -2,9 +2,17 @@
 
 [This][this-release] is a maintenance release.
 It:
-* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
-
-TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+* Fine tunes the severity of the log message in case of invalid request on the user HTTP API - from warning to info.
+* Details the Sophia compiler error reason, returned in the HTTP response body of path `/debug/contracts/code/compile`. This is a backward compatible enhancement of the user HTTP API.
+* Fine tunes the validation of user API requests. The request body must be smaller than approx. 5 MB (was 8 MB) and must be received within 10 s (was 15 s).
+* Fine tunes the severity of the log message in case of unexpected validation result of user HTTP API request - from error to warning.
+* Adds `network_id` to `/status` endpoint. This is a backward compatible enhancement of the user HTTP API.
+* Disables mining autostart by default, and makes beneficiary optional when mining is not enabled.
+* Re-designs how the node interacts with the miner. Passing the nonce as a separate option.
+* Introduces the `repeats` option to mining to allow the miner to make several attempts in one context.
+* Adds support for multiple mining workers inside the node. Also adds the configuration `instances: N` to allow
+  for multi (GPU) mining.
+* Ships Linux CUDA GPU miners (cuda29, lcuda29) in the Ubuntu release package.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v1.1.0
 
