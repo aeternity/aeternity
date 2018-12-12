@@ -7,56 +7,46 @@
 -export([ deserialize/1
         , serialize/1]).
 
-%% Very ecperimental:
+%% Very experimental:
 -compile([export_all]).
 
 %% Definition of tag scheme.
 %% This has to follow the protocol specification.
 
-%% small integer: sxxxxxx0 6 bit integer with sign bit
-%%                       1  Set below
-%% short string : xxxxxx01 (at least one x =/= 0) xxxxxx = byte array size + [bytes]
-%% string       : 00000001 + RLP encoded array
--define(NSTRING,2#00000001).
-%%                      11  Set below
-%% tuple        : xxxx1011 + [encoded elements] when 0 < size(tuple) < 16
--define(ITUPLE_SIZE, 16).
-%% tuple        : 00001011 + 1 byte size + [encoded elements]
--define(TUPLE,      2#1011).
-%% list         : xxxx1011 + typerep + [encoded elements],  0 < length < 16, xxxx = length
--define(ILIST_SIZE, 16).
-%% list         : 00000011 + typerep + encoded length + [encoded elements]
--define(LIST,       2#0011).
-%%                     111  Set below
-%%                xxxx0111 Free (16)
-%%                00001111 Free
-%%                10001111 Free
-%%                01001111 Free
-%%                11001111 Free
-%% map          : 00101111 + RLP encoded size + typerep(A) + typerep(B) + [encoded key, encoded value]
--define(MAP    ,2#00101111).
-%% variant type : 10101111 + RLP encoded size + [RLP encoded size + [typereps]]
--define(VARIANT,2#10101111).
-%% integer      : 10101111 + RLP encoded integer
--define(PINT   ,2#01101111).
-%% -integer     : 01101111 + RLP encoded integer
--define(NINT   ,2#11101111).
-%% long list    : 00011111 + typerep + RLP encoded length + [Elements]
--define(LLIST,  2#00011111).
-%% address      : 10011111 + [32 bytes]
--define(ADDRESS,2#10011111).
-%% ""           : 01011111
--define(EMPTYS, 2#01011111).
-%% #{}          : 11011111
--define(EMPTYM, 2#11011111).
-%% {}           : 00111111
--define(TUPLE0, 2#00111111).
-%% nil          : 10111111
--define(NIL,    2#10111111).
-%% false        : 01111111
--define(FALSE,  2#01111111).
-%% true         : 11111111
--define(TRUE,   2#11111111).
+-define(SMALL_INT    ,        2#0). %% sxxxxxx0 6 bit integer with sign bit
+%%                                            1 Set below
+-define(LONG_STRING  , 2#00000001). %% 0000000  RLP encoded array, size >= 64
+-define(SHORT_STRING ,       2#01). %% xxxxxx0  [bytes], 0 < size < 64
+%%                                           11  Set below
+-define(SHORT_LIST   ,     2#0011). %% xxxx00   typerep + [encoded elements],  0 < length < 16
+%%                                     000001   FREE
+%%                                     xxxx01   FREE
+-define(LONG_TUPLE   , 2#00001011). %% 000010   RLP encoded (size - 16) + [encoded elements],
+-define(SHORT_TUPLE  ,     2#1011). %% xxxx10   [encoded elements], 0  <  size < 16
+%%                                         1111 Set below
+-define(LONG_LIST    , 2#00011111). %% 0001     typerep + RLP encoded (length - 16) + [Elements]
+-define(MAP          , 2#00101111). %% 0010     RLP encoded size + typerep(A) + typerep(B) + [encoded key, encoded value]
+-define(EMPTY_TUPLE  , 2#00111111). %% 0011
+%%                                  %% 0100     FREE
+-define(EMPTY_STRING , 2#01011111). %% 0101
+-define(POS_BIG_INT  , 2#01101111). %% 0110     RLP encoded (integer - 64)
+-define(FALSE        , 2#01111111). %% 0111
+%%                                  %% 1000     FREE
+-define(ADDRESS      , 2#10011111). %% 1001     [32 bytes]
+-define(VARIANT      , 2#10101111). %% 1010     RLP encoded size + [RLP encoded size + [typereps]]
+-define(NIL          , 2#10111111). %% 1011     Empty list
+%%                                  %% 1100     FREE
+-define(EMPTY_MAP    , 2#11011111). %% 1101
+-define(NEG_BIG_INT  , 2#11101111). %% 1110     RLP encoded (integer - 64)
+-define(TRUE         , 2#11111111). %% 1111
+
+-define(SHORT_TUPLE_SIZE, 16).
+-define(SHORT_LIST_SIZE , 16).
+-define(SMALL_INT_SIZE  , 64).
+-define(SHORT_STRING_SIZE, 64).
+
+-define(POS_SIGN, 0).
+-define(NEG_SIGN, 1).
 
 value_to_typerep({}) -> <<0>>;
 value_to_typerep(I) when is_integer(I) -> <<1>>;
@@ -157,43 +147,38 @@ deserialize_type_parameters(N, <<S,Es/binary>>) ->
 serialize(true)        -> <<?TRUE>>;
 serialize(false)       -> <<?FALSE>>;
 serialize([])          -> <<?NIL>>;     %% ! Untyped
-serialize({tuple, {}}) -> <<?TUPLE0>>;  %% ! Untyped
-serialize(M) when is_map(M), map_size(M) =:= 0 -> <<?EMPTYM>>;  %% ! Untyped
-serialize(<<>>)        -> <<?EMPTYS>>;
+serialize({tuple, {}}) -> <<?EMPTY_TUPLE>>;  %% ! Untyped
+serialize(M) when is_map(M), map_size(M) =:= 0 -> <<?EMPTY_MAP>>;  %% ! Untyped
+serialize(<<>>)        -> <<?EMPTY_STRING>>;
 serialize(I) when is_integer(I) ->
-    case I >= 0 of
-        true ->
-            serialize_pos_int(I);
-        false ->
-            serialize_neg_int(-I)
-    end;
-serialize(String) when is_binary(String), size(String) > 0, size(String) < 64 ->
+    serialize_integer(I);
+serialize(String) when byte_size(String) > 0, byte_size(String) < ?SHORT_STRING_SIZE ->
     S = size(String),
-    <<S:6, 2#01:2, String/binary>>;
-serialize(String) when is_binary(String), size(String) > 0, size(String) >= 64 ->
-    <<?NSTRING, (aeu_rlp:encode(String))/binary>>;
+    <<S:6, ?SHORT_STRING:2, String/binary>>;
+serialize(String) when is_binary(String), size(String) > 0, size(String) >= ?SHORT_STRING_SIZE ->
+    <<?LONG_STRING, (aeu_rlp:encode(String))/binary>>;
 serialize({address, Address}) when is_binary(Address), size(Address) =:= 32 ->
     <<?ADDRESS, Address/binary>>;
 serialize({tuple, T}) when size(T) > 0 ->
     S = size(T),
     L = tuple_to_list(T),
     Rest = << <<(serialize(E))/binary>> || E <- L >>,
-    if S < ?ITUPLE_SIZE ->
-            <<S:4, ?TUPLE:4, Rest/binary>>;
+    if S < ?SHORT_TUPLE_SIZE ->
+            <<S:4, ?SHORT_TUPLE:4, Rest/binary>>;
        true ->
-            <<?TUPLE:8, S, Rest/binary>>
+            Size = rlp_integer(S - ?SHORT_TUPLE_SIZE),
+            <<?LONG_TUPLE:8, Size/binary, Rest/binary>>
     end;
 serialize([E|_] = L) ->
     S = length(L),
     T = value_to_typerep(E),
     %% TODO assert all E of T
     Rest = << <<(serialize(El))/binary>> || El <- L >>,
-    if S < ?ILIST_SIZE ->
-            <<S:4, ?LIST:4, T/binary, Rest/binary>>;
-       S < 256 ->
-            <<?LIST:8, T/binary, S, Rest/binary>>;
+    if S < ?SHORT_LIST_SIZE ->
+            <<S:4, ?SHORT_LIST:4, T/binary, Rest/binary>>;
        true ->
-            <<?LLIST, T/binary, (serialize_integer(S))/binary, Rest/binary>>
+            Val = rlp_integer(S - ?SHORT_LIST_SIZE),
+            <<?LONG_LIST, T/binary, Val/binary, Rest/binary>>
     end;
 serialize(Map) when is_map(Map) ->
     L = [{K,V}|_] = maps:to_list(Map),
@@ -204,13 +189,13 @@ serialize(Map) when is_map(Map) ->
     <<?MAP,
       (value_to_typerep(K))/binary,
       (value_to_typerep(V))/binary,
-      (serialize_integer(Size))/binary,
+      (rlp_integer(Size))/binary,
       (Elements)/binary>>;
 serialize({variant, Cases}) when is_list(Cases) ->
-    NCases = serialize_integer(length(Cases)),
+    NCases = rlp_integer(length(Cases)),
     ECases =
         <<
-          << (serialize_integer(length(Types)))/binary,
+          << (rlp_integer(length(Types)))/binary,
              (types_to_typereps(Types))/binary
           >>
           || Types <- Cases
@@ -225,81 +210,76 @@ types_to_typereps(Types) ->
     << <<(type_to_typerep(Type))/binary >> || Type <- Types >>.
 
 
+rlp_integer(S) when S >= 0 ->
+    aeu_rlp:encode(binary:encode_unsigned(S)).
 
-
-
-serialize_integer(S) -> aeu_rlp:encode(binary:encode_unsigned(S)).
-
-
-serialize_pos_int(I) when is_integer(I), I >= 0 ->
-    if I < 64 ->
-            <<0:1, I:6, 0:1>>;
-       true ->
-            <<?PINT, (serialize_integer(I))/binary>>
-    end.
-
-serialize_neg_int(I) when is_integer(I), I > 0 ->
-    if I < 64 ->
-            <<1:1, I:6, 0:1>>;
-       true ->
-            <<?NINT, (serialize_integer(I))/binary>>
+serialize_integer(I) when is_integer(I) ->
+    Abs = abs(I),
+    Sign = case I < 0 of
+               true  -> ?NEG_SIGN;
+               false -> ?POS_SIGN
+           end,
+    if Abs < ?SMALL_INT_SIZE -> <<Sign:1, Abs:6, ?SMALL_INT:1>>;
+       Sign =:= ?NEG_SIGN -> <<?NEG_BIG_INT, (rlp_integer(Abs - ?SMALL_INT_SIZE))/binary>>;
+       Sign =:= ?POS_SIGN -> <<?POS_BIG_INT, (rlp_integer(Abs - ?SMALL_INT_SIZE))/binary>>
     end.
 
 deserialize(B) ->
     {T, <<>>} = deserialize2(B),
     T.
 
-deserialize2(<<S:1, I:6, 0:1, Rest/binary>>) -> %% Integer
-    if S =:= 1 -> {-I, Rest};
-       true -> {I, Rest}
-    end;
-deserialize2(<<?NINT, Rest/binary>>) -> %% Large int
+deserialize2(<<?POS_SIGN:1, I:6, ?SMALL_INT:1, Rest/binary>>) ->
+    {I, Rest};
+deserialize2(<<?NEG_SIGN:1, I:6, ?SMALL_INT:1, Rest/binary>>) ->
+    {-I, Rest};
+deserialize2(<<?NEG_BIG_INT, Rest/binary>>) ->
     {Bint, Rest2} = aeu_rlp:decode_one(Rest),
-    {-binary:decode_unsigned(Bint), Rest2}; %% todo: export decode_one
-deserialize2(<<?PINT, Rest/binary>>) ->
+    {-binary:decode_unsigned(Bint) + ?SMALL_INT_SIZE, Rest2};
+deserialize2(<<?POS_BIG_INT, Rest/binary>>) ->
     {Bint, Rest2} = aeu_rlp:decode_one(Rest),
-    {binary:decode_unsigned(Bint), Rest2};
-deserialize2(<<S:6, 2#01:2, Rest/binary>>) -> %% String
+    {binary:decode_unsigned(Bint) + ?SMALL_INT_SIZE, Rest2};
+deserialize2(<<?LONG_STRING, Rest/binary>>) ->
+    aeu_rlp:decode_one(Rest);
+deserialize2(<<S:6, ?SHORT_STRING:2, Rest/binary>>) ->
     String = binary:part(Rest, 0, S),
     Rest2 = binary:part(Rest, byte_size(Rest), - (byte_size(Rest) - S)),
     {String, Rest2};
 deserialize2(<<?ADDRESS, Rest/binary>>) ->
     A = binary:part(Rest, 0, 32),
     Rest2 = binary:part(Rest, byte_size(Rest), - (byte_size(Rest) - 32)),
-    {A, Rest2};
-deserialize2(<<?TRUE, Rest/binary>>) -> {true, Rest};
-deserialize2(<<?FALSE, Rest/binary>>) -> {false, Rest};
-deserialize2(<<?NIL, Rest/binary>>) -> {[], Rest};
-deserialize2(<<?TUPLE0, Rest/binary>>) -> {{tuple, {}}, Rest};
-deserialize2(<<?EMPTYM, Rest/binary>>) -> {#{}, Rest};
-deserialize2(<<?EMPTYS, Rest/binary>>) -> {<<>>, Rest};
-deserialize2(<<S:4, ?TUPLE:4, Rest/binary>>) ->
-    {N, E} =
-        if S =:= 0 ->
-                <<Size, Elements/binary>> = Rest,
-                {Size, Elements};
-           true -> {S, Rest}
-        end,
-    {List, Rest2} = deserialize_elements(N, E),
+    {{address, A}, Rest2};
+deserialize2(<<?TRUE, Rest/binary>>) ->
+    {true, Rest};
+deserialize2(<<?FALSE, Rest/binary>>) ->
+    {false, Rest};
+deserialize2(<<?NIL, Rest/binary>>) ->
+    {[], Rest};
+deserialize2(<<?EMPTY_TUPLE, Rest/binary>>) ->
+    {{tuple, {}}, Rest};
+deserialize2(<<?EMPTY_MAP, Rest/binary>>) ->
+    {#{}, Rest};
+deserialize2(<<?EMPTY_STRING, Rest/binary>>) ->
+    {<<>>, Rest};
+deserialize2(<<?LONG_TUPLE, Rest/binary>>) ->
+    {BSize, Rest1} = aeu_rlp:decode_one(Rest),
+    N = binary:decode_unsigned(BSize) + ?SHORT_TUPLE_SIZE,
+    {List, Rest2} = deserialize_elements(N, Rest1),
     {{tuple, list_to_tuple(List)}, Rest2};
-deserialize2(<<S:4, ?LIST:4, Rest/binary>>) ->
-    {_Typerep, Rest2} = deserialize_typerep(Rest),
-    {N, E} =
-        if S =:= 0 ->
-                <<Size, Elements/binary>> = Rest2,
-                {Size, Elements};
-           true -> {S, Rest2}
-        end,
-    {List, Rest3} = deserialize_elements(N, E),
-    %% TODO: check typerep == type of List
-    {List, Rest3};
-deserialize2(<<?LLIST, Rest/binary>>) ->
+deserialize2(<<S:4, ?SHORT_TUPLE:4, Rest/binary>>) ->
+    {List, Rest1} = deserialize_elements(S, Rest),
+    {{tuple, list_to_tuple(List)}, Rest1};
+deserialize2(<<?LONG_LIST, Rest/binary>>) ->
     {_Typerep, Rest2} = deserialize_typerep(Rest),
     {BLength, Rest3} = aeu_rlp:decode_one(Rest2),
-    Length = binary:decode_unsigned(BLength),
+    Length = binary:decode_unsigned(BLength) + ?SHORT_LIST_SIZE,
     {List, Rest4} = deserialize_elements(Length, Rest3),
     %% TODO: check typerep == type of List
     {List, Rest4};
+deserialize2(<<S:4, ?SHORT_LIST:4, Rest/binary>>) ->
+    {_Typerep, Rest2} = deserialize_typerep(Rest),
+    {List, Rest3} = deserialize_elements(S, Rest2),
+    %% TODO: check typerep == type of List
+    {List, Rest3};
 deserialize2(<<?MAP, Rest/binary>>) ->
     {_Typerep_A, Rest2} = deserialize_typerep(Rest),
     {_Typerep_B, Rest3} = deserialize_typerep(Rest2),
