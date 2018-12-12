@@ -14,7 +14,7 @@ The default node configuration is sufficient to join the Roma network:
 
 ```bash
 docker pull aeternity/epoch
-docker run -P aeternity/epoch
+docker run -p 3013:3013 -p 3015:3015 aeternity/epoch
 ```
 
 You should see the console output of the running node and a lot of information related to syncing with the network.
@@ -49,13 +49,13 @@ to mount the configuration file to a special path on the container (`/home/epoch
 For example, assuming your configuration file is located at `~/.aeternity/myepoch.yaml` on the host machine:
 
 ```bash
-docker run -P -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml aeternity/epoch
+docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml aeternity/epoch
 ```
 
 Arguments can also be passed to the node, for example to enable API debug endpoints:
 
 ```bash
-docker run -P aeternity/epoch -aehttp enable_debug_endpoints true
+docker run -p 3013:3013 -p 3015:3015 aeternity/epoch -aehttp enable_debug_endpoints true
 ```
 
 More details about node configuration can be found in [configuration documentation](configuration.md).
@@ -76,7 +76,7 @@ Replace `~/.aeternity/db_roma` with location of your choice where the data will 
 
 ```bash
 mkdir -p ~/.aeternity/db_roma
-docker run -P \
+docker run -p 3013:3013 -p 3015:3015 \
   -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml \
   -v ~/.aeternity/db_roma:/home/epoch/node/data/mnesia \
   aeternity/epoch
@@ -128,7 +128,7 @@ fork_management:
 Assuming your configuration file is located at `~/.aeternity/myepoch.yaml` on the host machine:
 
 ```bash
-docker run -P -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml aeternity/epoch
+docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml aeternity/epoch
 ```
 
 You should see the console output of the running node and a lot of information related to syncing with the network.
