@@ -78,18 +78,6 @@ mining:
             hex_encoded_header: true
 ```
 
-If you have multiple GPU cards they can be addressed using the `-d <n>` flag with the cuda-miner. So if you want to use multiple cards
-for GPU mining you can add another configuration option (for example if you have two (2) GPU-cards):
-```
-mining:
-    cuckoo:
-        miner:
-            instances: 2
-```
-
-*Note:* You should not have `-d` in `extra_args` if you are using the `instances` configuration option, it will be added automatically
-by the node.
-
 After updating the configuration, the node should be started (or restarted if it's already running):
 
 ```
@@ -148,6 +136,27 @@ mining:
 ```
 
 The address of the device can be obtained by running `nvidia-smi`
+
+However, if you want to use multiple cards for GPU mining you can add another
+configuration option, `instances`, for example if you have two (2) GPU-cards:
+
+```
+mining:
+    cuckoo:
+        miner:
+            executable: cuda29
+            extra_args: ""
+            edge_bits: 29
+            hex_encoded_header: true
+            instances: 2
+            repeats: 5
+```
+
+*Note:* You should not have `-d` in `extra_args` if you are using the `instances` configuration option, it will be added automatically
+by the node.
+
+*Note:* If you are combining `repeats` and `instances`, it is the *number of repeats per instance* that is configured! I.e. with 2
+instances and repeats 5 each GPU will run 5 attempts per run.
 
 ## References
 
