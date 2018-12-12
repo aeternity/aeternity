@@ -1,37 +1,95 @@
 # Running an epoch node on Docker
 
 This document describes:
+* [How to join the Roma network using Docker](#roma-network);
+* [How to use the Docker image](#docker-image);
 * [How to join the testnet using Docker](#testnet);
 * [How to run a local network using Docker](#localnet).
 
-You must have [docker installed](https://docs.docker.com/engine/installation/) on a host machine.
+You must have [docker installed](https://docs.docker.com/engine/installation/) on a host machine and **be familiar [how to operate docker containers](https://docs.docker.com)**.
 
-## Testnet
+## Roma Network
 
-### Docker Image
+The default node configuration is sufficient to join the Roma network:
 
-Docker image is automatically build and published on [DockerHub](https://hub.docker.com/r/aeternity/epoch/). All tagged source code versions have their own docker image tag as well. Latest tagged ("stable") version is tagged with `latest`.
-Master branch of the source code is tagged as `dev`.
+```bash
+docker pull aeternity/epoch
+docker run -P aeternity/epoch
+```
 
-To pull the latest "stable" image run:
+You should see the console output of the running node and a lot of information related to syncing with the network.
+
+[Verify if your node is connected to Roma network.](operation.md#verify-that-node-is-connected-to-the-roma-network)
+
+
+## Docker Image
+
+Docker image is automatically build and published on [DockerHub](https://hub.docker.com/r/aeternity/epoch/).
+
+Please note that all the **examples** below:
+- use the Docker `-P` which [publish all exposed ports to the host interfaces](https://docs.docker.com/engine/reference/run/#expose-incoming-ports), for good network connectivity refer to [networking documentation](configuration.md#peer-to-peer-network) how to setup firewall and/or port mapping to the host machine
+- run the container in [foreground mode](https://docs.docker.com/engine/reference/run/#detached-vs-foreground) for easier debugging (console output).
+
+### Version
+
+All releases have their own docker image tag as well. Latest release is published behind `latest` docker image tag.
+Master branch of the source code is tagged as `master`.
+
+To pull the latest release docker image run:
 ```bash
 docker pull aeternity/epoch
 ```
 
-### Configuration
+Always make sure you have the latest docker image prior running any of the below commands.
 
-Please prepare node configuration.
+### Node Configuration
 
-The minimal configuration to join the testnet is the following (mind that `beneficiary` must be changed to valid account public key, see [configuration documentation](configuration.md) for more details):
+Тo change the node configuration, a [Docker bind mount](https://docs.docker.com/storage/bind-mounts/) should be used
+to mount the configuration file to a special path on the container (`/home/epoch/.epoch/epoch/epoch.yaml`).
+For example, assuming your configuration file is located at `~/.aeternity/myepoch.yaml` on the host machine:
+
+```bash
+docker run -P -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml aeternity/epoch
 ```
----
-keys:
-    peer_password: "top secret"
-    dir: ./keys
 
+Arguments can also be passed to the node, for example to enable API debug endpoints:
+
+```bash
+docker run -P aeternity/epoch -aehttp enable_debug_endpoints true
+```
+
+More details about node configuration can be found in [configuration documentation](configuration.md).
+
+### Persisting Data
+
+To persist blockchain data between container runs use [Docker volumes](https://docs.docker.com/engine/admin/volumes/volumes/) and enable chain persistence in your configuration:
+
+```yaml
+# ... SNIP
 chain:
     persist: true
+# SNIP ...
+```
 
+Assuming your configuration file path is `~/.aeternity/myepoch.yaml` on host machine.
+Replace `~/.aeternity/db_roma` with location of your choice where the data will be stored in.
+
+```bash
+mkdir -p ~/.aeternity/db_roma
+docker run -P \
+  -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml \
+  -v ~/.aeternity/db_roma:/home/epoch/node/data/mnesia \
+  aeternity/epoch
+```
+
+** Note that you cannot switch networks using the same database **
+
+### Mining
+
+Mining is disabled by default. If you want to mine with docker you have to enable it in the configuration:
+
+```yaml
+# ... SNIP
 mining:
     autostart: true
     beneficiary: "encoded_beneficiary_pubkey_to_be_replaced"
@@ -40,93 +98,54 @@ mining:
             executable: lean29-generic
             extra_args: ""
             edge_bits: 29
+# SNIP ...
+```
+
+The example above uses the less memory intensive lean miner, if you want to use the default (memory intensive mean) miner, remove the `mining.cuckoo` section and increase the docker container memory at least 4GB.
+
+You also need to provide beneficiary account in the configuration, please refer to [the beneficiary section in the configuration documentation](configuration.md#beneficiary-account) how to create one if you don't have yet.
+
+For more information see [miner configuration documentation](configuration#miner-configuration).
+
+## Testnet
+
+The minimal configuration to join the testnet needs a list of seed peers and network identifier:
+
+```yaml
+---
+peers:
+    # UAT
+    - aenode://pp_QU9CvhAQH56a2kA15tCnWPRJ2srMJW8ZmfbbFTAy7eG4o16Bf@52.10.46.160:3015
+    - aenode://pp_2vhFb3HtHd1S7ynbpbFnEdph1tnDXFSfu4NGtq46S2eM5HCdbC@18.195.109.60:3015
+    - aenode://pp_27xmgQ4N1E3QwHyoutLtZsHW5DSW4zneQJ3CxT5JbUejxtFuAu@13.250.162.250:3015
+    - aenode://pp_nt5N7fwae3DW8Mqk4kxkGAnbykRDpEZq9dzzianiMMPo4fJV7@18.130.148.7:3015
+
+fork_management:
+    network_id: ae_uat
 
 ```
 
-Note that if you want to use the default miner, remove the `mining.cuckoo` section and increase the docker container memory at least 4GB. 
-
-#### Generating beneficiary account for the first time
-
-Please refer to [the beneficiary section in the configuration documentation](configuration.md#beneficiary-account).
-
-#### External Peer Address
-
-Please note that, if your node is behind a firewall, you need to open and map the TCP port defined by (`sync` > `port` with default `3015`) option in your firewall to the container port.
-If the publicly available port has to be different from the internal port it as to be reflected in the configuration with the (`sync` > `external_port`) option.
-
-#### Peer addresses
-
-Docker image has packaged the addresses of testnet seed peers in the configuration. To change the peers configuration (e.g. join other network) change the configuration file.
-
-### Start a Node
-
-Assuming configuration file location is `~/.aeternity/myepoch.yaml`:
-
-To start a docker node and join the testnet run:
-```bash
-docker run -d --name epoch_node0 -P \
-    -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml \
-    aeternity/epoch
-```
-
-**Please note that it will expose all docker container ports to the host machine**
-
-Verify the node is running:
-```bash
-curl localhost:3013/v2/blocks/top
-```
-
-#### Node arguments
-
-Arguments can also be passed to epoch node, for example to enable API debug endpoints:
-```bash
-docker run -d -P \
-    -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml \
-    aeternity/epoch -aehttp enable_debug_endpoints true
-```
-
-### Stop a Node
-
-To stop a docker node run:
-```bash
-docker stop epoch_node0
-```
-
-### Execute command on a running node
-
-To execute any command on a running node use:
-```bash
-docker exec epoch_node0 CMD
-```
-
-For example to check what's in the epoch logs run:
-```bash
-docker exec epoch_node0 tail log/epoch.log
-```
-
-### Persisting Data
-
-To persist blockchain data and node keys between container runs, use [Docker volumes](https://docs.docker.com/engine/admin/volumes/volumes/). Replace `~/.aeternity/db` with location of your choice.
-
+Assuming your configuration file is located at `~/.aeternity/myepoch.yaml` on the host machine:
 
 ```bash
-docker run -d -P \
-    -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml \
-    --hostname node0 \
-    -v ~/.aeternity/db:/home/epoch/node/data/mnesia \
-    aeternity/epoch
+docker run -P -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml aeternity/epoch
 ```
 
-**Note: make sure `hostname` option is set when reusing the mnesia data directory**
+You should see the console output of the running node and a lot of information related to syncing with the network.
+
+See [how to persist the blockchain data](#persisting-data) and [how to enable mining](#mining) above.
+
 
 ## Localnet
 
-Small local network (*not* connected to testnet) can be created with `docker-compose`.
+Small local network (*not* connected to public networks) can be created with `docker-compose`.
 It runs three nodes using the `mean15-generic` miner (fastest generic miner) and a proxy server to allow CORS.
+As the beneficiary key-pair is publicly available, this setup should *not* be connected to public networks.
 
-All local network nodes have `ak_25eTK8PaiLpREqBkP3yDNWJAwXjWSR8tbn3zu8SXaNx824A1AJ` set as node beneficiary (for more details on beneficiary see [configuration documentation](configuration.md#beneficiary-account)).
-Public-private keypair of `ak_25eTK8PaiLpREqBkP3yDNWJAwXjWSR8tbn3zu8SXaNx824A1AJ` beneficiary can be found [here](/docker/keys/beneficiary): as the private key is publicly available, this setup must *not* be connected on the live network.
-Base58Check-encoded form of private key, which matches above beneficiary public key: `7eFs4YMo1bXS7Z5sFvmgb2WpJrGpoWFqVZY4mb4o99c7aAbxdTko1tV3toCbumDRpbSpSceDqTYLRnE5Utr869KhWshSo`.
+All local network nodes are configured with the same beneficiary account (for more details on beneficiary see [configuration documentation](configuration.md#beneficiary-account)):
+- public key: ak_twR4h7dEcUtc2iSEDv8kB7UFJJDGiEDQCXr85C3fYF8FdVdyo
+- private key secret: `secret`
+- key-pair binaries can be found [here](/docker/keys/beneficiary)
 
 Both external and internal API are exposed to the docker host, the URL pattern is as follows:
 - external API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/
