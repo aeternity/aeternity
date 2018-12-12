@@ -16,8 +16,9 @@
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
-    ok = lager:info("Starting aefate"),
-    aevm_sup:start_link().
+    ok = lager:info("Not really starting aefate"),
+    {ok, self()}.
+
 
 %%--------------------------------------------------------------------
 stop(_State) ->
