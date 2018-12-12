@@ -56,7 +56,49 @@
 
 -endif.
 
+
 %=== TEST CASES ================================================================
+
+%% Test that put in evidence a bug in aec_peers_pool:unverified_add_reference/4.
+%% The test depends heavily on the fixed random seeds.
+reference_bug_test() ->
+    seed_process_random(),
+    P = new([
+        {verif_bcount, 1},
+        {verif_bsize, 2},
+        {unver_bcount, 4},
+        {unver_bsize, 4}
+        | ?POOL_OPTS
+    ]),
+
+    % Create 4 source addresses
+    Sources = lists:foldl(fun(_, Acc) ->
+        [random_address() | Acc]
+    end, [], lists:seq(1, 4)),
+
+    % Create 50 peers
+    Peers = lists:foldl(fun(_, Acc) ->
+        [{random_peer_id(), random_address()} | Acc]
+    end, [], lists:seq(1, 50)),
+
+    lists:foldl(fun(_, {S, N}) ->
+        % Update 10 random peers
+        {S2, N2} = lists:foldl(fun(_, {Sf, Nf}) ->
+            {I, A1} = X = rand_peek(Peers),
+            A2 = rand_peek(Sources),
+            {_, Sf2} = aec_peers_pool:update(Sf, Nf, I, A1, A2, false, X),
+            {Sf2, Nf + 1}
+        end, {S, N}, lists:seq(1, 10)),
+
+        % Mark a random unverified peer as verified
+        case aec_peers_pool:random_select(S2, N2, both, undefined) of
+            {unavailable, S3} -> {S3, N2 + 1};
+            {selected, {I, _}, S3} ->
+                {_, S4} = aec_peers_pool:verify(S3, N2, I),
+                {S4, N2 + 1}
+        end
+    end, {P, 1}, lists:seq(1, 5)),
+    ok.
 
 %% Tests pool behavior when empty.
 empty_pool_test() ->
@@ -1861,6 +1903,9 @@ rand_int_list(Min, Max, Size, Curr, Acc) ->
         true -> rand_int_list(Min, Max, Size, Curr, Acc);
         false -> rand_int_list(Min, Max, Size, Curr + 1, [RandInt | Acc])
     end.
+
+rand_peek(Col) when is_list(Col)->
+    lists:nth(rand_int(1, length(Col)), Col).
 
 rand_take(Col) when is_list(Col)->
     {L1, [R | L2]} = lists:split(rand_int(length(Col)), Col),
