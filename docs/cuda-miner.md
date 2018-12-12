@@ -4,7 +4,7 @@ The Ubuntu release packages ships with a CUDA miner.
 This documentation describes how to use the CUDA miner shipped in the Ubuntu release package, how to build it yourself (if you prefer to do so), and the related configuration of the `epoch` node.
 
 The documentation below assumes that an `epoch` node is already installed either by [release package](installation.md) or [from source](build.md), thus its dependencies are also installed.
-The documentation below assumes that the `epoch` source code resides in `~/node` directory.
+The documentation below assumes that the `epoch` source code resides in `~/aeternity/node` directory.
 
 ## How to use the CUDA miner that is shipped in the release packages
 
@@ -19,7 +19,7 @@ Please refer to the NVIDIA documentation for how to [download][cuda-downloads] a
 ### Configuration of the manually built CUDA miner
 
 Once the CUDA Drive is installed, one should change the node configuration to start using the CUDA miner.
-The `mining.cuckoo.miner` section of `~/node/epoch.yaml` should be changed to:
+The `mining.cuckoo.miner` section of `~/aeternity/node/epoch.yaml` should be changed to:
 
 ```yaml
 mining:
@@ -36,7 +36,7 @@ Notice the `executable_group`.
 
 After configuration the node could be started (or restarted if it's already running):
 ```
-~/node/bin/epoch start
+~/aeternity/node/bin/epoch start
 ```
 
 Available executables are: `cuda29`, `lcuda29`.
@@ -105,15 +105,15 @@ Compilation of CUDA miner is done by invoking:
 cd apps/aecuckoo && make cuda29
 ```
 
-Finally the actual installation of the miner binary is copying it to the node corresponding path, the documentation assumes the `epoch` node is installed in `~/node` directory.
+Finally the actual installation of the miner binary is copying it to the node corresponding path, the documentation assumes the `epoch` node is installed in `~/aeternity/node` directory.
 
 ```bash
-cp priv/bin/cuda29 ~/node/lib/aecuckoo-0.1.0/priv/bin
+cp priv/bin/cuda29 ~/aeternity/node/lib/aecuckoo-0.1.0/priv/bin
 ```
 
 ### Configuration of the manually built CUDA miner
 
-Once the CUDA miner is in place, one should change the node configuration to start using it. The `mining.cuckoo.miner` section of `~/node/epoch.yaml` should be changed to:
+Once the CUDA miner is in place, one should change the node configuration to start using it. The `mining.cuckoo.miner` section of `~/aeternity/node/epoch.yaml` should be changed to:
 
 ```yaml
 mining:
@@ -128,7 +128,7 @@ mining:
 After updating the configuration, the node should be started (or restarted if it's already running):
 
 ```
-~/node/bin/epoch start
+~/aeternity/node/bin/epoch start
 ```
 
 ## Configuration
@@ -149,7 +149,7 @@ the reward collected from the transaction fees in the micro blocks.)
 
 To fine tune the parameter, you should try running the miner in a shell
 ```
-$ time ~/node/lib/aecuckooprebuilt-0.1.0/priv/cuda29 -r 5
+$ time ~/aeternity/node/lib/aecuckooprebuilt-0.1.0/priv/cuda29 -r 5
 ...
 real 0m4.634s
 user ...
