@@ -13,7 +13,7 @@ The documentation below is tested on:
 - Ubuntu 16.04.4
 - non-root user with `ALL` sudo privileges
 
-The documentation also assumes that an `epoch` node is already installed either by [release package](installation.md) or [from source](build.md), thus it's dependencies are also installed.
+The documentation also assumes that an `epoch` node is already installed either by [release package](installation.md) or [from source](build.md), thus its dependencies are also installed.
 Make sure the `epoch` node is stopped to speedup the installation process.
 
 ## CUDA toolkit installation
