@@ -3054,15 +3054,19 @@ pending_transactions(_Config) ->
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
                   get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, ReceiverPubKey)),
 
-
-    ToMine = 2 + Delay,
-    {ok, MinedBlocks2} = aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    PendingTxHashes2 =
+        [aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))
+            || SignedTx <- NodeTxs],
+    {ok, MinedBlocks2a} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, PendingTxHashes2, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
+    %% Make sure we get the reward...
+    {ok, MinedBlocks2b} = aecore_suite_utils:mine_key_blocks(Node, Delay),
+
     ExpectedReward1 = lists:sum([rpc(aec_governance, block_mine_reward,
                                      [aec_blocks:height(X) - Delay])
-                                 || X <- MinedBlocks2,
+                                 || X <- MinedBlocks2a ++ MinedBlocks2b,
                                     aec_blocks:type(X) =:= key
                                 ]),
     {ok, 200, #{<<"balance">> := Bal1}} = get_balance_at_top(),
