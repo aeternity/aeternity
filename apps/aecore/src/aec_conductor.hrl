@@ -33,7 +33,7 @@
                 micro_block_candidate             :: #candidate{} | 'undefined',
                 blocked_tags            = []      :: ordsets:ordset(atom()),
                 keys_ready              = false   :: boolean(),
-                mining_state            = running :: mining_state(),
+                mining_state            = stopped :: mining_state(),
                 top_block_hash                    :: binary() | 'undefined',
                 top_key_block_hash                :: binary() | 'undefined',
                 workers                 = []      :: workers(),
