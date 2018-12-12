@@ -143,7 +143,10 @@ deserialize_type_parameters(N, <<S,Es/binary>>) ->
     {[List|Tail], Rest2}.
 
 
-
+%% --------------------------------------------------
+%% Serialize
+%% Fate Data -> binary()
+%% Note: The type Fate Data is not final yet.
 serialize(true)        -> <<?TRUE>>;
 serialize(false)       -> <<?FALSE>>;
 serialize([])          -> <<?NIL>>;     %% ! Untyped
@@ -191,19 +194,11 @@ serialize(Map) when is_map(Map) ->
       (value_to_typerep(V))/binary,
       (rlp_integer(Size))/binary,
       (Elements)/binary>>;
-serialize({variant, Cases}) when is_list(Cases) ->
-    NCases = rlp_integer(length(Cases)),
-    ECases =
-        <<
-          << (rlp_integer(length(Types)))/binary,
-             (types_to_typereps(Types))/binary
-          >>
-          || Types <- Cases
-        >>,
-
+serialize({variant, Tag, Values}) when is_integer(Tag),
+                                       is_tuple(Values) ->
     <<?VARIANT,
-      (NCases)/binary,
-      ECases/binary
+      (serialize(Tag))/binary,
+      (serialize({tuple, Values}))/binary
     >>.
 
 types_to_typereps(Types) ->
@@ -290,10 +285,9 @@ deserialize2(<<?MAP, Rest/binary>>) ->
     %% TODO: check typereps == type of {K,V}
     {Map, Rest5};
 deserialize2(<<?VARIANT, Rest/binary>>) ->
-    {BSize, Rest1} = aeu_rlp:decode_one(Rest),
-    Size = binary:decode_unsigned(BSize),
-    {List, Rest2} = deserialize_variant_cases(Size, Rest1),
-    {List, Rest2}.
+    {Tag, Rest1} = deserialize2(Rest),
+    {{tuple, Values}, Rest2} = deserialize2(Rest1),
+    {{variant, Tag, Values}, Rest2}.
 
 deserialize_variant_cases(0, Rest) ->
     {[], Rest};

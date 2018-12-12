@@ -45,6 +45,7 @@ sources() ->
      #{ 1 => true, 2 => false},
      #{ "foo" => {tuple, {42, true}}},
      [1,2,3],
-     lists:seq(1, 65)
-%%     {variant, [[{}], [42]]}
+     lists:seq(1, 65),
+     {variant, 0, {42}},
+     {variant, 3, {true, [1,2,3], "foo"}}
     ].
