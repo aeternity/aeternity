@@ -12,6 +12,7 @@
         , new/2
         , commit_to_db/1
         , construct_proof/3
+        , db/1
         , delete/2
         , get/2
         , has_node/3
@@ -27,6 +28,8 @@
         , read_only_subtree/2
         , unfold/3
         , verify_proof/4
+        , visit_reachable_hashes/3
+        , visit_reachable_hashes/4
         ]).
 
 %% For internal functional db
@@ -113,6 +116,10 @@ new(RootHash, DB) ->
     #mpt{ hash = RootHash
         , db   = DB
         }.
+
+-spec db(tree()) -> db().
+db(#mpt{ db = DB}) ->
+    DB.
 
 -spec read_only_subtree(key() | <<>>, tree()) -> {ok, tree()} | {error, no_such_subtree}.
 %% @doc Returns the subtree of a given key. Note that the key needs to be
@@ -258,6 +265,27 @@ has_node(Path, Node, T = #mpt{ hash = Root, db = DB }) ->
     catch _:_ ->
         int_has_node(Path, Node, decode_node(Root, DB), DB)
     end.
+
+-type visit_fun() :: fun((hash(), SerializedNode :: binary(), Acc :: term()) ->
+                                'stop'
+                             | {'continue', NewAcc :: term()}).
+
+-spec visit_reachable_hashes(tree(), InitAcc :: term(), visit_fun()) ->
+                                    Acc :: term().
+%% @doc Equivalent to visit_reachable_hashes/4 from the current root hash.
+%% @end
+visit_reachable_hashes(#mpt{hash = Hash, db = DB}, InitAcc, VisitFun) ->
+    int_visit_reachable_hashes([Hash], DB, InitAcc, VisitFun).
+
+-spec visit_reachable_hashes(tree(), [hash()], InitAcc :: term(), visit_fun())->
+                                    Acc :: term().
+%% @doc Visits all hashes reachable from a list of root hashes, using
+%%      the VisitFun and the initial accumulator InitAcc.
+%%      Note that not all nodes are visited, only those stored in the DB
+%%      as hashes. Useful for implementing a GC.
+%% @end
+visit_reachable_hashes(#mpt{db = DB}, [_|_] = RootHashes, InitAcc, VisitFun) ->
+    int_visit_reachable_hashes(RootHashes, DB, InitAcc, VisitFun).
 
 -spec pp(tree()) -> 'ok'.
 pp(#mpt{hash = Hash, db = DB}) ->
@@ -539,6 +567,47 @@ int_has_node(_, _, <<>>, _) ->
     no;
 int_has_node(<<>>, _, {branch, _Branch}, _DB) ->
     maybe.
+
+%%%===================================================================
+%%% Reachable store nodes (useful for implementing GC).
+
+int_visit_reachable_hashes([Hash|Left], DB, Visited, VisitFun) ->
+    Visited1 = visit_reachable_raw(Hash, DB, Visited, VisitFun),
+    int_visit_reachable_hashes(Left, DB, Visited1, VisitFun);
+int_visit_reachable_hashes([],_DB, Visited,_VisitFun) ->
+    Visited.
+
+visit_reachable_raw(Next, DB, Visited, VisitFun) ->
+    case byte_size(Next) < 32 of
+        true  ->
+            %% Too small to contain a hash
+            Visited;
+        false ->
+            case VisitFun(Next, db_get(Next, DB), Visited) of
+                stop ->
+                    Visited;
+                {continue, Visited1} ->
+                    NextNode = decode_node(Next, DB),
+                    visit_reachable_node(NextNode, DB, Visited1, VisitFun)
+            end
+    end.
+
+visit_reachable_node(<<>>,_DB, Visited,_VisitFun) ->
+    Visited;
+visit_reachable_node({branch, Branch}, DB, Visited, VisitFun) ->
+    visit_reachable_branch(Branch, 0, DB, Visited, VisitFun);
+visit_reachable_node({ext, _, Next}, DB, Visited, VisitFun) ->
+    visit_reachable_raw(Next, DB, Visited, VisitFun);
+visit_reachable_node({leaf, _, _},_DB, Visited,_VisitFun) ->
+    Visited.
+
+visit_reachable_branch(_Branch, 16,_DB, Visited,_VisitFun) ->
+    Visited;
+visit_reachable_branch(Branch, N, DB, Visited, VisitFun) ->
+    Next = branch_next(N, Branch),
+    Visited1 = visit_reachable_raw(Next, DB, Visited, VisitFun),
+    visit_reachable_branch(Branch, N + 1, DB, Visited1, VisitFun).
+
 
 %%%===================================================================
 %%% @doc Construct proof for a key.

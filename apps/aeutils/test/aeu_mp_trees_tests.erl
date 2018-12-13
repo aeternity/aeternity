@@ -28,6 +28,7 @@ basic_test_() ->
     , {"Iterator from non-existing", fun test_iterator_non_existing/0}
     , {"Iterator of subtree", fun test_iterator_prefix/0}
     , {"Create subtrees", fun test_subtrees/0}
+    , {"Visit reachable hashes", fun test_visit_reachable/0}
     ].
 
 hash_test_() ->
@@ -438,6 +439,32 @@ iterate_one_subtree({Key0, Val, Iterator}, Root, ValDict) ->
     end.
 
 %%%=============================================================================
+%%% Reachable hashes tests.
+
+test_visit_reachable() ->
+    {Tree, Vals} = gen_mp_tree({1544,700767,24258}, 1000),
+    RootHash = aeu_mp_trees:root_hash(Tree),
+    VisitFun = fun(Hash, SerializedNode, DB) ->
+                       case aeu_mp_trees_db:get(Hash, DB) of
+                           none ->
+                               {continue,
+                                aeu_mp_trees_db:put(Hash, SerializedNode, DB)};
+                           {value, _} ->
+                               stop
+                       end
+               end,
+    DB = aeu_mp_trees:visit_reachable_hashes(Tree, new_dict_db(), VisitFun),
+    NewTree = aeu_mp_trees:new(RootHash, DB),
+    Sorted = lists:keysort(1, Vals),
+    Iterator = aeu_mp_trees:iterator(NewTree),
+    test_iterator(Iterator, NewTree, Sorted),
+    OldCache = aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree)),
+    NewCache = aeu_mp_trees_db:get_cache(aeu_mp_trees:db(NewTree)),
+    io:format("OldCache size: ~p\n", [dict:size(OldCache)]),
+    io:format("NewCache size: ~p\n", [dict:size(NewCache)]),
+    ok.
+
+%%%=============================================================================
 %%% Test utils
 
 gen_mp_tree(Seed, NofNodes) ->
@@ -482,7 +509,10 @@ dict_db_spec() ->
      }.
 
 dict_db_get(Key, Dict) ->
-    {value, dict:fetch(Key, Dict)}.
+    case dict:find(Key, Dict) of
+        {ok, Val} -> {value, Val};
+        error -> none
+    end.
 
 dict_db_put(Key, Val, Dict) ->
     dict:store(Key, Val, Dict).
