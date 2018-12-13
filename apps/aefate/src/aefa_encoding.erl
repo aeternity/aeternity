@@ -1,7 +1,27 @@
-%% First draft of FATE serialization encoding/decoding.
-%% Goal is to experiment with the encoding.
-%% The FATE side of data is not set at all yet and will
-%% probably change.
+%% Second draft of FATE serialization encoding/decoding.
+%% Goal is to experiment with the encoding, to make sure we can
+%% serialize and deserialize all FATE values.
+%% TODO: This code is not production ready yet.
+%% TODO: The FATE side of data is not set at all yet and will
+%% probably change. FATE data is now defined in aefa_data.erl
+
+%% The FATE serialization has to fullfill the following properties:
+%% * There has to be 1 and only 1 byte sequence
+%%     representing each unique value in FATE.
+%% * A valid byte sequence has to be deserializable to a FATE value.
+%% * A valid byte sequence must not contain any trailing bytes.
+%% * A serialization is a sequence of 8-bit bytes.
+
+%% The serialization function should fullfill the following:
+%% * A valid FATE value should be serialized to a byte sequence.
+%% * Any other argument, not representing a valid FATE value should
+%%     throw an exception
+
+%% The deserialization function should fullfill the following:
+%% * A valid byte sequence should be deserialized to a valid FATE value.
+%% * Any other argument, not representing a valid byte sequence should
+%%     throw an exception
+
 -module(aefa_encoding).
 
 -export([ deserialize/1
@@ -46,6 +66,71 @@
 
 -define(POS_SIGN, 0).
 -define(NEG_SIGN, 1).
+
+
+%% --------------------------------------------------
+%% Serialize
+%% Serialized a Fate data value into a sequence of bytes
+%% according to the Fate serialization specification.
+%% TODO: The type Fate Data is not final yet.
+-spec serialize(aefa_data:fate_type()) -> binary().
+serialize(true)        -> <<?TRUE>>;
+serialize(false)       -> <<?FALSE>>;
+serialize([])          -> <<?NIL>>;     %% ! Untyped
+serialize({tuple, {}}) -> <<?EMPTY_TUPLE>>;  %% ! Untyped
+serialize(M) when is_map(M), map_size(M) =:= 0 -> <<?EMPTY_MAP>>;  %% ! Untyped
+serialize(<<>>)        -> <<?EMPTY_STRING>>;
+serialize(I) when is_integer(I) ->
+    serialize_integer(I);
+serialize(String) when byte_size(String) > 0, byte_size(String) < ?SHORT_STRING_SIZE ->
+    S = size(String),
+    <<S:6, ?SHORT_STRING:2, String/binary>>;
+serialize(String) when is_binary(String), size(String) > 0, size(String) >= ?SHORT_STRING_SIZE ->
+    <<?LONG_STRING, (aeu_rlp:encode(String))/binary>>;
+serialize({address, Address}) when is_binary(Address), size(Address) =:= 32 ->
+    <<?ADDRESS, Address/binary>>;
+serialize({tuple, T}) when size(T) > 0 ->
+    S = size(T),
+    L = tuple_to_list(T),
+    Rest = << <<(serialize(E))/binary>> || E <- L >>,
+    if S < ?SHORT_TUPLE_SIZE ->
+            <<S:4, ?SHORT_TUPLE:4, Rest/binary>>;
+       true ->
+            Size = rlp_integer(S - ?SHORT_TUPLE_SIZE),
+            <<?LONG_TUPLE:8, Size/binary, Rest/binary>>
+    end;
+serialize([E|_] = L) ->
+    S = length(L),
+    T = value_to_typerep(E),
+    %% TODO assert all E of T
+    Rest = << <<(serialize(El))/binary>> || El <- L >>,
+    if S < ?SHORT_LIST_SIZE ->
+            <<S:4, ?SHORT_LIST:4, T/binary, Rest/binary>>;
+       true ->
+            Val = rlp_integer(S - ?SHORT_LIST_SIZE),
+            <<?LONG_LIST, T/binary, Val/binary, Rest/binary>>
+    end;
+serialize(Map) when is_map(Map) ->
+    L = [{K,V}|_] = maps:to_list(Map),
+    Size = length(L),
+    %% TODO:  check all K same type, and all V same type
+    %%        check K =/= map
+    Elements = << <<(serialize(K1))/binary, (serialize(V1))/binary>> || {K1,V1} <- L >>,
+    <<?MAP,
+      (value_to_typerep(K))/binary,
+      (value_to_typerep(V))/binary,
+      (rlp_integer(Size))/binary,
+      (Elements)/binary>>;
+serialize({variant, Tag, Values}) when is_integer(Tag),
+                                       is_tuple(Values) ->
+    <<?VARIANT,
+      (serialize(Tag))/binary,
+      (serialize({tuple, Values}))/binary
+    >>.
+
+
+%% -----------------------------------------------------
+
 
 value_to_typerep({}) -> <<0>>;
 value_to_typerep(I) when is_integer(I) -> <<1>>;
@@ -142,64 +227,6 @@ deserialize_type_parameters(N, <<S,Es/binary>>) ->
     {[List|Tail], Rest2}.
 
 
-%% --------------------------------------------------
-%% Serialize
-%% Fate Data -> binary()
-%% Note: The type Fate Data is not final yet.
--spec serialize(aefa_data:fate_type()) -> binary().
-serialize(true)        -> <<?TRUE>>;
-serialize(false)       -> <<?FALSE>>;
-serialize([])          -> <<?NIL>>;     %% ! Untyped
-serialize({tuple, {}}) -> <<?EMPTY_TUPLE>>;  %% ! Untyped
-serialize(M) when is_map(M), map_size(M) =:= 0 -> <<?EMPTY_MAP>>;  %% ! Untyped
-serialize(<<>>)        -> <<?EMPTY_STRING>>;
-serialize(I) when is_integer(I) ->
-    serialize_integer(I);
-serialize(String) when byte_size(String) > 0, byte_size(String) < ?SHORT_STRING_SIZE ->
-    S = size(String),
-    <<S:6, ?SHORT_STRING:2, String/binary>>;
-serialize(String) when is_binary(String), size(String) > 0, size(String) >= ?SHORT_STRING_SIZE ->
-    <<?LONG_STRING, (aeu_rlp:encode(String))/binary>>;
-serialize({address, Address}) when is_binary(Address), size(Address) =:= 32 ->
-    <<?ADDRESS, Address/binary>>;
-serialize({tuple, T}) when size(T) > 0 ->
-    S = size(T),
-    L = tuple_to_list(T),
-    Rest = << <<(serialize(E))/binary>> || E <- L >>,
-    if S < ?SHORT_TUPLE_SIZE ->
-            <<S:4, ?SHORT_TUPLE:4, Rest/binary>>;
-       true ->
-            Size = rlp_integer(S - ?SHORT_TUPLE_SIZE),
-            <<?LONG_TUPLE:8, Size/binary, Rest/binary>>
-    end;
-serialize([E|_] = L) ->
-    S = length(L),
-    T = value_to_typerep(E),
-    %% TODO assert all E of T
-    Rest = << <<(serialize(El))/binary>> || El <- L >>,
-    if S < ?SHORT_LIST_SIZE ->
-            <<S:4, ?SHORT_LIST:4, T/binary, Rest/binary>>;
-       true ->
-            Val = rlp_integer(S - ?SHORT_LIST_SIZE),
-            <<?LONG_LIST, T/binary, Val/binary, Rest/binary>>
-    end;
-serialize(Map) when is_map(Map) ->
-    L = [{K,V}|_] = maps:to_list(Map),
-    Size = length(L),
-    %% TODO:  check all K same type, and all V same type
-    %%        check K =/= map
-    Elements = << <<(serialize(K1))/binary, (serialize(V1))/binary>> || {K1,V1} <- L >>,
-    <<?MAP,
-      (value_to_typerep(K))/binary,
-      (value_to_typerep(V))/binary,
-      (rlp_integer(Size))/binary,
-      (Elements)/binary>>;
-serialize({variant, Tag, Values}) when is_integer(Tag),
-                                       is_tuple(Values) ->
-    <<?VARIANT,
-      (serialize(Tag))/binary,
-      (serialize({tuple, Values}))/binary
-    >>.
 
 types_to_typereps(Types) ->
     << <<(type_to_typerep(Type))/binary >> || Type <- Types >>.
