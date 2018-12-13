@@ -7,8 +7,7 @@
 
 %% API
 -export([bin_dir/0,
-         bin/1,
-         lib_dir/0]).
+         bin/1]).
 
 %% Returns the path of the directory where the miner and verifier
 %% executables are.
@@ -20,12 +19,6 @@ bin_dir() ->
 -spec bin(nonempty_string()) -> file:filename_all().
 bin(ExecutableBasename) ->
     filename:join([bin_dir(), ExecutableBasename]).
-
-%% Returns the directory where the shared-objects files needed by
-%% miner and verifier executables are.
--spec lib_dir() -> file:filename_all().
-lib_dir() ->
-    filename:join([priv_dir(), "lib"]).
 
 priv_dir() ->
     code:priv_dir(aecuckoo).

@@ -166,6 +166,8 @@ handle_request_('GetPendingKeyBlock', _Req, _Context) ->
                 error ->
                     {404, [], #{reason => <<"Block not found">>}}
             end;
+        {error, beneficiary_not_configured} ->
+            {400, [], #{reason => <<"Beneficiary not configured">>}};
         {error, _} ->
             {404, [], #{reason => <<"Block not found">>}}
     end;
@@ -561,7 +563,8 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"node_version">>               => NodeVersion,
        <<"node_revision">>              => NodeRevision,
        <<"peer_count">>                 => PeerCount,
-       <<"pending_transactions_count">> => PendingTxsCount}};
+       <<"pending_transactions_count">> => PendingTxsCount,
+       <<"network_id">>                 => aec_governance:get_network_id()}};
 
 handle_request_('GetContractCallFromTx', Req, _Context) ->
     ParseFuns = [read_required_params([tx_hash]),

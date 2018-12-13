@@ -155,6 +155,12 @@
               "$ref" : "#/definitions/KeyBlock"
             }
           },
+          "400" : {
+            "description" : "Beneficiary not configured",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
           "404" : {
             "description" : "Block not found",
             "schema" : {
@@ -1860,6 +1866,12 @@
             "schema" : {
               "$ref" : "#/definitions/PubKey"
             }
+          },
+          "404" : {
+            "description" : "Beneficiary error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -3483,7 +3495,7 @@
     },
     "Status" : {
       "type" : "object",
-      "required" : [ "difficulty", "genesis_key_block_hash", "listening", "node_revision", "node_version", "peer_count", "pending_transactions_count", "protocols", "solutions", "syncing" ],
+      "required" : [ "difficulty", "genesis_key_block_hash", "listening", "network_id", "node_revision", "node_version", "peer_count", "pending_transactions_count", "protocols", "solutions", "syncing" ],
       "properties" : {
         "genesis_key_block_hash" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3524,6 +3536,9 @@
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
+        },
+        "network_id" : {
+          "type" : "string"
         }
       },
       "example" : {
@@ -3532,6 +3547,7 @@
         "peer_count" : 0,
         "pending_transactions_count" : 0,
         "genesis_key_block_hash" : { },
+        "network_id" : "network_id",
         "syncing" : true,
         "node_revision" : "node_revision",
         "solutions" : 0,

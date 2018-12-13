@@ -82,7 +82,10 @@ run(ContractPubKey, VmVersion, Call, CallData, CallStack, Trees0,
     CallDef = make_call_def(OwnerPubKey, ContractPubKey, Gas, GasPrice, Amount,
               CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
-    aect_utils:insert_call_in_trees(CallRes, Trees).
+    UpdatedTrees = aect_utils:insert_call_in_trees(CallRes, Trees),
+    aec_trees:gc_old_nodes(UpdatedTrees, [accounts, contracts]).
+
+
 
 make_call_def(OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amount,
               CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv,

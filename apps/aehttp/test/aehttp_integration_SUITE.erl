@@ -1173,8 +1173,8 @@ post_key_block(_CurrentBlockType, Config) ->
     ok.
 
 mine_key_block(HeaderBin, Target, Nonce, Attempts) when Attempts > 0 ->
-    case rpc(aec_mining, mine, [HeaderBin, Target, Nonce]) of
-        {ok, {Nonce, _PowEvidence}} = Res ->
+    case rpc(aec_mining, mine, [HeaderBin, Target, Nonce, 0]) of
+        {ok, {_Nonce, _PowEvidence}} = Res ->
             Res;
         {error, no_solution} ->
             mine_key_block(HeaderBin, Target, aec_pow:next_nonce(Nonce), Attempts - 1)
@@ -1842,7 +1842,8 @@ get_status(_Config) ->
        <<"node_version">>               := _NodeVersion,
        <<"node_revision">>              := _NodeRevision,
        <<"peer_count">>                 := PeerCount,
-       <<"pending_transactions_count">> := PendingTxCount
+       <<"pending_transactions_count">> := PendingTxCount,
+       <<"network_id">>                 := NetworkId
       }} = get_status_sut(),
     ?assertMatch({ok, _}, aehttp_api_encoder:safe_decode(key_block_hash, GenesisKeyBlocHash)),
     ?assertMatch(X when is_integer(X) andalso X >= 0, Solutions),
@@ -1856,6 +1857,7 @@ get_status(_Config) ->
                   end, Protocols),
     ?assertMatch(X when is_integer(X) andalso X >= 0, PeerCount),
     ?assertMatch(X when is_integer(X) andalso X >= 0, PendingTxCount),
+    ?assertEqual(NetworkId, aec_governance:get_network_id()),
     ok.
 
 get_status_sut() ->
@@ -3052,15 +3054,19 @@ pending_transactions(_Config) ->
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
                   get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, ReceiverPubKey)),
 
-
-    ToMine = 2 + Delay,
-    {ok, MinedBlocks2} = aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    PendingTxHashes2 =
+        [aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))
+            || SignedTx <- NodeTxs],
+    {ok, MinedBlocks2a} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, PendingTxHashes2, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
+    %% Make sure we get the reward...
+    {ok, MinedBlocks2b} = aecore_suite_utils:mine_key_blocks(Node, Delay),
+
     ExpectedReward1 = lists:sum([rpc(aec_governance, block_mine_reward,
                                      [aec_blocks:height(X) - Delay])
-                                 || X <- MinedBlocks2,
+                                 || X <- MinedBlocks2a ++ MinedBlocks2b,
                                     aec_blocks:type(X) =:= key
                                 ]),
     {ok, 200, #{<<"balance">> := Bal1}} = get_balance_at_top(),

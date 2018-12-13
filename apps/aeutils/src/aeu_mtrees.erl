@@ -38,6 +38,7 @@
          lookup_proof/3,
          commit_to_db/1,
          new_with_backend/2,
+         gc_old_nodes/1,
          empty_with_backend/1
         ]).
 
@@ -101,6 +102,18 @@ new_with_backend(empty, DB) ->
     empty_with_backend(DB);
 new_with_backend(<<_:256>> = Hash, DB) ->
     aeu_mp_trees:new(Hash, DB).
+
+-spec gc_old_nodes(mtree()) -> mtree().
+gc_old_nodes(Tree) ->
+    %% TODO: this is a workarond and not a proper GC
+    Foldl =
+        fun F('$end_of_table', Accum) -> Accum;
+            F({Key, Value, Iter}, Accum) ->
+                F(aeu_mp_trees:iterator_next(Iter),
+                  insert(Key, Value, Accum))
+        end,
+    Iterator = aeu_mp_trees:iterator(Tree),
+    Foldl(aeu_mp_trees:iterator_next(Iterator), empty()).
 
 delete(Key, Tree) when ?IS_KEY(Key) ->
     aeu_mp_trees:delete(Key, Tree).

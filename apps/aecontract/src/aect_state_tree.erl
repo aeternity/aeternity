@@ -18,6 +18,7 @@
         , lookup_contract/2
         , lookup_contract/3
         , new_with_backend/1
+        , gc_old_nodes/1
         , root_hash/1]).
 
 %% API - Proof of inclusion
@@ -63,6 +64,10 @@ empty_with_backend() ->
 new_with_backend(Hash) ->
     CtTree = aeu_mtrees:new_with_backend(Hash, aec_db_backends:contracts_backend()),
     #contract_tree{contracts = CtTree}.
+
+-spec gc_old_nodes(tree()) -> tree().
+gc_old_nodes(#contract_tree{contracts = CtTree} = Tree) ->
+    Tree#contract_tree{contracts =  aeu_mtrees:gc_old_nodes(CtTree)}.
 
 %% -- Contracts --
 

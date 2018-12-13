@@ -125,6 +125,29 @@ test_block_generator_state_after_stop() ->
     ?assertEqual(stopped, aec_block_generator:get_generation_state()),
     ok.
 
+miner_no_beneficiary_test_() ->
+    {foreach,
+     fun() ->
+             TmpKeysDir = setup_common(),
+             ok = application:unset_env(aecore, beneficiary),
+             {ok, _} = ?TEST_MODULE:start_link([]),
+             TmpKeysDir
+     end,
+     fun(TmpKeysDir) ->
+             teardown_common(TmpKeysDir)
+     end,
+     [{"Test start/stop miner", fun test_start_stop_no_beneficiary/0}]}.
+
+test_start_stop_no_beneficiary() ->
+    %% Assert mining is stopped by default.
+    ?assertEqual(stopped, ?TEST_MODULE:get_mining_state()),
+    ?assertEqual(ok, ?TEST_MODULE:stop_mining()),
+
+    %% Assert mining cannot be started when beneficiary is not set.
+    ?assertEqual({error, beneficiary_not_configured}, ?TEST_MODULE:start_mining()),
+    ?assertEqual(stopped, ?TEST_MODULE:get_mining_state()),
+    ok.
+
 miner_timeout_test_() ->
     {foreach,
      fun() ->
@@ -154,7 +177,7 @@ test_time_out_miner() ->
     TestPid = self(),
     ok = meck:expect(
            aec_pow_cuckoo, generate,
-           fun(_, _, _) ->
+           fun(_, _, _, _) ->
                    TestPid ! {self(), called},
                    receive after infinity -> never_reached end
            end),
@@ -458,7 +481,7 @@ test_two_mined_block_signing() ->
 test_received_block_signing() ->
     Keys = beneficiary_keys(),
     meck:expect(aec_mining, mine,
-                fun(_, _, _) -> timer:sleep(1000), {error, no_solution} end),
+                fun(_, _, _, _) -> timer:sleep(1000), {error, no_solution} end),
     true = aec_events:subscribe(block_to_publish),
 
     ?TEST_MODULE:start_mining(),

@@ -365,7 +365,6 @@
         "mining" : {
             "type" : "object",
             "additionalProperties" : false,
-            "required" : ["beneficiary"],
             "properties" : {
                 "autostart" : {
                     "description" :
@@ -379,7 +378,7 @@
                 },
                 "beneficiary" : {
                     "description" :
-                    "Public key of beneficiary account that will receive fees from mining on a node.",
+                    "Public key of beneficiary account that will receive fees from mining on a node. Required when 'mining.autostart' is set to 'true'.",
                     "type" : "string",
                     "example" : "ak_DummyPubKeyDoNotEverUse999999999999999999999999999",
                     "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*$"
@@ -415,8 +414,14 @@
                                 "edge_bits"
                             ],
                             "properties" : {
+                                "executable_group" : {
+                                    "description" : "Group of executable binaries of the miner.",
+                                    "type" : "string",
+                                    "enum" : [ "aecuckoo", "aecuckooprebuilt" ],
+                                    "default": "aecuckoo"
+                                },
                                 "executable" : {
-                                    "description" : "Executable binary of the miner. Options are: \"mean29-generic\" (memory-intensive), \"mean29-avx2\" (memory-intensive, benefits from faster CPU supporting AVX2 instructions), \"lean29-generic\" (CPU-intensive, useful if memory-constrained), \"lean29-avx2\" (CPU-intensive, useful if memory-constrained, benefits from faster CPU supporting AVX2 instructions).",
+                                    "description" : "Executable binary of the miner. If the executable group is 'aecuckoo', the options are: \"mean29-generic\" (memory-intensive), \"mean29-avx2\" (memory-intensive, benefits from faster CPU supporting AVX2 instructions), \"lean29-generic\" (CPU-intensive, useful if memory-constrained), \"lean29-avx2\" (CPU-intensive, useful if memory-constrained, benefits from faster CPU supporting AVX2 instructions). For the other executable groups, please refer to the user documentation.",
                                     "type" : "string",
                                     "default": "mean29-generic"
                                 },
@@ -438,6 +443,16 @@
                                 "nice" : {
                                     "description" : "Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority. Keep it unset to inherit parent process priority.",
                                     "type": "integer"
+                                },
+                                "repeats" : {
+                                    "description" : "Number of tries to do in each miner context - WARNING: it should be set so the miner process runs for 3-5s or else the node risk missing out on new micro blocks.",
+                                    "type": "integer",
+                                    "default": 1
+                                },
+                                "instances" : {
+                                    "description" : "Miner instances in case of Multi-GPU mining",
+                                    "type" : "integer",
+                                    "default": 1
                                 }
                             }
                         }

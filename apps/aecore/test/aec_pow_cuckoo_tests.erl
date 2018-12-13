@@ -33,7 +33,7 @@ pow_test_() ->
         fun() ->
                 Target = ?HIGHEST_TARGET_SCI,
                 Nonce = ?TEST_HIGH_NONCE,
-                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
+                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, 0),
                 {ok, {Nonce, Soln}} = Res,
                 ?assertMatch(L when length(L) == 42, Soln),
 
@@ -47,7 +47,7 @@ pow_test_() ->
         fun() ->
                 Target = 16#01010000,
                 Nonce = ?TEST_HIGH_NONCE,
-                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
+                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, 0),
                 ?assertEqual({error, no_solution}, Res),
 
                 %% Any attempts to verify such nonce with a solution
@@ -56,7 +56,7 @@ pow_test_() ->
                 %% Obtain solution with high target threshold ...
                 HighTarget = ?HIGHEST_TARGET_SCI,
                 {ok, {Nonce, Soln2}} =
-                    ?TEST_MODULE:generate(?TEST_BIN, HighTarget, Nonce),
+                    ?TEST_MODULE:generate(?TEST_BIN, HighTarget, Nonce, 0),
                 ?assertMatch(L when length(L) == 42, Soln2),
                 %% ... then attempt to verify such solution (and
                 %% nonce) with the low target threshold (shall fail).
@@ -67,7 +67,7 @@ pow_test_() ->
        fun() ->
                Target = ?HIGHEST_TARGET_SCI,
                Nonce = ?TEST_HIGH_NONCE,
-               Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
+               Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, 0),
                {ok, {Nonce, Soln}} = Res,
                ?assertMatch(L when length(L) == 42, Soln),
 
@@ -81,7 +81,7 @@ pow_test_() ->
                Target = ?HIGHEST_TARGET_SCI,
                Nonce = 1,
                ?assertMatch({error, no_solution},
-                            ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce)),
+                            ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, 0)),
 
                DummySoln = lists:seq(0, 41),
                ?assertMatch(L when length(L) == 42, DummySoln),
@@ -140,7 +140,7 @@ kill_ospid_miner_test_() ->
             Self = self(),
             ?assertEqual([], exec:which_children()),  %% no zombies around
             Pid = spawn(fun() ->
-                          Self ! {aec_pow_cuckoo:generate(?TEST_BIN, 12837272, 128253), self()}
+                          Self ! {aec_pow_cuckoo:generate(?TEST_BIN, 12837272, 128253, 0), self()}
                       end),
             timer:sleep(200),                        %% give some time to start the miner OS pid
             ?assertEqual(1, length(exec:which_children())),  %% We did create a new one.
@@ -154,5 +154,23 @@ kill_ospid_miner_test_() ->
      ]
     }.
 
+prebuilt_miner_test_() ->
+    {foreach,
+     fun() ->
+             ok = meck:new(aeu_env, [passthrough]),
+             ok = application:ensure_started(erlexec)
+     end,
+     fun(_) ->
+             ok = meck:unload(aeu_env)
+     end,
+     [{"Err if absent prebuilt miner",
+       fun() ->
+               aec_test_utils:mock_prebuilt_cuckoo_pow("nonexistingminer"),
+               Target = ?HIGHEST_TARGET_SCI,
+               Nonce = 1,
+               ?assertMatch({error,{runtime,{execution_failed,{status,_}}}},
+                            ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, 0))
+       end}
+     ]}.
 
 -endif.

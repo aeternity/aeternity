@@ -17,7 +17,7 @@ chain:
     persist: true
 
 mining:
-    beneficiary: "ak_25eTK8PaiLpREqBkP3yDNWJAwXjWSR8tbn3zu8SXaNx824A1AJ"
+    beneficiary: "ak_twR4h7dEcUtc2iSEDv8kB7UFJJDGiEDQCXr85C3fYF8FdVdyo"
     beneficiary_reward_delay: 2
     autostart: true
     cuckoo:
@@ -25,3 +25,6 @@ mining:
             executable: mean15-generic
             extra_args: ""
             edge_bits: 15
+
+fork_management:
+    network_id: ae_docker

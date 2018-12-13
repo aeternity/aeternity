@@ -188,7 +188,12 @@ prepare_param_({"maximum", Max}, Value, Name, _) ->
     end.
 
 get_param_value("body", _, Req0) ->
-    case cowboy_req:read_body(Req0) of
+    %% Cowboy will attempt to read up to ~5MB of data for up to 10s. The call
+    %% will return when there is up to ~5MB of data or at the end of the 10s
+    %% period. If there is more data to read (after reading the initial 5MB),
+    %% {more, Body, Req} is returned and we can consider the request body to
+    %% be too big and the request is invalid.
+    case cowboy_req:read_body(Req0, #{length => 5000000, period => 10000}) of
         {ok, <<>>, Req} -> {ok, <<>>, Req};
         {ok, Body, Req} ->
             try
@@ -198,7 +203,10 @@ get_param_value("body", _, Req0) ->
               error:_ ->
                 {error, Reason} = param_error({body, Body}, <<>>),
                 {error, Reason, Req}
-            end
+            end;
+        {more, Body, Req} ->
+            {error, Reason} = param_error({body_too_big, Body}, <<>>),
+            {error, Reason, Req}
     end;
 get_param_value("query", Name, Req) ->
     QS = cowboy_req:parse_qs(Req),
@@ -211,7 +219,6 @@ get_param_value("path", Name, Req) ->
     Value = cowboy_req:binding(to_binding(Name), Req),
     {ok, Value, Req}.
 
-
 param_error({enum, Value}, Name) ->
     param_error_(Name, #{error => not_in_enum, data => Value});
 param_error({not_in_range, Value}, Name) ->
@@ -223,7 +230,9 @@ param_error({schema, Info}, Name) ->
 param_error({type, Value}, Name) ->
     param_error_(Name, #{error => wrong_type, data => Value});
 param_error({body, Value}, Name) ->
-    param_error_(Name, #{error => invalid_body, data => Value}).
+    param_error_(Name, #{error => invalid_body, data => Value});
+param_error({body_too_big, Value}, Name) ->
+    param_error_(Name, #{error => body_too_big, data => Value}).
 
 param_error_(Name, Info) ->
     {error, {validation_error, to_binary(Name), Info}}.

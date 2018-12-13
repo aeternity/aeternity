@@ -278,7 +278,7 @@ jobs:
       - *restore_rebar_cache
       - run:
           name: Build
-          command: ./rebar3 as test do release
+          command: make KIND=test
       - save_cache:
           key: *build_cache_key
           paths:
@@ -303,7 +303,7 @@ jobs:
           name: Test
           command: |
             epmd -daemon
-            make test CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
+            make ct CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
       # Isolates the junit.xml report because additional files in _build/test/logs
       # are somehow causing issue with xunit report upload, parsing and merging
       - run:

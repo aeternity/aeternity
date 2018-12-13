@@ -55,3 +55,6 @@ system_test/logs
 system_test/aest_hard_fork_SUITE_data/db
 docker/keys/*/sign_key*
 data/aecore/keys
+_checkouts/
+tmp/
+rebar3.crashdump

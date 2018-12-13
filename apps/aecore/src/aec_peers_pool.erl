@@ -1309,7 +1309,7 @@ unverified_add(St, Now, Peer, KeepPeerId) ->
             Pool2 = pool_add(Pool, BucketIdx, PeerId),
             Pool3 = pool_update_size(Pool2, 1),
             St3 = St2#?ST{unver_pool = Pool3},
-            % Peer may have been changed by unverified_make_space/3.
+            % Peer may have been changed by unverified_make_space/4.
             Peer2 = get_peer(St3, PeerId),
             Peer3 = Peer2#peer{uidxs = [BucketIdx]},
             St4 = set_peer(St3, PeerId, Peer3),
@@ -1343,8 +1343,10 @@ unverified_add_reference(St, Now, Peer, KeepPeerId) ->
                     #?ST{unver_pool = Pool} = St2,
                     Pool2 = pool_add(Pool, BucketIdx, PeerId),
                     St3 = St2#?ST{unver_pool = Pool2},
-                    Peer2 = Peer#peer{uidxs = [BucketIdx | Idxs]},
-                    set_peer(St3, PeerId, Peer2)
+                    % Peer may have been changed by unverified_make_space/4.
+                    Peer2 = get_peer(St3, PeerId),
+                    Peer3 = Peer2#peer{uidxs = [BucketIdx | Idxs]},
+                    set_peer(St3, PeerId, Peer3)
             end
     end.
 
