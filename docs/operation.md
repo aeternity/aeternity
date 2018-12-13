@@ -51,8 +51,8 @@ If the node is mining, you shall read log entries like the following:
 ```
 ... Creating key block candidate on the top
 ... Created key block candidate ...
-... Starting mining
-... Starting mining
+... Starting miner ...
+... Starting miner ...
 ```
 
 If the node successfully mines a block, you shall read log entries like the following:
