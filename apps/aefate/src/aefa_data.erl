@@ -47,6 +47,7 @@ format({tuple, T}) -> "{ " ++ [format(E) ++ " " || E <- tuple_to_list(T)] ++ "}"
 format(S) when is_binary(S) -> S;
 format({variant, Tag, T}) -> "( " ++ format(Tag) ++ ", " ++ format(tuple_to_list(T)) ++ " )";
 format(#{} = M) -> "#{ " ++ format_kvs(maps:to_list(M)) ++" }";
+format({address, Address}) -> base58:binary_to_base58(Address);
 format(V) -> exit({not_a_fate_type, V}).
 
 format_list([]) -> " ]";
