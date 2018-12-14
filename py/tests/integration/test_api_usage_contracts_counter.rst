@@ -85,11 +85,10 @@ Bob ensures that the published contract create transaction is included in the ch
 
 >>> def is_tx_confirmed(ext_api, tx_hash, min_confirmations):
 ...  top_key_height = ext_api.get_current_key_block_height().height
-...  tx_block_hash = ext_api.get_transaction_by_hash(tx_hash).block_hash
-...  if "none" == tx_block_hash:
+...  tx = ext_api.get_transaction_by_hash(tx_hash)
+...  if "none" == tx.block_hash:
 ...    return False
-...  tx_height = ext_api.get_micro_block_header_by_hash(tx_block_hash).height
-...  return (top_key_height - tx_height) >= min_confirmations
+...  return (top_key_height - tx.block_height) >= min_confirmations
 >>> from waiting import wait
 >>> wait(lambda: is_tx_confirmed(epoch_node['external_api'], contract_create_tx_hash, 2),
 ...      timeout_seconds=30)

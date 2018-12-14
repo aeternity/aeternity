@@ -205,10 +205,17 @@ def wait_until_height(api, height):
 def ensure_transaction_posted(ext_api, signed_tx):
     tx_object = Tx(tx=signed_tx)
     tx_hash = ext_api.post_transaction(tx_object).tx_hash
-    top = ext_api.get_current_key_block()
-    wait_until_height(ext_api, top.height + 1)
-    wait(lambda: ext_api.get_transaction_by_hash(tx_hash).block_hash != 'none',
-         timeout_seconds=20, sleep_seconds=0.25)
+    ensure_transaction_confirmed(ext_api, tx_hash, 1)
+
+def ensure_transaction_confirmed(ext_api, tx_hash, min_confirmations):
+    wait(lambda: is_tx_confirmed(ext_api, tx_hash, min_confirmations), timeout_seconds=20, sleep_seconds=0.25)
+
+def is_tx_confirmed(ext_api, tx_hash, min_confirmations):
+    top_key_height = ext_api.get_current_key_block_height().height
+    tx = ext_api.get_transaction_by_hash(tx_hash)
+    if "none" == tx.block_hash:
+        return False
+    return (top_key_height - tx.block_height) >= min_confirmations
 
 def get_account_balance(api, pub_key):
     return _balance_from_get_account(lambda: api.get_account_by_pubkey(pub_key), pub_key)
