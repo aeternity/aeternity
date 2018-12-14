@@ -19,6 +19,7 @@ from swagger_client.models.spend_tx import SpendTx
 from swagger_client.configuration import Configuration
 
 from nose.tools import assert_equals
+from nose.tools import assert_true
 from testconfig import config
 from waiting import wait
 
@@ -88,14 +89,15 @@ def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
 
     # populate the chain so node had mined some blocks and has tokens
     # to spend
-    wait_until_height(ext_api, blocks_to_mine)
+    wait_until_height(ext_api, top0.height + blocks_to_mine)
     top1 = ext_api.get_current_key_block()
-    assert_equals(top1.height >= blocks_to_mine, True)
+    assert_true(top1.height >= top0.height)
+    assert_true(top1.height >= blocks_to_mine)
     # Now the node has at least blocks_to_mine blocks mined
 
     bal1 = get_account_balance(ext_api, beneficiary['enc_pubk'])
-    if top1.height > top0.height:
-        assert_equals(bal1 > bal0, True)
+    # The node received the reward for at least blocks_to_mine blocks
+    assert_true(bal1 > bal0)
 
     return (root_dir, ext_api, int_api, top1)
 
