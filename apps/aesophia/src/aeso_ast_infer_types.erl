@@ -639,7 +639,8 @@ infer_infix({BoolOp, As})
     Bool = {id, As, "bool"},
     {fun_t, As, [], [Bool,Bool], Bool};
 infer_infix({IntOp, As})
-  when IntOp == '+';    IntOp == '-';   IntOp == '*'; IntOp == '/';
+  when IntOp == '+';    IntOp == '-';   IntOp == '*';   IntOp == '/';
+       IntOp == '^';    IntOp == 'mod'; IntOp == 'bsl'; IntOp == 'bsr';
        IntOp == 'band'; IntOp == 'bor'; IntOp == 'bxor' ->
     Int = {id, As, "int"},
     {fun_t, As, [], [Int, Int], Int};
@@ -653,7 +654,11 @@ infer_infix({RelOp, As})
 infer_infix({'::', As}) ->
     ElemType = fresh_uvar(As),
     ListType = {app_t, As, {id, As, "list"}, [ElemType]},
-    {fun_t, As, [], [ElemType, ListType], ListType}.
+    {fun_t, As, [], [ElemType, ListType], ListType};
+infer_infix({'++', As}) ->
+    ElemType = fresh_uvar(As),
+    ListType = {app_t, As, {id, As, "list"}, [ElemType]},
+    {fun_t, As, [], [ListType, ListType], ListType}.
 
 infer_prefix({'!',As}) ->
     Bool = {id, As, "bool"},
@@ -704,7 +709,7 @@ clean_up_ets() ->
 
 ets_init() ->
     put(aeso_ast_infer_types, #{}).
-    
+
 ets_tabid(Name) ->
     #{Name := TabId} = get(aeso_ast_infer_types),
     TabId.
