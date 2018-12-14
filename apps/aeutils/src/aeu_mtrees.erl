@@ -43,10 +43,9 @@
         ]).
 
 %% For internal functional db
--export([ proof_db_commit/2
+-export([ proof_db_drop_cache/1
         , proof_db_get/2
         , proof_db_put/3
-        , proof_db_fold/3
         ]).
 
 -export([ serialize/1
@@ -249,7 +248,7 @@ lookup_proof(Key, RootHash, Proof) ->
 
 -spec commit_to_db(mtree()) -> mtree().
 commit_to_db(Tree) ->
-    case aeu_mp_trees:commit_to_db(Tree) of
+    case aeu_mp_trees:commit_reachable_to_db(Tree) of
         {ok, Tree1}   -> Tree1;
         {error, What} -> error({failed_commit, What})
     end.
@@ -269,7 +268,7 @@ proof_db_spec() ->
      , cache  => dict:new()
      , get    => {?MODULE, proof_db_get}
      , put    => {?MODULE, proof_db_put}
-     , commit => {?MODULE, proof_db_commit}
+     , drop_cache => {?MODULE, proof_db_drop_cache}
      }.
 
 proof_db_get(Key, Proof) ->
@@ -278,11 +277,8 @@ proof_db_get(Key, Proof) ->
 proof_db_put(Key, Val, Proof) ->
     dict:store(Key, Val, Proof).
 
-proof_db_commit(_Cache,_DB) ->
-    error(no_commits_in_proof).
-
-proof_db_fold(Fun, Initial, Proof) ->
-    dict:fold(Fun, Initial, Proof).
+proof_db_drop_cache(_Cache) ->
+    dict:new().
 
 %%%===================================================================
 %%% serialization

@@ -9,7 +9,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %% For internal functional db
--export([ dict_db_commit/2
+-export([ dict_db_drop_cache/1
         , dict_db_get/2
         , dict_db_put/3
         ]).
@@ -28,7 +28,6 @@ basic_test_() ->
     , {"Iterator from non-existing", fun test_iterator_non_existing/0}
     , {"Iterator of subtree", fun test_iterator_prefix/0}
     , {"Create subtrees", fun test_subtrees/0}
-    , {"Visit reachable hashes", fun test_visit_reachable/0}
     ].
 
 hash_test_() ->
@@ -45,6 +44,11 @@ extension_test_() ->
 proof_test_() ->
     [ {"Create and verify proofs", fun test_proofs/0}
     , {"Check that bogus proofs don't work", fun test_bogus_proofs/0}
+    ].
+
+reachability_test_() ->
+    [ {"Visit reachable hashes", fun test_visit_reachable/0}
+    , {"Commit reachable cache", {timeout, 30, fun test_commit_reachable/0}}
     ].
 
 %%%=============================================================================
@@ -465,13 +469,70 @@ test_visit_reachable() ->
     ok.
 
 %%%=============================================================================
+%%% Minimal cache commit tests
+
+test_commit_reachable() ->
+    %% Generate a random tree and commit the reachable from the cache.
+    {Tree, Vals1} = gen_mp_tree({1544,700767,24258}, 1000),
+    {ok, Tree1} = aeu_mp_trees:commit_reachable_to_db(Tree),
+
+    %% Check that we are not committing the full cache
+    CacheSize = dict:size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree))),
+    DBSize1   = dict:size(aeu_mp_trees_db:get_handle(aeu_mp_trees:db(Tree1))),
+    ?assert(DBSize1 < CacheSize),
+
+    %% Check that we now have an empty cache.
+    CacheSize1 = dict:size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree1))),
+    ?assertEqual(0, CacheSize1),
+
+    %% Check that we didn't lose any keys.
+    Sorted1 = lists:ukeysort(1, Vals1),
+    Iterator1 = aeu_mp_trees:iterator(Tree1),
+    test_iterator(Iterator1, Tree1, Sorted1),
+
+    %% Add another batch of keys and values so we get both a db and a cache
+    {Tree2, Vals2} = extend_mp_tree(Tree1, 1000),
+
+    %% The db size should be unchanged.
+    DBSize2   = dict:size(aeu_mp_trees_db:get_handle(aeu_mp_trees:db(Tree2))),
+    ?assertEqual(DBSize1, DBSize2),
+
+    %% Commit the reachable from the cache.
+    {ok, Tree3} = aeu_mp_trees:commit_reachable_to_db(Tree2),
+
+    %% The size of the new db should contain all old nodes, plus a
+    %% subset of the cache size before commit.
+    CacheSize2 = dict:size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree2))),
+    DBSize3   = dict:size(aeu_mp_trees_db:get_handle(aeu_mp_trees:db(Tree3))),
+    ?assert(DBSize3 < DBSize2 + CacheSize2),
+
+    %% We should have all values in the final tree
+    Sorted3 = lists:ukeysort(1, Vals1 ++ Vals2),
+    ?assertEqual(length(Sorted3), length(Vals1) + length(Vals2)),
+    Iterator3 = aeu_mp_trees:iterator(Tree3),
+    test_iterator(Iterator3, Tree3, Sorted3),
+
+    %% We should also be able to traverse the full tree from the
+    %% historical root hash using the final trees DB.
+    Root  = aeu_mp_trees:root_hash(Tree),
+    DB3   = aeu_mp_trees:db(Tree3),
+    Tree4 = aeu_mp_trees:new(Root, DB3),
+    Iterator4 = aeu_mp_trees:iterator(Tree4),
+    test_iterator(Iterator4, Tree4, Sorted1),
+
+    ok.
+
+%%%=============================================================================
 %%% Test utils
 
 gen_mp_tree(Seed, NofNodes) ->
     rand:seed(exs1024s, Seed),
+    extend_mp_tree(aeu_mp_trees:new(), NofNodes).
+
+extend_mp_tree(Tree, NofNodes) ->
     Vals = gen_vals(NofNodes),
     ?assertEqual(length(Vals), length(lists:ukeysort(1, Vals))),
-    {insert_vals(Vals, aeu_mp_trees:new()), Vals}.
+    {insert_vals(Vals, Tree), Vals}.
 
 gen_vals(NofNodes) ->
     [{random_hexstring(65), random_hexstring(8)}
@@ -505,7 +566,7 @@ dict_db_spec() ->
      , cache  => dict:new()
      , get    => {?MODULE, dict_db_get}
      , put    => {?MODULE, dict_db_put}
-     , commit => {?MODULE, dict_db_commit}
+     , drop_cache => {?MODULE, dict_db_drop_cache}
      }.
 
 dict_db_get(Key, Dict) ->
@@ -517,5 +578,5 @@ dict_db_get(Key, Dict) ->
 dict_db_put(Key, Val, Dict) ->
     dict:store(Key, Val, Dict).
 
-dict_db_commit(Cache, DB) ->
-    {ok, dict:new(), dict:merge(fun(_, _, Val) -> Val end, Cache, DB)}.
+dict_db_drop_cache(_Dict) ->
+    dict:new().
