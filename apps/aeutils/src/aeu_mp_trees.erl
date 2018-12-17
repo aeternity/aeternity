@@ -186,7 +186,7 @@ gc_cache(#mpt{db = DB, hash = Hash} = MPT) ->
                        {continue, db_put(Key, Val, AccDB)}
                end,
     FreshDB = db_drop_cache(DB),
-    DB1 = int_visit_reachable_hashes_in_cache([Hash], FreshDB, DB, VisitFun),
+    DB1 = int_visit_reachable_hashes_in_cache([Hash], DB, FreshDB, VisitFun),
     MPT#mpt{db = DB1}.
 
 
