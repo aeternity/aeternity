@@ -16,8 +16,7 @@
 -type hash() :: <<_:256>>. %% 256 = 32 * 8.
 
 -type hash_type() :: pubkey | header | tx | signed_tx | pow | evm | aens |
-                     peer_id | state_trees | pof | sophia_source_code |
-                     sophia_type_hash.
+                     peer_id | state_trees | pof | sophia_source_code.
 
 -spec hash(hash_type(), hashable()) -> hash().
 hash(evm, Bin) when is_binary(Bin) ->
