@@ -70,7 +70,8 @@ make_boolean(true)  -> ?FATE_TRUE;
 make_boolean(false) -> ?FATE_FALSE.
 make_list([]) -> ?FATE_NIL;
 make_list(L) -> ?MAKE_FATE_LIST(L).
-make_string(S) when is_list(S) -> ?FATE_STRING(list_to_binary(lists:flatten(S)));
+make_string(S) when is_list(S) ->
+    ?FATE_STRING(list_to_binary(lists:flatten(S)));
 make_string(S) when is_binary(S) -> ?FATE_STRING(S).
 make_unit() -> ?FATE_UNIT.
 make_tuple(T) -> ?FATE_TUPLE(T).
@@ -91,7 +92,8 @@ format(?FATE_FALSE) -> "false";
 format(?FATE_NIL) -> "[]";
 format(L) when ?IS_FATE_LIST(L) -> format_list(?FATE_LIST_VALUE(L));
 format(?FATE_UNIT) -> "unit";
-format(?FATE_TUPLE(T)) -> "{ " ++ [format(E) ++ " " || E <- tuple_to_list(T)] ++ "}";
+format(?FATE_TUPLE(T)) ->
+    "{ " ++ [format(E) ++ " " || E <- tuple_to_list(T)] ++ "}";
 format(S) when ?IS_FATE_STRING(S) -> [S];
 format(?FATE_VARIANT(Tag, T)) ->
     "( " ++ format(Tag) ++ ", "
@@ -109,5 +111,6 @@ format_list([E]) -> format(E) ++ " ]";
 format_list([H|T]) -> format(H) ++ ", " ++ format_list(T).
 
 format_kvs([]) -> "";
-format_kvs([{K,V}]) -> "( " ++ format(K) ++ format(V) ++ " )";
-format_kvs([{K,V} | Rest]) -> "( " ++ format(K) ++ format(V) ++ " ), " ++ format_kvs(Rest).
+format_kvs([{K,V}]) -> "( " ++ format(K) ++ " => " ++ format(V) ++ " )";
+format_kvs([{K,V} | Rest]) ->
+    "( " ++ format(K) ++ " => " ++  format(V) ++ " ), " ++ format_kvs(Rest).
