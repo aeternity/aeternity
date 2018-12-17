@@ -89,11 +89,7 @@ format(?FATE_VOID) -> "void";
 format(?FATE_TRUE) -> "true";
 format(?FATE_FALSE) -> "false";
 format(?FATE_NIL) -> "[]";
-format(L) when ?IS_FATE_LIST(L) ->
-    case ?FATE_LIST_VALUE(L) of
-        [E] -> "[ " ++ format(E) ++ " ]";
-        _ -> "[ " ++ format_list(L)
-    end;
+format(L) when ?IS_FATE_LIST(L) -> format_list(?FATE_LIST_VALUE(L));
 format(?FATE_UNIT) -> "unit";
 format(?FATE_TUPLE(T)) -> "{ " ++ [format(E) ++ " " || E <- tuple_to_list(T)] ++ "}";
 format(S) when ?IS_FATE_STRING(S) -> [S];
