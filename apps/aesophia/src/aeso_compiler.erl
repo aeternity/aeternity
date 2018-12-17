@@ -43,7 +43,10 @@
              , wrapped_code/0
              ]).
 
--define(COMPILER_VERSION, 1).
+-define(COMPILER_VERSION_1, 1).
+-define(COMPILER_VERSION_2, 2).
+
+-define(COMPILER_VERSION, ?COMPILER_VERSION_2).
 
 -spec version() -> pos_integer().
 version() ->
@@ -212,7 +215,8 @@ deserialize(Binary) ->
             error({illegal_code_object, Other})
     end.
 
-serialization_template(?COMPILER_VERSION) ->
+serialization_template(Vsn) when Vsn == ?COMPILER_VERSION_1;
+                                 Vsn == ?COMPILER_VERSION_2 ->
     [ {source_hash, binary}
     , {type_info, [{binary, binary, binary, binary}]} %% {type hash, name, arg type, out type}
     , {byte_code, binary}].
