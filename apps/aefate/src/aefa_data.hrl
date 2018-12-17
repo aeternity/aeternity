@@ -13,7 +13,7 @@
 -define(FATE_NIL_T,     {nil}).
 -define(FATE_LIST_T(T), {list,    list(A::T) | ?FATE_NIL_T}).
 -define(FATE_UNIT_T,    {tuple,   {}}).
--define(FATE_MAP_T,     {map,     #{ A::fate_none_map_type() => B::fate_type() }}).
+-define(FATE_MAP_T,     {map,     #{ fate_none_map_type() => fate_type() }}).
 -define(FATE_STRING_T,s  {string,  binary()}).
 -define(FATE_ADDRESS_T, {address, <<_:256>>}).
 -define(FATE_VARIANT_T(T), {variant, ?FATE_BYTE_T, fate_tuple(T)}).
@@ -53,7 +53,7 @@
 -define(FATE_NIL_T,     []).
 -define(FATE_LIST_T(T), list(A::T) | fate_nil()).
 -define(FATE_UNIT_T,    {tuple, {}}).
--define(FATE_MAP_T,     #{ A::fate_none_map_type() => B::fate_type() }).
+-define(FATE_MAP_T,     #{ fate_none_map_type() => fate_type() }).
 -define(FATE_STRING_T,  binary()).
 -define(FATE_ADDRESS_T, {address, <<_:256>>}).
 -define(FATE_VARIANT_T(T), {variant, ?FATE_BYTE_T, fate_tuple(T)}).
