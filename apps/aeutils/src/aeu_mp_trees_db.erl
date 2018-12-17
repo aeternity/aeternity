@@ -15,7 +15,6 @@
 
 -export([ get/2
         , put/3
-        , commit/1
         , cache_get/2
         , drop_cache/1
         , new/1
@@ -34,7 +33,6 @@
             , drop_cache :: drop_cache_mf()
             , get    :: get_mf()
             , put    :: put_mf()
-            , commit :: commit_mf()
             }).
 
 -opaque db() :: #db{}.
@@ -42,7 +40,6 @@
 -type db_spec() :: #{ 'get'    := get_mf()
                     , 'put'    := put_mf()
                     , 'cache'  := cache()
-                    , 'commit' := commit_mf()
                     , 'drop_cache' := drop_cache_mf()
                     , 'handle' := handle()
                     }.
@@ -63,9 +60,6 @@
 %% fun((cache()) -> cache()).
 -type drop_cache_mf() :: {module(), atom()}.
 
-%% fun((handle(), cache()) -> {ok, handle(), cache()} | {'error', term()}).
--type commit_mf() :: {module(), atom()}.
-
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -74,18 +68,15 @@
 new(#{ 'get'    := GetMF
      , 'put'    := PutMF
      , 'cache'  := Cache
-     , 'commit' := CommitMF
      , 'drop_cache' := DropCacheMF
      , 'handle' := Handle
      }) ->
     validate_exported(put, PutMF, 3),
     validate_exported(get, GetMF, 2),
-    validate_exported(commit, CommitMF, 2),
     validate_exported(drop_cache, DropCacheMF, 1),
     #db{ get    = GetMF
        , put    = PutMF
        , cache  = Cache
-       , commit = CommitMF
        , drop_cache = DropCacheMF
        , handle = Handle
        }.
@@ -126,15 +117,6 @@ unsafe_write_to_backend(Key, Val, DB) ->
     %%       the cache. Make sure you know what you are doing!
     %%       This should only be called with the actual cache value.
     int_db_put(Key, Val, DB).
-
--spec commit(db()) -> {'ok', db()} | {'error', term()}.
-commit(#db{commit = {M, F}, cache = Cache, handle = Handle} = DB) ->
-    case M:F(Handle, Cache) of
-        {ok, NewHandle, NewCache} ->
-            {ok, DB#db{handle = NewHandle, cache = NewCache}};
-        {error, _} = Error ->
-            Error
-    end.
 
 -spec is_db(term()) -> boolean().
 is_db(#db{}) -> true;
