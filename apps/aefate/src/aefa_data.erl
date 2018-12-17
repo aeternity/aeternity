@@ -99,7 +99,7 @@ format(?FATE_TUPLE(T)) -> "{ " ++ [format(E) ++ " " || E <- tuple_to_list(T)] ++
 format(S) when ?IS_FATE_STRING(S) -> [S];
 format(?FATE_VARIANT(Tag, T)) ->
     "( " ++ format(Tag) ++ ", "
-        ++ [format(E) || E <- tuple_to_list(T)]
+        ++ [format(E) ++ " " || E <- tuple_to_list(T)]
         ++ " )";
 format(M) when ?IS_FATE_MAP(M) ->
     "#{ "
