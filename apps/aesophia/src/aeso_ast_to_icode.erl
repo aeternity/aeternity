@@ -321,6 +321,11 @@ ast_body(?qid_app(["String", "concat"], [String1, String2], _, _), Icode) ->
     #funcall{ function = #var_ref{ name = {builtin, string_concat} },
               args     = [ast_body(String1, Icode), ast_body(String2, Icode)] };
 
+%% -- String hash (sha3)
+ast_body(?qid_app(["String", "sha3"], [String], _, _), Icode) ->
+    #unop{ op = 'sha3', rand = ast_body(String, Icode) };
+
+
 %% Other terms
 ast_body({id, _, Name}, _Icode) ->
     %% TODO Look up id in env

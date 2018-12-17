@@ -537,6 +537,9 @@ reorder_vars([]) ->
 reorder_vars([V|Vs]) ->
     Vs ++ [V].
 
+assemble_prefix('sha3') -> [i(?DUP1), i(?MLOAD),          %% length, ptr
+                            i(?SWAP1), push(32), i(?ADD), %% ptr+32, length
+                            i(?SHA3)];
 assemble_prefix('-') -> [push(0), i(?SUB)];
 assemble_prefix('bnot') -> i(?NOT).
 

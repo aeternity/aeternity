@@ -142,7 +142,8 @@ global_env() ->
      {["Map", "size"],           Fun1(Map(K, V), Int)},
      %% Strings
      {["String", "length"], Fun1(String, Int)},
-     {["String", "concat"], Fun([String, String], String)}
+     {["String", "concat"], Fun([String, String], String)},
+     {["String", "sha3"], Fun1(String, Int)}
     ].
 
 global_type_env() ->

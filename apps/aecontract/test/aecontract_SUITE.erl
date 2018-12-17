@@ -3195,6 +3195,9 @@ sophia_operators(_Cfg) ->
     ?assertEqual([1],    ?call(call_contract, Acc, IdC, concat, {list, word}, {[1], []})),
     ?assertEqual([1, 2], ?call(call_contract, Acc, IdC, concat, {list, word}, {[1], [2]})),
 
+    {Hash1, Hash1} = ?call(call_contract, Acc, IdC, hash, {tuple, [word, word]}, {<<"TestString">>}),
+    ?assertEqual(<<Hash1:256>>, aec_hash:hash(evm, <<"TestString">>)),
+
     ok.
 
 %% The crowd funding example.
