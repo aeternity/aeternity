@@ -474,7 +474,7 @@ test_visit_reachable() ->
 test_commit_reachable() ->
     %% Generate a random tree and commit the reachable from the cache.
     {Tree, Vals1} = gen_mp_tree({1544,700767,24258}, 1000),
-    {ok, Tree1} = aeu_mp_trees:commit_reachable_to_db(Tree),
+    Tree1 = aeu_mp_trees:commit_reachable_to_db(Tree),
 
     %% Check that we are not committing the full cache
     CacheSize = dict:size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree))),
@@ -498,7 +498,7 @@ test_commit_reachable() ->
     ?assertEqual(DBSize1, DBSize2),
 
     %% Commit the reachable from the cache.
-    {ok, Tree3} = aeu_mp_trees:commit_reachable_to_db(Tree2),
+    Tree3 = aeu_mp_trees:commit_reachable_to_db(Tree2),
 
     %% The size of the new db should contain all old nodes, plus a
     %% subset of the cache size before commit.

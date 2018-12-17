@@ -248,10 +248,7 @@ lookup_proof(Key, RootHash, Proof) ->
 
 -spec commit_to_db(mtree()) -> mtree().
 commit_to_db(Tree) ->
-    case aeu_mp_trees:commit_reachable_to_db(Tree) of
-        {ok, Tree1}   -> Tree1;
-        {error, What} -> error({failed_commit, What})
-    end.
+    aeu_mp_trees:commit_reachable_to_db(Tree).
 
 %%%===================================================================
 %%% Internal functions

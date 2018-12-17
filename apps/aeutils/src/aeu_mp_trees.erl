@@ -171,13 +171,13 @@ delete(Key, #mpt{} = Mpt) when is_bitstring(Key) ->
 -spec root_hash(tree()) -> <<>> | hash().
 root_hash(#mpt{hash = H}) -> H.
 
--spec commit_reachable_to_db(tree()) -> {'ok', tree()} | {'error', term()}.
+-spec commit_reachable_to_db(tree()) -> tree().
 commit_reachable_to_db(#mpt{db = DB, hash = Hash} = MPT) ->
     VisitFun = fun(Key, Val, AccDB) ->
                        {continue, db_commit_from_cache(Key, Val, AccDB)}
                end,
     DB1 = int_visit_reachable_hashes_in_cache([Hash], DB, DB, VisitFun),
-    {ok, MPT#mpt{db = db_drop_cache(DB1)}}.
+    MPT#mpt{db = db_drop_cache(DB1)}.
 
 -spec construct_proof(key(), db(), tree()) -> {value(), db()}.
 construct_proof(Key, ProofDB, #mpt{db = DB, hash = Hash}) ->
