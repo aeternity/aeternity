@@ -4868,13 +4868,11 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
     _UnsignedStateTx = UpdateVolley().
 
 
-contract_byte_code(TestName) ->
-    %% Compile contract TesName ++ ".aes"
-    ContractString = aeso_test_utils:read_contract(TestName),
-    BinCode = aeso_compiler:from_string(ContractString, []),
-    HexCode = aehttp_api_encoder:encode(contract_bytearray, BinCode),
-    HexCode.
-
+contract_byte_code(ContractName) ->
+    {ok, BinCode} = aect_test_utils:compile_contract(
+                      filename:join(["contracts", 
+                                     filename:basename(ContractName, ".aes") ++ ".aes"])),
+    aehttp_api_encoder:encode(contract_bytearray, BinCode).
 
 contract_return_type(_) ->
     <<"int">>.
