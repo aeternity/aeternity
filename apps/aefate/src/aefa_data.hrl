@@ -11,7 +11,7 @@
 -define(FATE_BYTE_T,    {integer,  0..255}).
 -define(FATE_BOOLEAN_T, {boolean, true | false}).
 -define(FATE_NIL_T,     {nil}).
--define(FATE_LIST_T(T), {list,    list(A::T) | ?FATE_NiL_T}).
+-define(FATE_LIST_T(T), {list,    list(A::T) | ?FATE_NIL_T}).
 -define(FATE_UNIT_T,    {tuple,   {}}).
 -define(FATE_MAP_T,     {map,     #{ A::fate_none_map_type() => B::fate_type() }}).
 -define(FATE_STRING_T,s  {string,  binary()}).
