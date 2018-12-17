@@ -180,7 +180,7 @@ commit_reachable_to_db(#mpt{db = DB, hash = Hash} = MPT) ->
     DB1 = int_visit_reachable_hashes_in_cache([Hash], DB, DB, VisitFun),
     MPT#mpt{db = db_drop_cache(DB1)}.
 
--spec gc_cache(tree()) -> {'ok', tree()} | {'error', term()}.
+-spec gc_cache(tree()) -> tree().
 gc_cache(#mpt{db = DB, hash = Hash} = MPT) ->
     VisitFun = fun(Key, Val, AccDB) ->
                        {continue, db_put(Key, Val, AccDB)}
