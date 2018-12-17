@@ -210,7 +210,7 @@ check(#contract_create_tx{nonce      = Nonce,
     end.
 
 get_sophia_serialization(#contract_create_tx{code = SerializedCode}) ->
-    try aeso_compiler:deserialize(SerializedCode) of
+    try aect_sophia:deserialize(SerializedCode) of
         Map -> {ok, Map}
     catch
         _:_ -> {error, bad_sophia_code}

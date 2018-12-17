@@ -59,7 +59,7 @@ encode_call_data(_, _, _, _) ->
 -spec run(byte(), map()) -> {aect_call:call(), aec_trees:trees()}.
 run(?AEVM_01_Sophia_01, #{code := SerializedCode} = CallDef) ->
     #{ byte_code := Code
-     , type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
+     , type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
     case aeso_abi:check_calldata(maps:get(call_data, CallDef), TypeInfo) of
         {ok, CallDataType, OutType} ->
             CallDef1 = CallDef#{code => Code,
