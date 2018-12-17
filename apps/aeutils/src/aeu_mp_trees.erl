@@ -14,6 +14,7 @@
         , construct_proof/3
         , db/1
         , delete/2
+        , gc_cache/1
         , get/2
         , has_node/3
         , iterator/1
@@ -178,6 +179,16 @@ commit_reachable_to_db(#mpt{db = DB, hash = Hash} = MPT) ->
                end,
     DB1 = int_visit_reachable_hashes_in_cache([Hash], DB, DB, VisitFun),
     MPT#mpt{db = db_drop_cache(DB1)}.
+
+-spec gc_cache(tree()) -> {'ok', tree()} | {'error', term()}.
+gc_cache(#mpt{db = DB, hash = Hash} = MPT) ->
+    VisitFun = fun(Key, Val, AccDB) ->
+                       {continue, db_put(Key, Val, AccDB)}
+               end,
+    FreshDB = db_drop_cache(DB),
+    DB1 = int_visit_reachable_hashes_in_cache([Hash], FreshDB, DB, VisitFun),
+    MPT#mpt{db = DB1}.
+
 
 -spec construct_proof(key(), db(), tree()) -> {value(), db()}.
 construct_proof(Key, ProofDB, #mpt{db = DB, hash = Hash}) ->

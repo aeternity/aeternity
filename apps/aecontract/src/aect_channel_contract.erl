@@ -83,7 +83,7 @@ run(ContractPubKey, VmVersion, Call, CallData, CallStack, Trees0,
               CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     UpdatedTrees = aect_utils:insert_call_in_trees(CallRes, Trees),
-    aec_trees:gc_old_nodes(UpdatedTrees, [accounts, contracts]).
+    aec_trees:gc_cache(UpdatedTrees, [accounts, contracts]).
 
 
 

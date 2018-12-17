@@ -26,7 +26,7 @@
          set_contracts/2,
          set_ns/2,
          set_oracles/2,
-         gc_old_nodes/2
+         gc_cache/2
         ]).
 
 -export([ deserialize_from_db/1
@@ -212,21 +212,20 @@ oracles(Trees) ->
 set_oracles(Trees, Oracles) ->
     Trees#trees{oracles = Oracles}.
 
--spec gc_old_nodes(trees(), [accounts | contracts]) -> trees().
-gc_old_nodes(Trees, TreesToGC) ->
+-spec gc_cache(trees(), [accounts | contracts]) -> trees().
+gc_cache(Trees, TreesToGC) ->
     lists:foldl(
         fun(accounts, AccumTrees) ->
             Accounts0 = accounts(AccumTrees),
-            Accounts = aec_accounts_trees:gc_old_nodes(Accounts0),
+            Accounts = aec_accounts_trees:gc_cache(Accounts0),
             set_accounts(AccumTrees, Accounts);
            (contracts, AccumTrees) ->
             Contracts0 = contracts(AccumTrees),
-            Contracts = aect_state_tree:gc_old_nodes(Contracts0),
+            Contracts = aect_state_tree:gc_cache(Contracts0),
             set_contracts(AccumTrees, Contracts)
         end,
         Trees,
         TreesToGC).
-    
 
 -spec perform_pre_transformations(trees(), aec_blocks:height()) -> trees().
 perform_pre_transformations(Trees, Height) ->
