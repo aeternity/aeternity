@@ -95,6 +95,7 @@
         , sophia_state_handling/1
         , sophia_state_gas/1
         , sophia_no_callobject_for_remote_calls/1
+        , sophia_operators/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -182,7 +183,8 @@ groups() ->
                                  sophia_aens,
                                  sophia_state_handling,
                                  sophia_state_gas,
-                                 sophia_no_callobject_for_remote_calls]}
+                                 sophia_no_callobject_for_remote_calls,
+                                 sophia_operators]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
         [ sophia_oracles_ttl__extend_after_expiry
@@ -3150,6 +3152,51 @@ sophia_no_callobject_for_remote_calls(_Cfg) ->
     %% Let's do one more for good measure
     88 = ?call(call_contract, Acc, RemC2, staged_call, word, {IdC, RemC, 88}),
     ?assertEqual(5, CountCalls()),
+
+    ok.
+
+sophia_operators(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc   = ?call(new_account, 1000000000),
+    IdC   = ?call(create_contract, Acc, operators, {}),
+
+    IMax = (1 bsl (8*32)) - 1,
+    ?assertEqual(14, ?call(call_contract, Acc, IdC, int_op, word, {5, 9, <<"+">>})),
+    ?assertEqual(4,  ?call(call_contract, Acc, IdC, int_op, word, {9, 5, <<"-">>})),
+    ?assertEqual(35, ?call(call_contract, Acc, IdC, int_op, word, {5, 7, <<"*">>})),
+    ?assertEqual(6,  ?call(call_contract, Acc, IdC, int_op, word, {45, 7, <<"/">>})),
+    ?assertEqual(4,  ?call(call_contract, Acc, IdC, int_op, word, {9, 5, <<"mod">>})),
+    ?assertEqual(81,  ?call(call_contract, Acc, IdC, int_op, word, {3, 4, <<"^">>})),
+
+    ?assertEqual(IMax band (bnot 45), ?call(call_contract, Acc, IdC, int_op, word, {45, 0, <<"bnot">>})),
+    ?assertEqual(45 band 127,         ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"band">>})),
+    ?assertEqual(45 bor 127,          ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"bor">>})),
+    ?assertEqual(45 bxor 127,         ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"bxor">>})),
+    ?assertEqual(4252 bsl 9,             ?call(call_contract, Acc, IdC, int_op, word, {4252, 9, <<"bsl">>})),
+    ?assertEqual(0,                      ?call(call_contract, Acc, IdC, int_op, word, {4252, 300, <<"bsl">>})), %% overflow
+    ?assertEqual(4252 bsr 3,             ?call(call_contract, Acc, IdC, int_op, word, {4252, 3, <<"bsr">>})),
+    ?assertEqual(0,                      ?call(call_contract, Acc, IdC, int_op, word, {4252, 15, <<"bsr">>})),  %% underflow
+
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {0, 0, <<"!">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {1, 1, <<"&&">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {0, 1, <<"||">>})),
+
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {1, 1, <<"==">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {1, 0, <<"!=">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {0, 1, <<"<">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {1, 0, <<">">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {2, 2, <<"=<">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {2, 0, <<">=">>})),
+
+    ?assertEqual([1, 2], ?call(call_contract, Acc, IdC, cons, {list, word}, {1, [2]})),
+
+    ?assertEqual([],     ?call(call_contract, Acc, IdC, concat, {list, word}, {[], []})),
+    ?assertEqual([1],    ?call(call_contract, Acc, IdC, concat, {list, word}, {[], [1]})),
+    ?assertEqual([1],    ?call(call_contract, Acc, IdC, concat, {list, word}, {[1], []})),
+    ?assertEqual([1, 2], ?call(call_contract, Acc, IdC, concat, {list, word}, {[1], [2]})),
+
+    {Hash1, Hash1} = ?call(call_contract, Acc, IdC, hash, {tuple, [word, word]}, {<<"TestString">>}),
+    ?assertEqual(<<Hash1:256>>, aec_hash:hash(evm, <<"TestString">>)),
 
     ok.
 
