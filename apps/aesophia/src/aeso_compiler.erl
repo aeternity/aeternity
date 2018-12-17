@@ -5,25 +5,16 @@
 %%%     Compiler from Aeterinty Sophia language to the Aeternity VM, aevm.
 %%% @end
 %%% Created : 12 Dec 2017
-%%% aec_conductor:stop_mining().
-%%% aeso_compiler:file( identity, [pp_ast,pp_icode,pp_assembler,pp_bytecode, pp_sophia_code]).
 %%%-------------------------------------------------------------------
 -module(aeso_compiler).
 
--export([ deserialize/1
-        , file/1
+-export([ file/1
         , file/2
         , from_string/2
         , check_call/2
         , version/0
+        , serialization_template/1
         ]).
-
--ifdef(TEST).
-
--export([ serialize/3
-        ]).
-
--endif.
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aeso_icode.hrl").
