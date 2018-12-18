@@ -20,9 +20,10 @@
         , function_name_from_type_hash/2
         ]).
 
+-type hash() :: <<_:256>>. %% 256 = ?HASH_SIZE * 8.
 -type function_name() :: binary(). %% String
 -type typerep() :: aeso_sophia:type().
--type function_type_info() :: { FunctionHash :: aec_hash:hash()
+-type function_type_info() :: { FunctionHash :: hash()
                               , FunctionName :: function_name()
                               , ArgType      :: aeso_sophia:heap() %% binary typerep
                               , OutType      :: aeso_sophia:heap() %% binary typerep
@@ -95,7 +96,7 @@ get_type_info_and_hash(ContractCode, FunName) ->
         #{type_info := TypeInfo} ->
             FunBin = list_to_binary(FunName),
             case type_hash_from_function_name(FunBin, TypeInfo) of
-                {ok, <<TypeHashInt:256>>} -> {ok, TypeInfo, TypeHashInt};
+                {ok, <<TypeHashInt:?HASH_SIZE/unit:8>>} -> {ok, TypeInfo, TypeHashInt};
                 {ok, _}                   -> {error, bad_type_hash};
                 {error, _} = Err          -> Err
             end
@@ -163,15 +164,15 @@ function_type_info(Name, Args, OutType) ->
     , aeso_data:to_binary(OutType)
     }.
 
--spec function_type_hash(function_name(), typerep(), typerep()) ->
-                            aec_hash:hash().
+-spec function_type_hash(function_name(), typerep(), typerep()) -> hash().
 function_type_hash(Name, ArgType, OutType) when is_binary(Name) ->
-    aec_hash:hash(sophia_type_hash,
-                  iolist_to_binary([ Name
-                                   , aeso_data:to_binary(ArgType)
-                                   , aeso_data:to_binary(OutType)
-                                   ])).
-
+    Bin =  iolist_to_binary([ Name
+                            , aeso_data:to_binary(ArgType)
+                            , aeso_data:to_binary(OutType)
+                            ]),
+    %% Calculate a 256 bit digest BLAKE2b hash value of a binary
+    {ok, Hash} = enacl:generichash(?HASH_SIZE, Bin),
+    Hash.
 
 -spec arg_typerep_from_function(function_name(), type_info()) ->
            {'ok', typerep()} | {'error', 'bad_type_data' | 'unknown_function'}.
@@ -186,7 +187,7 @@ arg_typerep_from_function(Function, TypeInfo) ->
             {error, unknown_function}
     end.
 
--spec typereps_from_type_hash(aec_hash:hash(), type_info()) ->
+-spec typereps_from_type_hash(hash(), type_info()) ->
            {'ok', typerep()} | {'error', 'bad_type_data' | 'unknown_function'}.
 typereps_from_type_hash(TypeHash, TypeInfo) ->
     case lists:keyfind(TypeHash, 1, TypeInfo) of
@@ -200,7 +201,7 @@ typereps_from_type_hash(TypeHash, TypeInfo) ->
             {error, unknown_function}
     end.
 
--spec function_name_from_type_hash(aec_hash:hash(), type_info()) ->
+-spec function_name_from_type_hash(hash(), type_info()) ->
                                           {'ok', function_name()}
                                         | {'error', 'unknown_function'}.
 function_name_from_type_hash(TypeHash, TypeInfo) ->
@@ -212,7 +213,7 @@ function_name_from_type_hash(TypeHash, TypeInfo) ->
     end.
 
 -spec type_hash_from_function_name(function_name(), type_info()) ->
-                                          {'ok', aec_hash:hash()}
+                                          {'ok', hash()}
                                         | {'error', 'unknown_function'}.
 type_hash_from_function_name(Name, TypeInfo) ->
     case lists:keyfind(Name, 2, TypeInfo) of
@@ -255,7 +256,7 @@ old_encode_call(ContractCode, Function, ArgumentAst) ->
     end.
 
 old_ast_to_erlang({int, _, N}) -> N;
-old_ast_to_erlang({hash, _, <<N:256>>}) -> N;
+old_ast_to_erlang({hash, _, <<N:?HASH_SIZE/unit:8>>}) -> N;
 old_ast_to_erlang({hash, _, <<Hi:256, Lo:256>>}) -> {Hi, Lo};    %% signature
 old_ast_to_erlang({bool, _, true}) -> 1;
 old_ast_to_erlang({bool, _, false}) -> 0;
