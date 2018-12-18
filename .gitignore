@@ -57,3 +57,4 @@ data/aecore/keys
 _checkouts/
 tmp/
 rebar3.crashdump
+REVISION_appveyor

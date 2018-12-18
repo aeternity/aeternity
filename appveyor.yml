@@ -1,0 +1,82 @@
+version: 1.3.0-{branch}-{build}
+
+skip_tags: false
+skip_non_tags: false
+skip_branch_with_pr: false
+
+image: Visual Studio 2017
+
+clone_folder: C:\projects\build
+shallow_clone: false
+clone_depth: 5
+
+environment:
+  global:
+    APPVEYOR_RDP_PASSWORD:
+      secure: KN38AnwEZQ6wMS1ktlkybV0BEvTUgnvajLAPBJWdH8I4lttpWzTkLdU+XgLoG6X//t76IbiaIdEPFKEDzgoHyY2xGIxofmS2BDtQD+I9T3o=
+    MSVC_VERSION: 14.16.27023
+    WIN_SDK_VERSION: 10.0.26624.0
+    WIN_MSYS2_ROOT: C:\msys64
+    WIN_MSYS2_CACHE: C:\msys64\var\cache\pacman\pkg
+    WIN_OTP_PATH: C:\Program Files\erl
+    BUILD_PATH: /c/projects/build
+  matrix:
+    - OTP_VERSION: 20.1
+      ERTS_VERSION: 9.1
+      BUILD_STEP: build
+    - OTP_VERSION: 20.3
+      ERTS_VERSION: 9.3
+      BUILD_STEP: build
+    - OTP_VERSION: 21.2
+      ERTS_VERSION: 10.2
+      BUILD_STEP: build
+    - OTP_VERSION: 20.1
+      ERTS_VERSION: 9.1
+      TEST_STEP: ct
+    - OTP_VERSION: 20.3
+      ERTS_VERSION: 9.3
+      TEST_STEP: ct
+    - OTP_VERSION: 21.2
+      ERTS_VERSION: 10.2
+      TEST_STEP: ct
+
+cache:
+  - '%WIN_MSYS2_CACHE%'                       # msys2
+  - '%LocalAppData%\NuGet\Cache'              # NuGet < v3
+  - '%LocalAppData%\NuGet\v3-cache'           # NuGet v3
+  - '%WIN_OTP_PATH%9.1'                       # Erlang/OTP 20.1
+  - '%WIN_OTP_PATH%9.3'                       # Erlang/OTP 20.3
+  - '%WIN_OTP_PATH%10.2'                      # Erlang/OTP 21.2
+  - '%USERPROFILE%\.cache\rebar3'             # rebar3 cache
+  - '_build\default_%ERTS_VERSION% -> %TMP%\REVISION_appveyor_%ERTS_VERSION%'   # local build files
+
+platform: x64
+
+matrix:
+  fast_finish: false
+  allow_failures:
+    - OTP_VERSION: 21.2
+    - TEST_STEP: ct
+
+init:
+  - systeminfo
+# Attempt to ensure we don't try to convert line endings to Win32 CRLF as this will cause build to fail
+  - git config --global core.autocrlf true
+# Allows RDP
+  - ps: iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
+  - echo "%APPVEYOR_REPO_COMMIT%">"%TMP%\\REVISION_appveyor_%ERTS_VERSION%"
+
+install:
+  - '%APPVEYOR_BUILD_FOLDER%\scripts\windows\msys2_prepare.bat'
+
+build_script:
+  - '%APPVEYOR_BUILD_FOLDER%\ci\appveyor\build.bat'
+
+# test_script:
+#  - '%APPVEYOR_BUILD_FOLDER%\ci\appveyor\test.bat'
+
+deploy: off
+
+on_finish:
+# Set blockRdp to true to allow RDP
+  - ps: $blockRdp = $false; iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
