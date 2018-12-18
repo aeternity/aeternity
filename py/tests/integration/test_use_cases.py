@@ -305,6 +305,7 @@ keys:
 chain:
     hard_forks:
         "1": 0
+        "2": 1
 
 mining:
     autostart: true
@@ -335,6 +336,7 @@ keys:
 chain:
     hard_forks:
         "1": 0
+        "2": 1
 
 mining:
     autostart: false
