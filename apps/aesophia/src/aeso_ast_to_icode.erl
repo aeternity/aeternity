@@ -566,7 +566,7 @@ is_monomorphic(_) -> true.
 %% Implemented as a contract call to the contract with address 0.
 prim_call(Prim, Amount, Args, ArgTypes, OutType) ->
     TypeHash =
-        case aevm_ae_primops:op_needs_type_check(Prim) of
+        case aeb_primops:op_needs_type_check(Prim) of
             true ->
                 PrimBin = binary:encode_unsigned(Prim),
                 ArgType = {tuple, ArgTypes},
