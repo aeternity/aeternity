@@ -130,7 +130,8 @@ create_tx_default_spec(PubKey, State) ->
 dummy_bytecode() ->
     aect_sophia:serialize(#{byte_code => <<"NOT PROPER BYTE CODE">>, 
                             type_info => [],  %% No type info
-                            contract_source => "NOT PROPER SOURCE STRING"}
+                            contract_source => "NOT PROPER SOURCE STRING",
+                            compiler_version => 1}
                          ).
 
 %%%===================================================================

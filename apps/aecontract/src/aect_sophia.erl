@@ -70,7 +70,8 @@ parse_options(<<_:8, Rest/binary>>, Acc) ->
     parse_options(Rest, Acc);
 parse_options(<<>>, Acc) -> Acc.
 
-serialize(#{byte_code := ByteCode, type_info := TypeInfo, contract_source := ContractString}) ->
+serialize(#{byte_code := ByteCode, type_info := TypeInfo, 
+            contract_source := ContractString, compiler_version := _Version}) ->
     ContractBin = list_to_binary(ContractString),
     Fields = [ {source_hash, aec_hash:hash(sophia_source_code, ContractBin)}
              , {type_info, TypeInfo}
