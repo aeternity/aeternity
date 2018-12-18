@@ -49,6 +49,7 @@ proof_test_() ->
 reachability_test_() ->
     [ {"Visit reachable hashes", fun test_visit_reachable/0}
     , {"Commit reachable cache", {timeout, 30, fun test_commit_reachable/0}}
+    , {"GC of cache",            {timeout, 30, fun test_gc_cache/0}}
     ].
 
 %%%=============================================================================
@@ -521,6 +522,27 @@ test_commit_reachable() ->
     test_iterator(Iterator4, Tree4, Sorted1),
 
     ok.
+
+%%%=============================================================================
+%%% Cache GC tests
+
+test_gc_cache() ->
+    {Tree, Vals}  = gen_mp_tree({1545,59644,821050}, 1000),
+    GCTree = aeu_mp_trees:gc_cache(Tree),
+    CacheSize1 = dict:size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree))),
+    CacheSize2 = dict:size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(GCTree))),
+
+    %% Assert the GC was effective, but the new tree contains all values.
+    ?assert(CacheSize2 < CacheSize1),
+    Sorted = lists:ukeysort(1, Vals),
+    Iterator = aeu_mp_trees:iterator(GCTree),
+    test_iterator(Iterator, GCTree, Sorted),
+
+    %% Traverse all reachable nodes, and make sure the cache contains only these.
+    VisitFun = fun(Hash, Val, Acc) -> {continue, [{Hash, Val}|Acc]} end,
+    Visited = aeu_mp_trees:visit_reachable_hashes(GCTree, [], VisitFun),
+    CacheVals = dict:to_list(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(GCTree))),
+    ?assertEqual(lists:sort(Visited), lists:sort(CacheVals)).
 
 %%%=============================================================================
 %%% Test utils
