@@ -565,25 +565,25 @@ large_msgs(Config) ->
     %% Insert enough transactions to make a large generation
     Blob = fun(Size) -> << <<171:8>> || _ <- lists:seq(1, Size) >> end,
     {ok, Tx1} = add_spend_tx(N1, 10, 1500000, 1, 100, Blob(16#ffff)),
-    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx1, 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx1], 10),
 
     {ok, Tx2} = add_spend_tx(N1, 10, 3000000, 2, 100, Blob(16#1ffff)),
-    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx2, 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx2], 10),
 
     {ok, Tx3} = add_spend_tx(N1, 10, 4000000, 3, 100, Blob(16#2ffff)),
-    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx3, 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx3], 10),
 
     {ok, Tx4} = add_spend_tx(N1, 10, 8000000, 4, 100, Blob(16#5ffff)),
-    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx4, 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx4], 10),
 
     {ok, Tx5} = add_spend_tx(N1, 10, 1500000, 5, 100, Blob(16#fce3)), %% Should exactly fit in one message
-    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx5, 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx5], 10),
 
     {ok, Tx6} = add_spend_tx(N1, 10, 1500000, 6, 100, Blob(16#fce4)), %% Wee bit too large
-    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx6, 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx6], 10),
 
     {ok, Tx7} = add_spend_tx(N1, 10, 3000000, 7, 100, Blob(16#1fcb8)), %% Even multiple of fragment size
-    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx7, 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx7], 10),
 
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev2, Config),

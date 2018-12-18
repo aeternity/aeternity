@@ -2583,8 +2583,8 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
 
     %% Mine a block and check mempool empty again
-    {ok, _BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(
-                    aecore_suite_utils:node_name(?NODE), PreclaimTxHash, 10),
+    {ok, _BS1} = aecore_suite_utils:mine_blocks_until_txs_on_chain(
+                    aecore_suite_utils:node_name(?NODE), [PreclaimTxHash], 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     Encoded = #{account_id => MinerAddress,
@@ -3237,7 +3237,7 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
 
     %% Mine a block and check mempool empty again
-    {ok,_BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, PreclaimTxHash, 10),
+    {ok,_BS1} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [PreclaimTxHash], 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check fee taken from account
@@ -3253,7 +3253,7 @@ naming_system_manage_name(_Config) ->
     ClaimTxHash = sign_and_post_tx(ClaimTxEnc, PrivKey),
 
     %% Mine a block and check mempool empty again
-    {ok, _BS2} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, ClaimTxHash, 10),
+    {ok, _BS2} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ClaimTxHash], 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check tx fee taken from account, claim fee locked,
@@ -3281,7 +3281,7 @@ naming_system_manage_name(_Config) ->
     UpdateTxHash = sign_and_post_tx(UpdateEnc, PrivKey),
 
     %% Mine a block and check mempool empty again
-    {ok,_BS3} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, UpdateTxHash, 10),
+    {ok,_BS3} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [UpdateTxHash], 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     {ok, 200, #{<<"balance">> := Balance3}} = get_accounts_by_pubkey_sut(PubKeyEnc),
@@ -3298,7 +3298,7 @@ naming_system_manage_name(_Config) ->
                     payload => <<"foo">>, sender_id => PubKeyEnc}),
     SpendTxHash = sign_and_post_tx(EncodedSpendTx, PrivKey),
 
-    {ok,_BS4} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, SpendTxHash, 10),
+    {ok,_BS4} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [SpendTxHash], 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Only fee is lost as recipient = sender
@@ -3315,7 +3315,7 @@ naming_system_manage_name(_Config) ->
     TransferTxHash = sign_and_post_tx(TransferEnc, PrivKey),
 
     %% Mine a block and check mempool empty again
-    {ok,_BS5} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, TransferTxHash, 10),
+    {ok,_BS5} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TransferTxHash], 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check balance
@@ -3330,7 +3330,7 @@ naming_system_manage_name(_Config) ->
     RevokeTxHash = sign_and_post_tx(RevokeEnc, PrivKey),
 
     %% Mine a block and check mempool empty again
-    {ok,_BS6} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, RevokeTxHash, 10),
+    {ok,_BS6} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [RevokeTxHash], 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check balance
@@ -4909,8 +4909,8 @@ wait_for_signed_transaction_in_block(SignedTx) ->
     wait_for_tx_hash_on_chain(TxHash).
 
 wait_for_tx_hash_on_chain(TxHash) ->
-    case aecore_suite_utils:mine_blocks_until_tx_on_chain(
-            aecore_suite_utils:node_name(?NODE), TxHash, 10) of
+    case aecore_suite_utils:mine_blocks_until_txs_on_chain(
+            aecore_suite_utils:node_name(?NODE), [TxHash], 10) of
         {ok, _Blocks} -> ok;
         {error, _Reason} -> did_not_mine
     end.

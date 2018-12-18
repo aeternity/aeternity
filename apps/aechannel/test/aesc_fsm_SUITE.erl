@@ -1260,7 +1260,7 @@ wait_for_signed_transaction_in_block(_, _, #{mine_blocks := {ask,_}}) ->
 wait_for_signed_transaction_in_block(Node, SignedTx, _Debug) ->
     TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     NodeName = aecore_suite_utils:node_name(Node),
-    case aecore_suite_utils:mine_blocks_until_tx_on_chain(NodeName, TxHash, 10) of
+    case aecore_suite_utils:mine_blocks_until_txs_on_chain(NodeName, [TxHash], 10) of
         {ok, _Blocks} -> ok;
         {error, _Reason} -> did_not_mine
     end.

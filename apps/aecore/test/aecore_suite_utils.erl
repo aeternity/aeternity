@@ -22,7 +22,6 @@
          delete_node_db_if_persisted/1,
          mine_blocks/2,
          mine_blocks/3,
-         mine_blocks_until_tx_on_chain/3,
          mine_blocks_until_txs_on_chain/3,
          mine_key_blocks/2,
          mine_micro_blocks/2,
@@ -231,9 +230,6 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Type) ->
             erlang:error(Reason)
     end.
 
-
-mine_blocks_until_tx_on_chain(Node, TxHash, MaxBlocks) ->
-    mine_blocks_until_txs_on_chain(Node, [TxHash], 100, MaxBlocks).
 
 mine_blocks_until_txs_on_chain(Node, TxHashes, MaxBlocks) ->
     mine_blocks_until_txs_on_chain(Node, TxHashes, 100, MaxBlocks).

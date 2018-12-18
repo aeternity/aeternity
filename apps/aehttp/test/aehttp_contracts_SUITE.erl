@@ -1675,7 +1675,7 @@ wait_for_tx_hash_on_chain(Node, TxHash) ->
     case tx_in_chain(TxHash) of
         true -> ok;
         false ->
-            case aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, TxHash, 20) of
+            case aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], 20) of
                 {ok, _Blocks} -> ok;
                 {error, _Reason} -> did_not_mine
             end
