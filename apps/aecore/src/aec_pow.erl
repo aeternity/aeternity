@@ -8,7 +8,7 @@
 
 -export([test_target/2,
          pick_nonce/0,
-         next_nonce/1,
+         next_nonce/2,
          target_to_difficulty/1,
 
          scientific_to_integer/1,
@@ -74,20 +74,23 @@
 %% over the actual one. Always positive.
 -type difficulty() :: integer().
 
+-type miner_config()   :: aec_pow_cuckoo:miner_config().
 -type miner_instance() :: non_neg_integer().
 
 -export_type([sci_int/0,
               difficulty/0,
               pow_evidence/0,
               pow_result/0,
-              miner_instance/0]).
+              miner_instance/0,
+              miner_config/0]).
 
 %%%=============================================================================
 %%% Behaviour
 %%%=============================================================================
 
 -callback generate(Data :: aec_hash:hashable(), Difficulty :: aec_pow:sci_int(),
-                   Nonce :: aec_pow:nonce(), MinerInstance :: aec_pow:miner_instance()) ->
+                   Nonce :: aec_pow:nonce(), MinerConfig :: aec_pow:miner_config(),
+                   MinerInstance :: aec_pow:miner_instance()) ->
     aec_pow:pow_result().
 
 -callback verify(Data :: aec_hash:hashable(), Nonce :: aec_pow:nonce(),
@@ -133,12 +136,12 @@ target_to_difficulty(SciTgt) ->
 pick_nonce() ->
     rand:uniform(?NONCE_RANGE) band ?MAX_NONCE.
 
--spec next_nonce(aec_pow:nonce()) -> aec_pow:nonce().
-next_nonce(N) ->
-    Step = aec_pow_cuckoo:get_miner_repeats(),
+-spec next_nonce(aec_pow:nonce(), aec_pow:miner_config()) -> aec_pow:nonce().
+next_nonce(N, Cfg) ->
+    Step = aec_pow_cuckoo:get_repeats(Cfg),
     case N + 2 * Step < ?MAX_NONCE of
         true  -> N + Step;
-        false -> 0
+        false -> pick_nonce()
     end.
 
 %%------------------------------------------------------------------------------

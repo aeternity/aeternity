@@ -52,10 +52,10 @@ websocket:
 mining:
     beneficiary: "ak_RShHyLiaQJF8AZ7Thi4Sgjm6ncHhqguqBBqCzQRG3fyjvKj6V"
     cuckoo:
-        miner:
-            executable: mean15-generic
-            extra_args: ""
-            edge_bits: 15
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+              extra_args: ""
 
 chain:
     persist: true
@@ -98,10 +98,10 @@ websocket:
 mining:
     beneficiary: "ak_2WPFUrtoxvdpaMySJUfyhGeBg5o725y6wFJTWAdv9YQ7pJMHjT"
     cuckoo:
-        miner:
-            executable: mean15-generic
-            extra_args: ""
-            edge_bits: 15
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+              extra_args: ""
 
 chain:
     persist: true
@@ -144,10 +144,10 @@ websocket:
 mining:
     beneficiary: "ak_uDBX3LjznjmtoFzVmVWBnAaMXhvsReKYkxMrA1QMSxudhbjuf"
     cuckoo:
-        miner:
-            executable: mean15-generic
-            extra_args: ""
-            edge_bits: 15
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+              extra_args: ""
 
 chain:
     persist: true

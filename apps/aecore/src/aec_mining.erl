@@ -4,15 +4,16 @@
 
 -module(aec_mining).
 
--export([mine/4]).
+-export([mine/5]).
 
 -ifdef(TEST).
 -export([get_miner_account_balance/0]).
 -endif.
 
--spec mine(binary(), aec_pow:sci_int(), aec_pow:nonce(), aec_pow:miner_instance()) ->  aec_pow:pow_result().
-mine(HeaderBin, Target, Nonce, MinerInstance) ->
-    aec_pow_cuckoo:generate(HeaderBin, Target, Nonce, MinerInstance).
+-spec mine(binary(), aec_pow:sci_int(), aec_pow:nonce(),
+           aec_pow:miner_config(), aec_pow:miner_instance() | 'undefined') ->  aec_pow:pow_result().
+mine(HeaderBin, Target, Nonce, MinerConfig, MinerInstance) ->
+    aec_pow_cuckoo:generate(HeaderBin, Target, Nonce, MinerConfig, MinerInstance).
 
 -ifdef(TEST).
 -spec get_miner_account_balance() -> {ok, non_neg_integer()} |

@@ -122,10 +122,10 @@ mining:
     beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     beneficiary_reward_delay: 2
     cuckoo:
-        miner:
-            executable: mean15-generic
-            extra_args: ""
-            edge_bits: 15
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+              extra_args: ""
 """
     return install_user_config(root_dir, file_name, conf)
 
@@ -142,10 +142,10 @@ mining:
     beneficiary: "{}"
     beneficiary_reward_delay: 2
     cuckoo:
-        miner:
-            executable: mean15-generic
-            extra_args: ""
-            edge_bits: 15
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+              extra_args: ""
 """.format(beneficiary['enc_pubk'])
     return install_user_config(root_dir, file_name, conf)
 
