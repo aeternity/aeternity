@@ -161,8 +161,7 @@ spawn_worker(Fun) ->
 prebuilt_miner_test_() ->
     {foreach,
      fun() ->
-             ok = meck:new(aeu_env, [passthrough]),
-             ok = application:ensure_started(erlexec)
+             ok = meck:new(aeu_env, [passthrough])
      end,
      fun(_) ->
              ok = meck:unload(aeu_env)

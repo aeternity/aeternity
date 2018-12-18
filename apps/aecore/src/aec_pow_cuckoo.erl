@@ -6,14 +6,10 @@
 %%%    John Tromp:  https://github.com/tromp/cuckoo
 %%%    White paper: https://github.com/tromp/cuckoo/blob/master/doc/cuckoo.pdf?raw=true
 %%%
-%%%    We use erlexec to start an OS process that runs this C code.
-%%%    The reasons for using erlexec over os:cmd are:
-%%%    -  os:cmd is insufficient because cuckoo miner program streams solutions on stdout as it finds them,
-%%%       while the program returns only when whole possibilities are explored.
-%%%       So integration with cuckoo needs to stream stdout.
-%%%    - Erlang port is closed implicitly by erlang VM closing stdin of spawned process, on the assumption
-%%%      that spawned program will eventual read from stdin and hence terminate.
-%%%      The cuckoo program does not read from stdin
+%%%    We use erlang:open_port/2 to start an OS process that runs this C code.
+%%%    The reasons for using this over os:cmd and erlexec are:
+%%%      - no additional C-based dependency which is Unix-focused and therefore hard to port to Windows
+%%%      - widely tested and multiplatform-enabled solution
 %%%
 %%% @end
 %%%-------------------------------------------------------------------
@@ -584,7 +580,7 @@ parse_nonce_str(S) ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%%   Ask erlexec to stop the OS process
+%%   Stop the OS process
 %% @end
 %%------------------------------------------------------------------------------
 -spec stop_execution(integer()) -> ok.
