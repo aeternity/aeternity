@@ -242,10 +242,12 @@ siblings_common(TopBlock, N1, N2, Account1, Account2, Fraud) ->
     end,
 
     %% Check nodes are in sync
-    Top2 = rpc:call(N2, aec_chain, top_block, []),
-    aecore_suite_utils:wait_for_height(N1, aec_blocks:height(Top2)),
-    Top1 = rpc:call(N1, aec_chain, top_block, []),
-    ?assertEqual(Top1, Top2),
+    {ok, _} =
+        aec_test_utils:wait_for_pred_or_timeout(
+            fun() -> {rpc:call(N1, aec_chain, top_block, []),
+                      rpc:call(N2, aec_chain, top_block, [])} end,
+            fun({Top1, Top2}) -> Top1 =:= Top2 end,
+            10000),
 
     Locked = get_lock_holder_balance(N1),
     {Locked, Locked} = {Locked, get_lock_holder_balance(N2)},
