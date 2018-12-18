@@ -34,7 +34,7 @@ mine_block_test_() ->
                  % in order to find a proper nonce for your
                  % block uncomment the line below
                  % let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
-                 Nonce = 11337054704573157031,
+                 Nonce = 391854272740078490,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}], ?TEST_PUB),
 
@@ -54,11 +54,11 @@ mine_block_test_() ->
          fun() ->
                  RawBlock = aec_blocks:raw_key_block(),
                  TopBlock = aec_blocks:set_height(RawBlock, aec_block_genesis:height()),
-                 meck:expect(aec_pow, pick_nonce, 0, 18),
+                 meck:expect(aec_pow, pick_nonce, 0, 19),
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}], ?TEST_PUB),
 
-                 Nonce = 18,
+                 Nonce = 19,
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
                  ?assertEqual({error, no_solution},
@@ -110,7 +110,7 @@ generate_valid_test_data(TopBlock, Tries) ->
                             [{TopBlock, aec_trees:new()}], ?TEST_PUB),
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
     Target = aec_blocks:target(BlockCandidate),
-    case ?TEST_MODULE:mine(HeaderBin, Target, Nonce) of
+    case ?TEST_MODULE:mine(HeaderBin, Target, Nonce, 0) of
         {ok, {Nonce1, _Evd}} ->
             {ok, BlockCandidate, Nonce1};
         {error, no_solution} ->
