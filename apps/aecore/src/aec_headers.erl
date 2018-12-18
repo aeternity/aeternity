@@ -74,7 +74,7 @@
           root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
           signature    = <<0:?BLOCK_SIGNATURE_BYTES/unit:8>>   :: block_signature(),
           txs_hash     = <<0:?TXS_HASH_BYTES/unit:8>>          :: txs_hash(),
-          time         = ?GENESIS_TIME                         :: non_neg_integer(),
+          time         = 0                                     :: non_neg_integer(),
           version                                              :: non_neg_integer()
          }).
 
@@ -85,7 +85,7 @@
           root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
           target       = ?HIGHEST_TARGET_SCI                   :: aec_pow:sci_int(),
           nonce        = 0                                     :: non_neg_integer(),
-          time         = ?GENESIS_TIME                         :: non_neg_integer(),
+          time         = 0                                     :: non_neg_integer(),
           version                                              :: non_neg_integer(),
           pow_evidence = no_value                              :: aec_pow:pow_evidence(),
           miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
@@ -117,11 +117,11 @@
 
 raw_key_header() ->
   #key_header{ root_hash = <<0:32/unit:8>>,
-               version = ?PROTOCOL_VERSION }.
+               version = aec_hard_forks:protocol_effective_at_height(0) }.
 
 raw_micro_header() ->
   #mic_header{ root_hash = <<0:32/unit:8>>,
-               version = ?PROTOCOL_VERSION }.
+               version = aec_hard_forks:protocol_effective_at_height(0) }.
 
 set_version(#key_header{} = H, Version) -> H#key_header{version = Version};
 set_version(#mic_header{} = H, Version) -> H#mic_header{version = Version}.
@@ -514,14 +514,14 @@ deserialize_from_binary(Bin) ->
                                              {'key', key_header()}
                                            | {'micro', micro_header(), binary()}
                                            | {'error', term()}.
-deserialize_from_binary_partial(<<?PROTOCOL_VERSION:32,
+deserialize_from_binary_partial(<<_Version:32,
                                   ?KEY_HEADER_TAG:1,
                                   _/bits>> = Bin) ->
     case deserialize_key_from_binary(Bin) of
         {ok, Header} -> {key, Header};
         {error, _} = E -> E
     end;
-deserialize_from_binary_partial(<<?PROTOCOL_VERSION:32,
+deserialize_from_binary_partial(<<_Version:32,
                                   ?MICRO_HEADER_TAG:1,
                                   PoFFlag:1,
                                   _/bits>> = Bin) ->
@@ -539,7 +539,7 @@ deserialize_from_binary_partial(<<?PROTOCOL_VERSION:32,
 -spec deserialize_key_from_binary(deterministic_header_binary()) ->
                                          {'ok', key_header()}
                                        | {'error', term()}.
-deserialize_key_from_binary(<<?PROTOCOL_VERSION:32,
+deserialize_key_from_binary(<<Version:32,
                               ?KEY_HEADER_TAG:1,
                               0:31, %% Remaining flags.
                               Height:64,
@@ -552,19 +552,24 @@ deserialize_key_from_binary(<<?PROTOCOL_VERSION:32,
                               PowEvidenceBin:168/binary,
                               Nonce:64,
                               Time:64 >>) ->
-    PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
-    H = #key_header{height = Height,
-                    prev_hash = PrevHash,
-                    prev_key = PrevKeyHash,
-                    root_hash = RootHash,
-                    miner = Miner,
-                    beneficiary = Beneficiary,
-                    target = Target,
-                    pow_evidence = PowEvidence,
-                    nonce = Nonce,
-                    time = Time,
-                    version = ?PROTOCOL_VERSION},
-    {ok, H};
+    case aec_hard_forks:protocol_effective_at_height(Height) =:= Version of
+        false ->
+            {error, illegal_version};
+        true ->
+            PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
+            H = #key_header{height = Height,
+                            prev_hash = PrevHash,
+                            prev_key = PrevKeyHash,
+                            root_hash = RootHash,
+                            miner = Miner,
+                            beneficiary = Beneficiary,
+                            target = Target,
+                            pow_evidence = PowEvidence,
+                            nonce = Nonce,
+                            time = Time,
+                            version = Version},
+            {ok, H}
+    end;
 deserialize_key_from_binary(_Other) ->
     {error, malformed_header}.
 
@@ -572,7 +577,7 @@ deserialize_key_from_binary(_Other) ->
 -spec deserialize_micro_from_binary(deterministic_header_binary()) ->
                                            {'ok', micro_header()}
                                          | {'error', term()}.
-deserialize_micro_from_binary(<<?PROTOCOL_VERSION:32,
+deserialize_micro_from_binary(<<Version:32,
                                 ?MICRO_HEADER_TAG:1,
                                 PoFTag:1,
                                 0:30, %% Remaining flags
@@ -588,16 +593,22 @@ deserialize_micro_from_binary(<<?PROTOCOL_VERSION:32,
     case Rest of
         <<PoFHash:PoFHashSize/binary,
           Signature:?BLOCK_SIGNATURE_BYTES/binary>> ->
-            H = #mic_header{height = Height,
-                            pof_hash = PoFHash,
-                            prev_hash = PrevHash,
-                            prev_key = PrevKeyHash,
-                            root_hash = RootHash,
-                            signature = Signature,
-                            txs_hash = TxsHash,
-                            time = Time,
-                            version = ?PROTOCOL_VERSION},
-            {ok, H};
+            ExpectedVsn = aec_hard_forks:protocol_effective_at_height(Height),
+            case  ExpectedVsn =:= Version of
+                false ->
+                    {error, illegal_version};
+                true ->
+                    H = #mic_header{height = Height,
+                                    pof_hash = PoFHash,
+                                    prev_hash = PrevHash,
+                                    prev_key = PrevKeyHash,
+                                    root_hash = RootHash,
+                                    signature = Signature,
+                                    txs_hash = TxsHash,
+                                    time = Time,
+                                    version = Version},
+                    {ok, H}
+            end;
         _ ->
             {error, malformed_header}
     end;

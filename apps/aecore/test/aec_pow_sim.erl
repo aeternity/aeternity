@@ -17,7 +17,9 @@
 -define(ADJUST_WINDOW, 10).
 
 genesis_block() ->
-    H0 = aec_headers:set_version_and_height(raw_key_header(), ?PROTOCOL_VERSION, 0),
+    Vsn = aec_block_genesis:version(),
+    Height = aec_block_genesis:height(),
+    H0 = aec_headers:set_version_and_height(raw_key_header(), Vsn, Height),
     H1 = aec_headers:set_time_in_msecs(H0, 0),
     aec_headers:set_target(H1, ?HIGHEST_TARGET_SCI).
 

@@ -36,7 +36,7 @@ new_key_block_test_() ->
                           aec_blocks:prev_hash(NewBlock)),
              ?assertError(_, aec_blocks:txs(NewBlock)),
              ?assertEqual(17, aec_blocks:target(NewBlock)),
-             ?assertEqual(?GENESIS_VERSION, aec_blocks:version(NewBlock)),
+             ?assertEqual(aec_block_genesis:version(), aec_blocks:version(NewBlock)),
              ?assertEqual(?MINER_PUBKEY, aec_blocks:miner(NewBlock)),
              ?assertEqual(?BENEFICIARY_PUBKEY, aec_blocks:beneficiary(NewBlock))
      end}.
@@ -48,9 +48,10 @@ difficulty_recalculation_test_() ->
                  GoodDifficulty = 50.0,
                  GoodTarget     = aec_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
                  Height0        = 30,
+                 Vsn            = aec_hard_forks:protocol_effective_at_height(Height0),
 
                  Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
-                                             12345, Now, ?PROTOCOL_VERSION, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
+                                             12345, Now, Vsn, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
 
                  Chain = compute_chain(Now, Height0, GoodTarget, 0),
 
@@ -65,14 +66,15 @@ difficulty_recalculation_test_() ->
          end},
         {"Too few blocks mined in time increases new block's target threshold",
          fun() ->
-                 Now                      = 1504731164584,
-                 Offset                   = round(aec_governance:expected_block_mine_rate() * 0.05),
-                 GoodDifficulty           = 50.0,
-                 GoodTarget               = aec_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
-                 Height0                  = 30,
+                 Now            = 1504731164584,
+                 Offset         = round(aec_governance:expected_block_mine_rate() * 0.05),
+                 GoodDifficulty = 50.0,
+                 GoodTarget     = aec_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
+                 Height0        = 30,
+                 Vsn            = aec_hard_forks:protocol_effective_at_height(Height0),
 
                  Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
-                                             12345, Now, ?PROTOCOL_VERSION, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
+                                             12345, Now, Vsn, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
 
                  %% Compute chain with almost perfect timing
                  Chain = compute_chain(Now, Height0, GoodTarget, Offset),
@@ -85,14 +87,16 @@ difficulty_recalculation_test_() ->
          end},
         {"Too many blocks mined in time decreases new block's target threshold",
          fun() ->
-                 Now                      = 1504731164584,
-                 Offset                   = round(aec_governance:expected_block_mine_rate() * 0.05),
-                 GoodDifficulty           = 50.0,
-                 GoodTarget               = aec_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
-                 Height0                  = 30,
+                 Now            = 1504731164584,
+                 Offset         = round(aec_governance:expected_block_mine_rate() * 0.05),
+                 GoodDifficulty = 50.0,
+                 GoodTarget     = aec_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
+                 Height0        = 30,
+                 Vsn            = aec_hard_forks:protocol_effective_at_height(Height0),
+
 
                  Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
-                                             12345, Now, ?PROTOCOL_VERSION, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
+                                             12345, Now, Vsn, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
 
                  %% Compute chain with almost perfect timing
                  Chain = compute_chain(Now, Height0, GoodTarget, -Offset),
@@ -110,7 +114,8 @@ compute_chain(Now, Height, Target, MiningOffset) ->
     N        = aec_governance:key_blocks_to_check_difficulty_count(),
     RawHeader = raw_key_header(),
     lists:foldr(fun(H, Bs) ->
-                    H1 = aec_headers:set_version_and_height(RawHeader, ?PROTOCOL_VERSION, H),
+                    Vsn = aec_hard_forks:protocol_effective_at_height(H),
+                    H1 = aec_headers:set_version_and_height(RawHeader, Vsn, H),
                     H2 = aec_headers:set_target(H1, Target),
                     [aec_headers:set_time_in_msecs(H2, Now - ((Height - H) * MineTime)) | Bs]
                 end, [], lists:seq(Height - (N + 1), Height - 1)).

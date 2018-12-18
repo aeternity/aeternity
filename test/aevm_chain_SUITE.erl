@@ -56,7 +56,9 @@ setup_chain() ->
     {Contract1, S3} = create_contract(Account1, S2),
     {Contract2, S4} = create_contract(Account2, S3),
     Trees = aect_test_utils:trees(S4),
-    TxEnv = aetx_env:contract_env(_Height = 1, ?PROTOCOL_VERSION,
+    Height = 1,
+    Vsn = aec_hard_forks:protocol_effective_at_height(Height),
+    TxEnv = aetx_env:contract_env(Height, Vsn,
                                   aeu_time:now_in_msecs(),
                                   ?BENEFICIARY_PUBKEY, _Difficulty = 0,
                                   ?BOGUS_PREV_HASH

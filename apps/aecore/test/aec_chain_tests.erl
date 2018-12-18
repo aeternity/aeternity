@@ -41,6 +41,7 @@
 
 -define(FACTOR, 1000000000).
 -define(GENESIS_TARGET, 553713663).
+-define(GENESIS_HEIGHT, aec_block_genesis:height()).
 
 %% GENESIS DIFFICULTY = float(trunc(?FACTOR / 553713663))
 -define(GENESIS_DIFFICULTY, 1.0).

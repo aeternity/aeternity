@@ -9,6 +9,9 @@
                      ]).
 
 -define(TEST_MODULE, aec_headers).
+-define(GENESIS_HEIGHT, aec_block_genesis:height()).
+-define(GENESIS_VERSION, aec_block_genesis:version()).
+-define(GENESIS_TIME, aec_block_genesis:time_in_msecs()).
 
 network_key_serialization_test() ->
     Header = raw_key_header(),
