@@ -24,12 +24,12 @@ The `mining.cuckoo.miner` section of `~/aeternity/node/epoch.yaml` should be cha
 ```yaml
 mining:
     cuckoo:
-        miner:
-            executable_group: aecuckooprebuilt
-            executable: cuda29
-            extra_args: ""
-            edge_bits: 29
-            hex_encoded_header: true
+        edge_bits: 29
+        miners:
+            - executable_group: aecuckooprebuilt
+              executable: cuda29
+              extra_args: ""
+              hex_encoded_header: true
 ```
 
 Notice the `executable_group`.
@@ -118,11 +118,11 @@ Once the CUDA miner is in place, one should change the node configuration to sta
 ```yaml
 mining:
     cuckoo:
-        miner:
-            executable: cuda29
-            extra_args: ""
-            edge_bits: 29
-            hex_encoded_header: true
+        edge_bits: 29
+        miners:
+            - executable: cuda29
+              extra_args: ""
+              hex_encoded_header: true
 ```
 
 After updating the configuration, the node should be started (or restarted if it's already running):
@@ -162,13 +162,13 @@ Repeats are configured like this:
 ```yaml
 mining:
     cuckoo:
-        miner:
-            executable_group: aecuckooprebuilt
-            executable: cuda29
-            repeats: 4
-            extra_args: ""
-            edge_bits: 29
-            hex_encoded_header: true
+        edge_bits: 29
+        miners:
+            - executable_group: aecuckooprebuilt
+              executable: cuda29
+              repeats: 4
+              extra_args: ""
+              hex_encoded_header: true
 ```
 
 **Don't be tempted to use `-r` as `extra_args`** the `epoch` node will **not**
@@ -181,12 +181,12 @@ The address of a GPU device used by the miner can be set with `-d` argument, for
 ```yaml
 mining:
     cuckoo:
-        miner:
-            executable_group: aecuckooprebuilt
-            executable: cuda29
-            extra_args: "-d 0"
-            edge_bits: 29
-            hex_encoded_header: true
+        edge_bits: 29
+        miners:
+            - executable_group: aecuckooprebuilt
+              executable: cuda29
+              extra_args: "-d 0"
+              hex_encoded_header: true
 ```
 
 The address of the device can be obtained by running `nvidia-smi`
@@ -197,14 +197,14 @@ configuration option, `instances`, for example if you have two (2) GPU-cards:
 ```
 mining:
     cuckoo:
-        miner:
-            executable_group: aecuckooprebuilt
-            executable: cuda29
-            extra_args: ""
-            edge_bits: 29
-            hex_encoded_header: true
-            instances: 2
-            repeats: 5
+        edge_bits: 29
+        miners:
+            - executable_group: aecuckooprebuilt
+              executable: cuda29
+              extra_args: ""
+              hex_encoded_header: true
+              instances: [0,1]
+              repeats: 5
 ```
 
 *Note:* You should not have `-d` in `extra_args` if you are using the `instances` configuration option, it will be added automatically
@@ -212,6 +212,29 @@ by the node.
 
 *Note:* If you are combining `repeats` and `instances`, it is the *number of repeats per instance* that is configured! I.e. with 2
 instances and repeats 5 each GPU will run 5 attempts per run.
+
+### Multiple GPU miners
+
+If you want to address different GPU-cards with different miners' configurations, you can set up multiple miners in the config.
+For example, if you have 4 GPU-cards, and you want to address 0 and 1 with different config than 2 and 3, you can use the following config:
+```yaml
+mining:
+    cuckoo:
+        edge_bits: 29
+        miners:
+            - executable_group: aecuckooprebuilt
+              executable: cuda29
+              extra_args: ""
+              hex_encoded_header: true
+              instances: [0,1]
+              repeats: 2
+            - executable_group: aecuckooprebuilt
+              executable: cuda29
+              extra_args: ""
+              hex_encoded_header: true
+              instances: [2,3]
+              repeats: 5
+```
 
 ## References
 
