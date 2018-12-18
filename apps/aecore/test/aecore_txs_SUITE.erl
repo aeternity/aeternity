@@ -317,8 +317,8 @@ compile_contract(File) ->
     CodeDir = code:lib_dir(aesophia, test),
     FileName = filename:join(CodeDir, File),
     {ok, ContractBin} = file:read_file(FileName),
-    Contract = binary_to_list(ContractBin),
-    aeso_compiler:from_string(Contract, [pp_icode]).
+    {ok, Serialized} = aect_sophia:compile(ContractBin, <<"pp_icode">>),
+    Serialized.
 
 call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
     Caller       = aec_id:create(account, maps:get(pubkey, patron())),

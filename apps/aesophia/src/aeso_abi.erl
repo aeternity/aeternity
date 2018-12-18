@@ -91,7 +91,7 @@ create_calldata(Contract, Function, Argument) ->
     end.
 
 get_type_info_and_hash(ContractCode, FunName) ->
-    try aeso_compiler:deserialize(ContractCode) of
+    try aect_sophia:deserialize(ContractCode) of
         #{type_info := TypeInfo} ->
             FunBin = list_to_binary(FunName),
             case type_hash_from_function_name(FunBin, TypeInfo) of

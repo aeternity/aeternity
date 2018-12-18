@@ -299,7 +299,7 @@ create_contract_init_error(_Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    ContractCode = aect_test_utils:compile_contract("contracts/init_error.aes"),
+    {ok, ContractCode} = aect_test_utils:compile_contract("contracts/init_error.aes"),
     Overrides = #{ code => ContractCode
                  , call_data => make_calldata_from_code(ContractCode, <<"init">>, {<<123:256>>, 0})
                  , gas => 10000
@@ -376,7 +376,7 @@ create_contract_init_error_illegal_instructions_in_sophia(_Cfg) ->
 create_contract_init_error_illegal_instruction_(OP, ErrReason) when is_binary(ErrReason) ->
     state(aect_test_utils:new_state()),
     Acc = call(fun new_account/2, [10000000]),
-    Code = compile_contract(minimal_init),
+    {ok, Code} = compile_contract(minimal_init),
     HackedCode = hack_bytecode(Code, OP),
     Gas = 9000,
     CreateTxOpts = #{gas => Gas},
@@ -390,7 +390,7 @@ create_contract_init_error_illegal_instruction_(OP, ErrReason) when is_binary(Er
 hack_bytecode(Code, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
     #{ source_hash := Hash,
        type_info := TypeInfo,
-       byte_code := ByteCode } = aeso_compiler:deserialize(Code),
+       byte_code := ByteCode } = aect_sophia:deserialize(Code),
     Version = 1,
     HackedByteCode = <<OP:1/integer-unsigned-unit:8, ByteCode/binary>>,
     Fields = [ {source_hash, Hash}
@@ -411,7 +411,7 @@ create_contract_(ContractCreateTxGasPrice) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
+    {ok, IdContract} = aect_test_utils:compile_contract("contracts/identity.aes"),
     CallData     = make_calldata_from_code(IdContract, init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallData
@@ -591,7 +591,7 @@ call_contract_(ContractCallTxGasPrice) ->
 
     CallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S2)),
 
-    IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
+    {ok, IdContract} = aect_test_utils:compile_contract("contracts/identity.aes"),
     CallDataInit = make_calldata_from_code(IdContract, init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallDataInit
@@ -835,7 +835,7 @@ create_contract(Owner, Name, Args, S) ->
     create_contract(Owner, Name, Args, #{}, S).
 
 create_contract(Owner, Name, Args, Options, S) ->
-    Code = compile_contract(Name),
+    {ok, Code} = compile_contract(Name),
     create_contract_with_code(Owner, Code, Args, Options, S).
 
 create_contract_with_code(Owner, Code, Args, Options, S) ->
@@ -916,7 +916,7 @@ make_calldata_raw(<<FunHashInt:256>>, Args0) ->
 make_calldata_from_code(Code, Fun, Args) when is_atom(Fun) ->
     make_calldata_from_code(Code, atom_to_binary(Fun, latin1), Args);
 make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
-    #{type_info := TypeInfo} = aeso_compiler:deserialize(Code),
+    #{type_info := TypeInfo} = aect_sophia:deserialize(Code),
     case aeso_abi:type_hash_from_function_name(Fun, TypeInfo) of
         {ok, TypeHash} -> make_calldata_raw(TypeHash, Args);
         {error, _} = Err -> error({bad_function, Fun, Err})
@@ -950,7 +950,7 @@ sophia_identity(_Cfg) ->
 sophia_exploits(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc  = ?call(new_account, 10000000),
-    Code = compile_contract(exploits),
+    {ok, Code} = compile_contract(exploits),
     StringType = aeso_data:to_binary(string),
     HackedCode = hack_type(<<"pair">>, {return, StringType}, Code),
     C = ?call(create_contract_with_code, Acc, HackedCode, {}, #{}),
@@ -962,7 +962,7 @@ sophia_exploits(_Cfg) ->
 hack_type(HackFun, NewType, Code) ->
     #{ source_hash := Hash,
        type_info := TypeInfo,
-       byte_code := ByteCode } = aeso_compiler:deserialize(Code),
+       byte_code := ByteCode } = aect_sophia:deserialize(Code),
     Version     = 1,
     Hack = fun(Info = {_, Fun, _, _}) when Fun == HackFun ->
                 case NewType of
@@ -2805,7 +2805,7 @@ sophia_map_benchmark(Cfg) ->
     Acc  = ?call(new_account, 100000000),
     N    = proplists:get_value(n, Cfg, 10),
     Map  = maps:from_list([{I, list_to_binary(integer_to_list(I))} || I <- lists:seq(1, N) ]),
-    Code = aect_test_utils:compile_contract("contracts/maps_benchmark.aes"),
+    {ok, Code} = aect_test_utils:compile_contract("contracts/maps_benchmark.aes"),
     Opts = #{ gas => 1000000, return_gas_used => true },
     {Ct, InitGas}   = ?call(create_contract, Acc, maps_benchmark, {777, Map}, Opts),
     Remote          = ?call(create_contract, Acc, maps_benchmark, {888, #{}}, Opts),    %% Can't make remote calls to oneself

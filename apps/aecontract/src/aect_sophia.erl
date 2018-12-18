@@ -15,14 +15,25 @@
         , encode_call_data/3
         , simple_call/3
         , on_chain_call/3
+        , serialize/1
+        , deserialize/1
         ]).
+
+
+-type wrapped_code() :: #{ source_hash := aec_hash:hash()
+                         , type_info   := [binary()]
+                         , byte_code   := binary()
+                         }.
+
+-export_type([ wrapped_code/0 ]).
 
 -spec compile(binary(), binary()) -> {ok, binary()} | {error, binary()}.
 
 compile(ContractAsBinString, OptionsAsBinString) ->
     ContractText = binary_to_list(ContractAsBinString),
     Options = parse_options(OptionsAsBinString),
-    try {ok, aeso_compiler:from_string(ContractText, Options)}
+    try Map = aeso_compiler:from_string(ContractText, Options),
+        {ok, serialize(Map)}
     catch
         %% The compiler errors.
         error:{type_errors, Errors} ->
@@ -59,6 +70,39 @@ parse_options(<<_:8, Rest/binary>>, Acc) ->
     parse_options(Rest, Acc);
 parse_options(<<>>, Acc) -> Acc.
 
+serialize(#{byte_code := ByteCode, type_info := TypeInfo, contract_source := ContractString}) ->
+    ContractBin = list_to_binary(ContractString),
+    Version = aeso_compiler:version(),
+    Fields = [ {source_hash, aec_hash:hash(sophia_source_code, ContractBin)}
+             , {type_info, TypeInfo}
+             , {byte_code, ByteCode}
+             ],
+    aec_object_serialization:serialize(compiler_sophia,
+                                       Version,
+                                       serialization_template(Version),
+                                       Fields
+                                      ).
+
+-spec deserialize(binary()) -> wrapped_code().
+deserialize(Binary) ->
+    case aec_object_serialization:deserialize_type_and_vsn(Binary) of
+        {compiler_sophia = Type, Vsn,_Rest} ->
+            Template = serialization_template(Vsn),
+            [ {source_hash, Hash}
+            , {type_info, TypeInfo}
+            , {byte_code, ByteCode}
+            ] = aec_object_serialization:deserialize(Type, Vsn, Template, Binary),
+            #{ source_hash => Hash
+             , type_info => TypeInfo
+             , byte_code => ByteCode
+             };
+        Other ->
+            error({illegal_code_object, Other})
+    end.
+
+serialization_template(Version) ->
+    aeso_compiler:serialization_template(Version).
+
 -spec on_chain_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
 on_chain_call(ContractKey, Function, Argument) ->
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
@@ -66,7 +110,7 @@ on_chain_call(ContractKey, Function, Argument) ->
     Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
     SerializedCode = aect_contracts:code(Contract),
     Store          = aect_contracts:state(Contract),
-    #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
+    #{ byte_code := Code} = deserialize(SerializedCode),
     case create_call(SerializedCode, Function, Argument) of
         {error, E} -> {error, E};
         {ok, CallData, CallDataType, OutType} ->
@@ -78,7 +122,7 @@ on_chain_call(ContractKey, Function, Argument) ->
 
 -spec simple_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
 simple_call(SerializedCode, Function, Argument) ->
-    #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
+    #{ byte_code := Code} = deserialize(SerializedCode),
     case create_call(SerializedCode, Function, Argument) of
         {error, E} -> {error, E};
         {ok, CallData, CallDataType, OutType} ->

@@ -5,25 +5,16 @@
 %%%     Compiler from Aeterinty Sophia language to the Aeternity VM, aevm.
 %%% @end
 %%% Created : 12 Dec 2017
-%%% aec_conductor:stop_mining().
-%%% aeso_compiler:file( identity, [pp_ast,pp_icode,pp_assembler,pp_bytecode, pp_sophia_code]).
 %%%-------------------------------------------------------------------
 -module(aeso_compiler).
 
--export([ deserialize/1
-        , file/1
+-export([ file/1
         , file/2
         , from_string/2
         , check_call/2
         , version/0
+        , serialization_template/1
         ]).
-
--ifdef(TEST).
-
--export([ serialize/3
-        ]).
-
--endif.
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aeso_icode.hrl").
@@ -33,14 +24,8 @@
                   pp_bytecode.
 -type options() :: [option()].
 
--type wrapped_code() :: #{ source_hash := aec_hash:hash()
-                         , type_info   := [binary()]
-                         , byte_code   := binary()
-                         }.
-
 -export_type([ option/0
              , options/0
-             , wrapped_code/0
              ]).
 
 -define(COMPILER_VERSION_1, 1).
@@ -52,16 +37,16 @@
 version() ->
     ?COMPILER_VERSION.
 
--spec file(string()) -> binary().
+-spec file(string()) -> map().
 file(Filename) ->
     file(Filename, []).
 
--spec file(string(), options()) -> binary().
+-spec file(string(), options()) -> map().
 file(Filename, Options) ->
     C = read_contract(Filename),
     from_string(C, Options).
 
--spec from_string(string(), options()) -> binary().
+-spec from_string(string(), options()) -> map().
 from_string(ContractString, Options) ->
     Ast = parse(ContractString, Options),
     ok = pp_sophia_code(Ast, Options),
@@ -77,7 +62,7 @@ from_string(ContractString, Options) ->
     ByteCodeList = to_bytecode(Assembler, Options),
     ByteCode = << << B:8 >> || B <- ByteCodeList >>,
     ok = pp_bytecode(ByteCode, Options),
-    serialize(ByteCode, TypeInfo, ContractString).
+    #{byte_code => ByteCode, type_info => TypeInfo, contract_source => ContractString}.
 
 -define(CALL_NAME, "__call").
 
@@ -185,35 +170,6 @@ extract_type_info(#{functions := Functions} =_Icode) ->
                ],
     lists:sort(TypeInfo).
 
-serialize(ByteCode, TypeInfo, ContractString) ->
-    ContractBin = list_to_binary(ContractString),
-    Version = version(),
-    Fields = [ {source_hash, aec_hash:hash(sophia_source_code, ContractBin)}
-             , {type_info, TypeInfo}
-             , {byte_code, ByteCode}
-             ],
-    aec_object_serialization:serialize(compiler_sophia,
-                                       Version,
-                                       serialization_template(Version),
-                                       Fields
-                                      ).
-
--spec deserialize(binary()) -> wrapped_code().
-deserialize(Binary) ->
-    case aec_object_serialization:deserialize_type_and_vsn(Binary) of
-        {compiler_sophia = Type, Vsn,_Rest} ->
-            Template = serialization_template(Vsn),
-            [ {source_hash, Hash}
-            , {type_info, TypeInfo}
-            , {byte_code, ByteCode}
-            ] = aec_object_serialization:deserialize(Type, Vsn, Template, Binary),
-            #{ source_hash => Hash
-             , type_info => TypeInfo
-             , byte_code => ByteCode
-             };
-        Other ->
-            error({illegal_code_object, Other})
-    end.
 
 serialization_template(Vsn) when Vsn == ?COMPILER_VERSION_1;
                                  Vsn == ?COMPILER_VERSION_2 ->

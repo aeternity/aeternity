@@ -3337,8 +3337,7 @@ fp_register_name(Cfg) ->
           % create contract on-chain
           fun(#{onchain_contract_owner_pubkey := PubKey,
                 state := S0} = Props) ->
-            ContractString = aeso_test_utils:read_contract(ContractName),
-            BinCode = aeso_compiler:from_string(ContractString, []),
+            {ok, BinCode} =  compile_contract(ContractName),
             {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
             Nonce = 1,
             {ok, ContractCreateTx} =
@@ -3673,8 +3672,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
           % create contract on-chain
           fun(#{onchain_contract_owner_pubkey := PubKey,
                 state := S0} = Props) ->
-            ContractString = aeso_test_utils:read_contract(ContractName),
-            BinCode = aeso_compiler:from_string(ContractString, []),
+            {ok, BinCode} = compile_contract(ContractName),
             {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
             Nonce = 1,
             {ok, ContractCreateTx} =
@@ -3841,8 +3839,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
 
 get_oracle_fun_hash_int(Function) ->
     ContractString = aeso_test_utils:read_contract("oracles"),
-    BinCode = aeso_compiler:from_string(ContractString, []),
-    #{type_info := TypeInfo} = aeso_compiler:deserialize(BinCode),
+    #{type_info := TypeInfo} = aeso_compiler:from_string(ContractString, []),
     {ok, <<IntFunHash:256>>} = aeso_abi:type_hash_from_function_name(
                                Function, TypeInfo),
     IntFunHash.
@@ -3890,8 +3887,7 @@ fp_register_oracle(Cfg) ->
           % create contract on-chain
           fun(#{onchain_contract_owner_pubkey := PubKey,
                 state := S0} = Props) ->
-            ContractString = aeso_test_utils:read_contract(ContractName),
-            BinCode = aeso_compiler:from_string(ContractString, []),
+            {ok, BinCode} = compile_contract(ContractName),
             {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
             Nonce = 1,
             {ok, ContractCreateTx} =
@@ -4368,8 +4364,7 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
     fun(#{trees := Trees0,
           state := State,
           owner := Owner} = Props) ->
-        ContractString = aeso_test_utils:read_contract(ContractName),
-        BinCode = aeso_compiler:from_string(ContractString, []),
+        {ok, BinCode}  = compile_contract(ContractName),
         {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, InitArg),
         Update = aesc_offchain_update:op_new_contract(aec_id:create(account, Owner),
                                                       ?VM_VERSION,
@@ -4396,8 +4391,7 @@ create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->
     fun(#{state := State0,
           owner := Owner} = Props) ->
         Trees0 = aesc_test_utils:trees(State0),
-        ContractString = aeso_test_utils:read_contract(ContractName),
-        BinCode = aeso_compiler:from_string(ContractString, []),
+        {ok, BinCode} = compile_contract(ContractName),
         {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, InitArg),
         Nonce = aesc_test_utils:next_nonce(Owner, State0),
         {ok, AetxCreateTx} =
@@ -5180,3 +5174,8 @@ poi_participants_only() ->
           PoIHash = aec_trees:poi_hash(PoI),
           Props#{poi => PoI, state_hash => PoIHash}
    end.
+
+compile_contract(ContractName) ->
+    aect_test_utils:compile_contract(
+      filename:join(["contracts", 
+                     filename:basename(ContractName, ".aes") ++ ".aes"])).
