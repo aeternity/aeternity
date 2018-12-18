@@ -1,7 +1,5 @@
 -include("pow.hrl").
 
--define(PROTOCOL_VERSION, 1).
-
 -define(BLOCK_HEADER_HASH_BYTES, 32).
 -define(TXS_HASH_BYTES, 32).
 -define(STATE_HASH_BYTES, 32).

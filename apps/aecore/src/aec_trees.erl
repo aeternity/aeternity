@@ -94,6 +94,8 @@
              , poi/0
              ]).
 
+-define(VERSION, 1).
+
 %%%%=============================================================================
 %% API
 %%%=============================================================================
@@ -375,7 +377,7 @@ internal_hash(Trees) ->
 
 internal_hash(Trees, {calls_hash, CallsRootHash}) ->
     %% Note that all hash sizes are checked in pad_empty/2
-    Bin = <<?PROTOCOL_VERSION:64,
+    Bin = <<?VERSION:64,
             (pad_empty(accounts_hash(Trees)))  /binary,
             CallsRootHash                      /binary,
             (pad_empty(channels_hash(Trees)))  /binary,
@@ -503,7 +505,7 @@ internal_new_poi(Trees) ->
 
 internal_poi_hash(#poi{} = POI) ->
     %% Note that all hash sizes are checked in pad_empty/2
-    Bin = <<?PROTOCOL_VERSION:64,
+    Bin = <<?VERSION:64,
             (part_poi_hash(POI#poi.accounts)) /binary,
             (part_poi_hash(POI#poi.calls))    /binary,
             (part_poi_hash(POI#poi.channels)) /binary,

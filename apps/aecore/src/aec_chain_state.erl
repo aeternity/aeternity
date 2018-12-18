@@ -310,13 +310,14 @@ fake_key_node(PrevNode, Height, Miner, Beneficiary) ->
                       key   -> hash(PrevNode);
                       micro -> prev_key_hash(PrevNode)
                   end,
+    Vsn = aec_hard_forks:protocol_effective_at_height(Height),
     Block = aec_blocks:new_key(Height,
                                hash(PrevNode),
                                PrevKeyHash,
                                <<123:?STATE_HASH_BYTES/unit:8>>,
                                ?HIGHEST_TARGET_SCI,
                                0, aeu_time:now_in_msecs(),
-                               ?PROTOCOL_VERSION,
+                               Vsn,
                                Miner,
                                Beneficiary),
     wrap_header(aec_blocks:to_header(Block)).
