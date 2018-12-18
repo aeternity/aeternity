@@ -13,7 +13,6 @@
         , from_string/2
         , check_call/2
         , version/0
-        , serialization_template/1
         ]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
@@ -169,14 +168,6 @@ extract_type_info(#{functions := Functions} =_Icode) ->
                    not lists:member(private, Attrs)
                ],
     lists:sort(TypeInfo).
-
-
-serialization_template(Vsn) when Vsn == ?COMPILER_VERSION_1;
-                                 Vsn == ?COMPILER_VERSION_2 ->
-    [ {source_hash, binary}
-    , {type_info, [{binary, binary, binary, binary}]} %% {type hash, name, arg type, out type}
-    , {byte_code, binary}].
-
 
 pp_sophia_code(C, Opts)->  pp(C, Opts, pp_sophia_code, fun(Code) ->
                                 io:format("~s\n", [prettypr:format(aeso_pretty:decls(Code))])
