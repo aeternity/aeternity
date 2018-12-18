@@ -36,7 +36,8 @@ new_key_block_test_() ->
                           aec_blocks:prev_hash(NewBlock)),
              ?assertError(_, aec_blocks:txs(NewBlock)),
              ?assertEqual(17, aec_blocks:target(NewBlock)),
-             ?assertEqual(aec_block_genesis:version(), aec_blocks:version(NewBlock)),
+             ?assertEqual(aec_hard_forks:protocol_effective_at_height(12),
+                          aec_blocks:version(NewBlock)),
              ?assertEqual(?MINER_PUBKEY, aec_blocks:miner(NewBlock)),
              ?assertEqual(?BENEFICIARY_PUBKEY, aec_blocks:beneficiary(NewBlock))
      end}.
