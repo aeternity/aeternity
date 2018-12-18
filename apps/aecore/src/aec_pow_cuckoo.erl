@@ -199,7 +199,7 @@ build_miner_config({Executable, ExtraArgs, HexEncodedHeader, Repeats, Instances,
        instances          = Instances}.
 
 get_edge_bits() ->
-    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"edge_bits">>]) of
+    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"edge_bits">>]) of
         {ok, EdgeBits} -> EdgeBits;
         undefined ->
             {EdgeBits, _} = get_options(),
