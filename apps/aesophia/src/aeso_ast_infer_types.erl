@@ -1525,7 +1525,8 @@ pp({qid, _, Name}) ->
 pp({con, _, Name}) ->
     Name;
 pp({uvar, _, Ref}) ->
-    ["?" | lists:sublist(base58:binary_to_base58(term_to_binary(Ref)), 43, 3)];
+    %% Show some unique representation
+    ["?u" | integer_to_list(erlang:phash2(Ref, 16384)) ];
 pp({tvar, _, Name}) ->
     Name;
 pp({tuple_t, _, Cpts}) ->
