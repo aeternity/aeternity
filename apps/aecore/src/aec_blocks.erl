@@ -339,9 +339,11 @@ update_micro_candidate(#mic_block{} = Block, TxsRootHash, RootHash, Txs) ->
 serialize_to_binary(#key_block{} = Block) ->
     aec_headers:serialize_to_binary(to_key_header(Block));
 serialize_to_binary(#mic_block{} = Block) ->
-    Hdr = aec_headers:serialize_to_binary(to_micro_header(Block)),
+    Header = to_micro_header(Block),
+    Hdr = aec_headers:serialize_to_binary(Header),
     Txs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- txs(Block)],
     Vsn = version(Block),
+    assert_version(Header, Vsn),
     {ok, Template} = serialization_template(micro, Vsn),
     Rest = aec_object_serialization:serialize(
              micro_block,
@@ -365,6 +367,7 @@ deserialize_from_binary(Bin) ->
 
 deserialize_micro_block_from_binary(Bin, Header) ->
     Vsn = aec_headers:version(Header),
+    assert_version(Header, Vsn),
     case serialization_template(micro, Vsn) of
         {ok, Template} ->
             [{txs, Txs0}, {pof, PoF0}] =
@@ -377,7 +380,14 @@ deserialize_micro_block_from_binary(Bin, Header) ->
             Err
     end.
 
-serialization_template(micro, Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
+assert_version(Header, Vsn) ->
+    Height = aec_headers:height(Header),
+    case aec_hard_forks:protocol_effective_at_height(Height) of
+        Vsn -> ok;
+        Other -> error({illegal_vsn, Vsn, Other})
+    end.
+
+serialization_template(micro,_Vsn) ->
     {ok, [ {txs, [binary]}
          , {pof, [binary]}]};
 serialization_template(_BlockType, Vsn) ->

@@ -74,7 +74,7 @@
           root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
           signature    = <<0:?BLOCK_SIGNATURE_BYTES/unit:8>>   :: block_signature(),
           txs_hash     = <<0:?TXS_HASH_BYTES/unit:8>>          :: txs_hash(),
-          time         = ?GENESIS_TIME                         :: non_neg_integer(),
+          time         = 0                                     :: non_neg_integer(),
           version                                              :: non_neg_integer()
          }).
 
@@ -85,7 +85,7 @@
           root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
           target       = ?HIGHEST_TARGET_SCI                   :: aec_pow:sci_int(),
           nonce        = 0                                     :: non_neg_integer(),
-          time         = ?GENESIS_TIME                         :: non_neg_integer(),
+          time         = 0                                     :: non_neg_integer(),
           version                                              :: non_neg_integer(),
           pow_evidence = no_value                              :: aec_pow:pow_evidence(),
           miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),

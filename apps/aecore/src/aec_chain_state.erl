@@ -558,7 +558,7 @@ median_timestamp_and_headers(Node) ->
     TimeStampKeyBlocks = aec_governance:median_timestamp_key_blocks(),
     case node_height(Node) =< TimeStampKeyBlocks of
         true ->
-            {ok, ?GENESIS_TIME, []};
+            {ok, aec_block_genesis:time_in_msecs(), []};
         false ->
             PrevKeyNode = db_get_node(prev_key_hash(Node)),
             case get_n_key_headers_from(PrevKeyNode, TimeStampKeyBlocks) of

@@ -35,11 +35,6 @@
 -include("blocks.hrl").
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 
--define(SORTED_VERSIONS, lists:sort(maps:keys(?PROTOCOLS))).
--define(PROTOCOLS,
-        #{?PROTOCOL_VERSION => ?GENESIS_HEIGHT
-         }).
-
 -define(NETWORK_ID, <<"ae_mainnet">>).
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 17).
 -define(TIMESTAMP_MEDIAN_BLOCKS, 11).
@@ -73,11 +68,13 @@
 
 
 sorted_protocol_versions() ->
-    ?SORTED_VERSIONS.
+    lists:sort(maps:keys(protocols())).
 
 protocols() ->
     case aeu_env:user_map([<<"chain">>, <<"hard_forks">>]) of
-        undefined -> ?PROTOCOLS;
+        undefined ->
+            #{aec_block_genesis:version() => aec_block_genesis:height()
+             };
         {ok, M} ->
             maps:from_list(
               lists:map(
