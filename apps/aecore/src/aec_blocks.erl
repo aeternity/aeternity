@@ -339,18 +339,24 @@ update_micro_candidate(#mic_block{} = Block, TxsRootHash, RootHash, Txs) ->
 serialize_to_binary(#key_block{} = Block) ->
     aec_headers:serialize_to_binary(to_key_header(Block));
 serialize_to_binary(#mic_block{} = Block) ->
-    Hdr = aec_headers:serialize_to_binary(to_micro_header(Block)),
-    Txs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- txs(Block)],
-    Vsn = version(Block),
-    {ok, Template} = serialization_template(micro, Vsn),
-    Rest = aec_object_serialization:serialize(
-             micro_block,
-             Vsn,
-             Template,
-             [ {txs, Txs}
-             , {pof, aec_pof:serialize(pof(Block))}
-             ]),
-    <<Hdr/binary, Rest/binary>>.
+    Hdr    = to_micro_header(Block),
+    HdrBin = aec_headers:serialize_to_binary(Hdr),
+    Height = aec_headers:height(Hdr),
+    Vsn    = version(Block),
+    case serialization_template(micro, Height, Vsn) of
+        {error, What} ->
+            error({serialization_error, What});
+        {ok, Template} ->
+            Txs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- txs(Block)],
+            Rest = aec_object_serialization:serialize(
+                     micro_block,
+                     Vsn,
+                     Template,
+                     [ {txs, Txs}
+                     , {pof, aec_pof:serialize(pof(Block))}
+                     ]),
+            <<HdrBin/binary, Rest/binary>>
+    end.
 
 -spec deserialize_from_binary(binary()) -> {'error', term()} | {'ok', block()}.
 deserialize_from_binary(Bin) ->
@@ -365,7 +371,7 @@ deserialize_from_binary(Bin) ->
 
 deserialize_micro_block_from_binary(Bin, Header) ->
     Vsn = aec_headers:version(Header),
-    case serialization_template(micro, Vsn) of
+    case serialization_template(micro, aec_headers:height(Header), Vsn) of
         {ok, Template} ->
             [{txs, Txs0}, {pof, PoF0}] =
                 aec_object_serialization:deserialize(micro_block, Vsn, Template, Bin),
@@ -377,11 +383,14 @@ deserialize_micro_block_from_binary(Bin, Header) ->
             Err
     end.
 
-serialization_template(micro, Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
-    {ok, [ {txs, [binary]}
-         , {pof, [binary]}]};
-serialization_template(_BlockType, Vsn) ->
-    {error, {bad_block_vsn, Vsn}}.
+serialization_template(micro, Height, Vsn) ->
+    case aec_hard_forks:protocol_effective_at_height(Height) of
+        Vsn ->
+            {ok, [ {txs, [binary]}
+                 , {pof, [binary]}]};
+        Other ->
+            {error, {bad_block_vsn, Other}}
+    end.
 
 -spec serialize_to_map(block()) -> map().
 serialize_to_map(#key_block{} = Block) ->

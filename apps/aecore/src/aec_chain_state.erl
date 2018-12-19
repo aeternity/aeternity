@@ -310,13 +310,14 @@ fake_key_node(PrevNode, Height, Miner, Beneficiary) ->
                       key   -> hash(PrevNode);
                       micro -> prev_key_hash(PrevNode)
                   end,
+    Vsn = aec_hard_forks:protocol_effective_at_height(Height),
     Block = aec_blocks:new_key(Height,
                                hash(PrevNode),
                                PrevKeyHash,
                                <<123:?STATE_HASH_BYTES/unit:8>>,
                                ?HIGHEST_TARGET_SCI,
                                0, aeu_time:now_in_msecs(),
-                               ?PROTOCOL_VERSION,
+                               Vsn,
                                Miner,
                                Beneficiary),
     wrap_header(aec_blocks:to_header(Block)).
@@ -558,7 +559,7 @@ median_timestamp_and_headers(Node) ->
     TimeStampKeyBlocks = aec_governance:median_timestamp_key_blocks(),
     case node_height(Node) =< TimeStampKeyBlocks of
         true ->
-            {ok, ?GENESIS_TIME, []};
+            {ok, aec_block_genesis:time_in_msecs(), []};
         false ->
             PrevKeyNode = db_get_node(prev_key_hash(Node)),
             case get_n_key_headers_from(PrevKeyNode, TimeStampKeyBlocks) of

@@ -27,7 +27,7 @@ mine_block_test_() ->
         {"Find a new block",
          fun() ->
                  RawBlock = aec_blocks:raw_key_block(),
-                 TopBlock = aec_blocks:set_height(RawBlock, ?GENESIS_HEIGHT),
+                 TopBlock = aec_blocks:set_height(RawBlock, aec_block_genesis:height()),
                  % if there is a change in the structure of the block
                  % this will result in a change in the hash of the header
                  % and will invalidate the nonce value below
@@ -53,7 +53,7 @@ mine_block_test_() ->
         {"Proof of work fails with no_solution",
          fun() ->
                  RawBlock = aec_blocks:raw_key_block(),
-                 TopBlock = aec_blocks:set_height(RawBlock, ?GENESIS_HEIGHT),
+                 TopBlock = aec_blocks:set_height(RawBlock, aec_block_genesis:height()),
                  meck:expect(aec_pow, pick_nonce, 0, 18),
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}], ?TEST_PUB),

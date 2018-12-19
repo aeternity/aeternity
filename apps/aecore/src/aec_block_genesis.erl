@@ -29,16 +29,23 @@
 
 -export([genesis_difficulty/0]).
 
--export([prev_hash/0,
+-export([beneficiary/0,
          height/0,
+         miner/0,
          pow/0,
+         prev_hash/0,
          target/0,
-         beneficiary/0,
-         miner/0]).
+         time_in_msecs/0,
+         version/0
+        ]).
 
 -ifdef(TEST).
 -export([genesis_block_with_state/1]).
 -endif.
+
+-define(GENESIS_VERSION, 1).
+-define(GENESIS_HEIGHT, 0).
+-define(GENESIS_TIME, 0).
 
 -include("blocks.hrl").
 
@@ -61,6 +68,10 @@ height() -> ?GENESIS_HEIGHT.
 miner() -> <<0:?MINER_PUB_BYTES/unit:8>>.
 
 beneficiary() -> <<0:?BENEFICIARY_PUB_BYTES/unit:8>>.
+
+version() -> ?GENESIS_VERSION.
+
+time_in_msecs() -> ?GENESIS_TIME.
 
 -ifdef(TEST).
 target() ->
@@ -86,8 +97,10 @@ genesis_block_with_state() ->
 genesis_block_with_state(Map) ->
     Trees = populated_trees(Map),
 
-    Block = aec_blocks:new_key(height(), prev_hash(), prev_key_hash(), aec_trees:hash(Trees),
-                               target(), 0, 0, ?GENESIS_VERSION, miner(), beneficiary()),
+    Block = aec_blocks:new_key(height(), prev_hash(), prev_key_hash(),
+                               aec_trees:hash(Trees),
+                               target(), 0, time_in_msecs(),
+                               version(), miner(), beneficiary()),
     {Block, Trees}.
 
 %% Returns state trees at genesis block.

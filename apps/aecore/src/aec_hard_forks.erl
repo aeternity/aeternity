@@ -40,7 +40,8 @@ protocol_effective_at_height(H) ->
 
 -spec protocol_effective_at_height(aec_blocks:height(), aec_governance:protocols()) ->
                                           version().
-protocol_effective_at_height(H, Protocols) when ?is_height(H) ->
+protocol_effective_at_height(H, Protocols) ->
+    assert_height(H),
     SortedProtocols = protocols_sorted_by_version(Protocols),
     %% Find the last protocol version effective before or at the
     %% specified height: that is the one effective at the specified
@@ -56,8 +57,15 @@ protocol_effective_at_height(H, Protocols) when ?is_height(H) ->
 %%% Internal functions
 %%%===================================================================
 
+assert_height(H) ->
+    case is_integer(H) andalso H >= aec_block_genesis:height() of
+        true  -> ok;
+        false -> error({illegal_height, H})
+    end.
+
 sorted_versions() ->
-    Vs = [?GENESIS_VERSION | _] = aec_governance:sorted_protocol_versions(),
+    GenesisVersion = aec_block_genesis:version(),
+    Vs = [GenesisVersion | _] = aec_governance:sorted_protocol_versions(),
     %% Assert versions are sorted.
     Vs = lists:sort(Vs),
     %% Assert versions are distinct.
@@ -68,7 +76,9 @@ protocols_sorted_by_version(Ps) ->
     lists:keysort(1, maps:to_list(Ps)).
 
 assert_heights_strictly_increasing(Ps) ->
-    [{?GENESIS_VERSION, ?GENESIS_HEIGHT} = G | VHs] =
+    GenesisVersion = aec_block_genesis:version(),
+    GenesisHeight = aec_block_genesis:height(),
+    [{GenesisVersion, GenesisHeight} = G | VHs] =
         protocols_sorted_by_version(Ps),
     _ = lists:foldl(
           fun(P, PrevP) ->

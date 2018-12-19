@@ -649,8 +649,9 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
             LocalHeight = aec_headers:height(LocalHeader),
             MinAgreedHash = aec_chain:genesis_hash(),
             MaxAgree = min(LocalHeight, TopHeight),
+            GenesisHeight = aec_block_genesis:height(),
             case  agree_on_height(PeerId, TopHash, TopHeight,
-                                  MaxAgree, MaxAgree, ?GENESIS_HEIGHT, MinAgreedHash) of
+                                  MaxAgree, MaxAgree, GenesisHeight, MinAgreedHash) of
                 {ok, AHeight, AHash} ->
                     epoch_sync:debug("Agreed upon height (~p): ~p", [ppp(PeerId), AHeight]),
                     Agreement = {agreed_height, #{ height => AHeight, hash => AHash }},

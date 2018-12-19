@@ -525,7 +525,8 @@ prune_preclaim(Cfg) ->
     PubKey     = aens_commitments:owner_pubkey(C),
 
     TTL = aens_commitments:ttl(C),
-    NSTree = do_prune_until(?GENESIS_HEIGHT, TTL + 1, aec_trees:ns(Trees2)),
+    GenesisHeight = aec_block_genesis:height(),
+    NSTree = do_prune_until(GenesisHeight, TTL + 1, aec_trees:ns(Trees2)),
     none = aens_state_tree:lookup_commitment(CHash, NSTree),
     ok.
 
