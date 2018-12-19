@@ -16,6 +16,8 @@ SWAGGER_CODEGEN_CLI = swagger/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
 SWAGGER_CODEGEN = java -jar $(SWAGGER_CODEGEN_CLI)
 SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
 
+all:	local-build
+
 $(SWAGGER_ENDPOINTS_SPEC):
 	$(REBAR) swagger_endpoints
 
@@ -60,8 +62,6 @@ export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
 
 HTTP_APP = apps/aehttp
 SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
-
-all:	local-build
 
 console:
 	@$(REBAR) as local shell --config config/dev.config --sname epoch
