@@ -202,9 +202,12 @@ def genesis_hash(api):
 def wait_until_height(api, height):
     wait(lambda: api.get_current_key_block().height >= height, timeout_seconds=120, sleep_seconds=0.25)
 
-def ensure_transaction_posted(ext_api, signed_tx, min_confirmations=1):
+def post_transaction(ext_api, signed_tx):
     tx_object = Tx(tx=signed_tx)
-    tx_hash = ext_api.post_transaction(tx_object).tx_hash
+    return ext_api.post_transaction(tx_object).tx_hash
+
+def ensure_transaction_posted(ext_api, signed_tx, min_confirmations=1):
+    tx_hash = post_transaction(ext_api, signed_tx)
     ensure_transaction_confirmed(ext_api, tx_hash, min_confirmations)
 
 def ensure_transaction_confirmed(ext_api, tx_hash, min_confirmations):
@@ -220,7 +223,7 @@ def is_tx_confirmed(ext_api, tx_hash, min_confirmations):
 def get_account_balance(api, pub_key):
     return _balance_from_get_account(lambda: api.get_account_by_pubkey(pub_key), pub_key)
 
-def ensure_send_tokens(sender, address, tokens, fee, ext_api, int_api, min_confirmations):
+def send_tokens(sender, address, tokens, fee, ext_api, int_api):
     spend_tx_obj = SpendTx(
         sender_id=sender['enc_pubk'],
         recipient_id=address,
@@ -231,7 +234,11 @@ def ensure_send_tokens(sender, address, tokens, fee, ext_api, int_api, min_confi
     spend_tx = int_api.post_spend(spend_tx_obj).tx
     unsigned_tx = api_decode(spend_tx)
     signed_tx = integration.keys.sign_encode_tx(unsigned_tx, sender['privk'])
-    ensure_transaction_posted(ext_api, signed_tx, min_confirmations)
+    return post_transaction(ext_api, signed_tx)
+
+def ensure_send_tokens(sender, address, tokens, fee, ext_api, int_api, min_confirmations):
+    tx_hash = send_tokens(sender, address, tokens, fee, ext_api, int_api)
+    ensure_transaction_confirmed(ext_api, tx_hash, min_confirmations)
 
 def _balance_from_get_account(get_account_fun, pub_key):
     account = Account(id=pub_key, balance=0, nonce=0)

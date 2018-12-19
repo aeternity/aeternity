@@ -65,7 +65,8 @@ def test_not_enough_tokens():
     # check that Bob is unable to send less tokens than he has
     many_tokens_to_send = test_settings["spend_tx"]["large_amount"]
     print("Bob is about to send " + str(many_tokens_to_send) + " to Alice")
-    common.ensure_send_tokens(bob, alice_address, many_tokens_to_send, spend_tx_fee, ext_api, int_api, 3)
+    common.send_tokens(bob, alice_address, many_tokens_to_send, spend_tx_fee, ext_api, int_api)
+    common.wait_until_height(ext_api, ext_api.get_current_key_block().height + 3)
     alice_balance2 = common.get_account_balance(ext_api, pub_key=alice_address)
     bob_balance2 = common.get_account_balance(ext_api, pub_key=bob_address)
     print("Alice balance is " + str(alice_balance2))
