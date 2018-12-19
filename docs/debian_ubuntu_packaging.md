@@ -62,24 +62,21 @@ Create an apt preference file that constrains the version to all Erlang packages
 
 /etc/apt/preferences.d/erlang
 
-#```
+```
 Package: erlang* esl-erlang
 Pin: version 1:20.2-1*
 Pin-Priority: 501
 
-# End
-#```
+```
 
 
 Add additional package repository for Erlang
 
 /etc/apt/sources.list.d/erlangsolutions.list
 
-#```
+```
 deb https://packages.erlang-solutions.com/ubuntu xenial contrib
-
-# End
-#```
+```
 
 This repository will provide recent Erlang version for Ubuntu 16.04.
 
