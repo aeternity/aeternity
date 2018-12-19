@@ -66,7 +66,7 @@
 %%      split) together with the maps used by the value. Also allows an
 %%      arbitrary offset for the binary. These are used when copying values
 %%      inside the VM. The full VM state (heap and maps) together with a
-%%      pointer can treated as a heap value.
+%%      pointer can be treated as a heap value.
 %%
 
 %% -- Manipulating heap values -----------------------------------------------
