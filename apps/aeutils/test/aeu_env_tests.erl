@@ -66,7 +66,7 @@ teardown(_) ->
 
 mock_user_config(UserMap, UserConfig) ->
     F = fun
-            (aeutils, '$user_config') -> UserConfig;
+            (aeutils, '$user_config') -> {ok, UserConfig};
             (aeutils, '$user_map') -> UserMap;
             (_A, _K) -> meck:passthrough()
         end,

@@ -141,7 +141,7 @@ next_nonce(N, Cfg) ->
     Step = aec_pow_cuckoo:get_repeats(Cfg),
     case N + 2 * Step < ?MAX_NONCE of
         true  -> N + Step;
-        false -> pick_nonce()
+        false -> 0
     end.
 
 %%------------------------------------------------------------------------------

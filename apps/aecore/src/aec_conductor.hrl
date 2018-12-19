@@ -17,6 +17,7 @@
 
 -type candidate_hash() :: aec_blocks:block_header_hash().
 -record(candidate, {block     :: aec_blocks:block(),
+                    nonce     :: aec_pow:nonce(),
                     top_hash  :: binary(),
                     refs = 0  :: non_neg_integer() %% Number of miner workers operating on the candidate
                    }).
@@ -27,7 +28,6 @@
 
 -type instance_state() :: pid() | 'available'.
 -record(miner_instance, {id       :: non_neg_integer(),
-                         nonce    :: non_neg_integer(),
                          instance :: aec_pow:miner_instance() | 'undefined',
                          state    :: instance_state(),
                          config   :: aec_pow:miner_config()}).

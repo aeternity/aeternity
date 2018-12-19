@@ -335,7 +335,9 @@ try_fetch_and_make_candidate() ->
 
 make_key_candidate(Block) ->
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
+    Nonce     = aec_pow:pick_nonce(),
     {HeaderBin, #candidate{ block    = Block,
+                            nonce    = Nonce,
                             top_hash = aec_blocks:prev_hash(Block) }}.
 
 make_micro_candidate(Block) ->
@@ -606,7 +608,6 @@ create_miner_instances(MinerConfig, FirstId) ->
 
 create_miner_instance(Id, Instance, Config) ->
     #miner_instance{id       = Id,
-                    nonce    = aec_pow:pick_nonce(),
                     instance = Instance,
                     config   = Config,
                     state    = available}.
@@ -621,8 +622,8 @@ get_first_available_instance([#miner_instance{state = available} = Instance | _I
 get_first_available_instance([_Instance | Instances]) ->
     get_first_available_instance(Instances).
 
-register_miner_instance(Instance, Pid, Nonce, #state{miner_instances = MinerInstances0} = State) ->
-    UpdatedInstance = Instance#miner_instance{state = Pid, nonce = Nonce},
+register_miner_instance(Instance, Pid, #state{miner_instances = MinerInstances0} = State) ->
+    UpdatedInstance = Instance#miner_instance{state = Pid},
     MinerInstances  = lists:keyreplace(Instance#miner_instance.id, #miner_instance.id, MinerInstances0, UpdatedInstance),
     State#state{miner_instances = MinerInstances}.
 
@@ -766,25 +767,27 @@ start_mining(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]
         Instance ->
             epoch_mining:info("Starting miner on top of ~p", [State#state.top_block_hash]),
             Target            = aec_blocks:target(Candidate#candidate.block),
-            NextNonce         = next_nonce(Instance),
+            Nonce             = Candidate#candidate.nonce,
             MinerConfig       = Instance#miner_instance.config,
             AddressedInstance = Instance#miner_instance.instance,
             Info              = [{top_block_hash, State#state.top_block_hash}],
             aec_events:publish(start_mining, Info),
             Fun = fun() ->
-                          {aec_mining:mine(HeaderBin, Target, NextNonce, MinerConfig, AddressedInstance)
+                          {aec_mining:mine(HeaderBin, Target, Nonce, MinerConfig, AddressedInstance)
                           , HeaderBin}
                   end,
-            Candidate1 = Candidate#candidate{refs = Candidate#candidate.refs + 1},
+            Candidate1 = register_miner(Candidate, MinerConfig),
             State1 = State#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]},
             {State2, Pid} = dispatch_worker(mining, Fun, State1),
-            State3 = register_miner_instance(Instance, Pid, NextNonce, State2),
+            State3 = register_miner_instance(Instance, Pid, State2),
             epoch_mining:info("Miner ~p started", [Pid]),
             start_mining(State3)
     end.
 
-next_nonce(#miner_instance{nonce = N, config = Cfg}) ->
-    aec_pow:next_nonce(N, Cfg).
+register_miner(Candidate = #candidate{nonce = Nonce, refs  = Refs}, MinerConfig) ->
+    NextNonce = aec_pow:next_nonce(Nonce, MinerConfig),
+    Candidate#candidate{refs  = Refs + 1,
+                        nonce = NextNonce}.
 
 handle_mining_reply(_Reply, #state{key_block_candidates = undefined} = State) ->
     %% Something invalidated the block candidates already.
