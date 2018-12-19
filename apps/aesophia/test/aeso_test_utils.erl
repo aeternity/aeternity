@@ -10,7 +10,7 @@
 
 -include("apps/aecontract/src/aecontract.hrl").
 
--export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2,
+-export([read_contract/1, contract_path/0, pp/1, pp/2,
          dump_words/1, show_heap/1, show_heap/2, show_heap_value/1, compile/1]).
 
 -export([spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
@@ -43,52 +43,9 @@ pp(Name, Options) ->
             io:format("Parse error at ~p:~p:~p\n~s\n", [Name, L, C, Err])
     end.
 
-dummy_state(Code, Data) ->
-  aevm_eeevm_state:init(
-    #{ env =>
-        #{ currentCoinbase   => 0,
-           currentDifficulty => 0,
-           currentGasLimit   => 1000000,
-           currentNumber     => 7,
-           currentTimestamp  => 0,
-           chainAPI          => ?MODULE,
-           chainState        => no_state,
-           vm_version        => ?AEVM_01_Sophia_01
-         }
-     , exec =>
-        #{ gas        => 1000000,
-           code       => Code,
-           address    => 91919191,
-           value      => 100,
-           caller     => 47474747,
-           origin     => 0,
-           call_stack => [],
-           gasPrice   => 1,
-           data       => Data
-         }
-     , pre => #{}
-     }, #{ trace => true }).
-
 compile(Name) ->
   aeso_compiler:from_string(read_contract(Name),
                             [pp_sophia_code, pp_typed_ast, pp_icode]).
-
-run_contract(Name, Fun, Args, Type) ->
-  Code = compile(Name),
-%%  io:format("\nCompiled code:\n"),
-%%  io:format("~p\n\n",[Code]),
-  %% ok = aeb_disassemble:pp(Code),
-  %% Load the call
-  Call = {list_to_binary(atom_to_list(Fun)), list_to_tuple(Args)},
-  Data = aeso_data:to_binary(Call),
-  io:format("Running:\n"),
-  {ok, State} = aevm_eeevm:eval(dummy_state(Code, Data)),
-%%  io:format("\nFinal state:\n~p\n",[State]),
-  io:format("\nFinal stack: ~p\n",[maps:get(stack,State)++[end_of_stack]]),
-  io:format("\nReturn data: ~p\n",[dump_words(maps:get(out,State))]),
-  io:format("\nReturn value: ~p\n",[aeso_data:from_binary(Type,maps:get(out,State))]),
-%%    io:format("\nReturn value: ~p\n",[aeso_data:binary_to_words(maps:get(out,State))]),
-  ok.
 
 %% Stack simulator
 
