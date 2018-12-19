@@ -209,6 +209,15 @@ assemble_expr(Funs, Stack, _, {unop, '!', A}) ->
              i(?ISZERO)
             ]
     end;
+assemble_expr(Funs, Stack, _, {event, Topics, Payload}) ->
+    [assemble_exprs(Funs, Stack, Topics ++ [Payload]),
+     case length(Topics) of
+        0 -> i(?LOG0);
+        1 -> i(?LOG1);
+        2 -> i(?LOG2);
+        3 -> i(?LOG3);
+        4 -> i(?LOG4)
+     end, i(?MSIZE)];
 assemble_expr(Funs, Stack, _, {unop, Op, A}) ->
     [assemble_expr(Funs, Stack, nontail, A),
      assemble_prefix(Op)];

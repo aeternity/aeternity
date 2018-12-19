@@ -62,8 +62,8 @@ from_string(ContractString, Options) ->
     ByteCodeList = to_bytecode(Assembler, Options),
     ByteCode = << << B:8 >> || B <- ByteCodeList >>,
     ok = pp_bytecode(ByteCode, Options),
-    #{byte_code => ByteCode, type_info => TypeInfo, 
-      contract_source => ContractString, 
+    #{byte_code => ByteCode, type_info => TypeInfo,
+      contract_source => ContractString,
       compiler_version => version()}.
 
 -define(CALL_NAME, "__call").

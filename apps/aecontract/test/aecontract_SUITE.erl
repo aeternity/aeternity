@@ -96,6 +96,7 @@
         , sophia_state_gas/1
         , sophia_no_callobject_for_remote_calls/1
         , sophia_operators/1
+        , sophia_events/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -184,7 +185,8 @@ groups() ->
                                  sophia_state_handling,
                                  sophia_state_gas,
                                  sophia_no_callobject_for_remote_calls,
-                                 sophia_operators]}
+                                 sophia_operators,
+                                 sophia_events]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
         [ sophia_oracles_ttl__extend_after_expiry
@@ -886,7 +888,7 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
                  , fee        => 1000000
                  , amount     => 0
                  , gas        => 140000
-                 }, maps:without([height, return_gas_used], Options)), S),
+                 }, maps:without([height, return_gas_used, return_logs], Options)), S),
     Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Caller, S),
     {ok, S1} = sign_and_apply_transaction(CallTx, PrivKey, S, Height),
@@ -900,9 +902,12 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
             error  -> {error, aect_call:return_value(Call)};
             revert -> revert
         end,
+    Result1 = case maps:get(return_logs, Options, false) of
+                true -> {Result, aect_call:log(Call)};
+                false -> Result end,
     case maps:get(return_gas_used, Options, false) of
-        false -> {Result, S1};
-        true  -> {{Result, aect_call:gas_used(Call)}, S1}
+        false -> {Result1, S1};
+        true  -> {{Result1, aect_call:gas_used(Call)}, S1}
     end.
 
 account_balance(PubKey, S) ->
@@ -3199,6 +3204,23 @@ sophia_operators(_Cfg) ->
     ?assertEqual(<<Hash1:256>>, aec_hash:hash(evm, <<"TestString">>)),
 
     ok.
+
+sophia_events(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc   = ?call(new_account, 1000000000),
+    IdC   = ?call(create_contract, Acc, events, {}),
+
+    ?assertMatch({{},[{_, _, <<"bar">>}]},
+                 ?call(call_contract, Acc, IdC, f1, {tuple, []}, {1, <<"bar">>},  #{ return_logs => true })),
+    ?assertMatch({{},[{_, _, <<"foo">>}]},
+                 ?call(call_contract, Acc, IdC, f2, {tuple, []}, {<<"foo">>}, #{ return_logs => true })),
+    ?assertMatch({{},[{_, _, <<"8">>}]},
+                 ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1}, #{ return_logs => true })),
+    ?assertMatch({{},[{_, _, <<"1234567890123456789012345678901234567897">>}]},
+                 ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1234567890123456789012345678901234567890}, #{ return_logs => true })),
+
+    ok.
+
 
 %% The crowd funding example.
 
