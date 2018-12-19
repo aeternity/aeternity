@@ -1,0 +1,35 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+
+#CFLAGS:= $(shell dpkg-buildflags --get CFLAGS) $(CPPFLAGS)
+#CFLAGS += -Wno-error=format-security
+#CXXFLAGS:= $(shell dpkg-buildflags --get CXXFLAGS) $(CPPFLAGS)
+#CXXFLAGS += -Wno-error=format-security
+
+#CFLAGS := ""
+#CXXFLAGS := ""
+#CPPFLAGS := ""
+#DEB_BUILD_OPTIONS=noopt
+
+# Uncomment this to turn on verbose mode.
+export DH_VERBOSE=1
+
+export DEB_BUILD_MAINT_OPTIONS=hardening=-all
+
+%:
+	dh $@
+#--with rebar
+
+override_dh_auto_build:
+	$(MAKE) prod-build
+
+override_dh_auto_clean:
+#	$(MAKE) prod-clean
+#	$(MAKE) clean
+#	$(MAKE) distclean
+
+#override_dh_makeslibs:
+override_dh_auto_test:
+#override_dh_shlibdeps:
+#	dh_shlibdeps --exclude=libsodium $@

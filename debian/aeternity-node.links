@@ -1,0 +1,2 @@
+var/log/aeternity/node opt/aeternity/node/log
+usr/share/doc/aeternity-node/docs/ opt/aeternity/node/docs

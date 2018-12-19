@@ -1,0 +1,8 @@
+_build/prod/rel/*/bin /opt/aeternity/node/
+_build/prod/rel/*/data /opt/aeternity/node/
+_build/prod/rel/*/erts* /opt/aeternity/node/
+_build/prod/rel/*/lib /opt/aeternity/node/
+_build/prod/rel/*/patches /opt/aeternity/node/
+_build/prod/rel/*/releases /opt/aeternity/node/
+_build/prod/rel/*/VERSION /opt/aeternity/node/
+_build/prod/rel/*/REVISION /opt/aeternity/node/
