@@ -616,13 +616,6 @@ jobs:
       - DEPLOY_DOWNTIME: 1800 #30M
     steps: *deploy_steps
 
-  deploy_fast_integration:
-    <<: *infrastructure_config
-    environment:
-      - DEPLOY_ENV: fast_integration
-      - DEPLOY_DOWNTIME: 900 #15M
-    steps: *deploy_steps
-
   upload_packages_osx:
     <<: *infrastructure_config
     steps:
@@ -923,27 +916,6 @@ workflows:
                 - master
     jobs:
       - uat_chain_snapshot
-
-  nightly_fast_integration_deploy:
-    triggers:
-      - schedule:
-          cron: "0 23 * * *"
-          filters:
-            branches:
-              only:
-                - master
-    jobs:
-      - linux_package:
-          filters:
-            branches:
-              only: master
-
-      - deploy_fast_integration:
-          requires:
-            - linux_package
-          filters:
-            branches:
-              only: master
 
   system_tests:
     triggers:

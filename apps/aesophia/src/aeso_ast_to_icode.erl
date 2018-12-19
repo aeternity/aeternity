@@ -321,6 +321,11 @@ ast_body(?qid_app(["String", "concat"], [String1, String2], _, _), Icode) ->
     #funcall{ function = #var_ref{ name = {builtin, string_concat} },
               args     = [ast_body(String1, Icode), ast_body(String2, Icode)] };
 
+%% -- String hash (sha3)
+ast_body(?qid_app(["String", "sha3"], [String], _, _), Icode) ->
+    #unop{ op = 'sha3', rand = ast_body(String, Icode) };
+
+
 %% Other terms
 ast_body({id, _, Name}, _Icode) ->
     %% TODO Look up id in env
@@ -490,6 +495,15 @@ ast_binop(Op, Ann, {typed, _, A, Type}, B, Icode)
                           args     = [ast_body(A, Icode), ast_body(B, Icode)] });
         _ -> gen_error({cant_compare, Ann, Op, Type})
     end;
+ast_binop('++', _, A, B, Icode) ->
+    #funcall{ function = #var_ref{ name = {builtin, list_concat} },
+              args     = [ast_body(A, Icode), ast_body(B, Icode)] };
+ast_binop('bsl', _, A, B, Icode) ->
+    #binop{op = '*', left = ast_body(A, Icode),
+                     right = #binop{op = '^', left = {integer, 2}, right = ast_body(B, Icode)}};
+ast_binop('bsr', _, A, B, Icode) ->
+    #binop{op = 'div', left = ast_body(A, Icode),
+                       right = #binop{op = '^', left = {integer, 2}, right = ast_body(B, Icode)}};
 ast_binop(Op, _, A, B, Icode) ->
     #binop{op = Op, left = ast_body(A, Icode), right = ast_body(B, Icode)}.
 
@@ -552,7 +566,7 @@ is_monomorphic(_) -> true.
 %% Implemented as a contract call to the contract with address 0.
 prim_call(Prim, Amount, Args, ArgTypes, OutType) ->
     TypeHash =
-        case aevm_ae_primops:op_needs_type_check(Prim) of
+        case aeb_primops:op_needs_type_check(Prim) of
             true ->
                 PrimBin = binary:encode_unsigned(Prim),
                 ArgType = {tuple, ArgTypes},
@@ -820,6 +834,21 @@ builtin_function(Builtin = map_from_list) ->
           builtin_call(map_from_list,
             [v(ys), builtin_call(map_put, [v(acc), v(k), v(v)])])}]},
      word};
+
+%% list_concat
+%%
+%% Concatenates two lists.
+builtin_function(list_concat) ->
+    {{builtin, list_concat}, [private],
+     [{"l1", {list, word}}, {"l2", {list, word}}],
+     {switch, v(l1),
+        [{{list, []}, v(l2)},
+         {{binop, '::', v(hd), v(tl)},
+          {binop, '::', v(hd), {funcall, {var_ref, {builtin, list_concat}},
+                                         [v(tl), v(l2)]}}}
+        ]
+     },
+    word};
 
 builtin_function(string_length) ->
     %% function length(str) =

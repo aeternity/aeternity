@@ -95,6 +95,7 @@
         , sophia_state_handling/1
         , sophia_state_gas/1
         , sophia_no_callobject_for_remote_calls/1
+        , sophia_operators/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -182,7 +183,8 @@ groups() ->
                                  sophia_aens,
                                  sophia_state_handling,
                                  sophia_state_gas,
-                                 sophia_no_callobject_for_remote_calls]}
+                                 sophia_no_callobject_for_remote_calls,
+                                 sophia_operators]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
         [ sophia_oracles_ttl__extend_after_expiry
@@ -297,7 +299,7 @@ create_contract_init_error(_Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    ContractCode = aect_test_utils:compile_contract("contracts/init_error.aes"),
+    {ok, ContractCode} = aect_test_utils:compile_contract("contracts/init_error.aes"),
     Overrides = #{ code => ContractCode
                  , call_data => make_calldata_from_code(ContractCode, <<"init">>, {<<123:256>>, 0})
                  , gas => 10000
@@ -374,7 +376,7 @@ create_contract_init_error_illegal_instructions_in_sophia(_Cfg) ->
 create_contract_init_error_illegal_instruction_(OP, ErrReason) when is_binary(ErrReason) ->
     state(aect_test_utils:new_state()),
     Acc = call(fun new_account/2, [10000000]),
-    Code = compile_contract(minimal_init),
+    {ok, Code} = compile_contract(minimal_init),
     HackedCode = hack_bytecode(Code, OP),
     Gas = 9000,
     CreateTxOpts = #{gas => Gas},
@@ -388,7 +390,7 @@ create_contract_init_error_illegal_instruction_(OP, ErrReason) when is_binary(Er
 hack_bytecode(Code, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
     #{ source_hash := Hash,
        type_info := TypeInfo,
-       byte_code := ByteCode } = aeso_compiler:deserialize(Code),
+       byte_code := ByteCode } = aect_sophia:deserialize(Code),
     Version = 1,
     HackedByteCode = <<OP:1/integer-unsigned-unit:8, ByteCode/binary>>,
     Fields = [ {source_hash, Hash}
@@ -409,7 +411,7 @@ create_contract_(ContractCreateTxGasPrice) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
+    {ok, IdContract} = aect_test_utils:compile_contract("contracts/identity.aes"),
     CallData     = make_calldata_from_code(IdContract, init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallData
@@ -589,7 +591,7 @@ call_contract_(ContractCallTxGasPrice) ->
 
     CallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S2)),
 
-    IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
+    {ok, IdContract} = aect_test_utils:compile_contract("contracts/identity.aes"),
     CallDataInit = make_calldata_from_code(IdContract, init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallDataInit
@@ -833,7 +835,7 @@ create_contract(Owner, Name, Args, S) ->
     create_contract(Owner, Name, Args, #{}, S).
 
 create_contract(Owner, Name, Args, Options, S) ->
-    Code = compile_contract(Name),
+    {ok, Code} = compile_contract(Name),
     create_contract_with_code(Owner, Code, Args, Options, S).
 
 create_contract_with_code(Owner, Code, Args, Options, S) ->
@@ -914,7 +916,7 @@ make_calldata_raw(<<FunHashInt:256>>, Args0) ->
 make_calldata_from_code(Code, Fun, Args) when is_atom(Fun) ->
     make_calldata_from_code(Code, atom_to_binary(Fun, latin1), Args);
 make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
-    #{type_info := TypeInfo} = aeso_compiler:deserialize(Code),
+    #{type_info := TypeInfo} = aect_sophia:deserialize(Code),
     case aeso_abi:type_hash_from_function_name(Fun, TypeInfo) of
         {ok, TypeHash} -> make_calldata_raw(TypeHash, Args);
         {error, _} = Err -> error({bad_function, Fun, Err})
@@ -948,7 +950,7 @@ sophia_identity(_Cfg) ->
 sophia_exploits(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc  = ?call(new_account, 10000000),
-    Code = compile_contract(exploits),
+    {ok, Code} = compile_contract(exploits),
     StringType = aeso_data:to_binary(string),
     HackedCode = hack_type(<<"pair">>, {return, StringType}, Code),
     C = ?call(create_contract_with_code, Acc, HackedCode, {}, #{}),
@@ -960,7 +962,7 @@ sophia_exploits(_Cfg) ->
 hack_type(HackFun, NewType, Code) ->
     #{ source_hash := Hash,
        type_info := TypeInfo,
-       byte_code := ByteCode } = aeso_compiler:deserialize(Code),
+       byte_code := ByteCode } = aect_sophia:deserialize(Code),
     Version     = 1,
     Hack = fun(Info = {_, Fun, _, _}) when Fun == HackFun ->
                 case NewType of
@@ -2803,7 +2805,7 @@ sophia_map_benchmark(Cfg) ->
     Acc  = ?call(new_account, 100000000),
     N    = proplists:get_value(n, Cfg, 10),
     Map  = maps:from_list([{I, list_to_binary(integer_to_list(I))} || I <- lists:seq(1, N) ]),
-    Code = aect_test_utils:compile_contract("contracts/maps_benchmark.aes"),
+    {ok, Code} = aect_test_utils:compile_contract("contracts/maps_benchmark.aes"),
     Opts = #{ gas => 1000000, return_gas_used => true },
     {Ct, InitGas}   = ?call(create_contract, Acc, maps_benchmark, {777, Map}, Opts),
     Remote          = ?call(create_contract, Acc, maps_benchmark, {888, #{}}, Opts),    %% Can't make remote calls to oneself
@@ -3150,6 +3152,51 @@ sophia_no_callobject_for_remote_calls(_Cfg) ->
     %% Let's do one more for good measure
     88 = ?call(call_contract, Acc, RemC2, staged_call, word, {IdC, RemC, 88}),
     ?assertEqual(5, CountCalls()),
+
+    ok.
+
+sophia_operators(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc   = ?call(new_account, 1000000000),
+    IdC   = ?call(create_contract, Acc, operators, {}),
+
+    IMax = (1 bsl (8*32)) - 1,
+    ?assertEqual(14, ?call(call_contract, Acc, IdC, int_op, word, {5, 9, <<"+">>})),
+    ?assertEqual(4,  ?call(call_contract, Acc, IdC, int_op, word, {9, 5, <<"-">>})),
+    ?assertEqual(35, ?call(call_contract, Acc, IdC, int_op, word, {5, 7, <<"*">>})),
+    ?assertEqual(6,  ?call(call_contract, Acc, IdC, int_op, word, {45, 7, <<"/">>})),
+    ?assertEqual(4,  ?call(call_contract, Acc, IdC, int_op, word, {9, 5, <<"mod">>})),
+    ?assertEqual(81,  ?call(call_contract, Acc, IdC, int_op, word, {3, 4, <<"^">>})),
+
+    ?assertEqual(IMax band (bnot 45), ?call(call_contract, Acc, IdC, int_op, word, {45, 0, <<"bnot">>})),
+    ?assertEqual(45 band 127,         ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"band">>})),
+    ?assertEqual(45 bor 127,          ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"bor">>})),
+    ?assertEqual(45 bxor 127,         ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"bxor">>})),
+    ?assertEqual(4252 bsl 9,             ?call(call_contract, Acc, IdC, int_op, word, {4252, 9, <<"bsl">>})),
+    ?assertEqual(0,                      ?call(call_contract, Acc, IdC, int_op, word, {4252, 300, <<"bsl">>})), %% overflow
+    ?assertEqual(4252 bsr 3,             ?call(call_contract, Acc, IdC, int_op, word, {4252, 3, <<"bsr">>})),
+    ?assertEqual(0,                      ?call(call_contract, Acc, IdC, int_op, word, {4252, 15, <<"bsr">>})),  %% underflow
+
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {0, 0, <<"!">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {1, 1, <<"&&">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {0, 1, <<"||">>})),
+
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {1, 1, <<"==">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {1, 0, <<"!=">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {0, 1, <<"<">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {1, 0, <<">">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {2, 2, <<"=<">>})),
+    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {2, 0, <<">=">>})),
+
+    ?assertEqual([1, 2], ?call(call_contract, Acc, IdC, cons, {list, word}, {1, [2]})),
+
+    ?assertEqual([],     ?call(call_contract, Acc, IdC, concat, {list, word}, {[], []})),
+    ?assertEqual([1],    ?call(call_contract, Acc, IdC, concat, {list, word}, {[], [1]})),
+    ?assertEqual([1],    ?call(call_contract, Acc, IdC, concat, {list, word}, {[1], []})),
+    ?assertEqual([1, 2], ?call(call_contract, Acc, IdC, concat, {list, word}, {[1], [2]})),
+
+    {Hash1, Hash1} = ?call(call_contract, Acc, IdC, hash, {tuple, [word, word]}, {<<"TestString">>}),
+    ?assertEqual(<<Hash1:256>>, aec_hash:hash(evm, <<"TestString">>)),
 
     ok.
 

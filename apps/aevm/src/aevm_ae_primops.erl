@@ -11,8 +11,6 @@
 -export([ call/4
         , check_type_hash/4
         , is_local_primop/1
-        , is_local_primop_op/1
-        , op_needs_type_check/1
         , types/4
         ]).
 
@@ -108,10 +106,7 @@ call_primop(PrimOp, Value, Data, State)
     aens_call(PrimOp, Value, Data, State).
 
 is_local_primop(Data) ->
-    is_local_primop_op(get_primop(Data)).
-
-is_local_primop_op(Op) when ?PRIM_CALL_IN_MAP_RANGE(Op) -> true;
-is_local_primop_op(Op) when is_integer(Op) -> false.
+    aeb_primops:is_local_primop_op(get_primop(Data)).
 
 %% ------------------------------------------------------------------
 %% Primop types
@@ -219,7 +214,7 @@ oracle_type_from_chain(HeapValue, Store, State, Which) ->
     end.
 
 check_type_hash(Op, ArgTypes, OutType, TypeHash) ->
-    case op_needs_type_check(Op) of
+    case aeb_primops:op_needs_type_check(Op) of
         false ->
             ok;
         true ->
@@ -230,19 +225,6 @@ check_type_hash(Op, ArgTypes, OutType, TypeHash) ->
                 _Other -> error
             end
     end.
-
-op_needs_type_check(Op) ->
-    (not is_local_primop_op(Op)) andalso op_has_dynamic_type(Op).
-
-op_has_dynamic_type(?PRIM_CALL_ORACLE_QUERY) -> true;
-op_has_dynamic_type(?PRIM_CALL_ORACLE_RESPOND) -> true;
-op_has_dynamic_type(?PRIM_CALL_ORACLE_GET_QUESTION) -> true;
-op_has_dynamic_type(?PRIM_CALL_ORACLE_GET_ANSWER) -> true;
-op_has_dynamic_type(?PRIM_CALL_MAP_GET) -> true;
-op_has_dynamic_type(?PRIM_CALL_MAP_PUT) -> true;
-op_has_dynamic_type(?PRIM_CALL_MAP_TOLIST) -> true;
-op_has_dynamic_type(?PRIM_CALL_AENS_RESOLVE) -> true;
-op_has_dynamic_type(_) -> false.
 
 %% ------------------------------------------------------------------
 %% Basic account operations.

@@ -19,6 +19,7 @@ from swagger_client.models.spend_tx import SpendTx
 from swagger_client.configuration import Configuration
 
 from nose.tools import assert_equals
+from nose.tools import assert_true
 from testconfig import config
 from waiting import wait
 
@@ -88,14 +89,15 @@ def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
 
     # populate the chain so node had mined some blocks and has tokens
     # to spend
-    wait_until_height(ext_api, blocks_to_mine)
+    wait_until_height(ext_api, top0.height + blocks_to_mine)
     top1 = ext_api.get_current_key_block()
-    assert_equals(top1.height >= blocks_to_mine, True)
+    assert_true(top1.height >= top0.height)
+    assert_true(top1.height >= blocks_to_mine)
     # Now the node has at least blocks_to_mine blocks mined
 
     bal1 = get_account_balance(ext_api, beneficiary['enc_pubk'])
-    if top1.height > top0.height:
-        assert_equals(bal1 > bal0, True)
+    # The node received the reward for at least blocks_to_mine blocks
+    assert_true(bal1 > bal0)
 
     return (root_dir, ext_api, int_api, top1)
 
@@ -203,10 +205,17 @@ def wait_until_height(api, height):
 def ensure_transaction_posted(ext_api, signed_tx):
     tx_object = Tx(tx=signed_tx)
     tx_hash = ext_api.post_transaction(tx_object).tx_hash
-    top = ext_api.get_current_key_block()
-    wait_until_height(ext_api, top.height + 1)
-    wait(lambda: ext_api.get_transaction_by_hash(tx_hash).block_hash != 'none',
-         timeout_seconds=20, sleep_seconds=0.25)
+    ensure_transaction_confirmed(ext_api, tx_hash, 1)
+
+def ensure_transaction_confirmed(ext_api, tx_hash, min_confirmations):
+    wait(lambda: is_tx_confirmed(ext_api, tx_hash, min_confirmations), timeout_seconds=20, sleep_seconds=0.25)
+
+def is_tx_confirmed(ext_api, tx_hash, min_confirmations):
+    top_key_height = ext_api.get_current_key_block_height().height
+    tx = ext_api.get_transaction_by_hash(tx_hash)
+    if "none" == tx.block_hash:
+        return False
+    return (top_key_height - tx.block_height) >= min_confirmations
 
 def get_account_balance(api, pub_key):
     return _balance_from_get_account(lambda: api.get_account_by_pubkey(pub_key), pub_key)

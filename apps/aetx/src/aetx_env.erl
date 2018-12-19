@@ -131,7 +131,8 @@ contract_env(Height, ConsensusVersion, Time, Beneficiary, Difficulty,
      }.
 
 tx_env(Height) ->
-    #env{ consensus_version = ?PROTOCOL_VERSION
+    Vsn = aec_hard_forks:protocol_effective_at_height(Height),
+    #env{ consensus_version = Vsn
         , context = aetx_transaction
         , height  = Height
         , signed_tx = none

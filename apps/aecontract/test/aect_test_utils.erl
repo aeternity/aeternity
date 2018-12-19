@@ -128,9 +128,11 @@ create_tx_default_spec(PubKey, State) ->
      }.
 
 dummy_bytecode() ->
-    aeso_compiler:serialize(<<"NOT PROPER BYTE CODE">>,
-                            [], %% No type info
-                            "NOT PROPER SOURCE STRING").
+    aect_sophia:serialize(#{byte_code => <<"NOT PROPER BYTE CODE">>, 
+                            type_info => [],  %% No type info
+                            contract_source => "NOT PROPER SOURCE STRING",
+                            compiler_version => aeso_compiler:version()}
+                         ).
 
 %%%===================================================================
 %%% Call tx
@@ -194,8 +196,7 @@ compile_contract(File) ->
     CodeDir = code:lib_dir(aesophia, test),
     FileName = filename:join(CodeDir, File),
     {ok, ContractBin} = file:read_file(FileName),
-    Contract = binary_to_list(ContractBin),
-    aeso_compiler:from_string(Contract, []). % [pp_icode, pp_assembler, pp_bytecode]).
+    aect_sophia:compile(ContractBin, <<>>).
 
 new_key_pair() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),

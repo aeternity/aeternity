@@ -142,7 +142,8 @@ global_env() ->
      {["Map", "size"],           Fun1(Map(K, V), Int)},
      %% Strings
      {["String", "length"], Fun1(String, Int)},
-     {["String", "concat"], Fun([String, String], String)}
+     {["String", "concat"], Fun([String, String], String)},
+     {["String", "sha3"], Fun1(String, Int)}
     ].
 
 global_type_env() ->
@@ -639,7 +640,8 @@ infer_infix({BoolOp, As})
     Bool = {id, As, "bool"},
     {fun_t, As, [], [Bool,Bool], Bool};
 infer_infix({IntOp, As})
-  when IntOp == '+';    IntOp == '-';   IntOp == '*'; IntOp == '/';
+  when IntOp == '+';    IntOp == '-';   IntOp == '*';   IntOp == '/';
+       IntOp == '^';    IntOp == 'mod'; IntOp == 'bsl'; IntOp == 'bsr';
        IntOp == 'band'; IntOp == 'bor'; IntOp == 'bxor' ->
     Int = {id, As, "int"},
     {fun_t, As, [], [Int, Int], Int};
@@ -653,7 +655,11 @@ infer_infix({RelOp, As})
 infer_infix({'::', As}) ->
     ElemType = fresh_uvar(As),
     ListType = {app_t, As, {id, As, "list"}, [ElemType]},
-    {fun_t, As, [], [ElemType, ListType], ListType}.
+    {fun_t, As, [], [ElemType, ListType], ListType};
+infer_infix({'++', As}) ->
+    ElemType = fresh_uvar(As),
+    ListType = {app_t, As, {id, As, "list"}, [ElemType]},
+    {fun_t, As, [], [ListType, ListType], ListType}.
 
 infer_prefix({'!',As}) ->
     Bool = {id, As, "bool"},
@@ -704,7 +710,7 @@ clean_up_ets() ->
 
 ets_init() ->
     put(aeso_ast_infer_types, #{}).
-    
+
 ets_tabid(Name) ->
     #{Name := TabId} = get(aeso_ast_infer_types),
     TabId.
@@ -1519,7 +1525,8 @@ pp({qid, _, Name}) ->
 pp({con, _, Name}) ->
     Name;
 pp({uvar, _, Ref}) ->
-    ["?" | lists:sublist(base58:binary_to_base58(term_to_binary(Ref)), 43, 3)];
+    %% Show some unique representation
+    ["?u" | integer_to_list(erlang:phash2(Ref, 16384)) ];
 pp({tvar, _, Name}) ->
     Name;
 pp({tuple_t, _, Cpts}) ->

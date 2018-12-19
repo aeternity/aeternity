@@ -972,7 +972,14 @@ handle_new_micro_block(S, Msg) ->
                     E = {error, _} ->
                         {ok, HH} = aec_headers:hash_header(Header),
                         epoch_sync:info("Got invalid light micro_block (~s): ~p", [pp(HH), E]),
-                        ok;
+                        case aec_chain:get_header(aec_headers:prev_key_hash(Header)) of
+                            {ok, PrevHeader} -> 
+                                epoch_sync:debug("miner beneficiary: ~p", [aec_headers:beneficiary(PrevHeader)]),
+                                ok;
+                            _ -> 
+                                ok
+                        end;
+
                     ok ->
                         case get_micro_block_txs(TxHashes) of
                             {all, Txs} ->

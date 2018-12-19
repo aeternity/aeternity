@@ -196,7 +196,7 @@ missing_tx_gossip(Config) ->
     {ok, TxH5} = add_spend_tx(N2, 1000, 20000,  5,  100), %% Ok
 
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3, TxH4], 5),
-    {ok, _} = aecore_suite_utils:mine_blocks_until_tx_on_chain(N2, TxH5, 5),
+    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N2, [TxH5], 5),
 
     ok.
 
@@ -317,8 +317,8 @@ compile_contract(File) ->
     CodeDir = code:lib_dir(aesophia, test),
     FileName = filename:join(CodeDir, File),
     {ok, ContractBin} = file:read_file(FileName),
-    Contract = binary_to_list(ContractBin),
-    aeso_compiler:from_string(Contract, [pp_icode]).
+    {ok, Serialized} = aect_sophia:compile(ContractBin, <<"pp_icode">>),
+    Serialized.
 
 call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
     Caller       = aec_id:create(account, maps:get(pubkey, patron())),

@@ -21,7 +21,10 @@ simple_compile_test_() ->
      fun (_) -> ok end,                         %Cleanup
      [ {"Testing the " ++ ContractName ++ " contract",
         fun() ->
-            ?assertMatch(Code when is_binary(Code), compile(ContractName))
+            #{byte_code := ByteCode, 
+              contract_source := _, 
+              type_info := _} = compile(ContractName),
+            ?assertMatch(Code when is_binary(Code), ByteCode)
         end} || ContractName <- compilable_contracts() ] ++
      [ {"Testing error messages of " ++ ContractName,
         fun() ->

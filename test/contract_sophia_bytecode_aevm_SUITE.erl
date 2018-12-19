@@ -73,9 +73,10 @@ compile_contract(Name) ->
     CodeDir           = code:lib_dir(aesophia, test),
     FileName          = filename:join([CodeDir, "contracts", lists:concat([Name, ".aes"])]),
     {ok, ContractBin} = file:read_file(FileName),
-    Options           = [],
-    %% Options           = [pp_ast, pp_icode, pp_assembler, pp_bytecode],
-    aeso_compiler:from_string(binary_to_list(ContractBin), Options).
+    Options           = <<>>,
+    %% Options           = <<"pp_ast pp_icode pp_assembler pp_bytecode">>,
+    {ok, Serialized} = aect_sophia:compile(ContractBin, Options),
+    Serialized.
 
 %% execute_call(Contract, CallData, ChainState) ->
 %%     execute_call(Contract, CallData, ChainState, #{}).
@@ -85,7 +86,7 @@ execute_call(Contract, CallData, ChainState, Options) ->
     ChainState1 = ChainState#{ running => Contract },
     #{ byte_code := Code,
        type_info := TypeInfo
-     } = aeso_compiler:deserialize(SerializedCode),
+     } = aect_sophia:deserialize(SerializedCode),
     case aeso_abi:check_calldata(CallData, TypeInfo) of
         {ok, CallDataType, OutType} ->
             execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState1, Options);
@@ -531,7 +532,7 @@ get_contract_fun_types(<<Contract:256>>,_VMVersion, TypeHash, S) ->
             io:format("   oops, no such contract!\n"),
             {error, {no_such_contract, Contract}};
         SerializedCode ->
-            #{type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
+            #{type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
             aeso_abi:typereps_from_type_hash(TypeHash, TypeInfo)
     end.
 

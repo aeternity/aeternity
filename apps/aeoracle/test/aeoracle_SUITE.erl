@@ -42,6 +42,8 @@
 -include_lib("apps/aeoracle/include/oracle_txs.hrl").
 -include_lib("apps/aecontract/src/aecontract.hrl").
 
+-define(GENESIS_HEIGHT, aec_block_genesis:height()).
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================

@@ -56,7 +56,9 @@ setup_chain() ->
     {Contract1, S3} = create_contract(Account1, S2),
     {Contract2, S4} = create_contract(Account2, S3),
     Trees = aect_test_utils:trees(S4),
-    TxEnv = aetx_env:contract_env(_Height = 1, ?PROTOCOL_VERSION,
+    Height = 1,
+    Vsn = aec_hard_forks:protocol_effective_at_height(Height),
+    TxEnv = aetx_env:contract_env(Height, Vsn,
                                   aeu_time:now_in_msecs(),
                                   ?BENEFICIARY_PUBKEY, _Difficulty = 0,
                                   ?BOGUS_PREV_HASH
@@ -66,7 +68,7 @@ setup_chain() ->
 
 create_contract(Owner, S) ->
     OwnerPrivKey = aect_test_utils:priv_key(Owner, S),
-    IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
+    {ok, IdContract} = aect_test_utils:compile_contract("contracts/identity.aes"),
     {ok, CallData} = aect_sophia:encode_call_data(IdContract, <<"init : () => _">>, <<>>),
 
     Overrides    = #{ code => IdContract
@@ -89,7 +91,7 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
     {SignedTx, AcceptedTxs, S2}.
 
 call_data(Arg) ->
-    Code = aect_test_utils:compile_contract("contracts/identity.aes"),
+    {ok, Code} = aect_test_utils:compile_contract("contracts/identity.aes"),
     {ok, CallData} = aect_sophia:encode_call_data(Code, <<"main : int => _">>, Arg),
     CallData.
 

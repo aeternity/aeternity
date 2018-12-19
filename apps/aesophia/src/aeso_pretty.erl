@@ -363,10 +363,11 @@ bin_prec('bor')  -> {600, 600, 650};
 bin_prec('bxor') -> {600, 600, 650};
 bin_prec('bsl')  -> {600, 600, 650};
 bin_prec('bsr')  -> {600, 600, 650};
-bin_prec('*')    -> {700, 700, 800};
-bin_prec('/')    -> {700, 700, 800};
-bin_prec(mod)    -> {700, 700, 800};
-bin_prec('band') -> {700, 700, 800}.
+bin_prec('*')    -> {700, 700, 750};
+bin_prec('/')    -> {700, 700, 750};
+bin_prec(mod)    -> {700, 700, 750};
+bin_prec('band') -> {700, 700, 750};
+bin_prec('^')    -> {750, 750, 800}.
 
 -spec un_prec(aeso_syntax:un_op()) -> {integer(), integer()}.
 un_prec('-')    -> {650, 650};
