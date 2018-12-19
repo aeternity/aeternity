@@ -299,7 +299,8 @@ clean:
 	( cd apps/aesophia/test/contracts && $(MAKE) clean; )
 	( cd $(HTTP_APP) && $(MAKE) clean; )
 	@$(MAKE) multi-distclean
-	@rm -rf _build/system_test+test _build/system_test _build/test _build/prod _build/local
+	@rm -rf eqc-plain eqc-system-test
+	@rm -rf _build/system_test+eqc+test _build/system_test+test+eqc _build/system_test+test _build/system_test _build/test _build/prod _build/local
 	@rm -rf _build/default/plugins
 	@rm -rf $$(ls -d _build/default/lib/* | grep -v '[^_]rocksdb') ## Dependency `rocksdb` takes long to build.
 
@@ -307,6 +308,7 @@ distclean: clean
 	( cd apps/aecuckoo && $(MAKE) distclean; )
 	( cd otp_patches && $(MAKE) distclean; )
 	( cd $(HTTP_APP) && $(MAKE) distclean; )
+	@rm -rf eqc
 	@rm -rf _build/
 
 multi-build: dev1-build
@@ -353,6 +355,41 @@ internal-distclean: $$(KIND)
 
 compile-aes:
 	( cd apps/aesophia && make compile_test_aes CONTRACT=$(CONTRACT) ; )
+
+## Info re tests using QuickCheck.
+EQC_TEST_REPO = https://github.com/Quviq/epoch-eqc.git
+EQC_TEST_VERSION = 1bbee412d9c7e23ba485142242569ab3e5733642
+EQC_ST_DIR = system-test
+
+.PHONY: quickcheck-system-test
+quickcheck-system-test: eqc-system-test
+	$(REBAR) as system_test,test,eqc eqc --dir no_eqc_dir
+
+.PHONY: eqc-plain
+eqc-plain: eqc
+	rsync --quiet --archive --delete --delete-excluded --exclude=$(EQC_ST_DIR) --exclude=.git $</ $@
+
+.PHONY: eqc-system-test
+eqc-system-test: eqc/$(EQC_ST_DIR)
+	mkdir -p $@
+	rsync --quiet --archive --delete $</ $@/src
+	$(MAKE) $@/src/eqc_system_test.app.src
+
+## App with `eqc` among `applications` so to enable usage of EQC-related `-include_lib`s in the tests (e.g. in `system-test/transactions_eqc.erl` in EQC tests repo).
+eqc-system-test/src/eqc_system_test.app.src:
+	mkdir -p $(@D)
+	echo '{application, eqc_system_test, [{vsn, "0.1.0"}, {applications, [eqc]}]}.' > $@
+
+.PHONY: eqc/$(EQC_ST_DIR)
+eqc/$(EQC_ST_DIR): eqc ;
+
+.PHONY: eqc
+eqc: | eqc/.git
+	## TODO Re-fetch repo if version not found in local repo.
+	( cd $@ && git reset --quiet --soft $(EQC_TEST_VERSION) && git stash --quiet --all;)
+
+eqc/.git:
+	git clone --quiet --no-checkout $(EQC_TEST_REPO) $(@D)
 
 .PHONY: \
 	all console \
