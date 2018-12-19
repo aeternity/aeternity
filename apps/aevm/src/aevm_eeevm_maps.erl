@@ -21,7 +21,7 @@
 %%                       of a map in the store (more on store maps below)
 %%      - data         : stored | MapData
 %%
-%%  MapData is `#{aeso_data:binary_value() => tombstone | aeso_data:binary_heap_value()}`.
+%%  MapData is `#{aeso_heap:binary_value() => tombstone | aeso_data:binary_heap_value()}`.
 %%  The data for a store map is `stored`. Map keys cannot contain other maps
 %%  and in this case binary_value and heap_value are the same. For map values,
 %%  the important difference between binary_value() and binary_heap_value() is
@@ -67,7 +67,7 @@
         , flatten_map/3
         ]).
 
--include_lib("aesophia/src/aeso_data.hrl").
+-include_lib("aesophia/include/aeso_heap.hrl").
 
 -export_type([map_id/0, maps/0]).
 
@@ -75,7 +75,7 @@
 
 -type state()   :: state().
 -type map_id()  :: non_neg_integer().
--type value()   :: aeso_data:binary_value().
+-type value()   :: aeso_heap:binary_value().
 -type typerep() :: aeso_sophia:type().
 
 -type pmap() :: #pmap{}.
@@ -200,7 +200,7 @@ flatten_map(Store, MapId, Map) ->
     Map#pmap{ parent = none, data = Data }.
 
 -spec get_flat_map(map_id(), state()) ->
-    {ok, #{aeso_data:binary_value() => aeso_data:binary_value()}} | {error, not_found}.
+    {ok, #{aeso_heap:binary_value() => aeso_heap:binary_value()}} | {error, not_found}.
 get_flat_map(MapId, State) ->
     case get_map(MapId, State) of
         {ok, Map} ->

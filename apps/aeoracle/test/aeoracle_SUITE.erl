@@ -359,7 +359,7 @@ query_oracle_negative_dynamic_fee(Cfg) ->
     ok.
 
 query_oracle_type_check(_Cfg) ->
-    RFmt = aeso_data:to_binary(word),
+    RFmt = aeso_heap:to_binary(word),
     F = fun(QFmt, Query, VMVersion) ->
                 {OracleKey, S}  = register_oracle([], #{vm_version => VMVersion,
                                                         query_format => QFmt,
@@ -373,10 +373,10 @@ query_oracle_type_check(_Cfg) ->
                 Tx = aeo_test_utils:query_tx(SenderKey, OracleId, #{query => Query}, S2),
                 aetx:check(Tx, Trees, Env)
         end,
-    Int = aeso_data:to_binary(1),
-    IntFmt = aeso_data:to_binary(word),
-    String = aeso_data:to_binary(<<"foo">>),
-    StringFmt = aeso_data:to_binary(string),
+    Int = aeso_heap:to_binary(1),
+    IntFmt = aeso_heap:to_binary(word),
+    String = aeso_heap:to_binary(<<"foo">>),
+    StringFmt = aeso_heap:to_binary(string),
     ?assertEqual({error, bad_format}, F(StringFmt, Int, ?AEVM_01_Sophia_01)),
     ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ?AEVM_01_Sophia_01)),
     ?assertEqual({error, bad_format}, F(IntFmt, <<>>, ?AEVM_01_Sophia_01)),
@@ -539,8 +539,8 @@ query_response_fee_depends_on_response_size(Cfg) ->
     ok.
 
 query_response_type_check(_Cfg) ->
-    QFmt  = aeso_data:to_binary(string),
-    Query = aeso_data:to_binary(<<"who?">>),
+    QFmt  = aeso_heap:to_binary(string),
+    Query = aeso_heap:to_binary(<<"who?">>),
     F = fun(RFmt, Resp, VMVersion) ->
                 RegisterOpts = #{vm_version => VMVersion,
                                  query_format => QFmt,
@@ -553,10 +553,10 @@ query_response_type_check(_Cfg) ->
                 Tx = aeo_test_utils:response_tx(OracleKey, ID, Resp, S),
                 aetx:check(Tx, Trees, Env)
         end,
-    Int = aeso_data:to_binary(1),
-    IntFmt = aeso_data:to_binary(word),
-    String = aeso_data:to_binary(<<"foo">>),
-    StringFmt = aeso_data:to_binary(string),
+    Int = aeso_heap:to_binary(1),
+    IntFmt = aeso_heap:to_binary(word),
+    String = aeso_heap:to_binary(<<"foo">>),
+    StringFmt = aeso_heap:to_binary(string),
     ?assertEqual({error, bad_format}, F(StringFmt, Int, ?AEVM_01_Sophia_01)),
     ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ?AEVM_01_Sophia_01)),
     ?assertEqual({error, bad_format}, F(IntFmt, <<>>, ?AEVM_01_Sophia_01)),

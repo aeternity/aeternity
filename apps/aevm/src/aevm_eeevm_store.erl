@@ -24,7 +24,7 @@
 
 -include("aevm_eeevm.hrl").
 -include_lib("aecontract/src/aecontract.hrl").
--include_lib("aesophia/src/aeso_data.hrl").
+-include_lib("aesophia/include/aeso_heap.hrl").
 
 -define(SOPHIA_STATE_KEY,      <<0>>).
 -define(SOPHIA_STATE_TYPE_KEY, <<1>>).
@@ -70,10 +70,10 @@ store(Address, Value, State) when is_integer(Value) ->
 %%          RealId   - indirection to allow inplace updates
 %%          RefCount - number of times this map occurs in the map value of another map
 %%          Size     - the size of the map (number of keys)
-%%          Bin      - aeso_data:to_binary({KeyType, ValType})
+%%          Bin      - aeso_heap:to_binary({KeyType, ValType})
 %%  <<RealId:256, KeyBin/binary>> => <<ValBin/binary>>
-%%      KeyBin :: aeso_data:binary_value()      -- cannot contain other maps
-%%      ValBin :: aeso_data:binary_heap_value() -- crucially: maps as map ids
+%%      KeyBin :: aeso_heap:binary_value()      -- cannot contain other maps
+%%      ValBin :: aeso_heap:binary_heap_value() -- crucially: maps as map ids
 %%
 %% Garbage collection
 %%
@@ -92,18 +92,18 @@ store(Address, Value, State) when is_integer(Value) ->
         <<(RealId):256, (RefCount):256, (Size):256, (Bin)/binary>>).
 
 %% The argument should be a binary encoding a pair of a typerep and a value of that type.
--spec from_sophia_state(aeso_data:binary_value()) -> aect_contracts:store().
+-spec from_sophia_state(aeso_heap:binary_value()) -> aect_contracts:store().
 from_sophia_state(Data) ->
     %% TODO: less encoding/decoding
-    {ok, {Type}}    = aeso_data:from_binary({tuple, [typerep]}, Data),
+    {ok, {Type}}    = aeso_heap:from_binary({tuple, [typerep]}, Data),
     %% Strip the type from the binary
     Data1 = second_component(Data),
     {ok, StateValue} = aeso_data:binary_to_heap(Type, Data1, 0, 32),
-    TypeData  = aeso_data:to_binary(Type),
-    Mem       = aeso_data:heap_value_heap(StateValue),
-    Ptr       = aeso_data:heap_value_pointer(StateValue),
+    TypeData  = aeso_heap:to_binary(Type),
+    Mem       = aeso_heap:heap_value_heap(StateValue),
+    Ptr       = aeso_heap:heap_value_pointer(StateValue),
     StateData = <<Ptr:256, Mem/binary>>,
-    Maps      = aeso_data:heap_value_maps(StateValue),
+    Maps      = aeso_heap:heap_value_maps(StateValue),
     Store     = store_maps(Maps,
                     store_put(?SOPHIA_STATE_KEY,      StateData,
                     store_put(?SOPHIA_STATE_TYPE_KEY, TypeData,
@@ -112,19 +112,19 @@ from_sophia_state(Data) ->
     Store.
 
 %% Drop the first component (the typerep) from the initial state.
--spec second_component(aeso_data:binary_value()) -> aeso_data:binary_value().
+-spec second_component(aeso_heap:binary_value()) -> aeso_heap:binary_value().
 second_component(<<Ptr:256, Heap/binary>> = Data) ->
     <<_:Ptr/unit:8, _:256, Snd:256, _/binary>> = Data,
     <<Snd:256, Heap/binary>>.
 
--spec set_sophia_state(aeso_data:heap_value(), aect_contracts:store()) -> aect_contracts:store().
+-spec set_sophia_state(aeso_heap:heap_value(), aect_contracts:store()) -> aect_contracts:store().
 set_sophia_state(Value, Store) ->
-    Ptr = aeso_data:heap_value_pointer(Value),
-    Mem = aeso_data:heap_value_heap(Value),
-    Maps = aeso_data:heap_value_maps(Value),
+    Ptr = aeso_heap:heap_value_pointer(Value),
+    Mem = aeso_heap:heap_value_heap(Value),
+    Maps = aeso_heap:heap_value_maps(Value),
     store_maps(Maps, store_put(?SOPHIA_STATE_KEY, <<Ptr:256, Mem/binary>>, Store)).
 
--spec get_sophia_state(aect_contracts:store()) -> aeso_data:heap_value().
+-spec get_sophia_state(aect_contracts:store()) -> aeso_heap:heap_value().
 get_sophia_state(Store) ->
     <<Ptr:256, Heap/binary>> = store_get(?SOPHIA_STATE_KEY, Store),
     MapKeys = all_map_ids(Store),
@@ -134,14 +134,14 @@ get_sophia_state(Store) ->
               Size         = map_size(MapId, Store),
               {MapId, #pmap{ key_t = KeyT, val_t = ValT, size = Size, parent = none, data = stored }}
           end || MapId <- MapKeys ]),
-    aeso_data:heap_value(#maps{next_id = lists:max([-1 | MapKeys]) + 1, maps = Maps}, Ptr, Heap, 32).
+    aeso_heap:heap_value(#maps{next_id = lists:max([-1 | MapKeys]) + 1, maps = Maps}, Ptr, Heap, 32).
 
 -spec get_sophia_state_type(aect_contracts:store()) -> false | aeso_sophia:type().
 get_sophia_state_type(Store) ->
     case store_get(?SOPHIA_STATE_TYPE_KEY, Store) of
         <<>> -> false;
         Bin  ->
-            {ok, Type} = aeso_data:from_binary(typerep, Bin),
+            {ok, Type} = aeso_heap:from_binary(typerep, Bin),
             Type
     end.
 
@@ -214,7 +214,7 @@ perform_update({new, Id, Map0}, Store) ->
     Map = aevm_eeevm_maps:flatten_map(Store, Id, Map0),
     RefCount = 0,   %% Set later
     Size     = Map0#pmap.size,
-    Bin      = aeso_data:to_binary({Map#pmap.key_t, Map#pmap.val_t}),
+    Bin      = aeso_heap:to_binary({Map#pmap.key_t, Map#pmap.val_t}),
     Info = [{<<Id:256>>, ?MapInfo(Id, RefCount, Size, Bin)}],
     Data = [ {<<Id:256, Key/binary>>, Val} || {Key, Val} <- maps:to_list(Map#pmap.data) ],
     lists:foldl(fun({K, V}, S) -> store_put(K, V, S) end, Store, Info ++ Data);
@@ -337,7 +337,7 @@ all_map_ids(Store) ->
 
 map_types(Id, Store) ->
     ?MapInfo(_, _, _, Bin) = store_get(<<Id:256>>, Store),
-    {ok, Types} = aeso_data:from_binary({tuple, [typerep, typerep]}, Bin),
+    {ok, Types} = aeso_heap:from_binary({tuple, [typerep, typerep]}, Bin),
     Types.
 
 map_size(Id, Store) ->

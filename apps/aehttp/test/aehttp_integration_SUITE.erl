@@ -1014,7 +1014,7 @@ broken_decode_sophia_data(_Config) ->
 
 %% Used in contract-decode endpoint tests.
 to_contract_bytearray(Term) ->
-    aehttp_api_encoder:encode(contract_bytearray, aeso_data:to_binary(Term)).
+    aehttp_api_encoder:encode(contract_bytearray, aeso_heap:to_binary(Term)).
 
 contract_bytearray_decode(X) ->
     case aehttp_api_encoder:safe_decode(contract_bytearray, X) of
@@ -2298,7 +2298,7 @@ contract_create_transaction_init_error(_Config) ->
                               <<"sophia">>,
                               contract_bytearray_decode(EncodedCode),
                               <<"init">>, <<"(0x123, 0)">>),
-    EncodedInitCallData = aehttp_api_encoder:encode(contract_bytearray, aeso_data:to_binary({<<"init">>, {}})),
+    EncodedInitCallData = aehttp_api_encoder:encode(contract_bytearray, aeso_heap:to_binary({<<"init">>, {}})),
     ValidEncoded = #{ owner_id   => MinerAddress,
                       code       => EncodedCode,
                       vm_version => 1,
@@ -4241,7 +4241,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
     {OraclePubkey, OraclePrivkey} = initialize_account(2000000),
-    SophiaStringType = aeso_data:to_binary(string, 0),
+    SophiaStringType = aeso_heap:to_binary(string, 0),
     QueryFee = 3,
     QueryTTL = 30,
     ResponseTTL = 30,
@@ -4255,8 +4255,8 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                      }),
     OracleQuerySequence =
         fun(Q0, R0) ->
-            Q = aeso_data:to_binary(Q0, 0),
-            R = aeso_data:to_binary(R0, 0),
+            Q = aeso_heap:to_binary(Q0, 0),
+            R = aeso_heap:to_binary(R0, 0),
             QueryId = query_oracle(OraclePubkey, OraclePrivkey, %oracle asks oracle
                                   OraclePubkey,
                                   #{query        => Q,

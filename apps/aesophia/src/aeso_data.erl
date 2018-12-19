@@ -1,51 +1,33 @@
 -module(aeso_data).
 
--export([ to_binary/1
-        , to_binary/2
-        , from_heap/3
-        , binary_to_heap/4
+-export([ binary_to_heap/4
         , heap_to_heap/3
         , heap_to_heap/4
         , heap_to_binary/3
         , heap_to_binary/4
         , binary_to_binary/2
-        , heap_value/3
-        , heap_value/4
-        , heap_value_pointer/1
-        , heap_value_maps/1
-        , heap_value_offset/1
-        , heap_value_heap/1
         , used_maps/2
         , has_maps/1
-        , from_binary/2
-        , from_binary/3
-        , get_function_hash_from_calldata/1
         ]).
 
--export_type([binary_value/0, binary_heap_value/0, heap_value/0, heap_fragment/0]).
-
 -include("aeso_icode.hrl").
--include("aeso_data.hrl").
-
--record(heap, { maps   :: #maps{},
-                offset :: offset(),
-                heap   :: binary() | #{non_neg_integer() => non_neg_integer()} }).
+-include_lib("aesophia/include/aeso_heap.hrl").
 
 -type store() :: aect_contracts:store().  %% #{ binary() => binary() }
 
 -type word()            :: non_neg_integer().
 -type pointer()         :: word().
 -type offset()          :: non_neg_integer().
--type binary_value()    :: binary().
--opaque heap_fragment() :: #heap{}.
--type heap_value()      :: {pointer(), heap_fragment()}.
+-type binary_value()    :: aeso_heap:binary_value().
+-type heap_fragment()   :: aeso_heap:heap_fragment().
+-type heap_value()      :: aeso_heap:heap_value().
 -type binary_heap_value() :: binary().
 
 %% There are four different representations of Sophia values:
 %%
 %%  term()
 %%      Erlang term representation, returned by from_binary and consumed by
-%%      to_binary.
+%%      to_binary in the aeso_heap module
 %%
 %%  binary_value()
 %%      Self contained binary representation. First word is a pointer to the
@@ -71,8 +53,7 @@
 
 no_store() -> aect_contracts_store:new().
 
-no_maps(N) when is_integer(N) -> #maps{ next_id = N };
-no_maps(#heap{maps = #maps{next_id = N}}) -> no_maps(N).
+no_maps(N) when is_integer(N) -> #maps{ next_id = N }.
 
 add_map(Map, #maps{ maps = Maps, next_id = Id }) ->
     {Id, #maps{ next_id = Id + 1,
@@ -80,34 +61,6 @@ add_map(Map, #maps{ maps = Maps, next_id = Id }) ->
 
 merge_maps(#maps{maps = Maps1}, #maps{maps = Maps2, next_id = N}) ->
     #maps{maps = maps:merge(Maps1, Maps2), next_id = N}.
-
-set_next_id(Heap, N) -> Heap#heap{ maps = Heap#heap.maps#maps{ next_id = N } }.
-
-heap_fragment(Offs, Heap) ->
-    heap_fragment(no_maps(0), Offs, Heap).
-
-heap_fragment(Maps, Offs, Heap) ->
-    #heap{maps = Maps, offset = Offs, heap = Heap}.
-
--spec heap_value(aevm_eeevm_maps:maps() | #maps{}, pointer(), binary(), offset()) -> heap_value().
-heap_value(Maps, Ptr, Heap, Offs) ->
-    {Ptr, heap_fragment(Maps, Offs, Heap)}.
-
--spec heap_value(aevm_eeevm_maps:maps(), pointer(), binary()) -> heap_value().
-heap_value(Maps, Ptr, Heap) ->
-    heap_value(Maps, Ptr, Heap, 0).
-
--spec heap_value_pointer(heap_value()) -> pointer().
-heap_value_pointer({Ptr, _}) -> Ptr.
-
--spec heap_value_maps(heap_value()) -> aevm_eeevm_maps:maps().
-heap_value_maps({_, Heap}) -> Heap#heap.maps.
-
--spec heap_value_offset(heap_value()) -> offset().
-heap_value_offset({_, Heap}) -> Heap#heap.offset.
-
--spec heap_value_heap(heap_value()) -> binary().
-heap_value_heap({_, Heap}) -> Heap#heap.heap.
 
 %% -- Binary to heap ---------------------------------------------------------
 
@@ -117,8 +70,8 @@ heap_value_heap({_, Heap}) -> Heap#heap.heap.
 binary_to_heap(Type, <<Ptr:32/unit:8, Heap/binary>>, NextId, Offs) ->
     try
         {Addr, {Maps, _, Mem}} = convert(binary, heap, infinity, no_store(), #{}, Type, Ptr,
-                                         heap_fragment(no_maps(NextId), 32, Heap), Offs),
-        {ok, heap_value(Maps, Addr, list_to_binary(Mem), Offs)}
+                                         aeso_heap:heap_fragment(no_maps(NextId), 32, Heap), Offs),
+        {ok, aeso_heap:heap_value(Maps, Addr, list_to_binary(Mem), Offs)}
     catch _:Err ->
         %%io:format("** Error: binary_to_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
         {error, Err}
@@ -154,7 +107,7 @@ heap_to_binary(Type, Store, {Ptr, Heap}, MaxSize) ->
 binary_to_binary(Type, <<Ptr:32/unit:8, Heap/binary>>) ->
     try
         {Addr, {_, _, Memory}} = convert(binary, binary, infinity, no_store(), #{}, Type, Ptr,
-                                         heap_fragment(no_maps(0), 32, Heap), 32),
+                                         aeso_heap:heap_fragment(no_maps(0), 32, Heap), 32),
         {ok, <<Addr:256, (list_to_binary(Memory))/binary>>}
     catch _:Err ->
         %%io:format("** Error: binary_to_binary failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
@@ -174,7 +127,7 @@ heap_to_heap(Type, HeapVal, Offs) ->
 heap_to_heap(Type, {Ptr, Heap}, Offs, MaxSize) ->
     try
         {Addr, {Maps, _, Mem}} = convert(heap, heap, MaxSize, no_store(), #{}, Type, Ptr, Heap, Offs),
-        {ok, heap_value(Maps, Addr, list_to_binary(Mem), Offs)}
+        {ok, aeso_heap:heap_value(Maps, Addr, list_to_binary(Mem), Offs)}
     catch _:Err ->
         %%io:format("** Error: heap_to_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
         {error, Err}
@@ -189,17 +142,17 @@ heap_to_heap(Type, {Ptr, Heap}, Offs, MaxSize) ->
               Store :: store(), visited(), ?Type(), pointer(),
               heap_fragment(), offset()) -> {pointer(), {#maps{}, offset(), [iodata()]}}.
 convert(_, _, _, _, _, word, Val, Heap, _) ->
-    {Val, {no_maps(Heap), 0, []}};
+    {Val, {aeso_heap:maps_with_next_id(Heap), 0, []}};
 convert(_, _, MaxSize, _, _Visited, string, Val, Heap, BaseAddr) ->
     Size  = get_word(Heap, Val),
     Words = 1 + (Size + 31) div 32, %% 1 + ceil(Size / 32)
     Bytes = Words * 32,
     check_size(MaxSize, Bytes),
-    {BaseAddr, {no_maps(Heap), Bytes, [get_chunk(Heap, Val, Bytes)]}};
+    {BaseAddr, {aeso_heap:maps_with_next_id(Heap), Bytes, [get_chunk(Heap, Val, Bytes)]}};
 convert(Input, Output, MaxSize, Store, Visited, {list, T}, Val, Heap, BaseAddr) ->
     <<Nil:256>> = <<(-1):256>>,   %% empty list is -1
     case Val of
-        Nil -> {Nil, {no_maps(Heap), 0, []}};
+        Nil -> {Nil, {aeso_heap:maps_with_next_id(Heap), 0, []}};
         _   -> convert(Input, Output, MaxSize, Store, Visited, {tuple, [T, {list, T}]}, Val, Heap, BaseAddr)
     end;
 convert(Input, binary, MaxSize, Store, _Visited, {map, KeyT, ValT}, MapId, Heap, BaseAddr) ->
@@ -221,7 +174,7 @@ convert(Input, binary, MaxSize, Store, _Visited, {map, KeyT, ValT}, MapId, Heap,
     check_size(MaxSize, FinalBase - BaseAddr),
     Mem  = lists:reverse(RMem),
     %% Target is binary so no maps required
-    {BaseAddr, {no_maps(Heap), FinalBase - BaseAddr, [<<Size:256>>, Mem]}};
+    {BaseAddr, {aeso_heap:maps_with_next_id(Heap), FinalBase - BaseAddr, [<<Size:256>>, Mem]}};
 convert(Input, heap, _MaxSize, Store, _Visited, {map, KeyT, ValT}, Ptr, Heap, _BaseAddr) ->
     {InnerMaps, PMap} = convert_map(Input, heap, Store, KeyT, ValT, Ptr, Heap),
     case PMap#pmap.data of
@@ -239,7 +192,7 @@ convert(Input, heap, _MaxSize, Store, _Visited, {map, KeyT, ValT}, Ptr, Heap, _B
             end
     end;
 convert(_, _, _, _, _, {tuple, []}, _Ptr, Heap, _BaseAddr) ->
-    {0, {no_maps(Heap), 0, []}}; %% Use 0 for the empty tuple (need a unique value).
+    {0, {aeso_heap:maps_with_next_id(Heap), 0, []}}; %% Use 0 for the empty tuple (need a unique value).
 convert(Input, Output, MaxSize, Store, Visited, {tuple, Ts}, Ptr, Heap, BaseAddr) ->
     Visited1  = visit(Visited, Ptr),
     TupleCellSize = 32 * length(Ts),
@@ -264,13 +217,13 @@ convert(Input, Output, MaxSize, Store, Visited, typerep, Ptr, Heap, BaseAddr) ->
     convert(Input, Output, MaxSize, Store, Visited, Typerep, Ptr, Heap, BaseAddr).
 
 convert_components(Input, Output, MaxSize, Store, Visited, Ts, Ps, Heap, BaseAddr) ->
-    convert_components(Input, Output, MaxSize, Store, Visited, Ts, Ps, Heap, BaseAddr, [], [], no_maps(Heap)).
+    convert_components(Input, Output, MaxSize, Store, Visited, Ts, Ps, Heap, BaseAddr, [], [], aeso_heap:maps_with_next_id(Heap)).
 
 convert_components(_, _, _, _, _Visited, [], [], _Heap, BaseAddr, PtrAcc, MemAcc, Maps) ->
     {BaseAddr, Maps, lists:reverse(PtrAcc), lists:reverse(MemAcc)};
 convert_components(Input, Output, MaxSize, Store, Visited, [T | Ts], [Ptr | Ptrs], Heap, BaseAddr, PtrAcc, MemAcc, Maps) ->
     %% (Ab)use the next_id field in the input heap for suitable next_id of the output heap.
-    Heap1 = set_next_id(Heap, Maps#maps.next_id),
+    Heap1 = aeso_heap:set_next_id(Heap, Maps#maps.next_id),
     {NewPtr, {Maps1, Size, Mem}} = convert(Input, Output, MaxSize, Store, Visited, T, Ptr, Heap1, BaseAddr),
     convert_components(Input, Output, subtract_size(MaxSize, Size), Store, Visited, Ts, Ptrs, Heap, BaseAddr + Size,
                          [<<NewPtr:256>> | PtrAcc], [Mem | MemAcc], merge_maps(Maps, Maps1)).
@@ -284,7 +237,8 @@ check_size(MaxSize, Size) when Size > MaxSize -> throw(max_size_exceeded);
 check_size(_, _) -> ok.
 
 get_map(heap, _KeyT, _ValT, MapId, Heap) ->
-    #{ MapId := Map } = Heap#heap.maps#maps.maps,
+    Maps = aeso_heap:heap_fragment_maps(Heap),
+    #{ MapId := Map } = Maps#maps.maps,
     Map;
 get_map(binary, KeyT, ValT, Ptr, Heap) ->
     Size = get_word(Heap, Ptr),
@@ -298,21 +252,21 @@ convert_map(Input, Output, Store, KeyT, ValT, Ptr, Heap) ->
     {InnerMaps, Map#pmap{ data = Data1 }}.
 
 convert_map_values(_, _, _Store, _ValT, stored, Heap) ->
-    {no_maps(Heap), stored};
+    {aeso_heap:maps_with_next_id(Heap), stored};
 convert_map_values(Input, Output, Store, ValT, Data, Heap) ->
     KVs = maps:to_list(Data),
     {Maps, Data1} =
         lists:foldl(fun({K, V}, {VMaps, D}) ->
-                        Heap1 = set_next_id(Heap, VMaps#maps.next_id),
+                        Heap1 = aeso_heap:set_next_id(Heap, VMaps#maps.next_id),
                         {VMaps1, V1} = convert_map_value(Input, Output, Store, ValT, V, Heap1),
                         {merge_maps(VMaps, VMaps1), D#{ K => V1 }}
-                    end, {no_maps(Heap), #{}}, KVs),
+                    end, {aeso_heap:maps_with_next_id(Heap), #{}}, KVs),
     {Maps, Data1}.
 
 convert_map_value(_Input, _Output, _Store, _ValT, tombstone, Heap) ->
-    {no_maps(Heap), tombstone};
+    {aeso_heap:maps_with_next_id(Heap), tombstone};
 convert_map_value(Input, Output, Store, ValT, <<ValPtr:256, ValBin/binary>>, Heap) ->
-    ValHeap = heap_fragment(Heap#heap.maps, 32, ValBin),
+    ValHeap = aeso_heap:heap_fragment(aeso_heap:heap_fragment_maps(Heap), 32, ValBin),
     Visited = #{},  %% Map values are self contained so start with fresh circularity check
     %% Converting from a binary heap so we don't have to limit the size
     {ValPtr1, {Maps, _Size, ValBin1}} = convert(Input, Output, infinity, Store, Visited, ValT, ValPtr, ValHeap, 32),
@@ -322,7 +276,7 @@ convert_map_value(Input, Output, Store, ValT, <<ValPtr:256, ValBin/binary>>, Hea
 
 -spec used_maps(?Type(), binary_heap_value()) -> [non_neg_integer()].
 used_maps(Type, <<Ptr:256, Mem/binary>>) ->
-    used_maps(#{}, Type, Ptr, heap_fragment(32, Mem)).
+    used_maps(#{}, Type, Ptr, aeso_heap:heap_fragment(no_maps(0), 32, Mem)).
 
 has_maps({map, _, _})   -> true;
 has_maps(word)          -> false;
@@ -359,195 +313,20 @@ used_maps1(Visited, {variant, Cs}, Ptr, Heap) ->
 
 %% -- Value to binary --------------------------------------------------------
 
--spec to_binary(aeso_sophia:data()) -> aeso_sophia:heap().
-%% Encode the data as a heap where the first word is the value (for unboxed
-%% types) or a pointer to the value (for boxed types).
-to_binary(Data) ->
-    to_binary(Data, 0).
-
-to_binary(Data, BaseAddress) ->
-    {Address, Memory} = to_binary1(Data, BaseAddress + 32),
-    R = <<Address:256, Memory/binary>>,
-    R.
-
-
-%% Allocate the data in memory, from the given address.  Return a pair
-%% of memory contents from that address and the value representing the
-%% data.
-to_binary1(Data,_Address) when is_integer(Data) ->
-    {Data,<<>>};
-to_binary1(Data, Address) when is_binary(Data) ->
-    %% a string
-    Words = aeso_memory:binary_to_words(Data),
-    {Address,<<(size(Data)):256, << <<W:256>> || W <- Words>>/binary>>};
-to_binary1(none, Address)            -> to_binary1({variant, 0, []}, Address);
-to_binary1({some, Value}, Address)   -> to_binary1({variant, 1, [Value]}, Address);
-to_binary1(word, Address)            -> to_binary1({?TYPEREP_WORD_TAG}, Address);
-to_binary1(string, Address)          -> to_binary1({?TYPEREP_STRING_TAG}, Address);
-to_binary1(typerep, Address)         -> to_binary1({?TYPEREP_TYPEREP_TAG}, Address);
-to_binary1(function, Address)        -> to_binary1({?TYPEREP_FUN_TAG}, Address);
-to_binary1({list, T}, Address)       -> to_binary1({?TYPEREP_LIST_TAG, T}, Address);
-to_binary1({option, T}, Address)     -> to_binary1({variant, [[], [T]]}, Address);
-to_binary1({tuple, Ts}, Address)     -> to_binary1({?TYPEREP_TUPLE_TAG, Ts}, Address);
-to_binary1({variant, Cons}, Address) -> to_binary1({?TYPEREP_VARIANT_TAG, Cons}, Address);
-to_binary1({map, K, V}, Address)     -> to_binary1({?TYPEREP_MAP_TAG, K, V}, Address);
-to_binary1({variant, Tag, Args}, Address) ->
-    to_binary1(list_to_tuple([Tag | Args]), Address);
-to_binary1(Map, Address) when is_map(Map) ->
-    Size = maps:size(Map),
-    %% Sort according to binary ordering
-    KVs = lists:sort([ {to_binary(K), to_binary(V)} || {K, V} <- maps:to_list(Map) ]),
-    {Address, <<Size:256, << <<(byte_size(K)):256, K/binary,
-                               (byte_size(V)):256, V/binary>> || {K, V} <- KVs >>/binary >>};
-to_binary1({}, _Address) ->
-    {0, <<>>};
-to_binary1(Data, Address) when is_tuple(Data) ->
-    {Elems,Memory} = to_binaries(tuple_to_list(Data),Address+32*size(Data)),
-    ElemsBin = << <<W:256>> || W <- Elems>>,
-    {Address,<< ElemsBin/binary, Memory/binary >>};
-to_binary1([],_Address) ->
-    <<Nil:256>> = <<(-1):256>>,
-    {Nil,<<>>};
-to_binary1([H|T],Address) ->
-    to_binary1({H,T},Address).
-
-
-to_binaries([],_Address) ->
-    {[],<<>>};
-to_binaries([H|T],Address) ->
-    {HRep,HMem} = to_binary1(H,Address),
-    {TRep,TMem} = to_binaries(T,Address+size(HMem)),
-    {[HRep|TRep],<<HMem/binary, TMem/binary>>}.
-
-%% Interpret a return value (a binary) using a type rep.
-
--spec from_heap(Type :: ?Type(), Heap :: binary(), Ptr :: integer()) ->
-        {ok, term()} | {error, term()}.
-from_heap(Type, Heap, Ptr) ->
-    try {ok, from_binary(#{}, Type, Heap, Ptr)}
-    catch _:Err ->
-        %% io:format("** Error: from_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
-        {error, Err}
-    end.
-
-%% Base address is the address of the first word of the given heap.
--spec from_binary(T :: ?Type(),
-                  Heap :: binary(),
-                  BaseAddr :: non_neg_integer()) ->
-        {ok, term()} | {error, term()}.
-from_binary(T, Heap = <<V:256, _/binary>>, BaseAddr) ->
-    from_heap(T, <<0:BaseAddr/unit:8, Heap/binary>>, V);
-from_binary(_, Bin, _BaseAddr) ->
-    {error, {binary_too_short, Bin}}.
-
--spec from_binary(?Type(), binary()) -> {ok, term()} | {error, term()}.
-from_binary(T, Heap) ->
-    from_binary(T, Heap, 0).
-
-from_binary(_, word, _, V) ->
-    V;
-from_binary(_, signed_word, _, V) ->
-    <<N:256/signed>> = <<V:256>>,
-    N;
-from_binary(_, bool, _, V) ->
-    case V of
-        0 -> false;
-        1 -> true
-    end;
-from_binary(_, string, Heap, V) ->
-    StringSize = heap_word(Heap,V),
-    BitAddr = 8*(V+32),
-    <<_:BitAddr,Bytes:StringSize/binary,_/binary>> = Heap,
-    Bytes;
-from_binary(_, {tuple, []}, _, _) ->
-    {};
-from_binary(Visited, {tuple,Cpts}, Heap, V) ->
-    check_circular_refs(Visited, V),
-    NewVisited = Visited#{V => true},
-    ElementNums = lists:seq(0, length(Cpts)-1),
-    TypesAndPointers = lists:zip(Cpts, ElementNums),
-    ElementAddress = fun(Index) -> V + 32 * Index end,
-    Element = fun(Index) ->
-                      heap_word(Heap, ElementAddress(Index))
-              end,
-    Convert = fun(Type, Index) ->
-                from_binary(NewVisited, Type, Heap, Element(Index))
-              end,
-    Elements = [Convert(T, I) || {T,I} <- TypesAndPointers],
-    list_to_tuple(Elements);
-from_binary(Visited, {list, Elem}, Heap, V) ->
-    <<Nil:256>> = <<(-1):256>>,
-    if V==Nil ->
-          [];
-       true ->
-          {H,T} = from_binary(Visited, {tuple,[Elem,{list,Elem}]},Heap,V),
-          [H|T]
-    end;
-from_binary(Visited, {option, A}, Heap, V) ->
-    from_binary(Visited, {variant_t, [{none, []}, {some, [A]}]}, Heap, V);
-from_binary(Visited, {variant, Cons}, Heap, V) ->
-    Tag      = heap_word(Heap, V),
-    Args     = lists:nth(Tag + 1, Cons),
-    Visited1 = Visited#{V => true},
-    {variant, Tag, tuple_to_list(from_binary(Visited1, {tuple, Args}, Heap, V + 32))};
-from_binary(Visited, {variant_t, TCons}, Heap, V) ->   %% Tagged variants
-    {Tags, Cons} = lists:unzip(TCons),
-    {variant, I, Args} = from_binary(Visited, {variant, Cons}, Heap, V),
-    Tag = lists:nth(I + 1, Tags),
-    case Args of
-        []  -> Tag;
-        _   -> list_to_tuple([Tag | Args])
-    end;
-from_binary(_Visited, {map, A, B}, Heap, Ptr) ->
-    %% FORMAT: [Size] [KeySize] Key [ValSize] Val .. [KeySize] Key [ValSize] Val
-    Size = heap_word(Heap, Ptr),
-    map_binary_to_value(A, B, Size, Heap, Ptr + 32);
-from_binary(Visited, typerep, Heap, V) ->
-    check_circular_refs(Visited, V),
-    Tag = heap_word(Heap, V),
-    Arg1 = fun(T, I) -> from_binary(Visited#{V => true}, T, Heap, heap_word(Heap, V + 32 * I)) end,
-    Arg  = fun(T) -> Arg1(T, 1) end,
-    case Tag of
-        ?TYPEREP_WORD_TAG    -> word;
-        ?TYPEREP_STRING_TAG  -> string;
-        ?TYPEREP_TYPEREP_TAG -> typerep;
-        ?TYPEREP_LIST_TAG    -> {list,    Arg(typerep)};
-        ?TYPEREP_TUPLE_TAG   -> {tuple,   Arg({list, typerep})};
-        ?TYPEREP_VARIANT_TAG -> {variant, Arg({list, {list, typerep}})};
-        ?TYPEREP_MAP_TAG     -> {map,     Arg(typerep), Arg1(typerep, 2)};
-        ?TYPEREP_FUN_TAG     -> function
-    end.
-
-map_binary_to_value(KeyType, ValType, N, Bin, Ptr) ->
-    %% Avoid looping on bogus sizes
-    MaxN = byte_size(Bin) div 64,
-    Heap = heap_fragment(0, Bin),
-    map_from_binary({value, KeyType, ValType}, min(N, MaxN), Heap, Ptr, #{}).
-
 map_binary_to_heap(N, Heap, Ptr) ->
     %% Avoid looping on bogus sizes
-    MaxN = byte_size(Heap#heap.heap) div 64,
-    map_from_binary(heap, min(N, MaxN), Heap, Ptr, #{}).
+    MaxN = byte_size(aeso_heap:heap_fragment_heap(Heap)) div 64,
+    map_from_binary_heap(min(N, MaxN), Heap, Ptr, #{}).
 
-map_from_binary(_, 0, _, _, Map) -> Map;
-map_from_binary(Output, I, Heap, Ptr, Map) ->
+map_from_binary_heap(0, _, _, Map) -> Map;
+map_from_binary_heap(I, Heap, Ptr, Map) ->
     KeySize = get_word(Heap, Ptr),
     KeyPtr  = Ptr + 32,
     KeyBin  = get_chunk(Heap, KeyPtr, KeySize),
     ValSize = get_word(Heap, KeyPtr + KeySize),
     ValPtr  = KeyPtr + KeySize + 32,
     ValBin  = get_chunk(Heap, ValPtr, ValSize),
-    Map1    =
-        case Output of
-            {value, KeyType, ValType} ->
-                %% Keys and values are self contained binaries
-                {ok, Key} = from_binary(KeyType, KeyBin),
-                {ok, Val} = from_binary(ValType, ValBin),
-                Map#{Key => Val};
-            heap ->
-                Map#{KeyBin => ValBin}
-        end,
-    map_from_binary(Output, I - 1, Heap, ValPtr + ValSize, Map1).
+    map_from_binary_heap(I - 1, Heap, ValPtr + ValSize, Map#{KeyBin => ValBin}).
 
 visit(Visited, V) ->
     check_circular_refs(Visited, V),
@@ -559,25 +338,20 @@ check_circular_refs(Visited, V) ->
         false -> ok
     end.
 
-heap_word(Heap, Addr) when is_binary(Heap) ->
-    BitSize = 8*Addr,
-    <<_:BitSize,W:256,_/binary>> = Heap,
-    W;
-heap_word(Heap, Addr) when is_map(Heap) ->
-    0 = Addr rem 32, %% Check that it's word aligned.
-    maps:get(Addr, Heap, 0).
-
-get_word(#heap{offset = Offs, heap = Mem}, Addr) when Addr >= Offs ->
-    get_word(Mem, Addr - Offs);
 get_word(Mem, Addr) when is_binary(Mem) ->
     <<_:Addr/unit:8, Word:256, _/binary>> = Mem,
     Word;
 get_word(Mem, Addr) when is_map(Mem) ->
     0 = Addr rem 32,
-    maps:get(Addr, Mem, 0).
+    maps:get(Addr, Mem, 0);
+get_word(Heap, Addr) ->
+    Offs = aeso_heap:heap_fragment_offset(Heap),
+    Mem = aeso_heap:heap_fragment_heap(Heap),
+    case  Addr >= Offs of
+        true -> get_word(Mem, Addr - Offs);
+        false -> exit(address_before_offset)
+    end.
 
-get_chunk(#heap{offset = Offs, heap = Mem}, Addr, Bytes) when Addr >= Offs ->
-    get_chunk(Mem, Addr - Offs, Bytes);
 get_chunk(Mem, Addr, Bytes) when is_binary(Mem) ->
     <<_:Addr/unit:8, Chunk:Bytes/binary, _/binary>> = Mem,
     Chunk;
@@ -585,15 +359,16 @@ get_chunk(Mem, Addr, Bytes) when is_map(Mem) ->
     0 = Addr  rem 32,
     0 = Bytes rem 32,
     Words = Bytes div 32,
-    << <<(maps:get(Addr + 32 * I, Mem, 0)):256>> || I <- lists:seq(0, Words - 1) >>.
-
--spec get_function_hash_from_calldata(Calldata::binary()) ->
-                                             {ok, binary()} | {error, term()}.
-get_function_hash_from_calldata(Calldata) ->
-    case from_binary({tuple, [word]}, Calldata) of
-        {ok, {HashInt}} -> {ok, <<HashInt:256>>};
-        {error, _} = Error -> Error
+    << <<(maps:get(Addr + 32 * I, Mem, 0)):256>> || I <- lists:seq(0, Words - 1) >>;
+get_chunk(Heap, Addr, Bytes) ->
+    Offs = aeso_heap:heap_fragment_offset(Heap),
+    Mem = aeso_heap:heap_fragment_heap(Heap),
+    case  Addr >= Offs of
+        true -> get_chunk(Mem, Addr - Offs, Bytes);
+        false -> exit(address_before_offset)
     end.
+    
+
 
 
 
