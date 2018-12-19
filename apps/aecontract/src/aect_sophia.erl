@@ -161,7 +161,7 @@ decode_data(Type, Data) ->
 
 get_type(BinaryString) ->
     String = unicode:characters_to_list(BinaryString, utf8),
-    case aeso_data:sophia_type_to_typerep(String) of
+    case aeso_compiler:sophia_type_to_typerep(String) of
         {ok, _Type} = R -> R;
         {error, ErrorAtom} ->
             {error, unicode:characters_to_binary(atom_to_list(ErrorAtom))}

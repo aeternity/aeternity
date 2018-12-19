@@ -20,7 +20,6 @@
         , from_binary/2
         , from_binary/3
         , get_function_hash_from_calldata/1
-        , sophia_type_to_typerep/1
         ]).
 
 -export_type([binary_value/0, binary_heap_value/0, heap_value/0, heap_fragment/0]).
@@ -597,10 +596,4 @@ get_function_hash_from_calldata(Calldata) ->
     end.
 
 
-sophia_type_to_typerep(String) ->
-    {ok, Ast} = aeso_parser:type(String),
-    try aeso_ast_to_icode:ast_typerep(Ast) of
-        Type -> {ok, Type}
-    catch _:_ -> {error, bad_type}
-    end.
 
