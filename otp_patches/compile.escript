@@ -58,10 +58,10 @@ patch_source(Patch, Src) ->
     PatchPath = transform_path(filename:join(cur_dir(), Patch)),
     _DelRes = file:delete(New),
     SrcPath = transform_path(Src),
-    Cmd = "patch -i \"" ++ PatchPath ++ "\" -o \"" ++ NewPath ++ "\" \"" ++ SrcPath ++ "\" 1>/dev/null 2>/dev/null; echo $?",
+    Cmd = "patch --quiet -i \"" ++ PatchPath ++ "\" -o \"" ++ NewPath ++ "\" \"" ++ SrcPath ++ "\"",
     info("Executing patch cmd: ~s~n", [Cmd]),
-    case lib:nonl(os:cmd(Cmd)) of %% TODO Log `patch` stderr. Make command robust to spaces in file names.
-        "0" ->
+    case lib:nonl(os:cmd(Cmd)) of
+        [] ->
             {ok, New};
         Res ->
             {error, {patch_error, {Res, PatchPath}}}
@@ -139,9 +139,9 @@ transform_path(Path) ->
     HasCygpath = os:find_executable("cygpath"),
     if
         IsMsys and (HasCygpath =/= false) ->
-            Cmd = "cygpath " ++ Path,
+            Cmd = "cygpath \"" ++ Path ++ "\"",
             Res = os:cmd(Cmd),
-	    string:trim(Res, both, [$\r, $\n]);
+            string:trim(Res, both, [$\r, $\n]);
         true ->
             Path
     end.
