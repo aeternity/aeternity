@@ -344,7 +344,7 @@ ast_body({hash, _, Hash}, _Icode) ->
                            #integer{value = Lo}]}
     end;
 ast_body({string,_,Bin}, _Icode) ->
-    Cpts = [size(Bin)|aeso_data:binary_to_words(Bin)],
+    Cpts = [size(Bin) | aeb_memory:binary_to_words(Bin)],
     #tuple{cpts = [#integer{value=X} || X <- Cpts]};
 ast_body({tuple,_,Args}, Icode) ->
     #tuple{cpts = [ast_body(A, Icode) || A <- Args]};

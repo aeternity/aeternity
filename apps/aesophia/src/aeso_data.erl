@@ -2,7 +2,6 @@
 
 -export([ to_binary/1
         , to_binary/2
-        , binary_to_words/1
         , from_heap/3
         , binary_to_heap/4
         , heap_to_heap/3
@@ -380,7 +379,7 @@ to_binary1(Data,_Address) when is_integer(Data) ->
     {Data,<<>>};
 to_binary1(Data, Address) when is_binary(Data) ->
     %% a string
-    Words = binary_to_words(Data),
+    Words = aeb_memory:binary_to_words(Data),
     {Address,<<(size(Data)):256, << <<W:256>> || W <- Words>>/binary>>};
 to_binary1(none, Address)            -> to_binary1({variant, 0, []}, Address);
 to_binary1({some, Value}, Address)   -> to_binary1({variant, 1, [Value]}, Address);
@@ -420,13 +419,6 @@ to_binaries([H|T],Address) ->
     {HRep,HMem} = to_binary1(H,Address),
     {TRep,TMem} = to_binaries(T,Address+size(HMem)),
     {[HRep|TRep],<<HMem/binary, TMem/binary>>}.
-
-binary_to_words(<<>>) ->
-    [];
-binary_to_words(<<N:256,Bin/binary>>) ->
-    [N|binary_to_words(Bin)];
-binary_to_words(Bin) ->
-    binary_to_words(<<Bin/binary,0>>).
 
 %% Interpret a return value (a binary) using a type rep.
 
