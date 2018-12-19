@@ -41,6 +41,7 @@
         , leave_reestablish_close/1
         , change_config_get_history/1
         , multiple_channels/1
+        , many_chs_msg_loop/1
         ]).
 
 %% exports for aehttp_integration_SUITE
@@ -69,7 +70,8 @@ all() ->
 
 groups() ->
     [
-     {all_tests, [sequence], [{group, transactions}]},
+     {all_tests, [sequence], [ {group, transactions}
+                             , {group, throughput}]},
      {transactions, [sequence],
       [
         create_channel
@@ -91,7 +93,11 @@ groups() ->
       , leave_reestablish
       , leave_reestablish_close
       , change_config_get_history
-      , multiple_channels
+      ]},
+     {throughput, [sequence],
+      [
+        multiple_channels
+      , many_chs_msg_loop
       ]
      }
     ].
@@ -148,7 +154,8 @@ init_per_testcase(leave_reestablish, Config) ->
 init_per_testcase(_, Config) ->
     Config.
 
-end_per_testcase(multiple_channels, _Config) ->
+end_per_testcase(T, _Config) when T==multiple_channels;
+                                  T==many_chs_msg_loop ->
     Node = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:unmock_mempool_nonce_offset(Node),
     ok;
@@ -473,6 +480,7 @@ do_n_(N, F, I, R) when N > 0 ->
     {I1, R1} = F(I, R),
     do_n_(N-1, F, I1, R1).
 
+     
 update_volley(#{pub := PubI} = I, #{pub := PubR} = R) ->
     {I1, R1} = do_update(PubR, PubI, 1, I, R, false),
     do_update(PubI, PubR, 1, I1, R1, false).
@@ -483,6 +491,18 @@ do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug) ->
     {R1, _} = await_signing_request(update_ack, R, Debug),
     check_info(if_debug(Debug, 100, 0), Debug),
     {I1, R1}.
+
+msg_volley(#{fsm := FsmI, pub := PubI} = I, #{fsm := FsmR, pub := PubR} = R) ->
+    rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"ping">>], false),
+    {ok,_} = receive_from_fsm(
+               message, R,
+               fun(#{info := #{info := <<"ping">>}}) -> ok end, 1000, false),
+    rpc(dev1, aesc_fsm, inband_msg, [FsmR, PubI, <<"pong">>]),
+    {ok,_} = receive_from_fsm(
+               message, I,
+               fun(#{info := #{info := <<"pong">>}}) -> ok end, 1000, false),
+    {I, R}.
+
 
 deposit(Cfg) ->
     Debug = get_debug(Cfg),
@@ -710,19 +730,25 @@ died_subverted(#{info := {died,_}}) -> ok.
 
 
 multiple_channels(Cfg) ->
-    ct:log("spawning multiple channels", []),
+    multiple_channels_t(10, 9360, {transfer, 100}, ?SLOGAN, Cfg).
+
+many_chs_msg_loop(Cfg) ->
+    multiple_channels_t(100, 9400, {msgs, 100}, ?SLOGAN, Cfg).
+
+multiple_channels_t(NumCs, FromPort, Msg, Slogan, Cfg) ->
+    ct:log("spawning ~p channels", [NumCs]),
     Initiator = maps:get(pub, ?config(initiator, Cfg)),
     ct:log("Initiator: ~p", [Initiator]),
     Me = self(),
-    NumCs = 10,
     Node = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, NumCs),
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
-    Cs = [create_multi_channel([{port, 9360 + N},
+    Cs = [create_multi_channel([{port, FromPort + N},
                                 {ack_to, Me},
                                 {nonce, Nonce + N - 1},
-                                ?SLOGAN(N)|Cfg], #{mine_blocks => {ask, Me},
-                                                   debug => false})
+                                {minimum_depth, 0},
+                                Slogan | Cfg], #{mine_blocks => {ask, Me},
+                                                 debug => false})
           || N <- lists:seq(1, NumCs)],
     ct:log("channels spawned", []),
     CsAcks = collect_acks_w_payload(Cs, mine_blocks, NumCs),
@@ -742,9 +768,9 @@ multiple_channels(Cfg) ->
     mine_blocks(dev1, ?MINIMUM_DEPTH),
     Cs = collect_acks(Cs, channel_ack, NumCs),
     ct:log("channel pids collected: ~p", [Cs]),
-    [P ! {transfer, 100} || P <- Cs],
+    [P ! Msg || P <- Cs],
     T0 = erlang:system_time(millisecond),
-    Cs = collect_acks(Cs, transfer_ack, NumCs),
+    Cs = collect_acks(Cs, loop_ack, NumCs),
     T1 = erlang:system_time(millisecond),
     Time = T1 - T0,
     Transfers = NumCs*2*100,
@@ -754,6 +780,7 @@ multiple_channels(Cfg) ->
     ct:comment(Fmt, Args),
     [P ! die || P <- Cs],
     ok.
+
 
 shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R) ->
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
@@ -827,7 +854,11 @@ ch_loop(I, R, Parent) ->
     receive
         {transfer, N} ->
             {_, I1, R1} = do_n(N, fun update_volley/2, I, R),
-            Parent ! {self(), transfer_ack},
+            Parent ! {self(), loop_ack},
+            ch_loop(I1, R1, Parent);
+        {msgs, N} ->
+            {_, I1, R1} = do_n(N, fun msg_volley/2, I, R),
+            Parent ! {self(), loop_ack},
             ch_loop(I1, R1, Parent);
         die -> ok
     end.
@@ -867,7 +898,7 @@ channel_spec(Cfg, ChannelReserve, PushAmount) ->
              push_amount      => PushAmount,
              lock_period      => 10,
              channel_reserve  => ChannelReserve,
-             minimum_depth    => ?MINIMUM_DEPTH,
+             minimum_depth    => config(minimum_depth, Cfg, ?MINIMUM_DEPTH),
              client           => self(),
              noise            => [{noise, Proto}],
              timeouts         => #{idle => 20000},
@@ -878,6 +909,12 @@ channel_spec(Cfg, ChannelReserve, PushAmount) ->
                 Nonce     -> Spec#{nonce => Nonce}
             end,
     {I, R, Spec1}.
+
+config(K, Cfg, Def) ->
+    case ?config(K, Cfg) of
+        undefined -> Def;
+        Other     -> Other
+    end.
 
 slogan(Cfg) ->
     ?config(slogan, Cfg).
