@@ -220,19 +220,6 @@ def is_tx_confirmed(ext_api, tx_hash, min_confirmations):
 def get_account_balance(api, pub_key):
     return _balance_from_get_account(lambda: api.get_account_by_pubkey(pub_key), pub_key)
 
-def send_tokens_to_unchanging_user(sender, address, tokens, fee, external_api, internal_api, min_confirmations=1):
-    spend_tx_obj = SpendTx(
-        sender_id=sender['enc_pubk'],
-        recipient_id=address,
-        amount=tokens,
-        fee=fee,
-        ttl=100,
-        payload="sending tokens")
-    spend_tx = internal_api.post_spend(spend_tx_obj).tx
-    unsigned_tx = api_decode(spend_tx)
-    signed_tx = integration.keys.sign_encode_tx(unsigned_tx, sender['privk'])
-    ensure_transaction_posted(external_api, signed_tx, min_confirmations)
-
 def ensure_send_tokens(sender, address, tokens, fee, ext_api, int_api, min_confirmations):
     spend_tx_obj = SpendTx(
         sender_id=sender['enc_pubk'],
