@@ -29,7 +29,8 @@ extra_checks_test_() ->
        fun() ->
                {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
                ok = mock_user_config(UserMap, UserConfig),
-               ?assertEqual(ok, aec_hard_forks:check_env())
+               ?assertEqual(ok, aec_hard_forks:check_env()),
+               ?assertEqual(ok, aec_pow_cuckoo:check_env())
        end
       } || Config <- test_data_config_files()]
     }.
@@ -48,7 +49,8 @@ test_data_config_files() ->
      filename:join([Dir, DataDir, "epoch_no_peers.yaml"]),
      filename:join([Dir, DataDir, "epoch_no_newline.yaml"]),
      filename:join([Dir, DataDir, "epoch_testnet.yaml"]),
-     filename:join([Dir, DataDir, "epoch_prebuilt_miner.yaml"])].
+     filename:join([Dir, DataDir, "epoch_prebuilt_miner.yaml"]),
+     filename:join([Dir, DataDir, "epoch_deprecated_miner.yaml"])].
 
 setup() ->
     application:ensure_all_started(jesse),

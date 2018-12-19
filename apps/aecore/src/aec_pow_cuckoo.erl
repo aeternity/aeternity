@@ -22,7 +22,8 @@
 -behaviour(aec_pow).
 
 
--export([generate/5,
+-export([check_env/0,
+         generate/5,
          get_addressed_instances/1,
          get_miner_configs/0,
          get_repeats/1,
@@ -72,6 +73,25 @@
 %%%=============================================================================
 %%% API
 %%%=============================================================================
+
+%%------------------------------------------------------------------------------
+%% Assert that configuration options 'mining > cuckoo > miners' and
+%% 'mining > cuckoo > edge_bits' are not used together with deprecated
+%% configuration property 'mining > cuckoo > miner'.
+%%------------------------------------------------------------------------------
+check_env() ->
+    case {aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miners">>]),
+          aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"edge_bits">>])} of
+        {undefined, undefined} -> ok;
+        {_, _} ->
+            case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>]) of
+                undefined -> ok;
+                _ ->
+                    lager:error("Config error: deprecated property 'mining > cuckoo > miner' cannot be used "
+                                "together with 'mining > cuckoo > miners' or 'mining > cuckoo > edge_bits'"),
+                    exit(cuckoo_config_validation_failed)
+            end
+    end.
 
 %%------------------------------------------------------------------------------
 %% Proof of Work generation with default settings
@@ -136,22 +156,16 @@ verify(Data, Nonce, Evd, Target) when is_list(Evd),
 %% miners are read. If there are neither user config nor sys.config miners
 %% ?DEFAULT_CUCKOO_ENV is used as the last resort option (i.e. mean29-generic
 %% without any extra args).
-%%
 %%------------------------------------------------------------------------------
 -spec get_miner_configs() -> list(miner_config()).
 get_miner_configs() ->
-    case aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miners">>]) of
-        {ok, MinerConfigMaps} ->
-            lists:foldl(
-              fun(ConfigMap, Configs) ->
-                      [build_miner_config(ConfigMap) | Configs]
-              end, [], MinerConfigMaps);
+    case get_miners_from_user_config() of
+        {ok, MinerConfigs} -> MinerConfigs;
         undefined ->
-            {_, MinerConfigLists} = get_options(),
-            lists:foldl(
-              fun({_, _, _, _, _, _} = Config, Configs) ->
-                      [build_miner_config(Config) | Configs]
-              end, [], MinerConfigLists)
+            case get_miners_from_deprecated_user_config() of
+                {ok, MinerConfigs} -> MinerConfigs;
+                undefined          -> get_miners_from_sys_config()
+            end
     end.
 
 -spec get_addressed_instances(miner_config()) -> list(non_neg_integer()) | undefined.
@@ -173,14 +187,52 @@ get_repeats(#miner_config{repeats = Repeats}) ->
 get_options() ->
     {_, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
 
+get_miners_from_user_config() ->
+    case aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miners">>]) of
+        {ok, MinerConfigMaps} ->
+            MinerConfigs =
+                lists:foldl(
+                  fun(ConfigMap, Configs) ->
+                          [build_miner_config(ConfigMap) | Configs]
+                  end, [], MinerConfigMaps),
+            {ok, MinerConfigs};
+        undefined -> undefined
+    end.
+
+get_miners_from_deprecated_user_config() ->
+    case aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miner">>]) of
+        {ok, MinerConfigMap} ->
+            %% In the deprecated config 'mining > cuckoo > miner'
+            %% 'instances' is the property indicating the number of instances to be addressed.
+            %% Addressed instances list has to be generated accordingly (indexed from 0).
+            case maps:get(<<"instances">>, MinerConfigMap, undefined) of
+                undefined ->
+                    MinerConfigs = [build_miner_config(MinerConfigMap)],
+                    {ok, MinerConfigs};
+                InstancesCount ->
+                    AddressedInstances = lists:seq(0, InstancesCount - 1),
+                    MinerConfigMap1    = MinerConfigMap#{<<"addressed_instances">> => AddressedInstances},
+                    MinerConfigs       = [build_miner_config(MinerConfigMap1)],
+                    {ok, MinerConfigs}
+            end;
+        undefined -> undefined
+    end.
+
+get_miners_from_sys_config() ->
+    {_, MinerConfigLists} = get_options(),
+    lists:foldl(
+      fun({_, _, _, _, _, _} = Config, Configs) ->
+              [build_miner_config(Config) | Configs]
+      end, [], MinerConfigLists).
+
 build_miner_config(Config) when is_map(Config) ->
-    Executable      = maps:get(<<"executable">>        , Config),
-    ExecutableGroup = maps:get(<<"executable_group">>  , Config, ?DEFAULT_EXECUTABLE_GROUP),
-    ExtraArgs       = maps:get(<<"extra_args">>        , Config, ?DEFAULT_EXTRA_ARGS),
-    HexEncodedHdr   = maps:get(<<"hex_encoded_header">>, Config, ?DEFAULT_HEX_ENCODED_HEADER),
-    Nice            = maps:get(<<"nice">>              , Config, undefined),
-    Repeats         = maps:get(<<"repeats">>           , Config, ?DEFAULT_REPEATS),
-    Instances       = maps:get(<<"instances">>         , Config, undefined),
+    Executable      = maps:get(<<"executable">>         , Config),
+    ExecutableGroup = maps:get(<<"executable_group">>   , Config, ?DEFAULT_EXECUTABLE_GROUP),
+    ExtraArgs       = maps:get(<<"extra_args">>         , Config, ?DEFAULT_EXTRA_ARGS),
+    HexEncodedHdr   = maps:get(<<"hex_encoded_header">> , Config, ?DEFAULT_HEX_ENCODED_HEADER),
+    Nice            = maps:get(<<"nice">>               , Config, undefined),
+    Repeats         = maps:get(<<"repeats">>            , Config, ?DEFAULT_REPEATS),
+    Instances       = maps:get(<<"addressed_instances">>, Config, undefined),
     #miner_config{
        executable         = binary_to_list(Executable),
        executable_group   = ExecutableGroup,
@@ -202,8 +254,13 @@ get_edge_bits() ->
     case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"edge_bits">>]) of
         {ok, EdgeBits} -> EdgeBits;
         undefined ->
-            {EdgeBits, _} = get_options(),
-            EdgeBits
+            %% Deprecated property 'mining' > 'cuckoo' > 'miner' > 'edge_bits'
+            case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"edge_bits">>]) of
+                {ok, EdgeBits} -> EdgeBits;
+                undefined ->
+                    {EdgeBits, _} = get_options(),
+                    EdgeBits
+            end
     end.
 
 get_executable(#miner_config{executable = Executable}) ->
