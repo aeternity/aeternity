@@ -905,11 +905,12 @@ workflows:
   chain_snapshots:
     triggers:
       - schedule:
-          cron: "50 10 20 12 *"
+          # run At minute 0 past hour 0. UTC
+          cron: "0 0 * * *"
           filters:
             branches:
               only:
-                - PT-162783102-mainnet-db-snapshot
+                - master
     jobs:
       - uat_chain_snapshot
 
