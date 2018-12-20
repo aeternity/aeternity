@@ -72,6 +72,7 @@ references:
           && ./configure && make -j$(nproc) && sudo make install && sudo ldconfig
 
   tag_regex: &tag_regex /^v.*$/
+  stable_tag_regex: &stable_tag_regex /^v1\..*$/
 
   rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
   restore_rebar_cache: &restore_rebar_cache
@@ -684,7 +685,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *tag_regex
+              only: *stable_tag_regex
 
       - docker_system_smoke_tests:
           requires:
@@ -843,7 +844,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *tag_regex
+              only: *stable_tag_regex
 
       - hodl_green:
           type: approval
@@ -851,7 +852,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *tag_regex
+              only: *stable_tag_regex
 
       - deploy_uat_blue:
           requires:
@@ -864,7 +865,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *tag_regex
+              only: *stable_tag_regex
 
       - deploy_uat_green:
           requires:
@@ -874,7 +875,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *tag_regex
+              only: *stable_tag_regex
 
       - upload_packages_linux:
           requires:
@@ -887,7 +888,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *tag_regex
+              only: *stable_tag_regex
 
       - upload_packages_osx:
           requires:
@@ -900,7 +901,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *tag_regex
+              only: *stable_tag_regex
 
       - docker_push_tag:
           requires:
@@ -912,7 +913,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: *tag_regex
+              only: *stable_tag_regex
 
   chain_snapshots:
     triggers:
