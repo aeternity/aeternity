@@ -17,7 +17,7 @@
 
 -type candidate_hash() :: aec_blocks:block_header_hash().
 -record(candidate, {block     :: aec_blocks:block(),
-                    nonce     :: aec_pow:nonce(),
+                    nonce     :: aec_pow:nonce() | 'undefined',
                     top_hash  :: binary(),
                     refs = 0  :: non_neg_integer() %% Number of miner workers operating on the candidate
                    }).
