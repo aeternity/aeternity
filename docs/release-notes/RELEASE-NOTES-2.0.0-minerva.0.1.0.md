@@ -6,7 +6,7 @@ It:
 
 TODO: When preparing the release, concatenate all `/docs/release-notes/next-minerva/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
 
-[this-release]: https://github.com/aeternity/epoch/releases/tag/TODO-TO-BE-DECIDED
+[this-release]: https://github.com/aeternity/epoch/releases/tag/v2.0.0-minerva.0.1.0
 
 This release is not backward compatible with v1.*.
 
@@ -17,8 +17,8 @@ You can run a node by either:
 * Running the published [Docker image `aeternity/epoch`][docker]; or
 * [Building a release binary from source][build].
 
-[docker]: https://github.com/aeternity/epoch/blob/TODO-TO-BE-DECIDED/docs/docker.md
-[build]: https://github.com/aeternity/epoch/blob/TODO-TO-BE-DECIDED/docs/build.md
+[docker]: https://github.com/aeternity/epoch/blob/v2.0.0-minerva.0.1.0/docs/docker.md
+[build]: https://github.com/aeternity/epoch/blob/v2.0.0-minerva.0.1.0/docs/build.md
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
 For specifying configuration using the Docker image, please refer to [its documentation][docker].
@@ -31,9 +31,9 @@ The node user API is documented:
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
 
-[swagger-yaml]: https://github.com/aeternity/epoch/blob/TODO-TO-BE-DECIDED/config/swagger.yaml
-[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/TODO-TO-BE-DECIDED/apps/aehttp/priv/swagger.json
-[api-doc]: https://github.com/aeternity/protocol/blob/epoch-TODO-TO-BE-DECIDED/epoch/api/README.md
+[swagger-yaml]: https://github.com/aeternity/epoch/blob/v2.0.0-minerva.0.1.0/config/swagger.yaml
+[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v2.0.0-minerva.0.1.0/apps/aehttp/priv/swagger.json
+[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v2.0.0-minerva.0.1.0/epoch/api/README.md
 
 ## Install node
 
