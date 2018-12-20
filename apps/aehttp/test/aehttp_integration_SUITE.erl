@@ -5054,10 +5054,6 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
                 }, Other).
 
 peers(_Config) ->
-    rpc(application, set_env, [aehttp, enable_debug_endpoints, false]),
-    {ok, 403, #{<<"reason">> := <<"Call not enabled">>}} = get_peers(),
-
-    rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := Peers}} = get_peers(),
 
     OkPeers = [ ok || P <- Peers, {ok, _} <- [aec_peers:parse_peer_address(P)] ],

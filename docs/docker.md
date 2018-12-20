@@ -52,10 +52,10 @@ For example, assuming your configuration file is located at `~/.aeternity/myepoc
 docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myepoch.yaml:/home/aeternity/.epoch/epoch/epoch.yaml aeternity/aeternity
 ```
 
-Arguments can also be passed to the node, for example to enable API debug endpoints:
+Arguments can also be passed to the node, for example to change expected mine rate:
 
 ```bash
-docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity -aehttp enable_debug_endpoints true
+docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity -aecore expected_mine_rate 100000
 ```
 
 More details about node configuration can be found in [configuration documentation](configuration.md).
