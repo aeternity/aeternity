@@ -74,7 +74,7 @@
 %% Serialized a Fate data value into a sequence of bytes
 %% according to the Fate serialization specification.
 %% TODO: The type Fate Data is not final yet.
--spec serialize(aefa_data:fate_none_void_type()) -> binary().
+-spec serialize(aefa_data:fate_type()) -> binary().
 serialize(?FATE_TRUE)        -> <<?TRUE>>;
 serialize(?FATE_FALSE)       -> <<?FALSE>>;
 serialize(?FATE_NIL)         -> <<?NIL>>;     %% ! Untyped
