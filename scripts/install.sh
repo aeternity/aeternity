@@ -45,10 +45,11 @@ install_deps_ubuntu() {
 
     if [[ "$OS_RELEASE" = "16.04" ]]; then
         sudo apt-get install -y build-essential
-        wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz
-        tar -xf libsodium-1.0.16.tar.gz && cd libsodium-1.0.16 &&
+        $LIB_VERSION=1.0.16
+        wget https://download.libsodium.org/libsodium/releases/libsodium-${LIB_VERSION}.tar.gz
+        tar -xf libsodium-${LIB_VERSION}.tar.gz && cd libsodium-${LIB_VERSION} &&
         ./configure && make && sudo make install && sudo ldconfig
-        cd .. && rm -rf libsodium-1.0.16 && rm libsodium-1.0.16.tar.gz
+        cd .. && rm -rf libsodium-${LIB_VERSION} && rm libsodium-${LIB_VERSION}.tar.gz
     elif [[ "$OS_RELEASE" = "18.04" ]]; then
         sudo apt-get install -y curl libsodium23
     else
