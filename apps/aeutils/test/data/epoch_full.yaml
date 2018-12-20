@@ -106,6 +106,7 @@ chain:
     # Hard forks
     hard_forks:
       "1": 0
+      "2": 1
 
 mining:
     # Start mining automatically.

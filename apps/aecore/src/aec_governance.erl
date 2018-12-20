@@ -73,7 +73,10 @@ sorted_protocol_versions() ->
 protocols() ->
     case aeu_env:user_map([<<"chain">>, <<"hard_forks">>]) of
         undefined ->
-            #{aec_block_genesis:version() => aec_block_genesis:height()
+            GenesisVersion = aec_block_genesis:version(),
+            GenesisHeight  = aec_block_genesis:height(),
+            #{ GenesisVersion      => GenesisHeight
+             , GenesisVersion + 1  => GenesisHeight + 1
              };
         {ok, M} ->
             maps:from_list(
