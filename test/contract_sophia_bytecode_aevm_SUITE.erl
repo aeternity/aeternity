@@ -116,7 +116,7 @@ execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState, Opti
              currentTimestamp  => 0,
              chainState        => ChainState,
              chainAPI          => ?MODULE,
-             vm_version        => ?AEVM_01_Sophia_01}, Options),
+             vm_version        => ?CURRENT_AEVM_SOPHIA}, Options),
           Trace),
     case Res of
         {ok, #{ out := RetVal, chain_state := S }} ->

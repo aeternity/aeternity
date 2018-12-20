@@ -181,6 +181,7 @@ check(#contract_create_tx{nonce      = Nonce,
                           fee = Fee} = Tx,
       Trees, Env) when ?is_non_neg_integer(GasPrice) ->
     OwnerPubKey = owner_pubkey(Tx),
+    Height = aetx_env:height(Env),
     RequiredAmount =
         case aetx_env:context(Env) of
             aetx_transaction -> Amount + Deposit + Fee + Gas * GasPrice;
@@ -189,19 +190,24 @@ check(#contract_create_tx{nonce      = Nonce,
     Checks =
         [fun() ->
                  aetx_utils:check_account(OwnerPubKey, Trees, Nonce, RequiredAmount)
-         end |
-         case VmVersion of
-            ?AEVM_01_Sophia_01 ->
-                 [ fun() ->
-                           case get_sophia_serialization(Tx) of
-                               {ok, #{type_info := TypeInfo}} ->
-                                   check_init_function(Tx, TypeInfo);
-                               {error, _} = Err -> Err
-                           end
-                   end
-                 ];
-            ?AEVM_01_Solidity_01 ->
-                [?AEVM_01_Solidity_01_enabled]
+         end,
+         fun() ->
+                 case aect_contracts:is_legal_vm_version_at_height(create, VmVersion, Height) of
+                     true  -> ok;
+                     false -> {error, illegal_vm_version}
+                 end
+         end,
+         fun() ->
+                 if
+                     ?IS_AEVM_SOPHIA(VmVersion) ->
+                         case get_sophia_serialization(Tx) of
+                             {ok, #{type_info := TypeInfo}} ->
+                                 check_init_function(Tx, TypeInfo);
+                             {error, _} = Err -> Err
+                         end;
+                     VmVersion =:= ?AEVM_01_Solidity_01 ->
+                         ok
+                 end
          end
         ],
     case aeu_validation:run(Checks) of
@@ -366,7 +372,7 @@ initialize_contract(#contract_create_tx{vm_version = VmVersion,
     %% TODO: Move ABI specific code to abi module(s).
     Contract1 =
         case VmVersion of
-            ?AEVM_01_Sophia_01 ->
+            _ when ?IS_AEVM_SOPHIA(VmVersion) ->
                 %% Save the initial state (returned by `init`) in the store.
                 InitState  = aect_call:return_value(CallRes),
                 %% TODO: move to/from_sophia_state to make nicer dependencies?

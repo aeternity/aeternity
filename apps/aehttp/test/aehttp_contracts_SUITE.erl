@@ -8,6 +8,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
 
 %% common_test exports
 -export([
@@ -1404,7 +1405,7 @@ contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
     %% The default init contract.
     ContractInitEncoded0 = #{ owner_id => Address,
                               code => Code,
-                              vm_version => 1,  %?AEVM_01_Sophia_01
+                              vm_version => ?CURRENT_AEVM_SOPHIA,
                               deposit => 2,
                               amount => 0,      %Initial balance
                               gas => 100000,   %May need a lot of gas
@@ -1439,7 +1440,7 @@ contract_call_compute_tx(Pubkey, Privkey, Nonce, EncodedContractPubkey,
 
     ContractCallEncoded0 = #{ caller_id => Address,
                               contract_id => EncodedContractPubkey,
-                              vm_version => 1,  %?AEVM_01_Sophia_01
+                              vm_version => ?CURRENT_AEVM_SOPHIA,
                               amount => 0,
                               gas => 100000,    %May need a lot of gas
                               gas_price => 1,

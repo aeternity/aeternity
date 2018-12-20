@@ -18,6 +18,8 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
+
 -define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
 -define(BOGUS_PREV_HASH, <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>).
 
@@ -63,7 +65,7 @@ setup_chain() ->
                                   ?BENEFICIARY_PUBKEY, _Difficulty = 0,
                                   ?BOGUS_PREV_HASH
                                  ),
-    InitS = aec_vm_chain:new_state(Trees, TxEnv, Contract1),
+    InitS = aec_vm_chain:new_state(Trees, TxEnv, Contract1, ?CURRENT_AEVM_SOPHIA),
     {[Account1, Account2, Contract1, Contract2], InitS}.
 
 create_contract(Owner, S) ->

@@ -8,8 +8,8 @@
 
 -behaviour(aevm_chain_api).
 
--export([new_state/3, get_trees/1,
-         new_offchain_state/4
+-export([new_state/4, get_trees/1,
+         new_offchain_state/5
          ]).
 
 %% aevm_chain_api callbacks
@@ -61,6 +61,7 @@
 -record(state, { trees              :: chain_trees()
                , tx_env             :: aetx_env:env()
                , account            :: aec_keys:pubkey() %% the contract account
+               , vm_version         :: non_neg_integer()
                }).
 
 -type chain_trees() :: #trees{}.
@@ -85,23 +86,29 @@
 %% -- API --------------------------------------------------------------------
 
 %% @doc Create an on-chain state.
--spec new_state(aec_trees:trees(), aetx_env:env(), aec_keys:pubkey()) -> chain_state().
-new_state(Trees, Env, ContractAccount) ->
+-spec new_state(aec_trees:trees(), aetx_env:env(), aec_keys:pubkey(),
+                VMVersion :: non_neg_integer()) -> chain_state().
+new_state(Trees, Env, ContractAccount, VMVersion) ->
     #state{ trees       = on_chain_trees(Trees),
             tx_env      = Env,
-            account     = ContractAccount
+            account     = ContractAccount,
+            vm_version  = VMVersion
           }.
 
 %% @doc Create an off-chain state.
 -spec new_offchain_state(aec_trees:trees(), aec_trees:trees(),
                          aetx_env:env(),
-                         aec_keys:pubkey()) -> chain_state().
-new_offchain_state(OffChainTrees, OnChainTrees, TxEnv, ContractAccount) ->
+                         aec_keys:pubkey(),
+                         VMVersion :: non_neg_integer()
+                        ) -> chain_state().
+new_offchain_state(OffChainTrees, OnChainTrees, TxEnv,
+                   ContractAccount, VMVersion) ->
     InnerTrees = on_chain_trees(OnChainTrees),
     Trees = push_trees(off_chain_trees(OffChainTrees), InnerTrees),
     #state{ trees       = Trees,
             tx_env      = TxEnv,
-            account     = ContractAccount
+            account     = ContractAccount,
+            vm_version  = VMVersion
           }.
 
 %% @doc Get the state trees from a state.
@@ -299,7 +306,7 @@ maybe_convert_oracle_arg(OracleId, Arg, State) ->
             case aeo_oracles:vm_version(Oracle) of
                 ?AEVM_NO_VM ->
                     Arg;
-                ?AEVM_01_Sophia_01 ->
+                VMVersion when ?IS_AEVM_SOPHIA(VMVersion) ->
                     aeso_data:to_binary(Arg)
             end;
         none ->
@@ -365,7 +372,7 @@ oracle_get_answer(OracleId, QueryId, #state{trees = ChainTrees}) ->
                     ResponseFormat = aeo_oracles:response_format(Oracle),
                     VMVersion = aeo_oracles:vm_version(Oracle),
                     case oracle_typerep(VMVersion, ResponseFormat) of
-                        {ok, Type} when VMVersion =:= ?AEVM_01_Sophia_01 ->
+                        {ok, Type} when ?IS_AEVM_SOPHIA(VMVersion) ->
                             try aeso_data:from_binary(Type, Answer) of
                                 {ok, Result} -> {ok, {some, Result}};
                                 {error, _} -> {error, bad_answer}
@@ -455,7 +462,7 @@ oracle_response_format(Oracle, #state{trees = ChainTrees}) ->
 oracle_typerep(?AEVM_NO_VM,_BinaryFormat) ->
     %% Treat this as a string
     {ok, string};
-oracle_typerep(?AEVM_01_Sophia_01, BinaryFormat) ->
+oracle_typerep(VMVersion, BinaryFormat) when ?IS_AEVM_SOPHIA(VMVersion) ->
     try aeso_data:from_binary(typerep, BinaryFormat) of
         {ok, Format} -> {ok, Format};
         {error, _} -> {error, bad_typerep}
@@ -620,13 +627,14 @@ get_contract_fun_types(Target, VMVersion, TypeHash, State) ->
     CT = aec_trees:contracts(Trees),
     case aect_state_tree:lookup_contract(Target, CT, [no_store]) of  %% no store
         {value, Contract} ->
-            case aect_contracts:vm_version(Contract) of
-                VMVersion ->
+            ContractVMVersion = aect_contracts:vm_version(Contract),
+            case aect_contracts:is_legal_vm_call(VMVersion, ContractVMVersion) of
+                true ->
                     SerializedCode = aect_contracts:code(Contract),
                     #{type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
                     aeso_abi:typereps_from_type_hash(TypeHash, TypeInfo);
-                Other ->
-                    {error, {wrong_vm_version, Other}}
+                false ->
+                    {error, {wrong_vm_version, ContractVMVersion}}
             end;
         none ->
             {error, {no_such_contract, Target}}

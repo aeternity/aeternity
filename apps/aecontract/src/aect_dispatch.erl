@@ -57,7 +57,7 @@ encode_call_data(_, _, _, _) ->
 %% used.
 
 -spec run(byte(), map()) -> {aect_call:call(), aec_trees:trees()}.
-run(?AEVM_01_Sophia_01, #{code := SerializedCode} = CallDef) ->
+run(VMVersion, #{code := SerializedCode} = CallDef) when ?IS_AEVM_SOPHIA(VMVersion) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
     case aeso_abi:check_calldata(maps:get(call_data, CallDef), TypeInfo) of
@@ -65,7 +65,7 @@ run(?AEVM_01_Sophia_01, #{code := SerializedCode} = CallDef) ->
             CallDef1 = CallDef#{code => Code,
                                 call_data_type => CallDataType,
                                 out_type => OutType},
-            run_common(CallDef1, ?AEVM_01_Sophia_01);
+            run_common(CallDef1, VMVersion);
         {error, What} ->
             Gas = maps:get(gas, CallDef),
             Call = maps:get(call, CallDef),
@@ -93,7 +93,7 @@ run_common(#{  amount      := Value
              , tx_env      := TxEnv0
              } = CallDef, VMVersion) ->
     TxEnv = aetx_env:set_context(TxEnv0, aetx_contract),
-    ChainState0 = chain_state(CallDef, TxEnv),
+    ChainState0 = chain_state(CallDef, TxEnv, VMVersion),
     <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
     Env = #{currentCoinbase   => BeneficiaryInt,
             currentDifficulty => aetx_env:difficulty(TxEnv),
@@ -179,12 +179,12 @@ error_to_binary(E) ->
 
 chain_state(#{ contract    := ContractPubKey
              , off_chain   := false
-             , trees       := Trees}, TxEnv) ->
-    aec_vm_chain:new_state(Trees, TxEnv, ContractPubKey);
+             , trees       := Trees}, TxEnv, VMVersion) ->
+    aec_vm_chain:new_state(Trees, TxEnv, ContractPubKey, VMVersion);
 chain_state(#{ contract    := ContractPubKey
              , off_chain   := true
-             , trees       := Trees} = CallDef, TxEnv) ->
+             , trees       := Trees} = CallDef, TxEnv, VMVersion) ->
             OnChainTrees = maps:get(on_chain_trees, CallDef),
     aec_vm_chain:new_offchain_state(Trees, OnChainTrees, TxEnv,
-                                    ContractPubKey).
+                                    ContractPubKey, VMVersion).
 

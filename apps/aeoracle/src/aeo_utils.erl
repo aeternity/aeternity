@@ -8,7 +8,6 @@
 -module(aeo_utils).
 
 -export([check_format/3,
-         check_vm_version/1,
          ttl_delta/2,
          ttl_expiry/2
         ]).
@@ -31,14 +30,10 @@ ttl_expiry(CurrentHeight, TTL) ->
             Err
     end.
 
-check_vm_version(?AEVM_NO_VM) -> ok;
-check_vm_version(?AEVM_01_Sophia_01) -> ok;
-check_vm_version(_) -> {error, bad_vm_version}.
-
 check_format(?AEVM_NO_VM, _Format, _Content) ->
     %% No interpretation of the format, nor content.
     ok;
-check_format(?AEVM_01_Sophia_01, Format, Content) ->
+check_format(VMVersion, Format, Content) when ?IS_AEVM_SOPHIA(VMVersion) ->
     %% Check that the content can be decoded as the type
     %% and that if we encoded it again, it becomes the content.
     {ok, TypeRep} = aeso_data:from_binary(typerep, Format),

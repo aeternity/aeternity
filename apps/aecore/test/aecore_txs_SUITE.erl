@@ -21,6 +21,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
 
 -import(aecore_suite_utils, [patron/0]).
 
@@ -297,7 +298,7 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     Code     = compile_contract(lists:concat(["contracts/", Name, ".aes"])),
     {ok, CallData} = aect_sophia:encode_call_data(Code, <<"init">>, Args),
     {ok, CreateTx} = aect_create_tx:new(#{ nonce      => Nonce
-                                         , vm_version => 1
+                                         , vm_version => ?CURRENT_AEVM_SOPHIA
                                          , code       => Code
                                          , call_data  => CallData
                                          , fee        => Fee
@@ -326,7 +327,7 @@ call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
     {ok, CallData} = aect_sophia:encode_call_data(Code, Function, Args),
     {ok, CallTx} = aect_call_tx:new(#{ nonce       => Nonce
                                      , caller_id   => Caller
-                                     , vm_version  => 1
+                                     , vm_version  => ?CURRENT_AEVM_SOPHIA
                                      , contract_id => ContractID
                                      , fee         => Fee
                                      , amount      => 0

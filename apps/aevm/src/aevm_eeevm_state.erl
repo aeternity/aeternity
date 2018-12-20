@@ -171,10 +171,10 @@ init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
     case vm_version(State) of
         ?AEVM_01_Solidity_01 ->
             aevm_eeevm_store:init(Store, State1);
-        ?AEVM_01_Sophia_01 when CallDataType =:= undefined;
-                                OutType =:= undefined ->
+        VmVersion when (CallDataType =:= undefined orelse OutType =:= undefined)
+                       andalso ?IS_AEVM_SOPHIA(VmVersion) ->
             error({bad_vm_setup, missing_call_data_type});
-        ?AEVM_01_Sophia_01 ->
+        VmVersion when ?IS_AEVM_SOPHIA(VmVersion) ->
             case is_reentrant_call(State) of
                 true -> %% Sophia doesn't allow reentrant calls
                     init_error(reentrant_call);
@@ -225,7 +225,7 @@ import_state_from_store(Store, State0) ->
 
 do_return(Us0, Us1, State) ->
     case vm_version(State) of
-        ?AEVM_01_Sophia_01 ->
+        VMV when ?IS_AEVM_SOPHIA(VMV) ->
             %% In Sophia Us1 is a pointer to the actual value.
             %% The type of the value is in the state (from meta data)
             Type = out_type(State),
@@ -244,7 +244,7 @@ do_return(Us0, Us1, State) ->
 do_revert(Us0, Us1, State0) ->
     %% Us0 is a pointer to the revert string binary and Us1 is its size.
     case vm_version(State0) of
-        ?AEVM_01_Sophia_01 ->
+        VMV when ?IS_AEVM_SOPHIA(VMV) ->
             %% In Sophia Us1 is a pointer to the actual value.
             %% The type of the value is always string.
             case heap_to_binary(string, Us1, State0) of
@@ -298,7 +298,7 @@ return_contract_call_result(To, Input, Addr,_Size, ReturnData, Type, State) ->
     case aevm_eeevm_state:vm_version(State) of
         ?AEVM_01_Solidity_01 ->
             {1, aevm_eeevm_memory:write_area(Addr, ReturnData, State)};
-        ?AEVM_01_Sophia_01 ->
+        VMV when ?IS_AEVM_SOPHIA(VMV) ->
             %% For Sophia, ignore the Addr and put the result on the
             %% top of the heap
             HeapSize = aevm_eeevm_memory:size_in_words(State) * 32,
@@ -340,7 +340,7 @@ save_store(#{ chain_state := ChainState
         ?AEVM_01_Solidity_01 ->
             Store = aevm_eeevm_store:to_binary(State),
             {ok, State#{ chain_state => ChainAPI:set_store(Store, ChainState)}};
-        ?AEVM_01_Sophia_01 ->
+        VMV when ?IS_AEVM_SOPHIA(VMV) ->
             %% A typerep for the state type is on top of the stack, and the state
             %% pointer is at address 0.
             {Addr, _} = aevm_eeevm_memory:load(0, State),
@@ -364,7 +364,7 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
         ?AEVM_01_Solidity_01 ->
             {Arg, State1} = aevm_eeevm_memory:get_area(IOffset, ISize, State),
             {Arg, undefined, State1};
-        ?AEVM_01_Sophia_01 ->
+        VMVersion when ?IS_AEVM_SOPHIA(VMVersion) ->
             %% In Sophia:
             %%   ISize is the (integer) type hash for primops that needs to be
             %%         type checked (otherwise 0).
@@ -396,7 +396,7 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                     {ok, Bin} = aeso_data:heap_to_binary({tuple, [word]}, Store, HeapValue),
                     {ok, {TypeHashInt}} = aeso_data:from_binary({tuple, [word]}, Bin),
                     TypeHash = <<TypeHashInt:256>>,
-                    case ChainAPI:get_contract_fun_types(TargetKey, ?AEVM_01_Sophia_01,
+                    case ChainAPI:get_contract_fun_types(TargetKey, VMVersion,
                                                          TypeHash, ChainState) of
                         {ok, ArgType, OutType} ->
                             DataType = {tuple, [word, ArgType]},
@@ -420,7 +420,7 @@ write_heap_value(HeapValue, State) ->
 
 call_contract(Caller, Target, CallGas, Value, Data, State) ->
     case vm_version(State) of
-        ?AEVM_01_Sophia_01 when Target == ?PRIM_CALLS_CONTRACT ->
+        VMV when ?IS_AEVM_SOPHIA(VMV), Target == ?PRIM_CALLS_CONTRACT ->
             aevm_ae_primops:call(CallGas, Value, Data, State);
         _ ->
             CallStack  = [Caller | call_stack(State)],

@@ -406,7 +406,7 @@ call_stack(#contract_call_tx{call_stack = CallStack}) ->
 %% Check that the contract exists and has the right VM version.
 check_call(#contract_call_tx{ vm_version = VmVersion,
                               amount     = Value} = Tx,
-               Trees, _Height) ->
+               Trees, Height) ->
     ContractPubKey = contract_pubkey(Tx),
     ContractsTree = aec_trees:contracts(Trees),
     %% Dialyzer, in its infinite wisdom, complains if it thinks we're checking
@@ -418,7 +418,9 @@ check_call(#contract_call_tx{ vm_version = VmVersion,
     case aect_state_tree:lookup_contract(ContractPubKey, ContractsTree, [no_store]) of
         _ when NegativeAmount -> {error, negative_amount};
         {value, C} ->
-            case aect_contracts:vm_version(C) == VmVersion of
+            CVMVersion = aect_contracts:vm_version(C),
+            case (aect_contracts:is_legal_vm_version_at_height(call, VmVersion, Height)
+                  andalso aect_contracts:is_legal_vm_call(VmVersion, CVMVersion)) of
                 true  -> ok;
                 false -> {error, wrong_vm_version}
             end;

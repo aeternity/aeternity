@@ -10,6 +10,8 @@
 %% API
 -export([ deserialize/2
         , store_id/1
+        , is_legal_vm_call/2
+        , is_legal_vm_version_at_height/3
         , new/1
         , new/5 %% For use without transaction
         , serialize/1
@@ -43,6 +45,9 @@
 %% For testing only.
 -export([set_vm_version/2]).
 
+-include("aecontract.hrl").
+-include_lib("aecore/include/hard_forks.hrl").
+
 -ifdef(TEST).
 -export([internal_set_state/2]).
 -endif.
@@ -74,6 +79,8 @@
 -type store_id() :: binary().
 -type serialized() :: binary().
 -type vm_version() :: byte().
+-type height() :: non_neg_integer().
+-type vm_usage_type() ::  'call' | 'create' | 'oracle_register'.
 
 -export_type([ contract/0
              , amount/0
@@ -93,6 +100,51 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+-spec is_legal_vm_call(FromVMVersion :: non_neg_integer(),
+                       ToVMVersion :: non_neg_integer()) ->
+                          boolean().
+%% NOTE: Keep this up to date if the different sophia vms gets incompatible.
+is_legal_vm_call(X, X) -> true;
+is_legal_vm_call(?AEVM_02_Sophia_01, ?AEVM_01_Sophia_01) -> true;
+is_legal_vm_call(_, _) -> false.
+
+-spec is_legal_vm_version_at_height(vm_usage_type(), term(), height()) -> boolean().
+is_legal_vm_version_at_height(Operation, VMVersion, Height) ->
+    ProtocolVSN = aec_hard_forks:protocol_effective_at_height(Height),
+    is_legal_vm_version_in_protocol(Operation, VMVersion, ProtocolVSN).
+
+is_legal_vm_version_in_protocol(create, ?AEVM_01_Sophia_01, ProtocolVersion) ->
+    case ProtocolVersion of
+        ?ROMA_PROTOCOL_VSN    -> true;
+        ?MINERVA_PROTOCOL_VSN -> false
+    end;
+is_legal_vm_version_in_protocol(create, ?AEVM_02_Sophia_01, ProtocolVersion) ->
+    case ProtocolVersion of
+        ?ROMA_PROTOCOL_VSN    -> false;
+        ?MINERVA_PROTOCOL_VSN -> true
+    end;
+is_legal_vm_version_in_protocol(call, VMVersion, ProtocolVersion) ->
+    case ProtocolVersion of
+        ?ROMA_PROTOCOL_VSN    when VMVersion =:= ?AEVM_01_Sophia_01 -> true;
+        ?MINERVA_PROTOCOL_VSN when VMVersion =:= ?AEVM_01_Sophia_01;
+                                   VMVersion =:= ?AEVM_02_Sophia_01 -> true;
+        _                     when VMVersion =:= ?AEVM_01_Solidity_01 -> ?AEVM_01_Solidity_01_enabled
+    end;
+is_legal_vm_version_in_protocol(oracle_register, ?AEVM_NO_VM,_ProtocolVersion) ->
+    true;
+is_legal_vm_version_in_protocol(oracle_register, ?AEVM_01_Sophia_01, ProtocolVersion) ->
+    case ProtocolVersion of
+        ?ROMA_PROTOCOL_VSN    -> true;
+        ?MINERVA_PROTOCOL_VSN -> false
+    end;
+is_legal_vm_version_in_protocol(oracle_register, ?AEVM_02_Sophia_01, ProtocolVersion) ->
+    case ProtocolVersion of
+        ?ROMA_PROTOCOL_VSN    -> false;
+        ?MINERVA_PROTOCOL_VSN -> true
+    end;
+is_legal_vm_version_in_protocol(_, _, _) ->
+    false.
 
 -spec store_id(contract()) -> store_id().
 store_id(C) ->
@@ -353,8 +405,11 @@ assert_field(FieldKey, FieldValue, _) ->
 
 assert_field(pubkey, <<_:?PUB_SIZE/binary>> = X)         -> X;
 assert_field(owner,  <<_:?PUB_SIZE/binary>> = X)         -> X;
-assert_field(vm_version, X) when is_integer(X), X > 0,
-                                                X < 6    -> X;
+assert_field(vm_version, X) ->
+    case is_legal_vm_version(X) of
+        true  -> X;
+        false -> error({illegal, vm_version, X})
+    end;
 assert_field(code, X)       when is_binary(X)            -> X;
 assert_field(log, X)        when is_binary(X)            -> X;
 assert_field(active, X)     when X =:= true; X =:= false -> X;
@@ -381,3 +436,8 @@ assert_field_store(store_k = Field, X, VmVersion) when is_binary(X),
     try true = aevm_eeevm_store:is_valid_key(VmVersion, X)
     catch _:_ -> error({illegal, Field, X}) end;
 assert_field_store(store_v, X,_VmVersion) when is_binary(X) -> X.
+
+is_legal_vm_version(?AEVM_01_Sophia_01)    -> true;
+is_legal_vm_version(?AEVM_01_Solidity_01)  -> ?AEVM_01_Solidity_01_enabled;
+is_legal_vm_version(?AEVM_02_Sophia_01)    -> true;
+is_legal_vm_version(_)                     -> false.

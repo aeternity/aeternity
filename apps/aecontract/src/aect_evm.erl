@@ -52,7 +52,7 @@ call_common(CallData, CallDataType, OutType, ContractKey,
     <<Address:256>> = ContractKey,
     GasLimit = aec_governance:block_gas_limit(),
     Amount = 0,
-    ChainState = aec_vm_chain:new_state(Trees, TxEnv, ContractKey),
+    ChainState = aec_vm_chain:new_state(Trees, TxEnv, ContractKey, VMVersion),
     <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
     Spec = #{ code => Code
             , store => Store

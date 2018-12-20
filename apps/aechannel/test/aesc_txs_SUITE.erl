@@ -187,7 +187,7 @@
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BOGUS_CHANNEL, <<1:?MINER_PUB_BYTES/unit:8>>).
 -define(ROLES, [initiator, responder]).
--define(VM_VERSION, ?AEVM_01_Sophia_01).
+-define(VM_VERSION, ?CURRENT_AEVM_SOPHIA).
 -define(TEST_LOG(Format, Data), ct:log(Format, Data)).
 %%%===================================================================
 %%% Common test framework
@@ -4998,7 +4998,7 @@ register_new_oracle(QFormat, RFormat, QueryFee) ->
                                                    #{query_format => QFormat,
                                                      query_fee => QueryFee,
                                                      response_format => RFormat,
-                                                     vm_version => ?AEVM_01_Sophia_01
+                                                     vm_version => ?VM_VERSION
                                                     },
                                                    S),
                 PrivKey = aesc_test_utils:priv_key(Oracle, S),
