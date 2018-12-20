@@ -304,11 +304,11 @@ clean:
 	@rm -rf _build/default/plugins
 	@rm -rf $$(ls -d _build/default/lib/* | grep -v '[^_]rocksdb') ## Dependency `rocksdb` takes long to build.
 
+## Do not delete `eqc`.
 distclean: clean
 	( cd apps/aecuckoo && $(MAKE) distclean; )
 	( cd otp_patches && $(MAKE) distclean; )
 	( cd $(HTTP_APP) && $(MAKE) distclean; )
-	@rm -rf eqc
 	@rm -rf _build/
 
 multi-build: dev1-build
