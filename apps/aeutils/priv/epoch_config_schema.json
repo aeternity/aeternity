@@ -275,7 +275,7 @@
                         "type" : "boolean"
                     },
                     "debug" : {
-                        "description" : "Debug endpoints",
+                        "description" : "deprecated",
                         "type" : "boolean"
                     },
                     "obsolete" : {
@@ -284,7 +284,7 @@
                     }
                 },
                 "debug" : {
-                    "description" : "Whether to enable the debug endpoints",
+                    "description" : "deprecated",
                     "type" : "boolean"
                 }
             }
