@@ -68,7 +68,7 @@ option_some(X) -> {tuple, [{integer, 1}, X]}.
 -define(ADD(A, B), op('+', A, B)).
 -define(SUB(A, B), op('-', A, B)).
 -define(MUL(A, B), op('*', A, B)).
--define(DIV(A, B), op('/', A, B)).
+-define(DIV(A, B), op('div', A, B)).
 -define(MOD(A, B), op('mod', A, B)).
 -define(EXP(A, B), op('^', A, B)).
 -define(AND(A, B), op('&&', A, B)).

@@ -557,7 +557,7 @@ assemble_infix('-')    -> i(?SUB);
 assemble_infix('*')    -> i(?MUL);
 assemble_infix('/')    -> i(?SDIV);
 assemble_infix('div')  -> i(?DIV);
-assemble_infix('mod')  -> i(?SMOD);
+assemble_infix('mod')  -> i(?MOD);
 assemble_infix('^')    -> i(?EXP);
 assemble_infix('bor')  -> i(?OR);
 assemble_infix('band') -> i(?AND);
