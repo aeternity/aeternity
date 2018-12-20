@@ -5101,8 +5101,8 @@ disabled_debug_endpoints(_Config) ->
 
     %% post_key_blocks_sut should be always enabled
     ?assertMatch({ok, 400, _}, post_key_blocks_sut(?NODE0, #{})),
-    ?assertMatch({ok, 404, _}, get_peers(?NODE0)),
-    ?assertMatch({ok, 404, _}, get_contract_create(?NODE0, #{})),
+    ?assertMatch({ok, 403, _}, get_peers(?NODE0)),
+    ?assertMatch({ok, 403, _}, get_contract_create(?NODE0, #{})),
     ok.
 
 enabled_debug_endpoints(_Config) ->

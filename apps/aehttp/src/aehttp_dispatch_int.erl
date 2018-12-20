@@ -1,5 +1,6 @@
 -module(aehttp_dispatch_int).
 
+-export([forbidden/1]).
 -export([handle_request/3]).
 
 -import(aeu_debug, [pp/1]).
@@ -27,6 +28,16 @@
                         , do_dry_run/0
                         , dry_run_results/1
                         ]).
+
+
+-spec forbidden( OperationID :: atom() ) -> boolean().
+forbidden(OpId) ->
+    OpSpec = endpoints:operation(OpId),
+    [ #{ tags := Tags } | _ ] = maps:values(OpSpec),
+    case lists:member(<<"debug">>, Tags) of
+        true -> not aehttp_app:enable_internal_debug_endpoints();
+        false -> false
+    end.
 
 -spec handle_request(
         OperationID :: atom(),
