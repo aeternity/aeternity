@@ -278,7 +278,6 @@ is_hex_encoded_header(#miner_config{hex_encoded_header = HexEncodedHeader}) ->
 is_miner_instance_addressation_enabled(#miner_config{instances = Instances}) ->
     case Instances of
         undefined -> false;
-        []        -> false;
         I when is_list(I) -> true
     end.
 

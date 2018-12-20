@@ -456,6 +456,7 @@
                                         "items" : {
                                             "type" : "integer"
                                         },
+                                        "minItems" : 1,
                                         "example" : [0, 1, 2, 3]
                                     }
                                 }
