@@ -569,7 +569,8 @@ assemble_infix('<=')   -> [i(?SGT), i(?ISZERO)];
 assemble_infix('=<')   -> [i(?SGT), i(?ISZERO)];
 assemble_infix('>=')   -> [i(?SLT), i(?ISZERO)];
 assemble_infix('!=')   -> [i(?EQ), i(?ISZERO)];
-assemble_infix('!')    -> [i(?ADD), i(?MLOAD)].
+assemble_infix('!')    -> [i(?ADD), i(?MLOAD)];
+assemble_infix('byte') -> i(?BYTE).
 %% assemble_infix('::') -> [i(?MSIZE), write_word(0), write_word(1)].
 
 %% a function may either refer to a top-level function, in which case

@@ -14,3 +14,4 @@ contract Events =
     Chain.event(Event1(x, x + 2, Int.to_str(x + 7)))
 
   function i2s(i : int) = Int.to_str(i)
+  function a2s(a : address) = Address.to_str(a)

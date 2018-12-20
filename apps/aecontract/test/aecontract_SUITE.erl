@@ -3223,6 +3223,13 @@ sophia_events(_Cfg) ->
     ?assertEqual(<<"12345">>, ?call(call_contract, Acc, IdC, i2s, string, {12345})),
     ?assertEqual(<<"-2345">>, ?call(call_contract, Acc, IdC, i2s, string, {-2345})),
 
+    BAcc = list_to_binary(base58:binary_to_base58(Acc)),
+    ?assertMatch({BAcc, _},
+                  ?call(call_contract, Acc, IdC, a2s, string, {Acc}, #{ return_gas_used => true })),
+
+    BIdC = list_to_binary(base58:binary_to_base58(IdC)),
+    ?assertMatch({BIdC, _},
+                  ?call(call_contract, Acc, IdC, a2s, string, {IdC}, #{ return_gas_used => true })),
     ok.
 
 

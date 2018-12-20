@@ -147,7 +147,8 @@ global_env() ->
      {["String", "concat"], Fun([String, String], String)},
      {["String", "sha3"], Fun1(String, Int)},
      %% Conversion
-     {["Int", "to_str"], Fun1(Int, String)}
+     {["Int", "to_str"], Fun1(Int, String)},
+     {["Address", "to_str"], Fun1(Address, String)}
     ].
 
 global_type_env() ->

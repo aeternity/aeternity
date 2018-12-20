@@ -39,6 +39,10 @@ builtin_deps1(map_from_list)              -> [map_put];
 builtin_deps1(str_equal)                  -> [str_equal_p];
 builtin_deps1(string_concat)              -> [string_concat_inner1, string_concat_inner2];
 builtin_deps1(int_to_str)                 -> [int_to_str_, int_digits];
+builtin_deps1(addr_to_str)                -> [base58_int, string_concat];
+builtin_deps1(base58_int)                 -> [base58_int_encode, base58_int_pad, string_reverse, string_concat];
+builtin_deps1(base58_int_encode)          -> [base58_int_encode_, base58_tab];
+builtin_deps1(string_reverse)             -> [string_reverse_];
 builtin_deps1(_)                          -> [].
 
 dep_closure(Deps) ->
@@ -385,6 +389,93 @@ builtin_function(int_digits) ->
     {{builtin, int_digits}, [private],
         [{"x", word}, {"n", word}],
         {ifte, ?EQ(x, 0), ?V(n), ?call(int_digits, [?DIV(x, 10), ?ADD(n, 1)])},
-        word}.
+        word};
 
+builtin_function(base58_tab) ->
+    Fst32 = 22252025330403739761829862310514590177935513752035045390683118730099851483225,
+    Lst26 = 40880219588527126470443504235291962205031881694701834176631306799289575931904,
+    {{builtin, base58_tab}, [private],
+        [{"ix", word}],
+        {ifte, ?LT(ix, 32),
+            ?BYTE(ix, Fst32),
+            ?BYTE(?SUB(ix, 32), Lst26)
+        }, word};
+
+builtin_function(base58_int) ->
+    {{builtin, base58_int}, [private],
+        [{"w", word}],
+        ?LET(str0, ?call(base58_int_encode, [?V(w)]),
+        ?LET(str1, ?call(base58_int_pad, [?V(w), ?I(0), ?I(0)]),
+        ?LET(str2, ?call(string_concat, [?V(str0), ?V(str1)]),
+            ?call(string_reverse, [?V(str2)])
+        ))),
+        word};
+
+builtin_function(string_reverse) ->
+    {{builtin, string_reverse}, [private],
+        [{"s", string}],
+        ?DEREF(n, s,
+        ?LET(ret, {inline_asm, [?A(?MSIZE)]},
+            {seq, [?V(n), {inline_asm, [?A(?MSIZE), ?A(?MSTORE)]},
+                   ?call(string_reverse_, [?NXT(s), ?I(0), ?I(31), ?SUB(?V(n), 1)]),
+                   {inline_asm, [?A(?POP)]}, ?V(ret)]})),
+        word};
+
+builtin_function(string_reverse_) ->
+    {{builtin, string_reverse_}, [private],
+        [{"p", pointer}, {"x", word}, {"i1", word}, {"i2", word}],
+        {ifte, ?LT(i2, 0),
+            {seq, [?V(x), {inline_asm, [?A(?MSIZE), ?A(?MSTORE), ?A(?MSIZE)]}]},
+            ?LET(p1, ?ADD(p, ?MUL(?DIV(i2, 32), 32)),
+            ?DEREF(w, p1,
+            ?LET(b, ?BYTE(?MOD(i2, 32), w),
+            {ifte, ?LT(i1, 0),
+                {seq, [?V(x), {inline_asm, [?A(?MSIZE), ?A(?MSTORE)]},
+                       ?call(string_reverse_,
+                             [?V(p), ?BSL(b, 31), ?I(30), ?SUB(i2, 1)])]},
+                ?call(string_reverse_,
+                      [?V(p), ?ADD(x, ?BSL(b, i1)), ?SUB(i1, 1), ?SUB(i2, 1)])})))},
+        word};
+
+builtin_function(base58_int_pad) ->
+    {{builtin, base58_int_pad}, [private],
+        [{"w", word}, {"i", word}, {"x", word}],
+        {ifte, ?GT(?BYTE(i, w), 0),
+            {seq, [?V(i), {inline_asm, [?A(?MSIZE), ?A(?MSTORE)]},
+                   ?V(x), {inline_asm, [?A(?MSIZE), ?A(?MSTORE)]},
+                   {inline_asm, [?A(?PUSH1), 64, ?A(?MSIZE), ?A(?SUB)]}]},
+            ?call(base58_int_pad, [?V(w), ?ADD(i, 1),
+                                   ?ADD(x, ?BSL(49, ?SUB(31, i)))])},
+        word};
+
+builtin_function(base58_int_encode) ->
+    {{builtin, base58_int_encode}, [private],
+        [{"w", word}],
+        ?LET(ret, {inline_asm, [?A(?MSIZE), ?A(?PUSH1), 0, ?A(?MSIZE), ?A(?MSTORE)]}, %% write placeholder
+        ?LET(n, ?call(base58_int_encode_, [?V(w), ?I(0), ?I(0), ?I(31)]),
+            {seq, [?V(ret), {inline_asm, [?A(?DUP2), ?A(?SWAP1), ?A(?MSTORE)]},
+                   ?V(ret)]})),
+        word};
+
+builtin_function(base58_int_encode_) ->
+    {{builtin, base58_int_encode_}, [private],
+        [{"w", word}, {"x", word}, {"n", word}, {"i", word}],
+        {ifte, ?EQ(w, 0),
+            {seq, [?V(x), {inline_asm, [?A(?MSIZE), ?A(?MSTORE)]}, ?V(n)]},
+            {ifte, ?LT(i, 0),
+                {seq, [?V(x), {inline_asm, [?A(?MSIZE), ?A(?MSTORE)]},
+                       ?call(base58_int_encode_,
+                             [?DIV(w, 58), ?BSL(?call(base58_tab, [?MOD(w, 58)]), 31),
+                              ?ADD(n, 1), ?I(30)])]},
+                ?call(base58_int_encode_,
+                    [?DIV(w, 58), ?ADD(x, ?BSL(?call(base58_tab, [?MOD(w, 58)]), i)),
+                     ?ADD(n, 1), ?SUB(i, 1)])}},
+        word};
+
+
+builtin_function(addr_to_str) ->
+    {{builtin, addr_to_str}, [private],
+        [{"a", word}],
+        ?call(base58_int, [?V(a)]),
+        word}.
 

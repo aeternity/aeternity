@@ -334,6 +334,9 @@ ast_body(?qid_app(["String", "sha3"], [String], _, _), Icode) ->
 ast_body(?qid_app(["Int", "to_str"], [Int], _, _), Icode) ->
     builtin_call(int_to_str, [ast_body(Int, Icode)]);
 
+ast_body(?qid_app(["Address", "to_str"], [Addr], _, _), Icode) ->
+    builtin_call(addr_to_str, [ast_body(Addr, Icode)]);
+
 %% Other terms
 ast_body({id, _, Name}, _Icode) ->
     %% TODO Look up id in env
