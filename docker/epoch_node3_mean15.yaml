@@ -8,6 +8,8 @@ http:
         port: 3013
     internal:
         listen_address: 0.0.0.0
+    cors:
+        allow_domains: [""]
 
 keys:
     peer_password: "top secret"
