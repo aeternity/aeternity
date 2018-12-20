@@ -219,7 +219,8 @@
     sc_ws_oracle_contract/1,
     sc_ws_nameservice_contract/1,
     sc_ws_enviroment_contract/1,
-    sc_ws_remote_call_contract/1
+    sc_ws_remote_call_contract/1,
+    sc_ws_remote_call_contract_refering_onchain_data/1
    ]).
 
 
@@ -574,7 +575,12 @@ channel_websocket_sequence() ->
      %% both can call a remote contract
      {both_can_call_remote_contract, [], [sc_ws_open,
                                           sc_ws_update,
-                                          sc_ws_remote_call_contract]}
+                                          sc_ws_remote_call_contract]},
+
+     %% both can call a remote contract
+     {both_can_call_remote_contract_onchain, [], [sc_ws_open,
+                                                  sc_ws_update,
+                                                  sc_ws_remote_call_contract_refering_onchain_data]}
     ].
 
 
@@ -4148,6 +4154,25 @@ sc_ws_remote_call_contract(Config) ->
     ok = ?WS:stop(RConnPid),
     ok.
 
+sc_ws_remote_call_contract_refering_onchain_data(Config) ->
+    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
+    #{initiator := IConnPid, responder := RConnPid} =
+        proplists:get_value(channel_clients, ConfigList),
+
+    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
+
+
+    [sc_ws_contract_generic(Role, fun sc_ws_remote_call_contract_refering_onchain_data_/8, Config,
+                            [])
+        || Role <- [initiator,
+                    responder]],
+
+    % cleanup
+    ok = ?WS:stop(IConnPid),
+    ok = ?WS:stop(RConnPid),
+    ok.
+
 random_unused_name() ->
     random_unused_name(_Attempts = 10).
 
@@ -4517,6 +4542,102 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     Test(CallRemoteContract, 42),
     Test(CallRemoteContract, 43),
     Test(CallIdentity, 12),
+    ok.
+
+sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, ConnPid2,
+                           OwnerPubkey, _OtherPubkey, _Opts, Config) ->
+    %% create identity contract off-chain
+    CreateContract =
+        fun(Name) ->
+            EncodedCode = contract_byte_code(Name),
+            InitArgument = <<"()">>,
+            {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
+                                      <<"sophia">>,
+                                      contract_bytearray_decode(EncodedCode),
+                                      <<"init">>,
+                                      InitArgument),
+            {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
+            ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                           #{vm_version => 1,
+                             deposit    => 10,
+                             code       => EncodedCode,
+                             call_data  => EncodedInitData}, Config),
+
+            UnsignedStateTx = CreateVolley(),
+            ContractPubKey = contract_id_from_create_update(OwnerPubkey,
+                                                            UnsignedStateTx),
+            {ContractPubKey, EncodedCode}
+          end,
+    {ResolverCPubKey, ResolverCode} = CreateContract("channel_on_chain_contract_name_resolution"),
+    {RemoteCallCPubKey, RemoteCallCode} = CreateContract("channel_remote_on_chain_contract_name_resolution"),
+
+    ContractCall =
+        fun(Who, ContractPubKey, Code, Fun, Args, Result, Amount) ->
+                {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
+                Tx = call_a_contract(Fun,
+                                     Args,
+                                     ContractPubKey, Code,
+                                     UpdaterConnPid, UpdateVolley, Amount, Config),
+                #{<<"value">> := RInt} =
+                    ws_get_decoded_result(ConnPid1, ConnPid2, <<"int">>, Tx, Config),
+                R =
+                    case RInt of
+                        0 -> false;
+                        1 -> true
+                    end,
+                {R, R} = {Result, R}
+        end,
+    CallResolve =
+        fun(Who, Name, Key, IsResolvable) ->
+            AddQuotes = fun(B) when is_binary(B) -> <<"\"", B/binary, "\"">> end,
+            QName = AddQuotes(Name),
+            QKey = AddQuotes(Key),
+            Args = <<"(", QName/binary, ",", QKey/binary,")">>,
+            ContractCall(Who, ResolverCPubKey, ResolverCode, <<"can_resolve">>,
+                         Args, IsResolvable, _Amount = 0)
+        end,
+    HexEncodedResolverPubkey = aeu_hex:hexstring_encode(ResolverCPubKey),
+    CallRemoteContract =
+        fun(Who, Name, Key, IsResolvable) ->
+            AddQuotes = fun(B) when is_binary(B) -> <<"\"", B/binary, "\"">> end,
+            QName = AddQuotes(Name),
+            QKey = AddQuotes(Key),
+            Args = <<"(", HexEncodedResolverPubkey/binary, ", ",
+                     QName/binary, ",", QKey/binary,")">>,
+            ContractCall(Who, RemoteCallCPubKey, RemoteCallCode, <<"remote_resolve">>,
+                         Args, IsResolvable,
+                         % beacuse of hardcoded value=10 in the
+                         % remote_call.aes -> amount in the call must be > 10
+                         _Amount = 20)
+        end,
+    Test =
+        fun(Fun, N, K, Res) ->
+            [Fun(Who, N, K, Res)
+                || Who <- [initiator, responder]]
+        end,
+
+    % actual tests
+    % we have two contracts: c
+    % * channel_on_chain_contract_name_resolution.aes that has
+    %     `can_resolve(Name, Key)` function. It resolves on-chain names
+    % * channel_remote_on_chain_contract_name_res.aes that has 
+    %     `remote_resolve(Contract, Name, Key)` function that makes a remote
+    %     call to the first contract and uses it to resolve the name on-chain
+    % both functions shall return the same result
+    Name = random_unused_name(),
+
+    % name is not present on-chain, both contracts shall return false:
+    Test(CallResolve, Name, <<"account_pubkey">>, false),
+    Test(CallRemoteContract, Name, <<"account_pubkey">>, false),
+
+    % registering the name on-chain
+    {NamePubkey, NamePrivkey} = initialize_account(2000000),
+    register_name(NamePubkey, NamePrivkey, Name,
+                  [{<<"account_pubkey">>, aec_id:create(account, <<1:256>>)}]),
+
+    % now the name is on-chain, both must return true:
+    Test(CallResolve, Name, <<"account_pubkey">>, true),
+    Test(CallRemoteContract, Name, <<"account_pubkey">>, false), % BUG
     ok.
 
 
