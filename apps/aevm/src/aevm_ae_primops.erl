@@ -124,7 +124,7 @@ types(?PRIM_CALL_AENS_PRECLAIM,_HeapValue,_Store,_State) ->
 types(?PRIM_CALL_AENS_RESOLVE, HeapValue, Store,_State) ->
     %% The out type is given in the third argument
     T = {tuple, [word, word, word, typerep]},
-    {ok, Bin} = aeso_data:heap_to_binary(T, Store, HeapValue),
+    {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
     {ok, {_Prim, _, _, OutType}} = aeso_heap:from_binary(T, Bin),
     {[string, string, typerep], aeso_icode:option_typerep(OutType)};
 types(?PRIM_CALL_AENS_REVOKE,_HeapValue,_Store,_State) ->
@@ -139,7 +139,7 @@ types(?PRIM_CALL_MAP_EMPTY,_HeapValue,_Store,_State) ->
     {[typerep, typerep], word};
 types(?PRIM_CALL_MAP_GET, HeapValue, Store, State) ->
     T = {tuple, [word, word]},
-    {ok, Bin} = aeso_data:heap_to_binary(T, Store, HeapValue),
+    {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
     {ok, {_Prim, Id}} = aeso_heap:from_binary(T, Bin),
     {_KeyType, ValType} = aevm_eeevm_maps:map_type(Id, State),
     {[word, word], aeso_icode:option_typerep(ValType)};
@@ -149,7 +149,7 @@ types(?PRIM_CALL_MAP_SIZE,_HeapValue,_Store,_State) ->
     {[word], word};
 types(?PRIM_CALL_MAP_TOLIST, HeapValue, Store, State) ->
     T = {tuple, [word, word]},
-    {ok, Bin} = aeso_data:heap_to_binary(T, Store, HeapValue),
+    {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
     {ok, {_Prim, Id}} = aeso_heap:from_binary(T, Bin),
     {KeyType, ValType} = aevm_eeevm_maps:map_type(Id, State),
     {[word], {list, {tuple, [KeyType, ValType]}}};
@@ -204,7 +204,7 @@ oracle_query_type_from_chain(HeapValue, Store, State) ->
 
 oracle_type_from_chain(HeapValue, Store, State, Which) ->
     T = {tuple, [word, word]},
-    {ok, Bin} = aeso_data:heap_to_binary(T, Store, HeapValue),
+    {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
     {ok, {_Prim, OracleID}} = aeso_heap:from_binary(T, Bin),
     API        = aevm_eeevm_state:chain_api(State),
     ChainState = aevm_eeevm_state:chain_state(State),
@@ -581,12 +581,12 @@ build_heap_list(Maps, KeyType, ValType, [{K, V} | KVs], Offs, Acc) ->
     HeadPtr      = Offs + 64,
     KeyPtr       = HeadPtr + 64,
     NextId       = 0,   %% There are no maps in map keys
-    {ok, KeyVal} = aeso_data:binary_to_heap(KeyType, K, NextId, KeyPtr),
+    {ok, KeyVal} = aevm_data:binary_to_heap(KeyType, K, NextId, KeyPtr),
     KeyBin       = aeso_heap:heap_value_heap(KeyVal),
     KeyPtr1      = aeso_heap:heap_value_pointer(KeyVal),
     ValPtr       = KeyPtr + byte_size(KeyBin),
     <<VP:256, VB/binary>> = V,
-    {ok, ValVal} = aeso_data:heap_to_heap(ValType, aeso_heap:heap_value(Maps, VP, VB, 32), ValPtr),
+    {ok, ValVal} = aevm_data:heap_to_heap(ValType, aeso_heap:heap_value(Maps, VP, VB, 32), ValPtr),
     ValPtr1      = aeso_heap:heap_value_pointer(ValVal),
     ValBin       = aeso_heap:heap_value_heap(ValVal),
     TailPtr      =

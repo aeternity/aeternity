@@ -188,7 +188,7 @@ init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
                     %% to memory. The first element of the calldata tuple is
                     %% the function name
                     HeapSize = aevm_eeevm_memory:size_in_words(State2) * 32,
-                    case aeso_data:binary_to_heap(CallDataType, Calldata,
+                    case aevm_data:binary_to_heap(CallDataType, Calldata,
                                                   aevm_eeevm_maps:next_id(maps(State2)),
                                                   HeapSize) of
                         {ok, CalldataHeap} ->
@@ -266,7 +266,7 @@ heap_to_binary(Type, Ptr, State) ->
     Maps  = maps(State),
     Value = aeso_heap:heap_value(Maps, Ptr, Heap),
     MaxWords = aevm_gas:mem_limit_for_gas(gas(State), State),
-    case aeso_data:heap_to_binary(Type, Store, Value, MaxWords * 32) of
+    case aevm_data:heap_to_binary(Type, Store, Value, MaxWords * 32) of
         {ok, Bin} ->
             GasUsed = aevm_gas:mem_gas(byte_size(Bin) div 32, State),
             {ok, Bin, GasUsed};
@@ -286,7 +286,7 @@ heap_to_heap(Type, Ptr, State) ->
     Maps  = maps(State),
     Value = aeso_heap:heap_value(Maps, Ptr, Heap),
     MaxWords = aevm_gas:mem_limit_for_gas(gas(State), State),
-    case aeso_data:heap_to_heap(Type, Value, 32, MaxWords) of
+    case aevm_data:heap_to_heap(Type, Value, 32, MaxWords) of
         {ok, NewValue} ->
             GasUsed = aevm_gas:mem_gas(byte_size(aeso_heap:heap_value_heap(NewValue)) div 32, State),
             {ok, NewValue, GasUsed};
@@ -307,7 +307,7 @@ return_contract_call_result(To, Input, Addr,_Size, ReturnData, Type, State) ->
                     %% Local primops (like map primops) return heap values
                     <<Ptr:256, Bin/binary>> = ReturnData,
                     HeapVal = aeso_heap:heap_value(maps(State), Ptr, Bin, 32),
-                    case aeso_data:heap_to_heap(Type, HeapVal, HeapSize) of
+                    case aevm_data:heap_to_heap(Type, HeapVal, HeapSize) of
                         {ok, Out} ->
                             write_heap_value(Out, State);
                         {error, _} = Err ->
@@ -317,7 +317,7 @@ return_contract_call_result(To, Input, Addr,_Size, ReturnData, Type, State) ->
                     end;
                 false ->
                     NextId = aevm_eeevm_maps:next_id(maps(State)),
-                    case aeso_data:binary_to_heap(Type, ReturnData, NextId, HeapSize) of
+                    case aevm_data:binary_to_heap(Type, ReturnData, NextId, HeapSize) of
                         {ok, Out} ->
                             write_heap_value(Out, State);
                         {error, _} = Err ->
@@ -379,7 +379,7 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
             case Target == ?PRIM_CALLS_CONTRACT of
                 true ->
                     %% The first argument is the primop id
-                    {ok, Bin} = aeso_data:heap_to_binary({tuple, [word]}, Store, HeapValue),
+                    {ok, Bin} = aevm_data:heap_to_binary({tuple, [word]}, Store, HeapValue),
                     {ok, {Prim}} = aeso_heap:from_binary({tuple, [word]}, Bin),
                     {ArgTypes, OutType} = aevm_ae_primops:types(Prim, HeapValue, Store, State),
                     DataType = {tuple, [word|ArgTypes]},
@@ -393,7 +393,7 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                     end;
                 false ->
                     %% The first element in the arg tuple is the function hash
-                    {ok, Bin} = aeso_data:heap_to_binary({tuple, [word]}, Store, HeapValue),
+                    {ok, Bin} = aevm_data:heap_to_binary({tuple, [word]}, Store, HeapValue),
                     {ok, {TypeHashInt}} = aeso_heap:from_binary({tuple, [word]}, Bin),
                     TypeHash = <<TypeHashInt:256>>,
                     case ChainAPI:get_contract_fun_types(TargetKey, ?AEVM_01_Sophia_01,

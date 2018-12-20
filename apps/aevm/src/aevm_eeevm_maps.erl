@@ -21,7 +21,7 @@
 %%                       of a map in the store (more on store maps below)
 %%      - data         : stored | MapData
 %%
-%%  MapData is `#{aeso_heap:binary_value() => tombstone | aeso_data:binary_heap_value()}`.
+%%  MapData is `#{aeso_heap:binary_value() => tombstone | aevm_data:binary_heap_value()}`.
 %%  The data for a store map is `stored`. Map keys cannot contain other maps
 %%  and in this case binary_value and heap_value are the same. For map values,
 %%  the important difference between binary_value() and binary_heap_value() is

@@ -98,7 +98,7 @@ from_sophia_state(Data) ->
     {ok, {Type}}    = aeso_heap:from_binary({tuple, [typerep]}, Data),
     %% Strip the type from the binary
     Data1 = second_component(Data),
-    {ok, StateValue} = aeso_data:binary_to_heap(Type, Data1, 0, 32),
+    {ok, StateValue} = aevm_data:binary_to_heap(Type, Data1, 0, 32),
     TypeData  = aeso_heap:to_binary(Type),
     Mem       = aeso_heap:heap_value_heap(StateValue),
     Ptr       = aeso_heap:heap_value_pointer(StateValue),
@@ -244,11 +244,11 @@ ref_count_garbage(PotentialGarbage, ActualGarbage, Maps, RefCounts, Store) ->
 
 gc_ref_count(Id, RefCounts, Store) ->
     {_, ValType} = map_types(Id, Store),
-    case aeso_data:has_maps(ValType) of
+    case aevm_data:has_maps(ValType) of
         false -> RefCounts; %% Nothing to do if there are no nested maps
         true  ->
             UsedMaps =
-                lists:append([ aeso_data:used_maps(ValType, Val)
+                lists:append([ aevm_data:used_maps(ValType, Val)
                                 || {_Key, Val} <- store_to_list(Id, Store) ]),
             lists:foldl(fun(Used, RfC) ->
                             maps:update_with(Used, fun(N) -> N - 1 end, RfC)
@@ -269,7 +269,7 @@ update_ref_counts1([{_Id, Map} | Maps], RefCounts, Store) ->
                         New =
                             case Val of
                                 tombstone -> [];
-                                _         -> aeso_data:used_maps(ValType, Val)
+                                _         -> aevm_data:used_maps(ValType, Val)
                             end,
                         Old =
                             case Map#pmap.parent of
@@ -277,7 +277,7 @@ update_ref_counts1([{_Id, Map} | Maps], RefCounts, Store) ->
                                 PId  ->
                                     case get_value(PId, Key, Store) of
                                         false  -> [];
-                                        OldVal -> aeso_data:used_maps(ValType, OldVal)
+                                        OldVal -> aevm_data:used_maps(ValType, OldVal)
                                     end
                             end,
                         %% Subtract old from new

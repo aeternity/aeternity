@@ -1,4 +1,4 @@
--module(aeso_data).
+-module(aevm_data).
 
 -export([ binary_to_heap/4
         , heap_to_heap/3
@@ -10,7 +10,6 @@
         , has_maps/1
         ]).
 
--include("aeso_icode.hrl").
 -include_lib("aesophia/include/aeso_heap.hrl").
 
 -type store() :: aect_contracts:store().  %% #{ binary() => binary() }
@@ -64,7 +63,7 @@ merge_maps(#maps{maps = Maps1}, #maps{maps = Maps2, next_id = N}) ->
 
 %% -- Binary to heap ---------------------------------------------------------
 
--spec binary_to_heap(Type :: ?Type(), Bin :: binary_value(), NextId :: non_neg_integer(), Offs :: offset()) ->
+-spec binary_to_heap(Type :: aeso_sophia:type(), Bin :: binary_value(), NextId :: non_neg_integer(), Offs :: offset()) ->
         {ok, heap_value()} | {error, term()}.
 %% Takes a binary encoded with to_binary/1 and returns a heap fragment starting at Offs.
 binary_to_heap(Type, <<Ptr:32/unit:8, Heap/binary>>, NextId, Offs) ->
@@ -81,12 +80,12 @@ binary_to_heap(_Type, <<>>, _NextId, _Offs) ->
 
 %% -- Heap to binary ---------------------------------------------------------
 
--spec heap_to_binary(Type :: ?Type(), Store :: store(), Heap :: heap_value()) ->
+-spec heap_to_binary(Type :: aeso_sophia:type(), Store :: store(), Heap :: heap_value()) ->
         {ok, binary_value()} | {error, term()}.
 heap_to_binary(Type, Store, HeapVal) ->
     heap_to_binary(Type, Store, HeapVal, infinity).
 
--spec heap_to_binary(Type :: ?Type(), Store :: store(), Heap :: heap_value(), infinity | non_neg_integer()) ->
+-spec heap_to_binary(Type :: aeso_sophia:type(), Store :: store(), Heap :: heap_value(), infinity | non_neg_integer()) ->
         {ok, binary_value()} | {error, term()}.
 heap_to_binary(Type, Store, {Ptr, Heap}, MaxSize) ->
     try
@@ -102,7 +101,7 @@ heap_to_binary(Type, Store, {Ptr, Heap}, MaxSize) ->
 
 %% -- Binary to binary -------------------------------------------------------
 
--spec binary_to_binary(Type :: ?Type(), Bin :: binary_value()) ->
+-spec binary_to_binary(Type :: aeso_sophia:type(), Bin :: binary_value()) ->
         {ok, binary_value()} | {error, term()}.
 binary_to_binary(Type, <<Ptr:32/unit:8, Heap/binary>>) ->
     try
@@ -117,12 +116,12 @@ binary_to_binary(Type, <<Ptr:32/unit:8, Heap/binary>>) ->
 %% -- Heap to heap -----------------------------------------------------------
 
 %% Used for the state
--spec heap_to_heap(Type :: ?Type(), Heap :: heap_value(), Offs :: offset()) ->
+-spec heap_to_heap(Type :: aeso_sophia:type(), Heap :: heap_value(), Offs :: offset()) ->
         {ok, heap_value()} | {error, term()}.
 heap_to_heap(Type, HeapVal, Offs) ->
     heap_to_heap(Type, HeapVal, Offs, infinity).
 
--spec heap_to_heap(Type :: ?Type(), Heap :: heap_value(), Offs :: offset(), MaxSize :: non_neg_integer() | infinity) ->
+-spec heap_to_heap(Type :: aeso_sophia:type(), Heap :: heap_value(), Offs :: offset(), MaxSize :: non_neg_integer() | infinity) ->
         {ok, heap_value()} | {error, term()}.
 heap_to_heap(Type, {Ptr, Heap}, Offs, MaxSize) ->
     try
@@ -139,7 +138,7 @@ heap_to_heap(Type, {Ptr, Heap}, Offs, MaxSize) ->
 -type format() :: heap | binary.
 
 -spec convert(Input :: format(), Output :: format(), MaxSize :: non_neg_integer() | infinity,
-              Store :: store(), visited(), ?Type(), pointer(),
+              Store :: store(), visited(), aeso_sophia:type(), pointer(),
               heap_fragment(), offset()) -> {pointer(), {#maps{}, offset(), [iodata()]}}.
 convert(_, _, _, _, _, word, Val, Heap, _) ->
     {Val, {aeso_heap:maps_with_next_id(Heap), 0, []}};
@@ -274,7 +273,7 @@ convert_map_value(Input, Output, Store, ValT, <<ValPtr:256, ValBin/binary>>, Hea
 
 %% -- Compute used map ids ---------------------------------------------------
 
--spec used_maps(?Type(), binary_heap_value()) -> [non_neg_integer()].
+-spec used_maps(aeso_sophia:type(), binary_heap_value()) -> [non_neg_integer()].
 used_maps(Type, <<Ptr:256, Mem/binary>>) ->
     used_maps(#{}, Type, Ptr, aeso_heap:heap_fragment(no_maps(0), 32, Mem)).
 
