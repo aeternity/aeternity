@@ -418,13 +418,16 @@ oracle_get_question(OracleId, QueryId, #state{trees = ChainTrees}) ->
             {error, no_such_question}
     end.
 
-oracle_query_fee(Oracle, #state{trees = ChainTrees}) ->
+oracle_query_fee(Oracle, #state{trees = ChainTrees, vm_version=VMVersion}) ->
     Trees = get_on_chain_trees(ChainTrees),
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             Fee = aeo_oracles:query_fee(O),
             {ok, Fee};
-        none  ->
+        none when VMVersion =:= ?AEVM_02_Sophia_01 ->
+            {error, no_such_oracle};
+        none when VMVersion =:= ?AEVM_01_Sophia_01 ->
+            %% Backwards compatible bug.
             {ok, none}
     end.
 
