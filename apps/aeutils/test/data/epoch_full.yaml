@@ -118,21 +118,27 @@ mining:
     # Public key of beneficiary account that will receive fees from mining on a node.
     beneficiary: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999"
     cuckoo:
-        miner:
-            # Group of executable binaries of the miner.
-            executable_group: aecuckoo
-            # Executable binary of the miner.
-            executable: mean29-generic
-            # Extra arguments to pass to the miner executable binary.
-            extra_args: "-t 5"
-            # Number of bits used for representing an edge in the Cuckoo Cycle problem.
-            edge_bits: 29
-            # Hexadecimal encode the header argument that is send to the miner executable. CUDA executables expect hex encoded header.
-            hex_encoded_header: false
-            # Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority. Keep it unset to inherit parent process priority.
-            nice: 0
-            # Number of tries to do in each miner context - WARNING: it should be set so the miner process runs for 3-5s or else the node risk missing out on new micro blocks.
-            repeats: 1
+        # Number of bits used for representing an edge in the Cuckoo Cycle problem.
+        edge_bits: 29
+        miners:
+            - # Group of executable binaries of the miner.
+              executable_group: aecuckoo
+              # Executable binary of the miner.
+              executable: mean29-generic
+              # Extra arguments to pass to the miner executable binary.
+              extra_args: "-t 5"
+              # Hexadecimal encode the header argument that is send to the miner executable. CUDA executables expect hex encoded header.
+              hex_encoded_header: false
+              # Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority. Keep it unset to inherit parent process priority.
+              nice: 0
+              # Number of tries to do in each miner context - WARNING: it should be set so the miner process runs for 3-5s or else the node risk missing out on new micro blocks.
+              repeats: 1
+            - executable_group: aecuckoo
+              executable: mean29-generic
+              extra_args: "-t 5"
+              hex_encoded_header: false
+              nice: 0
+              repeats: 4
 
 logging:
     # Controls the overload protection in the logs.

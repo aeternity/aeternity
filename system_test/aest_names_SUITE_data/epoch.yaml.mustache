@@ -27,10 +27,9 @@ mining:
     micro_block_cycle: 100
     expected_mine_rate: 1000
     cuckoo:
-        miner:
-            executable: mean15-generic
-            extra_args: ""
-            edge_bits: 15
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
 
 fork_management:
     network_id: "ae_system_test"

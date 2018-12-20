@@ -1,0 +1,9 @@
+mining:
+    autostart: true
+    beneficiary: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999"
+    cuckoo:
+        miner:
+            executable: mean29-generic
+            extra_args: ""
+            edge_bits: 29
+            hex_encoded_header: true

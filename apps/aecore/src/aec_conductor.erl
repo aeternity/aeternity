@@ -45,7 +45,8 @@
 -behaviour(gen_server).
 
 %% Mining API
--export([ get_mining_state/0
+-export([ get_miner_instances/0
+        , get_mining_state/0
         , get_mining_workers/0
         , start_mining/0
         , stop_mining/0
@@ -104,6 +105,9 @@ stop() ->
 
 %%%===================================================================
 %%% Mining API
+
+get_miner_instances() ->
+    gen_server:call(?SERVER, get_miner_instances).
 
 -spec start_mining() -> 'ok'.
 start_mining() ->
@@ -225,6 +229,8 @@ handle_call(get_key_block_candidate,_From, State) ->
                 end
         end,
     {reply, Res, State1};
+handle_call(get_miner_instances, _From, State) ->
+    {reply, State#state.miner_instances, State};
 handle_call({post_block, Block},_From, State) ->
     {Reply, State1} = handle_post_block(Block, State),
     {reply, Reply, State1};
@@ -531,7 +537,7 @@ worker_reply(wait_for_keys, Res, State) ->
     handle_wait_for_keys_reply(Res, State).
 
 state_cleanup_after_worker(State, mining, Pid) ->
-    deregister_miner_instance(State, Pid);
+    deregister_miner_instance(Pid, State);
 state_cleanup_after_worker(State, _Tag, _Pid) ->
     State.
 
@@ -576,26 +582,55 @@ erase_worker(Pid, #state{workers = Workers} = State) ->
 %%% Miner instances handling
 
 init_miner_instances(State) ->
-    MinerInstances = [{N, available} || N <- lists:seq(0, aec_pow_cuckoo:get_miner_instances() - 1)],
+    MinerConfigs   = aec_pow_cuckoo:get_miner_configs(),
+    MinerInstances = create_miner_instances(MinerConfigs),
     State#state{miner_instances = MinerInstances}.
+
+create_miner_instances(MinerConfigs) when is_list(MinerConfigs) ->
+    {MinerInstances, _} =
+        lists:foldl(
+          fun(MinerConfig, {Acc, Id}) ->
+                  {Instances, NextId} = create_miner_instances(MinerConfig, Id),
+                  {Instances ++ Acc, NextId}
+          end, {[], 0}, MinerConfigs),
+    MinerInstances.
+
+create_miner_instances(MinerConfig, FirstId) ->
+    case aec_pow_cuckoo:get_addressed_instances(MinerConfig) of
+        undefined ->
+            {[create_miner_instance(FirstId, undefined, MinerConfig)], FirstId + 1};
+        AddressedInstances when is_list(AddressedInstances) ->
+            lists:foldl(
+              fun(AddressedInstance, {Acc, Id}) ->
+                      {[create_miner_instance(Id, AddressedInstance, MinerConfig) | Acc], Id + 1}
+              end, {[], FirstId}, AddressedInstances)
+    end.
+
+create_miner_instance(Id, Instance, Config) ->
+    #miner_instance{id       = Id,
+                    instance = Instance,
+                    config   = Config,
+                    state    = available}.
 
 available_miner_instance(#state{miner_instances = MinerInstances}) ->
     get_first_available_instance(MinerInstances).
 
 get_first_available_instance([]) ->
     none;
-get_first_available_instance([{Instance, available} | _Instances]) ->
+get_first_available_instance([#miner_instance{state = available} = Instance | _Instances]) ->
     Instance;
 get_first_available_instance([_Instance | Instances]) ->
     get_first_available_instance(Instances).
 
-register_miner_instance(#state{miner_instances = MinerInstances0} = State, Instance, Pid) ->
-    MinerInstances = lists:keyreplace(Instance, 1, MinerInstances0, {Instance, Pid}),
+register_miner_instance(Instance, Pid, #state{miner_instances = MinerInstances0} = State) ->
+    UpdatedInstance = Instance#miner_instance{state = Pid},
+    MinerInstances  = lists:keyreplace(Instance#miner_instance.id, #miner_instance.id, MinerInstances0, UpdatedInstance),
     State#state{miner_instances = MinerInstances}.
 
-deregister_miner_instance(#state{miner_instances = MinerInstances0} = State, Pid) ->
-    {Instance, Pid} = lists:keyfind(Pid, 2, MinerInstances0),
-    MinerInstances = lists:keyreplace(Pid, 2, MinerInstances0, {Instance, available}),
+deregister_miner_instance(Pid, #state{miner_instances = MinerInstances0} = State) ->
+    Instance0 = lists:keyfind(Pid, #miner_instance.state, MinerInstances0),
+    Instance  = Instance0#miner_instance{state = available},
+    MinerInstances = lists:keyreplace(Pid, #miner_instance.state, MinerInstances0, Instance),
     State#state{miner_instances = MinerInstances}.
 
 %%%===================================================================
@@ -726,30 +761,33 @@ start_mining(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}} 
     %% Candidate generated with stale top hash.
     %% Regenerate the candidate.
     create_key_block_candidate(State);
-start_mining(#state{key_block_candidates = [{HeaderBin, Candidate0} | Candidates]} = State) ->
+start_mining(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]} = State) ->
     case available_miner_instance(State) of
         none -> State;
         Instance ->
             epoch_mining:info("Starting miner on top of ~p", [State#state.top_block_hash]),
-            Candidate = bump_nonce(Candidate0),
-            Nonce  = Candidate#candidate.nonce,
-            Target = aec_blocks:target(Candidate#candidate.block),
-            Info   = [{top_block_hash, State#state.top_block_hash}],
+            Target            = aec_blocks:target(Candidate#candidate.block),
+            MinerConfig       = Instance#miner_instance.config,
+            AddressedInstance = Instance#miner_instance.instance,
+            Nonce             = aec_pow:trim_nonce(Candidate#candidate.nonce, MinerConfig),
+            Info              = [{top_block_hash, State#state.top_block_hash}],
             aec_events:publish(start_mining, Info),
             Fun = fun() ->
-                          {aec_mining:mine(HeaderBin, Target, Nonce, Instance)
+                          {aec_mining:mine(HeaderBin, Target, Nonce, MinerConfig, AddressedInstance)
                           , HeaderBin}
                   end,
-            Candidate1 = Candidate#candidate{refs = Candidate#candidate.refs + 1},
+            Candidate1 = register_miner(Candidate, Nonce, MinerConfig),
             State1 = State#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]},
             {State2, Pid} = dispatch_worker(mining, Fun, State1),
-            State3 = register_miner_instance(State2, Instance, Pid),
+            State3 = register_miner_instance(Instance, Pid, State2),
             epoch_mining:info("Miner ~p started", [Pid]),
             start_mining(State3)
     end.
 
-bump_nonce(C = #candidate{ nonce = N }) ->
-    C#candidate{ nonce = aec_pow:next_nonce(N) }.
+register_miner(Candidate = #candidate{refs  = Refs}, Nonce, MinerConfig) ->
+    NextNonce = aec_pow:next_nonce(Nonce, MinerConfig),
+    Candidate#candidate{refs  = Refs + 1,
+                        nonce = NextNonce}.
 
 handle_mining_reply(_Reply, #state{key_block_candidates = undefined} = State) ->
     %% Something invalidated the block candidates already.

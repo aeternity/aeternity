@@ -1178,14 +1178,18 @@ post_key_block(_CurrentBlockType, Config) ->
     ?assertEqual(Nonce1, maps:get(<<"nonce">>, CurrentBlock)),
     ok.
 
-mine_key_block(HeaderBin, Target, Nonce, Attempts) when Attempts > 0 ->
-    case rpc(aec_mining, mine, [HeaderBin, Target, Nonce, 0]) of
+mine_key_block(HeaderBir, Target, Nonce, Attempts) when Attempts > 0 ->
+    [Config] = rpc(aec_pow_cuckoo, get_miner_configs, []),
+    mine_key_block(HeaderBir, Target, Nonce, Config, Attempts).
+
+mine_key_block(HeaderBin, Target, Nonce, Config, Attempts) when Attempts > 0 ->
+    case rpc(aec_mining, mine, [HeaderBin, Target, Nonce, Config, 0]) of
         {ok, {_Nonce, _PowEvidence}} = Res ->
             Res;
         {error, no_solution} ->
-            mine_key_block(HeaderBin, Target, aec_pow:next_nonce(Nonce), Attempts - 1)
+            mine_key_block(HeaderBin, Target, aec_pow:next_nonce(Nonce, Config), Config, Attempts - 1)
     end;
-mine_key_block(_HeaderBin, _Target, _Nonce, 0) ->
+mine_key_block(_HeaderBin, _Target, _Nonce, _Config, 0) ->
     {error, no_solution}.
 
 get_key_blocks_current_sut() ->

@@ -80,10 +80,10 @@ mining:
     expected_mine_rate: 100
     beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
-        miner:
-            executable: mean15-generic
-            extra_args: ""
-            edge_bits: 15
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+              extra_args: ""
 """
     p_conf = """\
 ---
@@ -281,10 +281,10 @@ mining:
     expected_mine_rate: 100
     beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
-        miner:
-            executable: mean15-generic
-            extra_args: ""
-            edge_bits: 15
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+              extra_args: ""
 """.format(sync_port, key_dir, mining)
     return common.install_user_config(root_dir, file_name, conf)
 
@@ -311,10 +311,10 @@ mining:
     expected_mine_rate: 100
     beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
-        miner:
-            executable: mean15-generic
-            extra_args: ""
-            edge_bits: 15
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+              extra_args: ""
 """
     return common.install_user_config(root_dir, file_name, conf)
 
@@ -341,10 +341,10 @@ mining:
     expected_mine_rate: 100
     beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
-        miner:
-            executable: mean15-generic
-            extra_args: ""
-            edge_bits: 15
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+              extra_args: ""
 """
     return common.install_user_config(root_dir, file_name, conf)
 
