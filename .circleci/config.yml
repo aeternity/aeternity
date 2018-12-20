@@ -528,6 +528,16 @@ jobs:
       - store_artifacts:
           path: *chain_snapshots
 
+  main_chain_snapshot:
+    <<: *infrastructure_config
+    environment:
+      - BACKUP_ENV: main
+    steps:
+      - *setup_secrets
+      - *snapshot_chain
+      - store_artifacts:
+          path: *chain_snapshots
+
   docker_system_tests:
     <<: *machine_config
     steps:
@@ -913,6 +923,7 @@ workflows:
                 - master
     jobs:
       - uat_chain_snapshot
+      - main_chain_snapshot
 
   system_tests:
     triggers:
