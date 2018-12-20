@@ -183,7 +183,8 @@ mining:
         miners:
             - executable: mean29-generic
               extra_args: -t 2
-            - executable: cuda29
+            - executable_group: aecuckooprebuilt
+              executable: cuda29
               extra_args: -t 1
               hex_encoded_header: true
 ```
