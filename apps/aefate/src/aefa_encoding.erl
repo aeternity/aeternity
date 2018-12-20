@@ -124,8 +124,6 @@ serialize(Map) when ?IS_FATE_MAP(Map) ->
     <<?MAP,
       (rlp_integer(Size))/binary,
       (Elements)/binary>>;
-%% serialize(?FATE_VARIANT(Tag, Values)) when ?IS_FATE_INTEGER(Tag),
-%%                                            ?IS_FATE_TUPLE(Values) ->
 serialize(?FATE_VARIANT(Tag, Values)) when 0 =< Tag
                                            , Tag < 256 ->
     <<?VARIANT,

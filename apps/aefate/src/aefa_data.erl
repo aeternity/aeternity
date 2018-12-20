@@ -8,50 +8,34 @@
 -type fate_integer() :: ?FATE_INTEGER_T.
 -type fate_boolean() :: ?FATE_BOOLEAN_T.
 -type fate_nil()     :: ?FATE_NIL_T.
--type fate_list(T)   :: ?FATE_LIST_T(T).
+-type fate_list()    :: ?FATE_LIST_T.
 -type fate_unit()    :: ?FATE_UNIT_T.
 -type fate_map()     :: ?FATE_MAP_T.
 -type fate_string()  :: ?FATE_STRING_T.
 -type fate_address() :: ?FATE_ADDRESS_T.
--type fate_variant(T):: ?FATE_VARIANT_T(T).
+-type fate_variant() :: ?FATE_VARIANT_T.
 
 -type fate_void()    :: ?FATE_VOID_T.
 
--type fate_tuple(T) :: fate_unit()
-                     | ?FATE_TUPLE_T({T})
-                     | ?FATE_TUPLE_T({T,T})
-                     | ?FATE_TUPLE_T({T,T,T})
-                     | ?FATE_TUPLE_T({T,T,T,T,T})
-                     | ?FATE_TUPLE_T({T,T,T,T,T,T})
-                     | ?FATE_TUPLE_T({T,T,T,T,T,T,T})
-                     | ?FATE_TUPLE_T({T,T,T,T,T,T,T,T})
-                     | ?FATE_TUPLE_T({T,T,T,T,T,T,T,T,T})
-                     | ?FATE_TUPLE_T({T,T,T,T,T,T,T,T,T,T})
-                     | ?FATE_TUPLE_T({T,T,T,T,T,T,T,T,T,T,T})
-                     | ?FATE_TUPLE_T({T,T,T,T,T,T,T,T,T,T,T,T})
-                     | ?FATE_TUPLE_T({T,T,T,T,T,T,T,T,T,T,T,T,T}).
+-type fate_tuple()   :: ?FATE_TUPLE_T.
 
--type fate_none_map_type() ::
+-type fate_type() ::
         fate_boolean()
       | fate_integer()
       | fate_nil()
-      | fate_list(fate_none_map_type())
+      | fate_list()
       | fate_unit()
-      | fate_tuple(fate_none_map_type())
+      | fate_tuple()
       | fate_string()
       | fate_address()
-      | fate_variant(fate_none_map_type()).
-
--type fate_none_void_type() :: fate_none_map_type()
-                             | fate_map()
-                             | fate_list(fate_none_void_type())
-                             | fate_tuple(fate_none_void_type())
-                             | fate_variant(fate_none_void_type()).
-
--type fate_type() :: fate_none_void_type() | fate_void().
+      | fate_variant()
+      | fate_map()
+      | fate_list()
+      | fate_tuple()
+      | fate_variant()
+      | fate_void(). %% Not sure we need this.
 
 -export_type([fate_type/0]).
--export_type([fate_none_void_type/0]).
 -export([ make_integer/1
         , make_boolean/1
         , make_list/1
@@ -96,7 +80,7 @@ format(?FATE_TUPLE(T)) ->
     "{ " ++ [format(E) ++ " " || E <- tuple_to_list(T)] ++ "}";
 format(S) when ?IS_FATE_STRING(S) -> [S];
 format(?FATE_VARIANT(Tag, T)) ->
-    "( " ++ format(Tag) ++ ", "
+    "( " ++ integer_to_list(Tag) ++ ", "
         ++ [format(E) ++ " " || E <- tuple_to_list(T)]
         ++ " )";
 format(M) when ?IS_FATE_MAP(M) ->
