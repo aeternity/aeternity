@@ -6,13 +6,13 @@
 %%%=============================================================================
 -module(aec_pow).
 
--export([test_target/2,
-         pick_nonce/0,
+-export([integer_to_scientific/1,
          next_nonce/2,
-         target_to_difficulty/1,
-
+         pick_nonce/0,
          scientific_to_integer/1,
-         integer_to_scientific/1]).
+         target_to_difficulty/1,
+         test_target/2,
+         trim_nonce/2]).
 
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
@@ -132,15 +132,18 @@ target_to_difficulty(SciTgt) ->
     (?DIFFICULTY_INTEGER_FACTOR * ?HIGHEST_TARGET_INT)
         div scientific_to_integer(SciTgt).
 
+-spec next_nonce(aec_pow:nonce(), aec_pow:miner_config()) -> aec_pow:nonce().
+next_nonce(Nonce, Cfg) ->
+    Nonce + aec_pow_cuckoo:get_repeats(Cfg).
+
 -spec pick_nonce() -> aec_pow:nonce().
 pick_nonce() ->
     rand:uniform(?NONCE_RANGE) band ?MAX_NONCE.
 
--spec next_nonce(aec_pow:nonce(), aec_pow:miner_config()) -> aec_pow:nonce().
-next_nonce(N, Cfg) ->
-    Step = aec_pow_cuckoo:get_repeats(Cfg),
-    case N + 2 * Step < ?MAX_NONCE of
-        true  -> N + Step;
+-spec trim_nonce(aec_pow:nonce(), aec_pow:miner_config()) -> aec_pow:nonce().
+trim_nonce(Nonce, Cfg) ->
+    case Nonce + aec_pow_cuckoo:get_repeats(Cfg) < ?MAX_NONCE of
+        true  -> Nonce;
         false -> 0
     end.
 

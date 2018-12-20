@@ -226,13 +226,13 @@ mining:
               executable: cuda29
               extra_args: ""
               hex_encoded_header: true
-              instances: [0,1]
+              addressed_instances: [0,1]
               repeats: 2
             - executable_group: aecuckooprebuilt
               executable: cuda29
               extra_args: ""
               hex_encoded_header: true
-              instances: [2,3]
+              addressed_instances: [2,3]
               repeats: 5
 ```
 
