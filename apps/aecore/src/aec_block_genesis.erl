@@ -43,11 +43,13 @@
 -export([genesis_block_with_state/1]).
 -endif.
 
--define(GENESIS_VERSION, 1).
+-include("blocks.hrl").
+-include_lib("apps/aecore/include/hard_forks.hrl").
+
+-define(GENESIS_VERSION, ?ROMA_PROTOCOL_VSN).
 -define(GENESIS_HEIGHT, 0).
 -define(GENESIS_TIME, 0).
 
--include("blocks.hrl").
 
 %% Since preset accounts are being loaded from a file - please use with caution
 genesis_header() ->
