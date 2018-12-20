@@ -5097,12 +5097,16 @@ peers(_Config) ->
     ok.
 
 disabled_debug_endpoints(_Config) ->
-    ?assertMatch(false, rpc(?NODE0, aehttp_app, enable_internal_debug_endpoints, [])),
+    ?assertMatch(true, rpc(?NODE1, aehttp_app, enable_internal_debug_endpoints, [])),
+    {ok, Internal} = rpc(?NODE1, application, get_env, [aehttp, internal]),
+    NewInternal = proplists:delete(debug_endpoints, Internal),
+    ok = rpc(?NODE1, application, set_env, [aehttp, internal, NewInternal]),
+    ?assertMatch(false, rpc(?NODE1, aehttp_app, enable_internal_debug_endpoints, [])),
 
     %% post_key_blocks_sut should be always enabled
-    ?assertMatch({ok, 400, _}, post_key_blocks_sut(?NODE0, #{})),
-    ?assertMatch({ok, 403, _}, get_peers(?NODE0)),
-    ?assertMatch({ok, 403, _}, get_contract_create(?NODE0, #{})),
+    ?assertMatch({ok, 400, _}, post_key_blocks_sut(?NODE1, #{})),
+    ?assertMatch({ok, 403, _}, get_peers(?NODE1)),
+    ?assertMatch({ok, 403, _}, get_contract_create(?NODE1, #{})),
     ok.
 
 enabled_debug_endpoints(_Config) ->
