@@ -243,7 +243,7 @@
                             "default" : 10
                         },
                         "debug_endpoints" : {
-                            "description" : "Enable (true) debug api. Disabled (false) by default",
+                            "description" : "Enable (true) debug api. Disabled (false) by default. Debug endpoints are defined by a tag in swagger.yaml config",
                             "type" : "boolean",
                             "default" : false
                         }
