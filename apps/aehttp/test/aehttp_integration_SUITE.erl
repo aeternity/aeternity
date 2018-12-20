@@ -147,6 +147,13 @@
    ]).
 
 %% test case exports
+%% debug endpoints
+-export([
+    enabled_debug_endpoints/1,
+    disabled_debug_endpoints/1
+   ]).
+
+%% test case exports
 %% for swagger validation errors
 -export([
     swagger_validation_body/1,
@@ -226,6 +233,8 @@
 
 -include_lib("common_test/include/ct.hrl").
 -define(NODE, dev1).
+-define(NODE0, dev0).
+-define(NODE1, ?NODE).
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(WS, aehttp_ws_test_utils).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
@@ -261,6 +270,7 @@ groups() ->
        {group, off_chain_endpoints},
        {group, external_endpoints},
        {group, internal_endpoints},
+       {group, debug_endpoints},
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
        {group, naming},
@@ -463,6 +473,10 @@ groups() ->
         % requested Endpoints
         peers
       ]},
+     {debug_endpoints, [], [
+        enabled_debug_endpoints,
+        disabled_debug_endpoints
+     ]},
      {swagger_validation, [], [
         swagger_validation_body,
         %% swagger_validation_enum,
@@ -594,7 +608,7 @@ init_per_suite(Config) ->
                      <<"hard_forks">> => Forks},
                <<"mining">> =>
                    #{<<"micro_block_cycle">> => 1}},
-    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_endpoints"}, {test_module, ?MODULE}] ++ Config),
+    Config1 = aecore_suite_utils:init_per_suite([?NODE0, ?NODE1], DefCfg, [{symlink_name, "latest.http_endpoints"}, {test_module, ?MODULE}] ++ Config),
     [{nodes, [aecore_suite_utils:node_tuple(?NODE)]}]  ++ Config1.
 
 end_per_suite(_Config) ->
@@ -603,6 +617,7 @@ end_per_suite(_Config) ->
 init_per_group(all, Config) ->
     Config;
 init_per_group(Group, Config) when
+      Group =:= debug_endpoints;
       Group =:= block_endpoints;
       Group =:= account_endpoints;
       Group =:= transaction_endpoints;
@@ -860,18 +875,28 @@ end_per_testcase_all(Config) ->
              || {_,N} <- ?config(nodes, Config)]]),
     ok.
 
+start_node(Group = debug_endpoints, Config) ->
+    start_node_(?NODE0, Group, Config),
+    start_node_(?NODE1, Group, Config),
+    Config;
 start_node(Group, Config) ->
     start_node(proplists:is_defined(node, Config), Group, Config).
 
-start_node(true, _Group, Config) ->
-    Config;
+start_node(true, _Group, Config) -> Config;
 start_node(false, Group, Config) ->
+    start_node_(?NODE, Group, Config).
+
+start_node_(N, Group, Config) ->
     %% TODO: consider reinint_chain to speed up tests
-    aecore_suite_utils:start_node(?NODE, Config),
-    Node = aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:start_node(N, Config),
+    Node = aecore_suite_utils:node_name(N),
     aecore_suite_utils:connect(Node),
     [{node, Node}, {node_start_group, Group} | Config].
 
+stop_node(debug_endpoints, Config) ->
+    stop_node_(?NODE0, Config),
+    stop_node_(?NODE1, Config),
+    ok;
 stop_node(Group, Config) ->
     stop_node(proplists:is_defined(node, Config), Group, Config).
 
@@ -879,16 +904,19 @@ stop_node(true, Group, Config) ->
     NodeStartGroup = ?config(node_start_group, Config),
     case Group =:= NodeStartGroup of
         true ->
-            RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
-            {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
-            aecore_suite_utils:stop_node(?NODE, Config),
-            aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
+            stop_node_(?NODE, Config),
             ok;
         false ->
             ok
     end;
 stop_node(false, _Group, _Config) ->
     ok.
+
+stop_node_(Node, Config) ->
+    RpcFun = fun(M, F, A) -> rpc(Node, M, F, A) end,
+    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
+    aecore_suite_utils:stop_node(Node, Config),
+    aecore_suite_utils:delete_node_db_if_persisted(DbCfg).
 
 %% ============================================================
 %% Test cases
@@ -1208,7 +1236,10 @@ get_key_blocks_by_hash_sut(Hash) ->
     http_request(Host, get, "key-blocks/hash/" ++ http_uri:encode(Hash), []).
 
 post_key_blocks_sut(KeyBlock) ->
-    Host = internal_address(),
+    post_key_blocks_sut(?NODE, KeyBlock).
+
+post_key_blocks_sut(Node, KeyBlock) ->
+    Host = internal_address(Node),
     http_request(Host, post, "key-blocks", KeyBlock).
 
 %% /micro-blocks/*
@@ -3350,7 +3381,6 @@ naming_system_broken_txs(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Try to submit txs with empty account
-
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
         get_commitment_id(<<"abcd.badregistrar">>, 123),
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
@@ -4610,7 +4640,7 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
     % we have two contracts: c
     % * channel_on_chain_contract_name_resolution.aes that has
     %     `can_resolve(Name, Key)` function. It resolves on-chain names
-    % * channel_remote_on_chain_contract_name_res.aes that has 
+    % * channel_remote_on_chain_contract_name_res.aes that has
     %     `remote_resolve(Contract, Name, Key)` function that makes a remote
     %     call to the first contract and uses it to resolve the name on-chain
     % both functions shall return the same result
@@ -4981,7 +5011,7 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
 
 contract_byte_code(ContractName) ->
     {ok, BinCode} = aect_test_utils:compile_contract(
-                      filename:join(["contracts", 
+                      filename:join(["contracts",
                                      filename:basename(ContractName, ".aes") ++ ".aes"])),
     aehttp_api_encoder:encode(contract_bytearray, BinCode).
 
@@ -5055,9 +5085,7 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
 
 peers(_Config) ->
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := Peers}} = get_peers(),
-
     OkPeers = [ ok || P <- Peers, {ok, _} <- [aec_peers:parse_peer_address(P)] ],
-
     true = (length(OkPeers) == length(Peers)),
 
     %% ensure no peers
@@ -5066,7 +5094,23 @@ peers(_Config) ->
         rpc(aec_peers, get_random, [all])),
 
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := []}} = get_peers(),
+    ok.
 
+disabled_debug_endpoints(_Config) ->
+    ?assertMatch(false, rpc(?NODE0, aehttp_app, enable_internal_debug_endpoints, [])),
+
+    %% post_key_blocks_sut should be always enabled
+    ?assertMatch({ok, 400, _}, post_key_blocks_sut(?NODE0, #{})),
+    ?assertMatch({ok, 404, _}, get_peers(?NODE0)),
+    ?assertMatch({ok, 404, _}, get_contract_create(?NODE0, #{})),
+    ok.
+
+enabled_debug_endpoints(_Config) ->
+    ?assertMatch(true, rpc(?NODE1, aehttp_app, enable_internal_debug_endpoints, [])),
+
+    ?assertMatch({ok, 400, _}, post_key_blocks_sut(?NODE1, #{})),
+    ?assertMatch({ok, 200, _}, get_peers(?NODE1)),
+    ?assertMatch({ok, 400, _}, get_contract_create(?NODE1, #{})),
     ok.
 
 format_args(X) ->
@@ -5083,7 +5127,10 @@ format_arg(I) when is_integer(I) -> integer_to_binary(I).
 %% ============================================================
 
 get_contract_create(Data) ->
-    Host = internal_address(),
+    get_contract_create(?NODE, Data).
+
+get_contract_create(Node, Data) ->
+    Host = internal_address(Node),
     http_request(Host, post, "debug/contracts/create", Data).
 
 get_contract_create_compute(Data) ->
@@ -5234,7 +5281,10 @@ get_peer_pub_key() ->
     http_request(Host, get, "peers/pubkey", []).
 
 get_peers() ->
-    Host = internal_address(),
+    get_peers(?NODE).
+
+get_peers(Node) ->
+    Host = internal_address(Node),
     http_request(Host, get, "debug/peers", []).
 
 get_contract_poi(ContractAddress) ->
@@ -5490,7 +5540,10 @@ external_address() ->
     "http://127.0.0.1:" ++ integer_to_list(Port).     % good enough for requests
 
 internal_address() ->
-    Port = rpc(aeu_env, user_config_or_env,
+    internal_address(?NODE).
+
+internal_address(Node) ->
+    Port = rpc(Node, aeu_env, user_config_or_env,
               [ [<<"http">>, <<"internal">>, <<"port">>],
                 aehttp, [internal, port], 8143]),
     "http://127.0.0.1:" ++ integer_to_list(Port).

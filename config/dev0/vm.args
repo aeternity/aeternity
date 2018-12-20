@@ -1,0 +1,13 @@
+-sname epoch_dev0@localhost
+
+-setcookie epoch_cookie
+-pa patches/ebin
+
++K true
++A30
+
+# number dirty I/O scheduler threads
+# useful to increase parallelism of queries to rocksdb
+#
+# See also https://gitlab.com/barrel-db/barrel/blob/cf81d1c031e0bc746fe64cb7c8882e91bd2970c0/config/vm.args#L20
++SDio 10

@@ -38,7 +38,13 @@ path(Path0) ->
 method(Atom) ->
     list_to_binary(string:uppercase(atom_to_list(Atom))).
 
-is_enabled(Target, Tags, EnabledGroups) when is_atom(Target) ->
+is_enabled(Target, Tags, EnabledGroups) ->
+    case lists:member(<<"debug">>, Tags) of
+        true -> aehttp_app:enable_internal_debug_endpoints();
+        false -> is_enabled_(Target, Tags, EnabledGroups)
+    end.
+
+is_enabled_(Target, Tags, EnabledGroups) ->
     TargetBin = atom_to_binary(Target, utf8),
     lists:member(TargetBin, Tags) andalso
     lists:any(fun(Tag) -> lists:member(Tag, EnabledGroups) end, Tags).

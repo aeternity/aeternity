@@ -26,6 +26,7 @@
 -export([start/2, stop/1]).
 
 -export([check_env/0]).
+-export([enable_internal_debug_endpoints/0]).
 
 %%====================================================================
 %% API
@@ -164,3 +165,7 @@ get_channel_websockets_acceptors() ->
     aeu_env:config_value([<<"websocket">>, <<"channel">>, <<"acceptors">>],
                          aehttp, [channel, websocket, handlers],
                          ?DEFAULT_CHANNEL_ACCEPTORS).
+
+enable_internal_debug_endpoints() ->
+    aeu_env:config_value([<<"http">>, <<"internal">>, <<"debug_endpoints">>],
+                         aehttp, [internal, debug_endpoints], false).

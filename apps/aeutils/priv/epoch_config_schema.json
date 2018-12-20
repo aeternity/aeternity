@@ -241,6 +241,11 @@
                             "description" : "Number of acceptors in internal pool",
                             "type" : "integer",
                             "default" : 10
+                        },
+                        "debug_endpoints" : {
+                            "description" : "Enable (true) debug api. Disabled (false) by default",
+                            "type" : "boolean",
+                            "default" : false
                         }
                     }
                 },

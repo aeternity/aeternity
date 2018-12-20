@@ -8,6 +8,7 @@ http:
         port: 3013
     internal:
         listen_address: 0.0.0.0
+        debug_endpoints: true
     cors:
         allow_domains: [""]
 
