@@ -1,3 +1,13 @@
+# Quick install
+
+Run below command to install latest version of aeternity node.
+
+```bash
+wget https://raw.githubusercontent.com/aeternity/epoch/master/scripts/install.sh && chmod +x install.sh && ./install.sh 1.1.0
+```
+
+See the documentation below detailed instructions for manual installation.
+
 # Install an epoch node using a release binary
 
 This document describes how to install an epoch node using a release binary.
@@ -16,6 +26,10 @@ The release binaries are published on [GitHub](https://github.com/aeternity/epoc
 * macOS Mojave 10.14 (x86-64).
 
 ## Install dependencies
+
+Package dependencies are:
+* [Libsodium](https://download.libsodium.org/doc/) v1.0.16
+* [Openssl](https://www.openssl.org) 1.0.0
 
 ### Ubuntu package
 
@@ -53,6 +67,12 @@ tar -xf libsodium-1.0.16.tar.gz && cd libsodium-1.0.16
 ```
 
 ### macOS package
+
+Easiest way to install dependencies is using [Homebrew](https://brew.sh/):
+```bash
+brew update
+brew install openssl libsodium
+```
 
 The macOS package has:
 * A hard dependency on OpenSSL v1.0.0 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib`;

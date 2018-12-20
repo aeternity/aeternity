@@ -38,7 +38,7 @@ echo ""
 echo "NOTE: The following commands are running inside Ubuntu."
 echo ""
 cd $myPath
-bash ./../install-ubuntu1804.sh $releaseVersion
+bash ./../install.sh $releaseVersion
 
 echo "Congratulations. You can now start the epoch miner by executing the script:"
 echo ""
