@@ -3219,6 +3219,10 @@ sophia_events(_Cfg) ->
     ?assertMatch({{},[{_, _, <<"1234567890123456789012345678901234567897">>}]},
                  ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1234567890123456789012345678901234567890}, #{ return_logs => true })),
 
+    ?assertEqual(<<"5">>, ?call(call_contract, Acc, IdC, i2s, string, {5})),
+    ?assertEqual(<<"12345">>, ?call(call_contract, Acc, IdC, i2s, string, {12345})),
+    ?assertEqual(<<"-2345">>, ?call(call_contract, Acc, IdC, i2s, string, {-2345})),
+
     ok.
 
 

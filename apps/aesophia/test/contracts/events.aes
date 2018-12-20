@@ -12,3 +12,5 @@ contract Events =
 
   function f3(x : int) =
     Chain.event(Event1(x, x + 2, Int.to_str(x + 7)))
+
+  function i2s(i : int) = Int.to_str(i)

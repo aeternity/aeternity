@@ -61,6 +61,8 @@ option_some(X) -> {tuple, [{integer, 1}, X]}.
 -define(LET(Var, Expr, Body), {switch, Expr, [{v(Var), Body}]}).
 -define(DEREF(Var, Ptr, Body), {switch, v(Ptr), [{{tuple, [v(Var)]}, Body}]}).
 -define(NXT(Ptr), op('+', Ptr, 32)).
+-define(NEG(A), op('/', A, {unop, '-', {integer, 1}})).
+-define(BYTE(Ix, Word), op('byte', Ix, Word)).
 
 -define(EQ(A, B), op('==', A, B)).
 -define(LT(A, B), op('<', A, B)).
@@ -347,16 +349,19 @@ builtin_function(str_equal) ->
 
 builtin_function(int_to_str) ->
     {{builtin, int_to_str}, [private],
-        [{"i", word}],
+        [{"i0", word}],
+        {switch, {ifte, ?LT(i0, 0),
+                    {tuple, [?I(2), ?NEG(i0), ?BSL(45, 31)]},
+                    {tuple, [?I(1), ?V(i0), ?I(0)]}},
+        [{{tuple, [v(off), v(i), v(x)]},
         ?LET(ret, {inline_asm, [?A(?MSIZE)]},
         ?LET(n,   ?call(int_digits, [?DIV(i, 10), ?I(0)]),
         ?LET(fac, ?EXP(10, n),
-        {seq,
-            [?ADD(n, 1), {inline_asm, [?A(?MSIZE), ?A(?MSTORE)]}, %% Store str len
-             ?call(int_to_str_,
-                   [?MOD(i, fac), ?BSL(?ADD(48, ?DIV(i, fac)), 31), ?DIV(fac, 10), ?I(1)]),
-             {inline_asm, [?A(?POP)]}, ?V(ret)] %% pop function return, push ret
-        }))),
+            {seq, [?ADD(n, off), {inline_asm, [?A(?MSIZE), ?A(?MSTORE)]}, %% Store str len
+                   ?call(int_to_str_,
+                        [?MOD(i, fac), ?ADD(x, ?BSL(?ADD(48, ?DIV(i, fac)), ?SUB(32, off))), ?DIV(fac, 10), ?V(off)]),
+                   {inline_asm, [?A(?POP)]}, ?V(ret)]}
+        )))}]},
         word};
 
 builtin_function(int_to_str_) ->
