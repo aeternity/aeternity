@@ -764,7 +764,7 @@ multiple_channels_t(NumCs, FromPort, Msg, Slogan, Cfg) ->
             end,
             Txs),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
-        aecore_suite_utils:node_name(dev1), TxHashes, 20),
+        aecore_suite_utils:node_name(dev1), TxHashes, 10),
     mine_blocks(dev1, ?MINIMUM_DEPTH),
     Cs = collect_acks(Cs, channel_ack, NumCs),
     ct:log("channel pids collected: ~p", [Cs]),

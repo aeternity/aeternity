@@ -235,6 +235,10 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MaxBlocks) ->
     mine_blocks_until_txs_on_chain(Node, TxHashes, 100, MaxBlocks).
 
 mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
+    OldRate
+        = rpc:call(
+           Node, application, get_env, [aecore, expected_mine_rate, MiningRate],
+           5000),
     ok = rpc:call(
            Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
            5000),
@@ -245,6 +249,9 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
     StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
     ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
     aecore_suite_utils:unsubscribe(Node, block_created),
+    ok = rpc:call(
+           Node, application, set_env, [aecore, expected_mine_rate, OldRate],
+           5000),
     case Res of
         {ok, BlocksReverse} ->
             {ok, lists:reverse(BlocksReverse)};
@@ -257,6 +264,10 @@ mine_blocks_until_txs_on_chain_loop(_Node, _TxHashes, 0, _Acc) ->
 mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, Acc) ->
     case mine_blocks_loop(1, key) of
         {ok, [Block]} -> %% We are only observing key blocks
+          % set a properly huge key block mining interval
+          ok = rpc:call(
+              Node, application, set_env, [aecore, expected_mine_rate,
+                                           1000 * 60 * 3], 5000),
             NewAcc = [Block | Acc],
             case txs_not_on_chain(Node, Block, TxHashes) of
                 []        -> {ok, NewAcc};
