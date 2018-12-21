@@ -3,7 +3,7 @@
 Run below command to install latest version of aeternity node.
 
 ```bash
-wget https://raw.githubusercontent.com/aeternity/epoch/master/scripts/install.sh && chmod +x install.sh && ./install.sh 1.2.0
+wget https://raw.githubusercontent.com/aeternity/epoch/v1.2.0/scripts/install.sh && chmod +x install.sh && ./install.sh 1.2.0
 ```
 
 See the documentation below detailed instructions for manual installation.
