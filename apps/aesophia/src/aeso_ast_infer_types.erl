@@ -846,8 +846,26 @@ insert_typedef(Id, Args, Typedef) ->
 lookup_type(Id) ->
     case ets_lookup(type_defs, type_key(Id)) of
         []                        -> false;
-        [{_Key, Params, Typedef}] -> {Params, unfold_types_in_type(Typedef)}
+        [{_Key, Params, Typedef}] ->
+            {Params, unfold_types_in_type(push_anns(Id, Typedef))}
     end.
+
+push_anns(T1, {alias_t, Id}) ->
+    As1 = aeso_syntax:get_ann(T1),
+    As2 = aeso_syntax:get_ann(Id),
+    As = umerge(lists:sort(As2), lists:sort(As1)),
+    {alias_t, aeso_syntax:set_ann(As, Id)};
+push_anns(_, T) -> T.
+
+umerge([], Ls2) -> Ls2;
+umerge(Ls1, []) -> Ls1;
+umerge([E = {K, _V1} | Ls1], [{K, _V2} | Ls2]) ->
+    [E | umerge(Ls1, Ls2)];
+umerge([E = {K1, _V1} | Ls1], Ls2 = [{K2, _V2} | _]) when K1 < K2 ->
+    [E | umerge(Ls1, Ls2)];
+umerge(Ls1 = [{K1, _V1} | _], [E = {K2, _V2} | Ls2]) when K2 < K1 ->
+    [E | umerge(Ls1, Ls2)].
+
 
 -spec insert_record_field(string(), field_info()) -> true.
 insert_record_field(FieldName, FieldInfo) ->
