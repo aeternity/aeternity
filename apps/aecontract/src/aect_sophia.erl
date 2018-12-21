@@ -147,7 +147,7 @@ encode_call_data(Code, Function, Argument) ->
 decode_data(Type, Data) ->
     case get_type(Type) of
         {ok, SophiaType} ->
-            try aeso_data:from_binary(SophiaType, Data) of
+            try aeso_heap:from_binary(SophiaType, Data) of
                 {ok, Term} ->
                     try prepare_for_json(SophiaType, Term) of
                         R -> {ok, R}

@@ -188,7 +188,7 @@ init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
                     %% to memory. The first element of the calldata tuple is
                     %% the function name
                     HeapSize = aevm_eeevm_memory:size_in_words(State2) * 32,
-                    case aeso_data:binary_to_heap(CallDataType, Calldata,
+                    case aevm_data:binary_to_heap(CallDataType, Calldata,
                                                   aevm_eeevm_maps:next_id(maps(State2)),
                                                   HeapSize) of
                         {ok, CalldataHeap} ->
@@ -218,7 +218,7 @@ import_state_from_store(Store, State0) ->
             %% The state value in the store already has the correct offset (32),
             %% so no need to translate it.
             StateValue = aevm_eeevm_store:get_sophia_state(Store),
-            32 = aeso_data:heap_value_offset(StateValue),
+            32 = aeso_heap:heap_value_offset(StateValue),
             {StatePtr, State1} = write_heap_value(StateValue, State),
             aevm_eeevm_memory:store(0, StatePtr, State1)
     end.
@@ -264,9 +264,9 @@ heap_to_binary(Type, Ptr, State) ->
     Store = storage(State),
     Heap  = mem(State),
     Maps  = maps(State),
-    Value = aeso_data:heap_value(Maps, Ptr, Heap),
+    Value = aeso_heap:heap_value(Maps, Ptr, Heap),
     MaxWords = aevm_gas:mem_limit_for_gas(gas(State), State),
-    case aeso_data:heap_to_binary(Type, Store, Value, MaxWords * 32) of
+    case aevm_data:heap_to_binary(Type, Store, Value, MaxWords * 32) of
         {ok, Bin} ->
             GasUsed = aevm_gas:mem_gas(byte_size(Bin) div 32, State),
             {ok, Bin, GasUsed};
@@ -284,11 +284,11 @@ spend_gas(Gas, State) ->
 heap_to_heap(Type, Ptr, State) ->
     Heap  = mem(State),
     Maps  = maps(State),
-    Value = aeso_data:heap_value(Maps, Ptr, Heap),
+    Value = aeso_heap:heap_value(Maps, Ptr, Heap),
     MaxWords = aevm_gas:mem_limit_for_gas(gas(State), State),
-    case aeso_data:heap_to_heap(Type, Value, 32, MaxWords) of
+    case aevm_data:heap_to_heap(Type, Value, 32, MaxWords) of
         {ok, NewValue} ->
-            GasUsed = aevm_gas:mem_gas(byte_size(aeso_data:heap_value_heap(NewValue)) div 32, State),
+            GasUsed = aevm_gas:mem_gas(byte_size(aeso_heap:heap_value_heap(NewValue)) div 32, State),
             {ok, NewValue, GasUsed};
         {error, _} = Err ->
             Err
@@ -306,8 +306,8 @@ return_contract_call_result(To, Input, Addr,_Size, ReturnData, Type, State) ->
                 true ->
                     %% Local primops (like map primops) return heap values
                     <<Ptr:256, Bin/binary>> = ReturnData,
-                    HeapVal = aeso_data:heap_value(maps(State), Ptr, Bin, 32),
-                    case aeso_data:heap_to_heap(Type, HeapVal, HeapSize) of
+                    HeapVal = aeso_heap:heap_value(maps(State), Ptr, Bin, 32),
+                    case aevm_data:heap_to_heap(Type, HeapVal, HeapSize) of
                         {ok, Out} ->
                             write_heap_value(Out, State);
                         {error, _} = Err ->
@@ -317,7 +317,7 @@ return_contract_call_result(To, Input, Addr,_Size, ReturnData, Type, State) ->
                     end;
                 false ->
                     NextId = aevm_eeevm_maps:next_id(maps(State)),
-                    case aeso_data:binary_to_heap(Type, ReturnData, NextId, HeapSize) of
+                    case aevm_data:binary_to_heap(Type, ReturnData, NextId, HeapSize) of
                         {ok, Out} ->
                             write_heap_value(Out, State);
                         {error, _} = Err ->
@@ -375,12 +375,12 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
             ChainAPI   = chain_api(State),
             ChainState = chain_state(State),
             Store      = storage(State),
-            HeapValue = aeso_data:heap_value(maps(State), ArgPtr, Heap),
+            HeapValue = aeso_heap:heap_value(maps(State), ArgPtr, Heap),
             case Target == ?PRIM_CALLS_CONTRACT of
                 true ->
                     %% The first argument is the primop id
-                    {ok, Bin} = aeso_data:heap_to_binary({tuple, [word]}, Store, HeapValue),
-                    {ok, {Prim}} = aeso_data:from_binary({tuple, [word]}, Bin),
+                    {ok, Bin} = aevm_data:heap_to_binary({tuple, [word]}, Store, HeapValue),
+                    {ok, {Prim}} = aeso_heap:from_binary({tuple, [word]}, Bin),
                     {ArgTypes, OutType} = aevm_ae_primops:types(Prim, HeapValue, Store, State),
                     DataType = {tuple, [word|ArgTypes]},
                     TypeHash   = <<ISize:256>>,
@@ -393,8 +393,8 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                     end;
                 false ->
                     %% The first element in the arg tuple is the function hash
-                    {ok, Bin} = aeso_data:heap_to_binary({tuple, [word]}, Store, HeapValue),
-                    {ok, {TypeHashInt}} = aeso_data:from_binary({tuple, [word]}, Bin),
+                    {ok, Bin} = aevm_data:heap_to_binary({tuple, [word]}, Store, HeapValue),
+                    {ok, {TypeHashInt}} = aeso_heap:from_binary({tuple, [word]}, Bin),
                     TypeHash = <<TypeHashInt:256>>,
                     case ChainAPI:get_contract_fun_types(TargetKey, ?AEVM_01_Sophia_01,
                                                          TypeHash, ChainState) of
@@ -408,12 +408,12 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
             end
     end.
 
--spec write_heap_value(aeso_data:heap_value(), state()) -> {non_neg_integer(), state()}.
+-spec write_heap_value(aeso_heap:heap_value(), state()) -> {non_neg_integer(), state()}.
 write_heap_value(HeapValue, State) ->
-    Ptr    = aeso_data:heap_value_pointer(HeapValue),
-    Mem    = aeso_data:heap_value_heap(HeapValue),
-    Maps   = aeso_data:heap_value_maps(HeapValue),
-    Offs   = aeso_data:heap_value_offset(HeapValue),
+    Ptr    = aeso_heap:heap_value_pointer(HeapValue),
+    Mem    = aeso_heap:heap_value_heap(HeapValue),
+    Maps   = aeso_heap:heap_value_maps(HeapValue),
+    Offs   = aeso_heap:heap_value_offset(HeapValue),
     State1 = aevm_eeevm_memory:write_area(Offs, Mem, State),
     State2 = aevm_eeevm_maps:merge(Maps, State1),
     {Ptr, State2}.

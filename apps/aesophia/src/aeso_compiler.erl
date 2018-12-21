@@ -144,7 +144,7 @@ get_call_type([_ | Contracts]) ->
     get_call_type(Contracts).
 
 %% Translate an icode value (error if not value) to an Erlang term that can be
-%% consumed by aeso_data:to_binary().
+%% consumed by aeso_heap:to_binary().
 icode_to_term(word, {integer, N}) -> N;
 icode_to_term(string, {tuple, [{integer, Len} | Words]}) ->
     <<Str:Len/binary, _/binary>> = << <<W:256>> || {integer, W} <- Words >>,

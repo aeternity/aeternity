@@ -897,7 +897,7 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
     Call     = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
     Result   =
         case aect_call:return_type(Call) of
-            ok     -> {ok, Res} = aeso_data:from_binary(Type, aect_call:return_value(Call)),
+            ok     -> {ok, Res} = aeso_heap:from_binary(Type, aect_call:return_value(Call)),
                       Res;
             error  -> {error, aect_call:return_value(Call)};
             revert -> revert
@@ -916,7 +916,7 @@ account_balance(PubKey, S) ->
 
 make_calldata_raw(<<FunHashInt:256>>, Args0) ->
     Args = translate_pubkeys(if is_tuple(Args0) -> Args0; true -> {Args0} end),
-    aeso_data:to_binary({FunHashInt, Args}).
+    aeso_heap:to_binary({FunHashInt, Args}).
 
 make_calldata_from_code(Code, Fun, Args) when is_atom(Fun) ->
     make_calldata_from_code(Code, atom_to_binary(Fun, latin1), Args);
@@ -956,7 +956,7 @@ sophia_exploits(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc  = ?call(new_account, 10000000),
     {ok, Code} = compile_contract(exploits),
-    StringType = aeso_data:to_binary(string),
+    StringType = aeso_heap:to_binary(string),
     HackedCode = hack_type(<<"pair">>, {return, StringType}, Code),
     C = ?call(create_contract_with_code, Acc, HackedCode, {}, #{}),
     Err = {error, <<"out_of_gas">>},
@@ -3124,13 +3124,13 @@ sophia_savecoinbase(_Cfg) ->
     %% Create chain contract and check that address is stored.
     Ct1 = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
     #{<<0>> := Val1} = get_contract_state(Ct1),
-    {ok, {LastBf}} = aeso_data:from_binary({tuple, [word]}, Val1),
+    {ok, {LastBf}} = aeso_heap:from_binary({tuple, [word]}, Val1),
     <<LastBf:?BENEFICIARY_PUB_BYTES/unit:8>> = Ct1,
 
     %% Call chain.save_coinbase() and make sure beneficiary is stored.
     ?call(call_contract, Acc, Ct1, save_coinbase, word, {}),
     #{<<0>> := Val2}  = get_contract_state(Ct1),
-    {ok, {LastBf2}} = aeso_data:from_binary({tuple, [word]}, Val2),
+    {ok, {LastBf2}} = aeso_heap:from_binary({tuple, [word]}, Val2),
     Beneficiary = LastBf2,
     ok.
 
