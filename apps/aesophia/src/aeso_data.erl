@@ -378,7 +378,7 @@ to_binary1(Data,_Address) when is_integer(Data) ->
     {Data,<<>>};
 to_binary1(Data, Address) when is_binary(Data) ->
     %% a string
-    Words = aeb_memory:binary_to_words(Data),
+    Words = aeso_memory:binary_to_words(Data),
     {Address,<<(size(Data)):256, << <<W:256>> || W <- Words>>/binary>>};
 to_binary1(none, Address)            -> to_binary1({variant, 0, []}, Address);
 to_binary1({some, Value}, Address)   -> to_binary1({variant, 1, [Value]}, Address);
