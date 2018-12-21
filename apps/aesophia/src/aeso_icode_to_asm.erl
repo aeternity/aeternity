@@ -209,6 +209,15 @@ assemble_expr(Funs, Stack, _, {unop, '!', A}) ->
              i(?ISZERO)
             ]
     end;
+assemble_expr(Funs, Stack, _, {event, Topics, Payload}) ->
+    [assemble_exprs(Funs, Stack, Topics ++ [Payload]),
+     case length(Topics) of
+        0 -> i(?LOG0);
+        1 -> i(?LOG1);
+        2 -> i(?LOG2);
+        3 -> i(?LOG3);
+        4 -> i(?LOG4)
+     end, i(?MSIZE)];
 assemble_expr(Funs, Stack, _, {unop, Op, A}) ->
     [assemble_expr(Funs, Stack, nontail, A),
      assemble_prefix(Op)];
@@ -548,7 +557,7 @@ assemble_infix('-')    -> i(?SUB);
 assemble_infix('*')    -> i(?MUL);
 assemble_infix('/')    -> i(?SDIV);
 assemble_infix('div')  -> i(?DIV);
-assemble_infix('mod')  -> i(?SMOD);
+assemble_infix('mod')  -> i(?MOD);
 assemble_infix('^')    -> i(?EXP);
 assemble_infix('bor')  -> i(?OR);
 assemble_infix('band') -> i(?AND);
@@ -560,7 +569,8 @@ assemble_infix('<=')   -> [i(?SGT), i(?ISZERO)];
 assemble_infix('=<')   -> [i(?SGT), i(?ISZERO)];
 assemble_infix('>=')   -> [i(?SLT), i(?ISZERO)];
 assemble_infix('!=')   -> [i(?EQ), i(?ISZERO)];
-assemble_infix('!')    -> [i(?ADD), i(?MLOAD)].
+assemble_infix('!')    -> [i(?ADD), i(?MLOAD)];
+assemble_infix('byte') -> i(?BYTE).
 %% assemble_infix('::') -> [i(?MSIZE), write_word(0), write_word(1)].
 
 %% a function may either refer to a top-level function, in which case

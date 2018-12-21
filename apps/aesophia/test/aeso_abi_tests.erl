@@ -19,8 +19,8 @@ sandbox(Code) ->
 
 malicious_from_binary_test() ->
     CircularList = from_words([32, 1, 32]), %% Xs = 1 :: Xs
-    {ok, {error, circular_references}}   = ?SANDBOX(aeso_data:from_binary({list, word}, CircularList)),
-    {ok, {error, {binary_too_short, _}}} = ?SANDBOX(aeso_data:from_binary(word, <<1, 2, 3, 4>>)),
+    {ok, {error, circular_references}}   = ?SANDBOX(aeso_heap:from_binary({list, word}, CircularList)),
+    {ok, {error, {binary_too_short, _}}} = ?SANDBOX(aeso_heap:from_binary(word, <<1, 2, 3, 4>>)),
     ok.
 
 from_words(Ws) ->
@@ -81,8 +81,8 @@ encode_decode(T, D) ->
     D.
 
 encode(D) ->
-    aeso_data:to_binary(D).
+    aeso_heap:to_binary(D).
 
 decode(T,B) ->
-    {ok, D} = aeso_data:from_binary(T, B),
+    {ok, D} = aeso_heap:from_binary(T, B),
     D.

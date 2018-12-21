@@ -36,10 +36,10 @@ check_format(?AEVM_NO_VM, _Format, _Content) ->
 check_format(VMVersion, Format, Content) when ?IS_AEVM_SOPHIA(VMVersion) ->
     %% Check that the content can be decoded as the type
     %% and that if we encoded it again, it becomes the content.
-    {ok, TypeRep} = aeso_data:from_binary(typerep, Format),
-    try aeso_data:from_binary(TypeRep, Content) of
+    {ok, TypeRep} = aeso_heap:from_binary(typerep, Format),
+    try aeso_heap:from_binary(TypeRep, Content) of
         {ok, Res} ->
-            case aeso_data:to_binary(Res) of
+            case aeso_heap:to_binary(Res) of
                 Content -> ok;
                 _Other -> {error, bad_format}
             end;

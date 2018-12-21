@@ -96,6 +96,7 @@
         , sophia_state_gas/1
         , sophia_no_callobject_for_remote_calls/1
         , sophia_operators/1
+        , sophia_events/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -184,7 +185,8 @@ groups() ->
                                  sophia_state_handling,
                                  sophia_state_gas,
                                  sophia_no_callobject_for_remote_calls,
-                                 sophia_operators]}
+                                 sophia_operators,
+                                 sophia_events]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
         [ sophia_oracles_ttl__extend_after_expiry
@@ -886,7 +888,7 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
                  , fee        => 1000000
                  , amount     => 0
                  , gas        => 140000
-                 }, maps:without([height, return_gas_used], Options)), S),
+                 }, maps:without([height, return_gas_used, return_logs], Options)), S),
     Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Caller, S),
     {ok, S1} = sign_and_apply_transaction(CallTx, PrivKey, S, Height),
@@ -895,14 +897,17 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
     Call     = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
     Result   =
         case aect_call:return_type(Call) of
-            ok     -> {ok, Res} = aeso_data:from_binary(Type, aect_call:return_value(Call)),
+            ok     -> {ok, Res} = aeso_heap:from_binary(Type, aect_call:return_value(Call)),
                       Res;
             error  -> {error, aect_call:return_value(Call)};
             revert -> revert
         end,
+    Result1 = case maps:get(return_logs, Options, false) of
+                true -> {Result, aect_call:log(Call)};
+                false -> Result end,
     case maps:get(return_gas_used, Options, false) of
-        false -> {Result, S1};
-        true  -> {{Result, aect_call:gas_used(Call)}, S1}
+        false -> {Result1, S1};
+        true  -> {{Result1, aect_call:gas_used(Call)}, S1}
     end.
 
 account_balance(PubKey, S) ->
@@ -911,7 +916,7 @@ account_balance(PubKey, S) ->
 
 make_calldata_raw(<<FunHashInt:256>>, Args0) ->
     Args = translate_pubkeys(if is_tuple(Args0) -> Args0; true -> {Args0} end),
-    aeso_data:to_binary({FunHashInt, Args}).
+    aeso_heap:to_binary({FunHashInt, Args}).
 
 make_calldata_from_code(Code, Fun, Args) when is_atom(Fun) ->
     make_calldata_from_code(Code, atom_to_binary(Fun, latin1), Args);
@@ -951,7 +956,7 @@ sophia_exploits(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc  = ?call(new_account, 10000000),
     {ok, Code} = compile_contract(exploits),
-    StringType = aeso_data:to_binary(string),
+    StringType = aeso_heap:to_binary(string),
     HackedCode = hack_type(<<"pair">>, {return, StringType}, Code),
     C = ?call(create_contract_with_code, Acc, HackedCode, {}, #{}),
     Err = {error, <<"out_of_gas">>},
@@ -3121,13 +3126,13 @@ sophia_savecoinbase(_Cfg) ->
     %% Create chain contract and check that address is stored.
     Ct1 = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
     #{<<0>> := Val1} = get_contract_state(Ct1),
-    {ok, {LastBf}} = aeso_data:from_binary({tuple, [word]}, Val1),
+    {ok, {LastBf}} = aeso_heap:from_binary({tuple, [word]}, Val1),
     <<LastBf:?BENEFICIARY_PUB_BYTES/unit:8>> = Ct1,
 
     %% Call chain.save_coinbase() and make sure beneficiary is stored.
     ?call(call_contract, Acc, Ct1, save_coinbase, word, {}),
     #{<<0>> := Val2}  = get_contract_state(Ct1),
-    {ok, {LastBf2}} = aeso_data:from_binary({tuple, [word]}, Val2),
+    {ok, {LastBf2}} = aeso_heap:from_binary({tuple, [word]}, Val2),
     Beneficiary = LastBf2,
     ok.
 
@@ -3201,6 +3206,34 @@ sophia_operators(_Cfg) ->
     ?assertEqual(<<Hash1:256>>, aec_hash:hash(evm, <<"TestString">>)),
 
     ok.
+
+sophia_events(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc   = ?call(new_account, 1000000000),
+    IdC   = ?call(create_contract, Acc, events, {}),
+
+    ?assertMatch({{},[{_, _, <<"bar">>}]},
+                 ?call(call_contract, Acc, IdC, f1, {tuple, []}, {1, <<"bar">>},  #{ return_logs => true })),
+    ?assertMatch({{},[{_, _, <<"foo">>}]},
+                 ?call(call_contract, Acc, IdC, f2, {tuple, []}, {<<"foo">>}, #{ return_logs => true })),
+    ?assertMatch({{},[{_, _, <<"8">>}]},
+                 ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1}, #{ return_logs => true })),
+    ?assertMatch({{},[{_, _, <<"1234567890123456789012345678901234567897">>}]},
+                 ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1234567890123456789012345678901234567890}, #{ return_logs => true })),
+
+    ?assertEqual(<<"5">>, ?call(call_contract, Acc, IdC, i2s, string, {5})),
+    ?assertEqual(<<"12345">>, ?call(call_contract, Acc, IdC, i2s, string, {12345})),
+    ?assertEqual(<<"-2345">>, ?call(call_contract, Acc, IdC, i2s, string, {-2345})),
+
+    BAcc = list_to_binary(base58:binary_to_base58(Acc)),
+    ?assertMatch({BAcc, _},
+                  ?call(call_contract, Acc, IdC, a2s, string, {Acc}, #{ return_gas_used => true })),
+
+    BIdC = list_to_binary(base58:binary_to_base58(IdC)),
+    ?assertMatch({BIdC, _},
+                  ?call(call_contract, Acc, IdC, a2s, string, {IdC}, #{ return_gas_used => true })),
+    ok.
+
 
 %% The crowd funding example.
 

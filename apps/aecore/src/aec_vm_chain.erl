@@ -213,8 +213,8 @@ oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat,
     %% This means that if you register an oracle for an account other than
     %% the contract account through a contract that contract nonce is incremented
     %% "behind your back".
-    BinaryQueryFormat = aeso_data:to_binary(QFormat),
-    BinaryResponseFormat = aeso_data:to_binary(RFormat),
+    BinaryQueryFormat = aeso_heap:to_binary(QFormat),
+    BinaryResponseFormat = aeso_heap:to_binary(RFormat),
     Spec =
         #{account_id      => aec_id:create(account, AccountKey),
           nonce           => Nonce,
@@ -307,7 +307,7 @@ maybe_convert_oracle_arg(OracleId, Arg, State) ->
                 ?AEVM_NO_VM ->
                     Arg;
                 VMVersion when ?IS_AEVM_SOPHIA(VMVersion) ->
-                    aeso_data:to_binary(Arg)
+                    aeso_heap:to_binary(Arg)
             end;
         none ->
             %% Will fail later
@@ -373,7 +373,7 @@ oracle_get_answer(OracleId, QueryId, #state{trees = ChainTrees}) ->
                     VMVersion = aeo_oracles:vm_version(Oracle),
                     case oracle_typerep(VMVersion, ResponseFormat) of
                         {ok, Type} when ?IS_AEVM_SOPHIA(VMVersion) ->
-                            try aeso_data:from_binary(Type, Answer) of
+                            try aeso_heap:from_binary(Type, Answer) of
                                 {ok, Result} -> {ok, {some, Result}};
                                 {error, _} -> {error, bad_answer}
                             catch _:_ ->
@@ -403,7 +403,7 @@ oracle_get_question(OracleId, QueryId, #state{trees = ChainTrees}) ->
                     %% We treat the question as a non-sophia string
                     {ok, aeo_query:query(Query)};
                 {ok, QueryType} ->
-                    try aeso_data:from_binary(QueryType, aeo_query:query(Query)) of
+                    try aeso_heap:from_binary(QueryType, aeo_query:query(Query)) of
                         {ok, Question} ->
                             {ok, Question};
                         {error, _} ->
@@ -466,7 +466,7 @@ oracle_typerep(?AEVM_NO_VM,_BinaryFormat) ->
     %% Treat this as a string
     {ok, string};
 oracle_typerep(VMVersion, BinaryFormat) when ?IS_AEVM_SOPHIA(VMVersion) ->
-    try aeso_data:from_binary(typerep, BinaryFormat) of
+    try aeso_heap:from_binary(typerep, BinaryFormat) of
         {ok, Format} -> {ok, Format};
         {error, _} -> {error, bad_typerep}
     catch

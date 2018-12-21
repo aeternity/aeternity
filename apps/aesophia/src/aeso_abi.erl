@@ -19,6 +19,7 @@
         , type_hash_from_function_name/2
         , typereps_from_type_hash/2
         , function_name_from_type_hash/2
+        , get_function_hash_from_calldata/1
         ]).
 
 -type hash() :: <<_:256>>. %% 256 = ?HASH_SIZE * 8.
@@ -54,7 +55,7 @@
 create_calldata(Contract, FunName, Args, ArgTypes, RetType) ->
     case get_type_info_and_hash(Contract, FunName) of
         {ok, TypeInfo, TypeHashInt} ->
-            Data = aeso_data:to_binary({TypeHashInt, list_to_tuple(Args)}),
+            Data = aeso_heap:to_binary({TypeHashInt, list_to_tuple(Args)}),
             case check_calldata(Data, TypeInfo) of
                 {ok, CallDataType, OutType} ->
                     case check_given_type(FunName, ArgTypes, RetType, CallDataType, OutType) of
@@ -100,11 +101,11 @@ check_given_type(FunName, GivenArgs, GivenRet, CalldataType, ExpectRet) ->
                         {'ok', typerep()} | {'error', atom()}.
 check_calldata(CallData, TypeInfo) ->
     %% The first element of the CallData should be the function name
-    case aeso_data:get_function_hash_from_calldata(CallData) of
+    case get_function_hash_from_calldata(CallData) of
         {ok, Hash} ->
             case typereps_from_type_hash(Hash, TypeInfo) of
                 {ok, ArgType, OutType} ->
-                    try aeso_data:from_binary({tuple, [word, ArgType]}, CallData) of
+                    try aeso_heap:from_binary({tuple, [word, ArgType]}, CallData) of
                         {ok, _Something} ->
                             {ok, {tuple, [word, ArgType]}, OutType};
                         {error, _} ->
@@ -123,6 +124,14 @@ check_calldata(CallData, TypeInfo) ->
             {error, bad_call_data}
     end.
 
+-spec get_function_hash_from_calldata(CallData::binary()) ->
+                                             {ok, binary()} | {error, term()}.
+get_function_hash_from_calldata(CallData) ->
+    case aeso_heap:from_binary({tuple, [word]}, CallData) of
+        {ok, {HashInt}} -> {ok, <<HashInt:?HASH_SIZE/unit:8>>};
+        {error, _} = Error -> Error
+    end.
+
 %%%===================================================================
 %%% Handle type info from contract meta data
 
@@ -132,15 +141,15 @@ function_type_info(Name, Args, OutType) ->
     ArgType = {tuple, [T || {_, T} <- Args]},
     { function_type_hash(Name, ArgType, OutType)
     , Name
-    , aeso_data:to_binary(ArgType)
-    , aeso_data:to_binary(OutType)
+    , aeso_heap:to_binary(ArgType)
+    , aeso_heap:to_binary(OutType)
     }.
 
 -spec function_type_hash(function_name(), typerep(), typerep()) -> hash().
 function_type_hash(Name, ArgType, OutType) when is_binary(Name) ->
     Bin =  iolist_to_binary([ Name
-                            , aeso_data:to_binary(ArgType)
-                            , aeso_data:to_binary(OutType)
+                            , aeso_heap:to_binary(ArgType)
+                            , aeso_heap:to_binary(OutType)
                             ]),
     %% Calculate a 256 bit digest BLAKE2b hash value of a binary
     {ok, Hash} = enacl:generichash(?HASH_SIZE, Bin),
@@ -151,7 +160,7 @@ function_type_hash(Name, ArgType, OutType) when is_binary(Name) ->
 arg_typerep_from_function(Function, TypeInfo) ->
     case lists:keyfind(Function, 2, TypeInfo) of
         {_TypeHash, Function, ArgTypeBin,_OutTypeBin} ->
-            case aeso_data:from_binary(typerep, ArgTypeBin) of
+            case aeso_heap:from_binary(typerep, ArgTypeBin) of
                 {ok, ArgType} -> {ok, ArgType};
                 {error,_} -> {error, bad_type_data}
             end;
@@ -164,8 +173,8 @@ arg_typerep_from_function(Function, TypeInfo) ->
 typereps_from_type_hash(TypeHash, TypeInfo) ->
     case lists:keyfind(TypeHash, 1, TypeInfo) of
         {TypeHash,_Function, ArgTypeBin, OutTypeBin} ->
-            case {aeso_data:from_binary(typerep, ArgTypeBin),
-                  aeso_data:from_binary(typerep, OutTypeBin)} of
+            case {aeso_heap:from_binary(typerep, ArgTypeBin),
+                  aeso_heap:from_binary(typerep, OutTypeBin)} of
                 {{ok, ArgType}, {ok, OutType}} -> {ok, ArgType, OutType};
                 {_, _} -> {error, bad_type_data}
             end;
@@ -217,7 +226,7 @@ old_encode_call(Contract, Function, ArgumentAst) ->
     Argument = old_ast_to_erlang(ArgumentAst),
     case get_type_info_and_hash(Contract, Function) of
         {ok, TypeInfo, TypeHashInt} ->
-            Data = aeso_data:to_binary({TypeHashInt, Argument}),
+            Data = aeso_heap:to_binary({TypeHashInt, Argument}),
             case check_calldata(Data, TypeInfo) of
                 {ok, CallDataType, OutType} ->
                     {ok, Data, CallDataType, OutType};
