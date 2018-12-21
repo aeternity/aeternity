@@ -6,7 +6,7 @@
 %%% Created : 19 Dec 2018
 %%%-------------------------------------------------------------------
 
--module(aeb_memory).
+-module(aeso_memory).
 
 -export([binary_to_words/1]).
 
