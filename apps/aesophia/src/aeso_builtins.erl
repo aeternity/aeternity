@@ -102,7 +102,7 @@ builtin_function(Builtin = {event, EventT}) ->
     A         = fun(X) -> aeb_opcodes:mnemonic(X) end,
     VIx       = fun(Ix) -> v(lists:concat(["v", Ix])) end,
     ArgPats   = fun(Ts) -> [ VIx(Ix) || Ix <- lists:seq(0, length(Ts) - 1) ] end,
-    IsIndexed = fun(T) -> proplists:get_value(indexed, aeso_syntax:get_ann(T), false) end,
+    IsIndexed = fun(T) -> aeso_syntax:get_ann(indexed, T, false) end,
     Payload = %% Should put data ptr, length on stack.
         fun([]) ->  {inline_asm, [A(?PUSH1), 0, A(?PUSH1), 0]};
            ([V]) -> {seq, [V, {inline_asm, [A(?DUP1), A(?MLOAD),                  %% length, ptr

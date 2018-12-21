@@ -295,7 +295,7 @@ check_event(Cons) ->
 %% Initially we limit the type of an event, it can have 0-3 topics/indexed "words"
 %% and 0-1 strings as payload.
 check_event(Name, Types) ->
-    IsIndexed  = fun(T) -> proplists:get_value(indexed, aeso_syntax:get_ann(T), false) end,
+    IsIndexed  = fun(T) -> aeso_syntax:get_ann(indexed, T, false) end,
     Indexed    = [ T || T <- Types, IsIndexed(T) ],
     NonIndexed = Types -- Indexed,
     %% TODO: Is is possible to check also the types of arguments in a sensible way?
