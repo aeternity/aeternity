@@ -122,6 +122,7 @@ ast_body(?qid_app(["Chain","spend"], [To, Amount], _, _), Icode) ->
     prim_call(?PRIM_CALL_SPEND, ast_body(Amount, Icode), [ast_body(To, Icode)], [word], {tuple, []});
 
 ast_body(?qid_app(["Chain","event"], [Event], _, _), Icode) ->
+    aeso_builtins:check_event_type(Icode),
     builtin_call({event, maps:get(event_type, Icode)}, [ast_body(Event, Icode)]);
 
 %% Chain environment

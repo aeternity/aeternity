@@ -10,6 +10,7 @@
 -module(aeso_builtins).
 
 -export([ builtin_function/1
+        , check_event_type/1
         , used_builtins/1 ]).
 
 -import(aeso_ast_to_icode, [prim_call/5]).
@@ -93,6 +94,34 @@ str_to_icode(String) when is_list(String) ->
 str_to_icode(BinStr) ->
     Cpts = [size(BinStr) | aeso_data:binary_to_words(BinStr)],
     #tuple{ cpts = [ #integer{value = X} || X <- Cpts ] }.
+
+check_event_type(Icode) ->
+    case maps:get(event_type, Icode) of
+        {variant_t, Cons} ->
+            check_event_type(Cons, Icode);
+        _ ->
+            error({event_should_be_variant_type})
+    end.
+
+check_event_type(Evts, Icode) ->
+    [ check_event_type(Name, T, Icode)
+      || {constr_t, _, {con, _, Name}, Types} <- Evts, T <- Types ].
+
+check_event_type(EvtName, Type, Icode) ->
+    io:format("~p: ~p??\n", [EvtName, Type]),
+    io:format("=> ~p\n", [aeso_ast_to_icode:ast_typerep(Type, Icode)]),
+    VMType =
+        try
+           aeso_ast_to_icode:ast_typerep(Type, Icode)
+        catch _:_ ->
+            error({EvtName, could_not_resolve_type, Type})
+        end,
+    case aeso_syntax:get_ann(indexed, Type, false) of
+        true when VMType == word    -> ok;
+        false when VMType == string -> ok;
+        true  -> error({EvtName, indexed_field_should_be_word, is, VMType});
+        false -> error({EvtName, payload_should_be_string, is, VMType})
+    end.
 
 %% Event primitive (dependent on Event type)
 %%
