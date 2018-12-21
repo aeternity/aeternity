@@ -42,8 +42,8 @@ def test_not_enough_tokens():
 
     # populate accounts with tokens, and validate balances
     spend_tx_fee = test_settings["spend_tx"]["fee"]
-    common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary, alice_address, alice_init_balance, spend_tx_fee, ext_api, int_api)
-    common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary, bob_address, bob_init_balance, spend_tx_fee, ext_api, int_api)
+    common.ensure_send_tokens(beneficiary, alice_address, alice_init_balance, spend_tx_fee, ext_api, int_api, 1)
+    common.ensure_send_tokens(beneficiary, bob_address, bob_init_balance, spend_tx_fee, ext_api, int_api, 1)
     alice_balance0 = common.get_account_balance(ext_api, alice_address)
     bob_balance0 = common.get_account_balance(ext_api, bob_address)
     print("Alice balance is " + str(alice_balance0))
@@ -54,7 +54,7 @@ def test_not_enough_tokens():
     # check that Bob is able to send less tokens than he has
     few_tokens_to_send = test_settings["spend_tx"]["small_amount"]
     print("Bob is about to send " + str(few_tokens_to_send) + " to Alice")
-    common.send_tokens_to_unchanging_user_and_wait_balance(bob, alice_address, few_tokens_to_send, spend_tx_fee, ext_api, int_api)
+    common.ensure_send_tokens(bob, alice_address, few_tokens_to_send, spend_tx_fee, ext_api, int_api, 1)
     alice_balance1 = common.get_account_balance(ext_api, pub_key=alice_address)
     bob_balance1 = common.get_account_balance(ext_api, pub_key=bob_address)
     print("Alice balance is " + str(alice_balance1))
@@ -65,7 +65,7 @@ def test_not_enough_tokens():
     # check that Bob is unable to send less tokens than he has
     many_tokens_to_send = test_settings["spend_tx"]["large_amount"]
     print("Bob is about to send " + str(many_tokens_to_send) + " to Alice")
-    common.send_tokens_to_unchanging_user(bob, alice_address, many_tokens_to_send, spend_tx_fee, ext_api, int_api)
+    common.send_tokens(bob, alice_address, many_tokens_to_send, spend_tx_fee, ext_api, int_api)
     common.wait_until_height(ext_api, ext_api.get_current_key_block().height + 3)
     alice_balance2 = common.get_account_balance(ext_api, pub_key=alice_address)
     bob_balance2 = common.get_account_balance(ext_api, pub_key=bob_address)
@@ -99,8 +99,8 @@ def test_send_by_name():
     bob_init_balance = test_settings["send_tokens"]["bob"]
 
     # populate accounts with tokens
-    common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary, alice_address, alice_init_balance, 20000, ext_api, int_api)
-    common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary, bob_address, bob_init_balance, 20000, ext_api, int_api)
+    common.ensure_send_tokens(beneficiary, alice_address, alice_init_balance, 20000, ext_api, int_api, 1)
+    common.ensure_send_tokens(beneficiary, bob_address, bob_init_balance, 20000, ext_api, int_api, 1)
 
     # validate balances
     alice_balance0 = common.get_account_balance(ext_api, alice_address)
@@ -122,7 +122,7 @@ def test_send_by_name():
     tokens_to_send = test_settings["spend_tx"]["amount"]
     print("Alice is about to send " + str(tokens_to_send) + " to " + bob_name)
     resolved_address = get_address_by_name(bob_name, ext_api)
-    common.send_tokens_to_unchanging_user_and_wait_balance(alice, resolved_address, tokens_to_send, 20000, ext_api, int_api)
+    common.ensure_send_tokens(alice, resolved_address, tokens_to_send, 20000, ext_api, int_api, 1)
 
     # validate balances
     alice_balance2 = common.get_account_balance(ext_api, alice_address)

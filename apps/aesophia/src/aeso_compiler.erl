@@ -12,7 +12,9 @@
         , file/2
         , from_string/2
         , check_call/2
+        , create_calldata/3
         , version/0
+        , sophia_type_to_typerep/1
         ]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
@@ -95,6 +97,34 @@ check_call(ContractString, Options) ->
     catch throw:Err ->
         {error, Err}
     end.
+
+-spec create_calldata(map(), string(), string()) ->
+                             {ok, aeso_sophia:heap(), aeso_sophia:type(), aeso_sophia:type()}
+                                 | {error, argument_syntax_error}.
+create_calldata(Contract, "", CallCode) when is_map(Contract) ->
+    case check_call(CallCode, []) of
+        {ok, FunName, {ArgTypes, RetType}, Args} ->
+            aeso_abi:create_calldata(Contract, FunName, Args, ArgTypes, RetType);
+        {error, _} = Err -> Err
+    end;
+create_calldata(Contract, Function, Argument) when is_map(Contract) ->
+    %% Slightly hacky shortcut to let you get away without writing the full
+    %% call contract code.
+    %% Function should be "foo : type", and
+    %% Argument should be "Arg1, Arg2, .., ArgN" (no parens)
+    case string:lexemes(Function, ": ") of
+                     %% If function is a single word fallback to old calldata generation
+        [FunName] -> aeso_abi:old_create_calldata(Contract, FunName, Argument);
+        [FunName | _] ->
+            Args    = lists:map(fun($\n) -> 32; (X) -> X end, Argument),    %% newline to space
+            CallContract = lists:flatten(
+                [ "contract Call =\n"
+                , "  function ", Function, "\n"
+                , "  function __call() = ", FunName, "(", Args, ")"
+                ]),
+            create_calldata(Contract, "", CallContract)
+    end.
+
 
 get_arg_icode(Funs) ->
     [Args] = [ Args || {?CALL_NAME, _, _, {funcall, _, Args}, _} <- Funs ],
@@ -191,6 +221,13 @@ pp(Code, Options, Option, PPFun) ->
 
 %% -------------------------------------------------------------------
 %% TODO: Tempoary parser hook below...
+
+sophia_type_to_typerep(String) ->
+    {ok, Ast} = aeso_parser:type(String),
+    try aeso_ast_to_icode:ast_typerep(Ast) of
+        Type -> {ok, Type}
+    catch _:_ -> {error, bad_type}
+    end.
 
 parse_string(Text) ->
     %% Try and return something sensible here!

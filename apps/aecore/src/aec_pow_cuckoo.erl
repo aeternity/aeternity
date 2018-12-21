@@ -22,9 +22,11 @@
 -behaviour(aec_pow).
 
 
--export([generate/4,
-         get_miner_repeats/0,
-         get_miner_instances/0,
+-export([check_env/0,
+         generate/5,
+         get_addressed_instances/1,
+         get_miner_configs/0,
+         get_repeats/1,
          verify/4]).
 
 
@@ -33,8 +35,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 -include("pow.hrl").
-
--define(DEFAULT_CUCKOO_ENV, {"mean29-generic", "-t 1", 29, false, 1, 1}).
 
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
 -define(info(F, A),  epoch_pow_cuckoo:info(F, A)).
@@ -49,9 +49,49 @@
 -type output_parser_fun() :: fun((list(string()), #state{}) ->
                                         {'ok', term(), term()} | {'error', term()}).
 
+-define(DEFAULT_EXECUTABLE_GROUP   , <<"aecuckoo">>).
+-define(DEFAULT_EXTRA_ARGS         , <<>>).
+-define(DEFAULT_HEX_ENCODED_HEADER , false).
+-define(DEFAULT_REPEATS            , 1).
+-define(DEFAULT_EDGE_BITS          , 29).
+-define(DEFAULT_CUCKOO_ENV,
+        {?DEFAULT_EDGE_BITS,
+         [{<<"mean29-generic">>, ?DEFAULT_EXTRA_ARGS, ?DEFAULT_HEX_ENCODED_HEADER,
+           ?DEFAULT_REPEATS, undefined, ?DEFAULT_EXECUTABLE_GROUP}]}).
+
+-record(miner_config,
+        {executable         :: list(),
+         executable_group   :: binary(),
+         extra_args         :: list(),
+         hex_encoded_header :: boolean(),
+         nice               :: integer() | 'undefined',
+         repeats            :: non_neg_integer(),
+         instances          :: list(aec_pow:miner_instance()) | 'undefined'}).
+-type miner_config() :: #miner_config{}.
+-export_type([miner_config/0]).
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
+
+%%------------------------------------------------------------------------------
+%% Assert that configuration options 'mining > cuckoo > miners' and
+%% 'mining > cuckoo > edge_bits' are not used together with deprecated
+%% configuration property 'mining > cuckoo > miner'.
+%%------------------------------------------------------------------------------
+check_env() ->
+    case {aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miners">>]),
+          aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"edge_bits">>])} of
+        {undefined, undefined} -> ok;
+        {_, _} ->
+            case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>]) of
+                undefined -> ok;
+                _ ->
+                    lager:error("Config error: deprecated property 'mining > cuckoo > miner' cannot be used "
+                                "together with 'mining > cuckoo > miners' or 'mining > cuckoo > edge_bits'"),
+                    exit(cuckoo_config_validation_failed)
+            end
+    end.
 
 %%------------------------------------------------------------------------------
 %% Proof of Work generation with default settings
@@ -71,16 +111,17 @@
 %%  Very slow below 3 threads, not improving significantly above 5, let us take 5.
 %%------------------------------------------------------------------------------
 -spec generate(Data :: aec_hash:hashable(), Target :: aec_pow:sci_int(),
-               Nonce :: aec_pow:nonce(), aec_pow:miner_instance()) -> aec_pow:pow_result().
-generate(Data, Target, Nonce, MinerInstance) when Nonce >= 0,
-                                                  Nonce =< ?MAX_NONCE ->
+               Nonce :: aec_pow:nonce(), MinerConfig :: aec_pow:miner_config(),
+               MinerInstance :: aec_pow:miner_instance() | 'undefined') -> aec_pow:pow_result().
+generate(Data, Target, Nonce, MinerConfig, MinerInstance) when Nonce >= 0,
+                                                               Nonce =< ?MAX_NONCE ->
     %% Hash Data and convert the resulting binary to a base64 string for Cuckoo
     %% Since this hash is purely internal, we don't use api encoding
     Hash   = aec_hash:hash(pow, Data),
     Hash64 = base64:encode_to_string(Hash),
     ?debug("Generating solution for data hash ~p and nonce ~p with target ~p.",
            [Hash, Nonce, Target]),
-    case generate_int(Hash64, Nonce, Target, MinerInstance) of
+    case generate_int(Hash64, Nonce, Target, MinerConfig, MinerInstance) of
         {ok, Nonce1, Soln} ->
             {ok, {Nonce1, Soln}};
         {error, no_value} ->
@@ -107,102 +148,168 @@ verify(Data, Nonce, Evd, Target) when is_list(Evd),
             false
     end.
 
+%%------------------------------------------------------------------------------
+%% Read and parse miner configs.
+%%
+%% Miners defined in epoch.{json,yaml} user config file take precedence.
+%% If there are no miners defined in the user config, sys.config cuckoo
+%% miners are read. If there are neither user config nor sys.config miners
+%% ?DEFAULT_CUCKOO_ENV is used as the last resort option (i.e. mean29-generic
+%% without any extra args).
+%%------------------------------------------------------------------------------
+-spec get_miner_configs() -> list(miner_config()).
+get_miner_configs() ->
+    case get_miners_from_user_config() of
+        {ok, MinerConfigs} -> MinerConfigs;
+        undefined ->
+            case get_miners_from_deprecated_user_config() of
+                {ok, MinerConfigs} -> MinerConfigs;
+                undefined          -> get_miners_from_sys_config()
+            end
+    end.
+
+-spec get_addressed_instances(miner_config()) -> list(non_neg_integer()) | undefined.
+get_addressed_instances(#miner_config{instances = Instances}) ->
+    Instances.
+
+-spec get_repeats(miner_config()) -> non_neg_integer().
+get_repeats(#miner_config{repeats = Repeats}) ->
+    Repeats.
 
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
-%% Options handling
+%% Config handling
 %%------------------------------------------------------------------------------
 
 get_options() ->
-    {_, _, _, _, _, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
+    {_, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
 
-get_miner_repeats() ->
-    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"repeats">>]) of
-        {ok, Repeats} -> Repeats;
-        undefined ->
-            {_, _, _, _, Repeats, _} = get_options(),
-            Repeats
+get_miners_from_user_config() ->
+    case aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miners">>]) of
+        {ok, MinerConfigMaps} ->
+            MinerConfigs =
+                lists:foldl(
+                  fun(ConfigMap, Configs) ->
+                          [build_miner_config(ConfigMap) | Configs]
+                  end, [], MinerConfigMaps),
+            {ok, MinerConfigs};
+        undefined -> undefined
     end.
 
-get_miner_instances() ->
-    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"instances">>]) of
-        {ok, Instances} -> Instances;
-        undefined ->
-            {_, _, _, _, _, Instances} = get_options(),
-            Instances
+get_miners_from_deprecated_user_config() ->
+    case aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miner">>]) of
+        {ok, MinerConfigMap} ->
+            %% In the deprecated config 'mining > cuckoo > miner'
+            %% 'instances' is the property indicating the number of instances to be addressed.
+            %% Addressed instances list has to be generated accordingly (indexed from 0).
+            case maps:get(<<"instances">>, MinerConfigMap, undefined) of
+                undefined ->
+                    MinerConfigs = [build_miner_config(MinerConfigMap)],
+                    {ok, MinerConfigs};
+                InstancesCount ->
+                    AddressedInstances = lists:seq(0, InstancesCount - 1),
+                    MinerConfigMap1    = MinerConfigMap#{<<"addressed_instances">> => AddressedInstances},
+                    MinerConfigs       = [build_miner_config(MinerConfigMap1)],
+                    {ok, MinerConfigs}
+            end;
+        undefined -> undefined
     end.
 
-is_miner_instance_addressation_enabled() ->
-    case get_miner_instances() of
-        1 -> false;
-        N when N > 1 -> true
-    end.
+get_miners_from_sys_config() ->
+    {_, MinerConfigLists} = get_options(),
+    lists:foldl(
+      fun({_, _, _, _, _, _} = Config, Configs) ->
+              [build_miner_config(Config) | Configs]
+      end, [], MinerConfigLists).
 
-get_miner_options() ->
-    {ok, BinGroup} =
-        aeu_env:find_config(
-          [<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"executable_group">>],
-          [user_config, schema_default]),
-    {MinerBin, MinerExtraArgs} =
-        case {aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"executable">>]),
-              aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"extra_args">>])}
-        of
-            {{ok, BinB}, {ok, ExtraArgsB}} ->
-                {binary_to_list(BinB), binary_to_list(ExtraArgsB)};
-            {undefined, undefined} -> %% Both or neither - enforced by user config schema.
-                {Bin, ExtraArgs, _, _, _, _} = get_options(),
-                {Bin, ExtraArgs}
-        end,
-    {miner_bin_dir(BinGroup), MinerBin, MinerExtraArgs}.
-
-miner_bin_dir(<<"aecuckoo">>) ->
-    aecuckoo:bin_dir();
-miner_bin_dir(<<"aecuckooprebuilt">>) ->
-    code:priv_dir(aecuckooprebuilt).
+build_miner_config(Config) when is_map(Config) ->
+    Executable      = maps:get(<<"executable">>         , Config),
+    ExecutableGroup = maps:get(<<"executable_group">>   , Config, ?DEFAULT_EXECUTABLE_GROUP),
+    ExtraArgs       = maps:get(<<"extra_args">>         , Config, ?DEFAULT_EXTRA_ARGS),
+    HexEncodedHdr   = maps:get(<<"hex_encoded_header">> , Config, ?DEFAULT_HEX_ENCODED_HEADER),
+    Nice            = maps:get(<<"nice">>               , Config, undefined),
+    Repeats         = maps:get(<<"repeats">>            , Config, ?DEFAULT_REPEATS),
+    Instances       = maps:get(<<"addressed_instances">>, Config, undefined),
+    #miner_config{
+       executable         = binary_to_list(Executable),
+       executable_group   = ExecutableGroup,
+       extra_args         = binary_to_list(ExtraArgs),
+       hex_encoded_header = HexEncodedHdr,
+       nice               = Nice,
+       repeats            = Repeats,
+       instances          = Instances};
+build_miner_config({Executable, ExtraArgs, HexEncodedHeader, Repeats, Instances, ExecutableGroup}) ->
+    #miner_config{
+       executable         = binary_to_list(Executable),
+       executable_group   = ExecutableGroup,
+       extra_args         = binary_to_list(ExtraArgs),
+       hex_encoded_header = HexEncodedHeader,
+       repeats            = Repeats,
+       instances          = Instances}.
 
 get_edge_bits() ->
-    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"edge_bits">>]) of
-        {ok, EdgeBits} ->
-            EdgeBits;
+    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"edge_bits">>]) of
+        {ok, EdgeBits} -> EdgeBits;
         undefined ->
-            {_, _, EdgeBits, _, _, _} = get_options(),
-            EdgeBits
+            %% Deprecated property 'mining' > 'cuckoo' > 'miner' > 'edge_bits'
+            case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"edge_bits">>]) of
+                {ok, EdgeBits} -> EdgeBits;
+                undefined ->
+                    {EdgeBits, _} = get_options(),
+                    EdgeBits
+            end
     end.
 
-get_hex_encoded_header() ->
-    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"hex_encoded_header">>]) of
-        {ok, HexEncodedHeader} ->
-            HexEncodedHeader;
-        undefined ->
-            {_, _, _, HexEncodedHeader, _, _} = get_options(),
-            HexEncodedHeader
+get_executable(#miner_config{executable = Executable}) ->
+    Executable.
+
+get_extra_args(#miner_config{extra_args = ExtraArgs}) ->
+    ExtraArgs.
+
+get_nice(#miner_config{nice = Nice}) ->
+    Nice.
+
+is_hex_encoded_header(#miner_config{hex_encoded_header = HexEncodedHeader}) ->
+    HexEncodedHeader.
+
+is_miner_instance_addressation_enabled(#miner_config{instances = Instances}) ->
+    case Instances of
+        undefined -> false;
+        I when is_list(I) -> true
+    end.
+
+miner_bin_dir(#miner_config{executable_group = ExecutableGroup}) ->
+    case ExecutableGroup of
+        <<"aecuckoo">>         -> aecuckoo:bin_dir();
+        <<"aecuckooprebuilt">> -> code:priv_dir(aecuckooprebuilt)
     end.
 
 %%------------------------------------------------------------------------------
 %% Proof of Work generation: use the hash provided
 %%------------------------------------------------------------------------------
 -spec generate_int(Hash :: string(), Nonce :: aec_pow:nonce(),
-                   Target :: aec_pow:sci_int(), Instance :: non_neg_integer()) ->
+                   Target :: aec_pow:sci_int(), aec_pow:miner_config(), Instance :: non_neg_integer()) ->
                           {'ok', Nonce2 :: aec_pow:nonce(), Solution :: pow_cuckoo_solution()} |
                           {'error', term()}.
-generate_int(Hash, Nonce, Target, Instance) ->
-    {MinerBinDir, MinerBin, MinerExtraArgs0} = get_miner_options(),
-    MinerExtraArgs = case is_miner_instance_addressation_enabled() of
-                         true  -> MinerExtraArgs0 ++ " -d " ++ integer_to_list(Instance);
-                         false -> MinerExtraArgs0
-                     end,
-    EncodedHash =
-        case get_hex_encoded_header() of
-            true  -> hex_string(Hash);
-            false -> Hash
-        end,
-    generate_int(EncodedHash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs).
+generate_int(Hash, Nonce, Target, #miner_config{} = Config, Instance) ->
+    MinerBin        = get_executable(Config),
+    MinerExtraArgs0 = get_extra_args(Config),
+    MinerExtraArgs  = case is_miner_instance_addressation_enabled(Config) of
+                          true  -> MinerExtraArgs0 ++ " -d " ++ integer_to_list(Instance);
+                          false -> MinerExtraArgs0
+                      end,
+    EncodedHash     = case is_hex_encoded_header(Config) of
+                          true  -> hex_string(Hash);
+                          false -> Hash
+                      end,
+    MinerBinDir     = miner_bin_dir(Config),
+    generate_int(EncodedHash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config).
 
-generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs) ->
-    Repeats = get_miner_repeats(),
+generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config) ->
+    Repeats = get_repeats(Config),
     Cmd = lists:concat(["./", MinerBin,
                         " -h ", Hash,
                         " -n ", Nonce,
@@ -216,10 +323,10 @@ generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs) ->
                       {env, [{"SHELL", "/bin/sh"}]},
                       monitor],
     Options =
-      case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"nice">>]) of
-          {ok, Niceness} -> DefaultOptions ++ [{nice, Niceness}];
-          undefined -> DefaultOptions
-      end,
+        case get_nice(Config) of
+            undefined -> DefaultOptions;
+            Niceness  -> DefaultOptions ++ [{nice, Niceness}]
+        end,
     try exec:run(Cmd, Options) of
         {ok, _ErlPid, OsPid} ->
             wait_for_result(#state{os_pid = OsPid,

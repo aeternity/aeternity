@@ -165,11 +165,31 @@ If you have 16 cores, you could (loosely spoken) assign 14 of them to mining usi
 mining:
     beneficiary: "beneficiary_pubkey_to_be_replaced"
     cuckoo:
-        miner:
-            edge_bits: 29
-            executable: mean29-avx2
-            extra_args: -t 14
+        edge_bits: 29
+        miners:
+            - executable: mean29-avx2
+              extra_args: -t 14
 ```
+
+#### Combining different miners
+
+Your mining setup may also contain multiple miners, which will be run simultaneously by your node.
+For example, to combine CPU miner with CUDA miner the following configuration can be used:
+```yaml
+mining:
+    beneficiary: "beneficiary_pubkey_to_be_replaced"
+    cuckoo:
+        edge_bits: 29
+        miners:
+            - executable: mean29-generic
+              extra_args: -t 2
+            - executable_group: aecuckooprebuilt
+              executable: cuda29
+              extra_args: -t 1
+              hex_encoded_header: true
+```
+
+For more details on CUDA mining go to [dedicated CUDA miner documentation](cuda-miner.md).
 
 ## Beneficiary account
 

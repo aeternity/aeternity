@@ -16,39 +16,69 @@ schema_test_() ->
      fun teardown/1,
      [{"Example user configuration files pass schema validation",
        [fun() ->
-          ?assertMatch({ok, _}, aeu_env:check_config(Config))
+                ?assertMatch({ok, _}, aeu_env:check_config(Config))
         end || Config <- test_data_config_files()]
-       }]
+      }]
     }.
 
 extra_checks_test_() ->
     {setup,
      fun() -> ok = meck:new(setup, [passthrough]), setup() end,
      fun(R) -> teardown(R), ok = meck:unload(setup) end,
-     [{"Example user configuration file passes checks further to the schema: " ++ Config, %% For enabling files to be linked from wiki as examples.
-       fun() ->
-               {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
-               ok = mock_user_config(UserMap, UserConfig),
-               ?assertEqual(ok, aec_hard_forks:check_env())
-       end
-      } || Config <- test_data_config_files()]
-    }.
+     [{"User configuration cannot contain both 'mining > cuckoo > edge_bits' and deprecated 'mining > cuckoo > miner'",
+       fun deprecated_miner_section_conflicting_with_edge_bits/0},
+      {"User configuration cannot contain both 'mining > cuckoo > miners' and deprecated 'mining > cuckoo > miner'",
+       fun deprecated_miner_section_conflicting_with_miners/0}]
+     ++ positive_extra_checks_tests()}.
+
+positive_extra_checks_tests() ->
+    [{"Example user configuration file passes checks further to the schema: " ++ Config, %% For enabling files to be linked from wiki as examples.
+      fun() ->
+              {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
+              ok = mock_user_config(UserMap, UserConfig),
+              ?assertEqual(ok, aec_hard_forks:check_env()),
+              ?assertEqual(ok, aec_pow_cuckoo:check_env())
+      end
+     } || Config <- test_data_config_files()].
+
+deprecated_miner_section_conflicting_with_edge_bits() ->
+    {Dir, DataDir} = get_test_config_base(),
+    Config = filename:join([Dir, DataDir, "epoch_deprecated_miner_with_edge_bits.yaml"]),
+    {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
+    ok = mock_user_config(UserMap, UserConfig),
+    ?assertExit(cuckoo_config_validation_failed, aec_pow_cuckoo:check_env()).
+
+deprecated_miner_section_conflicting_with_miners() ->
+    {Dir, DataDir} = get_test_config_base(),
+    Config = filename:join([Dir, DataDir, "epoch_deprecated_miner_with_miners.yaml"]),
+    {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
+    ok = mock_user_config(UserMap, UserConfig),
+    ?assertExit(cuckoo_config_validation_failed, aec_pow_cuckoo:check_env()).
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
 
 test_data_config_files() ->
-    %% differentiate between Eunit run in top directory and
-    %% common test run in _build/test/logs/...
-    %% This should be rebar3 thingy, if only one would know how.
-    DataDir = "aeutils/test/data/",
-    Dir = 
-        case filelib:is_dir(filename:join("apps", DataDir)) of
-            true -> "apps/";
-            false -> "../../lib/"
-        end,
+    {Dir, DataDir} = get_test_config_base(),
     [filename:join([Dir, DataDir, "epoch_full.yaml"]),
      filename:join([Dir, DataDir, "epoch_no_peers.yaml"]),
      filename:join([Dir, DataDir, "epoch_no_newline.yaml"]),
      filename:join([Dir, DataDir, "epoch_testnet.yaml"]),
-     filename:join([Dir, DataDir, "epoch_prebuilt_miner.yaml"])].
+     filename:join([Dir, DataDir, "epoch_prebuilt_miner.yaml"]),
+     filename:join([Dir, DataDir, "epoch_deprecated_miner.yaml"])].
+
+get_test_config_base() ->
+    %% differentiate between Eunit run in top directory and
+    %% common test run in _build/test/logs/...
+    %% This should be rebar3 thingy, if only one would know how.
+    DataDir = "aeutils/test/data/",
+    Dir =
+        case filelib:is_dir(filename:join("apps", DataDir)) of
+            true -> "apps/";
+            false -> "../../lib/"
+        end,
+    {Dir, DataDir}.
 
 setup() ->
     application:ensure_all_started(jesse),
@@ -64,7 +94,7 @@ teardown(_) ->
 
 mock_user_config(UserMap, UserConfig) ->
     F = fun
-            (aeutils, '$user_config') -> UserConfig;
+            (aeutils, '$user_config') -> {ok, UserConfig};
             (aeutils, '$user_map') -> UserMap;
             (_A, _K) -> meck:passthrough()
         end,

@@ -2,7 +2,6 @@
 
 -export([ to_binary/1
         , to_binary/2
-        , binary_to_words/1
         , from_heap/3
         , binary_to_heap/4
         , heap_to_heap/3
@@ -21,7 +20,6 @@
         , from_binary/2
         , from_binary/3
         , get_function_hash_from_calldata/1
-        , sophia_type_to_typerep/1
         ]).
 
 -export_type([binary_value/0, binary_heap_value/0, heap_value/0, heap_fragment/0]).
@@ -66,7 +64,7 @@
 %%      split) together with the maps used by the value. Also allows an
 %%      arbitrary offset for the binary. These are used when copying values
 %%      inside the VM. The full VM state (heap and maps) together with a
-%%      pointer can treated as a heap value.
+%%      pointer can be treated as a heap value.
 %%
 
 %% -- Manipulating heap values -----------------------------------------------
@@ -380,7 +378,7 @@ to_binary1(Data,_Address) when is_integer(Data) ->
     {Data,<<>>};
 to_binary1(Data, Address) when is_binary(Data) ->
     %% a string
-    Words = binary_to_words(Data),
+    Words = aeb_memory:binary_to_words(Data),
     {Address,<<(size(Data)):256, << <<W:256>> || W <- Words>>/binary>>};
 to_binary1(none, Address)            -> to_binary1({variant, 0, []}, Address);
 to_binary1({some, Value}, Address)   -> to_binary1({variant, 1, [Value]}, Address);
@@ -420,13 +418,6 @@ to_binaries([H|T],Address) ->
     {HRep,HMem} = to_binary1(H,Address),
     {TRep,TMem} = to_binaries(T,Address+size(HMem)),
     {[HRep|TRep],<<HMem/binary, TMem/binary>>}.
-
-binary_to_words(<<>>) ->
-    [];
-binary_to_words(<<N:256,Bin/binary>>) ->
-    [N|binary_to_words(Bin)];
-binary_to_words(Bin) ->
-    binary_to_words(<<Bin/binary,0>>).
 
 %% Interpret a return value (a binary) using a type rep.
 
@@ -605,10 +596,4 @@ get_function_hash_from_calldata(Calldata) ->
     end.
 
 
-sophia_type_to_typerep(String) ->
-    {ok, Ast} = aeso_parser:type(String),
-    try aeso_ast_to_icode:ast_typerep(Ast) of
-        Type -> {ok, Type}
-    catch _:_ -> {error, bad_type}
-    end.
 

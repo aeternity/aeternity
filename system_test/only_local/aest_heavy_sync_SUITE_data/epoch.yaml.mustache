@@ -30,10 +30,10 @@ mining:
     expected_mine_rate: 180000
     autostart: {{mining.autostart}}
     cuckoo:
-        miner:
-            executable: mean29-generic
-            extra_args: "-t 5"
-            edge_bits: 29
+        edge_bits: 29
+        miners:
+            - executable: mean29-generic
+              extra_args: "-t 5"
 
 fork_management:
     network_id: "ae_system_test"

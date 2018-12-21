@@ -12,7 +12,7 @@
         , check/3
         , deserialize_from_binary/1
         , fee/1
-        , gas/2
+        , gas_limit/2
         , min_gas/2
         , gas_price/1
         , ttl/1
@@ -174,8 +174,8 @@ fee(#aetx{ cb = CB, tx = Tx }) ->
 
 %% In case 0 is returned, the tx will not be included in the micro block
 %% candidate by the mempool.
--spec gas(Tx :: tx(), Height :: aec_blocks:height()) -> Gas :: non_neg_integer().
-gas(#aetx{type = Type, cb = CB, size = Size, tx = Tx }, Height) when
+-spec gas_limit(Tx :: tx(), Height :: aec_blocks:height()) -> Gas :: non_neg_integer().
+gas_limit(#aetx{type = Type, cb = CB, size = Size, tx = Tx }, Height) when
       Type =:= oracle_register_tx;
       Type =:= oracle_extend_tx ->
     case ttl_delta(Height, CB:oracle_ttl(Tx)) of
@@ -184,23 +184,23 @@ gas(#aetx{type = Type, cb = CB, size = Size, tx = Tx }, Height) when
         {error, _Rsn} ->
             0
     end;
-gas(#aetx{type = oracle_query_tx, size = Size, tx = Tx }, Height) ->
+gas_limit(#aetx{type = oracle_query_tx, size = Size, tx = Tx }, Height) ->
     case ttl_delta(Height, aeo_query_tx:query_ttl(Tx)) of
         {delta, _D} = TTL ->
             base_gas(oracle_query_tx) + size_gas(Size) + state_gas(oracle_query_tx, TTL);
         {error, _Rsn} ->
             0
     end;
-gas(#aetx{type = oracle_response_tx, size = Size, tx = Tx }, Height) ->
+gas_limit(#aetx{type = oracle_response_tx, size = Size, tx = Tx }, Height) ->
     case ttl_delta(Height, aeo_response_tx:response_ttl(Tx)) of
         {delta, _D} = TTL ->
             base_gas(oracle_response_tx) + size_gas(Size) + state_gas(oracle_response_tx, TTL);
         {error, _Rsn} ->
             0
     end;
-gas(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height) when Type =/= channel_offchain_tx ->
+gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height) when Type =/= channel_offchain_tx ->
     base_gas(Type) + size_gas(Size) + CB:gas(Tx);
-gas(#aetx{ type = channel_offchain_tx }, _Height) ->
+gas_limit(#aetx{ type = channel_offchain_tx }, _Height) ->
     0.
 
 -spec gas_price(Tx :: tx()) -> GasPrice :: non_neg_integer() | undefined.
@@ -216,7 +216,7 @@ min_fee(#aetx{} = AeTx, Height) ->
 min_gas(#aetx{ type = Type, size = Size }, _Height) when ?IS_CONTRACT_TX(Type) ->
     base_gas(Type) + size_gas(Size);
 min_gas(#aetx{} = Tx, Height) ->
-    gas(Tx, Height).
+    gas_limit(Tx, Height).
 
 -spec nonce(Tx :: tx()) -> Nonce :: non_neg_integer().
 nonce(#aetx{ cb = CB, tx = Tx }) ->

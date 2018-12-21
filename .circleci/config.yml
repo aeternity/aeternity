@@ -270,6 +270,16 @@ references:
         dmesg > ${SYSTEM_TEST_HOST_LOGS_DIR:?}/dmesg.log
       when: always
 
+  chain_snapshots: &chain_snapshots /tmp/chain_snapshots
+  snapshot_chain: &snapshot_chain
+    run:
+      name: Snapshot of environment blockchain
+      environment:
+        - BACKUP_DIR: *chain_snapshots
+      command: |
+        export BACKUP_SUFFIX=${BACKUP_ENV:?}_db_backup_$(date +%s)
+        cd /infrastructure && make mnesia_backup
+
 jobs:
   build:
     <<: *container_config
@@ -514,18 +524,23 @@ jobs:
 
   uat_chain_snapshot:
     <<: *infrastructure_config
+    environment:
+      - BACKUP_ENV: uat
     steps:
       - *setup_secrets
-      - run:
-          name: Snapshot of UAT blockchain
-          environment:
-            - BACKUP_ENV: uat
-            - BACKUP_DIR: /tmp/chain_snapshots
-          command: |
-            export BACKUP_SUFFIX=uat_db_backup_$(date +%s)
-            cd /infrastructure && make mnesia_backup
+      - *snapshot_chain
       - store_artifacts:
-          path: /tmp/chain_snapshots
+          path: *chain_snapshots
+
+  main_chain_snapshot:
+    <<: *infrastructure_config
+    environment:
+      - BACKUP_ENV: main
+    steps:
+      - *setup_secrets
+      - *snapshot_chain
+      - store_artifacts:
+          path: *chain_snapshots
 
   docker_system_tests:
     <<: *machine_config
@@ -916,6 +931,7 @@ workflows:
                 - master
     jobs:
       - uat_chain_snapshot
+      - main_chain_snapshot
 
   system_tests:
     triggers:

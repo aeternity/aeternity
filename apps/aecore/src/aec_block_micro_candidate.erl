@@ -210,7 +210,7 @@ add_txs_to_trees(MaxGas, Trees, Txs, Env) ->
 add_txs_to_trees(_MaxGas, Trees, [], Acc,_Env) ->
     {lists:reverse(Acc), Trees};
 add_txs_to_trees(MaxGas, Trees, [Tx | Txs], Acc, Env) ->
-    TxGas = aetx:gas(aetx_sign:tx(Tx), aetx_env:height(Env)),
+    TxGas = aetx:gas_limit(aetx_sign:tx(Tx), aetx_env:height(Env)),
     case TxGas =< MaxGas of
         true ->
             case aec_trees:apply_txs_on_state_trees([Tx], Trees, Env) of

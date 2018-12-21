@@ -33,7 +33,8 @@ pow_test_() ->
         fun() ->
                 Target = ?HIGHEST_TARGET_SCI,
                 Nonce = ?TEST_HIGH_NONCE,
-                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, 0),
+                [Config] = ?TEST_MODULE:get_miner_configs(),
+                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined),
                 {ok, {Nonce, Soln}} = Res,
                 ?assertMatch(L when length(L) == 42, Soln),
 
@@ -47,7 +48,8 @@ pow_test_() ->
         fun() ->
                 Target = 16#01010000,
                 Nonce = ?TEST_HIGH_NONCE,
-                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, 0),
+                [Config] = ?TEST_MODULE:get_miner_configs(),
+                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined),
                 ?assertEqual({error, no_solution}, Res),
 
                 %% Any attempts to verify such nonce with a solution
@@ -56,7 +58,7 @@ pow_test_() ->
                 %% Obtain solution with high target threshold ...
                 HighTarget = ?HIGHEST_TARGET_SCI,
                 {ok, {Nonce, Soln2}} =
-                    ?TEST_MODULE:generate(?TEST_BIN, HighTarget, Nonce, 0),
+                    ?TEST_MODULE:generate(?TEST_BIN, HighTarget, Nonce, Config, undefined),
                 ?assertMatch(L when length(L) == 42, Soln2),
                 %% ... then attempt to verify such solution (and
                 %% nonce) with the low target threshold (shall fail).
@@ -67,7 +69,8 @@ pow_test_() ->
        fun() ->
                Target = ?HIGHEST_TARGET_SCI,
                Nonce = ?TEST_HIGH_NONCE,
-               Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, 0),
+               [Config] = ?TEST_MODULE:get_miner_configs(),
+               Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined),
                {ok, {Nonce, Soln}} = Res,
                ?assertMatch(L when length(L) == 42, Soln),
 
@@ -80,8 +83,9 @@ pow_test_() ->
        fun() ->
                Target = ?HIGHEST_TARGET_SCI,
                Nonce = 1,
+               [Config] = ?TEST_MODULE:get_miner_configs(),
                ?assertMatch({error, no_solution},
-                            ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, 0)),
+                            ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined)),
 
                DummySoln = lists:seq(0, 41),
                ?assertMatch(L when length(L) == 42, DummySoln),
@@ -137,10 +141,11 @@ kill_ospid_miner_test_() ->
      end,
      [ {"Run miner in OS and kill it by killing parent",
        fun() ->
+            [Config] = ?TEST_MODULE:get_miner_configs(),
             Self = self(),
             ?assertEqual([], exec:which_children()),  %% no zombies around
             Pid = spawn(fun() ->
-                          Self ! {aec_pow_cuckoo:generate(?TEST_BIN, 12837272, 128253, 0), self()}
+                          Self ! {aec_pow_cuckoo:generate(?TEST_BIN, 12837272, 128253, Config, undefined), self()}
                       end),
             timer:sleep(200),                        %% give some time to start the miner OS pid
             ?assertEqual(1, length(exec:which_children())),  %% We did create a new one.
@@ -165,11 +170,12 @@ prebuilt_miner_test_() ->
      end,
      [{"Err if absent prebuilt miner",
        fun() ->
-               aec_test_utils:mock_prebuilt_cuckoo_pow("nonexistingminer"),
+               aec_test_utils:mock_prebuilt_cuckoo_pow(<<"nonexistingminer">>),
                Target = ?HIGHEST_TARGET_SCI,
                Nonce = 1,
+               [Config] = ?TEST_MODULE:get_miner_configs(),
                ?assertMatch({error,{runtime,{execution_failed,{status,_}}}},
-                            ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, 0))
+                            ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined))
        end}
      ]}.
 

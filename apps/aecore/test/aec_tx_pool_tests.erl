@@ -204,8 +204,8 @@ tx_pool_test_() ->
                {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
                MaxGas = aec_governance:block_gas_limit(),
                {ok, STxs2} = aec_tx_pool:get_candidate(MaxGas, Hash),
-               TotalGas = lists:sum([ aetx:gas(aetx_sign:tx(T), GenesisHeight) || T <- STxs2 ]),
-               MinGas = aetx:gas(aetx_sign:tx(hd(STxs)), GenesisHeight),
+               TotalGas = lists:sum([ aetx:gas_limit(aetx_sign:tx(T), GenesisHeight) || T <- STxs2 ]),
+               MinGas = aetx:gas_limit(aetx_sign:tx(hd(STxs)), GenesisHeight),
 
                %% No single tx would have fitted on top of this
                ?assert(MinGas > MaxGas - TotalGas),
@@ -279,7 +279,7 @@ tx_pool_test_() ->
                Txs3 = [ a_signed_tx(PubKey2, me, Nonce, 20000, 10) || Nonce <- lists:seq(3, 103) ],
                [ ok = aec_tx_pool:push(Tx) || Tx <- Txs3 ],
                GenesisHeight = aec_block_genesis:height(),
-               TotalGas3 = lists:sum([ aetx:gas(aetx_sign:tx(T), GenesisHeight) || T <- [ Tx1_2 | Txs3 ] ]),
+               TotalGas3 = lists:sum([ aetx:gas_limit(aetx_sign:tx(T), GenesisHeight) || T <- [ Tx1_2 | Txs3 ] ]),
                ?assert(TotalGas3 =< aec_governance:block_gas_limit()),
                {ok, CTxs3} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(), MicroHash),
                ?assertEqual(lists:sort([ Tx1_2 | Txs3]), lists:sort(CTxs3)),
@@ -288,7 +288,7 @@ tx_pool_test_() ->
                ?assertEqual([], aec_tx_pool:peek_db()),
                Txs4 = [ a_signed_tx(PubKey2, me, Nonce, 20000, 10) || Nonce <- lists:seq(104, 504) ],
                [ ok = aec_tx_pool:push(Tx) || Tx <- Txs4 ],
-               TotalGas4 = lists:sum([ aetx:gas(aetx_sign:tx(T), GenesisHeight) || T <- Txs4 ]),
+               TotalGas4 = lists:sum([ aetx:gas_limit(aetx_sign:tx(T), GenesisHeight) || T <- Txs4 ]),
                ?assert(TotalGas4 > aec_governance:block_gas_limit()),
                {ok, CTxs4} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(), MicroHash),
                ?assert(not lists:member(Tx1_2, CTxs4)),
@@ -524,9 +524,9 @@ tx_pool_test_() ->
                STx2 = signed_ct_create_tx(PK2,    1, 800000,  1000),
                STx3 = signed_ct_call_tx(  PK3,    1, 800000,  1000),
 
-               GasTx1 = aetx:gas(aetx_sign:tx(STx1), 0),
-               GasTx2 = aetx:gas(aetx_sign:tx(STx2), 0),
-               GasTx3 = aetx:gas(aetx_sign:tx(STx3), 0),
+               GasTx1 = aetx:gas_limit(aetx_sign:tx(STx1), 0),
+               GasTx2 = aetx:gas_limit(aetx_sign:tx(STx2), 0),
+               GasTx3 = aetx:gas_limit(aetx_sign:tx(STx3), 0),
 
                ?assert(GasTx2 > GasTx1),
                ?assert(GasTx3 > GasTx1),

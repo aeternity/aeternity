@@ -148,7 +148,7 @@ process_test_() ->
                                                   nonce => 11,
                                                   payload => <<"foo bar">>}),
 
-              ?assert(aetx:gas(SpendTx1, 1) < aetx:gas(SpendTx2, 1))
+              ?assert(aetx:gas_limit(SpendTx1, 1) < aetx:gas_limit(SpendTx2, 1))
        end}].
 
 spend_tx(Data) ->

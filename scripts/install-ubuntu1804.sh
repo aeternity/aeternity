@@ -80,10 +80,10 @@ mining:
     beneficiary: "${BENEFICIARY}"
     autostart: true
     cuckoo:
+        node_bits: 29
         miner:
-            executable: mean29-avx2
-            extra_args: "-t 1"
-            node_bits: 29
+            - executable: mean29-avx2
+              extra_args: "-t 1"
 chain:
     persist: true
     db_path: ./my_db

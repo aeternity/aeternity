@@ -123,10 +123,10 @@ mining:
     beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     beneficiary_reward_delay: 2
     cuckoo:
-        miner:
-            executable: mean15-generic
-            extra_args: ""
-            edge_bits: 15
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+              extra_args: ""
 """
     return install_user_config(root_dir, file_name, conf)
 
@@ -144,10 +144,10 @@ mining:
     beneficiary: "{}"
     beneficiary_reward_delay: 2
     cuckoo:
-        miner:
-            executable: mean15-generic
-            extra_args: ""
-            edge_bits: 15
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+              extra_args: ""
 """.format(beneficiary['enc_pubk'])
     return install_user_config(root_dir, file_name, conf)
 
@@ -204,10 +204,13 @@ def genesis_hash(api):
 def wait_until_height(api, height):
     wait(lambda: api.get_current_key_block().height >= height, timeout_seconds=120, sleep_seconds=0.25)
 
-def ensure_transaction_posted(ext_api, signed_tx):
+def post_transaction(ext_api, signed_tx):
     tx_object = Tx(tx=signed_tx)
-    tx_hash = ext_api.post_transaction(tx_object).tx_hash
-    ensure_transaction_confirmed(ext_api, tx_hash, 1)
+    return ext_api.post_transaction(tx_object).tx_hash
+
+def ensure_transaction_posted(ext_api, signed_tx, min_confirmations=1):
+    tx_hash = post_transaction(ext_api, signed_tx)
+    ensure_transaction_confirmed(ext_api, tx_hash, min_confirmations)
 
 def ensure_transaction_confirmed(ext_api, tx_hash, min_confirmations):
     wait(lambda: is_tx_confirmed(ext_api, tx_hash, min_confirmations), timeout_seconds=20, sleep_seconds=0.25)
@@ -222,7 +225,7 @@ def is_tx_confirmed(ext_api, tx_hash, min_confirmations):
 def get_account_balance(api, pub_key):
     return _balance_from_get_account(lambda: api.get_account_by_pubkey(pub_key), pub_key)
 
-def send_tokens_to_unchanging_user(sender, address, tokens, fee, external_api, internal_api):
+def send_tokens(sender, address, tokens, fee, ext_api, int_api):
     spend_tx_obj = SpendTx(
         sender_id=sender['enc_pubk'],
         recipient_id=address,
@@ -230,18 +233,14 @@ def send_tokens_to_unchanging_user(sender, address, tokens, fee, external_api, i
         fee=fee,
         ttl=100,
         payload="sending tokens")
-    spend_tx = internal_api.post_spend(spend_tx_obj).tx
+    spend_tx = int_api.post_spend(spend_tx_obj).tx
     unsigned_tx = api_decode(spend_tx)
     signed_tx = integration.keys.sign_encode_tx(unsigned_tx, sender['privk'])
-    external_api.post_transaction(Tx(tx=signed_tx))
+    return post_transaction(ext_api, signed_tx)
 
-def send_tokens_to_unchanging_user_and_wait_balance(sender, address, tokens, fee, ext_api, int_api):
-    bal0 = get_account_balance(ext_api, address)
-    send_tokens_to_unchanging_user(sender, address, tokens, fee, ext_api, int_api)
-    top = ext_api.get_current_key_block()
-    wait_until_height(ext_api, top.height+1)
-    wait(lambda: get_account_balance(ext_api, address) == (bal0 + tokens),
-         timeout_seconds=20, sleep_seconds=0.25)
+def ensure_send_tokens(sender, address, tokens, fee, ext_api, int_api, min_confirmations):
+    tx_hash = send_tokens(sender, address, tokens, fee, ext_api, int_api)
+    ensure_transaction_confirmed(ext_api, tx_hash, min_confirmations)
 
 def _balance_from_get_account(get_account_fun, pub_key):
     account = Account(id=pub_key, balance=0, nonce=0)

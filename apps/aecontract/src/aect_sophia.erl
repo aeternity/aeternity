@@ -161,7 +161,7 @@ decode_data(Type, Data) ->
 
 get_type(BinaryString) ->
     String = unicode:characters_to_list(BinaryString, utf8),
-    case aeso_data:sophia_type_to_typerep(String) of
+    case aeso_compiler:sophia_type_to_typerep(String) of
         {ok, _Type} = R -> R;
         {error, ErrorAtom} ->
             {error, unicode:characters_to_binary(atom_to_list(ErrorAtom))}
@@ -211,10 +211,16 @@ prepare_for_json(T, R) ->
     throw({error, Error}).
 
 create_call(Code, Function, Argument) ->
-    case aeso_abi:create_calldata(Code,
-                                  binary_to_list(Function),
-                                  binary_to_list(Argument)) of
-        {error, Error} ->
-            {error, list_to_binary(io_lib:format("~p", [Error]))};
-        {ok, _CallData,_CallDataType,_OutType} = Res -> Res
+    try deserialize(Code) of
+        Contract ->
+            case aeso_compiler:create_calldata(Contract,
+                                           binary_to_list(Function),
+                                           binary_to_list(Argument)) of
+                {error, Error} ->
+                    {error, list_to_binary(io_lib:format("~p", [Error]))};
+                {ok, _CallData, _CallDataType, _OutType} = Res -> Res
+            end
+    catch _:_ ->
+        {error, bad_contract_code}
     end.
+

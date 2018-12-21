@@ -344,7 +344,7 @@ ast_body({hash, _, Hash}, _Icode) ->
                            #integer{value = Lo}]}
     end;
 ast_body({string,_,Bin}, _Icode) ->
-    Cpts = [size(Bin)|aeso_data:binary_to_words(Bin)],
+    Cpts = [size(Bin) | aeb_memory:binary_to_words(Bin)],
     #tuple{cpts = [#integer{value=X} || X <- Cpts]};
 ast_body({tuple,_,Args}, Icode) ->
     #tuple{cpts = [ast_body(A, Icode) || A <- Args]};
@@ -513,7 +513,7 @@ check_monomorphic_map({typed, Ann, _, MapType}, Icode) ->
 check_monomorphic_map(Ann, Type = ?map_t(KeyType, ValType), Icode) ->
     case is_monomorphic(KeyType) of
         true  ->
-            case aeso_data:has_maps(ast_type(KeyType, Icode)) of
+            case has_maps(ast_type(KeyType, Icode)) of
                 false -> {KeyType, ValType};
                 true  -> gen_error({cant_use_map_as_map_keys, Ann, Type})
             end;
@@ -677,6 +677,14 @@ ast_fun_to_icode("abort", _Atts, _Args, _Body, _TypeRep, Icode) ->
 ast_fun_to_icode(Name, Attrs, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
     NewFuns = [{Name, Attrs, Args, Body, TypeRep}| Funs],
     aeso_icode:set_functions(NewFuns, Icode).
+
+has_maps({map, _, _})   -> true;
+has_maps(word)          -> false;
+has_maps(string)        -> false;
+has_maps(typerep)       -> false;
+has_maps({list, T})     -> has_maps(T);
+has_maps({tuple, Ts})   -> lists:any(fun has_maps/1, Ts);
+has_maps({variant, Cs}) -> lists:any(fun has_maps/1, lists:append(Cs)).
 
 %% -------------------------------------------------------------------
 %% Builtins

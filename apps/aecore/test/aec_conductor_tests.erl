@@ -177,7 +177,7 @@ test_time_out_miner() ->
     TestPid = self(),
     ok = meck:expect(
            aec_pow_cuckoo, generate,
-           fun(_, _, _, _) ->
+           fun(_, _, _, _, _) ->
                    TestPid ! {self(), called},
                    receive after infinity -> never_reached end
            end),
@@ -481,7 +481,7 @@ test_two_mined_block_signing() ->
 test_received_block_signing() ->
     Keys = beneficiary_keys(),
     meck:expect(aec_mining, mine,
-                fun(_, _, _, _) -> timer:sleep(1000), {error, no_solution} end),
+                fun(_, _, _, _, _) -> timer:sleep(1000), {error, no_solution} end),
     true = aec_events:subscribe(block_to_publish),
 
     ?TEST_MODULE:start_mining(),
