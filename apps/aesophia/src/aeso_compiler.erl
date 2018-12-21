@@ -14,6 +14,7 @@
         , check_call/2
         , create_calldata/3
         , version/0
+        , sophia_type_to_typerep/1
         ]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
@@ -220,6 +221,13 @@ pp(Code, Options, Option, PPFun) ->
 
 %% -------------------------------------------------------------------
 %% TODO: Tempoary parser hook below...
+
+sophia_type_to_typerep(String) ->
+    {ok, Ast} = aeso_parser:type(String),
+    try aeso_ast_to_icode:ast_typerep(Ast) of
+        Type -> {ok, Type}
+    catch _:_ -> {error, bad_type}
+    end.
 
 parse_string(Text) ->
     %% Try and return something sensible here!
