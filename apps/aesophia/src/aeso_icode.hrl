@@ -64,3 +64,5 @@
                        , args   :: [term()]}).
 
 -record(seq, {exprs :: [expr()]}).
+
+-record(event, {topics :: [expr()], payload :: expr()}).

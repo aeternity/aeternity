@@ -10,7 +10,7 @@
 -module(aeso_ast_to_icode).
 
 -export([ast_typerep/1, ast_typerep/2, type_value/1,
-         convert_typed/2]).
+         convert_typed/2, prim_call/5]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aeso_icode.hrl").
@@ -61,6 +61,8 @@ contract_to_icode([{type_def, _Attrib, {id, _, Name}, Args, Def} | Rest],
     Icode2 = case Name of
                 "state" when Args == [] -> Icode1#{ state_type => ast_typerep(Def, Icode) };
                 "state"                 -> gen_error(state_type_cannot_be_parameterized);
+                "event" when Args == [] -> Icode1#{ event_type => Def };
+                "event"                 -> gen_error(event_type_cannot_be_parameterized);
                 _                       -> Icode1
              end,
     contract_to_icode(Rest, Icode2);
@@ -118,6 +120,9 @@ ast_type(T, Icode) ->
 
 ast_body(?qid_app(["Chain","spend"], [To, Amount], _, _), Icode) ->
     prim_call(?PRIM_CALL_SPEND, ast_body(Amount, Icode), [ast_body(To, Icode)], [word], {tuple, []});
+
+ast_body(?qid_app(["Chain","event"], [Event], _, _), Icode) ->
+    builtin_call({event, maps:get(event_type, Icode)}, [ast_body(Event, Icode)]);
 
 %% Chain environment
 ast_body(?qid_app(["Chain", "balance"], [Address], _, _), Icode) ->
@@ -325,6 +330,12 @@ ast_body(?qid_app(["String", "concat"], [String1, String2], _, _), Icode) ->
 ast_body(?qid_app(["String", "sha3"], [String], _, _), Icode) ->
     #unop{ op = 'sha3', rand = ast_body(String, Icode) };
 
+%% -- Conversion
+ast_body(?qid_app(["Int", "to_str"], [Int], _, _), Icode) ->
+    builtin_call(int_to_str, [ast_body(Int, Icode)]);
+
+ast_body(?qid_app(["Address", "to_str"], [Addr], _, _), Icode) ->
+    builtin_call(addr_to_str, [ast_body(Addr, Icode)]);
 
 %% Other terms
 ast_body({id, _, Name}, _Icode) ->
@@ -694,294 +705,6 @@ builtin_call(Builtin, Args) ->
     #funcall{ function = #var_ref{ name = {builtin, Builtin} },
               args = Args }.
 
-builtin_deps(Builtin) ->
-    lists:usort(builtin_deps1(Builtin)).
-
-builtin_deps1({map_lookup_default, Type}) -> [{map_lookup, Type}];
-builtin_deps1({map_get, Type})            -> [{map_lookup, Type}];
-builtin_deps1(map_member)                 -> [{map_lookup, word}];
-builtin_deps1({map_upd, Type})            -> [{map_get, Type}, map_put];
-builtin_deps1({map_upd_default, Type})    -> [{map_lookup_default, Type}, map_put];
-builtin_deps1(map_from_list)              -> [map_put];
-builtin_deps1(str_equal)                  -> [str_equal_p];
-builtin_deps1(string_concat)              -> [string_concat_inner1, string_concat_inner2];
-builtin_deps1(_)                          -> [].
-
-dep_closure(Deps) ->
-    case lists:umerge(lists:map(fun builtin_deps/1, Deps)) of
-        []    -> Deps;
-        Deps1 -> lists:umerge(Deps, dep_closure(Deps1))
-    end.
-
-used_builtins(#funcall{ function = #var_ref{ name = {builtin, Builtin} }, args = Args }) ->
-    lists:umerge(dep_closure([Builtin]), used_builtins(Args));
-used_builtins([H|T]) ->
-  lists:umerge(used_builtins(H), used_builtins(T));
-used_builtins(T) when is_tuple(T) ->
-  used_builtins(tuple_to_list(T));
-used_builtins(M) when is_map(M) ->
-  used_builtins(maps:to_list(M));
-used_builtins(_) -> [].
-
-option_none()  -> {tuple, [{integer, 0}]}.
-option_some(X) -> {tuple, [{integer, 1}, X]}.
-
-v(X) when is_atom(X) -> v(atom_to_list(X));
-v(X) when is_list(X) -> #var_ref{name = X}.
-
-%% Abort primitive.
-builtin_function(abort) ->
-    A = fun(X) -> aeb_opcodes:mnemonic(X) end,
-    {{builtin, abort}, [private],
-     [{"s", string}],
-     {inline_asm, [A(?PUSH1),0,  %% Push a dummy 0 for the first arg
-                   A(?REVERT)]}, %% Stack: 0,Ptr
-     {tuple,[]}};
-
-%% Map primitives
-builtin_function(Builtin = {map_lookup, Type}) ->
-    Ret = aeso_icode:option_typerep(Type),
-    {{builtin, Builtin}, [private],
-        [{"m", word}, {"k", word}],
-            prim_call(?PRIM_CALL_MAP_GET, #integer{value = 0},
-                      [#var_ref{name = "m"}, #var_ref{name = "k"}],
-                      [word, word], Ret),
-     Ret};
-
-builtin_function(Builtin = map_put) ->
-    %% We don't need the types for put.
-    {{builtin, Builtin}, [private],
-        [{"m", word}, {"k", word}, {"v", word}],
-        prim_call(?PRIM_CALL_MAP_PUT, #integer{value = 0},
-                  [v(m), v(k), v(v)],
-                  [word, word, word], word),
-     word};
-
-builtin_function(Builtin = map_delete) ->
-    {{builtin, Builtin}, [private],
-        [{"m", word}, {"k", word}],
-        prim_call(?PRIM_CALL_MAP_DELETE, #integer{value = 0},
-                  [v(m), v(k)],
-                  [word, word], word),
-     word};
-
-builtin_function(Builtin = map_size) ->
-    Name = {builtin, Builtin},
-    {Name, [private], [{"m", word}],
-        prim_call(?PRIM_CALL_MAP_SIZE, #integer{value = 0},
-                  [v(m)], [word], word),
-        word};
-
-%% Map builtins
-builtin_function(Builtin = {map_get, Type}) ->
-    %% function map_get(m, k) =
-    %%   switch(map_lookup(m, k))
-    %%     Some(v) => v
-    {{builtin, Builtin}, [private],
-        [{"m", word}, {"k", word}],
-            {switch, builtin_call({map_lookup, Type}, [v(m), v(k)]),
-                [{option_some(v(v)), v(v)}]},
-     Type};
-
-builtin_function(Builtin = {map_lookup_default, Type}) ->
-    %% function map_lookup_default(m, k, default) =
-    %%   switch(map_lookup(m, k))
-    %%     None    => default
-    %%     Some(v) => v
-    {{builtin, Builtin}, [private],
-        [{"m", word}, {"k", word}, {"default", Type}],
-            {switch, builtin_call({map_lookup, Type}, [v(m), v(k)]),
-                [{option_none(),     v(default)},
-                 {option_some(v(v)), v(v)}]},
-     Type};
-
-builtin_function(Builtin = map_member) ->
-    %% function map_member(m, k) : bool =
-    %%   switch(Map.lookup(m, k))
-    %%     None => false
-    %%     _    => true
-    {{builtin, Builtin}, [private],
-        [{"m", word}, {"k", word}],
-            {switch, builtin_call({map_lookup, word}, [v(m), v(k)]),
-                [{option_none(), {integer, 0}},
-                 {{var_ref, "_"}, {integer, 1}}]},
-     word};
-
-builtin_function(Builtin = {map_upd, Type}) ->
-    %% function map_upd(map, key, fun) =
-    %%   map_put(map, key, fun(map_get(map, key)))
-    {{builtin, Builtin}, [private],
-     [{"map", word}, {"key", word}, {"valfun", word}],
-     builtin_call(map_put,
-        [v(map), v(key),
-         #funcall{ function = v(valfun),
-                   args     = [builtin_call({map_get, Type}, [v(map), v(key)])] }]),
-     word};
-
-builtin_function(Builtin = {map_upd_default, Type}) ->
-    %% function map_upd(map, key, val, fun) =
-    %%   map_put(map, key, fun(map_lookup_default(map, key, val)))
-    {{builtin, Builtin}, [private],
-     [{"map", word}, {"key", word}, {"val", word}, {"valfun", word}],
-     builtin_call(map_put,
-        [v(map), v(key),
-         #funcall{ function = v(valfun),
-                   args     = [builtin_call({map_lookup_default, Type}, [v(map), v(key), v(val)])] }]),
-     word};
-
-builtin_function(Builtin = map_from_list) ->
-    %% function map_from_list(xs, acc) =
-    %%   switch(xs)
-    %%     [] => acc
-    %%     (k, v) :: xs => map_from_list(xs, acc { [k] = v })
-    {{builtin, Builtin}, [private],
-     [{"xs", {list, {tuple, [word, word]}}}, {"acc", word}],
-     {switch, v(xs),
-        [{{list, []}, v(acc)},
-         {{binop, '::', {tuple, [v(k), v(v)]}, v(ys)},
-          builtin_call(map_from_list,
-            [v(ys), builtin_call(map_put, [v(acc), v(k), v(v)])])}]},
-     word};
-
-%% list_concat
-%%
-%% Concatenates two lists.
-builtin_function(list_concat) ->
-    {{builtin, list_concat}, [private],
-     [{"l1", {list, word}}, {"l2", {list, word}}],
-     {switch, v(l1),
-        [{{list, []}, v(l2)},
-         {{binop, '::', v(hd), v(tl)},
-          {binop, '::', v(hd), {funcall, {var_ref, {builtin, list_concat}},
-                                         [v(tl), v(l2)]}}}
-        ]
-     },
-    word};
-
-builtin_function(string_length) ->
-    %% function length(str) =
-    %%   switch(str)
-    %%      {n} -> n  // (ab)use the representation
-    {{builtin, string_length}, [private],
-     [{"s", string}],
-     {switch, v(s), [{{tuple, [v(n)]}, v(n)}]},
-     word};
-
-%% str_concat - concatenate two strings
-%%
-%% Unless the second string is the empty string, a new string is created at the
-%% top of the Heap and the address to it is returned. The tricky bit is when
-%% the words from the second string has to be shifted to fit next to the first
-%% string.
-builtin_function(string_concat) ->
-    I = fun(X) -> {integer, X} end,
-    LetLen = fun(N, S, Body) -> {switch, v(S), [{{tuple, [v(N)]}, Body}]} end,
-    Let = fun(N, E, Body) -> {switch, E, [{v(N), Body}]} end,
-    StepPtr = fun(P) -> {binop, '+', v(P), I(32)} end,
-    A = fun(X) -> aeb_opcodes:mnemonic(X) end,
-    {{builtin, string_concat}, [private],
-     [{"s1", string}, {"s2", string}],
-     LetLen(n1, s1,
-     LetLen(n2, s2,
-        {ifte, {binop, '==', v(n2), I(0)},
-            v(s1), %% Second string is empty return first string
-            Let(ret, {inline_asm, [A(?MSIZE)]},
-                {seq, [{binop, '+', v(n1), v(n2)},
-                       {inline_asm, [A(?MSIZE), A(?MSTORE)]}, %% Store total len
-                       {funcall, {var_ref, {builtin, string_concat_inner1}},
-                            [v(n1), StepPtr(s1), v(n2), StepPtr(s2)]},
-                       {inline_asm, [A(?POP)]}, %% Discard fun ret val
-                       v(ret)                   %% Put the actual return value
-                      ]})})),
-     word};
-
-builtin_function(string_concat_inner1) ->
-    I = fun(X) -> {integer, X} end,
-    Name = {builtin, string_concat_inner1},
-    LetWord = fun(W, P, Body) -> {switch, v(P), [{{tuple, [v(W)]}, Body}]} end,
-    A = fun(X) -> aeb_opcodes:mnemonic(X) end,
-    %% Copy all whole words from the first string, and set up for word fusion
-    %% Special case when the length of the first string is divisible by 32.
-    {Name, [private],
-     [{"n1", word}, {"p1", pointer}, {"n2", word}, {"p2", pointer}],
-     LetWord(w1, p1,
-        {ifte, {binop, '>', v(n1), I(32)},
-            {seq, [v(w1), {inline_asm, [A(?MSIZE), A(?MSTORE)]},
-                   {funcall, {var_ref, Name}, [{binop, '-', v(n1), I(32)},
-                                               {binop, '+', v(p1), I(32)},
-                                               v(n2), v(p2)]}]},
-            {ifte, {binop, '==', v(n1), I(0)},
-                {funcall, {var_ref, {builtin, string_concat_inner2}},
-                          [I(32), I(0), v(n2), v(p2)]},
-                {funcall, {var_ref, {builtin, string_concat_inner2}},
-                          [{binop, '-', I(32), v(n1)}, v(w1), v(n2), v(p2)]}}
-        }),
-     word};
-
-builtin_function(string_concat_inner2) ->
-    I = fun(X) -> {integer, X} end,
-    LetWord = fun(W, P, Body) -> {switch, v(P), [{{tuple, [v(W)]}, Body}]} end,
-    BSR = fun(X, Bytes) -> {binop, 'div', X, {binop, '^', I(2), {binop, '*', Bytes, I(8)}}} end,
-    BSL = fun(X, Bytes) -> {binop, '*', X, {binop, '^', I(2), {binop, '*', Bytes, I(8)}}} end,
-    A = fun(X) -> aeb_opcodes:mnemonic(X) end,
-    Name = {builtin, string_concat_inner2},
-    %% Current "work in progess" word 'x', has 'o' bytes that are "free" - fill them from
-    %% words of the second string.
-    {Name, [private],
-     [{"o", word}, {"x", word}, {"n2", word}, {"p2", pointer}],
-     {ifte, {binop, '<', v(n2), I(1)},
-        {seq, [v(x), {inline_asm, [A(?MSIZE), A(?MSTORE), A(?MSIZE)]}]}, %% Use MSIZE as dummy return value
-        LetWord(w2, p2,
-            {ifte, {binop, '>', v(n2), v(o)},
-                {seq, [{binop, '+', v(x), BSR(v(w2), {binop, '-', I(32), v(o)})},
-                       {inline_asm, [A(?MSIZE), A(?MSTORE)]},
-                       {funcall, {var_ref, Name},
-                                [v(o), BSL(v(w2), v(o)), {binop, '-', v(n2), I(32)}, {binop, '+', v(p2), I(32)}]}
-                      ]},
-                {seq, [{binop, '+', v(x), BSR(v(w2), {binop, '-', I(32), v(o)})},
-                       {inline_asm, [A(?MSIZE), A(?MSTORE), A(?MSIZE)]}]} %% Use MSIZE as dummy return value
-            })
-     },
-     word};
-
-builtin_function(str_equal_p) ->
-    %% function str_equal_p(n, p1, p2) =
-    %%   if(n =< 0) true
-    %%   else
-    %%      let w1 = *p1
-    %%      let w2 = *p2
-    %%      w1 == w2 && str_equal_p(n - 32, p1 + 32, p2 + 32)
-    LetWord = fun(W, P, Body) -> {switch, v(P), [{{tuple, [v(W)]}, Body}]} end,
-    Name = {builtin, str_equal_p},
-    {Name, [private],
-        [{"n", word}, {"p1", pointer}, {"p2", pointer}],
-        {ifte, {binop, '<', v(n), {integer, 1}},
-            {integer, 1},
-            LetWord(w1, p1,
-            LetWord(w2, p2,
-                {binop, '&&', {binop, '==', v(w1), v(w2)},
-                    {funcall, {var_ref, Name},
-                        [{binop, '-', v(n), {integer, 32}},
-                         {binop, '+', v(p1), {integer, 32}},
-                         {binop, '+', v(p2), {integer, 32}}]}}))},
-     word};
-
-builtin_function(str_equal) ->
-    %% function str_equal(s1, s2) =
-    %%   let n1 = length(s1)
-    %%   let n2 = length(s2)
-    %%   n1 == n2 && str_equal_p(n1, s1 + 32, s2 + 32)
-    LetLen = fun(N, S, Body) -> {switch, v(S), [{{tuple, [v(N)]}, Body}]} end,
-    {{builtin, str_equal}, [private],
-        [{"s1", string}, {"s2", string}],
-        LetLen(n1, s1,
-        LetLen(n2, s2,
-            {binop, '&&', {binop, '==', v(n1), v(n2)},
-                {funcall, {var_ref, {builtin, str_equal_p}},
-                    [v(n1), {binop, '+', v(s1), {integer, 32}},
-                            {binop, '+', v(s2), {integer, 32}}]}})),
-        word}.
-
 add_builtins(Icode = #{functions := Funs}) ->
-    Builtins = used_builtins(Funs),
-    Icode#{functions := [ builtin_function(B) || B <- Builtins ] ++ Funs}.
+    Builtins = aeso_builtins:used_builtins(Funs),
+    Icode#{functions := [ aeso_builtins:builtin_function(B) || B <- Builtins ] ++ Funs}.
