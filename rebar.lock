@@ -25,7 +25,7 @@
   {git,"https://github.com/jlouis/enacl.git",
       {ref,"885662c069ea06ed1dc9567b7fb68aa755a9505c"}},
   0},
- {<<"enoise">>,{pkg,<<"enoise">>,<<"1.0.0">>},0},
+ {<<"enoise">>,{pkg,<<"enoise">>,<<"1.0.1">>},0},
  {<<"eper">>,{pkg,<<"eper">>,<<"0.99.1">>},0},
  {<<"erlexec">>,
   {git,"https://github.com/saleyn/erlexec.git",
@@ -82,7 +82,7 @@
 [
 {pkg_hash,[
  {<<"bear">>, <<"16264309AE5D005D03718A5C82641FCC259C9E8F09ADEB6FD79CA4271168656F">>},
- {<<"enoise">>, <<"A5CFD9EDAE54228E3BA06AC4D187838DE10D6EA6C6A6F63E4ABAB886EF18A41D">>},
+ {<<"enoise">>, <<"3CABCCA6D84EA35F740C97308E5A763316FA83AA862AF74265BBD8A1A9D6F453">>},
  {<<"eper">>, <<"A50698B6803B8732AD6575285320999FE73E160A1A9FF7EFCAB6B6F818BD2C1F">>},
  {<<"exometer_core">>, <<"AB97E34A5D69AB14E6AE161DB4CCA5B5E655E635B842F830EE6AB2CBFCFDC30A">>},
  {<<"folsom">>, <<"A885F0AEEE4C84270954C88A55A5A473D6B2C7493E32FFDC5765412DD555A951">>},
