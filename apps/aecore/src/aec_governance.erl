@@ -34,6 +34,7 @@
 
 -include("blocks.hrl").
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
+-include_lib("aecore/include/hard_forks.hrl").
 
 -define(NETWORK_ID, <<"ae_mainnet">>).
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 17).
@@ -66,6 +67,8 @@
 %% the version.
 -type protocols() :: #{Version::non_neg_integer() => aec_blocks:height()}.
 
+-define(ROMA_PROTOCOL_HEIGHT, 0).
+-define(MINERVA_PROTOCOL_HEIGHT, 1).
 
 sorted_protocol_versions() ->
     lists:sort(maps:keys(protocols())).
@@ -73,10 +76,8 @@ sorted_protocol_versions() ->
 protocols() ->
     case aeu_env:user_map([<<"chain">>, <<"hard_forks">>]) of
         undefined ->
-            GenesisVersion = aec_block_genesis:version(),
-            GenesisHeight  = aec_block_genesis:height(),
-            #{ GenesisVersion      => GenesisHeight
-             , GenesisVersion + 1  => GenesisHeight + 1
+            #{ ?ROMA_PROTOCOL_VSN     => ?ROMA_PROTOCOL_HEIGHT
+             , ?MINERVA_PROTOCOL_VSN  => ?MINERVA_PROTOCOL_HEIGHT
              };
         {ok, M} ->
             maps:from_list(

@@ -31,6 +31,8 @@
         , dummy_bytecode/0
         ]).
 
+-include_lib("apps/aecontract/src/aecontract.hrl").
+
 %%%===================================================================
 %%% Test state
 %%%===================================================================
@@ -118,7 +120,7 @@ create_tx_default_spec(PubKey, State) ->
      , owner_id   => aec_id:create(account, PubKey)
      , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , code       => dummy_bytecode()
-     , vm_version => 1
+     , vm_version => ?CURRENT_AEVM_SOPHIA
      , deposit    => 10
      , amount     => 200
      , gas        => 10
@@ -151,7 +153,7 @@ call_tx_default_spec(PubKey, ContractKey, State) ->
      , contract_id => aec_id:create(contract, ContractKey)
      , caller_id   => aec_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , vm_version  => 1
+     , vm_version  => ?CURRENT_AEVM_SOPHIA
      , amount      => 100
      , gas         => 10000
      , gas_price   => 1

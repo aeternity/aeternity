@@ -111,7 +111,7 @@ tests: # test specific settings
         amount: 1000000
         fee: 200000
       create_contract:
-        vm_version: 1
+        vm_version: 3
         deposit: 2
         amount: 1
         gas: 75000
@@ -128,7 +128,7 @@ tests: # test specific settings
         amount: 1000000
         fee: 200000
       contract_call:
-        vm_version: 1
+        vm_version: 3
         fee: 500000
         amount: 10
         gas: 5500

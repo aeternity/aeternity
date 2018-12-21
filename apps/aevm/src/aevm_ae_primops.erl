@@ -18,7 +18,7 @@
 -include_lib("aecontract/src/aecontract.hrl").
 -include("aevm_ae_primops.hrl").
 
--record(chain, {api, state}).
+-record(chain, {api, state, vm_version}).
 
 -ifdef(COMMON_TEST).
 -define(TEST_LOG(Format, Data),
@@ -63,7 +63,9 @@ call_(Gas, Value, Data, StateIn) ->
                 map_call(Gas, PrimOp, Value, Data, StateIn);
             true ->
                 ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
-                                 state = aevm_eeevm_state:chain_state(StateIn)},
+                                 state = aevm_eeevm_state:chain_state(StateIn),
+                                 vm_version = aevm_eeevm_state:vm_version(StateIn)
+                                },
                 case call_primop(PrimOp, Value, Data, ChainIn) of
                     {error, _} = Err ->
                         Err;
@@ -294,7 +296,8 @@ oracle_ttl_t() ->
 sign_t() ->
     {tuple, [word, word]}.
 
-oracle_call_register(_Value, Data, #chain{api = API, state = State} = Chain) ->
+oracle_call_register(_Value, Data,
+                     #chain{api = API, state = State, vm_version = VMVersion} = Chain) ->
     ArgumentTypes = [word, sign_t(), word, oracle_ttl_t(), typerep, typerep],
     [Acct, Sign0, QFee, TTL, QFormat, RFormat] = get_args(ArgumentTypes, Data),
     %% The aeo_register_tx expects the formats to be binary, althought, atoms are provided.
@@ -303,7 +306,7 @@ oracle_call_register(_Value, Data, #chain{api = API, state = State} = Chain) ->
         {error, _} = Err -> Err;
         {ok, DeltaTTL = {delta, _}} ->
             case API:oracle_register_tx(<<Acct:256>>, QFee, TTL, QFormat,
-                                        RFormat, ?AEVM_01_Sophia_01, State) of
+                                        RFormat, VMVersion, State) of
                 {error, _} = Err -> Err;
                 {ok, Tx} ->
                     Callback =

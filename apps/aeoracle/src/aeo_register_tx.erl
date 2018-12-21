@@ -133,16 +133,22 @@ origin(#oracle_register_tx{} = Tx) ->
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_register_tx{nonce = Nonce, fee = Fee, vm_version = VMVersion} = Tx,
-      Trees, _Env) ->
+      Trees, TxEnv) ->
     AccountPubKey = account_pubkey(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
          fun() -> ensure_not_oracle(AccountPubKey, Trees) end,
-         fun() -> aeo_utils:check_vm_version(VMVersion) end],
+         fun() -> check_vm_version(VMVersion, aetx_env:height(TxEnv)) end],
 
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
         {error, Reason} -> {error, Reason}
+    end.
+
+check_vm_version(VMVersion, Height) ->
+    case aect_contracts:is_legal_vm_version_at_height(oracle_register, VMVersion, Height) of
+        true  -> ok;
+        false -> {error, bad_vm_version}
     end.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.

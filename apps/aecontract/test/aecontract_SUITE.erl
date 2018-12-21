@@ -844,7 +844,7 @@ create_contract_with_code(Owner, Code, Args, Options, S) ->
     CreateTx    = aect_test_utils:create_tx(Owner,
                     maps:merge(
                     #{ nonce      => Nonce
-                     , vm_version => ?AEVM_01_Sophia_01
+                     , vm_version => ?CURRENT_AEVM_SOPHIA
                      , code       => Code
                      , call_data  => CallData
                      , fee        => 1000000
@@ -881,7 +881,7 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
     CallTx   = aect_test_utils:call_tx(Caller, ContractKey,
                 maps:merge(
                 #{ nonce      => Nonce
-                 , vm_version => ?AEVM_01_Sophia_01
+                 , vm_version => ?CURRENT_AEVM_SOPHIA
                  , call_data  => Calldata
                  , fee        => 1000000
                  , amount     => 0
