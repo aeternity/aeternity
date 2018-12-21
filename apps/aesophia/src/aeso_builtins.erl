@@ -92,7 +92,7 @@ operand(T) -> T.
 str_to_icode(String) when is_list(String) ->
     str_to_icode(list_to_binary(String));
 str_to_icode(BinStr) ->
-    Cpts = [size(BinStr) | aeso_data:binary_to_words(BinStr)],
+    Cpts = [size(BinStr) | aeso_memory:binary_to_words(BinStr)],
     #tuple{ cpts = [ #integer{value = X} || X <- Cpts ] }.
 
 check_event_type(Icode) ->
