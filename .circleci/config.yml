@@ -71,6 +71,9 @@ references:
           && cd libsodium-src \
           && ./configure && make -j$(nproc) && sudo make install && sudo ldconfig
 
+  tag_regex: &tag_regex /^v.*$/
+  stable_tag_regex: &stable_tag_regex /^v1\..*$/
+
   rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
   restore_rebar_cache: &restore_rebar_cache
     restore_cache:
@@ -662,7 +665,7 @@ workflows:
                 - env/dev2
                 - system-tests
             tags:
-              only: /^v.*$/
+              only: *tag_regex
 
       - docker_smoke_tests:
           filters:
@@ -682,7 +685,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: /^v.*$/
+              only: *stable_tag_regex
 
       - docker_system_smoke_tests:
           requires:
@@ -714,7 +717,7 @@ workflows:
                 - env/dev2
                 - system-tests
             tags:
-              only: /^v.*$/
+              only: *tag_regex
 
       - aevm_tests:
           requires:
@@ -726,7 +729,7 @@ workflows:
                 - env/dev2
                 - system-tests
             tags:
-              only: /^v.*$/
+              only: *tag_regex
 
       - uat_tests:
           requires:
@@ -738,7 +741,7 @@ workflows:
                 - env/dev2
                 - system-tests
             tags:
-              only: /^v.*$/
+              only: *tag_regex
 
       - docker_system_tests:
           filters:
@@ -755,7 +758,7 @@ workflows:
                 - env/dev2
                 - system-tests
             tags:
-              only: /^v.*$/
+              only: *tag_regex
 
       - rebar_lock_check:
           requires:
@@ -767,7 +770,7 @@ workflows:
                 - env/dev2
                 - system-tests
             tags:
-              only: /^v.*$/
+              only: *tag_regex
 
       - linux_package:
           filters:
@@ -775,7 +778,7 @@ workflows:
               ignore:
                 - system-tests
             tags:
-              only: /^v.*$/
+              only: *tag_regex
 
       - upload_build_artifacts:
           requires:
@@ -785,7 +788,7 @@ workflows:
               ignore:
                 - system-tests
             tags:
-              only: /^v.*$/
+              only: *tag_regex
 
       - osx_package:
           filters:
@@ -793,7 +796,7 @@ workflows:
               only:
                 - master
             tags:
-              only: /^v.*$/
+              only: *tag_regex
 
       - deploy_integration:
           requires:
@@ -841,7 +844,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: /^v.*$/
+              only: *stable_tag_regex
 
       - hodl_green:
           type: approval
@@ -849,7 +852,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: /^v.*$/
+              only: *stable_tag_regex
 
       - deploy_uat_blue:
           requires:
@@ -862,7 +865,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: /^v.*$/
+              only: *stable_tag_regex
 
       - deploy_uat_green:
           requires:
@@ -872,7 +875,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: /^v.*$/
+              only: *stable_tag_regex
 
       - upload_packages_linux:
           requires:
@@ -885,7 +888,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: /^v.*$/
+              only: *stable_tag_regex
 
       - upload_packages_osx:
           requires:
@@ -898,7 +901,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: /^v.*$/
+              only: *stable_tag_regex
 
       - docker_push_tag:
           requires:
@@ -910,7 +913,7 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: /^v.*$/
+              only: *stable_tag_regex
 
   chain_snapshots:
     triggers:
