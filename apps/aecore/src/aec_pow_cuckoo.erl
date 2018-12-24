@@ -266,9 +266,6 @@ get_executable(#miner_config{executable = Executable}) ->
 get_extra_args(#miner_config{extra_args = ExtraArgs}) ->
     ExtraArgs.
 
-get_nice(#miner_config{nice = Nice}) ->
-    Nice.
-
 is_hex_encoded_header(#miner_config{hex_encoded_header = HexEncodedHeader}) ->
     HexEncodedHeader.
 
@@ -306,7 +303,7 @@ generate_int(Hash, Nonce, Target, #miner_config{} = Config, Instance) ->
     generate_int(EncodedHash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config).
 
 generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config) ->
-    Repeats = integer_to_list(get_miner_repeats()),
+    Repeats = integer_to_list(get_repeats(Config)),
     Args = ["-h", Hash, "-n", integer_to_list(Nonce), "-r", Repeats | string:tokens(MinerExtraArgs, " ")],
     ?info("Executing cmd '~s ~s'", [MinerBin, lists:concat(lists:join(" ", Args))]),
     Old = process_flag(trap_exit, true),
@@ -316,7 +313,9 @@ generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config)
                                    port = Port,
                                    buffer = [],
                                    parser = fun parse_generation_result/2,
-                                   target = Target})
+                                   target = Target});
+	{error, _} = E ->
+            E
     catch
         C:E ->
             {error, {unknown, {C, E}}}
@@ -607,7 +606,9 @@ get_node_size() ->
 node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits > 31 -> 8;
 node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits >  0 -> 4.
 
--spec exec_run(string(), string(), list(string())) -> {ok, Port :: port(), OsPid :: integer()}.
+-spec exec_run(string(), string(), list(string())) -> 
+	{ok, Port :: port(), OsPid :: integer()} |
+	{error, {port_error, {term(), term()}}}.
 exec_run(Cmd, Dir, Args) ->
     PortSettings = [
                     binary,

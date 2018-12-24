@@ -172,8 +172,8 @@ prebuilt_miner_test_() ->
                Target = ?HIGHEST_TARGET_SCI,
                Nonce = 1,
                [Config] = ?TEST_MODULE:get_miner_configs(),
-               ?assertMatch({error,{runtime,{execution_failed,{status,_}}}},
-                            ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined))
+               Res = spawn_worker(fun() -> ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce, Config, undefined) end),
+               ?assertMatch({error,{runtime,{port_error,{error,enoent}}}}, Res)
        end}
      ]}.
 

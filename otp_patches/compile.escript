@@ -58,7 +58,7 @@ patch_source(Patch, Src) ->
     PatchPath = transform_path(filename:join(cur_dir(), Patch)),
     _DelRes = file:delete(New),
     SrcPath = transform_path(Src),
-    Cmd = "patch --quiet -i \"" ++ PatchPath ++ "\" -o \"" ++ NewPath ++ "\" \"" ++ SrcPath ++ "\"",
+    Cmd = "patch -s --read-only=ignore -i \"" ++ PatchPath ++ "\" -o \"" ++ NewPath ++ "\" \"" ++ SrcPath ++ "\"",
     info("Executing patch cmd: ~s~n", [Cmd]),
     case lib:nonl(os:cmd(Cmd)) of
         [] ->

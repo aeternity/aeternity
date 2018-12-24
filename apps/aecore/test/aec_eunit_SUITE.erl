@@ -10,7 +10,7 @@
 -include_lib("common_test/include/ct.hrl").
 -compile({parse_transform, ct_eunit_xform}).
 
--define(STARTED_APPS_WHITELIST, [runtime_tools, parse_trans, folsom, bear, setup, hut]).
+-define(STARTED_APPS_WHITELIST, [runtime_tools, parse_trans, folsom, bear, setup, hut, hex2bin]).
 -define(TO_BE_STOPPED_APPS_BLACKLIST, []).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server, %% by test framework

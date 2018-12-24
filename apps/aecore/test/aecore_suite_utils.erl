@@ -11,7 +11,7 @@
          make_shortcut/1,
          shortcut_dir/1]).
 
--export([cmd/3, cmd/4, cmd/5,
+-export([cmd/3, cmd/4, cmd/5, cmd/6,
          cmd_res/1,
          set_env/4,
          unset_env/3]).
@@ -166,8 +166,8 @@ start_node(N, Config) ->
     cmd("epoch", node_shortcut(N, Config), "bin", ["start"],
         [
          {"ERL_FLAGS", Flags},
-         {"EPOCH_CONFIG", "../data/epoch.json"},
-         {"RUNNER_LOG_DIR","`pwd`/log"},
+         {"EPOCH_CONFIG", "data/epoch.json"},
+         {"RUNNER_LOG_DIR","log"},
          {"CODE_LOADING_MODE", "interactive"}
         ]).
 
@@ -192,7 +192,7 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
     ct:log("Deleting Mnesia Dir ~p", [MnesiaDir]),
     {true, _} = {filelib:is_file(MnesiaDir), MnesiaDir},
     {true, _} = {filelib:is_dir(MnesiaDir), MnesiaDir},
-    os:cmd("rm", ".", ["-r", "'" ++ MnesiaDir ++ "'"]),
+    cmd("rm", ".", ".", ["-r", MnesiaDir], [], false),
     {false, _} = {filelib:is_file(MnesiaDir), MnesiaDir},
     ok.
 
@@ -619,35 +619,37 @@ cmd(Cmd, Dir, Args) ->
     cmd(Cmd, Dir, ".", Args, []).
 cmd(Cmd, Dir, BinDir, Args) ->
     cmd(Cmd, Dir, BinDir, Args, []).
-cmd(C, Dir, BinDir, Args, Env) ->
+cmd(Cmd, Dir, BinDir, Args, Env) ->
+    cmd(Cmd, Dir, BinDir, Args, Env, true).
+cmd(C, Dir, BinDir, Args, Env, FindLocalBin) ->
     Cmd = binary_to_list(iolist_to_binary(C)),
-    CmdRes = cmd_run(Cmd, Dir, BinDir, Args, Env),
+    CmdRes = cmd_run(Cmd, Dir, BinDir, Args, Env, FindLocalBin),
     {Fmt, FmtArgs} =
         case cmd_res(CmdRes) of
-            {0, Out, "", []} ->
+            {0, Out} ->
                 {"> ~s~n~s", [Cmd, Out]};
-            {ErrCode, Out, Err, []} ->
-                {"> ~s~n~s~nERR ~p: ~s~n", [Cmd, Out, ErrCode, Err]};
-            {ErrCode, Out, Err, Rest} ->
-                {"> ~s~n~s~nERR ~p: ~s~nRest = ~p", [Cmd, Out, ErrCode, Err, Rest]}
+            {ErrCode, Out} ->
+                {"> ~s~nERR ~p: ~s~n", [Cmd, ErrCode, Out]}
         end,
     ct:log(Fmt, FmtArgs),
     CmdRes.
 
-cmd_run(Cmd, Dir, BinDir, Args, Env) ->
+cmd_run(Cmd, Dir, BinDir, Args, Env, FindLocalBin) ->
     Opts = [
             {env, Env},
             exit_status,
-            in,
             overlapped_io,
-            stderr_to_stdout,
-            stream,
+	    stderr_to_stdout,
             {args, Args},
-            {cd, Dir},
-            use_stdio
+            {cd, Dir}
            ],
     ct:log("Running command ~p in ~p with ~p", [Cmd, Dir, Args]),
-    Bin = os:find_executable(Cmd, filename:join(Dir, BinDir)),
+    Bin = case FindLocalBin of
+	       true ->
+                    os:find_executable(Cmd, filename:join(Dir, BinDir));
+               false ->
+                    os:find_executable(Cmd)
+	  end,
     Port = erlang:open_port({spawn_executable, Bin}, Opts),
     WaitFun = fun(Fun, P, Res) ->
                      receive
@@ -662,17 +664,7 @@ cmd_run(Cmd, Dir, BinDir, Args, Env) ->
     WaitFun(WaitFun, Port, "").
 
 cmd_res({_, Code, L}) ->
-    {Err, _L1} = take(stderr, L, ""),
-    {Out, L2} = take(stdout, L, ""),
-    {Code, Out, Err, L2}.
-
-take(K, L, Def) ->
-    case lists:keytake(K, 1, L) of
-        false ->
-            {Def, L};
-        {value, {_, V}, Rest} ->
-            {V, Rest}
-    end.
+    {Code, L}.
 
 set_env(Node, App, Key, Value) ->
     ok = rpc:call(Node, application, set_env, [App, Key, Value], 5000).
