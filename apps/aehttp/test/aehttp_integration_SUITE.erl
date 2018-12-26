@@ -4562,7 +4562,7 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
                                       InitArgument),
             {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
             ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                           #{vm_version => 1,
+                           #{vm_version => ?CURRENT_AEVM_SOPHIA,
                              deposit    => 10,
                              code       => EncodedCode,
                              call_data  => EncodedInitData}, Config),
