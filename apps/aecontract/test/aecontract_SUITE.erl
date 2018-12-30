@@ -98,6 +98,7 @@
         , sophia_operators/1
         , sophia_int_to_str/1
         , sophia_events/1
+        , sophia_bad_code/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -187,6 +188,7 @@ groups() ->
                                  sophia_state_gas,
                                  sophia_no_callobject_for_remote_calls,
                                  sophia_operators,
+                                 sophia_bad_code,
                                  sophia_int_to_str,
                                  sophia_events]}
     , {sophia_oracles_ttl, [],
@@ -3254,6 +3256,30 @@ sophia_events(_Cfg) ->
                  ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1234567890123456789012345678901234567890}, #{ return_logs => true })),
 
     ok.
+
+sophia_bad_code(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc  = ?call(new_account, 10000000),
+    {ok, Code} = compile_contract(bad_code),
+    %% Switch DUP3 against DUP11 - will make init crash...
+    HackedCode1 = hack_dup(130, 139, Code),
+    case ?call(create_contract_with_code, Acc, HackedCode1, {}, #{}) of
+        X when is_binary(X) -> ok;
+        Err                 -> error(Err)
+    end,
+
+    %% Switch MOD against DUP11 - will make main crash...
+    HackedCode2 = hack_dup(6, 139, Code),
+    C2 = ?call(create_contract_with_code, Acc, HackedCode2, {}, #{}),
+    try
+        {error, <<"unknown_error">>} = ?call(call_contract, Acc, C2, main, word, 10)
+    catch _:_ -> error(call_contract) end,
+
+    ok.
+
+hack_dup(_, _, <<>>) -> <<>>;
+hack_dup(A, B, <<A:8, Rest/binary>>) -> <<B:8, (hack_dup(A, B, Rest))/binary>>;
+hack_dup(A, B, <<X:8, Rest/binary>>) -> <<X:8, (hack_dup(A, B, Rest))/binary>>.
 
 
 %% The crowd funding example.
