@@ -72,8 +72,8 @@ check_is_active(Channel) ->
         false -> {error, channel_not_active}
     end.
 
-check_is_closing(Channel, Height) ->
-    case aesc_channels:is_solo_closing(Channel, Height) of
+check_is_closing(Channel) ->
+    case aesc_channels:is_solo_closing(Channel) of
         true  -> ok;
         false -> {error, channel_not_closing}
     end.
@@ -179,7 +179,7 @@ check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
             Checks =
                 [ fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce,
                                                     Fee) end,
-                  fun() -> check_is_closing(Channel, Height) end,
+                  fun() -> check_is_closing(Channel) end,
                   fun() -> check_payload(Channel, PayloadTx, FromPubKey, SignedState,
                                           Trees, slash) end,
                   fun() -> check_poi(Channel, PayloadTx, PoI) end
