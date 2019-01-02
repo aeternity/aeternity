@@ -601,7 +601,9 @@ init_per_suite(Config) ->
 
     aecore_suite_utils:create_configs(Config1, #{<<"chain">> =>
                                                  #{<<"persist">> => true,
-                                                   <<"hard_forks">> => Forks}}),
+                                                   <<"hard_forks">> => Forks},
+                                                  <<"mining">> =>
+                                                  #{<<"micro_block_cycle">> => 1}}),
     aecore_suite_utils:make_multi(Config1, [?NODE]),
     [{nodes, [aecore_suite_utils:node_tuple(?NODE)]}]  ++ Config1.
 
@@ -1499,12 +1501,7 @@ nonce_limit(Config) ->
     [{_, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 5),
 
-    case rpc(aec_tx_pool, peek, [infinity]) of
-        {ok, []}   -> ok;
-        {ok, Txs0} ->
-            Txs0Hs = [ aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(T)) || T <- Txs0 ],
-            aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, Txs0Hs, 5)
-    end,
+    aecore_suite_utils:mine_all_txs(Node),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     Txs = lists:map(
