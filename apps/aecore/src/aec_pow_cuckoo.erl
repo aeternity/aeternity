@@ -61,7 +61,6 @@
          executable_group   :: binary(),
          extra_args         :: list(),
          hex_encoded_header :: boolean(),
-         nice               :: integer() | 'undefined',
          repeats            :: non_neg_integer(),
          instances          :: list(aec_pow:miner_instance()) | 'undefined'}).
 -type miner_config() :: #miner_config{}.
@@ -227,7 +226,6 @@ build_miner_config(Config) when is_map(Config) ->
     ExecutableGroup = maps:get(<<"executable_group">>   , Config, ?DEFAULT_EXECUTABLE_GROUP),
     ExtraArgs       = maps:get(<<"extra_args">>         , Config, ?DEFAULT_EXTRA_ARGS),
     HexEncodedHdr   = maps:get(<<"hex_encoded_header">> , Config, ?DEFAULT_HEX_ENCODED_HEADER),
-    Nice            = maps:get(<<"nice">>               , Config, undefined),
     Repeats         = maps:get(<<"repeats">>            , Config, ?DEFAULT_REPEATS),
     Instances       = maps:get(<<"addressed_instances">>, Config, undefined),
     #miner_config{
@@ -235,7 +233,6 @@ build_miner_config(Config) when is_map(Config) ->
        executable_group   = ExecutableGroup,
        extra_args         = binary_to_list(ExtraArgs),
        hex_encoded_header = HexEncodedHdr,
-       nice               = Nice,
        repeats            = Repeats,
        instances          = Instances};
 build_miner_config({Executable, ExtraArgs, HexEncodedHeader, Repeats, Instances, ExecutableGroup}) ->
