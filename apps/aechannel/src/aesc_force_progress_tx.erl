@@ -222,7 +222,7 @@ for_client(#channel_force_progress_tx{payload       = Payload,
                                       nonce         = Nonce} = Tx) ->
     #{<<"channel_id">>    => aehttp_api_encoder:encode(id_hash, channel(Tx)),
       <<"from_id">>       => aehttp_api_encoder:encode(id_hash, from_id(Tx)),
-      <<"payload">>       => aehttp_api_encoder:encode(tx, Payload),
+      <<"payload">>       => aehttp_api_encoder:encode(transaction, Payload),
       <<"round">>         => Round,
       <<"update">>        => aesc_offchain_update:for_client(Update),
       <<"state_hash">>    => aehttp_api_encoder:encode(state, StateHash),
