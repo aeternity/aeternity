@@ -58,7 +58,7 @@ patch_source(Patch, Src) ->
     PatchPath = transform_path(filename:join(cur_dir(), Patch)),
     _DelRes = file:delete(New),
     SrcPath = transform_path(Src),
-    Cmd = "patch -s --read-only=ignore -i \"" ++ PatchPath ++ "\" -o \"" ++ NewPath ++ "\" \"" ++ SrcPath ++ "\"",
+    Cmd = patch_cmd(PatchPath, NewPath, SrcPath),
     info("Executing patch cmd: ~s~n", [Cmd]),
     case lib:nonl(os:cmd(Cmd)) of
         [] ->
@@ -144,4 +144,16 @@ transform_path(Path) ->
             string:trim(Res, both, [$\r, $\n]);
         true ->
             Path
+    end.
+
+patch_cmd(PatchPath, NewPath, SrcPath) ->
+    Arch = erlang:system_info(system_architecture),
+    case string:find(Arch, "apple-darwin") of
+        nomatch ->
+            "patch -s --read-only=ignore -i \"" ++ PatchPath ++ "\" -o \"" ++ NewPath ++ "\" \"" ++ SrcPath ++ "\"";
+        _ ->
+            % The patch binary on macOS is outdated and doesn't support ignoring
+            % read-only files. However, that should not be the case on macOS
+            % anyway.
+            "patch -s -i \"" ++ PatchPath ++ "\" -o \"" ++ NewPath ++ "\" \"" ++ SrcPath ++ "\""
     end.
