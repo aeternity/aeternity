@@ -72,7 +72,6 @@ setup() ->
     ok = meck:new(aeu_env, [passthrough]),
     aec_test_utils:mock_fast_and_deterministic_cuckoo_pow(),
     aec_test_utils:start_chain_db(),
-    ok = application:ensure_started(erlexec),
     application:start(crypto),
     meck:new(aec_blocks, [passthrough]),
     meck:new(aec_headers, [passthrough]),

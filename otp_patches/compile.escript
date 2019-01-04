@@ -43,21 +43,28 @@ patch_and_compile(P) ->
                         {ok, NewF} ->
                             compile(NewF, SrcFile);
                         {error, _} = Error1 ->
+                            info("Error patching source ~p: ~p~n", [SrcFile, Error1]),
                             Error1
                     end;
                 {error, _} = Error ->
+                    info("Error finding source for ~p: ~p~n", [BeamFile, Error]),
                     Error
             end
     end.
 
 patch_source(Patch, Src) ->
     New = filename:join(cur_dir(), filename:basename(Src)),
+    NewPath = transform_path(New),
+    PatchPath = transform_path(filename:join(cur_dir(), Patch)),
     _DelRes = file:delete(New),
-    case lib:nonl(os:cmd("patch -i " ++ Patch ++ " -o " ++ New ++ " " ++ Src ++ " 1>/dev/null 2>/dev/null; echo $?")) of %% TODO Log `patch` stderr. Make command robust to spaces in file names.
-        "0" ->
+    SrcPath = transform_path(Src),
+    Cmd = "patch -s --read-only=ignore -i \"" ++ PatchPath ++ "\" -o \"" ++ NewPath ++ "\" \"" ++ SrcPath ++ "\"",
+    info("Executing patch cmd: ~s~n", [Cmd]),
+    case lib:nonl(os:cmd(Cmd)) of
+        [] ->
             {ok, New};
         Res ->
-            {error, {patch_error, {Res, Patch}}}
+            {error, {patch_error, {Res, PatchPath}}}
     end.
 
 compile(F, Src) ->
@@ -125,3 +132,16 @@ info(Fmt, Args) ->
 fatal(Fmt, Args) ->
     io:fwrite("ERROR: " ++ Fmt, Args),
     halt(1).
+
+% We need to transform paths from c:/ to /c/ when running in msys on win32
+transform_path(Path) ->
+    IsMsys = lists:member(os:getenv("MSYSTEM"), ["MSYS", "MINGW64"]),
+    HasCygpath = os:find_executable("cygpath"),
+    if
+        IsMsys and (HasCygpath =/= false) ->
+            Cmd = "cygpath \"" ++ Path ++ "\"",
+            Res = os:cmd(Cmd),
+            string:trim(Res, both, [$\r, $\n]);
+        true ->
+            Path
+    end.
