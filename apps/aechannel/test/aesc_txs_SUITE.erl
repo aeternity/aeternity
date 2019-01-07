@@ -3838,8 +3838,8 @@ fp_oracle_action(Cfg, ProduceCallData) ->
 
 
 get_oracle_fun_hash_int(Function) ->
-    ContractString = aeso_test_utils:read_contract("oracles"),
-    #{type_info := TypeInfo} = aeso_compiler:from_string(ContractString, []),
+    {ok, Code} = compile_contract("oracles"),
+    TypeInfo = maps:get(type_info, aect_sophia:deserialize(Code)),
     {ok, <<IntFunHash:256>>} = aeso_abi:type_hash_from_function_name(
                                Function, TypeInfo),
     IntFunHash.
