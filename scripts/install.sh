@@ -45,7 +45,7 @@ install_deps_ubuntu() {
 
     if [[ "$OS_RELEASE" = "16.04" ]]; then
         sudo apt-get install -y build-essential
-        $LIB_VERSION=1.0.16
+        LIB_VERSION=1.0.16
         wget https://download.libsodium.org/libsodium/releases/libsodium-${LIB_VERSION}.tar.gz
         tar -xf libsodium-${LIB_VERSION}.tar.gz && cd libsodium-${LIB_VERSION} &&
         ./configure && make && sudo make install && sudo ldconfig
