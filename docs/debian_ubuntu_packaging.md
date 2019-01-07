@@ -184,9 +184,11 @@ older compatibility level approach was chosen for an easier start.
 
 ```
 Source: aeternity-node
+Section: misc
+Priority: optional
+Maintainer: Full Name <full.name@aeternity.com>
 Build-Depends: erlang ( >=1:20.2-1),  erlang-base ( >=1:20.2-1), erlang-dev ( >=1:20.2-1),
                erlang-edoc ( >=1:20.2-1), ncurses-dev, libssl-dev, git, curl
-Maintainer: Full Name <mail@example.tld>
 
 Package: aeternity-node
 Architecture: any
@@ -303,7 +305,7 @@ aeternity-node (1.1.0) unstable; urgency=medium
 
   * Initial Debianization
 
- -- Name Family <name.family@aeternity.com>  Tue, 18 Dec 2018 09:43:00 +0200
+ -- Full Name <full.name@aeternity.com>  Tue, 18 Dec 2018 09:43:00 +0200
 ```
 
 ###Extract changelog from Git(Hub).
