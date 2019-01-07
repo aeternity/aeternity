@@ -8,7 +8,7 @@
 
 -module(aeso_syntax).
 
--export([get_ann/1, get_ann/2, get_ann/3]).
+-export([get_ann/1, get_ann/2, get_ann/3, set_ann/2]).
 
 -export_type([ann_line/0, ann_col/0, ann_origin/0, ann_format/0, ann/0]).
 -export_type([name/0, id/0, con/0, qid/0, qcon/0, tvar/0, op/0]).
@@ -131,6 +131,9 @@
 
 get_ann(Node) when is_tuple(Node) -> element(2, Node);
 get_ann(Ann)  when is_list(Ann)   -> Ann.
+
+set_ann(Ann1, Node) when is_tuple(Node) -> setelement(2, Node, Ann1);
+set_ann(Ann1, Ann) when is_list(Ann) -> Ann1.
 
 get_ann(Key, Node) ->
     proplists:get_value(Key, get_ann(Node)).

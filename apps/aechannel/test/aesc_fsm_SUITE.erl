@@ -117,7 +117,8 @@ init_per_suite(Config) ->
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
     aecore_suite_utils:create_configs(
-      Config1, #{<<"chain">> => #{<<"persist">> => false}}),
+      Config1, #{<<"chain">> => #{<<"persist">> => false},
+                 <<"mining">> => #{<<"micro_block_cycle">> => 1}}),
     aecore_suite_utils:make_multi(Config1, [dev1, dev2]),
     [{nodes, [aecore_suite_utils:node_tuple(N)
               || N <- [dev1]]} | Config1].

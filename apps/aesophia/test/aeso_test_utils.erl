@@ -110,10 +110,10 @@ show_heap(Offs, Bin) ->
     lists:flatten([io_lib:format("~4b ~p\n", [Addr + Offs, Word]) || {Addr, Word} <- lists:zip(Addrs, Words)]).
 
 show_heap_value(HeapValue) ->
-    Maps = aeso_data:heap_value_maps(HeapValue),
-    Offs = aeso_data:heap_value_offset(HeapValue),
-    Ptr  = aeso_data:heap_value_pointer(HeapValue),
-    Mem  = aeso_data:heap_value_heap(HeapValue),
+    Maps = aeso_heap:heap_value_maps(HeapValue),
+    Offs = aeso_heap:heap_value_offset(HeapValue),
+    Ptr  = aeso_heap:heap_value_pointer(HeapValue),
+    Mem  = aeso_heap:heap_value_heap(HeapValue),
     Words = dump_words(Mem),
     Addrs = lists:seq(Offs, Offs + (length(Words) - 1) * 32, 32),
     lists:flatten(

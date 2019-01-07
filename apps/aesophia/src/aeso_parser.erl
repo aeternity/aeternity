@@ -72,10 +72,13 @@ constructors() ->
 
 constructor() ->    %% TODO: format for Con() vs Con
     choice(?RULE(con(),              {constr_t, get_ann(_1), _1, []}),
-           ?RULE(con(), type_args(), {constr_t, get_ann(_1), _1, _2})).
+           ?RULE(con(), con_args(), {constr_t, get_ann(_1), _1, _2})).
 
+con_args()   -> paren_list(con_arg()).
 type_args()  -> paren_list(type()).
 field_type() -> ?RULE(id(), tok(':'), type(), {field_t, get_ann(_1), _1, _3}).
+
+con_arg()    -> choice(type(), ?RULE(keyword(indexed), type(), set_ann(indexed, true, _2))).
 
 %% -- Let declarations -------------------------------------------------------
 

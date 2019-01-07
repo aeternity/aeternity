@@ -39,7 +39,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,
-                          store => aevm_eeevm_store:from_sophia_state(aeso_data:to_binary({{tuple, []}, {}})),
+                          store => aevm_eeevm_store:from_sophia_state(aeso_heap:to_binary({{tuple, []}, {}})),
                           address => 91210,
                           caller => 0,
                           data => CallData,

@@ -70,6 +70,7 @@ global_env() ->
     Bool    = {id, Ann, "bool"},
     String  = {id, Ann, "string"},
     Address = {id, Ann, "address"},
+    Event   = {id, Ann, "event"},
     State   = {id, Ann, "state"},
     Hash    = {id, Ann, "hash"},
     Oracle  = fun(Q, R) -> {app_t, Ann, {id, Ann, "oracle"}, [Q, R]} end,
@@ -113,6 +114,7 @@ global_env() ->
      {["Chain",    "block_height"], Int},
      {["Chain",    "difficulty"],   Int},
      {["Chain",    "gas_limit"],    Int},
+     {["Chain",    "event"],        Fun1(Event, Unit)},
      %% State
      {"state", State},
      {"put",   Fun1(State, Unit)},
@@ -143,7 +145,10 @@ global_env() ->
      %% Strings
      {["String", "length"], Fun1(String, Int)},
      {["String", "concat"], Fun([String, String], String)},
-     {["String", "sha3"], Fun1(String, Int)}
+     {["String", "sha3"], Fun1(String, Int)},
+     %% Conversion
+     {["Int", "to_str"], Fun1(Int, String)},
+     {["Address", "to_str"], Fun1(Address, String)}
     ].
 
 global_type_env() ->
@@ -275,6 +280,7 @@ check_typedef_sccs(Env, TypeMap, [{acyclic, Name} | SCCs]) ->
                                  end || ConDef <- Cons ],
                     check_repeated_constructors([ {Con, ConType(Args)} || {constr_t, _, Con, Args} <- Cons ]),
                     [ check_constructor_overlap(Env, Con, Target) || {constr_t, _, Con, _} <- Cons ],
+                    [ check_event(Cons) || Name == "event" ],
                     check_typedef_sccs(ConTypes ++ Env, TypeMap, SCCs)
             end
     end;
@@ -282,6 +288,19 @@ check_typedef_sccs(Env, TypeMap, [{cyclic, Names} | SCCs]) ->
     Id = fun(X) -> {type_def, _, D, _, _} = maps:get(X, TypeMap), D end,
     type_error({recursive_types_not_implemented, lists:map(Id, Names)}),
     check_typedef_sccs(Env, TypeMap, SCCs).
+
+check_event(Cons) ->
+    [ check_event(Name, Types) || {constr_t, _, {con, _, Name}, Types} <- Cons ].
+
+%% Initially we limit the type of an event, it can have 0-3 topics/indexed "words"
+%% and 0-1 strings as payload.
+check_event(Name, Types) ->
+    IsIndexed  = fun(T) -> aeso_syntax:get_ann(indexed, T, false) end,
+    Indexed    = [ T || T <- Types, IsIndexed(T) ],
+    NonIndexed = Types -- Indexed,
+    %% TODO: Is is possible to check also the types of arguments in a sensible way?
+    [ type_error({event_0_to_3_indexed_values, Name}) || length(Indexed) > 3 ],
+    [ type_error({event_0_to_1_string_values, Name}) || length(NonIndexed) > 1 ].
 
 check_constructor_overlap(Env, Con = {con, _, Name}, NewType) ->
     case proplists:get_value(Name, Env) of
@@ -827,8 +846,26 @@ insert_typedef(Id, Args, Typedef) ->
 lookup_type(Id) ->
     case ets_lookup(type_defs, type_key(Id)) of
         []                        -> false;
-        [{_Key, Params, Typedef}] -> {Params, unfold_types_in_type(Typedef)}
+        [{_Key, Params, Typedef}] ->
+            {Params, unfold_types_in_type(push_anns(Id, Typedef))}
     end.
+
+push_anns(T1, {alias_t, Id}) ->
+    As1 = aeso_syntax:get_ann(T1),
+    As2 = aeso_syntax:get_ann(Id),
+    As = umerge(lists:sort(As2), lists:sort(As1)),
+    {alias_t, aeso_syntax:set_ann(As, Id)};
+push_anns(_, T) -> T.
+
+umerge([], Ls2) -> Ls2;
+umerge(Ls1, []) -> Ls1;
+umerge([E = {K, _V1} | Ls1], [{K, _V2} | Ls2]) ->
+    [E | umerge(Ls1, Ls2)];
+umerge([E = {K1, _V1} | Ls1], Ls2 = [{K2, _V2} | _]) when K1 < K2 ->
+    [E | umerge(Ls1, Ls2)];
+umerge(Ls1 = [{K1, _V1} | _], [E = {K2, _V2} | Ls2]) when K2 < K1 ->
+    [E | umerge(Ls1, Ls2)].
+
 
 -spec insert_record_field(string(), field_info()) -> true.
 insert_record_field(FieldName, FieldInfo) ->
@@ -1360,6 +1397,10 @@ pp_error({recursive_types_not_implemented, Types}) ->
            true              -> " is" end,
     io_lib:format("The following type~s recursive, which is not yet supported:\n~s",
                     [S, [io_lib:format("  - ~s (at ~s)\n", [pp(T), pp_loc(T)]) || T <- Types]]);
+pp_error({event_0_to_3_indexed_values, Constr}) ->
+    io_lib:format("The event constructor ~s has too many indexed values (max 3)\n", [Constr]);
+pp_error({event_0_to_1_string_values, Constr}) ->
+    io_lib:format("The event constructor ~s has too many string values (max 1)\n", [Constr]);
 pp_error({repeated_constructor, Cs}) ->
     io_lib:format("Variant types must have distinct constructor names\n~s",
                   [[ io_lib:format("~s  (at ~s)\n", [pp_typed("  - ", C, T), pp_loc(C)]) || {C, T} <- Cs ]]);

@@ -31,6 +31,7 @@
                   , functions => [fun_dec()]
                   , env => [bindings()]
                   , state_type => aeso_sophia:type()
+                  , event_type => aeso_sophia:type()
                   , types => #{ type_name() => type_def() }
                   , type_vars => #{ string() => aeso_sophia:type() }
                   , constructors => #{ string() => integer() }  %% name to tag
@@ -46,8 +47,9 @@ new(Options) ->
     #{ contract_name => ""
      , functions => []
      , env => new_env()
-       %% Default to unit type for state
+       %% Default to unit type for state and event
      , state_type => {tuple, []}
+     , event_type => {tuple, []}
      , types => builtin_types()
      , type_vars => #{}
      , constructors => builtin_constructors()
