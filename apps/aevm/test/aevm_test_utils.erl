@@ -391,3 +391,23 @@ binint_to_bin(Bin) when is_binary(Bin) ->
 hex_to_int(X) when $A =< X, X =< $F -> 10 + X - $A;
 hex_to_int(X) when $a =< X, X =< $f -> 10 + X - $a;
 hex_to_int(X) when $0 =< X, X =< $9 -> X - $0.
+
+%% Translate a blob of 256-bit words into readable form. Does a bit of guessing
+%% to recover strings. TODO: strings longer than 32 bytes
+dump_words(Bin) -> dump_words(Bin, []).
+
+dump_words(<<N:256, W:32/binary, Rest/binary>>, Acc) when N < 32 ->
+    NotN = (32 - N) * 8,
+    case W of
+        <<S:N/binary, 0:NotN>> ->
+            Str = binary_to_list(S),
+            case lists:member(0, Str) of
+                true  -> dump_words(<<W/binary, Rest/binary>>, [N | Acc]);   %% Not a string
+                false -> dump_words(Rest, [binary_to_list(S), N | Acc])
+            end;
+        _ -> dump_words(<<W/binary, Rest/binary>>, [N | Acc])
+    end;
+dump_words(<<N:256/signed, Rest/binary>>, Acc) ->
+    dump_words(Rest, [N | Acc]);
+dump_words(<<>>, Acc) -> lists:reverse(Acc);
+dump_words(Rest, Acc) -> lists:reverse([{error, Rest} | Acc]).

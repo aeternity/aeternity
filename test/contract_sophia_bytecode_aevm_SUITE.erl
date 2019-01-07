@@ -176,7 +176,7 @@ failing_call(Contract, Fun, Type, Args, Env) ->
 failing_call(Contract, Fun, Type, Args, Env, Options) ->
     case make_call(Contract, Fun, Type, Args, Env, Options) of
         {ok, Result, _} ->
-            Words = aeso_test_utils:dump_words(Result),
+            Words = aevm_test_utils:dump_words(Result),
             exit({expected_failure, {ok, Words}});
         {revert, _} ->
             exit({expected_failure, revert});
@@ -190,7 +190,7 @@ reverting_call(Contract, Fun, Type, Args, Env) ->
 reverting_call(Contract, Fun, Type, Args, Env, Options) ->
     case make_call(Contract, Fun, Type, Args, Env, Options) of
         {ok, Result, _} ->
-            Words = aeso_test_utils:dump_words(Result),
+            Words = aevm_test_utils:dump_words(Result),
             exit({expected_revert, {ok, Words}});
         {error, Err, _} ->
             exit({expected_revert, {error, Err}});
