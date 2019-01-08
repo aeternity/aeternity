@@ -233,7 +233,7 @@ channel_id(#channel_offchain_tx{channel_id = ChannelId}) ->
 updates(#channel_offchain_tx{updates = Updates}) ->
     Updates.
 
--spec round(tx()) -> aesc_channels:seq_number().
+-spec round(tx()) -> aesc_channels:round().
 round(#channel_offchain_tx{round = Round}) ->
     Round.
 

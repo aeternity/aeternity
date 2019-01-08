@@ -132,7 +132,9 @@ process_fsm_(#{type := sign,
                                                orelse Tag =:= shutdown_ack
                                                orelse Tag =:= funding_created
                                                orelse Tag =:= update
-                                               orelse Tag =:= update_ack ->
+                                               orelse Tag =:= update_ack
+                                               orelse Tag =:= slash_tx
+                                               orelse Tag =:= close_solo_tx ->
     EncTx = aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx)),
     Tag1 =
         case Tag of
@@ -163,10 +165,11 @@ process_fsm_(#{type := report,
         case {Tag, Event} of
             {info, {died, _}} -> #{event => <<"died">>};
             {info, _} when is_atom(Event) -> #{event => atom_to_binary(Event, utf8)};
-            {on_chain_tx, Tx} ->
-                EncodedTx = aeser_api_encoder:encode(transaction,
-                                               aetx_sign:serialize_to_binary(Tx)),
-                #{tx => EncodedTx};
+            {on_chain_tx, #{tx := Tx} = Info} ->
+                EncodedTx = aeser_api_encoder:encode(
+                              transaction,
+                              aetx_sign:serialize_to_binary(Tx)),
+                Info#{tx => EncodedTx};
             {_, NewState} when Tag == update; Tag == leave ->
                 Bin = aeser_api_encoder:encode(transaction,
                                          aetx_sign:serialize_to_binary(NewState)),

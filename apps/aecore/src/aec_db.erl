@@ -18,6 +18,7 @@
         ]).
 
 -export([transaction/1,
+         dirty/1,
          ensure_transaction/1,
          write/2,
          delete/2,
@@ -242,6 +243,9 @@ backend_mode(<<"mnesia">> , #{persist := true } = M) -> M#{module => mnesia,
 
 transaction(Fun) when is_function(Fun, 0) ->
     mnesia:activity(transaction, Fun).
+
+dirty(Fun) when is_function(Fun, 0) ->
+    mnesia:activity(async_dirty, Fun).
 
 ensure_transaction(Fun) when is_function(Fun, 0) ->
     %% TODO: actually, some non-transactions also have an activity state
