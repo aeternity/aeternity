@@ -118,7 +118,7 @@ init({Parent, Op}) ->
     %%
     %% TODO: For some reason, trapping exits causes
     %% aehttp_integration_SUITE:sc_ws_open/1 to fail. Investigate why.
-    %% process_flag(trap_exit, true),
+    process_flag(trap_exit, true),
     proc_lib:init_ack(Parent, {ok, self()}),
     ParentMonRef = monitor(process, Parent),
     St = establish(Op, #st{parent = Parent,
@@ -169,7 +169,7 @@ get_reconnect_params() ->
 
 handle_call(close, _From, #st{econn = EConn} = St) ->
     close_econn(EConn),
-    {stop, normal, ok, St};
+    {stop, shutdown, ok, St};
 handle_call(_Req, _From, St) ->
     {reply, {error, unknown_call}, St}.
 
@@ -193,7 +193,7 @@ handle_info({'DOWN', Ref, process, Pid, _Reason},
             #st{parent_mon_ref=Ref, parent=Pid, econn=EConn}=St) ->
     lager:debug("Got DOWN from parent (~p)", [Pid]),
     close_econn(EConn),
-    {stop, normal, St};
+    {stop, shutdown, St};
 handle_info(Msg, St) ->
     try handle_info_(Msg, St)
     catch
@@ -210,7 +210,7 @@ handle_info_({noise, EConn, Data}, #st{econn = EConn} = St) ->
     {noreply, St};
 handle_info_({tcp_closed, _Port}, #st{parent = Pid} = St) ->
     aesc_fsm:connection_died(Pid),
-    {stop, normal, St};
+    {stop, shutdown, St};
 handle_info_(_Msg, St) ->
     lager:debug("Unknown handle_info_(~p)", [_Msg]),
     {noreply, St}.

@@ -4924,11 +4924,6 @@ test_both_payload_from_different_channel(Cfg, Fun) ->
     [Test(Role) || Role <- ?ROLES],
     ok.
 
-%% test_both_old_round(Cfg, Fun) ->
-%%     test_both_old_round(Cfg, Fun, #{}).
-
-%% test_both_old_round(Cfg, Fun, Props) ->
-%%     test_both_old_round(Cfg, Fun, Props, same_round).
 
 test_both_old_round(Cfg, Fun, Props, Reason) ->
     Test0 =
