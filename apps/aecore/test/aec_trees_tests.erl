@@ -77,6 +77,42 @@ signatures_check_test_() ->
         end}
      ]}.
 
+process_txs_test_() ->
+    {setup,
+     fun() ->
+             ok = meck:new(aetx, [passthrough]),
+             aec_test_utils:aec_keys_setup()
+     end,
+     fun(TmpKeysDir) ->
+             meck:unload(aetx),
+             ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir)
+     end,
+     [ {"Transactions that causes a runtime exception are rejected",
+        fun () ->
+            SignedSpend =
+                    aec_test_utils:signed_spend_tx(
+                      #{recipient_id => aec_id:create(account, <<1:32/unit:8>>),
+                        amount => 1,
+                        fee => 20000,
+                        nonce => 1,
+                        payload => <<>>}),
+            SignedTxs = [SignedSpend],
+            {ok, SenderPubkey, _} = aec_test_utils:wait_for_pubkey(),
+            Account = aec_accounts:new(SenderPubkey, 1000000),
+            TreesIn = aec_test_utils:create_state_tree_with_account(Account),
+            Env = aetx_env:tx_env(1),
+
+            meck:expect(aetx, process, fun(_, _, _) -> error(foo) end),
+
+            {ok, ValidTxs, SignedTxs, _Trees} =
+                ?TEST_MODULE:apply_txs_on_state_trees(SignedTxs, TreesIn, Env),
+            ?assertEqual([], ValidTxs),
+            {error, {error, foo}} =
+                ?TEST_MODULE:apply_txs_on_state_trees_strict(SignedTxs, TreesIn, Env),
+            ok
+        end}
+     ]}.
+
 make_spend_tx(Sender, Recipient) ->
     {ok, SpendTx} = aec_spend_tx:new(#{sender_id => aec_id:create(account, Sender),
                                        recipient_id => aec_id:create(account, Recipient),
