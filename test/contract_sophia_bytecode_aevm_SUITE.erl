@@ -70,8 +70,9 @@ all() -> [ execute_identity_fun_from_sophia_file,
            oracles].
 
 compile_contract(Name) ->
-    CodeDir           = code:lib_dir(aesophia, test),
-    FileName          = filename:join([CodeDir, "contracts", lists:concat([Name, ".aes"])]),
+    %% TODO get this path from the common test configuration
+    CodeDir           = filename:join(code:lib_dir(aevm), "../../extras/test/contracts"),
+    FileName          = filename:join(CodeDir, lists:concat([Name, ".aes"])),
     {ok, ContractBin} = file:read_file(FileName),
     Options           = <<>>,
     %% Options           = <<"pp_ast pp_icode pp_assembler pp_bytecode">>,

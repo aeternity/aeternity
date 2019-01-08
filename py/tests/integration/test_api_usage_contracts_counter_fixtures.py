@@ -1,10 +1,13 @@
 # nose doctest fixtures
+import os
 
 def globs(globs):
     def read_file(name):
         with open(name, 'rt') as f:
             return f.read()
-    globs['counter_contract'] = read_file("../../apps/aesophia/test/contracts/counter.aes")
+    currentFile = __file__
+    dirPath = os.path.dirname(currentFile)
+    globs['counter_contract'] = read_file(dirPath + "/counter.aes")
     return globs
 
 def setup_test(test):

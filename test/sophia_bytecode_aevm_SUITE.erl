@@ -21,8 +21,8 @@ all() ->
       execute_identity_fun_from_sophia_file ].
 
 execute_identity_fun_from_sophia_file(_Cfg) ->
-    CodeDir = code:lib_dir(aesophia, test),
-    FileName = filename:join(CodeDir, "contracts/identity.aes"),
+    CodeDir = filename:join(code:lib_dir(aevm), "../../extras/test/contracts"),
+    FileName = filename:join(CodeDir, "identity.aes"),
     {ok, ContractBin} = file:read_file(FileName),
     Contract = binary_to_list(ContractBin),
     Compiled = aeso_compiler:from_string(Contract, [pp_icode, pp_assembler]),
