@@ -34,15 +34,18 @@
 
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
 -define(info(F, A),  epoch_pow_cuckoo:info(F, A)).
+-define(warning(F, A), epoch_pow_cuckoo:warning(F, A)).
 -define(error(F, A), epoch_pow_cuckoo:error(F, A)).
 
--record(state, {os_pid :: integer() | undefined,
+-type os_pid() :: integer() | undefined.
+-type pow_cuckoo_solution() :: [integer()].
+
+-record(state, {os_pid :: os_pid(),
                 port :: port() | undefined,
                 buffer = [] :: string(),
                 target :: aec_pow:sci_int() | undefined,
                 parser :: output_parser_fun()}).
 
--type pow_cuckoo_solution() :: [integer()].
 -type output_parser_fun() :: fun((list(string()), #state{}) ->
                                         {'ok', term(), term()} | {'error', term()}).
 
@@ -311,7 +314,7 @@ generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config)
                                    buffer = [],
                                    parser = fun parse_generation_result/2,
                                    target = Target});
-	{error, _} = E ->
+        {error, _} = E ->
             E
     catch
         C:E ->
@@ -364,16 +367,16 @@ verify_proof_(Header, Solution, EdgeBits) ->
         %% XOR points together: for a closed cycle they must match somewhere
         %% making one of the XORs zero.
         {Xor0, Xor1, _, Uvs} =
-            lists:foldl(
-              fun(N, _) when N > EdgeMask ->
-                      throw(?POW_TOO_BIG(N));
-                 (N, {_Xor0, _Xor1, PrevN, _Uvs}) when N =< PrevN ->
-                      throw(?POW_TOO_SMALL(N, PrevN));
-                 (N, {Xor0C, Xor1C, _PrevN, UvsC}) ->
-                      Uv0 = sipnode(K0, K1, K2, K3, N, 0, EdgeMask),
-                      Uv1 = sipnode(K0, K1, K2, K3, N, 1, EdgeMask),
-                      {Xor0C bxor Uv0, Xor1C bxor Uv1, N, [{Uv0, Uv1} | UvsC]}
-               end, {16#0, 16#0, -1, []}, Solution),
+        lists:foldl(
+          fun(N, _) when N > EdgeMask ->
+                  throw(?POW_TOO_BIG(N));
+             (N, {_Xor0, _Xor1, PrevN, _Uvs}) when N =< PrevN ->
+                  throw(?POW_TOO_SMALL(N, PrevN));
+             (N, {Xor0C, Xor1C, _PrevN, UvsC}) ->
+                  Uv0 = sipnode(K0, K1, K2, K3, N, 0, EdgeMask),
+                  Uv1 = sipnode(K0, K1, K2, K3, N, 1, EdgeMask),
+                  {Xor0C bxor Uv0, Xor1C bxor Uv1, N, [{Uv0, Uv1} | UvsC]}
+          end, {16#0, 16#0, -1, []}, Solution),
         case Xor0 bor Xor1 of
             0 ->
                 %% check cycle
@@ -387,7 +390,7 @@ verify_proof_(Header, Solution, EdgeBits) ->
         end
     catch
         throw:{error, Reason} ->
-            epoch_pow_cuckoo:info("Proof verification failed for ~p: ~p", [Solution, Reason]),
+            ?info("Proof verification failed for ~p: ~p", [Solution, Reason]),
             false
     end.
 
@@ -396,22 +399,22 @@ sipnode(K0, K1, K2, K3, Proof, UOrV, EdgeMask) ->
     (SipHash bsl 1) bor UOrV.
 
 check_cycle(Nodes0) ->
-  Nodes = lists:keysort(2, Nodes0),
-  {Evens0, Odds} = lists:unzip(Nodes),
-  Evens  = lists:sort(Evens0), %% Odd nodes are already sorted...
-  UEvens = lists:usort(Evens),
-  UOdds  = lists:usort(Odds),
-  %% Check that all nodes appear exactly twice (i.e. each node has
-  %% exactly two edges).
-  case length(UEvens) == (?PROOFSIZE div 2) andalso
-        length(UOdds) == (?PROOFSIZE div 2) andalso
-        UOdds == Odds -- UOdds andalso UEvens == Evens -- UEvens of
-      false ->
-          {error, ?POW_BRANCH};
-      true  ->
-          [{X0, Y0}, {X1, Y0} | Nodes1] = Nodes,
-          check_cycle(X0, X1, Nodes1)
-  end.
+    Nodes = lists:keysort(2, Nodes0),
+    {Evens0, Odds} = lists:unzip(Nodes),
+    Evens  = lists:sort(Evens0), %% Odd nodes are already sorted...
+    UEvens = lists:usort(Evens),
+    UOdds  = lists:usort(Odds),
+    %% Check that all nodes appear exactly twice (i.e. each node has
+    %% exactly two edges).
+    case length(UEvens) == (?PROOFSIZE div 2) andalso
+         length(UOdds) == (?PROOFSIZE div 2) andalso
+         UOdds == Odds -- UOdds andalso UEvens == Evens -- UEvens of
+        false ->
+            {error, ?POW_BRANCH};
+        true  ->
+            [{X0, Y0}, {X1, Y0} | Nodes1] = Nodes,
+            check_cycle(X0, X1, Nodes1)
+    end.
 
 %% If we reach the end in the last step everything is fine
 check_cycle(X, X, []) ->
@@ -434,9 +437,9 @@ find_node(X, [{X, Y}, {X1, Y} | Nodes], Acc) ->
 find_node(X, [{X1, Y}, {X, Y} | Nodes], Acc) ->
     {X, X1, Nodes ++ Acc};
 find_node(X, [{X, _Y} | _], _Acc) ->
-  {error, ?POW_DEAD_END};
+    {error, ?POW_DEAD_END};
 find_node(X, [N1, N2 | Nodes], Acc) ->
-  find_node(X, Nodes, [N1, N2 | Acc]).
+    find_node(X, Nodes, [N1, N2 | Acc]).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -479,7 +482,7 @@ pack_header_and_nonce(Hash, Nonce) when byte_size(Hash) == 32 ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec wait_for_result(#state{}) ->
-            {'ok', aec_pow:nonce(), pow_cuckoo_solution()} | {'error', term()}.
+    {'ok', aec_pow:nonce(), pow_cuckoo_solution()} | {'error', term()}.
 wait_for_result(#state{os_pid = OsPid,
                        port = Port,
                        buffer = Buffer} = State) ->
@@ -579,7 +582,7 @@ parse_nonce_str(S) ->
 %%   Stop the OS process
 %% @end
 %%------------------------------------------------------------------------------
--spec stop_execution(integer()) -> ok.
+-spec stop_execution(os_pid()) -> ok.
 stop_execution(OsPid) ->
     exec_kill(OsPid),
     ?debug("Mining OS process ~p stopped", [OsPid]),
@@ -603,9 +606,9 @@ get_node_size() ->
 node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits > 31 -> 8;
 node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits >  0 -> 4.
 
--spec exec_run(string(), string(), list(string())) -> 
-	{ok, Port :: port(), OsPid :: integer()} |
-	{error, {port_error, {term(), term()}}}.
+-spec exec_run(string(), string(), list(string())) ->
+    {ok, Port :: port(), OsPid :: os_pid()} |
+    {error, {port_error, {term(), term()}}}.
 exec_run(Cmd, Dir, Args) ->
     PortSettings = [
                     binary,
@@ -620,15 +623,22 @@ exec_run(Cmd, Dir, Args) ->
     PortName = {spawn_executable, os:find_executable(Cmd, Dir)},
     try
         Port = erlang:open_port(PortName, PortSettings),
-        {os_pid, OsPid} = erlang:port_info(Port, os_pid),
-        ?debug("External mining process started with OS pid ~p", [OsPid]),
-        {ok, Port, OsPid}
+        case erlang:port_info(Port, os_pid) of
+            {os_pid, OsPid} ->
+                ?debug("External mining process started with OS pid ~p", [OsPid]),
+                {ok, Port, OsPid};
+            undefined ->
+                ?warning("External mining process finished before ~p could acquire the OS pid", [?MODULE]),
+                {ok, Port, undefined}
+        end
     catch
         C:E ->
             {error, {port_error, {C, E}}}
     end.
 
--spec exec_kill(integer()) -> ok.
+-spec exec_kill(os_pid()) -> ok.
+exec_kill(undefined) ->
+    ok;
 exec_kill(OsPid) ->
     case is_unix() of
         true ->
