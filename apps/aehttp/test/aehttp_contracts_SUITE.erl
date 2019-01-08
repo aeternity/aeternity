@@ -1190,8 +1190,8 @@ call_func_decode(NodeName, Pubkey, Privkey, EncodedContractPubkey,
 %% Contract interface functions.
 
 compile_test_contract(Name) ->
-    CodeDir = code:lib_dir(aesophia, test),
-    compile_test_contract(filename:join(CodeDir, "contracts"), Name).
+    CodeDir = filename:join(code:lib_dir(aehttp), "../../extras/test/contracts"),
+    compile_test_contract(CodeDir, Name).
 
 %% For testing with contracts not part of the aesophia repository
 compile_test_contract(Dir, Name) ->

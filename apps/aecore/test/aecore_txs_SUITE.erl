@@ -313,7 +313,7 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     {Res, aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey, Code}.
 
 compile_contract(File) ->
-    CodeDir = code:lib_dir(aesophia, test),
+    CodeDir = filename:join(code:lib_dir(aecore), "../../extras/test/"),
     FileName = filename:join(CodeDir, File),
     {ok, ContractBin} = file:read_file(FileName),
     {ok, Serialized} = aect_sophia:compile(ContractBin, <<"pp_icode">>),
