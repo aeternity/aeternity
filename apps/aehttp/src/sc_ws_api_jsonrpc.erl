@@ -27,7 +27,9 @@
                                Method =:= <<"channels.shutdown_sign">>;
                                Method =:= <<"channels.shutdown_sign_ack">>;
                                Method =:= <<"channels.update">>;
-                               Method =:= <<"channels.update_ack">>).
+                               Method =:= <<"channels.update_ack">>;
+                               Method =:= <<"channels.solo_close_tx">>;
+                               Method =:= <<"channels.slash_tx">>).
 -define(METHOD_TAG(Method), case Method of
                                 <<"channels.initiator_sign">>    -> create_tx;
                                 <<"channels.deposit_tx">>        -> deposit_tx;
@@ -39,7 +41,9 @@
                                 <<"channels.update_ack">>        -> update_ack;
                                 <<"channels.shutdown_sign">>     -> shutdown;
                                 <<"channels.shutdown_sign_ack">> -> shutdown_ack;
-                                <<"channels.leave">>             -> leave
+                                <<"channels.leave">>             -> leave;
+                                <<"channels.solo_close_tx">>     -> solo_close_tx;
+                                <<"channels.slash_tx">>          -> slash_tx
                             end).
 
 unpack(Msg) when is_map(Msg) ->
