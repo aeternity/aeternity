@@ -26,6 +26,10 @@
          for_client/1
         ]).
 
+% aesc_signable_transaction callbacks
+-export([channel_id/1,
+         channel_pubkey/1]).
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -97,6 +101,9 @@ origin(#channel_close_solo_tx{} = Tx) ->
 
 channel_pubkey(#channel_close_solo_tx{channel_id = ChannelId}) ->
     aeser_id:specialize(ChannelId, channel).
+
+channel_id(#channel_close_solo_tx{channel_id = ChannelId}) ->
+    ChannelId.
 
 from_pubkey(#channel_close_solo_tx{from_id = FromPubKey}) ->
     aeser_id:specialize(FromPubKey, account).

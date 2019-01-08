@@ -51,7 +51,7 @@
           payload       :: binary(),
           update        :: aesc_offchain_update:update(),
           state_hash    :: binary(),
-          round         :: aesc_channels:seq_number(),
+          round         :: aesc_channels:round(),
           offchain_trees:: aec_trees:trees(),
           ttl           :: aetx:tx_ttl(),
           fee           :: non_neg_integer(),
@@ -260,7 +260,7 @@ channel_id(#channel_force_progress_tx{channel_id = ChannelId}) ->
 updates(#channel_force_progress_tx{update = Update}) ->
     [Update].
 
--spec round(tx()) -> aesc_channels:seq_number().
+-spec round(tx()) -> aesc_channels:round().
 round(#channel_force_progress_tx{round = Round}) ->
     Round.
 

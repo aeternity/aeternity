@@ -49,37 +49,49 @@
 %%% Types
 %%%===================================================================
 
+-export_type([ channel/0
+             , id/0
+             , amount/0
+             , pubkey/0
+             , round/0
+             , solo_round/0
+             , is_active/0
+             , lock_period/0
+             , locked_until/0
+             , state_hash/0
+             , serialized/0
+             ]).
+
 -type id() :: aeser_id:id().
 -type pubkey() :: aec_keys:pubkey().
 -type amount() :: non_neg_integer().
 -type seq_number() :: non_neg_integer().
--type payload() :: aesc_offchain_tx:tx() | <<>>.
+-type payload() :: aesc_offchain_tx:tx().
 
--record(channel, {id                  :: aeser_id:id(),
-                  initiator_id        :: aeser_id:id(),
-                  responder_id        :: aeser_id:id(),
-                  delegate_ids        :: [aeser_id:id()],
+-type round()        :: seq_number().
+-type solo_round()   :: round().
+-type is_active()    :: boolean().
+-type lock_period()  :: non_neg_integer().
+-type locked_until() :: undefined | aec_blocks:height().
+-type state_hash()   :: binary().
+
+-record(channel, {id                  :: id(),
+                  initiator_id        :: id(),
+                  responder_id        :: id(),
+                  delegate_ids        :: [id()],
                   channel_amount      :: amount(),
                   initiator_amount    :: amount(),
                   responder_amount    :: amount(),
                   channel_reserve     :: amount(),
-                  state_hash          :: binary(),
-                  round               :: seq_number(),
-                  solo_round          :: seq_number(),
-                  lock_period         :: non_neg_integer(),
-                  locked_until        :: aec_blocks:height()}).
+                  state_hash          :: state_hash(),
+                  round               :: round(),
+                  solo_round          :: solo_round(),
+                  lock_period         :: lock_period(),
+                  locked_until        :: locked_until() }).
 
 -opaque channel() :: #channel{}.
 
 -type serialized() :: binary().
-
--export_type([id/0,
-              pubkey/0,
-              amount/0,
-              seq_number/0,
-              channel/0,
-              serialized/0,
-              payload/0]).
 
 -define(CHANNEL_TYPE, channel).
 -define(CHANNEL_VSN, 1).
@@ -98,7 +110,7 @@ close_solo(Ch, PoI, Height) ->
                                     state_hash(Ch)).  % keep the state hash
 
 %% close solo with a payload
--spec close_solo(channel(), aesc_offchain_tx:tx(), aec_trees:poi(), aec_blocks:height()) -> channel().
+-spec close_solo(channel(), payload(), aec_trees:poi(), aec_blocks:height()) -> channel().
 close_solo(Ch, PayloadTx, PoI, Height) ->
     close_solo_int(Ch, PoI, Height, aesc_offchain_tx:round(PayloadTx),
                                     aesc_offchain_tx:state_hash(PayloadTx)).
@@ -123,7 +135,7 @@ deposit(#channel{channel_amount = ChannelAmount} = Ch, Amount, Round, StateHash)
                solo_round         = 0,
                round              = Round}.
 
--spec deserialize(pubkey(), binary()) -> channel().
+-spec deserialize(pubkey(), serialized()) -> channel().
 deserialize(IdBin, Bin) ->
     [ {initiator_id       , InitiatorId}
     , {responder_id       , ResponderId}
@@ -160,7 +172,7 @@ deserialize(IdBin, Bin) ->
              locked_until       = LockedUntil}.
 
 %% set a new state
--spec snapshot_solo(channel(), aesc_offchain_tx:tx()) -> channel().
+-spec snapshot_solo(channel(), payload()) -> channel().
 snapshot_solo(Ch, PayloadTx) ->
     Round = aesc_offchain_tx:round(PayloadTx),
     StateHash = aesc_offchain_tx:state_hash(PayloadTx),
@@ -192,7 +204,7 @@ force_progress(Ch0, StateHash, Round, IAmt, RAmt, Height) ->
         false -> Ch1#channel{locked_until = Height + lock_period(Ch0)}
     end.
 
--spec is_active(channel()) -> boolean().
+-spec is_active(channel()) -> is_active().
 is_active(#channel{locked_until = LockedUntil}) ->
     LockedUntil =:= 0.
 
@@ -242,7 +254,7 @@ new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount,
 peers(#channel{} = Ch) ->
     [initiator_pubkey(Ch), responder_pubkey(Ch)].
 
--spec serialize(channel()) -> binary().
+-spec serialize(channel()) -> serialized().
 serialize(#channel{initiator_id = InitiatorId,
                    responder_id = ResponderId,
                    delegate_ids = DelegateIds} = Ch) ->
@@ -317,7 +329,7 @@ withdraw(#channel{channel_amount = ChannelAmount} = Ch, Amount, Round, StateHash
 %%% Getters
 %%%===================================================================
 
--spec locked_until(channel()) -> undefined | aec_blocks:height().
+-spec locked_until(channel()) -> locked_until().
 locked_until(#channel{locked_until = FBU}) ->
     FBU.
 
@@ -361,7 +373,7 @@ responder_amount(#channel{responder_amount = ResponderAmount}) ->
 channel_reserve(#channel{channel_reserve = ChannelReserve}) ->
     ChannelReserve.
 
--spec lock_period(channel()) -> non_neg_integer().
+-spec lock_period(channel()) -> lock_period().
 lock_period(#channel{lock_period = LockPeriod}) ->
     LockPeriod.
 
@@ -373,19 +385,19 @@ delegate_ids(#channel{delegate_ids = Ids}) ->
 delegate_pubkeys(#channel{delegate_ids = Ids}) ->
     [aeser_id:specialize(Id, account) || Id <- Ids].
 
--spec state_hash(channel()) -> binary().
+-spec state_hash(channel()) -> state_hash().
 state_hash(#channel{state_hash = StateHash}) ->
     StateHash.
 
--spec round(channel()) -> non_neg_integer().
+-spec round(channel()) -> round().
 round(#channel{round = Round}) ->
     Round.
 
--spec solo_round(channel()) -> non_neg_integer().
+-spec solo_round(channel()) -> solo_round().
 solo_round(#channel{solo_round = SoloRound}) ->
     SoloRound.
 
--spec fetch_amount_from_poi(aec_trees:poi(), aec_keys:pubkey()) -> non_neg_integer().
+-spec fetch_amount_from_poi(aec_trees:poi(), aec_keys:pubkey()) -> amount().
 fetch_amount_from_poi(PoI, Pubkey) ->
     {ok, Account} = aec_trees:lookup_poi(accounts, Pubkey, PoI),
     aec_accounts:balance(Account).

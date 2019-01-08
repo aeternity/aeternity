@@ -11,6 +11,7 @@
 %% Behavior API
 -export([new/1,
          type/0,
+         channel_pubkey/1,
          fee/1,
          gas/1,
          ttl/1,
@@ -25,6 +26,9 @@
          deserialize/2,
          for_client/1
         ]).
+
+% aesc_signable_transaction callbacks
+-export([channel_id/1]).
 
 %%%===================================================================
 %%% Types
@@ -94,6 +98,9 @@ origin(#channel_snapshot_solo_tx{} = Tx) ->
 
 channel_pubkey(#channel_snapshot_solo_tx{channel_id = ChannelId}) ->
     aeser_id:specialize(ChannelId, channel).
+
+channel_id(#channel_snapshot_solo_tx{channel_id = ChannelId}) ->
+    ChannelId.
 
 from_pubkey(#channel_snapshot_solo_tx{from_id = FromId}) ->
     aeser_id:specialize(FromId, account).
