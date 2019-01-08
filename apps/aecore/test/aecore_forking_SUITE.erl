@@ -41,7 +41,6 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
-    ok = application:ensure_started(erlexec),
     DataDir = ?config(data_dir, Config),
     TopDir = aecore_suite_utils:top_dir(DataDir),
     Config1 = [{symlink_name, "latest.fork"},

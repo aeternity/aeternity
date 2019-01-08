@@ -117,7 +117,6 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
-    ok = application:ensure_started(erlexec),
     DataDir = ?config(data_dir, Config),
     TopDir = aecore_suite_utils:top_dir(DataDir),
     Config1 = [{symlink_name, "latest.sync"},
@@ -381,12 +380,11 @@ check_metrics_logged(Config) ->
     %% a user config filter is applied in init_per_suite, which turns off
     %% metrics logging for "ae.epoch.system.**".
     Dir = aecore_suite_utils:shortcut_dir(Config),
-    Cmd1 = ["grep peers ", Dir, "/dev?/log/epoch_metrics.log"],
-    Cmd2 = ["grep aecore ", Dir, "/dev?/log/epoch_metrics.log"],
-    Res1 = aecore_suite_utils:cmd_res(aecore_suite_utils:cmd(Cmd1)),
-    Res2 = aecore_suite_utils:cmd_res(aecore_suite_utils:cmd(Cmd2)),
-    {[_|_], [], _} = Res1,
-    {[_|_]   , [], _} = Res2,
+    GrepFiles = filelib:wildcard(filename:join(Dir, "dev?/log/epoch_metrics.log")),
+    Res1 = aecore_suite_utils:cmd("grep", ".", ".", ["peers" | GrepFiles], [], false),
+    Res2 = aecore_suite_utils:cmd("grep", ".", ".", ["aecore" | GrepFiles], [], false),
+    {0, [_|_]} = aecore_suite_utils:cmd_res(Res1),
+    {0, [_|_]} = aecore_suite_utils:cmd_res(Res2),
     ok.
 
 check_no_system_metrics_sent() ->

@@ -10,11 +10,10 @@
 -include_lib("common_test/include/ct.hrl").
 -compile({parse_transform, ct_eunit_xform}).
 
--define(STARTED_APPS_WHITELIST, [erlexec, runtime_tools, parse_trans, folsom, bear, setup, hut]).
--define(TO_BE_STOPPED_APPS_BLACKLIST, [erlexec]).
+-define(STARTED_APPS_WHITELIST, [runtime_tools, parse_trans, folsom, bear, setup, hut, hex2bin]).
+-define(TO_BE_STOPPED_APPS_BLACKLIST, []).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server, %% by test framework
-         exec_app, exec, %% by erlexec
          inet_gethost_native_sup, inet_gethost_native, %% by inet
          prfTarg, runtime_tools_sup, %% by eper
          dets_sup, dets,  %% by mnesia
@@ -107,39 +106,6 @@ application_test(Config) ->
     meck:unload(aec_genesis_block_settings),
 
     app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir).
-
-%% aec_sync_test(Config) ->
-%%     application:set_env(jobs, queues,
-%%                         [{sync_jobs, [passive]},
-%%                          {sync_workers, [{regulators, [{counter, [{limit, 4}]}]},
-%%                                          {producer, {aec_sync, sync_worker, []}}
-%%                                         ]}]),
-%%     {ok, StartedApps, TempDir} = prepare_app_start(aecore, Config),
-%%     ct:log("jobs running with env: ~p", [application:get_env(jobs, queues)]),
-%%     aec_test_utils:fake_start_aehttp(),
-
-%%     ok = application:start(aecore),
-%%     SyncPid = whereis(aec_sync),
-%%     ct:log("Running aec_sync ~p", [SyncPid]),
-
-%%     ok = aec_sync:connect_peer("http://my.evil_machine:3012/"),
-%%     ct:log("trying to connect --> job scheduled"),
-%%     %% give it some time to execute the scheduled job
-%%     timer:sleep(50),
-%%     false = aec_peers:is_blocked("http://my.evil_machine:3012/"),
-%%     ct:log("as expected not blocked"),
-
-%%     ok = aec_sync:connect_peer("http://my.evil_machine:3012/"),
-%%     ct:log("trying to connect again --> job scheduled"),
-%%     timer:sleep(50),
-%%     SyncPid = whereis(aec_sync), %% Sync has not been restarted!
-%%     Peers = aec_peers:connected_peers(),
-%%     ct:log("tried twice and although it failed, it is a peer: ~p", [Peers]),
-%%     1 = length(Peers),
-
-%%     ok = application:stop(aecore),
-%%     app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir).
-
 
 prepare_app_start(App, Config) ->
     try prepare_app_start_(App, Config)

@@ -11,7 +11,7 @@
          make_shortcut/1,
          shortcut_dir/1]).
 
--export([cmd/1,
+-export([cmd/3, cmd/4, cmd/5, cmd/6,
          cmd_res/1,
          set_env/4,
          unset_env/3]).
@@ -163,16 +163,16 @@ start_node(N, Config) ->
     MyDir = filename:dirname(code:which(?MODULE)),
     ConfigFilename = proplists:get_value(config_name, Config, "default"),
     Flags = ["-pa ", MyDir, " -config ./" ++ ConfigFilename],
-    cmd(["(cd ", node_shortcut(N, Config),
-         " && ERL_FLAGS=\"", Flags, "\"",
-         " EPOCH_CONFIG=./data/epoch.json"
-         " RUNNER_LOG_DIR=`pwd`/log"
-         " CODE_LOADING_MODE=interactive"
-         " ./bin/epoch start)"]).
+    cmd("epoch", node_shortcut(N, Config), "bin", ["start"],
+        [
+         {"ERL_FLAGS", Flags},
+         {"EPOCH_CONFIG", "data/epoch.json"},
+         {"RUNNER_LOG_DIR","log"},
+         {"CODE_LOADING_MODE", "interactive"}
+        ]).
 
 stop_node(N, Config) ->
-    cmd(["(cd ", node_shortcut(N, Config),
-         " && ./bin/epoch stop)"]).
+    cmd("epoch", node_shortcut(N, Config), "bin", ["stop"]).
 
 get_node_db_config(Rpc) when is_function(Rpc, 3) ->
     IsDbPersisted = Rpc(application, get_env, [aecore, persist, false]),
@@ -192,9 +192,7 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
     ct:log("Deleting Mnesia Dir ~p", [MnesiaDir]),
     {true, _} = {filelib:is_file(MnesiaDir), MnesiaDir},
     {true, _} = {filelib:is_dir(MnesiaDir), MnesiaDir},
-    RmMnesiaDir = "rm -r '" ++ MnesiaDir ++ "'",
-    ct:log("Running command ~p", [RmMnesiaDir]),
-    os:cmd(RmMnesiaDir),
+    cmd("rm", ".", ".", ["-r", MnesiaDir], [], false),
     {false, _} = {filelib:is_file(MnesiaDir), MnesiaDir},
     ok.
 
@@ -617,31 +615,56 @@ symlink(From, To) ->
     ct:log("symlinked ~s to ~s", [From, To]),
     ok.
 
-cmd(C) ->
+cmd(Cmd, Dir, Args) ->
+    cmd(Cmd, Dir, ".", Args, []).
+cmd(Cmd, Dir, BinDir, Args) ->
+    cmd(Cmd, Dir, BinDir, Args, []).
+cmd(Cmd, Dir, BinDir, Args, Env) ->
+    cmd(Cmd, Dir, BinDir, Args, Env, true).
+cmd(C, Dir, BinDir, Args, Env, FindLocalBin) ->
     Cmd = binary_to_list(iolist_to_binary(C)),
-    CmdRes = exec:run(Cmd, [sync, stdout, stderr]),
-    {Fmt, Args} =
+    CmdRes = cmd_run(Cmd, Dir, BinDir, Args, Env, FindLocalBin),
+    {Fmt, FmtArgs} =
         case cmd_res(CmdRes) of
-            {Out, "", []}    -> {"> ~s~n~s", [Cmd, Out]};
-            {Out, Err, []}   -> {"> ~s~n~s~nERR: ~n", [Cmd, Out, Err]};
-            {Out, Err, Rest} ->
-                {"> ~s~n~s~nERR: ~s~nRest = ~p", [Cmd, Out, Err, Rest]}
+            {0, Out} ->
+                {"> ~s~n~s", [Cmd, Out]};
+            {ErrCode, Out} ->
+                {"> ~s~nERR ~p: ~s~n", [Cmd, ErrCode, Out]}
         end,
-    ct:log(Fmt, Args),
+    ct:log(Fmt, FmtArgs),
     CmdRes.
 
-cmd_res({_, L}) ->
-    {Err,_L1} = take(stderr, L, ""),
-    {Out,L2} = take(stdout, L, ""),
-    {Out, Err, L2}.
+cmd_run(Cmd, Dir, BinDir, Args, Env, FindLocalBin) ->
+    Opts = [
+            {env, Env},
+            exit_status,
+            overlapped_io,
+	    stderr_to_stdout,
+            {args, Args},
+            {cd, Dir}
+           ],
+    ct:log("Running command ~p in ~p with ~p", [Cmd, Dir, Args]),
+    Bin = case FindLocalBin of
+	       true ->
+                    os:find_executable(Cmd, filename:join(Dir, BinDir));
+               false ->
+                    os:find_executable(Cmd)
+	  end,
+    Port = erlang:open_port({spawn_executable, Bin}, Opts),
+    WaitFun = fun(Fun, P, Res) ->
+                     receive
+                         {P, {exit_status, 0}} ->
+                             {ok, 0, Res};
+                         {P, {exit_status, Err}} ->
+                             {error, Err, Res};
+                         {P, {data, Msg}} ->
+                             Fun(Fun, P, Res ++ Msg)
+                     end
+             end,
+    WaitFun(WaitFun, Port, "").
 
-take(K, L, Def) ->
-    case lists:keytake(K, 1, L) of
-        false ->
-            {Def, L};
-        {value, {_, V}, Rest} ->
-            {V, Rest}
-    end.
+cmd_res({_, Code, L}) ->
+    {Code, L}.
 
 set_env(Node, App, Key, Value) ->
     ok = rpc:call(Node, application, set_env, [App, Key, Value], 5000).

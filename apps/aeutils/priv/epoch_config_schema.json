@@ -442,7 +442,8 @@
                                         "default" : false
                                     },
                                     "nice" : {
-                                        "description" : "Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority. Keep it unset to inherit parent process priority.",
+                                        "description" : "DEPRECATED: Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority. Keep it unset to inherit parent process priority.",
+                                        "tags" : ["deprecated"],
                                         "type" : "integer"
                                     },
                                     "repeats" : {
@@ -503,7 +504,8 @@
                                     "default" : false
                                 },
                                 "nice" : {
-                                    "description" : "Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority. Keep it unset to inherit parent process priority.",
+                                    "description" : "DEPRECATED: Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority. Keep it unset to inherit parent process priority.",
+                                    "tags" : ["deprecated"],
                                     "type" : "integer"
                                 },
                                 "repeats" : {

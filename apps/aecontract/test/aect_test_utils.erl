@@ -195,7 +195,7 @@ set_account(Account, State) ->
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
 compile_contract(File) ->
-    CodeDir = code:lib_dir(aesophia, test),
+    CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
     FileName = filename:join(CodeDir, File),
     {ok, ContractBin} = file:read_file(FileName),
     aect_sophia:compile(ContractBin, <<>>).
