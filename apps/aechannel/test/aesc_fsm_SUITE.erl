@@ -36,7 +36,7 @@
         , dep_wdraw_with_conflict/1
         , deposit/1
         , withdraw/1
-        , channel_subverted/1
+        , channel_detects_close_solo/1
         , leave_reestablish/1
         , leave_reestablish_close/1
         , change_config_get_history/1
@@ -103,7 +103,7 @@ groups() ->
       , dep_wdraw_with_conflict
       , deposit
       , withdraw
-      , channel_subverted
+      , channel_detects_close_solo
       , leave_reestablish
       , leave_reestablish_close
       , change_config_get_history
@@ -649,9 +649,9 @@ withdraw(Cfg) ->
     shutdown_(I, R),
     ok.
 
-channel_subverted(Cfg) ->
+channel_detects_close_solo(Cfg) ->
     Debug = get_debug(Cfg),
-    #{ i := I, r := R } = create_channel_([?SLOGAN|Cfg]),
+    #{ i := I, r := R, spec := Spec } = create_channel_([?SLOGAN|Cfg]),
     {ok, Tx} = close_solo_tx(I, <<>>),
     #{ priv := IPrivKey } = ?config(initiator, Cfg),
     SignedCloseSoloTx = aec_test_utils:sign_tx(Tx, [IPrivKey]),
@@ -659,9 +659,15 @@ channel_subverted(Cfg) ->
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
         aecore_suite_utils:node_name(dev1), [TxHash], ?MAX_MINED_BLOCKS),
-    {ok,_} = receive_from_fsm(info, I, fun died_subverted/1, ?TIMEOUT, Debug),
-    {ok,_} = receive_from_fsm(info, R, fun died_subverted/1, ?TIMEOUT, Debug),
-    check_info(500).
+    TTL = current_height(dev1) + maps:get(lock_period, Spec),
+    ct:log("Expected TTL = ~p", [TTL]),
+    SignedTx = await_on_chain_report(I, #{info => solo_closing}, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R, #{info => solo_closing}, ?TIMEOUT),
+    {ok,_} = receive_from_fsm(info, I, fun closing/1, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(info, R, fun closing/1, ?TIMEOUT, Debug),
+    check_info(500),
+    settle_(TTL, I, R, Debug),
+    ok.
 
 close_solo_tx(#{ fsm        := Fsm
                , channel_id := ChannelId }, Payload) ->
@@ -813,6 +819,9 @@ died_normal(#{info := {died,normal}}) -> ok.
 %% died_subverted(#{info := {died,channel_closing_on_chain}}) -> ok.
 died_subverted(#{info := {died,_}}) -> ok.
 
+%% solo_closing(#{info := solo_closing}) -> ok.
+
+closing(#{info := closing}) -> ok.
 
 multiple_channels(Cfg) ->
     multiple_channels_t(10, 9360, {transfer, 100}, ?SLOGAN, Cfg).
@@ -1224,6 +1233,14 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R) ->
     verify_close_mutual_tx(SignedTx, ChannelId),
     ok.
 
+settle_(TTL, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug) ->
+    ok = rpc(dev1, aesc_fsm, settle, [FsmI]),
+    _ = await_signing_request(settle_tx, I),
+    mine_blocks(dev1, TTL + 1, Debug),
+    SignedTx = await_on_chain_report(I, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
+    wait_for_signed_transaction_in_block(dev1, SignedTx),
+    verify_settle_tx(SignedTx, ChannelId).
 
 %% Retry N times, T ms apart, if F() raises an exception.
 %% Used in places where there could be a race.
@@ -1378,6 +1395,7 @@ create_channel_from_spec(
     log(Debug, "mining blocks on dev1 for minimum depth", []),
     CurrentHeight = current_height(dev1),
     SignedTx = await_on_chain_report(I2, ?TIMEOUT),
+    ct:log("SignedTx = ~p", [SignedTx]),
     SignedTx = await_on_chain_report(R2, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     mine_blocks(dev1, ?MINIMUM_DEPTH, opt_add_tx_to_debug(SignedTx, Debug)),
@@ -1436,6 +1454,14 @@ verify_close_mutual_tx(SignedTx, ChannelId) ->
              {channel_id, ChId} <- ChInfo
         ]).
 
+verify_settle_tx(SignedTx, ChannelId) ->
+    {channel_settle_tx, Tx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    {_, ChInfo} = aesc_settle_tx:serialize(Tx),
+    true = lists:member(ChannelId,
+        [ aec_id:specialize(ChId, channel) ||
+            {channel_id, ChId} <- ChInfo
+        ]).
+
 await_create_tx_i(I, R, Debug) ->
     {I1, _} = await_signing_request(create_tx, I, Debug),
     await_funding_created_p(I1, R, Debug).
@@ -1492,12 +1518,31 @@ sign_signing_request(Tag, #{fsm := Fsm} = R, SignedTx, Updates) ->
     aesc_fsm:signing_response(Fsm, Tag, SignedTx),
     {check_amounts(R, SignedTx, Updates), SignedTx}.
 
-await_on_chain_report(#{fsm := Fsm}, Timeout) ->
-    receive {aesc_fsm, Fsm, #{type := report, tag := on_chain_tx, info := SignedTx}} ->
-              SignedTx
+await_on_chain_report(R, Timeout) ->
+    await_on_chain_report(R, #{}, Timeout).
+
+await_on_chain_report(#{fsm := Fsm}, Match, Timeout) ->
+    receive
+        {aesc_fsm, Fsm, #{type := report, tag := on_chain_tx,
+                          info := #{tx := SignedTx} = I}} = M ->
+            ct:log("OnChainRpt = ~p", [M]),
+            ok = match_info(I, Match),
+            SignedTx
     after Timeout ->
               error(timeout)
     end.
+
+match_info(Info, Match) ->
+    maps:fold(fun(K,V,Acc) ->
+                      case maps:find(K, Info) of
+                          {ok, V} ->
+                              Acc;
+                          {ok, Other} ->
+                              error({info_mismatch, {K, [V, Other]}});
+                          error ->
+                              error({no_such_key, K})
+                      end
+              end, ok, Match).
 
 await_open_report(#{fsm := Fsm} = R, Timeout, _Debug) ->
     receive {aesc_fsm, Fsm, #{type := report, tag := info, info := open} = Msg} ->
@@ -1571,7 +1616,10 @@ match_msgs(F, Msg, Cont) when is_function(F, 1) ->
             if Cont ->
                     throw(continue);
                true ->
-                    ct:log("Message doesn't match fun: ~p / ~p", [Msg]),
+                    {module, Mod} = erlang:fun_info(F, module),
+                    {name, Name} = erlang:fun_info(F, name),
+                    ct:log("Message doesn't match fun: ~p / ~w:~w/1",
+                           [Msg, Mod, Name]),
                     error({message_mismatch, [Msg]})
             end
     end;
