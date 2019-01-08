@@ -733,7 +733,7 @@ multiple_channels(Cfg) ->
     multiple_channels_t(10, 9360, {transfer, 100}, ?SLOGAN, Cfg).
 
 many_chs_msg_loop(Cfg) ->
-    multiple_channels_t(100, 9400, {msgs, 100}, ?SLOGAN, Cfg).
+    multiple_channels_t(10, 9400, {msgs, 100}, ?SLOGAN, Cfg).
 
 multiple_channels_t(NumCs, FromPort, Msg, Slogan, Cfg) ->
     ct:log("spawning ~p channels", [NumCs]),
