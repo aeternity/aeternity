@@ -14,6 +14,7 @@
          upd_call_contract/2,     %%
          get_contract_call/4,     %% (fsm(), contract_id(), caller(), round())
          leave/1,
+         close_solo/1,
          shutdown/1,              %% (fsm())
          client_died/1,           %% (fsm())
          inband_msg/3,
@@ -359,6 +360,9 @@ leave(Fsm) ->
     lager:debug("leave(~p)", [Fsm]),
     gen_statem:call(Fsm, leave).
 
+close_solo(Fsm) ->
+    lager:debug("close_solo(~p)", [Fsm]),
+    gen_statem:call(Fsm, close_solo).
 
 shutdown(Fsm) ->
     lager:debug("shutdown(~p)", [Fsm]),
@@ -600,6 +604,12 @@ awaiting_signature(cast, {Req, _} = Msg, #data{ongoing_update = true} = D)
     %% Race detection!
     lager:debug("race detected: ~p", [Msg]),
     handle_update_conflict(Req, D);
+awaiting_signature(cast, {?SIGNED, slash_tx, SignedTx} = Msg,
+                   #data{latest = {sign, slash_tx, _CTx}} = D) ->
+    lager:debug("slash_tx signed", []),
+    %% TODO: Would be prudent to check the SignedTx before pushing
+    ok = aec_tx_pool:push(SignedTx),
+    next_state(channel_closing, log(rcv, ?SIGNED, Msg, D#data{latest = undefined}));
 awaiting_signature(cast, {?SIGNED, create_tx, Tx} = Msg,
                    #data{role = initiator, latest = {sign, create_tx, _CTx}} = D) ->
     next_state(half_signed,
@@ -1048,6 +1058,10 @@ closing(cast, {closing_signed, _Msg}, D) ->  %% TODO: not using this, right?
 closing(Type, Msg, D) ->
     handle_common_event(Type, Msg, error, D).
 
+channel_closing(enter, _OldSt, _D) -> keep_state_and_data;
+channel_closing(Type, Msg, D) ->
+    handle_common_event(Type, Msg, discard, D).
+
 disconnected(cast, {?CH_REESTABL, _Msg}, D) ->
     next_state(closing, D).
 
@@ -1238,6 +1252,15 @@ handle_call_(_, get_round, From, #data{ state = State } = D) ->
 handle_call_(_, prune_local_calls, From, #data{ state = State0 } = D) ->
     State = aesc_offchain_state:prune_calls(State0),
     keep_state(D#data{state = State}, [{reply, From, ok}]);
+handle_call_(St, close_solo, From, #data{ state = State0 } = D) ->
+    case St of
+        channel_closing ->
+            keep_state(D, [{reply, From, {error, channel_closing}}]);
+        _ ->
+            {ok, CloseSoloTx} = close_solo_tx(D),
+            D1 = request_signing(close_solo_tx, CloseSoloTx, D),
+            next_state(awaiting_signature, D1, [{reply, From, ok}])
+    end;
 handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
     postpone(D);
 handle_call_(_St, _Req, From, D) ->
@@ -1267,7 +1290,14 @@ handle_common_event_(cast, {?DISCONNECT, _}, _St, _, D) ->
 handle_common_event_(cast, {?CHANNEL_CLOSING, ChanId} = Msg, _St, _,
                      #data{on_chain_id = ChanId} = D) ->
     lager:debug("got ~p", [Msg]),
-    close(channel_closing_on_chain, D);
+    case check_closing_event(D) of
+        {can_slash, Round, SignedTx} ->
+            {ok, SlashTx} = slash_tx(Round, SignedTx, D1),
+            D2 = request_signing(slash_tx, SlashTx, D1),
+            next_state(awaiting_signature, D2);
+        {error, _Reason} ->
+            close(channel_closing_on_chain, D)
+    end;
 handle_common_event_({call, From}, Req, St, Mode, D) ->
     case Mode of
         error_all ->
@@ -1677,6 +1707,32 @@ pay_close_mutual_fee(Fee, IAmt, RAmt) ->
 
 close_mutual_defaults(_Account, _D) ->
     #{ fee   => 20000}.
+
+slash_tx(Round, SignedTx, D) ->
+    Account = my_account(D),
+    {ok, Nonce} = aec_next_nonce:pick_for_account(Account),
+    slash_tx(Account, Nonce, Round, SignedTx, D).
+
+slash_tx(Account, Nonce, Round, SignedTx, #data{ on_chain_id = ChanId
+                                               , opts        = Opts
+                                               , state       = State} = D) ->
+    Def = slash_defaults(Account, D),
+    Opts1 = maps:merge(Def, Opts),
+    #{initiator := Initiator,
+      responder := Responder} = Opts,
+    {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
+    {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
+    Fee = maps:get(fee, Opts1),
+    TTL = maps:get(ttl, Opts1, 0),
+    {ok, Poi} = aesc_offchain_state:poi([{account, Initiator},
+                                         {account, Responder}], State),
+    aesc_slash_tx:new(#{ channel_id => aec_id:create(channel, ChanId)
+                       , from_id    => aec_id:create(account, Account)
+                       , payload    => aetx_sign:serialize_to_binary(SignedTx)
+                       , poi        => Poi
+                       , ttl        => TTL
+                       , fee        => Fee
+                       , nonce      => Nonce }),
 
 my_account(#data{role = initiator, opts = #{initiator := I}}) -> I;
 my_account(#data{role = responder, opts = #{responder := R}}) -> R.
@@ -2337,3 +2393,32 @@ process_update_error({off_chain_update_error, Reason}, From, D) ->
 process_update_error(Reason, From, D) ->
     lager:error("CAUGHT ~p, trace = ~p", [Reason, erlang:get_stacktrace()]),
     keep_state(D, [{reply, From, {error, Reason}}]).
+
+check_closing_event(#data{on_chain_id = ChanId} = D) ->
+    case aec_chain:get_channel(ChanId) of
+        {ok, Channel} ->
+            case aesc_channel:is_active(Channel) of
+                true ->
+                    check_closing_event_(Channel, D);
+                false ->
+                    {error, not_active}
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
+check_closing_event_(Ch, #data{on_chain_id = ChanId, state = St} =D) ->
+    case aesc_channel:is_solo_closing(Ch) of
+        true ->
+            {LastRound, SignedTx} =
+                asc_offchain_state:get_latest_signed_tx(St),
+            case aesc_channel_utils:check_round_greater_than_last(
+                   Ch, Round, slash) of
+                true ->
+                    %% We have a later valid channel state
+                    {can_slash, Round, SignedTx};
+                false ->
+                    proper_solo_closing
+            end;
+        false ->
+            
