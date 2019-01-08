@@ -265,7 +265,7 @@ create_contract_negative_gas_price_zero(_Cfg) ->
 
     {error, _} = sign_and_apply_transaction(Tx, PrivKey, S1),
     Env        = aetx_env:tx_env(_Height = 1),
-    {error, too_low_gas_price} = aetx:check(Tx, aect_test_utils:trees(S1), Env),
+    {error, too_low_gas_price} = aetx:process(Tx, aect_test_utils:trees(S1), Env),
     ok.
 
 create_contract_negative(_Cfg) ->
@@ -281,19 +281,19 @@ create_contract_negative(_Cfg) ->
     RTx1      = aect_test_utils:create_tx(BadPubKey, S1),
     {error, S1} = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
 
-    {error, account_not_found} = aetx:check(RTx1, Trees, Env),
+    {error, account_not_found} = aetx:process(RTx1, Trees, Env),
 
     %% Insufficient funds
     S2     = aect_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aect_test_utils:trees(S2),
     RTx2   = aect_test_utils:create_tx(PubKey, S2),
     {error, S2} = sign_and_apply_transaction(RTx2, PrivKey, S2),
-    {error, insufficient_funds} = aetx:check(RTx2, Trees2, Env),
+    {error, insufficient_funds} = aetx:process(RTx2, Trees2, Env),
 
     %% Test too high account nonce
     RTx3 = aect_test_utils:create_tx(PubKey, #{nonce => 0}, S1),
     {error, S1} = sign_and_apply_transaction(RTx3, PrivKey, S1),
-    {error, account_nonce_too_high} = aetx:check(RTx3, Trees, Env),
+    {error, account_nonce_too_high} = aetx:process(RTx3, Trees, Env),
 
     ok.
 
@@ -561,7 +561,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
                                        fee       => Fee}, S),
     {error, _} = sign_and_apply_transaction(CallTx, aect_test_utils:priv_key(Acc1, S), S),
     Env = aetx_env:tx_env(_Height = 1),
-    {error, insufficient_funds} = aetx:check(CallTx, aect_test_utils:trees(S), Env),
+    {error, insufficient_funds} = aetx:process(CallTx, aect_test_utils:trees(S), Env),
     ok.
 
 call_contract_negative_gas_price_zero(_Cfg) ->
@@ -575,7 +575,7 @@ call_contract_negative_gas_price_zero(_Cfg) ->
 
     {error, _} = sign_and_apply_transaction(Tx, aect_test_utils:priv_key(Acc1, S), S),
     Env        = aetx_env:tx_env(_Height = 1),
-    {error, too_low_gas_price} = aetx:check(Tx, aect_test_utils:trees(S), Env),
+    {error, too_low_gas_price} = aetx:process(Tx, aect_test_utils:trees(S), Env),
     ok.
 
 call_contract_negative(_Cfg) ->

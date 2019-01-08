@@ -28,7 +28,7 @@
          for_client/1
         ]).
 
--export([process_call/3]).
+-export([check_and_process_call/3]).
 
 %% Additional getters
 -export([call_id/1,
@@ -166,8 +166,18 @@ process(Tx, Trees, Env) ->
         aetx_contract    -> {ok, Trees1}
     end.
 
+-spec check_and_process_call(tx(), aec_trees:trees(), aetx_env:env()) ->
+                                {ok, aect_call:call(), aec_trees:trees()}
+                              | {error, term()}.
+check_and_process_call(Tx, Trees, Env) ->
+    case check(Tx, Trees, Env) of
+        {ok, Trees1} ->
+            process_call(Tx, Trees1, Env);
+        {error, _} = Err ->
+            Err
+    end.
+
 %% Process a call transaction and return the call object, without writing it to the state trees.
--spec process_call(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aect_call:call(), aec_trees:trees()}.
 process_call(#contract_call_tx{caller_id   = CallerId,
                                nonce       = Nonce,
                                contract_id = ContractId,
@@ -232,9 +242,8 @@ spend(CallerPubkey, ContractPubkey, Value, Fee, Nonce, Trees, Env) ->
     %% These spends should always be evaluated in contract context
     %% (i.e., no checks for minimum fee etc)
     Env1 = aetx_env:set_context(Env, aetx_contract),
-    {ok, Trees1} = aetx:check(SpendTx, Trees, Env1),
-    {ok, Trees2} = aetx:process(SpendTx, Trees1, Env),
-    Trees2.
+    {ok, Trees1} = aetx:process(SpendTx, Trees, Env1),
+    Trees1.
 
 run_contract(#contract_call_tx{ nonce  = _Nonce
                               , vm_version = VmVersion

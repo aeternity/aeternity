@@ -691,10 +691,9 @@ do_set_store(Store, PubKey, Trees) ->
 
 apply_call_transaction(Tx, Gas, #state{tx_env = Env} = State) ->
     Trees = get_top_trees(State),
-    case aetx:check(Tx, Trees, Env) of
-        {ok, Trees1} ->
-            {ok, Call, Trees2} = aetx:custom_apply(process_call, Tx, Trees1, Env),
-            State1 = set_top_trees(State, Trees2),
+    case aetx:custom_apply(check_and_process_call, Tx, Trees, Env) of
+        {ok, Call, Trees1} ->
+            State1 = set_top_trees(State, Trees1),
             GasUsed = aect_call:gas_used(Call),
             case aect_call:return_type(Call) of
                 error ->
@@ -715,10 +714,9 @@ apply_call_transaction(Tx, Gas, #state{tx_env = Env} = State) ->
 
 apply_transaction(Tx, #state{tx_env = Env } = State) ->
     Trees = get_top_trees(State),
-    case aetx:check(Tx, Trees, Env) of
+    case aetx:process(Tx, Trees, Env) of
         {ok, Trees1} ->
-            {ok, Trees2} = aetx:process(Tx, Trees1, Env),
-            State1 = set_top_trees(State, Trees2),
+            State1 = set_top_trees(State, Trees1),
             {ok, State1};
         {error, _} = E -> E
     end.
