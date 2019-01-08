@@ -297,7 +297,6 @@ clean:
 	@$(REBAR) clean
 	@-rm REVISION
 	@-rm $(SWAGGER_ENDPOINTS_SPEC)
-	( cd apps/aesophia/test/contracts && $(MAKE) clean; )
 	( cd $(HTTP_APP) && $(MAKE) clean; )
 	@$(MAKE) multi-distclean
 	@rm -rf _build/system_test+test _build/system_test _build/test _build/prod _build/local
@@ -351,9 +350,6 @@ internal-clean: $$(KIND)
 
 internal-distclean: $$(KIND)
 	@rm -rf ./_build/$(KIND)
-
-compile-aes:
-	( cd apps/aesophia && make compile_test_aes CONTRACT=$(CONTRACT) ; )
 
 .PHONY: \
 	all console \
