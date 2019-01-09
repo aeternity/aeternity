@@ -5,7 +5,7 @@
 %%%
 %%%    The db backend is made to be side effect free for writes, with
 %%%    a write cache that collects all new key-value pairs until
-%%%    commit/1 is called.
+%%%    unsafe_write_to_backend/3 is called.
 %%%
 %%%    TODO: Currently, reads are not cached, only writes.
 %%% @end
@@ -15,11 +15,13 @@
 
 -export([ get/2
         , put/3
-        , commit/1
+        , cache_get/2
+        , drop_cache/1
         , new/1
         , is_db/1
         , get_cache/1
         , get_handle/1
+        , unsafe_write_to_backend/3
         ]).
 
 -export_type([ db/0
@@ -28,9 +30,9 @@
 
 -record(db, { handle :: handle()
             , cache  :: cache()
+            , drop_cache :: drop_cache_mf()
             , get    :: get_mf()
             , put    :: put_mf()
-            , commit :: commit_mf()
             }).
 
 -opaque db() :: #db{}.
@@ -38,7 +40,7 @@
 -type db_spec() :: #{ 'get'    := get_mf()
                     , 'put'    := put_mf()
                     , 'cache'  := cache()
-                    , 'commit' := commit_mf()
+                    , 'drop_cache' := drop_cache_mf()
                     , 'handle' := handle()
                     }.
 
@@ -55,8 +57,8 @@
 %% fun((key(), value(), cache()) -> cache()).
 -type put_mf() :: {module(), atom()}.
 
-%% fun((handle(), cache()) -> {ok, handle(), cache()} | {'error', term()}).
--type commit_mf() :: {module(), atom()}.
+%% fun((cache()) -> cache()).
+-type drop_cache_mf() :: {module(), atom()}.
 
 %%%===================================================================
 %%% API
@@ -66,16 +68,16 @@
 new(#{ 'get'    := GetMF
      , 'put'    := PutMF
      , 'cache'  := Cache
-     , 'commit' := CommitMF
+     , 'drop_cache' := DropCacheMF
      , 'handle' := Handle
      }) ->
     validate_exported(put, PutMF, 3),
     validate_exported(get, GetMF, 2),
-    validate_exported(commit, CommitMF, 2),
+    validate_exported(drop_cache, DropCacheMF, 1),
     #db{ get    = GetMF
        , put    = PutMF
        , cache  = Cache
-       , commit = CommitMF
+       , drop_cache = DropCacheMF
        , handle = Handle
        }.
 
@@ -92,23 +94,29 @@ validate_exported(Type, Other,_A) ->
 
 -spec get(key(), db()) -> {'value', value()} | 'none'.
 get(Key, DB) ->
-    case cache_get(Key, DB) of
-        'none' -> db_get(Key, DB);
+    case int_cache_get(Key, DB) of
+        'none' -> int_db_get(Key, DB);
         {value, _} = Res -> Res
     end.
 
+-spec cache_get(key(), db()) -> {'value', value()} | 'none'.
+cache_get(Key, DB) ->
+    int_cache_get(Key, DB).
+
+-spec drop_cache(db()) -> db().
+drop_cache(DB) ->
+    int_drop_cache(DB).
+
 -spec put(key(), value(), db()) -> db().
 put(Key, Val, DB) ->
-    cache_put(Key, Val, DB).
+    int_cache_put(Key, Val, DB).
 
--spec commit(db()) -> {'ok', db()} | {'error', term()}.
-commit(#db{commit = {M, F}, cache = Cache, handle = Handle} = DB) ->
-    case M:F(Handle, Cache) of
-        {ok, NewHandle, NewCache} ->
-            {ok, DB#db{handle = NewHandle, cache = NewCache}};
-        {error, _} = Error ->
-            Error
-    end.
+-spec unsafe_write_to_backend(key(), value(), db()) -> db().
+unsafe_write_to_backend(Key, Val, DB) ->
+    %% NOTE: Disregards the actual cache value, and does not invalidate
+    %%       the cache. Make sure you know what you are doing!
+    %%       This should only be called with the actual cache value.
+    int_db_put(Key, Val, DB).
 
 -spec is_db(term()) -> boolean().
 is_db(#db{}) -> true;
@@ -126,15 +134,22 @@ get_handle(#db{handle = Handle}) ->
 %%% Cache
 %%%===================================================================
 
-cache_get(Key, #db{cache = Cache, get = {M, F}}) ->
+int_cache_get(Key, #db{cache = Cache, get = {M, F}}) ->
     M:F(Key, Cache).
 
-cache_put(Key, Val, #db{cache = Cache, put = {M, F}} = DB) ->
+int_cache_put(Key, Val, #db{cache = Cache, put = {M, F}} = DB) ->
     DB#db{cache = M:F(Key, Val, Cache)}.
+
+int_drop_cache(#db{drop_cache = {M, F}, cache = Cache} = DB) ->
+    DB#db{cache = M:F(Cache)}.
 
 %%%===================================================================
 %%% DB
 %%%===================================================================
 
-db_get(Key, #db{handle = Handle, get = {M, F}}) ->
+int_db_get(Key, #db{handle = Handle, get = {M, F}}) ->
     M:F(Key, Handle).
+
+int_db_put(Key, Val, #db{handle = Handle, put = {M, F}} = DB) ->
+    DB#db{handle = M:F(Key, Val, Handle)}.
+
