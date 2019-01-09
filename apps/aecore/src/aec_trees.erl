@@ -442,9 +442,21 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
             case aetx:check(Tx, Trees, Env) of
                 {ok, Trees1} ->
                     Env1 = aetx_env:set_signed_tx(Env, {value, SignedTx}),
-                    {ok, Trees2} = aetx:process(Tx, Trees1, Env1),
-                    Valid1 = [SignedTx | ValidTxs],
-                    apply_txs_on_state_trees(Rest, Valid1, InvalidTxs, Trees2, Env, Opts);
+                    try aetx:process(Tx, Trees1, Env1) of
+                        {ok, Trees2} ->
+                            Valid1 = [SignedTx | ValidTxs],
+                            apply_txs_on_state_trees(Rest, Valid1, InvalidTxs, Trees2, Env, Opts)
+                    catch
+                        Type:What when Strict ->
+                            Reason = {Type, What},
+                            lager:error("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
+                            {error, Reason};
+                        Type:What when not Strict ->
+                            Reason = {Type, What},
+                            lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
+                            Invalid1 = [SignedTx| InvalidTxs],
+                            apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)
+                    end;
                 {error, Reason} when Strict ->
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     {error, Reason};
