@@ -3,6 +3,7 @@
 [This][this-release] is a maintenance release.
 It:
 * Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
+* The Sophia compiler has been moved to a [seprate repository](https://github.com/aeternity/aesophia/).
 
 TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
 

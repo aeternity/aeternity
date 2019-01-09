@@ -165,10 +165,10 @@ next_map_id(_) -> 0.
 %%               (?SOPHIA_STATE_TYPE_KEY) -> "?SOPHIA_STATE_TYPE_KEY";
 %%               (?SOPHIA_STATE_MAPS_KEY) -> "?SOPHIA_STATE_MAPS_KEY";
 %%               (<<Id:256>>)             -> integer_to_list(Id);
-%%               (<<Id:256, Key/binary>>) -> io_lib:format("~p:~p", [Id, aeso_test_utils:dump_words(Key)])
+%%               (<<Id:256, Key/binary>>) -> io_lib:format("~p:~p", [Id, aevm_test_utils:dump_words(Key)])
 %%            end,
 %%     io_lib:format("~s\n", [[io_lib:format("  ~s =>\n    ~p\n",
-%%                              [Show(Key), aeso_test_utils:dump_words(Val)]) || {Key, Val} <- maps:to_list(Store)]]).
+%%                              [Show(Key), aevm_test_utils:dump_words(Val)]) || {Key, Val} <- maps:to_list(Store)]]).
 
 %% -- Updating Sophia maps --
 

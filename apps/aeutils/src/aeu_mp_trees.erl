@@ -10,9 +10,11 @@
 -export([ new/0
         , new/1
         , new/2
-        , commit_to_db/1
+        , commit_reachable_to_db/1
         , construct_proof/3
+        , db/1
         , delete/2
+        , gc_cache/1
         , get/2
         , has_node/3
         , iterator/1
@@ -27,10 +29,12 @@
         , read_only_subtree/2
         , unfold/3
         , verify_proof/4
+        , visit_reachable_hashes/3
+        , visit_reachable_hashes/4
         ]).
 
 %% For internal functional db
--export([ dict_db_commit/2
+-export([ dict_db_drop_cache/1
         , dict_db_get/2
         , dict_db_put/3
         ]).
@@ -114,6 +118,10 @@ new(RootHash, DB) ->
         , db   = DB
         }.
 
+-spec db(tree()) -> db().
+db(#mpt{ db = DB}) ->
+    DB.
+
 -spec read_only_subtree(key() | <<>>, tree()) -> {ok, tree()} | {error, no_such_subtree}.
 %% @doc Returns the subtree of a given key. Note that the key needs to be
 %%      stored in the tree, i.e., this will fail even if there are other
@@ -164,12 +172,23 @@ delete(Key, #mpt{} = Mpt) when is_bitstring(Key) ->
 -spec root_hash(tree()) -> <<>> | hash().
 root_hash(#mpt{hash = H}) -> H.
 
--spec commit_to_db(tree()) -> {'ok', tree()} | {'error', term()}.
-commit_to_db(#mpt{db = DB} = MPT) ->
-    case db_commit(DB) of
-        {ok, DB1} -> {ok, MPT#mpt{db = DB1}};
-        {error, _} = E -> E
-    end.
+-spec commit_reachable_to_db(tree()) -> tree().
+commit_reachable_to_db(#mpt{db = DB, hash = Hash} = MPT) ->
+    VisitFun = fun(Key, Val, AccDB) ->
+                       {continue, db_commit_from_cache(Key, Val, AccDB)}
+               end,
+    DB1 = int_visit_reachable_hashes_in_cache([Hash], DB, DB, VisitFun),
+    MPT#mpt{db = db_drop_cache(DB1)}.
+
+-spec gc_cache(tree()) -> tree().
+gc_cache(#mpt{db = DB, hash = Hash} = MPT) ->
+    VisitFun = fun(Key, Val, AccDB) ->
+                       {continue, db_put(Key, Val, AccDB)}
+               end,
+    FreshDB = db_drop_cache(DB),
+    DB1 = int_visit_reachable_hashes_in_cache([Hash], DB, FreshDB, VisitFun),
+    MPT#mpt{db = DB1}.
+
 
 -spec construct_proof(key(), db(), tree()) -> {value(), db()}.
 construct_proof(Key, ProofDB, #mpt{db = DB, hash = Hash}) ->
@@ -258,6 +277,27 @@ has_node(Path, Node, T = #mpt{ hash = Root, db = DB }) ->
     catch _:_ ->
         int_has_node(Path, Node, decode_node(Root, DB), DB)
     end.
+
+-type visit_fun() :: fun((hash(), SerializedNode :: binary(), Acc :: term()) ->
+                                'stop'
+                             | {'continue', NewAcc :: term()}).
+
+-spec visit_reachable_hashes(tree(), InitAcc :: term(), visit_fun()) ->
+                                    Acc :: term().
+%% @doc Equivalent to visit_reachable_hashes/4 from the current root hash.
+%% @end
+visit_reachable_hashes(#mpt{hash = Hash} = Tree, InitAcc, VisitFun) ->
+    visit_reachable_hashes(Tree, [Hash], InitAcc, VisitFun).
+
+-spec visit_reachable_hashes(tree(), [hash()], InitAcc :: term(), visit_fun())->
+                                    Acc :: term().
+%% @doc Visits all hashes reachable from a list of root hashes, using
+%%      the VisitFun and the initial accumulator InitAcc.
+%%      Note that not all nodes are visited, only those stored in the DB
+%%      as hashes. Useful for implementing a GC.
+%% @end
+visit_reachable_hashes(#mpt{db = DB}, [_|_] = RootHashes, InitAcc, VisitFun) ->
+    int_visit_reachable_hashes_both(RootHashes, DB, InitAcc, VisitFun).
 
 -spec pp(tree()) -> 'ok'.
 pp(#mpt{hash = Hash, db = DB}) ->
@@ -539,6 +579,60 @@ int_has_node(_, _, <<>>, _) ->
     no;
 int_has_node(<<>>, _, {branch, _Branch}, _DB) ->
     maybe.
+
+%%%===================================================================
+%%% Reachable store nodes (useful for implementing GC).
+
+int_visit_reachable_hashes_in_cache(Hashes, DB, Visited, VisitFun) ->
+    DBGetFun = fun db_find_in_cache/2,
+    int_visit_reachable_hashes(Hashes, DB, Visited, VisitFun, DBGetFun).
+
+int_visit_reachable_hashes_both(Hashes, DB, Visited, VisitFun) ->
+    DBGetFun = fun(Key, DB_) -> {value, db_get(Key, DB_)}end,
+    int_visit_reachable_hashes(Hashes, DB, Visited, VisitFun, DBGetFun).
+
+int_visit_reachable_hashes([Hash|Left], DB, Visited, VisitFun, DBGetFun) ->
+    Visited1 = visit_reachable_raw(Hash, DB, Visited, VisitFun, DBGetFun),
+    int_visit_reachable_hashes(Left, DB, Visited1, VisitFun, DBGetFun);
+int_visit_reachable_hashes([],_DB, Visited,_VisitFun,_DBGetFun) ->
+    Visited.
+
+visit_reachable_raw(Next, DB, Visited, VisitFun, DBGetFun) ->
+    case byte_size(Next) < 32 of
+        true  ->
+            %% Too small to contain a hash
+            Visited;
+        false ->
+            case DBGetFun(Next, DB) of
+                {value, RawNode} ->
+                    case VisitFun(Next, RawNode, Visited) of
+                        stop ->
+                            Visited;
+                        {continue, Visited1} ->
+                            NextNode = decode_node(Next, DB),
+                            visit_reachable_node(NextNode, DB, Visited1, VisitFun, DBGetFun)
+                    end;
+                none ->
+                    Visited
+            end
+    end.
+
+visit_reachable_node(<<>>,_DB, Visited,_VisitFun,_DBGetFun) ->
+    Visited;
+visit_reachable_node({branch, Branch}, DB, Visited, VisitFun, DBGetFun) ->
+    visit_reachable_branch(Branch, 0, DB, Visited, VisitFun, DBGetFun);
+visit_reachable_node({ext, _, Next}, DB, Visited, VisitFun, DBGetFun) ->
+    visit_reachable_raw(Next, DB, Visited, VisitFun, DBGetFun);
+visit_reachable_node({leaf, _, _},_DB, Visited,_VisitFun,_DBGetFun) ->
+    Visited.
+
+visit_reachable_branch(_Branch, 16,_DB, Visited,_VisitFun,_DBGetFun) ->
+    Visited;
+visit_reachable_branch(Branch, N, DB, Visited, VisitFun, DBGetFun) ->
+    Next = branch_next(N, Branch),
+    Visited1 = visit_reachable_raw(Next, DB, Visited, VisitFun, DBGetFun),
+    visit_reachable_branch(Branch, N + 1, DB, Visited1, VisitFun, DBGetFun).
+
 
 %%%===================================================================
 %%% @doc Construct proof for a key.
@@ -1004,11 +1098,17 @@ db_get(Hash, DB) ->
         none -> error({hash_not_present_in_db, Hash})
     end.
 
+db_find_in_cache(Hash, DB) ->
+    aeu_mp_trees_db:cache_get(Hash, DB).
+
 db_put(Hash, Val, DB) ->
     aeu_mp_trees_db:put(Hash, Val, DB).
 
-db_commit(DB) ->
-    aeu_mp_trees_db:commit(DB).
+db_commit_from_cache(Hash, RawNode, DB) ->
+    aeu_mp_trees_db:unsafe_write_to_backend(Hash, RawNode, DB).
+
+db_drop_cache(DB) ->
+    aeu_mp_trees_db:drop_cache(DB).
 
 %%%===================================================================
 %%% Dict db backend (default if nothing else was given in new/2)
@@ -1021,17 +1121,20 @@ dict_db_spec() ->
      , cache  => dict:new()
      , get    => {?MODULE, dict_db_get}
      , put    => {?MODULE, dict_db_put}
-     , commit => {?MODULE, dict_db_commit}
+     , drop_cache => {?MODULE, dict_db_drop_cache}
      }.
 
 dict_db_get(Key, Dict) ->
-    {value, dict:fetch(Key, Dict)}.
+    case dict:find(Key, Dict) of
+        {ok, Val} -> {value, Val};
+        error -> none
+    end.
 
 dict_db_put(Key, Val, Dict) ->
     dict:store(Key, Val, Dict).
 
-dict_db_commit(Cache, DB) ->
-    {ok, dict:new(), dict:merge(fun(_, _, Val) -> Val end, Cache, DB)}.
+dict_db_drop_cache(_Cache) ->
+    dict:new().
 
 %%%===================================================================
 %%% Compact encoding of hex sequence with optional terminator

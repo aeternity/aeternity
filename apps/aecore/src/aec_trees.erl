@@ -26,7 +26,7 @@
          set_contracts/2,
          set_ns/2,
          set_oracles/2,
-         gc_old_nodes/2
+         gc_cache/2
         ]).
 
 -export([ deserialize_from_db/1
@@ -212,21 +212,20 @@ oracles(Trees) ->
 set_oracles(Trees, Oracles) ->
     Trees#trees{oracles = Oracles}.
 
--spec gc_old_nodes(trees(), [accounts | contracts]) -> trees().
-gc_old_nodes(Trees, TreesToGC) ->
+-spec gc_cache(trees(), [accounts | contracts]) -> trees().
+gc_cache(Trees, TreesToGC) ->
     lists:foldl(
         fun(accounts, AccumTrees) ->
             Accounts0 = accounts(AccumTrees),
-            Accounts = aec_accounts_trees:gc_old_nodes(Accounts0),
+            Accounts = aec_accounts_trees:gc_cache(Accounts0),
             set_accounts(AccumTrees, Accounts);
            (contracts, AccumTrees) ->
             Contracts0 = contracts(AccumTrees),
-            Contracts = aect_state_tree:gc_old_nodes(Contracts0),
+            Contracts = aect_state_tree:gc_cache(Contracts0),
             set_contracts(AccumTrees, Contracts)
         end,
         Trees,
         TreesToGC).
-    
 
 -spec perform_pre_transformations(trees(), aec_blocks:height()) -> trees().
 perform_pre_transformations(Trees, Height) ->
@@ -443,9 +442,21 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
             case aetx:check(Tx, Trees, Env) of
                 {ok, Trees1} ->
                     Env1 = aetx_env:set_signed_tx(Env, {value, SignedTx}),
-                    {ok, Trees2} = aetx:process(Tx, Trees1, Env1),
-                    Valid1 = [SignedTx | ValidTxs],
-                    apply_txs_on_state_trees(Rest, Valid1, InvalidTxs, Trees2, Env, Opts);
+                    try aetx:process(Tx, Trees1, Env1) of
+                        {ok, Trees2} ->
+                            Valid1 = [SignedTx | ValidTxs],
+                            apply_txs_on_state_trees(Rest, Valid1, InvalidTxs, Trees2, Env, Opts)
+                    catch
+                        Type:What when Strict ->
+                            Reason = {Type, What},
+                            lager:error("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
+                            {error, Reason};
+                        Type:What when not Strict ->
+                            Reason = {Type, What},
+                            lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
+                            Invalid1 = [SignedTx| InvalidTxs],
+                            apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)
+                    end;
                 {error, Reason} when Strict ->
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     {error, Reason};

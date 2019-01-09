@@ -106,7 +106,6 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
-    ok = application:ensure_started(erlexec),
     DataDir = ?config(data_dir, Config),
     TopDir = aecore_suite_utils:top_dir(DataDir),
     Config1 = [{symlink_name, "latest.aesc_fsm"},
@@ -573,7 +572,9 @@ channel_subverted(Cfg) ->
     #{ priv := IPrivKey } = ?config(initiator, Cfg),
     SignedCloseSoloTx = aec_test_utils:sign_tx(Tx, [IPrivKey]),
     ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
-    mine_blocks(dev1, 3),
+    TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(
+        aecore_suite_utils:node_name(dev1), [TxHash], 20),
     {ok,_} = receive_from_fsm(info, I, fun died_subverted/1, ?TIMEOUT, Debug),
     {ok,_} = receive_from_fsm(info, R, fun died_subverted/1, ?TIMEOUT, Debug),
     check_info(500).
@@ -734,7 +735,7 @@ multiple_channels(Cfg) ->
     multiple_channels_t(10, 9360, {transfer, 100}, ?SLOGAN, Cfg).
 
 many_chs_msg_loop(Cfg) ->
-    multiple_channels_t(100, 9400, {msgs, 100}, ?SLOGAN, Cfg).
+    multiple_channels_t(10, 9400, {msgs, 100}, ?SLOGAN, Cfg).
 
 multiple_channels_t(NumCs, FromPort, Msg, Slogan, Cfg) ->
     ct:log("spawning ~p channels", [NumCs]),

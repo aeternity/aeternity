@@ -18,7 +18,7 @@
         ]).
 
 %% Callbacks for aeu_mp_trees_db
--export([ db_commit/2
+-export([ db_drop_cache/1
         , db_get/2
         , db_put/3
         ]).
@@ -69,7 +69,7 @@ db_spec(Type) ->
      , cache  => {gb_trees, gb_trees:empty()}
      , get    => {?MODULE, db_get}
      , put    => {?MODULE, db_put}
-     , commit => {?MODULE, db_commit}
+     , drop_cache => {?MODULE, db_drop_cache}
      }.
 
 db_get(Key, {gb_trees, Tree}) ->
@@ -95,34 +95,28 @@ db_put(Key, Val, {gb_trees, Tree}) ->
     {gb_trees, gb_trees:enter(Key, Val, Tree)};
 db_put(Key, Val, accounts = Handle) ->
     ok = aec_db:write_accounts_node(Key, Val),
-    {ok, Handle};
+    Handle;
 db_put(Key, Val, channels = Handle) ->
     ok = aec_db:write_channels_node(Key, Val),
-    {ok, Handle};
+    Handle;
 db_put(Key, Val, ns = Handle) ->
     ok = aec_db:write_ns_node(Key, Val),
-    {ok, Handle};
+    Handle;
 db_put(Key, Val, ns_cache = Handle) ->
     ok = aec_db:write_ns_cache_node(Key, Val),
-    {ok, Handle};
+    Handle;
 db_put(Key, Val, calls = Handle) ->
     ok = aec_db:write_calls_node(Key, Val),
-    {ok, Handle};
+    Handle;
 db_put(Key, Val, contracts = Handle) ->
     ok = aec_db:write_contracts_node(Key, Val),
-    {ok, Handle};
+    Handle;
 db_put(Key, Val, oracles = Handle) ->
     ok = aec_db:write_oracles_node(Key, Val),
-    {ok, Handle};
+    Handle;
 db_put(Key, Val, oracles_cache = Handle) ->
     ok = aec_db:write_oracles_cache_node(Key, Val),
-    {ok, Handle}.
+    Handle.
 
-db_commit(Handle, {gb_trees, Cache}) ->
-    Iter = gb_trees:iterator(Cache),
-    db_commit_1(Handle, gb_trees:next(Iter)).
-
-db_commit_1(Handle, none) -> {ok, Handle, {gb_trees, gb_trees:empty()}};
-db_commit_1(Handle, {Key, Val, Iter}) ->
-    {ok, Handle} = db_put(Key, Val, Handle),
-    db_commit_1(Handle, gb_trees:next(Iter)).
+db_drop_cache({gb_trees, _}) ->
+    gb_trees:empty().

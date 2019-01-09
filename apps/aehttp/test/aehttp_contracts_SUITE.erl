@@ -77,7 +77,6 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
-    ok = application:ensure_started(erlexec),
     DataDir = ?config(data_dir, Config),
     TopDir = aecore_suite_utils:top_dir(DataDir),
     Config1 = [{symlink_name, "latest.http_contracts"},
@@ -510,9 +509,6 @@ maps_contract(Config) ->
       acc_b := #{pub_key := BPub, priv_key := BPriv}}
         = proplists:get_value(accounts, Config),
 
-    %% ContractString = aeso_test_utils:read_contract("maps"),
-    %% aeso_compiler:from_string(ContractString, []),
-
     %% Compile test contract "maps.aes".
     MCode = compile_test_contract("maps"),
 
@@ -521,9 +517,10 @@ maps_contract(Config) ->
        create_compute_contract(Node, APub, APriv, MCode, <<"()">>),
 
     %% Compile the interface contract "test_maps.aes".
-    TestMapsFile = proplists:get_value(data_dir, Config) ++ "test_maps.aes",
-    {ok,SophiaCode} = file:read_file(TestMapsFile),
-    {ok, 200, #{<<"bytecode">> := TCode}} = get_contract_bytecode(SophiaCode),
+    TCode = compile_test_contract(proplists:get_value(data_dir, Config), "test_maps"),
+    %% TestMapsFile = proplists:get_value(data_dir, Config) ++ "test_maps.aes",
+    %% {ok, SophiaCode} = file:read_file(TestMapsFile),
+    %% {ok, 200, #{<<"bytecode">> := TCode}} = get_contract_bytecode(SophiaCode),
 
     {EncTestPub,_,_} =
         create_compute_contract(Node, APub, APriv, TCode,
@@ -981,9 +978,6 @@ erc20_token_contract(Config) ->
       acc_d := #{pub_key := DPub,
                  priv_key := _DPriv}} = proplists:get_value(accounts, Config),
 
-    %% ContractString = aeso_test_utils:read_contract("erc20_token"),
-    %% aeso_compiler:from_string(ContractString, []),
-
     %% Compile test contract "erc20_token.aes"
     Code = compile_test_contract("erc20_token"),
 
@@ -1196,12 +1190,13 @@ call_func_decode(NodeName, Pubkey, Privkey, EncodedContractPubkey,
 
 %% Contract interface functions.
 
-%% compile_test_contract(FileName) -> Code.
-%%  Compile a *test* contract file.
+compile_test_contract(Name) ->
+    CodeDir = filename:join(code:lib_dir(aehttp), "../../extras/test/contracts"),
+    compile_test_contract(CodeDir, Name).
 
-compile_test_contract(ContractFile) ->
-    ContractString = aeso_test_utils:read_contract(ContractFile),
-    SophiaCode = list_to_binary(ContractString),
+%% For testing with contracts not part of the aesophia repository
+compile_test_contract(Dir, Name) ->
+    {ok, SophiaCode} = file:read_file(filename:join([Dir, lists:concat([Name, ".aes"])])),
     {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
     Code.
 
