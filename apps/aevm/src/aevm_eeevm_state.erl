@@ -375,33 +375,52 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
             ChainAPI   = chain_api(State),
             ChainState = chain_state(State),
             Store      = storage(State),
-            HeapValue = aeso_heap:heap_value(maps(State), ArgPtr, Heap),
+            HeapValue  = aeso_heap:heap_value(maps(State), ArgPtr, Heap),
+            GetFstWord =
+                fun() ->
+                    case aevm_data:heap_to_binary({tuple, [word]}, Store, HeapValue) of
+                        {ok, Bin} ->
+                            case aeso_heap:from_binary({tuple, [word]}, Bin) of
+                                {ok, {Val}}   -> {ok, Val};
+                                {error, _Err} -> aevm_eevm:eval_error(out_of_gas)
+                            end;
+                        {error, _Err} ->
+                            aevm_eevm:eval_error(out_of_gas)
+                    end
+                end,
             case Target == ?PRIM_CALLS_CONTRACT of
                 true ->
-                    %% The first argument is the primop id
-                    {ok, Bin} = aevm_data:heap_to_binary({tuple, [word]}, Store, HeapValue),
-                    {ok, {Prim}} = aeso_heap:from_binary({tuple, [word]}, Bin),
+                    %% The first argument is the primop id, throw out_of_gas otherwise
+                    {ok, Prim} = GetFstWord(),
                     {ArgTypes, OutType} = aevm_ae_primops:types(Prim, HeapValue, Store, State),
-                    DataType = {tuple, [word|ArgTypes]},
                     TypeHash   = <<ISize:256>>,
                     case aevm_ae_primops:check_type_hash(Prim, ArgTypes, OutType, TypeHash) of
                         ok ->
-                            {ok, Arg, GasUsed} = heap_to_binary(DataType, ArgPtr, State),
-                            {Arg, OutType, spend_gas(GasUsed, State)};
+                            DataType = {tuple, [word|ArgTypes]},
+                            case heap_to_binary(DataType, ArgPtr, State) of
+                                {ok, Arg, GasUsed} ->
+                                    {Arg, OutType, spend_gas(GasUsed, State)};
+                                {error, _Err}      ->
+                                    aevm_eeevm:eval_error(out_of_gas)
+                            end;
                         error ->
                             aevm_eeevm:eval_error(out_of_gas)
                     end;
                 false ->
-                    %% The first element in the arg tuple is the function hash
-                    {ok, Bin} = aevm_data:heap_to_binary({tuple, [word]}, Store, HeapValue),
-                    {ok, {TypeHashInt}} = aeso_heap:from_binary({tuple, [word]}, Bin),
+                    %% The first element in the arg tuple is the function hash,
+                    %% throw out_of_gas otherwise
+                    {ok, TypeHashInt} = GetFstWord(),
                     TypeHash = <<TypeHashInt:256>>,
                     case ChainAPI:get_contract_fun_types(TargetKey, ?AEVM_01_Sophia_01,
                                                          TypeHash, ChainState) of
                         {ok, ArgType, OutType} ->
                             DataType = {tuple, [word, ArgType]},
-                            {ok, Arg, GasUsed} = heap_to_binary(DataType, ArgPtr, State),
-                            {Arg, OutType, spend_gas(GasUsed, State)};
+                            case heap_to_binary(DataType, ArgPtr, State) of
+                                {ok, Arg, GasUsed} ->
+                                    {Arg, OutType, spend_gas(GasUsed, State)};
+                                {error, _Err}      ->
+                                    aevm_eeevm:eval_error(out_of_gas)
+                            end;
                         {error, _Err} ->
                             aevm_eeevm:eval_error(out_of_gas)
                     end
