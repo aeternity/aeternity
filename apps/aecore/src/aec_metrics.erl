@@ -81,20 +81,7 @@ create_metrics_probe({Name, Module}) ->
 start_reporters() ->
     expect(
       {ok, '$pid'}, {?LINE, start_logger},
-      exometer_report_logger:new([{id, aec_metrics_logger},
-                                  {input, [{mode, plugin},
-                                           {module, ?MODULE},
-                                           {state, []}]},
-                                  {output, [{mode, plugin},
-                                            {module, ?MODULE},
-                                            {state, filter}]},
-                                  {output, [{mode, plugin},
-                                            {module, ?MODULE},
-                                            {state, statsd}]},
-                                  {output, [{mode, plugin},
-                                            {module, ?MODULE},
-                                            {state, log}]}
-                                 ])),
+      start_logger(aec_metrics_logger)),
     expect(
       ok, {?LINE, start_reporter},
       exometer_report:add_reporter(
@@ -103,6 +90,23 @@ start_reporters() ->
          {intervals, [{default, 10000}]},
          {report_bulk, true}])).
 
+start_logger(Id) ->
+    exometer_report_logger:new(
+      [{id, Id},
+       {input, [{mode, plugin},
+                {module, ?MODULE},
+                {state, []}]},
+       {output, [{mode, plugin},
+                 {module, ?MODULE},
+                 {state, filter}]},
+       {output, [{mode, plugin},
+                 {module, ?MODULE},
+                 {state, statsd}]},
+       {output, [{mode, plugin},
+                 {module, ?MODULE},
+                 {state, log}]}
+      ]).
+
 prep_stop(State) ->
     %% Use disable_reporter/1 instead of remove_reporter/1 since it's
     %% synchronous. We want to avoid spurious errors due to termination
@@ -110,7 +114,35 @@ prep_stop(State) ->
     expect(
       ok, {?LINE, disable_reporter},
       exometer_report:disable_reporter(aec_metrics_main)),
+    expect(
+      ok, {?LINE, prep_stop_loggers},
+      prep_stop_loggers()),
     State.
+
+prep_stop_loggers() ->
+    Pids = gproc:lookup_pids({p,l,{?MODULE,logger_input}}),
+    lager:debug("prep_stop_loggers(): Pids = ~p", [Pids]),
+    [ok = prep_stop_logger_(Pid) || Pid <- Pids],
+    ok.
+
+%% A problem with exometer_report_logger is that it doesn't really have any support
+%% for disabling or orderly shutdown. What we do is register a gproc property in the
+%% input process (so we can reach it), and send it a 'prep_stop' message. The input process
+%% passes that on, and then dies normally. The plugins change their state to 'disabled',
+%% which will cause them to ignore any further input (there shouldn't be any since the input
+%% process terminated).
+%% The filter plugin responds back to the `prep_stop` function to make it all synchronous.
+%%
+prep_stop_logger_(Pid) ->
+    Pid ! {?MODULE, prep_stop, self()},
+    receive
+        {Pid, prep_stop_ack} ->
+            lager:debug("logger ~p disabled", [Pid]),
+            ok
+    after 5000 ->
+            error(timeout)
+    end.
+
 
 %%===================================================================
 %% exometer_report_logger callbacks
@@ -119,15 +151,26 @@ prep_stop(State) ->
 logger_init_input(_St0) ->
     Me = self(),
     {ok, spawn_link(fun() ->
+                            %% we register a property so it will work even if we were to
+                            %% add a second logger instance.
+                            gproc:reg({p,l,{?MODULE,logger_input}}),
                             aec_events:subscribe(metric),
                             subscriber_loop(Me)
                     end)}.
 
 subscriber_loop(Logger) ->
-    receive
-        {gproc_ps_event, metric, #{info := Data}} ->
-            Logger ! {plugin, self(), Data},
-            subscriber_loop(Logger)
+    receive Msg ->
+            case Msg of
+                {gproc_ps_event, metric, #{info := Data}} ->
+                    Logger ! {plugin, self(), Data},
+                    subscriber_loop(Logger);
+                {?MODULE, prep_stop, Pid} = Msg ->
+                    lager:debug("received prep_stop", []),
+                    Logger ! {plugin, self(), {prep_stop, self(), Pid}},
+                    exit(normal);
+                _ ->
+                    subscriber_loop(Logger)
+            end
     end.
 
 logger_init_output(filter) ->
@@ -137,6 +180,16 @@ logger_init_output(log) ->
 logger_init_output(statsd) ->
     {ok, init_statsd()}.
 
+logger_handle_data({prep_stop, Input, Pid} = Data, St) ->
+    case St of
+        filter -> Pid ! {Input, prep_stop_ack};
+        _ -> ignore
+    end,
+    lager:debug("disabling plugin ~p", [St]),
+    {Data, disabled};
+logger_handle_data(Data, disabled) ->
+    lager:debug("ignoring ~p (disabled)", [Data]),
+    {Data, disabled};
 logger_handle_data(#{} = Data, filter = St) ->
     apply_filter(Data, St);  % sets do_log and do_send flags
 logger_handle_data(#{do_log := true} = Data, log = St) ->

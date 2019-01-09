@@ -6,14 +6,10 @@
 %%%    John Tromp:  https://github.com/tromp/cuckoo
 %%%    White paper: https://github.com/tromp/cuckoo/blob/master/doc/cuckoo.pdf?raw=true
 %%%
-%%%    We use erlexec to start an OS process that runs this C code.
-%%%    The reasons for using erlexec over os:cmd are:
-%%%    -  os:cmd is insufficient because cuckoo miner program streams solutions on stdout as it finds them,
-%%%       while the program returns only when whole possibilities are explored.
-%%%       So integration with cuckoo needs to stream stdout.
-%%%    - Erlang port is closed implicitly by erlang VM closing stdin of spawned process, on the assumption
-%%%      that spawned program will eventual read from stdin and hence terminate.
-%%%      The cuckoo program does not read from stdin
+%%%    We use erlang:open_port/2 to start an OS process that runs this C code.
+%%%    The reasons for using this over os:cmd and erlexec are:
+%%%      - no additional C-based dependency which is Unix-focused and therefore hard to port to Windows
+%%%      - widely tested and multiplatform-enabled solution
 %%%
 %%% @end
 %%%-------------------------------------------------------------------
@@ -38,14 +34,18 @@
 
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
 -define(info(F, A),  epoch_pow_cuckoo:info(F, A)).
+-define(warning(F, A), epoch_pow_cuckoo:warning(F, A)).
 -define(error(F, A), epoch_pow_cuckoo:error(F, A)).
 
--record(state, {os_pid :: integer() | undefined,
+-type os_pid() :: integer() | undefined.
+-type pow_cuckoo_solution() :: [integer()].
+
+-record(state, {os_pid :: os_pid(),
+                port :: port() | undefined,
                 buffer = [] :: string(),
                 target :: aec_pow:sci_int() | undefined,
                 parser :: output_parser_fun()}).
 
--type pow_cuckoo_solution() :: [integer()].
 -type output_parser_fun() :: fun((list(string()), #state{}) ->
                                         {'ok', term(), term()} | {'error', term()}).
 
@@ -64,7 +64,6 @@
          executable_group   :: binary(),
          extra_args         :: list(),
          hex_encoded_header :: boolean(),
-         nice               :: integer() | 'undefined',
          repeats            :: non_neg_integer(),
          instances          :: list(aec_pow:miner_instance()) | 'undefined'}).
 -type miner_config() :: #miner_config{}.
@@ -230,7 +229,6 @@ build_miner_config(Config) when is_map(Config) ->
     ExecutableGroup = maps:get(<<"executable_group">>   , Config, ?DEFAULT_EXECUTABLE_GROUP),
     ExtraArgs       = maps:get(<<"extra_args">>         , Config, ?DEFAULT_EXTRA_ARGS),
     HexEncodedHdr   = maps:get(<<"hex_encoded_header">> , Config, ?DEFAULT_HEX_ENCODED_HEADER),
-    Nice            = maps:get(<<"nice">>               , Config, undefined),
     Repeats         = maps:get(<<"repeats">>            , Config, ?DEFAULT_REPEATS),
     Instances       = maps:get(<<"addressed_instances">>, Config, undefined),
     #miner_config{
@@ -238,7 +236,6 @@ build_miner_config(Config) when is_map(Config) ->
        executable_group   = ExecutableGroup,
        extra_args         = binary_to_list(ExtraArgs),
        hex_encoded_header = HexEncodedHdr,
-       nice               = Nice,
        repeats            = Repeats,
        instances          = Instances};
 build_miner_config({Executable, ExtraArgs, HexEncodedHeader, Repeats, Instances, ExecutableGroup}) ->
@@ -268,9 +265,6 @@ get_executable(#miner_config{executable = Executable}) ->
 
 get_extra_args(#miner_config{extra_args = ExtraArgs}) ->
     ExtraArgs.
-
-get_nice(#miner_config{nice = Nice}) ->
-    Nice.
 
 is_hex_encoded_header(#miner_config{hex_encoded_header = HexEncodedHeader}) ->
     HexEncodedHeader.
@@ -309,30 +303,19 @@ generate_int(Hash, Nonce, Target, #miner_config{} = Config, Instance) ->
     generate_int(EncodedHash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config).
 
 generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config) ->
-    Repeats = get_repeats(Config),
-    Cmd = lists:concat(["./", MinerBin,
-                        " -h ", Hash,
-                        " -n ", Nonce,
-                        " -r ", Repeats,
-                        " ", MinerExtraArgs]),
-    ?info("Executing cmd: ~p", [Cmd]),
+    Repeats = integer_to_list(get_repeats(Config)),
+    Args = ["-h", Hash, "-n", integer_to_list(Nonce), "-r", Repeats | string:tokens(MinerExtraArgs, " ")],
+    ?info("Executing cmd '~s ~s'", [MinerBin, lists:concat(lists:join(" ", Args))]),
     Old = process_flag(trap_exit, true),
-    DefaultOptions = [{stdout, self()},
-                      {stderr, self()},
-                      {cd, MinerBinDir},
-                      {env, [{"SHELL", "/bin/sh"}]},
-                      monitor],
-    Options =
-        case get_nice(Config) of
-            undefined -> DefaultOptions;
-            Niceness  -> DefaultOptions ++ [{nice, Niceness}]
-        end,
-    try exec:run(Cmd, Options) of
-        {ok, _ErlPid, OsPid} ->
+    try exec_run(MinerBin, MinerBinDir, Args) of
+        {ok, Port, OsPid} ->
             wait_for_result(#state{os_pid = OsPid,
+                                   port = Port,
                                    buffer = [],
                                    parser = fun parse_generation_result/2,
-                                   target = Target})
+                                   target = Target});
+        {error, _} = E ->
+            E
     catch
         C:E ->
             {error, {unknown, {C, E}}}
@@ -384,16 +367,16 @@ verify_proof_(Header, Solution, EdgeBits) ->
         %% XOR points together: for a closed cycle they must match somewhere
         %% making one of the XORs zero.
         {Xor0, Xor1, _, Uvs} =
-            lists:foldl(
-              fun(N, _) when N > EdgeMask ->
-                      throw(?POW_TOO_BIG(N));
-                 (N, {_Xor0, _Xor1, PrevN, _Uvs}) when N =< PrevN ->
-                      throw(?POW_TOO_SMALL(N, PrevN));
-                 (N, {Xor0C, Xor1C, _PrevN, UvsC}) ->
-                      Uv0 = sipnode(K0, K1, K2, K3, N, 0, EdgeMask),
-                      Uv1 = sipnode(K0, K1, K2, K3, N, 1, EdgeMask),
-                      {Xor0C bxor Uv0, Xor1C bxor Uv1, N, [{Uv0, Uv1} | UvsC]}
-               end, {16#0, 16#0, -1, []}, Solution),
+        lists:foldl(
+          fun(N, _) when N > EdgeMask ->
+                  throw(?POW_TOO_BIG(N));
+             (N, {_Xor0, _Xor1, PrevN, _Uvs}) when N =< PrevN ->
+                  throw(?POW_TOO_SMALL(N, PrevN));
+             (N, {Xor0C, Xor1C, _PrevN, UvsC}) ->
+                  Uv0 = sipnode(K0, K1, K2, K3, N, 0, EdgeMask),
+                  Uv1 = sipnode(K0, K1, K2, K3, N, 1, EdgeMask),
+                  {Xor0C bxor Uv0, Xor1C bxor Uv1, N, [{Uv0, Uv1} | UvsC]}
+          end, {16#0, 16#0, -1, []}, Solution),
         case Xor0 bor Xor1 of
             0 ->
                 %% check cycle
@@ -407,7 +390,7 @@ verify_proof_(Header, Solution, EdgeBits) ->
         end
     catch
         throw:{error, Reason} ->
-            epoch_pow_cuckoo:info("Proof verification failed for ~p: ~p", [Solution, Reason]),
+            ?info("Proof verification failed for ~p: ~p", [Solution, Reason]),
             false
     end.
 
@@ -416,22 +399,22 @@ sipnode(K0, K1, K2, K3, Proof, UOrV, EdgeMask) ->
     (SipHash bsl 1) bor UOrV.
 
 check_cycle(Nodes0) ->
-  Nodes = lists:keysort(2, Nodes0),
-  {Evens0, Odds} = lists:unzip(Nodes),
-  Evens  = lists:sort(Evens0), %% Odd nodes are already sorted...
-  UEvens = lists:usort(Evens),
-  UOdds  = lists:usort(Odds),
-  %% Check that all nodes appear exactly twice (i.e. each node has
-  %% exactly two edges).
-  case length(UEvens) == (?PROOFSIZE div 2) andalso
-        length(UOdds) == (?PROOFSIZE div 2) andalso
-        UOdds == Odds -- UOdds andalso UEvens == Evens -- UEvens of
-      false ->
-          {error, ?POW_BRANCH};
-      true  ->
-          [{X0, Y0}, {X1, Y0} | Nodes1] = Nodes,
-          check_cycle(X0, X1, Nodes1)
-  end.
+    Nodes = lists:keysort(2, Nodes0),
+    {Evens0, Odds} = lists:unzip(Nodes),
+    Evens  = lists:sort(Evens0), %% Odd nodes are already sorted...
+    UEvens = lists:usort(Evens),
+    UOdds  = lists:usort(Odds),
+    %% Check that all nodes appear exactly twice (i.e. each node has
+    %% exactly two edges).
+    case length(UEvens) == (?PROOFSIZE div 2) andalso
+         length(UOdds) == (?PROOFSIZE div 2) andalso
+         UOdds == Odds -- UOdds andalso UEvens == Evens -- UEvens of
+        false ->
+            {error, ?POW_BRANCH};
+        true  ->
+            [{X0, Y0}, {X1, Y0} | Nodes1] = Nodes,
+            check_cycle(X0, X1, Nodes1)
+    end.
 
 %% If we reach the end in the last step everything is fine
 check_cycle(X, X, []) ->
@@ -454,9 +437,9 @@ find_node(X, [{X, Y}, {X1, Y} | Nodes], Acc) ->
 find_node(X, [{X1, Y}, {X, Y} | Nodes], Acc) ->
     {X, X1, Nodes ++ Acc};
 find_node(X, [{X, _Y} | _], _Acc) ->
-  {error, ?POW_DEAD_END};
+    {error, ?POW_DEAD_END};
 find_node(X, [N1, N2 | Nodes], Acc) ->
-  find_node(X, Nodes, [N1, N2 | Acc]).
+    find_node(X, Nodes, [N1, N2 | Acc]).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -499,32 +482,26 @@ pack_header_and_nonce(Hash, Nonce) when byte_size(Hash) == 32 ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec wait_for_result(#state{}) ->
-            {'ok', aec_pow:nonce(), pow_cuckoo_solution()} | {'error', term()}.
+    {'ok', aec_pow:nonce(), pow_cuckoo_solution()} | {'error', term()}.
 wait_for_result(#state{os_pid = OsPid,
+                       port = Port,
                        buffer = Buffer} = State) ->
     receive
-        {stdout, OsPid, Msg} ->
+        {Port, {data, Msg}} ->
             Str = binary_to_list(Msg),
             {Lines, NewBuffer} = handle_fragmented_lines(Str, Buffer),
             (State#state.parser)(Lines, State#state{buffer = NewBuffer});
-        {stderr, OsPid, Msg} ->
-            ?error("ERROR: ~s", [Msg]),
+        {Port, {exit_status, 0}} ->
             wait_for_result(State);
         {'EXIT',_From, shutdown} ->
             %% Someone is telling us to stop
             stop_execution(OsPid),
             exit(shutdown);
-        {'DOWN', OsPid, process, _, normal} ->
+        {'EXIT', Port, normal} ->
             %% Process ended but no value found
             {error, no_value};
-        {'DOWN', OsPid, process, _, Reason} ->
-            %% Abnormal termination
-            Reason2 = case Reason of
-                          {exit_status, ExStat} -> exec:status(ExStat);
-                          _                     -> Reason
-                      end,
-            ?error("OS process died: ~p", [Reason2]),
-            {error, {execution_failed, Reason2}}
+        _Other ->
+            wait_for_result(State)
     end.
 
 %%------------------------------------------------------------------------------
@@ -570,7 +547,7 @@ parse_generation_result([], State) ->
 parse_generation_result(["Solution" ++ NonceValuesStr | Rest], #state{os_pid = OsPid,
                                                                  target = Target} = State) ->
     [NonceStr | SolStrs] =  string:tokens(NonceValuesStr, " "),
-    Soln = [list_to_integer(V, 16) || V <- SolStrs],
+    Soln = [list_to_integer(string:trim(V, both, [$\r]), 16) || V <- SolStrs],
     case {length(Soln), test_target(Soln, Target)} of
         {42, true} ->
             stop_execution(OsPid),
@@ -592,8 +569,7 @@ parse_generation_result(["Solution" ++ NonceValuesStr | Rest], #state{os_pid = O
             ?debug("Failed to meet target (~p)", [Target]),
             parse_generation_result(Rest, State)
     end;
-parse_generation_result([Msg | T], State) ->
-    ?debug("~s", [Msg]),
+parse_generation_result([_Msg | T], State) ->
     parse_generation_result(T, State).
 
 parse_nonce_str(S) ->
@@ -603,19 +579,14 @@ parse_nonce_str(S) ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%%   Ask erlexec to stop the OS process
+%%   Stop the OS process
 %% @end
 %%------------------------------------------------------------------------------
--spec stop_execution(integer()) -> ok.
+-spec stop_execution(os_pid()) -> ok.
 stop_execution(OsPid) ->
-    case exec:kill(OsPid, 9) of
-        {error, Reason} ->
-            ?debug("Failed to stop mining OS process ~p: ~p (may have already finished).",
-                   [OsPid, Reason]);
-        R ->
-            ?debug("Mining OS process ~p stopped successfully: ~p",
-                   [OsPid, R])
-    end.
+    exec_kill(OsPid),
+    ?debug("Mining OS process ~p stopped", [OsPid]),
+    ok.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -634,6 +605,58 @@ get_node_size() ->
 -spec node_size(non_neg_integer()) -> non_neg_integer().
 node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits > 31 -> 8;
 node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits >  0 -> 4.
+
+-spec exec_run(string(), string(), list(string())) ->
+    {ok, Port :: port(), OsPid :: os_pid()} |
+    {error, {port_error, {term(), term()}}}.
+exec_run(Cmd, Dir, Args) ->
+    PortSettings = [
+                    binary,
+                    exit_status,
+                    hide,
+                    in,
+                    overlapped_io,
+                    stderr_to_stdout,
+                    {args, Args},
+                    {cd, Dir}
+                   ],
+    PortName = {spawn_executable, os:find_executable(Cmd, Dir)},
+    try
+        Port = erlang:open_port(PortName, PortSettings),
+        case erlang:port_info(Port, os_pid) of
+            {os_pid, OsPid} ->
+                ?debug("External mining process started with OS pid ~p", [OsPid]),
+                {ok, Port, OsPid};
+            undefined ->
+                ?warning("External mining process finished before ~p could acquire the OS pid", [?MODULE]),
+                {ok, Port, undefined}
+        end
+    catch
+        C:E ->
+            {error, {port_error, {C, E}}}
+    end.
+
+-spec exec_kill(os_pid()) -> ok.
+exec_kill(undefined) ->
+    ok;
+exec_kill(OsPid) ->
+    case is_unix() of
+        true ->
+            os:cmd(io_lib:format("kill -9 ~p", [OsPid])),
+            ok;
+        false ->
+            os:cmd(io_lib:format("taskkill /PID ~p /T /F", [OsPid])),
+            ok
+    end.
+
+-spec is_unix() -> boolean().
+is_unix() ->
+    case erlang:system_info(system_architecture) of
+        "win32" ->
+            false;
+        _ ->
+            true
+    end.
 
 %%------------------------------------------------------------------------------
 %% White paper, section 9: rather than adjusting the nodes/edges ratio, a

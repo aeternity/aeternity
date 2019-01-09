@@ -70,8 +70,9 @@ all() -> [ execute_identity_fun_from_sophia_file,
            oracles].
 
 compile_contract(Name) ->
-    CodeDir           = code:lib_dir(aesophia, test),
-    FileName          = filename:join([CodeDir, "contracts", lists:concat([Name, ".aes"])]),
+    %% TODO get this path from the common test configuration
+    CodeDir           = filename:join(code:lib_dir(aevm), "../../extras/test/contracts"),
+    FileName          = filename:join(CodeDir, lists:concat([Name, ".aes"])),
     {ok, ContractBin} = file:read_file(FileName),
     Options           = <<>>,
     %% Options           = <<"pp_ast pp_icode pp_assembler pp_bytecode">>,
@@ -176,7 +177,7 @@ failing_call(Contract, Fun, Type, Args, Env) ->
 failing_call(Contract, Fun, Type, Args, Env, Options) ->
     case make_call(Contract, Fun, Type, Args, Env, Options) of
         {ok, Result, _} ->
-            Words = aeso_test_utils:dump_words(Result),
+            Words = aevm_test_utils:dump_words(Result),
             exit({expected_failure, {ok, Words}});
         {revert, _} ->
             exit({expected_failure, revert});
@@ -190,7 +191,7 @@ reverting_call(Contract, Fun, Type, Args, Env) ->
 reverting_call(Contract, Fun, Type, Args, Env, Options) ->
     case make_call(Contract, Fun, Type, Args, Env, Options) of
         {ok, Result, _} ->
-            Words = aeso_test_utils:dump_words(Result),
+            Words = aevm_test_utils:dump_words(Result),
             exit({expected_revert, {ok, Words}});
         {error, Err, _} ->
             exit({expected_revert, {error, Err}});

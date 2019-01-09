@@ -100,4 +100,3 @@ $(PRIV):
 # does not leave working directory distinct from the expected commit.
 c_src/.git:
 	git clone -n $(REPO) $(@D)
-

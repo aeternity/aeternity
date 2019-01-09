@@ -28,7 +28,7 @@ Alternatively, you can also download the individual scripts:
 
 - `scripts/windows/setup-wsl.ps1`
 - `scripts/windows/wsl-run.ps1`
-- `scripts/install-ubuntu1804.sh`
+- `scripts/install.sh`
 
 ## Step 2: Preparing Windows and ubuntu
 
