@@ -152,7 +152,7 @@ the reward collected from the transaction fees in the micro blocks.)
 
 To fine tune the parameter, you should try running the miner in a shell
 ```
-$ time ~/aeternity/node/lib/aecuckooprebuilt-0.1.0/priv/cuda29 -r 5
+$ time ~/aeternity/node/lib/aecuckooprebuilt-*/priv/cuda29 -r 5
 ...
 real 0m4.634s
 user ...
