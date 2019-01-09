@@ -35,7 +35,7 @@ For specifying configuration using the Docker image, please refer to [its docume
 
 The node user API is documented:
 * HTTP API endpoints are specified [online in swagger.yaml][swagger-yaml];
-  * A JSON version of the same specification is located in the node at path `lib/aehttp-0.1.0/priv/swagger.json`.
+  * A JSON version of the same specification is located in the node at path `lib/aehttp-*/priv/swagger.json` (you will need to amend the wildcard `*` placeholder in the path with the version).
   * The JSON version can be obtained from a running node using the endpoint `/api`.
   * An interactive visualization of the same specification is available [online][swagger-ui].
 * WebSocket API endpoints are [specified online][api-doc];
