@@ -1,6 +1,6 @@
 {application, aecuckoo,
  [{description, "OTP application wrapping build of Cuckoo Cycle proof of work executables"},
-  {vsn, "0.1.0"},
+  {vsn, {cmd, "cat ../../VERSION"}},
   {registered, []},
   {applications,
    [kernel,

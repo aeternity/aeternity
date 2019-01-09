@@ -1,6 +1,6 @@
 {application, aehttp,
  [{description, "API"},
-  {vsn, "0.1.0"},
+  {vsn, {cmd, "cat ../../VERSION"}},
   {registered, []},
   {mod, { aehttp_app, []}},
   {applications,

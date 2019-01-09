@@ -1,6 +1,6 @@
 {application, aeoracle,
  [{description, "AE Oracle"},
-  {vsn, "0.1.0"},
+  {vsn, {cmd, "cat ../../VERSION"}},
   {registered, []},
   {applications,
    [kernel,

@@ -1,6 +1,6 @@
 {application, aeutils,
  [{description, "Aeapps utils"},
-  {vsn, "0.1.0"},
+  {vsn, {cmd, "cat ../../VERSION"}},
   {registered, []},
   {applications,
    [kernel,

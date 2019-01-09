@@ -1,6 +1,6 @@
 {application, aens,
  [{description, "AE Naming System"},
-  {vsn, "0.1.0"},
+  {vsn, {cmd, "cat ../../VERSION"}},
   {registered, []},
   {applications,
    [kernel,
