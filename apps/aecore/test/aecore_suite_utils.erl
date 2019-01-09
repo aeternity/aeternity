@@ -22,6 +22,7 @@
          delete_node_db_if_persisted/1,
          mine_blocks/2,
          mine_blocks/3,
+         mine_all_txs/1,
          mine_blocks_until_txs_on_chain/3,
          mine_key_blocks/2,
          mine_micro_blocks/2,
@@ -228,6 +229,15 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Type) ->
             erlang:error(Reason)
     end.
 
+
+mine_all_txs(Node) ->
+    MaxBlocks = 5,
+    case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
+        {ok, []} -> {ok, []};
+        {ok, Txs} ->
+            TxsHs = [ aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(T)) || T <- Txs],
+            mine_blocks_until_txs_on_chain(Node, TxsHs, MaxBlocks)
+    end.
 
 mine_blocks_until_txs_on_chain(Node, TxHashes, MaxBlocks) ->
     mine_blocks_until_txs_on_chain(Node, TxHashes, 100, MaxBlocks).
