@@ -382,10 +382,10 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                         {ok, Bin} ->
                             case aeso_heap:from_binary({tuple, [word]}, Bin) of
                                 {ok, {Val}}   -> {ok, Val};
-                                {error, _Err} -> aevm_eevm:eval_error(out_of_gas)
+                                {error, _Err} -> aevm_eeevm:eval_error(out_of_gas)
                             end;
                         {error, _Err} ->
-                            aevm_eevm:eval_error(out_of_gas)
+                            aevm_eeevm:eval_error(out_of_gas)
                     end
                 end,
             case Target == ?PRIM_CALLS_CONTRACT of
