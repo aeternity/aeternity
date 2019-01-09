@@ -138,12 +138,14 @@ make_call(Contract, Fun, Type, Args, Env, Options) ->
 create_contract(Address, Code, ArgType, Args, Env) ->
     Env1 = Env#{Address => Code},
     {ok, InitS, Env2} = make_call(Address, init, ArgType, Args, Env1, #{}),
-    set_store(aevm_eeevm_store:from_sophia_state(InitS), Env2).
+    {ok, Store} = aevm_eeevm_store:from_sophia_state(InitS),
+    set_store(Store, Env2).
 
 create_contract(Address, Code, ArgType, Args, Env, Options) ->
     Env1 = Env#{Address => Code},
     {ok, InitS, Env2} = make_call(Address, init, ArgType, Args, Env1, Options),
-    set_store(aevm_eeevm_store:from_sophia_state(InitS), Env2).
+    {ok, Store} = aevm_eeevm_store:from_sophia_state(InitS),
+    set_store(Store, Env2).
 
 successful_call_(Contract, Type, Fun, ArgType, Args, Env) ->
     {Res, _Env1} = successful_call(Contract, Type, Fun, ArgType, Args, Env),

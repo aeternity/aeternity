@@ -58,13 +58,12 @@ eval(State) ->
             %% Turn storage map into binary and save in state tree.
             case aevm_eeevm_state:save_store(State1) of
                 {ok, State2}  -> {ok, State2};
-                {error, What} -> {error, What, State1}
+                {error, What} -> {error, What, 0}
             end;
         {revert, Msg, GasLeft} ->
             {revert, Msg, GasLeft};
-        {error, What, State1} ->
-            %% Don't save state on error.
-            {error, What, State1}
+        {error, What, GasLeft} ->
+            {error, What, GasLeft}
     end.
 
 eval_code(State = #{ address := 0 }) ->
@@ -79,6 +78,8 @@ eval_code(State) ->
     catch
         throw:?aevm_eval_error(What, GasLeft) ->
             {error, What, GasLeft};
+        throw:?aevm_eval_stack_error(What, _State) ->
+            {error, What, 0};
         throw:?AEVM_SIGNAL(Signal, StateOut) ->
             handle_signal(Signal, StateOut)
     end.
