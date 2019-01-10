@@ -5,7 +5,6 @@
   {applications,
    [kernel,
     stdlib,
-    crypto,
     lager,
     ranch,
     aestratum_lib
