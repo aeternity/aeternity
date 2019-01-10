@@ -1,0 +1,20 @@
+mining:
+    autostart: true
+    beneficiary: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999"
+    cuckoo:
+        edge_bits: 29
+        miners:
+            - # Group of executable binaries of the miner.
+              executable_group: aecuckoo
+              executable: mean29-generic
+              extra_args: "-t 5"
+              hex_encoded_header: false
+              repeats: 1
+              nice: 0
+            - executable_group: aecuckoo
+              executable: mean29-generic
+              extra_args: "-t 5"
+              hex_encoded_header: false
+              repeats: 4
+              nice: 1
+
