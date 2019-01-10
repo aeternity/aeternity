@@ -1,0 +1,17 @@
+{application, aestratum,
+ [{description, "AE Stratum"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib,
+    lager,
+    ranch
+   ]},
+  {mod,{aestratum_app,[]}},
+  {env,[]},
+  {modules, []},
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.
