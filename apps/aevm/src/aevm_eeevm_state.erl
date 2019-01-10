@@ -281,12 +281,17 @@ spend_gas(Gas, State) ->
         GasLeft when GasLeft < 0 -> aevm_eeevm:eval_error(out_of_gas)
     end.
 
+%% Of course WordSize should be 32 - but we have to be buggy until the
+%% first scheduled hard-fork.
 heap_to_heap(Type, Ptr, State) ->
+    heap_to_heap(Type, Ptr, State, 1).
+
+heap_to_heap(Type, Ptr, State, WordSize) ->
     Heap  = mem(State),
     Maps  = maps(State),
     Value = aeso_heap:heap_value(Maps, Ptr, Heap),
     MaxWords = aevm_gas:mem_limit_for_gas(gas(State), State),
-    case aevm_data:heap_to_heap(Type, Value, 32, MaxWords) of
+    case aevm_data:heap_to_heap(Type, Value, 32, MaxWords * WordSize) of
         {ok, NewValue} ->
             GasUsed = aevm_gas:mem_gas(byte_size(aeso_heap:heap_value_heap(NewValue)) div 32, State),
             {ok, NewValue, GasUsed};
@@ -349,7 +354,7 @@ save_store(#{ chain_state := ChainState
                 _ ->
                     Type     = aevm_eeevm_store:get_sophia_state_type(storage(State)),
                     {Ptr, _} = aevm_eeevm_memory:load(Addr, State),
-                    case heap_to_heap(Type, Ptr, State) of
+                    case heap_to_heap(Type, Ptr, State, 32) of
                         {ok, StateValue1, GasUsed} ->
                             Store = aevm_eeevm_store:set_sophia_state(StateValue1, storage(State)),
                             {ok, spend_gas(GasUsed, State#{ chain_state => ChainAPI:set_store(Store, ChainState) })};
