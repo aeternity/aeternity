@@ -1,7 +1,9 @@
 # About this release
 
 [This][this-release] is a maintenance release.
-It:
+It contains stability improvements so all users are encouraged to upgrade.
+
+This release:
 * Adds operators `mod`, `++`, `bsl`, `bsr`, and `^` to the Sophia compiler.
 * Adds function `String.sha3` to the Sophia compiler.
 * Changes cuckoo miner config and processing to allow multiple simultaneous miners.
