@@ -16,6 +16,7 @@
          close_solo/1,
          close_mutual/1,
          slash/1,
+         slash_after_lock_timer/1,
          slash_by_delegate/1,
          deposit/1,
          withdraw/1,
@@ -207,6 +208,7 @@ groups() ->
        close_mutual,
        {group, close_mutual_negative},
        slash,
+       slash_after_lock_timer,
        slash_by_delegate,
        {group, slash_negative},
        deposit,
@@ -819,6 +821,41 @@ slash(Cfg) ->
                     Test(Closer, Slasher, 2, 3),
                     Test(Closer, Slasher, 2, 5),
                     Test(Closer, Slasher, 5, 6)
+                end,
+                ?ROLES)
+        end,
+        ?ROLES),
+    ok.
+
+slash_after_lock_timer(Cfg) ->
+    LockPeriod = 10,
+    CloseHeight = 42,
+    Test =
+        fun(Closer, Slasher, SlashHeight) ->
+            run(#{cfg => Cfg, lock_period => 10},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(round, 10),
+                set_prop(height, CloseHeight),
+                positive(fun close_solo_/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end,
+                set_from(Slasher),
+                set_prop(round, 20),
+                set_prop(height, SlashHeight),
+                positive(fun slash_/2)])
+        end,
+    lists:foreach(
+        fun(Closer) ->
+            lists:foreach(
+                fun(Slasher) ->
+                    Test(Closer, Slasher, LockPeriod + CloseHeight),
+                    Test(Closer, Slasher, LockPeriod + CloseHeight + 1),
+                    Test(Closer, Slasher, LockPeriod + CloseHeight + 10)
                 end,
                 ?ROLES)
         end,
