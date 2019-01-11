@@ -3,6 +3,8 @@
 -export([enc/2,
          dec/1]).
 
+-export([max_inband_msg_size/0]).
+
 -export_types([ch_open_msg/0,
                ch_accept_msg/0,
                ch_reestabl_msg/0,
@@ -582,6 +584,10 @@ dec_shutdown_ack(<< ChanId:32/binary
                         to         := binary(),
                         info       := binary()}.
 
+max_inband_msg_size() -> 65000.
+inband_msg_bytes() -> 2.
+
+
 -spec enc_inband_msg(inband_msg()) -> binary().
 enc_inband_msg(#{ channel_id := ChanId
                 , from       := From
@@ -590,19 +596,21 @@ enc_inband_msg(#{ channel_id := ChanId
     assert_max_length(?PUBKEY_SIZE, byte_size(From), from),
     assert_max_length(?PUBKEY_SIZE, byte_size(To), to),
     Length = byte_size(Info),
-    assert_max_length(16#ff, Length, msg),
+    assert_max_length(max_inband_msg_size(), Length, msg),
+    Bytes = inband_msg_bytes(),
     << ?ID_INBAND_MSG:1 /unit:8
      , ChanId        :32/binary
      , From          :?PUBKEY_SIZE/binary
      , To            :?PUBKEY_SIZE/binary
-     , Length        :2 /unit:8
+     , Length        :Bytes /unit:8
      , Info          :Length/bytes >>.
 
 dec_inband_msg(<< ChanId:32/binary
                 , From  :?PUBKEY_SIZE/binary
                 , To    :?PUBKEY_SIZE/binary
-                , Length:2 /unit:8
-                , Info/binary >>) ->
+                , Rest/binary >>) ->
+    Bytes = inband_msg_bytes(),
+    <<Length:Bytes/unit:8, Info/binary>> = Rest,
     Length = byte_size(Info),
     #{ channel_id => ChanId
      , from       => From

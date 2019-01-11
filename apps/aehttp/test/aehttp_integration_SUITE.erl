@@ -204,7 +204,8 @@
     sc_ws_open/1,
     sc_ws_update/1,
     sc_ws_update_fails_and_close/1,
-    sc_ws_send_messages_and_close/1,
+    sc_ws_message_size/1,
+    sc_ws_send_messages/1,
     sc_ws_conflict_and_close/1,
     sc_ws_close/1,
     sc_ws_close_mutual_initiator/1,
@@ -521,7 +522,9 @@ channel_websocket_sequence() ->
      {failed_update, [], [sc_ws_open,
                           sc_ws_update_fails_and_close]},
      {generic_messages, [], [sc_ws_open,
-                             sc_ws_send_messages_and_close]},
+                             sc_ws_send_messages,
+                             sc_ws_message_size,
+                             sc_ws_close]},
      {update_conflict, [], [sc_ws_open,
                             sc_ws_conflict_and_close]},
      %% initiator can start close mutual
@@ -3588,15 +3591,38 @@ sc_ws_update_fails_and_close(Config) ->
     ok = ?WS:stop(RConnPid),
     ok.
 
-sc_ws_send_messages_and_close(Config) ->
-    {sc_ws_open, ConfigList} = ?config(saved_config, Config),
+sc_ws_send_messages(Config) ->
+    sc_ws_send_messages_(
+      Config,
+      [ {ok, initiator, <<"hejsan">>}                 %% initiator can send
+      , {ok, responder, <<"svejsan">>}                %% responder can send
+      , {ok, initiator, <<"first message in a row">>} %% initiator can send two messages in a row
+      , {ok, initiator, <<"second message in a row">>}
+      , {ok, responder, <<"some message">>}           %% responder can send two messages in a row
+      , {ok, responder, <<"other message">>}
+      ]).
+
+sc_ws_message_size(Config) ->
+    LargeMsg = max_msg(),
+    TooLargeMsg = <<"x", LargeMsg/binary>>,
+    sc_ws_send_messages_(
+      Config,
+      [{ok, initiator, LargeMsg},
+       {fail, initiator, TooLargeMsg}]).
+
+max_msg() ->
+    Limit = aesc_codec:max_inband_msg_size(),
+    erlang:list_to_binary(lists:duplicate(Limit, $a)).
+
+sc_ws_send_messages_(Config, Msgs) ->
+    {ok, ConfigList} = get_saved_config(
+                         Config, [sc_ws_open, sc_ws_send_messages]),
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
     #{initiator := IConnPid, responder :=RConnPid} =
         proplists:get_value(channel_clients, ConfigList),
-
     lists:foreach(
-        fun({Sender, Msg}) ->
+        fun({Expect, Sender, Msg}) ->
             {SenderPubkey, ReceiverPubkey, SenderPid, ReceiverPid} =
                 case Sender of
                     initiator ->
@@ -3607,28 +3633,26 @@ sc_ws_send_messages_and_close(Config) ->
                 SenderEncodedK = aehttp_api_encoder:encode(account_pubkey, SenderPubkey),
                 ReceiverEncodedK = aehttp_api_encoder:encode(account_pubkey, ReceiverPubkey),
                 ok = ?WS:register_test_for_channel_event(ReceiverPid, message),
+                ok = ?WS:register_test_for_channel_event(SenderPid, error),
 
                 ws_send(SenderPid, <<"message">>,
                         #{<<"to">> => ReceiverEncodedK,
                           <<"info">> => Msg}, Config),
 
-                {ok, #{<<"message">> := #{<<"from">> := SenderEncodedK,
-                                          <<"to">> := ReceiverEncodedK,
-                                          <<"info">> := Msg}}}
-                    = wait_for_channel_event(ReceiverPid, message, Config),
+                case Expect of
+                    ok ->
+                        {ok, #{<<"message">> := #{<<"from">> := SenderEncodedK,
+                                                  <<"to">> := ReceiverEncodedK,
+                                                  <<"info">> := Msg}}}
+                            = wait_for_channel_event(ReceiverPid, message, Config);
+                    fail ->
+                        {ok, _Payload}= Res =
+                            wait_for_channel_event(SenderPid, error, Config)
+                end,
+                ok = ?WS:unregister_test_for_channel_event(SenderPid, error),
                 ok = ?WS:unregister_test_for_channel_event(ReceiverPid, message)
-        end,
-      [ {initiator, <<"hejsan">>}                   %% initiator can send
-      , {responder, <<"svejsan">>}                  %% responder can send
-      , {initiator, <<"first message in a row">>}   %% initiator can send two messages in a row
-      , {initiator, <<"second message in a row">>}
-      , {responder, <<"some message">>}             %% responder can send two messages in a row
-      , {responder, <<"other message">>}
-      ]),
-
-    ok = ?WS:stop(IConnPid),
-    ok = ?WS:stop(RConnPid),
-    ok.
+        end, Msgs),
+    {save_config, ConfigList}.
 
 sc_ws_conflict_and_close(Config) ->
     {sc_ws_open, ConfigList} = ?config(saved_config, Config),
@@ -3802,7 +3826,8 @@ channel_update_fail(#{initiator := IConnPid, responder :=RConnPid},
     Res.
 
 sc_ws_close(Config) ->
-    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
+    {ok, ConfigList} =
+        get_saved_config(Config, [sc_ws_update, sc_ws_message_size]),
 
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),

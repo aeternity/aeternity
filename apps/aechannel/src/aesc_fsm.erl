@@ -343,8 +343,18 @@ get_contract_call(Fsm, Contract, Caller, Round) when is_integer(Round), Round > 
     gen_statem:call(Fsm, {get_contract_call, Contract, Caller, Round}).
 
 inband_msg(Fsm, To, Msg) ->
-    lager:debug("inband_msg(~p, ~p, ~p)", [Fsm, To, Msg]),
-    gen_statem:call(Fsm, {inband_msg, To, Msg}).
+    MaxSz = aesc_codec:max_inband_msg_size(),
+    try iolist_to_binary(Msg) of
+        MsgBin when byte_size(MsgBin) =< MaxSz ->
+            lager:debug("inband_msg(~p, ~p, ~p)", [Fsm, To, Msg]),
+            gen_statem:call(Fsm, {inband_msg, To, MsgBin});
+        MsgBin ->
+            lager:debug("INVALID inband_msg(~p): ~p", [Fsm, byte_size(MsgBin)]),
+            {error, invalid_request}
+    catch
+        error:_ ->
+            {error, invalid_request}
+    end.
 
 
 -spec get_state(pid()) -> {ok, #{}}.
