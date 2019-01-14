@@ -1,7 +1,8 @@
 -module(aestratum_client_session).
 
 -export([new/0,
-         handle_event/2
+         handle_event/2,
+         close/1
         ]).
 
 -ifdef(TEST).
@@ -28,6 +29,10 @@ handle_event({conn, What}, State)  ->
 handle_event({miner, What}, State) ->
     handle_miner_event(What, State).
 
+close(State) ->
+    close_session(State),
+    ok.
+
 %% Internal functions.
 
 handle_conn_event(init, #state{phase = connected} = State) ->
@@ -40,9 +45,9 @@ handle_conn_event(RawMsg, State) when is_binary(RawMsg) ->
 %% TODO: {reconnect, Host, Port, WaitTime},...
 handle_conn_event({timeout, Id, Phase}, State) ->
     handle_conn_timeout(Id, Phase, State);
-handle_conn_event(close, #state{reqs = Reqs} = State) ->
+handle_conn_event(close, State) ->
     %% TODO: reason, log
-    {stop, State#state{phase = disconnected, reqs = clean_reqs(Reqs)}}.
+    {stop, close_session(State)}.
 
 handle_miner_event(_What, State) ->
     %% TODO
@@ -93,7 +98,7 @@ recv_msg1(#{method := authorize, result := true},
 recv_msg1(#{method := authorize, result := false},
           #state{phase = subscribed} = State) ->
     %% TODO: log invalid user/password
-    {stop, State#state{phase = disconnected, retries = 0}};
+    {stop, close_session(State)};
 recv_msg1(#{method := submit, result := true},
           #state{phase = authorized} = State) ->
     %% TODO: log successful submit
@@ -110,21 +115,21 @@ recv_msg1(#{method := Method, reason := Rsn, msg := ErrMsg,
 
 %% Handle badly encoded/invalid messages from server.
 
-recv_msg_error(parse_error, #state{reqs = Reqs} = State) ->
+recv_msg_error(parse_error, State) ->
     %% TODO: log
-    {stop, State#state{phase = disconnected, reqs = clean_reqs(Reqs)}};
-recv_msg_error({invalid_msg, _MaybeId}, #state{reqs = Reqs} = State) ->
+    {stop, close_session(State)};
+recv_msg_error({invalid_msg, _MaybeId}, State) ->
     %% TODO: log
-    {stop, State#state{phase = disconnected, reqs = clean_reqs(Reqs)}};
-recv_msg_error({invalid_method, _MaybeId}, #state{reqs = Reqs} = State) ->
+    {stop, close_session(State)};
+recv_msg_error({invalid_method, _MaybeId}, State) ->
     %% TODO: log
-    {stop, State#state{phase = disconnected, reqs = clean_reqs(Reqs)}};
-recv_msg_error({invalid_param, _MaybeId, _Param}, #state{reqs = Reqs} = State) ->
+    {stop, close_session(State)};
+recv_msg_error({invalid_param, _MaybeId, _Param}, State) ->
     %% TODO: log
-    {stop, State#state{phase = disconnected, reqs = clean_reqs(Reqs)}};
-recv_msg_error({internal_error, _MaybeId}, #state{reqs = Reqs} = State) ->
+    {stop, close_session(State)};
+recv_msg_error({internal_error, _MaybeId}, State) ->
     %% TODO: log
-    {stop, State#state{phase = disconnected, reqs = clean_reqs(Reqs)}}.
+    {stop, close_session(State)}.
 
 %% Handle timeout.
 
@@ -142,10 +147,10 @@ handle_conn_timeout(Id, Phase, #state{phase = Phase1, reqs = Reqs} = State) ->
 
 %% Client to server requests.
 
-send_req(ReqType, #state{retries = Retries, reqs = Reqs} = State) ->
+send_req(ReqType, #state{retries = Retries} = State) ->
     case Retries > ?MAX_RETRIES of
         true ->
-            {stop, State#state{phase = disconnected, reqs = clean_reqs(Reqs)}};
+            {stop, close_session(State)};
         false ->
             State1 = State#state{retries = Retries + 1},
             case ReqType of
@@ -195,6 +200,9 @@ send_submit_req(#state{req_id = Id, reqs = Reqs} = State) ->
                  reqs = add_req(Id, authorized, ReqMap, Reqs)}}.
 
 %% Helper functions.
+
+close_session(#state{reqs = Reqs} = State) ->
+    State#state{phase = disconnected, reqs = clean_reqs(Reqs)}.
 
 add_req(Id, Phase, Req, Reqs) ->
     TRef = erlang:send_after(?MSG_TIMEOUT, self(), {timeout, Id, Phase}),

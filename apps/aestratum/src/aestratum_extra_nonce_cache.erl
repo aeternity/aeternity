@@ -84,4 +84,3 @@ find_extra_nonce(MaxExtraNonce, Cache, Retries) when Retries > 0 ->
     end;
 find_extra_nonce(_MaxExtraNonce, _Cache, 0) ->
     {error, extra_nonce_not_found}.
-
