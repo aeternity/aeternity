@@ -49,19 +49,30 @@ make_call(Contract, Function, Arguments) ->
 identity() ->
     {<<"identity">>,
      "contract Id =\n"
-     "  function id(x : int) = x\n"
-     "  function idS(s : string) = s\n"
+     "  function id    (x : int) = x\n"
+     "  function inc   (x : int) = x + 1\n"
+     "  function inc'  (x : int) = 1 + x\n"
+     "  function plus2 (x : int) = x + 2\n"
+     "  function plus4 (x : int) = x + 2 + 2\n"
+     "  function plus4'(x : int) = x + (2 + 2)\n"
     }.
 
-id_test(Fun, Args, Res) ->
-    Chain = compile_contracts([identity()]),
+id_tests() ->
+    [ {"id",    [142], 142}
+    , {"inc",   [142], 143}
+    , {"plus2", [142], 144}
+    , {"plus4", [142], 146}
+    ].
+
+id_test(Chain, Fun, Args, Res) ->
     expect(Chain, <<"identity">>, list_to_binary(Fun), Args, Res).
 
 id_test_() ->
+    Chain = compile_contracts([identity()]),
     [{lists:flatten(io_lib:format("~s(~p) -> ~p", [Fun, Arg, Res])),
-      fun() -> id_test(Fun, Arg, Res) end}
-    || {Fun, Arg, Res} <-
-        [ {"id", [42], 42}
-        , {"idS", [<<"foo">>], <<"foo">>}
-        ] ].
+      fun() -> id_test(Chain, Fun, Arg, Res) end}
+    || {Fun, Arg, Res} <- id_tests() ].
 
+run_eunit(Test) ->
+    [ begin io:format("~s\n", [Name]), Fun() end || {Name, Fun} <- ?MODULE:Test() ],
+    ok.
