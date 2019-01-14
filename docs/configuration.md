@@ -35,6 +35,16 @@ In case the sync port (3015 by default) cannot be used as external forwarding po
 
 Example scheme: `node (sync > port) <-> router (sync > external_port) <-> Internet`
 
+#### UPnP/NAT-PMP
+
+If you don't have port forwarding configured in your router, but your router supports UPnP or NAT-PMP, the node provides UPnP/NAT-PMP service to streamline network configuration.
+
+In order to start UPnP/NAT-PMP service:
+* make sure UPnP/NAT-PMP is enabled on your router;
+* in your user configuration file, set `sync` > `upnp_enabled` parameter to `true`.
+
+Then, the node will automatically create appropriate port mapping based on the configuration params.
+
 #### Port Check
 
 After you have started the epoch application, you can verify the validity of your setup and configuration correctness by, for example, running the external node port check (assuming the default port 3015):
