@@ -55,21 +55,41 @@ identity() ->
      "  function plus2 (x : int) = x + 2\n"
      "  function plus4 (x : int) = x + 2 + 2\n"
      "  function plus4'(x : int) = x + (2 + 2)\n"
+     "  function dec   (x : int) = x - 1\n"
+     "  function sub2  (x : int) = x - 2\n"
+     "  function eq0   (x : int) = x == 0\n"
+     "  function eq3   (x : int) = x == 3\n"
+     "  function pred  (x : int) = if (x == 0) 0 else x - 1\n"
+     "  function nest  (x : int, y : int) =\n"
+     "    if   (x == 0) 0\n"
+     "    elif (y == 0) x + 1\n"
+     "    else x + y\n"
     }.
 
 id_tests() ->
-    [ {"id",    [142], 142}
-    , {"inc",   [142], 143}
-    , {"plus2", [142], 144}
-    , {"plus4", [142], 146}
-    ].
+    Nest = fun(0, _) -> 0; (X, 0) -> X + 1; (X, Y) -> X + Y end,
+    [ {"id",     [142],  142}
+    , {"inc",    [142],  143}
+    , {"inc'",   [142],  143}
+    , {"plus2",  [142],  144}
+    , {"plus4",  [142],  146}
+    , {"plus4'", [142],  146}
+    , {"dec",    [0],     -1}
+    , {"dec",    [14],    13}
+    , {"sub2",   [20],    18} ] ++
+    [ {"eq0",  [X], X == 0} || X <- [0, 99] ] ++
+    [ {"eq3",  [X], X == 3} || X <- [3, -100] ] ++
+    [ {"pred", [X], max(0, X - 1)} || X <- [0, 100] ] ++
+    [ {"nest", [X, Y], Nest(X, Y)} || X <- [0, 10], Y <- [0, -99] ] ++
+    [].
 
 id_test(Chain, Fun, Args, Res) ->
     expect(Chain, <<"identity">>, list_to_binary(Fun), Args, Res).
 
 id_test_() ->
     Chain = compile_contracts([identity()]),
-    [{lists:flatten(io_lib:format("~s(~p) -> ~p", [Fun, Arg, Res])),
+    Pr    = fun(X) -> io_lib:format("~p", [X]) end,
+    [{lists:flatten(io_lib:format("~s(~s) -> ~p", [Fun, string:join(lists:map(Pr, Arg), ", "), Res])),
       fun() -> id_test(Chain, Fun, Arg, Res) end}
     || {Fun, Arg, Res} <- id_tests() ].
 
