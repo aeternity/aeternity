@@ -3,7 +3,7 @@
 Run below command to install latest version of aeternity node.
 
 ```bash
-wget https://raw.githubusercontent.com/aeternity/epoch/v1.3.0/scripts/install.sh && chmod +x install.sh && ./install.sh 1.3.0
+curl -O https://raw.githubusercontent.com/aeternity/epoch/v1.3.0/scripts/install.sh && chmod +x install.sh && ./install.sh 1.3.0
 ```
 
 See the documentation below detailed instructions for manual installation.
@@ -61,7 +61,7 @@ sudo apt-get install build-essential
 then the library:
 
 ```bash
-wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz
+curl -O https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz
 tar -xf libsodium-1.0.16.tar.gz && cd libsodium-1.0.16
 ./configure && make && sudo make install && sudo ldconfig
 ```
