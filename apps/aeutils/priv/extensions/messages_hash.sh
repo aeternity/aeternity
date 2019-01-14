@@ -4,6 +4,7 @@
 
 PATH=$BINDIR:$PATH
 export ERL_LIBS=$ROOTDIR/lib
-"$ERTS_DIR/bin/escript" "$ROOTDIR/lib/aeutils-1.2.0/priv/messages_hash" "$*"
+APPS_VSN=${REL_VSN:?}
+"$ERTS_DIR/bin/escript" "$ROOTDIR/lib/aeutils-${APPS_VSN:?}/priv/messages_hash" "$*"
 
 exit $?
