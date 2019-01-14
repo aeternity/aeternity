@@ -96,6 +96,7 @@
         , sophia_state_gas/1
         , sophia_no_callobject_for_remote_calls/1
         , sophia_operators/1
+        , sophia_int_to_str/1
         , sophia_events/1
         , create_store/1
         , read_store/1
@@ -186,6 +187,7 @@ groups() ->
                                  sophia_state_gas,
                                  sophia_no_callobject_for_remote_calls,
                                  sophia_operators,
+                                 sophia_int_to_str,
                                  sophia_events]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
@@ -3205,6 +3207,38 @@ sophia_operators(_Cfg) ->
 
     ok.
 
+sophia_int_to_str(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc   = ?call(new_account, 1000000000),
+    IdC   = ?call(create_contract, Acc, int_to_str, {}),
+    ?assertMatch({<<"0">>, _}, ?call(call_contract, Acc, IdC, i2s, string, {0}, #{ return_gas_used => true })),
+    ?assertMatch({<<"5">>, _}, ?call(call_contract, Acc, IdC, i2s, string, {5}, #{ return_gas_used => true })),
+    ?assertMatch({<<"12345">>, _}, ?call(call_contract, Acc, IdC, i2s, string, {12345}, #{ return_gas_used => true })),
+    ?assertMatch({<<"-2345">>, _}, ?call(call_contract, Acc, IdC, i2s, string, {-2345}, #{ return_gas_used => true })),
+    ?assertMatch({<<"12345678901234567890123456789012">>, _},
+                 ?call(call_contract, Acc, IdC, i2s, string, {12345678901234567890123456789012}, #{ return_gas_used => true })),
+    ?assertMatch({<<"-12345678901234567890123456789012">>, _},
+                 ?call(call_contract, Acc, IdC, i2s, string, {-12345678901234567890123456789012}, #{ return_gas_used => true })),
+    ?assertMatch({<<"123456789012345678901234567890123456789">>, _},
+                 ?call(call_contract, Acc, IdC, i2s, string, {123456789012345678901234567890123456789}, #{ return_gas_used => true })),
+    ?assertMatch({<<"-123456789012345678901234567890123456789">>, _},
+                 ?call(call_contract, Acc, IdC, i2s, string, {-123456789012345678901234567890123456789}, #{ return_gas_used => true })),
+
+    BAcc = list_to_binary(base58:binary_to_base58(Acc)),
+    io:format("Address: ~p\n", [Acc]),
+    ?assertMatch({BAcc, _},
+                  ?call(call_contract, Acc, IdC, a2s, string, {Acc}, #{ return_gas_used => true })),
+
+    BIdC = list_to_binary(base58:binary_to_base58(IdC)),
+    ?assertMatch({BIdC, _},
+                  ?call(call_contract, Acc, IdC, a2s, string, {IdC}, #{ return_gas_used => true })),
+
+    Addr = <<90,139,56,117,121,128,91,84,78,146,81,166,106,181,248,87,147,41,74,158,109,135,221,178,120,168,101,101,80,152,186,248>>,
+    BAddr = list_to_binary(base58:binary_to_base58(Addr)),
+    ?assertMatch({BAddr, _},
+                  ?call(call_contract, Acc, IdC, a2s, string, {Addr}, #{ return_gas_used => true })),
+    ok.
+
 sophia_events(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000),
@@ -3219,17 +3253,6 @@ sophia_events(_Cfg) ->
     ?assertMatch({{},[{_, _, <<"1234567890123456789012345678901234567897">>}]},
                  ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1234567890123456789012345678901234567890}, #{ return_logs => true })),
 
-    ?assertEqual(<<"5">>, ?call(call_contract, Acc, IdC, i2s, string, {5})),
-    ?assertEqual(<<"12345">>, ?call(call_contract, Acc, IdC, i2s, string, {12345})),
-    ?assertEqual(<<"-2345">>, ?call(call_contract, Acc, IdC, i2s, string, {-2345})),
-
-    BAcc = list_to_binary(base58:binary_to_base58(Acc)),
-    ?assertMatch({BAcc, _},
-                  ?call(call_contract, Acc, IdC, a2s, string, {Acc}, #{ return_gas_used => true })),
-
-    BIdC = list_to_binary(base58:binary_to_base58(IdC)),
-    ?assertMatch({BIdC, _},
-                  ?call(call_contract, Acc, IdC, a2s, string, {IdC}, #{ return_gas_used => true })),
     ok.
 
 
