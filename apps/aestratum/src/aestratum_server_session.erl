@@ -1,13 +1,14 @@
 -module(aestratum_server_session).
 
 -export([new/0,
-         handle_event/2
+         handle_event/2,
+         close/1
         ]).
 
 -ifdef(TEST).
 -export([get_host/0,
          get_port/0,
-         get_extra_nonce/0,
+         get_extra_nonce/1,
          state/1
         ]).
 -endif.
@@ -26,6 +27,7 @@
          }).
 
 -define(MSG_TIMEOUT, application:get_env(aestratum, timeout, 30000)).
+-define(EXTRA_NONCE_NBYTES, application:get_env(aestratum, extra_nonce_bytes, 4)).
 
 %% API.
 
@@ -37,6 +39,10 @@ handle_event({conn, What}, State) ->
 handle_event({chain, What}, State) ->
     %% TODO: set_target, notify
     handle_chain_event(What, State).
+
+close(#state{} = State) ->
+    close_session(State),
+    ok.
 
 %% Internal functions.
 
@@ -50,9 +56,8 @@ handle_conn_event(RawMsg, State) when is_binary(RawMsg) ->
 %% TODO: {reconnect, Host, Port, WaitTime},...
 handle_conn_event(timeout, State) ->
     handle_conn_timeout(State);
-handle_conn_event(close, #state{timer = Timer} = State) ->
-    maybe_cancel_timer(Timer),
-    {stop, State#state{phase = disconnected, timer = undefined}}.
+handle_conn_event(close, State) ->
+    {stop, close_session(State)}.
 
 handle_chain_event(_What, State) ->
     %% TODO
@@ -120,7 +125,7 @@ handle_conn_timeout(#state{phase = Phase, timer = {_TRef, Phase}} = State) when
     %% The timer's phase is the same as the current phase, so the timeout
     %% applies and the connection to the client is closed.
     %% TODO: reason, log
-    {stop, State#state{phase = disconnected, timer = undefined}};
+    {stop, close_session(State)};
 handle_conn_timeout(State) ->
     {no_send, State}.
 
@@ -149,13 +154,13 @@ send_configure_rsp1(ok, #{id := Id}, #state{timer = Timer} = State) ->
 send_subscribe_rsp1(ok, #{id := Id} = Req, #state{timer = Timer} = State) ->
     cancel_timer(Timer),
     %% TODO: Session resumption not supported (yet).
-    %% ?MODULE is here due to meck (didn't work without it).
-    case ?MODULE:get_extra_nonce() of
+    ExtraNonceNBytes = ?EXTRA_NONCE_NBYTES,
+    case aestratum_extra_nonce_cache:get(ExtraNonceNBytes) of
         {ok, ExtraNonce} ->
             SessionId1 = null,
-            %% TODO: convert ExtraNonce to binary
+            ExtraNonce1 = aestratum_nonce:to_bin(ExtraNonce),
             RspMap = #{type => rsp, method => subscribe, id => Id,
-                       result => [SessionId1, ExtraNonce]},
+                       result => [SessionId1, ExtraNonce1]},
             %% Set timer for authorize request.
             {send, encode(RspMap),
              State#state{phase = subscribed, timer = set_timer(subscribed),
@@ -241,6 +246,18 @@ send_notify_ntf(_ChainTop, #state{} = State) ->
     {no_send, State}.
 
 %% Helper functions.
+
+close_session(#state{extra_nonce = ExtraNonce, timer = Timer} = State) ->
+    maybe_free_extra_nonce(ExtraNonce),
+    maybe_cancel_timer(Timer),
+    State#state{phase = disconnected, extra_nonce = undefined,
+                timer = undefined}.
+
+maybe_free_extra_nonce(ExtraNonce) when ExtraNonce =/= undefined ->
+    aestratum_extra_nonce_cache:free(ExtraNonce),
+    ok;
+maybe_free_extra_nonce(undefined) ->
+    ok.
 
 set_timer(Phase) ->
     TRef = erlang:send_after(?MSG_TIMEOUT, self(), timeout),
@@ -330,15 +347,20 @@ get_host() ->
 get_port() ->
     9999.
 
-get_extra_nonce() ->
-    ExtraNonceBytes = application:get_env(aestratum, extra_nonce_bytes, 4),
-    MaxNonce = max_nonce(ExtraNonceBytes),
-    <<"00000001">>.
-    %%aestratum_extra_nonce_cache:get().
+get_extra_nonce(ExtraNonceBytes) ->
+    MaxExtraNonce = aestratum_nonce:max(ExtraNonceBytes),
+    aestratum_extra_nonce_cache:get(MaxExtraNonce).
 
 %% Used for testing only.
 
-state(#state{phase = Phase, timer = Timer}) ->
+-ifdef(TEST).
+state(#state{phase = Phase, timer = Timer, extra_nonce = ExtraNonce}) ->
     #{phase => Phase,
-      timer_phase => case Timer of {_, TPhase} -> TPhase; _ -> undefined end}.
+      timer_phase => case Timer of
+                         {_, TPhase} -> TPhase;
+                         undefined -> undefined
+                     end,
+      extra_nonce => ExtraNonce
+     }.
+-endif.
 

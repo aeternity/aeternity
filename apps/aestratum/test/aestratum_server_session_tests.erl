@@ -4,6 +4,8 @@
 
 -define(TEST_MODULE, aestratum_server_session).
 -define(JSONRPC_MODULE, aestratum_jsonrpc).
+-define(NONCE_MODULE, aestratum_nonce).
+-define(EXTRA_NONCE_CACHE_MODULE, aestratum_extra_nonce_cache).
 
 session_test_() ->
     {setup,
@@ -18,11 +20,13 @@ session_test_() ->
 server_session() ->
     {foreach,
      fun() ->
+             meck:new(?EXTRA_NONCE_CACHE_MODULE, [passthrough]),
              meck:new(?TEST_MODULE, [passthrough]),
              {ok, Pid} = aestratum_dummy_handler:start_link(?TEST_MODULE),
              Pid
      end,
      fun(Pid) ->
+             meck:unload(?EXTRA_NONCE_CACHE_MODULE),
              meck:unload(?TEST_MODULE),
              aestratum_dummy_handler:stop(Pid)
      end,
@@ -128,7 +132,8 @@ when_connected(timeout) ->
     T = <<"when connected - timeout">>,
     L = [{{conn, timeout},
           {stop,
-           #{phase => disconnected, timer_phase => undefined}}
+           #{phase => disconnected, timer_phase => undefined,
+             extra_nonce => undefined}}
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(authorize) ->
@@ -137,7 +142,8 @@ when_connected(authorize) ->
                    user => <<"test_user">>, password => binary:copy(<<"0">>, 64)}},
           {send,
            #{type => rsp, method => authorize, id => 1, reason => not_subscribed},
-           #{phase => connected, timer_phase => connected}}
+           #{phase => connected, timer_phase => connected,
+            extra_nonce => undefined}}
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(submit) ->
@@ -147,7 +153,8 @@ when_connected(submit) ->
                    miner_nonce => <<"0123456789">>, pow => lists:seq(1, 42)}},
           {send,
            #{type => rsp, method => submit, id => 1, reason => not_subscribed},
-           #{phase => connected, timer_phase => connected}}
+           #{phase => connected, timer_phase => connected,
+            extra_nonce => undefined}}
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(not_req) ->
@@ -158,7 +165,8 @@ when_connected(not_req) ->
           {send,
            #{type => rsp, method => configure, id => null,
              reason => unknown_error, data => <<"unexpected_msg">>},
-           #{phase => connected, timer_phase => connected}}
+           #{phase => connected, timer_phase => connected,
+             extra_nonce => undefined}}
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(jsonrpc_errors) ->
@@ -169,16 +177,19 @@ when_connected(configure) ->
     L = [{{conn, #{type => req, method => configure, id => 0, params => []}},
           {send,
            #{type => rsp, method => configure, id => 0, result => []},
-           #{phase => configured, timer_phase => configured}}
+           #{phase => configured, timer_phase => configured,
+             extra_nonce => undefined}}
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(subscribe) ->
     Host = <<"ae.testpool.com">>,
     Port = 10000,
-    ExtraNonce = <<"0101">>,
+    ExtraNonceNBytes = 4,
+    ExtraNonce = aestratum_nonce:new(extra, 100, ExtraNonceNBytes),
+    application:set_env(aestratum, extra_nonce_nbytes, ExtraNonceNBytes),
     meck:expect(?TEST_MODULE, get_host, fun() -> Host end),
     meck:expect(?TEST_MODULE, get_port, fun() -> Port end),
-    meck:expect(?TEST_MODULE, get_extra_nonce, fun() -> {ok, ExtraNonce} end),
+    meck:expect(?EXTRA_NONCE_CACHE_MODULE, get, fun(_) -> {ok, ExtraNonce} end),
 
     T = <<"when connected - subscribe">>,
     L = [{{conn, #{type => req, method => subscribe, id => 0,
@@ -186,8 +197,9 @@ when_connected(subscribe) ->
                    host => Host, port => Port}},
           {send,
            #{type => rsp, method => subscribe, id => 0,
-             result => [null, ExtraNonce]},
-           #{phase => subscribed, timer_phase => subscribed}}
+             result => [null, ?NONCE_MODULE:to_bin(ExtraNonce)]},
+           #{phase => subscribed, timer_phase => subscribed,
+             extra_nonce => ExtraNonce}}
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L].
 
@@ -195,7 +207,8 @@ when_configured(timeout) ->
     T = <<"when configured - timeout">>,
     L = [{{conn, timeout},
           {stop,
-           #{phase => disconnected, timer_phase => undefined}}
+           #{phase => disconnected, timer_phase => undefined,
+            extra_nonce => undefined}}
          }],
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(configure) ->
@@ -203,7 +216,8 @@ when_configured(configure) ->
     L = [{{conn, #{type => req, method => configure, id => 1, params => []}},
           {send,
            #{type => rsp, method => configure, id => 1, reason => unknown_error},
-           #{phase => configured, timer_phase => configured}}
+           #{phase => configured, timer_phase => configured,
+             extra_nonce => undefined}}
          }],
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(authorize) ->
@@ -212,7 +226,8 @@ when_configured(authorize) ->
                    user => <<"test_user">>, password => binary:copy(<<"0">>, 64)}},
           {send,
            #{type => rsp, method => authorize, id => 1, reason => not_subscribed},
-           #{phase => configured, timer_phase => configured}}
+           #{phase => configured, timer_phase => configured,
+             extra_nonce => undefined}}
          }],
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(submit) ->
@@ -222,7 +237,8 @@ when_configured(submit) ->
                    miner_nonce => <<"0123456789">>, pow => lists:seq(1, 42)}},
           {send,
            #{type => rsp, method => submit, id => 1, reason => not_subscribed},
-           #{phase => configured, timer_phase => configured}}
+           #{phase => configured, timer_phase => configured,
+             extra_nonce => undefined}}
          }],
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(not_req) ->
@@ -230,7 +246,8 @@ when_configured(not_req) ->
     L = [{{conn, #{type => rsp, method => configure, id => 2, result => []}},
           {send,
            #{type => rsp, method => configure, id => 2, reason => unknown_error},
-           #{phase => configured, timer_phase => configured}}
+           #{phase => configured, timer_phase => configured,
+             extra_nonce => undefined}}
          }],
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(jsonrpc_errors) ->
@@ -239,10 +256,13 @@ when_configured(jsonrpc_errors) ->
 when_configured(subscribe) ->
     Host = <<"ae.testpool.com">>,
     Port = 10000,
-    ExtraNonce = <<"0101">>,
+    ExtraNonceValue = 200,
+    ExtraNonceNBytes = 4,
+    ExtraNonce = aestratum_nonce:new(extra, ExtraNonceValue, ExtraNonceNBytes),
+    application:set_env(aestratum, extra_nonce_nbytes, ExtraNonceNBytes),
     meck:expect(?TEST_MODULE, get_host, fun() -> Host end),
     meck:expect(?TEST_MODULE, get_port, fun() -> Port end),
-    meck:expect(?TEST_MODULE, get_extra_nonce, fun() -> {ok, ExtraNonce} end),
+    meck:expect(?EXTRA_NONCE_CACHE_MODULE, get, fun(_) -> {ok, ExtraNonce} end),
 
     T = <<"when configured - subscribe">>,
     L = [{{conn, #{type => req, method => subscribe, id => 0,
@@ -250,16 +270,20 @@ when_configured(subscribe) ->
                    host => Host, port => Port}},
           {send,
            #{type => rsp, method => subscribe, id => 0,
-             result => [null, ExtraNonce]},
-           #{phase => subscribed, timer_phase => subscribed}}
+             result => [null, ?NONCE_MODULE:to_bin(ExtraNonce)]},
+           #{phase => subscribed, timer_phase => subscribed,
+             extra_nonce => ExtraNonce}}
          }],
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_subscribed(timeout) ->
+    meck:expect(?EXTRA_NONCE_CACHE_MODULE, free, fun(_) -> ok end),
+
     T = <<"when subscribed - timeout">>,
     L = [{{conn, timeout},
           {stop,
-           #{phase => disconnected, timer_phase => undefined}}
+           #{phase => disconnected, timer_phase => undefined,
+             extra_nonce => undefined}}
          }],
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(subscribe) ->
@@ -276,6 +300,8 @@ when_subscribed(subscribe) ->
            #{type => rsp, method => subscribe, id => 2, reason => unknown_error},
            #{phase => subscribed, timer_phase => subscribed}}
          }],
+    %% prep_subscribed/1 sets the ExtraNonceNBytes to 3 and ExtraNonce to 345
+    %% TODO: ^^^ Maybe return the state and check extra_nonce?
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(submit) ->
     T = <<"when subscribed - submit">>,
@@ -375,18 +401,21 @@ conn_configure(Id) ->
 conn_subscribe(Id) ->
     Host = <<"testpool.com">>,
     Port = 12345,
-    ExtraNonce = <<"87654321">>,
+    ExtraNonceNBytes = 3,
+    ExtraNonce = aestratum_nonce:new(extra, 345, ExtraNonceNBytes),
+    application:set_env(aestratum, extra_nonce_nbytes, ExtraNonceNBytes),
     meck:expect(?TEST_MODULE, get_host, fun() -> Host end),
     meck:expect(?TEST_MODULE, get_port, fun() -> Port end),
-    meck:expect(?TEST_MODULE, get_extra_nonce, fun() -> {ok, ExtraNonce} end),
+    meck:expect(?EXTRA_NONCE_CACHE_MODULE, get, fun(_) -> {ok, ExtraNonce} end),
 
     {{conn, #{type => req, method => subscribe, id => Id,
               user_agent => <<"aeminer/1.0.0">>, session_id => null,
               host => Host, port => Port}},
      {send,
       #{type => rsp, method => subscribe, id => Id,
-        result => [null, ExtraNonce]},
-      #{phase => subscribed, timer_phase => subscribed}}
+        result => [null, ?NONCE_MODULE:to_bin(ExtraNonce)]},
+      #{phase => subscribed, timer_phase => subscribed,
+        extra_nonce => ExtraNonce}}
     }.
 
 conn_authorize(Id) ->
