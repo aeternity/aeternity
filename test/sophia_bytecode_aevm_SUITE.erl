@@ -35,11 +35,12 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
 
     %% Create the call data
     {ok, CallData} = aect_sophia:encode_call_data(SerializedCode, <<"main : int => _">>, <<"42">>),
+    {ok, Store} = aevm_eeevm_store:from_sophia_state(aeso_heap:to_binary({{tuple, []}, {}})),
     {ok, Res} =
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,
-                          store => aevm_eeevm_store:from_sophia_state(aeso_heap:to_binary({{tuple, []}, {}})),
+                          store => Store,
                           address => 91210,
                           caller => 0,
                           data => CallData,

@@ -1,11 +1,23 @@
 # About this release
 
 [This][this-release] is a maintenance release.
-It:
-* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
-* The Sophia compiler has been moved to a [seprate repository](https://github.com/aeternity/aesophia/).
+It contains stability improvements so all users are encouraged to upgrade.
 
-TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+This release:
+* Adds operators `mod`, `++`, `bsl`, `bsr`, and `^` to the Sophia compiler.
+* Adds function `String.sha3` to the Sophia compiler.
+* Changes cuckoo miner config and processing to allow multiple simultaneous miners.
+  This impacts mining configuration:
+  * changes `mining` > `cuckoo` > `miner` param to `mining` > `cuckoo` > `miners` and makes `mining` > `cuckoo` > `miner` param deprecated
+  * moves `mining` > `cuckoo` > `miner` > `edge_bits` param to `mining` > `cuckoo` section
+* Adds Events to the Sophia compiler
+* Adds builtin functions `Int.to_str` and `Address.to_str` to the Sophia compiler
+* Adds native Windows build support.
+  * Follow the instructions from `/docs/build-windows.md` to build and run a node on Windows.
+* Improves the handling of errors in contract create and contract call transactions.
+* Enhances the Sophia compiler, that now correctly rejects some programs that resulted in incorrect bytecode before.
+
+The Sophia compiler has been moved to a [separate repository](https://github.com/aeternity/aesophia/).
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v1.2.0
 
@@ -35,7 +47,7 @@ For specifying configuration using the Docker image, please refer to [its docume
 
 The node user API is documented:
 * HTTP API endpoints are specified [online in swagger.yaml][swagger-yaml];
-  * A JSON version of the same specification is located in the node at path `lib/aehttp-0.1.0/priv/swagger.json`.
+  * A JSON version of the same specification is located in the node at path `lib/aehttp-*/priv/swagger.json` (you will need to amend the wildcard `*` placeholder in the path with the version).
   * The JSON version can be obtained from a running node using the endpoint `/api`.
   * An interactive visualization of the same specification is available [online][swagger-ui].
 * WebSocket API endpoints are [specified online][api-doc];

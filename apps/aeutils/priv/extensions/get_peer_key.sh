@@ -23,9 +23,9 @@ CODE="{ok, Bin} = file:read_file(filename:join(\"$KEYSDIR\", \"peer_key.pub\")),
 
 
 PATH=$BINDIR:$PATH
-LIBPATH1=$PWD/lib/aecore-0.1.0/ebin
+LIBPATH1=$PWD/lib/aecore-1.2.0/ebin
 LIBPATH2=$PWD/lib/base58-0.0.1/ebin
-LIBPATH3=$PWD/lib/aehttp-0.1.0/ebin
+LIBPATH3=$PWD/lib/aehttp-1.2.0/ebin
 
 ! erl -boot no_dot_erlang -sasl errlog_type error -noshell -pa "$LIBPATH1" -pa "$LIBPATH2" -pa "$LIBPATH3" -eval "$CODE"
 

@@ -107,6 +107,9 @@ cd apps/aecuckoo && make cuda29
 
 Finally the actual installation of the miner binary is copying it to the node corresponding path, the documentation assumes the `epoch` node is installed in `~/aeternity/node` directory.
 
+The exact path where to copy the binary depends on the version of the node: you can find it by calling `ls -d ~/aeternity/node/lib/aecuckoo-*/priv/bin`.
+E.g. it may be something like `~/aeternity/node/lib/aecuckoo-0.1.0/priv/bin`: the following assumes this path though you may need to adapt it.
+
 ```bash
 cp priv/bin/cuda29 ~/aeternity/node/lib/aecuckoo-0.1.0/priv/bin
 ```
@@ -149,7 +152,7 @@ the reward collected from the transaction fees in the micro blocks.)
 
 To fine tune the parameter, you should try running the miner in a shell
 ```
-$ time ~/aeternity/node/lib/aecuckooprebuilt-0.1.0/priv/cuda29 -r 5
+$ time ~/aeternity/node/lib/aecuckooprebuilt-*/priv/cuda29 -r 5
 ...
 real 0m4.634s
 user ...

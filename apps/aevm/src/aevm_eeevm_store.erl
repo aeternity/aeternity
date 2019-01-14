@@ -92,24 +92,33 @@ store(Address, Value, State) when is_integer(Value) ->
         <<(RealId):256, (RefCount):256, (Size):256, (Bin)/binary>>).
 
 %% The argument should be a binary encoding a pair of a typerep and a value of that type.
--spec from_sophia_state(aeso_heap:binary_value()) -> aect_contracts:store().
+-spec from_sophia_state(aeso_heap:binary_value()) ->
+            {ok, aect_contracts:store()} | {error, term()}.
 from_sophia_state(Data) ->
     %% TODO: less encoding/decoding
-    {ok, {Type}}    = aeso_heap:from_binary({tuple, [typerep]}, Data),
-    %% Strip the type from the binary
-    Data1 = second_component(Data),
-    {ok, StateValue} = aevm_data:binary_to_heap(Type, Data1, 0, 32),
-    TypeData  = aeso_heap:to_binary(Type),
-    Mem       = aeso_heap:heap_value_heap(StateValue),
-    Ptr       = aeso_heap:heap_value_pointer(StateValue),
-    StateData = <<Ptr:256, Mem/binary>>,
-    Maps      = aeso_heap:heap_value_maps(StateValue),
-    Store     = store_maps(Maps,
-                    store_put(?SOPHIA_STATE_KEY,      StateData,
-                    store_put(?SOPHIA_STATE_TYPE_KEY, TypeData,
-                    store_empty()))),
-    %% io:format("Initial state:\n~s\n", [show_store(Store)]),
-    Store.
+    case aeso_heap:from_binary({tuple, [typerep]}, Data) of
+        {ok, {Type}} ->
+            %% Strip the type from the binary
+            Data1 = second_component(Data),
+            case aevm_data:binary_to_heap(Type, Data1, 0, 32) of
+                {ok, StateValue} ->
+                    TypeData  = aeso_heap:to_binary(Type),
+                    Mem       = aeso_heap:heap_value_heap(StateValue),
+                    Ptr       = aeso_heap:heap_value_pointer(StateValue),
+                    StateData = <<Ptr:256, Mem/binary>>,
+                    Maps      = aeso_heap:heap_value_maps(StateValue),
+                    Store     = store_maps(Maps,
+                                    store_put(?SOPHIA_STATE_KEY,      StateData,
+                                    store_put(?SOPHIA_STATE_TYPE_KEY, TypeData,
+                                    store_empty()))),
+                    %% io:format("Initial state:\n~s\n", [show_store(Store)]),
+                    {ok, Store};
+                E = {error, _} ->
+                    E
+            end;
+        E = {error, _} ->
+            E
+    end.
 
 %% Drop the first component (the typerep) from the initial state.
 -spec second_component(aeso_heap:binary_value()) -> aeso_heap:binary_value().
