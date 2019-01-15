@@ -54,7 +54,7 @@ start_link() ->
 
 init(Args) ->
     epoch_sync:info("Starting UPnP/NAT-PMP service"),
-    erlang:send_after(rand:uniform(timer:seconds(1)), self(), add_port_mapping),
+    erlang:send_after(rand:uniform(1000), self(), add_port_mapping),
     {ok, Args}.
 
 handle_call(Request, _From, State) ->
@@ -69,7 +69,7 @@ handle_info(add_port_mapping, State) ->
     ok = add_port_mapping(),
     %% Give additional 10 secs for UPnP/NAT-PMP discovery and setup, to
     %% make sure there is continuity in port mapping.
-    erlang:send_after(timer:seconds(?MAPPING_LIFETIME - 10), self(), add_port_mapping),
+    erlang:send_after(1000 * (?MAPPING_LIFETIME - 10), self(), add_port_mapping),
     {noreply, State};
 handle_info(Other, State) ->
     epoch_sync:error("Received unknown info message: ~p", [Other]),
