@@ -403,7 +403,7 @@ node_tuple(N) when N == dev1; N == dev2; N == dev3 ->
 
 node_name(N) when N == dev1; N == dev2; N == dev3 ->
     [_,H] = re:split(atom_to_list(node()), "@", [{return,list}]),
-    list_to_atom("epoch_" ++ atom_to_list(N) ++ "@" ++ H).
+    list_to_atom("aeternity_" ++ atom_to_list(N) ++ "@" ++ H).
 
 connect(N) ->
     connect(N, 100),
