@@ -225,7 +225,7 @@ check_signature({ArgTypes, _RetSignature},
                 #{ accumulator := Acc
                  , accumulator_stack := Stack}
                =_EngineState) ->
-    case check_arg_types(ArgTypes, [Acc, Stack]) of
+    case check_arg_types(ArgTypes, [Acc| Stack]) of
         ok -> ok;
         {error, T, V}  ->
             throw({error, {value_does_not_match_type, V, T}})
@@ -388,7 +388,7 @@ push_arguments([], Acc, Stack, ES) ->
     ES#{ accumulator := Acc
        , accumulator_stack := Stack};
 push_arguments([A|As], Acc, Stack, ES ) ->
-    push_arguments(As, A, [Acc, Stack], ES).
+    push_arguments(As, A, [Acc | Stack], ES).
 
 
 pop(#{ accumulator := X, accumulator_stack := []} = ES) ->
