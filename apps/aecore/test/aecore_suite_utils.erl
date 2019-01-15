@@ -155,7 +155,7 @@ make_multi(Config, NodesList, RefRebarProfile) ->
     ct:log("RefRebarProfile = ~p", [RefRebarProfile]),
     Top = ?config(top_dir, Config),
     ct:log("Top = ~p", [Top]),
-    Epoch = filename:join(Top, "_build/" ++ RefRebarProfile ++ "/rel/epoch"),
+    Epoch = filename:join(Top, "_build/" ++ RefRebarProfile ++ "/rel/aeternity"),
     [setup_node(N, Top, Epoch, Config) || N <- NodesList].
 
 make_shortcut(Config) ->
@@ -565,7 +565,7 @@ setup_node(N, Top, Epoch, Config) ->
     Version = binary_to_list(VerB),
     %%
     CfgD = filename:join([Top, "config/", N]),
-    RelD = filename:dirname(filename:join([DDir, "releases", Version, "epoch.rel"])),
+    RelD = filename:dirname(filename:join([DDir, "releases", Version, "aeternity.rel"])),
     cp_file(filename:join(CfgD, "sys.config"),
             filename:join(RelD, "sys.config")),
     cp_file(filename:join(CfgD, "vm.args"),

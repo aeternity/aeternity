@@ -1,4 +1,4 @@
-CORE = rel/epoch/bin/epoch
+CORE = rel/aeternity/bin/aeternity
 VER := $(shell cat VERSION)
 
 REBAR ?= ./rebar3
@@ -177,9 +177,9 @@ dialyzer: $(SWAGGER_ENDPOINTS_SPEC)
 
 ct: KIND=test
 ct: internal-build
-	@EPOCH_PROCESSES="$$(ps -fea | grep bin/epoch | grep -v grep)"; \
-	if [ $$(printf "%b" "$${EPOCH_PROCESSES}" | wc -l) -gt 0 ] ; then \
-		(printf "%b\n%b\n" "Failed testing: another Epoch node is already running" "$${EPOCH_PROCESSES}" >&2; exit 1);\
+	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
+	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
+		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
 	else \
 		$(REBAR) ct $(CT_TEST_FLAGS) --sys_config config/test.config; \
 	fi
@@ -314,8 +314,8 @@ multi-build: dev1-build
 	@$(MAKE) dev3-distclean
 	@for x in dev2 dev3; do \
 		cp -R _build/dev1 _build/$$x; \
-		cp config/$$x/sys.config _build/$$x/rel/epoch/releases/$(VER)/sys.config; \
-		cp config/$$x/vm.args _build/$$x/rel/epoch/releases/$(VER)/vm.args; \
+		cp config/$$x/sys.config _build/$$x/rel/aeternity/releases/$(VER)/sys.config; \
+		cp config/$$x/vm.args _build/$$x/rel/aeternity/releases/$(VER)/vm.args; \
 	done
 
 #
@@ -345,7 +345,7 @@ internal-attach: $$(KIND)
 	@./_build/$(KIND)/$(CORE) attach
 
 internal-clean: $$(KIND)
-	@rm -rf ./_build/$(KIND)/rel/epoch/data/mnesia
+	@rm -rf ./_build/$(KIND)/rel/aeternity/data/mnesia
 	@rm -rf ./_build/$(KIND)/rel/*/log/*
 
 internal-distclean: $$(KIND)
