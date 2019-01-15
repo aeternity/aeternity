@@ -1,6 +1,6 @@
 {application, aevarna,
  [{description, "Contract Language for Aethernity"},
-  {vsn, "0.0.1"},
+  {vsn, {cmd, "cat ../../VERSION"}},
   {registered, []},
   {applications,
    [kernel,

@@ -1,7 +1,7 @@
 %% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
 {application, check_config,
  [{description, "escript for checking epoch user config files"},
-  {vsn, "0.1.0"},
+  {vsn, {cmd, "cat ../../VERSION"}},
   {registered, []},
   {applications,
    [kernel,

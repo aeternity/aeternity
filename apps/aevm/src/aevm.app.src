@@ -1,6 +1,6 @@
 {application, aevm,
  [{description, "Virtual machine for Aethernity"},
-  {vsn, "0.1.0"},
+  {vsn, {cmd, "cat ../../VERSION"}},
   {registered, []},
   {mod, { aevm_app, []}},
   {applications,

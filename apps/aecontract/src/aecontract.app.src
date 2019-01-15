@@ -1,6 +1,6 @@
 {application, aecontract,
  [{description, "AE Contract"},
-  {vsn, "0.1.0"},
+  {vsn, {cmd, "cat ../../VERSION"}},
   {registered, []},
   {applications,
    [kernel,

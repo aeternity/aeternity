@@ -270,21 +270,34 @@ process(#contract_create_tx{owner_id   = OwnerId,
     {CallRes, Trees3} =
         run_contract(CreateTx, Call0, Env, Trees2, Contract, ContractPubKey),
 
-    case aect_call:return_type(CallRes) of
-        ok ->
-            initialize_contract(CreateTx, ContractPubKey, Contract,
-                                CallRes, Trees3, Env);
-        E ->
-            lager:debug("Init call error ~w ~w~n",[E, CallRes]),
+    Rollback =
+        fun(CallResX) ->
             %% Don't create the contract if 'init' fails!
             %% Go back to state trees without contract or any account changes
             %% Spend gas + fee
             %% (The VM will decide how much gas is used: 0, some, all.)
-            Trees5 = aect_utils:insert_call_in_trees(CallRes, Trees0),
-            UsedAmount = aect_call:gas_used(CallRes) * GasPrice,
-            Trees6 = spend(OwnerPubKey, ContractPubKey, 0, Fee + UsedAmount, Nonce,
-                           Trees5, Env),
-            {ok, Trees6}
+            Trees4 = aect_utils:insert_call_in_trees(CallResX, Trees0),
+            UsedAmount = aect_call:gas_used(CallResX) * GasPrice,
+            Trees5 = spend(OwnerPubKey, ContractPubKey, 0, Fee + UsedAmount, Nonce,
+                           Trees4, Env),
+            {ok, Trees5}
+        end,
+
+    case aect_call:return_type(CallRes) of
+        ok ->
+            case initialize_contract(CreateTx, ContractPubKey, Contract,
+                                     CallRes, Trees3, Env) of
+                Ok = {ok, _} ->
+                    Ok;
+                {error, _}   ->
+                    CallRes1 =
+                        aect_call:set_return_value(<<"out_of_gas">>,
+                            aect_call:set_return_type(error, CallRes)),
+                    Rollback(CallRes1)
+            end;
+        E ->
+            lager:debug("Init call error ~w ~w~n",[E, CallRes]),
+            Rollback(CallRes)
     end.
 
 
@@ -370,24 +383,28 @@ initialize_contract(#contract_create_tx{vm_version = VmVersion,
         end,
 
     %% TODO: Move ABI specific code to abi module(s).
-    Contract1 =
-        case VmVersion of
-            _ when ?IS_AEVM_SOPHIA(VmVersion) ->
-                %% Save the initial state (returned by `init`) in the store.
-                InitState  = aect_call:return_value(CallRes),
-                %% TODO: move to/from_sophia_state to make nicer dependencies?
-                aect_contracts:set_state(
-                  aevm_eeevm_store:from_sophia_state(InitState), Contract);
-            ?AEVM_01_Solidity_01 ->
-                %% Solidity inital call returns the code to store in the contract.
-                NewCode = aect_call:return_value(CallRes),
-                aect_contracts:set_code(NewCode, Contract)
-        end,
-    ContractsTree0 = aec_trees:contracts(Trees2),
-    ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),
-    {ok, aec_trees:set_contracts(Trees2, ContractsTree1)}.
+    case VmVersion of
+        _ when ?IS_AEVM_SOPHIA(VmVersion) ->
+            %% Save the initial state (returned by `init`) in the store.
+            InitState  = aect_call:return_value(CallRes),
+            %% TODO: move to/from_sophia_state to make nicer dependencies?
+            case aevm_eeevm_store:from_sophia_state(InitState) of
+                {ok, Store} ->
+                    Contract1 = aect_contracts:set_state(Store, Contract),
+                    {ok, set_contract(Contract1, Trees2)};
+                Err = {error, _} ->
+                    Err
+            end;
+        ?AEVM_01_Solidity_01 ->
+            %% Solidity inital call returns the code to store in the contract.
+            NewCode = aect_call:return_value(CallRes),
+            aect_contracts:set_code(NewCode, Contract)
+    end.
 
-
+set_contract(Contract, Trees) ->
+    ContractsTree0 = aec_trees:contracts(Trees),
+    ContractsTree1 = aect_state_tree:enter_contract(Contract, ContractsTree0),
+    aec_trees:set_contracts(Trees, ContractsTree1).
 
 serialize(#contract_create_tx{owner_id   = OwnerId,
                               nonce      = Nonce,

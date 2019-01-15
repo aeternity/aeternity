@@ -47,14 +47,18 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
             %% Save the initial state (returned by `init`) in the store.
             InitState  = aect_call:return_value(CallRes),
             %% TODO: move to/from_sophia_state to make nicer dependencies?
-            Contract1 =
-                aect_contracts:set_state(
-                  aevm_eeevm_store:from_sophia_state(InitState), Contract),
-            ContractsTree0 = aec_trees:contracts(Trees1),
-            ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),
-            aec_trees:set_contracts(Trees1, ContractsTree1);
+            case aevm_eeevm_store:from_sophia_state(InitState) of
+                {ok, Store1} ->
+                    Contract1 = aect_contracts:set_state(Store1, Contract),
+                    ContractsTree0 = aec_trees:contracts(Trees1),
+                    ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),
+                    aec_trees:set_contracts(Trees1, ContractsTree1);
+                E = {error, _} ->
+                    lager:debug("Init error ~w ~w",[E, CallRes]),
+                    Trees0
+            end;
         E ->
-            lager:debug("Init call error ~w ~w~n",[E, CallRes]),
+            lager:debug("Init call error ~w ~w",[E, CallRes]),
             Trees0
     end.
 

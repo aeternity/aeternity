@@ -161,7 +161,7 @@ validate_callcreates(State, #{callcreates := CallcreatesSpec} =_Spec) ->
 
 
 %%--------------------------------------------------------------------
-%% Interfacing to aevm_eevm
+%% Interfacing to aevm_eeevm
 
 init_state(Spec, Opts) ->
     aevm_eeevm_state:init(Spec, Opts).

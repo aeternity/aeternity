@@ -3,7 +3,7 @@
 Run below command to install latest version of aeternity node.
 
 ```bash
-wget https://raw.githubusercontent.com/aeternity/epoch/v1.2.0/scripts/install.sh && chmod +x install.sh && ./install.sh 1.2.0
+wget https://raw.githubusercontent.com/aeternity/epoch/v1.3.0/scripts/install.sh && chmod +x install.sh && ./install.sh 1.3.0
 ```
 
 See the documentation below detailed instructions for manual installation.
@@ -91,5 +91,5 @@ Create a directory and unpack the downloaded package (you may need to amend the 
 ```bash
 mkdir -p ~/aeternity/node
 cd ~/aeternity/node
-tar xf ~/Downloads/epoch-1.2.0-osx-10.13.6.tar.gz
+tar xf ~/Downloads/epoch-1.3.0-osx-10.13.6.tar.gz
 ```

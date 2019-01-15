@@ -66,7 +66,8 @@ test_data_config_files() ->
      filename:join([Dir, DataDir, "epoch_no_newline.yaml"]),
      filename:join([Dir, DataDir, "epoch_testnet.yaml"]),
      filename:join([Dir, DataDir, "epoch_prebuilt_miner.yaml"]),
-     filename:join([Dir, DataDir, "epoch_deprecated_miner.yaml"])].
+     filename:join([Dir, DataDir, "epoch_deprecated_miner.yaml"]),
+     filename:join([Dir, DataDir, "epoch_nice.yaml"])].
 
 get_test_config_base() ->
     %% differentiate between Eunit run in top directory and
