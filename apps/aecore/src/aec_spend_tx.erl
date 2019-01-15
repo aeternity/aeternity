@@ -125,79 +125,38 @@ recipient_id(#spend_tx{recipient_id = RecipientId}) ->
 amount(#spend_tx{amount = Amount}) ->
     Amount.
 
-resolve_recipient_pubkey(Tx, Trees) ->
-    case resolve_recipient(Tx, Trees) of
-        {id, Id} ->
-            {_IdType, Pubkey} = aec_id:specialize(Id),
-            {ok, Pubkey};
-        {pubkey, Pubkey} ->
-            {ok, Pubkey};
-        {error, _Rsn} = Error ->
-            Error
-    end.
-
-resolve_recipient(#spend_tx{recipient_id = RecipientId}, Trees) ->
-    case aec_id:specialize(RecipientId) of
-        {account, RecipientPubkey} ->
-            {pubkey, RecipientPubkey};
-        {oracle, RecipientPubkey} ->
-            {pubkey, RecipientPubkey};
-        {contract, RecipientPubkey} ->
-            {pubkey, RecipientPubkey};
-        %% TODO: A registered name has pointers, a pointer has a key of type binary() and
-        %% id of type aec_id:id(). To find out what id to get from all the pointers related
-        %% to the name we need the key. <<"account_pubkey">> is hard-coded and might not be present
-        %% for the given name/namehash.
-        {name, NameHash} ->
-            Key = <<"account_pubkey">>,
-            case aens:resolve_from_hash(Key, NameHash, aec_trees:ns(Trees)) of
-                {ok, Id} -> {id, Id};
-                {error, _Rsn} = Error -> Error
-            end
-    end.
-
 -spec payload(tx()) -> binary().
 payload(#spend_tx{payload = Payload}) ->
     Payload.
 
--spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#spend_tx{} = SpendTx, Trees, Env) ->
-    Height = aetx_env:height(Env),
-    Checks = [fun check_sender_account/3],
-    case aeu_validation:run(Checks, [SpendTx, Trees, Height]) of
-        ok ->
-            case resolve_recipient_pubkey(SpendTx, Trees) of
-                {ok, RecipientPubkey} ->
-                    {ok, aec_trees:ensure_account(RecipientPubkey, Trees)};
-                {error, _} = E ->
-                    E
-            end;
-        {error, _Reason} = Error ->
-            Error
+specialize_recipient(SpendTx) ->
+    case aec_id:specialize(recipient_id(SpendTx)) of
+        {name, NameHash}   -> {name, NameHash};
+        {oracle, Pubkey}   -> {account, Pubkey};
+        {contract, Pubkey} -> {account, Pubkey};
+        {account, Pubkey}  -> {account, Pubkey}
     end.
+
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
+check(#spend_tx{}, Trees,_Env) ->
+    %% Note: All checks are done in process/3
+    {ok, Trees}.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#spend_tx{} = Tx, _) -> {ok, [sender_pubkey(Tx)]}.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#spend_tx{amount = Amount,
-                  fee = Fee,
-                  nonce = Nonce} = Tx,
-        Trees0,_Env) ->
-    SenderPubkey = sender_pubkey(Tx),
-    {ok, RecipientPubkey} = resolve_recipient_pubkey(Tx, Trees0),
-    AccountsTrees0 = aec_trees:accounts(Trees0),
-
-    {value, SenderAccount0} = aec_accounts_trees:lookup(SenderPubkey, AccountsTrees0),
-    {ok, SenderAccount} = aec_accounts:spend(SenderAccount0, Amount + Fee, Nonce),
-    AccountsTrees1 = aec_accounts_trees:enter(SenderAccount, AccountsTrees0),
-
-    {value, RecipientAccount0} = aec_accounts_trees:lookup(RecipientPubkey, AccountsTrees1),
-    {ok, RecipientAccount} = aec_accounts:earn(RecipientAccount0, Amount),
-    AccountsTrees2 = aec_accounts_trees:enter(RecipientAccount, AccountsTrees1),
-
-    Trees = aec_trees:set_accounts(Trees0, AccountsTrees2),
-    {ok, Trees}.
+process(#spend_tx{} = SpendTx, Trees,_Env) ->
+    Sender   = sender_pubkey(SpendTx),
+    Nonce    = nonce(SpendTx),
+    {Type, ReceiverHash} = specialize_recipient(SpendTx),
+    Recipient = {var, recipient},
+    Instructions = [ {inc_account_nonce, Sender, Nonce}
+                   , {resolve_account, Type, ReceiverHash, Recipient}
+                   , {spend, Sender, Recipient, amount(SpendTx)}
+                   , {spend_fee, Sender, fee(SpendTx)}
+                   ],
+    aec_tx_processor:eval(Instructions, Trees).
 
 serialize(#spend_tx{sender_id    = SenderId,
                     recipient_id = RecipientId,
@@ -266,13 +225,6 @@ for_client(#spend_tx{sender_id    = SenderId,
       <<"payload">>      => Payload}.
 
 %% Internals
-
--spec check_sender_account(tx(), aec_trees:trees(), aec_blocks:height()) ->
-                                  ok | {error, term()}.
-check_sender_account(#spend_tx{amount = Amount,
-                               fee = Fee, nonce = TxNonce } = Tx, Trees, _Height) ->
-    SenderPubkey = sender_pubkey(Tx),
-    aetx_utils:check_account(SenderPubkey, Trees, TxNonce, Fee + Amount).
 
 version() ->
     ?SPEND_TX_VSN.

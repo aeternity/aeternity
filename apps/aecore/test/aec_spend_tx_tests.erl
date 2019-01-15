@@ -47,7 +47,7 @@ check_test_() ->
               ?assertEqual(12, aetx:nonce(SpendTx)),
               ?assertEqual(20000, aetx:fee(SpendTx)),
 
-              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 55, nonce => 5}),
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 55, nonce => 11}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               Env = aetx_env:tx_env(20),
               ?assertEqual({error, insufficient_funds}, aetx:process(SpendTx, StateTree, Env))
