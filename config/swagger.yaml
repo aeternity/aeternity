@@ -1,7 +1,7 @@
 swagger: '2.0'
 info:
   description: 'This is the [Aeternity](https://www.aeternity.com/) Epoch API.'
-  version: 1.3.0
+  version: 2.0.0-minerva.0.1.0
   title: Aeternity Epoch
   termsOfService: 'https://www.aeternity.com/terms/'
   contact:
