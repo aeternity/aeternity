@@ -544,14 +544,18 @@ next_bb_index(#{ current_bb := BB}) ->
 push_return_address(#{ current_bb := BB
                      , current_function := Function
                      , current_contract := Contract
-                     , call_stack := Stack } = ES) ->
-    ES#{ call_stack => [{Contract, Function, BB+1}|Stack]}.
+                     , call_stack := Stack
+                     , memory := Mem} = ES) ->
+    ES#{ call_stack => [{Contract, Function, BB+1, Mem}|Stack]}.
 
 pop_call_stack(#{ call_stack := []} = ES) -> {stop, ES};
-pop_call_stack(#{ call_stack := [{Contract, Function, BB}| Rest]
+pop_call_stack(#{ call_stack := [{Contract, Function, BB, Mem}| Rest]
                 , current_contract := CurrentContract
                 , current_function := CurrentFunction} = ES) ->
-    ES1 = ES#{ call_stack => Rest},
+    ES1 = ES#{ call_stack => Rest,
+               %% The memory is functional and restored
+               %% to the version before the call.
+               memory => Mem},
     if CurrentContract =:= Contract -> %% Local return
             if CurrentFunction =:= Function -> % self return
                     {jump, BB, ES1};
