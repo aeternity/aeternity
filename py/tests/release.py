@@ -50,6 +50,7 @@ websocket:
         acceptors: 100
 
 mining:
+    autostart: true
     beneficiary: "ak_RShHyLiaQJF8AZ7Thi4Sgjm6ncHhqguqBBqCzQRG3fyjvKj6V"
     cuckoo:
         edge_bits: 15
@@ -60,6 +61,9 @@ mining:
 chain:
     persist: true
     db_path: ./my_db
+
+fork_management:
+    network_id: ae_uat
 ''',
             "config": '''[
 {aecore,
@@ -106,6 +110,9 @@ mining:
 chain:
     persist: true
     db_path: ./my_db
+
+fork_management:
+    network_id: ae_uat
 ''',
             "config": '''[
 {aecore,
@@ -152,6 +159,9 @@ mining:
 chain:
     persist: true
     db_path: ./my_db
+
+fork_management:
+    network_id: ae_uat
 ''',
             "config": '''[
 {aecore,
