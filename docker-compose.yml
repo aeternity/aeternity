@@ -16,7 +16,7 @@ services:
       - node1_db:/home/epoch/node/data/mnesia
 
   node2:
-    image: aeternity/aeternity:${IMAGE_TAG-latest}
+    image: aeternity/epoch:${IMAGE_TAG-latest}
     hostname: node2
     environment:
       EPOCH_CONFIG: /home/epoch/aeternity.yaml
@@ -29,7 +29,7 @@ services:
       - node2_db:/home/epoch/node/data/mnesia
 
   node3:
-    image: aeternity/aeternity:${IMAGE_TAG-latest}
+    image: aeternity/epoch:${IMAGE_TAG-latest}
     hostname: node3
     environment:
       EPOCH_CONFIG: /home/epoch/aeternity.yaml
