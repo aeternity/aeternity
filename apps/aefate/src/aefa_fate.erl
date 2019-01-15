@@ -102,31 +102,43 @@ eval(add_a_a_a, EngineState) ->
     {next, bin_op(add, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
 eval({add_a_r_r, Left, Right}, EngineState) ->
     {next, bin_op(add, {{stack, 0}, Left, Right}, EngineState)};
+eval({add_r_r_r, Dest, Left, Right}, EngineState) ->
+    {next, bin_op(add, {Dest, Left, Right}, EngineState)};
 
 eval(sub_a_a_a, EngineState) ->
     {next, bin_op(sub, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
 eval({sub_a_r_r, Left, Right}, EngineState) ->
     {next, bin_op(sub, {{stack, 0}, Left, Right}, EngineState)};
+eval({sub_r_r_r, Dest, Left, Right}, EngineState) ->
+    {next, bin_op(sub, {Dest, Left, Right}, EngineState)};
 
 eval(mul_a_a_a, EngineState) ->
     {next, bin_op(mul, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
 eval({mul_a_r_r, Left, Right}, EngineState) ->
     {next, bin_op(mul, {{stack, 0}, Left, Right}, EngineState)};
+eval({mul_r_r_r, Dest, Left, Right}, EngineState) ->
+    {next, bin_op(mul, {Dest, Left, Right}, EngineState)};
 
 eval(div_a_a_a, EngineState) ->
     {next, bin_op('div', {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
 eval({div_a_r_r, Left, Right}, EngineState) ->
     {next, bin_op('div', {{stack, 0}, Left, Right}, EngineState)};
+eval({div_r_r_r, Dest, Left, Right}, EngineState) ->
+    {next, bin_op('div', {Dest, Left, Right}, EngineState)};
 
 eval(mod_a_a_a, EngineState) ->
     {next, bin_op(mod, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
 eval({mod_a_r_r, Left, Right}, EngineState) ->
     {next, bin_op(mod, {{stack, 0}, Left, Right}, EngineState)};
+eval({mod_r_r_r, Dest, Left, Right}, EngineState) ->
+    {next, bin_op(mod, {Dest, Left, Right}, EngineState)};
 
 eval(pow_a_a_a, EngineState) ->
     {next, bin_op(pow, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
 eval({pow_a_r_r, Left, Right}, EngineState) ->
     {next, bin_op(pow, {{stack, 0}, Left, Right}, EngineState)};
+eval({pow_r_r_r, Dest, Left, Right}, EngineState) ->
+    {next, bin_op(pow, {Dest, Left, Right}, EngineState)};
 
 
 
@@ -602,13 +614,13 @@ store_var(Var, Val, [Env|Envs]) ->
 new_engine_state(Chain) ->
     #{ current_bb => 0
      , bbs => #{}
-     , memory => []
+     , memory => [] %% Stack of environments (name => val)
      , chain => Chain
      , trace => []
      , accumulator => ?FATE_VOID
      , accumulator_stack => []
-     , functions =>  #{} %% Cashe for current contract.
-     , contracts => #{} %% Cashe for loaded contracts.
+     , functions => #{} %% Cache for current contract.
+     , contracts => #{} %% Cache for loaded contracts.
      , current_contract => ?FATE_VOID
      , current_function => ?FATE_VOID
      , call_stack => []

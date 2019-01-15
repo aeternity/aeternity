@@ -25,6 +25,9 @@ jumpif_test_() ->
 
 
 memory_test_() ->
+    make_calls(memory()).
+
+memory_restore_test_() ->
     make_calls(memory_restore()).
 
 
@@ -85,6 +88,15 @@ conditional_jump() ->
         {F,A,R} <-
             [ {<<"skip">>, [0, 42], 42}
             , {<<"skip">>, [1, 42], 43}
+            ]
+    ].
+
+memory() ->
+    [ {<<"memory">>, F, A, R} ||
+        {F,A,R} <-
+            [ {<<"dest_add">>, [1, 2], 3}
+            ,  {<<"dest_add_imm">>, [1], 3}
+            ,  {<<"dest_add_stack">>, [1, 2], 3}
             ]
     ].
 
@@ -252,6 +264,32 @@ setup_contracts() ->
            , {<<"write">>
              , {[integer], integer}
              , [ {0, [ {store, {var, 1}, {arg, 0}}
+                     , return
+                     ]}
+               ]}
+           , {<<"dest_add">>
+             , {[integer, integer], integer}
+             , [ {0, [ {store, {var, 1}, {arg, 0}}
+                     , {store, {var, 2}, {arg, 1}}
+                     , {add_r_r_r, {var, 3}, {var, 1}, {var, 2}}
+                     , {push, {var, 3}}
+                     , return
+                     ]}
+               ]}
+           , {<<"dest_add_imm">>
+             , {[integer], integer}
+             , [ {0, [ {store, {var, 1}, {arg, 0}}
+                     , {add_r_r_r, {var, 3}, {var, 1}, {immediate, 2}}
+                     , {push, {var, 3}}
+                     , return
+                     ]}
+               ]}
+           , {<<"dest_add_stack">>
+             , {[integer, integer], integer}
+             , [ {0, [ {store, {var, 1}, {arg, 0}}
+                     , {push, {arg, 1}}
+                     , {add_r_r_r, {var, 3}, {var, 1}, {stack, 0}}
+                     , {push, {var, 3}}
                      , return
                      ]}
                ]}
