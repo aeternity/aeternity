@@ -24,6 +24,10 @@ jumpif_test_() ->
     make_calls(conditional_jump()).
 
 
+memory_test_() ->
+    make_calls(memory_restore()).
+
+
 make_calls(ListOfCalls) ->
     Chain = setup_chain(),
     [{lists:flatten(io_lib:format("call(~p,~p,~p)->~p", [C,F,A,R])),
@@ -81,6 +85,14 @@ conditional_jump() ->
         {F,A,R} <-
             [ {<<"skip">>, [0, 42], 42}
             , {<<"skip">>, [1, 42], 43}
+            ]
+    ].
+
+
+memory_restore() ->
+    [ {<<"memory">>, F, A, R} ||
+        {F,A,R} <-
+            [ {<<"call">>, [17], 17}
             ]
     ].
 
@@ -223,6 +235,25 @@ setup_contracts() ->
                      ]}
                , {1, [ inc_a_1_a ]}
                , {2, [ return]}
+               ]}
+           ]
+     , <<"memory">> =>
+           [ {<<"call">>
+             , {[integer], integer}
+             , [ {0, [ {store, {var, 1}, {arg, 0}}
+                     , push_a_0
+                     , {call_local, <<"write">>}
+                     ]
+                 }
+               , {1, [ {push, {var, 1}}
+                     , return
+                     ]}
+               ]}
+           , {<<"write">>
+             , {[integer], integer}
+             , [ {0, [ {store, {var, 1}, {arg, 0}}
+                     , return
+                     ]}
                ]}
            ]
 

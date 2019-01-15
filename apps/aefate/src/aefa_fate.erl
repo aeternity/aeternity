@@ -144,7 +144,7 @@ eval({lt_a_r_a, Left}, EngineState) ->
     {next, bin_comp(lt, {{stack, 0}, Left, {stack, 0}}, EngineState)};
 
 eval(gt_a_a_a, EngineState) ->
-    {next, bin_comp(gl, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
+    {next, bin_comp(gt, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
 eval({gt_a_r_r, Left, Right}, EngineState) ->
     {next, bin_comp(gt, {{stack, 0}, Left, Right}, EngineState)};
 eval({gt_a_a_r, Right}, EngineState) ->
@@ -211,10 +211,16 @@ eval({not_a_r, Name}, EngineState) ->
     {next, un_op('not', {{stack, 0}, Name}, EngineState)};
 
 %% ------------------------------------------------------
-%% Integer instructions
+%% Stack instructions
 %% ------------------------------------------------------
 eval(dup, EngineState) ->
     {next, dup(EngineState)};
+
+%% ------------------------------------------------------
+%% Memory instructions
+%% ------------------------------------------------------
+eval({store, Var, What}, EngineState) ->
+    {next, un_op(get, {Var, What}, EngineState)};
 
 
 
