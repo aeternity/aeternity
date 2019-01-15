@@ -45,26 +45,29 @@ step([I|Is], EngineState0) ->
 %% ------------------------------------------------------
 eval(return, EngineState) ->
     pop_call_stack(EngineState);
+eval({return_r, Name}, EngineState) ->
+    ES2 = un_op(get, {{stack, 0}, Name}, EngineState),
+    pop_call_stack(ES2);
 eval({call_local, Function}, EngineState) ->
     Signature = get_function_signature(Function, EngineState),
-    ok = check_signature(Signature, EngineState),
-    ES2 = push_return_address(EngineState),
-    {jump, 0,  set_current_function(Function, ES2)};
+    {ok, ES2} = check_signature_and_bind_args(Signature, EngineState),
+    ES3 = push_return_address(ES2),
+    {jump, 0,  set_current_function(Function, ES3)};
 eval({tailcall_local, Function}, EngineState) ->
     Signature = get_function_signature(Function, EngineState),
-    ok = check_signature(Signature, EngineState),
-    {jump, 0,  set_current_function(Function, EngineState)};
+    {ok, ES2} = check_signature_and_bind_args(Signature, EngineState),
+    {jump, 0,  set_current_function(Function, ES2)};
 eval({call_remote, Contract, Function}, EngineState) ->
     ES1 = push_return_address(EngineState),
     ES2 = set_function(Contract, Function, ES1),
     Signature = get_function_signature(Function, ES2),
-    ok = check_signature(Signature, ES2),
-    {jump, 0, ES2};
+    {ok, ES3} = check_signature_and_bind_args(Signature, ES2),
+    {jump, 0, ES3};
 eval({tailcall_remote, Contract, Function}, EngineState) ->
     ES2 = set_function(Contract, Function, EngineState),
     Signature = get_function_signature(Function, ES2),
-    ok = check_signature(Signature, ES2),
-    {jump, 0, ES2};
+    {ok, ES3} = check_signature_and_bind_args(Signature, ES2),
+    {jump, 0, ES3};
 
 %% ------------------------------------------------------
 %% Control flow instructions
@@ -83,22 +86,48 @@ eval({jumpif_a, BB}, EngineState) ->
 %% ------------------------------------------------------
 eval(push_a_0, EngineState) ->
     {next, push_int(?MAKE_FATE_INTEGER(0), EngineState)};
+eval({push, Name}, EngineState) ->
+    {next, un_op(get, {{stack, 0}, Name}, EngineState)};
+
 eval(inc_a_1_a, EngineState) ->
     {next, inc_acc(EngineState)};
+eval({inc_a_1_r, Name}, EngineState) ->
+    {next, un_op(inc, {{stack, 0}, Name}, EngineState)};
+
 eval({add_a_i_a, X}, EngineState) ->
-    {next, add_aia(X, EngineState)};
+    {next, bin_op(add, {{stack, 0}, {immediate, X}, {stack, 0}}, EngineState)};
+eval({add_a_i_r, X, Name}, EngineState) ->
+    {next, bin_op(add, {{stack, 0}, {immediate, X}, Name}, EngineState)};
 eval(add_a_a_a, EngineState) ->
-    {next, add_aaa(EngineState)};
+    {next, bin_op(add, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
+eval({add_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_op(add, {{stack, 0}, Left, Right}, EngineState)};
+
 eval(sub_a_a_a, EngineState) ->
-    {next, sub_aaa(EngineState)};
+    {next, bin_op(sub, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
+eval({sub_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_op(sub, {{stack, 0}, Left, Right}, EngineState)};
+
 eval(mul_a_a_a, EngineState) ->
-    {next, mul_aaa(EngineState)};
+    {next, bin_op(mul, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
+eval({mul_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_op(mul, {{stack, 0}, Left, Right}, EngineState)};
+
 eval(div_a_a_a, EngineState) ->
-    {next, div_aaa(EngineState)};
+    {next, bin_op('div', {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
+eval({div_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_op('div', {{stack, 0}, Left, Right}, EngineState)};
+
 eval(mod_a_a_a, EngineState) ->
-    {next, mod_aaa(EngineState)};
+    {next, bin_op(mod, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
+eval({mod_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_op(mod, {{stack, 0}, Left, Right}, EngineState)};
+
 eval(pow_a_a_a, EngineState) ->
-    {next, pow_aaa(EngineState)};
+    {next, bin_op(pow, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
+eval({pow_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_op(pow, {{stack, 0}, Left, Right}, EngineState)};
+
 
 
 
@@ -106,17 +135,59 @@ eval(pow_a_a_a, EngineState) ->
 %% Comparison instructions
 %% ------------------------------------------------------
 eval(lt_a_a_a, EngineState) ->
-    {next, lt_aaa(EngineState)};
+    {next, bin_comp(lt, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
+eval({lt_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_comp(lt, {{stack, 0}, Left, Right}, EngineState)};
+eval({lt_a_a_r, Right}, EngineState) ->
+    {next, bin_comp(lt, {{stack, 0}, {stack, 0}, Right}, EngineState)};
+eval({lt_a_r_a, Left}, EngineState) ->
+    {next, bin_comp(lt, {{stack, 0}, Left, {stack, 0}}, EngineState)};
+
 eval(gt_a_a_a, EngineState) ->
-    {next, gt_aaa(EngineState)};
+    {next, bin_comp(gl, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
+eval({gt_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_comp(gt, {{stack, 0}, Left, Right}, EngineState)};
+eval({gt_a_a_r, Right}, EngineState) ->
+    {next, bin_comp(gt, {{stack, 0}, {stack, 0}, Right}, EngineState)};
+eval({gt_a_r_a, Left}, EngineState) ->
+    {next, bin_comp(gt, {{stack, 0}, Left, {stack, 0}}, EngineState)};
+
 eval(elt_a_a_a, EngineState) ->
-    {next, elt_aaa(EngineState)};
+    {next, bin_comp(elt, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
+eval({elt_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_comp(elt, {{stack, 0}, Left, Right}, EngineState)};
+eval({elt_a_a_r, Right}, EngineState) ->
+    {next, bin_comp(elt, {{stack, 0}, {stack, 0}, Right}, EngineState)};
+eval({elt_a_r_a, Left}, EngineState) ->
+    {next, bin_comp(elt, {{stack, 0}, Left, {stack, 0}}, EngineState)};
+
 eval(egt_a_a_a, EngineState) ->
-    {next, egt_aaa(EngineState)};
+    {next, bin_comp(egt, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
+eval({egt_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_comp(egt, {{stack, 0}, Left, Right}, EngineState)};
+eval({egt_a_a_r, Right}, EngineState) ->
+    {next, bin_comp(egt, {{stack, 0}, {stack, 0}, Right}, EngineState)};
+eval({egt_a_r_a, Left}, EngineState) ->
+    {next, bin_comp(egt, {{stack, 0}, Left, {stack, 0}}, EngineState)};
+
 eval(eq_a_a_a, EngineState) ->
-    {next, eq_aaa(EngineState)};
+    {next, bin_comp(eq, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
+eval({eq_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_comp(eq, {{stack, 0}, Left, Right}, EngineState)};
+eval({eq_a_a_r, Right}, EngineState) ->
+    {next, bin_comp(eq, {{stack, 0}, {stack, 0}, Right}, EngineState)};
+eval({eq_a_r_a, Left}, EngineState) ->
+    {next, bin_comp(eq, {{stack, 0}, Left, {stack, 0}}, EngineState)};
+
 eval(neq_a_a_a, EngineState) ->
-    {next, neq_aaa(EngineState)};
+    {next, bin_comp(neq, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
+eval({neq_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_comp(neq, {{stack, 0}, Left, Right}, EngineState)};
+eval({neq_a_a_r, Right}, EngineState) ->
+    {next, bin_comp(lt, {{stack, 0}, {stack, 0}, Right}, EngineState)};
+eval({neq_a_r_a, Left}, EngineState) ->
+    {next, bin_comp(neq, {{stack, 0}, Left, {stack, 0}}, EngineState)};
+
 
 
 %% ------------------------------------------------------
@@ -128,10 +199,16 @@ eval(push_a_false, EngineState) ->
     {next, push_bool(?FATE_FALSE, EngineState)};
 eval(and_a_a_a, EngineState) ->
     {next, and_aaa(EngineState)};
+eval({and_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_op('and', {{stack, 0}, Left, Right}, EngineState)};
 eval(or_a_a_a, EngineState) ->
     {next, or_aaa(EngineState)};
+eval({or_a_r_r, Left, Right}, EngineState) ->
+    {next, bin_op('or', {{stack, 0}, Left, Right}, EngineState)};
 eval(not_a_a, EngineState) ->
     {next, not_aa(EngineState)};
+eval({not_a_r, Name}, EngineState) ->
+    {next, un_op('not', {{stack, 0}, Name}, EngineState)};
 
 %% ------------------------------------------------------
 %% Integer instructions
@@ -160,7 +237,9 @@ setup_engine(#{ contract := Contract
     ES1 = new_engine_state(Chain),
     ES2 = set_function(Contract, Function, ES1),
     ES3 = push_arguments(Arguments, ES2),
-    ES3.
+    Signature = get_function_signature(Function, ES3),
+    {ok, ES4} = check_signature_and_bind_args(Signature, ES3),
+    ES4.
 
 
 
@@ -221,12 +300,14 @@ get_function_signature(Name,  #{functions := Functions}) ->
         {Signature, _Code} -> Signature
     end.
 
-check_signature({ArgTypes, _RetSignature},
+check_signature_and_bind_args({ArgTypes, _RetSignature},
                 #{ accumulator := Acc
                  , accumulator_stack := Stack}
-               =_EngineState) ->
-    case check_arg_types(ArgTypes, [Acc| Stack]) of
-        ok -> ok;
+               = EngineState) ->
+    Args = [Acc | Stack],
+    case check_arg_types(ArgTypes, Args) of
+        ok -> 
+            {ok, bind_args(0, Args, ArgTypes, #{}, EngineState)};
         {error, T, V}  ->
             throw({error, {value_does_not_match_type, V, T}})
     end.
@@ -238,12 +319,21 @@ check_arg_types([T|Ts], [A|As]) ->
         false -> {error, T, A}
     end.
 
+bind_args(N, _, [], Mem, EngineState) ->
+    new_env(Mem, drop(N, EngineState));
+bind_args(N, [Arg|Args], [Type|Types], Mem, EngineState) ->
+    bind_args(N+1, Args, Types, Mem#{{arg, N} => {Arg, Type}}, EngineState).
+
+%% TODO: Add types (and tests).
 check_type(integer, I) when ?IS_FATE_INTEGER(I) -> true;
 check_type(boolean, B) when ?IS_FATE_BOOLEAN(B) -> true;
 check_type({list,_ET}, L) when ?IS_FATE_LIST(L) -> true; %% TODO: check element type
 check_type(_T, _V) -> false.
 
-
+type(I) when ?IS_FATE_INTEGER(I) -> integer;
+type(B) when ?IS_FATE_BOOLEAN(B) ->  boolean;
+type([E|L]) when ?IS_FATE_LIST(L) -> {list, type(E)}. 
+%% TODO: handle all types.
 
 jump(BB, ES) ->
     NewES = set_current_bb_index(BB, ES),
@@ -254,55 +344,95 @@ jump(BB, ES) ->
 %% Integer instructions
 %% ------------------------------------------------------
 
+un_op(Op, {To, What}, ES) ->
+    {Value, ES1} = get_op_arg(What, ES),
+    Result = op(Op, Value),
+    store(To, Result, ES1).
 
+bin_op(Op, {To, Left, Right}, ES) ->
+    {LeftValue, ES1} = get_op_arg(Left, ES),
+    {RightValue, ES2} = get_op_arg(Right, ES1),
+    Result = op(Op, LeftValue, RightValue),
+    store(To, Result, ES2).
+    
+get_op_arg({stack, 0}, #{ accumulator := A
+                        , accumulator_stack := [S|Stack] } = ES) ->
+    {A, ES#{accumulator => S, accumulator_stack => Stack}};
+get_op_arg({stack, 0}, #{ accumulator := A
+                        , accumulator_stack := [] } = ES) ->
+    {A, ES#{accumulator := ?FATE_VOID}};
+get_op_arg({arg,_N} = Var, #{ memory := Mem } = ES) ->
+    Value = lookup_var(Var, Mem),
+    {Value, ES};
+get_op_arg({var,_N} = Var, #{ memory := Mem } = ES) ->
+    Value = lookup_var(Var, Mem),
+    {Value, ES};
+get_op_arg({immediate, X}, ES) -> {X, ES}.
+
+store({stack, 0}, Val, #{ accumulator := ?FATE_VOID} = ES) ->
+    ES#{accumulator := Val};
+store({stack, 0}, Val, #{ accumulator := A,
+                           accumulator_stack := Stack} = ES) ->
+             ES#{accumulator => Val,
+                 accumulator_stack => [A | Stack]};
+store({var, _} = Name,  Val, #{ memory := Mem } = ES) ->
+    NewMem = store_var(Name, Val, Mem),
+    ES#{ memory => NewMem};
+store({arg, N}, _, _ES) ->
+     throw({error, {cannot_write_to_arg, N}}).
+
+
+
+
+    
+
+push_int(I,
+         #{ accumulator := ?FATE_VOID
+          , accumulator_stack := [] } = ES) when ?IS_FATE_INTEGER(I) ->
+    ES#{ accumulator => I
+       , accumulator_stack => []};
 push_int(I,
          #{ accumulator := X
           , accumulator_stack := Stack } = ES) when ?IS_FATE_INTEGER(I) ->
     ES#{ accumulator => I
        , accumulator_stack => [X|Stack]}.
 
-add_aia(X, #{accumulator := Y} = ES) when ?IS_FATE_INTEGER(X)
-                                          , ?IS_FATE_INTEGER(X) ->
-    ES#{accumulator := ?MAKE_FATE_INTEGER(?FATE_INTEGER_VALUE(X)
-                                          + ?FATE_INTEGER_VALUE(Y)
-                                         )}.
-add_aaa(#{ accumulator := A
-         , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_INTEGER(A)
-                                                      , ?IS_FATE_INTEGER(B) ->
-    ES#{ accumulator => ?FATE_INTEGER_VALUE(A) + ?FATE_INTEGER_VALUE(B)
-       , accumulator_stack => Stack}.
-
-sub_aaa(#{ accumulator := A
-         , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_INTEGER(A)
-                                                      , ?IS_FATE_INTEGER(B) ->
-    ES#{ accumulator => ?FATE_INTEGER_VALUE(A) - ?FATE_INTEGER_VALUE(B)
-       , accumulator_stack => Stack}.
-
-mul_aaa(#{ accumulator := A
-         , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_INTEGER(A)
-                                                      , ?IS_FATE_INTEGER(B) ->
-    ES#{ accumulator => ?FATE_INTEGER_VALUE(A) * ?FATE_INTEGER_VALUE(B)
-       , accumulator_stack => Stack}.
-
-div_aaa(#{ accumulator := A
-         , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_INTEGER(A)
-                                                      , ?IS_FATE_INTEGER(B) ->
-    ES#{ accumulator => ?FATE_INTEGER_VALUE(A) div ?FATE_INTEGER_VALUE(B)
-       , accumulator_stack => Stack}.
-
-mod_aaa(#{ accumulator := A
-         , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_INTEGER(A)
-                                                      , ?IS_FATE_INTEGER(B) ->
-    ES#{ accumulator => ?FATE_INTEGER_VALUE(A) rem ?FATE_INTEGER_VALUE(B)
-       , accumulator_stack => Stack}.
-
-pow_aaa(#{ accumulator := A
-         , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_INTEGER(A)
-                                                      , ?IS_FATE_INTEGER(B) ->
-    ES#{ accumulator => math:pow(?FATE_INTEGER_VALUE(A), ?FATE_INTEGER_VALUE(B))
-       , accumulator_stack => Stack}.
+op(get, A) ->
+    A;
+op(inc, A) ->
+    A + 1;
+op('not', A) ->
+    not A.
 
 
+op(add, A, B)  when ?IS_FATE_INTEGER(A)
+                    , ?IS_FATE_INTEGER(B) ->
+    A + B;
+op(sub, A, B)  when ?IS_FATE_INTEGER(A)
+                    , ?IS_FATE_INTEGER(B) ->
+    A - B;
+op(mul, A, B)  when ?IS_FATE_INTEGER(A)
+                    , ?IS_FATE_INTEGER(B) ->
+    A * B;
+op('div', A, B)  when ?IS_FATE_INTEGER(A)
+                    , ?IS_FATE_INTEGER(B) ->
+    if B =:= 0 -> throw(division_by_zero);
+       true -> A div B
+    end;
+op(pow, A, B)  when ?IS_FATE_INTEGER(A)
+                    , ?IS_FATE_INTEGER(B) ->
+    math:pow(A, B);
+op(mod, A, B)  when ?IS_FATE_INTEGER(A)
+                    , ?IS_FATE_INTEGER(B) ->
+    if B =:= 0 -> throw(mod_by_zero);
+       true -> A rem B
+    end;
+op('and', A, B)  when ?IS_FATE_BOOLEAN(A)
+                    , ?IS_FATE_BOOLEAN(B) ->
+    A and B;
+op('or', A, B)  when ?IS_FATE_BOOLEAN(A)
+                    , ?IS_FATE_BOOLEAN(B) ->
+    A or B.
 
 inc_acc(#{accumulator := X} = ES) when ?IS_FATE_INTEGER(X) ->
     ES#{accumulator := ?MAKE_FATE_INTEGER(?FATE_INTEGER_VALUE(X)+1)}.
@@ -310,41 +440,19 @@ inc_acc(#{accumulator := X} = ES) when ?IS_FATE_INTEGER(X) ->
 %% ------------------------------------------------------
 %% Comparison instructions
 %% ------------------------------------------------------
-lt_aaa(#{ accumulator := A
-        , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_INTEGER(A)
-                                                     , ?IS_FATE_INTEGER(B) ->
-    ES#{ accumulator => ?FATE_INTEGER_VALUE(A) < ?FATE_INTEGER_VALUE(B)
-       , accumulator_stack => Stack}.
 
-gt_aaa(#{ accumulator := A
-        , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_INTEGER(A)
-                                                     , ?IS_FATE_INTEGER(B) ->
-    ES#{ accumulator => ?FATE_INTEGER_VALUE(A) > ?FATE_INTEGER_VALUE(B)
-       , accumulator_stack => Stack}.
+bin_comp(Comp, {To, Left, Right}, ES) ->
+    {LeftValue, ES1} = get_op_arg(Left, ES),
+    {RightValue, ES2} = get_op_arg(Right, ES1),
+    Result = comp(Comp, LeftValue, RightValue),
+    store(To, Result, ES2).
 
-elt_aaa(#{ accumulator := A
-        , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_INTEGER(A)
-                                                     , ?IS_FATE_INTEGER(B) ->
-    ES#{ accumulator => ?FATE_INTEGER_VALUE(A) =< ?FATE_INTEGER_VALUE(B)
-       , accumulator_stack => Stack}.
-
-egt_aaa(#{ accumulator := A
-        , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_INTEGER(A)
-                                                     , ?IS_FATE_INTEGER(B) ->
-    ES#{ accumulator => ?FATE_INTEGER_VALUE(A) >= ?FATE_INTEGER_VALUE(B)
-       , accumulator_stack => Stack}.
-
-eq_aaa(#{ accumulator := A
-        , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_INTEGER(A)
-                                                     , ?IS_FATE_INTEGER(B) ->
-    ES#{ accumulator => ?FATE_INTEGER_VALUE(A) =:= ?FATE_INTEGER_VALUE(B)
-       , accumulator_stack => Stack}.
-
-neq_aaa(#{ accumulator := A
-        , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_INTEGER(A)
-                                                     , ?IS_FATE_INTEGER(B) ->
-    ES#{ accumulator => ?FATE_INTEGER_VALUE(A) =/= ?FATE_INTEGER_VALUE(B)
-       , accumulator_stack => Stack}.
+comp( lt, A, B) -> A < B;
+comp( gt, A, B) -> A > B;
+comp(elt, A, B) -> A =< B;
+comp(egt, A, B) -> A >= B;
+comp( eq, A, B) -> A =:= B;
+comp(neq, A, B) -> A =/= B.
 
 
 %% ------------------------------------------------------
@@ -402,6 +510,15 @@ dup(#{ accumulator := X, accumulator_stack := Stack} = ES) ->
     ES#{ accumulator => X
        , accumulator_stack := [X|Stack]}.
 
+drop(0, ES) -> ES;
+drop(N, #{ accumulator := _, accumulator_stack := [V|Stack]} = ES) ->
+    drop(N-1, ES#{ accumulator => V, accumulator_stack => Stack});
+drop(N, #{ accumulator := _, accumulator_stack := []} = ES) ->
+    drop(N-1, ES#{ accumulator => ?FATE_VOID, accumulator_stack => []}).
+
+
+
+
 %% ------------------------------------------------------
 %% BBs
 set_current_bb_index(BB, ES) ->
@@ -422,8 +539,7 @@ next_bb_index(#{ current_bb := BB}) ->
 
 
 %% ------------------------------------------------------
-get_trace(#{trace := T}) -> T.
-
+%% Call stack
 
 push_return_address(#{ current_bb := BB
                      , current_function := Function
@@ -448,11 +564,35 @@ pop_call_stack(#{ call_stack := [{Contract, Function, BB}| Rest]
             {jump, BB, ES2}
     end.
 
+get_trace(#{trace := T}) -> T.
+
+%% ------------------------------------------------------
+%% Memory
+new_env(Mem, #{ memory := Envs} = EngineState) ->
+    EngineState#{ memory => [Mem|Envs]}.
+
+lookup_var(Var, [Env|Envs]) ->
+    case maps:get(Var, Env, undefined) of
+        {Value, _Type} ->
+            Value;
+        undefined ->
+            lookup_var(Var, Envs)
+    end;
+lookup_var(Var, []) ->
+    throw({error, {undefined_var, Var}}).
+
+store_var(Var, Val, [Env|Envs]) ->
+    T = type(Val),
+    [Env#{ Var => {Val, T}} | Envs].
+
+%% ------------------------------------------------------
+%% New state
+
 
 new_engine_state(Chain) ->
     #{ current_bb => 0
      , bbs => #{}
-     , memory => #{}
+     , memory => []
      , chain => Chain
      , trace => []
      , accumulator => ?FATE_VOID

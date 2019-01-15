@@ -97,7 +97,7 @@ setup_chain() ->
 
 setup_contracts() ->
     #{ <<"test">> =>
-           [ {<<"id">>, {[integer], integer}, [{0, [return]}]}
+           [ {<<"id">>, {[integer], integer}, [{0, [{return_r, {arg, 0}}]}]}
            , {<<"jumps">>, {[], integer},
               [{0, [ push_a_0
                    , {jump, 3}]}
@@ -108,114 +108,117 @@ setup_contracts() ->
                     , {jump, 1}]}]
              }
            , {<<"inc">>, {[integer],integer},
-              [{0, [ inc_a_1_a
+              [{0, [ {inc_a_1_r, {arg,0}}
                    , inc_a_1_a
                    , return
                    ]}]
              }
            , {<<"call">>, {[integer],integer},
-              [{0, [ inc_a_1_a
+              [{0, [ {inc_a_1_r, {arg, 0}}
                    , {call_local, <<"inc">>}]}
               ,{1, [ inc_a_1_a
                    , return]}
               ]
              }
            , {<<"tailcall">>, {[integer],integer},
-              [{0, [ inc_a_1_a
+              [{0, [ {inc_a_1_r, {arg,0}}
                    , {tailcall_local, <<"inc">>}]}
               ]
              }
            , { <<"remote_call">>
              , {[integer],integer}
-             , [ {0, [ {call_remote, <<"remote">>, <<"add_five">>} ]}
+             , [ {0, [ {push, {arg,0}},
+                       {call_remote, <<"remote">>, <<"add_five">>} ]}
                , {1, [ inc_a_1_a,
                        return]}
                ]
              }
            , { <<"remote_tailcall">>
              , {[integer],integer}
-             , [ {0, [ {tailcall_remote, <<"remote">>, <<"add_five">>} ]}
+             , [ {0, [ {push, {arg,0}},
+                       {tailcall_remote, <<"remote">>, <<"add_five">>} ]}
                ]
              }
            ]
      , <<"remote">> =>
            [ {<<"add_five">>, {[integer], integer},
-              [{0, [{add_a_i_a, 5}
+              [{0, [{add_a_i_r, 5, {arg, 0}}
                     , return]}]
              }
            ]
      , <<"bool">> =>
            [ {<<"and">>
              , {[boolean, boolean], boolean}
-             , [ {0, [ and_a_a_a
+             , [ {0, [ {and_a_r_r, {arg, 0}, {arg, 1}}
                      , return]}]}
            , {<<"or">>
              , {[boolean, boolean], boolean}
-             , [ {0, [ or_a_a_a
+             , [ {0, [ {or_a_r_r, {arg, 0}, {arg, 1}}
                      , return]}]}
            , {<<"not">>
-             , {[boolean, boolean], boolean}
-             , [ {0, [ not_a_a
+             , {[boolean], boolean}
+             , [ {0, [ {not_a_r, {arg, 0}}
                      , return]}]}
            ]
 
      , <<"comp">> =>
            [ {<<"lt">>
              , {[integer, integer], boolean}
-             , [ {0, [ lt_a_a_a
+             , [ {0, [ {lt_a_r_r, {arg, 0}, {arg, 1}}
                      , return]}]}
            ,  {<<"gt">>
               , {[integer, integer], boolean}
-              , [ {0, [ gt_a_a_a
+              , [ {0, [ {gt_a_r_r, {arg, 0}, {arg, 1}}
                       , return]}]}
            ,  {<<"egt">>
               , {[integer, integer], boolean}
-              , [ {0, [ egt_a_a_a
+              , [ {0, [ {egt_a_r_r, {arg, 0}, {arg, 1}}
                       , return]}]}
            ,  {<<"elt">>
               , {[integer, integer], boolean}
-              , [ {0, [ elt_a_a_a
+              , [ {0, [ {elt_a_r_r, {arg, 0}, {arg, 1}}
                       , return]}]}
            ,  {<<"eq">>
               , {[integer, integer], boolean}
-              , [ {0, [ eq_a_a_a
+              , [ {0, [ {eq_a_r_r, {arg, 0}, {arg, 1}}
                       , return]}]}
            ,  {<<"neq">>
               , {[integer, integer], boolean}
-              , [ {0, [ neq_a_a_a
+              , [ {0, [ {neq_a_r_r, {arg, 0}, {arg, 1}}
                       , return]}]}
            ]
      , <<"arith">> =>
            [ {<<"add">>
              , {[integer, integer], integer}
-             , [ {0, [ add_a_a_a
+             , [ {0, [ {add_a_r_r, {arg, 0}, {arg, 1}}
                      , return]}]}
            ,  {<<"sub">>
               , {[integer, integer], integer}
-              , [ {0, [ sub_a_a_a
+              , [ {0, [ {sub_a_r_r, {arg, 0}, {arg, 1}}
                       , return]}]}
            ,  {<<"mul">>
               , {[integer, integer], integer}
-              , [ {0, [ mul_a_a_a
+              , [ {0, [ {mul_a_r_r, {arg, 0}, {arg, 1}}
                       , return]}]}
            ,  {<<"div">>
               , {[integer, integer], integer}
-              , [ {0, [ div_a_a_a
+              , [ {0, [ {div_a_r_r, {arg, 0}, {arg, 1}}
                       , return]}]}
            ,  {<<"mod">>
               , {[integer, integer], integer}
-              , [ {0, [ mod_a_a_a
+              , [ {0, [ {mod_a_r_r, {arg, 0}, {arg, 1}}
                       , return]}]}
            ,  {<<"pow">>
               , {[integer, integer], integer}
-              , [ {0, [ pow_a_a_a
+              , [ {0, [ {pow_a_r_r, {arg, 0}, {arg, 1}}
                       , return]}]}
            ]
      , <<"jumpif">> =>
            [ {<<"skip">>
              , {[integer, integer], integer}
-             , [ {0, [ push_a_0
-                     , eq_a_a_a
+             , [ {0, [ {push, {arg, 1}}
+                     , push_a_0
+                     , {eq_a_a_r, {arg, 0}}
                      , {jumpif_a, 2}
                      ]}
                , {1, [ inc_a_1_a ]}
