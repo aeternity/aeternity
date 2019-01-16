@@ -32,17 +32,7 @@ all() ->
     ].
 
 init_per_suite(Config) ->
-    DataDir = ?config(data_dir, Config),
-    TopDir = aecore_suite_utils:top_dir(DataDir),
     MicroBlockCycle = 100,
-    Config1 = [{symlink_name, "latest.txs"},
-               {top_dir, TopDir},
-               {test_module, ?MODULE},
-               {micro_block_cycle, MicroBlockCycle}] ++ Config,
-    aecore_suite_utils:make_shortcut(Config1),
-    ct:log("Environment = ~p", [[{args, init:get_arguments()},
-                                 {node, node()},
-                                 {cookie, erlang:get_cookie()}]]),
     DefCfg = #{
         <<"chain">> => #{
             <<"persist">> => false
@@ -51,8 +41,7 @@ init_per_suite(Config) ->
             <<"micro_block_cycle">> => MicroBlockCycle
         }
     },
-    aecore_suite_utils:create_configs(Config1, DefCfg),
-    aecore_suite_utils:make_multi(Config1, [dev1, dev2]),
+    Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg, [{symlink_name, "latest.txs"}, {test_module, ?MODULE}, {micro_block_cycle, MicroBlockCycle}] ++ Config),
     [{nodes, [aecore_suite_utils:node_tuple(dev1),
               aecore_suite_utils:node_tuple(dev2)]} | Config1].
 

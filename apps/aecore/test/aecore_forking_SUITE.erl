@@ -41,18 +41,7 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
-    DataDir = ?config(data_dir, Config),
-    TopDir = aecore_suite_utils:top_dir(DataDir),
-    Config1 = [{symlink_name, "latest.fork"},
-               {top_dir, TopDir},
-               {test_module, ?MODULE}] ++ Config,
-    aecore_suite_utils:make_shortcut(Config1),
-    ct:log("Environment = ~p", [[{args, init:get_arguments()},
-                                 {node, node()},
-                                 {cookie, erlang:get_cookie()}]]),
-    aecore_suite_utils:create_configs(Config1),
-    aecore_suite_utils:make_multi(Config1, [dev1, dev2]),
-    Config1.
+    aecore_suite_utils:init_per_suite([dev1, dev2], [{symlink_name, "latest.fork"}, {test_module, ?MODULE}] ++ Config).
 
 end_per_suite(Config) ->
     aecore_suite_utils:stop_node(dev1, Config),
