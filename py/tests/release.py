@@ -63,7 +63,7 @@ chain:
     db_path: ./my_db
 
 fork_management:
-    network_id: ae_uat
+    network_id: ae_smoke_test
 ''',
             "config": '''[
 {aecore,
@@ -112,7 +112,7 @@ chain:
     db_path: ./my_db
 
 fork_management:
-    network_id: ae_uat
+    network_id: ae_smoke_test
 ''',
             "config": '''[
 {aecore,
@@ -161,7 +161,7 @@ chain:
     db_path: ./my_db
 
 fork_management:
-    network_id: ae_uat
+    network_id: ae_smoke_test
 ''',
             "config": '''[
 {aecore,
