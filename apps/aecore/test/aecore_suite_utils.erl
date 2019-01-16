@@ -8,10 +8,12 @@
 -export([top_dir/1,
          epoch_config/2,
          create_config/4,
+         node_shortcut/2,
          shortcut_dir/1]).
 
 -export([cmd/3, cmd/4, cmd/5, cmd/6,
          cmd_res/1,
+         delete_file/1,
          set_env/4,
          unset_env/3]).
 
@@ -507,6 +509,14 @@ restart_jobs_server(N) ->
     true = rpc:call(N, erlang, exit, [JobsP, kill]),
     await_new_jobs_pid(N, JobsP).
 
+delete_file(F) ->
+    case file:delete(F) of
+        ok -> ok;
+        {error, enoent} -> ok;
+        Other ->
+            erlang:error(Other, [F])
+    end.
+
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
@@ -761,14 +771,6 @@ log_dir(N, Config) ->
 
 keys_dir(N, Config) ->
     filename:join(data_dir(N, Config), "keys").
-
-delete_file(F) ->
-    case file:delete(F) of
-        ok -> ok;
-        {error, enoent} -> ok;
-        Other ->
-            erlang:error(Other, [F])
-    end.
 
 %% Use localhost here, because some systems have both 127.0.0.1 and 127.0.1.1
 %% defined, resulting in a conflict during testing
