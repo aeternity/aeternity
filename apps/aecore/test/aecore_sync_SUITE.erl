@@ -116,7 +116,8 @@ groups() ->
 suite() ->
     [].
 
-init_per_suite(Config) ->
+init_per_suite(Config0) ->
+    Config = aec_metrics_test_utils:make_port_map([dev1, dev2, dev3], Config0),
     DataDir = ?config(data_dir, Config),
     TopDir = aecore_suite_utils:top_dir(DataDir),
     Config1 = [{symlink_name, "latest.sync"},
@@ -150,10 +151,9 @@ init_per_suite(Config) ->
             <<"micro_block_cycle">> => 100
         }
     },
-    Config2 = aec_metrics_test_utils:make_port_map([dev1, dev2, dev3], Config1),
-    aecore_suite_utils:create_configs(Config2, DefCfg, [{add_peers, true}]),
-    aecore_suite_utils:make_multi(Config2),
-    Config2.
+    aecore_suite_utils:create_configs(Config1, DefCfg, [{add_peers, true}]),
+    aecore_suite_utils:make_multi(Config1),
+    Config1.
 
 end_per_suite(Config) ->
     stop_devs(Config).
