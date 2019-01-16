@@ -18,8 +18,8 @@
 
 -record(state, { trees      :: aec_trees:trees()
                , height     :: non_neg_integer()
-               , cache      :: #{}
-               , env        :: #{}
+               , cache      :: dict:dict()
+               , env        :: dict:dict()
                }).
 
 -define(IS_HASH(_X_), (is_binary(_X_) andalso byte_size(_X_) =:= ?HASH_BYTES)).
