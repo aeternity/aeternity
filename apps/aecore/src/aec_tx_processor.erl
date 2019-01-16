@@ -75,8 +75,9 @@ eval_one({ensure_account, Key}, S) when ?IS_VAR_OR_HASH(Key) ->
 eval_one({oracle_register, Pubkey, QFormat, RFormat,
                            QFee, DeltaTTL, VMVersion}, S) when ?IS_HASH(Pubkey) ->
     oracle_register(Pubkey, QFormat, RFormat,
-                    QFee, DeltaTTL, VMVersion, S).
-
+                    QFee, DeltaTTL, VMVersion, S);
+eval_one({oracle_extend, PubKey, DeltaTTL}, S) when ?IS_HASH(PubKey) ->
+    oracle_extend(PubKey, DeltaTTL, S).
 
 new_state(Trees, Height) ->
     #state{ trees = Trees
@@ -153,6 +154,13 @@ oracle_register(Pubkey, QFormat, RFormat, QFee, DeltaTTL, VMVersion, S) ->
             runtime_error(illegal_oracle_spec)
     end.
 
+oracle_extend(PubKey, DeltaTTL, S) ->
+    [runtime_error(zero_relative_oracle_extension_ttl) || DeltaTTL =:= 0],
+    [runtime_error(negative_oracle_extension_ttl) || DeltaTTL < 0],
+    {Oracle, S1} = get_oracle(PubKey, S),
+    Oracle1 = aeo_oracles:set_ttl(aeo_oracles:ttl(Oracle) + DeltaTTL, Oracle),
+    cache_put(oracle, Oracle1, S1).
+
 %%%===================================================================
 %%% Helpers for instructions
 
@@ -164,26 +172,21 @@ assert_account_nonce(Account, Nonce) ->
     end.
 
 get_account(Key, #state{} = S) ->
-    get_or_ensure_account(Key, get, S).
+    get_x(account, Key, account_not_found, S).
 
 ensure_account(Key, #state{} = S) ->
-    get_or_ensure_account(Key, ensure, S).
-
-get_or_ensure_account(Key, Type, #state{} = S) ->
-    case find(account, Key, S) of
-        none when Type =:= get ->
-            runtime_error(account_not_found);
-        none when Type =:= ensure ->
+    case find_x(account, Key, S) of
+        none ->
             Pubkey = get_var(Key, account, S),
             Account = aec_accounts:new(Pubkey, 0),
             {Account, cache_put(account, Account, S)};
-        {value, Account, S1} ->
+        {Account, S1} ->
             {Account, S1}
     end.
 
 assert_not_oracle(Pubkey, S) ->
-    case find(oracle, Pubkey, S) of
-        {value, _, _} -> runtime_error(account_is_already_an_oracle);
+    case find_x(oracle, Pubkey, S) of
+        {_, _} -> runtime_error(account_is_already_an_oracle);
         none -> ok
     end.
 
@@ -191,6 +194,9 @@ assert_oracle_vm_version(?AEVM_NO_VM) -> ok;
 assert_oracle_vm_version(?AEVM_01_Sophia_01) -> ok;
 assert_oracle_vm_version(_) ->
     runtime_error(bad_vm_version).
+
+get_oracle(Key, #state{} = S) ->
+    get_x(oracle, Key, account_is_not_an_active_oracle, S).
 
 %%%===================================================================
 %%% Error handling
@@ -202,16 +208,22 @@ runtime_error(Error) ->
 %%%===================================================================
 %%% Access to cache or trees
 
-find(Tag, Key, S) ->
+find_x(Tag, Key, S) ->
     case cache_find(Tag, Key, S) of
         none ->
             case trees_find(Tag, Key, S) of
                 none -> none;
                 {value, Val} ->
-                    {value, Val, cache_put(Tag, Val, S)}
+                    {Val, cache_put(Tag, Val, S)}
             end;
         {value, Val} ->
-            {value, Val, S}
+            {Val, S}
+    end.
+
+get_x(Tag, Key, Error, S) when is_atom(Error) ->
+    case find_x(Tag, Key, S) of
+        none -> runtime_error(Error);
+        {_, _} = Ret -> Ret
     end.
 
 %%%===================================================================
