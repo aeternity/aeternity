@@ -7,15 +7,17 @@
 %%%-------------------------------------------------------------------
 -module(aec_tx_processor).
 
--export([eval/2
+-export([eval/3
         ]).
 
 -export([ inc_account_nonce/3
         ]).
 
 -include_lib("aecore/include/aec_hash.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
 
 -record(state, { trees      :: aec_trees:trees()
+               , height     :: non_neg_integer()
                , cache      :: #{}
                , env        :: #{}
                }).
@@ -32,13 +34,13 @@
 %%% API
 %%%===================================================================
 
-eval(Instructions, Trees) ->
-    try {ok, eval_instructions(Instructions, new_state(Trees))}
+eval([_|_] = Instructions, Trees, Height) when is_integer(Height),
+                                               Height >= 0 ->
+    try {ok, eval_instructions(Instructions, new_state(Trees, Height))}
     catch
         throw:{?MODULE, What} ->
             {error, What}
     end.
-
 
 %%%===================================================================
 %%% Internal functions
@@ -69,12 +71,18 @@ eval_one({resolve_account, GivenType, Hash, Var}, S) when ?IS_HASH(Hash),
     resolve_name(account, GivenType, Hash, Var, S);
 eval_one({ensure_account, Key}, S) when ?IS_VAR_OR_HASH(Key) ->
     {_Account, S1} = ensure_account(Key, S),
-    S1.
+    S1;
+eval_one({oracle_register, Pubkey, QFormat, RFormat,
+                           QFee, DeltaTTL, VMVersion}, S) when ?IS_HASH(Pubkey) ->
+    oracle_register(Pubkey, QFormat, RFormat,
+                    QFee, DeltaTTL, VMVersion, S).
 
-new_state(Trees) ->
+
+new_state(Trees, Height) ->
     #state{ trees = Trees
           , cache = dict:new()
           , env   = dict:new()
+          , height = Height
           }.
 
 %%%===================================================================
@@ -133,6 +141,18 @@ resolve_name(account, name, NameHash, Var, S) ->
             runtime_error(What)
     end.
 
+oracle_register(Pubkey, QFormat, RFormat, QFee, DeltaTTL, VMVersion, S) ->
+    assert_not_oracle(Pubkey, S),
+    assert_oracle_vm_version(VMVersion),
+    AbsoluteTTL = DeltaTTL + S#state.height,
+    try aeo_oracles:new(Pubkey, QFormat, RFormat, QFee, AbsoluteTTL, VMVersion) of
+        Oracle -> cache_put(oracle, Oracle, S)
+    catch
+        error:{illegal,_Field,_X} = Err ->
+            lager:debug("Failed oracle register: ~p", [Err]),
+            runtime_error(illegal_oracle_spec)
+    end.
+
 %%%===================================================================
 %%% Helpers for instructions
 
@@ -150,21 +170,27 @@ ensure_account(Key, #state{} = S) ->
     get_or_ensure_account(Key, ensure, S).
 
 get_or_ensure_account(Key, Type, #state{} = S) ->
-    case cache_find(account, Key, S) of
-        none ->
-            case trees_find(account, Key, S) of
-                none when Type =:= get ->
-                    runtime_error(account_not_found);
-                none when Type =:= ensure ->
-                    Pubkey = get_var(Key, account, S),
-                    Account = aec_accounts:new(Pubkey, 0),
-                    {Account, cache_put(account, Account, S)};
-                {value, Account} ->
-                    {Account, cache_put(account, Account, S)}
-            end;
-        {value, Account} ->
-            {Account, S}
+    case find(account, Key, S) of
+        none when Type =:= get ->
+            runtime_error(account_not_found);
+        none when Type =:= ensure ->
+            Pubkey = get_var(Key, account, S),
+            Account = aec_accounts:new(Pubkey, 0),
+            {Account, cache_put(account, Account, S)};
+        {value, Account, S1} ->
+            {Account, S1}
     end.
+
+assert_not_oracle(Pubkey, S) ->
+    case find(oracle, Pubkey, S) of
+        {value, _, _} -> runtime_error(account_is_already_an_oracle);
+        none -> ok
+    end.
+
+assert_oracle_vm_version(?AEVM_NO_VM) -> ok;
+assert_oracle_vm_version(?AEVM_01_Sophia_01) -> ok;
+assert_oracle_vm_version(_) ->
+    runtime_error(bad_vm_version).
 
 %%%===================================================================
 %%% Error handling
@@ -174,17 +200,37 @@ runtime_error(Error) ->
     throw({?MODULE, Error}).
 
 %%%===================================================================
+%%% Access to cache or trees
+
+find(Tag, Key, S) ->
+    case cache_find(Tag, Key, S) of
+        none ->
+            case trees_find(Tag, Key, S) of
+                none -> none;
+                {value, Val} ->
+                    {value, Val, cache_put(Tag, Val, S)}
+            end;
+        {value, Val} ->
+            {value, Val, S}
+    end.
+
+%%%===================================================================
 %%% Access to trees
 
 trees_find(account, Key, #state{trees = Trees} = S) ->
-    ATrees = aec_trees:accounts(Trees),
-    aec_accounts_trees:lookup(get_var(Key, account, S), ATrees).
+    ATree = aec_trees:accounts(Trees),
+    aec_accounts_trees:lookup(get_var(Key, account, S), ATree);
+trees_find(oracle, Key, #state{trees = Trees} = S) ->
+    OTree = aec_trees:oracles(Trees),
+    aeo_state_tree:lookup_oracle(get_var(Key, oracle, S), OTree).
 
 %%%===================================================================
 %%% Cache
 
 -define(IS_TAG(X), ((X =:= account)
-                      orelse (X =:= var))).
+                    orelse (X =:= oracle)
+                   )
+       ).
 
 cache_find(Tag, Key, #state{cache = C} = S) when ?IS_TAG(Tag) ->
     case dict:find({Tag, get_var(Key, Tag, S)}, C) of
@@ -194,7 +240,11 @@ cache_find(Tag, Key, #state{cache = C} = S) when ?IS_TAG(Tag) ->
 
 cache_put(account, Val, #state{cache = C} = S) ->
     Pubkey = aec_accounts:pubkey(Val),
-    S#state{cache = dict:store({account, Pubkey}, Val, C)}.
+    S#state{cache = dict:store({account, Pubkey}, Val, C)};
+cache_put(oracle, Val,  #state{cache = C} = S) ->
+    Pubkey = aeo_oracles:pubkey(Val),
+    S#state{cache = dict:store({oracle, Pubkey}, Val, C)}.
+
 
 cache_write_through(#state{cache = C, trees = T}) ->
     dict:fold(fun cache_write_through_fun/3, T, C).
@@ -203,7 +253,12 @@ cache_write_through(#state{cache = C, trees = T}) ->
 cache_write_through_fun({account,_Pubkey}, Account, Trees) ->
     ATrees  = aec_trees:accounts(Trees),
     ATrees1 = aec_accounts_trees:enter(Account, ATrees),
-    aec_trees:set_accounts(Trees, ATrees1).
+    aec_trees:set_accounts(Trees, ATrees1);
+cache_write_through_fun({oracle,_Pubkey}, Oracle, Trees) ->
+    OTrees  = aec_trees:oracles(Trees),
+    OTrees1 = aeo_state_tree:enter_oracle(Oracle, OTrees),
+    aec_trees:set_oracles(Trees, OTrees1).
+
 
 %%%===================================================================
 %%% Variable environment
