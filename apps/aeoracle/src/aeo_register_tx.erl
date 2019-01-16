@@ -132,42 +132,32 @@ origin(#oracle_register_tx{} = Tx) ->
 %% Account should exist, and have enough funds for the fee.
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#oracle_register_tx{nonce = Nonce, fee = Fee, vm_version = VMVersion} = Tx,
-      Trees, _Env) ->
-    AccountPubKey = account_pubkey(Tx),
-    Checks =
-        [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
-         fun() -> ensure_not_oracle(AccountPubKey, Trees) end,
-         fun() -> aeo_utils:check_vm_version(VMVersion) end],
-
-    case aeu_validation:run(Checks) of
-        ok              -> {ok, Trees};
-        {error, Reason} -> {error, Reason}
-    end.
+check(#oracle_register_tx{}, Trees, _Env) ->
+    %% Checks are in process/3.
+    {ok, Trees}.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_register_tx{} = Tx, _) ->
     {ok, [account_pubkey(Tx)]}.
 
+register_op(#oracle_register_tx{} = RTx, Height) ->
+    {oracle_register,
+     account_pubkey(RTx),
+     query_format(RTx),
+     response_format(RTx),
+     query_fee(RTx),
+     aeo_utils:ttl_delta(Height, oracle_ttl(RTx)),
+     vm_version(RTx)
+    }.
+
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#oracle_register_tx{nonce = Nonce, fee = Fee} = RegisterTx,
-        Trees0, Env) ->
-    Height = aetx_env:height(Env),
-    AccountPubKey = account_pubkey(RegisterTx),
-    AccountsTree0 = aec_trees:accounts(Trees0),
-    OraclesTree0  = aec_trees:oracles(Trees0),
-
-    Account0 = aec_accounts_trees:get(AccountPubKey, AccountsTree0),
-    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce),
-    AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
-
-    Oracle = aeo_oracles:new(RegisterTx, Height),
-    OraclesTree1 = aeo_state_tree:insert_oracle(Oracle, OraclesTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_oracles(Trees1, OraclesTree1),
-
-    {ok, Trees2}.
+process(#oracle_register_tx{} = RTx, Trees, Env) ->
+    AccountPubKey = account_pubkey(RTx),
+    Instructions = [ {inc_account_nonce, AccountPubKey, nonce(RTx)}
+                   , {spend_fee, AccountPubKey, fee(RTx)}
+                   , register_op(RTx, aetx_env:height(Env))
+                   ],
+    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
 
 serialize(#oracle_register_tx{account_id      = AccountId,
                               nonce           = Nonce,
@@ -262,12 +252,3 @@ for_client(#oracle_register_tx{account_id      = AccountId,
       <<"ttl">>             => TTL,
       <<"vm_version">>      => VMVersion
      }.
-
-%% -- Local functions  -------------------------------------------------------
-
-ensure_not_oracle(PubKey, Trees) ->
-    OraclesTree  = aec_trees:oracles(Trees),
-    case aeo_state_tree:lookup_oracle(PubKey, OraclesTree) of
-        {value, _Oracle} -> {error, account_is_already_an_oracle};
-        none             -> ok
-    end.

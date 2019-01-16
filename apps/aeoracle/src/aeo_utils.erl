@@ -8,7 +8,6 @@
 -module(aeo_utils).
 
 -export([check_format/3,
-         check_vm_version/1,
          ttl_delta/2,
          ttl_expiry/2
         ]).
@@ -30,10 +29,6 @@ ttl_expiry(CurrentHeight, TTL) ->
         {error, _Rsn} = Err ->
             Err
     end.
-
-check_vm_version(?AEVM_NO_VM) -> ok;
-check_vm_version(?AEVM_01_Sophia_01) -> ok;
-check_vm_version(_) -> {error, bad_vm_version}.
 
 check_format(?AEVM_NO_VM, _Format, _Content) ->
     %% No interpretation of the format, nor content.

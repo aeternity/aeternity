@@ -146,7 +146,7 @@ check(#spend_tx{}, Trees,_Env) ->
 signers(#spend_tx{} = Tx, _) -> {ok, [sender_pubkey(Tx)]}.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#spend_tx{} = SpendTx, Trees,_Env) ->
+process(#spend_tx{} = SpendTx, Trees, Env) ->
     Sender   = sender_pubkey(SpendTx),
     Nonce    = nonce(SpendTx),
     {Type, ReceiverHash} = specialize_recipient(SpendTx),
@@ -156,7 +156,7 @@ process(#spend_tx{} = SpendTx, Trees,_Env) ->
                    , {spend, Sender, Recipient, amount(SpendTx)}
                    , {spend_fee, Sender, fee(SpendTx)}
                    ],
-    aec_tx_processor:eval(Instructions, Trees).
+    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
 
 serialize(#spend_tx{sender_id    = SenderId,
                     recipient_id = RecipientId,

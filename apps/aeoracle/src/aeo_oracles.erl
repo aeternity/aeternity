@@ -16,7 +16,7 @@
         , vm_version/1
         , id/1
         , pubkey/1
-        , new/2
+        , new/6
         , query_fee/1
         , query_format/1
         , response_format/1
@@ -29,6 +29,11 @@
         , set_response_format/2
         , set_vm_version/2
         ]).
+
+-ifdef(TEST).
+-export([new/2]).
+-endif.
+
 
 %%%===================================================================
 %%% Types
@@ -83,16 +88,31 @@
 %%% API
 %%%===================================================================
 
+
+-ifdef(TEST).
 -spec new(aeo_register_tx:tx(), aec_blocks:height()) -> oracle().
 new(RTx, BlockHeight) ->
-    TTL = aeo_utils:ttl_expiry(BlockHeight, aeo_register_tx:oracle_ttl(RTx)),
-    AccountPubkey = aeo_register_tx:account_pubkey(RTx),
+    TxTTL = aeo_register_tx:oracle_ttl(RTx),
+    AbsoluteTTL = aeo_utils:ttl_expiry(BlockHeight, TxTTL),
+    new(aeo_register_tx:account_pubkey(RTx),
+        aeo_register_tx:query_format(RTx),
+        aeo_register_tx:response_format(RTx),
+        aeo_register_tx:query_fee(RTx),
+        AbsoluteTTL,
+        aeo_register_tx:vm_version(RTx)).
+-endif.
+
+-spec new(aec_keys:pubkey(), type_format(), type_format(),
+          non_neg_integer(), non_neg_integer(), non_neg_integer()) ->
+             oracle().
+new(AccountPubkey, QueryFormat, ResponseFormat,
+    QueryFee, AbsoluteTTL, VMVersion) ->
     O = #oracle{ id              = aec_id:create(oracle, AccountPubkey)
-               , query_format    = aeo_register_tx:query_format(RTx)
-               , response_format = aeo_register_tx:response_format(RTx)
-               , query_fee       = aeo_register_tx:query_fee(RTx)
-               , ttl             = TTL
-               , vm_version      = aeo_register_tx:vm_version(RTx)
+               , query_format    = QueryFormat
+               , response_format = ResponseFormat
+               , query_fee       = QueryFee
+               , ttl             = AbsoluteTTL
+               , vm_version      = VMVersion
                },
     assert_fields(O).
 

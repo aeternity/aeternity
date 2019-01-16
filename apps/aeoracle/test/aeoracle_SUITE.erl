@@ -467,8 +467,6 @@ query_response_negative_dynamic_fee(Cfg) ->
         end,
 
     %% Test minimum fee for increasing TTL.
-    ?assertException(error, {illegal,response_ttl,{delta,0}}, F({delta, 0}, 0)),
-    ?assertException(error, {illegal,response_ttl,{delta,0}}, F({delta, 0}, 16850)),
     ?assertEqual({error, too_low_fee}, F({delta, 1},    1)),
     ?assertMatch({ok, _}             , F({delta, 1},    16850)),
     ?assertMatch({ok, _}             , F({delta, 1000}, 16850)),
