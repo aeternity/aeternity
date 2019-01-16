@@ -308,7 +308,7 @@ check_ttl(AeTx, Env) ->
 %%%===================================================================
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) ->
-                 {ok, NewTrees :: aec_trees:trees()}.
+                 {ok, NewTrees :: aec_trees:trees()} | {error, term()}.
 process(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
     case check(AeTx, Trees, Env) of
         {ok, Trees1} ->
