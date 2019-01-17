@@ -9,7 +9,7 @@ TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` M
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v1.3.0
 
 Please join the Roma network by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
-Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/epoch/wiki/Troubleshooting).
+Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
 
 The instructions below describe:
 * [How to retrieve the released software for running a node](#retrieve-the-software-for-running-a-node);
