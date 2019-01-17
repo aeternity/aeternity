@@ -264,8 +264,8 @@ check_oracle(OraclePubKey, Trees, RTx) ->
     end.
 
 check_response_format(O, RTx) ->
-    VMVersion =  aeo_oracles:vm_version(O),
+    ABIVersion =  aeo_oracles:abi_version(O),
     Format = aeo_oracles:response_format(O),
     Content = response(RTx),
-    aeo_utils:check_format(VMVersion, Format, Content).
+    aeo_utils:check_format(ABIVersion, Format, Content).
 

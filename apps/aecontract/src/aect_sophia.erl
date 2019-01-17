@@ -13,7 +13,6 @@
 -export([ compile/2
         , decode_data/2
         , encode_call_data/3
-        , simple_call/3
         , on_chain_call/3
         , serialize/1
         , deserialize/1
@@ -112,24 +111,14 @@ on_chain_call(ContractKey, Function, Argument) ->
     Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
     SerializedCode = aect_contracts:code(Contract),
     Store          = aect_contracts:state(Contract),
-    VMVersion      = aect_contracts:vm_version(Contract),
+    CTVersion      = aect_contracts:ct_version(Contract),
     #{ byte_code := Code} = deserialize(SerializedCode),
     case create_call(SerializedCode, Function, Argument) of
         {error, E} -> {error, E};
         {ok, CallData, CallDataType, OutType} ->
             aect_evm:call_common(CallData, CallDataType, OutType,
                                  ContractKey, Code, Store,
-                                 TxEnv, Trees, VMVersion)
-    end.
-
--spec simple_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
-simple_call(SerializedCode, Function, Argument) ->
-    #{ byte_code := Code} = deserialize(SerializedCode),
-    case create_call(SerializedCode, Function, Argument) of
-        {error, E} -> {error, E};
-        {ok, CallData, CallDataType, OutType} ->
-            aect_evm:simple_call_common(Code, CallData, CallDataType,
-                                        OutType, ?CURRENT_AEVM_SOPHIA)
+                                 TxEnv, Trees, CTVersion)
     end.
 
 -spec encode_call_data(binary(), binary(), binary()) ->

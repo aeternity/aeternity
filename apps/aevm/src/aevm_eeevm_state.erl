@@ -70,6 +70,7 @@
         , trace_format/3
         , trace_fun/1
         , value/1
+        , abi_version/1
         , vm_version/1
         ]).
 
@@ -133,6 +134,7 @@ init(#{ env  := Env
          , trace => []
          , trace_fun => init_trace_fun(Opts)
 
+         , abi_version => maps:get(abi_version, Env)
          , vm_version => maps:get(vm_version, Env)
 
          , maps => aevm_eeevm_maps:init_maps()
@@ -169,12 +171,12 @@ init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
     %% Solidity contracts want their state in the 'store', and Sophia contracts
     %% want it on the heap.
     case vm_version(State) of
-        ?AEVM_01_Solidity_01 ->
+        ?VM_AEVM_SOLIDITY_1 ->
             aevm_eeevm_store:init(Store, State1);
         VmVersion when (CallDataType =:= undefined orelse OutType =:= undefined)
-                       andalso ?IS_AEVM_SOPHIA(VmVersion) ->
+                       andalso ?IS_VM_SOPHIA(VmVersion) ->
             error({bad_vm_setup, missing_call_data_type});
-        VmVersion when ?IS_AEVM_SOPHIA(VmVersion) ->
+        VmVersion when ?IS_VM_SOPHIA(VmVersion) ->
             case is_reentrant_call(State) of
                 true -> %% Sophia doesn't allow reentrant calls
                     init_error(reentrant_call);
@@ -225,7 +227,7 @@ import_state_from_store(Store, State0) ->
 
 do_return(Us0, Us1, State) ->
     case vm_version(State) of
-        VMV when ?IS_AEVM_SOPHIA(VMV) ->
+        VMV when ?IS_VM_SOPHIA(VMV) ->
             %% In Sophia Us1 is a pointer to the actual value.
             %% The type of the value is in the state (from meta data)
             Type = out_type(State),
@@ -235,7 +237,7 @@ do_return(Us0, Us1, State) ->
                 {error, _} ->
                     {State, gas(State) + 1}
             end;
-        ?AEVM_01_Solidity_01 ->
+        ?VM_AEVM_SOLIDITY_1 ->
             %% Us0 is pointer to a return data binary and Us1 is the size.
             {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State),
             {set_out(Out, State1), 0}
@@ -244,7 +246,7 @@ do_return(Us0, Us1, State) ->
 do_revert(Us0, Us1, State0) ->
     %% Us0 is a pointer to the revert string binary and Us1 is its size.
     case vm_version(State0) of
-        VMV when ?IS_AEVM_SOPHIA(VMV) ->
+        VMV when ?IS_VM_SOPHIA(VMV) ->
             %% In Sophia Us1 is a pointer to the actual value.
             %% The type of the value is always string.
             case heap_to_binary(string, Us1, State0) of
@@ -255,11 +257,12 @@ do_revert(Us0, Us1, State0) ->
                                  [Err, format_mem(mem(State0))]),
                     aevm_eeevm:eval_error(out_of_gas)
             end;
-        ?AEVM_01_Solidity_01 ->
+        ?VM_AEVM_SOLIDITY_1 ->
             {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State0),
             set_out(Out, State1)
     end.
 
+%% TODO: Pass ABI version?
 heap_to_binary(Type, Ptr, State) ->
     Store = storage(State),
     Heap  = mem(State),
@@ -286,6 +289,7 @@ spend_gas(Gas, State) ->
 heap_to_heap(Type, Ptr, State) ->
     heap_to_heap(Type, Ptr, State, 1).
 
+%% TODO: Pass ABI version?
 heap_to_heap(Type, Ptr, State, WordSize) ->
     Heap  = mem(State),
     Maps  = maps(State),
@@ -300,10 +304,10 @@ heap_to_heap(Type, Ptr, State, WordSize) ->
     end.
 
 return_contract_call_result(To, Input, Addr,_Size, ReturnData, Type, State) ->
-    case aevm_eeevm_state:vm_version(State) of
-        ?AEVM_01_Solidity_01 ->
+    case vm_version(State) of
+        ?VM_AEVM_SOLIDITY_1 ->
             {1, aevm_eeevm_memory:write_area(Addr, ReturnData, State)};
-        VMV when ?IS_AEVM_SOPHIA(VMV) ->
+        VMV when ?IS_VM_SOPHIA(VMV) ->
             %% For Sophia, ignore the Addr and put the result on the
             %% top of the heap
             HeapSize = aevm_eeevm_memory:size_in_words(State) * 32,
@@ -342,10 +346,10 @@ save_store(#{ chain_state := ChainState
             , chain_api   := ChainAPI
             , vm_version  := VmVersion } = State) ->
     case VmVersion of
-        ?AEVM_01_Solidity_01 ->
+        ?VM_AEVM_SOLIDITY_1 ->
             Store = aevm_eeevm_store:to_binary(State),
             {ok, State#{ chain_state => ChainAPI:set_store(Store, ChainState)}};
-        VMV when ?IS_AEVM_SOPHIA(VMV) ->
+        VMV when ?IS_VM_SOPHIA(VMV) ->
             %% A typerep for the state type is on top of the stack, and the state
             %% pointer is at address 0.
             {Addr, _} = aevm_eeevm_memory:load(0, State),
@@ -366,10 +370,10 @@ save_store(#{ chain_state := ChainState
 
 get_contract_call_input(Target, IOffset, ISize, State) ->
     case vm_version(State) of
-        ?AEVM_01_Solidity_01 ->
+        ?VM_AEVM_SOLIDITY_1 ->
             {Arg, State1} = aevm_eeevm_memory:get_area(IOffset, ISize, State),
             {Arg, undefined, State1};
-        VMVersion when ?IS_AEVM_SOPHIA(VMVersion) ->
+        VMVersion when ?IS_VM_SOPHIA(VMVersion) ->
             %% In Sophia:
             %%   ISize is the (integer) type hash for primops that needs to be
             %%         type checked (otherwise 0).
@@ -416,7 +420,7 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                     %% throw out_of_gas otherwise
                     {ok, TypeHashInt} = GetFstWord(),
                     TypeHash = <<TypeHashInt:256>>,
-                    case ChainAPI:get_contract_fun_types(TargetKey, VMVersion,
+                    case ChainAPI:get_contract_fun_types(TargetKey, ct_version(State),
                                                          TypeHash, ChainState) of
                         {ok, ArgType, OutType} ->
                             DataType = {tuple, [word, ArgType]},
@@ -444,7 +448,7 @@ write_heap_value(HeapValue, State) ->
 
 call_contract(Caller, Target, CallGas, Value, Data, State) ->
     case vm_version(State) of
-        VMV when ?IS_AEVM_SOPHIA(VMV), Target == ?PRIM_CALLS_CONTRACT ->
+        VMV when ?IS_VM_SOPHIA(VMV), Target == ?PRIM_CALLS_CONTRACT ->
             aevm_ae_primops:call(CallGas, Value, Data, State);
         _ ->
             CallStack  = [Caller | call_stack(State)],
@@ -575,7 +579,9 @@ maps(State)        -> maps:get(maps, State).
 chain_state(State) -> maps:get(chain_state, State).
 chain_api(State)   -> maps:get(chain_api, State).
 
+abi_version(State) -> maps:get(abi_version, State).
 vm_version(State)  -> maps:get(vm_version, State).
+ct_version(State)  -> #{vm => vm_version(State), abi => abi_version(State)}.
 
 add_log(Entry, State)    ->
     Log = maps:get(logs, State),

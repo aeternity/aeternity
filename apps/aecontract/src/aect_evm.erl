@@ -23,32 +23,32 @@ encode_call_data(_Contract, Function, Argument) ->
     %% TODO: Check that Function exists in Contract.
     {ok, <<Function/binary, Argument/binary>>}.
 
--spec simple_call_common(binary(), binary(), VMVersion :: integer()) ->
+-spec simple_call_common(binary(), binary(), aect_contracts:version()) ->
                             {ok, binary()} | {error, binary()}.
-simple_call_common(Code, CallData, VMVersion) ->
-    simple_call_common(Code, CallData, undefined, undefined, VMVersion).
+simple_call_common(Code, CallData, CTVersion) ->
+    simple_call_common(Code, CallData, undefined, undefined, CTVersion).
 
 -spec simple_call_common(binary(), binary(), aeso_sophia:type() | 'undefined',
-                         aeso_sophia:type() | 'undefined', VMVersion :: integer()) ->
+                         aeso_sophia:type() | 'undefined', aect_contracts:version()) ->
                             {ok, binary()} | {error, binary()}.
-simple_call_common(Code, CallData, CallDataType, OutType, VMVersion) ->
+simple_call_common(Code, CallData, CallDataType, OutType, CTVersion) ->
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
     Owner          = <<123456:32/unit:8>>,
     Deposit        = 0,
-    Contract       = aect_contracts:new(Owner, 1, VMVersion, Code, Deposit),
+    Contract       = aect_contracts:new(Owner, 1, CTVersion, Code, Deposit),
     Store          = aect_contracts:state(Contract),
     ContractKey    = aect_contracts:pubkey(Contract),
     Trees1         = aect_utils:insert_contract_in_trees(Contract, Trees),
     call_common(CallData, CallDataType, OutType, ContractKey, Code,
-                Store, TxEnv, Trees1, VMVersion).
+                Store, TxEnv, Trees1, CTVersion).
 
 -spec call_common(binary(), aeso_sophia:type() | 'undefined',
                   aeso_sophia:type() | 'undefined', binary(), binary(),
                   aect_contracts:store(), aetx_env:env(),
-                  aec_trees:trees(), VMVersion :: integer()) ->
+                  aec_trees:trees(), aect_contracts:version()) ->
                      {ok, binary()} | {error, binary()}.
 call_common(CallData, CallDataType, OutType, ContractKey,
-            Code, Store, TxEnv, Trees, VMVersion) ->
+            Code, Store, TxEnv, Trees, #{vm := VMVersion, abi := ABIVersion}) ->
     <<Address:256>> = ContractKey,
     GasLimit = aec_governance:block_gas_limit(),
     Amount = 0,
@@ -73,6 +73,7 @@ call_common(CallData, CallDataType, OutType, ContractKey,
             , chainAPI => aec_vm_chain
             , chainState => ChainState
             , vm_version => VMVersion
+            , abi_version => ABIVersion
             },
     try execute_call(Spec, true) of
         {ok, #{ out := Out } = _RetState} ->
@@ -101,6 +102,7 @@ execute_call(#{ code := Code
               , chainState := ChainState
               , chainAPI := ChainAPI
               , vm_version := VmVersion
+              , abi_version := ABIVersion
               } = CallDef, Trace) ->
     %% TODO: Handle Contract In State.
     Spec =
@@ -124,6 +126,7 @@ execute_call(#{ code := Code
                    , chainState => ChainState
                    , chainAPI => ChainAPI
                    , vm_version => VmVersion
+                   , abi_version => ABIVersion
                    },
            pre => #{}},
     TraceSpec =

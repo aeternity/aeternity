@@ -1928,17 +1928,17 @@ definitions:
       ttl:
         type: integer
         format: int64
-      vm_version:
+      abi_version:
         type: integer
-        format: int64
         minimum: 0
+        maximum: 65535
     required:
       - id
       - query_format
       - response_format
       - query_fee
       - ttl
-      - vm_version
+      - abi_version
   OracleQuery:
     type: object
     properties:
@@ -2034,10 +2034,11 @@ definitions:
       ttl:
         type: integer
         format: int64
-      vm_version:
+      abi_version:
         type: integer
         format: int64
         minimum: 0
+        maximum: 65535
     required:
       - query_format
       - response_format
@@ -2935,7 +2936,11 @@ definitions:
       vm_version:
         type: integer
         minimum: 0
-        maximum: 255
+        maximum: 65535
+      abi_version:
+        type: integer
+        minimum: 0
+        maximum: 65535
       log:
         type: string
       active:
@@ -2950,6 +2955,7 @@ definitions:
       - id
       - owner_id
       - vm_version
+      - abi_version
       - log
       - active
       - referrer_ids
@@ -3122,7 +3128,12 @@ definitions:
         description: 'Virtual machine''s version'
         type: integer
         minimum: 0
-        maximum: 255
+        maximum: 65535
+      abi_version:
+        description: 'ABI version'
+        type: integer
+        minimum: 0
+        maximum: 65535
       deposit:
         description: Deposit
         type: integer
@@ -3154,6 +3165,7 @@ definitions:
       - owner_id
       - code
       - vm_version
+      - abi_version
       - deposit
       - amount
       - gas
@@ -3176,7 +3188,12 @@ definitions:
         description: 'Virtual machine''s version'
         type: integer
         minimum: 0
-        maximum: 255
+        maximum: 65535
+      abi_version:
+        description: 'ABI version'
+        type: integer
+        minimum: 0
+        maximum: 65535
       deposit:
         description: Deposit
         type: integer
@@ -3211,6 +3228,7 @@ definitions:
       - owner_id
       - code
       - vm_version
+      - abi_version
       - deposit
       - amount
       - gas
@@ -3228,11 +3246,11 @@ definitions:
       contract_id:
         $ref: '#/definitions/EncodedHash'
         description: 'Contract''s pub_key'
-      vm_version:
-        description: 'Virtual machine''s version'
+      abi_version:
+        description: 'ABI version'
         type: integer
         minimum: 0
-        maximum: 255
+        maximum: 65535
       fee:
         description: Transaction fee
         type: integer
@@ -3259,7 +3277,7 @@ definitions:
     required:
       - caller_id
       - contract_id
-      - vm_version
+      - abi_version
       - fee
       - amount
       - gas
@@ -3277,11 +3295,11 @@ definitions:
       contract_id:
         $ref: '#/definitions/EncodedHash'
         description: 'Contract''s pub_key'
-      vm_version:
-        description: 'Virtual machine''s version'
+      abi_version:
+        description: 'ABI version'
         type: integer
         minimum: 0
-        maximum: 255
+        maximum: 65535
       fee:
         description: Transaction fee
         type: integer
@@ -3314,7 +3332,7 @@ definitions:
     required:
       - caller_id
       - contract_id
-      - vm_version
+      - abi_version
       - fee
       - amount
       - gas
@@ -3433,7 +3451,13 @@ definitions:
           vm_version:
             type: integer
             description: VM version of the contract
-            format: int64
+            minimum: 0
+            maximum: 65535
+          abi_version:
+            type: integer
+            description: ABI version of the contract
+            minimum: 0
+            maximum: 65535
           code:
             $ref: '#/definitions/ByteCode'
           deposit:
@@ -3446,6 +3470,7 @@ definitions:
         required:
           - owner
           - vm_version
+          - abi_version
           - code
           - deposit
           - call_data
@@ -3460,10 +3485,11 @@ definitions:
           contract:
             $ref: '#/definitions/EncodedHash'
             description: Contract address
-          vm_version:
+          abi_version:
             type: integer
-            description: VM version of the contract
-            format: int64
+            description: ABI version for the call/calldata
+            minimum: 0
+            maximum: 65535
           amount:
             type: integer
             description: Amount of tokens to transfer to the contract
@@ -3482,7 +3508,7 @@ definitions:
         required:
           - caller
           - contract
-          - vm_version
+          - abi_version
           - code
           - amount
           - call_data

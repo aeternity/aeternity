@@ -14,7 +14,7 @@
         , to_binary/1
         , get_sophia_state/1
         , get_sophia_state_type/1
-        , from_sophia_state/1
+        , from_sophia_state/2
         , set_sophia_state/2
         , is_valid_key/2
         , get_map_data/2
@@ -92,9 +92,9 @@ store(Address, Value, State) when is_integer(Value) ->
         <<(RealId):256, (RefCount):256, (Size):256, (Bin)/binary>>).
 
 %% The argument should be a binary encoding a pair of a typerep and a value of that type.
--spec from_sophia_state(aeso_heap:binary_value()) ->
+-spec from_sophia_state(aect_contracts:version(), aeso_heap:binary_value()) ->
             {ok, aect_contracts:store()} | {error, term()}.
-from_sophia_state(Data) ->
+from_sophia_state(_Version, Data) ->
     %% TODO: less encoding/decoding
     case aeso_heap:from_binary({tuple, [typerep]}, Data) of
         {ok, {Type}} ->
@@ -380,11 +380,11 @@ get_value(Id, Key, Store) ->
         Val  -> Val
     end.
 
-is_valid_key(VM, ?SOPHIA_STATE_KEY)      when ?IS_AEVM_SOPHIA(VM) -> true;
-is_valid_key(VM, ?SOPHIA_STATE_TYPE_KEY) when ?IS_AEVM_SOPHIA(VM) -> true;
-is_valid_key(VM, ?SOPHIA_STATE_MAPS_KEY) when ?IS_AEVM_SOPHIA(VM) -> true;
-is_valid_key(VM, K) when ?IS_AEVM_SOPHIA(VM) -> is_binary(K) andalso byte_size(K) >= 32;
-is_valid_key(?AEVM_01_Solidity_01, K) -> is_binary_map_key(K).
+is_valid_key(#{vm := VM}, ?SOPHIA_STATE_KEY)      when ?IS_VM_SOPHIA(VM) -> true;
+is_valid_key(#{vm := VM}, ?SOPHIA_STATE_TYPE_KEY) when ?IS_VM_SOPHIA(VM) -> true;
+is_valid_key(#{vm := VM}, ?SOPHIA_STATE_MAPS_KEY) when ?IS_VM_SOPHIA(VM) -> true;
+is_valid_key(#{vm := VM}, K) when ?IS_VM_SOPHIA(VM) -> is_binary(K) andalso byte_size(K) >= 32;
+is_valid_key(#{vm := ?VM_AEVM_SOLIDITY_1}, K) -> is_binary_map_key(K).
 
 %% -- Store API --
 %%   To make it possible to change the representation of the store

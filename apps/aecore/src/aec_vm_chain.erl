@@ -61,7 +61,7 @@
 -record(state, { trees              :: chain_trees()
                , tx_env             :: aetx_env:env()
                , account            :: aec_keys:pubkey() %% the contract account
-               , vm_version         :: non_neg_integer()
+               , vm_version         :: aect_contracts:vm_version()
                }).
 
 -type chain_trees() :: #trees{}.
@@ -197,17 +197,17 @@ spend(Tx, State) ->
 
 %%    Oracle
 -spec oracle_register_tx(aec_keys:pubkey(), non_neg_integer(), aeo_oracles:ttl(),
-                         aeso_sophia:type(), aeso_sophia:type(), pos_integer(),
+                         aeso_sophia:type(), aeso_sophia:type(), aect_contracts:abi_version(),
                          chain_state()) ->
     {ok, aetx:tx()} | {error, term()}.
-oracle_register_tx(AccountKey, QueryFee, TTL, QFormat, RFormat, VMVersion, State) ->
+oracle_register_tx(AccountKey, QueryFee, TTL, QFormat, RFormat, ABIVersion, State) ->
     on_chain_only(State, fun() -> oracle_register_tx_(AccountKey, QueryFee, TTL,
                                                       QFormat, RFormat,
-                                                      VMVersion, State)
+                                                      ABIVersion, State)
                          end).
 
 oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat,
-                    RFormat, VMVersion, State) ->
+                    RFormat, ABIVersion, State) ->
     Nonce = next_nonce(AccountKey, State),
     %% Note: The nonce of the account is incremented.
     %% This means that if you register an oracle for an account other than
@@ -222,7 +222,7 @@ oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat,
           response_format => BinaryResponseFormat,
           query_fee       => QueryFee,
           oracle_ttl      => TTL,
-          vm_version      => VMVersion,
+          abi_version     => ABIVersion,
           ttl             => 0, %% Not used.
           fee             => 0},
     aeo_register_tx:new(Spec).
@@ -303,11 +303,9 @@ maybe_convert_oracle_arg(OracleId, Arg, State) ->
     Trees = get_top_trees(State),
     case aeo_state_tree:lookup_oracle(OracleId, aec_trees:oracles(Trees)) of
         {value, Oracle} ->
-            case aeo_oracles:vm_version(Oracle) of
-                ?AEVM_NO_VM ->
-                    Arg;
-                VMVersion when ?IS_AEVM_SOPHIA(VMVersion) ->
-                    aeso_heap:to_binary(Arg)
+            case aeo_oracles:abi_version(Oracle) of
+                ?ABI_NO_VM    -> Arg;
+                ?ABI_SOPHIA_1 -> aeso_heap:to_binary(Arg)
             end;
         none ->
             %% Will fail later
@@ -370,16 +368,16 @@ oracle_get_answer(OracleId, QueryId, #state{trees = ChainTrees}) ->
                     {value, Oracle} = aeo_state_tree:lookup_oracle(OracleId,
                                                                   aec_trees:oracles(Trees)),
                     ResponseFormat = aeo_oracles:response_format(Oracle),
-                    VMVersion = aeo_oracles:vm_version(Oracle),
-                    case oracle_typerep(VMVersion, ResponseFormat) of
-                        {ok, Type} when ?IS_AEVM_SOPHIA(VMVersion) ->
+                    ABIVersion = aeo_oracles:abi_version(Oracle),
+                    case oracle_typerep(ABIVersion, ResponseFormat) of
+                        {ok, Type} when ABIVersion =:= ?ABI_SOPHIA_1 ->
                             try aeso_heap:from_binary(Type, Answer) of
                                 {ok, Result} -> {ok, {some, Result}};
                                 {error, _} -> {error, bad_answer}
                             catch _:_ ->
                                     {error, bad_answer}
                             end;
-                        {ok, string} when VMVersion =:= ?AEVM_NO_VM ->
+                        {ok, string} when ABIVersion =:= ?ABI_NO_VM ->
                             %% We treat the anwer as a non-sophia string
                             {ok, {some, Answer}};
                         {error, bad_typerep} ->
@@ -397,9 +395,9 @@ oracle_get_question(OracleId, QueryId, #state{trees = ChainTrees}) ->
         {value, Query} ->
             {value, Oracle} = aeo_state_tree:lookup_oracle(OracleId, OraclesTree),
             QueryFormat     = aeo_oracles:query_format(Oracle),
-            VMVersion       = aeo_oracles:vm_version(Oracle),
-            case oracle_typerep(VMVersion, QueryFormat) of
-                {ok, string} when VMVersion =:= ?AEVM_NO_VM ->
+            ABIVersion      = aeo_oracles:abi_version(Oracle),
+            case oracle_typerep(ABIVersion, QueryFormat) of
+                {ok, string} when ABIVersion =:= ?ABI_NO_VM ->
                     %% We treat the question as a non-sophia string
                     {ok, aeo_query:query(Query)};
                 {ok, QueryType} ->
@@ -424,9 +422,9 @@ oracle_query_fee(Oracle, #state{trees = ChainTrees, vm_version=VMVersion}) ->
         {value, O} ->
             Fee = aeo_oracles:query_fee(O),
             {ok, Fee};
-        none when VMVersion =:= ?AEVM_02_Sophia_01 ->
+        none when VMVersion =:= ?VM_AEVM_SOPHIA_2 ->
             {error, no_such_oracle};
-        none when VMVersion =:= ?AEVM_01_Sophia_01 ->
+        none when VMVersion =:= ?VM_AEVM_SOPHIA_1 ->
             %% Backwards compatible bug.
             {ok, none}
     end.
@@ -436,8 +434,8 @@ oracle_query_format(Oracle, #state{trees = ChainTrees}) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             BinaryFormat = aeo_oracles:query_format(O),
-            VMVersion = aeo_oracles:vm_version(O),
-            oracle_typerep(VMVersion, BinaryFormat);
+            ABIVersion = aeo_oracles:abi_version(O),
+            oracle_typerep(ABIVersion, BinaryFormat);
         none ->
             {error, no_such_oracle}
     end.
@@ -456,16 +454,16 @@ oracle_response_format(Oracle, #state{trees = ChainTrees}) ->
     Trees = get_on_chain_trees(ChainTrees),
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
-            oracle_typerep(aeo_oracles:vm_version(O),
+            oracle_typerep(aeo_oracles:abi_version(O),
                            aeo_oracles:response_format(O));
         none ->
             {error, no_such_oracle}
     end.
 
-oracle_typerep(?AEVM_NO_VM,_BinaryFormat) ->
+oracle_typerep(?ABI_NO_VM,_BinaryFormat) ->
     %% Treat this as a string
     {ok, string};
-oracle_typerep(VMVersion, BinaryFormat) when ?IS_AEVM_SOPHIA(VMVersion) ->
+oracle_typerep(?ABI_SOPHIA_1, BinaryFormat) ->
     try aeso_heap:from_binary(typerep, BinaryFormat) of
         {ok, Format} -> {ok, Format};
         {error, _} -> {error, bad_typerep}
@@ -630,8 +628,8 @@ get_contract_fun_types(Target, VMVersion, TypeHash, State) ->
     CT = aec_trees:contracts(Trees),
     case aect_state_tree:lookup_contract(Target, CT, [no_store]) of  %% no store
         {value, Contract} ->
-            ContractVMVersion = aect_contracts:vm_version(Contract),
-            case aect_contracts:is_legal_vm_call(VMVersion, ContractVMVersion) of
+            ContractVMVersion = aect_contracts:ct_version(Contract),
+            case aect_contracts:is_legal_call(VMVersion, ContractVMVersion) of
                 true ->
                     SerializedCode = aect_contracts:code(Contract),
                     #{type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
@@ -659,12 +657,12 @@ call_contract(Target, Gas, Value, CallData, CallStack,
             AT = aec_trees:accounts(Trees),
             {value, ContractAccount} = aec_accounts_trees:lookup(ContractKey, AT),
             Nonce = aec_accounts:nonce(ContractAccount) + 1,
-            VmVersion = aect_contracts:vm_version(Contract),
+            ABIVersion = aect_contracts:abi_version(Contract),
             {ok, CallTx} =
                 aect_call_tx:new(#{ caller_id   => aec_id:create(contract, ContractKey),
                                     nonce       => Nonce,
                                     contract_id => aec_id:create(contract, Target),
-                                    vm_version  => VmVersion,
+                                    abi_version => ABIVersion,
                                     fee         => 0,
                                     amount      => Value,
                                     gas         => Gas,

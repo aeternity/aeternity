@@ -169,7 +169,7 @@ check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
     end.
 
 check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
-                    PoI, Height, Trees) ->
+                    PoI, _Height, Trees) ->
     case get_vals([get_channel(ChannelPubKey, Trees),
                    deserialize_payload(Payload)]) of
         {error, _} = E -> E;
@@ -258,13 +258,6 @@ check_force_progress_(PayloadHash, PayloadRound,
                   false -> {error, wrong_round}
               end
           end,
-          fun() ->
-              VMVersion = aesc_offchain_update:extract_vm_version(Update),
-              case aect_contracts:is_legal_vm_version_at_height(call, VMVersion, Height) of
-                  true  -> ok;
-                  false -> {error, unknown_vm_version}
-              end
-          end,
           fun() -> check_root_hash_of_trees(PayloadHash, OffChainTrees) end,
           fun() -> % check produced tree has the same root hash as the poi
               ContractPubkey = aesc_offchain_update:extract_contract_pubkey(Update),
@@ -274,7 +267,10 @@ check_force_progress_(PayloadHash, PayloadRound,
                       case aect_state_tree:lookup_contract(ContractPubkey,
                                                            ContractTrees) of
                           none -> {error, contract_missing};
-                          {value, _} -> ok
+                          {value, Contract} ->
+                            ABIVersion = aesc_offchain_update:extract_abi_version(Update),
+                            CTVersion = aect_contracts:ct_version(Contract),
+                            check_abi_version(CTVersion, ABIVersion, Height)
                       end
                   end])
           end,
@@ -288,6 +284,13 @@ check_force_progress_(PayloadHash, PayloadRound,
     ?TEST_LOG("check_force_progress result: ~p", [Res]),
     Res.
 
+check_abi_version(#{abi := ABI} = Version, ABI, Height) ->
+    case aect_contracts:is_legal_version_at_height(call, Version, Height) of
+        true -> ok;
+        false -> {error, unknown_vm_version}
+    end;
+check_abi_version(_, _, _) ->
+    {error, wrong_abi_version}.
 
 check_solo_snapshot_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
                             Trees) ->

@@ -37,12 +37,12 @@
 call(<<"sophia-address">>, ContractKey, Function, Argument) ->
     aect_sophia:on_chain_call(ContractKey, Function, Argument);
 call(<<"evm">>, Code, _, CallData) ->
-    aect_evm:simple_call_common(Code, CallData, ?AEVM_01_Solidity_01);
+    CTVersion = #{vm => ?VM_AEVM_SOLIDITY_1, abi => ?ABI_SOLIDITY_1},
+    aect_evm:simple_call_common(Code, CallData, CTVersion);
 call(_, _, _, _) ->
     {error, <<"Unknown call ABI">>}.
 
 %% TODO: replace language string with vm_version number.
-
 encode_call_data(<<"sophia">>, Code, Function, Argument) ->
     aect_sophia:encode_call_data(Code, Function, Argument);
 encode_call_data(<<"evm">>, Code, Function, Argument) ->
@@ -56,30 +56,32 @@ encode_call_data(_, _, _, _) ->
 %% Call the contract and update the call object with the return value and gas
 %% used.
 
--spec run(byte(), map()) -> {aect_call:call(), aec_trees:trees()}.
-run(VMVersion, #{code := SerializedCode} = CallDef) when ?IS_AEVM_SOPHIA(VMVersion) ->
+-spec run(map(), map()) -> {aect_call:call(), aec_trees:trees()}.
+run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_VM_SOPHIA(VM) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
+    %% TODO: update aeso_abi and pass Version
     case aeso_abi:check_calldata(maps:get(call_data, CallDef), TypeInfo) of
         {ok, CallDataType, OutType} ->
             CallDef1 = CallDef#{code => Code,
                                 call_data_type => CallDataType,
                                 out_type => OutType},
-            run_common(CallDef1, VMVersion);
+            run_common(Version, CallDef1);
         {error, What} ->
             Gas = maps:get(gas, CallDef),
             Call = maps:get(call, CallDef),
             Trees = maps:get(trees, CallDef),
             {create_call(Gas, error, What, [], Call), Trees}
     end;
-run(?AEVM_01_Solidity_01, CallDef) ->
-    run_common(CallDef, ?AEVM_01_Solidity_01);
+run(#{vm := ?VM_AEVM_SOLIDITY_1, abi := ?ABI_SOLIDITY_1} = Version, CallDef) ->
+    run_common(Version, CallDef);
 run(_, #{ call := Call} = _CallDef) ->
     %% TODO:
     %% Wrong VM/ABI version just return an unchanged call.
     Call.
 
-run_common(#{  amount      := Value
+run_common(#{vm := VMVersion, abi := ABIVersion},
+           #{  amount      := Value
              , call        := Call
              , call_data   := CallData
              , call_stack  := CallStack
@@ -91,7 +93,7 @@ run_common(#{  amount      := Value
              , gas_price   := GasPrice
              , trees       := Trees
              , tx_env      := TxEnv0
-             } = CallDef, VMVersion) ->
+             } = CallDef) ->
     TxEnv = aetx_env:set_context(TxEnv0, aetx_contract),
     ChainState0 = chain_state(CallDef, TxEnv, VMVersion),
     <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
@@ -102,19 +104,20 @@ run_common(#{  amount      := Value
             currentTimestamp  => aetx_env:time_in_msecs(TxEnv),
             chainState        => ChainState0,
             chainAPI          => aec_vm_chain,
-            vm_version        => VMVersion},
-    Exec = #{code       => Code,
-             store      => Store,
-             address    => Address,
-             caller     => CallerAddr,
+            vm_version        => VMVersion,
+            abi_version       => ABIVersion},
+    Exec = #{code           => Code,
+             store          => Store,
+             address        => Address,
+             caller         => CallerAddr,
              call_data_type => maps:get(call_data_type, CallDef, undefined),
-             out_type   => maps:get(out_type, CallDef, undefined),
-             data       => CallData,
-             gas        => Gas,
-             gasPrice   => GasPrice,
-             origin     => CallerAddr,
-             value      => Value,
-             call_stack => CallStack
+             out_type       => maps:get(out_type, CallDef, undefined),
+             data           => CallData,
+             gas            => Gas,
+             gasPrice       => GasPrice,
+             origin         => CallerAddr,
+             value          => Value,
+             call_stack     => CallStack
             },
     Spec = #{ env => Env,
               exec => Exec,
