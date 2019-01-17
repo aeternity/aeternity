@@ -7,8 +7,7 @@
 
 -module(aeo_utils).
 
--export([check_format/3,
-         ttl_delta/2,
+-export([ttl_delta/2,
          ttl_expiry/2
         ]).
 
@@ -28,21 +27,4 @@ ttl_expiry(CurrentHeight, TTL) ->
             CurrentHeight + TTLDelta;
         {error, _Rsn} = Err ->
             Err
-    end.
-
-check_format(?AEVM_NO_VM, _Format, _Content) ->
-    %% No interpretation of the format, nor content.
-    ok;
-check_format(?AEVM_01_Sophia_01, Format, Content) ->
-    %% Check that the content can be decoded as the type
-    %% and that if we encoded it again, it becomes the content.
-    {ok, TypeRep} = aeso_heap:from_binary(typerep, Format),
-    try aeso_heap:from_binary(TypeRep, Content) of
-        {ok, Res} ->
-            case aeso_heap:to_binary(Res) of
-                Content -> ok;
-                _Other -> {error, bad_format}
-            end;
-        {error, _} -> {error, bad_format}
-    catch _:_ -> {error, bad_format}
     end.
