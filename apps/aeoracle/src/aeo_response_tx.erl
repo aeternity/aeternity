@@ -114,61 +114,36 @@ nonce(#oracle_response_tx{nonce = Nonce}) ->
 origin(#oracle_response_tx{} = Tx) ->
     oracle_pubkey(Tx).
 
-%% Oracle should exist, and have enough funds for the fee.
-%% QueryId id should match oracle.
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
-                          fee = Fee, response_ttl = ResponseTTL} = Tx, Trees, Env) ->
-    OraclePubKey = oracle_pubkey(Tx),
-    case fetch_query(OraclePubKey, QueryId, Trees) of
-        {value, I} ->
-            QueryResponseTTL = aeo_query:response_ttl(I),
-            Checks =
-                [fun() -> check_response_ttl(ResponseTTL, QueryResponseTTL) end,
-                 fun() -> check_oracle(OraclePubKey, Trees, Tx) end,
-                 fun() -> check_query(OraclePubKey, I) end |
-                 case aetx_env:context(Env) of
-                     %% Contract is paying tx fee as gas.
-                     aetx_contract -> [];
-                     aetx_transaction ->
-                         [fun() -> aetx_utils:check_account(OraclePubKey, Trees, Nonce, Fee) end] %% Sender must be able to pay transaction fee before receiving query fee.
-                 end],
-
-            case aeu_validation:run(Checks) of
-                ok              -> {ok, Trees};
-                {error, Reason} -> {error, Reason}
-            end;
-        none -> {error, no_matching_oracle_query}
-    end.
+check(#oracle_response_tx{}, Trees,_Env) ->
+    %% Checks are in process/3.
+     {ok, Trees}.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_response_tx{} = Tx, _) ->
     {ok, [oracle_pubkey(Tx)]}.
 
+response_op(RTx) ->
+    {delta, RTTL} = response_ttl(RTx),
+    { oracle_respond
+    , oracle_pubkey(RTx)
+    , query_id(RTx)
+    , response(RTx)
+    , RTTL}.
+
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
-                            response = Response, fee = Fee} = Tx,
-        Trees0, Env) ->
-    Height = aetx_env:height(Env),
-    OraclePubKey  = oracle_pubkey(Tx),
-    AccountsTree0 = aec_trees:accounts(Trees0),
-    OraclesTree0  = aec_trees:oracles(Trees0),
-
-    Query0 = aeo_state_tree:get_query(OraclePubKey, QueryId, OraclesTree0),
-    Query1 = aeo_query:add_response(Height, Response, Query0),
-    OraclesTree1 = aeo_state_tree:enter_query(Query1, OraclesTree0),
-
-    OracleAccount0 = aec_accounts_trees:get(OraclePubKey, AccountsTree0),
-    {ok, OracleAccount1} = aec_accounts:spend(OracleAccount0, Fee, Nonce),
-    QueryFee = aeo_query:fee(Query0),
-    {ok, OracleAccount2} = aec_accounts:earn(OracleAccount1, QueryFee),
-    AccountsTree1 = aec_accounts_trees:enter(OracleAccount2, AccountsTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_oracles(Trees1, OraclesTree1),
-
-    {ok, Trees2}.
+process(#oracle_response_tx{} = RTx, Trees, Env) ->
+    Pubkey = oracle_pubkey(RTx),
+    Instructions = [ response_op(RTx)
+                   , {inc_account_nonce, Pubkey, nonce(RTx)}
+                     %% NOTE: Order is important. Oracle needs to cover
+                     %% the fee before earning the query fee.
+                     %% Changing this breaks consensus.
+                   , {spend_fee, Pubkey, fee(RTx)}
+                   , {oracle_earn_query_fee, Pubkey, query_id(RTx)}
+                   ],
+    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
 
 serialize(#oracle_response_tx{oracle_id    = OracleId,
                               nonce        = Nonce,
@@ -236,36 +211,3 @@ for_client(#oracle_response_tx{oracle_id = OracleId,
                               <<"value">> => ResponseTTLValue},
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL}.
-
-%% -- Local functions  -------------------------------------------------------
-
-fetch_query(OraclePubkey, QueryId, Trees) ->
-    OraclesTree  = aec_trees:oracles(Trees),
-    aeo_state_tree:lookup_query(OraclePubkey, QueryId, OraclesTree).
-
-check_response_ttl(RTTL, RTTL)     -> ok;
-check_response_ttl(_RTTL1, _RTTL2) -> {error, oracle_response_has_wrong_response_ttl}.
-
-check_query(OraclePubKey, I) ->
-    case OraclePubKey == aeo_query:oracle_pubkey(I) of
-        true  ->
-            case aeo_query:is_open(I) of
-                true -> ok;
-                false  -> {error, oracle_closed_for_response}
-            end;
-        false -> {error, oracle_does_not_match_query_id}
-    end.
-
-check_oracle(OraclePubKey, Trees, RTx) ->
-    OraclesTree  = aec_trees:oracles(Trees),
-    case aeo_state_tree:lookup_oracle(OraclePubKey, OraclesTree) of
-        {value, Oracle} -> check_response_format(Oracle, RTx);
-        none -> {error, oracle_does_not_exist}
-    end.
-
-check_response_format(O, RTx) ->
-    VMVersion =  aeo_oracles:vm_version(O),
-    Format = aeo_oracles:response_format(O),
-    Content = response(RTx),
-    aeo_utils:check_format(VMVersion, Format, Content).
-

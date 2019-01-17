@@ -152,6 +152,8 @@ register_op(#oracle_register_tx{} = RTx, Height) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#oracle_register_tx{} = RTx, Trees, Env) ->
     AccountPubKey = account_pubkey(RTx),
+    %% TODO: Account nonce should not be increased in contract context
+    %%       but this would mean a hard fork.
     Instructions = [ {inc_account_nonce, AccountPubKey, nonce(RTx)}
                    , {spend_fee, AccountPubKey, fee(RTx)}
                    , register_op(RTx, aetx_env:height(Env))
