@@ -141,49 +141,37 @@ nonce(#oracle_query_tx{nonce = Nonce}) ->
 origin(#oracle_query_tx{} = Tx) ->
     sender_pubkey(Tx).
 
-%% SenderAccount should exist, and have enough funds for the fee + the query_fee.
-%% Oracle should exist, and query_fee should be enough
-%% Fee should cover TTL
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#oracle_query_tx{nonce = Nonce, query_fee = QFee, fee = Fee} = QTx,
-      Trees, Env) ->
-    Height       = aetx_env:height(Env),
-    SenderPubKey = sender_pubkey(QTx),
-    OraclePubKey = oracle_pubkey(QTx),
-    Checks =
-        [fun() -> aetx_utils:check_account(SenderPubKey, Trees, Nonce, Fee + QFee) end,
-         fun() -> check_oracle(OraclePubKey, Trees, Height, QTx) end,
-         fun() -> check_query_not_present(QTx, Trees, Height) end],
-
-    case aeu_validation:run(Checks) of
-        ok              -> {ok, Trees};
-        {error, Reason} -> {error, Reason}
-    end.
+check(#oracle_query_tx{}, Trees,_Env) ->
+    %% Checks are in process/3.
+    {ok, Trees}.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_query_tx{} = Tx, _) ->
     {ok, [sender_pubkey(Tx)]}.
 
+query_op(QTx, Height) ->
+    {delta, RTTL} = response_ttl(QTx),
+    QTTL = aeo_utils:ttl_delta(Height, query_ttl(QTx)),
+    { oracle_query
+    , oracle_pubkey(QTx)
+    , sender_pubkey(QTx)
+    , nonce(QTx)
+    , query(QTx)
+    , query_fee(QTx)
+    , QTTL
+    , RTTL
+    }.
+
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#oracle_query_tx{nonce = Nonce, fee = Fee,
-                         query_fee = QueryFee} = QueryTx,
-        Trees0, Env) ->
-    Height        = aetx_env:height(Env),
-    SenderPubKey  = sender_pubkey(QueryTx),
-    AccountsTree0 = aec_trees:accounts(Trees0),
-    OraclesTree0  = aec_trees:oracles(Trees0),
-
-    Sender0 = aec_accounts_trees:get(SenderPubKey, AccountsTree0),
-    {ok, Sender1} = aec_accounts:spend(Sender0, QueryFee + Fee, Nonce),
-    AccountsTree1 = aec_accounts_trees:enter(Sender1, AccountsTree0),
-
-    Query = aeo_query:new(QueryTx, Height),
-    OraclesTree1 = aeo_state_tree:insert_query(Query, OraclesTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_oracles(Trees1, OraclesTree1),
-
-    {ok, Trees2}.
+process(#oracle_query_tx{} = QTx, Trees, Env) ->
+    Sender = sender_pubkey(QTx),
+    Height = aetx_env:height(Env),
+    Instructions = [ {inc_account_nonce, Sender, nonce(QTx)}
+                   , {spend_fee, Sender, fee(QTx) + query_fee(QTx)}
+                   , query_op(QTx, Height)
+                   ],
+    aec_tx_processor:eval(Instructions, Trees, Height).
 
 serialize(#oracle_query_tx{sender_id    = SenderId,
                            nonce        = Nonce,
@@ -278,47 +266,3 @@ for_client(#oracle_query_tx{sender_id = SenderId,
                               <<"value">> => ResponseTTLValue},
       <<"fee">>          => Fee,
       <<"ttl">>          => TTL}.
-
-%% -- Local functions  -------------------------------------------------------
-
-check_query_not_present(QTx, Trees, Height) ->
-    Oracles = aec_trees:oracles(Trees),
-    I       = aeo_query:new(QTx, Height),
-    Id      = aeo_query:id(I),
-    case aeo_state_tree:lookup_query(oracle_pubkey(QTx), Id, Oracles) of
-        none       -> ok;
-        {value, _} -> {error, oracle_query_already_present}
-    end.
-
-check_oracle(OraclePubKey, Trees, Height,
-             #oracle_query_tx{query_fee = QueryFee,
-                              query_ttl = QTTL,
-                              response_ttl = RTTL
-                             } = QTx) ->
-    OraclesTree  = aec_trees:oracles(Trees),
-    case aeo_state_tree:lookup_oracle(OraclePubKey, OraclesTree) of
-        {value, Oracle} ->
-            case QueryFee >= aeo_oracles:query_fee(Oracle) of
-                true  -> check_oracle_ttl(Oracle, Height, QTTL, RTTL, QTx);
-                false -> {error, query_fee_too_low}
-            end;
-        none -> {error, oracle_does_not_exist}
-    end.
-
-check_oracle_ttl(O, Height, QTTL, RTTL, QTx) ->
-    try
-        Delta  = aeo_utils:ttl_delta(Height, QTTL),
-        MaxTTL = aeo_utils:ttl_expiry(Height + Delta, RTTL),
-        case aeo_oracles:ttl(O) < MaxTTL of
-            false -> check_query_format(O, QTx);
-            true  -> {error, too_long_ttl}
-        end
-    catch _:_ ->
-        {error, invalid_ttl}
-    end.
-
-check_query_format(O, QTx) ->
-    VMVersion =  aeo_oracles:vm_version(O),
-    Format = aeo_oracles:query_format(O),
-    Content = query(QTx),
-    aeo_utils:check_format(VMVersion, Format, Content).

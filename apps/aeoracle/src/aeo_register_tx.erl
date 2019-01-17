@@ -129,7 +129,6 @@ nonce(#oracle_register_tx{nonce = Nonce}) ->
 origin(#oracle_register_tx{} = Tx) ->
     account_pubkey(Tx).
 
-%% Account should exist, and have enough funds for the fee.
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_register_tx{}, Trees, _Env) ->
