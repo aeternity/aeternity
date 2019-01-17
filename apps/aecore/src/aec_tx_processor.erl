@@ -72,6 +72,10 @@ eval_one({resolve_account, GivenType, Hash, Var}, S) when ?IS_HASH(Hash),
 eval_one({ensure_account, Key}, S) when ?IS_VAR_OR_HASH(Key) ->
     {_Account, S1} = ensure_account(Key, S),
     S1;
+eval_one({oracle_query, OraclePubkey, SenderPubkey, SenderNonce, Query, Fee,
+                        QTTL, RTTL}, S) ->
+    oracle_query(OraclePubkey, SenderPubkey, SenderNonce,
+                 Query, Fee, QTTL, RTTL, S);
 eval_one({oracle_register, Pubkey, QFormat, RFormat,
                            QFee, DeltaTTL, VMVersion}, S) when ?IS_HASH(Pubkey) ->
     oracle_register(Pubkey, QFormat, RFormat,
@@ -145,6 +149,8 @@ resolve_name(account, name, NameHash, Var, S) ->
 oracle_register(Pubkey, QFormat, RFormat, QFee, DeltaTTL, VMVersion, S) ->
     assert_not_oracle(Pubkey, S),
     assert_oracle_vm_version(VMVersion),
+    %% TODO: MINERVA We should check the format matches the vm version,
+    %% but this is a hard fork
     AbsoluteTTL = DeltaTTL + S#state.height,
     try aeo_oracles:new(Pubkey, QFormat, RFormat, QFee, AbsoluteTTL, VMVersion) of
         Oracle -> cache_put(oracle, Oracle, S)
@@ -157,9 +163,28 @@ oracle_register(Pubkey, QFormat, RFormat, QFee, DeltaTTL, VMVersion, S) ->
 oracle_extend(PubKey, DeltaTTL, S) ->
     [runtime_error(zero_relative_oracle_extension_ttl) || DeltaTTL =:= 0],
     [runtime_error(negative_oracle_extension_ttl) || DeltaTTL < 0],
-    {Oracle, S1} = get_oracle(PubKey, S),
+    {Oracle, S1} = get_oracle(PubKey, account_is_not_an_active_oracle, S),
     Oracle1 = aeo_oracles:set_ttl(aeo_oracles:ttl(Oracle) + DeltaTTL, Oracle),
     cache_put(oracle, Oracle1, S1).
+
+oracle_query(OraclePubkey, SenderPubkey, SenderNonce,
+             Query, Fee, QTTL, RTTL, S) ->
+    {Oracle, S1} = get_oracle(OraclePubkey, oracle_does_not_exist, S),
+    assert_query_fee(Oracle, Fee),
+    assert_query_ttl(Oracle, QTTL, RTTL, S),
+    assert_query_format(Oracle, aeo_oracles:query_format(Oracle), Query),
+    AbsoluteQTTL = S#state.height + QTTL,
+    ResponseTTL = {delta, RTTL},
+    try aeo_query:new(OraclePubkey, SenderPubkey, SenderNonce, Query, Fee,
+                      AbsoluteQTTL, ResponseTTL) of
+        QueryObject ->
+            assert_not_oracle_query(QueryObject, S),
+            cache_put(oracle_query, QueryObject, S1)
+    catch
+        error:{illegal,_Field,_X} = Err ->
+            lager:debug("Failed oracle query: ~p", [Err]),
+            runtime_error(illegal_oracle_query_spec)
+    end.
 
 %%%===================================================================
 %%% Helpers for instructions
@@ -195,8 +220,51 @@ assert_oracle_vm_version(?AEVM_01_Sophia_01) -> ok;
 assert_oracle_vm_version(_) ->
     runtime_error(bad_vm_version).
 
-get_oracle(Key, #state{} = S) ->
-    get_x(oracle, Key, account_is_not_an_active_oracle, S).
+get_oracle(Key, Error, #state{} = S) ->
+    get_x(oracle, Key, Error, S).
+
+assert_query_fee(Oracle, QueryFee) ->
+    case QueryFee >= aeo_oracles:query_fee(Oracle) of
+        true  -> ok;
+        false -> runtime_error(query_fee_too_low)
+    end.
+
+assert_not_oracle_query(Query, S) ->
+    OraclePubkey = aeo_query:oracle_pubkey(Query),
+    QueryId  = aeo_query:id(Query),
+    case find_x(oracle_query, {OraclePubkey, QueryId}, S) of
+        {_, _} -> runtime_error(oracle_query_already_present);
+        none -> ok
+    end.
+
+assert_query_ttl(Oracle, QTTL, RTTL, S) ->
+    OracleTTL = aeo_oracles:ttl(Oracle),
+    case S#state.height + QTTL + RTTL > OracleTTL of
+        true  -> runtime_error(too_long_ttl);
+        false -> ok
+    end.
+
+assert_query_format(Oracle, Format, Content) ->
+    case aeo_oracles:vm_version(Oracle) of
+        ?AEVM_NO_VM ->
+            %% No interpretation of the format, nor content.
+            ok;
+        ?AEVM_01_Sophia_01 ->
+            %% Check that the content can be decoded as the type
+            %% and that if we encoded it again, it becomes the content.
+            {ok, TypeRep} = aeso_heap:from_binary(typerep, Format),
+            try aeso_heap:from_binary(TypeRep, Content) of
+                {ok, Res} ->
+                    case aeso_heap:to_binary(Res) of
+                        Content -> ok;
+                        _Other -> runtime_error(bad_format)
+                    end;
+                {error, _} = E ->
+                    runtime_error(bad_format)
+            catch _:_ ->
+                    {error, bad_format}
+            end
+    end.
 
 %%%===================================================================
 %%% Error handling
@@ -234,13 +302,18 @@ trees_find(account, Key, #state{trees = Trees} = S) ->
     aec_accounts_trees:lookup(get_var(Key, account, S), ATree);
 trees_find(oracle, Key, #state{trees = Trees} = S) ->
     OTree = aec_trees:oracles(Trees),
-    aeo_state_tree:lookup_oracle(get_var(Key, oracle, S), OTree).
+    aeo_state_tree:lookup_oracle(get_var(Key, oracle, S), OTree);
+trees_find(oracle_query, Key, #state{trees = Trees} = S) ->
+    {OraclePubkey, QueryId} = get_var(Key, oracle_query, S),
+    OTree = aec_trees:oracles(Trees),
+    aeo_state_tree:lookup_query(OraclePubkey, QueryId, OTree).
 
 %%%===================================================================
 %%% Cache
 
 -define(IS_TAG(X), ((X =:= account)
                     orelse (X =:= oracle)
+                    orelse (X =:= oracle_query)
                    )
        ).
 
@@ -255,8 +328,11 @@ cache_put(account, Val, #state{cache = C} = S) ->
     S#state{cache = dict:store({account, Pubkey}, Val, C)};
 cache_put(oracle, Val,  #state{cache = C} = S) ->
     Pubkey = aeo_oracles:pubkey(Val),
-    S#state{cache = dict:store({oracle, Pubkey}, Val, C)}.
-
+    S#state{cache = dict:store({oracle, Pubkey}, Val, C)};
+cache_put(oracle_query, Val, #state{cache = C} = S) ->
+    Pubkey = aeo_query:oracle_pubkey(Val),
+    QueryId = aeo_query:id(Val),
+    S#state{cache = dict:store({oracle_query, {Pubkey, QueryId}}, Val, C)}.
 
 cache_write_through(#state{cache = C, trees = T}) ->
     dict:fold(fun cache_write_through_fun/3, T, C).
@@ -269,8 +345,11 @@ cache_write_through_fun({account,_Pubkey}, Account, Trees) ->
 cache_write_through_fun({oracle,_Pubkey}, Oracle, Trees) ->
     OTrees  = aec_trees:oracles(Trees),
     OTrees1 = aeo_state_tree:enter_oracle(Oracle, OTrees),
+    aec_trees:set_oracles(Trees, OTrees1);
+cache_write_through_fun({oracle_query, {_Pubkey, _Id}}, Query, Trees) ->
+    OTrees  = aec_trees:oracles(Trees),
+    OTrees1 = aeo_state_tree:enter_query(Query, OTrees),
     aec_trees:set_oracles(Trees, OTrees1).
-
 
 %%%===================================================================
 %%% Variable environment
@@ -278,6 +357,9 @@ cache_write_through_fun({oracle,_Pubkey}, Oracle, Trees) ->
 get_var({var, X}, Tag, #state{env = E}) when is_atom(X) ->
     {Tag, Val} = dict:fetch(X, E),
     Val;
+get_var({X, Y} = Res, oracle_query, #state{}) when is_binary(X),
+                                                   is_binary(Y) ->
+    Res;
 get_var(X,_Tag, #state{}) when is_binary(X) ->
     X.
 
