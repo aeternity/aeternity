@@ -72,6 +72,8 @@ eval_one({resolve_account, GivenType, Hash, Var}, S) when ?IS_HASH(Hash),
 eval_one({ensure_account, Key}, S) when ?IS_VAR_OR_HASH(Key) ->
     {_Account, S1} = ensure_account(Key, S),
     S1;
+eval_one({oracle_earn_query_fee, Pubkey, QueryId}, S) when ?IS_HASH(Pubkey) ->
+    oracle_earn_query_fee(Pubkey, QueryId, S);
 eval_one({oracle_query, OraclePubkey, SenderPubkey, SenderNonce, Query, Fee,
                         QTTL, RTTL}, S) ->
     oracle_query(OraclePubkey, SenderPubkey, SenderNonce,
@@ -80,6 +82,8 @@ eval_one({oracle_register, Pubkey, QFormat, RFormat,
                            QFee, DeltaTTL, VMVersion}, S) when ?IS_HASH(Pubkey) ->
     oracle_register(Pubkey, QFormat, RFormat,
                     QFee, DeltaTTL, VMVersion, S);
+eval_one({oracle_respond, OraclePubkey, QueryId, Response, ResponseTTL}, S) ->
+    oracle_respond(OraclePubkey, QueryId, Response, ResponseTTL, S);
 eval_one({oracle_extend, PubKey, DeltaTTL}, S) when ?IS_HASH(PubKey) ->
     oracle_extend(PubKey, DeltaTTL, S).
 
@@ -172,7 +176,7 @@ oracle_query(OraclePubkey, SenderPubkey, SenderNonce,
     {Oracle, S1} = get_oracle(OraclePubkey, oracle_does_not_exist, S),
     assert_query_fee(Oracle, Fee),
     assert_query_ttl(Oracle, QTTL, RTTL, S),
-    assert_query_format(Oracle, aeo_oracles:query_format(Oracle), Query),
+    assert_oracle_format_match(Oracle, aeo_oracles:query_format(Oracle), Query),
     AbsoluteQTTL = S#state.height + QTTL,
     ResponseTTL = {delta, RTTL},
     try aeo_query:new(OraclePubkey, SenderPubkey, SenderNonce, Query, Fee,
@@ -185,6 +189,23 @@ oracle_query(OraclePubkey, SenderPubkey, SenderNonce,
             lager:debug("Failed oracle query: ~p", [Err]),
             runtime_error(illegal_oracle_query_spec)
     end.
+
+oracle_respond(OraclePubkey, QueryId, Response, RTTL, S) ->
+    {QueryObject, S1} = get_oracle_query(OraclePubkey, QueryId, S),
+    assert_oracle_response_ttl(QueryObject, RTTL),
+    {Oracle, S2} = get_oracle(OraclePubkey, oracle_does_not_exist, S1),
+    assert_query_belongs_to_oracle(QueryObject, OraclePubkey),
+    assert_oracle_format_match(Oracle, aeo_oracles:response_format(Oracle), Response),
+    assert_query_is_open(QueryObject),
+    Height = S#state.height,
+    QueryObject1 = aeo_query:add_response(Height, Response, QueryObject),
+    cache_put(oracle_query, QueryObject1, S2).
+
+oracle_earn_query_fee(OraclePubkey, QueryId, S) ->
+    {Account, S1} = get_account(OraclePubkey, S),
+    {Query, S2} = get_oracle_query(OraclePubkey, QueryId, S1),
+    {ok, Account1} = aec_accounts:earn(Account, aeo_query:fee(Query)),
+    cache_put(account, Account1, S2).
 
 %%%===================================================================
 %%% Helpers for instructions
@@ -223,6 +244,9 @@ assert_oracle_vm_version(_) ->
 get_oracle(Key, Error, #state{} = S) ->
     get_x(oracle, Key, Error, S).
 
+get_oracle_query(OraclePubkey, QueryId, #state{} = S) ->
+    get_x(oracle_query, {OraclePubkey, QueryId}, no_matching_oracle_query, S).
+
 assert_query_fee(Oracle, QueryFee) ->
     case QueryFee >= aeo_oracles:query_fee(Oracle) of
         true  -> ok;
@@ -244,7 +268,7 @@ assert_query_ttl(Oracle, QTTL, RTTL, S) ->
         false -> ok
     end.
 
-assert_query_format(Oracle, Format, Content) ->
+assert_oracle_format_match(Oracle, Format, Content) ->
     case aeo_oracles:vm_version(Oracle) of
         ?AEVM_NO_VM ->
             %% No interpretation of the format, nor content.
@@ -259,11 +283,30 @@ assert_query_format(Oracle, Format, Content) ->
                         Content -> ok;
                         _Other -> runtime_error(bad_format)
                     end;
-                {error, _} = E ->
+                {error, _} ->
                     runtime_error(bad_format)
             catch _:_ ->
                     {error, bad_format}
             end
+    end.
+
+assert_oracle_response_ttl(QueryObject, RTTL) ->
+    {delta, QRTTL} = aeo_query:response_ttl(QueryObject),
+    case QRTTL =:= RTTL of
+        true  -> ok;
+        false -> runtime_error(oracle_response_has_wrong_response_ttl)
+    end.
+
+assert_query_belongs_to_oracle(QueryObject, OraclePubkey) ->
+    case aeo_query:oracle_pubkey(QueryObject) =:= OraclePubkey of
+        true  -> ok;
+        false -> runtime_error(oracle_does_not_match_query_id)
+    end.
+
+assert_query_is_open(QueryObject) ->
+    case aeo_query:is_open(QueryObject) of
+        true  -> ok;
+        false -> runtime_error(oracle_closed_for_response)
     end.
 
 %%%===================================================================
