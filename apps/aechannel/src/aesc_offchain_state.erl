@@ -31,6 +31,7 @@
         , hash/1                      %%  (State) -> hash()
         , balance/2                   %%  (Pubkey, State) -> Balance
         , poi/2                       %%  (Filter, State) -> {ok, PoI} | {error, not_found}
+        , serialize_for_client/1
         ]).
 
 -export([get_contract_call/4,
@@ -350,4 +351,23 @@ move_call(Update, Round, Calls, Trees) ->
                                                 Round,
                                                 aec_trees:calls(Trees)),
     aect_call_state_tree:insert_call(Call, Calls).
+
+-spec serialize_for_client(state()) -> map().
+serialize_for_client(#state{trees = Trees,
+                            calls = Calls,
+                            signed_tx = SignedTx,
+                            half_signed_tx = HalfSignedTx
+                           }) ->
+    #{ <<"trees">> => aec_trees:serialize_to_client(Trees)
+     , <<"calls">> => aect_call_state_tree:serialize_to_client(Calls)
+     , <<"signed_tx">>       => serialize_for_client_tx_or_notx(SignedTx)
+     , <<"half_signed_tx">>  => serialize_for_client_tx_or_notx(HalfSignedTx)
+     }.
+
+-spec serialize_for_client_tx_or_notx(aetx_sign:signed_tx() | ?NO_TX) -> binary() | map().
+serialize_for_client_tx_or_notx(?NO_TX) ->
+    <<"">>;
+serialize_for_client_tx_or_notx(Tx) ->
+    STx = aetx_sign:serialize_to_binary(Tx),
+    aehttp_api_encoder:encode(transaction, STx).
 

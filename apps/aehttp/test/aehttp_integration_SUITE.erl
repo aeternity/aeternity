@@ -3457,6 +3457,11 @@ assert_balance(Pubkey, ExpectedBalance) ->
     {ok, 200, #{<<"balance">> := ExpectedBalance}} =
         get_accounts_by_pubkey_sut(Address).
 
+assert_trees_balance(Trees, Pubkey, ExpectedBalance) ->
+    AccTrees = aec_trees:accounts(Trees),
+    {value, Account} = aec_accounts_trees:lookup(Pubkey, AccTrees),
+    ExpectedBalance = aec_accounts:balance(Account).
+
 channel_sign_tx(ConnPid, Privkey, Tag, Config) ->
     {ok, Tag, #{<<"tx">> := EncCreateTx}} = wait_for_channel_event(ConnPid, sign, Config),
     {ok, CreateBinTx} = aehttp_api_encoder:safe_decode(transaction, EncCreateTx),
@@ -3726,6 +3731,12 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     Ba1 = Ba0 - Amount,
     Bb1 = Bb0 + Amount,
 
+    {ok, #{ trees := StateTrees
+          , signed_tx := StateSignedStateTx }} = sc_ws_get_state(IConnPid, Config),
+    SignedStateTx = StateSignedStateTx,
+    assert_trees_balance(StateTrees, StarterPubkey, Ba1),
+    assert_trees_balance(StateTrees, AcknowledgerPubkey, Bb1),
+
     ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, info, update, get]),
     ok = ?WS:unregister_test_for_channel_events(RConnPid, [sign, info, update]),
 
@@ -3793,6 +3804,40 @@ query_balances_(ConnPid, Accounts, <<"json-rpc">>) ->
     {ok, ?WS:json_rpc_call(
             ConnPid, #{ <<"method">> => <<"channels.get.balances">>
                       , <<"params">> => #{<<"accounts">> => Accounts} })}.
+
+sc_ws_get_state(ConnPid, Config) ->
+    {ok, Res} = query_state(ConnPid, Config),
+    #{ <<"trees">> := EncodedTrees
+     , <<"calls">> := EncodedCalls
+     , <<"signed_tx">> := EncodedSignedTx
+     , <<"half_signed_tx">> := EncodedHalfSignedTx
+     } = Res,
+    {ok, STrees} = aehttp_api_encoder:safe_decode(state_trees, EncodedTrees),
+    Trees = aec_trees:deserialize_from_binary_without_backend(STrees),
+    {ok, SCalls} = aehttp_api_encoder:safe_decode(call_state_tree, EncodedCalls),
+    Calls = aect_call_state_tree:from_binary_without_backend(SCalls),
+    {ok, #{ trees => Trees
+          , calls => Calls
+          , signed_tx => decode_signed_tx(EncodedSignedTx)
+          , half_signed_tx => decode_signed_tx(EncodedHalfSignedTx)}}.
+
+decode_signed_tx(<<>>) ->
+    no_tx;
+decode_signed_tx(EncodedSignedTx) ->
+    {ok, SSignedTx} = aehttp_api_encoder:safe_decode(transaction, EncodedSignedTx),
+    aetx_sign:deserialize_from_binary(SSignedTx).
+
+query_state(ConnPid, Config) ->
+    query_state_(ConnPid, sc_ws_protocol(Config)).
+
+query_state_(ConnPid, <<"legacy">>) ->
+    ?WS:send_tagged(ConnPid, <<"get">>, <<"offchain_state">>, #{}),
+    {ok, <<"offchain_state">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
+    {ok, Res};
+query_state_(ConnPid, <<"json-rpc">>) ->
+    {ok, ?WS:json_rpc_call(
+        ConnPid, #{ <<"method">> => <<"channels.get.offchain_state">>
+                  , <<"params">> => #{} })}.
 
 sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator
                                  orelse Closer =:= responder ->
