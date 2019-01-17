@@ -188,7 +188,8 @@
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BOGUS_CHANNEL, <<1:?MINER_PUB_BYTES/unit:8>>).
 -define(ROLES, [initiator, responder]).
--define(VM_VERSION, ?CURRENT_AEVM_SOPHIA).
+-define(VM_VERSION, ?CURRENT_VM_SOPHIA).
+-define(ABI_VERSION, ?CURRENT_ABI_SOPHIA).
 -define(TEST_LOG(Format, Data), ct:log(Format, Data)).
 %%%===================================================================
 %%% Common test framework
@@ -3166,7 +3167,7 @@ fp_solo_payload_not_call_update(Cfg) ->
     Transfer = aesc_offchain_update:op_transfer(Fake1Id, Fake2Id, 10),
     Deposit = aesc_offchain_update:op_deposit(Fake1Id, 10),
     Withdraw = aesc_offchain_update:op_withdraw(Fake1Id, 10),
-    NewContract = aesc_offchain_update:op_new_contract(Fake1Id, 1,
+    NewContract = aesc_offchain_update:op_new_contract(Fake1Id, 1, 1,
                                                        <<>>, 1, <<>>),
     lists:foreach(
         fun(Update) ->
@@ -3228,7 +3229,7 @@ fp_solo_payload_broken_call(Cfg) ->
                     Update = aesc_offchain_update:op_call_contract(
                                 aec_id:create(account, From),
                                 aec_id:create(contract, ContractId),
-                                ?VM_VERSION, 1,
+                                ?ABI_VERSION, 1,
                                 CallData,
                                 [],
                                 _GasPrice = 1,
@@ -3383,6 +3384,7 @@ fp_register_name(Cfg) ->
                       nonce       => Nonce,
                       code        => BinCode,
                       vm_version  => ?VM_VERSION,
+                      abi_version => ?ABI_VERSION,
                       deposit     => 1,
                       amount      => 1,
                       gas         => 123456,
@@ -3428,7 +3430,7 @@ fp_register_name(Cfg) ->
                       nonce       => Nonce,
                       contract_id => aec_id:create(contract,
                                                     ContractId),
-                      vm_version  => ?VM_VERSION,
+                      abi_version => ?ABI_VERSION,
                       amount      => 1,
                       gas         => 123456,
                       gas_price   => 1,
@@ -3718,6 +3720,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       nonce       => Nonce,
                       code        => BinCode,
                       vm_version  => ?VM_VERSION,
+                      abi_version => ?ABI_VERSION,
                       deposit     => 1,
                       amount      => 1,
                       gas         => 123456,
@@ -3763,7 +3766,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       nonce       => Nonce,
                       contract_id => aec_id:create(contract,
                                                     ContractId),
-                      vm_version  => ?VM_VERSION,
+                      abi_version => ?ABI_VERSION,
                       amount      => 1,
                       gas         => 123456,
                       gas_price   => 1,
@@ -3933,6 +3936,7 @@ fp_register_oracle(Cfg) ->
                       nonce       => Nonce,
                       code        => BinCode,
                       vm_version  => ?VM_VERSION,
+                      abi_version => ?ABI_VERSION,
                       deposit     => 1,
                       amount      => 1,
                       gas         => 123456,
@@ -3970,7 +3974,7 @@ fp_register_oracle(Cfg) ->
                       nonce       => Nonce,
                       contract_id => aec_id:create(contract,
                                                     ContractId),
-                      vm_version  => ?VM_VERSION,
+                      abi_version => ?ABI_VERSION,
                       amount      => 1,
                       gas         => 123456,
                       gas_price   => 1,
@@ -4335,7 +4339,7 @@ create_contract_call_payload_with_calldata(Key, ContractId, CallData, Amount) ->
                 aesc_offchain_update:op_call_contract(
                     aec_id:create(account, From),
                     aec_id:create(contract, ContractId),
-                    ?VM_VERSION, Amount, CallData,
+                    ?ABI_VERSION, Amount, CallData,
                     [],
                     _GasPrice = maps:get(gas_price, Props, 1),
                     _GasLimit = maps:get(gas_limit, Props, 10000000))),
@@ -4404,7 +4408,7 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
         {ok, BinCode}  = compile_contract(ContractName),
         {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, InitArg),
         Update = aesc_offchain_update:op_new_contract(aec_id:create(account, Owner),
-                                                      ?VM_VERSION,
+                                                      ?VM_VERSION, ?ABI_VERSION,
                                                       BinCode,
                                                       Deposit,
                                                       CallData),
@@ -4432,16 +4436,17 @@ create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->
         {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, InitArg),
         Nonce = aesc_test_utils:next_nonce(Owner, State0),
         {ok, AetxCreateTx} =
-            aect_create_tx:new(#{owner_id   => aec_id:create(account, Owner),
-                                 nonce      => Nonce,
-                                 code       => BinCode,
-                                 vm_version => ?VM_VERSION,
-                                 deposit    => Deposit,
-                                 amount     => 0,
-                                 gas        => 123467,
-                                 gas_price  => 1,
-                                 call_data  => CallData,
-                                 fee        => 10}),
+            aect_create_tx:new(#{owner_id    => aec_id:create(account, Owner),
+                                 nonce       => Nonce,
+                                 code        => BinCode,
+                                 vm_version  => ?VM_VERSION,
+                                 abi_version => ?ABI_VERSION,
+                                 deposit     => Deposit,
+                                 amount      => 0,
+                                 gas         => 123467,
+                                 gas_price   => 1,
+                                 call_data   => CallData,
+                                 fee         => 10}),
         {contract_create_tx, CreateTx} = aetx:specialize_type(AetxCreateTx),
         Env = tx_env(Props),
         {ok, _} = aect_create_tx:check(CreateTx, Trees0, Env),
@@ -5035,7 +5040,7 @@ register_new_oracle(QFormat, RFormat, QueryFee) ->
                                                    #{query_format => QFormat,
                                                      query_fee => QueryFee,
                                                      response_format => RFormat,
-                                                     vm_version => ?VM_VERSION
+                                                     abi_version => ?ABI_VERSION
                                                     },
                                                    S),
                 PrivKey = aesc_test_utils:priv_key(Oracle, S),
@@ -5214,5 +5219,5 @@ poi_participants_only() ->
 
 compile_contract(ContractName) ->
     aect_test_utils:compile_contract(
-      filename:join(["contracts", 
+      filename:join(["contracts",
                      filename:basename(ContractName, ".aes") ++ ".aes"])).

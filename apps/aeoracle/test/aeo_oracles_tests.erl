@@ -74,6 +74,7 @@ register_tx(Override) ->
            , oracle_ttl      => {delta, 100}
            , fee             => 10
            , ttl             => 100
+           , abi_version     => 1
            },
     Map1 = maps:merge(Map, Override),
     {ok, Tx} = aeo_register_tx:new(Map1),

@@ -28,11 +28,11 @@ test_unknown_oracle_fee() ->
     ContractAccount = <<321:?BENEFICIARY_PUB_BYTES/unit:8>>,
 
     StateROMA     = aec_vm_chain:new_state(Trees, TxEnvROMA, ContractAccount,
-                                           ?AEVM_01_Sophia_01),
+                                           ?VM_AEVM_SOPHIA_1),
     StateMINERVA1 = aec_vm_chain:new_state(Trees, TxEnvMINERVA, ContractAccount,
-                                           ?AEVM_01_Sophia_01),
+                                           ?VM_AEVM_SOPHIA_1),
     StateMINERVA2 = aec_vm_chain:new_state(Trees, TxEnvMINERVA, ContractAccount,
-                                           ?AEVM_02_Sophia_01),
+                                           ?VM_AEVM_SOPHIA_2),
     BogusOracle   = Beneficiary,
 
     ?assertEqual({ok, none},

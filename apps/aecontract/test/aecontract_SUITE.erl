@@ -731,7 +731,7 @@ call_contract_error_value(_Cfg) ->
 %%%===================================================================
 
 make_contract(PubKey, Code, S) ->
-    Tx = aect_test_utils:create_tx(PubKey, #{ vm_version => 2,
+    Tx = aect_test_utils:create_tx(PubKey, #{ vm_version => ?CURRENT_VM_SOPHIA,
                                               code => Code }, S),
     {contract_create_tx, CTx} = aetx:specialize_type(Tx),
     aect_contracts:new(CTx).
@@ -847,14 +847,15 @@ create_contract_with_code(Owner, Code, Args, Options, S) ->
     CallData    = make_calldata_from_code(Code, init, Args),
     CreateTx    = aect_test_utils:create_tx(Owner,
                     maps:merge(
-                    #{ nonce      => Nonce
-                     , vm_version => ?CURRENT_AEVM_SOPHIA
-                     , code       => Code
-                     , call_data  => CallData
-                     , fee        => 1000000
-                     , deposit    => 0
-                     , amount     => 0
-                     , gas        => 10000 }, maps:without([height, return_return_value, return_gas_used], Options)), S),
+                    #{ nonce       => Nonce
+                     , abi_version => ?CURRENT_ABI_SOPHIA
+                     , vm_version  => ?CURRENT_VM_SOPHIA
+                     , code        => Code
+                     , call_data   => CallData
+                     , fee         => 1000000
+                     , deposit     => 0
+                     , amount      => 0
+                     , gas         => 10000 }, maps:without([height, return_return_value, return_gas_used], Options)), S),
     Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Owner, S),
     {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S, Height),
@@ -884,12 +885,12 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
     Nonce    = aect_test_utils:next_nonce(Caller, S),
     CallTx   = aect_test_utils:call_tx(Caller, ContractKey,
                 maps:merge(
-                #{ nonce      => Nonce
-                 , vm_version => ?CURRENT_AEVM_SOPHIA
-                 , call_data  => Calldata
-                 , fee        => 1000000
-                 , amount     => 0
-                 , gas        => 140000
+                #{ nonce       => Nonce
+                 , abi_version => ?CURRENT_ABI_SOPHIA
+                 , call_data   => Calldata
+                 , fee         => 1000000
+                 , amount      => 0
+                 , gas         => 140000
                  }, maps:without([height, return_gas_used, return_logs], Options)), S),
     Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Caller, S),
@@ -1159,7 +1160,7 @@ register_no_vm_oracle(PubKey, S) ->
                                      , query_format    => <<"Say someting">>
                                      , response_format => <<"not a string anyway">>
                                      , ttl             => 0
-                                     , vm_version      => ?AEVM_NO_VM
+                                     , abi_version     => ?ABI_NO_VM
                                      }),
     PrivKey = aect_test_utils:priv_key(PubKey, S),
     {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S),
