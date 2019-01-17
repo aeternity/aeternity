@@ -141,12 +141,12 @@ signers(#oracle_register_tx{} = Tx, _) ->
 
 register_op(#oracle_register_tx{} = RTx, Height) ->
     {oracle_register,
-     account_pubkey(RTx),
-     query_format(RTx),
-     response_format(RTx),
-     query_fee(RTx),
-     aeo_utils:ttl_delta(Height, oracle_ttl(RTx)),
-     vm_version(RTx)
+     { account_pubkey(RTx),
+       query_format(RTx),
+       response_format(RTx),
+       query_fee(RTx),
+       aeo_utils:ttl_delta(Height, oracle_ttl(RTx)),
+       vm_version(RTx)}
     }.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
@@ -154,8 +154,8 @@ process(#oracle_register_tx{} = RTx, Trees, Env) ->
     AccountPubKey = account_pubkey(RTx),
     %% TODO: Account nonce should not be increased in contract context
     %%       but this would mean a hard fork.
-    Instructions = [ {inc_account_nonce, AccountPubKey, nonce(RTx)}
-                   , {spend_fee, AccountPubKey, fee(RTx)}
+    Instructions = [ {inc_account_nonce, {AccountPubKey, nonce(RTx)}}
+                   , {spend_fee,         {AccountPubKey, fee(RTx)}}
                    , register_op(RTx, aetx_env:height(Env))
                    ],
     aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
