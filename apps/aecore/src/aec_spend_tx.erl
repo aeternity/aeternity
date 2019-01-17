@@ -151,10 +151,10 @@ process(#spend_tx{} = SpendTx, Trees, Env) ->
     Nonce    = nonce(SpendTx),
     {Type, ReceiverHash} = specialize_recipient(SpendTx),
     Recipient = {var, recipient},
-    Instructions = [ {inc_account_nonce, Sender, Nonce}
-                   , {resolve_account, Type, ReceiverHash, Recipient}
-                   , {spend, Sender, Recipient, amount(SpendTx)}
-                   , {spend_fee, Sender, fee(SpendTx)}
+    Instructions = [ {inc_account_nonce, {Sender, Nonce}}
+                   , {resolve_account,   {Type, ReceiverHash, Recipient}}
+                   , {spend,             {Sender, Recipient, amount(SpendTx)}}
+                   , {spend_fee,         {Sender, fee(SpendTx)}}
                    ],
     aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
 

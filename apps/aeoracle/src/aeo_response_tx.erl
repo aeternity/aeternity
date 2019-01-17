@@ -124,24 +124,25 @@ check(#oracle_response_tx{}, Trees,_Env) ->
 signers(#oracle_response_tx{} = Tx, _) ->
     {ok, [oracle_pubkey(Tx)]}.
 
-response_op(RTx) ->
+respond_op(RTx) ->
     {delta, RTTL} = response_ttl(RTx),
     { oracle_respond
-    , oracle_pubkey(RTx)
-    , query_id(RTx)
-    , response(RTx)
-    , RTTL}.
+    , { oracle_pubkey(RTx)
+      , query_id(RTx)
+      , response(RTx)
+      , RTTL}
+    }.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#oracle_response_tx{} = RTx, Trees, Env) ->
     Pubkey = oracle_pubkey(RTx),
-    Instructions = [ response_op(RTx)
-                   , {inc_account_nonce, Pubkey, nonce(RTx)}
+    Instructions = [ respond_op(RTx)
+                   , {inc_account_nonce, {Pubkey, nonce(RTx)}}
                      %% NOTE: Order is important. Oracle needs to cover
                      %% the fee before earning the query fee.
                      %% Changing this breaks consensus.
-                   , {spend_fee, Pubkey, fee(RTx)}
-                   , {oracle_earn_query_fee, Pubkey, query_id(RTx)}
+                   , {spend_fee,             {Pubkey, fee(RTx)}}
+                   , {oracle_earn_query_fee, {Pubkey, query_id(RTx)}}
                    ],
     aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
 

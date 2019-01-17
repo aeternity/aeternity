@@ -119,9 +119,9 @@ signers(#oracle_extend_tx{} = Tx, _) ->
 process(#oracle_extend_tx{} = Tx, Trees, Env) ->
     Pubkey = oracle_pubkey(Tx),
     {delta, DeltaTTL} = oracle_ttl(Tx),
-    Instructions = [ {inc_account_nonce, Pubkey, nonce(Tx)}
-                   , {spend_fee, Pubkey, fee(Tx)}
-                   , {oracle_extend, Pubkey, DeltaTTL}
+    Instructions = [ {inc_account_nonce, {Pubkey, nonce(Tx)}}
+                   , {spend_fee,         {Pubkey, fee(Tx)}}
+                   , {oracle_extend,     {Pubkey, DeltaTTL}}
                    ],
     aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
 
