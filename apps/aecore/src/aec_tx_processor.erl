@@ -115,7 +115,6 @@ eval_instructions([], S) ->
 
 eval_one({Op, Args}, S) ->
     case Op of
-        ensure_account            -> ensure_account(Args, S);
         inc_account_nonce         -> inc_account_nonce(Args, S);
         oracle_earn_query_fee     -> oracle_earn_query_fee(Args, S);
         oracle_extend             -> oracle_extend(Args, S);
