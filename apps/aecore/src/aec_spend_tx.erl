@@ -137,7 +137,7 @@ check(#spend_tx{}, Trees,_Env) ->
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#spend_tx{} = Tx, _) -> {ok, [sender_pubkey(Tx)]}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 process(#spend_tx{} = SpendTx, Trees, Env) ->
     Instructions =
         aec_tx_processor:spend_tx_instructions(sender_pubkey(SpendTx),

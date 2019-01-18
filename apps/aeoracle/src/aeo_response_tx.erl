@@ -124,7 +124,7 @@ check(#oracle_response_tx{}, Trees,_Env) ->
 signers(#oracle_response_tx{} = Tx, _) ->
     {ok, [oracle_pubkey(Tx)]}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 process(#oracle_response_tx{} = RTx, Trees, Env) ->
     {delta, RTTL} = response_ttl(RTx),
     Instructions =
