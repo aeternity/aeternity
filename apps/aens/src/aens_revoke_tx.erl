@@ -100,43 +100,16 @@ origin(#ns_revoke_tx{} = Tx) ->
     account_pubkey(Tx).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#ns_revoke_tx{nonce = Nonce,
-                    fee   = Fee} = Tx,
-      Trees,_Env) ->
-    AccountPubKey = account_pubkey(Tx),
-    NameHash = name_hash(Tx),
+check(#ns_revoke_tx{}, Trees,_Env) ->
+    %% Checks are in process/3
+    {ok, Trees}.
 
-    Checks =
-        [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
-         fun() -> aens_utils:check_name_claimed_and_owned(NameHash, AccountPubKey, Trees) end],
-
-    case aeu_validation:run(Checks) of
-        ok              -> {ok, Trees};
-        {error, Reason} -> {error, Reason}
-    end.
-
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#ns_revoke_tx{fee = Fee, nonce = Nonce} = Tx,
-        Trees0, Env) ->
-    Height = aetx_env:height(Env),
-    AccountPubKey = account_pubkey(Tx),
-    NameHash = name_hash(Tx),
-    AccountsTree0 = aec_trees:accounts(Trees0),
-    NamesTree0 = aec_trees:ns(Trees0),
-
-    Account0 = aec_accounts_trees:get(AccountPubKey, AccountsTree0),
-    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce),
-    AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
-
-    TTL = aec_governance:name_protection_period(),
-    Name0 = aens_state_tree:get_name(NameHash, NamesTree0),
-    Name1 = aens_names:revoke(Name0, TTL, Height),
-    NamesTree1 = aens_state_tree:enter_name(Name1, NamesTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_ns(Trees1, NamesTree1),
-
-    {ok, Trees2}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
+process(#ns_revoke_tx{} = Tx, Trees, Env) ->
+    Instructions =
+        aec_tx_processor:name_revoke_tx_instructions(
+          account_pubkey(Tx), name_hash(Tx), fee(Tx), nonce(Tx)),
+    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_revoke_tx{} = Tx, _) ->

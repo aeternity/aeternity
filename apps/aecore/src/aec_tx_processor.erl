@@ -14,6 +14,7 @@
 -export([ spend_tx_instructions/5
         , name_claim_tx_instructions/5
         , name_preclaim_tx_instructions/5
+        , name_revoke_tx_instructions/4
         , oracle_extend_tx_instructions/4
         , oracle_query_tx_instructions/8
         , oracle_register_tx_instructions/8
@@ -119,6 +120,13 @@ name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, Fee, Nonce) ->
     , name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta)
     ].
 
+name_revoke_tx_instructions(AccountPubkey, NameHash, Fee, Nonce) ->
+    ProtectedDeltaTTL = aec_governance:name_protection_period(),
+    [ inc_account_nonce_op(AccountPubkey, Nonce)
+    , spend_fee_op(AccountPubkey, Fee)
+    , name_revoke_op(AccountPubkey, NameHash, ProtectedDeltaTTL)
+    ].
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -138,6 +146,7 @@ eval_one({Op, Args}, S) ->
         lock_amount               -> lock_amount(Args, S);
         name_claim                -> name_claim(Args, S);
         name_preclaim             -> name_preclaim(Args, S);
+        name_revoke               -> name_revoke(Args, S);
         oracle_earn_query_fee     -> oracle_earn_query_fee(Args, S);
         oracle_extend             -> oracle_extend(Args, S);
         oracle_query              -> oracle_query(Args, S);
@@ -378,23 +387,17 @@ name_to_ascii(PlainName) ->
             NameAscii
     end.
 
-assert_commitment_owner(Commitment, Pubkey) ->
-    case aens_commitments:owner_pubkey(Commitment) =:= Pubkey of
-        true  -> ok;
-        false -> runtime_error(commitment_not_owned)
-    end.
+%%%-------------------------------------------------------------------
 
-assert_preclaim_delta(Commitment, PreclaimDelta, Height) ->
-    case aens_commitments:created(Commitment) + PreclaimDelta =< Height of
-        true  -> ok;
-        false -> runtime_error(commitment_delta_too_small)
-    end.
+name_revoke_op(AccountPubkey, NameHash, ProtectedDeltaTTL) ->
+    {name_revoke, {AccountPubkey, NameHash, ProtectedDeltaTTL}}.
 
-assert_not_name(NameHash, S) ->
-    case find_x(name, NameHash, S) of
-        {_, _} -> runtime_error(name_already_taken);
-        none   -> ok
-    end.
+name_revoke({AccountPubkey, NameHash, ProtectedDeltaTTL}, S) ->
+    {Name, S1} = get_name(NameHash, S),
+    assert_name_owner(Name, AccountPubkey),
+    assert_name_claimed(Name),
+    Name1 = aens_names:revoke(Name, ProtectedDeltaTTL, S1#state.height),
+    cache_put(name, Name1, S1).
 
 %%%===================================================================
 %%% Helpers for instructions
@@ -500,6 +503,36 @@ assert_not_commitment(CommitmentHash, S) ->
         {_, _} -> runtime_error(commitment_already_present)
     end.
 
+assert_commitment_owner(Commitment, Pubkey) ->
+    case aens_commitments:owner_pubkey(Commitment) =:= Pubkey of
+        true  -> ok;
+        false -> runtime_error(commitment_not_owned)
+    end.
+
+assert_preclaim_delta(Commitment, PreclaimDelta, Height) ->
+    case aens_commitments:created(Commitment) + PreclaimDelta =< Height of
+        true  -> ok;
+        false -> runtime_error(commitment_delta_too_small)
+    end.
+
+assert_not_name(NameHash, S) ->
+    case find_x(name, NameHash, S) of
+        {_, _} -> runtime_error(name_already_taken);
+        none   -> ok
+    end.
+
+assert_name_owner(Name, AccountPubKey) ->
+    case aens_names:owner_pubkey(Name) =:= AccountPubKey of
+        true  -> ok;
+        false -> runtime_error(name_not_owned)
+    end.
+
+assert_name_claimed(Name) ->
+    case aens_names:status(Name) of
+        claimed -> ok;
+        revoked -> runtime_error(name_revoked)
+    end.
+
 %%%===================================================================
 %%% Error handling
 
@@ -512,6 +545,9 @@ runtime_error(Error) ->
 
 get_account(Key, S) ->
     get_x(account, Key, account_not_found, S).
+
+get_name(Key, S) ->
+    get_x(name, Key, name_does_not_exist, S).
 
 get_oracle(Key, Error, S) ->
     get_x(oracle, Key, Error, S).
