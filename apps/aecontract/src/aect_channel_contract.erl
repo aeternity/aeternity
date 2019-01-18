@@ -9,11 +9,11 @@
          insert_failed_call/6
         ]).
 
-new(Owner, Round, VmVersion, Code, Deposit, Trees0) ->
+new(Owner, Round, CTVersion, Code, Deposit, Trees0) ->
     %% Create the contract and insert it into the contract state tree
     %%   The public key for the contract is generated from the owners pubkey
     %%   and the nonce, so that no one has the private key.
-    Contract        = aect_contracts:new(Owner, Round, VmVersion, Code, Deposit),
+    Contract        = aect_contracts:new(Owner, Round, CTVersion, Code, Deposit),
     ContractId      = aect_contracts:id(Contract),
     ContractsTree0  = aec_trees:contracts(Trees0),
     ContractsTree1  = aect_state_tree:insert_contract(Contract, ContractsTree0),
@@ -34,20 +34,21 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
                     %% when creating a contract in a contract.
     VmVersion = aect_contracts:vm_version(Contract),
     %% Assert VmVersion before running!
-    [error({illegal_vm_version, VmVersion}) || not ?IS_AEVM_SOPHIA(VmVersion)],
+    [error({illegal_vm_version, VmVersion}) || not ?IS_VM_SOPHIA(VmVersion)],
 
     CallDef = make_call_def(OwnerPubKey, ContractPubKey,
                             _Gas = 1000000, _GasPrice = 1,
                             _Amount = 0, %TODO: make this configurable
                             CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
-    {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
+    CTVersion = aect_contracts:ct_version(Contract),
+    {CallRes, Trees} = aect_dispatch:run(CTVersion, CallDef),
     case aect_call:return_type(CallRes) of
         ok ->
             Trees1 = aect_utils:insert_call_in_trees(CallRes, Trees),
             %% Save the initial state (returned by `init`) in the store.
             InitState  = aect_call:return_value(CallRes),
             %% TODO: move to/from_sophia_state to make nicer dependencies?
-            case aevm_eeevm_store:from_sophia_state(InitState) of
+            case aevm_eeevm_store:from_sophia_state(CTVersion, InitState) of
                 {ok, Store1} ->
                     Contract1 = aect_contracts:set_state(Store1, Contract),
                     ContractsTree0 = aec_trees:contracts(Trees1),
@@ -62,25 +63,26 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
             Trees0
     end.
 
--spec run(aect_contracts:pubkey(), aect_contracts:vm_version(), aect_call:call(),
+-spec run(aect_contracts:pubkey(), aect_contracts:abi_version(), aect_call:call(),
           binary(), [non_neg_integer()], aec_trees:trees(),
           non_neg_integer(), non_neg_integer(), non_neg_integer(),
           aec_trees:trees(), aetx_env:env()) -> aec_trees:trees().
-run(ContractPubKey, VmVersion, Call, CallData, CallStack, Trees0,
-    Amount, GasPrice, Gas, OnChainTrees, OnChainEnv)
-  when ?IS_AEVM_SOPHIA(VmVersion) ->
+run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
+    Amount, GasPrice, Gas, OnChainTrees, OnChainEnv) ->
     ContractsTree  = aec_trees:contracts(Trees0),
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     OwnerPubKey = aect_contracts:owner_pubkey(Contract),
     Code = aect_contracts:code(Contract),
     Store = aect_contracts:state(Contract),
-    case aect_contracts:vm_version(Contract) =:= VmVersion of
-        true  -> ok;
-        false ->  erlang:error(wrong_vm_version)
+    VmVersion = aect_contracts:vm_version(Contract),
+    case aect_contracts:abi_version(Contract) =:= ABIVersion of
+        true when ?IS_VM_SOPHIA(VmVersion) -> ok;
+        true                               -> erlang:error(wrong_vm_version);
+        false                              -> erlang:error(wrong_abi_version)
     end,
     CallDef = make_call_def(OwnerPubKey, ContractPubKey, Gas, GasPrice, Amount,
               CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
-    {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
+    {CallRes, Trees} = aect_dispatch:run(#{vm => VmVersion, abi => ABIVersion}, CallDef),
     UpdatedTrees = aect_utils:insert_call_in_trees(CallRes, Trees),
     aec_trees:gc_cache(UpdatedTrees, [accounts, contracts]).
 

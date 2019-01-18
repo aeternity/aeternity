@@ -485,19 +485,19 @@ poi_test_() ->
                    [<<0, (binary:encode_unsigned(K))/binary>>
                         || K <- lists:seq(0, 3)],
                [check_poi_for_contract_with_invalid_store_with_binary_keys(
-                  ?AEVM_01_Solidity_01, #{K => <<"v">>}) || K <- IllegalKeys]
+                  ?VM_AEVM_SOLIDITY_1, ?ABI_SOLIDITY_1, #{K => <<"v">>}) || K <- IllegalKeys]
        end},
       {"Serialized Sophia contract PoI with invalid contract store key fails verification",
        fun() ->
                IllegalKeys = [<<3>>, <<4, 17>>, <<16>>],
                [check_poi_for_contract_with_invalid_store_with_binary_keys(
-                  ?AEVM_01_Sophia_01,  #{K => <<"v">>}) || K <- IllegalKeys]
+                  ?VM_AEVM_SOPHIA_1, ?ABI_SOPHIA_1, #{K => <<"v">>}) || K <- IllegalKeys]
        end},
       {"Serialized Sophia contract PoI with invalid contract store key fails verification",
        fun() ->
                IllegalKeys = [<<3>>, <<4, 17>>, <<16>>],
                [check_poi_for_contract_with_invalid_store_with_binary_keys(
-                  ?AEVM_02_Sophia_01,  #{K => <<"v">>}) || K <- IllegalKeys]
+                  ?VM_AEVM_SOPHIA_2, ?ABI_SOPHIA_1, #{K => <<"v">>}) || K <- IllegalKeys]
        end}
     ].
 
@@ -641,13 +641,13 @@ check_poi_for_an_object_among_others(SubTree,
     ok.
 
 check_poi_for_contract_with_invalid_store_with_binary_keys(
-  VmVersion, InvalidStoreMap) ->
+  VmVersion, ABIVersion, InvalidStoreMap) ->
     OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
 
     InvalidStore = make_store(InvalidStoreMap),
 
     %% Generate contract invalid because of an invalid contract store key.
-    ValidContract = make_contract(OwnerPubkey, VmVersion),
+    ValidContract = make_contract(OwnerPubkey, VmVersion, ABIVersion),
     InvalidContract = aect_contracts:internal_set_state(InvalidStore,
                                                         ValidContract),
     ContractPubkey = aect_contracts:pubkey(InvalidContract),
@@ -704,10 +704,10 @@ poi_fields_update_with(FieldKey, Fun, PoiFields) ->
       PoiFields).
 
 make_contract(Owner) ->
-    make_contract(Owner, ?AEVM_01_Solidity_01).
+    make_contract(Owner, ?VM_AEVM_SOLIDITY_1, ?ABI_SOLIDITY_1).
 
-make_contract(Owner, VmVersion) ->
-    {contract_create_tx, CTx} = aetx:specialize_type(ct_create_tx(Owner, VmVersion)),
+make_contract(Owner, VmVersion, ABIVersion) ->
+    {contract_create_tx, CTx} = aetx:specialize_type(ct_create_tx(Owner, VmVersion, ABIVersion)),
     aect_contracts:new(CTx).
 
 make_store(Map) ->
@@ -720,19 +720,20 @@ translate_store(C) ->
     Store = aect_contracts:state(C),
     aect_contracts:internal_set_state(from_store(Store), C).
 
-ct_create_tx(Sender, VmVersion) ->
+ct_create_tx(Sender, VmVersion, ABIVersion) ->
     Spec =
-        #{ fee        => 750000
-         , owner_id   => aec_id:create(account, Sender)
-         , nonce      => 0
-         , code       => <<"NOT PROPER BYTE CODE">>
-         , vm_version => VmVersion
-         , deposit    => 10
-         , amount     => 200
-         , gas        => 10
-         , gas_price  => 1
-         , call_data  => <<"NOT ENCODED ACCORDING TO ABI">>
-         , ttl        => 0
+        #{ fee         => 750000
+         , owner_id    => aec_id:create(account, Sender)
+         , nonce       => 0
+         , code        => <<"NOT PROPER BYTE CODE">>
+         , vm_version  => VmVersion
+         , abi_version => ABIVersion
+         , deposit     => 10
+         , amount      => 200
+         , gas         => 10
+         , gas_price   => 1
+         , call_data   => <<"NOT ENCODED ACCORDING TO ABI">>
+         , ttl         => 0
          },
     {ok, Tx} = aect_create_tx:new(Spec),
     Tx.

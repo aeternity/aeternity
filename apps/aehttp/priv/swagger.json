@@ -2323,7 +2323,7 @@
     },
     "RegisteredOracle" : {
       "type" : "object",
-      "required" : [ "id", "query_fee", "query_format", "response_format", "ttl", "vm_version" ],
+      "required" : [ "abi_version", "id", "query_fee", "query_format", "response_format", "ttl" ],
       "properties" : {
         "id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2341,15 +2341,15 @@
           "type" : "integer",
           "format" : "int64"
         },
-        "vm_version" : {
+        "abi_version" : {
           "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
+          "minimum" : 0,
+          "maximum" : 65535
         }
       },
       "example" : {
-        "vm_version" : 0,
         "response_format" : "response_format",
+        "abi_version" : 9606,
         "id" : { },
         "query_fee" : 0,
         "ttl" : 6,
@@ -2521,14 +2521,14 @@
           "type" : "integer",
           "format" : "int64"
         },
-        "vm_version" : {
+        "abi_version" : {
           "type" : "integer",
           "format" : "int64",
-          "minimum" : 0
+          "minimum" : 0,
+          "maximum" : 65535
         }
       },
       "example" : {
-        "vm_version" : 0,
         "response_format" : "response_format",
         "account_id" : { },
         "fee" : 1,
@@ -2536,6 +2536,7 @@
           "type" : "delta",
           "value" : 1
         },
+        "abi_version" : 36944,
         "query_fee" : 0,
         "nonce" : 6,
         "ttl" : 5,
@@ -3834,7 +3835,7 @@
     },
     "ContractObject" : {
       "type" : "object",
-      "required" : [ "active", "deposit", "id", "log", "owner_id", "referrer_ids", "vm_version" ],
+      "required" : [ "abi_version", "active", "deposit", "id", "log", "owner_id", "referrer_ids", "vm_version" ],
       "properties" : {
         "id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3845,7 +3846,12 @@
         "vm_version" : {
           "type" : "integer",
           "minimum" : 0,
-          "maximum" : 255
+          "maximum" : 65535
+        },
+        "abi_version" : {
+          "type" : "integer",
+          "minimum" : 0,
+          "maximum" : 65535
         },
         "log" : {
           "type" : "string"
@@ -3864,11 +3870,12 @@
         }
       },
       "example" : {
-        "vm_version" : 20,
+        "vm_version" : 5248,
         "log" : "log",
         "owner_id" : null,
         "active" : true,
-        "deposit" : 6,
+        "deposit" : 1,
+        "abi_version" : 39500,
         "referrer_ids" : [ null, null ],
         "id" : { }
       }
@@ -4164,7 +4171,7 @@
     },
     "ContractCreateTx" : {
       "type" : "object",
-      "required" : [ "amount", "call_data", "code", "deposit", "fee", "gas", "gas_price", "owner_id", "vm_version" ],
+      "required" : [ "abi_version", "amount", "call_data", "code", "deposit", "fee", "gas", "gas_price", "owner_id", "vm_version" ],
       "properties" : {
         "owner_id" : {
           "description" : "Contract owner pub_key",
@@ -4182,7 +4189,13 @@
           "type" : "integer",
           "description" : "Virtual machine's version",
           "minimum" : 0,
-          "maximum" : 255
+          "maximum" : 65535
+        },
+        "abi_version" : {
+          "type" : "integer",
+          "description" : "ABI version",
+          "minimum" : 0,
+          "maximum" : 65535
         },
         "deposit" : {
           "type" : "integer",
@@ -4221,7 +4234,7 @@
       },
       "example" : {
         "gas_price" : 0,
-        "vm_version" : 153,
+        "vm_version" : 39500,
         "amount" : 0,
         "code" : "code",
         "call_data" : { },
@@ -4229,13 +4242,14 @@
         "fee" : 0,
         "gas" : 0,
         "deposit" : 0,
+        "abi_version" : 9606,
         "nonce" : 0,
         "ttl" : 0
       }
     },
     "ContractCreateCompute" : {
       "type" : "object",
-      "required" : [ "amount", "code", "deposit", "fee", "gas", "gas_price", "owner_id", "vm_version" ],
+      "required" : [ "abi_version", "amount", "code", "deposit", "fee", "gas", "gas_price", "owner_id", "vm_version" ],
       "properties" : {
         "owner_id" : {
           "type" : "string",
@@ -4253,7 +4267,13 @@
           "type" : "integer",
           "description" : "Virtual machine's version",
           "minimum" : 0,
-          "maximum" : 255
+          "maximum" : 65535
+        },
+        "abi_version" : {
+          "type" : "integer",
+          "description" : "ABI version",
+          "minimum" : 0,
+          "maximum" : 65535
         },
         "deposit" : {
           "type" : "integer",
@@ -4296,22 +4316,23 @@
       },
       "example" : {
         "gas_price" : 0,
-        "call" : "call",
-        "vm_version" : 153,
         "amount" : 0,
         "code" : "code",
         "owner_id" : "owner_id",
         "fee" : 0,
+        "nonce" : 0,
+        "ttl" : 0,
+        "call" : "call",
+        "vm_version" : 39500,
         "gas" : 0,
         "deposit" : 0,
-        "arguments" : "arguments",
-        "nonce" : 0,
-        "ttl" : 0
+        "abi_version" : 9606,
+        "arguments" : "arguments"
       }
     },
     "ContractCallTx" : {
       "type" : "object",
-      "required" : [ "amount", "call_data", "caller_id", "contract_id", "fee", "gas", "gas_price", "vm_version" ],
+      "required" : [ "abi_version", "amount", "call_data", "caller_id", "contract_id", "fee", "gas", "gas_price" ],
       "properties" : {
         "caller_id" : {
           "description" : "Contract caller pub_key",
@@ -4325,11 +4346,11 @@
           "description" : "Contract's pub_key",
           "$ref" : "#/definitions/EncodedHash"
         },
-        "vm_version" : {
+        "abi_version" : {
           "type" : "integer",
-          "description" : "Virtual machine's version",
+          "description" : "ABI version",
           "minimum" : 0,
-          "maximum" : 255
+          "maximum" : 65535
         },
         "fee" : {
           "type" : "integer",
@@ -4363,20 +4384,20 @@
       },
       "example" : {
         "gas_price" : 0,
-        "vm_version" : 153,
         "amount" : 0,
         "call_data" : { },
         "caller_id" : { },
         "contract_id" : null,
         "fee" : 0,
         "gas" : 0,
+        "abi_version" : 39500,
         "nonce" : 0,
         "ttl" : 0
       }
     },
     "ContractCallCompute" : {
       "type" : "object",
-      "required" : [ "amount", "caller_id", "contract_id", "fee", "gas", "gas_price", "vm_version" ],
+      "required" : [ "abi_version", "amount", "caller_id", "contract_id", "fee", "gas", "gas_price" ],
       "properties" : {
         "caller_id" : {
           "description" : "Contract caller pub_key",
@@ -4390,11 +4411,11 @@
           "description" : "Contract's pub_key",
           "$ref" : "#/definitions/EncodedHash"
         },
-        "vm_version" : {
+        "abi_version" : {
           "type" : "integer",
-          "description" : "Virtual machine's version",
+          "description" : "ABI version",
           "minimum" : 0,
-          "maximum" : 255
+          "maximum" : 65535
         },
         "fee" : {
           "type" : "integer",
@@ -4437,13 +4458,13 @@
       "example" : {
         "gas_price" : 0,
         "call" : "call",
-        "vm_version" : 153,
         "amount" : 0,
         "caller_id" : { },
         "contract_id" : null,
         "fee" : 0,
         "function" : "function",
         "gas" : 0,
+        "abi_version" : 39500,
         "arguments" : "arguments",
         "nonce" : 0,
         "ttl" : 0
@@ -4610,7 +4631,7 @@
         "$ref" : "#/definitions/OffChainUpdate"
       }, {
         "type" : "object",
-        "required" : [ "call_data", "code", "deposit", "owner", "vm_version" ],
+        "required" : [ "abi_version", "call_data", "code", "deposit", "owner", "vm_version" ],
         "properties" : {
           "owner" : {
             "description" : "Contract owner",
@@ -4618,8 +4639,15 @@
           },
           "vm_version" : {
             "type" : "integer",
-            "format" : "int64",
-            "description" : "VM version of the contract"
+            "description" : "VM version of the contract",
+            "minimum" : 0,
+            "maximum" : 65535
+          },
+          "abi_version" : {
+            "type" : "integer",
+            "description" : "ABI version of the contract",
+            "minimum" : 0,
+            "maximum" : 65535
           },
           "code" : {
             "$ref" : "#/definitions/ByteCode"
@@ -4641,7 +4669,7 @@
         "$ref" : "#/definitions/OffChainUpdate"
       }, {
         "type" : "object",
-        "required" : [ "amount", "call_data", "caller", "contract", "gas", "gas_price", "vm_version" ],
+        "required" : [ "abi_version", "amount", "call_data", "caller", "contract", "gas", "gas_price" ],
         "properties" : {
           "caller" : {
             "description" : "Contract caller",
@@ -4651,10 +4679,11 @@
             "description" : "Contract address",
             "$ref" : "#/definitions/EncodedHash"
           },
-          "vm_version" : {
+          "abi_version" : {
             "type" : "integer",
-            "format" : "int64",
-            "description" : "VM version of the contract"
+            "description" : "ABI version for the call/calldata",
+            "minimum" : 0,
+            "maximum" : 65535
           },
           "amount" : {
             "type" : "integer",

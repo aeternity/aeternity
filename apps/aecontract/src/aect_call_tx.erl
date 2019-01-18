@@ -36,7 +36,7 @@
          caller_pubkey/1,
          contract_id/1,
          contract_pubkey/1,
-         vm_version/1,
+         abi_version/1,
          amount/1,
          gas_limit/1,
          gas_price/1,
@@ -52,7 +52,7 @@
           caller_id        :: aec_id:id(),
           nonce            :: integer(),
           contract_id      :: aec_id:id(),
-          vm_version       :: aect_contracts:vm_version(),
+          abi_version      :: aect_contracts:abi_version(),
           fee              :: integer(),
           ttl              :: aetx:tx_ttl(),
           amount           :: aect_contracts:amount(),
@@ -72,7 +72,7 @@
 new(#{caller_id   := CallerId,
       nonce       := Nonce,
       contract_id := ContractId,
-      vm_version  := VmVersion,
+      abi_version := ABIVersion,
       fee         := Fee,
       amount      := Amount,
       gas         := Gas,
@@ -88,7 +88,7 @@ new(#{caller_id   := CallerId,
     Tx = #contract_call_tx{caller_id   = CallerId,
                            nonce       = Nonce,
                            contract_id = ContractId,
-                           vm_version  = VmVersion,
+                           abi_version = ABIVersion,
                            fee         = Fee,
                            ttl         = TTL,
                            amount      = Amount,
@@ -123,7 +123,8 @@ call_id(#contract_call_tx{} = Tx) ->
     aect_call:id(caller_pubkey(Tx), nonce(Tx), contract_pubkey(Tx)).
 
 %% CallerAccount should exist, and have enough funds for the fee + gas
-%% Contract should exist and its vm_version should match the one in the call.
+%% Contract should exist, be eligeble for a call at this height, and its
+%% abi_version should match the one in the call.
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_call_tx{nonce = Nonce,
                         fee = Fee, amount = Value,
@@ -236,13 +237,12 @@ spend(CallerPubkey, ContractPubkey, Value, Fee, Nonce, Trees, Env) ->
     {ok, Trees2} = aetx:process(SpendTx, Trees1, Env),
     Trees2.
 
-run_contract(#contract_call_tx{ nonce  = _Nonce
-                              , vm_version = VmVersion
-                              , amount     = Amount
-                              , gas        = Gas
-                              , gas_price  = GasPrice
-                              , call_data  = CallData
-                              , call_stack = CallStack
+run_contract(#contract_call_tx{ nonce       = _Nonce
+                              , amount      = Amount
+                              , gas         = Gas
+                              , gas_price   = GasPrice
+                              , call_data   = CallData
+                              , call_stack  = CallStack
                               } = Tx, Call, Env, Trees) ->
     CallerPubkey   = caller_pubkey(Tx),
     ContractPubkey = contract_pubkey(Tx),
@@ -264,12 +264,12 @@ run_contract(#contract_call_tx{ nonce  = _Nonce
                , tx_env     => Env
                , off_chain  => false
                },
-    aect_dispatch:run(VmVersion, CallDef).
+    aect_dispatch:run(aect_contracts:ct_version(Contract), CallDef).
 
 serialize(#contract_call_tx{caller_id   = CallerId,
                             nonce       = Nonce,
                             contract_id = ContractId,
-                            vm_version  = VmVersion,
+                            abi_version = ABIVersion,
                             fee         = Fee,
                             ttl         = TTL,
                             amount      = Amount,
@@ -283,7 +283,7 @@ serialize(#contract_call_tx{caller_id   = CallerId,
      [ {caller_id, CallerId}
      , {nonce, Nonce}
      , {contract_id, ContractId}
-     , {vm_version, VmVersion}
+     , {abi_version, ABIVersion}
      , {fee, Fee}
      , {ttl, TTL}
      , {amount, Amount}
@@ -296,7 +296,7 @@ deserialize(?CONTRACT_CALL_TX_VSN,
             [ {caller_id, CallerId}
             , {nonce, Nonce}
             , {contract_id, ContractId}
-            , {vm_version, VmVersion}
+            , {abi_version, ABIVersion}
             , {fee, Fee}
             , {ttl, TTL}
             , {amount, Amount}
@@ -308,7 +308,7 @@ deserialize(?CONTRACT_CALL_TX_VSN,
     #contract_call_tx{caller_id   = CallerId,
                       nonce       = Nonce,
                       contract_id = ContractId,
-                      vm_version  = VmVersion,
+                      abi_version = ABIVersion,
                       fee         = Fee,
                       ttl         = TTL,
                       amount      = Amount,
@@ -320,7 +320,7 @@ serialization_template(?CONTRACT_CALL_TX_VSN) ->
     [ {caller_id, id}
     , {nonce, int}
     , {contract_id, id}
-    , {vm_version, int}
+    , {abi_version, int}
     , {fee, int}
     , {ttl, int}
     , {amount, int}
@@ -336,7 +336,7 @@ version() ->
 for_client(#contract_call_tx{caller_id   = CallerId,
                              nonce       = Nonce,
                              contract_id = ContractId,
-                             vm_version  = VmVersion,
+                             abi_version = ABIVersion,
                              fee         = Fee,
                              ttl         = TTL,
                              amount      = Amount,
@@ -346,7 +346,7 @@ for_client(#contract_call_tx{caller_id   = CallerId,
     #{<<"caller_id">>   => aehttp_api_encoder:encode(id_hash, CallerId),
       <<"nonce">>       => Nonce,
       <<"contract_id">> => aehttp_api_encoder:encode(id_hash, ContractId),
-      <<"vm_version">>  => aeu_hex:hexstring_encode(<<VmVersion:8>>),
+      <<"abi_version">> => aeu_hex:hexstring_encode(<<ABIVersion:16>>),
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL,
       <<"amount">>      => Amount,
@@ -373,9 +373,9 @@ contract_id(#contract_call_tx{contract_id = ContractId}) ->
 contract_pubkey(#contract_call_tx{contract_id = ContractId}) ->
   aec_id:specialize(ContractId, contract).
 
--spec vm_version(tx()) -> aect_contracts:vm_version().
-vm_version(#contract_call_tx{vm_version = VmVersion}) ->
-    VmVersion.
+-spec abi_version(tx()) -> aect_contracts:abi_version().
+abi_version(#contract_call_tx{abi_version = ABIVersion}) ->
+    ABIVersion.
 
 -spec amount(tx()) -> aect_contracts:amount().
 amount(#contract_call_tx{amount = Amount}) ->
@@ -404,8 +404,8 @@ call_stack(#contract_call_tx{call_stack = CallStack}) ->
 %% -- Local functions  -------------------------------------------------------
 
 %% Check that the contract exists and has the right VM version.
-check_call(#contract_call_tx{ vm_version = VmVersion,
-                              amount     = Value} = Tx,
+check_call(#contract_call_tx{ abi_version = ABIVersion,
+                              amount      = Value} = Tx,
                Trees, Height) ->
     ContractPubKey = contract_pubkey(Tx),
     ContractsTree = aec_trees:contracts(Trees),
@@ -418,11 +418,11 @@ check_call(#contract_call_tx{ vm_version = VmVersion,
     case aect_state_tree:lookup_contract(ContractPubKey, ContractsTree, [no_store]) of
         _ when NegativeAmount -> {error, negative_amount};
         {value, C} ->
-            CVMVersion = aect_contracts:vm_version(C),
-            case (aect_contracts:is_legal_vm_version_at_height(call, VmVersion, Height)
-                  andalso aect_contracts:is_legal_vm_call(VmVersion, CVMVersion)) of
-                true  -> ok;
-                false -> {error, wrong_vm_version}
+            CTVersion = #{abi := CABIVersion} = aect_contracts:ct_version(C),
+            case aect_contracts:is_legal_version_at_height(call, CTVersion, Height) of
+                true when ABIVersion =:= CABIVersion -> ok;
+                true                                 -> {error, wrong_abi_version};
+                false                                -> {error, wrong_vm_version}
             end;
         none -> {error, contract_does_not_exist}
     end.

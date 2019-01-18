@@ -1,14 +1,22 @@
--define(AEVM_NO_VM,           16#00).
--define(AEVM_01_Sophia_01,    16#01).
--define(AEVM_01_Solidity_01,  16#02).
--define(AEVM_02_Sophia_01,    16#03).
+%% VM versions
+-define(VM_NO_VM,           16#00).
+-define(VM_AEVM_SOPHIA_1,   16#01).
+-define(VM_AEVM_SOLIDITY_1, 16#02).
+-define(VM_AEVM_SOPHIA_2,   16#03).
 
--define(CURRENT_AEVM_SOPHIA, ?AEVM_02_Sophia_01).
+%% ABI versions
+-define(ABI_NO_VM,      16#00).
+-define(ABI_SOPHIA_1,   16#01).
+-define(ABI_SOLIDITY_1, 16#02).
 
--define(IS_AEVM_SOPHIA(___VM_VERSION___), (___VM_VERSION___ =:= ?AEVM_02_Sophia_01 orelse ___VM_VERSION___ =:= ?AEVM_01_Sophia_01)).
+-define(CURRENT_VM_SOPHIA,  ?VM_AEVM_SOPHIA_2).
+-define(CURRENT_ABI_SOPHIA, ?ABI_SOPHIA_1).
+
+-define(IS_VM_SOPHIA(___VM_VERSION___), (___VM_VERSION___ =:= ?VM_AEVM_SOPHIA_2 orelse ___VM_VERSION___ =:= ?VM_AEVM_SOPHIA_1)).
 
 -ifdef(TEST).
--define(AEVM_01_Solidity_01_enabled, true).
+-define(VM_AEVM_SOLIDITY_1_enabled, true).
 -else.
--define(AEVM_01_Solidity_01_enabled, false).
+-define(VM_AEVM_SOLIDITY_1_enabled, false).
 -endif.
+

@@ -117,7 +117,8 @@ execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState, Opti
              currentTimestamp  => 0,
              chainState        => ChainState,
              chainAPI          => ?MODULE,
-             vm_version        => ?CURRENT_AEVM_SOPHIA}, Options),
+             vm_version        => ?CURRENT_VM_SOPHIA,
+             abi_version       => ?CURRENT_ABI_SOPHIA}, Options),
           Trace),
     case Res of
         {ok, #{ out := RetVal, chain_state := S }} ->
@@ -138,13 +139,13 @@ make_call(Contract, Fun, Type, Args, Env, Options) ->
 create_contract(Address, Code, ArgType, Args, Env) ->
     Env1 = Env#{Address => Code},
     {ok, InitS, Env2} = make_call(Address, init, ArgType, Args, Env1, #{}),
-    {ok, Store} = aevm_eeevm_store:from_sophia_state(InitS),
+    {ok, Store} = aevm_eeevm_store:from_sophia_state(#{vm => ?CURRENT_VM_SOPHIA, abi => ?CURRENT_ABI_SOPHIA}, InitS),
     set_store(Store, Env2).
 
 create_contract(Address, Code, ArgType, Args, Env, Options) ->
     Env1 = Env#{Address => Code},
     {ok, InitS, Env2} = make_call(Address, init, ArgType, Args, Env1, Options),
-    {ok, Store} = aevm_eeevm_store:from_sophia_state(InitS),
+    {ok, Store} = aevm_eeevm_store:from_sophia_state(#{vm => ?CURRENT_VM_SOPHIA, abi => ?CURRENT_ABI_SOPHIA}, InitS),
     set_store(Store, Env2).
 
 successful_call_(Contract, Type, Fun, ArgType, Args, Env) ->
@@ -558,7 +559,7 @@ call_contract(<<Contract:256>>, Gas, Value, CallData, _, S = #{running := Caller
             {aevm_chain_api:call_exception(unknown_contract, Gas), S}
     end.
 
-oracle_register_tx(PubKey = <<Account:256>>, QueryFee, TTL, QFormat, RFormat, VMVersion,_State) ->
+oracle_register_tx(PubKey = <<Account:256>>, QueryFee, TTL, QFormat, RFormat, ABIVersion,_State) ->
     io:format("oracle_register(~p, ~p, ~p, ~p, ~p)\n", [Account, QueryFee, TTL, QFormat, RFormat]),
     Spec =
         #{account_id      => aec_id:create(account, PubKey),
@@ -569,7 +570,7 @@ oracle_register_tx(PubKey = <<Account:256>>, QueryFee, TTL, QFormat, RFormat, VM
           oracle_ttl      => TTL,
           ttl             => 0,
           fee             => 0,
-          vm_version      => VMVersion
+          abi_version     => ABIVersion
          },
     aeo_register_tx:new(Spec).
 

@@ -30,10 +30,10 @@ ttl_expiry(CurrentHeight, TTL) ->
             Err
     end.
 
-check_format(?AEVM_NO_VM, _Format, _Content) ->
+check_format(?ABI_NO_VM, _Format, _Content) ->
     %% No interpretation of the format, nor content.
     ok;
-check_format(VMVersion, Format, Content) when ?IS_AEVM_SOPHIA(VMVersion) ->
+check_format(?ABI_SOPHIA_1, Format, Content) ->
     %% Check that the content can be decoded as the type
     %% and that if we encoded it again, it becomes the content.
     {ok, TypeRep} = aeso_heap:from_binary(typerep, Format),

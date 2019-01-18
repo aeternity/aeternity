@@ -6,6 +6,7 @@
 -module(aec_tx_pool_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
 
 -define(TAB, aec_tx_pool_test_keys).
 
@@ -744,17 +745,18 @@ a_signed_tx(Sender, Recipient, Nonce, Fee, TTL) ->
 
 signed_ct_create_tx(Sender, Nonce, Fee, GasPrice) ->
     Spec =
-        #{ fee        => Fee
-         , owner_id   => aec_id:create(account, Sender)
-         , nonce      => Nonce
-         , code       => <<"NOT PROPER BYTE CODE">>
-         , vm_version => 1
-         , deposit    => 10
-         , amount     => 200
-         , gas        => 100000
-         , gas_price  => GasPrice
-         , call_data  => <<"NOT ENCODED ACCORDING TO ABI">>
-         , ttl        => 0
+        #{ fee         => Fee
+         , owner_id    => aec_id:create(account, Sender)
+         , nonce       => Nonce
+         , code        => <<"NOT PROPER BYTE CODE">>
+         , vm_version  => ?VM_AEVM_SOPHIA_2
+         , abi_version => ?ABI_SOPHIA_1
+         , deposit     => 10
+         , amount      => 200
+         , gas         => 100000
+         , gas_price   => GasPrice
+         , call_data   => <<"NOT ENCODED ACCORDING TO ABI">>
+         , ttl         => 0
          },
     {ok, Tx} = aect_create_tx:new(Spec),
     {ok, STx} = sign(Sender, Tx),
@@ -767,7 +769,7 @@ signed_ct_call_tx(Sender, Nonce, Fee, GasPrice) ->
          , contract_id => ContractId
          , caller_id   => aec_id:create(account, Sender)
          , nonce       => Nonce
-         , vm_version  => 1
+         , abi_version => 1
          , amount      => 100
          , gas         => 50000
          , gas_price   => GasPrice

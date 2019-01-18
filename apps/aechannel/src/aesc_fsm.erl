@@ -322,16 +322,17 @@ upd_withdraw(Fsm, #{amount := Amt} = Opts) when is_integer(Amt), Amt > 0 ->
     lager:debug("upd_withdraw(~p)", [Opts]),
     gen_statem:call(Fsm, {upd_withdraw, Opts}).
 
-upd_create_contract(Fsm, #{vm_version := _,
-                           deposit    := Amt,
-                           code       := _,
-                           call_data  := _} = Opts) when is_integer(Amt), Amt >= 0 ->
+upd_create_contract(Fsm, #{vm_version  := _,
+                           abi_version := _,
+                           deposit     := Amt,
+                           code        := _,
+                           call_data   := _} = Opts) when is_integer(Amt), Amt >= 0 ->
     lager:debug("upd_create_contract(~p)", [Opts]),
     gen_statem:call(Fsm, {upd_create_contract, Opts}).
 
 
 upd_call_contract(Fsm, #{contract    := _,
-                         vm_version  := _,
+                         abi_version := _,
                          amount      := Amt,
                          call_data  := _} = Opts) when is_integer(Amt), Amt >= 0 ->
     lager:debug("upd_call_contract(~p)", [Opts]),
@@ -1571,11 +1572,12 @@ wdraw_tx_for_signing(#{to_id := ToId, amount := Amount} = Opts,
 new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts } = D) ->
     #{owner       := Owner,
       vm_version  := VmVersion,
+      abi_version := ABIVersion,
       code        := Code,
       deposit     := Deposit,
       call_data   := CallData} = Opts,
     Updates = [aesc_offchain_update:op_new_contract(aec_id:create(account, Owner),
-                                                    VmVersion, Code, Deposit, CallData)],
+                                                    VmVersion, ABIVersion, Code, Deposit, CallData)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
@@ -1591,13 +1593,13 @@ new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts 
 call_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts } = D) ->
     #{caller      := Caller,
       contract    := ContractPubKey,
-      vm_version  := VmVersion,
+      abi_version := ABIVersion,
       amount      := Amount,
       call_data   := CallData,
       call_stack  := CallStack} = Opts,
     Updates = [aesc_offchain_update:op_call_contract(aec_id:create(account, Caller),
                                                      aec_id:create(contract, ContractPubKey),
-                                                     VmVersion, Amount, CallData, CallStack)],
+                                                     ABIVersion, Amount, CallData, CallStack)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,

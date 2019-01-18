@@ -318,7 +318,7 @@ check_oracle_ttl(O, Height, QTTL, RTTL, QTx) ->
     end.
 
 check_query_format(O, QTx) ->
-    VMVersion =  aeo_oracles:vm_version(O),
+    ABIVersion = aeo_oracles:abi_version(O),
     Format = aeo_oracles:query_format(O),
     Content = query(QTx),
-    aeo_utils:check_format(VMVersion, Format, Content).
+    aeo_utils:check_format(ABIVersion, Format, Content).

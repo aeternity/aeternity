@@ -112,7 +112,7 @@ call_tx(Override) ->
            , contract_id => aec_id:create(contract, <<4711:32/unit:8>>)
            , fee         => 100
            , ttl         => 100
-           , vm_version  => 1
+           , abi_version => 1
            , amount      => 100
            , gas         => 100
            , gas_price   => 1

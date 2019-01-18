@@ -73,7 +73,7 @@ handle_request_('PostSpend', #{'SpendTx' := Req}, _Context) ->
 
 handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([owner_id, code, vm_version, deposit,
+                 read_required_params([owner_id, code, vm_version, abi_version, deposit,
                                        amount, gas, gas_price, fee, call_data]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
@@ -95,7 +95,7 @@ handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
 
 handle_request_('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([owner_id, code, vm_version, deposit,
+                 read_required_params([owner_id, code, vm_version, abi_version, deposit,
                                        amount, gas, gas_price, fee
                                        ]),
                  read_optional_params([{X, X, '$no_value'} || X <- [ttl, arguments, call]]),
@@ -119,7 +119,7 @@ handle_request_('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, 
 
 handle_request_('PostContractCall', #{'ContractCallTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([caller_id, contract_id, vm_version,
+                 read_required_params([caller_id, contract_id, abi_version,
                                        amount, gas, gas_price, fee, call_data]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{caller_id, caller_id, {id_hash, [account_pubkey]}},
@@ -133,7 +133,7 @@ handle_request_('PostContractCall', #{'ContractCallTx' := Req}, _Context) ->
 
 handle_request_('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([caller_id, contract_id, vm_version,
+                 read_required_params([caller_id, contract_id, abi_version,
                                        amount, gas, gas_price, fee]),
                  read_optional_params([{X, X, '$no_value'} || X <- [ttl, function, arguments, call]]),
                  api_decode([{caller_id, caller_id, {id_hash, [account_pubkey]}},
@@ -396,7 +396,7 @@ handle_request_('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
                  read_required_params([account_id, {query_format, query_format},
                                        {response_format, response_format},
                                        query_fee, oracle_ttl, fee]),
-                 read_optional_params([{ttl, ttl, '$no_value'}, {vm_version, vm_version, 0}]),
+                 read_optional_params([{ttl, ttl, '$no_value'}, {abi_version, abi_version, 0}]),
                  api_decode([{account_id, account_id, {id_hash, [account_pubkey]}}]),
                  get_nonce_from_account_id(account_id),
                  ttl_decode(oracle_ttl),

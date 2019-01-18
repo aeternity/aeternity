@@ -296,17 +296,18 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     Owner    = aec_id:create(account, OwnerKey),
     Code     = compile_contract(lists:concat(["contracts/", Name, ".aes"])),
     {ok, CallData} = aect_sophia:encode_call_data(Code, <<"init">>, Args),
-    {ok, CreateTx} = aect_create_tx:new(#{ nonce      => Nonce
-                                         , vm_version => ?CURRENT_AEVM_SOPHIA
-                                         , code       => Code
-                                         , call_data  => CallData
-                                         , fee        => Fee
-                                         , deposit    => 0
-                                         , amount     => 0
-                                         , gas        => 100000
-                                         , owner_id   => Owner
-                                         , gas_price  => 1
-                                         , ttl        => TTL
+    {ok, CreateTx} = aect_create_tx:new(#{ nonce       => Nonce
+                                         , vm_version  => ?CURRENT_VM_SOPHIA
+                                         , abi_version => ?CURRENT_ABI_SOPHIA
+                                         , code        => Code
+                                         , call_data   => CallData
+                                         , fee         => Fee
+                                         , deposit     => 0
+                                         , amount      => 0
+                                         , gas         => 100000
+                                         , owner_id    => Owner
+                                         , gas_price   => 1
+                                         , ttl         => TTL
                                          }),
     CTx = aec_test_utils:sign_tx(CreateTx, maps:get(privkey, patron())),
     Res = rpc:call(Node, aec_tx_pool, push, [CTx]),
@@ -326,7 +327,7 @@ call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
     {ok, CallData} = aect_sophia:encode_call_data(Code, Function, Args),
     {ok, CallTx} = aect_call_tx:new(#{ nonce       => Nonce
                                      , caller_id   => Caller
-                                     , vm_version  => ?CURRENT_AEVM_SOPHIA
+                                     , abi_version => ?CURRENT_ABI_SOPHIA
                                      , contract_id => ContractID
                                      , fee         => Fee
                                      , amount      => 0

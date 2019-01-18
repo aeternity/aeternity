@@ -116,17 +116,18 @@ create_tx(PubKey, Spec0, State) ->
     Tx.
 
 create_tx_default_spec(PubKey, State) ->
-    #{ fee        => 1000000
-     , owner_id   => aec_id:create(account, PubKey)
-     , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , code       => dummy_bytecode()
-     , vm_version => ?CURRENT_AEVM_SOPHIA
-     , deposit    => 10
-     , amount     => 200
-     , gas        => 10
-     , gas_price  => 1
-     , call_data  => <<"NOT ENCODED ACCORDING TO ABI">>
-     , ttl        => 0
+    #{ fee         => 1000000
+     , owner_id    => aec_id:create(account, PubKey)
+     , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
+     , code        => dummy_bytecode()
+     , vm_version  => ?CURRENT_VM_SOPHIA
+     , abi_version => ?CURRENT_ABI_SOPHIA
+     , deposit     => 10
+     , amount      => 200
+     , gas         => 10
+     , gas_price   => 1
+     , call_data   => <<"NOT ENCODED ACCORDING TO ABI">>
+     , ttl         => 0
      }.
 
 dummy_bytecode() ->
@@ -153,7 +154,7 @@ call_tx_default_spec(PubKey, ContractKey, State) ->
      , contract_id => aec_id:create(contract, ContractKey)
      , caller_id   => aec_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , vm_version  => ?CURRENT_AEVM_SOPHIA
+     , abi_version => ?CURRENT_ABI_SOPHIA
      , amount      => 100
      , gas         => 10000
      , gas_price   => 1

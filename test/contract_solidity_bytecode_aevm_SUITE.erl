@@ -175,7 +175,8 @@ execute_call(Contract, CallData, ChainState, Options) ->
              currentTimestamp  => 0,
              chainState        => ChainState1,
              chainAPI          => ?MODULE,
-             vm_version        =>  ?AEVM_01_Solidity_01}, Options),
+             vm_version        => ?VM_AEVM_SOLIDITY_1,
+             abi_version       => ?ABI_SOLIDITY_1}, Options),
           Trace),
     case Res of
         {ok, #{ out := RetVal, chain_state := S } = ResRec} ->
