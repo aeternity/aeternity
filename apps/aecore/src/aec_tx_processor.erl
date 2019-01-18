@@ -12,6 +12,7 @@
 
 %% Simple access tx instructions API
 -export([ spend_tx_instructions/5
+        , name_claim_tx_instructions/5
         , name_preclaim_tx_instructions/5
         , oracle_extend_tx_instructions/4
         , oracle_query_tx_instructions/8
@@ -108,6 +109,16 @@ name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
     , name_preclaim_op(AccountPubkey, CommitmentHash, DeltaTTL)
     ].
 
+name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, Fee, Nonce) ->
+    PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
+    DeltaTTL = aec_governance:name_claim_max_expiration(),
+    LockedFee = aec_governance:name_claim_locked_fee(),
+    [ inc_account_nonce_op(AccountPubkey, Nonce)
+    , spend_fee_op(AccountPubkey, Fee)
+    , lock_amount_op(AccountPubkey, LockedFee)
+    , name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta)
+    ].
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -124,6 +135,8 @@ eval_instructions([], S) ->
 eval_one({Op, Args}, S) ->
     case Op of
         inc_account_nonce         -> inc_account_nonce(Args, S);
+        lock_amount               -> lock_amount(Args, S);
+        name_claim                -> name_claim(Args, S);
         name_preclaim             -> name_preclaim(Args, S);
         oracle_earn_query_fee     -> oracle_earn_query_fee(Args, S);
         oracle_extend             -> oracle_extend(Args, S);
@@ -172,6 +185,20 @@ spend({From, To, Amount}, #state{} = S) when is_integer(Amount), Amount >= 0 ->
     {Receiver1, S3} = ensure_account(To, S2),
     {ok, Receiver2} = aec_accounts:earn(Receiver1, Amount),
     cache_put(account, Receiver2, S3).
+
+%%%-------------------------------------------------------------------
+%%% A special form of spending is to lock an amount.
+
+lock_amount_op(From, Amount) when ?IS_VAR_OR_HASH(From),
+                                  ?IS_NON_NEG_INTEGER(Amount) ->
+    {lock_amount, {From, Amount}}.
+
+lock_amount({_From, 0}, #state{} = S) ->
+    %% Don't risk creating an account for the locked amount if there is none.
+    S;
+lock_amount({From, Amount}, #state{} = S) ->
+    LockPubkey = aec_governance:locked_coins_holder_account(),
+    spend({From, LockPubkey, Amount}, S).
 
 %%%-------------------------------------------------------------------
 
@@ -326,6 +353,49 @@ name_preclaim({AccountPubkey, CommitmentHash, DeltaTTL}, S) ->
     Commitment = aens_commitments:new(Id, OwnerId, DeltaTTL, S#state.height),
     cache_put(commitment, Commitment, S).
 
+%%%-------------------------------------------------------------------
+
+name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta) ->
+    {name_claim, {AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta}}.
+
+name_claim({AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta}, S) ->
+    NameAscii = name_to_ascii(PlainName),
+    CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+    {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
+    assert_commitment_owner(Commitment, AccountPubkey),
+    assert_preclaim_delta(Commitment, PreclaimDelta, S1#state.height),
+    NameHash = aens_hash:name_hash(NameAscii),
+    assert_not_name(NameHash, S1),
+    Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
+    S2 = delete_x(commitment, CommitmentHash, S1),
+    cache_put(name, Name, S2).
+
+name_to_ascii(PlainName) ->
+    case aens_utils:to_ascii(PlainName) of
+        {error, What} ->
+            runtime_error(What);
+        {ok, NameAscii} ->
+            NameAscii
+    end.
+
+assert_commitment_owner(Commitment, Pubkey) ->
+    case aens_commitments:owner_pubkey(Commitment) =:= Pubkey of
+        true  -> ok;
+        false -> runtime_error(commitment_not_owned)
+    end.
+
+assert_preclaim_delta(Commitment, PreclaimDelta, Height) ->
+    case aens_commitments:created(Commitment) + PreclaimDelta =< Height of
+        true  -> ok;
+        false -> runtime_error(commitment_delta_too_small)
+    end.
+
+assert_not_name(NameHash, S) ->
+    case find_x(name, NameHash, S) of
+        {_, _} -> runtime_error(name_already_taken);
+        none   -> ok
+    end.
+
 %%%===================================================================
 %%% Helpers for instructions
 
@@ -440,14 +510,17 @@ runtime_error(Error) ->
 %%%===================================================================
 %%% Access to cache or trees
 
-get_account(Key, #state{} = S) ->
+get_account(Key, S) ->
     get_x(account, Key, account_not_found, S).
 
-get_oracle(Key, Error, #state{} = S) ->
+get_oracle(Key, Error, S) ->
     get_x(oracle, Key, Error, S).
 
-get_oracle_query(OraclePubkey, QueryId, #state{} = S) ->
+get_oracle_query(OraclePubkey, QueryId, S) ->
     get_x(oracle_query, {OraclePubkey, QueryId}, no_matching_oracle_query, S).
+
+get_commitment(Hash, Error, S) ->
+    get_x(commitment, Hash, Error, S).
 
 find_x(Tag, Key, S) ->
     case cache_find(Tag, Key, S) of
@@ -467,6 +540,12 @@ get_x(Tag, Key, Error, S) when is_atom(Error) ->
         {_, _} = Ret -> Ret
     end.
 
+delete_x(commitment, Hash, #state{trees = Trees} = S) ->
+    S1 = cache_drop(commitment, Hash, S),
+    NTree = aec_trees:ns(Trees),
+    NTree1 = aens_state_tree:delete_commitment(Hash, NTree),
+    S1#state{trees = aec_trees:set_ns(Trees, NTree1)}.
+
 %%%===================================================================
 %%% Access to trees
 
@@ -476,6 +555,9 @@ trees_find(account, Key, #state{trees = Trees} = S) ->
 trees_find(commitment, Key, #state{trees = Trees} = S) ->
     NTree = aec_trees:ns(Trees),
     aens_state_tree:lookup_commitment(get_var(Key, commitment, S), NTree);
+trees_find(name, Key, #state{trees = Trees} = S) ->
+    NTree = aec_trees:ns(Trees),
+    aens_state_tree:lookup_name(get_var(Key, name, S), NTree);
 trees_find(oracle, Key, #state{trees = Trees} = S) ->
     OTree = aec_trees:oracles(Trees),
     aeo_state_tree:lookup_oracle(get_var(Key, oracle, S), OTree);
@@ -491,6 +573,7 @@ trees_find(oracle_query, Key, #state{trees = Trees} = S) ->
                     orelse (X =:= oracle)
                     orelse (X =:= oracle_query)
                     orelse (X =:= commitment)
+                    orelse (X =:= name)
                    )
        ).
 
@@ -500,12 +583,18 @@ cache_find(Tag, Key, #state{cache = C} = S) when ?IS_TAG(Tag) ->
         error     -> none
     end.
 
+cache_drop(commitment, Hash, #state{cache = C} = S) ->
+    S#state{cache = dict:erase({commitment, Hash}, C)}.
+
 cache_put(account, Val, #state{cache = C} = S) ->
     Pubkey = aec_accounts:pubkey(Val),
     S#state{cache = dict:store({account, Pubkey}, Val, C)};
 cache_put(commitment, Val, #state{cache = C} = S) ->
     Hash = aens_commitments:hash(Val),
     S#state{cache = dict:store({commitment, Hash}, Val, C)};
+cache_put(name, Val, #state{cache = C} = S) ->
+    Hash = aens_names:hash(Val),
+    S#state{cache = dict:store({name, Hash}, Val, C)};
 cache_put(oracle, Val, #state{cache = C} = S) ->
     Pubkey = aeo_oracles:pubkey(Val),
     S#state{cache = dict:store({oracle, Pubkey}, Val, C)};
@@ -525,6 +614,10 @@ cache_write_through_fun({account,_Pubkey}, Account, Trees) ->
 cache_write_through_fun({commitment,_Hash}, Commitment, Trees) ->
     NTree  = aec_trees:ns(Trees),
     NTree1 = aens_state_tree:enter_commitment(Commitment, NTree),
+    aec_trees:set_ns(Trees, NTree1);
+cache_write_through_fun({name,_Hash}, Name, Trees) ->
+    NTree  = aec_trees:ns(Trees),
+    NTree1 = aens_state_tree:enter_name(Name, NTree),
     aec_trees:set_ns(Trees, NTree1);
 cache_write_through_fun({oracle,_Pubkey}, Oracle, Trees) ->
     OTrees  = aec_trees:oracles(Trees),

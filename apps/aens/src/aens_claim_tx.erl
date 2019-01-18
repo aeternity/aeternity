@@ -95,59 +95,21 @@ nonce(#ns_claim_tx{nonce = Nonce}) ->
 origin(#ns_claim_tx{} = Tx) ->
     account_pubkey(Tx).
 
--spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#ns_claim_tx{nonce     = Nonce,
-                   name      = Name,
-                   name_salt = NameSalt,
-                   fee       = Fee} = Tx,
-      Trees, Env) ->
-    Height = aetx_env:height(Env),
-    AccountPubKey = account_pubkey(Tx),
-    case aens_utils:to_ascii(Name) of
-        {ok, NameAscii} ->
-            LockedFee = aec_governance:name_claim_locked_fee(),
-            Checks =
-                [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee + LockedFee) end,
-                 fun() -> check_commitment(NameAscii, NameSalt, AccountPubKey, Trees, Height) end,
-                 fun() -> check_name(NameAscii, Trees) end],
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+check(#ns_claim_tx{}, Trees, Env) ->
+    %% Checks are done in process/3
+    {ok, Trees}.
 
-            case aeu_validation:run(Checks) of
-                ok              -> {ok, Trees};
-                {error, Reason} -> {error, Reason}
-            end;
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#ns_claim_tx{nonce     = Nonce,
-                     name      = PlainName,
-                     name_salt = NameSalt,
-                     fee       = Fee} = ClaimTx,
-        Trees0, Env) ->
-    Height = aetx_env:height(Env),
-    AccountPubKey = account_pubkey(ClaimTx),
-    AccountsTree0 = aec_trees:accounts(Trees0),
-    NSTree0 = aec_trees:ns(Trees0),
-
-    LockedFee = aec_governance:name_claim_locked_fee(),
-    Account0 = aec_accounts_trees:get(AccountPubKey, AccountsTree0),
-    {ok, Account1} = aec_accounts:spend(Account0, Fee + LockedFee, Nonce),
-    AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
-    AccountsTree2 = aec_accounts_trees:lock_coins(LockedFee, AccountsTree1),
-
-    {ok, PlainNameAscii} = aens_utils:to_ascii(PlainName),
-    CommitmentHash = aens_hash:commitment_hash(PlainNameAscii, NameSalt),
-    NSTree1 = aens_state_tree:delete_commitment(CommitmentHash, NSTree0),
-
-    TTL = aec_governance:name_claim_max_expiration(),
-    Name = aens_names:new(ClaimTx, TTL, Height),
-    NSTree2 = aens_state_tree:enter_name(Name, NSTree1),
-
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree2),
-    Trees2 = aec_trees:set_ns(Trees1, NSTree2),
-
-    {ok, Trees2}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
+process(#ns_claim_tx{} = ClaimTx, Trees, Env) ->
+    Instructions =
+        aec_tx_processor:name_claim_tx_instructions(
+          account_pubkey(ClaimTx),
+          name(ClaimTx),
+          name_salt(ClaimTx),
+          fee(ClaimTx),
+          nonce(ClaimTx)),
+    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_claim_tx{} = Tx, _) ->
@@ -220,6 +182,9 @@ account_id(#ns_claim_tx{account_id = AccountId}) ->
 -spec name(tx()) -> binary().
 name(#ns_claim_tx{name = Name}) ->
     Name.
+
+name_salt(#ns_claim_tx{name_salt = NameSalt}) ->
+    NameSalt.
 
 %%%===================================================================
 %%% Internal functions
