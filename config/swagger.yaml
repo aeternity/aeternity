@@ -1928,6 +1928,12 @@ definitions:
       ttl:
         type: integer
         format: int64
+      # vm_version is kept for backwards compatibility and should be
+      # removed later, _and_ abi_version should then be 'required'
+      vm_version:
+        type: integer
+        minimum: 0
+        maximum: 65535
       abi_version:
         type: integer
         minimum: 0
@@ -1938,7 +1944,6 @@ definitions:
       - response_format
       - query_fee
       - ttl
-      - abi_version
   OracleQuery:
     type: object
     properties:
@@ -2034,9 +2039,14 @@ definitions:
       ttl:
         type: integer
         format: int64
+      # vm_version is kept for backwards compatibility and should be
+      # removed later
+      vm_version:
+        type: integer
+        minimum: 0
+        maximum: 65535
       abi_version:
         type: integer
-        format: int64
         minimum: 0
         maximum: 65535
     required:
@@ -2937,6 +2947,7 @@ definitions:
         type: integer
         minimum: 0
         maximum: 65535
+      # abi_version is optional for now, should be required eventually
       abi_version:
         type: integer
         minimum: 0
@@ -2955,7 +2966,8 @@ definitions:
       - id
       - owner_id
       - vm_version
-      - abi_version
+      # abi_version is optional for now, should be required eventually
+      # - abi_version
       - log
       - active
       - referrer_ids
@@ -3165,7 +3177,8 @@ definitions:
       - owner_id
       - code
       - vm_version
-      - abi_version
+      # abi_version is optional for now, should be required eventually
+      # - abi_version
       - deposit
       - amount
       - gas
@@ -3228,7 +3241,8 @@ definitions:
       - owner_id
       - code
       - vm_version
-      - abi_version
+      # abi_version is optional for now, should be required eventually
+      # - abi_version
       - deposit
       - amount
       - gas
@@ -3246,6 +3260,13 @@ definitions:
       contract_id:
         $ref: '#/definitions/EncodedHash'
         description: 'Contract''s pub_key'
+      # Old name vm_version kept for backwards compatibility
+      # should be removed and then abi_version should be required
+      vm_version:
+        description: 'VM version'
+        type: integer
+        minimum: 0
+        maximum: 65535
       abi_version:
         description: 'ABI version'
         type: integer
@@ -3277,7 +3298,8 @@ definitions:
     required:
       - caller_id
       - contract_id
-      - abi_version
+      # Should be requried once vm_version is gone
+      # - abi_version
       - fee
       - amount
       - gas
@@ -3295,6 +3317,13 @@ definitions:
       contract_id:
         $ref: '#/definitions/EncodedHash'
         description: 'Contract''s pub_key'
+      # Old name vm_version kept for backwards compatibility
+      # should be removed and then abi_version should be required
+      vm_version:
+        description: 'VM version'
+        type: integer
+        minimum: 0
+        maximum: 65535
       abi_version:
         description: 'ABI version'
         type: integer
@@ -3332,7 +3361,8 @@ definitions:
     required:
       - caller_id
       - contract_id
-      - abi_version
+      # Should be requried once vm_version is gone
+      # - abi_version
       - fee
       - amount
       - gas
@@ -3470,7 +3500,8 @@ definitions:
         required:
           - owner
           - vm_version
-          - abi_version
+          # Optional for now...
+          # - abi_version
           - code
           - deposit
           - call_data
@@ -3485,6 +3516,12 @@ definitions:
           contract:
             $ref: '#/definitions/EncodedHash'
             description: Contract address
+          # vm_version kept for backwards compatibility, should be removed
+          vm_version:
+            type: integer
+            description: ABI version for the call/calldata
+            minimum: 0
+            maximum: 65535
           abi_version:
             type: integer
             description: ABI version for the call/calldata
@@ -3508,7 +3545,8 @@ definitions:
         required:
           - caller
           - contract
-          - abi_version
+          # should be required once vm_version is removed
+          # - abi_version
           - code
           - amount
           - call_data
