@@ -95,41 +95,20 @@ origin(#ns_preclaim_tx{} = Tx) ->
     account_pubkey(Tx).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#ns_preclaim_tx{nonce = Nonce,
-                      fee   = Fee} = Tx,
-      Trees,_Env) ->
-    AccountPubKey  = account_pubkey(Tx),
-    CommitmentHash = commitment_hash(Tx),
-
-    Checks =
-        [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
-         fun() -> check_not_commitment(CommitmentHash, Trees) end],
-
-    case aeu_validation:run(Checks) of
-        ok              -> {ok, Trees};
-        {error, Reason} -> {error, Reason}
-    end.
+check(#ns_preclaim_tx{} = Tx, Trees,_Env) ->
+    %% Checks are in process/3
+    {ok, Trees}.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#ns_preclaim_tx{fee = Fee, nonce = Nonce} = PreclaimTx,
-        Trees0, Env) ->
-    Height = aetx_env:height(Env),
-    AccountPubKey = account_pubkey(PreclaimTx),
-    AccountsTree0 = aec_trees:accounts(Trees0),
-    NSTree0 = aec_trees:ns(Trees0),
-
-    Account0 = aec_accounts_trees:get(AccountPubKey, AccountsTree0),
-   {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce),
-    AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
-
-    TTL = aec_governance:name_preclaim_expiration(),
-    Commitment = aens_commitments:new(PreclaimTx, TTL, Height),
-    NSTree1 = aens_state_tree:enter_commitment(Commitment, NSTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_ns(Trees1, NSTree1),
-
-    {ok, Trees2}.
+process(#ns_preclaim_tx{} = PreclaimTx, Trees, Env) ->
+    Instructions =
+        aec_tx_processor:name_preclaim_tx_instructions(
+          account_pubkey(PreclaimTx),
+          commitment_hash(PreclaimTx),
+          aec_governance:name_preclaim_expiration(),
+          fee(PreclaimTx),
+          nonce(PreclaimTx)),
+    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_preclaim_tx{} = Tx, _) ->
