@@ -99,7 +99,7 @@ check(#ns_preclaim_tx{} = Tx, Trees,_Env) ->
     %% Checks are in process/3
     {ok, Trees}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 process(#ns_preclaim_tx{} = PreclaimTx, Trees, Env) ->
     Instructions =
         aec_tx_processor:name_preclaim_tx_instructions(
@@ -184,13 +184,6 @@ account_pubkey(#ns_preclaim_tx{account_id = AccountId}) ->
 
 commitment_hash(#ns_preclaim_tx{commitment_id = CommitmentId}) ->
     aec_id:specialize(CommitmentId, commitment).
-
-check_not_commitment(CommitmentHash, Trees) ->
-    NSTree = aec_trees:ns(Trees),
-    case aens_state_tree:lookup_commitment(CommitmentHash, NSTree) of
-        {value, _CommitmentHash} -> {error, commitment_already_present};
-        none -> ok
-    end.
 
 version() ->
     ?NAME_PRECLAIM_TX_VSN.

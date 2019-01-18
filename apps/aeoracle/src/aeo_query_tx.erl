@@ -150,7 +150,7 @@ check(#oracle_query_tx{}, Trees,_Env) ->
 signers(#oracle_query_tx{} = Tx, _) ->
     {ok, [sender_pubkey(Tx)]}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 process(#oracle_query_tx{} = QTx, Trees, Env) ->
     Height = aetx_env:height(Env),
     case aeo_utils:ttl_delta(Height, query_ttl(QTx)) of

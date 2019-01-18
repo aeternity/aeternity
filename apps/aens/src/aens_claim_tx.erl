@@ -193,34 +193,6 @@ name_salt(#ns_claim_tx{name_salt = NameSalt}) ->
 account_pubkey(#ns_claim_tx{account_id = AccountId}) ->
     aec_id:specialize(AccountId, account).
 
-check_commitment(NameAscii, NameSalt, AccountPubKey, Trees, Height) ->
-    NSTree = aec_trees:ns(Trees),
-    CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
-    case aens_state_tree:lookup_commitment(CommitmentHash, NSTree) of
-        {value, Commitment} ->
-            case aens_commitments:owner_pubkey(Commitment) =:= AccountPubKey of
-                true  ->
-                    Created = aens_commitments:created(Commitment),
-                    Delta = aec_governance:name_claim_preclaim_delta(),
-                    if Created + Delta =< Height -> ok;
-                       true -> {error, commitment_delta_too_small}
-                    end;
-                false -> {error, commitment_not_owned}
-            end;
-        none ->
-            {error, name_not_preclaimed}
-    end.
-
-check_name(NameAscii, Trees) ->
-    NSTree = aec_trees:ns(Trees),
-    NHash = aens_hash:name_hash(NameAscii),
-    case aens_state_tree:lookup_name(NHash, NSTree) of
-        {value, _} ->
-            {error, name_already_taken};
-        none ->
-            ok
-    end.
-
 version() ->
     ?NAME_CLAIM_TX_VSN.
 

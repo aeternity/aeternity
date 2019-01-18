@@ -106,7 +106,7 @@ check(#oracle_extend_tx{} = Tx, Trees,_Env) ->
 signers(#oracle_extend_tx{} = Tx, _) ->
     {ok, [oracle_pubkey(Tx)]}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}  | {error, term()}.
 process(#oracle_extend_tx{} = Tx, Trees, Env) ->
     {delta, DeltaTTL} = oracle_ttl(Tx),
     Instructions =
@@ -169,12 +169,3 @@ for_client(#oracle_extend_tx{oracle_id = OracleId,
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL}.
 
-%% -- Local functions  -------------------------------------------------------
-
--dialyzer({no_match, check_oracle_extension_ttl/1}).
-check_oracle_extension_ttl({delta, D}) when is_integer(D), D > 0 ->
-    ok;
-check_oracle_extension_ttl({delta, 0}) ->
-    {error, zero_relative_oracle_extension_ttl};
-check_oracle_extension_ttl({block, _}) ->
-    {error, absolute_oracle_extension_ttl}.

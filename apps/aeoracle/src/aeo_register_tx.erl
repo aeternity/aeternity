@@ -139,17 +139,7 @@ check(#oracle_register_tx{}, Trees, _Env) ->
 signers(#oracle_register_tx{} = Tx, _) ->
     {ok, [account_pubkey(Tx)]}.
 
-register_op(#oracle_register_tx{} = RTx, Height) ->
-    {oracle_register,
-     { account_pubkey(RTx),
-       query_format(RTx),
-       response_format(RTx),
-       query_fee(RTx),
-       aeo_utils:ttl_delta(Height, oracle_ttl(RTx)),
-       vm_version(RTx)}
-    }.
-
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 process(#oracle_register_tx{} = RTx, Trees, Env) ->
     Height = aetx_env:height(Env),
     case aeo_utils:ttl_delta(Height, oracle_ttl(RTx)) of

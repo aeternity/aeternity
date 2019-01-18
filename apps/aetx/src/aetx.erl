@@ -138,7 +138,7 @@
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
 
 -callback process(Tx :: tx_instance(), aec_trees:trees(), aetx_env:env()) ->
-    {ok, NewTrees :: aec_trees:trees()}.
+    {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
 
 -callback serialize(Tx :: tx_instance()) ->
     term().
