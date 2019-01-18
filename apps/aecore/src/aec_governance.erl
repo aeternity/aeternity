@@ -127,10 +127,7 @@ tx_base_gas(name_update_tx) -> ?TX_BASE_GAS;
 tx_base_gas(oracle_extend_tx) -> ?TX_BASE_GAS;
 tx_base_gas(oracle_query_tx) -> ?TX_BASE_GAS;
 tx_base_gas(oracle_register_tx) -> ?TX_BASE_GAS;
-tx_base_gas(oracle_response_tx) -> ?TX_BASE_GAS;
-tx_base_gas(_) ->
-    %% never accept unknown transaction types
-    block_gas_limit().
+tx_base_gas(oracle_response_tx) -> ?TX_BASE_GAS.
 
 byte_gas() ->
     ?BYTE_GAS.
