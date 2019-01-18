@@ -150,28 +150,25 @@ check(#oracle_query_tx{}, Trees,_Env) ->
 signers(#oracle_query_tx{} = Tx, _) ->
     {ok, [sender_pubkey(Tx)]}.
 
-query_op(QTx, Height) ->
-    {delta, RTTL} = response_ttl(QTx),
-    QTTL = aeo_utils:ttl_delta(Height, query_ttl(QTx)),
-    { oracle_query
-    , { oracle_pubkey(QTx)
-      , sender_pubkey(QTx)
-      , nonce(QTx)
-      , query(QTx)
-      , query_fee(QTx)
-      , QTTL
-      , RTTL}
-    }.
-
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#oracle_query_tx{} = QTx, Trees, Env) ->
-    Sender = sender_pubkey(QTx),
     Height = aetx_env:height(Env),
-    Instructions = [ {inc_account_nonce, {Sender, nonce(QTx)}}
-                   , {spend_fee,         {Sender, fee(QTx) + query_fee(QTx)}}
-                   , query_op(QTx, Height)
-                   ],
-    aec_tx_processor:eval(Instructions, Trees, Height).
+    case aeo_utils:ttl_delta(Height, query_ttl(QTx)) of
+        {error, _} = Err -> Err;
+        QTTL ->
+            {delta, RTTL} = response_ttl(QTx),
+            Instructions =
+                aec_tx_processor:oracle_query_tx_instructions(
+                  oracle_pubkey(QTx),
+                  sender_pubkey(QTx),
+                  query(QTx),
+                  query_fee(QTx),
+                  QTTL,
+                  RTTL,
+                  fee(QTx),
+                  nonce(QTx)),
+            aec_tx_processor:eval(Instructions, Trees, Height)
+    end.
 
 serialize(#oracle_query_tx{sender_id    = SenderId,
                            nonce        = Nonce,

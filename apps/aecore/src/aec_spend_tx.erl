@@ -129,14 +129,6 @@ amount(#spend_tx{amount = Amount}) ->
 payload(#spend_tx{payload = Payload}) ->
     Payload.
 
-specialize_recipient(SpendTx) ->
-    case aec_id:specialize(recipient_id(SpendTx)) of
-        {name, NameHash}   -> {name, NameHash};
-        {oracle, Pubkey}   -> {account, Pubkey};
-        {contract, Pubkey} -> {account, Pubkey};
-        {account, Pubkey}  -> {account, Pubkey}
-    end.
-
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#spend_tx{}, Trees,_Env) ->
     %% Note: All checks are done in process/3
@@ -147,15 +139,12 @@ signers(#spend_tx{} = Tx, _) -> {ok, [sender_pubkey(Tx)]}.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#spend_tx{} = SpendTx, Trees, Env) ->
-    Sender   = sender_pubkey(SpendTx),
-    Nonce    = nonce(SpendTx),
-    {Type, ReceiverHash} = specialize_recipient(SpendTx),
-    Recipient = {var, recipient},
-    Instructions = [ {inc_account_nonce, {Sender, Nonce}}
-                   , {resolve_account,   {Type, ReceiverHash, Recipient}}
-                   , {spend,             {Sender, Recipient, amount(SpendTx)}}
-                   , {spend_fee,         {Sender, fee(SpendTx)}}
-                   ],
+    Instructions =
+        aec_tx_processor:spend_tx_instructions(sender_pubkey(SpendTx),
+                                               recipient_id(SpendTx),
+                                               amount(SpendTx),
+                                               fee(SpendTx),
+                                               nonce(SpendTx)),
     aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
 
 serialize(#spend_tx{sender_id    = SenderId,
