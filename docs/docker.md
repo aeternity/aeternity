@@ -197,9 +197,9 @@ docker-compose build
 ### Mining Rate
 
 By default the localnet has set default mine rate of 1 block per 15 seconds.
-It can be changed by setting `EPOCH_MINE_RATE` environment variable.
+It can be changed by setting `AETERNITY_MINE_RATE` environment variable.
 The variable is in milliseconds, so to set 1 block per 10 seconds use:
 
 ```bash
-EPOCH_MINE_RATE=10000 docker-compose up
+AETERNITY_MINE_RATE=10000 docker-compose up
 ```
