@@ -76,21 +76,11 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
-    DataDir = ?config(data_dir, Config),
-    TopDir = aecore_suite_utils:top_dir(DataDir),
-    Config1 = [{symlink_name, "latest.http_contracts"},
-               {top_dir, TopDir},
-               {test_module, ?MODULE}] ++ Config,
-    aecore_suite_utils:make_shortcut(Config1),
-    ct:log("Environment = ~p", [[{args, init:get_arguments()},
-                                 {node, node()},
-                                 {cookie, erlang:get_cookie()}]]),
     Forks = aecore_suite_utils:forks(),
-
-    aecore_suite_utils:create_configs(Config1, #{<<"chain">> =>
-                                                 #{<<"persist">> => true,
-                                                   <<"hard_forks">> => Forks}}),
-    aecore_suite_utils:make_multi(Config1, [?NODE]),
+    DefCfg = #{<<"chain">> =>
+                   #{<<"persist">> => true,
+                     <<"hard_forks">> => Forks}},
+    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_contracts"}, {test_module, ?MODULE}] ++ Config),
     [{nodes, [aecore_suite_utils:node_tuple(?NODE)]}]  ++ Config1.
 
 end_per_suite(_Config) ->

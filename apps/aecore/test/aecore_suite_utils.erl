@@ -1,14 +1,13 @@
 -module(aecore_suite_utils).
 
+%% Common Test configuration functions.
+-export([init_per_suite/2,
+         init_per_suite/3,
+         init_per_suite/4]).
+
 -export([top_dir/1,
          epoch_config/2,
-         create_configs/1,
-         create_configs/2,
-         create_configs/3,
          create_config/4,
-         make_multi/1,
-         make_multi/2,
-         make_shortcut/1,
          shortcut_dir/1]).
 
 -export([cmd/3, cmd/4, cmd/5, cmd/6,
@@ -102,20 +101,32 @@ patron() ->
 %%% API
 %%%=============================================================================
 
+init_per_suite(NodesList, CTConfig) ->
+    init_per_suite(NodesList, #{}, CTConfig).
+
+init_per_suite(NodesList, CustomNodeConfig, CTConfig) ->
+    init_per_suite(NodesList, CustomNodeConfig, [], CTConfig).
+
+init_per_suite(NodesList, CustomNodeCfg, NodeCfgOpts, CTConfig) ->
+    DataDir = ?config(data_dir, CTConfig),
+    TopDir = top_dir(DataDir),
+    CTConfig1 = [{top_dir, TopDir} | CTConfig],
+    make_shortcut(CTConfig1),
+    ct:log("Environment = ~p", [[{args, init:get_arguments()},
+                                 {node, node()},
+                                 {cookie, erlang:get_cookie()}]]),
+    create_configs(NodesList, CTConfig1, CustomNodeCfg, NodeCfgOpts),
+    make_multi(CTConfig1, NodesList),
+    CTConfig1.
+
 epoch_config(Node, CTConfig) ->
     EpochConfig = epoch_config_dir(Node, CTConfig),
     [OrigCfg] = jsx:consult(EpochConfig, [return_maps]),
     backup_config(EpochConfig),
     OrigCfg.
 
-create_configs(CTConfig) ->
-    create_configs(CTConfig, #{}, []).
-
-create_configs(CTConfig, CustomConfig) ->
-    create_configs(CTConfig, CustomConfig, []).
-
-create_configs(CTConfig, CustomConfig, Options) ->
-    [create_config(N, CTConfig, CustomConfig, Options) || N <- [dev1, dev2, dev3]].
+create_configs(NodesList, CTConfig, CustomConfig, Options) ->
+    [create_config(N, CTConfig, CustomConfig, Options) || N <- NodesList].
 
 create_config(Node, CTConfig, CustomConfig, Options) ->
     EpochCfgPath = epoch_config_dir(Node, CTConfig),
@@ -136,9 +147,6 @@ maps_merge(Map1, Map2) ->
                         true  -> Map#{K => maps_merge(V, maps:get(K, Map))}
                     end
                 end, Map2, maps:to_list(Map1)).
-
-make_multi(Config) ->
-    make_multi(Config, [dev1, dev2, dev3]).
 
 make_multi(Config, NodesList) ->
     make_multi(Config, NodesList, "test").
