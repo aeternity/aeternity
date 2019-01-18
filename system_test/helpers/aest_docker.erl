@@ -27,10 +27,11 @@
 %=== MACROS ====================================================================
 
 -define(CONFIG_FILE_TEMPLATE, "epoch.yaml.mustache").
--define(EPOCH_CONFIG_FILE, "/home/epoch/epoch.yaml").
--define(EPOCH_LOG_FOLDER, "/home/epoch/node/log").
--define(EPOCH_KEYS_FOLDER, "/home/epoch/node/keys").
--define(EPOCH_GENESIS_FILE, "/home/epoch/node/data/aecore/.genesis/accounts_test.json").
+-define(EPOCH_OPS_BIN, "/home/aeternity/node/bin/epoch").
+-define(EPOCH_CONFIG_FILE, "/home/aeternity/epoch.yaml").
+-define(EPOCH_LOG_FOLDER, "/home/aeternity/node/log").
+-define(EPOCH_KEYS_FOLDER, "/home/aeternity/node/keys").
+-define(EPOCH_GENESIS_FILE, "/home/aeternity/node/data/aecore/.genesis/accounts_test.json").
 -define(EPOCH_MINE_RATE, 1000).
 -define(EPOCH_MAX_INBOUND, 100).
 -define(EXT_HTTP_PORT, 3013).
@@ -464,7 +465,7 @@ is_running(Id, Retries) ->
     end.
 
 attempt_epoch_stop(#{container_id := ID, hostname := Name, sockets := Sockets} = NodeState, Timeout) ->
-    Cmd = ["/home/epoch/node/bin/epoch", "stop"],
+    Cmd = [?EPOCH_OPS_BIN, "stop"],
     CmdStr = lists:join(" " , Cmd),
     log(NodeState,
         "Container ~p [~s] still running: "
