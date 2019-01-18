@@ -75,8 +75,8 @@ ttl(#oracle_extend_tx{ttl = TTL}) ->
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{oracle_id  := OracleId,
       nonce      := Nonce,
-      oracle_ttl := OracleTTL,
-      fee        := Fee} = Args) ->
+      oracle_ttl := {delta, Delta} = OracleTTL,
+      fee        := Fee} = Args) when is_integer(Delta), Delta >= 0 ->
     oracle = aec_id:specialize_type(OracleId),
     Tx = #oracle_extend_tx{oracle_id  = OracleId,
                            nonce      = Nonce,
@@ -97,19 +97,10 @@ nonce(#oracle_extend_tx{nonce = Nonce}) ->
 origin(#oracle_extend_tx{} = Tx) ->
     oracle_pubkey(Tx).
 
-%% Account should exist, and have enough funds for the fee
-%% Oracle should exist.
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#oracle_extend_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
-      Trees,_Env) ->
-    OraclePK = oracle_pubkey(Tx),
-    Checks =
-        [fun() -> check_oracle_extension_ttl(OTTL) end],
-
-    case aeu_validation:run(Checks) of
-        ok              -> {ok, Trees};
-        {error, Reason} -> {error, Reason}
-    end.
+check(#oracle_extend_tx{} = Tx, Trees,_Env) ->
+    %% Checks are in process/3
+    {ok, Trees}.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_extend_tx{} = Tx, _) ->
@@ -117,12 +108,12 @@ signers(#oracle_extend_tx{} = Tx, _) ->
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#oracle_extend_tx{} = Tx, Trees, Env) ->
-    Pubkey = oracle_pubkey(Tx),
     {delta, DeltaTTL} = oracle_ttl(Tx),
-    Instructions = [ {inc_account_nonce, {Pubkey, nonce(Tx)}}
-                   , {spend_fee,         {Pubkey, fee(Tx)}}
-                   , {oracle_extend,     {Pubkey, DeltaTTL}}
-                   ],
+    Instructions =
+        aec_tx_processor:oracle_extend_tx_instructions(oracle_pubkey(Tx),
+                                                       DeltaTTL,
+                                                       fee(Tx),
+                                                       nonce(Tx)),
     aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
 
 serialize(#oracle_extend_tx{oracle_id  = OracleId,

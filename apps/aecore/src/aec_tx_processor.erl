@@ -10,6 +10,15 @@
 -export([eval/3
         ]).
 
+%% Simple access tx instructions API
+-export([ spend_tx_instructions/5
+        , oracle_extend_tx_instructions/4
+        , oracle_query_tx_instructions/8
+        , oracle_register_tx_instructions/8
+        , oracle_response_tx_instructions/6
+        ]).
+
+
 -include_lib("aecore/include/aec_hash.hrl").
 -include_lib("apps/aecontract/src/aecontract.hrl").
 
@@ -25,7 +34,10 @@
                       andalso var =:= element(1, _X_)
                       andalso is_atom(element(2, _X_)))).
 
--define(IS_VAR_OR_HASH(_X_), ?IS_HASH(_X_) orelse ?IS_VAR(_X_)).
+-define(IS_VAR_OR_HASH(_X_), (?IS_HASH(_X_) orelse ?IS_VAR(_X_))).
+-define(IS_NON_NEG_INTEGER(_X_), (is_integer(_X_) andalso _X_ >= 0)).
+-define(IS_NAME_RESOLVE_TYPE(_X_), (_X_ =:= account
+                                    orelse _X_ =:= name)).
 
 %%%===================================================================
 %%% API
@@ -38,6 +50,55 @@ eval([_|_] = Instructions, Trees, Height) when is_integer(Height),
         throw:{?MODULE, What} ->
             {error, What}
     end.
+
+spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
+    Recipient = {var, recipient},
+    {Type, RecipientHash} = case aec_id:specialize(RecipientID) of
+                                {name, NameHash}   -> {name, NameHash};
+                                {oracle, Pubkey}   -> {account, Pubkey};
+                                {contract, Pubkey} -> {account, Pubkey};
+                                {account, Pubkey}  -> {account, Pubkey}
+                            end,
+    [ inc_account_nonce_op(SenderPubkey, Nonce)
+    , resolve_account_op(Type, RecipientHash, Recipient)
+    , spend_op(SenderPubkey, Recipient, Amount)
+    , spend_fee_op(SenderPubkey, Fee)
+    ].
+
+oracle_register_tx_instructions(AccountPubkey, QFormat, RFormat, QFee,
+                                DeltaTTL, VMVersion, TxFee, Nonce) ->
+    %% TODO: Account nonce should not be increased in contract context
+    %%       but this would mean a hard fork.
+    [ inc_account_nonce_op(AccountPubkey, Nonce)
+    , spend_fee_op(AccountPubkey, TxFee)
+    , oracle_register_op(AccountPubkey, QFormat, RFormat, QFee,
+                         DeltaTTL, VMVersion)
+    ].
+
+oracle_extend_tx_instructions(Pubkey, DeltaTTL, Fee, Nonce) ->
+    [ inc_account_nonce_op(Pubkey, Nonce)
+    , spend_fee_op(Pubkey, Fee)
+    , oracle_extend_op(Pubkey, DeltaTTL)
+    ].
+
+oracle_query_tx_instructions(OraclePubkey, SenderPubkey, Query,
+                             QueryFee, QTTL, RTTL, TxFee, Nonce) ->
+    [ inc_account_nonce_op(SenderPubkey, Nonce)
+    , spend_fee_op(SenderPubkey, TxFee + QueryFee)
+    , oracle_query_op(OraclePubkey, SenderPubkey, Nonce,
+                      Query, QueryFee, QTTL, RTTL)
+    ].
+
+oracle_response_tx_instructions(OraclePubkey, QueryId, Response,
+                                RTTL, Fee, Nonce) ->
+    [ oracle_respond_op(OraclePubkey, QueryId, Response, RTTL)
+    , inc_account_nonce_op(OraclePubkey, Nonce)
+      %% NOTE: Order is important. Oracle needs to cover
+      %% the fee before earning the query fee.
+      %% Changing this breaks consensus.
+    , spend_fee_op(OraclePubkey, Fee)
+    , oracle_earn_query_fee_op(OraclePubkey, QueryId)
+    ].
 
 %%%===================================================================
 %%% Internal functions
@@ -54,8 +115,6 @@ eval_instructions([], S) ->
 
 eval_one({Op, Args}, S) ->
     case Op of
-        check_account_balance     -> check_account_balance(Args, S);
-        check_account_nonce       -> check_account_nonce(Args, S);
         ensure_account            -> ensure_account(Args, S);
         inc_account_nonce         -> inc_account_nonce(Args, S);
         oracle_earn_query_fee     -> oracle_earn_query_fee(Args, S);
@@ -80,6 +139,10 @@ new_state(Trees, Height) ->
 %%% Operations
 %%%
 
+inc_account_nonce_op(Key, Nonce) when ?IS_VAR_OR_HASH(Key),
+                                      ?IS_NON_NEG_INTEGER(Nonce) ->
+    {inc_account_nonce, {Key, Nonce}}.
+
 inc_account_nonce({Key, Nonce}, #state{} = S) ->
     {Account, S1} = get_account(Key, S),
     assert_account_nonce(Account, Nonce),
@@ -88,44 +151,41 @@ inc_account_nonce({Key, Nonce}, #state{} = S) ->
 
 %%%-------------------------------------------------------------------
 
-check_account_nonce({Key, Nonce}, #state{} = S) ->
-    {Account, S1} = get_account(Key, S),
-    assert_account_nonce(Account, Nonce),
-    S1.
-
-%%%-------------------------------------------------------------------
-
-check_account_balance({Key, Balance}, #state{} = S) ->
-    {Account, S1} = get_account(Key, S),
-    case aec_accounts:balance(Account) of
-        B when B >= Balance -> S1;
-        B when B <  Balance -> runtime_error(insufficient_funds)
-    end.
-
-%%%-------------------------------------------------------------------
+spend_op(From, To, Amount) when ?IS_VAR_OR_HASH(From),
+                                ?IS_VAR_OR_HASH(To),
+                                ?IS_NON_NEG_INTEGER(Amount) ->
+    {spend, {From, To, Amount}}.
 
 spend({From, To, Amount}, #state{} = S) when is_integer(Amount), Amount >= 0 ->
-    S1              = check_account_balance({From, Amount}, S),
-    {Sender1, S2}   = get_account(From, S1),
+    {Sender1, S1}   = get_account(From, S),
+    assert_account_balance(Sender1, Amount),
     {ok, Sender2}   = aec_accounts:spend_without_nonce_bump(Sender1, Amount),
-    S3              = cache_put(account, Sender2, S2),
-    {Receiver1, S4} = ensure_account(To, S3),
+    S2              = cache_put(account, Sender2, S1),
+    {Receiver1, S3} = ensure_account(To, S2),
     {ok, Receiver2} = aec_accounts:earn(Receiver1, Amount),
-    cache_put(account, Receiver2, S4).
+    cache_put(account, Receiver2, S3).
 
 %%%-------------------------------------------------------------------
+
+spend_fee_op(From, Amount) when ?IS_VAR_OR_HASH(From),
+                                ?IS_NON_NEG_INTEGER(Amount) ->
+    {spend_fee, {From, Amount}}.
 
 spend_fee({From, Amount}, #state{} = S) when is_integer(Amount), Amount >= 0 ->
-    S1              = check_account_balance({From, Amount}, S),
-    {Sender1, S2}   = get_account(From, S1),
+    {Sender1, S1}   = get_account(From, S),
+    assert_account_balance(Sender1, Amount),
     {ok, Sender2}   = aec_accounts:spend_without_nonce_bump(Sender1, Amount),
-    cache_put(account, Sender2, S2).
+    cache_put(account, Sender2, S1).
 
 %%%-------------------------------------------------------------------
+
+resolve_account_op(GivenType, Hash, Var) when ?IS_NAME_RESOLVE_TYPE(GivenType),
+                                              ?IS_HASH(Hash),
+                                              ?IS_VAR(Var) ->
+    {resolve_account, {GivenType, Hash, Var}}.
 
 resolve_account({GivenType, Hash, Var}, S) ->
     resolve_name(account, GivenType, Hash, Var, S).
-
 
 resolve_name(account, account, Pubkey, Var, S) ->
     set_var(Var, account, Pubkey, S);
@@ -145,6 +205,15 @@ resolve_name(account, name, NameHash, Var, S) ->
 
 %%%-------------------------------------------------------------------
 
+oracle_register_op(Pubkey, QFormat, RFormat, QFee,
+                   DeltaTTL, VMVersion) when ?IS_HASH(Pubkey),
+                                             is_binary(QFormat),
+                                             is_binary(RFormat),
+                                             ?IS_NON_NEG_INTEGER(QFee),
+                                             ?IS_NON_NEG_INTEGER(DeltaTTL),
+                                             ?IS_NON_NEG_INTEGER(VMVersion) ->
+    {oracle_register, {Pubkey, QFormat, RFormat, QFee, DeltaTTL, VMVersion}}.
+
 oracle_register({Pubkey, QFormat, RFormat, QFee, DeltaTTL, VMVersion}, S) ->
     assert_not_oracle(Pubkey, S),
     assert_oracle_vm_version(VMVersion),
@@ -161,24 +230,38 @@ oracle_register({Pubkey, QFormat, RFormat, QFee, DeltaTTL, VMVersion}, S) ->
 
 %%%-------------------------------------------------------------------
 
+oracle_extend_op(Pubkey, DeltaTTL) when ?IS_HASH(Pubkey),
+                                        ?IS_NON_NEG_INTEGER(DeltaTTL) ->
+    {oracle_extend, {Pubkey, DeltaTTL}}.
+
 oracle_extend({PubKey, DeltaTTL}, S) ->
     [runtime_error(zero_relative_oracle_extension_ttl) || DeltaTTL =:= 0],
-    [runtime_error(negative_oracle_extension_ttl) || DeltaTTL < 0],
     {Oracle, S1} = get_oracle(PubKey, account_is_not_an_active_oracle, S),
     Oracle1 = aeo_oracles:set_ttl(aeo_oracles:ttl(Oracle) + DeltaTTL, Oracle),
     cache_put(oracle, Oracle1, S1).
 
 %%%-------------------------------------------------------------------
 
+oracle_query_op(OraclePubkey, SenderPubkey, SenderNonce, Query, QueryFee,
+                QTTL, RTTL) when ?IS_HASH(OraclePubkey),
+                                 ?IS_HASH(SenderPubkey),
+                                 ?IS_NON_NEG_INTEGER(SenderNonce),
+                                 is_binary(Query),
+                                 ?IS_NON_NEG_INTEGER(QueryFee),
+                                 ?IS_NON_NEG_INTEGER(QTTL),
+                                 ?IS_NON_NEG_INTEGER(RTTL) ->
+    {oracle_query, {OraclePubkey, SenderPubkey, SenderNonce,
+                    Query, QueryFee, QTTL, RTTL}}.
+
 oracle_query({OraclePubkey, SenderPubkey, SenderNonce,
-             Query, Fee, QTTL, RTTL}, S) ->
+             Query, QueryFee, QTTL, RTTL}, S) ->
     {Oracle, S1} = get_oracle(OraclePubkey, oracle_does_not_exist, S),
-    assert_query_fee(Oracle, Fee),
+    assert_query_fee(Oracle, QueryFee),
     assert_query_ttl(Oracle, QTTL, RTTL, S),
     assert_oracle_format_match(Oracle, aeo_oracles:query_format(Oracle), Query),
     AbsoluteQTTL = S#state.height + QTTL,
     ResponseTTL = {delta, RTTL},
-    try aeo_query:new(OraclePubkey, SenderPubkey, SenderNonce, Query, Fee,
+    try aeo_query:new(OraclePubkey, SenderPubkey, SenderNonce, Query, QueryFee,
                       AbsoluteQTTL, ResponseTTL) of
         QueryObject ->
             assert_not_oracle_query(QueryObject, S),
@@ -190,6 +273,12 @@ oracle_query({OraclePubkey, SenderPubkey, SenderNonce,
     end.
 
 %%%-------------------------------------------------------------------
+
+oracle_respond_op(OraclePubkey, QueryId, Response, RTTL
+                 ) when ?IS_HASH(OraclePubkey),
+                        ?IS_HASH(QueryId),
+                        ?IS_NON_NEG_INTEGER(RTTL) ->
+    {oracle_respond, {OraclePubkey, QueryId, Response, RTTL}}.
 
 oracle_respond({OraclePubkey, QueryId, Response, RTTL}, S) ->
     {QueryObject, S1} = get_oracle_query(OraclePubkey, QueryId, S),
@@ -203,6 +292,10 @@ oracle_respond({OraclePubkey, QueryId, Response, RTTL}, S) ->
     cache_put(oracle_query, QueryObject1, S2).
 
 %%%-------------------------------------------------------------------
+
+oracle_earn_query_fee_op(OraclePubkey, QueryId) when ?IS_HASH(OraclePubkey),
+                                                     ?IS_HASH(QueryId) ->
+    {oracle_earn_query_fee, {OraclePubkey, QueryId}}.
 
 oracle_earn_query_fee({OraclePubkey, QueryId}, S) ->
     {Account, S1} = get_account(OraclePubkey, S),
@@ -218,6 +311,12 @@ assert_account_nonce(Account, Nonce) ->
         N when N + 1 =:= Nonce -> ok;
         N when N >= Nonce -> runtime_error(account_nonce_too_high);
         N when N < Nonce  -> runtime_error(account_nonce_too_low)
+    end.
+
+assert_account_balance(Account, Balance) ->
+    case aec_accounts:balance(Account) of
+        B when B >= Balance -> ok;
+        B when B <  Balance -> runtime_error(insufficient_funds)
     end.
 
 ensure_account(Key, #state{} = S) ->
