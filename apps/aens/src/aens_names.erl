@@ -59,15 +59,12 @@
 %%% API
 %%%===================================================================
 
--spec new(aens_claim_tx:tx(), non_neg_integer(), aec_blocks:height()) -> name().
-new(ClaimTx, Expiration, BlockHeight) ->
-    ExpiresBy      = BlockHeight + Expiration,
-    Name           = aens_claim_tx:name(ClaimTx),
-    {ok, NameHash} = aens:get_name_hash(Name),
+-spec new(aens_hash:name_hash(), aec_keys:pubkey(), non_neg_integer()) -> name().
+new(NameHash, OwnerPubkey, AbsoluteTTL) ->
     %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2
     #name{id         = aec_id:create(name, NameHash),
-          owner_id   = aens_claim_tx:account_id(ClaimTx),
-          expires_by = ExpiresBy,
+          owner_id   = aec_id:create(account, OwnerPubkey),
+          expires_by = AbsoluteTTL,
           status     = claimed,
           client_ttl = 0,
           pointers   = []}.
