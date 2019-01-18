@@ -11,12 +11,25 @@ if [[ -z "${RELEASE_VERSION}" ]]; then
     echo -e "Usage:\n"
     echo -e "  $0 release_version\n"
     echo "Release version format is X.Y.Z where X, Y, and Z are non-negative integers"
-    echo "You can find a list of epoch releases at https://github.com/aeternity/epoch/releases"
+    echo "You can find a list of aeternity releases at https://github.com/aeternity/epoch/releases"
     exit 1
 fi
 
-TEMP_RELEASE_FILE=${TEMP_RELEASE_FILE:=/tmp/epoch.tgz}
+TEMP_RELEASE_FILE=${TEMP_RELEASE_FILE:=/tmp/aeternity.tgz}
 TARGET_DIR=${TARGET_DIR:=$HOME/aeternity/node}
+PACKAGE_PREFIX=aeternity
+declare -a OLD_RELEASE_VERSIONS=("1.0.0" "1.0.1" "1.1.0" "1.2.0");
+
+in_array() {
+    local haystack=${1}[@]
+    local needle=${2}
+    for i in ${!haystack}; do
+        if [[ ${i} == ${needle} ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
 
 install_prompt () {
     echo -e "\nATTENTION: This script will delete the directory ${TARGET_DIR} if it exists. You should back up any contents before continuing.\n"
@@ -84,12 +97,18 @@ install_node() {
     rm "${TEMP_RELEASE_FILE}"
 }
 
+# Backward compatibility package names
+# @TODO remove after 2.* release
+if in_array OLD_RELEASE_VERSIONS $RELEASE_VERSION; then
+    PACKAGE_PREFIX=epoch
+fi
+
 if [[ "$OSTYPE" = "linux-gnu" && $(lsb_release -i -s) = "Ubuntu" ]]; then
     install_deps_ubuntu
-    install_node "https://github.com/aeternity/epoch/releases/download/v${RELEASE_VERSION}/epoch-${RELEASE_VERSION}-ubuntu-x86_64.tar.gz"
+    install_node "https://github.com/aeternity/epoch/releases/download/v${RELEASE_VERSION}/${PACKAGE_PREFIX}-${RELEASE_VERSION}-ubuntu-x86_64.tar.gz"
 elif [[ "$OSTYPE" = "darwin"* ]]; then
     install_deps_osx
-    install_node "https://github.com/aeternity/epoch/releases/download/v${RELEASE_VERSION}/epoch-${RELEASE_VERSION}-osx-10.13.6.tar.gz"
+    install_node "https://github.com/aeternity/epoch/releases/download/v${RELEASE_VERSION}/${PACKAGE_PREFIX}-${RELEASE_VERSION}-osx-10.13.6.tar.gz"
 else
     echo -e "Unsupported platform (OS)! Please refer to the documentation for supported platforms."
     exit 1

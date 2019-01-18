@@ -91,5 +91,5 @@ Create a directory and unpack the downloaded package (you may need to amend the 
 ```bash
 mkdir -p ~/aeternity/node
 cd ~/aeternity/node
-tar xf ~/Downloads/epoch-1.3.0-osx-10.13.6.tar.gz
+tar xf ~/Downloads/aeternity-1.3.0-osx-10.13.6.tar.gz
 ```
