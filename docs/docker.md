@@ -1,4 +1,4 @@
-# Running an epoch node on Docker
+# Running an aeternity node on Docker
 
 This document describes:
 * [How to join the Roma network using Docker](#roma-network);
@@ -45,11 +45,11 @@ Always make sure you have the latest docker image prior running any of the below
 ### Node Configuration
 
 Тo change the node configuration, a [Docker bind mount](https://docs.docker.com/storage/bind-mounts/) should be used
-to mount the configuration file to a special path on the container (`/home/epoch/.epoch/epoch/epoch.yaml`).
+to mount the configuration file to a special path on the container (`/home/aeternity/.epoch/epoch/epoch.yaml`).
 For example, assuming your configuration file is located at `~/.aeternity/myepoch.yaml` on the host machine:
 
 ```bash
-docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml aeternity/epoch
+docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myepoch.yaml:/home/aeternity/.epoch/epoch/epoch.yaml aeternity/epoch
 ```
 
 Arguments can also be passed to the node, for example to enable API debug endpoints:
@@ -77,8 +77,8 @@ Replace `~/.aeternity/db_roma` with location of your choice where the data will 
 ```bash
 mkdir -p ~/.aeternity/db_roma
 docker run -p 3013:3013 -p 3015:3015 \
-  -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml \
-  -v ~/.aeternity/db_roma:/home/epoch/node/data/mnesia \
+  -v ~/.aeternity/myepoch.yaml:/home/aeternity/.epoch/epoch/epoch.yaml \
+  -v ~/.aeternity/db_roma:/home/aeternity/node/data/mnesia \
   aeternity/epoch
 ```
 
@@ -128,7 +128,7 @@ fork_management:
 Assuming your configuration file is located at `~/.aeternity/myepoch.yaml` on the host machine:
 
 ```bash
-docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml aeternity/epoch
+docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myepoch.yaml:/home/aeternity/.epoch/epoch/epoch.yaml aeternity/epoch
 ```
 
 You should see the console output of the running node and a lot of information related to syncing with the network.
