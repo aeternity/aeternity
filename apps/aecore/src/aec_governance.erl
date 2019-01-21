@@ -191,7 +191,8 @@ primop_base_gas(?PRIM_CALL_MAP_GET            ) -> 0;
 primop_base_gas(?PRIM_CALL_MAP_PUT            ) -> 0;
 primop_base_gas(?PRIM_CALL_MAP_DELETE         ) -> 0;
 primop_base_gas(?PRIM_CALL_MAP_SIZE           ) -> 0;
-primop_base_gas(?PRIM_CALL_MAP_TOLIST         ) -> 0.
+primop_base_gas(?PRIM_CALL_MAP_TOLIST         ) -> 0;
+primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY    ) -> 1300.    %% 700 for call + 1300 = 2000
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Naming system variables

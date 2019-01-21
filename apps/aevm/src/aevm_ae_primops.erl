@@ -61,6 +61,8 @@ call_(Gas, Value, Data, StateIn) ->
             true when ?PRIM_CALL_IN_MAP_RANGE(PrimOp) ->
                 %% Map primops need the full state
                 map_call(Gas, PrimOp, Value, Data, StateIn);
+            true when ?PRIM_CALL_IN_CRYPTO_RANGE(PrimOp) ->
+                crypto_call(Gas, PrimOp, Value, Data, StateIn);
             true ->
                 ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
                                  state = aevm_eeevm_state:chain_state(StateIn),
@@ -190,7 +192,11 @@ types(?PRIM_CALL_ORACLE_RESPOND, HeapValue, Store, State) ->
             {[], tuple0_t()}
     end;
 types(?PRIM_CALL_SPEND,_HeapValue,_Store,_State) ->
-    {[word], tuple0_t()}.
+    {[word], tuple0_t()};
+types(?PRIM_CALL_CRYPTO_ECVERIFY, _HeapValue, _Store, _State) ->
+    {[word, word, sign_t()], word};
+types(_, _, _, _) ->
+    {[], tuple0_t()}.
 
 tuple0_t() ->
     {tuple, []}.
@@ -485,6 +491,24 @@ aens_call_revoke(Data, #chain{api = API, state = State} = Chain) ->
             no_dynamic_gas(fun() -> cast_chain(Callback, Chain) end);
         {error, _} = Err -> Err
     end.
+
+
+%% ------------------------------------------------------------------
+%% Crypto operations.
+%% ------------------------------------------------------------------
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECVERIFY, _Value, Data, State) ->
+    crypto_call_ecverify(Gas, Data, State);
+crypto_call(_, _, _, _, _) ->
+    {error, out_of_gas}.
+
+crypto_call_ecverify(_Gas, Data, State) ->
+    [Msg, PK, Sig] = get_args([word, word, sign_t()], Data),
+    Res =
+        case enacl:sign_verify_detached(to_sign(Sig), <<Msg:256>>, <<PK:256>>) of
+            {ok, _}    -> {ok, <<1:256>>};
+            {error, _} -> {ok, <<0:256>>}
+        end,
+    {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY), State}.
 
 %% ------------------------------------------------------------------
 %% Map operations.
