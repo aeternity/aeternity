@@ -116,6 +116,9 @@
 -define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING(X), {variant, 0, [X]}).
 -define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(X), {variant, 1, [X]}).
 
+-define(TEST_ABI_VERSION, ?CURRENT_ABI_SOPHIA).
+-define(TEST_VM_VERSION,  ?CURRENT_VM_SOPHIA).
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -731,7 +734,7 @@ call_contract_error_value(_Cfg) ->
 %%%===================================================================
 
 make_contract(PubKey, Code, S) ->
-    Tx = aect_test_utils:create_tx(PubKey, #{ vm_version => ?CURRENT_VM_SOPHIA,
+    Tx = aect_test_utils:create_tx(PubKey, #{ vm_version => ?TEST_VM_VERSION,
                                               code => Code }, S),
     {contract_create_tx, CTx} = aetx:specialize_type(Tx),
     aect_contracts:new(CTx).
@@ -848,8 +851,8 @@ create_contract_with_code(Owner, Code, Args, Options, S) ->
     CreateTx    = aect_test_utils:create_tx(Owner,
                     maps:merge(
                     #{ nonce       => Nonce
-                     , abi_version => ?CURRENT_ABI_SOPHIA
-                     , vm_version  => ?CURRENT_VM_SOPHIA
+                     , abi_version => ?TEST_ABI_VERSION
+                     , vm_version  => ?TEST_VM_VERSION
                      , code        => Code
                      , call_data   => CallData
                      , fee         => 1000000
@@ -886,7 +889,7 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
     CallTx   = aect_test_utils:call_tx(Caller, ContractKey,
                 maps:merge(
                 #{ nonce       => Nonce
-                 , abi_version => ?CURRENT_ABI_SOPHIA
+                 , abi_version => ?TEST_ABI_VERSION
                  , call_data   => Calldata
                  , fee         => 1000000
                  , amount      => 0
