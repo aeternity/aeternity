@@ -381,7 +381,12 @@ name_preclaim({AccountPubkey, CommitmentHash, DeltaTTL}, S) ->
 
 %%%-------------------------------------------------------------------
 
-name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta) ->
+name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta
+             ) when ?IS_HASH(AccountPubkey),
+                    is_binary(PlainName),
+                    ?IS_NON_NEG_INTEGER(NameSalt),
+                    ?IS_NON_NEG_INTEGER(DeltaTTL),
+                    ?IS_NON_NEG_INTEGER(PreclaimDelta) ->
     {name_claim, {AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta}}.
 
 name_claim({AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta}, S) ->
@@ -406,7 +411,10 @@ name_to_ascii(PlainName) ->
 
 %%%-------------------------------------------------------------------
 
-name_revoke_op(AccountPubkey, NameHash, ProtectedDeltaTTL) ->
+name_revoke_op(AccountPubkey, NameHash, ProtectedDeltaTTL
+              ) when ?IS_HASH(AccountPubkey),
+                     ?IS_HASH(NameHash),
+                     ?IS_NON_NEG_INTEGER(ProtectedDeltaTTL) ->
     {name_revoke, {AccountPubkey, NameHash, ProtectedDeltaTTL}}.
 
 name_revoke({AccountPubkey, NameHash, ProtectedDeltaTTL}, S) ->
@@ -418,7 +426,10 @@ name_revoke({AccountPubkey, NameHash, ProtectedDeltaTTL}, S) ->
 
 %%%-------------------------------------------------------------------
 
-name_transfer_op(OwnerPubkey, Recipient, NameHash) ->
+name_transfer_op(OwnerPubkey, Recipient, NameHash
+                ) when ?IS_HASH(OwnerPubkey),
+                       ?IS_VAR_OR_HASH(Recipient),
+                       ?IS_HASH(NameHash) ->
     {name_transfer, {OwnerPubkey, Recipient, NameHash}}.
 
 name_transfer({OwnerPubkey, Recipient, NameHash}, S) ->
@@ -431,7 +442,13 @@ name_transfer({OwnerPubkey, Recipient, NameHash}, S) ->
 
 %%%-------------------------------------------------------------------
 
-name_update_op(OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers) ->
+name_update_op(OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers
+              ) when ?IS_HASH(OwnerPubkey),
+                     ?IS_HASH(NameHash),
+                     ?IS_NON_NEG_INTEGER(DeltaTTL),
+                     ?IS_NON_NEG_INTEGER(MaxTTL),
+                     ?IS_NON_NEG_INTEGER(ClientTTL),
+                     is_list(Pointers) ->
     {name_update , {OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers}}.
 
 name_update({OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers}, S) ->
