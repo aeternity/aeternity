@@ -3288,6 +3288,24 @@ sophia_crypto(_Cfg) ->
     ?assertMatch({0, _}, ?call(call_contract, Acc, IdC, test_string_verify, word,
                                {<<"Not the secret message">>, PubKey, Sig1}, #{return_gas_used => true})),
 
+    %% Test hash functions
+    String = <<"12345678901234567890123456789012-andsomemore">>,
+    Data   = [{none, <<"foo">>}, {{some, 100432}, String}],
+    Bin    = aeso_heap:to_binary(Data),
+    <<Sha3:256>>      = aec_hash:hash(evm, Bin),
+    <<Sha256:256>>    = aec_hash:sha256_hash(Bin),
+    <<Blake2b:256>>   = aec_hash:blake2b_256_hash(Bin),
+    <<Sha3_S:256>>    = aec_hash:hash(evm, String),
+    <<Sha256_S:256>>  = aec_hash:sha256_hash(String),
+    <<Blake2b_S:256>> = aec_hash:blake2b_256_hash(String),
+
+    ?assertMatch({Sha3_S,    _}, ?call(call_contract, Acc, IdC, sha3_str,    word, String, #{return_gas_used => true})),
+    ?assertMatch({Sha256_S,  _}, ?call(call_contract, Acc, IdC, sha256_str,  word, String, #{return_gas_used => true})),
+    ?assertMatch({Blake2b_S, _}, ?call(call_contract, Acc, IdC, blake2b_str, word, String, #{return_gas_used => true})),
+    ?assertMatch({Sha3,      _}, ?call(call_contract, Acc, IdC, sha3,        word, Data,   #{return_gas_used => true})),
+    ?assertMatch({Sha256,    _}, ?call(call_contract, Acc, IdC, sha256,      word, Data,   #{return_gas_used => true})),
+    ?assertMatch({Blake2b,   _}, ?call(call_contract, Acc, IdC, blake2b,     word, Data,   #{return_gas_used => true})),
+
     ok.
 
 %% The crowd funding example.
