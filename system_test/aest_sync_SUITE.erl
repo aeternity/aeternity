@@ -50,7 +50,7 @@
     name    => standalone_node,
     peers   => [],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"}
+    source  => {pull, "aeternity/aeternity:local"}
 }).
 
 %% By default, this node only connects to network `net1` even though
@@ -60,7 +60,7 @@
     name     => net1_node1,
     peers    => [net1_node2, net2_node1],
     backend  => aest_docker,
-    source   => {pull, "aeternity/epoch:local"},
+    source   => {pull, "aeternity/aeternity:local"},
     networks => [net1]
 }).
 
@@ -71,7 +71,7 @@
     name    => net1_node2,
     peers   => [net1_node1, net2_node2],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"},
+    source  => {pull, "aeternity/aeternity:local"},
     networks => [net1]
 }).
 
@@ -82,7 +82,7 @@
     name    => net2_node1,
     peers   => [net1_node1, net2_node2],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"},
+    source  => {pull, "aeternity/aeternity:local"},
     networks => [net2]
 }).
 
@@ -93,7 +93,7 @@
     name    => net2_node2,
     peers   => [net1_node2, net2_node1],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"},
+    source  => {pull, "aeternity/aeternity:local"},
     networks => [net2]
 }).
 
@@ -104,7 +104,7 @@
     name    => net2_node3,
     peers   => [net1_node1, net2_node1],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"},
+    source  => {pull, "aeternity/aeternity:local"},
     networks => [net2]
 }).
 
@@ -115,7 +115,7 @@
     name    => net2_node4,
     peers   => [net1_node1, net2_node1],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"},
+    source  => {pull, "aeternity/aeternity:local"},
     networks => [net2]
 }).
 
@@ -169,7 +169,7 @@ patron() ->
 %% A node with a newer version of the code can join and synchronize
 %% to a cluster of older nodes.
 new_node_joins_network(Cfg) ->
-    Compatible = "aeternity/epoch:local", %% Latest version it should be compatible with
+    Compatible = "aeternity/aeternity:local", %% Latest version it should be compatible with
                                           %% Change if comptibility with previous version
                                           %% should be guaranteed
     ct:log("Testing compatiblity of epoch:local with ~p", [Compatible]),
@@ -190,7 +190,7 @@ new_node_joins_network(Cfg) ->
       name    => new_node1,
       peers   => [old_node1],
       backend => aest_docker,
-      source  => {pull, "aeternity/epoch:local"}},
+      source  => {pull, "aeternity/aeternity:local"}},
 
     setup_nodes([OldNode1, OldNode2, NewNode], Cfg),
 
@@ -335,12 +335,12 @@ stop_and_continue_sync(Cfg) ->
     setup_nodes([#{ name    => node1,
                     peers   => [node2],
                     backend => aest_docker,
-                    source  => {pull, "aeternity/epoch:local"}
+                    source  => {pull, "aeternity/aeternity:local"}
                   },
                  #{ name    => node2,
                     peers   => [node1],
                     backend => aest_docker,
-                    source  => {pull, "aeternity/epoch:local"}
+                    source  => {pull, "aeternity/aeternity:local"}
                   }], Cfg),
 
     start_node(node1, Cfg),
@@ -398,12 +398,12 @@ tx_pool_sync(Cfg) ->
     setup_nodes([#{ name    => node1,
                     peers   => [node2],
                     backend => aest_docker,
-                    source  => {pull, "aeternity/epoch:local"}
+                    source  => {pull, "aeternity/aeternity:local"}
                   },
                  #{ name    => node2,
                     peers   => [node1],
                     backend => aest_docker,
-                    source  => {pull, "aeternity/epoch:local"}
+                    source  => {pull, "aeternity/aeternity:local"}
                   }], Cfg),
 
     start_node(node1, Cfg),

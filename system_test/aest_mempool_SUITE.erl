@@ -64,14 +64,14 @@
     name    => node1,
     peers   => [],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"}
+    source  => {pull, "aeternity/aeternity:local"}
 }).
 
 -define(NODE2, #{
     name    => node2,
     peers   => [node1],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"}
+    source  => {pull, "aeternity/aeternity:local"}
 }).
 
 %=== COMMON TEST FUNCTIONS =====================================================

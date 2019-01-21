@@ -38,35 +38,35 @@
     name    => node1,
     peers   => [],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"}
+    source  => {pull, "aeternity/aeternity:local"}
 }).
 
 -define(NODE2, #{
     name    => node2,
     peers   => [node1],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"}
+    source  => {pull, "aeternity/aeternity:local"}
 }).
 
 -define(NODE3, #{
     name    => node3,
     peers   => [node1],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"}
+    source  => {pull, "aeternity/aeternity:local"}
 }).
 
 -define(NODE4, #{
     name    => node4,
     peers   => [node1],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"}
+    source  => {pull, "aeternity/aeternity:local"}
 }).
 
 -define(NODE5, #{
     name    => node5,
     peers   => [node1],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"}
+    source  => {pull, "aeternity/aeternity:local"}
 }).
 
 
