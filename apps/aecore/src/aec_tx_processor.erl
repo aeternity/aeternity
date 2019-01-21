@@ -16,6 +16,7 @@
         , name_preclaim_tx_instructions/5
         , name_revoke_tx_instructions/4
         , name_transfer_tx_instructions/5
+        , name_update_tx_instructions/7
         , oracle_extend_tx_instructions/4
         , oracle_query_tx_instructions/8
         , oracle_register_tx_instructions/8
@@ -132,6 +133,15 @@ name_transfer_tx_instructions(OwnerPubkey, RecipientID, NameHash, Fee, Nonce) ->
     , name_transfer_op(OwnerPubkey, Recipient, NameHash)
     ].
 
+name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
+                            Pointers, Fee, Nonce) ->
+    MaxTTL = aec_governance:name_claim_max_expiration(),
+    [ inc_account_nonce_op(OwnerPubkey, Nonce)
+    , spend_fee_op(OwnerPubkey, Fee)
+    , name_update_op(OwnerPubkey, NameHash, DeltaTTL, MaxTTL,
+                     ClientTTL, Pointers)
+    ].
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -153,6 +163,7 @@ eval_one({Op, Args}, S) ->
         name_preclaim             -> name_preclaim(Args, S);
         name_revoke               -> name_revoke(Args, S);
         name_transfer             -> name_transfer(Args, S);
+        name_update               -> name_update(Args, S);
         oracle_earn_query_fee     -> oracle_earn_query_fee(Args, S);
         oracle_extend             -> oracle_extend(Args, S);
         oracle_query              -> oracle_query(Args, S);
@@ -416,6 +427,20 @@ name_transfer({OwnerPubkey, Recipient, NameHash}, S) ->
     assert_name_claimed(Name),
     RecipientPubkey = get_var(Recipient, account, S1),
     Name1 = aens_names:transfer_to(RecipientPubkey, Name),
+    cache_put(name, Name1, S1).
+
+%%%-------------------------------------------------------------------
+
+name_update_op(OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers) ->
+    {name_update , {OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers}}.
+
+name_update({OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers}, S) ->
+    [runtime_error(ttl_too_high) || DeltaTTL > MaxTTL],
+    {Name, S1} = get_name(NameHash, S),
+    assert_name_owner(Name, OwnerPubkey),
+    assert_name_claimed(Name),
+    AbsoluteTTL = S#state.height + DeltaTTL,
+    Name1 = aens_names:update(Name, AbsoluteTTL, ClientTTL, Pointers),
     cache_put(name, Name1, S1).
 
 %%%===================================================================

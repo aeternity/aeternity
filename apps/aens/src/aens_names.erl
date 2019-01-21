@@ -9,7 +9,7 @@
 
 %% API
 -export([new/3,
-         update/3,
+         update/4,
          revoke/3,
          transfer_to/2,
          serialize/1,
@@ -62,19 +62,18 @@
 -spec new(aens_hash:name_hash(), aec_keys:pubkey(), non_neg_integer()) -> name().
 new(NameHash, OwnerPubkey, AbsoluteTTL) ->
     %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2
-    #name{id         = aec_id:create(name, NameHash),
+     #name{id         = aec_id:create(name, NameHash),
           owner_id   = aec_id:create(account, OwnerPubkey),
           expires_by = AbsoluteTTL,
           status     = claimed,
           client_ttl = 0,
           pointers   = []}.
 
--spec update(aens_update_tx:tx(), name(), aec_blocks:height()) -> name().
-update(UpdateTx, Name, BlockHeight) ->
-    TTL = BlockHeight + aens_update_tx:name_ttl(UpdateTx),
-    Name#name{expires_by = TTL,
-              client_ttl = aens_update_tx:client_ttl(UpdateTx),
-              pointers   = aens_update_tx:pointers(UpdateTx)}.
+-spec update(name(), aec_blocks:height(), integer(), [aens_pointer:pointer()]) -> name().
+update(Name, AbsoluteTTL, ClientTTL, Pointers) ->
+    Name#name{expires_by = AbsoluteTTL,
+              client_ttl = ClientTTL,
+              pointers   = Pointers}.
 
 -spec revoke(name(), non_neg_integer(), aec_blocks:height()) -> name().
 revoke(Name, Expiration, BlockHeight) ->
