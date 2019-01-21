@@ -252,14 +252,13 @@ resolve_name(account, account, Pubkey, Var, S) ->
     set_var(Var, account, Pubkey, S);
 resolve_name(account, name, NameHash, Var, S) ->
     Key = <<"account_pubkey">>,
-    Trees = S#state.trees,
-    %% TODO: Should cache the name as well.
-    case aens:resolve_from_hash(Key, NameHash, aec_trees:ns(Trees)) of
+    {Name, S1} = get_name(NameHash, S),
+    case aens:resolve_from_name_object(Key, Name) of
         {ok, Id} ->
             %% Intentionally admissive to allow for all kinds of IDs for
             %% backwards compatibility.
             {_Tag, Pubkey} = aec_id:specialize(Id),
-            set_var(Var, account, Pubkey, S);
+            set_var(Var, account, Pubkey, S1);
         {error, What} ->
             runtime_error(What)
     end.
