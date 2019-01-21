@@ -1409,8 +1409,26 @@ contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
                               fee => 1400000,
                               nonce => Nonce,
                               payload => <<"create contract">>},
-    ContractInitEncoded = maps:merge(maps:merge(ContractInitEncoded0, CallInput), CallerSet),
+    ContractInitEncoded1 = maps:merge(maps:merge(ContractInitEncoded0, CallInput), CallerSet),
+    ContractInitEncoded = test_backwards_compatible_api(abi_optional, ContractInitEncoded1),
     sign_and_post_create_compute_tx(Privkey, ContractInitEncoded).
+
+test_backwards_compatible_api(abi_optional, Map) ->
+    case get_prn() rem 2 of
+        0 -> Map;
+        1 -> maps:remove(abi_version, Map)
+    end;
+test_backwards_compatible_api(abi_or_vm, Map) ->
+    case get_prn() rem 2 of
+        0 -> Map;
+        1 -> maps:remove(abi_version, Map#{vm_version => maps:get(abi_version, Map)})
+    end.
+
+get_prn() ->
+    case get('$prn') of
+        undefined            -> put('$prn', 1), 1;
+        N when is_integer(N) -> put('$prn', N+1), N+1
+    end.
 
 contract_call_compute_tx(Pubkey, Privkey, EncodedContractPubkey,
                          Function, Argument, CallerSet) ->
@@ -1436,7 +1454,6 @@ contract_call_compute_tx(Pubkey, Privkey, Nonce, EncodedContractPubkey,
 
     ContractCallEncoded0 = #{ caller_id => Address,
                               contract_id => EncodedContractPubkey,
-                              vm_version => ?CURRENT_VM_SOPHIA,
                               abi_version => ?CURRENT_ABI_SOPHIA,
                               amount => 0,
                               gas => 100000,    %May need a lot of gas
@@ -1444,7 +1461,8 @@ contract_call_compute_tx(Pubkey, Privkey, Nonce, EncodedContractPubkey,
                               fee => 800000,
                               nonce => Nonce,
                               payload => <<"call compute function">> },
-    ContractCallEncoded = maps:merge(maps:merge(ContractCallEncoded0, CallInput), CallerSet),
+    ContractCallEncoded1 = maps:merge(maps:merge(ContractCallEncoded0, CallInput), CallerSet),
+    ContractCallEncoded = test_backwards_compatible_api(abi_or_vm, ContractCallEncoded1),
     sign_and_post_call_compute_tx(Privkey, ContractCallEncoded).
 
 %% ============================================================
