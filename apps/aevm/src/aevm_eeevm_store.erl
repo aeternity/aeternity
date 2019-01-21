@@ -15,7 +15,7 @@
         , get_sophia_state/1
         , get_sophia_state_type/1
         , from_sophia_state/2
-        , set_sophia_state/2
+        , set_sophia_state/3
         , is_valid_key/2
         , get_map_data/2
         , map_lookup/3
@@ -94,7 +94,7 @@ store(Address, Value, State) when is_integer(Value) ->
 %% The argument should be a binary encoding a pair of a typerep and a value of that type.
 -spec from_sophia_state(aect_contracts:version(), aeso_heap:binary_value()) ->
             {ok, aect_contracts:store()} | {error, term()}.
-from_sophia_state(_Version, Data) ->
+from_sophia_state(Version, Data) ->
     %% TODO: less encoding/decoding
     case aeso_heap:from_binary({tuple, [typerep]}, Data) of
         {ok, {Type}} ->
@@ -107,7 +107,7 @@ from_sophia_state(_Version, Data) ->
                     Ptr       = aeso_heap:heap_value_pointer(StateValue),
                     StateData = <<Ptr:256, Mem/binary>>,
                     Maps      = aeso_heap:heap_value_maps(StateValue),
-                    Store     = store_maps(Maps,
+                    Store     = store_maps(Version, Maps,
                                     store_put(?SOPHIA_STATE_KEY,      StateData,
                                     store_put(?SOPHIA_STATE_TYPE_KEY, TypeData,
                                     store_empty()))),
@@ -126,12 +126,12 @@ second_component(<<Ptr:256, Heap/binary>> = Data) ->
     <<_:Ptr/unit:8, _:256, Snd:256, _/binary>> = Data,
     <<Snd:256, Heap/binary>>.
 
--spec set_sophia_state(aeso_heap:heap_value(), aect_contracts:store()) -> aect_contracts:store().
-set_sophia_state(Value, Store) ->
+-spec set_sophia_state(aect_contracts:version(), aeso_heap:heap_value(), aect_contracts:store()) -> aect_contracts:store().
+set_sophia_state(Version, Value, Store) ->
     Ptr = aeso_heap:heap_value_pointer(Value),
     Mem = aeso_heap:heap_value_heap(Value),
     Maps = aeso_heap:heap_value_maps(Value),
-    store_maps(Maps, store_put(?SOPHIA_STATE_KEY, <<Ptr:256, Mem/binary>>, Store)).
+    store_maps(Version, Maps, store_put(?SOPHIA_STATE_KEY, <<Ptr:256, Mem/binary>>, Store)).
 
 -spec get_sophia_state(aect_contracts:store()) -> aeso_heap:heap_value().
 get_sophia_state(Store) ->
@@ -181,7 +181,7 @@ next_map_id(_) -> 0.
 
 %% -- Updating Sophia maps --
 
-store_maps(Maps0, Store) ->
+store_maps(Version, Maps0, Store) ->
     Maps       = maps:to_list(Maps0#maps.maps),
 
     RefCounts  = get_ref_counts(Store),
@@ -197,14 +197,24 @@ store_maps(Maps0, Store) ->
 
     Store1 = store_put(?SOPHIA_STATE_MAPS_KEY, << <<Id:256>> || Id <- AllMapKeys >>, Store),
     NewRefCounts1 = maps:filter(fun(Id, _) -> lists:member(Id, AllMapKeys) end, NewRefCounts),
-    NewStore = set_ref_counts(NewRefCounts1, lists:foldl(fun perform_update/2, Store1, Updates)),
+    PerformUpdate = fun(Upd, S) -> perform_update(Version, Upd, S) end,
+    NewStore = set_ref_counts(NewRefCounts1, lists:foldl(PerformUpdate, Store1, Updates)),
     %% io:format("NewStore:\n~s\n", [show_store(NewStore)]),
     NewStore.
 
-perform_update({new_inplace, NewId, OldId}, Store) ->
+perform_update(Version, {new_inplace, NewId, OldId, Size}, Store) ->
     OldKey   = <<OldId:256>>,
     NewKey   = <<NewId:256>>,
-    OldEntry = store_get(OldKey, Store),
+    Entry =
+        case Version >= ?VM_AEVM_SOPHIA_2 of
+            true ->
+                %% Don't forget to update the size
+                ?MapInfo(RId, RefCount, _,    Bin) = store_get(OldKey, Store),
+                ?MapInfo(RId, RefCount, Size, Bin);
+            false ->
+                %% Buggy before AEVM_SOPHIA_2.
+                store_get(OldKey, Store)
+        end,
     %% Subtle: Don't remove the RealId entry because the mp trees requires
     %% there to be a value at any node that we want to get a subtree for. We
     %% need this for store_subtree.
@@ -212,14 +222,14 @@ perform_update({new_inplace, NewId, OldId}, Store) ->
     Store1   = if RealId /= OldId -> store_remove(OldKey, Store);
                   true            -> Store
                end,
-    store_put(NewKey, OldEntry, Store1);
-perform_update({insert, Id, Key, Val}, Store) ->
+    store_put(NewKey, Entry, Store1);
+perform_update(_Version, {insert, Id, Key, Val}, Store) ->
     RealId = real_id(Id, Store),
     store_put(<<RealId:256, Key/binary>>, Val, Store);
-perform_update({delete, Id, Key}, Store) ->
+perform_update(_Version, {delete, Id, Key}, Store) ->
     RealId = real_id(Id, Store),
     store_remove(<<RealId:256, Key/binary>>, Store);
-perform_update({new, Id, Map0}, Store) ->
+perform_update(_Version, {new, Id, Map0}, Store) ->
     Map = aevm_eeevm_maps:flatten_map(Store, Id, Map0),
     RefCount = 0,   %% Set later
     Size     = Map0#pmap.size,
@@ -227,7 +237,7 @@ perform_update({new, Id, Map0}, Store) ->
     Info = [{<<Id:256>>, ?MapInfo(Id, RefCount, Size, Bin)}],
     Data = [ {<<Id:256, Key/binary>>, Val} || {Key, Val} <- maps:to_list(Map#pmap.data) ],
     lists:foldl(fun({K, V}, S) -> store_put(K, V, S) end, Store, Info ++ Data);
-perform_update({gc, Id}, Store) ->
+perform_update(_Version, {gc, Id}, Store) ->
     RealId = real_id(Id, Store),
     %% Remove map info entry. Also remove RealId which we kept around for mp
     %% tree reasons (see note at `new_inplace` case above), and all the data.
@@ -330,12 +340,12 @@ compute_map_updates(Garbage, Maps0) ->
         %% Copy first since inplace update might destroy data needed by the
         %% copy.
         [ [{new, Id, Map} || {Id, Map} <- Copy]
-        , [ [{new_inplace, Id, Parent},
+        , [ [{new_inplace, Id, Parent, Size},
             [ case Val of
                 tombstone -> {delete, Id, Key};
                 _         -> {insert, Id, Key, Val}
               end || {Key, Val} <- maps:to_list(Data) ]]
-           || {Id, #pmap{ parent = Parent, data = Data }} <- Inplace ]
+           || {Id, #pmap{ parent = Parent, data = Data, size = Size }} <- Inplace ]
         , [{gc, Id} || Id <- ActualGarbage ]
         ]).
 
