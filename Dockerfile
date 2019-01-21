@@ -11,7 +11,7 @@ RUN cd /app && make prod-build
 FROM ubuntu:18.04
 
 # Deploy application code from builder container
-COPY --from=builder /app/_build/prod/rel/epoch /home/epoch/node
+COPY --from=builder /app/_build/prod/rel/aeternity /home/epoch/node
 
 # OpenSSL is shared lib dependency
 RUN apt-get -qq update && apt-get -qq -y install libssl1.0.0 curl libsodium23 \

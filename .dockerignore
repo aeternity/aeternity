@@ -17,6 +17,7 @@
 !docker/healthcheck.sh
 !README.md
 !LICENSE
+!scripts/epoch
 apps/aecuckoo/c_src
 apps/aecuckoo/priv/bin
 apps/aecuckoo/priv/lib
