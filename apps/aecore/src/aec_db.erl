@@ -672,6 +672,8 @@ wait_for_tables(Tabs, Sofar, _, _) ->
 %% number, and the configured phase numbers for the hooks loading the
 %% config and adapting the configuration parameters are smaller than
 %% the phase number of this hook.
+%%
+%% Run as setup hook. At this stage, lager is setup with console only - no files.
 check_db() ->
     try
         Mode = backend_mode(),

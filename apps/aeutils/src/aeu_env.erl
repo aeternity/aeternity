@@ -251,7 +251,7 @@ valid_kv_pair({A,B}) when is_integer(A), A >= 0;
 valid_kv_pair(_) ->
     false.
 
-
+%% Run as setup hook. At this stage, lager is setup with console only - no files.
 read_config() ->
     read_config(report).
 

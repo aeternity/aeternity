@@ -1,0 +1,25 @@
+{application, aelog,
+ [{description, "OTP application setting up logging"},
+  {vsn, {cmd, "cat ../../VERSION"}},
+  {registered, []},
+  {mod, { aelog_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    lager,
+    setup
+   ]},
+  {env,[
+         {'$setup_hooks',
+          [
+           {normal, [
+                     {110, {aelog_app, check_env, []}}
+                    ]}
+          ]}
+        ]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

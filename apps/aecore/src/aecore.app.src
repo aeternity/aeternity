@@ -23,7 +23,7 @@
     jobs,
     exometer_core,
     yamerl,
-    lager,
+    aelog,
     aeutils,
     base58,
     sha3,

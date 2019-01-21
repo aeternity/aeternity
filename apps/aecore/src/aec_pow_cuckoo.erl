@@ -83,6 +83,8 @@
 %% setup hooks sorted by phase number, and the configured phase number
 %% for the hook loading the config is smaller than the phase number of
 %% this hook.
+%%
+%% Run as setup hook. At this stage, lager is setup with console only - no files.
 check_env() ->
     case {aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miners">>]),
           aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"edge_bits">>])} of

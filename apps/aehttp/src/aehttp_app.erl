@@ -32,6 +32,8 @@
 %% API
 %%====================================================================
 
+%% aelog is a dependency of this application so logging is guaranteed
+%% to be setup.
 start(_StartType, _StartArgs) ->
     {ok, Pid} = aehttp_sup:start_link(),
     ok = start_http_api(),
@@ -54,6 +56,8 @@ stop(_State) ->
 %% setup hooks sorted by phase number, and the configured phase number
 %% for the hook loading the config is smaller than the phase number of
 %% this hook.
+%%
+%% Run as setup hook. At this stage, lager is setup with console only - no files.
 check_env() ->
     %TODO: we need to validate that all tags are present
     GroupDefaults = #{<<"chain">>        => true,

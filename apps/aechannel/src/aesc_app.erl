@@ -8,6 +8,8 @@
         , stop/1
         ]).
 
+%% aelog is a dependency of this application so logging is guaranteed
+%% to be setup.
 start(_StartType, _StartArgs) ->
     aesc_sup:start_link().
 

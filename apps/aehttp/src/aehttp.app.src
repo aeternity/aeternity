@@ -10,7 +10,7 @@
     inets,
     cowboy,
     jsx,
-    lager,
+    aelog,
     jesse,
     aecore,
     gproc,

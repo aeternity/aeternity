@@ -6,7 +6,7 @@
   {applications,
    [kernel,
     stdlib,
-    lager,
+    aelog,
     aetx,
     sext
    ]},
