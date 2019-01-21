@@ -15,6 +15,7 @@
         , name_claim_tx_instructions/5
         , name_preclaim_tx_instructions/5
         , name_revoke_tx_instructions/4
+        , name_transfer_tx_instructions/5
         , oracle_extend_tx_instructions/4
         , oracle_query_tx_instructions/8
         , oracle_register_tx_instructions/8
@@ -56,12 +57,7 @@ eval([_|_] = Instructions, Trees, Height) when is_integer(Height),
 
 spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
     Recipient = {var, recipient},
-    {Type, RecipientHash} = case aec_id:specialize(RecipientID) of
-                                {name, NameHash}   -> {name, NameHash};
-                                {oracle, Pubkey}   -> {account, Pubkey};
-                                {contract, Pubkey} -> {account, Pubkey};
-                                {account, Pubkey}  -> {account, Pubkey}
-                            end,
+    {Type, RecipientHash} = specialize_account(RecipientID),
     [ inc_account_nonce_op(SenderPubkey, Nonce)
     , resolve_account_op(Type, RecipientHash, Recipient)
     , spend_op(SenderPubkey, Recipient, Amount)
@@ -127,6 +123,15 @@ name_revoke_tx_instructions(AccountPubkey, NameHash, Fee, Nonce) ->
     , name_revoke_op(AccountPubkey, NameHash, ProtectedDeltaTTL)
     ].
 
+name_transfer_tx_instructions(OwnerPubkey, RecipientID, NameHash, Fee, Nonce) ->
+    Recipient = {var, recipient},
+    {Type, Hash} = specialize_account(RecipientID),
+    [ inc_account_nonce_op(OwnerPubkey, Nonce)
+    , spend_fee_op(OwnerPubkey, Fee)
+    , resolve_account_op(Type, Hash, Recipient)
+    , name_transfer_op(OwnerPubkey, Recipient, NameHash)
+    ].
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -147,6 +152,7 @@ eval_one({Op, Args}, S) ->
         name_claim                -> name_claim(Args, S);
         name_preclaim             -> name_preclaim(Args, S);
         name_revoke               -> name_revoke(Args, S);
+        name_transfer             -> name_transfer(Args, S);
         oracle_earn_query_fee     -> oracle_earn_query_fee(Args, S);
         oracle_extend             -> oracle_extend(Args, S);
         oracle_query              -> oracle_query(Args, S);
@@ -399,8 +405,29 @@ name_revoke({AccountPubkey, NameHash, ProtectedDeltaTTL}, S) ->
     Name1 = aens_names:revoke(Name, ProtectedDeltaTTL, S1#state.height),
     cache_put(name, Name1, S1).
 
+%%%-------------------------------------------------------------------
+
+name_transfer_op(OwnerPubkey, Recipient, NameHash) ->
+    {name_transfer, {OwnerPubkey, Recipient, NameHash}}.
+
+name_transfer({OwnerPubkey, Recipient, NameHash}, S) ->
+    {Name, S1} = get_name(NameHash, S),
+    assert_name_owner(Name, OwnerPubkey),
+    assert_name_claimed(Name),
+    RecipientPubkey = get_var(Recipient, account, S1),
+    Name1 = aens_names:transfer_to(RecipientPubkey, Name),
+    cache_put(name, Name1, S1).
+
 %%%===================================================================
 %%% Helpers for instructions
+
+specialize_account(RecipientID) ->
+    case aec_id:specialize(RecipientID) of
+        {name, NameHash}   -> {name, NameHash};
+        {oracle, Pubkey}   -> {account, Pubkey};
+        {contract, Pubkey} -> {account, Pubkey};
+        {account, Pubkey}  -> {account, Pubkey}
+    end.
 
 assert_account_nonce(Account, Nonce) ->
     case aec_accounts:nonce(Account) of
