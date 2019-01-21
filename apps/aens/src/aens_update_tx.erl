@@ -104,44 +104,22 @@ origin(#ns_update_tx{} = Tx) ->
     account_pubkey(Tx).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#ns_update_tx{nonce    = Nonce,
-                    fee      = Fee,
-                    name_ttl = TTL} = Tx,
-      Trees,_Env) ->
-    AccountPubKey = account_pubkey(Tx),
-    NameHash = name_hash(Tx),
-
-    Checks =
-        [fun() -> check_ttl(TTL) end,
-         fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
-         fun() -> aens_utils:check_name_claimed_and_owned(NameHash, AccountPubKey, Trees) end],
-
-    case aeu_validation:run(Checks) of
-        ok              -> {ok, Trees};
-        {error, Reason} -> {error, Reason}
-    end.
+check(#ns_update_tx{} = Tx, Trees,_Env) ->
+    %% Checks in process/3
+    {ok, Trees}.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#ns_update_tx{nonce = Nonce, fee = Fee} = UpdateTx,
-        Trees0, Env) ->
-    Height = aetx_env:height(Env),
-    AccountPubKey = account_pubkey(UpdateTx),
-    NameHash = name_hash(UpdateTx),
-    AccountsTree0 = aec_trees:accounts(Trees0),
-    NSTree0 = aec_trees:ns(Trees0),
-
-    Account0 = aec_accounts_trees:get(AccountPubKey, AccountsTree0),
-    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce),
-    AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
-
-    Name0 = aens_state_tree:get_name(NameHash, NSTree0),
-    Name1 = aens_names:update(UpdateTx, Name0, Height),
-    NSTree1 = aens_state_tree:enter_name(Name1, NSTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_ns(Trees1, NSTree1),
-
-    {ok, Trees2}.
+process(#ns_update_tx{} = UTx, Trees, Env) ->
+    Instructions =
+        aec_tx_processor:name_update_tx_instructions(
+          account_pubkey(UTx),
+          name_hash(UTx),
+          name_ttl(UTx),
+          client_ttl(UTx),
+          pointers(UTx),
+          fee(UTx),
+          nonce(UTx)),
+    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_update_tx{} = Tx, _) ->
@@ -242,14 +220,6 @@ account_pubkey(#ns_update_tx{account_id = AccountId}) ->
 
 name_hash(#ns_update_tx{name_id = NameId}) ->
     aec_id:specialize(NameId, name).
-
-check_ttl(TTL) ->
-    case TTL =< aec_governance:name_claim_max_expiration() of
-        true ->
-            ok;
-        false ->
-            {error, ttl_too_high}
-    end.
 
 version() ->
     ?NAME_UPDATE_TX_VSN.
