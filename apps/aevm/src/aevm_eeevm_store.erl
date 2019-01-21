@@ -202,7 +202,7 @@ store_maps(Version, Maps0, Store) ->
     %% io:format("NewStore:\n~s\n", [show_store(NewStore)]),
     NewStore.
 
-perform_update(Version, {new_inplace, NewId, OldId, Size}, Store) ->
+perform_update(#{ vm := Version }, {new_inplace, NewId, OldId, Size}, Store) ->
     OldKey   = <<OldId:256>>,
     NewKey   = <<NewId:256>>,
     Entry =
