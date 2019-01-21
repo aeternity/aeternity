@@ -119,7 +119,7 @@ references:
       command: |
         make prod-package
         mkdir ${PACKAGES_DIR:?}
-        mv _build/prod/rel/epoch/epoch-$(cat VERSION).tar.gz ${PACKAGE_TARBALL:?}
+        mv _build/prod/rel/aeternity/aeternity-$(cat VERSION).tar.gz ${PACKAGE_TARBALL:?}
 
   package_tests_workspace: &package_tests_workspace /tmp/package_tests
   test_package: &test_package
@@ -484,13 +484,13 @@ jobs:
       - store_test_results:
           path: py/tests
       - store_artifacts:
-          path: _build/dev1/rel/epoch/log
+          path: _build/dev1/rel/aeternity/log
           destination: node1/
       - store_artifacts:
-          path: _build/dev2/rel/epoch/log
+          path: _build/dev2/rel/aeternity/log
           destination: node2/
       - store_artifacts:
-          path: _build/dev3/rel/epoch/log
+          path: _build/dev3/rel/aeternity/log
           destination: node3/
       - *fail_notification
 

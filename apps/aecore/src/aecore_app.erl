@@ -46,7 +46,7 @@ stop(_State) ->
 %% by the fact that 'setup' is not guaranteed to start before lager,
 %% so we have to be prepared to apply changes to both the lager env
 %% and the (possibly) running lager. (This problem is solvable, but not
-%% trivially. Basically, the epoch.rel file must be pre-sorted and passed
+%% trivially. Basically, the aeternity.rel file must be pre-sorted and passed
 %% to relx.
 check_env() ->
     check_env([{[<<"logging">>, <<"hwm">>]     , fun set_hwm/1},

@@ -1,18 +1,19 @@
 -module(aecore_suite_utils).
 
+%% Common Test configuration functions.
+-export([init_per_suite/2,
+         init_per_suite/3,
+         init_per_suite/4]).
+
 -export([top_dir/1,
          epoch_config/2,
-         create_configs/1,
-         create_configs/2,
-         create_configs/3,
          create_config/4,
-         make_multi/1,
-         make_multi/2,
-         make_shortcut/1,
+         node_shortcut/2,
          shortcut_dir/1]).
 
 -export([cmd/3, cmd/4, cmd/5, cmd/6,
          cmd_res/1,
+         delete_file/1,
          set_env/4,
          unset_env/3]).
 
@@ -102,20 +103,32 @@ patron() ->
 %%% API
 %%%=============================================================================
 
+init_per_suite(NodesList, CTConfig) ->
+    init_per_suite(NodesList, #{}, CTConfig).
+
+init_per_suite(NodesList, CustomNodeConfig, CTConfig) ->
+    init_per_suite(NodesList, CustomNodeConfig, [], CTConfig).
+
+init_per_suite(NodesList, CustomNodeCfg, NodeCfgOpts, CTConfig) ->
+    DataDir = ?config(data_dir, CTConfig),
+    TopDir = top_dir(DataDir),
+    CTConfig1 = [{top_dir, TopDir} | CTConfig],
+    make_shortcut(CTConfig1),
+    ct:log("Environment = ~p", [[{args, init:get_arguments()},
+                                 {node, node()},
+                                 {cookie, erlang:get_cookie()}]]),
+    create_configs(NodesList, CTConfig1, CustomNodeCfg, NodeCfgOpts),
+    make_multi(CTConfig1, NodesList),
+    CTConfig1.
+
 epoch_config(Node, CTConfig) ->
     EpochConfig = epoch_config_dir(Node, CTConfig),
     [OrigCfg] = jsx:consult(EpochConfig, [return_maps]),
     backup_config(EpochConfig),
     OrigCfg.
 
-create_configs(CTConfig) ->
-    create_configs(CTConfig, #{}, []).
-
-create_configs(CTConfig, CustomConfig) ->
-    create_configs(CTConfig, CustomConfig, []).
-
-create_configs(CTConfig, CustomConfig, Options) ->
-    [create_config(N, CTConfig, CustomConfig, Options) || N <- [dev1, dev2, dev3]].
+create_configs(NodesList, CTConfig, CustomConfig, Options) ->
+    [create_config(N, CTConfig, CustomConfig, Options) || N <- NodesList].
 
 create_config(Node, CTConfig, CustomConfig, Options) ->
     EpochCfgPath = epoch_config_dir(Node, CTConfig),
@@ -137,9 +150,6 @@ maps_merge(Map1, Map2) ->
                     end
                 end, Map2, maps:to_list(Map1)).
 
-make_multi(Config) ->
-    make_multi(Config, [dev1, dev2, dev3]).
-
 make_multi(Config, NodesList) ->
     make_multi(Config, NodesList, "test").
 
@@ -147,7 +157,7 @@ make_multi(Config, NodesList, RefRebarProfile) ->
     ct:log("RefRebarProfile = ~p", [RefRebarProfile]),
     Top = ?config(top_dir, Config),
     ct:log("Top = ~p", [Top]),
-    Epoch = filename:join(Top, "_build/" ++ RefRebarProfile ++ "/rel/epoch"),
+    Epoch = filename:join(Top, "_build/" ++ RefRebarProfile ++ "/rel/aeternity"),
     [setup_node(N, Top, Epoch, Config) || N <- NodesList].
 
 make_shortcut(Config) ->
@@ -395,7 +405,7 @@ node_tuple(N) when N == dev1; N == dev2; N == dev3 ->
 
 node_name(N) when N == dev1; N == dev2; N == dev3 ->
     [_,H] = re:split(atom_to_list(node()), "@", [{return,list}]),
-    list_to_atom("epoch_" ++ atom_to_list(N) ++ "@" ++ H).
+    list_to_atom("aeternity_" ++ atom_to_list(N) ++ "@" ++ H).
 
 connect(N) ->
     connect(N, 100),
@@ -499,6 +509,14 @@ restart_jobs_server(N) ->
     true = rpc:call(N, erlang, exit, [JobsP, kill]),
     await_new_jobs_pid(N, JobsP).
 
+delete_file(F) ->
+    case file:delete(F) of
+        ok -> ok;
+        {error, enoent} -> ok;
+        Other ->
+            erlang:error(Other, [F])
+    end.
+
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
@@ -557,7 +575,7 @@ setup_node(N, Top, Epoch, Config) ->
     Version = binary_to_list(VerB),
     %%
     CfgD = filename:join([Top, "config/", N]),
-    RelD = filename:dirname(filename:join([DDir, "releases", Version, "epoch.rel"])),
+    RelD = filename:dirname(filename:join([DDir, "releases", Version, "aeternity.rel"])),
     cp_file(filename:join(CfgD, "sys.config"),
             filename:join(RelD, "sys.config")),
     cp_file(filename:join(CfgD, "vm.args"),
@@ -753,14 +771,6 @@ log_dir(N, Config) ->
 
 keys_dir(N, Config) ->
     filename:join(data_dir(N, Config), "keys").
-
-delete_file(F) ->
-    case file:delete(F) of
-        ok -> ok;
-        {error, enoent} -> ok;
-        Other ->
-            erlang:error(Other, [F])
-    end.
 
 %% Use localhost here, because some systems have both 127.0.0.1 and 127.0.1.1
 %% defined, resulting in a conflict during testing

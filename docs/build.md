@@ -104,7 +104,7 @@ See [configuration documentation](configuration.md) for configuration details.
 
 If `prod-build` went fine, configuration is in place, one should be able to navigate to the build artifacts directory and start the epoch node:
 ```bash
-cd _build/prod/rel/epoch/
+cd _build/prod/rel/aeternity/
 bin/epoch start
 ```
 
@@ -118,13 +118,13 @@ Alternatively a production package similar to what is distributed via [GitHub re
 make prod-package
 ```
 
-Once the packaging is done, the package is created in the `_build/prod/rel/epoch/` directory, e.g. `_build/prod/rel/epoch/epoch-${VERSION:?}.tar.gz`.
+Once the packaging is done, the package is created in the `_build/prod/rel/aeternity/` directory, e.g. `_build/prod/rel/aeternity/aeternity-${VERSION:?}.tar.gz`.
 
 To deploy the package for example in `~/aeternity/node` one should just unarchive it to that directory:
 
 ```bash
 mkdir -p ~/aeternity/node
-tar xf _build/prod/rel/epoch/epoch-${VERSION:?}.tar.gz -C ~/aeternity/node
+tar xf _build/prod/rel/aeternity/aeternity-${VERSION:?}.tar.gz -C ~/aeternity/node
 ```
 
 Make sure beneficiary account is set in configuration, as this is mandatory to successfully start a node.
