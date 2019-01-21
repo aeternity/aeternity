@@ -13,8 +13,8 @@ references:
     working_directory: ~/aeternity
     environment:
       DOCKERHUB_REPO: aeternity/aeternity
-      S3_BUILDS_BUCKET: aeternity-epoch-builds
-      S3_RELEASES_BUCKET: aeternity-epoch-releases
+      S3_BUILDS_BUCKET: aeternity-node-builds
+      S3_RELEASES_BUCKET: aeternity-node-releases
 
   machine_config: &machine_config
     machine:
