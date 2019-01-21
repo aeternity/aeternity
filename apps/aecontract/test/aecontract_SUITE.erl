@@ -2756,6 +2756,16 @@ sophia_maps(_Cfg) ->
             || {Fn, Type, Map} <- [{tolist_i, IntList, MapI},
                                    {tolist_s, StrList, MapS}] ],
 
+    CheckSizes = fun(MI, MS) ->
+            Expect = {maps:size(MI), maps:size(MS)},
+            Actual = {Call(size_state_i, word, {}),
+                      Call(size_state_s, word, {})},
+            case Expect == Actual of
+                true  -> ok;
+                false -> {error, {expected, Expect, got, Actual}}
+            end
+        end,
+
     %% Reset the state
     Call(fromlist_state_i, Unit, []),
     Call(fromlist_state_s, Unit, []),
@@ -2771,6 +2781,8 @@ sophia_maps(_Cfg) ->
             || {Fn, Type, Map} <- [{tolist_state_i, IntList, MapI},
                                    {tolist_state_s, StrList, MapS}] ],
 
+    ok = CheckSizes(MapI, MapS),
+
     %% set_state
     DeltaI1 = #{ 3 => {100, 200}, 4 => {300, 400} },
     DeltaS1 = #{ <<"three">> => {100, 200}, <<"four">> => {300, 400} },
@@ -2780,6 +2792,8 @@ sophia_maps(_Cfg) ->
             || {Fn, Delta} <- [{set_state_i, DeltaI1}, {set_state_s, DeltaS1}],
                {K, V} <- maps:to_list(Delta) ],
     {MapI1, MapS1} = Call(get_state, State, {}),
+
+    ok = CheckSizes(MapI1, MapS1),
 
     %% setx_state/addx_state
     DeltaI2 = [{set, 4, 50}, {set, 5, 300}, {add, 2, 10}, {add, 5, 10}],
@@ -2799,6 +2813,8 @@ sophia_maps(_Cfg) ->
                {Op, K, V} <- Delta ],
     {MapI2, MapS2} = Call(get_state, State, {}),
 
+    ok = CheckSizes(MapI2, MapS2),
+
     %% delete_state
     DeltaI3 = [2, 5],
     DeltaS3 = [<<"four">>, <<"five">>],
@@ -2808,6 +2824,9 @@ sophia_maps(_Cfg) ->
             || {Fn, Ks} <- [{delete_state_i, DeltaI3}, {delete_state_s, DeltaS3}],
                K <- Ks ],
     {MapI3, MapS3} = Call(get_state, State, {}),
+
+    ok = CheckSizes(MapI3, MapS3),
+
     ok.
 
 sophia_map_benchmark(Cfg) ->
