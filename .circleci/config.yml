@@ -12,7 +12,7 @@ references:
       - image: aeternity/infrastructure
     working_directory: ~/aeternity
     environment:
-      DOCKERHUB_REPO: aeternity/epoch
+      DOCKERHUB_REPO: aeternity/aeternity
       S3_BUILDS_BUCKET: aeternity-epoch-builds
       S3_RELEASES_BUCKET: aeternity-epoch-releases
 
@@ -21,7 +21,7 @@ references:
       docker_layer_caching: true
     working_directory: ~/aeternity
     environment:
-      DOCKERHUB_REPO: aeternity/epoch
+      DOCKERHUB_REPO: aeternity/aeternity
 
   setup_remote_docker: &setup_remote_docker
     setup_remote_docker:

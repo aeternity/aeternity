@@ -21,7 +21,7 @@ The instructions below describe:
 
 You can run a node by either:
 * Installing the published [release binary][this-release] corresponding to your platform; or
-* Running the published [Docker image `aeternity/epoch`][docker]; or
+* Running the published [Docker image `aeternity/aeternity`][docker]; or
 * [Building a release binary from source][build].
 
 [docker]: https://github.com/aeternity/epoch/blob/v1.3.0/docs/docker.md
