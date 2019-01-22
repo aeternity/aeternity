@@ -149,8 +149,8 @@
 %% test case exports
 %% debug endpoints
 -export([
-    enabled_debug_endpoints/1,
-    disabled_debug_endpoints/1
+    disabled_debug_endpoints/1,
+    enabled_debug_endpoints/1
    ]).
 
 %% test case exports
@@ -853,6 +853,10 @@ init_per_testcase(post_oracle_response, Config) ->
      {response_ttl_type, <<"delta">>},
      {response_ttl_value, 20},
      {response, <<"Hejsan">>} | init_per_testcase_all(Config)];
+init_per_testcase(Case, Config) when
+        Case =:= disabled_debug_endpoints; Case =:= enabled_debug_endpoints ->
+    {ok, HttpInternal} = rpc(?NODE, application, get_env, [aehttp, internal]),
+    [{http_internal_config, HttpInternal} | init_per_testcase_all(Config)];
 init_per_testcase(_Case, Config) ->
     init_per_testcase_all(Config).
 
@@ -861,6 +865,11 @@ init_per_testcase_all(Config) ->
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
     [{tc_start, os:timestamp()} | Config].
 
+end_per_testcase(Case, Config) when
+        Case =:= disabled_debug_endpoints; Case =:= enabled_debug_endpoints ->
+    HttpInternal = ?config(http_internal_config, Config),
+    ok = rpc(?NODE, application, set_env, [aehttp, internal, HttpInternal]),
+    end_per_testcase_all(Config);
 end_per_testcase(_Case, Config) ->
     end_per_testcase_all(Config).
 
@@ -5080,8 +5089,13 @@ peers(_Config) ->
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := []}} = get_peers(),
     ok.
 
+enabled_debug_endpoints(_Config) ->
+    ?assertMatch({ok, 400, _}, post_key_blocks_sut(#{})),
+    ?assertMatch({ok, 200, _}, get_peers()),
+    ?assertMatch({ok, 400, _}, get_contract_create(#{})),
+    ok.
+
 disabled_debug_endpoints(_Config) ->
-    ?assertMatch(true, rpc(?NODE, aehttp_app, enable_internal_debug_endpoints, [])),
     {ok, Internal} = rpc(?NODE, application, get_env, [aehttp, internal]),
     NewInternal = proplists:delete(debug_endpoints, Internal),
     ok = rpc(?NODE, application, set_env, [aehttp, internal, NewInternal]),
@@ -5091,14 +5105,6 @@ disabled_debug_endpoints(_Config) ->
     ?assertMatch({ok, 400, _}, post_key_blocks_sut(#{})),
     ?assertMatch({ok, 403, _}, get_peers()),
     ?assertMatch({ok, 403, _}, get_contract_create(#{})),
-    ok.
-
-enabled_debug_endpoints(_Config) ->
-    ?assertMatch(true, rpc(?NODE, aehttp_app, enable_internal_debug_endpoints, [])),
-
-    ?assertMatch({ok, 400, _}, post_key_blocks_sut(#{})),
-    ?assertMatch({ok, 200, _}, get_peers()),
-    ?assertMatch({ok, 400, _}, get_contract_create(#{})),
     ok.
 
 format_args(X) ->
