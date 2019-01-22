@@ -360,7 +360,7 @@ save_store(#{ chain_state := ChainState
                     {Ptr, _} = aevm_eeevm_memory:load(Addr, State),
                     case heap_to_heap(Type, Ptr, State, 32) of
                         {ok, StateValue1, GasUsed} ->
-                            Store = aevm_eeevm_store:set_sophia_state(StateValue1, storage(State)),
+                            Store = aevm_eeevm_store:set_sophia_state(ct_version(State), StateValue1, storage(State)),
                             {ok, spend_gas(GasUsed, State#{ chain_state => ChainAPI:set_store(Store, ChainState) })};
                         {error, _} ->
                             {error, out_of_gas}

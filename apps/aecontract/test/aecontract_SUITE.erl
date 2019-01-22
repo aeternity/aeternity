@@ -117,6 +117,9 @@
 -define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING(X), {variant, 0, [X]}).
 -define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(X), {variant, 1, [X]}).
 
+-define(TEST_ABI_VERSION, ?CURRENT_ABI_SOPHIA).
+-define(TEST_VM_VERSION,  ?CURRENT_VM_SOPHIA).
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -733,7 +736,7 @@ call_contract_error_value(_Cfg) ->
 %%%===================================================================
 
 make_contract(PubKey, Code, S) ->
-    Tx = aect_test_utils:create_tx(PubKey, #{ vm_version => ?CURRENT_VM_SOPHIA,
+    Tx = aect_test_utils:create_tx(PubKey, #{ vm_version => ?TEST_VM_VERSION,
                                               code => Code }, S),
     {contract_create_tx, CTx} = aetx:specialize_type(Tx),
     aect_contracts:new(CTx).
@@ -850,8 +853,8 @@ create_contract_with_code(Owner, Code, Args, Options, S) ->
     CreateTx    = aect_test_utils:create_tx(Owner,
                     maps:merge(
                     #{ nonce       => Nonce
-                     , abi_version => ?CURRENT_ABI_SOPHIA
-                     , vm_version  => ?CURRENT_VM_SOPHIA
+                     , abi_version => ?TEST_ABI_VERSION
+                     , vm_version  => ?TEST_VM_VERSION
                      , code        => Code
                      , call_data   => CallData
                      , fee         => 1000000
@@ -888,7 +891,7 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
     CallTx   = aect_test_utils:call_tx(Caller, ContractKey,
                 maps:merge(
                 #{ nonce       => Nonce
-                 , abi_version => ?CURRENT_ABI_SOPHIA
+                 , abi_version => ?TEST_ABI_VERSION
                  , call_data   => Calldata
                  , fee         => 1000000
                  , amount      => 0
@@ -2758,6 +2761,16 @@ sophia_maps(_Cfg) ->
             || {Fn, Type, Map} <- [{tolist_i, IntList, MapI},
                                    {tolist_s, StrList, MapS}] ],
 
+    CheckSizes = fun(MI, MS) ->
+            Expect = {maps:size(MI), maps:size(MS)},
+            Actual = {Call(size_state_i, word, {}),
+                      Call(size_state_s, word, {})},
+            case Expect == Actual of
+                true  -> ok;
+                false -> {error, {expected, Expect, got, Actual}}
+            end
+        end,
+
     %% Reset the state
     Call(fromlist_state_i, Unit, []),
     Call(fromlist_state_s, Unit, []),
@@ -2773,6 +2786,8 @@ sophia_maps(_Cfg) ->
             || {Fn, Type, Map} <- [{tolist_state_i, IntList, MapI},
                                    {tolist_state_s, StrList, MapS}] ],
 
+    ok = CheckSizes(MapI, MapS),
+
     %% set_state
     DeltaI1 = #{ 3 => {100, 200}, 4 => {300, 400} },
     DeltaS1 = #{ <<"three">> => {100, 200}, <<"four">> => {300, 400} },
@@ -2782,6 +2797,8 @@ sophia_maps(_Cfg) ->
             || {Fn, Delta} <- [{set_state_i, DeltaI1}, {set_state_s, DeltaS1}],
                {K, V} <- maps:to_list(Delta) ],
     {MapI1, MapS1} = Call(get_state, State, {}),
+
+    ok = CheckSizes(MapI1, MapS1),
 
     %% setx_state/addx_state
     DeltaI2 = [{set, 4, 50}, {set, 5, 300}, {add, 2, 10}, {add, 5, 10}],
@@ -2801,6 +2818,8 @@ sophia_maps(_Cfg) ->
                {Op, K, V} <- Delta ],
     {MapI2, MapS2} = Call(get_state, State, {}),
 
+    ok = CheckSizes(MapI2, MapS2),
+
     %% delete_state
     DeltaI3 = [2, 5],
     DeltaS3 = [<<"four">>, <<"five">>],
@@ -2810,6 +2829,9 @@ sophia_maps(_Cfg) ->
             || {Fn, Ks} <- [{delete_state_i, DeltaI3}, {delete_state_s, DeltaS3}],
                K <- Ks ],
     {MapI3, MapS3} = Call(get_state, State, {}),
+
+    ok = CheckSizes(MapI3, MapS3),
+
     ok.
 
 sophia_map_benchmark(Cfg) ->
