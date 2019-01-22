@@ -99,6 +99,7 @@
         , sophia_int_to_str/1
         , sophia_events/1
         , sophia_crypto/1
+        , sophia_safe_math/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -193,7 +194,8 @@ groups() ->
                                  sophia_operators,
                                  sophia_int_to_str,
                                  sophia_events,
-                                 sophia_crypto]}
+                                 sophia_crypto,
+                                 sophia_safe_math]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
         [ sophia_oracles_ttl__extend_after_expiry
@@ -3333,6 +3335,46 @@ sophia_crypto(_Cfg) ->
     ?assertMatch({Sha3,      _}, ?call(call_contract, Acc, IdC, sha3,        word, Data,   #{return_gas_used => true})),
     ?assertMatch({Sha256,    _}, ?call(call_contract, Acc, IdC, sha256,      word, Data,   #{return_gas_used => true})),
     ?assertMatch({Blake2b,   _}, ?call(call_contract, Acc, IdC, blake2b,     word, Data,   #{return_gas_used => true})),
+
+    ok.
+
+sophia_safe_math(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000000),
+    C   = ?call(create_contract, Acc, safe_math, {}),
+
+    <<Medium:17/unit:8>> = list_to_binary(lists:duplicate(17, $x)),
+    <<_:1, Large:255>>   = list_to_binary(lists:duplicate(32, $o)),
+
+    %% Does an arbitrary precision number fit in a signed 256 bit integer?
+    IsSafe = fun(X) -> <<Y:256/signed-integer>> = <<X:256/signed-integer>>, X == Y end,
+
+    %% Reference implementation of ^
+    ErrorVal = 1 bsl 260,
+    Mask = fun(X) -> X rem (1 bsl 512 - 1 bsl 263 - 17) end,
+    Pow = fun Pow(_, B, _) when B < 0 -> ErrorVal;
+              Pow(_, 0, R) -> R;                %% mask to not blow up
+              Pow(A, B, R) when B rem 2 == 0 -> Pow(Mask(A * A), B bsr 1, R);
+              Pow(A, B, R)                   -> Pow(Mask(A * A), B bsr 1, R * A)
+          end,
+
+    %% Test vectors
+    Values = [ Z || X <- [1, 2, 5, 173, 255, 256, 1 bsl 128 - 1, 1 bsl 128, Medium, 1 bsl 255 - 2,
+                          1 bsl 255 - 1, 1 bsl 255, Large],
+                    Z <- [X, -X], Z < 1 bsl 255 ],
+    Ops    = [{add, fun erlang:'+'/2}, {sub,   fun erlang:'-'/2},
+              {mul, fun erlang:'*'/2}, {'div', fun erlang:'div'/2},
+              {pow, fun(X, Y) -> Pow(X, Y, 1) end}],
+
+    [ begin
+        Z   = Op(X, Y),
+        Res = ?call(call_contract, Acc, C, Fun, signed_word, {X, Y}),
+        Exp = case IsSafe(Z) of
+                true  -> Z;                         %% If safe we should get back the right answer
+                false -> {error, <<"arithmetic_error">>}  %% otherwise out of gas (no wrap-arounds!)
+              end,
+        ?assertMatch({_, _, _, {A, A}}, {Fun, X, Y, {Exp, Res}})
+      end || {Fun, Op} <- Ops, X <- Values, Y <- Values ],
 
     ok.
 
