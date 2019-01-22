@@ -851,6 +851,14 @@ workflows:
             branches:
               only: env/dev2
 
+      - hodl_artefact_upload:
+          type: approval
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
+
       - hodl_blue:
           type: approval
           filters:
@@ -896,7 +904,7 @@ workflows:
             - static_analysis
             - rebar_lock_check
             - linux_package
-            - hodl_blue
+            - hodl_artefact_upload
           filters:
             branches:
               ignore: /.*/
@@ -909,7 +917,7 @@ workflows:
             - static_analysis
             - rebar_lock_check
             - osx_package
-            - hodl_blue
+            - hodl_artefact_upload
           filters:
             branches:
               ignore: /.*/
@@ -921,7 +929,7 @@ workflows:
             - eunit
             - static_analysis
             - rebar_lock_check
-            - hodl_blue
+            - hodl_artefact_upload
           filters:
             branches:
               ignore: /.*/
