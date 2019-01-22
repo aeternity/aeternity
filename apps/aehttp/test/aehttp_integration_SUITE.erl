@@ -471,9 +471,9 @@ groups() ->
         % requested Endpoints
         peers
       ]},
-     {debug_endpoints, [], [
-        enabled_debug_endpoints,
-        disabled_debug_endpoints
+     {debug_endpoints, [sequence], [
+        disabled_debug_endpoints,
+        enabled_debug_endpoints
      ]},
      {swagger_validation, [], [
         swagger_validation_body,
