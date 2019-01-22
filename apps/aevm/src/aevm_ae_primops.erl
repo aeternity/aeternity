@@ -195,6 +195,16 @@ types(?PRIM_CALL_SPEND,_HeapValue,_Store,_State) ->
     {[word], tuple0_t()};
 types(?PRIM_CALL_CRYPTO_ECVERIFY, _HeapValue, _Store, _State) ->
     {[word, word, sign_t()], word};
+types(?PRIM_CALL_CRYPTO_SHA3, _HeapValue, _Store, _State) ->
+    {[typerep, word], word};
+types(?PRIM_CALL_CRYPTO_SHA256, _HeapValue, _Store, _State) ->
+    {[typerep, word], word};
+types(?PRIM_CALL_CRYPTO_BLAKE2B, _HeapValue, _Store, _State) ->
+    {[typerep, word], word};
+types(?PRIM_CALL_CRYPTO_SHA256_STRING, _HeapValue, _Store, _State) ->
+    {[string], word};
+types(?PRIM_CALL_CRYPTO_BLAKE2B_STRING, _HeapValue, _Store, _State) ->
+    {[string], word};
 types(_, _, _, _) ->
     {[], tuple0_t()}.
 
@@ -498,6 +508,16 @@ aens_call_revoke(Data, #chain{api = API, state = State} = Chain) ->
 %% ------------------------------------------------------------------
 crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECVERIFY, _Value, Data, State) ->
     crypto_call_ecverify(Gas, Data, State);
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_SHA3, _Value, Data, State) ->
+    crypto_call_generic_hash(?PRIM_CALL_CRYPTO_SHA3, Gas, Data, State);
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_SHA256, _Value, Data, State) ->
+    crypto_call_generic_hash(?PRIM_CALL_CRYPTO_SHA256, Gas, Data, State);
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_BLAKE2B, _Value, Data, State) ->
+    crypto_call_generic_hash(?PRIM_CALL_CRYPTO_BLAKE2B, Gas, Data, State);
+crypto_call(_Gas, ?PRIM_CALL_CRYPTO_SHA256_STRING, _Value, Data, State) ->
+    crypto_call_string_hash(?PRIM_CALL_CRYPTO_SHA256_STRING, Data, State);
+crypto_call(_Gas, ?PRIM_CALL_CRYPTO_BLAKE2B_STRING, _Value, Data, State) ->
+    crypto_call_string_hash(?PRIM_CALL_CRYPTO_BLAKE2B_STRING, Data, State);
 crypto_call(_, _, _, _, _) ->
     {error, out_of_gas}.
 
@@ -509,6 +529,28 @@ crypto_call_ecverify(_Gas, Data, State) ->
             {error, _} -> {ok, <<0:256>>}
         end,
     {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY), State}.
+
+crypto_call_generic_hash(PrimOp, Gas, Data, State) ->
+    [Type, Ptr] = get_args([typerep, word], Data),
+    case aevm_eeevm_state:heap_to_binary(Type, Ptr, State) of
+        {ok, Bin, GasUsed} ->
+            Hash = case PrimOp of
+                       ?PRIM_CALL_CRYPTO_SHA3    -> aec_hash:hash(evm, Bin);
+                       ?PRIM_CALL_CRYPTO_SHA256  -> aec_hash:sha256_hash(Bin);
+                       ?PRIM_CALL_CRYPTO_BLAKE2B -> aec_hash:blake2b_256_hash(Bin)
+                   end,
+            {ok, {ok, Hash}, GasUsed + aec_governance:primop_base_gas(PrimOp), State};
+        {error, _} = Err ->
+            {ok, Err, Gas, State}
+    end.
+
+crypto_call_string_hash(PrimOp, Data, State) ->
+    [String] = get_args([string], Data),
+    Hash = case PrimOp of
+               ?PRIM_CALL_CRYPTO_SHA256_STRING  -> aec_hash:sha256_hash(String);
+               ?PRIM_CALL_CRYPTO_BLAKE2B_STRING -> aec_hash:blake2b_256_hash(String)
+           end,
+    {ok, {ok, Hash}, aec_governance:primop_base_gas(PrimOp), State}.
 
 %% ------------------------------------------------------------------
 %% Map operations.
