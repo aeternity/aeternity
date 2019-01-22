@@ -3275,7 +3275,6 @@ sophia_crypto(_Cfg) ->
     PubKey  = Acc,
     PrivKey = aect_test_utils:priv_key(PubKey, state()),
     Sig1 = Sign(MsgHash, PrivKey),
-    Sig2 = Sign(Message, PrivKey),
 
     ?assertMatch({1, _}, ?call(call_contract, Acc, IdC, test_verify, word,
                                {MsgHash, PubKey, Sig1}, #{return_gas_used => true})),
