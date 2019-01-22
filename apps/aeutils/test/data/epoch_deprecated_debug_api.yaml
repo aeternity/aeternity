@@ -1,0 +1,10 @@
+http:
+    # Deprecated
+    debug: false
+    endpoints:
+        # Deprecated
+        debug: false
+    internal:
+        # Enable (true) debug api. Disabled (false) by default
+        debug_endpoints: false
+
