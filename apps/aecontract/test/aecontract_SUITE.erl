@@ -98,6 +98,7 @@
         , sophia_operators/1
         , sophia_int_to_str/1
         , sophia_events/1
+        , sophia_crypto/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -188,7 +189,8 @@ groups() ->
                                  sophia_no_callobject_for_remote_calls,
                                  sophia_operators,
                                  sophia_int_to_str,
-                                 sophia_events]}
+                                 sophia_events,
+                                 sophia_crypto]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
         [ sophia_oracles_ttl__extend_after_expiry
@@ -3258,6 +3260,35 @@ sophia_events(_Cfg) ->
 
     ok.
 
+sophia_crypto(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc   = ?call(new_account, 1000000000),
+    IdC   = ?call(create_contract, Acc, crypto, {}),
+
+
+    Sign = fun(Bin, PrivK) ->
+               <<W1:256, W2:256>> = enacl:sign_detached(Bin, PrivK), {W1, W2}
+           end,
+
+    Message = <<"The secret message">>,
+    MsgHash = aec_hash:hash(evm, Message),
+    PubKey  = Acc,
+    PrivKey = aect_test_utils:priv_key(PubKey, state()),
+    Sig1 = Sign(MsgHash, PrivKey),
+
+    ?assertMatch({1, _}, ?call(call_contract, Acc, IdC, test_verify, word,
+                               {MsgHash, PubKey, Sig1}, #{return_gas_used => true})),
+
+    ?assertMatch({1, _}, ?call(call_contract, Acc, IdC, test_string_verify, word,
+                               {Message, PubKey, Sig1}, #{return_gas_used => true})),
+
+    ?assertMatch({0, _}, ?call(call_contract, Acc, IdC, test_verify, word,
+                               {PubKey, PubKey, Sig1}, #{return_gas_used => true})),
+
+    ?assertMatch({0, _}, ?call(call_contract, Acc, IdC, test_string_verify, word,
+                               {<<"Not the secret message">>, PubKey, Sig1}, #{return_gas_used => true})),
+
+    ok.
 
 %% The crowd funding example.
 

@@ -1,0 +1,6 @@
+contract Crypto =
+  function test_verify(msg : hash, pk : address, sig : signature) =
+    Crypto.ecverify(msg, pk, sig)
+
+  function test_string_verify(x : string, pk : address, sig : signature) =
+    Crypto.ecverify(String.sha3(x), pk, sig)
