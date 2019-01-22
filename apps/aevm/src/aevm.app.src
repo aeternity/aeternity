@@ -2,7 +2,6 @@
  [{description, "Virtual machine for Aethernity"},
   {vsn, {cmd, "cat ../../VERSION"}},
   {registered, []},
-  {mod, { aevm_app, []}},
   {applications,
    [kernel,
     stdlib,
