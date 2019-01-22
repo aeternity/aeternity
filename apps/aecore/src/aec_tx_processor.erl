@@ -7,11 +7,14 @@
 %%%-------------------------------------------------------------------
 -module(aec_tx_processor).
 
--export([eval/3
+-export([ eval/3
+        , eval_with_return/3
         ]).
 
 %% Simple access tx instructions API
--export([ contract_create_tx_instructions/10
+-export([ contract_call_from_contract_instructions/10
+        , contract_call_tx_instructions/10
+        , contract_create_tx_instructions/10
         , name_claim_tx_instructions/5
         , name_preclaim_tx_instructions/5
         , name_revoke_tx_instructions/4
@@ -59,7 +62,22 @@
 -spec eval([op()], aec_trees:trees(), aetx_env:env()) ->
                   {ok, aec_trees:trees()} | {error, term()}.
 eval([_|_] = Instructions, Trees, TxEnv) ->
-    int_eval(Instructions, new_state(Trees, aetx_env:height(TxEnv), TxEnv)).
+    S = new_state(Trees, aetx_env:height(TxEnv), TxEnv),
+    case int_eval(Instructions, S) of
+        {ok, _} = Res -> Res;
+        {ok, _, _} -> error(illegal_return);
+        {error, _} = Err -> Err
+    end.
+
+-spec eval_with_return([op()], aec_trees:trees(), aetx_env:env()) ->
+                              {ok, term(), aec_trees:trees()} | {error, term()}.
+eval_with_return([_|_] = Instructions, Trees, TxEnv) ->
+    S = new_state(Trees, aetx_env:height(TxEnv), TxEnv),
+    case int_eval(Instructions, S) of
+        {ok, _} -> error(illegal_no_return);
+        {ok, _, _} = Res -> Res;
+        {error, _} = Err -> Err
+    end.
 
 -spec spend_tx_instructions(_, _, _, _, _) -> [op()].
 spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
@@ -158,13 +176,33 @@ name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
     ].
 
 -spec contract_create_tx_instructions(_, _, _, _, _, _, _, _, _, _) -> [op()].
-contract_create_tx_instructions(OwnerPubkey, Amount, Deposit, Gas, GasPrice,
+contract_create_tx_instructions(OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
                                 VMVersion, SerializedCode, CallData, Fee, Nonce) ->
     [ inc_account_nonce_op(OwnerPubkey, Nonce)
-    , contract_create_op(OwnerPubkey, Amount, Deposit, Gas,
+    , contract_create_op(OwnerPubkey, Amount, Deposit, GasLimit,
                          GasPrice, VMVersion, SerializedCode,
                          CallData, Fee, Nonce)
     ].
+
+-spec contract_call_tx_instructions(_, _, _, _, _, _, _, _, _, _) -> [op()].
+contract_call_tx_instructions(CallerPubKey, ContractPubkey, CallData,
+                              GasLimit, GasPrice, Amount, CallStack,
+                              VMVersion, Fee, Nonce) ->
+    [ inc_account_nonce_op(CallerPubKey, Nonce)
+    , contract_call_op(CallerPubKey, ContractPubkey, CallData,
+                       GasLimit, GasPrice, Amount,
+                       VMVersion, CallStack, Fee, Nonce)
+    ].
+
+-spec contract_call_from_contract_instructions(_, _, _, _, _, _, _, _, _, _) -> [op()].
+contract_call_from_contract_instructions(CallerPubKey, ContractPubkey, CallData,
+                                         GasLimit, GasPrice, Amount, CallStack,
+                                         VMVersion, Fee, Nonce) ->
+    [ contract_call_op(CallerPubKey, ContractPubkey, CallData,
+                       GasLimit, GasPrice, Amount,
+                       VMVersion, CallStack, Fee, Nonce)
+    ].
+
 
 %%%===================================================================
 %%% Internal functions
@@ -174,23 +212,31 @@ contract_create_tx_instructions(OwnerPubkey, Amount, Deposit, Gas, GasPrice,
 %%% Instruction evaluation
 
 int_eval(Instructions, S) ->
-    try {ok, eval_instructions(Instructions, S)}
+    try eval_instructions(Instructions, S)
     catch
         throw:{?MODULE, What} ->
             {error, What}
     end.
 
 eval_instructions([I|Left], S) ->
-    #state{} = S1 = eval_one(I, S),
-    eval_instructions(Left, S1);
+    case eval_one(I, S) of
+        #state{} = S1 ->
+            eval_instructions(Left, S1);
+        {return, Return, #state{} = S1} when Left =:= [] ->
+            S2 = cache_write_through(S1),
+            {ok, Return, S2#state.trees};
+        {return, _Return, #state{}} when Left =/= [] ->
+            error(return_not_last)
+    end;
 eval_instructions([], S) ->
     S1 = cache_write_through(S),
-    S1#state.trees.
+    {ok, S1#state.trees}.
 
 eval_one({Op, Args}, S) ->
     case Op of
         inc_account_nonce         -> inc_account_nonce(Args, S);
         lock_amount               -> lock_amount(Args, S);
+        contract_call             -> contract_call(Args, S);
         contract_create           -> contract_create(Args, S);
         name_claim                -> name_claim(Args, S);
         name_preclaim             -> name_preclaim(Args, S);
@@ -495,13 +541,72 @@ name_update({OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers}, S) -
 
 %%%-------------------------------------------------------------------
 
-contract_create_op(OwnerPubkey, Amount, Deposit, Gas,
+contract_call_op(CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
+                 Amount, VMVersion, CallStack, Fee, Nonce
+                ) when ?IS_HASH(CallerPubKey),
+                       ?IS_HASH(ContractPubkey),
+                       is_binary(CallData),
+                       ?IS_NON_NEG_INTEGER(GasLimit),
+                       ?IS_NON_NEG_INTEGER(GasPrice),
+                       ?IS_NON_NEG_INTEGER(Amount),
+                       ?IS_NON_NEG_INTEGER(VMVersion),
+                       is_list(CallStack),
+                       ?IS_NON_NEG_INTEGER(Fee),
+                       ?IS_NON_NEG_INTEGER(Nonce) ->
+    {contract_call, {CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
+                     Amount, VMVersion, CallStack, Fee, Nonce}}.
+
+contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
+               Amount, VMVersion, CallStack, Fee, Nonce}, S) ->
+    {CallerId, TotalAmount} = get_call_env_specific(CallerPubKey, GasLimit,
+                                                    GasPrice, Amount, Fee, S),
+    {CallerAccount, S1} = get_account(CallerPubKey, S),
+    assert_account_balance(CallerAccount, TotalAmount),
+    assert_contract_call_vm_version(ContractPubkey, VMVersion, S),
+    assert_contract_call_stack(CallStack, S),
+    S2 = account_spend(CallerAccount, TotalAmount, S1),
+    {ContractAccount, S3} = get_account(ContractPubkey, S2),
+    S4 = account_earn(ContractAccount, Amount, S3),
+    %% Avoid writing the store back by skipping this state.
+    {Contract, _} = get_contract(ContractPubkey, S4),
+    {Call, S5} = run_contract(CallerId, Contract, GasLimit, GasPrice,
+                              CallData, Amount, CallStack, Nonce, S4),
+    case aect_call:return_type(Call) of
+        ok ->
+            case aetx_env:context(S#state.tx_env) of
+                aetx_contract ->
+                    {return, Call, S5}; %% Return instead of store
+                aetx_transaction ->
+                    contract_call_success(Call, GasLimit, S5)
+            end;
+        Fail when (Fail =:= revert orelse Fail =:= error) ->
+            case aetx_env:context(S#state.tx_env) of
+                aetx_contract ->
+                    {return, Call, S}; %% Return instead of store
+                aetx_transaction ->
+                    contract_call_fail(Call, Fee, S)
+            end
+    end.
+
+get_call_env_specific(CallerPubKey, GasLimit, GasPrice, Amount, Fee, S) ->
+    case aetx_env:context(S#state.tx_env) of
+        aetx_transaction ->
+            {aec_id:create(account, CallerPubKey),
+             Fee + GasLimit * GasPrice + Amount};
+        aetx_contract ->
+            {aec_id:create(contract, CallerPubKey),
+             Amount}
+    end.
+
+%%%-------------------------------------------------------------------
+
+contract_create_op(OwnerPubkey, Amount, Deposit, GasLimit,
                    GasPrice, VMVersion, SerializedCode,
                    CallData, Fee, Nonce
                   ) when ?IS_HASH(OwnerPubkey),
                          ?IS_NON_NEG_INTEGER(Amount),
                          ?IS_NON_NEG_INTEGER(Deposit),
-                         ?IS_NON_NEG_INTEGER(Gas),
+                         ?IS_NON_NEG_INTEGER(GasLimit),
                          ?IS_NON_NEG_INTEGER(GasPrice),
                          ?IS_NON_NEG_INTEGER(VMVersion),
                          is_binary(SerializedCode),
@@ -509,51 +614,74 @@ contract_create_op(OwnerPubkey, Amount, Deposit, Gas,
                          ?IS_NON_NEG_INTEGER(Fee),
                          ?IS_NON_NEG_INTEGER(Nonce) ->
     {contract_create,
-     {OwnerPubkey, Amount, Deposit, Gas,
+     {OwnerPubkey, Amount, Deposit, GasLimit,
       GasPrice, VMVersion, SerializedCode,
       CallData, Fee, Nonce}}.
 
-contract_create({OwnerPubkey, Amount, Deposit, Gas, GasPrice,
+contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
                  VMVersion, SerializedCode, CallData, Fee, Nonce}, S) ->
-    TotalAmount    = Amount + Deposit + Fee + Gas * GasPrice,
+    RollbackS = S,
+    TotalAmount    = Amount + Deposit + Fee + GasLimit * GasPrice,
     {Account, S1}  = get_account(OwnerPubkey, S),
     assert_account_balance(Account, TotalAmount),
     assert_contract_byte_code(VMVersion, SerializedCode, CallData),
     %% Charge the fee, the gas (the unused portion will be refunded)
     %% and the deposit (stored in the contract) to the contract owner (caller),
     %% and transfer the funds (amount) to the contract account.
+    S2             = account_spend(Account, TotalAmount, S1),
     Contract       = aect_contracts:new(OwnerPubkey, Nonce, VMVersion,
                                         SerializedCode, Deposit),
     ContractPubkey = aect_contracts:pubkey(Contract),
-    S2             = account_spend(Account, TotalAmount, S1),
     {CAccount, S3} = ensure_account(ContractPubkey, S2),
     S4             = account_earn(CAccount, Amount, S3),
-    %% Initial call takes no amount
-    {InitCall, S5} = run_contract(OwnerPubkey, Contract, Gas, GasPrice,
-                                  CallData, _InitAmount = 0, Nonce, S4),
+    OwnerId        = aect_contracts:owner_id(Contract),
+    {InitCall, S5} = run_contract(OwnerId, Contract, GasLimit, GasPrice,
+                                  CallData, _InitAmount = 0,
+                                  _CallStack = [], Nonce, S4),
     case aect_call:return_type(InitCall) of
         error ->
-            rollback_init_call(InitCall, Fee, S);
+            contract_call_fail(InitCall, Fee, RollbackS);
         revert ->
-            rollback_init_call(InitCall, Fee, S);
+            contract_call_fail(InitCall, Fee, RollbackS);
         ok ->
-            case init_contract_state(Contract, InitCall, S5) of
-                {ok, S6} ->
-                    %% The return value is cleared for init calls.
-                    InitCall1 = aect_call:set_return_value(<<>>, InitCall),
-                    S7 = cache_put(call, InitCall1, S6),
-                    %% Refund unused gas
-                    Refund = (Gas - aect_call:gas_used(InitCall1)) * GasPrice,
-                    {Account1, S8} = get_account(OwnerPubkey, S7),
-                    account_earn(Account1, Refund, S8);
-                error ->
-                    InitCall1 = aect_call:set_return_value(<<"out_of_gas">>, InitCall),
-                    InitCall2 = aect_call:set_return_type(error, InitCall1),
-                    rollback_init_call(InitCall2, Fee, S)
-            end
+            contract_init_call_success(InitCall, Contract, GasLimit, Fee,
+                                       RollbackS, S5)
     end.
 
-rollback_init_call(Call, Fee, S) ->
+contract_init_call_success(InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
+    ReturnValue = aect_call:return_value(InitCall),
+    %% The return value is cleared for successful init calls.
+    InitCall1   = aect_call:set_return_value(<<>>, InitCall),
+    case aect_contracts:vm_version(Contract) of
+        ?AEVM_01_Sophia_01 ->
+            %% Set the initial state of the contract
+            case aevm_eeevm_store:from_sophia_state(ReturnValue) of
+                {ok, Store} ->
+                    Contract1 = aect_contracts:set_state(Store, Contract),
+                    S1 = cache_put(contract, Contract1, S),
+                    contract_call_success(InitCall1, GasLimit, S1);
+                {error, _} ->
+                    FailCall0 = aect_call:set_return_value(<<"out_of_gas">>, InitCall),
+                    FailCall  = aect_call:set_return_type(error, FailCall0),
+                    contract_call_fail(FailCall, Fee, RollbackS)
+            end;
+        ?AEVM_01_Solidity_01 ->
+            %% Solidity inital call returns the code to store in the contract.
+            Contract1 = aect_contracts:set_code(ReturnValue, Contract),
+            S1 = cache_put(contract, Contract1, S),
+            contract_call_success(InitCall1, GasLimit, S1)
+    end.
+
+%%%===================================================================
+%%% Helpers for instructions
+
+contract_call_success(Call, GasLimit, S) ->
+    Refund = (GasLimit - aect_call:gas_used(Call)) * aect_call:gas_price(Call),
+    {CallerAccount, S1} = get_account(aect_call:caller_pubkey(Call), S),
+    S2 = account_earn(CallerAccount, Refund, S1),
+    cache_put(call, Call, S2).
+
+contract_call_fail(Call, Fee, S) ->
     S1 = cache_put(call, Call, S),
     UsedAmount = aect_call:gas_used(Call) * aect_call:gas_price(Call) + Fee,
     %% For backwards compatibility, the account of the contract
@@ -562,36 +690,16 @@ rollback_init_call(Call, Fee, S) ->
     {Account, S3} = get_account(aect_call:caller_pubkey(Call), S2),
     account_spend(Account, UsedAmount, S3).
 
-init_contract_state(Contract, InitCall, S) ->
-    case aect_contracts:vm_version(Contract) of
-        ?AEVM_01_Sophia_01 ->
-            %% Set the initial state of the contract
-            InitState = aect_call:return_value(InitCall),
-            case aevm_eeevm_store:from_sophia_state(InitState) of
-                {ok, Store} ->
-                    Contract1 = aect_contracts:set_state(Store, Contract),
-                    {ok, cache_put(contract, Contract1, S)};
-                {error, _} ->
-                    error
-            end;
-        ?AEVM_01_Solidity_01 ->
-            %% Solidity inital call returns the code to store in the contract.
-            NewCode = aect_call:return_value(InitCall),
-            Contract1 = aect_contracts:set_code(NewCode, Contract),
-            {ok, cache_put(contract, Contract1, S)}
-    end.
-
-run_contract(Caller, Contract, Gas, GasPrice, CallData, Amount, Nonce, S) ->
+run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, Amount,
+             CallStack, Nonce, S) ->
     %% We need to push all to the trees before running a contract.
     S1 = cache_write_through(S),
-    CallStack = [], %% TODO: should we have a call stack for create_tx also
-                    %% when creating a contract in a contract.
-    OwnerId = aect_contracts:owner_id(Contract),
     ContractId = aect_contracts:id(Contract),
-    Call = aect_call:new(OwnerId, Nonce, ContractId, S#state.height, GasPrice),
-    CallDef = #{ caller      => Caller
+    Call = aect_call:new(CallerId, Nonce, ContractId, S#state.height, GasPrice),
+    {_, CallerPubKey} = aec_id:specialize(CallerId),
+    CallDef = #{ caller      => CallerPubKey
                , contract    => aect_contracts:pubkey(Contract)
-               , gas         => Gas
+               , gas         => GasLimit
                , gas_price   => GasPrice
                , call_data   => CallData
                , amount      => Amount
@@ -606,34 +714,6 @@ run_contract(Caller, Contract, Gas, GasPrice, CallData, Amount, Nonce, S) ->
     VMVersion = aect_contracts:vm_version(Contract),
     {Call1, Trees1} = aect_dispatch:run(VMVersion, CallDef),
     {Call1, S1#state{trees = Trees1}}.
-
-assert_contract_byte_code(VMVersion, SerializedCode, CallData) ->
-    case VMVersion of
-        ?AEVM_01_Sophia_01 ->
-            try aect_sophia:deserialize(SerializedCode) of
-                #{type_info := TypeInfo} ->
-                    assert_contract_init_function(CallData, TypeInfo)
-            catch _:_ -> runtime_error(bad_sophia_code)
-            end;
-        ?AEVM_01_Solidity_01 ->
-            case aeu_validation:run([?AEVM_01_Solidity_01_enabled]) of
-                ok -> ok;
-                {error, What} -> runtime_error(What)
-            end
-    end.
-
-assert_contract_init_function(CallData, TypeInfo) ->
-    case aeso_abi:get_function_hash_from_calldata(CallData) of
-        {ok, Hash} ->
-            case aeso_abi:function_name_from_type_hash(Hash, TypeInfo) of
-                {ok, <<"init">>} -> ok;
-                _ -> runtime_error(bad_init_function)
-            end;
-        _Other -> runtime_error(bad_init_function)
-    end.
-
-%%%===================================================================
-%%% Helpers for instructions
 
 account_earn(Account, Amount, S) ->
     {ok, Account1} = aec_accounts:earn(Account, Amount),
@@ -782,6 +862,48 @@ assert_name_claimed(Name) ->
         revoked -> runtime_error(name_revoked)
     end.
 
+assert_contract_byte_code(VMVersion, SerializedCode, CallData) ->
+    case VMVersion of
+        ?AEVM_01_Sophia_01 ->
+            try aect_sophia:deserialize(SerializedCode) of
+                #{type_info := TypeInfo} ->
+                    assert_contract_init_function(CallData, TypeInfo)
+            catch _:_ -> runtime_error(bad_sophia_code)
+            end;
+        ?AEVM_01_Solidity_01 ->
+            case aeu_validation:run([?AEVM_01_Solidity_01_enabled]) of
+                ok -> ok;
+                {error, What} -> runtime_error(What)
+            end;
+        _ ->
+            runtime_error(bad_vm_version)
+    end.
+
+assert_contract_init_function(CallData, TypeInfo) ->
+    case aeso_abi:get_function_hash_from_calldata(CallData) of
+        {ok, Hash} ->
+            case aeso_abi:function_name_from_type_hash(Hash, TypeInfo) of
+                {ok, <<"init">>} -> ok;
+                _ -> runtime_error(bad_init_function)
+            end;
+        _Other -> runtime_error(bad_init_function)
+    end.
+
+
+assert_contract_call_vm_version(Pubkey, VMVersion, S) ->
+    Contract = get_contract_without_store(Pubkey, S),
+    case aect_contracts:vm_version(Contract) =:= VMVersion of
+        true  -> ok;
+        false -> runtime_error(wrong_vm_version)
+    end.
+
+assert_contract_call_stack(CallStack, S) ->
+    case aetx_env:context(S#state.tx_env) of
+        aetx_contract    when is_list(CallStack) -> ok;
+        aetx_transaction when CallStack =:= [] -> ok;
+        aetx_transaction -> runtime_error(nonempty_call_stack)
+    end.
+
 %%%===================================================================
 %%% Error handling
 
@@ -794,6 +916,20 @@ runtime_error(Error) ->
 
 get_account(Key, S) ->
     get_x(account, Key, account_not_found, S).
+
+get_contract(Key, S) ->
+    get_x(contract, Key, contract_does_not_exist, S).
+
+get_contract_without_store(Pubkey, S) ->
+    case cache_find(contract, Pubkey, S) of
+        {value, C} -> C;
+        none ->
+            CTree = aec_trees:contracts(S#state.trees),
+            case aect_state_tree:lookup_contract(Pubkey, CTree, [no_store]) of
+                none -> runtime_error(contract_does_not_exist);
+                {value, C} -> C
+            end
+    end.
 
 get_name(Key, S) ->
     get_x(name, Key, name_does_not_exist, S).
@@ -841,9 +977,9 @@ trees_find(account, Key, #state{trees = Trees} = S) ->
 %% trees_find(call, Key, #state{trees = Trees} = S) ->
 %%     CTree = aec_trees:calls(Trees),
 %%     aect_call_state_tree:lookup(get_var(Key, call, S), CTree);
-%% trees_find(contract, Key, #state{trees = Trees} = S) ->
-%%     CTree = aec_trees:contracts(Trees),
-%%     aect_state_tree:lookup_contract(get_var(Key, contract, S), CTree);
+trees_find(contract, Key, #state{trees = Trees} = S) ->
+    CTree = aec_trees:contracts(Trees),
+    aect_state_tree:lookup_contract(get_var(Key, contract, S), CTree);
 trees_find(commitment, Key, #state{trees = Trees} = S) ->
     NTree = aec_trees:ns(Trees),
     aens_state_tree:lookup_commitment(get_var(Key, commitment, S), NTree);
