@@ -145,7 +145,7 @@ process(#spend_tx{} = SpendTx, Trees, Env) ->
                                                amount(SpendTx),
                                                fee(SpendTx),
                                                nonce(SpendTx)),
-    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
+    aec_tx_processor:eval(Instructions, Trees, Env).
 
 serialize(#spend_tx{sender_id    = SenderId,
                     recipient_id = RecipientId,

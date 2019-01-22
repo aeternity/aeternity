@@ -109,7 +109,7 @@ process(#ns_revoke_tx{} = Tx, Trees, Env) ->
     Instructions =
         aec_tx_processor:name_revoke_tx_instructions(
           account_pubkey(Tx), name_hash(Tx), fee(Tx), nonce(Tx)),
-    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
+    aec_tx_processor:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_revoke_tx{} = Tx, _) ->

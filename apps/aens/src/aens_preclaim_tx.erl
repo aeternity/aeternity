@@ -108,7 +108,7 @@ process(#ns_preclaim_tx{} = PreclaimTx, Trees, Env) ->
           aec_governance:name_preclaim_expiration(),
           fee(PreclaimTx),
           nonce(PreclaimTx)),
-    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
+    aec_tx_processor:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_preclaim_tx{} = Tx, _) ->

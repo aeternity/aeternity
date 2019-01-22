@@ -156,7 +156,7 @@ process(#oracle_register_tx{} = RTx, Trees, Env) ->
                   fee(RTx),
                   nonce(RTx)
                  ),
-            aec_tx_processor:eval(Instructions, Trees, Height)
+            aec_tx_processor:eval(Instructions, Trees, Env)
     end.
 
 serialize(#oracle_register_tx{account_id      = AccountId,
