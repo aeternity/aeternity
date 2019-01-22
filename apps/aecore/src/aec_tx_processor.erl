@@ -11,7 +11,7 @@
         ]).
 
 %% Simple access tx instructions API
--export([ spend_tx_instructions/5
+-export([ contract_create_tx_instructions/10
         , name_claim_tx_instructions/5
         , name_preclaim_tx_instructions/5
         , name_revoke_tx_instructions/4
@@ -21,6 +21,7 @@
         , oracle_query_tx_instructions/8
         , oracle_register_tx_instructions/8
         , oracle_response_tx_instructions/6
+        , spend_tx_instructions/5
         ]).
 
 
@@ -31,6 +32,7 @@
                , height     :: non_neg_integer()
                , cache      :: dict:dict()
                , env        :: dict:dict()
+               , tx_env     :: aetx_env:env()
                }).
 
 -define(IS_HASH(_X_), (is_binary(_X_) andalso byte_size(_X_) =:= ?HASH_BYTES)).
@@ -48,13 +50,12 @@
 %%% API
 %%%===================================================================
 
+%% TODO: Clean up to always get tx env
 eval([_|_] = Instructions, Trees, Height) when is_integer(Height),
                                                Height >= 0 ->
-    try {ok, eval_instructions(Instructions, new_state(Trees, Height))}
-    catch
-        throw:{?MODULE, What} ->
-            {error, What}
-    end.
+    int_eval(Instructions, new_state(Trees, Height, no_env));
+eval([_|_] = Instructions, Trees, TxEnv) ->
+    int_eval(Instructions, new_state(Trees, aetx_env:height(TxEnv), TxEnv)).
 
 spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
     Recipient = {var, recipient},
@@ -142,6 +143,14 @@ name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
                      ClientTTL, Pointers)
     ].
 
+contract_create_tx_instructions(OwnerPubkey, Amount, Deposit, Gas, GasPrice,
+                                VMVersion, SerializedCode, CallData, Fee, Nonce) ->
+    [ inc_account_nonce_op(OwnerPubkey, Nonce)
+    , contract_create_op(OwnerPubkey, Amount, Deposit, Gas,
+                         GasPrice, VMVersion, SerializedCode,
+                         CallData, Fee, Nonce)
+    ].
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -149,16 +158,25 @@ name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
 %%%===================================================================
 %%% Instruction evaluation
 
+int_eval(Instructions, S) ->
+    try {ok, eval_instructions(Instructions, S)}
+    catch
+        throw:{?MODULE, What} ->
+            {error, What}
+    end.
+
 eval_instructions([I|Left], S) ->
     #state{} = S1 = eval_one(I, S),
     eval_instructions(Left, S1);
 eval_instructions([], S) ->
-    cache_write_through(S).
+    S1 = cache_write_through(S),
+    S1#state.trees.
 
 eval_one({Op, Args}, S) ->
     case Op of
         inc_account_nonce         -> inc_account_nonce(Args, S);
         lock_amount               -> lock_amount(Args, S);
+        contract_create           -> contract_create(Args, S);
         name_claim                -> name_claim(Args, S);
         name_preclaim             -> name_preclaim(Args, S);
         name_revoke               -> name_revoke(Args, S);
@@ -175,11 +193,12 @@ eval_one({Op, Args}, S) ->
         Other                     -> error({illegal_op, Other})
     end.
 
-new_state(Trees, Height) ->
+new_state(Trees, Height, TxEnv) ->
     #state{ trees = Trees
           , cache = dict:new()
           , env   = dict:new()
           , height = Height
+          , tx_env = TxEnv
           }.
 
 %%%===================================================================
@@ -459,8 +478,157 @@ name_update({OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers}, S) -
     Name1 = aens_names:update(Name, AbsoluteTTL, ClientTTL, Pointers),
     cache_put(name, Name1, S1).
 
+%%%-------------------------------------------------------------------
+
+contract_create_op(OwnerPubkey, Amount, Deposit, Gas,
+                   GasPrice, VMVersion, SerializedCode,
+                   CallData, Fee, Nonce
+                  ) when ?IS_HASH(OwnerPubkey),
+                         ?IS_NON_NEG_INTEGER(Amount),
+                         ?IS_NON_NEG_INTEGER(Deposit),
+                         ?IS_NON_NEG_INTEGER(Gas),
+                         ?IS_NON_NEG_INTEGER(GasPrice),
+                         ?IS_NON_NEG_INTEGER(VMVersion),
+                         is_binary(SerializedCode),
+                         is_binary(CallData),
+                         ?IS_NON_NEG_INTEGER(Fee),
+                         ?IS_NON_NEG_INTEGER(Nonce) ->
+    {contract_create,
+     {OwnerPubkey, Amount, Deposit, Gas,
+      GasPrice, VMVersion, SerializedCode,
+      CallData, Fee, Nonce}}.
+
+contract_create({OwnerPubkey, Amount, Deposit, Gas, GasPrice,
+                 VMVersion, SerializedCode, CallData, Fee, Nonce}, S) ->
+    TotalAmount    = Amount + Deposit + Fee + Gas * GasPrice,
+    {Account, S1}  = get_account(OwnerPubkey, S),
+    assert_account_balance(Account, TotalAmount),
+    assert_contract_byte_code(VMVersion, SerializedCode, CallData),
+    %% Charge the fee, the gas (the unused portion will be refunded)
+    %% and the deposit (stored in the contract) to the contract owner (caller),
+    %% and transfer the funds (amount) to the contract account.
+    Contract       = aect_contracts:new(OwnerPubkey, Nonce, VMVersion,
+                                        SerializedCode, Deposit),
+    ContractPubkey = aect_contracts:pubkey(Contract),
+    S2             = account_spend(Account, TotalAmount, S1),
+    {CAccount, S3} = ensure_account(ContractPubkey, S2),
+    S4             = account_earn(CAccount, Amount, S3),
+    %% Initial call takes no amount
+    {InitCall, S5} = run_contract(OwnerPubkey, Contract, Gas, GasPrice,
+                                  CallData, _InitAmount = 0, Nonce, S4),
+    case aect_call:return_type(InitCall) of
+        error ->
+            rollback_init_call(InitCall, Fee, S);
+        revert ->
+            rollback_init_call(InitCall, Fee, S);
+        ok ->
+            case init_contract_state(Contract, InitCall, S5) of
+                {ok, S6} ->
+                    %% The return value is cleared for init calls.
+                    InitCall1 = aect_call:set_return_value(<<>>, InitCall),
+                    S7 = cache_put(call, InitCall1, S6),
+                    %% Refund unused gas
+                    Refund = (Gas - aect_call:gas_used(InitCall1)) * GasPrice,
+                    {Account1, S8} = get_account(OwnerPubkey, S7),
+                    account_earn(Account1, Refund, S8);
+                error ->
+                    InitCall1 = aect_call:set_return_value(<<"out_of_gas">>, InitCall),
+                    InitCall2 = aect_call:set_return_type(error, InitCall1),
+                    rollback_init_call(InitCall2, Fee, S)
+            end
+    end.
+
+rollback_init_call(Call, Fee, S) ->
+    S1 = cache_put(call, Call, S),
+    UsedAmount = aect_call:gas_used(Call) * aect_call:gas_price(Call) + Fee,
+    %% For backwards compatibility, the account of the contract
+    %% needs to be created
+    {_, S2} = ensure_account(aect_call:contract_pubkey(Call), S1),
+    {Account, S3} = get_account(aect_call:caller_pubkey(Call), S2),
+    account_spend(Account, UsedAmount, S3).
+
+init_contract_state(Contract, InitCall, S) ->
+    case aect_contracts:vm_version(Contract) of
+        ?AEVM_01_Sophia_01 ->
+            %% Set the initial state of the contract
+            InitState = aect_call:return_value(InitCall),
+            case aevm_eeevm_store:from_sophia_state(InitState) of
+                {ok, Store} ->
+                    Contract1 = aect_contracts:set_state(Store, Contract),
+                    {ok, cache_put(contract, Contract1, S)};
+                {error, _} ->
+                    error
+            end;
+        ?AEVM_01_Solidity_01 ->
+            %% Solidity inital call returns the code to store in the contract.
+            NewCode = aect_call:return_value(InitCall),
+            Contract1 = aect_contracts:set_code(NewCode, Contract),
+            {ok, cache_put(contract, Contract1, S)}
+    end.
+
+run_contract(Caller, Contract, Gas, GasPrice, CallData, Amount, Nonce, S) ->
+    %% We need to push all to the trees before running a contract.
+    S1 = cache_write_through(S),
+    CallStack = [], %% TODO: should we have a call stack for create_tx also
+                    %% when creating a contract in a contract.
+    OwnerId = aect_contracts:owner_id(Contract),
+    ContractId = aect_contracts:id(Contract),
+    Call = aect_call:new(OwnerId, Nonce, ContractId, S#state.height, GasPrice),
+    CallDef = #{ caller      => Caller
+               , contract    => aect_contracts:pubkey(Contract)
+               , gas         => Gas
+               , gas_price   => GasPrice
+               , call_data   => CallData
+               , amount      => Amount
+               , call_stack  => CallStack
+               , code        => aect_contracts:code(Contract)
+               , store       => aect_contracts:state(Contract)
+               , call        => Call
+               , trees       => S1#state.trees
+               , tx_env      => S1#state.tx_env
+               , off_chain   => false
+               },
+    VMVersion = aect_contracts:vm_version(Contract),
+    {Call1, Trees1} = aect_dispatch:run(VMVersion, CallDef),
+    {Call1, S1#state{trees = Trees1}}.
+
+assert_contract_byte_code(VMVersion, SerializedCode, CallData) ->
+    case VMVersion of
+        ?AEVM_01_Sophia_01 ->
+            try aect_sophia:deserialize(SerializedCode) of
+                #{type_info := TypeInfo} ->
+                    assert_contract_init_function(CallData, TypeInfo);
+                #{} -> runtime_error(bad_sophia_code)
+            catch _:_ -> runtime_error(bad_sophia_code)
+            end;
+        ?AEVM_01_Solidity_01 ->
+            Fun = ?AEVM_01_Solidity_01_enabled,
+            case Fun() of
+                ok -> ok;
+                {error, What} -> runtime_error(What)
+            end
+    end.
+
+assert_contract_init_function(CallData, TypeInfo) ->
+    case aeso_abi:get_function_hash_from_calldata(CallData) of
+        {ok, Hash} ->
+            case aeso_abi:function_name_from_type_hash(Hash, TypeInfo) of
+                {ok, <<"init">>} -> ok;
+                _ -> runtime_error(bad_init_function)
+            end;
+        _Other -> runtime_error(bad_init_function)
+    end.
+
 %%%===================================================================
 %%% Helpers for instructions
+
+account_earn(Account, Amount, S) ->
+    {ok, Account1} = aec_accounts:earn(Account, Amount),
+    cache_put(account, Account1, S).
+
+account_spend(Account, Amount, S) ->
+    {ok, Account1} = aec_accounts:spend_without_nonce_bump(Account, Amount),
+    cache_put(account, Account1, S).
 
 specialize_account(RecipientID) ->
     case aec_id:specialize(RecipientID) of
@@ -656,6 +824,12 @@ delete_x(commitment, Hash, #state{trees = Trees} = S) ->
 trees_find(account, Key, #state{trees = Trees} = S) ->
     ATree = aec_trees:accounts(Trees),
     aec_accounts_trees:lookup(get_var(Key, account, S), ATree);
+trees_find(call, Key, #state{trees = Trees} = S) ->
+    CTree = aec_trees:calls(Trees),
+    aect_call_state_tree:lookup(get_var(Key, call, S), CTree);
+trees_find(contract, Key, #state{trees = Trees} = S) ->
+    CTree = aec_trees:contracts(Trees),
+    aect_state_tree:lookup_contract(get_var(Key, contract, S), CTree);
 trees_find(commitment, Key, #state{trees = Trees} = S) ->
     NTree = aec_trees:ns(Trees),
     aens_state_tree:lookup_commitment(get_var(Key, commitment, S), NTree);
@@ -674,6 +848,8 @@ trees_find(oracle_query, Key, #state{trees = Trees} = S) ->
 %%% Cache
 
 -define(IS_TAG(X), ((X =:= account)
+                    orelse (X =:= call)
+                    orelse (X =:= contract)
                     orelse (X =:= oracle)
                     orelse (X =:= oracle_query)
                     orelse (X =:= commitment)
@@ -693,6 +869,12 @@ cache_drop(commitment, Hash, #state{cache = C} = S) ->
 cache_put(account, Val, #state{cache = C} = S) ->
     Pubkey = aec_accounts:pubkey(Val),
     S#state{cache = dict:store({account, Pubkey}, Val, C)};
+cache_put(call, Val, #state{cache = C} = S) ->
+    Id = aect_call:id(Val),
+    S#state{cache = dict:store({call, Id}, Val, C)};
+cache_put(contract, Val, #state{cache = C} = S) ->
+    Pubkey = aect_contracts:pubkey(Val),
+    S#state{cache = dict:store({contract, Pubkey}, Val, C)};
 cache_put(commitment, Val, #state{cache = C} = S) ->
     Hash = aens_commitments:hash(Val),
     S#state{cache = dict:store({commitment, Hash}, Val, C)};
@@ -707,14 +889,31 @@ cache_put(oracle_query, Val, #state{cache = C} = S) ->
     QueryId = aeo_query:id(Val),
     S#state{cache = dict:store({oracle_query, {Pubkey, QueryId}}, Val, C)}.
 
-cache_write_through(#state{cache = C, trees = T}) ->
-    dict:fold(fun cache_write_through_fun/3, T, C).
+cache_write_through(#state{cache = C, trees = T} = S) ->
+    Trees = dict:fold(fun cache_write_through_fun/3, T, C),
+    S#state{trees = Trees, cache = dict:new()}.
 
 %% TODO: Should have a dirty flag.
 cache_write_through_fun({account,_Pubkey}, Account, Trees) ->
     ATrees  = aec_trees:accounts(Trees),
     ATrees1 = aec_accounts_trees:enter(Account, ATrees),
     aec_trees:set_accounts(Trees, ATrees1);
+cache_write_through_fun({call,_Id}, Call, Trees) ->
+    CTree  = aec_trees:calls(Trees),
+    CTree1 = aect_call_state_tree:insert_call(Call, CTree),
+    aec_trees:set_calls(Trees, CTree1);
+cache_write_through_fun({contract, Pubkey}, Contract, Trees) ->
+    %% NOTE: There is a semantical difference between inserting a new contract
+    %%       and updating one.
+    CTree  = aec_trees:contracts(Trees),
+    case aect_state_tree:lookup_contract(Pubkey, CTree, [no_store]) of
+        {value, _} ->
+            CTree1 = aect_state_tree:enter_contract(Contract, CTree),
+            aec_trees:set_contracts(Trees, CTree1);
+        none ->
+            CTree1 = aect_state_tree:insert_contract(Contract, CTree),
+            aec_trees:set_contracts(Trees, CTree1)
+    end;
 cache_write_through_fun({commitment,_Hash}, Commitment, Trees) ->
     NTree  = aec_trees:ns(Trees),
     NTree1 = aens_state_tree:enter_commitment(Commitment, NTree),
