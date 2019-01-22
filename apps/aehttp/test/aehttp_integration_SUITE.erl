@@ -3831,7 +3831,9 @@ query_state(ConnPid, Config) ->
     query_state_(ConnPid, sc_ws_protocol(Config)).
 
 query_state_(ConnPid, <<"legacy">>) ->
-    ?WS:send_tagged(ConnPid, <<"get">>, <<"offchain_state">>, #{}),
+    %% get.offchain_state doesn't require any parameter, but not suplying one 
+    %% will remove "payload" key from request and cause error in legacy API
+    ?WS:send_tagged(ConnPid, <<"get">>, <<"offchain_state">>, #{<<"a">> => <<"a">>}),
     {ok, <<"offchain_state">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
     {ok, Res};
 query_state_(ConnPid, <<"json-rpc">>) ->
