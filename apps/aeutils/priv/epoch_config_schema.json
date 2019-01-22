@@ -243,7 +243,7 @@
                             "default" : 10
                         },
                         "debug_endpoints" : {
-                            "description" : "Enable (true) debug api. Disabled (false) by default. Debug endpoints are defined by a tag in swagger.yaml config",
+                            "description" : "Enable (true) debug api. Disabled (false) by default. Debug endpoints are defined by a tag in the Swagger API schema",
                             "type" : "boolean",
                             "default" : false
                         }
@@ -275,7 +275,7 @@
                         "type" : "boolean"
                     },
                     "debug" : {
-                        "description" : "deprecated",
+                        "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
                         "type" : "boolean"
                     },
                     "obsolete" : {
@@ -284,7 +284,7 @@
                     }
                 },
                 "debug" : {
-                    "description" : "deprecated",
+                    "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
                     "type" : "boolean"
                 }
             }
