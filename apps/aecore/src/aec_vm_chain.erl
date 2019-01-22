@@ -691,7 +691,7 @@ do_set_store(Store, PubKey, Trees) ->
 
 apply_call_transaction(Tx, Gas, #state{tx_env = Env} = State) ->
     Trees = get_top_trees(State),
-    case aetx:custom_apply(check_and_process_call, Tx, Trees, Env) of
+    case aetx:custom_apply(process_call_from_contract, Tx, Trees, Env) of
         {ok, Call, Trees1} ->
             State1 = set_top_trees(State, Trees1),
             GasUsed = aect_call:gas_used(Call),
