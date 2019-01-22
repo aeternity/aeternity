@@ -114,7 +114,7 @@ process(#oracle_extend_tx{} = Tx, Trees, Env) ->
                                                        DeltaTTL,
                                                        fee(Tx),
                                                        nonce(Tx)),
-    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
+    aec_tx_processor:eval(Instructions, Trees, Env).
 
 serialize(#oracle_extend_tx{oracle_id  = OracleId,
                             nonce      = Nonce,

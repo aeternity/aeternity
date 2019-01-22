@@ -134,7 +134,7 @@ process(#oracle_response_tx{} = RTx, Trees, Env) ->
                                                          RTTL,
                                                          fee(RTx),
                                                          nonce(RTx)),
-    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
+    aec_tx_processor:eval(Instructions, Trees, Env).
 
 serialize(#oracle_response_tx{oracle_id    = OracleId,
                               nonce        = Nonce,

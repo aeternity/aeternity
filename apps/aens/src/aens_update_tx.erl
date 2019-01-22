@@ -119,7 +119,7 @@ process(#ns_update_tx{} = UTx, Trees, Env) ->
           pointers(UTx),
           fee(UTx),
           nonce(UTx)),
-    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
+    aec_tx_processor:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_update_tx{} = Tx, _) ->

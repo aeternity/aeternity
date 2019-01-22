@@ -46,17 +46,22 @@
 -define(IS_NAME_RESOLVE_TYPE(_X_), (_X_ =:= account
                                     orelse _X_ =:= name)).
 
+-opaque op() :: {atom(), tuple()}.
+
+-export_type([ op/0
+             ]).
+
+
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-%% TODO: Clean up to always get tx env
-eval([_|_] = Instructions, Trees, Height) when is_integer(Height),
-                                               Height >= 0 ->
-    int_eval(Instructions, new_state(Trees, Height, no_env));
+-spec eval([op()], aec_trees:trees(), aetx_env:env()) ->
+                  {ok, aec_trees:trees()} | {error, term()}.
 eval([_|_] = Instructions, Trees, TxEnv) ->
     int_eval(Instructions, new_state(Trees, aetx_env:height(TxEnv), TxEnv)).
 
+-spec spend_tx_instructions(_, _, _, _, _) -> [op()].
 spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
     Recipient = {var, recipient},
     {Type, RecipientHash} = specialize_account(RecipientID),
@@ -66,6 +71,7 @@ spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
     , spend_fee_op(SenderPubkey, Fee)
     ].
 
+-spec oracle_register_tx_instructions(_, _, _, _, _, _, _, _) -> [op()].
 oracle_register_tx_instructions(AccountPubkey, QFormat, RFormat, QFee,
                                 DeltaTTL, VMVersion, TxFee, Nonce) ->
     %% TODO: Account nonce should not be increased in contract context
@@ -76,12 +82,14 @@ oracle_register_tx_instructions(AccountPubkey, QFormat, RFormat, QFee,
                          DeltaTTL, VMVersion)
     ].
 
+-spec oracle_extend_tx_instructions(_, _, _, _) -> [op()].
 oracle_extend_tx_instructions(Pubkey, DeltaTTL, Fee, Nonce) ->
     [ inc_account_nonce_op(Pubkey, Nonce)
     , spend_fee_op(Pubkey, Fee)
     , oracle_extend_op(Pubkey, DeltaTTL)
     ].
 
+-spec oracle_query_tx_instructions(_, _, _, _, _, _, _, _) -> [op()].
 oracle_query_tx_instructions(OraclePubkey, SenderPubkey, Query,
                              QueryFee, QTTL, RTTL, TxFee, Nonce) ->
     [ inc_account_nonce_op(SenderPubkey, Nonce)
@@ -90,6 +98,7 @@ oracle_query_tx_instructions(OraclePubkey, SenderPubkey, Query,
                       Query, QueryFee, QTTL, RTTL)
     ].
 
+-spec oracle_response_tx_instructions(_, _, _, _, _, _) -> [op()].
 oracle_response_tx_instructions(OraclePubkey, QueryId, Response,
                                 RTTL, Fee, Nonce) ->
     [ oracle_respond_op(OraclePubkey, QueryId, Response, RTTL)
@@ -101,6 +110,7 @@ oracle_response_tx_instructions(OraclePubkey, QueryId, Response,
     , oracle_earn_query_fee_op(OraclePubkey, QueryId)
     ].
 
+-spec name_preclaim_tx_instructions(_, _, _, _, _) -> [op()].
 name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
                               Fee, Nonce) ->
     [ inc_account_nonce_op(AccountPubkey, Nonce)
@@ -108,6 +118,7 @@ name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
     , name_preclaim_op(AccountPubkey, CommitmentHash, DeltaTTL)
     ].
 
+-spec name_claim_tx_instructions(_, _, _, _, _) -> [op()].
 name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, Fee, Nonce) ->
     PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
     DeltaTTL = aec_governance:name_claim_max_expiration(),
@@ -118,6 +129,7 @@ name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, Fee, Nonce) ->
     , name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta)
     ].
 
+-spec name_revoke_tx_instructions(_, _, _, _) -> [op()].
 name_revoke_tx_instructions(AccountPubkey, NameHash, Fee, Nonce) ->
     ProtectedDeltaTTL = aec_governance:name_protection_period(),
     [ inc_account_nonce_op(AccountPubkey, Nonce)
@@ -125,6 +137,7 @@ name_revoke_tx_instructions(AccountPubkey, NameHash, Fee, Nonce) ->
     , name_revoke_op(AccountPubkey, NameHash, ProtectedDeltaTTL)
     ].
 
+-spec name_transfer_tx_instructions(_, _, _, _, _) -> [op()].
 name_transfer_tx_instructions(OwnerPubkey, RecipientID, NameHash, Fee, Nonce) ->
     Recipient = {var, recipient},
     {Type, Hash} = specialize_account(RecipientID),
@@ -134,6 +147,7 @@ name_transfer_tx_instructions(OwnerPubkey, RecipientID, NameHash, Fee, Nonce) ->
     , name_transfer_op(OwnerPubkey, Recipient, NameHash)
     ].
 
+-spec name_update_tx_instructions(_, _, _, _, _, _, _) -> [op()].
 name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
                             Pointers, Fee, Nonce) ->
     MaxTTL = aec_governance:name_claim_max_expiration(),
@@ -143,6 +157,7 @@ name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
                      ClientTTL, Pointers)
     ].
 
+-spec contract_create_tx_instructions(_, _, _, _, _, _, _, _, _, _) -> [op()].
 contract_create_tx_instructions(OwnerPubkey, Amount, Deposit, Gas, GasPrice,
                                 VMVersion, SerializedCode, CallData, Fee, Nonce) ->
     [ inc_account_nonce_op(OwnerPubkey, Nonce)
@@ -597,13 +612,11 @@ assert_contract_byte_code(VMVersion, SerializedCode, CallData) ->
         ?AEVM_01_Sophia_01 ->
             try aect_sophia:deserialize(SerializedCode) of
                 #{type_info := TypeInfo} ->
-                    assert_contract_init_function(CallData, TypeInfo);
-                #{} -> runtime_error(bad_sophia_code)
+                    assert_contract_init_function(CallData, TypeInfo)
             catch _:_ -> runtime_error(bad_sophia_code)
             end;
         ?AEVM_01_Solidity_01 ->
-            Fun = ?AEVM_01_Solidity_01_enabled,
-            case Fun() of
+            case aeu_validation:run([?AEVM_01_Solidity_01_enabled]) of
                 ok -> ok;
                 {error, What} -> runtime_error(What)
             end
@@ -824,12 +837,13 @@ delete_x(commitment, Hash, #state{trees = Trees} = S) ->
 trees_find(account, Key, #state{trees = Trees} = S) ->
     ATree = aec_trees:accounts(Trees),
     aec_accounts_trees:lookup(get_var(Key, account, S), ATree);
-trees_find(call, Key, #state{trees = Trees} = S) ->
-    CTree = aec_trees:calls(Trees),
-    aect_call_state_tree:lookup(get_var(Key, call, S), CTree);
-trees_find(contract, Key, #state{trees = Trees} = S) ->
-    CTree = aec_trees:contracts(Trees),
-    aect_state_tree:lookup_contract(get_var(Key, contract, S), CTree);
+%% Not used yet, and Dialyzer finds out
+%% trees_find(call, Key, #state{trees = Trees} = S) ->
+%%     CTree = aec_trees:calls(Trees),
+%%     aect_call_state_tree:lookup(get_var(Key, call, S), CTree);
+%% trees_find(contract, Key, #state{trees = Trees} = S) ->
+%%     CTree = aec_trees:contracts(Trees),
+%%     aect_state_tree:lookup_contract(get_var(Key, contract, S), CTree);
 trees_find(commitment, Key, #state{trees = Trees} = S) ->
     NTree = aec_trees:ns(Trees),
     aens_state_tree:lookup_commitment(get_var(Key, commitment, S), NTree);

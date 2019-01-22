@@ -109,7 +109,7 @@ process(#ns_claim_tx{} = ClaimTx, Trees, Env) ->
           name_salt(ClaimTx),
           fee(ClaimTx),
           nonce(ClaimTx)),
-    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
+    aec_tx_processor:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_claim_tx{} = Tx, _) ->

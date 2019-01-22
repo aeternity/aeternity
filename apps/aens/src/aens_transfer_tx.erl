@@ -124,7 +124,7 @@ process(#ns_transfer_tx{} = TTx, Trees, Env) ->
           name_hash(TTx),
           fee(TTx),
           nonce(TTx)),
-    aec_tx_processor:eval(Instructions, Trees, aetx_env:height(Env)).
+    aec_tx_processor:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_transfer_tx{} = Tx, _) ->

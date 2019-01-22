@@ -167,7 +167,7 @@ process(#oracle_query_tx{} = QTx, Trees, Env) ->
                   RTTL,
                   fee(QTx),
                   nonce(QTx)),
-            aec_tx_processor:eval(Instructions, Trees, Height)
+            aec_tx_processor:eval(Instructions, Trees, Env)
     end.
 
 serialize(#oracle_query_tx{sender_id    = SenderId,
