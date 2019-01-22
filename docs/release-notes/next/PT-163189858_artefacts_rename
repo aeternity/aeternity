@@ -1,0 +1,2 @@
+* Package names has been updated to use `aeternity` prefix e.g. `aeternity-1.3.0-ubuntu-x86_64.tar.gz` instead of `epoch-1.3.0-ubuntu-x86_64.tar.gz`
+* Dockerhub repository `aeternity/epoch` has been deprecated in favor of `aeternity/aeternity`. Older images has been migrated to `aeternity/aeternity`. The `latest` tag of `aeternity/epoch` will always point to `1.3.0` until the repository is deleted in future.

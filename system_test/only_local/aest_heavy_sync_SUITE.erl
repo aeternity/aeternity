@@ -82,19 +82,19 @@ many_spend_txs(Cfg) ->
     setup_nodes([#{ name    => node1,
                     peers   => [node2, node3],
                     backend => aest_docker,
-                    source  => {pull, "aeternity/epoch:local"},
+                    source  => {pull, "aeternity/aeternity:local"},
                     config  => #{persist => false}
                   },
                  #{ name    => node2,
                     peers   => [node1],
                     backend => aest_docker,
-                    source  => {pull, "aeternity/epoch:local"},
+                    source  => {pull, "aeternity/aeternity:local"},
                     config  => #{persist => true}
                   },
                  #{ name    => node3,
                     peers   => [node1],
                     backend => aest_docker,
-                    source  => {pull, "aeternity/epoch:local"},
+                    source  => {pull, "aeternity/aeternity:local"},
                     config  => #{persist => true},
                     mining  => #{autostart => false}
                   }], Cfg),

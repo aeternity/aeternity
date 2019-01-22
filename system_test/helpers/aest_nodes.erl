@@ -75,7 +75,7 @@
 
 -define(BASE_SPEC, #{
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"}
+    source  => {pull, "aeternity/aeternity:local"}
 }).
 
 %% AWK script to keep only error, critical, alert and emergency log lines with

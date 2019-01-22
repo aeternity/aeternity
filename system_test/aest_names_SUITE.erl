@@ -71,7 +71,7 @@
     name    => node1,
     peers   => [],
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"}
+    source  => {pull, "aeternity/aeternity:local"}
 }).
 
 %=== COMMON TEST FUNCTIONS =====================================================

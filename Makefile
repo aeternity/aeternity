@@ -194,7 +194,7 @@ eunit: internal-build
 all-tests: eunit test
 
 docker:
-	@docker build . -t aeternity/epoch:local
+	@docker build . -t aeternity/aeternity:local
 
 ST_DOCKER_FILTER=--filter label=epoch_system_test=true
 

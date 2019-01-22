@@ -222,7 +222,7 @@ container_logs(ID) ->
     end.
 
 commit(ID, Tag) ->
-    case docker_post([commit], #{container => ID, repo => "aeternity/epoch", tag => Tag}, #{}, #{}) of
+    case docker_post([commit], #{container => ID, repo => "aeternity/aeternity", tag => Tag}, #{}, #{}) of
         {ok, 201, Response} -> Response
     end.
 
