@@ -129,7 +129,8 @@ loop(CP, StateIn) ->
         false ->
             OP     = code_get_op(CP, Code),
             State  = trace(CP, StateIn),
-            case is_valid_instruction(OP, aevm_eeevm_state:vm_version(State)) of
+            VMVersion = aevm_eeevm_state:vm_version(State),
+            case is_valid_instruction(OP, VMVersion) of
                 true -> ok;
                 false -> eval_error({illegal_instruction, OP})
             end,
@@ -146,7 +147,7 @@ loop(CP, StateIn) ->
                     %% µs'[0] ≡ µs[0] + µs[1]
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = add(Us0, Us1),
+                    Val = add(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?MUL ->
@@ -155,7 +156,7 @@ loop(CP, StateIn) ->
                     %% µs'[0] ≡ µs[0] * µs[1]
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = mul(Us0, Us1),
+                    Val = mul(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?SUB ->
@@ -164,7 +165,7 @@ loop(CP, StateIn) ->
                     %% µ's[0] ≡ µs[0] − µs[1]
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = sub(Us0, Us1),
+                    Val = sub(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?DIV ->
@@ -174,7 +175,7 @@ loop(CP, StateIn) ->
                     %%          µs[0] / µs[1] otherwise
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = idiv(Us0, Us1),
+                    Val = idiv(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?SDIV ->
@@ -188,7 +189,7 @@ loop(CP, StateIn) ->
                     %% Note the overflow semantic when −2^255 is negated.
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = sdiv(Us0, Us1),
+                    Val = sdiv(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?MOD ->
@@ -198,7 +199,7 @@ loop(CP, StateIn) ->
                     %%           µs[0] mod µs[1] otherwise
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = mod(Us0, Us1),
+                    Val = mod(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?SMOD ->
@@ -210,7 +211,7 @@ loop(CP, StateIn) ->
                     %% two’s complement signed 256-bit integers.
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = smod(Us0, Us1),
+                    Val = smod(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?ADDMOD ->
@@ -223,7 +224,7 @@ loop(CP, StateIn) ->
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Us2, State3} = pop(State2),
-                    Val = addmod(Us0, Us1, Us2),
+                    Val = addmod(Us0, Us1, Us2, VMVersion),
                     State4 = push(Val, State3),
                     next_instruction(CP, State, State4);
                 ?MULMOD ->
@@ -236,7 +237,7 @@ loop(CP, StateIn) ->
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Us2, State3} = pop(State2),
-                    Val = mulmod(Us0, Us1, Us2),
+                    Val = mulmod(Us0, Us1, Us2, VMVersion),
                     State4 = push(Val, State3),
                     next_instruction(CP, State, State4);
                 ?EXP ->
@@ -245,7 +246,7 @@ loop(CP, StateIn) ->
                     %% µ's[0] ≡ µs[0] ^ µs[1]
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = exp(Us0, Us1),
+                    Val = exp(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?SIGNEXTEND ->
@@ -1345,34 +1346,36 @@ is_valid_instruction(?SUICIDE       , VM) -> not ?IS_VM_SOPHIA(VM).
 %% ------------------------------------------------------------------------
 %% ARITHMETIC
 %% ------------------------------------------------------------------------
-add(Arg1, Arg2) -> (Arg1 + Arg2) band ?MASK256.
-mul(Arg1, Arg2) -> (Arg1 * Arg2) band ?MASK256.
-sub(Arg1, Arg2) -> (Arg1 - Arg2) band ?MASK256.
-exp(Arg1, Arg2) -> pow(Arg1, Arg2) band ?MASK256.
-idiv(_Arg1,    0)-> 0;
-idiv(Arg1, Arg2)-> (Arg1 div Arg2) band ?MASK256.
-sdiv(_Arg1, 0)-> 0;
-sdiv(?NEG2TO255, -1) -> ?NEG2TO255;
-sdiv(Arg1, Arg2) ->
+
+add(Arg1, Arg2, _VMVersion) -> (Arg1 + Arg2) band ?MASK256.
+mul(Arg1, Arg2, _VMVersion) -> (Arg1 * Arg2) band ?MASK256.
+sub(Arg1, Arg2, _VMVersion) -> (Arg1 - Arg2) band ?MASK256.
+exp(Arg1, Arg2, _VMVersion) -> pow(Arg1, Arg2) band ?MASK256.
+idiv(_Arg1,    0, _VMVersion)-> 0;
+idiv(Arg1, Arg2, _VMVersion)-> (Arg1 div Arg2) band ?MASK256.
+sdiv(_Arg1, 0, _VMVersion)-> 0;
+sdiv(?NEG2TO255, -1, _VMVersion) -> ?NEG2TO255;
+sdiv(Arg1, Arg2, _VMVersion) ->
     <<SArg1:256/integer-signed>> = <<Arg1:256/integer-unsigned>>,
     <<SArg2:256/integer-signed>> = <<Arg2:256/integer-unsigned>>,
     (SArg1 div SArg2) band ?MASK256.
 
-mod(_Arg1,   0) -> 0;
-mod(Arg1, Arg2) -> modulo(Arg1, Arg2) band ?MASK256.
+mod(_Arg1,   0, _VMVersion) -> 0;
+mod(Arg1, Arg2, _VMVersion) -> modulo(Arg1, Arg2) band ?MASK256.
 
-smod(_Arg1,   0) -> 0;
-smod(Arg1, Arg2) -> smodulo(Arg1, Arg2) band ?MASK256.
+smod(_Arg1,   0, _VMVersion) -> 0;
+smod(Arg1, Arg2, _VMVersion) -> smodulo(Arg1, Arg2) band ?MASK256.
 
 
-addmod(_Arg1,_Arg2,   0) -> 0;
-addmod(Arg1, Arg2, Arg3) -> modulo((Arg1 + Arg2), Arg3) band ?MASK256.
+addmod(_Arg1,_Arg2,   0, _VMVersion) -> 0;
+addmod(Arg1, Arg2, Arg3, _VMVersion) -> modulo((Arg1 + Arg2), Arg3) band ?MASK256.
+
 modulo(Arg1, Arg2) ->
     Res = (Arg1 rem Arg2 + Arg2) rem Arg2,
     Res.
 
-mulmod(_Arg1,_Arg2,   0) -> 0;
-mulmod(Arg1, Arg2, Arg3) -> modulo((Arg1 * Arg2), Arg3) band ?MASK256.
+mulmod(_Arg1,_Arg2,   0, _VMVersion) -> 0;
+mulmod(Arg1, Arg2, Arg3, _VMVersion) -> modulo((Arg1 * Arg2), Arg3) band ?MASK256.
 
 signed(UVal) ->
     <<SVal:256/integer-signed>> = <<UVal:256/integer-unsigned>>,
