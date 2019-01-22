@@ -1347,35 +1347,49 @@ is_valid_instruction(?SUICIDE       , VM) -> not ?IS_VM_SOPHIA(VM).
 %% ARITHMETIC
 %% ------------------------------------------------------------------------
 
-add(Arg1, Arg2, _VMVersion) -> (Arg1 + Arg2) band ?MASK256.
-mul(Arg1, Arg2, _VMVersion) -> (Arg1 * Arg2) band ?MASK256.
-sub(Arg1, Arg2, _VMVersion) -> (Arg1 - Arg2) band ?MASK256.
-exp(Arg1, Arg2, _VMVersion) -> pow(Arg1, Arg2) band ?MASK256.
-idiv(_Arg1,    0, _VMVersion)-> 0;
-idiv(Arg1, Arg2, _VMVersion)-> (Arg1 div Arg2) band ?MASK256.
-sdiv(_Arg1, 0, _VMVersion)-> 0;
-sdiv(?NEG2TO255, -1, _VMVersion) -> ?NEG2TO255;
-sdiv(Arg1, Arg2, _VMVersion) ->
-    <<SArg1:256/integer-signed>> = <<Arg1:256/integer-unsigned>>,
-    <<SArg2:256/integer-signed>> = <<Arg2:256/integer-unsigned>>,
-    (SArg1 div SArg2) band ?MASK256.
+%% Truncate a signed word. Throw arithmetic error on VM_AEVM_SOPHIA_2 and above
+%% if this is not a no op.
+truncate(X, VM) -> check_safe_math(X, signed(X), VM).
 
-mod(_Arg1,   0, _VMVersion) -> 0;
-mod(Arg1, Arg2, _VMVersion) -> modulo(Arg1, Arg2) band ?MASK256.
+%% VM_AEVM_SOPHIA_2 and above uses safe arithmetic
+arith_error(_, VM) when ?IS_VM_SOPHIA(VM), VM >= ?VM_AEVM_SOPHIA_2 ->
+    eval_error(arithmetic_error);
+arith_error(X, _) -> X.
 
-smod(_Arg1,   0, _VMVersion) -> 0;
-smod(Arg1, Arg2, _VMVersion) -> smodulo(Arg1, Arg2) band ?MASK256.
+check_safe_math(X, X, _)  -> unsigned(X);
+check_safe_math(_, X, VM) -> arith_error(unsigned(X), VM).
 
+add(Arg1, Arg2, VM) -> truncate(signed(Arg1) + signed(Arg2), VM).
+mul(Arg1, Arg2, VM) -> truncate(signed(Arg1) * signed(Arg2), VM).
+sub(Arg1, Arg2, VM) -> truncate(signed(Arg1) - signed(Arg2), VM).
 
-addmod(_Arg1,_Arg2,   0, _VMVersion) -> 0;
-addmod(Arg1, Arg2, Arg3, _VMVersion) -> modulo((Arg1 + Arg2), Arg3) band ?MASK256.
+exp(Arg1, Arg2, VM) when ?IS_VM_SOPHIA(VM), VM >= ?VM_AEVM_SOPHIA_2 ->
+    pow(signed(Arg1), signed(Arg2), VM);
+exp(Arg1, Arg2, VM) -> pow(Arg1, Arg2, VM). %% Allow negative exponents for VM < SOPHIA_2
+
+idiv(_Arg1,   0, VM)  -> arith_error(0, VM);
+idiv(Arg1, Arg2, _VM) -> (Arg1 div Arg2) band ?MASK256.
+
+sdiv(_Arg1, 0, VM)-> arith_error(0, VM);
+sdiv(?NEG2TO255, -1, VM) -> arith_error(?NEG2TO255, VM);
+sdiv(Arg1, Arg2, VM) ->
+    truncate(signed(Arg1) div signed(Arg2), VM).
+
+mod(_Arg1,   0, VM) -> arith_error(0, VM);
+mod(Arg1, Arg2, VM) -> truncate(modulo(Arg1, Arg2), VM).
+
+smod(_Arg1,   0, VM) -> arith_error(0, VM);
+smod(Arg1, Arg2, VM) -> truncate(smodulo(Arg1, Arg2), VM).
+
+addmod(_Arg1,_Arg2,   0, VM) -> arith_error(0, VM);
+addmod(Arg1, Arg2, Arg3, VM) -> truncate(modulo(Arg1 + Arg2, Arg3), VM).
 
 modulo(Arg1, Arg2) ->
     Res = (Arg1 rem Arg2 + Arg2) rem Arg2,
     Res.
 
-mulmod(_Arg1,_Arg2,   0, _VMVersion) -> 0;
-mulmod(Arg1, Arg2, Arg3, _VMVersion) -> modulo((Arg1 * Arg2), Arg3) band ?MASK256.
+mulmod(_Arg1,_Arg2,   0, VM) -> arith_error(0, VM);
+mulmod(Arg1, Arg2, Arg3, VM) -> truncate(modulo(Arg1 * Arg2, Arg3), VM).
 
 signed(UVal) ->
     <<SVal:256/integer-signed>> = <<UVal:256/integer-unsigned>>,
@@ -1386,21 +1400,21 @@ unsigned(SVal) ->
     UVal.
 
 smodulo(Arg1, Arg2) ->
-    <<SArg1:256/integer-signed>> = <<Arg1:256/integer-unsigned>>,
-    <<SArg2:256/integer-signed>> = <<Arg2:256/integer-unsigned>>,
-    Res = (SArg1 rem (SArg2 + SArg2)) rem SArg2,
-    Res.
+    SArg1 = signed(Arg1),
+    SArg2 = signed(Arg2),
+    (SArg1 rem (SArg2 + SArg2)) rem SArg2.
 
-pow(X, Y) when is_integer(X), is_integer(Y), Y >= 0 ->
-    pow(1, X, Y).
+pow(X, Y, VM) when is_integer(X), is_integer(Y), Y >= 0 ->
+    truncate(pow(1, X, Y, VM), VM);
+pow(_, _, _) -> eval_error(arithmetic_error).
 
-pow(N, _, 0) ->     N;
-pow(N, X, 1) -> X * N;
-pow(N, X, Y) ->
-    Square = (X * X) band ?MASK256,
+pow(N, _, 0, _) ->     N;
+pow(N, X, 1, _) -> X * N;
+pow(N, X, Y, VM) ->
+    Square = truncate(X * X, VM),
     Exp = Y bsr 1,
-    if (Y band 1) =:= 0 -> pow(    N, Square, Exp);
-       true             -> pow(X * N, Square, Exp)
+    if (Y band 1) =:= 0 -> pow(    N, Square, Exp, VM);
+       true             -> pow(X * N, Square, Exp, VM)
     end.
 
 shl(Arg1, _Arg2) when Arg1 > 255 -> 0;
