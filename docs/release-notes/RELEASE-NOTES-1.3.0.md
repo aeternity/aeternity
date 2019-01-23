@@ -9,7 +9,7 @@ It:
 * Marks `http > endpoints > debug` and `http > debug` configuration params as deprecated.
 * Introduces new configuration parameter `sync` > `upnp_enabled`, which (if true) starts UPnP/NAT-PMP service to handle UPnP/NAT-PMP discovery and automatic port mappings.
 
-[this-release]: https://github.com/aeternity/epoch/releases/tag/v1.3.0
+[this-release]: https://github.com/aeternity/aeternity/releases/tag/v1.3.0
 
 Please join the Roma network by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
@@ -27,10 +27,10 @@ You can run a node by either:
 * Running the published [Docker image `aeternity/aeternity`][docker]; or
 * [Building a release binary from source][build].
 
-[docker]: https://github.com/aeternity/epoch/blob/v1.3.0/docs/docker.md
-[build]: https://github.com/aeternity/epoch/blob/v1.3.0/docs/build.md
+[docker]: https://github.com/aeternity/aeternity/blob/v1.3.0/docs/docker.md
+[build]: https://github.com/aeternity/aeternity/blob/v1.3.0/docs/build.md
 
-The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
+The user configuration is documented in the [wiki](https://github.com/aeternity/aeternity/wiki/User-provided-configuration).
 For specifying configuration using the Docker image, please refer to [its documentation][docker].
 
 The node user API is documented:
@@ -41,8 +41,8 @@ The node user API is documented:
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
 
-[swagger-yaml]: https://github.com/aeternity/epoch/blob/v1.3.0/config/swagger.yaml
-[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v1.3.0/apps/aehttp/priv/swagger.json
+[swagger-yaml]: https://github.com/aeternity/aeternity/blob/v1.3.0/config/swagger.yaml
+[swagger-ui]: https://aeternity.github.io/api-docs/?config=https://raw.githubusercontent.com/aeternity/aeternity/v1.3.0/apps/aehttp/priv/swagger.json
 [api-doc]: https://github.com/aeternity/protocol/blob/epoch-v1.3.0/epoch/api/README.md
 
 ## Install node
