@@ -9,7 +9,6 @@ services:
       EPOCH_CONFIG: /home/aeternity/aeternity.yaml
     command: >
       -aecore expected_mine_rate ${AETERNITY_MINE_RATE:-15000}
-      -aehttp enable_debug_endpoints true
     volumes:
       - ${PWD}/docker/aeternity_node1_mean15.yaml:/home/aeternity/aeternity.yaml
       - ${PWD}/docker/keys/node1:/home/aeternity/node/keys
@@ -22,7 +21,6 @@ services:
       EPOCH_CONFIG: /home/aeternity/aeternity.yaml
     command: >
       -aecore expected_mine_rate ${AETERNITY_MINE_RATE:-15000}
-      -aehttp enable_debug_endpoints true
     volumes:
       - ${PWD}/docker/aeternity_node2_mean15.yaml:/home/aeternity/aeternity.yaml
       - ${PWD}/docker/keys/node2:/home/aeternity/node/keys
@@ -35,7 +33,6 @@ services:
       EPOCH_CONFIG: /home/aeternity/aeternity.yaml
     command: >
       -aecore expected_mine_rate ${AETERNITY_MINE_RATE:-15000}
-      -aehttp enable_debug_endpoints true
     volumes:
       - ${PWD}/docker/aeternity_node3_mean15.yaml:/home/aeternity/aeternity.yaml
       - ${PWD}/docker/keys/node3:/home/aeternity/node/keys

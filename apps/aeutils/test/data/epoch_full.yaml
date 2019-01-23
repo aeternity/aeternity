@@ -86,6 +86,8 @@ http:
         port: 3113
         # Number of acceptors in server pool
         acceptors: 10
+        # Enable (true) debug api. Disabled (false) by default
+        debug_endpoints: false
 
 websocket:
     channel:

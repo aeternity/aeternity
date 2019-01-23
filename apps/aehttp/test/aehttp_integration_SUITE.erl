@@ -147,6 +147,13 @@
    ]).
 
 %% test case exports
+%% debug endpoints
+-export([
+    disabled_debug_endpoints/1,
+    enabled_debug_endpoints/1
+   ]).
+
+%% test case exports
 %% for swagger validation errors
 -export([
     swagger_validation_body/1,
@@ -261,6 +268,7 @@ groups() ->
        {group, off_chain_endpoints},
        {group, external_endpoints},
        {group, internal_endpoints},
+       {group, debug_endpoints},
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
        {group, naming},
@@ -463,6 +471,10 @@ groups() ->
         % requested Endpoints
         peers
       ]},
+     {debug_endpoints, [sequence], [
+        disabled_debug_endpoints,
+        enabled_debug_endpoints
+     ]},
      {swagger_validation, [], [
         swagger_validation_body,
         %% swagger_validation_enum,
@@ -603,6 +615,7 @@ end_per_suite(_Config) ->
 init_per_group(all, Config) ->
     Config;
 init_per_group(Group, Config) when
+      Group =:= debug_endpoints;
       Group =:= block_endpoints;
       Group =:= account_endpoints;
       Group =:= transaction_endpoints;
@@ -840,6 +853,10 @@ init_per_testcase(post_oracle_response, Config) ->
      {response_ttl_type, <<"delta">>},
      {response_ttl_value, 20},
      {response, <<"Hejsan">>} | init_per_testcase_all(Config)];
+init_per_testcase(Case, Config) when
+        Case =:= disabled_debug_endpoints; Case =:= enabled_debug_endpoints ->
+    {ok, HttpInternal} = rpc(?NODE, application, get_env, [aehttp, internal]),
+    [{http_internal_config, HttpInternal} | init_per_testcase_all(Config)];
 init_per_testcase(_Case, Config) ->
     init_per_testcase_all(Config).
 
@@ -848,6 +865,11 @@ init_per_testcase_all(Config) ->
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
     [{tc_start, os:timestamp()} | Config].
 
+end_per_testcase(Case, Config) when
+        Case =:= disabled_debug_endpoints; Case =:= enabled_debug_endpoints ->
+    HttpInternal = ?config(http_internal_config, Config),
+    ok = rpc(?NODE, application, set_env, [aehttp, internal, HttpInternal]),
+    end_per_testcase_all(Config);
 end_per_testcase(_Case, Config) ->
     end_per_testcase_all(Config).
 
@@ -863,8 +885,7 @@ end_per_testcase_all(Config) ->
 start_node(Group, Config) ->
     start_node(proplists:is_defined(node, Config), Group, Config).
 
-start_node(true, _Group, Config) ->
-    Config;
+start_node(true, _Group, Config) -> Config;
 start_node(false, Group, Config) ->
     %% TODO: consider reinint_chain to speed up tests
     aecore_suite_utils:start_node(?NODE, Config),
@@ -879,16 +900,19 @@ stop_node(true, Group, Config) ->
     NodeStartGroup = ?config(node_start_group, Config),
     case Group =:= NodeStartGroup of
         true ->
-            RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
-            {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
-            aecore_suite_utils:stop_node(?NODE, Config),
-            aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
+            stop_node_(?NODE, Config),
             ok;
         false ->
             ok
     end;
 stop_node(false, _Group, _Config) ->
     ok.
+
+stop_node_(Node, Config) ->
+    RpcFun = fun(M, F, A) -> rpc(Node, M, F, A) end,
+    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
+    aecore_suite_utils:stop_node(Node, Config),
+    aecore_suite_utils:delete_node_db_if_persisted(DbCfg).
 
 %% ============================================================
 %% Test cases
@@ -3350,7 +3374,6 @@ naming_system_broken_txs(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Try to submit txs with empty account
-
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
         get_commitment_id(<<"abcd.badregistrar">>, 123),
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
@@ -4610,7 +4633,7 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
     % we have two contracts: c
     % * channel_on_chain_contract_name_resolution.aes that has
     %     `can_resolve(Name, Key)` function. It resolves on-chain names
-    % * channel_remote_on_chain_contract_name_res.aes that has 
+    % * channel_remote_on_chain_contract_name_res.aes that has
     %     `remote_resolve(Contract, Name, Key)` function that makes a remote
     %     call to the first contract and uses it to resolve the name on-chain
     % both functions shall return the same result
@@ -4981,7 +5004,7 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
 
 contract_byte_code(ContractName) ->
     {ok, BinCode} = aect_test_utils:compile_contract(
-                      filename:join(["contracts", 
+                      filename:join(["contracts",
                                      filename:basename(ContractName, ".aes") ++ ".aes"])),
     aehttp_api_encoder:encode(contract_bytearray, BinCode).
 
@@ -5054,14 +5077,8 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
                 }, Other).
 
 peers(_Config) ->
-    rpc(application, set_env, [aehttp, enable_debug_endpoints, false]),
-    {ok, 403, #{<<"reason">> := <<"Call not enabled">>}} = get_peers(),
-
-    rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := Peers}} = get_peers(),
-
     OkPeers = [ ok || P <- Peers, {ok, _} <- [aec_peers:parse_peer_address(P)] ],
-
     true = (length(OkPeers) == length(Peers)),
 
     %% ensure no peers
@@ -5070,7 +5087,24 @@ peers(_Config) ->
         rpc(aec_peers, get_random, [all])),
 
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := []}} = get_peers(),
+    ok.
 
+enabled_debug_endpoints(_Config) ->
+    ?assertMatch({ok, 400, _}, post_key_blocks_sut(#{})),
+    ?assertMatch({ok, 200, _}, get_peers()),
+    ?assertMatch({ok, 400, _}, get_contract_create(#{})),
+    ok.
+
+disabled_debug_endpoints(_Config) ->
+    {ok, Internal} = rpc(?NODE, application, get_env, [aehttp, internal]),
+    NewInternal = proplists:delete(debug_endpoints, Internal),
+    ok = rpc(?NODE, application, set_env, [aehttp, internal, NewInternal]),
+    ?assertMatch(false, rpc(?NODE, aehttp_app, enable_internal_debug_endpoints, [])),
+
+    %% post_key_blocks_sut should be always enabled
+    ?assertMatch({ok, 400, _}, post_key_blocks_sut(#{})),
+    ?assertMatch({ok, 403, _}, get_peers()),
+    ?assertMatch({ok, 403, _}, get_contract_create(#{})),
     ok.
 
 format_args(X) ->
@@ -5494,7 +5528,7 @@ external_address() ->
     "http://127.0.0.1:" ++ integer_to_list(Port).     % good enough for requests
 
 internal_address() ->
-    Port = rpc(aeu_env, user_config_or_env,
+    Port = rpc(?NODE, aeu_env, user_config_or_env,
               [ [<<"http">>, <<"internal">>, <<"port">>],
                 aehttp, [internal, port], 8143]),
     "http://127.0.0.1:" ++ integer_to_list(Port).

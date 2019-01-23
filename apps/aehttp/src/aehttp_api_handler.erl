@@ -2,11 +2,13 @@
 
 -behaviour(cowboy_rest).
 
--export([allowed_methods/2]).
 -export([init/2]).
+
+-export([allowed_methods/2]).
 -export([content_types_accepted/2]).
 -export([content_types_provided/2]).
 -export([delete_resource/2]).
+-export([forbidden/2]).
 -export([handle_request_json/2]).
 
 -record(state, {
@@ -32,6 +34,13 @@ init(Req, {OperationId, AllowedMethod, LogicHandler}) ->
 
 allowed_methods(Req, State = #state{ allowed_method = Method }) ->
     {[Method], Req, State}.
+
+forbidden(Req, State = #state{
+        operation_id = OperationId,
+        logic_handler = LogicHandler
+    }) ->
+    IsForbidden = LogicHandler:forbidden(OperationId),
+    {IsForbidden, Req, State}.
 
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, handle_request_json}], Req, State}.
