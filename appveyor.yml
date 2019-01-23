@@ -62,8 +62,8 @@ init:
   - systeminfo
 # Attempt to ensure we don't try to convert line endings to Win32 CRLF as this will cause build to fail
   - git config --global core.autocrlf true
-# Allows RDP
-  - ps: iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
+# Allows RDP, uses Git tag build-agent-v6.1.0%2B1300
+  - ps: iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/ab48d6e110f2feb585b6b908a72d6e7dbfb83cb3/scripts/enable-rdp.ps1'))
   - echo "%APPVEYOR_REPO_COMMIT%">"%TMP%\\REVISION_appveyor_%ERTS_VERSION%"
 
 install:
@@ -78,5 +78,5 @@ build_script:
 deploy: off
 
 on_finish:
-# Set blockRdp to true to allow RDP
-  - ps: $blockRdp = $false; iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
+# Set blockRdp to true to allow RDP, uses Git tag build-agent-v6.1.0%2B1300
+  - ps: $blockRdp = $false; iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/ab48d6e110f2feb585b6b908a72d6e7dbfb83cb3/scripts/enable-rdp.ps1'))
