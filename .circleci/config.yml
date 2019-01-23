@@ -643,7 +643,16 @@ jobs:
       - DEPLOY_DOWNTIME: 1800 #30M
     steps: *deploy_steps
 
-  upload_release_packages:
+  upload_packages_osx:
+    <<: *infrastructure_config
+    steps:
+      - checkout
+      - attach_workspace:
+          at: *packages_workspace
+      - *setup_secrets
+      - *upload_github_release_asset
+
+  upload_packages_linux:
     <<: *infrastructure_config
     steps:
       - checkout
@@ -889,13 +898,25 @@ workflows:
             tags:
               only: *stable_tag_regex
 
-      - upload_release_packages:
+      - upload_packages_linux:
+          requires:
+            - eunit
+            - static_analysis
+            - rebar_lock_check
+            - linux_package
+            - hodl_artefact_upload
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
+
+      - upload_packages_osx:
           requires:
             - eunit
             - static_analysis
             - rebar_lock_check
             - osx_package
-            - linux_package
             - hodl_artefact_upload
           filters:
             branches:
