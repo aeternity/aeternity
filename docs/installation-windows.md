@@ -1,4 +1,4 @@
-# Install epoch on Windows using the Windows Subsystem Linux
+# Install Aeternity node on Windows using the Windows Subsystem Linux
 
 NOTE: These steps describe the setup for a basic CPU mining configuration.
       Windows Subsystem Linux has no GPU-passthrough support yet. Therefore,
@@ -41,10 +41,10 @@ process.
 NOTE: You might have to repeat this process up to 3 times, depending on the
       level of configuration required for your system.
 
-## Step 3: Running epoch
+## Step 3: Running Aeternity node
 
-Once all configuration has succeeded you can run the `epoch` node by executing
+Once all configuration has succeeded you can run the Aeternity node node by executing
 the script `scripts/windows/wsl-run.ps1`.
 
 The running node can be further inspected within the running Ubuntu system like
-described in the rest of the `epoch` documentation.
+described in the rest of the Aeternity node documentation.

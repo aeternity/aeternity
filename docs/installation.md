@@ -8,11 +8,11 @@ curl -O https://raw.githubusercontent.com/aeternity/epoch/v1.3.0/scripts/install
 
 See the documentation below detailed instructions for manual installation.
 
-# Install an epoch node using a release binary
+# Install an Aeternity node using a release binary
 
-This document describes how to install an epoch node using a release binary.
+This document describes how to install an Aeternity node using a release binary.
 
-In order to install an epoch node using a release binary, you need to:
+In order to install an Aeternity node using a release binary, you need to:
 * Retrieve the release binary corresponding to your platform;
 * Install the required dependencies;
 * Deploy the node.
