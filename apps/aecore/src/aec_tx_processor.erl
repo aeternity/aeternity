@@ -314,12 +314,11 @@ lock_amount_op(From, Amount) when ?IS_VAR_OR_HASH(From),
                                   ?IS_NON_NEG_INTEGER(Amount) ->
     {lock_amount, {From, Amount}}.
 
-lock_amount({_From, 0}, #state{} = S) ->
-    %% Don't risk creating an account for the locked amount if there is none.
-    S;
 lock_amount({From, Amount}, #state{} = S) ->
-    LockPubkey = aec_governance:locked_coins_holder_account(),
-    spend({From, LockPubkey, Amount}, S).
+    {Account, S1} = get_account(From, S),
+    assert_account_balance(Account, Amount),
+    S2 = account_spend(Account, Amount, S1),
+    int_lock_amount(Amount, S2).
 
 %%%-------------------------------------------------------------------
 
@@ -764,6 +763,14 @@ run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, Amount,
     VMVersion = aect_contracts:vm_version(Contract),
     {Call1, Trees1} = aect_dispatch:run(VMVersion, CallDef),
     {Call1, S1#state{trees = Trees1}}.
+
+int_lock_amount(0, #state{} = S) ->
+    %% Don't risk creating an account for the locked amount if there is none.
+    S;
+int_lock_amount(Amount, S) when ?IS_NON_NEG_INTEGER(Amount) ->
+    LockPubkey = aec_governance:locked_coins_holder_account(),
+    {Account, S1} = ensure_account(LockPubkey, S),
+    account_earn(Account, Amount, S1).
 
 account_earn(Account, Amount, S) ->
     {ok, Account1} = aec_accounts:earn(Account, Amount),
