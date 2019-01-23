@@ -8,6 +8,7 @@ It:
 * Disables internal debug API endpoints by default. To enable setup epoch.yaml `http > internal > debug_endpoints` to `true`.
 * Marks `http > endpoints > debug` and `http > debug` configuration params as deprecated.
 * Introduces new configuration parameter `sync` > `upnp_enabled`, which (if true) starts UPnP/NAT-PMP service to handle UPnP/NAT-PMP discovery and automatic port mappings.
+* Renames OSX/macOS package name to use `macos-x86_64` suffix e.g. `aeternity-1.3.0-macos-x86_64.tar.gz` instead of `epoch-1.3.0-osx-10.13.6.tar.gz`.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v1.3.0
 
