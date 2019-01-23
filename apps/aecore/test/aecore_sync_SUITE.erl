@@ -574,9 +574,7 @@ large_msgs(Config) ->
     aecore_suite_utils:start_node(Dev1, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(Dev1)),
 
-
     ok = rpc:call(N1, application, set_env, [aecore, block_gas_limit, 100000000]),
-
 
     %% Insert enough transactions to make a large generation
     Blob = fun(Size) -> << <<171:8>> || _ <- lists:seq(1, Size) >> end,
