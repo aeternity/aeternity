@@ -56,7 +56,7 @@
             "additionalProperties" : false,
             "properties" : {
                 "upnp_enabled" : {
-                    "description" : "If true, UPnP & NAT-PMP discovery will be enabled, and port mapping between `sync`>`port` and `sync`>`external_port` will be established.",
+                    "description" : "If true, UPnP & NAT-PMP discovery will be enabled and port mapping will be established.",
                     "type" : "boolean",
                     "default" : false
                 },
