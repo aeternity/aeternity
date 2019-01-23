@@ -76,7 +76,7 @@ For more details read the [dedicated Libsodium documentation](https://download.l
 The source code of the Aeternity node can be obtained by cloning the public [GitHub repository](https://github.com/aeternity/aeternity):
 
 ```bash
-git clone https://github.com/aeternity/aeternity.git aeternity && cd aeternity
+git clone https://github.com/aeternity/aeternity.git aeternity_source && cd aeternity_source
 ```
 
 Identify the version to be built:

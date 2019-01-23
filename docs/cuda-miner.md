@@ -87,7 +87,7 @@ At this point the CUDA toolkit is installed. Next step is to build the cuckoo CU
 Aeternity node's source code can be downloaded by cloning the git repository:
 ```bash
 cd ~
-git clone https://github.com/aeternity/aeternity.git aeternity && cd aeternity ## Before version 1.3.0, the repository used to be https://github.com/aeternity/epoch.git
+git clone https://github.com/aeternity/aeternity.git aeternity_source && cd aeternity_source ## Before version 1.3.0, the repository used to be https://github.com/aeternity/epoch.git
 git checkout tags/v1.0.0-rc2
 ```
 
