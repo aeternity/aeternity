@@ -91,7 +91,7 @@ add_port_mapping() ->
     try
         case nat:discover() of
             {ok, Ctx} ->
-                epoch_sync:info("UPnP/NAT-PMP discovery successful: ~p", [Ctx]),
+                epoch_sync:debug("UPnP/NAT-PMP discovery successful: ~p", [Ctx]),
                 InternalPort = aec_connection_sup:sync_port(),
                 ExternalPort = aec_connection_sup:ext_sync_port(),
                 case nat:add_port_mapping(Ctx, tcp, InternalPort, ExternalPort, ?MAPPING_LIFETIME) of
