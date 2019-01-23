@@ -1,0 +1,5 @@
+SETLOCAL ENABLEEXTENSIONS
+
+SET REL_NAME=aeternity
+
+call %~dp0/%REL_NAME% %*
