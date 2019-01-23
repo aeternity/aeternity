@@ -18,6 +18,7 @@ fi
 TEMP_RELEASE_FILE=${TEMP_RELEASE_FILE:=/tmp/aeternity.tgz}
 TARGET_DIR=${TARGET_DIR:=$HOME/aeternity/node}
 PACKAGE_PREFIX=aeternity
+MACOS_PACKAGE_SUFFIX=macos-x86_64
 declare -a OLD_RELEASE_VERSIONS=("1.0.0" "1.0.1" "1.1.0" "1.2.0");
 
 in_array() {
@@ -101,6 +102,7 @@ install_node() {
 # @TODO remove after 2.* release
 if in_array OLD_RELEASE_VERSIONS $RELEASE_VERSION; then
     PACKAGE_PREFIX=epoch
+    MACOS_PACKAGE_SUFFIX=osx-10.13.6
 fi
 
 if [[ "$OSTYPE" = "linux-gnu" && $(lsb_release -i -s) = "Ubuntu" ]]; then
@@ -108,7 +110,7 @@ if [[ "$OSTYPE" = "linux-gnu" && $(lsb_release -i -s) = "Ubuntu" ]]; then
     install_node "https://github.com/aeternity/epoch/releases/download/v${RELEASE_VERSION}/${PACKAGE_PREFIX}-${RELEASE_VERSION}-ubuntu-x86_64.tar.gz"
 elif [[ "$OSTYPE" = "darwin"* ]]; then
     install_deps_osx
-    install_node "https://github.com/aeternity/epoch/releases/download/v${RELEASE_VERSION}/${PACKAGE_PREFIX}-${RELEASE_VERSION}-osx-10.13.6.tar.gz"
+    install_node "https://github.com/aeternity/epoch/releases/download/v${RELEASE_VERSION}/${PACKAGE_PREFIX}-${RELEASE_VERSION}-${MACOS_PACKAGE_SUFFIX}.tar.gz"
 else
     echo -e "Unsupported platform (OS)! Please refer to the documentation for supported platforms."
     exit 1
