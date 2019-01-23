@@ -1,7 +1,11 @@
 {"1.1.0",
 [{<<"aebytecode">>,
   {git,"https://github.com/aeternity/aebytecode.git",
+<<<<<<< HEAD
       {ref,"6aec14e64d9ad4dedad98c64b2c16e30af1ea9ea"}},
+=======
+      {ref,"7068c3b3a893e04241a4772e317190d02afb98f7"}},
+>>>>>>> 8f20f844... Add SHL, SHR and SAR for VM_AEVM_SOPHIA_2 and SOLIDITY_1
   0},
  {<<"aecuckooprebuilt">>,
   {aecuckooprebuilt_app_with_priv_from_git,
