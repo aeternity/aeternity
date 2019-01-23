@@ -44,7 +44,7 @@ The node user API is documented:
 
 [swagger-yaml]: https://github.com/aeternity/aeternity/blob/v1.3.0/config/swagger.yaml
 [swagger-ui]: https://aeternity.github.io/api-docs/?config=https://raw.githubusercontent.com/aeternity/aeternity/v1.3.0/apps/aehttp/priv/swagger.json
-[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v1.3.0/epoch/api/README.md
+[api-doc]: https://github.com/aeternity/protocol/blob/aeternity-node-v1.3.0/node/api/README.md
 
 ## Install node
 
