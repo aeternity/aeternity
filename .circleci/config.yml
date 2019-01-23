@@ -651,6 +651,7 @@ jobs:
           at: *packages_workspace
       - *setup_secrets
       - *upload_github_release_asset
+      - *upload_release_artifacts
 
   upload_packages_linux:
     <<: *infrastructure_config
