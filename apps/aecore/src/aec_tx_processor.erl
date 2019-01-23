@@ -12,7 +12,8 @@
         ]).
 
 %% Simple access tx instructions API
--export([ contract_call_from_contract_instructions/10
+-export([ channel_create_tx_instructions/10
+        , contract_call_from_contract_instructions/10
         , contract_call_tx_instructions/10
         , contract_create_tx_instructions/10
         , name_claim_tx_instructions/5
@@ -203,6 +204,19 @@ contract_call_from_contract_instructions(CallerPubKey, ContractPubkey, CallData,
                        VMVersion, CallStack, Fee, Nonce)
     ].
 
+-spec channel_create_tx_instructions(_, _, _, _, _, _, _, _, _, _) -> [op()].
+channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
+                               ResponderPubkey, ResponderAmount,
+                               ReserveAmount, DelegatePubkeys,
+                               StateHash, LockPeriod, Fee, Nonce) ->
+    [ inc_account_nonce_op(InitiatorPubkey, Nonce)
+    , spend_fee_op(InitiatorPubkey, Fee + InitiatorAmount)
+    , spend_fee_op(ResponderPubkey, ResponderAmount)
+    , channel_create_op(InitiatorPubkey, InitiatorAmount,
+                        ResponderPubkey, ResponderAmount,
+                        ReserveAmount, DelegatePubkeys,
+                        StateHash, LockPeriod, Nonce)
+    ].
 
 %%%===================================================================
 %%% Internal functions
@@ -236,6 +250,7 @@ eval_one({Op, Args}, S) ->
     case Op of
         inc_account_nonce         -> inc_account_nonce(Args, S);
         lock_amount               -> lock_amount(Args, S);
+        channel_create            -> channel_create(Args, S);
         contract_call             -> contract_call(Args, S);
         contract_create           -> contract_create(Args, S);
         name_claim                -> name_claim(Args, S);
@@ -538,6 +553,41 @@ name_update({OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers}, S) -
     AbsoluteTTL = S#state.height + DeltaTTL,
     Name1 = aens_names:update(Name, AbsoluteTTL, ClientTTL, Pointers),
     cache_put(name, Name1, S1).
+
+%%%-------------------------------------------------------------------
+
+channel_create_op(InitiatorPubkey, InitiatorAmount,
+                  ResponderPubkey, ResponderAmount,
+                  ReserveAmount, DelegatePubkeys,
+                  StateHash, LockPeriod, Nonce
+                 ) when ?IS_HASH(InitiatorPubkey),
+                        ?IS_NON_NEG_INTEGER(InitiatorAmount),
+                        ?IS_HASH(ResponderPubkey),
+                        ?IS_NON_NEG_INTEGER(ReserveAmount),
+                        ?IS_NON_NEG_INTEGER(ReserveAmount),
+                        is_list(DelegatePubkeys),
+                        ?IS_HASH(StateHash),
+                        ?IS_NON_NEG_INTEGER(LockPeriod),
+                        ?IS_NON_NEG_INTEGER(Nonce) ->
+    true = lists:all(fun(X) -> ?IS_HASH(X) end, DelegatePubkeys),
+    {channel_create, {InitiatorPubkey, InitiatorAmount,
+                      ResponderPubkey, ResponderAmount,
+                      ReserveAmount, DelegatePubkeys,
+                      StateHash, LockPeriod, Nonce}}.
+
+channel_create({InitiatorPubkey, InitiatorAmount,
+                ResponderPubkey, ResponderAmount,
+                ReserveAmount, DelegatePubkeys,
+                StateHash, LockPeriod, Nonce}, S) ->
+    assert_channel_reserve_amount(ReserveAmount, InitiatorAmount,
+                                  ResponderAmount),
+    Channel = aesc_channels:new(InitiatorPubkey, InitiatorAmount,
+                                ResponderPubkey, ResponderAmount,
+                                ReserveAmount, DelegatePubkeys,
+                                StateHash, LockPeriod, Nonce),
+    ChannelPubkey = aesc_channels:pubkey(Channel),
+    assert_not_channel(ChannelPubkey, S),
+    cache_put(channel, Channel, S).
 
 %%%-------------------------------------------------------------------
 
@@ -904,6 +954,22 @@ assert_contract_call_stack(CallStack, S) ->
         aetx_transaction -> runtime_error(nonempty_call_stack)
     end.
 
+assert_not_channel(ChannelPubkey, S) ->
+    case find_x(channel, ChannelPubkey, S) of
+        none -> ok;
+        {value, _} -> runtime_error(channel_exists)
+    end.
+
+assert_channel_reserve_amount(ReserveAmount, InitiatorAmount, ResponderAmount) ->
+    if
+        InitiatorAmount < ReserveAmount ->
+            runtime_error(insufficient_initiator_amount);
+        ResponderAmount < ReserveAmount ->
+            runtime_error(insufficient_responder_amount);
+        true ->
+            ok
+    end.
+
 %%%===================================================================
 %%% Error handling
 
@@ -977,6 +1043,9 @@ trees_find(account, Key, #state{trees = Trees} = S) ->
 %% trees_find(call, Key, #state{trees = Trees} = S) ->
 %%     CTree = aec_trees:calls(Trees),
 %%     aect_call_state_tree:lookup(get_var(Key, call, S), CTree);
+trees_find(channel, Key, #state{trees = Trees} = S) ->
+    CTree = aec_trees:channels(Trees),
+    aesc_state_tree:lookup(get_var(Key, channel, S), CTree);
 trees_find(contract, Key, #state{trees = Trees} = S) ->
     CTree = aec_trees:contracts(Trees),
     aect_state_tree:lookup_contract(get_var(Key, contract, S), CTree);
@@ -999,6 +1068,7 @@ trees_find(oracle_query, Key, #state{trees = Trees} = S) ->
 
 -define(IS_TAG(X), ((X =:= account)
                     orelse (X =:= call)
+                    orelse (X =:= channel)
                     orelse (X =:= contract)
                     orelse (X =:= oracle)
                     orelse (X =:= oracle_query)
@@ -1022,6 +1092,9 @@ cache_put(account, Val, #state{cache = C} = S) ->
 cache_put(call, Val, #state{cache = C} = S) ->
     Id = aect_call:id(Val),
     S#state{cache = dict:store({call, Id}, Val, C)};
+cache_put(channel, Val, #state{cache = C} = S) ->
+    Pubkey = aesc_channels:pubkey(Val),
+    S#state{cache = dict:store({channel, Pubkey}, Val, C)};
 cache_put(contract, Val, #state{cache = C} = S) ->
     Pubkey = aect_contracts:pubkey(Val),
     S#state{cache = dict:store({contract, Pubkey}, Val, C)};
@@ -1052,6 +1125,10 @@ cache_write_through_fun({call,_Id}, Call, Trees) ->
     CTree  = aec_trees:calls(Trees),
     CTree1 = aect_call_state_tree:insert_call(Call, CTree),
     aec_trees:set_calls(Trees, CTree1);
+cache_write_through_fun({channel,_Pubkey}, Channel, Trees) ->
+    CTree  = aec_trees:channels(Trees),
+    CTree1 = aesc_state_tree:enter(Channel, CTree),
+    aec_trees:set_channels(Trees, CTree1);
 cache_write_through_fun({contract, Pubkey}, Contract, Trees) ->
     %% NOTE: There is a semantical difference between inserting a new contract
     %%       and updating one.

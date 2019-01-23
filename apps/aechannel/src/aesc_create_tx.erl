@@ -131,55 +131,25 @@ origin(#channel_create_tx{} = Tx) ->
     initiator_pubkey(Tx).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_create_tx{initiator_amount   = InitiatorAmount,
-                         responder_amount   = ResponderAmount,
-                         channel_reserve    = ChannelReserve,
-                         nonce              = Nonce,
-                         state_hash         = _StateHash,
-                         fee                = Fee} = Tx,
-      Trees,_Env) ->
-    InitiatorPubKey = initiator_pubkey(Tx),
-    ResponderPubKey = responder_pubkey(Tx),
-    Checks =
-        [fun() -> aetx_utils:check_account(InitiatorPubKey, Trees, Nonce, InitiatorAmount + Fee) end,
-         fun() -> aetx_utils:check_account(ResponderPubKey, Trees, ResponderAmount) end,
-         fun() -> check_reserve_amount(ChannelReserve, InitiatorAmount, ResponderAmount) end,
-         fun() -> check_not_channel(InitiatorPubKey, Nonce, ResponderPubKey, Trees) end],
-    case aeu_validation:run(Checks) of
-        ok ->
-            {ok, Trees};
-        {error, _Reason} = Error ->
-            Error
-    end.
+check(#channel_create_tx{}, Trees,_Env) ->
+    %% Checks are in process/3
+    {ok, Trees}.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#channel_create_tx{initiator_amount   = InitiatorAmount,
-                           responder_amount   = ResponderAmount,
-                           fee                = Fee,
-                           state_hash         = _StateHash,
-                           nonce              = Nonce} = CreateTx,
-        Trees0,_Env) ->
-    InitiatorPubKey = initiator_pubkey(CreateTx),
-    ResponderPubKey = responder_pubkey(CreateTx),
-
-    AccountsTree0 = aec_trees:accounts(Trees0),
-    ChannelsTree0 = aec_trees:channels(Trees0),
-
-    InitiatorAccount0 = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
-    ResponderAccount0 = aec_accounts_trees:get(ResponderPubKey, AccountsTree0),
-
-    {ok, InitiatorAccount1} = aec_accounts:spend(InitiatorAccount0, Fee + InitiatorAmount, Nonce),
-    {ok, ResponderAccount1} = aec_accounts:spend_without_nonce_bump(ResponderAccount0, ResponderAmount),
-
-    AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount1, AccountsTree0),
-    AccountsTree2 = aec_accounts_trees:enter(ResponderAccount1, AccountsTree1),
-
-    Channel       = aesc_channels:new(CreateTx),
-    ChannelsTree1 = aesc_state_tree:enter(Channel, ChannelsTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree2),
-    Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
-    {ok, Trees2}.
+process(#channel_create_tx{} = Tx, Trees, Env) ->
+    Instructions =
+        aec_tx_processor:channel_create_tx_instructions(
+          initiator_pubkey(Tx),
+          initiator_amount(Tx),
+          responder_pubkey(Tx),
+          responder_amount(Tx),
+          channel_reserve(Tx),
+          delegate_pubkeys(Tx),
+          state_hash(Tx),
+          lock_period(Tx),
+          fee(Tx),
+          nonce(Tx)),
+    aec_tx_processor:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_create_tx{} = Tx, _) ->
@@ -343,28 +313,6 @@ delegate_pubkeys(#channel_create_tx{delegate_ids = DelegateIds}) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
--spec check_not_channel(aec_keys:pubkey(),non_neg_integer(), aec_keys:pubkey(), aec_trees:trees()) ->
-                               ok | {error, channel_exists}.
-check_not_channel(InitiatorPubKey, Nonce, ResponderPubKey, Trees) ->
-    ChannelPubKey = aesc_channels:pubkey(InitiatorPubKey, Nonce, ResponderPubKey),
-    ChannelsTrees = aec_trees:channels(Trees),
-    case aesc_state_tree:lookup(ChannelPubKey, ChannelsTrees) of
-        {value, _Channel} -> {error, channel_exists};
-        none              -> ok
-    end.
-
-check_reserve_amount(Reserve, InitiatorAmount,
-                     ResponderAmount) when is_integer(Reserve) ->
-    case (Reserve =< InitiatorAmount) of
-        true ->
-            case (Reserve =< ResponderAmount) of
-                true  -> ok;
-                false -> {error, insufficient_responder_amount}
-            end;
-        false ->
-            {error, insufficient_initiator_amount}
-    end.
 
 -spec version() -> non_neg_integer().
 version() ->
