@@ -1,11 +1,7 @@
 {"1.1.0",
 [{<<"aebytecode">>,
   {git,"https://github.com/aeternity/aebytecode.git",
-<<<<<<< HEAD
-      {ref,"6aec14e64d9ad4dedad98c64b2c16e30af1ea9ea"}},
-=======
-      {ref,"7068c3b3a893e04241a4772e317190d02afb98f7"}},
->>>>>>> 8f20f844... Add SHL, SHR and SAR for VM_AEVM_SOPHIA_2 and SOLIDITY_1
+      {ref,"720510a24de32c9bad6486f34ca7babde124bf1e"}},
   0},
  {<<"aecuckooprebuilt">>,
   {aecuckooprebuilt_app_with_priv_from_git,
@@ -14,7 +10,7 @@
   0},
  {<<"aesophia">>,
   {git,"https://github.com/aeternity/aesophia.git",
-      {ref,"387fdf5c347638ec2a19bfb2bdd37062352f7115"}},
+      {ref,"c5c73097fc793ef73ee03102fa9cd91cb3006acb"}},
   0},
  {<<"base58">>,
   {git,"https://github.com/aeternity/erl-base58.git",
