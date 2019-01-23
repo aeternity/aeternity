@@ -388,6 +388,30 @@ loop(CP, StateIn) ->
                     Val = byte(Us0, Us1),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
+                ?SHL ->
+                    %% 0x1b SHL δ=2 α=1
+                    %% Shift left
+                    {Us0, State1} = pop(State0),
+                    {Us1, State2} = pop(State1),
+                    Val = shl(Us0, Us1),
+                    State3 = push(Val, State2),
+                    next_instruction(CP, State, State3);
+                ?SHR ->
+                    %% 0x1c SHR δ=2 α=1
+                    %% Logical Shift right
+                    {Us0, State1} = pop(State0),
+                    {Us1, State2} = pop(State1),
+                    Val = shr(Us0, Us1),
+                    State3 = push(Val, State2),
+                    next_instruction(CP, State, State3);
+                ?SAR ->
+                    %% 0x1d SAR δ=2 α=1
+                    %% Arithmetic Shift right
+                    {Us0, State1} = pop(State0),
+                    {Us1, State2} = pop(State1),
+                    Val = sar(Us0, Us1),
+                    State3 = push(Val, State2),
+                    next_instruction(CP, State, State3);
                 %% 20s: SHA3
                 ?SHA3 ->
                     %% 0x20 SHA3  δ=2 α=1 Compute Keccak-256 hash.
@@ -1159,9 +1183,12 @@ is_valid_instruction(?OR            ,_VM) -> true;
 is_valid_instruction(?XOR           ,_VM) -> true;
 is_valid_instruction(?NOT           ,_VM) -> true;
 is_valid_instruction(?BYTE          ,_VM) -> true;
-is_valid_instruction(16#1b          ,_VM) -> false; %% SHL
-is_valid_instruction(16#1c          ,_VM) -> false; %% SHR
-is_valid_instruction(16#1d          ,_VM) -> false; %% SAR
+is_valid_instruction(?SHL           ,VM)  -> (?IS_VM_SOPHIA(VM) andalso VM >= ?VM_AEVM_SOPHIA_2)
+                                             orelse VM == ?VM_AEVM_SOLIDITY_1;
+is_valid_instruction(?SHR           ,VM)  -> (?IS_VM_SOPHIA(VM) andalso VM >= ?VM_AEVM_SOPHIA_2)
+                                             orelse VM == ?VM_AEVM_SOLIDITY_1;
+is_valid_instruction(?SAR           ,VM)  -> (?IS_VM_SOPHIA(VM) andalso VM >= ?VM_AEVM_SOPHIA_2)
+                                             orelse VM == ?VM_AEVM_SOLIDITY_1;
 is_valid_instruction(16#1e          ,_VM) -> false;
 is_valid_instruction(16#1f          ,_VM) -> false;
 is_valid_instruction(?SHA3          ,_VM) -> true;
@@ -1347,9 +1374,13 @@ modulo(Arg1, Arg2) ->
 mulmod(_Arg1,_Arg2,   0) -> 0;
 mulmod(Arg1, Arg2, Arg3) -> modulo((Arg1 * Arg2), Arg3) band ?MASK256.
 
-signed(Val) ->
-    <<SVal:256/integer-signed>> = <<Val:256/integer-unsigned>>,
+signed(UVal) ->
+    <<SVal:256/integer-signed>> = <<UVal:256/integer-unsigned>>,
     SVal.
+
+unsigned(SVal) ->
+    <<UVal:256/integer-unsigned>> = <<SVal:256/integer-signed>>,
+    UVal.
 
 smodulo(Arg1, Arg2) ->
     <<SArg1:256/integer-signed>> = <<Arg1:256/integer-unsigned>>,
@@ -1369,6 +1400,18 @@ pow(N, X, Y) ->
        true             -> pow(X * N, Square, Exp)
     end.
 
+shl(Arg1, _Arg2) when Arg1 > 255 -> 0;
+shl(Arg1, Arg2)                  -> (Arg2 bsl Arg1) band ?MASK256.
+
+shr(Arg1, _Arg2) when Arg1 > 255 -> 0;
+shr(Arg1, Arg2)                  -> Arg2 bsr Arg1.
+
+sar(Arg1, Arg2)  when Arg1 > 255 ->
+    case signed(Arg2) < 0 of
+        true  -> unsigned(-1);
+        false -> 0
+    end;
+sar(Arg1, Arg2) -> unsigned(signed(Arg2) bsr Arg1).
 
 signextend(Us0, Us1) ->
     ExtendTo =  (256 - 8*((Us0+1) band 255)) band 255,

@@ -268,8 +268,8 @@ create_contract_negative_gas_price_zero(_Cfg) ->
     Tx        = aect_test_utils:create_tx(PubKey, Overrides, S1),
     ?assertEqual(0, aect_create_tx:gas_price(aetx:tx(Tx))),
 
-    {error, _} = sign_and_apply_transaction(Tx, PrivKey, S1),
-    Env        = aetx_env:tx_env(_Height = 1),
+    {error, _, _} = sign_and_apply_transaction(Tx, PrivKey, S1),
+    Env           = aetx_env:tx_env(_Height = 1),
     {error, too_low_gas_price} = aetx:check(Tx, aect_test_utils:trees(S1), Env),
     ok.
 
@@ -283,8 +283,8 @@ create_contract_negative(_Cfg) ->
     %% Test creating a bogus account
     {BadPubKey, BadS} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
     BadPrivKey        = aect_test_utils:priv_key(BadPubKey, BadS),
-    RTx1      = aect_test_utils:create_tx(BadPubKey, S1),
-    {error, S1} = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
+    RTx1              = aect_test_utils:create_tx(BadPubKey, S1),
+    {error, _, S1}    = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
 
     {error, account_not_found} = aetx:check(RTx1, Trees, Env),
 
@@ -292,12 +292,12 @@ create_contract_negative(_Cfg) ->
     S2     = aect_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aect_test_utils:trees(S2),
     RTx2   = aect_test_utils:create_tx(PubKey, S2),
-    {error, S2} = sign_and_apply_transaction(RTx2, PrivKey, S2),
+    {error, _, S2} = sign_and_apply_transaction(RTx2, PrivKey, S2),
     {error, insufficient_funds} = aetx:check(RTx2, Trees2, Env),
 
     %% Test too high account nonce
     RTx3 = aect_test_utils:create_tx(PubKey, #{nonce => 0}, S1),
-    {error, S1} = sign_and_apply_transaction(RTx3, PrivKey, S1),
+    {error, _, S1} = sign_and_apply_transaction(RTx3, PrivKey, S1),
     {error, account_nonce_too_high} = aetx:check(RTx3, Trees, Env),
 
     ok.
@@ -523,12 +523,12 @@ sign_and_apply_transaction(Tx, PrivKey, S1, Height) ->
     Trees    = aect_test_utils:trees(S1),
     Env0     = aetx_env:tx_env(Height),
     Env      = aetx_env:set_beneficiary(Env0, ?BENEFICIARY_PUBKEY),
-    {ok, AcceptedTxs, Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
-    S2       = aect_test_utils:set_trees(Trees1, S1),
-    case AcceptedTxs of
-        [SignedTx] -> {ok, S2};
-        []         -> {error, S2}
+    case aec_block_micro_candidate:apply_block_txs_strict([SignedTx], Trees, Env) of
+        {ok, [SignedTx], Trees1} ->
+            S2 = aect_test_utils:set_trees(Trees1, S1),
+            {ok, S2};
+        {error, R} ->
+            {error, R, S1}
     end.
 
 sign_and_apply_transaction_strict(Tx, PrivKey, S1) ->
@@ -564,7 +564,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
                                        gas_price => 1,
                                        amount    => Value,
                                        fee       => Fee}, S),
-    {error, _} = sign_and_apply_transaction(CallTx, aect_test_utils:priv_key(Acc1, S), S),
+    {error, _, _} = sign_and_apply_transaction(CallTx, aect_test_utils:priv_key(Acc1, S), S),
     Env = aetx_env:tx_env(_Height = 1),
     {error, insufficient_funds} = aetx:check(CallTx, aect_test_utils:trees(S), Env),
     ok.
@@ -578,8 +578,8 @@ call_contract_negative_gas_price_zero(_Cfg) ->
     Tx   = aect_test_utils:call_tx(Acc1, IdC, #{gas_price => 0}, S),
     ?assertEqual(0, aect_call_tx:gas_price(aetx:tx(Tx))),
 
-    {error, _} = sign_and_apply_transaction(Tx, aect_test_utils:priv_key(Acc1, S), S),
-    Env        = aetx_env:tx_env(_Height = 1),
+    {error, _, _} = sign_and_apply_transaction(Tx, aect_test_utils:priv_key(Acc1, S), S),
+    Env           = aetx_env:tx_env(_Height = 1),
     {error, too_low_gas_price} = aetx:check(Tx, aect_test_utils:trees(S), Env),
     ok.
 
@@ -899,23 +899,27 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
                  }, maps:without([height, return_gas_used, return_logs], Options)), S),
     Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Caller, S),
-    {ok, S1} = sign_and_apply_transaction(CallTx, PrivKey, S, Height),
-    CallKey  = aect_call:id(Caller, Nonce, ContractKey),
-    CallTree = aect_test_utils:calls(S1),
-    Call     = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
-    Result   =
-        case aect_call:return_type(Call) of
-            ok     -> {ok, Res} = aeso_heap:from_binary(Type, aect_call:return_value(Call)),
-                      Res;
-            error  -> {error, aect_call:return_value(Call)};
-            revert -> revert
-        end,
-    Result1 = case maps:get(return_logs, Options, false) of
-                true -> {Result, aect_call:log(Call)};
-                false -> Result end,
-    case maps:get(return_gas_used, Options, false) of
-        false -> {Result1, S1};
-        true  -> {{Result1, aect_call:gas_used(Call)}, S1}
+    case sign_and_apply_transaction(CallTx, PrivKey, S, Height) of
+        {ok, S1} ->
+            CallKey  = aect_call:id(Caller, Nonce, ContractKey),
+            CallTree = aect_test_utils:calls(S1),
+            Call     = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
+            Result   =
+                case aect_call:return_type(Call) of
+                    ok     -> {ok, Res} = aeso_heap:from_binary(Type, aect_call:return_value(Call)),
+                              Res;
+                    error  -> {error, aect_call:return_value(Call)};
+                    revert -> revert
+                end,
+            Result1 = case maps:get(return_logs, Options, false) of
+                        true -> {Result, aect_call:log(Call)};
+                        false -> Result end,
+            case maps:get(return_gas_used, Options, false) of
+                false -> {Result1, S1};
+                true  -> {{Result1, aect_call:gas_used(Call)}, S1}
+            end;
+        {error, R, S1} ->
+            {{error, R}, S1}
     end.
 
 account_balance(PubKey, S) ->
@@ -3206,10 +3210,12 @@ sophia_operators(_Cfg) ->
     ?assertEqual(45 band 127,         ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"band">>})),
     ?assertEqual(45 bor 127,          ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"bor">>})),
     ?assertEqual(45 bxor 127,         ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"bxor">>})),
-    ?assertEqual(4252 bsl 9,             ?call(call_contract, Acc, IdC, int_op, word, {4252, 9, <<"bsl">>})),
-    ?assertEqual(0,                      ?call(call_contract, Acc, IdC, int_op, word, {4252, 300, <<"bsl">>})), %% overflow
-    ?assertEqual(4252 bsr 3,             ?call(call_contract, Acc, IdC, int_op, word, {4252, 3, <<"bsr">>})),
-    ?assertEqual(0,                      ?call(call_contract, Acc, IdC, int_op, word, {4252, 15, <<"bsr">>})),  %% underflow
+    ?assertEqual(4252 bsl 9,          ?call(call_contract, Acc, IdC, int_op, word, {4252, 9, <<"bsl">>})),
+    ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {2, 255, <<"bsl">>})), %% overflow
+    ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {4252, 300, <<"bsl">>})), %% overflow
+    ?assertEqual(4252 bsr 3,          ?call(call_contract, Acc, IdC, int_op, word, {4252, 3, <<"bsr">>})),
+    ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {4252, 15, <<"bsr">>})),  %% underflow
+    ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {IMax, 256, <<"bsr">>})),  %% underflow
 
     ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {0, 0, <<"!">>})),
     ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {1, 1, <<"&&">>})),

@@ -39,7 +39,7 @@ testcase_generate(Path, Tests) ->
                                EunitTestSpec :: any().
 
 testcase_generate(Path, Tests, Opts) ->
-    case is_external_available() of
+    case is_external_available(Path) of
         true ->
             {foreachx
             , fun get_config/1
@@ -58,7 +58,8 @@ testcase_generate(Path, Tests, Opts) ->
 %%--------------------------------------------------------------------
 %% Running the actual test case
 
-testcase({Path, Name, Opts}, #{ pre := Pre, exec := Exec} = Spec) ->
+testcase({Path0, Name, Opts}, #{ pre := Pre, exec := Exec} = Spec) ->
+    Path = case Path0 of {local, P} -> P; _ -> Path0 end,
     { Path ++ "/" ++ atom_to_list(Name)
     , {timeout, 10, fun() ->
               %% Set up the store for the contract.
@@ -184,7 +185,8 @@ expand_opts(Fun, TestName) ->
 %% tests if the config files are there. We don't want to fail if there
 %% are no tests to be run.
 
-is_external_available() ->
+is_external_available({local, _}) -> true;
+is_external_available(_) ->
     case external_dir() of
       false -> false;
       DirPath ->
@@ -194,6 +196,9 @@ is_external_available() ->
 
 external_dir() ->
     os:getenv("AEVM_EXTERNAL_TEST_DIR").
+
+local_dir() ->
+    filename:join(code:lib_dir(aevm), "test").
 
 %%--------------------------------------------------------------------
 %% Read a test config file
@@ -218,6 +223,10 @@ get_config_file(DirPath, TestName) ->
         Other -> error({could_not_read_file, TestName, FileName, Other})
     end.
 
+config_filename({local, DirPath}, TestName) ->
+    filename:join([ local_dir()
+                  , DirPath
+                  , atom_to_list(TestName) ++ ".json"]);
 config_filename(DirPath, TestName) ->
     filename:join([ external_dir()
                   , "ethereum_tests"
