@@ -1,12 +1,9 @@
 %% -*- erlang -*-
 
-IsWindows = fun() ->
-                Arch = erlang:system_info(system_architecture),
-                string:find(Arch, "win32") =/= nomatch
-            end,
+IsWindows = case os:type() of {win32, _} -> true; {_, _} -> false end,
 
 FilterRelxRocksDb = fun(Apps) ->
-                        case IsWindows() of
+                        case IsWindows of
                             false ->
                                 Apps;
                             true ->
@@ -15,7 +12,7 @@ FilterRelxRocksDb = fun(Apps) ->
                     end,
 
 FilterDepsRocksDb = fun(Deps) ->
-                        case IsWindows() of
+                        case IsWindows of
                             false ->
                                 Deps;
                             true ->
@@ -24,7 +21,7 @@ FilterDepsRocksDb = fun(Deps) ->
                     end,
 
 AdaptOverlayBin = fun(Overlay) ->
-                      case IsWindows() of
+                      case IsWindows of
                           false ->
                               Overlay;
                           true ->
