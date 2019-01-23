@@ -1,6 +1,6 @@
 # Build from source
 
-This document describes how to build an epoch node from source on current Ubuntu 16.04.4 LTS or Ubuntu 18.04 LTS.
+This document describes how to build an Aeternity node from source on current Ubuntu 16.04.4 LTS or Ubuntu 18.04 LTS.
 The commands below assume you are logged in with `sudo` user.
 
 ## Dependencies installation
@@ -73,10 +73,10 @@ For more details read the [dedicated Libsodium documentation](https://download.l
 
 ## Builds
 
-Epoch source code can be obtained by cloning the public [GitHub repository](https://github.com/aeternity/epoch):
+The source code of the Aeternity node can be obtained by cloning the public [GitHub repository](https://github.com/aeternity/aeternity):
 
 ```bash
-git clone https://github.com/aeternity/epoch.git epoch && cd epoch
+git clone https://github.com/aeternity/aeternity.git aeternity && cd aeternity
 ```
 
 Identify the version to be built:
@@ -102,7 +102,7 @@ There is no default beneficiary configured.
 
 See [configuration documentation](configuration.md) for configuration details.
 
-If `prod-build` went fine, configuration is in place, one should be able to navigate to the build artifacts directory and start the epoch node:
+If `prod-build` went fine, configuration is in place, one should be able to navigate to the build artifacts directory and start the Aeternity node:
 ```bash
 cd _build/prod/rel/aeternity/
 bin/epoch start
@@ -112,7 +112,7 @@ See [operation documentation](operation.md) for more details.
 
 ### Production package
 
-Alternatively a production package similar to what is distributed via [GitHub releases](https://github.com/aeternity/epoch/releases) can be created by running:
+Alternatively a production package similar to what is distributed via [GitHub releases](https://github.com/aeternity/aeternity/releases) can be created by running:
 
 ```bash
 make prod-package
