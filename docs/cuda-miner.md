@@ -36,7 +36,7 @@ Notice the `executable_group`.
 
 After configuration the node could be started (or restarted if it's already running):
 ```
-~/aeternity/node/bin/epoch start
+~/aeternity/node/bin/aeternity start
 ```
 
 Available executables are: `cuda29`, `lcuda29`.
@@ -131,7 +131,7 @@ mining:
 After updating the configuration, the node should be started (or restarted if it's already running):
 
 ```
-~/aeternity/node/bin/epoch start
+~/aeternity/node/bin/aeternity start ## Before version 1.3.0, the executable used to be called `epoch` rather than `aeternity`.
 ```
 
 ## Configuration

@@ -23,10 +23,10 @@ When it starts, the node checks the maximum number of open files (`ulimit -n`) a
 Start the node:
 ```bash
 cd ~/aeternity/node
-bin/epoch start
+bin/aeternity start
 ```
 
-(You can stop the node by running `bin/epoch stop` from the same directory.)
+(You can stop the node by running `bin/aeternity stop` from the same directory.)
 
 Verify the node is up, by inspecting the current top of the blockchain as seen by the node:
 ```bash

@@ -105,7 +105,7 @@ See [configuration documentation](configuration.md) for configuration details.
 If `prod-build` went fine, configuration is in place, one should be able to navigate to the build artifacts directory and start the Aeternity node:
 ```bash
 cd _build/prod/rel/aeternity/
-bin/epoch start
+bin/aeternity start
 ```
 
 See [operation documentation](operation.md) for more details.
@@ -134,7 +134,7 @@ See [configuration documentation](configuration.md) for configuration details.
 
 Then start the node:
 ```bash
-~/aeternity/node/bin/epoch start
+~/aeternity/node/bin/aeternity start
 ```
 
 See [operation documentation](operation.md) for more details.
