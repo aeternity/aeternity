@@ -378,9 +378,9 @@ extract_archive(#{container_id := ID, hostname := Name} = NodeState, Path, Archi
     log(NodeState, "Extracted archive of size ~p in container ~p [~s] at path ~p", [byte_size(Archive), Name, ID, Path]),
     NodeState.
 
-run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd, Timeout) ->
+run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd, Opts) ->
     log(NodeState, "Running command ~p on container ~p [~s]", [Cmd, Name, ID]),
-    {ok, Status, Result} = aest_docker_api:exec(ID, Cmd, #{timeout => Timeout}),
+    {ok, Status, Result} = aest_docker_api:exec(ID, Cmd, Opts),
     log(NodeState, "Run command ~p on container ~p [~s] with result ~p",
         [Cmd, Name, ID, Result]),
     case Result of
@@ -472,7 +472,7 @@ attempt_epoch_stop(#{container_id := ID, hostname := Name, sockets := Sockets} =
         "attempting to stop node by executing command ~s",
         [Name, ID, CmdStr]),
     try
-        retry_epoch_stop(NodeState, ID, Cmd, #{timeout => Timeout}, 5),
+        retry_epoch_stop(NodeState, ID, Cmd, #{timeout => Timeout, stderr => false}, 5),
         [ gen_tcp:close(S) || S <- Sockets ]
     catch
         throw:{exec_start_timeout, TimeoutInfo} ->
