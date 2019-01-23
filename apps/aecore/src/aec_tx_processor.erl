@@ -13,6 +13,7 @@
 
 %% Simple access tx instructions API
 -export([ channel_create_tx_instructions/10
+        , channel_close_mutual_tx_instructions/6
         , contract_call_from_contract_instructions/10
         , contract_call_tx_instructions/10
         , contract_create_tx_instructions/10
@@ -218,6 +219,15 @@ channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
                         StateHash, LockPeriod, Nonce)
     ].
 
+-spec channel_close_mutual_tx_instructions(_, _, _, _, _, _) -> [op()].
+channel_close_mutual_tx_instructions(FromPubkey, ChannelPubkey,
+                                     InitiatorAmount, ResponderAmount,
+                                     Nonce, Fee) ->
+    [ inc_account_nonce_op(FromPubkey, Nonce)
+    , channel_close_mutual_op(FromPubkey, ChannelPubkey,
+                              InitiatorAmount, ResponderAmount, Fee)
+    ].
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -251,6 +261,7 @@ eval_one({Op, Args}, S) ->
         inc_account_nonce         -> inc_account_nonce(Args, S);
         lock_amount               -> lock_amount(Args, S);
         channel_create            -> channel_create(Args, S);
+        channel_close_mutual      -> channel_close_mutual(Args, S);
         contract_call             -> contract_call(Args, S);
         contract_create           -> contract_create(Args, S);
         name_claim                -> name_claim(Args, S);
@@ -590,6 +601,34 @@ channel_create({InitiatorPubkey, InitiatorAmount,
 
 %%%-------------------------------------------------------------------
 
+channel_close_mutual_op(FromPubkey, ChannelPubkey,
+                        InitiatorAmount, ResponderAmount, Fee
+                       ) when ?IS_HASH(FromPubkey),
+                              ?IS_HASH(ChannelPubkey),
+                              ?IS_NON_NEG_INTEGER(InitiatorAmount),
+                              ?IS_NON_NEG_INTEGER(ResponderAmount),
+                              ?IS_NON_NEG_INTEGER(Fee) ->
+    {channel_close_mutual, {FromPubkey, ChannelPubkey,
+                            InitiatorAmount, ResponderAmount, Fee}}.
+
+channel_close_mutual({FromPubkey, ChannelPubkey,
+                      InitiatorAmount, ResponderAmount, Fee}, S) ->
+    {Channel, S1} = get_channel(ChannelPubkey, S),
+    assert_channel_origin(Channel, FromPubkey),
+    assert_channel_active(Channel),
+    TotalAmount = InitiatorAmount + ResponderAmount + Fee,
+    ChannelAmount = aesc_channels:channel_amount(Channel),
+    LockAmount = ChannelAmount - TotalAmount,
+    assert(LockAmount >= 0, wrong_amounts),
+    {IAccount, S2} = get_account(aesc_channels:initiator_pubkey(Channel), S1),
+    {RAccount, S3} = get_account(aesc_channels:responder_pubkey(Channel), S2),
+    S4 = account_earn(IAccount, InitiatorAmount, S3),
+    S5 = account_earn(RAccount, ResponderAmount, S4),
+    S6 = int_lock_amount(LockAmount, S5),
+    delete_x(channel, ChannelPubkey, S6).
+
+%%%-------------------------------------------------------------------
+
 contract_call_op(CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
                  Amount, VMVersion, CallStack, Fee, Nonce
                 ) when ?IS_HASH(CallerPubKey),
@@ -788,6 +827,9 @@ specialize_account(RecipientID) ->
         {account, Pubkey}  -> {account, Pubkey}
     end.
 
+assert(true,_Error) -> ok;
+assert(false, Error) -> runtime_error(Error).
+
 assert_account_nonce(Account, Nonce) ->
     case aec_accounts:nonce(Account) of
         N when N + 1 =:= Nonce -> ok;
@@ -977,6 +1019,19 @@ assert_channel_reserve_amount(ReserveAmount, InitiatorAmount, ResponderAmount) -
             ok
     end.
 
+assert_channel_origin(Channel, FromPubkey) ->
+    case (aesc_channels:initiator_pubkey(Channel) =:= FromPubkey
+          orelse aesc_channels:responder_pubkey(Channel) =:= FromPubkey) of
+        true  -> ok;
+        false -> runtime_error(illegal_origin)
+    end.
+
+assert_channel_active(Channel) ->
+    case aesc_channels:is_active(Channel) of
+        true  -> ok;
+        false -> runtime_error(channel_not_active)
+    end.
+
 %%%===================================================================
 %%% Error handling
 
@@ -989,6 +1044,9 @@ runtime_error(Error) ->
 
 get_account(Key, S) ->
     get_x(account, Key, account_not_found, S).
+
+get_channel(Key, S) ->
+    get_x(channel, Key, channel_does_not_exist, S).
 
 get_contract(Key, S) ->
     get_x(contract, Key, contract_does_not_exist, S).
@@ -1034,9 +1092,14 @@ get_x(Tag, Key, Error, S) when is_atom(Error) ->
         {_, _} = Ret -> Ret
     end.
 
+delete_x(channel, Hash, #state{trees = Trees} = S) ->
+    S1 = cache_drop(channel, Hash, S),
+    CTree  = aec_trees:channels(Trees),
+    CTree1 = aesc_state_tree:delete(Hash, CTree),
+    S1#state{trees = aec_trees:set_channels(Trees, CTree1)};
 delete_x(commitment, Hash, #state{trees = Trees} = S) ->
     S1 = cache_drop(commitment, Hash, S),
-    NTree = aec_trees:ns(Trees),
+    NTree  = aec_trees:ns(Trees),
     NTree1 = aens_state_tree:delete_commitment(Hash, NTree),
     S1#state{trees = aec_trees:set_ns(Trees, NTree1)}.
 
@@ -1090,6 +1153,8 @@ cache_find(Tag, Key, #state{cache = C} = S) when ?IS_TAG(Tag) ->
         error     -> none
     end.
 
+cache_drop(channel, Hash, #state{cache = C} = S) ->
+    S#state{cache = dict:erase({channel, Hash}, C)};
 cache_drop(commitment, Hash, #state{cache = C} = S) ->
     S#state{cache = dict:erase({commitment, Hash}, C)}.
 
