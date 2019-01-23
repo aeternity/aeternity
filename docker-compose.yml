@@ -5,8 +5,6 @@ services:
     build: .
     image: aeternity/aeternity:${IMAGE_TAG-latest}
     hostname: node1
-    environment:
-      EPOCH_CONFIG: /home/aeternity/aeternity.yaml
     command: >
       -aecore expected_mine_rate ${AETERNITY_MINE_RATE:-15000}
       -aehttp enable_debug_endpoints true
@@ -18,8 +16,6 @@ services:
   node2:
     image: aeternity/aeternity:${IMAGE_TAG-latest}
     hostname: node2
-    environment:
-      EPOCH_CONFIG: /home/aeternity/aeternity.yaml
     command: >
       -aecore expected_mine_rate ${AETERNITY_MINE_RATE:-15000}
       -aehttp enable_debug_endpoints true
@@ -31,8 +27,6 @@ services:
   node3:
     image: aeternity/aeternity:${IMAGE_TAG-latest}
     hostname: node3
-    environment:
-      EPOCH_CONFIG: /home/aeternity/aeternity.yaml
     command: >
       -aecore expected_mine_rate ${AETERNITY_MINE_RATE:-15000}
       -aehttp enable_debug_endpoints true
