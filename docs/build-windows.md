@@ -1,6 +1,6 @@
 # Build from source
 
-This document describes how to build an epoch node from source on Windows using
+This document describes how to build an Aeternity node from source on Windows using
 [MSYS2][msys2].
 
 NOTE: Only 64-bit versions of Windows 10 and Windows Server 2016 are supported and tested.
