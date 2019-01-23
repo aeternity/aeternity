@@ -2,9 +2,12 @@
 
 [This][this-release] is a maintenance release.
 It:
-* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
-
-TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+* Docker images username (and home path) changed to aeternity.
+* Package names has been updated to use `aeternity` prefix e.g. `aeternity-1.3.0-ubuntu-x86_64.tar.gz` instead of `epoch-1.3.0-ubuntu-x86_64.tar.gz`
+* Dockerhub repository `aeternity/epoch` has been deprecated in favor of `aeternity/aeternity`. Older images has been migrated to `aeternity/aeternity`. The `latest` tag of `aeternity/epoch` will always point to `1.3.0` until the repository is deleted in future.
+* Disable internal debug API endpoints by default. To enable setup epoch.yaml `http > internal > debug_endpoints` to `true`
+* Mark `http > endpoints > debug` and `http > debug` configuration params as deprecated
+* Introduces new configuration parameter `sync` > `upnp_enabled`, which (if true) starts UPnP/NAT-PMP service to handle UPnP/NAT-PMP discovery and automatic port mappings.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v1.3.0
 
