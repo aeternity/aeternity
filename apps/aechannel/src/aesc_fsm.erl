@@ -1751,12 +1751,18 @@ tx_defaults(channel_withdraw_tx = Tx, Opts, D) ->
     maps:merge(
       tx_defaults(channel_deposit_tx, Opts, D),
       #{ fee => default_fee(Tx) });  % same as deposit defaults
+tx_defaults(channel_slash_tx, _Opts, _D) ->
+    #{};
 tx_defaults(channel_close_solo_tx = Tx, _Opts, _D) ->
     #{ fee => default_fee(Tx) }.
 
-default_fee(Tx) ->
-    %% this will most likely be to small and have to be adjusted upwards
-    aec_governance:tx_base_gas(Tx).
+default_fee(_Tx) ->
+    %% TODO: For now, revert back to hard-coding the fee (sc_ws_api needs to be extended not to
+    %% ignore options like 'fee', and the API docs need to be amended accordingly)
+    20000.
+%% default_fee(Tx) ->
+%%     %% this will most likely be to small and have to be adjusted upwards
+%%     aec_governance:tx_base_gas(Tx).
 
 adjust_ttl(undefined) ->
     CurHeight = aec_headers:height(aec_chain:top_header()),
@@ -2502,7 +2508,7 @@ process_update_error(Reason, From, D) ->
 check_closing_event(#data{on_chain_id = ChanId} = D) ->
     case aec_chain:get_channel(ChanId) of
         {ok, Channel} ->
-            case aesc_channel:is_active(Channel) of
+            case aesc_channels:is_active(Channel) of
                 true ->
                     check_closing_event_(Channel, D);
                 false ->
@@ -2513,20 +2519,24 @@ check_closing_event(#data{on_chain_id = ChanId} = D) ->
     end.
 
 check_closing_event_(Ch, #data{state = St}) ->
-    case aesc_channel:is_solo_closing(Ch) of
+    Height = cur_height(),
+    case aesc_channels:is_solo_closing(Ch, Height) of
         true ->
             {MyLastRound, SignedTx} =
-                asc_offchain_state:get_latest_signed_tx(St),
-            case aesc_channel_utils:check_round_greater_than_last(
+                aesc_offchain_state:get_latest_signed_tx(St),
+            case aesc_utils:check_round_greater_than_last(
                    Ch, MyLastRound, slash) of
-                true ->
+                ok ->
                     %% We have a later valid channel state
                     {can_slash, MyLastRound, SignedTx};
-                false ->
+                {error, same_round} ->
+                    {ok, proper_solo_closing};
+                {error, old_round} ->
+                    %% This is weird: presumably, our state is out-of-date
                     {ok, proper_solo_closing}
             end;
         false ->
-            case aesc_channel:is_solo_closed(Ch) of
+            case aesc_channels:is_solo_closed(Ch, Height) of
                 true ->
                     {ok, solo_closed};
                 false ->
