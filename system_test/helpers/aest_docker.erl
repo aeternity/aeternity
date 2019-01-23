@@ -379,7 +379,7 @@ extract_archive(#{container_id := ID, hostname := Name} = NodeState, Path, Archi
     NodeState.
 
 run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd, Opts) ->
-    log(NodeState, "Running command ~p on container ~p [~s]", [Cmd, Name, ID]),
+    log(NodeState, "Running command ~p on container ~p [~s] with options ~p", [Cmd, Name, ID, Opts]),
     {ok, Status, Result} = aest_docker_api:exec(ID, Cmd, Opts),
     log(NodeState, "Run command ~p on container ~p [~s] with result ~p",
         [Cmd, Name, ID, Result]),
