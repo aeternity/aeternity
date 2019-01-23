@@ -3,7 +3,7 @@
 set -e
 
 if [ "$(uname -s)" == "Darwin" ]; then
-    PKG_SUFFIX="osx-$(sw_vers -productVersion)"
+    PKG_SUFFIX="macos-"`uname -m`
 elif [ "$(uname -s)" == "Linux" ]; then
     PKG_SUFFIX="ubuntu-"`uname -m`
 fi
