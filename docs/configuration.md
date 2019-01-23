@@ -1,6 +1,6 @@
-# Configure an epoch node installed using a release binary
+# Configure an Aeternity node installed using a release binary
 
-This document describes how to configure your epoch node installed using a release binary for joining a public network of nodes (e.g. testnet) knowing an initial network peer to join.
+This document describes how to configure your Aeternity node installed using a release binary for joining a public network of nodes (e.g. testnet) knowing an initial network peer to join.
 
 ## Notable user configuration parameters
 
@@ -47,7 +47,7 @@ Then, the node will automatically create appropriate port mapping based on the c
 
 #### Port Check
 
-After you have started the epoch application, you can verify the validity of your setup and configuration correctness by, for example, running the external node port check (assuming the default port 3015):
+After you have started the node, you can verify the validity of your setup and configuration correctness by, for example, running the external node port check (assuming the default port 3015):
 
 ```bash
 nc -zv $(curl -s https://api.ipify.org) 3015
@@ -62,7 +62,7 @@ Where the IP address should be the external IP address of the node under test (i
 
 ### Channels
 
-`epoch` provides an infrastructure for using state channes. There are two
+The node provides an infrastructure for using state channes. There are two
 distinct protocols involved:
 * WebSocket client one
 * Noise encoded one
@@ -213,7 +213,7 @@ If you don't have your public key yet, you can generate a public/private key pai
 An alternative tool `keys_gen` for generating a public-private key pair **for testing purposes only** is included in the package.
 
 The key pair will be encrypted with a password that you shall pass to `keys_gen` tool (below assumes the node is deployed in directory `~/aeternity/node`).
-Generated public-private key pair will be located in `~/aeternity/node/generated_keys`, and public key is to be put in epoch configuration file (`mining` > `beneficiary` parameter).
+Generated public-private key pair will be located in `~/aeternity/node/generated_keys`, and public key is to be put in the configuration file (`mining` > `beneficiary` parameter).
 
 Do make sure you back up `~/aeternity/node/generated_keys` (and remember the password): if you destroy the node, you can setup a new node and use the same account (public key) as a beneficiary.
 You shall not share the private key (or the password) with anyone.
