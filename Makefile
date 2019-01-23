@@ -65,7 +65,7 @@ HTTP_APP = apps/aehttp
 SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
 
 console:
-	@$(REBAR) as local shell --config config/dev.config --sname aeternity
+	@$(REBAR) as local shell --config config/dev.config --sname epoch
 
 local-build: KIND=local
 local-build: internal-build
