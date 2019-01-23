@@ -14,7 +14,7 @@
          is_solo_closing/2,
          is_last_state_forced/1,
          locked_until/1,
-         new/1,
+         new/9,
          peers/1,
          serialize/1,
          serialize_for_client/1,
@@ -216,29 +216,27 @@ pubkey(<<_:?PUB_SIZE/binary>> = InitiatorPubKey, Nonce,
 is_last_state_forced(#channel{solo_round = SoloRound}) ->
     SoloRound =/= 0.
 
--spec new(aesc_create_tx:tx()) -> channel().
-new(ChCTx) ->
-    PubKey = pubkey(aesc_create_tx:initiator_pubkey(ChCTx),
-                    aesc_create_tx:nonce(ChCTx),
-                    aesc_create_tx:responder_pubkey(ChCTx)),
-    InitiatorAmount = aesc_create_tx:initiator_amount(ChCTx),
-    ResponderAmount = aesc_create_tx:responder_amount(ChCTx),
-    DelegatePubkeys = aesc_create_tx:delegate_pubkeys(ChCTx),
-    StateHash = aesc_create_tx:state_hash(ChCTx),
-    Round = aesc_create_tx:round(ChCTx),
+-spec new(aec_keys:pubkey(), non_neg_integer(),
+          aec_keys:pubkey(), non_neg_integer(),
+          non_neg_integer(), [aec_keys:pubkey()],
+          aec_hash:hash(), non_neg_integer(),
+          non_neg_integer()) -> channel().
+new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount,
+    ReserveAmount, DelegatePubkeys, StateHash, LockPeriod, Nonce) ->
+    PubKey = pubkey(InitiatorPubKey, Nonce, ResponderPubKey),
     #channel{id                   = aec_id:create(channel, PubKey),
-             initiator_id         = aesc_create_tx:initiator_id(ChCTx),
-             responder_id         = aesc_create_tx:responder_id(ChCTx),
+             initiator_id         = aec_id:create(account, InitiatorPubKey),
+             responder_id         = aec_id:create(account, ResponderPubKey),
              channel_amount       = InitiatorAmount + ResponderAmount,
              initiator_amount     = InitiatorAmount,
              responder_amount     = ResponderAmount,
-             channel_reserve      = aesc_create_tx:channel_reserve(ChCTx),
+             channel_reserve      = ReserveAmount,
              delegate_ids         = [aec_id:create(account, D) || D <- DelegatePubkeys],
              state_hash           = StateHash,
-             round                = Round,
+             round                = 1,
              solo_round           = 0,
              locked_until         = 0,
-             lock_period          = aesc_create_tx:lock_period(ChCTx)}.
+             lock_period          = LockPeriod}.
 
 -spec peers(channel()) -> list(aec_keys:pubkey()).
 peers(#channel{} = Ch) ->
