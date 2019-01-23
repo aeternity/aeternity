@@ -3,7 +3,7 @@
 Run below command to install latest version of aeternity node.
 
 ```bash
-curl -O https://raw.githubusercontent.com/aeternity/epoch/v1.3.0/scripts/install.sh && chmod +x install.sh && ./install.sh 1.3.0
+curl -O https://raw.githubusercontent.com/aeternity/aeternity/v1.3.0/scripts/install.sh && chmod +x install.sh && ./install.sh 1.3.0
 ```
 
 See the documentation below detailed instructions for manual installation.
@@ -19,7 +19,7 @@ In order to install an Aeternity node using a release binary, you need to:
 
 ## Retrieve release binary
 
-The release binaries are published on [GitHub](https://github.com/aeternity/epoch/releases) and are tested on the following platforms:
+The release binaries are published on [GitHub](https://github.com/aeternity/aeternity/releases) and are tested on the following platforms:
 * Ubuntu 16.04.3 LTS (x86-64);
 * Ubuntu 18.04 LTS (x86-64);
 * macOS High Sierra 10.13 (x86-64);

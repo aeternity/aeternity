@@ -16,12 +16,12 @@ NOTE: These steps describe the setup for a basic CPU mining configuration.
 
 ## Step 1: Get helper scripts
 
-The helper scripts are located in the `scripts/` folder in the `epoch` Git repository.
+The helper scripts are located in the `scripts/` folder in the `aeternity` Git repository.
 You may download the whole repository by
 
-1. Downloading the [Git repository](https://github.com/aeternity/epoch) itself;
+1. Downloading the [Git repository](https://github.com/aeternity/aeternity) itself;
 2. Or downloading and unpacking a
-   [Zip archive](https://github.com/aeternity/epoch/archive/master.zip)
+   [Zip archive](https://github.com/aeternity/aeternity/archive/master.zip)
    provided by Github.
 
 Alternatively, you can also download the individual scripts:
