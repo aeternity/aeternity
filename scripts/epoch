@@ -24,4 +24,5 @@ SCRIPT_DIR="$(cd `dirname "$SCRIPT"` && pwd -P)"
 
 REL_NAME="aeternity"
 
+echo 'WARNING: This binary named "epoch" is deprecated, please use the binary named "aeternity" instead.' >&2
 exec "${SCRIPT_DIR:?}/${REL_NAME:?}" "$@"
