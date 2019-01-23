@@ -485,7 +485,8 @@ post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce :=
 post_oracle_register_tx(Node, OAccount, Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OAccount,
     post_transaction(Node, aeo_register_tx, OPrivKey, Opts, #{
-        account_id => aec_id:create(account, OPubKey)
+        account_id => aec_id:create(account, OPubKey),
+        abi_version => 0
     }).
 
 post_oracle_extend_tx(Node, OAccount, Opts) ->
