@@ -1,10 +1,10 @@
 # CUDA Miner
 
 The Ubuntu release packages ships with a CUDA miner.
-This documentation describes how to use the CUDA miner shipped in the Ubuntu release package, how to build it yourself (if you prefer to do so), and the related configuration of the `epoch` node.
+This documentation describes how to use the CUDA miner shipped in the Ubuntu release package, how to build it yourself (if you prefer to do so), and the related configuration of the Aeternity node.
 
-The documentation below assumes that an `epoch` node is already installed either by [release package](installation.md) or [from source](build.md), thus its dependencies are also installed.
-The documentation below assumes that the `epoch` source code resides in `~/aeternity/node` directory.
+The documentation below assumes that an Aeternity node is already installed either by [release package](installation.md) or [from source](build.md), thus its dependencies are also installed.
+The documentation below assumes that the Aeternity node's source code resides in `~/aeternity/node` directory.
 
 ## How to use the CUDA miner that is shipped in the release packages
 
@@ -52,16 +52,16 @@ You can build the CUDA miner yourself by following these steps:
 
 - CUDA toolkit installation
 - CUDA miner install
-- Epoch node configuration
+- Aeternity node configuration
 
 The documentation in this section is tested on:
-- Epoch version 1.0.0-rc2
+- Aeternity node version 1.0.0-rc2
 - CUDA toolkit version 9.2
 - AWS p2.xlarge instance with 16GB EBS
 - Ubuntu 16.04.4
 - non-root user with `ALL` sudo privileges
 
-Make sure the `epoch` node is stopped to speedup the installation process.
+Make sure the Aeternity node is stopped to speedup the installation process.
 
 ### CUDA toolkit installation
 
@@ -82,16 +82,14 @@ sudo apt-get update && sudo apt-get install cuda
 
 ### Miner install
 
-At this point the CUDA toolkit is installed. Next step is to build the cuckoo CUDA miner. If the node has been installed (build) from source, the same source tree can be used. Otherwise if the binary package has been used for installation, **the same version** of epoch source code must be downloaded.
+At this point the CUDA toolkit is installed. Next step is to build the cuckoo CUDA miner. If the node has been installed (build) from source, the same source tree can be used. Otherwise if the binary package has been used for installation, **the same version** of Aeternity node's source code must be downloaded.
 
-Epoch source code can be downloaded by cloning the git repository:
+Aeternity node's source code can be downloaded by cloning the git repository:
 ```bash
 cd ~
-git clone https://github.com/aeternity/epoch.git epoch && cd epoch
+git clone https://github.com/aeternity/aeternity.git aeternity && cd aeternity ## Before version 1.3.0, the repository used to be https://github.com/aeternity/epoch.git
 git checkout tags/v1.0.0-rc2
 ```
-
-The documentation below assumes that the `epoch` source code resides in `~/epoch` directory.
 
 Cuckoo CUDA build assumes CUDA compiler (`nvcc`) is install in `PATH`, however it is installed by the above steps in `/usr/local/cuda-9.2/bin` which is not in the `PATH` by default. To add CUDA compiler to the `PATH` environment variable run:
 
@@ -105,7 +103,7 @@ Compilation of CUDA miner is done by invoking:
 cd apps/aecuckoo && make cuda29
 ```
 
-Finally the actual installation of the miner binary is copying it to the node corresponding path, the documentation assumes the `epoch` node is installed in `~/aeternity/node` directory.
+Finally the actual installation of the miner binary is copying it to the node corresponding path, the documentation assumes the Aeternity node is installed in `~/aeternity/node` directory.
 
 The exact path where to copy the binary depends on the version of the node: you can find it by calling `ls -d ~/aeternity/node/lib/aecuckoo-*/priv/bin`.
 E.g. it may be something like `~/aeternity/node/lib/aecuckoo-0.1.0/priv/bin`: the following assumes this path though you may need to adapt it.
@@ -174,7 +172,7 @@ mining:
               hex_encoded_header: true
 ```
 
-**Don't be tempted to use `-r` as `extra_args`** the `epoch` node will **not**
+**Don't be tempted to use `-r` as `extra_args`** the Aeternity node will **not**
 handle nonces correctly in this case.
 
 ### Multiple GPU devices
