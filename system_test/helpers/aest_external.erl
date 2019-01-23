@@ -79,7 +79,7 @@ get_node_pubkey(_NodeState) ->
 extract_archive(_NodeState, _Path, _Archive) ->
     error({not_supported, ?FUNCTION_NAME}).
 
-run_cmd_in_node_dir(_NodeState, _Cmd, _Timeout) ->
+run_cmd_in_node_dir(_NodeState, _Cmd, _Opts) ->
     error({not_supported, ?FUNCTION_NAME}).
 
 connect_node(_NetName, _NodeState) ->

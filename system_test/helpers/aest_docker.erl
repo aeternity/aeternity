@@ -378,9 +378,9 @@ extract_archive(#{container_id := ID, hostname := Name} = NodeState, Path, Archi
     log(NodeState, "Extracted archive of size ~p in container ~p [~s] at path ~p", [byte_size(Archive), Name, ID, Path]),
     NodeState.
 
-run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd, Timeout) ->
-    log(NodeState, "Running command ~p on container ~p [~s]", [Cmd, Name, ID]),
-    {ok, Status, Result} = aest_docker_api:exec(ID, Cmd, #{timeout => Timeout}),
+run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd, Opts) ->
+    log(NodeState, "Running command ~p on container ~p [~s] with options ~p", [Cmd, Name, ID, Opts]),
+    {ok, Status, Result} = aest_docker_api:exec(ID, Cmd, Opts),
     log(NodeState, "Run command ~p on container ~p [~s] with result ~p",
         [Cmd, Name, ID, Result]),
     case Result of
@@ -472,7 +472,7 @@ attempt_epoch_stop(#{container_id := ID, hostname := Name, sockets := Sockets} =
         "attempting to stop node by executing command ~s",
         [Name, ID, CmdStr]),
     try
-        retry_epoch_stop(NodeState, ID, Cmd, #{timeout => Timeout}, 5),
+        retry_epoch_stop(NodeState, ID, Cmd, #{timeout => Timeout, stderr => false}, 5),
         [ gen_tcp:close(S) || S <- Sockets ]
     catch
         throw:{exec_start_timeout, TimeoutInfo} ->
@@ -487,12 +487,15 @@ retry_epoch_stop(_NodeState, _ID, _Cmd, _Opts, 0) ->
     error(retry_exausted);
 retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry) ->
     #{container_id := ID, hostname := Name} = NodeState,
-    case aest_docker_api:exec(ID, Cmd, Opts) of
-        {ok, 137, <<"ok\r\n">>} -> ok;
-        {ok, Status, Res} ->
+    {ok, Status, Res0} = aest_docker_api:exec(ID, Cmd, Opts),
+    Res1 = string:trim(Res0, trailing, [$\r, $\n]),
+    case {Status, string:equal(Res1, <<"ok">>)} of
+        {137, true} ->
+            ok;
+        _ ->
             CmdStr = lists:join(" ", Cmd),
             log(NodeState, "Command executed on container ~p [~s]: ~s (~p)~n~s",
-                    [Name, ID, CmdStr, Status, Res]),
+                    [Name, ID, CmdStr, Status, Res0]),
             retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry - 1)
     end.
 
