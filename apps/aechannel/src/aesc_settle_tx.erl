@@ -192,51 +192,6 @@ serialization_template(?CHANNEL_SETTLE_TX_VSN) ->
 %%% Internal functions
 %%%===================================================================
 
-check_channel(ChannelPubKey, FromPubKey, InitiatorAmount, ResponderAmount, Height, Trees) ->
-    ChannelsTree = aec_trees:channels(Trees),
-    case aesc_state_tree:lookup(ChannelPubKey, ChannelsTree) of
-        none ->
-            {error, channel_does_not_exist};
-        {value, Channel} ->
-            Checks =
-                [fun() -> aesc_utils:check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end,
-                 fun() -> check_solo_closed(Channel, Height) end,
-                 %% check total amount
-                 fun() -> check_are_funds_in_channel(ChannelPubKey,
-                                InitiatorAmount + ResponderAmount, Trees) end,
-                 %% check individual amounts are what is expected
-                 fun() -> check_peer_amount(InitiatorAmount,
-                                            aesc_channels:initiator_amount(Channel))
-                 end,
-                 fun() -> check_peer_amount(ResponderAmount,
-                                            aesc_channels:responder_amount(Channel))
-                 end],
-            aeu_validation:run(Checks)
-    end.
-
-check_peer_amount(ExpectedAmt, Amt) ->
-    case Amt =:= ExpectedAmt of
-        true -> ok;
-        false -> {error, wrong_amt}
-    end.
-
-check_solo_closed(Channel, Height) ->
-    case aesc_channels:is_solo_closed(Channel, Height) of
-        true  -> ok;
-        false -> {error, channel_not_closed}
-    end.
-
 -spec version() -> non_neg_integer().
 version() ->
     ?CHANNEL_SETTLE_TX_VSN.
-
--spec check_are_funds_in_channel(aesc_channels:pubkey(), non_neg_integer(), aec_trees:trees()) ->
-                                        ok | {error, insufficient_channel_funds}.
-check_are_funds_in_channel(ChannelPubKey, Amount, Trees) ->
-    ChannelsTree = aec_trees:channels(Trees),
-    Channel      = aesc_state_tree:get(ChannelPubKey, ChannelsTree),
-    case aesc_channels:channel_amount(Channel) >= Amount of
-        true  -> ok;
-        false -> {error, insufficient_channel_funds}
-    end.
-
