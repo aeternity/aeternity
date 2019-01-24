@@ -14,6 +14,7 @@
 %% Simple access tx instructions API
 -export([ channel_create_tx_instructions/10
         , channel_close_mutual_tx_instructions/6
+        , channel_settle_tx_instructions/6
         , contract_call_from_contract_instructions/10
         , contract_call_tx_instructions/10
         , contract_create_tx_instructions/10
@@ -228,6 +229,14 @@ channel_close_mutual_tx_instructions(FromPubkey, ChannelPubkey,
                               InitiatorAmount, ResponderAmount, Fee)
     ].
 
+-spec channel_settle_tx_instructions(_, _, _, _, _, _) -> [op()].
+channel_settle_tx_instructions(FromPubkey, ChannelPubkey,
+                               InitiatorAmount, ResponderAmount, Fee, Nonce) ->
+    [ inc_account_nonce_op(FromPubkey, Nonce)
+    , spend_fee_op(FromPubkey, Fee)
+    , channel_settle_op(FromPubkey, ChannelPubkey, InitiatorAmount, ResponderAmount)
+    ].
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -262,6 +271,7 @@ eval_one({Op, Args}, S) ->
         lock_amount               -> lock_amount(Args, S);
         channel_create            -> channel_create(Args, S);
         channel_close_mutual      -> channel_close_mutual(Args, S);
+        channel_settle            -> channel_settle(Args, S);
         contract_call             -> contract_call(Args, S);
         contract_create           -> contract_create(Args, S);
         name_claim                -> name_claim(Args, S);
@@ -624,6 +634,38 @@ channel_close_mutual({FromPubkey, ChannelPubkey,
     {RAccount, S3} = get_account(aesc_channels:responder_pubkey(Channel), S2),
     S4 = account_earn(IAccount, InitiatorAmount, S3),
     S5 = account_earn(RAccount, ResponderAmount, S4),
+    S6 = int_lock_amount(LockAmount, S5),
+    delete_x(channel, ChannelPubkey, S6).
+
+%%%-------------------------------------------------------------------
+
+channel_settle_op(FromPubkey, ChannelPubkey, InitiatorAmount, ResponderAmount
+                 ) when ?IS_HASH(FromPubkey),
+                        ?IS_HASH(ChannelPubkey),
+                        ?IS_NON_NEG_INTEGER(InitiatorAmount),
+                        ?IS_NON_NEG_INTEGER(ResponderAmount) ->
+    {channel_settle, {FromPubkey, ChannelPubkey,
+                      InitiatorAmount, ResponderAmount}}.
+
+channel_settle({FromPubkey, ChannelPubkey,
+                InitiatorAmount, ResponderAmount}, S) ->
+    {Channel, S1} = get_channel(ChannelPubkey, S),
+    assert_is_channel_peer(Channel, FromPubkey),
+    assert_channel_is_solo_closed(Channel, S),
+    TotalAmount = InitiatorAmount + ResponderAmount,
+    ChannelAmount = aesc_channels:channel_amount(Channel),
+    LockAmount = ChannelAmount - TotalAmount,
+    assert(LockAmount >= 0, insufficient_channel_funds),
+    assert(InitiatorAmount =:= aesc_channels:initiator_amount(Channel),
+           wrong_amt),
+    assert(ResponderAmount =:= aesc_channels:responder_amount(Channel),
+           wrong_amt),
+    ResponderPubkey = aesc_channels:responder_pubkey(Channel),
+    {ResponderAccount, S2} = get_account(ResponderPubkey, S1),
+    InitiatorPubkey = aesc_channels:initiator_pubkey(Channel),
+    {InitiatorAccount, S3} = get_account(InitiatorPubkey, S2),
+    S4 = account_earn(ResponderAccount, ResponderAmount, S3),
+    S5 = account_earn(InitiatorAccount, InitiatorAmount, S4),
     S6 = int_lock_amount(LockAmount, S5),
     delete_x(channel, ChannelPubkey, S6).
 
@@ -1030,6 +1072,19 @@ assert_channel_active(Channel) ->
     case aesc_channels:is_active(Channel) of
         true  -> ok;
         false -> runtime_error(channel_not_active)
+    end.
+
+
+assert_channel_is_solo_closed(Channel, S) ->
+    case aesc_channels:is_solo_closed(Channel, S#state.height) of
+        true  -> ok;
+        false -> runtime_error(channel_not_closed)
+    end.
+
+assert_is_channel_peer(Channel, Pubkey) ->
+    case lists:member(Pubkey, aesc_channels:peers(Channel)) of
+        true  -> ok;
+        false -> runtime_error(account_not_peer)
     end.
 
 %%%===================================================================
