@@ -14,6 +14,7 @@
 %% Simple access tx instructions API
 -export([ channel_create_tx_instructions/10
         , channel_close_mutual_tx_instructions/6
+        , channel_deposit_tx_instructions/7
         , channel_settle_tx_instructions/6
         , contract_call_from_contract_instructions/10
         , contract_call_tx_instructions/10
@@ -220,6 +221,14 @@ channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
                         StateHash, LockPeriod, Nonce)
     ].
 
+-spec channel_deposit_tx_instructions(_, _, _, _, _, _, _) -> [op()].
+channel_deposit_tx_instructions(FromPubkey, ChannelPubkey, Amount, StateHash,
+                                Round, Fee, Nonce) ->
+    [ inc_account_nonce_op(FromPubkey, Nonce)
+    , spend_fee_op(FromPubkey, Fee + Amount)
+    , channel_deposit_op(FromPubkey, ChannelPubkey, Amount, StateHash, Round)
+    ].
+
 -spec channel_close_mutual_tx_instructions(_, _, _, _, _, _) -> [op()].
 channel_close_mutual_tx_instructions(FromPubkey, ChannelPubkey,
                                      InitiatorAmount, ResponderAmount,
@@ -270,6 +279,7 @@ eval_one({Op, Args}, S) ->
         inc_account_nonce         -> inc_account_nonce(Args, S);
         lock_amount               -> lock_amount(Args, S);
         channel_create            -> channel_create(Args, S);
+        channel_deposit           -> channel_deposit(Args, S);
         channel_close_mutual      -> channel_close_mutual(Args, S);
         channel_settle            -> channel_settle(Args, S);
         contract_call             -> contract_call(Args, S);
@@ -608,6 +618,25 @@ channel_create({InitiatorPubkey, InitiatorAmount,
     ChannelPubkey = aesc_channels:pubkey(Channel),
     assert_not_channel(ChannelPubkey, S),
     cache_put(channel, Channel, S).
+
+%%%-------------------------------------------------------------------
+
+channel_deposit_op(FromPubkey, ChannelPubkey, Amount, StateHash, Round) ->
+    {channel_deposit, {FromPubkey, ChannelPubkey, Amount, StateHash, Round}}.
+
+channel_deposit({FromPubkey, ChannelPubkey, Amount, StateHash, Round}, S) ->
+    {Channel, S1} = get_channel(ChannelPubkey, S),
+    assert_channel_active(Channel),
+    assert_is_channel_peer(Channel, FromPubkey),
+    assert_channel_round(Channel, Round, deposit),
+    Channel1 = aesc_channels:deposit(Channel, Amount, Round, StateHash),
+    cache_put(channel, Channel1, S1).
+
+assert_channel_round(Channel, Round, Type) ->
+    case aesc_utils:check_round_greater_than_last(Channel, Round, Type) of
+        ok -> ok;
+        {error, old_round} -> runtime_error(old_round)
+    end.
 
 %%%-------------------------------------------------------------------
 

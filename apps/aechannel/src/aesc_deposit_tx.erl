@@ -129,47 +129,22 @@ channel_pubkey(#channel_deposit_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_deposit_tx{amount     = Amount,
-                          fee        = Fee,
-                          state_hash  = _StateHash,
-                          round       = Round,
-                          nonce      = Nonce} = Tx,
-      Trees,_Env) ->
-    ChannelPubKey = channel_pubkey(Tx),
-    FromPubKey    = from_pubkey(Tx),
-    Checks =
-        [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Amount + Fee) end,
-         fun() -> check_channel(ChannelPubKey, FromPubKey, Round, Trees) end],
-    case aeu_validation:run(Checks) of
-        ok ->
-            {ok, Trees};
-        {error, _Reason} = Error ->
-            Error
-    end.
+check(#channel_deposit_tx{}, Trees,_Env) ->
+    %% Checks in process/3
+    {ok, Trees}.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#channel_deposit_tx{amount     = Amount,
-                            fee        = Fee,
-                            state_hash = StateHash,
-                            round      = Round,
-                            nonce      = Nonce} = Tx,
-        Trees,_Env) ->
-    ChannelPubKey = channel_pubkey(Tx),
-    FromPubKey    = from_pubkey(Tx),
-    AccountsTree0 = aec_trees:accounts(Trees),
-    ChannelsTree0 = aec_trees:channels(Trees),
-
-    FromAccount0       = aec_accounts_trees:get(FromPubKey, AccountsTree0),
-    {ok, FromAccount1} = aec_accounts:spend(FromAccount0, Amount + Fee, Nonce),
-    AccountsTree1      = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
-
-    Channel0      = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
-    Channel1      = aesc_channels:deposit(Channel0, Amount, Round, StateHash),
-    ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
-    Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
-    {ok, Trees2}.
+process(#channel_deposit_tx{} = Tx, Trees, Env) ->
+    Instructions =
+        aec_tx_processor:channel_deposit_tx_instructions(
+          from_pubkey(Tx),
+          channel_pubkey(Tx),
+          amount(Tx),
+          state_hash(Tx),
+          round(Tx),
+          fee(Tx),
+          nonce(Tx)),
+    aec_tx_processor:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}
                                         | {error, channel_not_found}.
@@ -264,24 +239,6 @@ round(#channel_deposit_tx{round = Round}) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
--spec check_channel(aesc_channels:pubkey(), aec_keys:pubkey(), non_neg_integer(),aec_trees:trees()) ->
-                           ok | {error, atom()}.
-check_channel(ChannelPubKey, FromPubKey, Round, Trees) ->
-    case aesc_state_tree:lookup(ChannelPubKey, aec_trees:channels(Trees)) of
-        {value, Channel} ->
-            Checks =
-                [fun() -> aesc_utils:check_is_active(Channel) end,
-                 fun() -> aesc_utils:check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end,
-                 fun() -> aesc_utils:check_round_greater_than_last(Channel,
-                                                                   Round,
-                                                                   deposit)
-                 end
-                ],
-            aeu_validation:run(Checks);
-        none ->
-            {error, channel_does_not_exist}
-    end.
 
 -spec version() -> non_neg_integer().
 version() ->
