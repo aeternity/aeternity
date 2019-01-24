@@ -3,7 +3,7 @@
 Run below command to install latest version of aeternity node.
 
 ```bash
-curl -O https://raw.githubusercontent.com/aeternity/aeternity/v1.3.0/scripts/install.sh && chmod +x install.sh && ./install.sh 1.3.0
+curl -O https://raw.githubusercontent.com/aeternity/aeternity/v1.4.0/scripts/install.sh && chmod +x install.sh && ./install.sh 1.4.0
 ```
 
 See the documentation below detailed instructions for manual installation.
@@ -91,5 +91,5 @@ Create a directory and unpack the downloaded package (you may need to amend the 
 ```bash
 mkdir -p ~/aeternity/node
 cd ~/aeternity/node
-tar xf ~/Downloads/aeternity-1.3.0-macos-x86_64.tar.gz
+tar xf ~/Downloads/aeternity-1.4.0-macos-x86_64.tar.gz
 ```
