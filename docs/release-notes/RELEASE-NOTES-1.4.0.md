@@ -29,7 +29,7 @@ You can run a node by either:
 [docker]: https://github.com/aeternity/aeternity/blob/v1.4.0/docs/docker.md
 [build]: https://github.com/aeternity/aeternity/blob/v1.4.0/docs/build.md
 
-The user configuration is documented in the [wiki](https://github.com/aeternity/aeternity/wiki/User-provided-configuration).
+The user configuration is documented in the [the dedicated separate document](../../docs/configuration.md).
 For specifying configuration using the Docker image, please refer to [its documentation][docker].
 
 The node user API is documented:
