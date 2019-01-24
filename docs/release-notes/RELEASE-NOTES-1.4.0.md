@@ -1,25 +1,10 @@
 # About this release
 
 [This][this-release] is a maintenance release.
-It contains feature refinements, in addition to renaming of the canonical location and name of the software.
-Please refer to the notes below for details and backward compatibility.
+It:
+* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
 
-Regarding renaming, this release:
-* Deprecates Docker Hub repository `aeternity/epoch` in favor of `aeternity/aeternity`. Older images have been migrated to `aeternity/aeternity`. The `latest` tag of `aeternity/epoch` will always point to `1.3.0` until the repository is deleted in the future.
-  * **Users fetching the Docker image must fetch it from the new Docker Hub repo `aeternity/aeternity`.**
-* Changes Docker images username (and home path) to aeternity.
-  * **Users specifying for the Docker image a custom user configuration or persisting the chain data must update how they use the image.** Please refer to the dedicated [page][docker] for details.
-* Updates package names to use `aeternity` prefix e.g. `aeternity-1.3.0-ubuntu-x86_64.tar.gz` instead of `epoch-1.3.0-ubuntu-x86_64.tar.gz`.
-  * **Users retrieving the published release binaries for this release and following must update their scripts.**
-* Renames OSX/macOS package name to use `macos-x86_64` suffix e.g. `aeternity-1.3.0-macos-x86_64.tar.gz` instead of `epoch-1.3.0-osx-10.13.6.tar.gz`.
-  * **Users retrieving the published macOS release binaries for this release and following must update their scripts.**
-* Deprecates the `bin/epoch` binary for operating the node in favor of `bin/aeternity`. The `bin/epoch` binary prints a deprecation warning to standard error then redirects the invocation to the `bin/aeternity` one until `aeternity/epoch` is deleted at the next major version.
-* Deprecates GitHub repository `aeternity/epoch` in favor of `aeternity/aeternity`. Traffic is [redirected](https://help.github.com/articles/renaming-a-repository/) from `aeternity/epoch` to `aeternity/aeternity`.
-
-Regarding feature refinements, this release:
-* Disables internal debug API endpoints by default. To enable setup epoch.yaml `http > internal > debug_endpoints` to `true`.
-* Marks `http > endpoints > debug` and `http > debug` configuration params as deprecated.
-* Introduces new configuration parameter `sync` > `upnp_enabled`, which (if true) starts UPnP/NAT-PMP service to handle UPnP/NAT-PMP discovery and automatic port mappings.
+TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v1.3.0
 
