@@ -29,8 +29,8 @@ The description of API:
 * [Intended usage of the user API][api-usage]
 
 [protocol]: https://github.com/aeternity/protocol
-[api-overview]: https://github.com/aeternity/protocol/blob/master/epoch/api/README.md#overview
-[api-usage]: https://github.com/aeternity/protocol/blob/master/epoch/api/README.md#user-api---intended-usage
+[api-overview]: https://github.com/aeternity/protocol/blob/master/node/api/README.md#overview
+[api-usage]: https://github.com/aeternity/protocol/blob/master/node/api/README.md#user-api---intended-usage
 
 # How to start
 
@@ -42,14 +42,14 @@ Below is an overview of the installation process for different platforms,
 building the package from source, configuration and operation of the Aeternity
 node.
 
-[releases]: https://github.com/aeternity/epoch/releases
+[releases]: https://github.com/aeternity/aeternity/releases
 [release-notes]: /docs/release-notes
 
 Please use the [latest published stable release][latest-release] rather than the [`master` branch][master].
 The `master` branch tracks the ongoing efforts towards the next stable release to be published though it is not guaranteed to be stable.
 
-[latest-release]: https://github.com/aeternity/epoch/releases/latest
-[master]: https://github.com/aeternity/epoch/tree/master
+[latest-release]: https://github.com/aeternity/aeternity/releases/latest
+[master]: https://github.com/aeternity/aeternity/tree/master
 
 ## Installation
 
