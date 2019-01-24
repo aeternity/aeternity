@@ -13,7 +13,8 @@
 -behaviour(gen_server).
 
 %% API
--export([is_enabled/0]).
+-export([is_enabled/0,
+         prep_stop/0]).
 
 %% gen_server API
 -export([start_link/0]).
@@ -31,15 +32,32 @@
 %% to 7200 seconds (two hours). No recommendation for UPnP found.
 -define(MAPPING_LIFETIME, 7200).
 
+-record(state, {pid :: pid() | undefined,
+                mon :: reference() | undefined}).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
 
+-spec is_enabled() -> boolean().
 is_enabled() ->
     case aeu_env:find_config([<<"sync">>, <<"upnp_enabled">>],
                              [user_config, schema_default]) of
         {ok, IsEnabled} -> IsEnabled;
         undefined       -> false
+    end.
+
+-spec prep_stop() -> ok.
+prep_stop() ->
+    case is_enabled() of
+        true ->
+            case catch gen_server:call(?MODULE, prep_stop, 10000) of
+                ok -> ok;
+                Error ->
+                    epoch_sync:info("UPnP/NAT-PMP port cleanup failed: ~p", [Error])
+            end;
+        false ->
+            ok
     end.
 
 %%%===================================================================
@@ -52,12 +70,16 @@ start_link() ->
 %%% gen_server callbacks
 %%%===================================================================
 
-init(Args) ->
+init(_Args) ->
     epoch_sync:info("Starting UPnP/NAT-PMP service"),
     process_flag(trap_exit, true),
     erlang:send_after(rand:uniform(1000), self(), add_port_mapping),
-    {ok, Args}.
+    {ok, #state{}}.
 
+handle_call(prep_stop, _From, State) ->
+    ok = kill_mapping_worker(State),
+    delete_port_mapping(),
+    {reply, ok, #state{}};
 handle_call(Request, _From, State) ->
     epoch_sync:warning("Received unknown request: ~p", [Request]),
     {reply, ok, State}.
@@ -66,18 +88,27 @@ handle_cast(Other, State) ->
     epoch_sync:warning("Received unknown cast: ~p", [Other]),
     {noreply, State}.
 
-handle_info(add_port_mapping, State) ->
-    proc_lib:spawn(fun() -> add_port_mapping() end),
+handle_info(add_port_mapping, State0) ->
+    ok = kill_mapping_worker(State0),
+    State = spawn_mapping_worker(),
+
     %% Give additional 10 secs for UPnP/NAT-PMP discovery and setup, to
     %% make sure there is continuity in port mapping.
     erlang:send_after(1000 * (?MAPPING_LIFETIME - 10), self(), add_port_mapping),
     {noreply, State};
+handle_info({'EXIT', _Pid, normal}, State) ->
+    %% Received when calling delete_port_mapping/0 during prep_stop
+    {noreply, State};
+handle_info({'DOWN', Ref, process, Pid, normal}, #state{pid = Pid, mon = Ref}) ->
+    {noreply, #state{}};
+handle_info({'DOWN', Ref, process, Pid, Why}, #state{pid = Pid, mon = Ref}) when Why =/= normal ->
+    epoch_sync:warning("UPnP/NAT-PMP worker finished: ~p", [Why]),
+    {noreply, #state{}};
 handle_info(Other, State) ->
     epoch_sync:warning("Received unknown info message: ~p", [Other]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
-    delete_port_mapping(),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -86,6 +117,17 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+kill_mapping_worker(#state{pid = undefined, mon = undefined}) ->
+    ok;
+kill_mapping_worker(#state{pid = Pid, mon = Ref}) ->
+    demonitor(Ref, [flush]),
+    true = exit(Pid, shutdown),
+    ok.
+
+spawn_mapping_worker() ->
+    {Pid, Ref} = spawn_monitor(fun() -> add_port_mapping() end),
+    #state{pid = Pid, mon = Ref}.
 
 add_port_mapping() ->
     try

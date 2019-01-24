@@ -37,7 +37,8 @@ start_phase(start_reporters, _StartType, _PhaseArgs) ->
 
 prep_stop(State) ->
     aec_block_generator:prep_stop(),
-    aec_metrics:prep_stop(State).
+    aec_metrics:prep_stop(State),
+    aec_upnp:prep_stop().
 
 stop(_State) ->
     ok.
