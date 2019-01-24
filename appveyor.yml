@@ -24,20 +24,14 @@ environment:
     - OTP_VERSION: 20.1
       ERTS_VERSION: 9.1
       BUILD_STEP: build
-    - OTP_VERSION: 20.3
-      ERTS_VERSION: 9.3
-      BUILD_STEP: build
-    - OTP_VERSION: 21.2
-      ERTS_VERSION: 10.2
-      BUILD_STEP: build
-    - OTP_VERSION: 20.1
-      ERTS_VERSION: 9.1
       TEST_STEP: ct
     - OTP_VERSION: 20.3
       ERTS_VERSION: 9.3
+      BUILD_STEP: build
       TEST_STEP: ct
     - OTP_VERSION: 21.2
       ERTS_VERSION: 10.2
+      BUILD_STEP: build
       TEST_STEP: ct
 
 cache:
