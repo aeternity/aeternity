@@ -29,8 +29,8 @@ The description of API:
 * [Intended usage of the user API][api-usage]
 
 [protocol]: https://github.com/aeternity/protocol
-[api-overview]: https://github.com/aeternity/protocol/blob/master/epoch/api/README.md#overview
-[api-usage]: https://github.com/aeternity/protocol/blob/master/epoch/api/README.md#user-api---intended-usage
+[api-overview]: https://github.com/aeternity/protocol/blob/master/node/api/README.md#overview
+[api-usage]: https://github.com/aeternity/protocol/blob/master/node/api/README.md#user-api---intended-usage
 
 # How to start
 
