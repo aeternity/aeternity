@@ -50,7 +50,6 @@ matrix:
   fast_finish: false
   allow_failures:
     - OTP_VERSION: 21.2
-    - TEST_STEP: ct
 
 init:
   - systeminfo
