@@ -165,10 +165,14 @@ inspect(ID) ->
     end.
 
 exec(ID, Cmd, Opts) ->
+    StdErr = maps:get(stderr, Opts, true),
     ExecCreateBody = #{
         'AttachStdout' => true,
-        'AttachStderr' => true,
-        'Tty' => true,
+        'AttachStderr' => StdErr,
+        %% Do not allocate pseudo-TTY if no stderr desired, otherwise
+        %% stderr is included in the response body of the POST
+        %% `/exec/{id}/start` request.
+        'Tty' => StdErr,
         'Cmd' => [json_string(C) || C <- Cmd]
     },
     case docker_post([containers, ID, exec], #{}, ExecCreateBody) of
@@ -178,6 +182,9 @@ exec(ID, Cmd, Opts) ->
         {ok, 201, #{'Id' := ExecId}} ->
             ExecStartBody = #{
                 'Detach' => false,
+                %% Allocate pseudo-tty even if no stderr desired,
+                %% otherwise response body of the POST
+                %% `/exec/{id}/start` request is garbled.
                 'Tty' => true
             },
             TimeoutOpts = maps:with([timeout], Opts),
