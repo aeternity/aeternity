@@ -33,8 +33,8 @@ AdaptOverlayBin = fun(Overlay) ->
 %% Update relx config
 Relx0 = lists:keyfind(relx, 1, CONFIG),
 {relx, [{release, {aeternity, _}, RelxApps0} | RelxT0]} = Relx0,
-RelxOverlay0 = lists:keyfind(overlay, 1, RelxT0),
-RelxT1 = lists:keyreplace(overlay, 1, RelxT0, AdaptOverlayBin(RelxOverlay0)),
+{overlay, RelxOverlay0} = lists:keyfind(overlay, 1, RelxT0),
+RelxT1 = lists:keyreplace(overlay, 1, RelxT0, {overlay, AdaptOverlayBin(RelxOverlay0)}),
 {ok, VersionBin} = file:read_file(<<"VERSION">>),
 Version = string:trim(binary_to_list(VersionBin)),
 %% the release should be in front
@@ -42,5 +42,5 @@ Relx = {relx, [{release, {aeternity, Version}, FilterRelxRocksDb(RelxApps0)}] ++
 CONFIG1 = lists:keyreplace(relx, 1, CONFIG, Relx),
 
 %% Update rebar deps
-Deps0 = lists:keyfind(deps, 1, CONFIG1),
-lists:keyreplace(deps, 1, CONFIG1, FilterDepsRocksDb(Deps0)).
+{deps, Deps0} = lists:keyfind(deps, 1, CONFIG1),
+lists:keyreplace(deps, 1, CONFIG1, {deps, FilterDepsRocksDb(Deps0)}).
