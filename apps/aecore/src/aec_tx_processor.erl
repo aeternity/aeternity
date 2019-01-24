@@ -16,6 +16,7 @@
         , channel_close_mutual_tx_instructions/6
         , channel_deposit_tx_instructions/7
         , channel_settle_tx_instructions/6
+        , channel_withdraw_tx_instructions/7
         , contract_call_from_contract_instructions/10
         , contract_call_tx_instructions/10
         , contract_create_tx_instructions/10
@@ -238,6 +239,14 @@ channel_close_mutual_tx_instructions(FromPubkey, ChannelPubkey,
                               InitiatorAmount, ResponderAmount, Fee)
     ].
 
+-spec channel_withdraw_tx_instructions(_, _, _, _, _, _, _) -> [op()].
+channel_withdraw_tx_instructions(ToPubkey, ChannelPubkey, Amount, StateHash,
+                                 Round, Fee, Nonce) ->
+    [ inc_account_nonce_op(ToPubkey, Nonce)
+    , spend_fee_op(ToPubkey, Fee)
+    , channel_withdraw_op(ToPubkey, ChannelPubkey, Amount, StateHash, Round)
+    ].
+
 -spec channel_settle_tx_instructions(_, _, _, _, _, _) -> [op()].
 channel_settle_tx_instructions(FromPubkey, ChannelPubkey,
                                InitiatorAmount, ResponderAmount, Fee, Nonce) ->
@@ -280,6 +289,7 @@ eval_one({Op, Args}, S) ->
         lock_amount               -> lock_amount(Args, S);
         channel_create            -> channel_create(Args, S);
         channel_deposit           -> channel_deposit(Args, S);
+        channel_withdraw          -> channel_withdraw(Args, S);
         channel_close_mutual      -> channel_close_mutual(Args, S);
         channel_settle            -> channel_settle(Args, S);
         contract_call             -> contract_call(Args, S);
@@ -632,11 +642,26 @@ channel_deposit({FromPubkey, ChannelPubkey, Amount, StateHash, Round}, S) ->
     Channel1 = aesc_channels:deposit(Channel, Amount, Round, StateHash),
     cache_put(channel, Channel1, S1).
 
-assert_channel_round(Channel, Round, Type) ->
-    case aesc_utils:check_round_greater_than_last(Channel, Round, Type) of
-        ok -> ok;
-        {error, old_round} -> runtime_error(old_round)
-    end.
+%%%-------------------------------------------------------------------
+
+channel_withdraw_op(ToPubkey, ChannelPubkey, Amount, StateHash, Round
+                   ) when ?IS_HASH(ToPubkey),
+                          ?IS_HASH(ChannelPubkey),
+                          ?IS_NON_NEG_INTEGER(Amount),
+                          ?IS_HASH(StateHash),
+                          ?IS_NON_NEG_INTEGER(Round) ->
+    {channel_withdraw, {ToPubkey, ChannelPubkey, Amount, StateHash, Round}}.
+
+channel_withdraw({ToPubkey, ChannelPubkey, Amount, StateHash, Round}, S) ->
+    {Channel, S1} = get_channel(ChannelPubkey, S),
+    assert_channel_active(Channel),
+    assert_is_channel_peer(Channel, ToPubkey),
+    assert_channel_withdraw_amount(Channel, Amount),
+    assert_channel_round(Channel, Round, withdrawal),
+    Channel1 = aesc_channels:withdraw(Channel, Amount, Round, StateHash),
+    {Account, S2} = get_account(ToPubkey, S1),
+    S3 = account_earn(Account, Amount, S2),
+    cache_put(channel, Channel1, S3).
 
 %%%-------------------------------------------------------------------
 
@@ -1115,6 +1140,17 @@ assert_is_channel_peer(Channel, Pubkey) ->
         true  -> ok;
         false -> runtime_error(account_not_peer)
     end.
+
+assert_channel_round(Channel, Round, Type) ->
+    case aesc_utils:check_round_greater_than_last(Channel, Round, Type) of
+        ok -> ok;
+        {error, old_round} -> runtime_error(old_round)
+    end.
+
+assert_channel_withdraw_amount(Channel, Amount) ->
+    ChannelAmount = aesc_channels:channel_amount(Channel),
+    Reserve = aesc_channels:channel_reserve(Channel),
+    assert(ChannelAmount >= 2*Reserve + Amount, not_enough_channel_funds).
 
 %%%===================================================================
 %%% Error handling
