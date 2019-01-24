@@ -40,8 +40,8 @@ local setup differs, you need to set these variables yourself.
 ```
 ERTS_VERSION=9.3
 OTP_VERSION=20.3
-OTP_PATH=C:\Program Files\erl
-MSYS2_ROOT=C:\msys64
+WIN_OTP_PATH=C:\Program Files\erl
+WIN_MSYS2_ROOT=C:\msys64
 PLATFORM=x64
 ```
 
@@ -55,7 +55,7 @@ script `scipts/windows/msys2_shell.bat` to do so.
 That script uses the following environment variables:
 
 ```
-MSYS2_ROOT=C:\msys64
+WIN_MSYS2_ROOT=C:\msys64
 PLATFORM=x64
 ```
 
