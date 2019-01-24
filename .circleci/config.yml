@@ -647,6 +647,7 @@ jobs:
     <<: *infrastructure_config
     steps:
       - checkout
+      - *set_package_path
       - attach_workspace:
           at: *packages_workspace
       - *setup_secrets
