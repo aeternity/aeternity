@@ -1,8 +1,46 @@
+%% -*- erlang -*-
+
+IsWindows = case os:type() of {win32, _} -> true; {_, _} -> false end,
+
+FilterRelxRocksDb = fun(Apps) ->
+                        case IsWindows of
+                            false ->
+                                Apps;
+                            true ->
+                                Apps -- [rocksdb, mnesia_rocksdb]
+                        end
+                    end,
+
+FilterDepsRocksDb = fun(Deps) ->
+                        case IsWindows of
+                            false ->
+                                Deps;
+                            true ->
+                                [D || {K, _} = D <- Deps, K =/= rocksdb, K =/= mnesia_rocksdb]
+                        end
+                    end,
+
+AdaptOverlayBin = fun(Overlay) ->
+                      case IsWindows of
+                          false ->
+                              Overlay;
+                          true ->
+                              NewEntry = {copy, "scripts/epoch.bat", "bin/epoch.bat"},
+                              lists:keyreplace("bin/epoch", 3, Overlay, NewEntry)
+                      end
+                  end,
+
+%% Update relx config
 Relx0 = lists:keyfind(relx, 1, CONFIG),
-{relx, [{release, {aeternity, _}, Opts} | T]} = Relx0,
+{relx, [{release, {aeternity, _}, RelxApps0} | RelxT0]} = Relx0,
+RelxOverlay0 = lists:keyfind(overlay, 1, RelxT0),
+RelxT1 = lists:keyreplace(overlay, 1, RelxT0, AdaptOverlayBin(RelxOverlay0)),
 {ok, VersionBin} = file:read_file(<<"VERSION">>),
 Version = string:trim(binary_to_list(VersionBin)),
 %% the release should be in front
-Relx = {relx, [{release, {aeternity, Version}, Opts}] ++ T},
-lists:keyreplace(relx, 1, CONFIG, Relx).
+Relx = {relx, [{release, {aeternity, Version}, FilterRelxRocksDb(RelxApps0)}] ++ RelxT1},
+CONFIG1 = lists:keyreplace(relx, 1, CONFIG, Relx),
 
+%% Update rebar deps
+Deps0 = lists:keyfind(deps, 1, CONFIG1),
+lists:keyreplace(deps, 1, CONFIG1, FilterDepsRocksDb(Deps0)).
