@@ -102,72 +102,23 @@ channel_pubkey(#channel_settle_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
-                         responder_amount_final = ResponderAmount,
-                         fee                    = Fee,
-                         nonce                  = Nonce} = Tx,
-      Trees, Env) ->
-    Height        = aetx_env:height(Env),
-    ChannelPubKey = channel_pubkey(Tx),
-    FromPubKey    = from_pubkey(Tx),
-    Checks =
-        [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
-         fun() -> check_channel(ChannelPubKey, FromPubKey, InitiatorAmount,
-                                ResponderAmount, Height, Trees) end],
-    case aeu_validation:run(Checks) of
-        ok ->
-            {ok, Trees};
-        {error, _Reason} = Error ->
-            Error
-    end.
+check(#channel_settle_tx{}, Trees,_Env) ->
+    %% Checks in process/3
+    {ok, Trees}.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
-                           responder_amount_final = ResponderAmount,
-                           fee                    = Fee,
-                           nonce                  = Nonce} = Tx,
-        Trees,_Env) ->
-    ChannelPubKey = channel_pubkey(Tx),
-    FromPubKey    = from_pubkey(Tx),
-    AccountsTree0 = aec_trees:accounts(Trees),
-    ChannelsTree0 = aec_trees:channels(Trees),
-
-    Channel0        = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
-    InitiatorPubKey = aesc_channels:initiator_pubkey(Channel0),
-    InitiatorAmount = aesc_channels:initiator_amount(Channel0), % same amt
-    ResponderPubKey = aesc_channels:responder_pubkey(Channel0),
-    ResponderAmount = aesc_channels:responder_amount(Channel0), % same amt
-
-    InitiatorAccount0       = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
-    ResponderAccount0       = aec_accounts_trees:get(ResponderPubKey, AccountsTree0),
-    {ok, InitiatorAccount1} = aec_accounts:earn(InitiatorAccount0, InitiatorAmount),
-    {ok, ResponderAccount1} = aec_accounts:earn(ResponderAccount0, ResponderAmount),
-
-    {InitiatorAccount3, ResponderAccount3} =
-        case FromPubKey of
-            InitiatorPubKey ->
-                {ok, InitiatorAccount2} = aec_accounts:spend(InitiatorAccount1, Fee, Nonce),
-                {InitiatorAccount2, ResponderAccount1};
-            ResponderPubKey ->
-                {ok, ResponderAccount2} = aec_accounts:spend(ResponderAccount1, Fee, Nonce),
-                {InitiatorAccount1, ResponderAccount2}
-        end,
-
-    AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount3, AccountsTree0),
-    AccountsTree2 = aec_accounts_trees:enter(ResponderAccount3, AccountsTree1),
-
-    % all coins that are not in the final balance are locked
-    % they're sent to the special account that holds locked coins
-    DistributedAmounts = InitiatorAmount + ResponderAmount,
-    MissingCoins = aesc_channels:channel_amount(Channel0) - DistributedAmounts,
-    AccountsTree3 = aec_accounts_trees:lock_coins(MissingCoins,
-                                                  AccountsTree2),
-
-    ChannelsTree1 = aesc_state_tree:delete(aesc_channels:pubkey(Channel0), ChannelsTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees, AccountsTree3),
-    Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
-    {ok, Trees2}.
+                           responder_amount_final = ResponderAmount} = Tx,
+        Trees, Env) ->
+    Instructions =
+        aec_tx_processor:channel_settle_tx_instructions(
+          from_pubkey(Tx),
+          channel_pubkey(Tx),
+          InitiatorAmount,
+          ResponderAmount,
+          fee(Tx),
+          nonce(Tx)),
+    aec_tx_processor:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_settle_tx{} = Tx, _) ->
