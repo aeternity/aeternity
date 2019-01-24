@@ -23,7 +23,7 @@ Regarding feature refinements, this release:
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v1.3.0
 
-This release is backward compatible with v1.2.*, v1.1.* and v1.0.*.
+This release is backward compatible with `v1.2.*`, `v1.1.*` and `v1.0.*`.
 
 Please join the Roma network by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
