@@ -208,20 +208,14 @@
 %% channel websocket endpoints
 -export(
    [sc_ws_timeout_open/1,
-    sc_ws_open/1,
-    sc_ws_update/1,
-    sc_ws_update_fails_and_close/1,
-    sc_ws_send_messages_and_close/1,
-    sc_ws_conflict_and_close/1,
-    sc_ws_close/1,
-    sc_ws_close_mutual_initiator/1,
-    sc_ws_close_mutual_responder/1,
-    sc_ws_leave/1,
-    sc_ws_reestablish/1,
-    sc_ws_deposit_initiator_and_close/1,
-    sc_ws_deposit_responder_and_close/1,
-    sc_ws_withdraw_initiator_and_close/1,
-    sc_ws_withdraw_responder_and_close/1,
+    sc_ws_basic_open_close/1,
+    sc_ws_failed_update/1,
+    sc_ws_generic_messages/1,
+    sc_ws_update_conflict/1,
+    sc_ws_close_mutual/1,
+    sc_ws_leave_reestablish/1,
+    sc_ws_deposit/1,
+    sc_ws_withdraw/1,
     sc_ws_contracts/1,
     sc_ws_oracle_contract/1,
     sc_ws_nameservice_contract/1,
@@ -521,78 +515,40 @@ groups() ->
      },
      {channel_websocket_legacy, [sequence],
       channel_websocket_sequence()
-     }
+     },
+     {continuous_sc_ws, [sequence],
+      [
+       %% both can deposit
+       sc_ws_deposit,
+       %% both can withdraw
+       sc_ws_withdraw,
+       %% ensure port is reusable
+       sc_ws_failed_update,
+       sc_ws_generic_messages,
+       sc_ws_update_conflict,
+       sc_ws_contracts,
+       %% both can refer on-chain objects - oracle
+       sc_ws_oracle_contract,
+       %% both can refer on-chain objects - name service
+       sc_ws_nameservice_contract,
+       %% both can refer on-chain objects - chain environment
+       sc_ws_enviroment_contract,
+       %% both can call a remote contract
+       sc_ws_remote_call_contract,
+       %% both can call a remote contract refering on-chain data
+       sc_ws_remote_call_contract_refering_onchain_data
+      ]}
     ].
 
 channel_websocket_sequence() ->
-    [{basic_open_close, [], [sc_ws_timeout_open,
-                             sc_ws_open,
-                             sc_ws_update,
-                             sc_ws_close]},
-     %% ensure port is reusable
-     {failed_update, [], [sc_ws_open,
-                          sc_ws_update_fails_and_close]},
-     {generic_messages, [], [sc_ws_open,
-                             sc_ws_send_messages_and_close]},
-     {update_conflict, [], [sc_ws_open,
-                            sc_ws_conflict_and_close]},
-     %% initiator can start close mutual
-     {initiator_can_start_close_mutual, [], [sc_ws_open,
-                                             sc_ws_update,
-                                             sc_ws_close_mutual_initiator]},
-     %% responder can start close mutual
-     {responder_can_start_close_mutual, [], [sc_ws_open,
-                                             sc_ws_update,
-                                             sc_ws_close_mutual_responder]},
-     %% possible to leave and reestablish channel
-     {leave_reestablish, [], [sc_ws_open,
-                              sc_ws_leave,
-                              sc_ws_reestablish,
-                              sc_ws_update,
-                              sc_ws_close_mutual_initiator]},
-     %% initiator can make a deposit
-     {initiator_deposit, [], [sc_ws_open,
-                              sc_ws_update,
-                              sc_ws_deposit_initiator_and_close]},
-     %% responder can make a deposit
-     {responder_deposit, [], [sc_ws_open,
-                              sc_ws_update,
-                              sc_ws_deposit_responder_and_close]},
-     %% initiator can make a withdrawal
-     {initiator_withdrawal, [], [sc_ws_open,
-                                 sc_ws_update,
-                                 sc_ws_withdraw_initiator_and_close]},
-     %% responder can make a withdrawal
-     {responder_withdrawal, [], [sc_ws_open,
-                                 sc_ws_update,
-                                 sc_ws_withdraw_responder_and_close]},
-     %% responder can make a withdrawal
-     {contracts, [], [sc_ws_open,
-                      sc_ws_update,
-                      sc_ws_contracts]},
-     %% both can refer on-chain objects - oracle
-     {onchain_objects_oracles, [], [sc_ws_open,
-                                    sc_ws_update,
-                                    sc_ws_oracle_contract]},
-     %% both can refer on-chain objects - name service
-     {onchain_objects_names, [], [sc_ws_open,
-                                  sc_ws_update,
-                                  sc_ws_nameservice_contract]},
-
-     %% both can refer on-chain objects - chain environment
-     {onchain_objects_chain_env, [], [sc_ws_open,
-                                      sc_ws_update,
-                                      sc_ws_enviroment_contract]},
-
-     %% both can call a remote contract
-     {both_can_call_remote_contract, [], [sc_ws_open,
-                                          sc_ws_update,
-                                          sc_ws_remote_call_contract]},
-
-     %% both can call a remote contract
-     {both_can_call_remote_contract_onchain, [], [sc_ws_open,
-                                                  sc_ws_update,
-                                                  sc_ws_remote_call_contract_refering_onchain_data]}
+    [
+      sc_ws_timeout_open,
+      sc_ws_basic_open_close,
+      %% both can start close mutual
+      sc_ws_close_mutual,
+      %% possible to leave and reestablish channel
+      sc_ws_leave_reestablish,
+      {group, continuous_sc_ws}
     ].
 
 
@@ -612,6 +568,8 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
+init_per_group(continuous_sc_ws, Config) ->
+    sc_ws_open_(Config);
 init_per_group(all, Config) ->
     Config;
 init_per_group(Group, Config) when
@@ -805,6 +763,8 @@ end_per_group(Group, _Config) when
       Group =:= account_info;
       Group =:= tx_info ->
     ok;
+end_per_group(continuous_sc_ws, Config) ->
+    sc_ws_close_(Config);
 end_per_group(account_with_pending_tx, _Config) ->
     ok;
 end_per_group(oracle_txs, _Config) ->
@@ -3432,7 +3392,7 @@ channel_sign_tx(ConnPid, Privkey, Tag, Config) ->
     ws_send(ConnPid, Tag,  #{tx => EncSignedCreateTx}, Config),
     Tx.
 
-sc_ws_open(Config) ->
+sc_ws_open_(Config) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
 
@@ -3479,8 +3439,10 @@ sc_ws_open(Config) ->
 
     ChannelClients = #{initiator => IConnPid,
                        responder => RConnPid},
-    {save_config, [{channel_clients, ChannelClients},
-                   {channel_options, ChannelOpts} | Config]}.
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, [info, get, sign, on_chain_tx]),
+    [{channel_clients, ChannelClients},
+     {channel_options, ChannelOpts} | Config].
 
 
 channel_send_conn_open_infos(RConnPid, IConnPid, Config) ->
@@ -3551,11 +3513,9 @@ channel_create(Config, IConnPid, RConnPid) ->
 
     ChannelCreateFee.
 
-sc_ws_update(Config) ->
-    {ok, ConfigList} = get_saved_config(
-                         Config, [sc_ws_open, sc_ws_reestablish]),
+sc_ws_update_(Config) ->
     Participants = proplists:get_value(participants, Config),
-    Conns = proplists:get_value(channel_clients, ConfigList),
+    Conns = proplists:get_value(channel_clients, Config),
     lists:foldl(
         fun(Sender, Round) ->
             channel_update(Conns, Sender, Participants, 1, Round, Config),
@@ -3567,97 +3527,6 @@ sc_ws_update(Config) ->
          responder,
          initiator,
          responder]),
-    {save_config, ConfigList}.
-
-sc_ws_update_fails_and_close(Config) ->
-    {sc_ws_open, ConfigList} = ?config(saved_config, Config),
-    Participants = proplists:get_value(participants, Config),
-    #{initiator := IConnPid, responder :=RConnPid} = Conns =
-        proplists:get_value(channel_clients, ConfigList),
-    lists:foreach(
-        fun(Sender) ->
-            LogPid = maps:get(Sender, Conns),
-            ?WS:log(LogPid, info, "Failing update, insufficient balance"),
-            {ok, #{<<"reason">> := <<"insufficient_balance">>,
-                  <<"request">> := _Request0}} = channel_update_fail(
-                                                   Conns, Sender,
-                                                   Participants, 10000000, Config),
-            ?WS:log(LogPid, info, "Failing update, negative amount"),
-            {ok, #{<<"reason">> := <<"negative_amount">>,
-                  <<"request">> := _Request1}} = channel_update_fail(
-                                                   Conns, Sender,
-                                                   Participants, -1, Config),
-            ?WS:log(LogPid, info, "Failing update, invalid pubkeys"),
-            {ok, #{<<"reason">> := <<"invalid_pubkeys">>,
-                  <<"request">> := _Request2}} =
-                channel_update_fail(Conns, Sender,
-                                    #{initiator => #{pub_key => <<42:32/unit:8>>},
-                                      responder => #{pub_key => <<43:32/unit:8>>}},
-                                    1, Config),
-            ok
-        end,
-        [initiator, responder]),
-    ok = ?WS:stop(IConnPid),
-    ok = ?WS:stop(RConnPid),
-    ok.
-
-sc_ws_send_messages_and_close(Config) ->
-    {sc_ws_open, ConfigList} = ?config(saved_config, Config),
-    #{initiator := #{pub_key := IPubkey},
-      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
-    #{initiator := IConnPid, responder :=RConnPid} =
-        proplists:get_value(channel_clients, ConfigList),
-
-    lists:foreach(
-        fun({Sender, Msg}) ->
-            {SenderPubkey, ReceiverPubkey, SenderPid, ReceiverPid} =
-                case Sender of
-                    initiator ->
-                        {IPubkey, RPubkey, IConnPid, RConnPid};
-                    responder ->
-                        {RPubkey, IPubkey, RConnPid, IConnPid}
-                end,
-                SenderEncodedK = aehttp_api_encoder:encode(account_pubkey, SenderPubkey),
-                ReceiverEncodedK = aehttp_api_encoder:encode(account_pubkey, ReceiverPubkey),
-                ok = ?WS:register_test_for_channel_event(ReceiverPid, message),
-
-                ws_send(SenderPid, <<"message">>,
-                        #{<<"to">> => ReceiverEncodedK,
-                          <<"info">> => Msg}, Config),
-
-                {ok, #{<<"message">> := #{<<"from">> := SenderEncodedK,
-                                          <<"to">> := ReceiverEncodedK,
-                                          <<"info">> := Msg}}}
-                    = wait_for_channel_event(ReceiverPid, message, Config),
-                ok = ?WS:unregister_test_for_channel_event(ReceiverPid, message)
-        end,
-      [ {initiator, <<"hejsan">>}                   %% initiator can send
-      , {responder, <<"svejsan">>}                  %% responder can send
-      , {initiator, <<"first message in a row">>}   %% initiator can send two messages in a row
-      , {initiator, <<"second message in a row">>}
-      , {responder, <<"some message">>}             %% responder can send two messages in a row
-      , {responder, <<"other message">>}
-      ]),
-
-    ok = ?WS:stop(IConnPid),
-    ok = ?WS:stop(RConnPid),
-    ok.
-
-sc_ws_conflict_and_close(Config) ->
-    {sc_ws_open, ConfigList} = ?config(saved_config, Config),
-    Participants = proplists:get_value(participants, Config),
-    #{initiator := IConnPid, responder :=RConnPid} = Conns =
-        proplists:get_value(channel_clients, ConfigList),
-
-    lists:foreach(
-        fun(FirstSender) ->
-                channel_conflict(Conns, FirstSender, Participants, 1, 2, Config)
-        end,
-        [initiator,
-         responder]),
-
-    ok = ?WS:stop(IConnPid),
-    ok = ?WS:stop(RConnPid),
     ok.
 
 channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
@@ -3814,9 +3683,7 @@ channel_update_fail(#{initiator := IConnPid, responder :=RConnPid},
     ok = ?WS:unregister_test_for_channel_event(StarterPid, error),
     Res.
 
-sc_ws_close(Config) ->
-    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
-
+sc_ws_close_(ConfigList) ->
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
 
@@ -3852,25 +3719,17 @@ query_balances_(ConnPid, Accounts, <<"json-rpc">>) ->
             ConnPid, #{ <<"method">> => <<"channels.get.balances">>
                       , <<"params">> => #{<<"accounts">> => Accounts} })}.
 
-
-sc_ws_close_mutual_initiator(Config) ->
-    sc_ws_close_mutual(Config, initiator).
-
-sc_ws_close_mutual_responder(Config) ->
-    sc_ws_close_mutual(Config, responder).
-
-sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
+sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator
                                  orelse Closer =:= responder ->
-    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
-    ct:log("ConfigList = ~p", [ConfigList]),
+    ct:log("ConfigList = ~p", [Config]),
     #{initiator := #{pub_key := IPubkey,
                     priv_key := IPrivkey},
       responder := #{pub_key := RPubkey,
                     priv_key := RPrivkey}} = proplists:get_value(participants,
-                                                                 ConfigList),
+                                                                 Config),
     {IStartB, RStartB} = channel_participants_balances(IPubkey, RPubkey),
     #{initiator := IConnPid,
-      responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
+      responder := RConnPid} = proplists:get_value(channel_clients, Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, on_chain_tx]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, on_chain_tx]),
 
@@ -3915,11 +3774,9 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
     ok.
 
-sc_ws_leave(Config) ->
-    {sc_ws_open, ConfigList} = ?config(saved_config, Config),
-
+sc_ws_leave_(Config) ->
     #{initiator := IConnPid,
-      responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
+      responder := RConnPid} = proplists:get_value(channel_clients, Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [leave, info]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [leave, info]),
     ok = ?WS:register_test_for_events(IConnPid, websocket, [closed]),
@@ -3936,26 +3793,22 @@ sc_ws_leave(Config) ->
     ok = ?WS:wait_for_event(IConnPid, websocket, closed),
     ok = ?WS:wait_for_event(RConnPid, websocket, closed),
     %%
-    Options = proplists:get_value(channel_options, ConfigList),
+    Options = proplists:get_value(channel_options, Config),
     Port = maps:get(port, Options),
     RPort = Port+1,
     ReestablOptions = maps:merge(Options, #{existing_channel_id => IDi,
                                             offchain_tx => StI,
                                             port => RPort}),
-    {save_config, [{channel_reestabl_options, ReestablOptions} | Config]}.
+    ReestablOptions.
 
 
-sc_ws_reestablish(Config) ->
-    {sc_ws_leave, ConfigList} = ?config(saved_config, Config),
-    ReestablOptions = proplists:get_value(channel_reestabl_options, ConfigList),
+sc_ws_reestablish_(ReestablOptions, Config) ->
     {ok, RrConnPid} = channel_ws_start(responder, ReestablOptions, Config),
     {ok, IrConnPid} = channel_ws_start(initiator, maps:put(
                                                     host, <<"localhost">>,
                                                     ReestablOptions), Config),
-    ok = ?WS:register_test_for_channel_events(
-            RrConnPid, [info, update]),
-    ok = ?WS:register_test_for_channel_events(
-            IrConnPid, [info, update]),
+    ok = ?WS:register_test_for_channel_events(RrConnPid, [info, update]),
+    ok = ?WS:register_test_for_channel_events(IrConnPid, [info, update]),
     {ok, #{<<"event">> := <<"channel_reestablished">>}} =
         wait_for_channel_event(IrConnPid, info, Config),
     {ok, #{<<"event">> := <<"channel_reestablished">>}} =
@@ -3964,24 +3817,19 @@ sc_ws_reestablish(Config) ->
         wait_for_channel_event(IrConnPid, info, Config),
     {ok, #{<<"event">> := <<"open">>}} =
         wait_for_channel_event(RrConnPid, info, Config),
+    {ok, #{<<"state">> := NewState}} = wait_for_channel_event(IrConnPid, update, Config),
+    {ok, #{<<"state">> := NewState}} = wait_for_channel_event(RrConnPid, update, Config),
     ChannelClients = #{initiator => IrConnPid,
                        responder => RrConnPid},
-    {save_config, [{channel_clients, ChannelClients},
-                   {channel_options, ReestablOptions} | Config]}.
+    ok = ?WS:unregister_test_for_channel_events(RrConnPid, [info, update]),
+    ok = ?WS:unregister_test_for_channel_events(IrConnPid, [info, update]),
+    [{channel_clients, ChannelClients} | Config].
 
 
-sc_ws_deposit_initiator_and_close(Config) ->
-    sc_ws_deposit_and_close(Config, initiator).
-
-sc_ws_deposit_responder_and_close(Config) ->
-    sc_ws_deposit_and_close(Config, responder).
-
-
-sc_ws_deposit_and_close(Config, Origin) when Origin =:= initiator
+sc_ws_deposit_(Config, Origin) when Origin =:= initiator
                             orelse Origin =:= responder ->
-    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
-    Participants= proplists:get_value(participants, ConfigList),
-    Clients = proplists:get_value(channel_clients, ConfigList),
+    Participants= proplists:get_value(participants, Config),
+    Clients = proplists:get_value(channel_clients, Config),
     {SenderRole, AckRole} =
         case Origin of
             initiator -> {initiator, responder};
@@ -4018,23 +3866,14 @@ sc_ws_deposit_and_close(Config, Origin) when Origin =:= initiator
 
     {ok, #{<<"event">> := <<"deposit_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, #{<<"event">> := <<"deposit_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
-
-    ok = ?WS:stop(SenderConnPid),
-    ok = ?WS:stop(AckConnPid),
+    ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx]),
+    ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx]),
     ok.
 
-sc_ws_withdraw_initiator_and_close(Config) ->
-    sc_ws_withdraw_and_close(Config, initiator).
-
-sc_ws_withdraw_responder_and_close(Config) ->
-    sc_ws_withdraw_and_close(Config, responder).
-
-
-sc_ws_withdraw_and_close(Config, Origin) when Origin =:= initiator
-                            orelse Origin =:= responder ->
-    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
-    Participants = proplists:get_value(participants, ConfigList),
-    Clients = proplists:get_value(channel_clients, ConfigList),
+sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
+                              orelse Origin =:= responder ->
+    Participants = proplists:get_value(participants, Config),
+    Clients = proplists:get_value(channel_clients, Config),
     {SenderRole, AckRole} =
         case Origin of
             initiator -> {initiator, responder};
@@ -4070,10 +3909,8 @@ sc_ws_withdraw_and_close(Config, Origin) when Origin =:= initiator
 
     {ok, #{<<"event">> := <<"withdraw_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, #{<<"event">> := <<"withdraw_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
-
-
-    ok = ?WS:stop(SenderConnPid),
-    ok = ?WS:stop(AckConnPid),
+    ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx]),
+    ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx]),
     ok.
 
 sc_ws_contracts(Config) ->
@@ -4085,105 +3922,70 @@ sc_ws_contracts(Config) ->
                           Test  <- ["identity",
                                     "counter",
                                     "spend_test"]]),
-    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
-    #{initiator := IConnPid,
-      responder := RConnPid } = proplists:get_value(channel_clients, ConfigList),
-    ok = ?WS:stop(IConnPid),
-    ok = ?WS:stop(RConnPid),
     ok.
 
 sc_ws_oracle_contract(Config) ->
-
-    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
     #{initiator := IConnPid, responder := RConnPid} =
-        proplists:get_value(channel_clients, ConfigList),
+        proplists:get_value(channel_clients, Config),
 
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
 
-    [sc_ws_contract_generic(Role, fun sc_ws_oracle_contract_/8, Config, [])
+    [sc_ws_contract_generic_(Role, fun sc_ws_oracle_contract_/8, Config, [])
         || Role <- [initiator, responder]],
-
-    % cleanup
-    ok = ?WS:stop(IConnPid),
-    ok = ?WS:stop(RConnPid),
     ok.
 
 sc_ws_nameservice_contract(Config) ->
-
-    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
     #{initiator := IConnPid, responder := RConnPid} =
-        proplists:get_value(channel_clients, ConfigList),
+        proplists:get_value(channel_clients, Config),
 
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
 
-
-    [sc_ws_contract_generic(Role, fun sc_ws_nameservice_contract_/8, Config,
+    [sc_ws_contract_generic_(Role, fun sc_ws_nameservice_contract_/8, Config,
                             [])
         || Role <- [initiator,
                     responder]],
-
-    % cleanup
-    ok = ?WS:stop(IConnPid),
-    ok = ?WS:stop(RConnPid),
     ok.
 
 sc_ws_enviroment_contract(Config) ->
-    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
     #{initiator := IConnPid, responder := RConnPid} =
-        proplists:get_value(channel_clients, ConfigList),
+        proplists:get_value(channel_clients, Config),
 
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
 
 
-    [sc_ws_contract_generic(Role, fun sc_ws_enviroment_contract_/8, Config,
+    [sc_ws_contract_generic_(Role, fun sc_ws_enviroment_contract_/8, Config,
                             [])
         || Role <- [initiator,
                     responder]],
-
-    % cleanup
-    ok = ?WS:stop(IConnPid),
-    ok = ?WS:stop(RConnPid),
     ok.
 
 sc_ws_remote_call_contract(Config) ->
-    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
     #{initiator := IConnPid, responder := RConnPid} =
-        proplists:get_value(channel_clients, ConfigList),
+        proplists:get_value(channel_clients, Config),
 
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
 
-
-    [sc_ws_contract_generic(Role, fun sc_ws_remote_call_contract_/8, Config,
+    [sc_ws_contract_generic_(Role, fun sc_ws_remote_call_contract_/8, Config,
                             [])
         || Role <- [initiator,
                     responder]],
-
-    % cleanup
-    ok = ?WS:stop(IConnPid),
-    ok = ?WS:stop(RConnPid),
     ok.
 
 sc_ws_remote_call_contract_refering_onchain_data(Config) ->
-    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
     #{initiator := IConnPid, responder := RConnPid} =
-        proplists:get_value(channel_clients, ConfigList),
+        proplists:get_value(channel_clients, Config),
 
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
 
-
-    [sc_ws_contract_generic(Role, fun sc_ws_remote_call_contract_refering_onchain_data_/8, Config,
+    [sc_ws_contract_generic_(Role, fun sc_ws_remote_call_contract_refering_onchain_data_/8, Config,
                             [])
         || Role <- [initiator,
                     responder]],
-
-    % cleanup
-    ok = ?WS:stop(IConnPid),
-    ok = ?WS:stop(RConnPid),
     ok.
 
 random_unused_name() ->
@@ -4201,11 +4003,10 @@ random_unused_name(Attempts) ->
         _ -> random_unused_name(Attempts - 1)
     end.
 
-sc_ws_contract_generic(Origin, Fun, Config, Opts) ->
+sc_ws_contract_generic_(Origin, Fun, Config, Opts) ->
     %% get the infrastructure for users going
-    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
-    Participants = proplists:get_value(participants, ConfigList),
-    Clients = proplists:get_value(channel_clients, ConfigList),
+    Participants = proplists:get_value(participants, Config),
+    Clients = proplists:get_value(channel_clients, Config),
     {SenderRole, AckRole} =
         case Origin of
             initiator -> {initiator, responder};
@@ -4757,10 +4558,8 @@ update_volley_(FirstConnPid, FirstPrivkey, SecondConnPid, SecondPrivkey, Config)
                                       <<"update_ack">>, Config).
 
 sc_ws_contract_(Config, TestName, Owner) ->
-    ct:log("Start processing contract ~p, initated by ~p", [TestName, Owner]),
-    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
-    Participants = proplists:get_value(participants, ConfigList),
-    Clients = proplists:get_value(channel_clients, ConfigList),
+    Participants = proplists:get_value(participants, Config),
+    Clients = proplists:get_value(channel_clients, Config),
     {SenderRole, AckRole} =
         case Owner of
             initiator -> {initiator, responder};
@@ -5059,7 +4858,123 @@ sc_ws_timeout_open(Config) ->
     {ok, IConnPid} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts), Config),
     ok = ?WS:register_test_for_channel_event(IConnPid, info),
     ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
+    ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
     ok.
+
+sc_ws_basic_open_close(Config0) ->
+    Config = sc_ws_open_(Config0),
+    ok = sc_ws_update_(Config),
+    ok = sc_ws_close_(Config).
+
+sc_ws_failed_update(Config) ->
+    ChannelClients = proplists:get_value(channel_clients, Config),
+    Participants = proplists:get_value(participants, Config),
+    lists:foreach(
+        fun(Sender) ->
+            LogPid = maps:get(Sender, ChannelClients),
+            ?WS:log(LogPid, info, "Failing update, insufficient balance"),
+            {ok, #{<<"reason">> := <<"insufficient_balance">>,
+                  <<"request">> := _Request0}} = channel_update_fail(
+                                                   ChannelClients, Sender,
+                                                   Participants, 10000000, Config),
+            ?WS:log(LogPid, info, "Failing update, negative amount"),
+            {ok, #{<<"reason">> := <<"negative_amount">>,
+                  <<"request">> := _Request1}} = channel_update_fail(
+                                                   ChannelClients, Sender,
+                                                   Participants, -1, Config),
+            ?WS:log(LogPid, info, "Failing update, invalid pubkeys"),
+            {ok, #{<<"reason">> := <<"invalid_pubkeys">>,
+                  <<"request">> := _Request2}} =
+                channel_update_fail(ChannelClients, Sender,
+                                    #{initiator => #{pub_key => <<42:32/unit:8>>},
+                                      responder => #{pub_key => <<43:32/unit:8>>}},
+                                    1, Config),
+            ok
+        end,
+        [initiator, responder]),
+    ok.
+
+sc_ws_generic_messages(Config) ->
+    #{initiator := #{pub_key := IPubkey},
+      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
+    #{initiator := IConnPid, responder :=RConnPid}
+        = proplists:get_value(channel_clients, Config),
+    lists:foreach(
+        fun({Sender, Msg}) ->
+            {SenderPubkey, ReceiverPubkey, SenderPid, ReceiverPid} =
+                case Sender of
+                    initiator ->
+                        {IPubkey, RPubkey, IConnPid, RConnPid};
+                    responder ->
+                        {RPubkey, IPubkey, RConnPid, IConnPid}
+                end,
+                SenderEncodedK = aehttp_api_encoder:encode(account_pubkey, SenderPubkey),
+                ReceiverEncodedK = aehttp_api_encoder:encode(account_pubkey, ReceiverPubkey),
+                ok = ?WS:register_test_for_channel_event(ReceiverPid, message),
+
+                ws_send(SenderPid, <<"message">>,
+                        #{<<"to">> => ReceiverEncodedK,
+                          <<"info">> => Msg}, Config),
+
+                {ok, #{<<"message">> := #{<<"from">> := SenderEncodedK,
+                                          <<"to">> := ReceiverEncodedK,
+                                          <<"info">> := Msg}}}
+                    = wait_for_channel_event(ReceiverPid, message, Config),
+                ok = ?WS:unregister_test_for_channel_event(ReceiverPid, message)
+        end,
+      [ {initiator, <<"hejsan">>}                   %% initiator can send
+      , {responder, <<"svejsan">>}                  %% responder can send
+      , {initiator, <<"first message in a row">>}   %% initiator can send two messages in a row
+      , {initiator, <<"second message in a row">>}
+      , {responder, <<"some message">>}             %% responder can send two messages in a row
+      , {responder, <<"other message">>}
+      ]),
+    ok.
+
+sc_ws_update_conflict(Config) ->
+    Participants = proplists:get_value(participants, Config),
+    ChannelClients = proplists:get_value(channel_clients, Config),
+    lists:foreach(
+        fun(FirstSender) ->
+                channel_conflict(ChannelClients, FirstSender, Participants, 1, 2,
+                                 Config)
+        end,
+        [initiator,
+         responder]),
+    ok.
+
+sc_ws_close_mutual(Config0) ->
+    lists:foreach(
+        fun(WhoCloses) ->
+            Config = sc_ws_open_(Config0),
+            sc_ws_close_mutual_(Config, WhoCloses)
+        end,
+        [initiator,
+         responder]).
+
+sc_ws_leave_reestablish(Config0) ->
+    Config = sc_ws_open_(Config0),
+    ReestablOptions = sc_ws_leave_(Config),
+    Config1 = sc_ws_reestablish_(ReestablOptions, Config),
+    ok = sc_ws_update_(Config1),
+    ok = sc_ws_close_(Config1).
+
+sc_ws_deposit(Config) ->
+    lists:foreach(
+        fun(Depositor) ->
+            sc_ws_deposit_(Config, Depositor),
+            ok
+        end,
+        [initiator, responder]).
+
+sc_ws_withdraw(Config) ->
+    lists:foreach(
+        fun(Depositor) ->
+            sc_ws_withdraw_(Config, Depositor),
+            ok
+        end,
+        [initiator, responder]).
+
 
 %% channel_options(IPubkey, RPubkey, IAmt, RAmt) ->
 %%     channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}).
