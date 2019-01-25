@@ -45,8 +45,6 @@
 -export([parse_peer_address/1]).
 -export([encode_peer_address/1]).
 
--export([check_env/0]).
-
 %% API only to be used by aec_peer_connection.
 -export([peer_connected/2]).
 -export([peer_accepted/3]).
@@ -152,10 +150,6 @@
 -export_type([peer_info/0]).
 
 %=== API FUNCTIONS =============================================================
-
-%% @doc Checks user-provided environment.
-check_env() ->
-    ok.
 
 %--- PEER MANAGMENT FUNCTIONS --------------------------------------------------
 
