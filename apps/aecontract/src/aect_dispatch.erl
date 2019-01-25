@@ -173,6 +173,7 @@ error_to_binary(unknown_error) -> <<"unknown_error">>;
 error_to_binary(unknown_contract) -> <<"unknown_contract">>;
 error_to_binary(unknown_function) -> <<"unknown_function">>;
 error_to_binary(reentrant_call) -> <<"reentrant_call">>;
+error_to_binary(arithmetic_error) -> <<"arithmetic_error">>;
 error_to_binary({illegal_instruction, OP}) when is_integer(OP), 0 =< OP, OP =< 255 ->
     X = <<_:2/bytes>> = list_to_binary(io_lib:format("~2.16.0B",[OP])),
     <<"illegal_instruction_", X:2/bytes>>;

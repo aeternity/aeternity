@@ -99,6 +99,7 @@
         , sophia_int_to_str/1
         , sophia_events/1
         , sophia_crypto/1
+        , sophia_safe_math/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -193,7 +194,8 @@ groups() ->
                                  sophia_operators,
                                  sophia_int_to_str,
                                  sophia_events,
-                                 sophia_crypto]}
+                                 sophia_crypto,
+                                 sophia_safe_math]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
         [ sophia_oracles_ttl__extend_after_expiry
@@ -3206,16 +3208,18 @@ sophia_operators(_Cfg) ->
     ?assertEqual(4,  ?call(call_contract, Acc, IdC, int_op, word, {9, 5, <<"mod">>})),
     ?assertEqual(81,  ?call(call_contract, Acc, IdC, int_op, word, {3, 4, <<"^">>})),
 
+    ArithError = {error, <<"arithmetic_error">>},
+
     ?assertEqual(IMax band (bnot 45), ?call(call_contract, Acc, IdC, int_op, word, {45, 0, <<"bnot">>})),
     ?assertEqual(45 band 127,         ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"band">>})),
     ?assertEqual(45 bor 127,          ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"bor">>})),
     ?assertEqual(45 bxor 127,         ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"bxor">>})),
     ?assertEqual(4252 bsl 9,          ?call(call_contract, Acc, IdC, int_op, word, {4252, 9, <<"bsl">>})),
     ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {2, 255, <<"bsl">>})), %% overflow
-    ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {4252, 300, <<"bsl">>})), %% overflow
+    ?assertEqual(ArithError,          ?call(call_contract, Acc, IdC, int_op, word, {4252, 300, <<"bsl">>})), %% overflow
     ?assertEqual(4252 bsr 3,          ?call(call_contract, Acc, IdC, int_op, word, {4252, 3, <<"bsr">>})),
     ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {4252, 15, <<"bsr">>})),  %% underflow
-    ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {IMax, 256, <<"bsr">>})),  %% underflow
+    ?assertEqual(ArithError,          ?call(call_contract, Acc, IdC, int_op, word, {IMax, 256, <<"bsr">>})),  %% underflow
 
     ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {0, 0, <<"!">>})),
     ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {1, 1, <<"&&">>})),
@@ -3259,12 +3263,12 @@ sophia_int_to_str(_Cfg) ->
 
     BAcc = list_to_binary(base58:binary_to_base58(Acc)),
     io:format("Address: ~p\n", [Acc]),
-    ?assertMatch({BAcc, _},
-                  ?call(call_contract, Acc, IdC, a2s, string, {Acc}, #{ return_gas_used => true })),
+    ?assertMatch({_, {BAcc, _}},
+                  {Acc, ?call(call_contract, Acc, IdC, a2s, string, {Acc}, #{ return_gas_used => true })}),
 
     BIdC = list_to_binary(base58:binary_to_base58(IdC)),
-    ?assertMatch({BIdC, _},
-                  ?call(call_contract, Acc, IdC, a2s, string, {IdC}, #{ return_gas_used => true })),
+    ?assertMatch({_, {BIdC, _}},
+                  {IdC, ?call(call_contract, Acc, IdC, a2s, string, {IdC}, #{ return_gas_used => true })}),
 
     Addr = <<90,139,56,117,121,128,91,84,78,146,81,166,106,181,248,87,147,41,74,158,109,135,221,178,120,168,101,101,80,152,186,248>>,
     BAddr = list_to_binary(base58:binary_to_base58(Addr)),
@@ -3333,6 +3337,46 @@ sophia_crypto(_Cfg) ->
     ?assertMatch({Sha3,      _}, ?call(call_contract, Acc, IdC, sha3,        word, Data,   #{return_gas_used => true})),
     ?assertMatch({Sha256,    _}, ?call(call_contract, Acc, IdC, sha256,      word, Data,   #{return_gas_used => true})),
     ?assertMatch({Blake2b,   _}, ?call(call_contract, Acc, IdC, blake2b,     word, Data,   #{return_gas_used => true})),
+
+    ok.
+
+sophia_safe_math(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000000),
+    C   = ?call(create_contract, Acc, safe_math, {}),
+
+    <<Medium:17/unit:8>> = list_to_binary(lists:duplicate(17, $x)),
+    <<_:1, Large:255>>   = list_to_binary(lists:duplicate(32, $o)),
+
+    %% Does an arbitrary precision number fit in a signed 256 bit integer?
+    IsSafe = fun(X) -> <<Y:256/signed-integer>> = <<X:256/signed-integer>>, X == Y end,
+
+    %% Reference implementation of ^
+    ErrorVal = 1 bsl 260,
+    Mask = fun(X) -> X rem (1 bsl 512 - 1 bsl 263 - 17) end,
+    Pow = fun Pow(_, B, _) when B < 0 -> ErrorVal;
+              Pow(_, 0, R) -> R;                %% mask to not blow up
+              Pow(A, B, R) when B rem 2 == 0 -> Pow(Mask(A * A), B bsr 1, R);
+              Pow(A, B, R)                   -> Pow(Mask(A * A), B bsr 1, R * A)
+          end,
+
+    %% Test vectors
+    Values = [ Z || X <- [1, 2, 5, 173, 255, 256, 1 bsl 128 - 1, 1 bsl 128, Medium, 1 bsl 255 - 2,
+                          1 bsl 255 - 1, 1 bsl 255, Large],
+                    Z <- [X, -X], Z < 1 bsl 255 ],
+    Ops    = [{add, fun erlang:'+'/2}, {sub,   fun erlang:'-'/2},
+              {mul, fun erlang:'*'/2}, {'div', fun erlang:'div'/2},
+              {pow, fun(X, Y) -> Pow(X, Y, 1) end}],
+
+    [ begin
+        Z   = Op(X, Y),
+        Res = ?call(call_contract, Acc, C, Fun, signed_word, {X, Y}),
+        Exp = case IsSafe(Z) of
+                true  -> Z;                         %% If safe we should get back the right answer
+                false -> {error, <<"arithmetic_error">>}  %% otherwise out of gas (no wrap-arounds!)
+              end,
+        ?assertMatch({_, _, _, {A, A}}, {Fun, X, Y, {Exp, Res}})
+      end || {Fun, Op} <- Ops, X <- Values, Y <- Values ],
 
     ok.
 
