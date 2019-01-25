@@ -56,6 +56,15 @@
 
 -opaque op() :: {atom(), tuple()}.
 
+-type pubkey() :: aec_keys:pubkey().
+-type id()     :: aec_id:id().
+-type hash()   :: aec_hash:hash().
+-type nonce()  :: non_neg_integer().
+-type ttl()    :: non_neg_integer().
+-type fee()    :: non_neg_integer().
+-type amount() :: non_neg_integer().
+-type oracle_type_format() :: aeo_oracles:type_format().
+
 -export_type([ op/0
              ]).
 
@@ -65,7 +74,7 @@
 %%%===================================================================
 
 -spec eval([op()], aec_trees:trees(), aetx_env:env()) ->
-                  {ok, aec_trees:trees()} | {error, term()}.
+                  {ok, aec_trees:trees()} | {error, atom()}.
 eval([_|_] = Instructions, Trees, TxEnv) ->
     S = new_state(Trees, aetx_env:height(TxEnv), TxEnv),
     case int_eval(Instructions, S) of
@@ -75,7 +84,7 @@ eval([_|_] = Instructions, Trees, TxEnv) ->
     end.
 
 -spec eval_with_return([op()], aec_trees:trees(), aetx_env:env()) ->
-                              {ok, term(), aec_trees:trees()} | {error, term()}.
+                              {ok, term(), aec_trees:trees()} | {error, atom()}.
 eval_with_return([_|_] = Instructions, Trees, TxEnv) ->
     S = new_state(Trees, aetx_env:height(TxEnv), TxEnv),
     case int_eval(Instructions, S) of
@@ -84,7 +93,7 @@ eval_with_return([_|_] = Instructions, Trees, TxEnv) ->
         {error, _} = Err -> Err
     end.
 
--spec spend_tx_instructions(_, _, _, _, _) -> [op()].
+-spec spend_tx_instructions(pubkey(), id(), amount(), fee(), nonce()) -> [op()].
 spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
     Recipient = {var, recipient},
     {Type, RecipientHash} = specialize_account(RecipientID),
@@ -94,7 +103,9 @@ spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
     , spend_fee_op(SenderPubkey, Fee)
     ].
 
--spec oracle_register_tx_instructions(_, _, _, _, _, _, _, _) -> [op()].
+-spec oracle_register_tx_instructions(
+        pubkey(), oracle_type_format(), oracle_type_format(), fee(), ttl(),
+        non_neg_integer(), fee(), nonce()) -> [op()].
 oracle_register_tx_instructions(AccountPubkey, QFormat, RFormat, QFee,
                                 DeltaTTL, VMVersion, TxFee, Nonce) ->
     %% TODO: Account nonce should not be increased in contract context
@@ -105,14 +116,15 @@ oracle_register_tx_instructions(AccountPubkey, QFormat, RFormat, QFee,
                          DeltaTTL, VMVersion)
     ].
 
--spec oracle_extend_tx_instructions(_, _, _, _) -> [op()].
+-spec oracle_extend_tx_instructions(pubkey(), ttl(), fee(), nonce()) -> [op()].
 oracle_extend_tx_instructions(Pubkey, DeltaTTL, Fee, Nonce) ->
     [ inc_account_nonce_op(Pubkey, Nonce)
     , spend_fee_op(Pubkey, Fee)
     , oracle_extend_op(Pubkey, DeltaTTL)
     ].
 
--spec oracle_query_tx_instructions(_, _, _, _, _, _, _, _) -> [op()].
+-spec oracle_query_tx_instructions(pubkey(), pubkey(), binary(), fee(),
+                                   ttl(), ttl(), fee(), nonce()) -> [op()].
 oracle_query_tx_instructions(OraclePubkey, SenderPubkey, Query,
                              QueryFee, QTTL, RTTL, TxFee, Nonce) ->
     [ inc_account_nonce_op(SenderPubkey, Nonce)
@@ -121,7 +133,8 @@ oracle_query_tx_instructions(OraclePubkey, SenderPubkey, Query,
                       Query, QueryFee, QTTL, RTTL)
     ].
 
--spec oracle_response_tx_instructions(_, _, _, _, _, _) -> [op()].
+-spec oracle_response_tx_instructions(pubkey(), hash(), binary(), ttl(),
+                                      fee(), nonce()) -> [op()].
 oracle_response_tx_instructions(OraclePubkey, QueryId, Response,
                                 RTTL, Fee, Nonce) ->
     [ oracle_respond_op(OraclePubkey, QueryId, Response, RTTL)
@@ -133,7 +146,8 @@ oracle_response_tx_instructions(OraclePubkey, QueryId, Response,
     , oracle_earn_query_fee_op(OraclePubkey, QueryId)
     ].
 
--spec name_preclaim_tx_instructions(_, _, _, _, _) -> [op()].
+-spec name_preclaim_tx_instructions(pubkey(), hash(), ttl(), fee(), nonce()
+                                   ) -> [op()].
 name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
                               Fee, Nonce) ->
     [ inc_account_nonce_op(AccountPubkey, Nonce)
@@ -141,7 +155,8 @@ name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
     , name_preclaim_op(AccountPubkey, CommitmentHash, DeltaTTL)
     ].
 
--spec name_claim_tx_instructions(_, _, _, _, _) -> [op()].
+-spec name_claim_tx_instructions(pubkey(), binary(), non_neg_integer(),
+                                 fee(), nonce()) -> [op()].
 name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, Fee, Nonce) ->
     PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
     DeltaTTL = aec_governance:name_claim_max_expiration(),
@@ -152,7 +167,7 @@ name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, Fee, Nonce) ->
     , name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta)
     ].
 
--spec name_revoke_tx_instructions(_, _, _, _) -> [op()].
+-spec name_revoke_tx_instructions(pubkey(), hash(), fee(), nonce()) -> [op()].
 name_revoke_tx_instructions(AccountPubkey, NameHash, Fee, Nonce) ->
     ProtectedDeltaTTL = aec_governance:name_protection_period(),
     [ inc_account_nonce_op(AccountPubkey, Nonce)
@@ -160,7 +175,8 @@ name_revoke_tx_instructions(AccountPubkey, NameHash, Fee, Nonce) ->
     , name_revoke_op(AccountPubkey, NameHash, ProtectedDeltaTTL)
     ].
 
--spec name_transfer_tx_instructions(_, _, _, _, _) -> [op()].
+-spec name_transfer_tx_instructions(pubkey(), id(), hash(), fee(), nonce()
+                                   ) -> [op()].
 name_transfer_tx_instructions(OwnerPubkey, RecipientID, NameHash, Fee, Nonce) ->
     Recipient = {var, recipient},
     {Type, Hash} = specialize_account(RecipientID),
@@ -170,7 +186,9 @@ name_transfer_tx_instructions(OwnerPubkey, RecipientID, NameHash, Fee, Nonce) ->
     , name_transfer_op(OwnerPubkey, Recipient, NameHash)
     ].
 
--spec name_update_tx_instructions(_, _, _, _, _, _, _) -> [op()].
+-spec name_update_tx_instructions(
+        pubkey(), hash(), ttl(), ttl(), [aens_pointer:pointer()],
+        fee(), nonce()) -> [op()].
 name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
                             Pointers, Fee, Nonce) ->
     MaxTTL = aec_governance:name_claim_max_expiration(),
@@ -180,7 +198,10 @@ name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
                      ClientTTL, Pointers)
     ].
 
--spec contract_create_tx_instructions(_, _, _, _, _, _, _, _, _, _) -> [op()].
+-spec contract_create_tx_instructions(pubkey(), amount(), amount(),
+                                      non_neg_integer(), non_neg_integer(),
+                                      non_neg_integer(), binary(), binary(),
+                                      fee(), nonce()) -> [op()].
 contract_create_tx_instructions(OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
                                 VMVersion, SerializedCode, CallData, Fee, Nonce) ->
     [ inc_account_nonce_op(OwnerPubkey, Nonce)
@@ -189,7 +210,10 @@ contract_create_tx_instructions(OwnerPubkey, Amount, Deposit, GasLimit, GasPrice
                          CallData, Fee, Nonce)
     ].
 
--spec contract_call_tx_instructions(_, _, _, _, _, _, _, _, _, _) -> [op()].
+-spec contract_call_tx_instructions(pubkey(), pubkey(), binary(),
+                                    non_neg_integer(), non_neg_integer(),
+                                    amount(), [binary()], non_neg_integer(),
+                                    fee(), nonce()) -> [op()].
 contract_call_tx_instructions(CallerPubKey, ContractPubkey, CallData,
                               GasLimit, GasPrice, Amount, CallStack,
                               VMVersion, Fee, Nonce) ->
@@ -199,7 +223,9 @@ contract_call_tx_instructions(CallerPubKey, ContractPubkey, CallData,
                        VMVersion, CallStack, Fee, Nonce)
     ].
 
--spec contract_call_from_contract_instructions(_, _, _, _, _, _, _, _, _, _) -> [op()].
+-spec contract_call_from_contract_instructions(
+        pubkey(), pubkey(), binary(), non_neg_integer(), non_neg_integer(),
+        amount(), [binary()], non_neg_integer(), fee(), nonce()) -> [op()].
 contract_call_from_contract_instructions(CallerPubKey, ContractPubkey, CallData,
                                          GasLimit, GasPrice, Amount, CallStack,
                                          VMVersion, Fee, Nonce) ->
@@ -208,7 +234,9 @@ contract_call_from_contract_instructions(CallerPubKey, ContractPubkey, CallData,
                        VMVersion, CallStack, Fee, Nonce)
     ].
 
--spec channel_create_tx_instructions(_, _, _, _, _, _, _, _, _, _) -> [op()].
+-spec channel_create_tx_instructions(
+        pubkey(), amount(), pubkey(), amount(), amount(), [pubkey()],
+        hash(), ttl(), fee(), nonce()) -> [op()].
 channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
                                ResponderPubkey, ResponderAmount,
                                ReserveAmount, DelegatePubkeys,
@@ -222,7 +250,9 @@ channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
                         StateHash, LockPeriod, Nonce)
     ].
 
--spec channel_deposit_tx_instructions(_, _, _, _, _, _, _) -> [op()].
+-spec channel_deposit_tx_instructions(pubkey(), pubkey(), amount(), hash(),
+                                      non_neg_integer(), fee(), nonce()
+                                     ) -> [op()].
 channel_deposit_tx_instructions(FromPubkey, ChannelPubkey, Amount, StateHash,
                                 Round, Fee, Nonce) ->
     [ inc_account_nonce_op(FromPubkey, Nonce)
@@ -230,7 +260,8 @@ channel_deposit_tx_instructions(FromPubkey, ChannelPubkey, Amount, StateHash,
     , channel_deposit_op(FromPubkey, ChannelPubkey, Amount, StateHash, Round)
     ].
 
--spec channel_close_mutual_tx_instructions(_, _, _, _, _, _) -> [op()].
+-spec channel_close_mutual_tx_instructions(pubkey(), pubkey(), amount(),
+                                           amount(), nonce(), fee()) -> [op()].
 channel_close_mutual_tx_instructions(FromPubkey, ChannelPubkey,
                                      InitiatorAmount, ResponderAmount,
                                      Nonce, Fee) ->
@@ -239,7 +270,9 @@ channel_close_mutual_tx_instructions(FromPubkey, ChannelPubkey,
                               InitiatorAmount, ResponderAmount, Fee)
     ].
 
--spec channel_withdraw_tx_instructions(_, _, _, _, _, _, _) -> [op()].
+-spec channel_withdraw_tx_instructions(pubkey(), pubkey(), amount(), hash(),
+                                       non_neg_integer(), fee(), nonce()
+                                      ) -> [op()].
 channel_withdraw_tx_instructions(ToPubkey, ChannelPubkey, Amount, StateHash,
                                  Round, Fee, Nonce) ->
     [ inc_account_nonce_op(ToPubkey, Nonce)
@@ -247,7 +280,8 @@ channel_withdraw_tx_instructions(ToPubkey, ChannelPubkey, Amount, StateHash,
     , channel_withdraw_op(ToPubkey, ChannelPubkey, Amount, StateHash, Round)
     ].
 
--spec channel_settle_tx_instructions(_, _, _, _, _, _) -> [op()].
+-spec channel_settle_tx_instructions(pubkey(), pubkey(), amount(), amount(),
+                                     fee(), nonce()) -> [op()].
 channel_settle_tx_instructions(FromPubkey, ChannelPubkey,
                                InitiatorAmount, ResponderAmount, Fee, Nonce) ->
     [ inc_account_nonce_op(FromPubkey, Nonce)
@@ -322,19 +356,19 @@ new_state(Trees, Height, TxEnv) ->
 %%% Operations
 %%%
 
-inc_account_nonce_op(Key, Nonce) when ?IS_VAR_OR_HASH(Key),
-                                      ?IS_NON_NEG_INTEGER(Nonce) ->
-    {inc_account_nonce, {Key, Nonce}}.
+inc_account_nonce_op(Pubkey, Nonce) when ?IS_HASH(Pubkey),
+                                         ?IS_NON_NEG_INTEGER(Nonce) ->
+    {inc_account_nonce, {Pubkey, Nonce}}.
 
-inc_account_nonce({Key, Nonce}, #state{} = S) ->
-    {Account, S1} = get_account(Key, S),
+inc_account_nonce({Pubkey, Nonce}, #state{} = S) ->
+    {Account, S1} = get_account(Pubkey, S),
     assert_account_nonce(Account, Nonce),
     Account1 = aec_accounts:set_nonce(Account, Nonce),
     cache_put(account, Account1, S1).
 
 %%%-------------------------------------------------------------------
 
-spend_op(From, To, Amount) when ?IS_VAR_OR_HASH(From),
+spend_op(From, To, Amount) when ?IS_HASH(From),
                                 ?IS_VAR_OR_HASH(To),
                                 ?IS_NON_NEG_INTEGER(Amount) ->
     {spend, {From, To, Amount}}.
@@ -351,7 +385,7 @@ spend({From, To, Amount}, #state{} = S) when is_integer(Amount), Amount >= 0 ->
 %%%-------------------------------------------------------------------
 %%% A special form of spending is to lock an amount.
 
-lock_amount_op(From, Amount) when ?IS_VAR_OR_HASH(From),
+lock_amount_op(From, Amount) when ?IS_HASH(From),
                                   ?IS_NON_NEG_INTEGER(Amount) ->
     {lock_amount, {From, Amount}}.
 
@@ -363,7 +397,7 @@ lock_amount({From, Amount}, #state{} = S) ->
 
 %%%-------------------------------------------------------------------
 
-spend_fee_op(From, Amount) when ?IS_VAR_OR_HASH(From),
+spend_fee_op(From, Amount) when ?IS_HASH(From),
                                 ?IS_NON_NEG_INTEGER(Amount) ->
     {spend_fee, {From, Amount}}.
 
