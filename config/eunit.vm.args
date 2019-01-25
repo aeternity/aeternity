@@ -1,4 +1,4 @@
--setcookie epoch_cookie
+-setcookie aeternity_cookie
 -pa otp_patches/ebin patches/ebin
 
 +K true

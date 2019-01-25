@@ -1,8 +1,8 @@
 swagger: '2.0'
 info:
-  description: 'This is the [Aeternity](https://www.aeternity.com/) Epoch API.'
+  description: 'This is the [Aeternity](https://www.aeternity.com/) node API.'
   version: 2.0.0-minerva.0.1.0
-  title: Aeternity Epoch
+  title: Aeternity node
   termsOfService: 'https://www.aeternity.com/terms/'
   contact:
     email: apiteam@aeternity.com

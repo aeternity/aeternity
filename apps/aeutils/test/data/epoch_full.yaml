@@ -12,6 +12,8 @@ blocked_peers:
     - aenode://pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@some-really-bad-peer-address:3015
 
 sync:
+    # If the UPnP / NAT-PMP service should be started
+    upnp_enabled: true
     # Internal port used for P2P communication
     port: 3015
     # Port used for P2P communication
@@ -86,6 +88,8 @@ http:
         port: 3113
         # Number of acceptors in server pool
         acceptors: 10
+        # Enable (true) debug api. Disabled (false) by default
+        debug_endpoints: false
 
 websocket:
     channel:

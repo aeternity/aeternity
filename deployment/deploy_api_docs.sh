@@ -2,9 +2,9 @@
 
 set -e
 
-git clone git@github.com:aeternity/epoch-api-docs.git /tmp/epoch-api-docs
-cp apps/aehttp/priv/swagger.json /tmp/epoch-api-docs/
-cd /tmp/epoch-api-docs/
+git clone git@github.com:aeternity/api-docs.git /tmp/api-docs
+cp apps/aehttp/priv/swagger.json /tmp/api-docs/
+cd /tmp/api-docs/
 
 git add swagger.json;
 STATUS=`git status --porcelain`
@@ -14,6 +14,6 @@ if [ -z "$STATUS" ]; then
 else
     git config user.name "CircleCI"
     git config user.email "circleci@aeternity.com"
-    git commit -a -m "Update epoch version: $CIRCLE_TAG docs CircleCI";
+    git commit -a -m "Update Aeternity node API docs to $CIRCLE_TAG";
     git push origin master
 fi

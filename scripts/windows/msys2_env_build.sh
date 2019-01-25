@@ -31,6 +31,9 @@ obe_otp_64_gcc_vsn_map="
     .*=>default
 "
 
+MSYS2_ROOT=${MSYS2_ROOT:-"${C_DRV}/msys64"}
+WIN_MSYS2_ROOT=${WIN_MSYS2_ROOT:-"${WIN_C_DRV}\\msys64"}
+
 C_DRV="/c"
 WIN_C_DRV="C:\\"
 IN_CYGWIN=false
@@ -51,11 +54,9 @@ WIN_MSVC_ROOT=${WIN_VISUAL_STUDIO_ROOT}\\VC\\Tools\\MSVC\\${MSVC_VERSION}
 WIN_MSVC=${WIN_MSVC_ROOT}/bin\\Hostx64\\x64
 
 PATH="/usr/local/bin:/usr/bin:/bin:/c/Windows/system32:/c/Windows:/c/Windows/System32/Wbem:${PATH}"
-PATH="${MSVC}:${ERL_TOP}/bin:${PATH}:${ERL_TOP}/erts-${ERTS_VERSION}/bin:${MSYS_ROOT}/mingw64/bin"
+PATH="${MSVC}:${ERL_TOP}/bin:${PATH}:${ERL_TOP}/erts-${ERTS_VERSION}/bin:${MSYS2_ROOT}/mingw64/bin"
 
-WIN_MSYS_ROOT="${WIN_C_DRV}\\msys64"
-
-INCLUDE="${INCLUDE};${WIN_MSYS_ROOT}\\mingw64\\include;${WIN_MSYS_ROOT}\\usr\\include"
-LIB="${LIB};${WIN_MSYS_ROOT}\\mingw64\\lib;${WIN_MSYS_ROOT}\\mingw64\\bin;${WIN_ERL_TOP}\\usr\\lib;"
+INCLUDE="${INCLUDE};${WIN_MSYS2_ROOT}\\mingw64\\include;${WIN_MSYS2_ROOT}\\usr\\include"
+LIB="${LIB};${WIN_MSYS2_ROOT}\\mingw64\\lib;${WIN_MSYS2_ROOT}\\mingw64\\bin;${WIN_ERL_TOP}\\usr\\lib;"
 
 export INCLUDE LIB PATH ERL_TOP WIN_ERL_TOP COMSPEC

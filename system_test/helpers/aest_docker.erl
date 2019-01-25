@@ -27,10 +27,11 @@
 %=== MACROS ====================================================================
 
 -define(CONFIG_FILE_TEMPLATE, "epoch.yaml.mustache").
--define(EPOCH_CONFIG_FILE, "/home/epoch/epoch.yaml").
--define(EPOCH_LOG_FOLDER, "/home/epoch/node/log").
--define(EPOCH_KEYS_FOLDER, "/home/epoch/node/keys").
--define(EPOCH_GENESIS_FILE, "/home/epoch/node/data/aecore/.genesis/accounts_test.json").
+-define(EPOCH_OPS_BIN, "/home/aeternity/node/bin/epoch").
+-define(EPOCH_CONFIG_FILE, "/home/aeternity/epoch.yaml").
+-define(EPOCH_LOG_FOLDER, "/home/aeternity/node/log").
+-define(EPOCH_KEYS_FOLDER, "/home/aeternity/node/keys").
+-define(EPOCH_GENESIS_FILE, "/home/aeternity/node/data/aecore/.genesis/accounts_test.json").
 -define(EPOCH_MINE_RATE, 1000).
 -define(EPOCH_MAX_INBOUND, 100).
 -define(EXT_HTTP_PORT, 3013).
@@ -377,9 +378,9 @@ extract_archive(#{container_id := ID, hostname := Name} = NodeState, Path, Archi
     log(NodeState, "Extracted archive of size ~p in container ~p [~s] at path ~p", [byte_size(Archive), Name, ID, Path]),
     NodeState.
 
-run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd, Timeout) ->
-    log(NodeState, "Running command ~p on container ~p [~s]", [Cmd, Name, ID]),
-    {ok, Status, Result} = aest_docker_api:exec(ID, Cmd, #{timeout => Timeout}),
+run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd, Opts) ->
+    log(NodeState, "Running command ~p on container ~p [~s] with options ~p", [Cmd, Name, ID, Opts]),
+    {ok, Status, Result} = aest_docker_api:exec(ID, Cmd, Opts),
     log(NodeState, "Run command ~p on container ~p [~s] with result ~p",
         [Cmd, Name, ID, Result]),
     case Result of
@@ -464,14 +465,14 @@ is_running(Id, Retries) ->
     end.
 
 attempt_epoch_stop(#{container_id := ID, hostname := Name, sockets := Sockets} = NodeState, Timeout) ->
-    Cmd = ["/home/epoch/node/bin/epoch", "stop"],
+    Cmd = [?EPOCH_OPS_BIN, "stop"],
     CmdStr = lists:join(" " , Cmd),
     log(NodeState,
         "Container ~p [~s] still running: "
         "attempting to stop node by executing command ~s",
         [Name, ID, CmdStr]),
     try
-        retry_epoch_stop(NodeState, ID, Cmd, #{timeout => Timeout}, 5),
+        retry_epoch_stop(NodeState, ID, Cmd, #{timeout => Timeout, stderr => false}, 5),
         [ gen_tcp:close(S) || S <- Sockets ]
     catch
         throw:{exec_start_timeout, TimeoutInfo} ->
@@ -486,12 +487,15 @@ retry_epoch_stop(_NodeState, _ID, _Cmd, _Opts, 0) ->
     error(retry_exausted);
 retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry) ->
     #{container_id := ID, hostname := Name} = NodeState,
-    case aest_docker_api:exec(ID, Cmd, Opts) of
-        {ok, 137, <<"ok\r\n">>} -> ok;
-        {ok, Status, Res} ->
+    {ok, Status, Res0} = aest_docker_api:exec(ID, Cmd, Opts),
+    Res1 = string:trim(Res0, trailing, [$\r, $\n]),
+    case {Status, string:equal(Res1, <<"ok">>)} of
+        {137, true} ->
+            ok;
+        _ ->
             CmdStr = lists:join(" ", Cmd),
             log(NodeState, "Command executed on container ~p [~s]: ~s (~p)~n~s",
-                    [Name, ID, CmdStr, Status, Res]),
+                    [Name, ID, CmdStr, Status, Res0]),
             retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry - 1)
     end.
 

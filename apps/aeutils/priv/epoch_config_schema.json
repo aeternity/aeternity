@@ -55,6 +55,11 @@
             "type" : "object",
             "additionalProperties" : false,
             "properties" : {
+                "upnp_enabled" : {
+                    "description" : "If true, UPnP & NAT-PMP discovery will be enabled and port mapping will be established.",
+                    "type" : "boolean",
+                    "default" : false
+                },
                 "listen_address": {
                           "description": "Listen address for external interface. This should be publicly accessible",
                           "type": "string",
@@ -241,6 +246,11 @@
                             "description" : "Number of acceptors in internal pool",
                             "type" : "integer",
                             "default" : 10
+                        },
+                        "debug_endpoints" : {
+                            "description" : "Enable (true) debug api. Disabled (false) by default. Debug endpoints are defined by a tag in the Swagger API schema",
+                            "type" : "boolean",
+                            "default" : false
                         }
                     }
                 },
@@ -270,7 +280,7 @@
                         "type" : "boolean"
                     },
                     "debug" : {
-                        "description" : "Debug endpoints",
+                        "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
                         "type" : "boolean"
                     },
                     "obsolete" : {
@@ -279,7 +289,7 @@
                     }
                 },
                 "debug" : {
-                    "description" : "Whether to enable the debug endpoints",
+                    "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
                     "type" : "boolean"
                 }
             }
@@ -535,7 +545,7 @@
                     "minimum" : 50 },
                 "level"   : {
                     "description" :
-                    "Sets the level of logging in the epoch, mining and cuckoo logs.",
+                    "Sets the level of logging in the epoch, mining, cuckoo and sync logs.",
                     "type": "string",
                     "enum" : [ "debug", "info", "warning", "error", "none" ],
                     "default": "debug"
