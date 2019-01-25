@@ -1,4 +1,4 @@
-version: "{branch}-{build}"
+version: "{build}-{branch}"
 
 skip_tags: false
 skip_non_tags: false
@@ -52,6 +52,7 @@ matrix:
     - OTP_VERSION: 21.2
 
 init:
+  - ps: Update-AppveyorBuild -Version "$env:appveyor_build_version-$($env:appveyor_repo_commit.substring(0,7))"
   - systeminfo
 # Attempt to ensure we don't try to convert line endings to Win32 CRLF as this will cause build to fail
   - git config --global core.autocrlf true
