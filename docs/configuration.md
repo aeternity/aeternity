@@ -20,7 +20,7 @@ If all above checks fail, no user configuration is applied.
 `${sname}` represents the name part of the Erlang node name (the part before `'@'`).
 
 ### Validation
-The contents of the config file will be validated against a [JSON-Schema](https://github.com/aeternity/aeternity/blob/master/apps/aeutils/priv/epoch_config_schema.json). If any parameters violate the schema, the node will fail to start.
+The contents of the config file will be validated against a JSON-Schema, located in the node at path `data/epoch_config_schema.json`. If any parameters violate the schema, the node will fail to start.
 
 ## Notable user configuration parameters
 
@@ -251,7 +251,3 @@ Generated keypair with encoded pubkey: ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8Msc
 
 In the example the generated public key is `ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq`, but **do not use it in your config**!
 This is just an **example** value to show what public key format you should expect after running `bin/aeternity keys_gen` command.
-
-### Configuration Examples
-- [Full reference](https://github.com/aeternity/aeternity/blob/master/apps/aeutils/test/data/epoch_full.yaml)
-- [Minimal testnet config](https://github.com/aeternity/aeternity/blob/master/apps/aeutils/test/data/epoch_testnet.yaml)
