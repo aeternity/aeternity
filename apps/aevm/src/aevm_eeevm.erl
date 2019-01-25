@@ -394,7 +394,7 @@ loop(CP, StateIn) ->
                     %% Shift left
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = shl(Us0, Us1),
+                    Val = shl(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?SHR ->
@@ -402,7 +402,7 @@ loop(CP, StateIn) ->
                     %% Logical Shift right
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = shr(Us0, Us1),
+                    Val = shr(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?SAR ->
@@ -410,7 +410,7 @@ loop(CP, StateIn) ->
                     %% Arithmetic Shift right
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = sar(Us0, Us1),
+                    Val = sar(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 %% 20s: SHA3
@@ -1417,18 +1417,18 @@ pow(N, X, Y, VM) ->
        true             -> pow(X * N, Square, Exp, VM)
     end.
 
-shl(Arg1, _Arg2) when Arg1 > 255 -> 0;
-shl(Arg1, Arg2)                  -> (Arg2 bsl Arg1) band ?MASK256.
+shl(Arg1, _Arg2, VM) when Arg1 > 255 -> arith_error(0, VM);
+shl(Arg1, Arg2, _VM)                 -> (Arg2 bsl Arg1) band ?MASK256.
 
-shr(Arg1, _Arg2) when Arg1 > 255 -> 0;
-shr(Arg1, Arg2)                  -> Arg2 bsr Arg1.
+shr(Arg1, _Arg2, VM) when Arg1 > 255 -> arith_error(0, VM);
+shr(Arg1, Arg2, _VM)                 -> Arg2 bsr Arg1.
 
-sar(Arg1, Arg2)  when Arg1 > 255 ->
+sar(Arg1, Arg2, VM)  when Arg1 > 255 ->
     case signed(Arg2) < 0 of
-        true  -> unsigned(-1);
-        false -> 0
+        true  -> arith_error(unsigned(-1), VM);
+        false -> arith_error(0, VM)
     end;
-sar(Arg1, Arg2) -> unsigned(signed(Arg2) bsr Arg1).
+sar(Arg1, Arg2, _VM) -> unsigned(signed(Arg2) bsr Arg1).
 
 signextend(Us0, Us1) ->
     ExtendTo =  (256 - 8*((Us0+1) band 255)) band 255,
