@@ -96,6 +96,7 @@
         , sophia_state_gas/1
         , sophia_no_callobject_for_remote_calls/1
         , sophia_operators/1
+        , sophia_bits/1
         , sophia_int_to_str/1
         , sophia_events/1
         , sophia_crypto/1
@@ -192,6 +193,7 @@ groups() ->
                                  sophia_state_gas,
                                  sophia_no_callobject_for_remote_calls,
                                  sophia_operators,
+                                 sophia_bits,
                                  sophia_int_to_str,
                                  sophia_events,
                                  sophia_crypto,
@@ -3200,26 +3202,12 @@ sophia_operators(_Cfg) ->
     Acc   = ?call(new_account, 1000000000),
     IdC   = ?call(create_contract, Acc, operators, {}),
 
-    IMax = (1 bsl (8*32)) - 1,
     ?assertEqual(14, ?call(call_contract, Acc, IdC, int_op, word, {5, 9, <<"+">>})),
     ?assertEqual(4,  ?call(call_contract, Acc, IdC, int_op, word, {9, 5, <<"-">>})),
     ?assertEqual(35, ?call(call_contract, Acc, IdC, int_op, word, {5, 7, <<"*">>})),
     ?assertEqual(6,  ?call(call_contract, Acc, IdC, int_op, word, {45, 7, <<"/">>})),
     ?assertEqual(4,  ?call(call_contract, Acc, IdC, int_op, word, {9, 5, <<"mod">>})),
     ?assertEqual(81,  ?call(call_contract, Acc, IdC, int_op, word, {3, 4, <<"^">>})),
-
-    ArithError = {error, <<"arithmetic_error">>},
-
-    ?assertEqual(IMax band (bnot 45), ?call(call_contract, Acc, IdC, int_op, word, {45, 0, <<"bnot">>})),
-    ?assertEqual(45 band 127,         ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"band">>})),
-    ?assertEqual(45 bor 127,          ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"bor">>})),
-    ?assertEqual(45 bxor 127,         ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"bxor">>})),
-    ?assertEqual(4252 bsl 9,          ?call(call_contract, Acc, IdC, int_op, word, {4252, 9, <<"bsl">>})),
-    ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {2, 255, <<"bsl">>})), %% overflow
-    ?assertEqual(ArithError,          ?call(call_contract, Acc, IdC, int_op, word, {4252, 300, <<"bsl">>})), %% overflow
-    ?assertEqual(4252 bsr 3,          ?call(call_contract, Acc, IdC, int_op, word, {4252, 3, <<"bsr">>})),
-    ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {4252, 15, <<"bsr">>})),  %% underflow
-    ?assertEqual(ArithError,          ?call(call_contract, Acc, IdC, int_op, word, {IMax, 256, <<"bsr">>})),  %% underflow
 
     ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {0, 0, <<"!">>})),
     ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {1, 1, <<"&&">>})),
@@ -3241,6 +3229,71 @@ sophia_operators(_Cfg) ->
 
     {Hash1, Hash1} = ?call(call_contract, Acc, IdC, hash, {tuple, [word, word]}, {<<"TestString">>}),
     ?assertEqual(<<Hash1:256>>, aec_hash:hash(evm, <<"TestString">>)),
+
+    ok.
+
+sophia_bits(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000),
+    C   = ?call(create_contract, Acc, bits, {}),
+    ToMap = fun(Bits) -> maps:from_list([ {Ix, true} || Ix <- lists:seq(0, 255), 0 /= Bits band (1 bsl Ix) ]) end,
+    ParseRes =
+        fun(sum, R)              -> R;
+           (test, 0)             -> false;
+           (test, 1)             -> true;
+           (test, R)             -> R;
+           (_, Err = {error, _}) -> Err;
+           (_, Bits)             -> ToMap(Bits)
+        end,
+    Call = fun(Fun, Args) -> ParseRes(Fun, ?call(call_contract, Acc, C, Fun, word, Args)) end,
+
+    Error = {error, <<"arithmetic_error">>},
+
+    All  = ToMap(-1),
+    None = #{},
+    Set  = fun(Bits, Ix) when Ix >= 0, Ix < 256 -> Bits#{ Ix => true };
+              (_, _) -> Error end,
+    Clr  = fun(Bits, Ix) when Ix >= 0, Ix < 256 -> maps:remove(Ix, Bits);
+              (_, _) -> Error end,
+    Test = fun(Bits, Ix) when Ix >= 0, Ix < 256 -> maps:get(Ix, Bits, false);
+              (_, _) -> Error end,
+    Sum  = fun maps:size/1,
+    Union = fun maps:merge/2,
+    Isect = fun(A, B) -> maps:with(maps:keys(B), A) end,
+    Diff  = fun(A, B) -> maps:with(lists:seq(0, 255) -- maps:keys(B), A) end,
+
+    Numbers = [ -1, 0,      %% vv some random 256-bit numbers
+                -34381985657915917803217856527549695168998319515423935696320312676799566695522,
+                -13278235487230398911828395046019421663395880936684657157537412956290418200280,
+                 19304927163530931276895905992110684573865278484167820114146404274002485191635,
+                 6942391601095154637206316799581731567193347283308265506546360567556839483733,
+                -19756667160267617332161714008529635506579191243155089759382894291567865666987,
+                -56715691281420303061972313150040122620978228042279070119573648936982098851206,
+                 44326268095633212390361616365615066980517386332148535367978759098539581405893 ],
+
+    Ixs = [-1, 0, 1, 43, 127, 128, 255, 256],
+
+    Run = fun(Fun, Args, Expect) ->
+            Res = Call(Fun, Args),
+            ?assertMatch({_, _, X, X}, {Fun, Args, Expect, Res})
+          end,
+
+    %% all, none
+    Run(all, {}, All),
+    Run(none, {}, None),
+
+    %% set, clear, test
+    [ Run(Fun, {Bits, Ix}, Model(ToMap(Bits), Ix))
+        || {Fun, Model} <- [{set, Set}, {clear, Clr}, {test, Test}],
+           Bits <- Numbers, Ix <- Ixs ],
+
+    %% sum
+    [ Run(sum, Bits, Sum(ToMap(Bits))) || Bits <- Numbers ],
+
+    %% set operations
+    [ Run(Fun, {A, B}, Model(ToMap(A), ToMap(B)))
+        || {Fun, Model} <- [{union, Union}, {intersection, Isect}, {difference, Diff}],
+           A <- Numbers, B <- Numbers ],
 
     ok.
 
