@@ -149,8 +149,20 @@ end_per_suite(Config) ->
 
 init_per_group(TwoNodes, Config) when
         TwoNodes == two_nodes; TwoNodes == semantically_invalid_tx;
-        TwoNodes == large_msgs; TwoNodes == mempool_sync ->
+        TwoNodes == mempool_sync ->
     config({devs, [dev1, dev2]}, Config);
+init_per_group(large_msgs, Config) -> 
+    Config1 = config({devs, [dev1, dev2]}, Config),
+    [Dev1, Dev2] = proplists:get_value(devs, Config1),
+    Epoch1Cfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    Epoch2Cfg = aecore_suite_utils:epoch_config(Dev2, Config),
+    aecore_suite_utils:create_config(Dev1, Config, Epoch1Cfg,
+                                            [{add_peers, false}
+                                            ]),
+    aecore_suite_utils:create_config(Dev2, Config, Epoch2Cfg,
+                                            [{add_peers, false}
+                                            ]),
+    Config1;
 init_per_group(three_nodes, Config) ->
     config({devs, [dev1, dev2, dev3]}, Config);
 init_per_group(one_blocked, Config) ->
@@ -165,6 +177,21 @@ init_per_group(one_blocked, Config) ->
 init_per_group(_Group, Config) ->
     Config.
 
+end_per_group(large_msgs, Config) ->
+    ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
+    aec_metrics_test_utils:stop_statsd_loggers(Config),
+    stop_devs(Config),
+    %% reset dev1 and dev2 config 
+    Config1 = config({devs, [dev1, dev2]}, Config),
+    [Dev1, Dev2] = proplists:get_value(devs, Config1),
+    Epoch1Cfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    Epoch2Cfg = aecore_suite_utils:epoch_config(Dev2, Config),
+    aecore_suite_utils:create_config(Dev1, Config,
+                                     Epoch1Cfg,
+                                     [{add_peers, true}]),
+    aecore_suite_utils:create_config(Dev2, Config,
+                                     Epoch2Cfg,
+                                     [{add_peers, true}]);
 end_per_group(one_blocked, Config) ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
     aec_metrics_test_utils:stop_statsd_loggers(Config),
@@ -577,6 +604,15 @@ large_msgs(Config) ->
     aecore_suite_utils:connect(N2),
 
     ok = rpc:call(N2, application, set_env, [aecore, block_gas_limit, 10000000]),
+
+    <<"aenode://", Peer1Url/binary>> = aecore_suite_utils:peer_info(Dev1),
+    [EncodedPeer, Host, Port] = binary:split(Peer1Url, [<<"@">>,<<":">>], [global]),
+    {ok, PeerKey} = aehttp_api_encoder:safe_decode(peer_pubkey, EncodedPeer),
+    Peer1 = #{pubkey => PeerKey,
+              host   => binary_to_list(Host),
+              port   => binary_to_integer(Port)},
+
+    ok = rpc:call(N2, aec_peers, add_trusted, [Peer1]),
 
     true = expect_same(T0, Config).
 
