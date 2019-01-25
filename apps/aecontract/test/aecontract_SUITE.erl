@@ -3208,16 +3208,18 @@ sophia_operators(_Cfg) ->
     ?assertEqual(4,  ?call(call_contract, Acc, IdC, int_op, word, {9, 5, <<"mod">>})),
     ?assertEqual(81,  ?call(call_contract, Acc, IdC, int_op, word, {3, 4, <<"^">>})),
 
+    ArithError = {error, <<"arithmetic_error">>},
+
     ?assertEqual(IMax band (bnot 45), ?call(call_contract, Acc, IdC, int_op, word, {45, 0, <<"bnot">>})),
     ?assertEqual(45 band 127,         ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"band">>})),
     ?assertEqual(45 bor 127,          ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"bor">>})),
     ?assertEqual(45 bxor 127,         ?call(call_contract, Acc, IdC, int_op, word, {45, 127, <<"bxor">>})),
     ?assertEqual(4252 bsl 9,          ?call(call_contract, Acc, IdC, int_op, word, {4252, 9, <<"bsl">>})),
     ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {2, 255, <<"bsl">>})), %% overflow
-    ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {4252, 300, <<"bsl">>})), %% overflow
+    ?assertEqual(ArithError,          ?call(call_contract, Acc, IdC, int_op, word, {4252, 300, <<"bsl">>})), %% overflow
     ?assertEqual(4252 bsr 3,          ?call(call_contract, Acc, IdC, int_op, word, {4252, 3, <<"bsr">>})),
     ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {4252, 15, <<"bsr">>})),  %% underflow
-    ?assertEqual(0,                   ?call(call_contract, Acc, IdC, int_op, word, {IMax, 256, <<"bsr">>})),  %% underflow
+    ?assertEqual(ArithError,          ?call(call_contract, Acc, IdC, int_op, word, {IMax, 256, <<"bsr">>})),  %% underflow
 
     ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {0, 0, <<"!">>})),
     ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {1, 1, <<"&&">>})),
@@ -3261,12 +3263,12 @@ sophia_int_to_str(_Cfg) ->
 
     BAcc = list_to_binary(base58:binary_to_base58(Acc)),
     io:format("Address: ~p\n", [Acc]),
-    ?assertMatch({BAcc, _},
-                  ?call(call_contract, Acc, IdC, a2s, string, {Acc}, #{ return_gas_used => true })),
+    ?assertMatch({_, {BAcc, _}},
+                  {Acc, ?call(call_contract, Acc, IdC, a2s, string, {Acc}, #{ return_gas_used => true })}),
 
     BIdC = list_to_binary(base58:binary_to_base58(IdC)),
-    ?assertMatch({BIdC, _},
-                  ?call(call_contract, Acc, IdC, a2s, string, {IdC}, #{ return_gas_used => true })),
+    ?assertMatch({_, {BIdC, _}},
+                  {IdC, ?call(call_contract, Acc, IdC, a2s, string, {IdC}, #{ return_gas_used => true })}),
 
     Addr = <<90,139,56,117,121,128,91,84,78,146,81,166,106,181,248,87,147,41,74,158,109,135,221,178,120,168,101,101,80,152,186,248>>,
     BAddr = list_to_binary(base58:binary_to_base58(Addr)),
