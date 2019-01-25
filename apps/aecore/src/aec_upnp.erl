@@ -54,7 +54,7 @@ prep_stop() ->
             case catch gen_server:call(?MODULE, prep_stop, 10000) of
                 ok -> ok;
                 Error ->
-                    epoch_sync:info("UPnP/NAT-PMP port cleanup failed: ~p", [Error])
+                    epoch_sync:warning("UPnP/NAT-PMP port cleanup failed: ~p", [Error])
             end;
         false ->
             ok
@@ -72,7 +72,6 @@ start_link() ->
 
 init(_Args) ->
     epoch_sync:info("Starting UPnP/NAT-PMP service"),
-    process_flag(trap_exit, true),
     erlang:send_after(rand:uniform(1000), self(), add_port_mapping),
     {ok, #state{}}.
 
@@ -95,9 +94,6 @@ handle_info(add_port_mapping, State0) ->
     %% Give additional 10 secs for UPnP/NAT-PMP discovery and setup, to
     %% make sure there is continuity in port mapping.
     erlang:send_after(1000 * (?MAPPING_LIFETIME - 10), self(), add_port_mapping),
-    {noreply, State};
-handle_info({'EXIT', _Pid, normal}, State) ->
-    %% Received when calling delete_port_mapping/0 during prep_stop
     {noreply, State};
 handle_info({'DOWN', Ref, process, Pid, normal}, #state{pid = Pid, mon = Ref}) ->
     {noreply, #state{}};
