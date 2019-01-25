@@ -708,9 +708,6 @@ config_apply_options(Node, Cfg, [{block_peers, BlockedPeers}| T]) ->
 config_apply_options(Node, Cfg, [{add_peers, true}| T]) ->
     Cfg1 = Cfg#{<<"peers">> =>
               [peer_info(N1) || N1 <- [dev1, dev2, dev3] -- [Node]]},
-    config_apply_options(Node, Cfg1, T);
-config_apply_options(Node, Cfg, [{add_peers, false}| T]) ->
-    Cfg1 = Cfg#{<<"peers">> => []},
     config_apply_options(Node, Cfg1, T).
 
 write_keys(Node, Config) ->
