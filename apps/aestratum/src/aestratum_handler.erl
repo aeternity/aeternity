@@ -3,6 +3,9 @@
 -behaviour(ranch_protocol).
 -behaviour(gen_server).
 
+%% TODO: eunit
+%% TODO: type spec
+
 %% API
 -export([start_link/4]).
 
@@ -59,6 +62,8 @@ handle_info({SocketError, _Socket, Rsn}, State) when ?IS_ERROR(SocketError) ->
     handle_socket_error(Rsn, State);
 handle_info(timeout, State) ->
     handle_socket_timeout(State);
+handle_info({chain, Event}, State) ->
+    handle_chain_event(Event, State);
 handle_info(_Info, State) ->
 	{stop, normal, State}.
 
@@ -87,6 +92,10 @@ handle_socket_error(_Rsn, #state{module = Mod, session = Session} = State) ->
 
 handle_socket_timeout(#state{module = Mod, session = Session} = State) ->
     Res = Mod:handle_event({conn, timeout}, Session),
+    result(Res, State).
+
+handle_chain_event(Event, #state{module = Mod, session = Session} = State) ->
+    Res = Mod:handle_event({chain, Event}, Session),
     result(Res, State).
 
 result({send, Data, #state{module = Mod} = Session},

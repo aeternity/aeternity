@@ -5,7 +5,9 @@
 -define(TEST_MODULE, aestratum_server_session).
 -define(JSONRPC_MODULE, aestratum_jsonrpc).
 -define(NONCE_MODULE, aestratum_nonce).
+-define(TARGET_MODULE, aestratum_target).
 -define(EXTRA_NONCE_CACHE_MODULE, aestratum_extra_nonce_cache).
+-define(JOB_MODULE, aestratum_job).
 
 session_test_() ->
     {setup,
@@ -21,12 +23,14 @@ server_session() ->
     {foreach,
      fun() ->
              meck:new(?EXTRA_NONCE_CACHE_MODULE, [passthrough]),
+             meck:new(?TARGET_MODULE, [passthrough]),
              meck:new(?TEST_MODULE, [passthrough]),
              {ok, Pid} = aestratum_dummy_handler:start_link(?TEST_MODULE),
              Pid
      end,
      fun(Pid) ->
              meck:unload(?EXTRA_NONCE_CACHE_MODULE),
+             meck:unload(?TARGET_MODULE),
              meck:unload(?TEST_MODULE),
              aestratum_dummy_handler:stop(Pid)
      end,
@@ -40,6 +44,7 @@ server_session() ->
       %% connected - success
       fun(Pid) -> t(Pid, when_connected(configure)) end,
       fun(Pid) -> t(Pid, when_connected(subscribe)) end,
+
       %% configured - error
       fun(Pid) -> t(Pid, when_configured(timeout)) end,
       fun(Pid) -> t(Pid, when_configured(configure)) end,
@@ -49,6 +54,7 @@ server_session() ->
       fun(Pid) -> t(Pid, when_configured(jsonrpc_errors)) end,
       %% configured - success
       fun(Pid) -> t(Pid, when_configured(subscribe)) end,
+
       %% subscribed - error
       fun(Pid) -> t(Pid, when_subscribed(timeout)) end,
       %% TODO: fun(Pid) -> t(Pid, when_subscribed(configure)) end,
@@ -57,16 +63,29 @@ server_session() ->
       fun(Pid) -> t(Pid, when_subscribed(not_req)) end,
       fun(Pid) -> t(Pid, when_subscribed(jsonrpc_errors)) end,
       %% subscribed - success
-      %% TODO: fun(Pid) -> t(Pid, when_subscribed(authorize)) end,
+      fun(Pid) -> t(Pid, when_subscribed(authorize_failure)) end,
+      fun(Pid) -> t(Pid, when_subscribed(authorize_success)) end,
+
       %% authorized - error
       fun(Pid) -> t(Pid, when_authorized(timeout)) end,
       %% TODO: fun(Pid) -> t(Pid, when_authorized(configure)) end,
       %% TODO: fun(Pid) -> t(Pid, when_authorized(subscribe)) end,
       fun(Pid) -> t(Pid, when_authorized(authorize)) end,
       fun(Pid) -> t(Pid, when_authorized(not_req)) end,
-      fun(Pid) -> t(Pid, when_authorized(jsonrpc_errors)) end
+      fun(Pid) -> t(Pid, when_authorized(jsonrpc_errors)) end,
       %% authorize - success
-      %% TODO: fun(Pid) -> t(Pid, when_authorized(submit)) end
+      fun(Pid) -> t(Pid, when_authorized(set_initial_share_target)) end,
+
+      %% set_initial_share_target - error
+      fun(Pid) -> t(Pid, when_set_initial_share_target(timeout)) end,
+      %% TODO: ...
+      %% set_initial_share_target - success
+      fun(Pid) -> t(Pid, when_set_initial_share_target(new_block_no_target_change)) end,
+      fun(Pid) -> t(Pid, when_set_initial_share_target(new_block_target_change)) end
+
+      %% TODO: fun(Pid) -> t(Pid, when_notified(submit)) end,
+
+
      ]}.
 
 %% T - title
@@ -138,21 +157,21 @@ when_connected(timeout) ->
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(authorize) ->
     T = <<"when connected - authorize">>,
-    L = [{{conn, #{type => req, method => authorize, id => 1,
+    L = [{{conn, #{type => req, method => authorize, id => 0,
                    user => <<"test_user">>, password => binary:copy(<<"0">>, 64)}},
           {send,
-           #{type => rsp, method => authorize, id => 1, reason => not_subscribed},
+           #{type => rsp, method => authorize, id => 0, reason => not_subscribed},
            #{phase => connected, timer_phase => connected,
             extra_nonce => undefined}}
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(submit) ->
     T = <<"when connected - submit">>,
-    L = [{{conn, #{type => req, method => submit, id => 1,
+    L = [{{conn, #{type => req, method => submit, id => 0,
                    user => <<"test_user">>, job_id => <<"0123456789abcdef">>,
                    miner_nonce => <<"0123456789">>, pow => lists:seq(1, 42)}},
           {send,
-           #{type => rsp, method => submit, id => 1, reason => not_subscribed},
+           #{type => rsp, method => submit, id => 0, reason => not_subscribed},
            #{phase => connected, timer_phase => connected,
             extra_nonce => undefined}}
          }],
@@ -184,20 +203,15 @@ when_connected(configure) ->
 when_connected(subscribe) ->
     Host = <<"ae.testpool.com">>,
     Port = 10000,
-    ExtraNonceNBytes = 4,
-    ExtraNonce = aestratum_nonce:new(extra, 100, ExtraNonceNBytes),
-    application:set_env(aestratum, extra_nonce_nbytes, ExtraNonceNBytes),
-    meck:expect(?TEST_MODULE, get_host, fun() -> Host end),
-    meck:expect(?TEST_MODULE, get_port, fun() -> Port end),
-    meck:expect(?EXTRA_NONCE_CACHE_MODULE, get, fun(_) -> {ok, ExtraNonce} end),
-
+    ExtraNonce = aestratum_nonce:new(extra, 100, 4),
+    mock(subscribe, #{host => Host, port => Port, extra_nonce => ExtraNonce}),
     T = <<"when connected - subscribe">>,
     L = [{{conn, #{type => req, method => subscribe, id => 0,
                    user_agent => <<"aeminer/1.0.0">>, session_id => null,
                    host => Host, port => Port}},
           {send,
            #{type => rsp, method => subscribe, id => 0,
-             result => [null, ?NONCE_MODULE:to_bin(ExtraNonce)]},
+             result => [null, ?NONCE_MODULE:to_hex(ExtraNonce)]},
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ExtraNonce}}
          }],
@@ -243,9 +257,9 @@ when_configured(submit) ->
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(not_req) ->
     T = <<"when configured - not_req">>,
-    L = [{{conn, #{type => rsp, method => configure, id => 2, result => []}},
+    L = [{{conn, #{type => rsp, method => configure, id => 1, result => []}},
           {send,
-           #{type => rsp, method => configure, id => 2, reason => unknown_error},
+           #{type => rsp, method => configure, id => 1, reason => unknown_error},
            #{phase => configured, timer_phase => configured,
              extra_nonce => undefined}}
          }],
@@ -256,103 +270,287 @@ when_configured(jsonrpc_errors) ->
 when_configured(subscribe) ->
     Host = <<"ae.testpool.com">>,
     Port = 10000,
-    ExtraNonceValue = 200,
-    ExtraNonceNBytes = 4,
-    ExtraNonce = aestratum_nonce:new(extra, ExtraNonceValue, ExtraNonceNBytes),
-    application:set_env(aestratum, extra_nonce_nbytes, ExtraNonceNBytes),
-    meck:expect(?TEST_MODULE, get_host, fun() -> Host end),
-    meck:expect(?TEST_MODULE, get_port, fun() -> Port end),
-    meck:expect(?EXTRA_NONCE_CACHE_MODULE, get, fun(_) -> {ok, ExtraNonce} end),
-
+    ExtraNonce = aestratum_nonce:new(extra, 222, 3),
+    mock(subscribe, #{host => Host, port => Port, extra_nonce => ExtraNonce}),
     T = <<"when configured - subscribe">>,
-    L = [{{conn, #{type => req, method => subscribe, id => 0,
+    L = [{{conn, #{type => req, method => subscribe, id => 1,
                    user_agent => <<"aeminer/1.0.0">>, session_id => null,
                    host => Host, port => Port}},
           {send,
-           #{type => rsp, method => subscribe, id => 0,
-             result => [null, ?NONCE_MODULE:to_bin(ExtraNonce)]},
+           #{type => rsp, method => subscribe, id => 1,
+             result => [null, ?NONCE_MODULE:to_hex(ExtraNonce)]},
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ExtraNonce}}
          }],
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_subscribed(timeout) ->
-    meck:expect(?EXTRA_NONCE_CACHE_MODULE, free, fun(_) -> ok end),
-
     T = <<"when subscribed - timeout">>,
+    Opts = #{host => <<"aepool.com">>, port => 9999,
+             extra_nonce => aestratum_nonce:new(extra, 123, 1)},
     L = [{{conn, timeout},
           {stop,
            #{phase => disconnected, timer_phase => undefined,
              extra_nonce => undefined}}
          }],
-    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
+    mock(subscribe, Opts),
+    prep_subscribed(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(subscribe) ->
-    Host = <<"testpool.aeternity.com">>,
-    Port = 12345,
-    meck:expect(?TEST_MODULE, get_host, fun() -> Host end),
-    meck:expect(?TEST_MODULE, get_port, fun() -> Port end),
-
     T = <<"when subscribed - subscribe">>,
+    Host = <<"test.aepool.com">>,
+    Port = 12345,
+    ExtraNonce = aestratum_nonce:new(extra, 987, 4),
+    Opts = #{host => Host, port => Port, extra_nonce => ExtraNonce},
     L = [{{conn, #{type => req, method => subscribe, id => 2,
                    user_agent => <<"aeminer/1.0.0">>, session_id => null,
                    host => Host, port => Port}},
           {send,
            #{type => rsp, method => subscribe, id => 2, reason => unknown_error},
-           #{phase => subscribed, timer_phase => subscribed}}
+           #{phase => subscribed, timer_phase => subscribed,
+             extra_nonce => ExtraNonce}}
          }],
-    %% prep_subscribed/1 sets the ExtraNonceNBytes to 3 and ExtraNonce to 345
-    %% TODO: ^^^ Maybe return the state and check extra_nonce?
-    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
+    mock(subscribe, Opts),
+    prep_subscribed(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(submit) ->
     T = <<"when subscribed - submit">>,
+    ExtraNonce = aestratum_nonce:new(extra, 999, 3),
+    Opts = #{host => <<"test.aepool.com">>, port => 12345,
+             extra_nonce => ExtraNonce},
     L = [{{conn, #{type => req, method => submit, id => 2,
                    user => <<"test_user">>, job_id => <<"0123456789abcdef">>,
                    miner_nonce => <<"0123456789">>, pow => lists:seq(1, 42)}},
           {send,
            #{type => rsp, method => submit, id => 2, reason => unauthorized_worker},
-           #{phase => subscribed, timer_phase => subscribed}}
+           #{phase => subscribed, timer_phase => subscribed,
+             extra_nonce => ExtraNonce}}
          }],
-    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
+    mock(subscribe, Opts),
+    prep_subscribed(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(not_req) ->
     T = <<"when subscribed - not_req">>,
-    L = [{{conn, #{type => rsp, method => configure, id => 3, result => []}},
+    ExtraNonce = aestratum_nonce:new(extra, 1, 2),
+    Opts = #{host => <<"mypool.net">>, port => 3214, extra_nonce => ExtraNonce},
+    L = [{{conn, #{type => rsp, method => configure, id => 2, result => []}},
           {send,
-           #{type => rsp, method => configure, id => 3, reason => unknown_error},
-           #{phase => subscribed, timer_phase => subscribed}}
+           #{type => rsp, method => configure, id => 2, reason => unknown_error},
+           #{phase => subscribed, timer_phase => subscribed,
+             extra_nonce => ExtraNonce}}
          }],
-    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
+    mock(subscribe, Opts),
+    prep_subscribed(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(jsonrpc_errors) ->
     T = <<"when subscribed - jsonrpc_errors">>,
-    prep_subscribed(T) ++ jsonrpc_errors(T, subscribed, subscribed).
+    ExtraNonce = aestratum_nonce:new(extra, 100, 5),
+    Opts = #{host => <<"mypool.net">>, port => 8877, extra_nonce => ExtraNonce},
+    mock(subscribe, Opts),
+    prep_subscribed(T, Opts) ++ jsonrpc_errors(T, subscribed, subscribed);
+when_subscribed(authorize_failure) ->
+    T = <<"when subscribed - authorize_failure">>,
+    ExtraNonce = aestratum_nonce:new(extra, 4254, 4),
+    Opts = #{host => <<"aepool.org">>, port => 5429, extra_nonce => ExtraNonce,
+             user_and_password => invalid},
+    L = [{{conn, #{type => req, method => authorize, id => 2,
+                   user => <<"test_user">>, password => binary:copy(<<"0">>, 64)}},
+           {send,
+            #{type => rsp, method => authorize, id => 2, result => false},
+            #{phase => subscribed, timer_phase => subscribed,
+              extra_nonce => ExtraNonce}}
+         }],
+    mock(authorize, Opts),
+    prep_subscribed(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
+when_subscribed(authorize_success) ->
+    T = <<"when subscribed - authorize_success">>,
+    ExtraNonce = aestratum_nonce:new(extra, 4254, 4),
+    Opts = #{host => <<"aepool.org">>, port => 5429, extra_nonce => ExtraNonce,
+             user_and_password => valid},
+    L = [{{conn, #{type => req, method => authorize, id => 2,
+                   user => <<"test_user">>, password => binary:copy(<<"0">>, 64)}},
+           {send,
+            #{type => rsp, method => authorize, id => 2, result => true},
+            #{phase => authorized, timer_phase => undefined,
+              extra_nonce => ExtraNonce}}
+         }],
+    mock(authorize, Opts),
+    prep_subscribed(T, Opts) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_authorized(timeout) ->
     T = <<"when authorized - timeout">>,
+    ExtraNonce = aestratum_nonce:new(extra, 999, 3),
+    Opts = #{host => <<"test.aepool.com">>, port => 12345,
+             extra_nonce => ExtraNonce, user_and_password => valid},
     L = [{{conn, timeout},
           {no_send,
-           #{phase => authorized, timer_phase => undefined}}
+           #{phase => authorized, timer_phase => undefined,
+             extra_nonce => ExtraNonce}}
          }],
-    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
+    mock(authorize, Opts),
+    prep_authorized(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(authorize) ->
     T = <<"when authorized - authorize">>,
+    ExtraNonce = aestratum_nonce:new(extra, 999, 3),
+    Opts = #{host => <<"test.aepool.com">>, port => 12345,
+             extra_nonce => ExtraNonce, user_and_password => valid},
     L = [{{conn, #{type => req, method => authorize, id => 3,
                    user => <<"test_user">>, password => binary:copy(<<"0">>, 64)}},
           {send,
            #{type => rsp, method => authorize, id => 3, reason => unknown_error},
            #{phase => authorized, timer_phase => undefined}}
          }],
-    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
+    mock(authorize, Opts),
+    prep_authorized(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(not_req) ->
     T = <<"when authorized - not_req">>,
+    ExtraNonce = aestratum_nonce:new(extra, 1000, 5),
+    Opts = #{host => <<"test.aepool.com">>, port => 2222,
+             extra_nonce => ExtraNonce, user_and_password => valid},
     L = [{{conn, #{type => rsp, method => subscribe, id => 3,
                    reason => parse_error, data => null}},
           {send,
            #{type => rsp, method => subscribe, id => 3, reason => unknown_error},
            #{phase => authorized, timer_phase => undefined}}
          }],
-    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
+    mock(authorize, Opts),
+    prep_authorized(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(jsonrpc_errors) ->
     T = <<"when authorized - jsonrpc_errors">>,
-    prep_authorized(T) ++ jsonrpc_errors(T, authorized, undefined).
+    Opts = #{host => <<"test.aepool.com">>, port => 6535,
+             extra_nonce => aestratum_nonce:new(extra, 31155, 4),
+             user_and_password => valid},
+    mock(authorize, Opts),
+    prep_authorized(T, Opts) ++ jsonrpc_errors(T, authorized, undefined);
+when_authorized(set_initial_share_target) ->
+    T = <<"when authorized - set_initial_share_target">>,
+    InitialShareTarget = 100000000,
+    ExtraNonce = aestratum_nonce:new(extra, 43215, 5),
+    Opts = #{host => <<"pool.net">>, port => 13245,
+             extra_nonce => ExtraNonce, user_and_password => valid,
+             initial_share_target => InitialShareTarget},
+    L = [{{chain, set_initial_share_target},
+          {send,
+           #{type => ntf, method => set_target,
+             target => ?TARGET_MODULE:to_hex(InitialShareTarget)},
+           #{phase => authorized, timer_phase => undefined,
+             extra_nonce => ExtraNonce}}
+         }],
+    mock(set_initial_share_target, Opts),
+    prep_authorized(T, Opts) ++ [{T, test, E, R} || {E, R} <- L].
+
+when_set_initial_share_target(timeout) ->
+    T = <<"when set initial target - timeout">>,
+    ExtraNonce = aestratum_nonce:new(extra, 3129, 5),
+    Opts = #{host => <<"ae.pool.com">>, port => 2532,
+             extra_nonce => ExtraNonce, user_and_password => valid,
+             initial_share_target => 1234567890},
+    L = [{{conn, timeout},
+          {no_send,
+           #{phase => authorized, timer_phase => undefined,
+             extra_nonce => ExtraNonce}}
+         }],
+    mock(set_initial_share_target, Opts),
+    prep_set_initial_share_target(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
+when_set_initial_share_target(new_block_no_target_change) ->
+    T = <<"when set initial target - new_block_no_target_change">>,
+    ExtraNonce = aestratum_nonce:new(extra, 3129, 5),
+    BlockHash = binary:copy(<<"1">>, 64),
+    BlockTarget = 1000,
+    BlockVersion = 1,
+    JobId = ?JOB_MODULE:make_id(BlockHash, BlockTarget, BlockVersion),
+    Opts = #{host => <<"ae.pool.com">>, port => 2532,
+             extra_nonce => ExtraNonce, user_and_password => valid,
+             initial_share_target => 1000000, new_share_target => no_change},
+    L = [{{chain, {new_block, #{hash => BlockHash, target => BlockTarget,
+                                version => BlockVersion}}},
+          {send,
+           #{type => ntf, method => notify, job_id => JobId,
+             block_hash => BlockHash, block_version => BlockVersion,
+             empty_queue => true},
+           #{phase => authorized, timer_phase => undefined,
+             extra_nonce => ExtraNonce}}
+         }],
+    mock(set_initial_share_target, Opts),
+    prep_set_initial_share_target(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
+when_set_initial_share_target(new_block_target_change) ->
+    T = <<"when set initial target - new_block_target_change">>,
+    ExtraNonce = aestratum_nonce:new(extra, 54302, 4),
+    BlockHash = binary:copy(<<"1">>, 64),
+    BlockTarget = 11111,
+    BlockVersion = 1,
+    ShareTarget = 11111000,
+    DesiredSolveTime = 50000,
+    MaxSolveTime = 70000,
+    JobId = ?JOB_MODULE:make_id(BlockHash, BlockTarget, BlockVersion),
+    Opts = #{host => <<"aepool.com">>, port => 8432,
+             extra_nonce => ExtraNonce, user_and_password => valid,
+             initial_share_target => 1111111,
+             new_share_target => {increase, 10.0}, share_target_diff_threshold => 5.0},
+    L = [{{chain, {new_block, #{hash => BlockHash, target => BlockTarget,
+                                version => BlockVersion}}},
+          {send,
+           %% NOTE: we don't test the target value here, there is a dedicated
+           %% test module for that (or will be!).
+           #{type => ntf, method => set_target},
+           #{phase => authorized, timer_phase => undefined,
+             extra_nonce => ExtraNonce, accept_blocks => false}}
+         },
+         %% We test that the next new block doesn't cause any new notification.
+         %% First, the session expects the {chain, {send_notify, Job}} event.
+         %% That job caused set_target notification, so it's supposed to be
+         %% first after set_target, other new blocks in between are just
+         %% skipped.
+         {{chain, {new_block, #{hash => binary:copy(<<"2">>, 64), target => 22222,
+                                version => 1}}},
+          {no_send,
+           #{phase => authorized, timer_phase => undefined,
+             extra_nonce => ExtraNonce, accept_blocks => false}}
+         },
+         %% The previuos new block was skipped, the send notify event will
+         %% cause sending noftify notification and will restore processing of
+         %% new blocks.
+         {{chain, {send_notify, #{job_id => JobId, hash => BlockHash,
+                                  target => BlockTarget, version => BlockVersion,
+                                  share_targe => ShareTarget,
+                                  desired_solve_time => DesiredSolveTime,
+                                  max_solve_time => MaxSolveTime}}},
+          #{type => ntf, method => notify, job_id => JobId,
+            block_hash => BlockHash, block_version => BlockVersion,
+            empty_queue => true},
+          #{phase => authorized, timer_phase => undefined,
+            extra_nonce => ExtraNonce, accept_blocks => true}
+         }],
+    mock(set_initial_share_target, Opts),
+    prep_set_initial_share_target(T, Opts) ++ [{T, test, E, R} || {E, R} <- L].
+
+mock(subscribe, #{host := Host, port := Port, extra_nonce := ExtraNonce}) ->
+    meck:expect(?TEST_MODULE, get_host, fun() -> Host end),
+    meck:expect(?TEST_MODULE, get_port, fun() -> Port end),
+    meck:expect(?EXTRA_NONCE_CACHE_MODULE, get, fun(_) -> {ok, ExtraNonce} end),
+    meck:expect(?EXTRA_NONCE_CACHE_MODULE, free, fun(_) -> ok end),
+    ok;
+mock(authorize, #{user_and_password := valid} = Opts) ->
+    mock(subscribe, Opts),
+    meck:expect(?TEST_MODULE, validate_authorize_req, fun(_) -> ok end),
+    ok;
+mock(authorize, #{user_and_password := invalid} = Opts) ->
+    mock(subscribe, Opts),
+    meck:expect(?TEST_MODULE, validate_authorize_req, fun(_) -> {error, user_and_password} end),
+    ok;
+mock(set_initial_share_target, #{initial_share_target := InitialShareTarget} = Opts) ->
+    mock(authorize, Opts),
+    application:set_env(aestratum, initial_share_target, InitialShareTarget),
+    case maps:get(new_share_target, Opts, undefined) of
+        NewShareTarget when NewShareTarget =/= undefined ->
+            meck:expect(?TARGET_MODULE, diff, fun(_, _) -> NewShareTarget end);
+        undefined ->
+            ok
+    end,
+    case maps:get(share_target_diff_threshold, Opts, undefined) of
+        ShareTargetDiffThreshold when ShareTargetDiffThreshold =/= undefined ->
+            application:set_env(aestratum, share_target_diff_threshold,
+                                ShareTargetDiffThreshold);
+        undefined ->
+            ok
+    end,
+    ok.
 
 prep_connected(T) ->
     L = [conn_init()],
@@ -363,17 +561,25 @@ prep_configured(T) ->
          conn_configure(0)],
     [{T, no_test, E, R} || {E, R} <- L].
 
-prep_subscribed(T) ->
+prep_subscribed(T, Opts) ->
     L = [conn_init(),
          conn_configure(0),
-         conn_subscribe(1)],
+         conn_subscribe(1, Opts)],
     [{T, no_test, E, R} || {E, R} <- L].
 
-prep_authorized(T) ->
+prep_authorized(T, Opts) ->
     L = [conn_init(),
          conn_configure(0),
-         conn_subscribe(1),
-         conn_authorize(2)],
+         conn_subscribe(1, Opts),
+         conn_authorize(2, Opts)],
+    [{T, no_test, E, R} || {E, R} <- L].
+
+prep_set_initial_share_target(T, Opts) ->
+    L = [conn_init(),
+         conn_configure(0),
+         conn_subscribe(1, Opts),
+         conn_authorize(2, Opts),
+         chain_set_initial_share_target(Opts)],
     [{T, no_test, E, R} || {E, R} <- L].
 
 jsonrpc_errors(T, Phase, TimerPhase) ->
@@ -398,31 +604,30 @@ conn_configure(Id) ->
       #{phase => configured, timer_phase => configured}}
     }.
 
-conn_subscribe(Id) ->
-    Host = <<"testpool.com">>,
-    Port = 12345,
-    ExtraNonceNBytes = 3,
-    ExtraNonce = aestratum_nonce:new(extra, 345, ExtraNonceNBytes),
-    application:set_env(aestratum, extra_nonce_nbytes, ExtraNonceNBytes),
-    meck:expect(?TEST_MODULE, get_host, fun() -> Host end),
-    meck:expect(?TEST_MODULE, get_port, fun() -> Port end),
-    meck:expect(?EXTRA_NONCE_CACHE_MODULE, get, fun(_) -> {ok, ExtraNonce} end),
-
+conn_subscribe(Id, #{host := Host, port := Port, extra_nonce := ExtraNonce}) ->
     {{conn, #{type => req, method => subscribe, id => Id,
               user_agent => <<"aeminer/1.0.0">>, session_id => null,
               host => Host, port => Port}},
      {send,
       #{type => rsp, method => subscribe, id => Id,
-        result => [null, ?NONCE_MODULE:to_bin(ExtraNonce)]},
+        result => [null, ?NONCE_MODULE:to_hex(ExtraNonce)]},
       #{phase => subscribed, timer_phase => subscribed,
         extra_nonce => ExtraNonce}}
     }.
 
-conn_authorize(Id) ->
+conn_authorize(Id, _Opts) ->
     {{conn, #{type => req, method => authorize, id => Id,
               user => <<"test_user">>, password => binary:copy(<<"0">>, 64)}},
      {send,
-      #{type => rsp, method => authorize, id => Id, result => true}, %%TODO: meck
+      #{type => rsp, method => authorize, id => Id, result => true},
+      #{phase => authorized, timer_phase => undefined}}
+    }.
+
+chain_set_initial_share_target(#{initial_share_target := InitialShareTarget}) ->
+    {{chain, set_initial_share_target},
+     {send,
+      #{type => ntf, method => set_target,
+        target => ?TARGET_MODULE:to_hex(InitialShareTarget)},
       #{phase => authorized, timer_phase => undefined}}
     }.
 
