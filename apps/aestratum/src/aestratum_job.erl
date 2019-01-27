@@ -162,8 +162,8 @@ status(#job{id = Id,
     #{id => Id,
       block_hash => BlockHash,
       block_version => BlockVersion,
-      block_target => BlockTarget,
-      share_target => ShareTarget,
+      block_target => aestratum_target:to_hex(BlockTarget),
+      share_target => aestratum_target:to_hex(ShareTarget),
       desired_solve_time => DesiredSolveTime,
       max_solve_time => MaxSolveTime,
       shares => [aestratum_share:status(S) || S <- Shares],
@@ -202,4 +202,3 @@ to_hex(Bin) ->
             end
       end || <<N:4>> <= Bin
     >>.
-

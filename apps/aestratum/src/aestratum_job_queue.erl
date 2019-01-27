@@ -84,5 +84,4 @@ share_target(DesiredSolveTime, MaxShareTarget, Queue) ->
 
 -spec to_list(job_queue()) -> [job()].
 to_list(Queue) ->
-    aestratum_lqueue:to_list(Queue).
-
+    [Job || {_JobId, Job} <- aestratum_lqueue:to_list(Queue)].
