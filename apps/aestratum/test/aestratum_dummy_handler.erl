@@ -17,6 +17,7 @@
         ]).
 
 -record(state, {
+          pid,
           module,
           session
          }).
@@ -34,12 +35,16 @@ stop(Pid) ->
     gen_server:cast(Pid, stop).
 
 init([Module]) ->
-    {ok, #state{module = Module, session = Module:new()}}.
+    {ok, #state{pid = self(), module = Module, session = Module:new()}}.
 
 handle_call({conn, Event}, _From,
             #state{module = Module, session = Session} = State) ->
 	Res = Module:handle_event({conn, Event}, Session),
     {reply, result(Res, State), State#state{session = session(Res)}};
+handle_call({chain, _Event}, Pid, #state{pid = Pid} = State) ->
+    %% The chain events originated in the session module will be ignored,
+    %% we want to simulate these events from the test process.
+    {noreply, State};
 handle_call({chain, Event}, _From,
             #state{module = Module, session = Session} = State) ->
 	Res = Module:handle_event({chain, Event}, Session),
