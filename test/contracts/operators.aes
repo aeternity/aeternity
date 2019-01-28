@@ -13,12 +13,6 @@ contract Operators =
       "/"    => a / b
       "mod"  => a mod b
       "^"    => a ^ b
-      "bnot" => bnot a
-      "band" => a band b
-      "bor"  => a bor b
-      "bxor" => a bxor b
-      "bsl"  => a bsl b
-      "bsr"  => a bsr b
 
   function bool_op(a : bool, b : bool, op : string) =
     switch(op)

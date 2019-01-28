@@ -1053,12 +1053,12 @@ compiler_error_contract(_Config) ->
     %% Test syntax error.
     {ok,403,#{<<"reason">> := SyntaxError}} =
         get_contract_bytecode(<<"contract Fail = function fail(x : string) == x + 1">>),
-    <<"** Parse errors\n\n",_/binary>> = SyntaxError,
+    <<"Parse errors\n",_/binary>> = SyntaxError,
 
     %% Test type error.
     {ok,403,#{<<"reason">> := TypeError}} =
         get_contract_bytecode(<<"contract Fail = function fail(x : string) = x + 1">>),
-    TypeError = <<"** Type errors\n\n"
+    TypeError = <<"Type errors\n"
                   "Cannot unify string\n"
                   "         and int\n"
                   "when checking the application at line 1, column 47 of\n"
@@ -1070,7 +1070,7 @@ compiler_error_contract(_Config) ->
     %% Test code gen error.
     {ok,403,#{<<"reason">> := GenError}} =
         get_contract_bytecode(<<"contract Fail =\n  function fail(x : address) = Chain.balance">>),
-    <<"** Code errors\n\n",_/binary>> = GenError,
+    <<"Code errors\n",_/binary>> = GenError,
 
     %% This generates a function_clause error.
     {ok,403,#{<<"reason">> := DeclError}} =
