@@ -2,6 +2,26 @@
 
 This document describes how to configure your Aeternity node installed using a release binary for joining a public network of nodes (e.g. testnet) knowing an initial network peer to join.
 
+## User-provided configuration
+
+The `aeternity` system supports user-provided parameters via a JSON- or YAML-formatted config file.
+
+### File name and location
+The format of the config file is determined from the file extension: `.json` for JSON, or `.yaml` for YAML.
+
+The location of the file can be specified in a few different ways, in order of priority:
+1. The OS environment variable `EPOCH_CONFIG` contains a filename
+2. The Erlang/OTP environment variable `-aecore config` contains a filename
+3. A file named `epoch.{yaml,json}` exists in `${HOME}/.epoch/${sname}/`
+4. A file named `epoch.{yaml,json}` exists in `${AETERNITY_TOP}/`
+
+If all above checks fail, no user configuration is applied.
+
+`${sname}` represents the name part of the Erlang node name (the part before `'@'`).
+
+### Validation
+The contents of the config file will be validated against a JSON-Schema, located in the node at path `data/epoch_config_schema.json`. If any parameters violate the schema, the node will fail to start.
+
 ## Notable user configuration parameters
 
 ### Peer-to-peer network
@@ -100,7 +120,8 @@ The instructions below assume that:
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
-Create the file `~/aeternity/node/epoch.yaml` with the below content.
+Create the config file with the below content.
+Place the config file in one of the locations specified in the [File name and location section](#file-name-and-location).
 Make sure you amend the `sync` > `port` parameter with your actual value.
 
 ```yaml

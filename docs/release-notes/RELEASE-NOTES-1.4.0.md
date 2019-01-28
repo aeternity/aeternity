@@ -29,8 +29,7 @@ You can run a node by either:
 [docker]: https://github.com/aeternity/aeternity/blob/v1.4.0/docs/docker.md
 [build]: https://github.com/aeternity/aeternity/blob/v1.4.0/docs/build.md
 
-The user configuration is documented in the [wiki](https://github.com/aeternity/aeternity/wiki/User-provided-configuration).
-For specifying configuration using the Docker image, please refer to [its documentation][docker].
+The instructions for configuring the node using the Docker image are in [the dedicated separate document][docker].
 
 The node user API is documented:
 * HTTP API endpoints are specified [online in swagger.yaml][swagger-yaml];
