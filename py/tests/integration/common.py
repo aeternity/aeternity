@@ -67,7 +67,7 @@ def setup_node(node):
     root_dir = tempfile.mkdtemp()
 
     # setup the dir with non-mining node
-    user_config = make_no_mining_user_config(root_dir, "epoch.yaml")
+    user_config = make_no_mining_user_config(root_dir, "aeternity.yaml")
     start_node(node, user_config)
     ext_api = external_api(node)
     int_api = internal_api(node)
@@ -79,7 +79,7 @@ def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
     root_dir = tempfile.mkdtemp()
 
     # setup the dir with mining node
-    user_config = make_mining_user_config(root_dir, beneficiary, "epoch.yaml")
+    user_config = make_mining_user_config(root_dir, beneficiary, "aeternity.yaml")
     start_node(node, user_config)
     ext_api = external_api(node)
     int_api = internal_api(node)
@@ -154,9 +154,9 @@ def start_node(name, config_filename):
         print("\nNode " + name + " starting")
         config_prefix = ""
         if config_filename[0] == "/": # absolute path
-            config_prefix =  'EPOCH_CONFIG="' + config_filename + '" '
+            config_prefix =  'AETERNITY_CONFIG="' + config_filename + '" '
         else:
-            config_prefix =  'EPOCH_CONFIG="`pwd`/' + config_filename + '" '
+            config_prefix =  'AETERNITY_CONFIG="`pwd`/' + config_filename + '" '
 
         print("Starting node with config prefix " + config_prefix)
         p = os.popen("(cd ../.. && " + config_prefix + "make " + name + "-start;)","r")
