@@ -30,10 +30,12 @@ environment:
       ERTS_VERSION: 9.3
       BUILD_STEP: build
       TEST_STEP: ct
-    - OTP_VERSION: 21.2
-      ERTS_VERSION: 10.2
-      BUILD_STEP: build
-      TEST_STEP: ct
+# We disable this for now to keep build times at a minimum,
+# because we know it's not supported at the moment.
+#    - OTP_VERSION: 21.2
+#      ERTS_VERSION: 10.2
+#      BUILD_STEP: build
+#      TEST_STEP: ct
 
 cache:
   - '%WIN_MSYS2_CACHE%'                       # msys2
@@ -68,6 +70,9 @@ install:
 build_script:
   - '%APPVEYOR_BUILD_FOLDER%\ci\appveyor\build.bat'
 
+after_build:
+  - '%APPVEYOR_BUILD_FOLDER%\ci\appveyor\package.bat'
+
 # test_script:
 #  - '%APPVEYOR_BUILD_FOLDER%\ci\appveyor\test.bat'
 
@@ -76,3 +81,9 @@ deploy: off
 on_finish:
 # Set blockRdp to true to allow RDP, uses Git tag build-agent-v6.1.0%2B1300
   - ps: $blockRdp = $false; iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/ab48d6e110f2feb585b6b908a72d6e7dbfb83cb3/scripts/enable-rdp.ps1'))
+
+artifacts:
+  - name: Windows Release
+    path: aeternity-windows-w64-*.exe
+  - name: Windows Release Standalone
+    path: aeternity-windows-w64-*.zip
