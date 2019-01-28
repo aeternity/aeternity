@@ -31,9 +31,15 @@
 compile(ContractAsBinString, OptionsAsBinString) ->
     ContractText = binary_to_list(ContractAsBinString),
     Options = parse_options(OptionsAsBinString),
-    case aeso_compiler:from_string(ContractText, Options) of
+    try aeso_compiler:from_string(ContractText, Options) of
         {ok, Map} -> {ok, serialize(Map)};
         {error, _} = Err -> Err
+    catch
+        %% General programming errors in the compiler.
+        error:Error ->
+            Where = hd(erlang:get_stacktrace()),
+            ErrorString = io_lib:format("Error: ~p in\n   ~p", [Error,Where]),
+            {error, list_to_binary(ErrorString)}
     end.
 
 parse_options(OptionsBinString) ->
