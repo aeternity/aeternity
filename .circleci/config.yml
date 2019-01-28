@@ -434,6 +434,9 @@ jobs:
     <<: *container_config
     steps:
       - checkout
+      - add_ssh_keys:
+          fingerprints:
+            - "8b:3c:dd:50:78:e0:3b:a7:39:4e:7d:6e:0c:f9:fd:f6"
       - run:
           name: Deploy API docs
           command: ./deployment/deploy_api_docs.sh
