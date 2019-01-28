@@ -127,6 +127,22 @@ process_test_() ->
               ?assertEqual(1000000 - 50 - 20000 + 50, aec_accounts:balance(ResultAccount)),
               ?assertEqual(11, aec_accounts:nonce(ResultAccount))
       end},
+      {"Check spend to oneself with too high amount",
+       fun() ->
+              %% The sender has enough to cover the fee, so the resulting
+              %% balance would be ok, but this is still not allowed.
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 20049, nonce => 10}),
+              StateTree0 = aec_test_utils:create_state_tree_with_accounts([SenderAccount]),
+
+              {ok, SpendTx} = ?TEST_MODULE:new(#{sender_id => ?SENDER_ID,
+                                                 recipient_id => ?SENDER_ID,
+                                                 amount => 50,
+                                                 fee => 20000,
+                                                 nonce => 11,
+                                                 payload => <<"foo">>}),
+              Env = aetx_env:tx_env(20),
+              {error, insufficient_funds} = aetx:process(SpendTx, StateTree0, Env)
+      end},
       {"Check gas is higher with bigger payload",
        fun() ->
               _SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 1000000, nonce => 10}),

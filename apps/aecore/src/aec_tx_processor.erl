@@ -99,8 +99,8 @@ spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
     {Type, RecipientHash} = specialize_account(RecipientID),
     [ inc_account_nonce_op(SenderPubkey, Nonce)
     , resolve_account_op(Type, RecipientHash, Recipient)
-    , spend_op(SenderPubkey, Recipient, Amount)
     , spend_fee_op(SenderPubkey, Fee)
+    , spend_op(SenderPubkey, Recipient, Amount)
     ].
 
 -spec oracle_register_tx_instructions(
