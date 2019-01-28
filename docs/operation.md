@@ -1,6 +1,6 @@
-# Operating an epoch node installed using a release binary
+# Operating an Aeternity node installed using a release binary
 
-This document describes how to start your epoch node installed using a release binary, verify that it mines and verify that it joined the configured public network of nodes (e.g. testnet).
+This document describes how to start your Aeternity node installed using a release binary, verify that it mines and verify that it joined the configured public network of nodes (e.g. testnet).
 
 ## Assumptions
 
@@ -23,10 +23,10 @@ When it starts, the node checks the maximum number of open files (`ulimit -n`) a
 Start the node:
 ```bash
 cd ~/aeternity/node
-bin/epoch start
+bin/aeternity start
 ```
 
-(You can stop the node by running `bin/epoch stop` from the same directory.)
+(You can stop the node by running `bin/aeternity stop` from the same directory.)
 
 Verify the node is up, by inspecting the current top of the blockchain as seen by the node:
 ```bash
@@ -37,7 +37,7 @@ If the node is unresponsive, inspect the `log` directory for errors.
 
 Back up the peer key pair:
 ```bash
-cp -pr ~/aeternity/node/keys ~/my_epoch_keys
+cp -pr ~/aeternity/node/keys ~/my_aeternity_keys
 ```
 
 ### Verify that node mines

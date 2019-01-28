@@ -23,17 +23,7 @@ all() ->
     , jobs_server_test ].
 
 init_per_suite(Config) ->
-    DataDir = ?config(data_dir, Config),
-    TopDir = aecore_suite_utils:top_dir(DataDir),
-    Config1 = [{symlink_name, "latest.errorfree"},
-               {top_dir, TopDir},
-               {test_module, ?MODULE}] ++ Config,
-    aecore_suite_utils:make_shortcut(Config1),
-    ct:log("Environment = ~p", [[{args, init:get_arguments()},
-                                 {node, node()},
-                                 {cookie, erlang:get_cookie()}]]),
-    aecore_suite_utils:create_configs(Config1),
-    aecore_suite_utils:make_multi(Config1),
+    Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], [{symlink_name, "latest.errorfree"}, {test_module, ?MODULE}] ++ Config),
     [{nodes, [aecore_suite_utils:node_tuple(dev1),
               aecore_suite_utils:node_tuple(dev2)]} | Config1].
 

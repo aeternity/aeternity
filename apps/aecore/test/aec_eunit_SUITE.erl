@@ -10,7 +10,8 @@
 -include_lib("common_test/include/ct.hrl").
 -compile({parse_transform, ct_eunit_xform}).
 
--define(STARTED_APPS_WHITELIST, [runtime_tools, parse_trans, folsom, bear, setup, hut, hex2bin]).
+-define(STARTED_APPS_WHITELIST, [runtime_tools, parse_trans, folsom, bear, setup, hut, hex2bin,
+                                 inet_cidr, inet_ext, lhttpc, rand_compat, xmerl]).
 -define(TO_BE_STOPPED_APPS_BLACKLIST, []).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server, %% by test framework
@@ -19,7 +20,8 @@
          dets_sup, dets,  %% by mnesia
          folsom_sup, folsom_sample_slide_sup, folsom_metrics_histogram_ets, %% by folsom
          folsom_meter_timer_server, %% by folsom
-         setup_sup, setup_srv %% by setup
+         setup_sup, setup_srv, %% by setup
+         lhttpc_sup, lhttpc_manager %% by lhttpc
         ]).
 
 -ifdef(EUNIT_INCLUDED).

@@ -1,5 +1,6 @@
 -module(aehttp_dispatch_int).
 
+-export([forbidden/1]).
 -export([handle_request/3]).
 
 -import(aeu_debug, [pp/1]).
@@ -29,6 +30,15 @@
                         ]).
 
 -include_lib("aecontract/src/aecontract.hrl").
+
+-spec forbidden( OperationID :: atom() ) -> boolean().
+forbidden(OpId) ->
+    OpSpec = endpoints:operation(OpId),
+    [ #{ tags := Tags } | _ ] = maps:values(OpSpec),
+    case lists:member(<<"debug">>, Tags) of
+        true -> not aehttp_app:enable_internal_debug_endpoints();
+        false -> false
+    end.
 
 -spec handle_request(
         OperationID :: atom(),
@@ -489,21 +499,15 @@ handle_request_('GetPendingTransactions', _Req, _Context) ->
     {200, [], #{transactions => [aetx_sign:serialize_for_client_pending(T) || T <- Txs]}};
 
 handle_request_('GetPeers', _Req, _Context) ->
-    case aeu_env:user_config_or_env([<<"http">>, <<"debug">>],
-                                    aehttp, enable_debug_endpoints, false) of
-        true ->
-            Peers = aehttp_logic:connected_peers(all),
-            InboundPeers = aehttp_logic:connected_peers(inbound),
-            OutboundPeers = aehttp_logic:connected_peers(outbound),
-            Blocked = aehttp_logic:blocked_peers(),
+    Peers = aehttp_logic:connected_peers(all),
+    InboundPeers = aehttp_logic:connected_peers(inbound),
+    OutboundPeers = aehttp_logic:connected_peers(outbound),
+    Blocked = aehttp_logic:blocked_peers(),
 
-            {200, [], #{peers => lists:map(fun aec_peers:encode_peer_address/1, Peers),
-                        inbound => lists:map(fun aec_peers:encode_peer_address/1, InboundPeers),
-                        outbound => lists:map(fun aec_peers:encode_peer_address/1, OutboundPeers),
-                        blocked => lists:map(fun aec_peers:encode_peer_address/1, Blocked)}};
-        false ->
-            {403, [], #{reason => <<"Call not enabled">>}}
-    end;
+    {200, [], #{peers => lists:map(fun aec_peers:encode_peer_address/1, Peers),
+                inbound => lists:map(fun aec_peers:encode_peer_address/1, InboundPeers),
+                outbound => lists:map(fun aec_peers:encode_peer_address/1, OutboundPeers),
+                blocked => lists:map(fun aec_peers:encode_peer_address/1, Blocked)}};
 
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(

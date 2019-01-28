@@ -116,16 +116,8 @@ groups() ->
 suite() ->
     [].
 
-init_per_suite(Config) ->
-    DataDir = ?config(data_dir, Config),
-    TopDir = aecore_suite_utils:top_dir(DataDir),
-    Config1 = [{symlink_name, "latest.sync"},
-               {top_dir, TopDir},
-               {test_module, ?MODULE}] ++ Config,
-    aecore_suite_utils:make_shortcut(Config1),
-    ct:log("Environment = ~p", [[{args, init:get_arguments()},
-                                 {node, node()},
-                                 {cookie, erlang:get_cookie()}]]),
+init_per_suite(Config0) ->
+    Config = aec_metrics_test_utils:make_port_map([dev1, dev2, dev3], Config0),
     Forks = aecore_suite_utils:forks(),
     DefCfg = #{
         <<"metrics">> => #{
@@ -150,10 +142,7 @@ init_per_suite(Config) ->
             <<"micro_block_cycle">> => 100
         }
     },
-    Config2 = aec_metrics_test_utils:make_port_map([dev1, dev2, dev3], Config1),
-    aecore_suite_utils:create_configs(Config2, DefCfg, [{add_peers, true}]),
-    aecore_suite_utils:make_multi(Config2),
-    Config2.
+    aecore_suite_utils:init_per_suite([dev1, dev2, dev3], DefCfg, [{add_peers, true}], [{symlink_name, "latest.sync"}, {test_module, ?MODULE}] ++ Config).
 
 end_per_suite(Config) ->
     stop_devs(Config).

@@ -514,7 +514,11 @@ create_temp_key_dir() ->
     mktempd(os:type()).
 
 mktempd({unix, _}) ->
-    lib:nonl(?cmd("mktemp -d")).
+    nonl(?cmd("mktemp -d")).
+
+nonl([$\n]) -> [];
+nonl([]) -> [];
+nonl([H|T]) -> [H|nonl(T)].
 
 fake_start_aehttp() ->
     gproc:reg({n,l,{epoch, app, aehttp}}).

@@ -20,13 +20,30 @@
 -behaviour(supervisor).
 
 %% API
+-export([sync_port/0,
+         ext_sync_port/0]).
+
+%% Supervisor API
 -export([start_link/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
 
+-define(DEFAULT_SYNC_PORT, 3015).
+
 %%====================================================================
 %% API functions
+%%====================================================================
+
+sync_port() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, ?DEFAULT_SYNC_PORT).
+
+ext_sync_port() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"external_port">>],
+        aecore, ext_sync_port, sync_port()).
+
+%%====================================================================
+%% Supervisor API functions
 %%====================================================================
 
 start_link() ->
@@ -84,17 +101,9 @@ child(Mod, Type, Args) ->
 %% Shared configs
 %%====================================================================
 
--define(DEFAULT_SYNC_PORT, 3015).
 -define(DEFAULT_SYNC_LISTEN_ADDRESS, <<"0.0.0.0">>).
 -define(DEFAULT_ACCEPTORS, 10).
 -define(DEFAULT_MAX_INBOUND_HARD, 1000).
-
-sync_port() ->
-    aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, ?DEFAULT_SYNC_PORT).
-
-ext_sync_port() ->
-    aeu_env:user_config_or_env([<<"sync">>, <<"external_port">>],
-        aecore, ext_sync_port, sync_port()).
 
 sync_listen_address() ->
     Config = aeu_env:user_config_or_env([<<"sync">>, <<"listen_address">>],

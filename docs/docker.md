@@ -1,4 +1,4 @@
-# Running an epoch node on Docker
+# Running an aeternity node on Docker
 
 This document describes:
 * [How to join the Roma network using Docker](#roma-network);
@@ -13,8 +13,8 @@ You must have [docker installed](https://docs.docker.com/engine/installation/) o
 The default node configuration is sufficient to join the Roma network:
 
 ```bash
-docker pull aeternity/epoch
-docker run -p 3013:3013 -p 3015:3015 aeternity/epoch
+docker pull aeternity/aeternity
+docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity
 ```
 
 You should see the console output of the running node and a lot of information related to syncing with the network.
@@ -24,7 +24,7 @@ You should see the console output of the running node and a lot of information r
 
 ## Docker Image
 
-Docker image is automatically build and published on [DockerHub](https://hub.docker.com/r/aeternity/epoch/).
+Docker image is automatically build and published on [DockerHub](https://hub.docker.com/r/aeternity/aeternity/).
 
 Please note that all the **examples** below:
 - use the Docker `-P` which [publish all exposed ports to the host interfaces](https://docs.docker.com/engine/reference/run/#expose-incoming-ports), for good network connectivity refer to [networking documentation](configuration.md#peer-to-peer-network) how to setup firewall and/or port mapping to the host machine
@@ -37,7 +37,7 @@ Master branch of the source code is tagged as `master`.
 
 To pull the latest release docker image run:
 ```bash
-docker pull aeternity/epoch
+docker pull aeternity/aeternity
 ```
 
 Always make sure you have the latest docker image prior running any of the below commands.
@@ -45,17 +45,17 @@ Always make sure you have the latest docker image prior running any of the below
 ### Node Configuration
 
 Тo change the node configuration, a [Docker bind mount](https://docs.docker.com/storage/bind-mounts/) should be used
-to mount the configuration file to a special path on the container (`/home/epoch/.epoch/epoch/epoch.yaml`).
+to mount the configuration file to a special path on the container (`/home/aeternity/.epoch/epoch/epoch.yaml`).
 For example, assuming your configuration file is located at `~/.aeternity/myepoch.yaml` on the host machine:
 
 ```bash
-docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml aeternity/epoch
+docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myepoch.yaml:/home/aeternity/.epoch/epoch/epoch.yaml aeternity/aeternity
 ```
 
-Arguments can also be passed to the node, for example to enable API debug endpoints:
+Arguments can also be passed to the node, for example to change expected mine rate:
 
 ```bash
-docker run -p 3013:3013 -p 3015:3015 aeternity/epoch -aehttp enable_debug_endpoints true
+docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity -aecore expected_mine_rate 100000
 ```
 
 More details about node configuration can be found in [configuration documentation](configuration.md).
@@ -77,9 +77,9 @@ Replace `~/.aeternity/db_roma` with location of your choice where the data will 
 ```bash
 mkdir -p ~/.aeternity/db_roma
 docker run -p 3013:3013 -p 3015:3015 \
-  -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml \
-  -v ~/.aeternity/db_roma:/home/epoch/node/data/mnesia \
-  aeternity/epoch
+  -v ~/.aeternity/myepoch.yaml:/home/aeternity/.epoch/epoch/epoch.yaml \
+  -v ~/.aeternity/db_roma:/home/aeternity/node/data/mnesia \
+  aeternity/aeternity
 ```
 
 ** Note that you cannot switch networks using the same database **
@@ -128,7 +128,7 @@ fork_management:
 Assuming your configuration file is located at `~/.aeternity/myepoch.yaml` on the host machine:
 
 ```bash
-docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myepoch.yaml:/home/epoch/.epoch/epoch/epoch.yaml aeternity/epoch
+docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myepoch.yaml:/home/aeternity/.epoch/epoch/epoch.yaml aeternity/aeternity
 ```
 
 You should see the console output of the running node and a lot of information related to syncing with the network.
@@ -187,7 +187,7 @@ More details can be found in [`docker-compose` documentation](https://docs.docke
 
 ### Image Version
 
-Docker compose uses the `aeternity/epoch:latest` image, it will be pulled from [docker hub](https://hub.docker.com/r/aeternity/epoch/) if it's not found locally.
+Docker compose uses the `aeternity/aeternity:latest` image, it will be pulled from [docker hub](https://hub.docker.com/r/aeternity/aeternity/) if it's not found locally.
 To create a network with the source code in this repository, one should build a local image beforehand:
 
 ```bash
@@ -197,9 +197,9 @@ docker-compose build
 ### Mining Rate
 
 By default the localnet has set default mine rate of 1 block per 15 seconds.
-It can be changed by setting `EPOCH_MINE_RATE` environment variable.
+It can be changed by setting `AETERNITY_MINE_RATE` environment variable.
 The variable is in milliseconds, so to set 1 block per 10 seconds use:
 
 ```bash
-EPOCH_MINE_RATE=10000 docker-compose up
+AETERNITY_MINE_RATE=10000 docker-compose up
 ```

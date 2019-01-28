@@ -18,7 +18,6 @@
 -export([stop_node/3]).
 -export([kill_node/2]).
 -export([extract_archive/4]).
--export([run_cmd_in_node_dir/3]).
 -export([run_cmd_in_node_dir/4]).
 -export([connect_node/3]).
 -export([disconnect_node/3]).
@@ -75,7 +74,7 @@
 
 -define(BASE_SPEC, #{
     backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"}
+    source  => {pull, "aeternity/aeternity:local"}
 }).
 
 %% AWK script to keep only error, critical, alert and emergency log lines with
@@ -260,11 +259,8 @@ kill_node(NodeName, Ctx) ->
 extract_archive(NodeName, Path, Archive, Ctx) ->
     call(ctx2pid(Ctx), {extract_archive, NodeName, Path, Archive}).
 
-run_cmd_in_node_dir(NodeName, Cmd, Ctx) ->
-    call(ctx2pid(Ctx), {run_cmd_in_node_dir, NodeName, Cmd, 5000}).
-
-run_cmd_in_node_dir(NodeName, Cmd, Timeout, Ctx) ->
-    call(ctx2pid(Ctx), {run_cmd_in_node_dir, NodeName, Cmd, Timeout}).
+run_cmd_in_node_dir(NodeName, Cmd, #{timeout := _} = Opts, Ctx) ->
+    call(ctx2pid(Ctx), {run_cmd_in_node_dir, NodeName, Cmd, Opts}).
 
 %% @doc Connect a node to a network.
 -spec connect_node(atom(), atom(), test_ctx()) -> ok.

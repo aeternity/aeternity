@@ -49,7 +49,7 @@ smoke_test(Config) ->
     MinBin = ?TEST_MODULE:bin(atom_to_list(Miner)),
     Cmd = io_lib:format("'~s' -n ~B | grep '^Solution'", [MinBin, Nonce]),
     ct:log("Command: ~s~n", [Cmd]),
-    CmdRes = lib:nonl(os:cmd(Cmd)),
+    CmdRes = nonl(os:cmd(Cmd)),
     ct:log("Command result: ~s~n", [CmdRes]),
 
     Solution = lists:map(fun(X) -> list_to_integer(X, 16) end, tl(string:tokens(CmdRes, " "))),
@@ -60,3 +60,6 @@ smoke_test(Config) ->
 
     ok.
 
+nonl([$\n]) -> [];
+nonl([]) -> [];
+nonl([H|T]) -> [H|nonl(T)].

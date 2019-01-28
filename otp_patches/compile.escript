@@ -60,12 +60,16 @@ patch_source(Patch, Src) ->
     SrcPath = transform_path(Src),
     Cmd = patch_cmd(PatchPath, NewPath, SrcPath),
     info("Executing patch cmd: ~s~n", [Cmd]),
-    case lib:nonl(os:cmd(Cmd)) of
+    case nonl(os:cmd(Cmd)) of
         [] ->
             {ok, New};
         Res ->
             {error, {patch_error, {Res, PatchPath}}}
     end.
+
+nonl([$\n]) -> [];
+nonl([]) -> [];
+nonl([H|T]) -> [H|nonl(T)].
 
 compile(F, Src) ->
     SrcDir = filename:dirname(Src),

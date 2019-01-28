@@ -1,0 +1,28 @@
+#!/bin/sh
+
+## Determine directory of this script - so to be able to locate main
+## operational binary of OTP release.
+##
+## Shebang and snippet below from https://github.com/erlware/relx/blob/v3.28.0/priv/templates/extended_bin
+## - 8< ---
+set -e
+
+# OSX does not support readlink '-f' flag, work
+# around that
+case $OSTYPE in
+    darwin*)
+        SCRIPT=$(readlink $0 || true)
+    ;;
+    *)
+        SCRIPT=$(readlink -f $0 || true)
+    ;;
+esac
+[ -z $SCRIPT ] && SCRIPT=$0
+SCRIPT_DIR="$(cd `dirname "$SCRIPT"` && pwd -P)"
+## --- >8 --
+## End of snippet from https://github.com/erlware/relx/blob/v3.28.0/priv/templates/extended_bin
+
+REL_NAME="aeternity"
+
+echo 'WARNING: This binary named "epoch" is deprecated, please use the binary named "aeternity" instead.' >&2
+exec "${SCRIPT_DIR:?}/${REL_NAME:?}" "$@"

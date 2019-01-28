@@ -61,17 +61,29 @@ start_link() ->
 %%====================================================================
 
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, [watchdog_childspec(),
-                                 ?CHILD(aec_metrics_rpt_dest, 5000, worker),
-                                 ?CHILD(aec_keys, 5000, worker),
-                                 ?CHILD(aec_tx_pool_gc, 5000, worker),
-                                 ?CHILD(aec_tx_pool, 5000, worker),
-                                 ?CHILD(aec_conductor_sup, 5000, supervisor),
-                                 ?CHILD(aec_connection_sup, 5000, supervisor)
-                                ]
-         }}.
+    ChildSpecs =
+        [watchdog_childspec()]
+        ++ maybe_upnp_worker()
+        ++ [?CHILD(aec_metrics_rpt_dest, 5000, worker),
+            ?CHILD(aec_keys, 5000, worker),
+            ?CHILD(aec_tx_pool_gc, 5000, worker),
+            ?CHILD(aec_tx_pool, 5000, worker),
+            ?CHILD(aec_conductor_sup, 5000, supervisor),
+            ?CHILD(aec_connection_sup, 5000, supervisor)
+           ],
 
+    {ok, {{one_for_one, 5, 10}, ChildSpecs}}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
 
 watchdog_childspec() ->
     {watchdog, {gen_serv, start, [watchdog]},
      permanent, 5000, worker, [watchdog]}.
+
+maybe_upnp_worker() ->
+    case aec_upnp:is_enabled() of
+        true  -> [?CHILD(aec_upnp, 5000, worker)];
+        false -> []
+    end.

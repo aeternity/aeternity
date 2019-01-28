@@ -5,23 +5,23 @@ references:
     docker:
       - image: aeternity/builder
         user: builder
-    working_directory: ~/epoch
+    working_directory: ~/aeternity
 
   infrastructure_config: &infrastructure_config
     docker:
       - image: aeternity/infrastructure
-    working_directory: ~/epoch
+    working_directory: ~/aeternity
     environment:
-      DOCKERHUB_REPO: aeternity/epoch
-      S3_BUILDS_BUCKET: aeternity-epoch-builds
-      S3_RELEASES_BUCKET: aeternity-epoch-releases
+      DOCKERHUB_REPO: aeternity/aeternity
+      S3_BUILDS_BUCKET: aeternity-node-builds
+      S3_RELEASES_BUCKET: aeternity-node-releases
 
   machine_config: &machine_config
     machine:
       docker_layer_caching: true
-    working_directory: ~/epoch
+    working_directory: ~/aeternity
     environment:
-      DOCKERHUB_REPO: aeternity/epoch
+      DOCKERHUB_REPO: aeternity/aeternity
 
   setup_remote_docker: &setup_remote_docker
     setup_remote_docker:
@@ -33,7 +33,7 @@ references:
       name: Prepare ubuntu user (1000:1000) to run docker commands
       command: |
         sudo usermod -aG docker ubuntu
-        sudo chown -R ubuntu:ubuntu ~/epoch
+        sudo chown -R ubuntu:ubuntu ~/aeternity
 
   install_os_deps: &install_os_deps
     run:
@@ -121,9 +121,20 @@ references:
       command: |
         make prod-package
         mkdir ${PACKAGES_DIR:?}
-        mv _build/prod/rel/epoch/epoch-$(cat VERSION).tar.gz ${PACKAGE_TARBALL:?}
+        mv _build/prod/rel/aeternity/aeternity-$(cat VERSION).tar.gz ${PACKAGE_TARBALL:?}
 
   package_tests_workspace: &package_tests_workspace /tmp/package_tests
+  test_package: &test_package
+    run:
+      name: Test Package Tarball
+      environment:
+        PACKAGES_DIR: *packages_workspace
+        PACKAGE_TESTS_DIR: *package_tests_workspace
+      command: |
+        epmd -daemon
+        make python-env
+        mkdir ${PACKAGE_TESTS_DIR:?}
+        make python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} TARBALL=${PACKAGE_TARBALL:?}
 
   store_package_artifacts: &store_package_artifacts
     store_artifacts:
@@ -135,7 +146,7 @@ references:
       name: Upload release artifacts to central repository (AWS)
       command: |
         aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
-        aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/epoch-latest-${PKG_SUFFIX:?}.tar.gz
+        aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
 
   setup_secrets: &setup_secrets
     run:
@@ -392,6 +403,7 @@ jobs:
       - checkout
       - *set_package_path
       - *build_package
+      - *test_package
       - store_artifacts:
           path: /tmp/package_tests/node1/log
       - store_artifacts:
@@ -418,7 +430,7 @@ jobs:
           command: |
             aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
             if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "master" ]; then
-              aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/epoch-latest-${PKG_SUFFIX:?}.tar.gz
+              aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
             fi
       - *fail_notification
 
@@ -433,7 +445,7 @@ jobs:
   osx_package:
     macos:
       xcode: "10.0.0"
-    working_directory: ~/epoch
+    working_directory: ~/aeternity
     steps:
       - checkout
       - run:
@@ -444,6 +456,7 @@ jobs:
             brew install file://`pwd`/deployment/homebrew/erlang.rb
       - *set_package_path
       - *build_package
+      - *test_package
       - store_artifacts:
           path: /tmp/package_tests/node1/log
       - store_artifacts:
@@ -475,13 +488,13 @@ jobs:
       - store_test_results:
           path: py/tests
       - store_artifacts:
-          path: _build/dev1/rel/epoch/log
+          path: _build/dev1/rel/aeternity/log
           destination: node1/
       - store_artifacts:
-          path: _build/dev2/rel/epoch/log
+          path: _build/dev2/rel/aeternity/log
           destination: node2/
       - store_artifacts:
-          path: _build/dev3/rel/epoch/log
+          path: _build/dev3/rel/aeternity/log
           destination: node3/
       - *fail_notification
 
@@ -638,10 +651,12 @@ jobs:
     <<: *infrastructure_config
     steps:
       - checkout
+      - *set_package_path
       - attach_workspace:
           at: *packages_workspace
       - *setup_secrets
       - *upload_github_release_asset
+      - *upload_release_artifacts
 
   upload_packages_linux:
     <<: *infrastructure_config
@@ -846,6 +861,14 @@ workflows:
             branches:
               only: env/dev2
 
+      - hodl_artefact_upload:
+          type: approval
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
+
       - hodl_blue:
           type: approval
           filters:
@@ -891,7 +914,7 @@ workflows:
             - static_analysis
             - rebar_lock_check
             - linux_package
-            - hodl_blue
+            - hodl_artefact_upload
           filters:
             branches:
               ignore: /.*/
@@ -904,7 +927,7 @@ workflows:
             - static_analysis
             - rebar_lock_check
             - osx_package
-            - hodl_blue
+            - hodl_artefact_upload
           filters:
             branches:
               ignore: /.*/
@@ -916,7 +939,7 @@ workflows:
             - eunit
             - static_analysis
             - rebar_lock_check
-            - hodl_blue
+            - hodl_artefact_upload
           filters:
             branches:
               ignore: /.*/

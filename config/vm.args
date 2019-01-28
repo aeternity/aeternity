@@ -1,6 +1,6 @@
 -sname epoch@localhost
 
--setcookie epoch_cookie
+-setcookie aeternity_cookie
 -pa patches/ebin
 
 +K true
