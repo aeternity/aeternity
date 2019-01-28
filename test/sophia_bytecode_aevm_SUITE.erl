@@ -25,7 +25,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
     FileName = filename:join(CodeDir, "identity.aes"),
     {ok, ContractBin} = file:read_file(FileName),
     Contract = binary_to_list(ContractBin),
-    Compiled = aeso_compiler:from_string(Contract, [pp_icode, pp_assembler]),
+    {ok, Compiled} = aeso_compiler:from_string(Contract, [pp_icode, pp_assembler]),
     #{ byte_code := Code,
        type_info := TypeInfo} = Compiled,
     SerializedCode = aect_sophia:serialize(Compiled),
