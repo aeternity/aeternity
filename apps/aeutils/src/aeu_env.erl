@@ -278,8 +278,8 @@ data_dir(Name) when is_atom(Name) ->
 
 config_file() ->
     case default_config_file()  of
-        undefined ->
-            deprecated_config_file();
+        undefined -> undefined;
+%%            deprecated_config_file();
         F ->
             F
     end.
