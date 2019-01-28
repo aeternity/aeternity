@@ -3925,23 +3925,11 @@ sc_ws_contracts(Config) ->
     ok.
 
 sc_ws_oracle_contract(Config) ->
-    #{initiator := IConnPid, responder := RConnPid} =
-        proplists:get_value(channel_clients, Config),
-
-    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
-    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
-
     [sc_ws_contract_generic_(Role, fun sc_ws_oracle_contract_/8, Config, [])
         || Role <- [initiator, responder]],
     ok.
 
 sc_ws_nameservice_contract(Config) ->
-    #{initiator := IConnPid, responder := RConnPid} =
-        proplists:get_value(channel_clients, Config),
-
-    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
-    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
-
     [sc_ws_contract_generic_(Role, fun sc_ws_nameservice_contract_/8, Config,
                             [])
         || Role <- [initiator,
@@ -3949,13 +3937,6 @@ sc_ws_nameservice_contract(Config) ->
     ok.
 
 sc_ws_enviroment_contract(Config) ->
-    #{initiator := IConnPid, responder := RConnPid} =
-        proplists:get_value(channel_clients, Config),
-
-    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
-    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
-
-
     [sc_ws_contract_generic_(Role, fun sc_ws_enviroment_contract_/8, Config,
                             [])
         || Role <- [initiator,
@@ -3963,12 +3944,6 @@ sc_ws_enviroment_contract(Config) ->
     ok.
 
 sc_ws_remote_call_contract(Config) ->
-    #{initiator := IConnPid, responder := RConnPid} =
-        proplists:get_value(channel_clients, Config),
-
-    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
-    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
-
     [sc_ws_contract_generic_(Role, fun sc_ws_remote_call_contract_/8, Config,
                             [])
         || Role <- [initiator,
@@ -3976,12 +3951,6 @@ sc_ws_remote_call_contract(Config) ->
     ok.
 
 sc_ws_remote_call_contract_refering_onchain_data(Config) ->
-    #{initiator := IConnPid, responder := RConnPid} =
-        proplists:get_value(channel_clients, Config),
-
-    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
-    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
-
     [sc_ws_contract_generic_(Role, fun sc_ws_remote_call_contract_refering_onchain_data_/8, Config,
                             [])
         || Role <- [initiator,
@@ -4018,6 +3987,8 @@ sc_ws_contract_generic_(Origin, Fun, Config, Opts) ->
       priv_key:= AckPrivkey} = maps:get(AckRole, Participants),
     SenderConnPid = maps:get(SenderRole, Clients),
     AckConnPid = maps:get(AckRole, Clients),
+    ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, get, error]),
+    ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, get, error]),
     SenderConnPid = maps:get(SenderRole, Clients),
     AckConnPid = maps:get(AckRole, Clients),
     %% helper lambda for update
@@ -4044,6 +4015,8 @@ sc_ws_contract_generic_(Origin, Fun, Config, Opts) ->
     [Fun(Owner, GetVolley, SenderConnPid,
          AckConnPid, OwnerPubkey, OtherPubkey, Opts, Config)
         || {Owner, {OwnerPubkey, OtherPubkey}} <- Actors],
+    ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, get, error]),
+    ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, get, error]),
     ok.
 
 sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
