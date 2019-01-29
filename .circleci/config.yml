@@ -427,10 +427,15 @@ jobs:
           at: *packages_workspace
       - run:
           name: Upload build artifacts to central repository (AWS)
+          environment:
+            NEXT_BRANCH: *next_branch
           command: |
             aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
             if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "master" ]; then
               aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
+            fi
+            if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "$NEXT_BRANCH" ]; then
+              aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-next-${PKG_SUFFIX:?}.tar.gz
             fi
       - *fail_notification
 
