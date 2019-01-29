@@ -4148,13 +4148,18 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     CallContract =
         fun(Who, Fun, Args, ReturnType, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
+            {ok, #{<<"value">> := R0}} =
+                dry_call_a_contract(Fun, Args, ContractPubKey,
+                                    EncodedCode, UpdaterConnPid,
+                                    Config, ReturnType),
             Tx = call_a_contract(Fun, Args,
                                  ContractPubKey, EncodedCode,
                                  UpdaterConnPid, UpdateVolley, Config),
-            #{<<"value">> := R} =
+            #{<<"value">> := R} = % same value as the 
                 ws_get_decoded_result(ConnPid1, ConnPid2,
                                       ReturnType,
                                       Tx, Config),
+            {R, R} = {R0, R},
             {R, R} = {Result, R}
 
         end,
@@ -4253,7 +4258,13 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             QName = AddQuotes(Name0),
             QKey = AddQuotes(Key0),
             Args = <<"(", QName/binary, ",", QKey/binary,")">>,
-            Tx = call_a_contract(<<"can_resolve">>,
+            FunctionName = <<"can_resolve">>,
+            {ok, #{<<"value">> := R0}} =
+                dry_call_a_contract(FunctionName, Args, ContractPubKey,
+                                    EncodedCode, UpdaterConnPid,
+                                    Config, <<"bool">>),
+
+            Tx = call_a_contract(FunctionName,
                                  Args,
                                  ContractPubKey, EncodedCode,
                                  UpdaterConnPid, UpdateVolley, Config),
@@ -4266,6 +4277,7 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                     0 -> false;
                     1 -> true
                 end,
+            {RInt, RInt} = {R0, RInt},
             {R, R} = {Result, R}
 
         end,
@@ -4310,6 +4322,10 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
         fun(Who, Fun, ResultType, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             Args = <<"()">>,
+            {ok, #{<<"value">> := R0}} =
+                dry_call_a_contract(Fun, Args, ContractPubKey,
+                                    EncodedCode, UpdaterConnPid,
+                                    Config, ResultType),
             Tx = call_a_contract(Fun,
                                  Args,
                                  ContractPubKey, EncodedCode,
@@ -4318,6 +4334,7 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                 ws_get_decoded_result(ConnPid1, ConnPid2,
                                       ResultType,
                                       Tx, Config),
+            {R, R} = {R0, R},
             case is_function(Result) of
                 true -> true = Result(R);
                 false ->
@@ -4373,12 +4390,17 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     ContractCall =
         fun(Who, ContractPubKey, Code, Fun, Args, Result, Amount) ->
                 {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
+                {ok, #{<<"value">> := R0}} =
+                    dry_call_a_contract(Fun, Args, ContractPubKey,
+                                        Code, UpdaterConnPid,
+                                        Amount, Config, <<"int">>),
                 Tx = call_a_contract(Fun,
                                      Args,
                                      ContractPubKey, Code,
                                      UpdaterConnPid, UpdateVolley, Amount, Config),
                 #{<<"value">> := R} =
                     ws_get_decoded_result(ConnPid1, ConnPid2, <<"int">>, Tx, Config),
+                {R, R} = {R0, R},
                 {R, R} = {Result, R}
         end,
     CallIdentity =
@@ -4443,6 +4465,10 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
     ContractCall =
         fun(Who, ContractPubKey, Code, Fun, Args, Result, Amount) ->
                 {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
+                {ok, #{<<"value">> := R0}} =
+                    dry_call_a_contract(Fun, Args, ContractPubKey,
+                                        Code, UpdaterConnPid,
+                                        Amount, Config, <<"int">>),
                 Tx = call_a_contract(Fun,
                                      Args,
                                      ContractPubKey, Code,
@@ -4454,6 +4480,7 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
                         0 -> false;
                         1 -> true
                     end,
+                {RInt, RInt} = {R0, RInt},
                 {R, R} = {Result, R}
         end,
     CallResolve =
@@ -4755,9 +4782,15 @@ create_contract_(TestName, SenderConnPid, UpdateVolley, Config) ->
 
 contract_calls_("identity", ContractPubKey, Code, SenderConnPid, UpdateVolley,
                 AckConnPid, _ , _, Config) ->
-    UnsignedStateTx = call_a_contract(<<"main">>, <<"(42)">>, ContractPubKey, Code, SenderConnPid,
-                    UpdateVolley, Config),
+    FunctionName = <<"main">>,
+    Args = <<"(42)">>,
     ExpectedResult = 42,
+    UnsignedStateTx = call_a_contract(FunctionName, Args, ContractPubKey, Code, SenderConnPid,
+                    UpdateVolley, Config),
+    {ok, #{<<"value">> := ExpectedResult}} =
+        dry_call_a_contract(FunctionName, Args, ContractPubKey,
+                            Code, SenderConnPid,
+                            Config, <<"int">>),
     DecodedCallResult =
         contract_result_parse("identity",
                               ws_get_decoded_result(SenderConnPid, AckConnPid,
@@ -4778,7 +4811,12 @@ contract_calls_("counter", ContractPubKey, Code, SenderConnPid, UpdateVolley,
                                                         Tx, Config))
         end,
 
+    {ok, #{<<"value">> := ExpectedInitResult}} =
+        dry_call_a_contract(<<"get">>, <<"()">>, ContractPubKey,
+                            Code, SenderConnPid,
+                            Config, <<"int">>),
     InitResult = GetDecodedResult(UnsignedStateTx0),
+    {InitResult, InitResult} = {ExpectedInitResult, InitResult},
     call_a_contract(<<"tick">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
                     UpdateVolley, Config),
 
@@ -4854,6 +4892,36 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
                      amount      => Amount,
                      call_data   => EncodedMainData}, Config),
     _UnsignedStateTx = UpdateVolley().
+
+dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
+                    Config, Type) ->
+    dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
+                    0, Config, Type).
+dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
+                    Amount, Config, Type) ->
+    {ok, EncodedMainData} = aehttp_logic:contract_encode_call_data(<<"sophia">>,
+                                                                   contract_bytearray_decode(Code),
+                                                                   Function,
+                                                                   Argument),
+    ok = ?WS:register_test_for_channel_event(SenderConnPid, dry_run),
+    ws_send_tagged(SenderConnPid, <<"dry_run">>, <<"call_contract">>,
+                   #{contract   => aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
+                     vm_version => 1,
+                     amount     => Amount,
+                     call_data  => EncodedMainData}, Config),
+    {ok, <<"call_contract">>, CallRes} = wait_for_channel_event(SenderConnPid, dry_run, Config),
+    ok = ?WS:unregister_test_for_channel_event(SenderConnPid, dry_run),
+    #{<<"caller_id">>         := _CallerId,
+      <<"caller_nonce">>      := CallRound,
+      <<"contract_id">>       := _ContractId,
+      <<"gas_price">>         := _,
+      <<"gas_used">>          := _,
+      <<"height">>            := CallRound,
+      <<"return_type">>       := <<"ok">>,
+      <<"return_value">>      := ReturnValue} = CallRes,
+    {ok, 200, #{<<"data">> := Data}} =
+        get_contract_decode_data(#{'sophia-type' => Type, data => ReturnValue}),
+    {ok, Data}.
 
 
 contract_byte_code(ContractName) ->
