@@ -620,9 +620,7 @@ update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, GCHeight}, Handled) ->
     end.
 
 -spec check_pool_db_put(aetx_sign:signed_tx(), tx_hash(), event()) ->
-                               ignore
-                             | {'ok', tx_hash()}
-                             | {'error', atom()}.
+                               ignore | ok | {error, atom()}.
 check_pool_db_put(Tx, TxHash, Event) ->
     case aec_chain:find_tx_location(TxHash) of
         BlockHash when is_binary(BlockHash) ->

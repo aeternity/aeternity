@@ -35,7 +35,7 @@ preset_accounts() ->
             lists:keysort(1, Accounts)
     end.
 
--spec read_presets() -> {ok, binary()}| {error, atom(), string()}.
+-spec read_presets() -> {ok, binary()}| {error, {atom(), string()}}.
 read_presets() ->
     PresetAccountsFile = filename:join([dir(), accounts_json_file()]),
     case file:read_file(PresetAccountsFile) of

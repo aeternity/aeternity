@@ -212,7 +212,7 @@ call_revert(Slogan, GasSpent) when is_binary(Slogan)->
     #call_result{ result = Slogan, gas_spent = GasSpent, type = revert}.
 
 -spec return_value(call_result()) -> {ok, binary()}
-                                   | {error, exception()}
+                                   | {exception, exception()}
                                    | {revert, binary()}.
 return_value(#call_result{ result = Res, type = Type }) ->
     {Type, Res}.
