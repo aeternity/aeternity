@@ -20,7 +20,7 @@
         ]).
 
 -type wrapped_code() :: #{ source_hash := aec_hash:hash()
-                         , type_info   := [binary()]
+                         , type_info   := [{binary(), binary(), binary(), binary()}]
                          , byte_code   := binary()
                          }.
 

@@ -213,7 +213,7 @@ resolve_name(Key, Name) ->
 %%%===================================================================
 
 -spec get_contract(aec_keys:pubkey()) ->
-                          {'ok', map()} |
+                          {'ok', aect_contracts:contract()} |
                           {'error', atom()}.
 get_contract(PubKey) ->
     case get_top_state() of
