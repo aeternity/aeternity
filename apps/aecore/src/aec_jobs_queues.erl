@@ -52,7 +52,7 @@ metric(Queue, Sub) ->
 %% This function, called from aecore_app:start(), adds the configurable jobs
 %% queues for epoch.
 %%
-%% The configuration is done in the $EPOCH_CONFIG (.yaml or .json).
+%% The configuration is done in the $AETERNITY_CONFIG (.yaml or .json).
 %% To define a new queue, add it to the epoch_config_schema.json under
 %% the "regulators" section. The name of the object becomes the name of the
 %% queue. Currently supported parameters are 'rate' and 'counter' limits,
