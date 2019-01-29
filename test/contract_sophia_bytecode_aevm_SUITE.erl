@@ -32,7 +32,7 @@
           spend/2,
           get_balance/2,
           get_contract_fun_types/4,
-          call_contract/6,
+          call_contract/7,
           get_store/1,
           set_store/2,
           oracle_register_tx/7,
@@ -541,7 +541,7 @@ get_contract_fun_types(<<Contract:256>>,_VMVersion, TypeHash, S) ->
     end.
 
 
-call_contract(<<Contract:256>>, Gas, Value, CallData, _, S = #{running := Caller}) ->
+call_contract(<<Contract:256>>, Gas, Value, CallData, _, _, S = #{running := Caller}) ->
     case maps:is_key(Contract, S) of
         true ->
             #{environment := Env0} = S,

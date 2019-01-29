@@ -365,6 +365,7 @@ run_contract(#contract_create_tx{ nonce      =_Nonce
                , trees       => Trees
                , tx_env      => Env
                , off_chain   => false
+               , origin      => owner_pubkey(Tx) %% Not called from contract
                },
     aect_dispatch:run(CTVersion, CallDef).
 

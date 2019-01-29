@@ -17,7 +17,7 @@
          get_store/1,
          set_store/2,
          spend/3,
-         call_contract/6]).
+         call_contract/7]).
 
 new_state() -> no_state.
 
@@ -25,6 +25,6 @@ get_balance(_, _S)              -> 0.
 get_store(_)                    -> #{}.
 set_store(_,S)                  -> S.
 spend(_Recipient, _Amount, _S)  -> {error, cant_spend_with_dummy_chain}.
-call_contract(_, Gas, _, _, _, State) ->
+call_contract(_, Gas, _, _, _, _, State) ->
     {aevm_chain_api:call_exception(cant_call_contracts_with_dummy_chain, Gas), State}.
 

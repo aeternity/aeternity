@@ -10,6 +10,8 @@
         , groups/0
         ]).
 
+-include_lib("aecore/include/hard_forks.hrl").
+
 %% test case exports
 -export([ call_contract/1
         , call_contract_error_value/1
@@ -39,6 +41,7 @@
         , sophia_match_bug/1
         , sophia_spend/1
         , sophia_typed_calls/1
+        , sophia_call_origin/1
         , sophia_no_reentrant/1
         , sophia_exploits/1
         , sophia_oracles/1
@@ -169,6 +172,7 @@ groups() ->
                                  sophia_match_bug,
                                  sophia_spend,
                                  sophia_typed_calls,
+                                 sophia_call_origin,
                                  sophia_exploits,
                                  sophia_oracles,
                                  {group, sophia_oracles_ttl},
@@ -1070,6 +1074,38 @@ sophia_typed_calls(_Cfg) ->
     {}     = ?call(call_contract, Acc, Client, tip_server, {tuple, []}, {}, #{amount => 100}),
     400    = ?call(account_balance, Server),
     ok.
+
+sophia_call_origin(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc       = ?call(new_account, 10000000000),
+    meck:expect(aec_hard_forks, protocol_effective_at_height,
+                fun(_) -> ?ROMA_PROTOCOL_VSN end),
+    RomaOpts  = #{vm_version => ?VM_AEVM_SOPHIA_1},
+    EnvCRoma  = ?call(create_contract, Acc, environment, {0}, RomaOpts),
+    RemCRoma  = ?call(create_contract, Acc, environment, EnvCRoma, RomaOpts),
+    meck:unload(aec_hard_forks),
+
+    EnvC      = ?call(create_contract, Acc, environment, {0}, #{}),
+    RemC      = ?call(create_contract, Acc, environment, EnvC, #{}),
+
+    <<AccInt:256>> = Acc,
+    <<RemCInt:256>> = RemC,
+    <<RemCRomaInt:256>> = RemCRoma,
+
+    %% In Roma, the Call.caller and Call.origin is the same.
+    AccInt      = ?call(call_contract, Acc, RemCRoma, call_caller, word, {}),
+    AccInt      = ?call(call_contract, Acc, RemCRoma, call_origin, word, {}),
+    RemCRomaInt = ?call(call_contract, Acc, RemCRoma, nested_origin, word, {}),
+    RemCRomaInt = ?call(call_contract, Acc, RemCRoma, nested_caller, word, {}),
+
+    %% After Roma, the Call.caller and Call.origin is NOT the same.
+    AccInt  = ?call(call_contract, Acc, RemC, call_caller, word, {}),
+    AccInt  = ?call(call_contract, Acc, RemC, call_origin, word, {}),
+    AccInt  = ?call(call_contract, Acc, RemC, nested_origin, word, {}),
+    RemCInt = ?call(call_contract, Acc, RemC, nested_caller, word, {}),
+
+    ok.
+
 
 %% Oracles tests
 

@@ -59,9 +59,12 @@
           gas              :: aect_contracts:amount(),
           gas_price        :: aect_contracts:amount(),
           call_data        :: binary(),
-          call_stack  = [] :: [non_neg_integer()]
+          call_stack  = [] :: [non_neg_integer()],
             %% addresses (the pubkey as an integer) of contracts on the call
-            %% stack
+            %% stack, not serialized
+          call_origin      :: aec_keys:pubkey()
+            %% Only different from caller if this is called from a contract,
+            %% not serialized
           }).
 
 -opaque tx() :: #contract_call_tx{}.
@@ -80,10 +83,11 @@ new(#{caller_id   := CallerId,
       call_data   := CallData} = Args) ->
     CallStack = maps:get(call_stack, Args, []),
     TTL = maps:get(ttl, Args, 0),
-    case aec_id:specialize_type(CallerId) of
-        contract -> ok;
-        account  -> ok
-    end,
+    CallOrigin =
+        case aec_id:specialize(CallerId) of
+            {contract, Pubkey} -> maps:get(origin, Args, Pubkey);
+            {account,  Pubkey} -> maps:get(origin, Args, Pubkey)
+        end,
     contract = aec_id:specialize_type(ContractId),
     Tx = #contract_call_tx{caller_id   = CallerId,
                            nonce       = Nonce,
@@ -95,7 +99,9 @@ new(#{caller_id   := CallerId,
                            gas         = Gas,
                            gas_price   = GasPrice,
                            call_data   = CallData,
-                           call_stack  = CallStack},
+                           call_stack  = CallStack,
+                           call_origin = CallOrigin
+                          },
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -243,6 +249,7 @@ run_contract(#contract_call_tx{ nonce       = _Nonce
                               , gas_price   = GasPrice
                               , call_data   = CallData
                               , call_stack  = CallStack
+                              , call_origin = Origin
                               } = Tx, Call, Env, Trees) ->
     CallerPubkey   = caller_pubkey(Tx),
     ContractPubkey = contract_pubkey(Tx),
@@ -263,6 +270,7 @@ run_contract(#contract_call_tx{ nonce       = _Nonce
                , trees      => Trees
                , tx_env     => Env
                , off_chain  => false
+               , origin     => Origin
                },
     aect_dispatch:run(aect_contracts:ct_version(Contract), CallDef).
 
@@ -303,7 +311,7 @@ deserialize(?CONTRACT_CALL_TX_VSN,
             , {gas, Gas}
             , {gas_price, GasPrice}
             , {call_data, CallData}]) ->
-    account = aec_id:specialize_type(CallerId),
+    {account, Origin} = aec_id:specialize(CallerId),
     contract = aec_id:specialize_type(ContractId),
     #contract_call_tx{caller_id   = CallerId,
                       nonce       = Nonce,
@@ -314,7 +322,9 @@ deserialize(?CONTRACT_CALL_TX_VSN,
                       amount      = Amount,
                       gas         = Gas,
                       gas_price   = GasPrice,
-                      call_data   = CallData}.
+                      call_data   = CallData,
+                      call_origin = Origin
+                     }.
 
 serialization_template(?CONTRACT_CALL_TX_VSN) ->
     [ {caller_id, id}

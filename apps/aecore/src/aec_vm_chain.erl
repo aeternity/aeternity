@@ -15,7 +15,7 @@
 %% aevm_chain_api callbacks
 -export([ get_height/1,
           blockhash/2,
-          call_contract/6,
+          call_contract/7,
           get_balance/2,
           get_store/1,
           set_store/2,
@@ -644,9 +644,9 @@ get_contract_fun_types(Target, VMVersion, TypeHash, State) ->
 
 %% @doc Call another contract.
 -spec call_contract(aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), binary(),
-                    [non_neg_integer()], chain_state()) ->
+                    [non_neg_integer()], aec_keys:pubkey(), chain_state()) ->
         {aevm_chain_api:call_result(), chain_state()}.
-call_contract(Target, Gas, Value, CallData, CallStack,
+call_contract(Target, Gas, Value, CallData, CallStack, Origin,
               State = #state{account = ContractKey}) ->
     Trees = get_top_trees(State),
     CT = aec_trees:contracts(Trees),
@@ -658,6 +658,7 @@ call_contract(Target, Gas, Value, CallData, CallStack,
             {value, ContractAccount} = aec_accounts_trees:lookup(ContractKey, AT),
             Nonce = aec_accounts:nonce(ContractAccount) + 1,
             ABIVersion = aect_contracts:abi_version(Contract),
+            <<OriginAddr:256>> = Origin,
             {ok, CallTx} =
                 aect_call_tx:new(#{ caller_id   => aec_id:create(contract, ContractKey),
                                     nonce       => Nonce,
@@ -668,7 +669,9 @@ call_contract(Target, Gas, Value, CallData, CallStack,
                                     gas         => Gas,
                                     gas_price   => 0,
                                     call_data   => CallData,
-                                    call_stack  => CallStack }),
+                                    call_stack  => CallStack,
+                                    origin      => Origin
+                                  }),
             apply_call_transaction(CallTx, Gas, State)
     end.
 
