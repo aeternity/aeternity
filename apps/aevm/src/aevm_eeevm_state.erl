@@ -455,9 +455,10 @@ call_contract(Caller, Target, CallGas, Value, Data, State) ->
             TargetKey  = <<Target:256>>,
             ChainAPI   = chain_api(State),
             ChainState = chain_state(State),
+            Origin     = <<(origin(State)):256>>,
             {Res, ChainState1} =
                 ChainAPI:call_contract(TargetKey, CallGas, Value, Data,
-                                       CallStack, ChainState),
+                                       CallStack, Origin, ChainState),
             GasSpent = aevm_chain_api:gas_spent(Res),
             {Tag, Return} = aevm_chain_api:return_value(Res),
             {Tag, Return, GasSpent, set_chain_state(ChainState1, State)}

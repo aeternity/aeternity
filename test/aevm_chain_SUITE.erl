@@ -142,7 +142,8 @@ make_call(From, To, Value, Arg, S) ->
     CallData  = call_data(integer_to_binary(Arg)),
     Gas       = 10000,
     CallStack = [],
-    {CallRes, S1} = aec_vm_chain:call_contract(To, Gas, Value, CallData, CallStack, S),
+    Origin    = From,
+    {CallRes, S1} = aec_vm_chain:call_contract(To, Gas, Value, CallData, CallStack, Origin, S),
     case C1Bal1 >= Value of
         _ when Value < 0 ->
             {exception, unknown_error} = aevm_chain_api:return_value(CallRes),

@@ -93,10 +93,12 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
              , gas_price   := GasPrice
              , trees       := Trees
              , tx_env      := TxEnv0
+             , origin      := <<OriginAddr0:?PUB_SIZE/unit:8>>
              } = CallDef) ->
     TxEnv = aetx_env:set_context(TxEnv0, aetx_contract),
     ChainState0 = chain_state(CallDef, TxEnv, VMVersion),
     <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
+    OriginAddr = get_origin(VMVersion, CallerAddr, OriginAddr0),
     Env = #{currentCoinbase   => BeneficiaryInt,
             currentDifficulty => aetx_env:difficulty(TxEnv),
             currentGasLimit   => aec_governance:block_gas_limit(),
@@ -115,7 +117,7 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
              data           => CallData,
              gas            => Gas,
              gasPrice       => GasPrice,
-             origin         => CallerAddr,
+             origin         => OriginAddr,
              value          => Value,
              call_stack     => CallStack
             },
@@ -192,3 +194,11 @@ chain_state(#{ contract    := ContractPubKey
     aec_vm_chain:new_offchain_state(Trees, OnChainTrees, TxEnv,
                                     ContractPubKey, VMVersion).
 
+get_origin(VMVersion, CallerAddr, OriginAddr) ->
+    case VMVersion of
+        ?VM_AEVM_SOPHIA_1 ->
+            %% Backwards compatible bug
+            CallerAddr;
+        _ ->
+            OriginAddr
+    end.
