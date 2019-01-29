@@ -46,6 +46,7 @@
         , make_string/1
         , make_map/1
         , make_address/1
+        , make_bits/1
         , make_unit/0
         ]).
 -export([format/1]).
@@ -63,6 +64,7 @@ make_unit() -> ?FATE_UNIT.
 make_tuple(T) -> ?FATE_TUPLE(T).
 make_map(M) -> ?MAKE_FATE_MAP(M).
 make_address(A) -> ?FATE_ADDRESS(A).
+make_bits(I) when is_integer(I) -> ?FATE_BITS(I).
 
 make_variant(Tag, Values) when is_integer(Tag)
                                , 0 =< Tag

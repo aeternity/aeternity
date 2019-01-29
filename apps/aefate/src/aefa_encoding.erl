@@ -1,27 +1,40 @@
-%% Second draft of FATE serialization encoding/decoding.
+%% Fate data (and instruction) serialization.
 %% Goal is to experiment with the encoding, to make sure we can
 %% serialize and deserialize all FATE values.
-%% TODO: This code is not production ready yet.
-%% TODO: The FATE side of data is not set at all yet and will
-%% probably change. FATE data is now defined in aefa_data.erl
-
+%%
 %% The FATE serialization has to fullfill the following properties:
 %% * There has to be 1 and only 1 byte sequence
 %%     representing each unique value in FATE.
 %% * A valid byte sequence has to be deserializable to a FATE value.
 %% * A valid byte sequence must not contain any trailing bytes.
 %% * A serialization is a sequence of 8-bit bytes.
-
+%%
 %% The serialization function should fullfill the following:
 %% * A valid FATE value should be serialized to a byte sequence.
 %% * Any other argument, not representing a valid FATE value should
 %%     throw an exception
-
+%%
 %% The deserialization function should fullfill the following:
 %% * A valid byte sequence should be deserialized to a valid FATE value.
 %% * Any other argument, not representing a valid byte sequence should
 %%     throw an exception
-
+%%
+%% History
+%% * First draft of FATE serialization encoding/decoding.
+%%   Initial experiment with tags
+%% * Second draft
+%%  * FATE data is now defined in aefa_data.erl
+%% * Third draft
+%%  * Added Bit strings
+%%
+%% TODO:
+%%   * Make the code production ready.
+%%       (add tests, document exported functions).
+%%   * Handle Variant types better.
+%%   * Handle type representations.
+%%   * Handle instructions.
+%%
+%% ------------------------------------------------------------------------
 -module(aefa_encoding).
 
 -export([ deserialize/1
@@ -33,31 +46,31 @@
 %% Definition of tag scheme.
 %% This has to follow the protocol specification.
 
--define(SMALL_INT    ,        2#0). %% sxxxxxx0 6 bit integer with sign bit
-%%                                            1 Set below
--define(LONG_STRING  , 2#00000001). %% 0000000  RLP encoded array, size >= 64
--define(SHORT_STRING ,       2#01). %% xxxxxx0  [bytes], 0 < size < 64
-%%                                           11  Set below
--define(SHORT_LIST   ,     2#0011). %% xxxx00   [encoded elements],  0 < length < 16
-%%                                     xxxx01   FREE
--define(LONG_TUPLE   , 2#00001011). %% 000010   RLP encoded (size - 16) + [encoded elements],
--define(SHORT_TUPLE  ,     2#1011). %% xxxx10   [encoded elements], 0  <  size < 16
-%%                                         1111 Set below
--define(LONG_LIST    , 2#00011111). %% 0001     RLP encoded (length - 16) + [Elements]
--define(MAP          , 2#00101111). %% 0010     RLP encoded size + [encoded key, encoded value]
--define(EMPTY_TUPLE  , 2#00111111). %% 0011
-%%                                  %% 0100     FREE
--define(EMPTY_STRING , 2#01011111). %% 0101
--define(POS_BIG_INT  , 2#01101111). %% 0110     RLP encoded (integer - 64)
--define(FALSE        , 2#01111111). %% 0111
-%%                                  %% 1000     FREE
--define(ADDRESS      , 2#10011111). %% 1001     [32 bytes]
--define(VARIANT      , 2#10101111). %% 1010     encoded tag + encoded values
--define(NIL          , 2#10111111). %% 1011     Empty list
-%%                                  %% 1100     FREE
--define(EMPTY_MAP    , 2#11011111). %% 1101
--define(NEG_BIG_INT  , 2#11101111). %% 1110     RLP encoded (integer - 64)
--define(TRUE         , 2#11111111). %% 1111
+-define(SMALL_INT    ,        2#0). %% sxxxxxx 0 - 6 bit integer with sign bit
+%%                                             1 Set below
+-define(LONG_STRING  , 2#00000001). %% 000000 01 - RLP encoded array, size >= 64
+-define(SHORT_STRING ,       2#01). %% xxxxxx 01 - [bytes], 0 < xxxxxx:size < 64
+%%                                            11  Set below
+-define(SHORT_LIST   ,     2#0011). %% xxxx 0011 - [encoded elements],  0 < length < 16
+%%                                     xxxx 0111 - FREE (For typedefs in future)
+-define(LONG_TUPLE   , 2#00001011). %% 0000 1011 - RLP encoded (size - 16) + [encoded elements],
+-define(SHORT_TUPLE  ,     2#1011). %% xxxx 1011 - [encoded elements], 0  <  size < 16
+%%                                          1111 Set below
+-define(LONG_LIST    , 2#00011111). %% 0001 1111 - RLP encoded (length - 16) + [Elements]
+-define(MAP          , 2#00101111). %% 0010 1111 - RLP encoded size + [encoded key, encoded value]
+-define(EMPTY_TUPLE  , 2#00111111). %% 0011 1111
+-define(POS_BITS     , 2#01001111). %% 0100 1111 - RLP encoded integer (to be interpreted as bitfield)
+-define(EMPTY_STRING , 2#01011111). %% 0101 1111
+-define(POS_BIG_INT  , 2#01101111). %% 0110 1111 - RLP encoded (integer - 64)
+-define(FALSE        , 2#01111111). %% 0111 1111
+%%                                  %% 1000 1111 - FREE (Possibly for bytecode in the future.)
+-define(ADDRESS      , 2#10011111). %% 1001 1111 - [32 bytes]
+-define(VARIANT      , 2#10101111). %% 1010 1111 - encoded tag + encoded values
+-define(NIL          , 2#10111111). %% 1011 1111 - Empty list
+-define(NEG_BITS     , 2#11001111). %% 1100 1111 - RLP encoded integer (infinite 1:s bitfield)
+-define(EMPTY_MAP    , 2#11011111). %% 1101 1111
+-define(NEG_BIG_INT  , 2#11101111). %% 1110 1111 - RLP encoded (integer - 64)
+-define(TRUE         , 2#11111111). %% 1111 1111
 
 -define(SHORT_TUPLE_SIZE, 16).
 -define(SHORT_LIST_SIZE , 16).
@@ -81,6 +94,7 @@ serialize(?FATE_UNIT)        -> <<?EMPTY_TUPLE>>;  %% ! Untyped
 serialize(M) when ?IS_FATE_MAP(M), ?FATE_MAP_SIZE(M) =:= 0 -> <<?EMPTY_MAP>>;  %% ! Untyped
 serialize(?FATE_EMPTY_STRING) -> <<?EMPTY_STRING>>;
 serialize(I) when ?IS_FATE_INTEGER(I) -> serialize_integer(I);
+serialize(?FATE_BITS(Bits)) when is_integer(Bits) -> serialize_bits(Bits);
 serialize(String) when ?IS_FATE_STRING(String),
                        ?FATE_STRING_SIZE(String) > 0,
                        ?FATE_STRING_SIZE(String) < ?SHORT_STRING_SIZE ->
@@ -150,6 +164,17 @@ serialize_integer(I) when ?IS_FATE_INTEGER(I) ->
                                (rlp_integer(Abs - ?SMALL_INT_SIZE))/binary>>
     end.
 
+serialize_bits(B) when is_integer(B) ->
+    Abs = abs(B),
+    Sign = case B < 0 of
+               true  -> ?NEG_SIGN;
+               false -> ?POS_SIGN
+           end,
+    if
+        Sign =:= ?NEG_SIGN -> <<?NEG_BITS, (rlp_integer(Abs))/binary>>;
+        Sign =:= ?POS_SIGN -> <<?POS_BITS, (rlp_integer(Abs))/binary>>
+    end.
+
 -spec deserialize(binary()) -> aefa_data:fate_type().
 deserialize(B) ->
     {T, <<>>} = deserialize2(B),
@@ -167,6 +192,12 @@ deserialize2(<<?POS_BIG_INT, Rest/binary>>) ->
     {Bint, Rest2} = aeser_rlp:decode_one(Rest),
     {?MAKE_FATE_INTEGER(binary:decode_unsigned(Bint) + ?SMALL_INT_SIZE),
      Rest2};
+deserialize2(<<?NEG_BITS, Rest/binary>>) ->
+    {Bint, Rest2} = aeu_rlp:decode_one(Rest),
+    {?FATE_BITS(-binary:decode_unsigned(Bint)), Rest2};
+deserialize2(<<?POS_BITS, Rest/binary>>) ->
+    {Bint, Rest2} = aeu_rlp:decode_one(Rest),
+    {?FATE_BITS(binary:decode_unsigned(Bint)), Rest2};
 deserialize2(<<?LONG_STRING, Rest/binary>>) ->
     {String, Rest2} = aeser_rlp:decode_one(Rest),
     {?MAKE_FATE_STRING(String), Rest2};
