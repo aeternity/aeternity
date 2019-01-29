@@ -191,6 +191,7 @@
                         Value :: non_neg_integer(),
                         CallData :: binary(),
                         CallStack :: [non_neg_integer()],
+                        Origin :: pubkey(),
                         State :: chain_state()) ->
                     {call_result(), chain_state()}.
 
