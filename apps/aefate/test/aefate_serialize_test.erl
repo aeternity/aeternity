@@ -1,6 +1,10 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc Basic tests for Fate serialization
+%%%
+%%% To run:
+%%%  make TEST=aefate_serialize_test eunit
+%%%
 %%% @end
 %%%-------------------------------------------------------------------
 
@@ -63,6 +67,9 @@ sources() ->
      aefa_data:make_integer(-65),
      aefa_data:make_integer(65),
      aefa_data:make_integer(-32432847932847928374983),
+     aefa_data:make_bits(0),
+     aefa_data:make_bits(1),
+     aefa_data:make_bits(-1),
      aefa_data:make_list(make_int_list(65)),
      aefa_data:make_variant(0, {FortyTwo}),
      aefa_data:make_variant(0, {}),
