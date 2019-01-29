@@ -97,7 +97,7 @@ execute_call(Contract, CallData, ChainState, Options) ->
 
 execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState, Options) ->
     Trace = false,
-    Res = aect_evm:execute_call(
+    Res = do_execute_call(
           maps:merge(
           #{ code              => Code,
              store             => get_store(ChainState),
@@ -126,6 +126,60 @@ execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState, Opti
         Err = {error, _, _}      -> Err;
         Rev = {revert,_, _}      -> Rev
     end.
+
+do_execute_call(#{ code := Code
+                 , store := Store
+                 , address := Address
+                 , caller := Caller
+                 , data := CallData
+                 , gas := Gas
+                 , gasPrice := GasPrice
+                 , origin := Origin
+                 , value := Value
+                 , currentCoinbase := CoinBase
+                 , currentDifficulty := Difficulty
+                 , currentGasLimit := GasLimit
+                 , currentNumber := Number
+                 , currentTimestamp := TS
+                 , chainState := ChainState
+                 , chainAPI := ChainAPI
+                 , vm_version := VmVersion
+                 , abi_version := ABIVersion
+                 } = CallDef, Trace) ->
+    %% TODO: Handle Contract In State.
+    Spec =
+        #{ exec => #{ code => Code
+                    , store => Store
+                    , address => Address
+                    , caller => Caller
+                    , data => CallData
+                    , call_data_type => maps:get(call_data_type, CallDef, undefined)
+                    , out_type => maps:get(out_type, CallDef, undefined)
+                    , gas => Gas
+                    , gasPrice => GasPrice
+                    , origin => Origin
+                    , value => Value
+                    },
+           env => #{ currentCoinbase => CoinBase
+                   , currentDifficulty => Difficulty
+                   , currentGasLimit => GasLimit
+                   , currentNumber => Number
+                   , currentTimestamp => TS
+                   , chainState => ChainState
+                   , chainAPI => ChainAPI
+                   , vm_version => VmVersion
+                   , abi_version => ABIVersion
+                   },
+           pre => #{}},
+    TraceSpec =
+        #{ trace_fun =>
+               fun(S,A) -> lager:debug(S,A) end
+         , trace => Trace
+         },
+    State = aevm_eeevm_state:init(Spec, TraceSpec),
+    Result = aevm_eeevm:eval(State),
+    Result.
+
 
 make_call(Contract, Fun, Type, Args, Env, Options) ->
     #{ Contract := Code } = Env,

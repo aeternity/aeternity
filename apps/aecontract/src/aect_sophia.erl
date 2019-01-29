@@ -13,7 +13,6 @@
 -export([ compile/2
         , decode_data/2
         , encode_call_data/3
-        , on_chain_call/3
         , serialize/1
         , deserialize/1
         ]).
@@ -96,23 +95,6 @@ serialization_template(?SOPHIA_CONTRACT_VSN) ->
     [ {source_hash, binary}
     , {type_info, [{binary, binary, binary, binary}]} %% {type hash, name, arg type, out type}
     , {byte_code, binary}].
-
--spec on_chain_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
-on_chain_call(ContractKey, Function, Argument) ->
-    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    ContractsTree  = aec_trees:contracts(Trees),
-    Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
-    SerializedCode = aect_contracts:code(Contract),
-    Store          = aect_contracts:state(Contract),
-    CTVersion      = aect_contracts:ct_version(Contract),
-    #{ byte_code := Code} = deserialize(SerializedCode),
-    case create_call(SerializedCode, Function, Argument) of
-        {error, E} -> {error, E};
-        {ok, CallData, CallDataType, OutType} ->
-            aect_evm:call_common(CallData, CallDataType, OutType,
-                                 ContractKey, Code, Store,
-                                 TxEnv, Trees, CTVersion)
-    end.
 
 -spec encode_call_data(binary(), binary(), binary()) ->
                               {ok, binary()} | {error, binary()}.
