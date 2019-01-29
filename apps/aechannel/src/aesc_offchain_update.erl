@@ -63,14 +63,16 @@ op_new_contract(OwnerId, VmVersion, ABIVersion, Code, Deposit, CallData) ->
 
 
 -spec op_call_contract(aec_id:id(), aec_id:id(), aect_contracts:abi_version(),
-                       non_neg_integer(), aect_call:call(), [non_neg_integer()]) -> update().
+                       non_neg_integer(), Call, [non_neg_integer()]) -> update()
+    when Call :: _.
 op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData, CallStack) ->
     op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData,
                      CallStack, 1, 1000000).
 -spec op_call_contract(aec_id:id(), aec_id:id(), aect_contracts:abi_version(),
-                       non_neg_integer(), aect_call:call(),
+                       non_neg_integer(), Call,
                        [non_neg_integer()],
-                       non_neg_integer(), non_neg_integer()) -> update().
+                       non_neg_integer(), non_neg_integer()) -> update()
+    when Call :: _.
 op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData, CallStack,
                  GasPrice, Gas) ->
     account = aec_id:specialize_type(CallerId),

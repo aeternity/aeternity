@@ -44,7 +44,7 @@
 %%%===================================================================
 
 -spec get_channel(aesc_channels:pubkey(), aec_trees:trees()) ->
-                         {error, term()} | ok.
+                         {error, term()} | {ok, aesc_channels:channel()}.
 get_channel(ChannelPubKey, Trees) ->
     ChannelsTree = aec_trees:channels(Trees),
     case aesc_state_tree:lookup(ChannelPubKey, ChannelsTree) of

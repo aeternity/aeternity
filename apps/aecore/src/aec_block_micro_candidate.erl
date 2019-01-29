@@ -21,7 +21,6 @@
 
 -opaque block_info() :: #{trees := aec_trees:trees(),
                           txs_tree := aec_txs_trees:txs_tree(),
-                          adj_chain := [aec_headers:header()],
                           tx_env := aetx_env:env()
                          }.
 
@@ -68,7 +67,7 @@ apply_block_txs_strict(Txs, Trees, Env) ->
 %% TODO NG: handle update after new keyblock in higher layer to get depth of microfork
 -spec update(aec_blocks:block(), nonempty_list(aetx_sign:signed_tx()),
              block_info()) ->
-                    {ok, aec_blocks:block(), block_info()} | {error, no_change}.
+                    {ok, aec_blocks:block(), block_info()} | {error, no_update_to_block_candidate | block_is_full}.
 update(Block, Txs, BlockInfo) ->
     MaxGas = aec_governance:block_gas_limit(),
     BlockGas = aec_blocks:gas(Block),
