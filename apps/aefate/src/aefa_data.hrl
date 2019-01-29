@@ -10,6 +10,7 @@
 -define(FATE_VARIANT_T, {variant, ?FATE_BYTE_T, tuple()}).
 -define(FATE_VOID_T,    void).
 -define(FATE_TUPLE_T,   {tuple, tuple()}).
+-define(FATE_BITS_T,    {bits, integer()}).
 
 -define(IS_FATE_INTEGER(X), is_integer(X)).
 -define(IS_FATE_LIST(X), (is_list(X))).
@@ -17,11 +18,13 @@
 -define(IS_FATE_MAP(X), (is_map(X))).
 -define(IS_FATE_TUPLE(X), (is_tuple(X) andalso (tuple == element(1, X) andalso is_tuple(element(2, X))))).
 -define(IS_FATE_ADDRESS(X), (is_tuple(X) andalso (address == element(1, X) andalso is_binary(element(2, X))))).
+-define(IS_FATE_BITS(X), (is_tuple(X) andalso (bits == element(1, X) andalso is_integer(element(2, X))))).
 -define(IS_FATE_BOOLEAN(X), is_boolean(X)).
 
 -define(FATE_UNIT,       {tuple, {}}).
 -define(FATE_TUPLE(T),   {tuple, T}).
 -define(FATE_ADDRESS(A), {address, A}).
+-define(FATE_BITS(B),    {bits, B}).
 
 
 -define(FATE_INTEGER_VALUE(X), (X)).
