@@ -1,8 +1,6 @@
 import os
-import getopt
 import sys
 import time
-import unittest
 import argparse
 import urllib3
 import shutil
@@ -10,7 +8,6 @@ import pystache
 import logging
 from waiting import wait
 
-import swagger_client
 from swagger_client.rest import ApiException
 from swagger_client.api.external_api import ExternalApi
 from swagger_client.api_client import ApiClient
@@ -264,7 +261,7 @@ def setup_node(node, path, test_dir, version):
     for command in NODE_SETUP_COMMANDS:
         os.system(pystache.render(command, {"version": version, \
                                             "name": SETUP[node]["name"]}))
-    ucfg = open(os.path.join(path, "epoch.yaml"), "w")
+    ucfg = open(os.path.join(path, "aeternity.yaml"), "w")
     ucfg.write(SETUP[node]["user_config"])
     ucfg.close()
     cfg = open(os.path.join(path, "p.config"), "w")
