@@ -45,11 +45,11 @@ Always make sure you have the latest docker image prior running any of the below
 ### Node Configuration
 
 Тo change the node configuration, a [Docker bind mount](https://docs.docker.com/storage/bind-mounts/) should be used
-to mount the configuration file to a special path on the container (`/home/aeternity/.epoch/epoch/epoch.yaml`).
-For example, assuming your configuration file is located at `~/.aeternity/myepoch.yaml` on the host machine:
+to mount the configuration file to a special path on the container (`/home/aeternity/.aeternity/aeternity/aeternity.yaml`).
+For example, assuming your configuration file is located at `~/.aeternity/myaeternity.yaml` on the host machine:
 
 ```bash
-docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myepoch.yaml:/home/aeternity/.epoch/epoch/epoch.yaml aeternity/aeternity
+docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myaeternity.yaml:/home/aeternity/.aeternity/aeternity/aeternity.yaml aeternity/aeternity
 ```
 
 Arguments can also be passed to the node, for example to change expected mine rate:
@@ -71,13 +71,13 @@ chain:
 # SNIP ...
 ```
 
-Assuming your configuration file path is `~/.aeternity/myepoch.yaml` on host machine.
+Assuming your configuration file path is `~/.aeternity/myaeternity.yaml` on host machine.
 Replace `~/.aeternity/db_roma` with location of your choice where the data will be stored in.
 
 ```bash
 mkdir -p ~/.aeternity/db_roma
 docker run -p 3013:3013 -p 3015:3015 \
-  -v ~/.aeternity/myepoch.yaml:/home/aeternity/.epoch/epoch/epoch.yaml \
+  -v ~/.aeternity/myaeternity.yaml:/home/aeternity/.aeternity/aeternity/aeternity.yaml \
   -v ~/.aeternity/db_roma:/home/aeternity/node/data/mnesia \
   aeternity/aeternity
 ```
@@ -125,10 +125,10 @@ fork_management:
 
 ```
 
-Assuming your configuration file is located at `~/.aeternity/myepoch.yaml` on the host machine:
+Assuming your configuration file is located at `~/.aeternity/myaeternity.yaml` on the host machine:
 
 ```bash
-docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myepoch.yaml:/home/aeternity/.epoch/epoch/epoch.yaml aeternity/aeternity
+docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myaeternity.yaml:/home/aeternity/.aeternity/aeternity/aeternity.yaml aeternity/aeternity
 ```
 
 You should see the console output of the running node and a lot of information related to syncing with the network.
