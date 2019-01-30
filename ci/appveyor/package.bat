@@ -27,6 +27,10 @@ SET PATH=%WIN_MSYS2_ROOT%\mingw64\bin;%WIN_MSYS2_ROOT%\usr\bin;%PATH%
 :PACKAGESTART
 
 @echo Current time: %time%
+rem Build production release
+%BASH_BIN% -lc "cd %BUILD_PATH% && make prod-build"
+
+@echo Current time: %time%
 rem Remove erl.ini files from release
 %BASH_BIN% -lc "find \"%RELEASE_PATH%\" -name erl.ini -type f -delete"
 
@@ -49,8 +53,9 @@ rem Build packages
 
 @echo Current time: %time%
 rem Copy packages
-%BASH_BIN% -lc "cp \"%PACKAGE_PATH%\"/*.zip \"%BUILD_PATH%\""
-%BASH_BIN% -lc "cp \"%PACKAGE_PATH%\"/*.exe \"%BUILD_PATH%\""
+SET /p PACKAGE_VERSION=<%APPVEYOR_BUILD_FOLDER%\REVISION
+%BASH_BIN% -lc "cp \"%PACKAGE_PATH%\"/*.zip \"%BUILD_PATH%/aeternity-%PACKAGE_VERSION%-windows-x86_64.zip\""
+%BASH_BIN% -lc "cp \"%PACKAGE_PATH%\"/*.exe \"%BUILD_PATH%/aeternity-%PACKAGE_VERSION%-windows-x86_64.exe\""
 
 :PACKAGEDONE
 

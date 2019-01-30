@@ -84,6 +84,6 @@ on_finish:
 
 artifacts:
   - name: Windows Release
-    path: aeternity-windows-w64-*.exe
+    path: aeternity-*.exe
   - name: Windows Release Standalone
-    path: aeternity-windows-w64-*.zip
+    path: aeternity-*.zip
