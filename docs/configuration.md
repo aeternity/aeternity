@@ -18,7 +18,7 @@ The location of the file can be specified in a few different ways, in order of p
 If all above checks fail, no user configuration is applied.
 
 ### Validation
-The contents of the config file will be validated against a JSON-Schema, located in the node at path `data/epoch_config_schema.json`. If any parameters violate the schema, the node will fail to start.
+The contents of the config file will be validated against a JSON-Schema, located in the node at path `data/aeternity_config_schema.json`. If any parameters violate the schema, the node will fail to start.
 
 ## Notable user configuration parameters
 

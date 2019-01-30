@@ -7,7 +7,7 @@ main([File]) ->
     Schema = filename:join(
                filename:dirname(
                  filename:dirname(escript:script_name())),
-               "data/epoch_config_schema.json"),
+               "data/aeternity_config_schema.json"),
     check_config(File, Schema);
 main(_) ->
     usage().

@@ -516,7 +516,7 @@ validate_(Schema, JSON) ->
 
 schema_filename() ->
     filename:join(code:priv_dir(aeutils),
-                  "epoch_config_schema.json").
+                  "aeternity_config_schema.json").
 
 load_schema() ->
     load_schema(schema_filename()).
