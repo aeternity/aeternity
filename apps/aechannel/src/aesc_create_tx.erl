@@ -141,7 +141,13 @@ check(#channel_create_tx{initiator_amount   = InitiatorAmount,
     InitiatorPubKey = initiator_pubkey(Tx),
     ResponderPubKey = responder_pubkey(Tx),
     Checks =
-        [fun() -> aetx_utils:check_account(InitiatorPubKey, Trees, Nonce, InitiatorAmount + Fee) end,
+        [fun() ->
+             case InitiatorPubKey =/= ResponderPubKey of
+                true  -> ok;
+                false -> {error, initiator_is_responder}
+             end
+         end,
+         fun() -> aetx_utils:check_account(InitiatorPubKey, Trees, Nonce, InitiatorAmount + Fee) end,
          fun() -> aetx_utils:check_account(ResponderPubKey, Trees, ResponderAmount) end,
          fun() -> check_reserve_amount(ChannelReserve, InitiatorAmount, ResponderAmount) end,
          fun() -> check_not_channel(InitiatorPubKey, Nonce, ResponderPubKey, Trees) end],

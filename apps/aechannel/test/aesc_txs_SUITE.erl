@@ -24,6 +24,7 @@
 
 % negative create
 -export([create_missing_account/1,
+         create_same_account/1,
          create_insufficient_funds/1,
          create_wrong_nonce/1,
          create_insufficient_funds_reserve/1,
@@ -222,6 +223,7 @@ groups() ->
      },
      {create_negative, [sequence],
       [create_missing_account,
+       create_same_account,
        create_insufficient_funds,
        create_wrong_nonce,
        create_insufficient_funds_reserve,
@@ -382,6 +384,22 @@ create_missing_account(_Cfg) ->
     {ok, Tx2} = aesc_create_tx:new(TxSpec2),
     {error, account_not_found} = aetx:check(Tx2, Trees, Env),
 
+    ok.
+
+create_same_account(_Cfg) ->
+    {PubKey, S} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
+    Trees = aesc_test_utils:trees(S),
+    Height = 1,
+    Env = aetx_env:tx_env(Height),
+
+    %% Test channel with oneself is not allowed
+    TxSpecI = aesc_test_utils:create_tx_spec(
+                PubKey, PubKey,
+                #{initiator_amount => 100,
+                  channel_reserve => 2,
+                  fee => 20000}, S),
+    {ok, TxI} = aesc_create_tx:new(TxSpecI),
+    {error, initiator_is_responder} = aetx:check(TxI, Trees, Env),
     ok.
 
 create_insufficient_funds(_Cfg) ->
