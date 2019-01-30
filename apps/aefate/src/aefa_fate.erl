@@ -199,7 +199,7 @@ eval({not_a_r, Name}, EngineState) ->
 %% Tuple instructions
 %% ------------------------------------------------------
 %% Make tuple only takes a fixed size.
-%% NOTE: There is no type checking on the arguments on the stack. 
+%% NOTE: There is no type checking on the arguments on the stack.
 eval({make_tuple, Size}, EngineState) ->
     if is_integer(Size) andalso (Size >= 0) ->
             {next, make_tuple(Size, EngineState)};
@@ -209,6 +209,71 @@ eval({make_tuple, Size}, EngineState) ->
 %% the element at position 'which' of the 'Tuple' in 'Dest'.
 eval({element, Type, Dest, Which, Tuple}, EngineState) ->
     {next, tuple_element(Type, Dest, Which, Tuple, EngineState)};
+
+
+
+%% A bit field is represented by an integer.
+%% Bit fields "starting" with Bits.all are represented by a
+%% negative integer (with infinite set bits to the left.)
+%% Take Bits.sum of an infinite set fails with an `arithmetic_error`.
+
+%% Bits.none : bits
+%% An empty bit set.
+eval(bits_none, EngineState) -> {next, push(?FATE_BITS(0), EngineState)};
+eval({bits_none, To}, EngineState) ->
+    {next, un_op(get, {To, {immediate, ?FATE_BITS(0)}}, EngineState)};
+
+%% Bits.all : bits
+%% A bit field with all (an infinite amount) bits set
+eval(bits_all, EngineState) -> {next, push(?FATE_BITS(-1), EngineState)};
+eval({bits_all, To}, EngineState) ->
+    {next, un_op(get, {To, {immediate, ?FATE_BITS(-1)}}, EngineState)};
+
+%% Bits.all_n : bits
+%% A bit field with n bits set
+eval({bits_all_n, To, N}, EngineState) ->
+    {next, un_op(bits_all, {To, N}, EngineState)};
+
+%% Bits.set(b : bits, i : int) : bits
+%% Set bit i
+eval({bits_set, To, Bits, Bit}, EngineState) ->
+    {next, bin_op(bits_set, {To, Bits, Bit}, EngineState)};
+
+%% Bits.clear(b : bits, i : int) : bits
+%% Clear bit i
+eval({bits_clear, To, Bits, Bit}, EngineState) ->
+    {next, bin_op(bits_clear, {To, Bits, Bit}, EngineState)};
+
+%% Bits.test(b : bits, i : int) : bool
+%% Check if bit i is set
+eval({bits_test, To, Bits, Bit}, EngineState) ->
+    {next, bin_op(bits_test, {To, Bits, Bit}, EngineState)};
+
+%% Bits.sum(b : bits) : int
+%% Count the number of set bits.
+%% Throws an exception for infinite bit sets (starting from Bits.all)
+eval({bits_sum, To, Bits}, EngineState) ->
+    {next, un_op(bits_sum, {To, Bits}, EngineState)};
+
+%% Bits.union(a : bits, b : bits) : bits
+%% For all i:
+%%   Bits.test(Bits.union(a, b), i) == (Bits.test(a, i) || Bits.test(b, i))
+eval({bits_union, To, Bits, Bit}, EngineState) ->
+    {next, bin_op(bits_union, {To, Bits, Bit}, EngineState)};
+
+%% Bits.intersection(a : bits, b : bits) : bits
+%% For all i:
+%% Bits.test(Bits.intersection(a, b), i) == (Bits.test(a, i) && Bits.test(b, i))
+eval({bits_intersection, To, Bits, Bit}, EngineState) ->
+    {next, bin_op(bits_intersection, {To, Bits, Bit}, EngineState)};
+
+%% Bits.difference(a : bits, b : bits) : bits
+%% For all i:
+%%  Bits.test(Bits.difference(a, b), i) == (Bits.test(a, i) && !Bits.test(b, i))
+eval({bits_difference, To, Bits, Bit}, EngineState) ->
+    {next, bin_op(bits_difference, {To, Bits, Bit}, EngineState)};
+
+
 
 
 %% ------------------------------------------------------
@@ -314,7 +379,7 @@ check_signature_and_bind_args({ArgTypes, _RetSignature},
                = EngineState) ->
     Args = [Acc | Stack],
     case check_arg_types(ArgTypes, Args) of
-        ok -> 
+        ok ->
             {ok, bind_args(0, Args, ArgTypes, #{}, EngineState)};
         {error, T, V}  ->
             throw({error, {value_does_not_match_type, V, T}})
@@ -345,15 +410,17 @@ bind_args(N, [Arg|Args], [Type|Types], Mem, EngineState) ->
 %% TODO: Add types (and tests).
 check_type(integer, I) when ?IS_FATE_INTEGER(I) -> true;
 check_type(boolean, B) when ?IS_FATE_BOOLEAN(B) -> true;
-check_type({list, ET}, L) when ?IS_FATE_LIST(L) -> 
+check_type(bits, B) when ?IS_FATE_BITS(B) -> true;
+check_type({list, ET}, L) when ?IS_FATE_LIST(L) ->
     check_same_type(ET, L);
-check_type({tuple, Elements}, T) when ?IS_FATE_TUPLE(T) -> 
+check_type({tuple, Elements}, T) when ?IS_FATE_TUPLE(T) ->
     check_all_types(Elements, aefa_data:tuple_to_list(T));
 check_type(_T, _V) -> false.
 
 type(I) when ?IS_FATE_INTEGER(I) -> integer;
 type(B) when ?IS_FATE_BOOLEAN(B) ->  boolean;
-type([E|L]) when ?IS_FATE_LIST(L) -> {list, type(E)}. 
+type(B) when ?IS_FATE_BITS(B) ->  bits;
+type([E|L]) when ?IS_FATE_LIST(L) -> {list, type(E)}.
 %% TODO: handle all types.
 
 jump(BB, ES) ->
@@ -375,7 +442,7 @@ bin_op(Op, {To, Left, Right}, ES) ->
     {RightValue, ES2} = get_op_arg(Right, ES1),
     Result = op(Op, LeftValue, RightValue),
     store(To, Result, ES2).
-    
+
 get_op_arg({stack, 0}, #{ accumulator := A
                         , accumulator_stack := [S|Stack] } = ES) ->
     {A, ES#{accumulator => S, accumulator_stack => Stack}};
@@ -404,8 +471,6 @@ store({arg, N}, _, _ES) ->
 
 
 
-
-    
 
 push_int(I, ES) when ?IS_FATE_INTEGER(I) -> push(I, ES).
 
@@ -444,8 +509,14 @@ op(get, A) ->
 op(inc, A) ->
     A + 1;
 op('not', A) ->
-    not A.
-
+    not A;
+op(bits_all, N)  when ?IS_FATE_INTEGER(N) ->
+    ?FATE_BITS((1 bsl (N)) - 1);
+op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
+    ?FATE_BITS(Bits) = A,
+    if Bits < 0 -> throw({error, {arithmetic_error, bits_sum_on_ifinite_set}});
+       true -> bits_sum(Bits, 0)
+    end.
 
 op(add, A, B)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
@@ -474,7 +545,47 @@ op('and', A, B)  when ?IS_FATE_BOOLEAN(A)
     A and B;
 op('or', A, B)  when ?IS_FATE_BOOLEAN(A)
                     , ?IS_FATE_BOOLEAN(B) ->
-    A or B.
+    A or B;
+op(bits_set, A, B)  when ?IS_FATE_BITS(A)
+                         , ?IS_FATE_INTEGER(B)
+                         , B >= 0 ->
+    ?FATE_BITS(Bits) = A,
+    ?FATE_BITS(Bits bor (1 bsl B));
+op(bits_clear, A, B)  when ?IS_FATE_BITS(A)
+                         , ?IS_FATE_INTEGER(B)
+                         , B >= 0 ->
+    ?FATE_BITS(Bits) = A,
+    ?FATE_BITS(Bits band (bnot (1 bsl B)));
+op(bits_test, A, B)  when ?IS_FATE_BITS(A)
+                         , ?IS_FATE_INTEGER(B)
+                         , B >= 0 ->
+    ?FATE_BITS(Bits) = A,
+    ((Bits band (1 bsl B)) > 0);
+op(bits_union, A, B)
+  when ?IS_FATE_BITS(A), ?IS_FATE_BITS(B) ->
+    ?FATE_BITS(BitsA) = A,
+    ?FATE_BITS(BitsB) = B,
+    ?FATE_BITS(BitsA bor BitsB);
+op(bits_intersection, A, B)
+  when ?IS_FATE_BITS(A), ?IS_FATE_BITS(B) ->
+    ?FATE_BITS(BitsA) = A,
+    ?FATE_BITS(BitsB) = B,
+    ?FATE_BITS(BitsA band BitsB);
+op(bits_difference, A, B)
+  when ?IS_FATE_BITS(A), ?IS_FATE_BITS(B) ->
+    ?FATE_BITS(BitsA) = A,
+    ?FATE_BITS(BitsB) = B,
+    ?FATE_BITS((BitsA band BitsB) bxor BitsA).
+
+
+
+
+
+
+
+bits_sum(0, Sum) -> Sum;
+bits_sum(N, Sum) -> bits_sum(N bsr 1, Sum + (N band 2#1)).
+
 
 inc_acc(#{accumulator := X} = ES) when ?IS_FATE_INTEGER(X) ->
     ES#{accumulator := ?MAKE_FATE_INTEGER(?FATE_INTEGER_VALUE(X)+1)}.
@@ -549,11 +660,11 @@ pop(#{ accumulator := X, accumulator_stack := [V|Stack]} = ES) ->
            }}.
 
 pop_n(0, ES) -> {[], ES};
-pop_n(N, ES) -> 
+pop_n(N, ES) ->
     {Values, ES1} = pop_n(N-1, ES),
     {Value, ES2} = pop(ES1),
     {[Value | Values], ES2}.
-    
+
 
 dup(#{ accumulator := X, accumulator_stack := Stack} = ES) ->
     ES#{ accumulator => X
