@@ -31,14 +31,22 @@ memory_restore_test_() ->
     make_calls(memory_restore()).
 
 
+tuple_test_() ->
+    make_calls(tuple()).
+
+
 make_calls(ListOfCalls) ->
     Chain = setup_chain(),
-    [{lists:flatten(io_lib:format("call(~p,~p,~p)->~p", [C,F,A,R])),
+    [{lists:flatten(io_lib:format("call(~p,~p,~p)->~p~n~p : ~p", [C,F,A,R,
+                                                             aefa_data:encode(A),
+                                                             aefa_encoding:serialize(aefa_data:encode(A))])),
       fun() ->
-              Call = make_call(C,F,A),
+              FateArgs = aefa_encoding:serialize(aefa_data:encode(A)),
+              FateRes = aefa_data:encode(R),
+              Call = make_call(C,F,FateArgs),
               #{accumulator := Res,
                 trace := Trace} = aefa_fate:run(Call, Chain),
-              ?assertEqual({R, Trace}, {Res, Trace})
+              ?assertEqual({FateRes, Trace}, {Res, Trace})
 
       end}
      || {C,F,A,R} <- ListOfCalls].
@@ -108,6 +116,18 @@ memory_restore() ->
             ]
     ].
 
+tuple() ->
+    [ {<<"tuple">>, F, A, R} ||
+        {F,A,R} <-
+            [ {<<"make_2tuple">>, [1, 2], {1, 2}}
+            ,  {<<"make_0tuple">>, [], {}}
+            ,  {<<"make_5tuple">>, [1, 2, 3, 4, 5], {1, 2, 3, 4, 5}}
+            ,  { <<"element1">>, [1, 2], 2}
+            ,  { <<"element">>, [{1, 2}, 0], 1}
+            ]
+    ].
+
+
 
 make_call(Contract, Function, Arguments) ->
     #{ contract  => Contract
@@ -166,7 +186,7 @@ setup_contracts() ->
            ]
      , <<"remote">> =>
            [ {<<"add_five">>, {[integer], integer},
-              [{0, [{add_a_i_r, 5, {arg, 0}}
+              [{0, [{add, {stack, 0}, {immediate, 5}, {arg, 0}}
                     , return]}]
              }
            ]
@@ -214,27 +234,27 @@ setup_contracts() ->
      , <<"arith">> =>
            [ {<<"add">>
              , {[integer, integer], integer}
-             , [ {0, [ {add_a_r_r, {arg, 0}, {arg, 1}}
+             , [ {0, [ {add, {stack, 0}, {arg, 0}, {arg, 1}}
                      , return]}]}
            ,  {<<"sub">>
               , {[integer, integer], integer}
-              , [ {0, [ {sub_a_r_r, {arg, 0}, {arg, 1}}
+              , [ {0, [ {sub, {stack, 0}, {arg, 0}, {arg, 1}}
                       , return]}]}
            ,  {<<"mul">>
               , {[integer, integer], integer}
-              , [ {0, [ {mul_a_r_r, {arg, 0}, {arg, 1}}
+              , [ {0, [ {mul, {stack, 0}, {arg, 0}, {arg, 1}}
                       , return]}]}
            ,  {<<"div">>
               , {[integer, integer], integer}
-              , [ {0, [ {div_a_r_r, {arg, 0}, {arg, 1}}
+              , [ {0, [ {'div',  {stack, 0}, {arg, 0}, {arg, 1}}
                       , return]}]}
            ,  {<<"mod">>
               , {[integer, integer], integer}
-              , [ {0, [ {mod_a_r_r, {arg, 0}, {arg, 1}}
+              , [ {0, [ {mod, {stack, 0}, {arg, 0}, {arg, 1}}
                       , return]}]}
            ,  {<<"pow">>
               , {[integer, integer], integer}
-              , [ {0, [ {pow_a_r_r, {arg, 0}, {arg, 1}}
+              , [ {0, [ {pow, {stack, 0}, {arg, 0}, {arg, 1}}
                       , return]}]}
            ]
      , <<"jumpif">> =>
@@ -271,7 +291,7 @@ setup_contracts() ->
              , {[integer, integer], integer}
              , [ {0, [ {store, {var, 1}, {arg, 0}}
                      , {store, {var, 2}, {arg, 1}}
-                     , {add_r_r_r, {var, 3}, {var, 1}, {var, 2}}
+                     , {add, {var, 3}, {var, 1}, {var, 2}}
                      , {push, {var, 3}}
                      , return
                      ]}
@@ -279,7 +299,7 @@ setup_contracts() ->
            , {<<"dest_add_imm">>
              , {[integer], integer}
              , [ {0, [ {store, {var, 1}, {arg, 0}}
-                     , {add_r_r_r, {var, 3}, {var, 1}, {immediate, 2}}
+                     , {add, {var, 3}, {var, 1}, {immediate, 2}}
                      , {push, {var, 3}}
                      , return
                      ]}
@@ -288,10 +308,48 @@ setup_contracts() ->
              , {[integer, integer], integer}
              , [ {0, [ {store, {var, 1}, {arg, 0}}
                      , {push, {arg, 1}}
-                     , {add_r_r_r, {var, 3}, {var, 1}, {stack, 0}}
+                     , {add, {var, 3}, {var, 1}, {stack, 0}}
                      , {push, {var, 3}}
                      , return
                      ]}
+               ]}
+           ]
+     , <<"tuple">> =>
+           [ {<<"make_0tuple">>
+             , {[], {tuple, []}}
+             , [ {0, [ {make_tuple, 0}
+                     , return]}
+               ]}
+           , {<<"make_2tuple">>
+             , {[integer, integer], {tuple, [integer, integer]}}
+             , [ {0, [ {push, {arg, 0}}
+                     , {push, {arg, 1}}
+                     , {make_tuple, 2}
+                     ,  return]}
+               ]}
+           , {<<"make_5tuple">>
+             , {[integer, integer, integer, integer, integer],
+                {tuple, [integer, integer, integer, integer, integer]}}
+             , [ {0, [ {push, {arg, 0}}
+                     , {push, {arg, 1}}
+                     , {push, {arg, 2}}
+                     , {push, {arg, 3}}
+                     , {push, {arg, 4}}
+                     , {make_tuple, 5}
+                     ,  return]}
+               ]}
+           , {<<"element1">>
+             , {[integer, integer], integer}
+             , [ {0, [ {push, {arg, 0}}
+                     , {push, {arg, 1}}
+                     , {make_tuple, 2}
+                     , {element, integer, {stack, 0}, {immediate, 1}, {stack, 0}}
+                     , return]}
+               ]}
+           , {<<"element">>
+             , {[{tuple, [integer, integer]}, integer], integer}
+             , [ {0, [ {element, integer, {stack, 0}, {arg, 1}, {arg, 0}}
+                     , return]}
                ]}
            ]
 

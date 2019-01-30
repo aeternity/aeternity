@@ -48,6 +48,9 @@
         , make_address/1
         , make_bits/1
         , make_unit/0
+        , tuple_to_list/1
+        , decode/1
+        , encode/1
         ]).
 -export([format/1]).
 
@@ -72,6 +75,35 @@ make_variant(Tag, Values) when is_integer(Tag)
                                , is_tuple(Values) ->
     ?FATE_VARIANT(Tag, Values).
 
+tuple_to_list(?FATE_TUPLE(T)) -> erlang:tuple_to_list(T).
+
+%% Encode is a convinience function for testing, encoding an Erlang term
+%% to a Fate term, but it can not distinguish between e.g. 32-byte strings
+%% and addresses. Use the make_X functions instead.
+encode(Term) when is_integer(Term) -> make_integer(Term);
+encode(Term) when is_boolean(Term) -> make_boolean(Term); 
+encode(Term) when is_list(Term) -> make_list([encode(E) || E <- Term]);
+encode(Term) when is_tuple(Term) ->
+    make_tuple(list_to_tuple([encode(E) || E <- erlang:tuple_to_list(Term)]));
+encode(Term) when is_map(Term) -> 
+    make_map(maps:from_list([{encode(K), encode(V)} || {K,V} <- maps:to_list(Term)]));
+%% TODO: this breaks down for 32 bytes strings. 
+encode(Term) when is_binary(Term), size(Term) =:= 32 -> make_address(Term);
+encode(Term) when is_binary(Term) -> make_string(Term). 
+    
+
+decode(I) when ?IS_FATE_INTEGER(I) -> I;
+decode(?FATE_TRUE)  -> true;
+decode(?FATE_FALSE) -> false;
+decode(L) when ?IS_FATE_LIST(L) -> [decode(E) || E <- L];
+decode(?FATE_TUPLE(T)) -> erlang:list_to_tuple([decode(E) || E <- T]);
+decode(S) when ?IS_FATE_STRING(S) -> binary_to_list(S);
+decode(M) when ?IS_FATE_MAP(M) ->
+    maps:from_list([{decode(K), decode(V)} || {K, V} <- maps:to_list(M)]);
+decode(?FATE_ADDRESS(Address)) -> Address.
+
+    
+
 -spec format(fate_type()) -> iolist().
 format(I) when ?IS_FATE_INTEGER(I) -> integer_to_list(?MAKE_FATE_INTEGER(I));
 format(?FATE_VOID) -> "void";
@@ -81,11 +113,11 @@ format(?FATE_NIL) -> "[]";
 format(L) when ?IS_FATE_LIST(L) -> format_list(?FATE_LIST_VALUE(L));
 format(?FATE_UNIT) -> "unit";
 format(?FATE_TUPLE(T)) ->
-    "{ " ++ [format(E) ++ " " || E <- tuple_to_list(T)] ++ "}";
+    "{ " ++ [format(E) ++ " " || E <- erlang:tuple_to_list(T)] ++ "}";
 format(S) when ?IS_FATE_STRING(S) -> [S];
 format(?FATE_VARIANT(Tag, T)) ->
     "( " ++ integer_to_list(Tag) ++ ", "
-        ++ [format(E) ++ " " || E <- tuple_to_list(T)]
+        ++ [format(E) ++ " " || E <- erlang:tuple_to_list(T)]
         ++ " )";
 format(M) when ?IS_FATE_MAP(M) ->
     "#{ "

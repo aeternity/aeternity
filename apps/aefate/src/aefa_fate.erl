@@ -94,50 +94,22 @@ eval(inc_a_1_a, EngineState) ->
 eval({inc_a_1_r, Name}, EngineState) ->
     {next, un_op(inc, {{stack, 0}, Name}, EngineState)};
 
-eval({add_a_i_a, X}, EngineState) ->
-    {next, bin_op(add, {{stack, 0}, {immediate, X}, {stack, 0}}, EngineState)};
-eval({add_a_i_r, X, Name}, EngineState) ->
-    {next, bin_op(add, {{stack, 0}, {immediate, X}, Name}, EngineState)};
-eval(add_a_a_a, EngineState) ->
-    {next, bin_op(add, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
-eval({add_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_op(add, {{stack, 0}, Left, Right}, EngineState)};
-eval({add_r_r_r, Dest, Left, Right}, EngineState) ->
+eval({add, Dest, Left, Right}, EngineState) ->
     {next, bin_op(add, {Dest, Left, Right}, EngineState)};
 
-eval(sub_a_a_a, EngineState) ->
-    {next, bin_op(sub, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
-eval({sub_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_op(sub, {{stack, 0}, Left, Right}, EngineState)};
-eval({sub_r_r_r, Dest, Left, Right}, EngineState) ->
+eval({sub, Dest, Left, Right}, EngineState) ->
     {next, bin_op(sub, {Dest, Left, Right}, EngineState)};
 
-eval(mul_a_a_a, EngineState) ->
-    {next, bin_op(mul, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
-eval({mul_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_op(mul, {{stack, 0}, Left, Right}, EngineState)};
-eval({mul_r_r_r, Dest, Left, Right}, EngineState) ->
+eval({mul, Dest, Left, Right}, EngineState) ->
     {next, bin_op(mul, {Dest, Left, Right}, EngineState)};
 
-eval(div_a_a_a, EngineState) ->
-    {next, bin_op('div', {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
-eval({div_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_op('div', {{stack, 0}, Left, Right}, EngineState)};
-eval({div_r_r_r, Dest, Left, Right}, EngineState) ->
+eval({'div', Dest, Left, Right}, EngineState) ->
     {next, bin_op('div', {Dest, Left, Right}, EngineState)};
 
-eval(mod_a_a_a, EngineState) ->
-    {next, bin_op(mod, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
-eval({mod_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_op(mod, {{stack, 0}, Left, Right}, EngineState)};
-eval({mod_r_r_r, Dest, Left, Right}, EngineState) ->
+eval({mod, Dest, Left, Right}, EngineState) ->
     {next, bin_op(mod, {Dest, Left, Right}, EngineState)};
 
-eval(pow_a_a_a, EngineState) ->
-    {next, bin_op(pow, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
-eval({pow_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_op(pow, {{stack, 0}, Left, Right}, EngineState)};
-eval({pow_r_r_r, Dest, Left, Right}, EngineState) ->
+eval({pow, Dest, Left, Right}, EngineState) ->
     {next, bin_op(pow, {Dest, Left, Right}, EngineState)};
 
 
@@ -222,6 +194,23 @@ eval(not_a_a, EngineState) ->
 eval({not_a_r, Name}, EngineState) ->
     {next, un_op('not', {{stack, 0}, Name}, EngineState)};
 
+
+%% ------------------------------------------------------
+%% Tuple instructions
+%% ------------------------------------------------------
+%% Make tuple only takes a fixed size.
+%% NOTE: There is no type checking on the arguments on the stack. 
+eval({make_tuple, Size}, EngineState) ->
+    if is_integer(Size) andalso (Size >= 0) ->
+            {next, make_tuple(Size, EngineState)};
+       true -> throw({error, {invalid_tuple_size, Size}})
+    end;
+%% (get) Element takes a type and two named arguments and stores
+%% the element at position 'which' of the 'Tuple' in 'Dest'.
+eval({element, Type, Dest, Which, Tuple}, EngineState) ->
+    {next, tuple_element(Type, Dest, Which, Tuple, EngineState)};
+
+
 %% ------------------------------------------------------
 %% Stack instructions
 %% ------------------------------------------------------
@@ -251,7 +240,8 @@ eval(nop, EngineState) ->
 
 setup_engine(#{ contract := Contract
               , function := Function
-              , arguments := Arguments}, Chain) ->
+              , arguments := SerializedArguments}, Chain) ->
+    Arguments = aefa_encoding:deserialize(SerializedArguments),
     ES1 = new_engine_state(Chain),
     ES2 = set_function(Contract, Function, ES1),
     ES3 = push_arguments(Arguments, ES2),
@@ -337,6 +327,16 @@ check_arg_types([T|Ts], [A|As]) ->
         false -> {error, T, A}
     end.
 
+check_all_types([], []) -> true;
+check_all_types([T|Ts], [A|As]) ->
+    check_type(T, A) andalso  check_all_types(Ts, As).
+
+check_same_type(_, []) -> true;
+check_same_type(T, [A|As]) ->
+    check_type(T, A) andalso check_same_type(T, As).
+
+
+
 bind_args(N, _, [], Mem, EngineState) ->
     new_env(Mem, drop(N, EngineState));
 bind_args(N, [Arg|Args], [Type|Types], Mem, EngineState) ->
@@ -345,7 +345,10 @@ bind_args(N, [Arg|Args], [Type|Types], Mem, EngineState) ->
 %% TODO: Add types (and tests).
 check_type(integer, I) when ?IS_FATE_INTEGER(I) -> true;
 check_type(boolean, B) when ?IS_FATE_BOOLEAN(B) -> true;
-check_type({list,_ET}, L) when ?IS_FATE_LIST(L) -> true; %% TODO: check element type
+check_type({list, ET}, L) when ?IS_FATE_LIST(L) -> 
+    check_same_type(ET, L);
+check_type({tuple, Elements}, T) when ?IS_FATE_TUPLE(T) -> 
+    check_all_types(Elements, aefa_data:tuple_to_list(T));
 check_type(_T, _V) -> false.
 
 type(I) when ?IS_FATE_INTEGER(I) -> integer;
@@ -404,16 +407,37 @@ store({arg, N}, _, _ES) ->
 
     
 
-push_int(I,
-         #{ accumulator := ?FATE_VOID
-          , accumulator_stack := [] } = ES) when ?IS_FATE_INTEGER(I) ->
-    ES#{ accumulator => I
-       , accumulator_stack => []};
-push_int(I,
-         #{ accumulator := X
-          , accumulator_stack := Stack } = ES) when ?IS_FATE_INTEGER(I) ->
-    ES#{ accumulator => I
-       , accumulator_stack => [X|Stack]}.
+push_int(I, ES) when ?IS_FATE_INTEGER(I) -> push(I, ES).
+
+
+
+
+make_tuple(Size, ES) ->
+    {Elements, ES2} = pop_n(Size, ES),
+    Tuple = list_to_tuple(Elements),
+    FateTuple = aefa_data:make_tuple(Tuple),
+    push(FateTuple, ES2).
+
+
+tuple_element(Type, To, Which, TupleArg, ES) ->
+    {Index, ES1} = get_op_arg(Which, ES),
+    {FateTuple, ES2} = get_op_arg(TupleArg, ES1),
+    case check_type(integer, Index) andalso ?IS_FATE_TUPLE(FateTuple) of
+        false -> throw({error, {bad_arguments_to_element, Index, FateTuple}});
+        true ->
+            ?FATE_TUPLE(Tuple) = FateTuple,
+            case size(Tuple) > Index of
+                true ->
+                    V = element(Index+1, Tuple),
+                    case check_type(Type, V) of
+                        true -> store(To, V, ES2);
+                        false -> throw({error, {bad_element_type, Type, V}})
+                    end;
+                false ->
+                    throw({error, {element_index_out_of_bounds, Index}})
+            end
+    end.
+
 
 op(get, A) ->
     A;
@@ -524,6 +548,13 @@ pop(#{ accumulator := X, accumulator_stack := [V|Stack]} = ES) ->
            , accumulator_stack := Stack
            }}.
 
+pop_n(0, ES) -> {[], ES};
+pop_n(N, ES) -> 
+    {Values, ES1} = pop_n(N-1, ES),
+    {Value, ES2} = pop(ES1),
+    {[Value | Values], ES2}.
+    
+
 dup(#{ accumulator := X, accumulator_stack := Stack} = ES) ->
     ES#{ accumulator => X
        , accumulator_stack := [X|Stack]}.
@@ -534,6 +565,16 @@ drop(N, #{ accumulator := _, accumulator_stack := [V|Stack]} = ES) ->
 drop(N, #{ accumulator := _, accumulator_stack := []} = ES) ->
     drop(N-1, ES#{ accumulator => ?FATE_VOID, accumulator_stack => []}).
 
+push(V,
+     #{ accumulator := ?FATE_VOID
+      , accumulator_stack := [] } = ES) ->
+    ES#{ accumulator => V
+       , accumulator_stack => []};
+push(V,
+     #{ accumulator := X
+      , accumulator_stack := Stack } = ES) ->
+    ES#{ accumulator => V
+       , accumulator_stack => [X|Stack]}.
 
 
 
