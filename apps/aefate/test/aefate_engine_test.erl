@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc Basic tests for Fate engine
+%%%  make TEST=aefate_engine_test eunit
 %%% @end
 %%%-------------------------------------------------------------------
 
@@ -33,6 +34,9 @@ memory_restore_test_() ->
 
 tuple_test_() ->
     make_calls(tuple()).
+
+bits_test_() ->
+    make_calls(bits()).
 
 
 make_calls(ListOfCalls) ->
@@ -124,6 +128,23 @@ tuple() ->
             ,  {<<"make_5tuple">>, [1, 2, 3, 4, 5], {1, 2, 3, 4, 5}}
             ,  { <<"element1">>, [1, 2], 2}
             ,  { <<"element">>, [{1, 2}, 0], 1}
+            ]
+    ].
+
+
+bits() ->
+    [ {<<"bits">>, F, A, R} ||
+        {F,A,R} <-
+            [ {<<"all">>, [], {bits, -1}}
+            , {<<"none">>, [], {bits, 0}}
+            , {<<"all_n">>, [4], {bits, 15}}
+            , {<<"set">>, [3], {bits, 8}}
+            , {<<"clear">>, [0], {bits, -2}}
+            , {<<"test">>, [{bits, 15}, 1], true}
+            , {<<"sum">>, [{bits,15}], 4}
+            , {<<"union">>, [{bits,1}, {bits, 2}], {bits, 3}}
+            , {<<"intersection">>, [{bits,15}, {bits, 2}], {bits, 2}}
+            , {<<"difference">>, [{bits,15}, {bits, 2}], {bits, 13}}
             ]
     ].
 
@@ -351,6 +372,51 @@ setup_contracts() ->
              , [ {0, [ {element, integer, {stack, 0}, {arg, 1}, {arg, 0}}
                      , return]}
                ]}
+           ]
+     , <<"bits">> =>
+           [ {<<"all">>
+             , {[], bits}
+             , [ {0, [ bits_all
+                     , return]}]}
+           , {<<"all_n">>
+             , {[integer], bits}
+             , [ {0, [ {bits_all_n, {stack, 0}, {arg, 0}}
+                     , return]}]}
+           ,  {<<"none">>
+              , {[], bits}
+              , [ {0, [ bits_none
+                      , return]}]}
+           ,  {<<"set">>
+              , {[integer], bits}
+              , [ {0, [ {bits_none, {var, 1}}
+                      , {bits_set, {stack, 0}, {var, 1}, {arg, 0}}
+                      , return]}]}
+           ,  {<<"clear">>
+              , {[integer], bits}
+              , [ {0, [ {bits_all, {var, 1}}
+                      , {bits_clear, {stack, 0}, {var, 1}, {arg, 0}}
+                      , return]}]}
+           ,  {<<"test">>
+              , {[bits, integer], boolean}
+              , [ {0, [ {bits_test, {stack, 0}, {arg, 0}, {arg, 1}}
+                      , return]}]}
+           ,  {<<"sum">>
+              , {[bits], integer}
+              , [ {0, [ {bits_sum, {stack, 0}, {arg, 0}}
+                      , return]}]}
+           ,  {<<"union">>
+              , {[bits, bits], bits}
+              , [ {0, [ {bits_union, {stack, 0}, {arg, 0}, {arg, 1}}
+                      , return]}]}
+           ,  {<<"intersection">>
+              , {[bits, bits], bits}
+              , [ {0, [ {bits_intersection, {stack, 0}, {arg, 0}, {arg, 1}}
+                      , return]}]}
+           ,  {<<"difference">>
+              , {[bits, bits], bits}
+              , [ {0, [ {bits_difference, {stack, 0}, {arg, 0}, {arg, 1}}
+                      , return]}]}
+
            ]
 
        }.
