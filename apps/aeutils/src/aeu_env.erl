@@ -311,7 +311,8 @@ search_default_config() ->
     search_config(Dirs, "aeternity.{json,yaml}").
 
 search_deprecated_config() ->
-    Dirs = [filename:join([os:getenv("HOME"), ".epoch", "epoch"])],
+    Dirs = [filename:join([os:getenv("HOME"), ".epoch", "epoch"]),
+            setup:home()],
     search_config(Dirs, "epoch.{json,yaml}").
 
 search_config(Dirs, FileWildcard) ->
