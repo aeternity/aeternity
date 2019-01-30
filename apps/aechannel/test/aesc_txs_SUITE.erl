@@ -644,7 +644,7 @@ close_solo_invalid_state_hash(Cfg) ->
     test_both_invalid_poi_hash(Cfg, fun close_solo_/2).
 
 close_solo_older_payload(Cfg) ->
-    test_both_old_round(Cfg, fun close_solo_/2).
+    test_both_old_round(Cfg, fun close_solo_/2, #{}, old_round).
 
 close_solo_can_not_replace_create(Cfg) ->
     test_both_can_not_replace_create(Cfg, fun close_solo_/2).
@@ -1137,7 +1137,7 @@ deposit_closing(Cfg) ->
     test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
 
 deposit_older_round(Cfg) ->
-    test_both_old_round(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
+    test_both_old_round(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}, old_round).
 
 deposit_can_not_replace_create(Cfg) ->
     test_both_can_not_replace_create(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
@@ -1223,7 +1223,7 @@ withdraw_closing(Cfg) ->
     test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
 
 withdraw_older_round(Cfg) ->
-    test_both_old_round(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
+    test_both_old_round(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}, old_round).
 
 withdraw_can_not_replace_create(Cfg) ->
     test_both_can_not_replace_create(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
@@ -1612,7 +1612,7 @@ snapshot_payload_not_co_signed(Cfg) ->
 
 % snapshot_tx calls with a payload from another channel are rejected
 snapshot_old_payload(Cfg) ->
-    test_both_old_round(Cfg, fun snapshot_solo_/2).
+    test_both_old_round(Cfg, fun snapshot_solo_/2, #{}, old_round).
 
 snapshot_can_not_replace_create(Cfg) ->
     test_both_can_not_replace_create(Cfg, fun snapshot_solo_/2).
@@ -2906,7 +2906,7 @@ fp_can_not_replace_create(Cfg) ->
                [positive(fun create_channel_/2),
                 create_contract_poi_and_payload(_Round = 1, 5, Owner),
                 negative_force_progress_sequence(Round, Forcer,
-                                                 old_round)])
+                                                 same_round)])
         end,
     [Test(Owner, Forcer) ||  Owner       <- ?ROLES,
                              Forcer      <- ?ROLES],
@@ -4817,6 +4817,9 @@ test_both_old_round(Cfg, Fun) ->
     test_both_old_round(Cfg, Fun, #{}).
 
 test_both_old_round(Cfg, Fun, Props) ->
+    test_both_old_round(Cfg, Fun, Props, same_round).
+
+test_both_old_round(Cfg, Fun, Props, Reason) ->
     Test0 =
         fun(First, Second, R1, R2) ->
             run(Props#{cfg => Cfg},
@@ -4828,7 +4831,7 @@ test_both_old_round(Cfg, Fun, Props) ->
                 positive(fun deposit_/2),
                 set_prop(round, R2),
                 set_from(Second),
-                negative(Fun, {error, old_round})])
+                negative(Fun, {error, Reason})])
         end,
     Test =
         fun(F, S) ->
@@ -4851,7 +4854,7 @@ test_both_can_not_replace_create(Cfg, Fun, Props) ->
                 set_from(Poster),
                 set_prop(amount, 1),
                 set_prop(fee, 50000),
-                negative(Fun, {error, old_round})])
+                negative(Fun, {error, same_round})])
         end,
     [Test(Poster) || Poster <- ?ROLES],
     ok.
