@@ -88,13 +88,13 @@
 %%% Behaviour
 %%%=============================================================================
 
--callback generate(Data :: aec_hash:hashable(), Difficulty :: aec_pow:sci_int(),
+-callback generate(Data :: aec_hash:hashable(), Target :: aec_pow:sci_int(),
                    Nonce :: aec_pow:nonce(), MinerConfig :: aec_pow:miner_config(),
                    MinerInstance :: aec_pow:miner_instance()) ->
     aec_pow:pow_result().
 
 -callback verify(Data :: aec_hash:hashable(), Nonce :: aec_pow:nonce(),
-                 Evd :: aec_pow:pow_evidence(), Difficulty :: aec_pow:sci_int()) ->
+                 Evd :: aec_pow:pow_evidence(), Target :: aec_pow:sci_int()) ->
     boolean().
 
 %%%=============================================================================
