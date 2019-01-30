@@ -3479,10 +3479,7 @@ sophia_safe_math() ->
     <<_:1, Large:255>>   = list_to_binary(lists:duplicate(32, $o)),
 
     %% Does an arbitrary precision number fit in a signed 256 bit integer?
-    IsSafe = fun(_) -> true end,
-    %% IsSafe = fun(X) -> <<Y:256/signed-integer>> = <<X:256/signed-integer>>, X == Y end,
-
-    Fix = fun(Z) -> <<Y:256/signed-integer>> = <<Z:256/unsigned-integer>>, Y end,
+    IsSafe = fun(X) -> <<Y:256/signed-integer>> = <<X:256/signed-integer>>, X == Y end,
 
     %% Reference implementation of ^
     ErrorVal = 1 bsl 260,
@@ -3505,7 +3502,7 @@ sophia_safe_math() ->
         Z   = Op(X, Y),
         Res = ?call(call_contract, Acc, C, Fun, signed_word, {X, Y}),
         Exp = case IsSafe(Z) of
-                true  -> Fix(Z);                         %% If safe we should get back the right answer
+                true  -> Z;                         %% If safe we should get back the right answer
                 false -> {error, <<"arithmetic_error">>}  %% otherwise out of gas (no wrap-arounds!)
               end,
         ?assertMatch({_, _, _, {A, A}}, {Fun, X, Y, {Exp, Res}})
@@ -3521,13 +3518,12 @@ sophia_safe_math_old() ->
     <<Medium:17/unit:8>> = list_to_binary(lists:duplicate(17, $x)),
     <<_:1, Large:255>>   = list_to_binary(lists:duplicate(32, $o)),
 
-    Signed = fun(Z) -> <<Y:256/signed-integer>> = <<Z:256/unsigned-integer>>, Y end,
+    Signed   = fun(Z) -> <<Y:256/signed-integer>> = <<Z:256/unsigned-integer>>, Y end,
+    UnSigned = fun(Z) -> <<Y:256/unsigned-integer>> = <<Z:256/signed-integer>>, Y end,
 
     %% Reference implementation of ^
-    Mask = fun(X) -> X rem (1 bsl 512 - 1 bsl 263 - 17) end,
-    Pow = fun Pow(1, _, _) -> 1;
-              Pow(_, B, _) when B < 0 -> 0;
-              Pow(_, 0, R) -> R;                %% mask to not blow up
+    Mask = fun(X) -> X band (1 bsl 256 - 1) end,
+    Pow = fun Pow(_, 0, R) -> R;                %% mask to not blow up
               Pow(A, B, R) when B rem 2 == 0 -> Pow(Mask(A * A), B bsr 1, R);
               Pow(A, B, R)                   -> Pow(Mask(A * A), B bsr 1, R * A)
           end,
@@ -3538,7 +3534,7 @@ sophia_safe_math_old() ->
                     Z <- [X, -X], Z < 1 bsl 255 ],
     Ops    = [{add, fun erlang:'+'/2}, {sub,   fun erlang:'-'/2},
               {mul, fun erlang:'*'/2}, {'div', fun erlang:'div'/2},
-              {pow, fun(X, Y) -> Pow(X, Y, 1) end}],
+              {pow, fun(X, Y) -> Pow(X, UnSigned(Y), 1) end}],
 
     [ begin
         Exp = Signed(Op(X, Y)),
