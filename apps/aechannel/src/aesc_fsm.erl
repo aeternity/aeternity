@@ -1340,7 +1340,8 @@ handle_call_(St, close_solo, From, D) ->
             D1 = request_signing(close_solo_tx, CloseSoloTx, D),
             next_state(awaiting_signature, D1, [{reply, From, ok}])
     end;
-handle_call_(_, {strict_sig_checks, Strict}, From, #data{} = D) ->
+handle_call_(_, {strict_sig_checks, Strict}, From, #data{} = D) when
+        is_boolean(Strict) ->
     keep_state(D#data{check_signatures = Strict}, [{reply, From, ok}]);
 handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
     postpone(D);
@@ -1384,8 +1385,6 @@ handle_common_event_(cast, {?CHANNEL_CLOSING, ChanId} = Msg, _St, _,
             lager:debug("Channel no longer active: ~p", [Error]),
             close(channel_no_longer_active, D)
     end;
-handle_common_event_({call, From}, {strict_sig_checks, Strict}, _, _, #data{} = D) ->
-    keep_state(D#data{check_signatures = Strict}, [{reply, From, ok}]);
 handle_common_event_({call, From}, Req, St, Mode, D) ->
     case Mode of
         error_all ->
@@ -1425,7 +1424,7 @@ error_binary(E) when is_atom(E) ->
     atom_to_binary(E, latin1).
 
 
-terminate(Reason, _State, #data{session = _Session} = Data) ->
+terminate(Reason, _State, Data) ->
     lager:debug("terminate(~p, ~p, _)", [Reason, _State]),
     report(info, {died, Reason}, Data),
     report(debug, {log, win_to_list(Data#data.log)}, Data),
@@ -1917,6 +1916,10 @@ my_account(#data{role = responder, opts = #{responder := R}}) -> R.
 other_account(#data{role = initiator, opts = #{responder := R}}) -> R;
 other_account(#data{role = responder, opts = #{initiator := I}}) -> I.
 
+both_accounts(Data) ->
+    [other_account(Data),
+     my_account(Data)].
+
 send_funding_created_msg(SignedTx, #data{channel_id = Ch,
                                          session    = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
@@ -2013,8 +2016,7 @@ check_deposit_signed_msg(#{ channel_id := ChanId
                           #data{on_chain_id = ChanId} = Data) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case check_type_and_verify_signatures(SignedTx, channel_deposit_tx,
-                                          [other_account(Data),
-                                           my_account(Data)],
+                                          both_accounts(Data),
                                           not_deposit_tx) of
         ok ->
             {ok, SignedTx, log(rcv, ?DEP_SIGNED, Msg, Data)};
@@ -2336,8 +2338,7 @@ check_shutdown_ack_msg(#{data := TxBin} = Msg,
                        #data{latest = {shutdown, MySignedTx}} = D) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case check_type_and_verify_signatures(SignedTx, channel_close_mutual_tx,
-                                          [other_account(D),
-                                           my_account(D)],
+                                          both_accounts(D),
                                           not_close_mutual_tx) of
         ok ->
             check_shutdown_msg_(SignedTx, MySignedTx, Msg, D);
@@ -2755,5 +2756,5 @@ pubkeys(Who, D) ->
     case Who of
         me -> [my_account(D)];
         other_participant -> [other_account(D)];
-        both -> [my_account(D), other_account(D)]
+        both -> both_accounts(D)
     end.
