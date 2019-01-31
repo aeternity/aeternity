@@ -1,10 +1,12 @@
 # About this release
 
 [This][this-release] is a maintenance release.
-It:
-* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
+It contains stability improvements so all users are encouraged to upgrade.
 
-TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+It:
+* Makes the cleanup of the UPnP/NAT-PMP port mapping when the operator stops the node more robust.
+* Enhances the stability of the Noise-based connections used for syncing and gossiping blocks.
+* Enhances the stability of state channels.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v1.4.0
 
