@@ -655,6 +655,7 @@ channel_create({InitiatorPubkey, InitiatorAmount,
                 StateHash, LockPeriod, Nonce}, S) ->
     assert_channel_reserve_amount(ReserveAmount, InitiatorAmount,
                                   ResponderAmount),
+    assert_not_equal(InitiatorPubkey, ResponderPubkey, inititator_is_responder),
     Channel = aesc_channels:new(InitiatorPubkey, InitiatorAmount,
                                 ResponderPubkey, ResponderAmount,
                                 ReserveAmount, DelegatePubkeys,
@@ -969,6 +970,9 @@ specialize_account(RecipientID) ->
 
 assert(true,_Error) -> ok;
 assert(false, Error) -> runtime_error(Error).
+
+assert_not_equal(X, X, Error) -> runtime_error(Error);
+assert_not_equal(_, _, _) -> ok.
 
 assert_account_nonce(Account, Nonce) ->
     case aec_accounts:nonce(Account) of
