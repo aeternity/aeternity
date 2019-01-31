@@ -26,12 +26,17 @@
         , next_nonce/2
         , trees/1
         , compile_contract/1
+        , compile_contract/2
         , assert_state_equal/2
         , get_oracle_queries/2
         , dummy_bytecode/0
         ]).
 
 -include_lib("apps/aecontract/src/aecontract.hrl").
+
+-define(SOPHIA_ROMA, 1).
+-define(SOPHIA_MINERVA, 2).
+-define(CURRENT_SOPHIA, ?SOPHIA_MINERVA).
 
 %%%===================================================================
 %%% Test state
@@ -196,10 +201,27 @@ set_account(Account, State) ->
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
 compile_contract(File) ->
+    compile_contract(?CURRENT_SOPHIA, File).
+
+compile_contract(Compiler, File) ->
     CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
     FileName = filename:join(CodeDir, File),
-    {ok, ContractBin} = file:read_file(FileName),
-    aect_sophia:compile(ContractBin, <<>>).
+    compile(Compiler, FileName).
+
+compile(?CURRENT_SOPHIA, File) ->
+    {ok, ContractBin} = file:read_file(File),
+    aect_sophia:compile(ContractBin, <<>>);
+compile(?SOPHIA_ROMA, File) ->
+    Compiler = filename:join([code:lib_dir(aecontract), "test", "bin", "aesophia"]),
+    OutFile  = tempfile:name("testcode_", [{ext, ".aeb"}]),
+    Cmd = Compiler ++ " " ++ File ++ " -o " ++ OutFile,
+    Output = os:cmd(Cmd),
+    try
+        {ok, Bin} = file:read_file(OutFile),
+        {ok, aect_sophia:serialize(binary_to_term(Bin))}
+    catch _:_ ->
+        {error, {compiler_error, File, Output}}
+    end.
 
 new_key_pair() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
