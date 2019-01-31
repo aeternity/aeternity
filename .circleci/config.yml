@@ -646,6 +646,18 @@ jobs:
       - DEPLOY_DOWNTIME: 1800 #30M
     steps: *deploy_steps
 
+  deploy_next:
+    <<: *infrastructure_config
+    environment:
+      - DEPLOY_ENV: next
+    steps: *deploy_steps
+
+  deploy_unstable:
+    <<: *infrastructure_config
+    environment:
+      - DEPLOY_ENV: unstable
+    steps: *deploy_steps
+
   upload_packages_osx:
     <<: *infrastructure_config
     steps:
@@ -855,6 +867,20 @@ workflows:
           filters:
             branches:
               only: env/dev2
+
+      - deploy_next:
+          requires:
+            - linux_package
+          filters:
+            branches:
+              only: minerva
+
+      - deploy_unstable:
+          requires:
+            - linux_package
+          filters:
+            branches:
+              only: minerva
 
       - hodl_artefact_upload:
           type: approval
