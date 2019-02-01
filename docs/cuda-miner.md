@@ -19,7 +19,7 @@ Please refer to the NVIDIA documentation for how to [download][cuda-downloads] a
 ### Configuration of the manually built CUDA miner
 
 Once the CUDA Drive is installed, one should change the node configuration to start using the CUDA miner.
-The `mining.cuckoo.miner` section of `~/aeternity/node/epoch.yaml` should be changed to:
+The `mining.cuckoo.miner` section of `~/aeternity/node/aeternity.yaml` should be changed to:
 
 ```yaml
 mining:
@@ -114,7 +114,7 @@ cp priv/bin/cuda29 ~/aeternity/node/lib/aecuckoo-0.1.0/priv/bin
 
 ### Configuration of the manually built CUDA miner
 
-Once the CUDA miner is in place, one should change the node configuration to start using it. The `mining.cuckoo.miner` section of `~/aeternity/node/epoch.yaml` should be changed to:
+Once the CUDA miner is in place, one should change the node configuration to start using it. The `mining.cuckoo.miner` section of `~/aeternity/node/aeternity.yaml` should be changed to:
 
 ```yaml
 mining:

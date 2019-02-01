@@ -6,7 +6,7 @@ services:
     image: aeternity/aeternity:${IMAGE_TAG-latest}
     hostname: node1
     environment:
-      EPOCH_CONFIG: /home/aeternity/aeternity.yaml
+      AETERNITY_CONFIG: /home/aeternity/aeternity.yaml
     command: >
       -aecore expected_mine_rate ${AETERNITY_MINE_RATE:-15000}
     volumes:
@@ -18,7 +18,7 @@ services:
     image: aeternity/aeternity:${IMAGE_TAG-latest}
     hostname: node2
     environment:
-      EPOCH_CONFIG: /home/aeternity/aeternity.yaml
+      AETERNITY_CONFIG: /home/aeternity/aeternity.yaml
     command: >
       -aecore expected_mine_rate ${AETERNITY_MINE_RATE:-15000}
     volumes:
@@ -30,7 +30,7 @@ services:
     image: aeternity/aeternity:${IMAGE_TAG-latest}
     hostname: node3
     environment:
-      EPOCH_CONFIG: /home/aeternity/aeternity.yaml
+      AETERNITY_CONFIG: /home/aeternity/aeternity.yaml
     command: >
       -aecore expected_mine_rate ${AETERNITY_MINE_RATE:-15000}
     volumes:

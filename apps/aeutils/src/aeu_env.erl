@@ -273,8 +273,19 @@ check_config(F) ->
 check_config(F, Schema) ->
     do_read_config(F, Schema, check, silent).
 
+data_dir(Name) when is_atom(Name) ->
+    filename:join([setup:data_dir(), Name]).
+
 config_file() ->
-    case os:getenv("EPOCH_CONFIG") of
+    case default_config_file()  of
+        undefined ->
+            deprecated_config_file();
+        F ->
+            F
+    end.
+
+default_config_file() ->
+    case os:getenv("AETERNITY_CONFIG") of
         false ->
             case setup:get_env(aecore, config) of
                 {ok, F} ->
@@ -286,18 +297,30 @@ config_file() ->
             F
     end.
 
-data_dir(Name) when is_atom(Name) ->
-  filename:join([setup:data_dir(), Name]).
+deprecated_config_file() ->
+    case os:getenv("EPOCH_CONFIG") of
+        false ->
+            search_deprecated_config();
+        F ->
+            F
+    end.
 
 search_default_config() ->
-    Dirs = [filename:join([os:getenv("HOME"), ".epoch", nodename()]),
+    Dirs = [filename:join([os:getenv("HOME"), ".aeternity", "aeternity"]),
             setup:home()],
+    search_config(Dirs, "aeternity.{json,yaml}").
+
+search_deprecated_config() ->
+    Dirs = [filename:join([os:getenv("HOME"), ".epoch", "epoch"]),
+            setup:home()],
+    search_config(Dirs, "epoch.{json,yaml}").
+
+search_config(Dirs, FileWildcard) ->
     lists:foldl(
       fun(D, undefined) ->
-              W = "epoch.{json,yaml}",
-              error_logger:info_msg("Searching for default config file ~s "
-                                    "in directory ~s~n", [W, D]),
-              case filelib:wildcard(W, D) of
+              error_logger:info_msg("Searching for config file ~s "
+                                    "in directory ~s~n", [FileWildcard, D]),
+              case filelib:wildcard(FileWildcard, D) of
                   [] -> undefined;
                   [F|_] -> filename:join(D, F)
               end;
@@ -310,14 +333,6 @@ do_read_config(F, Schema, Action, Mode) ->
         {".yaml", store} -> store(read_yaml(F, Schema, Mode));
         {".json", check} -> check_config_(catch read_json(F, Schema, Mode));
         {".yaml", check} -> check_config_(catch read_yaml(F, Schema, Mode))
-    end.
-
-nodename() ->
-    case node() of
-        nonode@nohost ->
-            [];
-        N ->
-            hd(re:split(atom_to_list(N), "@", [{return,list}]))
     end.
 
 store([Vars0]) ->

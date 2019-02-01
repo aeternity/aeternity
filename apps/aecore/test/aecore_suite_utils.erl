@@ -177,7 +177,7 @@ start_node(N, Config) ->
     cmd("epoch", node_shortcut(N, Config), "bin", ["start"],
         [
          {"ERL_FLAGS", Flags},
-         {"EPOCH_CONFIG", "data/epoch.json"},
+         {"AETERNITY_CONFIG", "data/aeternity.json"},
          {"RUNNER_LOG_DIR","log"},
          {"CODE_LOADING_MODE", "interactive"}
         ]).
@@ -748,7 +748,7 @@ default_config(N, Config) ->
      }.
 
 epoch_config_dir(N, Config) ->
-    filename:join(data_dir(N, Config), "epoch.json").
+    filename:join(data_dir(N, Config), "aeternity.json").
 
 %% dirs
 node_shortcut(N, Config) ->

@@ -1,4 +1,4 @@
-{{#epoch_config}}
+{{#aeternity_config}}
 ---
 peers: {{^peers}}[]{{/peers}}
 {{#peers}}
@@ -7,15 +7,17 @@ peers: {{^peers}}[]{{/peers}}
 
 sync:
     port: {{services.sync.port}}
-    ping_interval: 5000
     single_outbound_per_group: false
-
-mempool:
-    invalid_tx_ttl: 3
 
 http:
     external:
         port: {{services.ext_http.port}}
+    internal:
+        listen_address: 0.0.0.0
+        port: {{services.int_http.port}}
+    endpoints:
+        debug: true
+        dev: true
 
 keys:
     peer_password: {{key_password}}
@@ -25,9 +27,9 @@ chain:
     persist: true
 
 mining:
+    autostart: true
     beneficiary: {{config.beneficiary}}
     beneficiary_reward_delay: 2
-    autostart: true
     micro_block_cycle: 100
     expected_mine_rate: 1000
     cuckoo:
@@ -37,4 +39,4 @@ mining:
 
 fork_management:
     network_id: "ae_system_test"
-{{/epoch_config}}
+{{/aeternity_config}}
