@@ -26,7 +26,8 @@
          set_contracts/2,
          set_ns/2,
          set_oracles/2,
-         gc_cache/2
+         gc_cache/2,
+         sum_total_coin/1
         ]).
 
 -export([ deserialize_from_db/1
@@ -248,6 +249,93 @@ contracts(Trees) ->
 -spec set_contracts(trees(), aect_state_tree:tree()) -> trees().
 set_contracts(Trees, Contracts) ->
     Trees#trees{contracts = Contracts}.
+
+-spec sum_total_coin(trees()) -> #{ 'accounts'         => non_neg_integer()
+                                  , 'contracts'        => non_neg_integer()
+                                  , 'contract_oracles' => non_neg_integer()
+                                  , 'oracles'          => non_neg_integer()
+                                  , 'oracle_queries'   => non_neg_integer()
+                                  , 'locked'           => non_neg_integer()
+                                  , 'total'            => non_neg_integer()
+                                  }.
+sum_total_coin(Trees) ->
+    Accounts  = accounts(Trees),
+    Channels  = channels(Trees),
+    Contracts = contracts(Trees),
+    Oracles   = oracles(Trees),
+    LockAccount   = aec_governance:locked_coins_holder_account(),
+    FirstAccount  = aeu_mtrees:iterator_next(aeu_mtrees:iterator(Accounts)),
+    FirstChannel  = aeu_mtrees:iterator_next(aeu_mtrees:iterator(Channels)),
+    ChannelAmount = sum_channels(FirstChannel, 0),
+    Sum = #{ 'accounts'         => 0
+           , 'channels'         => ChannelAmount
+           , 'contracts'        => 0
+           , 'contract_oracles' => 0
+           , 'oracles'          => 0
+           , 'oracle_queries'   => 0
+           , 'locked'           => 0
+           },
+    sum_accounts(FirstAccount, LockAccount, Contracts, Oracles, Sum).
+
+sum_accounts('$end_of_table',_LockAccount,_Contracts,_Oracles, Acc) ->
+    Acc;
+sum_accounts({LockAccount, SerAccount, Iter}, LockAccount, Contracts, Oracles, Acc) ->
+    Account = aec_accounts:deserialize(LockAccount, SerAccount),
+    Balance = aec_accounts:balance(Account),
+    Acc1 = maps:update_with(locked, fun(X) -> X + Balance end, Acc),
+    Next = aeu_mtrees:iterator_next(Iter),
+    sum_accounts(Next, LockAccount, Contracts, Oracles, Acc1);
+sum_accounts({Pubkey, SerAccount, Iter}, LockAccount, Contracts, Oracles, Acc) ->
+    Account = aec_accounts:deserialize(Pubkey, SerAccount),
+    Balance = aec_accounts:balance(Account),
+    {IsContract, Contract} =
+        case aect_state_tree:lookup_contract(Pubkey, Contracts, [no_store]) of
+            none -> {false, undefined};
+            {value, C} -> {true, C}
+        end,
+    IsOracle   = aeo_state_tree:is_oracle(Pubkey, Oracles),
+    Tag = if
+              IsContract and IsOracle -> contract_oracles;
+              IsContract              -> contracts;
+              IsOracle                -> oracles;
+              true                    -> accounts
+          end,
+    Acc1 = maps:update_with(Tag, fun(X) -> X + Balance end, Acc),
+    Acc2 = case IsOracle of
+               true  -> sum_implicit_oracle_query_fees(Pubkey, Oracles, Acc1);
+               false -> Acc1
+           end,
+    Acc3 = case IsContract of
+               true ->
+                   Deposit = aect_contracts:deposit(Contract),
+                   maps:update_with(contracts, fun(X) -> X + Deposit end, Acc2);
+               false ->
+                   Acc2
+           end,
+    Next = aeu_mtrees:iterator_next(Iter),
+    sum_accounts(Next, LockAccount, Contracts, Oracles, Acc3).
+
+sum_implicit_oracle_query_fees(Pubkey, Oracles, Acc) ->
+    Balance = sum_implicit_oracle_query_fees(Pubkey, Oracles, '$first', 0),
+    maps:update_with(oracle_queries, fun(X) -> X + Balance end, Acc).
+
+sum_implicit_oracle_query_fees(Pubkey, Oracles, Last, Acc) ->
+    case aeo_state_tree:get_oracle_queries(Pubkey, Last, open, 10, Oracles) of
+        [] -> Acc;
+        List ->
+            Acc1 = lists:foldl(fun(Query, X) ->
+                                       X + aeo_query:fee(Query)
+                               end, Acc, List),
+            Last1 = aeo_query:id(lists:last(List)),
+            sum_implicit_oracle_query_fees(Pubkey, Oracles, Last1, Acc1)
+    end.
+
+sum_channels('$end_of_table', Acc) ->
+    Acc;
+sum_channels({ChannelPubkey, SerChannel, Iter}, Acc) ->
+    Channel = aesc_channels:deserialize(ChannelPubkey, SerChannel),
+    Acc1 = Acc + aesc_channels:channel_amount(Channel),
+    sum_channels(aeu_mtrees:iterator_next(Iter), Acc1).
 
 %%%=============================================================================
 %%% Serialization for db storage
