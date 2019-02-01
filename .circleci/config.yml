@@ -6,6 +6,9 @@ references:
       - image: aeternity/builder
         user: builder
     working_directory: ~/aeternity
+    environment:
+      OTP_VERSION: 20.3.8
+  container_otp_plt: &container_otp_plt _build/default/rebar3_20.3.8_plt
 
   infrastructure_config: &infrastructure_config
     docker:
@@ -380,10 +383,14 @@ jobs:
       - save_cache:
           key: dialyzer-cache-v2-{{ .Branch }}-{{ .Revision }}
           paths:
-            - _build/default/rebar3_20.2.3_plt
+            - *container_otp_plt
       - run: make dialyzer
       - run: make python-env && make swagger-check
       - run: ./rebar3 xref || true
+      - run:
+          name: Check OTP version (for effective CI caching)
+          # How to retrieve OTP version in installed OTP development system: http://erlang.org/doc/system_principles/versions.html
+          command: test "${OTP_VERSION:?}" = $(cat $(erl -noinput -eval 'io:format("~s", [filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])]), init:stop().'))
       - *fail_notification
 
   rebar_lock_check:
@@ -434,6 +441,9 @@ jobs:
     <<: *container_config
     steps:
       - checkout
+      - add_ssh_keys:
+          fingerprints:
+            - "8b:3c:dd:50:78:e0:3b:a7:39:4e:7d:6e:0c:f9:fd:f6"
       - run:
           name: Deploy API docs
           command: ./deployment/deploy_api_docs.sh

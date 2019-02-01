@@ -28,11 +28,11 @@ if (-NOT ($?)) {
 }
 
 echo ""
-echo "You can find a list of epoch releases at https://github.com/aeternity/epoch/releases"
+echo "You can find a list of Aeternity node releases at https://github.com/aeternity/aeternity/releases"
 echo ""
 
 $myPath = Split-Path -parent $PSCommandPath
-$releaseVersion = Read-Host 'Which epoch release version do you want to install (Format: x.xx.x)?'
+$releaseVersion = Read-Host 'Which Aeternity node release version do you want to install (Format: x.xx.x)?'
 
 echo ""
 echo "NOTE: The following commands are running inside Ubuntu."
@@ -40,7 +40,7 @@ echo ""
 cd $myPath
 bash ./../install.sh $releaseVersion
 
-echo "Congratulations. You can now start the epoch miner by executing the script:"
+echo "Congratulations. You can now start the Aeternity node miner by executing the script:"
 echo ""
 echo "  wsl-run.ps1"
 Pause

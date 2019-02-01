@@ -29,7 +29,10 @@
   {git,"https://github.com/aeternity/enacl.git",
       {ref,"26180f42c0b3a450905d2efd8bc7fd5fd9cece75"}},
   0},
- {<<"enoise">>,{pkg,<<"enoise">>,<<"1.0.1">>},0},
+ {<<"enoise">>,
+  {git,"https://github.com/aeternity/enoise.git",
+      {ref,"1e6ee6703fc401a46fce8f1a400a68734c0a356d"}},
+  0},
  {<<"eper">>,{pkg,<<"eper">>,<<"0.99.1">>},0},
  {<<"exometer_core">>,{pkg,<<"exometer_core">>,<<"1.5.7">>},0},
  {<<"folsom">>,{pkg,<<"folsom">>,<<"0.8.7">>},1},
@@ -64,7 +67,7 @@
   0},
  {<<"nat">>,
   {git,"https://github.com/aeternity/erlang-nat.git",
-      {ref,"caa6ba6c4cc416799d6fe4208c6052517d02a6d6"}},
+      {ref,"dcdfb9cd29900e05b35f60b5ffad727af41ede61"}},
   0},
  {<<"parse_trans">>,{pkg,<<"parse_trans">>,<<"3.3.0">>},1},
  {<<"poolboy">>,{pkg,<<"poolboy">>,<<"1.5.1">>},0},
@@ -92,7 +95,6 @@
 [
 {pkg_hash,[
  {<<"bear">>, <<"16264309AE5D005D03718A5C82641FCC259C9E8F09ADEB6FD79CA4271168656F">>},
- {<<"enoise">>, <<"3CABCCA6D84EA35F740C97308E5A763316FA83AA862AF74265BBD8A1A9D6F453">>},
  {<<"eper">>, <<"A50698B6803B8732AD6575285320999FE73E160A1A9FF7EFCAB6B6F818BD2C1F">>},
  {<<"exometer_core">>, <<"AB97E34A5D69AB14E6AE161DB4CCA5B5E655E635B842F830EE6AB2CBFCFDC30A">>},
  {<<"folsom">>, <<"A885F0AEEE4C84270954C88A55A5A473D6B2C7493E32FFDC5765412DD555A951">>},

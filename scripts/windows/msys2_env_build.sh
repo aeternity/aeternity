@@ -1,6 +1,10 @@
 # Msys2 config
 export MSYS=winsymlinks:nativestrict
 
+if [ "${MSYSTEM}" = "" -o "${MSYSTEM}" = "MSYS" ]; then
+    export MSYSTEM="MINGW64"
+fi
+
 make_winpath()
 {
     P=$1

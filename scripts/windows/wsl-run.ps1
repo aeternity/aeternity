@@ -1,6 +1,6 @@
-echo "This script will run epoch synchronously inside Ubuntu"
+echo "This script will run the Aeternity node synchronously inside Ubuntu"
 Pause
 
-bash -c "cd ~/epoch && ./bin/epoch console"
+bash -c "cd ~/aeternity/node && ./bin/aeternity console"
 
 Pause

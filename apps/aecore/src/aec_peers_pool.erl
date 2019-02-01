@@ -843,7 +843,7 @@ select_order(St, both) ->
 -spec select_peer(state(), millitimestamp(), select_target(),
                   filter_fun() | undefined)
     -> {unavailable, state()}
-     | {selected, peer_id(), state()}
+     | {selected, ext_peer(), state()}
      | {wait, milliseconds(), state()}.
 select_peer(St, Now, Target, ExtFilterFun) ->
     IntFilterFun = wrap_filter_fun(St, ExtFilterFun),
@@ -858,7 +858,7 @@ select_peer(St, Now, Target, ExtFilterFun) ->
 %% Selects a peer using given selection functions.
 -spec select_available_peer(state(), millitimestamp(), [select_fun()],
                             int_filter_fun() | undefined)
-    -> {unavailable, state()} | {selected, peer_id(), state()}.
+    -> {unavailable, state()} | {selected, ext_peer(), state()}.
 select_available_peer(St, _Now, [], _FilterFun) ->
     {unavailable, St};
 select_available_peer(St, Now, [Selector | Rest], FilterFun) ->
@@ -1756,8 +1756,7 @@ lookup_shrink(Lookup) ->
 %% with the value and its new index, otherwise it returns `undefined'.
 %% Needs the state of the random number generator.
 -spec lookup_add(lookup(), term(), term())
-    -> {non_neg_integer(), {non_neg_integer(), term()}, term(), lookup()}
-                           | undefined.
+    -> {non_neg_integer(), {non_neg_integer(), term()} | undefined, term(), lookup()}.
 lookup_add(#lookup{size = 0} = Lookup, RSt, Value) ->
     {0, Lookup2} = lookup_append(Lookup, Value),
     {0, undefined, RSt, Lookup2};

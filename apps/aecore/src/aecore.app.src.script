@@ -1,0 +1,17 @@
+%% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
+IsWindows = case os:type() of {win32, _} -> true; {_, _} -> false end,
+
+FilterRocksDb = fun(Apps) ->
+                   case IsWindows of
+                       false ->
+                           Apps;
+                       true ->
+                           Apps -- [rocksdb, mnesia_rocksdb]
+                   end
+                end,
+
+%% Remove rocksdb related dependencies from app runtime dependencies
+[{application, aecore, AppConfig0}] = CONFIG,
+{applications, Apps0} = lists:keyfind(applications, 1, AppConfig0),
+AppConfig1 = lists:keyreplace(applications, 1, AppConfig0, {applications, FilterRocksDb(Apps0)}),
+[{application, aecore, AppConfig1}].

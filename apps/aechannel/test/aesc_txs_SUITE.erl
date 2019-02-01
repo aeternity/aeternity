@@ -24,6 +24,7 @@
 
 % negative create
 -export([create_missing_account/1,
+         create_same_account/1,
          create_insufficient_funds/1,
          create_wrong_nonce/1,
          create_insufficient_funds_reserve/1,
@@ -222,6 +223,7 @@ groups() ->
      },
      {create_negative, [sequence],
       [create_missing_account,
+       create_same_account,
        create_insufficient_funds,
        create_wrong_nonce,
        create_insufficient_funds_reserve,
@@ -382,6 +384,22 @@ create_missing_account(_Cfg) ->
     {ok, Tx2} = aesc_create_tx:new(TxSpec2),
     {error, account_not_found} = aetx:check(Tx2, Trees, Env),
 
+    ok.
+
+create_same_account(_Cfg) ->
+    {PubKey, S} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
+    Trees = aesc_test_utils:trees(S),
+    Height = 1,
+    Env = aetx_env:tx_env(Height),
+
+    %% Test channel with oneself is not allowed
+    TxSpecI = aesc_test_utils:create_tx_spec(
+                PubKey, PubKey,
+                #{initiator_amount => 100,
+                  channel_reserve => 2,
+                  fee => 20000}, S),
+    {ok, TxI} = aesc_create_tx:new(TxSpecI),
+    {error, initiator_is_responder} = aetx:check(TxI, Trees, Env),
     ok.
 
 create_insufficient_funds(_Cfg) ->
@@ -644,7 +662,7 @@ close_solo_invalid_state_hash(Cfg) ->
     test_both_invalid_poi_hash(Cfg, fun close_solo_/2).
 
 close_solo_older_payload(Cfg) ->
-    test_both_old_round(Cfg, fun close_solo_/2).
+    test_both_old_round(Cfg, fun close_solo_/2, #{}, old_round).
 
 close_solo_can_not_replace_create(Cfg) ->
     test_both_can_not_replace_create(Cfg, fun close_solo_/2).
@@ -1137,7 +1155,7 @@ deposit_closing(Cfg) ->
     test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
 
 deposit_older_round(Cfg) ->
-    test_both_old_round(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
+    test_both_old_round(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}, old_round).
 
 deposit_can_not_replace_create(Cfg) ->
     test_both_can_not_replace_create(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
@@ -1223,7 +1241,7 @@ withdraw_closing(Cfg) ->
     test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
 
 withdraw_older_round(Cfg) ->
-    test_both_old_round(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
+    test_both_old_round(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}, old_round).
 
 withdraw_can_not_replace_create(Cfg) ->
     test_both_can_not_replace_create(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
@@ -1612,7 +1630,7 @@ snapshot_payload_not_co_signed(Cfg) ->
 
 % snapshot_tx calls with a payload from another channel are rejected
 snapshot_old_payload(Cfg) ->
-    test_both_old_round(Cfg, fun snapshot_solo_/2).
+    test_both_old_round(Cfg, fun snapshot_solo_/2, #{}, old_round).
 
 snapshot_can_not_replace_create(Cfg) ->
     test_both_can_not_replace_create(Cfg, fun snapshot_solo_/2).
@@ -2906,7 +2924,7 @@ fp_can_not_replace_create(Cfg) ->
                [positive(fun create_channel_/2),
                 create_contract_poi_and_payload(_Round = 1, 5, Owner),
                 negative_force_progress_sequence(Round, Forcer,
-                                                 old_round)])
+                                                 same_round)])
         end,
     [Test(Owner, Forcer) ||  Owner       <- ?ROLES,
                              Forcer      <- ?ROLES],
@@ -4817,6 +4835,9 @@ test_both_old_round(Cfg, Fun) ->
     test_both_old_round(Cfg, Fun, #{}).
 
 test_both_old_round(Cfg, Fun, Props) ->
+    test_both_old_round(Cfg, Fun, Props, same_round).
+
+test_both_old_round(Cfg, Fun, Props, Reason) ->
     Test0 =
         fun(First, Second, R1, R2) ->
             run(Props#{cfg => Cfg},
@@ -4828,7 +4849,7 @@ test_both_old_round(Cfg, Fun, Props) ->
                 positive(fun deposit_/2),
                 set_prop(round, R2),
                 set_from(Second),
-                negative(Fun, {error, old_round})])
+                negative(Fun, {error, Reason})])
         end,
     Test =
         fun(F, S) ->
@@ -4851,7 +4872,7 @@ test_both_can_not_replace_create(Cfg, Fun, Props) ->
                 set_from(Poster),
                 set_prop(amount, 1),
                 set_prop(fee, 50000),
-                negative(Fun, {error, old_round})])
+                negative(Fun, {error, same_round})])
         end,
     [Test(Poster) || Poster <- ?ROLES],
     ok.

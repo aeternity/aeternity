@@ -11,7 +11,7 @@ if [[ -z "${RELEASE_VERSION}" ]]; then
     echo -e "Usage:\n"
     echo -e "  $0 release_version\n"
     echo "Release version format is X.Y.Z where X, Y, and Z are non-negative integers"
-    echo "You can find a list of aeternity releases at https://github.com/aeternity/epoch/releases"
+    echo "You can find a list of aeternity releases at https://github.com/aeternity/aeternity/releases"
     exit 1
 fi
 
@@ -107,10 +107,10 @@ fi
 
 if [[ "$OSTYPE" = "linux-gnu" && $(lsb_release -i -s) = "Ubuntu" ]]; then
     install_deps_ubuntu
-    install_node "https://github.com/aeternity/epoch/releases/download/v${RELEASE_VERSION}/${PACKAGE_PREFIX}-${RELEASE_VERSION}-ubuntu-x86_64.tar.gz"
+    install_node "https://github.com/aeternity/aeternity/releases/download/v${RELEASE_VERSION}/${PACKAGE_PREFIX}-${RELEASE_VERSION}-ubuntu-x86_64.tar.gz"
 elif [[ "$OSTYPE" = "darwin"* ]]; then
     install_deps_osx
-    install_node "https://github.com/aeternity/epoch/releases/download/v${RELEASE_VERSION}/${PACKAGE_PREFIX}-${RELEASE_VERSION}-${MACOS_PACKAGE_SUFFIX}.tar.gz"
+    install_node "https://github.com/aeternity/aeternity/releases/download/v${RELEASE_VERSION}/${PACKAGE_PREFIX}-${RELEASE_VERSION}-${MACOS_PACKAGE_SUFFIX}.tar.gz"
 else
     echo -e "Unsupported platform (OS)! Please refer to the documentation for supported platforms."
     exit 1
