@@ -28,7 +28,7 @@
 %%% difficulty as the main chain, the top block will not chain.
 %%%
 %%% Forks in the structure are labeled by fork id. The fork id is
-%%% local to each epoch instance and cannot be used to reason about
+%%% local to each Aeternity node instance and cannot be used to reason about
 %%% structure across peers. The fork id is the hash of the first node
 %%% in a fork in the local system. In particular, the genesis node's
 %%% hash is the first fork id. A node inherits its parent's fork id,
