@@ -1,6 +1,6 @@
 // Test more advanced chain interactions
 
-contract Chain =
+contract ChainTest =
 
   record state = { last_bf : address }
 
