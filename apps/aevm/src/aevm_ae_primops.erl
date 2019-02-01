@@ -506,19 +506,25 @@ aens_call_revoke(Data, #chain{api = API, state = State} = Chain) ->
 %% ------------------------------------------------------------------
 %% Crypto operations.
 %% ------------------------------------------------------------------
-crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECVERIFY, _Value, Data, State) ->
+crypto_call(Gas, Op, _Value, Data, State) ->
+    case {aevm_eeevm_state:vm_version(State), Op} of
+        {?VM_AEVM_SOPHIA_1, _} -> {error, out_of_gas};
+        {?VM_AEVM_SOPHIA_2, _} -> crypto_call(Gas, Op, Data, State)
+    end.
+
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECVERIFY, Data, State) ->
     crypto_call_ecverify(Gas, Data, State);
-crypto_call(Gas, ?PRIM_CALL_CRYPTO_SHA3, _Value, Data, State) ->
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_SHA3, Data, State) ->
     crypto_call_generic_hash(?PRIM_CALL_CRYPTO_SHA3, Gas, Data, State);
-crypto_call(Gas, ?PRIM_CALL_CRYPTO_SHA256, _Value, Data, State) ->
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_SHA256, Data, State) ->
     crypto_call_generic_hash(?PRIM_CALL_CRYPTO_SHA256, Gas, Data, State);
-crypto_call(Gas, ?PRIM_CALL_CRYPTO_BLAKE2B, _Value, Data, State) ->
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_BLAKE2B, Data, State) ->
     crypto_call_generic_hash(?PRIM_CALL_CRYPTO_BLAKE2B, Gas, Data, State);
-crypto_call(_Gas, ?PRIM_CALL_CRYPTO_SHA256_STRING, _Value, Data, State) ->
+crypto_call(_Gas, ?PRIM_CALL_CRYPTO_SHA256_STRING, Data, State) ->
     crypto_call_string_hash(?PRIM_CALL_CRYPTO_SHA256_STRING, Data, State);
-crypto_call(_Gas, ?PRIM_CALL_CRYPTO_BLAKE2B_STRING, _Value, Data, State) ->
+crypto_call(_Gas, ?PRIM_CALL_CRYPTO_BLAKE2B_STRING, Data, State) ->
     crypto_call_string_hash(?PRIM_CALL_CRYPTO_BLAKE2B_STRING, Data, State);
-crypto_call(_, _, _, _, _) ->
+crypto_call(_, _, _, _) ->
     {error, out_of_gas}.
 
 crypto_call_ecverify(_Gas, Data, State) ->

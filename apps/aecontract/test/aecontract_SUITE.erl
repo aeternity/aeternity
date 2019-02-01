@@ -8,6 +8,9 @@
 %% common_test exports
 -export([ all/0
         , groups/0
+        , init_per_group/2
+        , end_per_group/2
+        , init_per_testcase/2
         ]).
 
 -include_lib("aecore/include/hard_forks.hrl").
@@ -125,21 +128,24 @@
 -define(TEST_ABI_VERSION, ?CURRENT_ABI_SOPHIA).
 -define(TEST_VM_VERSION,  ?CURRENT_VM_SOPHIA).
 
+-define(AESOPHIA_1, 1).
+-define(AESOPHIA_2, 2).
+-define(CURRENT_AESOPHIA, ?AESOPHIA_2).
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
 
 all() ->
-    [{group, all_tests}
-    ].
+    [{group, aevm_1}, {group, aevm_2}].
+
+%% To skip one level of indirection...
+-define(ALL_TESTS, [{group, transactions}, {group, state_tree}, {group, sophia},
+                    {group, store}, {group, remote_call_type_errors}]).
 
 groups() ->
-    [ {all_tests, [sequence], [ {group, transactions}
-                              , {group, state_tree}
-                              , {group, sophia}
-                              , {group, store}
-                              , {group, remote_call_type_errors}
-                              ]}
+    [ {aevm_1, [sequence], ?ALL_TESTS}
+    , {aevm_2, [sequence], ?ALL_TESTS}
     , {transactions, [], [ create_contract
                          , create_contract_init_error
                          , create_contract_init_error_the_invalid_instruction
@@ -264,6 +270,43 @@ groups() ->
                           ]}
     ].
 
+init_per_group(aevm_1, Cfg) ->
+    meck:expect(aec_hard_forks, protocol_effective_at_height,
+                fun(_) -> ?ROMA_PROTOCOL_VSN end),
+    [{sophia_version, ?AESOPHIA_1}, {vm_version, ?VM_AEVM_SOPHIA_1} | Cfg];
+init_per_group(aevm_2, Cfg) ->
+    meck:expect(aec_hard_forks, protocol_effective_at_height,
+                fun(_) -> ?MINERVA_PROTOCOL_VSN end),
+    [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_2} | Cfg];
+init_per_group(_Grp, Cfg) ->
+    Cfg.
+
+end_per_group(Grp, Cfg) when Grp =:= aevm_1; Grp =:= aevm_2 ->
+    meck:unload(aec_hard_forks),
+    Cfg;
+end_per_group(_Grp, Cfg) ->
+    Cfg.
+
+%% Process dict magic in the right process ;-)
+init_per_testcase(_TC, Config) ->
+    VmVersion = ?config(vm_version, Config),
+    SophiaVersion = ?config(sophia_version, Config),
+    put('$vm_version', VmVersion),
+    put('$sophia_version', SophiaVersion),
+    Config.
+
+-define(assertMatchVM(Res, ExpVm1, ExpVm2),
+    case vm_version() of
+        ?VM_AEVM_SOPHIA_1 -> ?assertMatch(ExpVm1, Res);
+        ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res)
+    end).
+
+-define(skipRest(Res, Reason),
+    case Res of
+        true  -> throw({skip, {skip_rest, Reason}});
+        false -> ok
+    end).
+
 %%%===================================================================
 %%% Create contract
 %%%===================================================================
@@ -273,7 +316,7 @@ create_contract_negative_gas_price_zero(_Cfg) ->
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
     Overrides = #{gas_price => 0},
-    Tx        = aect_test_utils:create_tx(PubKey, Overrides, S1),
+    Tx        = create_tx(PubKey, Overrides, S1),
     ?assertEqual(0, aect_create_tx:gas_price(aetx:tx(Tx))),
 
     {error, _, _} = sign_and_apply_transaction(Tx, PrivKey, S1),
@@ -291,7 +334,7 @@ create_contract_negative(_Cfg) ->
     %% Test creating a bogus account
     {BadPubKey, BadS} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
     BadPrivKey        = aect_test_utils:priv_key(BadPubKey, BadS),
-    RTx1              = aect_test_utils:create_tx(BadPubKey, S1),
+    RTx1              = create_tx(BadPubKey, S1),
     {error, _, S1}    = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
 
     {error, account_not_found} = aetx:check(RTx1, Trees, Env),
@@ -299,12 +342,12 @@ create_contract_negative(_Cfg) ->
     %% Insufficient funds
     S2     = aect_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aect_test_utils:trees(S2),
-    RTx2   = aect_test_utils:create_tx(PubKey, S2),
+    RTx2   = create_tx(PubKey, S2),
     {error, _, S2} = sign_and_apply_transaction(RTx2, PrivKey, S2),
     {error, insufficient_funds} = aetx:check(RTx2, Trees2, Env),
 
     %% Test too high account nonce
-    RTx3 = aect_test_utils:create_tx(PubKey, #{nonce => 0}, S1),
+    RTx3 = create_tx(PubKey, #{nonce => 0}, S1),
     {error, _, S1} = sign_and_apply_transaction(RTx3, PrivKey, S1),
     {error, account_nonce_too_high} = aetx:check(RTx3, Trees, Env),
 
@@ -316,13 +359,13 @@ create_contract_init_error(_Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    {ok, ContractCode} = aect_test_utils:compile_contract("contracts/init_error.aes"),
+    {ok, ContractCode} = compile_contract(init_error),
     Overrides = #{ code => ContractCode
                  , call_data => make_calldata_from_code(ContractCode, <<"init">>, {<<123:256>>, 0})
                  , gas => 10000
                  , gas_price => 1
                  },
-    Tx = aect_test_utils:create_tx(PubKey, Overrides, S1),
+    Tx = create_tx(PubKey, Overrides, S1),
 
     %% Test that the create transaction is accepted
     {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1),
@@ -428,14 +471,14 @@ create_contract_(ContractCreateTxGasPrice) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    {ok, IdContract} = aect_test_utils:compile_contract("contracts/identity.aes"),
+    {ok, IdContract} = compile_contract(identity),
     CallData     = make_calldata_from_code(IdContract, init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallData
                     , gas => 10000
                     , gas_price => ContractCreateTxGasPrice
                     },
-    Tx           = aect_test_utils:create_tx(PubKey, Overrides, S1),
+    Tx           = create_tx(PubKey, Overrides, S1),
     ?assertEqual(ContractCreateTxGasPrice, aect_create_tx:gas_price(aetx:tx(Tx))),
 
     %% Test that the create transaction is accepted
@@ -608,14 +651,14 @@ call_contract_(ContractCallTxGasPrice) ->
 
     CallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S2)),
 
-    {ok, IdContract} = aect_test_utils:compile_contract("contracts/identity.aes"),
+    {ok, IdContract} = compile_contract(identity),
     CallDataInit = make_calldata_from_code(IdContract, init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallDataInit
                     , gas => 10000
                     , gas_price => 1
                     },
-    CreateTx     = aect_test_utils:create_tx(Owner, Overrides, S2),
+    CreateTx     = create_tx(Owner, Overrides, S2),
     ?assertEqual(1, aect_create_tx:gas_price(aetx:tx(CreateTx))),
 
     %% Test that the create transaction is accepted
@@ -744,8 +787,7 @@ call_contract_error_value(_Cfg) ->
 %%%===================================================================
 
 make_contract(PubKey, Code, S) ->
-    Tx = aect_test_utils:create_tx(PubKey, #{ vm_version => ?TEST_VM_VERSION,
-                                              code => Code }, S),
+    Tx = create_tx(PubKey, #{ code => Code }, S),
     {contract_create_tx, CTx} = aetx:specialize_type(Tx),
     aect_contracts:new(CTx).
 
@@ -775,7 +817,9 @@ call(Name, Fun, Xs) ->
 call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
     S = state(),
     {R, S1} = try apply(Fun, Xs ++ [S])
-              catch _:Reason -> {{'EXIT', Reason, erlang:get_stacktrace()}, S}
+              catch
+                _:{fail, Error} -> error(Error);
+                _:Reason -> {{'EXIT', Reason, erlang:get_stacktrace()}, S}
               end,
     state(S1),
     R.
@@ -844,34 +888,54 @@ state_tree(_Cfg) ->
 %%%===================================================================
 %%% More elaborate Sophia contracts
 %%%===================================================================
+vm_version() ->
+    case get('$vm_version') of
+        undefined -> ?CURRENT_VM_SOPHIA;
+        X         -> X
+    end.
+
+sophia_version() ->
+    case get('$sophia_version') of
+        undefined -> ?CURRENT_AESOPHIA;
+        X         -> X
+    end.
+
+create_tx(Owner, State) ->
+    create_tx(Owner, #{}, State).
+
+create_tx(Owner, Spec0, State) ->
+    Spec = maps:merge(
+        #{ abi_version => ?TEST_ABI_VERSION
+         , vm_version  => vm_version()
+         , fee         => 1000000
+         , deposit     => 10
+         , amount      => 200
+         , gas         => 10000 }, Spec0),
+    aect_test_utils:create_tx(Owner, Spec, State).
 
 compile_contract(Name) ->
-    aect_test_utils:compile_contract(lists:concat(["contracts/", Name, ".aes"])).
+    aect_test_utils:compile_contract(sophia_version(), lists:concat(["contracts/", Name, ".aes"])).
 
 create_contract(Owner, Name, Args, S) ->
     create_contract(Owner, Name, Args, #{}, S).
 
 create_contract(Owner, Name, Args, Options, S) ->
-    {ok, Code} = compile_contract(Name),
-    create_contract_with_code(Owner, Code, Args, Options, S).
+    case compile_contract(Name) of
+        {ok, Code} ->
+            create_contract_with_code(Owner, Code, Args, Options, S);
+        {error, Reason} ->
+            error({fail, {error, compile_should_work, got, Reason}})
+    end.
 
 create_contract_with_code(Owner, Code, Args, Options, S) ->
     Nonce       = aect_test_utils:next_nonce(Owner, S),
     CallData    = make_calldata_from_code(Code, init, Args),
-    CreateTx    = aect_test_utils:create_tx(Owner,
-                    maps:merge(
-                    #{ nonce       => Nonce
-                     , abi_version => ?TEST_ABI_VERSION
-                     , vm_version  => ?TEST_VM_VERSION
-                     , code        => Code
-                     , call_data   => CallData
-                     , fee         => 1000000
-                     , deposit     => 0
-                     , amount      => 0
-                     , gas         => 10000 }, maps:without([height, return_return_value, return_gas_used], Options)), S),
-    Height   = maps:get(height, Options, 1),
-    PrivKey  = aect_test_utils:priv_key(Owner, S),
-    {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S, Height),
+    Options1    = maps:merge(#{nonce => Nonce, code => Code, call_data => CallData},
+                             maps:without([height, return_return_value, return_gas_used], Options)),
+    CreateTx    = create_tx(Owner, Options1, S),
+    Height      = maps:get(height, Options, 1),
+    PrivKey     = aect_test_utils:priv_key(Owner, S),
+    {ok, S1}    = sign_and_apply_transaction(CreateTx, PrivKey, S, Height),
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, Nonce),
     CallKey     = aect_call:id(Owner, Nonce, ContractKey),
     CallTree    = aect_test_utils:calls(S1),
@@ -1064,7 +1128,7 @@ sophia_spend(_Cfg) ->
 sophia_typed_calls(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc    = ?call(new_account, 20000000),
-    Server = ?call(create_contract, Acc, multiplication_server, {}),
+    Server = ?call(create_contract, Acc, multiplication_server, {}, #{amount => 0}),
     Client = ?call(create_contract, Acc, contract_types, Server, #{amount => 1000}),
     2      = ?call(call_contract, Acc, Client, get_n, word, {}),
     {}     = ?call(call_contract, Acc, Client, square, {tuple, []}, {}),
@@ -1080,30 +1144,20 @@ sophia_typed_calls(_Cfg) ->
 sophia_call_origin(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc       = ?call(new_account, 10000000000),
-    meck:expect(aec_hard_forks, protocol_effective_at_height,
-                fun(_) -> ?ROMA_PROTOCOL_VSN end),
-    RomaOpts  = #{vm_version => ?VM_AEVM_SOPHIA_1},
-    EnvCRoma  = ?call(create_contract, Acc, environment, {0}, RomaOpts),
-    RemCRoma  = ?call(create_contract, Acc, environment, EnvCRoma, RomaOpts),
-    meck:unload(aec_hard_forks),
-
     EnvC      = ?call(create_contract, Acc, environment, {0}, #{}),
     RemC      = ?call(create_contract, Acc, environment, EnvC, #{}),
 
     <<AccInt:256>> = Acc,
     <<RemCInt:256>> = RemC,
-    <<RemCRomaInt:256>> = RemCRoma,
 
-    %% In Roma, the Call.caller and Call.origin is the same.
-    AccInt      = ?call(call_contract, Acc, RemCRoma, call_caller, word, {}),
-    AccInt      = ?call(call_contract, Acc, RemCRoma, call_origin, word, {}),
-    RemCRomaInt = ?call(call_contract, Acc, RemCRoma, nested_origin, word, {}),
-    RemCRomaInt = ?call(call_contract, Acc, RemCRoma, nested_caller, word, {}),
-
-    %% After Roma, the Call.caller and Call.origin is NOT the same.
     AccInt  = ?call(call_contract, Acc, RemC, call_caller, word, {}),
     AccInt  = ?call(call_contract, Acc, RemC, call_origin, word, {}),
-    AccInt  = ?call(call_contract, Acc, RemC, nested_origin, word, {}),
+    ?assertMatchVM(
+        ?call(call_contract, Acc, RemC, nested_origin, word, {}),
+        %% In Roma, the Call.caller and Call.origin is the same.
+        RemCInt,
+        %% After Roma, the Call.caller and Call.origin is NOT the same.
+        AccInt),
     RemCInt = ?call(call_contract, Acc, RemC, nested_caller, word, {}),
 
     ok.
@@ -1129,7 +1183,10 @@ sophia_oracles(_Cfg) ->
                                 {Ct, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
     Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {CtId, QId}),
     QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Ct),
-    {error, _}        = ?call(call_contract, Acc, Ct, queryFee, word, BogusOracle),
+    ?assertMatchVM(
+        ?call(call_contract, Acc, Ct, queryFee, word, BogusOracle),
+        32,          %% On ROMA this is broken, returns 32.
+        {error, _}), %% Fixed in MINERVA
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 4001}),
     {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
@@ -2806,13 +2863,12 @@ sophia_maps(_Cfg) ->
                                    {tolist_s, StrList, MapS}] ],
 
     CheckSizes = fun(MI, MS) ->
-            Expect = {maps:size(MI), maps:size(MS)},
-            Actual = {Call(size_state_i, word, {}),
-                      Call(size_state_s, word, {})},
-            case Expect == Actual of
-                true  -> ok;
-                false -> {error, {expected, Expect, got, Actual}}
-            end
+            Expect1 = {maps:size(MapI), maps:size(MapS)},
+            Expect2 = {maps:size(MI), maps:size(MS)},
+            Actual  = {Call(size_state_i, word, {}),
+                       Call(size_state_s, word, {})},
+            %% Maps.size was broken i ROMA, fixed in Minerva
+            ?assertMatchVM(Actual, Expect1, Expect2)
         end,
 
     %% Reset the state
@@ -2883,7 +2939,7 @@ sophia_map_benchmark(Cfg) ->
     Acc  = ?call(new_account, 100000000),
     N    = proplists:get_value(n, Cfg, 10),
     Map  = maps:from_list([{I, list_to_binary(integer_to_list(I))} || I <- lists:seq(1, N) ]),
-    {ok, Code} = aect_test_utils:compile_contract("contracts/maps_benchmark.aes"),
+    {ok, Code} = compile_contract(maps_benchmark),
     Opts = #{ gas => 1000000, return_gas_used => true },
     {Ct, InitGas}   = ?call(create_contract, Acc, maps_benchmark, {777, Map}, Opts),
     Remote          = ?call(create_contract, Acc, maps_benchmark, {888, #{}}, Opts),    %% Can't make remote calls to oneself
@@ -3268,10 +3324,14 @@ sophia_operators(_Cfg) ->
 
     ok.
 
-sophia_bits(_Cfg) ->
+sophia_bits(Cfg) ->
+    ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_2,
+              bitmaps_not_in_roma),
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 1000000000),
-    C   = ?call(create_contract, Acc, bits, {}),
+
+    C = ?call(create_contract, Acc, bits, {}),
+
     ToMap = fun(Bits) -> maps:from_list([ {Ix, true} || Ix <- lists:seq(0, 255), 0 /= Bits band (1 bsl Ix) ]) end,
     ParseRes =
         fun(sum, R)              -> R;
@@ -3333,39 +3393,36 @@ sophia_bits(_Cfg) ->
 
     ok.
 
-sophia_int_to_str(_Cfg) ->
+sophia_int_to_str(Cfg) ->
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000),
     IdC   = ?call(create_contract, Acc, int_to_str, {}),
-    ?assertMatch({<<"0">>, _}, ?call(call_contract, Acc, IdC, i2s, string, {0}, #{ return_gas_used => true })),
-    ?assertMatch({<<"5">>, _}, ?call(call_contract, Acc, IdC, i2s, string, {5}, #{ return_gas_used => true })),
-    ?assertMatch({<<"12345">>, _}, ?call(call_contract, Acc, IdC, i2s, string, {12345}, #{ return_gas_used => true })),
-    ?assertMatch({<<"-2345">>, _}, ?call(call_contract, Acc, IdC, i2s, string, {-2345}, #{ return_gas_used => true })),
-    ?assertMatch({<<"12345678901234567890123456789012">>, _},
-                 ?call(call_contract, Acc, IdC, i2s, string, {12345678901234567890123456789012}, #{ return_gas_used => true })),
-    ?assertMatch({<<"-12345678901234567890123456789012">>, _},
-                 ?call(call_contract, Acc, IdC, i2s, string, {-12345678901234567890123456789012}, #{ return_gas_used => true })),
-    ?assertMatch({<<"123456789012345678901234567890123456789">>, _},
-                 ?call(call_contract, Acc, IdC, i2s, string, {123456789012345678901234567890123456789}, #{ return_gas_used => true })),
-    ?assertMatch({<<"-123456789012345678901234567890123456789">>, _},
-                 ?call(call_contract, Acc, IdC, i2s, string, {-123456789012345678901234567890123456789}, #{ return_gas_used => true })),
 
-    BAcc = list_to_binary(base58:binary_to_base58(Acc)),
-    io:format("Address: ~p\n", [Acc]),
-    ?assertMatch({_, {BAcc, _}},
-                  {Acc, ?call(call_contract, Acc, IdC, a2s, string, {Acc}, #{ return_gas_used => true })}),
+    ITests = ["0", "5", "12345", "-2345",
+             "12345678901234567890123456789012",
+             "-12345678901234567890123456789012",
+             "123456789012345678901234567890123456789",
+             "-123456789012345678901234567890123456789"],
 
-    BIdC = list_to_binary(base58:binary_to_base58(IdC)),
-    ?assertMatch({_, {BIdC, _}},
-                  {IdC, ?call(call_contract, Acc, IdC, a2s, string, {IdC}, #{ return_gas_used => true })}),
+    Call = fun(F, Arg) -> ?call(call_contract, Acc, IdC, F, string, {Arg}) end,
 
-    Addr = <<90,139,56,117,121,128,91,84,78,146,81,166,106,181,248,87,147,41,74,158,109,135,221,178,120,168,101,101,80,152,186,248>>,
-    BAddr = list_to_binary(base58:binary_to_base58(Addr)),
-    ?assertMatch({BAddr, _},
-                  ?call(call_contract, Acc, IdC, a2s, string, {Addr}, #{ return_gas_used => true })),
+    [ begin
+        BN = list_to_binary(N),
+        ?assertMatch(BN, Call(i2s, list_to_integer(N)))
+      end || N <- ITests ],
+
+    Static = <<90,139,56,117,121,128,91,84,78,146,81,166,106,181,248,87,
+               147,41,74,158,109,135,221,178,120,168,101,101,80,152,186,248>>,
+    ATests = [Acc, IdC, Static],
+    [ begin
+        io:format("Address: ~p\n", [Addr]),
+        BAddr = list_to_binary(base58:binary_to_base58(Addr)),
+        ?assertMatch({_, BAddr}, {BAddr, Call(a2s, Addr)})
+      end || Addr <- ATests ],
+
     ok.
 
-sophia_events(_Cfg) ->
+sophia_events(Cfg) ->
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000),
     IdC   = ?call(create_contract, Acc, events, {}),
@@ -3374,18 +3431,24 @@ sophia_events(_Cfg) ->
                  ?call(call_contract, Acc, IdC, f1, {tuple, []}, {1, <<"bar">>},  #{ return_logs => true })),
     ?assertMatch({{},[{_, _, <<"foo">>}]},
                  ?call(call_contract, Acc, IdC, f2, {tuple, []}, {<<"foo">>}, #{ return_logs => true })),
-    ?assertMatch({{},[{_, _, <<"8">>}]},
-                 ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1}, #{ return_logs => true })),
+    ?assertMatch({{},[{_, _, <<"8">>}]}, ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1}, #{ return_logs => true })),
     ?assertMatch({{},[{_, _, <<"1234567890123456789012345678901234567897">>}]},
                  ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1234567890123456789012345678901234567890}, #{ return_logs => true })),
 
     ok.
 
-sophia_crypto(_Cfg) ->
+-define(assertMatchVM1OOG(Exp, Res), ?assertMatchVM(Res, {{error, <<"out_of_gas">>}, _}, Exp)).
+
+set_compiler_version(Vm, Compiler) ->
+    [ put('$sophia_version', Compiler) || vm_version() == Vm ].
+
+sophia_crypto(Cfg) ->
+    %% Override compiler version
+    set_compiler_version(?VM_AEVM_SOPHIA_1, ?AESOPHIA_2),
+
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000),
     IdC   = ?call(create_contract, Acc, crypto, {}),
-
 
     Sign = fun(Bin, PrivK) ->
                <<W1:256, W2:256>> = enacl:sign_detached(Bin, PrivK), {W1, W2}
@@ -3397,17 +3460,17 @@ sophia_crypto(_Cfg) ->
     PrivKey = aect_test_utils:priv_key(PubKey, state()),
     Sig1 = Sign(MsgHash, PrivKey),
 
-    ?assertMatch({1, _}, ?call(call_contract, Acc, IdC, test_verify, word,
-                               {MsgHash, PubKey, Sig1}, #{return_gas_used => true})),
+    ?assertMatchVM1OOG({1, _}, ?call(call_contract, Acc, IdC, test_verify, word,
+                                  {MsgHash, PubKey, Sig1}, #{return_gas_used => true})),
 
-    ?assertMatch({1, _}, ?call(call_contract, Acc, IdC, test_string_verify, word,
-                               {Message, PubKey, Sig1}, #{return_gas_used => true})),
+    ?assertMatchVM1OOG({1, _}, ?call(call_contract, Acc, IdC, test_string_verify, word,
+                                  {Message, PubKey, Sig1}, #{return_gas_used => true})),
 
-    ?assertMatch({0, _}, ?call(call_contract, Acc, IdC, test_verify, word,
-                               {PubKey, PubKey, Sig1}, #{return_gas_used => true})),
+    ?assertMatchVM1OOG({0, _}, ?call(call_contract, Acc, IdC, test_verify, word,
+                                  {PubKey, PubKey, Sig1}, #{return_gas_used => true})),
 
-    ?assertMatch({0, _}, ?call(call_contract, Acc, IdC, test_string_verify, word,
-                               {<<"Not the secret message">>, PubKey, Sig1}, #{return_gas_used => true})),
+    ?assertMatchVM1OOG({0, _}, ?call(call_contract, Acc, IdC, test_string_verify, word,
+                                  {<<"Not the secret message">>, PubKey, Sig1}, #{return_gas_used => true})),
 
     %% Test hash functions
     String = <<"12345678901234567890123456789012-andsomemore">>,
@@ -3421,15 +3484,21 @@ sophia_crypto(_Cfg) ->
     <<Blake2b_S:256>> = aec_hash:blake2b_256_hash(String),
 
     ?assertMatch({Sha3_S,    _}, ?call(call_contract, Acc, IdC, sha3_str,    word, String, #{return_gas_used => true})),
-    ?assertMatch({Sha256_S,  _}, ?call(call_contract, Acc, IdC, sha256_str,  word, String, #{return_gas_used => true})),
-    ?assertMatch({Blake2b_S, _}, ?call(call_contract, Acc, IdC, blake2b_str, word, String, #{return_gas_used => true})),
-    ?assertMatch({Sha3,      _}, ?call(call_contract, Acc, IdC, sha3,        word, Data,   #{return_gas_used => true})),
-    ?assertMatch({Sha256,    _}, ?call(call_contract, Acc, IdC, sha256,      word, Data,   #{return_gas_used => true})),
-    ?assertMatch({Blake2b,   _}, ?call(call_contract, Acc, IdC, blake2b,     word, Data,   #{return_gas_used => true})),
+    ?assertMatchVM1OOG({Sha256_S,  _}, ?call(call_contract, Acc, IdC, sha256_str,  word, String, #{return_gas_used => true})),
+    ?assertMatchVM1OOG({Blake2b_S, _}, ?call(call_contract, Acc, IdC, blake2b_str, word, String, #{return_gas_used => true})),
+    ?assertMatchVM1OOG({Sha3,      _}, ?call(call_contract, Acc, IdC, sha3,        word, Data,   #{return_gas_used => true})),
+    ?assertMatchVM1OOG({Sha256,    _}, ?call(call_contract, Acc, IdC, sha256,      word, Data,   #{return_gas_used => true})),
+    ?assertMatchVM1OOG({Blake2b,   _}, ?call(call_contract, Acc, IdC, blake2b,     word, Data,   #{return_gas_used => true})),
 
     ok.
 
-sophia_safe_math(_Cfg) ->
+sophia_safe_math(Cfg) ->
+    case ?config(vm_version, Cfg) of
+        ?VM_AEVM_SOPHIA_1 -> sophia_safe_math_old();
+        ?VM_AEVM_SOPHIA_2 -> sophia_safe_math()
+    end.
+
+sophia_safe_math() ->
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 1000000000000),
     C   = ?call(create_contract, Acc, safe_math, {}),
@@ -3464,6 +3533,40 @@ sophia_safe_math(_Cfg) ->
                 true  -> Z;                         %% If safe we should get back the right answer
                 false -> {error, <<"arithmetic_error">>}  %% otherwise out of gas (no wrap-arounds!)
               end,
+        ?assertMatch({_, _, _, {A, A}}, {Fun, X, Y, {Exp, Res}})
+      end || {Fun, Op} <- Ops, X <- Values, Y <- Values ],
+
+    ok.
+
+sophia_safe_math_old() ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000000),
+    C   = ?call(create_contract, Acc, safe_math, {}),
+
+    <<Medium:17/unit:8>> = list_to_binary(lists:duplicate(17, $x)),
+    <<_:1, Large:255>>   = list_to_binary(lists:duplicate(32, $o)),
+
+    Signed   = fun(Z) -> <<Y:256/signed-integer>> = <<Z:256/unsigned-integer>>, Y end,
+    UnSigned = fun(Z) -> <<Y:256/unsigned-integer>> = <<Z:256/signed-integer>>, Y end,
+
+    %% Reference implementation of ^
+    Mask = fun(X) -> X band (1 bsl 256 - 1) end,
+    Pow = fun Pow(_, 0, R) -> R;                %% mask to not blow up
+              Pow(A, B, R) when B rem 2 == 0 -> Pow(Mask(A * A), B bsr 1, R);
+              Pow(A, B, R)                   -> Pow(Mask(A * A), B bsr 1, R * A)
+          end,
+
+    %% Test vectors
+    Values = [ Z || X <- [1, 2, 5, 173, 255, 256, 1 bsl 128 - 1, 1 bsl 128, Medium, 1 bsl 255 - 2,
+                          1 bsl 255 - 1, 1 bsl 255, Large],
+                    Z <- [X, -X], Z < 1 bsl 255 ],
+    Ops    = [{add, fun erlang:'+'/2}, {sub,   fun erlang:'-'/2},
+              {mul, fun erlang:'*'/2}, {'div', fun erlang:'div'/2},
+              {pow, fun(X, Y) -> Pow(X, UnSigned(Y), 1) end}],
+
+    [ begin
+        Exp = Signed(Op(X, Y)),
+        Res = ?call(call_contract, Acc, C, Fun, signed_word, {X, Y}),
         ?assertMatch({_, _, _, {A, A}}, {Fun, X, Y, {Exp, Res}})
       end || {Fun, Op} <- Ops, X <- Values, Y <- Values ],
 
