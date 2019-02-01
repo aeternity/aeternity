@@ -23,6 +23,7 @@
          add_signatures/2,
          tx/1,
          verify/2,
+         verify_half_signed/2,
          signatures/1]).
 
 %% API that should be avoided to be used
@@ -88,6 +89,14 @@ verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees) ->
         {error, _Reason} ->
             {error, signature_check_failed}
     end.
+
+-spec verify_half_signed(aec_keys:pubkey() | [aec_keys:pubkey()],
+                         signed_tx()) -> ok | {error, signature_check_failed}.
+verify_half_signed(Signer, SignedTx) when is_binary(Signer) ->
+    verify_half_signed([Signer], SignedTx);
+verify_half_signed(Signers, #signed_tx{tx = Tx, signatures = Sigs}) ->
+    Bin     = aetx:serialize_to_binary(Tx),
+    verify_signatures(Signers, Bin, Sigs).
 
 verify_signatures([PubKey|Left], Bin, Sigs) ->
     case verify_one_pubkey(Sigs, PubKey, Bin) of
