@@ -2532,7 +2532,7 @@ check_closing_event(#data{on_chain_id = ChanId} = D) ->
 
 check_closing_event_(Ch, #data{state = St}) ->
     Height = cur_height(),
-    case aesc_channels:is_solo_closing(Ch, Height) of
+    case aesc_channels:is_solo_closing(Ch) of
         true ->
             {MyLastRound, SignedTx} =
                 aesc_offchain_state:get_latest_signed_tx(St),
