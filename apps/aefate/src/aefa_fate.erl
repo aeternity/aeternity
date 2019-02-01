@@ -210,8 +210,20 @@ eval({make_tuple, Size}, EngineState) ->
 eval({element, Type, Dest, Which, Tuple}, EngineState) ->
     {next, tuple_element(Type, Dest, Which, Tuple, EngineState)};
 
+%% ------------------------------------------------------
+%% Map instructions
+%% ------------------------------------------------------
+%% Todo tpye checking?
+eval({map_empty, Dest}, EngineState) ->
+    {next, un_op(get, {Dest, {immediate, aefa_data:make_map(#{})}}, EngineState)};
+eval({map_lookup, Dest, Map, Key}, EngineState) ->
+    {next, bin_op(map_lookup, {Dest, Map, Key}, EngineState)};
+eval({map_update, Dest, Map, Key, Value}, EngineState) ->
+    {next, ter_op(map_update, {Dest, Map, Key, Value}, EngineState)};
 
-
+%% ------------------------------------------------------
+%% Bits instructions
+%% ------------------------------------------------------
 %% A bit field is represented by an integer.
 %% Bit fields "starting" with Bits.all are represented by a
 %% negative integer (with infinite set bits to the left.)
@@ -415,6 +427,10 @@ check_type({list, ET}, L) when ?IS_FATE_LIST(L) ->
     check_same_type(ET, L);
 check_type({tuple, Elements}, T) when ?IS_FATE_TUPLE(T) ->
     check_all_types(Elements, aefa_data:tuple_to_list(T));
+check_type({map, Key, Value}, M) when ?IS_FATE_MAP(M) ->
+    {Ks, Vs} = lists:unzip(maps:to_list(?FATE_MAP_VALUE(M))),
+    check_same_type(Key, Ks) andalso 
+    check_same_type(Value, Vs);
 check_type(_T, _V) -> false.
 
 type(I) when ?IS_FATE_INTEGER(I) -> integer;
@@ -442,6 +458,13 @@ bin_op(Op, {To, Left, Right}, ES) ->
     {RightValue, ES2} = get_op_arg(Right, ES1),
     Result = op(Op, LeftValue, RightValue),
     store(To, Result, ES2).
+
+ter_op(Op, {To, One, Two, Three}, ES) ->
+    {ValueOne, ES1} = get_op_arg(One, ES),
+    {ValueTwo, ES2} = get_op_arg(Two, ES1),
+    {ValueThree, ES3} = get_op_arg(Three, ES2),
+    Result = op(Op, ValueOne, ValueTwo, ValueThree),
+    store(To, Result, ES3).
 
 get_op_arg({stack, 0}, #{ accumulator := A
                         , accumulator_stack := [S|Stack] } = ES) ->
@@ -503,7 +526,7 @@ tuple_element(Type, To, Which, TupleArg, ES) ->
             end
     end.
 
-
+%% Unary operations
 op(get, A) ->
     A;
 op(inc, A) ->
@@ -518,6 +541,7 @@ op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
        true -> bits_sum(Bits, 0)
     end.
 
+%% Binary operations
 op(add, A, B)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
     A + B;
@@ -546,6 +570,12 @@ op('and', A, B)  when ?IS_FATE_BOOLEAN(A)
 op('or', A, B)  when ?IS_FATE_BOOLEAN(A)
                     , ?IS_FATE_BOOLEAN(B) ->
     A or B;
+op(map_lookup, Map, Key) when ?IS_FATE_MAP(Map),
+                              not ?IS_FATE_MAP(Key) ->
+    case maps:get(Key, ?FATE_MAP_VALUE(Map), void) of
+        void -> throw(missing_map_key);
+        Res -> Res
+    end;
 op(bits_set, A, B)  when ?IS_FATE_BITS(A)
                          , ?IS_FATE_INTEGER(B)
                          , B >= 0 ->
@@ -577,8 +607,11 @@ op(bits_difference, A, B)
     ?FATE_BITS(BitsB) = B,
     ?FATE_BITS((BitsA band BitsB) bxor BitsA).
 
-
-
+%% Terinay operations
+op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
+                              not ?IS_FATE_MAP(Key) ->
+    Res = maps:put(Key, Value, ?FATE_MAP_VALUE(Map)),
+    aefa_data:make_map(Res).
 
 
 

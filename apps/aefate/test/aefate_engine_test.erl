@@ -35,6 +35,9 @@ memory_restore_test_() ->
 tuple_test_() ->
     make_calls(tuple()).
 
+map_test_() ->
+    make_calls(map()).
+
 bits_test_() ->
     make_calls(bits()).
 
@@ -128,6 +131,15 @@ tuple() ->
             ,  {<<"make_5tuple">>, [1, 2, 3, 4, 5], {1, 2, 3, 4, 5}}
             ,  { <<"element1">>, [1, 2], 2}
             ,  { <<"element">>, [{1, 2}, 0], 1}
+            ]
+    ].
+
+map() ->
+    [ {<<"map">>, F, A, R} ||
+        {F,A,R} <-
+            [ {<<"make_empty_map">>, [], #{}}
+            ,  {<<"map_update">>, [#{},42,true], #{42 => true}}
+            ,  {<<"map_lookup">>, [#{42 => true}, 42], true}
             ]
     ].
 
@@ -357,6 +369,37 @@ setup_contracts() ->
                      , {push, {arg, 3}}
                      , {push, {arg, 4}}
                      , {make_tuple, 5}
+                     ,  return]}
+               ]}
+           , {<<"element1">>
+             , {[integer, integer], integer}
+             , [ {0, [ {push, {arg, 0}}
+                     , {push, {arg, 1}}
+                     , {make_tuple, 2}
+                     , {element, integer, {stack, 0}, {immediate, 1}, {stack, 0}}
+                     , return]}
+               ]}
+           , {<<"element">>
+             , {[{tuple, [integer, integer]}, integer], integer}
+             , [ {0, [ {element, integer, {stack, 0}, {arg, 1}, {arg, 0}}
+                     , return]}
+               ]}
+           ]
+     , <<"map">> =>
+           [ {<<"make_empty_map">>
+             , {[], {map, integer, boolean}}
+             , [ {0, [ {map_empty, {stack, 0}}
+                     , return]}
+               ]}
+           , {<<"map_update">>
+             , {[{map, integer, boolean}, integer, boolean], {map, integer, boolean}}
+             , [ {0, [ {map_update, {stack, 0}, {arg, 0}, {arg, 1}, {arg, 2}}
+                     ,  return]}
+               ]}
+           , {<<"map_lookup">>
+             , {[{map, integer, boolean}, integer],
+                integer}
+             , [ {0, [ {map_lookup, {stack, 0}, {arg, 0}, {arg, 1}}
                      ,  return]}
                ]}
            , {<<"element1">>
