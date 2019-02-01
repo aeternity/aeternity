@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 MD5="d40bf7e90120eedd6ea04aa897c34a1c"
 DST="_build/test/lib/aecontract/test/bin"
