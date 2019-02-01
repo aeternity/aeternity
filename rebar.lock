@@ -67,7 +67,7 @@
   0},
  {<<"nat">>,
   {git,"https://github.com/aeternity/erlang-nat.git",
-      {ref,"caa6ba6c4cc416799d6fe4208c6052517d02a6d6"}},
+      {ref,"dcdfb9cd29900e05b35f60b5ffad727af41ede61"}},
   0},
  {<<"parse_trans">>,{pkg,<<"parse_trans">>,<<"3.3.0">>},1},
  {<<"poolboy">>,{pkg,<<"poolboy">>,<<"1.5.1">>},0},

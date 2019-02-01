@@ -32,6 +32,7 @@
     jsx,
     unicode_util_compat, %% to be removed, not needed in OTP 20
     idna,
+    inets,
     nat,
     aecuckoo,
     aecuckooprebuilt,
@@ -71,7 +72,6 @@
          {'$setup_hooks',
           [
            {normal, [
-                     {110, {aec_peers, check_env, []}},
                      {110, {aecore_app, check_env, []}},
                      {110, {aehttp_app, check_env, []}},
                      {110, {aec_hard_forks, check_env, []}},

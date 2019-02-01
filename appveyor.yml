@@ -1,4 +1,5 @@
-version: 1.3.0-{branch}-{build}
+# This version is only a placeholder and will be replaced at the start of each job in the init phase.
+version: "{build}-{branch}"
 
 skip_tags: false
 skip_non_tags: false
@@ -29,10 +30,12 @@ environment:
       ERTS_VERSION: 9.3
       BUILD_STEP: build
       TEST_STEP: ct
-    - OTP_VERSION: 21.2
-      ERTS_VERSION: 10.2
-      BUILD_STEP: build
-      TEST_STEP: ct
+# We disable this for now to keep build times at a minimum,
+# because we know it's not supported at the moment.
+#    - OTP_VERSION: 21.2
+#      ERTS_VERSION: 10.2
+#      BUILD_STEP: build
+#      TEST_STEP: ct
 
 cache:
   - '%WIN_MSYS2_CACHE%'                       # msys2
@@ -52,6 +55,8 @@ matrix:
     - OTP_VERSION: 21.2
 
 init:
+# Replaces the placeholder version with a custom format: BUILD_NUMBER-BRANCH-SHORT_GIT_SHA
+  - ps: Update-AppveyorBuild -Version "$env:appveyor_build_number-$env:appveyor_repo_branch-$($env:appveyor_repo_commit.substring(0,7))"
   - systeminfo
 # Attempt to ensure we don't try to convert line endings to Win32 CRLF as this will cause build to fail
   - git config --global core.autocrlf true
@@ -65,6 +70,9 @@ install:
 build_script:
   - '%APPVEYOR_BUILD_FOLDER%\ci\appveyor\build.bat'
 
+after_build:
+  - '%APPVEYOR_BUILD_FOLDER%\ci\appveyor\package.bat'
+
 # test_script:
 #  - '%APPVEYOR_BUILD_FOLDER%\ci\appveyor\test.bat'
 
@@ -73,3 +81,9 @@ deploy: off
 on_finish:
 # Set blockRdp to true to allow RDP, uses Git tag build-agent-v6.1.0%2B1300
   - ps: $blockRdp = $false; iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/ab48d6e110f2feb585b6b908a72d6e7dbfb83cb3/scripts/enable-rdp.ps1'))
+
+artifacts:
+  - name: Windows Release
+    path: aeternity-*.exe
+  - name: Windows Release Standalone
+    path: aeternity-*.zip

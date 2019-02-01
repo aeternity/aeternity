@@ -8,7 +8,6 @@
          prep_stop/1,
          stop/1]).
 -export([check_env/0]).
--export([set_level/1]).
 %%====================================================================
 %% API
 %%====================================================================
@@ -37,7 +36,8 @@ start_phase(start_reporters, _StartType, _PhaseArgs) ->
 
 prep_stop(State) ->
     aec_block_generator:prep_stop(),
-    aec_metrics:prep_stop(State).
+    aec_metrics:prep_stop(State),
+    aec_upnp:prep_stop().
 
 stop(_State) ->
     ok.
@@ -85,6 +85,11 @@ set_hwm(HWM) when is_integer(HWM) ->
 
 live_set_hwm(Hwm) ->
     error_logger_lager_h:set_high_water(Hwm),
+    %% Not setting high water mark for console backend as such backend
+    %% has not any such configuration.  Compare [console
+    %% backend](https://github.com/erlang-lager/lager/blob/3.6.7/src/lager_file_backend.erl#L146)
+    %% with [file
+    %% backend](https://github.com/erlang-lager/lager/blob/3.6.7/src/lager_console_backend.erl#L171).
     [lager:set_loghwm(lager_event, H, Hwm)
      || H <- gen_event:which_handlers(lager_event),
         element(1, H) =:= lager_file_backend].
@@ -161,8 +166,19 @@ levels() ->
     [debug, info, notice, warning, error, critical, alert, emergency, none].
 
 if_running(App, F) ->
-    case lists:keymember(App, 1, application:which_applications()) of
+    case is_app_running(App) of
         true  ->
             F();
         false -> ok
     end.
+
+%% This function guarantees the caller that the specified app has not
+%% started - not that it has not begun starting.
+%%
+%% If the caller is synchronous with the [OTP release
+%% boot](http://erlang.org/doc/man/init.html#boot-1) then this
+%% function guarantees also that the specified app has not begun
+%% starting.  This is thanks to the OTP release boot being
+%% [sequential](https://github.com/erlang/otp/blob/OTP-20.3.8/erts/preloaded/src/init.erl#L787).
+is_app_running(App) ->
+    lists:keymember(App, 1, application:which_applications()).
