@@ -53,7 +53,7 @@ metric(Queue, Sub) ->
 %% queues for epoch.
 %%
 %% The configuration is done in the $AETERNITY_CONFIG (.yaml or .json).
-%% To define a new queue, add it to the epoch_config_schema.json under
+%% To define a new queue, add it to the aeternity_config_schema.json under
 %% the "regulators" section. The name of the object becomes the name of the
 %% queue. Currently supported parameters are 'rate' and 'counter' limits,
 %% as well as 'max_time' and 'max_size'. Since user-defined values can only
