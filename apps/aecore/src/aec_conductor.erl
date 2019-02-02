@@ -582,7 +582,7 @@ erase_worker(Pid, #state{workers = Workers} = State) ->
 %%% Miner instances handling
 
 init_miner_instances(State) ->
-    MinerConfigs   = aec_pow_cuckoo:get_miner_configs(),
+    MinerConfigs   = aec_mining:get_miner_configs(),
     MinerInstances = create_miner_instances(MinerConfigs),
     State#state{miner_instances = MinerInstances}.
 
@@ -596,7 +596,7 @@ create_miner_instances(MinerConfigs) when is_list(MinerConfigs) ->
     MinerInstances.
 
 create_miner_instances(MinerConfig, FirstId) ->
-    case aec_pow_cuckoo:get_addressed_instances(MinerConfig) of
+    case aec_pow_cuckoo:addressed_instances(MinerConfig) of
         undefined ->
             {[create_miner_instance(FirstId, undefined, MinerConfig)], FirstId + 1};
         AddressedInstances when is_list(AddressedInstances) ->
@@ -773,7 +773,7 @@ start_mining(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]
             Info              = [{top_block_hash, State#state.top_block_hash}],
             aec_events:publish(start_mining, Info),
             Fun = fun() ->
-                          {aec_mining:mine(HeaderBin, Target, Nonce, MinerConfig, AddressedInstance)
+                          {aec_mining:generate(HeaderBin, Target, Nonce, MinerConfig, AddressedInstance)
                           , HeaderBin}
                   end,
             Candidate1 = register_miner(Candidate, Nonce, MinerConfig),

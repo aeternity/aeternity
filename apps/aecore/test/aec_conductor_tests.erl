@@ -479,7 +479,7 @@ test_two_mined_block_signing() ->
 
 test_received_block_signing() ->
     Keys = beneficiary_keys(),
-    meck:expect(aec_mining, mine,
+    meck:expect(aec_mining, generate,
                 fun(_, _, _, _, _) -> timer:sleep(1000), {error, no_solution} end),
     true = aec_events:subscribe(block_to_publish),
 

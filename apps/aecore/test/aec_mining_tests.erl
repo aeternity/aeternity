@@ -6,8 +6,6 @@
 %%%=============================================================================
 -module(aec_mining_tests).
 
--ifdef(TEST).
-
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
@@ -46,8 +44,8 @@ mine_block_test_() ->
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
 
                  Target = aec_blocks:target(BlockCandidate),
-                 [Config] = aec_pow_cuckoo:get_miner_configs(),
-                 {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(HeaderBin, Target, Nonce, Config, undefined),
+                 [Config] = aec_mining:get_miner_configs(),
+                 {ok, {Nonce1, Evd}} = ?TEST_MODULE:generate(HeaderBin, Target, Nonce, Config, undefined),
 
                  Block = aec_blocks:set_nonce_and_pow(BlockCandidate, Nonce1, Evd),
 
@@ -67,9 +65,9 @@ mine_block_test_() ->
                  Nonce = 19,
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
-                 [Config] = aec_pow_cuckoo:get_miner_configs(),
+                 [Config] = aec_mining:get_miner_configs(),
                  ?assertEqual({error, no_solution},
-                              ?TEST_MODULE:mine(HeaderBin, Target, Nonce, Config, undefined))
+                              ?TEST_MODULE:generate(HeaderBin, Target, Nonce, Config, undefined))
          end}}
       ]}.
 
@@ -116,12 +114,10 @@ generate_valid_test_data(TopBlock, Tries) ->
                             [{TopBlock, aec_trees:new()}], ?TEST_PUB),
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
     Target = aec_blocks:target(BlockCandidate),
-    [Config] = aec_pow_cuckoo:get_miner_configs(),
-    case ?TEST_MODULE:mine(HeaderBin, Target, Nonce, Config, undefined) of
+    case ?TEST_MODULE:generate(HeaderBin, Target, Nonce, 0) of
         {ok, {Nonce1, _Evd}} ->
             {ok, BlockCandidate, Nonce1};
         {error, no_solution} ->
             generate_valid_test_data(TopBlock, Tries -1)
     end.
 
--endif.

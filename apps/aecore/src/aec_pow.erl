@@ -74,7 +74,7 @@
 %% over the actual one. Always positive.
 -type difficulty() :: integer().
 
--type miner_config()   :: aec_pow_cuckoo:miner_config().
+-type miner_config()   :: aec_pow_cuckoo:config().
 -type miner_instance() :: non_neg_integer().
 
 -export_type([sci_int/0,
@@ -134,7 +134,7 @@ target_to_difficulty(SciTgt) ->
 
 -spec next_nonce(aec_pow:nonce(), aec_pow:miner_config()) -> aec_pow:nonce().
 next_nonce(Nonce, Cfg) ->
-    Nonce + aec_pow_cuckoo:get_repeats(Cfg).
+    Nonce + aec_pow_cuckoo:repeats(Cfg).
 
 -spec pick_nonce() -> aec_pow:nonce().
 pick_nonce() ->
@@ -142,7 +142,7 @@ pick_nonce() ->
 
 -spec trim_nonce(aec_pow:nonce(), aec_pow:miner_config()) -> aec_pow:nonce().
 trim_nonce(Nonce, Cfg) ->
-    case Nonce + aec_pow_cuckoo:get_repeats(Cfg) < ?MAX_NONCE of
+    case Nonce + aec_pow_cuckoo:repeats(Cfg) < ?MAX_NONCE of
         true  -> Nonce;
         false -> 0
     end.

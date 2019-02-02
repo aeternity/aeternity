@@ -15,15 +15,18 @@
 %%%-------------------------------------------------------------------
 -module(aec_pow_cuckoo).
 
--behaviour(aec_pow).
-
+-export([config/7,
+         addressed_instances/1,
+         repeats/1,
+         executable/1,
+         extra_args/1,
+         hex_encoded_header/1,
+         get_node_size/1
+        ]).
 
 -export([generate/5,
-         get_addressed_instances/1,
-         get_miner_configs/0,
-         get_repeats/1,
-         verify/4]).
-
+         verify/5
+        ]).
 
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
@@ -36,41 +39,68 @@
 -define(warning(F, A), epoch_pow_cuckoo:warning(F, A)).
 -define(error(F, A), epoch_pow_cuckoo:error(F, A)).
 
+-record(config, {
+          executable         :: list(),
+          executable_group   :: binary(),
+          extra_args         :: list(),
+          hex_encoded_header :: boolean(),
+          repeats            :: non_neg_integer(),
+          edge_bits          :: pos_integer(),
+          instances          :: list(aec_pow:miner_instance()) | 'undefined'}).
+
+-opaque config() :: #config{}.
+
+-export_type([config/0]).
+
+
 -type os_pid() :: integer() | undefined.
 -type pow_cuckoo_solution() :: [integer()].
 
--record(state, {os_pid :: os_pid(),
-                port :: port() | undefined,
-                buffer = [] :: string(),
-                target :: aec_pow:sci_int() | undefined,
-                parser :: output_parser_fun()}).
+-record(state, {
+          os_pid :: os_pid(),
+          port :: port() | undefined,
+          buffer = [] :: string(),
+          target :: aec_pow:sci_int() | undefined,
+          edge_bits :: pos_integer(),
+          parser :: output_parser_fun()
+         }).
 
 -type output_parser_fun() :: fun((list(string()), #state{}) ->
                                         {'ok', term(), term()} | {'error', term()}).
 
--define(DEFAULT_EXECUTABLE_GROUP   , <<"aecuckoo">>).
--define(DEFAULT_EXTRA_ARGS         , <<>>).
--define(DEFAULT_HEX_ENCODED_HEADER , false).
--define(DEFAULT_REPEATS            , 1).
--define(DEFAULT_EDGE_BITS          , 29).
--define(DEFAULT_CUCKOO_ENV,
-        {?DEFAULT_EDGE_BITS,
-         [{<<"mean29-generic">>, ?DEFAULT_EXTRA_ARGS, ?DEFAULT_HEX_ENCODED_HEADER,
-           ?DEFAULT_REPEATS, undefined, ?DEFAULT_EXECUTABLE_GROUP}]}).
-
--record(miner_config,
-        {executable         :: list(),
-         executable_group   :: binary(),
-         extra_args         :: list(),
-         hex_encoded_header :: boolean(),
-         repeats            :: non_neg_integer(),
-         instances          :: list(aec_pow:miner_instance()) | 'undefined'}).
--type miner_config() :: #miner_config{}.
--export_type([miner_config/0]).
-
 %%%=============================================================================
 %%% API
 %%%=============================================================================
+
+config(Exec, ExecGroup, ExtraArgs, HexEncHdr, Repeats, EdgeBits, Instances) ->
+    #config{
+       executable         = binary_to_list(Exec),
+       executable_group   = ExecGroup,
+       extra_args         = binary_to_list(ExtraArgs),
+       hex_encoded_header = HexEncHdr,
+       repeats            = Repeats,
+       edge_bits          = EdgeBits,
+       instances          = Instances}.
+
+-spec addressed_instances(config()) -> list(non_neg_integer()) | undefined.
+addressed_instances(#config{instances = Instances}) ->
+    Instances.
+
+-spec repeats(config()) -> non_neg_integer().
+repeats(#config{repeats = Repeats}) ->
+    Repeats.
+
+-spec executable(config()) -> list().
+executable(#config{executable = Executable}) ->
+    Executable.
+
+-spec extra_args(config()) -> list().
+extra_args(#config{extra_args = ExtraArgs}) ->
+    ExtraArgs.
+
+-spec hex_encoded_header(config()) -> boolean().
+hex_encoded_header(#config{hex_encoded_header = HexEncHdr}) ->
+    HexEncHdr.
 
 %%------------------------------------------------------------------------------
 %% Proof of Work generation with default settings
@@ -115,175 +145,56 @@ generate(Data, Target, Nonce, MinerConfig, MinerInstance) when Nonce >= 0,
 %% Proof of Work verification (with difficulty check)
 %%------------------------------------------------------------------------------
 -spec verify(Data :: aec_hash:hashable(), Nonce :: aec_pow:nonce(),
-             Evd :: aec_pow:pow_evidence(), Target :: aec_pow:sci_int()) ->
+             Evd :: aec_pow:pow_evidence(), Target :: aec_pow:sci_int(),
+             EdgeBits :: pos_integer()) ->
                     boolean().
-verify(Data, Nonce, Evd, Target) when is_list(Evd),
-                                      Nonce >= 0, Nonce =< ?MAX_NONCE ->
+verify(Data, Nonce, Evd, Target, EdgeBits) when
+      is_list(Evd), Nonce >= 0, Nonce =< ?MAX_NONCE ->
     Hash = aec_hash:hash(pow, Data),
-    case test_target(Evd, Target) of
+    case test_target(Evd, Target, EdgeBits) of
         true ->
-            verify_proof(Hash, Nonce, Evd);
+            verify_proof(Hash, Nonce, Evd, EdgeBits);
         false ->
             false
     end.
 
 %%------------------------------------------------------------------------------
-%% Read and parse miner configs.
-%%
-%% Miners defined in epoch.{json,yaml} user config file take precedence.
-%% If there are no miners defined in the user config, sys.config cuckoo
-%% miners are read. If there are neither user config nor sys.config miners
-%% ?DEFAULT_CUCKOO_ENV is used as the last resort option (i.e. mean29-generic
-%% without any extra args).
-%%------------------------------------------------------------------------------
--spec get_miner_configs() -> list(miner_config()).
-get_miner_configs() ->
-    case get_miners_from_user_config() of
-        {ok, MinerConfigs} -> MinerConfigs;
-        undefined ->
-            case get_miners_from_deprecated_user_config() of
-                {ok, MinerConfigs} -> MinerConfigs;
-                undefined          -> get_miners_from_sys_config()
-            end
-    end.
-
--spec get_addressed_instances(miner_config()) -> list(non_neg_integer()) | undefined.
-get_addressed_instances(#miner_config{instances = Instances}) ->
-    Instances.
-
--spec get_repeats(miner_config()) -> non_neg_integer().
-get_repeats(#miner_config{repeats = Repeats}) ->
-    Repeats.
-
-%%%=============================================================================
-%%% Internal functions
-%%%=============================================================================
-
-%%------------------------------------------------------------------------------
-%% Config handling
+%% Proof of Work generation: use the hash provided
 %%------------------------------------------------------------------------------
 
-get_options() ->
-    {_, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
-
-get_miners_from_user_config() ->
-    case aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miners">>]) of
-        {ok, MinerConfigMaps} ->
-            MinerConfigs =
-                lists:foldl(
-                  fun(ConfigMap, Configs) ->
-                          [build_miner_config(ConfigMap) | Configs]
-                  end, [], MinerConfigMaps),
-            {ok, MinerConfigs};
-        undefined -> undefined
-    end.
-
-get_miners_from_deprecated_user_config() ->
-    case aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miner">>]) of
-        {ok, MinerConfigMap} ->
-            %% In the deprecated config 'mining > cuckoo > miner'
-            %% 'instances' is the property indicating the number of instances to be addressed.
-            %% Addressed instances list has to be generated accordingly (indexed from 0).
-            case maps:get(<<"instances">>, MinerConfigMap, undefined) of
-                undefined ->
-                    MinerConfigs = [build_miner_config(MinerConfigMap)],
-                    {ok, MinerConfigs};
-                InstancesCount ->
-                    AddressedInstances = lists:seq(0, InstancesCount - 1),
-                    MinerConfigMap1    = MinerConfigMap#{<<"addressed_instances">> => AddressedInstances},
-                    MinerConfigs       = [build_miner_config(MinerConfigMap1)],
-                    {ok, MinerConfigs}
-            end;
-        undefined -> undefined
-    end.
-
-get_miners_from_sys_config() ->
-    {_, MinerConfigLists} = get_options(),
-    lists:foldl(
-      fun({_, _, _, _, _, _} = Config, Configs) ->
-              [build_miner_config(Config) | Configs]
-      end, [], MinerConfigLists).
-
-build_miner_config(Config) when is_map(Config) ->
-    Executable      = maps:get(<<"executable">>         , Config),
-    ExecutableGroup = maps:get(<<"executable_group">>   , Config, ?DEFAULT_EXECUTABLE_GROUP),
-    ExtraArgs       = maps:get(<<"extra_args">>         , Config, ?DEFAULT_EXTRA_ARGS),
-    HexEncodedHdr   = maps:get(<<"hex_encoded_header">> , Config, ?DEFAULT_HEX_ENCODED_HEADER),
-    Repeats         = maps:get(<<"repeats">>            , Config, ?DEFAULT_REPEATS),
-    Instances       = maps:get(<<"addressed_instances">>, Config, undefined),
-    #miner_config{
-       executable         = binary_to_list(Executable),
-       executable_group   = ExecutableGroup,
-       extra_args         = binary_to_list(ExtraArgs),
-       hex_encoded_header = HexEncodedHdr,
-       repeats            = Repeats,
-       instances          = Instances};
-build_miner_config({Executable, ExtraArgs, HexEncodedHeader, Repeats, Instances, ExecutableGroup}) ->
-    #miner_config{
-       executable         = binary_to_list(Executable),
-       executable_group   = ExecutableGroup,
-       extra_args         = binary_to_list(ExtraArgs),
-       hex_encoded_header = HexEncodedHeader,
-       repeats            = Repeats,
-       instances          = Instances}.
-
-get_edge_bits() ->
-    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"edge_bits">>]) of
-        {ok, EdgeBits} -> EdgeBits;
-        undefined ->
-            %% Deprecated property 'mining' > 'cuckoo' > 'miner' > 'edge_bits'
-            case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"edge_bits">>]) of
-                {ok, EdgeBits} -> EdgeBits;
-                undefined ->
-                    {EdgeBits, _} = get_options(),
-                    EdgeBits
-            end
-    end.
-
-get_executable(#miner_config{executable = Executable}) ->
-    Executable.
-
-get_extra_args(#miner_config{extra_args = ExtraArgs}) ->
-    ExtraArgs.
-
-is_hex_encoded_header(#miner_config{hex_encoded_header = HexEncodedHeader}) ->
-    HexEncodedHeader.
-
-is_miner_instance_addressation_enabled(#miner_config{instances = Instances}) ->
+is_miner_instance_addressation_enabled(#config{instances = Instances}) ->
     case Instances of
         undefined -> false;
         I when is_list(I) -> true
     end.
 
-miner_bin_dir(#miner_config{executable_group = ExecutableGroup}) ->
+executable_bin_dir(#config{executable_group = ExecutableGroup}) ->
     case ExecutableGroup of
         <<"aecuckoo">>         -> aecuckoo:bin_dir();
         <<"aecuckooprebuilt">> -> code:priv_dir(aecuckooprebuilt)
     end.
 
-%%------------------------------------------------------------------------------
-%% Proof of Work generation: use the hash provided
-%%------------------------------------------------------------------------------
 -spec generate_int(Hash :: string(), Nonce :: aec_pow:nonce(),
                    Target :: aec_pow:sci_int(), aec_pow:miner_config(), Instance :: non_neg_integer()) ->
                           {'ok', Nonce2 :: aec_pow:nonce(), Solution :: pow_cuckoo_solution()} |
                           {'error', term()}.
-generate_int(Hash, Nonce, Target, #miner_config{} = Config, Instance) ->
-    MinerBin        = get_executable(Config),
-    MinerExtraArgs0 = get_extra_args(Config),
-    MinerExtraArgs  = case is_miner_instance_addressation_enabled(Config) of
-                          true  -> MinerExtraArgs0 ++ " -d " ++ integer_to_list(Instance);
-                          false -> MinerExtraArgs0
-                      end,
-    EncodedHash     = case is_hex_encoded_header(Config) of
+generate_int(Hash, Nonce, Target,
+             #config{executable = Exec, extra_args = ExtraArgs0, hex_encoded_header = HexEncHdr} = Config,
+             Instance) ->
+    ExtraArgs   = case is_miner_instance_addressation_enabled(Config) of
+                      true  -> ExtraArgs0 ++ " -d " ++ integer_to_list(Instance);
+                      false -> ExtraArgs0
+                  end,
+    EncodedHash = case HexEncHdr of
                           true  -> hex_string(Hash);
                           false -> Hash
-                      end,
-    MinerBinDir     = miner_bin_dir(Config),
-    generate_int(EncodedHash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config).
+                  end,
+    ExecBinDir  = executable_bin_dir(Config),
+    generate_int(EncodedHash, Nonce, Target, ExecBinDir, Exec, ExtraArgs, Config).
 
-generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config) ->
-    Repeats = integer_to_list(get_repeats(Config)),
+generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs,
+             #config{repeats = Repeats0, edge_bits = EdgeBits}) ->
+    Repeats = integer_to_list(Repeats0),
     Args = ["-h", Hash, "-n", integer_to_list(Nonce), "-r", Repeats | string:tokens(MinerExtraArgs, " ")],
     ?info("Executing cmd '~s ~s'", [MinerBin, lists:concat(lists:join(" ", Args))]),
     Old = process_flag(trap_exit, true),
@@ -292,8 +203,9 @@ generate_int(Hash, Nonce, Target, MinerBinDir, MinerBin, MinerExtraArgs, Config)
             wait_for_result(#state{os_pid = OsPid,
                                    port = Port,
                                    buffer = [],
-                                   parser = fun parse_generation_result/2,
-                                   target = Target});
+                                   target = Target,
+                                   edge_bits = EdgeBits,
+                                   parser = fun parse_generation_result/2});
         {error, _} = E ->
             E
     catch
@@ -326,10 +238,6 @@ hex_string(S) ->
 %%   this function)
 %% @end
 %%------------------------------------------------------------------------------
--spec verify_proof(Hash :: binary(), Nonce :: aec_pow:nonce(),
-                   Solution :: aec_pow:pow_evidence()) -> boolean().
-verify_proof(Hash, Nonce, Solution) ->
-    verify_proof(Hash, Nonce, Solution, get_edge_bits()).
 
 verify_proof(Hash, Nonce, Solution, EdgeBits) ->
     %% Cuckoo has an 80 byte header, we have to use that as well
@@ -524,11 +432,11 @@ handle_fragmented_lines(Str, Buffer) ->
             {'error', term()}.
 parse_generation_result([], State) ->
     wait_for_result(State);
-parse_generation_result(["Solution" ++ NonceValuesStr | Rest], #state{os_pid = OsPid,
-                                                                 target = Target} = State) ->
+parse_generation_result(["Solution" ++ NonceValuesStr | Rest],
+                        #state{os_pid = OsPid, edge_bits = EdgeBits, target = Target} = State) ->
     [NonceStr | SolStrs] =  string:tokens(NonceValuesStr, " "),
     Soln = [list_to_integer(string:trim(V, both, [$\r]), 16) || V <- SolStrs],
-    case {length(Soln), test_target(Soln, Target)} of
+    case {length(Soln), test_target(Soln, Target, EdgeBits)} of
         {42, true} ->
             stop_execution(OsPid),
             case parse_nonce_str(NonceStr) of
@@ -575,9 +483,9 @@ stop_execution(OsPid) ->
 %%   control accordingly.
 %% @end
 %%------------------------------------------------------------------------------
--spec get_node_size() -> non_neg_integer().
-get_node_size() ->
-    node_size(get_edge_bits()).
+-spec get_node_size(pos_integer()) -> non_neg_integer().
+get_node_size(EdgeBits) ->
+    node_size(EdgeBits).
 
 %% Refs:
 %% * https://github.com/tromp/cuckoo/blob/488c03f5dbbfdac6d2d3a7e1d0746c9a7dafc48f/src/Makefile#L214-L215
@@ -643,12 +551,12 @@ is_unix() ->
 %% hash-based target is suggested: the sha256 hash of the cycle nonces
 %% is restricted to be under the target value (0 < target < 2^256).
 %%------------------------------------------------------------------------------
--spec test_target(Soln :: pow_cuckoo_solution(), Target :: aec_pow:sci_int()) ->
-                             boolean().
-test_target(Soln, Target) ->
-    test_target(Soln, Target, get_node_size()).
+-spec test_target(Soln :: pow_cuckoo_solution(), Target :: aec_pow:sci_int(),
+                  EdgeBits :: pos_integer()) -> boolean().
+test_target(Soln, Target, EdgeBits) ->
+    test_target1(Soln, Target, get_node_size(EdgeBits)).
 
-test_target(Soln, Target, NodeSize) ->
+test_target1(Soln, Target, NodeSize) ->
     Bin = solution_to_binary(lists:sort(Soln), NodeSize * 8, <<>>),
     Hash = aec_hash:hash(pow, Bin),
     aec_pow:test_target(Hash, Target).
