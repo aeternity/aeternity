@@ -487,6 +487,34 @@ jobs:
             - "*.tar.gz"
       - *fail_notification
 
+  osx_package_test:
+    macos:
+      xcode: "10.0.0"
+    working_directory: ~/aeternity
+    steps:
+      - checkout
+      - run:
+          name: Install required tools
+          command: |
+            brew update
+            brew install libsodium
+            brew install file://`pwd`/deployment/homebrew/erlang.rb
+      - *set_package_path
+      - *build_package
+      - *test_package
+      - store_artifacts:
+          path: /tmp/package_tests/node1/log
+      - store_artifacts:
+          path: /tmp/package_tests/node2/log
+      - store_artifacts:
+          path: /tmp/package_tests/node3/log
+      - *store_package_artifacts
+      - persist_to_workspace:
+          root: *packages_workspace
+          paths:
+            - "*.tar.gz"
+      - *fail_notification
+
   uat_tests:
     <<: *container_config
     steps:
