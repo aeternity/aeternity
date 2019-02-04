@@ -256,7 +256,6 @@ set_contracts(Trees, Contracts) ->
                                   , 'oracles'          => non_neg_integer()
                                   , 'oracle_queries'   => non_neg_integer()
                                   , 'locked'           => non_neg_integer()
-                                  , 'total'            => non_neg_integer()
                                   }.
 sum_total_coin(Trees) ->
     Accounts  = accounts(Trees),
@@ -264,8 +263,10 @@ sum_total_coin(Trees) ->
     Contracts = contracts(Trees),
     Oracles   = oracles(Trees),
     LockAccount   = aec_governance:locked_coins_holder_account(),
-    FirstAccount  = aeu_mtrees:iterator_next(aeu_mtrees:iterator(Accounts)),
-    FirstChannel  = aeu_mtrees:iterator_next(aeu_mtrees:iterator(Channels)),
+    AIterator     = aec_accounts_trees:mtree_iterator(Accounts),
+    FirstAccount  = aeu_mtrees:iterator_next(AIterator),
+    CIterator     = aesc_state_tree:mtree_iterator(Channels),
+    FirstChannel  = aeu_mtrees:iterator_next(CIterator),
     ChannelAmount = sum_channels(FirstChannel, 0),
     Sum = #{ 'accounts'         => 0
            , 'channels'         => ChannelAmount

@@ -599,6 +599,18 @@ get_key_header_by_height(Height) when is_integer(Height), Height >= 0 ->
 %%% Statistics
 %%%===================================================================
 
+-spec sum_tokens_at_height(aec_blocks:height()) ->
+                                  #{ 'accounts'         => non_neg_integer()
+                                   , 'contracts'        => non_neg_integer()
+                                   , 'contract_oracles' => non_neg_integer()
+                                   , 'locked'           => non_neg_integer()
+                                   , 'oracles'          => non_neg_integer()
+                                   , 'oracle_queries'   => non_neg_integer()
+                                   , 'pending_rewards'  => non_neg_integer()
+                                   , 'total'            => non_neg_integer()
+                                   }.
+
+
 sum_tokens_at_height(Height) ->
     %% Wrap in transaction for speed.
     %% TODO: This could be done dirty
