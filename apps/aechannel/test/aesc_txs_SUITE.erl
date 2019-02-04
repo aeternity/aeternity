@@ -399,7 +399,7 @@ create_same_account(_Cfg) ->
                   channel_reserve => 2,
                   fee => 20000}, S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
-    {error, initiator_is_responder} = aetx:check(TxI, Trees, Env),
+    {error, initiator_is_responder} = aetx:process(TxI, Trees, Env),
     ok.
 
 create_insufficient_funds(_Cfg) ->

@@ -1192,7 +1192,8 @@ assert_is_channel_peer(Channel, Pubkey) ->
 assert_channel_round(Channel, Round, Type) ->
     case aesc_utils:check_round_greater_than_last(Channel, Round, Type) of
         ok -> ok;
-        {error, old_round} -> runtime_error(old_round)
+        {error, old_round} -> runtime_error(old_round);
+        {error, same_round} -> runtime_error(same_round)
     end.
 
 assert_channel_withdraw_amount(Channel, Amount) ->
