@@ -112,6 +112,7 @@
         , sophia_crypto/1
         , sophia_safe_math/1
         , sophia_heap_to_heap_bug/1
+        , sophia_namespaces/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -215,7 +216,8 @@ groups() ->
                                  sophia_events,
                                  sophia_crypto,
                                  sophia_safe_math,
-                                 sophia_heap_to_heap_bug]}
+                                 sophia_heap_to_heap_bug,
+                                 sophia_namespaces]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
         [ sophia_oracles_ttl__extend_after_expiry
@@ -489,7 +491,7 @@ create_version_too_high(Cfg) ->
     ct:log("Compiled Contract = ~p\n", [aect_sophia:deserialize(IdContract)]),
 
     IdContractMap = aect_sophia:deserialize(IdContract),
-    
+
     CallData     = make_calldata_from_code(IdContract, init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallData
@@ -3821,6 +3823,16 @@ sophia_heap_to_heap_bug(_Cfg) ->
         {{error,<<"out_of_gas">>}, _Gas}, %% Bad size check kicks in
         {1, _Gas}),                       %% But works on new VM.
 
+    ok.
+
+sophia_namespaces(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000000),
+    C   = ?call(create_contract, Acc, namespaces, {}),
+    true  = ?call(call_contract, Acc, C, palindrome, bool, [1, 2, 3, 2, 1]),
+    false = ?call(call_contract, Acc, C, palindrome, bool, [1, 2, 3, 2]),
+    %% Check that we can't call the library functions directly
+    {'EXIT', {bad_function, _, _}, _} = ?call(call_contract, Acc, C, reverse, {list, word}, [1, 2, 3]),
     ok.
 
 %% The crowd funding example.
