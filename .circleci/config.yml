@@ -300,7 +300,7 @@ references:
       - attach_workspace:
           at: *packages_workspace
       - *setup_secrets
-      - *upload_github_release_asset
+#      - *upload_github_release_asset
       - *upload_release_artifacts
 
 
