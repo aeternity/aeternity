@@ -615,7 +615,7 @@ get_key_header_by_height(Height) when is_integer(Height), Height >= 0 ->
 sum_tokens_at_height(Height) ->
     %% Wrap in transaction for speed.
     %% TODO: This could be done dirty
-    aec_db:ensure_transaction(fun() -> int_sum_tokens_at_height(Height)end).
+    aec_db:ensure_transaction(fun() -> int_sum_tokens_at_height(Height) end).
 
 int_sum_tokens_at_height(Height) ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of
@@ -625,9 +625,7 @@ int_sum_tokens_at_height(Height) ->
             Sum = aec_trees:sum_total_coin(Trees),
             Sum1 = Sum#{pending_rewards => sum_pending_rewards(Height, Hash)},
             Total = maps:fold(fun(_, X, Acc) -> Acc + X end, 0, Sum1),
-            {ok, Sum1#{ total => Total
-                      , height => Height
-                      }}
+            {ok, Sum1#{ total => Total }}
     end.
 
 sum_pending_rewards(0,_Hash) ->
