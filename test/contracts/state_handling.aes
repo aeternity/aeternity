@@ -1,19 +1,22 @@
 contract Remote =
-  function look_at : (state) => ()
+  record rstate = { i : int, s : string, m : map(int, int) }
+
+  function look_at : (rstate) => ()
   function return_s : (bool) => string
   function return_m : (bool) => map(int, int)
-  function get : (state) => state
-  function get_i : (state) => int
-  function get_s : (state) => string
-  function get_m : (state) => map(int, int)
+  function get : (rstate) => rstate
+  function get_i : (rstate) => int
+  function get_s : (rstate) => string
+  function get_m : (rstate) => map(int, int)
 
-  function fun_update_i  : (state, int)           => state
-  function fun_update_s  : (state, string)        => state
-  function fun_update_m  : (state, map(int, int)) => state
-  function fun_update_mk : (state, int, int)      => state
+  function fun_update_i  : (rstate, int)           => rstate
+  function fun_update_s  : (rstate, string)        => rstate
+  function fun_update_m  : (rstate, map(int, int)) => rstate
+  function fun_update_mk : (rstate, int, int)      => rstate
 
 contract StateHandling =
-  record state = { i : int, s : string, m : map(int, int) }
+
+  type state = Remote.rstate
 
   function init(r : Remote, i : int) =
     let state0 = { i = 0, s = "undefined", m = {} }
