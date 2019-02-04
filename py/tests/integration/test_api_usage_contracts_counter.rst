@@ -1,7 +1,7 @@
 Overview
 ========
 
-The following shows the intended usage of the epoch API for Sophia contracts.
+The following shows the intended usage of the Aeternity node API for Sophia contracts.
 
 It uses a counter as sample contract.
 
@@ -31,24 +31,24 @@ ak_...
 
 Assumption: Bob has enough tokens.
 
-Bob computes - off-chain, using the epoch API - the bytecode of the contract.
+Bob computes - off-chain, using the Aeternity node API - the bytecode of the contract.
 
 >>> from swagger_client.models.contract import Contract
->>> contract_bytecode = epoch_node['internal_api'].compile_contract(Contract(counter_contract, options="")).bytecode
+>>> contract_bytecode = ae_node['internal_api'].compile_contract(Contract(counter_contract, options="")).bytecode
 >>> print(contract_bytecode) # doctest: +ELLIPSIS
 cb_...
 
-Bob computes - off-chain, using the epoch API - the initialization call data.
+Bob computes - off-chain, using the Aeternity node API - the initialization call data.
 
 >>> counter_init_value = 21
 >>> contract_init_call_data = {'f': "init", 'arg': "({})".format(counter_init_value)}
 >>> from swagger_client.models.contract_call_input import ContractCallInput
->>> encoded_init_call_data = epoch_node['internal_api'].encode_calldata(ContractCallInput("sophia", contract_bytecode, contract_init_call_data['f'], contract_init_call_data['arg'])).calldata
+>>> encoded_init_call_data = ae_node['internal_api'].encode_calldata(ContractCallInput("sophia", contract_bytecode, contract_init_call_data['f'], contract_init_call_data['arg'])).calldata
 
-Bob computes - off-chain, using the epoch API - the unsigned contract create transaction.
+Bob computes - off-chain, using the Aeternity node API - the unsigned contract create transaction.
 
 >>> from swagger_client.models.contract_create_tx import ContractCreateTx
->>> raw_unsigned_contract_create_tx = epoch_node['internal_api'].post_contract_create(ContractCreateTx(
+>>> raw_unsigned_contract_create_tx = ae_node['internal_api'].post_contract_create(ContractCreateTx(
 ...   owner_id=users['b']['encoded_pub_key'],
 ...   nonce=1,
 ...   code=contract_bytecode,
@@ -74,10 +74,10 @@ Bob signs - locally - the contract create transaction.
 >>> print(encoded_signed_contract_create_tx) # doctest: +ELLIPSIS
 tx_...
 
-Bob publishes the signed contract create transaction to an epoch node for inclusion in the chain.
+Bob publishes the signed contract create transaction to an Aeternity node for inclusion in the chain.
 
 >>> from swagger_client.models.tx import Tx
->>> contract_create_tx_hash = epoch_node['external_api'].post_transaction(Tx(encoded_signed_contract_create_tx)).tx_hash
+>>> contract_create_tx_hash = ae_node['external_api'].post_transaction(Tx(encoded_signed_contract_create_tx)).tx_hash
 >>> print(contract_create_tx_hash) # doctest: +ELLIPSIS
 th_...
 
@@ -90,10 +90,10 @@ Bob ensures that the published contract create transaction is included in the ch
 ...    return False
 ...  return (top_key_height - tx.block_height) >= min_confirmations
 >>> from waiting import wait
->>> wait(lambda: is_tx_confirmed(epoch_node['external_api'], contract_create_tx_hash, 2),
+>>> wait(lambda: is_tx_confirmed(ae_node['external_api'], contract_create_tx_hash, 2),
 ...      timeout_seconds=30)
 True
->>> contract_init_call_object = epoch_node['external_api'].get_transaction_info_by_hash(contract_create_tx_hash)
+>>> contract_init_call_object = ae_node['external_api'].get_transaction_info_by_hash(contract_create_tx_hash)
 >>> print(contract_init_call_object.return_type)
 ok
 
@@ -107,11 +107,11 @@ ak_...
 
 Assumption: Alice has enough tokens.
 
-Alice computes - off-chain, using the epoch API - the unsigned contract call transaction.
+Alice computes - off-chain, using the Aeternity node API - the unsigned contract call transaction.
 
 >>> contract_call_data = {'f': "get", 'arg': "()"}
 >>> from swagger_client.models.contract_call_compute import ContractCallCompute
->>> unsigned_contract_call_tx = common.api_decode(epoch_node['internal_api'].post_contract_call_compute(ContractCallCompute(
+>>> unsigned_contract_call_tx = common.api_decode(ae_node['internal_api'].post_contract_call_compute(ContractCallCompute(
 ...   caller_id=users['a']['encoded_pub_key'],
 ...   nonce=1,
 ...   contract_id=contract_id,
@@ -129,9 +129,9 @@ Alice signs - locally - the contract call transaction.
 >>> print(encoded_signed_contract_call_tx) # doctest: +ELLIPSIS
 tx_...
 
-Alice publishes the signed contract call transaction to an epoch node for inclusion in the chain.
+Alice publishes the signed contract call transaction to an Aeternity node for inclusion in the chain.
 
->>> contract_call_tx_hash = epoch_node['external_api'].post_transaction(Tx(encoded_signed_contract_call_tx)).tx_hash
+>>> contract_call_tx_hash = ae_node['external_api'].post_transaction(Tx(encoded_signed_contract_call_tx)).tx_hash
 >>> print(contract_call_tx_hash) # doctest: +ELLIPSIS
 th_...
 
@@ -144,18 +144,18 @@ Alice ensures that the published contract call transaction is included in the ch
 ...     return status
 ...   except ApiException as e:
 ...     return e.status
->>> wait(lambda: is_tx_confirmed(epoch_node['external_api'], contract_call_tx_hash, 2),
+>>> wait(lambda: is_tx_confirmed(ae_node['external_api'], contract_call_tx_hash, 2),
 ...      timeout_seconds=30)
 True
->>> contract_call_object = epoch_node['external_api'].get_transaction_info_by_hash(contract_call_tx_hash)
+>>> contract_call_object = ae_node['external_api'].get_transaction_info_by_hash(contract_call_tx_hash)
 >>> print(contract_call_object.return_type)
 ok
 
-Alice decodes the return value - off-chain, using the epoch API.
+Alice decodes the return value - off-chain, using the Aeternity node API.
 
 >>> print(contract_call_object.return_value) # doctest: +ELLIPSIS
 cb_...
 >>> from swagger_client.models.sophia_binary_data import SophiaBinaryData
->>> epoch_node['internal_api'].decode_data(SophiaBinaryData(sophia_type=counter_contract_get_function_return_value_type,
+>>> ae_node['internal_api'].decode_data(SophiaBinaryData(sophia_type=counter_contract_get_function_return_value_type,
 ...                                                         data=contract_call_object.return_value)).data
 {u'type': u'word', u'value': 21}

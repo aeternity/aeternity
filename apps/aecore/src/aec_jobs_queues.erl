@@ -50,7 +50,7 @@ metric(Queue, Sub) ->
 %% start()
 %%
 %% This function, called from aecore_app:start(), adds the configurable jobs
-%% queues for epoch.
+%% queues for the Aeternity node.
 %%
 %% The configuration is done in the $AETERNITY_CONFIG (.yaml or .json).
 %% To define a new queue, add it to the aeternity_config_schema.json under
