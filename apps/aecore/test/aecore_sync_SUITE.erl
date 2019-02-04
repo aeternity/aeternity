@@ -397,7 +397,7 @@ crash_syncing_worker(Config) ->
     aecore_suite_utils:stop_node(Dev2, Config),
 
     %% Hotfix - make sure mempool is empty
-    aecore_suite_utils:mine_key_blocks(N1, 4),
+    aecore_suite_utils:mine_all_txs(N1, 10),
     {ok, []} = rpc:call(N1, aec_tx_pool, peek, [infinity], 5000),
 
     Top1 = rpc:call(N1, aec_chain, top_block, [], 5000),
