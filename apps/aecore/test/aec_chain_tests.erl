@@ -1304,7 +1304,7 @@ token_supply_coinbase() ->
     Heights = lists:seq(1, TestHeight),
     lists:foldl(
       fun(Height, Acc) ->
-              Map = aec_chain:sum_tokens_at_height(Height),
+              {ok, Map} = aec_chain:sum_tokens_at_height(Height),
               Coinbase = aec_coinbase:coinbase_at_height(Height),
               PaidOut = aec_coinbase:coinbase_at_height(max(Height - Delay, 0)),
               ?assertEqual(maps:get(pending_rewards, Acc) + Coinbase,
@@ -1346,7 +1346,7 @@ token_supply_spend() ->
     Heights = lists:seq(1, TestHeight),
     lists:foldl(
       fun(Height, Acc) ->
-              Map = aec_chain:sum_tokens_at_height(Height),
+              {ok, Map} = aec_chain:sum_tokens_at_height(Height),
               Coinbase = aec_coinbase:coinbase_at_height(Height),
               RewardHeight = max(Height - Delay, 0),
               OldFees = case RewardHeight > 1 andalso RewardHeight < 7 of
@@ -1408,33 +1408,33 @@ token_supply_oracles() ->
     ok = write_blocks_to_chain(Chain),
 
     %% Only presets
-    Map1 = aec_chain:sum_tokens_at_height(1),
+    {ok, Map1} = aec_chain:sum_tokens_at_height(1),
     Oracle1 = 0,
     ?assertEqual(PresetAmount * 2, maps:get(accounts, Map1)),
     ?assertEqual(Oracle1, maps:get(oracles, Map1)),
     ?assertEqual(0, maps:get(oracles, Map1)),
 
     %% One account registered as oracle.
-    Map2 = aec_chain:sum_tokens_at_height(2),
+    {ok, Map2} = aec_chain:sum_tokens_at_height(2),
     Oracle2 = Oracle1 + PresetAmount - Fee,
     ?assertEqual(PresetAmount, maps:get(accounts, Map2)),
     ?assertEqual(Oracle2, maps:get(oracles, Map2)),
 
     %% Both accounts registered as oracles.
-    Map3 = aec_chain:sum_tokens_at_height(3),
+    {ok, Map3} = aec_chain:sum_tokens_at_height(3),
     Oracle3 = Oracle2 + PresetAmount - Fee,
     ?assertEqual(0, maps:get(accounts, Map3)),
     ?assertEqual(Oracle3, maps:get(oracles, Map3)),
 
     %% One query is pending
-    Map4 = aec_chain:sum_tokens_at_height(4),
+    {ok, Map4} = aec_chain:sum_tokens_at_height(4),
     Oracle4 = Oracle3 - Fee - QFee,
     ?assertEqual(0, maps:get(accounts, Map4)),
     ?assertEqual(Oracle4, maps:get(oracles, Map4)),
     ?assertEqual(QFee, maps:get(oracle_queries, Map4)),
 
     %% The query is responded
-    Map5 = aec_chain:sum_tokens_at_height(5),
+    {ok, Map5} = aec_chain:sum_tokens_at_height(5),
     Oracle5 = Oracle4 - Fee + QFee,
     ?assertEqual(0, maps:get(accounts, Map5)),
     ?assertEqual(Oracle5, maps:get(oracles, Map5)),
@@ -1478,19 +1478,19 @@ token_supply_channels() ->
     ok = write_blocks_to_chain(Chain),
 
     %% Only presets
-    Map1 = aec_chain:sum_tokens_at_height(1),
+    {ok, Map1} = aec_chain:sum_tokens_at_height(1),
     ?assertEqual(PresetAmount * 2, maps:get(accounts, Map1)),
     ?assertEqual(0, maps:get(channels, Map1)),
 
     %% The channel is created
-    Map2 = aec_chain:sum_tokens_at_height(2),
+    {ok, Map2} = aec_chain:sum_tokens_at_height(2),
     ChannelAmount = StartAmount + StartAmount,
     ExpectedAccounts1 = 2 * PresetAmount - ChannelAmount - Fee,
     ?assertEqual(ExpectedAccounts1, maps:get(accounts, Map2)),
     ?assertEqual(ChannelAmount, maps:get(channels, Map2)),
 
     %% The channel is closed
-    Map3 = aec_chain:sum_tokens_at_height(3),
+    {ok, Map3} = aec_chain:sum_tokens_at_height(3),
     ExpectedAccounts2 = ExpectedAccounts1 + CloseAmount + CloseAmount,
     ExpectedLockedAmount = StartAmount * 2 - CloseAmount * 2 - Fee,
     ?assertEqual(ExpectedAccounts2, maps:get(accounts, Map3)),
@@ -1529,12 +1529,12 @@ token_supply_contracts() ->
     ok = write_blocks_to_chain(Chain),
 
     %% Only presets
-    Map1 = aec_chain:sum_tokens_at_height(1),
+    {ok, Map1} = aec_chain:sum_tokens_at_height(1),
     ?assertEqual(PresetAmount, maps:get(accounts, Map1)),
     ?assertEqual(0, maps:get(contracts, Map1)),
 
     %% The contract is created
-    Map2 = aec_chain:sum_tokens_at_height(2),
+    {ok, Map2} = aec_chain:sum_tokens_at_height(2),
     KnownContractAmount = Fee - Amount - Deposit,
     HighestCost = KnownContractAmount + GasPrice * Gas,
     LowestCost =  KnownContractAmount,

@@ -600,15 +600,16 @@ get_key_header_by_height(Height) when is_integer(Height), Height >= 0 ->
 %%%===================================================================
 
 -spec sum_tokens_at_height(aec_blocks:height()) ->
-                                  #{ 'accounts'         => non_neg_integer()
-                                   , 'contracts'        => non_neg_integer()
-                                   , 'contract_oracles' => non_neg_integer()
-                                   , 'locked'           => non_neg_integer()
-                                   , 'oracles'          => non_neg_integer()
-                                   , 'oracle_queries'   => non_neg_integer()
-                                   , 'pending_rewards'  => non_neg_integer()
-                                   , 'total'            => non_neg_integer()
-                                   }.
+                                  {error, 'chain_too_short'}
+                                | {ok, #{ 'accounts'         => non_neg_integer()
+                                        , 'contracts'        => non_neg_integer()
+                                        , 'contract_oracles' => non_neg_integer()
+                                        , 'locked'           => non_neg_integer()
+                                        , 'oracles'          => non_neg_integer()
+                                        , 'oracle_queries'   => non_neg_integer()
+                                        , 'pending_rewards'  => non_neg_integer()
+                                        , 'total'            => non_neg_integer()
+                                        }}.
 
 
 sum_tokens_at_height(Height) ->
@@ -624,11 +625,13 @@ int_sum_tokens_at_height(Height) ->
             Sum = aec_trees:sum_total_coin(Trees),
             Sum1 = Sum#{pending_rewards => sum_pending_rewards(Height, Hash)},
             Total = maps:fold(fun(_, X, Acc) -> Acc + X end, 0, Sum1),
-            Sum1#{ total => Total
-                 , height => Height
-                 }
+            {ok, Sum1#{ total => Total
+                      , height => Height
+                      }}
     end.
 
+sum_pending_rewards(0,_Hash) ->
+    0;
 sum_pending_rewards(Height, Hash) when Height > 0 ->
     %% Rewards for a generation is given for the closing of the generation,
     %% so we need stop at the closing key block (hence the +1).
