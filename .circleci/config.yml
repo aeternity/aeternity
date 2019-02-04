@@ -828,6 +828,14 @@ workflows:
             tags:
               only: *tag_regex
 
+      - osx_package_test:
+          filters:
+            branches:
+              only:
+                - master
+            tags:
+              only: Failing-macOS-package-uploads-to-S3-PT-163619978
+
       - deploy_integration:
           requires:
             - test
@@ -943,7 +951,7 @@ workflows:
 
       - upload_packages_osx_test:
           requires:
-            - osx_package
+            - osx_package_test
           filters:
             branches:
               only: Failing-macOS-package-uploads-to-S3-PT-163619978
