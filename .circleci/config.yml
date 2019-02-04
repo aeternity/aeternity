@@ -832,9 +832,7 @@ workflows:
           filters:
             branches:
               only:
-                - master
-            tags:
-              only: Failing-macOS-package-uploads-to-S3-PT-163619978
+                - Failing-macOS-package-uploads-to-S3-PT-163619978
 
       - deploy_integration:
           requires:
@@ -954,7 +952,8 @@ workflows:
             - osx_package_test
           filters:
             branches:
-              only: Failing-macOS-package-uploads-to-S3-PT-163619978
+              only:
+                - Failing-macOS-package-uploads-to-S3-PT-163619978
 
       - docker_push_tag:
           requires:
