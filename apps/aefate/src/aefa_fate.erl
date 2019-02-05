@@ -213,13 +213,27 @@ eval({element, Type, Dest, Which, Tuple}, EngineState) ->
 %% ------------------------------------------------------
 %% Map instructions
 %% ------------------------------------------------------
-%% Todo tpye checking?
+%% Todo type checking?
 eval({map_empty, Dest}, EngineState) ->
     {next, un_op(get, {Dest, {immediate, aefa_data:make_map(#{})}}, EngineState)};
 eval({map_lookup, Dest, Map, Key}, EngineState) ->
     {next, bin_op(map_lookup, {Dest, Map, Key}, EngineState)};
 eval({map_update, Dest, Map, Key, Value}, EngineState) ->
     {next, ter_op(map_update, {Dest, Map, Key, Value}, EngineState)};
+
+%% ------------------------------------------------------
+%% List instructions
+%% ------------------------------------------------------
+%% Todo type checking?
+eval({nil, Dest}, EngineState) ->
+    {next, un_op(get, {Dest, {immediate, aefa_data:make_list([])}}, EngineState)};
+eval({cons, Dest, Hd, Tl}, EngineState) ->
+    {next, bin_op(cons, {Dest, Hd, Tl}, EngineState)};
+eval({hd, Dest, List}, EngineState) ->
+    {next, un_op(hd, {Dest, List}, EngineState)};
+eval({tl, Dest, List}, EngineState) ->
+    {next, un_op(tl, {Dest, List}, EngineState)};
+
 
 %% ------------------------------------------------------
 %% Bits instructions
@@ -424,7 +438,7 @@ check_type(integer, I) when ?IS_FATE_INTEGER(I) -> true;
 check_type(boolean, B) when ?IS_FATE_BOOLEAN(B) -> true;
 check_type(bits, B) when ?IS_FATE_BITS(B) -> true;
 check_type({list, ET}, L) when ?IS_FATE_LIST(L) ->
-    check_same_type(ET, L);
+    check_same_type(ET, ?FATE_LIST_VALUE(L));
 check_type({tuple, Elements}, T) when ?IS_FATE_TUPLE(T) ->
     check_all_types(Elements, aefa_data:tuple_to_list(T));
 check_type({map, Key, Value}, M) when ?IS_FATE_MAP(M) ->
@@ -533,6 +547,16 @@ op(inc, A) ->
     A + 1;
 op('not', A) ->
     not A;
+op(hd, A) when ?IS_FATE_LIST(A) ->
+    case ?FATE_LIST_VALUE(A) of
+        [] -> throw({error, hd_on_empty_list});
+        [Hd|_] -> Hd
+    end;
+op(tl, A) when ?IS_FATE_LIST(A) ->
+    case ?FATE_LIST_VALUE(A) of
+        [] -> throw({error, hd_on_empty_list});
+        [_|Tl] -> Tl
+    end;
 op(bits_all, N)  when ?IS_FATE_INTEGER(N) ->
     ?FATE_BITS((1 bsl (N)) - 1);
 op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
@@ -576,6 +600,10 @@ op(map_lookup, Map, Key) when ?IS_FATE_MAP(Map),
         void -> throw(missing_map_key);
         Res -> Res
     end;
+op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
+    %% TODO: Check type of Hd and tail.
+    aefa_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
+
 op(bits_set, A, B)  when ?IS_FATE_BITS(A)
                          , ?IS_FATE_INTEGER(B)
                          , B >= 0 ->
