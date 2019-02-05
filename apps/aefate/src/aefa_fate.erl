@@ -233,6 +233,8 @@ eval({hd, Dest, List}, EngineState) ->
     {next, un_op(hd, {Dest, List}, EngineState)};
 eval({tl, Dest, List}, EngineState) ->
     {next, un_op(tl, {Dest, List}, EngineState)};
+eval({length, Dest, List}, EngineState) ->
+    {next, un_op(length, {Dest, List}, EngineState)};
 
 
 %% ------------------------------------------------------
@@ -557,6 +559,8 @@ op(tl, A) when ?IS_FATE_LIST(A) ->
         [] -> throw({error, hd_on_empty_list});
         [_|Tl] -> Tl
     end;
+op(length, A) when ?IS_FATE_LIST(A) ->
+    aefa_data:make_integer(length(?FATE_LIST_VALUE(A)));
 op(bits_all, N)  when ?IS_FATE_INTEGER(N) ->
     ?FATE_BITS((1 bsl (N)) - 1);
 op(bits_sum, A)  when ?IS_FATE_BITS(A) ->

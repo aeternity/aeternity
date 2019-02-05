@@ -153,6 +153,7 @@ list() ->
             ,  {<<"cons">>, [42,[]], [42]}
             ,  {<<"head">>, [[42]], 42}
             ,  {<<"tail">>, [[42]], []}
+            ,  {<<"length">>, [[1,2,3,4]], 4}
             ]
     ].
 
@@ -448,6 +449,11 @@ setup_contracts() ->
            , {<<"tail">>
              , {[{list, integer}], {list, integer}}
              , [ {0, [ {tl, {stack, 0}, {arg, 0}}
+                     , return]}
+               ]}
+           , {<<"length">>
+             , {[{list, integer}], integer}
+             , [ {0, [ {length, {stack, 0}, {arg, 0}}
                      , return]}
                ]}
            ]
