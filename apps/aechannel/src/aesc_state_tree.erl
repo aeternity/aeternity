@@ -14,6 +14,7 @@
          enter/2,
          get/2,
          lookup/2,
+         mtree_iterator/1,
          new_with_backend/1,
          root_hash/1]).
 
@@ -99,3 +100,6 @@ from_binary_without_backend(Bin) ->
 serialization_template(?VSN) ->
     [{channels, binary}].
 
+-spec mtree_iterator(tree()) -> aeu_mtrees:iterator().
+mtree_iterator(Tree) ->
+    aeu_mtrees:iterator(Tree).

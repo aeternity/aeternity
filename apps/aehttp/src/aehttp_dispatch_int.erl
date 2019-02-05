@@ -498,6 +498,15 @@ handle_request_('GetPeers', _Req, _Context) ->
                 outbound => lists:map(fun aec_peers:encode_peer_address/1, OutboundPeers),
                 blocked => lists:map(fun aec_peers:encode_peer_address/1, Blocked)}};
 
+handle_request_('GetTokenSupplyByHeight', Req, _Context) ->
+    Height = maps:get(height, Req),
+    case aec_chain:sum_tokens_at_height(Height) of
+        {ok, Result} ->
+            {200, [], Result};
+        {error, chain_too_short} ->
+            {400, [], #{reason => <<"Chain too short">>}}
+    end;
+
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",

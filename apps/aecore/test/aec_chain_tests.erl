@@ -8,6 +8,7 @@
 -module(aec_chain_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("aecontract/src/aecontract.hrl").
 -include("blocks.hrl").
 
 -import(aec_test_utils,
@@ -1269,6 +1270,282 @@ pof_reported_late() ->
     ok.
 
 %%%===================================================================
+%%% Sum of token supply test
+
+token_supply_test_() ->
+    {foreach,
+     fun() ->
+             aec_test_utils:start_chain_db(),
+             setup_meck_and_keys()
+     end,
+     fun(TmpDir) ->
+             aec_test_utils:stop_chain_db(),
+             teardown_meck_and_keys(TmpDir)
+     end,
+     [ {"Test sum of coinbase", fun token_supply_coinbase/0}
+     , {"Test sum of spend", fun token_supply_spend/0}
+     , {"Test sum of oracles", fun token_supply_oracles/0}
+     , {"Test sum of channels", fun token_supply_channels/0}
+     , {"Test sum of contracts", fun token_supply_contracts/0}
+     ]
+    }.
+
+token_supply_coinbase() ->
+    TestHeight = 30,
+    Delay = 10,
+    PubKey = <<12345:256>>,
+    PresetAmount = 1000000,
+    PresetAccounts = [{PubKey, PresetAmount}],
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
+    Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111),
+    ok = write_blocks_to_chain(Chain),
+    Heights = lists:seq(1, TestHeight),
+    lists:foldl(
+      fun(Height, Acc) ->
+              {ok, Map} = aec_chain:sum_tokens_at_height(Height),
+              Coinbase = aec_coinbase:coinbase_at_height(Height),
+              PaidOut = aec_coinbase:coinbase_at_height(max(Height - Delay, 0)),
+              ?assertEqual(maps:get(pending_rewards, Acc) + Coinbase,
+                           maps:get(pending_rewards, Map) + PaidOut),
+              ?assertEqual(maps:get(accounts, Acc) + PaidOut,
+                           maps:get(accounts, Map)),
+              ?assertEqual(maps:get(total, Acc) + Coinbase,
+                           maps:get(total, Map)),
+              Map
+      end, #{accounts => PresetAmount,
+             pending_rewards => 0,
+             total => PresetAmount
+            }, Heights).
+
+token_supply_spend() ->
+    TestHeight = 20,
+    Delay = 10,
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    PresetAmount = 1000000,
+    PresetAccounts = [{PubKey, PresetAmount}],
+    SpendFee = 100000,
+    SpendAmount = 3000,
+    TxFun1 =
+        fun(N, Receiver) ->
+                make_spend_tx(PubKey, N, Receiver, SpendFee, SpendAmount)
+        end,
+    TxsFun = fun(1) -> [aec_test_utils:sign_tx(TxFun1(1, <<1:256>>), PrivKey)];
+                (2) -> [aec_test_utils:sign_tx(TxFun1(2, <<2:256>>), PrivKey)];
+                (3) -> [aec_test_utils:sign_tx(TxFun1(3, <<3:256>>), PrivKey)];
+                (4) -> [aec_test_utils:sign_tx(TxFun1(4, <<4:256>>), PrivKey)];
+                (5) -> [aec_test_utils:sign_tx(TxFun1(5, <<5:256>>), PrivKey)];
+                (_) -> []
+             end,
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
+    Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
+    ok = write_blocks_to_chain(Chain),
+    Heights = lists:seq(1, TestHeight),
+    lists:foldl(
+      fun(Height, Acc) ->
+              {ok, Map} = aec_chain:sum_tokens_at_height(Height),
+              Coinbase = aec_coinbase:coinbase_at_height(Height),
+              RewardHeight = max(Height - Delay, 0),
+              OldFees = case RewardHeight > 1 andalso RewardHeight < 7 of
+                            true -> SpendFee;
+                            false -> 0
+                        end,
+              NewFees = case Height > 1 andalso Height < 7 of
+                            true -> SpendFee;
+                            false -> 0
+                        end,
+              OldCoinbase = aec_coinbase:coinbase_at_height(RewardHeight),
+              ExpectedPendingDiff = Coinbase + NewFees - OldCoinbase - OldFees,
+              ?assertEqual(maps:get(pending_rewards, Acc) + ExpectedPendingDiff,
+                           maps:get(pending_rewards, Map)),
+              ExpectedAccountDiff = OldFees + OldCoinbase - NewFees,
+              ?assertEqual(maps:get(accounts, Acc) + ExpectedAccountDiff,
+                           maps:get(accounts, Map)),
+              ?assertEqual(maps:get(total, Acc) + Coinbase,
+                           maps:get(total, Map)),
+              Map
+      end, #{accounts => PresetAmount,
+             pending_rewards => 0,
+             total => PresetAmount
+            }, Heights).
+
+token_supply_oracles() ->
+    TestHeight = 20,
+    %% We don't want to care about coinbase this time.
+    Delay = 1000,
+    #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
+    #{ public := PubKey2, secret := PrivKey2 } = enacl:sign_keypair(),
+    PresetAmount = 10000000,
+    PresetAccounts = [{PubKey1, PresetAmount}, {PubKey2, PresetAmount}],
+    Fee  = 100000,
+    QFee = 100000,
+    RegisterFun =
+        fun(Address, Nonce) ->
+                make_oracle_register_tx(Address, Nonce, Fee, QFee)
+        end,
+    QueryFun =
+        fun(From, To, Nonce) ->
+                make_oracle_query_tx(From, To, Nonce, Fee, QFee)
+        end,
+    ResponseFun =
+        fun(From, QueryId, Nonce) ->
+                make_oracle_response_tx(From, Nonce, Fee, QueryId)
+        end,
+    QId = aeo_query:id(PubKey1, 2, PubKey2),
+    TxsFun = fun(1) -> [aec_test_utils:sign_tx(RegisterFun(PubKey1, 1), PrivKey1)];
+                (2) -> [aec_test_utils:sign_tx(RegisterFun(PubKey2, 1), PrivKey2)];
+                (3) -> [aec_test_utils:sign_tx(QueryFun(PubKey1, PubKey2, 2), PrivKey1)];
+                (4) -> [aec_test_utils:sign_tx(ResponseFun(PubKey2, QId, 2), PrivKey2)];
+                (_) -> []
+             end,
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
+    Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
+    ok = write_blocks_to_chain(Chain),
+
+    %% Only presets
+    {ok, Map1} = aec_chain:sum_tokens_at_height(1),
+    Oracle1 = 0,
+    ?assertEqual(PresetAmount * 2, maps:get(accounts, Map1)),
+    ?assertEqual(Oracle1, maps:get(oracles, Map1)),
+    ?assertEqual(0, maps:get(oracles, Map1)),
+
+    %% One account registered as oracle.
+    {ok, Map2} = aec_chain:sum_tokens_at_height(2),
+    Oracle2 = Oracle1 + PresetAmount - Fee,
+    ?assertEqual(PresetAmount, maps:get(accounts, Map2)),
+    ?assertEqual(Oracle2, maps:get(oracles, Map2)),
+
+    %% Both accounts registered as oracles.
+    {ok, Map3} = aec_chain:sum_tokens_at_height(3),
+    Oracle3 = Oracle2 + PresetAmount - Fee,
+    ?assertEqual(0, maps:get(accounts, Map3)),
+    ?assertEqual(Oracle3, maps:get(oracles, Map3)),
+
+    %% One query is pending
+    {ok, Map4} = aec_chain:sum_tokens_at_height(4),
+    Oracle4 = Oracle3 - Fee - QFee,
+    ?assertEqual(0, maps:get(accounts, Map4)),
+    ?assertEqual(Oracle4, maps:get(oracles, Map4)),
+    ?assertEqual(QFee, maps:get(oracle_queries, Map4)),
+
+    %% The query is responded
+    {ok, Map5} = aec_chain:sum_tokens_at_height(5),
+    Oracle5 = Oracle4 - Fee + QFee,
+    ?assertEqual(0, maps:get(accounts, Map5)),
+    ?assertEqual(Oracle5, maps:get(oracles, Map5)),
+    ?assertEqual(0, maps:get(oracle_queries, Map5)),
+
+    ok.
+
+token_supply_channels() ->
+    TestHeight = 10,
+    %% We don't want to care about coinbase this time.
+    Delay = 1000,
+    #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
+    #{ public := PubKey2, secret := PrivKey2 } = enacl:sign_keypair(),
+    PresetAmount = 10000000,
+    PresetAccounts = [{PubKey1, PresetAmount}, {PubKey2, PresetAmount}],
+    Fee  = 100000,
+    StartAmount = 100000,
+    CloseAmount = 50000,
+    CreateNonce = 1,
+    CloseNonce = 2,
+    StartChannelFun =
+        fun() ->
+                make_channel_create_tx(PubKey1, CreateNonce, PubKey2, StartAmount, Fee)
+        end,
+    ChannelPubkey = aesc_channels:pubkey(PubKey1, CreateNonce, PubKey2),
+    ChannelId = aec_id:create(channel, ChannelPubkey),
+    CloseMutualFun =
+        fun() ->
+                make_channel_close_mutual_tx(PubKey1, CloseNonce, ChannelId, CloseAmount, Fee)
+        end,
+    TxsFun = fun(1) -> [aec_test_utils:sign_tx(StartChannelFun(),
+                                               [PrivKey1, PrivKey2])];
+                (2) -> [aec_test_utils:sign_tx(CloseMutualFun(),
+                                               [PrivKey1, PrivKey2])];
+                (_) -> []
+             end,
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
+    Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
+    ok = write_blocks_to_chain(Chain),
+
+    %% Only presets
+    {ok, Map1} = aec_chain:sum_tokens_at_height(1),
+    ?assertEqual(PresetAmount * 2, maps:get(accounts, Map1)),
+    ?assertEqual(0, maps:get(channels, Map1)),
+
+    %% The channel is created
+    {ok, Map2} = aec_chain:sum_tokens_at_height(2),
+    ChannelAmount = StartAmount + StartAmount,
+    ExpectedAccounts1 = 2 * PresetAmount - ChannelAmount - Fee,
+    ?assertEqual(ExpectedAccounts1, maps:get(accounts, Map2)),
+    ?assertEqual(ChannelAmount, maps:get(channels, Map2)),
+
+    %% The channel is closed
+    {ok, Map3} = aec_chain:sum_tokens_at_height(3),
+    ExpectedAccounts2 = ExpectedAccounts1 + CloseAmount + CloseAmount,
+    ExpectedLockedAmount = StartAmount * 2 - CloseAmount * 2 - Fee,
+    ?assertEqual(ExpectedAccounts2, maps:get(accounts, Map3)),
+    ?assertEqual(0, maps:get(channels, Map3)),
+    ?assertEqual(ExpectedLockedAmount, maps:get(locked, Map3)),
+
+    ok.
+
+token_supply_contracts() ->
+    TestHeight = 10,
+    %% We don't want to care about coinbase this time.
+    Delay = 1000,
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    PresetAmount = 10000000,
+    PresetAccounts = [{PubKey, PresetAmount}],
+    Deposit = 1000,
+    Amount  = 3000,
+    Fee     = 100000,
+    Gas     = 10000,
+    GasPrice = 1,
+    {ok, Code} = aect_test_utils:compile_contract("contracts/identity.aes"),
+    {ok, InitCallData} = aect_dispatch:encode_call_data(<<"sophia">>, Code,
+                                                        <<"init">>, <<"()">>),
+    CreateContractFun =
+        fun(Nonce) ->
+                make_contract_create_tx(PubKey, Code, InitCallData, Nonce,
+                                        Deposit, Amount, Fee, Gas)
+        end,
+    TxsFun = fun(1) -> [aec_test_utils:sign_tx(CreateContractFun(1), [PrivKey])];
+                (_) -> []
+             end,
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
+    Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
+    ok = write_blocks_to_chain(Chain),
+
+    %% Only presets
+    {ok, Map1} = aec_chain:sum_tokens_at_height(1),
+    ?assertEqual(PresetAmount, maps:get(accounts, Map1)),
+    ?assertEqual(0, maps:get(contracts, Map1)),
+
+    %% The contract is created
+    {ok, Map2} = aec_chain:sum_tokens_at_height(2),
+    KnownContractAmount = Fee - Amount - Deposit,
+    HighestCost = KnownContractAmount + GasPrice * Gas,
+    LowestCost =  KnownContractAmount,
+    ?assert(PresetAmount - HighestCost < maps:get(accounts, Map2)),
+    ?assert(PresetAmount - LowestCost  > maps:get(accounts, Map2)),
+    ?assertEqual(Amount + Deposit, maps:get(contracts, Map2)),
+
+    ok.
+
+
+%%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
@@ -1305,6 +1582,9 @@ gen_blocks_only_chain_by_target(Targets, Nonce) ->
 
 gen_blocks_only_chain_by_target(PresetAccounts, Targets, Nonce) ->
     blocks_only_chain(gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce)).
+
+gen_blocks_only_chain_by_target(PresetAccounts, Targets, Nonce, TxsFun) ->
+    blocks_only_chain(gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce, TxsFun)).
 
 gen_block_chain_with_state_by_target(Targets, Nonce) ->
     gen_block_chain_with_state_by_target(aec_test_utils:preset_accounts(), Targets, Nonce).
@@ -1350,6 +1630,79 @@ make_spend_tx(Sender, SenderNonce, Recipient, Fee, Amount) ->
                                        nonce => SenderNonce,
                                        payload => <<>>}),
     SpendTx.
+
+make_oracle_register_tx(Pubkey, Nonce, Fee, QFee) ->
+    AccountId = aec_id:create(account, Pubkey),
+    {ok, Tx} = aeo_register_tx:new(#{account_id      => AccountId,
+                                     nonce           => Nonce,
+                                     query_format    => <<>>,
+                                     response_format => <<>>,
+                                     query_fee       => QFee,
+                                     oracle_ttl      => {delta, 100},
+                                     fee             => Fee}),
+    Tx.
+
+make_oracle_query_tx(Pubkey, OraclePubkey, Nonce, Fee, QueryFee) ->
+    SenderId = aec_id:create(account, Pubkey),
+    OracleId = aec_id:create(oracle, OraclePubkey),
+    {ok, Tx} = aeo_query_tx:new(#{sender_id    => SenderId,
+                                  nonce        => Nonce,
+                                  oracle_id    => OracleId,
+                                  query        => <<"What is your name?">>,
+                                  query_fee    => QueryFee,
+                                  query_ttl    => {delta, 10},
+                                  response_ttl => {delta, 10},
+                                  fee          => Fee}),
+    Tx.
+
+make_oracle_response_tx(OraclePubkey, Nonce, Fee, QueryId) ->
+    OracleId = aec_id:create(oracle, OraclePubkey),
+    {ok, Tx} = aeo_response_tx:new(#{oracle_id    => OracleId,
+                                     nonce        => Nonce,
+                                     query_id     => QueryId,
+                                     response_ttl => {delta, 10},
+                                     response     => <<"I am Nemo">>,
+                                     fee          => Fee}),
+    Tx.
+
+make_channel_create_tx(InitiatorPubkey, Nonce, ResponderPubkey, Amount, Fee) ->
+    InitiatorId = aec_id:create(account, InitiatorPubkey),
+    ResponderId = aec_id:create(account, ResponderPubkey),
+    {ok, Tx} = aesc_create_tx:new(#{initiator_id       => InitiatorId,
+                                    initiator_amount   => Amount,
+                                    responder_id       => ResponderId,
+                                    responder_amount   => Amount,
+                                    channel_reserve    => Amount div 2,
+                                    lock_period        => 0,
+                                    fee                => Fee,
+                                    state_hash         => <<123:256>>,
+                                    nonce              => Nonce}),
+    Tx.
+
+make_channel_close_mutual_tx(FromPubKey, Nonce, ChannelId, Amount, Fee) ->
+    FromId = aec_id:create(account, FromPubKey),
+    {ok, Tx} = aesc_close_mutual_tx:new(#{channel_id              => ChannelId,
+                                          from_id                 => FromId,
+                                          initiator_amount_final  => Amount,
+                                          responder_amount_final  => Amount,
+                                          fee                     => Fee,
+                                          nonce                   => Nonce}),
+    Tx.
+
+
+make_contract_create_tx(Pubkey, Code, CallData, Nonce, Deposit, Amount, Fee, Gas) ->
+    OwnerId = aec_id:create(account, Pubkey),
+    {ok, Tx} = aect_create_tx:new(#{owner_id   => OwnerId,
+                                    nonce      => Nonce,
+                                    code       => Code,
+                                    vm_version => ?AEVM_01_Sophia_01,
+                                    deposit    => Deposit,
+                                    amount     => Amount,
+                                    gas        => Gas,
+                                    gas_price  => 1,
+                                    call_data  => CallData,
+                                    fee        => Fee}),
+    Tx.
 
 reward_40(Fee) -> Fee * 4 div 10.
 

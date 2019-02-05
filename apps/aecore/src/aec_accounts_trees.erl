@@ -16,7 +16,8 @@
 
 %% API - Merkle tree
 -export([root_hash/1,
-         commit_to_db/1
+         commit_to_db/1,
+         mtree_iterator/1
         ]).
 
 -export([ from_binary_without_backend/1
@@ -109,6 +110,10 @@ from_binary_without_backend(Bin) ->
 
 serialization_template(?VSN) ->
     [{accounts, binary}].
+
+-spec mtree_iterator(tree()) -> aeu_mtrees:iterator().
+mtree_iterator(Tree) ->
+    aeu_mtrees:iterator(Tree).
 
 %%%===================================================================
 %%% API - Merkle tree

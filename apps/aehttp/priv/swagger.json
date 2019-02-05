@@ -2081,6 +2081,36 @@
           }
         }
       }
+    },
+    "/debug/token-supply/height/{height}" : {
+      "get" : {
+        "tags" : [ "internal", "debug" ],
+        "description" : "Get total token supply at height",
+        "operationId" : "GetTokenSupplyByHeight",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "height",
+          "in" : "path",
+          "description" : "The key block height after which the tokens are summed",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Total token supply at height divided in categories",
+            "schema" : {
+              "$ref" : "#/definitions/TokenSupply"
+            }
+          },
+          "400" : {
+            "description" : "Height not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
     }
   },
   "definitions" : {
@@ -4677,6 +4707,53 @@
           }
         }
       } ]
+    },
+    "TokenSupply" : {
+      "type" : "object",
+      "properties" : {
+        "accounts" : {
+          "type" : "integer",
+          "description" : "Tokens in account balances"
+        },
+        "contracts" : {
+          "type" : "integer",
+          "description" : "Tokens in contracts"
+        },
+        "contract_oracles" : {
+          "type" : "integer",
+          "description" : "Tokens in contracts registered as oracles"
+        },
+        "locked" : {
+          "type" : "integer",
+          "description" : "Tokens locked (not owned by anyone)"
+        },
+        "oracles" : {
+          "type" : "integer",
+          "description" : "Tokens in accounts registered as oracles"
+        },
+        "oracle_queries" : {
+          "type" : "integer",
+          "description" : "Tokens in pending oracle queries"
+        },
+        "pending_rewards" : {
+          "type" : "integer",
+          "description" : "Tokens from fees and coinbase pending in the beneficiary reward delay"
+        },
+        "total" : {
+          "type" : "integer",
+          "description" : "Sum of all tokens from other fields"
+        }
+      },
+      "example" : {
+        "total" : 9,
+        "pending_rewards" : 7,
+        "oracles" : 5,
+        "accounts" : 0,
+        "contracts" : 6,
+        "locked" : 5,
+        "contract_oracles" : 1,
+        "oracle_queries" : 2
+      }
     },
     "inline_response_200" : {
       "properties" : {

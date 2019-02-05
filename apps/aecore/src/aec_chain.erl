@@ -30,6 +30,7 @@
         , hash_is_in_main_chain/1
         , hash_is_connected_to_genesis/1
         , prev_hash_from_hash/1
+        , sum_tokens_at_height/1
         , top_block/0
         , top_block_hash/0
         , top_key_block/0
@@ -592,4 +593,59 @@ get_key_header_by_height(Height) when is_integer(Height), Height >= 0 ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {error, chain_too_short};
         {ok, Hash} -> get_header(Hash)
+    end.
+
+%%%===================================================================
+%%% Statistics
+%%%===================================================================
+
+-spec sum_tokens_at_height(aec_blocks:height()) ->
+                                  {error, 'chain_too_short'}
+                                | {ok, #{ 'accounts'         => non_neg_integer()
+                                        , 'contracts'        => non_neg_integer()
+                                        , 'contract_oracles' => non_neg_integer()
+                                        , 'locked'           => non_neg_integer()
+                                        , 'oracles'          => non_neg_integer()
+                                        , 'oracle_queries'   => non_neg_integer()
+                                        , 'pending_rewards'  => non_neg_integer()
+                                        , 'total'            => non_neg_integer()
+                                        }}.
+
+
+sum_tokens_at_height(Height) ->
+    %% Wrap in transaction for speed.
+    %% TODO: This could be done dirty
+    aec_db:ensure_transaction(fun() -> int_sum_tokens_at_height(Height) end).
+
+int_sum_tokens_at_height(Height) ->
+    case aec_chain_state:get_key_block_hash_at_height(Height) of
+        error -> {error, chain_too_short};
+        {ok, Hash} ->
+            {ok, Trees} = get_block_state(Hash),
+            Sum = aec_trees:sum_total_coin(Trees),
+            Sum1 = Sum#{pending_rewards => sum_pending_rewards(Height, Hash)},
+            Total = maps:fold(fun(_, X, Acc) -> Acc + X end, 0, Sum1),
+            {ok, Sum1#{ total => Total }}
+    end.
+
+sum_pending_rewards(0,_Hash) ->
+    0;
+sum_pending_rewards(Height, Hash) when Height > 0 ->
+    %% Rewards for a generation is given for the closing of the generation,
+    %% so we need stop at the closing key block (hence the +1).
+    StopHeight = max(Height - aec_governance:beneficiary_reward_delay() + 1, 1),
+    sum_pending_rewards(Hash, StopHeight, 0).
+
+sum_pending_rewards(Hash, StopHeight, Acc) ->
+    {ok, Header}  = get_header(Hash),
+    Height        = aec_headers:height(Header),
+    {value, Fees} = aec_db:find_block_fees(Hash),
+    Coinbase      = aec_coinbase:coinbase_at_height(Height),
+    Acc1 = Acc + Fees + Coinbase,
+    case Height > StopHeight of
+        true ->
+            PrevKeyHash = aec_headers:prev_key_hash(Header),
+            sum_pending_rewards(PrevKeyHash, StopHeight, Acc1);
+        false ->
+            Acc1
     end.

@@ -143,7 +143,8 @@
     naming_system_manage_name/1,
     naming_system_broken_txs/1,
 
-    peers/1
+    peers/1,
+    sum_token_supply/1
    ]).
 
 %% test case exports
@@ -463,7 +464,8 @@ groups() ->
         node_beneficiary,
 
         % requested Endpoints
-        peers
+        peers,
+        sum_token_supply
       ]},
      {debug_endpoints, [sequence], [
         disabled_debug_endpoints,
@@ -4976,6 +4978,51 @@ peers(_Config) ->
 
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := []}} = get_peers(),
     ok.
+
+-define(pending_token_supply_pattern(X, Y, Z),
+        #{ <<"accounts">> := X
+         , <<"contracts">> := 0
+         , <<"contract_oracles">> := 0
+         , <<"locked">> := 0
+         , <<"oracles">> := 0
+         , <<"oracle_queries">> := 0
+         , <<"pending_rewards">> := Y
+         , <<"total">> := Z
+         }).
+
+sum_token_supply(_Config) ->
+    TopHeader = rpc(?NODE, aec_chain, top_header, []),
+    Height = aec_headers:height(TopHeader),
+    case Height < 2 of
+        true ->
+            Mine = 2 - Height,
+            NodeName = aecore_suite_utils:node_name(?NODE),
+            aecore_suite_utils:mine_key_blocks(NodeName, Mine);
+        false ->
+            ok
+    end,
+    {ok, 200, Supply0} = get_token_supply_sut(0),
+    {ok, 200, Supply1} = get_token_supply_sut(1),
+    {ok, 200, Supply2} = get_token_supply_sut(2),
+    Pending0 = rpc(?NODE, aec_coinbase, coinbase_at_height, [0]),
+    Pending1 = rpc(?NODE, aec_coinbase, coinbase_at_height, [1]) + Pending0,
+    Pending2 = rpc(?NODE, aec_coinbase, coinbase_at_height, [2]) + Pending1,
+    ?assertMatch(?pending_token_supply_pattern(_, Pending0, _), Supply0),
+    Accounts = maps:get(<<"accounts">>, Supply0),
+    Total1 = Accounts + Pending1,
+    ?assertMatch(?pending_token_supply_pattern(Accounts, Pending1, Total1),
+                 Supply1),
+    Total2 = Accounts + Pending2,
+    ?assertMatch(?pending_token_supply_pattern(Accounts, Pending2, Total2),
+                 Supply2),
+    {ok, 400, #{<<"reason">> := <<"Chain too short">>}} =
+        get_token_supply_sut(Height + 5),
+    ok.
+
+get_token_supply_sut(Height) ->
+    Host = internal_address(),
+    HeightS = integer_to_list(Height),
+    http_request(Host, get, "debug/token-supply/height/" ++ HeightS, []).
 
 enabled_debug_endpoints(_Config) ->
     ?assertMatch({ok, 400, _}, post_key_blocks_sut(#{})),
