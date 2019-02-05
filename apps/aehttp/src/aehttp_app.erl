@@ -49,6 +49,11 @@ stop(_State) ->
 %% Check user-provided environment
 %%------------------------------------------------------------------------------
 
+%% The user configuration is guaranteed to have been loaded from file
+%% to the environment.  This is because the `setup` application runs
+%% setup hooks sorted by phase number, and the configured phase number
+%% for the hook loading the config is smaller than the phase number of
+%% this hook.
 check_env() ->
     %TODO: we need to validate that all tags are present
     GroupDefaults = #{<<"chain">>        => true,

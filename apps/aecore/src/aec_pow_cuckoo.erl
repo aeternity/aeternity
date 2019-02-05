@@ -78,6 +78,11 @@
 %% 'mining > cuckoo > edge_bits' are not used together with deprecated
 %% configuration property 'mining > cuckoo > miner'.
 %%------------------------------------------------------------------------------
+%% The user configuration is guaranteed to have been loaded from file
+%% to the environment.  This is because the `setup` application runs
+%% setup hooks sorted by phase number, and the configured phase number
+%% for the hook loading the config is smaller than the phase number of
+%% this hook.
 check_env() ->
     case {aeu_env:user_map([<<"mining">>, <<"cuckoo">>, <<"miners">>]),
           aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"edge_bits">>])} of

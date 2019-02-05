@@ -665,6 +665,13 @@ wait_for_tables(Tabs, Sofar, _, _) ->
 
 %% Initialization routines
 
+%% The user configuration is guaranteed to have been loaded from file
+%% to the environment, and the related configuration parameters (those
+%% retrieved by `application:get_env`) adapted accordingly.  This is
+%% because the `setup` application runs setup hooks sorted by phase
+%% number, and the configured phase numbers for the hooks loading the
+%% config and adapting the configuration parameters are smaller than
+%% the phase number of this hook.
 check_db() ->
     try
         Mode = backend_mode(),

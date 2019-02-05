@@ -42,6 +42,12 @@ prep_stop(State) ->
 stop(_State) ->
     ok.
 
+%% The user configuration is guaranteed to have been loaded from file
+%% to the environment.  This is because the `setup` application runs
+%% setup hooks sorted by phase number, and the configured phase number
+%% for the hook loading the config is smaller than the phase number of
+%% this hook.
+%%
 %% Checking user-provided configs. The logic is somewhat complicated
 %% by the fact that 'setup' is not guaranteed to start before lager,
 %% so we have to be prepared to apply changes to both the lager env
