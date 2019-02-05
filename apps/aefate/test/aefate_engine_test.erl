@@ -143,6 +143,8 @@ map() ->
             ,  {<<"map_update">>, [#{},42,true], #{42 => true}}
             ,  {<<"map_lookup">>, [#{42 => true}, 42], true}
             ,  {<<"map_lookup_default">>, [#{42 => true}, 17], false}
+            ,  {<<"map_member">>, [#{42 => false}, 42], true}
+            ,  {<<"map_member">>, [#{42 => false}, 17], false}
             ]
     ].
 
@@ -419,6 +421,11 @@ setup_contracts() ->
            , {<<"map_lookup_default">>
              , {[{map, integer, boolean}, integer], boolean}
              , [ {0, [ {map_lookup_default, {stack, 0}, {arg, 0}, {arg, 1}, {immediate, false}}
+                     ,  return]}
+               ]}
+           , {<<"map_member">>
+             , {[{map, integer, boolean}, integer], boolean}
+             , [ {0, [ {map_member, {stack, 0}, {arg, 0}, {arg, 1}}
                      ,  return]}
                ]}
            , {<<"element1">>
