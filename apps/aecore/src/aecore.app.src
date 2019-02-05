@@ -44,7 +44,8 @@
     aesophia,
     aebytecode,
     aens,
-    ranch
+    ranch,
+    setup
   ]},
   {env, [
          {exometer_predefined,
