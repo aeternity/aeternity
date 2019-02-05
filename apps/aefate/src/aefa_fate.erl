@@ -224,10 +224,9 @@ eval({map_lookup_default, Dest, Map, Key, Default}, EngineState) ->
     {next, ter_op(map_lookup_default, {Dest, Map, Key, Default}, EngineState)};
 eval({map_update, Dest, Map, Key, Value}, EngineState) ->
     {next, ter_op(map_update, {Dest, Map, Key, Value}, EngineState)};
+eval({map_member, Dest, Map, Key}, EngineState) ->
+    {next, bin_op(map_member, {Dest, Map, Key}, EngineState)};
 
-%% builtin_deps1({map_lookup_default, Type}) -> [{map_lookup, Type}];
-%% builtin_deps1({map_get, Type})            -> [{map_lookup, Type}];
-%% builtin_deps1(map_member)                 -> [{map_lookup, word}];
 %% builtin_deps1({map_upd, Type})            -> [{map_get, Type}, map_put];
 %% builtin_deps1({map_upd_default, Type})    -> [{map_lookup_default, Type}, map_put];
 %% builtin_deps1(map_from_list)              -> [map_put];
@@ -635,6 +634,9 @@ op(map_lookup, Map, Key) when ?IS_FATE_MAP(Map),
         void -> throw(missing_map_key);
         Res -> Res
     end;
+op(map_member, Map, Key) when ?IS_FATE_MAP(Map),
+                              not ?IS_FATE_MAP(Key) ->
+    aefa_data:make_boolean(maps:is_key(Key, ?FATE_MAP_VALUE(Map)));
 op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
     %% TODO: Check type of Hd and tail.
     aefa_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
