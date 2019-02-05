@@ -10,14 +10,17 @@ references:
       OTP_VERSION: 20.3.8
   container_otp_plt: &container_otp_plt _build/default/rebar3_20.3.8_plt
 
+  infrastructure_config_enviroment: &infrastructure_config_environment
+      DOCKERHUB_REPO: aeternity/aeternity
+      S3_BUILDS_BUCKET: aeternity-node-builds
+      S3_RELEASES_BUCKET: aeternity-node-releases
+
   infrastructure_config: &infrastructure_config
     docker:
       - image: aeternity/infrastructure
     working_directory: ~/aeternity
     environment:
-      DOCKERHUB_REPO: aeternity/aeternity
-      S3_BUILDS_BUCKET: aeternity-node-builds
-      S3_RELEASES_BUCKET: aeternity-node-releases
+      <<: *infrastructure_config_environment
 
   machine_config: &machine_config
     machine:
@@ -300,7 +303,7 @@ references:
       - attach_workspace:
           at: *packages_workspace
       - *setup_secrets
-#      - *upload_github_release_asset
+      - *upload_github_release_asset
       - *upload_release_artifacts
 
 
@@ -694,9 +697,10 @@ jobs:
 
   upload_packages_osx:
     <<: *infrastructure_config
-    environment:
-      - PKG_TARGET_OS: macos
     <<: *upload_package
+    environment:
+      <<: *infrastructure_config_environment
+      PKG_TARGET_OS: macos
 
   upload_packages_linux:
     <<: *infrastructure_config
@@ -704,9 +708,11 @@ jobs:
 
   upload_packages_osx_test:
     <<: *infrastructure_config
-    environment:
-      - PKG_TARGET_OS: macos
     <<: *upload_package
+    environment:
+      <<: *infrastructure_config_environment
+      PKG_TARGET_OS: macos
+
 
 # CircleCI skips a job for a tag by default.
 # A job must have a filters tags section to run as a part of a tag push
