@@ -145,6 +145,8 @@ map() ->
             ,  {<<"map_lookup_default">>, [#{42 => true}, 17], false}
             ,  {<<"map_member">>, [#{42 => false}, 42], true}
             ,  {<<"map_member">>, [#{42 => false}, 17], false}
+            ,  {<<"map_from_list">>, [[{1, true}, {2, false}, {42, true}]],
+                #{ 1 => true, 2 => false, 42 => true}}
             ]
     ].
 
@@ -428,20 +430,17 @@ setup_contracts() ->
              , [ {0, [ {map_member, {stack, 0}, {arg, 0}, {arg, 1}}
                      ,  return]}
                ]}
-           , {<<"element1">>
-             , {[integer, integer], integer}
-             , [ {0, [ {push, {arg, 0}}
-                     , {push, {arg, 1}}
-                     , {make_tuple, 2}
-                     , {element, integer, {stack, 0}, {immediate, 1}, {stack, 0}}
-                     , return]}
+           , {<<"map_member">>
+             , {[{map, integer, boolean}, integer], boolean}
+             , [ {0, [ {map_member, {stack, 0}, {arg, 0}, {arg, 1}}
+                     ,  return]}
                ]}
-           , {<<"element">>
-             , {[{tuple, [integer, integer]}, integer], integer}
-             , [ {0, [ {element, integer, {stack, 0}, {arg, 1}, {arg, 0}}
-                     , return]}
-               ]}
-           ]
+           , {<<"map_from_list">>
+             , {[{list, {tuple, [integer, boolean]}}], {map, integer, boolean}}
+               , [ {0, [ {map_from_list, {stack, 0}, {arg, 0}}
+                       , return]}
+                 ]}
+             ]
      , <<"list">> =>
            [ {<<"make_nil">>
              , {[], {list, integer}}
