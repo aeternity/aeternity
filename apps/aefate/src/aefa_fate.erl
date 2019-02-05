@@ -44,9 +44,11 @@ step([I|Is], EngineState0) ->
 %% Call/return instructions
 %% ------------------------------------------------------
 eval(return, EngineState) ->
-    pop_call_stack(EngineState);
+    ES = check_return_type(EngineState),
+    pop_call_stack(ES);
 eval({return_r, Name}, EngineState) ->
-    ES2 = un_op(get, {{stack, 0}, Name}, EngineState),
+    ES1 = un_op(get, {{stack, 0}, Name}, EngineState),
+    ES2 = check_return_type(ES1),
     pop_call_stack(ES2);
 eval({call_local, Function}, EngineState) ->
     Signature = get_function_signature(Function, EngineState),
@@ -218,8 +220,18 @@ eval({map_empty, Dest}, EngineState) ->
     {next, un_op(get, {Dest, {immediate, aefa_data:make_map(#{})}}, EngineState)};
 eval({map_lookup, Dest, Map, Key}, EngineState) ->
     {next, bin_op(map_lookup, {Dest, Map, Key}, EngineState)};
+eval({map_lookup_default, Dest, Map, Key, Default}, EngineState) ->
+    {next, ter_op(map_lookup_default, {Dest, Map, Key, Default}, EngineState)};
 eval({map_update, Dest, Map, Key, Value}, EngineState) ->
     {next, ter_op(map_update, {Dest, Map, Key, Value}, EngineState)};
+
+%% builtin_deps1({map_lookup_default, Type}) -> [{map_lookup, Type}];
+%% builtin_deps1({map_get, Type})            -> [{map_lookup, Type}];
+%% builtin_deps1(map_member)                 -> [{map_lookup, word}];
+%% builtin_deps1({map_upd, Type})            -> [{map_get, Type}, map_put];
+%% builtin_deps1({map_upd_default, Type})    -> [{map_lookup_default, Type}, map_put];
+%% builtin_deps1(map_from_list)              -> [map_put];
+
 
 %% ------------------------------------------------------
 %% List instructions
@@ -235,6 +247,18 @@ eval({tl, Dest, List}, EngineState) ->
     {next, un_op(tl, {Dest, List}, EngineState)};
 eval({length, Dest, List}, EngineState) ->
     {next, un_op(length, {Dest, List}, EngineState)};
+
+%% ------------------------------------------------------
+%% String instructions
+%% ------------------------------------------------------
+%% builtin_deps1(str_equal)                  -> [str_equal_p];
+%% builtin_deps1(string_concat)              -> [string_concat_inner1, string_copy, string_shift_copy];
+%% builtin_deps1(int_to_str)                 -> [{baseX_int, 10}];
+%% builtin_deps1(addr_to_str)                -> [{baseX_int, 58}];
+%% builtin_deps1({baseX_int, X})             -> [{baseX_int_pad, X}];
+%% builtin_deps1({baseX_int_pad, X})         -> [{baseX_int_encode, X}];
+%% builtin_deps1({baseX_int_encode, X})      -> [{baseX_int_encode_, X}, {baseX_tab, X}, {baseX_digits, X}];
+%% builtin_deps1(string_reverse)             -> [string_reverse_];
 
 
 %% ------------------------------------------------------
@@ -300,7 +324,6 @@ eval({bits_intersection, To, Bits, Bit}, EngineState) ->
 %%  Bits.test(Bits.difference(a, b), i) == (Bits.test(a, i) && !Bits.test(b, i))
 eval({bits_difference, To, Bits, Bit}, EngineState) ->
     {next, bin_op(bits_difference, {To, Bits, Bit}, EngineState)};
-
 
 
 
@@ -401,6 +424,14 @@ get_function_signature(Name,  #{functions := Functions}) ->
         {Signature, _Code} -> Signature
     end.
 
+check_return_type(#{current_function := Function,
+                    accumulator := Acc} = ES) ->
+    {_ArgTypes, RetSignature} = get_function_signature(Function, ES),
+    case check_type(RetSignature, Acc) of
+        true -> ES;
+        false -> throw({error, {bad_return_type, Acc, RetSignature}})
+    end.
+
 check_signature_and_bind_args({ArgTypes, _RetSignature},
                 #{ accumulator := Acc
                  , accumulator_stack := Stack}
@@ -445,7 +476,7 @@ check_type({tuple, Elements}, T) when ?IS_FATE_TUPLE(T) ->
     check_all_types(Elements, aefa_data:tuple_to_list(T));
 check_type({map, Key, Value}, M) when ?IS_FATE_MAP(M) ->
     {Ks, Vs} = lists:unzip(maps:to_list(?FATE_MAP_VALUE(M))),
-    check_same_type(Key, Ks) andalso 
+    check_same_type(Key, Ks) andalso
     check_same_type(Value, Vs);
 check_type(_T, _V) -> false.
 
@@ -640,6 +671,9 @@ op(bits_difference, A, B)
     ?FATE_BITS((BitsA band BitsB) bxor BitsA).
 
 %% Terinay operations
+op(map_lookup_default, Map, Key, Default) when ?IS_FATE_MAP(Map),
+                                               not ?IS_FATE_MAP(Key) ->
+    maps:get(Key, ?FATE_MAP_VALUE(Map), Default);
 op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     Res = maps:put(Key, Value, ?FATE_MAP_VALUE(Map)),
