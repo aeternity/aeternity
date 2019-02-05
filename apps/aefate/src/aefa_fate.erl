@@ -226,10 +226,8 @@ eval({map_update, Dest, Map, Key, Value}, EngineState) ->
     {next, ter_op(map_update, {Dest, Map, Key, Value}, EngineState)};
 eval({map_member, Dest, Map, Key}, EngineState) ->
     {next, bin_op(map_member, {Dest, Map, Key}, EngineState)};
-
-%% builtin_deps1({map_upd, Type})            -> [{map_get, Type}, map_put];
-%% builtin_deps1({map_upd_default, Type})    -> [{map_lookup_default, Type}, map_put];
-%% builtin_deps1(map_from_list)              -> [map_put];
+eval({map_from_list, Dest, List}, EngineState) ->
+    {next, un_op(map_from_list, {Dest, List}, EngineState)};
 
 
 %% ------------------------------------------------------
@@ -579,6 +577,9 @@ op(inc, A) ->
     A + 1;
 op('not', A) ->
     not A;
+op(map_from_list, A) when ?IS_FATE_LIST(A) ->
+    KeyValues = [T || ?FATE_TUPLE(T) <- ?FATE_LIST_VALUE(A)],
+    aefa_data:make_map(maps:from_list(KeyValues));
 op(hd, A) when ?IS_FATE_LIST(A) ->
     case ?FATE_LIST_VALUE(A) of
         [] -> throw({error, hd_on_empty_list});
