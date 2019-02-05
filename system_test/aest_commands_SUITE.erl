@@ -39,7 +39,7 @@
 % Please note: this module is part of of the smoke-test target. The combined
 % runtime should be kept below 10 minutes.
 all() -> [
-    commands
+    commands,
     deprecated_commands
 ].
 
@@ -51,10 +51,10 @@ end_per_testcase(_TC, Config) ->
 
 %=== TEST CASES ================================================================
 
-commands(Cgf) ->
+commands(Cfg) ->
     commands_("bin/aeternity", Cfg).
 
-deprecated_commands(Cgf) ->
+deprecated_commands(Cfg) ->
     commands_("bin/epoch", Cfg).
 
 commands_(OpsBin, Cfg) ->
