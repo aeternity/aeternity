@@ -142,6 +142,7 @@ map() ->
             [ {<<"make_empty_map">>, [], #{}}
             ,  {<<"map_update">>, [#{},42,true], #{42 => true}}
             ,  {<<"map_lookup">>, [#{42 => true}, 42], true}
+            ,  {<<"map_lookup_default">>, [#{42 => true}, 17], false}
             ]
     ].
 
@@ -331,7 +332,7 @@ setup_contracts() ->
            , {<<"write">>
              , {[integer], integer}
              , [ {0, [ {store, {var, 1}, {arg, 0}}
-                     , return
+                     , {return_r, {var, 1}}
                      ]}
                ]}
            , {<<"dest_add">>
@@ -411,9 +412,13 @@ setup_contracts() ->
                      ,  return]}
                ]}
            , {<<"map_lookup">>
-             , {[{map, integer, boolean}, integer],
-                integer}
+             , {[{map, integer, boolean}, integer], boolean}
              , [ {0, [ {map_lookup, {stack, 0}, {arg, 0}, {arg, 1}}
+                     ,  return]}
+               ]}
+           , {<<"map_lookup_default">>
+             , {[{map, integer, boolean}, integer], boolean}
+             , [ {0, [ {map_lookup_default, {stack, 0}, {arg, 0}, {arg, 1}, {immediate, false}}
                      ,  return]}
                ]}
            , {<<"element1">>
