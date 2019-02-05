@@ -534,6 +534,48 @@
         }
       }
     },
+    "/accounts/{pubkey}/height/{height}" : {
+      "get" : {
+        "tags" : [ "external", "account" ],
+        "description" : "Get an account by public key after the opening key block of the generation at height",
+        "operationId" : "GetAccountByPubkeyAndHeight",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the account",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "height",
+          "in" : "path",
+          "description" : "The height of the key block",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Account"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key or invalid height",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found or height not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/accounts/{pubkey}/transactions/pending" : {
       "get" : {
         "tags" : [ "external", "account" ],

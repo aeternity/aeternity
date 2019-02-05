@@ -78,6 +78,7 @@ queue('GetCurrentGeneration')                   -> ?READ_Q;
 queue('GetGenerationByHash')                    -> ?READ_Q;
 queue('GetGenerationByHeight')                  -> ?READ_Q;
 queue('GetAccountByPubkey')                     -> ?READ_Q;
+queue('GetAccountByPubkeyAndHeight')            -> ?READ_Q;
 queue('GetPendingAccountTransactionsByPubkey')  -> ?READ_Q;
 queue('GetTransactionByHash')                   -> ?READ_Q;
 queue('GetTransactionInfoByHash')               -> ?READ_Q;
@@ -332,6 +333,24 @@ handle_request_('GetAccountByPubkey', Params, _Context) ->
                     {200, [], aec_accounts:serialize_for_client(Account)};
                 none ->
                     {404, [], #{reason => <<"Account not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
+handle_request_('GetAccountByPubkeyAndHeight', Params, _Context) ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    case aehttp_api_encoder:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
+        {ok, Id} ->
+            {_IdType, Pubkey} = aec_id:specialize(Id),
+            Height = maps:get(height, Params),
+            case aec_chain:get_account_at_height(Pubkey, Height) of
+                {value, Account} ->
+                    {200, [], aec_accounts:serialize_for_client(Account)};
+                none ->
+                    {404, [], #{reason => <<"Account not found">>}};
+                {error, chain_too_short} ->
+                    {404, [], #{reason => <<"Height not available">>}}
             end;
         {error, _} ->
             {400, [], #{reason => <<"Invalid public key">>}}

@@ -44,6 +44,7 @@
 -export([ all_accounts_balances_at_hash/1
         , get_account/1
         , get_account_at_hash/2
+        , get_account_at_height/2
         ]).
 
 %%% NS API
@@ -97,6 +98,17 @@ get_account_at_hash(PubKey, Hash) ->
         {ok, Trees} ->
             aec_accounts_trees:lookup(PubKey, aec_trees:accounts(Trees));
         error -> {error, no_state_trees}
+    end.
+
+get_account_at_height(PubKey, Height) ->
+    case aec_chain_state:get_key_block_hash_at_height(Height) of
+        error -> {error, chain_too_short};
+        {ok, Hash} ->
+            case get_block_state(Hash) of
+                {ok, Trees} ->
+                    aec_accounts_trees:lookup(PubKey, aec_trees:accounts(Trees));
+                error -> {error, no_state_trees}
+            end
     end.
 
 -spec all_accounts_balances_at_hash(binary()) ->

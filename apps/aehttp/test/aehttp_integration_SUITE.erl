@@ -51,6 +51,7 @@
 -export(
    [
     get_account_by_pubkey/1,
+    get_account_by_pubkey_and_height/1,
     get_pending_account_transactions_by_pubkey/1
    ]).
 
@@ -333,6 +334,7 @@ groups() ->
      {account_info, [sequence],
       [
        get_account_by_pubkey,
+       get_account_by_pubkey_and_height,
        get_pending_account_transactions_by_pubkey
       ]},
 
@@ -651,8 +653,9 @@ init_per_group(account_with_balance = Group, Config) ->
     {_, Pubkey} = aecore_suite_utils:sign_keys(NodeId),
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
-    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
-    true = aec_blocks:is_key_block(KeyBlock),
+    {ok, [KeyBlock1, KeyBlock2]} = aecore_suite_utils:mine_key_blocks(Node, 2),
+    true = aec_blocks:is_key_block(KeyBlock1),
+    true = aec_blocks:is_key_block(KeyBlock2),
     [{account_id, aehttp_api_encoder:encode(account_pubkey, Pubkey)},
      {account_exists, true} | Config1];
 init_per_group(account_with_pending_tx, Config) ->
@@ -1409,6 +1412,33 @@ get_account_by_pubkey(true, Config) ->
     %% TODO: check nonce?
     ok.
 
+get_account_by_pubkey_and_height(Config) ->
+    get_account_by_pubkey_and_height(?config(account_exists, Config), Config).
+
+get_account_by_pubkey_and_height(false, Config) ->
+    AccountId = ?config(account_id, Config),
+    Height = aec_headers:height(rpc(?NODE, aec_chain, top_header, [])),
+    {ok, 404, Error1} = get_accounts_by_pubkey_and_height_sut(AccountId, Height),
+    ?assertEqual(<<"Account not found">>, maps:get(<<"reason">>, Error1)),
+    {ok, 404, Error2} = get_accounts_by_pubkey_and_height_sut(AccountId, Height + 2),
+    ?assertEqual(<<"Height not available">>, maps:get(<<"reason">>, Error2)),
+    ok;
+get_account_by_pubkey_and_height(true, Config) ->
+    AccountId = ?config(account_id, Config),
+    Height = aec_headers:height(rpc(?NODE, aec_chain, top_header, [])),
+    {ok, 200, Account1} = get_accounts_by_pubkey_and_height_sut(AccountId, Height - 1),
+    {ok, 200, Account2} = get_accounts_by_pubkey_and_height_sut(AccountId, Height),
+    ?assertEqual(AccountId, maps:get(<<"id">>, Account1)),
+    ?assertEqual(AccountId, maps:get(<<"id">>, Account2)),
+    ?assert(maps:get(<<"balance">>, Account1) > 0),
+    ?assert(maps:get(<<"balance">>, Account2) > maps:get(<<"balance">>, Account1)),
+    {ok, 404, Error1} = get_accounts_by_pubkey_and_height_sut(AccountId, 0),
+    ?assertEqual(<<"Account not found">>, maps:get(<<"reason">>, Error1)),
+    {ok, 404, Error2} = get_accounts_by_pubkey_and_height_sut(AccountId, Height + 2),
+    ?assertEqual(<<"Height not available">>, maps:get(<<"reason">>, Error2)),
+    ok.
+
+
 get_pending_account_transactions_by_pubkey(Config) ->
     get_pending_account_transactions_by_pubkey(?config(account_exists, Config), Config).
 
@@ -1428,6 +1458,12 @@ get_pending_account_transactions_by_pubkey(true, Config) ->
 get_accounts_by_pubkey_sut(Id) ->
     Host = external_address(),
     http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
+
+get_accounts_by_pubkey_and_height_sut(Id, Height) ->
+    Host = external_address(),
+    IdS = binary_to_list(http_uri:encode(Id)),
+    HeightS = integer_to_list(Height),
+    http_request(Host, get, "accounts/" ++ IdS ++ "/height/" ++ HeightS, []).
 
 get_accounts_transactions_pending_by_pubkey_sut(Id) ->
     Host = external_address(),
