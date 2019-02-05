@@ -38,9 +38,11 @@ tuple_test_() ->
 map_test_() ->
     make_calls(map()).
 
+list_test_() ->
+    make_calls(list()).
+
 bits_test_() ->
     make_calls(bits()).
-
 
 make_calls(ListOfCalls) ->
     Chain = setup_chain(),
@@ -140,6 +142,17 @@ map() ->
             [ {<<"make_empty_map">>, [], #{}}
             ,  {<<"map_update">>, [#{},42,true], #{42 => true}}
             ,  {<<"map_lookup">>, [#{42 => true}, 42], true}
+            ]
+    ].
+
+
+list() ->
+    [ {<<"list">>, F, A, R} ||
+        {F,A,R} <-
+            [ {<<"make_nil">>, [], []}
+            ,  {<<"cons">>, [42,[]], [42]}
+            ,  {<<"head">>, [[42]], 42}
+            ,  {<<"tail">>, [[42]], []}
             ]
     ].
 
@@ -413,6 +426,28 @@ setup_contracts() ->
            , {<<"element">>
              , {[{tuple, [integer, integer]}, integer], integer}
              , [ {0, [ {element, integer, {stack, 0}, {arg, 1}, {arg, 0}}
+                     , return]}
+               ]}
+           ]
+     , <<"list">> =>
+           [ {<<"make_nil">>
+             , {[], {list, integer}}
+             , [ {0, [ {nil, {stack, 0}}
+                     , return]}
+               ]}
+           , {<<"cons">>
+             , {[integer, {list, integer}], {list, integer}}
+             , [ {0, [ {cons, {stack, 0}, {arg, 0}, {arg, 1}}
+                     ,  return]}
+               ]}
+           , {<<"head">>
+             , {[{list, integer}], integer}
+             , [ {0, [ {hd, {stack, 0}, {arg, 0}}
+                     ,  return]}
+               ]}
+           , {<<"tail">>
+             , {[{list, integer}], {list, integer}}
+             , [ {0, [ {tl, {stack, 0}, {arg, 0}}
                      , return]}
                ]}
            ]
