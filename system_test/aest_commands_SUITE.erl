@@ -8,7 +8,8 @@
 -export([end_per_testcase/2]).
 
 % Test cases
--export([epoch_commands/1]).
+-export([commands/1]).
+-export([deprecated_commands/1]).
 
 -import(aest_nodes, [
     setup_nodes/2,
@@ -38,7 +39,8 @@
 % Please note: this module is part of of the smoke-test target. The combined
 % runtime should be kept below 10 minutes.
 all() -> [
-    epoch_commands
+    commands,
+    deprecated_commands
 ].
 
 init_per_testcase(_TC, Config) ->
@@ -49,39 +51,45 @@ end_per_testcase(_TC, Config) ->
 
 %=== TEST CASES ================================================================
 
-epoch_commands(Cfg) ->
+commands(Cfg) ->
+    commands_("bin/aeternity", Cfg).
+
+deprecated_commands(Cfg) ->
+    commands_("bin/epoch", Cfg).
+
+commands_(OpsBin, Cfg) ->
     setup_nodes([?NODE1], Cfg),
     start_node(node1, Cfg),
     wait_for_value({height, 0}, [node1], ?STARTUP_TIMEOUT, Cfg),
-    {0, Output1} = run_cmd_in_node_dir(node1, ["bin/epoch", "versions"], Cfg),
+    {0, Output1} = run_cmd_in_node_dir(node1, [OpsBin, "versions"], Cfg),
     ?assertMatch({match, _}, re:run(Output1,
         "Installed versions:[\r\n]*\\*[ \t]*[0-9\\.\\-a-z]*[ \t]*permanent[\r\n]*")),
 
-    {0, Output2} = run_cmd_in_node_dir(node1, ["bin/epoch", "peer_key"], Cfg),
+    {0, Output2} = run_cmd_in_node_dir(node1, [OpsBin, "peer_key"], Cfg),
     {ok, PeerKey} = aehttp_api_encoder:safe_decode(peer_pubkey, list_to_binary(Output2)),
     ExpPeerKey = aest_nodes:get_node_pubkey(node1, Cfg),
     ?assertEqual(ExpPeerKey, PeerKey),
 
     {0, Output3} = run_cmd_in_node_dir(node1,
-        ["bin/epoch", "check_config", "../aeternity.yaml"], Cfg),
+        [OpsBin, "check_config", "../aeternity.yaml"], Cfg),
     ?assertMatch({match, _}, re:run(Output3, "OK[\r\n]*")),
 
-    {0, Output4} = run_cmd_in_node_dir(node1, ["bin/epoch", "pid"], Cfg),
+    {0, Output4} = run_cmd_in_node_dir(node1, [OpsBin, "pid"], Cfg),
     ?assertMatch({match, _}, re:run(Output4, "1[\r\n]*")),
 
-    {0, Output5} = run_cmd_in_node_dir(node1, ["bin/epoch", "ping"], Cfg),
+    {0, Output5} = run_cmd_in_node_dir(node1, [OpsBin, "ping"], Cfg),
     ?assertMatch({match, _}, re:run(Output5, "pong[\r\n]*")),
 
-    Result6 = run_cmd_in_node_dir(node1, ["bin/epoch", "status"], Cfg),
+    Result6 = run_cmd_in_node_dir(node1, [OpsBin, "status"], Cfg),
     ?assertMatch({0, _}, Result6),
 
-    {0, Output7} = run_cmd_in_node_dir(node1, ["bin/epoch", "keys_gen", "secret password"], Cfg),
+    {0, Output7} = run_cmd_in_node_dir(node1, [OpsBin, "keys_gen", "secret password"], Cfg),
     ?assertMatch({match, _}, re:run(Output7, "Generated keypair with encoded pubkey:[\r\n]*")),
     {match, [EncodedPubKey]} = re:run(Output7, "ak\\_[A-Za-z0-9]*", [{capture, first, binary}]),
     ?assertMatch({ok, _}, aehttp_api_encoder:safe_decode(account_pubkey, EncodedPubKey)),
 
     {HostPath, GuestPath} = aest_nodes:shared_temp_file(node1, "chain.dlog"),
-    {0, _Output8} = run_cmd_in_node_dir(node1, ["bin/epoch", "export", GuestPath], Cfg),
+    {0, _Output8} = run_cmd_in_node_dir(node1, [OpsBin, "export", GuestPath], Cfg),
     ?assert(filelib:is_regular(HostPath)),
 
     ok.

@@ -64,6 +64,8 @@
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
 
+-define(OPS_BIN, "aeternity").
+
 %% Keys for P2P communication
 peer_keys() ->
     [{dev1, {<<120,30,108,92,13,32,45,162,66,181,135,13,102,186,226,7,134,64,127,57,44,122,62,198,148,18,128,51,162,218,180,97>>,
@@ -174,7 +176,7 @@ start_node(N, Config) ->
     MyDir = filename:dirname(code:which(?MODULE)),
     ConfigFilename = proplists:get_value(config_name, Config, "default"),
     Flags = ["-pa ", MyDir, " -config ./" ++ ConfigFilename],
-    cmd("epoch", node_shortcut(N, Config), "bin", ["start"],
+    cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["start"],
         [
          {"ERL_FLAGS", Flags},
          {"AETERNITY_CONFIG", "data/aeternity.json"},
@@ -183,7 +185,7 @@ start_node(N, Config) ->
         ]).
 
 stop_node(N, Config) ->
-    cmd("epoch", node_shortcut(N, Config), "bin", ["stop"]).
+    cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["stop"]).
 
 get_node_db_config(Rpc) when is_function(Rpc, 3) ->
     IsDbPersisted = Rpc(application, get_env, [aecore, persist, false]),

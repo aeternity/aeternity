@@ -197,7 +197,7 @@ def start_node(temp_dir):
     assert os.access(binary, os.X_OK)
     print("Starting " + binary)
     os.chdir(temp_dir)
-    os.system('ERL_FLAGS="-config `pwd`/p.config" bin/epoch start')
+    os.system('ERL_FLAGS="-config `pwd`/p.config" bin/aeternity start')
 
 def eval_on_node(temp_dir, quoted_code):
     binary = executable(temp_dir)
