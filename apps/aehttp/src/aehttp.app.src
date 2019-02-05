@@ -14,7 +14,8 @@
     jesse,
     aecore,
     gproc,
-    poolboy
+    poolboy,
+    setup
    ]},
   {env,[]},
   {modules, []},
