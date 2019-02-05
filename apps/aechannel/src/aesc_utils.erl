@@ -83,7 +83,7 @@ check_is_closing(Channel) ->
                                     solo_close | slash | force_progress |
                                     deposit | withdrawal
                                     )
-    -> ok | {error, old_round}.
+    -> ok | {error, old_round | same_round}.
 check_round_greater_than_last(Channel, Round, Type) ->
     ChannelRound = aesc_channels:round(Channel),
     MinRound =
@@ -103,9 +103,12 @@ check_round_greater_than_last(Channel, Round, Type) ->
                 ChannelRound
         end,
     ?TEST_LOG("MinRound ~p, Round ~p", [MinRound, Round]),
-    case MinRound < Round of
-        true  -> ok;
-        false -> {error, old_round}
+    if MinRound < Round ->
+            ok;
+       MinRound == Round ->
+            {error, same_round};
+       true ->
+            {error, old_round}
     end.
 
 -spec check_is_peer(aec_keys:pubkey(), list(aec_keys:pubkey())) -> ok | {error, account_not_peer}.

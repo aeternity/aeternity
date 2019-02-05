@@ -16,6 +16,42 @@ IF "%WIN_OTP_PATH%"=="" SET "WIN_OTP_PATH=C:\Program Files\erl"
 IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\msys64"
 IF "%PLATFORM%"=="" SET "PLATFORM=x64"
 SET BASH_BIN="%WIN_MSYS2_ROOT%\usr\bin\bash"
+SET PACMAN=pacman --noconfirm --needed -S
+SET PACMAN_RM=pacman --noconfirm -Rsc
+SET WIN_STYRENE_PATH=%TMP%\styrene
+
+SET PACMAN_PACKAGES=base-devel ^
+cmake ^
+curl ^
+gcc ^
+git ^
+make ^
+mingw-w64-i686-binutils ^
+mingw-w64-i686-gcc ^
+mingw-w64-i686-nsis ^
+mingw-w64-i686-python3 ^
+mingw-w64-i686-python3-pip ^
+mingw-w64-x86_64-SDL ^
+mingw-w64-x86_64-binutils ^
+mingw-w64-x86_64-gcc ^
+mingw-w64-x86_64-libsodium ^
+mingw-w64-x86_64-nsis ^
+mingw-w64-x86_64-ntldd-git  ^
+mingw-w64-x86_64-python3 ^
+mingw-w64-x86_64-python3-pip ^
+mingw-w64-x86_64-yasm ^
+patch ^
+zip
+
+SET PACMAN_PACKAGES_REMOVE=gcc-fortran ^
+mingw-w64-i686-gcc-ada ^
+mingw-w64-i686-gcc-fortran ^
+mingw-w64-i686-gcc-libgfortran ^
+mingw-w64-i686-gcc-objc ^
+mingw-w64-x86_64-gcc-ada ^
+mingw-w64-x86_64-gcc-fortran ^
+mingw-w64-x86_64-gcc-libgfortran ^
+mingw-w64-x86_64-gcc-objc
 
 @echo Current time: %time%
 rem Set the paths appropriately
@@ -27,15 +63,19 @@ SET PATH=%WIN_MSYS2_ROOT%\mingw64\bin;%WIN_MSYS2_ROOT%\usr\bin;%PATH%
 @echo Current time: %time%
 rem Upgrade the MSYS2 platform
 
-%BASH_BIN% -lc "pacman --noconfirm --needed -Sy pacman"
-%BASH_BIN% -lc "pacman --noconfirm --needed -Su"
+%BASH_BIN% -lc "%PACMAN% -y pacman"
+@echo Current time: %time%
+%BASH_BIN% -lc "%PACMAN% -u"
+
+@echo Current time: %time%
+rem Remove breaking tools
+
+%BASH_BIN% -lc "%PACMAN_RM% %PACMAN_PACKAGES_REMOVE% || true"
 
 @echo Current time: %time%
 rem Install required tools
 
-%BASH_BIN% -lc "pacman --noconfirm --needed -S base-devel cmake curl gcc gcc-fortran git make patch"
-%BASH_BIN% -lc "pacman --noconfirm --needed -S mingw-w64-x86_64-SDL mingw-w64-x86_64-libsodium mingw-w64-x86_64-ntldd-git mingw-w64-x86_64-yasm"
-%BASH_BIN% -lc "pacman --noconfirm --needed -S mingw-w64-x86_64-gcc mingw-w64-x86_64-gcc-ada mingw-w64-x86_64-gcc-fortran mingw-w64-x86_64-gcc-objc"
+%BASH_BIN% -lc "%PACMAN% %PACMAN_PACKAGES%"
 
 @echo Current time: %time%
 rem Ensure Erlang/OTP %OTP_VERSION% is installed
@@ -45,6 +85,15 @@ SET OTP_PACKAGE=otp_win64_%OTP_VERSION%.exe
 PowerShell -Command "Invoke-WebRequest http://erlang.org/download/%OTP_PACKAGE% -OutFile %TMP%\%OTP_PACKAGE%"
 START "" /WAIT "%TMP%\%OTP_PACKAGE%" /S
 :OTPINSTALLED
+
+@echo Current time: %time%
+rem Ensure Styrene is installed
+
+IF EXIST "%WIN_STYRENE_PATH%" GOTO STYRENEINSTALLED
+%BASH_BIN% -lc "git clone https://github.com/achadwick/styrene.git \"${ORIGINAL_TEMP}/styrene\""
+%BASH_BIN% -lc "cd \"${ORIGINAL_TEMP}/styrene\" && git fetch origin && git checkout v0.3.0"
+%BASH_BIN% -lc "cd \"${ORIGINAL_TEMP}/styrene\" && /mingw64/bin/pip3 install ."
+:STYRENEINSTALLED
 
 @echo Current time: %time%
 rem Set up msys2 env variables
