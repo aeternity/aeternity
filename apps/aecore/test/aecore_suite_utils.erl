@@ -463,7 +463,7 @@ grep_error(FileName) ->
                string:find(Entry, "[error]") =/= nomatch ].
 
 times_in_epoch_log(Node, Config, Str) ->
-    LogFile = filename:join(log_dir(Node, Config), "epoch.log"),
+    LogFile = filename:join(log_dir(Node, Config), "aeternity.log"),
     ct:log("Reading logfile ~p", [LogFile]),
     {ok, Bin} = file:read_file(LogFile),
     Entries = string:lexemes(Bin, [$\r,$\n]),
@@ -471,8 +471,8 @@ times_in_epoch_log(Node, Config, Str) ->
                string:find(Entry, Str) =/= nomatch ].
 
 expected_logs() ->
-    ["epoch.log", "epoch_mining.log", "epoch_sync.log",
-     "epoch_pow_cuckoo.log", "epoch_metrics.log"].
+    ["aeternity.log", "aeternity_mining.log", "aeternity_sync.log",
+     "aeternity_pow_cuckoo.log", "aeternity_metrics.log"].
 
 await_sync_complete(T0, Nodes) ->
     [aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],

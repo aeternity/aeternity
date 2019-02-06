@@ -83,7 +83,7 @@
 %% Example of ignored lines:
 %% 2018-07-10 15:48:59.649 [error] <0.1270.0>@aec_conductor:dispatch_worker:394 Disallowing dispatch of additional create_key_block_candidate worker
 %% 2018-07-10 15:52:10.864 [error] <0.1270.0>@aec_conductor:dispatch_worker:394 Disallowing dispatch of additional micro_sleep worker
--define(EPOCH_LOG_SCAN_AWK_SCRIPT, "
+-define(DEFAULT_LOG_SCAN_AWK_SCRIPT, "
     /^.*\\[error\\].*aec_conductor:dispatch_worker.*Disallowing dispatch of additional.*$/ {
       matched = 1
       if (buff != \"\") {
@@ -313,7 +313,7 @@ shared_temp_file(NodeName, FileName) ->
 
 read_last_metric(NodeName, MetricName) ->
     {LogPath, _} = aest_nodes_mgr:get_log_path(NodeName),
-    MetricsLogPath = binary_to_list(filename:join(LogPath, "epoch_metrics.log")),
+    MetricsLogPath = binary_to_list(filename:join(LogPath, "aeternity_metrics.log")),
     case filelib:is_file(MetricsLogPath) of
         false -> undefined;
         true ->
@@ -850,9 +850,9 @@ validate_logs(Cfg) ->
     Logs = aest_nodes_mgr:get_log_paths(),
     maps:fold(fun(NodeName, {LogPath, _}, Result) ->
         Result1 = check_crash_log(NodeName, LogPath, Cfg, Result),
-        Result2 = check_log_for_errors(NodeName, LogPath, "epoch.log", Cfg, Result1),
-        Result3 = check_log_for_errors(NodeName, LogPath, "epoch_sync.log", Cfg, Result2),
-                  check_log_for_errors(NodeName, LogPath, "epoch_mining.log", Cfg, Result3)
+        Result2 = check_log_for_errors(NodeName, LogPath, "aeternity.log", Cfg, Result1),
+        Result3 = check_log_for_errors(NodeName, LogPath, "aeternity_sync.log", Cfg, Result2),
+                  check_log_for_errors(NodeName, LogPath, "aeternity_mining.log", Cfg, Result3)
     end, ok, Logs).
 
 check_crash_log(NodeName, LogPath, Cfg, Result) ->
@@ -882,7 +882,7 @@ check_log_for_errors(NodeName, LogPath, LogName, Cfg, Result) ->
     case filelib:is_file(LogFile) of
         false -> Result;
         true ->
-            Command = "awk '" ?EPOCH_LOG_SCAN_AWK_SCRIPT "' '" ++ LogFile ++ "'",
+            Command = "awk '" ?DEFAULT_LOG_SCAN_AWK_SCRIPT "' '" ++ LogFile ++ "'",
             case os:cmd(Command) of
                 "" -> Result;
                 ErrorLines ->
