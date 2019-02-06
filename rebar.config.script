@@ -20,13 +20,31 @@ FilterDepsRocksDb = fun(Deps) ->
                         end
                     end,
 
+OverlayReplacements = [
+                       "bin/epoch",
+                       "bin/extensions/check_config",
+                       "bin/extensions/keys_gen",
+                       "bin/extensions/peer_key",
+                       "bin/extensions/messages_hash",
+                       "bin/extensions/export_chain"
+                      ],
+
 AdaptOverlayBin = fun(Overlay) ->
                       case IsWindows of
                           false ->
                               Overlay;
                           true ->
-                              NewEntry = {copy, "scripts/epoch.bat", "bin/epoch.bat"},
-                              lists:keyreplace("bin/epoch", 3, Overlay, NewEntry)
+                              lists:foldl(
+                                fun({Action, Src0, Dest0}, Acc0) ->
+                                    case lists:member(Dest0, OverlayReplacements) of
+                                        true ->
+                                            Src = filename:rootname(Src0) ++ ".cmd",
+                                            Dest = filename:rootname(Dest0) ++ ".cmd",
+                                            lists:keyreplace(Dest0, 3, Acc0, {Action, Src, Dest});
+                                        false ->
+                                            Acc0
+                                    end
+                                end, Overlay, Overlay)
                       end
                   end,
 
