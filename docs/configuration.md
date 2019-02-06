@@ -73,7 +73,7 @@ nc -zv $(curl -s https://api.ipify.org) 3015
 
 Example output:
 ```
-Connection to 35.178.61.73 3015 port [tcp/*] succeeded!
+Connection to 13.53.161.215 3015 port [tcp/*] succeeded!
 ```
 
 Where the IP address should be the external IP address of the node under test (it's one of the seed nodes in this example).

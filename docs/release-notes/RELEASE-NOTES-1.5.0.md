@@ -55,24 +55,24 @@ For installation of a node using the Docker image, please refer to [its document
 
 The release package comes preconfigured with seed nodes. Here is example subset of the seed nodes:
 
-* aenode://pp_5mmzrsoPh9owYMfKhZSkUihufDTB6TuayD173Ng464ukVm9xU@35.178.61.73:3015
-* aenode://pp_2KWhoNRdythXAmgCbM6QxFo95WM4XXGq2pjcbKitXFpUHnPQc3@35.177.192.219:3015
 * aenode://pp_2L8A5vSjnkLtfFNpJNgP9HbmGLD7ZAGFxoof47N8L4yyLAyyMi@18.136.37.63:3015
 * aenode://pp_2gPZjuPnJnTVEbrB9Qgv7f4MdhM4Jh6PD22mB2iBA1g7FRvHTk@52.220.198.72:3015
-* aenode://pp_frAKABjDnM3QZCUygbkaFvbd8yhv6xdufazDFLgJRc4fnGy3s@52.56.252.75:3015
 * aenode://pp_tVdaaX4bX54rkaVEwqE81hCgv6dRGPPwEVsiZk41GXG1A4gBN@3.16.242.93:3015
 * aenode://pp_2mwr9ikcyUDUWTeTQqdu8WJeQs845nYPPqjafjcGcRWUx4p85P@3.17.30.101:3015
-* aenode://pp_FLpSUrKwgBAu5uVRnB2iWKtwGAHZckxvtCbjVPeeCA3j33t3J@52.56.66.124:3015
 * aenode://pp_2CAJwwmM2ZVBHYFB6na1M17roQNuRi98k6WPFcoBMfUXvsezVU@13.58.177.66:3015
+* aenode://pp_7N7dkCbg39MYzQv3vCrmjVNfy6QkoVmJe3VtiZ3HRncvTWAAX@13.53.114.199:3015
+* aenode://pp_22FndjTkMMXZ5gunCTUyeMPbgoL53smqpM4m1Jz5fVuJmPXm24@13.53.149.181:3015
+* aenode://pp_Xgsqi4hYAjXn9BmrU4DXWT7jURy2GoBPmrHfiCoDVd3UPQYcU@13.53.164.121:3015
+* aenode://pp_vTDXS3HJrwJecqnPqX3iRxKG5RBRz9MdicWGy8p9hSdyhAY4S@13.53.77.98:3015
 
 ### Inspect Roma network
 
 Here are example nodes that can be used to inspect current top block and see information about e.g. height or target:
 
-* http://35.178.61.73:3013/v2/blocks/top
-* http://35.177.192.219:3013/v2/blocks/top
 * http://18.136.37.63:3013/v2/blocks/top
 * http://52.220.198.72:3013/v2/blocks/top
+* http://13.53.114.199:3013/v2/blocks/top
+* http://13.53.149.181:3013/v2/blocks/top
 
 ## Join the testnet
 
@@ -87,7 +87,7 @@ In order to join testnet reconfigure seed nodes in the release package:
 * aenode://pp_QU9CvhAQH56a2kA15tCnWPRJ2srMJW8ZmfbbFTAy7eG4o16Bf@52.10.46.160:3015
 * aenode://pp_2vhFb3HtHd1S7ynbpbFnEdph1tnDXFSfu4NGtq46S2eM5HCdbC@18.195.109.60:3015
 * aenode://pp_27xmgQ4N1E3QwHyoutLtZsHW5DSW4zneQJ3CxT5JbUejxtFuAu@13.250.162.250:3015
-* aenode://pp_nt5N7fwae3DW8Mqk4kxkGAnbykRDpEZq9dzzianiMMPo4fJV7@18.130.148.7:3015
+* aenode://pp_DMLqy7Zuhoxe2FzpydyQTgwCJ52wouzxtHWsPGo51XDcxc5c8@13.53.161.215:3015
 
 ### Inspect the testnet
 
@@ -97,7 +97,7 @@ Information, e.g. height, of the top block of the longest chain as seen by these
 * http://52.10.46.160:3013/v2/blocks/top
 * http://18.195.109.60:3013/v2/blocks/top
 * http://13.250.162.250:3013/v2/blocks/top
-* http://18.130.148.7:3013/v2/blocks/top
+* http://13.53.161.215:3013/v2/blocks/top
 
 ### Setup your node
 
