@@ -79,8 +79,11 @@ tuple_to_list(?FATE_TUPLE(T)) -> erlang:tuple_to_list(T).
 
 %% Encode is a convinience function for testing, encoding an Erlang term
 %% to a Fate term, but it can not distinguish between e.g. 32-byte strings
-%% and addresses. Use the make_X functions instead.
+%% and addresses. Therfore an extra tuple layer on the erlang side for
+%% addresses and bits.
 encode({bits, Term}) when is_integer(Term) -> make_bits(Term);
+%% TODO: check that each byte is in base58
+encode({address, Term}) -> make_address(Term);
 encode(Term) when is_integer(Term) -> make_integer(Term);
 encode(Term) when is_boolean(Term) -> make_boolean(Term);
 encode(Term) when is_list(Term) -> make_list([encode(E) || E <- Term]);
@@ -88,8 +91,6 @@ encode(Term) when is_tuple(Term) ->
     make_tuple(list_to_tuple([encode(E) || E <- erlang:tuple_to_list(Term)]));
 encode(Term) when is_map(Term) ->
     make_map(maps:from_list([{encode(K), encode(V)} || {K,V} <- maps:to_list(Term)]));
-%% TODO: this breaks down for 32 bytes strings.
-encode(Term) when is_binary(Term), size(Term) =:= 32 -> make_address(Term);
 encode(Term) when is_binary(Term) -> make_string(Term).
 
 
@@ -98,12 +99,12 @@ decode(I) when ?IS_FATE_INTEGER(I) -> I;
 decode(?FATE_TRUE)  -> true;
 decode(?FATE_FALSE) -> false;
 decode(L) when ?IS_FATE_LIST(L) -> [decode(E) || E <- L];
+decode(?FATE_ADDRESS(Address)) -> {address, Address};
+decode(?FATE_BITS(Bits)) -> {bits, Bits};
 decode(?FATE_TUPLE(T)) -> erlang:list_to_tuple([decode(E) || E <- T]);
 decode(S) when ?IS_FATE_STRING(S) -> binary_to_list(S);
 decode(M) when ?IS_FATE_MAP(M) ->
-    maps:from_list([{decode(K), decode(V)} || {K, V} <- maps:to_list(M)]);
-decode(?FATE_ADDRESS(Address)) -> Address;
-decode(?FATE_BITS(Bits)) -> {bits, Bits}.
+    maps:from_list([{decode(K), decode(V)} || {K, V} <- maps:to_list(M)]).
 
 -spec format(fate_type()) -> iolist().
 format(I) when ?IS_FATE_INTEGER(I) -> integer_to_list(?MAKE_FATE_INTEGER(I));
