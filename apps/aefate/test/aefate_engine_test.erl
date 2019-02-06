@@ -41,6 +41,9 @@ map_test_() ->
 list_test_() ->
     make_calls(list()).
 
+string_test_() ->
+    make_calls(string()).
+
 bits_test_() ->
     make_calls(bits()).
 
@@ -159,6 +162,40 @@ list() ->
             ,  {<<"head">>, [[42]], 42}
             ,  {<<"tail">>, [[42]], []}
             ,  {<<"length">>, [[1,2,3,4]], 4}
+            ]
+    ].
+
+
+string() ->
+    [ {<<"string">>, F, A, R} ||
+        {F,A,R} <-
+            [ {<<"str_equal">>, [<<"">>, <<"">>], true}
+            , {<<"str_equal">>, [<<"">>, <<"1">>], false}
+            , {<<"str_equal">>, [<<"1">>, <<"1">>], true}
+            , {<<"str_equal">>, [<<"a longer string">>, <<"a longer string">>], true}
+            , {<<"str_equal">>, [<<"a longer string">>, <<"a longer String">>], false}
+            , {<<"str_join">>, [<<"">>, <<"">>], <<"">>}
+            , {<<"str_join">>, [<<"1">>, <<"">>], <<"1">>}
+            , {<<"str_join">>, [<<"">>, <<"1">>], <<"1">>}
+            , {<<"str_join">>, [<<"a longer ">>, <<"string">>], <<"a longer string">>}
+            , {<<"int_to_str">>, [0], <<"0">>}
+            , {<<"int_to_str">>, [1], <<"1">>}
+            , {<<"int_to_str">>, [4711], <<"4711">>}
+            , {<<"int_to_addr">>, [0], {address, <<"1">>}}
+            , {<<"int_to_addr">>, [1], {address, <<"2">>}}
+            , {<<"int_to_addr">>, [375576359605656387439355756185499065667174933136290370646365126117934444451883981459509],
+               {address, <<"2U9MkZK9JXTUemAURfCd8BDQZcXK4Gk8Hwfqxf1ASSYNrQnhjz">>}}
+            , {<<"addr_to_str">>, [{address, <<"2U9MkZK9JXTUemAURfCd8BDQZcXK4Gk8Hwfqxf1ASSYNrQnhjz">>}],
+               <<"2U9MkZK9JXTUemAURfCd8BDQZcXK4Gk8Hwfqxf1ASSYNrQnhjz">>}
+            , {<<"str_reverse">>, [<<"">>], <<"">>}
+            , {<<"str_reverse">>, [<<"1">>], <<"1">>}
+            , {<<"str_reverse">>, [<<"12">>], <<"21">>}
+            , {<<"str_reverse">>, [<<"123">>], <<"321">>}
+            , {<<"str_reverse">>, [<<"1234">>], <<"4321">>}
+            , {<<"str_reverse">>, [<<"12345">>], <<"54321">>}
+            , {<<"str_reverse">>, [<<"123456789">>], <<"987654321">>}
+            , {<<"str_reverse">>, [<<"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz">>],
+               <<"zyxwvutsrqponmkjihgfedcbaZYXWVUTSRQPNMLKJHGFEDCBA987654321">>}
             ]
     ].
 
@@ -468,6 +505,39 @@ setup_contracts() ->
                      , return]}
                ]}
            ]
+     , <<"string">> =>
+           [ {<<"str_equal">>
+             , {[string, string], boolean}
+             , [ {0, [ {str_equal, {stack, 0}, {arg, 0}, {arg, 1}}
+                     , return]}
+               ]}
+           , {<<"str_join">>
+             , {[string, string], string}
+             , [ {0, [ {str_join, {stack, 0}, {arg, 0}, {arg, 1}}
+                     , return]}
+               ]}
+           , {<<"int_to_str">>
+             , {[integer], string}
+             , [ {0, [ {int_to_str, {stack, 0}, {arg, 0}}
+                     , return]}
+               ]}
+           , {<<"addr_to_str">>
+             , {[address], string}
+             , [ {0, [ {addr_to_str, {stack, 0}, {arg, 0}}
+                     , return]}
+               ]}
+           , {<<"int_to_addr">>
+             , {[integer], address}
+             , [ {0, [ {int_to_addr, {stack, 0}, {arg, 0}}
+                     , return]}
+               ]}
+           , {<<"str_reverse">>
+             , {[string], string}
+             , [ {0, [ {str_reverse, {stack, 0}, {arg, 0}}
+                     , return]}
+               ]}
+           ]
+
      , <<"bits">> =>
            [ {<<"all">>
              , {[], bits}

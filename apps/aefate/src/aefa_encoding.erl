@@ -106,8 +106,8 @@ serialize(String) when ?IS_FATE_STRING(String),
                        ?FATE_STRING_SIZE(String) >= ?SHORT_STRING_SIZE ->
     Bytes = ?FATE_STRING_VALUE(String),
     <<?LONG_STRING, (aeu_rlp:encode(Bytes))/binary>>;
-serialize(?FATE_ADDRESS(Address)) when is_binary(Address), size(Address) =:= 32 ->
-    <<?ADDRESS, Address/binary>>;
+serialize(?FATE_ADDRESS(Address)) when is_binary(Address) ->
+    <<?ADDRESS, (aeu_rlp:encode(Address))/binary>>;
 serialize(?FATE_TUPLE(T)) when size(T) > 0 ->
     S = size(T),
     L = tuple_to_list(T),
@@ -206,8 +206,7 @@ deserialize2(<<S:6, ?SHORT_STRING:2, Rest/binary>>) ->
     Rest2 = binary:part(Rest, byte_size(Rest), - (byte_size(Rest) - S)),
     {?MAKE_FATE_STRING(String), Rest2};
 deserialize2(<<?ADDRESS, Rest/binary>>) ->
-    A = binary:part(Rest, 0, 32),
-    Rest2 = binary:part(Rest, byte_size(Rest), - (byte_size(Rest) - 32)),
+    {A, Rest2} = aeu_rlp:decode_one(Rest),
     {?FATE_ADDRESS(A), Rest2};
 deserialize2(<<?TRUE, Rest/binary>>) ->
     {?FATE_TRUE, Rest};
