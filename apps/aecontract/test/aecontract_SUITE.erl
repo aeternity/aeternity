@@ -103,6 +103,8 @@
         , sophia_no_callobject_for_remote_calls/1
         , sophia_operators/1
         , sophia_bits/1
+        , sophia_bad_code/1
+        , sophia_bad_init/1
         , sophia_int_to_str/1
         , sophia_events/1
         , sophia_crypto/1
@@ -204,6 +206,8 @@ groups() ->
                                  sophia_no_callobject_for_remote_calls,
                                  sophia_operators,
                                  sophia_bits,
+                                 sophia_bad_code,
+                                 sophia_bad_init,
                                  sophia_int_to_str,
                                  sophia_events,
                                  sophia_crypto,
@@ -321,7 +325,7 @@ create_contract_negative_gas_price_zero(_Cfg) ->
 
     {error, _, _} = sign_and_apply_transaction(Tx, PrivKey, S1),
     Env           = aetx_env:tx_env(_Height = 1),
-    {error, too_low_gas_price} = aetx:check(Tx, aect_test_utils:trees(S1), Env),
+    {error, too_low_gas_price} = aetx:process(Tx, aect_test_utils:trees(S1), Env),
     ok.
 
 create_contract_negative(_Cfg) ->
@@ -337,19 +341,19 @@ create_contract_negative(_Cfg) ->
     RTx1              = create_tx(BadPubKey, S1),
     {error, _, S1}    = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
 
-    {error, account_not_found} = aetx:check(RTx1, Trees, Env),
+    {error, account_not_found} = aetx:process(RTx1, Trees, Env),
 
     %% Insufficient funds
     S2     = aect_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aect_test_utils:trees(S2),
     RTx2   = create_tx(PubKey, S2),
     {error, _, S2} = sign_and_apply_transaction(RTx2, PrivKey, S2),
-    {error, insufficient_funds} = aetx:check(RTx2, Trees2, Env),
+    {error, insufficient_funds} = aetx:process(RTx2, Trees2, Env),
 
     %% Test too high account nonce
     RTx3 = create_tx(PubKey, #{nonce => 0}, S1),
     {error, _, S1} = sign_and_apply_transaction(RTx3, PrivKey, S1),
-    {error, account_nonce_too_high} = aetx:check(RTx3, Trees, Env),
+    {error, account_nonce_too_high} = aetx:process(RTx3, Trees, Env),
 
     ok.
 
@@ -617,7 +621,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
                                        fee       => Fee}, S),
     {error, _, _} = sign_and_apply_transaction(CallTx, aect_test_utils:priv_key(Acc1, S), S),
     Env = aetx_env:tx_env(_Height = 1),
-    {error, insufficient_funds} = aetx:check(CallTx, aect_test_utils:trees(S), Env),
+    {error, insufficient_funds} = aetx:process(CallTx, aect_test_utils:trees(S), Env),
     ok.
 
 call_contract_negative_gas_price_zero(_Cfg) ->
@@ -631,7 +635,7 @@ call_contract_negative_gas_price_zero(_Cfg) ->
 
     {error, _, _} = sign_and_apply_transaction(Tx, aect_test_utils:priv_key(Acc1, S), S),
     Env           = aetx_env:tx_env(_Height = 1),
-    {error, too_low_gas_price} = aetx:check(Tx, aect_test_utils:trees(S), Env),
+    {error, too_low_gas_price} = aetx:process(Tx, aect_test_utils:trees(S), Env),
     ok.
 
 call_contract_negative(_Cfg) ->
@@ -3569,6 +3573,64 @@ sophia_safe_math_old() ->
         Res = ?call(call_contract, Acc, C, Fun, signed_word, {X, Y}),
         ?assertMatch({_, _, _, {A, A}}, {Fun, X, Y, {Exp, Res}})
       end || {Fun, Op} <- Ops, X <- Values, Y <- Values ],
+
+    ok.
+
+sophia_bad_code(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc  = ?call(new_account, 10000000),
+    {ok, Code} = compile_contract(bad_code),
+    %% Switch DUP3 against DUP11 - will make init crash...
+    HackedCode1 = hack_dup(130, 139, Code),
+    case ?call(create_contract_with_code, Acc, HackedCode1, {}, #{}) of
+        X when is_binary(X) -> ok;
+        Err                 -> error(Err)
+    end,
+
+    %% Switch MOD against DUP11 - will make main crash...
+    HackedCode2 = hack_dup(6, 139, Code),
+    C2 = ?call(create_contract_with_code, Acc, HackedCode2, {}, #{}),
+    try
+        {error, <<"unknown_error">>} = ?call(call_contract, Acc, C2, main, word, 10)
+    catch _:_ -> error(call_contract) end,
+
+    ok.
+
+hack_dup(_, _, <<>>) -> <<>>;
+hack_dup(A, B, <<A:8, Rest/binary>>) -> <<B:8, (hack_dup(A, B, Rest))/binary>>;
+hack_dup(A, B, <<X:8, Rest/binary>>) -> <<X:8, (hack_dup(A, B, Rest))/binary>>.
+
+sophia_bad_init(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc   = ?call(new_account, 1000000000),
+
+    BadByteCode = <<249,2,163,70,1,160,148,150,21,128,247,154,18,103,230,176,30,42,133,14,242,51,251,159,51,
+         139,248,89,9,137,137,170,12,8,199,205,43,82,249,1,206,249,1,203,160,185,201,86,242,139,
+         49,73,169,245,152,122,165,5,243,218,27,34,9,204,87,57,35,64,6,43,182,193,189,159,159,
+         153,234,132,105,110,105,116,184,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+         0,0,0,0,0,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,255,255,
+         255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
+         255,255,255,255,255,255,255,255,185,1,64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+         0,0,0,0,0,0,0,0,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,
+         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,0,0,0,0,0,0,0,0,0,0,0,0,0,
+         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,160,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+         0,0,0,0,0,0,0,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,
+         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,255,255,255,255,255,255,255,
+         255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
+         255,255,255,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,255,255,255,
+         255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
+         255,255,255,255,255,255,255,184,173,98,0,0,57,98,0,0,104,145,128,128,81,127,185,201,86,
+         242,139,49,73,169,245,152,122,165,5,243,218,27,34,9,204,87,57,35,64,6,43,182,193,189,
+         159,159,153,234,20,98,0,0,162,87,80,96,1,25,81,0,91,96,0,89,144,129,82,89,96,64,1,144,
+         129,82,96,32,144,3,96,0,89,144,129,82,129,82,96,32,144,3,96,6,129,82,144,89,96,0,81,89,
+         82,96,0,82,96,0,243,91,96,0,128,82,96,0,243,91,89,89,96,32,1,144,129,82,96,32,144,3,96,
+         0,89,144,129,82,89,96,64,1,144,129,82,96,32,144,3,96,0,89,144,129,82,129,82,96,32,144,3,
+         96,6,129,82,129,82,144,86,91,80,130,145,80,80,98,0,0,112,86>>,
+
+    case ?call(create_contract_with_code, Acc, BadByteCode, {}, #{return_return_value => true}) of
+        {_X, {error, <<"out_of_gas">>}} -> ok;
+        Err                             -> error(Err)
+    end,
 
     ok.
 

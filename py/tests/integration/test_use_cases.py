@@ -19,8 +19,8 @@ def test_syncing():
     test_settings = settings["test_syncing"]
 
     root_dir = tempfile.mkdtemp()
-    mining_user_config = make_fast_mining_user_config(root_dir, "mining_epoch.yaml")
-    no_mining_user_config = make_no_mining_user_config(root_dir, "no_mining_epoch.yaml")
+    mining_user_config = make_fast_mining_user_config(root_dir, "mining_aeternity.yaml")
+    no_mining_user_config = make_no_mining_user_config(root_dir, "no_mining_aeternity.yaml")
 
     # start Bob's node
     bob_node = test_settings["nodes"]["bob"]
@@ -94,8 +94,8 @@ chain:
 mining:
     beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
 """
-    persistence_mining_user_config = common.install_user_config(root_dir, "p_m_epoch.yaml", p_m_conf)
-    minimal_user_config_with_persistence = common.install_user_config(root_dir, "p_epoch.yaml", p_conf)
+    persistence_mining_user_config = common.install_user_config(root_dir, "p_m_aeternity.yaml", p_m_conf)
+    minimal_user_config_with_persistence = common.install_user_config(root_dir, "p_aeternity.yaml", p_conf)
 
     bob_node = test_settings["nodes"]["bob"]
     common.start_node(bob_node, persistence_mining_user_config)
@@ -140,21 +140,21 @@ def test_node_discovery_transitively():
 
     # Alice's config: no peers
     alice_peers = "peers: []"
-    alice_user_config = make_peers_user_config(root_dir, "alice_epoch.yaml",
+    alice_user_config = make_peers_user_config(root_dir, "alice_aeternity.yaml",
                             "node1", "3015", alice_peers, "true")
     # Bob's config: only peer is Alice
     bob_peers = """\
 peers:
     - "aenode://pp_HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015"
 """
-    bob_user_config = make_peers_user_config(root_dir, "bob_epoch.yaml",
+    bob_user_config = make_peers_user_config(root_dir, "bob_aeternity.yaml",
                             "node2", "3025", bob_peers, "false")
     # Carol's config: only peer is Bob
     carol_peers = """\
 peers:
     - "aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
 """
-    carol_user_config = make_peers_user_config(root_dir, "carol_epoch.yaml",
+    carol_user_config = make_peers_user_config(root_dir, "carol_aeternity.yaml",
                             "node3", "3035", carol_peers, "false")
 
     # start Alice's node
@@ -208,18 +208,18 @@ def test_node_discovery_from_common_friend():
 peers:
     - "aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
 """
-    alice_user_config = make_peers_user_config(root_dir, "alice_epoch.yaml",
+    alice_user_config = make_peers_user_config(root_dir, "alice_aeternity.yaml",
                             "node1", "3015", alice_peers, "true")
     # Bob's config: no peers
     bob_peers = "peers: []"
-    bob_user_config = make_peers_user_config(root_dir, "bob_epoch.yaml",
+    bob_user_config = make_peers_user_config(root_dir, "bob_aeternity.yaml",
                             "node2", "3025", bob_peers, "false")
     # Carol's config: only peer is Bob
     carol_peers = """\
 peers:
     - "aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
 """
-    carol_user_config = make_peers_user_config(root_dir, "carol_epoch.yaml",
+    carol_user_config = make_peers_user_config(root_dir, "carol_aeternity.yaml",
                             "node3", "3035", carol_peers, "false")
 
     # start Alice's node

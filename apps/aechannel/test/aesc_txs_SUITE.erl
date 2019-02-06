@@ -381,11 +381,11 @@ create_missing_account(_Cfg) ->
 
     TxSpec1 = aesc_test_utils:create_tx_spec(BadPubKey, PubKey1, S),
     {ok, Tx1} = aesc_create_tx:new(TxSpec1),
-    {error, account_not_found} = aetx:check(Tx1, Trees, Env),
+    {error, account_not_found} = aetx:process(Tx1, Trees, Env),
 
     TxSpec2 = aesc_test_utils:create_tx_spec(PubKey1, BadPubKey, S),
     {ok, Tx2} = aesc_create_tx:new(TxSpec2),
-    {error, account_not_found} = aetx:check(Tx2, Trees, Env),
+    {error, account_not_found} = aetx:process(Tx2, Trees, Env),
 
     ok.
 
@@ -402,7 +402,7 @@ create_same_account(_Cfg) ->
                   channel_reserve => 2,
                   fee => 20000}, S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
-    {error, initiator_is_responder} = aetx:check(TxI, Trees, Env),
+    {error, initiator_is_responder} = aetx:process(TxI, Trees, Env),
     ok.
 
 create_insufficient_funds(_Cfg) ->
@@ -417,7 +417,7 @@ create_insufficient_funds(_Cfg) ->
                 #{initiator_amount => 1,
                   fee => 50000}, S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
-    {error, insufficient_funds} = aetx:check(TxI, Trees, Env),
+    {error, insufficient_funds} = aetx:process(TxI, Trees, Env),
 
     %% Test insufficient responder funds
     TxSpecR = aesc_test_utils:create_tx_spec(
@@ -425,7 +425,7 @@ create_insufficient_funds(_Cfg) ->
                 #{initiator_amount => 1,
                   fee => 50000}, S),
     {ok, TxR} = aesc_create_tx:new(TxSpecR),
-    {error, insufficient_funds} = aetx:check(TxR, Trees, Env),
+    {error, insufficient_funds} = aetx:process(TxR, Trees, Env),
 
     ok.
 
@@ -443,7 +443,7 @@ create_insufficient_funds_reserve(_Cfg) ->
                   channel_reserve => 2,
                   fee => 50000}, S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
-    {error, insufficient_initiator_amount} = aetx:check(TxI, Trees, Env),
+    {error, insufficient_initiator_amount} = aetx:process(TxI, Trees, Env),
 
     %% Test responder funds lower than channel reserve
     TxSpecR = aesc_test_utils:create_tx_spec(
@@ -452,7 +452,7 @@ create_insufficient_funds_reserve(_Cfg) ->
                   channel_reserve => 2,
                   fee => 50000}, S),
     {ok, TxR} = aesc_create_tx:new(TxSpecR),
-    {error, insufficient_responder_amount} = aetx:check(TxR, Trees, Env),
+    {error, insufficient_responder_amount} = aetx:process(TxR, Trees, Env),
 
     ok.
 
@@ -478,7 +478,7 @@ create_wrong_nonce(_Cfg) ->
             TxSpec = aesc_test_utils:create_tx_spec(Initiator, Responder,
                                                     #{nonce => TestNonce}, S),
             {ok, Tx} = aesc_create_tx:new(TxSpec),
-            {error, Err} = aetx:check(Tx, Trees, Env)
+            {error, Err} = aetx:process(Tx, Trees, Env)
         end,
     Test(Nonce - 1, account_nonce_too_high),
     Test(Nonce, account_nonce_too_high),
@@ -1059,7 +1059,7 @@ slash_payload_not_co_signed(Cfg) ->
                             Trees = aesc_test_utils:trees(S),
                             Env = aetx_env:tx_env(Height),
                             {error, signature_check_failed} =
-                                    aetx:check(TxMissingS, Trees, Env)
+                                    aetx:process(TxMissingS, Trees, Env)
                         end,
                         [[],       % not signed at all
                          [IPriv],  % signed only by initiator
@@ -3412,7 +3412,7 @@ fp_register_name(Cfg) ->
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
-            {ok, _} = aetx:check(ContractCreateTx, OnChainTrees,
+            {ok, _} = aetx:process(ContractCreateTx, OnChainTrees,
                                   TxEnv),
             {ok, OnChainTrees1} = aetx:process(ContractCreateTx,
                                                 OnChainTrees,
@@ -3457,7 +3457,7 @@ fp_register_name(Cfg) ->
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
-            {ok, _} = aetx:check(CallTx, OnChainTrees,
+            {ok, _} = aetx:process(CallTx, OnChainTrees,
                                   TxEnv),
             {ok, OnChainTrees1} = aetx:process(CallTx,
                                                 OnChainTrees,
@@ -3748,7 +3748,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
-            {ok, _} = aetx:check(ContractCreateTx, OnChainTrees,
+            {ok, _} = aetx:process(ContractCreateTx, OnChainTrees,
                                   TxEnv),
             {ok, OnChainTrees1} = aetx:process(ContractCreateTx,
                                                 OnChainTrees,
@@ -3793,7 +3793,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
-            {ok, _} = aetx:check(CallTx, OnChainTrees,
+            {ok, _} = aetx:process(CallTx, OnChainTrees,
                                   TxEnv),
             {ok, OnChainTrees1} = aetx:process(CallTx,
                                                 OnChainTrees,
@@ -3964,7 +3964,7 @@ fp_register_oracle(Cfg) ->
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
-            {ok, _} = aetx:check(ContractCreateTx, OnChainTrees,
+            {ok, _} = aetx:process(ContractCreateTx, OnChainTrees,
                                   TxEnv),
             {ok, OnChainTrees1} = aetx:process(ContractCreateTx,
                                                 OnChainTrees,
@@ -4001,7 +4001,7 @@ fp_register_oracle(Cfg) ->
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
-            {ok, _} = aetx:check(CallTx, OnChainTrees,
+            {ok, _} = aetx:process(CallTx, OnChainTrees,
                                   TxEnv),
             {ok, OnChainTrees1} = aetx:process(CallTx,
                                                 OnChainTrees,
@@ -4502,7 +4502,7 @@ apply_on_trees_(#{height := Height} = Props, SignedTx, S, {negative, ExpectedErr
     Trees = aens_test_utils:trees(S),
     Tx = aetx_sign:tx(SignedTx),
     Env = aetx_env:tx_env(Height),
-    case aetx:check(Tx, Trees, Env) of
+    case aetx:process(Tx, Trees, Env) of
         ExpectedError -> pass;
         {ok, _} -> throw(negative_case_passed)
     end,
@@ -4949,7 +4949,7 @@ test_payload_not_both_signed(Cfg, SpecFun, CreateTxFun) ->
                             Trees = aesc_test_utils:trees(S),
                             Env = aetx_env:tx_env(Height),
                             {error, signature_check_failed} =
-                                aetx:check(TxMissingS, Trees, Env)
+                                aetx:process(TxMissingS, Trees, Env)
                         end,
                         [[],       % not signed at all
                          [IPriv],  % signed only by initiator

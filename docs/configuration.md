@@ -10,17 +10,15 @@ The `aeternity` system supports user-provided parameters via a JSON- or YAML-for
 The format of the config file is determined from the file extension: `.json` for JSON, or `.yaml` for YAML.
 
 The location of the file can be specified in a few different ways, in order of priority:
-1. The OS environment variable `EPOCH_CONFIG` contains a filename
+1. The OS environment variable `AETERNITY_CONFIG` contains a filename
 2. The Erlang/OTP environment variable `-aecore config` contains a filename
-3. A file named `epoch.{yaml,json}` exists in `${HOME}/.epoch/${sname}/`
-4. A file named `epoch.{yaml,json}` exists in `${AETERNITY_TOP}/`
+3. A file named `aeternity.{yaml,json}` exists in `${HOME}/.aeternity/aeternity/`
+4. A file named `aeternity.{yaml,json}` exists in `${AETERNITY_TOP}/`
 
 If all above checks fail, no user configuration is applied.
 
-`${sname}` represents the name part of the Erlang node name (the part before `'@'`).
-
 ### Validation
-The contents of the config file will be validated against a JSON-Schema, located in the node at path `data/epoch_config_schema.json`. If any parameters violate the schema, the node will fail to start.
+The contents of the config file will be validated against a JSON-Schema, located in the node at path `data/aeternity_config_schema.json`. If any parameters violate the schema, the node will fail to start.
 
 ## Notable user configuration parameters
 
@@ -75,7 +73,7 @@ nc -zv $(curl -s https://api.ipify.org) 3015
 
 Example output:
 ```
-Connection to 35.178.61.73 3015 port [tcp/*] succeeded!
+Connection to 13.53.161.215 3015 port [tcp/*] succeeded!
 ```
 
 Where the IP address should be the external IP address of the node under test (it's one of the seed nodes in this example).
@@ -165,7 +163,7 @@ Note that YAML files have significant whitespace so make sure that you indent th
 You can validate the configuration file before starting the node:
 ```bash
 cd ~/aeternity/node
-bin/aeternity check_config epoch.yaml
+bin/aeternity check_config aeternity.yaml
 ```
 You shall read output like the following:
 ```
@@ -183,7 +181,7 @@ mining:
     beneficiary: "beneficiary_pubkey_to_be_replaced"
     autostart: true
 ```
-in the epoch.yaml configuration file.
+in the aeternity.yaml configuration file.
 
 Make sure you replace `mining` > `beneficiary` parameter with your public key!
 

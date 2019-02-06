@@ -101,7 +101,7 @@ abi_version(#oracle_register_tx{abi_version = ABIVersion}) ->
 new(#{account_id      := AccountId,
       nonce           := Nonce,
       query_format    := QueryFormat,
-      abi_version     := _Unused, %% Todo remove - just for flushing out errors...
+      abi_version     := ABIVersion,
       response_format := ResponseFormat,
       query_fee       := QueryFee,
       oracle_ttl      := OracleTTL,
@@ -115,7 +115,7 @@ new(#{account_id      := AccountId,
                              query_fee       = QueryFee,
                              oracle_ttl      = OracleTTL,
                              fee             = Fee,
-                             abi_version     = maps:get(abi_version, Args, ?ABI_NO_VM),
+                             abi_version     = ABIVersion,
                              ttl             = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
@@ -131,52 +131,35 @@ nonce(#oracle_register_tx{nonce = Nonce}) ->
 origin(#oracle_register_tx{} = Tx) ->
     account_pubkey(Tx).
 
-%% Account should exist, and have enough funds for the fee.
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#oracle_register_tx{nonce = Nonce, fee = Fee, abi_version = ABIVersion} = Tx,
-      Trees, TxEnv) ->
-    AccountPubKey = account_pubkey(Tx),
-    Checks =
-        [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
-         fun() -> ensure_not_oracle(AccountPubKey, Trees) end,
-         fun() -> check_abi_version(ABIVersion, aetx_env:height(TxEnv)) end],
-
-    case aeu_validation:run(Checks) of
-        ok              -> {ok, Trees};
-        {error, Reason} -> {error, Reason}
-    end.
-
-check_abi_version(ABIVersion, Height) ->
-    CTVersion = #{abi => ABIVersion, vm => 0}, %% VM version not used in check.
-    case aect_contracts:is_legal_version_at_height(oracle_register, CTVersion, Height) of
-        true  -> ok;
-        false -> {error, bad_abi_version}
-    end.
+check(#oracle_register_tx{}, Trees, _Env) ->
+    %% Checks are in process/3.
+    {ok, Trees}.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_register_tx{} = Tx, _) ->
     {ok, [account_pubkey(Tx)]}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#oracle_register_tx{nonce = Nonce, fee = Fee} = RegisterTx,
-        Trees0, Env) ->
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
+process(#oracle_register_tx{} = RTx, Trees, Env) ->
     Height = aetx_env:height(Env),
-    AccountPubKey = account_pubkey(RegisterTx),
-    AccountsTree0 = aec_trees:accounts(Trees0),
-    OraclesTree0  = aec_trees:oracles(Trees0),
-
-    Account0 = aec_accounts_trees:get(AccountPubKey, AccountsTree0),
-    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce),
-    AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
-
-    Oracle = aeo_oracles:new(RegisterTx, Height),
-    OraclesTree1 = aeo_state_tree:insert_oracle(Oracle, OraclesTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_oracles(Trees1, OraclesTree1),
-
-    {ok, Trees2}.
+    case aeo_utils:ttl_delta(Height, oracle_ttl(RTx)) of
+        {error, _} = Err -> Err;
+        DeltaTTL when is_integer(DeltaTTL) ->
+            Instructions =
+                aec_tx_processor:oracle_register_tx_instructions(
+                  account_pubkey(RTx),
+                  query_format(RTx),
+                  response_format(RTx),
+                  query_fee(RTx),
+                  DeltaTTL,
+                  abi_version(RTx),
+                  fee(RTx),
+                  nonce(RTx)
+                 ),
+            aec_tx_processor:eval(Instructions, Trees, Env)
+    end.
 
 serialize(#oracle_register_tx{account_id      = AccountId,
                               nonce           = Nonce,
@@ -271,12 +254,3 @@ for_client(#oracle_register_tx{account_id      = AccountId,
       <<"ttl">>             => TTL,
       <<"abi_version">>     => ABIVersion
      }.
-
-%% -- Local functions  -------------------------------------------------------
-
-ensure_not_oracle(PubKey, Trees) ->
-    OraclesTree  = aec_trees:oracles(Trees),
-    case aeo_state_tree:lookup_oracle(PubKey, OraclesTree) of
-        {value, _Oracle} -> {error, account_is_already_an_oracle};
-        none             -> ok
-    end.

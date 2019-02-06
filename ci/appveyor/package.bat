@@ -8,7 +8,6 @@
 @rem    PACKAGE_PATH
 
 SETLOCAL ENABLEEXTENSIONS
-cd %APPVEYOR_BUILD_FOLDER%
 
 rem Set required vars defaults
 IF "%PACKAGE_PATH%"=="" SET "PACKAGE_PATH=/tmp/win_package_build"
@@ -46,6 +45,8 @@ rem Build package environment
 rem Copy release into package environment
 %BASH_BIN% -lc "mkdir -p \"%PACKAGE_PATH%/aeternity-windows-w64/usr/lib\""
 %BASH_BIN% -lc "cp -R \"%RELEASE_PATH%\" \"%PACKAGE_PATH%/aeternity-windows-w64/usr/lib/\""
+%BASH_BIN% -lc "mkdir -p \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
+%BASH_BIN% -lc "cp -R \"%RELEASE_PATH%/data/aecore/.genesis\" \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
 
 @echo Current time: %time%
 rem Build packages
@@ -53,7 +54,7 @@ rem Build packages
 
 @echo Current time: %time%
 rem Copy packages
-SET /p PACKAGE_VERSION=<%APPVEYOR_BUILD_FOLDER%\REVISION
+SET /p PACKAGE_VERSION=<%~dp0%\..\..\REVISION
 %BASH_BIN% -lc "cp \"%PACKAGE_PATH%\"/*.zip \"%BUILD_PATH%/aeternity-%PACKAGE_VERSION%-windows-x86_64.zip\""
 %BASH_BIN% -lc "cp \"%PACKAGE_PATH%\"/*.exe \"%BUILD_PATH%/aeternity-%PACKAGE_VERSION%-windows-x86_64.exe\""
 

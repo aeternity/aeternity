@@ -101,96 +101,22 @@ channel_pubkey(#channel_close_mutual_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_close_mutual_tx{from_id = FromId,
-                               initiator_amount_final = InitiatorAmount,
-                               responder_amount_final = ResponderAmount,
-                               fee                    = Fee,
-                               nonce                  = Nonce} = Tx,
-      Trees,_Env) ->
-    ChannelPubKey = channel_pubkey(Tx),
-    case aesc_state_tree:lookup(ChannelPubKey, aec_trees:channels(Trees)) of
-        none ->
-            {error, channel_does_not_exist};
-        {value, Channel} ->
-            FromIdPubKey = aec_id:specialize(FromId, account),
-            InitiatorPubKey = aesc_channels:initiator_pubkey(Channel),
-            ResponderPubKey = aesc_channels:responder_pubkey(Channel),
-            Checks =
-                [% the fee is being split between parties so no check if the
-                 % initiator can pay the fee; just a check for the nonce correctness
-                 fun() -> ok_or_error(FromIdPubKey == InitiatorPubKey
-                                      orelse FromIdPubKey == ResponderPubKey,
-                                      illegal_origin)
-                 end,
-                 fun() -> aetx_utils:check_account(FromIdPubKey, Trees, Nonce, 0) end,
-                 fun() ->
-                    case aesc_channels:is_active(Channel) of
-                        true -> ok;
-                        false -> {error, channel_not_active}
-                    end
-                end,
-                fun() -> % check amounts
-                    ChannelAmt = aesc_channels:channel_amount(Channel),
-                    ok_or_error(ChannelAmt >= InitiatorAmount + ResponderAmount + Fee,
-                                wrong_amounts)
-                end
-                ],
-            case aeu_validation:run(Checks) of
-                ok ->
-                    {ok, Trees};
-                {error, _Reason} = Error ->
-                    Error
-            end
-    end.
+check(#channel_close_mutual_tx{}, Trees,_Env) ->
+    %% Checks in process/3
+    {ok, Trees}.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#channel_close_mutual_tx{initiator_amount_final = InitiatorAmount,
-                                 responder_amount_final = ResponderAmount,
-                                 ttl                    = _TTL,
-                                 fee                    = Fee,
-                                 nonce                  = Nonce} = Tx,
-        Trees,_Env) ->
-    ChannelPubKey = channel_pubkey(Tx),
-    AccountsTree0 = aec_trees:accounts(Trees),
-    ChannelsTree0 = aec_trees:channels(Trees),
-
-    Channel         = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
-    FromIdPubKey    = origin(Tx),
-    InitiatorPubKey = aesc_channels:initiator_pubkey(Channel),
-    ResponderPubKey = aesc_channels:responder_pubkey(Channel),
-
-    InitiatorAccount0         = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
-    {ok, InitiatorAccount1}   = aec_accounts:earn(InitiatorAccount0,
-                                                   InitiatorAmount),
-
-    ResponderAccount0       = aec_accounts_trees:get(ResponderPubKey, AccountsTree0),
-    {ok, ResponderAccount1}  = aec_accounts:earn(ResponderAccount0,
-                                                 ResponderAmount),
-
-    {InitiatorAccount, ResponderAccount} =
-        update_nonce(FromIdPubKey, InitiatorPubKey, ResponderPubKey,
-                     InitiatorAccount1, ResponderAccount1, Nonce),
-    AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount, AccountsTree0),
-    AccountsTree2 = aec_accounts_trees:enter(ResponderAccount, AccountsTree1),
-
-    % all coins that are not in the final balance are locked
-    % they're sent to the special account that holds locked coins
-    % fee is being payed by the channel's balance
-    DistributedAmounts = InitiatorAmount + ResponderAmount + Fee,
-    MissingCoins = aesc_channels:channel_amount(Channel) - DistributedAmounts,
-    AccountsTree3 = aec_accounts_trees:lock_coins(MissingCoins,
-                                                  AccountsTree2),
-
-    ChannelsTree = aesc_state_tree:delete(aesc_channels:pubkey(Channel), ChannelsTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees, AccountsTree3),
-    Trees2 = aec_trees:set_channels(Trees1, ChannelsTree),
-    {ok, Trees2}.
-
-update_nonce(IK, IK, _, I, R, Nonce) ->
-    {aec_accounts:set_nonce(I, Nonce), R};
-update_nonce(RK, _, RK, I, R, Nonce) ->
-    {I, aec_accounts:set_nonce(R, Nonce)}.
+process(#channel_close_mutual_tx{from_id = FromId} = Tx, Trees, Env) ->
+    FromPubkey = aec_id:specialize(FromId, account),
+    Instructions =
+        aec_tx_processor:channel_close_mutual_tx_instructions(
+          FromPubkey,
+          channel_pubkey(Tx),
+          initiator_amount_final(Tx),
+          responder_amount_final(Tx),
+          nonce(Tx),
+          fee(Tx)),
+    aec_tx_processor:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}
                                         | {error, channel_not_found}.
@@ -275,9 +201,6 @@ responder_amount_final(#channel_close_mutual_tx{responder_amount_final  = Amount
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-ok_or_error(false, ErrMsg) -> {error, ErrMsg};
-ok_or_error(true, _) -> ok.
 
 -spec version() -> non_neg_integer().
 version() ->

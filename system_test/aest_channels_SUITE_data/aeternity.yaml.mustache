@@ -1,4 +1,4 @@
-{{#epoch_config}}
+{{#aeternity_config}}
 ---
 peers: {{^peers}}[]{{/peers}}
 {{#peers}}
@@ -18,6 +18,11 @@ http:
     endpoints:
         debug: true
         dev: true
+
+websocket:
+    channel:
+        listen_address: 0.0.0.0
+        port: {{services.ext_ws.port}}
 
 keys:
     peer_password: {{key_password}}
@@ -39,4 +44,4 @@ mining:
 
 fork_management:
     network_id: "ae_system_test"
-{{/epoch_config}}
+{{/aeternity_config}}

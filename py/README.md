@@ -11,9 +11,9 @@ dependencies are installed in an virtual enviroment. To install deps:
 make python-env
 ```
 
-#### Epoch nodes
+#### Aeternity nodes
 
-Tests are ran on `dev1`, `dev2` and `dev3` epoch nodes. In order to build
+Tests are ran on `dev1`, `dev2` and `dev3` Aeternity nodes. In order to build
 them, please run
 
 ```

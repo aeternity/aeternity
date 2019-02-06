@@ -75,8 +75,8 @@ ttl(#oracle_extend_tx{ttl = TTL}) ->
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{oracle_id  := OracleId,
       nonce      := Nonce,
-      oracle_ttl := OracleTTL,
-      fee        := Fee} = Args) ->
+      oracle_ttl := {delta, Delta} = OracleTTL,
+      fee        := Fee} = Args) when is_integer(Delta), Delta >= 0 ->
     oracle = aec_id:specialize_type(OracleId),
     Tx = #oracle_extend_tx{oracle_id  = OracleId,
                            nonce      = Nonce,
@@ -97,46 +97,24 @@ nonce(#oracle_extend_tx{nonce = Nonce}) ->
 origin(#oracle_extend_tx{} = Tx) ->
     oracle_pubkey(Tx).
 
-%% Account should exist, and have enough funds for the fee
-%% Oracle should exist.
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#oracle_extend_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
-      Trees,_Env) ->
-    OraclePK = oracle_pubkey(Tx),
-    Checks =
-        [fun() -> check_oracle_extension_ttl(OTTL) end,
-         fun() -> aetx_utils:check_account(OraclePK, Trees, Nonce, Fee) end,
-         fun() -> ensure_oracle(OraclePK, Trees) end],
-
-    case aeu_validation:run(Checks) of
-        ok              -> {ok, Trees};
-        {error, Reason} -> {error, Reason}
-    end.
+check(#oracle_extend_tx{} = Tx, Trees,_Env) ->
+    %% Checks are in process/3
+    {ok, Trees}.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_extend_tx{} = Tx, _) ->
     {ok, [oracle_pubkey(Tx)]}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#oracle_extend_tx{nonce = Nonce, fee = Fee, oracle_ttl = OTTL} = Tx,
-        Trees0,_Env) ->
-    OraclePK      = oracle_pubkey(Tx),
-    AccountsTree0 = aec_trees:accounts(Trees0),
-    OraclesTree0  = aec_trees:oracles(Trees0),
-
-    Account0 = aec_accounts_trees:get(OraclePK, AccountsTree0),
-    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce),
-    AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
-
-    Oracle0 = aeo_state_tree:get_oracle(OraclePK, OraclesTree0),
-    NewTTL = aeo_utils:ttl_expiry(aeo_oracles:ttl(Oracle0), OTTL),
-    Oracle1 = aeo_oracles:set_ttl(NewTTL, Oracle0),
-    OraclesTree1 = aeo_state_tree:enter_oracle(Oracle1, OraclesTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_oracles(Trees1, OraclesTree1),
-
-    {ok, Trees2}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}  | {error, term()}.
+process(#oracle_extend_tx{} = Tx, Trees, Env) ->
+    {delta, DeltaTTL} = oracle_ttl(Tx),
+    Instructions =
+        aec_tx_processor:oracle_extend_tx_instructions(oracle_pubkey(Tx),
+                                                       DeltaTTL,
+                                                       fee(Tx),
+                                                       nonce(Tx)),
+    aec_tx_processor:eval(Instructions, Trees, Env).
 
 serialize(#oracle_extend_tx{oracle_id  = OracleId,
                             nonce      = Nonce,
@@ -191,19 +169,3 @@ for_client(#oracle_extend_tx{oracle_id = OracleId,
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL}.
 
-%% -- Local functions  -------------------------------------------------------
-
--dialyzer({no_match, check_oracle_extension_ttl/1}).
-check_oracle_extension_ttl({delta, D}) when is_integer(D), D > 0 ->
-    ok;
-check_oracle_extension_ttl({delta, 0}) ->
-    {error, zero_relative_oracle_extension_ttl};
-check_oracle_extension_ttl({block, _}) ->
-    {error, absolute_oracle_extension_ttl}.
-
-ensure_oracle(PubKey, Trees) ->
-    OraclesTree  = aec_trees:oracles(Trees),
-    case aeo_state_tree:lookup_oracle(PubKey, OraclesTree) of
-        {value, _Oracle} -> ok;
-        none             -> {error, account_is_not_an_active_oracle}
-    end.

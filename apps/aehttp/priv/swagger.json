@@ -534,6 +534,48 @@
         }
       }
     },
+    "/accounts/{pubkey}/height/{height}" : {
+      "get" : {
+        "tags" : [ "external", "account" ],
+        "description" : "Get an account by public key after the opening key block of the generation at height",
+        "operationId" : "GetAccountByPubkeyAndHeight",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the account",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "height",
+          "in" : "path",
+          "description" : "The height of the key block",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Account"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key or invalid height",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found or height not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/accounts/{pubkey}/transactions/pending" : {
       "get" : {
         "tags" : [ "external", "account" ],
@@ -2075,6 +2117,36 @@
           },
           "403" : {
             "description" : "Invalid contract",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/debug/token-supply/height/{height}" : {
+      "get" : {
+        "tags" : [ "internal", "debug" ],
+        "description" : "Get total token supply at height",
+        "operationId" : "GetTokenSupplyByHeight",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "height",
+          "in" : "path",
+          "description" : "The key block height after which the tokens are summed",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Total token supply at height divided in categories",
+            "schema" : {
+              "$ref" : "#/definitions/TokenSupply"
+            }
+          },
+          "400" : {
+            "description" : "Height not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -4737,6 +4809,53 @@
           }
         }
       } ]
+    },
+    "TokenSupply" : {
+      "type" : "object",
+      "properties" : {
+        "accounts" : {
+          "type" : "integer",
+          "description" : "Tokens in account balances"
+        },
+        "contracts" : {
+          "type" : "integer",
+          "description" : "Tokens in contracts"
+        },
+        "contract_oracles" : {
+          "type" : "integer",
+          "description" : "Tokens in contracts registered as oracles"
+        },
+        "locked" : {
+          "type" : "integer",
+          "description" : "Tokens locked (not owned by anyone)"
+        },
+        "oracles" : {
+          "type" : "integer",
+          "description" : "Tokens in accounts registered as oracles"
+        },
+        "oracle_queries" : {
+          "type" : "integer",
+          "description" : "Tokens in pending oracle queries"
+        },
+        "pending_rewards" : {
+          "type" : "integer",
+          "description" : "Tokens from fees and coinbase pending in the beneficiary reward delay"
+        },
+        "total" : {
+          "type" : "integer",
+          "description" : "Sum of all tokens from other fields"
+        }
+      },
+      "example" : {
+        "total" : 9,
+        "pending_rewards" : 7,
+        "oracles" : 5,
+        "accounts" : 0,
+        "contracts" : 6,
+        "locked" : 5,
+        "contract_oracles" : 1,
+        "oracle_queries" : 2
+      }
     },
     "inline_response_200" : {
       "properties" : {

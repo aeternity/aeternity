@@ -28,16 +28,16 @@ def setup_test(test):
                                                test_settings['users'],
                                                test_settings['min_spend_tx_fee'],
                                                ext_api, int_api).items()}
-    test.globs['epoch_node'] = {'_root_dir_': node_root_dir,
-                                'external_api': ext_api,
-                                'internal_api': int_api}
+    test.globs['ae_node'] = {'_root_dir_': node_root_dir,
+                             'external_api': ext_api,
+                             'internal_api': int_api}
     test.globs['users'] = users
 setup_test.__test__ = False
 
 def teardown_test(test):
     test_settings = _test_settings_(test)
     node = test_settings['miner_node']
-    node_glob = test.globs['epoch_node']
+    node_glob = test.globs['ae_node']
     _cleanup_node_(node, node_glob['_root_dir_'])
 teardown_test.__test__ = False
 
