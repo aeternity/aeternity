@@ -206,8 +206,7 @@ deserialize2(<<S:6, ?SHORT_STRING:2, Rest/binary>>) ->
     Rest2 = binary:part(Rest, byte_size(Rest), - (byte_size(Rest) - S)),
     {?MAKE_FATE_STRING(String), Rest2};
 deserialize2(<<?ADDRESS, Rest/binary>>) ->
-    A = binary:part(Rest, 0, 32),
-    Rest2 = binary:part(Rest, byte_size(Rest), - (byte_size(Rest) - 32)),
+    {A, Rest2} = aeu_rlp:decode_one(Rest),
     {?FATE_ADDRESS(A), Rest2};
 deserialize2(<<?TRUE, Rest/binary>>) ->
     {?FATE_TRUE, Rest};

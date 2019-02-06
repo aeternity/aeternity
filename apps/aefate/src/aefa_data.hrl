@@ -30,6 +30,7 @@
 -define(FATE_INTEGER_VALUE(X), (X)).
 -define(FATE_LIST_VALUE(X), (X)).
 -define(FATE_STRING_VALUE(X), (X)).
+-define(FATE_ADDRESS_VALUE(X), (element(2, X))).
 -define(FATE_MAP_VALUE(X), (X)).
 -define(FATE_MAP_SIZE(X), (map_size(X))).
 -define(FATE_STRING_SIZE(X), (byte_size(X))).

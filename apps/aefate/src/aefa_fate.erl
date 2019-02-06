@@ -248,15 +248,20 @@ eval({length, Dest, List}, EngineState) ->
 %% ------------------------------------------------------
 %% String instructions
 %% ------------------------------------------------------
-%% builtin_deps1(str_equal)                  -> [str_equal_p];
-%% builtin_deps1(string_concat)              -> [string_concat_inner1, string_copy, string_shift_copy];
-%% builtin_deps1(int_to_str)                 -> [{baseX_int, 10}];
-%% builtin_deps1(addr_to_str)                -> [{baseX_int, 58}];
-%% builtin_deps1({baseX_int, X})             -> [{baseX_int_pad, X}];
-%% builtin_deps1({baseX_int_pad, X})         -> [{baseX_int_encode, X}];
-%% builtin_deps1({baseX_int_encode, X})      -> [{baseX_int_encode_, X}, {baseX_tab, X}, {baseX_digits, X}];
-%% builtin_deps1(string_reverse)             -> [string_reverse_];
+eval({str_equal, Dest, Str1, Str2}, EngineState) ->
+    {next, bin_op(str_equal, {Dest, Str1, Str2}, EngineState)};
+eval({str_join, Dest, Str1, Str2}, EngineState) ->
+    {next, bin_op(str_join, {Dest, Str1, Str2}, EngineState)};
+eval({int_to_str, Dest, Str}, EngineState) ->
+    {next, un_op(int_to_str, {Dest, Str}, EngineState)};
+eval({addr_to_str, Dest, Str}, EngineState) ->
+    {next, un_op(addr_to_str, {Dest, Str}, EngineState)};
+eval({str_reverse, Dest, Str}, EngineState) ->
+    {next, un_op(str_reverse, {Dest, Str}, EngineState)};
 
+
+eval({int_to_addr, Dest, Str}, EngineState) ->
+    {next, un_op(int_to_addr, {Dest, Str}, EngineState)};
 
 %% ------------------------------------------------------
 %% Bits instructions
@@ -466,6 +471,8 @@ bind_args(N, [Arg|Args], [Type|Types], Mem, EngineState) ->
 %% TODO: Add types (and tests).
 check_type(integer, I) when ?IS_FATE_INTEGER(I) -> true;
 check_type(boolean, B) when ?IS_FATE_BOOLEAN(B) -> true;
+check_type(string, S) when ?IS_FATE_STRING(S) -> true;
+check_type(address, A) when ?IS_FATE_ADDRESS(A) -> true;
 check_type(bits, B) when ?IS_FATE_BITS(B) -> true;
 check_type({list, ET}, L) when ?IS_FATE_LIST(L) ->
     check_same_type(ET, ?FATE_LIST_VALUE(L));
@@ -477,9 +484,11 @@ check_type({map, Key, Value}, M) when ?IS_FATE_MAP(M) ->
     check_same_type(Value, Vs);
 check_type(_T, _V) -> false.
 
-type(I) when ?IS_FATE_INTEGER(I) -> integer;
-type(B) when ?IS_FATE_BOOLEAN(B) ->  boolean;
-type(B) when ?IS_FATE_BITS(B) ->  bits;
+type(I) when ?IS_FATE_INTEGER(I)  -> integer;
+type(B) when ?IS_FATE_BOOLEAN(B)  -> boolean;
+type(B) when ?IS_FATE_BITS(B)     -> bits;
+type(A) when ?IS_FATE_ADDRESS(A)  -> address;
+type(S) when ?IS_FATE_STRING(S)   -> string;
 type([E|L]) when ?IS_FATE_LIST(L) -> {list, type(E)}.
 %% TODO: handle all types.
 
@@ -592,6 +601,14 @@ op(tl, A) when ?IS_FATE_LIST(A) ->
     end;
 op(length, A) when ?IS_FATE_LIST(A) ->
     aefa_data:make_integer(length(?FATE_LIST_VALUE(A)));
+op(int_to_str, A) when ?IS_FATE_INTEGER(A) ->
+    aefa_data:make_string(integer_to_binary(?FATE_INTEGER_VALUE(A)));
+op(int_to_addr, A) when ?IS_FATE_INTEGER(A) ->
+    aefa_data:make_address(integer_to_base58(?FATE_INTEGER_VALUE(A)));
+op(addr_to_str, A) when ?IS_FATE_ADDRESS(A) ->
+    aefa_data:make_string(?FATE_ADDRESS_VALUE(A));
+op(str_reverse, A) when ?IS_FATE_STRING(A) ->
+    aefa_data:make_string(binary_reverse(?FATE_STRING_VALUE(A)));
 op(bits_all, N)  when ?IS_FATE_INTEGER(N) ->
     ?FATE_BITS((1 bsl (N)) - 1);
 op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
@@ -641,7 +658,15 @@ op(map_member, Map, Key) when ?IS_FATE_MAP(Map),
 op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
     %% TODO: Check type of Hd and tail.
     aefa_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
-
+op(str_equal, A, B) when ?IS_FATE_STRING(A)
+                         , ?IS_FATE_STRING(B) ->
+    aefa_data:make_boolean(?FATE_STRING_VALUE(A)
+                           =:=
+                               ?FATE_STRING_VALUE(B));
+op(str_join, A, B) when ?IS_FATE_STRING(A)
+                         , ?IS_FATE_STRING(B) ->
+    aefa_data:make_string(<<?FATE_STRING_VALUE(A)/binary,
+                            ?FATE_STRING_VALUE(B)/binary>>);
 op(bits_set, A, B)  when ?IS_FATE_BITS(A)
                          , ?IS_FATE_INTEGER(B)
                          , B >= 0 ->
@@ -889,3 +914,23 @@ chain_get_contract(ContractAddress, #{ contracts :=  Contracts} = _Chain) ->
         C -> C
     end.
 
+%% helpers
+integer_to_base58(0) -> <<"1">>;
+integer_to_base58(Integer) ->
+    Base58String = integer_to_base58(Integer, []),
+    list_to_binary(Base58String).
+
+integer_to_base58(0, Acc) -> Acc;
+integer_to_base58(Integer, Acc) ->
+       Quot = Integer div 58,
+       Rem = Integer rem 58,
+       integer_to_base58(Quot, [base58char(Rem)|Acc]).
+
+base58char(Char) ->
+    binary:at(<<"123456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+                "abcdefghijkmnopqrstuvwxyz">>, Char).
+
+binary_reverse(Binary) ->
+    Size = erlang:size(Binary)*8,
+    <<X:Size/integer-little>> = Binary,
+    <<X:Size/integer-big>>.
