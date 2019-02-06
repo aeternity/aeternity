@@ -303,7 +303,7 @@ references:
       - attach_workspace:
           at: *packages_workspace
       - *setup_secrets
-#      - *upload_github_release_asset
+      - *upload_github_release_asset
       - *upload_release_artifacts
 
 
@@ -463,34 +463,6 @@ jobs:
           command: ./deployment/deploy_api_docs.sh
 
   osx_package:
-    macos:
-      xcode: "10.0.0"
-    working_directory: ~/aeternity
-    steps:
-      - checkout
-      - run:
-          name: Install required tools
-          command: |
-            brew update
-            brew install libsodium
-            brew install file://`pwd`/deployment/homebrew/erlang.rb
-      - *set_package_path
-      - *build_package
-      - *test_package
-      - store_artifacts:
-          path: /tmp/package_tests/node1/log
-      - store_artifacts:
-          path: /tmp/package_tests/node2/log
-      - store_artifacts:
-          path: /tmp/package_tests/node3/log
-      - *store_package_artifacts
-      - persist_to_workspace:
-          root: *packages_workspace
-          paths:
-            - "*.tar.gz"
-      - *fail_notification
-
-  osx_package_test:
     macos:
       xcode: "10.0.0"
     working_directory: ~/aeternity
@@ -706,13 +678,6 @@ jobs:
     <<: *infrastructure_config
     <<: *upload_package
 
-  upload_packages_osx_test:
-    <<: *infrastructure_config
-    <<: *upload_package
-    environment:
-      <<: *infrastructure_config_environment
-      PKG_TARGET_OS: macos
-
 
 # CircleCI skips a job for a tag by default.
 # A job must have a filters tags section to run as a part of a tag push
@@ -862,12 +827,6 @@ workflows:
             tags:
               only: *tag_regex
 
-      - osx_package_test:
-          filters:
-            branches:
-              only:
-                - Failing-macOS-package-uploads-to-S3-PT-163619978
-
       - deploy_integration:
           requires:
             - test
@@ -980,14 +939,6 @@ workflows:
               ignore: /.*/
             tags:
               only: *stable_tag_regex
-
-      - upload_packages_osx_test:
-          requires:
-            - osx_package_test
-          filters:
-            branches:
-              only:
-                - Failing-macOS-package-uploads-to-S3-PT-163619978
 
       - docker_push_tag:
           requires:
