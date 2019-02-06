@@ -163,7 +163,7 @@ start_lager_file_handlers(Sinks) ->
     ok.
 
 get_file_handler_for_sink(Sink) ->
-    {ok, Cfg} = aeu_env:get_env(aecore, [lager_file_handlers, sinks, Sink, handlers, ?LAGER_FILE_BACKEND]),
+    {ok, Cfg} = aeu_env:get_env(aelog, [lager_file_handlers, sinks, Sink, handlers, ?LAGER_FILE_BACKEND]),
     Cfg.
 
 overridden_file_handler_config(BaseCfg, K, V) ->
