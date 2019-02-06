@@ -178,12 +178,10 @@ name_revoke_tx_instructions(AccountPubkey, NameHash, Fee, Nonce) ->
 -spec name_transfer_tx_instructions(pubkey(), id(), hash(), fee(), nonce()
                                    ) -> [op()].
 name_transfer_tx_instructions(OwnerPubkey, RecipientID, NameHash, Fee, Nonce) ->
-    Recipient = {var, recipient},
     {Type, Hash} = specialize_account(RecipientID),
     [ inc_account_nonce_op(OwnerPubkey, Nonce)
     , spend_fee_op(OwnerPubkey, Fee)
-    , resolve_account_op(Type, Hash, Recipient)
-    , name_transfer_op(OwnerPubkey, Recipient, NameHash)
+    , name_transfer_op(OwnerPubkey, Type, Hash, NameHash)
     ].
 
 -spec name_update_tx_instructions(
@@ -420,17 +418,8 @@ resolve_account({GivenType, Hash, Var}, S) ->
 resolve_name(account, account, Pubkey, Var, S) ->
     set_var(Var, account, Pubkey, S);
 resolve_name(account, name, NameHash, Var, S) ->
-    Key = <<"account_pubkey">>,
-    {Name, S1} = get_name(NameHash, S),
-    case aens:resolve_from_name_object(Key, Name) of
-        {ok, Id} ->
-            %% Intentionally admissive to allow for all kinds of IDs for
-            %% backwards compatibility.
-            {_Tag, Pubkey} = aec_id:specialize(Id),
-            set_var(Var, account, Pubkey, S1);
-        {error, What} ->
-            runtime_error(What)
-    end.
+    {Pubkey, S1} = int_resolve_name(NameHash, S),
+    set_var(Var, account, Pubkey, S1).
 
 %%%-------------------------------------------------------------------
 
@@ -594,19 +583,26 @@ name_revoke({AccountPubkey, NameHash, ProtectedDeltaTTL}, S) ->
 
 %%%-------------------------------------------------------------------
 
-name_transfer_op(OwnerPubkey, Recipient, NameHash
+name_transfer_op(OwnerPubkey, RecipientType, RecipientHash, NameHash
                 ) when ?IS_HASH(OwnerPubkey),
-                       ?IS_VAR_OR_HASH(Recipient),
+                       (RecipientType =:= name orelse RecipientType =:= account),
+                       ?IS_HASH(RecipientHash),
                        ?IS_HASH(NameHash) ->
-    {name_transfer, {OwnerPubkey, Recipient, NameHash}}.
+    {name_transfer, {OwnerPubkey, RecipientType, RecipientHash, NameHash}}.
 
-name_transfer({OwnerPubkey, Recipient, NameHash}, S) ->
+name_transfer({OwnerPubkey, RecipientType, RecipientHash, NameHash}, S) ->
     {Name, S1} = get_name(NameHash, S),
     assert_name_owner(Name, OwnerPubkey),
     assert_name_claimed(Name),
-    RecipientPubkey = get_var(Recipient, account, S1),
+    %% The check for the recipient is after the check for the name to give
+    %% better error reporting.
+    {RecipientPubkey, S2} =
+        case RecipientType of
+            account -> {RecipientHash, S1};
+            name    -> int_resolve_name(RecipientHash, S1)
+        end,
     Name1 = aens_names:transfer_to(RecipientPubkey, Name),
-    cache_put(name, Name1, S1).
+    cache_put(name, Name1, S2).
 
 %%%-------------------------------------------------------------------
 
@@ -951,6 +947,20 @@ int_lock_amount(Amount, S) when ?IS_NON_NEG_INTEGER(Amount) ->
     LockPubkey = aec_governance:locked_coins_holder_account(),
     {Account, S1} = ensure_account(LockPubkey, S),
     account_earn(Account, Amount, S1).
+
+int_resolve_name(NameHash, S) ->
+    Key = <<"account_pubkey">>,
+    {Name, S1} = get_name(NameHash, S),
+    case aens:resolve_from_name_object(Key, Name) of
+        {ok, Id} ->
+            %% Intentionally admissive to allow for all kinds of IDs for
+            %% backwards compatibility.
+            {_Tag, Pubkey} = aec_id:specialize(Id),
+            {Pubkey, S1};
+        {error, What} ->
+            runtime_error(What)
+    end.
+
 
 account_earn(Account, Amount, S) ->
     {ok, Account1} = aec_accounts:earn(Account, Amount),
