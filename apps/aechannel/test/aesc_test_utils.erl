@@ -54,7 +54,9 @@
          snapshot_solo_tx_spec/5,
 
          force_progress_tx_spec/8,
-         force_progress_tx_spec/9
+         force_progress_tx_spec/9,
+
+         update_tx/3
         ]).
 
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
@@ -447,4 +449,19 @@ force_progress_tx_spec(ChannelId, FromPubKey, Payload, Update, StateHash,
 force_progress_default_spec(FromPubKey, State) ->
     #{fee              => 50000,
       nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+
+
+update_tx(AeTx, Field, NewValue) ->
+    {Mod, Tx0} = aetx:specialize_callback(AeTx),
+    {_, FieldIdx} =
+        lists:foldl(
+            fun({_, _}, {Found, Idx}) when Found =:= true -> {Found, Idx};
+               ({K, _}, {_, Idx})     when K =:= Field    -> {true, Idx};
+               ({_, _}, {_, Idx})                         -> {false, Idx + 1}
+            end,
+            {false, 2},
+            Mod:serialization_template(1)),
+    % quite dirty
+    Tx = setelement(FieldIdx, Tx0, NewValue),
+    aetx:new(Mod, Tx).
 
