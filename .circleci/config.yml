@@ -655,6 +655,20 @@ jobs:
       - DEPLOY_DOWNTIME: 1800 #30M
     steps: *deploy_steps
 
+  deploy_next:
+    <<: *infrastructure_config
+    environment:
+      - DEPLOY_ENV: next
+      - DEPLOY_DOWNTIME: 900 #15M
+    steps: *deploy_steps
+
+  deploy_unstable:
+    <<: *infrastructure_config
+    environment:
+      - DEPLOY_ENV: unstable
+      - DEPLOY_DOWNTIME: 900 #15M
+    steps: *deploy_steps
+
   upload_packages_osx:
     <<: *infrastructure_config
     steps:
@@ -868,6 +882,20 @@ workflows:
           filters:
             branches:
               only: env/dev2
+
+      - deploy_next:
+          requires:
+            - linux_package
+          filters:
+            branches:
+              only: *next_branch
+
+      - deploy_unstable:
+          requires:
+            - linux_package
+          filters:
+            branches:
+              only: *next_branch
 
       - hodl_artefact_upload:
           type: approval
