@@ -9,7 +9,7 @@
 
 %% API
 -export([resolve/3,
-         resolve_from_hash/3,
+         resolve_from_name_object/2,
          get_commitment_hash/2,
          get_name_entry/2,
          get_name_hash/1]).
@@ -30,7 +30,11 @@ resolve(Key, Name, NSTree) when is_binary(Key), is_binary(Name) ->
     case is_name(Name) of
         true ->
             case name_to_name_hash(Name) of
-                {ok, NameHash} -> resolve_from_hash(Key, NameHash, NSTree);
+                {ok, NameHash} ->
+                        case name_hash_to_name_entry(NameHash, NSTree) of
+                            {ok, #{pointers := Pointers}} -> find_pointer_id(Key, Pointers);
+                            {error, _Rsn} = Error -> Error
+                        end;
                 {error, _Rsn} = Error -> Error
             end;
         false ->
@@ -39,10 +43,10 @@ resolve(Key, Name, NSTree) when is_binary(Key), is_binary(Name) ->
     end.
 
 
--spec resolve_from_hash(binary(), aens_hash:name_hash(), aens_state_tree:tree()) ->
+-spec resolve_from_name_object(binary(), aens_names:name()) ->
     {ok, aec_id:id()} | {error, atom()}.
-resolve_from_hash(Key, NameHash, NSTree) when is_binary(Key), is_binary(NameHash) ->
-    case name_hash_to_name_entry(NameHash, NSTree) of
+resolve_from_name_object(Key, Name) when is_binary(Key) ->
+    case name_entry(Name) of
         {ok, #{pointers := Pointers}} -> find_pointer_id(Key, Pointers);
         {error, _Rsn} = Error -> Error
     end.
