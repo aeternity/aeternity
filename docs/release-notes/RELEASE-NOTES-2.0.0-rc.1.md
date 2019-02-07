@@ -8,7 +8,7 @@ It:
 TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
 TODO: When preparing the release, concatenate all `/docs/release-notes/next-minerva/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
 
-[this-release]: https://github.com/aeternity/epoch/releases/tag/v2.0.0-rc.1
+[this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.0.0-rc.1
 
 This release is not backward compatible with v1.*.
 
