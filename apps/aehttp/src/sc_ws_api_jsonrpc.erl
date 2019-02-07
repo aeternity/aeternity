@@ -366,7 +366,8 @@ process_request(#{<<"method">> := <<"channels.get.contract">>,
                             , payload => Resp }};
                 {error, _Reason} = Err -> Err
             end;
-        {error, _Reason} = Err -> Err
+        {error, _Reason} ->
+            {error, broken_encoding}
     end;
 process_request(#{<<"method">> := <<"channels.get.poi">>,
                   <<"params">> := Filter}, FsmPid) ->
