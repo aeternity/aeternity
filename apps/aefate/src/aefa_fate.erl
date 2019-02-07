@@ -21,6 +21,9 @@ run(What, Chain) ->
 
 -define(t(__S,__A,__ES), throw({iolist_to_binary(io_lib:format(__S, __A)), __ES})).
 
+%% Runtime error messages for dry run and debugging.
+%% Should result on one tyhpe of runtime error and use all gas when
+%% executed on chain.
 abort({invalid_tuple_size, Size}, ES) ->
     ?t("Invalid tuple size: ~p", [Size], ES);
 abort({element_index_out_of_bounds, Index}, ES) ->
