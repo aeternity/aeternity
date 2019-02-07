@@ -19,6 +19,8 @@ TEMP_RELEASE_FILE=${TEMP_RELEASE_FILE:=/tmp/aeternity.tgz}
 TARGET_DIR=${TARGET_DIR:=$HOME/aeternity/node}
 PACKAGE_PREFIX=aeternity
 MACOS_PACKAGE_SUFFIX=macos-x86_64
+BINARY=aeternity
+
 declare -a OLD_RELEASE_VERSIONS=("1.0.0" "1.0.1" "1.1.0" "1.2.0");
 
 in_array() {
@@ -102,6 +104,7 @@ install_node() {
 # @TODO remove after 2.* release
 if in_array OLD_RELEASE_VERSIONS $RELEASE_VERSION; then
     PACKAGE_PREFIX=epoch
+    BINARY=epoch
     MACOS_PACKAGE_SUFFIX=osx-10.13.6
 fi
 
@@ -117,4 +120,4 @@ else
 fi
 
 echo -e "Installation completed."
-echo -e "Run '${TARGET_DIR}/bin/epoch start' to start the node"
+echo -e "Run '${TARGET_DIR}/bin/${BINARY} start' to start the node"
