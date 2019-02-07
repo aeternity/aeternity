@@ -27,6 +27,7 @@
         , set_half_signed_tx/2        %%  (SignedTx, State0) -> State
         , get_latest_half_signed_tx/1 %%  (State) -> SignedTx
         , get_latest_signed_tx/1      %%  (State) -> {Round, SignedTx}
+        , get_latest_trees/1          %%  (State) -> Trees
         , get_fallback_state/1        %%  (State) -> {Round, State'}
         , fallback_to_stable_state/1  %%  (State) -> State'
         , hash/1                      %%  (State) -> hash()
@@ -287,6 +288,10 @@ get_latest_half_signed_tx(#state{half_signed_tx = Tx}) when Tx =/= ?NO_TX ->
 get_latest_signed_tx(#state{signed_tx = LastSignedTx})
     when LastSignedTx =/= ?NO_TX ->
     {tx_round(aetx_sign:tx(LastSignedTx)), LastSignedTx}.
+
+-spec get_latest_trees(state()) -> aec_trees:trees().
+get_latest_trees(#state{trees = Trees}) ->
+    Trees.
 
 -spec get_fallback_state(state()) -> {non_neg_integer(), state()}.
 get_fallback_state(#state{signed_tx = LastSignedTx}=State)
