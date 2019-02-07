@@ -2,7 +2,7 @@
 
 set -e
 
-if [ "${PKG_TARGET_OS}x" == "x" ]; then
+if [ -z "${PKG_TARGET_OS}" ]; then
     if [ "$(uname -s)" == "Darwin" ]; then
         PKG_TARGET_OS="macos"
     elif [ "$(uname -s)" == "Linux" ]; then
