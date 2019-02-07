@@ -2,7 +2,7 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
-%%% API to the epoch db
+%%% API to the Aeternity node db
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aec_db).

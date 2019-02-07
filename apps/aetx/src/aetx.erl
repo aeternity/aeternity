@@ -9,7 +9,6 @@
 -module(aetx).
 
 -export([ accounts/1
-        , check/3
         , deserialize_from_binary/1
         , fee/1
         , gas_limit/2
@@ -139,7 +138,7 @@
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
 
 -callback process(Tx :: tx_instance(), aec_trees:trees(), aetx_env:env()) ->
-    {ok, NewTrees :: aec_trees:trees()}.
+    {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
 
 -callback serialize(Tx :: tx_instance()) ->
     term().
@@ -253,9 +252,6 @@ size(#aetx{ size = Size }) ->
 %%% Checking transactions
 %%%===================================================================
 
--spec check(tx(), aec_trees:trees(), aetx_env:env()) ->
-               {ok, aec_trees:trees()} | {error, term()}.
-
 check(Tx, Trees, Env) ->
     case aetx_env:context(Env) of
         aetx_transaction -> check_tx(Tx, Trees, Env);
@@ -312,9 +308,14 @@ check_ttl(AeTx, Env) ->
 %%%===================================================================
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) ->
-                 {ok, NewTrees :: aec_trees:trees()}.
-process(#aetx{ cb = CB, tx = Tx }, Trees, Env) ->
-    CB:process(Tx, Trees, Env).
+                 {ok, NewTrees :: aec_trees:trees()} | {error, term()}.
+process(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
+    case check(AeTx, Trees, Env) of
+        {ok, Trees1} ->
+            CB:process(Tx, Trees1, Env);
+        {error, _} = Err ->
+            Err
+    end.
 
 %% Call a custom callback function in the transaction module.
 -spec custom_apply(atom(), tx(), aec_trees:trees(), aetx_env:env()) -> any().

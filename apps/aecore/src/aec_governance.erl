@@ -245,7 +245,7 @@ get_network_id() ->
 contributors_messages_hash() ->
     %% This is generated using messages_hash tool:
     %%  > cd ~/aeternity/node
-    %%  > bin/epoch messages_hash
+    %%  > bin/aeternity messages_hash
     <<158,79,89,57,49,136,245,229,211,220,44,167,79,151,117,42,149,176,13,160,196,61,156,179,95,106,250,133,59,93,3,170>>.
 
 -spec locked_coins_holder_account() -> aec_keys:pubkey().

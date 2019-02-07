@@ -26,9 +26,9 @@
 
 %=== MACROS ====================================================================
 
--define(CONFIG_FILE_TEMPLATE, "epoch.yaml.mustache").
--define(EPOCH_OPS_BIN, "/home/aeternity/node/bin/epoch").
--define(EPOCH_CONFIG_FILE, "/home/aeternity/epoch.yaml").
+-define(CONFIG_FILE_TEMPLATE, "aeternity.yaml.mustache").
+-define(AETERNITY_OPS_BIN, "/home/aeternity/node/bin/aeternity").
+-define(AETERNITY_CONFIG_FILE, "/home/aeternity/aeternity.yaml").
 -define(EPOCH_LOG_FOLDER, "/home/aeternity/node/log").
 -define(EPOCH_KEYS_FOLDER, "/home/aeternity/node/keys").
 -define(EPOCH_GENESIS_FILE, "/home/aeternity/node/data/aecore/.genesis/accounts_test.json").
@@ -190,7 +190,7 @@ setup_node(Spec, BackendState) ->
     NetworkSpecs = maps:get(networks, Spec, ?DEFAULT_NETWORKS),
     [Network  | OtherNetworks] = setup_networks(NetworkSpecs, NodeState),
 
-    ConfigFileName = format("epoch_~s.yaml", [Name]),
+    ConfigFileName = format("aeternity_~s.yaml", [Name]),
     ConfigFilePath = filename:join([TempDir, "config", ConfigFileName]),
     TemplateFile = filename:join(DataDir, ?CONFIG_FILE_TEMPLATE),
     PeerVars = lists:map(fun (Addr) -> #{peer => Addr} end, Peers),
@@ -229,7 +229,7 @@ setup_node(Spec, BackendState) ->
         },
         mining => maps:merge(#{autostart => true}, maps:get(mining, Spec, #{}))
     },
-    Context = #{epoch_config => RootVars},
+    Context = #{aeternity_config => RootVars},
     {ok, ConfigString} = write_template(TemplateFile, ConfigFilePath, Context),
     Command =
         case MineRate of
@@ -264,12 +264,12 @@ setup_node(Spec, BackendState) ->
         image => Image,
         ulimits => AllUlimits,
         command => Command,
-        env => #{"EPOCH_CONFIG" => ?EPOCH_CONFIG_FILE,
+        env => #{"AETERNITY_CONFIG" => ?AETERNITY_CONFIG_FILE,
                  "ERL_CRASH_DUMP" => format("~s/erl_crash.dump", [?EPOCH_LOG_FOLDER])},
         labels => #{epoch_system_test => <<"true">>},
         volumes => [
             {rw, KeysDir, ?EPOCH_KEYS_FOLDER},
-            {ro, ConfigFilePath, ?EPOCH_CONFIG_FILE},
+            {ro, ConfigFilePath, ?AETERNITY_CONFIG_FILE},
             {rw, LogPath, ?EPOCH_LOG_FOLDER}] ++
             [ {ro, Genesis, ?EPOCH_GENESIS_FILE} || Genesis =/= undefined ],
         ports => PortMapping
@@ -465,7 +465,7 @@ is_running(Id, Retries) ->
     end.
 
 attempt_epoch_stop(#{container_id := ID, hostname := Name, sockets := Sockets} = NodeState, Timeout) ->
-    Cmd = [?EPOCH_OPS_BIN, "stop"],
+    Cmd = [?AETERNITY_OPS_BIN, "stop"],
     CmdStr = lists:join(" " , Cmd),
     log(NodeState,
         "Container ~p [~s] still running: "

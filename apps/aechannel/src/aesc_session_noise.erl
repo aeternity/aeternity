@@ -188,6 +188,9 @@ handle_info_({noise, EConn, Data}, #st{econn = EConn} = St) ->
     tell_fsm(Msg, St),
     enoise:set_active(EConn, once),
     {noreply, St};
+handle_info_({tcp_closed, _Port}, #st{parent = Pid} = St) ->
+    aesc_fsm:connection_died(Pid),
+    {stop, normal, St};
 handle_info_(_Msg, St) ->
     lager:debug("Unknown handle_info_(~p)", [_Msg]),
     {noreply, St}.

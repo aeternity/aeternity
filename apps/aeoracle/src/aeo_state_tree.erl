@@ -21,6 +21,7 @@
         , enter_query/2
         , insert_query/2
         , insert_oracle/2
+        , is_oracle/2
         , lookup_query/3
         , lookup_oracle/2
         , new_with_backend/2
@@ -159,6 +160,13 @@ lookup_oracle(Id, Tree) ->
     case aeu_mtrees:lookup(Id, Tree#oracle_tree.otree) of
         {value, Val}  -> {value, aeo_oracles:deserialize(Id, Val)};
         none -> none
+    end.
+
+-spec is_oracle(aeo_oracles:pubkey(), tree()) -> boolean().
+is_oracle(Pubkey, #oracle_tree{ otree = OTree }) ->
+    case aeu_mtrees:lookup(Pubkey, OTree) of
+        none -> false;
+        {value, _} -> true
     end.
 
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.

@@ -1,4 +1,4 @@
-# Contributing to Aeternity Epoch
+# Contributing to the Aeternity node
 
 ### Pull Requests
 

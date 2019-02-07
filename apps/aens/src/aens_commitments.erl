@@ -8,7 +8,7 @@
 -module(aens_commitments).
 
 %% API
--export([new/3,
+-export([new/4,
          serialize/1,
          deserialize/2,
          deserialize_from_fields/3,
@@ -51,17 +51,14 @@
 %%% API
 %%%===================================================================
 
--spec new(aens_preclaim_tx:tx(), non_neg_integer(), aec_blocks:height()) -> commitment().
-new(PreclaimTx, ExpirationHeight, BlockHeight) ->
-    %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2
-    Id      = aens_preclaim_tx:commitment_id(PreclaimTx),
-    OwnerId = aens_preclaim_tx:account_id(PreclaimTx),
+-spec new(aec_id:id(), aec_id:id(), non_neg_integer(), aec_blocks:height()) -> commitment().
+new(Id, OwnerId, DeltaTTL, BlockHeight) ->
     commitment = aec_id:specialize_type(Id),
     account    = aec_id:specialize_type(OwnerId),
     #commitment{id       = Id,
                 owner_id = OwnerId,
                 created  = BlockHeight,
-                ttl      = BlockHeight + ExpirationHeight}.
+                ttl      = BlockHeight + DeltaTTL}.
 
 -spec serialize(commitment()) -> binary().
 serialize(#commitment{owner_id = OwnerId,

@@ -19,7 +19,7 @@
         , id/3
         , is_open/1
         , is_closed/1
-        , new/2
+        , new/7
         , oracle_id/1
         , oracle_pubkey/1
         , query/1
@@ -40,6 +40,10 @@
         , set_sender_nonce/2
         ]).
 
+-ifdef(TEST).
+-export([new/2]).
+-endif.
+
 -define(ORACLE_QUERY_TYPE, oracle_query).
 -define(ORACLE_QUERY_VSN, 1).
 
@@ -52,7 +56,7 @@
 -type relative_ttl()    :: aeo_oracles:relative_ttl().
 
 -record(query, { sender_id    :: aec_id:id()
-               , sender_nonce :: integer()
+               , sender_nonce :: non_neg_integer()
                , oracle_id    :: aec_id:id()
                , query        :: oracle_query()
                , response     :: oracle_response()
@@ -79,17 +83,31 @@
 %%% API
 %%%===================================================================
 
+-ifdef(TEST).
 -spec new(aeo_query_tx:tx(), aec_blocks:height()) -> query().
 new(QTx, BlockHeight) ->
-    TTL = aeo_utils:ttl_expiry(BlockHeight, aeo_query_tx:query_ttl(QTx)),
-    I = #query{ sender_id    = aeo_query_tx:sender_id(QTx)
-              , sender_nonce = aeo_query_tx:nonce(QTx)
-              , oracle_id    = aeo_query_tx:oracle_id(QTx)
-              , query        = aeo_query_tx:query(QTx)
+    AbsoluteQTTL = aeo_utils:ttl_expiry(BlockHeight, aeo_query_tx:query_ttl(QTx)),
+    new(aeo_query_tx:oracle_pubkey(QTx),
+        aeo_query_tx:sender_pubkey(QTx),
+        aeo_query_tx:nonce(QTx),
+        aeo_query_tx:query(QTx),
+        aeo_query_tx:query_fee(QTx),
+        AbsoluteQTTL,
+        aeo_query_tx:response_ttl(QTx)).
+-endif.
+
+-spec new(aec_keys:pubkey(), aec_keys:pubkey(), non_neg_integer(), oracle_query(),
+          non_neg_integer(), non_neg_integer(), aeo_oracles:relative_ttl()) ->
+             query().
+new(OraclePubkey, SenderPubkey, SenderNonce, Query, Fee, AbsoluteQTTL, RTTL) ->
+    I = #query{ sender_id    = aec_id:create(account, SenderPubkey)
+              , sender_nonce = SenderNonce
+              , oracle_id    = aec_id:create(oracle, OraclePubkey)
+              , query        = Query
               , response     = undefined
-              , ttl          = TTL
-              , response_ttl = aeo_query_tx:response_ttl(QTx)
-              , fee          = aeo_query_tx:query_fee(QTx)
+              , ttl          = AbsoluteQTTL
+              , response_ttl = RTTL
+              , fee          = Fee
               },
     assert_fields(I).
 
