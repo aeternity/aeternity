@@ -13,7 +13,50 @@
 
 run(What, Chain) ->
     EngineState = setup_engine(What, Chain),
-    execute(EngineState).
+    try execute(EngineState) of
+        Res -> Res
+    catch
+        throw:{E, ES} -> throw({E, ES})
+    end.
+
+-define(t(__S,__A,__ES), throw({iolist_to_binary(io_lib:format(__S, __A)), __ES})).
+
+abort({invalid_tuple_size, Size}, ES) ->
+    ?t("Invalid tuple size: ~p", [Size], ES);
+abort({element_index_out_of_bounds, Index}, ES) ->
+    ?t("Bad index argument to element, Index: ~p", [Index], ES);
+abort({bad_arguments_to_element, Index, Tuple}, ES) ->
+    ?t("Bad argument to element, Tuple: ~p, Index: ~p", [Tuple, Index], ES);
+abort({bad_element_type, Type, Value}, ES) ->
+    ?t("Type error in element: ~p is not of type ~p", [Value, Type], ES);
+abort(hd_on_empty_list, ES) ->
+    ?t("Head on empty list", [], ES);
+abort(tl_on_empty_list, ES) ->
+    ?t("Tail on empty list", [], ES);
+abort({arithmetic_error, bits_sum_on_infinite_set}, ES) ->
+    ?t("Arithmetic error: bits_sum on infinite set", [], ES);
+abort(division_by_zero, ES) ->
+    ?t("Arithmetic error: division by zero", [], ES);
+abort(mod_by_zero, ES) ->
+    ?t("Arithmetic error: mod by zero", [], ES);
+abort(missin_map_key, ES) ->
+    ?t("Maps: Key does not exists", [], ES);
+abort({type_error, cons, Value, Type}, ES) ->
+    ?t("Type error in cons: ~p is not of type ~p", [Value, Type], ES);
+abort({cannot_write_to_arg, N}, ES) ->
+    ?t("Arguments are read only: ~p", [N], ES);
+abort({undefined_var, Var}, ES) ->
+    ?t("Undefined var: ~p", [Var], ES);
+abort({bad_return_type, Val, Type}, ES) ->
+    ?t("Type error on return: ~p is not of type ~p", [Val, Type], ES);
+abort({value_does_not_match_type, Val, Type}, ES) ->
+    ?t("Type error on call: ~p is not of type ~p", [Val, Type], ES);
+abort({trying_to_reach_bb, BB}, ES) ->
+    ?t("Trying to jump to non existing bb: ~p", [BB], ES);
+abort({trying_to_call_function, Name}, ES) ->
+    ?t("Trying to call undefined function: ~p", [Name], ES).
+
+abort(E) -> throw({add_engine_state, E}).
 
 execute(EngineState) ->
     Instructions = current_bb(EngineState),
@@ -202,10 +245,11 @@ eval({not_a_r, Name}, EngineState) ->
 %% ------------------------------------------------------
 %% Make tuple only takes a fixed size.
 %% NOTE: There is no type checking on the arguments on the stack.
+%% TODO: add type checking.
 eval({make_tuple, Size}, EngineState) ->
     if is_integer(Size) andalso (Size >= 0) ->
             {next, make_tuple(Size, EngineState)};
-       true -> throw({error, {invalid_tuple_size, Size}})
+       true -> abort({invalid_tuple_size, Size}, EngineState)
     end;
 %% (get) Element takes a type and two named arguments and stores
 %% the element at position 'which' of the 'Tuple' in 'Dest'.
@@ -414,15 +458,15 @@ set_function_code(Name, Signature, BBs, #{functions := Functions} = ES) ->
     NewFunctions = maps:put(Name, {Signature, BBs}, Functions),
     maps:put(functions, NewFunctions, ES).
 
-get_function_code(Name, #{functions := Functions}) ->
+get_function_code(Name, #{functions := Functions} = ES) ->
     case maps:get(Name, Functions, void) of
-        void ->  throw({error, {trying_to_call_function, Name}});
+        void -> abort({trying_to_call_function, Name}, ES);
         {_Signature, Code} -> Code
     end.
 
-get_function_signature(Name,  #{functions := Functions}) ->
+get_function_signature(Name,  #{functions := Functions} = ES) ->
     case maps:get(Name, Functions, void) of
-        void ->  throw({error, {trying_to_call_function, Name}});
+        void -> abort({trying_to_call_function, Name}, ES);
         {Signature, _Code} -> Signature
     end.
 
@@ -431,7 +475,7 @@ check_return_type(#{current_function := Function,
     {_ArgTypes, RetSignature} = get_function_signature(Function, ES),
     case check_type(RetSignature, Acc) of
         true -> ES;
-        false -> throw({error, {bad_return_type, Acc, RetSignature}})
+        false -> abort({bad_return_type, Acc, RetSignature}, ES)
     end.
 
 check_signature_and_bind_args({ArgTypes, _RetSignature},
@@ -443,7 +487,7 @@ check_signature_and_bind_args({ArgTypes, _RetSignature},
         ok ->
             {ok, bind_args(0, Args, ArgTypes, #{}, EngineState)};
         {error, T, V}  ->
-            throw({error, {value_does_not_match_type, V, T}})
+            abort({value_does_not_match_type, V, T}, EngineState)
     end.
 
 check_arg_types([], _) -> ok;
@@ -497,26 +541,45 @@ jump(BB, ES) ->
     Instructions = current_bb(NewES),
     {Instructions, NewES}.
 
-%% ------------------------------------------------------
-%% Integer instructions
-%% ------------------------------------------------------
+%% Guarded ops
+gop(Op, Arg, ES) ->
+    try op(Op, Arg) of
+        Res -> Res
+    catch
+        {add_engine_state, E} -> abort(E, ES)
+    end.
+
+gop(Op, Arg1, Arg2, ES) ->
+    try op(Op, Arg1, Arg2) of
+        Res -> Res
+    catch
+        {add_engine_state, E} -> abort(E, ES)
+    end.
+
+gop(Op, Arg1, Arg2, Arg3, ES) ->
+    try op(Op, Arg1, Arg2, Arg3) of
+        Res -> Res
+    catch
+        {add_engine_state, E} -> abort(E, ES)
+    end.
+
 
 un_op(Op, {To, What}, ES) ->
     {Value, ES1} = get_op_arg(What, ES),
-    Result = op(Op, Value),
+    Result = gop(Op, Value, ES1),
     store(To, Result, ES1).
 
 bin_op(Op, {To, Left, Right}, ES) ->
     {LeftValue, ES1} = get_op_arg(Left, ES),
     {RightValue, ES2} = get_op_arg(Right, ES1),
-    Result = op(Op, LeftValue, RightValue),
+    Result = gop(Op, LeftValue, RightValue, ES2),
     store(To, Result, ES2).
 
 ter_op(Op, {To, One, Two, Three}, ES) ->
     {ValueOne, ES1} = get_op_arg(One, ES),
     {ValueTwo, ES2} = get_op_arg(Two, ES1),
     {ValueThree, ES3} = get_op_arg(Three, ES2),
-    Result = op(Op, ValueOne, ValueTwo, ValueThree),
+    Result = gop(Op, ValueOne, ValueTwo, ValueThree, ES3),
     store(To, Result, ES3).
 
 get_op_arg({stack, 0}, #{ accumulator := A
@@ -526,10 +589,10 @@ get_op_arg({stack, 0}, #{ accumulator := A
                         , accumulator_stack := [] } = ES) ->
     {A, ES#{accumulator := ?FATE_VOID}};
 get_op_arg({arg,_N} = Var, #{ memory := Mem } = ES) ->
-    Value = lookup_var(Var, Mem),
+    Value = lookup_var(Var, Mem, ES),
     {Value, ES};
 get_op_arg({var,_N} = Var, #{ memory := Mem } = ES) ->
-    Value = lookup_var(Var, Mem),
+    Value = lookup_var(Var, Mem, ES),
     {Value, ES};
 get_op_arg({immediate, X}, ES) -> {X, ES}.
 
@@ -542,10 +605,13 @@ store({stack, 0}, Val, #{ accumulator := A,
 store({var, _} = Name,  Val, #{ memory := Mem } = ES) ->
     NewMem = store_var(Name, Val, Mem),
     ES#{ memory => NewMem};
-store({arg, N}, _, _ES) ->
-     throw({error, {cannot_write_to_arg, N}}).
+store({arg, N}, _, ES) ->
+     abort({cannot_write_to_arg, N}, ES).
 
 
+%% ------------------------------------------------------
+%% Integer instructions
+%% ------------------------------------------------------
 
 
 push_int(I, ES) when ?IS_FATE_INTEGER(I) -> push(I, ES).
@@ -564,7 +630,7 @@ tuple_element(Type, To, Which, TupleArg, ES) ->
     {Index, ES1} = get_op_arg(Which, ES),
     {FateTuple, ES2} = get_op_arg(TupleArg, ES1),
     case check_type(integer, Index) andalso ?IS_FATE_TUPLE(FateTuple) of
-        false -> throw({error, {bad_arguments_to_element, Index, FateTuple}});
+        false -> abort({bad_arguments_to_element, Index, FateTuple}, ES);
         true ->
             ?FATE_TUPLE(Tuple) = FateTuple,
             case size(Tuple) > Index of
@@ -572,10 +638,10 @@ tuple_element(Type, To, Which, TupleArg, ES) ->
                     V = element(Index+1, Tuple),
                     case check_type(Type, V) of
                         true -> store(To, V, ES2);
-                        false -> throw({error, {bad_element_type, Type, V}})
+                        false -> abort({bad_element_type, Type, V}, ES)
                     end;
                 false ->
-                    throw({error, {element_index_out_of_bounds, Index}})
+                    abort({element_index_out_of_bounds, Index}, ES)
             end
     end.
 
@@ -591,12 +657,12 @@ op(map_from_list, A) when ?IS_FATE_LIST(A) ->
     aefa_data:make_map(maps:from_list(KeyValues));
 op(hd, A) when ?IS_FATE_LIST(A) ->
     case ?FATE_LIST_VALUE(A) of
-        [] -> throw({error, hd_on_empty_list});
+        [] -> abort(hd_on_empty_list);
         [Hd|_] -> Hd
     end;
 op(tl, A) when ?IS_FATE_LIST(A) ->
     case ?FATE_LIST_VALUE(A) of
-        [] -> throw({error, hd_on_empty_list});
+        [] -> abort(tl_on_empty_list);
         [_|Tl] -> Tl
     end;
 op(length, A) when ?IS_FATE_LIST(A) ->
@@ -613,7 +679,7 @@ op(bits_all, N)  when ?IS_FATE_INTEGER(N) ->
     ?FATE_BITS((1 bsl (N)) - 1);
 op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
     ?FATE_BITS(Bits) = A,
-    if Bits < 0 -> throw({error, {arithmetic_error, bits_sum_on_ifinite_set}});
+    if Bits < 0 -> abort({arithmetic_error, bits_sum_on_infinite_set});
        true -> bits_sum(Bits, 0)
     end.
 
@@ -629,7 +695,7 @@ op(mul, A, B)  when ?IS_FATE_INTEGER(A)
     A * B;
 op('div', A, B)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
-    if B =:= 0 -> throw(division_by_zero);
+    if B =:= 0 -> abort(division_by_zero);
        true -> A div B
     end;
 op(pow, A, B)  when ?IS_FATE_INTEGER(A)
@@ -637,7 +703,7 @@ op(pow, A, B)  when ?IS_FATE_INTEGER(A)
     math:pow(A, B);
 op(mod, A, B)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
-    if B =:= 0 -> throw(mod_by_zero);
+    if B =:= 0 -> abort(mod_by_zero);
        true -> A rem B
     end;
 op('and', A, B)  when ?IS_FATE_BOOLEAN(A)
@@ -649,15 +715,23 @@ op('or', A, B)  when ?IS_FATE_BOOLEAN(A)
 op(map_lookup, Map, Key) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     case maps:get(Key, ?FATE_MAP_VALUE(Map), void) of
-        void -> throw(missing_map_key);
+        void -> abort(missing_map_key);
         Res -> Res
     end;
 op(map_member, Map, Key) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     aefa_data:make_boolean(maps:is_key(Key, ?FATE_MAP_VALUE(Map)));
 op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
-    %% TODO: Check type of Hd and tail.
-    aefa_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
+    case ?FATE_LIST_VALUE(Tail) of
+        [] -> aefa_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
+        [OldHd|_] = Tail ->
+            case check_type(type(OldHd), Hd) of
+                true ->
+                    aefa_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
+                false ->
+                    abort({type_error, cons, Hd, type(OldHd)})
+            end
+    end;
 op(str_equal, A, B) when ?IS_FATE_STRING(A)
                          , ?IS_FATE_STRING(B) ->
     aefa_data:make_boolean(?FATE_STRING_VALUE(A)
@@ -824,10 +898,10 @@ set_current_bb_index(BB, ES) ->
 current_bb(#{ current_bb := BB} = ES) ->
     get_bb(BB, ES).
 
-get_bb(BB, #{bbs := BBS}) ->
+get_bb(BB, #{bbs := BBS} = ES) ->
     case maps:get(BB, BBS, void) of
-        void -> throw({error, {trying_to_reach_bb, BB}});
-        Instrucitions -> Instrucitions
+        void -> abort({trying_to_reach_bb, BB}, ES);
+        Instructions -> Instructions
     end.
 
 next_bb_index(#{ current_bb := BB}) ->
@@ -872,15 +946,15 @@ get_trace(#{trace := T}) -> T.
 new_env(Mem, #{ memory := Envs} = EngineState) ->
     EngineState#{ memory => [Mem|Envs]}.
 
-lookup_var(Var, [Env|Envs]) ->
+lookup_var(Var, [Env|Envs], ES) ->
     case maps:get(Var, Env, undefined) of
         {Value, _Type} ->
             Value;
         undefined ->
-            lookup_var(Var, Envs)
+            lookup_var(Var, Envs, ES)
     end;
-lookup_var(Var, []) ->
-    throw({error, {undefined_var, Var}}).
+lookup_var(Var, [], ES) ->
+    abort({undefined_var, Var}, ES).
 
 store_var(Var, Val, [Env|Envs]) ->
     T = type(Val),
