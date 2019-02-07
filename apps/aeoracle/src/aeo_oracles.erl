@@ -112,7 +112,7 @@ new(AccountPubkey, QueryFormat, ResponseFormat,
                , response_format = ResponseFormat
                , query_fee       = QueryFee
                , ttl             = AbsoluteTTL
-               , abi_version      = ABIVersion
+               , abi_version     = ABIVersion
                },
     assert_fields(O).
 

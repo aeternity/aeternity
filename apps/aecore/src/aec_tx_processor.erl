@@ -64,6 +64,8 @@
 -type fee()    :: non_neg_integer().
 -type amount() :: non_neg_integer().
 -type oracle_type_format() :: aeo_oracles:type_format().
+-type abi_version() :: aect_contracts:abi_version().
+-type vm_version()  :: aect_contracts:vm_version().
 
 -export_type([ op/0
              ]).
@@ -105,7 +107,7 @@ spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
 
 -spec oracle_register_tx_instructions(
         pubkey(), oracle_type_format(), oracle_type_format(), fee(), ttl(),
-        non_neg_integer(), fee(), nonce()) -> [op()].
+        abi_version(), fee(), nonce()) -> [op()].
 oracle_register_tx_instructions(AccountPubkey, QFormat, RFormat, QFee,
                                 DeltaTTL, ABIVersion, TxFee, Nonce) ->
     %% TODO: Account nonce should not be increased in contract context
@@ -198,7 +200,7 @@ name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
 
 -spec contract_create_tx_instructions(pubkey(), amount(), amount(),
                                       non_neg_integer(), non_neg_integer(),
-                                      non_neg_integer(), non_neg_integer(),
+                                      abi_version(), vm_version(),
                                       binary(), binary(),
                                       fee(), nonce()) -> [op()].
 contract_create_tx_instructions(OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
@@ -211,7 +213,7 @@ contract_create_tx_instructions(OwnerPubkey, Amount, Deposit, GasLimit, GasPrice
 
 -spec contract_call_tx_instructions(pubkey(), pubkey(), binary(),
                                     non_neg_integer(), non_neg_integer(),
-                                    amount(), [binary()], non_neg_integer(),
+                                    amount(), [binary()], abi_version(),
                                     pubkey(), fee(), nonce()) -> [op()].
 contract_call_tx_instructions(CallerPubKey, ContractPubkey, CallData,
                               GasLimit, GasPrice, Amount, CallStack,
@@ -224,7 +226,7 @@ contract_call_tx_instructions(CallerPubKey, ContractPubkey, CallData,
 
 -spec contract_call_from_contract_instructions(
         pubkey(), pubkey(), binary(), non_neg_integer(), non_neg_integer(),
-        amount(), [binary()], non_neg_integer(), pubkey(), fee(), nonce()
+        amount(), [binary()], abi_version(), pubkey(), fee(), nonce()
        ) -> [op()].
 contract_call_from_contract_instructions(CallerPubKey, ContractPubkey, CallData,
                                          GasLimit, GasPrice, Amount, CallStack,
@@ -897,7 +899,7 @@ contract_init_call_success(InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
                     FailCall  = aect_call:set_return_type(error, FailCall0),
                     contract_call_fail(FailCall, Fee, RollbackS)
             end;
-        #{ vm := ?VM_AEVM_SOLIDITY_1} ->
+        #{vm := ?VM_AEVM_SOLIDITY_1} ->
             %% Solidity inital call returns the code to store in the contract.
             Contract1 = aect_contracts:set_code(ReturnValue, Contract),
             S1 = cache_put(contract, Contract1, S),
@@ -1147,7 +1149,7 @@ assert_contract_init_function(CallData, TypeInfo) ->
     end.
 
 assert_contract_create_version(ABIVersion, VMVersion, S) ->
-    CTVersion = #{ abi => ABIVersion, vm => VMVersion},
+    CTVersion = #{abi => ABIVersion, vm => VMVersion},
     Height = S#state.height,
     case aect_contracts:is_legal_version_at_height(create, CTVersion, Height) of
         true  -> ok;
