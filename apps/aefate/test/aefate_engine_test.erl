@@ -54,12 +54,20 @@ make_calls(ListOfCalls) ->
                                                              aefa_encoding:serialize(aefa_data:encode(A))])),
       fun() ->
               FateArgs = aefa_encoding:serialize(aefa_data:encode(A)),
-              FateRes = aefa_data:encode(R),
               Call = make_call(C,F,FateArgs),
-              #{accumulator := Res,
-                trace := Trace} = aefa_fate:run(Call, Chain),
-              ?assertEqual({FateRes, Trace}, {Res, Trace})
-
+              case R of
+                  {error, E} ->
+                      try aefa_fate:run(Call, Chain) of
+                          nomatch -> ok
+                      catch throw:{Error, #{trace := Trace}} ->
+                              ?assertEqual({E, Trace}, {Error, Trace})
+                      end;
+                  _ ->
+                      FateRes = aefa_data:encode(R),
+                      #{accumulator := Res,
+                        trace := Trace} = aefa_fate:run(Call, Chain),
+                      ?assertEqual({FateRes, Trace}, {Res, Trace})
+              end
       end}
      || {C,F,A,R} <- ListOfCalls].
 
@@ -159,6 +167,7 @@ list() ->
         {F,A,R} <-
             [ {<<"make_nil">>, [], []}
             ,  {<<"cons">>, [42,[]], [42]}
+            ,  {<<"cons_error">>, [42,[true]], {error, <<"Type error in cons: 42 is not of type boolean">>}}
             ,  {<<"head">>, [[42]], 42}
             ,  {<<"tail">>, [[42]], []}
             ,  {<<"length">>, [[1,2,3,4]], 4}
@@ -486,6 +495,11 @@ setup_contracts() ->
                ]}
            , {<<"cons">>
              , {[integer, {list, integer}], {list, integer}}
+             , [ {0, [ {cons, {stack, 0}, {arg, 0}, {arg, 1}}
+                     ,  return]}
+               ]}
+           , {<<"cons_error">>
+             , {[integer, {list, boolean}], {list, integer}}
              , [ {0, [ {cons, {stack, 0}, {arg, 0}, {arg, 1}}
                      ,  return]}
                ]}
