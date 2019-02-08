@@ -836,7 +836,6 @@ workflows:
             branches:
               ignore:
                 - system-tests
-                - *next_branch
             tags:
               only: *tag_regex
 
