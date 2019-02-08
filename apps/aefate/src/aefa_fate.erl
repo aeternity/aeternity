@@ -673,9 +673,10 @@ op(length, A) when ?IS_FATE_LIST(A) ->
 op(int_to_str, A) when ?IS_FATE_INTEGER(A) ->
     aefa_data:make_string(integer_to_binary(?FATE_INTEGER_VALUE(A)));
 op(int_to_addr, A) when ?IS_FATE_INTEGER(A) ->
-    aefa_data:make_address(integer_to_base58(?FATE_INTEGER_VALUE(A)));
+    aefa_data:make_address(<<A:256>>);
 op(addr_to_str, A) when ?IS_FATE_ADDRESS(A) ->
-    aefa_data:make_string(?FATE_ADDRESS_VALUE(A));
+    <<I:256>> = ?FATE_ADDRESS_VALUE(A),
+    aefa_data:make_string(integer_to_base58(I));
 op(str_reverse, A) when ?IS_FATE_STRING(A) ->
     aefa_data:make_string(binary_reverse(?FATE_STRING_VALUE(A)));
 op(bits_all, N)  when ?IS_FATE_INTEGER(N) ->
