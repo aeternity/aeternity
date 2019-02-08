@@ -1,9 +1,7 @@
 -module(aec_governance).
 
 %% API
--export([sorted_protocol_versions/0,
-         protocols/0,
-         key_blocks_to_check_difficulty_count/0,
+-export([key_blocks_to_check_difficulty_count/0,
          median_timestamp_key_blocks/0,
          expected_block_mine_rate/0,
          block_mine_reward/1,
@@ -30,11 +28,8 @@
          contributors_messages_hash/0,
          vm_gas_table/0]).
 
--export_type([protocols/0]).
-
 -include("blocks.hrl").
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
--include_lib("aecore/include/hard_forks.hrl").
 
 -define(NETWORK_ID, <<"ae_mainnet">>).
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 17).
@@ -61,30 +56,6 @@
 
 %% Account where locked / burnt coins are sent to.
 -define(LOCKED_COINS_ACCOUNT, <<0:32/unit:8>>).
-
-%% Maps consensus protocol version to minimum height at which such
-%% version is effective.  The height must be strictly increasing with
-%% the version.
--type protocols() :: #{Version::non_neg_integer() => aec_blocks:height()}.
-
--define(ROMA_PROTOCOL_HEIGHT, 0).
--define(MINERVA_PROTOCOL_HEIGHT, 1).
-
-sorted_protocol_versions() ->
-    lists:sort(maps:keys(protocols())).
-
-protocols() ->
-    case aeu_env:user_map([<<"chain">>, <<"hard_forks">>]) of
-        undefined ->
-            #{ ?ROMA_PROTOCOL_VSN     => ?ROMA_PROTOCOL_HEIGHT
-             , ?MINERVA_PROTOCOL_VSN  => ?MINERVA_PROTOCOL_HEIGHT
-             };
-        {ok, M} ->
-            maps:from_list(
-              lists:map(
-                fun({K, V}) -> {binary_to_integer(K), V} end,
-                maps:to_list(M)))
-    end.
 
 key_blocks_to_check_difficulty_count() ->
     ?BLOCKS_TO_CHECK_DIFFICULTY_COUNT.

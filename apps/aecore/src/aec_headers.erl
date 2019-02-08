@@ -649,46 +649,35 @@ deserialize_pow_evidence(_) ->
 %%%===================================================================
 
 validate_key_block_header(Header) ->
-    ProtocolVersions = aec_hard_forks:protocols(aec_governance:protocols()),
-
     Validators = [fun validate_version/1,
                   fun validate_pow/1,
                   fun validate_max_time/1
                   ],
-    aeu_validation:run(Validators, [{Header, ProtocolVersions}]).
+    aeu_validation:run(Validators, [Header]).
 
 validate_micro_block_header(Header) ->
     %% NOTE: The signature is not validated since we don't know the leader key
     %%       This check is performed when adding the header to the chain.
-    ProtocolVersions = aec_hard_forks:protocols(aec_governance:protocols()),
-
     Validators = [fun validate_version/1,
                   fun validate_micro_block_cycle_time/1,
                   fun validate_max_time/1
     ],
-    aeu_validation:run(Validators, [{Header, ProtocolVersions}]).
+    aeu_validation:run(Validators, [Header]).
 
--spec validate_version({header(), aec_governance:protocols()}) ->
+-spec validate_version(header()) ->
                               ok | {error, Reason} when
       Reason :: unknown_protocol_version
               | {protocol_version_mismatch, ExpectedVersion::non_neg_integer()}.
-validate_version({Header, Protocols}) ->
+validate_version(Header) ->
     V = version(Header),
     H = height(Header),
-    case aec_hard_forks:is_known_protocol(V, Protocols) of
-        false -> {error, unknown_protocol_version};
-        true ->
-            case aec_hard_forks:protocol_effective_at_height(H, Protocols) of
-                V -> ok;
-                VV -> {error, {protocol_version_mismatch, VV}}
-            end
-    end.
+    aec_hard_forks:check_protocol_version_validity(V, H).
 
--spec validate_pow({header(), aec_governance:protocols()}) ->
+-spec validate_pow(header()) ->
                           ok | {error, incorrect_pow}.
-validate_pow({#key_header{nonce        = Nonce,
-                          pow_evidence = Evd,
-                          target       = Target} = Header, _})
+validate_pow(#key_header{nonce        = Nonce,
+                         pow_evidence = Evd,
+                         target       = Target} = Header)
  when Nonce >= 0, Nonce =< ?MAX_NONCE ->
     %% Zero nonce and pow_evidence before hashing, as this is how the mined block
     %% got hashed.
@@ -701,9 +690,9 @@ validate_pow({#key_header{nonce        = Nonce,
             {error, incorrect_pow}
     end.
 
--spec validate_micro_block_cycle_time({header(), aec_governance:protocols()}) ->
+-spec validate_micro_block_cycle_time(header()) ->
         ok | {error, bad_micro_block_interval}.
-validate_micro_block_cycle_time({Header, _}) ->
+validate_micro_block_cycle_time(Header) ->
     Time = time_in_msecs(Header),
     PrevHash = prev_hash(Header),
     case aec_chain:get_header(PrevHash) of
@@ -722,9 +711,9 @@ validate_micro_block_cycle_time({Header, _}) ->
             ok %% We don't know yet - checked later
     end.
 
--spec validate_max_time({header(), aec_governance:protocols()}) ->
+-spec validate_max_time(header()) ->
         ok | {error, block_from_the_future}.
-validate_max_time({Header, _}) ->
+validate_max_time(Header) ->
     Time = time_in_msecs(Header),
     MaxAcceptedTime = aeu_time:now_in_msecs() + aec_governance:accepted_future_block_time_shift(),
     case Time < MaxAcceptedTime of

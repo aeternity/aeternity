@@ -386,7 +386,7 @@ sign_on_node(Id, Tx) ->
     sign_on_node(node_tuple(Id), Tx).
 
 forks() ->
-    Vs = aec_governance:sorted_protocol_versions(),
+    Vs = aec_hard_forks:sorted_protocol_versions(),
     Hs = lists:seq(0, (length(Vs) - 1)),
     maps:from_list(lists:zip(Vs, Hs)).
 

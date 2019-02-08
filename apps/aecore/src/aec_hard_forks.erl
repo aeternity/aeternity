@@ -1,45 +1,91 @@
 -module(aec_hard_forks).
 
 -export([check_env/0]).
--export([protocols/1,
-         is_known_protocol/2,
-         protocol_effective_at_height/1,
-         protocol_effective_at_height/2]).
+-export([protocols/0,
+         check_protocol_version_validity/2,
+         protocol_effective_at_height/1
+        ]).
+
+-ifdef(TEST).
+-export([check_protocol_version_validity/3,
+         sorted_protocol_versions/0
+        ]).
+-endif.
 
 -include("blocks.hrl").
+-include("hard_forks.hrl").
 
 -define(is_version(V), (is_integer(V) andalso (V >= 0))).
 -define(is_height(H), (is_integer(H) andalso (H >= ?GENESIS_HEIGHT))).
 
 -type version() :: non_neg_integer().
 
+%% Maps consensus protocol version to minimum height at which such
+%% version is effective.  The height must be strictly increasing with
+%% the version.
+-type protocols() :: #{Version::non_neg_integer() => aec_blocks:height()}.
+
+-export_type([protocols/0
+             ]).
 %%%===================================================================
 %%% API
 %%%===================================================================
 
+-define(ROMA_PROTOCOL_HEIGHT, 0).
+-define(MINERVA_PROTOCOL_HEIGHT, 1).
+
+-spec protocols() -> protocols().
+protocols() ->
+    case aeu_env:user_map([<<"chain">>, <<"hard_forks">>]) of
+        undefined ->
+            #{ ?ROMA_PROTOCOL_VSN     => ?ROMA_PROTOCOL_HEIGHT
+             , ?MINERVA_PROTOCOL_VSN  => ?MINERVA_PROTOCOL_HEIGHT
+             };
+        {ok, M} ->
+            maps:from_list(
+              lists:map(
+                fun({K, V}) -> {binary_to_integer(K), V} end,
+                maps:to_list(M)))
+    end.
+
+-spec check_env() -> ok.
 check_env() ->
-    Ps = aec_governance:protocols(),
-    Ps = protocols(Ps),
-    ok.
+    assert_protocols(protocols()).
 
--spec protocols(#{version() => aec_blocks:height()}) -> aec_governance:protocols().
-protocols(M) ->
-    Vs = sorted_versions(),
-    {[], _} = {maps:keys(M) -- Vs, check_no_extra_protocol_versions},
-    {[], _} = {Vs -- maps:keys(M), check_no_missing_protocol_versions},
-    assert_heights_strictly_increasing(M),
-    M.
-
--spec is_known_protocol(version(), aec_governance:protocols()) -> boolean().
-is_known_protocol(V, Protocols) when ?is_version(V) ->
-    maps:is_key(V, Protocols).
+-spec check_protocol_version_validity(version(), aec_blocks:height()) ->
+                                         ok | {error, Reason} when
+    Reason :: unknown_protocol_version
+            | {protocol_version_mismatch, ExpectedVersion::non_neg_integer()}.
+check_protocol_version_validity(Version, Height) ->
+    check_protocol_version_validity(Version, Height, protocols()).
 
 -spec protocol_effective_at_height(aec_blocks:height()) -> version().
 protocol_effective_at_height(H) ->
-    protocol_effective_at_height(H, protocols(aec_governance:protocols())).
+    protocol_effective_at_height(H, protocols()).
 
--spec protocol_effective_at_height(aec_blocks:height(), aec_governance:protocols()) ->
-                                          version().
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+%% Exported for tests
+check_protocol_version_validity(Version, Height, Protocols) ->
+    case maps:is_key(Version, Protocols) of
+        false ->
+            {error, unknown_protocol_version};
+        true ->
+            case protocol_effective_at_height(Height, Protocols) of
+                Version -> ok;
+                Other   -> {error, {protocol_version_mismatch, Other}}
+            end
+    end.
+
+%% Exported for tests
+sorted_protocol_versions() ->
+    lists:sort(maps:keys(protocols())).
+
+protocols_sorted_by_version(Ps) ->
+    lists:keysort(1, maps:to_list(Ps)).
+
 protocol_effective_at_height(H, Protocols) ->
     assert_height(H),
     SortedProtocols = protocols_sorted_by_version(Protocols),
@@ -47,33 +93,29 @@ protocol_effective_at_height(H, Protocols) ->
     %% specified height: that is the one effective at the specified
     %% height.  This assumes that the height is strictly increasing
     %% with the version so also assert that for the sake of clarity.
-    Protocols = protocols(Protocols), %% Height is increasing.
     ProtocolsEffectiveSinceBeforeOrAtHeight = [_|_] =
         lists:takewhile(fun({_, HH}) -> H >= HH end, SortedProtocols),
     {V, _} = lists:last(ProtocolsEffectiveSinceBeforeOrAtHeight),
     V.
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
+assert_protocols(M) ->
+    GenesisVersion = aec_block_genesis:version(),
+    Vs = [GenesisVersion | _] = sorted_protocol_versions(),
+    %% Assert versions are sorted.
+    Vs = lists:sort(Vs),
+    %% Assert versions are distinct.
+    [] = lists:sort(Vs) -- lists:usort(Vs),
+    {[], _} = {maps:keys(M) -- Vs, check_no_extra_protocol_versions},
+    {[], _} = {Vs -- maps:keys(M), check_no_missing_protocol_versions},
+    assert_heights_strictly_increasing(M),
+    ok.
+
 
 assert_height(H) ->
     case is_integer(H) andalso H >= aec_block_genesis:height() of
         true  -> ok;
         false -> error({illegal_height, H})
     end.
-
-sorted_versions() ->
-    GenesisVersion = aec_block_genesis:version(),
-    Vs = [GenesisVersion | _] = aec_governance:sorted_protocol_versions(),
-    %% Assert versions are sorted.
-    Vs = lists:sort(Vs),
-    %% Assert versions are distinct.
-    [] = lists:sort(Vs) -- lists:usort(Vs),
-    Vs.
-
-protocols_sorted_by_version(Ps) ->
-    lists:keysort(1, maps:to_list(Ps)).
 
 assert_heights_strictly_increasing(Ps) ->
     GenesisVersion = aec_block_genesis:version(),

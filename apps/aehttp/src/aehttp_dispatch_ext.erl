@@ -571,7 +571,7 @@ handle_request_('GetStatus', _Params, _Context) ->
     Listening = true, %% TODO
     Protocols = maps:fold(fun(Vsn, Height, Acc) ->
                           [#{<<"version">> => Vsn, <<"effective_at_height">> => Height} | Acc]
-                 end, [], aec_governance:protocols()),
+                 end, [], aec_hard_forks:protocols()),
     NodeVersion = aeu_info:get_version(),
     NodeRevision = aeu_info:get_revision(),
     PeerCount = aec_peers:count(peers),
