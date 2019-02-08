@@ -32,6 +32,11 @@
 
 -compile({no_auto_import, [round/1]}).
 
+-ifdef(TEST).
+-export([set_channel_id/2,
+         set_round/2,
+         set_state_hash/2]).
+-endif.
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -43,6 +48,7 @@
 -type vsn() :: non_neg_integer().
 
 -record(channel_offchain_tx, {
+            
           channel_id         :: aec_id:id(),
           updates            :: [aesc_offchain_update:update()],
           state_hash         :: binary(),
@@ -207,3 +213,19 @@ set_value(#channel_offchain_tx{} = Tx, state_hash, Hash) when
 
 version() ->
     ?CHANNEL_OFFCHAIN_TX_VSN.
+
+%%%===================================================================
+%%% Test setters 
+%%%===================================================================
+-dialyzer({nowarn_function, set_channel_id/2}).
+set_channel_id(Tx, ChannelId) ->
+    channel = aec_id:specialize_type(ChannelId),
+    Tx#channel_offchain_tx{channel_id = ChannelId}.
+
+-dialyzer({nowarn_function, set_round/2}).
+set_round(Tx, Round) when is_integer(Round) ->
+    Tx#channel_offchain_tx{round = Round}.
+
+-dialyzer({nowarn_function, set_state_hash/2}).
+set_state_hash(Tx, Hash) ->
+    Tx#channel_offchain_tx{state_hash = Hash}.

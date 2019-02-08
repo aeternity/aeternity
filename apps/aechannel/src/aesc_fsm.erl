@@ -2031,6 +2031,7 @@ check_deposit_created_msg(#{ channel_id := ChanId
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case check_tx_and_verify_signatures(SignedTx, channel_deposit_tx,
                                         cur_channel_id(Data),
+                                        next_round(Data),
                                         [other_account(Data)],
                                         not_deposit_tx) of
         ok ->
@@ -2052,6 +2053,7 @@ check_deposit_signed_msg(#{ channel_id := ChanId
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case check_tx_and_verify_signatures(SignedTx, channel_deposit_tx,
                                         cur_channel_id(Data),
+                                        next_round(Data),
                                         both_accounts(Data),
                                         not_deposit_tx) of
         ok ->
@@ -2124,6 +2126,7 @@ check_withdraw_created_msg(#{ channel_id := ChanId
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case check_tx_and_verify_signatures(SignedTx, channel_withdraw_tx,
                                         cur_channel_id(Data),
+                                        next_round(Data),
                                         pubkeys(other_participant, Data),
                                         not_withdraw_tx) of
         ok ->
@@ -2145,6 +2148,7 @@ check_withdraw_signed_msg(#{ channel_id := ChanId
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case check_tx_and_verify_signatures(SignedTx, channel_withdraw_tx,
                                         cur_channel_id(Data),
+                                        next_round(Data),
                                         pubkeys(both, Data),
                                         not_withdraw_tx) of
         ok ->
@@ -2209,6 +2213,7 @@ check_signed_update_tx(Type, SignedTx, Msg,
     lager:debug("check_signed_update_tx(~p)", [SignedTx]),
     case check_tx_and_verify_signatures(SignedTx, channel_offchain_tx,
                                         cur_channel_id(D),
+                                        next_round(D),
                                         pubkeys(other_participant, D), not_offchain_tx) of
         ok ->
             case check_update_tx(Type, SignedTx, State, Opts) of
@@ -2258,6 +2263,7 @@ check_signed_update_ack_tx(SignedTx, Msg,
     try  ok = check_update_ack_(SignedTx, HalfSignedTx),
          case check_tx_and_verify_signatures(SignedTx, channel_offchain_tx,
                                           cur_channel_id(D),
+                                          next_round(D),
                                           pubkeys(both, D), not_offchain_tx) of
               ok ->
                   {OnChainEnv, OnChainTrees} =
@@ -2351,6 +2357,7 @@ check_shutdown_msg(#{channel_id := ChanId, data := TxBin} = Msg,
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case check_tx_and_verify_signatures(SignedTx, channel_close_mutual_tx,
                                         cur_channel_id(D),
+                                        next_round(D),
                                         [other_account(D)],
                                         not_close_mutual_tx) of
         ok ->
@@ -2378,6 +2385,7 @@ check_shutdown_ack_msg(#{data := TxBin} = Msg,
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case check_tx_and_verify_signatures(SignedTx, channel_close_mutual_tx,
                                         cur_channel_id(D),
+                                        next_round(D),
                                         both_accounts(D),
                                         not_close_mutual_tx) of
         ok ->
@@ -2751,14 +2759,23 @@ verify_signatures(Pubkeys, SignedTx) ->
         _ -> {error, bad_signature}
     end.
 
-check_tx_and_verify_signatures(SignedTx, Type, ChannelPubkey, Pubkeys, ErrTypeMsg) ->
+check_tx_and_verify_signatures(SignedTx, Type, ChannelPubkey, ExpectedRound, Pubkeys, ErrTypeMsg) ->
     Aetx = aetx_sign:tx(SignedTx),
     case aetx:specialize_type(Aetx) of
-        {Type, Tx} -> % check type
-            {Mod, Tx} = aetx:specialize_callback(Aetx),
-            case Mod:channel_pubkey(Tx) of
+        {Type, _Tx} -> % check type
+            case call_cb(Aetx, channel_pubkey, []) of
                 ChannelPubkey -> % expected pubkey
-                    verify_signatures(Pubkeys, SignedTx);
+                    CorrectRound =
+                        case Type of
+                            channel_close_mutual_tx -> true; % no round here
+                            _ -> tx_round(Aetx) =:= ExpectedRound
+                        end,
+                    case CorrectRound of
+                        true ->
+                            verify_signatures(Pubkeys, SignedTx);
+                        false ->
+                            {error, wrong_round}
+                    end;
                 _ ->
                   {error, different_channel_id}
             end;
@@ -2790,6 +2807,7 @@ maybe_check_sigs(Tx, TxType, WrongTxTypeMsg, Who, NextState, D)
             true ->
                 case check_tx_and_verify_signatures(Tx, TxType,
                                                     cur_channel_id(D),
+                                                    next_round(D),
                                                     Pubkeys, WrongTxTypeMsg) of
                     ok -> true;
                     {error, _E} -> {false, _E}
@@ -2809,3 +2827,8 @@ pubkeys(Who, D) ->
         other_participant -> [other_account(D)];
         both -> both_accounts(D)
     end.
+
+next_round(#data{state = State}) ->
+    {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
+    Round + 1.
+

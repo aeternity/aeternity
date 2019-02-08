@@ -46,6 +46,7 @@
          state_hash/1,
          updates/1,
          round/1]).
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -317,3 +318,4 @@ delegate_pubkeys(#channel_create_tx{delegate_ids = DelegateIds}) ->
 -spec version() -> non_neg_integer().
 version() ->
     ?CHANNEL_CREATE_TX_VSN.
+

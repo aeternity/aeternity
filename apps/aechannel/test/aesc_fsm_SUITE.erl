@@ -84,6 +84,8 @@ groups() ->
                              , {group, throughput}
                              , {group, signatures}
                              , {group, channel_ids}
+                             , {group, round_too_low}
+                             , {group, round_too_heigh}
                              ]},
      {transactions, [sequence],
       [
@@ -116,19 +118,21 @@ groups() ->
       [
        check_mutual_close_with_wrong_amounts
       ]},
-     {signatures, [sequence], [check_incorrect_create | update_sequence()]},
+     {signatures, [sequence], [check_incorrect_create | update_sequence()]
+                               ++ [check_incorrect_mutual_close]},
      {channel_ids, [sequence],
       % tests all mutually signed transactions with the exception of
       % channel_create_tx as its channel_id is not subject to the transaction
       % as it is computed. Unilateral transactions are not tested.
-      update_sequence()}
+      update_sequence() ++ [check_incorrect_mutual_close]},
+     {round_too_low, [sequence], update_sequence()},
+     {round_too_high, [sequence], update_sequence()}
     ].
 
 update_sequence() ->
     [ check_incorrect_deposit
     , check_incorrect_withdrawal
-    , check_incorrect_update
-    , check_incorrect_mutual_close].
+    , check_incorrect_update].
 
 suite() ->
     [].
@@ -154,6 +158,24 @@ init_per_group(channel_ids, Config0) ->
     [{wrong_create, fun(_, _) -> error(no_invalid_id_on_create) end},
      {wrong_action, fun wrong_id_action/4},
      {wrong_action_detailed, fun wrong_id_action/5}
+     | Config];
+init_per_group(round_too_low, Config0) ->
+    ModRoundTooLow = fun(Round) -> Round end, % keep previous round
+    Config = init_per_group_(Config0),
+    [{wrong_create, fun(_, _) -> error(no_invalid_round_on_create) end},
+     {wrong_action, fun(C, P, M, F) -> wrong_round_action(C, P, M, F,
+                                                          ModRoundTooLow) end},
+     {wrong_action_detailed, fun(C, P, M, F, D) -> wrong_round_action(C, P, M, F,
+                                                          D, ModRoundTooLow) end}
+     | Config];
+init_per_group(round_too_heigh, Config0) ->
+    ModRoundTooLow = fun(Round) -> Round + 2 end, % skip one
+    Config = init_per_group_(Config0),
+    [{wrong_create, fun(_, _) -> error(no_invalid_round_on_create) end},
+     {wrong_action, fun(C, P, M, F) -> wrong_round_action(C, P, M, F,
+                                                          ModRoundTooLow) end},
+     {wrong_action_detailed, fun(C, P, M, F, D) -> wrong_round_action(C, P, M, F,
+                                                          D, ModRoundTooLow) end}
      | Config];
 init_per_group(_Group, Config) ->
     init_per_group_(Config).
@@ -1046,6 +1068,38 @@ wrong_id_action(ChannelStuff, Poster, Malicious,
 wrong_id_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                 {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
                  DetectConflictFun) ->
+    wrong_action_modified_tx({I, R, _Spec, _Port, Debug}, Poster, Malicious,
+                 {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
+                  DetectConflictFun,
+                  fun(Tx0, _Fsm) ->
+                      _Tx = update_tx(Tx0, set_channel_id,
+                                      [aec_id:create(channel, ?BOGUS_PUBKEY)])
+                  end,
+                  different_channel_id).
+
+wrong_round_action(ChannelStuff, Poster, Malicious,
+                 FsmStuff, ModifyRound) ->
+    wrong_round_action(ChannelStuff, Poster, Malicious,
+                  FsmStuff,
+                  fun(Who, DebugL) ->
+                      {ok, _} = receive_from_fsm(conflict, Who, any_msg(), ?TIMEOUT, DebugL)
+                  end, ModifyRound).
+
+wrong_round_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
+                   {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
+                    DetectConflictFun, ModifyRoundFun) ->
+    wrong_action_modified_tx({I, R, _Spec, _Port, Debug}, Poster, Malicious,
+                 {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
+                  DetectConflictFun,
+                  fun(Tx0, Fsm) ->
+                      {ok, Round} = aesc_fsm:get_round(Fsm),
+                      _Tx = update_tx(Tx0, set_round, [ModifyRoundFun(Round)])
+                  end,
+                  wrong_round).
+
+wrong_action_modified_tx({I, R, _Spec, _Port, Debug}, Poster, Malicious,
+                   {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
+                    DetectConflictFun, ModifyTxFun, ErrorMsg) ->
     wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                  {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
                   DetectConflictFun,
@@ -1053,9 +1107,7 @@ wrong_id_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                       Action = fun sign_signing_request/3,
                       receive {aesc_fsm, Fsm, #{type := sign, tag := Tag, info := Tx0} = Msg} ->
                               log(Debug1, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
-                              Tx = aesc_test_utils:update_tx(Tx0, channel_id,
-                                                             aec_id:create(channel,
-                                                                          ?BOGUS_PUBKEY)),
+                              Tx = ModifyTxFun(Tx0, Fsm),
                               log(Debug1, "modified ~p", [Tx]),
                               SignedTx = aec_test_utils:sign_tx(Tx, [Priv]),
                               Action(Tag, Signer, SignedTx)
@@ -1063,7 +1115,7 @@ wrong_id_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                               error(timeout)
                       end
                   end,
-                  different_channel_id).
+                  ErrorMsg).
 
 wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
               {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
@@ -1310,6 +1362,11 @@ tx_amounts(SignedTx) ->
     {Mod, TxI} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
     {Mod:initiator_amount(TxI),
      Mod:responder_amount(TxI)}.
+
+update_tx(Tx0, F, Args) ->
+    {Mod, TxI} = aetx:specialize_callback(Tx0),
+    TxI1 = apply(Mod, F, [TxI|Args]),
+    aetx:new(Mod, TxI1).
 
 set_amounts(IAmt, RAmt, Map) ->
     Map#{initiator_amount => IAmt, responder_amount => RAmt}.
