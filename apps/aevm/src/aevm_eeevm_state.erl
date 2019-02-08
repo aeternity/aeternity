@@ -78,6 +78,11 @@
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_eeevm.hrl").
 
+%% In the release for VM_AEVM_SOPHIA_1 the size check was made with an
+%% incorrect word size.
+-define(WORD_SIZE_BYTES, 32).
+-define(BUGGY_WORD_SIZE_BYTES, 1).
+
 -type state() :: map().
 
 -export_type([state/0]).
@@ -284,20 +289,33 @@ spend_gas(Gas, State) ->
         GasLeft when GasLeft < 0 -> aevm_eeevm:eval_error(out_of_gas)
     end.
 
-%% Of course WordSize should be 32 - but we have to be buggy until the
-%% first scheduled hard-fork.
 heap_to_heap(Type, Ptr, State) ->
-    heap_to_heap(Type, Ptr, State, 1).
+    case vm_version(State) of
+        ?VM_AEVM_SOPHIA_1 ->
+            heap_to_heap(Type, Ptr, State, ?BUGGY_WORD_SIZE_BYTES);
+        ?VM_AEVM_SOPHIA_2 ->
+            heap_to_heap(Type, Ptr, State, ?WORD_SIZE_BYTES)
+    end.
 
 %% TODO: Pass ABI version?
 heap_to_heap(Type, Ptr, State, WordSize) ->
-    Heap  = mem(State),
-    Maps  = maps(State),
-    Value = aeso_heap:heap_value(Maps, Ptr, Heap),
+    Value = aeso_heap:heap_value(maps(State), Ptr, mem(State)),
+    heap_to_heap_sized(Type, Value, 32, State, WordSize).
+
+heap_to_heap_sized(Type, Value, Offset, State) ->
+    case vm_version(State) of
+        ?VM_AEVM_SOPHIA_1 ->
+            heap_to_heap_sized(Type, Value, Offset, State, ?BUGGY_WORD_SIZE_BYTES);
+        ?VM_AEVM_SOPHIA_2 ->
+            heap_to_heap_sized(Type, Value, Offset, State, ?WORD_SIZE_BYTES)
+    end.
+
+heap_to_heap_sized(Type, Value, Offset, State, WordSize) ->
     MaxWords = aevm_gas:mem_limit_for_gas(gas(State), State),
-    case aevm_data:heap_to_heap(Type, Value, 32, MaxWords * WordSize) of
+    case aevm_data:heap_to_heap(Type, Value, Offset, MaxWords * WordSize) of
         {ok, NewValue} ->
-            GasUsed = aevm_gas:mem_gas(byte_size(aeso_heap:heap_value_heap(NewValue)) div 32, State),
+            HeapSizeBytes = byte_size(aeso_heap:heap_value_heap(NewValue)),
+            GasUsed = aevm_gas:mem_gas(HeapSizeBytes div ?WORD_SIZE_BYTES, State),
             {ok, NewValue, GasUsed};
         {error, _} = Err ->
             Err
@@ -316,8 +334,8 @@ return_contract_call_result(To, Input, Addr,_Size, ReturnData, Type, State) ->
                     %% Local primops (like map primops) return heap values
                     <<Ptr:256, Bin/binary>> = ReturnData,
                     HeapVal = aeso_heap:heap_value(maps(State), Ptr, Bin, 32),
-                    case aevm_data:heap_to_heap(Type, HeapVal, HeapSize) of
-                        {ok, Out} ->
+                    case heap_to_heap_sized(Type, HeapVal, HeapSize, State) of
+                        {ok, Out, _} ->
                             write_heap_value(Out, State);
                         {error, _} = Err ->
                             lager:error("Failed to decode primop return value\n"
@@ -358,7 +376,8 @@ save_store(#{ chain_state := ChainState
                 _ ->
                     Type     = aevm_eeevm_store:get_sophia_state_type(storage(State)),
                     {Ptr, _} = aevm_eeevm_memory:load(Addr, State),
-                    case heap_to_heap(Type, Ptr, State, 32) of
+                    %% Note: this size check was not affected by the word size bug
+                    case heap_to_heap(Type, Ptr, State, ?WORD_SIZE_BYTES) of
                         {ok, StateValue1, GasUsed} ->
                             Store = aevm_eeevm_store:set_sophia_state(ct_version(State), StateValue1, storage(State)),
                             {ok, spend_gas(GasUsed, State#{ chain_state => ChainAPI:set_store(Store, ChainState) })};

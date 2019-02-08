@@ -109,6 +109,7 @@
         , sophia_events/1
         , sophia_crypto/1
         , sophia_safe_math/1
+        , sophia_heap_to_heap_bug/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -211,7 +212,8 @@ groups() ->
                                  sophia_int_to_str,
                                  sophia_events,
                                  sophia_crypto,
-                                 sophia_safe_math]}
+                                 sophia_safe_math,
+                                 sophia_heap_to_heap_bug]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
         [ sophia_oracles_ttl__extend_after_expiry
@@ -3328,7 +3330,7 @@ sophia_operators(_Cfg) ->
 
     ok.
 
-sophia_bits(Cfg) ->
+sophia_bits(_Cfg) ->
     ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_2,
               bitmaps_not_in_roma),
     state(aect_test_utils:new_state()),
@@ -3397,7 +3399,7 @@ sophia_bits(Cfg) ->
 
     ok.
 
-sophia_int_to_str(Cfg) ->
+sophia_int_to_str(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000),
     IdC   = ?call(create_contract, Acc, int_to_str, {}),
@@ -3426,7 +3428,7 @@ sophia_int_to_str(Cfg) ->
 
     ok.
 
-sophia_events(Cfg) ->
+sophia_events(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000),
     IdC   = ?call(create_contract, Acc, events, {}),
@@ -3446,7 +3448,7 @@ sophia_events(Cfg) ->
 set_compiler_version(Vm, Compiler) ->
     [ put('$sophia_version', Compiler) || vm_version() == Vm ].
 
-sophia_crypto(Cfg) ->
+sophia_crypto(_Cfg) ->
     %% Override compiler version
     set_compiler_version(?VM_AEVM_SOPHIA_1, ?AESOPHIA_2),
 
@@ -3631,6 +3633,18 @@ sophia_bad_init(_Cfg) ->
         {_X, {error, <<"out_of_gas">>}} -> ok;
         Err                             -> error(Err)
     end,
+
+    ok.
+
+sophia_heap_to_heap_bug(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc   = ?call(new_account, 1000000000),
+    IdC   = ?call(create_contract, Acc, expose_put_size_check_bug, {}),
+
+    ?assertMatchVM(
+        ?call(call_contract, Acc, IdC, f, word, {100}, #{return_gas_used => true}),
+        {{error,<<"out_of_gas">>}, _Gas}, %% Bad size check kicks in
+        {1, _Gas}),                       %% But works on new VM.
 
     ok.
 
