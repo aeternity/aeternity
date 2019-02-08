@@ -390,6 +390,7 @@ jobs:
   test:
     <<: *container_config
     parallelism: 2
+
     environment:
       - MAKE_TARGET: ct
     steps: *test_steps
