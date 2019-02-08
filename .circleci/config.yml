@@ -375,7 +375,7 @@ references:
 
 jobs:
   build:
-    executor: build_container_stable
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -394,7 +394,7 @@ jobs:
       - *fail_notification
 
   test:
-    executor: build_container_stable
+    executor: builder_container_stable
     <<: *container_config
     parallelism: 2
     environment:
@@ -409,7 +409,7 @@ jobs:
     steps: *test_steps
 
   eunit:
-    executor: build_container_stable
+    executor: builder_container_stable
     <<: *container_config
     environment:
       - MAKE_TARGET: eunit
@@ -422,7 +422,7 @@ jobs:
     steps: *eunit_steps
 
   aevm_tests:
-    executor: build_container_stable
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -435,7 +435,7 @@ jobs:
       - *fail_notification
 
   static_analysis:
-    executor: build_container_stable
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -464,7 +464,7 @@ jobs:
       - *fail_notification
 
   rebar_lock_check:
-    executor: build_container_stable
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -472,7 +472,7 @@ jobs:
       - *fail_notification
 
   linux_package:
-    executor: build_container_stable
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -516,7 +516,7 @@ jobs:
       - *fail_notification
 
   deploy_api_docs:
-    executor: build_container_stable
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -561,7 +561,7 @@ jobs:
       - *fail_notification
 
   uat_tests:
-    executor: build_container_stable
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
