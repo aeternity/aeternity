@@ -5,7 +5,7 @@ executors:
       - image: aeternity/infrastructure:deploy_from_diffrent_infrastructure_versions_163419653
   stable:
     docker:
-      - image: aeternity/infrastructure:v1.7.0
+      - image: aeternity/infrastructure:master
 
 references:
   container_config: &container_config
