@@ -1,4 +1,4 @@
--sname epoch@localhost
+-sname aeternity@localhost
 
 -setcookie aeternity_cookie
 -pa patches/ebin

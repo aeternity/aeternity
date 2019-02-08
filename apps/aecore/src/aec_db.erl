@@ -674,6 +674,7 @@ check_db() ->
         Mode = backend_mode(),
         Storage = ensure_schema_storage_mode(Mode),
         ok = application:ensure_started(mnesia),
+        ok = assert_schema_node_name(Mode),
         initialize_db(Mode, Storage)
     catch
         error:Reason ->
@@ -751,6 +752,22 @@ check_table(Table, Spec, Acc) ->
             end;
         Other -> [{missing_version, Table, Other}|Acc]
     catch _:_ -> [{missing_table, Table}|Acc]
+    end.
+
+assert_schema_node_name(#{persist := false}) ->
+    ok;
+assert_schema_node_name(#{persist := true}) ->
+    [DbOwnerNode] = mnesia:table_info(schema, all_nodes),
+    case DbOwnerNode =:= node() of
+        true -> ok;
+        false ->
+            {ok, MnesiaDir} = application:get_env(mnesia, dir),
+            SchemaLocation = filename:join(MnesiaDir, "schema.DAT"),
+            lager:error("Database cannot be loaded. "
+                        "It was created for the node ~p and current code is ~p (these must not differ!). "
+                        "To fix that, please run \"bin/aeternity rename_db ~s\" from your node's directory.",
+                        [DbOwnerNode, node(), SchemaLocation]),
+            exit(wrong_db_owner_node)
     end.
 
 ensure_schema_storage_mode(#{persist := false}) ->
