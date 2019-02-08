@@ -1,0 +1,13 @@
+-mode(compile).
+
+
+main([[]]) ->
+    io:fwrite("Usage: db_rename SCHEMA.DAT_file_path~n"),
+    halt(1);
+main([SchemaDATFilePath]) ->
+    case aeu_db:change_node(SchemaDATFilePath) of
+        ok -> ok;
+        {error, _Reason} = Error ->
+            io:fwrite("Script changing node in the db failed: ~p~n", [Error]),
+            halt(1)
+    end.
