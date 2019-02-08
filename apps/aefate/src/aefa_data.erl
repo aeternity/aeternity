@@ -33,7 +33,6 @@
       | fate_map()
       | fate_list()
       | fate_tuple()
-      | fate_variant()
       | fate_void(). %% Not sure we need this.
 
 -export_type([fate_type/0]).
@@ -41,7 +40,7 @@
 -export([ make_integer/1
         , make_boolean/1
         , make_list/1
-        , make_variant/2
+        , make_variant/3
         , make_tuple/1
         , make_string/1
         , make_map/1
@@ -69,11 +68,12 @@ make_map(M) -> ?MAKE_FATE_MAP(M).
 make_address(A) -> ?FATE_ADDRESS(A).
 make_bits(I) when is_integer(I) -> ?FATE_BITS(I).
 
-make_variant(Tag, Values) when is_integer(Tag)
-                               , 0 =< Tag
-                               , Tag < 256
+make_variant(Size, Tag, Values) when is_integer(Size), is_integer(Tag)
+                                     , 0 =< Size
+                                     , 0 =< Tag
+                                     , Tag < Size
                                , is_tuple(Values) ->
-    ?FATE_VARIANT(Tag, Values).
+    ?FATE_VARIANT(Size, Tag, Values).
 
 tuple_to_list(?FATE_TUPLE(T)) -> erlang:tuple_to_list(T).
 
@@ -86,6 +86,7 @@ encode({bits, Term}) when is_integer(Term) -> make_bits(Term);
 encode({address, B}) when is_binary(B)  -> make_address(B);
 encode({address, I}) when is_integer(I)  -> B = <<I:256>>, make_address(B);
 encode({address, S}) when is_list(S)  -> make_address(base58_to_address(S));
+encode({variant, Size, Tag, Values}) -> make_variant(Size, Tag, Values);
 encode(Term) when is_integer(Term) -> make_integer(Term);
 encode(Term) when is_boolean(Term) -> make_boolean(Term);
 encode(Term) when is_list(Term) -> make_list([encode(E) || E <- Term]);
@@ -104,6 +105,7 @@ decode(L) when ?IS_FATE_LIST(L) -> [decode(E) || E <- L];
 decode(?FATE_ADDRESS(<<Address:256>>)) -> {address, Address};
 decode(?FATE_BITS(Bits)) -> {bits, Bits};
 decode(?FATE_TUPLE(T)) -> erlang:list_to_tuple([decode(E) || E <- T]);
+decode(?FATE_VARIANT(Size, Tag, Values)) -> {variant, Size, Tag, Values};
 decode(S) when ?IS_FATE_STRING(S) -> binary_to_list(S);
 decode(M) when ?IS_FATE_MAP(M) ->
     maps:from_list([{decode(K), decode(V)} || {K, V} <- maps:to_list(M)]).
@@ -119,8 +121,9 @@ format(?FATE_UNIT) -> "unit";
 format(?FATE_TUPLE(T)) ->
     "{ " ++ [format(E) ++ " " || E <- erlang:tuple_to_list(T)] ++ "}";
 format(S) when ?IS_FATE_STRING(S) -> [S];
-format(?FATE_VARIANT(Tag, T)) ->
-    "( " ++ integer_to_list(Tag) ++ ", "
+format(?FATE_VARIANT(Size, Tag, T)) ->
+    "( " ++ integer_to_list(Size) ++ ", "
+        ++ integer_to_list(Tag) ++ ", "
         ++ [format(E) ++ " " || E <- erlang:tuple_to_list(T)]
         ++ " )";
 format(M) when ?IS_FATE_MAP(M) ->

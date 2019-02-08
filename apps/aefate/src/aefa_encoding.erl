@@ -65,7 +65,7 @@
 -define(FALSE        , 2#01111111). %% 0111 1111
 %%                                  %% 1000 1111 - FREE (Possibly for bytecode in the future.)
 -define(ADDRESS      , 2#10011111). %% 1001 1111 - [32 bytes]
--define(VARIANT      , 2#10101111). %% 1010 1111 - encoded tag + encoded values
+-define(VARIANT      , 2#10101111). %% 1010 1111 - encoded size + encoded tag + encoded values
 -define(NIL          , 2#10111111). %% 1011 1111 - Empty list
 -define(NEG_BITS     , 2#11001111). %% 1100 1111 - RLP encoded integer (infinite 1:s bitfield)
 -define(EMPTY_MAP    , 2#11011111). %% 1101 1111
@@ -137,10 +137,11 @@ serialize(Map) when ?IS_FATE_MAP(Map) ->
     <<?MAP,
       (rlp_integer(Size))/binary,
       (Elements)/binary>>;
-serialize(?FATE_VARIANT(Tag, Values)) when 0 =< Tag
-                                           , Tag < 256 ->
-    <<?VARIANT,
-      (serialize(?MAKE_FATE_INTEGER(Tag)))/binary,
+serialize(?FATE_VARIANT(Size, Tag, Values)) when 0 =< Size
+                                                 , Size < 256
+                                                 , 0 =< Tag
+                                                 , Tag < Size ->
+    <<?VARIANT, Size:8, Tag:8,
       (serialize(?FATE_TUPLE(Values)))/binary
     >>.
 
@@ -242,12 +243,11 @@ deserialize2(<<?MAP, Rest/binary>>) ->
     {List, Rest2} = deserialize_elements(2*Size, Rest1),
     Map = insert_kv(List, #{}),
     {?MAKE_FATE_MAP(Map), Rest2};
-deserialize2(<<?VARIANT, Rest/binary>>) ->
-    {?MAKE_FATE_INTEGER(Tag), Rest1} = deserialize2(Rest),
-    if Tag > 255 -> exit({too_large_tag_in_variant, Tag});
+deserialize2(<<?VARIANT, Size:8, Tag:8, Rest/binary>>) ->
+    if Tag > Size -> exit({too_large_tag_in_variant, Tag, Size});
        true ->
-            {?FATE_TUPLE(T), Rest2} = deserialize2(Rest1),
-            {?FATE_VARIANT(Tag, T), Rest2}
+            {?FATE_TUPLE(T), Rest2} = deserialize2(Rest),
+            {?FATE_VARIANT(Size, Tag, T), Rest2}
     end.
 
 insert_kv([], M) -> M;
