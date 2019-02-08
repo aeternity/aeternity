@@ -44,6 +44,9 @@ list_test_() ->
 string_test_() ->
     make_calls(string()).
 
+variant_test_() ->
+    make_calls(variant()).
+
 bits_test_() ->
     make_calls(bits()).
 
@@ -210,6 +213,19 @@ string() ->
             , {<<"str_reverse">>, [<<"123456789">>], <<"987654321">>}
             , {<<"str_reverse">>, [<<"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz">>],
                <<"zyxwvutsrqponmkjihgfedcbaZYXWVUTSRQPNMLKJHGFEDCBA987654321">>}
+            ]
+    ].
+
+
+variant() ->
+    [ {<<"variant">>, F, A, R} ||
+        {F,A,R} <-
+            [ {<<"switch">>, [{variant, 2, 0, {}}], 0}
+            , {<<"switch">>, [{variant, 2, 1, {42}}], 42}
+            , {<<"test">>, [{variant, 2, 1, {42}}, 1], true}
+            , {<<"test">>, [{variant, 2, 1, {42}}, 2], false}
+            , {<<"element">>, [{variant, 2, 1, {42}}, 1], 42}
+            , {<<"make">>, [2, 1, 1, [42]], {variant, 2, 1, {42}}}
             ]
     ].
 
@@ -554,6 +570,43 @@ setup_contracts() ->
              , {[string], string}
              , [ {0, [ {str_reverse, {stack, 0}, {arg, 0}}
                      , return]}
+               ]}
+           ]
+
+     , <<"variant">> =>
+           [ {<<"switch">>
+             , {[{variant, 2}], integer}
+             , [ {0, [ {variant_switch, {arg,0}, 1, 2}]}
+               , {1, [{return_r, {immediate, 0}}]}
+               , {2, [{return_r, {immediate, 42}}]}
+               ]}
+           , {<<"test">>
+             , {[{variant, 2}, integer], boolean}
+             , [ {0, [ {variant_test, {stack, 0}, {arg,0}, {arg, 1}}
+                     , return]}
+               ]}
+           , {<<"element">>
+             , {[{variant, 2}, integer], integer}
+             , [ {0, [ {variant_element, {stack, 0}, {arg,0}, {arg, 1}}
+                     , return]}
+               ]}
+           , {<<"make">>
+             , {[integer, integer, integer, {list, integer}], {variant, 2}}
+             , [ {0, [ {store, {var, 1}, {arg, 0}}
+                     , {store, {var, 2}, {arg, 1}}
+                     , {store, {var, 3}, {arg, 3}}
+                     , {store, {var, 4}, {arg, 2}}
+                     , {jump, 2}
+                     ]}
+               , {1, [ {make_variant, {stack, 0}, {var, 1}, {var, 2}, {var, 4}}
+                     , return
+                     ]}
+               , {2, [ {is_nil, {stack, 0}, {var, 3}}
+                     , {jumpif_a, 1}
+                     ]}
+               , {3, [ {hd, {stack, 0}, {var, 3}}
+                     , {tl, {var, 3}, {var, 3}}
+                     , {jump, 2}]}
                ]}
            ]
 

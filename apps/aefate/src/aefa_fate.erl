@@ -32,6 +32,10 @@ abort({bad_arguments_to_element, Index, Tuple}, ES) ->
     ?t("Bad argument to element, Tuple: ~p, Index: ~p", [Tuple, Index], ES);
 abort({bad_element_type, Type, Value}, ES) ->
     ?t("Type error in element: ~p is not of type ~p", [Value, Type], ES);
+abort({bad_variant_tag, Tag, Size}, ES) ->
+    ?t("Type error in switch: tag ~p is larger than ~p", [Tag, Size], ES);
+abort({bad_variant_size, Size}, ES) ->
+    ?t("Type error in switch: wrong size ~p", [Size], ES);
 abort(hd_on_empty_list, ES) ->
     ?t("Head on empty list", [], ES);
 abort(tl_on_empty_list, ES) ->
@@ -128,6 +132,75 @@ eval({jumpif_a, BB}, EngineState) ->
         {true, ES1} -> {jump, BB, ES1};
         {false, ES1} -> {next, ES1}
     end;
+
+eval({variant_switch, Variant, BB1, BB2}, ES) ->
+    {Value, ES1} = get_op_arg(Variant, ES),
+    if ?IS_FATE_VARIANT(Value) ->
+            ?FATE_VARIANT(Size, Tag, _T) = Value,
+            if Size =:= 2 ->
+                    case Tag of
+                        0 -> {jump, BB1, ES1};
+                        1 -> {jump, BB2, ES1};
+                        _ -> abort({bad_variant_tag, Tag, Size}, ES1)
+                                 
+                    end;
+               true -> abort({bad_variant_size, Size}, ES1)
+            end;
+       true -> abort({value_does_not_match_type,Value, variant}, ES1)
+    end;
+eval({variant_switch, Variant, BB1, BB2, BB3}, ES) ->
+    {Value, ES1} = get_op_arg(Variant, ES),
+    if ?IS_FATE_VARIANT(Value) ->
+            ?FATE_VARIANT(Size, Tag, _T) = Value,
+            if Size =:= 3 ->
+                    case Tag of
+                        0 -> {jump, BB1, ES1};
+                        1 -> {jump, BB2, ES1};
+                        2 -> {jump, BB3, ES1};
+                        _ -> abort({bad_variant_tag, Tag, Size}, ES1)
+                                 
+                    end;
+               true -> abort({bad_variant_size, Size}, ES1)
+            end;
+       true -> abort({value_does_not_match_type,Value, variant}, ES1)
+    end;
+eval({variant_switch, Variant, BB1, BB2, BB3, BB4}, ES) ->
+    {Value, ES1} = get_op_arg(Variant, ES),
+    if ?IS_FATE_VARIANT(Value) ->
+            ?FATE_VARIANT(Size, Tag, _T) = Value,
+            if Size =:= 4 ->
+                    case Tag of
+                        0 -> {jump, BB1, ES1};
+                        1 -> {jump, BB2, ES1};
+                        2 -> {jump, BB3, ES1};
+                        3 -> {jump, BB4, ES1};
+                        _ -> abort({bad_variant_tag, Tag, Size}, ES1)
+                                 
+                    end;
+               true -> abort({bad_variant_size, Size}, ES1)
+            end;
+       true -> abort({value_does_not_match_type, Value, variant}, ES1)
+    end;
+eval({variant_switch, Variant, BB1, BB2, BB3, BB4, BB5}, ES) ->
+    {Value, ES1} = get_op_arg(Variant, ES),
+    if ?IS_FATE_VARIANT(Value) ->
+            ?FATE_VARIANT(Size, Tag, _T) = Value,
+            if Size =:= 5 ->
+                    case Tag of
+                        0 -> {jump, BB1, ES1};
+                        1 -> {jump, BB2, ES1};
+                        2 -> {jump, BB3, ES1};
+                        3 -> {jump, BB4, ES1};
+                        4 -> {jump, BB5, ES1};
+                        _ -> abort({bad_variant_tag, Tag, Size}, ES1)
+                                 
+                    end;
+               true -> abort({bad_variant_size, Size}, ES1)
+            end;
+       true -> abort({value_does_not_match_type,Value, variant}, ES1)
+    end;
+%% Note: More complex variants (size > 5) has to be handled by a
+%%       series of 'variant_test' and 'jump_if' instructions.
 
 %% ------------------------------------------------------
 %% Integer instructions
@@ -283,6 +356,8 @@ eval({map_from_list, Dest, List}, EngineState) ->
 %% Todo type checking?
 eval({nil, Dest}, EngineState) ->
     {next, un_op(get, {Dest, {immediate, aefa_data:make_list([])}}, EngineState)};
+eval({is_nil, Dest, List}, EngineState) ->
+    {next, un_op(is_nil, {Dest, List}, EngineState)};
 eval({cons, Dest, Hd, Tl}, EngineState) ->
     {next, bin_op(cons, {Dest, Hd, Tl}, EngineState)};
 eval({hd, Dest, List}, EngineState) ->
@@ -309,6 +384,35 @@ eval({str_reverse, Dest, Str}, EngineState) ->
 
 eval({int_to_addr, Dest, Str}, EngineState) ->
     {next, un_op(int_to_addr, {Dest, Str}, EngineState)};
+
+%% ------------------------------------------------------
+%% Variant instructions
+%% ------------------------------------------------------
+%% A Variant type has a Size (number of different tags).
+%% A Variant also has a tag.
+%% A Variant has a tuple of values which size and types
+%%   are decided by the tag.
+%% Note: At the momement the types of the values are not
+%%       specified.
+%%       Also, tags are only numbers (in Sophia tags will
+%%       correspond to names)
+%% There are some variant_switch instructions for 
+%% variants of size 2 to 5.
+
+%% TODO: should this also take a size?
+eval({variant_test, Dest, Variant, Tag}, EngineState) ->
+    {next, bin_op(variant_test, {Dest, Variant, Tag}, EngineState)};
+%% TODO: type test? Size, Tag, and element type?
+eval({variant_element, Dest, Variant, Index}, EngineState) ->
+    {next, bin_op(variant_element, {Dest, Variant, Index}, EngineState)};
+eval({make_variant, Dest, SizeA, TagA, ElementsA}, EngineState) ->
+    {Size, ES1} = get_op_arg(SizeA, EngineState),
+    {Tag, ES2} = get_op_arg(TagA, ES1),
+    {N, ES3} = get_op_arg(ElementsA, ES2),
+    {Result, ES4} = make_variant(Size, Tag, N, ES3),
+    {next, store(Dest, Result, ES4)};
+
+
 
 %% ------------------------------------------------------
 %% Bits instructions
@@ -516,11 +620,15 @@ bind_args(N, [Arg|Args], [Type|Types], Mem, EngineState) ->
     bind_args(N+1, Args, Types, Mem#{{arg, N} => {Arg, Type}}, EngineState).
 
 %% TODO: Add types (and tests).
+check_type(any, _) -> true;
+check_type(_, any) -> true;
 check_type(integer, I) when ?IS_FATE_INTEGER(I) -> true;
 check_type(boolean, B) when ?IS_FATE_BOOLEAN(B) -> true;
 check_type(string, S) when ?IS_FATE_STRING(S) -> true;
 check_type(address, A) when ?IS_FATE_ADDRESS(A) -> true;
 check_type(bits, B) when ?IS_FATE_BITS(B) -> true;
+check_type({list, any}, L) when ?IS_FATE_LIST(L) ->
+    true;
 check_type({list, ET}, L) when ?IS_FATE_LIST(L) ->
     check_same_type(ET, ?FATE_LIST_VALUE(L));
 check_type({tuple, Elements}, T) when ?IS_FATE_TUPLE(T) ->
@@ -529,6 +637,9 @@ check_type({map, Key, Value}, M) when ?IS_FATE_MAP(M) ->
     {Ks, Vs} = lists:unzip(maps:to_list(?FATE_MAP_VALUE(M))),
     check_same_type(Key, Ks) andalso
     check_same_type(Value, Vs);
+check_type({variant, Size}, V) when ?IS_FATE_VARIANT(V) ->
+    ?FATE_VARIANT(VSize,_Tag,_Values) = V,
+    Size =:= VSize;
 check_type(_T, _V) -> false.
 
 type(I) when ?IS_FATE_INTEGER(I)  -> integer;
@@ -536,7 +647,8 @@ type(B) when ?IS_FATE_BOOLEAN(B)  -> boolean;
 type(B) when ?IS_FATE_BITS(B)     -> bits;
 type(A) when ?IS_FATE_ADDRESS(A)  -> address;
 type(S) when ?IS_FATE_STRING(S)   -> string;
-type([E|L]) when ?IS_FATE_LIST(L) -> {list, type(E)}.
+type([E|L]) when ?IS_FATE_LIST(L) -> {list, type(E)};
+type([]) -> {list, any}.
 %% TODO: handle all types.
 
 jump(BB, ES) ->
@@ -619,7 +731,27 @@ store({arg, N}, _, ES) ->
 
 push_int(I, ES) when ?IS_FATE_INTEGER(I) -> push(I, ES).
 
+%% ------------------------------------------------------
+%% Variant instructions
+%% ------------------------------------------------------
 
+
+make_variant(Size, Tag, NoElements, ES)  when ?IS_FATE_INTEGER(Size)
+                                              , ?IS_FATE_INTEGER(Tag)
+                                              , ?IS_FATE_INTEGER(NoElements)
+                                              , NoElements >= 0
+                                              , Size >= 0
+                                              , Tag < Size
+                                              , Tag >= 0 ->
+    {Elements, ES2} = pop_n(NoElements, ES),
+    Values = list_to_tuple(Elements),
+    {aefa_data:make_variant(Size, Tag, Values), ES2};
+make_variant(Size, Tag, NoElements, ES) ->
+    abort({bad_arguments_to_make_variant, Size, Tag, NoElements}, ES).
+
+%% ------------------------------------------------------
+%% Tuple instructions
+%% ------------------------------------------------------
 
 
 make_tuple(Size, ES) ->
@@ -663,6 +795,8 @@ op(hd, A) when ?IS_FATE_LIST(A) ->
         [] -> abort(hd_on_empty_list);
         [Hd|_] -> Hd
     end;
+op(is_nil, A) when ?IS_FATE_LIST(A) ->
+    aefa_data:make_boolean(?FATE_LIST_VALUE(A) =:= []);
 op(tl, A) when ?IS_FATE_LIST(A) ->
     case ?FATE_LIST_VALUE(A) of
         [] -> abort(tl_on_empty_list);
@@ -745,6 +879,21 @@ op(str_join, A, B) when ?IS_FATE_STRING(A)
                          , ?IS_FATE_STRING(B) ->
     aefa_data:make_string(<<?FATE_STRING_VALUE(A)/binary,
                             ?FATE_STRING_VALUE(B)/binary>>);
+op(variant_test, A, B)  when ?IS_FATE_VARIANT(A)
+                         , ?IS_FATE_INTEGER(B)
+                         , B >= 0 ->
+    ?FATE_VARIANT(S, T, Values) = A,
+    aefa_data:make_boolean(T =:= B);
+op(variant_element, A, B)  when ?IS_FATE_VARIANT(A)
+                                , ?IS_FATE_INTEGER(B)
+                                , B >= 0 ->
+    ?FATE_VARIANT(_S, _T, Values) = A,
+    if size(Values) >= B ->
+            element(B, Values);
+       true ->
+            abort({type_error, variant_element, B, A})
+    end;
+
 op(bits_set, A, B)  when ?IS_FATE_BITS(A)
                          , ?IS_FATE_INTEGER(B)
                          , B >= 0 ->
