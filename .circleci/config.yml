@@ -3,6 +3,9 @@ executors:
   unstable:
     docker:
       - image: aeternity/infrastructure:deploy_from_diffrent_infrastructure_versions_163419653
+  stable:
+    docker:
+      - image: aeternity/infrastructure:1.7.0
 
 references:
   container_config: &container_config
@@ -478,6 +481,7 @@ jobs:
       - *fail_notification
 
   upload_build_artifacts:
+    executor: stable
     <<: *infrastructure_config
     steps:
       - checkout
@@ -598,6 +602,7 @@ jobs:
       - *fail_notification
 
   docker_push_tag:
+    executor: stable
     <<: *infrastructure_config
     steps:
       - checkout
@@ -612,6 +617,7 @@ jobs:
             docker push ${DOCKERHUB_REPO:?}:latest
 
   uat_chain_snapshot:
+    executor: stable
     <<: *infrastructure_config
     environment:
       - BACKUP_ENV: uat
@@ -622,6 +628,7 @@ jobs:
           path: *chain_snapshots
 
   main_chain_snapshot:
+    executor: stable
     <<: *infrastructure_config
     environment:
       - BACKUP_ENV: main
@@ -686,6 +693,7 @@ jobs:
           path: *system_test_host_logs
 
   deploy_integration:
+    executor: unstable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: integration
@@ -700,12 +708,14 @@ jobs:
     steps: *deploy_steps
 
   deploy_dev2:
+    executor: unstable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: dev2
     steps: *deploy_steps
 
   deploy_uat_blue:
+    executor: stable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: uat
@@ -714,6 +724,7 @@ jobs:
     steps: *deploy_steps
 
   deploy_uat_green:
+    executor: stable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: uat
@@ -736,6 +747,7 @@ jobs:
     steps: *deploy_steps
 
   upload_packages_osx:
+    executor: stable
     <<: *infrastructure_config
     <<: *upload_package
     environment:
@@ -743,6 +755,7 @@ jobs:
       PKG_TARGET_OS: macos
 
   upload_packages_linux:
+    executor: stable
     <<: *infrastructure_config
     <<: *upload_package
     environment:
