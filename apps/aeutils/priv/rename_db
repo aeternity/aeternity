@@ -2,7 +2,7 @@
 
 
 main([[]]) ->
-    io:fwrite("Usage: db_rename SCHEMA.DAT_file_path~n"),
+    io:fwrite("Usage: rename_db SCHEMA.DAT_file_path~n"),
     halt(1);
 main([SchemaDATFilePath]) ->
     case aeu_db:change_node(SchemaDATFilePath) of
