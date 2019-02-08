@@ -10,9 +10,8 @@
 -export([change_node/1]).
 
 %% TODO: Backup SCHEMA.DAT before starting dets manipulations!
-%% TODO: Maybe parametrize FROM_NAME & TO_NAME.
--define(FROM_NAME, 'epoch@localhost').
--define(TO_NAME, 'aeternity@localhost').
+-define(DEFAULT_FROM_NAME, 'epoch@localhost').
+-define(DEFAULT_TO_NAME, 'aeternity@localhost').
 -define(db_renaming_error(E), {db_renaming_error, E}).
 
 %%%===================================================================
@@ -20,9 +19,10 @@
 %%%===================================================================
 
 change_node(SchemaDATFilePath) ->
-    %% For now it is hardcoded to change node
-    %% from epoch@localhost to aeternity@localhost.
-    try do_change_node(SchemaDATFilePath)
+    change_node(?DEFAULT_FROM_NAME, ?DEFAULT_TO_NAME, SchemaDATFilePath).
+
+change_node(FromNode, ToNode, SchemaDATFilePath) ->
+    try do_change_node(FromNode, ToNode, SchemaDATFilePath)
     catch throw:?db_renaming_error(Error) -> {error, Error}
     end.
 
@@ -30,10 +30,10 @@ change_node(SchemaDATFilePath) ->
 %%% Internal functions
 %%%===================================================================
 
-do_change_node(SchemaDatFile) ->
+do_change_node(FromNode, ToNode, SchemaDatFile) ->
     ok   = assert_file_present(SchemaDatFile),
     Name = dets_open_file(SchemaDatFile),
-    ok   = dets_change_node(Name),
+    ok   = dets_change_node(FromNode, ToNode, Name),
     ok   = dets_sync(Name),
     ok   = dets_close(Name).
 
@@ -53,18 +53,18 @@ dets_open_file(SchemaDatFile) ->
             db_renaming_error(Reason)
     end.
 
-dets_change_node(Name) ->
-    dets_change_node(Name, dets:first(Name)).
+dets_change_node(FromNode, ToNode, Name) ->
+    dets_change_node(FromNode, ToNode, Name, dets:first(Name)).
 
-dets_change_node(_Name, '$end_of_table') ->
+dets_change_node(_FromNode, _ToNode, _Name, '$end_of_table') ->
     ok;
-dets_change_node(Name, Key) ->
+dets_change_node(FromNode, ToNode, Name, Key) ->
     case dets:lookup(Name, Key) of
         [{Name, Tab, Def}] ->
-            NewDef = rename_node(Def),
+            NewDef = rename_node(FromNode, ToNode, Def),
             case dets:insert(Name, {Name, Tab, NewDef}) of
                 ok ->
-                    dets_change_node(Name, dets:next(Name, Key));
+                    dets_change_node(FromNode, ToNode, Name, dets:next(Name, Key));
                 {error, Reason} ->
                     io:fwrite("Inserting into SCHEMA.DAT failed: ~p~n", [Reason]),
                     db_renaming_error(Reason)
@@ -74,21 +74,21 @@ dets_change_node(Name, Key) ->
             db_renaming_error(Reason)
     end.
 
-rename_node(Def) ->
+rename_node(FromNode, ToNode, Def) ->
     ToBeRenamed =
         lists:filter(
-          fun({_Backend, [?FROM_NAME]}) -> true;
-             ({cookie, {_, ?FROM_NAME}}) -> true;
-             ({version, {_, {?FROM_NAME, _}}}) -> true;
+          fun({_Backend, [Node]}) when Node =:= FromNode -> true;
+             ({cookie, {_, Node}}) when Node =:= FromNode -> true;
+             ({version, {_, {Node, _}}}) when Node =:= FromNode -> true;
              (_Other) -> false
           end, Def),
     lists:foldl(
-      fun({Backend, [?FROM_NAME]}, Acc) ->
-              lists:keyreplace(Backend, 1, Acc, {Backend, [?TO_NAME]});
-         ({cookie, {A, ?FROM_NAME}}, Acc) ->
-              lists:keyreplace(cookie, 1, Acc, {cookie, {A, ?TO_NAME}});
-         ({version, {Vsn, {?FROM_NAME, Ts}}}, Acc) ->
-              lists:keyreplace(version, 1, Acc, {version, {Vsn, {?TO_NAME, Ts}}})
+      fun({Backend, [Node]}, Acc) when Node =:= FromNode ->
+              lists:keyreplace(Backend, 1, Acc, {Backend, [ToNode]});
+         ({cookie, {A, Node}}, Acc) when Node =:= FromNode ->
+              lists:keyreplace(cookie, 1, Acc, {cookie, {A, ToNode}});
+         ({version, {Vsn, {Node, Ts}}}, Acc) when Node =:= FromNode ->
+              lists:keyreplace(version, 1, Acc, {version, {Vsn, {ToNode, Ts}}})
       end, Def, ToBeRenamed).
 
 dets_sync(Name) ->
