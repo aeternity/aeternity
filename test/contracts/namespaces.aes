@@ -1,16 +1,10 @@
 
 namespace Lib =
 
-  // namespace Internal =
-  //   function rev(xs, ys) =
-  //     switch(xs)
-  //       []      => ys
-  //       x :: xs => rev(xs, x :: ys)
-  private
-    function rev(xs, ys) =
-      switch(xs)
-        []      => ys
-        x :: xs => rev(xs, x :: ys)
+  private function rev(xs, ys) =
+    switch(xs)
+      []      => ys
+      x :: xs => rev(xs, x :: ys)
 
   function reverse(xs : list('a)) : list('a) = rev(xs, [])
 
