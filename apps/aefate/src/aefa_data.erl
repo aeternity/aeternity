@@ -83,7 +83,9 @@ tuple_to_list(?FATE_TUPLE(T)) -> erlang:tuple_to_list(T).
 %% addresses and bits.
 encode({bits, Term}) when is_integer(Term) -> make_bits(Term);
 %% TODO: check that each byte is in base58
-encode({address, Term}) -> make_address(Term);
+encode({address, B}) when is_binary(B)  -> make_address(B);
+encode({address, I}) when is_integer(I)  -> B = <<I:256>>, make_address(B);
+encode({address, S}) when is_list(S)  -> make_address(base58_to_address(S));
 encode(Term) when is_integer(Term) -> make_integer(Term);
 encode(Term) when is_boolean(Term) -> make_boolean(Term);
 encode(Term) when is_list(Term) -> make_list([encode(E) || E <- Term]);
@@ -99,7 +101,7 @@ decode(I) when ?IS_FATE_INTEGER(I) -> I;
 decode(?FATE_TRUE)  -> true;
 decode(?FATE_FALSE) -> false;
 decode(L) when ?IS_FATE_LIST(L) -> [decode(E) || E <- L];
-decode(?FATE_ADDRESS(Address)) -> {address, Address};
+decode(?FATE_ADDRESS(<<Address:256>>)) -> {address, Address};
 decode(?FATE_BITS(Bits)) -> {bits, Bits};
 decode(?FATE_TUPLE(T)) -> erlang:list_to_tuple([decode(E) || E <- T]);
 decode(S) when ?IS_FATE_STRING(S) -> binary_to_list(S);
@@ -136,3 +138,40 @@ format_kvs([]) -> "";
 format_kvs([{K,V}]) -> "( " ++ format(K) ++ " => " ++ format(V) ++ " )";
 format_kvs([{K,V} | Rest]) ->
     "( " ++ format(K) ++ " => " ++  format(V) ++ " ), " ++ format_kvs(Rest).
+
+
+%% -- Local base 58 library
+
+base58char(Char) ->
+    binary:at(<<"123456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+                "abcdefghijkmnopqrstuvwxyz">>, Char).
+char_to_base58(C) ->
+    binary:at(<<0,1,2,3,4,5,6,7,8,0,0,0,0,0,0,0,9,10,11,12,13,14,15,16,0,17,
+                18,19,20,21,0,22,23,24,25,26,27,28,29,30,31,32,0,0,0,0,0,0,
+                33,34,35,36,37,38,39,40,41,42,43,0,44,45,46,47,48,49,50,51,
+                52,53,54,55,56,57>>,  C-$1).
+
+base58_to_integer(C, []) -> C;
+base58_to_integer(C, [X | Xs]) ->
+	base58_to_integer(C * 58 + char_to_base58(X), Xs).
+
+base58_to_integer([]) -> error;
+base58_to_integer([Char]) -> char_to_base58(Char);
+base58_to_integer([Char | Str]) ->
+	base58_to_integer(char_to_base58(Char), Str).
+
+base58_to_address(Base58) ->
+    I = base58_to_integer(Base58),
+    Bin = <<I:256>>,
+    Bin.
+
+integer_to_base58(0) -> <<"1">>;
+integer_to_base58(Integer) ->
+    Base58String = integer_to_base58(Integer, []),
+    list_to_binary(Base58String).
+
+integer_to_base58(0, Acc) -> Acc;
+integer_to_base58(Integer, Acc) ->
+       Quot = Integer div 58,
+       Rem = Integer rem 58,
+       integer_to_base58(Quot, [base58char(Rem)|Acc]).
