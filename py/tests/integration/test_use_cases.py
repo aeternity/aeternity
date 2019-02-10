@@ -302,11 +302,6 @@ keys:
     dir: \"""" + key_dir + """\"
     peer_password: "top secret"
 
-chain:
-    hard_forks:
-        "1": 0
-        "2": 1
-
 mining:
     autostart: true
     expected_mine_rate: 100
@@ -332,11 +327,6 @@ sync:
 keys:
     dir: \"""" + key_dir + """\"
     peer_password: "top secret"
-
-chain:
-    hard_forks:
-        "1": 0
-        "2": 1
 
 mining:
     autostart: false

@@ -111,11 +111,6 @@ def install_user_config(root_dir, file_name, conf):
 def make_no_mining_user_config(root_dir, file_name):
     conf = """\
 ---
-chain:
-    hard_forks:
-        "1": 0
-        "2": 1
-
 mining:
     autostart: false
     expected_mine_rate: 100
@@ -133,11 +128,6 @@ mining:
 def make_mining_user_config(root_dir, beneficiary, file_name):
     conf = """\
 ---
-chain:
-    hard_forks:
-        "1" : 0
-        "2" : 1
-
 mining:
     autostart: true
     expected_mine_rate: 100

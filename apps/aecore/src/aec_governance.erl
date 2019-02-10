@@ -31,7 +31,12 @@
 -include("blocks.hrl").
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 
+-ifdef(TEST).
+-define(NETWORK_ID, <<"local_testnet">>).
+-else.
 -define(NETWORK_ID, <<"ae_mainnet">>).
+-endif.
+
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 17).
 -define(TIMESTAMP_MEDIAN_BLOCKS, 11).
 -define(EXPECTED_BLOCK_MINE_RATE_MINUTES, 3).

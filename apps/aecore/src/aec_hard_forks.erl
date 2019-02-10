@@ -31,22 +31,10 @@
 %%% API
 %%%===================================================================
 
--define(ROMA_PROTOCOL_HEIGHT, 0).
--define(MINERVA_PROTOCOL_HEIGHT, 1).
-
 -spec protocols() -> protocols().
 protocols() ->
-    case aeu_env:user_map([<<"chain">>, <<"hard_forks">>]) of
-        undefined ->
-            #{ ?ROMA_PROTOCOL_VSN     => ?ROMA_PROTOCOL_HEIGHT
-             , ?MINERVA_PROTOCOL_VSN  => ?MINERVA_PROTOCOL_HEIGHT
-             };
-        {ok, M} ->
-            maps:from_list(
-              lists:map(
-                fun({K, V}) -> {binary_to_integer(K), V} end,
-                maps:to_list(M)))
-    end.
+    NetworkId = aec_governance:get_network_id(),
+    protocols_from_network_id(NetworkId).
 
 -spec check_env() -> ok.
 check_env() ->
@@ -66,6 +54,28 @@ protocol_effective_at_height(H) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+protocols_from_network_id(<<"ae_mainnet">>) ->
+    #{ ?ROMA_PROTOCOL_VSN     => 0
+     %%, ?MINERVA_PROTOCOL_VSN  => Not yet decided
+     };
+protocols_from_network_id(<<"ae_uat">>) ->
+    #{ ?ROMA_PROTOCOL_VSN     => 0
+     %%, ?MINERVA_PROTOCOL_VSN  => Not yet decided
+     };
+protocols_from_network_id(_) ->
+    case aeu_env:user_map([<<"chain">>, <<"hard_forks">>]) of
+        undefined ->
+            #{ ?ROMA_PROTOCOL_VSN     => 0
+             , ?MINERVA_PROTOCOL_VSN  => 1
+             };
+        {ok, M} ->
+            maps:from_list(
+              lists:map(
+                fun({K, V}) -> {binary_to_integer(K), V} end,
+                maps:to_list(M)))
+    end.
+
 
 %% Exported for tests
 check_protocol_version_validity(Version, Height, Protocols) ->
