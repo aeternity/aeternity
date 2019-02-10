@@ -285,9 +285,11 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     Owner    = aec_id:create(account, OwnerKey),
     Code     = compile_contract(lists:concat(["contracts/", Name, ".aes"])),
     {ok, CallData} = aect_sophia:encode_call_data(Code, <<"init">>, Args),
+    ABI = aect_test_utils:latest_sophia_abi_version(),
+    VM  = aect_test_utils:latest_sophia_vm_version(),
     {ok, CreateTx} = aect_create_tx:new(#{ nonce       => Nonce
-                                         , vm_version  => ?CURRENT_VM_SOPHIA
-                                         , abi_version => ?CURRENT_ABI_SOPHIA
+                                         , vm_version  => VM
+                                         , abi_version => ABI
                                          , code        => Code
                                          , call_data   => CallData
                                          , fee         => Fee
@@ -314,9 +316,10 @@ call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
     Caller       = aec_id:create(account, maps:get(pubkey, patron())),
     ContractID   = aec_id:create(contract, Contract),
     {ok, CallData} = aect_sophia:encode_call_data(Code, Function, Args),
+    ABI = aect_test_utils:latest_sophia_abi_version(),
     {ok, CallTx} = aect_call_tx:new(#{ nonce       => Nonce
                                      , caller_id   => Caller
-                                     , abi_version => ?CURRENT_ABI_SOPHIA
+                                     , abi_version => ABI
                                      , contract_id => ContractID
                                      , fee         => Fee
                                      , amount      => 0

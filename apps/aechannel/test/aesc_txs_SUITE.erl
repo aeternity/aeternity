@@ -189,8 +189,8 @@
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BOGUS_CHANNEL, <<1:?MINER_PUB_BYTES/unit:8>>).
 -define(ROLES, [initiator, responder]).
--define(VM_VERSION, ?CURRENT_VM_SOPHIA).
--define(ABI_VERSION, ?CURRENT_ABI_SOPHIA).
+-define(VM_VERSION, aect_test_utils:latest_sophia_vm_version()).
+-define(ABI_VERSION, aect_test_utils:latest_sophia_abi_version()).
 -define(TEST_LOG(Format, Data), ct:log(Format, Data)).
 %%%===================================================================
 %%% Common test framework

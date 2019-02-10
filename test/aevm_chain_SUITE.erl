@@ -65,7 +65,8 @@ setup_chain() ->
                                   ?BENEFICIARY_PUBKEY, _Difficulty = 0,
                                   ?BOGUS_PREV_HASH
                                  ),
-    InitS = aec_vm_chain:new_state(Trees, TxEnv, Contract1, ?CURRENT_VM_SOPHIA),
+    VM = aect_test_utils:latest_sophia_vm_version(),
+    InitS = aec_vm_chain:new_state(Trees, TxEnv, Contract1, VM),
     {[Account1, Account2, Contract1, Contract2], InitS}.
 
 create_contract(Owner, S) ->

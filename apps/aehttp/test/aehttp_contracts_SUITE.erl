@@ -1390,8 +1390,8 @@ contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
     %% The default init contract.
     ContractInitEncoded0 = #{ owner_id => Address,
                               code => Code,
-                              vm_version => ?CURRENT_VM_SOPHIA,
-                              abi_version => ?CURRENT_ABI_SOPHIA,
+                              vm_version => aect_test_utils:latest_sophia_vm_version(),
+                              abi_version => aect_test_utils:latest_sophia_abi_version(),
                               deposit => 2,
                               amount => 0,      %Initial balance
                               gas => 100000,   %May need a lot of gas
@@ -1444,7 +1444,7 @@ contract_call_compute_tx(Pubkey, Privkey, Nonce, EncodedContractPubkey,
 
     ContractCallEncoded0 = #{ caller_id => Address,
                               contract_id => EncodedContractPubkey,
-                              abi_version => ?CURRENT_ABI_SOPHIA,
+                              abi_version => aect_test_utils:latest_sophia_abi_version(),
                               amount => 0,
                               gas => 100000,    %May need a lot of gas
                               gas_price => 1,

@@ -377,12 +377,13 @@ query_oracle_type_check(_Cfg) ->
     IntFmt = aeso_heap:to_binary(word),
     String = aeso_heap:to_binary(<<"foo">>),
     StringFmt = aeso_heap:to_binary(string),
-    ?assertEqual({error, bad_format}, F(StringFmt, Int, ?CURRENT_ABI_SOPHIA)),
-    ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ?CURRENT_ABI_SOPHIA)),
-    ?assertEqual({error, bad_format}, F(IntFmt, <<>>, ?CURRENT_ABI_SOPHIA)),
-    ?assertEqual({error, bad_format}, F(IntFmt, String, ?CURRENT_ABI_SOPHIA)),
-    ?assertMatch({ok, _},             F(IntFmt, Int, ?CURRENT_ABI_SOPHIA)),
-    ?assertMatch({ok, _},             F(StringFmt, String, ?CURRENT_ABI_SOPHIA)),
+    ABI = aect_test_utils:latest_sophia_abi_version(),
+    ?assertEqual({error, bad_format}, F(StringFmt, Int, ABI)),
+    ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ABI)),
+    ?assertEqual({error, bad_format}, F(IntFmt, <<>>, ABI)),
+    ?assertEqual({error, bad_format}, F(IntFmt, String, ABI)),
+    ?assertMatch({ok, _},             F(IntFmt, Int, ABI)),
+    ?assertMatch({ok, _},             F(StringFmt, String, ABI)),
     %% For ?AEVM_NO_VM the format is always ok
     ?assertMatch({ok, _},             F(StringFmt, String, ?ABI_NO_VM)),
     ?assertMatch({ok, _},             F(IntFmt, String, ?ABI_NO_VM)),
@@ -555,12 +556,13 @@ query_response_type_check(_Cfg) ->
     IntFmt = aeso_heap:to_binary(word),
     String = aeso_heap:to_binary(<<"foo">>),
     StringFmt = aeso_heap:to_binary(string),
-    ?assertEqual({error, bad_format}, F(StringFmt, Int, ?CURRENT_ABI_SOPHIA)),
-    ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ?CURRENT_ABI_SOPHIA)),
-    ?assertEqual({error, bad_format}, F(IntFmt, <<>>, ?CURRENT_ABI_SOPHIA)),
-    ?assertEqual({error, bad_format}, F(IntFmt, String, ?CURRENT_ABI_SOPHIA)),
-    ?assertMatch({ok, _},             F(IntFmt, Int, ?CURRENT_ABI_SOPHIA)),
-    ?assertMatch({ok, _},             F(StringFmt, String, ?CURRENT_ABI_SOPHIA)),
+    ABI = aect_test_utils:latest_sophia_abi_version(),
+    ?assertEqual({error, bad_format}, F(StringFmt, Int, ABI)),
+    ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ABI)),
+    ?assertEqual({error, bad_format}, F(IntFmt, <<>>, ABI)),
+    ?assertEqual({error, bad_format}, F(IntFmt, String, ABI)),
+    ?assertMatch({ok, _},             F(IntFmt, Int, ABI)),
+    ?assertMatch({ok, _},             F(StringFmt, String, ABI)),
     %% For ?ABI_NO_VM the format is always ok
     ?assertMatch({ok, _},             F(StringFmt, String, ?ABI_NO_VM)),
     ?assertMatch({ok, _},             F(IntFmt, String, ?ABI_NO_VM)),
@@ -703,3 +705,4 @@ do_prune_until(N1, N1, Trees) ->
     aeo_state_tree:prune(N1, Trees);
 do_prune_until(N1, N2, Trees) ->
     do_prune_until(N1 + 1, N2, aeo_state_tree:prune(N1, Trees)).
+

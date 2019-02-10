@@ -1693,11 +1693,13 @@ make_channel_close_mutual_tx(FromPubKey, Nonce, ChannelId, Amount, Fee) ->
 
 make_contract_create_tx(Pubkey, Code, CallData, Nonce, Deposit, Amount, Fee, Gas) ->
     OwnerId = aec_id:create(account, Pubkey),
+    ABI = aect_test_utils:latest_sophia_abi_version(),
+    VM  = aect_test_utils:latest_sophia_vm_version(),
     {ok, Tx} = aect_create_tx:new(#{owner_id   => OwnerId,
                                     nonce      => Nonce,
                                     code       => Code,
-                                    abi_version => ?CURRENT_ABI_SOPHIA,
-                                    vm_version => ?CURRENT_VM_SOPHIA,
+                                    abi_version => ABI,
+                                    vm_version => VM,
                                     deposit    => Deposit,
                                     amount     => Amount,
                                     gas        => Gas,
