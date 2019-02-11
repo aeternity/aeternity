@@ -153,7 +153,7 @@ peer_from_spec(Spec, BackendState) ->
     aec_peers:encode_peer_address(
         #{host => Hostname, port => ?EXT_SYNC_PORT, pubkey => Key}).
 
--spec setup_node(node_spec(), backend_state()) -> node_spec().
+-spec setup_node(node_spec(), backend_state()) -> node_state().
 setup_node(Spec, BackendState) ->
     #{log_fun := LogFun,
       postfix := Postfix,
