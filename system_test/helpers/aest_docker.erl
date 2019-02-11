@@ -70,7 +70,9 @@
                                 args := binary(),
                                 bits := pos_integer()},
     hard_forks => #{non_neg_integer() => non_neg_integer()}, % Consensus protocols (version -> height)
-    config => #{atom() => term()}
+    config => #{atom() => term()},
+    % Tuple of host/guest paths where the node DB is meant to be if persisted
+    db_path => {binary(), binary()} | undefined
 }.
 
 %% State of a node
@@ -258,6 +260,13 @@ setup_node(Spec, BackendState) ->
                 log(NodeState, "Genesis file ~p", [AccountsFile]),
                 AccountsFile
         end,
+    DbPath =
+        case maps:find(db_path, Spec) of
+            error -> undefined;
+            {ok, TmpDbPath = {_, _}} ->
+                ok = filelib:ensure_dir(filename:join(element(1, TmpDbPath), "DUMMY")),
+                TmpDbPath
+        end,
     DockerConfig = #{
         hostname => Hostname,
         network => Network,
@@ -271,7 +280,8 @@ setup_node(Spec, BackendState) ->
             {rw, KeysDir, ?EPOCH_KEYS_FOLDER},
             {ro, ConfigFilePath, ?AETERNITY_CONFIG_FILE},
             {rw, LogPath, ?EPOCH_LOG_FOLDER}] ++
-            [ {ro, Genesis, ?EPOCH_GENESIS_FILE} || Genesis =/= undefined ],
+            [ {ro, Genesis, ?EPOCH_GENESIS_FILE} || Genesis =/= undefined ] ++
+            [ {rw, element(1, DbPath), element(2, DbPath)} || DbPath =/= undefined ],
         ports => PortMapping
     },
     #{'Id' := ContId} = aest_docker_api:create_container(Hostname, DockerConfig),
