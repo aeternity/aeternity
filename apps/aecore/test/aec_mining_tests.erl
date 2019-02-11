@@ -9,6 +9,7 @@
 -ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("aecore/include/hard_forks.hrl").
 
 -include("blocks.hrl").
 
@@ -27,14 +28,18 @@ mine_block_test_() ->
         {"Find a new block",
          fun() ->
                  RawBlock = aec_blocks:raw_key_block(),
-                 TopBlock = aec_blocks:set_height(RawBlock, aec_block_genesis:height()),
+                 Height = aec_block_genesis:height(),
+                 TopBlock = aec_blocks:set_height(RawBlock, Height),
                  % if there is a change in the structure of the block
                  % this will result in a change in the hash of the header
                  % and will invalidate the nonce value below
                  % in order to find a proper nonce for your
                  % block uncomment the line below
                  % let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
-                 Nonce = 391854272740078490,
+                 Nonce = case aec_hard_forks:protocol_effective_at_height(Height + 1) of
+                             ?ROMA_PROTOCOL_VSN    -> io:format("ROMA\n", []), 1566115190779737391;
+                             ?MINERVA_PROTOCOL_VSN -> io:format("Minerva\n", []), 391854272740078490
+                         end,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}], ?TEST_PUB),
 
@@ -111,7 +116,8 @@ generate_valid_test_data(TopBlock, Tries) ->
                             [{TopBlock, aec_trees:new()}], ?TEST_PUB),
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
     Target = aec_blocks:target(BlockCandidate),
-    case ?TEST_MODULE:mine(HeaderBin, Target, Nonce, 0) of
+    [Config] = aec_pow_cuckoo:get_miner_configs(),
+    case ?TEST_MODULE:mine(HeaderBin, Target, Nonce, Config, undefined) of
         {ok, {Nonce1, _Evd}} ->
             {ok, BlockCandidate, Nonce1};
         {error, no_solution} ->

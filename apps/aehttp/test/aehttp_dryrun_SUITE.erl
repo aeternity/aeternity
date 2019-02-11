@@ -223,8 +223,8 @@ create_contract_tx(Owner, Nonce, Code, CallData) ->
     Params = #{ owner_id => OwnerId,
                 code => Code,
                 call_data => CallData,
-                vm_version => 3,  %?VM_AEVM_SOPHIA_2
-                abi_version => 1,  %?ABI_SOPHIA_1
+                vm_version => aect_test_utils:latest_sophia_vm_version(),
+                abi_version => aect_test_utils:latest_sophia_abi_version(),
                 deposit => 0,
                 amount => 0,      %Initial balance
                 gas => 100000,     %May need a lot of gas
@@ -240,7 +240,7 @@ call_contract_tx(Caller, Contract, Nonce, CallData) ->
     Params = #{ caller_id => CallerId,
                 contract_id => ContractId,
                 call_data => CallData,
-                abi_version => 1,  %?ABI_SOPHIA_1
+                abi_version => aect_test_utils:latest_sophia_abi_version(),
                 amount => 0,
                 gas => 100000,     %May need a lot of gas
                 gas_price => 1,

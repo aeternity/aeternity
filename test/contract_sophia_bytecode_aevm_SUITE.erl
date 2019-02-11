@@ -74,13 +74,8 @@ all() -> [ execute_identity_fun_from_sophia_file,
            oracles].
 
 compile_contract(Name) ->
-    %% TODO get this path from the common test configuration
-    CodeDir           = filename:join(code:lib_dir(aevm), "../../extras/test/contracts"),
-    FileName          = filename:join(CodeDir, lists:concat([Name, ".aes"])),
-    {ok, ContractBin} = file:read_file(FileName),
-    Options           = <<>>,
-    %% Options           = <<"pp_ast pp_icode pp_assembler pp_bytecode">>,
-    {ok, Serialized} = aect_sophia:compile(ContractBin, Options),
+    FileName = filename:join(["contracts", atom_to_list(Name) ++ ".aes"]),
+    {ok, Serialized} = aect_test_utils:compile_contract(FileName),
     Serialized.
 
 %% execute_call(Contract, CallData, ChainState) ->

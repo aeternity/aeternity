@@ -27,6 +27,8 @@
         , trees/1
         , compile_contract/1
         , compile_contract/2
+        , compile_filename/1
+        , compile_filename/2
         , assert_state_equal/2
         , get_oracle_queries/2
         , dummy_bytecode/0
@@ -221,13 +223,19 @@ set_account(Account, State) ->
     AccTree = aec_accounts_trees:enter(Account, aec_trees:accounts(Trees)),
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
+compile_filename(FileName) ->
+    compile(latest_sophia_version(), FileName).
+
+compile_filename(Compiler, FileName) ->
+    compile(Compiler, FileName).
+
 compile_contract(File) ->
     compile_contract(latest_sophia_version(), File).
 
 compile_contract(Compiler, File) ->
     CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
-    FileName = filename:join(CodeDir, File),
-    compile(Compiler, FileName).
+    FileName = filename:join(CodeDir, filename:rootname(File, ".aes") ++ ".aes"),
+    compile_filename(Compiler, FileName).
 
 compile(?SOPHIA_MINERVA, File) ->
     {ok, ContractBin} = file:read_file(File),
