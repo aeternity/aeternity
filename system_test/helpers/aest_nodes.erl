@@ -1,6 +1,6 @@
 -module(aest_nodes).
 
--include_lib("eunit/include/eunit.hrl").
+-include_lib("stdlib/include/assert.hrl").
 
 %=== EXPORTS ===================================================================
 
