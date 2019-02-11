@@ -52,7 +52,7 @@ mining:
     cuckoo:
         edge_bits: 15
         miners:
-            - executable: mean15-generic
+            - executable: lean15-generic
               extra_args: ""
 
 chain:
@@ -101,7 +101,7 @@ mining:
     cuckoo:
         edge_bits: 15
         miners:
-            - executable: mean15-generic
+            - executable: lean15-generic
               extra_args: ""
 
 chain:
@@ -150,7 +150,7 @@ mining:
     cuckoo:
         edge_bits: 15
         miners:
-            - executable: mean15-generic
+            - executable: lean15-generic
               extra_args: ""
 
 chain:
