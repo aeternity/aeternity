@@ -85,7 +85,7 @@ groups() ->
                              , {group, signatures}
                              , {group, channel_ids}
                              , {group, round_too_low}
-                             , {group, round_too_heigh}
+                             , {group, round_too_high}
                              ]},
      {transactions, [sequence],
       [
@@ -126,7 +126,8 @@ groups() ->
       % as it is computed. Unilateral transactions are not tested.
       update_sequence() ++ [check_incorrect_mutual_close]},
      {round_too_low, [sequence], update_sequence()},
-     {round_too_high, [sequence], update_sequence()}
+     {round_too_high, [sequence], update_sequence()},
+     {state_hash, [sequence], [check_incorrect_create | update_sequence()]}
     ].
 
 update_sequence() ->
@@ -168,7 +169,7 @@ init_per_group(round_too_low, Config0) ->
      {wrong_action_detailed, fun(C, P, M, F, D) -> wrong_round_action(C, P, M, F,
                                                           D, ModRoundTooLow) end}
      | Config];
-init_per_group(round_too_heigh, Config0) ->
+init_per_group(round_too_high, Config0) ->
     ModRoundTooLow = fun(Round) -> Round + 2 end, % skip one
     Config = init_per_group_(Config0),
     [{wrong_create, fun(_, _) -> error(no_invalid_round_on_create) end},
@@ -176,6 +177,12 @@ init_per_group(round_too_heigh, Config0) ->
                                                           ModRoundTooLow) end},
      {wrong_action_detailed, fun(C, P, M, F, D) -> wrong_round_action(C, P, M, F,
                                                           D, ModRoundTooLow) end}
+     | Config];
+init_per_group(state_hash, Config0) ->
+    Config = init_per_group_(Config0),
+    [{wrong_create, fun wrong_hash_create/2},
+     {wrong_action, fun wrong_hash_action/4},
+     {wrong_action_detailed, fun wrong_hash_action/5}
      | Config];
 init_per_group(_Group, Config) ->
     init_per_group_(Config).
@@ -869,59 +876,40 @@ check_incorrect_create(Cfg) ->
     CreateFun(CreateData, responder),
     ok.
 
-wrong_sig_create({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
-                  push_amount := PushAmount} = Spec, Port, Debug},
-                Malicious) ->
-    IAmt = IAmt0 - PushAmount,
-    RAmt = RAmt0 + PushAmount,
-    {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
-    {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec], Debug),
+wrong_sig_create(Params, Malicious) ->
+    wrong_create_(Params, Malicious,
+                  fun(Tx, _Priv) ->
+                      _SignedTx = aec_test_utils:sign_tx(Tx, [?BOGUS_PRIVKEY])
+                  end,
+                  bad_signature).
 
-    log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
+wrong_hash_create(Params, Malicious) ->
+    wrong_create_(Params, Malicious,
+                  fun(Tx0, Priv) ->
+                      Tx = update_tx(Tx0, set_state_hash,
+                                      [?BOGUS_PUBKEY]),
+                      _SignedTx = aec_test_utils:sign_tx(Tx, [Priv])
+                  end,
+                  bad_state_hash).
 
-    I1 = I#{fsm => FsmI, initiator_amount => IAmt, responder_amount => RAmt},
-    R1 = R#{fsm => FsmR, initiator_amount => IAmt, responder_amount => RAmt},
+wrong_hash_action(ChannelStuff, Poster, Malicious,
+                 FsmStuff) ->
+    wrong_hash_action(ChannelStuff, Poster, Malicious,
+                  FsmStuff,
+                  fun(Who, DebugL) ->
+                      {ok, _} = receive_from_fsm(conflict, Who, any_msg(), ?TIMEOUT, DebugL)
+                  end).
 
-    {ok, _} = receive_from_fsm(info, R1, channel_open, ?TIMEOUT, Debug),
-    {ok, _} = receive_from_fsm(info, I1, channel_accept, ?TIMEOUT, Debug),
-
-    case Malicious of
-        initiator ->
-            % default behavor - FSM guards you from sending a bad signature
-            {_I2, WrongSignedTx} = await_signing_request(create_tx, I1#{priv => ?BOGUS_PRIVKEY}, Debug),
-            {ok, _} = receive_from_fsm(error, I1, bad_signature, ?TIMEOUT, Debug),
-
-            % turn default behavior off, the initator deliberatly had sent
-            % invalid tx, the responder must reject it
-            ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, false], Debug),
-
-            % resend the same wrong tx, this time no check from initiator's
-            % side
-            aesc_fsm:signing_response(FsmI, create_tx, WrongSignedTx),
-            {ok,_} = receive_from_fsm(info, R1, bad_signature, ?TIMEOUT, Debug),
-            {ok,_} = receive_from_fsm(info, R1, fun(#{info := {died, normal}}) -> ok end,
-                                      ?TIMEOUT, Debug),
-            {ok,_} = receive_from_fsm(info, I1, fun died_subverted/1, ?TIMEOUT, Debug);
-        responder ->
-            {_I2, _} = await_signing_request(create_tx, I1, Debug),
-            receive_from_fsm(info, R1, funding_created, ?TIMEOUT, Debug),
-            % default behavor - FSM guards you from sending a bad signature
-            {_R2, WrongSignedTx} = await_signing_request(funding_created, R1#{priv => ?BOGUS_PRIVKEY}, Debug),
-            {ok, _} = receive_from_fsm(error, R1, bad_signature, ?TIMEOUT, Debug),
-
-            % turn default behavior off, the responder deliberatly had sent
-            % invalid tx, the initiator must reject it
-            ok = rpc(dev1, aesc_fsm, strict_checks, [FsmR, false], Debug),
-
-            % resend the same wrong tx, this time no check from responder's
-            % side
-            aesc_fsm:signing_response(FsmR, funding_created, WrongSignedTx),
-            {ok,_} = receive_from_fsm(info, I1, bad_signature, ?TIMEOUT, Debug),
-            {ok,_} = receive_from_fsm(info, I1, fun(#{info := {died, normal}}) -> ok end,
-                                      ?TIMEOUT, Debug),
-            {ok,_} = receive_from_fsm(info, R1, fun died_subverted/1, ?TIMEOUT, Debug)
-    end,
-    ok.
+wrong_hash_action(ChannelStuff, Poster, Malicious, FsmStuff,
+                  DetectConflictFun) ->
+    wrong_action_modified_tx(ChannelStuff, Poster, Malicious,
+                  FsmStuff,
+                  DetectConflictFun,
+                  fun(Tx0, _Fsm) ->
+                      _Tx = update_tx(Tx0, set_state_hash,
+                                      [?BOGUS_PUBKEY])
+                  end,
+                  bad_state_hash).
 
 check_incorrect_deposit(Cfg) ->
     Debug = true,
@@ -1065,11 +1053,10 @@ wrong_id_action(ChannelStuff, Poster, Malicious,
                       {ok, _} = receive_from_fsm(conflict, Who, any_msg(), ?TIMEOUT, DebugL)
                   end).
 
-wrong_id_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
-                {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
-                 DetectConflictFun) ->
-    wrong_action_modified_tx({I, R, _Spec, _Port, Debug}, Poster, Malicious,
-                 {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
+wrong_id_action(ChannelStuff, Poster, Malicious,
+                FsmStuff, DetectConflictFun) ->
+    wrong_action_modified_tx(ChannelStuff, Poster, Malicious,
+                  FsmStuff,
                   DetectConflictFun,
                   fun(Tx0, _Fsm) ->
                       _Tx = update_tx(Tx0, set_channel_id,
@@ -1096,6 +1083,74 @@ wrong_round_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                       _Tx = update_tx(Tx0, set_round, [ModifyRoundFun(Round)])
                   end,
                   wrong_round).
+
+wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
+              push_amount := PushAmount} = Spec, Port, Debug},
+              Malicious, SignTxFun, ErrResponse) ->
+    Action = fun sign_signing_request/3,
+    TryCheaing =
+        fun(Tag, #{priv := Priv} = Signer, Debug1) ->
+            receive {aesc_fsm, Fsm, #{type := sign, tag := Tag, info := Tx} = Msg} ->
+                    log(Debug1, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
+                    SignedTx = SignTxFun(Tx, Priv),
+                    Action(Tag, Signer, SignedTx)
+            after ?TIMEOUT ->
+                    error(timeout)
+            end
+        end,
+    IAmt = IAmt0 - PushAmount,
+    RAmt = RAmt0 + PushAmount,
+    {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
+    {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec], Debug),
+
+    log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
+
+    I1 = I#{fsm => FsmI, initiator_amount => IAmt, responder_amount => RAmt},
+    R1 = R#{fsm => FsmR, initiator_amount => IAmt, responder_amount => RAmt},
+
+    {ok, _} = receive_from_fsm(info, R1, channel_open, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(info, I1, channel_accept, ?TIMEOUT, Debug),
+
+    case Malicious of
+        initiator ->
+            % default behavor - FSM guards you from sending a bad msg
+            {_, WrongTx} = TryCheaing(create_tx, I1, Debug),
+            {ok, _} = receive_from_fsm(error, I1, ErrResponse, ?TIMEOUT, Debug),
+
+            % turn default behavior off, the initator deliberatly had sent
+            % invalid tx, the responder must reject it
+            ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, false], Debug),
+
+            % resend the same wrong tx, this time no check from initiator's
+            % side
+            aesc_fsm:signing_response(FsmI, create_tx, WrongTx),
+            {ok,_} = receive_from_fsm(info, R1, ErrResponse, ?TIMEOUT, Debug),
+            {ok,_} = receive_from_fsm(info, R1, fun(#{info := {died, normal}}) -> ok end,
+                                      ?TIMEOUT, Debug),
+            {ok,_} = receive_from_fsm(info, I1, fun died_subverted/1, ?TIMEOUT, Debug);
+        responder ->
+            {_I2, _} = await_signing_request(create_tx, I1, Debug),
+            receive_from_fsm(info, R1, funding_created, ?TIMEOUT, Debug),
+            % default behavor - FSM guards you from sending a bad tx
+            {_, WrongTx} = TryCheaing(funding_created, R1, Debug),
+            %% since this is a different tx now, the correct signature of the
+            %% incoming transaction will be invalid according to the incorrect
+            %% new tx
+            {ok, _} = receive_from_fsm(error, R1, bad_signature, ?TIMEOUT, Debug),
+
+            % turn default behavior off, the responder deliberatly had sent
+            % invalid tx, the initiator must reject it
+            ok = rpc(dev1, aesc_fsm, strict_checks, [FsmR, false], Debug),
+
+            % resend the same wrong tx, this time no check from responder's
+            % side; the transaction has bad signature as it had changed
+            aesc_fsm:signing_response(FsmR, funding_created, WrongTx),
+            {ok,_} = receive_from_fsm(info, I1, bad_signature, ?TIMEOUT, Debug),
+            {ok,_} = receive_from_fsm(info, I1, fun(#{info := {died, normal}}) -> ok end,
+                                      ?TIMEOUT, Debug),
+            {ok,_} = receive_from_fsm(info, R1, fun died_subverted/1, ?TIMEOUT, Debug)
+    end,
+    ok.
 
 wrong_action_modified_tx({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                    {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},

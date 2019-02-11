@@ -97,23 +97,30 @@ is_latest_signed_tx(SignedTx, #state{signed_tx = LatestSignedTx}) ->
     aetx_sign:serialize_to_binary(SignedTx)
         == aetx_sign:serialize_to_binary(LatestSignedTx).
 
-%% update_tx checks
-check_initial_state({previous_round, N}, _) ->
-    assert(N =:= 0, {error, not_initial_round});
-check_initial_state({round, N}, _) ->
-    assert(N =:= 1, {error, invalid_round});
-check_initial_state({updates, Ds}, _) ->
-    assert(Ds == [], {error, updates_in_initial_round});
-check_initial_state(_, _) -> ok.
-
-assert(true ,  _   ) -> ok;
-assert(false, Error) -> Error.
-
 -spec check_initial_update_tx(aetx_sign:signed_tx(), state(),
                               aec_trees:trees(), aetx_env:env(), map()) -> ok | {error, atom()}.
-check_initial_update_tx(SignedTx, State, OnChainTrees, OnChainEnv, Opts) ->
-    check_update_tx_(fun check_initial_state/2, SignedTx, State, OnChainTrees,
-                    OnChainEnv, Opts).
+check_initial_update_tx(SignedTx, State, _OnChainTrees, _OnChainEnv, _Opts) ->
+    Aetx = aetx_sign:tx(SignedTx),
+    {Mod, Tx} = aetx:specialize_callback(Aetx),
+    Checks =
+        [ fun() ->
+              case Mod of
+                  aesc_create_tx -> ok; % this checks the round in an implicit manner
+                  _ -> {error, not_create_tx}
+              end
+            end,
+          fun() ->
+              case aesc_create_tx:state_hash(Tx) =:= hash(State) of
+                  true -> ok;
+                  false -> {error, bad_state_hash}
+              end
+          end],
+    lists:foldl(
+        fun(_, {error, _} = Err) -> Err;
+           (F, _) -> F()
+        end,
+        ok,
+        Checks).
 
 -spec check_reestablish_tx(aetx_sign:signed_tx(), state()) -> {ok, state()} | {error, atom()}.
 check_reestablish_tx(SignedTx, State) ->
@@ -132,41 +139,38 @@ check_reestablish_tx(SignedTx, State) ->
 
 -spec check_update_tx(aetx_sign:signed_tx(), state(), aec_trees:trees(),
                       aetx_env:env(), map()) -> ok | {error, atom()}.
-check_update_tx(SignedTx, State, OnChainTrees, OnChainEnv, Opts) ->
-    check_update_tx_(none, SignedTx, State, OnChainTrees, OnChainEnv, Opts).
-
-check_update_tx_(F, SignedTx, #state{signed_tx = OldSignedTx}=State, OnChainTrees,
+check_update_tx(SignedTx, #state{signed_tx = OldSignedTx}=State, OnChainTrees,
                  OnChainEnv, Opts) when OldSignedTx =/= ?NO_TX ->
     lager:debug("check_update_tx(State = ~p)", [State]),
     Tx = aetx_sign:tx(SignedTx),
     {Mod, TxI} = aetx:specialize_callback(Tx),
     lager:debug("Tx = ~p", [Tx]),
-    case Mod:round(TxI) - 1 of
-        0 when OldSignedTx == ?NO_TX ->
-            lager:debug("previous round = 0", []),
-            check_update_tx_(F, Mod, TxI, State, OnChainTrees, OnChainEnv, Opts);
-        PrevRound ->
+    case Mod of
+        aesc_close_mutual_tx -> ok; % no particular check for a close mutual
+        _ ->
+            PrevRound = Mod:round(TxI) - 1,
+            true = PrevRound > 0, % assert not channel_create
             lager:debug("PrevRound = ~p", [PrevRound]),
             {LastRound, _LastSignedTx} = get_latest_signed_tx(State),
             lager:debug("LastRound = ~p", [LastRound]),
             case PrevRound == LastRound of
                 true ->
                     lager:debug("PrevRound == LastRound", []),
-                    check_update_tx_(F, Mod, TxI, State, OnChainTrees,
+                    check_update_tx_(Mod, TxI, State, OnChainTrees,
                                      OnChainEnv, Opts);
                 false -> {error, invalid_previous_round}
             end
     end.
 
-check_update_tx_(F, Mod, RefTx, #state{} = State, OnChainTrees, OnChainEnv, Opts) ->
+check_update_tx_(Mod, RefTx, #state{} = State, OnChainTrees, OnChainEnv, Opts) ->
     Updates = Mod:updates(RefTx),
     try Tx1 = make_update_tx(Updates, State, OnChainTrees, OnChainEnv, Opts),
          {Mod1, Tx1I} = aetx:specialize_callback(Tx1),
          case Mod1:state_hash(Tx1I) =:= Mod:state_hash(RefTx) of
              true ->
-                 run_extra_checks(F, Mod, RefTx);
+                ok;
              false ->
-                 {error, state_hash_mismatch}
+                 {error, bad_state_hash}
          end
     catch
         error:Reason ->
@@ -219,17 +223,6 @@ apply_updates(Updates, Round, Trees, OnChainTrees, OnChainEnv, Reserve) ->
         end,
         Trees,
         Updates).
-
-run_extra_checks(none, _, _) -> ok;
-run_extra_checks(F, Mod, Tx) when is_function(F, 2) ->
-    {_Vsn, Vals} = Mod:serialize(Tx),
-    case [Err ||
-             {error,_} = Err <- [F(E, Tx) || E <- Vals]] of
-        [] ->
-            ok;
-        [_|_] = Errors ->
-            {error, Errors}
-    end.
 
 -spec set_signed_tx(aetx_sign:signed_tx(), state(), aec_trees:trees(),
                     aetx_env:env(), map()) -> state().
