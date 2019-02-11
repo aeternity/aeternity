@@ -15,7 +15,7 @@ from swagger_client.configuration import Configuration
 
 # these are executed for every node
 NODE_SETUP_COMMANDS = [
-        "sed -ibkp 's/-sname epoch/-sname {{ name }}/g' ./releases/{{ version }}/vm.args"
+        "sed -ibkp 's/-sname aeternity/-sname {{ name }}/g' ./releases/{{ version }}/vm.args"
         ]
 # node's setup
 SETUP = {
