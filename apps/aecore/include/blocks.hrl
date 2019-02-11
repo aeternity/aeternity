@@ -1,5 +1,3 @@
--include("pow.hrl").
-
 -define(BLOCK_HEADER_HASH_BYTES, 32).
 -define(TXS_HASH_BYTES, 32).
 -define(STATE_HASH_BYTES, 32).

@@ -58,6 +58,7 @@
          version/1
         ]).
 
+-include_lib("aeminer/include/aeminer.hrl").
 -include("blocks.hrl").
 
 %%%===================================================================
@@ -83,11 +84,11 @@
           prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
-          target       = ?HIGHEST_TARGET_SCI                   :: aec_pow:sci_int(),
+          target       = ?HIGHEST_TARGET_SCI                   :: aeminer_pow:sci_target(),
           nonce        = 0                                     :: non_neg_integer(),
           time         = 0                                     :: non_neg_integer(),
           version                                              :: non_neg_integer(),
-          pow_evidence = no_value                              :: aec_pow:pow_evidence(),
+          pow_evidence = no_value                              :: aeminer_pow_cuckoo:solution() | no_value,
           miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
           beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey()
          }).
@@ -155,7 +156,7 @@ type(#mic_header{}) -> micro.
 
 -spec new_key_header(height(), block_header_hash(), block_header_hash(),
                      state_hash(), miner_pubkey(), beneficiary_pubkey(),
-                     aec_pow:sci_int(), aec_pow:pow_evidence(),
+                     aeminer_pow:sci_target(), aeminer_pow_cuckoo:solution(),
                      non_neg_integer(), non_neg_integer(), non_neg_integer()
                     ) -> header().
 new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
@@ -252,7 +253,7 @@ set_pof_hash(Header, Hash) when byte_size(Hash) =:= 0;
                                 byte_size(Hash) =:= 32 ->
     Header#mic_header{pof_hash = Hash}.
 
--spec pow(key_header()) -> aec_pow:pow_evidence().
+-spec pow(key_header()) -> aeminer_pow_cuckoo:solution().
 pow(#key_header{pow_evidence = Evd}) ->
     Evd.
 
@@ -264,14 +265,14 @@ root_hash(#mic_header{root_hash = H}) -> H.
 set_root_hash(#key_header{} = H, Hash) -> H#key_header{root_hash = Hash};
 set_root_hash(#mic_header{} = H, Hash) -> H#mic_header{root_hash = Hash}.
 
--spec set_nonce_and_pow(key_header(), aec_pow:nonce(), aec_pow:pow_evidence()
-                       ) -> key_header().
+-spec set_nonce_and_pow(key_header(), aeminer_pow:nonce(),
+                        aeminer_pow_cuckoo:solution()) -> key_header().
 set_nonce_and_pow(#key_header{} = H, Nonce, Evd) ->
     H#key_header{nonce = Nonce, pow_evidence = Evd}.
 
--spec difficulty(key_header()) -> aec_pow:difficulty().
+-spec difficulty(key_header()) -> aeminer_pow:difficulty().
 difficulty(Header) ->
-    aec_pow:target_to_difficulty(target(Header)).
+    aeminer_pow:target_to_difficulty(target(Header)).
 
 -spec signature(micro_header()) -> block_signature().
 signature(Header) ->
@@ -281,11 +282,11 @@ signature(Header) ->
 set_signature(#mic_header{} = Header, Sig) ->
     Header#mic_header{signature = Sig}.
 
--spec target(key_header()) -> aec_pow:sci_int().
+-spec target(key_header()) -> aeminer_pow:sci_target().
 target(Header) ->
     Header#key_header.target.
 
--spec set_target(key_header(), aec_pow:sci_int()) -> header().
+-spec set_target(key_header(), aeminer_pow:sci_target()) -> header().
 set_target(Header, NewTarget) ->
     Header#key_header{ target = NewTarget }.
 

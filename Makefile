@@ -317,7 +317,6 @@ clean:
 	@rm -rf $$(ls -d _build/default/lib/* | grep -v '[^_]rocksdb') ## Dependency `rocksdb` takes long to build.
 
 distclean: clean
-	( cd apps/aecuckoo && $(MAKE) distclean; )
 	( cd otp_patches && $(MAKE) distclean; )
 	( cd $(HTTP_APP) && $(MAKE) distclean; )
 	@rm -rf _build/

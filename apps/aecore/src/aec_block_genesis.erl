@@ -39,17 +39,18 @@
          version/0
         ]).
 
+
 -ifdef(TEST).
 -export([genesis_block_with_state/1]).
 -endif.
 
--include("blocks.hrl").
+-include_lib("aeminer/include/aeminer.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include("blocks.hrl").
 
 -define(GENESIS_VERSION, ?ROMA_PROTOCOL_VSN).
 -define(GENESIS_HEIGHT, 0).
 -define(GENESIS_TIME, 0).
-
 
 %% Since preset accounts are being loaded from a file - please use with caution
 genesis_header() ->

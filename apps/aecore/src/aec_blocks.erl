@@ -153,7 +153,7 @@ type(#mic_block{}) -> 'micro'.
 %%%===================================================================
 
 -spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
-              aec_pow:sci_int(),
+              aeminer_pow:sci_target(),
               non_neg_integer(), non_neg_integer(), non_neg_integer(),
               miner_pubkey(), beneficiary_pubkey()
              ) -> key_block().
@@ -231,9 +231,9 @@ height(Block) ->
 set_height(Block, Height) ->
     set_header(Block, aec_headers:set_height(to_header(Block), Height)).
 
--spec difficulty(key_block()) -> aec_pow:difficulty().
+-spec difficulty(key_block()) -> aeminer_pow:difficulty().
 difficulty(Block) ->
-    aec_pow:target_to_difficulty(target(Block)).
+    aeminer_pow:target_to_difficulty(target(Block)).
 
 -spec gas(micro_block()) -> non_neg_integer().
 gas(#mic_block{txs = Txs} = Block) ->
@@ -268,7 +268,7 @@ set_miner(Block, M) ->
 version(Block) ->
     aec_headers:version(to_header(Block)).
 
--spec set_nonce(key_block(), aec_pow:nonce()) -> key_block().
+-spec set_nonce(key_block(), aeminer_pow:nonce()) -> key_block().
 set_nonce(Block, Nonce) ->
     set_header(Block, aec_headers:set_nonce(to_key_header(Block), Nonce)).
 
@@ -282,11 +282,11 @@ set_pof(#mic_block{} = Block, PoF) ->
     Header = aec_headers:set_pof_hash(to_micro_header(Block), PoFHash),
     set_header(Block#mic_block{pof = PoF}, Header).
 
--spec pow(key_block()) -> aec_pow:pow_evidence().
+-spec pow(key_block()) -> aeminer_pow_cuckoo:solution().
 pow(Block) ->
     aec_headers:pow(to_key_header(Block)).
 
--spec set_nonce_and_pow(key_block(), aec_pow:nonce(), aec_pow:pow_evidence()
+-spec set_nonce_and_pow(key_block(), aeminer_pow:nonce(), aeminer_pow_cuckoo:solution()
                        ) -> key_block().
 set_nonce_and_pow(Block, Nonce, Evd) ->
     H = aec_headers:set_nonce_and_pow(to_key_header(Block), Nonce, Evd),

@@ -335,7 +335,7 @@ try_fetch_and_make_candidate() ->
 
 make_key_candidate(Block) ->
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
-    Nonce     = aec_pow:pick_nonce(),
+    Nonce     = aeminer_pow:pick_nonce(),
     {HeaderBin, #candidate{ block    = Block,
                             nonce    = Nonce,
                             top_hash = aec_blocks:prev_hash(Block) }}.
@@ -596,7 +596,7 @@ create_miner_instances(MinerConfigs) when is_list(MinerConfigs) ->
     MinerInstances.
 
 create_miner_instances(MinerConfig, FirstId) ->
-    case aec_pow_cuckoo:addressed_instances(MinerConfig) of
+    case aeminer_pow_cuckoo:addressed_instances(MinerConfig) of
         undefined ->
             {[create_miner_instance(FirstId, undefined, MinerConfig)], FirstId + 1};
         AddressedInstances when is_list(AddressedInstances) ->
@@ -769,7 +769,7 @@ start_mining(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]
             Target            = aec_blocks:target(Candidate#candidate.block),
             MinerConfig       = Instance#miner_instance.config,
             AddressedInstance = Instance#miner_instance.instance,
-            Nonce             = aec_pow:trim_nonce(Candidate#candidate.nonce, MinerConfig),
+            Nonce             = aeminer_pow:trim_nonce(Candidate#candidate.nonce, MinerConfig),
             Info              = [{top_block_hash, State#state.top_block_hash}],
             aec_events:publish(start_mining, Info),
             Fun = fun() ->
@@ -785,7 +785,7 @@ start_mining(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]
     end.
 
 register_miner(Candidate = #candidate{refs  = Refs}, Nonce, MinerConfig) ->
-    NextNonce = aec_pow:next_nonce(Nonce, MinerConfig),
+    NextNonce = aeminer_pow:next_nonce(Nonce, MinerConfig),
     Candidate#candidate{refs  = Refs + 1,
                         nonce = NextNonce}.
 

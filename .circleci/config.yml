@@ -103,9 +103,6 @@ references:
       key: *machine_build_cache_key
       paths:
         - "_build"
-        - "apps/aecuckoo/c_src"
-        - "apps/aecuckoo/priv/bin"
-        - "apps/aecuckoo/priv/lib"
 
   packages_workspace: &packages_workspace /tmp/packages
   set_package_path: &set_package_path
@@ -310,9 +307,6 @@ jobs:
           key: *build_cache_key
           paths:
             - "_build"
-            - "apps/aecuckoo/c_src"
-            - "apps/aecuckoo/priv/bin"
-            - "apps/aecuckoo/priv/lib"
       - save_cache:
           key: *rebar_cache_key
           paths:

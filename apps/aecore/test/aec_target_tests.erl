@@ -7,6 +7,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-include_lib("aeminer/include/aeminer.hrl").
 -include("blocks.hrl").
 
 -define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).

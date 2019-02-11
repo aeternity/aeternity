@@ -8,6 +8,8 @@
 -module(aec_chain_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+
+-include_lib("aeminer/include/aeminer.hrl").
 -include_lib("aecontract/src/aecontract.hrl").
 -include_lib("aecore/include/blocks.hrl").
 
@@ -511,7 +513,6 @@ target_validation_test_() ->
              aec_test_utils:start_chain_db(),
              aec_test_utils:mock_difficulty_as_target(),
              meck:new(aec_governance, [passthrough]),
-             meck:new(aec_pow, [passthrough]),
              meck:expect(aec_governance, key_blocks_to_check_difficulty_count, 0, 2),
              meck:expect(aec_governance, expected_block_mine_rate, 0, 1800000), %% 50 mins
              aec_test_utils:mock_genesis(),
@@ -520,7 +521,6 @@ target_validation_test_() ->
      fun(TmpDir) ->
              aec_test_utils:unmock_difficulty_as_target(),
              meck:unload(aec_governance),
-             meck:unload(aec_pow),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              aec_test_utils:unmock_genesis(),
              aec_test_utils:stop_chain_db()

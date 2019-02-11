@@ -93,10 +93,11 @@
         , calculate_gas_fee/1
         ]).
 
--ifdef(TEST). 
+-ifdef(TEST).
 -export([calc_rewards/6]).
 -endif.
 
+-include_lib("aeminer/include/aeminer.hrl").
 -include("blocks.hrl").
 
 -define(internal_error(____E____), {aec_chain_state_error, ____E____}).

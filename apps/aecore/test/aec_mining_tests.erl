@@ -58,7 +58,7 @@ mine_block_test_() ->
          fun() ->
                  RawBlock = aec_blocks:raw_key_block(),
                  TopBlock = aec_blocks:set_height(RawBlock, aec_block_genesis:height()),
-                 meck:expect(aec_pow, pick_nonce, 0, 19),
+                 meck:expect(aeminer_pow, pick_nonce, 0, 19),
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}], ?TEST_PUB),
 
@@ -109,7 +109,7 @@ cleanup(_) ->
 generate_valid_test_data(_TopBlock, Tries) when Tries < 1 ->
     could_not_find_nonce;
 generate_valid_test_data(TopBlock, Tries) ->
-    Nonce = aec_pow:pick_nonce(),
+    Nonce = aeminer_pow:pick_nonce(),
     {BlockCandidate, _} = aec_test_utils:create_keyblock_with_state(
                             [{TopBlock, aec_trees:new()}], ?TEST_PUB),
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),

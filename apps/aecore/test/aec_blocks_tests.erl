@@ -8,6 +8,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-include_lib("aeminer/include/aeminer.hrl").
 -include("blocks.hrl").
 
 -import(aec_blocks, [raw_key_block/0,

@@ -4,8 +4,6 @@
 
 -module(aec_mining).
 
--behaviour(aec_pow).
-
 -export([check_env/0,
          get_miner_configs/0,
          generate/5,
@@ -22,10 +20,6 @@
         {?DEFAULT_EDGE_BITS,
          [{<<"mean29-generic">>, ?DEFAULT_EXTRA_ARGS, ?DEFAULT_HEX_ENCODED_HEADER,
            ?DEFAULT_REPEATS, undefined, ?DEFAULT_EXECUTABLE_GROUP}]}).
-
--opaque miner_config() :: map().
-
--export_type([miner_config/0]).
 
 %% API.
 
@@ -58,7 +52,7 @@ check_env() ->
 %% ?DEFAULT_CUCKOO_ENV is used as the last resort option (i.e. mean29-generic
 %% without any extra args).
 %%------------------------------------------------------------------------------
--spec get_miner_configs() -> list(miner_config()).
+-spec get_miner_configs() -> [aeminer_pow_cuckoo:config()].
 get_miner_configs() ->
     case get_miners_from_user_config() of
         {ok, MinerConfigs} -> MinerConfigs;
@@ -69,15 +63,19 @@ get_miner_configs() ->
             end
     end.
 
--spec generate(binary(), aec_pow:sci_int(), aec_pow:nonce(),
-               aec_pow:miner_config(), aec_pow:miner_instance() | 'undefined') ->
-    aec_pow:pow_result().
-generate(HeaderBin, Target, Nonce, Config, MinerInstance) ->
-    aec_pow_cuckoo:generate(HeaderBin, Target, Nonce, Config, MinerInstance).
+-spec generate(aeminer_pow_cuckoo:hashable(), aeminer_pow:sci_target(),
+               aeminer_pow:nonce(), aeminer_pow_cuckoo:config(),
+               aeminer_pow:instance() | undefined) ->
+    {ok, {aeminer_pow:nonce(), aeminer_pow_cuckoo:solution()}} | {error, term()}.
+generate(Data, Target, Nonce, Config, MinerInstance) ->
+    aeminer_pow_cuckoo:generate(Data, Target, Nonce, Config, MinerInstance).
 
-verify(Data, Nonce, Evd, Target) ->
+-spec verify(aeminer_pow_cuckoo:hashable(), aeminer_pow:nonce(),
+             aeminer_pow_cuckoo:solution(), aeminer_pow:sci_target()) ->
+    boolean().
+verify(Data, Nonce, Soln, Target) ->
     EdgeBits = get_edge_bits(),
-    aec_pow_cuckoo:verify(Data, Nonce, Evd, Target, EdgeBits).
+    aeminer_pow_cuckoo:verify(Data, Nonce, Soln, Target, EdgeBits).
 
 %% Internal functions.
 
@@ -124,7 +122,7 @@ get_miners_from_sys_config() ->
       end, [], MinerConfigLists).
 
 get_options() ->
-    {_, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
+    {_, _} = aeu_env:get_env(aecore, aec_mining, ?DEFAULT_CUCKOO_ENV).
 
 build_miner_config(Config) when is_map(Config) ->
     Exec      = maps:get(<<"executable">>, Config),
@@ -134,10 +132,10 @@ build_miner_config(Config) when is_map(Config) ->
     Repeats   = maps:get(<<"repeats">>, Config, ?DEFAULT_REPEATS),
     Instances = maps:get(<<"addressed_instances">>, Config, undefined),
     EdgeBits  = get_edge_bits(),
-    aec_pow_cuckoo:config(Exec, ExecGroup, ExtraArgs, HexEncHdr, Repeats, EdgeBits, Instances);
+    aeminer_pow_cuckoo:config(Exec, ExecGroup, ExtraArgs, HexEncHdr, Repeats, EdgeBits, Instances);
 build_miner_config({Exec, ExtraArgs, HexEncHdr, Repeats, Instances, ExecGroup}) ->
     EdgeBits  = get_edge_bits(),
-    aec_pow_cuckoo:config(Exec, ExecGroup, ExtraArgs, HexEncHdr, Repeats, EdgeBits, Instances).
+    aeminer_pow_cuckoo:config(Exec, ExecGroup, ExtraArgs, HexEncHdr, Repeats, EdgeBits, Instances).
 
 get_edge_bits() ->
     case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"edge_bits">>]) of
