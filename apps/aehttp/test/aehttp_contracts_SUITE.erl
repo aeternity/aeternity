@@ -1195,7 +1195,7 @@ compile_test_contract(Dir, Name) ->
             {ok, Code} = aect_test_utils:compile_filename(1, FileName),
             aehttp_api_encoder:encode(contract_bytearray, Code);
         ?MINERVA_PROTOCOL_VSN ->
-            {ok, SophiaCode} = file:read_file(),
+            {ok, SophiaCode} = file:read_file(FileName),
             {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
             Code
     end.
