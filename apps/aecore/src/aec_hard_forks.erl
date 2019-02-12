@@ -63,7 +63,11 @@ protocols_from_network_id(<<"ae_uat">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
      %%, ?MINERVA_PROTOCOL_VSN  => Not yet decided
      };
-protocols_from_network_id(_) ->
+protocols_from_network_id(<<"local_roma_testnet">>) ->
+    #{ ?ROMA_PROTOCOL_VSN     => 0
+     %%, ?MINERVA_PROTOCOL_VSN  => Excluded for testing old protocol
+     };
+protocols_from_network_id(_ID) ->
     case aeu_env:user_map([<<"chain">>, <<"hard_forks">>]) of
         undefined ->
             #{ ?ROMA_PROTOCOL_VSN     => 0

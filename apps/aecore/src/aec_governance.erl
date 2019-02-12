@@ -210,9 +210,20 @@ add_network_id_last(Payload) ->
     NetworkId = get_network_id(),
     <<Payload/binary, NetworkId/binary>>.
 
+-ifdef(TEST).
+get_network_id() ->
+    %% Needed for eunit
+    case init:get_argument(network_id) of
+        {ok, [["local_roma_testnet"]]} -> <<"local_roma_testnet">>;
+        _ ->
+            aeu_env:user_config_or_env([<<"fork_management">>, <<"network_id">>],
+                                       aecore, network_id, ?NETWORK_ID)
+    end.
+-else.
 get_network_id() ->
     aeu_env:user_config_or_env([<<"fork_management">>, <<"network_id">>],
                                 aecore, network_id, ?NETWORK_ID).
+-endif.
 
 -spec contributors_messages_hash() -> binary().
 contributors_messages_hash() ->

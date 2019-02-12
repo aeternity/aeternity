@@ -184,12 +184,25 @@ ct: internal-build
 		$(REBAR) ct $(CT_TEST_FLAGS) --sys_config config/test.config; \
 	fi
 
+ct-roma: KIND=test
+ct-roma: internal-build
+	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
+	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
+		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
+	else \
+		$(REBAR) ct $(CT_TEST_FLAGS) --sys_config config/test-roma.config; \
+	fi
+
 REVISION:
 	@git rev-parse HEAD > $@
 
 eunit: KIND=test
 eunit: internal-build
 	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG)" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
+
+eunit-roma: KIND=test
+eunit-roma: internal-build
+	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_roma_testnet" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
 
 all-tests: eunit test
 
