@@ -576,7 +576,7 @@ setup_node(N, Top, Epoch, Config) ->
     symlink(filename:join(Epoch, "lib"), filename:join(DDir, "lib")),
     symlink(filename:join(Epoch, "patches"), filename:join(DDir, "patches")),
     {ok, VerContents} = file:read_file(filename:join(Epoch, "VERSION")),
-    [VerB |_ ] = binary:split(VerContents, [<<"\n">>], [global]),
+    [VerB |_ ] = binary:split(VerContents, [<<"\n">>, <<"\r">>], [global]),
     Version = binary_to_list(VerB),
     %%
     CfgD = filename:join([Top, "config/", N]),
@@ -639,8 +639,12 @@ match_mode(A, B) ->
     end.
 
 cp_file(From, To) ->
-    {ok, _} = file:copy(From, To),
-    ct:log("Copied ~s to ~s", [From, To]),
+    case file:copy(From, To) of
+        {ok, _} ->
+            ct:log("Copied ~s to ~s", [From, To]);
+        Err ->
+            ct:fail("Error copying ~s to ~s: ~p", [From, To, Err])
+    end,
     ok.
 
 symlink(From, To) ->

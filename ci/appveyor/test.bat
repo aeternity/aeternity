@@ -5,17 +5,26 @@
 @rem Required vars:
 @rem    TEST_STEP
 @rem    WIN_MSYS2_ROOT
+@rem    PLATFORM
 
 SETLOCAL ENABLEEXTENSIONS
 cd %APPVEYOR_BUILD_FOLDER%
 
+rem Set required vars defaults
+IF "%ERTS_VERSION%"=="" SET "ERTS_VERSION=9.3"
+IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\msys64"
+IF "%PLATFORM%"=="" SET "PLATFORM=x64"
+IF "%TEST_STEP%"=="" SET "TEST_STEP=ct"
+SET BASH_BIN="%WIN_MSYS2_ROOT%\usr\bin\bash"
+
 @echo Current time: %time%
 rem Set the paths appropriately
 
-call "C:\Program Files (x86)\Microsoft Visual Studio %VS_VERSION%\VC\vcvarsall.bat" %PLATFORM%
+call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\\vcvarsall.bat" %PLATFORM%
 @echo on
 SET PATH=%WIN_MSYS2_ROOT%\mingw64\bin;%WIN_MSYS2_ROOT%\usr\bin;%PATH%
 
+:TESTSTART
 GOTO TEST_%TEST_STEP%
 
 :TEST_ct
@@ -34,10 +43,6 @@ GOTO TEST_DONE
 
 :TEST_
 :TEST_DONE
-
-@echo Current time: %time%
-rem Mirror build artifacts
-robocopy "_build\default" "_build\default_%ERTS_VERSION%" /MIR /COPYALL /NP /NS /NC /NFL /NDL
 
 @echo Current time: %time%
 rem Finished test phase
