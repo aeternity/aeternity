@@ -532,7 +532,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
         '404':
-          description: 'Account not found or height not available'
+          description: 'Account not found or hash not available'
           schema:
             $ref: '#/definitions/Error'
       security:
