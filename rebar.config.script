@@ -20,13 +20,11 @@ FilterDepsRocksDb = fun(Deps) ->
                         end
                     end,
 
+% We check all overlay entries' destinations against these regular expressions,
+% and replacement found matches with the corresponding .cmd entry.
 OverlayReplacements = [
-                       "bin/epoch",
-                       "bin/extensions/check_config",
-                       "bin/extensions/keys_gen",
-                       "bin/extensions/peer_key",
-                       "bin/extensions/messages_hash",
-                       "bin/extensions/export_chain"
+                       "^bin/epoch$",
+                       "^bin/extensions/.*"
                       ],
 
 AdaptOverlayBin = fun(Overlay) ->
@@ -35,15 +33,22 @@ AdaptOverlayBin = fun(Overlay) ->
                               Overlay;
                           true ->
                               lists:foldl(
-                                fun({Action, Src0, Dest0}, Acc0) ->
-                                    case lists:member(Dest0, OverlayReplacements) of
-                                        true ->
-                                            Src = filename:rootname(Src0) ++ ".cmd",
-                                            Dest = filename:rootname(Dest0) ++ ".cmd",
-                                            lists:keyreplace(Dest0, 3, Acc0, {Action, Src, Dest});
-                                        false ->
-                                            Acc0
-                                    end
+                                fun
+                                    ({copy, Src0, Dest0}, Acc0) ->
+                                        lists:foldl(
+                                          fun(Format, Acc1) ->
+                                              {ok, Re} = re:compile(Format),
+                                              case re:run(Dest0, Re) of
+                                                  nomatch ->
+                                                      Acc1;
+                                                  _ ->
+                                                      Src = filename:rootname(Src0) ++ ".cmd",
+                                                      Dest = filename:rootname(Dest0) ++ ".cmd",
+                                                      lists:keyreplace(Dest0, 3, Acc1, {copy, Src, Dest})
+                                              end
+                                          end, Acc0, OverlayReplacements);
+                                    (_, Acc0) ->
+                                        Acc0
                                 end, Overlay, Overlay)
                       end
                   end,
