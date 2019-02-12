@@ -37,8 +37,8 @@ mine_block_test_() ->
                  % block uncomment the line below
                  % let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
                  Nonce = case aec_hard_forks:protocol_effective_at_height(Height + 1) of
-                             ?ROMA_PROTOCOL_VSN    -> io:format("ROMA\n", []), 1566115190779737391;
-                             ?MINERVA_PROTOCOL_VSN -> io:format("Minerva\n", []), 391854272740078490
+                             ?ROMA_PROTOCOL_VSN    -> 1566115190779737391;
+                             ?MINERVA_PROTOCOL_VSN -> 391854272740078490
                          end,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}], ?TEST_PUB),
