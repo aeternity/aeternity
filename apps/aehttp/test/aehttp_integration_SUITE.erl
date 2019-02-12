@@ -1417,17 +1417,41 @@ get_account_by_pubkey_and_height(Config) ->
 
 get_account_by_pubkey_and_height(false, Config) ->
     AccountId = ?config(account_id, Config),
-    Height = aec_headers:height(rpc(?NODE, aec_chain, top_header, [])),
+    Header = rpc(?NODE, aec_chain, top_header, []),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    EncodedHash = aehttp_api_encoder:encode(key_block_hash, Hash),
+    Height = aec_headers:height(Header),
     {ok, 404, Error1} = get_accounts_by_pubkey_and_height_sut(AccountId, Height),
+    {ok, 404, Error1} = get_accounts_by_pubkey_and_hash_sut(AccountId, EncodedHash),
     ?assertEqual(<<"Account not found">>, maps:get(<<"reason">>, Error1)),
     {ok, 404, Error2} = get_accounts_by_pubkey_and_height_sut(AccountId, Height + 2),
     ?assertEqual(<<"Height not available">>, maps:get(<<"reason">>, Error2)),
+    BadHash = case Hash of
+                  <<1:1, Rest/bits>> -> <<0:1, Rest/bits>>;
+                  <<0:1, Rest/bits>> -> <<1:1, Rest/bits>>
+              end,
+    EncodedBadHash = aehttp_api_encoder:encode(key_block_hash, BadHash),
+    {ok, 404, Error3} = get_accounts_by_pubkey_and_hash_sut(AccountId, EncodedBadHash),
+    ?assertEqual(<<"Hash not available">>, maps:get(<<"reason">>, Error3)),
+    BadPrefixHash = aehttp_api_encoder:encode(contract_pubkey, Hash),
+    {ok, 400, Error4} = get_accounts_by_pubkey_and_hash_sut(AccountId, BadPrefixHash),
+    ?assertEqual(<<"Illegal hash: invalid_prefix">>, maps:get(<<"reason">>, Error4)),
+    {ok, 400, Error5} = get_accounts_by_pubkey_and_hash_sut(AccountId, <<"Hello">>),
+    ?assertEqual(<<"Illegal hash: invalid_encoding">>, maps:get(<<"reason">>, Error5)),
+
     ok;
 get_account_by_pubkey_and_height(true, Config) ->
     AccountId = ?config(account_id, Config),
-    Height = aec_headers:height(rpc(?NODE, aec_chain, top_header, [])),
+    Header = rpc(?NODE, aec_chain, top_header, []),
+    Height = aec_headers:height(Header),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    PrevHash = aec_headers:prev_hash(Header),
+    EncodedHash = aehttp_api_encoder:encode(key_block_hash, Hash),
+    EncodedPrevHash = aehttp_api_encoder:encode(key_block_hash, PrevHash),
     {ok, 200, Account1} = get_accounts_by_pubkey_and_height_sut(AccountId, Height - 1),
     {ok, 200, Account2} = get_accounts_by_pubkey_and_height_sut(AccountId, Height),
+    {ok, 200, Account1} = get_accounts_by_pubkey_and_hash_sut(AccountId, EncodedPrevHash),
+    {ok, 200, Account2} = get_accounts_by_pubkey_and_hash_sut(AccountId, EncodedHash),
     ?assertEqual(AccountId, maps:get(<<"id">>, Account1)),
     ?assertEqual(AccountId, maps:get(<<"id">>, Account2)),
     ?assert(maps:get(<<"balance">>, Account1) > 0),
@@ -1458,6 +1482,11 @@ get_pending_account_transactions_by_pubkey(true, Config) ->
 get_accounts_by_pubkey_sut(Id) ->
     Host = external_address(),
     http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
+
+get_accounts_by_pubkey_and_hash_sut(Id, Hash) ->
+    Host = external_address(),
+    IdS = binary_to_list(http_uri:encode(Id)),
+    http_request(Host, get, "accounts/" ++ IdS ++ "/hash/" ++ Hash, []).
 
 get_accounts_by_pubkey_and_height_sut(Id, Height) ->
     Host = external_address(),

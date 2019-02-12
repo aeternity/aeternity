@@ -576,6 +576,48 @@
         }
       }
     },
+    "/accounts/{pubkey}/hash/{hash}" : {
+      "get" : {
+        "tags" : [ "external", "account" ],
+        "description" : "Get an account by public key after the block indicated by hash",
+        "operationId" : "GetAccountByPubkeyAndHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the account",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "The hash of the block",
+          "required" : true,
+          "type" : "string",
+          "minimum" : 0
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Account"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key or invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found or hash not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/accounts/{pubkey}/transactions/pending" : {
       "get" : {
         "tags" : [ "external", "account" ],

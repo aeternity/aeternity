@@ -501,6 +501,41 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /accounts/{pubkey}/hash/{hash}:
+    get:
+      tags:
+        - external
+        - account
+      operationId: GetAccountByPubkeyAndHash
+      description: 'Get an account by public key after the block indicated by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the account'
+          required: true
+          type: string
+        - in: path
+          name: hash
+          description: 'The hash of the block'
+          required: true
+          type: string
+          minimum: 0
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/Account'
+        '400':
+          description: 'Invalid public key or invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Account not found or hash not available'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /accounts/{pubkey}/transactions/pending:
     get:
       tags:
