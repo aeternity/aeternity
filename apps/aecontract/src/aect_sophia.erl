@@ -23,7 +23,7 @@
 -type wrapped_code() :: #{ source_hash := aec_hash:hash()
                          , type_info   := [{binary(), binary(), binary(), binary()}]
                          , byte_code   := binary()
-                         , compiler_version := integer()
+                         , compiler_version := binary()
                          , contract_vsn := integer()
                          }.
 
@@ -84,10 +84,13 @@ serialize(Map) ->
 serialize(#{byte_code := ByteCode, type_info := TypeInfo,
             contract_source := ContractString, compiler_version := Version}, SophiaContractVersion) ->
     ContractBin = list_to_binary(ContractString),
+    BinVersion = if is_integer(Version) -> integer_to_binary(Version);
+                    is_binary(Version) -> Version
+                 end,
     Fields = [ {source_hash, aec_hash:hash(sophia_source_code, ContractBin)}
              , {type_info, TypeInfo}
              , {byte_code, ByteCode} ] ++ 
-             [ {compiler_version, Version} || SophiaContractVersion > ?SOPHIA_CONTRACT_VSN_1 ],
+             [ {compiler_version, BinVersion} || SophiaContractVersion > ?SOPHIA_CONTRACT_VSN_1 ],
              %% Add version here in release when Minerva height has been reached
     aec_object_serialization:serialize(compiler_sophia,
                                        SophiaContractVersion,
@@ -132,7 +135,7 @@ serialization_template(?SOPHIA_CONTRACT_VSN_1) ->
     , {byte_code, binary}];
 serialization_template(?SOPHIA_CONTRACT_VSN_2) ->
     serialization_template(?SOPHIA_CONTRACT_VSN_1) ++
-        [ {compiler_version, int}].
+        [ {compiler_version, binary}].
 
 -spec encode_call_data(binary(), binary(), binary()) ->
                               {ok, binary()} | {error, binary()}.
