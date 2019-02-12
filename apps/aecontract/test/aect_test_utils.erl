@@ -212,15 +212,9 @@ compile(?CURRENT_SOPHIA, File) ->
     {ok, ContractBin} = file:read_file(File),
     aect_sophia:compile(ContractBin, <<>>);
 compile(?SOPHIA_ROMA, File) ->
-    Compiler = filename:join([code:lib_dir(aecontract), "test", "bin", "aesophia"]),
-    OutFile  = tempfile:name("testcode_", [{ext, ".aeb"}]),
-    Cmd = Compiler ++ " " ++ File ++ " -o " ++ OutFile,
-    Output = os:cmd(Cmd),
-    try
-        {ok, Bin} = file:read_file(OutFile),
-        {ok, aect_sophia:serialize(binary_to_term(Bin))}
-    catch _:_ ->
-        {error, {compiler_error, File, Output}}
+    case aehttp_logic:contract_compile(File) of
+        {ok, Code}      -> {ok, Code};
+        {error, Reason} -> {error, {compiler_error, File, Reason}}
     end.
 
 new_key_pair() ->

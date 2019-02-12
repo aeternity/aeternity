@@ -2219,7 +2219,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 400, #{<<"reason">> := <<"Not byte array: call_data">>}} =
         get_contract_call(maps:put(call_data, InvalidHex2, ContractCallEncoded)),
 
-    {ok, 400, #{<<"reason">> := <<"Failed to compute call_data, reason: bad argument">>}} =
+    {ok, 400, #{<<"reason">> := <<"Failed to compute call_data, reason: ", _/binary>>}} =
         get_contract_call_compute(maps:put(arguments, <<"garbadge">>,
                                            ComputeCCallEncoded)),
 

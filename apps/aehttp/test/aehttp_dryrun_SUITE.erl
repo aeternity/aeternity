@@ -180,7 +180,7 @@ accounts(Config) ->
 %% --- Internal functions ---
 
 make_call_data(ContractCode, Call) ->
-    {ok, CallData} = aect_dispatch:encode_call_data(<<"sophia">>, ContractCode, <<>>, Call),
+    {ok, CallData} = aect_sophia:encode_call_data(ContractCode, <<>>, Call),
     CallData.
 
 contract_id(Tx) ->

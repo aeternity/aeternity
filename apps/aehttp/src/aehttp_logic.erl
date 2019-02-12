@@ -24,10 +24,12 @@
         , revision/0
         ]).
 
--export([ contract_compile/2
+-export([ contract_compile/1
+        , contract_compile/2
         , contract_call/4
         , contract_decode_data/2
         , contract_encode_call_data/4
+        , sophia_encode_call_data/3
         ]).
 
 -export([peer_pubkey/0]).
@@ -165,10 +167,32 @@ get_top_blocks_time_summary(Count) ->
           end, [], TimeSummary0),
     {ok, lists:reverse(TimeSummary)}.
 
-contract_compile(Code, Options) ->
-    case aect_sophia:compile(Code, Options) of
-          {ok, ByteCode} -> {ok, ByteCode};
-          {error, _ErrorMsg} = Err -> Err
+contract_compile(Code, _Options) ->
+    InFile = tempfile_name("tmp_sophia_", [{ext, ".aes"}]),
+    case file:write_file(InFile, Code) of
+        ok ->
+            contract_compile(InFile);
+        {error, _} ->
+            {error, <<"Could not write temporary file">>}
+    end.
+
+contract_compile(SrcFile) ->
+    Compiler = compiler_cmd(),
+    OutFile  = tempfile_name("tmp_sophia_", [{ext, ".aeb"}]),
+    Cmd = Compiler ++ " " ++ SrcFile ++ " -o " ++ OutFile,
+    _Output = os:cmd(Cmd),
+    try
+        {ok, Bin} = file:read_file(OutFile),
+        case binary_to_term(Bin) of
+            {ok, ByteCode} ->
+                {ok, aect_sophia:serialize(ByteCode)};
+            Err = {error, _} ->
+                Err
+        end
+    catch _:_ ->
+        {error, <<"Compiler error">>}
+    after
+        cleanup_tempfiles()
     end.
 
 contract_call(ABI, EncodedCode, Function, Argument) ->
@@ -217,13 +241,79 @@ contract_decode_data(Type, Data) ->
             end
     end.
 
-
-
-contract_encode_call_data(ABI, Code, Function, Argument) ->
-    case aect_dispatch:encode_call_data(ABI, Code, Function, Argument) of
+contract_encode_call_data(<<"evm">>, Code, Function, Argument) ->
+    case aect_dispatch:encode_call_data(<<"evm">>, Code, Function, Argument) of
+        {ok, ByteCode} -> {ok, aehttp_api_encoder:encode(contract_bytearray, ByteCode)};
+        {error, _ErrorMsg} = Err -> Err
+    end;
+contract_encode_call_data(<<"sophia">>, Code, Function, Argument) ->
+    case sophia_encode_call_data(Code, Function, Argument) of
         {ok, ByteCode} -> {ok, aehttp_api_encoder:encode(contract_bytearray, ByteCode)};
         {error, _ErrorMsg} = Err -> Err
     end.
+
+sophia_encode_call_data(Code, Function, Argument) ->
+    try aect_sophia:deserialize(Code) of
+        Contract = #{} ->
+            InFile = tempfile_name("tmp_sophia_", [{ext, ".aeb"}]),
+            case file:write_file(InFile, term_to_binary(Contract)) of
+                ok ->
+                    encode_call_data(InFile, Function, Argument);
+                {error, _} ->
+                    {error, <<"Failed to write temporary file">>}
+            end
+    catch _:_ ->
+        {error, <<"Bad contract code">>}
+    end.
+
+encode_call_data(CFile, BinFun, BinArgOrCall)
+        when is_binary(BinFun), is_binary(BinArgOrCall) ->
+    encode_call_data(CFile, binary_to_list(BinFun), binary_to_list(BinArgOrCall));
+encode_call_data(CFile, Function, ArgumentOrCall) ->
+    Cmd0 = case Function of
+        "" ->
+            CallFile = tempfile_name("tmp_sophia_", [{ext, ".aes"}]),
+            file:write_file(CallFile, ArgumentOrCall),
+            CallFile;
+        _ ->
+            " --calldata_fun='" ++ Function ++ "' " ++
+            " --calldata_args='" ++ ArgumentOrCall ++ "' "
+    end,
+    OutFile = tempfile_name("tmp_sophia_", [{ext, ".aeb"}]),
+    Cmd = compiler_cmd() ++ " -c " ++ CFile ++ " " ++ Cmd0 ++ " -o " ++ OutFile,
+    _Output = os:cmd(Cmd),
+    try
+        {ok, Bin} = file:read_file(OutFile),
+        binary_to_term(Bin)
+    catch _:_ ->
+        {error, <<"Compiler error">>}
+    after
+        cleanup_tempfiles()
+    end.
+
+tempfile_name(Prefix, Opts) ->
+    File = tempfile:name(Prefix, Opts),
+    case get('$tmp_files') of
+        undefined -> put('$tmp_files', [File]);
+        Files     -> put('$tmp_files', [File | Files])
+    end,
+    File.
+
+cleanup_tempfiles() ->
+    case get('$tmp_files') of
+        Files when is_list(Files) -> [ delete_file(F) || F <- Files ];
+        _                         -> ok
+    end.
+
+delete_file(F) ->
+    try
+        file:delete(F)
+    catch _:_ ->
+        ok
+    end.
+
+compiler_cmd() ->
+    filename:join([code:lib_dir(aehttp), "priv", "bin", "aesophia"]).
 
 peer_pubkey() ->
     case aec_keys:peer_pubkey() of

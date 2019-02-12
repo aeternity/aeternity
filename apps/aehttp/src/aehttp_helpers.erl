@@ -444,7 +444,7 @@ compute_contract_create_data() ->
         case FunArgs of
             {error, ErrorMsg} -> Fail(ErrorMsg);
             {Fun, Args} ->
-                case aect_dispatch:encode_call_data(<<"sophia">>, Code, Fun, Args) of
+                case aehttp_logic:sophia_encode_call_data(Code, Fun, Args) of
                     {ok, CallData} ->
                         {ok, maps:put(call_data, CallData, State)};
                     {error, ErrorMsg} when is_binary(ErrorMsg) ->
@@ -473,8 +473,7 @@ compute_contract_call_data() ->
         case FunArgs of
             {error, ErrorMsg} -> Fail(ErrorMsg);
             {Function, Argument} ->
-                case aect_dispatch:encode_call_data(<<"sophia">>, Code,
-                                                    Function, Argument) of
+                case aehttp_logic:sophia_encode_call_data(Code, Function, Argument) of
                     {ok, CallData} ->
                         {ok, maps:put(call_data, CallData, State)};
                     {error, ErrorMsg} when is_binary(ErrorMsg) ->

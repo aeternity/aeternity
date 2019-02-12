@@ -1512,8 +1512,7 @@ token_supply_contracts() ->
     Gas     = 10000,
     GasPrice = 1,
     {ok, Code} = aect_test_utils:compile_contract("contracts/identity.aes"),
-    {ok, InitCallData} = aect_dispatch:encode_call_data(<<"sophia">>, Code,
-                                                        <<"init">>, <<"()">>),
+    {ok, InitCallData} = aect_sophia:encode_call_data(Code, <<"init">>, <<"()">>),
     CreateContractFun =
         fun(Nonce) ->
                 make_contract_create_tx(PubKey, Code, InitCallData, Nonce,
