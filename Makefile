@@ -17,6 +17,8 @@ SWAGGER_CODEGEN_CLI = swagger/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
 SWAGGER_CODEGEN = java -jar $(SWAGGER_CODEGEN_CLI)
 SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
 
+PACKAGE_SPEC_WIN32 ?= ../ci/appveyor/package.cfg
+
 all:	local-build
 
 $(SWAGGER_ENDPOINTS_SPEC):
@@ -269,6 +271,9 @@ python-single-uat: swagger
 python-release-test: swagger
 	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" TARBALL=$(TARBALL) VER=$(VER) $(MAKE) release-test; )
 
+python-package-win32-test:
+	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" PACKAGESPECFILE=$(PACKAGE_SPEC_WIN32) $(MAKE) package-win32-test; )
+
 swagger: config/swagger.yaml $(SWAGGER_CODEGEN_CLI) $(SWAGGER_ENDPOINTS_SPEC)
 	@$(SWAGGER_CODEGEN) generate -i $< -l erlang-server -o $(SWTEMP)
 	@echo "Swagger tempdir: $(SWTEMP)"
@@ -389,5 +394,5 @@ internal-distclean: $$(KIND)
 	swagger swagger-docs swagger-check swagger-version-check \
 	rebar-lock-check \
 	compile-aes\
-	python-env python-ws-test python-uats python-single-uat python-release-test \
+	python-env python-ws-test python-uats python-single-uat python-release-test python-package-win32-test \
 	REVISION
