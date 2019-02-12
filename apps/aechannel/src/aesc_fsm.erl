@@ -449,9 +449,9 @@ prune_local_calls(Fsm) ->
     gen_statem:call(Fsm, prune_local_calls).
 
 dry_run_contract(Fsm, #{contract    := _,
-                        vm_version  := _,
+                        abi_version := _,
                         amount      := Amt,
-                        call_data  := _} = Opts) when is_integer(Amt), Amt >= 0 ->
+                        call_data   := _} = Opts) when is_integer(Amt), Amt >= 0 ->
     gen_statem:call(Fsm, {upd_call_contract, Opts, dry_run}).
 
 %% ======================================================================
@@ -1263,12 +1263,12 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
     end,
     CallStack = maps:get(call_stack, Opts, []),
     #{contract    := ContractPubKey,
-      vm_version  := VmVersion,
+      abi_version := ABIVersion,
       amount      := Amount,
       call_data   := CallData} = Opts,
     Update = aesc_offchain_update:op_call_contract(aec_id:create(account, FromPub),
                                                    aec_id:create(contract, ContractPubKey),
-                                                   VmVersion, Amount,
+                                                   ABIVersion, Amount,
                                                    CallData, CallStack),
     Updates = [Update],
     {OnChainEnv, OnChainTrees} =

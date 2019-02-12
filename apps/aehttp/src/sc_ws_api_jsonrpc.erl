@@ -293,18 +293,18 @@ process_request(#{<<"method">> := <<"channels.get.contract_call">>,
         _ -> {error, broken_code}
     end;
 process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
-                  <<"params">> := #{<<"contract">>   := ContractE,
-                                    <<"vm_version">> := VmVersion,
-                                    <<"amount">>     := Amount,
-                                    <<"call_data">>  := CallDataE}}, FsmPid) ->
+                  <<"params">> := #{<<"contract">>    := ContractE,
+                                    <<"abi_version">> := ABIVersion,
+                                    <<"amount">>      := Amount,
+                                    <<"call_data">>   := CallDataE}}, FsmPid) ->
     case {aehttp_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
             case aesc_fsm:dry_run_contract(FsmPid,
-                                           #{contract   => Contract,
-                                             vm_version => VmVersion,
-                                             amount     => Amount,
-                                             call_data  => CallData}) of
+                                           #{contract     => Contract,
+                                             abi_version  => ABIVersion,
+                                             amount       => Amount,
+                                             call_data    => CallData}) of
                 {ok, Call} ->
                   {reply, #{ action     => <<"dry_run">>
                            , tag        => <<"call_contract">>
