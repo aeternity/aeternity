@@ -1001,7 +1001,8 @@ paths:
         - contract
         - debug
       operationId: PostContractCreateCompute
-      description: 'Compute the call_data for SOPHIA and get a contract_create transaction object'
+      description: '(DEPRECATED to-be-removed in 3.0) - Compute the call_data for SOPHIA and get a contract_create transaction object'
+      deprecated: true
       consumes:
         - application/json
       produces:
@@ -1063,7 +1064,8 @@ paths:
         - contract
         - debug
       operationId: PostContractCallCompute
-      description: 'Compute the call_data for SOPHIA and get contract_call transaction object'
+      description: '(DEPRECATED to-be-removed in 3.0) - Compute the call_data for SOPHIA and get contract_call transaction object'
+      deprecated: true
       consumes:
         - application/json
       produces:
@@ -1709,7 +1711,8 @@ paths:
         - contract
         - debug
       operationId: 'CompileContract'
-      description: 'Compile a sophia contract from source and return byte code'
+      description: '(DEPRECATED to-be-removed in 3.0) - Compile a sophia contract from source and return byte code'
+      deprecated: true
       consumes:
         - application/json
       produces:
@@ -1737,7 +1740,8 @@ paths:
         - contract
         - debug
       operationId: 'CallContract'
-      description: 'Call a sophia function with a given name and argument in the given bytecode off chain.'
+      description: '(DEPRECATED to-be-removed in 3.0) - Call a sophia function with a given name and argument in the given bytecode off chain.'
+      deprecated: true
       consumes:
         - application/json
       produces:
@@ -1792,7 +1796,8 @@ paths:
         - contract
         - debug
       operationId: 'DecodeData'
-      description: 'Decode Sophia return data encoded according to Sophia ABI.'
+      description: '(DEPRECATED to-be-removed in 3.0) - Decode Sophia return data encoded according to Sophia ABI.'
+      deprecated: true
       consumes:
         - application/json
       produces:
@@ -1820,7 +1825,8 @@ paths:
         - contract
         - debug
       operationId: 'EncodeCalldata'
-      description: 'Encode sophia data and function name according to sophia ABI.'
+      description: '(DEPRECATED to-be-removed in 3.0) - Encode sophia data and function name according to sophia ABI.'
+      deprecated: true
       consumes:
         - application/json
       produces:

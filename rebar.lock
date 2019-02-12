@@ -17,6 +17,7 @@
       {ref,"60a335668a60328a29f9731b67c4a0e9e3d50ab6"}},
   0},
  {<<"bear">>,{pkg,<<"bear">>,<<"0.8.7">>},2},
+ {<<"bucs">>,{pkg,<<"bucs">>,<<"1.0.16">>},1},
  {<<"cowboy">>,
   {git,"https://github.com/ninenines/cowboy.git",
       {ref,"8d49ae3dda5b4274e55d2f4e5a5b4da0515b5a10"}},
@@ -34,6 +35,7 @@
       {ref,"1e6ee6703fc401a46fce8f1a400a68734c0a356d"}},
   0},
  {<<"eper">>,{pkg,<<"eper">>,<<"0.99.1">>},0},
+ {<<"ephemeral">>,{pkg,<<"ephemeral">>,<<"2.0.4">>},0},
  {<<"exometer_core">>,{pkg,<<"exometer_core">>,<<"1.5.7">>},0},
  {<<"folsom">>,{pkg,<<"folsom">>,<<"0.8.7">>},1},
  {<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.9">>},1},
@@ -95,7 +97,9 @@
 [
 {pkg_hash,[
  {<<"bear">>, <<"16264309AE5D005D03718A5C82641FCC259C9E8F09ADEB6FD79CA4271168656F">>},
+ {<<"bucs">>, <<"D69A4CD6D1238CD1ADC5C95673DBDE0F8459A5DBB7D746516434D8C6D935E96F">>},
  {<<"eper">>, <<"A50698B6803B8732AD6575285320999FE73E160A1A9FF7EFCAB6B6F818BD2C1F">>},
+ {<<"ephemeral">>, <<"B3E57886ADD5D90C82FE3880F5954978222A122CB8BAA123667401BBAAEC51D6">>},
  {<<"exometer_core">>, <<"AB97E34A5D69AB14E6AE161DB4CCA5B5E655E635B842F830EE6AB2CBFCFDC30A">>},
  {<<"folsom">>, <<"A885F0AEEE4C84270954C88A55A5A473D6B2C7493E32FFDC5765412DD555A951">>},
  {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
