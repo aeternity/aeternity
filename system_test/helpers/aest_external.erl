@@ -46,7 +46,7 @@ peer_from_spec(#{addr := Addr, pubkey := Key} = _Spec, _State) ->
         pubkey => Key
     }).
 
-setup_node(Spec, _State) -> Spec.
+setup_node(Spec, _State) -> _DummyNodeState = Spec.
 
 delete_node(_NodeState) -> ok.
 
