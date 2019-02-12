@@ -14,7 +14,7 @@
 
 ## Logs, error output, etc.
 
-*`epoch.yaml` configuration file*
+*`aeternity.yaml` configuration file (formerly named `epoch.yaml`)*
 
 *`log/aeternity.log` log file (formerly named `log/epoch.log`) - plus other related logs, e.g., `log/aeternity_sync.log` (formerly named `log/epoch_sync.log`), `log/aeternity_mining.log` (formerly named `log/epoch_mining.log`); if it’s long, please paste to https://ghostbin.com/ and insert the link here.*
 
