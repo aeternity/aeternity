@@ -294,7 +294,6 @@ setup_node(Spec, BackendState) ->
 
     [YamlConfig] = yamerl:decode(ConfigString),
     NodeState#{
-        container_name => Hostname,
         container_id => ContId,
         config_path => ConfigFilePath,
         config => YamlConfig,
