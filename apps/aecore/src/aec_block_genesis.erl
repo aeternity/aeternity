@@ -44,7 +44,7 @@
 -endif.
 
 -include("blocks.hrl").
--include_lib("apps/aecore/include/hard_forks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(GENESIS_VERSION, ?ROMA_PROTOCOL_VSN).
 -define(GENESIS_HEIGHT, 0).

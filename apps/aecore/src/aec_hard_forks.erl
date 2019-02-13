@@ -13,7 +13,7 @@
 -endif.
 
 -include("blocks.hrl").
--include("hard_forks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(is_version(V), (is_integer(V) andalso (V >= 0))).
 -define(is_height(H), (is_integer(H) andalso (H >= ?GENESIS_HEIGHT))).
