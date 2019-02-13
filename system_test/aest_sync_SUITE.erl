@@ -172,7 +172,7 @@ new_node_joins_network(Cfg) ->
     Compatible = "aeternity/aeternity:local", %% Latest version it should be compatible with
                                           %% Change if comptibility with previous version
                                           %% should be guaranteed
-    ct:log("Testing compatiblity of epoch:local with ~p", [Compatible]),
+    ct:log("Testing compatiblity of aeternity/aeternity:local with ~p", [Compatible]),
 
     OldNode1 = #{
       name    => old_node1,
