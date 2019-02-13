@@ -22,14 +22,14 @@
 validation_test_() ->
     {foreach,
      fun() ->
-             aec_test_utils:mock_genesis(),
+             aec_test_utils:mock_genesis_and_forks(),
              aec_test_utils:start_chain_db(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:aec_keys_cleanup(TmpDir),
              aec_test_utils:stop_chain_db(),
-             aec_test_utils:unmock_genesis()
+             aec_test_utils:unmock_genesis_and_forks()
      end,
      [ {"Check valid pof", fun validation_pass/0}
      , {"Check invalid pof: signature", fun validation_fail_signature/0}
@@ -69,7 +69,7 @@ validation_fail_siblings() ->
 make_fraud_headers() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     PresetAccounts = [{PubKey, 1000000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     %% Create main chain
     TxsFun = fun(1) ->

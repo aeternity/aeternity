@@ -63,13 +63,13 @@
 basic_access_test_() ->
     {foreach,
      fun() ->
-             aec_test_utils:mock_genesis(),
+             aec_test_utils:mock_genesis_and_forks(),
              aec_test_utils:start_chain_db(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             aec_test_utils:unmock_genesis(),
+             aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:stop_chain_db()
      end,
      [ {"Access for block chain", fun basic_access_test_block_chain/0}
@@ -122,12 +122,12 @@ out_of_order_test_() ->
     {foreach,
      fun() ->
              aec_test_utils:start_chain_db(),
-             aec_test_utils:mock_genesis(),
+             aec_test_utils:mock_genesis_and_forks(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             aec_test_utils:unmock_genesis(),
+             aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:stop_chain_db()
      end,
      [ {"Out of order insert of block chain",
@@ -151,7 +151,7 @@ out_of_order_test_block_chain() ->
                      []
              end,
     PresetAccounts = [{PubKey, 1000000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     Chain0 = gen_block_chain_with_state_by_target(
                PresetAccounts,
                [?HIGHEST_TARGET_SCI, ?HIGHEST_TARGET_SCI], 1, TxsFun),
@@ -292,7 +292,7 @@ broken_chain_wrong_prev_key_hash() ->
     #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 1000000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     Spend1 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
     Spend2 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
 
@@ -324,7 +324,7 @@ broken_chain_invalid_transaction() ->
     #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 1000000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     Spend = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
 
     Chain0 = gen_block_chain_with_state_by_target(PresetAccounts, [?GENESIS_TARGET], 111),
@@ -359,7 +359,7 @@ broken_chain_invalid_micro_block_signature() ->
 
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 1000000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     Spend = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
 
     Chain0 = gen_block_chain_with_state_by_target(PresetAccounts, [?GENESIS_TARGET], 111),
@@ -515,14 +515,14 @@ target_validation_test_() ->
              meck:new(aec_governance, [passthrough]),
              meck:expect(aec_governance, key_blocks_to_check_difficulty_count, 0, 2),
              meck:expect(aec_governance, expected_block_mine_rate, 0, 1800000), %% 50 mins
-             aec_test_utils:mock_genesis(),
+             aec_test_utils:mock_genesis_and_forks(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:unmock_difficulty_as_target(),
              meck:unload(aec_governance),
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             aec_test_utils:unmock_genesis(),
+             aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:stop_chain_db()
      end,
      [{"Ensure target is same as genesis block target"
@@ -748,7 +748,7 @@ fork_get_transaction() ->
     #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 100000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     Spend1 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
     Spend2 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
     CommonChainTargets = [?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1],
@@ -799,7 +799,7 @@ fork_get_transaction() ->
 fork_on_micro_block() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     PresetAccounts = [{PubKey, 1000000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     %% Create main chain with both key and micro blocks
     TxsFun = fun(1) ->
@@ -843,7 +843,7 @@ fork_on_micro_block() ->
 fork_on_old_fork_point() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     PresetAccounts = [{PubKey, 1000000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     CommonChain = gen_block_chain_with_state_by_target(
                     PresetAccounts, [?GENESIS_TARGET, ?GENESIS_TARGET], 111),
@@ -986,7 +986,7 @@ fees_three_beneficiaries() ->
     #{ public := PubKey2, secret :=_PrivKey2 } = enacl:sign_keypair(),
 
     PresetAccounts = [{PubKey1, 1000000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     %% Three accounts to act as miners
     #{ public := PubKey3, secret := PrivKey3 } = enacl:sign_keypair(),
@@ -1069,7 +1069,7 @@ fees_delayed_reward() ->
     #{ public := PubKey2, secret :=_PrivKey2 } = enacl:sign_keypair(),
 
     PresetAccounts = [{PubKey1, 1000000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     %% An account to act as a beneficiary
     #{ public := PubKey3, secret := _PrivKey3 } = enacl:sign_keypair(),
@@ -1149,7 +1149,7 @@ pof_test_() ->
 pof_fork_on_key_block() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     PresetAccounts = [{PubKey, 1000000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     %% Create main chain
     TxsFun = fun(1) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000, 2), PrivKey)];
@@ -1181,7 +1181,7 @@ pof_fork_on_key_block() ->
 pof_fork_on_micro_block() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     PresetAccounts = [{PubKey, 1000000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     %% Create main chain
     TxsFun = fun(1) ->
@@ -1217,7 +1217,7 @@ pof_fork_on_micro_block() ->
 pof_reported_late() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     PresetAccounts = [{PubKey, 1000000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     %% Create main chain
     TxsFun = fun(1) ->
@@ -1296,7 +1296,7 @@ token_supply_coinbase() ->
     PubKey = <<12345:256>>,
     PresetAmount = 1000000,
     PresetAccounts = [{PubKey, PresetAmount}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
     Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
     Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111),
@@ -1338,7 +1338,7 @@ token_supply_spend() ->
                 (5) -> [aec_test_utils:sign_tx(TxFun1(5, <<5:256>>), PrivKey)];
                 (_) -> []
              end,
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
     Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
     Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
@@ -1401,7 +1401,7 @@ token_supply_oracles() ->
                 (4) -> [aec_test_utils:sign_tx(ResponseFun(PubKey2, QId, 2), PrivKey2)];
                 (_) -> []
              end,
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
     Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
     Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
@@ -1471,7 +1471,7 @@ token_supply_channels() ->
                                                [PrivKey1, PrivKey2])];
                 (_) -> []
              end,
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
     Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
     Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
@@ -1521,7 +1521,7 @@ token_supply_contracts() ->
     TxsFun = fun(1) -> [aec_test_utils:sign_tx(CreateContractFun(1), [PrivKey])];
                 (_) -> []
              end,
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
     Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
     Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
@@ -1551,13 +1551,13 @@ token_supply_contracts() ->
 setup_meck_and_keys() ->
     aec_test_utils:mock_difficulty_as_target(),
     aec_test_utils:mock_block_target_validation(),
-    aec_test_utils:mock_genesis(),
+    aec_test_utils:mock_genesis_and_forks(),
     aec_test_utils:aec_keys_setup().
 
 teardown_meck_and_keys(TmpDir) ->
     aec_test_utils:unmock_difficulty_as_target(),
     aec_test_utils:unmock_block_target_validation(),
-    aec_test_utils:unmock_genesis(),
+    aec_test_utils:unmock_genesis_and_forks(),
     aec_test_utils:aec_keys_cleanup(TmpDir).
 
 write_blocks_to_chain([H|T]) ->
@@ -1567,7 +1567,7 @@ write_blocks_to_chain([]) ->
     ok.
 
 gen_blocks_only_chain(Data) ->
-    gen_blocks_only_chain(aec_test_utils:preset_accounts(), Data).
+    gen_blocks_only_chain(aec_test_utils:genesis_accounts(), Data).
 
 gen_blocks_only_chain(PresetAccounts, Data) ->
     blocks_only_chain(gen_block_chain_with_state(PresetAccounts, Data)).
@@ -1577,7 +1577,7 @@ gen_block_chain_with_state(PresetAccounts, Data) ->
     extend_block_chain_with_state([{B0, S0}], Data).
 
 gen_blocks_only_chain_by_target(Targets, Nonce) ->
-    gen_blocks_only_chain_by_target(aec_test_utils:preset_accounts(), Targets, Nonce).
+    gen_blocks_only_chain_by_target(aec_test_utils:genesis_accounts(), Targets, Nonce).
 
 gen_blocks_only_chain_by_target(PresetAccounts, Targets, Nonce) ->
     blocks_only_chain(gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce)).
@@ -1586,7 +1586,7 @@ gen_blocks_only_chain_by_target(PresetAccounts, Targets, Nonce, TxsFun) ->
     blocks_only_chain(gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce, TxsFun)).
 
 gen_block_chain_with_state_by_target(Targets, Nonce) ->
-    gen_block_chain_with_state_by_target(aec_test_utils:preset_accounts(), Targets, Nonce).
+    gen_block_chain_with_state_by_target(aec_test_utils:genesis_accounts(), Targets, Nonce).
 
 gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce) ->
     gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce, fun(_) -> [] end).

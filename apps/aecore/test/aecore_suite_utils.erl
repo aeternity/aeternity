@@ -592,7 +592,7 @@ setup_node(N, Top, Epoch, Config) ->
     ConfigFilename = proplists:get_value(config_name, Config, "default") ++ ".config",
     cp_file(filename:join(TestD, ConfigFilename),
             filename:join(DDir , ConfigFilename)),
-    aec_test_utils:copy_genesis_dir(Epoch, DDir).
+    aec_test_utils:copy_forks_dir(Epoch, DDir).
 
 
 cp_dir(From, To) ->

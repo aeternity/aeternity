@@ -16,9 +16,9 @@
         , mock_fast_cuckoo_pow/0
         , mock_fast_and_deterministic_cuckoo_pow/0
         , mock_prebuilt_cuckoo_pow/1
-        , mock_genesis/0
-        , mock_genesis/1
-        , unmock_genesis/0
+        , mock_genesis_and_forks/0
+        , mock_genesis_and_forks/1
+        , unmock_genesis_and_forks/0
         , wait_for_it/2
         , wait_for_it_or_timeout/3
         , wait_for_pred_or_timeout/3
@@ -40,7 +40,7 @@
         , genesis_block/0
         , genesis_block_with_state/0
         , genesis_block_with_state/1
-        , preset_accounts/0
+        , genesis_accounts/0
         , genesis_accounts_balances/1
         , create_keyblock_with_state/2
         , create_keyblock_with_state/3
@@ -50,7 +50,7 @@
         , create_state_tree_with_accounts/2
         , create_temp_key_dir/0
         , remove_temp_key_dir/1
-        , copy_genesis_dir/2
+        , copy_forks_dir/2
         , sign_micro_block/2
         , sign_tx/2
         , signed_spend_tx/1
@@ -59,6 +59,7 @@
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
 
 -ifdef(DEBUG).
@@ -67,10 +68,10 @@
 -define(ifDebugFmt(Str, Args), ok).
 -endif.
 
--define(PRESET_ACCOUNTS, [{<<"_________my_public_key__________">>, 100}]).
+-define(GENESIS_ACCOUNTS, [{<<"_________my_public_key__________">>, 100}]).
 
-preset_accounts() ->
-  ?PRESET_ACCOUNTS.
+genesis_accounts() ->
+  ?GENESIS_ACCOUNTS.
 
 genesis_accounts_balances(PresetAccounts) ->
     %% NG : No beneficiary reward for Genesis (yet?)
@@ -117,16 +118,17 @@ mock_cuckoo_pow({_EdgeBits, _Miners} = Cfg) ->
                        meck:passthrough([App, Key, Def])
                end).
 
-mock_genesis() ->
-    mock_genesis(preset_accounts()).
+mock_genesis_and_forks() ->
+    mock_genesis_and_forks(genesis_accounts()).
 
-mock_genesis(PresetAccounts) ->
-    meck:new(aec_genesis_block_settings, [passthrough]),
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+mock_genesis_and_forks(PresetAccounts) ->
+    meck:new(aec_fork_block_settings, [passthrough]),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    meck:expect(aec_fork_block_settings, minerva_accounts, 0, []),
     ok.
 
-unmock_genesis() ->
-    meck:unload(aec_genesis_block_settings),
+unmock_genesis_and_forks() ->
+    meck:unload(aec_fork_block_settings),
     ok.
 
 wait_for_pubkey() ->
@@ -248,14 +250,14 @@ genesis_block() ->
     B.
 
 genesis_block_with_state() ->
-    genesis_block_with_state(?PRESET_ACCOUNTS).
+    genesis_block_with_state(?GENESIS_ACCOUNTS).
 
 genesis_block_with_state(PresetAccounts) ->
     aec_block_genesis:genesis_block_with_state(#{preset_accounts => PresetAccounts}).
 
 %% Generic blockchain without transactions
 gen_block_chain_with_state(Length) ->
-    gen_block_chain_with_state(Length, ?PRESET_ACCOUNTS).
+    gen_block_chain_with_state(Length, ?GENESIS_ACCOUNTS).
 
 gen_blocks_only_chain(Length) ->
     blocks_only_chain(gen_block_chain_with_state(Length)).
@@ -456,8 +458,12 @@ signed_spend_tx(ArgsMap) ->
 %% function to setup the .genesis file for test SUITE-s
 %% SourceGenesisDir is the test release directory from which to take the .genesis
 %% DestRelDir is the release being set up
-copy_genesis_dir(SourceRelDir, DestRelDir) ->
-    GenesisDir = aec_genesis_block_settings:dir(), % ex data/aecore/.genesis
+copy_forks_dir(SourceRelDir, DestRelDir) ->
+    copy_fork_dir(SourceRelDir, DestRelDir, ?ROMA_PROTOCOL_VSN),
+    copy_fork_dir(SourceRelDir, DestRelDir, ?MINERVA_PROTOCOL_VSN).
+
+copy_fork_dir(SourceRelDir, DestRelDir, Release) ->
+    GenesisDir = aec_fork_block_settings:dir(Release), % ex data/aecore/.genesis
     GenesisName = filename:basename(GenesisDir),
     DataAecoreRoot = filename:dirname(GenesisDir), % ex. data/aecore
     DataRoot = filename:dirname(DataAecoreRoot), % ex. data

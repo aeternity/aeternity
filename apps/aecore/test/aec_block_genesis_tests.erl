@@ -12,23 +12,23 @@
 genesis_block_test_() ->
     {foreach,
      fun() ->
-         meck:new(aec_genesis_block_settings, [passthrough]),
+         meck:new(aec_fork_block_settings, [passthrough]),
          ok
      end,
      fun(ok) ->
-         meck:unload(aec_genesis_block_settings),
+         meck:unload(aec_fork_block_settings),
          ok
      end,
      [ {"Genesis block is commutative according to the list of preset accounts",
         fun() ->
             [Account1, Account2, Account3] = generate_accounts(3),
 
-            meck_preset_accounts([Account1, Account2, Account3]),
+            meck_genesis_accounts([Account1, Account2, Account3]),
             Header1 = ?TEST_MODULE:genesis_header(),
             {ok, Header1Hash} = aec_headers:hash_header(Header1),
 
             % same accounts shuffled
-            meck_preset_accounts([Account3, Account1, Account2]),
+            meck_genesis_accounts([Account3, Account1, Account2]),
             Header2 = ?TEST_MODULE:genesis_header(),
             {ok, Header2Hash} = aec_headers:hash_header(Header2),
 
@@ -41,12 +41,12 @@ genesis_block_test_() ->
         fun() ->
             [Account1, Account2, Account3] = generate_accounts(3),
 
-            meck_preset_accounts([Account1, Account2, Account3]),
+            meck_genesis_accounts([Account1, Account2, Account3]),
             Header1 = ?TEST_MODULE:genesis_header(),
             {ok, Header1Hash} = aec_headers:hash_header(Header1),
 
             % same accounts, one is present twice
-            meck_preset_accounts([Account1, Account2, Account3, Account1]),
+            meck_genesis_accounts([Account1, Account2, Account3, Account1]),
             Header2 = ?TEST_MODULE:genesis_header(),
             {ok, Header2Hash} = aec_headers:hash_header(Header2),
 
@@ -59,18 +59,18 @@ genesis_block_test_() ->
 preset_trees_test_() ->
     {foreach,
      fun() ->
-         meck:new(aec_genesis_block_settings, [passthrough]),
+         meck:new(aec_fork_block_settings, [passthrough]),
          ok
      end,
      fun(ok) ->
-         meck:unload(aec_genesis_block_settings),
+         meck:unload(aec_fork_block_settings),
          ok
      end,
      [ {"Trees contain expected accounts",
         fun() ->
             PresetAccounts = generate_accounts(10),
 
-            meck_preset_accounts(PresetAccounts),
+            meck_genesis_accounts(PresetAccounts),
             Trees = ?TEST_MODULE:populated_trees(),
             Accounts = aec_trees:accounts(Trees),
             lists:foreach(
@@ -86,7 +86,7 @@ preset_trees_test_() ->
         fun() ->
             PresetAccounts = generate_accounts(10),
 
-            meck_preset_accounts(PresetAccounts),
+            meck_genesis_accounts(PresetAccounts),
             Trees = ?TEST_MODULE:populated_trees(),
             Accounts = aec_trees:accounts(Trees),
             AllAccounts = aec_accounts_trees:get_all_accounts_balances(Accounts),
@@ -106,7 +106,7 @@ preset_trees_test_() ->
         fun() ->
             PresetAccounts = generate_accounts(10),
 
-            meck_preset_accounts(PresetAccounts),
+            meck_genesis_accounts(PresetAccounts),
             Header = ?TEST_MODULE:genesis_header(),
             RootHash = aec_headers:root_hash(Header),
 
@@ -118,8 +118,8 @@ preset_trees_test_() ->
             ok
         end}]}.
 
-meck_preset_accounts(AccountsList) ->
-    meck:expect(aec_genesis_block_settings, preset_accounts,
+meck_genesis_accounts(AccountsList) ->
+    meck:expect(aec_fork_block_settings, genesis_accounts,
                 fun() -> AccountsList end).
 
 generate_accounts(Count) ->
