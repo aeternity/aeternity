@@ -7,9 +7,17 @@
 
 -module(aesc_txs_SUITE).
 
-%% common_test exports
--export([all/0,
-         groups/0]).
+-export([
+          all/0
+        , groups/0
+        , suite/0
+        , init_per_suite/1
+        , end_per_suite/1
+        , init_per_group/2
+        , end_per_group/2
+        , init_per_testcase/2
+        , end_per_testcase/2
+        ]).
 
 %% test case exports
 -export([create/1,
@@ -178,13 +186,15 @@
          fp_register_oracle/1,
          fp_oracle_query/1,
          fp_oracle_extend/1,
-         fp_oracle_respond/1
+         fp_oracle_respond/1,
+         fp_fork_awareness/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("apps/aecontract/src/aecontract.hrl").
+-include_lib("aecore/include/hard_forks.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BOGUS_CHANNEL, <<1:?MINER_PUB_BYTES/unit:8>>).
@@ -192,6 +202,7 @@
 -define(VM_VERSION, aect_test_utils:latest_sophia_vm_version()).
 -define(ABI_VERSION, aect_test_utils:latest_sophia_abi_version()).
 -define(TEST_LOG(Format, Data), ct:log(Format, Data)).
+-define(MINERVA_FORK_HEIGHT, 1000).
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -362,9 +373,42 @@ groups() ->
        fp_register_oracle,
        fp_oracle_query,
        fp_oracle_extend,
-       fp_oracle_respond
+       fp_oracle_respond,
+
+       fp_fork_awareness
       ]}
     ].
+
+suite() ->
+    [].
+
+init_per_suite(Config) ->
+    Config.
+
+end_per_suite(_Config) ->
+    ok.
+
+init_per_group(_Group, Config) ->
+    Config.
+
+end_per_group(_Group, _Config) ->
+    ok.
+
+init_per_testcase(fp_fork_awareness, Config) ->
+    meck:expect(aec_hard_forks, protocol_effective_at_height,
+                fun(V) when V < ?MINERVA_FORK_HEIGHT -> ?ROMA_PROTOCOL_VSN;
+                   (_)                               -> ?MINERVA_PROTOCOL_VSN end),
+    Config;
+init_per_testcase(_, Config) ->
+    Config.
+
+end_per_testcase(fp_fork_awareness, _Config) ->
+    meck:unload(aec_hard_forks),
+    ok;
+end_per_testcase(_Case, _Config) ->
+    ok.
+
+
 
 %%%===================================================================
 
@@ -4411,10 +4455,16 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
     fun(#{trees := Trees0,
           state := State,
           owner := Owner} = Props) ->
-        {ok, BinCode}  = compile_contract(ContractName),
+        {ok, BinCode}  =
+            case maps:get(compiler_fun, Props, not_set) of
+                not_set -> compile_contract(ContractName);
+                Compiler when is_function(Compiler)-> Compiler(ContractName)
+            end,
         {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, InitArg),
+        VmVersion = maps:get(vm_version, Props, ?VM_VERSION),
+        ABIVersion = maps:get(abi_version, Props, ?ABI_VERSION),
         Update = aesc_offchain_update:op_new_contract(aec_id:create(account, Owner),
-                                                      ?VM_VERSION, ?ABI_VERSION,
+                                                      VmVersion, ABIVersion,
                                                       BinCode,
                                                       Deposit,
                                                       CallData),
@@ -5227,6 +5277,84 @@ poi_participants_only() ->
    end.
 
 compile_contract(ContractName) ->
-    aect_test_utils:compile_contract(
-      filename:join(["contracts",
-                     filename:basename(ContractName, ".aes") ++ ".aes"])).
+    aect_test_utils:compile_contract(contract_filename(ContractName)).
+
+compile_contract_vsn(ContractName, SerializationVsn) ->
+    File = contract_filename(ContractName),
+    CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
+    FileName = filename:join(CodeDir, filename:rootname(File, ".aes") ++ ".aes"),
+    {ok, ContractBin} = file:read_file(FileName),
+    {ok, Map} = aeso_compiler:from_string(ContractBin, []),
+    {ok, aect_sophia:serialize(Map,
+                               SerializationVsn)}.
+
+contract_filename(ContractName) ->
+    filename:join(["contracts",
+                  filename:basename(ContractName, ".aes") ++ ".aes"]).
+
+%% test that a force progress transaction can NOT produce an on-chain
+%% contract with a code with the wrong serialization
+fp_fork_awareness(Cfg) ->
+    HeightBelow = 123,
+    HeightAbove = 1234,
+
+    % ensure assumptions regarding heights
+    true = HeightBelow < ?MINERVA_FORK_HEIGHT,
+    false = aect_sophia:is_legal_serialization_at_height(?MINERVA_PROTOCOL_VSN, HeightBelow),
+    true = HeightAbove > ?MINERVA_FORK_HEIGHT,
+    true = aect_sophia:is_legal_serialization_at_height(?MINERVA_PROTOCOL_VSN, HeightAbove),
+
+    FP =
+        fun(Forcer, Vm, CodeSVsn, PreForkErrMsg) ->
+            Round = 42,
+            run(#{cfg => Cfg, initiator_amount => 10000000,
+                              responder_amount => 10000000,
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                set_prop(vm_version, Vm),
+                set_prop(compiler_fun,
+                         fun(ContractName) ->
+                            compile_contract_vsn(ContractName,
+                                                 CodeSVsn)
+                          end),
+                create_contract_poi_and_payload(Round - 1,
+                                                _ContractCreateRound = 10,
+                                                _ContractOwner = Forcer),
+                set_prop(fee, 100000),
+                set_from(Forcer),
+                set_prop(round, Round),
+                fun(#{contract_id := ContractId} = Props) ->
+                    (create_contract_call_payload(ContractId, <<"main">>,
+                                                  <<"42">>, 1))(Props)
+                end,
+                fun(#{contract_id := ContractId,
+                      trees := Trees0} = Props) ->
+                    Contract = aect_test_utils:get_contract(ContractId, #{trees => Trees0}),
+                    Code = aect_contracts:code(Contract),
+									  Deserialized = aect_sophia:deserialize(Code),
+                    %% ensure contract serialization version
+                    CodeSVsn = maps:get(contract_vsn, Deserialized),
+                    Props
+                end,
+                % rejected before the fork
+                set_prop(height, HeightBelow),
+                negative(fun force_progress_/2, {error,
+                                                 PreForkErrMsg}),
+                % accepted after the fork
+                set_prop(height, HeightAbove),
+                positive(fun force_progress_/2)
+               ])
+        end,
+    ForkChecks =
+        [
+         %% old vm, new code serialization
+         {?VM_AEVM_SOPHIA_1, 2, illegal_contract_compiler_version},
+         %% new vm, old code serialization
+         {?VM_AEVM_SOPHIA_2, 1, unknown_vm_version},
+         %% new vm, new code serialization
+         {?VM_AEVM_SOPHIA_2, 2, unknown_vm_version}],
+
+    [FP(Forcer, Vm, CodeSVsn, Error) || Forcer <- ?ROLES,
+                              {Vm, CodeSVsn, Error} <- ForkChecks],
+    ok.
+
