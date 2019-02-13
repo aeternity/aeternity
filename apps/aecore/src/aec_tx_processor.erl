@@ -1129,8 +1129,6 @@ assert_name_claimed(Name) ->
         revoked -> runtime_error(name_revoked)
     end.
 
--define(SOPHIA_CONTRACT_VSN_1, 1).
-
 assert_contract_byte_code(?ABI_SOPHIA_1, SerializedCode, CallData, S) ->
     try aect_sophia:deserialize(SerializedCode) of
         #{type_info := TypeInfo, 
@@ -1143,7 +1141,7 @@ assert_contract_byte_code(?ABI_SOPHIA_1, SerializedCode, CallData, S) ->
             end
     catch _:_ -> runtime_error(bad_sophia_code)
     end;
-assert_contract_byte_code(?ABI_SOLIDITY_1,_SerializedCode,_CallData, _S) ->
+assert_contract_byte_code(?ABI_SOLIDITY_1, _SerializedCode, _CallData, _S) ->
     ok.
 
 assert_contract_init_function(CallData, TypeInfo) ->
