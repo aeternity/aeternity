@@ -98,7 +98,7 @@ mock_user_config(UserMap, UserConfig) ->
     F = fun
             (aeutils, '$user_config') -> {ok, UserConfig};
             (aeutils, '$user_map') -> UserMap;
-            (_A, _K) -> meck:passthrough()
+            (A, K) -> meck:passthrough([A, K])
         end,
     ok = meck:expect(setup, get_env, F),
     ok = meck:expect(setup, get_env, fun(A, K, _Default) -> F(A, K) end),

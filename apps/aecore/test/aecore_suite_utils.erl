@@ -386,7 +386,7 @@ sign_on_node(Id, Tx) ->
     sign_on_node(node_tuple(Id), Tx).
 
 forks() ->
-    Vs = aec_governance:sorted_protocol_versions(),
+    Vs = aec_hard_forks:sorted_protocol_versions(),
     Hs = lists:seq(0, (length(Vs) - 1)),
     maps:from_list(lists:zip(Vs, Hs)).
 
@@ -739,6 +739,7 @@ write_config(F, Config) ->
 default_config(N, Config) ->
     {A,B,C} = os:timestamp(),
     {N, {_PrivKey, PubKey}} = lists:keyfind(N, 1, sign_keys()),
+    {ok, NetworkId} = application:get_env(aecore, network_id),
     #{<<"keys">> =>
           #{<<"dir">> => iolist_to_binary(keys_dir(N, Config)),
             <<"peer_password">> => iolist_to_binary(io_lib:format("~w.~w.~w", [A,B,C]))},
@@ -749,7 +750,9 @@ default_config(N, Config) ->
             <<"beneficiary">> => aehttp_api_encoder:encode(account_pubkey, PubKey),
             <<"beneficiary_reward_delay">> => 2},
       <<"chain">> =>
-          #{<<"persist">> => true}
+          #{<<"persist">> => true},
+      <<"fork_management">> =>
+          #{<<"network_id">> => NetworkId}
      }.
 
 epoch_config_dir(N, Config) ->

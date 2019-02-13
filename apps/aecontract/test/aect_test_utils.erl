@@ -27,12 +27,17 @@
         , trees/1
         , compile_contract/1
         , compile_contract/2
+        , compile_filename/1
+        , compile_filename/2
         , assert_state_equal/2
         , get_oracle_queries/2
         , dummy_bytecode/0
+        , latest_sophia_abi_version/0
+        , latest_sophia_vm_version/0
         ]).
 
 -include_lib("apps/aecontract/src/aecontract.hrl").
+-include_lib("aecore/include/hard_forks.hrl").
 
 -define(SOPHIA_ROMA, 1).
 -define(SOPHIA_MINERVA, 2).
@@ -84,6 +89,24 @@ assert_state_equal(Exp, Act) ->
 %%% Info API
 %%%===================================================================
 
+latest_sophia_vm_version() ->
+    case lists:last(aec_hard_forks:sorted_protocol_versions()) of
+        ?ROMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_1;
+        ?MINERVA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_2
+    end.
+
+latest_sophia_abi_version() ->
+    case lists:last(aec_hard_forks:sorted_protocol_versions()) of
+        ?ROMA_PROTOCOL_VSN    -> ?ABI_SOPHIA_1;
+        ?MINERVA_PROTOCOL_VSN -> ?ABI_SOPHIA_1
+    end.
+
+latest_sophia_version() ->
+    case lists:last(aec_hard_forks:sorted_protocol_versions()) of
+        ?ROMA_PROTOCOL_VSN    -> ?SOPHIA_ROMA;
+        ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_MINERVA
+    end.
+
 calls(State) ->
     aec_trees:calls(trees(State)).
 
@@ -125,8 +148,8 @@ create_tx_default_spec(PubKey, State) ->
      , owner_id    => aec_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , code        => dummy_bytecode()
-     , vm_version  => ?CURRENT_VM_SOPHIA
-     , abi_version => ?CURRENT_ABI_SOPHIA
+     , vm_version  => latest_sophia_vm_version()
+     , abi_version => latest_sophia_abi_version()
      , deposit     => 10
      , amount      => 200
      , gas         => 10
@@ -159,7 +182,7 @@ call_tx_default_spec(PubKey, ContractKey, State) ->
      , contract_id => aec_id:create(contract, ContractKey)
      , caller_id   => aec_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , abi_version => ?CURRENT_ABI_SOPHIA
+     , abi_version => latest_sophia_abi_version()
      , amount      => 100
      , gas         => 10000
      , gas_price   => 1
@@ -200,15 +223,21 @@ set_account(Account, State) ->
     AccTree = aec_accounts_trees:enter(Account, aec_trees:accounts(Trees)),
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
+compile_filename(FileName) ->
+    compile(latest_sophia_version(), FileName).
+
+compile_filename(Compiler, FileName) ->
+    compile(Compiler, FileName).
+
 compile_contract(File) ->
-    compile_contract(?CURRENT_SOPHIA, File).
+    compile_contract(latest_sophia_version(), File).
 
 compile_contract(Compiler, File) ->
     CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
-    FileName = filename:join(CodeDir, File),
-    compile(Compiler, FileName).
+    FileName = filename:join(CodeDir, filename:rootname(File, ".aes") ++ ".aes"),
+    compile_filename(Compiler, FileName).
 
-compile(?CURRENT_SOPHIA, File) ->
+compile(?SOPHIA_MINERVA, File) ->
     {ok, ContractBin} = file:read_file(File),
     aect_sophia:compile(ContractBin, <<>>);
 compile(?SOPHIA_ROMA, File) ->

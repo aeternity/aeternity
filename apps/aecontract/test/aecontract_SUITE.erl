@@ -128,12 +128,9 @@
 -define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING(X), {variant, 0, [X]}).
 -define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(X), {variant, 1, [X]}).
 
--define(TEST_ABI_VERSION, ?CURRENT_ABI_SOPHIA).
--define(TEST_VM_VERSION,  ?CURRENT_VM_SOPHIA).
-
 -define(AESOPHIA_1, 1).
 -define(AESOPHIA_2, 2).
--define(CURRENT_AESOPHIA, ?AESOPHIA_2).
+-define(LATEST_AESOPHIA, ?AESOPHIA_2).
 
 %%%===================================================================
 %%% Common test framework
@@ -896,13 +893,13 @@ state_tree(_Cfg) ->
 %%%===================================================================
 vm_version() ->
     case get('$vm_version') of
-        undefined -> ?CURRENT_VM_SOPHIA;
+        undefined -> aect_test_utils:latest_sophia_vm_version();
         X         -> X
     end.
 
 sophia_version() ->
     case get('$sophia_version') of
-        undefined -> ?CURRENT_AESOPHIA;
+        undefined -> ?LATEST_AESOPHIA;
         X         -> X
     end.
 
@@ -911,7 +908,7 @@ create_tx(Owner, State) ->
 
 create_tx(Owner, Spec0, State) ->
     Spec = maps:merge(
-        #{ abi_version => ?TEST_ABI_VERSION
+        #{ abi_version => aect_test_utils:latest_sophia_abi_version()
          , vm_version  => vm_version()
          , fee         => 1000000
          , deposit     => 10
@@ -969,7 +966,7 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
     CallTx   = aect_test_utils:call_tx(Caller, ContractKey,
                 maps:merge(
                 #{ nonce       => Nonce
-                 , abi_version => ?TEST_ABI_VERSION
+                 , abi_version => aect_test_utils:latest_sophia_abi_version()
                  , call_data   => Calldata
                  , fee         => 1000000
                  , amount      => 0

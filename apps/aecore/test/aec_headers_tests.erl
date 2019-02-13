@@ -38,7 +38,7 @@ hash_test() ->
 validate_test_() ->
     {foreach,
      fun() ->
-             meck:new(aec_governance, [passthrough]),
+             meck:new(aec_hard_forks, [passthrough]),
              meck:new(aec_pow_cuckoo, [passthrough]),
              meck:new(aec_chain, [passthrough]),
              meck:expect(aec_chain, get_header, 1, error),
@@ -48,7 +48,7 @@ validate_test_() ->
              meck:unload(aec_pow_cuckoo),
              meck:unload(aeu_time),
              meck:unload(aec_chain),
-             meck:unload(aec_governance)
+             meck:unload(aec_hard_forks)
      end,
      [fun() ->
               Header = ?TEST_MODULE:set_version(raw_key_header(), 736),
@@ -56,12 +56,15 @@ validate_test_() ->
       end,
       fun() ->
               GV = ?GENESIS_VERSION,
-              meck:expect(aec_governance, sorted_protocol_versions, 0,
-                          [GV, 1+GV, 3+GV]),
-              meck:expect(aec_governance, protocols, 0,
-                          #{GV => ?GENESIS_HEIGHT,
+              Protocols = #{GV   =>       ?GENESIS_HEIGHT,
                             1+GV => 100 + ?GENESIS_HEIGHT,
-                            3+GV => 150 + ?GENESIS_HEIGHT}),
+                            3+GV => 150 + ?GENESIS_HEIGHT},
+              MockFun =
+                  fun(V, H) ->
+                          aec_hard_forks:check_protocol_version_validity(V, H, Protocols)
+                  end,
+              meck:expect(aec_hard_forks, check_protocol_version_validity,
+                          MockFun),
               %% Check for any off-by-one errors around first switch.
               ?assertEqual({error, {protocol_version_mismatch, GV}},
                            ?TEST_MODULE:validate_key_block_header(

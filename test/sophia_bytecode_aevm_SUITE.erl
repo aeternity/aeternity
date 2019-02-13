@@ -35,8 +35,10 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
 
     %% Create the call data
     {ok, CallData} = aect_sophia:encode_call_data(SerializedCode, <<"main : int => _">>, <<"42">>),
+    ABI = aect_test_utils:latest_sophia_abi_version(),
+    VM = aect_test_utils:latest_sophia_vm_version(),
     {ok, Store} = aevm_eeevm_store:from_sophia_state(
-                    #{vm => ?CURRENT_VM_SOPHIA, abi => ?CURRENT_ABI_SOPHIA},
+                    #{vm => VM, abi => ABI},
                     aeso_heap:to_binary({{tuple, []}, {}})),
     {ok, Res} =
         aevm_eeevm:eval(
@@ -59,8 +61,8 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
                         currentTimestamp => 0,
                         chainState => aevm_dummy_chain:new_state(),
                         chainAPI => aevm_dummy_chain,
-                        vm_version => ?CURRENT_VM_SOPHIA,
-                        abi_version => ?CURRENT_ABI_SOPHIA},
+                        vm_version => VM,
+                        abi_version => ABI},
                pre => #{}},
             #{trace => true})
          ),
