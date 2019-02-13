@@ -273,7 +273,12 @@ check_force_progress_(PayloadHash, PayloadRound,
                           {value, Contract} ->
                             ABIVersion = aesc_offchain_update:extract_abi_version(Update),
                             CTVersion = aect_contracts:ct_version(Contract),
-                            check_abi_version(CTVersion, ABIVersion, Height)
+                            Code = aect_contracts:code(Contract),
+                            case check_abi_version(CTVersion, ABIVersion, Height) of
+                                ok ->
+                                    check_code_serialization(Code, CTVersion, Height);
+                                Error -> Error
+                            end
                       end
                   end])
           end,
@@ -286,6 +291,17 @@ check_force_progress_(PayloadHash, PayloadRound,
     Res = aeu_validation:run(Checks),
     ?TEST_LOG("check_force_progress result: ~p", [Res]),
     Res.
+
+check_code_serialization(Code, #{abi := ABI}, Height) ->
+    case aect_sophia:deserialize(Code) of
+        Deserialized ->
+            case aect_contracts:is_legal_serialization_at_height(ABI, maps:get(contract_vsn, Deserialized, 1), Height) of
+                true ->
+                    ok;
+                false ->
+                    {error, illegal_contract_compiler_version}
+            end
+    end.
 
 check_abi_version(#{abi := ABI} = Version, ABI, Height) ->
     case aect_contracts:is_legal_version_at_height(call, Version, Height) of
