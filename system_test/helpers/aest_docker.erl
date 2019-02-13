@@ -180,7 +180,6 @@ setup_node(Spec, BackendState) ->
     NodeState = #{
         postfix => Postfix,
         log_fun => LogFun,
-        name => Name,
         hostname => Hostname,
         pubkey => PubKey,
         privkey => PrivKey,
