@@ -265,7 +265,7 @@ references:
     run:
       name: Build local docker image
       command: |
-        docker build -t ${DOCKERHUB_REPO:?}:local .
+        make docker
 
   system_test_logs: &system_test_logs system_test/logs
 
