@@ -26,6 +26,7 @@
         ]).
 
 -include_lib("apps/aecore/include/blocks.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
 
 %%%===================================================================
 %%% Test state
@@ -84,7 +85,7 @@ register_tx_default_spec(PubKey, State) ->
      , query_format    => <<"string()">>
      , response_format => <<"boolean() | integer()">>
      , ttl             => 0
-     , abi_version     => 0
+     , abi_version     => ?ABI_NO_VM
      }.
 
 %%%===================================================================

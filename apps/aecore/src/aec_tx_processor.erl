@@ -34,6 +34,7 @@
 
 
 -include_lib("aecore/include/aec_hash.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("apps/aecontract/src/aecontract.hrl").
 
 -record(state, { trees      :: aec_trees:trees()
@@ -41,6 +42,7 @@
                , cache      :: dict:dict()
                , env        :: dict:dict()
                , tx_env     :: aetx_env:env()
+               , protocol   :: aec_hard_forks:protocol_vsn()
                }).
 
 -define(IS_HASH(_X_), (is_binary(_X_) andalso byte_size(_X_) =:= ?HASH_BYTES)).
@@ -347,11 +349,13 @@ eval_one({Op, Args}, S) ->
     end.
 
 new_state(Trees, Height, TxEnv) ->
+    ProtocolVersion = aec_hard_forks:protocol_effective_at_height(Height),
     #state{ trees = Trees
           , cache = dict:new()
           , env   = dict:new()
           , height = Height
           , tx_env = TxEnv
+          , protocol = ProtocolVersion
           }.
 
 %%%===================================================================
@@ -439,8 +443,8 @@ oracle_register_op(Pubkey, QFormat, RFormat, QFee,
 oracle_register({Pubkey, QFormat, RFormat, QFee, DeltaTTL, ABIVersion}, S) ->
     assert_not_oracle(Pubkey, S),
     assert_oracle_abi_version(ABIVersion, S),
-    %% TODO: MINERVA We should check the format matches the vm version,
-    %% but this is a hard fork
+    assert_oracle_formats(QFormat, RFormat, ABIVersion, S),
+
     AbsoluteTTL = DeltaTTL + S#state.height,
     try aeo_oracles:new(Pubkey, QFormat, RFormat, QFee, AbsoluteTTL, ABIVersion) of
         Oracle -> cache_put(oracle, Oracle, S)
@@ -1029,6 +1033,32 @@ assert_oracle_abi_version(ABIVersion, S) ->
     case aect_contracts:is_legal_version_at_height(oracle_register, CTVersion, Height) of
         true  -> ok;
         false -> runtime_error(bad_abi_version)
+    end.
+
+assert_oracle_formats(_QFormat,_RFormat, ?ABI_NO_VM,_S) ->
+    %% The format strings can be anything
+    ok;
+assert_oracle_formats(QFormat, RFormat, ?ABI_SOPHIA_1, S) ->
+    case S#state.protocol >= ?MINERVA_PROTOCOL_VSN of
+        false ->
+            %% Backwards compatible: no check of this.
+            ok;
+        true ->
+            assert_typerep_format(QFormat, bad_query_format),
+            assert_typerep_format(RFormat, bad_response_format)
+    end.
+
+assert_typerep_format(Format, Error) ->
+    try aeso_heap:from_binary(typerep, Format) of
+        {ok, TypeRep} ->
+            case aeso_heap:to_binary(TypeRep) of
+                Format -> ok;
+                _      -> runtime_error(Error)
+            end;
+        {error, _}->
+            runtime_error(Error)
+    catch _:_ ->
+            runtime_error(Error)
     end.
 
 assert_query_fee(Oracle, QueryFee) ->

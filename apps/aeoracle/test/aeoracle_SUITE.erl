@@ -8,6 +8,8 @@
 %% common_test exports
 -export([ all/0
         , groups/0
+        , init_per_testcase/2
+        , end_per_testcase/2
         ]).
 
 %% test case exports
@@ -41,6 +43,7 @@
 -include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("apps/aeoracle/include/oracle_txs.hrl").
 -include_lib("apps/aecontract/src/aecontract.hrl").
+-include_lib("apps/aecontract/include/hard_forks.hrl").
 
 -define(GENESIS_HEIGHT, aec_block_genesis:height()).
 
@@ -82,6 +85,18 @@ groups() ->
                    ]}
     ].
 
+init_per_testcase(register_oracle_negative, Config) ->
+    meck:new(aec_hard_forks, [passthrough]),
+    Config;
+init_per_testcase(_, Config) ->
+    Config.
+
+end_per_testcase(register_oracle_negative,_Config) ->
+    meck:unload(aec_hard_forks),
+    ok;
+end_per_testcase(_,_Config) ->
+    ok.
+
 %%%===================================================================
 %%% Register oracle
 %%%===================================================================
@@ -122,6 +137,21 @@ register_oracle_negative(_Cfg) ->
     {error, bad_abi_version} = aetx:process(RTx6, Trees, aetx_env:set_height(Env, 2)),
     {error, bad_abi_version} = aetx:process(RTx7, Trees, aetx_env:set_height(Env, 2)),
 
+    %% Test bad format strings
+    ABISophia = #{abi_version => ?ABI_SOPHIA_1,
+                  query_format => aeso_heap:to_binary(word),
+                  response_format => aeso_heap:to_binary(word)
+                 },
+    RTx8 = aeo_test_utils:register_tx(PubKey, ABISophia#{query_format => <<"foo">>}, S1),
+    RTx9 = aeo_test_utils:register_tx(PubKey, ABISophia#{response_format => <<"foo">>}, S1),
+    RTx10 = aeo_test_utils:register_tx(PubKey, ABISophia, S1),
+    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?ROMA_PROTOCOL_VSN end),
+    ?assertMatch({ok, _}, aetx:process(RTx8, Trees, Env)),
+    ?assertMatch({ok, _}, aetx:process(RTx9, Trees, Env)),
+    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?MINERVA_PROTOCOL_VSN end),
+    ?assertEqual({error, bad_query_format}, aetx:process(RTx8, Trees, Env)),
+    ?assertEqual({error, bad_response_format}, aetx:process(RTx9, Trees, Env)),
+    ?assertMatch({ok, _}, aetx:process(RTx10, Trees, Env)),
     ok.
 
 register_oracle_negative_dynamic_fee(_Cfg) ->

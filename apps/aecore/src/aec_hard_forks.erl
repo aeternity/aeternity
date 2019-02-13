@@ -23,9 +23,12 @@
 %% Maps consensus protocol version to minimum height at which such
 %% version is effective.  The height must be strictly increasing with
 %% the version.
--type protocols() :: #{Version::non_neg_integer() => aec_blocks:height()}.
+-type protocol_vsn() :: ?MINERVA_PROTOCOL_VSN
+                      | ?ROMA_PROTOCOL_VSN.
+-type protocols() :: #{protocol_vsn() => aec_blocks:height()}.
 
--export_type([protocols/0
+-export_type([ protocols/0
+             , protocol_vsn/0
              ]).
 %%%===================================================================
 %%% API
