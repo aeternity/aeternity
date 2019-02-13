@@ -1139,7 +1139,7 @@ assert_contract_byte_code(?ABI_SOPHIA_1, SerializedCode, CallData, S) ->
                 true ->
                     assert_contract_init_function(CallData, TypeInfo);
                 false ->
-                    runtime_error(contract_compiler_version)
+                    runtime_error(illegal_contract_compiler_version)
             end
     catch _:_ -> runtime_error(bad_sophia_code)
     end;

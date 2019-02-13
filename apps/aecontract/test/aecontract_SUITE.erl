@@ -476,7 +476,7 @@ create_version_too_high(Cfg) ->
     %% Test that the create transaction is accepted/rejected accordingly
     case proplists:get_value(protocol, Cfg) of
         roma ->
-            {error, contract_compiler_version, _} = Res;
+            {error, illegal_contract_compiler_version, _} = Res;
         _ ->
             {ok, _} = Res
     end.
