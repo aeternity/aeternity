@@ -36,8 +36,8 @@
         , latest_sophia_vm_version/0
         ]).
 
--include_lib("apps/aecontract/src/aecontract.hrl").
--include_lib("aecore/include/hard_forks.hrl").
+-include_lib("aecontract/src/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(SOPHIA_ROMA, 1).
 -define(SOPHIA_MINERVA, 2).

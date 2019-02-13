@@ -9,7 +9,7 @@
 -ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("aecore/include/hard_forks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -include("blocks.hrl").
 

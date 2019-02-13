@@ -5,10 +5,10 @@
 %%%-------------------------------------------------------------------
 -module(aec_vm_chain_tests).
 
--include("hard_forks.hrl").
 -include("blocks.hrl").
 -include_lib("eunit/include/eunit.hrl").
--include_lib("apps/aecontract/src/aecontract.hrl").
+-include_lib("aecontract/src/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 backwards_compatibility_test_() ->
     [{"Oracle fee on unknown oracle", fun test_unknown_oracle_fee/0}

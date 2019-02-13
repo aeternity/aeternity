@@ -13,7 +13,7 @@
         , init_per_testcase/2
         ]).
 
--include_lib("aecore/include/hard_forks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %% test case exports
 -export([ call_contract/1

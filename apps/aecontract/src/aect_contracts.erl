@@ -47,7 +47,7 @@
 -export([pack_vm_abi/1, split_vm_abi/1]).
 
 -include("aecontract.hrl").
--include_lib("aecore/include/hard_forks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -ifdef(TEST).
 -export([internal_set_state/2]).

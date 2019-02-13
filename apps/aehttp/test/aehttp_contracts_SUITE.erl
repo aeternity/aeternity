@@ -8,8 +8,8 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
--include_lib("apps/aecontract/src/aecontract.hrl").
--include_lib("apps/aecore/include/hard_forks.hrl").
+-include_lib("aecontract/src/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %% common_test exports
 -export([
