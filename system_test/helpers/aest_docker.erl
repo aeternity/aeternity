@@ -85,6 +85,9 @@
     exposed_ports := #{service_label() => pos_integer()},
     local_ports := #{service_label() => pos_integer()},
     sockets := [gen_tcp:socket()], % Reserved socket to prevent port clash
+    container_id := term(),
+    config_path := term(),      % Host path of user config
+    config := term(),           % Content of user config
     % Tuple of host/guest paths where the node logs are
     log_path := {binary(), binary()}
 }.
@@ -192,7 +195,7 @@ setup_node(Spec, BackendState) ->
     [Network  | OtherNetworks] = setup_networks(NetworkSpecs, NodeState),
 
     ConfigFileName = format("aeternity_~s.yaml", [Name]),
-    ConfigFilePath = filename:join([TempDir, "config", ConfigFileName]),
+    ConfigFileHostPath = filename:join([TempDir, "config", ConfigFileName]),
     TemplateFile = filename:join(DataDir, ?CONFIG_FILE_TEMPLATE),
     PeerVars = lists:map(fun (Addr) -> #{peer => Addr} end, Peers),
     CuckooMinerVars =
@@ -231,7 +234,7 @@ setup_node(Spec, BackendState) ->
         mining => maps:merge(#{autostart => true}, maps:get(mining, Spec, #{}))
     },
     Context = #{aeternity_config => RootVars},
-    {ok, ConfigString} = write_template(TemplateFile, ConfigFilePath, Context),
+    {ok, ConfigString} = write_template(TemplateFile, ConfigFileHostPath, Context),
     Command =
         case MineRate of
             default -> [];
@@ -259,6 +262,7 @@ setup_node(Spec, BackendState) ->
                 log(NodeState, "Genesis file ~p", [AccountsFile]),
                 AccountsFile
         end,
+    ConfigFileGuestPath = ?AETERNITY_CONFIG_FILE,
     DbPath =
         case maps:find(db_path, Spec) of
             error -> undefined;
@@ -272,12 +276,12 @@ setup_node(Spec, BackendState) ->
         image => Image,
         ulimits => AllUlimits,
         command => Command,
-        env => #{"AETERNITY_CONFIG" => ?AETERNITY_CONFIG_FILE,
+        env => #{"AETERNITY_CONFIG" => ConfigFileGuestPath,
                  "ERL_CRASH_DUMP" => format("~s/erl_crash.dump", [?EPOCH_LOG_FOLDER])},
         labels => #{epoch_system_test => <<"true">>},
         volumes => [
             {rw, KeysDir, ?EPOCH_KEYS_FOLDER},
-            {ro, ConfigFilePath, ?AETERNITY_CONFIG_FILE},
+            {ro, ConfigFileHostPath, ConfigFileGuestPath},
             {rw, LogPath, ?EPOCH_LOG_FOLDER}] ++
             [ {ro, Genesis, ?EPOCH_GENESIS_FILE} || Genesis =/= undefined ] ++
             [ {rw, element(1, DbPath), element(2, DbPath)} || DbPath =/= undefined ],
@@ -295,7 +299,7 @@ setup_node(Spec, BackendState) ->
     [YamlConfig] = yamerl:decode(ConfigString),
     NodeState#{
         container_id => ContId,
-        config_path => ConfigFilePath,
+        config_path => ConfigFileHostPath,
         config => YamlConfig,
         log_path => {LogPath, list_to_binary(?EPOCH_LOG_FOLDER)}
     }.
