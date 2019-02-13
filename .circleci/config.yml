@@ -263,9 +263,15 @@ references:
 
   install_system_test_deps: &install_system_test_deps
     run:
-      name: Build local docker image
+      name: Install deps for system tests
       command: |
-        make docker
+        make system-test-deps
+
+  install_system_smoke_test_deps: &install_system_smoke_test_deps
+    run:
+      name: Install deps for system smoke tests
+      command: |
+        make system-smoke-test-deps
 
   system_test_logs: &system_test_logs system_test/logs
 
@@ -611,7 +617,7 @@ jobs:
       - *restore_machine_build_cache
       # keep user preparation step after cache restore because of perms
       - *prepare_ubuntu_user
-      - *install_system_test_deps
+      - *install_system_smoke_test_deps
       - run:
           name: System Smoke Tests
           no_output_timeout: 1h

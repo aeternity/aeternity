@@ -70,6 +70,7 @@
                                 args := binary(),
                                 bits := pos_integer()},
     hard_forks => #{non_neg_integer() => non_neg_integer()}, % Consensus protocols (version -> height)
+    config_guest_path => nonempty_string(),
     config => #{atom() => term()},
     % Tuple of host/guest paths where the node DB is meant to be if persisted
     db_path => {binary(), binary()} | undefined
@@ -262,7 +263,7 @@ setup_node(Spec, BackendState) ->
                 log(NodeState, "Genesis file ~p", [AccountsFile]),
                 AccountsFile
         end,
-    ConfigFileGuestPath = ?AETERNITY_CONFIG_FILE,
+    ConfigFileGuestPath = maps:get(config_guest_path, Spec, ?AETERNITY_CONFIG_FILE),
     DbPath =
         case maps:find(db_path, Spec) of
             error -> undefined;

@@ -36,6 +36,7 @@
 -export([request/4]).
 -export([get_node_config/2]).
 -export([get/5]).
+-export([get_status/1]).
 -export([get_block/2]).
 -export([get_top/1]).
 -export([get_mempool/1]).
@@ -356,6 +357,12 @@ get(NodeName, Service, Path, Query, Ctx) ->
         {ok, 200, Response} -> Response;
         {ok, Status, _Response} -> error({unexpected_status, Status});
         {error, Reason} -> error({http_error, Reason})
+    end.
+
+get_status(NodeName) ->
+    case request(NodeName, 'GetStatus', #{}) of
+        {ok, 200, Status} -> Status;
+        Other -> erlang:error({NodeName, Other})
     end.
 
 get_block(NodeName, Height) ->
