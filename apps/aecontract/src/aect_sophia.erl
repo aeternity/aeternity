@@ -9,22 +9,34 @@
 
 -include("aecontract.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -export([ compile/2
         , decode_data/2
         , encode_call_data/3
         , serialize/1
+        , serialize/2
         , deserialize/1
+        , is_legal_serialization_at_height/2
         ]).
 
 -type wrapped_code() :: #{ source_hash := aec_hash:hash()
                          , type_info   := [{binary(), binary(), binary(), binary()}]
                          , byte_code   := binary()
+                         , compiler_version := binary()
+                         , contract_vsn := integer()
                          }.
 
 -export_type([ wrapped_code/0 ]).
 
--define(SOPHIA_CONTRACT_VSN, 1).
+-define(SOPHIA_CONTRACT_VSN_1, 1).
+-define(SOPHIA_CONTRACT_VSN_2, 2).
+
+%% After hard fork Minerva, we accept ?SOPHIA_CONTRACT_VSN_2 in serialization
+%% Therefore, switch the present version to ?SOPHIA_CONTRACT_VSN_2 when release
+%% after hard fork.
+-define(SOPHIA_CONTRACT_VSN, ?SOPHIA_CONTRACT_VSN_1).
+
 
 -spec compile(binary(), binary()) -> {ok, binary()} | {error, binary()}.
 compile(ContractAsBinString, OptionsAsBinString) ->
@@ -61,23 +73,35 @@ parse_options(<<_:8, Rest/binary>>, Acc) ->
     parse_options(Rest, Acc);
 parse_options(<<>>, Acc) -> Acc.
 
+is_legal_serialization_at_height(?SOPHIA_CONTRACT_VSN_1, Height) ->
+    true;
+is_legal_serialization_at_height(?SOPHIA_CONTRACT_VSN_2, Height) ->
+    aec_hard_forks:protocol_effective_at_height(Height) >= ?MINERVA_PROTOCOL_VSN.
+
+serialize(Map) ->
+    serialize(Map, ?SOPHIA_CONTRACT_VSN).
+
 serialize(#{byte_code := ByteCode, type_info := TypeInfo,
-            contract_source := ContractString, compiler_version := _Version}) ->
+            contract_source := ContractString, compiler_version := Version}, SophiaContractVersion) ->
     ContractBin = list_to_binary(ContractString),
+    BinVersion = if is_integer(Version) -> integer_to_binary(Version);
+                    is_binary(Version) -> Version
+                 end,
     Fields = [ {source_hash, aec_hash:hash(sophia_source_code, ContractBin)}
              , {type_info, TypeInfo}
-             , {byte_code, ByteCode}
-             ],
+             , {byte_code, ByteCode} ] ++ 
+             [ {compiler_version, BinVersion} || SophiaContractVersion > ?SOPHIA_CONTRACT_VSN_1 ],
+             %% Add version here in release when Minerva height has been reached
     aec_object_serialization:serialize(compiler_sophia,
-                                       ?SOPHIA_CONTRACT_VSN,
-                                       serialization_template(?SOPHIA_CONTRACT_VSN),
+                                       SophiaContractVersion,
+                                       serialization_template(SophiaContractVersion),
                                        Fields
                                       ).
 
 -spec deserialize(binary()) -> wrapped_code().
 deserialize(Binary) ->
     case aec_object_serialization:deserialize_type_and_vsn(Binary) of
-        {compiler_sophia = Type, Vsn, _Rest} ->
+        {compiler_sophia = Type, ?SOPHIA_CONTRACT_VSN_1 = Vsn, _Rest} ->
             Template = serialization_template(Vsn),
             [ {source_hash, Hash}
             , {type_info, TypeInfo}
@@ -86,15 +110,32 @@ deserialize(Binary) ->
             #{ source_hash => Hash
              , type_info => TypeInfo
              , byte_code => ByteCode
+             , contract_vsn => Vsn
+             };
+        {compiler_sophia = Type, ?SOPHIA_CONTRACT_VSN_2 = Vsn, _Rest} ->
+            Template = serialization_template(Vsn),
+            [ {source_hash, Hash}
+            , {type_info, TypeInfo}
+            , {byte_code, ByteCode}
+            , {compiler_version, CompilerVersion}
+            ] = aec_object_serialization:deserialize(Type, Vsn, Template, Binary),
+            #{ source_hash => Hash
+             , type_info => TypeInfo
+             , byte_code => ByteCode
+             , compiler_version => CompilerVersion
+             , contract_vsn => Vsn
              };
         Other ->
             error({illegal_code_object, Other})
     end.
 
-serialization_template(?SOPHIA_CONTRACT_VSN) ->
+serialization_template(?SOPHIA_CONTRACT_VSN_1) ->
     [ {source_hash, binary}
     , {type_info, [{binary, binary, binary, binary}]} %% {type hash, name, arg type, out type}
-    , {byte_code, binary}].
+    , {byte_code, binary}];
+serialization_template(?SOPHIA_CONTRACT_VSN_2) ->
+    serialization_template(?SOPHIA_CONTRACT_VSN_1) ++
+        [ {compiler_version, binary}].
 
 -spec encode_call_data(binary(), binary(), binary()) ->
                               {ok, binary()} | {error, binary()}.

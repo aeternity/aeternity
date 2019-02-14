@@ -861,7 +861,7 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
     {Account, S1}  = get_account(OwnerPubkey, S),
     assert_account_balance(Account, TotalAmount),
     assert_contract_create_version(ABIVersion, VMVersion, S),
-    assert_contract_byte_code(ABIVersion, SerializedCode, CallData),
+    assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S),
     %% Charge the fee, the gas (the unused portion will be refunded)
     %% and the deposit (stored in the contract) to the contract owner (caller),
     %% and transfer the funds (amount) to the contract account.
@@ -1159,13 +1159,19 @@ assert_name_claimed(Name) ->
         revoked -> runtime_error(name_revoked)
     end.
 
-assert_contract_byte_code(?ABI_SOPHIA_1, SerializedCode, CallData) ->
+assert_contract_byte_code(?ABI_SOPHIA_1, SerializedCode, CallData, S) ->
     try aect_sophia:deserialize(SerializedCode) of
-        #{type_info := TypeInfo} ->
-            assert_contract_init_function(CallData, TypeInfo)
+        #{type_info := TypeInfo, 
+          contract_vsn := Vsn} ->
+            case aect_sophia:is_legal_serialization_at_height(Vsn, S#state.height) of
+                true ->
+                    assert_contract_init_function(CallData, TypeInfo);
+                false ->
+                    runtime_error(illegal_contract_compiler_version)
+            end
     catch _:_ -> runtime_error(bad_sophia_code)
     end;
-assert_contract_byte_code(?ABI_SOLIDITY_1,_SerializedCode,_CallData) ->
+assert_contract_byte_code(?ABI_SOLIDITY_1, _SerializedCode, _CallData, _S) ->
     ok.
 
 assert_contract_init_function(CallData, TypeInfo) ->

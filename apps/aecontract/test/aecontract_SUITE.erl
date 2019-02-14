@@ -38,6 +38,7 @@
         , create_contract_upfront_gas/1
         , create_contract_upfront_amount/1
         , create_contract_upfront_deposit/1
+        , create_version_too_high/1
         , state_tree/1
         , sophia_identity/1
         , sophia_state/1
@@ -154,6 +155,7 @@ groups() ->
                          , create_contract_init_error_illegal_instructions_in_sophia
                          , create_contract_negative_gas_price_zero
                          , create_contract_negative
+                         , create_version_too_high
                          , {group, create_contract_upfront_charges}
                          , call_contract
                          , call_contract_error_value
@@ -276,11 +278,13 @@ groups() ->
 init_per_group(aevm_1, Cfg) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height,
                 fun(_) -> ?ROMA_PROTOCOL_VSN end),
-    [{sophia_version, ?AESOPHIA_1}, {vm_version, ?VM_AEVM_SOPHIA_1} | Cfg];
+    [{sophia_version, ?AESOPHIA_1}, {vm_version, ?VM_AEVM_SOPHIA_1}, 
+     {protocol, roma} | Cfg];
 init_per_group(aevm_2, Cfg) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height,
                 fun(_) -> ?MINERVA_PROTOCOL_VSN end),
-    [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_2} | Cfg];
+    [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_2},
+     {protocol, minerva} | Cfg];
 init_per_group(_Grp, Cfg) ->
     Cfg.
 
@@ -449,6 +453,33 @@ create_contract_init_error_illegal_instruction_(OP, ErrReason) when is_binary(Er
     ?assertEqual(ErrReason, ReturnValue),
     ?assertEqual(Gas, GasUsed),
     ok.
+
+create_version_too_high(Cfg) ->
+    S  = aect_test_utils:new_state(),
+    S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
+    {PubKey, S1} = aect_test_utils:setup_new_account(S0),
+    PrivKey      = aect_test_utils:priv_key(PubKey, S1),
+
+    {ok, IdContract} = compile_contract_vsn(identity, 2),
+    ct:log("Compiled Contract = ~p\n", [aect_sophia:deserialize(IdContract)]),
+
+    IdContractMap = aect_sophia:deserialize(IdContract),
+    
+    CallData     = make_calldata_from_code(IdContract, init, {}),
+    Overrides    = #{ code => IdContract
+                    , call_data => CallData
+                    , gas => 10000
+                    , gas_price => 1
+                    },
+    Tx           = create_tx(PubKey, Overrides, S1),
+    Res = sign_and_apply_transaction(Tx, PrivKey, S1),
+    %% Test that the create transaction is accepted/rejected accordingly
+    case proplists:get_value(protocol, Cfg) of
+        roma ->
+            {error, illegal_contract_compiler_version, _} = Res;
+        _ ->
+            {ok, _} = Res
+    end.
 
 hack_bytecode(Code, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
     #{ source_hash := Hash,
@@ -918,6 +949,13 @@ create_tx(Owner, Spec0, State) ->
 
 compile_contract(Name) ->
     aect_test_utils:compile_contract(sophia_version(), lists:concat(["contracts/", Name, ".aes"])).
+
+compile_contract_vsn(Name, Vsn) ->
+    meck:new(aect_sophia, [passthrough]),
+    meck:expect(aect_sophia, serialize, fun(Map) -> aect_sophia:serialize(Map, Vsn) end),
+    Res = compile_contract(Name),
+    meck:unload(aect_sophia),
+    Res.
 
 create_contract(Owner, Name, Args, S) ->
     create_contract(Owner, Name, Args, #{}, S).
