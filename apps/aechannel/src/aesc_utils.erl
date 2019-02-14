@@ -18,10 +18,10 @@
          check_slash_payload/8,
          check_solo_snapshot_payload/6,
          check_force_progress/5,
-         process_solo_close/8,
-         process_slash/8,
+         process_solo_close/9,
+         process_slash/9,
          process_force_progress/6,
-         process_solo_snapshot/6
+         process_solo_snapshot/7
         ]).
 
 -ifdef(TEST).
@@ -463,24 +463,28 @@ check_root_hash_in_channel(Channel, PoI) ->
 %%%===================================================================
 
 process_solo_close(ChannelPubKey, FromPubKey, Nonce, Fee,
-                   Payload, PoI, Height, Trees) ->
-    process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
-                             Payload, PoI, Height, Trees).
+                   Payload, PoI, Height, Trees, Env) ->
+    add_event(
+      process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
+                               Payload, PoI, Height, Trees),
+      ChannelPubKey, Env).
 
 
 process_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
-              Payload, PoI, Height, Trees) ->
-    process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
-                             Payload, PoI, Height, Trees).
+              Payload, PoI, Height, Trees, Env) ->
+    add_event(
+      process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
+                               Payload, PoI, Height, Trees),
+      ChannelPubKey, Env).
 
-process_solo_snapshot(ChannelPubKey, FromPubKey, Nonce, Fee, Payload, Trees) ->
+process_solo_snapshot(ChannelPubKey, FromPubKey, Nonce, Fee, Payload, Trees, Env) ->
     ChannelsTree0      = aec_trees:channels(Trees),
     Channel0 = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
     {ok, _SignedTx, PayloadTx} = deserialize_payload(Payload),
     Channel = aesc_channels:snapshot_solo(Channel0, PayloadTx),
     Trees1 = set_channel(Channel, Trees),
     Trees2 = spend(FromPubKey, Fee, Nonce, Trees1),
-    {ok, Trees2}.
+    add_event({ok, Trees2}, ChannelPubKey, Env).
 
 process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
                          Payload, PoI, Height, Trees) ->
@@ -582,7 +586,7 @@ process_force_progress(Tx, OffChainTrees, TxHash, Height, Trees, Env) ->
                 ?TEST_LOG("Expected and computed values DO NOT MATCH. Channel object is NOT being updated", []),
                 Trees2
         end,
-    {ok, Trees3}.
+    add_event({ok, Trees3}, ChannelPubKey, Env).
 
 
 get_vals(List) ->
@@ -652,3 +656,18 @@ add_call(Call0, TxHash, Trees) ->
     Call = aect_call:set_contract(ContractPubkey, Call0),
     aect_utils:insert_call_in_trees(Call, Trees).
 
+-spec add_event({ok, aec_trees:trees()}, binary(), aetx_env:env()) ->
+                       {ok, aec_trees:trees(), aetx_env:env()}.
+add_event({ok, Trees}, ChannelPubKey, Env) ->
+    case aetx_env:signed_tx(Env) of
+        {value, SignedTx} ->
+            Events = aetx_env:events(Env),
+            TxHash = aetx_sign:hash(SignedTx),
+            {Type, _} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+            Env1 = aetx_env:set_events(
+                     Env, Events#{{channel, ChannelPubKey} => #{ type => Type
+                                                               , tx_hash => TxHash }}),
+            {ok, Trees, Env1};
+        none ->
+            {ok, Trees, Env}
+    end.

@@ -105,7 +105,8 @@ check(#channel_close_mutual_tx{}, Trees,_Env) ->
     %% Checks in process/3
     {ok, Trees}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) ->
+                     {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_close_mutual_tx{from_id = FromId} = Tx, Trees, Env) ->
     FromPubkey = aec_id:specialize(FromId, account),
     Instructions =

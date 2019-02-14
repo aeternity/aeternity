@@ -100,6 +100,8 @@
 -include_lib("aeminer/include/aeminer.hrl").
 -include("blocks.hrl").
 
+-type events() :: aetx_env:events().
+
 -define(internal_error(____E____), {aec_chain_state_error, ____E____}).
 
 %%%===================================================================
@@ -116,14 +118,18 @@ get_n_key_headers_backward_from(Header, N) ->
     Node = wrap_header(Header),
     get_n_key_headers_from(Node, N).
 
--spec insert_block(aec_blocks:block()) -> 'ok' | {'pof', aec_pof:pof()} | {'error', any()}.
+-spec insert_block(aec_blocks:block()) -> {'ok', events()}
+                                        | {'pof', aec_pof:pof(), events()}
+                                        | {'error', any()}.
 insert_block(Block) ->
     do_insert_block(Block, undefined).
 
 %% We should not check the height distance to top for synced block, so
 %% we have to keep track of the origin here.
 -spec insert_block(aec_blocks:block(), atom()) ->
-        'ok' | {'pof', aec_pof:pof()} | {'error', any()}.
+        {'ok', events()}
+      | {'pof', aec_pof:pof(), events()}
+      | {'error', any()}.
 insert_block(Block, block_synced) ->
     do_insert_block(Block, sync);
 insert_block(Block, _Origin) ->
@@ -181,8 +187,8 @@ calculate_state_for_new_keyblock(PrevHash, Miner, Beneficiary) ->
             case get_state_trees_in(Node, State) of
                 error -> error;
                 {ok, TreesIn, ForkInfoIn} ->
-                    {Trees,_Fees} = apply_node_transactions(Node, TreesIn,
-                                                            ForkInfoIn, State),
+                    {Trees,_Fees,_Events} = apply_node_transactions(Node, TreesIn,
+                                                                   ForkInfoIn, State),
                     {ok, Trees}
             end
     end.
@@ -416,11 +422,11 @@ internal_insert_transaction(Node, Block, Origin) ->
             end
     end,
     ok = db_put_node(Block, hash(Node)),
-    State3 = update_state_tree(Node, State2),
+    {State3, Events} = update_state_tree(Node, State2),
     persist_state(State3),
     case maps:get(found_pof, State3) of
-        no_fraud  -> ok;
-        PoF       -> {pof, PoF}
+        no_fraud  -> {ok, Events};
+        PoF       -> {pof, PoF, Events}
     end.
 
 assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
@@ -647,9 +653,9 @@ update_state_tree(Node, State) ->
     {ok, Trees, ForkInfoIn} = get_state_trees_in(Node, State),
     {ForkInfo, MicSibHeaders} = maybe_set_new_fork_id(Node, ForkInfoIn, State),
     State1 = update_found_pof(Node, MicSibHeaders, State),
-    {State2, NewTopDifficulty} = update_state_tree(Node, Trees, ForkInfo, State1),
+    {State2, NewTopDifficulty, Events} = update_state_tree(Node, Trees, ForkInfo, State1),
     OldTopHash = get_top_block_hash(State),
-    handle_top_block_change(OldTopHash, NewTopDifficulty, State2).
+    handle_top_block_change(OldTopHash, NewTopDifficulty, Events, State2).
 
 update_state_tree(Node, TreesIn, ForkInfo, State) ->
     case db_find_state(hash(Node)) of
@@ -658,10 +664,10 @@ update_state_tree(Node, TreesIn, ForkInfo, State) ->
             %% so don't use internal_error
             error({found_already_calculated_state, hash(Node)});
         error ->
-            DifficultyOut = apply_and_store_state_trees(Node, TreesIn,
+            {DifficultyOut, Events} = apply_and_store_state_trees(Node, TreesIn,
                                                         ForkInfo, State),
             State1 = set_top_block_hash(hash(Node), State),
-            {State1, DifficultyOut}
+            {State1, DifficultyOut, Events}
     end.
 
 maybe_set_new_fork_id(Node, ForkInfoIn, State) ->
@@ -705,7 +711,7 @@ get_state_trees_in(Node, State) ->
     end.
 
 apply_and_store_state_trees(Node, TreesIn, ForkInfoIn, State) ->
-    {Trees, Fees} = apply_node_transactions(Node, TreesIn, ForkInfoIn, State),
+    {Trees, Fees, Events} = apply_node_transactions(Node, TreesIn, ForkInfoIn, State),
     assert_state_hash_valid(Trees, Node),
     DifficultyOut = ForkInfoIn#fork_info.difficulty + node_difficulty(Node),
     Fraud = update_fraud_info(ForkInfoIn, Node, State),
@@ -715,7 +721,7 @@ apply_and_store_state_trees(Node, TreesIn, ForkInfoIn, State) ->
                                          },
     ok = db_put_state(hash(Node), Trees, ForkInfoInNode),
     ok = db_put_found_pof(Node, maps:get(found_pof, State)),
-    DifficultyOut.
+    {DifficultyOut, Events}.
 
 update_fraud_info(ForkInfoIn, Node, State) ->
     case maps:get(pof, State) =:= no_fraud of
@@ -728,11 +734,12 @@ update_fraud_info(ForkInfoIn, Node, State) ->
             end
     end.
 
-handle_top_block_change(OldTopHash, NewTopDifficulty, State) ->
+handle_top_block_change(OldTopHash, NewTopDifficulty, Events, State) ->
     case get_top_block_hash(State) of
         OldTopHash -> State;
         NewTopHash when OldTopHash =:= undefined ->
-            update_main_chain(get_genesis_hash(State), NewTopHash, State);
+            State1 = update_main_chain(get_genesis_hash(State), NewTopHash, State),
+            {State1, Events};
         NewTopHash ->
             {ok, ForkHash} = find_fork_point(OldTopHash, NewTopHash),
             case ForkHash =:= OldTopHash of
@@ -740,14 +747,19 @@ handle_top_block_change(OldTopHash, NewTopDifficulty, State) ->
                     %% We are extending the current chain.
                     %% Difficulty might not have changed if it is an
                     %% extension of micro blocks.
-                    update_main_chain(OldTopHash, NewTopHash, ForkHash, State);
+                    State1 = update_main_chain(OldTopHash, NewTopHash, ForkHash, State),
+                    {State1, Events};
                 false ->
                     %% We have a fork. Compare the difficulties.
                     {ok, OldTopDifficulty} = db_find_difficulty(OldTopHash),
                     case OldTopDifficulty >= NewTopDifficulty of
-                        true -> set_top_block_hash(OldTopHash, State); %% Reset
-                        false -> update_main_chain(OldTopHash, NewTopHash,
-                                                   ForkHash, State)
+                        true ->
+                            State1 =set_top_block_hash(OldTopHash, State), %% Reset
+                            {State1, Events};
+                        false ->
+                            State1 = update_main_chain(OldTopHash, NewTopHash,
+                                                       ForkHash, State),
+                            {State1, Events}
                     end
             end
     end.
@@ -806,8 +818,8 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
             Trees1 = aec_trees:perform_pre_transformations(Trees, node_height(Node)),
             Delay  = aec_governance:beneficiary_reward_delay(),
             case node_height(Node) > aec_block_genesis:height() + Delay of
-                true  -> {grant_fees(Node, Trees1, Delay, FraudStatus, State), TotalFees};
-                false -> {Trees1, TotalFees}
+                true  -> {grant_fees(Node, Trees1, Delay, FraudStatus, State), TotalFees, #{}};
+                false -> {Trees1, TotalFees, #{}}
             end
     end.
 
@@ -905,7 +917,11 @@ apply_micro_block_transactions(Node, FeesIn, Trees) ->
     Env = aetx_env:tx_env_from_key_header(KeyHeader, prev_key_hash(Node),
                                           node_time(Node), prev_hash(Node)),
     case aec_block_micro_candidate:apply_block_txs_strict(Txs, Trees, Env) of
-        {ok, _, NewTrees} -> {NewTrees, TotalFees};
+        {ok, _, NewTrees, Events} ->
+            if map_size(Events) > 0 -> lager:debug("tx_events = ~p", [Events]);
+               true -> ok
+            end,
+            {NewTrees, TotalFees, Events};
         {error,_What} -> internal_error(invalid_transactions_in_block)
     end.
 

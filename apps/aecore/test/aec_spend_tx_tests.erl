@@ -123,7 +123,7 @@ process_test_() ->
                                                  payload => <<"foo">>}),
               <<"foo">> = aec_spend_tx:payload(aetx:tx(SpendTx)),
               Env = aetx_env:tx_env(20),
-              {ok, StateTree} = aetx:process(SpendTx, StateTree0, Env),
+              {ok, StateTree, _} = aetx:process(SpendTx, StateTree0, Env),
 
               ResultAccountsTree = aec_trees:accounts(StateTree),
               {value, ResultSenderAccount} = aec_accounts_trees:lookup(?SENDER_PUBKEY, ResultAccountsTree),
@@ -146,7 +146,7 @@ process_test_() ->
                                                  nonce => 11,
                                                  payload => <<"foo">>}),
               Env = aetx_env:tx_env(20),
-              {ok, StateTree} = aetx:process(SpendTx, StateTree0, Env),
+              {ok, StateTree, _} = aetx:process(SpendTx, StateTree0, Env),
 
               ResultAccountsTree = aec_trees:accounts(StateTree),
               {value, ResultAccount} = aec_accounts_trees:lookup(?SENDER_PUBKEY, ResultAccountsTree),

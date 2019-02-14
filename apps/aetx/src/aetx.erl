@@ -140,7 +140,9 @@
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
 
 -callback process(Tx :: tx_instance(), aec_trees:trees(), aetx_env:env()) ->
-    {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
+    {ok, NewTrees :: aec_trees:trees()}
+  | {ok, NewTrees :: aec_trees:trees(), NewEnv :: aetx_env:env()}
+  | {error, Reason :: term()}.
 
 -callback serialize(Tx :: tx_instance()) ->
     term().
@@ -332,11 +334,15 @@ check_ttl(AeTx, Env) ->
 %%%===================================================================
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) ->
-                 {ok, NewTrees :: aec_trees:trees()} | {error, term()}.
+                 {ok, NewTrees :: aec_trees:trees(), aetx_env:env()}
+               | {error, term()}.
 process(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
     case check(AeTx, Trees, Env) of
         {ok, Trees1} ->
-            CB:process(Tx, Trees1, Env);
+            case CB:process(Tx, Trees1, Env) of
+                {ok, Trees2} -> {ok, Trees2, Env};
+                Other -> Other
+            end;
         {error, _} = Err ->
             Err
     end.

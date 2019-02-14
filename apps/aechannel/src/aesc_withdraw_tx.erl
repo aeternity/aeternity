@@ -131,7 +131,7 @@ check(#channel_withdraw_tx{}, Trees,_Env) ->
     %% Checks in process/3
     {ok, Trees}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_withdraw_tx{round = Round} = Tx, Trees, Env) ->
     Instructions =
         aec_tx_processor:channel_withdraw_tx_instructions(

@@ -182,7 +182,7 @@ apply_on_trees_without_sigs_check([SignedTx], Trees, Height) ->
 apply_on_trees_without_sigs_check_with_env([SignedTx], Trees, Env0) ->
     Tx = aetx_sign:tx(SignedTx),
     Env = aetx_env:set_signed_tx(Env0, {value, SignedTx}),
-    {ok, Trees1} = aetx:process(Tx, Trees, Env),
+    {ok, Trees1, _} = aetx:process(Tx, Trees, Env),
     {ok, [SignedTx], Trees1}.
 
 %%%===================================================================

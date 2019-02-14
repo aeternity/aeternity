@@ -32,6 +32,7 @@
         , key_hash/1
         , signed_tx/1
         , time_in_msecs/1
+        , events/1
         ]).
 
 %% Setters
@@ -39,6 +40,8 @@
         , set_context/2
         , set_height/2
         , set_signed_tx/2
+        , set_events/2
+        , accumulate_env/2
         ]).
 
 
@@ -51,6 +54,7 @@
 %% logic is different.
 -type context() :: 'aetx_transaction' | 'aetx_contract'.
 -type wrapped_tx() :: {'value', aetx_sign:signed_tx()} | 'none'.
+-type events() :: map().
 
 -record(env, { consensus_version :: non_neg_integer()
              , beneficiary       :: aec_keys:pubkey()
@@ -60,6 +64,7 @@
              , key_hash          :: aec_blocks:block_header_hash()
              , signed_tx         :: wrapped_tx()
              , time              :: non_neg_integer()
+             , events = #{}      :: map()
              }).
 
 -opaque env() :: #env{}.
@@ -67,6 +72,7 @@
 -export_type([ env/0
              , context/0
              , wrapped_tx/0
+             , events/0
              ]).
 
 %%%===================================================================
@@ -181,6 +187,18 @@ set_height(Env, X) -> Env#env{height = X}.
 
 %%------
 
+-spec set_events(env(), map()) -> env().
+set_events(Env, Events) ->
+    Env#env{events = Events}.
+
+%%------
+
+-spec accumulate_env(env(), env()) -> env().
+accumulate_env(#env{events = Events}, ToEnv) ->
+    ToEnv#env{events = Events}.
+
+%%------
+
 -spec key_hash(env()) -> aec_blocks:block_header_hash().
 key_hash(#env{key_hash = X}) -> X.
 
@@ -197,3 +215,8 @@ set_signed_tx(Env, none) ->  Env#env{signed_tx = none}.
 
 -spec time_in_msecs(env()) -> non_neg_integer().
 time_in_msecs(#env{time = X}) -> X.
+
+%%------
+
+-spec events(env()) -> map().
+events(#env{events = X}) -> X.

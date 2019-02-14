@@ -69,7 +69,7 @@ apply_txs([Tx|Left], #{trees := Trees, height := Height} = S) ->
     STx = sign(Tx, S),
     Env = aetx_env:tx_env(Height),
     case apply_block_txs_strict([STx], Trees, Env) of
-        {ok, [STx], Trees1} ->
+        {ok, [STx], Trees1, _} ->
             apply_txs(Left, S#{trees => Trees1});
         {error, What} ->
             error({failed_tx, Tx, What})

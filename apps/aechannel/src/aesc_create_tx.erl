@@ -135,7 +135,8 @@ check(#channel_create_tx{}, Trees,_Env) ->
     %% Checks are in process/3
     {ok, Trees}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) ->
+                     {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_create_tx{} = Tx, Trees, Env) ->
     Instructions =
         aec_tx_processor:channel_create_tx_instructions(
