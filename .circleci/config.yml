@@ -303,6 +303,39 @@ references:
         export BACKUP_SUFFIX=${BACKUP_ENV:?}_db_backup_$(date +%s)
         cd /infrastructure && make mnesia_backup
 
+  test_steps: &test_steps
+    - checkout
+    - *restore_rebar_cache
+    - *restore_build_cache
+    - run:
+        name: Test
+        command: |
+          epmd -daemon
+          make ${MAKE_TARGET:-ct} CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
+    # Isolates the junit.xml report because additional files in _build/test/logs
+    # are somehow causing issue with xunit report upload, parsing and merging
+    - run:
+        name: move test report
+        command: |
+          mkdir _build/test/reports
+          mv _build/test/logs/junit.xml _build/test/reports/
+    - store_test_results:
+        path: _build/test/reports
+    - store_artifacts:
+        path: _build/test/logs
+    - *fail_notification
+
+  eunit_steps: &eunit_steps
+    - checkout
+    - *restore_rebar_cache
+    - *restore_build_cache
+    - run:
+        name: Test
+        command: |
+          epmd -daemon
+          make ${MAKE_TARGET:-eunit}
+    - *fail_notification
+
 jobs:
   build:
     <<: *container_config
@@ -328,40 +361,28 @@ jobs:
   test:
     <<: *container_config
     parallelism: 2
-    steps:
-      - checkout
-      - *restore_rebar_cache
-      - *restore_build_cache
-      - run:
-          name: Test
-          command: |
-            epmd -daemon
-            make ct CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
-      # Isolates the junit.xml report because additional files in _build/test/logs
-      # are somehow causing issue with xunit report upload, parsing and merging
-      - run:
-          name: move test report
-          command: |
-            mkdir _build/test/reports
-            mv _build/test/logs/junit.xml _build/test/reports/
-      - store_test_results:
-          path: _build/test/reports
-      - store_artifacts:
-          path: _build/test/logs
-      - *fail_notification
+    environment:
+      - MAKE_TARGET: ct
+    steps: *test_steps
+
+  test_roma:
+    <<: *container_config
+    parallelism: 2
+    environment:
+      - MAKE_TARGET: ct-roma
+    steps: *test_steps
 
   eunit:
     <<: *container_config
-    steps:
-      - checkout
-      - *restore_rebar_cache
-      - *restore_build_cache
-      - run:
-          name: Test
-          command: |
-            epmd -daemon
-            make eunit
-      - *fail_notification
+    environment:
+      - MAKE_TARGET: eunit
+    steps: *eunit_steps
+
+  eunit_roma:
+    <<: *container_config
+    environment:
+      - MAKE_TARGET: eunit-roma
+    steps: *eunit_steps
 
   aevm_tests:
     <<: *container_config
@@ -762,7 +783,29 @@ workflows:
                 - env/dev2
                 - system-tests
 
+      - test_roma:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
       - eunit:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
+
+      - eunit_roma:
           requires:
             - build
           filters:
@@ -857,7 +900,9 @@ workflows:
       - deploy_integration:
           requires:
             - test
+            - test_roma
             - eunit
+            - eunit_roma
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -870,7 +915,9 @@ workflows:
       - docker_test_push_branch:
           requires:
             - test
+            - test_roma
             - eunit
+            - eunit_roma
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -936,6 +983,7 @@ workflows:
       - deploy_uat_blue:
           requires:
             - eunit
+            - eunit_roma
             - static_analysis
             - rebar_lock_check
             - linux_package
@@ -959,6 +1007,7 @@ workflows:
       - upload_packages_linux:
           requires:
             - eunit
+            - eunit_roma
             - static_analysis
             - rebar_lock_check
             - linux_package
@@ -972,6 +1021,7 @@ workflows:
       - upload_packages_osx:
           requires:
             - eunit
+            - eunit_roma
             - static_analysis
             - rebar_lock_check
             - osx_package
@@ -985,6 +1035,7 @@ workflows:
       - docker_push_tag:
           requires:
             - eunit
+            - eunit_roma
             - static_analysis
             - rebar_lock_check
             - hodl_artefact_upload
