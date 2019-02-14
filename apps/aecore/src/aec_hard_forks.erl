@@ -73,7 +73,7 @@ protocols_from_network_id(<<"ae_mainnet">>) ->
      };
 protocols_from_network_id(<<"ae_uat">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
-     %%, ?MINERVA_PROTOCOL_VSN  => Not yet decided
+     , ?MINERVA_PROTOCOL_VSN  => 40900
      };
 protocols_from_network_id(<<"local_roma_testnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
