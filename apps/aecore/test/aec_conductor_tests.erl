@@ -150,7 +150,7 @@ test_start_stop_no_beneficiary() ->
 miner_timeout_test_() ->
     {foreach,
      fun() ->
-             ok = meck:new(aec_pow_cuckoo, [passthrough]),
+             ok = meck:new(aec_mining, [passthrough]),
              ok = meck:new(aeu_env, [passthrough]),
              ok = meck:expect(aeu_env, get_env, 3,
                               fun
@@ -167,7 +167,7 @@ miner_timeout_test_() ->
              ok = ?TEST_MODULE:stop(),
              teardown_minimal(TmpKeysDir),
              ok = meck:unload(aeu_env),
-             ok = meck:unload(aec_pow_cuckoo)
+             ok = meck:unload(aec_mining)
      end,
      [{"Time out miner that does not return", fun test_time_out_miner/0}
      ]}.
@@ -175,7 +175,7 @@ miner_timeout_test_() ->
 test_time_out_miner() ->
     TestPid = self(),
     ok = meck:expect(
-           aec_pow_cuckoo, generate,
+           aec_mining, generate,
            fun(_, _, _, _, _) ->
                    TestPid ! {self(), called},
                    receive after infinity -> never_reached end
@@ -479,7 +479,7 @@ test_two_mined_block_signing() ->
 
 test_received_block_signing() ->
     Keys = beneficiary_keys(),
-    meck:expect(aec_mining, mine,
+    meck:expect(aec_mining, generate,
                 fun(_, _, _, _, _) -> timer:sleep(1000), {error, no_solution} end),
     true = aec_events:subscribe(block_to_publish),
 

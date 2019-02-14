@@ -39,13 +39,13 @@ validate_test_() ->
     {foreach,
      fun() ->
              meck:new(aec_hard_forks, [passthrough]),
-             meck:new(aec_pow_cuckoo, [passthrough]),
+             meck:new(aec_mining, [passthrough]),
              meck:new(aec_chain, [passthrough]),
              meck:expect(aec_chain, get_header, 1, error),
              meck:new(aeu_time, [passthrough])
      end,
      fun(_) ->
-             meck:unload(aec_pow_cuckoo),
+             meck:unload(aec_mining),
              meck:unload(aeu_time),
              meck:unload(aec_chain),
              meck:unload(aec_hard_forks)
@@ -106,13 +106,13 @@ validate_test_() ->
               ok
       end,
       fun() ->
-              meck:expect(aec_pow_cuckoo, verify, 4, false),
+              meck:expect(aec_mining, verify, 4, false),
               Header = ?TEST_MODULE:set_version_and_height(
                           raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               ?assertEqual({error, incorrect_pow}, ?TEST_MODULE:validate_key_block_header(Header))
       end,
       fun() ->
-              meck:expect(aec_pow_cuckoo, verify, 4, true),
+              meck:expect(aec_mining, verify, 4, true),
               NowTime = 7592837461,
               meck:expect(aeu_time, now_in_msecs, 0, NowTime),
               Header0 = ?TEST_MODULE:set_version_and_height(
@@ -121,21 +121,21 @@ validate_test_() ->
               ?assertEqual({error, block_from_the_future}, ?TEST_MODULE:validate_key_block_header(Header))
       end,
       fun() ->
-              meck:expect(aec_pow_cuckoo, verify, 4, true),
+              meck:expect(aec_mining, verify, 4, true),
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_time_in_msecs(Header0, ?GENESIS_TIME + 1),
               ?assertEqual(ok, ?TEST_MODULE:validate_key_block_header(Header))
       end,
       fun() ->
-              meck:expect(aec_pow_cuckoo, verify, 4, false),
+              meck:expect(aec_mining, verify, 4, false),
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_time_in_msecs(Header0, ?GENESIS_TIME + 1),
               ?assertEqual({error, incorrect_pow}, ?TEST_MODULE:validate_key_block_header(Header))
       end,
       fun() ->
-              meck:expect(aec_pow_cuckoo, verify, 4, true),
+              meck:expect(aec_mining, verify, 4, true),
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_time_in_msecs(Header0,
@@ -143,14 +143,14 @@ validate_test_() ->
               ?assertEqual({error, block_from_the_future}, ?TEST_MODULE:validate_key_block_header(Header))
       end,
       fun() ->
-              meck:expect(aec_pow_cuckoo, verify, 4, true),
+              meck:expect(aec_mining, verify, 4, true),
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_nonce(Header0, -1),
               ?assertError(function_clause, ?TEST_MODULE:validate_key_block_header(Header))
       end,
       fun() ->
-              meck:expect(aec_pow_cuckoo, verify, 4, true),
+              meck:expect(aec_mining, verify, 4, true),
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_nonce(Header0, 16#1ffffffffffffffff),

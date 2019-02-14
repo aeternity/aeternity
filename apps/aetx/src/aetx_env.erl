@@ -55,7 +55,7 @@
 -record(env, { consensus_version :: non_neg_integer()
              , beneficiary       :: aec_keys:pubkey()
              , context           :: context()
-             , difficulty        :: aec_pow:difficulty()
+             , difficulty        :: aeminer_pow:difficulty()
              , height            :: aec_blocks:height()
              , key_hash          :: aec_blocks:block_header_hash()
              , signed_tx         :: wrapped_tx()
@@ -168,7 +168,7 @@ set_context(Env, X) -> Env#env{context = X}.
 
 %%------
 
--spec difficulty(env()) -> aec_pow:difficulty().
+-spec difficulty(env()) -> aeminer_pow:difficulty().
 difficulty(#env{difficulty = X}) -> X.
 
 %%------

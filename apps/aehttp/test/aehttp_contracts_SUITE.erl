@@ -762,7 +762,7 @@ environment_contract(Config) ->
     Difficulty = fun(Hdr) ->
                     #{<<"prev_key_hash">> := KeyHash} = Hdr,
                     {ok, 200, #{<<"target">> := T}} = get_key_block(KeyHash),
-                    aec_pow:target_to_difficulty(T)
+                    aeminer_pow:target_to_difficulty(T)
                  end,
     call_func(BPub, BPriv, EncCPub, <<"difficulty">>, <<"()">>, {<<"int">>, Difficulty}),
 

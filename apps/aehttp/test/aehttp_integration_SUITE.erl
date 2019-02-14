@@ -1148,7 +1148,7 @@ post_key_block(_CurrentBlockType, Config) ->
     {ok, KeyBlockHeader} = aec_headers:deserialize_from_client(key, KeyBlock1),
     KeyBlockHeaderBin = aec_headers:serialize_to_binary(KeyBlockHeader),
     Target = aec_headers:target(KeyBlockHeader),
-    Nonce = aec_pow:pick_nonce(),
+    Nonce = aeminer_pow:pick_nonce(),
     {ok, {Nonce1, PowEvidence}} = mine_key_block(KeyBlockHeaderBin, Target, Nonce, 1000),
     {ok, 200, #{}} = post_key_blocks_sut(PendingKeyBlock#{<<"pow">> => PowEvidence, <<"nonce">> => Nonce1}),
     ok = aecore_suite_utils:wait_for_height(?config(node, Config), Height),
@@ -1159,15 +1159,15 @@ post_key_block(_CurrentBlockType, Config) ->
     ok.
 
 mine_key_block(HeaderBir, Target, Nonce, Attempts) when Attempts > 0 ->
-    [Config] = rpc(aec_pow_cuckoo, get_miner_configs, []),
+    [Config] = rpc(aec_mining, get_miner_configs, []),
     mine_key_block(HeaderBir, Target, Nonce, Config, Attempts).
 
 mine_key_block(HeaderBin, Target, Nonce, Config, Attempts) when Attempts > 0 ->
-    case rpc(aec_mining, mine, [HeaderBin, Target, Nonce, Config, 0]) of
+    case rpc(aec_mining, generate, [HeaderBin, Target, Nonce, Config, 0]) of
         {ok, {_Nonce, _PowEvidence}} = Res ->
             Res;
         {error, no_solution} ->
-            mine_key_block(HeaderBin, Target, aec_pow:next_nonce(Nonce, Config), Config, Attempts - 1)
+            mine_key_block(HeaderBin, Target, aeminer_pow:next_nonce(Nonce, Config), Config, Attempts - 1)
     end;
 mine_key_block(_HeaderBin, _Target, _Nonce, _Config, 0) ->
     {error, no_solution}.

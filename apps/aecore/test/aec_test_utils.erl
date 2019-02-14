@@ -111,7 +111,7 @@ mock_prebuilt_cuckoo_pow(MinerBin) ->
 mock_cuckoo_pow({_EdgeBits, _Miners} = Cfg) ->
     meck:expect(aeu_env, get_env, 3,
                 fun
-                    (aecore, aec_pow_cuckoo, _) ->
+                    (aecore, aec_mining, _) ->
                        Cfg;
                     (App, Key, Def) ->
                        meck:passthrough([App, Key, Def])

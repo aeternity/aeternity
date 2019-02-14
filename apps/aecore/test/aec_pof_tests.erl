@@ -7,6 +7,8 @@
 -module(aec_pof_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+
+-include_lib("aeminer/include/aeminer.hrl").
 -include("blocks.hrl").
 
 -import(aec_test_utils,
