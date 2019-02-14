@@ -209,10 +209,6 @@ oracle_register_tx(AccountKey, QueryFee, TTL, QFormat, RFormat, ABIVersion, Stat
 oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat,
                     RFormat, ABIVersion, State) ->
     Nonce = next_nonce(AccountKey, State),
-    %% Note: The nonce of the account is incremented.
-    %% This means that if you register an oracle for an account other than
-    %% the contract account through a contract that contract nonce is incremented
-    %% "behind your back".
     BinaryQueryFormat = aeso_heap:to_binary(QFormat),
     BinaryResponseFormat = aeso_heap:to_binary(RFormat),
     Spec =
@@ -658,7 +654,6 @@ call_contract(Target, Gas, Value, CallData, CallStack, Origin,
             {value, ContractAccount} = aec_accounts_trees:lookup(ContractKey, AT),
             Nonce = aec_accounts:nonce(ContractAccount) + 1,
             ABIVersion = aect_contracts:abi_version(Contract),
-            <<OriginAddr:256>> = Origin,
             {ok, CallTx} =
                 aect_call_tx:new(#{ caller_id   => aec_id:create(contract, ContractKey),
                                     nonce       => Nonce,

@@ -112,8 +112,6 @@ spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
         abi_version(), fee(), nonce()) -> [op()].
 oracle_register_tx_instructions(AccountPubkey, QFormat, RFormat, QFee,
                                 DeltaTTL, ABIVersion, TxFee, Nonce) ->
-    %% TODO: Account nonce should not be increased in contract context
-    %%       but this would mean a hard fork.
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, TxFee)
     , oracle_register_op(AccountPubkey, QFormat, RFormat, QFee,
@@ -131,7 +129,7 @@ oracle_extend_tx_instructions(Pubkey, DeltaTTL, Fee, Nonce) ->
                                    ttl(), ttl(), fee(), nonce()) -> [op()].
 oracle_query_tx_instructions(OraclePubkey, SenderPubkey, Query,
                              QueryFee, QTTL, RTTL, TxFee, Nonce) ->
-    [ inc_account_nonce_op(SenderPubkey, Nonce)
+    [ force_inc_account_nonce_op(SenderPubkey, Nonce)
     , spend_fee_op(SenderPubkey, TxFee + QueryFee)
     , oracle_query_op(OraclePubkey, SenderPubkey, Nonce,
                       Query, QueryFee, QTTL, RTTL)
@@ -245,7 +243,9 @@ channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
                                ResponderPubkey, ResponderAmount,
                                ReserveAmount, DelegatePubkeys,
                                StateHash, LockPeriod, Fee, Nonce) ->
-    [ inc_account_nonce_op(InitiatorPubkey, Nonce)
+    %% The force is not strictly necessary since this cannot be made
+    %% from a contract.
+    [ force_inc_account_nonce_op(InitiatorPubkey, Nonce)
     , spend_fee_op(InitiatorPubkey, Fee + InitiatorAmount)
     , spend_fee_op(ResponderPubkey, ResponderAmount)
     , channel_create_op(InitiatorPubkey, InitiatorAmount,
@@ -364,13 +364,25 @@ new_state(Trees, Height, TxEnv) ->
 
 inc_account_nonce_op(Pubkey, Nonce) when ?IS_HASH(Pubkey),
                                          ?IS_NON_NEG_INTEGER(Nonce) ->
-    {inc_account_nonce, {Pubkey, Nonce}}.
+    {inc_account_nonce, {Pubkey, Nonce, false}}.
 
-inc_account_nonce({Pubkey, Nonce}, #state{} = S) ->
+force_inc_account_nonce_op(Pubkey, Nonce) when ?IS_HASH(Pubkey),
+                                               ?IS_NON_NEG_INTEGER(Nonce) ->
+    {inc_account_nonce, {Pubkey, Nonce, true}}.
+
+inc_account_nonce({Pubkey, Nonce, Force}, #state{} = S) ->
     {Account, S1} = get_account(Pubkey, S),
     assert_account_nonce(Account, Nonce),
-    Account1 = aec_accounts:set_nonce(Account, Nonce),
-    cache_put(account, Account1, S1).
+    case aetx_env:context(S#state.tx_env) of
+        aetx_contract when (not Force) andalso
+                           S#state.protocol > ?ROMA_PROTOCOL_VSN ->
+            %% We have checked that the account exists, and that it has
+            %% the correct nonce. We are done here.
+            S1;
+        _ ->
+            Account1 = aec_accounts:set_nonce(Account, Nonce),
+            cache_put(account, Account1, S1)
+    end.
 
 %%%-------------------------------------------------------------------
 

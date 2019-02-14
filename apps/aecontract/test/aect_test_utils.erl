@@ -34,6 +34,7 @@
         , dummy_bytecode/0
         , latest_sophia_abi_version/0
         , latest_sophia_vm_version/0
+        , latest_protocol_version/0
         ]).
 
 -include_lib("aecontract/src/aecontract.hrl").
@@ -90,22 +91,25 @@ assert_state_equal(Exp, Act) ->
 %%%===================================================================
 
 latest_sophia_vm_version() ->
-    case lists:last(aec_hard_forks:sorted_protocol_versions()) of
+    case latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_1;
         ?MINERVA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_2
     end.
 
 latest_sophia_abi_version() ->
-    case lists:last(aec_hard_forks:sorted_protocol_versions()) of
+    case latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> ?ABI_SOPHIA_1;
         ?MINERVA_PROTOCOL_VSN -> ?ABI_SOPHIA_1
     end.
 
 latest_sophia_version() ->
-    case lists:last(aec_hard_forks:sorted_protocol_versions()) of
+    case latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> ?SOPHIA_ROMA;
         ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_MINERVA
     end.
+
+latest_protocol_version() ->
+    lists:last(aec_hard_forks:sorted_protocol_versions()).
 
 calls(State) ->
     aec_trees:calls(trees(State)).

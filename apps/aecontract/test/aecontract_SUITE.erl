@@ -278,7 +278,7 @@ groups() ->
 init_per_group(aevm_1, Cfg) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height,
                 fun(_) -> ?ROMA_PROTOCOL_VSN end),
-    [{sophia_version, ?AESOPHIA_1}, {vm_version, ?VM_AEVM_SOPHIA_1}, 
+    [{sophia_version, ?AESOPHIA_1}, {vm_version, ?VM_AEVM_SOPHIA_1},
      {protocol, roma} | Cfg];
 init_per_group(aevm_2, Cfg) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height,
@@ -298,14 +298,25 @@ end_per_group(_Grp, Cfg) ->
 init_per_testcase(_TC, Config) ->
     VmVersion = ?config(vm_version, Config),
     SophiaVersion = ?config(sophia_version, Config),
+    ProtocolVersion = case ?config(protocol, Config) of
+                          roma    -> ?ROMA_PROTOCOL_VSN;
+                          minerva -> ?MINERVA_PROTOCOL_VSN
+                      end,
     put('$vm_version', VmVersion),
     put('$sophia_version', SophiaVersion),
+    put('$protocol_version', ProtocolVersion),
     Config.
 
 -define(assertMatchVM(Res, ExpVm1, ExpVm2),
     case vm_version() of
         ?VM_AEVM_SOPHIA_1 -> ?assertMatch(ExpVm1, Res);
         ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res)
+    end).
+
+-define(assertMatchProtocol(Res, ExpRoma, ExpMinerva),
+    case protocol_version() of
+        ?ROMA_PROTOCOL_VSN -> ?assertMatch(ExpRoma, Res);
+        ?MINERVA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res)
     end).
 
 -define(skipRest(Res, Reason),
@@ -928,6 +939,12 @@ vm_version() ->
         X         -> X
     end.
 
+protocol_version() ->
+    case get('$protocol_version') of
+        undefined -> aect_test_utils:latest_protocol_version();
+        X         -> X
+    end.
+
 sophia_version() ->
     case get('$sophia_version') of
         undefined -> ?LATEST_AESOPHIA;
@@ -1154,7 +1171,9 @@ sophia_spend(_Cfg) ->
     Ct2          = ?call(create_contract, Acc1, spend_test, {}, #{amount => 20000}),
     10000        = ?call(call_contract, Acc1, Ct1, get_balance, word, {}),
     20000        = ?call(call_contract, Acc1, Ct2, get_balance, word, {}),
+    NonceBefore  = aec_accounts:nonce(aect_test_utils:get_account(Ct2, state())),
     5000         = ?call(call_contract, Acc1, Ct2, spend, word, {Acc2, 15000}),
+    NonceAfter   = aec_accounts:nonce(aect_test_utils:get_account(Ct2, state())),
     5000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct2),
     10000        = ?call(call_contract, Acc1, Ct1, get_balance, word, {}),
     5000         = ?call(call_contract, Acc1, Ct2, get_balance, word, {}),
@@ -1164,6 +1183,10 @@ sophia_spend(_Cfg) ->
     20021000     = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
     4000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct1),
     5000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct2),
+
+    %% In Roma, nonce are bumped for spend primops, but after Roma it isn't
+    ExpectedNonceAfterRoma = NonceBefore + 1,
+    ?assertMatchProtocol(NonceAfter, ExpectedNonceAfterRoma, NonceBefore),
     ok.
 
 sophia_typed_calls(_Cfg) ->
@@ -1220,8 +1243,10 @@ sophia_oracles(_Cfg) ->
     TTL               = 15,
     CtId              = ?call(call_contract, Acc, Ct, registerOracle, word, {CtId, QueryFee, FixedTTL(TTL)}),
     Question          = <<"Manchester United vs Brommapojkarna">>,
+    NonceBeforeQuery  = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     QId               = ?call(call_contract, Acc, Ct, createQuery, word,
                                 {Ct, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+    NonceAfterQuery   = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {CtId, QId}),
     QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Ct),
     ?assertMatchVM(
@@ -1230,8 +1255,19 @@ sophia_oracles(_Cfg) ->
         {error, _}), %% Fixed in MINERVA
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 4001}),
+    NonceAfterRespond = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, RelativeTTL(10)}),
+    NonceAfterExtend  = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
+
+    %% In Roma, nonce are bumped for all tx primops, but after Roma only query primops
+    %% are bumping the nonce.
+    ExpectedNonceAfterQuery = NonceBeforeQuery + 1,
+    ExpectedNonceAfterRespondRoma = ExpectedNonceAfterQuery + 1,
+    ExpectedNonceAfterExtendRoma = ExpectedNonceAfterRespondRoma + 1,
+    ?assertMatchProtocol(NonceAfterQuery, ExpectedNonceAfterQuery, ExpectedNonceAfterQuery),
+    ?assertMatchProtocol(NonceAfterRespond, ExpectedNonceAfterRespondRoma, ExpectedNonceAfterQuery),
+    ?assertMatchProtocol(NonceAfterExtend, ExpectedNonceAfterExtendRoma, ExpectedNonceAfterQuery),
 
     %% Test complex answers
     Ct1 = ?call(create_contract, Acc, oracles, {}, #{amount => 1000000}),
@@ -2733,18 +2769,30 @@ sophia_signatures_oracles(_Cfg) ->
     OrcId               = ?call(call_contract, Acc, Ct, signedRegisterOracle, word, {Orc, RegSig, QueryFee, FixedTTL(TTL)},
                                 #{amount => 1}),
 
+    NonceBeforeQuery  = aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
     Question          = <<"Manchester United vs Brommapojkarna">>,
     QId               = ?call(call_contract, Acc, Ct, createQuery, word,
                                 {Orc, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+    NonceAfterQuery   = aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
     Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {Orc, QId}),
     QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Orc),
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Orc, QId}),
 
+    NonceBeforeRespond = aec_accounts:nonce(aect_test_utils:get_account(Orc, state())),
     RespSign                  = sign(<<QId:256, Ct/binary>>, Orc),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedRespond, {tuple, []}, {Orc, QId, BadSig, 4001}),
     {}                        = ?call(call_contract, Acc, Ct, signedRespond, {tuple, []}, {Orc, QId, RespSign, 4001}),
+    NonceAfterRespond  = aec_accounts:nonce(aect_test_utils:get_account(Orc, state())),
+
     {some, 4001}              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Orc, QId}),
     {}                        = ?call(call_contract, Acc, Ct, signedExtendOracle, {tuple, []}, {Orc, RegSig, RelativeTTL(10)}),
+
+    %% In Roma, nonce are bumped for the delegated oracle primops, but after Roma only query primops
+    %% are bumping the nonce.
+    ExpectedNonceAfterQuery = NonceBeforeQuery + 1,
+    ExpectedNonceAfterRespondRoma = NonceBeforeRespond + 1,
+    ?assertMatchProtocol(NonceAfterQuery, ExpectedNonceAfterQuery, ExpectedNonceAfterQuery),
+    ?assertMatchProtocol(NonceAfterRespond, ExpectedNonceAfterRespondRoma, NonceBeforeRespond),
 
     ok.
 
@@ -2781,18 +2829,34 @@ sophia_signatures_aens(_Cfg) ->
     NameSig         = sign(<<NameAcc/binary, NameHash/binary, Ct/binary>>, NameAcc),
     AccSig          = sign(<<Acc/binary, NameHash/binary, Ct/binary>>, Acc),
 
+    NonceBeforePreclaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, AccSig}, #{ height => 10 }),
     {} = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, NameAccSig},        #{ height => 10 }),
+    NonceAfterPreclaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, AccSig}, #{ height => 11 }),
     {} = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, NameSig}, #{ height => 11 }),
+    NonceAfterClaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, NHash, AccSig},   #{ height => 12 }),
     {} = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, NHash, NameSig},   #{ height => 12 }),
+    NonceAfterTransfer = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
     ok = ?call(aens_update, Acc, NHash, Pointers),
 
     {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"oracle_pubkey">>}),
 
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc, NHash, NameSig}, #{ height => 13 }),
-    {} = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {Acc, NHash, AccSig}, #{ height => 13 }),
+    NonceBeforeRevoke =  aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
+    {} = ?call(call_contract, NameAcc, Ct, signedRevoke, {tuple, []}, {Acc, NHash, AccSig}, #{ height => 13 }),
+    NonceAfterRevoke =  aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
+
+    %% In Roma, nonce are bumped for the delegated name service primops, but after Roma it isn't
+    ExpectedNonceAfterPreclaimRoma = NonceBeforePreclaim + 1,
+    ExpectedNonceAfterClaimRoma = ExpectedNonceAfterPreclaimRoma + 1,
+    ExpectedNonceAfterTransferRoma = ExpectedNonceAfterClaimRoma + 1,
+    ExpectedNonceAfterRevokeRoma = NonceBeforeRevoke + 1,
+    ?assertMatchProtocol(NonceAfterPreclaim, ExpectedNonceAfterPreclaimRoma, NonceBeforePreclaim),
+    ?assertMatchProtocol(NonceAfterClaim, ExpectedNonceAfterClaimRoma, NonceBeforePreclaim),
+    ?assertMatchProtocol(NonceAfterTransfer, ExpectedNonceAfterTransferRoma, NonceBeforePreclaim),
+    ?assertMatchProtocol(NonceAfterRevoke, ExpectedNonceAfterRevokeRoma, NonceBeforeRevoke),
     ok.
 
 sign(Material, KeyHolder) ->
@@ -3916,12 +3980,34 @@ sophia_aens(_Cfg) ->
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
     NHash           = aens_hash:name_hash(NameAscii),
+    NonceBeforePreclaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, CHash},        #{ height => 10 }),
+    NonceBeforeClaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1}, #{ height => 11 }),
+    NonceBeforeTransfer = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
+    StateBeforeTransfer = state(),
     {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, NHash},   #{ height => 12 }),
+    NonceAfterTransfer = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     ok = ?call(aens_update, Acc, NHash, Pointers),
     {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"oracle_pubkey">>}),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash}, #{ height => 13 }),
+    %% Roll back the transfer and check that revoke can be called
+    state(StateBeforeTransfer),
+    NonceBeforeRevoke = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
+    {} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash}, #{ height => 13 }),
+    NonceAfterRevoke = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
+
+    %% In Roma, nonce are bumped for all aens primops, but after Roma it isn't.
+    ExpectedNonceBeforeClaimRoma = NonceBeforePreclaim + 1,
+    ExpectedNonceBeforeTransferRoma = ExpectedNonceBeforeClaimRoma + 1,
+    ExpectedNonceAfterTransferRoma = ExpectedNonceBeforeTransferRoma + 1,
+    ExpectedNonceAfterRevokeRoma = NonceBeforeRevoke + 1,
+
+    ?assertMatchProtocol(NonceBeforeClaim, ExpectedNonceBeforeClaimRoma, NonceBeforePreclaim),
+    ?assertMatchProtocol(NonceBeforeTransfer, ExpectedNonceBeforeTransferRoma, NonceBeforePreclaim),
+    ?assertMatchProtocol(NonceAfterTransfer, ExpectedNonceAfterTransferRoma, NonceBeforePreclaim),
+    ?assertMatchProtocol(NonceAfterRevoke, ExpectedNonceAfterRevokeRoma, NonceBeforeRevoke),
+
     ok.
 
 sophia_state_handling(_Cfg) ->
