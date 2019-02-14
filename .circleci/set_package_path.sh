@@ -2,11 +2,16 @@
 
 set -e
 
-if [ "$(uname -s)" == "Darwin" ]; then
-    PKG_SUFFIX="macos-"`uname -m`
-elif [ "$(uname -s)" == "Linux" ]; then
-    PKG_SUFFIX="ubuntu-"`uname -m`
+if [ -z "${PKG_TARGET_OS}" ]; then
+    if [ "$(uname -s)" == "Darwin" ]; then
+        PKG_TARGET_OS="macos"
+    elif [ "$(uname -s)" == "Linux" ]; then
+        PKG_TARGET_OS="ubuntu"
+    fi
 fi
+
+PKG_SUFFIX="${PKG_TARGET_OS}-"`uname -m`
+
 
 VERSION=${CIRCLE_SHA1:-unknown}
 if [[ -n $CIRCLE_TAG && $CIRCLE_TAG =~ ^v([0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9]+)*)$ ]]; then
