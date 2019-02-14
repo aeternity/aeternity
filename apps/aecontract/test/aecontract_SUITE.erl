@@ -2769,11 +2769,11 @@ sophia_signatures_oracles(_Cfg) ->
     OrcId               = ?call(call_contract, Acc, Ct, signedRegisterOracle, word, {Orc, RegSig, QueryFee, FixedTTL(TTL)},
                                 #{amount => 1}),
 
-    NonceBeforeQuery  = aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
+    NonceBeforeQuery  = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     Question          = <<"Manchester United vs Brommapojkarna">>,
     QId               = ?call(call_contract, Acc, Ct, createQuery, word,
                                 {Orc, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
-    NonceAfterQuery   = aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
+    NonceAfterQuery   = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {Orc, QId}),
     QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Orc),
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Orc, QId}),
