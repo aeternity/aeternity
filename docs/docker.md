@@ -115,10 +115,10 @@ The minimal configuration to join the testnet needs a list of seed peers and net
 ---
 peers:
     # UAT
-    - aenode://pp_2ssMqRVVRP7Dcy6QHhjSdhfgi9rm3TKPVsmRB8VMr4HSwKm1Yf@52.10.46.160:3015
+    - aenode://pp_QU9CvhAQH56a2kA15tCnWPRJ2srMJW8ZmfbbFTAy7eG4o16Bf@52.10.46.160:3015
     - aenode://pp_2vhFb3HtHd1S7ynbpbFnEdph1tnDXFSfu4NGtq46S2eM5HCdbC@18.195.109.60:3015
     - aenode://pp_27xmgQ4N1E3QwHyoutLtZsHW5DSW4zneQJ3CxT5JbUejxtFuAu@13.250.162.250:3015
-    - aenode://pp_21A4HvJu1AuMV5njfEqLoR6JkKTWDyuirXZUZP2JND2RbQ1kBE@13.53.161.215:3015
+    - aenode://pp_DMLqy7Zuhoxe2FzpydyQTgwCJ52wouzxtHWsPGo51XDcxc5c8@13.53.161.215:3015
 
 fork_management:
     network_id: ae_uat
