@@ -169,22 +169,17 @@ patron() ->
 %% A node with a newer version of the code can join and synchronize
 %% to a cluster of older nodes.
 new_node_joins_network(Cfg) ->
-    Compatible = "aeternity/aeternity:local", %% Latest version it should be compatible with
-                                          %% Change if comptibility with previous version
-                                          %% should be guaranteed
-    ct:log("Testing compatiblity of epoch:local with ~p", [Compatible]),
+    Compatible = "aeternity/aeternity:v1.4.0", %% Latest version it should be compatible with
+    OldBaseSpec = #{backend => aest_docker, source  => {pull, Compatible}, config_guest_path => "/home/aeternity/.epoch/epoch/epoch.yaml"},
+    ct:log("Testing compatiblity of aeternity/aeternity:local with ~p", [Compatible]),
 
-    OldNode1 = #{
+    OldNode1 = OldBaseSpec#{
       name    => old_node1,
-      peers   => [old_node2],
-      backend => aest_docker,
-      source  => {pull, Compatible}},
+      peers   => [old_node2]},
 
-    OldNode2 = #{
+    OldNode2 = OldBaseSpec#{
       name    => old_node2,
-      peers   => [old_node1],
-      backend => aest_docker,
-      source  => {pull, Compatible}},
+      peers   => [old_node1]},
 
     NewNode =  #{
       name    => new_node1,
@@ -199,6 +194,8 @@ new_node_joins_network(Cfg) ->
     start_node(old_node2, Cfg),
     T0 = erlang:system_time(seconds),
     wait_for_startup([old_node1, old_node2], 0, Cfg),
+    #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(old_node1), %% Check node picked user config
+    #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(old_node2), %% Check node picked user config
     StartupTime = erlang:system_time(seconds) - T0,
 
     Length = max(30, 5 + proplists:get_value(blocks_per_second, Cfg) * StartupTime),

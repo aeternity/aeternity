@@ -207,7 +207,7 @@ eunit-roma: internal-build
 all-tests: eunit test
 
 docker:
-	@docker build . -t aeternity/aeternity:local
+	@docker build -t aeternity/aeternity:local .
 
 ST_DOCKER_FILTER=--filter label=epoch_system_test=true
 
@@ -228,9 +228,16 @@ smoke-test-run: KIND=system_test
 smoke-test-run: internal-build
 	@$(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
 
+system-smoke-test-deps:
+	$(MAKE) docker
+	docker pull "aeternity/aeternity:v1.4.0"
+
 local-system-test: KIND=system_test
 local-system-test: internal-build
 	@$(REBAR) as $(KIND) do ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) --dir system_test/only_local $(CT_TEST_FLAGS)
+
+system-test-deps:
+	$(MAKE) system-smoke-test-deps
 
 system-test: KIND=system_test
 system-test: internal-build
@@ -376,6 +383,7 @@ internal-distclean: $$(KIND)
 	dialyzer \
 	docker docker-clean \
 	test smoke-test smoke-test-run system-test aevm-test-deps\
+	system-smoke-test-deps system-test-deps \
 	kill killall \
 	clean distclean \
 	swagger swagger-docs swagger-check swagger-version-check \
