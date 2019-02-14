@@ -9,7 +9,7 @@
 
 -include("aecontract.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
--include_lib("aecore/include/hard_forks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -export([ compile/2
         , decode_data/2
