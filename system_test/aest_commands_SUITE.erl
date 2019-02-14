@@ -66,7 +66,7 @@ commands_(OpsBin, Cfg) ->
         "Installed versions:[\r\n]*\\*[ \t]*[0-9\\.\\-a-z]*[ \t]*permanent[\r\n]*")),
 
     {0, Output2} = run_cmd_in_node_dir(node1, [OpsBin, "peer_key"], Cfg),
-    {ok, PeerKey} = aehttp_api_encoder:safe_decode(peer_pubkey, list_to_binary(Output2)),
+    {ok, PeerKey} = aehttp_api_encoder:safe_decode(peer_pubkey, list_to_binary(string:trim(Output2, trailing, "\n"))),
     ExpPeerKey = aest_nodes:get_node_pubkey(node1, Cfg),
     ?assertEqual(ExpPeerKey, PeerKey),
 
