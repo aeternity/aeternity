@@ -52,12 +52,13 @@ bits_test_() ->
 
 make_calls(ListOfCalls) ->
     Chain = setup_chain(),
-    [{lists:flatten(io_lib:format("call(~p,~p,~p)->~p~n~p : ~p", [C,F,A,R,
-                                                             aefa_data:encode(A),
-                                                             aefa_encoding:serialize(aefa_data:encode(A))])),
+    [{lists:flatten(io_lib:format("call(~p,~p,~p)->~p~n~p : ~p",
+                                  [C,F,A,R,
+                                   aeb_fate_data:encode(A),
+                                   aeb_fate_encoding:serialize(
+                                     aeb_fate_data:encode(A))])),
       fun() ->
-              FateArgs = aefa_encoding:serialize(aefa_data:encode(A)),
-              Call = make_call(C,F,FateArgs),
+              Call = make_call(C,F,A),
               case R of
                   {error, E} ->
                       try aefa_fate:run(Call, Chain) of
@@ -66,7 +67,7 @@ make_calls(ListOfCalls) ->
                               ?assertEqual({E, Trace}, {Error, Trace})
                       end;
                   _ ->
-                      FateRes = aefa_data:encode(R),
+                      FateRes = aeb_fate_data:encode(R),
                       #{accumulator := Res,
                         trace := Trace} = aefa_fate:run(Call, Chain),
                       ?assertEqual({FateRes, Trace}, {Res, Trace})
@@ -251,7 +252,13 @@ bits() ->
 make_call(Contract, Function, Arguments) ->
     #{ contract  => Contract
      , call => aeb_fate_encoding:serialize(
-                 {tuple, {Function, {tuple, list_to_tuple(Arguments)}}})}.
+                 {tuple, {Function, {tuple, list_to_tuple(
+                                              [aeb_fate_data:encode(A) || A <- Arguments]
+                                             )}
+                         }
+                 }
+                )
+     }.
 
 
 setup_chain() ->
@@ -282,399 +289,400 @@ set_bbs([{N, Code}|Rest], BBs) ->
 
 contracts() ->
     #{ <<"test">> =>
-           [ {<<"id">>, {[integer], integer}, [{0, [{return_r, {arg, 0}}]}]}
+           [ {<<"id">>, {[integer], integer},
+              [{0, [{'RETURNR', {arg, 0}}]}]}
            , {<<"jumps">>, {[], integer},
-              [{0, [ push_a_0
-                   , {jump, 3}]}
-              ,{1, [ nop ]}
-              ,{2, [ nop
-                   , return]}
-              , {3, [ nop
-                    , {jump, 1}]}]
+              [ {0, [ {'PUSH', {immediate, 0}}
+                    , {'JUMP', {immediate, 3}}]}
+              , {1, [ 'NOP' ]}
+              , {2, [ 'NOP'
+                    , 'RETURN']}
+              , {3, [ 'NOP'
+                    , {'JUMP', {immediate, 1}}]}]
              }
            , {<<"inc">>, {[integer],integer},
-              [{0, [ {inc_a_1_r, {arg,0}}
-                   , inc_a_1_a
-                   , return
+              [{0, [ {'ADD', {stack, 0}, {arg,0}, {immediate, 1}}
+                   , {'INC', {stack, 0}}
+                   , 'RETURN'
                    ]}]
              }
            , {<<"call">>, {[integer],integer},
-              [{0, [ {inc_a_1_r, {arg, 0}}
-                   , {call_local, <<"inc">>}]}
-              ,{1, [ inc_a_1_a
-                   , return]}
+              [{0, [ {'ADD', {stack, 0}, {arg,0}, {immediate, 1}}
+                   , {'CALL', {immediate, <<"inc">>}}]}
+              ,{1, [ {'INC', {stack, 0}}
+                   , 'RETURN']}
               ]
              }
            , {<<"tailcall">>, {[integer],integer},
-              [{0, [ {inc_a_1_r, {arg,0}}
-                   , {tailcall_local, <<"inc">>}]}
+              [{0, [ {'ADD', {stack, 0}, {arg,0}, {immediate, 1}}
+                   , {'CALL_T', {immediate, <<"inc">>}}]}
               ]
              }
            , { <<"remote_call">>
              , {[integer],integer}
-             , [ {0, [ {push, {arg,0}},
-                       {call_remote, <<"remote">>, <<"add_five">>} ]}
-               , {1, [ inc_a_1_a,
-                       return]}
+             , [ {0, [ {'PUSH', {arg,0}},
+                       {'CALL_R', {immediate, <<"remote">>}, {immediate, <<"add_five">>}} ]}
+               , {1, [ {'INC', {stack, 0}},
+                       'RETURN']}
                ]
              }
            , { <<"remote_tailcall">>
              , {[integer],integer}
-             , [ {0, [ {push, {arg,0}},
-                       {tailcall_remote, <<"remote">>, <<"add_five">>} ]}
+             , [ {0, [ {'PUSH', {arg,0}},
+                       {'CALL_TR', {immediate, <<"remote">>}, {immediate, <<"add_five">>}} ]}
                ]
              }
            ]
      , <<"remote">> =>
            [ {<<"add_five">>, {[integer], integer},
-              [{0, [{add, {stack, 0}, {immediate, 5}, {arg, 0}}
-                    , return]}]
+              [{0, [{'ADD', {stack, 0}, {immediate, 5}, {arg, 0}}
+                    , 'RETURN']}]
              }
            ]
      , <<"bool">> =>
            [ {<<"and">>
              , {[boolean, boolean], boolean}
-             , [ {0, [ {and_a_r_r, {arg, 0}, {arg, 1}}
-                     , return]}]}
+             , [ {0, [ {'AND', {stack, 0}, {arg, 0}, {arg, 1}}
+                     , 'RETURN']}]}
            , {<<"or">>
              , {[boolean, boolean], boolean}
-             , [ {0, [ {or_a_r_r, {arg, 0}, {arg, 1}}
-                     , return]}]}
+             , [ {0, [ {'OR', {stack, 0}, {arg, 0}, {arg, 1}}
+                     , 'RETURN']}]}
            , {<<"not">>
              , {[boolean], boolean}
-             , [ {0, [ {not_a_r, {arg, 0}}
-                     , return]}]}
+             , [ {0, [ {'NOT', {stack, 0}, {arg, 0}}
+                     , 'RETURN']}]}
            ]
 
      , <<"comp">> =>
            [ {<<"lt">>
              , {[integer, integer], boolean}
-             , [ {0, [ {lt_a_r_r, {arg, 0}, {arg, 1}}
-                     , return]}]}
+             , [ {0, [ {'LT', {stack, 0}, {arg, 0}, {arg, 1}}
+                     , 'RETURN']}]}
            ,  {<<"gt">>
               , {[integer, integer], boolean}
-              , [ {0, [ {gt_a_r_r, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'GT', {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
            ,  {<<"egt">>
               , {[integer, integer], boolean}
-              , [ {0, [ {egt_a_r_r, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'EGT', {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
            ,  {<<"elt">>
               , {[integer, integer], boolean}
-              , [ {0, [ {elt_a_r_r, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'ELT', {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
            ,  {<<"eq">>
               , {[integer, integer], boolean}
-              , [ {0, [ {eq_a_r_r, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'EQ', {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
            ,  {<<"neq">>
               , {[integer, integer], boolean}
-              , [ {0, [ {neq_a_r_r, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'NEQ', {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
            ]
      , <<"arith">> =>
            [ {<<"add">>
              , {[integer, integer], integer}
-             , [ {0, [ {add, {stack, 0}, {arg, 0}, {arg, 1}}
-                     , return]}]}
+             , [ {0, [ {'ADD', {stack, 0}, {arg, 0}, {arg, 1}}
+                     , 'RETURN']}]}
            ,  {<<"sub">>
               , {[integer, integer], integer}
-              , [ {0, [ {sub, {stack, 0}, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'SUB', {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
            ,  {<<"mul">>
               , {[integer, integer], integer}
-              , [ {0, [ {mul, {stack, 0}, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'MUL', {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
            ,  {<<"div">>
               , {[integer, integer], integer}
-              , [ {0, [ {'div',  {stack, 0}, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'DIV',  {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
            ,  {<<"mod">>
               , {[integer, integer], integer}
-              , [ {0, [ {mod, {stack, 0}, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'MOD', {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
            ,  {<<"pow">>
               , {[integer, integer], integer}
-              , [ {0, [ {pow, {stack, 0}, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'POW', {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
            ]
      , <<"jumpif">> =>
            [ {<<"skip">>
              , {[integer, integer], integer}
-             , [ {0, [ {push, {arg, 1}}
-                     , push_a_0
-                     , {eq_a_a_r, {arg, 0}}
-                     , {jumpif_a, 2}
+             , [ {0, [ {'PUSH', {arg, 1}}
+                     , {'PUSH', {immediate, 0}}
+                     , {'EQ', {stack, 0}, {stack, 0}, {arg, 0}}
+                     , {'JUMPIF', {stack, 0}, {immediate, 2}}
                      ]}
-               , {1, [ inc_a_1_a ]}
-               , {2, [ return]}
+               , {1, [ {'INC', {stack, 0}} ]}
+               , {2, [ 'RETURN']}
                ]}
            ]
      , <<"memory">> =>
            [ {<<"call">>
              , {[integer], integer}
-             , [ {0, [ {store, {var, 1}, {arg, 0}}
-                     , push_a_0
-                     , {call_local, <<"write">>}
+             , [ {0, [ {'STORE', {var, 1}, {arg, 0}}
+                     , {'PUSH', {immediate, 0}}
+                     , {'CALL', {immediate, <<"write">>}}
                      ]
                  }
-               , {1, [ {push, {var, 1}}
-                     , return
+               , {1, [ {'PUSH', {var, 1}}
+                     , 'RETURN'
                      ]}
                ]}
            , {<<"write">>
              , {[integer], integer}
-             , [ {0, [ {store, {var, 1}, {arg, 0}}
-                     , {return_r, {var, 1}}
+             , [ {0, [ {'STORE', {var, 1}, {arg, 0}}
+                     , {'RETURNR', {var, 1}}
                      ]}
                ]}
            , {<<"dest_add">>
              , {[integer, integer], integer}
-             , [ {0, [ {store, {var, 1}, {arg, 0}}
-                     , {store, {var, 2}, {arg, 1}}
-                     , {add, {var, 3}, {var, 1}, {var, 2}}
-                     , {push, {var, 3}}
-                     , return
+             , [ {0, [ {'STORE', {var, 1}, {arg, 0}}
+                     , {'STORE', {var, 2}, {arg, 1}}
+                     , {'ADD', {var, 3}, {var, 1}, {var, 2}}
+                     , {'PUSH', {var, 3}}
+                     , 'RETURN'
                      ]}
                ]}
            , {<<"dest_add_imm">>
              , {[integer], integer}
-             , [ {0, [ {store, {var, 1}, {arg, 0}}
-                     , {add, {var, 3}, {var, 1}, {immediate, 2}}
-                     , {push, {var, 3}}
-                     , return
+             , [ {0, [ {'STORE', {var, 1}, {arg, 0}}
+                     , {'ADD', {var, 3}, {var, 1}, {immediate, 2}}
+                     , {'PUSH', {var, 3}}
+                     , 'RETURN'
                      ]}
                ]}
            , {<<"dest_add_stack">>
              , {[integer, integer], integer}
-             , [ {0, [ {store, {var, 1}, {arg, 0}}
-                     , {push, {arg, 1}}
-                     , {add, {var, 3}, {var, 1}, {stack, 0}}
-                     , {push, {var, 3}}
-                     , return
+             , [ {0, [ {'STORE', {var, 1}, {arg, 0}}
+                     , {'PUSH', {arg, 1}}
+                     , {'ADD', {var, 3}, {var, 1}, {stack, 0}}
+                     , {'PUSH', {var, 3}}
+                     , 'RETURN'
                      ]}
                ]}
            ]
      , <<"tuple">> =>
            [ {<<"make_0tuple">>
              , {[], {tuple, []}}
-             , [ {0, [ {make_tuple, 0}
-                     , return]}
+             , [ {0, [ {'TUPLE', {immediate, 0}}
+                     , 'RETURN']}
                ]}
            , {<<"make_2tuple">>
              , {[integer, integer], {tuple, [integer, integer]}}
-             , [ {0, [ {push, {arg, 0}}
-                     , {push, {arg, 1}}
-                     , {make_tuple, 2}
-                     ,  return]}
+             , [ {0, [ {'PUSH', {arg, 0}}
+                     , {'PUSH', {arg, 1}}
+                     , {'TUPLE', {immediate, 2}}
+                     ,  'RETURN']}
                ]}
            , {<<"make_5tuple">>
              , {[integer, integer, integer, integer, integer],
                 {tuple, [integer, integer, integer, integer, integer]}}
-             , [ {0, [ {push, {arg, 0}}
-                     , {push, {arg, 1}}
-                     , {push, {arg, 2}}
-                     , {push, {arg, 3}}
-                     , {push, {arg, 4}}
-                     , {make_tuple, 5}
-                     ,  return]}
+             , [ {0, [ {'PUSH', {arg, 0}}
+                     , {'PUSH', {arg, 1}}
+                     , {'PUSH', {arg, 2}}
+                     , {'PUSH', {arg, 3}}
+                     , {'PUSH', {arg, 4}}
+                     , {'TUPLE', {immediate, 5}}
+                     ,  'RETURN']}
                ]}
            , {<<"element1">>
              , {[integer, integer], integer}
-             , [ {0, [ {push, {arg, 0}}
-                     , {push, {arg, 1}}
-                     , {make_tuple, 2}
-                     , {element, integer, {stack, 0}, {immediate, 1}, {stack, 0}}
-                     , return]}
+             , [ {0, [ {'PUSH', {arg, 0}}
+                     , {'PUSH', {arg, 1}}
+                     , {'TUPLE', {immediate, 2}}
+                     , {'ELEMENT', integer, {stack, 0}, {immediate, 1}, {stack, 0}}
+                     , 'RETURN']}
                ]}
            , {<<"element">>
              , {[{tuple, [integer, integer]}, integer], integer}
-             , [ {0, [ {element, integer, {stack, 0}, {arg, 1}, {arg, 0}}
-                     , return]}
+             , [ {0, [ {'ELEMENT', integer, {stack, 0}, {arg, 1}, {arg, 0}}
+                     , 'RETURN']}
                ]}
            ]
      , <<"map">> =>
            [ {<<"make_empty_map">>
              , {[], {map, integer, boolean}}
-             , [ {0, [ {map_empty, {stack, 0}}
-                     , return]}
+             , [ {0, [ {'MAP_EMPTY', {stack, 0}}
+                     , 'RETURN']}
                ]}
            , {<<"map_update">>
              , {[{map, integer, boolean}, integer, boolean], {map, integer, boolean}}
-             , [ {0, [ {map_update, {stack, 0}, {arg, 0}, {arg, 1}, {arg, 2}}
-                     ,  return]}
+             , [ {0, [ {'MAP_UPDATE', {stack, 0}, {arg, 0}, {arg, 1}, {arg, 2}}
+                     ,  'RETURN']}
                ]}
            , {<<"map_lookup">>
              , {[{map, integer, boolean}, integer], boolean}
-             , [ {0, [ {map_lookup, {stack, 0}, {arg, 0}, {arg, 1}}
-                     ,  return]}
+             , [ {0, [ {'MAP_LOOKUP', {stack, 0}, {arg, 0}, {arg, 1}}
+                     ,  'RETURN']}
                ]}
            , {<<"map_lookup_default">>
              , {[{map, integer, boolean}, integer], boolean}
-             , [ {0, [ {map_lookup_default, {stack, 0}, {arg, 0}, {arg, 1}, {immediate, false}}
-                     ,  return]}
+             , [ {0, [ {'MAP_LOOKUPD', {stack, 0}, {arg, 0}, {arg, 1}, {immediate, false}}
+                     ,  'RETURN']}
                ]}
            , {<<"map_member">>
              , {[{map, integer, boolean}, integer], boolean}
-             , [ {0, [ {map_member, {stack, 0}, {arg, 0}, {arg, 1}}
-                     ,  return]}
+             , [ {0, [ {'MAP_MEMBER', {stack, 0}, {arg, 0}, {arg, 1}}
+                     ,  'RETURN']}
                ]}
            , {<<"map_member">>
              , {[{map, integer, boolean}, integer], boolean}
-             , [ {0, [ {map_member, {stack, 0}, {arg, 0}, {arg, 1}}
-                     ,  return]}
+             , [ {0, [ {'MAP_MEMBER', {stack, 0}, {arg, 0}, {arg, 1}}
+                     ,  'RETURN']}
                ]}
            , {<<"map_from_list">>
              , {[{list, {tuple, [integer, boolean]}}], {map, integer, boolean}}
-               , [ {0, [ {map_from_list, {stack, 0}, {arg, 0}}
-                       , return]}
+               , [ {0, [ {'MAP_FROM_LIST', {stack, 0}, {arg, 0}}
+                       , 'RETURN']}
                  ]}
              ]
      , <<"list">> =>
            [ {<<"make_nil">>
              , {[], {list, integer}}
-             , [ {0, [ {nil, {stack, 0}}
-                     , return]}
+             , [ {0, [ {'NIL', {stack, 0}}
+                     , 'RETURN']}
                ]}
            , {<<"cons">>
              , {[integer, {list, integer}], {list, integer}}
-             , [ {0, [ {cons, {stack, 0}, {arg, 0}, {arg, 1}}
-                     ,  return]}
+             , [ {0, [ {'CONS', {stack, 0}, {arg, 0}, {arg, 1}}
+                     ,  'RETURN']}
                ]}
            , {<<"cons_error">>
              , {[integer, {list, boolean}], {list, integer}}
-             , [ {0, [ {cons, {stack, 0}, {arg, 0}, {arg, 1}}
-                     ,  return]}
+             , [ {0, [ {'CONS', {stack, 0}, {arg, 0}, {arg, 1}}
+                     ,  'RETURN']}
                ]}
            , {<<"head">>
              , {[{list, integer}], integer}
-             , [ {0, [ {hd, {stack, 0}, {arg, 0}}
-                     ,  return]}
+             , [ {0, [ {'HD', {stack, 0}, {arg, 0}}
+                     ,  'RETURN']}
                ]}
            , {<<"tail">>
              , {[{list, integer}], {list, integer}}
-             , [ {0, [ {tl, {stack, 0}, {arg, 0}}
-                     , return]}
+             , [ {0, [ {'TL', {stack, 0}, {arg, 0}}
+                     , 'RETURN']}
                ]}
            , {<<"length">>
              , {[{list, integer}], integer}
-             , [ {0, [ {length, {stack, 0}, {arg, 0}}
-                     , return]}
+             , [ {0, [ {'LENGTH', {stack, 0}, {arg, 0}}
+                     , 'RETURN']}
                ]}
            ]
      , <<"string">> =>
            [ {<<"str_equal">>
              , {[string, string], boolean}
-             , [ {0, [ {str_equal, {stack, 0}, {arg, 0}, {arg, 1}}
-                     , return]}
+             , [ {0, [ {'STR_EQ', {stack, 0}, {arg, 0}, {arg, 1}}
+                     , 'RETURN']}
                ]}
            , {<<"str_join">>
              , {[string, string], string}
-             , [ {0, [ {str_join, {stack, 0}, {arg, 0}, {arg, 1}}
-                     , return]}
+             , [ {0, [ {'STR_JOIN', {stack, 0}, {arg, 0}, {arg, 1}}
+                     , 'RETURN']}
                ]}
            , {<<"int_to_str">>
              , {[integer], string}
-             , [ {0, [ {int_to_str, {stack, 0}, {arg, 0}}
-                     , return]}
+             , [ {0, [ {'INT_TO_STR', {stack, 0}, {arg, 0}}
+                     , 'RETURN']}
                ]}
            , {<<"addr_to_str">>
              , {[address], string}
-             , [ {0, [ {addr_to_str, {stack, 0}, {arg, 0}}
-                     , return]}
+             , [ {0, [ {'ADDR_TO_STR', {stack, 0}, {arg, 0}}
+                     , 'RETURN']}
                ]}
            , {<<"int_to_addr">>
              , {[integer], address}
-             , [ {0, [ {int_to_addr, {stack, 0}, {arg, 0}}
-                     , return]}
+             , [ {0, [ {'INT_TO_ADDR', {stack, 0}, {arg, 0}}
+                     , 'RETURN']}
                ]}
            , {<<"str_reverse">>
              , {[string], string}
-             , [ {0, [ {str_reverse, {stack, 0}, {arg, 0}}
-                     , return]}
+             , [ {0, [ {'STR_REVERSE', {stack, 0}, {arg, 0}}
+                     , 'RETURN']}
                ]}
            ]
 
      , <<"variant">> =>
            [ {<<"switch">>
              , {[{variant, 2}], integer}
-             , [ {0, [ {variant_switch, {arg,0}, 1, 2}]}
-               , {1, [{return_r, {immediate, 0}}]}
-               , {2, [{return_r, {immediate, 42}}]}
+             , [ {0, [ {'SWITCH_V2', {arg,0}, {immediate, 1}, {immediate, 2}}]}
+               , {1, [{'RETURNR', {immediate, 0}}]}
+               , {2, [{'RETURNR', {immediate, 42}}]}
                ]}
            , {<<"test">>
              , {[{variant, 2}, integer], boolean}
-             , [ {0, [ {variant_test, {stack, 0}, {arg,0}, {arg, 1}}
-                     , return]}
+             , [ {0, [ {'VARIANT_TEST', {stack, 0}, {arg,0}, {arg, 1}}
+                     , 'RETURN']}
                ]}
            , {<<"element">>
              , {[{variant, 2}, integer], integer}
-             , [ {0, [ {variant_element, {stack, 0}, {arg,0}, {arg, 1}}
-                     , return]}
+             , [ {0, [ {'VARIANT_ELEMENT', {stack, 0}, {arg,0}, {arg, 1}}
+                     , 'RETURN']}
                ]}
            , {<<"make">>
              , {[integer, integer, integer, {list, integer}], {variant, 2}}
-             , [ {0, [ {store, {var, 1}, {arg, 0}}
-                     , {store, {var, 2}, {arg, 1}}
-                     , {store, {var, 3}, {arg, 3}}
-                     , {store, {var, 4}, {arg, 2}}
-                     , {jump, 2}
+             , [ {0, [ {'STORE', {var, 1}, {arg, 0}}
+                     , {'STORE', {var, 2}, {arg, 1}}
+                     , {'STORE', {var, 3}, {arg, 3}}
+                     , {'STORE', {var, 4}, {arg, 2}}
+                     , {'JUMP', {immediate, 2}}
                      ]}
-               , {1, [ {make_variant, {stack, 0}, {var, 1}, {var, 2}, {var, 4}}
-                     , return
+               , {1, [ {'VARIANT', {stack, 0}, {var, 1}, {var, 2}, {var, 4}}
+                     , 'RETURN'
                      ]}
-               , {2, [ {is_nil, {stack, 0}, {var, 3}}
-                     , {jumpif_a, 1}
+               , {2, [ {'IS_NIL', {stack, 0}, {var, 3}}
+                     , {'JUMPIF', {stack, 0}, {immediate, 1}}
                      ]}
-               , {3, [ {hd, {stack, 0}, {var, 3}}
-                     , {tl, {var, 3}, {var, 3}}
-                     , {jump, 2}]}
+               , {3, [ {'HD', {stack, 0}, {var, 3}}
+                     , {'TL', {var, 3}, {var, 3}}
+                     , {'JUMP', {immediate, 2}}]}
                ]}
            ]
 
      , <<"bits">> =>
            [ {<<"all">>
              , {[], bits}
-             , [ {0, [ bits_all
-                     , return]}]}
+             , [ {0, [ 'BITS_ALL'
+                     , 'RETURN']}]}
            , {<<"all_n">>
              , {[integer], bits}
-             , [ {0, [ {bits_all_n, {stack, 0}, {arg, 0}}
-                     , return]}]}
+             , [ {0, [ {'BITS_ALL_N', {stack, 0}, {arg, 0}}
+                     , 'RETURN']}]}
            ,  {<<"none">>
               , {[], bits}
-              , [ {0, [ bits_none
-                      , return]}]}
+              , [ {0, [ 'BITS_NONE'
+                      , 'RETURN']}]}
            ,  {<<"set">>
               , {[integer], bits}
-              , [ {0, [ {bits_none, {var, 1}}
-                      , {bits_set, {stack, 0}, {var, 1}, {arg, 0}}
-                      , return]}]}
+              , [ {0, [ {'BITS_NONE', {var, 1}}
+                      , {'BITS_SET', {stack, 0}, {var, 1}, {arg, 0}}
+                      , 'RETURN']}]}
            ,  {<<"clear">>
               , {[integer], bits}
-              , [ {0, [ {bits_all, {var, 1}}
-                      , {bits_clear, {stack, 0}, {var, 1}, {arg, 0}}
-                      , return]}]}
+              , [ {0, [ {'BITS_ALL', {var, 1}}
+                      , {'BITS_CLEAR', {stack, 0}, {var, 1}, {arg, 0}}
+                      , 'RETURN']}]}
            ,  {<<"test">>
               , {[bits, integer], boolean}
-              , [ {0, [ {bits_test, {stack, 0}, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'BITS_TEST', {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
            ,  {<<"sum">>
               , {[bits], integer}
-              , [ {0, [ {bits_sum, {stack, 0}, {arg, 0}}
-                      , return]}]}
+              , [ {0, [ {'BITS_SUM', {stack, 0}, {arg, 0}}
+                      , 'RETURN']}]}
            ,  {<<"union">>
               , {[bits, bits], bits}
-              , [ {0, [ {bits_union, {stack, 0}, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'BITS_OR', {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
            ,  {<<"intersection">>
               , {[bits, bits], bits}
-              , [ {0, [ {bits_intersection, {stack, 0}, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'BITS_AND', {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
            ,  {<<"difference">>
               , {[bits, bits], bits}
-              , [ {0, [ {bits_difference, {stack, 0}, {arg, 0}, {arg, 1}}
-                      , return]}]}
+              , [ {0, [ {'BITS_DIFF', {stack, 0}, {arg, 0}, {arg, 1}}
+                      , 'RETURN']}]}
 
            ]
 

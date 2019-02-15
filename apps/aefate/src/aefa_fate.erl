@@ -101,23 +101,25 @@ eval({'RETURNR', Name}, EngineState) ->
     ES1 = un_op(get, {{stack, 0}, Name}, EngineState),
     ES2 = check_return_type(ES1),
     pop_call_stack(ES2);
-eval({'CALL', Function}, EngineState) ->
+eval({'CALL', {immediate, Function}}, EngineState) ->
     Signature = get_function_signature(Function, EngineState),
     {ok, ES2} = check_signature_and_bind_args(Signature, EngineState),
     ES3 = push_return_address(ES2),
     {jump, 0,  set_current_function(Function, ES3)};
-eval({'CALL_T', Function}, EngineState) ->
+eval({'CALL_T', {immediate, Function}}, EngineState) ->
     Signature = get_function_signature(Function, EngineState),
     {ok, ES2} = check_signature_and_bind_args(Signature, EngineState),
     {jump, 0,  set_current_function(Function, ES2)};
-eval({'CALL_R', Contract, Function}, EngineState) ->
+eval({'CALL_R', Contract, {immediate, Function}}, EngineState) ->
     ES1 = push_return_address(EngineState),
-    ES2 = set_function(Contract, Function, ES1),
-    Signature = get_function_signature(Function, ES2),
-    {ok, ES3} = check_signature_and_bind_args(Signature, ES2),
-    {jump, 0, ES3};
-eval({'CALL_TR', Contract, Function}, EngineState) ->
-    ES2 = set_function(Contract, Function, EngineState),
+    {Address, ES2} = get_op_arg(Contract, ES1),
+    ES3 = set_function(Address, Function, ES2),
+    Signature = get_function_signature(Function, ES3),
+    {ok, ES4} = check_signature_and_bind_args(Signature, ES3),
+    {jump, 0, ES4};
+eval({'CALL_TR', Contract, {immediate, Function}}, EngineState) ->
+    {Address, ES1} = get_op_arg(Contract, EngineState),
+    ES2 = set_function(Address, Function, ES1),
     Signature = get_function_signature(Function, ES2),
     {ok, ES3} = check_signature_and_bind_args(Signature, ES2),
     {jump, 0, ES3};
@@ -125,17 +127,17 @@ eval({'CALL_TR', Contract, Function}, EngineState) ->
 %% ------------------------------------------------------
 %% Control flow instructions
 %% ------------------------------------------------------
-eval({'JUMP', BB}, EngineState) ->
+eval({'JUMP', {immediate, BB}}, EngineState) ->
     {jump, BB, EngineState};
 
-eval({'JUMPIF', Arg, BB}, EngineState) ->
+eval({'JUMPIF', Arg, {immediate, BB}}, EngineState) ->
     {Value, ES1} = get_op_arg(Arg, EngineState),
     case Value of
         true -> {jump, BB, ES1};
         false -> {next, ES1}
     end;
 
-eval({variant_switch, Variant, BB1, BB2}, ES) ->
+eval({'SWITCH_V2', Variant, {immediate, BB1}, {immediate, BB2}}, ES) ->
     {Value, ES1} = get_op_arg(Variant, ES),
     if ?IS_FATE_VARIANT(Value) ->
             ?FATE_VARIANT(Size, Tag, _T) = Value,
@@ -150,7 +152,7 @@ eval({variant_switch, Variant, BB1, BB2}, ES) ->
             end;
        true -> abort({value_does_not_match_type,Value, variant}, ES1)
     end;
-eval({variant_switch, Variant, BB1, BB2, BB3}, ES) ->
+eval({'SWITCH_V3', Variant, {immediate, BB1}, {immediate, BB2}, {immediate, BB3}}, ES) ->
     {Value, ES1} = get_op_arg(Variant, ES),
     if ?IS_FATE_VARIANT(Value) ->
             ?FATE_VARIANT(Size, Tag, _T) = Value,
@@ -166,7 +168,9 @@ eval({variant_switch, Variant, BB1, BB2, BB3}, ES) ->
             end;
        true -> abort({value_does_not_match_type,Value, variant}, ES1)
     end;
-eval({variant_switch, Variant, BB1, BB2, BB3, BB4}, ES) ->
+eval({'SWITCH_V4', Variant, {immediate, BB1},
+      {immediate, BB2}, {immediate, BB3}, {immediate, BB4}}
+    , ES) ->
     {Value, ES1} = get_op_arg(Variant, ES),
     if ?IS_FATE_VARIANT(Value) ->
             ?FATE_VARIANT(Size, Tag, _T) = Value,
@@ -183,7 +187,9 @@ eval({variant_switch, Variant, BB1, BB2, BB3, BB4}, ES) ->
             end;
        true -> abort({value_does_not_match_type, Value, variant}, ES1)
     end;
-eval({variant_switch, Variant, BB1, BB2, BB3, BB4, BB5}, ES) ->
+eval({'SWITCH_V5', Variant, {immediate, BB1},
+      {immediate, BB2}, {immediate, BB3}, {immediate, BB4}, {immediate, BB5}}
+    , ES) ->
     {Value, ES1} = get_op_arg(Variant, ES),
     if ?IS_FATE_VARIANT(Value) ->
             ?FATE_VARIANT(Size, Tag, _T) = Value,
@@ -237,81 +243,28 @@ eval({'POW', Dest, Left, Right}, EngineState) ->
 %% ------------------------------------------------------
 %% Comparison instructions
 %% ------------------------------------------------------
-eval(lt_a_a_a, EngineState) ->
-    {next, bin_comp(lt, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
-eval({lt_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_comp(lt, {{stack, 0}, Left, Right}, EngineState)};
-eval({lt_a_a_r, Right}, EngineState) ->
-    {next, bin_comp(lt, {{stack, 0}, {stack, 0}, Right}, EngineState)};
-eval({lt_a_r_a, Left}, EngineState) ->
-    {next, bin_comp(lt, {{stack, 0}, Left, {stack, 0}}, EngineState)};
-
-eval(gt_a_a_a, EngineState) ->
-    {next, bin_comp(gt, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
-eval({gt_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_comp(gt, {{stack, 0}, Left, Right}, EngineState)};
-eval({gt_a_a_r, Right}, EngineState) ->
-    {next, bin_comp(gt, {{stack, 0}, {stack, 0}, Right}, EngineState)};
-eval({gt_a_r_a, Left}, EngineState) ->
-    {next, bin_comp(gt, {{stack, 0}, Left, {stack, 0}}, EngineState)};
-
-eval(elt_a_a_a, EngineState) ->
-    {next, bin_comp(elt, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
-eval({elt_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_comp(elt, {{stack, 0}, Left, Right}, EngineState)};
-eval({elt_a_a_r, Right}, EngineState) ->
-    {next, bin_comp(elt, {{stack, 0}, {stack, 0}, Right}, EngineState)};
-eval({elt_a_r_a, Left}, EngineState) ->
-    {next, bin_comp(elt, {{stack, 0}, Left, {stack, 0}}, EngineState)};
-
-eval(egt_a_a_a, EngineState) ->
-    {next, bin_comp(egt, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
-eval({egt_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_comp(egt, {{stack, 0}, Left, Right}, EngineState)};
-eval({egt_a_a_r, Right}, EngineState) ->
-    {next, bin_comp(egt, {{stack, 0}, {stack, 0}, Right}, EngineState)};
-eval({egt_a_r_a, Left}, EngineState) ->
-    {next, bin_comp(egt, {{stack, 0}, Left, {stack, 0}}, EngineState)};
-
-eval(eq_a_a_a, EngineState) ->
-    {next, bin_comp(eq, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
-eval({eq_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_comp(eq, {{stack, 0}, Left, Right}, EngineState)};
-eval({eq_a_a_r, Right}, EngineState) ->
-    {next, bin_comp(eq, {{stack, 0}, {stack, 0}, Right}, EngineState)};
-eval({eq_a_r_a, Left}, EngineState) ->
-    {next, bin_comp(eq, {{stack, 0}, Left, {stack, 0}}, EngineState)};
-
-eval(neq_a_a_a, EngineState) ->
-    {next, bin_comp(neq, {{stack, 0}, {stack, 0}, {stack, 0}}, EngineState)};
-eval({neq_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_comp(neq, {{stack, 0}, Left, Right}, EngineState)};
-eval({neq_a_a_r, Right}, EngineState) ->
-    {next, bin_comp(lt, {{stack, 0}, {stack, 0}, Right}, EngineState)};
-eval({neq_a_r_a, Left}, EngineState) ->
-    {next, bin_comp(neq, {{stack, 0}, Left, {stack, 0}}, EngineState)};
-
-
+eval({'LT', Dest,  Left, Right}, EngineState) ->
+    {next, bin_comp(lt, {Dest, Left, Right}, EngineState)};
+eval({'GT', Dest, Left, Right}, EngineState) ->
+    {next, bin_comp(gt, {Dest, Left, Right}, EngineState)};
+eval({'ELT', Dest, Left, Right}, EngineState) ->
+    {next, bin_comp(elt, {Dest, Left, Right}, EngineState)};
+eval({'EGT', Dest, Left, Right}, EngineState) ->
+    {next, bin_comp(egt, {Dest, Left, Right}, EngineState)};
+eval({'EQ', Dest, Left, Right}, EngineState) ->
+    {next, bin_comp(eq, {Dest, Left, Right}, EngineState)};
+eval({'NEQ', Dest, Left, Right}, EngineState) ->
+    {next, bin_comp(neq, {Dest, Left, Right}, EngineState)};
 
 %% ------------------------------------------------------
 %% Boolean instructions
 %% ------------------------------------------------------
-eval(push_a_true, EngineState) ->
-    {next, push_bool(?FATE_TRUE, EngineState)};
-eval(push_a_false, EngineState) ->
-    {next, push_bool(?FATE_FALSE, EngineState)};
-eval(and_a_a_a, EngineState) ->
-    {next, and_aaa(EngineState)};
-eval({and_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_op('and', {{stack, 0}, Left, Right}, EngineState)};
-eval(or_a_a_a, EngineState) ->
-    {next, or_aaa(EngineState)};
-eval({or_a_r_r, Left, Right}, EngineState) ->
-    {next, bin_op('or', {{stack, 0}, Left, Right}, EngineState)};
-eval(not_a_a, EngineState) ->
-    {next, not_aa(EngineState)};
-eval({not_a_r, Name}, EngineState) ->
-    {next, un_op('not', {{stack, 0}, Name}, EngineState)};
+eval({'AND', Dest, Left, Right}, EngineState) ->
+    {next, bin_op('and', {Dest, Left, Right}, EngineState)};
+eval({'OR', Dest, Left, Right}, EngineState) ->
+    {next, bin_op('or', {Dest, Left, Right}, EngineState)};
+eval({'NOT', Dest, Name}, EngineState) ->
+    {next, un_op('not', {Dest, Name}, EngineState)};
 
 
 %% ------------------------------------------------------
@@ -320,31 +273,31 @@ eval({not_a_r, Name}, EngineState) ->
 %% Make tuple only takes a fixed size.
 %% NOTE: There is no type checking on the arguments on the stack.
 %% TODO: add type checking.
-eval({make_tuple, Size}, EngineState) ->
+eval({'TUPLE', {immediate, Size}}, EngineState) ->
     if is_integer(Size) andalso (Size >= 0) ->
             {next, make_tuple(Size, EngineState)};
        true -> abort({invalid_tuple_size, Size}, EngineState)
     end;
 %% (get) Element takes a type and two named arguments and stores
 %% the element at position 'which' of the 'Tuple' in 'Dest'.
-eval({element, Type, Dest, Which, Tuple}, EngineState) ->
+eval({'ELEMENT', Type, Dest, Which, Tuple}, EngineState) ->
     {next, tuple_element(Type, Dest, Which, Tuple, EngineState)};
 
 %% ------------------------------------------------------
 %% Map instructions
 %% ------------------------------------------------------
 %% Todo type checking?
-eval({map_empty, Dest}, EngineState) ->
+eval({'MAP_EMPTY', Dest}, EngineState) ->
     {next, un_op(get, {Dest, {immediate, aeb_fate_data:make_map(#{})}}, EngineState)};
-eval({map_lookup, Dest, Map, Key}, EngineState) ->
+eval({'MAP_LOOKUP', Dest, Map, Key}, EngineState) ->
     {next, bin_op(map_lookup, {Dest, Map, Key}, EngineState)};
-eval({map_lookup_default, Dest, Map, Key, Default}, EngineState) ->
+eval({'MAP_LOOKUPD', Dest, Map, Key, Default}, EngineState) ->
     {next, ter_op(map_lookup_default, {Dest, Map, Key, Default}, EngineState)};
-eval({map_update, Dest, Map, Key, Value}, EngineState) ->
+eval({'MAP_UPDATE', Dest, Map, Key, Value}, EngineState) ->
     {next, ter_op(map_update, {Dest, Map, Key, Value}, EngineState)};
-eval({map_member, Dest, Map, Key}, EngineState) ->
+eval({'MAP_MEMBER', Dest, Map, Key}, EngineState) ->
     {next, bin_op(map_member, {Dest, Map, Key}, EngineState)};
-eval({map_from_list, Dest, List}, EngineState) ->
+eval({'MAP_FROM_LIST', Dest, List}, EngineState) ->
     {next, un_op(map_from_list, {Dest, List}, EngineState)};
 
 
@@ -352,35 +305,35 @@ eval({map_from_list, Dest, List}, EngineState) ->
 %% List instructions
 %% ------------------------------------------------------
 %% Todo type checking?
-eval({nil, Dest}, EngineState) ->
+eval({'NIL', Dest}, EngineState) ->
     {next, un_op(get, {Dest, {immediate, aeb_fate_data:make_list([])}}, EngineState)};
-eval({is_nil, Dest, List}, EngineState) ->
+eval({'IS_NIL', Dest, List}, EngineState) ->
     {next, un_op(is_nil, {Dest, List}, EngineState)};
-eval({cons, Dest, Hd, Tl}, EngineState) ->
+eval({'CONS', Dest, Hd, Tl}, EngineState) ->
     {next, bin_op(cons, {Dest, Hd, Tl}, EngineState)};
-eval({hd, Dest, List}, EngineState) ->
+eval({'HD', Dest, List}, EngineState) ->
     {next, un_op(hd, {Dest, List}, EngineState)};
-eval({tl, Dest, List}, EngineState) ->
+eval({'TL', Dest, List}, EngineState) ->
     {next, un_op(tl, {Dest, List}, EngineState)};
-eval({length, Dest, List}, EngineState) ->
+eval({'LENGTH', Dest, List}, EngineState) ->
     {next, un_op(length, {Dest, List}, EngineState)};
 
 %% ------------------------------------------------------
 %% String instructions
 %% ------------------------------------------------------
-eval({str_equal, Dest, Str1, Str2}, EngineState) ->
+eval({'STR_EQ', Dest, Str1, Str2}, EngineState) ->
     {next, bin_op(str_equal, {Dest, Str1, Str2}, EngineState)};
-eval({str_join, Dest, Str1, Str2}, EngineState) ->
+eval({'STR_JOIN', Dest, Str1, Str2}, EngineState) ->
     {next, bin_op(str_join, {Dest, Str1, Str2}, EngineState)};
-eval({int_to_str, Dest, Str}, EngineState) ->
+eval({'INT_TO_STR', Dest, Str}, EngineState) ->
     {next, un_op(int_to_str, {Dest, Str}, EngineState)};
-eval({addr_to_str, Dest, Str}, EngineState) ->
+eval({'ADDR_TO_STR', Dest, Str}, EngineState) ->
     {next, un_op(addr_to_str, {Dest, Str}, EngineState)};
-eval({str_reverse, Dest, Str}, EngineState) ->
+eval({'STR_REVERSE', Dest, Str}, EngineState) ->
     {next, un_op(str_reverse, {Dest, Str}, EngineState)};
 
 
-eval({int_to_addr, Dest, Str}, EngineState) ->
+eval({'INT_TO_ADDR', Dest, Str}, EngineState) ->
     {next, un_op(int_to_addr, {Dest, Str}, EngineState)};
 
 %% ------------------------------------------------------
@@ -398,12 +351,12 @@ eval({int_to_addr, Dest, Str}, EngineState) ->
 %% variants of size 2 to 5.
 
 %% TODO: should this also take a size?
-eval({variant_test, Dest, Variant, Tag}, EngineState) ->
+eval({'VARIANT_TEST', Dest, Variant, Tag}, EngineState) ->
     {next, bin_op(variant_test, {Dest, Variant, Tag}, EngineState)};
 %% TODO: type test? Size, Tag, and element type?
-eval({variant_element, Dest, Variant, Index}, EngineState) ->
+eval({'VARIANT_ELEMENT', Dest, Variant, Index}, EngineState) ->
     {next, bin_op(variant_element, {Dest, Variant, Index}, EngineState)};
-eval({make_variant, Dest, SizeA, TagA, ElementsA}, EngineState) ->
+eval({'VARIANT', Dest, SizeA, TagA, ElementsA}, EngineState) ->
     {Size, ES1} = get_op_arg(SizeA, EngineState),
     {Tag, ES2} = get_op_arg(TagA, ES1),
     {N, ES3} = get_op_arg(ElementsA, ES2),
@@ -422,58 +375,58 @@ eval({make_variant, Dest, SizeA, TagA, ElementsA}, EngineState) ->
 
 %% Bits.none : bits
 %% An empty bit set.
-eval(bits_none, EngineState) -> {next, push(?FATE_BITS(0), EngineState)};
-eval({bits_none, To}, EngineState) ->
+eval('BITS_NONE', EngineState) -> {next, push(?FATE_BITS(0), EngineState)};
+eval({'BITS_NONE', To}, EngineState) ->
     {next, un_op(get, {To, {immediate, ?FATE_BITS(0)}}, EngineState)};
 
 %% Bits.all : bits
 %% A bit field with all (an infinite amount) bits set
-eval(bits_all, EngineState) -> {next, push(?FATE_BITS(-1), EngineState)};
-eval({bits_all, To}, EngineState) ->
+eval('BITS_ALL', EngineState) -> {next, push(?FATE_BITS(-1), EngineState)};
+eval({'BITS_ALL', To}, EngineState) ->
     {next, un_op(get, {To, {immediate, ?FATE_BITS(-1)}}, EngineState)};
 
 %% Bits.all_n : bits
 %% A bit field with n bits set
-eval({bits_all_n, To, N}, EngineState) ->
+eval({'BITS_ALL_N', To, N}, EngineState) ->
     {next, un_op(bits_all, {To, N}, EngineState)};
 
 %% Bits.set(b : bits, i : int) : bits
 %% Set bit i
-eval({bits_set, To, Bits, Bit}, EngineState) ->
+eval({'BITS_SET', To, Bits, Bit}, EngineState) ->
     {next, bin_op(bits_set, {To, Bits, Bit}, EngineState)};
 
 %% Bits.clear(b : bits, i : int) : bits
 %% Clear bit i
-eval({bits_clear, To, Bits, Bit}, EngineState) ->
+eval({'BITS_CLEAR', To, Bits, Bit}, EngineState) ->
     {next, bin_op(bits_clear, {To, Bits, Bit}, EngineState)};
 
 %% Bits.test(b : bits, i : int) : bool
 %% Check if bit i is set
-eval({bits_test, To, Bits, Bit}, EngineState) ->
+eval({'BITS_TEST', To, Bits, Bit}, EngineState) ->
     {next, bin_op(bits_test, {To, Bits, Bit}, EngineState)};
 
 %% Bits.sum(b : bits) : int
 %% Count the number of set bits.
 %% Throws an exception for infinite bit sets (starting from Bits.all)
-eval({bits_sum, To, Bits}, EngineState) ->
+eval({'BITS_SUM', To, Bits}, EngineState) ->
     {next, un_op(bits_sum, {To, Bits}, EngineState)};
 
 %% Bits.union(a : bits, b : bits) : bits
 %% For all i:
 %%   Bits.test(Bits.union(a, b), i) == (Bits.test(a, i) || Bits.test(b, i))
-eval({bits_union, To, Bits, Bit}, EngineState) ->
+eval({'BITS_OR', To, Bits, Bit}, EngineState) ->
     {next, bin_op(bits_union, {To, Bits, Bit}, EngineState)};
 
 %% Bits.intersection(a : bits, b : bits) : bits
 %% For all i:
 %% Bits.test(Bits.intersection(a, b), i) == (Bits.test(a, i) && Bits.test(b, i))
-eval({bits_intersection, To, Bits, Bit}, EngineState) ->
+eval({'BITS_AND', To, Bits, Bit}, EngineState) ->
     {next, bin_op(bits_intersection, {To, Bits, Bit}, EngineState)};
 
 %% Bits.difference(a : bits, b : bits) : bits
 %% For all i:
 %%  Bits.test(Bits.difference(a, b), i) == (Bits.test(a, i) && !Bits.test(b, i))
-eval({bits_difference, To, Bits, Bit}, EngineState) ->
+eval({'BITS_DIFF', To, Bits, Bit}, EngineState) ->
     {next, bin_op(bits_difference, {To, Bits, Bit}, EngineState)};
 
 
@@ -481,13 +434,13 @@ eval({bits_difference, To, Bits, Bit}, EngineState) ->
 %% ------------------------------------------------------
 %% Stack instructions
 %% ------------------------------------------------------
-eval(dup, EngineState) ->
+eval('DUP', EngineState) ->
     {next, dup(EngineState)};
 
 %% ------------------------------------------------------
 %% Memory instructions
 %% ------------------------------------------------------
-eval({store, Var, What}, EngineState) ->
+eval({'STORE', Var, What}, EngineState) ->
     {next, un_op(get, {Var, What}, EngineState)};
 
 
@@ -495,7 +448,7 @@ eval({store, Var, What}, EngineState) ->
 %% ------------------------------------------------------
 %% Other Instructions
 %% ------------------------------------------------------
-eval(nop, EngineState) ->
+eval('NOP', EngineState) ->
     {next, EngineState}.
 
 
@@ -522,7 +475,7 @@ setup_engine(#{ contract := Contract
 
 set_function(Contract, Function, #{ chain := Chain
                                   , contracts := Contracts} = ES) ->
-    {ES2, Code} =
+    {ES2, #{functions := Code}} =
         case maps:get(Contract, Contracts, void) of
             void ->
                 ContractCode = chain_get_contract(Contract, Chain),
@@ -705,13 +658,6 @@ store({var, _} = Name,  Val, #{ memory := Mem } = ES) ->
 store({arg, N}, _, ES) ->
      abort({cannot_write_to_arg, N}, ES).
 
-
-%% ------------------------------------------------------
-%% Integer instructions
-%% ------------------------------------------------------
-
-
-push_int(I, ES) when ?IS_FATE_INTEGER(I) -> push(I, ES).
 
 %% ------------------------------------------------------
 %% Variant instructions
@@ -923,8 +869,6 @@ bits_sum(0, Sum) -> Sum;
 bits_sum(N, Sum) -> bits_sum(N bsr 1, Sum + (N band 2#1)).
 
 
-inc_acc(#{accumulator := X} = ES) when ?IS_FATE_INTEGER(X) ->
-    ES#{accumulator := ?MAKE_FATE_INTEGER(?FATE_INTEGER_VALUE(X)+1)}.
 
 %% ------------------------------------------------------
 %% Comparison instructions
@@ -943,33 +887,6 @@ comp(egt, A, B) -> A >= B;
 comp( eq, A, B) -> A =:= B;
 comp(neq, A, B) -> A =/= B.
 
-
-%% ------------------------------------------------------
-%% Boolean instructions
-%% ------------------------------------------------------
-push_bool(B,
-         #{ accumulator := A
-          , accumulator_stack := Stack } = ES) when ?IS_FATE_BOOLEAN(B) ->
-    ES#{ accumulator => B
-       , accumulator_stack => [A|Stack]}.
-
-and_aaa(#{ accumulator := A
-          , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_BOOLEAN(A)
-                                                       , ?IS_FATE_BOOLEAN(B) ->
-    ES#{ accumulator => (A and B)
-       , accumulator_stack => Stack}.
-
-or_aaa(#{ accumulator := A
-          , accumulator_stack := [B|Stack]} = ES) when ?IS_FATE_BOOLEAN(A)
-                                                       , ?IS_FATE_BOOLEAN(B) ->
-    ES#{ accumulator => (A or B)
-       , accumulator_stack => Stack}.
-
-not_aa(#{ accumulator := A} = ES) when ?IS_FATE_BOOLEAN(A) ->
-    ES#{ accumulator => (not A)}.
-
-is_true_a(#{ accumulator := A} = ES) when ?IS_FATE_BOOLEAN(A) ->
-    pop(ES).
 
 
 %% ------------------------------------------------------
