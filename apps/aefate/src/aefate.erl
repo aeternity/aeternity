@@ -52,9 +52,8 @@ load_file(FileName, Opts) ->
             SerializedCall = aeb_fate_asm:function_call(Call),
             What = #{ contract => FileName
                     , call => SerializedCall},
-            #{functions := Functions} = Code,
             Chain = #{ contracts => 
-                           #{ FileName => Functions}},
+                           #{ FileName => Code}},
             Res = aefa_fate:run(What, Chain),
                 
             case Verbose of 
