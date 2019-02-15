@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Wrapper to run keys_gen
 # Does not use relx_escript, as it does not work well with whitespaces in password, even in brackets.
