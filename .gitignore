@@ -56,3 +56,5 @@ rebar3.crashdump
 aeternity*windows*.zip
 aeternity*windows*.exe
 apps/*/test/*.xfm
+aefate
+
