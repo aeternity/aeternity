@@ -3,7 +3,7 @@
 
 -export([get_trace/1]).
 
--include("aefa_data.hrl").
+-include_lib("aebytecode/include/aeb_fate_data.hrl").
 
 -ifdef(TEST).
 -define(trace(I,S), S#{trace => [{I, erlang:process_info(self(), reductions)} |get_trace(S)]}).
@@ -18,6 +18,7 @@ run(What, Chain) ->
     catch
         throw:{E, ES} -> throw({E, ES})
     end.
+
 
 -define(t(__S,__A,__ES), throw({iolist_to_binary(io_lib:format(__S, __A)), __ES})).
 
@@ -93,29 +94,29 @@ step([I|Is], EngineState0) ->
 %% ------------------------------------------------------
 %% Call/return instructions
 %% ------------------------------------------------------
-eval(return, EngineState) ->
+eval('RETURN', EngineState) ->
     ES = check_return_type(EngineState),
     pop_call_stack(ES);
-eval({return_r, Name}, EngineState) ->
+eval({'RETURNR', Name}, EngineState) ->
     ES1 = un_op(get, {{stack, 0}, Name}, EngineState),
     ES2 = check_return_type(ES1),
     pop_call_stack(ES2);
-eval({call_local, Function}, EngineState) ->
+eval({'CALL', Function}, EngineState) ->
     Signature = get_function_signature(Function, EngineState),
     {ok, ES2} = check_signature_and_bind_args(Signature, EngineState),
     ES3 = push_return_address(ES2),
     {jump, 0,  set_current_function(Function, ES3)};
-eval({tailcall_local, Function}, EngineState) ->
+eval({'CALL_T', Function}, EngineState) ->
     Signature = get_function_signature(Function, EngineState),
     {ok, ES2} = check_signature_and_bind_args(Signature, EngineState),
     {jump, 0,  set_current_function(Function, ES2)};
-eval({call_remote, Contract, Function}, EngineState) ->
+eval({'CALL_R', Contract, Function}, EngineState) ->
     ES1 = push_return_address(EngineState),
     ES2 = set_function(Contract, Function, ES1),
     Signature = get_function_signature(Function, ES2),
     {ok, ES3} = check_signature_and_bind_args(Signature, ES2),
     {jump, 0, ES3};
-eval({tailcall_remote, Contract, Function}, EngineState) ->
+eval({'CALL_TR', Contract, Function}, EngineState) ->
     ES2 = set_function(Contract, Function, EngineState),
     Signature = get_function_signature(Function, ES2),
     {ok, ES3} = check_signature_and_bind_args(Signature, ES2),
@@ -124,13 +125,14 @@ eval({tailcall_remote, Contract, Function}, EngineState) ->
 %% ------------------------------------------------------
 %% Control flow instructions
 %% ------------------------------------------------------
-eval({jump, BB}, EngineState) ->
+eval({'JUMP', BB}, EngineState) ->
     {jump, BB, EngineState};
 
-eval({jumpif_a, BB}, EngineState) ->
-    case is_true_a(EngineState) of
-        {true, ES1} -> {jump, BB, ES1};
-        {false, ES1} -> {next, ES1}
+eval({'JUMPIF', Arg, BB}, EngineState) ->
+    {Value, ES1} = get_op_arg(Arg, EngineState),
+    case Value of
+        true -> {jump, BB, ES1};
+        false -> {next, ES1}
     end;
 
 eval({variant_switch, Variant, BB1, BB2}, ES) ->
@@ -205,32 +207,28 @@ eval({variant_switch, Variant, BB1, BB2, BB3, BB4, BB5}, ES) ->
 %% ------------------------------------------------------
 %% Integer instructions
 %% ------------------------------------------------------
-eval(push_a_0, EngineState) ->
-    {next, push_int(?MAKE_FATE_INTEGER(0), EngineState)};
-eval({push, Name}, EngineState) ->
+eval({'PUSH', Name}, EngineState) ->
     {next, un_op(get, {{stack, 0}, Name}, EngineState)};
 
-eval(inc_a_1_a, EngineState) ->
-    {next, inc_acc(EngineState)};
-eval({inc_a_1_r, Name}, EngineState) ->
-    {next, un_op(inc, {{stack, 0}, Name}, EngineState)};
+eval({'INC', Name}, EngineState) ->
+    {next, un_op(inc, {Name, Name}, EngineState)};
 
-eval({add, Dest, Left, Right}, EngineState) ->
+eval({'ADD', Dest, Left, Right}, EngineState) ->
     {next, bin_op(add, {Dest, Left, Right}, EngineState)};
 
-eval({sub, Dest, Left, Right}, EngineState) ->
+eval({'SUB', Dest, Left, Right}, EngineState) ->
     {next, bin_op(sub, {Dest, Left, Right}, EngineState)};
 
-eval({mul, Dest, Left, Right}, EngineState) ->
+eval({'MUL', Dest, Left, Right}, EngineState) ->
     {next, bin_op(mul, {Dest, Left, Right}, EngineState)};
 
-eval({'div', Dest, Left, Right}, EngineState) ->
+eval({'DIV', Dest, Left, Right}, EngineState) ->
     {next, bin_op('div', {Dest, Left, Right}, EngineState)};
 
-eval({mod, Dest, Left, Right}, EngineState) ->
+eval({'MOD', Dest, Left, Right}, EngineState) ->
     {next, bin_op(mod, {Dest, Left, Right}, EngineState)};
 
-eval({pow, Dest, Left, Right}, EngineState) ->
+eval({'POW', Dest, Left, Right}, EngineState) ->
     {next, bin_op(pow, {Dest, Left, Right}, EngineState)};
 
 
@@ -337,7 +335,7 @@ eval({element, Type, Dest, Which, Tuple}, EngineState) ->
 %% ------------------------------------------------------
 %% Todo type checking?
 eval({map_empty, Dest}, EngineState) ->
-    {next, un_op(get, {Dest, {immediate, aefa_data:make_map(#{})}}, EngineState)};
+    {next, un_op(get, {Dest, {immediate, aeb_fate_data:make_map(#{})}}, EngineState)};
 eval({map_lookup, Dest, Map, Key}, EngineState) ->
     {next, bin_op(map_lookup, {Dest, Map, Key}, EngineState)};
 eval({map_lookup_default, Dest, Map, Key, Default}, EngineState) ->
@@ -355,7 +353,7 @@ eval({map_from_list, Dest, List}, EngineState) ->
 %% ------------------------------------------------------
 %% Todo type checking?
 eval({nil, Dest}, EngineState) ->
-    {next, un_op(get, {Dest, {immediate, aefa_data:make_list([])}}, EngineState)};
+    {next, un_op(get, {Dest, {immediate, aeb_fate_data:make_list([])}}, EngineState)};
 eval({is_nil, Dest, List}, EngineState) ->
     {next, un_op(is_nil, {Dest, List}, EngineState)};
 eval({cons, Dest, Hd, Tl}, EngineState) ->
@@ -508,9 +506,11 @@ eval(nop, EngineState) ->
 
 
 setup_engine(#{ contract := Contract
-              , function := Function
-              , arguments := SerializedArguments}, Chain) ->
-    Arguments = aefa_encoding:deserialize(SerializedArguments),
+              , call := Call},
+             Chain) ->
+    {tuple, {Function, {tuple, ArgTuple}}} = 
+        aeb_fate_encoding:deserialize(Call),
+    Arguments = tuple_to_list(ArgTuple),
     ES1 = new_engine_state(Chain),
     ES2 = set_function(Contract, Function, ES1),
     ES3 = push_arguments(Arguments, ES2),
@@ -532,38 +532,20 @@ set_function(Contract, Function, #{ chain := Chain
                 {ES, ContractCode}
         end,
     ES3 = ES2#{current_contract => Contract},
-    ES4 = setup_functions(Code, ES3),
+    ES4 = ES3#{functions => Code},
     set_current_function(Function, ES4).
 
 %get_current_contract(#{current_contract := Contract}) ->
 %    Contract.
 
-setup_functions(ContractCode, ES) ->
-    lists:foldl(
-      fun({FunctionName, Signature, BBs}, State) ->
-              set_function_code(FunctionName, Signature, BBs, State)
-      end,
-      ES,
-      ContractCode).
 
 set_current_function(Function, ES) ->
-    ES1 = ES#{current_function => Function
-             , current_bb => 0},
-    BBs = get_function_code(Function, ES1),
-    lists:foldl(
-      fun({BB, Instructions}, State) ->
-              set_instructions(BB, Instructions, State)
-      end,
-      ES1,
-      BBs).
+    BBs = get_function_code(Function, ES),
+    ES#{current_function => Function
+       , current_bb => 0
+       , bbs := BBs
+       }.
 
-set_instructions(BB, Is, #{bbs := BBs} = ES) ->
-    NewBBs = maps:put(BB, Is, BBs),
-    maps:put(bbs, NewBBs, ES).
-
-set_function_code(Name, Signature, BBs, #{functions := Functions} = ES) ->
-    NewFunctions = maps:put(Name, {Signature, BBs}, Functions),
-    maps:put(functions, NewFunctions, ES).
 
 get_function_code(Name, #{functions := Functions} = ES) ->
     case maps:get(Name, Functions, void) of
@@ -632,7 +614,7 @@ check_type({list, any}, L) when ?IS_FATE_LIST(L) ->
 check_type({list, ET}, L) when ?IS_FATE_LIST(L) ->
     check_same_type(ET, ?FATE_LIST_VALUE(L));
 check_type({tuple, Elements}, T) when ?IS_FATE_TUPLE(T) ->
-    check_all_types(Elements, aefa_data:tuple_to_list(T));
+    check_all_types(Elements, aeb_fate_data:tuple_to_list(T));
 check_type({map, Key, Value}, M) when ?IS_FATE_MAP(M) ->
     {Ks, Vs} = lists:unzip(maps:to_list(?FATE_MAP_VALUE(M))),
     check_same_type(Key, Ks) andalso
@@ -745,7 +727,7 @@ make_variant(Size, Tag, NoElements, ES)  when ?IS_FATE_INTEGER(Size)
                                               , Tag >= 0 ->
     {Elements, ES2} = pop_n(NoElements, ES),
     Values = list_to_tuple(Elements),
-    {aefa_data:make_variant(Size, Tag, Values), ES2};
+    {aeb_fate_data:make_variant(Size, Tag, Values), ES2};
 make_variant(Size, Tag, NoElements, ES) ->
     abort({bad_arguments_to_make_variant, Size, Tag, NoElements}, ES).
 
@@ -757,7 +739,7 @@ make_variant(Size, Tag, NoElements, ES) ->
 make_tuple(Size, ES) ->
     {Elements, ES2} = pop_n(Size, ES),
     Tuple = list_to_tuple(Elements),
-    FateTuple = aefa_data:make_tuple(Tuple),
+    FateTuple = aeb_fate_data:make_tuple(Tuple),
     push(FateTuple, ES2).
 
 
@@ -789,30 +771,30 @@ op('not', A) ->
     not A;
 op(map_from_list, A) when ?IS_FATE_LIST(A) ->
     KeyValues = [T || ?FATE_TUPLE(T) <- ?FATE_LIST_VALUE(A)],
-    aefa_data:make_map(maps:from_list(KeyValues));
+    aeb_fate_data:make_map(maps:from_list(KeyValues));
 op(hd, A) when ?IS_FATE_LIST(A) ->
     case ?FATE_LIST_VALUE(A) of
         [] -> abort(hd_on_empty_list);
         [Hd|_] -> Hd
     end;
 op(is_nil, A) when ?IS_FATE_LIST(A) ->
-    aefa_data:make_boolean(?FATE_LIST_VALUE(A) =:= []);
+    aeb_fate_data:make_boolean(?FATE_LIST_VALUE(A) =:= []);
 op(tl, A) when ?IS_FATE_LIST(A) ->
     case ?FATE_LIST_VALUE(A) of
         [] -> abort(tl_on_empty_list);
         [_|Tl] -> Tl
     end;
 op(length, A) when ?IS_FATE_LIST(A) ->
-    aefa_data:make_integer(length(?FATE_LIST_VALUE(A)));
+    aeb_fate_data:make_integer(length(?FATE_LIST_VALUE(A)));
 op(int_to_str, A) when ?IS_FATE_INTEGER(A) ->
-    aefa_data:make_string(integer_to_binary(?FATE_INTEGER_VALUE(A)));
+    aeb_fate_data:make_string(integer_to_binary(?FATE_INTEGER_VALUE(A)));
 op(int_to_addr, A) when ?IS_FATE_INTEGER(A) ->
-    aefa_data:make_address(<<A:256>>);
+    aeb_fate_data:make_address(<<A:256>>);
 op(addr_to_str, A) when ?IS_FATE_ADDRESS(A) ->
     <<I:256>> = ?FATE_ADDRESS_VALUE(A),
-    aefa_data:make_string(integer_to_base58(I));
+    aeb_fate_data:make_string(integer_to_base58(I));
 op(str_reverse, A) when ?IS_FATE_STRING(A) ->
-    aefa_data:make_string(binary_reverse(?FATE_STRING_VALUE(A)));
+    aeb_fate_data:make_string(binary_reverse(?FATE_STRING_VALUE(A)));
 op(bits_all, N)  when ?IS_FATE_INTEGER(N) ->
     ?FATE_BITS((1 bsl (N)) - 1);
 op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
@@ -858,32 +840,32 @@ op(map_lookup, Map, Key) when ?IS_FATE_MAP(Map),
     end;
 op(map_member, Map, Key) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
-    aefa_data:make_boolean(maps:is_key(Key, ?FATE_MAP_VALUE(Map)));
+    aeb_fate_data:make_boolean(maps:is_key(Key, ?FATE_MAP_VALUE(Map)));
 op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
     case ?FATE_LIST_VALUE(Tail) of
-        [] -> aefa_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
+        [] -> aeb_fate_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
         [OldHd|_] = Tail ->
             case check_type(type(OldHd), Hd) of
                 true ->
-                    aefa_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
+                    aeb_fate_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
                 false ->
                     abort({type_error, cons, Hd, type(OldHd)})
             end
     end;
 op(str_equal, A, B) when ?IS_FATE_STRING(A)
                          , ?IS_FATE_STRING(B) ->
-    aefa_data:make_boolean(?FATE_STRING_VALUE(A)
+    aeb_fate_data:make_boolean(?FATE_STRING_VALUE(A)
                            =:=
                                ?FATE_STRING_VALUE(B));
 op(str_join, A, B) when ?IS_FATE_STRING(A)
                          , ?IS_FATE_STRING(B) ->
-    aefa_data:make_string(<<?FATE_STRING_VALUE(A)/binary,
+    aeb_fate_data:make_string(<<?FATE_STRING_VALUE(A)/binary,
                             ?FATE_STRING_VALUE(B)/binary>>);
 op(variant_test, A, B)  when ?IS_FATE_VARIANT(A)
                          , ?IS_FATE_INTEGER(B)
                          , B >= 0 ->
-    ?FATE_VARIANT(S, T, Values) = A,
-    aefa_data:make_boolean(T =:= B);
+    ?FATE_VARIANT(_S, T,_Values) = A,
+    aeb_fate_data:make_boolean(T =:= B);
 op(variant_element, A, B)  when ?IS_FATE_VARIANT(A)
                                 , ?IS_FATE_INTEGER(B)
                                 , B >= 0 ->
@@ -932,7 +914,7 @@ op(map_lookup_default, Map, Key, Default) when ?IS_FATE_MAP(Map),
 op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     Res = maps:put(Key, Value, ?FATE_MAP_VALUE(Map)),
-    aefa_data:make_map(Res).
+    aeb_fate_data:make_map(Res).
 
 
 
