@@ -486,7 +486,7 @@ assert_key_block_target(Node, Headers) ->
         {ok, PrevNode} ->
             Delta         = aec_governance:key_blocks_to_check_difficulty_count() + 1,
             Height        = node_height(Node),
-            GenesisHeight = aec_headers:height(aec_block_genesis:genesis_header()),
+            GenesisHeight = aec_block_genesis:height(),
             case Delta >= Height - GenesisHeight of
                 true ->
                     %% We only need to verify that the target is equal to its predecessor.
