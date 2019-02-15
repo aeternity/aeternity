@@ -250,15 +250,37 @@ bits() ->
 
 make_call(Contract, Function, Arguments) ->
     #{ contract  => Contract
-     , function  => Function
-     , arguments => Arguments}.
+     , call => aeb_fate_encoding:serialize(
+                 {tuple, {Function, {tuple, list_to_tuple(Arguments)}}})}.
 
 
 setup_chain() ->
     #{ contracts => setup_contracts()}.
 
-
 setup_contracts() ->
+    Cs = contracts(),
+    NewCs = [{C, setup_contract(Functions)}
+             || {C, Functions} <- maps:to_list(Cs)],
+    maps:from_list(NewCs).
+
+setup_contract(Functions) ->
+    lists:foldl(
+      fun({FunctionName, Signature, BBs}, State) ->
+              set_function_code(FunctionName, Signature, BBs, State)
+      end,
+      #{functions => #{}},
+      Functions).
+
+set_function_code(Name, Signature, BBs, #{functions := Functions} = S) ->
+    NewFunctions = maps:put(Name, {Signature, set_bbs(BBs, #{})}, Functions),
+    maps:put(functions, NewFunctions, S).
+
+set_bbs([], BBs) -> BBs;
+set_bbs([{N, Code}|Rest], BBs) -> 
+    set_bbs(Rest, BBs#{N => Code}).
+     
+
+contracts() ->
     #{ <<"test">> =>
            [ {<<"id">>, {[integer], integer}, [{0, [{return_r, {arg, 0}}]}]}
            , {<<"jumps">>, {[], integer},
