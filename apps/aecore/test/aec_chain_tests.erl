@@ -12,6 +12,7 @@
 -include_lib("aeminer/include/aeminer.hrl").
 -include_lib("aecontract/src/aecontract.hrl").
 -include_lib("aecore/include/blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -import(aec_test_utils,
         [ extend_block_chain_with_state/2
@@ -1710,4 +1711,74 @@ make_contract_create_tx(Pubkey, Code, CallData, Nonce, Deposit, Amount, Fee, Gas
 reward_40(Fee) -> Fee * 4 div 10.
 
 reward_60(Fee) -> Fee - reward_40(Fee).
+
+%%%===================================================================
+%%% Hard forking tests
+
+hard_forking_test_() ->
+    {foreach,
+     fun() ->
+             aec_test_utils:start_chain_db(),
+             meck:new(aec_hard_forks, [passthrough]),
+             setup_meck_and_keys()
+     end,
+     fun(TmpDir) ->
+             teardown_meck_and_keys(TmpDir),
+             meck:unload(aec_hard_forks),
+             aec_test_utils:stop_chain_db()
+     end,
+     [ {"Hard fork is accepted", fun hard_fork_is_accepted/0}
+     , {"Hard fork with accounts is accepted", fun hard_fork_inserts_new_accounts/0}
+     ]}.
+
+hard_fork_is_accepted() ->
+    MinervaForkHeight = 10,
+    meck_minerva_fork_height(MinervaForkHeight),
+    %% Create a chain that we are going to use.
+    % genesis has a height = 0
+    Chain = aec_test_utils:gen_blocks_only_chain(MinervaForkHeight + 1),
+
+    %% Insert all blocks.
+    ok = write_blocks_to_chain(Chain),
+    ok.
+
+hard_fork_inserts_new_accounts() ->
+    MinervaForkHeight = 10,
+    Alice = <<42:32/unit:8>>,
+    BalA = 123456,
+    meck:expect(aec_fork_block_settings, minerva_accounts, 0, [{Alice, BalA}]),
+    meck_minerva_fork_height(MinervaForkHeight),
+    %% Create a chain that we are going to use.
+    % genesis has a height = 0
+    Chain = aec_test_utils:gen_blocks_only_chain(MinervaForkHeight + 1),
+    [HardForkBlock | PreForkChain] = lists:reverse(Chain),
+
+    %% Insert up to the point of the fork
+    ok = write_blocks_to_chain(lists:reverse(PreForkChain)),
+    %% assert that Alice is not present
+    none = aec_chain:get_account(Alice),
+    ok = write_blocks_to_chain([HardForkBlock]),
+    %% assert that Alice is present
+    {value, AliceAccount} = aec_chain:get_account(Alice),
+    % ensure the account nonce and balance
+    0 = aec_accounts:nonce(AliceAccount),
+    BalA = aec_accounts:balance(AliceAccount),
+    ok.
+
+meck_minerva_fork_height(Height) ->
+    Version = aec_hard_forks:protocol_effective_at_height(Height),
+    meck:expect(aec_hard_forks, is_fork_height,
+                fun(H) ->
+                    case H =:= Height of
+                        true -> {true, ?MINERVA_PROTOCOL_VSN};
+                        false -> false
+                    end
+                end),
+    meck:expect(aec_hard_forks, protocol_effective_at_height,
+                fun(H) ->
+                    case H >= Height of
+                        true -> ?MINERVA_PROTOCOL_VSN;
+                        false -> ?ROMA_PROTOCOL_VSN
+                    end
+                end).
 
