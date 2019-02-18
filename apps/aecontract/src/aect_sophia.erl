@@ -73,7 +73,7 @@ parse_options(<<_:8, Rest/binary>>, Acc) ->
     parse_options(Rest, Acc);
 parse_options(<<>>, Acc) -> Acc.
 
-is_legal_serialization_at_height(?SOPHIA_CONTRACT_VSN_1, Height) ->
+is_legal_serialization_at_height(?SOPHIA_CONTRACT_VSN_1, _Height) ->
     true;
 is_legal_serialization_at_height(?SOPHIA_CONTRACT_VSN_2, Height) ->
     aec_hard_forks:protocol_effective_at_height(Height) >= ?MINERVA_PROTOCOL_VSN.
@@ -89,7 +89,7 @@ serialize(#{byte_code := ByteCode, type_info := TypeInfo,
                  end,
     Fields = [ {source_hash, aec_hash:hash(sophia_source_code, ContractBin)}
              , {type_info, TypeInfo}
-             , {byte_code, ByteCode} ] ++ 
+             , {byte_code, ByteCode} ] ++
              [ {compiler_version, BinVersion} || SophiaContractVersion > ?SOPHIA_CONTRACT_VSN_1 ],
              %% Add version here in release when Minerva height has been reached
     aec_object_serialization:serialize(compiler_sophia,
