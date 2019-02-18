@@ -126,8 +126,6 @@ adjust_sinks(L) ->
         lists:map(
           fun({epoch_mining_lager_event = K, Opts}) ->
                   {K, set_sink_level(L, Opts)};
-             ({epoch_pow_cuckoo_lager_event = K, Opts}) ->
-                  {K, set_sink_level(L, Opts)};
              ({epoch_sync_lager_event = K, Opts}) ->
                   {K, set_sink_level(L, Opts)};
              (X) ->
