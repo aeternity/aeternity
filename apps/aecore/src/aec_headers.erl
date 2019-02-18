@@ -65,7 +65,7 @@
 %%%===================================================================
 
 -type height() :: aec_blocks:height().
--type optional_info() :: <<>> | <<_:(?OPTIONAL_INFO_BYTES*8)>>.
+-type optional_info() :: <<>> | <<_:32>>. %% ?OPTIONAL_INFO_BYTES * 8
 
 -record(mic_header, {
           height       = 0                                     :: height(),
