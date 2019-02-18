@@ -32,6 +32,7 @@ tx_pool_test_() ->
              meck:new(aeu_time, [passthrough]),
              meck:new(aec_jobs_queues),
              meck:expect(aec_jobs_queues, run, fun(_, F) -> F() end),
+             meck:expect(aec_governance, minimum_gas_price, 1, 1),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
@@ -652,12 +653,12 @@ tx_pool_test_() ->
                ?assertEqual({error, too_low_fee}, aec_tx_pool:push(STx4)),
 
                %% A transaction with too low gas price should be rejected
-               meck:expect(aec_governance, minimum_gas_price, 0, 1),
+               meck:expect(aec_governance, minimum_gas_price, 1, 1),
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 10, 1000000, 1))),
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 20, 1000000, 1))),
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 11, 2000000, 2))),
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 21, 2000000, 2))),
-               meck:expect(aec_governance, minimum_gas_price, 0, 2),
+               meck:expect(aec_governance, minimum_gas_price, 1, 2),
                ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 12, 2000000, 0))),
                ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 22, 2000000, 0))),
                ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 13, 2000000, 1))),

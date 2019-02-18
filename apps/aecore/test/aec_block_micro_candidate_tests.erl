@@ -130,7 +130,7 @@ block_extension_test_() ->
             PayloadSize = 10 * trunc(Gas([SmallSpendTx]) / aec_governance:byte_gas()),
             Payload = << <<0>> || _ <- lists:seq(1, PayloadSize) >>,
 
-            Tx = fun(N) -> SpendTx(#{nonce => N, payload => Payload, fee => 20 * aetx:min_fee(aetx_sign:tx(SmallSpendTx), unused_height)}) end,
+            Tx = fun(N) -> SpendTx(#{nonce => N, payload => Payload, fee => 20 * aetx:min_fee(aetx_sign:tx(SmallSpendTx), 10)}) end,
 
             %% Compute txs for filling up block.
             MaxGas = aec_governance:block_gas_limit(),

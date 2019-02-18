@@ -633,13 +633,14 @@ check_pool_db_put(Tx, TxHash, Event) ->
             lager:debug("Already have GC:ed tx: ~p", [TxHash]),
             ignore;
         not_found ->
-            Checks = [ fun check_signature/3
-                     , fun check_nonce/3
-                     , fun check_minimum_fee/3
-                     , fun check_minimum_gas_price/3
-                     , fun check_tx_ttl/3
+            Checks = [ fun check_signature/4
+                     , fun check_nonce/4
+                     , fun check_minimum_fee/4
+                     , fun check_minimum_gas_price/4
+                     , fun check_tx_ttl/4
                      ],
-            case aeu_validation:run(Checks, [Tx, TxHash, Event]) of
+            Height = top_height(),
+            case aeu_validation:run(Checks, [Tx, TxHash, Height, Event]) of
                 {error, _} = E ->
                     lager:debug("Validation error for tx ~p: ~p", [TxHash, E]),
                     E;
@@ -681,14 +682,14 @@ insert_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
 delete_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
     ets:delete(NDb, {Account, Nonce, TxHash}).
 
-check_tx_ttl(STx, _Hash, _Event) ->
+check_tx_ttl(STx, _Hash, Height, _Event) ->
     Tx = aetx_sign:tx(STx),
-    case top_height() > aetx:ttl(Tx) of
+    case Height > aetx:ttl(Tx) of
         true  -> {error, ttl_expired};
         false -> ok
     end.
 
-check_signature(Tx, Hash, _Event) ->
+check_signature(Tx, Hash, _Height, _Event) ->
     {ok, Trees} = aec_chain:get_top_state(),
     case aetx_sign:verify(Tx, Trees) of
         {error, _} = E ->
@@ -698,7 +699,7 @@ check_signature(Tx, Hash, _Event) ->
             ok
     end.
 
-check_nonce(Tx, _Hash, Event) ->
+check_nonce(Tx, _Hash, _Height, Event) ->
   int_check_nonce(Tx, {block_hash, aec_chain:top_block_hash()}, Event).
 
 
@@ -748,20 +749,19 @@ get_account(AccountKey, {account_trees, AccountsTrees}) ->
 get_account(AccountKey, {block_hash, BlockHash}) ->
     aec_chain:get_account_at_hash(AccountKey, BlockHash).
 
-check_minimum_fee(Tx0, _Hash, _Event) ->
+check_minimum_fee(Tx0, _Hash, Height, _Event) ->
     Tx = aetx_sign:tx(Tx0),
-    Height = top_height(),
     case aetx:fee(Tx) >= aetx:min_fee(Tx, Height) of
         true  -> ok;
         false -> {error, too_low_fee}
     end.
 
-check_minimum_gas_price(Tx, _Hash, _Event) ->
+check_minimum_gas_price(Tx, _Hash, Height, _Event) ->
     case aetx:gas_price(aetx_sign:tx(Tx)) of
         undefined ->
             ok;
         GasPrice when is_integer(GasPrice) ->
-            case GasPrice >= aec_governance:minimum_gas_price() of
+            case GasPrice >= aec_governance:minimum_gas_price(Height) of
                 true  -> ok;
                 false -> {error, too_low_gas_price}
             end

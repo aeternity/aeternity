@@ -17,6 +17,14 @@
 
 
 check_test_() ->
+    {setup,
+     fun() ->
+              ok = meck:new(aec_governance, [passthrough]),
+              meck:expect(aec_governance, minimum_gas_price, 1, 1)
+     end,
+     fun(_) ->
+              meck:unload(aec_governance)
+     end,
     [{"Tx fee lower than minimum fee defined in governance",
       fun() ->
               {ok, SpendTx} = spend_tx(#{fee => 0, %% minimum governance fee = 1
@@ -24,6 +32,17 @@ check_test_() ->
               StateTree = aec_test_utils:create_state_tree(),
               Env = aetx_env:tx_env(10),
               ?assertEqual({error, too_low_fee}, aetx:process(SpendTx, StateTree, Env))
+      end},
+     {"Tx fee lower than minimum gas price",
+      fun() ->
+              %% minimum gas price = 200 => Fee should be larger than ~ 200 * 16200
+              meck:expect(aec_governance, minimum_gas_price, 1, 200),
+              {ok, SpendTx} = spend_tx(#{fee => 200 * 15000,
+                                         payload => <<"">>}),
+              StateTree = aec_test_utils:create_state_tree(),
+              Env = aetx_env:tx_env(10),
+              ?assertEqual({error, too_low_fee}, aetx:process(SpendTx, StateTree, Env)),
+              meck:expect(aec_governance, minimum_gas_price, 1, 1)
       end},
      {"Sender account does not exist in state trees",
       fun() ->
@@ -79,9 +98,17 @@ check_test_() ->
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               Env = aetx_env:tx_env(20),
               ?assertEqual({error, ttl_expired}, aetx:process(SpendTx, StateTree, Env))
-      end}].
+      end}]}.
 
 process_test_() ->
+    {setup,
+     fun() ->
+              ok = meck:new(aec_governance, [passthrough]),
+              meck:expect(aec_governance, minimum_gas_price, 1, 1)
+     end,
+     fun(_) ->
+              meck:unload(aec_governance)
+     end,
     [{"Check and process valid spend tx",
       fun() ->
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 1000000, nonce => 10}),
@@ -163,7 +190,7 @@ process_test_() ->
                                                   payload => <<"foo bar">>}),
 
               ?assert(aetx:gas_limit(SpendTx1, 1) < aetx:gas_limit(SpendTx2, 1))
-       end}].
+       end}]}.
 
 spend_tx(Data) ->
     DefaultData = #{sender_id => ?SENDER_ID,
