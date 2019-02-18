@@ -14,7 +14,6 @@
          deserialize_from_binary/1,
          deserialize_from_client/2,
          deserialize_from_binary_partial/1,
-         deserialize_from_map/1,
          deserialize_pow_evidence/1,
          difficulty/1,
          hash_header/1,
@@ -31,7 +30,6 @@
          root_hash/1,
          serialize_pow_evidence/1,
          serialize_to_binary/1,
-         serialize_to_map/1,
          serialize_to_signature_binary/1,
          set_height/2,
          set_miner/2,
@@ -330,29 +328,6 @@ update_micro_candidate(#mic_header{} = H, TxsRootHash, RootHash) ->
 %%% Serialization
 %%%===================================================================
 
--spec serialize_to_map(header()) -> map().
-serialize_to_map(#key_header{} = Header) ->
-    #{<<"height">> => Header#key_header.height,
-      <<"prev_hash">> => Header#key_header.prev_hash,
-      <<"prev_key_hash">> => Header#key_header.prev_key,
-      <<"state_hash">> => Header#key_header.root_hash,
-      <<"miner">> => Header#key_header.miner,
-      <<"beneficiary">> => Header#key_header.beneficiary,
-      <<"target">> => Header#key_header.target,
-      <<"pow">> => Header#key_header.pow_evidence,
-      <<"nonce">> => Header#key_header.nonce,
-      <<"time">> => Header#key_header.time,
-      <<"version">> => Header#key_header.version};
-serialize_to_map(#mic_header{} = Header) ->
-    #{<<"height">> => Header#mic_header.height,
-      <<"prev_hash">> => Header#mic_header.prev_hash,
-      <<"prev_key_hash">> => Header#mic_header.prev_key,
-      <<"signature">> => Header#mic_header.signature,
-      <<"state_hash">> => Header#mic_header.root_hash,
-      <<"txs_hash">> => Header#mic_header.txs_hash,
-      <<"time">> => Header#mic_header.time,
-      <<"version">> => Header#mic_header.version}.
-
 -spec serialize_for_client(header(), block_type()) -> map().
 serialize_for_client(#key_header{} = Header, PrevBlockType) ->
     {ok, Hash} = hash_header(Header),
@@ -415,53 +390,6 @@ deserialize_from_client(key, KeyBlock) ->
     catch
         _:_ -> {error, invalid_header}
     end.
-
--spec deserialize_from_map(map()) -> {'ok', header()} | {'error', term()}.
-deserialize_from_map(#{<<"height">> := Height,
-                       <<"prev_hash">> := PrevHash,
-                       <<"prev_key_hash">> := PrevKeyHash,
-                       <<"state_hash">> := RootHash,
-                       <<"miner">> := Miner,
-                       <<"beneficiary">> := Beneficiary,
-                       <<"target">> := Target,
-                       <<"pow">> := PowEvidence,
-                       <<"nonce">> := Nonce,
-                       <<"time">> := Time,
-                       <<"version">> := Version}) ->
-    %% Prevent forging a solution without performing actual work by prefixing digits
-    %% to a valid nonce (produces valid PoW after truncating to the allowed range)
-    case Nonce of
-        N when N < 0; N > ?MAX_NONCE ->
-            {error, bad_nonce};
-        _ ->
-            {ok, #key_header{height = Height,
-                             prev_hash = PrevHash,
-                             prev_key = PrevKeyHash,
-                             root_hash = RootHash,
-                             miner = Miner,
-                             beneficiary = Beneficiary,
-                             target = Target,
-                             pow_evidence = PowEvidence,
-                             nonce = Nonce,
-                             time = Time,
-                             version = Version}}
-    end;
-deserialize_from_map(#{<<"height">> := Height,
-                       <<"prev_hash">> := PrevHash,
-                       <<"prev_key_hash">> := PrevKeyHash,
-                       <<"signature">> := Signature,
-                       <<"state_hash">> := RootHash,
-                       <<"txs_hash">> := TxsHash,
-                       <<"time">> := Time,
-                       <<"version">> := Version}) ->
-    {ok, #mic_header{height = Height,
-                     prev_hash = PrevHash,
-                     prev_key = PrevKeyHash,
-                     root_hash = RootHash,
-                     signature = Signature,
-                     txs_hash = TxsHash,
-                     time = Time,
-                     version = Version}}.
 
 -spec serialize_to_signature_binary(micro_header()
                                    ) -> deterministic_header_binary().
