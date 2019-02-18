@@ -51,6 +51,8 @@
         , raw_delete/2
         ]).
 
+-export([min_miners_fee/0]).
+
 -ifdef(TEST).
 -export([garbage_collect/1]). %% Only for (Unit-)test
 -export([restore_mempool/0]).
@@ -86,7 +88,8 @@
                  %% txs while syncing with a stronger (i.e. with a
                  %% higher cumulative difficulty) and much longer
                  %% fork - typically at bootstrap.
-               , gc_height = 0 :: aec_blocks:height() | undefined }).
+               , gc_height = 0 :: aec_blocks:height() | undefined
+               , min_miners_fee = 0 :: integer()}).
 
 -type negated_fee() :: non_pos_integer().
 -type non_pos_integer() :: neg_integer() | 0.
@@ -219,6 +222,10 @@ get_candidate(MaxGas, BlockHash) when is_integer(MaxGas), MaxGas > 0,
 top_change(Type, OldHash, NewHash) when Type==key; Type==micro ->
     gen_server:call(?SERVER, {top_change, Type, OldHash, NewHash}).
 
+-spec min_miners_fee() -> integer().
+min_miners_fee() ->
+    gen_server:call(?SERVER, min_miners_fee).
+
 -spec new_sync_top_target(aec_blocks:height()) -> ok.
 new_sync_top_target(NewSyncTop) ->
     lager:debug("new_sync_top_target()", []),
@@ -263,11 +270,18 @@ init([]) ->
     ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
     ets:delete(Handled),
     lager:debug("init: GCHeight = ~p", [GCHeight]),
-    {ok, #state{gc_height = GCHeight}}.
+    MinMinersFee = case aeu_env:find_config([<<"mining">>, <<"min_miners_fee">>],
+                                                [user_config, schema_default]) of
+                                {ok, FeeVal} -> FeeVal;
+                                undefined       -> 0
+                       end,
+    {ok, #state{gc_height = GCHeight, min_miners_fee = MinMinersFee}}.
 
 handle_call(Req, From, St) ->
     ?TC(handle_call_(Req, From, St), Req).
 
+handle_call_(min_miners_fee, _From, #state{min_miners_fee = MinMinersFee} = State) ->
+    {reply, MinMinersFee, State};
 handle_call_({get_max_nonce, Sender}, _From, #state{dbs = #dbs{db = Db}} = State) ->
     {reply, int_get_max_nonce(Db, Sender), State};
 handle_call_({push, Tx, Hash, Event}, _From, State) ->
@@ -408,7 +422,11 @@ check_candidate(Db, #dbs{gc_db = GCDb} = Dbs,
     Tx1 = aetx_sign:tx(Tx),
     TxTTL = aetx:ttl(Tx1),
     TxGas = aetx:gas_limit(Tx1, Height),
-    case Height < TxTTL andalso TxGas > 0 andalso ok =:= int_check_nonce(Tx, AccountsTree, check_candidate) of
+    TxFee = aetx:fee(Tx1),
+    MinFee = aec_tx_pool:min_miners_fee(),
+    case Height < TxTTL andalso TxGas > 0
+                        andalso ok =:= int_check_nonce(Tx, AccountsTree, check_candidate)
+                        andalso TxFee >= MinFee of
         true ->
             case Gas - TxGas of
                 RemGas when RemGas >= 0 ->
@@ -636,6 +654,7 @@ check_pool_db_put(Tx, TxHash, Event) ->
             Checks = [ fun check_signature/3
                      , fun check_nonce/3
                      , fun check_minimum_fee/3
+                     , fun check_minimum_miner_fee/3
                      , fun check_minimum_gas_price/3
                      , fun check_tx_ttl/3
                      ],
@@ -754,6 +773,13 @@ check_minimum_fee(Tx0, _Hash, _Event) ->
     case aetx:fee(Tx) >= aetx:min_fee(Tx, Height) of
         true  -> ok;
         false -> {error, too_low_fee}
+    end.
+
+check_minimum_miner_fee(Tx0, _Hash, _Event) ->
+    Tx = aetx_sign:tx(Tx0),
+    case aetx:fee(Tx) >= aec_tx_pool:min_miners_fee() of
+        true  -> ok;
+        false -> {error, too_low_fee_for_this_miner}
     end.
 
 check_minimum_gas_price(Tx, _Hash, _Event) ->

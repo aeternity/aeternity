@@ -28,6 +28,7 @@ tx_pool_test_() ->
              %% Start `aec_keys` merely for generating realistic test
              %% signed txs - as a node would do.
              ets:new(?TAB, [public, ordered_set, named_table]),
+             meck:new(aec_tx_pool, [passthrough]),
              meck:new(aeu_time, [passthrough]),
              meck:new(aec_jobs_queues),
              meck:expect(aec_jobs_queues, run, fun(_, F) -> F() end),
@@ -47,6 +48,7 @@ tx_pool_test_() ->
              ok = aec_tx_pool_gc:stop(),
              meck:unload(aeu_time),
              meck:unload(aec_jobs_queues),
+             meck:unload(aec_tx_pool),
              ok
      end,
      [{"No txs in mempool",
@@ -80,7 +82,14 @@ tx_pool_test_() ->
                {ok, PoolTxs} = aec_tx_pool:peek(infinity),
                ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs))
        end},
-      {"ensure nonce limit for sender without account in state",
+      {"ensure mempool checks minimal miners fee",
+        fun() ->
+               PK = new_pubkey(),
+               meck:expect(aec_tx_pool, min_miners_fee, 0, 120000000000),
+               ?assertEqual({error,too_low_fee_for_this_miner}, aec_tx_pool:push( a_signed_tx(PK, me, 1, 20000)))
+        end
+      },
+      {"get",
        fun() ->
             PK0 = new_pubkey(),
             ?assertEqual(none, aec_chain:get_account(PK0)),
