@@ -71,6 +71,7 @@ accounts_json_file() ->
 accounts_json_file() ->
     case aec_governance:get_network_id() of
         <<"ae_mainnet">> -> "accounts.json";
-        _                -> "accounts_uat.json"
+        <<"ae_uat">>     -> "accounts_uat.json";
+        _                -> "accounts_test.json"
     end.
 -endif.

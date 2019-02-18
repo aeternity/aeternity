@@ -234,7 +234,7 @@ perform_pre_transformations(Trees, Height) ->
     Trees0 = aect_call_state_tree:prune(Height, Trees),
     Trees1 = aeo_state_tree:prune(Height, Trees0),
     Trees2 = set_ns(Trees1, aens_state_tree:prune(Height, ns(Trees1))),
-    case Height =:= 0 of
+    case Height =:= aec_block_genesis:height() of
         true -> Trees2; % genesis block
         false ->
             case aec_hard_forks:is_fork_height(Height) of
