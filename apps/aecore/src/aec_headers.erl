@@ -15,12 +15,11 @@
          deserialize_from_client/2,
          deserialize_from_binary_partial/1,
          deserialize_from_map/1,
-         deserialize_key_from_binary/1,
-         deserialize_micro_from_binary/1,
          deserialize_pow_evidence/1,
          difficulty/1,
          hash_header/1,
          height/1,
+         info/1,
          miner/1,
          new_key_header/11,
          new_micro_header/8,
@@ -38,6 +37,7 @@
          set_miner/2,
          set_nonce/2,
          set_nonce_and_pow/3,
+         set_info/2,
          set_pof_hash/2,
          set_prev_hash/2,
          set_prev_key_hash/2,
@@ -59,6 +59,7 @@
         ]).
 
 -include_lib("aeminer/include/aeminer.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
 
 %%%===================================================================
@@ -66,6 +67,7 @@
 %%%===================================================================
 
 -type height() :: aec_blocks:height().
+-type optional_info() :: <<>> | <<_:(?OPTIONAL_INFO_BYTES*8)>>.
 
 -record(mic_header, {
           height       = 0                                     :: height(),
@@ -90,7 +92,8 @@
           version                                              :: non_neg_integer(),
           pow_evidence = no_value                              :: aeminer_pow_cuckoo:solution() | no_value,
           miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
-          beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey()
+          beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey(),
+          info         = <<>>                                  :: optional_info()
          }).
 
 -opaque key_header()   :: #key_header{}.
@@ -213,6 +216,12 @@ height(#mic_header{height = H}) -> H.
 -spec set_height(header(), height()) -> header().
 set_height(#key_header{} = H, Height) -> H#key_header{height = Height};
 set_height(#mic_header{} = H, Height) -> H#mic_header{height = Height}.
+
+-spec info(key_header()) -> optional_info().
+info(#key_header{info = I}) -> I.
+
+-spec set_info(key_header(), optional_info()) -> key_header().
+set_info(#key_header{} = H, I) -> H#key_header{info = I}.
 
 -spec prev_hash(header()) -> block_header_hash().
 prev_hash(#key_header{prev_hash = H}) -> H;
@@ -481,7 +490,9 @@ serialize_to_binary(#key_header{} = Header) ->
       (Header#key_header.target):32,
       PowEvidence/binary,
       (Header#key_header.nonce):64,
-      (Header#key_header.time):64>>;
+      (Header#key_header.time):64,
+      (Header#key_header.info)/binary %% Either 0 or 4 bytes.
+    >>;
 serialize_to_binary(#mic_header{} = Header) ->
     Flags = construct_micro_flags(Header),
     <<(Header#mic_header.version):32,
@@ -495,8 +506,15 @@ serialize_to_binary(#mic_header{} = Header) ->
       (Header#mic_header.pof_hash)/binary, %% Either 0 or 32 bytes.
       (Header#mic_header.signature)/binary>>.
 
+construct_key_flags(#key_header{info = <<>>}) ->
+    ContainsInfo = 0,
+    <<?KEY_HEADER_TAG:1, ContainsInfo:1, 0:30>>;
+construct_key_flags(#key_header{info = <<_:?OPTIONAL_INFO_BYTES/unit:8>>} = H) ->
+    [error(illegal_info_field) || version(H) < ?MINERVA_PROTOCOL_VSN],
+    ContainsInfo = 1,
+    <<?KEY_HEADER_TAG:1, ContainsInfo:1, 0:30>>;
 construct_key_flags(#key_header{}) ->
-    <<?KEY_HEADER_TAG:1, 0:31>>.
+    error(illegal_info_field).
 
 construct_micro_flags(#mic_header{pof_hash = Bin}) ->
     PoFFlag = min(byte_size(Bin), 1),
@@ -508,19 +526,32 @@ deserialize_from_binary(Bin) ->
     case deserialize_from_binary_partial(Bin) of
         {key, Header} -> Header;
         {micro, Header, <<>>} -> Header;
-        Other -> error({illegal_header, Other})
+        {error, What} -> error(What)
     end.
 
 -spec deserialize_from_binary_partial(binary()) ->
                                              {'key', key_header()}
                                            | {'micro', micro_header(), binary()}
                                            | {'error', term()}.
-deserialize_from_binary_partial(<<_Version:32,
+deserialize_from_binary_partial(<<Version:32,
                                   ?KEY_HEADER_TAG:1,
+                                  InfoFlag:1,
                                   _/bits>> = Bin) ->
-    case deserialize_key_from_binary(Bin) of
-        {ok, Header} -> {key, Header};
-        {error, _} = E -> E
+    HeaderSize = InfoFlag * ?OPTIONAL_INFO_BYTES + ?KEY_HEADER_MIN_BYTES,
+    case Bin of
+        <<_:HeaderSize/unit:8>> when Version =:= ?ROMA_PROTOCOL_VSN,
+                                     InfoFlag =:= 0 ->
+            case deserialize_key_from_binary(Bin) of
+                {ok, Header} -> {key, Header};
+                {error, _} = E -> E
+            end;
+        <<_:HeaderSize/unit:8>> when Version >= ?MINERVA_PROTOCOL_VSN ->
+            case deserialize_key_from_binary(Bin) of
+                {ok, Header} -> {key, Header};
+                {error, _} = E -> E
+            end;
+        _ ->
+            {error, malformed_header}
     end;
 deserialize_from_binary_partial(<<_Version:32,
                                   ?MICRO_HEADER_TAG:1,
@@ -542,7 +573,8 @@ deserialize_from_binary_partial(<<_Version:32,
                                        | {'error', term()}.
 deserialize_key_from_binary(<<Version:32,
                               ?KEY_HEADER_TAG:1,
-                              0:31, %% Remaining flags.
+                              _ContainsInfoFlag:1,
+                              0:30, %% Remaining flags.
                               Height:64,
                               PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
                               PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
@@ -552,7 +584,9 @@ deserialize_key_from_binary(<<Version:32,
                               Target:32,
                               PowEvidenceBin:168/binary,
                               Nonce:64,
-                              Time:64 >>) ->
+                              Time:64,
+                              Info/binary
+                            >>) ->
     case aec_hard_forks:protocol_effective_at_height(Height) =:= Version of
         false ->
             {error, illegal_version};
@@ -568,7 +602,9 @@ deserialize_key_from_binary(<<Version:32,
                             pow_evidence = PowEvidence,
                             nonce = Nonce,
                             time = Time,
-                            version = Version},
+                            version = Version,
+                            info = Info
+                           },
             {ok, H}
     end;
 deserialize_key_from_binary(_Other) ->

@@ -1,6 +1,7 @@
 -module(aec_headers_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -include("blocks.hrl").
 
@@ -34,6 +35,114 @@ network_micro_serialization_test() ->
 hash_test() ->
     {ok, _HeaderHash1} = ?TEST_MODULE:hash_header(raw_key_header()),
     {ok, _HeaderHash2} = ?TEST_MODULE:hash_header(raw_micro_header()).
+
+raw_key_header_minerva(MinervaHeight) ->
+    ?TEST_MODULE:set_version_and_height(raw_key_header(), ?MINERVA_PROTOCOL_VSN, MinervaHeight).
+
+raw_key_header_roma(MinervaHeight) ->
+    ?TEST_MODULE:set_version_and_height(raw_key_header(), ?ROMA_PROTOCOL_VSN, MinervaHeight - 1).
+
+info_test_() ->
+    MinervaHeight = 10,
+    {foreach,
+     fun() ->
+             meck:new(aec_hard_forks, [passthrough]),
+             meck:expect(aec_hard_forks, protocol_effective_at_height,
+                         fun(X) when X < MinervaHeight -> ?ROMA_PROTOCOL_VSN;
+                            (X) when X >= MinervaHeight -> ?MINERVA_PROTOCOL_VSN
+                         end),
+             ok
+     end,
+     fun(_) ->
+             meck:unload(aec_hard_forks)
+     end,
+     [{"Serialization/deserialization of set info",
+       fun() ->
+               RawKey = raw_key_header_minerva(MinervaHeight),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
+               SerializedWithInfo = ?TEST_MODULE:serialize_to_binary(WithInfo),
+               ?assertEqual(WithInfo,
+                            ?TEST_MODULE:deserialize_from_binary(SerializedWithInfo)),
+               ok
+       end},
+      {"Serialization/deserialization of unset info",
+       fun() ->
+               RawKey = raw_key_header_minerva(MinervaHeight),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, <<>>),
+               SerializedWithInfo = ?TEST_MODULE:serialize_to_binary(WithInfo),
+               ?assertEqual(WithInfo,
+                            ?TEST_MODULE:deserialize_from_binary(SerializedWithInfo)),
+               ok
+       end},
+      {"Serialization of too small info",
+       fun() ->
+               RawKey = raw_key_header_minerva(MinervaHeight),
+               Size = ?OPTIONAL_INFO_BYTES - 1,
+               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:Size/unit:8>>),
+               ?assertException(error, illegal_info_field, ?TEST_MODULE:serialize_to_binary(WithInfo)),
+               ok
+       end},
+      {"Serialization of too big info",
+       fun() ->
+               RawKey = raw_key_header_minerva(MinervaHeight),
+               Size = ?OPTIONAL_INFO_BYTES + 1,
+               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:Size/unit:8>>),
+               ?assertException(error, illegal_info_field, ?TEST_MODULE:serialize_to_binary(WithInfo)),
+               ok
+       end},
+      {"Serialization of set info in Roma",
+       fun() ->
+               RawKey = raw_key_header_roma(MinervaHeight),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
+               ?assertException(error, illegal_info_field, ?TEST_MODULE:serialize_to_binary(WithInfo)),
+               ok
+       end},
+      {"Deserialization of set info in Roma",
+       fun() ->
+               RawKey = raw_key_header_minerva(MinervaHeight),
+               RomaHeight = ?TEST_MODULE:height(raw_key_header_roma(MinervaHeight)),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
+               SerMinerva = ?TEST_MODULE:serialize_to_binary(WithInfo),
+               <<_Version:32, Flags:32, Height:64, Rest/binary>> = SerMinerva,
+               SerRoma = <<?ROMA_PROTOCOL_VSN:64, Flags:32, RomaHeight:32, Rest/binary>>,
+               ?assertException(error, malformed_header,
+                                ?TEST_MODULE:deserialize_from_binary(SerRoma)),
+               ok
+       end},
+      {"Deserialization of too big info",
+       fun() ->
+               RawKey = raw_key_header_minerva(MinervaHeight),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
+               SerMinerva = ?TEST_MODULE:serialize_to_binary(WithInfo),
+               TestBinary = <<SerMinerva/binary, 0:8>>,
+               ?assertException(error, malformed_header,
+                               ?TEST_MODULE:deserialize_from_binary(TestBinary)),
+               ok
+       end},
+      {"Deserialization of too small info",
+       fun() ->
+               RawKey = raw_key_header_minerva(MinervaHeight),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
+               SerMinerva = ?TEST_MODULE:serialize_to_binary(WithInfo),
+               Size = byte_size(SerMinerva) - 1,
+               <<TestBinary:Size/binary, _:1/unit:8>> = SerMinerva,
+               ?assertException(error, malformed_header,
+                               ?TEST_MODULE:deserialize_from_binary(TestBinary)),
+               ok
+       end},
+      {"Deserialization of no info with info flag set",
+       fun() ->
+               RawKey = raw_key_header_minerva(MinervaHeight),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
+               SerMinerva = ?TEST_MODULE:serialize_to_binary(WithInfo),
+               Size = byte_size(SerMinerva) - ?OPTIONAL_INFO_BYTES,
+               <<TestBinary:Size/binary, _:?OPTIONAL_INFO_BYTES/unit:8>> = SerMinerva,
+               ?assertException(error, malformed_header,
+                               ?TEST_MODULE:deserialize_from_binary(TestBinary)),
+               ok
+       end}
+     ]}.
+
 
 validate_test_() ->
     {foreach,

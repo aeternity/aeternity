@@ -4,11 +4,12 @@
 -define(MINER_PUB_BYTES, 32).
 -define(BENEFICIARY_PUB_BYTES, 32).
 -define(BLOCK_SIGNATURE_BYTES, 64).
+-define(OPTIONAL_INFO_BYTES, 4).
 
 -define(KEY_HEADER_TAG, 1).
 -define(MICRO_HEADER_TAG, 0).
 
--define(KEY_HEADER_BYTES, 364).
+-define(KEY_HEADER_MIN_BYTES, 364).
 -define(MIC_HEADER_MIN_BYTES, 216).
 
 -type(txs_hash() :: <<_:(?TXS_HASH_BYTES*8)>>).
