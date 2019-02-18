@@ -3372,6 +3372,7 @@ fp_insufficent_tokens(Cfg) ->
 fp_insufficent_gas_price(Cfg) ->
     Round = 43,
     ContractRound = 10,
+    Height = 1234,
     T =
         fun(Owner, Forcer, GasPrice, GasLimit) ->
             run(#{cfg => Cfg, initiator_amount => 30,
@@ -3380,6 +3381,7 @@ fp_insufficent_gas_price(Cfg) ->
                [positive(fun create_channel_/2),
                 set_prop(gas_price, GasPrice),
                 set_prop(gas_limit, GasLimit),
+                set_prop(height, Height),
                 create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
                 negative_force_progress_sequence(Round, Forcer,
                                                  too_low_gas_price)])
@@ -3390,7 +3392,7 @@ fp_insufficent_gas_price(Cfg) ->
                 || Owner  <- ?ROLES,
                    Forcer <- ?ROLES]
         end,
-    TooLowGasPrice = 0 = aec_governance:minimum_gas_price() - 1,
+    TooLowGasPrice = aec_governance:minimum_gas_price(Height) - 1,
     Test(TooLowGasPrice, 1001),
     ok.
 
