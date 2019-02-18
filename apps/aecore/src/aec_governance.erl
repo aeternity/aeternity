@@ -10,7 +10,7 @@
          byte_gas/0,
          beneficiary_reward_delay/0,
          locked_coins_holder_account/0,
-         minimum_gas_price/0,
+         minimum_gas_price/1,
          name_preclaim_expiration/0,
          name_claim_locked_fee/0,
          name_claim_max_expiration/0,
@@ -30,6 +30,7 @@
 
 -include("blocks.hrl").
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -ifdef(TEST).
 -define(NETWORK_ID, <<"local_testnet">>).
@@ -108,8 +109,16 @@ tx_base_gas(oracle_response_tx) -> ?TX_BASE_GAS.
 byte_gas() ->
     ?BYTE_GAS.
 
-minimum_gas_price() ->
+-ifdef(TEST).
+minimum_gas_price(_Height) ->
     1.
+-else.
+minimum_gas_price(Height) ->
+    case aec_hard_forks:protocol_effective_at_height(Height) of
+        ?ROMA_PROTOCOL_VSN -> 1;
+        Vsn when Vsn >= ?MINERVA_PROTOCOL_VSN -> 1000000000
+    end.
+-endif.
 
 %% In key blocks / generations
 %%

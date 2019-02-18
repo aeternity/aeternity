@@ -18,10 +18,13 @@ apply_signed_txs_test_() ->
      fun() ->
              ok = meck:new(aec_chain, [passthrough]),
              meck:expect(aec_chain, get_top_state, 0, {ok, aec_trees:new()}),
+             ok = meck:new(aec_governance, [passthrough]),
+             meck:expect(aec_governance, minimum_gas_price, 1, 1),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpKeysDir) ->
              ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
+             meck:unload(aec_governance),
              meck:unload(aec_chain)
      end,
      [{"Apply txs and check resulting balances",
