@@ -35,15 +35,18 @@ apply_minerva_test_() ->
         fun() ->
             [{Alice,  BalA} = A,
               {Bob,   BalB} = B,
-              {Carol, BalC}] = generate_accounts(3),
+              {Carol, BalC},
+              {David, _}] = generate_accounts(4),
             T0 = make_trees([A, B]), % only Alice and Bob are present pre-minerva
             meck_minerva_accounts([{Alice, DeltaA = 10}, % Alice had migrared more
-                                   {Carol, BalC}]), % Carol is new
+                                   {Carol, BalC}, % Carol is new
+                                   {David, 0}]), % David has a balance of 0
             T1 = aec_block_fork:apply_minerva(T0),
             assert_only_accounts_tree_changed(T0, T1),
             assert_balance(T1, Alice, BalA + DeltaA), % Alice balance is increased
             assert_balance(T1, Bob,   BalB), % Bob is unchanged
             assert_balance(T1, Carol, BalC), % Carol is inserted
+            assert_balance(T1, David, 0),    % David is present
             ok
         end}
      ]}.

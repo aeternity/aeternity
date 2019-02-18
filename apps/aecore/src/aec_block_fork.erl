@@ -8,7 +8,7 @@ apply_minerva(Trees) ->
     AccTrees =
         lists:foldl(
             fun({Pubkey, Balance}, AccumAccTrees) when
-                  is_integer(Balance) andalso Balance > 0
+                  is_integer(Balance) andalso Balance >= 0
                   andalso byte_size(Pubkey) =:= 32 ->
                 Account =
                     case aec_accounts_trees:lookup(Pubkey, AccumAccTrees) of
