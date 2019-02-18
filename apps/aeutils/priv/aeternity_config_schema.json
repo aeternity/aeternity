@@ -405,6 +405,12 @@
                     "default": 3000,
                     "minimum" : 1
                 },
+                "min_miner_gas_price" : {
+                    "description" : "Minimum gas price accepted by the miner",
+                    "type" : "integer",
+                    "default" : 1000000000,
+                    "minimum" : 1
+                },
                 "beneficiary_reward_delay" : {
                     "description" : "Delay (in key blocks / generations) for getting mining rewards. Used in governance.",
                     "type" : "integer",
