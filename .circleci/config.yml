@@ -295,7 +295,7 @@ references:
       command: |
         export BACKUP_SUFFIX=${BACKUP_ENV:?}_db_backup_$(date +%s)
         cd /infrastructure && make mnesia_backup
-      no_output_timeout: 20m
+      no_output_timeout: 30m
 
   upload_package: &upload_package
     steps:
@@ -954,11 +954,6 @@ workflows:
               ignore: /.*/
             tags:
               only: *stable_tag_regex
-
-      - main_chain_snapshot:
-          filters:
-            branches:
-              only: Chain-shapshot-job-in-CI-failed-PT-164002607
 
   chain_snapshots:
     triggers:
