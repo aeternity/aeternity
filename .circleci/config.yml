@@ -517,7 +517,7 @@ jobs:
           command: |
             brew update
             brew install libsodium
-            brew link libsoidium
+            brew link libsodium
             brew install file://`pwd`/deployment/homebrew/erlang.rb
             brew link erlang
             for erlang_dep in $(brew deps erlang); do brew link $erlang_dep; done
