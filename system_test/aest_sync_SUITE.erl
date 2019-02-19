@@ -471,9 +471,10 @@ add_spend_txs(Node, SenderAcct, N, NonceStart) ->
 
 add_spend_tx(Node, Sender, Nonce) ->
     %% create new receiver
+    GasPrice = aest_nodes:gas_price(),
     #{ public := RecvPubKey, secret := RecvSecKey } =  enacl:sign_keypair(),
-    #{ tx_hash := TxHash} = post_spend_tx(Node, Sender, #{pubkey => RecvPubKey}, Nonce, #{amount => 10000}),
-    #{ receiver => RecvPubKey, receiver_sec => RecvSecKey, amount => 10000, tx_hash => TxHash }.
+    #{ tx_hash := TxHash} = post_spend_tx(Node, Sender, #{pubkey => RecvPubKey}, Nonce, #{amount => 10000 * GasPrice}),
+    #{ receiver => RecvPubKey, receiver_sec => RecvSecKey, amount => 10000 * GasPrice, tx_hash => TxHash }.
 
 %% Test that two disconnected clusters of nodes are able to recover and merge
 %% there chain when connected back together.

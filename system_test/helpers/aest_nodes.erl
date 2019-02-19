@@ -26,6 +26,8 @@
 -export([get_node_pubkey/2]).
 -export([export/3]).
 -export([read_metric/3]).
+-export([gas_price/0]).
+
 
 %% Helper function exports
 -export([shared_temp_file/2]).
@@ -168,6 +170,10 @@
 }.
 
 -export_type([test_ctx/0]).
+
+%% Use this gas price in tests
+gas_price() ->
+    1000000000.
 
 %=== COMMON TEST API FUNCTIONS =================================================
 
@@ -402,8 +408,8 @@ post_spend_tx(Node, From, To, Nonce, Map) ->
     PayLoad = iolist_to_binary(io_lib:format("~p", [Node])),
     Params = maps:merge(#{ sender_id => aec_id:create(account, SendPubKey)
                          , recipient_id => aec_id:create(account, RecvPubKey)
-                         , amount => 10000
-                         , fee => 20000
+                         , amount => 10000 * gas_price()
+                         , fee => 20000 * gas_price()
                          , ttl => 10000000
                          , nonce => Nonce
                          , payload => PayLoad }, Map),
@@ -422,12 +428,12 @@ post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map
                                           #{initiator_id => aec_id:create(account, InPubKey),
                                             responder_id => aec_id:create(account, RespPubKey),
                                             state_hash => <<Round:256>>,
-                                            initiator_amount => 200000,
-                                            responder_amount => 200000,
+                                            initiator_amount => 200000 * gas_price(),
+                                            responder_amount => 200000 * gas_price(),
                                             push_amount => 0,
                                             lock_period => 0,
                                             ttl => 100000,
-                                            fee => 50000,
+                                            fee => 50000 * gas_price(),
                                             channel_reserve => 40}, Map)),
     BothSigned = aec_test_utils:sign_tx(CreateTx, [InSecKey, RespSecKey]),
     Transaction = aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
@@ -444,9 +450,9 @@ post_close_mutual_state_channel_tx(Node, Initiator, Responder, ChannelId, #{nonc
     {ok, CloseTx} =
         aesc_close_mutual_tx:new(maps:merge(#{channel_id => ChannelId,
                                               from_id => aec_id:create(account, InPubKey),
-                                              initiator_amount_final => 100000,
-                                              responder_amount_final => 100000,
-                                              fee => 50000,
+                                              initiator_amount_final => 100000 * gas_price(),
+                                              responder_amount_final => 100000 * gas_price(),
+                                              fee => 50000 * gas_price(),
                                               ttl => 100000},
                                             Map)),
     BothSigned = aec_test_utils:sign_tx(CloseTx, [InSecKey, RespSecKey]),
@@ -460,9 +466,9 @@ post_deposit_state_channel_tx(Node, PayingParty, OtherParty, ChannelId, #{nonce 
         aesc_deposit_tx:new(maps:merge(#{channel_id => ChannelId,
                                          from_id => aec_id:create(account, InPubKey),
                                          state_hash => <<0:256>>,
-                                         amount => 20,
+                                         amount => 20 * gas_price(),
                                          round => 1,
-                                         fee => 50000,
+                                         fee => 50000 * gas_price(),
                                          ttl => 100000},
                                        Map)),
     BothSigned = aec_test_utils:sign_tx(DepositTx, [InSecKey, RespSecKey]),
@@ -476,9 +482,9 @@ post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce :=
         aesc_withdraw_tx:new(maps:merge(#{channel_id => ChannelId,
                                          to_id => aec_id:create(account, InPubKey),
                                          state_hash => <<0:256>>,
-                                         amount => 20,
+                                         amount => 20 * gas_price(),
                                          round => 1,
-                                         fee => 50000,
+                                         fee => 50000 * gas_price(),
                                          ttl => 100000},
                                        Map)),
     BothSigned = aec_test_utils:sign_tx(WithdrawTx, [InSecKey, RespSecKey]),

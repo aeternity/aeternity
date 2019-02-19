@@ -82,7 +82,8 @@ all() -> [
 init_per_suite(Config) ->
     [
         {node_startup_time, 20000}, %% Time may take to get the node to respond to http
-        {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
+        {node_shutdown_time, 20000}, %% Time it may take to stop node cleanly
+        {gas_price, aest_nodes:gas_price()}
     | Config].
 
 init_per_testcase(_TC, Config) ->
@@ -96,6 +97,7 @@ end_per_suite(_Config) -> ok.
 %=== TEST CASES ================================================================
 
 test_mempool_ttl_cleanup(Cfg) ->
+    GasPrice = proplists:get_value(gas_price, Cfg),
     %% Setup nodes
     MikePubKey = maps:get(pubkey, ?MIKE),
     EncMikePubkey = aehttp_api_encoder:encode(account_pubkey, MikePubKey),
@@ -107,7 +109,7 @@ test_mempool_ttl_cleanup(Cfg) ->
     wait_for_startup(NodeNames, 1, Cfg),
 
     %% Give tokens away
-    GiveAwayAmount = 400000,
+    GiveAwayAmount = 400000 * GasPrice,
     aest_nodes:wait_for_value({balance, MikePubKey, 2*GiveAwayAmount}, [node1], 10000, []),
     #{ tx_hash := PostTxHash1 } = post_spend_tx(node1, ?MIKE, ?ALICE, 1, #{amount => GiveAwayAmount}),
     #{ tx_hash := PostTxHash2 } = post_spend_tx(node1, ?MIKE, ?BOB, 2, #{amount => GiveAwayAmount}),
@@ -143,6 +145,7 @@ test_mempool_ttl_cleanup(Cfg) ->
     ok.
 
 test_mempool_bad_nonce_cleanup(Cfg) ->
+    GasPrice = proplists:get_value(gas_price, Cfg),
     %% Setup nodes
     MikePubKey = maps:get(pubkey, ?MIKE),
     EncMikePubkey = aehttp_api_encoder:encode(account_pubkey, MikePubKey),
@@ -154,7 +157,7 @@ test_mempool_bad_nonce_cleanup(Cfg) ->
     wait_for_startup(NodeNames, 1, Cfg),
 
     %% Give tokens away
-    GiveAwayAmount = 600000,
+    GiveAwayAmount = 600000 * GasPrice,
     aest_nodes:wait_for_value({balance, MikePubKey, 2*GiveAwayAmount}, [node1], 10000, []),
     #{ tx_hash := PostTxHash1 } = post_spend_tx(node1, ?MIKE, ?ALICE, 1, #{amount => GiveAwayAmount}),
     #{ tx_hash := PostTxHash2 } = post_spend_tx(node1, ?MIKE, ?BOB, 2, #{amount => GiveAwayAmount}),
