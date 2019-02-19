@@ -1,18 +1,38 @@
--module(aec_genesis_block_settings).
+-module(aec_fork_block_settings).
 
--export([dir/0,
-         preset_accounts/0,
-         read_presets/0]).
+-include_lib("aecontract/include/hard_forks.hrl").
 
-dir() ->
-    filename:join(aeu_env:data_dir(aecore), ".genesis").
+-export([dir/1,
+         genesis_accounts/0,
+         minerva_accounts/0]).
 
--spec preset_accounts() -> list().
-preset_accounts() ->
-    case read_presets() of
+-define(GENESIS_DIR, ".genesis").
+-define(MINERVA_DIR, ".minerva").
+
+
+-spec dir(aec_hard_forks:protocol_vsn()) -> string().
+dir(ProtocolVsn) ->
+    Dir =
+        case ProtocolVsn of
+            ?ROMA_PROTOCOL_VSN    -> ?GENESIS_DIR;
+            ?MINERVA_PROTOCOL_VSN -> ?MINERVA_DIR
+        end,
+    filename:join(aeu_env:data_dir(aecore), Dir).
+
+-spec genesis_accounts() -> list().
+genesis_accounts() -> preset_accounts(?ROMA_PROTOCOL_VSN,
+                                      genesis_accounts_file_missing).
+
+-spec minerva_accounts() -> list().
+minerva_accounts() -> preset_accounts(?MINERVA_PROTOCOL_VSN,
+                                      minerva_accounts_file_missing).
+
+-spec preset_accounts(aec_hard_forks:protocol_vsn(), atom()) -> list().
+preset_accounts(Release, ErrorMsg) ->
+    case read_presets(Release) of
         {error, {_Err, PresetAccountsFile}} ->
             % no setup, no preset accounts
-            erlang:error({genesis_accounts_file_missing, PresetAccountsFile});
+            erlang:error({ErrorMsg, PresetAccountsFile});
         {ok, JSONData} ->
             DecodedData =
                 try jsx:decode(JSONData) of
@@ -35,9 +55,9 @@ preset_accounts() ->
             lists:keysort(1, Accounts)
     end.
 
--spec read_presets() -> {ok, binary()}| {error, {atom(), string()}}.
-read_presets() ->
-    PresetAccountsFile = filename:join([dir(), accounts_json_file()]),
+-spec read_presets(aec_hard_forks:protocol_vsn()) -> {ok, binary()}| {error, {atom(), string()}}.
+read_presets(Release) ->
+    PresetAccountsFile = filename:join([dir(Release), accounts_json_file()]),
     case file:read_file(PresetAccountsFile) of
         {ok, _} = OK -> OK;
         {error, Err} -> {error, {Err, PresetAccountsFile}}
@@ -51,6 +71,7 @@ accounts_json_file() ->
 accounts_json_file() ->
     case aec_governance:get_network_id() of
         <<"ae_mainnet">> -> "accounts.json";
+        <<"ae_uat">>     -> "accounts_uat.json";
         _                -> "accounts_test.json"
     end.
 -endif.

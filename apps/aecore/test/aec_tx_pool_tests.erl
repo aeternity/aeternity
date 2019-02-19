@@ -20,7 +20,7 @@ tx_pool_test_() ->
              ok = application:ensure_started(crypto),
              TmpKeysDir = aec_test_utils:aec_keys_setup(),
              aec_test_utils:start_chain_db(),
-             aec_test_utils:mock_genesis(),
+             aec_test_utils:mock_genesis_and_forks(),
              GB = aec_test_utils:genesis_block(),
              aec_chain_state:insert_block(GB),
              aec_test_utils:mock_block_target_validation(), %% Mocks aec_governance.
@@ -42,7 +42,7 @@ tx_pool_test_() ->
              ok = application:stop(gproc),
              ets:delete(?TAB),
              aec_test_utils:stop_chain_db(),
-             aec_test_utils:unmock_genesis(),
+             aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:unmock_block_target_validation(), %% Unloads aec_governance mock.
              ok = aec_tx_pool:stop(),
              ok = aec_tx_pool_gc:stop(),
@@ -90,7 +90,7 @@ tx_pool_test_() ->
 
             aec_test_utils:stop_chain_db(),
             PK1 = new_pubkey(),
-            meck:expect(aec_genesis_block_settings, preset_accounts, 0, [{PK1, 100000}]),
+            meck:expect(aec_fork_block_settings, genesis_accounts, 0, [{PK1, 100000}]),
             {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
             aec_test_utils:start_chain_db(),
             ok = aec_chain_state:insert_block(GenesisBlock),
@@ -103,7 +103,7 @@ tx_pool_test_() ->
        fun() ->
             aec_test_utils:stop_chain_db(),
             PK = new_pubkey(),
-            meck:expect(aec_genesis_block_settings, preset_accounts, 0, [{PK, 100000}]),
+            meck:expect(aec_fork_block_settings, genesis_accounts, 0, [{PK, 100000}]),
             {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
             aec_test_utils:start_chain_db(),
             ok = aec_chain_state:insert_block(GenesisBlock),
@@ -149,7 +149,7 @@ tx_pool_test_() ->
 
             aec_test_utils:stop_chain_db(),
             PK1 = new_pubkey(),
-            meck:expect(aec_genesis_block_settings, preset_accounts, 0, [{PK1, 100000}]),
+            meck:expect(aec_fork_block_settings, genesis_accounts, 0, [{PK1, 100000}]),
             {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
             aec_test_utils:start_chain_db(),
             ok = aec_chain_state:insert_block(GenesisBlock),
@@ -220,7 +220,7 @@ tx_pool_test_() ->
                {ok, MinerPubKey} = aec_keys:pubkey(),
                PubKey1 = new_pubkey(),
                PubKey2 = new_pubkey(),
-               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                            [{PubKey1, 20001}, {PubKey2, 20000000}]),
                {Block0, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
@@ -302,7 +302,7 @@ tx_pool_test_() ->
                %% Prepare a chain with specific genesis block with some funds
                PubKey1 = new_pubkey(),
                PubKey2 = new_pubkey(),
-               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                   [{PubKey1, 100000}, {PubKey2, 100000}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
@@ -406,7 +406,7 @@ tx_pool_test_() ->
                  PK3 = new_pubkey(),
                  PK4 = new_pubkey(),
 
-                 meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+                 meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                              [{PK1, 100000}, {PK2, 100000}, {PK3, 100000}, {PK4, 100000}]),
                  {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                  aec_test_utils:start_chain_db(),
@@ -466,7 +466,7 @@ tx_pool_test_() ->
        fun() ->
                aec_test_utils:stop_chain_db(),
                PK = new_pubkey(),
-               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                            [{PK, 100000}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
@@ -578,7 +578,7 @@ tx_pool_test_() ->
        fun() ->
                aec_test_utils:stop_chain_db(),
                PK = new_pubkey(),
-               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                            [{PK, 100000}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
@@ -609,7 +609,7 @@ tx_pool_test_() ->
                %% Prepare a chain with specific genesis block with some funds
                PubKey1 = new_pubkey(),
                PubKey2 = new_pubkey(),
-               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                   [{PubKey1, 100000}, {PubKey2, 100000}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
@@ -686,7 +686,7 @@ tx_pool_test_() ->
             aec_test_utils:stop_chain_db(),
 
             PubKey = new_pubkey(),
-            meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+            meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                         [{PubKey, 100000}]),
             {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
             aec_test_utils:start_chain_db(),

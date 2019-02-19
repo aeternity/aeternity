@@ -95,7 +95,7 @@ target() ->
 %%
 %% Since preset accounts are being loaded from a file - please use with caution
 genesis_block_with_state() ->
-    genesis_block_with_state(#{preset_accounts => aec_genesis_block_settings:preset_accounts()}).
+    genesis_block_with_state(#{preset_accounts => aec_fork_block_settings:genesis_accounts()}).
 
 genesis_block_with_state(Map) ->
     Trees = populated_trees(Map),
@@ -112,7 +112,7 @@ genesis_block_with_state(Map) ->
 %%
 %% It does not include reward for miner account.
 populated_trees() ->
-    populated_trees(#{preset_accounts => aec_genesis_block_settings:preset_accounts()}).
+    populated_trees(#{preset_accounts => aec_fork_block_settings:genesis_accounts()}).
 
 populated_trees(Map) ->
     PresetAccounts = maps:get(preset_accounts, Map),
