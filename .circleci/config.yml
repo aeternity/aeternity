@@ -78,7 +78,7 @@ references:
           && ./configure && make -j$(nproc) && sudo make install && sudo ldconfig
 
   tag_regex: &tag_regex /^v.*$/
-  stable_tag_regex: &stable_tag_regex /^v1\..*$/
+  stable_tag_regex: &stable_tag_regex /^v2\..*$/
   next_tag_regex: &next_tag_regex /^v2\..*minerva.*$/
   next_branch: &next_branch minerva
 
