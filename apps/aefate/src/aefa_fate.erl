@@ -146,7 +146,6 @@ eval({'SWITCH_V2', Variant, {immediate, BB1}, {immediate, BB2}}, ES) ->
                         0 -> {jump, BB1, ES1};
                         1 -> {jump, BB2, ES1};
                         _ -> abort({bad_variant_tag, Tag, Size}, ES1)
-                                 
                     end;
                true -> abort({bad_variant_size, Size}, ES1)
             end;
@@ -162,7 +161,6 @@ eval({'SWITCH_V3', Variant, {immediate, BB1}, {immediate, BB2}, {immediate, BB3}
                         1 -> {jump, BB2, ES1};
                         2 -> {jump, BB3, ES1};
                         _ -> abort({bad_variant_tag, Tag, Size}, ES1)
-                                 
                     end;
                true -> abort({bad_variant_size, Size}, ES1)
             end;
@@ -181,7 +179,6 @@ eval({'SWITCH_V4', Variant, {immediate, BB1},
                         2 -> {jump, BB3, ES1};
                         3 -> {jump, BB4, ES1};
                         _ -> abort({bad_variant_tag, Tag, Size}, ES1)
-                                 
                     end;
                true -> abort({bad_variant_size, Size}, ES1)
             end;
@@ -201,7 +198,6 @@ eval({'SWITCH_V5', Variant, {immediate, BB1},
                         3 -> {jump, BB4, ES1};
                         4 -> {jump, BB5, ES1};
                         _ -> abort({bad_variant_tag, Tag, Size}, ES1)
-                                 
                     end;
                true -> abort({bad_variant_size, Size}, ES1)
             end;
@@ -216,8 +212,17 @@ eval({'SWITCH_V5', Variant, {immediate, BB1},
 eval({'PUSH', Name}, EngineState) ->
     {next, un_op(get, {{stack, 0}, Name}, EngineState)};
 
+eval('INCA', EngineState) ->
+    {next, un_op(inc, {{stack, 0}, {stack, 0}}, EngineState)};
+
 eval({'INC', Name}, EngineState) ->
     {next, un_op(inc, {Name, Name}, EngineState)};
+
+eval({'DEC', Name}, EngineState) ->
+    {next, un_op(dec, {Name, Name}, EngineState)};
+
+eval('DECA', EngineState) ->
+    {next, un_op(dec, {{stack, 0}, {stack, 0}}, EngineState)};
 
 eval({'ADD', Dest, Left, Right}, EngineState) ->
     {next, bin_op(add, {Dest, Left, Right}, EngineState)};
@@ -347,7 +352,7 @@ eval({'INT_TO_ADDR', Dest, Str}, EngineState) ->
 %%       specified.
 %%       Also, tags are only numbers (in Sophia tags will
 %%       correspond to names)
-%% There are some variant_switch instructions for 
+%% There are some variant_switch instructions for
 %% variants of size 2 to 5.
 
 %% TODO: should this also take a size?
@@ -375,13 +380,13 @@ eval({'VARIANT', Dest, SizeA, TagA, ElementsA}, EngineState) ->
 
 %% Bits.none : bits
 %% An empty bit set.
-eval('BITS_NONE', EngineState) -> {next, push(?FATE_BITS(0), EngineState)};
+eval('BITS_NONEA', EngineState) -> {next, push(?FATE_BITS(0), EngineState)};
 eval({'BITS_NONE', To}, EngineState) ->
     {next, un_op(get, {To, {immediate, ?FATE_BITS(0)}}, EngineState)};
 
 %% Bits.all : bits
 %% A bit field with all (an infinite amount) bits set
-eval('BITS_ALL', EngineState) -> {next, push(?FATE_BITS(-1), EngineState)};
+eval('BITS_ALLA', EngineState) -> {next, push(?FATE_BITS(-1), EngineState)};
 eval({'BITS_ALL', To}, EngineState) ->
     {next, un_op(get, {To, {immediate, ?FATE_BITS(-1)}}, EngineState)};
 
@@ -434,8 +439,14 @@ eval({'BITS_DIFF', To, Bits, Bit}, EngineState) ->
 %% ------------------------------------------------------
 %% Stack instructions
 %% ------------------------------------------------------
-eval('DUP', EngineState) ->
+eval('DUPA', EngineState) ->
     {next, dup(EngineState)};
+
+eval({'DUP', {immediate, N}}, EngineState) ->
+    {next, dup(N, EngineState)};
+
+eval('POP', Dest, EngineState) ->
+    {next, un_op(get, {Dest, {stack, 0}, EngineState)};
 
 %% ------------------------------------------------------
 %% Memory instructions
@@ -461,7 +472,7 @@ eval('NOP', EngineState) ->
 setup_engine(#{ contract := Contract
               , call := Call},
              Chain) ->
-    {tuple, {Function, {tuple, ArgTuple}}} = 
+    {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
     ES1 = new_engine_state(Chain),
@@ -713,6 +724,8 @@ op(get, A) ->
     A;
 op(inc, A) ->
     A + 1;
+op(dec, A) ->
+    A - 1;
 op('not', A) ->
     not A;
 op(map_from_list, A) when ?IS_FATE_LIST(A) ->
@@ -922,6 +935,17 @@ pop_n(N, ES) ->
 dup(#{ accumulator := X, accumulator_stack := Stack} = ES) ->
     ES#{ accumulator => X
        , accumulator_stack := [X|Stack]}.
+
+dup(N, #{ accumulator := X, accumulator_stack := Stack} = ES) ->
+    {X1, Stack} = get_n([X|Stack]),
+    ES#{ accumulator => X1
+       , accumulator_stack := Stack}.
+
+get_n(0, [X|XS]) -> {X, [X|XS]};
+get_n(N, [X|XS]) ->
+    {Y, List} = get_n(N-1, XS),
+    {Y, [X|List]}.
+
 
 drop(0, ES) -> ES;
 drop(N, #{ accumulator := _, accumulator_stack := [V|Stack]} = ES) ->
