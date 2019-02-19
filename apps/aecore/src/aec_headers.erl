@@ -341,7 +341,9 @@ serialize_for_client(#key_header{} = Header, PrevBlockType) ->
           <<"beneficiary">>   => aehttp_api_encoder:encode(account_pubkey, Header#key_header.beneficiary),
           <<"target">>        => Header#key_header.target,
           <<"time">>          => Header#key_header.time,
-          <<"version">>       => Header#key_header.version},
+          <<"version">>       => Header#key_header.version,
+          <<"info">>          => aehttp_api_encoder:encode(contract_bytearray, Header#key_header.info)
+         },
     case Header#key_header.pow_evidence of
         no_value ->
             Res;
@@ -386,7 +388,9 @@ deserialize_from_client(key, KeyBlock) ->
                          pow_evidence = deserialize_pow_evidence(maps:get(<<"pow">>, KeyBlock)),
                          nonce        = maps:get(<<"nonce">>, KeyBlock),
                          time         = maps:get(<<"time">>, KeyBlock),
-                         version      = maps:get(<<"version">>, KeyBlock)}}
+                         version      = maps:get(<<"version">>, KeyBlock),
+                         info         = decode(contract_bytearray, maps:get(<<"info">>, KeyBlock))
+                        }}
     catch
         _:_ -> {error, invalid_header}
     end.

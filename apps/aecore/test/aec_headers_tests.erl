@@ -65,6 +65,18 @@ info_test_() ->
                             ?TEST_MODULE:deserialize_from_binary(SerializedWithInfo)),
                ok
        end},
+      {"Client serialization/deserialization of set info",
+       fun() ->
+               RawKey = raw_key_header_minerva(MinervaHeight),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
+               SerializedWithInfo = ?TEST_MODULE:serialize_for_client(WithInfo, key),
+               Serialized = SerializedWithInfo#{<<"nonce">> => ?TEST_MODULE:nonce(WithInfo),
+                                                <<"pow">>   => ?TEST_MODULE:pow(WithInfo)
+                                               },
+               ?assertEqual({ok, WithInfo},
+                            ?TEST_MODULE:deserialize_from_client(key, Serialized)),
+               ok
+       end},
       {"Serialization/deserialization of unset info",
        fun() ->
                RawKey = raw_key_header_minerva(MinervaHeight),
@@ -72,6 +84,18 @@ info_test_() ->
                SerializedWithInfo = ?TEST_MODULE:serialize_to_binary(WithInfo),
                ?assertEqual(WithInfo,
                             ?TEST_MODULE:deserialize_from_binary(SerializedWithInfo)),
+               ok
+       end},
+      {"Client serialization/deserialization of unset info",
+       fun() ->
+               RawKey = raw_key_header_minerva(MinervaHeight),
+               WithInfo = ?TEST_MODULE:set_info(RawKey, <<>>),
+               SerializedWithInfo = ?TEST_MODULE:serialize_for_client(WithInfo, key),
+               Serialized = SerializedWithInfo#{<<"nonce">> => ?TEST_MODULE:nonce(WithInfo),
+                                                <<"pow">>   => ?TEST_MODULE:pow(WithInfo)
+                                               },
+               ?assertEqual({ok, WithInfo},
+                            ?TEST_MODULE:deserialize_from_client(key, Serialized)),
                ok
        end},
       {"Serialization of too small info",

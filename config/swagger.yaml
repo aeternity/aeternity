@@ -1922,6 +1922,8 @@ definitions:
       version:
         type: integer
         format: int64
+      info:
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - hash
       - height
@@ -1933,6 +1935,7 @@ definitions:
       - target
       - time
       - version
+      - info
   MicroBlockHeader:
     type: object
     properties:
