@@ -16,6 +16,7 @@
          deserialize_from_binary_partial/1,
          deserialize_pow_evidence/1,
          difficulty/1,
+         from_db_header/1,
          hash_header/1,
          height/1,
          info/1,
@@ -94,6 +95,20 @@
           info         = <<>>                                  :: optional_info()
          }).
 
+-record(db_key_header, {
+          height       = 0                                     :: height(),
+          prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
+          prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
+          root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
+          target       = ?HIGHEST_TARGET_SCI                   :: aeminer_pow:sci_target(),
+          nonce        = 0                                     :: non_neg_integer(),
+          time         = 0                                     :: non_neg_integer(),
+          version                                              :: non_neg_integer(),
+          pow_evidence = no_value                              :: aeminer_pow_cuckoo:solution() | no_value,
+          miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
+          beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey()
+         }).
+
 -opaque key_header()   :: #key_header{}.
 -opaque micro_header() :: #mic_header{}.
 -type header()         :: key_header() | micro_header().
@@ -150,6 +165,44 @@ assert_micro_header(Other) -> error({illegal_key_header, Other}).
 -spec type(header()) -> block_type().
 type(#key_header{}) -> key;
 type(#mic_header{}) -> micro.
+
+
+-spec from_db_header(tuple() | header()) -> header().
+%% We might have a legacy tuple in the db
+from_db_header(#key_header{} = K) -> K;
+from_db_header(#mic_header{} = M) -> M;
+from_db_header(Tuple) when is_tuple(Tuple) ->
+    case setelement(1, Tuple, db_key_header) of
+        #db_key_header{
+           height       = Height,
+           prev_hash    = PrevHash,
+           prev_key     = PrevKey,
+           root_hash    = RootHash,
+           target       = Target,
+           nonce        = Nonce,
+           time         = Time,
+           version      = Version,
+           pow_evidence = Pow,
+           miner        = Miner,
+           beneficiary  = Beneficiary
+          } ->
+            #key_header{
+               height       = Height,
+               prev_hash    = PrevHash,
+               prev_key     = PrevKey,
+               root_hash    = RootHash,
+               target       = Target,
+               nonce        = Nonce,
+               time         = Time,
+               version      = Version,
+               pow_evidence = Pow,
+               miner        = Miner,
+               beneficiary  = Beneficiary,
+               info         = <<>>
+              };
+        _ ->
+            error(bad_db_header)
+    end.
 
 %%%===================================================================
 %%% Constructors
