@@ -2219,7 +2219,7 @@
     },
     "KeyBlock" : {
       "type" : "object",
-      "required" : [ "beneficiary", "hash", "height", "miner", "prev_hash", "prev_key_hash", "state_hash", "target", "time", "version" ],
+      "required" : [ "beneficiary", "hash", "height", "info", "miner", "prev_hash", "prev_key_hash", "state_hash", "target", "time", "version" ],
       "properties" : {
         "hash" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2261,21 +2261,25 @@
         "version" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "info" : {
+          "$ref" : "#/definitions/EncodedByteArray"
         }
       },
       "example" : {
+        "prev_hash" : null,
+        "nonce" : 1,
+        "version" : 5,
+        "miner" : null,
+        "target" : 6,
         "beneficiary" : null,
         "state_hash" : null,
-        "prev_hash" : null,
         "pow" : "",
         "prev_key_hash" : null,
         "time" : 5,
-        "nonce" : 1,
-        "version" : 5,
         "hash" : { },
-        "miner" : null,
         "height" : 0,
-        "target" : 6
+        "info" : { }
       }
     },
     "MicroBlockHeader" : {
@@ -2354,18 +2358,19 @@
           "height" : 2
         },
         "key_block" : {
+          "prev_hash" : null,
+          "nonce" : 1,
+          "version" : 5,
+          "miner" : null,
+          "target" : 6,
           "beneficiary" : null,
           "state_hash" : null,
-          "prev_hash" : null,
           "pow" : "",
           "prev_key_hash" : null,
           "time" : 5,
-          "nonce" : 1,
-          "version" : 5,
           "hash" : { },
-          "miner" : null,
           "height" : 0,
-          "target" : 6
+          "info" : { }
         }
       }
     },
@@ -4685,18 +4690,19 @@
       "example" : {
         "micro_blocks" : [ { }, { } ],
         "key_block" : {
+          "prev_hash" : null,
+          "nonce" : 1,
+          "version" : 5,
+          "miner" : null,
+          "target" : 6,
           "beneficiary" : null,
           "state_hash" : null,
-          "prev_hash" : null,
           "pow" : "",
           "prev_key_hash" : null,
           "time" : 5,
-          "nonce" : 1,
-          "version" : 5,
           "hash" : { },
-          "miner" : null,
           "height" : 0,
-          "target" : 6
+          "info" : { }
         }
       }
     },
