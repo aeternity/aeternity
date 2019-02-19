@@ -14,7 +14,7 @@
   1},
  {<<"aeminer">>,
   {git,"https://github.com/aeternity/aeminer.git",
-      {ref,"41fee48ed26c02fae1da0317ab5a86d81bb40fa5"}},
+      {ref,"17d7a8d45894c56aeac08c2f379745b03672e65d"}},
   0},
  {<<"aesophia">>,
   {git,"https://github.com/aeternity/aesophia.git",
