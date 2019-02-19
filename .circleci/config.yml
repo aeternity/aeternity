@@ -107,10 +107,12 @@ references:
       paths:
         - "_build"
 
-  macos_package_cache_key: &macos_package_cache_key macos-package-cache-v1-
+  macos_package_cache_key: &macos_package_cache_key macos-package-cache-v1-{{ .Branch }}
   restore_macos_package_cache: &restore_macos_package_cache
     restore_cache:
-      key: *macos_package_cache_key
+      keys:
+        - *macos_package_cache_key
+        - macos-package-cache-v1-
 
   save_macos_package_cache: &save_macos_package_cache
     save_cache:
