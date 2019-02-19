@@ -47,6 +47,8 @@ abort(division_by_zero, ES) ->
     ?t("Arithmetic error: division by zero", [], ES);
 abort(mod_by_zero, ES) ->
     ?t("Arithmetic error: mod by zero", [], ES);
+abort(pow_too_large_exp, ES) ->
+    ?t("Arithmetic error: pow with too large exponent", [], ES);
 abort(missin_map_key, ES) ->
     ?t("Maps: Key does not exists", [], ES);
 abort({type_error, cons, Value, Type}, ES) ->
@@ -445,8 +447,8 @@ eval('DUPA', EngineState) ->
 eval({'DUP', {immediate, N}}, EngineState) ->
     {next, dup(N, EngineState)};
 
-eval('POP', Dest, EngineState) ->
-    {next, un_op(get, {Dest, {stack, 0}, EngineState)};
+eval({'POP', Dest}, EngineState) ->
+    {next, un_op(get, {Dest, {stack, 0}}, EngineState)};
 
 %% ------------------------------------------------------
 %% Memory instructions
@@ -779,7 +781,11 @@ op('div', A, B)  when ?IS_FATE_INTEGER(A)
     end;
 op(pow, A, B)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
-    math:pow(A, B);
+    try round(math:pow(A, B)) of
+        I -> I
+    catch error:badarith ->
+            abort(pow_too_large_exp)
+    end;
 op(mod, A, B)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
     if B =:= 0 -> abort(mod_by_zero);
@@ -937,7 +943,7 @@ dup(#{ accumulator := X, accumulator_stack := Stack} = ES) ->
        , accumulator_stack := [X|Stack]}.
 
 dup(N, #{ accumulator := X, accumulator_stack := Stack} = ES) ->
-    {X1, Stack} = get_n([X|Stack]),
+    {X1, Stack} = get_n(N, [X|Stack]),
     ES#{ accumulator => X1
        , accumulator_stack := Stack}.
 
