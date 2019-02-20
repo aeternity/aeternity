@@ -9,7 +9,7 @@ EUNIT_TEST_FLAGS ?=
 
 CT_TEST_FLAGS ?=
 ST_CT_FLAGS = --logdir system_test/logs
-ST_CT_DIR = --dir system_test
+ST_CT_DIR = --dir system_test/common
 ST_CT_LOCALDIR = --dir system_test/only_local
 
 SWAGGER_CODEGEN_CLI_V = 2.3.1
@@ -236,7 +236,7 @@ system-smoke-test-deps:
 
 local-system-test: KIND=system_test
 local-system-test: internal-build
-	@$(REBAR) as $(KIND) do ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) --dir system_test/only_local $(CT_TEST_FLAGS)
+	@$(REBAR) as $(KIND) do ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
 
 system-test-deps:
 	$(MAKE) system-smoke-test-deps
