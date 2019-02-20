@@ -210,7 +210,8 @@ from_db_header(Tuple) when is_tuple(Tuple) ->
 
 -spec new_key_header(height(), block_header_hash(), block_header_hash(),
                      state_hash(), miner_pubkey(), beneficiary_pubkey(),
-                     aeminer_pow:sci_target(), aeminer_pow_cuckoo:solution(),
+                     aeminer_pow:sci_target(),
+                     aeminer_pow_cuckoo:solution() | 'no_value',
                      non_neg_integer(), non_neg_integer(), non_neg_integer()
                     ) -> header().
 new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
