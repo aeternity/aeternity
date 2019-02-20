@@ -17,9 +17,9 @@
         , channel_deposit_tx_instructions/7
         , channel_settle_tx_instructions/6
         , channel_withdraw_tx_instructions/7
-        , contract_call_from_contract_instructions/10
-        , contract_call_tx_instructions/10
-        , contract_create_tx_instructions/10
+        , contract_call_from_contract_instructions/11
+        , contract_call_tx_instructions/11
+        , contract_create_tx_instructions/11
         , name_claim_tx_instructions/5
         , name_preclaim_tx_instructions/5
         , name_revoke_tx_instructions/4
@@ -34,6 +34,7 @@
 
 
 -include_lib("aecore/include/aec_hash.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("apps/aecontract/src/aecontract.hrl").
 
 -record(state, { trees      :: aec_trees:trees()
@@ -41,6 +42,7 @@
                , cache      :: dict:dict()
                , env        :: dict:dict()
                , tx_env     :: aetx_env:env()
+               , protocol   :: aec_hard_forks:protocol_vsn()
                }).
 
 -define(IS_HASH(_X_), (is_binary(_X_) andalso byte_size(_X_) =:= ?HASH_BYTES)).
@@ -64,6 +66,8 @@
 -type fee()    :: non_neg_integer().
 -type amount() :: non_neg_integer().
 -type oracle_type_format() :: aeo_oracles:type_format().
+-type abi_version() :: aect_contracts:abi_version().
+-type vm_version()  :: aect_contracts:vm_version().
 
 -export_type([ op/0
              ]).
@@ -105,15 +109,13 @@ spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
 
 -spec oracle_register_tx_instructions(
         pubkey(), oracle_type_format(), oracle_type_format(), fee(), ttl(),
-        non_neg_integer(), fee(), nonce()) -> [op()].
+        abi_version(), fee(), nonce()) -> [op()].
 oracle_register_tx_instructions(AccountPubkey, QFormat, RFormat, QFee,
-                                DeltaTTL, VMVersion, TxFee, Nonce) ->
-    %% TODO: Account nonce should not be increased in contract context
-    %%       but this would mean a hard fork.
+                                DeltaTTL, ABIVersion, TxFee, Nonce) ->
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, TxFee)
     , oracle_register_op(AccountPubkey, QFormat, RFormat, QFee,
-                         DeltaTTL, VMVersion)
+                         DeltaTTL, ABIVersion)
     ].
 
 -spec oracle_extend_tx_instructions(pubkey(), ttl(), fee(), nonce()) -> [op()].
@@ -127,7 +129,7 @@ oracle_extend_tx_instructions(Pubkey, DeltaTTL, Fee, Nonce) ->
                                    ttl(), ttl(), fee(), nonce()) -> [op()].
 oracle_query_tx_instructions(OraclePubkey, SenderPubkey, Query,
                              QueryFee, QTTL, RTTL, TxFee, Nonce) ->
-    [ inc_account_nonce_op(SenderPubkey, Nonce)
+    [ force_inc_account_nonce_op(SenderPubkey, Nonce)
     , spend_fee_op(SenderPubkey, TxFee + QueryFee)
     , oracle_query_op(OraclePubkey, SenderPubkey, Nonce,
                       Query, QueryFee, QTTL, RTTL)
@@ -198,38 +200,40 @@ name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
 
 -spec contract_create_tx_instructions(pubkey(), amount(), amount(),
                                       non_neg_integer(), non_neg_integer(),
-                                      non_neg_integer(), binary(), binary(),
+                                      abi_version(), vm_version(),
+                                      binary(), binary(),
                                       fee(), nonce()) -> [op()].
 contract_create_tx_instructions(OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
-                                VMVersion, SerializedCode, CallData, Fee, Nonce) ->
+                                ABIVersion, VMVersion, SerializedCode, CallData, Fee, Nonce) ->
     [ inc_account_nonce_op(OwnerPubkey, Nonce)
     , contract_create_op(OwnerPubkey, Amount, Deposit, GasLimit,
-                         GasPrice, VMVersion, SerializedCode,
+                         GasPrice, ABIVersion, VMVersion, SerializedCode,
                          CallData, Fee, Nonce)
     ].
 
 -spec contract_call_tx_instructions(pubkey(), pubkey(), binary(),
                                     non_neg_integer(), non_neg_integer(),
-                                    amount(), [binary()], non_neg_integer(),
-                                    fee(), nonce()) -> [op()].
+                                    amount(), [binary()], abi_version(),
+                                    pubkey(), fee(), nonce()) -> [op()].
 contract_call_tx_instructions(CallerPubKey, ContractPubkey, CallData,
                               GasLimit, GasPrice, Amount, CallStack,
-                              VMVersion, Fee, Nonce) ->
+                              ABIVersion, Origin, Fee, Nonce) ->
     [ inc_account_nonce_op(CallerPubKey, Nonce)
     , contract_call_op(CallerPubKey, ContractPubkey, CallData,
                        GasLimit, GasPrice, Amount,
-                       VMVersion, CallStack, Fee, Nonce)
+                       ABIVersion, Origin, CallStack, Fee, Nonce)
     ].
 
 -spec contract_call_from_contract_instructions(
         pubkey(), pubkey(), binary(), non_neg_integer(), non_neg_integer(),
-        amount(), [binary()], non_neg_integer(), fee(), nonce()) -> [op()].
+        amount(), [binary()], abi_version(), pubkey(), fee(), nonce()
+       ) -> [op()].
 contract_call_from_contract_instructions(CallerPubKey, ContractPubkey, CallData,
                                          GasLimit, GasPrice, Amount, CallStack,
-                                         VMVersion, Fee, Nonce) ->
+                                         ABIVersion, Origin, Fee, Nonce) ->
     [ contract_call_op(CallerPubKey, ContractPubkey, CallData,
                        GasLimit, GasPrice, Amount,
-                       VMVersion, CallStack, Fee, Nonce)
+                       ABIVersion, Origin, CallStack, Fee, Nonce)
     ].
 
 -spec channel_create_tx_instructions(
@@ -239,7 +243,9 @@ channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
                                ResponderPubkey, ResponderAmount,
                                ReserveAmount, DelegatePubkeys,
                                StateHash, LockPeriod, Fee, Nonce) ->
-    [ inc_account_nonce_op(InitiatorPubkey, Nonce)
+    %% The force is not strictly necessary since this cannot be made
+    %% from a contract.
+    [ force_inc_account_nonce_op(InitiatorPubkey, Nonce)
     , spend_fee_op(InitiatorPubkey, Fee + InitiatorAmount)
     , spend_fee_op(ResponderPubkey, ResponderAmount)
     , channel_create_op(InitiatorPubkey, InitiatorAmount,
@@ -343,11 +349,13 @@ eval_one({Op, Args}, S) ->
     end.
 
 new_state(Trees, Height, TxEnv) ->
+    ProtocolVersion = aec_hard_forks:protocol_effective_at_height(Height),
     #state{ trees = Trees
           , cache = dict:new()
           , env   = dict:new()
           , height = Height
           , tx_env = TxEnv
+          , protocol = ProtocolVersion
           }.
 
 %%%===================================================================
@@ -356,13 +364,25 @@ new_state(Trees, Height, TxEnv) ->
 
 inc_account_nonce_op(Pubkey, Nonce) when ?IS_HASH(Pubkey),
                                          ?IS_NON_NEG_INTEGER(Nonce) ->
-    {inc_account_nonce, {Pubkey, Nonce}}.
+    {inc_account_nonce, {Pubkey, Nonce, false}}.
 
-inc_account_nonce({Pubkey, Nonce}, #state{} = S) ->
+force_inc_account_nonce_op(Pubkey, Nonce) when ?IS_HASH(Pubkey),
+                                               ?IS_NON_NEG_INTEGER(Nonce) ->
+    {inc_account_nonce, {Pubkey, Nonce, true}}.
+
+inc_account_nonce({Pubkey, Nonce, Force}, #state{} = S) ->
     {Account, S1} = get_account(Pubkey, S),
     assert_account_nonce(Account, Nonce),
-    Account1 = aec_accounts:set_nonce(Account, Nonce),
-    cache_put(account, Account1, S1).
+    case aetx_env:context(S#state.tx_env) of
+        aetx_contract when (not Force) andalso
+                           S#state.protocol > ?ROMA_PROTOCOL_VSN ->
+            %% We have checked that the account exists, and that it has
+            %% the correct nonce. We are done here.
+            S1;
+        _ ->
+            Account1 = aec_accounts:set_nonce(Account, Nonce),
+            cache_put(account, Account1, S1)
+    end.
 
 %%%-------------------------------------------------------------------
 
@@ -424,21 +444,21 @@ resolve_name(account, name, NameHash, Var, S) ->
 %%%-------------------------------------------------------------------
 
 oracle_register_op(Pubkey, QFormat, RFormat, QFee,
-                   DeltaTTL, VMVersion) when ?IS_HASH(Pubkey),
+                   DeltaTTL, ABIVersion) when ?IS_HASH(Pubkey),
                                              is_binary(QFormat),
                                              is_binary(RFormat),
                                              ?IS_NON_NEG_INTEGER(QFee),
                                              ?IS_NON_NEG_INTEGER(DeltaTTL),
-                                             ?IS_NON_NEG_INTEGER(VMVersion) ->
-    {oracle_register, {Pubkey, QFormat, RFormat, QFee, DeltaTTL, VMVersion}}.
+                                             ?IS_NON_NEG_INTEGER(ABIVersion) ->
+    {oracle_register, {Pubkey, QFormat, RFormat, QFee, DeltaTTL, ABIVersion}}.
 
-oracle_register({Pubkey, QFormat, RFormat, QFee, DeltaTTL, VMVersion}, S) ->
+oracle_register({Pubkey, QFormat, RFormat, QFee, DeltaTTL, ABIVersion}, S) ->
     assert_not_oracle(Pubkey, S),
-    assert_oracle_vm_version(VMVersion),
-    %% TODO: MINERVA We should check the format matches the vm version,
-    %% but this is a hard fork
+    assert_oracle_abi_version(ABIVersion, S),
+    assert_oracle_formats(QFormat, RFormat, ABIVersion, S),
+
     AbsoluteTTL = DeltaTTL + S#state.height,
-    try aeo_oracles:new(Pubkey, QFormat, RFormat, QFee, AbsoluteTTL, VMVersion) of
+    try aeo_oracles:new(Pubkey, QFormat, RFormat, QFee, AbsoluteTTL, ABIVersion) of
         Oracle -> cache_put(oracle, Oracle, S)
     catch
         error:{illegal,_Field,_X} = Err ->
@@ -757,27 +777,28 @@ channel_settle({FromPubkey, ChannelPubkey,
 %%%-------------------------------------------------------------------
 
 contract_call_op(CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
-                 Amount, VMVersion, CallStack, Fee, Nonce
+                 Amount, ABIVersion, Origin, CallStack, Fee, Nonce
                 ) when ?IS_HASH(CallerPubKey),
                        ?IS_HASH(ContractPubkey),
                        is_binary(CallData),
                        ?IS_NON_NEG_INTEGER(GasLimit),
                        ?IS_NON_NEG_INTEGER(GasPrice),
                        ?IS_NON_NEG_INTEGER(Amount),
-                       ?IS_NON_NEG_INTEGER(VMVersion),
+                       ?IS_NON_NEG_INTEGER(ABIVersion),
+                       ?IS_HASH(Origin),
                        is_list(CallStack),
                        ?IS_NON_NEG_INTEGER(Fee),
                        ?IS_NON_NEG_INTEGER(Nonce) ->
     {contract_call, {CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
-                     Amount, VMVersion, CallStack, Fee, Nonce}}.
+                     Amount, ABIVersion, Origin, CallStack, Fee, Nonce}}.
 
 contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
-               Amount, VMVersion, CallStack, Fee, Nonce}, S) ->
+               Amount, ABIVersion, Origin, CallStack, Fee, Nonce}, S) ->
     {CallerId, TotalAmount} = get_call_env_specific(CallerPubKey, GasLimit,
                                                     GasPrice, Amount, Fee, S),
     {CallerAccount, S1} = get_account(CallerPubKey, S),
     assert_account_balance(CallerAccount, TotalAmount),
-    assert_contract_call_vm_version(ContractPubkey, VMVersion, S),
+    assert_contract_call_version(ContractPubkey, ABIVersion, S),
     assert_contract_call_stack(CallStack, S),
     Context = aetx_env:context(S#state.tx_env),
     S2 = case Context of
@@ -795,7 +816,7 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
     %% Avoid writing the store back by skipping this state.
     {Contract, _} = get_contract(ContractPubkey, S4),
     {Call, S5} = run_contract(CallerId, Contract, GasLimit, GasPrice,
-                              CallData, Amount, CallStack, Nonce, S4),
+                              CallData, Origin, Amount, CallStack, Nonce, S4),
     case aect_call:return_type(Call) of
         ok ->
             case Context of
@@ -826,13 +847,14 @@ get_call_env_specific(CallerPubKey, GasLimit, GasPrice, Amount, Fee, S) ->
 %%%-------------------------------------------------------------------
 
 contract_create_op(OwnerPubkey, Amount, Deposit, GasLimit,
-                   GasPrice, VMVersion, SerializedCode,
+                   GasPrice, ABIVersion, VMVersion, SerializedCode,
                    CallData, Fee, Nonce
                   ) when ?IS_HASH(OwnerPubkey),
                          ?IS_NON_NEG_INTEGER(Amount),
                          ?IS_NON_NEG_INTEGER(Deposit),
                          ?IS_NON_NEG_INTEGER(GasLimit),
                          ?IS_NON_NEG_INTEGER(GasPrice),
+                         ?IS_NON_NEG_INTEGER(ABIVersion),
                          ?IS_NON_NEG_INTEGER(VMVersion),
                          is_binary(SerializedCode),
                          is_binary(CallData),
@@ -840,28 +862,31 @@ contract_create_op(OwnerPubkey, Amount, Deposit, GasLimit,
                          ?IS_NON_NEG_INTEGER(Nonce) ->
     {contract_create,
      {OwnerPubkey, Amount, Deposit, GasLimit,
-      GasPrice, VMVersion, SerializedCode,
+      GasPrice, ABIVersion, VMVersion, SerializedCode,
       CallData, Fee, Nonce}}.
 
 contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
-                 VMVersion, SerializedCode, CallData, Fee, Nonce}, S) ->
+                 ABIVersion, VMVersion, SerializedCode, CallData, Fee, Nonce},
+                S) ->
     RollbackS = S,
     TotalAmount    = Amount + Deposit + Fee + GasLimit * GasPrice,
     {Account, S1}  = get_account(OwnerPubkey, S),
     assert_account_balance(Account, TotalAmount),
-    assert_contract_byte_code(VMVersion, SerializedCode, CallData),
+    assert_contract_create_version(ABIVersion, VMVersion, S),
+    assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S),
     %% Charge the fee, the gas (the unused portion will be refunded)
     %% and the deposit (stored in the contract) to the contract owner (caller),
     %% and transfer the funds (amount) to the contract account.
+    CTVersion      = #{vm => VMVersion, abi => ABIVersion},
     S2             = account_spend(Account, TotalAmount, S1),
-    Contract       = aect_contracts:new(OwnerPubkey, Nonce, VMVersion,
+    Contract       = aect_contracts:new(OwnerPubkey, Nonce, CTVersion,
                                         SerializedCode, Deposit),
     ContractPubkey = aect_contracts:pubkey(Contract),
     {CAccount, S3} = ensure_account(ContractPubkey, S2),
     S4             = account_earn(CAccount, Amount, S3),
     OwnerId        = aect_contracts:owner_id(Contract),
     {InitCall, S5} = run_contract(OwnerId, Contract, GasLimit, GasPrice,
-                                  CallData, _InitAmount = 0,
+                                  CallData, OwnerPubkey, _InitAmount = 0,
                                   _CallStack = [], Nonce, S4),
     case aect_call:return_type(InitCall) of
         error ->
@@ -877,10 +902,10 @@ contract_init_call_success(InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
     ReturnValue = aect_call:return_value(InitCall),
     %% The return value is cleared for successful init calls.
     InitCall1   = aect_call:set_return_value(<<>>, InitCall),
-    case aect_contracts:vm_version(Contract) of
-        ?AEVM_01_Sophia_01 ->
+    case aect_contracts:ct_version(Contract) of
+        #{vm := V} = CTVersion when ?IS_VM_SOPHIA(V) ->
             %% Set the initial state of the contract
-            case aevm_eeevm_store:from_sophia_state(ReturnValue) of
+            case aevm_eeevm_store:from_sophia_state(CTVersion, ReturnValue) of
                 {ok, Store} ->
                     Contract1 = aect_contracts:set_state(Store, Contract),
                     S1 = cache_put(contract, Contract1, S),
@@ -890,7 +915,7 @@ contract_init_call_success(InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
                     FailCall  = aect_call:set_return_type(error, FailCall0),
                     contract_call_fail(FailCall, Fee, RollbackS)
             end;
-        ?AEVM_01_Solidity_01 ->
+        #{vm := ?VM_AEVM_SOLIDITY_1} ->
             %% Solidity inital call returns the code to store in the contract.
             Contract1 = aect_contracts:set_code(ReturnValue, Contract),
             S1 = cache_put(contract, Contract1, S),
@@ -915,7 +940,7 @@ contract_call_fail(Call, Fee, S) ->
     {Account, S3} = get_account(aect_call:caller_pubkey(Call), S2),
     account_spend(Account, UsedAmount, S3).
 
-run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, Amount,
+run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, Origin, Amount,
              CallStack, Nonce, S) ->
     %% We need to push all to the trees before running a contract.
     S1 = cache_write_through(S),
@@ -935,9 +960,10 @@ run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, Amount,
                , trees       => S1#state.trees
                , tx_env      => S1#state.tx_env
                , off_chain   => false
+               , origin      => Origin
                },
-    VMVersion = aect_contracts:vm_version(Contract),
-    {Call1, Trees1} = aect_dispatch:run(VMVersion, CallDef),
+    CTVersion = aect_contracts:ct_version(Contract),
+    {Call1, Trees1} = aect_dispatch:run(CTVersion, CallDef),
     {Call1, S1#state{trees = Trees1}}.
 
 int_lock_amount(0, #state{} = S) ->
@@ -1013,9 +1039,39 @@ assert_not_oracle(Pubkey, S) ->
         none -> ok
     end.
 
-assert_oracle_vm_version(?AEVM_NO_VM) -> ok;
-assert_oracle_vm_version(?AEVM_01_Sophia_01) -> ok;
-assert_oracle_vm_version(_) -> runtime_error(bad_vm_version).
+assert_oracle_abi_version(ABIVersion, S) ->
+    CTVersion = #{abi => ABIVersion, vm => 0}, %% VM version not used in check.
+    Height = S#state.height,
+    case aect_contracts:is_legal_version_at_height(oracle_register, CTVersion, Height) of
+        true  -> ok;
+        false -> runtime_error(bad_abi_version)
+    end.
+
+assert_oracle_formats(_QFormat,_RFormat, ?ABI_NO_VM,_S) ->
+    %% The format strings can be anything
+    ok;
+assert_oracle_formats(QFormat, RFormat, ?ABI_SOPHIA_1, S) ->
+    case S#state.protocol >= ?MINERVA_PROTOCOL_VSN of
+        false ->
+            %% Backwards compatible: no check of this.
+            ok;
+        true ->
+            assert_typerep_format(QFormat, bad_query_format),
+            assert_typerep_format(RFormat, bad_response_format)
+    end.
+
+assert_typerep_format(Format, Error) ->
+    try aeso_heap:from_binary(typerep, Format) of
+        {ok, TypeRep} ->
+            case aeso_heap:to_binary(TypeRep) of
+                Format -> ok;
+                _      -> runtime_error(Error)
+            end;
+        {error, _}->
+            runtime_error(Error)
+    catch _:_ ->
+            runtime_error(Error)
+    end.
 
 assert_query_fee(Oracle, QueryFee) ->
     case QueryFee >= aeo_oracles:query_fee(Oracle) of
@@ -1039,11 +1095,11 @@ assert_query_ttl(Oracle, QTTL, RTTL, S) ->
     end.
 
 assert_oracle_format_match(Oracle, Format, Content) ->
-    case aeo_oracles:vm_version(Oracle) of
-        ?AEVM_NO_VM ->
+    case aeo_oracles:abi_version(Oracle) of
+        ?ABI_NO_VM ->
             %% No interpretation of the format, nor content.
             ok;
-        ?AEVM_01_Sophia_01 ->
+        ?ABI_SOPHIA_1 ->
             %% Check that the content can be decoded as the type
             %% and that if we encoded it again, it becomes the content.
             {ok, TypeRep} = aeso_heap:from_binary(typerep, Format),
@@ -1056,7 +1112,7 @@ assert_oracle_format_match(Oracle, Format, Content) ->
                 {error, _} ->
                     runtime_error(bad_format)
             catch _:_ ->
-                    {error, bad_format}
+                    runtime_error(bad_format)
             end
     end.
 
@@ -1115,22 +1171,20 @@ assert_name_claimed(Name) ->
         revoked -> runtime_error(name_revoked)
     end.
 
-assert_contract_byte_code(VMVersion, SerializedCode, CallData) ->
-    case VMVersion of
-        ?AEVM_01_Sophia_01 ->
-            try aect_sophia:deserialize(SerializedCode) of
-                #{type_info := TypeInfo} ->
-                    assert_contract_init_function(CallData, TypeInfo)
-            catch _:_ -> runtime_error(bad_sophia_code)
-            end;
-        ?AEVM_01_Solidity_01 ->
-            case aeu_validation:run([?AEVM_01_Solidity_01_enabled]) of
-                ok -> ok;
-                {error, What} -> runtime_error(What)
-            end;
-        _ ->
-            runtime_error(bad_vm_version)
-    end.
+assert_contract_byte_code(?ABI_SOPHIA_1, SerializedCode, CallData, S) ->
+    try aect_sophia:deserialize(SerializedCode) of
+        #{type_info := TypeInfo, 
+          contract_vsn := Vsn} ->
+            case aect_sophia:is_legal_serialization_at_height(Vsn, S#state.height) of
+                true ->
+                    assert_contract_init_function(CallData, TypeInfo);
+                false ->
+                    runtime_error(illegal_contract_compiler_version)
+            end
+    catch _:_ -> runtime_error(bad_sophia_code)
+    end;
+assert_contract_byte_code(?ABI_SOLIDITY_1, _SerializedCode, _CallData, _S) ->
+    ok.
 
 assert_contract_init_function(CallData, TypeInfo) ->
     case aeso_abi:get_function_hash_from_calldata(CallData) of
@@ -1142,12 +1196,23 @@ assert_contract_init_function(CallData, TypeInfo) ->
         _Other -> runtime_error(bad_init_function)
     end.
 
-
-assert_contract_call_vm_version(Pubkey, VMVersion, S) ->
-    Contract = get_contract_without_store(Pubkey, S),
-    case aect_contracts:vm_version(Contract) =:= VMVersion of
+assert_contract_create_version(ABIVersion, VMVersion, S) ->
+    CTVersion = #{abi => ABIVersion, vm => VMVersion},
+    Height = S#state.height,
+    case aect_contracts:is_legal_version_at_height(create, CTVersion, Height) of
         true  -> ok;
-        false -> runtime_error(wrong_vm_version)
+        false -> runtime_error(illegal_vm_version)
+    end.
+
+
+assert_contract_call_version(Pubkey, ABIVersion, S) ->
+    Contract  = get_contract_without_store(Pubkey, S),
+    CTVersion = #{abi := CABIVersion} = aect_contracts:ct_version(Contract),
+    Height    = S#state.height,
+    case aect_contracts:is_legal_version_at_height(call, CTVersion, Height) of
+        true when ABIVersion =:= CABIVersion -> ok;
+        true                                 -> runtime_error(wrong_abi_version);
+        false                                -> runtime_error(wrong_vm_version)
     end.
 
 assert_contract_call_stack(CallStack, S) ->

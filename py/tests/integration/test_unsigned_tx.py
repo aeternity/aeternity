@@ -59,6 +59,7 @@ def test_contract_create():
     assert_equals(tx['type'], 'contract_create_tx')
     assert_equals(tx['owner_id'], common.api_decode(test_settings["alice"]["pubkey"]))
     assert_equals(tx['vm_version'], test_settings["create_contract"]["vm_version"])
+    assert_equals(tx['abi_version'], test_settings["create_contract"]["abi_version"])
     assert_equals(tx['deposit'], test_settings["create_contract"]["deposit"])
     assert_equals(tx['amount'], test_settings["create_contract"]["amount"])
     assert_equals(tx['gas'], test_settings["create_contract"]["gas"])
@@ -124,7 +125,7 @@ def test_contract_call():
     contract_call_obj = ContractCallTx(
         caller_id=test_settings["alice"]["pubkey"],
         contract_id=encoded_contract_id,
-        vm_version=call_contract["vm_version"],
+        abi_version=call_contract["abi_version"],
         fee=call_contract["fee"],
         ttl=100,
         amount=call_contract["amount"],
@@ -281,6 +282,7 @@ def get_unsigned_contract_create(owner_id, contract, external_api, internal_api)
         owner_id=owner_id,
         code=bytecode,
         vm_version=contract["vm_version"],
+        abi_version=contract["abi_version"],
         deposit=contract["deposit"],
         amount=contract["amount"],
         gas=contract["gas"],

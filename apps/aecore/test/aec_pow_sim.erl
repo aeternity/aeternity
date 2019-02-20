@@ -8,6 +8,7 @@
 
 -compile([export_all, nowarn_export_all]).
 
+-include_lib("aeminer/include/aeminer.hrl").
 -include("blocks.hrl").
 
 -import(aec_headers, [raw_key_header/0]).
@@ -37,7 +38,7 @@ adjust_target(Top, Chain) ->
     end.
 
 difficulty(Hd) ->
-    aec_pow:target_to_difficulty(aec_headers:target(Hd)).
+    aeminer_pow:target_to_difficulty(aec_headers:target(Hd)).
 
 %% -- Chain simulation -------------------------------------------------------
 

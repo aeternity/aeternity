@@ -11,7 +11,7 @@
          deposit/4,
          is_active/1,
          is_solo_closed/2,
-         is_solo_closing/2,
+         is_solo_closing/1,
          is_last_state_forced/1,
          locked_until/1,
          new/9,
@@ -197,12 +197,12 @@ is_active(#channel{locked_until = LockedUntil}) ->
     LockedUntil =:= 0.
 
 -spec is_solo_closed(channel(), aec_blocks:height()) -> boolean().
-is_solo_closed(#channel{locked_until = LockedUntil}, Height) ->
-    LockedUntil =/= 0 andalso LockedUntil =< Height.
+is_solo_closed(#channel{locked_until = LockedUntil} = Channel, Height) ->
+    is_solo_closing(Channel) andalso LockedUntil =< Height.
 
--spec is_solo_closing(channel(), aec_blocks:height()) -> boolean().
-is_solo_closing(#channel{locked_until = LockedUntil}, Height) ->
-    LockedUntil > Height.
+-spec is_solo_closing(channel()) -> boolean().
+is_solo_closing(Channel) ->
+    not is_active(Channel).
 
 -spec pubkey(pubkey(), non_neg_integer(), pubkey()) -> pubkey().
 pubkey(<<_:?PUB_SIZE/binary>> = InitiatorPubKey, Nonce,

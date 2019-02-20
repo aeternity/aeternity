@@ -1,0 +1,9 @@
+contract C =
+  function f(n : int) =
+    Map.size({[1] = big_list(n)})
+
+  private function big_list(n) =
+    if(n == 0)
+      []
+    else
+      Call.caller :: big_list(n-1)

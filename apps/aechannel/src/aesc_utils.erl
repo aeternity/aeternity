@@ -28,8 +28,6 @@
 -export([tx_hash_to_contract_pubkey/1]).
 -endif.
 
--include_lib("aecontract/src/aecontract.hrl").
-
 -ifdef(COMMON_TEST).
 -define(TEST_LOG(Format, Data),
         try ct:log(Format, Data)
@@ -74,8 +72,8 @@ check_is_active(Channel) ->
         false -> {error, channel_not_active}
     end.
 
-check_is_closing(Channel, Height) ->
-    case aesc_channels:is_solo_closing(Channel, Height) of
+check_is_closing(Channel) ->
+    case aesc_channels:is_solo_closing(Channel) of
         true  -> ok;
         false -> {error, channel_not_closing}
     end.
@@ -174,7 +172,7 @@ check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
     end.
 
 check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
-                    PoI, Height, Trees) ->
+                    PoI, _Height, Trees) ->
     case get_vals([get_channel(ChannelPubKey, Trees),
                    deserialize_payload(Payload)]) of
         {error, _} = E -> E;
@@ -184,7 +182,7 @@ check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
             Checks =
                 [ fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce,
                                                     Fee) end,
-                  fun() -> check_is_closing(Channel, Height) end,
+                  fun() -> check_is_closing(Channel) end,
                   fun() -> check_payload(Channel, PayloadTx, FromPubKey, SignedState,
                                           Trees, slash) end,
                   fun() -> check_poi(Channel, PayloadTx, PoI) end
@@ -238,7 +236,7 @@ check_force_progress(Tx, Payload, OffChainTrees, Height, Trees) ->
 
 check_force_progress_(PayloadHash, PayloadRound,
                       Channel, FromPubKey, Nonce, Fee, Update,
-                      NextRound, OffChainTrees, _Height, Trees) ->
+                      NextRound, OffChainTrees, Height, Trees) ->
     Checks =
         [ fun() ->
               case aesc_offchain_update:is_call(Update) of
@@ -263,12 +261,6 @@ check_force_progress_(PayloadHash, PayloadRound,
                   false -> {error, wrong_round}
               end
           end,
-          fun() ->
-              case aesc_offchain_update:extract_vm_version(Update) of
-                  ?AEVM_01_Sophia_01 -> ok;
-                  _ -> {error, unknown_vm_version}
-              end
-          end,
           fun() -> check_root_hash_of_trees(PayloadHash, OffChainTrees) end,
           fun() -> % check produced tree has the same root hash as the poi
               ContractPubkey = aesc_offchain_update:extract_contract_pubkey(Update),
@@ -278,7 +270,15 @@ check_force_progress_(PayloadHash, PayloadRound,
                       case aect_state_tree:lookup_contract(ContractPubkey,
                                                            ContractTrees) of
                           none -> {error, contract_missing};
-                          {value, _} -> ok
+                          {value, Contract} ->
+                            ABIVersion = aesc_offchain_update:extract_abi_version(Update),
+                            CTVersion = aect_contracts:ct_version(Contract),
+                            Code = aect_contracts:code(Contract),
+                            case check_abi_version(CTVersion, ABIVersion, Height) of
+                                ok ->
+                                    check_code_serialization(Code, CTVersion, Height);
+                                Error -> Error
+                            end
                       end
                   end])
           end,
@@ -292,6 +292,24 @@ check_force_progress_(PayloadHash, PayloadRound,
     ?TEST_LOG("check_force_progress result: ~p", [Res]),
     Res.
 
+check_code_serialization(Code, #{abi := ABI}, Height) ->
+    case aect_sophia:deserialize(Code) of
+        Deserialized ->
+            case aect_contracts:is_legal_serialization_at_height(ABI, maps:get(contract_vsn, Deserialized, 1), Height) of
+                true ->
+                    ok;
+                false ->
+                    {error, illegal_contract_compiler_version}
+            end
+    end.
+
+check_abi_version(#{abi := ABI} = Version, ABI, Height) ->
+    case aect_contracts:is_legal_version_at_height(call, Version, Height) of
+        true -> ok;
+        false -> {error, unknown_vm_version}
+    end;
+check_abi_version(_, _, _) ->
+    {error, wrong_abi_version}.
 
 check_solo_snapshot_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
                             Trees) ->

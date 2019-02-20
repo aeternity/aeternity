@@ -210,7 +210,7 @@ gas_price(#aetx{}) ->
 
 -spec min_fee(Tx :: tx(), Height :: aec_blocks:height()) -> Fee :: non_neg_integer().
 min_fee(#aetx{} = AeTx, Height) ->
-    min_gas(AeTx, Height) * aec_governance:minimum_gas_price().
+    min_gas(AeTx, Height) * aec_governance:minimum_gas_price(Height).
 
 min_gas(#aetx{ type = Type, size = Size }, _Height) when ?IS_CONTRACT_TX(Type) ->
     base_gas(Type) + size_gas(Size);
@@ -264,7 +264,7 @@ check_contract(#aetx{ cb = CB, tx = Tx }, Trees, Env) ->
 check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
     Checks =
         [fun() -> check_minimum_fee(AeTx, Env) end,
-         fun() -> check_minimum_gas_price(AeTx) end,
+         fun() -> check_minimum_gas_price(AeTx, aetx_env:height(Env)) end,
          fun() -> check_ttl(AeTx, Env) end],
     case aeu_validation:run(Checks) of
         ok             -> CB:check(Tx, Trees, Env);
@@ -286,12 +286,12 @@ check_minimum_fee(AeTx, Env) ->
             {error, too_low_abs_ttl}
     end.
 
-check_minimum_gas_price(AeTx) ->
+check_minimum_gas_price(AeTx, Height) ->
     case gas_price(AeTx) of
         undefined ->
             ok;
         GasPrice when is_integer(GasPrice) ->
-            case GasPrice >= aec_governance:minimum_gas_price() of
+            case GasPrice >= aec_governance:minimum_gas_price(Height) of
                 true  -> ok;
                 false -> {error, too_low_gas_price}
             end

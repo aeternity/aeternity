@@ -10,6 +10,7 @@
 
 -module(aeu_rlp).
 -export([ decode/1
+        , decode_one/1
         , encode/1
         ]).
 

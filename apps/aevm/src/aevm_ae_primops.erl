@@ -18,7 +18,7 @@
 -include_lib("aecontract/src/aecontract.hrl").
 -include("aevm_ae_primops.hrl").
 
--record(chain, {api, state}).
+-record(chain, {api, state, abi_version}).
 
 -ifdef(COMMON_TEST).
 -define(TEST_LOG(Format, Data),
@@ -61,9 +61,13 @@ call_(Gas, Value, Data, StateIn) ->
             true when ?PRIM_CALL_IN_MAP_RANGE(PrimOp) ->
                 %% Map primops need the full state
                 map_call(Gas, PrimOp, Value, Data, StateIn);
+            true when ?PRIM_CALL_IN_CRYPTO_RANGE(PrimOp) ->
+                crypto_call(Gas, PrimOp, Value, Data, StateIn);
             true ->
                 ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
-                                 state = aevm_eeevm_state:chain_state(StateIn)},
+                                 state = aevm_eeevm_state:chain_state(StateIn),
+                                 abi_version = aevm_eeevm_state:abi_version(StateIn)
+                                },
                 case call_primop(PrimOp, Value, Data, ChainIn) of
                     {error, _} = Err ->
                         Err;
@@ -188,7 +192,21 @@ types(?PRIM_CALL_ORACLE_RESPOND, HeapValue, Store, State) ->
             {[], tuple0_t()}
     end;
 types(?PRIM_CALL_SPEND,_HeapValue,_Store,_State) ->
-    {[word], tuple0_t()}.
+    {[word], tuple0_t()};
+types(?PRIM_CALL_CRYPTO_ECVERIFY, _HeapValue, _Store, _State) ->
+    {[word, word, sign_t()], word};
+types(?PRIM_CALL_CRYPTO_SHA3, _HeapValue, _Store, _State) ->
+    {[typerep, word], word};
+types(?PRIM_CALL_CRYPTO_SHA256, _HeapValue, _Store, _State) ->
+    {[typerep, word], word};
+types(?PRIM_CALL_CRYPTO_BLAKE2B, _HeapValue, _Store, _State) ->
+    {[typerep, word], word};
+types(?PRIM_CALL_CRYPTO_SHA256_STRING, _HeapValue, _Store, _State) ->
+    {[string], word};
+types(?PRIM_CALL_CRYPTO_BLAKE2B_STRING, _HeapValue, _Store, _State) ->
+    {[string], word};
+types(_, _, _, _) ->
+    {[], tuple0_t()}.
 
 tuple0_t() ->
     {tuple, []}.
@@ -294,7 +312,8 @@ oracle_ttl_t() ->
 sign_t() ->
     {tuple, [word, word]}.
 
-oracle_call_register(_Value, Data, #chain{api = API, state = State} = Chain) ->
+oracle_call_register(_Value, Data,
+                     #chain{api = API, state = State, abi_version = ABIVersion} = Chain) ->
     ArgumentTypes = [word, sign_t(), word, oracle_ttl_t(), typerep, typerep],
     [Acct, Sign0, QFee, TTL, QFormat, RFormat] = get_args(ArgumentTypes, Data),
     %% The aeo_register_tx expects the formats to be binary, althought, atoms are provided.
@@ -303,7 +322,7 @@ oracle_call_register(_Value, Data, #chain{api = API, state = State} = Chain) ->
         {error, _} = Err -> Err;
         {ok, DeltaTTL = {delta, _}} ->
             case API:oracle_register_tx(<<Acct:256>>, QFee, TTL, QFormat,
-                                        RFormat, ?AEVM_01_Sophia_01, State) of
+                                        RFormat, ABIVersion, State) of
                 {error, _} = Err -> Err;
                 {ok, Tx} ->
                     Callback =
@@ -482,6 +501,62 @@ aens_call_revoke(Data, #chain{api = API, state = State} = Chain) ->
             no_dynamic_gas(fun() -> cast_chain(Callback, Chain) end);
         {error, _} = Err -> Err
     end.
+
+
+%% ------------------------------------------------------------------
+%% Crypto operations.
+%% ------------------------------------------------------------------
+crypto_call(Gas, Op, _Value, Data, State) ->
+    case {aevm_eeevm_state:vm_version(State), Op} of
+        {?VM_AEVM_SOPHIA_1, _} -> {error, out_of_gas};
+        {?VM_AEVM_SOPHIA_2, _} -> crypto_call(Gas, Op, Data, State)
+    end.
+
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECVERIFY, Data, State) ->
+    crypto_call_ecverify(Gas, Data, State);
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_SHA3, Data, State) ->
+    crypto_call_generic_hash(?PRIM_CALL_CRYPTO_SHA3, Gas, Data, State);
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_SHA256, Data, State) ->
+    crypto_call_generic_hash(?PRIM_CALL_CRYPTO_SHA256, Gas, Data, State);
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_BLAKE2B, Data, State) ->
+    crypto_call_generic_hash(?PRIM_CALL_CRYPTO_BLAKE2B, Gas, Data, State);
+crypto_call(_Gas, ?PRIM_CALL_CRYPTO_SHA256_STRING, Data, State) ->
+    crypto_call_string_hash(?PRIM_CALL_CRYPTO_SHA256_STRING, Data, State);
+crypto_call(_Gas, ?PRIM_CALL_CRYPTO_BLAKE2B_STRING, Data, State) ->
+    crypto_call_string_hash(?PRIM_CALL_CRYPTO_BLAKE2B_STRING, Data, State);
+crypto_call(_, _, _, _) ->
+    {error, out_of_gas}.
+
+crypto_call_ecverify(_Gas, Data, State) ->
+    [Msg, PK, Sig] = get_args([word, word, sign_t()], Data),
+    Res =
+        case enacl:sign_verify_detached(to_sign(Sig), <<Msg:256>>, <<PK:256>>) of
+            {ok, _}    -> {ok, <<1:256>>};
+            {error, _} -> {ok, <<0:256>>}
+        end,
+    {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY), State}.
+
+crypto_call_generic_hash(PrimOp, Gas, Data, State) ->
+    [Type, Ptr] = get_args([typerep, word], Data),
+    case aevm_eeevm_state:heap_to_binary(Type, Ptr, State) of
+        {ok, Bin, GasUsed} ->
+            Hash = case PrimOp of
+                       ?PRIM_CALL_CRYPTO_SHA3    -> aec_hash:hash(evm, Bin);
+                       ?PRIM_CALL_CRYPTO_SHA256  -> aec_hash:sha256_hash(Bin);
+                       ?PRIM_CALL_CRYPTO_BLAKE2B -> aec_hash:blake2b_256_hash(Bin)
+                   end,
+            {ok, {ok, Hash}, GasUsed + aec_governance:primop_base_gas(PrimOp), State};
+        {error, _} = Err ->
+            {ok, Err, Gas, State}
+    end.
+
+crypto_call_string_hash(PrimOp, Data, State) ->
+    [String] = get_args([string], Data),
+    Hash = case PrimOp of
+               ?PRIM_CALL_CRYPTO_SHA256_STRING  -> aec_hash:sha256_hash(String);
+               ?PRIM_CALL_CRYPTO_BLAKE2B_STRING -> aec_hash:blake2b_256_hash(String)
+           end,
+    {ok, {ok, Hash}, aec_governance:primop_base_gas(PrimOp), State}.
 
 %% ------------------------------------------------------------------
 %% Map operations.

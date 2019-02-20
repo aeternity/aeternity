@@ -11,7 +11,8 @@
 -compile({parse_transform, ct_eunit_xform}).
 
 -define(STARTED_APPS_WHITELIST, [runtime_tools, parse_trans, folsom, bear, setup, hut, hex2bin,
-                                 inet_cidr, inet_ext, lhttpc, rand_compat, xmerl]).
+                                 inet_cidr, inet_ext, lhttpc, rand_compat, xmerl, aecuckoo,
+                                 aecuckooprebuilt]).
 -define(TO_BE_STOPPED_APPS_BLACKLIST, []).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server, %% by test framework
@@ -100,12 +101,13 @@ iolist_to_s(L) ->
 application_test(Config) ->
     {ok, StartedApps, TempDir} = prepare_app_start(aecore, Config),
 
-    meck:new(aec_genesis_block_settings, []),
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, []),
+    meck:new(aec_fork_block_settings, []),
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, []),
+    meck:expect(aec_fork_block_settings, minerva_accounts, 0, []),
     {ok,_} = application:ensure_all_started(aecore),
     timer:sleep(100),
     ok = application:stop(aecore),
-    meck:unload(aec_genesis_block_settings),
+    meck:unload(aec_fork_block_settings),
 
     app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir).
 

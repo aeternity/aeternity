@@ -7,6 +7,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-include_lib("aeminer/include/aeminer.hrl").
 -include("blocks.hrl").
 
 -import(aec_headers, [raw_key_header/0]).
@@ -36,7 +37,8 @@ new_key_block_test_() ->
                           aec_blocks:prev_hash(NewBlock)),
              ?assertError(_, aec_blocks:txs(NewBlock)),
              ?assertEqual(17, aec_blocks:target(NewBlock)),
-             ?assertEqual(aec_block_genesis:version(), aec_blocks:version(NewBlock)),
+             ?assertEqual(aec_hard_forks:protocol_effective_at_height(12),
+                          aec_blocks:version(NewBlock)),
              ?assertEqual(?MINER_PUBKEY, aec_blocks:miner(NewBlock)),
              ?assertEqual(?BENEFICIARY_PUBKEY, aec_blocks:beneficiary(NewBlock))
      end}.
@@ -46,7 +48,7 @@ difficulty_recalculation_test_() ->
          fun() ->
                  Now            = 1504731164584,
                  GoodDifficulty = 50.0,
-                 GoodTarget     = aec_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
+                 GoodTarget     = aeminer_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
                  Height0        = 30,
                  Vsn            = aec_hard_forks:protocol_effective_at_height(Height0),
 
@@ -57,7 +59,7 @@ difficulty_recalculation_test_() ->
 
                  {ok, Block} = aec_block_key_candidate:adjust_target(Block0, Chain),
 
-                 NewDifficulty = ?HIGHEST_TARGET_INT / aec_pow:scientific_to_integer(aec_blocks:target(Block)),
+                 NewDifficulty = ?HIGHEST_TARGET_INT / aeminer_pow:scientific_to_integer(aec_blocks:target(Block)),
 
                  %% The target adjustment algorithm will temper the solvetime slightly, thus the
                  %% new Difficulty should be 0.23% less than the GoodDifficulty
@@ -69,7 +71,7 @@ difficulty_recalculation_test_() ->
                  Now            = 1504731164584,
                  Offset         = round(aec_governance:expected_block_mine_rate() * 0.05),
                  GoodDifficulty = 50.0,
-                 GoodTarget     = aec_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
+                 GoodTarget     = aeminer_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
                  Height0        = 30,
                  Vsn            = aec_hard_forks:protocol_effective_at_height(Height0),
 
@@ -81,7 +83,7 @@ difficulty_recalculation_test_() ->
 
                  {ok, Block} = aec_block_key_candidate:adjust_target(Block0, Chain),
 
-                 NewDifficulty = ?HIGHEST_TARGET_INT / aec_pow:scientific_to_integer(aec_blocks:target(Block)),
+                 NewDifficulty = ?HIGHEST_TARGET_INT / aeminer_pow:scientific_to_integer(aec_blocks:target(Block)),
                  ?assert(NewDifficulty < GoodDifficulty),
                  ?assert(?HIGHEST_TARGET_SCI > aec_blocks:target(Block))
          end},
@@ -90,7 +92,7 @@ difficulty_recalculation_test_() ->
                  Now            = 1504731164584,
                  Offset         = round(aec_governance:expected_block_mine_rate() * 0.05),
                  GoodDifficulty = 50.0,
-                 GoodTarget     = aec_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
+                 GoodTarget     = aeminer_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
                  Height0        = 30,
                  Vsn            = aec_hard_forks:protocol_effective_at_height(Height0),
 
@@ -103,7 +105,7 @@ difficulty_recalculation_test_() ->
 
                  {ok, Block} = aec_block_key_candidate:adjust_target(Block0, Chain),
 
-                 NewDifficulty = ?HIGHEST_TARGET_INT / aec_pow:scientific_to_integer(aec_blocks:target(Block)),
+                 NewDifficulty = ?HIGHEST_TARGET_INT / aeminer_pow:scientific_to_integer(aec_blocks:target(Block)),
                  ?assert(NewDifficulty > GoodDifficulty),
                  ?assert(?HIGHEST_TARGET_SCI > aec_blocks:target(Block))
          end}

@@ -8,6 +8,8 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
+-include_lib("aecontract/src/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %% common_test exports
 -export([
@@ -760,7 +762,7 @@ environment_contract(Config) ->
     Difficulty = fun(Hdr) ->
                     #{<<"prev_key_hash">> := KeyHash} = Hdr,
                     {ok, 200, #{<<"target">> := T}} = get_key_block(KeyHash),
-                    aec_pow:target_to_difficulty(T)
+                    aeminer_pow:target_to_difficulty(T)
                  end,
     call_func(BPub, BPriv, EncCPub, <<"difficulty">>, <<"()">>, {<<"int">>, Difficulty}),
 
@@ -1052,12 +1054,12 @@ compiler_error_contract(_Config) ->
     %% Test syntax error.
     {ok,403,#{<<"reason">> := SyntaxError}} =
         get_contract_bytecode(<<"contract Fail = function fail(x : string) == x + 1">>),
-    <<"** Parse errors\n\n",_/binary>> = SyntaxError,
+    <<"Parse errors\n",_/binary>> = SyntaxError,
 
     %% Test type error.
     {ok,403,#{<<"reason">> := TypeError}} =
         get_contract_bytecode(<<"contract Fail = function fail(x : string) = x + 1">>),
-    TypeError = <<"** Type errors\n\n"
+    TypeError = <<"Type errors\n"
                   "Cannot unify string\n"
                   "         and int\n"
                   "when checking the application at line 1, column 47 of\n"
@@ -1069,7 +1071,7 @@ compiler_error_contract(_Config) ->
     %% Test code gen error.
     {ok,403,#{<<"reason">> := GenError}} =
         get_contract_bytecode(<<"contract Fail =\n  function fail(x : address) = Chain.balance">>),
-    <<"** Code errors\n\n",_/binary>> = GenError,
+    <<"Code errors\n",_/binary>> = GenError,
 
     %% This generates a function_clause error.
     {ok,403,#{<<"reason">> := DeclError}} =
@@ -1180,14 +1182,23 @@ call_func_decode(NodeName, Pubkey, Privkey, EncodedContractPubkey,
 %% Contract interface functions.
 
 compile_test_contract(Name) ->
-    CodeDir = filename:join(code:lib_dir(aehttp), "../../extras/test/contracts"),
-    compile_test_contract(CodeDir, Name).
+    Dir = filename:join(code:lib_dir(aehttp), "../../extras/test/contracts"),
+    compile_test_contract(Dir, Name).
 
-%% For testing with contracts not part of the aesophia repository
 compile_test_contract(Dir, Name) ->
-    {ok, SophiaCode} = file:read_file(filename:join([Dir, lists:concat([Name, ".aes"])])),
-    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
-    Code.
+    FileName = filename:join(Dir, Name ++ ".aes"),
+    Versions = rpc(aec_hard_forks, sorted_protocol_versions, []),
+    %% TODO: This can be handled by a parameter to the compile
+    %%       endpoint once it is there
+    case lists:last(Versions) of
+        ?ROMA_PROTOCOL_VSN ->
+            {ok, Code} = aect_test_utils:compile_filename(1, FileName),
+            aehttp_api_encoder:encode(contract_bytearray, Code);
+        ?MINERVA_PROTOCOL_VSN ->
+            {ok, SophiaCode} = file:read_file(FileName),
+            {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
+            Code
+    end.
 
 %% create_compute_contract(NodeName, Pubkey, Privkey, Code, InitArgument) ->
 %%     {EncodedContractPubkey,DecodedContractPubkey,InitReturn}.
@@ -1389,7 +1400,8 @@ contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
     %% The default init contract.
     ContractInitEncoded0 = #{ owner_id => Address,
                               code => Code,
-                              vm_version => 1,  %?AEVM_01_Sophia_01
+                              vm_version => aect_test_utils:latest_sophia_vm_version(),
+                              abi_version => aect_test_utils:latest_sophia_abi_version(),
                               deposit => 2,
                               amount => 0,      %Initial balance
                               gas => 100000,   %May need a lot of gas
@@ -1397,8 +1409,26 @@ contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
                               fee => 1400000,
                               nonce => Nonce,
                               payload => <<"create contract">>},
-    ContractInitEncoded = maps:merge(maps:merge(ContractInitEncoded0, CallInput), CallerSet),
+    ContractInitEncoded1 = maps:merge(maps:merge(ContractInitEncoded0, CallInput), CallerSet),
+    ContractInitEncoded = test_backwards_compatible_api(abi_optional, ContractInitEncoded1),
     sign_and_post_create_compute_tx(Privkey, ContractInitEncoded).
+
+test_backwards_compatible_api(abi_optional, Map) ->
+    case get_prn() rem 2 of
+        0 -> Map;
+        1 -> maps:remove(abi_version, Map)
+    end;
+test_backwards_compatible_api(abi_or_vm, Map) ->
+    case get_prn() rem 2 of
+        0 -> Map;
+        1 -> maps:remove(abi_version, Map#{vm_version => maps:get(abi_version, Map)})
+    end.
+
+get_prn() ->
+    case get('$prn') of
+        undefined            -> put('$prn', 1), 1;
+        N when is_integer(N) -> put('$prn', N+1), N+1
+    end.
 
 contract_call_compute_tx(Pubkey, Privkey, EncodedContractPubkey,
                          Function, Argument, CallerSet) ->
@@ -1424,14 +1454,15 @@ contract_call_compute_tx(Pubkey, Privkey, Nonce, EncodedContractPubkey,
 
     ContractCallEncoded0 = #{ caller_id => Address,
                               contract_id => EncodedContractPubkey,
-                              vm_version => 1,  %?AEVM_01_Sophia_01
+                              abi_version => aect_test_utils:latest_sophia_abi_version(),
                               amount => 0,
                               gas => 100000,    %May need a lot of gas
                               gas_price => 1,
                               fee => 800000,
                               nonce => Nonce,
                               payload => <<"call compute function">> },
-    ContractCallEncoded = maps:merge(maps:merge(ContractCallEncoded0, CallInput), CallerSet),
+    ContractCallEncoded1 = maps:merge(maps:merge(ContractCallEncoded0, CallInput), CallerSet),
+    ContractCallEncoded = test_backwards_compatible_api(abi_or_vm, ContractCallEncoded1),
     sign_and_post_call_compute_tx(Privkey, ContractCallEncoded).
 
 %% ============================================================

@@ -39,15 +39,18 @@
          version/0
         ]).
 
+
 -ifdef(TEST).
 -export([genesis_block_with_state/1]).
 -endif.
 
--define(GENESIS_VERSION, 1).
+-include_lib("aeminer/include/aeminer.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
+-include("blocks.hrl").
+
+-define(GENESIS_VERSION, ?ROMA_PROTOCOL_VSN).
 -define(GENESIS_HEIGHT, 0).
 -define(GENESIS_TIME, 0).
-
--include("blocks.hrl").
 
 %% Since preset accounts are being loaded from a file - please use with caution
 genesis_header() ->
@@ -92,7 +95,7 @@ target() ->
 %%
 %% Since preset accounts are being loaded from a file - please use with caution
 genesis_block_with_state() ->
-    genesis_block_with_state(#{preset_accounts => aec_genesis_block_settings:preset_accounts()}).
+    genesis_block_with_state(#{preset_accounts => aec_fork_block_settings:genesis_accounts()}).
 
 genesis_block_with_state(Map) ->
     Trees = populated_trees(Map),
@@ -109,7 +112,7 @@ genesis_block_with_state(Map) ->
 %%
 %% It does not include reward for miner account.
 populated_trees() ->
-    populated_trees(#{preset_accounts => aec_genesis_block_settings:preset_accounts()}).
+    populated_trees(#{preset_accounts => aec_fork_block_settings:genesis_accounts()}).
 
 populated_trees(Map) ->
     PresetAccounts = maps:get(preset_accounts, Map),

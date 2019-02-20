@@ -36,7 +36,7 @@
          caller_pubkey/1,
          contract_id/1,
          contract_pubkey/1,
-         vm_version/1,
+         abi_version/1,
          amount/1,
          gas_limit/1,
          gas_price/1,
@@ -52,16 +52,19 @@
           caller_id        :: aec_id:id(),
           nonce            :: integer(),
           contract_id      :: aec_id:id(),
-          vm_version       :: aect_contracts:vm_version(),
+          abi_version      :: aect_contracts:abi_version(),
           fee              :: integer(),
           ttl              :: aetx:tx_ttl(),
           amount           :: aect_contracts:amount(),
           gas              :: aect_contracts:amount(),
           gas_price        :: aect_contracts:amount(),
           call_data        :: binary(),
-          call_stack  = [] :: [non_neg_integer()]
+          call_stack  = [] :: [non_neg_integer()],
             %% addresses (the pubkey as an integer) of contracts on the call
-            %% stack
+            %% stack, not serialized
+          call_origin      :: aec_keys:pubkey()
+            %% Only different from caller if this is called from a contract,
+            %% not serialized
           }).
 
 -opaque tx() :: #contract_call_tx{}.
@@ -72,7 +75,7 @@
 new(#{caller_id   := CallerId,
       nonce       := Nonce,
       contract_id := ContractId,
-      vm_version  := VmVersion,
+      abi_version := ABIVersion,
       fee         := Fee,
       amount      := Amount,
       gas         := Gas,
@@ -80,22 +83,25 @@ new(#{caller_id   := CallerId,
       call_data   := CallData} = Args) ->
     CallStack = maps:get(call_stack, Args, []),
     TTL = maps:get(ttl, Args, 0),
-    case aec_id:specialize_type(CallerId) of
-        contract -> ok;
-        account  -> ok
-    end,
+    CallOrigin =
+        case aec_id:specialize(CallerId) of
+            {contract, Pubkey} -> maps:get(origin, Args, Pubkey);
+            {account,  Pubkey} -> maps:get(origin, Args, Pubkey)
+        end,
     contract = aec_id:specialize_type(ContractId),
     Tx = #contract_call_tx{caller_id   = CallerId,
                            nonce       = Nonce,
                            contract_id = ContractId,
-                           vm_version  = VmVersion,
+                           abi_version = ABIVersion,
                            fee         = Fee,
                            ttl         = TTL,
                            amount      = Amount,
                            gas         = Gas,
                            gas_price   = GasPrice,
                            call_data   = CallData,
-                           call_stack  = CallStack},
+                           call_stack  = CallStack,
+                           call_origin = CallOrigin
+                          },
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -117,6 +123,9 @@ nonce(#contract_call_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#contract_call_tx{} = Tx) ->
     caller_pubkey(Tx).
+
+call_origin(#contract_call_tx{call_origin = CallOrigin}) ->
+    CallOrigin.
 
 -spec call_id(tx()) -> aect_call:id().
 call_id(#contract_call_tx{} = Tx) ->
@@ -144,7 +153,8 @@ process(#contract_call_tx{} = Tx, Trees, Env) ->
           gas_price(Tx),
           amount(Tx),
           call_stack(Tx),
-          vm_version(Tx),
+          abi_version(Tx),
+          call_origin(Tx),
           fee(Tx),
           nonce(Tx)),
     aec_tx_processor:eval(Instructions, Trees, Env).
@@ -164,7 +174,8 @@ process_call_from_contract(#contract_call_tx{} = Tx, Trees, Env) ->
           gas_price(Tx),
           amount(Tx),
           call_stack(Tx),
-          vm_version(Tx),
+          abi_version(Tx),
+          call_origin(Tx),
           fee(Tx),
           nonce(Tx)),
     aec_tx_processor:eval_with_return(Instructions, Trees, Env).
@@ -172,7 +183,7 @@ process_call_from_contract(#contract_call_tx{} = Tx, Trees, Env) ->
 serialize(#contract_call_tx{caller_id   = CallerId,
                             nonce       = Nonce,
                             contract_id = ContractId,
-                            vm_version  = VmVersion,
+                            abi_version = ABIVersion,
                             fee         = Fee,
                             ttl         = TTL,
                             amount      = Amount,
@@ -186,7 +197,7 @@ serialize(#contract_call_tx{caller_id   = CallerId,
      [ {caller_id, CallerId}
      , {nonce, Nonce}
      , {contract_id, ContractId}
-     , {vm_version, VmVersion}
+     , {abi_version, ABIVersion}
      , {fee, Fee}
      , {ttl, TTL}
      , {amount, Amount}
@@ -199,31 +210,33 @@ deserialize(?CONTRACT_CALL_TX_VSN,
             [ {caller_id, CallerId}
             , {nonce, Nonce}
             , {contract_id, ContractId}
-            , {vm_version, VmVersion}
+            , {abi_version, ABIVersion}
             , {fee, Fee}
             , {ttl, TTL}
             , {amount, Amount}
             , {gas, Gas}
             , {gas_price, GasPrice}
             , {call_data, CallData}]) ->
-    account = aec_id:specialize_type(CallerId),
+    {account, Origin} = aec_id:specialize(CallerId),
     contract = aec_id:specialize_type(ContractId),
     #contract_call_tx{caller_id   = CallerId,
                       nonce       = Nonce,
                       contract_id = ContractId,
-                      vm_version  = VmVersion,
+                      abi_version = ABIVersion,
                       fee         = Fee,
                       ttl         = TTL,
                       amount      = Amount,
                       gas         = Gas,
                       gas_price   = GasPrice,
-                      call_data   = CallData}.
+                      call_data   = CallData,
+                      call_origin = Origin
+                     }.
 
 serialization_template(?CONTRACT_CALL_TX_VSN) ->
     [ {caller_id, id}
     , {nonce, int}
     , {contract_id, id}
-    , {vm_version, int}
+    , {abi_version, int}
     , {fee, int}
     , {ttl, int}
     , {amount, int}
@@ -239,7 +252,7 @@ version() ->
 for_client(#contract_call_tx{caller_id   = CallerId,
                              nonce       = Nonce,
                              contract_id = ContractId,
-                             vm_version  = VmVersion,
+                             abi_version = ABIVersion,
                              fee         = Fee,
                              ttl         = TTL,
                              amount      = Amount,
@@ -249,7 +262,7 @@ for_client(#contract_call_tx{caller_id   = CallerId,
     #{<<"caller_id">>   => aehttp_api_encoder:encode(id_hash, CallerId),
       <<"nonce">>       => Nonce,
       <<"contract_id">> => aehttp_api_encoder:encode(id_hash, ContractId),
-      <<"vm_version">>  => aeu_hex:hexstring_encode(<<VmVersion:8>>),
+      <<"abi_version">> => aeu_hex:hexstring_encode(<<ABIVersion:16>>),
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL,
       <<"amount">>      => Amount,
@@ -276,9 +289,9 @@ contract_id(#contract_call_tx{contract_id = ContractId}) ->
 contract_pubkey(#contract_call_tx{contract_id = ContractId}) ->
   aec_id:specialize(ContractId, contract).
 
--spec vm_version(tx()) -> aect_contracts:vm_version().
-vm_version(#contract_call_tx{vm_version = VmVersion}) ->
-    VmVersion.
+-spec abi_version(tx()) -> aect_contracts:abi_version().
+abi_version(#contract_call_tx{abi_version = ABIVersion}) ->
+    ABIVersion.
 
 -spec amount(tx()) -> aect_contracts:amount().
 amount(#contract_call_tx{amount = Amount}) ->

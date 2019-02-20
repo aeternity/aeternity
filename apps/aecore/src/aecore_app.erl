@@ -116,7 +116,7 @@ lager_set_level_env(L) ->
               lists:keyreplace(lager_file_backend, 1, Hs,
                                {lager_file_backend, Opts1}));
         false ->
-            lager:warning("Cannot find 'epoch.log' file backend", []),
+            lager:warning("Cannot find 'aeternity.log' file backend", []),
             ignore
     end.
 
@@ -126,7 +126,7 @@ adjust_sinks(L) ->
         lists:map(
           fun({epoch_mining_lager_event = K, Opts}) ->
                   {K, set_sink_level(L, Opts)};
-             ({epoch_pow_cuckoo_lager_event = K, Opts}) ->
+             ({aeminer_lager_event = K, Opts}) ->
                   {K, set_sink_level(L, Opts)};
              ({epoch_sync_lager_event = K, Opts}) ->
                   {K, set_sink_level(L, Opts)};
@@ -150,15 +150,15 @@ set_sink_level(L, Opts) ->
     lists:keyreplace(handlers, 1, Opts, {handlers, NewHs}).
 
 live_set_level(L) ->
-    lager:set_loglevel({lager_file_backend, "log/epoch.log"}, L),
+    lager:set_loglevel({lager_file_backend, "log/aeternity.log"}, L),
     lager:set_loglevel(epoch_mining_lager_event,
-                       {lager_file_backend, "log/epoch_mining.log"},
+                       {lager_file_backend, "log/aeternity_mining.log"},
                        undefined, L),
     lager:set_loglevel(epoch_pow_cuckoo_lager_event,
-                       {lager_file_backend, "log/epoch_pow_cuckoo.log"},
+                       {lager_file_backend, "log/aeternity_pow_cuckoo.log"},
                        undefined, L),
     lager:set_loglevel(epoch_sync_lager_event,
-                       {lager_file_backend, "log/epoch_sync.log"},
+                       {lager_file_backend, "log/aeternity_sync.log"},
                        undefined, L).
 
 levels() ->

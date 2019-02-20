@@ -7,6 +7,7 @@
 -module(aeo_register_tx).
 
 -include("oracle_txs.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
 
 -behavior(aetx).
 
@@ -16,7 +17,7 @@
          fee/1,
          gas/1,
          ttl/1,
-         vm_version/1,
+         abi_version/1,
          nonce/1,
          origin/1,
          check/3,
@@ -49,7 +50,7 @@
           oracle_ttl                                    :: aeo_oracles:ttl(),
           fee                                           :: integer(),
           ttl                                           :: aetx:tx_ttl(),
-          vm_version = 0                                :: non_neg_integer()
+          abi_version = ?ABI_NO_VM                      :: aect_contracts:abi_version()
           }).
 
 -opaque tx() :: #oracle_register_tx{}.
@@ -92,14 +93,15 @@ gas(#oracle_register_tx{}) ->
 ttl(#oracle_register_tx{ttl = TTL}) ->
     TTL.
 
--spec vm_version(tx()) -> non_neg_integer().
-vm_version(#oracle_register_tx{vm_version = VMVersion}) ->
-    VMVersion.
+-spec abi_version(tx()) -> aect_contracts:abi_version().
+abi_version(#oracle_register_tx{abi_version = ABIVersion}) ->
+    ABIVersion.
 
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{account_id      := AccountId,
       nonce           := Nonce,
       query_format    := QueryFormat,
+      abi_version     := ABIVersion,
       response_format := ResponseFormat,
       query_fee       := QueryFee,
       oracle_ttl      := OracleTTL,
@@ -113,7 +115,7 @@ new(#{account_id      := AccountId,
                              query_fee       = QueryFee,
                              oracle_ttl      = OracleTTL,
                              fee             = Fee,
-                             vm_version      = maps:get(vm_version, Args, 0),
+                             abi_version     = ABIVersion,
                              ttl             = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
@@ -152,7 +154,7 @@ process(#oracle_register_tx{} = RTx, Trees, Env) ->
                   response_format(RTx),
                   query_fee(RTx),
                   DeltaTTL,
-                  vm_version(RTx),
+                  abi_version(RTx),
                   fee(RTx),
                   nonce(RTx)
                  ),
@@ -167,7 +169,7 @@ serialize(#oracle_register_tx{account_id      = AccountId,
                               oracle_ttl      = {TTLType0, TTLValue},
                               fee             = Fee,
                               ttl             = TTL,
-                              vm_version      = VMVersion}) ->
+                              abi_version     = ABIVersion}) ->
     TTLType = case TTLType0 of
                   ?ttl_delta_atom -> ?ttl_delta_int;
                   ?ttl_block_atom -> ?ttl_block_int
@@ -183,7 +185,7 @@ serialize(#oracle_register_tx{account_id      = AccountId,
     , {ttl_value, TTLValue}
     , {fee, Fee}
     , {ttl, TTL}
-    , {vm_version, VMVersion}
+    , {abi_version, ABIVersion}
     ]}.
 
 deserialize(?ORACLE_REGISTER_TX_VSN,
@@ -196,7 +198,7 @@ deserialize(?ORACLE_REGISTER_TX_VSN,
            , {ttl_value, TTLValue}
            , {fee, Fee}
            , {ttl, TTL}
-           , {vm_version, VMVersion}
+           , {abi_version, ABIVersion}
            ]) ->
     TTLType = case TTLType0 of
                   ?ttl_delta_int -> ?ttl_delta_atom;
@@ -211,7 +213,7 @@ deserialize(?ORACLE_REGISTER_TX_VSN,
                         oracle_ttl      = {TTLType, TTLValue},
                         fee             = Fee,
                         ttl             = TTL,
-                        vm_version      = VMVersion
+                        abi_version     = ABIVersion
                        }.
 
 serialization_template(?ORACLE_REGISTER_TX_VSN) ->
@@ -224,7 +226,7 @@ serialization_template(?ORACLE_REGISTER_TX_VSN) ->
     , {ttl_value, int}
     , {fee, int}
     , {ttl, int}
-    , {vm_version, int}
+    , {abi_version, int}
     ].
 
 -spec version() -> non_neg_integer().
@@ -238,7 +240,7 @@ for_client(#oracle_register_tx{account_id      = AccountId,
                                query_fee       = QueryFee,
                                fee             = Fee,
                                ttl             = TTL,
-                               vm_version      = VMVersion
+                               abi_version     = ABIVersion
                               } = Tx) ->
     {TTLType, TTLValue} = oracle_ttl(Tx),
     #{<<"account_id">>      => aehttp_api_encoder:encode(id_hash, AccountId),
@@ -250,5 +252,5 @@ for_client(#oracle_register_tx{account_id      = AccountId,
                                  <<"value">> => TTLValue},
       <<"fee">>             => Fee,
       <<"ttl">>             => TTL,
-      <<"vm_version">>      => VMVersion
+      <<"abi_version">>     => ABIVersion
      }.

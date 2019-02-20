@@ -44,7 +44,7 @@ cp -pr ~/aeternity/node/keys ~/my_aeternity_keys
 
 Inspect the mining log file of the node:
 ```bash
-less ~/aeternity/node/log/epoch_mining.log
+less ~/aeternity/node/log/aeternity_mining.log
 ```
 
 If the node is mining, you shall read log entries like the following:

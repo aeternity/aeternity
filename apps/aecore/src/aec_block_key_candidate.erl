@@ -13,6 +13,7 @@
 -export([adjust_target/2]).
 -endif.
 
+-include_lib("aeminer/include/aeminer.hrl").
 -include("blocks.hrl").
 
 %% -- API functions ----------------------------------------------------------

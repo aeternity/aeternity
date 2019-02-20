@@ -18,7 +18,7 @@
 -define(APWD_WITH_RSPACE, <<"password_with_space_at_the_right">> ). %% Actual password (right space trimmed).
 
 -define(PWD_WITH_SPACES , <<" a pwd  with spaces  ">>).
--define(APWD_WITH_SPACES,  <<"a pwd with spaces">>  ). %% Actual password (spaced trimmed from left and right, double spaces in the middle compressed as one).
+-define(APWD_WITH_SPACES,  <<"a pwd  with spaces">>  ). %% Actual password (spaced trimmed from left and right, double spaces in the middle are NOT compressed).
 
 -define(NODE, dev1).
 

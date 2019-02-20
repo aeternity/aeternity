@@ -8,42 +8,14 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-include_lib("aeminer/include/aeminer.hrl").
 -include("blocks.hrl").
 
--import(aec_blocks, [raw_key_block/0,
-                     raw_micro_block/0
+-import(aec_blocks, [raw_micro_block/0
                     ]).
 
 -define(TEST_MODULE, aec_blocks).
 -define(FAKE_TXS_TREE_HASH, <<42:?TXS_HASH_BYTES/unit:8>>).
-
-network_serialization_test_() ->
-    [{"Serialize/deserialize block with min nonce",
-      fun() ->
-              B = aec_blocks:set_nonce(raw_key_block(), 0),
-              SB = #{} = ?TEST_MODULE:serialize_to_map(B),
-              ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_map(SB))
-      end
-     },
-     {"Serialize/deserialize block with max nonce",
-      fun() ->
-              B = aec_blocks:set_nonce(raw_key_block(), ?MAX_NONCE),
-              SB = #{} = ?TEST_MODULE:serialize_to_map(B),
-              ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_map(SB))
-      end
-     },
-     {"try to deserialize a blocks with out-of-range nonce",
-      fun() ->
-              Block1 = aec_blocks:set_nonce(raw_key_block(), ?MAX_NONCE + 1),
-              SerializedBlock1 = #{} = ?TEST_MODULE:serialize_to_map(Block1),
-              ?assertEqual({error,bad_nonce},
-                           ?TEST_MODULE:deserialize_from_map(SerializedBlock1)),
-
-              Block2 = aec_blocks:set_nonce(raw_key_block(), -1),
-              SerializedBlock2 = #{} = ?TEST_MODULE:serialize_to_map(Block2),
-              ?assertEqual({error,bad_nonce},
-                           ?TEST_MODULE:deserialize_from_map(SerializedBlock2))
-     end}].
 
 validate_test_() ->
     {setup,

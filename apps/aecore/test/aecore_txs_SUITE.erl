@@ -21,6 +21,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
 
 -import(aecore_suite_utils, [patron/0]).
 
@@ -282,39 +283,37 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Sender, Recipient) ->
 create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     OwnerKey = maps:get(pubkey, patron()),
     Owner    = aec_id:create(account, OwnerKey),
-    Code     = compile_contract(lists:concat(["contracts/", Name, ".aes"])),
+    File     = lists:concat(["contracts/", Name]),
+    {ok, Code} = aect_test_utils:compile_contract(File),
     {ok, CallData} = aect_sophia:encode_call_data(Code, <<"init">>, Args),
-    {ok, CreateTx} = aect_create_tx:new(#{ nonce      => Nonce
-                                         , vm_version => 1
-                                         , code       => Code
-                                         , call_data  => CallData
-                                         , fee        => Fee
-                                         , deposit    => 0
-                                         , amount     => 0
-                                         , gas        => 100000
-                                         , owner_id   => Owner
-                                         , gas_price  => 1
-                                         , ttl        => TTL
+    ABI = aect_test_utils:latest_sophia_abi_version(),
+    VM  = aect_test_utils:latest_sophia_vm_version(),
+    {ok, CreateTx} = aect_create_tx:new(#{ nonce       => Nonce
+                                         , vm_version  => VM
+                                         , abi_version => ABI
+                                         , code        => Code
+                                         , call_data   => CallData
+                                         , fee         => Fee
+                                         , deposit     => 0
+                                         , amount      => 0
+                                         , gas         => 100000
+                                         , owner_id    => Owner
+                                         , gas_price   => 1
+                                         , ttl         => TTL
                                          }),
     CTx = aec_test_utils:sign_tx(CreateTx, maps:get(privkey, patron())),
     Res = rpc:call(Node, aec_tx_pool, push, [CTx]),
     ContractKey = aect_contracts:compute_contract_pubkey(OwnerKey, Nonce),
     {Res, aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey, Code}.
 
-compile_contract(File) ->
-    CodeDir = filename:join(code:lib_dir(aecore), "../../extras/test/"),
-    FileName = filename:join(CodeDir, File),
-    {ok, ContractBin} = file:read_file(FileName),
-    {ok, Serialized} = aect_sophia:compile(ContractBin, <<"pp_icode">>),
-    Serialized.
-
 call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
     Caller       = aec_id:create(account, maps:get(pubkey, patron())),
     ContractID   = aec_id:create(contract, Contract),
     {ok, CallData} = aect_sophia:encode_call_data(Code, Function, Args),
+    ABI = aect_test_utils:latest_sophia_abi_version(),
     {ok, CallTx} = aect_call_tx:new(#{ nonce       => Nonce
                                      , caller_id   => Caller
-                                     , vm_version  => 1
+                                     , abi_version => ABI
                                      , contract_id => ContractID
                                      , fee         => Fee
                                      , amount      => 0

@@ -4,8 +4,8 @@
 -include("blocks.hrl").
 
 -define(compareBlockResults(B1, B2),
-        ?assertEqual(aec_blocks:serialize_to_map(B1),
-                     aec_blocks:serialize_to_map(B2))).
+        ?assertEqual(aec_blocks:serialize_to_binary(B1),
+                     aec_blocks:serialize_to_binary(B2))).
 
 block_hash(B) ->
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(B)),
@@ -37,11 +37,11 @@ write_chain_test_() ->
      fun() ->
              ok = application:ensure_started(gproc),
              aec_test_utils:start_chain_db(),
-             meck:new(aec_pow_cuckoo, [passthrough]),
-             meck:expect(aec_pow_cuckoo, verify, fun(_, _, _, _) -> true end),
+             meck:new(aec_mining, [passthrough]),
+             meck:expect(aec_mining, verify, fun(_, _, _, _) -> true end),
              meck:new(aec_events, [passthrough]),
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
-             aec_test_utils:mock_genesis(),
+             aec_test_utils:mock_genesis_and_forks(),
              TmpDir = aec_test_utils:aec_keys_setup(),
              {ok, PubKey} = aec_keys:pubkey(),
              ok = application:set_env(aecore, beneficiary, aehttp_api_encoder:encode(account_pubkey, PubKey)),
@@ -54,9 +54,9 @@ write_chain_test_() ->
              ok = aec_conductor:stop(),
              ok = aec_tx_pool:stop(),
              ok = application:stop(gproc),
-             meck:unload(aec_pow_cuckoo),
+             meck:unload(aec_mining),
              meck:unload(aec_events),
-             aec_test_utils:unmock_genesis(),
+             aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:stop_chain_db(),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
@@ -121,9 +121,9 @@ restart_test_() ->
              aec_test_utils:start_chain_db(),
              meck:new(aec_events, [passthrough]),
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
-             meck:new(aec_pow_cuckoo, [passthrough]),
-             meck:expect(aec_pow_cuckoo, verify, fun(_, _, _, _) -> true end),
-             aec_test_utils:mock_genesis(),
+             meck:new(aec_mining, [passthrough]),
+             meck:expect(aec_mining, verify, fun(_, _, _, _) -> true end),
+             aec_test_utils:mock_genesis_and_forks(),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_conductor:start_link([{autostart, false}]),
              TmpDir
@@ -131,10 +131,10 @@ restart_test_() ->
      fun(TmpDir) ->
              ok = application:unset_env(aecore, beneficiary),
              ok = aec_tx_pool:stop(),
-             meck:unload(aec_pow_cuckoo),
+             meck:unload(aec_mining),
              meck:unload(aec_events),
              ok = application:stop(gproc),
-             aec_test_utils:unmock_genesis(),
+             aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:stop_chain_db(),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
@@ -185,12 +185,12 @@ persisted_valid_gen_block_test_() ->
     {foreach,
      fun() ->
              TmpDir = aec_test_utils:aec_keys_setup(),
-             aec_test_utils:mock_genesis(),
+             aec_test_utils:mock_genesis_and_forks(),
              meck:new(aec_db, [passthrough]),
              TmpDir
      end,
      fun(TmpDir) ->
-             aec_test_utils:unmock_genesis(),
+             aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              meck:unload(aec_db),
              application:set_env(aecore, persist, false)

@@ -111,10 +111,6 @@ def install_user_config(root_dir, file_name, conf):
 def make_no_mining_user_config(root_dir, file_name):
     conf = """\
 ---
-chain:
-    hard_forks:
-        "1": 0
-
 mining:
     autostart: false
     expected_mine_rate: 100
@@ -132,10 +128,6 @@ mining:
 def make_mining_user_config(root_dir, beneficiary, file_name):
     conf = """\
 ---
-chain:
-    hard_forks:
-        "1": 0
-
 mining:
     autostart: true
     expected_mine_rate: 100
@@ -303,7 +295,8 @@ def decode_unsigned_tx(encoded_tx):
                 'owner_id': ownerid['pubkey'],
                 'nonce': bytes_to_int(fields[1]),
                 'code': fields[2],
-                'vm_version': bytes_to_int(fields[3]),
+                'vm_version': bytes_to_int(fields[3]) >> 16,
+                'abi_version': bytes_to_int(fields[3]) & 65535,
                 'fee': bytes_to_int(fields[4]),
                 'ttl': bytes_to_int(fields[5]),
                 'deposit': bytes_to_int(fields[6]),

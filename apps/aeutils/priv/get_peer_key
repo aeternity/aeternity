@@ -1,0 +1,94 @@
+#!/usr/bin/env escript
+%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
+
+-mode(compile).
+
+-define(DEFAULT_KEYSDIR, "$HOME/node/keys").
+-define(DEFAULT_PASS, "secret").
+
+main(Args) ->
+    {RestArgs, TargetNode} = process_node_args(Args, [], undefined),
+    {Help, KeysDir, Pass} = process_args(RestArgs),
+
+    maybe_show_help(Help),
+
+    connect_node(TargetNode),
+
+    do_main(TargetNode, KeysDir, Pass).
+
+usage() ->
+    io:format("Usage: peer_key [help | [KEYS_DIR [PASS]]]~n", []).
+
+do_main(TargetNode, KeysDir, Pass) ->
+    case rpc:call(TargetNode, aec_keys, peer_pubkey, []) of
+        {ok, PK0} ->
+            PK0Str = binary_to_list(aehttp_api_encoder:encode(peer_pubkey, PK0)),
+            io:format("~s~n", [PK0Str]);
+        _ ->
+            {ok, Bin} = file:read_file(filename:join(KeysDir, "peer_key.pub")),
+            PwdHash = crypto:hash(sha256, Pass),
+            PK1 = crypto:block_decrypt(aes_ecb, PwdHash, Bin),
+            PK1Str = binary_to_list(aehttp_api_encoder:encode(peer_pubkey, PK1)),
+            io:format("~s~n", [PK1Str])
+    end,
+    halt(0).
+
+process_args([]) ->
+    {false, ?DEFAULT_KEYSDIR, ?DEFAULT_PASS};
+process_args(["help" | _]) ->
+    {true, ?DEFAULT_KEYSDIR, ?DEFAULT_PASS};
+process_args([KeysDir]) ->
+    {false, KeysDir, ?DEFAULT_PASS};
+process_args([KeysDir, Pass | _]) ->
+    {false, KeysDir, Pass}.
+
+%%
+%% Common Helper Functions
+%%
+
+maybe_show_help(true) ->
+    usage(),
+    halt(0);
+maybe_show_help(false) ->
+    ok.
+
+process_node_args([], Acc, TargetNode) ->
+    {lists:reverse(Acc), TargetNode};
+process_node_args(["-setcookie", Cookie | Rest], Acc, TargetNode) ->
+    erlang:set_cookie(node(), list_to_atom(Cookie)),
+    process_node_args(Rest, Acc, TargetNode);
+process_node_args(["-name", TargetName | Rest], Acc, _) ->
+    ThisNode = append_node_suffix(TargetName, "_util_"),
+    {ok, _} = net_kernel:start([ThisNode, longnames]),
+    process_node_args(Rest, Acc, nodename(TargetName));
+process_node_args(["-sname", TargetName | Rest], Acc, _) ->
+    ThisNode = append_node_suffix(TargetName, "_util_"),
+    {ok, _} = net_kernel:start([ThisNode, shortnames]),
+    process_node_args(Rest, Acc, nodename(TargetName));
+process_node_args([Arg | Rest], Acc, Opts) ->
+    process_node_args(Rest, [Arg | Acc], Opts).
+
+append_node_suffix(Name, Suffix) ->
+    case re:split(Name, "@", [{return, list}, unicode]) of
+        [Node, Host] ->
+            list_to_atom(lists:concat([Node, Suffix, os:getpid(), "@", Host]));
+        [Node] ->
+            list_to_atom(lists:concat([Node, Suffix, os:getpid()]))
+    end.
+
+nodename(Name) ->
+    case re:split(Name, "@", [{return, list}, unicode]) of
+        [_Node, _Host] ->
+            list_to_atom(Name);
+        [Node] ->
+            [_, Host] = re:split(atom_to_list(node()), "@", [{return, list}, unicode]),
+            list_to_atom(lists:concat([Node, "@", Host]))
+    end.
+
+connect_node(TargetNode) ->
+    case {net_kernel:hidden_connect_node(TargetNode), net_adm:ping(TargetNode)} of
+        {true, pong} ->
+            ok;
+        {_, pang} ->
+            error
+    end.

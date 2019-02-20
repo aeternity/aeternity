@@ -356,6 +356,30 @@ handle_request_('GetAccountByPubkeyAndHeight', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
+handle_request_('GetAccountByPubkeyAndHash', Params, _Context) ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    case aehttp_api_encoder:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
+        {ok, Id} ->
+            {_IdType, Pubkey} = aec_id:specialize(Id),
+            EncodedHash = maps:get(hash, Params),
+            case aehttp_api_encoder:safe_decode(block_hash, EncodedHash) of
+                {error, What} ->
+                    BinWhat = atom_to_binary(What, utf8),
+                    {400, [], #{reason => <<"Illegal hash: ", BinWhat/binary>>}};
+                {ok, Hash} ->
+                    case aec_chain:get_account_at_hash(Pubkey, Hash) of
+                        {value, Account} ->
+                            {200, [], aec_accounts:serialize_for_client(Account)};
+                        none ->
+                            {404, [], #{reason => <<"Account not found">>}};
+                        {error, no_state_trees} ->
+                            {404, [], #{reason => <<"Hash not available">>}}
+                    end
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
 handle_request_('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
     case aehttp_api_encoder:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
@@ -571,7 +595,7 @@ handle_request_('GetStatus', _Params, _Context) ->
     Listening = true, %% TODO
     Protocols = maps:fold(fun(Vsn, Height, Acc) ->
                           [#{<<"version">> => Vsn, <<"effective_at_height">> => Height} | Acc]
-                 end, [], aec_governance:protocols()),
+                 end, [], aec_hard_forks:protocols()),
     NodeVersion = aeu_info:get_version(),
     NodeRevision = aeu_info:get_revision(),
     PeerCount = aec_peers:count(peers),

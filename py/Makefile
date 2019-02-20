@@ -25,6 +25,10 @@ single-uat:
 release-test:
 	@$(PYTHON) $(PYTHON_TESTS)/release.py --workdir="$(WORKDIR)" --tarball=$(TARBALL) --blocks=100 --version=$(VER)
 
+.PHONY: package-win32-test
+package-win32-test:
+	@$(PYTHON) $(PYTHON_TESTS)/package_win32.py --workdir="$(WORKDIR)" --packagespecfile=$(PACKAGESPECFILE)
+
 .PHONY: swagger-version-check
 swagger-version-check:
 	@$(PYTHON) $(PYTHON_TESTS)/swagger-version-check.py "$(VERSION)" "$(SWAGGER_YAML)" "$(SWAGGER_JSON)"

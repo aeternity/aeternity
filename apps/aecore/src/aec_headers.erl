@@ -14,13 +14,12 @@
          deserialize_from_binary/1,
          deserialize_from_client/2,
          deserialize_from_binary_partial/1,
-         deserialize_from_map/1,
-         deserialize_key_from_binary/1,
-         deserialize_micro_from_binary/1,
          deserialize_pow_evidence/1,
          difficulty/1,
+         from_db_header/1,
          hash_header/1,
          height/1,
+         info/1,
          miner/1,
          new_key_header/11,
          new_micro_header/8,
@@ -32,12 +31,12 @@
          root_hash/1,
          serialize_pow_evidence/1,
          serialize_to_binary/1,
-         serialize_to_map/1,
          serialize_to_signature_binary/1,
          set_height/2,
          set_miner/2,
          set_nonce/2,
          set_nonce_and_pow/3,
+         set_info/2,
          set_pof_hash/2,
          set_prev_hash/2,
          set_prev_key_hash/2,
@@ -58,6 +57,8 @@
          version/1
         ]).
 
+-include_lib("aeminer/include/aeminer.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
 
 %%%===================================================================
@@ -65,6 +66,7 @@
 %%%===================================================================
 
 -type height() :: aec_blocks:height().
+-type optional_info() :: <<>> | <<_:32>>. %% ?OPTIONAL_INFO_BYTES * 8
 
 -record(mic_header, {
           height       = 0                                     :: height(),
@@ -83,11 +85,26 @@
           prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
-          target       = ?HIGHEST_TARGET_SCI                   :: aec_pow:sci_int(),
+          target       = ?HIGHEST_TARGET_SCI                   :: aeminer_pow:sci_target(),
           nonce        = 0                                     :: non_neg_integer(),
           time         = 0                                     :: non_neg_integer(),
           version                                              :: non_neg_integer(),
-          pow_evidence = no_value                              :: aec_pow:pow_evidence(),
+          pow_evidence = no_value                              :: aeminer_pow_cuckoo:solution() | no_value,
+          miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
+          beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey(),
+          info         = <<>>                                  :: optional_info()
+         }).
+
+-record(db_key_header, {
+          height       = 0                                     :: height(),
+          prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
+          prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
+          root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
+          target       = ?HIGHEST_TARGET_SCI                   :: aeminer_pow:sci_target(),
+          nonce        = 0                                     :: non_neg_integer(),
+          time         = 0                                     :: non_neg_integer(),
+          version                                              :: non_neg_integer(),
+          pow_evidence = no_value                              :: aeminer_pow_cuckoo:solution() | no_value,
           miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
           beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey()
          }).
@@ -149,13 +166,52 @@ assert_micro_header(Other) -> error({illegal_key_header, Other}).
 type(#key_header{}) -> key;
 type(#mic_header{}) -> micro.
 
+
+-spec from_db_header(tuple() | header()) -> header().
+%% We might have a legacy tuple in the db
+from_db_header(#key_header{} = K) -> K;
+from_db_header(#mic_header{} = M) -> M;
+from_db_header(Tuple) when is_tuple(Tuple) ->
+    case setelement(1, Tuple, db_key_header) of
+        #db_key_header{
+           height       = Height,
+           prev_hash    = PrevHash,
+           prev_key     = PrevKey,
+           root_hash    = RootHash,
+           target       = Target,
+           nonce        = Nonce,
+           time         = Time,
+           version      = Version,
+           pow_evidence = Pow,
+           miner        = Miner,
+           beneficiary  = Beneficiary
+          } ->
+            #key_header{
+               height       = Height,
+               prev_hash    = PrevHash,
+               prev_key     = PrevKey,
+               root_hash    = RootHash,
+               target       = Target,
+               nonce        = Nonce,
+               time         = Time,
+               version      = Version,
+               pow_evidence = Pow,
+               miner        = Miner,
+               beneficiary  = Beneficiary,
+               info         = <<>>
+              };
+        _ ->
+            error(bad_db_header)
+    end.
+
 %%%===================================================================
 %%% Constructors
 %%%===================================================================
 
 -spec new_key_header(height(), block_header_hash(), block_header_hash(),
                      state_hash(), miner_pubkey(), beneficiary_pubkey(),
-                     aec_pow:sci_int(), aec_pow:pow_evidence(),
+                     aeminer_pow:sci_target(),
+                     aeminer_pow_cuckoo:solution() | 'no_value',
                      non_neg_integer(), non_neg_integer(), non_neg_integer()
                     ) -> header().
 new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
@@ -213,6 +269,12 @@ height(#mic_header{height = H}) -> H.
 set_height(#key_header{} = H, Height) -> H#key_header{height = Height};
 set_height(#mic_header{} = H, Height) -> H#mic_header{height = Height}.
 
+-spec info(key_header()) -> optional_info().
+info(#key_header{info = I}) -> I.
+
+-spec set_info(key_header(), optional_info()) -> key_header().
+set_info(#key_header{} = H, I) -> H#key_header{info = I}.
+
 -spec prev_hash(header()) -> block_header_hash().
 prev_hash(#key_header{prev_hash = H}) -> H;
 prev_hash(#mic_header{prev_hash = H}) -> H.
@@ -252,7 +314,7 @@ set_pof_hash(Header, Hash) when byte_size(Hash) =:= 0;
                                 byte_size(Hash) =:= 32 ->
     Header#mic_header{pof_hash = Hash}.
 
--spec pow(key_header()) -> aec_pow:pow_evidence().
+-spec pow(key_header()) -> aeminer_pow_cuckoo:solution().
 pow(#key_header{pow_evidence = Evd}) ->
     Evd.
 
@@ -264,14 +326,14 @@ root_hash(#mic_header{root_hash = H}) -> H.
 set_root_hash(#key_header{} = H, Hash) -> H#key_header{root_hash = Hash};
 set_root_hash(#mic_header{} = H, Hash) -> H#mic_header{root_hash = Hash}.
 
--spec set_nonce_and_pow(key_header(), aec_pow:nonce(), aec_pow:pow_evidence()
-                       ) -> key_header().
+-spec set_nonce_and_pow(key_header(), aeminer_pow:nonce(),
+                        aeminer_pow_cuckoo:solution()) -> key_header().
 set_nonce_and_pow(#key_header{} = H, Nonce, Evd) ->
     H#key_header{nonce = Nonce, pow_evidence = Evd}.
 
--spec difficulty(key_header()) -> aec_pow:difficulty().
+-spec difficulty(key_header()) -> aeminer_pow:difficulty().
 difficulty(Header) ->
-    aec_pow:target_to_difficulty(target(Header)).
+    aeminer_pow:target_to_difficulty(target(Header)).
 
 -spec signature(micro_header()) -> block_signature().
 signature(Header) ->
@@ -281,11 +343,11 @@ signature(Header) ->
 set_signature(#mic_header{} = Header, Sig) ->
     Header#mic_header{signature = Sig}.
 
--spec target(key_header()) -> aec_pow:sci_int().
+-spec target(key_header()) -> aeminer_pow:sci_target().
 target(Header) ->
     Header#key_header.target.
 
--spec set_target(key_header(), aec_pow:sci_int()) -> header().
+-spec set_target(key_header(), aeminer_pow:sci_target()) -> header().
 set_target(Header, NewTarget) ->
     Header#key_header{ target = NewTarget }.
 
@@ -320,29 +382,6 @@ update_micro_candidate(#mic_header{} = H, TxsRootHash, RootHash) ->
 %%% Serialization
 %%%===================================================================
 
--spec serialize_to_map(header()) -> map().
-serialize_to_map(#key_header{} = Header) ->
-    #{<<"height">> => Header#key_header.height,
-      <<"prev_hash">> => Header#key_header.prev_hash,
-      <<"prev_key_hash">> => Header#key_header.prev_key,
-      <<"state_hash">> => Header#key_header.root_hash,
-      <<"miner">> => Header#key_header.miner,
-      <<"beneficiary">> => Header#key_header.beneficiary,
-      <<"target">> => Header#key_header.target,
-      <<"pow">> => Header#key_header.pow_evidence,
-      <<"nonce">> => Header#key_header.nonce,
-      <<"time">> => Header#key_header.time,
-      <<"version">> => Header#key_header.version};
-serialize_to_map(#mic_header{} = Header) ->
-    #{<<"height">> => Header#mic_header.height,
-      <<"prev_hash">> => Header#mic_header.prev_hash,
-      <<"prev_key_hash">> => Header#mic_header.prev_key,
-      <<"signature">> => Header#mic_header.signature,
-      <<"state_hash">> => Header#mic_header.root_hash,
-      <<"txs_hash">> => Header#mic_header.txs_hash,
-      <<"time">> => Header#mic_header.time,
-      <<"version">> => Header#mic_header.version}.
-
 -spec serialize_for_client(header(), block_type()) -> map().
 serialize_for_client(#key_header{} = Header, PrevBlockType) ->
     {ok, Hash} = hash_header(Header),
@@ -356,7 +395,9 @@ serialize_for_client(#key_header{} = Header, PrevBlockType) ->
           <<"beneficiary">>   => aehttp_api_encoder:encode(account_pubkey, Header#key_header.beneficiary),
           <<"target">>        => Header#key_header.target,
           <<"time">>          => Header#key_header.time,
-          <<"version">>       => Header#key_header.version},
+          <<"version">>       => Header#key_header.version,
+          <<"info">>          => aehttp_api_encoder:encode(contract_bytearray, Header#key_header.info)
+         },
     case Header#key_header.pow_evidence of
         no_value ->
             Res;
@@ -401,57 +442,12 @@ deserialize_from_client(key, KeyBlock) ->
                          pow_evidence = deserialize_pow_evidence(maps:get(<<"pow">>, KeyBlock)),
                          nonce        = maps:get(<<"nonce">>, KeyBlock),
                          time         = maps:get(<<"time">>, KeyBlock),
-                         version      = maps:get(<<"version">>, KeyBlock)}}
+                         version      = maps:get(<<"version">>, KeyBlock),
+                         info         = decode(contract_bytearray, maps:get(<<"info">>, KeyBlock))
+                        }}
     catch
         _:_ -> {error, invalid_header}
     end.
-
--spec deserialize_from_map(map()) -> {'ok', header()} | {'error', term()}.
-deserialize_from_map(#{<<"height">> := Height,
-                       <<"prev_hash">> := PrevHash,
-                       <<"prev_key_hash">> := PrevKeyHash,
-                       <<"state_hash">> := RootHash,
-                       <<"miner">> := Miner,
-                       <<"beneficiary">> := Beneficiary,
-                       <<"target">> := Target,
-                       <<"pow">> := PowEvidence,
-                       <<"nonce">> := Nonce,
-                       <<"time">> := Time,
-                       <<"version">> := Version}) ->
-    %% Prevent forging a solution without performing actual work by prefixing digits
-    %% to a valid nonce (produces valid PoW after truncating to the allowed range)
-    case Nonce of
-        N when N < 0; N > ?MAX_NONCE ->
-            {error, bad_nonce};
-        _ ->
-            {ok, #key_header{height = Height,
-                             prev_hash = PrevHash,
-                             prev_key = PrevKeyHash,
-                             root_hash = RootHash,
-                             miner = Miner,
-                             beneficiary = Beneficiary,
-                             target = Target,
-                             pow_evidence = PowEvidence,
-                             nonce = Nonce,
-                             time = Time,
-                             version = Version}}
-    end;
-deserialize_from_map(#{<<"height">> := Height,
-                       <<"prev_hash">> := PrevHash,
-                       <<"prev_key_hash">> := PrevKeyHash,
-                       <<"signature">> := Signature,
-                       <<"state_hash">> := RootHash,
-                       <<"txs_hash">> := TxsHash,
-                       <<"time">> := Time,
-                       <<"version">> := Version}) ->
-    {ok, #mic_header{height = Height,
-                     prev_hash = PrevHash,
-                     prev_key = PrevKeyHash,
-                     root_hash = RootHash,
-                     signature = Signature,
-                     txs_hash = TxsHash,
-                     time = Time,
-                     version = Version}}.
 
 -spec serialize_to_signature_binary(micro_header()
                                    ) -> deterministic_header_binary().
@@ -480,7 +476,9 @@ serialize_to_binary(#key_header{} = Header) ->
       (Header#key_header.target):32,
       PowEvidence/binary,
       (Header#key_header.nonce):64,
-      (Header#key_header.time):64>>;
+      (Header#key_header.time):64,
+      (Header#key_header.info)/binary %% Either 0 or 4 bytes.
+    >>;
 serialize_to_binary(#mic_header{} = Header) ->
     Flags = construct_micro_flags(Header),
     <<(Header#mic_header.version):32,
@@ -494,8 +492,15 @@ serialize_to_binary(#mic_header{} = Header) ->
       (Header#mic_header.pof_hash)/binary, %% Either 0 or 32 bytes.
       (Header#mic_header.signature)/binary>>.
 
+construct_key_flags(#key_header{info = <<>>}) ->
+    ContainsInfo = 0,
+    <<?KEY_HEADER_TAG:1, ContainsInfo:1, 0:30>>;
+construct_key_flags(#key_header{info = <<_:?OPTIONAL_INFO_BYTES/unit:8>>} = H) ->
+    [error(illegal_info_field) || version(H) < ?MINERVA_PROTOCOL_VSN],
+    ContainsInfo = 1,
+    <<?KEY_HEADER_TAG:1, ContainsInfo:1, 0:30>>;
 construct_key_flags(#key_header{}) ->
-    <<?KEY_HEADER_TAG:1, 0:31>>.
+    error(illegal_info_field).
 
 construct_micro_flags(#mic_header{pof_hash = Bin}) ->
     PoFFlag = min(byte_size(Bin), 1),
@@ -507,19 +512,32 @@ deserialize_from_binary(Bin) ->
     case deserialize_from_binary_partial(Bin) of
         {key, Header} -> Header;
         {micro, Header, <<>>} -> Header;
-        Other -> error({illegal_header, Other})
+        {error, What} -> error(What)
     end.
 
 -spec deserialize_from_binary_partial(binary()) ->
                                              {'key', key_header()}
                                            | {'micro', micro_header(), binary()}
                                            | {'error', term()}.
-deserialize_from_binary_partial(<<_Version:32,
+deserialize_from_binary_partial(<<Version:32,
                                   ?KEY_HEADER_TAG:1,
+                                  InfoFlag:1,
                                   _/bits>> = Bin) ->
-    case deserialize_key_from_binary(Bin) of
-        {ok, Header} -> {key, Header};
-        {error, _} = E -> E
+    HeaderSize = InfoFlag * ?OPTIONAL_INFO_BYTES + ?KEY_HEADER_MIN_BYTES,
+    case Bin of
+        <<_:HeaderSize/unit:8>> when Version =:= ?ROMA_PROTOCOL_VSN,
+                                     InfoFlag =:= 0 ->
+            case deserialize_key_from_binary(Bin) of
+                {ok, Header} -> {key, Header};
+                {error, _} = E -> E
+            end;
+        <<_:HeaderSize/unit:8>> when Version >= ?MINERVA_PROTOCOL_VSN ->
+            case deserialize_key_from_binary(Bin) of
+                {ok, Header} -> {key, Header};
+                {error, _} = E -> E
+            end;
+        _ ->
+            {error, malformed_header}
     end;
 deserialize_from_binary_partial(<<_Version:32,
                                   ?MICRO_HEADER_TAG:1,
@@ -541,7 +559,8 @@ deserialize_from_binary_partial(<<_Version:32,
                                        | {'error', term()}.
 deserialize_key_from_binary(<<Version:32,
                               ?KEY_HEADER_TAG:1,
-                              0:31, %% Remaining flags.
+                              _ContainsInfoFlag:1,
+                              0:30, %% Remaining flags.
                               Height:64,
                               PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
                               PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
@@ -551,7 +570,9 @@ deserialize_key_from_binary(<<Version:32,
                               Target:32,
                               PowEvidenceBin:168/binary,
                               Nonce:64,
-                              Time:64 >>) ->
+                              Time:64,
+                              Info/binary
+                            >>) ->
     case aec_hard_forks:protocol_effective_at_height(Height) =:= Version of
         false ->
             {error, illegal_version};
@@ -567,7 +588,9 @@ deserialize_key_from_binary(<<Version:32,
                             pow_evidence = PowEvidence,
                             nonce = Nonce,
                             time = Time,
-                            version = Version},
+                            version = Version,
+                            info = Info
+                           },
             {ok, H}
     end;
 deserialize_key_from_binary(_Other) ->
@@ -649,61 +672,50 @@ deserialize_pow_evidence(_) ->
 %%%===================================================================
 
 validate_key_block_header(Header) ->
-    ProtocolVersions = aec_hard_forks:protocols(aec_governance:protocols()),
-
     Validators = [fun validate_version/1,
                   fun validate_pow/1,
                   fun validate_max_time/1
                   ],
-    aeu_validation:run(Validators, [{Header, ProtocolVersions}]).
+    aeu_validation:run(Validators, [Header]).
 
 validate_micro_block_header(Header) ->
     %% NOTE: The signature is not validated since we don't know the leader key
     %%       This check is performed when adding the header to the chain.
-    ProtocolVersions = aec_hard_forks:protocols(aec_governance:protocols()),
-
     Validators = [fun validate_version/1,
                   fun validate_micro_block_cycle_time/1,
                   fun validate_max_time/1
     ],
-    aeu_validation:run(Validators, [{Header, ProtocolVersions}]).
+    aeu_validation:run(Validators, [Header]).
 
--spec validate_version({header(), aec_governance:protocols()}) ->
+-spec validate_version(header()) ->
                               ok | {error, Reason} when
       Reason :: unknown_protocol_version
               | {protocol_version_mismatch, ExpectedVersion::non_neg_integer()}.
-validate_version({Header, Protocols}) ->
+validate_version(Header) ->
     V = version(Header),
     H = height(Header),
-    case aec_hard_forks:is_known_protocol(V, Protocols) of
-        false -> {error, unknown_protocol_version};
-        true ->
-            case aec_hard_forks:protocol_effective_at_height(H, Protocols) of
-                V -> ok;
-                VV -> {error, {protocol_version_mismatch, VV}}
-            end
-    end.
+    aec_hard_forks:check_protocol_version_validity(V, H).
 
--spec validate_pow({header(), aec_governance:protocols()}) ->
+-spec validate_pow(header()) ->
                           ok | {error, incorrect_pow}.
-validate_pow({#key_header{nonce        = Nonce,
-                          pow_evidence = Evd,
-                          target       = Target} = Header, _})
+validate_pow(#key_header{nonce        = Nonce,
+                         pow_evidence = Evd,
+                         target       = Target} = Header)
  when Nonce >= 0, Nonce =< ?MAX_NONCE ->
     %% Zero nonce and pow_evidence before hashing, as this is how the mined block
     %% got hashed.
     Header1 = Header#key_header{nonce = 0, pow_evidence = no_value},
     HeaderBinary = serialize_to_binary(Header1),
-    case aec_pow_cuckoo:verify(HeaderBinary, Nonce, Evd, Target) of
+    case aec_mining:verify(HeaderBinary, Nonce, Evd, Target) of
         true ->
             ok;
         false ->
             {error, incorrect_pow}
     end.
 
--spec validate_micro_block_cycle_time({header(), aec_governance:protocols()}) ->
+-spec validate_micro_block_cycle_time(header()) ->
         ok | {error, bad_micro_block_interval}.
-validate_micro_block_cycle_time({Header, _}) ->
+validate_micro_block_cycle_time(Header) ->
     Time = time_in_msecs(Header),
     PrevHash = prev_hash(Header),
     case aec_chain:get_header(PrevHash) of
@@ -722,9 +734,9 @@ validate_micro_block_cycle_time({Header, _}) ->
             ok %% We don't know yet - checked later
     end.
 
--spec validate_max_time({header(), aec_governance:protocols()}) ->
+-spec validate_max_time(header()) ->
         ok | {error, block_from_the_future}.
-validate_max_time({Header, _}) ->
+validate_max_time(Header) ->
     Time = time_in_msecs(Header),
     MaxAcceptedTime = aeu_time:now_in_msecs() + aec_governance:accepted_future_block_time_shift(),
     case Time < MaxAcceptedTime of

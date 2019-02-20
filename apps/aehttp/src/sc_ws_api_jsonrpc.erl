@@ -99,7 +99,7 @@ result(#{payload := Payload0} = R) ->
         _ ->
             Payload
     end;
-result(Result) -> 
+result(Result) ->
     clean_reply(Result).
 
 clean_reply(Map) when is_map(Map) ->
@@ -238,35 +238,37 @@ process_request(#{<<"method">> := <<"channels.update.new">>,
         _ -> {error, broken_encoding}
     end;
 process_request(#{<<"method">> := <<"channels.update.new_contract">>,
-                  <<"params">> := #{<<"vm_version">> := VmVersion,
-                                      <<"deposit">>    := Deposit,
-                                      <<"code">>       := CodeE,
-                                      <<"call_data">>  := CallDataE}}, FsmPid) ->
+                  <<"params">> := #{<<"vm_version">>  := VmVersion,
+                                    <<"abi_version">> := ABIVersion,
+                                    <<"deposit">>     := Deposit,
+                                    <<"code">>        := CodeE,
+                                    <<"call_data">>   := CallDataE}}, FsmPid) ->
     case {bytearray_decode(CodeE), bytearray_decode(CallDataE)} of
         {{ok, Code}, {ok, CallData}} ->
             case aesc_fsm:upd_create_contract(FsmPid,
-                                              #{vm_version => VmVersion,
-                                                deposit    => Deposit,
-                                                code       => Code,
-                                                call_data  => CallData}) of
+                                              #{vm_version  => VmVersion,
+                                                abi_version => ABIVersion,
+                                                deposit     => Deposit,
+                                                code        => Code,
+                                                call_data   => CallData}) of
                 ok -> no_reply;
                 {error, _Reason} = Err -> Err
             end;
         _ -> {error, broken_code}
     end;
 process_request(#{<<"method">> := <<"channels.update.call_contract">>,
-                  <<"params">> := #{<<"contract">>   := ContractE,
-                                      <<"vm_version">> := VmVersion,
-                                      <<"amount">>     := Amount,
-                                      <<"call_data">>  := CallDataE}}, FsmPid) ->
+                  <<"params">> := #{<<"contract">>    := ContractE,
+                                    <<"abi_version">> := ABIVersion,
+                                    <<"amount">>      := Amount,
+                                    <<"call_data">>   := CallDataE}}, FsmPid) ->
     case {aehttp_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
             case aesc_fsm:upd_call_contract(FsmPid,
-                                            #{contract   => Contract,
-                                              vm_version => VmVersion,
-                                              amount     => Amount,
-                                              call_data  => CallData}) of
+                                            #{contract    => Contract,
+                                              abi_version => ABIVersion,
+                                              amount      => Amount,
+                                              call_data   => CallData}) of
                 ok -> no_reply;
                 {error, _Reason} = Err -> Err
             end;
@@ -274,8 +276,8 @@ process_request(#{<<"method">> := <<"channels.update.call_contract">>,
     end;
 process_request(#{<<"method">> := <<"channels.get.contract_call">>,
                   <<"params">> := #{<<"contract">>   := ContractE,
-                                      <<"caller">>     := CallerE,
-                                      <<"round">>      := Round}}, FsmPid) ->
+                                    <<"caller">>     := CallerE,
+                                    <<"round">>      := Round}}, FsmPid) ->
     case {aehttp_api_encoder:safe_decode(contract_pubkey, ContractE),
           aehttp_api_encoder:safe_decode(account_pubkey, CallerE)} of
         {{ok, Contract}, {ok, Caller}} ->

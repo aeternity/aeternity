@@ -129,7 +129,8 @@ loop(CP, StateIn) ->
         false ->
             OP     = code_get_op(CP, Code),
             State  = trace(CP, StateIn),
-            case is_valid_instruction(OP, aevm_eeevm_state:vm_version(State)) of
+            VMVersion = aevm_eeevm_state:vm_version(State),
+            case is_valid_instruction(OP, VMVersion) of
                 true -> ok;
                 false -> eval_error({illegal_instruction, OP})
             end,
@@ -146,7 +147,7 @@ loop(CP, StateIn) ->
                     %% µs'[0] ≡ µs[0] + µs[1]
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = add(Us0, Us1),
+                    Val = add(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?MUL ->
@@ -155,7 +156,7 @@ loop(CP, StateIn) ->
                     %% µs'[0] ≡ µs[0] * µs[1]
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = mul(Us0, Us1),
+                    Val = mul(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?SUB ->
@@ -164,7 +165,7 @@ loop(CP, StateIn) ->
                     %% µ's[0] ≡ µs[0] − µs[1]
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = sub(Us0, Us1),
+                    Val = sub(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?DIV ->
@@ -174,7 +175,7 @@ loop(CP, StateIn) ->
                     %%          µs[0] / µs[1] otherwise
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = idiv(Us0, Us1),
+                    Val = idiv(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?SDIV ->
@@ -188,7 +189,7 @@ loop(CP, StateIn) ->
                     %% Note the overflow semantic when −2^255 is negated.
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = sdiv(Us0, Us1),
+                    Val = sdiv(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?MOD ->
@@ -198,7 +199,7 @@ loop(CP, StateIn) ->
                     %%           µs[0] mod µs[1] otherwise
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = mod(Us0, Us1),
+                    Val = mod(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?SMOD ->
@@ -210,7 +211,7 @@ loop(CP, StateIn) ->
                     %% two’s complement signed 256-bit integers.
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = smod(Us0, Us1),
+                    Val = smod(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?ADDMOD ->
@@ -223,7 +224,7 @@ loop(CP, StateIn) ->
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Us2, State3} = pop(State2),
-                    Val = addmod(Us0, Us1, Us2),
+                    Val = addmod(Us0, Us1, Us2, VMVersion),
                     State4 = push(Val, State3),
                     next_instruction(CP, State, State4);
                 ?MULMOD ->
@@ -236,7 +237,7 @@ loop(CP, StateIn) ->
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Us2, State3} = pop(State2),
-                    Val = mulmod(Us0, Us1, Us2),
+                    Val = mulmod(Us0, Us1, Us2, VMVersion),
                     State4 = push(Val, State3),
                     next_instruction(CP, State, State4);
                 ?EXP ->
@@ -245,7 +246,7 @@ loop(CP, StateIn) ->
                     %% µ's[0] ≡ µs[0] ^ µs[1]
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    Val = exp(Us0, Us1),
+                    Val = exp(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 ?SIGNEXTEND ->
@@ -386,6 +387,30 @@ loop(CP, StateIn) ->
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = byte(Us0, Us1),
+                    State3 = push(Val, State2),
+                    next_instruction(CP, State, State3);
+                ?SHL ->
+                    %% 0x1b SHL δ=2 α=1
+                    %% Shift left
+                    {Us0, State1} = pop(State0),
+                    {Us1, State2} = pop(State1),
+                    Val = shl(Us0, Us1, VMVersion),
+                    State3 = push(Val, State2),
+                    next_instruction(CP, State, State3);
+                ?SHR ->
+                    %% 0x1c SHR δ=2 α=1
+                    %% Logical Shift right
+                    {Us0, State1} = pop(State0),
+                    {Us1, State2} = pop(State1),
+                    Val = shr(Us0, Us1, VMVersion),
+                    State3 = push(Val, State2),
+                    next_instruction(CP, State, State3);
+                ?SAR ->
+                    %% 0x1d SAR δ=2 α=1
+                    %% Arithmetic Shift right
+                    {Us0, State1} = pop(State0),
+                    {Us1, State2} = pop(State1),
+                    Val = sar(Us0, Us1, VMVersion),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 %% 20s: SHA3
@@ -1159,9 +1184,12 @@ is_valid_instruction(?OR            ,_VM) -> true;
 is_valid_instruction(?XOR           ,_VM) -> true;
 is_valid_instruction(?NOT           ,_VM) -> true;
 is_valid_instruction(?BYTE          ,_VM) -> true;
-is_valid_instruction(16#1b          ,_VM) -> false; %% SHL
-is_valid_instruction(16#1c          ,_VM) -> false; %% SHR
-is_valid_instruction(16#1d          ,_VM) -> false; %% SAR
+is_valid_instruction(?SHL           ,VM)  -> (?IS_VM_SOPHIA(VM) andalso VM >= ?VM_AEVM_SOPHIA_2)
+                                             orelse VM == ?VM_AEVM_SOLIDITY_1;
+is_valid_instruction(?SHR           ,VM)  -> (?IS_VM_SOPHIA(VM) andalso VM >= ?VM_AEVM_SOPHIA_2)
+                                             orelse VM == ?VM_AEVM_SOLIDITY_1;
+is_valid_instruction(?SAR           ,VM)  -> (?IS_VM_SOPHIA(VM) andalso VM >= ?VM_AEVM_SOPHIA_2)
+                                             orelse VM == ?VM_AEVM_SOLIDITY_1;
 is_valid_instruction(16#1e          ,_VM) -> false;
 is_valid_instruction(16#1f          ,_VM) -> false;
 is_valid_instruction(?SHA3          ,_VM) -> true;
@@ -1185,16 +1213,16 @@ is_valid_instruction(?BALANCE       ,_VM) -> true;
 is_valid_instruction(?ORIGIN        ,_VM) -> true;
 is_valid_instruction(?CALLER        ,_VM) -> true;
 is_valid_instruction(?CALLVALUE     ,_VM) -> true;
-is_valid_instruction(?CALLDATALOAD  , VM) -> ?AEVM_01_Sophia_01 =/= VM;
-is_valid_instruction(?CALLDATASIZE  , VM) -> ?AEVM_01_Sophia_01 =/= VM;
-is_valid_instruction(?CALLDATACOPY  , VM) -> ?AEVM_01_Sophia_01 =/= VM;
+is_valid_instruction(?CALLDATALOAD  , VM) -> not ?IS_VM_SOPHIA(VM);
+is_valid_instruction(?CALLDATASIZE  , VM) -> not ?IS_VM_SOPHIA(VM);
+is_valid_instruction(?CALLDATACOPY  , VM) -> not ?IS_VM_SOPHIA(VM);
 is_valid_instruction(?CODESIZE      ,_VM) -> true;
 is_valid_instruction(?CODECOPY      ,_VM) -> true;
 is_valid_instruction(?GASPRICE      ,_VM) -> true;
 is_valid_instruction(?EXTCODESIZE   ,_VM) -> true;
 is_valid_instruction(?EXTCODECOPY   ,_VM) -> true;
-is_valid_instruction(?RETURNDATASIZE, VM) -> ?AEVM_01_Sophia_01 =/= VM;
-is_valid_instruction(?RETURNDATACOPY, VM) -> ?AEVM_01_Sophia_01 =/= VM;
+is_valid_instruction(?RETURNDATASIZE, VM) -> not ?IS_VM_SOPHIA(VM);
+is_valid_instruction(?RETURNDATACOPY, VM) -> not ?IS_VM_SOPHIA(VM);
 is_valid_instruction(16#3f          ,_VM) -> false; %% EXTCODEHASH
 is_valid_instruction(?BLOCKHASH     ,_VM) -> true;
 is_valid_instruction(?COINBASE      ,_VM) -> true;
@@ -1216,8 +1244,8 @@ is_valid_instruction(?POP           ,_VM) -> true;
 is_valid_instruction(?MLOAD         ,_VM) -> true;
 is_valid_instruction(?MSTORE        ,_VM) -> true;
 is_valid_instruction(?MSTORE8       ,_VM) -> true;
-is_valid_instruction(?SLOAD         , VM) -> ?AEVM_01_Sophia_01 =/= VM;
-is_valid_instruction(?SSTORE        , VM) -> ?AEVM_01_Sophia_01 =/= VM;
+is_valid_instruction(?SLOAD         , VM) -> not ?IS_VM_SOPHIA(VM);
+is_valid_instruction(?SSTORE        , VM) -> not ?IS_VM_SOPHIA(VM);
 is_valid_instruction(?JUMP          ,_VM) -> true;
 is_valid_instruction(?JUMPI         ,_VM) -> true;
 is_valid_instruction(?PC            ,_VM) -> true;
@@ -1298,11 +1326,11 @@ is_valid_instruction(?LOG2          ,_VM) -> true;
 is_valid_instruction(?LOG3          ,_VM) -> true;
 is_valid_instruction(?LOG4          ,_VM) -> true;
 is_valid_instruction(OP             ,_VM) when 16#a5 =< OP, OP =< 16#ef -> false; %% 75 instructions.
-is_valid_instruction(?CREATE        , VM) -> ?AEVM_01_Sophia_01 =/= VM;
+is_valid_instruction(?CREATE        , VM) -> not ?IS_VM_SOPHIA(VM);
 is_valid_instruction(?CALL          ,_VM) -> true;
-is_valid_instruction(?CALLCODE      , VM) -> ?AEVM_01_Sophia_01 =/= VM;
+is_valid_instruction(?CALLCODE      , VM) -> not ?IS_VM_SOPHIA(VM);
 is_valid_instruction(?RETURN        ,_VM) -> true;
-is_valid_instruction(?DELEGATECALL  , VM) -> ?AEVM_01_Sophia_01 =/= VM;
+is_valid_instruction(?DELEGATECALL  , VM) -> not ?IS_VM_SOPHIA(VM);
 is_valid_instruction(16#f5          ,_VM) -> false; %% CREATE2
 is_valid_instruction(16#f6          ,_VM) -> false;
 is_valid_instruction(16#f7          ,_VM) -> false;
@@ -1313,62 +1341,94 @@ is_valid_instruction(16#fb          ,_VM) -> false;
 is_valid_instruction(16#fc          ,_VM) -> false;
 is_valid_instruction(?REVERT        ,_VM) -> true;
 is_valid_instruction(?INVALID       ,_VM) -> false; %% Designated invalid instruction.
-is_valid_instruction(?SUICIDE       , VM) -> ?AEVM_01_Sophia_01 =/= VM.
+is_valid_instruction(?SUICIDE       , VM) -> not ?IS_VM_SOPHIA(VM).
 
 %% ------------------------------------------------------------------------
 %% ARITHMETIC
 %% ------------------------------------------------------------------------
-add(Arg1, Arg2) -> (Arg1 + Arg2) band ?MASK256.
-mul(Arg1, Arg2) -> (Arg1 * Arg2) band ?MASK256.
-sub(Arg1, Arg2) -> (Arg1 - Arg2) band ?MASK256.
-exp(Arg1, Arg2) -> pow(Arg1, Arg2) band ?MASK256.
-idiv(_Arg1,    0)-> 0;
-idiv(Arg1, Arg2)-> (Arg1 div Arg2) band ?MASK256.
-sdiv(_Arg1, 0)-> 0;
-sdiv(?NEG2TO255, -1) -> ?NEG2TO255;
-sdiv(Arg1, Arg2) ->
-    <<SArg1:256/integer-signed>> = <<Arg1:256/integer-unsigned>>,
-    <<SArg2:256/integer-signed>> = <<Arg2:256/integer-unsigned>>,
-    (SArg1 div SArg2) band ?MASK256.
 
-mod(_Arg1,   0) -> 0;
-mod(Arg1, Arg2) -> modulo(Arg1, Arg2) band ?MASK256.
+%% Truncate a signed word. Throw arithmetic error on VM_AEVM_SOPHIA_2 and above
+%% if this is not a no op.
+truncate(X, VM) -> check_safe_math(X, signed(X), VM).
 
-smod(_Arg1,   0) -> 0;
-smod(Arg1, Arg2) -> smodulo(Arg1, Arg2) band ?MASK256.
+%% VM_AEVM_SOPHIA_2 and above uses safe arithmetic
+arith_error(_, VM) when ?IS_VM_SOPHIA(VM), VM >= ?VM_AEVM_SOPHIA_2 ->
+    eval_error(arithmetic_error);
+arith_error(X, _) -> X.
 
+check_safe_math(X, X, _)  -> unsigned(X);
+check_safe_math(_, X, VM) -> arith_error(unsigned(X), VM).
 
-addmod(_Arg1,_Arg2,   0) -> 0;
-addmod(Arg1, Arg2, Arg3) -> modulo((Arg1 + Arg2), Arg3) band ?MASK256.
+add(Arg1, Arg2, VM) -> truncate(signed(Arg1) + signed(Arg2), VM).
+mul(Arg1, Arg2, VM) -> truncate(signed(Arg1) * signed(Arg2), VM).
+sub(Arg1, Arg2, VM) -> truncate(signed(Arg1) - signed(Arg2), VM).
+
+exp(Arg1, Arg2, VM) when ?IS_VM_SOPHIA(VM), VM >= ?VM_AEVM_SOPHIA_2 ->
+    pow(signed(Arg1), signed(Arg2), VM);
+exp(Arg1, Arg2, VM) -> pow(Arg1, Arg2, VM). %% Allow negative exponents for VM < SOPHIA_2
+
+idiv(_Arg1,   0, VM)  -> arith_error(0, VM);
+idiv(Arg1, Arg2, _VM) -> (Arg1 div Arg2) band ?MASK256.
+
+sdiv(_Arg1, 0, VM)-> arith_error(0, VM);
+sdiv(?NEG2TO255, -1, VM) -> arith_error(?NEG2TO255, VM);
+sdiv(Arg1, Arg2, VM) ->
+    truncate(signed(Arg1) div signed(Arg2), VM).
+
+mod(_Arg1,   0, VM) -> arith_error(0, VM);
+mod(Arg1, Arg2, VM) -> truncate(modulo(Arg1, Arg2), VM).
+
+smod(_Arg1,   0, VM) -> arith_error(0, VM);
+smod(Arg1, Arg2, VM) -> truncate(smodulo(Arg1, Arg2), VM).
+
+addmod(_Arg1,_Arg2,   0, VM) -> arith_error(0, VM);
+addmod(Arg1, Arg2, Arg3, VM) -> truncate(modulo(Arg1 + Arg2, Arg3), VM).
+
 modulo(Arg1, Arg2) ->
     Res = (Arg1 rem Arg2 + Arg2) rem Arg2,
     Res.
 
-mulmod(_Arg1,_Arg2,   0) -> 0;
-mulmod(Arg1, Arg2, Arg3) -> modulo((Arg1 * Arg2), Arg3) band ?MASK256.
+mulmod(_Arg1,_Arg2,   0, VM) -> arith_error(0, VM);
+mulmod(Arg1, Arg2, Arg3, VM) -> truncate(modulo(Arg1 * Arg2, Arg3), VM).
 
-signed(Val) ->
-    <<SVal:256/integer-signed>> = <<Val:256/integer-unsigned>>,
+signed(UVal) ->
+    <<SVal:256/integer-signed>> = <<UVal:256/integer-unsigned>>,
     SVal.
 
+unsigned(SVal) ->
+    <<UVal:256/integer-unsigned>> = <<SVal:256/integer-signed>>,
+    UVal.
+
 smodulo(Arg1, Arg2) ->
-    <<SArg1:256/integer-signed>> = <<Arg1:256/integer-unsigned>>,
-    <<SArg2:256/integer-signed>> = <<Arg2:256/integer-unsigned>>,
-    Res = (SArg1 rem (SArg2 + SArg2)) rem SArg2,
-    Res.
+    SArg1 = signed(Arg1),
+    SArg2 = signed(Arg2),
+    (SArg1 rem (SArg2 + SArg2)) rem SArg2.
 
-pow(X, Y) when is_integer(X), is_integer(Y), Y >= 0 ->
-    pow(1, X, Y).
+pow(X, Y, VM) when is_integer(X), is_integer(Y), Y >= 0 ->
+    truncate(pow(1, X, Y, VM), VM);
+pow(_, _, _) -> eval_error(arithmetic_error).
 
-pow(N, _, 0) ->     N;
-pow(N, X, 1) -> X * N;
-pow(N, X, Y) ->
-    Square = (X * X) band ?MASK256,
+pow(N, _, 0, _) ->     N;
+pow(N, X, 1, _) -> X * N;
+pow(N, X, Y, VM) ->
+    Square = truncate(X * X, VM),
     Exp = Y bsr 1,
-    if (Y band 1) =:= 0 -> pow(    N, Square, Exp);
-       true             -> pow(X * N, Square, Exp)
+    if (Y band 1) =:= 0 -> pow(    N, Square, Exp, VM);
+       true             -> pow(X * N, Square, Exp, VM)
     end.
 
+shl(Arg1, _Arg2, VM) when Arg1 > 255 -> arith_error(0, VM);
+shl(Arg1, Arg2, _VM)                 -> (Arg2 bsl Arg1) band ?MASK256.
+
+shr(Arg1, _Arg2, VM) when Arg1 > 255 -> arith_error(0, VM);
+shr(Arg1, Arg2, _VM)                 -> Arg2 bsr Arg1.
+
+sar(Arg1, Arg2, VM)  when Arg1 > 255 ->
+    case signed(Arg2) < 0 of
+        true  -> arith_error(unsigned(-1), VM);
+        false -> arith_error(0, VM)
+    end;
+sar(Arg1, Arg2, _VM) -> unsigned(signed(Arg2) bsr Arg1).
 
 signextend(Us0, Us1) ->
     ExtendTo =  (256 - 8*((Us0+1) band 255)) band 255,
@@ -1541,9 +1601,9 @@ get_call_input(StateIn, IOffsetIx, ISizeIx) ->
 
     {I, OutT, State} = aevm_eeevm_state:get_contract_call_input(To, IOffset, ISize, StateIn),
     case aevm_eeevm_state:vm_version(State) of
-        ?AEVM_01_Solidity_01 ->
+        ?VM_AEVM_SOLIDITY_1 ->
             {I, OutT, State};
-        ?AEVM_01_Sophia_01 ->
+        VM when ?IS_VM_SOPHIA(VM) ->
             {I, OutT, spend_gas_common({call_data}, aevm_gas:mem_gas(byte_size(I) div 32, State), State)}
     end.
 
@@ -1603,7 +1663,7 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend,
     %% Only used for tests in Solidity VM
     VmVersion = aevm_eeevm_state:vm_version(State8),
     Stipend = case {VmVersion, Value =/= 0} of
-                  {?AEVM_01_Solidity_01, true} ->
+                  {?VM_AEVM_SOLIDITY_1, true} ->
                       maps:get('GCALLSTIPEND', maps:get(gas_table, State8));
                   _ -> 0
               end,
@@ -1633,14 +1693,14 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend,
                 {exception, What, GasSpent,_OutState1} ->
                     ?TEST_LOG("Contract call exception ~p (~p spent)", [What, GasSpent]),
                     case VmVersion of
-                        ?AEVM_01_Solidity_01 ->
+                        ?VM_AEVM_SOLIDITY_1 ->
                             eval_error(What);
-                        ?AEVM_01_Sophia_01 when CallGas =:= GasSpent, not GasIsLimited ->
+                        VM when ?IS_VM_SOPHIA(VM), CallGas =:= GasSpent, not GasIsLimited ->
                             %% When the gas IS NOT explicitly limited,
                             %% and all gas was consumed in the call,
                             %% all gas in the current execution is consumed.
                             eval_error(What);
-                        ?AEVM_01_Sophia_01 when GasIsLimited ->
+                        VM when ?IS_VM_SOPHIA(VM), GasIsLimited ->
                             %% When the gas IS explicitly limited, or
                             %% there was an exception below in the call stack
                             %% in a call that WAS explicitly limited,

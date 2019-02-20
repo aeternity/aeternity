@@ -95,7 +95,7 @@ origin(#ns_preclaim_tx{} = Tx) ->
     account_pubkey(Tx).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#ns_preclaim_tx{} = Tx, Trees,_Env) ->
+check(#ns_preclaim_tx{} = _Tx, Trees,_Env) ->
     %% Checks are in process/3
     {ok, Trees}.
 

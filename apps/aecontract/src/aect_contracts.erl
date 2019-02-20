@@ -10,6 +10,8 @@
 %% API
 -export([ deserialize/2
         , store_id/1
+        , is_legal_call/2
+        , is_legal_version_at_height/3
         , new/1
         , new/5 %% For use without transaction
         , serialize/1
@@ -22,6 +24,8 @@
         , pubkey/1
         , owner_id/1
         , owner_pubkey/1
+        , abi_version/1
+        , ct_version/1
         , vm_version/1
         , code/1
         , state/1
@@ -38,10 +42,13 @@
         , set_active/2
         , set_referrers/2
         , set_deposit/2
+        , is_legal_serialization_at_height/3
         ]).
 
-%% For testing only.
--export([set_vm_version/2]).
+-export([pack_vm_abi/1, split_vm_abi/1]).
+
+-include("aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -ifdef(TEST).
 -export([internal_set_state/2]).
@@ -58,7 +65,7 @@
         %% Normal account fields
         id           :: aec_id:id(),
         owner_id     :: aec_id:id(),
-        vm_version   :: vm_version(),
+        ct_version   :: version(),
         code         :: binary(),     %% The byte code
         store        :: store(),      %% The current state/store (stored in a subtree in mpt)
         log          :: binary(),     %% The current event log
@@ -73,13 +80,20 @@
 -type pubkey() :: aec_keys:pubkey().
 -type store_id() :: binary().
 -type serialized() :: binary().
--type vm_version() :: byte().
+-type vm_version() :: 0..16#FFFF.
+-type abi_version() :: 0..16#FFFF.
+-type version() :: #{ vm := vm_version(), abi := abi_version() }.
+-type serial_version() :: 0..16#FFFFFFFF.
+-type height() :: non_neg_integer().
+-type vm_usage_type() ::  'call' | 'create' | 'oracle_register'.
 
 -export_type([ contract/0
              , amount/0
              , id/0
              , pubkey/0
              , serialized/0
+             , version/0
+             , abi_version/0
              , vm_version/0
              , store/0
              ]).
@@ -94,6 +108,49 @@
 %%% API
 %%%===================================================================
 
+-spec is_legal_call(FromVersion :: version(), ToVersion :: version()) ->
+                          boolean().
+%% NOTE: Keep this up to date if the different sophia vms gets incompatible.
+is_legal_call(X, X) -> true;
+is_legal_call(#{vm := ?VM_AEVM_SOPHIA_2, abi := X},
+              #{vm := ?VM_AEVM_SOPHIA_1, abi := X}) -> true;
+is_legal_call(_, _) -> false.
+
+-spec is_legal_version_at_height(vm_usage_type(), version(), height()) -> boolean().
+is_legal_version_at_height(Operation, Version, Height) ->
+    ProtocolVSN = aec_hard_forks:protocol_effective_at_height(Height),
+    is_legal_version_in_protocol(Operation, Version, ProtocolVSN).
+
+is_legal_serialization_at_height(?ABI_SOLIDITY_1, _, _Height) ->
+    true;
+is_legal_serialization_at_height(?ABI_SOPHIA_1, Vsn, Height) ->
+    aect_sophia:is_legal_serialization_at_height(Vsn, Height).
+
+is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_1, abi := ?ABI_SOPHIA_1}, ProtocolVersion) ->
+    case ProtocolVersion of
+        ?ROMA_PROTOCOL_VSN    -> true;
+        ?MINERVA_PROTOCOL_VSN -> false
+    end;
+is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_2, abi := ?ABI_SOPHIA_1}, ProtocolVersion) ->
+    case ProtocolVersion of
+        ?ROMA_PROTOCOL_VSN    -> false;
+        ?MINERVA_PROTOCOL_VSN -> true
+    end;
+is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
+    case ProtocolVersion of
+        ?ROMA_PROTOCOL_VSN    when VMVersion =:= ?VM_AEVM_SOPHIA_1 -> true;
+        ?MINERVA_PROTOCOL_VSN when VMVersion =:= ?VM_AEVM_SOPHIA_1;
+                                   VMVersion =:= ?VM_AEVM_SOPHIA_2 -> true;
+        _                     when VMVersion =:= ?VM_AEVM_SOLIDITY_1 -> ?VM_AEVM_SOLIDITY_1_enabled;
+        _ -> false
+    end;
+is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_NO_VM}, _ProtocolVersion) ->
+    true;
+is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_SOPHIA_1}, _ProtocolVersion) ->
+    true;
+is_legal_version_in_protocol(_, _, _) ->
+    false.
+
 -spec store_id(contract()) -> store_id().
 store_id(C) ->
     compute_contract_store_id(pubkey(C)).
@@ -102,17 +159,17 @@ store_id(C) ->
 new(RTx) ->
     new(aect_create_tx:owner_pubkey(RTx),
         aect_create_tx:nonce(RTx),
-        aect_create_tx:vm_version(RTx),
+        aect_create_tx:ct_version(RTx),
         aect_create_tx:code(RTx),
         aect_create_tx:deposit(RTx)).
 
--spec new(aec_keys:pubkey(), integer(), integer(), binary(), amount()) -> contract().
+-spec new(aec_keys:pubkey(), integer(), version(), binary(), amount()) -> contract().
 %% NOTE: Should only be used for contract execution without transaction
-new(Owner, Nonce, VmVersion, Code, Deposit) ->
+new(Owner, Nonce, CTVersion, Code, Deposit) ->
     Pubkey = compute_contract_pubkey(Owner, Nonce),
     C = #contract{ id           = aec_id:create(contract, Pubkey),
                    owner_id     = aec_id:create(account, Owner),
-                   vm_version   = VmVersion,
+                   ct_version   = CTVersion,
                    code         = Code,
                    store        = aect_contracts_store:new(),
                    log          = <<>>,
@@ -125,7 +182,7 @@ new(Owner, Nonce, VmVersion, Code, Deposit) ->
 
 -spec serialize(contract()) -> serialized().
 serialize(#contract{owner_id     = OwnerId,
-                    vm_version   = VmVersion,
+                    ct_version   = CTVersion,
                     code         = Code,
                     log          = Log,
                     active       = Active,
@@ -136,7 +193,7 @@ serialize(#contract{owner_id     = OwnerId,
       ?CONTRACT_VSN,
       serialization_template(?CONTRACT_VSN),
       [ {owner_id, OwnerId}
-      , {vm_version, VmVersion}
+      , {ct_version, pack_vm_abi(CTVersion)}
       , {code, Code}
       , {log, Log}
       , {active, Active}
@@ -147,14 +204,15 @@ serialize(#contract{owner_id     = OwnerId,
 -spec serialize_for_client(contract()) -> map().
 serialize_for_client(#contract{id           = Id,
                                owner_id     = OwnerId,
-                               vm_version   = VmVersion,
+                               ct_version   = CTVersion,
                                log          = Log,
                                active       = Active,
                                referrer_ids = ReferrerIds,
                                deposit      = Deposit}) ->
     #{ <<"id">>           => aehttp_api_encoder:encode(id_hash, Id)
      , <<"owner_id">>     => aehttp_api_encoder:encode(id_hash, OwnerId)
-     , <<"vm_version">>   => VmVersion
+     , <<"vm_version">>   => maps:get(vm, CTVersion)
+     , <<"abi_version">>  => maps:get(abi, CTVersion)
      , <<"log">>          => Log
      , <<"active">>       => Active
      , <<"referrer_ids">> => [aehttp_api_encoder:encode(id_hash, RId) || RId <- ReferrerIds]
@@ -164,7 +222,7 @@ serialize_for_client(#contract{id           = Id,
 -spec deserialize(pubkey(), serialized()) -> contract().
 deserialize(Pubkey, Bin) ->
     [ {owner_id, OwnerId}
-    , {vm_version, VmVersion}
+    , {ct_version, CTVersion}
     , {code, Code}
     , {log, Log}
     , {active, Active}
@@ -180,7 +238,7 @@ deserialize(Pubkey, Bin) ->
     account = aec_id:specialize_type(OwnerId),
     #contract{ id           = aec_id:create(contract, Pubkey)
              , owner_id     = OwnerId
-             , vm_version   = VmVersion
+             , ct_version   = split_vm_abi(CTVersion)
              , code         = Code
              , store        = aect_contracts_store:new()
              , log          = Log
@@ -191,7 +249,7 @@ deserialize(Pubkey, Bin) ->
 
 serialization_template(?CONTRACT_VSN) ->
     [ {owner_id, id}
-    , {vm_version, int}
+    , {ct_version, int}
     , {code, binary}
     , {log, binary}
     , {active, bool}
@@ -243,9 +301,19 @@ owner_id(#contract{owner_id = OwnerId}) ->
 owner_pubkey(#contract{owner_id = OwnerId}) ->
     aec_id:specialize(OwnerId, account).
 
+%% The ABI version used by the contract.
+-spec abi_version(contract()) -> abi_version().
+abi_version(#contract{ct_version = #{abi := ABIVersion}}) ->
+    ABIVersion.
+
+%% The version used by the contract.
+-spec ct_version(contract()) -> version().
+ct_version(#contract{ct_version = CTVersion}) ->
+    CTVersion.
+
 %% The VM version used by the contract.
 -spec vm_version(contract()) -> vm_version().
-vm_version(#contract{vm_version = VmVersion}) ->
+vm_version(#contract{ct_version = #{vm := VmVersion}}) ->
     VmVersion.
 
 %% The contract byte code.
@@ -289,10 +357,6 @@ set_pubkey(X, C) ->
 set_owner(X, C) ->
     C#contract{owner_id = aec_id:create(account, assert_field(pubkey, X))}.
 
--spec set_vm_version(vm_version(), contract()) -> contract().
-set_vm_version(X, C) ->
-    C#contract{vm_version = assert_field(vm_version, X)}.
-
 -spec set_code(binary(), contract()) -> contract().
 set_code(X, C) ->
     C#contract{code = assert_field(code, X)}.
@@ -328,7 +392,7 @@ set_deposit(X, C) ->
 assert_fields(C) ->
     List = [ {pubkey,     pubkey(C)}
            , {owner,      owner_pubkey(C)}
-           , {vm_version, C#contract.vm_version}
+           , {ct_version, C#contract.ct_version}
            , {code,       C#contract.code}
            , {store,      C#contract.store}
            , {log,        C#contract.log}
@@ -346,15 +410,18 @@ assert_fields(C) ->
 assert_field(store = FieldKey, FieldValue, C) ->
     %% We can't afford to validate the mptree part of the store
     assert_field_store(FieldKey, aect_contracts_store:write_cache(FieldValue),
-                       C#contract.vm_version),
+                       C#contract.ct_version),
     FieldValue;
 assert_field(FieldKey, FieldValue, _) ->
     assert_field(FieldKey, FieldValue).
 
 assert_field(pubkey, <<_:?PUB_SIZE/binary>> = X)         -> X;
 assert_field(owner,  <<_:?PUB_SIZE/binary>> = X)         -> X;
-assert_field(vm_version, X) when is_integer(X), X > 0,
-                                                X < 6    -> X;
+assert_field(ct_version, X) ->
+    case is_legal_version(X) of
+        true  -> X;
+        false -> error({illegal, ct_version, X})
+    end;
 assert_field(code, X)       when is_binary(X)            -> X;
 assert_field(log, X)        when is_binary(X)            -> X;
 assert_field(active, X)     when X =:= true; X =:= false -> X;
@@ -365,19 +432,43 @@ assert_field(referrer, <<_:?PUB_SIZE/binary>> = X)       -> X;
 assert_field(deposit, X)    when is_integer(X), X >= 0   -> X;
 assert_field(Field, X) -> error({illegal, Field, X}).
 
-assert_field_store(store = Field, X, VmVersion) when is_map(X) ->
+assert_field_store(store = Field, X, Version) when is_map(X) ->
     try
         F = fun(K, V, unused) ->
-                    assert_field_store(store_k, K, VmVersion),
-                    assert_field_store(store_v, V, VmVersion),
+                    assert_field_store(store_k, K, Version),
+                    assert_field_store(store_v, V, Version),
                     unused
             end,
         %% map iterator would limit memory usage though it is available from OTP 21.
         maps:fold(F, unused, X),
         X
     catch _:_ -> error({illegal, Field, X}) end;
-assert_field_store(store_k = Field, X, VmVersion) when is_binary(X),
+assert_field_store(store_k = Field, X, Version) when is_binary(X),
                                                byte_size(X) > 0 ->
-    try true = aevm_eeevm_store:is_valid_key(VmVersion, X)
+    try true = aevm_eeevm_store:is_valid_key(Version, X)
     catch _:_ -> error({illegal, Field, X}) end;
-assert_field_store(store_v, X,_VmVersion) when is_binary(X) -> X.
+assert_field_store(store_v, X,_Version) when is_binary(X) -> X.
+
+is_legal_version(#{vm := VM, abi := ABI}) ->
+    case {VM, ABI} of
+        {?VM_AEVM_SOPHIA_1,   ?ABI_SOPHIA_1}   -> true;
+        {?VM_AEVM_SOPHIA_2,   ?ABI_SOPHIA_1}   -> true;
+        {?VM_AEVM_SOLIDITY_1, ?ABI_SOLIDITY_1} -> ?VM_AEVM_SOLIDITY_1_enabled;
+        _                                      -> false
+    end.
+
+-spec split_vm_abi(serial_version()) -> version().
+split_vm_abi(VMABI) ->
+    <<VM:16, ABI:16>> = <<VMABI:32>>,
+    case VM of
+        0 -> #{vm => ABI, abi => ABI};
+        _ -> #{vm => VM,  abi => ABI}
+    end.
+
+-spec pack_vm_abi(version()) -> serial_version().
+pack_vm_abi(#{vm := ABI, abi := ABI}) when ABI =< ?ABI_SOLIDITY_1 ->
+    ABI;
+pack_vm_abi(#{vm := VM, abi := ABI}) ->
+    <<VMABI:32>> = <<VM:16, ABI:16>>,
+    VMABI.
+

@@ -27,7 +27,7 @@ setup_minimal() ->
     TmpKeysDir = aec_test_utils:aec_keys_setup(),
     {ok, PubKey} = aec_keys:pubkey(),
     ok = application:set_env(aecore, beneficiary, aehttp_api_encoder:encode(account_pubkey, PubKey)),
-    aec_test_utils:mock_genesis(preset_accounts(PubKey)),
+    aec_test_utils:mock_genesis_and_forks(preset_accounts(PubKey)),
     aec_test_utils:mock_time(),
     {ok, _} = aec_tx_pool_gc:start_link(),
     {ok, _} = aec_tx_pool:start_link(),
@@ -42,7 +42,7 @@ teardown_minimal(TmpKeysDir) ->
     _  = flush_gproc(),
     ?assert(meck:validate(aec_governance)),
     meck:unload(aec_governance),
-    aec_test_utils:unmock_genesis(),
+    aec_test_utils:unmock_genesis_and_forks(),
     aec_test_utils:unmock_time(),
     ok = aec_test_utils:stop_chain_db(),
     aec_test_utils:aec_keys_cleanup(TmpKeysDir),
@@ -150,7 +150,7 @@ test_start_stop_no_beneficiary() ->
 miner_timeout_test_() ->
     {foreach,
      fun() ->
-             ok = meck:new(aec_pow_cuckoo, [passthrough]),
+             ok = meck:new(aec_mining, [passthrough]),
              ok = meck:new(aeu_env, [passthrough]),
              ok = meck:expect(aeu_env, get_env, 3,
                               fun
@@ -167,7 +167,7 @@ miner_timeout_test_() ->
              ok = ?TEST_MODULE:stop(),
              teardown_minimal(TmpKeysDir),
              ok = meck:unload(aeu_env),
-             ok = meck:unload(aec_pow_cuckoo)
+             ok = meck:unload(aec_mining)
      end,
      [{"Time out miner that does not return", fun test_time_out_miner/0}
      ]}.
@@ -175,7 +175,7 @@ miner_timeout_test_() ->
 test_time_out_miner() ->
     TestPid = self(),
     ok = meck:expect(
-           aec_pow_cuckoo, generate,
+           aec_mining, generate,
            fun(_, _, _, _, _) ->
                    TestPid ! {self(), called},
                    receive after infinity -> never_reached end
@@ -479,7 +479,7 @@ test_two_mined_block_signing() ->
 
 test_received_block_signing() ->
     Keys = beneficiary_keys(),
-    meck:expect(aec_mining, mine,
+    meck:expect(aec_mining, generate,
                 fun(_, _, _, _, _) -> timer:sleep(1000), {error, no_solution} end),
     true = aec_events:subscribe(block_to_publish),
 
