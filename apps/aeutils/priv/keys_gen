@@ -1,3 +1,6 @@
+#!/usr/bin/env escript
+%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
+
 -mode(compile).
 
 -define(KEYS_DIR         , "generated_keys").
@@ -7,7 +10,8 @@
 main([[]]) ->
     io:fwrite("Usage: keys_gen PASSWORD~n"),
     halt(1);
-main([Password]) ->
+main([Password0]) ->
+    Password = string:trim(Password0),
     ok = ensure_dir(?KEYS_DIR),
     {PubFile, PrivFile} = gen_keypair_filenames(?KEYS_DIR),
     case ensure_keypair_not_present(PubFile, PrivFile) of

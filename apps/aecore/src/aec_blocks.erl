@@ -11,7 +11,6 @@
 -export([assert_block/1,
          beneficiary/1,
          deserialize_from_binary/1,
-         deserialize_from_map/1,
          difficulty/1,
          gas/1,
          hash_internal_representation/1,
@@ -29,7 +28,6 @@
          prev_key_hash/1,
          root_hash/1,
          serialize_to_binary/1,
-         serialize_to_map/1,
          set_height/2,
          set_miner/2,
          set_nonce/2,
@@ -153,7 +151,7 @@ type(#mic_block{}) -> 'micro'.
 %%%===================================================================
 
 -spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
-              aec_pow:sci_int(),
+              aeminer_pow:sci_target(),
               non_neg_integer(), non_neg_integer(), non_neg_integer(),
               miner_pubkey(), beneficiary_pubkey()
              ) -> key_block().
@@ -231,9 +229,9 @@ height(Block) ->
 set_height(Block, Height) ->
     set_header(Block, aec_headers:set_height(to_header(Block), Height)).
 
--spec difficulty(key_block()) -> aec_pow:difficulty().
+-spec difficulty(key_block()) -> aeminer_pow:difficulty().
 difficulty(Block) ->
-    aec_pow:target_to_difficulty(target(Block)).
+    aeminer_pow:target_to_difficulty(target(Block)).
 
 -spec gas(micro_block()) -> non_neg_integer().
 gas(#mic_block{txs = Txs} = Block) ->
@@ -268,7 +266,7 @@ set_miner(Block, M) ->
 version(Block) ->
     aec_headers:version(to_header(Block)).
 
--spec set_nonce(key_block(), aec_pow:nonce()) -> key_block().
+-spec set_nonce(key_block(), aeminer_pow:nonce()) -> key_block().
 set_nonce(Block, Nonce) ->
     set_header(Block, aec_headers:set_nonce(to_key_header(Block), Nonce)).
 
@@ -282,11 +280,11 @@ set_pof(#mic_block{} = Block, PoF) ->
     Header = aec_headers:set_pof_hash(to_micro_header(Block), PoFHash),
     set_header(Block#mic_block{pof = PoF}, Header).
 
--spec pow(key_block()) -> aec_pow:pow_evidence().
+-spec pow(key_block()) -> aeminer_pow_cuckoo:solution().
 pow(Block) ->
     aec_headers:pow(to_key_header(Block)).
 
--spec set_nonce_and_pow(key_block(), aec_pow:nonce(), aec_pow:pow_evidence()
+-spec set_nonce_and_pow(key_block(), aeminer_pow:nonce(), aeminer_pow_cuckoo:solution()
                        ) -> key_block().
 set_nonce_and_pow(Block, Nonce, Evd) ->
     H = aec_headers:set_nonce_and_pow(to_key_header(Block), Nonce, Evd),
@@ -390,29 +388,6 @@ serialization_template(micro, Height, Vsn) ->
                  , {pof, [binary]}]};
         Other ->
             {error, {bad_block_vsn, Other}}
-    end.
-
--spec serialize_to_map(block()) -> map().
-serialize_to_map(#key_block{} = Block) ->
-    aec_headers:serialize_to_map(to_key_header(Block));
-serialize_to_map(#mic_block{} = Block) ->
-    H   = to_micro_header(Block),
-    Map = aec_headers:serialize_to_map(H),
-    Map#{<<"transactions">> => Block#mic_block.txs
-        }.
-
--spec deserialize_from_map(map()) -> {'error', term()} | {'ok', block()}.
-deserialize_from_map(Map) ->
-    case aec_headers:deserialize_from_map(Map) of
-        {ok, H} ->
-            case aec_headers:type(H) of
-                micro ->
-                    {ok, #mic_block{header    = H,
-                                    txs       = maps:get(<<"transactions">>, Map)}};
-                key ->
-                    {ok, #key_block{header = H}}
-            end;
-        {error, _} = E -> E
     end.
 
 %%%===================================================================

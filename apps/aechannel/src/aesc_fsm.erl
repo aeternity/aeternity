@@ -329,16 +329,17 @@ upd_withdraw(Fsm, #{amount := Amt} = Opts) when is_integer(Amt), Amt > 0 ->
     lager:debug("upd_withdraw(~p)", [Opts]),
     gen_statem:call(Fsm, {upd_withdraw, Opts}).
 
-upd_create_contract(Fsm, #{vm_version := _,
-                           deposit    := Amt,
-                           code       := _,
-                           call_data  := _} = Opts) when is_integer(Amt), Amt >= 0 ->
+upd_create_contract(Fsm, #{vm_version  := _,
+                           abi_version := _,
+                           deposit     := Amt,
+                           code        := _,
+                           call_data   := _} = Opts) when is_integer(Amt), Amt >= 0 ->
     lager:debug("upd_create_contract(~p)", [Opts]),
     gen_statem:call(Fsm, {upd_create_contract, Opts}).
 
 
 upd_call_contract(Fsm, #{contract    := _,
-                         vm_version  := _,
+                         abi_version := _,
                          amount      := Amt,
                          call_data  := _} = Opts) when is_integer(Amt), Amt >= 0 ->
     lager:debug("upd_call_contract(~p)", [Opts]),
@@ -350,8 +351,18 @@ get_contract_call(Fsm, Contract, Caller, Round) when is_integer(Round), Round > 
     gen_statem:call(Fsm, {get_contract_call, Contract, Caller, Round}).
 
 inband_msg(Fsm, To, Msg) ->
-    lager:debug("inband_msg(~p, ~p, ~p)", [Fsm, To, Msg]),
-    gen_statem:call(Fsm, {inband_msg, To, Msg}).
+    MaxSz = aesc_codec:max_inband_msg_size(),
+    try iolist_to_binary(Msg) of
+        MsgBin when byte_size(MsgBin) =< MaxSz ->
+            lager:debug("inband_msg(~p, ~p, ~p)", [Fsm, To, Msg]),
+            gen_statem:call(Fsm, {inband_msg, To, MsgBin});
+        MsgBin ->
+            lager:debug("INVALID inband_msg(~p): ~p", [Fsm, byte_size(MsgBin)]),
+            {error, invalid_request}
+    catch
+        error:_ ->
+            {error, invalid_request}
+    end.
 
 
 -spec get_state(pid()) -> {ok, #{}}.
@@ -970,7 +981,7 @@ awaiting_update_ack(cast, {?UPDATE_ERR, Msg}, D) ->
             next_state(open, D1);
         {error, fallback_state_mismatch} = Error ->
             % falling back to an inconsistent state
-            % this is possible if we are a malicious actor only 
+            % this is possible if we are a malicious actor only
             report(conflict, Msg, D),
             close(Error, D);
         {error, _} = Error ->
@@ -1856,11 +1867,12 @@ cur_height() ->
 new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts } = D) ->
     #{owner       := Owner,
       vm_version  := VmVersion,
+      abi_version := ABIVersion,
       code        := Code,
       deposit     := Deposit,
       call_data   := CallData} = Opts,
     Updates = [aesc_offchain_update:op_new_contract(aec_id:create(account, Owner),
-                                                    VmVersion, Code, Deposit, CallData)],
+                                                    VmVersion, ABIVersion, Code, Deposit, CallData)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
@@ -1876,13 +1888,13 @@ new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts 
 call_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts } = D) ->
     #{caller      := Caller,
       contract    := ContractPubKey,
-      vm_version  := VmVersion,
+      abi_version := ABIVersion,
       amount      := Amount,
       call_data   := CallData,
       call_stack  := CallStack} = Opts,
     Updates = [aesc_offchain_update:op_call_contract(aec_id:create(account, Caller),
                                                      aec_id:create(contract, ContractPubKey),
-                                                     VmVersion, Amount, CallData, CallStack)],
+                                                     ABIVersion, Amount, CallData, CallStack)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
@@ -1906,9 +1918,13 @@ pay_close_mutual_fee(Fee, IAmt, RAmt) ->
        true                                   -> {0, RAmt - Fee + IAmt}
     end.
 
+-ifdef(TEST).
 close_mutual_defaults(_Account, _D) ->
-    #{ fee   => 20000}.
-
+    #{ fee   => 20000 }.
+-else.
+close_mutual_defaults(_Account, _D) ->
+    #{ fee   => 20000 * 1000000000 }.
+-endif.
 
 my_account(#data{role = initiator, opts = #{initiator := I}}) -> I;
 my_account(#data{role = responder, opts = #{responder := R}}) -> R.
@@ -1938,7 +1954,7 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
         {error, _} = Err ->
             Err
     end.
-          
+
 
 send_funding_signed_msg(SignedTx, #data{channel_id = Ch,
                                         session    = Sn} = Data) ->
@@ -2522,7 +2538,7 @@ try_gproc_reg(Key, Value) ->
                         [Key, Value, Prev]),
             error(badarg)
     end.
-                
+
 
 
 gproc_name_by_role(Id, Role) ->
@@ -2659,7 +2675,7 @@ check_closing_event(#data{on_chain_id = ChanId} = D) ->
 
 check_closing_event_(Ch, #data{state = St}) ->
     Height = cur_height(),
-    case aesc_channels:is_solo_closing(Ch, Height) of
+    case aesc_channels:is_solo_closing(Ch) of
         true ->
             {MyLastRound, SignedTx} =
                 aesc_offchain_state:get_latest_signed_tx(St),

@@ -4,7 +4,7 @@
 -export([recalculate/1,
          verify/2]).
 
--include("blocks.hrl").
+-include_lib("aeminer/include/aeminer.hrl").
 
 %% Target recalculation.
 %%
@@ -70,14 +70,14 @@ recalculate(PrevHeaders0) ->
     %% Ensure the list of previous headers are in order - oldest first.
     SortFun                  = fun(H1, H2) -> aec_headers:height(H1) =< aec_headers:height(H2) end,
     PrevHeaders              = lists:sort(SortFun, PrevHeaders0),
-    K                        = aec_pow:scientific_to_integer(?HIGHEST_TARGET_SCI) * (1 bsl 32),
-    SumKDivTargets           = lists:sum([ K div aec_pow:scientific_to_integer(aec_headers:target(Hd))
+    K                        = aeminer_pow:scientific_to_integer(?HIGHEST_TARGET_SCI) * (1 bsl 32),
+    SumKDivTargets           = lists:sum([ K div aeminer_pow:scientific_to_integer(aec_headers:target(Hd))
                                            || Hd <- tl(PrevHeaders) ]),
     DesiredTimeBetweenBlocks = aec_governance:expected_block_mine_rate(),
     TotalSolveTime           = total_solve_time(PrevHeaders),
     TemperedTST              = (3 * N * DesiredTimeBetweenBlocks) div 4 + (2523 * TotalSolveTime) div 10000,
     NewTargetInt             = TemperedTST * K div (DesiredTimeBetweenBlocks * SumKDivTargets),
-    min(?HIGHEST_TARGET_SCI, aec_pow:integer_to_scientific(NewTargetInt)).
+    min(?HIGHEST_TARGET_SCI, aeminer_pow:integer_to_scientific(NewTargetInt)).
 
 -spec verify(aec_headers:header(), nonempty_list(aec_headers:header())) ->
           ok | {error, {wrong_target, non_neg_integer(), non_neg_integer()}}.

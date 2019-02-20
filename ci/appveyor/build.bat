@@ -20,7 +20,7 @@ SET BASH_BIN="%WIN_MSYS2_ROOT%\usr\bin\bash"
 @echo Current time: %time%
 rem Set the paths appropriately
 
-call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\\vcvarsall.bat" %PLATFORM%
+call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat" %PLATFORM%
 @echo on
 SET PATH=%WIN_MSYS2_ROOT%\mingw64\bin;%WIN_MSYS2_ROOT%\usr\bin;%PATH%
 

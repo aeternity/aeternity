@@ -55,7 +55,7 @@ You can build the CUDA miner yourself by following these steps:
 - Aeternity node configuration
 
 The documentation in this section is tested on:
-- Aeternity node version 1.0.0-rc2
+- Aeternity node version 2.0.0-rc.1
 - CUDA toolkit version 9.2
 - AWS p2.xlarge instance with 16GB EBS
 - Ubuntu 16.04.4
@@ -82,13 +82,13 @@ sudo apt-get update && sudo apt-get install cuda
 
 ### Miner install
 
-At this point the CUDA toolkit is installed. Next step is to build the cuckoo CUDA miner. If the node has been installed (build) from source, the same source tree can be used. Otherwise if the binary package has been used for installation, **the same version** of Aeternity node's source code must be downloaded.
+At this point the CUDA toolkit is installed. Next step is to build the cuckoo CUDA miner.
 
-Aeternity node's source code can be downloaded by cloning the git repository:
+The source code of the CUDA miner is in `aecuckoo` git repository:
 ```bash
 cd ~
-git clone https://github.com/aeternity/aeternity.git aeternity_source && cd aeternity_source ## Before version 1.3.0, the repository used to be https://github.com/aeternity/epoch.git
-git checkout tags/v1.0.0-rc2
+git clone https://github.com/aeternity/aecuckoo.git aecuckoo_source && cd aecuckoo_source
+git checkout fa3d13e   # This commit is used in Aeternity node
 ```
 
 Cuckoo CUDA build assumes CUDA compiler (`nvcc`) is install in `PATH`, however it is installed by the above steps in `/usr/local/cuda-9.2/bin` which is not in the `PATH` by default. To add CUDA compiler to the `PATH` environment variable run:
@@ -97,19 +97,19 @@ Cuckoo CUDA build assumes CUDA compiler (`nvcc`) is install in `PATH`, however i
 export PATH=/usr/local/cuda-9.2/bin${PATH:+:${PATH}}
 ```
 
-Compilation of CUDA miner is done by invoking:
+Compilation of CUDA miner is done in `aecuckoo_source` directory by invoking:
 
 ```bash
-cd apps/aecuckoo && make cuda29
+make cuda29
 ```
 
 Finally the actual installation of the miner binary is copying it to the node corresponding path, the documentation assumes the Aeternity node is installed in `~/aeternity/node` directory.
 
 The exact path where to copy the binary depends on the version of the node: you can find it by calling `ls -d ~/aeternity/node/lib/aecuckoo-*/priv/bin`.
-E.g. it may be something like `~/aeternity/node/lib/aecuckoo-0.1.0/priv/bin`: the following assumes this path though you may need to adapt it.
+E.g. it may be something like `~/aeternity/node/lib/aecuckoo-1.0.0/priv/bin`: the following assumes this path though you may need to adapt it.
 
 ```bash
-cp priv/bin/cuda29 ~/aeternity/node/lib/aecuckoo-0.1.0/priv/bin
+cp priv/bin/cuda29 ~/aeternity/node/lib/aecuckoo-1.0.0/priv/bin
 ```
 
 ### Configuration of the manually built CUDA miner

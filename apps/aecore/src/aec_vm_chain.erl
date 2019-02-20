@@ -8,14 +8,14 @@
 
 -behaviour(aevm_chain_api).
 
--export([new_state/3, get_trees/1,
-         new_offchain_state/4
+-export([new_state/4, get_trees/1,
+         new_offchain_state/5
          ]).
 
 %% aevm_chain_api callbacks
 -export([ get_height/1,
           blockhash/2,
-          call_contract/6,
+          call_contract/7,
           get_balance/2,
           get_store/1,
           set_store/2,
@@ -61,6 +61,7 @@
 -record(state, { trees              :: chain_trees()
                , tx_env             :: aetx_env:env()
                , account            :: aec_keys:pubkey() %% the contract account
+               , vm_version         :: aect_contracts:vm_version()
                }).
 
 -type chain_trees() :: #trees{}.
@@ -85,23 +86,29 @@
 %% -- API --------------------------------------------------------------------
 
 %% @doc Create an on-chain state.
--spec new_state(aec_trees:trees(), aetx_env:env(), aec_keys:pubkey()) -> chain_state().
-new_state(Trees, Env, ContractAccount) ->
+-spec new_state(aec_trees:trees(), aetx_env:env(), aec_keys:pubkey(),
+                VMVersion :: non_neg_integer()) -> chain_state().
+new_state(Trees, Env, ContractAccount, VMVersion) ->
     #state{ trees       = on_chain_trees(Trees),
             tx_env      = Env,
-            account     = ContractAccount
+            account     = ContractAccount,
+            vm_version  = VMVersion
           }.
 
 %% @doc Create an off-chain state.
 -spec new_offchain_state(aec_trees:trees(), aec_trees:trees(),
                          aetx_env:env(),
-                         aec_keys:pubkey()) -> chain_state().
-new_offchain_state(OffChainTrees, OnChainTrees, TxEnv, ContractAccount) ->
+                         aec_keys:pubkey(),
+                         VMVersion :: non_neg_integer()
+                        ) -> chain_state().
+new_offchain_state(OffChainTrees, OnChainTrees, TxEnv,
+                   ContractAccount, VMVersion) ->
     InnerTrees = on_chain_trees(OnChainTrees),
     Trees = push_trees(off_chain_trees(OffChainTrees), InnerTrees),
     #state{ trees       = Trees,
             tx_env      = TxEnv,
-            account     = ContractAccount
+            account     = ContractAccount,
+            vm_version  = VMVersion
           }.
 
 %% @doc Get the state trees from a state.
@@ -190,22 +197,18 @@ spend(Tx, State) ->
 
 %%    Oracle
 -spec oracle_register_tx(aec_keys:pubkey(), non_neg_integer(), aeo_oracles:ttl(),
-                         aeso_sophia:type(), aeso_sophia:type(), pos_integer(),
+                         aeso_sophia:type(), aeso_sophia:type(), aect_contracts:abi_version(),
                          chain_state()) ->
     {ok, aetx:tx()} | {error, term()}.
-oracle_register_tx(AccountKey, QueryFee, TTL, QFormat, RFormat, VMVersion, State) ->
+oracle_register_tx(AccountKey, QueryFee, TTL, QFormat, RFormat, ABIVersion, State) ->
     on_chain_only(State, fun() -> oracle_register_tx_(AccountKey, QueryFee, TTL,
                                                       QFormat, RFormat,
-                                                      VMVersion, State)
+                                                      ABIVersion, State)
                          end).
 
 oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat,
-                    RFormat, VMVersion, State) ->
+                    RFormat, ABIVersion, State) ->
     Nonce = next_nonce(AccountKey, State),
-    %% Note: The nonce of the account is incremented.
-    %% This means that if you register an oracle for an account other than
-    %% the contract account through a contract that contract nonce is incremented
-    %% "behind your back".
     BinaryQueryFormat = aeso_heap:to_binary(QFormat),
     BinaryResponseFormat = aeso_heap:to_binary(RFormat),
     Spec =
@@ -215,7 +218,7 @@ oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat,
           response_format => BinaryResponseFormat,
           query_fee       => QueryFee,
           oracle_ttl      => TTL,
-          vm_version      => VMVersion,
+          abi_version     => ABIVersion,
           ttl             => 0, %% Not used.
           fee             => 0},
     aeo_register_tx:new(Spec).
@@ -296,11 +299,9 @@ maybe_convert_oracle_arg(OracleId, Arg, State) ->
     Trees = get_top_trees(State),
     case aeo_state_tree:lookup_oracle(OracleId, aec_trees:oracles(Trees)) of
         {value, Oracle} ->
-            case aeo_oracles:vm_version(Oracle) of
-                ?AEVM_NO_VM ->
-                    Arg;
-                ?AEVM_01_Sophia_01 ->
-                    aeso_heap:to_binary(Arg)
+            case aeo_oracles:abi_version(Oracle) of
+                ?ABI_NO_VM    -> Arg;
+                ?ABI_SOPHIA_1 -> aeso_heap:to_binary(Arg)
             end;
         none ->
             %% Will fail later
@@ -363,16 +364,16 @@ oracle_get_answer(OracleId, QueryId, #state{trees = ChainTrees}) ->
                     {value, Oracle} = aeo_state_tree:lookup_oracle(OracleId,
                                                                   aec_trees:oracles(Trees)),
                     ResponseFormat = aeo_oracles:response_format(Oracle),
-                    VMVersion = aeo_oracles:vm_version(Oracle),
-                    case oracle_typerep(VMVersion, ResponseFormat) of
-                        {ok, Type} when VMVersion =:= ?AEVM_01_Sophia_01 ->
+                    ABIVersion = aeo_oracles:abi_version(Oracle),
+                    case oracle_typerep(ABIVersion, ResponseFormat) of
+                        {ok, Type} when ABIVersion =:= ?ABI_SOPHIA_1 ->
                             try aeso_heap:from_binary(Type, Answer) of
                                 {ok, Result} -> {ok, {some, Result}};
                                 {error, _} -> {error, bad_answer}
                             catch _:_ ->
                                     {error, bad_answer}
                             end;
-                        {ok, string} when VMVersion =:= ?AEVM_NO_VM ->
+                        {ok, string} when ABIVersion =:= ?ABI_NO_VM ->
                             %% We treat the anwer as a non-sophia string
                             {ok, {some, Answer}};
                         {error, bad_typerep} ->
@@ -390,9 +391,9 @@ oracle_get_question(OracleId, QueryId, #state{trees = ChainTrees}) ->
         {value, Query} ->
             {value, Oracle} = aeo_state_tree:lookup_oracle(OracleId, OraclesTree),
             QueryFormat     = aeo_oracles:query_format(Oracle),
-            VMVersion       = aeo_oracles:vm_version(Oracle),
-            case oracle_typerep(VMVersion, QueryFormat) of
-                {ok, string} when VMVersion =:= ?AEVM_NO_VM ->
+            ABIVersion      = aeo_oracles:abi_version(Oracle),
+            case oracle_typerep(ABIVersion, QueryFormat) of
+                {ok, string} when ABIVersion =:= ?ABI_NO_VM ->
                     %% We treat the question as a non-sophia string
                     {ok, aeo_query:query(Query)};
                 {ok, QueryType} ->
@@ -411,13 +412,16 @@ oracle_get_question(OracleId, QueryId, #state{trees = ChainTrees}) ->
             {error, no_such_question}
     end.
 
-oracle_query_fee(Oracle, #state{trees = ChainTrees}) ->
+oracle_query_fee(Oracle, #state{trees = ChainTrees, vm_version=VMVersion}) ->
     Trees = get_on_chain_trees(ChainTrees),
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             Fee = aeo_oracles:query_fee(O),
             {ok, Fee};
-        none  ->
+        none when VMVersion =:= ?VM_AEVM_SOPHIA_2 ->
+            {error, no_such_oracle};
+        none when VMVersion =:= ?VM_AEVM_SOPHIA_1 ->
+            %% Backwards compatible bug.
             {ok, none}
     end.
 
@@ -426,8 +430,8 @@ oracle_query_format(Oracle, #state{trees = ChainTrees}) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             BinaryFormat = aeo_oracles:query_format(O),
-            VMVersion = aeo_oracles:vm_version(O),
-            oracle_typerep(VMVersion, BinaryFormat);
+            ABIVersion = aeo_oracles:abi_version(O),
+            oracle_typerep(ABIVersion, BinaryFormat);
         none ->
             {error, no_such_oracle}
     end.
@@ -446,16 +450,16 @@ oracle_response_format(Oracle, #state{trees = ChainTrees}) ->
     Trees = get_on_chain_trees(ChainTrees),
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
-            oracle_typerep(aeo_oracles:vm_version(O),
+            oracle_typerep(aeo_oracles:abi_version(O),
                            aeo_oracles:response_format(O));
         none ->
             {error, no_such_oracle}
     end.
 
-oracle_typerep(?AEVM_NO_VM,_BinaryFormat) ->
+oracle_typerep(?ABI_NO_VM,_BinaryFormat) ->
     %% Treat this as a string
     {ok, string};
-oracle_typerep(?AEVM_01_Sophia_01, BinaryFormat) ->
+oracle_typerep(?ABI_SOPHIA_1, BinaryFormat) ->
     try aeso_heap:from_binary(typerep, BinaryFormat) of
         {ok, Format} -> {ok, Format};
         {error, _} -> {error, bad_typerep}
@@ -620,13 +624,14 @@ get_contract_fun_types(Target, VMVersion, TypeHash, State) ->
     CT = aec_trees:contracts(Trees),
     case aect_state_tree:lookup_contract(Target, CT, [no_store]) of  %% no store
         {value, Contract} ->
-            case aect_contracts:vm_version(Contract) of
-                VMVersion ->
+            ContractVMVersion = aect_contracts:ct_version(Contract),
+            case aect_contracts:is_legal_call(VMVersion, ContractVMVersion) of
+                true ->
                     SerializedCode = aect_contracts:code(Contract),
                     #{type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
                     aeso_abi:typereps_from_type_hash(TypeHash, TypeInfo);
-                Other ->
-                    {error, {wrong_vm_version, Other}}
+                false ->
+                    {error, {wrong_vm_version, ContractVMVersion}}
             end;
         none ->
             {error, {no_such_contract, Target}}
@@ -635,9 +640,9 @@ get_contract_fun_types(Target, VMVersion, TypeHash, State) ->
 
 %% @doc Call another contract.
 -spec call_contract(aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), binary(),
-                    [non_neg_integer()], chain_state()) ->
+                    [non_neg_integer()], aec_keys:pubkey(), chain_state()) ->
         {aevm_chain_api:call_result(), chain_state()}.
-call_contract(Target, Gas, Value, CallData, CallStack,
+call_contract(Target, Gas, Value, CallData, CallStack, Origin,
               State = #state{account = ContractKey}) ->
     Trees = get_top_trees(State),
     CT = aec_trees:contracts(Trees),
@@ -648,18 +653,20 @@ call_contract(Target, Gas, Value, CallData, CallStack,
             AT = aec_trees:accounts(Trees),
             {value, ContractAccount} = aec_accounts_trees:lookup(ContractKey, AT),
             Nonce = aec_accounts:nonce(ContractAccount) + 1,
-            VmVersion = aect_contracts:vm_version(Contract),
+            ABIVersion = aect_contracts:abi_version(Contract),
             {ok, CallTx} =
                 aect_call_tx:new(#{ caller_id   => aec_id:create(contract, ContractKey),
                                     nonce       => Nonce,
                                     contract_id => aec_id:create(contract, Target),
-                                    vm_version  => VmVersion,
+                                    abi_version => ABIVersion,
                                     fee         => 0,
                                     amount      => Value,
                                     gas         => Gas,
                                     gas_price   => 0,
                                     call_data   => CallData,
-                                    call_stack  => CallStack }),
+                                    call_stack  => CallStack,
+                                    origin      => Origin
+                                  }),
             apply_call_transaction(CallTx, Gas, State)
     end.
 

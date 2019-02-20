@@ -7,15 +7,24 @@
 
 -module(aesc_txs_SUITE).
 
-%% common_test exports
--export([all/0,
-         groups/0]).
+-export([
+          all/0
+        , groups/0
+        , suite/0
+        , init_per_suite/1
+        , end_per_suite/1
+        , init_per_group/2
+        , end_per_group/2
+        , init_per_testcase/2
+        , end_per_testcase/2
+        ]).
 
 %% test case exports
 -export([create/1,
          close_solo/1,
          close_mutual/1,
          slash/1,
+         slash_after_lock_timer/1,
          slash_by_delegate/1,
          deposit/1,
          withdraw/1,
@@ -177,19 +186,23 @@
          fp_register_oracle/1,
          fp_oracle_query/1,
          fp_oracle_extend/1,
-         fp_oracle_respond/1
+         fp_oracle_respond/1,
+         fp_fork_awareness/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("apps/aecontract/src/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BOGUS_CHANNEL, <<1:?MINER_PUB_BYTES/unit:8>>).
 -define(ROLES, [initiator, responder]).
--define(VM_VERSION, ?AEVM_01_Sophia_01).
+-define(VM_VERSION, aect_test_utils:latest_sophia_vm_version()).
+-define(ABI_VERSION, aect_test_utils:latest_sophia_abi_version()).
 -define(TEST_LOG(Format, Data), ct:log(Format, Data)).
+-define(MINERVA_FORK_HEIGHT, 1000).
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -208,6 +221,7 @@ groups() ->
        close_mutual,
        {group, close_mutual_negative},
        slash,
+       slash_after_lock_timer,
        slash_by_delegate,
        {group, slash_negative},
        deposit,
@@ -359,9 +373,42 @@ groups() ->
        fp_register_oracle,
        fp_oracle_query,
        fp_oracle_extend,
-       fp_oracle_respond
+       fp_oracle_respond,
+
+       fp_fork_awareness
       ]}
     ].
+
+suite() ->
+    [].
+
+init_per_suite(Config) ->
+    Config.
+
+end_per_suite(_Config) ->
+    ok.
+
+init_per_group(_Group, Config) ->
+    Config.
+
+end_per_group(_Group, _Config) ->
+    ok.
+
+init_per_testcase(fp_fork_awareness, Config) ->
+    meck:expect(aec_hard_forks, protocol_effective_at_height,
+                fun(V) when V < ?MINERVA_FORK_HEIGHT -> ?ROMA_PROTOCOL_VSN;
+                   (_)                               -> ?MINERVA_PROTOCOL_VSN end),
+    Config;
+init_per_testcase(_, Config) ->
+    Config.
+
+end_per_testcase(fp_fork_awareness, _Config) ->
+    meck:unload(aec_hard_forks),
+    ok;
+end_per_testcase(_Case, _Config) ->
+    ok.
+
+
 
 %%%===================================================================
 
@@ -837,6 +884,41 @@ slash(Cfg) ->
                     Test(Closer, Slasher, 2, 3),
                     Test(Closer, Slasher, 2, 5),
                     Test(Closer, Slasher, 5, 6)
+                end,
+                ?ROLES)
+        end,
+        ?ROLES),
+    ok.
+
+slash_after_lock_timer(Cfg) ->
+    LockPeriod = 10,
+    CloseHeight = 42,
+    Test =
+        fun(Closer, Slasher, SlashHeight) ->
+            run(#{cfg => Cfg, lock_period => 10},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(round, 10),
+                set_prop(height, CloseHeight),
+                positive(fun close_solo_/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end,
+                set_from(Slasher),
+                set_prop(round, 20),
+                set_prop(height, SlashHeight),
+                positive(fun slash_/2)])
+        end,
+    lists:foreach(
+        fun(Closer) ->
+            lists:foreach(
+                fun(Slasher) ->
+                    Test(Closer, Slasher, LockPeriod + CloseHeight),
+                    Test(Closer, Slasher, LockPeriod + CloseHeight + 1),
+                    Test(Closer, Slasher, LockPeriod + CloseHeight + 10)
                 end,
                 ?ROLES)
         end,
@@ -3147,7 +3229,7 @@ fp_solo_payload_not_call_update(Cfg) ->
     Transfer = aesc_offchain_update:op_transfer(Fake1Id, Fake2Id, 10),
     Deposit = aesc_offchain_update:op_deposit(Fake1Id, 10),
     Withdraw = aesc_offchain_update:op_withdraw(Fake1Id, 10),
-    NewContract = aesc_offchain_update:op_new_contract(Fake1Id, 1,
+    NewContract = aesc_offchain_update:op_new_contract(Fake1Id, 1, 1,
                                                        <<>>, 1, <<>>),
     lists:foreach(
         fun(Update) ->
@@ -3209,7 +3291,7 @@ fp_solo_payload_broken_call(Cfg) ->
                     Update = aesc_offchain_update:op_call_contract(
                                 aec_id:create(account, From),
                                 aec_id:create(contract, ContractId),
-                                ?VM_VERSION, 1,
+                                ?ABI_VERSION, 1,
                                 CallData,
                                 [],
                                 _GasPrice = 1,
@@ -3290,6 +3372,7 @@ fp_insufficent_tokens(Cfg) ->
 fp_insufficent_gas_price(Cfg) ->
     Round = 43,
     ContractRound = 10,
+    Height = 1234,
     T =
         fun(Owner, Forcer, GasPrice, GasLimit) ->
             run(#{cfg => Cfg, initiator_amount => 30,
@@ -3298,6 +3381,7 @@ fp_insufficent_gas_price(Cfg) ->
                [positive(fun create_channel_/2),
                 set_prop(gas_price, GasPrice),
                 set_prop(gas_limit, GasLimit),
+                set_prop(height, Height),
                 create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
                 negative_force_progress_sequence(Round, Forcer,
                                                  too_low_gas_price)])
@@ -3308,7 +3392,7 @@ fp_insufficent_gas_price(Cfg) ->
                 || Owner  <- ?ROLES,
                    Forcer <- ?ROLES]
         end,
-    TooLowGasPrice = 0 = aec_governance:minimum_gas_price() - 1,
+    TooLowGasPrice = aec_governance:minimum_gas_price(Height) - 1,
     Test(TooLowGasPrice, 1001),
     ok.
 
@@ -3364,6 +3448,7 @@ fp_register_name(Cfg) ->
                       nonce       => Nonce,
                       code        => BinCode,
                       vm_version  => ?VM_VERSION,
+                      abi_version => ?ABI_VERSION,
                       deposit     => 1,
                       amount      => 1,
                       gas         => 123456,
@@ -3373,8 +3458,6 @@ fp_register_name(Cfg) ->
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
-            {ok, _} = aetx:process(ContractCreateTx, OnChainTrees,
-                                  TxEnv),
             {ok, OnChainTrees1} = aetx:process(ContractCreateTx,
                                                 OnChainTrees,
                                                 TxEnv),
@@ -3409,7 +3492,7 @@ fp_register_name(Cfg) ->
                       nonce       => Nonce,
                       contract_id => aec_id:create(contract,
                                                     ContractId),
-                      vm_version  => ?VM_VERSION,
+                      abi_version => ?ABI_VERSION,
                       amount      => 1,
                       gas         => 123456,
                       gas_price   => 1,
@@ -3418,8 +3501,6 @@ fp_register_name(Cfg) ->
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
-            {ok, _} = aetx:process(CallTx, OnChainTrees,
-                                  TxEnv),
             {ok, OnChainTrees1} = aetx:process(CallTx,
                                                 OnChainTrees,
                                                 TxEnv),
@@ -3699,6 +3780,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       nonce       => Nonce,
                       code        => BinCode,
                       vm_version  => ?VM_VERSION,
+                      abi_version => ?ABI_VERSION,
                       deposit     => 1,
                       amount      => 1,
                       gas         => 123456,
@@ -3708,8 +3790,6 @@ fp_oracle_action(Cfg, ProduceCallData) ->
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
-            {ok, _} = aetx:process(ContractCreateTx, OnChainTrees,
-                                  TxEnv),
             {ok, OnChainTrees1} = aetx:process(ContractCreateTx,
                                                 OnChainTrees,
                                                 TxEnv),
@@ -3744,7 +3824,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       nonce       => Nonce,
                       contract_id => aec_id:create(contract,
                                                     ContractId),
-                      vm_version  => ?VM_VERSION,
+                      abi_version => ?ABI_VERSION,
                       amount      => 1,
                       gas         => 123456,
                       gas_price   => 1,
@@ -3753,8 +3833,6 @@ fp_oracle_action(Cfg, ProduceCallData) ->
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
-            {ok, _} = aetx:process(CallTx, OnChainTrees,
-                                  TxEnv),
             {ok, OnChainTrees1} = aetx:process(CallTx,
                                                 OnChainTrees,
                                                 TxEnv),
@@ -3914,6 +3992,7 @@ fp_register_oracle(Cfg) ->
                       nonce       => Nonce,
                       code        => BinCode,
                       vm_version  => ?VM_VERSION,
+                      abi_version => ?ABI_VERSION,
                       deposit     => 1,
                       amount      => 1,
                       gas         => 123456,
@@ -3923,8 +4002,6 @@ fp_register_oracle(Cfg) ->
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
-            {ok, _} = aetx:process(ContractCreateTx, OnChainTrees,
-                                  TxEnv),
             {ok, OnChainTrees1} = aetx:process(ContractCreateTx,
                                                 OnChainTrees,
                                                 TxEnv),
@@ -3951,7 +4028,7 @@ fp_register_oracle(Cfg) ->
                       nonce       => Nonce,
                       contract_id => aec_id:create(contract,
                                                     ContractId),
-                      vm_version  => ?VM_VERSION,
+                      abi_version => ?ABI_VERSION,
                       amount      => 1,
                       gas         => 123456,
                       gas_price   => 1,
@@ -3960,8 +4037,6 @@ fp_register_oracle(Cfg) ->
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
-            {ok, _} = aetx:process(CallTx, OnChainTrees,
-                                  TxEnv),
             {ok, OnChainTrees1} = aetx:process(CallTx,
                                                 OnChainTrees,
                                                 TxEnv),
@@ -4316,7 +4391,7 @@ create_contract_call_payload_with_calldata(Key, ContractId, CallData, Amount) ->
                 aesc_offchain_update:op_call_contract(
                     aec_id:create(account, From),
                     aec_id:create(contract, ContractId),
-                    ?VM_VERSION, Amount, CallData,
+                    ?ABI_VERSION, Amount, CallData,
                     [],
                     _GasPrice = maps:get(gas_price, Props, 1),
                     _GasLimit = maps:get(gas_limit, Props, 10000000))),
@@ -4382,10 +4457,16 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
     fun(#{trees := Trees0,
           state := State,
           owner := Owner} = Props) ->
-        {ok, BinCode}  = compile_contract(ContractName),
+        {ok, BinCode}  =
+            case maps:get(compiler_fun, Props, not_set) of
+                not_set -> compile_contract(ContractName);
+                Compiler when is_function(Compiler)-> Compiler(ContractName)
+            end,
         {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, InitArg),
+        VmVersion = maps:get(vm_version, Props, ?VM_VERSION),
+        ABIVersion = maps:get(abi_version, Props, ?ABI_VERSION),
         Update = aesc_offchain_update:op_new_contract(aec_id:create(account, Owner),
-                                                      ?VM_VERSION,
+                                                      VmVersion, ABIVersion,
                                                       BinCode,
                                                       Deposit,
                                                       CallData),
@@ -4413,16 +4494,17 @@ create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->
         {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, InitArg),
         Nonce = aesc_test_utils:next_nonce(Owner, State0),
         {ok, AetxCreateTx} =
-            aect_create_tx:new(#{owner_id   => aec_id:create(account, Owner),
-                                 nonce      => Nonce,
-                                 code       => BinCode,
-                                 vm_version => ?VM_VERSION,
-                                 deposit    => Deposit,
-                                 amount     => 0,
-                                 gas        => 123467,
-                                 gas_price  => 1,
-                                 call_data  => CallData,
-                                 fee        => 10}),
+            aect_create_tx:new(#{owner_id    => aec_id:create(account, Owner),
+                                 nonce       => Nonce,
+                                 code        => BinCode,
+                                 vm_version  => ?VM_VERSION,
+                                 abi_version => ?ABI_VERSION,
+                                 deposit     => Deposit,
+                                 amount      => 0,
+                                 gas         => 123467,
+                                 gas_price   => 1,
+                                 call_data   => CallData,
+                                 fee         => 10}),
         {contract_create_tx, CreateTx} = aetx:specialize_type(AetxCreateTx),
         Env = tx_env(Props),
         {ok, _} = aect_create_tx:check(CreateTx, Trees0, Env),
@@ -5019,7 +5101,7 @@ register_new_oracle(QFormat, RFormat, QueryFee) ->
                                                    #{query_format => QFormat,
                                                      query_fee => QueryFee,
                                                      response_format => RFormat,
-                                                     vm_version => ?AEVM_01_Sophia_01
+                                                     abi_version => ?ABI_VERSION
                                                     },
                                                    S),
                 PrivKey = aesc_test_utils:priv_key(Oracle, S),
@@ -5197,6 +5279,84 @@ poi_participants_only() ->
    end.
 
 compile_contract(ContractName) ->
-    aect_test_utils:compile_contract(
-      filename:join(["contracts", 
-                     filename:basename(ContractName, ".aes") ++ ".aes"])).
+    aect_test_utils:compile_contract(contract_filename(ContractName)).
+
+compile_contract_vsn(ContractName, SerializationVsn) ->
+    File = contract_filename(ContractName),
+    CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
+    FileName = filename:join(CodeDir, filename:rootname(File, ".aes") ++ ".aes"),
+    {ok, ContractBin} = file:read_file(FileName),
+    {ok, Map} = aeso_compiler:from_string(ContractBin, []),
+    {ok, aect_sophia:serialize(Map,
+                               SerializationVsn)}.
+
+contract_filename(ContractName) ->
+    filename:join(["contracts",
+                  filename:basename(ContractName, ".aes") ++ ".aes"]).
+
+%% test that a force progress transaction can NOT produce an on-chain
+%% contract with a code with the wrong serialization
+fp_fork_awareness(Cfg) ->
+    HeightBelow = 123,
+    HeightAbove = 1234,
+
+    % ensure assumptions regarding heights
+    true = HeightBelow < ?MINERVA_FORK_HEIGHT,
+    false = aect_sophia:is_legal_serialization_at_height(?MINERVA_PROTOCOL_VSN, HeightBelow),
+    true = HeightAbove > ?MINERVA_FORK_HEIGHT,
+    true = aect_sophia:is_legal_serialization_at_height(?MINERVA_PROTOCOL_VSN, HeightAbove),
+
+    FP =
+        fun(Forcer, Vm, CodeSVsn, PreForkErrMsg) ->
+            Round = 42,
+            run(#{cfg => Cfg, initiator_amount => 10000000,
+                              responder_amount => 10000000,
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                set_prop(vm_version, Vm),
+                set_prop(compiler_fun,
+                         fun(ContractName) ->
+                            compile_contract_vsn(ContractName,
+                                                 CodeSVsn)
+                          end),
+                create_contract_poi_and_payload(Round - 1,
+                                                _ContractCreateRound = 10,
+                                                _ContractOwner = Forcer),
+                set_prop(fee, 100000),
+                set_from(Forcer),
+                set_prop(round, Round),
+                fun(#{contract_id := ContractId} = Props) ->
+                    (create_contract_call_payload(ContractId, <<"main">>,
+                                                  <<"42">>, 1))(Props)
+                end,
+                fun(#{contract_id := ContractId,
+                      trees := Trees0} = Props) ->
+                    Contract = aect_test_utils:get_contract(ContractId, #{trees => Trees0}),
+                    Code = aect_contracts:code(Contract),
+									  Deserialized = aect_sophia:deserialize(Code),
+                    %% ensure contract serialization version
+                    CodeSVsn = maps:get(contract_vsn, Deserialized),
+                    Props
+                end,
+                % rejected before the fork
+                set_prop(height, HeightBelow),
+                negative(fun force_progress_/2, {error,
+                                                 PreForkErrMsg}),
+                % accepted after the fork
+                set_prop(height, HeightAbove),
+                positive(fun force_progress_/2)
+               ])
+        end,
+    ForkChecks =
+        [
+         %% old vm, new code serialization
+         {?VM_AEVM_SOPHIA_1, 2, illegal_contract_compiler_version},
+         %% new vm, old code serialization
+         {?VM_AEVM_SOPHIA_2, 1, unknown_vm_version},
+         %% new vm, new code serialization
+         {?VM_AEVM_SOPHIA_2, 2, unknown_vm_version}],
+
+    [FP(Forcer, Vm, CodeSVsn, Error) || Forcer <- ?ROLES,
+                              {Vm, CodeSVsn, Error} <- ForkChecks],
+    ok.
+

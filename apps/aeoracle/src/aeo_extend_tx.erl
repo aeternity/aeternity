@@ -98,7 +98,7 @@ origin(#oracle_extend_tx{} = Tx) ->
     oracle_pubkey(Tx).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#oracle_extend_tx{} = Tx, Trees,_Env) ->
+check(#oracle_extend_tx{} = _Tx, Trees,_Env) ->
     %% Checks are in process/3
     {ok, Trees}.
 

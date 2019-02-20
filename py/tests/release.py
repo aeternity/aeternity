@@ -328,7 +328,7 @@ def main(argv):
     if test_failed:
         for name, node_dir in zip(node_names, node_dirs):
             print(name + " logs:")
-            print(tail_logs(node_dir, "epoch.log"))
+            print(tail_logs(node_dir, "aeternity.log"))
             print("\n")
     if test_failed:
         sys.exit("FAILED")

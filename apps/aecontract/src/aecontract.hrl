@@ -1,12 +1,19 @@
--define(AEVM_NO_VM,           16#00).
--define(AEVM_01_Sophia_01,    16#01).
--define(AEVM_01_Solidity_01,  16#02).
--define(FTWVM_01_Sophia_02,   16#03).
--define(HLM_01_Varna_01,      16#04).
--define(FAEVM_01_Solidity_01, 16#05).
+%% VM versions
+-define(VM_NO_VM,           16#00).
+-define(VM_AEVM_SOPHIA_1,   16#01).
+-define(VM_AEVM_SOLIDITY_1, 16#02).
+-define(VM_AEVM_SOPHIA_2,   16#03).
+
+%% ABI versions
+-define(ABI_NO_VM,      16#00).
+-define(ABI_SOPHIA_1,   16#01).
+-define(ABI_SOLIDITY_1, 16#02).
+
+-define(IS_VM_SOPHIA(___VM_VERSION___), (___VM_VERSION___ =:= ?VM_AEVM_SOPHIA_2 orelse ___VM_VERSION___ =:= ?VM_AEVM_SOPHIA_1)).
 
 -ifdef(TEST).
--define(AEVM_01_Solidity_01_enabled, fun() -> ok end).
+-define(VM_AEVM_SOLIDITY_1_enabled, true).
 -else.
--define(AEVM_01_Solidity_01_enabled, fun() -> {error, <<"EVM disabled">>} end).
+-define(VM_AEVM_SOLIDITY_1_enabled, false).
 -endif.
+

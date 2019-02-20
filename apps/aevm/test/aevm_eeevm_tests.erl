@@ -274,6 +274,57 @@ arithmetic_tests() ->
     , sub4
     ].
 
+%%====================================================================
+%% BitwiseShiftOperation tests
+%%====================================================================
+
+bitshift_test_() ->
+    Tests = bitshift_tests(),
+    Path  = "VMTests/vmBitShiftOperation",
+    aevm_test_utils:testcase_generate({local, Path}, Tests, fun extra_opts/1).
+
+bitshift_tests() ->
+    [ 'sar01'
+    , 'sar10'
+    , 'sar11'
+    , 'sar_2^254_254'
+    , 'sar_2^255-1_248'
+    , 'sar_2^255-1_254'
+    , 'sar_2^255-1_255'
+    , 'sar_2^255-1_256'
+    , 'sar_2^255_1'
+    , 'sar_2^255_255'
+    , 'sar_2^255_256'
+    , 'sar_2^255_257'
+    , 'sar_2^256-1_0'
+    , 'sar_2^256-1_1'
+    , 'sar_2^256-1_255'
+    , 'sar_2^256-1_256'
+    , 'shl01-0100'
+    , 'shl01-0101'
+    , 'shl01-ff'
+    , 'shl01'
+    , 'shl10'
+    , 'shl11'
+    , 'shl_-1_0'
+    , 'shl_-1_1'
+    , 'shl_-1_255'
+    , 'shl_-1_256'
+    , 'shl_2^255-1_1'
+    , 'shr01'
+    , 'shr10'
+    , 'shr11'
+    , 'shr_-1_0'
+    , 'shr_-1_1'
+    , 'shr_-1_255'
+    , 'shr_-1_256'
+    , 'shr_2^255_1'
+    , 'shr_2^255_255'
+    , 'shr_2^255_256'
+    , 'shr_2^255_257'
+    ].
+
+
 
 %%====================================================================
 %% BitwiseLogicOperation tests

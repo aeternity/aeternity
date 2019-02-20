@@ -1,9 +1,7 @@
 -module(aec_governance).
 
 %% API
--export([sorted_protocol_versions/0,
-         protocols/0,
-         key_blocks_to_check_difficulty_count/0,
+-export([key_blocks_to_check_difficulty_count/0,
          median_timestamp_key_blocks/0,
          expected_block_mine_rate/0,
          block_mine_reward/1,
@@ -12,7 +10,7 @@
          byte_gas/0,
          beneficiary_reward_delay/0,
          locked_coins_holder_account/0,
-         minimum_gas_price/0,
+         minimum_gas_price/1,
          name_preclaim_expiration/0,
          name_claim_locked_fee/0,
          name_claim_max_expiration/0,
@@ -30,12 +28,16 @@
          contributors_messages_hash/0,
          vm_gas_table/0]).
 
--export_type([protocols/0]).
-
 -include("blocks.hrl").
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
+-ifdef(TEST).
+-define(NETWORK_ID, <<"local_testnet">>).
+-else.
 -define(NETWORK_ID, <<"ae_mainnet">>).
+-endif.
+
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 17).
 -define(TIMESTAMP_MEDIAN_BLOCKS, 11).
 -define(EXPECTED_BLOCK_MINE_RATE_MINUTES, 3).
@@ -60,27 +62,6 @@
 
 %% Account where locked / burnt coins are sent to.
 -define(LOCKED_COINS_ACCOUNT, <<0:32/unit:8>>).
-
-%% Maps consensus protocol version to minimum height at which such
-%% version is effective.  The height must be strictly increasing with
-%% the version.
--type protocols() :: #{Version::non_neg_integer() => aec_blocks:height()}.
-
-
-sorted_protocol_versions() ->
-    lists:sort(maps:keys(protocols())).
-
-protocols() ->
-    case aeu_env:user_map([<<"chain">>, <<"hard_forks">>]) of
-        undefined ->
-            #{aec_block_genesis:version() => aec_block_genesis:height()
-             };
-        {ok, M} ->
-            maps:from_list(
-              lists:map(
-                fun({K, V}) -> {binary_to_integer(K), V} end,
-                maps:to_list(M)))
-    end.
 
 key_blocks_to_check_difficulty_count() ->
     ?BLOCKS_TO_CHECK_DIFFICULTY_COUNT.
@@ -123,16 +104,21 @@ tx_base_gas(name_update_tx) -> ?TX_BASE_GAS;
 tx_base_gas(oracle_extend_tx) -> ?TX_BASE_GAS;
 tx_base_gas(oracle_query_tx) -> ?TX_BASE_GAS;
 tx_base_gas(oracle_register_tx) -> ?TX_BASE_GAS;
-tx_base_gas(oracle_response_tx) -> ?TX_BASE_GAS;
-tx_base_gas(_) ->
-    %% never accept unknown transaction types
-    block_gas_limit().
+tx_base_gas(oracle_response_tx) -> ?TX_BASE_GAS.
 
 byte_gas() ->
     ?BYTE_GAS.
 
-minimum_gas_price() ->
+-ifdef(TEST).
+minimum_gas_price(_Height) ->
     1.
+-else.
+minimum_gas_price(Height) ->
+    case aec_hard_forks:protocol_effective_at_height(Height) of
+        ?ROMA_PROTOCOL_VSN -> 1;
+        Vsn when Vsn >= ?MINERVA_PROTOCOL_VSN -> 1000000
+    end.
+-endif.
 
 %% In key blocks / generations
 %%
@@ -187,7 +173,13 @@ primop_base_gas(?PRIM_CALL_MAP_GET            ) -> 0;
 primop_base_gas(?PRIM_CALL_MAP_PUT            ) -> 0;
 primop_base_gas(?PRIM_CALL_MAP_DELETE         ) -> 0;
 primop_base_gas(?PRIM_CALL_MAP_SIZE           ) -> 0;
-primop_base_gas(?PRIM_CALL_MAP_TOLIST         ) -> 0.
+primop_base_gas(?PRIM_CALL_MAP_TOLIST         ) -> 0;
+primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY    ) -> 1300;    %% 700 for call + 1300 = 2000
+primop_base_gas(?PRIM_CALL_CRYPTO_SHA3           ) -> 30;   %% Same as gas cost for SHA3 instruction
+primop_base_gas(?PRIM_CALL_CRYPTO_SHA256         ) -> 30;
+primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B        ) -> 30;
+primop_base_gas(?PRIM_CALL_CRYPTO_SHA256_STRING  ) -> 30;
+primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B_STRING ) -> 30.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Naming system variables
@@ -227,9 +219,20 @@ add_network_id_last(Payload) ->
     NetworkId = get_network_id(),
     <<Payload/binary, NetworkId/binary>>.
 
+-ifdef(TEST).
+get_network_id() ->
+    %% Needed for eunit
+    case init:get_argument(network_id) of
+        {ok, [["local_roma_testnet"]]} -> <<"local_roma_testnet">>;
+        _ ->
+            aeu_env:user_config_or_env([<<"fork_management">>, <<"network_id">>],
+                                       aecore, network_id, ?NETWORK_ID)
+    end.
+-else.
 get_network_id() ->
     aeu_env:user_config_or_env([<<"fork_management">>, <<"network_id">>],
                                 aecore, network_id, ?NETWORK_ID).
+-endif.
 
 -spec contributors_messages_hash() -> binary().
 contributors_messages_hash() ->

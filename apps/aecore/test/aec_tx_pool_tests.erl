@@ -6,6 +6,7 @@
 -module(aec_tx_pool_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
 
 -define(TAB, aec_tx_pool_test_keys).
 
@@ -19,7 +20,7 @@ tx_pool_test_() ->
              ok = application:ensure_started(crypto),
              TmpKeysDir = aec_test_utils:aec_keys_setup(),
              aec_test_utils:start_chain_db(),
-             aec_test_utils:mock_genesis(),
+             aec_test_utils:mock_genesis_and_forks(),
              GB = aec_test_utils:genesis_block(),
              aec_chain_state:insert_block(GB),
              aec_test_utils:mock_block_target_validation(), %% Mocks aec_governance.
@@ -31,6 +32,7 @@ tx_pool_test_() ->
              meck:new(aeu_time, [passthrough]),
              meck:new(aec_jobs_queues),
              meck:expect(aec_jobs_queues, run, fun(_, F) -> F() end),
+             meck:expect(aec_governance, minimum_gas_price, 1, 1),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
@@ -41,7 +43,7 @@ tx_pool_test_() ->
              ok = application:stop(gproc),
              ets:delete(?TAB),
              aec_test_utils:stop_chain_db(),
-             aec_test_utils:unmock_genesis(),
+             aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:unmock_block_target_validation(), %% Unloads aec_governance mock.
              ok = aec_tx_pool:stop(),
              ok = aec_tx_pool_gc:stop(),
@@ -89,7 +91,7 @@ tx_pool_test_() ->
 
             aec_test_utils:stop_chain_db(),
             PK1 = new_pubkey(),
-            meck:expect(aec_genesis_block_settings, preset_accounts, 0, [{PK1, 100000}]),
+            meck:expect(aec_fork_block_settings, genesis_accounts, 0, [{PK1, 100000}]),
             {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
             aec_test_utils:start_chain_db(),
             ok = aec_chain_state:insert_block(GenesisBlock),
@@ -102,7 +104,7 @@ tx_pool_test_() ->
        fun() ->
             aec_test_utils:stop_chain_db(),
             PK = new_pubkey(),
-            meck:expect(aec_genesis_block_settings, preset_accounts, 0, [{PK, 100000}]),
+            meck:expect(aec_fork_block_settings, genesis_accounts, 0, [{PK, 100000}]),
             {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
             aec_test_utils:start_chain_db(),
             ok = aec_chain_state:insert_block(GenesisBlock),
@@ -148,7 +150,7 @@ tx_pool_test_() ->
 
             aec_test_utils:stop_chain_db(),
             PK1 = new_pubkey(),
-            meck:expect(aec_genesis_block_settings, preset_accounts, 0, [{PK1, 100000}]),
+            meck:expect(aec_fork_block_settings, genesis_accounts, 0, [{PK1, 100000}]),
             {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
             aec_test_utils:start_chain_db(),
             ok = aec_chain_state:insert_block(GenesisBlock),
@@ -219,7 +221,7 @@ tx_pool_test_() ->
                {ok, MinerPubKey} = aec_keys:pubkey(),
                PubKey1 = new_pubkey(),
                PubKey2 = new_pubkey(),
-               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                            [{PubKey1, 20001}, {PubKey2, 20000000}]),
                {Block0, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
@@ -301,7 +303,7 @@ tx_pool_test_() ->
                %% Prepare a chain with specific genesis block with some funds
                PubKey1 = new_pubkey(),
                PubKey2 = new_pubkey(),
-               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                   [{PubKey1, 100000}, {PubKey2, 100000}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
@@ -405,7 +407,7 @@ tx_pool_test_() ->
                  PK3 = new_pubkey(),
                  PK4 = new_pubkey(),
 
-                 meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+                 meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                              [{PK1, 100000}, {PK2, 100000}, {PK3, 100000}, {PK4, 100000}]),
                  {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                  aec_test_utils:start_chain_db(),
@@ -465,7 +467,7 @@ tx_pool_test_() ->
        fun() ->
                aec_test_utils:stop_chain_db(),
                PK = new_pubkey(),
-               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                            [{PK, 100000}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
@@ -577,7 +579,7 @@ tx_pool_test_() ->
        fun() ->
                aec_test_utils:stop_chain_db(),
                PK = new_pubkey(),
-               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                            [{PK, 100000}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
@@ -608,7 +610,7 @@ tx_pool_test_() ->
                %% Prepare a chain with specific genesis block with some funds
                PubKey1 = new_pubkey(),
                PubKey2 = new_pubkey(),
-               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                   [{PubKey1, 100000}, {PubKey2, 100000}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
@@ -651,12 +653,12 @@ tx_pool_test_() ->
                ?assertEqual({error, too_low_fee}, aec_tx_pool:push(STx4)),
 
                %% A transaction with too low gas price should be rejected
-               meck:expect(aec_governance, minimum_gas_price, 0, 1),
+               meck:expect(aec_governance, minimum_gas_price, 1, 1),
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 10, 1000000, 1))),
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 20, 1000000, 1))),
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 11, 2000000, 2))),
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 21, 2000000, 2))),
-               meck:expect(aec_governance, minimum_gas_price, 0, 2),
+               meck:expect(aec_governance, minimum_gas_price, 1, 2),
                ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 12, 2000000, 0))),
                ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 22, 2000000, 0))),
                ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 13, 2000000, 1))),
@@ -685,7 +687,7 @@ tx_pool_test_() ->
             aec_test_utils:stop_chain_db(),
 
             PubKey = new_pubkey(),
-            meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+            meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                         [{PubKey, 100000}]),
             {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
             aec_test_utils:start_chain_db(),
@@ -744,17 +746,18 @@ a_signed_tx(Sender, Recipient, Nonce, Fee, TTL) ->
 
 signed_ct_create_tx(Sender, Nonce, Fee, GasPrice) ->
     Spec =
-        #{ fee        => Fee
-         , owner_id   => aec_id:create(account, Sender)
-         , nonce      => Nonce
-         , code       => <<"NOT PROPER BYTE CODE">>
-         , vm_version => 1
-         , deposit    => 10
-         , amount     => 200
-         , gas        => 100000
-         , gas_price  => GasPrice
-         , call_data  => <<"NOT ENCODED ACCORDING TO ABI">>
-         , ttl        => 0
+        #{ fee         => Fee
+         , owner_id    => aec_id:create(account, Sender)
+         , nonce       => Nonce
+         , code        => <<"NOT PROPER BYTE CODE">>
+         , vm_version  => ?VM_AEVM_SOPHIA_2
+         , abi_version => ?ABI_SOPHIA_1
+         , deposit     => 10
+         , amount      => 200
+         , gas         => 100000
+         , gas_price   => GasPrice
+         , call_data   => <<"NOT ENCODED ACCORDING TO ABI">>
+         , ttl         => 0
          },
     {ok, Tx} = aect_create_tx:new(Spec),
     {ok, STx} = sign(Sender, Tx),
@@ -767,7 +770,7 @@ signed_ct_call_tx(Sender, Nonce, Fee, GasPrice) ->
          , contract_id => ContractId
          , caller_id   => aec_id:create(account, Sender)
          , nonce       => Nonce
-         , vm_version  => 1
+         , abi_version => 1
          , amount      => 100
          , gas         => 50000
          , gas_price   => GasPrice

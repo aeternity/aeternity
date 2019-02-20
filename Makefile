@@ -9,13 +9,15 @@ EUNIT_TEST_FLAGS ?=
 
 CT_TEST_FLAGS ?=
 ST_CT_FLAGS = --logdir system_test/logs
-ST_CT_DIR = --dir system_test
+ST_CT_DIR = --dir system_test/common
 ST_CT_LOCALDIR = --dir system_test/only_local
 
 SWAGGER_CODEGEN_CLI_V = 2.3.1
 SWAGGER_CODEGEN_CLI = swagger/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
 SWAGGER_CODEGEN = java -jar $(SWAGGER_CODEGEN_CLI)
 SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
+
+PACKAGE_SPEC_WIN32 ?= ../ci/appveyor/package.cfg
 
 all:	local-build
 
@@ -184,6 +186,15 @@ ct: internal-build
 		$(REBAR) ct $(CT_TEST_FLAGS) --sys_config config/test.config; \
 	fi
 
+ct-roma: KIND=test
+ct-roma: internal-build
+	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
+	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
+		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
+	else \
+		$(REBAR) ct $(CT_TEST_FLAGS) --sys_config config/test-roma.config; \
+	fi
+
 REVISION:
 	@git rev-parse HEAD > $@
 
@@ -191,10 +202,14 @@ eunit: KIND=test
 eunit: internal-build
 	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG)" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
 
+eunit-roma: KIND=test
+eunit-roma: internal-build
+	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_roma_testnet" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
+
 all-tests: eunit test
 
 docker:
-	@docker build . -t aeternity/aeternity:local
+	@docker build -t aeternity/aeternity:local .
 
 ST_DOCKER_FILTER=--filter label=epoch_system_test=true
 
@@ -215,9 +230,16 @@ smoke-test-run: KIND=system_test
 smoke-test-run: internal-build
 	@$(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
 
+system-smoke-test-deps:
+	$(MAKE) docker
+	docker pull "aeternity/aeternity:v1.4.0"
+
 local-system-test: KIND=system_test
 local-system-test: internal-build
-	@$(REBAR) as $(KIND) do ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) --dir system_test/only_local $(CT_TEST_FLAGS)
+	@$(REBAR) as $(KIND) do ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
+
+system-test-deps:
+	$(MAKE) system-smoke-test-deps
 
 system-test: KIND=system_test
 system-test: internal-build
@@ -248,6 +270,9 @@ python-single-uat: swagger
 
 python-release-test: swagger
 	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" TARBALL=$(TARBALL) VER=$(VER) $(MAKE) release-test; )
+
+python-package-win32-test:
+	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" PACKAGESPECFILE=$(PACKAGE_SPEC_WIN32) $(MAKE) package-win32-test; )
 
 swagger: config/swagger.yaml $(SWAGGER_CODEGEN_CLI) $(SWAGGER_ENDPOINTS_SPEC)
 	@$(SWAGGER_CODEGEN) generate -i $< -l erlang-server -o $(SWTEMP)
@@ -304,7 +329,6 @@ clean:
 	@rm -rf $$(ls -d _build/default/lib/* | grep -v '[^_]rocksdb') ## Dependency `rocksdb` takes long to build.
 
 distclean: clean
-	( cd apps/aecuckoo && $(MAKE) distclean; )
 	( cd otp_patches && $(MAKE) distclean; )
 	( cd $(HTTP_APP) && $(MAKE) distclean; )
 	@rm -rf _build/
@@ -325,7 +349,7 @@ multi-build: dev1-build
 .SECONDEXPANSION:
 
 internal-compile-deps: $$(KIND)
-	@$(REBAR) as $(KIND) compile --deps-only
+	@$(REBAR) as $(KIND) compile -d
 
 internal-package: $$(KIND)
 internal-package: REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
@@ -363,10 +387,11 @@ internal-distclean: $$(KIND)
 	dialyzer \
 	docker docker-clean \
 	test smoke-test smoke-test-run system-test aevm-test-deps\
+	system-smoke-test-deps system-test-deps \
 	kill killall \
 	clean distclean \
 	swagger swagger-docs swagger-check swagger-version-check \
 	rebar-lock-check \
 	compile-aes\
-	python-env python-ws-test python-uats python-single-uat python-release-test \
+	python-env python-ws-test python-uats python-single-uat python-release-test python-package-win32-test \
 	REVISION

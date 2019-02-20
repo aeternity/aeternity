@@ -294,8 +294,9 @@ write_block(Block, Hash) ->
 -spec get_block(binary()) -> aec_blocks:block().
 get_block(Hash) ->
     ?t(begin
-           [#aec_headers{value = Header}] =
+           [#aec_headers{value = DBHeader}] =
                mnesia:read(aec_headers, Hash),
+           Header = aec_headers:from_db_header(DBHeader),
            case aec_headers:type(Header) of
                key ->
                    aec_blocks:new_key_from_header(Header);
@@ -319,9 +320,9 @@ find_block_tx_hashes(Hash) ->
 
 get_header(Hash) ->
     ?t(begin
-           [#aec_headers{value = Header}] =
+           [#aec_headers{value = DBHeader}] =
                mnesia:read(aec_headers, Hash),
-           Header
+           aec_headers:from_db_header(DBHeader)
        end).
 
 has_block(Hash) ->
@@ -333,7 +334,8 @@ has_block(Hash) ->
 -spec find_block(binary()) -> 'none' | {'value', aec_blocks:block()}.
 find_block(Hash) ->
     ?t(case mnesia:read(aec_headers, Hash) of
-           [#aec_headers{value = Header}] ->
+           [#aec_headers{value = DBHeader}] ->
+               Header = aec_headers:from_db_header(DBHeader),
                case aec_headers:type(Header) of
                    key   -> {value, aec_blocks:new_key_from_header(Header)};
                    micro ->
@@ -352,7 +354,8 @@ find_block(Hash) ->
 -spec find_key_block(binary()) -> 'none' | {'value', aec_blocks:key_block()}.
 find_key_block(Hash) ->
     ?t(case mnesia:read(aec_headers, Hash) of
-           [#aec_headers{value = Header}] ->
+           [#aec_headers{value = DBHeader}] ->
+               Header = aec_headers:from_db_header(DBHeader),
                case aec_headers:type(Header) of
                    key   -> {value, aec_blocks:new_key_from_header(Header)};
                    micro -> none
@@ -363,19 +366,19 @@ find_key_block(Hash) ->
 -spec find_header(binary()) -> 'none' | {'value', aec_headers:header()}.
 find_header(Hash) ->
     case ?t(mnesia:read(aec_headers, Hash)) of
-        [#aec_headers{value = Header}] -> {value, Header};
+        [#aec_headers{value = DBHeader}] -> {value, aec_headers:from_db_header(DBHeader)};
         [] -> none
     end.
 
 -spec find_headers_at_height(pos_integer()) -> [aec_headers:header()].
 find_headers_at_height(Height) when is_integer(Height), Height >= 0 ->
-    ?t([H || #aec_headers{value = H}
+    ?t([aec_headers:from_db_header(H) || #aec_headers{value = H}
                  <- mnesia:index_read(aec_headers, Height, height)]).
 
 -spec find_headers_and_hash_at_height(pos_integer()) ->
                                              [{aec_headers:header(), binary()}].
 find_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
-    ?t([{H, K} || #aec_headers{key = K, value = H}
+    ?t([{aec_headers:from_db_header(H), K} || #aec_headers{key = K, value = H}
                  <- mnesia:index_read(aec_headers, Height, height)]).
 
 find_discovered_pof(Hash) ->

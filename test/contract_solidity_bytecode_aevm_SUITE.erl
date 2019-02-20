@@ -13,7 +13,7 @@
    ]).
 
 %% chain API exports
--export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
+-export([ spend/3, get_balance/2, call_contract/7, get_store/1, set_store/2,
           oracle_register/7, oracle_query/6, oracle_query_format/2, oracle_response_format/2,
           oracle_respond/5, oracle_get_answer/3,
           oracle_query_fee/2, oracle_query_response_ttl/3, oracle_get_question/3, oracle_extend/4]).
@@ -157,7 +157,7 @@ execute_call(Contract, CallData, ChainState, Options) ->
     #{Contract := Code} = ChainState,
     ChainState1 = ChainState#{ running => Contract },
     Trace = true,
-    Res = aect_evm:execute_call(
+    Res = do_execute_call(
           maps:merge(
           #{ code              => Code,
              store             => aect_contracts_store:new(),
@@ -175,7 +175,8 @@ execute_call(Contract, CallData, ChainState, Options) ->
              currentTimestamp  => 0,
              chainState        => ChainState1,
              chainAPI          => ?MODULE,
-             vm_version        =>  ?AEVM_01_Solidity_01}, Options),
+             vm_version        => ?VM_AEVM_SOLIDITY_1,
+             abi_version       => ?ABI_SOLIDITY_1}, Options),
           Trace),
     case Res of
         {ok, #{ out := RetVal, chain_state := S } = ResRec} ->
@@ -184,10 +185,67 @@ execute_call(Contract, CallData, ChainState, Options) ->
         Err = {error, _, _}      -> Err
     end.
 
+do_execute_call(#{ code := Code
+              , store := Store
+              , address := Address
+              , caller := Caller
+              , data := CallData
+              , gas := Gas
+              , gasPrice := GasPrice
+              , origin := Origin
+              , value := Value
+              , currentCoinbase := CoinBase
+              , currentDifficulty := Difficulty
+              , currentGasLimit := GasLimit
+              , currentNumber := Number
+              , currentTimestamp := TS
+              , chainState := ChainState
+              , chainAPI := ChainAPI
+              , vm_version := VmVersion
+              , abi_version := ABIVersion
+              } = CallDef, Trace) ->
+    %% TODO: Handle Contract In State.
+    Spec =
+        #{ exec => #{ code => Code
+                    , store => Store
+                    , address => Address
+                    , caller => Caller
+                    , data => CallData
+                    , call_data_type => maps:get(call_data_type, CallDef, undefined)
+                    , out_type => maps:get(out_type, CallDef, undefined)
+                    , gas => Gas
+                    , gasPrice => GasPrice
+                    , origin => Origin
+                    , value => Value
+                    },
+           env => #{ currentCoinbase => CoinBase
+                   , currentDifficulty => Difficulty
+                   , currentGasLimit => GasLimit
+                   , currentNumber => Number
+                   , currentTimestamp => TS
+                   , chainState => ChainState
+                   , chainAPI => ChainAPI
+                   , vm_version => VmVersion
+                   , abi_version => ABIVersion
+                   },
+           pre => #{}},
+    TraceSpec =
+        #{ trace_fun =>
+               fun(S,A) -> lager:debug(S,A) end
+         , trace => Trace
+         },
+    State = aevm_eeevm_state:init(Spec, TraceSpec),
+    Result = aevm_eeevm:eval(State),
+    Result.
+
+
+
+
 make_call(Contract, Fun, Args, Env, Options) ->
     #{ Contract := Code } = Env,
-    CallData = aect_evm:encode_call_data(Code, list_to_binary(atom_to_list(Fun)),
-                    Args),
+    CallData = aect_dispatch:encode_call_data(<<"evm">>, Code,
+                                              list_to_binary(atom_to_list(Fun)),
+                                              Args),
     execute_call(Contract, CallData, Env, Options).
 
 
@@ -242,7 +300,7 @@ get_store(#{ running := Contract, store := Store }) ->
 set_store(Data, State = #{ running := Contract, store := Store }) ->
     State#{ store => Store#{ Contract => Data } }.
 
-call_contract(<<Contract:256>>, Gas, Value, CallData, _, S = #{running := Caller}) ->
+call_contract(<<Contract:256>>, Gas, Value, CallData, _, _, S = #{running := Caller}) ->
     case maps:is_key(Contract, S) of
         true ->
             #{environment := Env0} = S,

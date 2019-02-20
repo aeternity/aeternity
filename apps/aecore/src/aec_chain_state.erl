@@ -93,10 +93,11 @@
         , calculate_gas_fee/1
         ]).
 
--ifdef(TEST). 
+-ifdef(TEST).
 -export([calc_rewards/6]).
 -endif.
 
+-include_lib("aeminer/include/aeminer.hrl").
 -include("blocks.hrl").
 
 -define(internal_error(____E____), {aec_chain_state_error, ____E____}).
@@ -485,7 +486,7 @@ assert_key_block_target(Node, Headers) ->
         {ok, PrevNode} ->
             Delta         = aec_governance:key_blocks_to_check_difficulty_count() + 1,
             Height        = node_height(Node),
-            GenesisHeight = aec_headers:height(aec_block_genesis:genesis_header()),
+            GenesisHeight = aec_block_genesis:height(),
             case Delta >= Height - GenesisHeight of
                 true ->
                     %% We only need to verify that the target is equal to its predecessor.

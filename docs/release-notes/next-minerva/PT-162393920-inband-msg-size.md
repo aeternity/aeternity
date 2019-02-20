@@ -1,0 +1,1 @@
+* Increases the maximum size of generic state channel messages to 65535 bytes.

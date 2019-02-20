@@ -34,21 +34,87 @@
 %% -- Running contract code off chain ---------------------------------------
 
 %% TODO: replace language string with vm_version number.
-call(<<"sophia-address">>, ContractKey, Function, Argument) ->
-    aect_sophia:on_chain_call(ContractKey, Function, Argument);
-call(<<"evm">>, Code, _, CallData) ->
-    aect_evm:simple_call_common(Code, CallData, ?AEVM_01_Solidity_01);
-call(_, _, _, _) ->
+encode_call_data(<<"sophia">>, Code, Function, Argument) ->
+    aect_sophia:encode_call_data(Code, Function, Argument);
+encode_call_data(<<"evm">>,_Code, Function, Argument) ->
+    %% TODO: Check that Function exists in Contract.
+    {ok, <<Function/binary, Argument/binary>>};
+encode_call_data(_, _, _, _) ->
     {error, <<"Unknown call ABI">>}.
 
 %% TODO: replace language string with vm_version number.
-
-encode_call_data(<<"sophia">>, Code, Function, Argument) ->
-    aect_sophia:encode_call_data(Code, Function, Argument);
-encode_call_data(<<"evm">>, Code, Function, Argument) ->
-    aect_evm:encode_call_data(Code, Function, Argument);
-encode_call_data(_, _, _, _) ->
+call(<<"sophia-address">>, ContractKey, Function, Argument) ->
+    sophia_call(ContractKey, Function, Argument);
+call(<<"evm">>, Code, _, CallData) ->
+    solidity_call(Code, CallData);
+call(_, _, _, _) ->
     {error, <<"Unknown call ABI">>}.
+
+solidity_call(Code, CallData) ->
+    CTVersion = #{vm => ?VM_AEVM_SOLIDITY_1, abi => ?ABI_SOLIDITY_1},
+    CallDataType   = undefined,
+    OutType        = undefined,
+    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    Owner          = <<123456:32/unit:8>>,
+    Deposit        = 0,
+    Contract       = aect_contracts:new(Owner, 1, CTVersion, Code, Deposit),
+    Store          = aect_contracts:state(Contract),
+    ContractKey    = aect_contracts:pubkey(Contract),
+    Trees1         = aect_utils:insert_contract_in_trees(Contract, Trees),
+    call_common(CallData, CallDataType, OutType, ContractKey, Code, Store,
+                TxEnv, Trees1, CTVersion).
+
+sophia_call(ContractKey, Function, Argument) ->
+    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    ContractsTree  = aec_trees:contracts(Trees),
+    Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
+    SerializedCode = aect_contracts:code(Contract),
+    Store          = aect_contracts:state(Contract),
+    CTVersion      = aect_contracts:ct_version(Contract),
+    ContractMap    = aect_sophia:deserialize(SerializedCode),
+    case aeso_compiler:create_calldata(ContractMap,
+                                       binary_to_list(Function),
+                                       binary_to_list(Argument)) of
+        {error, Error} ->
+            {error, list_to_binary(io_lib:format("~p", [Error]))};
+        {ok, CallData, CallDataType, OutType} ->
+            #{ byte_code := Code} = ContractMap,
+            call_common(CallData, CallDataType, OutType, ContractKey, Code,
+                        Store, TxEnv, Trees, CTVersion)
+    end.
+
+call_common(CallData, CallDataType, OutType, ContractPubkey, Code, Store,
+            TxEnv, Trees, CTVersion) ->
+    ContractId = aec_id:create(contract, ContractPubkey),
+    Height = aetx_env:height(TxEnv),
+    GasPrice = 1,
+    Caller = <<123:?PUB_SIZE/unit:8>>,
+    CallerId = aec_id:create(account, Caller),
+    CallIn = aect_call:new(CallerId,_Nonce=0, ContractId, Height, GasPrice),
+    Spec = #{ code           => Code
+            , call           => CallIn
+            , store          => Store
+            , contract       => ContractPubkey
+            , caller         => Caller
+            , call_data      => CallData
+            , call_data_type => CallDataType
+            , call_stack     => []
+            , off_chain      => false
+            , out_type       => OutType
+            , gas            => 100000000000000000
+            , gas_price      => GasPrice
+            , origin         => <<123:?PUB_SIZE/unit:8>>
+            , amount         => 0
+            , trees          => Trees
+            , tx_env         => TxEnv
+            },
+    {Call,_TreesOut} = run_common(CTVersion, Spec),
+    ReturnValue = aect_call:return_value(Call),
+    case aect_call:return_type(Call) of
+        ok     -> {ok, ReturnValue};
+        error  -> {error, ReturnValue};
+        revert -> {error, ReturnValue}
+    end.
 
 
 %% -- Running contract code on chain ---------------------------------------
@@ -56,30 +122,32 @@ encode_call_data(_, _, _, _) ->
 %% Call the contract and update the call object with the return value and gas
 %% used.
 
--spec run(byte(), map()) -> {aect_call:call(), aec_trees:trees()}.
-run(?AEVM_01_Sophia_01, #{code := SerializedCode} = CallDef) ->
+-spec run(map(), map()) -> {aect_call:call(), aec_trees:trees()}.
+run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_VM_SOPHIA(VM) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
+    %% TODO: update aeso_abi and pass Version
     case aeso_abi:check_calldata(maps:get(call_data, CallDef), TypeInfo) of
         {ok, CallDataType, OutType} ->
             CallDef1 = CallDef#{code => Code,
                                 call_data_type => CallDataType,
                                 out_type => OutType},
-            run_common(CallDef1, ?AEVM_01_Sophia_01);
+            run_common(Version, CallDef1);
         {error, What} ->
             Gas = maps:get(gas, CallDef),
             Call = maps:get(call, CallDef),
             Trees = maps:get(trees, CallDef),
             {create_call(Gas, error, What, [], Call), Trees}
     end;
-run(?AEVM_01_Solidity_01, CallDef) ->
-    run_common(CallDef, ?AEVM_01_Solidity_01);
+run(#{vm := ?VM_AEVM_SOLIDITY_1, abi := ?ABI_SOLIDITY_1} = Version, CallDef) ->
+    run_common(Version, CallDef);
 run(_, #{ call := Call} = _CallDef) ->
     %% TODO:
     %% Wrong VM/ABI version just return an unchanged call.
     Call.
 
-run_common(#{  amount      := Value
+run_common(#{vm := VMVersion, abi := ABIVersion},
+           #{  amount      := Value
              , call        := Call
              , call_data   := CallData
              , call_stack  := CallStack
@@ -91,10 +159,12 @@ run_common(#{  amount      := Value
              , gas_price   := GasPrice
              , trees       := Trees
              , tx_env      := TxEnv0
-             } = CallDef, VMVersion) ->
+             , origin      := <<OriginAddr0:?PUB_SIZE/unit:8>>
+             } = CallDef) ->
     TxEnv = aetx_env:set_context(TxEnv0, aetx_contract),
-    ChainState0 = chain_state(CallDef, TxEnv),
+    ChainState0 = chain_state(CallDef, TxEnv, VMVersion),
     <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
+    OriginAddr = get_origin(VMVersion, CallerAddr, OriginAddr0),
     Env = #{currentCoinbase   => BeneficiaryInt,
             currentDifficulty => aetx_env:difficulty(TxEnv),
             currentGasLimit   => aec_governance:block_gas_limit(),
@@ -102,19 +172,20 @@ run_common(#{  amount      := Value
             currentTimestamp  => aetx_env:time_in_msecs(TxEnv),
             chainState        => ChainState0,
             chainAPI          => aec_vm_chain,
-            vm_version        => VMVersion},
-    Exec = #{code       => Code,
-             store      => Store,
-             address    => Address,
-             caller     => CallerAddr,
+            vm_version        => VMVersion,
+            abi_version       => ABIVersion},
+    Exec = #{code           => Code,
+             store          => Store,
+             address        => Address,
+             caller         => CallerAddr,
              call_data_type => maps:get(call_data_type, CallDef, undefined),
-             out_type   => maps:get(out_type, CallDef, undefined),
-             data       => CallData,
-             gas        => Gas,
-             gasPrice   => GasPrice,
-             origin     => CallerAddr,
-             value      => Value,
-             call_stack => CallStack
+             out_type       => maps:get(out_type, CallDef, undefined),
+             data           => CallData,
+             gas            => Gas,
+             gasPrice       => GasPrice,
+             origin         => OriginAddr,
+             value          => Value,
+             call_stack     => CallStack
             },
     Spec = #{ env => Env,
               exec => Exec,
@@ -170,6 +241,7 @@ error_to_binary(unknown_error) -> <<"unknown_error">>;
 error_to_binary(unknown_contract) -> <<"unknown_contract">>;
 error_to_binary(unknown_function) -> <<"unknown_function">>;
 error_to_binary(reentrant_call) -> <<"reentrant_call">>;
+error_to_binary(arithmetic_error) -> <<"arithmetic_error">>;
 error_to_binary({illegal_instruction, OP}) when is_integer(OP), 0 =< OP, OP =< 255 ->
     X = <<_:2/bytes>> = list_to_binary(io_lib:format("~2.16.0B",[OP])),
     <<"illegal_instruction_", X:2/bytes>>;
@@ -179,12 +251,20 @@ error_to_binary(E) ->
 
 chain_state(#{ contract    := ContractPubKey
              , off_chain   := false
-             , trees       := Trees}, TxEnv) ->
-    aec_vm_chain:new_state(Trees, TxEnv, ContractPubKey);
+             , trees       := Trees}, TxEnv, VMVersion) ->
+    aec_vm_chain:new_state(Trees, TxEnv, ContractPubKey, VMVersion);
 chain_state(#{ contract    := ContractPubKey
              , off_chain   := true
-             , trees       := Trees} = CallDef, TxEnv) ->
+             , trees       := Trees} = CallDef, TxEnv, VMVersion) ->
             OnChainTrees = maps:get(on_chain_trees, CallDef),
     aec_vm_chain:new_offchain_state(Trees, OnChainTrees, TxEnv,
-                                    ContractPubKey).
+                                    ContractPubKey, VMVersion).
 
+get_origin(VMVersion, CallerAddr, OriginAddr) ->
+    case VMVersion of
+        ?VM_AEVM_SOPHIA_1 ->
+            %% Backwards compatible bug
+            CallerAddr;
+        _ ->
+            OriginAddr
+    end.

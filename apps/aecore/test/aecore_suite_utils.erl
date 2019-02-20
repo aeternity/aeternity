@@ -386,7 +386,7 @@ sign_on_node(Id, Tx) ->
     sign_on_node(node_tuple(Id), Tx).
 
 forks() ->
-    Vs = aec_governance:sorted_protocol_versions(),
+    Vs = aec_hard_forks:sorted_protocol_versions(),
     Hs = lists:seq(0, (length(Vs) - 1)),
     maps:from_list(lists:zip(Vs, Hs)).
 
@@ -463,7 +463,7 @@ grep_error(FileName) ->
                string:find(Entry, "[error]") =/= nomatch ].
 
 times_in_epoch_log(Node, Config, Str) ->
-    LogFile = filename:join(log_dir(Node, Config), "epoch.log"),
+    LogFile = filename:join(log_dir(Node, Config), "aeternity.log"),
     ct:log("Reading logfile ~p", [LogFile]),
     {ok, Bin} = file:read_file(LogFile),
     Entries = string:lexemes(Bin, [$\r,$\n]),
@@ -471,8 +471,8 @@ times_in_epoch_log(Node, Config, Str) ->
                string:find(Entry, Str) =/= nomatch ].
 
 expected_logs() ->
-    ["epoch.log", "epoch_mining.log", "epoch_sync.log",
-     "epoch_pow_cuckoo.log", "epoch_metrics.log"].
+    ["aeternity.log", "aeternity_mining.log", "aeternity_sync.log",
+     "aeternity_pow_cuckoo.log", "aeternity_metrics.log"].
 
 await_sync_complete(T0, Nodes) ->
     [aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],
@@ -576,7 +576,7 @@ setup_node(N, Top, Epoch, Config) ->
     symlink(filename:join(Epoch, "lib"), filename:join(DDir, "lib")),
     symlink(filename:join(Epoch, "patches"), filename:join(DDir, "patches")),
     {ok, VerContents} = file:read_file(filename:join(Epoch, "VERSION")),
-    [VerB |_ ] = binary:split(VerContents, [<<"\n">>], [global]),
+    [VerB |_ ] = binary:split(VerContents, [<<"\n">>, <<"\r">>], [global]),
     Version = binary_to_list(VerB),
     %%
     CfgD = filename:join([Top, "config/", N]),
@@ -592,7 +592,7 @@ setup_node(N, Top, Epoch, Config) ->
     ConfigFilename = proplists:get_value(config_name, Config, "default") ++ ".config",
     cp_file(filename:join(TestD, ConfigFilename),
             filename:join(DDir , ConfigFilename)),
-    aec_test_utils:copy_genesis_dir(Epoch, DDir).
+    aec_test_utils:copy_forks_dir(Epoch, DDir).
 
 
 cp_dir(From, To) ->
@@ -639,8 +639,12 @@ match_mode(A, B) ->
     end.
 
 cp_file(From, To) ->
-    {ok, _} = file:copy(From, To),
-    ct:log("Copied ~s to ~s", [From, To]),
+    case file:copy(From, To) of
+        {ok, _} ->
+            ct:log("Copied ~s to ~s", [From, To]);
+        Err ->
+            ct:fail("Error copying ~s to ~s: ~p", [From, To, Err])
+    end,
     ok.
 
 symlink(From, To) ->
@@ -739,6 +743,7 @@ write_config(F, Config) ->
 default_config(N, Config) ->
     {A,B,C} = os:timestamp(),
     {N, {_PrivKey, PubKey}} = lists:keyfind(N, 1, sign_keys()),
+    {ok, NetworkId} = application:get_env(aecore, network_id),
     #{<<"keys">> =>
           #{<<"dir">> => iolist_to_binary(keys_dir(N, Config)),
             <<"peer_password">> => iolist_to_binary(io_lib:format("~w.~w.~w", [A,B,C]))},
@@ -749,7 +754,9 @@ default_config(N, Config) ->
             <<"beneficiary">> => aehttp_api_encoder:encode(account_pubkey, PubKey),
             <<"beneficiary_reward_delay">> => 2},
       <<"chain">> =>
-          #{<<"persist">> => true}
+          #{<<"persist">> => true},
+      <<"fork_management">> =>
+          #{<<"network_id">> => NetworkId}
      }.
 
 epoch_config_dir(N, Config) ->

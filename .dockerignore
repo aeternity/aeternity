@@ -18,9 +18,6 @@
 !README.md
 !LICENSE
 !scripts/epoch
-apps/aecuckoo/c_src
-apps/aecuckoo/priv/bin
-apps/aecuckoo/priv/lib
 apps/aecore/priv/keys
 apps/aehttp/priv/swagger-ui
 apps/aehttp/priv/swagger-docs

@@ -1,0 +1,25 @@
+{{#aeternity_config}}
+---
+peers: []
+
+http:
+    external:
+        port: {{services.ext_http.port}}
+
+chain:
+    persist: true
+    hard_forks:
+        "1": 0
+
+mining:
+    beneficiary: "ak_2VoAhMd7tVJrDYM5vPJwFRjueZyirDJumVJNeBWL9j1eNTHsRx"
+    autostart: true
+    expected_mine_rate: 1000
+    cuckoo:
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+
+fork_management:
+    network_id: "ae_system_test"
+{{/aeternity_config}}

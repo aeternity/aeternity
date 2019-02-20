@@ -8,6 +8,8 @@
 %% common_test exports
 -export([ all/0
         , groups/0
+        , init_per_testcase/2
+        , end_per_testcase/2
         ]).
 
 %% test case exports
@@ -41,6 +43,7 @@
 -include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("apps/aeoracle/include/oracle_txs.hrl").
 -include_lib("apps/aecontract/src/aecontract.hrl").
+-include_lib("apps/aecontract/include/hard_forks.hrl").
 
 -define(GENESIS_HEIGHT, aec_block_genesis:height()).
 
@@ -82,6 +85,18 @@ groups() ->
                    ]}
     ].
 
+init_per_testcase(register_oracle_negative, Config) ->
+    meck:new(aec_hard_forks, [passthrough]),
+    Config;
+init_per_testcase(_, Config) ->
+    Config.
+
+end_per_testcase(register_oracle_negative,_Config) ->
+    meck:unload(aec_hard_forks),
+    ok;
+end_per_testcase(_,_Config) ->
+    ok.
+
 %%%===================================================================
 %%% Register oracle
 %%%===================================================================
@@ -117,11 +132,26 @@ register_oracle_negative(_Cfg) ->
     {error, ttl_expired} = aetx:process(RTx5, Trees, aetx_env:set_height(Env, 2)),
 
     %% Test wrong VM version
-    RTx6 = aeo_test_utils:register_tx(PubKey, #{vm_version => 42}, S1),
-    RTx7 = aeo_test_utils:register_tx(PubKey, #{vm_version => ?AEVM_01_Solidity_01}, S1),
-    {error, bad_vm_version} = aetx:process(RTx6, Trees, aetx_env:set_height(Env, 2)),
-    {error, bad_vm_version} = aetx:process(RTx7, Trees, aetx_env:set_height(Env, 2)),
+    RTx6 = aeo_test_utils:register_tx(PubKey, #{abi_version => 42}, S1),
+    RTx7 = aeo_test_utils:register_tx(PubKey, #{abi_version => ?ABI_SOLIDITY_1}, S1),
+    {error, bad_abi_version} = aetx:process(RTx6, Trees, aetx_env:set_height(Env, 2)),
+    {error, bad_abi_version} = aetx:process(RTx7, Trees, aetx_env:set_height(Env, 2)),
 
+    %% Test bad format strings
+    ABISophia = #{abi_version => ?ABI_SOPHIA_1,
+                  query_format => aeso_heap:to_binary(word),
+                  response_format => aeso_heap:to_binary(word)
+                 },
+    RTx8 = aeo_test_utils:register_tx(PubKey, ABISophia#{query_format => <<"foo">>}, S1),
+    RTx9 = aeo_test_utils:register_tx(PubKey, ABISophia#{response_format => <<"foo">>}, S1),
+    RTx10 = aeo_test_utils:register_tx(PubKey, ABISophia, S1),
+    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?ROMA_PROTOCOL_VSN end),
+    ?assertMatch({ok, _}, aetx:process(RTx8, Trees, Env)),
+    ?assertMatch({ok, _}, aetx:process(RTx9, Trees, Env)),
+    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?MINERVA_PROTOCOL_VSN end),
+    ?assertEqual({error, bad_query_format}, aetx:process(RTx8, Trees, Env)),
+    ?assertEqual({error, bad_response_format}, aetx:process(RTx9, Trees, Env)),
+    ?assertMatch({ok, _}, aetx:process(RTx10, Trees, Env)),
     ok.
 
 register_oracle_negative_dynamic_fee(_Cfg) ->
@@ -360,8 +390,8 @@ query_oracle_negative_dynamic_fee(Cfg) ->
 
 query_oracle_type_check(_Cfg) ->
     RFmt = aeso_heap:to_binary(word),
-    F = fun(QFmt, Query, VMVersion) ->
-                {OracleKey, S}  = register_oracle([], #{vm_version => VMVersion,
+    F = fun(QFmt, Query, ABIVersion) ->
+                {OracleKey, S}  = register_oracle([], #{abi_version => ABIVersion,
                                                         query_format => QFmt,
                                                         response_format => RFmt
                                                        }),
@@ -377,17 +407,18 @@ query_oracle_type_check(_Cfg) ->
     IntFmt = aeso_heap:to_binary(word),
     String = aeso_heap:to_binary(<<"foo">>),
     StringFmt = aeso_heap:to_binary(string),
-    ?assertEqual({error, bad_format}, F(StringFmt, Int, ?AEVM_01_Sophia_01)),
-    ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ?AEVM_01_Sophia_01)),
-    ?assertEqual({error, bad_format}, F(IntFmt, <<>>, ?AEVM_01_Sophia_01)),
-    ?assertEqual({error, bad_format}, F(IntFmt, String, ?AEVM_01_Sophia_01)),
-    ?assertMatch({ok, _},             F(IntFmt, Int, ?AEVM_01_Sophia_01)),
-    ?assertMatch({ok, _},             F(StringFmt, String, ?AEVM_01_Sophia_01)),
+    ABI = aect_test_utils:latest_sophia_abi_version(),
+    ?assertEqual({error, bad_format}, F(StringFmt, Int, ABI)),
+    ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ABI)),
+    ?assertEqual({error, bad_format}, F(IntFmt, <<>>, ABI)),
+    ?assertEqual({error, bad_format}, F(IntFmt, String, ABI)),
+    ?assertMatch({ok, _},             F(IntFmt, Int, ABI)),
+    ?assertMatch({ok, _},             F(StringFmt, String, ABI)),
     %% For ?AEVM_NO_VM the format is always ok
-    ?assertMatch({ok, _},             F(StringFmt, String, ?AEVM_NO_VM)),
-    ?assertMatch({ok, _},             F(IntFmt, String, ?AEVM_NO_VM)),
-    ?assertMatch({ok, _},             F(StringFmt, Int, ?AEVM_NO_VM)),
-    ?assertMatch({ok, _},             F(IntFmt, String, ?AEVM_NO_VM)),
+    ?assertMatch({ok, _},             F(StringFmt, String, ?ABI_NO_VM)),
+    ?assertMatch({ok, _},             F(IntFmt, String, ?ABI_NO_VM)),
+    ?assertMatch({ok, _},             F(StringFmt, Int, ?ABI_NO_VM)),
+    ?assertMatch({ok, _},             F(IntFmt, String, ?ABI_NO_VM)),
     ok.
 
 query_oracle(Cfg) ->
@@ -539,8 +570,8 @@ query_response_fee_depends_on_response_size(Cfg) ->
 query_response_type_check(_Cfg) ->
     QFmt  = aeso_heap:to_binary(string),
     Query = aeso_heap:to_binary(<<"who?">>),
-    F = fun(RFmt, Resp, VMVersion) ->
-                RegisterOpts = #{vm_version => VMVersion,
+    F = fun(RFmt, Resp, ABIVersion) ->
+                RegisterOpts = #{abi_version => ABIVersion,
                                  query_format => QFmt,
                                  response_format => RFmt},
                 QueryOpts = #{query => Query},
@@ -555,17 +586,18 @@ query_response_type_check(_Cfg) ->
     IntFmt = aeso_heap:to_binary(word),
     String = aeso_heap:to_binary(<<"foo">>),
     StringFmt = aeso_heap:to_binary(string),
-    ?assertEqual({error, bad_format}, F(StringFmt, Int, ?AEVM_01_Sophia_01)),
-    ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ?AEVM_01_Sophia_01)),
-    ?assertEqual({error, bad_format}, F(IntFmt, <<>>, ?AEVM_01_Sophia_01)),
-    ?assertEqual({error, bad_format}, F(IntFmt, String, ?AEVM_01_Sophia_01)),
-    ?assertMatch({ok, _},             F(IntFmt, Int, ?AEVM_01_Sophia_01)),
-    ?assertMatch({ok, _},             F(StringFmt, String, ?AEVM_01_Sophia_01)),
-    %% For ?AEVM_NO_VM the format is always ok
-    ?assertMatch({ok, _},             F(StringFmt, String, ?AEVM_NO_VM)),
-    ?assertMatch({ok, _},             F(IntFmt, String, ?AEVM_NO_VM)),
-    ?assertMatch({ok, _},             F(StringFmt, Int, ?AEVM_NO_VM)),
-    ?assertMatch({ok, _},             F(IntFmt, String, ?AEVM_NO_VM)),
+    ABI = aect_test_utils:latest_sophia_abi_version(),
+    ?assertEqual({error, bad_format}, F(StringFmt, Int, ABI)),
+    ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ABI)),
+    ?assertEqual({error, bad_format}, F(IntFmt, <<>>, ABI)),
+    ?assertEqual({error, bad_format}, F(IntFmt, String, ABI)),
+    ?assertMatch({ok, _},             F(IntFmt, Int, ABI)),
+    ?assertMatch({ok, _},             F(StringFmt, String, ABI)),
+    %% For ?ABI_NO_VM the format is always ok
+    ?assertMatch({ok, _},             F(StringFmt, String, ?ABI_NO_VM)),
+    ?assertMatch({ok, _},             F(IntFmt, String, ?ABI_NO_VM)),
+    ?assertMatch({ok, _},             F(StringFmt, Int, ?ABI_NO_VM)),
+    ?assertMatch({ok, _},             F(IntFmt, String, ?ABI_NO_VM)),
     ok.
 
 %%%===================================================================
@@ -703,3 +735,4 @@ do_prune_until(N1, N1, Trees) ->
     aeo_state_tree:prune(N1, Trees);
 do_prune_until(N1, N2, Trees) ->
     do_prune_until(N1 + 1, N2, aeo_state_tree:prune(N1, Trees)).
+

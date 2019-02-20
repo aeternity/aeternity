@@ -32,7 +32,7 @@
           spend/2,
           get_balance/2,
           get_contract_fun_types/4,
-          call_contract/6,
+          call_contract/7,
           get_store/1,
           set_store/2,
           oracle_register_tx/7,
@@ -53,6 +53,10 @@
 -include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
 
+-define(ABI_SOPHIA, aect_test_utils:latest_sophia_abi_version()).
+-define(VM_SOPHIA, aect_test_utils:latest_sophia_vm_version()).
+
+
 all() -> [ execute_identity_fun_from_sophia_file,
            sophia_remote_call,
            sophia_remote_call_negative,
@@ -70,13 +74,8 @@ all() -> [ execute_identity_fun_from_sophia_file,
            oracles].
 
 compile_contract(Name) ->
-    %% TODO get this path from the common test configuration
-    CodeDir           = filename:join(code:lib_dir(aevm), "../../extras/test/contracts"),
-    FileName          = filename:join(CodeDir, lists:concat([Name, ".aes"])),
-    {ok, ContractBin} = file:read_file(FileName),
-    Options           = <<>>,
-    %% Options           = <<"pp_ast pp_icode pp_assembler pp_bytecode">>,
-    {ok, Serialized} = aect_sophia:compile(ContractBin, Options),
+    FileName = filename:join(["contracts", atom_to_list(Name) ++ ".aes"]),
+    {ok, Serialized} = aect_test_utils:compile_contract(FileName),
     Serialized.
 
 %% execute_call(Contract, CallData, ChainState) ->
@@ -97,7 +96,7 @@ execute_call(Contract, CallData, ChainState, Options) ->
 
 execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState, Options) ->
     Trace = false,
-    Res = aect_evm:execute_call(
+    Res = do_execute_call(
           maps:merge(
           #{ code              => Code,
              store             => get_store(ChainState),
@@ -117,7 +116,8 @@ execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState, Opti
              currentTimestamp  => 0,
              chainState        => ChainState,
              chainAPI          => ?MODULE,
-             vm_version        => ?AEVM_01_Sophia_01}, Options),
+             vm_version        => ?VM_SOPHIA,
+             abi_version       => ?ABI_SOPHIA}, Options),
           Trace),
     case Res of
         {ok, #{ out := RetVal, chain_state := S }} ->
@@ -125,6 +125,60 @@ execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState, Opti
         Err = {error, _, _}      -> Err;
         Rev = {revert,_, _}      -> Rev
     end.
+
+do_execute_call(#{ code := Code
+                 , store := Store
+                 , address := Address
+                 , caller := Caller
+                 , data := CallData
+                 , gas := Gas
+                 , gasPrice := GasPrice
+                 , origin := Origin
+                 , value := Value
+                 , currentCoinbase := CoinBase
+                 , currentDifficulty := Difficulty
+                 , currentGasLimit := GasLimit
+                 , currentNumber := Number
+                 , currentTimestamp := TS
+                 , chainState := ChainState
+                 , chainAPI := ChainAPI
+                 , vm_version := VmVersion
+                 , abi_version := ABIVersion
+                 } = CallDef, Trace) ->
+    %% TODO: Handle Contract In State.
+    Spec =
+        #{ exec => #{ code => Code
+                    , store => Store
+                    , address => Address
+                    , caller => Caller
+                    , data => CallData
+                    , call_data_type => maps:get(call_data_type, CallDef, undefined)
+                    , out_type => maps:get(out_type, CallDef, undefined)
+                    , gas => Gas
+                    , gasPrice => GasPrice
+                    , origin => Origin
+                    , value => Value
+                    },
+           env => #{ currentCoinbase => CoinBase
+                   , currentDifficulty => Difficulty
+                   , currentGasLimit => GasLimit
+                   , currentNumber => Number
+                   , currentTimestamp => TS
+                   , chainState => ChainState
+                   , chainAPI => ChainAPI
+                   , vm_version => VmVersion
+                   , abi_version => ABIVersion
+                   },
+           pre => #{}},
+    TraceSpec =
+        #{ trace_fun =>
+               fun(S,A) -> lager:debug(S,A) end
+         , trace => Trace
+         },
+    State = aevm_eeevm_state:init(Spec, TraceSpec),
+    Result = aevm_eeevm:eval(State),
+    Result.
+
 
 make_call(Contract, Fun, Type, Args, Env, Options) ->
     #{ Contract := Code } = Env,
@@ -138,13 +192,13 @@ make_call(Contract, Fun, Type, Args, Env, Options) ->
 create_contract(Address, Code, ArgType, Args, Env) ->
     Env1 = Env#{Address => Code},
     {ok, InitS, Env2} = make_call(Address, init, ArgType, Args, Env1, #{}),
-    {ok, Store} = aevm_eeevm_store:from_sophia_state(InitS),
+    {ok, Store} = aevm_eeevm_store:from_sophia_state(#{vm => ?VM_SOPHIA, abi => ?ABI_SOPHIA}, InitS),
     set_store(Store, Env2).
 
 create_contract(Address, Code, ArgType, Args, Env, Options) ->
     Env1 = Env#{Address => Code},
     {ok, InitS, Env2} = make_call(Address, init, ArgType, Args, Env1, Options),
-    {ok, Store} = aevm_eeevm_store:from_sophia_state(InitS),
+    {ok, Store} = aevm_eeevm_store:from_sophia_state(#{vm => ?VM_SOPHIA, abi => ?ABI_SOPHIA}, InitS),
     set_store(Store, Env2).
 
 successful_call_(Contract, Type, Fun, ArgType, Args, Env) ->
@@ -540,7 +594,7 @@ get_contract_fun_types(<<Contract:256>>,_VMVersion, TypeHash, S) ->
     end.
 
 
-call_contract(<<Contract:256>>, Gas, Value, CallData, _, S = #{running := Caller}) ->
+call_contract(<<Contract:256>>, Gas, Value, CallData, _, _, S = #{running := Caller}) ->
     case maps:is_key(Contract, S) of
         true ->
             #{environment := Env0} = S,
@@ -558,7 +612,7 @@ call_contract(<<Contract:256>>, Gas, Value, CallData, _, S = #{running := Caller
             {aevm_chain_api:call_exception(unknown_contract, Gas), S}
     end.
 
-oracle_register_tx(PubKey = <<Account:256>>, QueryFee, TTL, QFormat, RFormat, VMVersion,_State) ->
+oracle_register_tx(PubKey = <<Account:256>>, QueryFee, TTL, QFormat, RFormat, ABIVersion,_State) ->
     io:format("oracle_register(~p, ~p, ~p, ~p, ~p)\n", [Account, QueryFee, TTL, QFormat, RFormat]),
     Spec =
         #{account_id      => aec_id:create(account, PubKey),
@@ -569,7 +623,7 @@ oracle_register_tx(PubKey = <<Account:256>>, QueryFee, TTL, QFormat, RFormat, VM
           oracle_ttl      => TTL,
           ttl             => 0,
           fee             => 0,
-          vm_version      => VMVersion
+          abi_version     => ABIVersion
          },
     aeo_register_tx:new(Spec).
 

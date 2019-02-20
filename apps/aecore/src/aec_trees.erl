@@ -6,6 +6,7 @@
 -module(aec_trees).
 
 -include("blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %% API
 
@@ -232,7 +233,17 @@ gc_cache(Trees, TreesToGC) ->
 perform_pre_transformations(Trees, Height) ->
     Trees0 = aect_call_state_tree:prune(Height, Trees),
     Trees1 = aeo_state_tree:prune(Height, Trees0),
-    set_ns(Trees1, aens_state_tree:prune(Height, ns(Trees1))).
+    Trees2 = set_ns(Trees1, aens_state_tree:prune(Height, ns(Trees1))),
+    case Height =:= aec_block_genesis:height() of
+        true -> Trees2; % genesis block
+        false ->
+            case aec_hard_forks:is_fork_height(Height) of
+                {true, ?MINERVA_PROTOCOL_VSN} -> % hard fork time
+                    aec_block_fork:apply_minerva(Trees2);
+                false -> Trees2
+            end
+    end.
+
 
 -spec calls(trees()) -> aect_call_state_tree:tree().
 calls(Trees) ->

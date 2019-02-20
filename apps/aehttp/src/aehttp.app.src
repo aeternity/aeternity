@@ -14,7 +14,7 @@
     jesse,
     aecore,
     gproc,
-    poolboy
+    ephemeral
    ]},
   {env,[]},
   {modules, []},

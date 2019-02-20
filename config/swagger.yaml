@@ -1,7 +1,7 @@
 swagger: '2.0'
 info:
   description: 'This is the [Aeternity](https://www.aeternity.com/) node API.'
-  version: 1.5.0
+  version: 2.0.0-rc.1
   title: Aeternity node
   termsOfService: 'https://www.aeternity.com/terms/'
   contact:
@@ -501,6 +501,41 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /accounts/{pubkey}/hash/{hash}:
+    get:
+      tags:
+        - external
+        - account
+      operationId: GetAccountByPubkeyAndHash
+      description: 'Get an account by public key after the block indicated by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the account'
+          required: true
+          type: string
+        - in: path
+          name: hash
+          description: 'The hash of the block'
+          required: true
+          type: string
+          minimum: 0
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/Account'
+        '400':
+          description: 'Invalid public key or invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Account not found or hash not available'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /accounts/{pubkey}/transactions/pending:
     get:
       tags:
@@ -966,7 +1001,8 @@ paths:
         - contract
         - debug
       operationId: PostContractCreateCompute
-      description: 'Compute the call_data for SOPHIA and get a contract_create transaction object'
+      description: '(DEPRECATED to-be-removed in 3.0) - Compute the call_data for SOPHIA and get a contract_create transaction object'
+      deprecated: true
       consumes:
         - application/json
       produces:
@@ -1028,7 +1064,8 @@ paths:
         - contract
         - debug
       operationId: PostContractCallCompute
-      description: 'Compute the call_data for SOPHIA and get contract_call transaction object'
+      description: '(DEPRECATED to-be-removed in 3.0) - Compute the call_data for SOPHIA and get contract_call transaction object'
+      deprecated: true
       consumes:
         - application/json
       produces:
@@ -1674,7 +1711,8 @@ paths:
         - contract
         - debug
       operationId: 'CompileContract'
-      description: 'Compile a sophia contract from source and return byte code'
+      description: '(DEPRECATED to-be-removed in 3.0) - Compile a sophia contract from source and return byte code'
+      deprecated: true
       consumes:
         - application/json
       produces:
@@ -1702,7 +1740,8 @@ paths:
         - contract
         - debug
       operationId: 'CallContract'
-      description: 'Call a sophia function with a given name and argument in the given bytecode off chain.'
+      description: '(DEPRECATED to-be-removed in 3.0) - Call a sophia function with a given name and argument in the given bytecode off chain.'
+      deprecated: true
       consumes:
         - application/json
       produces:
@@ -1757,7 +1796,8 @@ paths:
         - contract
         - debug
       operationId: 'DecodeData'
-      description: 'Decode Sophia return data encoded according to Sophia ABI.'
+      description: '(DEPRECATED to-be-removed in 3.0) - Decode Sophia return data encoded according to Sophia ABI.'
+      deprecated: true
       consumes:
         - application/json
       produces:
@@ -1785,7 +1825,8 @@ paths:
         - contract
         - debug
       operationId: 'EncodeCalldata'
-      description: 'Encode sophia data and function name according to sophia ABI.'
+      description: '(DEPRECATED to-be-removed in 3.0) - Encode sophia data and function name according to sophia ABI.'
+      deprecated: true
       consumes:
         - application/json
       produces:
@@ -1881,6 +1922,8 @@ definitions:
       version:
         type: integer
         format: int64
+      info:
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - hash
       - height
@@ -1892,6 +1935,7 @@ definitions:
       - target
       - time
       - version
+      - info
   MicroBlockHeader:
     type: object
     properties:
@@ -1987,17 +2031,22 @@ definitions:
       ttl:
         type: integer
         format: int64
+      # vm_version is kept for backwards compatibility and should be
+      # removed later, _and_ abi_version should then be 'required'
       vm_version:
         type: integer
-        format: int64
         minimum: 0
+        maximum: 65535
+      abi_version:
+        type: integer
+        minimum: 0
+        maximum: 65535
     required:
       - id
       - query_format
       - response_format
       - query_fee
       - ttl
-      - vm_version
   OracleQuery:
     type: object
     properties:
@@ -2093,10 +2142,16 @@ definitions:
       ttl:
         type: integer
         format: int64
+      # vm_version is kept for backwards compatibility and should be
+      # removed later
       vm_version:
         type: integer
-        format: int64
         minimum: 0
+        maximum: 65535
+      abi_version:
+        type: integer
+        minimum: 0
+        maximum: 65535
     required:
       - query_format
       - response_format
@@ -2994,7 +3049,12 @@ definitions:
       vm_version:
         type: integer
         minimum: 0
-        maximum: 255
+        maximum: 65535
+      # abi_version is optional for now, should be required eventually
+      abi_version:
+        type: integer
+        minimum: 0
+        maximum: 65535
       log:
         type: string
       active:
@@ -3009,6 +3069,8 @@ definitions:
       - id
       - owner_id
       - vm_version
+      # abi_version is optional for now, should be required eventually
+      # - abi_version
       - log
       - active
       - referrer_ids
@@ -3181,7 +3243,12 @@ definitions:
         description: 'Virtual machine''s version'
         type: integer
         minimum: 0
-        maximum: 255
+        maximum: 65535
+      abi_version:
+        description: 'ABI version'
+        type: integer
+        minimum: 0
+        maximum: 65535
       deposit:
         description: Deposit
         type: integer
@@ -3213,6 +3280,8 @@ definitions:
       - owner_id
       - code
       - vm_version
+      # abi_version is optional for now, should be required eventually
+      # - abi_version
       - deposit
       - amount
       - gas
@@ -3235,7 +3304,12 @@ definitions:
         description: 'Virtual machine''s version'
         type: integer
         minimum: 0
-        maximum: 255
+        maximum: 65535
+      abi_version:
+        description: 'ABI version'
+        type: integer
+        minimum: 0
+        maximum: 65535
       deposit:
         description: Deposit
         type: integer
@@ -3270,6 +3344,8 @@ definitions:
       - owner_id
       - code
       - vm_version
+      # abi_version is optional for now, should be required eventually
+      # - abi_version
       - deposit
       - amount
       - gas
@@ -3287,11 +3363,18 @@ definitions:
       contract_id:
         $ref: '#/definitions/EncodedHash'
         description: 'Contract''s pub_key'
+      # Old name vm_version kept for backwards compatibility
+      # should be removed and then abi_version should be required
       vm_version:
-        description: 'Virtual machine''s version'
+        description: 'VM version'
         type: integer
         minimum: 0
-        maximum: 255
+        maximum: 65535
+      abi_version:
+        description: 'ABI version'
+        type: integer
+        minimum: 0
+        maximum: 65535
       fee:
         description: Transaction fee
         type: integer
@@ -3318,7 +3401,8 @@ definitions:
     required:
       - caller_id
       - contract_id
-      - vm_version
+      # Should be requried once vm_version is gone
+      # - abi_version
       - fee
       - amount
       - gas
@@ -3336,11 +3420,18 @@ definitions:
       contract_id:
         $ref: '#/definitions/EncodedHash'
         description: 'Contract''s pub_key'
+      # Old name vm_version kept for backwards compatibility
+      # should be removed and then abi_version should be required
       vm_version:
-        description: 'Virtual machine''s version'
+        description: 'VM version'
         type: integer
         minimum: 0
-        maximum: 255
+        maximum: 65535
+      abi_version:
+        description: 'ABI version'
+        type: integer
+        minimum: 0
+        maximum: 65535
       fee:
         description: Transaction fee
         type: integer
@@ -3373,7 +3464,8 @@ definitions:
     required:
       - caller_id
       - contract_id
-      - vm_version
+      # Should be requried once vm_version is gone
+      # - abi_version
       - fee
       - amount
       - gas
@@ -3492,7 +3584,13 @@ definitions:
           vm_version:
             type: integer
             description: VM version of the contract
-            format: int64
+            minimum: 0
+            maximum: 65535
+          abi_version:
+            type: integer
+            description: ABI version of the contract
+            minimum: 0
+            maximum: 65535
           code:
             $ref: '#/definitions/ByteCode'
           deposit:
@@ -3505,6 +3603,8 @@ definitions:
         required:
           - owner
           - vm_version
+          # Optional for now...
+          # - abi_version
           - code
           - deposit
           - call_data
@@ -3519,10 +3619,17 @@ definitions:
           contract:
             $ref: '#/definitions/EncodedHash'
             description: Contract address
+          # vm_version kept for backwards compatibility, should be removed
           vm_version:
             type: integer
-            description: VM version of the contract
-            format: int64
+            description: ABI version for the call/calldata
+            minimum: 0
+            maximum: 65535
+          abi_version:
+            type: integer
+            description: ABI version for the call/calldata
+            minimum: 0
+            maximum: 65535
           amount:
             type: integer
             description: Amount of tokens to transfer to the contract
@@ -3541,7 +3648,8 @@ definitions:
         required:
           - caller
           - contract
-          - vm_version
+          # should be required once vm_version is removed
+          # - abi_version
           - code
           - amount
           - call_data

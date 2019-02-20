@@ -17,7 +17,7 @@
 
 -type candidate_hash() :: aec_blocks:block_header_hash().
 -record(candidate, {block     :: aec_blocks:block(),
-                    nonce     :: aec_pow:nonce() | 'undefined',
+                    nonce     :: aeminer_pow:nonce() | 'undefined',
                     top_hash  :: binary(),
                     refs = 0  :: non_neg_integer() %% Number of miner workers operating on the candidate
                    }).
@@ -28,9 +28,9 @@
 
 -type instance_state() :: pid() | 'available'.
 -record(miner_instance, {id       :: non_neg_integer(),
-                         instance :: aec_pow:miner_instance() | 'undefined',
+                         instance :: aeminer_pow:instance() | 'undefined',
                          state    :: instance_state(),
-                         config   :: aec_pow:miner_config()}).
+                         config   :: aeminer_pow_cuckoo:config()}).
 -type miner_instance() :: #miner_instance{}.
 -type miner_instances() :: list(miner_instance()).
 

@@ -1148,7 +1148,7 @@ post_key_block(_CurrentBlockType, Config) ->
     {ok, KeyBlockHeader} = aec_headers:deserialize_from_client(key, KeyBlock1),
     KeyBlockHeaderBin = aec_headers:serialize_to_binary(KeyBlockHeader),
     Target = aec_headers:target(KeyBlockHeader),
-    Nonce = aec_pow:pick_nonce(),
+    Nonce = aeminer_pow:pick_nonce(),
     {ok, {Nonce1, PowEvidence}} = mine_key_block(KeyBlockHeaderBin, Target, Nonce, 1000),
     {ok, 200, #{}} = post_key_blocks_sut(PendingKeyBlock#{<<"pow">> => PowEvidence, <<"nonce">> => Nonce1}),
     ok = aecore_suite_utils:wait_for_height(?config(node, Config), Height),
@@ -1159,15 +1159,15 @@ post_key_block(_CurrentBlockType, Config) ->
     ok.
 
 mine_key_block(HeaderBir, Target, Nonce, Attempts) when Attempts > 0 ->
-    [Config] = rpc(aec_pow_cuckoo, get_miner_configs, []),
+    [Config] = rpc(aec_mining, get_miner_configs, []),
     mine_key_block(HeaderBir, Target, Nonce, Config, Attempts).
 
 mine_key_block(HeaderBin, Target, Nonce, Config, Attempts) when Attempts > 0 ->
-    case rpc(aec_mining, mine, [HeaderBin, Target, Nonce, Config, 0]) of
+    case rpc(aec_mining, generate, [HeaderBin, Target, Nonce, Config, 0]) of
         {ok, {_Nonce, _PowEvidence}} = Res ->
             Res;
         {error, no_solution} ->
-            mine_key_block(HeaderBin, Target, aec_pow:next_nonce(Nonce, Config), Config, Attempts - 1)
+            mine_key_block(HeaderBin, Target, aeminer_pow:next_nonce(Nonce, Config), Config, Attempts - 1)
     end;
 mine_key_block(_HeaderBin, _Target, _Nonce, _Config, 0) ->
     {error, no_solution}.
@@ -1417,17 +1417,41 @@ get_account_by_pubkey_and_height(Config) ->
 
 get_account_by_pubkey_and_height(false, Config) ->
     AccountId = ?config(account_id, Config),
-    Height = aec_headers:height(rpc(?NODE, aec_chain, top_header, [])),
+    Header = rpc(?NODE, aec_chain, top_header, []),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    EncodedHash = aehttp_api_encoder:encode(key_block_hash, Hash),
+    Height = aec_headers:height(Header),
     {ok, 404, Error1} = get_accounts_by_pubkey_and_height_sut(AccountId, Height),
+    {ok, 404, Error1} = get_accounts_by_pubkey_and_hash_sut(AccountId, EncodedHash),
     ?assertEqual(<<"Account not found">>, maps:get(<<"reason">>, Error1)),
     {ok, 404, Error2} = get_accounts_by_pubkey_and_height_sut(AccountId, Height + 2),
     ?assertEqual(<<"Height not available">>, maps:get(<<"reason">>, Error2)),
+    BadHash = case Hash of
+                  <<1:1, Rest/bits>> -> <<0:1, Rest/bits>>;
+                  <<0:1, Rest/bits>> -> <<1:1, Rest/bits>>
+              end,
+    EncodedBadHash = aehttp_api_encoder:encode(key_block_hash, BadHash),
+    {ok, 404, Error3} = get_accounts_by_pubkey_and_hash_sut(AccountId, EncodedBadHash),
+    ?assertEqual(<<"Hash not available">>, maps:get(<<"reason">>, Error3)),
+    BadPrefixHash = aehttp_api_encoder:encode(contract_pubkey, Hash),
+    {ok, 400, Error4} = get_accounts_by_pubkey_and_hash_sut(AccountId, BadPrefixHash),
+    ?assertEqual(<<"Illegal hash: invalid_prefix">>, maps:get(<<"reason">>, Error4)),
+    {ok, 400, Error5} = get_accounts_by_pubkey_and_hash_sut(AccountId, <<"Hello">>),
+    ?assertEqual(<<"Illegal hash: invalid_encoding">>, maps:get(<<"reason">>, Error5)),
+
     ok;
 get_account_by_pubkey_and_height(true, Config) ->
     AccountId = ?config(account_id, Config),
-    Height = aec_headers:height(rpc(?NODE, aec_chain, top_header, [])),
+    Header = rpc(?NODE, aec_chain, top_header, []),
+    Height = aec_headers:height(Header),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    PrevHash = aec_headers:prev_hash(Header),
+    EncodedHash = aehttp_api_encoder:encode(key_block_hash, Hash),
+    EncodedPrevHash = aehttp_api_encoder:encode(key_block_hash, PrevHash),
     {ok, 200, Account1} = get_accounts_by_pubkey_and_height_sut(AccountId, Height - 1),
     {ok, 200, Account2} = get_accounts_by_pubkey_and_height_sut(AccountId, Height),
+    {ok, 200, Account1} = get_accounts_by_pubkey_and_hash_sut(AccountId, EncodedPrevHash),
+    {ok, 200, Account2} = get_accounts_by_pubkey_and_hash_sut(AccountId, EncodedHash),
     ?assertEqual(AccountId, maps:get(<<"id">>, Account1)),
     ?assertEqual(AccountId, maps:get(<<"id">>, Account2)),
     ?assert(maps:get(<<"balance">>, Account1) > 0),
@@ -1458,6 +1482,11 @@ get_pending_account_transactions_by_pubkey(true, Config) ->
 get_accounts_by_pubkey_sut(Id) ->
     Host = external_address(),
     http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
+
+get_accounts_by_pubkey_and_hash_sut(Id, Hash) ->
+    Host = external_address(),
+    IdS = binary_to_list(http_uri:encode(Id)),
+    http_request(Host, get, "accounts/" ++ IdS ++ "/hash/" ++ Hash, []).
 
 get_accounts_by_pubkey_and_height_sut(Id, Height) ->
     Host = external_address(),
@@ -1538,15 +1567,16 @@ post_contract_and_call_tx(_Config) ->
     {ok, Code} = aehttp_api_encoder:safe_decode(contract_bytearray, EncodedCode),
     {ok, EncodedInitCallData} = aehttp_logic:contract_encode_call_data(
                                   <<"sophia">>, Code, <<"init">>, <<"()">>),
-    ValidEncoded = #{ owner_id   => Pubkey,
-                      code       => EncodedCode,
-                      vm_version => 1,
-                      deposit    => 2,
-                      amount     => 1,
-                      gas        => 600,
-                      gas_price  => 1,
-                      fee        => 400000,
-                      call_data  => EncodedInitCallData},
+    ValidEncoded = #{ owner_id    => Pubkey,
+                      code        => EncodedCode,
+                      vm_version  => latest_sophia_vm(),
+                      abi_version => latest_sophia_abi(),
+                      deposit     => 2,
+                      amount      => 1,
+                      gas         => 600,
+                      gas_price   => 1,
+                      fee         => 400000,
+                      call_data   => EncodedInitCallData},
 
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
@@ -1569,7 +1599,7 @@ post_contract_and_call_tx(_Config) ->
                               <<"sophia">>, Code, <<"main">>, <<"42">>),
     ContractCallEncoded = #{ caller_id   => Pubkey,
                              contract_id => EncodedContractPubKey,
-                             vm_version  => 1,
+                             abi_version => latest_sophia_abi(),
                              amount      => 1,
                              gas         => 1000,
                              gas_price   => 1,
@@ -1623,15 +1653,16 @@ get_contract(_Config) ->
                                                InitArgument),
 
     ContractInitBalance = 1,
-    ValidEncoded = #{ owner_id   => MinerAddress,
-                      code       => EncodedCode,
-                      vm_version => 1,
-                      deposit    => 2,
-                      amount     => ContractInitBalance,
-                      gas        => 600,
-                      gas_price  => 1,
-                      fee        => 200000,
-                      call_data  => EncodedInitCallData},
+    ValidEncoded = #{ owner_id    => MinerAddress,
+                      code        => EncodedCode,
+                      vm_version  => latest_sophia_vm(),
+                      abi_version => latest_sophia_abi(),
+                      deposit     => 2,
+                      amount      => ContractInitBalance,
+                      gas         => 600,
+                      gas_price   => 1,
+                      fee         => 200000,
+                      call_data   => EncodedInitCallData},
 
     ValidDecoded = maps:merge(ValidEncoded,
                               #{owner_id  => aec_id:create(account, MinerPubkey),
@@ -1659,11 +1690,15 @@ get_contract(_Config) ->
 
     {ok, 200, #{<<"return_value">> := _InitStateAndType}} = get_contract_call_object(ContractCreateTxHash),
 
+    VM = latest_sophia_vm(),
+    ABI = latest_sophia_abi(),
+
     ?assertMatch({ok, 200, #{<<"id">>          := EncodedContractPubKey,
                              <<"owner_id">>    := MinerAddress,
                              <<"active">>      := true,
                              <<"deposit">>     := 2,
-                             <<"vm_version">>  := 1,
+                             <<"vm_version">>  := VM,
+                             <<"abi_version">> := ABI,
                              <<"referrer_ids">> := [],
                              <<"log">>         := <<>>}},
                  get_contract_sut(EncodedContractPubKey)),
@@ -1972,7 +2007,8 @@ contract_transactions(_Config) ->    % miner has an account
     ContractInitBalance = 1,
     ValidEncoded = #{ owner_id => MinerAddress,
                       code => EncodedCode,
-                      vm_version => 1,
+                      vm_version => latest_sophia_vm(),
+                      abi_version => latest_sophia_abi(),
                       deposit => 2,
                       amount => ContractInitBalance,
                       gas => 600,
@@ -2061,7 +2097,7 @@ contract_transactions(_Config) ->    % miner has an account
 
     ContractCallEncoded = #{ caller_id => MinerAddress,
                              contract_id => EncodedContractPubKey,
-                             vm_version => 1,
+                             abi_version => latest_sophia_abi(),
                              amount => 1,
                              gas => 1000,
                              gas_price => 1,
@@ -2121,7 +2157,7 @@ contract_transactions(_Config) ->    % miner has an account
 
     ComputeCCallEncoded = #{ caller_id => MinerAddress,
                              contract_id => EncodedContractPubKey,
-                             vm_version => 1,
+                             abi_version => latest_sophia_abi(),
                              amount => 1,
                              gas => 1000,
                              gas_price => 1,
@@ -2215,7 +2251,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 400, #{<<"reason">> := <<"Not byte array: call_data">>}} =
         get_contract_call(maps:put(call_data, InvalidHex2, ContractCallEncoded)),
 
-    {ok, 400, #{<<"reason">> := <<"Failed to compute call_data, reason: bad argument">>}} =
+    {ok, 400, #{<<"reason">> := <<"Failed to compute call_data, reason: ", _/binary>>}} =
         get_contract_call_compute(maps:put(arguments, <<"garbadge">>,
                                            ComputeCCallEncoded)),
 
@@ -2242,7 +2278,8 @@ contract_create_compute_transaction(_Config) ->
     ContractInitBalance = 1,
     ValidEncoded = #{ owner_id => MinerAddress,
                       code => Code,
-                      vm_version => 1,
+                      vm_version => latest_sophia_vm(),
+                      abi_version => latest_sophia_abi(),
                       deposit => 2,
                       amount => ContractInitBalance,
                       gas => 600,
@@ -2265,7 +2302,7 @@ contract_create_compute_transaction(_Config) ->
     Argument = <<"(42)">>,
     ComputeCCallEncoded = #{ caller_id => MinerAddress,
                              contract_id => EncodedContractPubKey,
-                             vm_version => 1,
+                             abi_version => latest_sophia_abi(),
                              amount => 1,
                              gas => 1000,
                              gas_price => 1,
@@ -2307,15 +2344,16 @@ contract_create_transaction_init_error(_Config) ->
                               contract_bytearray_decode(EncodedCode),
                               <<"init">>, <<"(0x123, 0)">>),
     EncodedInitCallData = aehttp_api_encoder:encode(contract_bytearray, aeso_heap:to_binary({<<"init">>, {}})),
-    ValidEncoded = #{ owner_id   => MinerAddress,
-                      code       => EncodedCode,
-                      vm_version => 1,
-                      deposit    => 2,
-                      amount     => 1,
-                      gas        => 30,
-                      gas_price  => 1,
-                      fee        => 200000,
-                      call_data  => EncodedInitData},
+    ValidEncoded = #{ owner_id    => MinerAddress,
+                      code        => EncodedCode,
+                      vm_version  => latest_sophia_vm(),
+                      abi_version => latest_sophia_abi(),
+                      deposit     => 2,
+                      amount      => 1,
+                      gas         => 30,
+                      gas_price   => 1,
+                      fee         => 200000,
+                      call_data   => EncodedInitData},
     ValidDecoded = maps:merge(ValidEncoded,
         #{owner => MinerPubkey,
             code => contract_bytearray_decode(EncodedCode),
@@ -2367,6 +2405,7 @@ oracle_transactions(_Config) ->
                    response_format => <<"something else">>,
                    query_fee => 1,
                    fee => 100000,
+                   abi_version => 0, %% ABI_NO_VM - raw strings.
                    oracle_ttl => #{type => <<"block">>, value => 2000}},
     RegDecoded = maps:merge(RegEncoded,
                             #{account_id => aec_id:create(account, MinerPubkey),
@@ -4070,7 +4109,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                       response_format => SophiaStringType,
                       query_fee       => QueryFee,
                       query_ttl       => QueryTTL,
-                      vm_version      => ?AEVM_01_Sophia_01
+                      abi_version     => latest_sophia_abi()
                      }),
     OracleQuerySequence =
         fun(Q0, R0) ->
@@ -4094,10 +4133,11 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                               <<"init">>, InitArgument),
     {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                   #{vm_version => 1,
-                     deposit    => 10,
-                     code       => EncodedCode,
-                     call_data  => EncodedInitData}, Config),
+                   #{vm_version  => latest_sophia_vm(),
+                     abi_version => latest_sophia_abi(),
+                     deposit     => 10,
+                     code        => EncodedCode,
+                     call_data   => EncodedInitData}, Config),
 
     UnsignedStateTx = CreateVolley(),
     ContractPubKey = contract_id_from_create_update(OwnerPubKey,
@@ -4194,10 +4234,11 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                               <<"init">>, InitArgument),
     {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                   #{vm_version => 1,
-                     deposit    => 10,
-                     code       => EncodedCode,
-                     call_data  => EncodedInitData}, Config),
+                   #{vm_version  => latest_sophia_vm(),
+                     abi_version => latest_sophia_abi(),
+                     deposit     => 10,
+                     code        => EncodedCode,
+                     call_data   => EncodedInitData}, Config),
 
     UnsignedStateTx = CreateVolley(),
     ContractPubKey = contract_id_from_create_update(OwnerPubkey,
@@ -4253,10 +4294,11 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                               <<"init">>, InitArgument),
     {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                   #{vm_version => 1,
-                     deposit    => 10,
-                     code       => EncodedCode,
-                     call_data  => EncodedInitData}, Config),
+                   #{vm_version  => latest_sophia_vm(),
+                     abi_version => latest_sophia_abi(),
+                     deposit     => 10,
+                     code        => EncodedCode,
+                     call_data   => EncodedInitData}, Config),
 
     UnsignedStateTx = CreateVolley(),
     ContractPubKey = contract_id_from_create_update(OwnerPubkey,
@@ -4312,10 +4354,11 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                                       InitArgument),
             {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
             ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                           #{vm_version => 1,
-                             deposit    => 10,
-                             code       => EncodedCode,
-                             call_data  => EncodedInitData}, Config),
+                           #{vm_version  => latest_sophia_vm(),
+                             abi_version => latest_sophia_abi(),
+                             deposit     => 10,
+                             code        => EncodedCode,
+                             call_data   => EncodedInitData}, Config),
 
             UnsignedStateTx = CreateVolley(),
             ContractPubKey = contract_id_from_create_update(OwnerPubkey,
@@ -4381,10 +4424,11 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
                                       InitArgument),
             {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
             ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                           #{vm_version => 1,
-                             deposit    => 10,
-                             code       => EncodedCode,
-                             call_data  => EncodedInitData}, Config),
+                           #{vm_version  => latest_sophia_vm(),
+                             abi_version => latest_sophia_abi(),
+                             deposit     => 10,
+                             code        => EncodedCode,
+                             call_data   => EncodedInitData}, Config),
 
             UnsignedStateTx = CreateVolley(),
             ContractPubKey = contract_id_from_create_update(OwnerPubkey,
@@ -4699,10 +4743,11 @@ create_contract_(TestName, SenderConnPid, UpdateVolley, Config) ->
                               <<"init">>, InitArgument),
 
     ws_send_tagged(SenderConnPid, <<"update">>, <<"new_contract">>,
-                   #{vm_version => 1,
-                     deposit    => 10,
-                     code       => EncodedCode,
-                     call_data  => EncodedInitData}, Config),
+                   #{vm_version  => latest_sophia_vm(),
+                     abi_version => latest_sophia_abi(),
+                     deposit     => 10,
+                     code        => EncodedCode,
+                     call_data   => EncodedInitData}, Config),
     UnsignedStateTx = UpdateVolley(),
     {UnsignedStateTx, EncodedCode}.
 
@@ -4802,10 +4847,10 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
                                                                    Function,
                                                                    Argument),
     ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
-                   #{contract   => aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
-                     vm_version => 1,
-                     amount     => Amount,
-                     call_data  => EncodedMainData}, Config),
+                   #{contract    => aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
+                     abi_version => latest_sophia_abi(),
+                     amount      => Amount,
+                     call_data   => EncodedMainData}, Config),
     _UnsignedStateTx = UpdateVolley().
 
 
@@ -5903,3 +5948,9 @@ bin(B) when is_binary(B) ->
 sc_ws_protocol(Config) ->
     {_, Protocol} = lists:keyfind(sc_ws_protocol, 1, Config),
     Protocol.
+
+latest_sophia_abi() ->
+    aect_test_utils:latest_sophia_abi_version().
+
+latest_sophia_vm() ->
+    aect_test_utils:latest_sophia_vm_version().

@@ -37,7 +37,7 @@ positive_extra_checks_tests() ->
               {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
               ok = mock_user_config(UserMap, UserConfig),
               ?assertEqual(ok, aec_hard_forks:check_env()),
-              ?assertEqual(ok, aec_pow_cuckoo:check_env())
+              ?assertEqual(ok, aec_mining:check_env())
       end
      } || Config <- test_data_config_files()].
 
@@ -46,14 +46,14 @@ deprecated_miner_section_conflicting_with_edge_bits() ->
     Config = filename:join([Dir, DataDir, "epoch_deprecated_miner_with_edge_bits.yaml"]),
     {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
     ok = mock_user_config(UserMap, UserConfig),
-    ?assertExit(cuckoo_config_validation_failed, aec_pow_cuckoo:check_env()).
+    ?assertExit(cuckoo_config_validation_failed, aec_mining:check_env()).
 
 deprecated_miner_section_conflicting_with_miners() ->
     {Dir, DataDir} = get_test_config_base(),
     Config = filename:join([Dir, DataDir, "epoch_deprecated_miner_with_miners.yaml"]),
     {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
     ok = mock_user_config(UserMap, UserConfig),
-    ?assertExit(cuckoo_config_validation_failed, aec_pow_cuckoo:check_env()).
+    ?assertExit(cuckoo_config_validation_failed, aec_mining:check_env()).
 
 %%%===================================================================
 %%% Internal functions
@@ -98,7 +98,7 @@ mock_user_config(UserMap, UserConfig) ->
     F = fun
             (aeutils, '$user_config') -> {ok, UserConfig};
             (aeutils, '$user_map') -> UserMap;
-            (_A, _K) -> meck:passthrough()
+            (A, K) -> meck:passthrough([A, K])
         end,
     ok = meck:expect(setup, get_env, F),
     ok = meck:expect(setup, get_env, fun(A, K, _Default) -> F(A, K) end),

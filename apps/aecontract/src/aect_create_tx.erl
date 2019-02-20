@@ -33,6 +33,8 @@
          owner_pubkey/1,
          code/1,
          contract_pubkey/1,
+         abi_version/1,
+         ct_version/1,
          vm_version/1,
          deposit/1,
          amount/1,
@@ -51,17 +53,17 @@
 -define(is_non_neg_integer(X), (is_integer(X) andalso (X >= 0))).
 
 -record(contract_create_tx, {
-          owner_id   :: aec_id:id(),
-          nonce      :: non_neg_integer(),
-          code       :: binary(),
-          vm_version :: aect_contracts:vm_version(),
-          fee        :: aect_contracts:amount(),
-          deposit    :: aect_contracts:amount(),
-          amount     :: aect_contracts:amount(),
-          gas        :: aect_contracts:amount(),
-          gas_price  :: aect_contracts:amount(),
-          call_data  :: binary(),
-          ttl        :: aetx:tx_ttl()
+          owner_id    :: aec_id:id(),
+          nonce       :: non_neg_integer(),
+          code        :: binary(),
+          ct_version  :: aect_contracts:version(),
+          fee         :: aect_contracts:amount(),
+          deposit     :: aect_contracts:amount(),
+          amount      :: aect_contracts:amount(),
+          gas         :: aect_contracts:amount(),
+          gas_price   :: aect_contracts:amount(),
+          call_data   :: binary(),
+          ttl         :: aetx:tx_ttl()
         }).
 
 -type amount() :: aect_contracts:amount().
@@ -89,8 +91,16 @@ code(#contract_create_tx{code = X}) ->
 contract_pubkey(#contract_create_tx{} = Tx) ->
     aect_contracts:compute_contract_pubkey(owner_pubkey(Tx), nonce(Tx)).
 
+-spec ct_version(tx()) -> aect_contracts:version().
+ct_version(#contract_create_tx{ct_version = X}) ->
+    X.
+
+-spec abi_version(tx()) -> aect_contracts:abi_version().
+abi_version(#contract_create_tx{ct_version = #{abi := X}}) ->
+    X.
+
 -spec vm_version(tx()) -> aect_contracts:vm_version().
-vm_version(#contract_create_tx{vm_version = X}) ->
+vm_version(#contract_create_tx{ct_version = #{vm := X}}) ->
     X.
 
 -spec deposit(tx()) -> amount().
@@ -133,28 +143,29 @@ ttl(#contract_create_tx{ttl = TTL}) ->
     TTL.
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{owner_id   := OwnerId,
-      nonce      := Nonce,
-      code       := Code,
-      vm_version := VmVersion,
-      deposit    := Deposit,
-      amount     := Amount,
-      gas        := Gas,
-      gas_price  := GasPrice,
-      call_data  := CallData,
-      fee        := Fee} = Args) ->
+new(#{owner_id    := OwnerId,
+      nonce       := Nonce,
+      code        := Code,
+      vm_version  := VMVersion,
+      abi_version := ABIVersion,
+      deposit     := Deposit,
+      amount      := Amount,
+      gas         := Gas,
+      gas_price   := GasPrice,
+      call_data   := CallData,
+      fee         := Fee} = Args) ->
     account = aec_id:specialize_type(OwnerId),
-    Tx = #contract_create_tx{owner_id   = OwnerId,
-                             nonce      = Nonce,
-                             code       = Code,
-                             vm_version = VmVersion,
-                             deposit    = Deposit,
-                             amount     = Amount,
-                             gas        = Gas,
-                             gas_price  = GasPrice,
-                             call_data  = CallData,
-                             fee        = Fee,
-                             ttl        = maps:get(ttl, Args, 0)},
+    Tx = #contract_create_tx{owner_id    = OwnerId,
+                             nonce       = Nonce,
+                             code        = Code,
+                             ct_version  = #{vm => VMVersion, abi => ABIVersion},
+                             deposit     = Deposit,
+                             amount      = Amount,
+                             gas         = Gas,
+                             gas_price   = GasPrice,
+                             call_data   = CallData,
+                             fee         = Fee,
+                             ttl         = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -189,6 +200,7 @@ process(#contract_create_tx{} = Tx, Trees, Env) ->
           deposit(Tx),
           gas(Tx),
           gas_price(Tx),
+          abi_version(Tx),
           vm_version(Tx),
           code(Tx),
           call_data(Tx),
@@ -199,7 +211,7 @@ process(#contract_create_tx{} = Tx, Trees, Env) ->
 serialize(#contract_create_tx{owner_id   = OwnerId,
                               nonce      = Nonce,
                               code       = Code,
-                              vm_version = VmVersion,
+                              ct_version = CTVersion,
                               fee        = Fee,
                               ttl        = TTL,
                               deposit    = Deposit,
@@ -211,7 +223,7 @@ serialize(#contract_create_tx{owner_id   = OwnerId,
      [ {owner_id, OwnerId}
      , {nonce, Nonce}
      , {code, Code}
-     , {vm_version, VmVersion}
+     , {ct_version, aect_contracts:pack_vm_abi(CTVersion)}
      , {fee, Fee}
      , {ttl, TTL}
      , {deposit, Deposit}
@@ -225,7 +237,7 @@ deserialize(?CONTRACT_CREATE_TX_VSN,
             [ {owner_id, OwnerId}
             , {nonce, Nonce}
             , {code, Code}
-            , {vm_version, VmVersion}
+            , {ct_version, CTVersion}
             , {fee, Fee}
             , {ttl, TTL}
             , {deposit, Deposit}
@@ -237,7 +249,7 @@ deserialize(?CONTRACT_CREATE_TX_VSN,
     #contract_create_tx{owner_id   = OwnerId,
                         nonce      = Nonce,
                         code       = Code,
-                        vm_version = VmVersion,
+                        ct_version = aect_contracts:split_vm_abi(CTVersion),
                         fee        = Fee,
                         ttl        = TTL,
                         deposit    = Deposit,
@@ -250,7 +262,7 @@ serialization_template(?CONTRACT_CREATE_TX_VSN) ->
     [ {owner_id, id}
     , {nonce, int}
     , {code, binary}
-    , {vm_version, int}
+    , {ct_version, int}
     , {fee, int}
     , {ttl, int}
     , {deposit, int}
@@ -260,21 +272,22 @@ serialization_template(?CONTRACT_CREATE_TX_VSN) ->
     , {call_data, binary}
     ].
 
-for_client(#contract_create_tx{ owner_id   = OwnerId,
-                                nonce      = Nonce,
-                                code       = Code,
-                                vm_version = VmVersion,
-                                fee        = Fee,
-                                ttl        = TTL,
-                                deposit    = Deposit,
-                                amount     = Amount,
-                                gas        = Gas,
-                                gas_price  = GasPrice,
-                                call_data  = CallData}) ->
+for_client(#contract_create_tx{ owner_id    = OwnerId,
+                                nonce       = Nonce,
+                                code        = Code,
+                                ct_version  = CTVersion,
+                                fee         = Fee,
+                                ttl         = TTL,
+                                deposit     = Deposit,
+                                amount      = Amount,
+                                gas         = Gas,
+                                gas_price   = GasPrice,
+                                call_data   = CallData}) ->
     #{<<"owner_id">>    => aehttp_api_encoder:encode(id_hash, OwnerId),
       <<"nonce">>       => Nonce,
       <<"code">>        => aehttp_api_encoder:encode(contract_bytearray, Code),
-      <<"vm_version">>  => aeu_hex:hexstring_encode(<<VmVersion:8>>),
+      <<"vm_version">>  => aeu_hex:hexstring_encode(<<(maps:get(vm, CTVersion)):16>>),
+      <<"abi_version">> => aeu_hex:hexstring_encode(<<(maps:get(abi, CTVersion)):16>>),
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL,
       <<"deposit">>     => Deposit,

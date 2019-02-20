@@ -17,7 +17,7 @@
          get_store/1,
          set_store/2,
          spend/3,
-         call_contract/6]).
+         call_contract/7]).
 
 -define(MASK160, ((1 bsl 160) -1)).
 
@@ -50,8 +50,8 @@ set_store(Store, State) ->
           {ok, chain_state()} | {error, term()}.
 spend(_Recipient, _Amount, _S)  -> {error, cant_spend_with_dummy_chain}.
 -spec call_contract(aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), binary(),
-                    [non_neg_integer()], chain_state()) ->
+                    [non_neg_integer()], aec_keys:pubkey(), chain_state()) ->
         {ok, aevm_chain_api:call_result(), chain_state()} | {error, term()}.
-call_contract(_, Gas, _, _, _, State) ->
+call_contract(_, Gas, _, _, _, _, State) ->
     {aevm_chain_api:call_exception(cant_call_contracts_with_dummy_chain, Gas), State}.
 
