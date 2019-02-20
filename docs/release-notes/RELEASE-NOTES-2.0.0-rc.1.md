@@ -30,7 +30,7 @@ It:
 * The utility command `./bin/aeternity keys_gen` does not compress spaces in the
     password itself anymore. Only spaces at the beginning or end of a given
     password are trimmed.
-Moves mining related code into a separate git repository - `aeternity/aeminer`. The Aeternity node uses the repository as a dependency (and other projects can use it as a dependency, too).
+* Moves mining related code into a separate git repository - `aeternity/aeminer`. The Aeternity node uses the repository as a dependency (and other projects can use it as a dependency, too).
 * Add utility command support for `./bin/aeternity UTILITY_COMMAND` on Windows.
     These commands were previously non-functional on Windows.
 * Adds token migration support for the hard fork
