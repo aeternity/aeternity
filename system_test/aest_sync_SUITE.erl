@@ -193,7 +193,7 @@ new_node_joins_network(Cfg) ->
     start_node(old_node1, Cfg),
     start_node(old_node2, Cfg),
     T0 = erlang:system_time(seconds),
-    wait_for_startup([old_node1, old_node2], 0, Cfg),
+    wait_for_startup([old_node1, old_node2], 4, Cfg),
     #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(old_node1), %% Check node picked user config
     #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(old_node2), %% Check node picked user config
     StartupTime = erlang:system_time(seconds) - T0,
@@ -341,7 +341,7 @@ stop_and_continue_sync(Cfg) ->
                   }], Cfg),
 
     start_node(node1, Cfg),
-    wait_for_startup([node1], 0, Cfg),
+    wait_for_startup([node1], 4, Cfg),
 
     inject_spend_txs(node1, patron(), 40, 1, 100),
 
@@ -404,7 +404,7 @@ tx_pool_sync(Cfg) ->
                   }], Cfg),
 
     start_node(node1, Cfg),
-    wait_for_startup([node1], 0, Cfg),
+    wait_for_startup([node1], 4, Cfg),
 
     %% Let's post a bunch of transactions, preferrably some valid
     %% and some "not yet valid"
@@ -424,14 +424,14 @@ tx_pool_sync(Cfg) ->
                    [node1], 5 * ?MINING_TIMEOUT, Cfg),
 
     %% Check that the mempool has the other transactions
-    wait_for_value({txs_on_node, [ TxHash || #{tx_hash := TxHash} <- InvalidTxs7 ++ InvalidTxs15 ]}, 
+    wait_for_value({txs_on_node, [ TxHash || #{tx_hash := TxHash} <- InvalidTxs7 ++ InvalidTxs15 ]},
                    [node1], 5000, Cfg),
 
     %% Start 2nd node and let it sync
     start_node(node2, Cfg),
     wait_for_startup([node2], 0, Cfg),
 
-    wait_for_value({txs_on_node, [ TxHash || #{tx_hash := TxHash} <- InvalidTxs7 ++ InvalidTxs15 ]}, 
+    wait_for_value({txs_on_node, [ TxHash || #{tx_hash := TxHash} <- InvalidTxs7 ++ InvalidTxs15 ]},
                    [node2], 5000, Cfg),
 
     %% Stop node1
@@ -445,7 +445,7 @@ tx_pool_sync(Cfg) ->
     start_node(node1, Cfg),
     wait_for_startup([node1], 0, Cfg),
 
-    wait_for_value({txs_on_node, [ TxHash || #{tx_hash := TxHash} <- InvalidTxs7 ++ InvalidTxs15 ++ InvalidTxs25 ]}, 
+    wait_for_value({txs_on_node, [ TxHash || #{tx_hash := TxHash} <- InvalidTxs7 ++ InvalidTxs15 ++ InvalidTxs25 ]},
                    [node1], 5000, Cfg),
 
     %% Now add a Tx that unlocks 5 more...
@@ -461,8 +461,9 @@ tx_pool_sync(Cfg) ->
 
 inject_spend_txs(Node, SenderAcct, N, NonceStart, TimeDelay) ->
     [ begin
-          add_spend_tx(Node, SenderAcct, Nonce),
-          timer:sleep(TimeDelay)
+          X = add_spend_tx(Node, SenderAcct, Nonce),
+          timer:sleep(TimeDelay),
+          X
       end || Nonce <- lists:seq(NonceStart, NonceStart + N - 1) ].
 
 add_spend_txs(Node, SenderAcct, N, NonceStart) ->
@@ -471,6 +472,7 @@ add_spend_txs(Node, SenderAcct, N, NonceStart) ->
 
 add_spend_tx(Node, Sender, Nonce) ->
     %% create new receiver
+    GasPrice = aest_nodes:gas_price(),
     #{ public := RecvPubKey, secret := RecvSecKey } =  enacl:sign_keypair(),
     #{ tx_hash := TxHash} = post_spend_tx(Node, Sender, #{pubkey => RecvPubKey}, Nonce, #{amount => 10000}),
     #{ receiver => RecvPubKey, receiver_sec => RecvSecKey, amount => 10000, tx_hash => TxHash }.

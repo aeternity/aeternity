@@ -981,7 +981,7 @@ awaiting_update_ack(cast, {?UPDATE_ERR, Msg}, D) ->
             next_state(open, D1);
         {error, fallback_state_mismatch} = Error ->
             % falling back to an inconsistent state
-            % this is possible if we are a malicious actor only 
+            % this is possible if we are a malicious actor only
             report(conflict, Msg, D),
             close(Error, D);
         {error, _} = Error ->
@@ -1918,9 +1918,13 @@ pay_close_mutual_fee(Fee, IAmt, RAmt) ->
        true                                   -> {0, RAmt - Fee + IAmt}
     end.
 
+-ifdef(TEST).
 close_mutual_defaults(_Account, _D) ->
-    #{ fee   => 20000}.
-
+    #{ fee   => 20000 }.
+-else.
+close_mutual_defaults(_Account, _D) ->
+    #{ fee   => 20000 * 1000000000 }.
+-endif.
 
 my_account(#data{role = initiator, opts = #{initiator := I}}) -> I;
 my_account(#data{role = responder, opts = #{responder := R}}) -> R.
@@ -1950,7 +1954,7 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
         {error, _} = Err ->
             Err
     end.
-          
+
 
 send_funding_signed_msg(SignedTx, #data{channel_id = Ch,
                                         session    = Sn} = Data) ->
@@ -2534,7 +2538,7 @@ try_gproc_reg(Key, Value) ->
                         [Key, Value, Prev]),
             error(badarg)
     end.
-                
+
 
 
 gproc_name_by_role(Id, Role) ->

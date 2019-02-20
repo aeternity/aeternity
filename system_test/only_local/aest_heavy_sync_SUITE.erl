@@ -109,8 +109,8 @@ many_spend_txs(Cfg) ->
     %% Compute gas for a simple spend
     {ok, FakeTx} = aec_spend_tx:new(#{ sender_id => aec_id:create(account, maps:get(pubkey, patron()))
                                      , recipient_id => aec_id:create(account, maps:get(pubkey, patron()))
-                                     , amount => 1
-                                     , fee => 1
+                                     , amount => 1 * aest_nodes:gas_price()
+                                     , fee => 1 * aest_nodes:gas_price()
                                      , ttl => 10000000
                                      , nonce => 1000
                                      , payload => <<"node3">>}),
@@ -200,7 +200,9 @@ add_many_spend_tx(Node, SenderAcct, [Nonce|Nonces], Acc) ->
 
 add_spend_tx(Node, Sender, Nonce) ->
     %% create new receiver
+    GasPrice = aest_nodes:gas_price(),
     #{ public := RecvPubKey, secret := _RecvSecKey } =  enacl:sign_keypair(),
-    #{ tx_hash := TxHash} = post_spend_tx(Node, Sender, #{pubkey => RecvPubKey}, Nonce, #{amount => 1, fee => 20000}),
+    #{ tx_hash := TxHash} = post_spend_tx(Node, Sender, #{pubkey => RecvPubKey}, Nonce, 
+                                          #{amount => 1, fee => 20000 * GasPrice}),
     {Nonce, TxHash}.
 

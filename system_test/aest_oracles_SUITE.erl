@@ -96,7 +96,8 @@ all() -> [
 init_per_suite(Config) ->
     [
         {node_startup_time, 20000}, %% Time may take to get the node to respond to http
-        {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
+        {node_shutdown_time, 20000}, %% Time it may take to stop node cleanly
+        {gas_price, aest_nodes:gas_price()}
     | Config].
 
 init_per_testcase(_TC, Config) ->
@@ -128,6 +129,7 @@ test_simple_two_nodes_query(Cfg) ->
     simple_query_test(Opts, Cfg).
 
 simple_query_test(Opts, Cfg) ->
+    GasPrice = proplists:get_value(gas_price, Cfg),
     #{
         oracle_node := ONode,
         oracle_id := OAccount,
@@ -151,15 +153,15 @@ simple_query_test(Opts, Cfg) ->
     wait_for_startup([node1, node2], 4, Cfg),
 
     %% Generate tokens for Mike
-    wait_for_value({balance, MPubKey, 2000000}, [node1], 10000, Cfg),
+    wait_for_value({balance, MPubKey, 2000000 * GasPrice}, [node1], 10000, Cfg),
 
     %% Give some tokens to the oracle account
-    post_spend_tx(node1, ?MIKE, OAccount, 1, #{ amount => 600000 }),
-    wait_for_value({balance, OPubKey, 600000}, NodeNames, 10000, Cfg),
+    post_spend_tx(node1, ?MIKE, OAccount, 1, #{ amount => 600000 * GasPrice }),
+    wait_for_value({balance, OPubKey, 600000 * GasPrice }, NodeNames, 10000, Cfg),
 
     %% Give some tokens to the querier account
-    post_spend_tx(node1, ?MIKE, QAccount, 2, #{ amount => 600000 }),
-    wait_for_value({balance, QPubKey, 600000}, NodeNames, 10000, Cfg),
+    post_spend_tx(node1, ?MIKE, QAccount, 2, #{ amount => 600000 * GasPrice }),
+    wait_for_value({balance, QPubKey, 600000 * GasPrice}, NodeNames, 10000, Cfg),
 
     %% Register oracle
     #{ tx_hash := RegTxHash } = post_oracle_register_tx(ONode, OAccount, #{
@@ -167,7 +169,7 @@ simple_query_test(Opts, Cfg) ->
         query_format    => <<"qspec">>,
         response_format => <<"rspec">>,
         query_fee       => 1,
-        fee             => 50000,
+        fee             => 50000 * GasPrice,
         oracle_ttl      => {block, 2000}
     }),
     aest_nodes:wait_for_value({txs_on_chain, [RegTxHash]}, NodeNames, 10000, []),
@@ -181,7 +183,7 @@ simple_query_test(Opts, Cfg) ->
         nonce        => 1,
         query        => <<"Hidely-Ho">>,
         query_fee    => 2,
-        fee          => 50000,
+        fee          => 50000 * GasPrice,
         query_ttl    => {delta, 100},
         response_ttl => {delta, 100}
     }),
@@ -206,7 +208,7 @@ simple_query_test(Opts, Cfg) ->
         query_id     => QueryId,
         response     => <<"D'oh!">>,
         response_ttl => {delta, 100},
-        fee          => 50000
+        fee          => 50000 * GasPrice
     }),
     aest_nodes:wait_for_value({txs_on_chain, [RespTxHash]}, NodeNames, 10000, []),
 
@@ -221,6 +223,7 @@ simple_query_test(Opts, Cfg) ->
     ok.
 
 test_oracle_ttl_extension(Cfg) ->
+    GasPrice = proplists:get_value(gas_price, Cfg),
     MPubKey = maps:get(pubkey, ?MIKE),
     OPubKey = maps:get(pubkey, ?OLIVIA),
     EncMPubKey = aehttp_api_encoder:encode(account_pubkey, MPubKey),
@@ -236,7 +239,7 @@ test_oracle_ttl_extension(Cfg) ->
     wait_for_value({balance, MPubKey, 400000}, [node1], 10000, Cfg),
 
     %% Give some tokens to the oracle account
-    post_spend_tx(node1, ?MIKE, ?OLIVIA, 1, #{ amount => 200000 }),
+    post_spend_tx(node1, ?MIKE, ?OLIVIA, 1, #{ amount => 200000 * GasPrice }),
     wait_for_value({balance, OPubKey, 200}, [node1], 10000, Cfg),
 
     %% Register oracle
@@ -245,7 +248,7 @@ test_oracle_ttl_extension(Cfg) ->
         query_format    => <<"qspec">>,
         response_format => <<"rspec">>,
         query_fee       => 1,
-        fee             => 50000,
+        fee             => 50000 * GasPrice,
         oracle_ttl      => {block, 200}
     }),
     aest_nodes:wait_for_value({txs_on_chain, [RegTxHash]}, [node1], 10000, []),
@@ -257,7 +260,7 @@ test_oracle_ttl_extension(Cfg) ->
     %% Extend oracle's TTL
     #{ tx_hash := ExtTxHash } = post_oracle_extend_tx(node1, ?OLIVIA, #{
         nonce      => 2,
-        fee        => 50000,
+        fee        => 50000 * GasPrice,
         oracle_ttl => {delta, 100}
     }),
     aest_nodes:wait_for_value({txs_on_chain, [ExtTxHash]}, [node1], 10000, []),
@@ -287,6 +290,7 @@ test_pipelined_two_nodes_query(Cfg) ->
     pipelined_query_test(Opts, Cfg).
 
 pipelined_query_test(Opts, Cfg) ->
+    GasPrice = proplists:get_value(gas_price, Cfg),
     #{
         oracle_node := ONode,
         oracle_id := OAccount,
@@ -310,14 +314,14 @@ pipelined_query_test(Opts, Cfg) ->
     wait_for_startup([node1, node2], 4, Cfg),
 
     %% Give tokens away
-    GiveAwayAmount = 600000,
+    GiveAwayAmount = 600000 * GasPrice,
     aest_nodes:wait_for_value({balance, MPubKey, 2*GiveAwayAmount}, [node1], 10000, []),
     %% Give some tokens to the oracle account/OAccount
     post_spend_tx(node1, ?MIKE, OAccount, 1, #{ amount => GiveAwayAmount }),
     %% Give some tokens to the querier account
     post_spend_tx(node1, ?MIKE, QAccount, 2, #{ amount => GiveAwayAmount }),
 
-    Fee = 50000,
+    Fee = 50000 * GasPrice,
     aest_nodes:wait_for_value({balance, OPubKey, 2*Fee}, [ONode], 10000, []),
     aest_nodes:wait_for_value({balance, QPubKey, Fee}, [QNode], 10000, []),
 
