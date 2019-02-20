@@ -116,7 +116,7 @@ minimum_gas_price(_Height) ->
 minimum_gas_price(Height) ->
     case aec_hard_forks:protocol_effective_at_height(Height) of
         ?ROMA_PROTOCOL_VSN -> 1;
-        Vsn when Vsn >= ?MINERVA_PROTOCOL_VSN -> 1000000000
+        Vsn when Vsn >= ?MINERVA_PROTOCOL_VSN -> 1000000
     end.
 -endif.
 
