@@ -1,1 +1,0 @@
-* A new version for contract serialization has been added that contains the compiler name/version used to compile the contract. This serialization is only valid after Minerva hard-fork height has been reached.
