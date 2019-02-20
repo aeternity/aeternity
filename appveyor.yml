@@ -31,11 +31,14 @@ environment:
       ERTS_VERSION: 9.3
       BUILD_STEP: build
       TEST_STEP: ct
-    - APPVEYOR_BUILD_WORKER_IMAGE: Ubuntu1804
-      OTP_VERSION: 20.3.8.18
-      ERTS_VERSION: 9.2
-      BUILD_STEP: build
-      TEST_STEP: ct
+      #
+      #    NOTE: This job can be used as a backup to CircleCI. Only enable it temporarily when needed.
+      #
+      #    - APPVEYOR_BUILD_WORKER_IMAGE: Ubuntu1804
+      #      OTP_VERSION: 20.3.8.18
+      #      ERTS_VERSION: 9.2
+      #      BUILD_STEP: build
+      #      TEST_STEP: ct
 
 # We disable this for now to keep build times at a minimum,
 # because we know it's not supported at the moment.
