@@ -86,8 +86,8 @@ Regarding feature refinements:
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.0.0-rc.1
 
-The database is backward compatible with v1.*.
-For the rest, this release is not backward compatible with v1.*.
+The database is backward compatible with `v1.*`.
+For the rest, this release is not backward compatible with `v1.*`.
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
