@@ -154,6 +154,12 @@
                             ; S=:=awaiting_leave_ack
                             ; S=:=mutual_closing ).
 
+-ifdef(TEST).
+-define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p / ~p", [Err, erlang:get_stacktrace()])).
+-else.
+-define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p", [Err])).
+-endif.
+
 callback_mode() -> [state_functions, state_enter].
 
 %% State machine
@@ -1190,7 +1196,7 @@ handle_call(St, Req, From, #data{} = D) ->
     try handle_call_(St, Req, From, D)
     catch
         error:Error ->
-            lager:debug("CAUGHT ~p / ~p", [Error, erlang:get_stacktrace()]),
+            ?LOG_CAUGHT(Error),
             keep_state(D, [{reply, From, {error, Error}}])
     end.
 
@@ -1640,8 +1646,7 @@ new_onchain_tx_for_signing(Type, Opts, D) ->
     try new_onchain_tx_for_signing_(Type, Opts, D)
     catch
         error:Reason ->
-            lager:error("CAUGHT error:~p / ~p",
-                        [Reason, erlang:get_stacktrace()]),
+            ?LOG_CAUGHT(Reason),
             error(Reason)
     end.
 
@@ -1765,6 +1770,10 @@ close_mutual_tx_for_signing(D) ->
     Account = my_account(D),
     new_close_mutual_tx(#{ acct => Account }, D).
 
+%% The responding side creates a 'throwaway' close_mutual_tx, in order to
+%% validate the tx received from the initiating side. The critical parts to
+%% validate are the state-related ones. Nonce, fee and origin are copied from
+%% the original. Once validated, the 'fake' tx is discarded.
 fake_close_mutual_tx(RealCloseTx, D) ->
     OtherAccount = other_account(D),
     {Mod, Tx} = aetx:specialize_callback(RealCloseTx),
@@ -2180,7 +2189,7 @@ check_update_msg(Type, Msg, D) ->
     try check_update_msg_(Type, Msg, D)
     catch
         error:E ->
-            lager:error("CAUGHT ~p, Trace = ~p", [E, erlang:get_stacktrace()]),
+            ?LOG_CAUGHT(E),
             {error, E}
     end.
 
@@ -2192,7 +2201,7 @@ check_update_msg_(Type, #{ channel_id := ChanId
             check_signed_update_tx(Type, SignedTx, Msg, D)
     catch
         error:E ->
-            lager:error("CAUGHT ~p, trace = ~p", [E, erlang:get_stacktrace()]),
+            ?LOG_CAUGHT(E),
             {error, {deserialize, E}}
     end.
 
@@ -2227,7 +2236,7 @@ check_update_ack_msg(Msg, D) ->
     try check_update_ack_msg_(Msg, D)
     catch
         error:E ->
-            lager:error("CAUGHT ~p, Trace = ~p", [E, erlang:get_stacktrace()]),
+            ?LOG_CAUGHT(E),
             {error, E}
     end.
 
@@ -2239,7 +2248,7 @@ check_update_ack_msg_(#{ channel_id := ChanId
             check_signed_update_ack_tx(SignedTx, Msg, D)
     catch
         error:E ->
-            lager:error("CAUGHT ~p, trace = ~p", [E, erlang:get_stacktrace()]),
+            ?LOG_CAUGHT(E),
             {error, {deserialize, E}}
     end.
 
@@ -2259,7 +2268,7 @@ check_signed_update_ack_tx(SignedTx, Msg,
           end
     catch
         error:E ->
-            lager:error("CAUGHT ~p, trace = ~p", [E, erlang:get_stacktrace()]),
+            ?LOG_CAUGHT(E),
             {error, invalid_update_ack}
     end.
 
@@ -2439,7 +2448,7 @@ handle_update_conflict(Req, D) ->
         next_state(open, D1)
     catch
         error:Err ->
-            lager:debug("CAUGHT ~p / ~p", [Err, erlang:get_stacktrace()]),
+            ?LOG_CAUGHT(Err),
             erlang:error(Err)
     end.
 
@@ -2666,10 +2675,10 @@ check_amounts(#{ initiator_amount   := InitiatorAmount0
     end.
 
 process_update_error({off_chain_update_error, Reason}, From, D) ->
-    lager:error("CAUGHT ERROR UPDATE ~p, trace = ~p", [Reason, erlang:get_stacktrace()]),
+    ?LOG_CAUGHT(Reason),
     keep_state(D, [{reply, From, {error, Reason}}]);
 process_update_error(Reason, From, D) ->
-    lager:error("CAUGHT ~p, trace = ~p", [Reason, erlang:get_stacktrace()]),
+    ?LOG_CAUGHT(Reason),
     keep_state(D, [{reply, From, {error, Reason}}]).
 
 check_closing_event(#data{on_chain_id = ChanId} = D) ->
