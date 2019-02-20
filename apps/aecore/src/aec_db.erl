@@ -304,9 +304,9 @@ get_block(Hash) ->
                    [#aec_blocks{txs = TxHashes, pof = PoF}] =
                        mnesia:read(aec_blocks, Hash),
                    Txs = [begin
-                              [#aec_signed_tx{value = STx}] =
+                              [#aec_signed_tx{value = DBSTx}] =
                                   mnesia:read(aec_signed_tx, TxHash),
-                              STx
+                              aetx_sign:from_db_format(DBSTx)
                           end || TxHash <- TxHashes],
                    aec_blocks:new_micro_from_header(Header, Txs, PoF)
            end
@@ -342,9 +342,9 @@ find_block(Hash) ->
                        [#aec_blocks{txs = TxHashes, pof = PoF}]
                            = mnesia:read(aec_blocks, Hash),
                        Txs = [begin
-                                  [#aec_signed_tx{value = STx}] =
+                                  [#aec_signed_tx{value = DBSTx}] =
                                       mnesia:read(aec_signed_tx, TxHash),
-                                  STx
+                                  aetx_sign:from_db_format(DBSTx)
                               end || TxHash <- TxHashes],
                        {value, aec_blocks:new_micro_from_header(Header, Txs, PoF)}
                end;
@@ -564,13 +564,13 @@ gc_tx(TxHash) ->
        end).
 
 get_signed_tx(Hash) ->
-    [#aec_signed_tx{value = STx}] = ?t(read(aec_signed_tx, Hash)),
-    STx.
+    [#aec_signed_tx{value = DBSTx}] = ?t(read(aec_signed_tx, Hash)),
+    aetx_sign:from_db_format(DBSTx).
 
 find_signed_tx(Hash) ->
     case ?t(read(aec_signed_tx, Hash)) of
         []                            -> none;
-        [#aec_signed_tx{value = STx}] -> {value, STx}
+        [#aec_signed_tx{value = DBSTx}] -> {value, aetx_sign:from_db_format(DBSTx)}
     end.
 
 add_tx_location(STxHash, BlockHash) when is_binary(STxHash),
@@ -600,14 +600,15 @@ find_tx_location(STxHash) ->
                                  | {binary(), aetx_sign:signed_tx()}.
 find_tx_with_location(STxHash) ->
     ?t(case mnesia:read(aec_signed_tx, STxHash) of
-           [#aec_signed_tx{value = STx}] ->
+           [#aec_signed_tx{value = DBSTx}] ->
                case mnesia:read(aec_tx_location, STxHash) of
                    [] ->
                        case mnesia:read(aec_tx_pool, STxHash) of
                            [] -> none;
-                           [_] -> {mempool, STx}
+                           [_] -> {mempool, aetx_sign:from_db_format(DBSTx)}
                        end;
-                   [#aec_tx_location{value = BlockHash}] -> {BlockHash, STx}
+                   [#aec_tx_location{value = BlockHash}] ->
+                       {BlockHash, aetx_sign:from_db_format(DBSTx)}
                end;
            [] -> none
        end).

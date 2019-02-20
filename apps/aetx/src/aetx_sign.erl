@@ -24,6 +24,7 @@
          tx/1,
          verify/2,
          verify_half_signed/2,
+         from_db_format/1,
          signatures/1]).
 
 %% API that should be avoided to be used
@@ -74,6 +75,13 @@ add_signatures(#signed_tx{signatures = OldSigs} = Tx, NewSigs)
 %% seems restricted as type.
 tx(#signed_tx{tx = Tx}) ->
     Tx.
+
+-spec from_db_format(tuple()) -> signed_tx().
+from_db_format(#signed_tx{tx = Tx} = STx) ->
+    case aetx:from_db_format(Tx) of
+        Tx  -> STx;
+        Tx1 -> STx#signed_tx{tx = Tx1}
+    end.
 
 %% @doc Get the signatures of a signed transaction.
 -spec signatures(signed_tx()) -> list(binary()).

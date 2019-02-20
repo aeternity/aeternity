@@ -11,6 +11,7 @@
 -export([ accounts/1
         , deserialize_from_binary/1
         , fee/1
+        , from_db_format/1
         , gas_limit/2
         , min_gas/2
         , gas_price/1
@@ -247,6 +248,20 @@ ttl(#aetx{ cb = CB, tx = Tx }) ->
 -spec size(Tx :: tx()) -> pos_integer().
 size(#aetx{ size = Size }) ->
     Size.
+
+-spec from_db_format(tx()) -> tx().
+from_db_format(#aetx{ cb = aect_call_tx, tx = Tx } = AETx) ->
+    case aect_call_tx:from_db_format(Tx) of
+        Tx  -> AETx;
+        Tx1 -> AETx#aetx{ tx = Tx1 }
+    end;
+from_db_format(#aetx{ cb = aect_create_tx, tx = Tx } = AETx) ->
+    case aect_create_tx:from_db_format(Tx) of
+        Tx  -> AETx;
+        Tx1 -> AETx#aetx{ tx = Tx1 }
+    end;
+from_db_format(#aetx{} = Tx) ->
+    Tx.
 
 %%%===================================================================
 %%% Checking transactions
