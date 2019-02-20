@@ -35,9 +35,39 @@ Moves mining related code into a separate git repository - `aeternity/aeminer`. 
     These commands were previously non-functional on Windows.
 * Adds token migration support for the hard fork
 
-* Does all the things mentioned temporarily in files [/docs/release-notes/next-minerva/PT-*.md](/docs/release-notes/next-minerva/).
+* Introduces a new AEVM version to contain consensus breaking changes and optimizations.
+* Removes references to old planned VM versions that will not be implemented.
+* Increases the maximum size of generic state channel messages to 65535 bytes.
+* Splits the old VM-version into VM-version and ABI-version. Contract calls and Oracles only deal with ABI-version. This
+  changes the HTTP API. We have two VM-versions (SOPHIA_1 = Roma, and SOPHIA_2 = Minerva), but only one ABI-version.
+* Adds `Crypto.ecverify` as a Primop for the aevm and in the compiler.
+* Adds generic hash functions to Sophia.
+* Adds bytecode instructions for bit shift (SHL, SHR, and SAR) to VM_AEVM_SOPHIA_2
+* Changes AEVM semantics of arithmetic operations to fail on over/underflow.
+* Replaces Sophia bit arithmetic operations with a new builtin bit field type.
+* Fix Sophia Call.origin to return the original caller
+* Fixes the size check applied for individual Map elements in Sophia/AEVM, previously it could give
+  out of gas for not-too-big elements. Applies in VM_AEVM_SOPHIA_2.
+* Renames the log files:
 
-TODO: When preparing the release, concatenate all `/docs/release-notes/next-minerva/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+  Old file name | New file name
+  --- | ---
+  "epoch.log" | "aeternity.log"
+  "epoch_mining.log" | "aeternity_mining.log"
+  "epoch_sync.log" | "aeternity_sync.log"
+  "epoch_pow_cuckoo.log" | "aeternity_pow_cuckoo.log"
+  "epoch_metrics.log" | "aeternity_metrics.log"
+* Add api endpoint for getting the state of an account at a block hash
+* Deprecates all HTTP APIs that interface with the compiler. The compiler will be provided separately as a standalone "tool".
+* Lock the compiler backend for (deprecated) HTTP APIs to the ROMA compiler.
+* Oracle query and response formats are checked on register in the minerva protocol
+* A new version for contract serialization has been added that contains the compiler name/version used to compile the contract. This serialization is only valid after Minerva hard-fork height has been reached.
+* Avoid bumping nonces in for contract primops unless it is needed (from Minerva protocol)
+* Adds an optional info field to the key block/header that is allowed from the Minerva consensus version.
+* Adds the info field to all key block/headers returned by the API
+* Adds the info field as required in the key block post API used for mining pools.
+* Set the minimum gas price to 1000000 in order to make transactions more reasonably priced.
+* Sets the MINERVA testnet (UAT) hard fork height to block 40900
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.0.0-rc.1
 
