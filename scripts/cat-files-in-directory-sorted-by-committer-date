@@ -7,4 +7,4 @@
 
 D="${1:?}"
 
-git ls-files -- "${D:?}/" | xargs -IXXX git log -n 1 --pretty="%ct XXX" -- "XXX" | sort --field-separator=' ' --key=1 | cut -d ' ' -f '2-' | xargs cat
+git ls-files -- "${D:?}/" | xargs -IXXX git log -n 1 --pretty="%ct XXX" -- "XXX" | sort --field-separator=' ' --key=1 | cut -d ' ' -f '2-' | xargs -IXXX cat "XXX"
