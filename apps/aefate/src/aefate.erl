@@ -48,15 +48,15 @@ load_file(FileName, Opts) ->
             usage();
         Call ->
             {ok, File} = file:read_file(FileName),
-            Code = aeb_fate_asm:bytecode_to_fate_code(File, Opts), 
+            Code = aeb_fate_asm:bytecode_to_fate_code(File, Opts),
             SerializedCall = aeb_fate_asm:function_call(Call),
             What = #{ contract => FileName
                     , call => SerializedCall},
-            Chain = #{ contracts => 
+            Chain = #{ contracts =>
                            #{ FileName => Code}},
             Res = aefa_fate:run(What, Chain),
-                
-            case Verbose of 
+
+            case Verbose of
                 true ->
                     io:format("Code: ~0p~n", [Code]),
                     io:format("Chain: ~0p~n", [Chain]),
