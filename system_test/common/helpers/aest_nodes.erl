@@ -418,12 +418,7 @@ post_spend_tx(Node, From, To, Nonce, Map) ->
                          , ttl => 10000000
                          , nonce => Nonce
                          , payload => PayLoad }, Map),
-    {ok, Tx} = aec_spend_tx:new(Params),
-    SignedTx = aec_test_utils:sign_tx(Tx, SendSecKey),
-    SerSignTx = aetx_sign:serialize_to_binary(SignedTx),
-    verify(200, request(Node, 'PostTransaction', #{
-        tx => aeser_api_encoder:encode(transaction, SerSignTx)
-    })).
+    post_transaction(Node, aec_spend_tx, SendSecKey, Params, #{}).
 
 post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map) ->
     #{ pubkey := InPubKey, privkey := InSecKey } = Initiator,
