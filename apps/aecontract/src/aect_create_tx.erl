@@ -44,6 +44,10 @@
          call_id/1
         ]).
 
+%% Conversion from old db format
+-export([from_db_format/1
+        ]).
+
 -define(CONTRACT_CREATE_TX_VSN, 1).
 -define(CONTRACT_CREATE_TX_TYPE, contract_create_tx).
 
@@ -56,7 +60,8 @@
           owner_id    :: aec_id:id(),
           nonce       :: non_neg_integer(),
           code        :: binary(),
-          ct_version  :: aect_contracts:version(),
+          ct_version  :: aect_contracts:version()
+                       | non_neg_integer(), %% NOTE: Only in old persisted db
           fee         :: aect_contracts:amount(),
           deposit     :: aect_contracts:amount(),
           amount      :: aect_contracts:amount(),
@@ -71,6 +76,15 @@
 -opaque tx() :: #contract_create_tx{}.
 
 -export_type([tx/0]).
+
+%%%===================================================================
+%%% Conversion of old db format
+
+-spec from_db_format(tx()) -> tx().
+from_db_format(#contract_create_tx{ct_version = #{}} = Tx) ->
+    Tx;
+from_db_format(#contract_create_tx{ct_version = VMVersion} = Tx) ->
+    Tx#contract_create_tx{ct_version = aect_contracts:split_vm_abi(VMVersion)}.
 
 %%%===================================================================
 %%% Getters

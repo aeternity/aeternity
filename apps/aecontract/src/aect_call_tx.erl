@@ -43,6 +43,10 @@
          call_data/1,
          call_stack/1]).
 
+%% For converting old db format
+-export([from_db_format/1
+        ]).
+
 -define(CONTRACT_CALL_TX_VSN, 1).
 -define(CONTRACT_CALL_TX_TYPE, contract_call_tx).
 
@@ -66,6 +70,21 @@
             %% Only different from caller if this is called from a contract,
             %% not serialized
           }).
+
+-record(db_contract_call_tx, {
+          caller_id        :: aec_id:id(),
+          nonce            :: integer(),
+          contract_id      :: aec_id:id(),
+          abi_version      :: aect_contracts:abi_version(),
+          fee              :: integer(),
+          ttl              :: aetx:tx_ttl(),
+          amount           :: aect_contracts:amount(),
+          gas              :: aect_contracts:amount(),
+          gas_price        :: aect_contracts:amount(),
+          call_data        :: binary(),
+          call_stack  = [] :: [non_neg_integer()]
+          }).
+
 
 -opaque tx() :: #contract_call_tx{}.
 
@@ -103,6 +122,46 @@ new(#{caller_id   := CallerId,
                            call_origin = CallOrigin
                           },
     {ok, aetx:new(?MODULE, Tx)}.
+
+-spec from_db_format(tx() | tuple()) -> tx().
+from_db_format(#contract_call_tx{} = Tx) -> Tx;
+from_db_format(Tuple) ->
+    case setelement(1, Tuple, db_contract_call_tx) of
+        #db_contract_call_tx{
+           caller_id        = CallerId,
+           nonce            = Nonce,
+           contract_id      = ContractId,
+           abi_version      = ABI,
+           fee              = Fee,
+           ttl              = TTL,
+           amount           = Amount,
+           gas              = Gas,
+           gas_price        = GasPrice,
+           call_data        = CallData,
+           call_stack       = CallStack
+          } ->
+            CallOrigin =
+                case aec_id:specialize(CallerId) of
+                    {contract, Pubkey} -> Pubkey;
+                    {account,  Pubkey} -> Pubkey
+                end,
+            #contract_call_tx{
+               caller_id        = CallerId,
+               nonce            = Nonce,
+               contract_id      = ContractId,
+               abi_version      = ABI,
+               fee              = Fee,
+               ttl              = TTL,
+               amount           = Amount,
+               gas              = Gas,
+               gas_price        = GasPrice,
+               call_data        = CallData,
+               call_stack       = CallStack,
+               call_origin      = CallOrigin
+              };
+        _ ->
+            error(illegal_db_format)
+    end.
 
 -spec type() -> atom().
 type() ->
