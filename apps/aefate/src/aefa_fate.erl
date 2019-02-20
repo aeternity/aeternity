@@ -781,6 +781,7 @@ op('div', A, B)  when ?IS_FATE_INTEGER(A)
     end;
 op(pow, A, B)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
+    %% TODO: Implement arbitrary perscision pow function.
     try round(math:pow(A, B)) of
         I -> I
     catch error:badarith ->
