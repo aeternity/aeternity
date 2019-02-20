@@ -1,15 +1,27 @@
 # About this release
 
 [This][this-release] is the first Minerva release candidate.
-It:
 
+Regarding the Minerva consensus protocol upgrade on testnet, this release:
+* Sets the MINERVA testnet (UAT) hard fork height to block 40900
+
+Regarding renaming of the canonical name of the software, this release:
 * Changes user config discovery paths, i.e. the node is looking for the user config in:
   - AETERNITY_CONFIG environment variable instead of EPOCH_CONFIG,
   - ~/.aeternity/aeternity/aeternity.yaml file instead of ~/.epoch/epoch/epoch.yaml,
   - ${AETERNITY_TOP}/aeternity.yaml file instead of ${AETERNITY_TOP}/epoch.yaml.
   Backwards compatibility is kept for now, so user config defined in old locations will be working until the next major release.
-* Add debug API endpoint for getting the token supply at height
-* Add api endpoint for getting the state of an account at a given height
+* Renames the log files:
+
+  Old file name | New file name
+  --- | ---
+  "epoch.log" | "aeternity.log"
+  "epoch_mining.log" | "aeternity_mining.log"
+  "epoch_sync.log" | "aeternity_sync.log"
+  "epoch_pow_cuckoo.log" | "aeternity_pow_cuckoo.log"
+  "epoch_metrics.log" | "aeternity_metrics.log"
+
+Regarding the seed nodes of the environments:
 * Testnet seed node 18.130.148.7 has been replaced by 13.53.161.215
 * Roma network seed nodes have been replaced according to the following table:
 
@@ -27,6 +39,10 @@ It:
   18.130.106.60 |    13.53.78.163
 
   If you don't explicitly configure those nodes IP/keys, you don't need to do anything, otherwise **update your configuration**, because all old nodes will be shutdown in short period of time
+
+For the rest, this release:
+* Add debug API endpoint for getting the token supply at height
+* Add api endpoint for getting the state of an account at a given height
 * The utility command `./bin/aeternity keys_gen` does not compress spaces in the
     password itself anymore. Only spaces at the beginning or end of a given
     password are trimmed.
@@ -48,15 +64,6 @@ It:
 * Fix Sophia Call.origin to return the original caller
 * Fixes the size check applied for individual Map elements in Sophia/AEVM, previously it could give
   out of gas for not-too-big elements. Applies in VM_AEVM_SOPHIA_2.
-* Renames the log files:
-
-  Old file name | New file name
-  --- | ---
-  "epoch.log" | "aeternity.log"
-  "epoch_mining.log" | "aeternity_mining.log"
-  "epoch_sync.log" | "aeternity_sync.log"
-  "epoch_pow_cuckoo.log" | "aeternity_pow_cuckoo.log"
-  "epoch_metrics.log" | "aeternity_metrics.log"
 * Add api endpoint for getting the state of an account at a block hash
 * Deprecates all HTTP APIs that interface with the compiler. The compiler will be provided separately as a standalone "tool".
 * Lock the compiler backend for (deprecated) HTTP APIs to the ROMA compiler.
@@ -67,7 +74,6 @@ It:
 * Adds the info field to all key block/headers returned by the API
 * Adds the info field as required in the key block post API used for mining pools.
 * Set the minimum gas price to 1000000 in order to make transactions more reasonably priced.
-* Sets the MINERVA testnet (UAT) hard fork height to block 40900
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.0.0-rc.1
 
