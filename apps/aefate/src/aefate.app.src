@@ -5,7 +5,9 @@
   {applications,
    [kernel,
     stdlib,
-    lager
+    lager,
+    aebytecode,
+    getopt
    ]},
   {env,[]},
   {modules, []},
