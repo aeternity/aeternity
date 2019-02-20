@@ -47,6 +47,7 @@
         , check_incorrect_withdrawal/1
         , check_incorrect_update/1
         , check_incorrect_mutual_close/1
+        , check_mutual_close_with_wrong_amounts/1
         ]).
 
 %% exports for aehttp_integration_SUITE
@@ -78,6 +79,7 @@ all() ->
 groups() ->
     [
      {all_tests, [sequence], [ {group, transactions}
+                             , {group, errors}
                              , {group, throughput},
                                {group, signatures}]},
      {transactions, [sequence],
@@ -114,6 +116,10 @@ groups() ->
       , check_incorrect_withdrawal
       , check_incorrect_update
       , check_incorrect_mutual_close
+      ]},
+     {errors, [sequence],
+      [
+       check_mutual_close_with_wrong_amounts
       ]}
     ].
 
@@ -529,28 +535,37 @@ deposit(Cfg) ->
                                             [?SLOGAN|Cfg]),
     ct:log("I = ~p", [I]),
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
-    {IAmt0, RAmt0, _, _Round0 = 1} = check_fsm_state(FsmI),
+    {IAmt0, RAmt0, _, Round0 = 1} = check_fsm_state(FsmI),
     check_info(0),
+    {ok, I1, R1} = deposit_(I, R, Deposit, Round0, Debug),
+    check_info(500),
+    shutdown_(I1, R1),
+    ok.
+
+deposit_(#{fsm := FsmI} = I, R, Deposit, Debug) ->
+    {_IAmt0, _RAmt0, _, Round0} = check_fsm_state(FsmI),
+    deposit_(I, R, Deposit, Round0, Debug).
+
+deposit_(#{fsm := FsmI} = I, R, Deposit, Round1, Debug) ->
     ok = rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => Deposit}]),
     {I1, _} = await_signing_request(deposit_tx, I),
-    {_R1, _} = await_signing_request(deposit_created, R),
+    {R1, _} = await_signing_request(deposit_created, R),
     SignedTx = await_on_chain_report(I1, ?TIMEOUT),
-    SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
+    SignedTx = await_on_chain_report(R1, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
-    {IAmt0, RAmt0, _, _Round1 = 1} = check_fsm_state(FsmI),
+    {IAmt0, RAmt0, _, _Round1} = check_fsm_state(FsmI),
+    Round2 = Round1 + 1,
     mine_blocks(dev1, ?MINIMUM_DEPTH),
-    {IAmt, RAmt0, StateHash, Round2 = 2} = check_fsm_state(FsmI),
+    {IAmt, RAmt0, StateHash, Round2} = check_fsm_state(FsmI),
     {IAmt, _} = {IAmt0 + Deposit, IAmt}, %% assert correct amounts
     {channel_deposit_tx, DepositTx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
     Round2 = aesc_deposit_tx:round(DepositTx), %% assert correct round
     StateHash = aesc_deposit_tx:state_hash(DepositTx), %% assert correct state hash
-    ct:log("I2 = ~p", [I1]),
+    ct:log("I1 = ~p", [I1]),
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
     Expected = {IAmt2, RAmt2},
     {Expected, Expected} = {{IAmt0 + Deposit, RAmt0}, Expected},
-    check_info(500),
-    shutdown_(I, R),
-    ok.
+    {ok, I1, R1}.
 
 withdraw(Cfg) ->
     Debug = get_debug(Cfg),
@@ -932,8 +947,8 @@ check_incorrect_mutual_close(Cfg) ->
     Test =
         fun(Depositor, Malicious) ->
             Debug = true,
-            #{ i := #{fsm := FsmI} = I
-            , r := #{fsm := FsmR} = R
+            #{ i := #{fsm := _FsmI} = I
+            , r := #{fsm := _FsmR} = R
             , spec := Spec} = create_channel_([?SLOGAN|Cfg]),
             Port = proplists:get_value(port, Cfg, ?PORT),
             Data = {I, R, Spec, Port, Debug},
@@ -949,6 +964,26 @@ check_incorrect_mutual_close(Cfg) ->
     Roles = [initiator, responder],
     [Test(Depositor, Malicious) || Depositor <- Roles,
                                    Malicious <- Roles],
+    ok.
+
+check_mutual_close_with_wrong_amounts(Cfg) ->
+    Debug = get_debug(Cfg),
+    {Si, Sr, Spec} = channel_spec([{initiator_amount, 5001},
+                                   {responder_amount, 5001}, ?SLOGAN | Cfg],
+                                  5000, 0),
+    Port = proplists:get_value(port, Cfg, 9325),
+    #{ i := #{fsm := FsmI} = I
+     , r := #{fsm := FsmR} = R } =
+        create_channel_from_spec(Si, Sr, Spec, Port, Debug),
+    %% We don't have enough funds to cover the closing fee
+    {error, insufficient_funds} = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+    timer:sleep(1000),
+    %% Fsms should be unaffected
+    true = (rpc(dev1, erlang, process_info, [FsmI]) =/= undefined),
+    true = (rpc(dev1, erlang, process_info, [FsmR]) =/= undefined),
+    %% Deposit funds to cover the closing fee. Then it should work
+    {ok, _I1, _R1} = deposit_(I, R, 20000, Debug),
+    ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
     ok.
 
 wrong_sig_action(ChannelStuff, Poster, Malicious,
@@ -1008,6 +1043,7 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R) ->
     wait_for_signed_transaction_in_block(dev1, SignedTx),
     verify_close_mutual_tx(SignedTx, ChannelId),
     ok.
+
 
 %% Retry N times, T ms apart, if F() raises an exception.
 %% Used in places where there could be a race.
