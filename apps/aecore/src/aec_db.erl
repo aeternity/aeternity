@@ -763,20 +763,20 @@ assert_schema_node_name(#{persist := true}) ->
         false ->
             {ok, MnesiaDir} = application:get_env(mnesia, dir),
             SchemaLocation = filename:join(MnesiaDir, "schema.DAT"),
-            {DbRenameCommandLog, DbRenameCommandParams} = db_rename_command_log(DbOwnerNode, node()),
+            {DbRenameCommandLog, DbRenameCommandParams} = db_rename_command_log(SchemaLocation, DbOwnerNode, node()),
             error_logger:error_msg("Database cannot be loaded. "
                                    "It was created for the node ~p, and current node "
                                    "is ~p (these must not differ!). "
                                    "To fix that, please go to your node's directory "
                                    "and run " ++ DbRenameCommandLog,
-                        [DbOwnerNode, node(), SchemaLocation] ++ DbRenameCommandParams),
+                        [DbOwnerNode, node()] ++ DbRenameCommandParams),
             exit(wrong_db_owner_node)
     end.
 
-db_rename_command_log('epoch@localhost', 'aeternity@localhost') ->
-    {"\"bin/aeternity rename_db ~s\"", []};
-db_rename_command_log(OldNode, NewNode) ->
-    {"\"bin/aeternity rename_db ~s ~p ~p\"", [OldNode, NewNode]}.
+db_rename_command_log(SchemaLocation, 'epoch@localhost', 'aeternity@localhost') ->
+    {"\"bin/aeternity rename_db ~s\"", [SchemaLocation]};
+db_rename_command_log(SchemaLocation, OldNode, NewNode) ->
+    {"\"bin/aeternity rename_db ~s ~p ~p\"", [SchemaLocation, OldNode, NewNode]}.
 
 ensure_schema_storage_mode(#{persist := false}) ->
     case disc_db_exists() of
