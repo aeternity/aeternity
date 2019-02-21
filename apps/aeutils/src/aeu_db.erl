@@ -7,22 +7,18 @@
 -module(aeu_db).
 
 %% API
--export([change_node/1,
-         change_node/3]).
+-export([change_node/3]).
 
--define(DEFAULT_FROM_NAME, 'epoch@localhost').
--define(DEFAULT_TO_NAME, 'aeternity@localhost').
 -define(db_renaming_error(E), {db_renaming_error, E}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-change_node(SchemaDATFilePath) ->
-    change_node(?DEFAULT_FROM_NAME, ?DEFAULT_TO_NAME, SchemaDATFilePath).
-
-change_node(FromNode, ToNode, SchemaDATFilePath) ->
-    try do_change_node(FromNode, ToNode, SchemaDATFilePath)
+change_node(SchemaDATFilePath, FromNode, ToNode) when is_list(SchemaDATFilePath)
+                                                      andalso is_atom(FromNode)
+                                                      andalso is_atom(ToNode) ->
+    try do_change_node(SchemaDATFilePath, FromNode, ToNode)
     catch throw:?db_renaming_error(Error) -> {error, Error}
     end.
 
@@ -30,13 +26,13 @@ change_node(FromNode, ToNode, SchemaDATFilePath) ->
 %%% Internal functions
 %%%===================================================================
 
-do_change_node(FromNode, ToNode, SchemaDatFile) ->
-    ok   = assert_file_present(SchemaDatFile),
-    ok   = prepare_schema_dat_backup(SchemaDatFile),
-    Name = dets_open_file(SchemaDatFile),
-    ok   = dets_change_node(FromNode, ToNode, Name),
-    ok   = dets_sync(Name),
-    ok   = dets_close(Name).
+do_change_node(SchemaDatFile, FromNode, ToNode) ->
+    ok      = assert_file_present(SchemaDatFile),
+    ok      = prepare_schema_dat_backup(SchemaDatFile),
+    TabName = dets_open_file(SchemaDatFile),
+    ok      = dets_change_node(FromNode, ToNode, TabName),
+    ok      = dets_sync(TabName),
+    ok      = dets_close(TabName).
 
 assert_file_present(SchemaDatFile) ->
     case filelib:is_regular(SchemaDatFile) of
@@ -49,7 +45,10 @@ assert_file_present(SchemaDatFile) ->
 prepare_schema_dat_backup(SchemaDatFile) ->
     BackupFile = get_backup_file(SchemaDatFile),
     case file:copy(SchemaDatFile, BackupFile) of
-        {ok, _} -> ok;
+        {ok, _} ->
+            io:fwrite("Created schema.DAT backup file at: ~p. "
+                      "Please restore from it if renaming process is interrupted or fails.~n", [BackupFile]),
+            ok;
         {error, Reason} ->
             io:fwrite("Error preparing schema.DAT backup: ~p~n", [Reason]),
             db_renaming_error(Reason)
@@ -69,8 +68,8 @@ file_exists(File) ->
     end.
 
 find_nonexisting_file(SchemaDatFile) ->
-    TS = erlang:system_time(millisecond),
-    BackupFile = lists:concat([SchemaDatFile, ".", TS, ".backup"]),
+    Ts = erlang:system_time(millisecond),
+    BackupFile = lists:concat([SchemaDatFile, ".", Ts, ".backup"]),
     case file_exists(BackupFile) of
         true -> find_nonexisting_file(SchemaDatFile);
         false -> BackupFile
@@ -84,18 +83,18 @@ dets_open_file(SchemaDatFile) ->
             db_renaming_error(Reason)
     end.
 
-dets_change_node(FromNode, ToNode, Name) ->
-    dets_change_node(FromNode, ToNode, Name, dets:first(Name)).
+dets_change_node(FromNode, ToNode, TabName) ->
+    dets_change_node(FromNode, ToNode, TabName, dets:first(TabName)).
 
-dets_change_node(_FromNode, _ToNode, _Name, '$end_of_table') ->
+dets_change_node(_FromNode, _ToNode, _TabName, '$end_of_table') ->
     ok;
-dets_change_node(FromNode, ToNode, Name, Key) ->
-    case dets:lookup(Name, Key) of
-        [{Name, Tab, Def}] ->
+dets_change_node(FromNode, ToNode, TabName, Key) ->
+    case dets:lookup(TabName, Key) of
+        [{TabName, Tab, Def}] ->
             NewDef = rename_node(FromNode, ToNode, Def),
-            case dets:insert(Name, {Name, Tab, NewDef}) of
+            case dets:insert(TabName, {TabName, Tab, NewDef}) of
                 ok ->
-                    dets_change_node(FromNode, ToNode, Name, dets:next(Name, Key));
+                    dets_change_node(FromNode, ToNode, TabName, dets:next(TabName, Key));
                 {error, Reason} ->
                     io:fwrite("Inserting into schema.DAT failed: ~p~n", [Reason]),
                     db_renaming_error(Reason)
@@ -122,16 +121,16 @@ rename_node(FromNode, ToNode, Def) ->
               lists:keyreplace(version, 1, Acc, {version, {Vsn, {ToNode, Ts}}})
       end, Def, ToBeRenamed).
 
-dets_sync(Name) ->
-    case dets:sync(Name) of
+dets_sync(TabName) ->
+    case dets:sync(TabName) of
         ok -> ok;
         {error, Reason} ->
             io:fwrite("Syncing schema.DAT file failed: ~p~n", [Reason]),
             db_renaming_error(Reason)
     end.
 
-dets_close(Name) ->
-    case dets:close(Name) of
+dets_close(TabName) ->
+    case dets:close(TabName) of
         ok -> ok;
         {error, Reason} ->
             io:fwrite("Closing schema.DAT file failed: ~p~n", [Reason]),
