@@ -41,6 +41,7 @@
         , create_version_too_high/1
         , state_tree/1
         , sophia_identity/1
+        , sophia_vm_interaction/1
         , sophia_state/1
         , sophia_match_bug/1
         , sophia_spend/1
@@ -138,7 +139,7 @@
 %%%===================================================================
 
 all() ->
-    [{group, aevm_1}, {group, aevm_2}].
+    [{group, vm_interaction}, {group, aevm_1}, {group, aevm_2}].
 
 %% To skip one level of indirection...
 -define(ALL_TESTS, [{group, transactions}, {group, state_tree}, {group, sophia},
@@ -147,6 +148,8 @@ all() ->
 groups() ->
     [ {aevm_1, [sequence], ?ALL_TESTS}
     , {aevm_2, [sequence], ?ALL_TESTS}
+    , {vm_interaction, [], [sophia_vm_interaction
+                            ]}
     , {transactions, [], [ create_contract
                          , create_contract_init_error
                          , create_contract_init_error_the_invalid_instruction
@@ -285,10 +288,21 @@ init_per_group(aevm_2, Cfg) ->
                 fun(_) -> ?MINERVA_PROTOCOL_VSN end),
     [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_2},
      {protocol, minerva} | Cfg];
+init_per_group(vm_interaction, Cfg) ->
+    Height = 10,
+    Fun = fun(H) when H <  Height -> ?ROMA_PROTOCOL_VSN;
+             (H) when H >= Height -> ?MINERVA_PROTOCOL_VSN
+          end,
+    meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
+    [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_2},
+     {fork_height, Height},
+     {protocol, minerva} | Cfg];
 init_per_group(_Grp, Cfg) ->
     Cfg.
 
-end_per_group(Grp, Cfg) when Grp =:= aevm_1; Grp =:= aevm_2 ->
+end_per_group(Grp, Cfg) when Grp =:= aevm_1;
+                             Grp =:= aevm_2;
+                             Grp =:= vm_interaction ->
     meck:unload(aec_hard_forks),
     Cfg;
 end_per_group(_Grp, Cfg) ->
@@ -957,7 +971,7 @@ create_tx(Owner, State) ->
 create_tx(Owner, Spec0, State) ->
     Spec = maps:merge(
         #{ abi_version => aect_test_utils:latest_sophia_abi_version()
-         , vm_version  => vm_version()
+         , vm_version  => maps:get(vm_version, Spec0, vm_version())
          , fee         => 1000000
          , deposit     => 10
          , amount      => 200
@@ -985,7 +999,16 @@ create_contract(Owner, Name, Args, Options, S) ->
             error({fail, {error, compile_should_work, got, Reason}})
     end.
 
+fail_create_contract_with_code(Owner, Code, Args, Options, S) ->
+    try create_contract_with_code(Owner, Code, Args, Options, S, true) of
+        _ -> error(succeeded)
+    catch throw:{ok, R, S1} -> {{error, R}, S1}
+    end.
+
 create_contract_with_code(Owner, Code, Args, Options, S) ->
+    create_contract_with_code(Owner, Code, Args, Options, S, false).
+
+create_contract_with_code(Owner, Code, Args, Options, S, Fail) ->
     Nonce       = aect_test_utils:next_nonce(Owner, S),
     CallData    = make_calldata_from_code(Code, init, Args),
     Options1    = maps:merge(#{nonce => Nonce, code => Code, call_data => CallData},
@@ -993,7 +1016,12 @@ create_contract_with_code(Owner, Code, Args, Options, S) ->
     CreateTx    = create_tx(Owner, Options1, S),
     Height      = maps:get(height, Options, 1),
     PrivKey     = aect_test_utils:priv_key(Owner, S),
-    {ok, S1}    = sign_and_apply_transaction(CreateTx, PrivKey, S, Height),
+    S1          = case sign_and_apply_transaction(CreateTx, PrivKey, S, Height) of
+                      {ok, TmpS} when not Fail -> TmpS;
+                      {ok,_TmpS} when Fail -> error({error, succeeded});
+                      {error, R,_TmpS} when not Fail -> error(R);
+                      {error, R, TmpS} when Fail -> throw({ok, R, TmpS})
+                  end,
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, Nonce),
     CallKey     = aect_call:id(Owner, Nonce, ContractKey),
     CallTree    = aect_test_utils:calls(S1),
@@ -1092,6 +1120,54 @@ sophia_identity(_Cfg) ->
     99    = ?call(call_contract,   Acc1, RemC, call, word, {IdC, 99}),
     RemC2 = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
     77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {IdC, RemC, 77}),
+    ok.
+
+sophia_vm_interaction(Cfg) ->
+    state(aect_test_utils:new_state()),
+    ForkHeight    = ?config(fork_height, Cfg),
+    RomaHeight    = ForkHeight - 1,
+    MinervaHeight = ForkHeight + 1,
+    Acc           = ?call(new_account, 10000000),
+    RomaSpec      = #{height => RomaHeight, vm_version => ?VM_AEVM_SOPHIA_1,
+                      amount => 100},
+    MinervaSpec   = #{height => MinervaHeight, vm_version => ?VM_AEVM_SOPHIA_2,
+                      amount => 100},
+    {ok, IdCode}  = compile_contract_vsn(identity, ?AESOPHIA_1),
+    {ok, RemCode} = compile_contract_vsn(remote_call, ?AESOPHIA_1),
+
+    %% Create contracts on both side of the fork
+    IdCRoma     = ?call(create_contract_with_code, Acc, IdCode, {}, RomaSpec),
+    RemCRoma    = ?call(create_contract_with_code, Acc, RemCode, {}, RomaSpec),
+    IdCMinerva  = ?call(create_contract_with_code, Acc, IdCode, {}, MinervaSpec),
+    RemCMinerva = ?call(create_contract_with_code, Acc, RemCode, {}, MinervaSpec),
+
+    %% Check that we cannot create contracts with vm1 after the fork
+    BadSpec    = RomaSpec#{height => MinervaHeight},
+    {error, illegal_vm_version} = ?call(fail_create_contract_with_code, Acc, IdCode, {}, BadSpec),
+
+    MinervaCallSpec = #{height => MinervaHeight},
+
+    %% Call directly VM1
+    42 = ?call(call_contract, Acc, IdCRoma,    main, word, 42, MinervaCallSpec),
+    43 = ?call(call_contract, Acc, IdCMinerva, main, word, 43, MinervaCallSpec),
+
+    %% Call VM1 -> VM1 and VM2 -> VM1
+    98 = ?call(call_contract, Acc, RemCRoma, call, word, {IdCRoma, 98},
+               MinervaCallSpec),
+    99 = ?call(call_contract, Acc, RemCMinerva, call, word, {IdCRoma, 99},
+               MinervaCallSpec),
+
+    %% Call VM2 -> VM1 -> VM1
+    77 = ?call(call_contract, Acc, RemCMinerva, staged_call, word,
+               {IdCRoma, RemCRoma, 77}, MinervaCallSpec),
+
+    %% Fail calling VM1 -> VM2
+    {error, _} = ?call(call_contract, Acc, RemCRoma, call, word,
+                       {IdCMinerva, 98}, MinervaCallSpec),
+
+    %% Fail calling VM2 -> VM1 -> VM2
+    {error, _} = ?call(call_contract, Acc, RemCMinerva, staged_call, word,
+                       {IdCRoma, RemCMinerva, 77}, MinervaCallSpec),
     ok.
 
 sophia_exploits(_Cfg) ->
