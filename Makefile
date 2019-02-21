@@ -325,7 +325,7 @@ multi-build: dev1-build
 .SECONDEXPANSION:
 
 internal-compile-deps: $$(KIND)
-	@$(REBAR) as $(KIND) compile --deps-only
+	@$(REBAR) as $(KIND) compile -d
 
 internal-package: $$(KIND)
 internal-package: REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
