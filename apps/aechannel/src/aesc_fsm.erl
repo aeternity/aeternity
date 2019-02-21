@@ -1681,14 +1681,12 @@ new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
     Nonce = maps:get(nonce, Opts),
     TTL = maps:get(ttl, Opts, 0), %% 0 means no TTL limit
     {IAmt1, RAmt1} = pay_close_mutual_fee(Fee, IAmt, RAmt),
-    {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
     aesc_close_mutual_tx:new(#{ channel_id             => ChanId
                               , from_id                => FromId
                               , initiator_amount_final => IAmt1
                               , responder_amount_final => RAmt1
                               , ttl                    => TTL
                               , fee                    => Fee
-                              , round                  => LastRound + 1
                               , nonce                  => Nonce });
 new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                                      amount := Amount} = Opts,
@@ -1787,9 +1785,6 @@ fake_close_mutual_tx(RealCloseTx, D) ->
 
 new_close_mutual_tx(Opts, D) ->
     new_onchain_tx_for_signing(channel_close_mutual_tx, Opts, D).
-
-    %% {ok, Nonce} = aec_next_nonce:pick_for_account(Account),
-    %% close_mutual_tx_(Account, Nonce, LatestSignedTx, D).
 
 slash_tx_for_signing(Round, SignedTx, D) ->
     Account = my_account(D),
