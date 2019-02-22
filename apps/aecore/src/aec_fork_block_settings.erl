@@ -6,6 +6,10 @@
          genesis_accounts/0,
          minerva_accounts/0]).
 
+-ifdef(TEST).
+-export([file_name/1]).
+-endif.
+
 -define(GENESIS_DIR, ".genesis").
 -define(MINERVA_DIR, ".minerva").
 
@@ -57,12 +61,14 @@ preset_accounts(Release, ErrorMsg) ->
 
 -spec read_presets(aec_hard_forks:protocol_vsn()) -> {ok, binary()}| {error, {atom(), string()}}.
 read_presets(Release) ->
-    PresetAccountsFile = filename:join([dir(Release), accounts_json_file()]),
+    PresetAccountsFile = aec_fork_block_settings:file_name(Release),
     case file:read_file(PresetAccountsFile) of
         {ok, _} = OK -> OK;
         {error, Err} -> {error, {Err, PresetAccountsFile}}
     end.
 
+file_name(Release) ->
+    filename:join([dir(Release), accounts_json_file()]).
 
 -ifdef(TEST).
 accounts_json_file() ->
