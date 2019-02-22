@@ -33,6 +33,8 @@ tx_pool_test_() ->
              meck:new(aec_jobs_queues),
              meck:expect(aec_jobs_queues, run, fun(_, F) -> F() end),
              meck:expect(aec_governance, minimum_gas_price, 1, 1),
+             meck:new(aec_tx_pool, [passthrough]),
+             meck:expect(aec_tx_pool, minimum_miner_gas_price, 0, 1),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
@@ -49,6 +51,7 @@ tx_pool_test_() ->
              ok = aec_tx_pool_gc:stop(),
              meck:unload(aeu_time),
              meck:unload(aec_jobs_queues),
+             meck:unload(aec_tx_pool),
              ok
      end,
      [{"No txs in mempool",
@@ -667,6 +670,11 @@ tx_pool_test_() ->
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 24, 2000000, 2))),
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 15, 4000000, 3))),
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 25, 4000000, 3))),
+               meck:expect(aec_tx_pool, minimum_miner_gas_price, 0, 3),
+               ?assertEqual({error, too_low_gas_price_for_miner}, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 16, 2000000, 2))),
+               ?assertEqual({error, too_low_gas_price_for_miner}, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 26, 2000000, 2))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 17, 4000000, 3))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 27, 4000000, 3))),
 
                %% A transaction with too low ttl should be rejected
                %% First add another block to make the chain high enough to
