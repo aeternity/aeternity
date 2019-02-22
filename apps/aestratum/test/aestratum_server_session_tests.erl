@@ -7,6 +7,7 @@
 -define(NONCE_MODULE, aestratum_nonce).
 -define(TARGET_MODULE, aestratum_target).
 -define(EXTRA_NONCE_CACHE_MODULE, aestratum_extra_nonce_cache).
+-define(USER_REGISTER_MODULE, aestratum_user_register).
 -define(JOB_MODULE, aestratum_job).
 
 -define(TEST_USER, <<"ak_123o45ABCiANzqxxxxUUrrrJuDuxU61zCGr9LJCwtTUg34567">>).
@@ -25,6 +26,7 @@ server_session() ->
     {foreach,
      fun() ->
              meck:new(?EXTRA_NONCE_CACHE_MODULE, [passthrough]),
+             meck:new(?USER_REGISTER_MODULE, [passthrough]),
              meck:new(?TARGET_MODULE, [passthrough]),
              meck:new(?TEST_MODULE, [passthrough]),
              {ok, Pid} = aestratum_dummy_handler:start_link(?TEST_MODULE),
@@ -32,6 +34,7 @@ server_session() ->
      end,
      fun(Pid) ->
              meck:unload(?EXTRA_NONCE_CACHE_MODULE),
+             meck:unload(?USER_REGISTER_MODULE),
              meck:unload(?TARGET_MODULE),
              meck:unload(?TEST_MODULE),
              aestratum_dummy_handler:stop(Pid)
@@ -530,11 +533,15 @@ mock(subscribe, #{host := Host, port := Port, extra_nonce := ExtraNonce}) ->
     ok;
 mock(authorize, #{user_and_password := valid} = Opts) ->
     mock(subscribe, Opts),
-    meck:expect(?TEST_MODULE, validate_authorize_req, fun(_) -> ok end),
+    meck:expect(?USER_REGISTER_MODULE, add, fun(_, _) -> ok end),
+    meck:expect(?USER_REGISTER_MODULE, del, fun(_) -> ok end),
+    meck:expect(?USER_REGISTER_MODULE, find, fun(_) -> {error, not_found} end),
     ok;
 mock(authorize, #{user_and_password := invalid} = Opts) ->
     mock(subscribe, Opts),
-    meck:expect(?TEST_MODULE, validate_authorize_req, fun(_) -> {error, user_and_password} end),
+    meck:expect(?USER_REGISTER_MODULE, add, fun(_, _) -> ok end),
+    meck:expect(?USER_REGISTER_MODULE, del, fun(_) -> ok end),
+    meck:expect(?USER_REGISTER_MODULE, find, fun(_) -> {ok, #{}} end),
     ok;
 mock(set_initial_share_target, #{initial_share_target := InitialShareTarget} = Opts) ->
     mock(authorize, Opts),
