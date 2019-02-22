@@ -1,5 +1,7 @@
--mode(compile).
+#!/usr/bin/env escript
+%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
 
+-mode(compile).
 
 main([[]]) ->
     io:fwrite("Usage: rename_db schema.DAT_file_path [FromNode ToNode]~n"),
