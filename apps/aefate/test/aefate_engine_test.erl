@@ -643,7 +643,7 @@ contracts() ->
      , <<"bits">> =>
            [ {<<"all">>
              , {[], bits}
-             , [ {0, [ 'BITS_ALL'
+             , [ {0, [ 'BITS_ALLA'
                      , 'RETURN']}]}
            , {<<"all_n">>
              , {[integer], bits}
@@ -651,7 +651,7 @@ contracts() ->
                      , 'RETURN']}]}
            ,  {<<"none">>
               , {[], bits}
-              , [ {0, [ 'BITS_NONE'
+              , [ {0, [ 'BITS_NONEA'
                       , 'RETURN']}]}
            ,  {<<"set">>
               , {[integer], bits}
