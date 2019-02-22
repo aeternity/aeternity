@@ -13,7 +13,7 @@
 -export([
     node_can_reuse_db_of_other_node/1,
     roma_node_can_reuse_db_of_other_roma_node/1,
-    node_can_reuse_db_of_roma_node/1
+    minerva_node_with_epoch_db_can_reuse_db_of_roma_node/1
 ]).
 
 %=== INCLUDES ==================================================================
@@ -31,7 +31,7 @@
 all() -> [
     node_can_reuse_db_of_other_node,
     roma_node_can_reuse_db_of_other_roma_node,
-    node_can_reuse_db_of_roma_node
+    minerva_node_with_epoch_db_can_reuse_db_of_roma_node
 ].
 
 init_per_suite(Config) ->
@@ -53,8 +53,8 @@ node_can_reuse_db_of_other_node(Cfg) ->
 roma_node_can_reuse_db_of_other_roma_node(Cfg) ->
     node_can_reuse_db_of_other_node_(fun roma_node_spec/2, Cfg).
 
-node_can_reuse_db_of_roma_node(Cfg) ->
-    node_can_reuse_db_of_other_node_(fun roma_node_spec/2, fun node_spec/2, Cfg).
+minerva_node_with_epoch_db_can_reuse_db_of_roma_node(Cfg) ->
+    node_can_reuse_db_of_other_node_(fun roma_node_spec/2, fun minerva_with_epoch_name_in_db_spec/2, Cfg).
 
 %=== INTERNAL FUNCTIONS ========================================================
 
@@ -107,9 +107,13 @@ roma_node_spec(Name, DbHostPath) ->
                                 config_guest_path => "/home/aeternity/.epoch/epoch/epoch.yaml",
                                 genesis_accounts => genesis_accounts()}).
 
+%% Minerva release still using epoch@localhost node name in the db.
+minerva_with_epoch_name_in_db_spec(Name, DbHostPath) ->
+    DbGuestPath = "/home/aeternity/node/data/mnesia",
+    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v2.0.0-rc.1"}, db_path => {DbHostPath, DbGuestPath}}).
+
 genesis_accounts() ->
     %% have all nodes share the same accounts_test.json
     PatronPubkey = <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
     PatronAddress = aehttp_api_encoder:encode(account_pubkey, PatronPubkey),
     [{PatronAddress, 123400000000000000000000000000}].
-
