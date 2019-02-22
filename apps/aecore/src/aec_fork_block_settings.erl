@@ -6,9 +6,7 @@
          genesis_accounts/0,
          minerva_accounts/0]).
 
--ifdef(TEST).
 -export([file_name/1]).
--endif.
 
 -define(GENESIS_DIR, ".genesis").
 -define(MINERVA_DIR, ".minerva").
