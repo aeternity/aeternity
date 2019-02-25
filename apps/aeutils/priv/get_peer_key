@@ -22,13 +22,13 @@ usage() ->
 do_main(TargetNode, KeysDir, Pass) ->
     case rpc:call(TargetNode, aec_keys, peer_pubkey, []) of
         {ok, PK0} ->
-            PK0Str = binary_to_list(aehttp_api_encoder:encode(peer_pubkey, PK0)),
+            PK0Str = binary_to_list(aeser_api_encoder:encode(peer_pubkey, PK0)),
             io:format("~s~n", [PK0Str]);
         _ ->
             {ok, Bin} = file:read_file(filename:join(KeysDir, "peer_key.pub")),
             PwdHash = crypto:hash(sha256, Pass),
             PK1 = crypto:block_decrypt(aes_ecb, PwdHash, Bin),
-            PK1Str = binary_to_list(aehttp_api_encoder:encode(peer_pubkey, PK1)),
+            PK1Str = binary_to_list(aeser_api_encoder:encode(peer_pubkey, PK1)),
             io:format("~s~n", [PK1Str])
     end,
     halt(0).
