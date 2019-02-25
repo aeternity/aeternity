@@ -3018,6 +3018,10 @@ definitions:
         type: integer
       gas_used:
         type: integer
+      log:
+        type: array
+        items:
+            $ref: '#/definitions/Event'
       return_value:
         $ref: '#/definitions/EncodedByteArray'
       return_type:
@@ -3030,8 +3034,27 @@ definitions:
       - contract_id
       - gas_price
       - gas_used
+      - log
       - return_value
       - return_type
+  Event:
+    type: object
+    properties:
+      address:
+        description: Contract address
+        $ref: '#/definitions/EncodedHash'
+      topics:
+        description: Event topics
+        type: array
+        items:
+          type: integer
+      data:
+        description: Log event data (as contract byte array).
+        $ref: '#/definitions/EncodedByteArray'
+    required:
+      - address
+      - topics
+      - data
   Error:
     type: object
     properties:
