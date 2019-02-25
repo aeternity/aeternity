@@ -4089,10 +4089,15 @@ sophia_aens(_Cfg) ->
 sophia_state_handling(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 50000000),
+    ContractName =
+        case vm_version() of
+            ?VM_AEVM_SOPHIA_1 -> state_handling_v1;
+            _                 -> state_handling
+        end,
     Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
     %% Test an init function that calls a remote contract to compute the state
-    Ct1      = ?call(create_contract, Acc, state_handling, {Ct0, 1}, #{ amount => 100000 }),
-    Ct2      = ?call(create_contract, Acc, state_handling, {Ct0, 2}, #{ amount => 100000 }),
+    Ct1      = ?call(create_contract, Acc, ContractName, {Ct0, 1}, #{ amount => 100000 }),
+    Ct2      = ?call(create_contract, Acc, ContractName, {Ct0, 2}, #{ amount => 100000 }),
     MapT     = {map, word, word},
     StateT   = {tuple, [word, string, MapT]},
     UnitT    = {tuple, []},
@@ -4158,8 +4163,13 @@ sophia_state_handling(_Cfg) ->
 sophia_state_gas(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 20000000),
+    ContractName =
+        case vm_version() of
+            ?VM_AEVM_SOPHIA_1 -> state_handling_v1;
+            _                 -> state_handling
+        end,
     Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
-    Ct1      = ?call(create_contract, Acc, state_handling, {Ct0, 1}, #{ amount => 100000 }),
+    Ct1      = ?call(create_contract, Acc, ContractName, {Ct0, 1}, #{ amount => 100000 }),
     %% MapT     = {map, word, word},
     %% StateT   = {tuple, [word, string, MapT]},
     UnitT    = {tuple, []},
