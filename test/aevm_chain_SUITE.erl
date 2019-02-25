@@ -113,7 +113,7 @@ height(_Cfg) ->
 
 spend(_Cfg) ->
     {[Acc, _Acc2, Contract1, _Contract2], S} = setup_chain(),
-    AccId    = aec_id:create(account, Acc),
+    AccId    = aeser_id:create(account, Acc),
     AccBal1  = aec_vm_chain:get_balance(Acc, S),
     Bal1     = aec_vm_chain:get_balance(Contract1, S),
     Amount   = 50,

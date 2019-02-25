@@ -276,7 +276,7 @@ proof_db_drop_cache(_Cache) ->
 serialize(Tree) ->
     ValuesBins =
         map(fun(Key, Value) ->
-                aec_object_serialization:serialize(
+                aeser_chain_objects:serialize(
                     mtree_value,
                     ?VSN,
                     value_serialization_template(?VSN),
@@ -285,7 +285,7 @@ serialize(Tree) ->
                     ])
             end,
             Tree),
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
         mtree,
         ?VSN,
         serialization_template(?VSN),
@@ -302,13 +302,13 @@ deserialize_with_backend(Bin, DB) ->
 -spec deserialize_(binary(), mtree()) -> mtree().
 deserialize_(Bin, EmptyMTree) ->
     [{values, ValuesBin}] =
-        aec_object_serialization:deserialize(mtree, ?VSN,
+        aeser_chain_objects:deserialize(mtree, ?VSN,
                                              serialization_template(?VSN), Bin),
     lists:foldl(
         fun(ValBin, Accum) ->
             [ {key, Key}
             , {val, Value}] =
-                aec_object_serialization:deserialize(mtree_value, ?VSN,
+                aeser_chain_objects:deserialize(mtree_value, ?VSN,
                                                      value_serialization_template(?VSN),
                                                      ValBin),
             insert(Key, Value, Accum)

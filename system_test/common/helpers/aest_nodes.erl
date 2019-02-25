@@ -395,19 +395,19 @@ get_mempool(NodeName) ->
     end.
 
 get_account(NodeName, PubKey) ->
-    Params = #{pubkey => aehttp_api_encoder:encode(account_pubkey, PubKey)},
+    Params = #{pubkey => aeser_api_encoder:encode(account_pubkey, PubKey)},
     verify(200, request(NodeName, 'GetAccountByPubkey', Params)).
 
 get_channel(NodeName, PubKey) ->
-    Params = #{pubkey => aehttp_api_encoder:encode(channel, PubKey)},
+    Params = #{pubkey => aeser_api_encoder:encode(channel, PubKey)},
     verify(200, request(NodeName, 'GetChannelByPubkey', Params)).
 
 post_spend_tx(Node, From, To, Nonce, Map) ->
     #{ pubkey := SendPubKey, privkey := SendSecKey } = From,
     #{ pubkey := RecvPubKey} = To,
     PayLoad = iolist_to_binary(io_lib:format("~p", [Node])),
-    Params = maps:merge(#{ sender_id => aec_id:create(account, SendPubKey)
-                         , recipient_id => aec_id:create(account, RecvPubKey)
+    Params = maps:merge(#{ sender_id => aeser_id:create(account, SendPubKey)
+                         , recipient_id => aeser_id:create(account, RecvPubKey)
                          , amount => 10000 * gas_price()
                          , fee => 20000 * gas_price()
                          , ttl => 10000000
@@ -417,7 +417,7 @@ post_spend_tx(Node, From, To, Nonce, Map) ->
     SignedTx = aec_test_utils:sign_tx(Tx, SendSecKey),
     SerSignTx = aetx_sign:serialize_to_binary(SignedTx),
     verify(200, request(Node, 'PostTransaction', #{
-        tx => aehttp_api_encoder:encode(transaction, SerSignTx)
+        tx => aeser_api_encoder:encode(transaction, SerSignTx)
     })).
 
 post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map) ->
@@ -425,8 +425,8 @@ post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map
     #{ pubkey := RespPubKey, privkey := RespSecKey } = Responder,
     Round = 0, %% this needs a data structure containing round!!
     {ok, CreateTx} = aesc_create_tx:new(maps:merge(
-                                          #{initiator_id => aec_id:create(account, InPubKey),
-                                            responder_id => aec_id:create(account, RespPubKey),
+                                          #{initiator_id => aeser_id:create(account, InPubKey),
+                                            responder_id => aeser_id:create(account, RespPubKey),
                                             state_hash => <<Round:256>>,
                                             initiator_amount => 200000 * gas_price(),
                                             responder_amount => 200000 * gas_price(),
@@ -436,12 +436,12 @@ post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map
                                             fee => 50000 * gas_price(),
                                             channel_reserve => 40}, Map)),
     BothSigned = aec_test_utils:sign_tx(CreateTx, [InSecKey, RespSecKey]),
-    Transaction = aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
+    Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
     Response = verify(200, request(Node, 'PostTransaction', #{tx => Transaction})),
     ChPubKey = aesc_channels:pubkey(InPubKey, Nonce, RespPubKey),
     Response#{
         channel_pubkey => ChPubKey,
-        channel_id => aec_id:create(channel, ChPubKey)
+        channel_id => aeser_id:create(channel, ChPubKey)
     }.
 
 post_close_mutual_state_channel_tx(Node, Initiator, Responder, ChannelId, #{nonce := _} = Map) ->
@@ -449,14 +449,14 @@ post_close_mutual_state_channel_tx(Node, Initiator, Responder, ChannelId, #{nonc
     #{ privkey := RespSecKey } = Responder,
     {ok, CloseTx} =
         aesc_close_mutual_tx:new(maps:merge(#{channel_id => ChannelId,
-                                              from_id => aec_id:create(account, InPubKey),
+                                              from_id => aeser_id:create(account, InPubKey),
                                               initiator_amount_final => 100000 * gas_price(),
                                               responder_amount_final => 100000 * gas_price(),
                                               fee => 50000 * gas_price(),
                                               ttl => 100000},
                                             Map)),
     BothSigned = aec_test_utils:sign_tx(CloseTx, [InSecKey, RespSecKey]),
-    Transaction = aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
+    Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
     verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
 
 post_deposit_state_channel_tx(Node, PayingParty, OtherParty, ChannelId, #{nonce := _} = Map) ->
@@ -464,7 +464,7 @@ post_deposit_state_channel_tx(Node, PayingParty, OtherParty, ChannelId, #{nonce 
     #{ privkey := RespSecKey } = OtherParty,
     {ok, DepositTx} =
         aesc_deposit_tx:new(maps:merge(#{channel_id => ChannelId,
-                                         from_id => aec_id:create(account, InPubKey),
+                                         from_id => aeser_id:create(account, InPubKey),
                                          state_hash => <<0:256>>,
                                          amount => 20 * gas_price(),
                                          round => 1,
@@ -472,7 +472,7 @@ post_deposit_state_channel_tx(Node, PayingParty, OtherParty, ChannelId, #{nonce 
                                          ttl => 100000},
                                        Map)),
     BothSigned = aec_test_utils:sign_tx(DepositTx, [InSecKey, RespSecKey]),
-    Transaction = aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
+    Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
     verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
 
 post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce := _} = Map) ->
@@ -480,7 +480,7 @@ post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce :=
     #{ privkey := RespSecKey } = OtherParty,
     {ok, WithdrawTx} =
         aesc_withdraw_tx:new(maps:merge(#{channel_id => ChannelId,
-                                         to_id => aec_id:create(account, InPubKey),
+                                         to_id => aeser_id:create(account, InPubKey),
                                          state_hash => <<0:256>>,
                                          amount => 20 * gas_price(),
                                          round => 1,
@@ -488,69 +488,69 @@ post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce :=
                                          ttl => 100000},
                                        Map)),
     BothSigned = aec_test_utils:sign_tx(WithdrawTx, [InSecKey, RespSecKey]),
-    Transaction = aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
+    Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
     verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
 
 post_oracle_register_tx(Node, OAccount, Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OAccount,
     post_transaction(Node, aeo_register_tx, OPrivKey, Opts, #{
-        account_id => aec_id:create(account, OPubKey),
+        account_id => aeser_id:create(account, OPubKey),
         abi_version => 0
     }).
 
 post_oracle_extend_tx(Node, OAccount, Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OAccount,
     post_transaction(Node, aeo_extend_tx, OPrivKey, Opts, #{
-        oracle_id => aec_id:create(oracle, OPubKey)
+        oracle_id => aeser_id:create(oracle, OPubKey)
     }).
 
 post_oracle_query_tx(Node, QuerierAcc, OracleAcc, #{ nonce := _ } = Opts) ->
     #{ pubkey := QPubKey, privkey := QPrivKey } = QuerierAcc,
     #{ pubkey := OPubKey } = OracleAcc,
     post_transaction(Node, aeo_query_tx, QPrivKey, Opts, #{
-        sender_id    => aec_id:create(account, QPubKey),
-        oracle_id    => aec_id:create(oracle, OPubKey)
+        sender_id    => aeser_id:create(account, QPubKey),
+        oracle_id    => aeser_id:create(oracle, OPubKey)
     }).
 
 post_oracle_response_tx(Node, OracleAcc, #{ nonce := _ } = Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OracleAcc,
     post_transaction(Node, aeo_response_tx, OPrivKey, Opts, #{
-        oracle_id => aec_id:create(oracle, OPubKey)
+        oracle_id => aeser_id:create(oracle, OPubKey)
     }).
 
 post_name_preclaim_tx(Node, OwnerAcc, CommitmentHash, Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OwnerAcc,
     post_transaction(Node, aens_preclaim_tx, OPrivKey, Opts, #{
-        account_id => aec_id:create(account, OPubKey),
-        commitment_id => aec_id:create(commitment, CommitmentHash)
+        account_id => aeser_id:create(account, OPubKey),
+        commitment_id => aeser_id:create(commitment, CommitmentHash)
     }).
 
 post_name_claim_tx(Node, OwnerAcc, Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OwnerAcc,
     post_transaction(Node, aens_claim_tx, OPrivKey, Opts, #{
-        account_id => aec_id:create(account, OPubKey)
+        account_id => aeser_id:create(account, OPubKey)
     }).
 
 post_name_update_tx(Node, OwnerAcc, Name, Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OwnerAcc,
     post_transaction(Node, aens_update_tx, OPrivKey, Opts, #{
-        account_id => aec_id:create(account, OPubKey),
-        name_id => aec_id:create(name, aens_hash:name_hash(Name))
+        account_id => aeser_id:create(account, OPubKey),
+        name_id => aeser_id:create(name, aens_hash:name_hash(Name))
     }).
 
 post_name_transfer_tx(Node, OwnerAcc, RecipientAcc, Name, Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OwnerAcc,
     post_transaction(Node, aens_transfer_tx, OPrivKey, Opts, #{
-        account_id => aec_id:create(account, OPubKey),
-        name_id => aec_id:create(name, aens_hash:name_hash(Name)),
-        recipient_id => aec_id:create(account, maps:get(pubkey, RecipientAcc))
+        account_id => aeser_id:create(account, OPubKey),
+        name_id => aeser_id:create(name, aens_hash:name_hash(Name)),
+        recipient_id => aeser_id:create(account, maps:get(pubkey, RecipientAcc))
     }).
 
 post_name_revoke_tx(Node, OwnerAcc, Name, Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OwnerAcc,
     post_transaction(Node, aens_revoke_tx, OPrivKey, Opts, #{
-        account_id => aec_id:create(account, OPubKey),
-        name_id => aec_id:create(name, aens_hash:name_hash(Name))
+        account_id => aeser_id:create(account, OPubKey),
+        name_id => aeser_id:create(name, aens_hash:name_hash(Name))
     }).
 
 post_contract_create_tx(Node, PrivKey, Opts) ->
@@ -563,7 +563,7 @@ post_transaction(Node, TxMod, PrivKey, ExtraTxArgs, TxArgs) ->
     {ok, RespTx} = TxMod:new(maps:merge(TxArgs, ExtraTxArgs)),
     Signed = aec_test_utils:sign_tx(RespTx, [PrivKey]),
     SignedEnc = aetx_sign:serialize_to_binary(Signed),
-    Transaction = aehttp_api_encoder:encode(transaction, SignedEnc),
+    Transaction = aeser_api_encoder:encode(transaction, SignedEnc),
     verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
 
 %% Use values that are not yet api encoded in test cases
@@ -572,7 +572,7 @@ wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
     Delay = proplists:get_value(delay, Ctx, 500),
     CheckF =
         fun(Node) ->
-                 case request(Node, 'GetAccountByPubkey', maps:merge(#{pubkey => aehttp_api_encoder:encode(account_pubkey, PubKey)}, FaultInject)) of
+                 case request(Node, 'GetAccountByPubkey', maps:merge(#{pubkey => aeser_api_encoder:encode(account_pubkey, PubKey)}, FaultInject)) of
                      {ok, 200, #{balance := Balance}} when Balance >= MinBalance -> {done, #{PubKey => Balance}};
                      _ -> wait
                 end

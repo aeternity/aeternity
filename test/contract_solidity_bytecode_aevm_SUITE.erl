@@ -279,7 +279,7 @@ initial_state(Contracts, Accounts) ->
 spend(_To, Amount, _) when Amount < 0 ->
     {error, negative_spend};
 spend(ToId, Amount, S = #{ running := From, accounts := Accounts }) ->
-    <<To:256>> = aec_id:specialize(ToId, account),
+    <<To:256>> = aeser_id:specialize(ToId, account),
     Balance = get_balance(<<From:256>>, S),
     case Amount =< Balance of
         true -> {ok, S#{ accounts := Accounts#{ From => Balance            - Amount,

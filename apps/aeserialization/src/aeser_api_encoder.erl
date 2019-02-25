@@ -1,4 +1,10 @@
--module(aehttp_api_encoder).
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%% @doc
+%%% API encoding for the Aeternity node.
+%%% @end
+%%%-------------------------------------------------------------------
+-module(aeser_api_encoder).
 
 -export([encode/2,
          decode/1,
@@ -38,9 +44,9 @@
 -define(BASE58, 1).
 -define(BASE64, 2).
 
--spec encode(known_type(), payload() | aec_id:id()) -> encoded().
+-spec encode(known_type(), payload() | aeser_id:id()) -> encoded().
 encode(id_hash, Payload) ->
-    {IdType, Val} = aec_id:specialize(Payload),
+    {IdType, Val} = aeser_id:specialize(Payload),
     encode(id2type(IdType), Val);
 encode(Type, Payload) ->
     Pfx = type2pfx(Type),
@@ -76,14 +82,14 @@ type_size_check(Type, Bin) ->
             end
     end.
 
--spec safe_decode(extended_type(), encoded()) -> {'ok', payload() | aec_id:id()}
+-spec safe_decode(extended_type(), encoded()) -> {'ok', payload() | aeser_id:id()}
                                                      | {'error', atom()}.
 safe_decode({id_hash, AllowedTypes}, Enc) ->
     try decode(Enc) of
         {ActualType, Dec} ->
             case lists:member(ActualType, AllowedTypes) of
                 true ->
-                    try {ok, aec_id:create(type2id(ActualType), Dec)}
+                    try {ok, aeser_id:create(type2id(ActualType), Dec)}
                     catch error:_ -> {error, invalid_prefix}
                     end;
                 false ->
@@ -142,8 +148,12 @@ split(Bin) ->
 
 check_str(Bin) ->
     <<C:32/bitstring,_/binary>> =
-        aec_hash:sha256_hash(aec_hash:sha256_hash(Bin)),
+        sha256_hash(sha256_hash(Bin)),
     C.
+
+sha256_hash(Bin) ->
+    crypto:hash(sha256, Bin).
+
 
 id2type(account)    -> account_pubkey;
 id2type(channel)    -> channel;

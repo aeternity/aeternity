@@ -25,7 +25,7 @@
 %%%===================================================================
 
 -spec resolve(binary(), binary(), aens_state_tree:tree()) ->
-    {ok, aec_id:id()} | {error, atom()}.
+    {ok, aeser_id:id()} | {error, atom()}.
 resolve(Key, Name, NSTree) when is_binary(Key), is_binary(Name) ->
     case is_name(Name) of
         true ->
@@ -39,12 +39,12 @@ resolve(Key, Name, NSTree) when is_binary(Key), is_binary(Name) ->
             end;
         false ->
             AllowedTypes = [account_pubkey, oracle_pubkey, contract_pubkey, channel],
-            aehttp_api_encoder:safe_decode({id_hash, AllowedTypes}, Name)
+            aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, Name)
     end.
 
 
 -spec resolve_from_name_object(binary(), aens_names:name()) ->
-    {ok, aec_id:id()} | {error, atom()}.
+    {ok, aeser_id:id()} | {error, atom()}.
 resolve_from_name_object(Key, Name) when is_binary(Key) ->
     case name_entry(Name) of
         {ok, #{pointers := Pointers}} -> find_pointer_id(Key, Pointers);

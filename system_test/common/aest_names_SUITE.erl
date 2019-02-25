@@ -102,12 +102,12 @@ test_name_registration(Cfg) ->
     GasPrice = proplists:get_value(gas_price, Cfg),
     MPubKey = maps:get(pubkey, ?MIKE),
     RPubKey = maps:get(pubkey, ?RICHARD),
-    EncMPubKey = aehttp_api_encoder:encode(account_pubkey, MPubKey),
-    EncRPubKey = aehttp_api_encoder:encode(account_pubkey, RPubKey),
+    EncMPubKey = aeser_api_encoder:encode(account_pubkey, MPubKey),
+    EncRPubKey = aeser_api_encoder:encode(account_pubkey, RPubKey),
 
     Name = <<"richard.test">>,
     NameSalt = 36346245,
-    EncNameId = aehttp_api_encoder:encode(name, aens_hash:name_hash(Name)),
+    EncNameId = aeser_api_encoder:encode(name, aens_hash:name_hash(Name)),
 
     %% Setup nodes
     NodeConfig = #{ beneficiary => EncMPubKey },
@@ -154,7 +154,7 @@ test_name_registration(Cfg) ->
     }, NameQuery1),
 
     %% Update the registration
-    Pointers = [aens_pointer:new(<<"account_pubkey">>, aec_id:create(account, RPubKey))],
+    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, RPubKey))],
     #{ tx_hash := UpdateTxHash } = post_name_update_tx(node1, ?RICHARD, Name, #{
         nonce      => 3,
         name_ttl   => 100,
@@ -192,7 +192,7 @@ test_name_transfer(Cfg) ->
     MPubKey = maps:get(pubkey, ?MIKE),
     RPubKey1 = maps:get(pubkey, ?RICHARD),
     RPubKey2 = maps:get(pubkey, ?ROBERT),
-    EncMPubKey = aehttp_api_encoder:encode(account_pubkey, MPubKey),
+    EncMPubKey = aeser_api_encoder:encode(account_pubkey, MPubKey),
 
     Name = <<"richard.test">>,
     NameSalt = 36346245,

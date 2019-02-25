@@ -151,7 +151,7 @@ handle_request_('GetCurrentKeyBlock', _Req, _Context) ->
 
 handle_request_('GetCurrentKeyBlockHash', _, _Context) ->
     Hash = aec_chain:top_key_block_hash(),
-    EncodedHash = aehttp_api_encoder:encode(key_block_hash, Hash),
+    EncodedHash = aeser_api_encoder:encode(key_block_hash, Hash),
     {200, [], #{hash => EncodedHash}};
 
 handle_request_('GetCurrentKeyBlockHeight', _, _Context) ->
@@ -178,7 +178,7 @@ handle_request_('GetPendingKeyBlock', _Req, _Context) ->
     end;
 
 handle_request_('GetKeyBlockByHash', Params, _Context) ->
-    case aehttp_api_encoder:safe_decode(key_block_hash, maps:get('hash', Params)) of
+    case aeser_api_encoder:safe_decode(key_block_hash, maps:get('hash', Params)) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
             case aec_chain:get_block(Hash) of
@@ -230,7 +230,7 @@ handle_request_('GetKeyBlockByHeight', Params, _Context) ->
     end;
 
 handle_request_('GetMicroBlockHeaderByHash', Params, _Context) ->
-    case aehttp_api_encoder:safe_decode(micro_block_hash, maps:get(hash, Params)) of
+    case aeser_api_encoder:safe_decode(micro_block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
                 {ok, Block} ->
@@ -251,7 +251,7 @@ handle_request_('GetMicroBlockHeaderByHash', Params, _Context) ->
     end;
 
 handle_request_('GetMicroBlockTransactionsByHash', Params, _Context) ->
-    case aehttp_api_encoder:safe_decode(micro_block_hash, maps:get(hash, Params)) of
+    case aeser_api_encoder:safe_decode(micro_block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
                 {ok, Block} ->
@@ -267,7 +267,7 @@ handle_request_('GetMicroBlockTransactionsByHash', Params, _Context) ->
     end;
 
 handle_request_('GetMicroBlockTransactionByHashAndIndex', Params, _Context) ->
-    HashDec = aehttp_api_encoder:safe_decode(micro_block_hash, maps:get(hash, Params)),
+    HashDec = aeser_api_encoder:safe_decode(micro_block_hash, maps:get(hash, Params)),
     IndexDec = maps:get(index, Params),
     case {HashDec, IndexDec} of
         {{ok, Hash}, Index} when is_integer(Index) ->
@@ -292,7 +292,7 @@ handle_request_('GetMicroBlockTransactionByHashAndIndex', Params, _Context) ->
 
 
 handle_request_('GetMicroBlockTransactionsCountByHash', Params, _Context) ->
-    case aehttp_api_encoder:safe_decode(micro_block_hash, maps:get(hash, Params)) of
+    case aeser_api_encoder:safe_decode(micro_block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
                 {ok, Block} ->
@@ -308,7 +308,7 @@ handle_request_('GetCurrentGeneration', _, _Context) ->
     generation_rsp(aec_chain:get_current_generation());
 
 handle_request_('GetGenerationByHash', Params, _Context) ->
-    case aehttp_api_encoder:safe_decode(key_block_hash, maps:get('hash', Params)) of
+    case aeser_api_encoder:safe_decode(key_block_hash, maps:get('hash', Params)) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
             case aec_chain_state:hash_is_in_main_chain(Hash) of
@@ -325,9 +325,9 @@ handle_request_('GetGenerationByHeight', Params, _Context) ->
 
 handle_request_('GetAccountByPubkey', Params, _Context) ->
     AllowedTypes = [account_pubkey, contract_pubkey],
-    case aehttp_api_encoder:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
+    case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
         {ok, Id} ->
-            {_IdType, Pubkey} = aec_id:specialize(Id),
+            {_IdType, Pubkey} = aeser_id:specialize(Id),
             case aec_chain:get_account(Pubkey) of
                 {value, Account} ->
                     {200, [], aec_accounts:serialize_for_client(Account)};
@@ -340,9 +340,9 @@ handle_request_('GetAccountByPubkey', Params, _Context) ->
 
 handle_request_('GetAccountByPubkeyAndHeight', Params, _Context) ->
     AllowedTypes = [account_pubkey, contract_pubkey],
-    case aehttp_api_encoder:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
+    case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
         {ok, Id} ->
-            {_IdType, Pubkey} = aec_id:specialize(Id),
+            {_IdType, Pubkey} = aeser_id:specialize(Id),
             Height = maps:get(height, Params),
             case aec_chain:get_account_at_height(Pubkey, Height) of
                 {value, Account} ->
@@ -358,11 +358,11 @@ handle_request_('GetAccountByPubkeyAndHeight', Params, _Context) ->
 
 handle_request_('GetAccountByPubkeyAndHash', Params, _Context) ->
     AllowedTypes = [account_pubkey, contract_pubkey],
-    case aehttp_api_encoder:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
+    case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
         {ok, Id} ->
-            {_IdType, Pubkey} = aec_id:specialize(Id),
+            {_IdType, Pubkey} = aeser_id:specialize(Id),
             EncodedHash = maps:get(hash, Params),
-            case aehttp_api_encoder:safe_decode(block_hash, EncodedHash) of
+            case aeser_api_encoder:safe_decode(block_hash, EncodedHash) of
                 {error, What} ->
                     BinWhat = atom_to_binary(What, utf8),
                     {400, [], #{reason => <<"Illegal hash: ", BinWhat/binary>>}};
@@ -381,7 +381,7 @@ handle_request_('GetAccountByPubkeyAndHash', Params, _Context) ->
     end;
 
 handle_request_('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
-    case aehttp_api_encoder:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
+    case aeser_api_encoder:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
             case aec_chain:get_account(Pubkey) of
                 {value, _} ->
@@ -396,7 +396,7 @@ handle_request_('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
     end;
 
 handle_request_('GetTransactionByHash', Params, _Config) ->
-    case aehttp_api_encoder:safe_decode(tx_hash, maps:get(hash, Params)) of
+    case aeser_api_encoder:safe_decode(tx_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aec_chain:find_tx_with_location(Hash) of
                 none ->
@@ -424,14 +424,14 @@ handle_request_('GetTransactionInfoByHash', Params, _Config) ->
     process_request(ParseFuns, Params);
 
 handle_request_('PostTransaction', #{'Tx' := Tx}, _Context) ->
-    case aehttp_api_encoder:safe_decode(transaction, maps:get(<<"tx">>, Tx)) of
+    case aeser_api_encoder:safe_decode(transaction, maps:get(<<"tx">>, Tx)) of
         {ok, TxDec} ->
             case deserialize_transaction(TxDec) of
                 {ok, SignedTx} ->
                     case aec_tx_pool:push(SignedTx) of
                         ok ->
                             Hash = aetx_sign:hash(SignedTx),
-                            {200, [], #{<<"tx_hash">> => aehttp_api_encoder:encode(tx_hash, Hash)}};
+                            {200, [], #{<<"tx_hash">> => aeser_api_encoder:encode(tx_hash, Hash)}};
                         {error, _} ->
                             {400, [], #{reason => <<"Invalid tx">>}}
                     end;
@@ -443,7 +443,7 @@ handle_request_('PostTransaction', #{'Tx' := Tx}, _Context) ->
     end;
 
 handle_request_('GetContract', Req, _Context) ->
-    case aehttp_api_encoder:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
+    case aeser_api_encoder:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
         {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
         {ok, PubKey} ->
             case aec_chain:get_contract(PubKey) of
@@ -455,26 +455,26 @@ handle_request_('GetContract', Req, _Context) ->
     end;
 
 handle_request_('GetContractCode', Req, _Context) ->
-    case aehttp_api_encoder:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
+    case aeser_api_encoder:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
         {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
         {ok, PubKey} ->
             case aec_chain:get_contract(PubKey) of
                 {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
                 {ok, Contract} ->
                     Code = aect_contracts:code(Contract),
-                    {200, [], #{ <<"bytecode">> => aehttp_api_encoder:encode(contract_bytearray, Code) }}
+                    {200, [], #{ <<"bytecode">> => aeser_api_encoder:encode(contract_bytearray, Code) }}
             end
     end;
 
 handle_request_('GetContractStore', Req, _Context) ->
-    case aehttp_api_encoder:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
+    case aeser_api_encoder:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
         {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
         {ok, PubKey} ->
             case aec_chain:get_contract(PubKey) of
                 {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
                 {ok, Contract} ->
                     Response = [ #{<<"key">> => aeu_hex:hexstring_encode(K),
-                                   <<"value">> => aehttp_api_encoder:encode(contract_bytearray, V)}
+                                   <<"value">> => aeser_api_encoder:encode(contract_bytearray, V)}
                                || {K, V} <- maps:to_list(aect_contracts_store:contents(aect_contracts:state(Contract))) ],
                     {200, [], #{ <<"store">> => Response }}
             end
@@ -486,13 +486,13 @@ handle_request_('GetContractPoI', Req, _Context) ->
                  get_poi(contract, pubkey, poi),
                  ok_response(
                     fun(#{poi := PoI}) ->
-                        #{poi => aehttp_api_encoder:encode(poi, aec_trees:serialize_poi(PoI))}
+                        #{poi => aeser_api_encoder:encode(poi, aec_trees:serialize_poi(PoI))}
                     end)
                 ],
     process_request(ParseFuns, Req);
 
 handle_request_('GetOracleByPubkey', Params, _Context) ->
-    case aehttp_api_encoder:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
+    case aeser_api_encoder:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
             case aec_chain:get_oracle(Pubkey) of
                 {ok, Oracle} ->
@@ -505,7 +505,7 @@ handle_request_('GetOracleByPubkey', Params, _Context) ->
     end;
 
 handle_request_('GetOracleQueriesByPubkey', Params, _Context) ->
-    case aehttp_api_encoder:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
+    case aeser_api_encoder:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
             Limit = case maps:get(limit, Params) of
                         N when N =/= undefined -> N;
@@ -513,7 +513,7 @@ handle_request_('GetOracleQueriesByPubkey', Params, _Context) ->
                     end,
             FromQueryId = case maps:get(from, Params) of
                               Id when Id =/= undefined ->
-                                  {ok, OracleQueryId} = aehttp_api_encoder:safe_decode(oracle_query_id, Id),
+                                  {ok, OracleQueryId} = aeser_api_encoder:safe_decode(oracle_query_id, Id),
                                   OracleQueryId;
                               undefined ->
                                   '$first'
@@ -534,9 +534,9 @@ handle_request_('GetOracleQueriesByPubkey', Params, _Context) ->
     end;
 
 handle_request_('GetOracleQueryByPubkeyAndQueryId', Params, _Context) ->
-    case aehttp_api_encoder:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
+    case aeser_api_encoder:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
-            case aehttp_api_encoder:safe_decode(oracle_query_id, maps:get('query-id', Params)) of
+            case aeser_api_encoder:safe_decode(oracle_query_id, maps:get('query-id', Params)) of
                 {ok, QueryId} ->
                     case aec_chain:get_oracle_query(Pubkey, QueryId) of
                         {ok, Query} ->
@@ -557,7 +557,7 @@ handle_request_('GetNameEntryByName', Params, _Context) ->
         {ok, #{id       := Id,
                ttl      := TTL,
                pointers := Pointers}} ->
-            {200, [], #{<<"id">>       => aehttp_api_encoder:encode(id_hash, Id),
+            {200, [], #{<<"id">>       => aeser_api_encoder:encode(id_hash, Id),
                         <<"ttl">>      => TTL,
                         <<"pointers">> => [aens_pointer:serialize_for_client(P) || P <- Pointers]}};
         {error, name_not_found} ->
@@ -570,7 +570,7 @@ handle_request_('GetNameEntryByName', Params, _Context) ->
     end;
 
 handle_request_('GetChannelByPubkey', Params, _Context) ->
-    case aehttp_api_encoder:safe_decode(channel, maps:get(pubkey, Params)) of
+    case aeser_api_encoder:safe_decode(channel, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
             case aec_chain:get_channel(Pubkey) of
                 {ok, Channel} ->
@@ -584,7 +584,7 @@ handle_request_('GetChannelByPubkey', Params, _Context) ->
 
 handle_request_('GetPeerPubkey', _Params, _Context) ->
     {ok, Pubkey} = aec_keys:peer_pubkey(),
-    {200, [], #{pubkey => aehttp_api_encoder:encode(peer_pubkey, Pubkey)}};
+    {200, [], #{pubkey => aeser_api_encoder:encode(peer_pubkey, Pubkey)}};
 
 handle_request_('GetStatus', _Params, _Context) ->
     {ok, TopKeyBlock} = aec_chain:top_key_block(),
@@ -601,7 +601,7 @@ handle_request_('GetStatus', _Params, _Context) ->
     PeerCount = aec_peers:count(peers),
     PendingTxsCount = aec_tx_pool:size(),
     {200, [],
-     #{<<"genesis_key_block_hash">>     => aehttp_api_encoder:encode(key_block_hash, GenesisBlockHash),
+     #{<<"genesis_key_block_hash">>     => aeser_api_encoder:encode(key_block_hash, GenesisBlockHash),
        <<"solutions">>                  => Solutions,
        <<"difficulty">>                 => Difficulty,
        <<"syncing">>                    => Syncing,
@@ -628,7 +628,7 @@ handle_request_('GetContractCallFromTx', Req, _Context) ->
 handle_request_('GetPeerKey', _Req, _Context) ->
     case aehttp_logic:peer_pubkey() of
         {ok, PeerKey} ->
-            {200, [], #{pub_key => aehttp_api_encoder:encode(peer_pubkey, PeerKey)}};
+            {200, [], #{pub_key => aeser_api_encoder:encode(peer_pubkey, PeerKey)}};
         {error, key_not_found} ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
@@ -662,7 +662,7 @@ encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
     #{key_block => aec_headers:serialize_for_client(Header, PrevBlockType),
       micro_blocks => [begin
                            {ok, Hash} = aec_blocks:hash_internal_representation(M),
-                           aehttp_api_encoder:encode(micro_block_hash, Hash)
+                           aeser_api_encoder:encode(micro_block_hash, Hash)
                        end || M <- MicroBlocks]}.
 
 

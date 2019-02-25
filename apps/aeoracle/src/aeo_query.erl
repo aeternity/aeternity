@@ -55,9 +55,9 @@
 -type oracle_response() :: 'undefined' | aeo_oracles:response().
 -type relative_ttl()    :: aeo_oracles:relative_ttl().
 
--record(query, { sender_id    :: aec_id:id()
+-record(query, { sender_id    :: aeser_id:id()
                , sender_nonce :: non_neg_integer()
-               , oracle_id    :: aec_id:id()
+               , oracle_id    :: aeser_id:id()
                , query        :: oracle_query()
                , response     :: oracle_response()
                , ttl          :: aec_blocks:height()
@@ -100,9 +100,9 @@ new(QTx, BlockHeight) ->
           non_neg_integer(), non_neg_integer(), aeo_oracles:relative_ttl()) ->
              query().
 new(OraclePubkey, SenderPubkey, SenderNonce, Query, Fee, AbsoluteQTTL, RTTL) ->
-    I = #query{ sender_id    = aec_id:create(account, SenderPubkey)
+    I = #query{ sender_id    = aeser_id:create(account, SenderPubkey)
               , sender_nonce = SenderNonce
-              , oracle_id    = aec_id:create(oracle, OraclePubkey)
+              , oracle_id    = aeser_id:create(oracle, OraclePubkey)
               , query        = Query
               , response     = undefined
               , ttl          = AbsoluteQTTL
@@ -134,7 +134,7 @@ serialize(#query{} = I) ->
               undefined -> {<<>>, false};
               Bin when is_binary(Bin) -> {Bin, true}
           end,
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
       ?ORACLE_QUERY_TYPE, ?ORACLE_QUERY_VSN,
       serialization_template(?ORACLE_QUERY_VSN),
       [ {sender_id, sender_id(I)}
@@ -150,7 +150,7 @@ serialize(#query{} = I) ->
 
 -spec deserialize(binary()) -> query().
 deserialize(B) ->
-    Fields = aec_object_serialization:deserialize(
+    Fields = aeser_chain_objects:deserialize(
                 ?ORACLE_QUERY_TYPE, ?ORACLE_QUERY_VSN,
                 serialization_template(?ORACLE_QUERY_VSN), B),
     deserialize_from_fields(?ORACLE_QUERY_VSN, unused, Fields).
@@ -206,12 +206,12 @@ serialize_for_client(#query{sender_id    = SenderId,
             R when R =/= undefined -> R;
             undefined -> <<>>
         end,
-    #{ <<"id">>           => aehttp_api_encoder:encode(oracle_query_id, id(I))
-     , <<"sender_id">>    => aehttp_api_encoder:encode(id_hash, SenderId)
+    #{ <<"id">>           => aeser_api_encoder:encode(oracle_query_id, id(I))
+     , <<"sender_id">>    => aeser_api_encoder:encode(id_hash, SenderId)
      , <<"sender_nonce">> => SenderNonce
-     , <<"oracle_id">>    => aehttp_api_encoder:encode(id_hash, OracleId)
-     , <<"query">>        => aehttp_api_encoder:encode(oracle_query, Query)
-     , <<"response">>     => aehttp_api_encoder:encode(oracle_response, Response)
+     , <<"oracle_id">>    => aeser_api_encoder:encode(id_hash, OracleId)
+     , <<"query">>        => aeser_api_encoder:encode(oracle_query, Query)
+     , <<"response">>     => aeser_api_encoder:encode(oracle_response, Response)
      , <<"ttl">>          => TTL
      , <<"response_ttl">> => #{ <<"type">>  => <<"delta">>
                               , <<"value">> => ResponseTtlValue
@@ -233,25 +233,25 @@ id(SenderPubkey, Nonce, OraclePubkey) ->
             OraclePubkey:?PUB_SIZE/binary>>,
     aec_hash:hash(pubkey, Bin).
 
--spec sender_id(query()) -> aec_id:id().
+-spec sender_id(query()) -> aeser_id:id().
 sender_id(#query{sender_id = SenderId}) ->
     SenderId.
 
 -spec sender_pubkey(query()) -> aec_keys:pubkey().
 sender_pubkey(#query{sender_id = SenderId}) ->
-    aec_id:specialize(SenderId, account).
+    aeser_id:specialize(SenderId, account).
 
 -spec sender_nonce(query()) -> integer().
 sender_nonce(#query{sender_nonce = Nonce}) ->
     Nonce.
 
--spec oracle_id(query()) -> aec_id:id().
+-spec oracle_id(query()) -> aeser_id:id().
 oracle_id(#query{oracle_id = OracleId}) ->
     OracleId.
 
 -spec oracle_pubkey(query()) -> aec_keys:pubkey().
 oracle_pubkey(#query{oracle_id = OracleId}) ->
-    aec_id:specialize(OracleId, oracle).
+    aeser_id:specialize(OracleId, oracle).
 
 -spec query(query()) -> oracle_query().
 query(#query{query = Query}) ->
@@ -278,7 +278,7 @@ fee(#query{fee = Fee}) ->
 
 -spec set_sender(aec_keys:pubkey(), query()) -> query().
 set_sender(X, I) ->
-    I#query{sender_id = aec_id:create(account, assert_field(sender, X))}.
+    I#query{sender_id = aeser_id:create(account, assert_field(sender, X))}.
 
 -spec set_sender_nonce(integer(), query()) -> query().
 set_sender_nonce(X, I) ->
@@ -286,7 +286,7 @@ set_sender_nonce(X, I) ->
 
 -spec set_oracle(aec_keys:pubkey(), query()) -> query().
 set_oracle(X, I) ->
-    I#query{oracle_id = aec_id:create(oracle, assert_field(oracle, X))}.
+    I#query{oracle_id = aeser_id:create(oracle, assert_field(oracle, X))}.
 
 -spec set_query(oracle_query(), query()) -> query().
 set_query(X, I) ->

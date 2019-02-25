@@ -49,16 +49,16 @@
 %%% Types
 %%%===================================================================
 
--type id() :: aec_id:id().
+-type id() :: aeser_id:id().
 -type pubkey() :: aec_keys:pubkey().
 -type amount() :: non_neg_integer().
 -type seq_number() :: non_neg_integer().
 -type payload() :: aesc_offchain_tx:tx() | <<>>.
 
--record(channel, {id                  :: aec_id:id(),
-                  initiator_id        :: aec_id:id(),
-                  responder_id        :: aec_id:id(),
-                  delegate_ids        :: [aec_id:id()],
+-record(channel, {id                  :: aeser_id:id(),
+                  initiator_id        :: aeser_id:id(),
+                  responder_id        :: aeser_id:id(),
+                  delegate_ids        :: [aeser_id:id()],
                   channel_amount      :: amount(),
                   initiator_amount    :: amount(),
                   responder_amount    :: amount(),
@@ -137,15 +137,15 @@ deserialize(IdBin, Bin) ->
     , {solo_round         , SoloRound}
     , {lock_period        , LockPeriod}
     , {locked_until       , LockedUntil}
-    ] = aec_object_serialization:deserialize(
+    ] = aeser_chain_objects:deserialize(
           ?CHANNEL_TYPE,
           ?CHANNEL_VSN,
           serialization_template(?CHANNEL_VSN),
           Bin),
-    account = aec_id:specialize_type(InitiatorId),
-    account = aec_id:specialize_type(ResponderId),
-    [account = aec_id:specialize_type(D) || D <- DelegateIds],
-    #channel{id                 = aec_id:create(channel, IdBin),
+    account = aeser_id:specialize_type(InitiatorId),
+    account = aeser_id:specialize_type(ResponderId),
+    [account = aeser_id:specialize_type(D) || D <- DelegateIds],
+    #channel{id                 = aeser_id:create(channel, IdBin),
              initiator_id       = InitiatorId,
              responder_id       = ResponderId,
              delegate_ids       = DelegateIds,
@@ -224,14 +224,14 @@ is_last_state_forced(#channel{solo_round = SoloRound}) ->
 new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount,
     ReserveAmount, DelegatePubkeys, StateHash, LockPeriod, Nonce) ->
     PubKey = pubkey(InitiatorPubKey, Nonce, ResponderPubKey),
-    #channel{id                   = aec_id:create(channel, PubKey),
-             initiator_id         = aec_id:create(account, InitiatorPubKey),
-             responder_id         = aec_id:create(account, ResponderPubKey),
+    #channel{id                   = aeser_id:create(channel, PubKey),
+             initiator_id         = aeser_id:create(account, InitiatorPubKey),
+             responder_id         = aeser_id:create(account, ResponderPubKey),
              channel_amount       = InitiatorAmount + ResponderAmount,
              initiator_amount     = InitiatorAmount,
              responder_amount     = ResponderAmount,
              channel_reserve      = ReserveAmount,
-             delegate_ids         = [aec_id:create(account, D) || D <- DelegatePubkeys],
+             delegate_ids         = [aeser_id:create(account, D) || D <- DelegatePubkeys],
              state_hash           = StateHash,
              round                = 1,
              solo_round           = 0,
@@ -246,7 +246,7 @@ peers(#channel{} = Ch) ->
 serialize(#channel{initiator_id = InitiatorId,
                    responder_id = ResponderId,
                    delegate_ids = DelegateIds} = Ch) ->
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
       ?CHANNEL_TYPE, ?CHANNEL_VSN,
       serialization_template(?CHANNEL_VSN),
       [ {initiator_id       , InitiatorId}
@@ -292,15 +292,15 @@ serialize_for_client(#channel{id                  = Id,
                               solo_round          = SoloRound,
                               lock_period         = LockPeriod,
                               locked_until        = LockedUntil}) ->
-    #{<<"id">>                    => aehttp_api_encoder:encode(id_hash, Id),
-      <<"initiator_id">>          => aehttp_api_encoder:encode(id_hash, InitiatorId),
-      <<"responder_id">>          => aehttp_api_encoder:encode(id_hash, ResponderId),
+    #{<<"id">>                    => aeser_api_encoder:encode(id_hash, Id),
+      <<"initiator_id">>          => aeser_api_encoder:encode(id_hash, InitiatorId),
+      <<"responder_id">>          => aeser_api_encoder:encode(id_hash, ResponderId),
       <<"channel_amount">>        => ChannelAmount,
       <<"initiator_amount">>      => InitiatorAmount,
       <<"responder_amount">>      => ResponderAmount,
       <<"channel_reserve">>       => ChannelReserve,
-      <<"delegate_ids">>          => [aehttp_api_encoder:encode(id_hash, D) || D <- Delegates],
-      <<"state_hash">>            => aehttp_api_encoder:encode(state, StateHash),
+      <<"delegate_ids">>          => [aeser_api_encoder:encode(id_hash, D) || D <- Delegates],
+      <<"state_hash">>            => aeser_api_encoder:encode(state, StateHash),
       <<"round">>                 => Round,
       <<"solo_round">>            => SoloRound,
       <<"lock_period">>           => LockPeriod,
@@ -321,29 +321,29 @@ withdraw(#channel{channel_amount = ChannelAmount} = Ch, Amount, Round, StateHash
 locked_until(#channel{locked_until = FBU}) ->
     FBU.
 
--spec id(channel()) -> aec_id:id().
+-spec id(channel()) -> aeser_id:id().
 id(#channel{id = Id}) ->
     Id.
 
 -spec pubkey(channel()) -> aec_keys:pubkey().
 pubkey(#channel{id = Id}) ->
-    aec_id:specialize(Id, channel).
+    aeser_id:specialize(Id, channel).
 
--spec initiator_id(channel()) -> aec_id:id().
+-spec initiator_id(channel()) -> aeser_id:id().
 initiator_id(#channel{initiator_id = InitiatorId}) ->
     InitiatorId.
 
 -spec initiator_pubkey(channel()) -> aec_keys:pubkey().
 initiator_pubkey(#channel{initiator_id = InitiatorId}) ->
-    aec_id:specialize(InitiatorId, account).
+    aeser_id:specialize(InitiatorId, account).
 
--spec responder_id(channel()) -> aec_id:id().
+-spec responder_id(channel()) -> aeser_id:id().
 responder_id(#channel{responder_id = ResponderId}) ->
     ResponderId.
 
 -spec responder_pubkey(channel()) -> aec_keys:pubkey().
 responder_pubkey(#channel{responder_id = ResponderId}) ->
-    aec_id:specialize(ResponderId, account).
+    aeser_id:specialize(ResponderId, account).
 
 -spec channel_amount(channel()) -> amount().
 channel_amount(#channel{channel_amount = ChannelAmount}) ->
@@ -365,13 +365,13 @@ channel_reserve(#channel{channel_reserve = ChannelReserve}) ->
 lock_period(#channel{lock_period = LockPeriod}) ->
     LockPeriod.
 
--spec delegate_ids(channel()) -> list(aec_id:id()).
+-spec delegate_ids(channel()) -> list(aeser_id:id()).
 delegate_ids(#channel{delegate_ids = Ids}) ->
     Ids.
 
 -spec delegate_pubkeys(channel()) -> list(aec_keys:pubkey()).
 delegate_pubkeys(#channel{delegate_ids = Ids}) ->
-    [aec_id:specialize(Id, account) || Id <- Ids].
+    [aeser_id:specialize(Id, account) || Id <- Ids].
 
 -spec state_hash(channel()) -> binary().
 state_hash(#channel{state_hash = StateHash}) ->

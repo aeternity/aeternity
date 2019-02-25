@@ -210,8 +210,8 @@ check_coinbase_validation(Config) ->
     ?assertNotEqual(Ben1, Ben2), %% Sanity check on the test nodes.
 
     %% Check that the second node syncs the mined tx with the initial node.
-    {ok, Tx1Hash} = aehttp_api_encoder:safe_decode(tx_hash, TxH1),
-    {ok, Tx2Hash} = aehttp_api_encoder:safe_decode(tx_hash, TxH2),
+    {ok, Tx1Hash} = aeser_api_encoder:safe_decode(tx_hash, TxH1),
+    {ok, Tx2Hash} = aeser_api_encoder:safe_decode(tx_hash, TxH2),
     wait_till_hash_in_block_on_node(N2, Tx2Hash, 3000),
     {BlockHash1, _} = rpc:call(N1, aec_chain, find_tx_with_location, [Tx1Hash]),
     {BlockHash2, _} = rpc:call(N1, aec_chain, find_tx_with_location, [Tx2Hash]),
@@ -265,8 +265,8 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL) ->
     add_spend_tx(Node, Amount, Fee, Nonce, TTL, patron(), new_pubkey()).
 
 add_spend_tx(Node, Amount, Fee, Nonce, TTL, Sender, Recipient) ->
-    SenderId = aec_id:create(account, maps:get(pubkey, Sender)),
-    RecipientId = aec_id:create(account, Recipient),
+    SenderId = aeser_id:create(account, maps:get(pubkey, Sender)),
+    RecipientId = aeser_id:create(account, Recipient),
     Params = #{ sender_id    => SenderId,
                 recipient_id => RecipientId,
                 amount       => Amount,
@@ -277,12 +277,12 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Sender, Recipient) ->
     {ok, Tx} = aec_spend_tx:new(Params),
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
     Res = rpc:call(Node, aec_tx_pool, push, [STx]),
-    {Res, aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(STx))}.
+    {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx))}.
 
 
 create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     OwnerKey = maps:get(pubkey, patron()),
-    Owner    = aec_id:create(account, OwnerKey),
+    Owner    = aeser_id:create(account, OwnerKey),
     File     = lists:concat(["contracts/", Name]),
     {ok, Code} = aect_test_utils:compile_contract(File),
     {ok, CallData} = aect_sophia:encode_call_data(Code, <<"init">>, Args),
@@ -304,11 +304,11 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     CTx = aec_test_utils:sign_tx(CreateTx, maps:get(privkey, patron())),
     Res = rpc:call(Node, aec_tx_pool, push, [CTx]),
     ContractKey = aect_contracts:compute_contract_pubkey(OwnerKey, Nonce),
-    {Res, aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey, Code}.
+    {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey, Code}.
 
 call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
-    Caller       = aec_id:create(account, maps:get(pubkey, patron())),
-    ContractID   = aec_id:create(contract, Contract),
+    Caller       = aeser_id:create(account, maps:get(pubkey, patron())),
+    ContractID   = aeser_id:create(contract, Contract),
     {ok, CallData} = aect_sophia:encode_call_data(Code, Function, Args),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     {ok, CallTx} = aect_call_tx:new(#{ nonce       => Nonce
@@ -324,7 +324,7 @@ call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
                                      }),
     CTx = aec_test_utils:sign_tx(CallTx, maps:get(privkey, patron())),
     Res = rpc:call(Node, aec_tx_pool, push, [CTx]),
-    {Res, aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(CTx))}.
+    {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(CTx))}.
 
 
 %% We assume that equence is time ordered and only check Micro Block Cycle time

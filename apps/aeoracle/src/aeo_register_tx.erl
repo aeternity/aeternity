@@ -42,7 +42,7 @@
 -define(ORACLE_REGISTER_TX_TYPE, oracle_register_tx).
 
 -record(oracle_register_tx, {
-          account_id                                    :: aec_id:id(),
+          account_id                                    :: aeser_id:id(),
           nonce                                         :: integer(),
           query_format    = <<>>                        :: aeo_oracles:type_format(),
           response_format = <<>>                        :: aeo_oracles:type_format(),
@@ -57,13 +57,13 @@
 
 -export_type([tx/0]).
 
--spec account_id(tx()) -> aec_id:id().
+-spec account_id(tx()) -> aeser_id:id().
 account_id(#oracle_register_tx{account_id = AccountId}) ->
     AccountId.
 
 -spec account_pubkey(tx()) -> aec_keys:pubkey().
 account_pubkey(#oracle_register_tx{account_id = AccountId}) ->
-    aec_id:specialize(AccountId, account).
+    aeser_id:specialize(AccountId, account).
 
 -spec query_format(tx()) -> aeo_oracles:type_format().
 query_format(#oracle_register_tx{query_format = QueryFormat}) ->
@@ -107,7 +107,7 @@ new(#{account_id      := AccountId,
       oracle_ttl      := OracleTTL,
       fee             := Fee
      } = Args) ->
-    account = aec_id:specialize_type(AccountId),
+    account = aeser_id:specialize_type(AccountId),
     Tx = #oracle_register_tx{account_id      = AccountId,
                              nonce           = Nonce,
                              query_format    = QueryFormat,
@@ -204,7 +204,7 @@ deserialize(?ORACLE_REGISTER_TX_VSN,
                   ?ttl_delta_int -> ?ttl_delta_atom;
                   ?ttl_block_int -> ?ttl_block_atom
               end,
-    account = aec_id:specialize_type(AccountId),
+    account = aeser_id:specialize_type(AccountId),
     #oracle_register_tx{account_id      = AccountId,
                         nonce           = Nonce,
                         query_format    = QueryFormat,
@@ -243,7 +243,7 @@ for_client(#oracle_register_tx{account_id      = AccountId,
                                abi_version     = ABIVersion
                               } = Tx) ->
     {TTLType, TTLValue} = oracle_ttl(Tx),
-    #{<<"account_id">>      => aehttp_api_encoder:encode(id_hash, AccountId),
+    #{<<"account_id">>      => aeser_api_encoder:encode(id_hash, AccountId),
       <<"nonce">>           => Nonce,
       <<"query_format">>    => QueryFormat,
       <<"response_format">> => ResponseFormat,

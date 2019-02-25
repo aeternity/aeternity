@@ -1,0 +1,15 @@
+{application, aeserialization,
+ [{description, "Serialization of data for Aeternity"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib,
+    crypto,
+    base58
+   ]},
+  {env,[]},
+  {modules, []},
+  {licenses, []},
+  {links, []}
+ ]}.

@@ -37,7 +37,7 @@
 -define(ORACLE_EXTEND_TX_TYPE, oracle_extend_tx).
 
 -record(oracle_extend_tx, {
-          oracle_id  :: aec_id:id(),
+          oracle_id  :: aeser_id:id(),
           nonce      :: integer(),
           oracle_ttl :: aeo_oracles:relative_ttl(),
           fee        :: integer(),
@@ -48,13 +48,13 @@
 
 -export_type([tx/0]).
 
--spec oracle_id(tx()) -> aec_id:id().
+-spec oracle_id(tx()) -> aeser_id:id().
 oracle_id(#oracle_extend_tx{oracle_id = OracleId}) ->
     OracleId.
 
 -spec oracle_pubkey(tx()) -> aec_keys:pubkey().
 oracle_pubkey(#oracle_extend_tx{oracle_id = OracleId}) ->
-    aec_id:specialize(OracleId, oracle).
+    aeser_id:specialize(OracleId, oracle).
 
 -spec oracle_ttl(tx()) -> aeo_oracles:relative_ttl().
 oracle_ttl(#oracle_extend_tx{oracle_ttl = OTTL}) ->
@@ -77,7 +77,7 @@ new(#{oracle_id  := OracleId,
       nonce      := Nonce,
       oracle_ttl := {delta, Delta} = OracleTTL,
       fee        := Fee} = Args) when is_integer(Delta), Delta >= 0 ->
-    oracle = aec_id:specialize_type(OracleId),
+    oracle = aeser_id:specialize_type(OracleId),
     Tx = #oracle_extend_tx{oracle_id  = OracleId,
                            nonce      = Nonce,
                            oracle_ttl = OracleTTL,
@@ -137,7 +137,7 @@ deserialize(?ORACLE_EXTEND_TX_VSN,
            , {oracle_ttl_value, TTLValue}
            , {fee, Fee}
            , {ttl, TTL}]) ->
-    oracle = aec_id:specialize_type(OracleId),
+    oracle = aeser_id:specialize_type(OracleId),
     #oracle_extend_tx{oracle_id  = OracleId,
                       nonce      = Nonce,
                       oracle_ttl = {?ttl_delta_atom, TTLValue},
@@ -162,7 +162,7 @@ for_client(#oracle_extend_tx{oracle_id = OracleId,
                              fee       = Fee,
                              ttl       = TTL} = Tx) ->
     {delta = TTLType, TTLValue} = oracle_ttl(Tx),
-    #{<<"oracle_id">>   => aehttp_api_encoder:encode(id_hash, OracleId),
+    #{<<"oracle_id">>   => aeser_api_encoder:encode(id_hash, OracleId),
       <<"nonce">>       => Nonce,
       <<"oracle_ttl">>  => #{<<"type">>  => TTLType,
                              <<"value">> => TTLValue},

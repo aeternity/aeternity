@@ -43,7 +43,7 @@
 -type vsn() :: non_neg_integer().
 
 -record(channel_offchain_tx, {
-          channel_id         :: aec_id:id(),
+          channel_id         :: aeser_id:id(),
           updates            :: [aesc_offchain_update:update()],
           state_hash         :: binary(),
           round              :: non_neg_integer()
@@ -62,7 +62,7 @@ new(#{channel_id         := ChannelId,
       state_hash         := StateHash,
       updates            := Updates,
       round              := Round}) ->
-    channel = aec_id:specialize_type(ChannelId),
+    channel = aeser_id:specialize_type(ChannelId),
     Tx = #channel_offchain_tx{
             channel_id         = ChannelId,
             updates            = Updates,
@@ -138,7 +138,7 @@ deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
             , {round             , Round}
             , {updates           , Updates0}
             , {state_hash        , StateHash}]) ->
-    channel = aec_id:specialize_type(ChannelId),
+    channel = aeser_id:specialize_type(ChannelId),
     Updates = [aesc_offchain_update:deserialize(U) || U <- Updates0],
     #channel_offchain_tx{
        channel_id         = ChannelId,
@@ -152,10 +152,10 @@ for_client(#channel_offchain_tx{
               state_hash         = StateHash,
               channel_id         = ChannelId,
               round              = Round}) ->
-    #{<<"channel_id">>         => aehttp_api_encoder:encode(id_hash, ChannelId),
+    #{<<"channel_id">>         => aeser_api_encoder:encode(id_hash, ChannelId),
       <<"round">>              => Round,
       <<"updates">>            => [aesc_offchain_update:for_client(D) || D <- Updates],
-      <<"state_hash">>         => aehttp_api_encoder:encode(state, StateHash)}.
+      <<"state_hash">>         => aeser_api_encoder:encode(state, StateHash)}.
 
 serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
     [ {channel_id        , id}
@@ -169,7 +169,7 @@ serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
 %%%===================================================================
 -spec channel_pubkey(tx()) -> aesc_channels:pubkey().
 channel_pubkey(#channel_offchain_tx{channel_id = ChannelId}) ->
-    aec_id:specialize(ChannelId, channel).
+    aeser_id:specialize(ChannelId, channel).
 
 -spec channel_id(tx()) -> aesc_channels:id().
 channel_id(#channel_offchain_tx{channel_id = ChannelId}) ->

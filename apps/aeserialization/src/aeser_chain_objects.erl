@@ -6,15 +6,15 @@
 %%% @end
 %%%-------------------------------------------------------------------
 
--module(aec_object_serialization).
+-module(aeser_chain_objects).
 
 -export([ serialize/4
         , deserialize/4
         , deserialize_type_and_vsn/1
         ]).
 
--type template() :: aec_serialization:template().
--type fields()   :: aec_serialization:fields().
+-type template() :: aeserialization:template().
+-type fields()   :: aeserialization:fields().
 
 %%%===================================================================
 %%% API
@@ -22,15 +22,15 @@
 
 -spec serialize(atom(), non_neg_integer(), template(), fields()) -> binary().
 serialize(Type, Vsn, Template, Fields) ->
-    aec_serialization:serialize(tag(Type), Vsn, Template, Fields).
+    aeserialization:serialize(tag(Type), Vsn, Template, Fields).
 
 deserialize_type_and_vsn(Binary) ->
-    {Tag, Vsn, Fields} = aec_serialization:deserialize_tag_and_vsn(Binary),
+    {Tag, Vsn, Fields} = aeserialization:deserialize_tag_and_vsn(Binary),
     {rev_tag(Tag), Vsn, Fields}.
 
 -spec deserialize(atom(), non_neg_integer(), template(), binary()) -> fields().
 deserialize(Type, Vsn, Template, Binary) ->
-    aec_serialization:deserialize(Type, tag(Type), Vsn, Template, Binary).
+    aeserialization:deserialize(Type, tag(Type), Vsn, Template, Binary).
 
 %%%===================================================================
 %%% Internal functions

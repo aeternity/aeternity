@@ -47,7 +47,7 @@ preset_accounts(Release, ErrorMsg) ->
             Accounts =
                 lists:map(
                     fun({EncodedPubKey, Amt}) ->
-                        {ok, PubKey} = aehttp_api_encoder:safe_decode(account_pubkey, EncodedPubKey),
+                        {ok, PubKey} = aeser_api_encoder:safe_decode(account_pubkey, EncodedPubKey),
                         {PubKey, Amt}
                     end,
                     DecodedData),

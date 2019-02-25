@@ -66,7 +66,7 @@ commands_(OpsBin, Cfg) ->
         "Installed versions:[\r\n]*\\*[ \t]*[0-9\\.\\-a-z]*[ \t]*permanent[\r\n]*")),
 
     {0, Output2} = run_cmd_in_node_dir(node1, [OpsBin, "peer_key"], Cfg),
-    {ok, PeerKey} = aehttp_api_encoder:safe_decode(peer_pubkey, list_to_binary(string:trim(Output2, trailing, "\n"))),
+    {ok, PeerKey} = aeser_api_encoder:safe_decode(peer_pubkey, list_to_binary(string:trim(Output2, trailing, "\n"))),
     ExpPeerKey = aest_nodes:get_node_pubkey(node1, Cfg),
     ?assertEqual(ExpPeerKey, PeerKey),
 
@@ -86,7 +86,7 @@ commands_(OpsBin, Cfg) ->
     {0, Output7} = run_cmd_in_node_dir(node1, [OpsBin, "keys_gen", "secret password"], Cfg),
     ?assertMatch({match, _}, re:run(Output7, "Generated keypair with encoded pubkey:[\r\n]*")),
     {match, [EncodedPubKey]} = re:run(Output7, "ak\\_[A-Za-z0-9]*", [{capture, first, binary}]),
-    ?assertMatch({ok, _}, aehttp_api_encoder:safe_decode(account_pubkey, EncodedPubKey)),
+    ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(account_pubkey, EncodedPubKey)),
 
     {HostPath, GuestPath} = aest_nodes:shared_temp_file(node1, "chain.dlog"),
     {0, _Output8} = run_cmd_in_node_dir(node1, [OpsBin, "export", GuestPath], Cfg),

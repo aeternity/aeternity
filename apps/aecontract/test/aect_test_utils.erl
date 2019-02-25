@@ -149,7 +149,7 @@ create_tx(PubKey, Spec0, State) ->
 
 create_tx_default_spec(PubKey, State) ->
     #{ fee         => 1000000
-     , owner_id    => aec_id:create(account, PubKey)
+     , owner_id    => aeser_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , code        => dummy_bytecode()
      , vm_version  => latest_sophia_vm_version()
@@ -183,8 +183,8 @@ call_tx(PubKey, ContractKey, Spec0, State) ->
 
 call_tx_default_spec(PubKey, ContractKey, State) ->
     #{ fee         => 600000
-     , contract_id => aec_id:create(contract, ContractKey)
-     , caller_id   => aec_id:create(account, PubKey)
+     , contract_id => aeser_id:create(contract, ContractKey)
+     , caller_id   => aeser_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , abi_version => latest_sophia_abi_version()
      , amount      => 100

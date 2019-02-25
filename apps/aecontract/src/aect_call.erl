@@ -45,10 +45,10 @@
                       , [binary()]  %% topics
                       , binary()}.  %% data
 
--record(call, { caller_id    :: aec_id:id()
+-record(call, { caller_id    :: aeser_id:id()
               , caller_nonce :: integer()
               , height       :: aec_blocks:height()
-              , contract_id  :: aec_id:id()
+              , contract_id  :: aeser_id:id()
               , gas_price    :: amount()
               , gas_used     :: amount()
               , return_value :: binary()
@@ -73,7 +73,7 @@
 %%% API
 %%%===================================================================
 
--spec new(aec_id:id(), non_neg_integer(), aec_id:id(), aec_blocks:height(), amount()) -> call().
+-spec new(aeser_id:id(), non_neg_integer(), aeser_id:id(), aec_blocks:height(), amount()) -> call().
 new(CallerId, Nonce, ContractId, BlockHeight, GasPrice) ->
     C = #call{ caller_id    = CallerId
              , caller_nonce = Nonce
@@ -109,7 +109,7 @@ serialize(#call{caller_id    = CallerId,
                 return_type  = ReturnType,
                 log          = Log
                }) ->
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
       ?CONTRACT_INTERACTION_TYPE,
       ?CONTRACT_INTERACTION_VSN,
       serialization_template(?CONTRACT_INTERACTION_VSN),
@@ -127,7 +127,7 @@ serialize(#call{caller_id    = CallerId,
 -spec deserialize(binary()) -> call().
 deserialize(B) ->
     {?CONTRACT_INTERACTION_TYPE, Vsn, Fields} =
-        aec_object_serialization:deserialize_type_and_vsn(B),
+        aeser_chain_objects:deserialize_type_and_vsn(B),
     case Vsn of
         ?CONTRACT_INTERACTION_VSN ->
             [ {caller_id, CallerId}
@@ -139,12 +139,12 @@ deserialize(B) ->
             , {return_value, ReturnValue}
             , {return_type, ReturnType}
             , {log, Log}
-            ] =  aec_serialization:decode_fields(
+            ] =  aeserialization:decode_fields(
                    serialization_template(?CONTRACT_INTERACTION_VSN),
                    Fields)
     end,
     %% TODO: check caller_id type
-    contract = aec_id:specialize_type(ContractId),
+    contract = aeser_id:specialize_type(ContractId),
     #call{ caller_id    = CallerId
          , caller_nonce = CallerNonce
          , height       = Height
@@ -186,13 +186,13 @@ serialize_for_client(#call{caller_id    = CallerId,
                            return_type  = ReturnType,
                            log          = Log
                           }) ->
-    #{ <<"caller_id">>    => aehttp_api_encoder:encode(id_hash, CallerId)
+    #{ <<"caller_id">>    => aeser_api_encoder:encode(id_hash, CallerId)
      , <<"caller_nonce">> => CallerNonce
      , <<"height">>       => Height
-     , <<"contract_id">>  => aehttp_api_encoder:encode(id_hash, ContractId)
+     , <<"contract_id">>  => aeser_api_encoder:encode(id_hash, ContractId)
      , <<"gas_price">>    => GasPrice
      , <<"gas_used">>     => GasUsed
-     , <<"return_value">> => aehttp_api_encoder:encode(contract_bytearray, ReturnValue)
+     , <<"return_value">> => aeser_api_encoder:encode(contract_bytearray, ReturnValue)
      , <<"return_type">>  => atom_to_binary(ReturnType, utf8)
      , <<"log">>          => [serialize_log_entry_for_client(E) || E <- Log]
      }.
@@ -206,13 +206,13 @@ serialize_log_entry_for_client({Address, Topics, Data}) ->
 %%%===================================================================
 %%% Getters
 
--spec caller_id(call()) -> aec_id:id().
+-spec caller_id(call()) -> aeser_id:id().
 caller_id(#call{caller_id = CallerId}) ->
     CallerId.
 
 -spec caller_pubkey(call()) -> aec_keys:pubkey().
 caller_pubkey(#call{caller_id = CallerId}) ->
-    {_, CallerPubkey} = aec_id:specialize(CallerId),
+    {_, CallerPubkey} = aeser_id:specialize(CallerId),
     CallerPubkey.
 
 -spec caller_nonce(call()) -> integer().
@@ -223,13 +223,13 @@ caller_nonce(#call{caller_nonce = CallerNonce}) ->
 height(#call{height = Height}) ->
     Height.
 
--spec contract_id(call()) -> aec_id:id().
+-spec contract_id(call()) -> aeser_id:id().
 contract_id(#call{contract_id = ContractId}) ->
     ContractId.
 
 -spec contract_pubkey(call()) -> aec_keys:pubkey().
 contract_pubkey(#call{contract_id = ContractId}) ->
-  aec_id:specialize(ContractId, contract).
+  aeser_id:specialize(ContractId, contract).
 
 -spec return_type(call()) -> ok | error | revert.
 return_type(#call{return_type = ReturnType}) ->
@@ -253,9 +253,9 @@ log(I) -> I#call.log.
 %%%===================================================================
 %%% Setters
 
--spec set_caller(aec_id:tag(), aec_keys:pubkey(), call()) -> call().
+-spec set_caller(aeser_id:tag(), aec_keys:pubkey(), call()) -> call().
 set_caller(T, X, I) ->
-    I#call{caller_id = aec_id:create(T, assert_field(caller, X))}.
+    I#call{caller_id = aeser_id:create(T, assert_field(caller, X))}.
 
 -spec set_caller_nonce(integer(), call()) -> call().
 set_caller_nonce(X, I) ->
@@ -267,7 +267,7 @@ set_height(X, I) ->
 
 -spec set_contract(aec_keys:pubkey(), call()) -> call().
 set_contract(X, I) ->
-    I#call{contract_id = aec_id:create(contract, assert_field(contract, X))}.
+    I#call{contract_id = aeser_id:create(contract, assert_field(contract, X))}.
 
 -spec set_return_value(binary(), call()) -> call().
 set_return_value(X, I) ->

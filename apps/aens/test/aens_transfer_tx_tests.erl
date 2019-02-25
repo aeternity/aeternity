@@ -14,9 +14,9 @@
 
 serialization_test_() ->
     [ {"Serialization - case recipient is account",
-       fun() -> serialization_of_recipient(aec_id:create(account, ?TEST_ID_VAL)) end}
+       fun() -> serialization_of_recipient(aeser_id:create(account, ?TEST_ID_VAL)) end}
     , {"Serialization - case recipient is name",
-       fun() -> serialization_of_recipient(aec_id:create(name   , ?TEST_ID_VAL)) end}
+       fun() -> serialization_of_recipient(aeser_id:create(name   , ?TEST_ID_VAL)) end}
     ].
 
 serialization_of_recipient(Recipient) ->
@@ -25,10 +25,10 @@ serialization_of_recipient(Recipient) ->
     ?assertEqual(Tx, deserialize(Vsn, Fields)).
 
 transfer_tx(Override) ->
-    Map = #{ account_id => aec_id:create(account, <<111:32/unit:8>>)
+    Map = #{ account_id => aeser_id:create(account, <<111:32/unit:8>>)
            , nonce => 3
-           , name_id => aec_id:create(name, <<222:32/unit:8>>)
-           , recipient_id => aec_id:create(account, <<333:32/unit:8>>)
+           , name_id => aeser_id:create(name, <<222:32/unit:8>>)
+           , recipient_id => aeser_id:create(account, <<333:32/unit:8>>)
            , fee => 5
            },
     Map1 = maps:merge(Map, Override),

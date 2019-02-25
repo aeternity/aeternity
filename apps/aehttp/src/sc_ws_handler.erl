@@ -10,7 +10,7 @@
 -record(handler, {fsm_pid            :: pid() | undefined,
                   fsm_mref           :: reference() | undefined,
                   channel_id         :: aesc_channels:id() | undefined,
-                  enc_channel_id     :: aehttp_api_encoder:encoded() | undefined,
+                  enc_channel_id     :: aeser_api_encoder:encoded() | undefined,
                   job_id             :: term(),
                   protocol           :: sc_ws_api:protocol(), 
                   role               :: initiator | responder | undefined,
@@ -80,7 +80,7 @@ set_channel_id(Msg, H) ->
 set_channel_id_(#{channel_id := Id},
                #handler{channel_id = undefined} = H) when Id =/= undefined ->
     H#handler{channel_id = Id,
-              enc_channel_id = aehttp_api_encoder:encode(channel, Id)};
+              enc_channel_id = aeser_api_encoder:encode(channel, Id)};
 set_channel_id_(#{channel_id := A}, #handler{channel_id = B})
   when A =/= undefined, A =/= B ->
     erlang:error({channel_id_mismatch, [A, B]});
@@ -165,13 +165,13 @@ parse_by_type(integer, V, _) when is_binary(V) ->
 parse_by_type(integer, V, _) when is_integer(V) ->
     {ok, V};
 parse_by_type({hash, Type}, V, RecordField) when is_binary(V) ->
-    case aehttp_api_encoder:safe_decode(Type, V) of
+    case aeser_api_encoder:safe_decode(Type, V) of
         {error, _} ->
             {error, {RecordField, broken_encoding}};
         {ok, _} = OK -> OK
     end;
 parse_by_type(serialized_tx, V, RecordField) when is_binary(V) ->
-    case aehttp_api_encoder:safe_decode(transaction, V) of
+    case aeser_api_encoder:safe_decode(transaction, V) of
         {ok, TxBin} ->
             try {ok, aetx_sign:deserialize_from_binary(TxBin)}
             catch

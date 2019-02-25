@@ -125,7 +125,7 @@ commit_to_db(#call_tree{calls = CtTree} = Tree) ->
 -spec to_binary_without_backend(tree()) -> binary().
 to_binary_without_backend(#call_tree{calls = Tree}) ->
     Bin = aeu_mtrees:serialize(Tree),
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
         calls_mtree,
         ?VSN,
         serialization_template(?VSN),
@@ -134,7 +134,7 @@ to_binary_without_backend(#call_tree{calls = Tree}) ->
 -spec from_binary_without_backend(binary()) -> tree().
 from_binary_without_backend(Bin) ->
     [{calls, CallsBin}] =
-        aec_object_serialization:deserialize(calls_mtree, ?VSN,
+        aeser_chain_objects:deserialize(calls_mtree, ?VSN,
                                              serialization_template(?VSN), Bin),
     #call_tree{calls = aeu_mtrees:deserialize(CallsBin)}.
 

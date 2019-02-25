@@ -46,8 +46,8 @@
 -type vsn() :: non_neg_integer().
 
 -record(channel_force_progress_tx, {
-          channel_id    :: aec_id:id(),
-          from_id       :: aec_id:id(),
+          channel_id    :: aeser_id:id(),
+          from_id       :: aeser_id:id(),
           payload       :: binary(),
           update        :: aesc_offchain_update:update(),
           state_hash    :: binary(),
@@ -76,8 +76,8 @@ new(#{channel_id    := ChannelId,
       offchain_trees:= OffChainTrees,
       fee           := Fee,
       nonce         := Nonce} = Args) ->
-    channel = aec_id:specialize_type(ChannelId),
-    account = aec_id:specialize_type(FromId),
+    channel = aeser_id:specialize_type(ChannelId),
+    account = aeser_id:specialize_type(FromId),
     Tx = #channel_force_progress_tx{
             channel_id    = ChannelId,
             from_id       = FromId,
@@ -135,7 +135,7 @@ from_id(#channel_force_progress_tx{from_id = FromId}) ->
     FromId.
 
 from_pubkey(#channel_force_progress_tx{from_id = FromId}) ->
-    aec_id:specialize(FromId, account).
+    aeser_id:specialize(FromId, account).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_force_progress_tx{payload       = Payload,
@@ -196,8 +196,8 @@ deserialize(?CHANNEL_FORCE_PROGRESS_TX_VSN,
             , {ttl            , TTL}
             , {fee            , Fee}
             , {nonce          , Nonce}]) ->
-    channel = aec_id:specialize_type(ChannelId),
-    account = aec_id:specialize_type(FromId),
+    channel = aeser_id:specialize_type(ChannelId),
+    account = aeser_id:specialize_type(FromId),
     Update = aesc_offchain_update:deserialize(UpdateBin),
     #channel_force_progress_tx{channel_id     = ChannelId,
                                from_id        = FromId,
@@ -220,13 +220,13 @@ for_client(#channel_force_progress_tx{payload       = Payload,
                                       ttl           = TTL,
                                       fee           = Fee,
                                       nonce         = Nonce} = Tx) ->
-    #{<<"channel_id">>    => aehttp_api_encoder:encode(id_hash, channel(Tx)),
-      <<"from_id">>       => aehttp_api_encoder:encode(id_hash, from_id(Tx)),
-      <<"payload">>       => aehttp_api_encoder:encode(transaction, Payload),
+    #{<<"channel_id">>    => aeser_api_encoder:encode(id_hash, channel(Tx)),
+      <<"from_id">>       => aeser_api_encoder:encode(id_hash, from_id(Tx)),
+      <<"payload">>       => aeser_api_encoder:encode(transaction, Payload),
       <<"round">>         => Round,
       <<"update">>        => aesc_offchain_update:for_client(Update),
-      <<"state_hash">>    => aehttp_api_encoder:encode(state, StateHash),
-      <<"offchain_trees">>=> aehttp_api_encoder:encode(state_trees,
+      <<"state_hash">>    => aeser_api_encoder:encode(state, StateHash),
+      <<"offchain_trees">>=> aeser_api_encoder:encode(state_trees,
                                                 aec_trees:serialize_to_binary(OffChainTrees)),
       <<"ttl">>           => TTL,
       <<"fee">>           => Fee,
@@ -250,7 +250,7 @@ serialization_template(?CHANNEL_FORCE_PROGRESS_TX_VSN) ->
 %%%===================================================================
 -spec channel_pubkey(tx()) -> aesc_channels:pubkey().
 channel_pubkey(#channel_force_progress_tx{channel_id = ChannelId}) ->
-    aec_id:specialize(ChannelId, channel).
+    aeser_id:specialize(ChannelId, channel).
 
 -spec channel_id(tx()) -> aesc_channels:id().
 channel_id(#channel_force_progress_tx{channel_id = ChannelId}) ->

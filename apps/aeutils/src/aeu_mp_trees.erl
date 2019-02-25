@@ -79,7 +79,7 @@
                          value()}.
 
 -type enc_node()       :: null() | short_rlp_node() | hash().
--type short_rlp_node() :: aeu_rlp:encoded(). %% size `< 32 bytes'
+-type short_rlp_node() :: aeser_rlp:encoded(). %% size `< 32 bytes'
 
 -type raw_node()      :: null() | raw_leaf() | raw_extension() | raw_branch().
 -type raw_leaf()      :: [encoded_path()|value()]. %% [encoded_path(), value()].
@@ -90,7 +90,7 @@
 -type encoded_path() :: binary().  %% Compact encoding of hex sequence.
 
 -type key()          :: <<_:4,_:_*4>>. %% Non-empty hexstring
--type value()        :: aeu_rlp:encodable().
+-type value()        :: aeser_rlp:encodable().
 -type hash()         :: <<_:256>>.
 
 -type db()           :: aeu_mp_trees_db:db().
@@ -311,7 +311,7 @@ pp(#mpt{hash = Hash, db = DB}) ->
 %%%===================================================================
 
 assert_val(Val) ->
-    aeu_rlp:encode(Val),
+    aeser_rlp:encode(Val),
     ok.
 
 %%%===================================================================
@@ -964,7 +964,7 @@ node_hash(Bin) when byte_size(Bin) =:= 32 -> Bin.
 -spec decode_node(enc_node(), db()) -> tree_node().
 decode_node(<<>> = X,_DB) -> X;
 decode_node(Bin,_DB) when byte_size(Bin) < 32 ->
-    case aeu_rlp:decode(Bin) of
+    case aeser_rlp:decode(Bin) of
         [CPath, Val] ->
             {Type, Path} = decode_path(CPath),
             {Type, Path, Val};
@@ -986,7 +986,7 @@ decode_node_and_check_hash(Rlp, DB) when byte_size(Rlp) < 32 ->
     {ok, decode_node(Rlp, DB)};
 decode_node_and_check_hash(Hash, DB) when byte_size(Hash) =:= 32 ->
     EncNode = db_get(Hash, DB),
-    Actual = aec_hash:hash(header, aeu_rlp:encode(EncNode)),
+    Actual = aec_hash:hash(header, aeser_rlp:encode(EncNode)),
     case Actual =:= Hash of
         true  -> {ok, decode_node(Hash, DB)};
         false -> {bad_hash, Hash}
@@ -995,7 +995,7 @@ decode_node_and_check_hash(Hash, DB) when byte_size(Hash) =:= 32 ->
 
 -spec encode_node(raw_node(), db()) -> {enc_node(), db()}.
 encode_node(Node, DB) ->
-    Rlp = aeu_rlp:encode(Node),
+    Rlp = aeser_rlp:encode(Node),
     case byte_size(Rlp) < 32 of
         true  -> {Rlp, DB};
         false ->
@@ -1010,7 +1010,7 @@ force_encoded_node_to_hash(<<>>,_DB) ->
 force_encoded_node_to_hash(Hash, DB) when byte_size(Hash) =:= 32 ->
     {Hash, DB};
 force_encoded_node_to_hash(Rlp, DB) when byte_size(Rlp) < 32 ->
-    Node = aeu_rlp:decode(Rlp),
+    Node = aeser_rlp:decode(Rlp),
     Hash = node_hash(Rlp),
     {Hash, db_put(Hash, Node, DB)}.
 
@@ -1020,7 +1020,7 @@ maybe_resolve_hash(<<>> = X,_DB) -> X;
 maybe_resolve_hash(Bin,_DB) when byte_size(Bin) < 32 -> Bin;
 maybe_resolve_hash(Hash, DB) when byte_size(Hash) =:= 32 ->
     Node = db_get(Hash, DB),
-    Rlp  = aeu_rlp:encode(Node),
+    Rlp  = aeser_rlp:encode(Node),
     case byte_size(Rlp) < 32 of
         true  -> Rlp;
         false -> Hash
