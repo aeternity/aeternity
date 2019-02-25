@@ -17,6 +17,7 @@
 -export([start_node/2]).
 -export([stop_node/3]).
 -export([kill_node/2]).
+-export([stop_container/3]).
 -export([extract_archive/4]).
 -export([run_cmd_in_node_dir/4]).
 -export([connect_node/3]).
@@ -262,6 +263,10 @@ stop_node(NodeName, Timeout, Ctx) ->
 -spec kill_node(atom(), test_ctx()) -> ok.
 kill_node(NodeName, Ctx) ->
     call(ctx2pid(Ctx), {kill_node, NodeName}).
+
+-spec stop_container(atom(), milliseconds() | infinity, test_ctx()) -> ok.
+stop_container(NodeName, Timeout, Ctx) ->
+    call(ctx2pid(Ctx), {stop_container, NodeName, Timeout}).
 
 extract_archive(NodeName, Path, Archive, Ctx) ->
     call(ctx2pid(Ctx), {extract_archive, NodeName, Path, Archive}).

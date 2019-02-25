@@ -11,10 +11,11 @@
 
 % Test cases
 -export([
-    node_can_reuse_db_of_other_node/1,
-    roma_node_can_reuse_db_of_other_roma_node/1,
-    minerva_node_with_epoch_db_can_reuse_db_of_roma_node/1
-]).
+         node_can_reuse_db_of_other_node/1,
+         roma_node_can_reuse_db_of_other_roma_node/1,
+         minerva_node_with_epoch_db_can_reuse_db_of_roma_node/1,
+         minerva_node_can_reuse_db_of_roma_node/1
+        ]).
 
 %=== INCLUDES ==================================================================
 
@@ -29,10 +30,11 @@
 %=== COMMON TEST FUNCTIONS =====================================================
 
 all() -> [
-    node_can_reuse_db_of_other_node,
-    roma_node_can_reuse_db_of_other_roma_node,
-    minerva_node_with_epoch_db_can_reuse_db_of_roma_node
-].
+          node_can_reuse_db_of_other_node,
+          roma_node_can_reuse_db_of_other_roma_node,
+          minerva_node_with_epoch_db_can_reuse_db_of_roma_node,
+          minerva_node_can_reuse_db_of_roma_node
+         ].
 
 init_per_suite(Config) ->
     Config.
@@ -56,6 +58,10 @@ roma_node_can_reuse_db_of_other_roma_node(Cfg) ->
 minerva_node_with_epoch_db_can_reuse_db_of_roma_node(Cfg) ->
     node_can_reuse_db_of_other_node_(fun roma_node_spec/2, fun minerva_with_epoch_name_in_db_spec/2, Cfg).
 
+minerva_node_can_reuse_db_of_roma_node(Cfg) ->
+    node_can_reuse_db_of_other_node_(fun roma_node_spec/2, fun node_spec/2,
+                                     [{node_2_custom_setup_fun, fun run_rename_db_script/2} | Cfg]).
+
 %=== INTERNAL FUNCTIONS ========================================================
 
 node_can_reuse_db_of_other_node_(NodeSpecFun, Cfg) ->
@@ -71,6 +77,7 @@ node_can_reuse_db_of_other_node_(CreateDbNodeSpecFun, ReuseDbNodeSpecFun, Cfg) -
     aest_nodes:wait_for_value({height, TargetHeight}, [node1], TargetHeight * ?MINING_TIMEOUT, Cfg),
     #{hash := BlockHash} = aest_nodes:get_block(node1, TargetHeight),
     aest_nodes:stop_node(node1, ?GRACEFUL_STOP_TIMEOUT, Cfg),
+    run_node_2_custom_setup(Cfg),
     start_and_wait_node(node2, ?STARTUP_TIMEOUT, Cfg),
     aest_nodes:wait_for_value({height, TargetHeight}, [node2], ?STARTUP_TIMEOUT, Cfg),
     ?assertMatch({ok, 200, _}, get_block_by_hash(node2, BlockHash)),
@@ -93,6 +100,19 @@ node_db_host_path(NodeName, Config) ->
 format(Fmt, Args) ->
     iolist_to_binary(io_lib:format(Fmt, Args)).
 
+run_rename_db_script(NodeName, Cfg) ->
+    aest_nodes:start_node(NodeName, Cfg),
+    aest_nodes:run_cmd_in_node_dir(NodeName, ["bin/aeternity", "rename_db", "./data/mnesia/schema.DAT"], #{timeout => 5000}, Cfg),
+    aest_nodes:stop_container(NodeName, ?GRACEFUL_STOP_TIMEOUT, Cfg).
+
+run_node_2_custom_setup(Cfg) ->
+    case proplists:lookup(node_2_custom_setup_fun, Cfg) of
+        none ->
+            ok;
+        {node_2_custom_setup_fun, Fun} ->
+            Fun(node2, Cfg)
+    end.
+
 node_spec(Name, DbHostPath) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
     aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:local"},
@@ -107,7 +127,7 @@ roma_node_spec(Name, DbHostPath) ->
                                 config_guest_path => "/home/aeternity/.epoch/epoch/epoch.yaml",
                                 genesis_accounts => genesis_accounts()}).
 
-%% Minerva release still using epoch@localhost node name in the db.
+%% Minerva release using old epoch@localhost node name in the db.
 minerva_with_epoch_name_in_db_spec(Name, DbHostPath) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
     aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v2.0.0-rc.1"}, db_path => {DbHostPath, DbGuestPath}}).

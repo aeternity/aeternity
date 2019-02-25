@@ -12,6 +12,7 @@
 -export([start_node/1]).
 -export([stop_node/2]).
 -export([kill_node/1]).
+-export([stop_container/2]).
 -export([node_logs/1]).
 -export([get_peer_address/1]).
 -export([get_service_address/2]).
@@ -347,6 +348,25 @@ stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
 kill_node(#{container_id := ID, hostname := Name} = NodeState) ->
     aest_docker_api:kill_container(ID),
     log(NodeState, "Container ~p [~s] killed", [Name, ID]),
+    NodeState.
+
+-spec stop_container(node_state(), stop_node_options()) -> node_state().
+stop_container(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
+    case is_running(ID) of
+        false ->
+            log(NodeState, "Container ~p [~s] already not running", [Name, ID]);
+        true ->
+            Timeout = maps:get(soft_timeout, Opts, ?EPOCH_STOP_TIMEOUT),
+            case aest_docker_api:wait_stopped(ID, Timeout) of
+                timeout ->
+                    aest_docker_api:kill_container(ID);
+                ok ->
+                    log(NodeState,
+                        "Container ~p [~s] detected as stopped", [Name, ID]),
+                    ok
+            end,
+            log(NodeState, "Container ~p [~s] stopped", [Name, ID])
+    end,
     NodeState.
 
 -spec node_logs(node_state()) -> iodata().
