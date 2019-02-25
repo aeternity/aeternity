@@ -76,7 +76,7 @@ def test_contract_create():
     assert_equals(alice_balance0,
                   alice_balance
                   + test_settings["create_contract"]["fee"]
-                  + test_settings["create_contract"]["gas_used"]
+                  + test_settings["create_contract"]["gas_used"] * test_settings["create_contract"]["gas_price"]
                   + test_settings["create_contract"]["deposit"]
                   + test_settings["create_contract"]["amount"])
 
@@ -113,7 +113,7 @@ def test_contract_call():
     assert_equals(alice_balance0,
                   alice_balance
                   + create_settings["create_contract"]["fee"]
-                  + create_settings["create_contract"]["gas_used"]
+                  + create_settings["create_contract"]["gas_used"] * create_settings["create_contract"]["gas_price"]
                   + create_settings["create_contract"]["deposit"]
                   + create_settings["create_contract"]["amount"])
 
@@ -151,7 +151,7 @@ def test_contract_call():
     # assert contract called:
     assert_equals(alice_balance0, alice_balance
                   + test_settings["contract_call"]["fee"]
-                  + test_settings["contract_call"]["gas"])
+                  + test_settings["contract_call"]["gas"] * test_settings["contract_call"]["gas_price"])
     print("Fee and gas was consumed, transaction is part of the chain")
 
     cleanup(node, root_dir)

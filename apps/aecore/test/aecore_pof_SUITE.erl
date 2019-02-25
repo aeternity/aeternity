@@ -79,8 +79,8 @@ siblings_on_key_block(Config) ->
     Account2 = #{ pubkey := PK2 } = new_keypair(),
 
     ct:pal("Setting up accounts"),
-    {ok, Tx0a} = add_spend_tx(N1, 1000000, 20000, 1, 10, patron(), PK1),
-    {ok, Tx0b} = add_spend_tx(N1, 1000000, 20000, 2, 10, patron(), PK2),
+    {ok, Tx0a} = add_spend_tx(N1, 1000000, 20000 * aec_test_utils:min_gas_price(), 1, 10, patron(), PK1),
+    {ok, Tx0b} = add_spend_tx(N1, 1000000, 20000 * aec_test_utils:min_gas_price(), 2, 10, patron(), PK2),
 
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx0a, Tx0b], 5),
 
@@ -112,9 +112,9 @@ siblings_on_micro_block(Config) ->
     Account3 = #{ pubkey := PK3 } = new_keypair(),
 
     ct:pal("Setting up accounts"),
-    {ok, Tx0a} = add_spend_tx(N1, 100000, 20000, 1, 10, patron(), PK1),
-    {ok, Tx0b} = add_spend_tx(N1, 100000, 20000, 2, 10, patron(), PK2),
-    {ok, Tx0c} = add_spend_tx(N1, 100000, 20000, 3, 10, patron(), PK3),
+    {ok, Tx0a} = add_spend_tx(N1, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 10, patron(), PK1),
+    {ok, Tx0b} = add_spend_tx(N1, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 2, 10, patron(), PK2),
+    {ok, Tx0c} = add_spend_tx(N1, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 3, 10, patron(), PK3),
 
     Txs = [Tx0a, Tx0b, Tx0c],
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, Txs, 5),
@@ -130,7 +130,7 @@ ensure_top_is_a_micro(_Node,_Account, Nonce) when Nonce > 5 ->
     error(could_not_ensure_micro_top);
 ensure_top_is_a_micro(Node, Account, Nonce) ->
     %% We want to make a top that is a micro block
-    {ok, _Tx1} = add_spend_tx(Node, 1000, 20000,  1,  10, Account, new_pubkey()),
+    {ok, _Tx1} = add_spend_tx(Node, 1000, 20000 * aec_test_utils:min_gas_price(), 1, 10, Account, new_pubkey()),
     {ok, _} = aecore_suite_utils:mine_micro_blocks(Node, 1),
     Top = rpc:call(Node, aec_chain, top_block, []),
     case aec_blocks:type(Top) of
@@ -150,7 +150,7 @@ siblings_common(TopBlock, N1, N2, Account1, Account2, Fraud) ->
       10000),
 
     N1KeyBlocksCount = aec_blocks:height(TopBlock),
-    SpendFee = 17000,
+    SpendFee = 17000 * aec_test_utils:min_gas_price(),
 
     ct:pal("Starting to test fraud"),
     %% Add a transaction and create the first micro block
@@ -219,11 +219,11 @@ siblings_common(TopBlock, N1, N2, Account1, Account2, Fraud) ->
                          || X <- lists:seq(N1KeyBlocksCount + 1, N2Height - Delay),
                             X =/= FraudHeight]) + FraudReward,
 
-    case Bal1 >= Reward1 andalso Bal1 < Reward1 + 100000 of %% should get some fees
+    case Bal1 >= Reward1 andalso Bal1 < Reward1 + 100000 * aec_test_utils:min_gas_price() of %% should get some fees
         true -> ok;
         false -> error({bad_balance1, Bal1})
     end,
-    case Bal2 >= Reward2 andalso Bal2 < Reward2 + 100000 of
+    case Bal2 >= Reward2 andalso Bal2 < Reward2 + 100000 * aec_test_utils:min_gas_price() of
         true -> ok;
         false -> error({bad_balance2, Bal2})
     end,

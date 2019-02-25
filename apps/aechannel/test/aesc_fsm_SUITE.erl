@@ -197,8 +197,8 @@ init_per_group_(Config) ->
             [{initiator, Initiator},
              {responder, Responder},
              {port, ?PORT},
-             {initiator_amount, 1000000},
-             {responder_amount, 1000000}
+             {initiator_amount, 1000000 * aec_test_utils:min_gas_price()},
+             {responder_amount, 1000000 * aec_test_utils:min_gas_price()}
              | Config]
         end
     catch
@@ -680,7 +680,7 @@ close_solo_tx(#{ fsm        := Fsm
               , payload    => Payload
               , poi        => PoI
               , ttl        => TTL
-              , fee        => 30000
+              , fee        => 30000 * aec_test_utils:min_gas_price()
               , nonce      => Nonce },
     {ok, _Tx} = aesc_close_solo_tx:new(TxSpec).
 
@@ -1019,7 +1019,7 @@ check_mutual_close_with_wrong_amounts(Cfg) ->
     true = (rpc(dev1, erlang, process_info, [FsmI]) =/= undefined),
     true = (rpc(dev1, erlang, process_info, [FsmR]) =/= undefined),
     %% Deposit funds to cover the closing fee. Then it should work
-    {ok, _I1, _R1} = deposit_(I, R, 20000, Debug),
+    {ok, _I1, _R1} = deposit_(I, R, 20000 * aec_test_utils:min_gas_price(), Debug),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
     ok.
 
@@ -1614,8 +1614,8 @@ opt_add_tx_to_debug(_, Debug) ->
 prep_initiator(Node) ->
     {PrivKey, PubKey} = aecore_suite_utils:sign_keys(Node),
     ct:log("initiator Pubkey = ~p", [PubKey]),
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), 3),
-    ct:log("initiator: 3 blocks mined on ~p", [Node]),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), 30),
+    ct:log("initiator: 30 blocks mined on ~p", [Node]),
     {ok, Balance} = rpc(Node, aehttp_logic, get_account_balance, [PubKey]),
     #{role => initiator,
       priv => PrivKey,
@@ -1625,8 +1625,9 @@ prep_initiator(Node) ->
 prep_responder(#{pub := IPub, balance := IBal} = _Initiator, Node) ->
     NodeName = aecore_suite_utils:node_name(Node),
     #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
-    Amount = IBal div 10,
-    {ok, SignedTx} = aecore_suite_utils:spend(NodeName, IPub, Pub, Amount, 20000),
+    Amount = IBal div 2,
+    {ok, SignedTx} = aecore_suite_utils:spend(NodeName, IPub, Pub, Amount,
+                                              20000 * aec_test_utils:min_gas_price()),
     ok = wait_for_signed_transaction_in_block(Node, SignedTx),
     {ok, Amount} = rpc(Node, aehttp_logic, get_account_balance, [Pub]),
     #{role => responder,

@@ -516,7 +516,7 @@ beneficiary_keys() ->
     {Pub, Priv}.
 
 preset_accounts({Pub, _}) -> preset_accounts(Pub);
-preset_accounts(Pub) -> [{Pub, 50000}].
+preset_accounts(Pub) -> [{Pub, 50000 * aec_test_utils:min_gas_price()}].
 
 tx({Pub, Priv}) ->
     #{ public := RPub } = enacl:sign_keypair(),
@@ -524,7 +524,7 @@ tx({Pub, Priv}) ->
                                   recipient_id => aec_id:create(account, RPub),
                                   amount => 1,
                                   nonce => 1,
-                                  fee => 20000,
+                                  fee => 20000 * aec_test_utils:min_gas_price(),
                                   ttl => 0,
                                   payload => <<"">>}),
     aec_test_utils:sign_tx(Tx, Priv).

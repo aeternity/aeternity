@@ -93,7 +93,7 @@ insert_key_pair(Pub, Priv, S) ->
 -define(PRIV_SIZE, 32).
 
 setup_new_account(State) ->
-    setup_new_account(1000000000000, State).
+    setup_new_account(1000000000000000000000000000 * aec_test_utils:min_gas_price(), State).
 
 set_account_balance(PubKey, NewBalance, State) ->
     A        = get_account(PubKey, State),
@@ -211,7 +211,7 @@ create_tx_default_spec(InitiatorPubKey, State) ->
       channel_reserve    => 20,
       lock_period        => 100,
       ttl                => 0,
-      fee                => 50000,
+      fee                => 50000 * aec_test_utils:min_gas_price(),
       nonce              => try next_nonce(InitiatorPubKey, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
@@ -232,7 +232,7 @@ close_mutual_tx_spec(ChannelId, Spec0, State) ->
 close_mutual_tx_default_spec(Initiator, State) ->
     #{initiator_amount_final => 10,
       responder_amount_final => 10,
-      fee                    => 50000,
+      fee                    => 50000 * aec_test_utils:min_gas_price(),
       nonce                  => try next_nonce(Initiator, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
@@ -253,7 +253,7 @@ close_solo_tx_spec(ChannelPubKey, FromPubKey, Payload, PoI, Spec0, State) ->
       nonce       => maps:get(nonce, Spec)}.
 
 close_solo_tx_default_spec(FromPubKey, State) ->
-    #{fee         => 50000,
+    #{fee         => 50000 * aec_test_utils:min_gas_price(),
       nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
@@ -276,7 +276,7 @@ deposit_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
 
 deposit_tx_default_spec(FromPubKey, State) ->
     #{amount      => 10,
-      fee         => 50000,
+      fee         => 50000 * aec_test_utils:min_gas_price(),
       state_hash  => ?BOGUS_STATE_HASH,
       round       => 42,
       nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
@@ -301,7 +301,7 @@ withdraw_tx_spec(ChannelId, ToPubKey, Spec0, State) ->
 
 withdraw_tx_spec(ToPubKey, State) ->
     #{amount      => 10,
-      fee         => 50000,
+      fee         => 50000 * aec_test_utils:min_gas_price(),
       state_hash  => ?BOGUS_STATE_HASH,
       round       => 42,
       nonce       => try next_nonce(ToPubKey, State) catch _:_ -> 0 end}.
@@ -324,7 +324,7 @@ slash_tx_spec(ChannelId, FromPubKey, Payload, PoI, Spec0, State) ->
       nonce       => maps:get(nonce, Spec)}.
 
 slash_tx_default_spec(FromPubKey, State) ->
-    #{fee         => 50000,
+    #{fee         => 50000 * aec_test_utils:min_gas_price(),
       nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
@@ -347,7 +347,7 @@ settle_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
 settle_tx_default_spec(FromPubKey, State) ->
     #{initiator_amount => 10,
       responder_amount => 10,
-      fee              => 50000,
+      fee              => 50000 * aec_test_utils:min_gas_price(),
       nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
@@ -367,7 +367,7 @@ snapshot_solo_tx_spec(ChannelPubKey, FromPubKey, Payload, Spec0, State) ->
 snapshot_solo_tx_default_spec(FromPubKey, State) ->
     #{initiator_amount => 10,
       responder_amount => 10,
-      fee              => 50000,
+      fee              => 50000 * aec_test_utils:min_gas_price(),
       nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 state_tx(ChannelPubKey, Initiator, Responder, Spec0) ->
@@ -444,7 +444,7 @@ force_progress_tx_spec(ChannelId, FromPubKey, Payload, Update, StateHash,
           ttl             => maps:get(ttl, Spec, 0)}.
 
 force_progress_default_spec(FromPubKey, State) ->
-    #{fee              => 50000,
+    #{fee              => 50000 * aec_test_utils:min_gas_price(),
       nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 
