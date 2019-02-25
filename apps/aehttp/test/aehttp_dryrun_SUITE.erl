@@ -127,12 +127,12 @@ identity_contract(Config) ->
     {ok, Code}   = aect_test_utils:compile_contract("contracts/identity.aes"),
 
     InitCallData = make_call_data(Code, list_to_binary(
-                        [ "contract Call = \n"
+                        [ "contract MakeCall = \n"
                         , "  function init : () => _\n"
                         , "  function __call() = init()" ])),
 
     CallCallData = make_call_data(Code, list_to_binary(
-                        [ "contract Call = \n"
+                        [ "contract MakeCall = \n"
                         , "  function main : int => int\n"
                         , "  function __call() = main(42)" ])),
 
