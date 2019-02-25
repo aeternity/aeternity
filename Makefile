@@ -206,7 +206,7 @@ eunit-roma: KIND=test
 eunit-roma: internal-build
 	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_roma_testnet" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
 
-all-tests: eunit test
+all-tests: eunit ct
 
 docker:
 	@docker build -t aeternity/aeternity:local .
