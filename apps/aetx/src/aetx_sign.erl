@@ -139,7 +139,7 @@ verify_one_pubkey(_, _PubKey,_Bin,_Acc) -> % invalid pubkey
 serialize_to_binary(#signed_tx{tx = Tx, signatures = Sigs}) ->
     %% TODO: The original binary should be kept
     %%       around since that is what was signed
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
       ?SIG_TX_TYPE,
       ?SIG_TX_VSN,
       serialization_template(?SIG_TX_VSN),
@@ -151,7 +151,7 @@ serialize_to_binary(#signed_tx{tx = Tx, signatures = Sigs}) ->
 deserialize_from_binary(SignedTxBin) when is_binary(SignedTxBin) ->
     [ {signatures, Sigs}
     , {transaction, TxBin}
-    ] = aec_object_serialization:deserialize(
+    ] = aeser_chain_objects:deserialize(
           ?SIG_TX_TYPE,
           ?SIG_TX_VSN,
           serialization_template(?SIG_TX_VSN),
@@ -180,13 +180,13 @@ serialize_for_client_pending(#signed_tx{}=S) ->
 serialize_for_client(#signed_tx{tx = Tx, signatures = Sigs}, BlockHeight, BlockHash0, TxHash) ->
     BlockHash = case BlockHash0 of
                     <<>> -> <<"none">>;
-                    _ -> aehttp_api_encoder:encode(micro_block_hash, BlockHash0)
+                    _ -> aeser_api_encoder:encode(micro_block_hash, BlockHash0)
                 end,
     #{<<"tx">>           => aetx:serialize_for_client(Tx),
       <<"block_height">> => BlockHeight,
       <<"block_hash">>   => BlockHash,
-      <<"hash">>         => aehttp_api_encoder:encode(tx_hash, TxHash),
-      <<"signatures">>   => [aehttp_api_encoder:encode(signature, S) || S <- Sigs]}.
+      <<"hash">>         => aeser_api_encoder:encode(tx_hash, TxHash),
+      <<"signatures">>   => [aeser_api_encoder:encode(signature, S) || S <- Sigs]}.
 
 meta_data_from_client_serialized(Serialized) ->
     #{<<"tx">>           := _EncodedTx,
@@ -194,14 +194,14 @@ meta_data_from_client_serialized(Serialized) ->
       <<"block_hash">>   := BlockHashEncoded,
       <<"hash">>         := TxHashEncoded,
       <<"signatures">>   := _Sigs} = Serialized,
-    {block_hash, BlockHash} = aehttp_api_encoder:decode(BlockHashEncoded),
-    {tx_hash, TxHash}       = aehttp_api_encoder:decode(TxHashEncoded),
+    {block_hash, BlockHash} = aeser_api_encoder:decode(BlockHashEncoded),
+    {tx_hash, TxHash}       = aeser_api_encoder:decode(TxHashEncoded),
     #{block_height => BlockHeight,
       block_hash   => BlockHash,
       hash         => TxHash}.
 
 assert_sigs_size(Sigs) ->
-    AllowedByteSize = aehttp_api_encoder:byte_size_for_type(signature),
+    AllowedByteSize = aeser_api_encoder:byte_size_for_type(signature),
     lists:foreach(
         fun(Sig) -> {AllowedByteSize, _} = {byte_size(Sig), Sig} end,
         Sigs).

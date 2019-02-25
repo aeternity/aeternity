@@ -520,7 +520,7 @@ hack_bytecode(Code, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
         [ {source_hash, binary}
         , {type_info, [{binary, binary, binary, binary}]}
         , {byte_code, binary}],
-    aec_object_serialization:serialize(compiler_sophia, Version, Template, Fields).
+    aeser_chain_objects:serialize(compiler_sophia, Version, Template, Fields).
 
 create_contract(_Cfg) -> create_contract_(1).
 
@@ -851,8 +851,8 @@ make_contract(PubKey, Code, S) ->
     aect_contracts:new(CTx).
 
 make_call(PubKey, ContractKey,_Call,_S) ->
-    aect_call:new(aec_id:create(account, PubKey), 0,
-                  aec_id:create(contract, ContractKey), 1, 1).
+    aect_call:new(aeser_id:create(account, PubKey), 0,
+                  aeser_id:create(contract, ContractKey), 1, 1).
 
 state()  -> get(the_state).
 state(S) -> put(the_state, S).
@@ -1202,7 +1202,7 @@ hack_type(HackFun, NewType, Code) ->
         [ {source_hash, binary}
         , {type_info, [{binary, binary, binary, binary}]}
         , {byte_code, binary}],
-    aec_object_serialization:serialize(compiler_sophia, Version, Template, Fields).
+    aeser_chain_objects:serialize(compiler_sophia, Version, Template, Fields).
 
 sophia_no_reentrant(_Cfg) ->
     state(aect_test_utils:new_state()),
@@ -1411,7 +1411,7 @@ sophia_oracles_interact_with_no_vm_oracle(_Cfg) ->
 
 register_no_vm_oracle(PubKey, S) ->
     Nonce = aect_test_utils:next_nonce(PubKey, S),
-    {ok, Tx}  = aeo_register_tx:new(#{ account_id      => aec_id:create(account, PubKey)
+    {ok, Tx}  = aeo_register_tx:new(#{ account_id      => aeser_id:create(account, PubKey)
                                      , oracle_ttl      => {delta, 20}
                                      , fee             => 100000
                                      , nonce           => Nonce
@@ -2880,8 +2880,8 @@ sophia_signatures_aens(_Cfg) ->
     APubkey  = 1,
     OPubkey  = <<2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2>>,
     %% TODO: Improve checks in aens_unpdate_tx
-    Pointers = [aens_pointer:new(<<"account_pubkey">>, aec_id:create(account, <<APubkey:256>>)),
-                aens_pointer:new(<<"oracle_pubkey">>, aec_id:create(oracle, OPubkey))],
+    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
+                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, OPubkey))],
 
     Salt  = ?call(aens_preclaim, Acc, Name),
     Hash  = ?call(aens_claim, Acc, Name, Salt),
@@ -3960,9 +3960,9 @@ aens_preclaim(PubKey, Name, Options, S) ->
     TTL    = maps:get(ttl, Options, 1000),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash = aens_hash:commitment_hash(NameAscii, Salt),
-    {ok, Tx} = aens_preclaim_tx:new(#{ account_id    => aec_id:create(account, PubKey),
+    {ok, Tx} = aens_preclaim_tx:new(#{ account_id    => aeser_id:create(account, PubKey),
                                        nonce         => Nonce,
-                                       commitment_id => aec_id:create(commitment, CHash),
+                                       commitment_id => aeser_id:create(commitment, CHash),
                                        fee => Fee,
                                        ttl => TTL }),
     PrivKey  = aect_test_utils:priv_key(PubKey, S),
@@ -3979,7 +3979,7 @@ aens_claim(PubKey, Name, Salt, Options, S) ->
     TTL    = maps:get(ttl, Options, 1000),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     NameHash = aens_hash:name_hash(NameAscii),
-    {ok, Tx} = aens_claim_tx:new(#{ account_id => aec_id:create(account, PubKey),
+    {ok, Tx} = aens_claim_tx:new(#{ account_id => aeser_id:create(account, PubKey),
                                     nonce      => Nonce,
                                     name       => Name,
                                     name_salt  => Salt,
@@ -3997,9 +3997,9 @@ aens_revoke(PubKey, Hash, Options, S) ->
     Height = maps:get(height, Options, 3),
     Fee    = maps:get(fee, Options, 50000),
     TTL    = maps:get(ttl, Options, 1000),
-    {ok, Tx} = aens_revoke_tx:new(#{ account_id => aec_id:create(account, PubKey),
+    {ok, Tx} = aens_revoke_tx:new(#{ account_id => aeser_id:create(account, PubKey),
                                      nonce      => Nonce,
-                                     name_id    => aec_id:create(name, Hash),
+                                     name_id    => aeser_id:create(name, Hash),
                                      fee        => Fee,
                                      ttl        => TTL }),
     PrivKey  = aect_test_utils:priv_key(PubKey, S),
@@ -4016,9 +4016,9 @@ aens_update(PubKey, NameHash, Pointers, Options, S) ->
     TTL       = maps:get(ttl, Options, 1000),
     ClientTTL = maps:get(client_ttl, Options, 1000),
     NameTTL   = maps:get(name_ttl, Options, 1000),
-    {ok, Tx}  = aens_update_tx:new(#{ account_id  => aec_id:create(account, PubKey),
+    {ok, Tx}  = aens_update_tx:new(#{ account_id  => aeser_id:create(account, PubKey),
                                       nonce       => Nonce,
-                                      name_id     => aec_id:create(name, NameHash),
+                                      name_id     => aeser_id:create(name, NameHash),
                                       name_ttl    => NameTTL,
                                       pointers    => Pointers,
                                       client_ttl  => ClientTTL,
@@ -4036,8 +4036,8 @@ sophia_aens(_Cfg) ->
     APubkey  = 1,
     OPubkey  = <<2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2>>,
     %% TODO: Improve checks in aens_unpdate_tx
-    Pointers = [aens_pointer:new(<<"account_pubkey">>, aec_id:create(account, <<APubkey:256>>)),
-                aens_pointer:new(<<"oracle_pubkey">>, aec_id:create(oracle, OPubkey))],
+    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
+                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, OPubkey))],
 
     Salt  = ?call(aens_preclaim, Acc, Name),
     Hash  = ?call(aens_claim, Acc, Name, Salt),

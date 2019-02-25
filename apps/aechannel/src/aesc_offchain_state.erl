@@ -205,7 +205,7 @@ make_update_tx(Updates, #state{signed_tx = LastSignedTx, trees=Trees},
                            OnChainEnv, Reserve),
     StateHash = aec_trees:hash(Trees1),
     {ok, OffchainTx} =
-        aesc_offchain_tx:new(#{channel_id => aec_id:create(channel, ChannelPubKey),
+        aesc_offchain_tx:new(#{channel_id => aeser_id:create(channel, ChannelPubKey),
                                state_hash => StateHash,
                                updates    => Updates,
                                round      => NextRound}),

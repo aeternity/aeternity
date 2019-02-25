@@ -179,7 +179,7 @@ name_list(#ns_tree{mtree = Tree}) ->
 -spec to_binary_without_backend(tree()) -> binary().
 to_binary_without_backend(#ns_tree{mtree = MTree}) ->
     MTBin = aeu_mtrees:serialize(MTree),
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
         nameservice_mtree,
         ?VSN,
         serialization_template(?VSN),
@@ -188,7 +188,7 @@ to_binary_without_backend(#ns_tree{mtree = MTree}) ->
 -spec from_binary_without_backend(binary()) -> tree().
 from_binary_without_backend(Bin) ->
     [{mtree, MTBin}] =
-        aec_object_serialization:deserialize(nameservice_mtree, ?VSN,
+        aeser_chain_objects:deserialize(nameservice_mtree, ?VSN,
                                              serialization_template(?VSN), Bin),
     MTree = aeu_mtrees:deserialize(MTBin),
     Cache = create_cache_from_mtree(MTree, aeu_mtrees:empty()),
@@ -297,7 +297,7 @@ create_cache_from_mtree_({Key, Val, Iter}, Cache0) ->
 
 deserialize_name_or_commitment(Hash, Bin) ->
     {Type, Vsn, RawFields} =
-        aec_object_serialization:deserialize_type_and_vsn(Bin),
+        aeser_chain_objects:deserialize_type_and_vsn(Bin),
     Name = aens_names:serialization_type(),
     Commitment = aens_commitments:serialization_type(),
     Module =
@@ -306,6 +306,6 @@ deserialize_name_or_commitment(Hash, Bin) ->
             Commitment -> aens_commitments
         end,
     Template = Module:serialization_template(Vsn),
-    Fields = aec_serialization:decode_fields(Template, RawFields),
+    Fields = aeserialization:decode_fields(Template, RawFields),
     Obj = Module:deserialize_from_fields(Vsn, Hash, Fields),
     {Module, Obj}.

@@ -5,7 +5,7 @@
 %%% @end
 %%%-------------------------------------------------------------------
 
--module(aec_serialization).
+-module(aeserialization).
 
 -export([ decode_fields/2
         , deserialize/5
@@ -35,7 +35,7 @@
                         | boolean()
                         | [encodable_term()] %% Of any length
                         | tuple()  %% Any arity, containing encodable_term().
-                        | aec_id:id().
+                        | aeser_id:id().
 
 -type fields() :: [{field_name(), encodable_term()}].
 
@@ -47,13 +47,13 @@
 serialize(Tag, Vsn, Template, Fields) ->
     List = encode_fields([{tag, int}, {vsn, int}|Template],
                          [{tag, Tag}, {vsn, Vsn}|Fields]),
-    aeu_rlp:encode(List).
+    aeser_rlp:encode(List).
 
 %% Type isn't strictly necessary, but will give a better error reason
 -spec deserialize(atom(), non_neg_integer(), non_neg_integer(),
                   template(), binary()) -> fields().
 deserialize(Type, Tag, Vsn, Template0, Binary) ->
-    Decoded = aeu_rlp:decode(Binary),
+    Decoded = aeser_rlp:decode(Binary),
     Template = [{tag, int}, {vsn, int}|Template0],
     case decode_fields(Template, Decoded) of
         [{tag, Tag}, {vsn, Vsn}|Left] ->
@@ -66,7 +66,7 @@ deserialize(Type, Tag, Vsn, Template0, Binary) ->
 -spec deserialize_tag_and_vsn(binary()) ->
                {non_neg_integer(), non_neg_integer(), fields()}.
 deserialize_tag_and_vsn(Binary) ->
-    [TagBin, VsnBin|Fields] = aeu_rlp:decode(Binary),
+    [TagBin, VsnBin|Fields] = aeser_rlp:decode(Binary),
     Template = [{tag, int}, {vsn, int}],
     [{tag, Tag}, {vsn, Vsn}] = decode_fields(Template, [TagBin, VsnBin]),
     {Tag, Vsn, Fields}.
@@ -110,7 +110,7 @@ encode_field(binary, X) when is_binary(X) -> X;
 encode_field(bool, true) -> <<1:8>>;
 encode_field(bool, false) -> <<0:8>>;
 encode_field(id, Val) ->
-    try aec_id:encode(Val)
+    try aeser_id:encode(Val)
     catch _:_ -> error({illegal, id, Val})
     end;
 encode_field(Type, Val) -> error({illegal, Type, Val}).
@@ -127,7 +127,7 @@ decode_field(binary, X) when is_binary(X) -> X;
 decode_field(bool, <<1:8>>) -> true;
 decode_field(bool, <<0:8>>) -> false;
 decode_field(id, Val) ->
-    try aec_id:decode(Val)
+    try aeser_id:decode(Val)
     catch _:_ -> error({illegal, id, Val})
     end;
 decode_field(Type, X) -> error({illegal, Type, X}).

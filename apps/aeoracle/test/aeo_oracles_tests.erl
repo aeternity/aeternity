@@ -39,7 +39,7 @@ basic_serialize() ->
 
 basic_getters() ->
     O = aeo_oracles:new(register_tx(), 1),
-    ?assertEqual(oracle, aec_id:specialize_type(id(O))),
+    ?assertEqual(oracle, aeser_id:specialize_type(id(O))),
     ?assert(is_integer(ttl(O))),
     ?assert(is_binary(pubkey(O))),
     ?assert(is_integer(query_fee(O))),
@@ -66,7 +66,7 @@ register_tx() ->
     register_tx(#{}).
 
 register_tx(Override) ->
-    Map = #{ account_id      => aec_id:create(account, <<4711:32/unit:8>>)
+    Map = #{ account_id      => aeser_id:create(account, <<4711:32/unit:8>>)
            , nonce           => 42
            , query_format    => <<"{foo: bar}"/utf8>>
            , response_format => <<"boolean()"/utf8>>

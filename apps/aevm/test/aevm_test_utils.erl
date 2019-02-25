@@ -127,7 +127,7 @@ validate_log(State, #{logs := Logs} =_Spec) ->
     ?assertEqual(Logs, logs_to_string( aec_hash:hash(evm,RLPLogs)));
 validate_log(_,_) -> true.
 
-evm_encode_log([], Acc) ->  aeu_rlp:encode(lists:reverse(Acc));
+evm_encode_log([], Acc) ->  aeser_rlp:encode(lists:reverse(Acc));
 evm_encode_log([{<<Address:256>>, Topics, Data}|Rest], Acc) ->
     %% The EVM tests expects 160 bit addresses and
     %% RLP expects tuples as lists.

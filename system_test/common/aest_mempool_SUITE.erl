@@ -100,7 +100,7 @@ test_mempool_ttl_cleanup(Cfg) ->
     GasPrice = proplists:get_value(gas_price, Cfg),
     %% Setup nodes
     MikePubKey = maps:get(pubkey, ?MIKE),
-    EncMikePubkey = aehttp_api_encoder:encode(account_pubkey, MikePubKey),
+    EncMikePubkey = aeser_api_encoder:encode(account_pubkey, MikePubKey),
     NodeConfig = #{ beneficiary => EncMikePubkey },
     NodeNames = [node1, node2],
     setup([?NODE1, ?NODE2], NodeConfig, Cfg),
@@ -148,7 +148,7 @@ test_mempool_bad_nonce_cleanup(Cfg) ->
     GasPrice = proplists:get_value(gas_price, Cfg),
     %% Setup nodes
     MikePubKey = maps:get(pubkey, ?MIKE),
-    EncMikePubkey = aehttp_api_encoder:encode(account_pubkey, MikePubKey),
+    EncMikePubkey = aeser_api_encoder:encode(account_pubkey, MikePubKey),
     NodeConfig = #{ beneficiary => EncMikePubkey },
     NodeNames = [node1, node2],
     setup([?NODE1, ?NODE2], NodeConfig, Cfg),

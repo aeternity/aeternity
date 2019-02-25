@@ -48,8 +48,8 @@ new_query(Height) ->
 
 basic_getters() ->
     I = new_query(1),
-    ?assertEqual(account, aec_id:specialize_type(sender_id(I))),
-    ?assertEqual(oracle, aec_id:specialize_type(oracle_id(I))),
+    ?assertEqual(account, aeser_id:specialize_type(sender_id(I))),
+    ?assertEqual(oracle, aeser_id:specialize_type(oracle_id(I))),
     ?assert(is_integer(ttl(I))),
     ?assert(is_integer(fee(I))),
     ?assert(is_binary(id(I))),
@@ -82,9 +82,9 @@ query_tx() ->
     query_tx(#{}).
 
 query_tx(Override) ->
-    Map = #{ sender_id     => aec_id:create(account, <<42:32/unit:8>>)
+    Map = #{ sender_id     => aeser_id:create(account, <<42:32/unit:8>>)
            , nonce         => 42
-           , oracle_id     => aec_id:create(oracle, <<4711:32/unit:8>>)
+           , oracle_id     => aeser_id:create(oracle, <<4711:32/unit:8>>)
            , query         => <<"{foo: bar}"/utf8>>
            , query_fee     => 10
            , query_ttl     => {delta, 100}

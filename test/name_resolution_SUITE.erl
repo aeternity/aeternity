@@ -83,20 +83,20 @@ sign(Tx, #{keys := Keys, trees := Trees}) ->
     aec_test_utils:sign_tx(Tx, Privkeys).
 
 account_id(Pubkey) ->
-    aec_id:create(account, Pubkey).
+    aeser_id:create(account, Pubkey).
 
 name_id(NameHash) ->
-    aec_id:create(name, NameHash).
+    aeser_id:create(name, NameHash).
 
 name_from_id(NameID) ->
-    {name, NameHash} = aec_id:specialize(NameID),
+    {name, NameHash} = aeser_id:specialize(NameID),
     NameHash.
 
 commitment_id(CommitmentHash) ->
-    aec_id:create(commitment, CommitmentHash).
+    aeser_id:create(commitment, CommitmentHash).
 
 name_owner_pubkey(NameID, #{trees := Trees}) ->
-    NameHash = aec_id:specialize(NameID, name),
+    NameHash = aeser_id:specialize(NameID, name),
     NSTrees = aec_trees:ns(Trees),
     case aens_state_tree:lookup_name(NameHash, NSTrees) of
         {value, Name} -> aens_names:owner_pubkey(Name);
@@ -131,15 +131,15 @@ register_name(Pubkey, Name, S) ->
 
 pointers(Tag, ToPubkey) ->
     IdType = type2id(Tag),
-    [aens_pointer:new(atom_to_binary(Tag, utf8), aec_id:create(IdType, ToPubkey))].
+    [aens_pointer:new(atom_to_binary(Tag, utf8), aeser_id:create(IdType, ToPubkey))].
 
 pointers_with_duplicated_key_at_end(Tag, ToPubkey) ->
     [P] = pointers(Tag, ToPubkey),
     %% Extract pointer value i.e. identifier, create distinct identifier.
     PId = aens_pointer:id(P),
-    {PTag, PVal} = aec_id:specialize(PId),
+    {PTag, PVal} = aeser_id:specialize(PId),
     <<PValInt:32/unit:8>> = PVal,
-    ShadowedId = aec_id:create(PTag, <<(1+PValInt):32/unit:8>>),
+    ShadowedId = aeser_id:create(PTag, <<(1+PValInt):32/unit:8>>),
     ?assertNotEqual(PId, ShadowedId), %% Hardcoded expectation on generated identifier being distinct.
     ShadowedP = aens_pointer:new(aens_pointer:key(P), ShadowedId),
     [P, ShadowedP].

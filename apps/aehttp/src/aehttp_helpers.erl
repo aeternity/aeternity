@@ -88,7 +88,7 @@ api_decode(Params) ->
 api_decode_read_fun({Name, Types}, _, Data) when is_list(Types) ->
     Encoded = maps:get(Name, Data),
     FoldFun = fun(Type, Acc) ->
-                      case aehttp_api_encoder:safe_decode(Type, Encoded) of
+                      case aeser_api_encoder:safe_decode(Type, Encoded) of
                           {error, _} -> Acc;
                           {ok, Hash} -> {ok, Hash}
                       end
@@ -96,7 +96,7 @@ api_decode_read_fun({Name, Types}, _, Data) when is_list(Types) ->
     lists:foldl(FoldFun, error, Types);
 api_decode_read_fun({Name, Type}, _, Data) ->
     Encoded = maps:get(Name, Data),
-    case aehttp_api_encoder:safe_decode(Type, Encoded) of
+    case aeser_api_encoder:safe_decode(Type, Encoded) of
         {error, _} -> error;
         {ok, _} = Res -> Res
     end.
@@ -105,7 +105,7 @@ contract_bytearray_params_decode(ParamNames) ->
     params_read_fun(ParamNames,
         fun(Name, _, State) ->
             ByteArray = maps:get(Name, State),
-            case aehttp_api_encoder:safe_decode(contract_bytearray, ByteArray) of
+            case aeser_api_encoder:safe_decode(contract_bytearray, ByteArray) of
                 {ok, _} = Ok -> Ok;
                 {error, _} -> error
             end
@@ -167,7 +167,7 @@ get_nonce_from_account_id(AccountKey) ->
     fun(Req, State) ->
         case maps:get(nonce, Req, undefined) of
             undefined ->
-                Pubkey = case aec_id:specialize(maps:get(AccountKey, State)) of
+                Pubkey = case aeser_id:specialize(maps:get(AccountKey, State)) of
                              {account, A} -> A;
                              {oracle, O} -> O
                          end,
@@ -192,7 +192,7 @@ print_state() ->
 get_contract_code(ContractKey, CodeKey) ->
     fun(_Req, State) ->
         ContractId = maps:get(ContractKey, State),
-        ContractPubKey = aec_id:specialize(ContractId, contract),
+        ContractPubKey = aeser_id:specialize(ContractId, contract),
         TopBlockHash = aec_chain:top_block_hash(),
         {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
         Tree = aec_trees:contracts(Trees),
@@ -233,7 +233,7 @@ get_contract_call_object_from_tx(TxKey, CallKey) ->
 
 verify_oracle_existence(OracleKey) ->
     fun(_Req, State) ->
-            case aec_id:specialize(maps:get(OracleKey, State)) of
+            case aeser_id:specialize(maps:get(OracleKey, State)) of
                 {oracle, OraclePubkey} ->
                     TopBlockHash = aec_chain:top_block_hash(),
                     {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
@@ -251,7 +251,7 @@ verify_oracle_existence(OracleKey) ->
 
 verify_oracle_query_existence(OracleKey, QueryKey) ->
     fun(Req, State) ->
-        case aec_id:specialize(maps:get(OracleKey, State)) of
+        case aeser_id:specialize(maps:get(OracleKey, State)) of
             {oracle, OraclePubKey} ->
                 Lookup =
                     fun(QId, Tree) ->
@@ -325,7 +325,7 @@ decode_pointers([], Acc) ->
 
 decode_pointer_id(IdEnc) ->
     AllowedTypes = [account_pubkey, channel, contract_pubkey, oracle_pubkey],
-    aehttp_api_encoder:safe_decode({id_hash, AllowedTypes}, IdEnc).
+    aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, IdEnc).
 
 parse_map_to_atom_keys() ->
     fun(Req, State) ->
@@ -418,7 +418,7 @@ unsigned_tx_response(NewTxFun) when is_function(NewTxFun, 1) ->
     RespFun =
         fun(State) ->
             {ok, Tx} = NewTxFun(State),
-            #{tx => aehttp_api_encoder:encode(transaction,
+            #{tx => aeser_api_encoder:encode(transaction,
                                        aetx:serialize_to_binary(Tx))
             }
         end,
@@ -524,7 +524,7 @@ prepare_dry_run_param(top, #{ top := top }) ->
         TopHash   -> {ok, TopHash}
     end;
 prepare_dry_run_param(top, #{ top := TopHash }) when is_binary(TopHash) ->
-    case aehttp_api_encoder:decode(TopHash) of
+    case aeser_api_encoder:decode(TopHash) of
         {micro_block_hash, MBHash} -> {ok, MBHash};
         {key_block_hash, KBHash}   -> {ok, KBHash};
         _                          -> {error, "top should be micro block hash or key block hash"}
@@ -541,7 +541,7 @@ dry_run_accounts_([], Accounts) ->
 dry_run_accounts_([Account | Accounts], Acc) ->
     case Account of
         #{ <<"pub_key">> := EPK, <<"amount">> := Amount } ->
-            case aehttp_api_encoder:safe_decode(account_pubkey, EPK) of
+            case aeser_api_encoder:safe_decode(account_pubkey, EPK) of
                 {ok, PK} ->
                     dry_run_accounts_(Accounts, [#{ pub_key => PK, amount => Amount } | Acc]);
                 Err = {error, _Reason} ->
@@ -555,7 +555,7 @@ dry_run_accounts_([Account | Accounts], Acc) ->
 dry_run_txs_([], Txs) ->
     {ok, lists:reverse(Txs)};
 dry_run_txs_([ETx | Txs], Acc) ->
-    case aehttp_api_encoder:safe_decode(transaction, ETx) of
+    case aeser_api_encoder:safe_decode(transaction, ETx) of
         {ok, DTx} ->
             Tx = aetx:deserialize_from_binary(DTx),
             {Type, _} = aetx:specialize_type(Tx),
@@ -708,7 +708,7 @@ get_block_hash_optionally_by_hash_or_height(PutKey) ->
                 {undefined, undefined} ->
                     {ok, _} = aehttp_logic:get_top_hash();
                 {undefined, EncodedHash} ->
-                    case aehttp_api_encoder:safe_decode(block_hash, EncodedHash) of
+                    case aeser_api_encoder:safe_decode(block_hash, EncodedHash) of
                         {error, _} ->
                             {error, invalid_hash};
                         {ok, Hash} ->
@@ -726,7 +726,7 @@ get_block_hash_optionally_by_hash_or_height(PutKey) ->
                         {error, _} = Err ->
                             Err;
                         {ok, Hash} -> % ensure it is the same hash
-                            case aehttp_api_encoder:safe_decode(block_hash, EncodedHash) of
+                            case aeser_api_encoder:safe_decode(block_hash, EncodedHash) of
                                 {error, _} ->
                                     {error, invalid_hash};
                                 {ok, Hash} -> % same hash

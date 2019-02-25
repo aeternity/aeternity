@@ -46,8 +46,8 @@
 
 %% HERE
 -record(channel_withdraw_tx, {
-          channel_id  :: aec_id:id(),
-          to_id       :: aec_id:id(),
+          channel_id  :: aeser_id:id(),
+          to_id       :: aeser_id:id(),
           amount      :: non_neg_integer(),
           ttl         :: aetx:tx_ttl(),
           fee         :: non_neg_integer(),
@@ -75,8 +75,8 @@ new(#{channel_id := ChannelId,
       round      := Round,
       nonce      := Nonce} = Args) ->
     true = aesc_utils:check_state_hash_size(StateHash),
-    channel = aec_id:specialize_type(ChannelId),
-    account = aec_id:specialize_type(ToId),
+    channel = aeser_id:specialize_type(ChannelId),
+    account = aeser_id:specialize_type(ToId),
     Tx = #channel_withdraw_tx{
             channel_id = ChannelId,
             to_id      = ToId,
@@ -112,11 +112,11 @@ origin(#channel_withdraw_tx{} = Tx) ->
     to_pubkey(Tx).
 
 to_pubkey(#channel_withdraw_tx{to_id = ToId}) ->
-    aec_id:specialize(ToId, account).
+    aeser_id:specialize(ToId, account).
 
 -spec channel_pubkey(tx()) -> aesc_channels:pubkey().
 channel_pubkey(#channel_withdraw_tx{channel_id = ChannelId}) ->
-    aec_id:specialize(ChannelId, channel).
+    aeser_id:specialize(ChannelId, channel).
 
 -spec channel_id(tx()) -> aesc_channels:id().
 channel_id(#channel_withdraw_tx{channel_id = ChannelId}) ->
@@ -185,8 +185,8 @@ deserialize(?CHANNEL_WITHDRAW_TX_VSN,
             , {state_hash , StateHash}
             , {round      , Round}
             , {nonce      , Nonce}]) ->
-    channel = aec_id:specialize_type(ChannelId),
-    account = aec_id:specialize_type(ToId),
+    channel = aeser_id:specialize_type(ChannelId),
+    account = aeser_id:specialize_type(ToId),
     true = aesc_utils:check_state_hash_size(StateHash),
     #channel_withdraw_tx{channel_id = ChannelId,
                          to_id      = ToId,
@@ -206,12 +206,12 @@ for_client(#channel_withdraw_tx{channel_id   = ChannelId,
                                 state_hash   = StateHash,
                                 round        = Round,
                                 nonce        = Nonce}) ->
-    #{<<"channel_id">>  => aehttp_api_encoder:encode(id_hash, ChannelId),
-      <<"to_id">>       => aehttp_api_encoder:encode(id_hash, ToId),
+    #{<<"channel_id">>  => aeser_api_encoder:encode(id_hash, ChannelId),
+      <<"to_id">>       => aeser_api_encoder:encode(id_hash, ToId),
       <<"amount">>      => Amount,
       <<"ttl">>         => TTL,
       <<"fee">>         => Fee,
-      <<"state_hash">>  => aehttp_api_encoder:encode(state, StateHash),
+      <<"state_hash">>  => aeser_api_encoder:encode(state, StateHash),
       <<"round">>       => Round,
       <<"nonce">>       => Nonce}.
 

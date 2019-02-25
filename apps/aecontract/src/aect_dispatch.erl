@@ -88,11 +88,11 @@ sophia_call(ContractKey, Function, Argument) ->
 
 call_common(CallData, CallDataType, OutType, ContractPubkey, Code, Store,
             TxEnv, Trees, CTVersion) ->
-    ContractId = aec_id:create(contract, ContractPubkey),
+    ContractId = aeser_id:create(contract, ContractPubkey),
     Height = aetx_env:height(TxEnv),
     GasPrice = 1,
     Caller = <<123:?PUB_SIZE/unit:8>>,
-    CallerId = aec_id:create(account, Caller),
+    CallerId = aeser_id:create(account, Caller),
     CallIn = aect_call:new(CallerId,_Nonce=0, ContractId, Height, GasPrice),
     Spec = #{ code           => Code
             , call           => CallIn

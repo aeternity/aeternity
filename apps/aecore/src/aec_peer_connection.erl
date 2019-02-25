@@ -1215,7 +1215,7 @@ serialize_light_micro_block(MicroBlock) ->
     PoF = aec_blocks:pof(MicroBlock),
     Vsn = aec_blocks:version(MicroBlock),
     Template = light_micro_template(),
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
         light_micro_block, Vsn, Template,
         [{header, Hdr}, {tx_hashes, TxHashes}, {pof, aec_pof:serialize(PoF)}]).
 
@@ -1232,11 +1232,11 @@ deserialize_light_micro_block(SSMB) ->
     deserialize_block(light_micro, SSMB).
 
 deserialize_block(light_micro, Binary) ->
-    case aec_object_serialization:deserialize_type_and_vsn(Binary) of
+    case aeser_chain_objects:deserialize_type_and_vsn(Binary) of
         {light_micro_block, Vsn, _RawFlds} ->
             Template = light_micro_template(),
             [{header, SerHdr}, {tx_hashes, TxHashes}, {pof, SerPof}] =
-                aec_object_serialization:deserialize(light_micro_block, Vsn, Template, Binary),
+                aeser_chain_objects:deserialize(light_micro_block, Vsn, Template, Binary),
             Hdr = aec_headers:deserialize_from_binary(SerHdr),
             PoF = aec_pof:deserialize(SerPof),
             {ok, #{ header => Hdr, tx_hashes => TxHashes, pof => PoF}};

@@ -142,7 +142,7 @@ simple_channel_test(ChannelOpts, Cfg) ->
         push_amount      := PushAmount
     } = ChannelOpts,
 
-    MikePubkey = aehttp_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
+    MikePubkey = aeser_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
     NodeConfig = #{ beneficiary => MikePubkey },
     setup([?NODE1, ?NODE2], NodeConfig, Cfg),
     NodeNames = [node1, node2],
@@ -191,7 +191,7 @@ setup(NodeSpecs, Config, Cfg) ->
     setup_nodes([maps:put(config, Config, N) || N <- NodeSpecs], Cfg).
 
 on_chain_channel(Cfg) ->
-    MikePubkey = aehttp_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
+    MikePubkey = aeser_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
     NodeConfig = #{ beneficiary => MikePubkey },
     setup([?NODE1], NodeConfig, Cfg),
     NodeNames = [node1],

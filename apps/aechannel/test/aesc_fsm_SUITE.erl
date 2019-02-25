@@ -606,7 +606,7 @@ channel_subverted(Cfg) ->
     #{ priv := IPrivKey } = ?config(initiator, Cfg),
     SignedCloseSoloTx = aec_test_utils:sign_tx(Tx, [IPrivKey]),
     ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
-    TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
         aecore_suite_utils:node_name(dev1), [TxHash], 20),
     {ok,_} = receive_from_fsm(info, I, fun died_subverted/1, ?TIMEOUT, Debug),
@@ -624,8 +624,8 @@ close_solo_tx(#{ fsm        := Fsm
                                                      {account, RPubKey}]]),
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [IPubKey]),
     TTL = current_height(dev1) + 100,
-    TxSpec = #{ channel_id => aec_id:create(channel, ChannelId)
-              , from_id    => aec_id:create(account, IPubKey)
+    TxSpec = #{ channel_id => aeser_id:create(channel, ChannelId)
+              , from_id    => aeser_id:create(account, IPubKey)
               , payload    => Payload
               , poi        => PoI
               , ttl        => TTL
@@ -795,7 +795,7 @@ multiple_channels_t(NumCs, FromPort, Msg, Slogan, Cfg) ->
     TxHashes =
         lists:map(
             fun(Tx) ->
-                aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(Tx))
+                aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx))
             end,
             Txs),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
@@ -1247,7 +1247,7 @@ verify_close_mutual_tx(SignedTx, ChannelId) ->
     {channel_close_mutual_tx, Tx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
     {_, ChInfo} = aesc_close_mutual_tx:serialize(Tx),
     true = lists:member(ChannelId,
-        [ aec_id:specialize(ChId, channel)||
+        [ aeser_id:specialize(ChId, channel)||
              {channel_id, ChId} <- ChInfo
         ]).
 
@@ -1519,8 +1519,8 @@ if_debug(_, _, Y) -> Y.
 apply_updates([], R) ->
     R;
 apply_updates([{?OP_TRANSFER, FromId, ToId, Amount} | T], R) ->
-    From = aec_id:specialize(FromId, account),
-    To = aec_id:specialize(ToId, account),
+    From = aeser_id:specialize(FromId, account),
+    To = aeser_id:specialize(ToId, account),
     #{ initiator_amount := IAmt0
      , responder_amount := RAmt0 } = R,
     {IAmt, RAmt} =
@@ -1548,7 +1548,7 @@ wait_for_signed_transaction_in_block(Node, SignedTx) ->
 wait_for_signed_transaction_in_block(_, _, #{mine_blocks := {ask,_}}) ->
     ok;
 wait_for_signed_transaction_in_block(Node, SignedTx, _Debug) ->
-    TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     NodeName = aecore_suite_utils:node_name(Node),
     case aecore_suite_utils:mine_blocks_until_txs_on_chain(NodeName, [TxHash], 10) of
         {ok, _Blocks} -> ok;

@@ -2,10 +2,10 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc
-%%% EUnit tests for aec_object_serialization
+%%% EUnit tests for aeser_chain_objects
 %%% @end
 %%%-------------------------------------------------------------------
--module(aec_object_serialization_tests).
+-module(aeser_chain_objects_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -78,10 +78,10 @@ deserialize(Template, Bin) ->
     deserialize(Template, Bin, ?DEFAULT_TAG, ?DEFAULT_VERSION).
 
 deserialize(Template, Bin, Tag, Vsn) ->
-    aec_object_serialization:deserialize(Tag, Vsn, Template, Bin).
+    aeser_chain_objects:deserialize(Tag, Vsn, Template, Bin).
 
 serialize(Template, Bin) ->
     serialize(Template, Bin, ?DEFAULT_TAG, ?DEFAULT_VERSION).
 
 serialize(Template, Bin, Tag, Vsn) ->
-    aec_object_serialization:serialize(Tag, Vsn, Template, Bin).
+    aeser_chain_objects:serialize(Tag, Vsn, Template, Bin).

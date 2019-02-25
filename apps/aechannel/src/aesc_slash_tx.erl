@@ -36,8 +36,8 @@
 -type vsn() :: non_neg_integer().
 
 -record(channel_slash_tx, {
-          channel_id :: aec_id:id(),
-          from_id    :: aec_id:id(),
+          channel_id :: aeser_id:id(),
+          from_id    :: aeser_id:id(),
           payload    :: binary(),
           poi        :: aec_trees:poi(),
           ttl        :: aetx:tx_ttl(),
@@ -60,8 +60,8 @@ new(#{channel_id := ChannelId,
       poi        := PoI,
       fee        := Fee,
       nonce      := Nonce} = Args) ->
-    channel = aec_id:specialize_type(ChannelId),
-    account = aec_id:specialize_type(FromId),
+    channel = aeser_id:specialize_type(ChannelId),
+    account = aeser_id:specialize_type(FromId),
     Tx = #channel_slash_tx{
             channel_id = ChannelId,
             from_id    = FromId,
@@ -96,10 +96,10 @@ origin(#channel_slash_tx{} = Tx) ->
     from_pubkey(Tx).
 
 from_pubkey(#channel_slash_tx{from_id = FromId}) ->
-    aec_id:specialize(FromId, account).
+    aeser_id:specialize(FromId, account).
 
 channel_pubkey(#channel_slash_tx{channel_id = ChannelId}) ->
-    aec_id:specialize(ChannelId, channel).
+    aeser_id:specialize(ChannelId, channel).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_slash_tx{payload    = Payload,
@@ -159,8 +159,8 @@ deserialize(?CHANNEL_SLASH_TX_VSN,
             , {ttl       , TTL}
             , {fee       , Fee}
             , {nonce     , Nonce}]) ->
-    channel = aec_id:specialize_type(ChannelId),
-    account = aec_id:specialize_type(FromId),
+    channel = aeser_id:specialize_type(ChannelId),
+    account = aeser_id:specialize_type(FromId),
     #channel_slash_tx{channel_id = ChannelId,
                       from_id    = FromId,
                       payload    = Payload,
@@ -177,10 +177,10 @@ for_client(#channel_slash_tx{channel_id = ChannelId,
                              ttl        = TTL,
                              fee        = Fee,
                              nonce      = Nonce}) ->
-    #{<<"channel_id">> => aehttp_api_encoder:encode(id_hash, ChannelId),
-      <<"from_id">>    => aehttp_api_encoder:encode(id_hash, FromId),
-      <<"payload">>    => aehttp_api_encoder:encode(transaction, Payload),
-      <<"poi">>        => aehttp_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
+    #{<<"channel_id">> => aeser_api_encoder:encode(id_hash, ChannelId),
+      <<"from_id">>    => aeser_api_encoder:encode(id_hash, FromId),
+      <<"payload">>    => aeser_api_encoder:encode(transaction, Payload),
+      <<"poi">>        => aeser_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
       <<"ttl">>        => TTL,
       <<"fee">>        => Fee,
       <<"nonce">>      => Nonce}.

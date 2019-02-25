@@ -240,7 +240,7 @@ new_node_joins_network(Cfg) ->
     ct:log("Node 3 at height ~p: ~p", [Length, Height3]),
 
     %% Checks node 3 is synchronized with nodes 1 and 2
-    ?assertEqual(Height1#{info => aehttp_api_encoder:encode(contract_bytearray, <<>>)}, Height3),
+    ?assertEqual(Height1#{info => aeser_api_encoder:encode(contract_bytearray, <<>>)}, Height3),
     ok.
 
 %% When we stop and restart a node we will be able to read the blocks

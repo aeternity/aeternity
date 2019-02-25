@@ -6,7 +6,7 @@
 %%% @end
 %%%-------------------------------------------------------------------
 
--module(aec_id).
+-module(aeser_id).
 
 -export([ create/2
         , specialize/1

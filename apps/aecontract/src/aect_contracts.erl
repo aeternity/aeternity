@@ -63,20 +63,20 @@
 
 -record(contract, {
         %% Normal account fields
-        id           :: aec_id:id(),
-        owner_id     :: aec_id:id(),
+        id           :: aeser_id:id(),
+        owner_id     :: aeser_id:id(),
         ct_version   :: version(),
         code         :: binary(),     %% The byte code
         store        :: store(),      %% The current state/store (stored in a subtree in mpt)
         log          :: binary(),     %% The current event log
         active       :: boolean(),    %% false when disabled, but don't remove unless referrer_ids == []
-        referrer_ids :: list(aec_id:id()), %% List of contracts depending on this contract
+        referrer_ids :: list(aeser_id:id()), %% List of contracts depending on this contract
         deposit      :: amount()
     }).
 
 -opaque contract() :: #contract{}.
 
--type id() :: aec_id:id().
+-type id() :: aeser_id:id().
 -type pubkey() :: aec_keys:pubkey().
 -type store_id() :: binary().
 -type serialized() :: binary().
@@ -167,8 +167,8 @@ new(RTx) ->
 %% NOTE: Should only be used for contract execution without transaction
 new(Owner, Nonce, CTVersion, Code, Deposit) ->
     Pubkey = compute_contract_pubkey(Owner, Nonce),
-    C = #contract{ id           = aec_id:create(contract, Pubkey),
-                   owner_id     = aec_id:create(account, Owner),
+    C = #contract{ id           = aeser_id:create(contract, Pubkey),
+                   owner_id     = aeser_id:create(account, Owner),
                    ct_version   = CTVersion,
                    code         = Code,
                    store        = aect_contracts_store:new(),
@@ -188,7 +188,7 @@ serialize(#contract{owner_id     = OwnerId,
                     active       = Active,
                     referrer_ids = ReferrerIds,
                     deposit      = Deposit}) ->
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
       ?CONTRACT_TYPE,
       ?CONTRACT_VSN,
       serialization_template(?CONTRACT_VSN),
@@ -209,13 +209,13 @@ serialize_for_client(#contract{id           = Id,
                                active       = Active,
                                referrer_ids = ReferrerIds,
                                deposit      = Deposit}) ->
-    #{ <<"id">>           => aehttp_api_encoder:encode(id_hash, Id)
-     , <<"owner_id">>     => aehttp_api_encoder:encode(id_hash, OwnerId)
+    #{ <<"id">>           => aeser_api_encoder:encode(id_hash, Id)
+     , <<"owner_id">>     => aeser_api_encoder:encode(id_hash, OwnerId)
      , <<"vm_version">>   => maps:get(vm, CTVersion)
      , <<"abi_version">>  => maps:get(abi, CTVersion)
      , <<"log">>          => Log
      , <<"active">>       => Active
-     , <<"referrer_ids">> => [aehttp_api_encoder:encode(id_hash, RId) || RId <- ReferrerIds]
+     , <<"referrer_ids">> => [aeser_api_encoder:encode(id_hash, RId) || RId <- ReferrerIds]
      , <<"deposit">>      => Deposit
      }.
 
@@ -228,15 +228,15 @@ deserialize(Pubkey, Bin) ->
     , {active, Active}
     , {referrer_ids, ReferrerIds}
     , {deposit, Deposit}
-    ] = aec_object_serialization:deserialize(
+    ] = aeser_chain_objects:deserialize(
           ?CONTRACT_TYPE,
           ?CONTRACT_VSN,
           serialization_template(?CONTRACT_VSN),
           Bin
           ),
-    [contract = aec_id:specialize_type(R) || R <- ReferrerIds],
-    account = aec_id:specialize_type(OwnerId),
-    #contract{ id           = aec_id:create(contract, Pubkey)
+    [contract = aeser_id:specialize_type(R) || R <- ReferrerIds],
+    account = aeser_id:specialize_type(OwnerId),
+    #contract{ id           = aeser_id:create(contract, Pubkey)
              , owner_id     = OwnerId
              , ct_version   = split_vm_abi(CTVersion)
              , code         = Code
@@ -289,17 +289,17 @@ id(#contract{id = Id}) ->
 %% The address of the contract account.
 -spec pubkey(contract()) -> pubkey().
 pubkey(#contract{id = Id}) ->
-    aec_id:specialize(Id, contract).
+    aeser_id:specialize(Id, contract).
 
 %% The id of the owner.
--spec owner_id(contract()) -> aec_id:id().
+-spec owner_id(contract()) -> aeser_id:id().
 owner_id(#contract{owner_id = OwnerId}) ->
     OwnerId.
 
 %% The owner of the contract is (initially) the account that created it.
 -spec owner_pubkey(contract()) -> aec_keys:pubkey().
 owner_pubkey(#contract{owner_id = OwnerId}) ->
-    aec_id:specialize(OwnerId, account).
+    aeser_id:specialize(OwnerId, account).
 
 %% The ABI version used by the contract.
 -spec abi_version(contract()) -> abi_version().
@@ -337,7 +337,7 @@ active(#contract{active = Active}) ->
     Active.
 
 %% A list of other contracts referring to this contract.
--spec referrer_ids(contract()) -> list(aec_id:id()).
+-spec referrer_ids(contract()) -> list(aeser_id:id()).
 referrer_ids(#contract{referrer_ids = ReferrerIds}) ->
     ReferrerIds.
 
@@ -351,11 +351,11 @@ deposit(#contract{deposit = Deposit}) ->
 
 -spec set_pubkey(pubkey(), contract()) -> contract().
 set_pubkey(X, C) ->
-    C#contract{id = aec_id:create(contract, assert_field(pubkey, X))}.
+    C#contract{id = aeser_id:create(contract, assert_field(pubkey, X))}.
 
 -spec set_owner(aec_keys:pubkey(), contract()) -> contract().
 set_owner(X, C) ->
-    C#contract{owner_id = aec_id:create(account, assert_field(pubkey, X))}.
+    C#contract{owner_id = aeser_id:create(account, assert_field(pubkey, X))}.
 
 -spec set_code(binary(), contract()) -> contract().
 set_code(X, C) ->
@@ -378,7 +378,7 @@ set_active(X, C) ->
 
 -spec set_referrers([id()], contract()) -> contract().
 set_referrers(X, C) ->
-    C#contract{referrer_ids = [aec_id:create(contract, Y)
+    C#contract{referrer_ids = [aeser_id:create(contract, Y)
                                || Y <- assert_field(referrers, X)]}.
 
 -spec set_deposit(amount(), contract()) -> contract().

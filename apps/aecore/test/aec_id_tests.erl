@@ -24,18 +24,18 @@ basic_test_() ->
 test_create(Type) ->
     fun() ->
             Bin = id_bin(),
-            Id  = aec_id:create(Type, Bin),
-            ?assertEqual({Type, Bin}, aec_id:specialize(Id)),
-            ?assertEqual(Bin, aec_id:specialize(Id, Type)),
-            ?assertEqual(Type, aec_id:specialize_type(Id)),
-            ?assertError(_, aec_id:specialize(Id, foo))
+            Id  = aeser_id:create(Type, Bin),
+            ?assertEqual({Type, Bin}, aeser_id:specialize(Id)),
+            ?assertEqual(Bin, aeser_id:specialize(Id, Type)),
+            ?assertEqual(Type, aeser_id:specialize_type(Id)),
+            ?assertError(_, aeser_id:specialize(Id, foo))
     end.
 
 test_encoding(Type) ->
     fun() ->
             Bin = id_bin(),
-            Id  = aec_id:create(Type, Bin),
-            ?assertEqual(Id, aec_id:decode(aec_id:encode(Id)))
+            Id  = aeser_id:create(Type, Bin),
+            ?assertEqual(Id, aeser_id:decode(aeser_id:encode(Id)))
     end.
 
 %%%=============================================================================

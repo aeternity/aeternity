@@ -44,9 +44,9 @@
 -define(ORACLE_QUERY_TX_TYPE, oracle_query_tx).
 
 -record(oracle_query_tx, {
-          sender_id    :: aec_id:id(),
+          sender_id    :: aeser_id:id(),
           nonce        :: integer(),
-          oracle_id    :: aec_id:id(),
+          oracle_id    :: aeser_id:id(),
           query        :: aeo_oracles:query(),
           query_fee    :: integer(),
           query_ttl    :: aeo_oracles:ttl(),
@@ -59,21 +59,21 @@
 
 -export_type([tx/0]).
 
--spec sender_id(tx()) -> aec_id:id().
+-spec sender_id(tx()) -> aeser_id:id().
 sender_id(#oracle_query_tx{sender_id = SenderId}) ->
     SenderId.
 
 -spec sender_pubkey(tx()) -> aec_keys:pubkey().
 sender_pubkey(#oracle_query_tx{sender_id = SenderId}) ->
-    aec_id:specialize(SenderId, account).
+    aeser_id:specialize(SenderId, account).
 
--spec oracle_id(tx()) -> aec_id:id().
+-spec oracle_id(tx()) -> aeser_id:id().
 oracle_id(#oracle_query_tx{oracle_id = OracleId}) ->
     OracleId.
 
 -spec oracle_pubkey(tx()) -> aec_keys:pubkey().
 oracle_pubkey(#oracle_query_tx{oracle_id = OracleId}) ->
-    aec_id:specialize(OracleId, oracle).
+    aeser_id:specialize(OracleId, oracle).
 
 -spec query(tx()) -> aeo_oracles:query().
 query(#oracle_query_tx{query = Query}) ->
@@ -104,8 +104,8 @@ new(#{sender_id    := SenderId,
       query_ttl    := QueryTTL,
       response_ttl := ResponseTTL,
       fee          := Fee} = Args) ->
-    account = aec_id:specialize_type(SenderId),
-    oracle  = aec_id:specialize_type(OracleId), %% TODO: Should also be 'name'
+    account = aeser_id:specialize_type(SenderId),
+    oracle  = aeser_id:specialize_type(OracleId), %% TODO: Should also be 'name'
     Tx = #oracle_query_tx{sender_id     = SenderId,
                           nonce         = Nonce,
                           oracle_id     = OracleId,
@@ -213,8 +213,8 @@ deserialize(?ORACLE_QUERY_TX_VSN,
                        ?ttl_delta_int -> ?ttl_delta_atom;
                        ?ttl_block_int -> ?ttl_block_atom
                    end,
-    account = aec_id:specialize_type(SenderId),
-    oracle = aec_id:specialize_type(OracleId),
+    account = aeser_id:specialize_type(SenderId),
+    oracle = aeser_id:specialize_type(OracleId),
     #oracle_query_tx{sender_id    = SenderId,
                      nonce        = Nonce,
                      oracle_id    = OracleId,
@@ -252,9 +252,9 @@ for_client(#oracle_query_tx{sender_id = SenderId,
                             ttl = TTL} = Tx) ->
     {QueryTLLType, QueryTTLValue} = query_ttl(Tx),
     {ResponseTTLType = delta, ResponseTTLValue} = response_ttl(Tx),
-    #{<<"sender_id">>    => aehttp_api_encoder:encode(id_hash, SenderId),
+    #{<<"sender_id">>    => aeser_api_encoder:encode(id_hash, SenderId),
       <<"nonce">>        => Nonce,
-      <<"oracle_id">>    => aehttp_api_encoder:encode(id_hash, OracleId),
+      <<"oracle_id">>    => aeser_api_encoder:encode(id_hash, OracleId),
       <<"query">>        => Query,
       <<"query_fee">>    => QueryFee,
       <<"query_ttl">>    => #{<<"type">>  => QueryTLLType,

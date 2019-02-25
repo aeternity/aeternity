@@ -107,9 +107,9 @@ call_tx() ->
     call_tx(#{}).
 
 call_tx(Override) ->
-    Map = #{ caller_id   => aec_id:create(account, <<42:32/unit:8>>)
+    Map = #{ caller_id   => aeser_id:create(account, <<42:32/unit:8>>)
            , nonce       => 42
-           , contract_id => aec_id:create(contract, <<4711:32/unit:8>>)
+           , contract_id => aeser_id:create(contract, <<4711:32/unit:8>>)
            , fee         => 100
            , ttl         => 100
            , abi_version => 1

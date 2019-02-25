@@ -31,7 +31,7 @@ extend_tx() ->
     extend_tx(#{}).
 
 extend_tx(Override) ->
-    Map = #{ oracle_id  => aec_id:create(oracle, <<4711:32/unit:8>>)
+    Map = #{ oracle_id  => aeser_id:create(oracle, <<4711:32/unit:8>>)
            , nonce      => 42
            , oracle_ttl => {delta, 100}
            , fee        => 10

@@ -439,11 +439,11 @@ build_tx_mpt() ->
 -define(SUBTREE_TAG, 2).
 -define(KEY_TAG, 3).
 
--spec serialize_unfolds([unfold()]) -> [aeu_rlp:encoded()].
+-spec serialize_unfolds([unfold()]) -> [aeser_rlp:encoded()].
 serialize_unfolds(Us) ->
     [ serialize_unfold(U) || U <- Us ].
 
--spec deserialize_unfolds([aeu_rlp:encoded()]) ->
+-spec deserialize_unfolds([aeser_rlp:encoded()]) ->
         {ok, [unfold()]} | {error, term()}.
 deserialize_unfolds(SUs) ->
     try
@@ -452,46 +452,46 @@ deserialize_unfolds(SUs) ->
         {error, Reason}
     end.
 
--spec serialize_unfold(unfold()) -> aeu_rlp:encoded().
+-spec serialize_unfold(unfold()) -> aeser_rlp:encoded().
 serialize_unfold({node, Path, Node}) ->
-    aeu_rlp:encode(
-        aec_serialization:encode_fields(
+    aeser_rlp:encode(
+        aeserialization:encode_fields(
             [{type, int}, {path, binary}, {node, binary}],
             [{type, ?NODE_TAG}, {path, serialize_niblets(Path)}, {node, Node}]));
 serialize_unfold({leaf, Path}) ->
-    aeu_rlp:encode(
-        aec_serialization:encode_fields(
+    aeser_rlp:encode(
+        aeserialization:encode_fields(
             [{type, int}, {leaf, binary}],
             [{type, ?LEAF_TAG}, {leaf, serialize_niblets(Path)}]));
 serialize_unfold({subtree, Path}) ->
-    aeu_rlp:encode(
-        aec_serialization:encode_fields(
+    aeser_rlp:encode(
+        aeserialization:encode_fields(
             [{type, int}, {subtree, binary}],
             [{type, ?SUBTREE_TAG}, {subtree, serialize_niblets(Path)}]));
 serialize_unfold({key, Key}) ->
-    aeu_rlp:encode(
-        aec_serialization:encode_fields(
+    aeser_rlp:encode(
+        aeserialization:encode_fields(
             [{type, int}, {key, binary}],
             [{type, ?KEY_TAG}, {key, Key}])).
 
--spec deserialize_unfold(aeu_rlp:encoded()) -> unfold().
+-spec deserialize_unfold(aeser_rlp:encoded()) -> unfold().
 deserialize_unfold(Blob) ->
-    [TypeBin | Fields] = aeu_rlp:decode(Blob),
-    [{type, Type}] = aec_serialization:decode_fields([{type, int}], [TypeBin]),
+    [TypeBin | Fields] = aeser_rlp:decode(Blob),
+    [{type, Type}] = aeserialization:decode_fields([{type, int}], [TypeBin]),
     deserialize_unfold(Type, Fields).
 
 deserialize_unfold(?NODE_TAG, Flds) ->
     [{path, Path}, {node, Node}] =
-        aec_serialization:decode_fields([{path, binary}, {node, binary}], Flds),
+        aeserialization:decode_fields([{path, binary}, {node, binary}], Flds),
     {node, deserialize_niblets(Path), Node};
 deserialize_unfold(?LEAF_TAG, Flds) ->
-    [{leaf, Path}] = aec_serialization:decode_fields([{leaf, binary}], Flds),
+    [{leaf, Path}] = aeserialization:decode_fields([{leaf, binary}], Flds),
     {leaf, deserialize_niblets(Path)};
 deserialize_unfold(?SUBTREE_TAG, Flds) ->
-    [{subtree, Path}] = aec_serialization:decode_fields([{subtree, binary}], Flds),
+    [{subtree, Path}] = aeserialization:decode_fields([{subtree, binary}], Flds),
     {subtree, deserialize_niblets(Path)};
 deserialize_unfold(?KEY_TAG, Flds) ->
-    [{key, Key}] = aec_serialization:decode_fields([{key, binary}], Flds),
+    [{key, Key}] = aeserialization:decode_fields([{key, binary}], Flds),
     {key, Key}.
 
 %% Paths are not necessarily even bytes, this is required by RLP so we have to

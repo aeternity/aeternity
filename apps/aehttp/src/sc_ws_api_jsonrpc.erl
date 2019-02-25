@@ -228,8 +228,8 @@ process_request(#{<<"method">> := <<"channels.update.new">>,
                    <<"params">> := #{<<"from">>    := FromB,
                                      <<"to">>      := ToB,
                                      <<"amount">>  := Amount}}, FsmPid) ->
-    case {aehttp_api_encoder:safe_decode(account_pubkey, FromB),
-          aehttp_api_encoder:safe_decode(account_pubkey, ToB)} of
+    case {aeser_api_encoder:safe_decode(account_pubkey, FromB),
+          aeser_api_encoder:safe_decode(account_pubkey, ToB)} of
         {{ok, From}, {ok, To}} ->
             case aesc_fsm:upd_transfer(FsmPid, From, To, Amount) of
                 ok -> no_reply;
@@ -261,7 +261,7 @@ process_request(#{<<"method">> := <<"channels.update.call_contract">>,
                                     <<"abi_version">> := ABIVersion,
                                     <<"amount">>      := Amount,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
-    case {aehttp_api_encoder:safe_decode(contract_pubkey, ContractE),
+    case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
             case aesc_fsm:upd_call_contract(FsmPid,
@@ -278,8 +278,8 @@ process_request(#{<<"method">> := <<"channels.get.contract_call">>,
                   <<"params">> := #{<<"contract">>   := ContractE,
                                     <<"caller">>     := CallerE,
                                     <<"round">>      := Round}}, FsmPid) ->
-    case {aehttp_api_encoder:safe_decode(contract_pubkey, ContractE),
-          aehttp_api_encoder:safe_decode(account_pubkey, CallerE)} of
+    case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
+          aeser_api_encoder:safe_decode(account_pubkey, CallerE)} of
         {{ok, Contract}, {ok, Caller}} ->
             case aesc_fsm:get_contract_call(FsmPid,
                                             Contract, Caller, Round) of
@@ -324,7 +324,7 @@ process_request(#{<<"method">> := <<"channels.get.poi">>,
         fun(T, Keys) ->
             try {ok, lists:foldr(
                       fun(K, Acc) ->
-                              {ok, Res} = aehttp_api_encoder:safe_decode(T, K),
+                              {ok, Res} = aeser_api_encoder:safe_decode(T, K),
                               [Res | Acc]
                       end, [], Keys)}
             catch
@@ -347,7 +347,7 @@ process_request(#{<<"method">> := <<"channels.get.poi">>,
                       tag         => <<"poi">>,
                       {int,type}  => reply,
                       payload     => #{
-                        <<"poi">> => aehttp_api_encoder:encode(
+                        <<"poi">> => aeser_api_encoder:encode(
                                        poi, aec_trees:serialize_poi(PoI))
                        }
                      },
@@ -361,7 +361,7 @@ process_request(#{<<"method">> := <<"channels.get.poi">>,
 process_request(#{<<"method">> := <<"channels.message">>,
                     <<"params">> := #{<<"to">>    := ToB,
                                       <<"info">>  := Msg}}, FsmPid) ->
-    case aehttp_api_encoder:safe_decode(account_pubkey, ToB) of
+    case aeser_api_encoder:safe_decode(account_pubkey, ToB) of
         {ok, To} ->
             case aesc_fsm:inband_msg(FsmPid, To, Msg) of
                 ok -> no_reply;
@@ -385,7 +385,7 @@ process_request(#{<<"method">> := Method,
                     <<"params">> := #{<<"tx">> := EncodedTx}}, FsmPid)
     when ?METHOD_SIGNED(Method) ->
     Tag = ?METHOD_TAG(Method),
-    case aehttp_api_encoder:safe_decode(transaction, EncodedTx) of
+    case aeser_api_encoder:safe_decode(transaction, EncodedTx) of
         {error, _} ->
             lager:warning("Channel WS: broken ~p tx ~p", [Method, EncodedTx]),
             {error, invalid_tx};
@@ -416,7 +416,7 @@ ok_response(Action) ->
 safe_decode_account_keys(Keys) ->
     try {ok, lists:foldr(
                fun(K, Acc) ->
-                       {ok, Res} = aehttp_api_encoder:safe_decode(account_pubkey, K),
+                       {ok, Res} = aeser_api_encoder:safe_decode(account_pubkey, K),
                        [{K, Res}|Acc]
                end, [], Keys)}
     catch
@@ -425,7 +425,7 @@ safe_decode_account_keys(Keys) ->
     end.
 
 bytearray_decode(Bytearray) ->
-    aehttp_api_encoder:safe_decode(contract_bytearray, Bytearray).
+    aeser_api_encoder:safe_decode(contract_bytearray, Bytearray).
 
 method_out(#{action := Action, tag := none} = Msg) ->
     opt_type(Msg, <<"channels.", (bin(Action))/binary>>);

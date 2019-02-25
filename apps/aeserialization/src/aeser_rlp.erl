@@ -8,7 +8,7 @@
 %%% @end
 %%%-------------------------------------------------------------------
 
--module(aeu_rlp).
+-module(aeser_rlp).
 -export([ decode/1
         , decode_one/1
         , encode/1

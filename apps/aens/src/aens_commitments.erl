@@ -27,15 +27,15 @@
 %%% Types
 %%%===================================================================
 -record(commitment,
-        {id       :: aec_id:id(),
-         owner_id :: aec_id:id(),
+        {id       :: aeser_id:id(),
+         owner_id :: aeser_id:id(),
          created  :: aec_blocks:height(),
          ttl      :: aec_blocks:height()
          }).
 
 -opaque commitment() :: #commitment{}.
 
--type id() :: aec_id:id().
+-type id() :: aeser_id:id().
 -type hash() :: aens_hash:commitment_hash().
 -type pubkey() :: aec_keys:pubkey().
 -type serialized() :: binary().
@@ -51,10 +51,10 @@
 %%% API
 %%%===================================================================
 
--spec new(aec_id:id(), aec_id:id(), non_neg_integer(), aec_blocks:height()) -> commitment().
+-spec new(aeser_id:id(), aeser_id:id(), non_neg_integer(), aec_blocks:height()) -> commitment().
 new(Id, OwnerId, DeltaTTL, BlockHeight) ->
-    commitment = aec_id:specialize_type(Id),
-    account    = aec_id:specialize_type(OwnerId),
+    commitment = aeser_id:specialize_type(Id),
+    account    = aeser_id:specialize_type(OwnerId),
     #commitment{id       = Id,
                 owner_id = OwnerId,
                 created  = BlockHeight,
@@ -64,7 +64,7 @@ new(Id, OwnerId, DeltaTTL, BlockHeight) ->
 serialize(#commitment{owner_id = OwnerId,
                       created  = Created,
                       ttl      = TTL}) ->
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
       ?COMMITMENT_TYPE,
       ?COMMITMENT_VSN,
       serialization_template(?COMMITMENT_VSN),
@@ -74,7 +74,7 @@ serialize(#commitment{owner_id = OwnerId,
 
 -spec deserialize(hash(), binary()) -> commitment().
 deserialize(CommitmentHash, Bin) ->
-    Fields = aec_object_serialization:deserialize(
+    Fields = aeser_chain_objects:deserialize(
                   ?COMMITMENT_TYPE,
                   ?COMMITMENT_VSN,
                   serialization_template(?COMMITMENT_VSN),
@@ -85,7 +85,7 @@ deserialize_from_fields(?COMMITMENT_VSN, CommitmentHash,
     [ {owner_id, OwnerId}
     , {created, Created}
     , {ttl, TTL}]) ->
-    #commitment{id       = aec_id:create(commitment, CommitmentHash),
+    #commitment{id       = aeser_id:create(commitment, CommitmentHash),
                 owner_id = OwnerId,
                 created  = Created,
                 ttl      = TTL}.
@@ -103,11 +103,11 @@ serialization_type() -> ?COMMITMENT_TYPE.
 
 -spec hash(commitment()) -> hash().
 hash(#commitment{id = Id}) ->
-    aec_id:specialize(Id, commitment).
+    aeser_id:specialize(Id, commitment).
 
 -spec owner_pubkey(commitment()) -> pubkey().
 owner_pubkey(#commitment{owner_id = OwnerId}) ->
-    aec_id:specialize(OwnerId, account).
+    aeser_id:specialize(OwnerId, account).
 
 -spec ttl(commitment()) -> aec_blocks:height().
 ttl(#commitment{ttl = TTL}) ->

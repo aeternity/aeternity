@@ -92,8 +92,8 @@ make_fraud_headers() ->
     {aec_blocks:to_header(MB), aec_blocks:to_header(MBF), MinerPubKey, MinerPrivKey}.
 
 make_spend_tx(Sender, SenderNonce, Recipient, Fee, Amount) ->
-    SenderId = aec_id:create(account, Sender),
-    RecipientId = aec_id:create(account, Recipient),
+    SenderId = aeser_id:create(account, Sender),
+    RecipientId = aeser_id:create(account, Recipient),
     {ok, SpendTx} = aec_spend_tx:new(#{sender_id => SenderId,
                                        recipient_id => RecipientId,
                                        amount => Amount,

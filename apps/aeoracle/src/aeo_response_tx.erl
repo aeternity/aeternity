@@ -40,7 +40,7 @@
 -define(ORACLE_RESPONSE_TX_TYPE, oracle_response_tx).
 
 -record(oracle_response_tx, {
-          oracle_id    :: aec_id:id(),
+          oracle_id    :: aeser_id:id(),
           nonce        :: integer(),
           query_id     :: aeo_query:id(),
           response     :: aeo_oracles:response(),
@@ -53,13 +53,13 @@
 
 -export_type([tx/0]).
 
--spec oracle_id(tx()) -> aec_id:id().
+-spec oracle_id(tx()) -> aeser_id:id().
 oracle_id(#oracle_response_tx{oracle_id = OracleId}) ->
     OracleId.
 
 -spec oracle_pubkey(tx()) -> aec_keys:pubkey().
 oracle_pubkey(#oracle_response_tx{oracle_id = OracleId}) ->
-    aec_id:specialize(OracleId, oracle).
+    aeser_id:specialize(OracleId, oracle).
 
 -spec query_id(tx()) -> aeo_query:id().
 query_id(#oracle_response_tx{query_id = QueryId}) ->
@@ -80,7 +80,7 @@ new(#{oracle_id    := OracleId,
       response     := Response,
       response_ttl := ResponseTTL,
       fee          := Fee} = Args) ->
-    oracle = aec_id:specialize_type(OracleId),
+    oracle = aeser_id:specialize_type(OracleId),
     Tx = #oracle_response_tx{oracle_id    = OracleId,
                              nonce        = Nonce,
                              query_id     = QueryId,
@@ -163,7 +163,7 @@ deserialize(?ORACLE_RESPONSE_TX_VSN,
             , {response_ttl_value, ResponseTTLValue}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    oracle = aec_id:specialize_type(OracleId),
+    oracle = aeser_id:specialize_type(OracleId),
     #oracle_response_tx{oracle_id    = OracleId,
                         nonce        = Nonce,
                         query_id     = QueryId,
@@ -194,9 +194,9 @@ for_client(#oracle_response_tx{oracle_id = OracleId,
                                fee       = Fee,
                                ttl       = TTL} = Tx) ->
     {ResponseTTLType = delta, ResponseTTLValue} = response_ttl(Tx),
-    #{<<"oracle_id">>   => aehttp_api_encoder:encode(id_hash, OracleId),
+    #{<<"oracle_id">>   => aeser_api_encoder:encode(id_hash, OracleId),
       <<"nonce">>       => Nonce,
-      <<"query_id">>    => aehttp_api_encoder:encode(oracle_query_id, QueryId),
+      <<"query_id">>    => aeser_api_encoder:encode(oracle_query_id, QueryId),
       <<"response">>    => Response,
       <<"response_ttl">> => #{<<"type">>  => ResponseTTLType,
                               <<"value">> => ResponseTTLValue},

@@ -84,7 +84,7 @@ root_hash(Tree) ->
 -spec to_binary_without_backend(tree()) -> binary().
 to_binary_without_backend(Tree) ->
     Bin = aeu_mtrees:serialize(Tree),
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
         channels_mtree,
         ?VSN,
         serialization_template(?VSN),
@@ -93,7 +93,7 @@ to_binary_without_backend(Tree) ->
 -spec from_binary_without_backend(binary()) -> tree().
 from_binary_without_backend(Bin) ->
     [{channels, ChannelsBin}] =
-        aec_object_serialization:deserialize(channels_mtree, ?VSN,
+        aeser_chain_objects:deserialize(channels_mtree, ?VSN,
                                              serialization_template(?VSN), Bin),
     aeu_mtrees:deserialize(ChannelsBin).
 

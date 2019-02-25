@@ -120,7 +120,7 @@ check_is_peer(PubKey, Peers) ->
 
 -spec check_state_hash_size(binary()) -> boolean().
 check_state_hash_size(Hash) ->
-    byte_size(Hash) =:= aehttp_api_encoder:byte_size_for_type(state).
+    byte_size(Hash) =:= aeser_api_encoder:byte_size_for_type(state).
 
 -spec deserialize_payload(binary()) -> {ok, aetx_sign:signed_tx(), aesc_offchain_tx:tx()}
                                          | {ok, last_onchain}
@@ -406,7 +406,7 @@ delegatable_tx_types() ->
                   aec_trees:trees())
                   -> ok | {error, atom()}.
 is_delegate(ChannelId, FromPubKey, Trees) ->
-    ChannelPubKey = aec_id:specialize(ChannelId, channel),
+    ChannelPubKey = aeser_id:specialize(ChannelId, channel),
     with_channel(fun(Channel) ->
                          is_delegate_(Channel, FromPubKey)
                  end, ChannelPubKey, Trees).
@@ -638,7 +638,7 @@ set_channel(Channel, Trees) ->
     aec_trees:set_channels(Trees, ChannelsTree1).
 
 tx_hash_to_contract_pubkey(TxHash) ->
-    ByteSize = aehttp_api_encoder:byte_size_for_type(contract_pubkey),
+    ByteSize = aeser_api_encoder:byte_size_for_type(contract_pubkey),
     case TxHash of
         <<_:ByteSize/binary>> -> TxHash;
         <<H:ByteSize/binary,_>> -> H;

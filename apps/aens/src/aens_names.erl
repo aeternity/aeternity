@@ -33,7 +33,7 @@
 %%% Types
 %%%===================================================================
 
--type id()         :: aec_id:id().
+-type id()         :: aeser_id:id().
 -type status()     :: claimed | revoked.
 -type serialized() :: binary().
 
@@ -62,8 +62,8 @@
 -spec new(aens_hash:name_hash(), aec_keys:pubkey(), non_neg_integer()) -> name().
 new(NameHash, OwnerPubkey, AbsoluteTTL) ->
     %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2
-    #name{id         = aec_id:create(name, NameHash),
-          owner_id   = aec_id:create(account, OwnerPubkey),
+    #name{id         = aeser_id:create(name, NameHash),
+          owner_id   = aeser_id:create(account, OwnerPubkey),
           expires_by = AbsoluteTTL,
           status     = claimed,
           client_ttl = 0,
@@ -83,7 +83,7 @@ revoke(Name, Expiration, BlockHeight) ->
 
 -spec transfer_to(aec_keys:pubkey(), name()) -> name().
 transfer_to(Pubkey, Name) ->
-    Name#name{owner_id = aec_id:create(account, Pubkey)}.
+    Name#name{owner_id = aeser_id:create(account, Pubkey)}.
 
 -spec serialize(name()) -> binary().
 serialize(#name{owner_id   = OwnerId,
@@ -91,7 +91,7 @@ serialize(#name{owner_id   = OwnerId,
                 status     = Status,
                 client_ttl = ClientTTL,
                 pointers   = Pointers}) ->
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
       ?NAME_TYPE,
       ?NAME_VSN,
       serialization_template(?NAME_VSN),
@@ -103,7 +103,7 @@ serialize(#name{owner_id   = OwnerId,
 
 -spec deserialize(aens_hash:name_hash(), binary()) -> name().
 deserialize(NameHash, Bin) ->
-    Fields = aec_object_serialization:deserialize(
+    Fields = aeser_chain_objects:deserialize(
                   ?NAME_TYPE,
                   ?NAME_VSN,
                   serialization_template(?NAME_VSN),
@@ -116,7 +116,7 @@ deserialize_from_fields(?NAME_VSN, NameHash,
     , {status, Status}
     , {client_ttl, ClientTTL}
     , {pointers, Pointers}]) ->
-    #name{id         = aec_id:create(name, NameHash),
+    #name{id         = aeser_id:create(name, NameHash),
           owner_id   = OwnerId,
           expires_by = ExpiresBy,
           status     = binary_to_existing_atom(Status, utf8),
@@ -143,11 +143,11 @@ id(#name{id = Id}) ->
 
 -spec hash(name()) -> aens_hash:name_hash().
 hash(#name{id = Id}) ->
-    aec_id:specialize(Id, name).
+    aeser_id:specialize(Id, name).
 
 -spec owner_pubkey(name()) -> aec_keys:pubkey().
 owner_pubkey(#name{owner_id = OwnerId}) ->
-    aec_id:specialize(OwnerId, account).
+    aeser_id:specialize(OwnerId, account).
 
 -spec status(name()) -> status().
 status(#name{status = Status}) ->
