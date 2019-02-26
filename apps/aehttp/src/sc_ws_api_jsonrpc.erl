@@ -124,6 +124,7 @@ json_rpc_error_object(insufficient_balance, R) -> error_obj(3     , [1001], R);
 json_rpc_error_object(negative_amount     , R) -> error_obj(3     , [1002], R);
 json_rpc_error_object(invalid_pubkeys     , R) -> error_obj(3     , [1003], R);
 json_rpc_error_object(call_not_found      , R) -> error_obj(3     , [1004], R);
+json_rpc_error_object(contract_init_failed, R) -> error_obj(3     , [1007], R);
 json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
 json_rpc_error_object(not_found           , R) -> error_obj(3     , [100] , R);
@@ -190,6 +191,7 @@ error_data_msgs() ->
      , 1004 => <<"Call not found">>
      , 1005 => <<"Broken encoding: accounts">>
      , 1006 => <<"Broken encoding: contracts">>
+     , 1007 => <<"Contract init failed">>
      }.
 
 broken_encoding_code(accounts ) -> 1005;

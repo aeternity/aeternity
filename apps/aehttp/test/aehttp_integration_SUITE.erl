@@ -223,7 +223,8 @@
     sc_ws_nameservice_contract/1,
     sc_ws_enviroment_contract/1,
     sc_ws_remote_call_contract/1,
-    sc_ws_remote_call_contract_refering_onchain_data/1
+    sc_ws_remote_call_contract_refering_onchain_data/1,
+    sc_ws_broken_init_code/1
    ]).
 
 
@@ -540,7 +541,8 @@ groups() ->
        %% both can call a remote contract
        sc_ws_remote_call_contract,
        %% both can call a remote contract refering on-chain data
-       sc_ws_remote_call_contract_refering_onchain_data
+       sc_ws_remote_call_contract_refering_onchain_data,
+       sc_ws_broken_init_code
       ]}
     ].
 
@@ -5903,7 +5905,9 @@ lift_reason(#{ <<"message">> := <<"Rejected">>
     Codes = lists:sort([Code || #{<<"code">> := Code} <- Data]),
     E#{ <<"reason">> => data_code_to_reason(Codes) };
 lift_reason(#{ <<"code">> := Code } = E) ->
-    E#{ <<"reason">> => code_to_reason(Code) }.
+    E#{ <<"reason">> => code_to_reason(Code) };
+lift_reason(#{ <<"reason">> := _ } = E) ->
+    E.
 
 data_code_to_reason([100 ])      -> <<"not_found">>;
 data_code_to_reason([107 ])      -> <<"conflict">>;
@@ -5913,6 +5917,7 @@ data_code_to_reason([1003])      -> <<"invalid_pubkeys">>;
 data_code_to_reason([1004])      -> <<"call_not_found">>;
 data_code_to_reason([1005])      -> <<"broken_encoding: accounts">>;
 data_code_to_reason([1006])      -> <<"broken_encoding: contracts">>;
+data_code_to_reason([1007])      -> <<"contract_init_failed">>;
 data_code_to_reason([1005,1006]) -> <<"broken_encoding: accounts, contracts">>;
 data_code_to_reason([Code])      -> sc_ws_api_jsonrpc:error_data_msg(Code).
 
@@ -5956,3 +5961,28 @@ latest_sophia_abi() ->
 
 latest_sophia_vm() ->
     aect_test_utils:latest_sophia_vm_version().
+
+sc_ws_broken_init_code(Config) ->
+    [sc_ws_contract_generic_(Role, fun sc_ws_broken_code_/8, Config, [])
+        || Role <- [initiator, responder]],
+    ok.
+
+sc_ws_broken_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
+                   _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
+    %% Example broken code
+    EncodedCode =
+        <<"cb_+QPvRgGgja12yx811dk5yVxo7CRM0HZL9JchWwsOLspSjEncmSL5Avv5ASqgaPJnYzj/UIg5q6R3Se/6i+h+8oTyB/s9mZhwHNU4h8WEbWFpbrjAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKD//////////////////////////////////////////wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAuEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+QHLoLnJVvKLMUmp9Zh6pQXz2hsiCcxXOSNABiu2wb2fn5nqhGluaXS4YAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//////////////////////////////////////////7kBQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEA//////////////////////////////////////////8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA///////////////////////////////////////////uMxiAABkYgAAhJGAgIBRf7nJVvKLMUmp9Zh6pQXz2hsiCcxXOSNABiu2wb2fn5nqFGIAAMBXUIBRf2jyZ2M4/1CIOaukd0nv+ovofvKE8gf7PZmYcBzVOIfFFGIAAK9XUGABGVEAW2AAGVlgIAGQgVJgIJADYAOBUpBZYABRWVJgAFJgAPNbYACAUmAA81tZWWAgAZCBUmAgkANgABlZYCABkIFSYCCQA2ADgVKBUpBWW2AgAVFRWVCAkVBQgJBQkFZbUFCCkVBQYgAAjFaUqVp0">>,
+    EncodedInitData =
+        <<"cb_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACBo8mdjOP9QiDmrpHdJ7/qL6H7yhPIH+z2ZmHAc1TiHxQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACo7dbVl">>,
+    {_CreateVolley, OwnerConnPid, _OwnerPubKey} = GetVolley(Owner),
+    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                   #{vm_version  => latest_sophia_vm(),
+                     abi_version => latest_sophia_abi(),
+                     deposit     => 10,
+                     code        => EncodedCode,
+                     call_data   => EncodedInitData}, Config),
+
+    {ok, ErrPayload} = wait_for_channel_event(OwnerConnPid, error, Config),
+    #{<<"reason">> := <<"contract_init_failed">>} = lift_reason(ErrPayload),
+    ok.
+

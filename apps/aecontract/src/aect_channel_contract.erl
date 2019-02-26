@@ -56,11 +56,11 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
                     aec_trees:set_contracts(Trees1, ContractsTree1);
                 E = {error, _} ->
                     lager:debug("Init error ~w ~w",[E, CallRes]),
-                    Trees0
+                    erlang:error(contract_init_failed)
             end;
         E ->
             lager:debug("Init call error ~w ~w",[E, CallRes]),
-            Trees0
+            erlang:error(contract_init_failed)
     end.
 
 -spec run(aect_contracts:pubkey(), aect_contracts:abi_version(), aect_call:call(),
