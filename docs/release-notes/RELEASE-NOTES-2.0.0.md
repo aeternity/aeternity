@@ -2,9 +2,13 @@
 
 [This][this-release] is the stable Minerva release.
 It:
-* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
-
-TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+* Adds all tokens migrated in phase 1 of the token migration
+* Sets the Minerva mainnet hard fork height to block 47800 (approximately 6th Mar 2019 1pm CET).
+* More consistent handling of defaults for state channel on-chain transactions
+* If a fee is specified for an on-chain state channel tx, but is too low, an error will be raised. If no fee is specified, a default fee 10% above the minimum is chosen.
+* If a channel shutdown is requested, but the balances are insufficient to cover the transaction fee, the shutdown request will be rejected right away.
+* Introduce a configuration parameter for miners - the minumum gas price that they are willing to
+  accept.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.0.0
 
