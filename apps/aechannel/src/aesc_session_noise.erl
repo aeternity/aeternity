@@ -3,8 +3,8 @@
 
 -include("aesc_codec.hrl").
 
--export([connect/3
-       , accept/2
+-export([connect/4
+       , accept/3
        , close/1]).
 
 -export([channel_open/2
@@ -44,6 +44,7 @@
 
 -record(st, {parent :: pid()
            , parent_mon_ref :: reference()
+           , protocol_vsn :: non_neg_integer()
            , econn }).
 
 channel_open       (Session, Msg) -> cast(Session, {msg, ?CH_OPEN      , Msg}).
@@ -84,15 +85,15 @@ close(Session) ->
 
 %% Connection establishment
 
-connect(Host, Port, Opts) ->
+connect(Host, Port, Vsn, Opts) ->
     gen_server:start_link(
-      ?MODULE, {self(), {connect, Host, Port, Opts}}, ?GEN_SERVER_OPTS).
+      ?MODULE, {self(), {connect, Host, Port, Opts}, Vsn}, ?GEN_SERVER_OPTS).
 
-accept(Port, Opts) ->
+accept(Port, Vsn, Opts) ->
     gen_server:start_link(
-      ?MODULE, {self(), {accept, Port, Opts}}, ?GEN_SERVER_OPTS).
+      ?MODULE, {self(), {accept, Port, Opts}, Vsn}, ?GEN_SERVER_OPTS).
 
-init({Parent, Op}) ->
+init({Parent, Op, Vsn}) ->
     %% trap exits to avoid ugly crash reports. We rely on the monitor to
     %% ensure that we close when the fsm dies
     %%
@@ -102,7 +103,8 @@ init({Parent, Op}) ->
     proc_lib:init_ack(Parent, {ok, self()}),
     ParentMonRef = monitor(process, Parent),
     St = establish(Op, #st{parent = Parent,
-                           parent_mon_ref = ParentMonRef}),
+                           parent_mon_ref = ParentMonRef,
+                           protocol_vsn = Vsn}),
     gen_server:enter_loop(?MODULE, ?GEN_SERVER_OPTS, St).
 
 establish({accept, Port, Opts}, St) ->
@@ -162,8 +164,8 @@ handle_cast(Msg, St) ->
             erlang:error(Reason, Trace)
     end.
 
-handle_cast_({msg, M, Info}, #st{econn = EConn} = St) ->
-    enoise:send(EConn, aesc_codec:enc(M, Info)),
+handle_cast_({msg, M, Info}, #st{econn = EConn, protocol_vsn = V} = St) ->
+    enoise:send(EConn, aesc_codec:enc(M, Info, V)),
     {noreply, St};
 handle_cast_(_Msg, St) ->
     {noreply, St}.
@@ -183,8 +185,8 @@ handle_info(Msg, St) ->
             erlang:error(Reason, Trace)
     end.
 
-handle_info_({noise, EConn, Data}, #st{econn = EConn} = St) ->
-    {_Type, _Info} = Msg = aesc_codec:dec(Data),
+handle_info_({noise, EConn, Data}, #st{econn = EConn, protocol_vsn = V} = St) ->
+    {_Type, _Info} = Msg = aesc_codec:dec(Data, V),
     tell_fsm(Msg, St),
     enoise:set_active(EConn, once),
     {noreply, St};

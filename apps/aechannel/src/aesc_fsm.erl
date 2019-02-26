@@ -359,7 +359,7 @@ get_contract_call(Fsm, Contract, Caller, Round) when is_integer(Round), Round > 
     gen_statem:call(Fsm, {get_contract_call, Contract, Caller, Round}).
 
 inband_msg(Fsm, To, Msg) ->
-    MaxSz = aesc_codec:max_inband_msg_size(),
+    MaxSz = aesc_codec:max_inband_msg_size(2),
     try iolist_to_binary(Msg) of
         MsgBin when byte_size(MsgBin) =< MaxSz ->
             lager:debug("inband_msg(~p, ~p, ~p)", [Fsm, To, Msg]),
@@ -465,7 +465,8 @@ init(#{opts := Opts0} = Arg) ->
               fun(O) -> check_minimum_depth_opt(DefMinDepth, Role, O) end,
               fun check_timeout_opt/1,
               fun check_rpt_opt/1,
-              fun check_log_opt/1
+              fun check_log_opt/1,
+              fun check_protocol_vsn/1
              ], Opts0),
     Session = start_session(Arg, Opts),
     {ok, State} = aesc_offchain_state:new(Opts),
@@ -553,18 +554,33 @@ check_log_opt(Opts) ->
             Opts#{log_keep => ?KEEP}
     end.
 
+check_protocol_vsn(Opts) ->
+    case maps:find(protocol_vsn, Opts) of
+        {ok, V} when is_integer(V), V > 0 ->
+            Opts;
+        {ok, Invalid} ->
+            lager:error("Invalid 'protocol_vsn' option: ~p", [Invalid]),
+            error(invalid_protocol_vsn);
+        error ->
+            Opts#{protocol_vsn => 1}
+    end.
+
 
 %% As per CHANNELS.md, the responder is regarded as the one typically
 %% providing the service, and the initiator connects.
-start_session(#{port := Port}, #{role := responder} = Opts) ->
+start_session(#{port := Port}, #{ role := responder
+                                , protocol_vsn := V } = Opts) ->
     NoiseOpts = maps:get(noise, Opts, []),
-    ok(aesc_session_noise:accept(Port, NoiseOpts));
-start_session(#{host := Host, port := Port}, #{role := initiator} = Opts) ->
+    ok(aesc_session_noise:accept(Port, V, NoiseOpts));
+start_session(#{host := Host, port := Port}, #{ role := initiator
+                                              , protocol_vsn := V } = Opts) ->
     NoiseOpts = maps:get(noise, Opts, []),
-    ok(aesc_session_noise:connect(Host, Port, NoiseOpts)).
+    ok(aesc_session_noise:connect(Host, Port, V, NoiseOpts)).
 
 ok({ok, X}) -> X.
 
+protocol_vsn(#data{opts = #{protocol_vsn := V}}) ->
+    V.
 
 %% ======================================================================
 %% FSM transitions
@@ -1320,12 +1336,18 @@ handle_call_(open, shutdown, From, D) ->
     D1 = request_signing(?SHUTDOWN, CloseTx, D),
     gen_statem:reply(From, ok),
     next_state(awaiting_signature, set_ongoing(D1));
-handle_call_(open, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
-    case {ToPub, other_account(D)} of
-        {X, X} ->
-            keep_state(send_inband_msg(ToPub, Msg, D), [{reply, From, ok}]);
-        _ ->
-            keep_state(D, [{reply, From, {error, unknown_recipient}}])
+handle_call_(open, {inband_msg, ToPub, Msg}, From, D) ->
+    Vsn = protocol_vsn(D),
+    MaxSz = aesc_codec:max_inband_msg_size(Vsn),
+    if byte_size(Msg) =< MaxSz ->
+            case {ToPub, other_account(D)} of
+                {X, X} ->
+                    keep_state(send_inband_msg(ToPub, Msg, D), [{reply, From, ok}]);
+                _ ->
+                    keep_state(D, [{reply, From, {error, unknown_recipient}}])
+            end;
+       true ->
+            keep_state(D, [{reply, From, {error, invalid_request}}])
     end;
 handle_call_(_, get_state, From, #data{ on_chain_id = ChanId
                                       , opts        = Opts

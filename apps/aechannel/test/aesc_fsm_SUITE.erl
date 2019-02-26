@@ -24,6 +24,8 @@
           create_channel/1
         , channel_insufficent_tokens/1
         , inband_msgs/1
+        , inband_msgs_v1/1
+        , inband_msgs_v2/1
         , upd_transfer/1
         , update_with_conflict/1
         , update_with_soft_reject/1
@@ -92,6 +94,8 @@ groups() ->
         create_channel
       , channel_insufficent_tokens
       , inband_msgs
+      , inband_msgs_v1
+      , inband_msgs_v2
       , upd_transfer
       , update_with_conflict
       , update_with_soft_reject
@@ -270,18 +274,80 @@ channel_insufficent_tokens(Cfg) ->
     ok.
 
 inband_msgs(Cfg) ->
+    %% Protocol vsn 1 is implicit
     #{ i := #{fsm := FsmI} = I
      , r := #{} = R
      , spec := #{ initiator := _PubI
                 , responder := PubR }} = create_channel_(
                                            [?SLOGAN|Cfg]),
     ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"i2r hello">>]),
-    {ok,_} =receive_from_fsm(
-              message, R,
-              fun(#{info := #{info := <<"i2r hello">>}}) -> ok end, 1000, true),
-
+    {ok,_} = receive_inband(R, <<"i2r hello">>),
+    %% V1 channels don't support messages larger than 255 bytes
+    {error, invalid_request} =
+        rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, large_msg()]),
     shutdown_(I, R),
     check_info(500).
+
+inband_msgs_v1(Cfg) ->
+    %% Protocol vsn 1 is explicit
+    #{ i := #{fsm := FsmI} = I
+     , r := #{} = R
+     , spec := #{ initiator := _PubI
+                , responder := PubR }} =
+        create_channel_opt_(
+          [?SLOGAN|Cfg], #{protocol_vsn => 1}, get_debug(Cfg)),
+    ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"i2r hello">>]),
+    {ok,_} = receive_inband(R, <<"i2r hello">>),
+    %% V1 channels don't support messages larger than 255 bytes
+    {error, invalid_request} =
+        rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, large_msg()]),
+    shutdown_(I, R),
+    check_info(500).
+
+inband_msgs_v2(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{fsm := FsmI} = I
+     , r := #{} = R
+     , spec := #{ initiator := _PubI
+                , responder := PubR }} =
+        create_channel_opt_(
+          [?SLOGAN|Cfg], #{protocol_vsn => 2}, Debug),
+    ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, M1 = <<"i2r hello">>]),
+    {ok,_} = receive_inband(R, M1),
+    ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, M2 = large_msg()]),
+    {ok,_} = receive_inband(R, M2),
+    ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, M3 = very_large_msg()]),
+    {ok,_} = receive_inband(R, M3),
+    {error, invalid_request} =
+        rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, too_large_msg()]),
+    shutdown_(I, R),
+    check_info(500).
+
+receive_inband(R, Msg) ->
+    {ok,_} = receive_from_fsm(
+               message, R,
+               fun(#{info := #{info := Msg1}}) when Msg1 == Msg ->
+                       ok
+               end, 1000, true).
+
+large_msg() ->
+    %% 300 bytes
+    M =iolist_to_binary([lists:duplicate(50, C) || C <- [$a,$b,$c,$d,$e,$f]]),
+    300 = byte_size(M),
+    M.
+
+very_large_msg() ->
+    M = large_msg(),
+    M1 = iolist_to_binary(lists:duplicate(200, M)),
+    60000 = byte_size(M1),
+    M1.
+
+too_large_msg() ->
+    M = large_msg(),
+    M1 = very_large_msg(),
+    M2 = iolist_to_binary([M1,lists:duplicate(20,M)]),
+    66000 = byte_size(M2),
+    M2.
 
 upd_transfer(Cfg) ->
     Debug = get_debug(Cfg),
@@ -1302,13 +1368,22 @@ create_channel_on_port(Port) ->
            {initiator_amount, 500000}, {responder_amount, 500000}, ?SLOGAN],
     create_channel_(Cfg, get_debug(Cfg)).
 
+create_channel_opt_(Cfg, Opts, Debug) ->
+    {I, R, Spec} = channel_spec(Cfg),
+    Spec1 = maps:merge(Spec, Opts),
+    Port = get_port(Cfg),
+    create_channel_from_spec(I, R, Spec1, Port, Debug).
+
 create_channel_(Cfg) ->
     create_channel_(Cfg, get_debug(Cfg)).
 
 create_channel_(Cfg, Debug) ->
     {I, R, Spec} = channel_spec(Cfg),
-    Port = proplists:get_value(port, Cfg, 9325),
+    Port = get_port(Cfg),
     create_channel_from_spec(I, R, Spec, Port, Debug).
+
+get_port(Cfg) ->
+    proplists:get_value(port, Cfg, 9325).
 
 channel_spec(Cfg) ->
     channel_spec(Cfg, 300000, 200000).
