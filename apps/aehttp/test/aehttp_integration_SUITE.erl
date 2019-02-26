@@ -543,6 +543,14 @@ groups() ->
        %% both can call a remote contract refering on-chain data
        sc_ws_remote_call_contract_refering_onchain_data,
        sc_ws_wrong_call_data
+      ]},
+     {sc_ws_v1, [sequence],
+      [
+       sc_ws_generic_messages
+      ]},
+     {sc_ws_v2, [sequence],
+      [
+       sc_ws_generic_messages
       ]}
     ].
 
@@ -571,11 +579,12 @@ init_per_suite(Config) ->
     Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_endpoints"}, {test_module, ?MODULE}] ++ Config),
     [{nodes, [aecore_suite_utils:node_tuple(?NODE)]}]  ++ Config1.
 
-end_per_suite(_Config) ->
-    ok.
-
 init_per_group(continuous_sc_ws, Config) ->
     sc_ws_open_(Config);
+init_per_group(sc_ws_v1, Config) ->
+    sc_ws_open_(ensure_sc(Config), #{<<"protocol_vsn">> => 1});
+init_per_group(sc_ws_v2, Config) ->
+    sc_ws_open_(ensure_sc(Config), #{<<"protocol_vsn">> => 2});
 init_per_group(all, Config) ->
     Config;
 init_per_group(Group, Config) when
@@ -764,13 +773,21 @@ init_per_group(Group, Config) ->
     aecore_suite_utils:mine_blocks(Node, BlocksToMine),
     Config1.
 
+ensure_sc(Config) ->
+    case lists:keymember(participants, 1, Config) of
+        false -> init_per_group(channel_websocket, Config);
+        true  -> Config
+    end.
+
 end_per_group(Group, _Config) when
       Group =:= all;
       Group =:= block_info;
       Group =:= account_info;
       Group =:= tx_info ->
     ok;
-end_per_group(continuous_sc_ws, Config) ->
+end_per_group(Group, Config) when Group =:= continuous_sc_ws;
+                                  Group =:= sc_ws_v1;
+                                  Group =:= sc_ws_v2 ->
     sc_ws_close_(Config);
 end_per_group(account_with_pending_tx, _Config) ->
     ok;
@@ -778,6 +795,9 @@ end_per_group(oracle_txs, _Config) ->
     ok;
 end_per_group(Group, Config) ->
     ok = stop_node(Group, Config).
+
+end_per_suite(Config) ->
+    stop_all_nodes(Config).
 
 init_per_testcase(post_oracle_register, Config) ->
     %% TODO: assert there is enought balance
@@ -874,6 +894,18 @@ stop_node(true, Group, Config) ->
     end;
 stop_node(false, _Group, _Config) ->
     ok.
+
+stop_all_nodes(Config) ->
+    Nodes = proplists:get_value(nodes, Config, []),
+    lists:foreach(
+      fun({N, NodeName}) ->
+              case net_adm:ping(NodeName) of
+                  pong ->
+                      stop_node_(N, Config);
+                  pang ->
+                      ok
+              end
+      end, Nodes).
 
 stop_node_(Node, Config) ->
     RpcFun = fun(M, F, A) -> rpc(Node, M, F, A) end,
@@ -3472,6 +3504,9 @@ channel_sign_tx(ConnPid, Privkey, Tag, Config) ->
     Tx.
 
 sc_ws_open_(Config) ->
+    sc_ws_open_(Config, #{}).
+
+sc_ws_open_(Config, Other) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
 
@@ -3484,7 +3519,7 @@ sc_ws_open_(Config) ->
 
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
-    ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}, Config),
+    ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config),
     {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, ChannelOpts), Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
@@ -5024,37 +5059,65 @@ sc_ws_generic_messages(Config) ->
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
     #{initiator := IConnPid, responder :=RConnPid}
         = proplists:get_value(channel_clients, Config),
+    Large = large_msg(),
+    MaybeFail = large_msg_outcome(Config),
     lists:foreach(
-        fun({Sender, Msg}) ->
-            {SenderPubkey, ReceiverPubkey, SenderPid, ReceiverPid} =
-                case Sender of
-                    initiator ->
-                        {IPubkey, RPubkey, IConnPid, RConnPid};
-                    responder ->
-                        {RPubkey, IPubkey, RConnPid, IConnPid}
-                end,
-                SenderEncodedK = aehttp_api_encoder:encode(account_pubkey, SenderPubkey),
-                ReceiverEncodedK = aehttp_api_encoder:encode(account_pubkey, ReceiverPubkey),
-                ok = ?WS:register_test_for_channel_event(ReceiverPid, message),
+      fun({Outcome, Sender, Msg}) ->
+              {SenderPubkey, ReceiverPubkey, SenderPid, ReceiverPid} =
+                  case Sender of
+                      initiator ->
+                          {IPubkey, RPubkey, IConnPid, RConnPid};
+                      responder ->
+                          {RPubkey, IPubkey, RConnPid, IConnPid}
+                  end,
+              SenderEncodedK = aehttp_api_encoder:encode(account_pubkey, SenderPubkey),
+              ReceiverEncodedK = aehttp_api_encoder:encode(account_pubkey, ReceiverPubkey),
+              ok = ?WS:register_test_for_channel_event(ReceiverPid, message),
+              ok = ?WS:register_test_for_channel_event(SenderPid, error),
 
-                ws_send(SenderPid, <<"message">>,
-                        #{<<"to">> => ReceiverEncodedK,
-                          <<"info">> => Msg}, Config),
+              ws_send(SenderPid, <<"message">>,
+                      #{<<"to">> => ReceiverEncodedK,
+                        <<"info">> => Msg}, Config),
 
-                {ok, #{<<"message">> := #{<<"from">> := SenderEncodedK,
-                                          <<"to">> := ReceiverEncodedK,
-                                          <<"info">> := Msg}}}
-                    = wait_for_channel_event(ReceiverPid, message, Config),
-                ok = ?WS:unregister_test_for_channel_event(ReceiverPid, message)
+              case Outcome of
+                  ok ->
+                      {ok, #{<<"message">> := #{<<"from">> := SenderEncodedK,
+                                                <<"to">> := ReceiverEncodedK,
+                                                <<"info">> := Msg}}}
+                          = wait_for_channel_event(ReceiverPid, message, Config);
+                  'FAIL' ->
+                      case wait_for_channel_event(SenderPid, error, Config) of
+                          {ok, #{<<"message">> := <<"Invalid request">>}} -> ok;
+                          {ok, #{<<"reason">> := <<"invalid_request">>}} -> ok
+                      end
+              end,
+              ok = ?WS:unregister_test_for_channel_event(ReceiverPid, message),
+              ok = ?WS:unregister_test_for_channel_event(SenderPid, error)
         end,
-      [ {initiator, <<"hejsan">>}                   %% initiator can send
-      , {responder, <<"svejsan">>}                  %% responder can send
-      , {initiator, <<"first message in a row">>}   %% initiator can send two messages in a row
-      , {initiator, <<"second message in a row">>}
-      , {responder, <<"some message">>}             %% responder can send two messages in a row
-      , {responder, <<"other message">>}
+      [ {ok, initiator, <<"hejsan">>}               %% initiator can send
+      , {ok, responder, <<"svejsan">>}                %% responder can send
+      , {ok, initiator, <<"first message in a row">>} %% initiator can send two messages in a row
+      , {ok, initiator, <<"second message in a row">>}
+      , {ok, responder, <<"some message">>}           %% responder can send two messages in a row
+      , {ok, responder, <<"other message">>}
+      , {MaybeFail, initiator, Large}
+      , {MaybeFail, responder, Large}
       ]),
     ok.
+
+large_msg_outcome(Config) ->
+    case ?config(name, ?config(tc_group_properties, Config)) of
+        sc_ws_v2 -> ok;
+        _        -> 'FAIL'
+    end.
+
+large_msg() ->
+    B = iolist_to_binary(lists:duplicate(
+                           60,
+                           [lists:duplicate(100, C)
+                            || C <- [$0,$1,$2,$3,$4,$5,$6,$7,$8,$9]])),
+    60000 = byte_size(B),
+    B.
 
 sc_ws_update_conflict(Config) ->
     Participants = proplists:get_value(participants, Config),
