@@ -1,9 +1,17 @@
 # About this release
 
 [This][this-release] is the stable Minerva release.
-It:
-* Adds all tokens migrated in phase 1 of the token migration
+It contains:
+* The finalization of the Minerva consensus protocol version - in mainnet.
+* Feature refinements.
+
+Please refer to the notes below for details and backward compatibility.
+
+Regarding the Minerva consensus protocol upgrade on mainnet, this release:
 * Sets the Minerva mainnet hard fork height to block 47800 (approximately 6th Mar 2019 1pm CET).
+* Adds all tokens migrated in phase 1 of the token migration.  This takes effect at the Minerva mainnet hardfork height.
+
+Regarding feature refinements:
 * More consistent handling of defaults for state channel on-chain transactions
 * If a fee is specified for an on-chain state channel tx, but is too low, an error will be raised. If no fee is specified, a default fee 10% above the minimum is chosen.
 * If a channel shutdown is requested, but the balances are insufficient to cover the transaction fee, the shutdown request will be rejected right away.
