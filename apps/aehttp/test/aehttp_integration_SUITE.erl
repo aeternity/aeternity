@@ -5905,7 +5905,7 @@ lift_reason(#{ <<"message">> := <<"Rejected">>
     Codes = lists:sort([Code || #{<<"code">> := Code} <- Data]),
     E#{ <<"reason">> => data_code_to_reason(Codes) };
 lift_reason(#{ <<"code">> := Code } = E) ->
-    E#{ <<"reason">> => code_to_reason(Code) };
+    E#{ <<"reason">> => data_code_to_reason([Code]) };
 lift_reason(#{ <<"reason">> := _ } = E) ->
     E.
 
@@ -5920,9 +5920,6 @@ data_code_to_reason([1006])      -> <<"broken_encoding: contracts">>;
 data_code_to_reason([1007])      -> <<"contract_init_failed">>;
 data_code_to_reason([1005,1006]) -> <<"broken_encoding: accounts, contracts">>;
 data_code_to_reason([Code])      -> sc_ws_api_jsonrpc:error_data_msg(Code).
-
-code_to_reason(Code) ->
-    sc_ws_api_jsonrpc:error_msg(Code).
 
 method_pfx(Action) ->
     <<"channels.", (bin(Action))/binary>>.
