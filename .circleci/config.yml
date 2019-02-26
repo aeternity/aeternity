@@ -402,7 +402,7 @@ jobs:
     steps: *test_steps
 
   test_roma:
-    executor: infrastructure_container_stable
+    executor: builder_container_stable
     <<: *container_config
     parallelism: 2
     environment:
@@ -417,7 +417,7 @@ jobs:
     steps: *eunit_steps
 
   eunit_roma:
-    executor: infrastructure_container_stable
+    executor: builder_container_stable
     <<: *container_config
     environment:
       - MAKE_TARGET: eunit-roma
