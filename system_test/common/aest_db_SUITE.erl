@@ -60,7 +60,7 @@ minerva_node_with_epoch_db_can_reuse_db_of_roma_node(Cfg) ->
 
 minerva_node_can_reuse_db_of_roma_node(Cfg) ->
     node_can_reuse_db_of_other_node_(fun roma_node_spec/2, fun node_spec/2,
-                                     [{node_2_custom_setup_fun, fun run_rename_db_script/2} | Cfg]).
+                                     [{rename_db_fun, fun run_rename_db_script/2} | Cfg]).
 
 %=== INTERNAL FUNCTIONS ========================================================
 
@@ -70,14 +70,17 @@ node_can_reuse_db_of_other_node_(NodeSpecFun, Cfg) ->
 node_can_reuse_db_of_other_node_(CreateDbNodeSpecFun, ReuseDbNodeSpecFun, Cfg) ->
     DbHostPath = node_db_host_path(node1, Cfg),
     N1 = CreateDbNodeSpecFun(node1, DbHostPath),
-    N2 = ReuseDbNodeSpecFun(node2, DbHostPath),
-    aest_nodes:setup_nodes([N1, N2], Cfg),
+    aest_nodes:setup_nodes([N1], Cfg),
     start_and_wait_node(node1, ?STARTUP_TIMEOUT, Cfg),
     TargetHeight = 3,
     aest_nodes:wait_for_value({height, TargetHeight}, [node1], TargetHeight * ?MINING_TIMEOUT, Cfg),
     #{hash := BlockHash} = aest_nodes:get_block(node1, TargetHeight),
     aest_nodes:stop_node(node1, ?GRACEFUL_STOP_TIMEOUT, Cfg),
-    run_node_2_custom_setup(Cfg),
+
+    run_db_rename_fun(DbHostPath, Cfg),
+
+    N2 = ReuseDbNodeSpecFun(node2, DbHostPath),
+    aest_nodes:setup_nodes([N2], Cfg),
     start_and_wait_node(node2, ?STARTUP_TIMEOUT, Cfg),
     aest_nodes:wait_for_value({height, TargetHeight}, [node2], ?STARTUP_TIMEOUT, Cfg),
     ?assertMatch({ok, 200, _}, get_block_by_hash(node2, BlockHash)),
@@ -100,24 +103,36 @@ node_db_host_path(NodeName, Config) ->
 format(Fmt, Args) ->
     iolist_to_binary(io_lib:format(Fmt, Args)).
 
-run_rename_db_script(NodeName, Cfg) ->
-    aest_nodes:start_node(NodeName, Cfg),
-    aest_nodes:run_cmd_in_node_dir(NodeName, ["bin/aeternity", "rename_db", "./data/mnesia/schema.DAT"], #{timeout => 5000}, Cfg),
-    aest_nodes:stop_container(NodeName, ?GRACEFUL_STOP_TIMEOUT, Cfg).
-
-run_node_2_custom_setup(Cfg) ->
-    case proplists:lookup(node_2_custom_setup_fun, Cfg) of
+run_db_rename_fun(DbHostPath, Cfg) ->
+    case proplists:lookup(rename_db_fun, Cfg) of
         none ->
             ok;
-        {node_2_custom_setup_fun, Fun} ->
-            Fun(node2, Cfg)
+        {rename_db_fun, Fun} ->
+            Fun(DbHostPath, Cfg)
     end.
+
+run_rename_db_script(DbHostPath, Cfg) ->
+    N3 = node_spec_custom_entrypoint(node3, DbHostPath),
+    aest_nodes:setup_nodes([N3], Cfg),
+    aest_nodes:start_node(node3, Cfg),
+    aest_nodes:run_cmd_in_node_dir(node3, ["bin/aeternity", "console"], #{timeout => 5000}, Cfg),
+    aest_nodes:run_cmd_in_node_dir(node3, ["bin/aeternity", "rename_db", "./data/mnesia/schema.DAT"], #{timeout => 5000}, Cfg),
+    aest_nodes:stop_container(node3, ?GRACEFUL_STOP_TIMEOUT, Cfg).
 
 node_spec(Name, DbHostPath) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
     aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:local"},
                                 db_path => {DbHostPath, DbGuestPath},
                                 genesis_accounts => genesis_accounts()}).
+
+node_spec_custom_entrypoint(Name, DbHostPath) ->
+    DbGuestPath = "/home/aeternity/node/data/mnesia",
+    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:local"},
+                                db_path => {DbHostPath, DbGuestPath},
+                                entrypoint => [<<"sleep">>],
+                                custom_command => [<<"98127308917209371890273">>]}).
+%%                              entrypoint => [""],
+%%                              custom_command => ["/home/aeternity/node/bin/aeternity", "rename_db", "./data/mnesia/schema.DAT"]}).
 
 %% Last Roma release.
 roma_node_spec(Name, DbHostPath) ->

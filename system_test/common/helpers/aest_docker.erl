@@ -78,7 +78,8 @@
     % proplist of encoded addresses and balances
     genesis_accounts => [{binary(), non_neg_integer()}],
     % the path to the accounts_test.json to be used for genesis block
-    genesis => file:filename_all()
+    genesis => file:filename_all(),
+    entrypoint => [list()] | undefined
 }.
 
 %% State of a node
@@ -242,10 +243,14 @@ setup_node(Spec, BackendState) ->
     Context = #{aeternity_config => RootVars},
     {ok, ConfigString} = write_template(TemplateFile, ConfigFileHostPath, Context),
     Command =
-        case MineRate of
-            default -> [];
-            _ when is_integer(MineRate), MineRate > 0 ->
-                ["-aecore", "expected_mine_rate", MineRate]
+        case maps:find(custom_command, Spec) of
+            error ->
+                case MineRate of
+                    default -> [];
+                    _ when is_integer(MineRate), MineRate > 0 ->
+                        ["-aecore", "expected_mine_rate", MineRate]
+                end;
+            {ok, CustomCommand} -> CustomCommand
         end,
     LogPath = filename:join(TempDir, format("~s_logs", [Name])),
     ok = filelib:ensure_dir(filename:join(LogPath, "DUMMY")),
@@ -291,7 +296,8 @@ setup_node(Spec, BackendState) ->
             {rw, LogPath, ?EPOCH_LOG_FOLDER}] ++
             [ {ro, Genesis, ?EPOCH_GENESIS_FILE} || Genesis =/= undefined ] ++
             [ {rw, element(1, DbPath), element(2, DbPath)} || DbPath =/= undefined ],
-        ports => PortMapping
+        ports => PortMapping,
+        entrypoint => maps:get(entrypoint, Spec, ["/docker-entrypoint.sh"])
     },
     #{'Id' := ContId} = aest_docker_api:create_container(Hostname, DockerConfig),
     log(NodeState, "Container ~p [~s] created", [Name, ContId]),
