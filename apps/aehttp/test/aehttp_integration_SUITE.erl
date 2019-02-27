@@ -234,6 +234,9 @@
 -define(WS, aehttp_ws_test_utils).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 
+-define(RETRY(N, Expr), retry(N, fun() -> Expr end, ?LINE)).
+
+
 all() ->
     [
      {group, all}
@@ -637,7 +640,7 @@ init_per_group(on_micro_block = Group, Config) ->
     {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, 20000),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
-    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    ?RETRY(3, {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity])),
     true = aec_blocks:is_key_block(KeyBlock),
     false = aec_blocks:is_key_block(MicroBlock),
     {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
@@ -701,7 +704,7 @@ init_per_group(tx_is_on_chain = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
     {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
-    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    ?RETRY(3, {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity])),
     true = aec_blocks:is_key_block(KeyBlock),
     false = aec_blocks:is_key_block(MicroBlock),
     [Tx] = aec_blocks:txs(MicroBlock),
@@ -1577,7 +1580,7 @@ nonce_limit(Config) ->
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 5),
 
     aecore_suite_utils:mine_all_txs(Node),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])),
 
     Txs = lists:map(
             fun(_N) ->
@@ -2462,7 +2465,7 @@ oracle_transactions(_Config) ->
     ct:log("Before oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
     ok = wait_for_tx_hash_on_chain(RegisterTxHash),
     ct:log("Oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])), % empty
 
     % oracle_extend_tx positive test
     ExtEncoded = #{oracle_id => aehttp_api_encoder:encode(oracle_pubkey, MinerPubkey),
@@ -2504,7 +2507,7 @@ oracle_transactions(_Config) ->
 
     % mine blocks to include it
     ok = wait_for_tx_hash_on_chain(QueryTxHash),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])), % empty
 
     ResponseEncoded = #{oracle_id => OracleAddress,
                         query_id => aehttp_api_encoder:encode(oracle_query_id,
@@ -2677,7 +2680,7 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
 
     %% Mine a block and check mempool empty again
     ok = wait_for_tx_hash_on_chain(PreclaimTxHash),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])),
 
     Encoded = #{account_id => MinerAddress,
                 name => aehttp_api_encoder:encode(name, Name),
@@ -3101,7 +3104,7 @@ pending_transactions(_Config) ->
     Delay = rpc(aec_governance, beneficiary_reward_delay, []),
     aecore_suite_utils:mine_key_blocks(Node, Delay),
 
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])), % empty
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
     InitialBalance =
         case get_balance_at_top() of
@@ -3125,7 +3128,7 @@ pending_transactions(_Config) ->
     ?assertEqual(Bal0, InitialBalance + ExpectedReward),
     true = (is_integer(Bal0) andalso Bal0 >= AmountToSpent),
 
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % still empty
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])), % still empty
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
     ReceiverPubKey = random_hash(),
@@ -3150,7 +3153,7 @@ pending_transactions(_Config) ->
         [aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))
             || SignedTx <- NodeTxs],
     {ok, MinedBlocks2a} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, PendingTxHashes2, 10),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])), % empty again
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
     %% Make sure we get the reward...
@@ -3311,7 +3314,7 @@ naming_system_manage_name(_Config) ->
     Fee         = 100000,
 
     %% Check mempool empty
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])),
     {ok, 200, #{<<"balance">> := Balance}} = get_accounts_by_pubkey_sut(PubKeyEnc),
 
     %% Get commitment hash to preclaim a name
@@ -3329,7 +3332,7 @@ naming_system_manage_name(_Config) ->
 
     %% Mine a block and check mempool empty again
     ok = wait_for_tx_hash_on_chain(PreclaimTxHash),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])),
 
     %% Check fee taken from account
     {ok, 200, #{<<"balance">> := Balance1}} = get_accounts_by_pubkey_sut(PubKeyEnc),
@@ -3345,7 +3348,7 @@ naming_system_manage_name(_Config) ->
 
     %% Mine a block and check mempool empty again
     ok = wait_for_tx_hash_on_chain(ClaimTxHash),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])),
 
     %% Check tx fee taken from account, claim fee locked,
     %% then mine reward and fee added to account
@@ -3373,7 +3376,7 @@ naming_system_manage_name(_Config) ->
 
     %% Mine a block and check mempool empty again
     ok = wait_for_tx_hash_on_chain(UpdateTxHash),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])),
 
     {ok, 200, #{<<"balance">> := Balance3}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     ?assertEqual(Balance3, Balance2 - Fee),
@@ -3390,7 +3393,7 @@ naming_system_manage_name(_Config) ->
     SpendTxHash = sign_and_post_tx(EncodedSpendTx, PrivKey),
 
     ok = wait_for_tx_hash_on_chain(SpendTxHash),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])),
 
     %% Only fee is lost as recipient = sender
     %% This tests 'resolve_name' because recipient is expressed by name label
@@ -3407,7 +3410,7 @@ naming_system_manage_name(_Config) ->
 
     %% Mine a block and check mempool empty again
     ok = wait_for_tx_hash_on_chain(TransferTxHash),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])),
 
     %% Check balance
     {ok, 200, #{<<"balance">> := Balance5}} = get_accounts_by_pubkey_sut(PubKeyEnc),
@@ -3422,7 +3425,7 @@ naming_system_manage_name(_Config) ->
 
     %% Mine a block and check mempool empty again
     ok = wait_for_tx_hash_on_chain(RevokeTxHash),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])),
 
     %% Check balance
     {ok, 200, #{<<"balance">> := Balance6}} = get_accounts_by_pubkey_sut(PubKeyEnc),
@@ -3442,7 +3445,7 @@ naming_system_broken_txs(_Config) ->
     % these tests require that no accounts are present
     ok = rpc(aec_conductor, reinit_chain, []),
     %% Check mempool empty
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])),
 
     %% Try to submit txs with empty account
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
@@ -3475,7 +3478,7 @@ naming_system_broken_txs(_Config) ->
                           name_id => aehttp_api_encoder:encode(name, NHash),
                           fee => Fee}),
     %% Check mempool still empty
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])),
     ForkHeight = aecore_suite_utils:latest_fork_height(),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    ForkHeight),
@@ -5779,7 +5782,7 @@ random_hash() ->
 
 prepare_for_spending(BlocksToMine) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), BlocksToMine + 1),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+    ?RETRY(3, {ok, []} = rpc(aec_tx_pool, peek, [infinity])), % empty
     {ok, 200, _} = get_balance_at_top(), % account present
     {_, PubKey} = aecore_suite_utils:sign_keys(?NODE),
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [PubKey]),
@@ -6165,3 +6168,12 @@ sc_ws_broken_call_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
     #{<<"return_type">> := <<"error">>} = Res,
     ok.
 
+retry(N, F, Line) when N > 0 ->
+    try F()
+    catch Other ->
+            ct:log("Unexpected (L=~p): ~p", [Line, Other]),
+            timer:sleep(500),
+            retry(N-1, F, Line)
+    end;
+retry(0, _, _) ->
+    error(retry_exhausted).
