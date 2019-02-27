@@ -1,16 +1,16 @@
 # Running an aeternity node on Docker
 
 This document describes:
-* [How to join the Roma network using Docker](#roma-network);
+* [How to join the mainnet using Docker](#mainnet);
 * [How to use the Docker image](#docker-image);
 * [How to join the testnet using Docker](#testnet);
 * [How to run a local network using Docker](#localnet).
 
 You must have [docker installed](https://docs.docker.com/engine/installation/) on a host machine and **be familiar [how to operate docker containers](https://docs.docker.com)**.
 
-## Roma Network
+## Mainnet
 
-The default node configuration is sufficient to join the Roma network:
+The default node configuration is sufficient to join the mainnet:
 
 ```bash
 docker pull aeternity/aeternity
@@ -19,7 +19,7 @@ docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity
 
 You should see the console output of the running node and a lot of information related to syncing with the network.
 
-[Verify if your node is connected to Roma network.](operation.md#verify-that-node-is-connected-to-the-roma-network)
+[Verify if your node is connected to mainnet.](operation.md#verify-that-node-is-connected-to-the-mainnet)
 
 
 ## Docker Image
@@ -72,13 +72,13 @@ chain:
 ```
 
 Assuming your configuration file path is `~/.aeternity/myaeternity.yaml` on host machine.
-Replace `~/.aeternity/db_roma` with location of your choice where the data will be stored in.
+Replace `~/.aeternity/myaedb` with location of your choice where the data will be stored in.
 
 ```bash
-mkdir -p ~/.aeternity/db_roma
+mkdir -p ~/.aeternity/myaedb
 docker run -p 3013:3013 -p 3015:3015 \
   -v ~/.aeternity/myaeternity.yaml:/home/aeternity/.aeternity/aeternity/aeternity.yaml \
-  -v ~/.aeternity/db_roma:/home/aeternity/node/data/mnesia \
+  -v ~/.aeternity/myaedb:/home/aeternity/node/data/mnesia \
   aeternity/aeternity
 ```
 

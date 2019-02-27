@@ -99,7 +99,7 @@ the WebSocket endpoint is not exposed.
 
 ## Network ID
 
-The release package is preconfigured with Roma network_id. Please change the configuration to interact with testnet.
+The release package is preconfigured with mainnet network_id. Please change the configuration to interact with testnet.
 The testnet (internally called UAT) has the network ID `ae_uat` - this is set in the configuration:
 
 ```yaml
@@ -107,14 +107,14 @@ fork_management:
     network_id: ae_uat
 ```
 
-For Roma network the network ID defaults to `ae_mainnet`.
+For mainnet network the network ID defaults to `ae_mainnet`.
 
 ## Instructions
 
 The instructions below assume that:
 
 * The node is deployed in directory `~/aeternity/node`;
-* No custom peers are specified under the `peers` key in the config. If the `peers` key is undefined, the *Roma network* seed peers (built-in in the package source) are used.
+* No custom peers are specified under the `peers` key in the config. If the `peers` key is undefined, the *mainnet* seed peers (built-in in the package source) are used.
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
