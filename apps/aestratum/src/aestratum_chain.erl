@@ -46,6 +46,7 @@
 
 -record(state,
         {last_keyblock,
+         new_keyblock_candidate,
          benef_sum_pcts,
          caller_account,
          sign_priv_key,
@@ -55,7 +56,6 @@
 %%% API
 %%%===================================================================
 
-%%
 start_link(BenefSumPcts, {_, _} = Keys) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [BenefSumPcts, Keys], []).
 
@@ -78,6 +78,8 @@ init([BenefSumPcts, {SignPubKey, SignPrivKey}]) ->
     {contract_pubkey, ContractPK} = aehttp_api_encoder:decode(?PAYMENT_CONTRACT),
     Contract1 = Contract#{contract_pk => ContractPK},
 
+    aec_events:subscribe(stratum_new_candidate),
+
     {ok, #state{last_keyblock = aec_chain:top_key_block_hash(),
                 benef_sum_pcts = BenefSumPcts,
                 caller_account = CallerAccount,
@@ -92,7 +94,6 @@ handle_call(_Req, _From, State) ->
 handle_cast({payout_rewards, Height, BlockReward, PoolRewards, MinersRewards}, State) ->
     spawn(fun () -> send_payments(Height, BlockReward, PoolRewards, MinersRewards, State) end),
     {noreply, State};
-
 handle_cast(_Req, State) ->
     {noreply, State}.
 
@@ -101,12 +102,19 @@ handle_info(chain_top_check, #state{} = State) ->
     NewKB = aec_chain:top_key_block_hash(),
     NewKB == State#state.last_keyblock orelse aestratum_reward:keyblock(),
     {noreply, State#state{last_keyblock = NewKB}};
-
-
 handle_info(chain_payment_tx_check, #state{} = State) ->
     delete_complete_payments(),
     {noreply, State};
-
+handle_info({gproc_ps_event, stratum_new_candidate, #{info := Info}}, State) ->
+    lager:debug("New candidate in stratum"),
+    State1 = case Info of
+                {_HeaderBin, _Candidate, _Target} ->
+                    State#state{new_keyblock_candidate = Info};
+                _ ->
+                    lager:info("Malformed Candidate for Stratum ~p", [Info]),
+                    State
+    end,
+    {noreply, State1};
 handle_info(_Req, State) ->
     {noreply, State}.
 

@@ -49,5 +49,6 @@
                 consensus                         :: #consensus{},
                 beneficiary                       :: <<_:(32*8)>> | 'undefined',
                 fraud_list              = []      :: list({binary(), aec_pof:pof()}),
-                pending_key_block                 :: aec_blocks:block() | 'undefined'
+                pending_key_block                 :: aec_blocks:block() | 'undefined',
+                stratum_mode            = false   :: boolean() | 'undefined'
                }).
