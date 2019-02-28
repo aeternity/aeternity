@@ -409,13 +409,17 @@ get_beneficiary() ->
     end.
 
 set_stratum_mode(State) ->
-    StratumMode = case aeu_env:user_config_or_env([<<"stratum">>, <<"enabled">>], aecore, stratum_enabled) of
-                      {ok, IsStratumEnabled} ->
-                          IsStratumEnabled;
-                      undefined ->
-                          false
-                  end,
-    State#state{stratum_mode=StratumMode}.
+    case aeu_env:user_config_or_env([<<"stratum">>, <<"enabled">>], aecore, stratum_enabled) of
+        {ok, true} ->
+            {ok, Dir} = aeu_env:user_config_or_env(
+                          [<<"stratum">>, <<"reward">>, <<"keys">>, <<"dir">>],
+                          aecore, stratum_reward_keys_dir),
+            {PubKey, _PrivKey} = aestratum_config:read_keys(Dir),
+            State#state{stratum_mode = true,
+                        beneficiary  = PubKey};
+        _ ->
+            State#state{stratum_mode = false}
+    end.
 
 %%%===================================================================
 %%% Handle monitor messages
@@ -799,7 +803,7 @@ start_mining_(#state{key_block_candidates = undefined,
     %% The candidate can be retrieved via the API and other nodes can mine it.
     State1 = kill_all_workers_with_tag(create_key_block_candidate, State),
     create_key_block_candidate(State1);
-start_mining_(#state{mining_state = stopped} = State) ->
+start_mining_(#state{stratum_mode = false, mining_state = stopped} = State) ->
     State;
 start_mining_(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}} | _],
                     top_block_hash = TopHash } = State) when OldHash =/= TopHash ->
@@ -1039,6 +1043,7 @@ handle_signed_block(Block, State) ->
 
 ok({ok, Value}) ->
     Value.
+
 
 handle_add_block(Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(Block),
