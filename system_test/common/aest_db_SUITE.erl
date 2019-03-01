@@ -112,6 +112,8 @@ run_db_rename_fun(DbHostPath, Cfg) ->
     end.
 
 run_rename_db_script(DbHostPath, Cfg) ->
+    {ok, DbSchema} = file:read_file(filename:join(DbHostPath, "schema.DAT")),
+    {error, _} = file:read_file(filename:join(DbHostPath, "schema.DAT.backup")),
     N3 = node_spec_custom_entrypoint(node3, DbHostPath),
     aest_nodes:setup_nodes([N3], Cfg),
     aest_nodes:start_node(node3, Cfg),
