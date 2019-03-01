@@ -79,7 +79,6 @@ references:
 
   tag_regex: &tag_regex /^v.*$/
   stable_tag_regex: &stable_tag_regex /^v2\..*$/
-  next_tag_regex: &next_tag_regex /^v2\..*fortuna.*$/
   next_branch: &next_branch fortuna
 
   rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
