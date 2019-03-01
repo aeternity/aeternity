@@ -58,7 +58,8 @@ stop_node(NodeState, _Opts) -> NodeState.
 kill_node(_NodeState) ->
     error({not_supported, ?FUNCTION_NAME}).
 
-stop_container(NodeState, _Opts) -> NodeState.
+stop_container(NodeState, _Opts) ->
+    error({not_supported, ?FUNCTION_NAME}).
 
 node_logs(_NodeState) ->
     error({not_supported, ?FUNCTION_NAME}).
