@@ -79,7 +79,10 @@
     genesis_accounts => [{binary(), non_neg_integer()}],
     % the path to the accounts_test.json to be used for genesis block
     genesis => file:filename_all(),
-    entrypoint => [string(), ...]
+    entrypoint => [string(), ...],
+    % Mind that using custom_command cancels usage of mine_rate (default mine_rate is used).
+    % Technically mine_rate is passed as a command to Docker, which is overwritten by custom_command (if used).
+    custom_command => [string(), ...]
 }.
 
 %% State of a node
@@ -281,7 +284,7 @@ setup_node(Spec, BackendState) ->
                 ok = filelib:ensure_dir(filename:join(element(1, TmpDbPath), "DUMMY")),
                 TmpDbPath
         end,
-    DockerConfig = #{
+    DockerConfig0 = #{
         hostname => Hostname,
         network => Network,
         image => Image,
@@ -296,9 +299,13 @@ setup_node(Spec, BackendState) ->
             {rw, LogPath, ?EPOCH_LOG_FOLDER}] ++
             [ {ro, Genesis, ?EPOCH_GENESIS_FILE} || Genesis =/= undefined ] ++
             [ {rw, element(1, DbPath), element(2, DbPath)} || DbPath =/= undefined ],
-        ports => PortMapping,
-        entrypoint => maps:get(entrypoint, Spec, ["/docker-entrypoint.sh"])
+        ports => PortMapping
     },
+    DockerConfig =
+        case maps:find(entrypoint, Spec) of
+            {ok, Entrypoint} -> DockerConfig0#{entrypoint => Entrypoint};
+            error -> DockerConfig0
+        end,
     #{'Id' := ContId} = aest_docker_api:create_container(Hostname, DockerConfig),
     log(NodeState, "Container ~p [~s] created", [Name, ContId]),
 
