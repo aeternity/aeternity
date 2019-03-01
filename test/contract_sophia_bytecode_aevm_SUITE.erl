@@ -75,14 +75,15 @@ all() -> [ execute_identity_fun_from_sophia_file,
 
 compile_contract(Name) ->
     FileName = filename:join(["contracts", atom_to_list(Name) ++ ".aes"]),
+    {ok, Source} = aect_test_utils:read_contract(FileName),
     {ok, Serialized} = aect_test_utils:compile_contract(FileName),
-    Serialized.
+    #{source => Source, bytecode => Serialized}.
 
 %% execute_call(Contract, CallData, ChainState) ->
 %%     execute_call(Contract, CallData, ChainState, #{}).
 
 execute_call(Contract, CallData, ChainState, Options) ->
-    #{Contract := SerializedCode} = ChainState,
+    #{Contract := #{bytecode := SerializedCode}} = ChainState,
     ChainState1 = ChainState#{ running => Contract },
     #{ byte_code := Code,
        type_info := TypeInfo
@@ -180,40 +181,35 @@ do_execute_call(#{ code := Code
     Result.
 
 
-make_call(Contract, Fun, Type, Args, Env, Options) ->
-    #{ Contract := Code } = Env,
-    TypeBin = list_to_binary(Type),
+make_call(Contract, Fun, Args, Env, Options) ->
+    #{Contract := #{source := Code}} = Env,
     FunBin  = atom_to_binary(Fun, utf8),
-    TypeSig = <<FunBin/binary, " : ", TypeBin/binary, " => _">>,
-    {ok, CallData} = aect_sophia:encode_call_data(Code, TypeSig,
-                                                  list_to_binary(Args)),
+    ArgsBin = [ list_to_binary(A) || A <- Args ],
+    {ok, CallData} = aect_sophia:encode_call_data(Code, FunBin, ArgsBin),
     execute_call(Contract, CallData, Env, Options).
 
-create_contract(Address, Code, ArgType, Args, Env) ->
+create_contract(Address, Code, Args, Env) ->
+    create_contract(Address, Code, Args, Env, #{}).
+
+create_contract(Address, Code, Args, Env, Options) ->
     Env1 = Env#{Address => Code},
-    {ok, InitS, Env2} = make_call(Address, init, ArgType, Args, Env1, #{}),
+    {ok, InitS, Env2} = make_call(Address, init, Args, Env1, Options),
     {ok, Store} = aevm_eeevm_store:from_sophia_state(#{vm => ?VM_SOPHIA, abi => ?ABI_SOPHIA}, InitS),
     set_store(Store, Env2).
 
-create_contract(Address, Code, ArgType, Args, Env, Options) ->
-    Env1 = Env#{Address => Code},
-    {ok, InitS, Env2} = make_call(Address, init, ArgType, Args, Env1, Options),
-    {ok, Store} = aevm_eeevm_store:from_sophia_state(#{vm => ?VM_SOPHIA, abi => ?ABI_SOPHIA}, InitS),
-    set_store(Store, Env2).
-
-successful_call_(Contract, Type, Fun, ArgType, Args, Env) ->
-    {Res, _Env1} = successful_call(Contract, Type, Fun, ArgType, Args, Env),
+successful_call_(Contract, Type, Fun, Args, Env) ->
+    {Res, _Env1} = successful_call(Contract, Type, Fun, Args, Env),
     Res.
 
-successful_call_(Contract, Type, Fun, ArgType, Args, Env, Options) ->
-    {Res, _Env1} = successful_call(Contract, Type, Fun, ArgType, Args, Env, Options),
+successful_call_(Contract, Type, Fun, Args, Env, Options) ->
+    {Res, _Env1} = successful_call(Contract, Type, Fun, Args, Env, Options),
     Res.
 
-successful_call(Contract, Type, Fun, ArgType, Args, Env) ->
-    successful_call(Contract, Type, Fun, ArgType, Args, Env, #{}).
+successful_call(Contract, Type, Fun, Args, Env) ->
+    successful_call(Contract, Type, Fun, Args, Env, #{}).
 
-successful_call(Contract, Type, Fun, ArgType, Args, Env, Options) ->
-    case make_call(Contract, Fun, ArgType, Args, Env, Options) of
+successful_call(Contract, Type, Fun, Args, Env, Options) ->
+    case make_call(Contract, Fun, Args, Env, Options) of
         {ok, Result, Env1} ->
             case aeso_heap:from_binary(Type, Result) of
                 {ok, V} -> {V, Env1};
@@ -227,11 +223,11 @@ successful_call(Contract, Type, Fun, ArgType, Args, Env, Options) ->
             exit(revert)
     end.
 
-failing_call(Contract, Fun, Type, Args, Env) ->
-    failing_call(Contract, Fun, Type, Args, Env, #{}).
+failing_call(Contract, Fun, Args, Env) ->
+    failing_call(Contract, Fun, Args, Env, #{}).
 
-failing_call(Contract, Fun, Type, Args, Env, Options) ->
-    case make_call(Contract, Fun, Type, Args, Env, Options) of
+failing_call(Contract, Fun, Args, Env, Options) ->
+    case make_call(Contract, Fun, Args, Env, Options) of
         {ok, Result, _} ->
             Words = aevm_test_utils:dump_words(Result),
             exit({expected_failure, {ok, Words}});
@@ -241,11 +237,11 @@ failing_call(Contract, Fun, Type, Args, Env, Options) ->
             Err
     end.
 
-reverting_call(Contract, Fun, Type, Args, Env) ->
-    reverting_call(Contract, Fun, Type, Args, Env, #{}).
+reverting_call(Contract, Fun, Args, Env) ->
+    reverting_call(Contract, Fun, Args, Env, #{}).
 
-reverting_call(Contract, Fun, Type, Args, Env, Options) ->
-    case make_call(Contract, Fun, Type, Args, Env, Options) of
+reverting_call(Contract, Fun, Args, Env, Options) ->
+    case make_call(Contract, Fun, Args, Env, Options) of
         {ok, Result, _} ->
             Words = aevm_test_utils:dump_words(Result),
             exit({expected_revert, {ok, Words}});
@@ -259,93 +255,93 @@ reverting_call(Contract, Fun, Type, Args, Env, Options) ->
 execute_identity_fun_from_sophia_file(_Cfg) ->
     Code = compile_contract(identity),
     Env0 = initial_state(#{}),
-    Env  = create_contract(101, Code, "()", "", Env0),
-    42   = successful_call_(101, word, main, "int", "42", Env),
+    Env  = create_contract(101, Code, [], Env0),
+    42   = successful_call_(101, word, main, ["42"], Env),
     ok.
 
 sophia_remote_call(_Cfg) ->
     IdCode     = compile_contract(identity),
     CallerCode = compile_contract(remote_call),
-    Env        = create_contract(16#1234, IdCode, "()", "",
-                 create_contract(1, CallerCode, "()", "",
+    Env        = create_contract(16#1234, IdCode, [],
+                 create_contract(1, CallerCode, [],
                     initial_state(#{}, #{1 => 20000}))),
-    42         = successful_call_(1, word, call, "(address, int)", "#1234, 42", Env),
+    42         = successful_call_(1, word, call, ["#1234", "42"], Env),
     ok.
 
 sophia_remote_call_negative(_Cfg) ->
     IdCode     = compile_contract(identity),
     CallerCode = compile_contract(remote_call),
     %% The call fails for insufficient balance for the value specified in the remote call.
-    Env        = create_contract(16#1234, IdCode, "()", "",
-                 create_contract(1, CallerCode, "()", "",
+    Env        = create_contract(16#1234, IdCode, [],
+                 create_contract(1, CallerCode, [],
                     initial_state(#{}))),
-    out_of_gas = failing_call(1, call, "(address, int)", "#1234, 42", Env),
+    out_of_gas = failing_call(1, call, ["#1234", "42"], Env),
     ok.
 
 sophia_factorial(_Cfg) ->
     Code    = compile_contract(factorial),
-    Env     = create_contract(999001, Code, "int", "999002",
-              create_contract(999002, Code, "int", "999001",
+    Env     = create_contract(999001, Code, [encode_address(999002)],
+              create_contract(999002, Code, [encode_address(999001)],
                 initial_state(#{}))),
-    3628800 = successful_call_(999001, word, fac, "int", "10", Env),
+    3628800 = successful_call_(999001, word, fac, ["10"], Env),
     ok.
 
 simple_multi_argument_call(_Cfg) ->
     RemoteCode = compile_contract(remote_call),
-    Env        = create_contract(103, RemoteCode, "()", "", initial_state(#{})),
-    19911      = successful_call_(103, word, plus, "(int, int)", "9900,10011", Env),
+    Env        = create_contract(103, RemoteCode, [], initial_state(#{})),
+    19911      = successful_call_(103, word, plus, ["9900", "10011"], Env),
     ok.
 
 remote_multi_argument_call(_Cfg) ->
     IdCode     = compile_contract(identity),
     RemoteCode = compile_contract(remote_call),
-    Env        = create_contract(16#101, IdCode, "()", "",
-                 create_contract(16#102, RemoteCode, "()", "",
-                 create_contract(16#103, RemoteCode, "()", "",
+    Env        = create_contract(16#101, IdCode, [],
+                 create_contract(16#102, RemoteCode, [],
+                 create_contract(16#103, RemoteCode, [],
                  initial_state(#{}, #{16#102 => 20000})))),
-    42         = successful_call_(16#102, word, staged_call, "(address, address, int)", "#101,#102,42", Env),
+    42         = successful_call_(16#102, word, staged_call, ["#101", "#102", "42"], Env),
     ok.
 
 spend_tests(_Cfg) ->
     Code = compile_contract(spend_test),
-    Env  = create_contract(101, Code, "()", "",
-           create_contract(102, Code, "()", "",
+    Env  = create_contract(101, Code, [],
+           create_contract(102, Code, [],
            initial_state(#{}, #{ 101 => 1000, 102 => 2000, 1 => 10000 }))),
-    {900, Env1}  = successful_call(101, word, withdraw, "int", "100", Env, #{caller => 102}),
-    {900, Env2}  = successful_call(101, word, get_balance, "()", "", Env1),
-    {2100, Env3} = successful_call(102, word, get_balance, "()", "", Env2),
+    {900, Env1}  = successful_call(101, word, withdraw, ["100"], Env, #{caller => 102}),
+    {900, Env2}  = successful_call(101, word, get_balance, [], Env1),
+    {2100, Env3} = successful_call(102, word, get_balance, [], Env2),
     %% The call fails with out_of_gas
-    out_of_gas   = failing_call(101, withdraw, "int", "1000", Env3, #{caller => 102}),
-    900          = successful_call_(101, word, get_balance, "()", "", Env3),
-    2100         = successful_call_(102, word, get_balance, "()", "", Env3),
+    out_of_gas   = failing_call(101, withdraw, ["1000"], Env3, #{caller => 102}),
+    900          = successful_call_(101, word, get_balance, [], Env3),
+    2100         = successful_call_(102, word, get_balance, [], Env3),
     %% Spending in nested call
-    {900, Env4}  = successful_call(101, word, withdraw_from, "(int, int)", "102,1000", Env3, #{caller => 1}),
+    {900, Env4}  = successful_call(101, word, withdraw_from, [encode_address(102), "1000"], Env3, #{caller => 1}),
     #{1 := 11000, 101 := 900, 102 := 1100} = maps:get(accounts, Env4),
     ok.
 
 complex_types(_Cfg) ->
     Code = compile_contract(complex_types),
     Env0 = initial_state(#{}),
-    Env  = create_contract(101, Code, "int", "101", Env0),
-    21                      = successful_call_(101, word, sum, "list(int)", "[1,2,3,4,5,6]", Env),
-    [1, 2, 3, 4, 5, 6]      = successful_call_(101, {list, word}, up_to, "int", "6", Env),
-    [1, 2, 3, 4, 5, 6]      = successful_call_(101, {list, word}, remote_list, "int", "6", Env),
-    {<<"answer:">>, 21}     = successful_call_(101, {tuple, [string, word]}, remote_triangle, "(int, int)", "101,6", Env),
-    <<"string">>            = successful_call_(101, string, remote_string, "()", "", Env),
-    {99, <<"luftballons">>} = successful_call_(101, {tuple, [word, string]}, remote_pair, "(int, string)", "99,\"luftballons\"", Env),
-    [1, 2, 3]               = successful_call_(101, {list, word}, filter_some, "list(option(int))", "[None, Some(1), Some(2), None, Some(3)]", Env),
-    [1, 2, 3]               = successful_call_(101, {list, word}, remote_filter_some, "list(option(int))", "[None, Some(1), Some(2), None, Some(3)]", Env),
+    Env  = create_contract(101, Code, [encode_address(101)], Env0),
+    21                      = successful_call_(101, word, sum, ["[1,2,3,4,5,6]"], Env),
+    [1, 2, 3, 4, 5, 6]      = successful_call_(101, {list, word}, up_to, ["6"], Env),
+    [1, 2, 3, 4, 5, 6]      = successful_call_(101, {list, word}, remote_list, ["6"], Env),
+    {<<"answer:">>, 21}     = successful_call_(101, {tuple, [string, word]}, remote_triangle, [encode_address(101), "6"], Env),
+    <<"string">>            = successful_call_(101, string, remote_string, [], Env),
+    {99, <<"luftballons">>} = successful_call_(101, {tuple, [word, string]}, remote_pair, ["99", "\"luftballons\""], Env),
+    [1, 2, 3]               = successful_call_(101, {list, word}, filter_some, ["[None, Some(1), Some(2), None, Some(3)]"], Env),
+    [1, 2, 3]               = successful_call_(101, {list, word}, remote_filter_some, ["[None, Some(1), Some(2), None, Some(3)]"], Env),
 
-    {some, [1, 2, 3]}       = successful_call_(101, {option, {list, word}}, all_some, "list(option(int))", "[Some(1), Some(2), Some(3)]", Env),
-    none                    = successful_call_(101, {option, {list, word}}, all_some, "list(option(int))", "[Some(1), None, Some(3)]", Env),
+    {some, [1, 2, 3]}       = successful_call_(101, {option, {list, word}}, all_some, ["[Some(1), Some(2), Some(3)]"], Env),
+    none                    = successful_call_(101, {option, {list, word}}, all_some, ["[Some(1), None, Some(3)]"], Env),
 
-    {some, [1, 2, 3]}       = successful_call_(101, {option, {list, word}}, remote_all_some, "list(option(int))", "[Some(1), Some(2), Some(3)]", Env),
-    none                    = successful_call_(101, {option, {list, word}}, remote_all_some, "list(option(int))", "[Some(1), None, Some(3)]", Env),
+    {some, [1, 2, 3]}       = successful_call_(101, {option, {list, word}}, remote_all_some, ["[Some(1), Some(2), Some(3)]"], Env),
+    none                    = successful_call_(101, {option, {list, word}}, remote_all_some, ["[Some(1), None, Some(3)]"], Env),
 
     N       = 10,
     Squares = [ {I, I * I} || I <- lists:seq(1, N) ],
-    Squares = successful_call_(101, {list, {tuple, [word, word]}}, squares, "int", integer_to_list(N), Env),
-    Squares = successful_call_(101, {list, {tuple, [word, word]}}, remote_squares, "int", integer_to_list(N), Env),
+    Squares = successful_call_(101, {list, {tuple, [word, word]}}, squares, [integer_to_list(N)], Env),
+    Squares = successful_call_(101, {list, {tuple, [word, word]}}, remote_squares, [integer_to_list(N)], Env),
     ok.
 
 environment(_Cfg) ->
@@ -374,14 +370,14 @@ environment(_Cfg) ->
                },
     State0 = initial_state(#{environment => ChainEnv},
                            #{Address => Balance, Caller => CallerBalance}),
-    State   = create_contract(Address2, Code, "int", integer_to_list(Address),
-              create_contract(Address, Code, "int", integer_to_list(Address2), State0)),
+    State   = create_contract(Address2, Code, [encode_address(Address)],
+              create_contract(Address, Code, [encode_address(Address2)], State0)),
     Options = maps:merge(#{ caller => Caller, value  => Value }, ChainEnv),
-    Call1   = fun(Fun, Arg) -> successful_call_(Address, word, Fun, "int", integer_to_list(Arg), State, Options) end,
-    Call    = fun(Fun)      -> successful_call_(Address, word, Fun, "()", "", State, Options) end,
+    Call1   = fun(Fun, Arg) -> successful_call_(Address, word, Fun, [Arg], State, Options) end,
+    Call    = fun(Fun)      -> successful_call_(Address, word, Fun, [], State, Options) end,
 
     Address  = Call(contract_address),
-    Address2 = Call1(nested_address, Address2),
+    Address2 = Call1(nested_address, encode_address(Address2)),
     Balance  = Call(contract_balance),
 
     Origin   = Call(call_origin),
@@ -389,17 +385,17 @@ environment(_Cfg) ->
     Caller   = Call(call_caller),
     Address  = Call(nested_caller),
     Value    = Call(call_value),
-    49       = Call1(nested_value, 99),
+    49       = Call1(nested_value, "99"),
     GasPrice = Call(call_gas_price),
 
-    CallerBalance = Call1(get_balance, Caller),
-    0             = Call1(block_hash, BlockHeight),
-    0             = Call1(block_hash, BlockHeight + 1),
-    0             = Call1(block_hash, BlockHeight - 257),
+    CallerBalance = Call1(get_balance, encode_address(Caller)),
+    0             = Call1(block_hash, integer_to_list(BlockHeight)),
+    0             = Call1(block_hash, integer_to_list(BlockHeight + 1)),
+    0             = Call1(block_hash, integer_to_list(BlockHeight - 257)),
     BlockHashHeight1 = BlockHeight - 1,
-    BlockHashHeight1 = Call1(block_hash, BlockHashHeight1),
+    BlockHashHeight1 = Call1(block_hash, integer_to_list(BlockHashHeight1)),
     BlockHashHeight2 = BlockHeight - 256,
-    BlockHashHeight2 = Call1(block_hash, BlockHashHeight2),
+    BlockHashHeight2 = Call1(block_hash, integer_to_list(BlockHashHeight2)),
     Coinbase      = Call(coinbase),
     Timestamp     = Call(timestamp),
     BlockHeight   = Call(block_height),
@@ -413,25 +409,25 @@ environment(_Cfg) ->
 counter(_Cfg) ->
     Code       = compile_contract(counter),
     Env        = initial_state(#{}),
-    Env1       = create_contract(101, Code, "int", "5", Env),
-    {5,  Env2} = successful_call(101, word, get, "()", "", Env1),
-    {{}, Env3} = successful_call(101, {tuple, []}, tick, "()", "", Env2),
-    {6, _Env4} = successful_call(101, word, get, "()", "", Env3),
+    Env1       = create_contract(101, Code, ["5"], Env),
+    {5,  Env2} = successful_call(101, word, get, [], Env1),
+    {{}, Env3} = successful_call(101, {tuple, []}, tick, [], Env2),
+    {6, _Env4} = successful_call(101, word, get, [], Env3),
     ok.
 
 stack(_Cfg) ->
     Code      = compile_contract(stack),
-    Env       = create_contract(101, Code, "list(string)", "[\"bar\"]", initial_state(#{})),
-    {1, Env1} = successful_call(101, word, size, "()", "", Env),
-    {2, Env2} = successful_call(101, word, push, "string", "\"foo\"", Env1),
-    {<<"foo">>,  Env3} = successful_call(101, string, pop, "()", "", Env2),
-    {<<"bar">>, _Env4} = successful_call(101, string, pop, "()", "", Env3),
+    Env       = create_contract(101, Code, ["[\"bar\"]"], initial_state(#{})),
+    {1, Env1} = successful_call(101, word, size, [], Env),
+    {2, Env2} = successful_call(101, word, push, ["\"foo\""], Env1),
+    {<<"foo">>,  Env3} = successful_call(101, string, pop, [], Env2),
+    {<<"bar">>, _Env4} = successful_call(101, string, pop, [], Env3),
     ok.
 
 strings(_Cfg) ->
     Code      = compile_contract(strings),
     Env       = initial_state(#{}),
-    Env1      = create_contract(101, Code, "()", "", Env),
+    Env1      = create_contract(101, Code, [], Env),
     Strings = ["",
                "five?",
                "this_is_sixteen!",
@@ -441,12 +437,12 @@ strings(_Cfg) ->
     TestStrings =
         fun(Str1, Str2) ->
             ExpectedLen = length(Str1 ++ Str2),
-            {ActualLen, Env1} = successful_call(101, word, str_len, "string", "\"" ++ Str1 ++ Str2 ++ "\"", Env1),
+            {ActualLen, Env1} = successful_call(101, word, str_len, ["\"" ++ Str1 ++ Str2 ++ "\""], Env1),
             ct:log("str_len(~p) = ~p - expected ~p", [Str1++Str2, ActualLen, ExpectedLen]),
             ?assertEqual(ExpectedLen, ActualLen),
 
             ExpectedStr = Str1 ++ Str2,
-            {ActualStr, Env1} = successful_call(101, string, str_concat, "(string, string)", "\"" ++ Str1 ++ "\", \"" ++ Str2 ++ "\"", Env1),
+            {ActualStr, Env1} = successful_call(101, string, str_concat, ["\"" ++ Str1 ++ "\"", "\"" ++ Str2 ++ "\""], Env1),
             ct:log("str_concat(~p, ~p) = ~p", [Str1, Str2, binary_to_list(ActualStr)]),
             ?assertEqual(ExpectedStr, binary_to_list(ActualStr))
         end,
@@ -456,10 +452,10 @@ strings(_Cfg) ->
 simple_storage(_Cfg) ->
     Code = compile_contract(simple_storage),
     Env0 = initial_state(#{}),
-    Env1 = create_contract(101, Code, "int", "42", Env0),
-    {42, Env2} = successful_call(101, word, get, "()", "", Env1),
-    {{}, Env3} = successful_call(101, {tuple, []}, set, "int", "84", Env2),
-    {84, _Env4} = successful_call(101, word, get, "()", "", Env3),
+    Env1 = create_contract(101, Code, ["42"], Env0),
+    {42, Env2} = successful_call(101, word, get, [], Env1),
+    {{}, Env3} = successful_call(101, {tuple, []}, set, ["84"], Env2),
+    {84, _Env4} = successful_call(101, word, get, [], Env3),
     ok.
 
 dutch_auction(_Cfg) ->
@@ -470,14 +466,14 @@ dutch_auction(_Cfg) ->
     ChainEnv = #{origin => 11, currentNumber => 20},
     Env0 = initial_state(#{ environment => ChainEnv },
                          #{ Badr => 1000, Cadr => 1000, 1 => 10000 }),
-    Env1 = create_contract(Dadr, DaCode, "(int, int, int)", "101, 500, 5", Env0,
+    Env1 = create_contract(Dadr, DaCode, [encode_address(101), "500", "5"], Env0,
                            #{ currentNumber => 42 }),
     %% Currently this is how we can add value to an account for a call.
     Env2 = increment_account(Dadr, 500, Env1),
-    {_,Env3} = successful_call(Dadr, {tuple,[]}, bid, "()", "", Env2,
+    {_,Env3} = successful_call(Dadr, {tuple,[]}, bid, [], Env2,
                                #{ caller => Cadr, currentNumber => 60 }),
     %% The auction has been closed so bidding again should fail.
-    reverting_call(Dadr, bid, "()", "", Env3,
+    reverting_call(Dadr, bid, [], Env3,
                    #{ caller => Cadr, currentNumber => 70}),
     %% Decrement is 5 per block and 18 blocks so 410 have been
     %% transferred to benficiary and 90 back to caller.
@@ -499,18 +495,18 @@ oracles(_Cfg) ->
     QFee = 100,
     ChainEnv = #{ currentNumber => 20 },
     Env0 = initial_state(#{ environment => ChainEnv }, #{101 => QFee}),
-    Env1 = create_contract(101, Code, "()", "", Env0),
-    {101, Env2} = successful_call(101, word, registerOracle, "(int, int, Chain.ttl)", "101, "++ integer_to_list(QFee) ++", RelativeTTL(10)", Env1),
-    {Q, Env3}   = successful_call(101, word, createQuery, "(int, string, int, Chain.ttl, Chain.ttl)",
-                                  "101, \"why?\", "++ integer_to_list(QFee) ++", RelativeTTL(10), RelativeTTL(11)", Env2, #{value => QFee}),
-    QArg        = integer_to_list(Q),
-    OandQArg    = "101, "++ QArg,
-    none        = successful_call_(101, {option, word}, getAnswer, "(int, int)", OandQArg, Env3),
-    {{}, Env4}  = successful_call(101, {tuple, []}, respond, "(int, int, int)", "101," ++ QArg ++ ",42", Env3),
-    {some, 42}  = successful_call_(101, {option, word}, getAnswer, "(int, int)", OandQArg, Env4),
-    <<"why?">>  = successful_call_(101, string, getQuestion, "(int, int)", OandQArg, Env4),
-    QFee        = successful_call_(101, word, queryFee, "int", "101", Env4),
-    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, "(int, Chain.ttl)", "101, RelativeTTL(100)", Env4),
+    Env1 = create_contract(101, Code, [], Env0),
+    {101, Env2} = successful_call(101, word, registerOracle, [encode_address(101), integer_to_list(QFee), "RelativeTTL(10)"], Env1),
+    {Q, Env3}   = successful_call(101, word, createQuery, [encode_address(101), "\"why?\"", integer_to_list(QFee),
+                                                           "RelativeTTL(10)", "RelativeTTL(11)"], Env2, #{value => QFee}),
+    QArg        = encode_address(Q),
+    OandQArg    = [encode_address(101), QArg],
+    none        = successful_call_(101, {option, word}, getAnswer, OandQArg, Env3),
+    {{}, Env4}  = successful_call(101, {tuple, []}, respond, [encode_address(101), QArg, "42"], Env3),
+    {some, 42}  = successful_call_(101, {option, word}, getAnswer, OandQArg, Env4),
+    <<"why?">>  = successful_call_(101, string, getQuestion, OandQArg, Env4),
+    QFee        = successful_call_(101, word, queryFee, [encode_address(101)], Env4),
+    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, [encode_address(101), "RelativeTTL(100)"], Env4),
     #{oracles :=
           #{101 := #{
              nonce := 1,
@@ -588,7 +584,7 @@ get_contract_fun_types(<<Contract:256>>,_VMVersion, TypeHash, S) ->
         undefined ->
             io:format("   oops, no such contract!\n"),
             {error, {no_such_contract, Contract}};
-        SerializedCode ->
+        #{bytecode := SerializedCode} ->
             #{type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
             aeso_abi:typereps_from_type_hash(TypeHash, TypeInfo)
     end.
@@ -777,3 +773,5 @@ blockhash(N,_State) ->
     %% Dummy value to check that we reach this.
     <<N:256/unsigned-integer>>.
 
+encode_address(Int) ->
+    "#" ++ integer_to_list(Int, 16).

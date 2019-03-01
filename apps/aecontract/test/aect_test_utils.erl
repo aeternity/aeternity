@@ -25,6 +25,7 @@
         , get_account/2
         , next_nonce/2
         , trees/1
+        , read_contract/1
         , compile_contract/1
         , compile_contract/2
         , compile_filename/1
@@ -226,6 +227,11 @@ set_account(Account, State) ->
     Trees   = trees(State),
     AccTree = aec_accounts_trees:enter(Account, aec_trees:accounts(Trees)),
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
+
+read_contract(Name) ->
+    CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
+    FileName = filename:join(CodeDir, filename:rootname(Name, ".aes") ++ ".aes"),
+    file:read_file(FileName).
 
 compile_filename(FileName) ->
     compile(latest_sophia_version(), FileName).
