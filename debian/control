@@ -1,6 +1,6 @@
 Source: aeternity-node
 Section: misc
-Maintainer: Ivaylo Valkov <ivaylo.valkov@quanterall.com>
+Maintainer: Aeternity Team <info@aeternity.com>
 Build-Depends: debhelper, erlang ( >=1:20.2-1),  erlang-base ( >=1:20.2-1), erlang-dev ( >=1:20.2-1),
 	       erlang-edoc ( >=1:20.2-1), ncurses-dev, libssl-dev, git, curl,
 	       autoconf, build-essential
