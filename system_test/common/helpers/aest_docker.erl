@@ -79,7 +79,7 @@
     genesis_accounts => [{binary(), non_neg_integer()}],
     % the path to the accounts_test.json to be used for genesis block
     genesis => file:filename_all(),
-    entrypoint => [list()] | undefined
+    entrypoint => [string(), ...]
 }.
 
 %% State of a node
