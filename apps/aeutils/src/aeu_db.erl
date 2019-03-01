@@ -44,7 +44,7 @@ assert_file_present(SchemaDatFile) ->
 
 prepare_schema_dat_backup(SchemaDatFile) ->
     BackupFile = get_backup_file(SchemaDatFile),
-    case file:copy(SchemaDatFile, BackupFile) of
+    case file:copy(SchemaDatFile, {BackupFile, [sync]}) of
         {ok, _} ->
             io:fwrite("Created schema.DAT backup file at: ~p. "
                       "Please restore from it if renaming process is interrupted or fails.~n", [BackupFile]),
