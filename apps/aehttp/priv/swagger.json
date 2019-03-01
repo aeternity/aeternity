@@ -2,7 +2,7 @@
   "swagger" : "2.0",
   "info" : {
     "description" : "This is the [Aeternity](https://www.aeternity.com/) node API.",
-    "version" : "2.0.0",
+    "version" : "2.1.0",
     "title" : "Aeternity node",
     "termsOfService" : "https://www.aeternity.com/terms/",
     "contact" : {
