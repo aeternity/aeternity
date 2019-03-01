@@ -92,17 +92,6 @@ commands_(OpsBin, Cfg) ->
     {0, _Output8} = run_cmd_in_node_dir(node1, [OpsBin, "export", GuestPath], Cfg),
     ?assert(filelib:is_regular(HostPath)),
 
-    {0, Output9} = run_cmd_in_node_dir(node1, [OpsBin, "rename_db", "./data/mnesia/schema.DAT"], Cfg),
-    ?assertMatch({match, _}, re:run(Output9,
-                                    "Starting node name renaming in the db from \"epoch@localhost\" to \"aeternity@localhost\"\n"
-                                    "Created schema.DAT backup file at: \"./data/mnesia/schema.DAT.backup\". "
-                                    "Please restore from it if renaming process is interrupted or fails.\n"
-                                    "Hurray! Node name renaming in the db was successful! You're good to start your node now!\n")),
-
-    {0, Output10} = run_cmd_in_node_dir(node1, [OpsBin, "rename_db", "./data/mnesia/schema.DAT", "aeternity@localhost", "epoch@localhost"], Cfg),
-    ?assertMatch({match, _}, re:run(Output10,
-                                    "Starting node name renaming in the db from \"aeternity@localhost\" to \"epoch@localhost\"\n")),
-
     ok.
 
 
