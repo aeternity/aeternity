@@ -123,7 +123,7 @@
         if (buff != \"\") print buff
         buff = $0
     }
-    /^Error in process <[0-9.]*> on node aeternity@localhost with exit value:$/ {
+    /^Error in process <[0-9.]*> on node (epoch|aeternity)@localhost with exit value:$/ {
         if (state == 1) {
             matched = 1
             state = 2
