@@ -140,9 +140,9 @@ simple_query_test(Opts, Cfg) ->
     MPubKey = maps:get(pubkey, ?MIKE),
     OPubKey = maps:get(pubkey, OAccount),
     QPubKey = maps:get(pubkey, QAccount),
-    EncMPubKey = aehttp_api_encoder:encode(account_pubkey, MPubKey),
-    EncOPubKey = aehttp_api_encoder:encode(oracle_pubkey, OPubKey),
-    EncQPubKey = aehttp_api_encoder:encode(account_pubkey, QPubKey),
+    EncMPubKey = aeser_api_encoder:encode(account_pubkey, MPubKey),
+    EncOPubKey = aeser_api_encoder:encode(oracle_pubkey, OPubKey),
+    EncQPubKey = aeser_api_encoder:encode(account_pubkey, QPubKey),
 
     %% Setup nodes
     NodeConfig = #{ beneficiary => EncMPubKey },
@@ -189,7 +189,7 @@ simple_query_test(Opts, Cfg) ->
     }),
     aest_nodes:wait_for_value({txs_on_chain, [QueryTxHash]}, NodeNames, 10000, []),
     QueryId = aeo_query:id(QPubKey, 1, OPubKey),
-    EncQueryId = aehttp_api_encoder:encode(oracle_query_id, QueryId),
+    EncQueryId = aeser_api_encoder:encode(oracle_query_id, QueryId),
 
     {ok, 200, ClosedQueriesInfo} =
         request(node1, 'GetOracleQueriesByPubkey', #{ pubkey => EncOPubKey, type => closed }),
@@ -199,8 +199,8 @@ simple_query_test(Opts, Cfg) ->
     ?assertMatch(#{ oracle_queries := [_] }, AllQueriesInfo),
     [QueryInfo] = maps:get(oracle_queries, AllQueriesInfo),
     ?assertMatch(#{ id := EncQueryId, oracle_id := EncOPubKey, sender_id := EncQPubKey }, QueryInfo),
-    ?assertEqual({oracle_query, <<"Hidely-Ho">>}, aehttp_api_encoder:decode(maps:get(query, QueryInfo))),
-    ?assertEqual({oracle_response, <<>>}, aehttp_api_encoder:decode(maps:get(response, QueryInfo))),
+    ?assertEqual({oracle_query, <<"Hidely-Ho">>}, aeser_api_encoder:decode(maps:get(query, QueryInfo))),
+    ?assertEqual({oracle_response, <<>>}, aeser_api_encoder:decode(maps:get(response, QueryInfo))),
 
     %% Respond to the oracle query
     #{ tx_hash := RespTxHash } = post_oracle_response_tx(ONode, OAccount, #{
@@ -218,7 +218,7 @@ simple_query_test(Opts, Cfg) ->
     {ok, 200, QueryInfo2} =
         request(node1, 'GetOracleQueryByPubkeyAndQueryId', #{ pubkey => EncOPubKey, 'query-id' => EncQueryId }),
     ?assertMatch(#{ id := EncQueryId, oracle_id := EncOPubKey, sender_id := EncQPubKey }, QueryInfo2),
-    ?assertEqual({oracle_response, <<"D'oh!">>}, aehttp_api_encoder:decode(maps:get(response, QueryInfo2))),
+    ?assertEqual({oracle_response, <<"D'oh!">>}, aeser_api_encoder:decode(maps:get(response, QueryInfo2))),
 
     ok.
 
@@ -226,8 +226,8 @@ test_oracle_ttl_extension(Cfg) ->
     GasPrice = proplists:get_value(gas_price, Cfg),
     MPubKey = maps:get(pubkey, ?MIKE),
     OPubKey = maps:get(pubkey, ?OLIVIA),
-    EncMPubKey = aehttp_api_encoder:encode(account_pubkey, MPubKey),
-    EncOPubKey = aehttp_api_encoder:encode(oracle_pubkey, OPubKey),
+    EncMPubKey = aeser_api_encoder:encode(account_pubkey, MPubKey),
+    EncOPubKey = aeser_api_encoder:encode(oracle_pubkey, OPubKey),
 
     %% Setup nodes
     NodeConfig = #{ beneficiary => EncMPubKey },
@@ -301,9 +301,9 @@ pipelined_query_test(Opts, Cfg) ->
     MPubKey = maps:get(pubkey, ?MIKE),
     OPubKey = maps:get(pubkey, OAccount),
     QPubKey = maps:get(pubkey, QAccount),
-    EncMPubKey = aehttp_api_encoder:encode(account_pubkey, MPubKey),
-    EncOPubKey = aehttp_api_encoder:encode(oracle_pubkey, OPubKey),
-    EncQPubKey = aehttp_api_encoder:encode(account_pubkey, QPubKey),
+    EncMPubKey = aeser_api_encoder:encode(account_pubkey, MPubKey),
+    EncOPubKey = aeser_api_encoder:encode(oracle_pubkey, OPubKey),
+    EncQPubKey = aeser_api_encoder:encode(account_pubkey, QPubKey),
 
     %% Setup nodes
     NodeConfig = #{ beneficiary => EncMPubKey },
@@ -345,7 +345,7 @@ pipelined_query_test(Opts, Cfg) ->
         response_ttl => {delta, 100}
     }),
     QueryId = aeo_query:id(QPubKey, 1, OPubKey),
-    EncQueryId = aehttp_api_encoder:encode(oracle_query_id, QueryId),
+    EncQueryId = aeser_api_encoder:encode(oracle_query_id, QueryId),
 
     %% Respond to the oracle query
     #{ tx_hash := RespTxHash } = post_oracle_response_tx(ONode, OAccount, #{
@@ -368,8 +368,8 @@ pipelined_query_test(Opts, Cfg) ->
     {ok, 200, QueryInfo} =
         request(node1, 'GetOracleQueryByPubkeyAndQueryId', #{ pubkey => EncOPubKey, 'query-id' => EncQueryId }),
     ?assertMatch(#{ id := EncQueryId, oracle_id := EncOPubKey, sender_id := EncQPubKey }, QueryInfo),
-    ?assertEqual({oracle_query, <<"Hidely-Ho">>}, aehttp_api_encoder:decode(maps:get(query, QueryInfo))),
-    ?assertEqual({oracle_response, <<"D'oh!">>}, aehttp_api_encoder:decode(maps:get(response, QueryInfo))),
+    ?assertEqual({oracle_query, <<"Hidely-Ho">>}, aeser_api_encoder:decode(maps:get(query, QueryInfo))),
+    ?assertEqual({oracle_response, <<"D'oh!">>}, aeser_api_encoder:decode(maps:get(response, QueryInfo))),
 
     ok.
 

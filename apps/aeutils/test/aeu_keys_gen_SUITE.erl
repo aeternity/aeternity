@@ -145,7 +145,7 @@ run_and_check_keys_gen(N, Cmd, UserPassword, ActualPassword, Config) ->
     true = filelib:is_file(PubFile),
     %% Check pubkey can be extracted from script output.
     {match, [PrettyPubKey]} = re:run(Out, "ak\\_[A-Za-z0-9]*", [{capture, first, binary}]),
-    {ok, PubKey} = aehttp_api_encoder:safe_decode(account_pubkey, PrettyPubKey),
+    {ok, PubKey} = aeser_api_encoder:safe_decode(account_pubkey, PrettyPubKey),
     %% Check that pubkey written on filesystem with password corresponds to the one printed by script.
     {ok, EncryptedPubKey} = file:read_file(PubFile),
     ?assertEqual(PubKey, decrypt_key(ActualPassword, EncryptedPubKey)),

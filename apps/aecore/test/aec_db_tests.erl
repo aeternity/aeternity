@@ -44,7 +44,7 @@ write_chain_test_() ->
              aec_test_utils:mock_genesis_and_forks(),
              TmpDir = aec_test_utils:aec_keys_setup(),
              {ok, PubKey} = aec_keys:pubkey(),
-             ok = application:set_env(aecore, beneficiary, aehttp_api_encoder:encode(account_pubkey, PubKey)),
+             ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_conductor:start_link([{autostart, false}]),
              TmpDir
@@ -117,7 +117,7 @@ restart_test_() ->
              ok = application:ensure_started(gproc),
              TmpDir = aec_test_utils:aec_keys_setup(),
              {ok, PubKey} = aec_keys:pubkey(),
-             ok = application:set_env(aecore, beneficiary, aehttp_api_encoder:encode(account_pubkey, PubKey)),
+             ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
              aec_test_utils:start_chain_db(),
              meck:new(aec_events, [passthrough]),
              meck:expect(aec_events, publish, fun(_, _) -> ok end),

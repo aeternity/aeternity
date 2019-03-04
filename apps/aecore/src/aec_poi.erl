@@ -42,7 +42,7 @@
 
 -type key() :: binary().
 -type value() :: binary().
--type proof_value() :: aeu_rlp:encodable().
+-type proof_value() :: aeser_rlp:encodable().
 
 %%%===================================================================
 %%% API

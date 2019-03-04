@@ -107,8 +107,8 @@ many_spend_txs(Cfg) ->
     %% then this test takes ages.
 
     %% Compute gas for a simple spend
-    {ok, FakeTx} = aec_spend_tx:new(#{ sender_id => aec_id:create(account, maps:get(pubkey, patron()))
-                                     , recipient_id => aec_id:create(account, maps:get(pubkey, patron()))
+    {ok, FakeTx} = aec_spend_tx:new(#{ sender_id => aeser_id:create(account, maps:get(pubkey, patron()))
+                                     , recipient_id => aeser_id:create(account, maps:get(pubkey, patron()))
                                      , amount => 1 * aest_nodes:gas_price()
                                      , fee => 1 * aest_nodes:gas_price()
                                      , ttl => 10000000

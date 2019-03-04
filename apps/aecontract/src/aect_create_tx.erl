@@ -57,7 +57,7 @@
 -define(is_non_neg_integer(X), (is_integer(X) andalso (X >= 0))).
 
 -record(contract_create_tx, {
-          owner_id    :: aec_id:id(),
+          owner_id    :: aeser_id:id(),
           nonce       :: non_neg_integer(),
           code        :: binary(),
           ct_version  :: aect_contracts:version()
@@ -89,13 +89,13 @@ from_db_format(#contract_create_tx{ct_version = VMVersion} = Tx) ->
 %%%===================================================================
 %%% Getters
 
--spec owner_id(tx()) -> aec_id:id().
+-spec owner_id(tx()) -> aeser_id:id().
 owner_id(#contract_create_tx{owner_id = OwnerId}) ->
     OwnerId.
 
 -spec owner_pubkey(tx()) -> aec_keys:pubkey().
 owner_pubkey(#contract_create_tx{owner_id = OwnerId}) ->
-    aec_id:specialize(OwnerId, account).
+    aeser_id:specialize(OwnerId, account).
 
 -spec code(tx()) -> binary().
 code(#contract_create_tx{code = X}) ->
@@ -168,7 +168,7 @@ new(#{owner_id    := OwnerId,
       gas_price   := GasPrice,
       call_data   := CallData,
       fee         := Fee} = Args) ->
-    account = aec_id:specialize_type(OwnerId),
+    account = aeser_id:specialize_type(OwnerId),
     Tx = #contract_create_tx{owner_id    = OwnerId,
                              nonce       = Nonce,
                              code        = Code,
@@ -259,7 +259,7 @@ deserialize(?CONTRACT_CREATE_TX_VSN,
             , {gas, Gas}
             , {gas_price, GasPrice}
             , {call_data, CallData}]) ->
-    account = aec_id:specialize_type(OwnerId),
+    account = aeser_id:specialize_type(OwnerId),
     #contract_create_tx{owner_id   = OwnerId,
                         nonce      = Nonce,
                         code       = Code,
@@ -297,9 +297,9 @@ for_client(#contract_create_tx{ owner_id    = OwnerId,
                                 gas         = Gas,
                                 gas_price   = GasPrice,
                                 call_data   = CallData}) ->
-    #{<<"owner_id">>    => aehttp_api_encoder:encode(id_hash, OwnerId),
+    #{<<"owner_id">>    => aeser_api_encoder:encode(id_hash, OwnerId),
       <<"nonce">>       => Nonce,
-      <<"code">>        => aehttp_api_encoder:encode(contract_bytearray, Code),
+      <<"code">>        => aeser_api_encoder:encode(contract_bytearray, Code),
       <<"vm_version">>  => aeu_hex:hexstring_encode(<<(maps:get(vm, CTVersion)):16>>),
       <<"abi_version">> => aeu_hex:hexstring_encode(<<(maps:get(abi, CTVersion)):16>>),
       <<"fee">>         => Fee,
@@ -308,7 +308,7 @@ for_client(#contract_create_tx{ owner_id    = OwnerId,
       <<"amount">>      => Amount,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,
-      <<"call_data">>   => aehttp_api_encoder:encode(contract_bytearray, CallData)}.
+      <<"call_data">>   => aeser_api_encoder:encode(contract_bytearray, CallData)}.
 
 %%%===================================================================
 %%% Internal functions

@@ -36,8 +36,8 @@
 -define(SPEND_TX_TYPE, spend_tx).
 
 -record(spend_tx, {
-          sender_id        :: aec_id:id(),
-          recipient_id     :: aec_id:id(),
+          sender_id        :: aeser_id:id(),
+          recipient_id     :: aeser_id:id(),
           amount    = 0    :: non_neg_integer(),
           fee       = 0    :: non_neg_integer(),
           ttl       = 0    :: aetx:tx_ttl(),
@@ -71,13 +71,13 @@ new(#{sender_id    := SenderId,
     {ok, aetx:new(?MODULE, Tx)}.
 
 assert_sender(Id) ->
-    case aec_id:specialize_type(Id) of
+    case aeser_id:specialize_type(Id) of
         account -> ok;
         Other   -> error({illegal_id_type, Other})
     end.
 
 assert_recipient(Id) ->
-    case aec_id:specialize_type(Id) of
+    case aeser_id:specialize_type(Id) of
         account  -> ok;
         name     -> ok;
         oracle   -> ok;
@@ -109,15 +109,15 @@ nonce(#spend_tx{nonce = Nonce}) ->
 origin(#spend_tx{} = Tx) ->
     sender_pubkey(Tx).
 
--spec sender_id(tx()) -> aec_id:id().
+-spec sender_id(tx()) -> aeser_id:id().
 sender_id(#spend_tx{sender_id = SenderId}) ->
     SenderId.
 
 -spec sender_pubkey(tx()) -> aec_keys:pubkey().
 sender_pubkey(#spend_tx{sender_id = SenderId}) ->
-    aec_id:specialize(SenderId, account).
+    aeser_id:specialize(SenderId, account).
 
--spec recipient_id(tx()) -> aec_id:id().
+-spec recipient_id(tx()) -> aeser_id:id().
 recipient_id(#spend_tx{recipient_id = RecipientId}) ->
     RecipientId.
 
@@ -173,8 +173,8 @@ deserialize(?SPEND_TX_VSN,
             , {nonce, Nonce}
             , {payload, Payload}]) ->
     %% Asserts
-    account = aec_id:specialize_type(SenderId),
-    case aec_id:specialize_type(RecipientId) of
+    account = aeser_id:specialize_type(SenderId),
+    case aeser_id:specialize_type(RecipientId) of
         account  -> ok;
         name     -> ok;
         oracle   -> ok;
@@ -205,8 +205,8 @@ for_client(#spend_tx{sender_id    = SenderId,
                      ttl          = TTL,
                      nonce        = Nonce,
                      payload      = Payload}) ->
-    #{<<"sender_id">>    => aehttp_api_encoder:encode(id_hash, SenderId),
-      <<"recipient_id">> => aehttp_api_encoder:encode(id_hash, RecipientId),
+    #{<<"sender_id">>    => aeser_api_encoder:encode(id_hash, SenderId),
+      <<"recipient_id">> => aeser_api_encoder:encode(id_hash, RecipientId),
       <<"amount">>       => Amount,
       <<"fee">>          => Fee,
       <<"ttl">>          => TTL,

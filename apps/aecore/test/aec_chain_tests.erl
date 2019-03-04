@@ -339,7 +339,7 @@ broken_chain_invalid_transaction() ->
     %% Add invalid transaction with too high nonce to last block
     Txs = aec_blocks:txs(MB2),
     BogusSpendTx = aec_test_utils:signed_spend_tx(
-                     #{recipient_id => aec_id:create(account, <<1:32/unit:8>>),
+                     #{recipient_id => aeser_id:create(account, <<1:32/unit:8>>),
                        amount => 0,
                        fee => 1,
                        nonce => 10,
@@ -1461,7 +1461,7 @@ token_supply_channels() ->
                 make_channel_create_tx(PubKey1, CreateNonce, PubKey2, StartAmount, Fee)
         end,
     ChannelPubkey = aesc_channels:pubkey(PubKey1, CreateNonce, PubKey2),
-    ChannelId = aec_id:create(channel, ChannelPubkey),
+    ChannelId = aeser_id:create(channel, ChannelPubkey),
     CloseMutualFun =
         fun() ->
                 make_channel_close_mutual_tx(PubKey1, CloseNonce, ChannelId, CloseAmount, Fee)
@@ -1621,8 +1621,8 @@ make_spend_tx(Sender, SenderNonce, Recipient, Fee) ->
     make_spend_tx(Sender, SenderNonce, Recipient, Fee, 1).
 
 make_spend_tx(Sender, SenderNonce, Recipient, Fee, Amount) ->
-    SenderId = aec_id:create(account, Sender),
-    RecipientId = aec_id:create(account, Recipient),
+    SenderId = aeser_id:create(account, Sender),
+    RecipientId = aeser_id:create(account, Recipient),
     {ok, SpendTx} = aec_spend_tx:new(#{sender_id => SenderId,
                                        recipient_id => RecipientId,
                                        amount => Amount,
@@ -1632,7 +1632,7 @@ make_spend_tx(Sender, SenderNonce, Recipient, Fee, Amount) ->
     SpendTx.
 
 make_oracle_register_tx(Pubkey, Nonce, Fee, QFee) ->
-    AccountId = aec_id:create(account, Pubkey),
+    AccountId = aeser_id:create(account, Pubkey),
     {ok, Tx} = aeo_register_tx:new(#{account_id      => AccountId,
                                      nonce           => Nonce,
                                      query_format    => <<>>,
@@ -1644,8 +1644,8 @@ make_oracle_register_tx(Pubkey, Nonce, Fee, QFee) ->
     Tx.
 
 make_oracle_query_tx(Pubkey, OraclePubkey, Nonce, Fee, QueryFee) ->
-    SenderId = aec_id:create(account, Pubkey),
-    OracleId = aec_id:create(oracle, OraclePubkey),
+    SenderId = aeser_id:create(account, Pubkey),
+    OracleId = aeser_id:create(oracle, OraclePubkey),
     {ok, Tx} = aeo_query_tx:new(#{sender_id    => SenderId,
                                   nonce        => Nonce,
                                   oracle_id    => OracleId,
@@ -1657,7 +1657,7 @@ make_oracle_query_tx(Pubkey, OraclePubkey, Nonce, Fee, QueryFee) ->
     Tx.
 
 make_oracle_response_tx(OraclePubkey, Nonce, Fee, QueryId) ->
-    OracleId = aec_id:create(oracle, OraclePubkey),
+    OracleId = aeser_id:create(oracle, OraclePubkey),
     {ok, Tx} = aeo_response_tx:new(#{oracle_id    => OracleId,
                                      nonce        => Nonce,
                                      query_id     => QueryId,
@@ -1667,8 +1667,8 @@ make_oracle_response_tx(OraclePubkey, Nonce, Fee, QueryId) ->
     Tx.
 
 make_channel_create_tx(InitiatorPubkey, Nonce, ResponderPubkey, Amount, Fee) ->
-    InitiatorId = aec_id:create(account, InitiatorPubkey),
-    ResponderId = aec_id:create(account, ResponderPubkey),
+    InitiatorId = aeser_id:create(account, InitiatorPubkey),
+    ResponderId = aeser_id:create(account, ResponderPubkey),
     {ok, Tx} = aesc_create_tx:new(#{initiator_id       => InitiatorId,
                                     initiator_amount   => Amount,
                                     responder_id       => ResponderId,
@@ -1681,7 +1681,7 @@ make_channel_create_tx(InitiatorPubkey, Nonce, ResponderPubkey, Amount, Fee) ->
     Tx.
 
 make_channel_close_mutual_tx(FromPubKey, Nonce, ChannelId, Amount, Fee) ->
-    FromId = aec_id:create(account, FromPubKey),
+    FromId = aeser_id:create(account, FromPubKey),
     {ok, Tx} = aesc_close_mutual_tx:new(#{channel_id              => ChannelId,
                                           from_id                 => FromId,
                                           initiator_amount_final  => Amount,
@@ -1692,7 +1692,7 @@ make_channel_close_mutual_tx(FromPubKey, Nonce, ChannelId, Amount, Fee) ->
 
 
 make_contract_create_tx(Pubkey, Code, CallData, Nonce, Deposit, Amount, Fee, Gas) ->
-    OwnerId = aec_id:create(account, Pubkey),
+    OwnerId = aeser_id:create(account, Pubkey),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     VM  = aect_test_utils:latest_sophia_vm_version(),
     {ok, Tx} = aect_create_tx:new(#{owner_id   => OwnerId,

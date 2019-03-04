@@ -251,7 +251,7 @@ check_type_hash(Op, ArgTypes, OutType, TypeHash) ->
 spend_call(Value, Data, #chain{api = API, state = State} = Chain) ->
     [Recipient] = get_args([word], Data),
     %% TODO: This assumes that we are spending to an account
-    RecipientId = aec_id:create(account, <<Recipient:256>>),
+    RecipientId = aeser_id:create(account, <<Recipient:256>>),
     {ok, Tx} = API:spend_tx(RecipientId, Value, State),
     Callback = fun(ChainAPI, ChainState) ->
                        ChainAPI:spend(Tx, ChainState) end,

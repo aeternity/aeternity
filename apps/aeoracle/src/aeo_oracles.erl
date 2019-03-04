@@ -50,7 +50,7 @@
 -type query()    :: binary().
 -type response() :: binary().
 
--record(oracle, { id              :: aec_id:id()
+-record(oracle, { id              :: aeser_id:id()
                 , query_format    :: type_format()
                 , response_format :: type_format()
                 , query_fee       :: amount()
@@ -61,7 +61,7 @@
 
 -opaque oracle() :: #oracle{}.
 
--type id() :: aec_id:id().
+-type id() :: aeser_id:id().
 -type pubkey() :: aec_keys:pubkey().
 -type serialized() :: binary().
 
@@ -107,7 +107,7 @@ new(RTx, BlockHeight) ->
              oracle().
 new(AccountPubkey, QueryFormat, ResponseFormat,
     QueryFee, AbsoluteTTL, ABIVersion) ->
-    O = #oracle{ id              = aec_id:create(oracle, AccountPubkey)
+    O = #oracle{ id              = aeser_id:create(oracle, AccountPubkey)
                , query_format    = QueryFormat
                , response_format = ResponseFormat
                , query_fee       = QueryFee
@@ -118,7 +118,7 @@ new(AccountPubkey, QueryFormat, ResponseFormat,
 
 -spec serialize(oracle()) -> binary().
 serialize(#oracle{} = O) ->
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
       ?ORACLE_TYPE,
       ?ORACLE_VSN,
       serialization_template(?ORACLE_VSN),
@@ -131,7 +131,7 @@ serialize(#oracle{} = O) ->
 
 -spec deserialize(aec_keys:pubkey(), binary()) -> oracle().
 deserialize(Pubkey, Bin) ->
-    Fields = aec_object_serialization:deserialize(
+    Fields = aeser_chain_objects:deserialize(
                   ?ORACLE_TYPE,
                   ?ORACLE_VSN,
                   serialization_template(?ORACLE_VSN),
@@ -146,7 +146,7 @@ deserialize_from_fields(?ORACLE_VSN, Pubkey,
       , {ttl, TTL}
       , {abi_version, ABIVersion}
       ]) ->
-    #oracle{ id              = aec_id:create(oracle, Pubkey)
+    #oracle{ id              = aeser_id:create(oracle, Pubkey)
            , query_format    = QueryFormat
            , response_format = ResponseFormat
            , query_fee       = QueryFee
@@ -172,7 +172,7 @@ serialize_for_client(#oracle{id              = Id,
                              ttl             = TTL,
                              abi_version     = ABIVersion
                             }) ->
-    #{ <<"id">>              => aehttp_api_encoder:encode(id_hash, Id)
+    #{ <<"id">>              => aeser_api_encoder:encode(id_hash, Id)
      , <<"query_format">>    => QueryFormat
      , <<"response_format">> => ResponseFormat
      , <<"query_fee">>       => QueryFee
@@ -183,13 +183,13 @@ serialize_for_client(#oracle{id              = Id,
 %%%===================================================================
 %%% Getters
 
--spec id(oracle()) -> aec_id:id().
+-spec id(oracle()) -> aeser_id:id().
 id(#oracle{id = Id}) ->
     Id.
 
 -spec pubkey(oracle()) -> aec_keys:pubkey().
 pubkey(#oracle{id = Id}) ->
-    aec_id:specialize(Id, oracle).
+    aeser_id:specialize(Id, oracle).
 
 -spec query_format(oracle()) -> type_format().
 query_format(#oracle{query_format = QueryFormat}) ->
@@ -216,7 +216,7 @@ abi_version(#oracle{abi_version = ABIVersion}) ->
 
 -spec set_pubkey(aec_keys:pubkey(), oracle()) -> oracle().
 set_pubkey(X, O) ->
-    O#oracle{id = aec_id:create(oracle, assert_field(pubkey, X))}.
+    O#oracle{id = aeser_id:create(oracle, assert_field(pubkey, X))}.
 
 -spec set_query_format(type_format(), oracle()) -> oracle().
 set_query_format(X, O) ->

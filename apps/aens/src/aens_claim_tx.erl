@@ -40,7 +40,7 @@
 -define(NAME_CLAIM_TX_TYPE, name_claim_tx).
 
 -record(ns_claim_tx, {
-          account_id :: aec_id:id(),
+          account_id :: aeser_id:id(),
           nonce      :: integer(),
           name       :: binary(),
           name_salt  :: integer(),
@@ -62,7 +62,7 @@ new(#{account_id := AccountId,
       name       := Name,
       name_salt  := NameSalt,
       fee        := Fee} = Args) ->
-    account = aec_id:specialize_type(AccountId),
+    account = aeser_id:specialize_type(AccountId),
     Tx = #ns_claim_tx{account_id = AccountId,
                       nonce      = Nonce,
                       name       = Name,
@@ -139,7 +139,7 @@ deserialize(?NAME_CLAIM_TX_VSN,
             , {name_salt, NameSalt}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    account = aec_id:specialize_type(AccountId),
+    account = aeser_id:specialize_type(AccountId),
     #ns_claim_tx{account_id = AccountId,
                  nonce      = Nonce,
                  name       = Name,
@@ -164,7 +164,7 @@ for_client(#ns_claim_tx{account_id = AccountId,
                         name_salt  = NameSalt,
                         fee        = Fee,
                         ttl        = TTL}) ->
-    #{<<"account_id">> => aehttp_api_encoder:encode(id_hash, AccountId),
+    #{<<"account_id">> => aeser_api_encoder:encode(id_hash, AccountId),
       <<"nonce">>      => Nonce,
       <<"name">>       => Name,
       <<"name_salt">>  => NameSalt,
@@ -175,7 +175,7 @@ for_client(#ns_claim_tx{account_id = AccountId,
 %%% Getters
 %%%===================================================================
 
--spec account_id(tx()) -> aec_id:id().
+-spec account_id(tx()) -> aeser_id:id().
 account_id(#ns_claim_tx{account_id = AccountId}) ->
     AccountId.
 
@@ -191,7 +191,7 @@ name_salt(#ns_claim_tx{name_salt = NameSalt}) ->
 %%%===================================================================
 
 account_pubkey(#ns_claim_tx{account_id = AccountId}) ->
-    aec_id:specialize(AccountId, account).
+    aeser_id:specialize(AccountId, account).
 
 version() ->
     ?NAME_CLAIM_TX_VSN.

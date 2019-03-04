@@ -44,8 +44,8 @@
 -type vsn() :: non_neg_integer().
 
 -record(channel_deposit_tx, {
-          channel_id  :: aec_id:id(),
-          from_id     :: aec_id:id(),
+          channel_id  :: aeser_id:id(),
+          from_id     :: aeser_id:id(),
           amount      :: non_neg_integer(),
           ttl         :: aetx:tx_ttl(),
           fee         :: non_neg_integer(),
@@ -73,8 +73,8 @@ new(#{channel_id  := ChannelId,
       round       := Round,
       nonce       := Nonce} = Args) ->
     true = aesc_utils:check_state_hash_size(StateHash),
-    channel = aec_id:specialize_type(ChannelId),
-    account = aec_id:specialize_type(FromId),
+    channel = aeser_id:specialize_type(ChannelId),
+    account = aeser_id:specialize_type(FromId),
     try Tx = #channel_deposit_tx{
                 channel_id  = ChannelId,
                 from_id     = FromId,
@@ -114,19 +114,19 @@ origin(#channel_deposit_tx{} = Tx) ->
     from_pubkey(Tx).
 
 from_pubkey(#channel_deposit_tx{from_id = FromId}) ->
-    aec_id:specialize(FromId, account).
+    aeser_id:specialize(FromId, account).
 
 -spec amount(tx()) -> non_neg_integer().
 amount(#channel_deposit_tx{amount = Amount}) ->
     Amount.
 
--spec channel_id(tx()) -> aec_id:id().
+-spec channel_id(tx()) -> aeser_id:id().
 channel_id(#channel_deposit_tx{channel_id = ChannelId}) ->
     ChannelId.
 
 -spec channel_pubkey(tx()) -> aec_keys:pubkey().
 channel_pubkey(#channel_deposit_tx{channel_id = ChannelId}) ->
-    aec_id:specialize(ChannelId, channel).
+    aeser_id:specialize(ChannelId, channel).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_deposit_tx{}, Trees,_Env) ->
@@ -187,8 +187,8 @@ deserialize(?CHANNEL_DEPOSIT_TX_VSN,
             , {state_hash  , StateHash}
             , {round       , Round}
             , {nonce       , Nonce}]) ->
-    channel = aec_id:specialize_type(ChannelId),
-    account = aec_id:specialize_type(FromId),
+    channel = aeser_id:specialize_type(ChannelId),
+    account = aeser_id:specialize_type(FromId),
     true = aesc_utils:check_state_hash_size(StateHash),
     #channel_deposit_tx{channel_id  = ChannelId,
                         from_id     = FromId,
@@ -208,12 +208,12 @@ for_client(#channel_deposit_tx{channel_id   = ChannelId,
                                state_hash   = StateHash,
                                round        = Round,
                                nonce        = Nonce}) ->
-    #{<<"channel_id">>   => aehttp_api_encoder:encode(id_hash, ChannelId),
-      <<"from_id">>      => aehttp_api_encoder:encode(id_hash, FromId),
+    #{<<"channel_id">>   => aeser_api_encoder:encode(id_hash, ChannelId),
+      <<"from_id">>      => aeser_api_encoder:encode(id_hash, FromId),
       <<"amount">>       => Amount,
       <<"ttl">>          => TTL,
       <<"fee">>          => Fee,
-      <<"state_hash">>   => aehttp_api_encoder:encode(state, StateHash),
+      <<"state_hash">>   => aeser_api_encoder:encode(state, StateHash),
       <<"round">>        => Round,
       <<"nonce">>        => Nonce}.
 

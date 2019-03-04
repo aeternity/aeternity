@@ -22,7 +22,7 @@ gas_getters() ->
     ok.
 
 create_tx(Override) ->
-    Map = #{ owner_id    => aec_id:create(account, <<4711:32/unit:8>>)
+    Map = #{ owner_id    => aeser_id:create(account, <<4711:32/unit:8>>)
            , nonce       => 42
            , code        => <<"THIS IS NOT ACTUALLY PROPER BYTE CODE">>
            , vm_version  => ?VM_AEVM_SOLIDITY_1

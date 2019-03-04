@@ -7,7 +7,7 @@
         ]).
 
 -type key() :: binary().
--type id()  :: aec_id:id().
+-type id()  :: aeser_id:id().
 
 -record(pointer, {
           key :: key(),
@@ -38,13 +38,13 @@ id(#pointer{id = Id}) ->
 -spec serialize_for_client(pointer()) -> map().
 serialize_for_client(#pointer{key = Key, id = Id}) ->
     #{<<"key">> => Key,
-      <<"id">>  => aehttp_api_encoder:encode(id_hash, Id)}.
+      <<"id">>  => aeser_api_encoder:encode(id_hash, Id)}.
 
 %% TODO: check max lenght of key?
 assert_key(Key) when is_binary(Key) -> ok.
 
 assert_id(Id) ->
-    assert_id_type(aec_id:specialize_type(Id)).
+    assert_id_type(aeser_id:specialize_type(Id)).
 
 %% TODO: what to support?
 assert_id_type(account)  -> ok;

@@ -259,7 +259,7 @@ commit_to_db(#contract_tree{contracts = CtTree} = Tree) ->
 -spec to_binary_without_backend(tree()) -> binary().
 to_binary_without_backend(#contract_tree{contracts = CtTree}) ->
     Bin = aeu_mtrees:serialize(CtTree),
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
         contracts_mtree,
         ?VSN,
         serialization_template(?VSN),
@@ -268,7 +268,7 @@ to_binary_without_backend(#contract_tree{contracts = CtTree}) ->
 -spec from_binary_without_backend(binary()) -> tree().
 from_binary_without_backend(Bin) ->
     [{contracts, ContractsBin}] =
-        aec_object_serialization:deserialize(contracts_mtree, ?VSN,
+        aeser_chain_objects:deserialize(contracts_mtree, ?VSN,
                                              serialization_template(?VSN), Bin),
     #contract_tree{contracts = aeu_mtrees:deserialize(ContractsBin)}.
 
