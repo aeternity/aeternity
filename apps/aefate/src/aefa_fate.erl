@@ -1,3 +1,10 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2019, Aeternity Anstalt
+%%% @doc
+%%% The FATE virtual machine
+%%% @end
+%%%-------------------------------------------------------------------
+
 -module(aefa_fate).
 -export([run/2]).
 
@@ -11,16 +18,25 @@
 -define(trace(I,S), S).
 -endif.
 
+%%%===================================================================
+%%% API
+%%%===================================================================
+
 run(What, Chain) ->
     EngineState = setup_engine(What, Chain),
     try execute(EngineState) of
-        Res -> Res
+        Res -> {ok, Res}
     catch
-        throw:{E, ES} -> throw({E, ES})
+        throw:{?MODULE, E, ES} -> {error, E, ES}
     end.
 
+get_trace(#{trace := T}) -> T.
 
--define(t(__S,__A,__ES), throw({iolist_to_binary(io_lib:format(__S, __A)), __ES})).
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+-define(t(__S,__A,__ES), throw({?MODULE, iolist_to_binary(io_lib:format(__S, __A)), __ES})).
 
 %% Runtime error messages for dry run and debugging.
 %% Should result on one tyhpe of runtime error and use all gas when
