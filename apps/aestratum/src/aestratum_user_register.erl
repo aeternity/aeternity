@@ -20,7 +20,7 @@
 -define(SERVER, ?MODULE).
 
 -define(TAB, aestratum_user_register).
--define(TAB_REV, aesttratum_user_register_reverse).
+-define(TAB_REV, aestratum_user_register_reverse).
 
 -type user()     :: binary().
 
