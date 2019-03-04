@@ -1038,8 +1038,6 @@ pop_call_stack(#{ call_stack := [{Contract, Function, BB, Mem}| Rest]
             {jump, BB, ES2}
     end.
 
-get_trace(#{trace := T}) -> T.
-
 %% ------------------------------------------------------
 %% Memory
 new_env(Mem, #{ memory := Envs} = EngineState) ->
