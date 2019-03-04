@@ -1,3 +1,9 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2019, Aeternity Anstalt
+%%% @doc
+%%% Entrypoint for stand-alone FATE Virtual Machine
+%%% @end
+%%%-------------------------------------------------------------------
 -module(aefate).
 -export([main/1]).
 
@@ -9,8 +15,9 @@
     , {help, $h, "help", undefined, "Show this message"}
     ]).
 
-usage() ->
-    getopt:usage(?OPT_SPEC, "aefate").
+%%%===================================================================
+%%% API
+%%%===================================================================
 
 main(Args) ->
     case getopt:parse(?OPT_SPEC, Args) of
@@ -30,6 +37,13 @@ main(Args) ->
             io:format("Error: ~s ~p\n\n", [Reason, Data]),
             usage()
     end.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+usage() ->
+    getopt:usage(?OPT_SPEC, "aefate").
 
 run(Opts) ->
     case proplists:get_value(obj_file, Opts, undefined) of
@@ -54,17 +68,17 @@ load_file(FileName, Opts) ->
                     , call => SerializedCall},
             Chain = #{ contracts =>
                            #{ FileName => Code}},
-            Res = aefa_fate:run(What, Chain),
-
-            case Verbose of
-                true ->
-                    io:format("Code: ~0p~n", [Code]),
-                    io:format("Chain: ~0p~n", [Chain]),
-                    io:format("Env: ~0p~n", [Res]);
-                false -> ok
-            end,
-            #{accumulator := Acc} = Res,
-            io:format("~0p~n", [Acc])
+            case aefa_fate:run(What, Chain) of
+                {ok, Env} ->
+                    print_after_run(Verbose, Code, Chain, Env),
+                    io:format("~0p~n", [maps:get(accumulator, Env)]);
+                {error, Error, Env} ->
+                    print_after_run(Verbose, Code, Chain, Env),
+                    io:format("~p~n", [Error])
+            end
     end.
-    
 
+print_after_run(true, Code, Chain, Env) ->
+    io:format("Code: ~0p~n", [Code]),
+    io:format("Chain: ~0p~n", [Chain]),
+    io:format("Env: ~0p~n", [Env]).
