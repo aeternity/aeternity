@@ -1073,7 +1073,7 @@ workflows:
                 - master
     jobs:
       - uat_chain_snapshot
-      - main_chain_snapshot
+#      - main_chain_snapshot
 
   system_tests:
     triggers:
