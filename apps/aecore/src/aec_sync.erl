@@ -900,5 +900,13 @@ sync_progress(#state{sync_tasks = SyncTasks} = State) ->
                           max(Height, MaxHeight)
                   end, 0, SyncTasks),
             TopHeight = aec_headers:height(aec_chain:top_header()),
-            round(10000000 * TopHeight / TargetHeight) / 100000
+            SyncProgress = round(10000000 * TopHeight / TargetHeight) / 100000,
+            %% It is possible to have TopHeight already higher than Height in sync task,
+            %% e.g. when a block was mined and the sync task was not yet removed.
+            %% Then HTTP handler will crash, since sync_progress is defined in Swagger
+            %% to be in range from 0.0 to 100.0.
+            case SyncProgress > 100.0 of
+                true -> 100.0;
+                false -> SyncProgress
+            end
     end.
