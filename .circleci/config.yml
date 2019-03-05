@@ -2,7 +2,7 @@ version: 2.1
 executors:
   infrastructure_container_unstable:
     docker:
-      - image: aeternity/infrastructure:master
+      - image: aeternity/infrastructure:latest
   infrastructure_container_stable:
     docker:
       - image: aeternity/infrastructure:master
