@@ -901,6 +901,8 @@ workflows:
           filters:
             branches:
               ignore:
+                - env/dev1
+                - env/dev2
                 - system-tests
             tags:
               only: *tag_regex
