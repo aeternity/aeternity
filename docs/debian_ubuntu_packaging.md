@@ -47,7 +47,7 @@ helper `dh-rebar`. However this cannot be used with the current
 Aeternity Erlang code-base.
 
 The `dh-rebar` helper uses rebar 2.x, while Aeternity's code-base
-requires reabr3. Additionally, during the creation of this guide no
+requires rebar3. Additionally, during the creation of this guide no
 official in-detail Debian documentation and best practises were found
 related to packaging Erlang software (with or without rebar), however
 there is an official Debian packaging Erlang team and project.
@@ -248,7 +248,7 @@ essence. An empty rule skips a step completely.
 *debian/package_name.install* [[1]](https://www.debian.org/doc/manuals/maint-guide/dother.en.html#install)
 
 Create `debian/package-name.install` if the package source does not have
-a `make install` rule. Packaging wrappers relie on `make install` to
+a `make install` rule. Packaging wrappers rely on `make install` to
 collect the files required for the package.
 
 ```
@@ -272,7 +272,7 @@ _build/prod/rel/*/docs/
 
 In the case of the Erlang implementation of Aeternity, documentation
 files are not installed in that directory. However a symbolic link is
-created in `/usr/share/docs/aeternity-node/docs` to point to the fils
+created in `/usr/share/docs/aeternity-node/docs` to point to the files
 in `/opt/aeternity/node/docs/`. This is required since the `install`
 file does not provide a robust way to separate or exclude directories.
 
@@ -309,7 +309,7 @@ aeternity-node (1.1.0) unstable; urgency=medium
  -- Full Name <full.name@aeternity.com>  Tue, 18 Dec 2018 09:43:00 +0200
 ```
 
-##Generating changelog file.
+## Generating changelog file.
 
 
 [Debian New Maintainers' Guide](https://www.debian.org/doc/manuals/maint-guide/dreq.en.html#changelog)
@@ -324,11 +324,11 @@ from existing data, as the changelog file has a special format.
 One way would be to use Git commit messages and the `git-buildpackage`
 tools. However this is not very practical for Aeternity codebase. This
 would require special branches in the Git repository and this is
-something that (potenially) should be avoided.
+something that (potentially) should be avoided.
 
 Another approach would be to convert the RELEASE-NOTES file for every
-release into a Debian changelog file. However this is inpractical. The
-RELEASE-NOTES file is a Markdown file with vague formating (sections,
+release into a Debian changelog file. However this is impractical. The
+RELEASE-NOTES file is a Markdown file with vague formatting (sections,
 topics etc.) and can't be converted to a Debian changelog file
 straight-forward.
 
@@ -396,6 +396,6 @@ debuild -S -uc -us
 
 Launchpad cannot be used for Debian package building with the current
 Aeternity codebase. Source code building requires external
-dependencies from GitHub. Launchapad accepts only source Debian
+dependencies from GitHub. Launchpad accepts only source Debian
 packages and builds them. However Launchpad is restricted (DNS) for
 obvious reasons and cannot build our packages.
