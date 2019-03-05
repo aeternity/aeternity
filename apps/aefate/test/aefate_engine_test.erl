@@ -61,15 +61,15 @@ make_calls(ListOfCalls) ->
               Call = make_call(C,F,A),
               case R of
                   {error, E} ->
-                      try aefa_fate:run(Call, Chain) of
-                          nomatch -> ok
-                      catch throw:{Error, #{trace := Trace}} ->
+                      case aefa_fate:run(Call, Chain) of
+                          {ok, nomatch} -> ok;
+                          {error, Error, #{trace := Trace}} ->
                               ?assertEqual({E, Trace}, {Error, Trace})
                       end;
                   _ ->
                       FateRes = aeb_fate_data:encode(R),
-                      #{accumulator := Res,
-                        trace := Trace} = aefa_fate:run(Call, Chain),
+                      {ok, #{accumulator := Res,
+                             trace := Trace}} = aefa_fate:run(Call, Chain),
                       ?assertEqual({FateRes, Trace}, {Res, Trace})
               end
       end}
