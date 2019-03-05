@@ -24,7 +24,8 @@
         , has_generation/1
         , set_last_generation_in_sync/0 ]).
 
--export([sync_progress/0]).
+-export([is_syncing/0,
+         sync_progress/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -65,8 +66,13 @@ gossip_txs(GossipTxs) ->
 sync_in_progress(PeerId) ->
     gen_server:call(?MODULE, {sync_in_progress, PeerId}).
 
+-spec sync_progress() -> float().
 sync_progress() ->
     gen_server:call(?MODULE, sync_progress).
+
+-spec is_syncing() -> boolean().
+is_syncing() ->
+    gen_server:call(?MODULE, is_syncing).
 
 known_chain(Chain, ExtraInfo) ->
     gen_server:call(?MODULE, {known_chain, Chain, ExtraInfo}).
@@ -125,6 +131,8 @@ init([]) ->
     [aec_peers:block_peer(P) || P <- BlockedPeers],
     aec_peers:add_trusted(Peers),
 
+    erlang:send_after(rand:uniform(1000), self(), update_sync_progress_metric),
+
     erlang:process_flag(trap_exit, true),
     {ok, #state{}}.
 
@@ -163,23 +171,10 @@ handle_call({next_work_item, STId, PeerId, LastResult}, _From, State) ->
     {reply, Reply, State2};
 handle_call({gossip_txs, GossipTxs}, _From, State) ->
     {reply, ok, State#state{ gossip_txs = GossipTxs }};
-handle_call(sync_progress, _, State) ->
-    State#state.sync_tasks,
-    SyncProgress =
-        case State#state.sync_tasks of
-            [] -> 100.0;
-            SyncTasks ->
-                TargetHeight =
-                    lists:foldl(
-                      fun(SyncTask, MaxHeight) ->
-                              #{chain := Chain} = SyncTask#sync_task.chain,
-                              [#{height := Height} | _] = Chain,
-                              max(Height, MaxHeight)
-                      end, 0, SyncTasks),
-                TopHeight = aec_headers:height(aec_chain:top_header()),
-                round(10000000 * TopHeight / TargetHeight) / 100000
-        end,
-    {reply, SyncProgress, State};
+handle_call(sync_progress, _From, State) ->
+    {reply, sync_progress(State), State};
+handle_call(is_syncing, _From, State) ->
+    {reply, is_syncing(State), State};
 handle_call(_, _From, State) ->
     {reply, error, State}.
 
@@ -255,6 +250,17 @@ handle_info({'EXIT', Pid, Reason}, State) ->
        true -> ok
     end,
     {noreply, do_terminate_worker(Pid, State, Reason)};
+handle_info(update_sync_progress_metric, State) ->
+    case is_syncing(State) of
+        true ->
+            SyncProgress = sync_progress(State),
+            aec_metrics:try_update([ae,epoch,aecore,sync,progress], SyncProgress);
+        false -> ok
+    end,
+
+    %% Next try in 30 secs.
+    erlang:send_after(30 * 1000, self(), update_sync_progress_metric),
+    {noreply, State};
 handle_info(_, State) ->
     {noreply, State}.
 
@@ -878,3 +884,22 @@ max_gossip() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"max_gossip">>],
                                aecore, sync_max_gossip,
                                ?DEFAULT_MAX_GOSSIP).
+
+
+is_syncing(#state{sync_tasks = SyncTasks}) ->
+    SyncTasks =/= [].
+
+sync_progress(#state{sync_tasks = SyncTasks} = State) ->
+    case is_syncing(State) of
+        false -> 100.0;
+        true ->
+            TargetHeight =
+                lists:foldl(
+                  fun(SyncTask, MaxHeight) ->
+                          #{chain := Chain} = SyncTask#sync_task.chain,
+                          [#{height := Height} | _] = Chain,
+                          max(Height, MaxHeight)
+                  end, 0, SyncTasks),
+            TopHeight = aec_headers:height(aec_chain:top_header()),
+            round(10000000 * TopHeight / TargetHeight) / 100000
+    end.
