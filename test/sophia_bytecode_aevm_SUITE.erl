@@ -24,7 +24,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
     %% Should work for both versions of serialized contracts
     execute_identity_fun_from_sophia_file(_Cfg, 1),
     execute_identity_fun_from_sophia_file(_Cfg, 2).
- 
+
 
 execute_identity_fun_from_sophia_file(_Cfg, ContractVersion) ->
     CodeDir = filename:join(code:lib_dir(aevm), "../../extras/test/contracts"),
@@ -40,7 +40,7 @@ execute_identity_fun_from_sophia_file(_Cfg, ContractVersion) ->
     OutType = word,
 
     %% Create the call data
-    {ok, CallData} = aect_sophia:encode_call_data(SerializedCode, <<"main : int => _">>, <<"42">>),
+    {ok, CallData} = aect_sophia:encode_call_data(ContractBin, <<"main">>, [<<"42">>]),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     VM = aect_test_utils:latest_sophia_vm_version(),
     {ok, Store} = aevm_eeevm_store:from_sophia_state(

@@ -126,15 +126,13 @@ identity_contract(Config) ->
 
     {ok, Code}   = aect_test_utils:compile_contract("contracts/identity.aes"),
 
-    InitCallData = make_call_data(Code, list_to_binary(
-                        [ "contract Call = \n"
-                        , "  function init : () => _\n"
-                        , "  function __call() = init()" ])),
+    InitCallData = make_call_data(list_to_binary(
+                        [ "contract Temp = \n"
+                        , "  function init : () => ()\n"]), <<"init">>, []),
 
-    CallCallData = make_call_data(Code, list_to_binary(
-                        [ "contract Call = \n"
-                        , "  function main : int => int\n"
-                        , "  function __call() = main(42)" ])),
+    CallCallData = make_call_data(list_to_binary(
+                        [ "contract Temp = \n"
+                        , "  function main : int => int\n"]), <<"main">>, [<<"42">>]),
 
     CreateTx  = create_contract_tx(APub, 1, Code, InitCallData),
     CPub      = contract_id(CreateTx),
@@ -179,8 +177,8 @@ accounts(Config) ->
 
 %% --- Internal functions ---
 
-make_call_data(ContractCode, Call) ->
-    {ok, CallData} = aect_sophia:encode_call_data(ContractCode, <<>>, Call),
+make_call_data(Code, FunName, Args) ->
+    {ok, CallData} = aect_sophia:encode_call_data(Code, FunName, Args),
     CallData.
 
 contract_id(Tx) ->

@@ -195,9 +195,9 @@ check_coinbase_validation(Config) ->
     N1 = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:connect(N1),
     {ok, TxH1, Ct1, Code} =
-        create_contract_tx(N1, chain, <<"()">>,  300000,  1,  100),
+        create_contract_tx(N1, chain, [],  300000,  1,  100),
     {ok, TxH2} =
-        call_contract_tx(N1, Ct1, Code, <<"save_coinbase">>, <<"()">>, 600000,  2,  100),
+        call_contract_tx(N1, Ct1, Code, <<"save_coinbase">>, [], 600000,  2,  100),
     {ok, _} =
         aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], 10),
 
@@ -284,8 +284,9 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     OwnerKey = maps:get(pubkey, patron()),
     Owner    = aec_id:create(account, OwnerKey),
     File     = lists:concat(["contracts/", Name]),
+    {ok, Contract} = aect_test_utils:read_contract(File),
     {ok, Code} = aect_test_utils:compile_contract(File),
-    {ok, CallData} = aect_sophia:encode_call_data(Code, <<"init">>, Args),
+    {ok, CallData} = aect_sophia:encode_call_data(Contract, <<"init">>, Args),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     VM  = aect_test_utils:latest_sophia_vm_version(),
     {ok, CreateTx} = aect_create_tx:new(#{ nonce       => Nonce
@@ -304,7 +305,7 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     CTx = aec_test_utils:sign_tx(CreateTx, maps:get(privkey, patron())),
     Res = rpc:call(Node, aec_tx_pool, push, [CTx]),
     ContractKey = aect_contracts:compute_contract_pubkey(OwnerKey, Nonce),
-    {Res, aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey, Code}.
+    {Res, aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey, Contract}.
 
 call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
     Caller       = aec_id:create(account, maps:get(pubkey, patron())),

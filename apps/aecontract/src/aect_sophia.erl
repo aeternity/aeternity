@@ -137,15 +137,16 @@ serialization_template(?SOPHIA_CONTRACT_VSN_2) ->
     serialization_template(?SOPHIA_CONTRACT_VSN_1) ++
         [ {compiler_version, binary}].
 
--spec encode_call_data(binary(), binary(), binary()) ->
+-spec encode_call_data(binary(), binary(), [binary()]) ->
                               {ok, binary()} | {error, binary()}.
-encode_call_data(Code, Function, Argument) ->
-    try create_call(Code, Function, Argument) of
+encode_call_data(Code, Function, Arguments) ->
+    try aeso_compiler:create_calldata(binary_to_list(Code), binary_to_list(Function),
+                                      lists:map(fun binary_to_list/1, Arguments)) of
         {error, _} = Err -> Err;
         {ok, Data,_DataType,_OutType} when is_binary(Data) ->
             {ok, Data}
     catch _T:_E ->
-            {error, <<"bad argument">>}
+        {error, <<"bad argument">>}
     end.
 
 
@@ -214,18 +215,4 @@ prepare_for_json(T, R) ->
     String = io_lib:format("Type: ~p Res:~p", [T,R]),
     Error = << <<B>> || B <- "Invalid Sophia type: " ++ lists:flatten(String) >>,
     throw({error, Error}).
-
-create_call(Code, Function, Argument) ->
-    try deserialize(Code) of
-        Contract ->
-            case aeso_compiler:create_calldata(Contract,
-                                           binary_to_list(Function),
-                                           binary_to_list(Argument)) of
-                {error, Error} ->
-                    {error, list_to_binary(io_lib:format("~p", [Error]))};
-                {ok, _CallData, _CallDataType, _OutType} = Res -> Res
-            end
-    catch _:_ ->
-        {error, bad_contract_code}
-    end.
 

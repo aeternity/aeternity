@@ -1,4 +1,4 @@
-contract Crypto =
+contract CryptoTest =
   function test_verify(msg : hash, pk : address, sig : signature) =
     Crypto.ecverify(msg, pk, sig)
 

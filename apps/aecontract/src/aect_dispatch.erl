@@ -71,14 +71,17 @@ sophia_call(ContractKey, Function, Argument) ->
     SerializedCode = aect_contracts:code(Contract),
     Store          = aect_contracts:state(Contract),
     CTVersion      = aect_contracts:ct_version(Contract),
-    ContractMap    = aect_sophia:deserialize(SerializedCode),
-    case aeso_compiler:create_calldata(ContractMap,
-                                       binary_to_list(Function),
-                                       binary_to_list(Argument)) of
+
+    case aehttp_logic:sophia_encode_call_data(SerializedCode, Function, Argument) of
         {error, Error} ->
             {error, list_to_binary(io_lib:format("~p", [Error]))};
-        {ok, CallData, CallDataType, OutType} ->
-            #{ byte_code := Code} = ContractMap,
+        {ok, CallData} ->
+            #{type_info := TypeInfo,
+              byte_code := Code} = aect_sophia:deserialize(SerializedCode),
+            {_Hash, Function, ArgTypeBin, OutTypeBin} = lists:keyfind(Function, 2, TypeInfo),
+            {ok, ArgType} = aeso_heap:from_binary(typerep, ArgTypeBin),
+            {ok, OutType} = aeso_heap:from_binary(typerep, OutTypeBin),
+            CallDataType = {tuple, [word, ArgType]},
             call_common(CallData, CallDataType, OutType, ContractKey, Code,
                         Store, TxEnv, Trees, CTVersion)
     end.
