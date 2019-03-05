@@ -1,9 +1,9 @@
-Debian and Ubuntu as its derivative provide in depth documentation
-about creating packages for software. As such, this guide will not
-attempt to serve as a replacement. The steps provided here are meant
-as a brief introduction into packaging for Debian (and Ubuntu) and the
-issues one might came across. Most of the focus of this document is
-towards issues related to packaging AEternity code.
+Debian and Ubuntu as its derivative both provide in depth
+documentation about creating packages for software. As such, this
+guide will not attempt to serve as a replacement. The steps provided
+here are meant as a brief introduction into packaging for Debian (and
+Ubuntu) and the issues one might came across. Most of the focus of
+this document is towards issues related to packaging Aeternity code.
 
 
 **Note:** 
@@ -23,17 +23,17 @@ following documents:
 # High-level overview
 
 Debian provides various tools for packaging that have solutions for
-most issues a package maintainer might encounter. All of them solve
+most issues, a package maintainer might encounter. All of them solve
 the same issue - some on higher level, other on more lower level. At
 the lowest level of operation they all rely on the same low-level
 tools.
 
 All tools require additional files to be added to the source code for
-the generation of packages. Those files are usually have strict
-format, and could observed as a meta-config files. One exception is
+the generation of packages. Those files usually have strict
+format, and could be observed as a meta-config files. One exception is
 the `rules` file of a package, that in essence is a `Makefile`.
 
-All files requires generally reside in the `debian/` directory in the
+All files required generally reside in the `debian/` directory in the
 software source tree.
 
 The steps on this guide use the `debuild` command for packaging.
@@ -42,9 +42,9 @@ The steps on this guide use the `debuild` command for packaging.
 For the purpose of packaging, Debian provides tools (Debian helpers ;
 dh-*) for many languages to ease the task.
 
-For software programmed in Erlang and using `rebar`, exists a helper
-`dh-rebar`. However this cannot be used with the current Aeternity
-Erlang code-base (named `epoch` at the time of writing).
+For software programmed in Erlang and using `rebar`, there exists a
+helper `dh-rebar`. However this cannot be used with the current
+Aeternity Erlang code-base.
 
 The `dh-rebar` helper uses rebar 2.x, while Aeternity's code-base
 requires reabr3. Additionally, during the creation of this guide no
@@ -52,7 +52,7 @@ official in-detail Debian documentation and best practises were found
 related to packaging Erlang software (with or without rebar), however
 there is an official Debian packaging Erlang team and project.
 
-The approach taken by this guide might not the best approach to
+The approach taken by this guide might not be the best approach to
 package simple Erlang package that uses rebar, which might be easier
 to package with the `dh-rebar` helper.
 
@@ -60,7 +60,7 @@ Having that in mind, packaging is achieved following the official
 [building documentation](build.md) around the `make prod-build`
 Makefile rules. In that way, the automated Debian packaging process is
 overridden to fine-tune some steps, while using `make prod-build` as a
-basis for building the binary.
+base for building the binary.
 
 # Requirements
 
@@ -86,9 +86,10 @@ can be used for building.
 
 ## Ubuntu 16.04 fixes
 
-As mentioned earlier it is best to have all requirements for a software
-to be packaged as a Debian package. This requires some work-arounds
-for Ubuntu 16.04, so the packaging process be successful.
+As mentioned earlier, it is best to have all requirements for a
+software to be packaged as a Debian package. This requires some
+work-arounds for Ubuntu 16.04, so the packaging process can be
+successful.
 
 ### Erlang version
 
@@ -111,7 +112,14 @@ Pin: version 1:20.2-1*
 Pin-Priority: 501
 ```
 
-Add additional package repository for Erlang.
+Install the https apt transport:
+
+```
+sudo apt-get install apt-transport-https
+
+```
+
+Add the additional package repository for Erlang.
 
 */etc/apt/sources.list.d/erlangsolutions.list*
 
@@ -166,7 +174,7 @@ Create debhelper compatibility file and level
 echo 8 > debian/compat
 ```
 
-**Note: Level 8 is deprecated according to Debian standards**:
+**Note: Level 8 is deprecated according to Debian standards**.
 
 It should not be used for new packages. However there are issues in
 levels 9 and 10 with Aeternity Erlang node code-base, which require a
@@ -193,7 +201,7 @@ Build-Depends: erlang ( >=1:20.2-1),  erlang-base ( >=1:20.2-1), erlang-dev ( >=
 Package: aeternity-node
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: AEternity blockchain implementation in Erlang.
+Description: Aeternity blockchain implementation in Erlang.
  Optimized for scalability via smart contracts inside
  state-channels. Has a built-in oracle for integration with real-world
  data.
@@ -239,37 +247,21 @@ essence. An empty rule skips a step completely.
 
 *debian/package_name.install* [[1]](https://www.debian.org/doc/manuals/maint-guide/dother.en.html#install)
 
-Create debian/package-name.install if the package source does not have
-a `make install` rule. Packaging wrappers relies on `make install` to
+Create `debian/package-name.install` if the package source does not have
+a `make install` rule. Packaging wrappers relie on `make install` to
 collect the files required for the package.
 
 ```
-_build/prod/rel/*/bin /opt/aeternity/node/
-_build/prod/rel/*/data /opt/aeternity/node/
-_build/prod/rel/*/erts* /opt/aeternity/node/
-_build/prod/rel/*/lib /opt/aeternity/node/
-_build/prod/rel/*/patches /opt/aeternity/node/
-_build/prod/rel/*/releases /opt/aeternity/node/
-_build/prod/rel/*/VERSION /opt/aeternity/node/
-_build/prod/rel/*/REVISION /opt/aeternity/node/
+_build/prod/rel/aeternity/* /opt/aeternity/node/
 ```
 
 Every line contains a source file or directory and a destination
-separated by space. The file supports wildcards. During the
-preparation of this guide the Aeternity Erlang implementation was in a
-name change phase (it was called epoch) and the new name was
-unclear. Because of this a precise list of the files to be included in
-the package was required. Otherwise a simple one-line could be
-used. It could depend on the source and building system. For example
-
-```
-_build/prod/rel/_some_name_ /opt/aeternity/
-```
+separated by space. The file supports wildcards.
 
 ### docs file
 
 *debian/pacakge_name.docs* [[1]](https://www.debian.org/doc/manuals/maint-guide/dother.en.html#docs)
-Create debian/package-name.docs file if there are documentations files
+Create `debian/package-name.docs` file if there are documentation files
 to be included in the package. Those usually go in
 `/usr/share/doc/package-name` in Debian and Ubuntu.
 
@@ -278,27 +270,36 @@ _build/prod/rel/*/docs/
 
 ```
 
-In the case of the Erlang implementation of Aeternity, the
-documentation (installation, build, operations etc.) from the `docs/`
-directory are installed separately.
+In the case of the Erlang implementation of Aeternity, documentation
+files are not installed in that directory. However a symbolic link is
+created in `/usr/share/docs/aeternity-node/docs` to point to the fils
+in `/opt/aeternity/node/docs/`. This is required since the `install`
+file does not provide a robust way to separate or exclude directories.
 
-Create debian/package-name.links if symbolic links are required for
+
+### links file
+
+*debian/pacakge_name.links* [[1]](https://www.debian.org/doc/manuals/maint-guide/dother.en.html#links)
+
+Create `debian/package-name.links` if symbolic links are required for
 some reason (purely aesthetic or for operation purposes).
 
 ```
 var/log/aeternity/node opt/aeternity/node/log
-usr/share/doc/aeternity-node/docs/ opt/aeternity/node/docs
+opt/aeternity/node/docs usr/share/doc/aeternity-node/docs
 ```
 
 ### changelog file
 
 *debian/changelog* [[1]](https://www.debian.org/doc/manuals/maint-guide/dreq.en.html#changelog) [[2]](https://www.debian.org/doc/debian-policy/ch-source.html#debian-changelog-debian-changelog)
 
-Create debian/changelog file. This one is essential to package
+Create `debian/changelog` file. This one is essential to package
 building. Packaging policy requires this file to be present to track
-changes introduced in newer versions and requires a special
-format. See `man dch`.
+changes introduced in newer versions and requires a special format. It
+is not advisable to try to create it by hand. It is best to see `man
+dch` or `man debchange`.
 
+Example:
 
 ```
 aeternity-node (1.1.0) unstable; urgency=medium
@@ -308,30 +309,48 @@ aeternity-node (1.1.0) unstable; urgency=medium
  -- Full Name <full.name@aeternity.com>  Tue, 18 Dec 2018 09:43:00 +0200
 ```
 
-###Extract changelog from Git(Hub).
+##Generating changelog file.
 
 
 [Debian New Maintainers' Guide](https://www.debian.org/doc/manuals/maint-guide/dreq.en.html#changelog)
 and
 [Debian Policy](https://www.debian.org/doc/debian-policy/ch-docs.html#changelog-files-and-release-notes)
-require an up to date changelog file. The best solution would be to
-prepare the changelog file from Git commit messages. For that the
-`git-buildpackage` tools should be used.
+require an up to date changelog file.
+
+The best solution would be to add the changes for every Aeternity
+release to the changelog file.  However there is no easy way to do it
+from existing data, as the changelog file has a special format.
+
+One way would be to use Git commit messages and the `git-buildpackage`
+tools. However this is not very practical for Aeternity codebase. This
+would require special branches in the Git repository and this is
+something that (potenially) should be avoided.
+
+Another approach would be to convert the RELEASE-NOTES file for every
+release into a Debian changelog file. However this is inpractical. The
+RELEASE-NOTES file is a Markdown file with vague formating (sections,
+topics etc.) and can't be converted to a Debian changelog file
+straight-forward.
+
+The simplest solution is to add a single comment in the Debian
+changelog file pointing to the RELEASE-NOTES file on disk (in the
+package) for the release. Even it might not be strictly in sync with
+the Debian changelog file policy. This is the approach used.
+
+### Using dch
 
 ```
-sudo apt-get install git-buildpacakge
+cd ae_node_source/
+AE_VERSION=$(cat VERSION)
+AE_VERSION_NOTE="Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RLEASENODES-$AE_VERSION.md"
+
+dch -v $AE_VERSION $AE_VERSION_NOTE
+dch -r  $AE_VERSION_NOTE
 ```
 
-To generate the changelog file, execute the following command:
-
-```
-gbp dch --full --no-meta --multimaint-merge -R --distribution=bionic --ignore-branch   --debian-tag="v%(version)s" --git-author`
-
-```
-
-**TODO: Remove debugging options and work-arounds for non-master branch in the command above**
-
-
+Both commands are required and cannot be combined. The `-v` option
+adds a new version to the changelog file. The `-r` option finalizes
+the release (version) in the changelog file.
 
 ## Building binary package.
 
@@ -375,17 +394,8 @@ debuild -S -uc -us
 [[1]](https://help.launchpad.net/Teams/CreatingAndRunning)
 [[2]](https://launchpad.net/people/+newteam)
 
-## GPG keys generation
-## GPG keys import in Launchpad
-## Build sources for PPA upload
-[[1]](https://help.launchpad.net/Packaging/PPA/BuildingASourcePackage)
-
-## Package upload 
-[[1]](https://help.launchpad.net/Packaging/PPA/Uploading)
-
-Upload to PPA
-
-```
-dput aeternity-1804 aeternity-node_1.1.0ubuntu1_source.changes
-
-```
+Launchpad cannot be used for Debian package building with the current
+Aeternity codebase. Source code building requires external
+dependencies from GitHub. Launchapad accepts only source Debian
+packages and builds them. However Launchpad is restricted (DNS) for
+obvious reasons and cannot build our packages.
