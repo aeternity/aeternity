@@ -3649,6 +3649,12 @@
         "syncing" : {
           "type" : "boolean"
         },
+        "sync_progress" : {
+          "type" : "number",
+          "format" : "float",
+          "minimum" : 0.0,
+          "maximum" : 100.0
+        },
         "listening" : {
           "type" : "boolean"
         },
@@ -3689,6 +3695,7 @@
         "node_revision" : "node_revision",
         "solutions" : 0,
         "node_version" : "node_version",
+        "sync_progress" : 14.65813,
         "protocols" : [ {
           "effective_at_height" : 0,
           "version" : 1

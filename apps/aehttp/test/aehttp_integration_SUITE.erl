@@ -1890,6 +1890,7 @@ get_status(_Config) ->
        <<"solutions">>                  := Solutions,
        <<"difficulty">>                 := Difficulty,
        <<"syncing">>                    := Syncing,
+       <<"sync_progress">>              := SyncProgress,
        <<"listening">>                  := Listening,
        <<"protocols">>                  := Protocols,
        <<"node_version">>               := _NodeVersion,
@@ -1911,6 +1912,7 @@ get_status(_Config) ->
     ?assertMatch(X when is_integer(X) andalso X >= 0, PeerCount),
     ?assertMatch(X when is_integer(X) andalso X >= 0, PendingTxCount),
     ?assertEqual(NetworkId, aec_governance:get_network_id()),
+    ?assertEqual(100.0, SyncProgress),
     ok.
 
 get_status_sut() ->

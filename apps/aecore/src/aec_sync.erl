@@ -24,6 +24,8 @@
         , has_generation/1
         , set_last_generation_in_sync/0 ]).
 
+-export([sync_progress/0]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
@@ -63,6 +65,9 @@ gossip_txs(GossipTxs) ->
 sync_in_progress(PeerId) ->
     gen_server:call(?MODULE, {sync_in_progress, PeerId}).
 
+sync_progress() ->
+    gen_server:call(?MODULE, sync_progress).
+
 known_chain(Chain, ExtraInfo) ->
     gen_server:call(?MODULE, {known_chain, Chain, ExtraInfo}).
 
@@ -90,7 +95,7 @@ handle_worker(Task, Action) ->
 %% 1. It has worst top hash than our node, do not include in sync
 %% 2. It has better top hash than our node
 %%    We binary search for a block that we agree upon (could be genesis)
-%% We add new node to sync pool to sync agreed block upto top of new
+%% We add new node to sync pool to sync agreed block up to top of new
 %% 1. If we are already synchronizing, we ignore it,
 %%    the ongoing sync will pick that up later
 %% 2. If we are not already synchronizing, we start doing so.
@@ -158,6 +163,23 @@ handle_call({next_work_item, STId, PeerId, LastResult}, _From, State) ->
     {reply, Reply, State2};
 handle_call({gossip_txs, GossipTxs}, _From, State) ->
     {reply, ok, State#state{ gossip_txs = GossipTxs }};
+handle_call(sync_progress, _, State) ->
+    State#state.sync_tasks,
+    SyncProgress =
+        case State#state.sync_tasks of
+            [] -> 100.0;
+            SyncTasks ->
+                TargetHeight =
+                    lists:foldl(
+                      fun(SyncTask, MaxHeight) ->
+                              #{chain := Chain} = SyncTask#sync_task.chain,
+                              [#{height := Height} | _] = Chain,
+                              max(Height, MaxHeight)
+                      end, 0, SyncTasks),
+                TopHeight = aec_headers:height(aec_chain:top_header()),
+                round(10000000 * TopHeight / TargetHeight) / 100000
+        end,
+    {reply, SyncProgress, State};
 handle_call(_, _From, State) ->
     {reply, error, State}.
 
