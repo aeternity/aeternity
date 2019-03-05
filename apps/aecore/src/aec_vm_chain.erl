@@ -703,7 +703,7 @@ apply_call_transaction(Tx, Gas, #state{tx_env = Env} = State) ->
     Trees = get_top_trees(State),
     case aetx:custom_apply(process_call_from_contract, Tx, Trees, Env) of
         {ok, Call, Trees1, Env1} ->
-            NewEnv = aetx_env:accumulate_env(Env1, Env),
+            NewEnv = aetx_env:update_env(Env1, Env),
             State1 = set_top_trees(State#state{tx_env = NewEnv}, Trees1),
             GasUsed = aect_call:gas_used(Call),
             case aect_call:return_type(Call) of

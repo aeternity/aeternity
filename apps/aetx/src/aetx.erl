@@ -340,8 +340,9 @@ process(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
     case check(AeTx, Trees, Env) of
         {ok, Trees1} ->
             case CB:process(Tx, Trees1, Env) of
-                {ok, Trees2} -> {ok, Trees2, Env};
-                Other -> Other
+                {ok, Trees2}             -> {ok, Trees2, Env};
+                {ok, _Trees, _Env} = Ok  -> Ok;
+                {error, _Reason} = Error -> Error
             end;
         {error, _} = Err ->
             Err

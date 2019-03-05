@@ -188,7 +188,7 @@ calculate_state_for_new_keyblock(PrevHash, Miner, Beneficiary) ->
                 error -> error;
                 {ok, TreesIn, ForkInfoIn} ->
                     {Trees,_Fees,_Events} = apply_node_transactions(Node, TreesIn,
-                                                                   ForkInfoIn, State),
+                                                                    ForkInfoIn, State),
                     {ok, Trees}
             end
     end.

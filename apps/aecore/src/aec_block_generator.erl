@@ -69,7 +69,7 @@ init([]) ->
 
 handle_call(get_candidate, _From, State = #state{ candidate = undefined }) ->
     {reply, {error, no_candidate}, State};
-handle_call(get_candidate, _From, State = #state{ candidate = Candidate}) ->
+handle_call(get_candidate, _From, State = #state{ candidate = Candidate }) ->
     {reply, {ok, Candidate}, State};
 handle_call(get_generation_state, _From, State = #state{ generating = IsGenerating }) ->
    Reply = case IsGenerating of

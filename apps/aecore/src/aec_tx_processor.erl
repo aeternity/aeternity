@@ -912,18 +912,7 @@ tx_event_op(Name) ->
     {tx_event, Name}.
 
 tx_event(Name, #state{tx_env = Env} = S) ->
-    case aetx_env:signed_tx(Env) of
-        {value, SignedTx} ->
-            Events = aetx_env:events(Env),
-            TxHash = aetx_sign:hash(SignedTx),
-            {Type, _} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
-            Env1 = aetx_env:set_events(
-                     Env, Events#{Name => #{ type => Type
-                                           , tx_hash => TxHash }}),
-            S#state{tx_env = Env1};
-        none ->
-            S
-    end.
+    S#state{tx_env = aetx_env:tx_event(Name, Env)}.
 
 %%%-------------------------------------------------------------------
 

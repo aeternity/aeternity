@@ -112,8 +112,6 @@ call_common(CallData, CallDataType, OutType, ContractPubkey, Code, Store,
     ReturnValue = aect_call:return_value(Call),
     case aect_call:return_type(Call) of
         ok     -> {ok, ReturnValue, Env1};
-        %% error  -> {error, ReturnValue, TxEnv};
-        %% revert -> {error, ReturnValue, TxEnv}
         error  -> {error, ReturnValue};
         revert -> {error, ReturnValue}
     end.

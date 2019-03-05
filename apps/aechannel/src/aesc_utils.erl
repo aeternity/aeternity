@@ -480,11 +480,11 @@ process_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
 process_solo_snapshot(ChannelPubKey, FromPubKey, Nonce, Fee, Payload, Trees, Env) ->
     ChannelsTree0      = aec_trees:channels(Trees),
     Channel0 = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
-    {ok, _SignedTx, PayloadTx} = deserialize_payload(Payload),
+    {ok, _SignedOffchainTx, PayloadTx} = deserialize_payload(Payload),
     Channel = aesc_channels:snapshot_solo(Channel0, PayloadTx),
     Trees1 = set_channel(Channel, Trees),
     Trees2 = spend(FromPubKey, Fee, Nonce, Trees1),
-    add_event({ok, Trees2}, ChannelPubKey, Env).
+    add_event(Trees2, ChannelPubKey, Env).
 
 process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
                          Payload, PoI, Height, Trees) ->
@@ -499,8 +499,7 @@ process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
             {ok, last_onchain} ->
                 aesc_channels:close_solo(Channel0, PoI, Height)
         end,
-    Trees2 = set_channel(Channel1, Trees1),
-    {ok, Trees2}.
+    _Trees2 = set_channel(Channel1, Trees1).
 
 process_force_progress(Tx, OffChainTrees, TxHash, Height, Trees, Env) ->
     ?TEST_LOG("process_force_progress begin", []),
@@ -586,7 +585,7 @@ process_force_progress(Tx, OffChainTrees, TxHash, Height, Trees, Env) ->
                 ?TEST_LOG("Expected and computed values DO NOT MATCH. Channel object is NOT being updated", []),
                 Trees2
         end,
-    add_event({ok, Trees3}, ChannelPubKey, Env).
+    add_event(Trees3, ChannelPubKey, Env).
 
 
 get_vals(List) ->
@@ -656,18 +655,7 @@ add_call(Call0, TxHash, Trees) ->
     Call = aect_call:set_contract(ContractPubkey, Call0),
     aect_utils:insert_call_in_trees(Call, Trees).
 
--spec add_event({ok, aec_trees:trees()}, binary(), aetx_env:env()) ->
+-spec add_event(aec_trees:trees(), binary(), aetx_env:env()) ->
                        {ok, aec_trees:trees(), aetx_env:env()}.
-add_event({ok, Trees}, ChannelPubKey, Env) ->
-    case aetx_env:signed_tx(Env) of
-        {value, SignedTx} ->
-            Events = aetx_env:events(Env),
-            TxHash = aetx_sign:hash(SignedTx),
-            {Type, _} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
-            Env1 = aetx_env:set_events(
-                     Env, Events#{{channel, ChannelPubKey} => #{ type => Type
-                                                               , tx_hash => TxHash }}),
-            {ok, Trees, Env1};
-        none ->
-            {ok, Trees, Env}
-    end.
+add_event(Trees, ChannelPubKey, Env) ->
+    {ok, Trees, aetx_env:tx_event({channel, ChannelPubKey}, Env)}.

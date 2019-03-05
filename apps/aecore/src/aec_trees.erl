@@ -549,8 +549,7 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
             Tx = aetx_sign:tx(SignedTx),
             try aetx:process(Tx, Trees, Env1) of
                 {ok, Trees1, Env20} ->
-                    lager:debug("Env20 = ~p", [Env20]),
-                    Env21 = aetx_env:accumulate_env(Env20, Env),
+                    Env21 = aetx_env:update_env(Env20, Env),
                     Valid1 = [SignedTx | ValidTxs],
                     apply_txs_on_state_trees(Rest, Valid1, InvalidTxs, Trees1, Env21, Opts);
                 {error, Reason} when Strict ->
@@ -567,7 +566,7 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
                     {error, Reason};
                 Type:What when not Strict ->
                     Reason = {Type, What},
-                    lager:debug("Tx ~p cannot be applied due to an error ~p / ~p", [Tx, Reason, erlang:get_stacktrace()]),
+                    lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     Invalid1 = [SignedTx| InvalidTxs],
                     apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)
             end;

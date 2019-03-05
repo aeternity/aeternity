@@ -196,7 +196,7 @@ init_chain_state() ->
     case aec_chain:genesis_hash() of
         undefined ->
             {GB, _GBState} = aec_block_genesis:genesis_block_with_state(),
-            {ok,_} = aec_chain_state:insert_block(GB),
+            {ok, _} = aec_chain_state:insert_block(GB),
             ok;
         Hash when is_binary(Hash) ->
             ok
@@ -343,7 +343,7 @@ make_key_candidate(Block) ->
 
 make_micro_candidate(Block) ->
     #candidate{ block    = Block,
-                top_hash = aec_blocks:prev_hash(Block)}.
+                top_hash = aec_blocks:prev_hash(Block) }.
 
 %%%===================================================================
 %%% Handle init options

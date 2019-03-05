@@ -40,8 +40,9 @@
         , set_context/2
         , set_height/2
         , set_signed_tx/2
+        , tx_event/2
         , set_events/2
-        , accumulate_env/2
+        , update_env/2
         ]).
 
 
@@ -187,14 +188,27 @@ set_height(Env, X) -> Env#env{height = X}.
 
 %%------
 
+-spec tx_event(any(), env()) -> env().
+tx_event(Name, #env{events = Events} = Env) ->
+    case signed_tx(Env) of
+        none -> Env;
+        {value, SignedTx} ->
+            TxHash = aetx_sign:hash(SignedTx),
+            {Type, _} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+            Env#env{events = Events#{Name => #{ type => Type
+                                              , tx_hash => TxHash }}}
+    end.
+
+%%------
+
 -spec set_events(env(), map()) -> env().
 set_events(Env, Events) ->
     Env#env{events = Events}.
 
 %%------
 
--spec accumulate_env(env(), env()) -> env().
-accumulate_env(#env{events = Events}, ToEnv) ->
+-spec update_env(env(), env()) -> env().
+update_env(#env{events = Events}, ToEnv) ->
     ToEnv#env{events = Events}.
 
 %%------
