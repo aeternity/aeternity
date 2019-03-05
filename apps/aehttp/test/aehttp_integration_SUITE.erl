@@ -6010,7 +6010,7 @@ sc_ws_broken_call_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
     ContractPubKey = contract_id_from_create_update(OwnerPubKey,
                                                     UnsignedCreateTx),
 
-    % have some other contranct with some other function
+    % have some other contract with some other function
     SophiaCalcCode = <<"contract Calc = function sum (x:int, y:int) = x + y">>,
     {ok, 200, #{<<"bytecode">> := EncodedCalcCode}} = get_contract_bytecode(SophiaCalcCode),
     {ok, CalcCode} = aehttp_api_encoder:safe_decode(contract_bytearray,
