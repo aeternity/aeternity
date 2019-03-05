@@ -885,7 +885,6 @@ max_gossip() ->
                                aecore, sync_max_gossip,
                                ?DEFAULT_MAX_GOSSIP).
 
-
 is_syncing(#state{sync_tasks = SyncTasks}) ->
     SyncTasks =/= [].
 
