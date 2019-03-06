@@ -2838,6 +2838,11 @@ definitions:
         format: int64
       syncing:
         type: boolean
+      sync_progress:
+        type: number
+        format: float
+        minimum: 0.0
+        maximum: 100.0
       listening:
         type: boolean
       protocols:
