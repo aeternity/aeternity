@@ -117,7 +117,11 @@ groups() ->
        check_mutual_close_with_wrong_amounts
       ]},
      {signatures, [sequence], [check_incorrect_create | update_sequence()]},
-     {channel_ids, [sequence], update_sequence()}
+     {channel_ids, [sequence],
+      % tests all mutually signed transactions with the exception of
+      % channel_create_tx as its channel_id is not subject to the transaction
+      % as it is computed. Unilateral transactions are not tested.
+      update_sequence()}
     ].
 
 update_sequence() ->
