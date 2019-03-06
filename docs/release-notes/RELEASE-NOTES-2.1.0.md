@@ -7,6 +7,9 @@ It:
   * uses proper data directory.
 * Fixes `syncing` field in `/status` endpoint.
 * Adds `sync_progress` field to `/status` external endpoint (`sync_progress` metric is also reported every 30 seconds during sync process).
+* Expose logged events (as the field `log`) in ContractCallObject in the HTTP API.
+* Improves stability of state channel's FSM
+* Adds a new WebSocket method for dry-running off-chain contracts: `channels.dry_run.call_contract`
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.1.0
 
@@ -106,4 +109,3 @@ Information, e.g. height, of the top block of the longest chain as seen by these
 Setting up your node consists of:
 * Configuring your node - see instructions in [the dedicated separate document](../../docs/configuration.md);
 * Starting your node and verifying it works as expected - see instructions in [the dedicated separate document](../../docs/operation.md).
-
