@@ -40,6 +40,7 @@
          spend_test_contract/1,
          stack_contract/1,
          remote_gas_test_contract/1,
+         events_contract/1,
          null/1
         ]).
 
@@ -70,6 +71,7 @@ groups() ->
        erc20_token_contract,
        compiler_error_contract,
        remote_gas_test_contract,
+       events_contract,
        null                                     %This allows to end with ,
       ]}
     ].
@@ -1080,6 +1082,39 @@ compiler_error_contract(_Config) ->
 
     ok.
 
+events_contract(Config) ->
+    %% Set an account.
+    Node = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APub,
+                 priv_key := APriv}} = proplists:get_value(accounts, Config),
+
+    init_fun_calls(),
+    Code = compile_test_contract("events"),
+
+    {EncCPub, _, _} = create_compute_contract(Node, APub, APriv, Code, <<"()">>),
+
+    force_fun_calls(Node),
+
+    F1Check = fun([#{<<"address">> := Addr, <<"topics">> := Ts, <<"data">> := Data}]) ->
+                <<E1:256>> = aec_hash:hash(evm, <<"Event1">>),
+                ?assertEqual(Addr, EncCPub),
+                ?assertEqual(Data, aehttp_api_encoder:encode(contract_bytearray, <<"bar">>)),
+                ?assertMatch([E1, 1, 2], Ts)
+              end,
+    call_func(APub, APriv, EncCPub, <<"f1">>, args_to_binary([1, {string, "bar"}]), {log, F1Check}),
+
+    F2Check = fun([#{<<"address">> := Addr, <<"topics">> := Ts, <<"data">> := Data}]) ->
+                <<E2:256>> = aec_hash:hash(evm, <<"Event2">>),
+                <<A:256>>  = APub,
+                ?assertEqual(Addr, EncCPub),
+                ?assertEqual(Data, aehttp_api_encoder:encode(contract_bytearray, <<"foo">>)),
+                ?assertEqual([E2, A], Ts)
+              end,
+    call_func(APub, APriv, EncCPub, <<"f2">>, args_to_binary([{string, "foo"}]), {log, F2Check}),
+
+    force_fun_calls(Node).
+
 
 remote_gas_test_contract(Config) ->
     %% Set an account.
@@ -1262,12 +1297,22 @@ check_call({#{tx_hash := TxHash}, Check}) ->
     ct:pal("Call return ~p\n", [CallReturn]),
     check_call_(Check, CallReturn, TxHash).
 
+check_call_([], _CallObject, _TxHash) ->
+    ok;
+check_call_([Check | Checks], CallObject, TxHash) ->
+    check_call_(Check, CallObject, TxHash),
+    check_call_(Checks, CallObject, TxHash);
 check_call_(Check, CallObject, TxHash) ->
-    #{<<"return_type">> := RetType, <<"return_value">> := Value} = CallObject,
+    #{<<"return_type">> := RetType,
+      <<"return_value">> := Value,
+      <<"log">> := Log } = CallObject,
 
     %% Get the block where the tx was included
     case Check of
         none -> ?assertEqual(<<"ok">>, RetType);
+        {log, Fun} ->
+            ?assertEqual(<<"ok">>, RetType),
+            Fun(Log);
         {Type, Fun} when is_function(Fun) ->
             ?assertEqual(<<"ok">>, RetType),
             case TxHash of
