@@ -117,7 +117,7 @@ check_initial_update_tx(SignedTx, State, _OnChainTrees, _OnChainEnv, _Opts) ->
           end],
     lists:foldl(
         fun(_, {error, _} = Err) -> Err;
-           (F, _) -> F()
+           (F, ok) -> F()
         end,
         ok,
         Checks).

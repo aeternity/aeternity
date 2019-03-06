@@ -170,13 +170,13 @@ init_per_group(round_too_low, Config0) ->
                                                           D, ModRoundTooLow) end}
      | Config];
 init_per_group(round_too_high, Config0) ->
-    ModRoundTooLow = fun(Round) -> Round + 2 end, % skip one
+    ModRoundTooHigh = fun(Round) -> Round + 2 end, % skip one
     Config = init_per_group_(Config0),
     [{wrong_create, fun(_, _) -> error(no_invalid_round_on_create) end},
      {wrong_action, fun(C, P, M, F) -> wrong_round_action(C, P, M, F,
-                                                          ModRoundTooLow) end},
+                                                          ModRoundTooHigh) end},
      {wrong_action_detailed, fun(C, P, M, F, D) -> wrong_round_action(C, P, M, F,
-                                                          D, ModRoundTooLow) end}
+                                                          D, ModRoundTooHigh) end}
      | Config];
 init_per_group(state_hash, Config0) ->
     Config = init_per_group_(Config0),
