@@ -5990,7 +5990,8 @@ sc_ws_broken_init_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
 
 sc_ws_broken_call_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
                    _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
-    %% Example broken init code will be calling not the init function
+    %% Example broken call code data will be calling a function from another
+    %% contract
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
     {ok, Code} = aehttp_api_encoder:safe_decode(contract_bytearray,
