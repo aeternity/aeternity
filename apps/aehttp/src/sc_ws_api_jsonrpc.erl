@@ -294,6 +294,28 @@ process_request(#{<<"method">> := <<"channels.get.contract_call">>,
             end;
         _ -> {error, broken_code}
     end;
+process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
+                  <<"params">> := #{<<"contract">>    := ContractE,
+                                    <<"abi_version">> := ABIVersion,
+                                    <<"amount">>      := Amount,
+                                    <<"call_data">>   := CallDataE}}, FsmPid) ->
+    case {aehttp_api_encoder:safe_decode(contract_pubkey, ContractE),
+          bytearray_decode(CallDataE)} of
+        {{ok, Contract}, {ok, CallData}} ->
+            case aesc_fsm:dry_run_contract(FsmPid,
+                                           #{contract     => Contract,
+                                             abi_version  => ABIVersion,
+                                             amount       => Amount,
+                                             call_data    => CallData}) of
+                {ok, Call} ->
+                  {reply, #{ action     => <<"dry_run">>
+                           , tag        => <<"call_contract">>
+                           , {int,type} => reply
+                           , payload    => aect_call:serialize_for_client(Call) }};
+                {error, _Reason} = Err -> Err
+            end;
+        _ -> {error, broken_code}
+    end;
 process_request(#{<<"method">> := <<"channels.clean_contract_calls">>}, FsmPid) ->
     ok = aesc_fsm:prune_local_calls(FsmPid),
     {reply, ok_response(calls_pruned)};

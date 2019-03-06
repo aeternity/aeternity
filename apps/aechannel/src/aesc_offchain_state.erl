@@ -23,6 +23,7 @@
         , verify_signatures/2         %%  (SignedTx, State)
         , make_update_tx/5            %%  (Updates, State, OnChainTrees, OnChainEnv, Opts) -> Tx
         , set_signed_tx/5             %%  (SignedTx, State0, OnChainTrees, OnCHainEnv, Opts) -> State
+        , set_signed_tx/6             %%  (SignedTx, State0, OnChainTrees, OnCHainEnv, Opts, CheckSigs) -> State
         , set_half_signed_tx/2        %%  (SignedTx, State0) -> State
         , get_latest_half_signed_tx/1 %%  (State) -> SignedTx
         , get_latest_signed_tx/1      %%  (State) -> {Round, SignedTx}
@@ -235,7 +236,17 @@ run_extra_checks(F, Mod, Tx) when is_function(F, 2) ->
                     aetx_env:env(), map()) -> state().
 set_signed_tx(SignedTx, #state{}=State, OnChainTrees,
               OnChainEnv, Opts) ->
-    true = mutually_signed(SignedTx), % ensure it is mutually signed
+    set_signed_tx(SignedTx, State, OnChainTrees, OnChainEnv, Opts, true).
+
+-spec set_signed_tx(aetx_sign:signed_tx(), state(), aec_trees:trees(),
+                    aetx_env:env(), map(), boolean()) -> state().
+set_signed_tx(SignedTx, #state{}=State, OnChainTrees,
+              OnChainEnv, Opts, CheckSigs) ->
+    case CheckSigs of
+        true ->
+            true = mutually_signed(SignedTx); % ensure it is mutually signed
+        false -> pass
+    end,
     Tx = aetx_sign:tx(SignedTx),
     case aetx:specialize_callback(Tx) of
         {aesc_create_tx, _} ->

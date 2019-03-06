@@ -30,6 +30,7 @@
         , get_balances/2    %% (fsm(), {ok, [key()]) -> [{key(), amount()}]} | {error, _}
         , get_round/1       %% (fsm()) -> {ok, round()} | {error, _}
         , prune_local_calls/1  %% (fsm()) -> {ok, round()} | {error, _}
+        , dry_run_contract/2%% (fsm(), map()) -> {ok, call()} | {error, _}
         ]).
 
 %% Used by noise session
@@ -350,7 +351,8 @@ upd_call_contract(Fsm, #{contract    := _,
                          call_data  := _} = Opts) when is_integer(Amt), Amt >= 0 ->
     lager:debug("upd_call_contract(~p)", [Opts]),
     CallStack = maps:get(call_stack, Opts, []),
-    gen_statem:call(Fsm, {upd_call_contract, Opts#{call_stack => CallStack}}).
+    gen_statem:call(Fsm, {upd_call_contract, Opts#{call_stack => CallStack},
+                          execute}).
 
 get_contract_call(Fsm, Contract, Caller, Round) when is_integer(Round), Round > 0 ->
     lager:debug("get_contract_call(~p, ~p, ~p)", [Contract, Caller, Round]),
@@ -445,6 +447,12 @@ get_round(Fsm) ->
 
 prune_local_calls(Fsm) ->
     gen_statem:call(Fsm, prune_local_calls).
+
+dry_run_contract(Fsm, #{contract    := _,
+                        abi_version := _,
+                        amount      := Amt,
+                        call_data   := _} = Opts) when is_integer(Amt), Amt >= 0 ->
+    gen_statem:call(Fsm, {upd_call_contract, Opts, dry_run}).
 
 %% ======================================================================
 %% FSM initialization
@@ -1245,14 +1253,48 @@ handle_call_(open, {upd_create_contract, Opts}, From, #data{} = D) ->
         error         -> ok
     end,
     new_contract_tx_for_signing(Opts#{owner => FromPub}, From, D);
-handle_call_(open, {upd_call_contract, Opts}, From, #data{} = D) ->
+handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
+             #data{state=State, opts = ChannelOpts} = D) ->
     FromPub = my_account(D),
     case maps:find(from, Opts) of
         {ok, FromPub} -> ok;
         {ok, _Other}  -> error(conflicting_accounts);
         error         -> ok
     end,
-    call_contract_tx_for_signing(Opts#{caller => FromPub}, From, D);
+    CallStack = maps:get(call_stack, Opts, []),
+    #{contract    := ContractPubKey,
+      abi_version := ABIVersion,
+      amount      := Amount,
+      call_data   := CallData} = Opts,
+    Update = aesc_offchain_update:op_call_contract(aec_id:create(account, FromPub),
+                                                   aec_id:create(contract, ContractPubKey),
+                                                   ABIVersion, Amount,
+                                                   CallData, CallStack),
+    Updates = [Update],
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
+                                                  OnChainTrees, OnChainEnv, ChannelOpts),
+         case ExecType of
+            dry_run ->
+                UpdState = aesc_offchain_state:set_signed_tx(
+                             aetx_sign:new(Tx1, []), %% fake signed tx, no signatures will be checked
+                             State, OnChainTrees, OnChainEnv, ChannelOpts,
+                             _CheckSigs = false),
+                {Round, _} = aesc_offchain_state:get_latest_signed_tx(UpdState),
+                {ok, Call} = aesc_offchain_state:get_contract_call(ContractPubKey,
+                                                                   FromPub, Round,
+                                                                   UpdState),
+                keep_state(D, [{reply, From, {ok, Call}}]);
+            execute ->
+                D1 = request_signing(?UPDATE, Tx1, D),
+                gen_statem:reply(From, ok),
+                next_state(awaiting_signature, set_ongoing(D1))
+          end
+    catch
+        error:Reason ->
+            process_update_error(Reason, From, D)
+    end;
 handle_call_(awaiting_signature, Msg, From,
              #data{ongoing_update = true} = D)
   when ?UPDATE_REQ(element(1,Msg)) ->
@@ -1910,29 +1952,6 @@ new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts 
         error:Reason ->
             process_update_error(Reason, From, D)
     end.
-
-call_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts } = D) ->
-    #{caller      := Caller,
-      contract    := ContractPubKey,
-      abi_version := ABIVersion,
-      amount      := Amount,
-      call_data   := CallData,
-      call_stack  := CallStack} = Opts,
-    Updates = [aesc_offchain_update:op_call_contract(aec_id:create(account, Caller),
-                                                     aec_id:create(contract, ContractPubKey),
-                                                     ABIVersion, Amount, CallData, CallStack)],
-    {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
-                                                  OnChainTrees, OnChainEnv, ChannelOpts),
-         D1 = request_signing(?UPDATE, Tx1, D),
-         gen_statem:reply(From, ok),
-         next_state(awaiting_signature, set_ongoing(D1))
-    catch
-        error:Reason ->
-            process_update_error(Reason, From, D)
-    end.
-
 
 pay_close_mutual_fee(Fee, IAmt, RAmt) ->
     Ceil  = trunc(math:ceil(Fee/2)),
