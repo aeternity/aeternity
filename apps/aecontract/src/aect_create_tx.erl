@@ -205,7 +205,7 @@ check(#contract_create_tx{}, Trees,_Env) ->
 signers(#contract_create_tx{} = Tx, _) ->
     {ok, [owner_pubkey(Tx)]}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#contract_create_tx{} = Tx, Trees, Env) ->
     Instructions =
         aec_tx_processor:contract_create_tx_instructions(

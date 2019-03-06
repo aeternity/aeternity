@@ -26,7 +26,7 @@ dry_run([], _Trees, _Env, Acc) ->
 dry_run([Tx | Txs], Trees, Env, Acc) ->
     case aec_trees:apply_txs_on_state_trees([Tx], Trees, Env,
                                             [strict, dont_verify_signature]) of
-        {ok, [Tx], [], Trees1} ->
+        {ok, [Tx], [], Trees1, _Env1} ->
             dry_run(Txs, Trees1, Env, [dry_run_res(Tx, Trees1, ok) | Acc]);
         Err = {error, _Reason} ->
             dry_run(Txs, Trees, Env, [dry_run_res(Tx, Trees, Err) | Acc])

@@ -115,7 +115,7 @@ check(#ns_transfer_tx{}, Trees,_Env) ->
     %% Checks are done in process/3
     {ok, Trees}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#ns_transfer_tx{} = TTx, Trees, Env) ->
     Instructions =
         aec_tx_processor:name_transfer_tx_instructions(

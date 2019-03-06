@@ -78,22 +78,22 @@
 %%%===================================================================
 
 -spec eval([op()], aec_trees:trees(), aetx_env:env()) ->
-                  {ok, aec_trees:trees()} | {error, atom()}.
+                  {ok, aec_trees:trees(), aetx_env:env()} | {error, atom()}.
 eval([_|_] = Instructions, Trees, TxEnv) ->
     S = new_state(Trees, aetx_env:height(TxEnv), TxEnv),
     case int_eval(Instructions, S) of
-        {ok, _} = Res -> Res;
+        {ok, S1} -> {ok, S1#state.trees, S1#state.tx_env};
         {ok, _, _} -> error(illegal_return);
         {error, _} = Err -> Err
     end.
 
 -spec eval_with_return([op()], aec_trees:trees(), aetx_env:env()) ->
-                              {ok, term(), aec_trees:trees()} | {error, atom()}.
+                              {ok, term(), aec_trees:trees(), aetx_env:env()} | {error, atom()}.
 eval_with_return([_|_] = Instructions, Trees, TxEnv) ->
     S = new_state(Trees, aetx_env:height(TxEnv), TxEnv),
     case int_eval(Instructions, S) of
         {ok, _} -> error(illegal_no_return);
-        {ok, _, _} = Res -> Res;
+        {ok, Return, S1} -> {ok, Return, S1#state.trees, S1#state.tx_env};
         {error, _} = Err -> Err
     end.
 
@@ -252,6 +252,9 @@ channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
                         ResponderPubkey, ResponderAmount,
                         ReserveAmount, DelegatePubkeys,
                         StateHash, LockPeriod, Nonce)
+    , tx_event_op({channel, aesc_channels:pubkey(InitiatorPubkey,
+                                                 Nonce,
+                                                 ResponderPubkey)})
     ].
 
 -spec channel_deposit_tx_instructions(pubkey(), pubkey(), amount(), hash(),
@@ -262,6 +265,7 @@ channel_deposit_tx_instructions(FromPubkey, ChannelPubkey, Amount, StateHash,
     [ inc_account_nonce_op(FromPubkey, Nonce)
     , spend_fee_op(FromPubkey, Fee + Amount)
     , channel_deposit_op(FromPubkey, ChannelPubkey, Amount, StateHash, Round)
+    , tx_event_op({channel, ChannelPubkey})
     ].
 
 -spec channel_close_mutual_tx_instructions(pubkey(), pubkey(), amount(),
@@ -272,6 +276,7 @@ channel_close_mutual_tx_instructions(FromPubkey, ChannelPubkey,
     [ inc_account_nonce_op(FromPubkey, Nonce)
     , channel_close_mutual_op(FromPubkey, ChannelPubkey,
                               InitiatorAmount, ResponderAmount, Fee)
+    , tx_event_op({channel, ChannelPubkey})
     ].
 
 -spec channel_withdraw_tx_instructions(pubkey(), pubkey(), amount(), hash(),
@@ -282,6 +287,7 @@ channel_withdraw_tx_instructions(ToPubkey, ChannelPubkey, Amount, StateHash,
     [ inc_account_nonce_op(ToPubkey, Nonce)
     , spend_fee_op(ToPubkey, Fee)
     , channel_withdraw_op(ToPubkey, ChannelPubkey, Amount, StateHash, Round)
+    , tx_event_op({channel, ChannelPubkey})
     ].
 
 -spec channel_settle_tx_instructions(pubkey(), pubkey(), amount(), amount(),
@@ -291,6 +297,7 @@ channel_settle_tx_instructions(FromPubkey, ChannelPubkey,
     [ inc_account_nonce_op(FromPubkey, Nonce)
     , spend_fee_op(FromPubkey, Fee)
     , channel_settle_op(FromPubkey, ChannelPubkey, InitiatorAmount, ResponderAmount)
+    , tx_event_op({channel, ChannelPubkey})
     ].
 
 %%%===================================================================
@@ -313,13 +320,13 @@ eval_instructions([I|Left], S) ->
             eval_instructions(Left, S1);
         {return, Return, #state{} = S1} when Left =:= [] ->
             S2 = cache_write_through(S1),
-            {ok, Return, S2#state.trees};
+            {ok, Return, S2};
         {return, _Return, #state{}} when Left =/= [] ->
             error(return_not_last)
     end;
 eval_instructions([], S) ->
     S1 = cache_write_through(S),
-    {ok, S1#state.trees}.
+    {ok, S1}.
 
 eval_one({Op, Args}, S) ->
     case Op of
@@ -345,6 +352,7 @@ eval_one({Op, Args}, S) ->
         resolve_account           -> resolve_account(Args, S);
         spend                     -> spend(Args, S);
         spend_fee                 -> spend_fee(Args, S);
+        tx_event                  -> tx_event(Args, S);
         Other                     -> error({illegal_op, Other})
     end.
 
@@ -898,6 +906,16 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
                                        RollbackS, S5)
     end.
 
+%%%-------------------------------------------------------------------
+
+tx_event_op(Name) ->
+    {tx_event, Name}.
+
+tx_event(Name, #state{tx_env = Env} = S) ->
+    S#state{tx_env = aetx_env:tx_event(Name, Env)}.
+
+%%%-------------------------------------------------------------------
+
 contract_init_call_success(InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
     ReturnValue = aect_call:return_value(InitCall),
     %% The return value is cleared for successful init calls.
@@ -963,8 +981,8 @@ run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, Origin, Amount,
                , origin      => Origin
                },
     CTVersion = aect_contracts:ct_version(Contract),
-    {Call1, Trees1} = aect_dispatch:run(CTVersion, CallDef),
-    {Call1, S1#state{trees = Trees1}}.
+    {Call1, Trees1, Env1} = aect_dispatch:run(CTVersion, CallDef),
+    {Call1, S1#state{trees = Trees1, tx_env = Env1}}.
 
 int_lock_amount(0, #state{} = S) ->
     %% Don't risk creating an account for the locked amount if there is none.

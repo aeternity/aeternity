@@ -526,13 +526,20 @@ apply_txs_on_state_trees(SignedTxs, Trees, Env) ->
     apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, []).
 
 apply_txs_on_state_trees_strict(SignedTxs, Trees, Env) ->
-    apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, [strict]).
+    apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, [strict, tx_events]).
 
 apply_txs_on_state_trees(SignedTxs, Trees, Env, Opts) ->
     apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, Opts).
 
-apply_txs_on_state_trees([], ValidTxs, InvalidTxs, Trees,_Env,_Opts) ->
-    {ok, lists:reverse(ValidTxs), lists:reverse(InvalidTxs), Trees};
+apply_txs_on_state_trees([], ValidTxs, InvalidTxs, Trees,Env,Opts) ->
+    Events = case proplists:get_bool(tx_events, Opts) of
+                 true -> aetx_env:events(Env);
+                 false -> #{}
+             end,
+    if map_size(Events) > 0 -> lager:debug("tx_events: ~p", [Events]);
+       true -> ok
+    end,
+    {ok, lists:reverse(ValidTxs), lists:reverse(InvalidTxs), Trees, Events};
 apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Opts) ->
     Strict     = proplists:get_value(strict, Opts, false),
     DontVerify = proplists:get_value(dont_verify_signature, Opts, false),
@@ -541,9 +548,10 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
             Env1 = aetx_env:set_signed_tx(Env, {value, SignedTx}),
             Tx = aetx_sign:tx(SignedTx),
             try aetx:process(Tx, Trees, Env1) of
-                {ok, Trees1} ->
+                {ok, Trees1, Env20} ->
+                    Env21 = aetx_env:update_env(Env20, Env),
                     Valid1 = [SignedTx | ValidTxs],
-                    apply_txs_on_state_trees(Rest, Valid1, InvalidTxs, Trees1, Env, Opts);
+                    apply_txs_on_state_trees(Rest, Valid1, InvalidTxs, Trees1, Env21, Opts);
                 {error, Reason} when Strict ->
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     {error, Reason};

@@ -60,7 +60,7 @@ signatures_check_test_() ->
             Account = aec_accounts:new(SenderPubkey, 1000000),
             TreesIn = aec_test_utils:create_state_tree_with_account(Account),
             Env = aetx_env:tx_env(1),
-            {ok, ValidTxs, _InvalidTxs, _Trees} =
+            {ok, ValidTxs, _InvalidTxs, _Trees, _Events} =
                 ?TEST_MODULE:apply_txs_on_state_trees(SignedTxs, TreesIn, Env),
             ?assertEqual(SignedTxs, ValidTxs),
             ok
@@ -70,7 +70,7 @@ signatures_check_test_() ->
             Tx = make_spend_tx(<<0:32/unit:8>>, <<1:32/unit:8>>),
             MalformedTxs = [aec_test_utils:sign_tx(Tx, <<0:64/unit:8>>)],
             Env = aetx_env:tx_env(1),
-            {ok, ValidTxs, _InvalidTxs, _Trees} =
+            {ok, ValidTxs, _InvalidTxs, _Trees, _Events} =
                 ?TEST_MODULE:apply_txs_on_state_trees(MalformedTxs, aec_trees:new(), Env),
             ?assertEqual([], ValidTxs),
             ok
@@ -104,7 +104,7 @@ process_txs_test_() ->
 
             meck:expect(aetx, process, fun(_, _, _) -> error(foo) end),
 
-            {ok, ValidTxs, SignedTxs, _Trees} =
+            {ok, ValidTxs, SignedTxs, _Trees, _Events} =
                 ?TEST_MODULE:apply_txs_on_state_trees(SignedTxs, TreesIn, Env),
             ?assertEqual([], ValidTxs),
             {error, {error, foo}} =

@@ -111,10 +111,10 @@ call_common(CallData, CallDataType, OutType, ContractPubkey, Code, Store,
             , trees          => Trees
             , tx_env         => TxEnv
             },
-    {Call,_TreesOut} = run_common(CTVersion, Spec),
+    {Call,_TreesOut,Env1} = run_common(CTVersion, Spec),
     ReturnValue = aect_call:return_value(Call),
     case aect_call:return_type(Call) of
-        ok     -> {ok, ReturnValue};
+        ok     -> {ok, ReturnValue, Env1};
         error  -> {error, ReturnValue};
         revert -> {error, ReturnValue}
     end.
@@ -125,7 +125,7 @@ call_common(CallData, CallDataType, OutType, ContractPubkey, Code, Store,
 %% Call the contract and update the call object with the return value and gas
 %% used.
 
--spec run(map(), map()) -> {aect_call:call(), aec_trees:trees()}.
+-spec run(map(), map()) -> {aect_call:call(), aec_trees:trees(), aetx_env:env()}.
 run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_VM_SOPHIA(VM) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
@@ -140,7 +140,8 @@ run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_VM_SOPH
             Gas = maps:get(gas, CallDef),
             Call = maps:get(call, CallDef),
             Trees = maps:get(trees, CallDef),
-            {create_call(Gas, error, What, [], Call), Trees}
+            Env = maps:get(tx_env, CallDef),
+            {create_call(Gas, error, What, [], Call), Trees, Env}
     end;
 run(#{vm := ?VM_AEVM_SOLIDITY_1, abi := ?ABI_SOLIDITY_1} = Version, CallDef) ->
     run_common(Version, CallDef);
@@ -207,21 +208,22 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
                     Log = aevm_eeevm_state:logs(ResultState),
                     {
                       create_call(GasUsed, ok, Out, Log, Call),
-                      aec_vm_chain:get_trees(ChainState)
+                      aec_vm_chain:get_trees(ChainState),
+                      aec_vm_chain:get_tx_env(ChainState)
                     };
                 {revert, Out, GasLeft} ->
                     GasUsed = Gas - GasLeft,
-                    {create_call(GasUsed, revert, Out, [], Call), Trees};
+                    {create_call(GasUsed, revert, Out, [], Call), Trees, TxEnv0};
                 {error, What, GasLeft} ->
                     %% If we ran out of gas in a recursive call there
                     %% might still be gas held back by the caller.
                     GasUsed = Gas - GasLeft,
-                    {create_call(GasUsed, error, What, [], Call), Trees}
+                    {create_call(GasUsed, error, What, [], Call), Trees, TxEnv0}
             end
     catch
         throw:{init_error, What} ->
             ?DEBUG_LOG("Init error ~p", [What]),
-            {create_call(Gas, error, What, [], Call), Trees}
+            {create_call(Gas, error, What, [], Call), Trees, TxEnv0}
     end.
 
 create_call(GasUsed, Type, Value, Log, Call) when Type == ok; Type == revert ->
