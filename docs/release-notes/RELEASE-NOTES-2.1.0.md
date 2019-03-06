@@ -7,7 +7,7 @@ It:
   * uses proper data directory.
 * Fixes `syncing` field in `/status` endpoint.
 * Adds `sync_progress` field to `/status` external endpoint (`sync_progress` metric is also reported every 30 seconds during sync process).
-* Expose logged events (as the field `log`) in ContractCallObject in the HTTP API.
+* Exposes logged events (as the field `log`) in ContractCallObject in the HTTP API.
 * Improves stability of state channel's FSM
 * Adds a new WebSocket method for dry-running off-chain contracts: `channels.dry_run.call_contract`
 
