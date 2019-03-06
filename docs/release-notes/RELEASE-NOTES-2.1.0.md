@@ -10,7 +10,7 @@ It:
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.1.0
 
-This release is backward compatible with `v2.0.0`.
+This release is backward compatible with `v2.0.*`.
 
 Please join the mainnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
