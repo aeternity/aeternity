@@ -284,6 +284,7 @@ references:
       name: Install deps for system smoke tests
       command: |
         make system-smoke-test-deps
+        make system-test-deps
 
   system_test_logs: &system_test_logs system_test/logs
 
