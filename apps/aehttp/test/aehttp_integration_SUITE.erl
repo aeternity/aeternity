@@ -223,7 +223,8 @@
     sc_ws_nameservice_contract/1,
     sc_ws_enviroment_contract/1,
     sc_ws_remote_call_contract/1,
-    sc_ws_remote_call_contract_refering_onchain_data/1
+    sc_ws_remote_call_contract_refering_onchain_data/1,
+    sc_ws_wrong_call_data/1
    ]).
 
 
@@ -540,7 +541,8 @@ groups() ->
        %% both can call a remote contract
        sc_ws_remote_call_contract,
        %% both can call a remote contract refering on-chain data
-       sc_ws_remote_call_contract_refering_onchain_data
+       sc_ws_remote_call_contract_refering_onchain_data,
+       sc_ws_wrong_call_data
       ]}
     ].
 
@@ -5903,7 +5905,9 @@ lift_reason(#{ <<"message">> := <<"Rejected">>
     Codes = lists:sort([Code || #{<<"code">> := Code} <- Data]),
     E#{ <<"reason">> => data_code_to_reason(Codes) };
 lift_reason(#{ <<"code">> := Code } = E) ->
-    E#{ <<"reason">> => code_to_reason(Code) }.
+    E#{ <<"reason">> => data_code_to_reason([Code]) };
+lift_reason(#{ <<"reason">> := _ } = E) ->
+    E.
 
 data_code_to_reason([100 ])      -> <<"not_found">>;
 data_code_to_reason([107 ])      -> <<"conflict">>;
@@ -5913,11 +5917,9 @@ data_code_to_reason([1003])      -> <<"invalid_pubkeys">>;
 data_code_to_reason([1004])      -> <<"call_not_found">>;
 data_code_to_reason([1005])      -> <<"broken_encoding: accounts">>;
 data_code_to_reason([1006])      -> <<"broken_encoding: contracts">>;
+data_code_to_reason([1007])      -> <<"contract_init_failed">>;
 data_code_to_reason([1005,1006]) -> <<"broken_encoding: accounts, contracts">>;
 data_code_to_reason([Code])      -> sc_ws_api_jsonrpc:error_data_msg(Code).
-
-code_to_reason(Code) ->
-    sc_ws_api_jsonrpc:error_msg(Code).
 
 method_pfx(Action) ->
     <<"channels.", (bin(Action))/binary>>.
@@ -5956,3 +5958,79 @@ latest_sophia_abi() ->
 
 latest_sophia_vm() ->
     aect_test_utils:latest_sophia_vm_version().
+
+sc_ws_wrong_call_data(Config) ->
+    [sc_ws_contract_generic_(Role, fun sc_ws_broken_init_code_/8, Config, [])
+        || Role <- [initiator, responder]],
+    [sc_ws_contract_generic_(Role, fun sc_ws_broken_call_code_/8, Config, [])
+        || Role <- [initiator, responder]],
+    ok.
+
+sc_ws_broken_init_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
+                   _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
+    %% Example broken init code will be calling not the init function
+    SophiaCode = <<"contract Identity = function main (x:int) = x">>,
+    {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
+    {ok, Code} = aehttp_api_encoder:safe_decode(contract_bytearray,
+                                                EncodedCode),
+    %% call main instead of init 
+    {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
+                                  <<"sophia">>, Code, <<"main">>, <<"(1)">>),
+    {_CreateVolley, OwnerConnPid, _OwnerPubKey} = GetVolley(Owner),
+    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                   #{vm_version  => latest_sophia_vm(),
+                     abi_version => latest_sophia_abi(),
+                     deposit     => 10,
+                     code        => EncodedCode,
+                     call_data   => EncodedInitData}, Config),
+
+    {ok, ErrPayload} = wait_for_channel_event(OwnerConnPid, error, Config),
+    #{<<"reason">> := <<"contract_init_failed">>} = lift_reason(ErrPayload),
+    ok.
+
+sc_ws_broken_call_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
+                   _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
+    %% Example broken call code data will be calling a function from another
+    %% contract
+    SophiaCode = <<"contract Identity = function main (x:int) = x">>,
+    {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
+    {ok, Code} = aehttp_api_encoder:safe_decode(contract_bytearray,
+                                                EncodedCode),
+    {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
+                                  <<"sophia">>, Code, <<"init">>, <<"()">>),
+
+    {SignVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
+    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                   #{vm_version  => latest_sophia_vm(),
+                     abi_version => latest_sophia_abi(),
+                     deposit     => 10,
+                     code        => EncodedCode,
+                     call_data   => EncodedInitData}, Config),
+    UnsignedCreateTx = SignVolley(),
+    % contract is succesfully created
+    ContractPubKey = contract_id_from_create_update(OwnerPubKey,
+                                                    UnsignedCreateTx),
+
+    % have some other contract with some other function
+    SophiaCalcCode = <<"contract Calc = function sum (x:int, y:int) = x + y">>,
+    {ok, 200, #{<<"bytecode">> := EncodedCalcCode}} = get_contract_bytecode(SophiaCalcCode),
+    {ok, CalcCode} = aehttp_api_encoder:safe_decode(contract_bytearray,
+                                                EncodedCalcCode),
+    {ok, EncodedCalcCallData} = aehttp_logic:contract_encode_call_data(
+                                  <<"sophia">>, CalcCode, <<"sum">>, <<"(1, 2)">>),
+    % call the existing contract with the other contract's call data
+    ws_send_tagged(OwnerConnPid, <<"update">>, <<"call_contract">>,
+                   #{contract    => aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
+                     abi_version => latest_sophia_abi(),
+                     amount      => 1,
+                     call_data   => EncodedCalcCallData}, Config),
+    % contract call succeeds executing
+    UnsignedCallTx = SignVolley(),
+    ws_send_tagged(OwnerConnPid, <<"get">>, <<"contract_call">>,
+                   ws_get_call_params(UnsignedCallTx), Config),
+    % contract call is present in FSM
+    {ok, <<"contract_call">>, Res} = wait_for_channel_event(OwnerConnPid, get, Config),
+    % call result is still an error
+    #{<<"return_type">> := <<"error">>} = Res,
+    ok.
+
