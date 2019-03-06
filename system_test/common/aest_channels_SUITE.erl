@@ -17,6 +17,7 @@
 ]).
 
 -import(aest_nodes, [
+    spec/3,
     setup_nodes/2,
     start_node/2,
     wait_for_value/4,
@@ -66,20 +67,6 @@
                  154,183,225,78,92,9,216,215,59,108,82,203,25,103,28,85,70,70,
                  73,69,117,178,180,148,246,81,104,33,113,6,99,216,72,147,205,
                  210,210,54,3,122,84,195,62,238,132>>
-}).
-
--define(NODE1, #{
-    name    => node1,
-    peers   => [],
-    backend => aest_docker,
-    source  => {pull, "aeternity/aeternity:local"}
-}).
-
--define(NODE2, #{
-    name    => node2,
-    peers   => [node1],
-    backend => aest_docker,
-    source  => {pull, "aeternity/aeternity:local"}
 }).
 
 %=== COMMON TEST FUNCTIONS =====================================================
@@ -144,7 +131,7 @@ simple_channel_test(ChannelOpts, Cfg) ->
 
     MikePubkey = aehttp_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
     NodeConfig = #{ beneficiary => MikePubkey },
-    setup([?NODE1, ?NODE2], NodeConfig, Cfg),
+    setup([spec(node1, [], #{}), spec(node2, [node1], #{})], NodeConfig, Cfg),
     NodeNames = [node1, node2],
     start_node(node1, Cfg),
     start_node(node2, Cfg),
@@ -193,7 +180,7 @@ setup(NodeSpecs, Config, Cfg) ->
 on_chain_channel(Cfg) ->
     MikePubkey = aehttp_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
     NodeConfig = #{ beneficiary => MikePubkey },
-    setup([?NODE1], NodeConfig, Cfg),
+    setup([spec(node1, [], #{})], NodeConfig, Cfg),
     NodeNames = [node1],
     start_node(node1, Cfg),
     wait_for_startup([node1], 4, Cfg),  %% make sure ?MIKE has some money
