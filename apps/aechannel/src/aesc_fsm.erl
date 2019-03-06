@@ -1968,7 +1968,7 @@ send_funding_created_msg(SignedTx, #data{channel_id = Ch,
 check_funding_created_msg(#{ temporary_channel_id := ChanId
                            , data                 := TxBin } = Msg,
                           #data{ state = State, opts = Opts, 
-                                 channel_id = ChanId} = Data) ->
+                                 channel_id = ChanId } = Data) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case verify_signatures_channel_create(SignedTx, initiator) of
         ok ->

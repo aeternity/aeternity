@@ -1088,7 +1088,7 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
               push_amount := PushAmount} = Spec, Port, Debug},
               Malicious, SignTxFun, ErrResponse) ->
     Action = fun sign_signing_request/3,
-    TryCheaing =
+    TryCheating =
         fun(Tag, #{priv := Priv} = Signer, Debug1) ->
             receive {aesc_fsm, Fsm, #{type := sign, tag := Tag, info := Tx} = Msg} ->
                     log(Debug1, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
@@ -1114,7 +1114,7 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
     case Malicious of
         initiator ->
             % default behavor - FSM guards you from sending a bad msg
-            {_, WrongTx} = TryCheaing(create_tx, I1, Debug),
+            {_, WrongTx} = TryCheating(create_tx, I1, Debug),
             {ok, _} = receive_from_fsm(error, I1, ErrResponse, ?TIMEOUT, Debug),
 
             % turn default behavior off, the initator deliberatly had sent
@@ -1132,7 +1132,7 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
             {_I2, _} = await_signing_request(create_tx, I1, Debug),
             receive_from_fsm(info, R1, funding_created, ?TIMEOUT, Debug),
             % default behavor - FSM guards you from sending a bad tx
-            {_, WrongTx} = TryCheaing(funding_created, R1, Debug),
+            {_, WrongTx} = TryCheating(funding_created, R1, Debug),
             %% since this is a different tx now, the correct signature of the
             %% incoming transaction will be invalid according to the incorrect
             %% new tx
