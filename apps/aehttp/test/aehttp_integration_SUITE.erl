@@ -4155,7 +4155,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             Tx = call_a_contract(Fun, Args,
                                  ContractPubKey, EncodedCode,
                                  UpdaterConnPid, UpdateVolley, Config),
-            #{<<"value">> := R} = % same value as the 
+            #{<<"value">> := R} =
                 ws_get_decoded_result(ConnPid1, ConnPid2,
                                       ReturnType,
                                       Tx, Config),
