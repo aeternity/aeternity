@@ -432,10 +432,12 @@ handle_request_('PostTransaction', #{'Tx' := Tx}, _Context) ->
                         ok ->
                             Hash = aetx_sign:hash(SignedTx),
                             {200, [], #{<<"tx_hash">> => aehttp_api_encoder:encode(tx_hash, Hash)}};
-                        {error, _} ->
+                        {error, Reason} ->
+                            lager:debug("Invalid tx: ~p", [Reason]),
                             {400, [], #{reason => <<"Invalid tx">>}}
                     end;
                 {error, broken_tx} ->
+                    lager:debug("Broken tx", []),
                     {400, [], #{reason => <<"Invalid tx">>}}
             end;
         {error, _} ->
