@@ -28,6 +28,10 @@
          responder_amount_final/1
         ]).
 
+-ifdef(TEST).
+-export([set_channel_id/2]).
+-endif.
+
 -export([channel_pubkey/1]).
 
 %%%===================================================================
@@ -208,4 +212,12 @@ responder_amount_final(#channel_close_mutual_tx{responder_amount_final  = Amount
 -spec version() -> non_neg_integer().
 version() ->
     ?CHANNEL_CLOSE_MUTUAL_TX_VSN.
+
+%%%===================================================================
+%%% Test setters 
+%%%===================================================================
+-dialyzer({nowarn_function, set_channel_id/2}).
+set_channel_id(Tx, ChannelId) ->
+    channel = aec_id:specialize_type(ChannelId),
+    Tx#channel_close_mutual_tx{channel_id = ChannelId}.
 

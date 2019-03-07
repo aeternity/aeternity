@@ -34,6 +34,12 @@
          state_hash/1,
          updates/1,
          round/1]).
+
+-ifdef(TEST).
+-export([set_channel_id/2,
+         set_round/2,
+         set_state_hash/2]).
+-endif.
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -243,3 +249,19 @@ round(#channel_deposit_tx{round = Round}) ->
 -spec version() -> non_neg_integer().
 version() ->
     ?CHANNEL_DEPOSIT_TX_VSN.
+
+%%%===================================================================
+%%% Test setters 
+%%%===================================================================
+-dialyzer({nowarn_function, set_channel_id/2}).
+set_channel_id(Tx, ChannelId) ->
+    channel = aec_id:specialize_type(ChannelId),
+    Tx#channel_deposit_tx{channel_id = ChannelId}.
+
+-dialyzer({nowarn_function, set_round/2}).
+set_round(Tx, Round) when is_integer(Round) ->
+    Tx#channel_deposit_tx{round = Round}.
+
+-dialyzer({nowarn_function, set_state_hash/2}).
+set_state_hash(Tx, Hash) ->
+    Tx#channel_deposit_tx{state_hash = Hash}.
