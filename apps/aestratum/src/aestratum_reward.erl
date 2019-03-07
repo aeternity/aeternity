@@ -285,10 +285,10 @@ compute_rewards(#reward_key_block{share_key = RewardShareKey,
             SliceCont = mnesia:select(?SHARES_TAB, Selector, ?SHARES_BATCH_LENGTH, read),
             {SumScores, MinerGroups} = sum_group_shares(SliceCont, BlockTarget),
             BenefTokens = round(BlockReward * (BenefSumPcts / 100)),
-            {_, _, _, BenefTokensLeft, BenefRewards} =
+            {_, _, BenefTokensLeft, BenefRewards} =
                 fold_rewards(BenefSumPcts, BenefTokens, Beneficiaries),
             MinerTokens = BlockReward - BenefTokens + BenefTokensLeft,
-            {_, _, _, TokensLeft, MinerRewards} =
+            {_, _, TokensLeft, MinerRewards} =
                 fold_rewards(SumScores, MinerTokens, MinerGroups),
             {ok, BenefRewards, MinerRewards, TokensLeft, LastRoundShareKey};
         {error, Reason} ->
@@ -343,23 +343,18 @@ sum_group_share(#aestratum_share{miner = Miner, target = MinerTarget},
 fold_rewards(SumScores, Tokens, Beneficiaries) ->
     maps:fold(fun reward/3, {SumScores, Tokens, Tokens, #{}}, Beneficiaries).
 
-reward(Account, Score, {SumScores, BlockReward, TokensLeft, #{} = Rewards}) ->
-    Fun = fun (Account0, Tokens, Rewards0) -> Rewards0#{Account0 => Tokens} end,
-    reward(Account, Score, {Fun, SumScores, BlockReward, TokensLeft, Rewards});
-reward(_Account, _Score, {Fun, SumScores, BlockReward, TokensLeft = 0, Rewards}) ->
-    {Fun, SumScores, BlockReward, TokensLeft = 0, Rewards};
-reward(Account, Score, {Fun, SumScores, BlockReward, TokensLeft, Rewards}) ->
+reward(_Account, _Score, {SumScores, BlockReward, 0, Rewards}) ->
+    {SumScores, BlockReward, 0, Rewards};
+reward(Account, Score, {SumScores, BlockReward, TokensLeft, Rewards}) ->
     RelScore = Score / SumScores,
     Tokens = min(round(RelScore * BlockReward), TokensLeft),
-
-    io:format("////////// SUM = ~g | SCORE = ~8f | GSCORE = ~8f | LEFT = ~5w | TOKENS = ~5w~n",
-              [SumScores * 1.0, Score * 1.0, RelScore, TokensLeft, Tokens]),
-
+    %% io:format("/// SUM = ~g | SCORE = ~8f | GSCORE = ~8f | LEFT = ~5w | TOKENS = ~5w~n",
+    %%           [SumScores * 1.0, Score * 1.0, RelScore, TokensLeft, Tokens]),
     if Tokens < ?MIN_TX_FEE ->
-            {Fun, SumScores, BlockReward, TokensLeft, Rewards};
+            {SumScores, BlockReward, TokensLeft, Rewards};
        true ->
-            Rewards1 = Fun(Account, Tokens, Rewards),
-            {Fun, SumScores, BlockReward, TokensLeft - Tokens, Rewards1}
+            Rewards1 = maps:put(Account, Tokens, Rewards),
+            {SumScores, BlockReward, TokensLeft - Tokens, Rewards1}
     end.
 
 
@@ -378,7 +373,7 @@ delete_old_records(Height) ->
             mnesia:delete(?REWARDS_TAB, Height, write),
             ok;
         [] ->
-            %% this may happend if rewards are paid in different order
+            %% this shouldn't happen, since rewards are deleted one by one
             ok
     end.
 
