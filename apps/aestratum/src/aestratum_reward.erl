@@ -28,7 +28,9 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3, format_status/2]).
 
+-ifdef(COMMON_TEST).
 -compile(export_all).
+-endif.
 
 -define(KEYBLOCK_ROUNDS_DELAY, 180).
 -define(MAX_ROUNDS, 10).
@@ -88,7 +90,7 @@ create_tables(Mode) ->
 
 check_tables(Acc) ->
     lists:foldl(
-      fun({Tab, Spec}, Acc1) ->
+      fun ({Tab, Spec}, Acc1) ->
               aec_db:check_table(Tab, Spec, Acc1)
       end, Acc, tables_specs(disc)).
 
@@ -184,9 +186,8 @@ handle_cast({confirm_payout, Height}, State) ->
 handle_cast(_, State) ->
     {noreply, State}.
 
-
 handle_call(_, _From, State) ->
-    {reply, nop, State}.
+    {reply, ok, State}.
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -381,47 +382,15 @@ delete_old_records(Height) ->
 transaction(Fun) when is_function(Fun, 0) ->
     mnesia:activity(transaction, Fun).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
--define(MAX_TARGET, 16#ffff000000000000000000000000000000000000000000000000000000000000).
+-ifdef(COMMON_TEST).
 
--define(TEST_MINERS, [<<"MINER_A">>,<<"MINER_B">>,<<"MINER_C">>,<<"MINER_D">>,
-                      <<"MINER_E">>,<<"MINER_F">>,<<"MINER_G">>,<<"MINER_H">>,
-                      <<"MINER_I">>,<<"MINER_J">>,<<"MINER_K">>,<<"MINER_L">>,
-                      <<"MINER_M">>,<<"MINER_N">>,<<"MINER_O">>,<<"MINER_P">>,
-                      <<"MINER_Q">>,<<"MINER_R">>,<<"MINER_S">>,<<"MINER_T">>,
-                      <<"MINER_U">>,<<"MINER_V">>,<<"MINER_W">>,<<"MINER_X">>,
-                      <<"MINER_Y">>,<<"MINER_Z">>]).
+-define(record_to_map(Tag, Datum), maps:from_list(lists:zip(record_info(fields, Tag), tl(tuple_to_list(Datum))))).
 
-t_miner_target(<<"MINER_", X:8>>) -> round(?MAX_TARGET / (2 * 0.4 * (X - 63))).
+to_map(#aestratum_hash{} = X) -> ?record_to_map(aestratum_hash, X);
+to_map(#aestratum_share{} = X) -> ?record_to_map(aestratum_share, X);
+to_map(#aestratum_round{} = X) -> ?record_to_map(aestratum_round, X);
+to_map(#aestratum_reward{} = X) -> ?record_to_map(aestratum_reward, X);
+to_map(#reward_key_block{} = X) -> ?record_to_map(reward_key_block, X).
 
-t_submits(NumSubmits) when NumSubmits > 0 ->
-    NumMiners = length(?TEST_MINERS),
-    RandMiner = fun () -> lists:nth(rand:uniform(NumMiners), ?TEST_MINERS) end,
-    [begin
-         Miner = RandMiner(),
-         Hash = t_hash(Miner, X),
-         submit_share(Miner, t_miner_target(Miner), Hash)
-     end || X <- lists:seq(1, NumSubmits)].
-
-t_hash(A, B) ->
-    Uniq = io_lib:format("~p ~p ~p", [A, erlang:timestamp(), B]),
-    crypto:hash(sha, iolist_to_binary(Uniq)).
-
-t_clear_tables() ->
-    [mnesia:clear_table(X) || X <- ?TABS].
-
-t_delete_tables() ->
-    [mnesia:delete_table(X) || X <- ?TABS].
-
-%% BlockReward is in smallest denominated coin unit
-t(SharesPerRound, Rounds, LastN, Beneficiaries) ->
-    start_link(LastN, Beneficiaries),
-    [begin
-         keyblock(),
-         t_submits(SharesPerRound)
-     end || _ <- lists:seq(1, Rounds)],
-    Miner = <<"MINER_A">>,
-    WinHash = t_hash(our, Miner),
-    submit_share(Miner, t_miner_target(Miner), WinHash),
-    keyblock().
+-endif.
