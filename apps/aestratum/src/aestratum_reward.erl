@@ -204,12 +204,12 @@ format_status(_Opt, Status) ->
 %%% Internal functions
 %%%===================================================================
 
-sort_key() ->
-    abs(erlang:unique_integer()).
+sort_key(_) ->
+    abs(erlang:unique_integer([monotonic])).
 
 
 store_share(Miner, MinerTarget, Hash) ->
-    SortKey = sort_key(),
+    SortKey = sort_key(Hash),
     Share = #aestratum_share{key = SortKey,
                              hash = Hash,
                              target = MinerTarget,
@@ -221,7 +221,7 @@ store_share(Miner, MinerTarget, Hash) ->
     {ok, Share, HashR}.
 
 store_round() ->
-    Round = #aestratum_round{key = sort_key()},
+    Round = #aestratum_round{key = sort_key(new_round)},
     ok = mnesia:write(Round),
     {ok, Round}.
 
