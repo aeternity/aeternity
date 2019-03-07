@@ -719,7 +719,6 @@ tx_pool_test_() ->
 
             %% Doing a garbage collect at height 0 shouldn't affect
             tx_pool_gc(0),
-            _ = sys:get_status(aec_tx_pool_gc),
             ?assertMatch({ok, [_, _, _]}, aec_tx_pool:peek(infinity)),
 
             %% At 4 still GC should not kick in.
