@@ -16,24 +16,24 @@ NOTE: These steps describe the setup for a basic CPU mining configuration.
 
 ## Step 1: Get helper scripts
 
-The helper scripts are located in the `scripts/` folder in the `aeternity` Git repository.
+The helper scripts are located in the `installer` Git repository.
 You may download the whole repository by
 
-1. Downloading the [Git repository](https://github.com/aeternity/aeternity) itself;
+1. Downloading the [Git repository](https://github.com/aeternity/installer) itself;
 2. Or downloading and unpacking a
-   [Zip archive](https://github.com/aeternity/aeternity/archive/master.zip)
+   [Zip archive](https://github.com/aeternity/installer/archive/v1.0.0.zip)
    provided by Github.
 
 Alternatively, you can also download the individual scripts:
 
-- `scripts/windows/setup-wsl.ps1`
-- `scripts/windows/wsl-run.ps1`
-- `scripts/install.sh`
+- `windows/setup-wsl.ps1`
+- `windows/wsl-run.ps1`
+- `install.sh`
 
 ## Step 2: Preparing Windows and ubuntu
 
 Most of the setup is automated by the helper scripts. You need to execute the
-script `scripts/windows/setup-wsl.ps1` within PowerShell. You can
+script `windows/setup-wsl.ps1` within PowerShell. You can
 do so by right-clicking on the script in the Windows Explorer, then selecting
 `Run with PowerShell`. The output of the script will guide you through the
 process.
@@ -44,7 +44,7 @@ NOTE: You might have to repeat this process up to 3 times, depending on the
 ## Step 3: Running Aeternity node
 
 Once all configuration has succeeded you can run the Aeternity node node by executing
-the script `scripts/windows/wsl-run.ps1`.
+the script `windows/wsl-run.ps1`.
 
 The running node can be further inspected within the running Ubuntu system like
 described in the rest of the Aeternity node documentation.
