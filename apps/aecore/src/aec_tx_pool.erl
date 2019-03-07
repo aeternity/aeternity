@@ -52,8 +52,10 @@
         , raw_delete/2
         ]).
 
+-include("aec_tx_pool.hrl").
+
 -ifdef(TEST).
--export([garbage_collect/1]). %% Only for (Unit-)test
+-export([sync_garbage_collect/1]). %% Only for (Unit-)test
 -export([restore_mempool/0]).
 -export([peek_db/0]).
 -export([peek_visited/0]).
@@ -181,9 +183,11 @@ garbage_collect() ->
     gen_server:cast(?SERVER, garbage_collect).
 
 -ifdef(TEST).
--spec garbage_collect(Height :: aec_blocks:height()) -> ok.
-garbage_collect(Height) ->
-    aec_tx_pool_gc:gc(Height).
+-spec sync_garbage_collect(Height :: aec_blocks:height()) -> ok.
+sync_garbage_collect(Height) ->
+    aec_tx_pool_gc:gc(Height, dbs()),
+    sys:get_status(aec_tx_pool_gc), %% sync point (gc is asynchronous)
+    ok.
 
 restore_mempool() ->
     revisit(dbs()).
@@ -260,6 +264,9 @@ init([]) ->
     {ok, _MempoolDb} = pool_db_open(pool_db()),
     {ok, _VisitedDb} = pool_db_open(pool_db_visited()),
     {ok, _NonceDb} = pool_db_open(pool_db_nonce()),
+    %% The gc db should be owned by this process to ensure that the gc state
+    %% is consistent with the actual mempool if any of the servers restart.
+    {ok, _GCDb} = pool_db_open(pool_db_gc(), [{keypos, #tx.hash}]),
     GCHeight = top_height(),
     Handled  = ets:new(init_tx_pool, [private]),
     InitF  = fun(TxHash, _) ->
@@ -315,7 +322,7 @@ handle_info(Msg, St) ->
     ?TC(handle_info_(Msg, St), Msg).
 
 handle_info_({P, new_gc_height, GCHeight}, #state{sync_top_calc = P} = State) ->
-    aec_tx_pool_gc:gc(GCHeight),
+    aec_tx_pool_gc:gc(GCHeight, State#state.dbs),
     {noreply, State#state{sync_top_calc = undefined, gc_height = GCHeight}};
 handle_info_({'ETS-TRANSFER', _, _, _}, State) ->
     {noreply, State};
@@ -523,7 +530,11 @@ pool_db_key(SignedTx) ->
 
 -spec pool_db_open(DbName :: atom()) -> {ok, pool_db()}.
 pool_db_open(DbName) ->
-    {ok, ets:new(DbName, [ordered_set, public, named_table])}.
+    pool_db_open(DbName, []).
+
+-spec pool_db_open(DbName :: atom(), list()) -> {ok, pool_db()}.
+pool_db_open(DbName, ExtraOpts) ->
+    {ok, ets:new(DbName, [ordered_set, public, named_table] ++ ExtraOpts)}.
 
 -spec pool_db_peek(pool_db(), MaxNumber::pos_integer() | infinity, aec_keys:pubkey() | all) ->
                           [pool_db_value()].

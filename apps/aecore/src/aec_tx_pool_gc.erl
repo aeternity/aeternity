@@ -4,7 +4,7 @@
 -export([
           start_link/0
         , stop/0
-        , gc/1
+        , gc/2
         , delete_hash/2
         , add_hash/4
         , adjust_ttl/1
@@ -19,6 +19,7 @@
         , code_change/3
         ]).
 
+-include("aec_tx_pool.hrl").
 
 -import(aeu_debug, [pp/1]).
 
@@ -31,34 +32,26 @@
 
 -record(st, { gc_db = aec_tx_pool:pool_db_gc() :: pool_db() }).
 
--record(tx, { hash :: aec_tx_pool:tx_hash()     | atom()
-            , ttl  :: aetx:tx_ttl()             | atom()
-            , key  :: aec_tx_pool:pool_db_key() | atom()}).
-
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 stop() ->
     gen_server:stop(?SERVER).
 
-gc(Height) ->
-    gen_server:cast(?SERVER, {garbage_collect, Height}).
+gc(Height, Dbs) ->
+    gen_server:cast(?SERVER, {garbage_collect, Height, Dbs}).
 
 adjust_ttl(Diff) ->
     gen_server:cast(?SERVER, {adjust_ttl, Diff}).
 
-open_db(Name) ->
-    {ok, ets:new(Name, [ordered_set, public, {keypos, #tx.hash}, named_table])}.
-
 init([]) ->
-    {ok, _MempoolGCDb} = open_db(aec_tx_pool:pool_db_gc()),
-    {ok, #st{}}.
+    {ok, #st{ gc_db = aec_tx_pool:pool_db_gc()}}.
 
 handle_call(_Req, _From, S) ->
     {reply, {error, unknown_request}, S}.
 
-handle_cast({garbage_collect, Height}, S) ->
-    do_gc(Height, S),
+handle_cast({garbage_collect, Height, Dbs}, S) ->
+    do_gc(Height, Dbs, S),
     {noreply, S};
 handle_cast({adjust_ttl, Diff}, #st{gc_db = GCDb} = S) ->
     do_adjust_ttl(GCDb, Diff),
@@ -78,12 +71,12 @@ code_change(_OldVsn, S, _Extra) ->
     {ok, S}.
 
 
-do_gc(Height, State = #st{ gc_db = GCDb }) ->
+do_gc(Height, Dbs, State = #st{ gc_db = GCDb }) ->
     GCTxs = ets:select(
               GCDb, [{ #tx{hash = '$1', ttl = '$2', key = '$3', _ = '_'},
                        [{'=<', '$2', Height}],
                        [{{'$1', '$3'}}] }]),
-    do_gc_(GCTxs, aec_tx_pool:dbs(), State).
+    do_gc_(GCTxs, Dbs, State).
 
 do_gc_([], _Dbs, S) ->
     S;

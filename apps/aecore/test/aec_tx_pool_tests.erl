@@ -734,9 +734,7 @@ tx_pool_test_() ->
      ]}.
 
 tx_pool_gc(Height) ->
-    aec_tx_pool_gc:gc(Height),
-    sys:get_status(aec_tx_pool_gc), %% sync point (gc is asynchronous)
-    ok.
+    aec_tx_pool:sync_garbage_collect(Height).
 
 a_signed_tx(Sender, Recipient, Nonce, Fee) ->
     a_signed_tx(Sender, Recipient, Nonce, Fee,0).
