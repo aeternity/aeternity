@@ -480,6 +480,7 @@ jobs:
           name: Check OTP version (for effective CI caching)
           # How to retrieve OTP version in installed OTP development system: http://erlang.org/doc/system_principles/versions.html
           command: test "${OTP_VERSION:?}" = $(cat $(erl -noinput -eval 'io:format("~s", [filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])]), init:stop().'))
+      - *fail_notification
 
   rebar_lock_check:
     <<: *container_config
