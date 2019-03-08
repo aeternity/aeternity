@@ -20,6 +20,38 @@ SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
 
 PACKAGE_SPEC_WIN32 ?= ../ci/appveyor/package.cfg
 
+AE_DEB_VERSION=`cat VERSION`
+AE_DEB_DCH_REL_NOTE= \
+"Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASENOTES-`cat VERSION`.md"
+
+# Packages from master MUST be pre-releases. Git master version
+# usually is always higher then the last stable release. However
+# packages with newer stable version MUST always have higher version
+# than master in Debian/Ubuntu packaging context. The only way to
+# achieve this is when master packages are a pre-release (
+# pkg-name_version~unique_higher_number ).
+
+# Additionally the same (as in name) package from master for the same
+# unreleased/not stable version (i.e. builds) MUST always have higher
+# version (i.e. pre-release). Otherwise package managers and repository management
+# software complain.
+
+# Test source for master branch. Needs special treatment for Debian
+# packages.
+ifeq (, $(shell which git))
+  ifneq (,$(shell cat .git/HEAD | grep master))
+	AE_DEB_GIT_MASTER=true
+  endif
+else
+  ifneq (, $(shell git rev-parse --abbrev-ref HEAD|grep master))
+	AE_DEB_GIT_MASTER=true
+  endif
+endif
+
+ifeq ($(AE_DEB_GIT_MASTER), true)
+        AE_DEB_VERSION=`cat VERSION`"-1-git-master~"`date +%Y%m%d%H%M%S`
+endif
+
 all:	local-build
 
 $(SWAGGER_ENDPOINTS_SPEC):
@@ -394,6 +426,11 @@ internal-ct: internal-build
 		AETERNITY_TESTCONFIG_DB_BACKEND=$(AETERNITY_TESTCONFIG_DB_BACKEND) \
 			$(REBAR) ct $(CT_TEST_FLAGS) --sys_config $(SYSCONFIG); \
 	fi
+
+prod-deb-package:
+	dch -v $(AE_DEB_VERSION) $(AE_DEB_DCH_REL_NOTE); \
+	dch -r $(AE_DEB_DCH_REL_NOTE); \
+	debuild -uc -us
 
 .PHONY: \
 	all console \
