@@ -20,6 +20,7 @@
          connection_died/1,       %% (fsm())
          inband_msg/3,
          get_state/1,
+         get_offchain_state/1,
          get_poi/2]).
 
 -export([strict_checks/2]). %% tests only
@@ -376,6 +377,10 @@ inband_msg(Fsm, To, Msg) ->
 -spec get_state(pid()) -> {ok, #{}}.
 get_state(Fsm) ->
     gen_statem:call(Fsm, get_state).
+
+-spec get_offchain_state(pid()) -> {ok, aesc_offchain_state:state()}.
+get_offchain_state(Fsm) ->
+    gen_statem:call(Fsm, get_offchain_state).
 
 -spec get_poi(pid(), list()) -> {ok, aec_trees:poi()} | {error, not_found}.
 get_poi(Fsm, Filter) ->
@@ -1345,6 +1350,8 @@ handle_call_(_, get_state, From, #data{ on_chain_id = ChanId
           state_hash=> StateHash,
           round     => Round},
     keep_state(D, [{reply, From, {ok, Result}}]);
+handle_call_(_, get_offchain_state, From, #data{state = State} = D) ->
+    keep_state(D, [{reply, From, {ok, State}}]);
 handle_call_(_, {get_poi, Filter}, From, #data{state = State} = D) ->
     Response =
         case aesc_offchain_state:poi(Filter, State) of

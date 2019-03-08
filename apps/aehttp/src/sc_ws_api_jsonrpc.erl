@@ -340,6 +340,15 @@ process_request(#{<<"method">> := <<"channels.get.balances">>,
         {error, _} ->
             {error, invalid_arguments}
     end;
+process_request(#{<<"method">> := <<"channels.get.offchain_state">>,
+                  <<"params">> := #{}}, FsmPid) ->
+    case aesc_fsm:get_offchain_state(FsmPid) of
+        {ok, State} ->
+            {reply, #{action => <<"get">>
+                    , tag    => <<"offchain_state">>
+                    , {int, type} => reply
+                    , payload => aesc_offchain_state:serialize_for_client(State) }}
+    end;
 process_request(#{<<"method">> := <<"channels.get.poi">>,
                   <<"params">> := Filter}, FsmPid) ->
     AccountsE   = maps:get(<<"accounts">>, Filter, []),

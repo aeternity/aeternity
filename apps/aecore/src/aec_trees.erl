@@ -35,6 +35,7 @@
         , serialize_for_db/1
         % could get big, used in force progress
         , serialize_to_binary/1
+        , serialize_to_client/1
         , deserialize_from_binary_without_backend/1
         ]).
 
@@ -436,6 +437,11 @@ serialize_to_binary(#trees{} = Trees) ->
       , {oracles,       aeo_state_tree:to_binary_without_backend(Oracles)}
       , {accounts,      aec_accounts_trees:to_binary_without_backend(Accounts)}
       ]).
+
+-spec serialize_to_client(trees()) -> binary().
+serialize_to_client(#trees{} = Trees) ->
+    TreesBinary = serialize_to_binary(Trees),
+    aehttp_api_encoder:encode(state_trees, TreesBinary).
 
 -spec deserialize_from_binary_without_backend(binary()) -> trees().
 deserialize_from_binary_without_backend(Bin) ->
