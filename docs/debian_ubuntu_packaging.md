@@ -388,6 +388,13 @@ To build a source package, change the `-b` option to `-S`
 debuild -S -uc -us
 ```
 
+The Makefile in the root of the source tree provides a rule to easily
+create a package. It runs all the necessary commands.
+
+```
+make prod-deb-package
+```
+
 
 **TODO:**
 
