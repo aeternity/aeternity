@@ -2,6 +2,7 @@ version: 2
 
 references:
   container_config: &container_config
+    resource_class: large
     docker:
       - image: aeternity/builder
         user: builder
@@ -11,11 +12,13 @@ references:
   container_otp_plt: &container_otp_plt _build/default/rebar3_20.3.8_plt
 
   infrastructure_config_environment: &infrastructure_config_environment
+    resource_class: large
     DOCKERHUB_REPO: aeternity/aeternity
     S3_BUILDS_BUCKET: aeternity-node-builds
     S3_RELEASES_BUCKET: aeternity-node-releases
 
   infrastructure_config: &infrastructure_config
+    resource_class: large
     docker:
       - image: aeternity/infrastructure
     working_directory: ~/aeternity
@@ -23,6 +26,7 @@ references:
       <<: *infrastructure_config_environment
 
   machine_config: &machine_config
+    resource_class: large
     machine:
       docker_layer_caching: true
     working_directory: ~/aeternity
