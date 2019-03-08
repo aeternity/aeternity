@@ -1,0 +1,40 @@
+#!/bin/sh
+# postinst script for aeternity-node
+
+set -e
+
+case "$1" in
+    configure)
+
+	# Create system user.
+	if ! getent passwd aeternity > /dev/null ; then
+            echo 'Adding system-user for aeternity-node' 1>&2
+            adduser --system --group --quiet --home /opt/aeternity/ \
+                    --no-create-home --disabled-login aeternity
+	fi
+
+	# Fix ownership of home and logs directories
+	chown aeternity:aeternity -R /opt/aeternity \
+	      /var/log/aeternity
+
+	# Ensure aeternity-node can create logs
+	chgrp aeternity /opt/aeternity
+	chgrp aeternity /var/log/aeternity
+	chmod -R g+w /var/log/aeternity/
+
+	# Allow read access to logs to other users.
+	# Potentially a security issue. Disabled.
+	# chmod -R o+r /var/log/aeternity/
+    
+    ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+exit 0
