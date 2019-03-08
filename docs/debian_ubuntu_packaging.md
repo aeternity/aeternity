@@ -17,7 +17,7 @@ For full documentation about Debian packages, please review the
 following documents:
 
  * [Debian New Maintainers' Guide](https://www.debian.org/doc/manuals/maint-guide/)
- * [Debian Policy](https://www.debian.org/doc/debian-policy/ch-docs.html#changelog-files-and-release-notes)
+ * [Debian Policy](https://www.debian.org/doc/debian-policy/)
  * [Ubuntu Packaging Guide](http://packaging.ubuntu.com/html/)
 
 # High-level overview
