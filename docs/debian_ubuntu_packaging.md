@@ -341,6 +341,8 @@ the Debian changelog file policy. This is the approach used.
 
 ```
 cd ae_node_source/
+DEBEMAIL=info@aeternity.com
+DEBFULLNAME="Aeternity Team"
 AE_VERSION=$(cat VERSION)
 AE_VERSION_NOTE="Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASENOTES-$AE_VERSION.md"
 
