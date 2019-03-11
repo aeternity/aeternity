@@ -13,7 +13,7 @@ references:
 
   container2_config: &container2_config
     docker:
-      - image: aeternity/builder:ci-build-otp-21
+      - image: aeternity/builder:otp21
         user: builder
     working_directory: ~/aeternity
     environment:
