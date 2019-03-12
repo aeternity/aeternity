@@ -47,7 +47,8 @@ init_state(N) ->
                              || #{public := Pub, secret := Priv} <- KeysList]),
     Trees0 = aec_trees:new_without_backend(),
     ATrees = lists:foldl(fun(#{public := Pubkey}, AccTrees) ->
-                                 Account = aec_accounts:new(Pubkey, 100000),
+                                 Account = aec_accounts:new(Pubkey,
+                                                            100000 * aec_test_utils:min_gas_price()),
                                  aec_accounts_trees:enter(Account, AccTrees)
                          end,
                          aec_trees:accounts(Trees0),
@@ -116,14 +117,14 @@ register_name(Pubkey, Name, S) ->
     CommitmentId = commitment_id(aens_hash:commitment_hash(Ascii, Salt)),
     PreclaimSpec = #{ account_id => account_id(Pubkey)
                     , commitment_id => CommitmentId
-                    , fee  => 20000
+                    , fee  => 20000 * aec_test_utils:min_gas_price()
                     , nonce => 1
                     },
     {ok, Preclaim} = aens_preclaim_tx:new(PreclaimSpec),
     ClaimSpec  = #{ account_id => account_id(Pubkey)
                   , name => Name
                   , name_salt => Salt
-                  , fee  => 20000
+                  , fee  => 20000 * aec_test_utils:min_gas_price()
                   , nonce => 2
                   },
     {ok, Claim} = aens_claim_tx:new(ClaimSpec),
@@ -151,7 +152,7 @@ update_pointers(Pointers, Pubkey, NameID, Nonce, S) ->
                    , name_ttl => 100
                    , pointers => Pointers
                    , client_ttl => 100
-                   , fee => 20000
+                   , fee => 20000 * aec_test_utils:min_gas_price()
                    },
     {ok, Update} = aens_update_tx:new(UpdateSpec),
     apply_txs([Update], S).
@@ -185,7 +186,7 @@ spend_to_name_when_multiple_pointer_entries(_Cfg) ->
 spend_to_name_(PointersFun) ->
     {[Pubkey1, Pubkey2], S1} = init_state(2),
     Amount = 100,
-    Fee    = 20000,
+    Fee    = 20000 * aec_test_utils:min_gas_price(),
     {S2, NameId} = register_name(Pubkey2, S1),
     S3 = update_and_check_pointers(PointersFun(account_pubkey, Pubkey2), Pubkey2, NameId, 3, S2),
     {ok, Spend} = aec_spend_tx:new(#{ sender_id    => account_id(Pubkey1)
@@ -228,7 +229,7 @@ transfer_name_to_named_account_(PointersFun) ->
                     , nonce   => 3
                     , name_id => NameId2
                     , recipient_id => NameId1
-                    , fee => 20000
+                    , fee => 20000 * aec_test_utils:min_gas_price()
                     },
     {ok, Transfer} = aens_transfer_tx:new(TransferSpec),
     S5 = apply_txs([Transfer], S4),

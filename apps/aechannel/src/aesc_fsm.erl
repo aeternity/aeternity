@@ -1920,13 +1920,12 @@ default_nonce(Opts, #data{opts = DOpts}) ->
 %% Note that the default fee will be used as a base for adjustment, once
 %% we have an actual transaction record (required by aetx:min_fee/2).
 %% The default should err on the side of being too low.
--ifdef(TEST).
 default_fee(_Tx) ->
-    20000.
--else.
-default_fee(_Tx) ->
-    20000 * 1000000000.
--endif.
+    CurHeight = aec_headers:height(aec_chain:top_header()),
+    %% this could be fragile on hard fork height if one participant's node had
+    %% already forked and the other had not yet
+    20000 * max(aec_governance:minimum_gas_price(CurHeight),
+                aec_tx_pool:minimum_miner_gas_price()).
 
 default_ttl(_Type, Opts, #data{opts = DOpts}) ->
     TTL = maps:get(ttl, Opts, maps:get(ttl, DOpts, 0)),

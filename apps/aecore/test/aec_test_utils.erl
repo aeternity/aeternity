@@ -56,6 +56,7 @@
         , signed_spend_tx/1
         , fake_start_aehttp/0
         , wait_for_pubkey/0
+        , min_gas_price/0
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -554,3 +555,6 @@ create_state_tree_with_accounts(Accounts, Backend) ->
                                 AccountsTree0, Accounts),
     aec_trees:set_accounts(StateTrees0, AccountsTree1).
 
+min_gas_price() ->
+    max(aec_governance:minimum_gas_price(1), % latest prototocol on height 1
+        aec_tx_pool:minimum_miner_gas_price()).

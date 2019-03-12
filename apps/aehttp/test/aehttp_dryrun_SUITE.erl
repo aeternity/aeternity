@@ -56,7 +56,7 @@ init_per_group(_, Config) ->
 
     %% Prepare accounts, Alice, Bert, Carl and Diana.
 
-    StartAmt = 25000000,
+    StartAmt = 25000000 * aec_test_utils:min_gas_price(),
     {APubkey, APrivkey, STx1} = new_account(StartAmt),
     {BPubkey, BPrivkey, STx2} = new_account(StartAmt),
     {CPubkey, CPrivkey, STx3} = new_account(StartAmt),
@@ -109,8 +109,8 @@ spend_txs(Config) ->
 
     #{ public := EPub } = enacl:sign_keypair(),
 
-    Tx1 = create_spend_tx(APub, EPub, 100000, 20000, 1, 100),
-    Tx2 = create_spend_tx(EPub, APub, 100, 20000, 1, 100),
+    Tx1 = create_spend_tx(APub, EPub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100),
+    Tx2 = create_spend_tx(EPub, APub, 100, 20000 * aec_test_utils:min_gas_price(), 1, 100),
 
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
         dry_run(TopHash, [Tx1, Tx2]),
@@ -154,8 +154,8 @@ accounts(Config) ->
 
     #{ public := EPub } = enacl:sign_keypair(),
 
-    Tx1 = create_spend_tx(APub, EPub, 100000, 20000, 1, 100),
-    Tx2 = create_spend_tx(EPub, APub, 100, 20000, 1, 100),
+    Tx1 = create_spend_tx(APub, EPub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100),
+    Tx2 = create_spend_tx(EPub, APub, 100, 20000 * aec_test_utils:min_gas_price(), 1, 100),
 
     %% Should work on TopHash
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
@@ -226,8 +226,8 @@ create_contract_tx(Owner, Nonce, Code, CallData) ->
                 deposit => 0,
                 amount => 0,      %Initial balance
                 gas => 100000,     %May need a lot of gas
-                gas_price => 1,
-                fee => 1400000,
+                gas_price => aec_test_utils:min_gas_price(),
+                fee => 1400000 * aec_test_utils:min_gas_price(),
                 nonce => Nonce },
     {ok, Tx} = aect_create_tx:new(Params),
     Tx.
@@ -241,8 +241,8 @@ call_contract_tx(Caller, Contract, Nonce, CallData) ->
                 abi_version => aect_test_utils:latest_sophia_abi_version(),
                 amount => 0,
                 gas => 100000,     %May need a lot of gas
-                gas_price => 1,
-                fee => 800000,
+                gas_price => aec_test_utils:min_gas_price(),
+                fee => 800000 * aec_test_utils:min_gas_price(),
                 nonce => Nonce },
     {ok, Tx} = aect_call_tx:new(Params),
     Tx.

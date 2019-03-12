@@ -46,6 +46,7 @@
 
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
+-define(DEFAULT_GAS_PRICE, aec_test_utils:min_gas_price()).
 
 all() ->
     [
@@ -103,7 +104,7 @@ init_for_contracts(Config) ->
 
     %% Prepare accounts, Alice, Bert, Carl and Diana with balance of 10T.
 
-    StartAmt = 10*1000*1000000,                 %That is a lot of tokens!
+    StartAmt = 10*1000*1000000 * ?DEFAULT_GAS_PRICE, %That is a lot of tokens!
     {APubkey, APrivkey, STx1} = new_account(StartAmt),
     {BPubkey, BPrivkey, STx2} = new_account(StartAmt),
     {CPubkey, CPrivkey, STx3} = new_account(StartAmt),
@@ -718,7 +719,7 @@ environment_contract(Config) ->
 
     %% Gas price.
     ct:pal("Calling call_gas_price\n"),
-    ExpectedGasPrice = 2,
+    ExpectedGasPrice = 2 * ?DEFAULT_GAS_PRICE,
     call_func(BPub, BPriv, EncCPub, <<"call_gas_price">>, <<"()">>,
               #{gas_price => ExpectedGasPrice}, {<<"int">>, ExpectedGasPrice}),
 
@@ -858,7 +859,7 @@ dutch_auction_contract(Config) ->
     %% Set auction start amount and decrease per mine and fee.
     StartAmt = 50000,
     Decrease = 1000,
-    Fee      = 800000,
+    Fee      = 800000 * ?DEFAULT_GAS_PRICE,
 
     %% Initialise contract owned by Alice with Carl as benficiary.
     InitArgument = args_to_binary([CPub,StartAmt,Decrease]),
@@ -888,7 +889,7 @@ dutch_auction_contract(Config) ->
     CBal2 = get_balance(CPub),
 
     %% Check that the balances are correct, don't forget the gas and the fee.
-    BBal2 = BBal1 - Cost - GasUsed - Fee,
+    BBal2 = BBal1 - Cost - GasUsed * ?DEFAULT_GAS_PRICE - Fee,
     CBal2 = CBal1 + Cost,
 
     %% Now make a bid which should fail as auction has closed.
@@ -1144,7 +1145,7 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub,  100),
     force_fun_calls(Node),
     Balance1 = get_balance(APub),
-    1600476 = Balance0 - Balance1,
+    ?assertEqual(1600476 * ?DEFAULT_GAS_PRICE, Balance0 - Balance1),
 
     %% Test remote call with limited gas
     %% Call contract remote set function with limited gas
@@ -1153,14 +1154,14 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub,  1),
     force_fun_calls(Node),
     Balance2 = get_balance(APub),
-    1610687 = Balance1 - Balance2,
+    ?assertEqual(1610687 * ?DEFAULT_GAS_PRICE, Balance1 - Balance2),
 
     %% Test remote call with limited gas (3) that fails (out of gas).
     [] = call_func(APub, APriv, EncC1Pub, <<"call">>,
                    args_to_binary([DecC2Pub, 2, 3]), error),
     force_fun_calls(Node),
     Balance3 = get_balance(APub),
-    809933 = Balance2 - Balance3,
+    ?assertEqual(809933 * ?DEFAULT_GAS_PRICE, Balance2 - Balance3),
 
     %% Check that store/state not changed (we tried to write 2).
     call_get(APub, APriv, EncC2Pub,  1),
@@ -1172,7 +1173,7 @@ remote_gas_test_contract(Config) ->
                    args_to_binary([APub, 2, 1]), error),
     force_fun_calls(Node),
     Balance5 = get_balance(APub),
-    900000 = Balance4 - Balance5,
+    ?assertEqual(900000 * ?DEFAULT_GAS_PRICE, Balance4 - Balance5),
 
     ok.
 
@@ -1450,8 +1451,8 @@ contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
                               deposit => 2,
                               amount => 0,      %Initial balance
                               gas => 100000,   %May need a lot of gas
-                              gas_price => 1,
-                              fee => 1400000,
+                              gas_price => ?DEFAULT_GAS_PRICE,
+                              fee => 1400000 * ?DEFAULT_GAS_PRICE,
                               nonce => Nonce,
                               payload => <<"create contract">>},
     ContractInitEncoded1 = maps:merge(maps:merge(ContractInitEncoded0, CallInput), CallerSet),
@@ -1502,8 +1503,8 @@ contract_call_compute_tx(Pubkey, Privkey, Nonce, EncodedContractPubkey,
                               abi_version => aect_test_utils:latest_sophia_abi_version(),
                               amount => 0,
                               gas => 100000,    %May need a lot of gas
-                              gas_price => 1,
-                              fee => 800000,
+                              gas_price => ?DEFAULT_GAS_PRICE,
+                              fee => 800000 * ?DEFAULT_GAS_PRICE,
                               nonce => Nonce,
                               payload => <<"call compute function">> },
     ContractCallEncoded1 = maps:merge(maps:merge(ContractCallEncoded0, CallInput), CallerSet),
@@ -1692,7 +1693,7 @@ process_http_return(R) ->
 
 new_account(Balance) ->
     {Pubkey,Privkey} = generate_key_pair(),
-    Fee = 20000,
+    Fee = 20000 * ?DEFAULT_GAS_PRICE,
     {ok, 200, #{<<"tx">> := SpendTx}} =
         create_spend_tx(aehttp_api_encoder:encode(account_pubkey, Pubkey), Balance, Fee),
     SignedSpendTx = sign_tx(SpendTx),

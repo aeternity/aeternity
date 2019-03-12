@@ -87,12 +87,36 @@ groups() ->
 
 init_per_testcase(register_oracle_negative, Config) ->
     meck:new(aec_hard_forks, [passthrough]),
+    meck:new(aec_governance, [passthrough]),
+    Config;
+init_per_testcase(Test, Config) when Test =:= query_response_negative_dynamic_fee
+                              orelse Test =:= query_oracle_negative_dynamic_fee
+                              orelse Test =:= extend_oracle_negative_dynamic_fee
+                              orelse Test =:= register_oracle_negative_dynamic_fee ->
+    meck:new(aec_governance, [passthrough]),
+    meck:new(aec_tx_pool, [passthrough]),
+    % those tests are sensitive to the minimum fee required for including a tx.
+    % The correct fee is a function of various components, one of which is the
+    % gas price. Modifying the minimum gas price can change the size of the
+    % serialized transaction and thus - breaking the expectations for the fee,
+    % thus the mecks
+    meck:expect(aec_governance, minimum_gas_price, fun(_) -> 1000000 end),
+    meck:expect(aec_tx_pool, minimum_miner_gas_price, fun() -> 1 end),
     Config;
 init_per_testcase(_, Config) ->
     Config.
 
-end_per_testcase(register_oracle_negative,_Config) ->
+end_per_testcase(register_oracle_negative, _Config) ->
+    meck:unload(aec_governance),
     meck:unload(aec_hard_forks),
+    ok;
+end_per_testcase(Test, _Config) when Test =:= query_response_negative_dynamic_fee
+                              orelse Test =:= query_oracle_negative_dynamic_fee
+                              orelse Test =:= extend_oracle_negative_dynamic_fee
+                              orelse Test =:= register_oracle_negative_dynamic_fee ->
+
+    meck:unload(aec_governance),
+    meck:unload(aec_tx_pool),
     ok;
 end_per_testcase(_,_Config) ->
     ok.
@@ -149,6 +173,8 @@ register_oracle_negative(_Cfg) ->
     ?assertMatch({ok, _, _}, aetx:process(RTx8, Trees, Env)),
     ?assertMatch({ok, _, _}, aetx:process(RTx9, Trees, Env)),
     meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?MINERVA_PROTOCOL_VSN end),
+    % set same minimum gas price as in Roma
+    meck:expect(aec_governance, minimum_gas_price, fun(_) -> 1 end),
     ?assertEqual({error, bad_query_format}, aetx:process(RTx8, Trees, Env)),
     ?assertEqual({error, bad_response_format}, aetx:process(RTx9, Trees, Env)),
     ?assertMatch({ok, _, _}, aetx:process(RTx10, Trees, Env)),
@@ -167,17 +193,26 @@ register_oracle_negative_dynamic_fee(_Cfg) ->
 
     %% Test minimum fee for increasing TTL.
     ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 0}, fee => 0})),
-    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 0}, fee => 17000})),
+    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 0},
+                                           fee => 17000 * aec_test_utils:min_gas_price()})),
     ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1}, fee => 1})),
-    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 1}, fee => 17000})),
-    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 1000}, fee => 16500})),
-    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 1000}, fee => 17000})),
-    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 4000}, fee => 17000})),
-    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 4000}, fee => 17500})),
-    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 9000}, fee => 17500})),
-    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 9000}, fee => 19000})),
+    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 1},
+                                           fee => 17000 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 1000},
+                                           fee => 16500 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 1000},
+                                           fee => 17000 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 4000},
+                                           fee => 17000 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 4000},
+                                           fee => 17500 * aec_test_utils:min_gas_price()})),
+    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 9000},
+                                           fee => 17500 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 9000},
+                                           fee => 19000 * aec_test_utils:min_gas_price()})),
     %% Test more than minimum fee considering TTL.
-    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 9000}, fee => 40000})),
+    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 9000},
+                                           fee => 40000 * aec_test_utils:min_gas_price()})),
     ok.
 
 register_oracle_negative_absolute_ttl(_Cfg) ->
@@ -191,9 +226,12 @@ register_oracle_negative_absolute_ttl(_Cfg) ->
             aetx:process(Tx, Trees, Env)
         end,
 
-    ?assertEqual({error, too_low_abs_ttl}, F(#{oracle_ttl => {block, 0}, fee => 20000})),
-    ?assertEqual({error, too_low_abs_ttl}, F(#{oracle_ttl => {block, 1}, fee => 20000})),
-    ?assertMatch({ok, _, _}              , F(#{oracle_ttl => {block, 100}, fee => 20000})),
+    ?assertEqual({error, too_low_abs_ttl}, F(#{oracle_ttl => {block, 0},
+                                               fee => 20000 * aec_test_utils:min_gas_price()})),
+    ?assertEqual({error, too_low_abs_ttl}, F(#{oracle_ttl => {block, 1},
+                                               fee => 20000 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({ok, _, _}              , F(#{oracle_ttl => {block, 100},
+                                               fee => 20000 * aec_test_utils:min_gas_price()})),
     ok.
 
 register_oracle(Cfg) ->
@@ -270,17 +308,27 @@ extend_oracle_negative_dynamic_fee(Cfg) ->
         end,
     %% Test minimum fee for increasing TTL.
     ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 0}, fee => 0})),
-    ?assertEqual({error, zero_relative_oracle_extension_ttl}, F(#{oracle_ttl => {delta, 0}, fee => 16000})),
-    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1}, fee => 1})),
-    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 1}, fee => 16000})),
-    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 1000}, fee => 16000})),
-    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 1000}, fee => 16500})),
-    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 4000}, fee => 16500})),
-    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 4000}, fee => 17000})),
-    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 9000}, fee => 17000})),
-    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 9000}, fee => 20000})),
+    ?assertEqual({error, zero_relative_oracle_extension_ttl}, F(#{oracle_ttl => {delta, 0},
+                                                                  fee => 16000 * aec_test_utils:min_gas_price()})),
+    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1},
+                                           fee => aec_test_utils:min_gas_price()})),
+    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 1},
+                                           fee => 16000 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 1000},
+                                           fee => 16000 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 1000},
+                                           fee => 16500 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 4000},
+                                           fee => 16500 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 4000},
+                                           fee => 17000 * aec_test_utils:min_gas_price()})),
+    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 9000},
+                                           fee => 17000 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 9000},
+                                           fee => 20000 * aec_test_utils:min_gas_price()})),
     %% Test more than minimum fee considering TTL.
-    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 9000}, fee => 40000})),
+    ?assertMatch({ok, _, _}          , F(#{oracle_ttl => {delta, 9000},
+                                           fee => 40000 * aec_test_utils:min_gas_price()})),
     ok.
 
 extend_oracle(Cfg) ->
@@ -363,7 +411,8 @@ query_oracle_negative(Cfg) ->
     ok.
 
 query_oracle_negative_dynamic_fee(Cfg) ->
-    {OracleKey, S}  = register_oracle(Cfg, #{oracle_ttl => {block, 2000 + ?ORACLE_QUERY_HEIGHT}, fee => 25000}),
+    {OracleKey, S}  = register_oracle(Cfg, #{oracle_ttl => {block, 2000 + ?ORACLE_QUERY_HEIGHT},
+                                             fee => 25000 * aec_test_utils:min_gas_price()}),
     OracleId        = aec_id:create(oracle, OracleKey),
     {SenderKey, S2} = aeo_test_utils:setup_new_account(S),
     Trees           = aeo_test_utils:trees(S2),
@@ -376,16 +425,25 @@ query_oracle_negative_dynamic_fee(Cfg) ->
         end,
 
     %% Test minimum fee for increasing TTL.
-    ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 0}, fee => 0})),
-    ?assertMatch({ok, _, _}          , F(#{query_ttl => {delta, 0}, fee => 17000})),
-    ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 1}, fee => 1})),
-    ?assertMatch({ok, _, _}          , F(#{query_ttl => {delta, 1}, fee => 17000})),
-    ?assertMatch({error, too_low_fee}, F(#{query_ttl => {delta, 1000}, fee => 17000})),
-    ?assertMatch({ok, _, _}          , F(#{query_ttl => {delta, 1000}, fee => 17150})),
-    ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 1500}, fee => 17150})),
-    ?assertMatch({ok, _, _}          , F(#{query_ttl => {delta, 1500}, fee => 17200})),
+    ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 0},
+                                           fee => 0})),
+    ?assertMatch({ok, _, _}          , F(#{query_ttl => {delta, 0},
+                                           fee => 17000 * aec_test_utils:min_gas_price()})),
+    ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 1},
+                                           fee => 1 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({ok, _, _}          , F(#{query_ttl => {delta, 1},
+                                           fee => 17000 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({error, too_low_fee}, F(#{query_ttl => {delta, 1000},
+                                           fee => 17000 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({ok, _, _}          , F(#{query_ttl => {delta, 1000},
+                                           fee => 17250 * aec_test_utils:min_gas_price()})),
+    ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 1500},
+                                           fee => 17250 * aec_test_utils:min_gas_price()})),
+    ?assertMatch({ok, _, _}          , F(#{query_ttl => {delta, 1500},
+                                           fee => 17300 * aec_test_utils:min_gas_price()})),
     %% Test more than minimum fee considering TTL.
-    ?assertMatch({ok, _, _}          , F(#{query_ttl => {delta, 1500}, fee => 40000})),
+    ?assertMatch({ok, _, _}          , F(#{query_ttl => {delta, 1500},
+                                           fee => 40000 * aec_test_utils:min_gas_price()})),
     ok.
 
 query_oracle_type_check(_Cfg) ->
@@ -489,7 +547,8 @@ query_response_negative_dynamic_fee(Cfg) ->
     F = fun(RTTL, Fee) ->
                 QTxSpec = #{ response_ttl => RTTL },
                 RTxSpec = #{ response_ttl => RTTL, fee => Fee },
-                {OracleKey, ID, S1}  = query_oracle(Cfg, #{oracle_ttl => {block, 2000 + ?ORACLE_RSP_HEIGHT}, fee => 25000}, QTxSpec),
+                {OracleKey, ID, S1}  = query_oracle(Cfg, #{oracle_ttl => {block, 2000 + ?ORACLE_RSP_HEIGHT},
+                                                           fee => 25000 * aec_test_utils:min_gas_price()}, QTxSpec),
                 Trees      = aeo_test_utils:trees(S1),
                 CurrHeight = ?ORACLE_RSP_HEIGHT,
                 Env        = aetx_env:tx_env(CurrHeight),
@@ -498,13 +557,13 @@ query_response_negative_dynamic_fee(Cfg) ->
         end,
 
     %% Test minimum fee for increasing TTL.
-    ?assertEqual({error, too_low_fee}, F({delta, 1},    1)),
-    ?assertMatch({ok, _, _}          , F({delta, 1},    16850)),
-    ?assertMatch({ok, _, _}          , F({delta, 1000}, 16850)),
-    ?assertEqual({error, too_low_fee}, F({delta, 1500}, 16850)),
-    ?assertMatch({ok, _, _}          , F({delta, 1500}, 17000)),
+    ?assertEqual({error, too_low_fee}, F({delta, 1},    1 * aec_test_utils:min_gas_price())),
+    ?assertMatch({ok, _, _}          , F({delta, 1},    16850 * aec_test_utils:min_gas_price())),
+    ?assertMatch({ok, _, _}          , F({delta, 1000}, 16950 * aec_test_utils:min_gas_price())),
+    ?assertEqual({error, too_low_fee}, F({delta, 1500}, 16950 * aec_test_utils:min_gas_price())),
+    ?assertMatch({ok, _, _}          , F({delta, 1500}, 17000 * aec_test_utils:min_gas_price())),
     %% Test more than minimum fee considering TTL.
-    ?assertMatch({ok, _, _}          , F({delta, 1500}, 40000)),
+    ?assertMatch({ok, _, _}          , F({delta, 1500}, 40000 * aec_test_utils:min_gas_price())),
     ok.
 
 query_response(Cfg) ->

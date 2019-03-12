@@ -93,6 +93,7 @@ def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
     top1 = ext_api.get_current_key_block()
     assert_true(top1.height >= top0.height)
     assert_true(top1.height >= blocks_to_mine)
+
     # Now the node has at least blocks_to_mine blocks mined
 
     bal1 = get_account_balance(ext_api, beneficiary['enc_pubk'])

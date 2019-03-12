@@ -73,7 +73,11 @@
     config_guest_path => nonempty_string(),
     config => #{atom() => term()},
     % Tuple of host/guest paths where the node DB is meant to be if persisted
-    db_path => {binary(), binary()} | undefined
+    db_path => {binary(), binary()} | undefined,
+    % proplist of encoded addresses and balances
+    genesis_accounts => [{binary(), non_neg_integer()}],
+    % the path to the accounts_test.json to be used for genesis block
+    genesis => file:filename_all()
 }.
 
 %% State of a node

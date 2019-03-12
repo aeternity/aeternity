@@ -298,6 +298,7 @@ tx_first_pays_second_(Config, AmountFun) ->
     PK1 = get_pubkey(NodeT1),
     PK2 = get_pubkey(NodeT1),
 
+    TxFee = 20000 * aec_test_utils:min_gas_price(),
     Bal1 = get_balance_(NodeT1, PK1),
     true = (is_integer(Bal1) andalso Bal1 > 0),
 
@@ -308,7 +309,7 @@ tx_first_pays_second_(Config, AmountFun) ->
     ok = new_tx(#{node1  => {PK1, NodeT1},
                   node2  => {PK2, NodeT2},
                   amount => AmountFun(Bal1),
-                  fee    => 20000}),
+                  fee    => TxFee}),
 
     {ok, Pool12} = get_pool(NodeT1),
     [NewTx] = Pool12 -- Pool11,
@@ -553,25 +554,25 @@ large_msgs(Config) ->
 
     %% Insert enough transactions to make a large generation
     Blob = fun(Size) -> << <<171:8>> || _ <- lists:seq(1, Size) >> end,
-    {ok, Tx1} = add_spend_tx(N1, 10, 1500000, 1, 100, Blob(16#ffff)),
+    {ok, Tx1} = add_spend_tx(N1, 10, 1500000 * aec_test_utils:min_gas_price(), 1, 100, Blob(16#ffff)),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx1], 10),
 
-    {ok, Tx2} = add_spend_tx(N1, 10, 3000000, 2, 100, Blob(16#1ffff)),
+    {ok, Tx2} = add_spend_tx(N1, 10, 3000000 * aec_test_utils:min_gas_price(), 2, 100, Blob(16#1ffff)),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx2], 10),
 
-    {ok, Tx3} = add_spend_tx(N1, 10, 4000000, 3, 100, Blob(16#2ffff)),
+    {ok, Tx3} = add_spend_tx(N1, 10, 4000000 * aec_test_utils:min_gas_price(), 3, 100, Blob(16#2ffff)),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx3], 10),
 
-    {ok, Tx4} = add_spend_tx(N1, 10, 8000000, 4, 100, Blob(16#5ffff)),
+    {ok, Tx4} = add_spend_tx(N1, 10, 8000000 * aec_test_utils:min_gas_price(), 4, 100, Blob(16#5ffff)),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx4], 10),
 
-    {ok, Tx5} = add_spend_tx(N1, 10, 1500000, 5, 100, Blob(16#fce3)), %% Should exactly fit in one message
+    {ok, Tx5} = add_spend_tx(N1, 10, 1500000 * aec_test_utils:min_gas_price(), 5, 100, Blob(16#fce3)), %% Should exactly fit in one message
     aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx5], 10),
 
-    {ok, Tx6} = add_spend_tx(N1, 10, 1500000, 6, 100, Blob(16#fce4)), %% Wee bit too large
+    {ok, Tx6} = add_spend_tx(N1, 10, 1500000 * aec_test_utils:min_gas_price(), 6, 100, Blob(16#fce4)), %% Wee bit too large
     aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx6], 10),
 
-    {ok, Tx7} = add_spend_tx(N1, 10, 3000000, 7, 100, Blob(16#1fcb8)), %% Even multiple of fragment size
+    {ok, Tx7} = add_spend_tx(N1, 10, 3000000 * aec_test_utils:min_gas_price(), 7, 100, Blob(16#1fcb8)), %% Even multiple of fragment size
     aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx7], 10),
 
     T0 = os:timestamp(),

@@ -113,11 +113,7 @@
 
 -define(DEFAULT_NONCE_BASELINE, 1).
 -define(DEFAULT_NONCE_OFFSET, 5).
--ifdef(TEST).
--define(DEFAULT_MIN_MINER_GAS_PRICE, 1).
--else.
 -define(DEFAULT_MIN_MINER_GAS_PRICE, 1000000000).
--endif.
 
 %%%===================================================================
 %%% API

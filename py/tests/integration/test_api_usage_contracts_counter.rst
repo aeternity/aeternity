@@ -57,8 +57,8 @@ Bob computes - off-chain, using the Aeternity node API - the unsigned contract c
 ...   deposit=0,
 ...   amount=0,
 ...   gas=20000,
-...   gas_price=1,
-...   fee=200000,
+...   gas_price=1000000000,
+...   fee=200000000000000,
 ...   call_data=encoded_init_call_data))
 >>> contract_id = raw_unsigned_contract_create_tx.contract_id
 >>> print(contract_id) # doctest: +ELLIPSIS
@@ -117,10 +117,10 @@ Alice computes - off-chain, using the Aeternity node API - the unsigned contract
 ...   nonce=1,
 ...   contract_id=contract_id,
 ...   abi_version=1,
-...   fee=500000,
+...   fee=500000000000000,
 ...   amount=0,
 ...   gas=20000,
-...   gas_price=1,
+...   gas_price=1000000000,
 ...   function=contract_call_data['f'],
 ...   arguments=contract_call_data['arg'])).tx)
 

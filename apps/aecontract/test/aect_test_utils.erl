@@ -149,7 +149,7 @@ create_tx(PubKey, Spec0, State) ->
     Tx.
 
 create_tx_default_spec(PubKey, State) ->
-    #{ fee         => 1000000
+    #{ fee         => 1000000 * aec_test_utils:min_gas_price()
      , owner_id    => aec_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , code        => dummy_bytecode()
@@ -158,7 +158,7 @@ create_tx_default_spec(PubKey, State) ->
      , deposit     => 10
      , amount      => 200
      , gas         => 10
-     , gas_price   => 1
+     , gas_price   => 1 * aec_test_utils:min_gas_price()
      , call_data   => <<"NOT ENCODED ACCORDING TO ABI">>
      , ttl         => 0
      }.
@@ -183,14 +183,14 @@ call_tx(PubKey, ContractKey, Spec0, State) ->
     Tx.
 
 call_tx_default_spec(PubKey, ContractKey, State) ->
-    #{ fee         => 600000
+    #{ fee         => 600000 * aec_test_utils:min_gas_price()
      , contract_id => aec_id:create(contract, ContractKey)
      , caller_id   => aec_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , abi_version => latest_sophia_abi_version()
      , amount      => 100
      , gas         => 10000
-     , gas_price   => 1
+     , gas_price   => 1 * aec_test_utils:min_gas_price()
      , call_data   => <<"CALL DATA">>
      , ttl         => 0
      }.
@@ -200,7 +200,7 @@ call_tx_default_spec(PubKey, ContractKey, State) ->
 %%%===================================================================
 
 setup_new_account(State) ->
-    setup_new_account(10000000, State).
+    setup_new_account(10000000 * aec_test_utils:min_gas_price(), State).
 
 setup_new_account(Balance, State) ->
     {PubKey, PrivKey} = new_key_pair(),
