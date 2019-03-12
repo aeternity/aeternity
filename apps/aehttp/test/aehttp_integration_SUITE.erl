@@ -522,28 +522,7 @@ groups() ->
       channel_websocket_sequence()
      },
      {continuous_sc_ws, [sequence],
-      [
-       %% both can deposit
-       sc_ws_deposit,
-       %% both can withdraw
-       sc_ws_withdraw,
-       %% ensure port is reusable
-       sc_ws_failed_update,
-       sc_ws_generic_messages,
-       sc_ws_update_conflict,
-       sc_ws_contracts,
-       %% both can refer on-chain objects - oracle
-       sc_ws_oracle_contract,
-       %% both can refer on-chain objects - name service
-       sc_ws_nameservice_contract,
-       %% both can refer on-chain objects - chain environment
-       sc_ws_enviroment_contract,
-       %% both can call a remote contract
-       sc_ws_remote_call_contract,
-       %% both can call a remote contract refering on-chain data
-       sc_ws_remote_call_contract_refering_onchain_data,
-       sc_ws_wrong_call_data
-      ]}
+      channel_continuous_sequence()}
     ].
 
 channel_websocket_sequence() ->
@@ -557,6 +536,29 @@ channel_websocket_sequence() ->
       {group, continuous_sc_ws}
     ].
 
+channel_continuous_sequence() ->
+    [
+      %% both can deposit
+      sc_ws_deposit,
+      %% both can withdraw
+      sc_ws_withdraw,
+      %% ensure port is reusable
+      sc_ws_failed_update,
+      sc_ws_generic_messages,
+      sc_ws_update_conflict,
+      sc_ws_contracts,
+      %% both can refer on-chain objects - oracle
+      sc_ws_oracle_contract,
+      %% both can refer on-chain objects - name service
+      sc_ws_nameservice_contract,
+      %% both can refer on-chain objects - chain environment
+      sc_ws_enviroment_contract,
+      %% both can call a remote contract
+      sc_ws_remote_call_contract,
+      %% both can call a remote contract refering on-chain data
+      sc_ws_remote_call_contract_refering_onchain_data,
+      sc_ws_wrong_call_data
+    ].
 
 suite() ->
     [].
@@ -823,7 +825,17 @@ init_per_testcase(Case, Config) when
         Case =:= disabled_debug_endpoints; Case =:= enabled_debug_endpoints ->
     {ok, HttpInternal} = rpc(?NODE, application, get_env, [aehttp, internal]),
     [{http_internal_config, HttpInternal} | init_per_testcase_all(Config)];
-init_per_testcase(_Case, Config) ->
+init_per_testcase(Case, Config) ->
+    case lists:member(Case, channel_continuous_sequence()) of
+        true ->
+            LogFile = docs_log_file(Config),
+            #{initiator := IConnPid,
+              responder := RConnPid} = proplists:get_value(channel_clients, Config),
+            ?WS:set_log_file(IConnPid, LogFile),
+            ?WS:set_log_file(RConnPid, LogFile);
+        false ->
+            pass
+    end,
     init_per_testcase_all(Config).
 
 init_per_testcase_all(Config) ->
@@ -5932,29 +5944,30 @@ blocks_to_mine_1(Height, Delay, Goal, N, Acc) ->
     end.
 
 channel_ws_start(Role, Opts, Config) ->
-    Opts1 = set_log_option(Opts, Config),
+    LogFile = docs_log_file(Config),
+    Opts1 = Opts#{ {int,logfile} => LogFile },
     {Host, Port} = channel_ws_host_and_port(),
     ?WS:start_channel(Host, Port, Role, Opts1).
 
-set_log_option(Opts, Config) ->
+docs_log_file(Config) ->
     %% TCLogBase = atom_to_list(?config(tc_name, Config)),
     TCLogBase = log_basename(Config),
-    MsgLogFile = filename:join(?config(priv_dir, Config), TCLogBase ++ ".md"),
+    {aehttp_integration_SUITE, TestName} = proplists:get_value(current, ct:get_status()),
+    MsgLogFile = filename:join([?config(priv_dir, Config), TCLogBase,
+                               atom_to_list(TestName)++ ".md"]),
     ct:log("MsgLogFile = ~p", [MsgLogFile]),
-    Opts#{ {int,logfile} => MsgLogFile }.
+    MsgLogFile.
 
 log_basename(Config) ->
+    Protocol = binary_to_list(?config(sc_ws_protocol, Config)),
     GOpts = ?config(tc_group_properties, Config),
-    GPath = ?config(tc_group_path, Config),
     GName = ?config(name, GOpts),
-    Path = [?config(name, Opts) || Opts <- GPath],
-    intersperse(remove_leading_all(lists:reverse([GName|Path])), ".").
-
-remove_leading_all([all|T]) -> T;
-remove_leading_all(L      ) -> L.
-
-intersperse([H|T], Delim) ->
-    lists:flatten([H | [[Delim, E] || E <- T]]).
+    SubDir =
+        case GName =:= continuous_sc_ws of
+            true -> filename:join(Protocol, "continuous");
+            false -> Protocol
+        end,
+    filename:join("channel_docs", SubDir).
 
 sign_and_post_tx(EncodedUnsignedTx) ->
     sign_and_post_tx(EncodedUnsignedTx, on_node).

@@ -5,6 +5,7 @@
 -export([start_link/2,
          start_link_channel/4,
          start_channel/4,
+         set_log_file/2,
          set_role/2,
          log/3,
          send/3, send/4, send/5,
@@ -123,6 +124,9 @@ wait_for_connect(Pid) ->
 
 set_role(ConnPid, Role) when is_atom(Role) ->
     set_options(ConnPid, #{role => Role}).
+
+set_log_file(ConnPid, LogFile) ->
+    ConnPid ! {set_logfile, LogFile}.
 
 log(ConnPid, Type, Info) when Type==info;
                               Type==init;
@@ -468,6 +472,10 @@ websocket_info({set_options, #{ role := Role
                          protocol = get_protocol(Opts, Proto0)},
     do_log(init, WsAddress, State1),
     {ok, State1};
+websocket_info({set_logfile, LogFile}, _ConnState, State) ->
+    Log = open_log(LogFile),
+    State1 = State#state{log = Log},
+    {ok, State1};
 websocket_info({log, Type, Msg}, _ConnState, State) ->
     do_log(Type, Msg, State),
     {ok, State};
@@ -611,6 +619,7 @@ get_logfile(Opts) ->
 open_log(undefined) ->
     undefined;
 open_log(F) ->
+    filelib:ensure_dir(F),
     Name = filename:basename(F),
     {ok, _} = disk_log:open([{name, Name},
                              {file, F},
@@ -641,9 +650,9 @@ do_log(Dir, Msg, #state{log = Log, role = Role}) ->
 log_header_str(Dir, Role, TimeStr) ->
     {Fmt, Args} =
         case Dir of
-            send -> {"~w ---> (~s)", [Role, TimeStr]};
-            recv -> {"~w <--- (~s)", [Role, TimeStr]};
-            init -> {"~w init (~s)", [Role, TimeStr]};
+            send -> {"~w ---> node (~s)", [Role, TimeStr]};
+            recv -> {"~w <--- node (~s)", [Role, TimeStr]};
+            init -> {"~w opens a WebSocket connection (~s)", [Role, TimeStr]};
             info -> {"~w info (~s)", [Role, TimeStr]}
         end,
     io_lib:format(Fmt, Args).
