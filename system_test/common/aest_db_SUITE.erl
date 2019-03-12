@@ -118,13 +118,8 @@ run_rename_db_script(DbHostPath, Cfg) ->
     aest_nodes:setup_nodes([N3], Cfg),
     aest_nodes:start_node(node3, Cfg),
 
-    %% Starting node3 will fail, and the below step seems unrelated and not needed.
-    %% But this makes renamed db to be seen correctly in node2.
-    %% Otherwise node2 sees old schema.DAT file, despite the fact that it is renamed in the host filesystem,
-    %% even before node2 container is created (this seems to be a Docker issue).
-    aest_nodes:run_cmd_in_node_dir(node3, ["bin/aeternity", "console"], #{timeout => 5000}, Cfg),
+    {0, _} = aest_nodes:run_cmd_in_node_dir(node3, ["bin/aeternity", "rename_db", "data"], #{timeout => 5000}, Cfg),
 
-    {0, _} = aest_nodes:run_cmd_in_node_dir(node3, ["bin/aeternity", "rename_db", "./data/mnesia/schema.DAT"], #{timeout => 5000}, Cfg),
     aest_nodes:stop_container(node3, ?GRACEFUL_STOP_TIMEOUT, Cfg),
     {ok, DbSchemaRenamed} = file:read_file(filename:join(DbHostPath, "schema.DAT")),
     {ok, DbSchemaBackup} = file:read_file(filename:join(DbHostPath, "schema.DAT.backup")),
@@ -140,11 +135,6 @@ node_spec(Name, DbHostPath) ->
 
 node_spec_custom_entrypoint(Name, DbHostPath) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
-    %% In theory, node3 container could be just:
-    %% - entrypoint => [""],
-    %% - custom_command => ["/home/aeternity/node/bin/aeternity", "rename_db", "./data/mnesia/schema.DAT"]})
-    %% but this is not sufficient, since trying to start Erlang node in console mode is needed
-    %% to make node2 container see correct binded schema.DAT file.
     aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:local"},
                                 db_path => {DbHostPath, DbGuestPath},
                                 entrypoint => [<<"sleep">>],
@@ -161,7 +151,9 @@ roma_node_spec(Name, DbHostPath) ->
 %% Minerva release using old epoch@localhost node name in the db.
 minerva_with_epoch_name_in_db_spec(Name, DbHostPath) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
-    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v2.0.0"}, db_path => {DbHostPath, DbGuestPath}}).
+    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v2.0.0"},
+                                db_path => {DbHostPath, DbGuestPath},
+                                genesis_accounts => genesis_accounts()}).
 
 genesis_accounts() ->
     %% have all nodes share the same accounts_test.json

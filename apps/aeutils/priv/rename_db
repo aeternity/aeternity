@@ -4,13 +4,13 @@
 -mode(compile).
 
 main([[]]) ->
-    io:fwrite("Usage: rename_db schema.DAT_file_path [FromNode ToNode]~n"),
+    io:fwrite("Usage: rename_db db_dir_path [FromNode ToNode]~n"),
     halt(1);
-main([SchemaDATFilePath]) ->
-    main([SchemaDATFilePath, "epoch@localhost", "aeternity@localhost"]);
-main([SchemaDATFilePath, FromNode, ToNode]) ->
+main([DbDirPath]) ->
+    main([DbDirPath, "epoch@localhost", "aeternity@localhost"]);
+main([DbDirPath, FromNode, ToNode]) ->
     io:fwrite("Starting node name renaming in the db from ~p to ~p~n", [FromNode, ToNode]),
-    case aeu_db:change_node(SchemaDATFilePath, list_to_atom(FromNode), list_to_atom(ToNode)) of
+    case aeu_db:change_node(DbDirPath, list_to_atom(FromNode), list_to_atom(ToNode)) of
         ok ->
             io:fwrite("Hurray! Node name renaming in the db was successful! You're good to start your node now!~n");
         {error, _Reason} = Error ->
