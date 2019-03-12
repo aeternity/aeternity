@@ -6,11 +6,6 @@ executors:
   infrastructure_container_stable:
     docker:
       - image: aeternity/infrastructure:master
-
-
-references:
-  container_config: &container_config
-    resource_class: large
   builder_container_stable:
     docker:
       - image: aeternity/builder
