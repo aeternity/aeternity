@@ -13,6 +13,7 @@ executors:
 
 references:
   container_config: &container_config
+    resource_class: large
     working_directory: ~/aeternity
     environment:
       OTP_VERSION: 20.3.8
