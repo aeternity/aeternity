@@ -1,6 +1,7 @@
 -module(aestratum_config).
 
--export([setup_env/1]).
+-export([setup_env/1,
+         read_keys/1]).
 
 -import(aestratum_fn, [ok_val_err/2, is_ok/1, val/3, key_val/2]).
 
@@ -14,16 +15,22 @@
 -define(DEFAULT_NUM_ACCEPTORS, 100).
 
 -define(DEFAULT_EXTRA_NONCE_BYTES, 4).
+-define(DEFAULT_SKIP_NUM_BLOCKS, 10).
 -define(DEFAULT_INITIAL_SHARE_TARGET, aestratum_target:max()).
 -define(DEFAULT_MAX_SHARE_TARGET, aestratum_target:max()).
 -define(DEFAULT_DESIRED_SOLVE_TIME, 30000).
 -define(DEFAULT_MAX_SOLVE_TIME, 60000).
 -define(DEFAULT_SHARE_TARGET_DIFF_THRESHOLD, 5.0).
+-define(DEFAULT_EDGE_BITS, 29).
 -define(DEFAULT_MSG_TIMEOUT, 15000).
 -define(DEFAULT_MAX_JOBS, 20).
 -define(DEFAULT_MAX_WORKERS, 20).
 
 -define(DEFAULT_REWARD_LAST_ROUNDS, 2).
+
+-define(DEFAULT_REWARD_KEYBLOCK_DELAY, 180).
+-define(DEFAULT_PAYOUT_KEYBLOCK_DELAY, 180).
+
 
 setup_env(UserConfig) when is_list(UserConfig) ->
     case maps:from_list(UserConfig) of
@@ -54,11 +61,13 @@ defaults_schema(connection) ->
      {num_acceptors, ?DEFAULT_NUM_ACCEPTORS}];
 defaults_schema(session) ->
     [{extra_nonce_bytes, ?DEFAULT_EXTRA_NONCE_BYTES},
+     {skip_num_blocks, ?DEFAULT_SKIP_NUM_BLOCKS},
      {initial_share_target, ?DEFAULT_INITIAL_SHARE_TARGET},
      {max_share_target, ?DEFAULT_MAX_SHARE_TARGET},
      {desired_solve_time, ?DEFAULT_DESIRED_SOLVE_TIME},
      {max_solve_time, ?DEFAULT_MAX_SOLVE_TIME},
      {share_target_diff_threshold, ?DEFAULT_SHARE_TARGET_DIFF_THRESHOLD},
+     {edge_bits, ?DEFAULT_EDGE_BITS},
      {msg_timeout, ?DEFAULT_MSG_TIMEOUT},
      {max_jobs, ?DEFAULT_MAX_JOBS},
      {max_workers, ?DEFAULT_MAX_WORKERS}];  %% Per connection.
@@ -90,8 +99,11 @@ configure(connection, #{connection := #{max_connections := MaxConnections,
         orelse error(insufficent_extra_nonce_bytes),
     maps:merge(maps:without([connection], Result),
                maps:put(transport, binary_to_atom(Transport, utf8), ConnCfg));
-configure(session, #{session := SessionCfg} = Result) ->
-    maps:merge(maps:without([session], Result), SessionCfg);
+configure(session, #{session := #{desired_solve_time := DesiredSolveTime,
+                                  max_solve_time := MaxSolveTime} = SessionCfg} = Result) ->
+    SessionCfg1 = SessionCfg#{desired_solve_time => DesiredSolveTime * 1000,
+                              max_solve_time => MaxSolveTime * 1000},
+    maps:merge(maps:without([session], Result), SessionCfg1);
 configure(reward, #{reward := #{beneficiaries := PoolShareBins,
                                 reward_last_rounds := LastN,
                                 keys := [{<<"dir">>, KeysDir}]}} = Result) ->
@@ -104,12 +116,7 @@ configure(reward, #{reward := #{beneficiaries := PoolShareBins,
                    end,
     ContractPK   = aestratum_conv:contract_address_to_pubkey(ContractAddr),
     ContractPath = filename:join(code:priv_dir(aestratum), "Payout.aes"),
-
-    %% This changed a lot for 3.0, so for now it's broken.
-    %%
-    %% Contract     = ok_val_err(aeso_compiler:file(ContractPath), contract_compilation),
-    Contract        = #{},
-
+    ContractSrc  = ok_val_err(file:read_file(ContractPath), contract_file_not_found),
     {CallerPK, CallerSK} = CallerKeyPair = read_keys(KeysDir),
     CallerAddr   = aestratum_conv:account_pubkey_to_address(CallerPK),
     check_keypair_roundtrips(CallerKeyPair) orelse error(invalid_keypair),
@@ -125,15 +132,17 @@ configure(reward, #{reward := #{beneficiaries := PoolShareBins,
     PoolPercentSum < 100.0 orelse error(beneficiaries_reward_too_high),
 
     maps:merge(maps:without([reward], Result),
-               #{last_n               => LastN,
-                 contract             => Contract,
-                 contract_pubkey      => ContractPK,
-                 contract_address     => ContractAddr,
-                 caller_pubkey        => CallerPK,
-                 caller_privkey       => CallerSK,
-                 caller_address       => CallerAddr,
-                 pool_percent_sum     => PoolPercentSum,
-                 pool_percent_shares  => PoolPercentShares}).
+               #{last_n                => LastN,
+                 contract              => #{contract_source => binary_to_list(ContractSrc)},
+                 contract_pubkey       => ContractPK,
+                 contract_address      => ContractAddr,
+                 caller_pubkey         => CallerPK,
+                 caller_privkey        => CallerSK,
+                 caller_address        => CallerAddr,
+                 pool_percent_sum      => PoolPercentSum,
+                 pool_percent_shares   => PoolPercentShares,
+                 reward_keyblock_delay => ?DEFAULT_REWARD_KEYBLOCK_DELAY,
+                 payout_keyblock_delay => ?DEFAULT_PAYOUT_KEYBLOCK_DELAY}).
 
 
 check_extra_nonce_bytes(MaxConnections, NumAcceptors, ExtraNonceBytes) ->
