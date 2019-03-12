@@ -23,8 +23,6 @@ references:
 
   infrastructure_config: &infrastructure_config
     resource_class: large
-    docker:
-      - image: aeternity/infrastructure
     working_directory: ~/aeternity
     environment:
       <<: *infrastructure_config_environment
@@ -695,6 +693,7 @@ jobs:
     steps: *deploy_steps
 
   deploy_dev1:
+    executor: unstable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: dev1
@@ -956,7 +955,6 @@ workflows:
                 - *next_branch
 
       - deploy_dev1:
-          executor: unstable
           requires:
             - linux_package
           filters:
