@@ -226,6 +226,7 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Type) ->
     ok = rpc:call(
            Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
            5000),
+    [] = flush_new_blocks(),
     aecore_suite_utils:subscribe(Node, block_created),
     aecore_suite_utils:subscribe(Node, micro_block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [], 5000),
@@ -261,6 +262,7 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
     ok = rpc:call(
            Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
            5000),
+    [] = flush_new_blocks(),
     aecore_suite_utils:subscribe(Node, block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [], 5000),
     ct:log("aec_conductor:start_mining() (~p) -> ~p", [Node, StartRes]),
@@ -326,6 +328,9 @@ mine_blocks_loop(Blocks, BlocksToMine, Type) ->
     end.
 
 wait_for_new_block() ->
+    wait_for_new_block(30000).
+
+wait_for_new_block(T) when is_integer(T), T >= 0 ->
     receive
         {gproc_ps_event, block_created, Info} ->
             ct:log("key block created, Info=~p", [Info]),
@@ -335,16 +340,32 @@ wait_for_new_block() ->
             ct:log("micro block created, Info=~p", [Info]),
             #{info := Block} = Info,
             {ok, Block}
-    after 30000 ->
-            ct:log("timeout waiting for block event~n"
-                  "~p", [process_info(self(), messages)]),
+    after T ->
+            case T of
+                0 -> not_logging;
+                _ ->
+                    ct:log("timeout waiting for block event~n"
+                           "~p", [process_info(self(), messages)])
+            end,
             {error, timeout_waiting_for_block}
+    end.
+
+flush_new_blocks() ->
+    flush_new_blocks_([]).
+
+flush_new_blocks_(Acc) ->
+    case wait_for_new_block(0) of
+        {error, timeout_waiting_for_block} ->
+            lists:reverse(Acc);
+        {ok, Block} ->
+            flush_new_blocks_([Block | Acc])
     end.
 
 %% block the process until a certain height is reached
 %% this has the expectation that the Node is mining
 %% there is a timeout of 30 seconds for a single block to be produced
 wait_for_height(Node, Height) ->
+    [] = flush_new_blocks(),
     aecore_suite_utils:subscribe(Node, block_created),
     aecore_suite_utils:subscribe(Node, micro_block_created),
     wait_for_height_(Node, Height),
