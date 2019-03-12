@@ -29,6 +29,7 @@
          mine_key_blocks/2,
          mine_micro_blocks/2,
          wait_for_height/2,
+         flush_new_blocks/0,
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
          sign_on_node/2,
          forks/0,
