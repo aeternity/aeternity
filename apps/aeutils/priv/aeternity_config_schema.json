@@ -923,7 +923,48 @@
                     "default" : "ae_mainnet"
                 }
             }
+        },
+        "stratum": {
+            "type"    : "object",
+            "additionalProperties": false,
+            "properties" : {
+                "reward_last_rounds" : {
+                    "type" : "integer"
+                },
+                "beneficiaries" : {
+                    "type" : "array",
+                    "items" : {
+                        "description" : "Public key receiving poold reward to percent share map",
+                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(\.[0-9]*)?$"
+                    }
+                },
+                "extra_nonce_bytes" : {
+                    "type" : "integer"
+                },
+                "initial_target" : {
+                    "type" : "integer"
+                },
+                "max_target" : {
+                    "type" : "integer"
+                },
+                "max_connections" : {
+                    "type" : "integer"
+                },
+                "num_acceptors" : {
+                    "type" : "integer"
+                },
+                "transport" : {
+                    "type" : "string",
+                    "enum" : ["tcp", "ssl"]
+                },
+                "port" : {
+                    "description" : "Port number of the ... ???.",
+                    "type" : "integer",
+                    "minimum" : 0
+                }
+            }
         }
+
     },
     "definitions" : {
         "key_value_pattern": {
