@@ -136,6 +136,10 @@ change_latest_log(DbDir, FromNode, ToNode) ->
 disk_log_open_file(File, Name) ->
     case disk_log:open([{file, File}, {name, Name}]) of
         {ok, Name} -> ok;
+        {repaired, Name, {recovered, _Rec}, {badbytes, _Bad}} ->
+            %% Happens when the renaming is executed when the node is running
+            %% (db is in use).
+            ok;
         Other ->
             io:fwrite("Opening log file ~p failed: ~p~n", [File, Other]),
             db_renaming_error(Other)
