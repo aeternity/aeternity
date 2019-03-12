@@ -1,18 +1,23 @@
 version: 2.1
 executors:
-  unstable:
+  infrastructure_container_unstable:
     docker:
       - image: aeternity/infrastructure:master
-  stable:
+  infrastructure_container_stable:
     docker:
       - image: aeternity/infrastructure:master
+
 
 references:
   container_config: &container_config
     resource_class: large
+  builder_container_stable:
     docker:
       - image: aeternity/builder
         user: builder
+
+references:
+  container_config: &container_config
     working_directory: ~/aeternity
     environment:
       OTP_VERSION: 20.3.8
@@ -25,17 +30,7 @@ references:
     S3_RELEASES_BUCKET: aeternity-node-releases
 
   infrastructure_config: &infrastructure_config
-<<<<<<< HEAD
-<<<<<<< HEAD
     resource_class: large
-=======
-    docker:
-      - image: aeternity/infrastructure
->>>>>>> a09263b6... get back to square one
-=======
-#    docker:
-#      - image: aeternity/infrastructure
->>>>>>> b7c6b38a... Revert "get back to square one"
     working_directory: ~/aeternity
     environment:
       <<: *infrastructure_config_environment
@@ -380,6 +375,7 @@ references:
 
 jobs:
   build:
+    executore: build_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -398,6 +394,7 @@ jobs:
       - *fail_notification
 
   test:
+    executor: build_container_stable
     <<: *container_config
     parallelism: 2
     environment:
@@ -412,6 +409,7 @@ jobs:
     steps: *test_steps
 
   eunit:
+    executor: build_container_stable
     <<: *container_config
     environment:
       - MAKE_TARGET: eunit
@@ -424,6 +422,7 @@ jobs:
     steps: *eunit_steps
 
   aevm_tests:
+    executor: build_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -436,6 +435,7 @@ jobs:
       - *fail_notification
 
   static_analysis:
+    executor: build_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -464,6 +464,7 @@ jobs:
       - *fail_notification
 
   rebar_lock_check:
+    executor: build_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -471,6 +472,7 @@ jobs:
       - *fail_notification
 
   linux_package:
+    executor: build_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -491,7 +493,7 @@ jobs:
       - *fail_notification
 
   upload_build_artifacts:
-    executor: stable
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     steps:
       - checkout
@@ -514,6 +516,7 @@ jobs:
       - *fail_notification
 
   deploy_api_docs:
+    executor: build_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -558,6 +561,7 @@ jobs:
       - *fail_notification
 
   uat_tests:
+    executor: build_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -612,7 +616,7 @@ jobs:
       - *fail_notification
 
   docker_push_tag:
-    executor: stable
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     steps:
       - checkout
@@ -627,7 +631,7 @@ jobs:
             docker push ${DOCKERHUB_REPO:?}:latest
 
   uat_chain_snapshot:
-    executor: stable
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     environment:
       - BACKUP_ENV: uat
@@ -638,7 +642,7 @@ jobs:
           path: *chain_snapshots
 
   main_chain_snapshot:
-    executor: stable
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     environment:
       - BACKUP_ENV: main
@@ -703,7 +707,7 @@ jobs:
           path: *system_test_host_logs
 
   deploy_integration:
-    executor: unstable
+    executor: infrastructure_container_unstable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: integration
@@ -711,21 +715,21 @@ jobs:
     steps: *deploy_steps
 
   deploy_dev1:
-    executor: unstable
+    executor: infrastructure_container_unstable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: dev1
     steps: *deploy_steps
 
   deploy_dev2:
-    executor: unstable
+    executor: infrastructure_container_unstable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: dev2
     steps: *deploy_steps
 
   deploy_uat_blue:
-    executor: stable
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: uat
@@ -734,7 +738,7 @@ jobs:
     steps: *deploy_steps
 
   deploy_uat_green:
-    executor: stable
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: uat
@@ -757,7 +761,7 @@ jobs:
     steps: *deploy_steps
 
   upload_packages_osx:
-    executor: stable
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     <<: *upload_package
     environment:
@@ -765,7 +769,7 @@ jobs:
       PKG_TARGET_OS: macos
 
   upload_packages_linux:
-    executor: stable
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     <<: *upload_package
     environment:
