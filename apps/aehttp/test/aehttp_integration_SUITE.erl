@@ -628,8 +628,7 @@ init_per_group(on_micro_block = Group, Config) ->
     {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, ?SPEND_FEE),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     ct:log("Spend tx ~p", [Tx]),
-    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
-    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    {ok, [KeyBlock, MicroBlock]} = mine_micro_block_emptying_mempool_or_fail(Node),
     true = aec_blocks:is_key_block(KeyBlock),
     false = aec_blocks:is_key_block(MicroBlock),
     {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
@@ -692,8 +691,7 @@ init_per_group(tx_is_pending = Group, Config) ->
 init_per_group(tx_is_on_chain = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
-    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
-    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    {ok, [KeyBlock, MicroBlock]} = mine_micro_block_emptying_mempool_or_fail(Node),
     true = aec_blocks:is_key_block(KeyBlock),
     false = aec_blocks:is_key_block(MicroBlock),
     [Tx] = aec_blocks:txs(MicroBlock),
@@ -6162,3 +6160,27 @@ sc_ws_broken_call_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
     #{<<"return_type">> := <<"error">>} = Res,
     ok.
 
+mine_micro_block_emptying_mempool_or_fail(Node) ->
+    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+    false = aec_blocks:is_key_block(MicroBlock),
+    case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
+        {ok, []} -> ok;
+        {ok, [_|_] = MempoolTxs} ->
+            NewBlocks = aecore_suite_utils:flush_new_blocks(),
+            case
+                (length(NewBlocks) =:= 1) andalso aec_blocks:is_key_block(hd(NewBlocks)) andalso
+                (aec_blocks:hash_internal_representation(KeyBlock) =:= {ok, aec_blocks:prev_key_hash(MicroBlock)}) andalso
+                (aec_blocks:prev_key_hash(MicroBlock) =:= aec_blocks:prev_key_hash(hd(NewBlocks)))
+            of
+                true ->
+                    ct:fail("Key block mined shortly after micro block mined pushed the micro block out of the chain.");
+                false ->
+                    ct:pal(
+                        "Unexpected transactions in mempool:~n~p~nUnexpected new block events:~n~p",
+                        [MempoolTxs, NewBlocks]),
+                    ct:fail("Unexpected transactions in mempool")
+            end
+    end,
+    %% Reached unless failed.
+    {ok, [KeyBlock, MicroBlock]}.
