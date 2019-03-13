@@ -97,10 +97,11 @@ def test_send_by_name():
     # initial balances - amounts that the miner should send them
     alice_init_balance = test_settings["send_tokens"]["alice"]
     bob_init_balance = test_settings["send_tokens"]["bob"]
+    spend_fee = test_settings["send_tokens"]["spend_fee"]
 
     # populate accounts with tokens
-    common.ensure_send_tokens(beneficiary, alice_address, alice_init_balance, 20000, ext_api, int_api, 1)
-    common.ensure_send_tokens(beneficiary, bob_address, bob_init_balance, 20000, ext_api, int_api, 1)
+    common.ensure_send_tokens(beneficiary, alice_address, alice_init_balance, spend_fee, ext_api, int_api, 1)
+    common.ensure_send_tokens(beneficiary, bob_address, bob_init_balance, spend_fee, ext_api, int_api, 1)
 
     # validate balances
     alice_balance0 = common.get_account_balance(ext_api, alice_address)
@@ -113,7 +114,9 @@ def test_send_by_name():
     print("Bob address is " + bob_address)
 
     bob_name = test_settings["name_register"]["name"]
-    register_name(bob_name, bob_address, ext_api, int_api, bob_private_key)
+    fee = test_settings["name_register"]["fee"]
+    register_name(bob_name, bob_address, ext_api, int_api, bob_private_key,
+                  fee)
 
     print("Bob has registered " + bob_name)
     bob_balance1 = common.get_account_balance(ext_api, bob_address)
@@ -122,7 +125,7 @@ def test_send_by_name():
     tokens_to_send = test_settings["spend_tx"]["amount"]
     print("Alice is about to send " + str(tokens_to_send) + " to " + bob_name)
     resolved_address = get_address_by_name(bob_name, ext_api)
-    common.ensure_send_tokens(alice, resolved_address, tokens_to_send, 20000, ext_api, int_api, 1)
+    common.ensure_send_tokens(alice, resolved_address, tokens_to_send, spend_fee, ext_api, int_api, 1)
 
     # validate balances
     alice_balance2 = common.get_account_balance(ext_api, alice_address)
@@ -132,7 +135,7 @@ def test_send_by_name():
     print("Bob balance is " + str(bob_balance2))
 
     # Alice's balance should be decresed by the amount being send and the fee (1)
-    assert_equals(alice_balance2, alice_balance0 - tokens_to_send - 20000)
+    assert_equals(alice_balance2, alice_balance0 - tokens_to_send - spend_fee)
 
     # Bob's balance should be incresed by the amount being send
     assert_equals(bob_balance2, bob_balance1 + tokens_to_send)
@@ -145,14 +148,14 @@ def setup_node_with_tokens(test_settings, beneficiary, node_name):
     node = test_settings["nodes"][node_name]
     return node, common.setup_node_with_tokens(node, beneficiary, test_settings["blocks_to_mine"])
 
-def register_name(name, address, external_api, internal_api, private_key):
+def register_name(name, address, external_api, internal_api, private_key, fee):
     salt = 42
     commitment_id = internal_api.get_commitment_id(name, salt).commitment_id
 
     # preclaim
     unsigned_preclaim = common.api_decode(\
         internal_api.post_name_preclaim(\
-            NamePreclaimTx(commitment_id=commitment_id, fee=50000, ttl=100, account_id=address)).tx)
+            NamePreclaimTx(commitment_id=commitment_id, fee=fee, ttl=100, account_id=address)).tx)
     signed_preclaim = keys.sign_encode_tx(unsigned_preclaim, private_key)
     common.ensure_transaction_posted(external_api, signed_preclaim)
 
@@ -160,7 +163,7 @@ def register_name(name, address, external_api, internal_api, private_key):
     encoded_name = common.encode_name(name)
     unsigned_claim = common.api_decode(\
         internal_api.post_name_claim(\
-            NameClaimTx(name=encoded_name, name_salt=salt, fee=50000, ttl=100, account_id=address)).tx)
+            NameClaimTx(name=encoded_name, name_salt=salt, fee=fee, ttl=100, account_id=address)).tx)
     signed_claim = keys.sign_encode_tx(unsigned_claim, private_key)
     common.ensure_transaction_posted(external_api, signed_claim)
     name_entry0 = external_api.get_name_entry_by_name(name)
@@ -170,7 +173,7 @@ def register_name(name, address, external_api, internal_api, private_key):
     unsigned_update = common.api_decode(\
         internal_api.post_name_update(\
             NameUpdateTx(name_id=name_entry0.id, name_ttl=6000, client_ttl=50,\
-                pointers=pointers, fee=50000, ttl=100, account_id=address)).tx)
+                pointers=pointers, fee=fee, ttl=100, account_id=address)).tx)
     signed_update = keys.sign_encode_tx(unsigned_update, private_key)
     common.ensure_transaction_posted(external_api, signed_update)
     name_entry = external_api.get_name_entry_by_name(name)

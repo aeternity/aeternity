@@ -148,7 +148,7 @@ check(#channel_force_progress_tx{payload       = Payload,
         Err -> Err
     end.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_force_progress_tx{offchain_trees = OffChainTrees} = Tx, Trees, Env) ->
     Height = aetx_env:height(Env),
     {value, STx} = aetx_env:signed_tx(Env),

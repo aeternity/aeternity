@@ -80,16 +80,15 @@ protocols_from_network_id(<<"local_roma_testnet">>) ->
      %%, ?MINERVA_PROTOCOL_VSN  => Excluded for testing old protocol
      };
 protocols_from_network_id(_ID) ->
-    case aeu_env:user_map([<<"chain">>, <<"hard_forks">>]) of
+    case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
         undefined ->
             #{ ?ROMA_PROTOCOL_VSN     => 0
              , ?MINERVA_PROTOCOL_VSN  => 1
              };
-        {ok, M} ->
-            maps:from_list(
-              lists:map(
-                fun({K, V}) -> {binary_to_integer(K), V} end,
-                maps:to_list(M)))
+        M when is_map(M) ->
+            maps:fold(fun(K, V, Acc) -> 
+                              Acc#{binary_to_integer(K) => V} 
+                      end, #{}, M)
     end.
 
 

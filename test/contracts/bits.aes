@@ -1,5 +1,5 @@
 // Tests of builtin bit fields
-contract Bits =
+contract BitsTest =
 
   function none()                           : bits = Bits.none
   function all()                            : bits = Bits.all

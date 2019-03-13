@@ -124,6 +124,7 @@ json_rpc_error_object(insufficient_balance, R) -> error_obj(3     , [1001], R);
 json_rpc_error_object(negative_amount     , R) -> error_obj(3     , [1002], R);
 json_rpc_error_object(invalid_pubkeys     , R) -> error_obj(3     , [1003], R);
 json_rpc_error_object(call_not_found      , R) -> error_obj(3     , [1004], R);
+json_rpc_error_object(contract_init_failed, R) -> error_obj(3     , [1007], R);
 json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
 json_rpc_error_object(not_found           , R) -> error_obj(3     , [100] , R);
@@ -190,6 +191,7 @@ error_data_msgs() ->
      , 1004 => <<"Call not found">>
      , 1005 => <<"Broken encoding: accounts">>
      , 1006 => <<"Broken encoding: contracts">>
+     , 1007 => <<"Contract init failed">>
      }.
 
 broken_encoding_code(accounts ) -> 1005;
@@ -292,6 +294,28 @@ process_request(#{<<"method">> := <<"channels.get.contract_call">>,
             end;
         _ -> {error, broken_code}
     end;
+process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
+                  <<"params">> := #{<<"contract">>    := ContractE,
+                                    <<"abi_version">> := ABIVersion,
+                                    <<"amount">>      := Amount,
+                                    <<"call_data">>   := CallDataE}}, FsmPid) ->
+    case {aehttp_api_encoder:safe_decode(contract_pubkey, ContractE),
+          bytearray_decode(CallDataE)} of
+        {{ok, Contract}, {ok, CallData}} ->
+            case aesc_fsm:dry_run_contract(FsmPid,
+                                           #{contract     => Contract,
+                                             abi_version  => ABIVersion,
+                                             amount       => Amount,
+                                             call_data    => CallData}) of
+                {ok, Call} ->
+                  {reply, #{ action     => <<"dry_run">>
+                           , tag        => <<"call_contract">>
+                           , {int,type} => reply
+                           , payload    => aect_call:serialize_for_client(Call) }};
+                {error, _Reason} = Err -> Err
+            end;
+        _ -> {error, broken_code}
+    end;
 process_request(#{<<"method">> := <<"channels.clean_contract_calls">>}, FsmPid) ->
     ok = aesc_fsm:prune_local_calls(FsmPid),
     {reply, ok_response(calls_pruned)};
@@ -315,6 +339,15 @@ process_request(#{<<"method">> := <<"channels.get.balances">>,
             end;
         {error, _} ->
             {error, invalid_arguments}
+    end;
+process_request(#{<<"method">> := <<"channels.get.offchain_state">>,
+                  <<"params">> := #{}}, FsmPid) ->
+    case aesc_fsm:get_offchain_state(FsmPid) of
+        {ok, State} ->
+            {reply, #{action => <<"get">>
+                    , tag    => <<"offchain_state">>
+                    , {int, type} => reply
+                    , payload => aesc_offchain_state:serialize_for_client(State) }}
     end;
 process_request(#{<<"method">> := <<"channels.get.poi">>,
                   <<"params">> := Filter}, FsmPid) ->

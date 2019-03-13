@@ -223,7 +223,8 @@
     sc_ws_nameservice_contract/1,
     sc_ws_enviroment_contract/1,
     sc_ws_remote_call_contract/1,
-    sc_ws_remote_call_contract_refering_onchain_data/1
+    sc_ws_remote_call_contract_refering_onchain_data/1,
+    sc_ws_wrong_call_data/1
    ]).
 
 
@@ -232,7 +233,7 @@
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(WS, aehttp_ws_test_utils).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
-
+-define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
 all() ->
     [
      {group, all}
@@ -540,7 +541,8 @@ groups() ->
        %% both can call a remote contract
        sc_ws_remote_call_contract,
        %% both can call a remote contract refering on-chain data
-       sc_ws_remote_call_contract_refering_onchain_data
+       sc_ws_remote_call_contract_refering_onchain_data,
+       sc_ws_wrong_call_data
       ]}
     ].
 
@@ -623,10 +625,10 @@ init_per_group(on_micro_block = Group, Config) ->
     {ok, [_KeyBlock0]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     %% Send spend tx so it gets included into micro block.
     {_, Pub} = aecore_suite_utils:sign_keys(NodeId),
-    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, 20000),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, ?SPEND_FEE),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
-    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
-    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    ct:log("Spend tx ~p", [Tx]),
+    {ok, [KeyBlock, MicroBlock]} = mine_micro_block_emptying_mempool_or_fail(Node),
     true = aec_blocks:is_key_block(KeyBlock),
     false = aec_blocks:is_key_block(MicroBlock),
     {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
@@ -661,7 +663,7 @@ init_per_group(account_with_balance = Group, Config) ->
 init_per_group(account_with_pending_tx, Config) ->
     [ {NodeId, Node} | _ ] = ?config(nodes, Config),
     {_, Pub} = aecore_suite_utils:sign_keys(NodeId),
-    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, 20000),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, ?SPEND_FEE),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     [{pending_txs, [{aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
      {block_with_txs, undefined},
@@ -680,7 +682,7 @@ init_per_group(tx_is_pending = Group, Config) ->
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
-    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, 20000),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, ?SPEND_FEE),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     [{pending_txs, [{aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
      {block_with_txs, undefined},
@@ -689,8 +691,7 @@ init_per_group(tx_is_pending = Group, Config) ->
 init_per_group(tx_is_on_chain = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
-    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
-    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    {ok, [KeyBlock, MicroBlock]} = mine_micro_block_emptying_mempool_or_fail(Node),
     true = aec_blocks:is_key_block(KeyBlock),
     false = aec_blocks:is_key_block(MicroBlock),
     [Tx] = aec_blocks:txs(MicroBlock),
@@ -709,7 +710,7 @@ init_per_group(post_tx_to_mempool = Group, Config) ->
     [{sender_id, aeser_api_encoder:encode(account_pubkey, Pub)},
      {recipient_id, aeser_api_encoder:encode(account_pubkey, random_hash())},
      {amount, 1},
-     {fee, 20000},
+     {fee, ?SPEND_FEE},
      {payload, <<"foo">>} | Config1];
 init_per_group(tx_info, Config) ->
     Config;
@@ -734,8 +735,8 @@ init_per_group(name_txs, _Config) ->
 init_per_group(channel_websocket = Group, Config) ->
     Config1 = start_node(Group, Config),
     {ok, 404, _} = get_balance_at_top(),
-    IStartAmt = 5000000,
-    RStartAmt = 5000000,
+    IStartAmt = 5000000 * aec_test_utils:min_gas_price(),
+    RStartAmt = 5000000 * aec_test_utils:min_gas_price(),
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
     {IPubkey, IPrivkey} = initialize_account(IStartAmt),
     {RPubkey, RPrivkey} = initialize_account(RStartAmt),
@@ -785,7 +786,7 @@ init_per_testcase(post_oracle_register, Config) ->
      {query_format, <<"something">>},
      {response_format, <<"something else">>},
      {query_fee, 1},
-     {fee, 100000},
+     {fee, 100000 * aec_test_utils:min_gas_price()},
      {oracle_ttl_type, <<"block">>},
      {oracle_ttl_value, 2000} | init_per_testcase_all(Config)];
 init_per_testcase(post_oracle_extend, Config) ->
@@ -793,7 +794,7 @@ init_per_testcase(post_oracle_extend, Config) ->
     OracleTtlDelta = 500,
     [{account_id, ?config(account_id, SavedConfig)},
      {oracle_id, ?config(oracle_id, SavedConfig)},
-     {fee, 100000},
+     {fee, 100000 * aec_test_utils:min_gas_price()},
      {oracle_ttl_value_final, ?config(oracle_ttl_value, SavedConfig) + OracleTtlDelta},
      {oracle_ttl_type, <<"delta">>},
      {oracle_ttl_value, OracleTtlDelta} | init_per_testcase_all(Config)];
@@ -803,7 +804,7 @@ init_per_testcase(post_oracle_query, Config) ->
      {oracle_id, ?config(oracle_id, SavedConfig)},
      {query, <<"Hejsan Svejsan">>},
      {query_fee, 2},
-     {fee, 100000},
+     {fee, 100000 * aec_test_utils:min_gas_price()},
      {query_ttl_type, <<"block">>},
      {query_ttl_value, 20},
      {response_ttl_type, <<"delta">>},
@@ -814,7 +815,7 @@ init_per_testcase(post_oracle_response, Config) ->
      {oracle_id, ?config(oracle_id, SavedConfig)},
      {query, ?config(query, SavedConfig)},
      {query_id, ?config(query_id, SavedConfig)},
-     {fee, 100000},
+     {fee, 100000 * aec_test_utils:min_gas_price()},
      {response_ttl_type, <<"delta">>},
      {response_ttl_value, 20},
      {response, <<"Hejsan">>} | init_per_testcase_all(Config)];
@@ -1574,8 +1575,8 @@ post_contract_and_call_tx(_Config) ->
                       deposit     => 2,
                       amount      => 1,
                       gas         => 600,
-                      gas_price   => 1,
-                      fee         => 400000,
+                      gas_price   => aec_test_utils:min_gas_price(),
+                      fee         => 400000 * aec_test_utils:min_gas_price(),
                       call_data   => EncodedInitCallData},
 
     %% prepare a contract_create_tx and post it
@@ -1602,8 +1603,8 @@ post_contract_and_call_tx(_Config) ->
                              abi_version => latest_sophia_abi(),
                              amount      => 1,
                              gas         => 1000,
-                             gas_price   => 1,
-                             fee         => 500000,
+                             gas_price   => aec_test_utils:min_gas_price(),
+                             fee         => 500000 * aec_test_utils:min_gas_price(),
                              call_data   => EncodedCallData},
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallTx}} = get_contract_call(ContractCallEncoded),
     ContractCallTxHash = sign_and_post_tx(EncodedUnsignedContractCallTx),
@@ -1660,8 +1661,8 @@ get_contract(_Config) ->
                       deposit     => 2,
                       amount      => ContractInitBalance,
                       gas         => 600,
-                      gas_price   => 1,
-                      fee         => 200000,
+                      gas_price   => aec_test_utils:min_gas_price(),
+                      fee         => 200000 * aec_test_utils:min_gas_price(),
                       call_data   => EncodedInitCallData},
 
     ValidDecoded = maps:merge(ValidEncoded,
@@ -1890,6 +1891,7 @@ get_status(_Config) ->
        <<"solutions">>                  := Solutions,
        <<"difficulty">>                 := Difficulty,
        <<"syncing">>                    := Syncing,
+       <<"sync_progress">>              := SyncProgress,
        <<"listening">>                  := Listening,
        <<"protocols">>                  := Protocols,
        <<"node_version">>               := _NodeVersion,
@@ -1911,6 +1913,7 @@ get_status(_Config) ->
     ?assertMatch(X when is_integer(X) andalso X >= 0, PeerCount),
     ?assertMatch(X when is_integer(X) andalso X >= 0, PendingTxCount),
     ?assertEqual(NetworkId, aec_governance:get_network_id()),
+    ?assertEqual(100.0, SyncProgress),
     ok.
 
 get_status_sut() ->
@@ -2012,8 +2015,8 @@ contract_transactions(_Config) ->    % miner has an account
                       deposit => 2,
                       amount => ContractInitBalance,
                       gas => 600,
-                      gas_price => 1,
-                      fee => 200000,
+                      gas_price => aec_test_utils:min_gas_price(),
+                      fee => 200000 * aec_test_utils:min_gas_price(),
                       call_data => EncodedInitCallData},
 
     ValidDecoded = maps:merge(ValidEncoded,
@@ -2100,8 +2103,8 @@ contract_transactions(_Config) ->    % miner has an account
                              abi_version => latest_sophia_abi(),
                              amount => 1,
                              gas => 1000,
-                             gas_price => 1,
-                             fee => 600000,
+                             gas_price => aec_test_utils:min_gas_price(),
+                             fee => 600000 * aec_test_utils:min_gas_price(),
                              call_data => EncodedCallData},
 
     ContractCallDecoded = maps:merge(ContractCallEncoded,
@@ -2160,8 +2163,8 @@ contract_transactions(_Config) ->    % miner has an account
                              abi_version => latest_sophia_abi(),
                              amount => 1,
                              gas => 1000,
-                             gas_price => 1,
-                             fee => 500000,
+                             gas_price => aec_test_utils:min_gas_price(),
+                             fee => 500000 * aec_test_utils:min_gas_price(),
                              function => Function,
                              arguments => Argument},
 
@@ -2256,7 +2259,8 @@ contract_transactions(_Config) ->    % miner has an account
                                            ComputeCCallEncoded)),
 
     %% Call objects
-    {ok, 200, #{<<"tx">> := SpendTx}} = post_spend_tx(MinerAddress, 1, 20000),
+    {ok, 200, #{<<"tx">> := SpendTx}} = post_spend_tx(MinerAddress, 1,
+                                                      ?SPEND_FEE),
     SpendTxHash = sign_and_post_tx(SpendTx),
     ok = wait_for_tx_hash_on_chain(SpendTxHash),
     {ok, 400, #{<<"reason">> := <<"Tx is not a create or call">>}} =
@@ -2283,8 +2287,8 @@ contract_create_compute_transaction(_Config) ->
                       deposit => 2,
                       amount => ContractInitBalance,
                       gas => 600,
-                      gas_price => 1,
-                      fee => 200000,
+                      gas_price => aec_test_utils:min_gas_price(),
+                      fee => 200000 * aec_test_utils:min_gas_price(),
                       arguments => <<"()">> },
 
     %% prepare a contract_create_tx and post it
@@ -2305,8 +2309,8 @@ contract_create_compute_transaction(_Config) ->
                              abi_version => latest_sophia_abi(),
                              amount => 1,
                              gas => 1000,
-                             gas_price => 1,
-                             fee => 500000,
+                             gas_price => aec_test_utils:min_gas_price(),
+                             fee => 500000 * aec_test_utils:min_gas_price(),
                              function => Function,
                              arguments => Argument},
 
@@ -2351,8 +2355,8 @@ contract_create_transaction_init_error(_Config) ->
                       deposit     => 2,
                       amount      => 1,
                       gas         => 30,
-                      gas_price   => 1,
-                      fee         => 200000,
+                      gas_price   => aec_test_utils:min_gas_price(),
+                      fee         => 200000 * aec_test_utils:min_gas_price(),
                       call_data   => EncodedInitData},
     ValidDecoded = maps:merge(ValidEncoded,
         #{owner => MinerPubkey,
@@ -2404,7 +2408,7 @@ oracle_transactions(_Config) ->
                    query_format => <<"something">>,
                    response_format => <<"something else">>,
                    query_fee => 1,
-                   fee => 100000,
+                   fee => 100000 * aec_test_utils:min_gas_price(),
                    abi_version => 0, %% ABI_NO_VM - raw strings.
                    oracle_ttl => #{type => <<"block">>, value => 2000}},
     RegDecoded = maps:merge(RegEncoded,
@@ -2430,7 +2434,7 @@ oracle_transactions(_Config) ->
 
     % oracle_extend_tx positive test
     ExtEncoded = #{oracle_id => aeser_api_encoder:encode(oracle_pubkey, MinerPubkey),
-                   fee => 2,
+                   fee => 2 * aec_test_utils:min_gas_price(),
                    oracle_ttl => #{type => <<"delta">>, value => 500}},
     ExtDecoded = maps:merge(ExtEncoded,
                             #{oracle_id => aeser_id:create(oracle, MinerPubkey),
@@ -2444,7 +2448,7 @@ oracle_transactions(_Config) ->
                      oracle_id => aeser_api_encoder:encode(oracle_pubkey, MinerPubkey),
                      query => <<"Hejsan Svejsan">>,
                      query_fee => 2,
-                     fee => 100000,
+                     fee => 100000 * aec_test_utils:min_gas_price(),
                      query_ttl => #{type => <<"block">>, value => 30},
                      response_ttl => #{type => <<"delta">>, value => 20}},
     QueryDecoded = maps:merge(QueryEncoded,
@@ -2475,7 +2479,7 @@ oracle_transactions(_Config) ->
                                                        QueryId),
                         response => <<"Hejsan">>,
                         response_ttl => #{type => <<"delta">>, value => 20},
-                        fee => 100000},
+                        fee => 100000 * aec_test_utils:min_gas_price()},
     ResponseDecoded = maps:merge(ResponseEncoded,
                               #{oracle_id => aeser_id:create(oracle, MinerPubkey),
                                 response_ttl => {delta, 20},
@@ -2576,7 +2580,7 @@ nameservice_transaction_preclaim(MinerAddress, MinerPubkey) ->
     Commitment = random_hash(),
     Encoded = #{account_id => MinerAddress,
                 commitment_id => aeser_api_encoder:encode(commitment, Commitment),
-                fee => 1},
+                fee => 1 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{account_id => aeser_id:create(account, MinerPubkey),
                           commitment_id => aeser_id:create(commitment, Commitment)}),
@@ -2632,7 +2636,7 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
 
     %% Submit name preclaim tx and check it is in mempool
     PreclaimData = #{commitment_id => EncodedCHash,
-                     fee           => 100000,
+                     fee           => 100000 * aec_test_utils:min_gas_price(),
                      account_id    => MinerAddress},
     {ok, 200, #{<<"tx">> := PreclaimTxEnc}} = get_name_preclaim(PreclaimData),
     PreclaimTxHash = sign_and_post_tx(PreclaimTxEnc),
@@ -2646,7 +2650,7 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     Encoded = #{account_id => MinerAddress,
                 name => aeser_api_encoder:encode(name, Name),
                 name_salt => Salt,
-                fee => 100000},
+                fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{account_id => aeser_id:create(account, MinerPubkey),
                           name => Name}),
@@ -2674,7 +2678,7 @@ nameservice_transaction_update(MinerAddress, MinerPubkey) ->
                 name_ttl => 3,
                 client_ttl => 2,
                 pointers => Pointers,
-                fee => 100000},
+                fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{account_id => aeser_id:create(account, MinerPubkey),
                           pointers => Pointers,
@@ -2699,8 +2703,8 @@ nameservice_transaction_transfer(MinerAddress, MinerPubkey) ->
     NameHash = random_hash(),
     Encoded = #{account_id => MinerAddress,
                 name_id => aeser_api_encoder:encode(name, NameHash),
-                recipient_id => aeser_api_encoder:encode(account_pubkey, RandAddress),
-                fee => 100000},
+                recipient_id => aehttp_api_encoder:encode(account_pubkey, RandAddress),
+                fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{account_id => aeser_id:create(account, MinerPubkey),
                           recipient_id => aeser_id:create(account, RandAddress),
@@ -2718,7 +2722,7 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
     NameHash = random_hash(),
     Encoded = #{account_id => MinerAddress,
                 name_id => aeser_api_encoder:encode(name, NameHash),
-                fee => 10000},
+                fee => 10000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{account_id => aeser_id:create(account, MinerPubkey),
                           name_id => aeser_id:create(name, NameHash)}),
@@ -2770,7 +2774,7 @@ state_channels_create(MinerPubkey, ResponderPubkey) ->
                 push_amount => 5, channel_reserve => 5,
                 lock_period => 20,
                 state_hash => aeser_api_encoder:encode(state, ?BOGUS_STATE_HASH),
-                fee => 100000},
+                fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{initiator_id => aeser_id:create(account, MinerPubkey),
                           responder_id => aeser_id:create(account, ResponderPubkey),
@@ -2790,7 +2794,7 @@ state_channels_deposit(ChannelId, MinerPubkey) ->
                 amount => 2,
                 state_hash => aeser_api_encoder:encode(state, ?BOGUS_STATE_HASH),
                 round => 42,
-                fee => 100000},
+                fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{channel_id => aeser_id:create(channel, ChannelId),
                           from_id => aeser_id:create(account, MinerPubkey),
@@ -2812,7 +2816,7 @@ state_channels_withdrawal(ChannelId, MinerPubkey) ->
                 amount => 2,
                 state_hash => aeser_api_encoder:encode(state, ?BOGUS_STATE_HASH),
                 round => 42,
-                fee => 100000},
+                fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{channel_id => aeser_id:create(channel, ChannelId),
                           to_id => aeser_id:create(account, MinerPubkey),
@@ -2832,7 +2836,7 @@ state_channels_snapshot_solo(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aeser_api_encoder:encode(channel, ChannelId),
                 from_id => aeser_api_encoder:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
-                fee => 100000},
+                fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{from_id => aeser_id:create(account, MinerPubkey),
                           channel_id => aeser_id:create(channel, ChannelId)}),
@@ -2847,7 +2851,7 @@ state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
                 from_id => aeser_api_encoder:encode(account_pubkey, InitiatorPubkey),
                 initiator_amount_final => 4,
                 responder_amount_final => 3,
-                fee => 100000},
+                fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                          #{channel_id => aeser_id:create(channel, ChannelId),
                            from_id    => aeser_id:create(account, InitiatorPubkey)}),
@@ -2867,7 +2871,7 @@ state_channels_close_solo(ChannelId, MinerPubkey) ->
                 from_id => aeser_api_encoder:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 poi => aeser_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
-                fee => 100000},
+                fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{from_id => aeser_id:create(account, MinerPubkey),
                           channel_id => aeser_id:create(channel, ChannelId),
@@ -2891,8 +2895,8 @@ state_channels_slash(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aeser_api_encoder:encode(channel, ChannelId),
                 from_id => aeser_api_encoder:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
-                poi => aeser_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
-                fee => 100000},
+                poi => aehser_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
+                fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{from_id => aeser_id:create(account, MinerPubkey),
                           channel_id => aeser_id:create(channel, ChannelId),
@@ -2917,7 +2921,7 @@ state_channels_settle(ChannelId, MinerPubkey) ->
                 from_id => aeser_api_encoder:encode(account_pubkey, MinerPubkey),
                 initiator_amount_final => 4,
                 responder_amount_final => 3,
-                fee => 100000},
+                fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{from_id => aeser_id:create(account, MinerPubkey),
                           channel_id => aeser_id:create(channel, ChannelId)}),
@@ -2941,7 +2945,7 @@ spend_transaction(_Config) ->
     Encoded = #{sender_id => MinerAddress,
                 recipient_id => aeser_api_encoder:encode(account_pubkey, RandAddress),
                 amount => 2,
-                fee => 100000,
+                fee => 100000 * aec_test_utils:min_gas_price(),
                 ttl => 43,
                 payload => <<"hejsan svejsan">>},
     Decoded = maps:merge(Encoded,
@@ -2967,7 +2971,7 @@ unknown_atom_in_spend_tx(_Config) ->
     Encoded = #{sender_id => MinerAddress,
                 recipient_id => aeser_api_encoder:encode(account_pubkey, RandAddress),
                 amount => 2,
-                fee => 20000,
+                fee => ?SPEND_FEE,
                 %% this tests relies on this being an atom unknown to the VM
                 %% if someone adds this atom in particular, please modify the
                 %% binary below accordingly
@@ -3023,7 +3027,7 @@ get_transaction(_Config) ->
     Encoded = #{sender_id => EncodedPubKey,
                 recipient_id => aeser_api_encoder:encode(account_pubkey, RandAddress),
                 amount => 2,
-                fee => 20000,
+                fee => ?SPEND_FEE,
                 payload => <<"foo">>},
     {ok, 200, #{<<"tx">> := EncodedSpendTx}} = get_spend(Encoded),
     {ok, SpendTxBin} = aeser_api_encoder:safe_decode(transaction, EncodedSpendTx),
@@ -3097,7 +3101,8 @@ pending_transactions(_Config) ->
                   get_accounts_by_pubkey_sut(aeser_api_encoder:encode(account_pubkey, ReceiverPubKey)),
 
     {ok, 200, #{<<"tx">> := SpendTx}} =
-        post_spend_tx(aeser_api_encoder:encode(account_pubkey, ReceiverPubKey), AmountToSpent, 20000),
+        post_spend_tx(aeser_api_encoder:encode(account_pubkey, ReceiverPubKey), AmountToSpent,
+                      ?SPEND_FEE),
     sign_and_post_tx(SpendTx),
     {ok, NodeTxs} = rpc(aec_tx_pool, peek, [infinity]),
     true = length(NodeTxs) =:= 1, % not empty anymore
@@ -3144,7 +3149,7 @@ post_correct_tx(_Config) ->
           #{sender_id => aeser_id:create(account, PubKey),
             recipient_id => aeser_id:create(account, random_hash()),
             amount => Amount,
-            fee => 20000,
+            fee => ?SPEND_FEE,
             nonce => Nonce,
             payload => <<"foo">>}),
     {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
@@ -3163,7 +3168,7 @@ post_broken_tx(_Config) ->
           #{sender_id => aeser_id:create(account, PubKey),
             recipient_id => aeser_id:create(account, random_hash()),
             amount => Amount,
-            fee => 20000,
+            fee => ?SPEND_FEE,
             nonce => Nonce,
             payload => <<"foo">>}),
     {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
@@ -3174,7 +3179,7 @@ post_broken_tx(_Config) ->
           #{sender_id => aeser_id:create(account, PubKey),
             recipient_id => aeser_id:create(account, random_hash()),
             amount => Amount,
-            fee => 20000,
+            fee => ?SPEND_FEE,
             nonce => Nonce,
             ttl => 2,
             payload => <<"too low ttl">>}),
@@ -3205,7 +3210,7 @@ post_broken_api_encoded_tx(_Config) ->
                   #{sender_id => aeser_id:create(account, PubKey),
                     recipient_id => aeser_id:create(account, random_hash()),
                     amount => Amount,
-                    fee => 20000,
+                    fee => ?SPEND_FEE,
                     nonce => Nonce,
                     payload => <<"foo">>}),
             {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
@@ -3262,7 +3267,8 @@ peer_pub_key(_Config) ->
     ok.
 
 naming_system_manage_name(_Config) ->
-    {PubKey, PrivKey} = initialize_account(1000000000),
+    {PubKey, PrivKey} = initialize_account(1000000000 *
+                                           aec_test_utils:min_gas_price()),
     PubKeyEnc   = aeser_api_encoder:encode(account_pubkey, PubKey),
     %% TODO: find out how to craete HTTP path with unicode chars
     %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
@@ -3272,7 +3278,7 @@ naming_system_manage_name(_Config) ->
     Pointers    = [#{<<"key">> => <<"account_pubkey">>, <<"id">> => PubKeyEnc}],
     TTL         = 10,
     {ok, NHash} = aens:get_name_hash(Name),
-    Fee         = 100000,
+    Fee         = 100000 * aec_test_utils:min_gas_price(),
 
     %% Check mempool empty
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -3401,7 +3407,7 @@ naming_system_broken_txs(_Config) ->
     NameSalt    = 12345,
     {ok, NHash} = aens:get_name_hash(Name),
     CHash       = aens_hash:commitment_hash(Name, NameSalt),
-    Fee         = 2,
+    Fee         = 2 * aec_test_utils:min_gas_price(),
 
     % these tests require that no accounts are present
     ok = rpc(aec_conductor, reinit_chain, []),
@@ -3457,6 +3463,11 @@ assert_balance(Pubkey, ExpectedBalance) ->
     {ok, 200, #{<<"balance">> := ExpectedBalance}} =
         get_accounts_by_pubkey_sut(Address).
 
+assert_trees_balance(Trees, Pubkey, ExpectedBalance) ->
+    AccTrees = aec_trees:accounts(Trees),
+    {value, Account} = aec_accounts_trees:lookup(Pubkey, AccTrees),
+    ExpectedBalance = aec_accounts:balance(Account).
+
 channel_sign_tx(ConnPid, Privkey, Tag, Config) ->
     {ok, Tag, #{<<"tx">> := EncCreateTx}} = wait_for_channel_event(ConnPid, sign, Config),
     {ok, CreateBinTx} = aeser_api_encoder:safe_decode(transaction, EncCreateTx),
@@ -3475,8 +3486,8 @@ sc_ws_open_(Config) ->
                  get_accounts_by_pubkey_sut(aeser_api_encoder:encode(account_pubkey, IPubkey)),
     {ok, 200, #{<<"balance">> := RStartAmt}} =
                  get_accounts_by_pubkey_sut(aeser_api_encoder:encode(account_pubkey, RPubkey)),
-    IAmt = 70000,
-    RAmt = 40000,
+    IAmt = 70000 * aec_test_utils:min_gas_price(),
+    RAmt = 40000 * aec_test_utils:min_gas_price(),
 
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
@@ -3726,6 +3737,12 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     Ba1 = Ba0 - Amount,
     Bb1 = Bb0 + Amount,
 
+    {ok, #{ trees := StateTrees
+          , signed_tx := StateSignedStateTx }} = sc_ws_get_state(IConnPid, Config),
+    SignedStateTx = StateSignedStateTx,
+    assert_trees_balance(StateTrees, StarterPubkey, Ba1),
+    assert_trees_balance(StateTrees, AcknowledgerPubkey, Bb1),
+
     ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, info, update, get]),
     ok = ?WS:unregister_test_for_channel_events(RConnPid, [sign, info, update]),
 
@@ -3793,6 +3810,42 @@ query_balances_(ConnPid, Accounts, <<"json-rpc">>) ->
     {ok, ?WS:json_rpc_call(
             ConnPid, #{ <<"method">> => <<"channels.get.balances">>
                       , <<"params">> => #{<<"accounts">> => Accounts} })}.
+
+sc_ws_get_state(ConnPid, Config) ->
+    {ok, Res} = query_state(ConnPid, Config),
+    #{ <<"trees">> := EncodedTrees
+     , <<"calls">> := EncodedCalls
+     , <<"signed_tx">> := EncodedSignedTx
+     , <<"half_signed_tx">> := EncodedHalfSignedTx
+     } = Res,
+    {ok, STrees} = aehttp_api_encoder:safe_decode(state_trees, EncodedTrees),
+    Trees = aec_trees:deserialize_from_binary_without_backend(STrees),
+    {ok, SCalls} = aehttp_api_encoder:safe_decode(call_state_tree, EncodedCalls),
+    Calls = aect_call_state_tree:from_binary_without_backend(SCalls),
+    {ok, #{ trees => Trees
+          , calls => Calls
+          , signed_tx => decode_signed_tx(EncodedSignedTx)
+          , half_signed_tx => decode_signed_tx(EncodedHalfSignedTx)}}.
+
+decode_signed_tx(<<>>) ->
+    no_tx;
+decode_signed_tx(EncodedSignedTx) ->
+    {ok, SSignedTx} = aehttp_api_encoder:safe_decode(transaction, EncodedSignedTx),
+    aetx_sign:deserialize_from_binary(SSignedTx).
+
+query_state(ConnPid, Config) ->
+    query_state_(ConnPid, sc_ws_protocol(Config)).
+
+query_state_(ConnPid, <<"legacy">>) ->
+    %% get.offchain_state doesn't require any parameter, but not suplying one 
+    %% will remove "payload" key from request and cause error in legacy API
+    ?WS:send_tagged(ConnPid, <<"get">>, <<"offchain_state">>, #{<<"a">> => <<"a">>}),
+    {ok, <<"offchain_state">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
+    {ok, Res};
+query_state_(ConnPid, <<"json-rpc">>) ->
+    {ok, ?WS:json_rpc_call(
+        ConnPid, #{ <<"method">> => <<"channels.get.offchain_state">>
+                  , <<"params">> => #{} })}.
 
 sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator
                                  orelse Closer =:= responder ->
@@ -3933,7 +3986,9 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
     ok = wait_for_signed_transaction_in_block(SignedDepositTx),
     % assert acknowledger balance have not changed
     {SStartB1, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
-    {SStartB1, _} = {SStartB - 2 - 20000, SStartB},
+    % assert sender balance has changed
+    Fee = aetx:fee(aetx_sign:tx(SignedDepositTx)),
+    {SStartB1, _, _} = {SStartB - 2 - Fee, SStartB1, SStartB},
 
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
     {ok, #{<<"event">> := <<"own_deposit_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
@@ -3976,7 +4031,9 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
     ok = wait_for_signed_transaction_in_block(SignedWTx),
     % assert acknowledger balance have not changed
     {SStartB1, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
-    {SStartB1, _} = {SStartB + 2 - 20000, SStartB},
+    % assert sender balance has changed
+    Fee = aetx:fee(aetx_sign:tx(SignedWTx)),
+    {SStartB1, _, _} = {SStartB + 2 - Fee, SStartB1, SStartB},
 
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
     {ok, #{<<"event">> := <<"own_withdraw_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
@@ -4098,7 +4155,8 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                        OwnerPubkey, OtherPubkey, _Opts, Config) ->
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
-    {OraclePubkey, OraclePrivkey} = initialize_account(2000000),
+    {OraclePubkey, OraclePrivkey} =
+        initialize_account(2000000 * aec_test_utils:min_gas_price()),
     SophiaStringType = aeso_heap:to_binary(string, 0),
     QueryFee = 3,
     QueryTTL = 30,
@@ -4146,6 +4204,10 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     CallContract =
         fun(Who, Fun, Args, ReturnType, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
+            {ok, #{<<"value">> := R0}} =
+                dry_call_a_contract(Fun, Args, ContractPubKey,
+                                    EncodedCode, UpdaterConnPid,
+                                    Config, ReturnType),
             Tx = call_a_contract(Fun, Args,
                                  ContractPubKey, EncodedCode,
                                  UpdaterConnPid, UpdateVolley, Config),
@@ -4153,6 +4215,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                 ws_get_decoded_result(ConnPid1, ConnPid2,
                                       ReturnType,
                                       Tx, Config),
+            {R, R} = {R0, R},
             {R, R} = {Result, R}
 
         end,
@@ -4224,7 +4287,8 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     Name = random_unused_name(),
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
-    {NamePubkey, NamePrivkey} = initialize_account(2000000),
+    {NamePubkey, NamePrivkey} =
+        initialize_account(2000000 * aec_test_utils:min_gas_price()),
 
     EncodedCode = contract_byte_code("channel_on_chain_contract_name_resolution"),
     InitArgument = <<"()">>,
@@ -4251,7 +4315,13 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             QName = AddQuotes(Name0),
             QKey = AddQuotes(Key0),
             Args = <<"(", QName/binary, ",", QKey/binary,")">>,
-            Tx = call_a_contract(<<"can_resolve">>,
+            FunctionName = <<"can_resolve">>,
+            {ok, #{<<"value">> := R0}} =
+                dry_call_a_contract(FunctionName, Args, ContractPubKey,
+                                    EncodedCode, UpdaterConnPid,
+                                    Config, <<"bool">>),
+
+            Tx = call_a_contract(FunctionName,
                                  Args,
                                  ContractPubKey, EncodedCode,
                                  UpdaterConnPid, UpdateVolley, Config),
@@ -4264,6 +4334,7 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                     0 -> false;
                     1 -> true
                 end,
+            {RInt, RInt} = {R0, RInt},
             {R, R} = {Result, R}
 
         end,
@@ -4308,6 +4379,10 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
         fun(Who, Fun, ResultType, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             Args = <<"()">>,
+            {ok, #{<<"value">> := R0}} =
+                dry_call_a_contract(Fun, Args, ContractPubKey,
+                                    EncodedCode, UpdaterConnPid,
+                                    Config, ResultType),
             Tx = call_a_contract(Fun,
                                  Args,
                                  ContractPubKey, EncodedCode,
@@ -4316,6 +4391,7 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                 ws_get_decoded_result(ConnPid1, ConnPid2,
                                       ResultType,
                                       Tx, Config),
+            {R, R} = {R0, R},
             case is_function(Result) of
                 true -> true = Result(R);
                 false ->
@@ -4371,12 +4447,17 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     ContractCall =
         fun(Who, ContractPubKey, Code, Fun, Args, Result, Amount) ->
                 {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
+                {ok, #{<<"value">> := R0}} =
+                    dry_call_a_contract(Fun, Args, ContractPubKey,
+                                        Code, UpdaterConnPid,
+                                        Amount, Config, <<"int">>),
                 Tx = call_a_contract(Fun,
                                      Args,
                                      ContractPubKey, Code,
                                      UpdaterConnPid, UpdateVolley, Amount, Config),
                 #{<<"value">> := R} =
                     ws_get_decoded_result(ConnPid1, ConnPid2, <<"int">>, Tx, Config),
+                {R, R} = {R0, R},
                 {R, R} = {Result, R}
         end,
     CallIdentity =
@@ -4441,6 +4522,10 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
     ContractCall =
         fun(Who, ContractPubKey, Code, Fun, Args, Result, Amount) ->
                 {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
+                {ok, #{<<"value">> := R0}} =
+                    dry_call_a_contract(Fun, Args, ContractPubKey,
+                                        Code, UpdaterConnPid,
+                                        Amount, Config, <<"int">>),
                 Tx = call_a_contract(Fun,
                                      Args,
                                      ContractPubKey, Code,
@@ -4452,6 +4537,7 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
                         0 -> false;
                         1 -> true
                     end,
+                {RInt, RInt} = {R0, RInt},
                 {R, R} = {Result, R}
         end,
     CallResolve =
@@ -4498,7 +4584,8 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
     Test(CallRemoteContract, Name, <<"account_pubkey">>, false),
 
     % registering the name on-chain
-    {NamePubkey, NamePrivkey} = initialize_account(2000000),
+    {NamePubkey, NamePrivkey} =
+        initialize_account(2000000 * aec_test_utils:min_gas_price()),
     register_name(NamePubkey, NamePrivkey, Name,
                   [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)}]),
 
@@ -4587,7 +4674,7 @@ update_pointers(Owner, OwnerPrivKey, Name, Pointers0) ->
 
 initialize_account(Amount) ->
     {Pubkey, Privkey} = generate_key_pair(),
-    Fee = 20000,
+    Fee = ?SPEND_FEE,
     BlocksToMine = 3,
 
     Node = aecore_suite_utils:node_name(?NODE),
@@ -4753,9 +4840,15 @@ create_contract_(TestName, SenderConnPid, UpdateVolley, Config) ->
 
 contract_calls_("identity", ContractPubKey, Code, SenderConnPid, UpdateVolley,
                 AckConnPid, _ , _, Config) ->
-    UnsignedStateTx = call_a_contract(<<"main">>, <<"(42)">>, ContractPubKey, Code, SenderConnPid,
-                    UpdateVolley, Config),
+    FunctionName = <<"main">>,
+    Args = <<"(42)">>,
     ExpectedResult = 42,
+    UnsignedStateTx = call_a_contract(FunctionName, Args, ContractPubKey, Code, SenderConnPid,
+                    UpdateVolley, Config),
+    {ok, #{<<"value">> := ExpectedResult}} =
+        dry_call_a_contract(FunctionName, Args, ContractPubKey,
+                            Code, SenderConnPid,
+                            Config, <<"int">>),
     DecodedCallResult =
         contract_result_parse("identity",
                               ws_get_decoded_result(SenderConnPid, AckConnPid,
@@ -4776,7 +4869,12 @@ contract_calls_("counter", ContractPubKey, Code, SenderConnPid, UpdateVolley,
                                                         Tx, Config))
         end,
 
+    {ok, #{<<"value">> := ExpectedInitResult}} =
+        dry_call_a_contract(<<"get">>, <<"()">>, ContractPubKey,
+                            Code, SenderConnPid,
+                            Config, <<"int">>),
     InitResult = GetDecodedResult(UnsignedStateTx0),
+    {InitResult, InitResult} = {ExpectedInitResult, InitResult},
     call_a_contract(<<"tick">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
                     UpdateVolley, Config),
 
@@ -4852,6 +4950,36 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
                      amount      => Amount,
                      call_data   => EncodedMainData}, Config),
     _UnsignedStateTx = UpdateVolley().
+
+dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
+                    Config, Type) ->
+    dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
+                    0, Config, Type).
+dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
+                    Amount, Config, Type) ->
+    {ok, EncodedMainData} = aehttp_logic:contract_encode_call_data(<<"sophia">>,
+                                                                   contract_bytearray_decode(Code),
+                                                                   Function,
+                                                                   Argument),
+    ok = ?WS:register_test_for_channel_event(SenderConnPid, dry_run),
+    ws_send_tagged(SenderConnPid, <<"dry_run">>, <<"call_contract">>,
+                   #{contract   => aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
+                     abi_version => latest_sophia_abi(),
+                     amount     => Amount,
+                     call_data  => EncodedMainData}, Config),
+    {ok, <<"call_contract">>, CallRes} = wait_for_channel_event(SenderConnPid, dry_run, Config),
+    ok = ?WS:unregister_test_for_channel_event(SenderConnPid, dry_run),
+    #{<<"caller_id">>         := _CallerId,
+      <<"caller_nonce">>      := CallRound,
+      <<"contract_id">>       := _ContractId,
+      <<"gas_price">>         := _,
+      <<"gas_used">>          := _,
+      <<"height">>            := CallRound,
+      <<"return_type">>       := <<"ok">>,
+      <<"return_value">>      := ReturnValue} = CallRes,
+    {ok, 200, #{<<"data">> := Data}} =
+        get_contract_decode_data(#{'sophia-type' => Type, data => ReturnValue}),
+    {ok, Data}.
 
 
 contract_byte_code(ContractName) ->
@@ -4929,7 +5057,9 @@ sc_ws_failed_update(Config) ->
             {ok, #{<<"reason">> := <<"insufficient_balance">>,
                   <<"request">> := _Request0}} = channel_update_fail(
                                                    ChannelClients, Sender,
-                                                   Participants, 10000000, Config),
+                                                   Participants,
+                                                   10000000 * aec_test_utils:min_gas_price(), % try sending too much
+                                                   Config),
             ?WS:log(LogPid, info, "Failing update, negative amount"),
             {ok, #{<<"reason">> := <<"negative_amount">>,
                   <<"request">> := _Request1}} = channel_update_fail(
@@ -5652,7 +5782,7 @@ prepare_for_spending(BlocksToMine) ->
 
 add_spend_txs() ->
     MineReward = rpc(aec_governance, block_mine_reward, [1]),
-    Fee = 20000,
+    Fee = ?SPEND_FEE,
     %% For now. Mining is severly slowed down by having too many Tx:s in
     %% the tx pool
     MaxSpendTxsInBlock = 20,
@@ -5685,7 +5815,7 @@ populate_block(Txs) ->
         maps:get(spend_txs, Txs, [])).
 
 give_tokens(RecipientPubkey, Amount) ->
-    Fee = 20000,
+    Fee = ?SPEND_FEE,
     BlocksToMine = blocks_to_mine(Amount + Fee, 1),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
@@ -5901,7 +6031,9 @@ lift_reason(#{ <<"message">> := <<"Rejected">>
     Codes = lists:sort([Code || #{<<"code">> := Code} <- Data]),
     E#{ <<"reason">> => data_code_to_reason(Codes) };
 lift_reason(#{ <<"code">> := Code } = E) ->
-    E#{ <<"reason">> => code_to_reason(Code) }.
+    E#{ <<"reason">> => data_code_to_reason([Code]) };
+lift_reason(#{ <<"reason">> := _ } = E) ->
+    E.
 
 data_code_to_reason([100 ])      -> <<"not_found">>;
 data_code_to_reason([107 ])      -> <<"conflict">>;
@@ -5911,11 +6043,9 @@ data_code_to_reason([1003])      -> <<"invalid_pubkeys">>;
 data_code_to_reason([1004])      -> <<"call_not_found">>;
 data_code_to_reason([1005])      -> <<"broken_encoding: accounts">>;
 data_code_to_reason([1006])      -> <<"broken_encoding: contracts">>;
+data_code_to_reason([1007])      -> <<"contract_init_failed">>;
 data_code_to_reason([1005,1006]) -> <<"broken_encoding: accounts, contracts">>;
 data_code_to_reason([Code])      -> sc_ws_api_jsonrpc:error_data_msg(Code).
-
-code_to_reason(Code) ->
-    sc_ws_api_jsonrpc:error_msg(Code).
 
 method_pfx(Action) ->
     <<"channels.", (bin(Action))/binary>>.
@@ -5954,3 +6084,103 @@ latest_sophia_abi() ->
 
 latest_sophia_vm() ->
     aect_test_utils:latest_sophia_vm_version().
+
+sc_ws_wrong_call_data(Config) ->
+    [sc_ws_contract_generic_(Role, fun sc_ws_broken_init_code_/8, Config, [])
+        || Role <- [initiator, responder]],
+    [sc_ws_contract_generic_(Role, fun sc_ws_broken_call_code_/8, Config, [])
+        || Role <- [initiator, responder]],
+    ok.
+
+sc_ws_broken_init_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
+                   _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
+    %% Example broken init code will be calling not the init function
+    SophiaCode = <<"contract Identity = function main (x:int) = x">>,
+    {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
+    {ok, Code} = aehttp_api_encoder:safe_decode(contract_bytearray,
+                                                EncodedCode),
+    %% call main instead of init 
+    {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
+                                  <<"sophia">>, Code, <<"main">>, <<"(1)">>),
+    {_CreateVolley, OwnerConnPid, _OwnerPubKey} = GetVolley(Owner),
+    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                   #{vm_version  => latest_sophia_vm(),
+                     abi_version => latest_sophia_abi(),
+                     deposit     => 10,
+                     code        => EncodedCode,
+                     call_data   => EncodedInitData}, Config),
+
+    {ok, ErrPayload} = wait_for_channel_event(OwnerConnPid, error, Config),
+    #{<<"reason">> := <<"contract_init_failed">>} = lift_reason(ErrPayload),
+    ok.
+
+sc_ws_broken_call_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
+                   _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
+    %% Example broken call code data will be calling a function from another
+    %% contract
+    SophiaCode = <<"contract Identity = function main (x:int) = x">>,
+    {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
+    {ok, Code} = aehttp_api_encoder:safe_decode(contract_bytearray,
+                                                EncodedCode),
+    {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
+                                  <<"sophia">>, Code, <<"init">>, <<"()">>),
+
+    {SignVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
+    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                   #{vm_version  => latest_sophia_vm(),
+                     abi_version => latest_sophia_abi(),
+                     deposit     => 10,
+                     code        => EncodedCode,
+                     call_data   => EncodedInitData}, Config),
+    UnsignedCreateTx = SignVolley(),
+    % contract is succesfully created
+    ContractPubKey = contract_id_from_create_update(OwnerPubKey,
+                                                    UnsignedCreateTx),
+
+    % have some other contract with some other function
+    SophiaCalcCode = <<"contract Calc = function sum (x:int, y:int) = x + y">>,
+    {ok, 200, #{<<"bytecode">> := EncodedCalcCode}} = get_contract_bytecode(SophiaCalcCode),
+    {ok, CalcCode} = aehttp_api_encoder:safe_decode(contract_bytearray,
+                                                EncodedCalcCode),
+    {ok, EncodedCalcCallData} = aehttp_logic:contract_encode_call_data(
+                                  <<"sophia">>, CalcCode, <<"sum">>, <<"(1, 2)">>),
+    % call the existing contract with the other contract's call data
+    ws_send_tagged(OwnerConnPid, <<"update">>, <<"call_contract">>,
+                   #{contract    => aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
+                     abi_version => latest_sophia_abi(),
+                     amount      => 1,
+                     call_data   => EncodedCalcCallData}, Config),
+    % contract call succeeds executing
+    UnsignedCallTx = SignVolley(),
+    ws_send_tagged(OwnerConnPid, <<"get">>, <<"contract_call">>,
+                   ws_get_call_params(UnsignedCallTx), Config),
+    % contract call is present in FSM
+    {ok, <<"contract_call">>, Res} = wait_for_channel_event(OwnerConnPid, get, Config),
+    % call result is still an error
+    #{<<"return_type">> := <<"error">>} = Res,
+    ok.
+
+mine_micro_block_emptying_mempool_or_fail(Node) ->
+    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+    false = aec_blocks:is_key_block(MicroBlock),
+    case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
+        {ok, []} -> ok;
+        {ok, [_|_] = MempoolTxs} ->
+            NewBlocks = aecore_suite_utils:flush_new_blocks(),
+            case
+                (length(NewBlocks) =:= 1) andalso aec_blocks:is_key_block(hd(NewBlocks)) andalso
+                (aec_blocks:hash_internal_representation(KeyBlock) =:= {ok, aec_blocks:prev_key_hash(MicroBlock)}) andalso
+                (aec_blocks:prev_key_hash(MicroBlock) =:= aec_blocks:prev_key_hash(hd(NewBlocks)))
+            of
+                true ->
+                    ct:fail("Key block mined shortly after micro block mined pushed the micro block out of the chain.");
+                false ->
+                    ct:pal(
+                        "Unexpected transactions in mempool:~n~p~nUnexpected new block events:~n~p",
+                        [MempoolTxs, NewBlocks]),
+                    ct:fail("Unexpected transactions in mempool")
+            end
+    end,
+    %% Reached unless failed.
+    {ok, [KeyBlock, MicroBlock]}.

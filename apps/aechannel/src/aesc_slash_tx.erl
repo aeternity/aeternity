@@ -116,7 +116,7 @@ check(#channel_slash_tx{payload    = Payload,
         Err -> Err
     end.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_slash_tx{payload    = Payload,
                           poi        = PoI,
                           fee        = Fee,
@@ -126,7 +126,7 @@ process(#channel_slash_tx{payload    = Payload,
     ChannelPubKey = channel_pubkey(Tx),
     FromPubKey    = from_pubkey(Tx),
     aesc_utils:process_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
-                             Payload, PoI, Height, Trees).
+                             Payload, PoI, Height, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_slash_tx{} = Tx, _) ->

@@ -30,7 +30,8 @@
                | metric
                | chain_sync
                | oracle_query_tx_created
-               | oracle_response_tx_created.
+               | oracle_response_tx_created
+               | {tx_event, any()}.
 
 -spec publish(event(), any()) -> ok.
 publish(Event, Info) ->

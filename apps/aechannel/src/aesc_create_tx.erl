@@ -46,6 +46,10 @@
          state_hash/1,
          updates/1,
          round/1]).
+
+-ifdef(TEST).
+-export([set_state_hash/2]).
+-endif.
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -135,7 +139,7 @@ check(#channel_create_tx{}, Trees,_Env) ->
     %% Checks are in process/3
     {ok, Trees}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_create_tx{} = Tx, Trees, Env) ->
     Instructions =
         aec_tx_processor:channel_create_tx_instructions(
@@ -317,3 +321,11 @@ delegate_pubkeys(#channel_create_tx{delegate_ids = DelegateIds}) ->
 -spec version() -> non_neg_integer().
 version() ->
     ?CHANNEL_CREATE_TX_VSN.
+
+%%%===================================================================
+%%% Test setters 
+%%%===================================================================
+
+-dialyzer({nowarn_function, set_state_hash/2}).
+set_state_hash(Tx, Hash) ->
+    Tx#channel_create_tx{state_hash = Hash}.

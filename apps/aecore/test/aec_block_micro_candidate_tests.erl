@@ -90,10 +90,10 @@ block_extension_test_() ->
           %% unnecessary complex.
           meck:expect(aec_trees, apply_txs_on_state_trees,
                       fun(STxs, Trees, Env) ->
-                              {ok, STxs, [], NewTrees} =
+                              {ok, STxs, [], NewTrees, Events} =
                                   meck:passthrough([STxs, Trees, Env]),
                               case lists:member(STx, STxs) of
-                                  false -> {ok, [], STxs, NewTrees};
+                                  false -> {ok, [], STxs, NewTrees, Events};
                                   true ->
                                       NewTreesWithCall =
                                           aec_trees:set_calls(
@@ -101,7 +101,7 @@ block_extension_test_() ->
                                             aect_call_state_tree:insert_call(
                                               Call,
                                               aec_trees:calls(NewTrees))),
-                                      {ok, STxs, [], NewTreesWithCall}
+                                      {ok, STxs, [], NewTreesWithCall, Events}
                               end
                       end),
 

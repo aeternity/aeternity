@@ -1,26 +1,19 @@
 # About this release
 
-[This][this-release] is the stable Minerva release.
-It contains:
-* The finalization of the Minerva consensus protocol version - in mainnet.
-* Feature refinements.
+[This][this-release] is a maintenance release.
+It:
+* Fixes build of Windows package:
+  * includes the new Minerva accounts file,
+  * uses proper data directory.
+* Fixes `syncing` field in `/status` endpoint.
+* Adds `sync_progress` field to `/status` external endpoint (`sync_progress` metric is also reported every 30 seconds during sync process).
+* Exposes logged events (as the field `log`) in ContractCallObject in the HTTP API.
+* Improves stability of state channel's FSM
+* Adds a new WebSocket method for dry-running off-chain contracts: `channels.dry_run.call_contract`
 
-Please refer to the notes below for details and backward compatibility.
+[this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.1.0
 
-Regarding the Minerva consensus protocol upgrade on mainnet, this release:
-* Sets the Minerva mainnet hard fork height to block 47800 (approximately 6th Mar 2019 1pm CET).
-* Adds all tokens migrated in phase 1 of the token migration.  This takes effect at the Minerva mainnet hardfork height.
-
-Regarding feature refinements:
-* More consistent handling of defaults for state channel on-chain transactions
-* If a fee is specified for an on-chain state channel tx, but is too low, an error will be raised. If no fee is specified, a default fee 10% above the minimum is chosen.
-* If a channel shutdown is requested, but the balances are insufficient to cover the transaction fee, the shutdown request will be rejected right away.
-* Introduce a configuration parameter for miners - the minimum gas price that they are willing to
-  accept.
-
-[this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.0.0
-
-This release is backward compatible with `v2.0.0-rc.1`.
+This release is backward compatible with `v2.0.*`.
 
 Please join the mainnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
@@ -38,8 +31,8 @@ You can run a node by either:
 * Running the published [Docker image `aeternity/aeternity`][docker]; or
 * [Building a release binary from source][build].
 
-[docker]: https://github.com/aeternity/aeternity/blob/v2.0.0/docs/docker.md
-[build]: https://github.com/aeternity/aeternity/blob/v2.0.0/docs/build.md
+[docker]: https://github.com/aeternity/aeternity/blob/v2.1.0/docs/docker.md
+[build]: https://github.com/aeternity/aeternity/blob/v2.1.0/docs/build.md
 
 The instructions for configuring the node using the Docker image are in [the dedicated separate document][docker].
 
@@ -51,9 +44,9 @@ The node user API is documented:
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
 
-[swagger-yaml]: https://github.com/aeternity/aeternity/blob/v2.0.0/config/swagger.yaml
-[swagger-ui]: https://aeternity.github.io/api-docs/?config=https://raw.githubusercontent.com/aeternity/aeternity/v2.0.0/apps/aehttp/priv/swagger.json
-[api-doc]: https://github.com/aeternity/protocol/blob/aeternity-node-v2.0.0/node/api/README.md
+[swagger-yaml]: https://github.com/aeternity/aeternity/blob/v2.1.0/config/swagger.yaml
+[swagger-ui]: https://aeternity.github.io/api-docs/?config=https://raw.githubusercontent.com/aeternity/aeternity/v2.1.0/apps/aehttp/priv/swagger.json
+[api-doc]: https://github.com/aeternity/protocol/blob/aeternity-node-v2.1.0/node/api/README.md
 
 ## Install node
 

@@ -196,7 +196,8 @@ init_chain_state() ->
     case aec_chain:genesis_hash() of
         undefined ->
             {GB, _GBState} = aec_block_genesis:genesis_block_with_state(),
-            ok = aec_chain_state:insert_block(GB);
+            {ok, _} = aec_chain_state:insert_block(GB),
+            ok;
         Hash when is_binary(Hash) ->
             ok
     end.
@@ -673,6 +674,16 @@ preempt_if_new_top(#state{ top_block_hash = OldHash,
             end
     end.
 
+maybe_publish_tx_events(Events, Hash, Origin) when Origin =/= block_synced,
+                                                   map_size(Events) > 0 ->
+    lager:debug("publish tx_events: ~p", [Events]),
+    [aec_events:publish({tx_event, Event}, Info#{ block_hash => Hash
+                                                , block_origin => Origin})
+     || {Event, Info} <- maps:to_list(Events)];
+maybe_publish_tx_events(_, _, _) ->
+    ok.
+
+
 maybe_publish_top(block_created,_TopBlock) ->
     %% A new block we created is published unconditionally below.
     ok;
@@ -993,11 +1004,12 @@ handle_add_block(Header, Block, State, Origin) ->
             %% external (gossip/sync) blocks and we trust the ones we
             %% produce ourselves.
             case aec_chain_state:insert_block(Block, Origin) of
-                ok ->
-                    handle_successfully_added_block(Block, State, Origin);
-                {pof,_PoF} ->
+                {ok, Events} ->
+                    handle_successfully_added_block(Block, Hash, Events, State, Origin);
+                {pof,_PoF,Events} ->
+                    %% TODO: should we really publish tx_events in this case?
                     lager:info("PoF found in ~p", [Hash]),
-                    handle_successfully_added_block(Block, State, Origin);
+                    handle_successfully_added_block(Block, Hash, Events, State, Origin);
                 {error, Reason} when Origin == block_created; Origin == micro_block_created ->
                     lager:error("Couldn't insert created block (~p)", [Reason]),
                     {{error, Reason}, State};
@@ -1007,7 +1019,8 @@ handle_add_block(Header, Block, State, Origin) ->
             end
     end.
 
-handle_successfully_added_block(Block, State, Origin) ->
+handle_successfully_added_block(Block, Hash, Events, State, Origin) ->
+    maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
     case preempt_if_new_top(State, Origin) of
         no_change ->

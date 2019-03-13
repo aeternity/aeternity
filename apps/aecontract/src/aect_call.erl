@@ -198,9 +198,9 @@ serialize_for_client(#call{caller_id    = CallerId,
      }.
 
 serialize_log_entry_for_client({Address, Topics, Data}) ->
-    #{ <<"address">> => Address
-     , <<"topics">>  => Topics
-     , <<"data">>    => Data
+    #{ <<"address">> => aehttp_api_encoder:encode(contract_pubkey, Address)
+     , <<"topics">>  => [ Topic || <<Topic:256>> <- Topics ]
+     , <<"data">>    => aehttp_api_encoder:encode(contract_bytearray, Data)
      }.
 
 %%%===================================================================

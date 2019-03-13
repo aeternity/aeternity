@@ -591,7 +591,8 @@ handle_request_('GetStatus', _Params, _Context) ->
     {ok, GenesisBlockHash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
     Solutions = 0, %% TODO
     Difficulty = aec_blocks:difficulty(TopKeyBlock),
-    Syncing = true, %% TODO
+    Syncing = aec_sync:is_syncing(),
+    SyncProgress = aec_sync:sync_progress(),
     Listening = true, %% TODO
     Protocols = maps:fold(fun(Vsn, Height, Acc) ->
                           [#{<<"version">> => Vsn, <<"effective_at_height">> => Height} | Acc]
@@ -605,6 +606,7 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"solutions">>                  => Solutions,
        <<"difficulty">>                 => Difficulty,
        <<"syncing">>                    => Syncing,
+       <<"sync_progress">>              => SyncProgress,
        <<"listening">>                  => Listening,
        <<"protocols">>                  => Protocols,
        <<"node_version">>               => NodeVersion,
