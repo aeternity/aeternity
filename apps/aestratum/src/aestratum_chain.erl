@@ -1,3 +1,11 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2019,
+%%% @doc
+%%%
+%%% Interface to AE node
+%%%
+%%% @end
+%%%-------------------------------------------------------------------
 -module(aestratum_chain).
 
 -behaviour(gen_server).
@@ -8,46 +16,44 @@
 
 %% API.
 -export([start_link/0,
-         subscribe/0,
          payout_rewards/3,
          get_reward_key_header/1,
          hash_header/1,
          header_info/1]).
 
-%% gen_server.
--export([init/1,
-         handle_call/3,
-         handle_cast/2
-        ]).
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         terminate/2, code_change/3, format_status/2]).
 
--record(state, {
-          header_hash,
-          target
-         }).
+%%%===================================================================
+%%% STATE
+%%%===================================================================
 
-%% API.
+-record(state,
+        {last_keyblock}).
+
+%%%===================================================================
+%%% API
+%%%===================================================================
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-subscribe() ->
-    aestratum_pubsub:subscribe(new_block).
-
-unsubsribe() ->
-    aestratum_pubsub:unsubscribe(new_block).
-
 payout_rewards(Height, PoolRewards, MinersRewards) ->
     gen_server:cast(?MODULE, {payout_rewards, Height, PoolRewards, MinersRewards}).
 
-%% Callbacks.
+%%%===================================================================
+%%% gen_server callbacks
+%%%===================================================================
 
 init([]) ->
-    %% TODO: create an event in the node
-    aec_events:subscribe(new_pending_key_block),
-    {ok, undefined}.
+    aec_events:subscribe(top_changed),
+    {ok, #state{last_keyblock = aec_chain:top_key_block_hash()}}.
+
 
 handle_call(_Req, _From, State) ->
     {reply, ok, State}.
+
 
 handle_cast({payout_rewards, Height, _PoolRewards, _MinersRewards}, State) ->
     %% TODO: actually pay out the rewards
@@ -60,18 +66,36 @@ handle_cast({payout_rewards, Height, _PoolRewards, _MinersRewards}, State) ->
 handle_cast(_Req, State) ->
     {noreply, State}.
 
-%% micro block candidate
-handle_info({gproc_ps_event, new_pending_key_block, #{info := Info}}, State) ->
-    {noreply, handle_new_pending_key_block(Info, State)}.
+
+handle_info({gproc_ps_event, top_changed, #{info := Hash}}, State) ->
+    {noreply, State};
+
+handle_info(_Req, State) ->
+    {noreply, State}.
+
+
+terminate(_Reason, _State) ->
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+format_status(_Opt, Status) ->
+    Status.
+
+%% %% micro block candidate
+%% handle_info({gproc_ps_event, new_pending_key_block, #{info := Info}}, State) ->
+%%     {noreply, handle_new_pending_key_block(Info, State)}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
-handle_new_pending_key_block({HdrHash, Target}, State) ->
-    Info = #{header_hash => HdrHash, target => Target},
-    aestratum_pubsub:publish(new_block, Info),
-    State#state{header_hash = HdrHash, target = Target}.
+
+%% handle_new_pending_key_block({HdrHash, Target}, State) ->
+%%     Info = #{header_hash => HdrHash, target => Target},
+%%     aestratum_pubsub:publish(new_block, Info),
+%%     State#state{header_hash = HdrHash, target = Target}.
 
 
 get_reward_key_header(RoundsDelay) ->
