@@ -151,7 +151,7 @@ roma_node_spec(Name, DbHostPath) ->
 %% Minerva release using old epoch@localhost node name in the db.
 minerva_with_epoch_name_in_db_spec(Name, DbHostPath) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
-    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v2.0.0"},
+    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v2.1.0"},
                                 db_path => {DbHostPath, DbGuestPath},
                                 genesis_accounts => genesis_accounts()}).
 
