@@ -4145,36 +4145,33 @@ sc_ws_contracts(Config) ->
     ok.
 
 sc_ws_oracle_contract(Config) ->
-    [sc_ws_contract_generic_(Role, fun sc_ws_oracle_contract_/9, Config, [])
-        || Role <- [initiator, responder]],
+    [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_oracle_contract_/9, Config, [])
+        || Role <- [initiator, responder],
+           ContractSource <- [offchain]], % Oracle contract requires an oracle to be created so we skip onchain check
     ok.
 
 sc_ws_nameservice_contract(Config) ->
-    [sc_ws_contract_generic_(Role, fun sc_ws_nameservice_contract_/9, Config,
+    [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_nameservice_contract_/9, Config,
                             [])
-        || Role <- [initiator,
-                    responder]],
+        || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
     ok.
 
 sc_ws_enviroment_contract(Config) ->
-    [sc_ws_contract_generic_(Role, fun sc_ws_enviroment_contract_/9, Config,
+    [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_enviroment_contract_/9, Config,
                             [])
-        || Role <- [initiator,
-                    responder]],
+        || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
     ok.
 
 sc_ws_remote_call_contract(Config) ->
-    [sc_ws_contract_generic_(Role, fun sc_ws_remote_call_contract_/9, Config,
+    [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_remote_call_contract_/9, Config,
                             [])
-        || Role <- [initiator,
-                    responder]],
+        || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
     ok.
 
 sc_ws_remote_call_contract_refering_onchain_data(Config) ->
-    [sc_ws_contract_generic_(Role, fun sc_ws_remote_call_contract_refering_onchain_data_/9, Config,
+    [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_remote_call_contract_refering_onchain_data_/9, Config,
                             [])
-        || Role <- [initiator,
-                    responder]],
+        || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
     ok.
 
 random_unused_name() ->
@@ -4192,7 +4189,7 @@ random_unused_name(Attempts) ->
         _ -> random_unused_name(Attempts - 1)
     end.
 
-sc_ws_contract_generic_(Origin, Fun, Config, Opts) ->
+sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
     %% get the infrastructure for users going
     Participants = proplists:get_value(participants, Config),
     Clients = proplists:get_value(channel_clients, Config),
@@ -4233,18 +4230,35 @@ sc_ws_contract_generic_(Origin, Fun, Config, Opts) ->
         end,
 
     CreateContract =
-        fun(Owner, EncodedCode, EncodedInitData, Deposit) ->
-            {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
-            ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                #{vm_version  => latest_sophia_vm(),
-                    abi_version => latest_sophia_abi(),
-                    deposit     => Deposit,
-                    code        => EncodedCode,
-                    call_data   => EncodedInitData}, Config),
+        case ContractSource of
+            offchain ->
+                fun(Owner, EncodedCode, EncodedInitData, Deposit) ->
+                    {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
+                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                        #{vm_version  => latest_sophia_vm(),
+                          abi_version => latest_sophia_abi(),
+                          deposit     => Deposit,
+                          code        => EncodedCode,
+                          call_data   => EncodedInitData}, Config),
 
-            UnsignedStateTx = CreateVolley(),
-            contract_id_from_create_update(OwnerPubKey, UnsignedStateTx)
+                    UnsignedStateTx = CreateVolley(),
+                    contract_id_from_create_update(OwnerPubKey, UnsignedStateTx)
+                end;
+            onchain ->
+                fun(Owner, EncodedCode, EncodedInitData, Deposit) ->
+                    EncodedOnChainPubkey = post_contract_onchain(EncodedCode, EncodedInitData),
+
+                    {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
+                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract_from_onchain">>,
+                        #{deposit     => Deposit,
+                          contract    => EncodedOnChainPubkey,
+                          call_data   => EncodedInitData}, Config),
+
+                    UnsignedStateTx = CreateVolley(),
+                    contract_id_from_create_update(OwnerPubKey, UnsignedStateTx)
+                end
         end,
+
 
     Actors = [{R, GetPubkeys(R)} || R <- [initiator, responder]],
     [Fun(Owner, GetVolley, CreateContract, SenderConnPid,
@@ -4254,25 +4268,24 @@ sc_ws_contract_generic_(Origin, Fun, Config, Opts) ->
     ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, get, error]),
     ok.
 
-post_contract_onchain(EncodedCode, EncodedInitCallData, Deposit) ->
+post_contract_onchain(EncodedCode, EncodedInitCallData) ->
     Pubkey = get_pubkey(),
 
     ValidEncoded = #{ owner_id    => Pubkey,
-        code        => EncodedCode,
-        vm_version  => latest_sophia_vm(),
-        abi_version => latest_sophia_abi(),
-        deposit     => Deposit,
-        amount      => 0,
-        gas         => 600,
-        gas_price   => aec_test_utils:min_gas_price(),
-        fee         => 400000 * aec_test_utils:min_gas_price(),
-        call_data   => EncodedInitCallData},
+                      code        => EncodedCode,
+                      vm_version  => latest_sophia_vm(),
+                      abi_version => latest_sophia_abi(),
+                      deposit     => 0,
+                      amount      => 0,
+                      gas         => 600,
+                      gas_price   => aec_test_utils:min_gas_price(),
+                      fee         => 400000 * aec_test_utils:min_gas_price(),
+                      call_data   => EncodedInitCallData},
 
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
-        <<"contract_id">> := EncodedContractPubKey}} =
-        get_contract_create(ValidEncoded),
-    {ok, ContractPubKey} = aehttp_api_encoder:safe_decode(contract_pubkey, EncodedContractPubKey),
+                <<"contract_id">> := EncodedContractPubKey}} = get_contract_create(ValidEncoded),
+    %% {ok, ContractPubKey} = aeser_api_encoder:safe_decode(contract_pubkey, EncodedContractPubKey),
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
 
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
@@ -4284,7 +4297,14 @@ post_contract_onchain(EncodedCode, EncodedInitCallData, Deposit) ->
 
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
     ?assertMatch({ok, 200, _}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
-    ContractPubKey.
+    ?assertMatch({ok, 200, #{<<"id">>          := EncodedContractPubKey,
+        <<"owner_id">>    := Pubkey,
+        <<"active">>      := true,
+        <<"deposit">>     := 0,
+        <<"referrer_ids">> := [],
+        <<"log">>         := <<>>}},
+        get_contract_sut(EncodedContractPubKey)),
+    EncodedContractPubKey.
 
 sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
                        OwnerPubkey, OtherPubkey, _Opts, Config) ->
@@ -6237,9 +6257,9 @@ latest_sophia_vm() ->
     aect_test_utils:latest_sophia_vm_version().
 
 sc_ws_wrong_call_data(Config) ->
-    [sc_ws_contract_generic_(Role, fun sc_ws_broken_init_code_/9, Config, [])
+    [sc_ws_contract_generic_(Role, offchain, fun sc_ws_broken_init_code_/9, Config, [])
         || Role <- [initiator, responder]],
-    [sc_ws_contract_generic_(Role, fun sc_ws_broken_call_code_/9, Config, [])
+    [sc_ws_contract_generic_(Role, offchain, fun sc_ws_broken_call_code_/9, Config, [])
         || Role <- [initiator, responder]],
     ok.
 

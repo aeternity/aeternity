@@ -258,7 +258,7 @@ process_request(#{<<"method">> := <<"channels.update.new_contract">>,
             end;
         _ -> {error, broken_code}
     end;
-process_request(#{<<"method">> := <<"channels.update.new_contract.from_onchain">>,
+process_request(#{<<"method">> := <<"channels.update.new_contract_from_onchain">>,
                   <<"params">> := #{<<"deposit">>     := Deposit,
                                     <<"contract">>    := OnChainContractE,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
