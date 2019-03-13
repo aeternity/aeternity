@@ -10,7 +10,7 @@ Regarding renaming, this release:
 * Changes Erlang node name from `epoch@localhost` to `aeternity@localhost`. This impacts persisted database (the node name is stored in it). **In order to use persisted database created before this release, new tool - `rename_db` - must be used.**
   * The tool `rename_db` is included in the release. It takes one argument - path to database directory. Path to your database directory is `chain` > `db_path` parameter in your user config. If it is undefined, `data` (default directory) should be passed as argument.
   * Example usage of the tool:
-    * Using absolute path of database directory - `./bin/aeternity rename_db /node/aeternity/node/my-old-db-path`;
+    * Using absolute path of database directory - `./bin/aeternity rename_db '/node/aeternity/node/my-old-db-path'`;
     * Using relative path of database directory (or when `chain` > `db_path` is not set in the config) - `./bin/aeternity rename_db data`;
     * If you are running a node using Docker (assuming you either don't have `db_path` set in your config, or it is set to `/home/aeternity/node/data`) - `docker run --entrypoint=/bin/bash -v ~/.aeternity/myaedb:/home/aeternity/node/data/mnesia -v ~/.aeternity/myaeternity.yaml:/home/aeternity/.aeternity/aeternity/aeternity.yaml aeternity/aeternity -c "/home/aeternity/node/bin/aeternity rename_db /home/aeternity/node/data"`
   * Please use `rename_db` tool when your node is **not running**.
