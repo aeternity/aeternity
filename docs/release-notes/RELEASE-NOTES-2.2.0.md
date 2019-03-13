@@ -18,7 +18,7 @@ Regarding renaming, this release:
   * Before renaming process is conducted, `rename_db` tool automatically creates `schema.DAT.backup` file, next to the original `schema.DAT` file. The file `schema.DAT.backup` contains the backup of `schema.DAT`. If `rename_db` tool is interrupted, and your `schema.DAT` file gets corrupted, please restore from the backup by simply replacing corrupted `schema.DAT` with `schema.DAT.backup`. Then re-run `rename_db` tool.
   * In case your database gets badly corrupted during the process (this should not happen though), please remove all the files from your database directory, and sync again.
 
-Regarding other improvements (?? - to be specified, what else is included), this release:
+For the rest, this release:
 
 * Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
 
