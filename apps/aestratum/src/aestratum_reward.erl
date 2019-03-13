@@ -1,12 +1,10 @@
 %%%-------------------------------------------------------------------
-%%% @author  <x@x1>
 %%% @copyright (C) 2019,
 %%% @doc
 %%%
 %%% Aeternity specific PPLNS reward scheme
 %%%
 %%% @end
-%%% Created : 15 Feb 2019 by  <x@x1>
 %%%-------------------------------------------------------------------
 -module(aestratum_reward).
 
