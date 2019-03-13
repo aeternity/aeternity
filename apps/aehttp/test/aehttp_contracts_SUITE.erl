@@ -1100,7 +1100,7 @@ events_contract(Config) ->
     F1Check = fun([#{<<"address">> := Addr, <<"topics">> := Ts, <<"data">> := Data}]) ->
                 <<E1:256>> = aec_hash:hash(evm, <<"Event1">>),
                 ?assertEqual(Addr, EncCPub),
-                ?assertEqual(Data, aehttp_api_encoder:encode(contract_bytearray, <<"bar">>)),
+                ?assertEqual(Data, aeser_api_encoder:encode(contract_bytearray, <<"bar">>)),
                 ?assertMatch([E1, 1, 2], Ts)
               end,
     call_func(APub, APriv, EncCPub, <<"f1">>, args_to_binary([1, {string, "bar"}]), {log, F1Check}),
@@ -1109,7 +1109,7 @@ events_contract(Config) ->
                 <<E2:256>> = aec_hash:hash(evm, <<"Event2">>),
                 <<A:256>>  = APub,
                 ?assertEqual(Addr, EncCPub),
-                ?assertEqual(Data, aehttp_api_encoder:encode(contract_bytearray, <<"foo">>)),
+                ?assertEqual(Data, aeser_api_encoder:encode(contract_bytearray, <<"foo">>)),
                 ?assertEqual([E2, A], Ts)
               end,
     call_func(APub, APriv, EncCPub, <<"f2">>, args_to_binary([{string, "foo"}]), {log, F2Check}),

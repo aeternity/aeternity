@@ -170,7 +170,7 @@ patron() ->
 %% to a cluster of older nodes.
 new_node_joins_network(Cfg) ->
     Compatible = "aeternity/aeternity:v1.4.0", %% Latest version it should be compatible with
-    PatronAddress = aehttp_api_encoder:encode(account_pubkey,
+    PatronAddress = aeser_api_encoder:encode(account_pubkey,
                                               maps:get(pubkey, patron())),
     %% have all nodes share the same accounts_test.json
     GenesisAccounts = [{PatronAddress, 123400000000000000000000000000}],

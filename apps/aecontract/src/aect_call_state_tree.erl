@@ -135,7 +135,7 @@ to_binary_without_backend(#call_tree{calls = Tree}) ->
 -spec serialize_to_client(tree()) -> binary().
 serialize_to_client(#call_tree{} = Tree) ->
     TreeBinary = to_binary_without_backend(Tree),
-    aehttp_api_encoder:encode(call_state_tree, TreeBinary).
+    aeser_api_encoder:encode(call_state_tree, TreeBinary).
 
 -spec from_binary_without_backend(binary()) -> tree().
 from_binary_without_backend(Bin) ->

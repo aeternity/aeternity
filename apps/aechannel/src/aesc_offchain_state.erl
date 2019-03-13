@@ -373,5 +373,5 @@ serialize_for_client_tx_or_notx(?NO_TX) ->
     <<"">>;
 serialize_for_client_tx_or_notx(Tx) ->
     STx = aetx_sign:serialize_to_binary(Tx),
-    aehttp_api_encoder:encode(transaction, STx).
+    aeser_api_encoder:encode(transaction, STx).
 

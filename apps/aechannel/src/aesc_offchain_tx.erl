@@ -218,7 +218,7 @@ version() ->
 %%%===================================================================
 -dialyzer({nowarn_function, set_channel_id/2}).
 set_channel_id(Tx, ChannelId) ->
-    channel = aec_id:specialize_type(ChannelId),
+    channel = aeser_id:specialize_type(ChannelId),
     Tx#channel_offchain_tx{channel_id = ChannelId}.
 
 -dialyzer({nowarn_function, set_round/2}).

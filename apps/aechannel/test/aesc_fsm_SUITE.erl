@@ -1060,7 +1060,7 @@ wrong_id_action(ChannelStuff, Poster, Malicious,
                   DetectConflictFun,
                   fun(Tx0, _Fsm) ->
                       _Tx = update_tx(Tx0, set_channel_id,
-                                      [aec_id:create(channel, ?BOGUS_PUBKEY)])
+                                      [aeser_id:create(channel, ?BOGUS_PUBKEY)])
                   end,
                   different_channel_id).
 

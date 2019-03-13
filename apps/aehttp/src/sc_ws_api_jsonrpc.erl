@@ -299,7 +299,7 @@ process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
                                     <<"abi_version">> := ABIVersion,
                                     <<"amount">>      := Amount,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
-    case {aehttp_api_encoder:safe_decode(contract_pubkey, ContractE),
+    case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
             case aesc_fsm:dry_run_contract(FsmPid,

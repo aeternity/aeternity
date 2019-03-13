@@ -441,7 +441,7 @@ serialize_to_binary(#trees{} = Trees) ->
 -spec serialize_to_client(trees()) -> binary().
 serialize_to_client(#trees{} = Trees) ->
     TreesBinary = serialize_to_binary(Trees),
-    aehttp_api_encoder:encode(state_trees, TreesBinary).
+    aeser_api_encoder:encode(state_trees, TreesBinary).
 
 -spec deserialize_from_binary_without_backend(binary()) -> trees().
 deserialize_from_binary_without_backend(Bin) ->

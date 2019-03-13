@@ -110,6 +110,6 @@ roma_node_spec(Name, DbHostPath) ->
 genesis_accounts() ->
     %% have all nodes share the same accounts_test.json
     PatronPubkey = <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
-    PatronAddress = aehttp_api_encoder:encode(account_pubkey, PatronPubkey),
+    PatronAddress = aeser_api_encoder:encode(account_pubkey, PatronPubkey),
     [{PatronAddress, 123400000000000000000000000000}].
 

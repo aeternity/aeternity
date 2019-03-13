@@ -2703,7 +2703,7 @@ nameservice_transaction_transfer(MinerAddress, MinerPubkey) ->
     NameHash = random_hash(),
     Encoded = #{account_id => MinerAddress,
                 name_id => aeser_api_encoder:encode(name, NameHash),
-                recipient_id => aehttp_api_encoder:encode(account_pubkey, RandAddress),
+                recipient_id => aeser_api_encoder:encode(account_pubkey, RandAddress),
                 fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{account_id => aeser_id:create(account, MinerPubkey),
@@ -2895,7 +2895,7 @@ state_channels_slash(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aeser_api_encoder:encode(channel, ChannelId),
                 from_id => aeser_api_encoder:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
-                poi => aehser_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
+                poi => aeser_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
                 fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{from_id => aeser_id:create(account, MinerPubkey),
@@ -3818,9 +3818,9 @@ sc_ws_get_state(ConnPid, Config) ->
      , <<"signed_tx">> := EncodedSignedTx
      , <<"half_signed_tx">> := EncodedHalfSignedTx
      } = Res,
-    {ok, STrees} = aehttp_api_encoder:safe_decode(state_trees, EncodedTrees),
+    {ok, STrees} = aeser_api_encoder:safe_decode(state_trees, EncodedTrees),
     Trees = aec_trees:deserialize_from_binary_without_backend(STrees),
-    {ok, SCalls} = aehttp_api_encoder:safe_decode(call_state_tree, EncodedCalls),
+    {ok, SCalls} = aeser_api_encoder:safe_decode(call_state_tree, EncodedCalls),
     Calls = aect_call_state_tree:from_binary_without_backend(SCalls),
     {ok, #{ trees => Trees
           , calls => Calls
@@ -3830,7 +3830,7 @@ sc_ws_get_state(ConnPid, Config) ->
 decode_signed_tx(<<>>) ->
     no_tx;
 decode_signed_tx(EncodedSignedTx) ->
-    {ok, SSignedTx} = aehttp_api_encoder:safe_decode(transaction, EncodedSignedTx),
+    {ok, SSignedTx} = aeser_api_encoder:safe_decode(transaction, EncodedSignedTx),
     aetx_sign:deserialize_from_binary(SSignedTx).
 
 query_state(ConnPid, Config) ->
@@ -4963,7 +4963,7 @@ dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
                                                                    Argument),
     ok = ?WS:register_test_for_channel_event(SenderConnPid, dry_run),
     ws_send_tagged(SenderConnPid, <<"dry_run">>, <<"call_contract">>,
-                   #{contract   => aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
+                   #{contract   => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
                      abi_version => latest_sophia_abi(),
                      amount     => Amount,
                      call_data  => EncodedMainData}, Config),
@@ -6097,7 +6097,7 @@ sc_ws_broken_init_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
     %% Example broken init code will be calling not the init function
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
-    {ok, Code} = aehttp_api_encoder:safe_decode(contract_bytearray,
+    {ok, Code} = aeser_api_encoder:safe_decode(contract_bytearray,
                                                 EncodedCode),
     %% call main instead of init 
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
@@ -6120,7 +6120,7 @@ sc_ws_broken_call_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
     %% contract
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
-    {ok, Code} = aehttp_api_encoder:safe_decode(contract_bytearray,
+    {ok, Code} = aeser_api_encoder:safe_decode(contract_bytearray,
                                                 EncodedCode),
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
                                   <<"sophia">>, Code, <<"init">>, <<"()">>),
@@ -6140,13 +6140,13 @@ sc_ws_broken_call_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
     % have some other contract with some other function
     SophiaCalcCode = <<"contract Calc = function sum (x:int, y:int) = x + y">>,
     {ok, 200, #{<<"bytecode">> := EncodedCalcCode}} = get_contract_bytecode(SophiaCalcCode),
-    {ok, CalcCode} = aehttp_api_encoder:safe_decode(contract_bytearray,
+    {ok, CalcCode} = aeser_api_encoder:safe_decode(contract_bytearray,
                                                 EncodedCalcCode),
     {ok, EncodedCalcCallData} = aehttp_logic:contract_encode_call_data(
                                   <<"sophia">>, CalcCode, <<"sum">>, <<"(1, 2)">>),
     % call the existing contract with the other contract's call data
     ws_send_tagged(OwnerConnPid, <<"update">>, <<"call_contract">>,
-                   #{contract    => aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
+                   #{contract    => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
                      abi_version => latest_sophia_abi(),
                      amount      => 1,
                      call_data   => EncodedCalcCallData}, Config),
