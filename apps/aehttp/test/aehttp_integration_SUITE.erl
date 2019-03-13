@@ -4145,33 +4145,33 @@ sc_ws_contracts(Config) ->
     ok.
 
 sc_ws_oracle_contract(Config) ->
-    [sc_ws_contract_generic_(Role, fun sc_ws_oracle_contract_/8, Config, [])
+    [sc_ws_contract_generic_(Role, fun sc_ws_oracle_contract_/9, Config, [])
         || Role <- [initiator, responder]],
     ok.
 
 sc_ws_nameservice_contract(Config) ->
-    [sc_ws_contract_generic_(Role, fun sc_ws_nameservice_contract_/8, Config,
+    [sc_ws_contract_generic_(Role, fun sc_ws_nameservice_contract_/9, Config,
                             [])
         || Role <- [initiator,
                     responder]],
     ok.
 
 sc_ws_enviroment_contract(Config) ->
-    [sc_ws_contract_generic_(Role, fun sc_ws_enviroment_contract_/8, Config,
+    [sc_ws_contract_generic_(Role, fun sc_ws_enviroment_contract_/9, Config,
                             [])
         || Role <- [initiator,
                     responder]],
     ok.
 
 sc_ws_remote_call_contract(Config) ->
-    [sc_ws_contract_generic_(Role, fun sc_ws_remote_call_contract_/8, Config,
+    [sc_ws_contract_generic_(Role, fun sc_ws_remote_call_contract_/9, Config,
                             [])
         || Role <- [initiator,
                     responder]],
     ok.
 
 sc_ws_remote_call_contract_refering_onchain_data(Config) ->
-    [sc_ws_contract_generic_(Role, fun sc_ws_remote_call_contract_refering_onchain_data_/8, Config,
+    [sc_ws_contract_generic_(Role, fun sc_ws_remote_call_contract_refering_onchain_data_/9, Config,
                             [])
         || Role <- [initiator,
                     responder]],
@@ -4231,15 +4231,62 @@ sc_ws_contract_generic_(Origin, Fun, Config, Opts) ->
                 false -> {AckPubkey, SenderPubkey}
             end
         end,
+
+    CreateContract =
+        fun(Owner, EncodedCode, EncodedInitData, Deposit) ->
+            {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
+            ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                #{vm_version  => latest_sophia_vm(),
+                    abi_version => latest_sophia_abi(),
+                    deposit     => Deposit,
+                    code        => EncodedCode,
+                    call_data   => EncodedInitData}, Config),
+
+            UnsignedStateTx = CreateVolley(),
+            contract_id_from_create_update(OwnerPubKey, UnsignedStateTx)
+        end,
+
     Actors = [{R, GetPubkeys(R)} || R <- [initiator, responder]],
-    [Fun(Owner, GetVolley, SenderConnPid,
+    [Fun(Owner, GetVolley, CreateContract, SenderConnPid,
          AckConnPid, OwnerPubkey, OtherPubkey, Opts, Config)
         || {Owner, {OwnerPubkey, OtherPubkey}} <- Actors],
     ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, get, error]),
     ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, get, error]),
     ok.
 
-sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
+post_contract_onchain(EncodedCode, EncodedInitCallData, Deposit) ->
+    Pubkey = get_pubkey(),
+
+    ValidEncoded = #{ owner_id    => Pubkey,
+        code        => EncodedCode,
+        vm_version  => latest_sophia_vm(),
+        abi_version => latest_sophia_abi(),
+        deposit     => Deposit,
+        amount      => 0,
+        gas         => 600,
+        gas_price   => aec_test_utils:min_gas_price(),
+        fee         => 400000 * aec_test_utils:min_gas_price(),
+        call_data   => EncodedInitCallData},
+
+    %% prepare a contract_create_tx and post it
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
+        <<"contract_id">> := EncodedContractPubKey}} =
+        get_contract_create(ValidEncoded),
+    {ok, ContractPubKey} = aehttp_api_encoder:safe_decode(contract_pubkey, EncodedContractPubKey),
+    ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
+
+    ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
+    ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
+
+    % mine
+    ok = wait_for_tx_hash_on_chain(ContractCreateTxHash),
+    ?assert(tx_in_chain(ContractCreateTxHash)),
+
+    ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
+    ?assertMatch({ok, 200, _}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
+    ContractPubKey.
+
+sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
                        OwnerPubkey, OtherPubkey, _Opts, Config) ->
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
@@ -4281,17 +4328,9 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                               <<"sophia">>,
                               contract_bytearray_decode(EncodedCode),
                               <<"init">>, InitArgument),
-    {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
-    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                   #{vm_version  => latest_sophia_vm(),
-                     abi_version => latest_sophia_abi(),
-                     deposit     => 10,
-                     code        => EncodedCode,
-                     call_data   => EncodedInitData}, Config),
 
-    UnsignedStateTx = CreateVolley(),
-    ContractPubKey = contract_id_from_create_update(OwnerPubKey,
-                                                    UnsignedStateTx),
+    ContractPubKey = CreateContract(Owner, EncodedCode, EncodedInitData, 10),
+
     ContractId = aeser_id:create(contract, ContractPubKey),
     OwnerId = aeser_id:create(account, OwnerPubkey),
     #{ active := true
@@ -4413,8 +4452,8 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     {OwnerBal1, _} = {OwnerBal + ContractBalance, OwnerBal1},
     ok.
 
-sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
-                            OwnerPubkey, _OtherPubkey, _Opts, Config) ->
+sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
+                            _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
     Name = random_unused_name(),
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
@@ -4427,17 +4466,8 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                               <<"sophia">>,
                               contract_bytearray_decode(EncodedCode),
                               <<"init">>, InitArgument),
-    {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
-    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                   #{vm_version  => latest_sophia_vm(),
-                     abi_version => latest_sophia_abi(),
-                     deposit     => 10,
-                     code        => EncodedCode,
-                     call_data   => EncodedInitData}, Config),
 
-    UnsignedStateTx = CreateVolley(),
-    ContractPubKey = contract_id_from_create_update(OwnerPubkey,
-                                                    UnsignedStateTx),
+    ContractPubKey = CreateContract(Owner, EncodedCode, EncodedInitData, 10),
 
     ContractCanNameResolve =
         fun(Who, Name0, Key0, Result) ->
@@ -4486,25 +4516,16 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     Test(Name, <<"missing_key">>, false),
     ok.
 
-sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
-                           OwnerPubkey, _OtherPubkey, _Opts, Config) ->
+sc_ws_enviroment_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
+                           _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
     EncodedCode = contract_byte_code("channel_env"),
     InitArgument = <<"()">>,
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
                               <<"sophia">>,
                               contract_bytearray_decode(EncodedCode),
                               <<"init">>, InitArgument),
-    {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
-    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                   #{vm_version  => latest_sophia_vm(),
-                     abi_version => latest_sophia_abi(),
-                     deposit     => 10,
-                     code        => EncodedCode,
-                     call_data   => EncodedInitData}, Config),
 
-    UnsignedStateTx = CreateVolley(),
-    ContractPubKey = contract_id_from_create_update(OwnerPubkey,
-                                                    UnsignedStateTx),
+    ContractPubKey = CreateContract(Owner, EncodedCode, EncodedInitData, 10),
 
     ContractCall =
         fun(Who, Fun, ResultType, Result) ->
@@ -4547,10 +4568,10 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     ok.
 
 
-sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
-                           OwnerPubkey, _OtherPubkey, _Opts, Config) ->
+sc_ws_remote_call_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
+                            _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
     %% create identity contract off-chain
-    CreateContract =
+    CreateIdentityContract =
         fun(Name) ->
             EncodedCode = contract_byte_code(Name),
             InitArgument = <<"()">>,
@@ -4559,21 +4580,12 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                                       contract_bytearray_decode(EncodedCode),
                                       <<"init">>,
                                       InitArgument),
-            {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
-            ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                           #{vm_version  => latest_sophia_vm(),
-                             abi_version => latest_sophia_abi(),
-                             deposit     => 10,
-                             code        => EncodedCode,
-                             call_data   => EncodedInitData}, Config),
+            ContractPubKey = CreateContract(Owner, EncodedCode, EncodedInitData, 10),
 
-            UnsignedStateTx = CreateVolley(),
-            ContractPubKey = contract_id_from_create_update(OwnerPubkey,
-                                                            UnsignedStateTx),
             {ContractPubKey, EncodedCode}
           end,
-    {IdentityCPubKey, IdentityCode} = CreateContract("identity"),
-    {RemoteCallCPubKey, RemoteCallCode} = CreateContract("remote_call"),
+    {IdentityCPubKey, IdentityCode} = CreateIdentityContract("identity"),
+    {RemoteCallCPubKey, RemoteCallCode} = CreateIdentityContract("remote_call"),
 
     ContractCall =
         fun(Who, ContractPubKey, Code, Fun, Args, Result, Amount) ->
@@ -4622,10 +4634,11 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     Test(CallIdentity, 12),
     ok.
 
-sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, ConnPid2,
-                           OwnerPubkey, _OtherPubkey, _Opts, Config) ->
+sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContract,
+                                                  ConnPid1, ConnPid2, _OwnerPubkey,
+                                                  _OtherPubkey, _Opts, Config) ->
     %% create identity contract off-chain
-    CreateContract =
+    CreateIdentityContract =
         fun(Name) ->
             EncodedCode = contract_byte_code(Name),
             InitArgument = <<"()">>,
@@ -4634,21 +4647,12 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
                                       contract_bytearray_decode(EncodedCode),
                                       <<"init">>,
                                       InitArgument),
-            {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
-            ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                           #{vm_version  => latest_sophia_vm(),
-                             abi_version => latest_sophia_abi(),
-                             deposit     => 10,
-                             code        => EncodedCode,
-                             call_data   => EncodedInitData}, Config),
+            ContractPubKey = CreateContract(Owner, EncodedCode, EncodedInitData, 10),
 
-            UnsignedStateTx = CreateVolley(),
-            ContractPubKey = contract_id_from_create_update(OwnerPubkey,
-                                                            UnsignedStateTx),
             {ContractPubKey, EncodedCode}
           end,
-    {ResolverCPubKey, ResolverCode} = CreateContract("channel_on_chain_contract_name_resolution"),
-    {RemoteCallCPubKey, RemoteCallCode} = CreateContract("channel_remote_on_chain_contract_name_resolution"),
+    {ResolverCPubKey, ResolverCode} = CreateIdentityContract("channel_on_chain_contract_name_resolution"),
+    {RemoteCallCPubKey, RemoteCallCode} = CreateIdentityContract("channel_remote_on_chain_contract_name_resolution"),
 
     ContractCall =
         fun(Who, ContractPubKey, Code, Fun, Args, Result, Amount) ->
@@ -6233,13 +6237,13 @@ latest_sophia_vm() ->
     aect_test_utils:latest_sophia_vm_version().
 
 sc_ws_wrong_call_data(Config) ->
-    [sc_ws_contract_generic_(Role, fun sc_ws_broken_init_code_/8, Config, [])
+    [sc_ws_contract_generic_(Role, fun sc_ws_broken_init_code_/9, Config, [])
         || Role <- [initiator, responder]],
-    [sc_ws_contract_generic_(Role, fun sc_ws_broken_call_code_/8, Config, [])
+    [sc_ws_contract_generic_(Role, fun sc_ws_broken_call_code_/9, Config, [])
         || Role <- [initiator, responder]],
     ok.
 
-sc_ws_broken_init_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
+sc_ws_broken_init_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
                    _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
     %% Example broken init code will be calling not the init function
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
@@ -6261,7 +6265,7 @@ sc_ws_broken_init_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
     #{<<"reason">> := <<"contract_init_failed">>} = lift_reason(ErrPayload),
     ok.
 
-sc_ws_broken_call_code_(Owner, GetVolley, _ConnPid1, _ConnPid2,
+sc_ws_broken_call_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
                    _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
     %% Example broken call code data will be calling a function from another
     %% contract
