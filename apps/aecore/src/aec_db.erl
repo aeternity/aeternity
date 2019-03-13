@@ -761,10 +761,8 @@ assert_schema_node_name(#{persist := true}) ->
     case DbOwnerNode =:= node() of
         true -> ok;
         false ->
-            DbDir = case aeu_env:user_config([<<"chain">>, <<"db_path">>]) of
-                        undefined -> "data";
-                        {ok, Path} -> Path
-                    end,
+            {ok, DbDir} = aeu_env:find_config([<<"chain">>, <<"db_path">>],
+                                              [user_config, schema_default]),
             {DbRenameCommandLog, DbRenameCommandParams} = db_rename_command_log(DbDir, DbOwnerNode, node()),
             error_logger:error_msg("Database cannot be loaded. "
                                    "It was created for the node ~p, and current node "

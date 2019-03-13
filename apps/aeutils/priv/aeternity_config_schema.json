@@ -356,7 +356,8 @@
                 "db_path"   : {
                     "description" :
                     "The directory where the chain is persisted to disk.",
-                    "type" : "string"
+                    "type" : "string",
+                    "default" : "data"
                 },
                 "hard_forks" : {
                     "description" : "The consensus protocol versions with respective effective heights",
