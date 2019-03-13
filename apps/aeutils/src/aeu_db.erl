@@ -156,10 +156,10 @@ write_changed_log_file(OldLog, NewLog, FromNode, ToNode, {Cont, [LogEntry]}) ->
     write_changed_log_file(OldLog, NewLog, FromNode, ToNode, disk_log:chunk(OldLog, Cont, 1)).
 
 log_change_node({log_header, _, _, _, FromNode, _} = Log0, FromNode, ToNode) ->
-    %% https://github.com/erlang/otp/blob/master/lib/mnesia/src/mnesia.hrl#L99
+    %% https://github.com/erlang/otp/blob/OTP-20.3.8/lib/mnesia/src/mnesia.hrl#L98
     setelement(5, Log0, ToNode);
 log_change_node({commit, FromNode, Decision0, RamCopies, DiscCopies0, DiscOnlyCopies, Ext, SchemaOps0}, FromNode, ToNode) ->
-    %% https://github.com/erlang/otp/blob/master/lib/mnesia/src/mnesia.hrl#L106
+    %% https://github.com/erlang/otp/blob/OTP-20.3.8/lib/mnesia/src/mnesia.hrl#L102
     Decision =
         case Decision0 of
             presume_commit -> Decision0;
@@ -173,7 +173,7 @@ log_change_node({commit, FromNode, Decision0, RamCopies, DiscCopies0, DiscOnlyCo
     SchemaOps = schema_ops_change_node(SchemaOps0, FromNode, ToNode, []),
     {commit, ToNode, Decision, RamCopies, DiscCopies, DiscOnlyCopies, Ext, SchemaOps};
 log_change_node({decision, _, _, DiscNodes0, _} = Log0, FromNode, ToNode) ->
-    %% https://github.com/erlang/otp/blob/master/lib/mnesia/src/mnesia.hrl#L115
+    %% https://github.com/erlang/otp/blob/OTP-20.3.8/lib/mnesia/src/mnesia.hrl#L113-L114
     DiscNodes =
         case DiscNodes0 of
             [FromNode] -> [ToNode];
@@ -188,11 +188,11 @@ log_change_node(Other, _FromNode, _ToNode) ->
 schema_ops_change_node([], _FromNode, _ToNode, Acc) ->
     lists:reverse(Acc);
 schema_ops_change_node([{op, Name, Def} | SchemaOps0], FromNode, ToNode, Acc0) ->
-    %% e.g. https://github.com/erlang/otp/blob/master/lib/mnesia/src/mnesia_schema.erl#L1594
+    %% e.g. https://github.com/erlang/otp/blob/OTP-20.3.8/lib/mnesia/src/mnesia_schema.erl#L1593
     Acc = [{op, Name, change_node_in_tab_def(Def, FromNode, ToNode)} | Acc0],
     schema_ops_change_node(SchemaOps0, FromNode, ToNode, Acc);
 schema_ops_change_node([{op, Name, Def, Prop} | SchemaOps0], FromNode, ToNode, Acc0) ->
-    %% e.g. https://github.com/erlang/otp/blob/master/lib/mnesia/src/mnesia_schema.erl#L2197
+    %% e.g. https://github.com/erlang/otp/blob/OTP-20.3.8/lib/mnesia/src/mnesia_schema.erl#L2196
     Acc = [{op, Name, change_node_in_tab_def(Def, FromNode, ToNode), Prop} | Acc0],
     schema_ops_change_node(SchemaOps0, FromNode, ToNode, Acc);
 schema_ops_change_node([Op | Opts], FromNode, ToNode, Acc) ->
