@@ -25,6 +25,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3, format_status/2]).
 
+-define(CHAIN_TOP_CHECK_INTERVAL, 1000). % 1 second
+
 %%%===================================================================
 %%% STATE
 %%%===================================================================
@@ -47,7 +49,7 @@ payout_rewards(Height, PoolRewards, MinersRewards) ->
 %%%===================================================================
 
 init([]) ->
-    aec_events:subscribe(top_changed),
+    {ok, _} = timer:send_interval(?CHAIN_TOP_CHECK_INTERVAL, chain_top_check),
     {ok, #state{last_keyblock = aec_chain:top_key_block_hash()}}.
 
 
@@ -67,8 +69,10 @@ handle_cast(_Req, State) ->
     {noreply, State}.
 
 
-handle_info({gproc_ps_event, top_changed, #{info := Hash}}, State) ->
-    {noreply, State};
+handle_info(chain_top_check, #state{} = State) ->
+    NewKB = aec_chain:top_key_block_hash(),
+    NewKB == State#state.last_keyblock orelse aestratum_reward:keyblock(),
+    {noreply, State#state{last_keyblock = NewKB}};
 
 handle_info(_Req, State) ->
     {noreply, State}.
@@ -83,20 +87,10 @@ code_change(_OldVsn, State, _Extra) ->
 format_status(_Opt, Status) ->
     Status.
 
-%% %% micro block candidate
-%% handle_info({gproc_ps_event, new_pending_key_block, #{info := Info}}, State) ->
-%%     {noreply, handle_new_pending_key_block(Info, State)}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-
-%% handle_new_pending_key_block({HdrHash, Target}, State) ->
-%%     Info = #{header_hash => HdrHash, target => Target},
-%%     aestratum_pubsub:publish(new_block, Info),
-%%     State#state{header_hash = HdrHash, target = Target}.
-
 
 get_reward_key_header(RoundsDelay) ->
     case aec_chain:top_key_block() of
