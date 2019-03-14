@@ -10,6 +10,7 @@
 -export([start_node/1]).
 -export([stop_node/2]).
 -export([kill_node/1]).
+-export([stop_container/2]).
 -export([node_logs/1]).
 -export([get_peer_address/1]).
 -export([get_service_address/2]).
@@ -55,6 +56,9 @@ start_node(NodeState) -> NodeState.
 stop_node(NodeState, _Opts) -> NodeState.
 
 kill_node(_NodeState) ->
+    error({not_supported, ?FUNCTION_NAME}).
+
+stop_container(NodeState, _Opts) ->
     error({not_supported, ?FUNCTION_NAME}).
 
 node_logs(_NodeState) ->

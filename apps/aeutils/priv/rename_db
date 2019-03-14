@@ -1,0 +1,19 @@
+#!/usr/bin/env escript
+%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
+
+-mode(compile).
+
+main([[]]) ->
+    io:fwrite("Usage: rename_db db_dir_path [FromNode ToNode]~n"),
+    halt(1);
+main([DbDirPath]) ->
+    main([DbDirPath, "epoch@localhost", "aeternity@localhost"]);
+main([DbDirPath, FromNode, ToNode]) ->
+    io:fwrite("Starting node name renaming in the db from ~p to ~p~n", [FromNode, ToNode]),
+    case aeu_db:change_node(DbDirPath, list_to_atom(FromNode), list_to_atom(ToNode)) of
+        ok ->
+            io:fwrite("Hurray! Node name renaming in the db was successful! You're good to start your node now!~n");
+        {error, _Reason} = Error ->
+            io:fwrite("Script changing node in the db failed: ~p~n", [Error]),
+            halt(1)
+    end.

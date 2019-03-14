@@ -13,7 +13,7 @@
 
 %% API
 -export([start/2, start_link/2, stop/0]).
--export([cleanup/0, dump_logs/0, setup_nodes/1, start_node/1, stop_node/2, 
+-export([cleanup/0, dump_logs/0, setup_nodes/1, start_node/1, stop_node/2, stop_container/2,
          get_service_address/2, get_internal_address/2, get_hostname/1,
          get_config/2, get_log_path/1, get_log_paths/0, log/2]).
 
@@ -66,6 +66,9 @@ start_node(NodeName) ->
 
 stop_node(NodeName, Timeout) ->
     gen_server:call(?SERVER, {stop_node, NodeName, Timeout}, 60000).
+
+stop_container(NodeName, Timeout) ->
+    gen_server:call(?SERVER, {stop_container, NodeName, Timeout}, 60000).
 
 get_service_address(NodeName, Service) ->
     gen_server:call(?SERVER, {get_service_address, NodeName, Service}).
@@ -137,6 +140,11 @@ handle_call({stop_node, NodeName, Timeout}, _From, #{nodes := Nodes} =State) ->
     {Mod, NodeState} = maps:get(NodeName, Nodes),
     Opts = #{soft_timeout => Timeout},
     NodeState2 = Mod:stop_node(NodeState, Opts),
+    {reply, ok, State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}};
+handle_call({stop_container, NodeName, Timeout}, _From, #{nodes := Nodes} = State) ->
+    {Mod, NodeState} = maps:get(NodeName, Nodes),
+    Opts = #{soft_timeout => Timeout},
+    NodeState2 = Mod:stop_container(NodeState, Opts),
     {reply, ok, State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}};
 handle_call({kill_node, NodeName}, _From, #{nodes := Nodes} = State) ->
     {Mod, NodeState} = maps:get(NodeName, Nodes),

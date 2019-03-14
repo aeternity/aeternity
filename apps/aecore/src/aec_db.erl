@@ -674,6 +674,7 @@ check_db() ->
         Mode = backend_mode(),
         Storage = ensure_schema_storage_mode(Mode),
         ok = application:ensure_started(mnesia),
+        ok = assert_schema_node_name(Mode),
         initialize_db(Mode, Storage)
     catch
         error:Reason ->
@@ -752,6 +753,30 @@ check_table(Table, Spec, Acc) ->
         Other -> [{missing_version, Table, Other}|Acc]
     catch _:_ -> [{missing_table, Table}|Acc]
     end.
+
+assert_schema_node_name(#{persist := false}) ->
+    ok;
+assert_schema_node_name(#{persist := true}) ->
+    [DbOwnerNode] = mnesia:table_info(schema, all_nodes),
+    case DbOwnerNode =:= node() of
+        true -> ok;
+        false ->
+            {ok, DbDir} = aeu_env:find_config([<<"chain">>, <<"db_path">>],
+                                              [user_config, schema_default]),
+            {DbRenameCommandLog, DbRenameCommandParams} = db_rename_command_log(DbDir, DbOwnerNode, node()),
+            error_logger:error_msg("Database cannot be loaded. "
+                                   "It was created for the node ~p, and current node "
+                                   "is ~p (these must not differ!). "
+                                   "To fix that, please go to your node's directory "
+                                   "and run " ++ DbRenameCommandLog,
+                        [DbOwnerNode, node()] ++ DbRenameCommandParams),
+            exit(wrong_db_owner_node)
+    end.
+
+db_rename_command_log(DbDir, 'epoch@localhost', 'aeternity@localhost') ->
+    {"\"bin/aeternity rename_db ~s\"", [DbDir]};
+db_rename_command_log(DbDir, OldNode, NewNode) ->
+    {"\"bin/aeternity rename_db ~s ~p ~p\"", [DbDir, OldNode, NewNode]}.
 
 ensure_schema_storage_mode(#{persist := false}) ->
     case disc_db_exists() of

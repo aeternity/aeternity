@@ -12,6 +12,7 @@
 -export([start_node/1]).
 -export([stop_node/2]).
 -export([kill_node/1]).
+-export([stop_container/2]).
 -export([node_logs/1]).
 -export([get_peer_address/1]).
 -export([get_service_address/2]).
@@ -77,7 +78,11 @@
     % proplist of encoded addresses and balances
     genesis_accounts => [{binary(), non_neg_integer()}],
     % the path to the accounts_test.json to be used for genesis block
-    genesis => file:filename_all()
+    genesis => file:filename_all(),
+    entrypoint => [string(), ...],
+    % Mind that using custom_command cancels usage of mine_rate (default mine_rate is used).
+    % Technically mine_rate is passed as a command to Docker, which is overwritten by custom_command (if used).
+    custom_command => [string(), ...]
 }.
 
 %% State of a node
@@ -241,10 +246,14 @@ setup_node(Spec, BackendState) ->
     Context = #{aeternity_config => RootVars},
     {ok, ConfigString} = write_template(TemplateFile, ConfigFileHostPath, Context),
     Command =
-        case MineRate of
-            default -> [];
-            _ when is_integer(MineRate), MineRate > 0 ->
-                ["-aecore", "expected_mine_rate", MineRate]
+        case maps:find(custom_command, Spec) of
+            error ->
+                case MineRate of
+                    default -> [];
+                    _ when is_integer(MineRate), MineRate > 0 ->
+                        ["-aecore", "expected_mine_rate", MineRate]
+                end;
+            {ok, CustomCommand} -> CustomCommand
         end,
     LogPath = filename:join(TempDir, format("~s_logs", [Name])),
     ok = filelib:ensure_dir(filename:join(LogPath, "DUMMY")),
@@ -275,7 +284,7 @@ setup_node(Spec, BackendState) ->
                 ok = filelib:ensure_dir(filename:join(element(1, TmpDbPath), "DUMMY")),
                 TmpDbPath
         end,
-    DockerConfig = #{
+    DockerConfig0 = #{
         hostname => Hostname,
         network => Network,
         image => Image,
@@ -292,6 +301,11 @@ setup_node(Spec, BackendState) ->
             [ {rw, element(1, DbPath), element(2, DbPath)} || DbPath =/= undefined ],
         ports => PortMapping
     },
+    DockerConfig =
+        case maps:find(entrypoint, Spec) of
+            {ok, Entrypoint} -> DockerConfig0#{entrypoint => Entrypoint};
+            error -> DockerConfig0
+        end,
     #{'Id' := ContId} = aest_docker_api:create_container(Hostname, DockerConfig),
     log(NodeState, "Container ~p [~s] created", [Name, ContId]),
 
@@ -347,6 +361,25 @@ stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
 kill_node(#{container_id := ID, hostname := Name} = NodeState) ->
     aest_docker_api:kill_container(ID),
     log(NodeState, "Container ~p [~s] killed", [Name, ID]),
+    NodeState.
+
+-spec stop_container(node_state(), stop_node_options()) -> node_state().
+stop_container(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
+    case is_running(ID) of
+        false ->
+            log(NodeState, "Container ~p [~s] already not running", [Name, ID]);
+        true ->
+            Timeout = maps:get(soft_timeout, Opts, ?EPOCH_STOP_TIMEOUT),
+            case aest_docker_api:wait_stopped(ID, Timeout) of
+                timeout ->
+                    aest_docker_api:kill_container(ID);
+                ok ->
+                    log(NodeState,
+                        "Container ~p [~s] detected as stopped", [Name, ID]),
+                    ok
+            end,
+            log(NodeState, "Container ~p [~s] stopped", [Name, ID])
+    end,
     NodeState.
 
 -spec node_logs(node_state()) -> iodata().

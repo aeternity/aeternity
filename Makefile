@@ -67,7 +67,7 @@ HTTP_APP = apps/aehttp
 SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
 
 console:
-	@$(REBAR) as local shell --config config/dev.config --sname epoch
+	@$(REBAR) as local shell --config config/dev.config --sname aeternity@localhost
 
 local-build: KIND=local
 local-build: internal-build
@@ -240,6 +240,7 @@ local-system-test: internal-build
 
 system-test-deps:
 	$(MAKE) system-smoke-test-deps
+	docker pull "aeternity/aeternity:v2.1.0"
 
 system-test: KIND=system_test
 system-test: internal-build

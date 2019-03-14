@@ -283,6 +283,9 @@ create_container_object(ports, PortSpecs, Body) ->
     Body#{'HostConfig' => HostConfig2, 'ExposedPorts' => Exposed};
 create_container_object(labels, Labels, Body) ->
     Body#{'Labels' => Labels};
+create_container_object(entrypoint, Entrypoint0, Body) ->
+    Entrypoint = [json_string(E) || E <- Entrypoint0],
+    Body#{'Entrypoint' => Entrypoint};
 create_container_object(Key, _Value, _Body) ->
     error({unknown_create_param, Key}).
 

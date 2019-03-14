@@ -54,7 +54,7 @@ check_env() ->
                {[<<"mining">>, <<"autostart">>], {set_env, autostart}},
                {[<<"mining">>, <<"attempt_timeout">>], {set_env, mining_attempt_timeout}},
                {[<<"chain">>, <<"persist">>]   , {set_env, persist}},
-               {[<<"chain">>, <<"db_path">>]   , fun set_db_path/1}]).
+               {[<<"chain">>, <<"db_path">>]   , fun set_mnesia_dir/1}]).
 
 check_env(Spec) ->
     lists:foreach(
@@ -71,13 +71,10 @@ set_env({set_env, K}, V) when is_atom(K) ->
 set_env(F, V) when is_function(F, 1) ->
     F(V).
 
-set_db_path(Path) ->
-    %% TODO: possibly support a new config variable for the mnesia directory,
-    %% if we actually want to support keeping the two separate.
+set_mnesia_dir(Path) ->
     MnesiaDir = filename:join(binary_to_list(Path), "mnesia"),
     ok = filelib:ensure_dir(MnesiaDir),
-    application:set_env(mnesia, dir, MnesiaDir),
-    application:set_env(aecore, db_path, Path).
+    application:set_env(mnesia, dir, MnesiaDir).
 
 set_hwm(HWM) when is_integer(HWM) ->
     application:set_env(lager, error_logger_hwm, HWM),
