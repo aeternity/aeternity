@@ -228,7 +228,7 @@ contract_call(ABI, EncodedCode, Function, Argument) ->
 contract_decode_data(Type, Data) ->
     case aehttp_api_encoder:safe_decode(contract_bytearray, Data) of
         {error, _} ->
-            {error, <<"Data must be hex encoded">>};
+            {error, <<"Data must be a contract bytearray (\"cb_...\")">>};
         {ok, CallData} ->
             try aect_sophia:decode_data(Type, CallData) of
                 {ok, _Result} = OK -> OK;
