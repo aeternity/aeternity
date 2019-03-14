@@ -419,7 +419,7 @@ crash_syncing_worker(Config) ->
     ct:log("node connected ~p", [N2]),
 
     %% Set the same mining_rate to validate target
-    %% Only needed when chain more than 10 blocks
+    %% Only needed when chain more than 18 blocks
     ok = rpc:call(N2, application, set_env, [aecore, expected_mine_rate, 10], 5000),
 
     %% Takes re-ping + fetching blocks to get in sync with Dev1
@@ -578,6 +578,10 @@ large_msgs(Config) ->
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev2, Config),
     aecore_suite_utils:connect(N2),
+
+    %% Set the same mining_rate to validate target
+    %% Only needed when chain more than 18 blocks
+    ok = rpc:call(N2, application, set_env, [aecore, expected_mine_rate, 10], 5000),
 
     ok = rpc:call(N2, application, set_env, [aecore, block_gas_limit, 10000000]),
 
