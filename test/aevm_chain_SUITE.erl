@@ -71,8 +71,9 @@ setup_chain() ->
 
 create_contract(Owner, S) ->
     OwnerPrivKey = aect_test_utils:priv_key(Owner, S),
+    {ok, IdSource} = aect_test_utils:read_contract("contracts/identity.aes"),
     {ok, IdContract} = aect_test_utils:compile_contract("contracts/identity.aes"),
-    {ok, CallData} = aect_sophia:encode_call_data(IdContract, <<"init : () => _">>, <<>>),
+    {ok, CallData} = aect_sophia:encode_call_data(IdSource, <<"init">>, []),
 
     Overrides    = #{ code => IdContract
                     , call_data => CallData
@@ -88,14 +89,14 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
     Trees    = aect_test_utils:trees(S1),
     Height   = 1,
     Env      = aetx_env:tx_env(Height),
-    {ok, AcceptedTxs, Trees1} =
+    {ok, AcceptedTxs, Trees1, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 
 call_data(Arg) ->
-    {ok, Code} = aect_test_utils:compile_contract("contracts/identity.aes"),
-    {ok, CallData} = aect_sophia:encode_call_data(Code, <<"main : int => _">>, Arg),
+    {ok, Source} = aect_test_utils:read_contract("contracts/identity.aes"),
+    {ok, CallData} = aect_sophia:encode_call_data(Source, <<"main">>, [Arg]),
     CallData.
 
 %%%===================================================================

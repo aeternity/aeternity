@@ -58,12 +58,16 @@ init(#{parent := Parent, chan_id := ChanId, requests := Reqs}) ->
     lager:debug("started min_depth watcher for ~p", [Parent]),
     erlang:monitor(process, Parent),
     true = aec_events:subscribe(top_changed),
+    true = aec_events:subscribe({tx_event, {channel, ChanId}}),
     lager:debug("subscribed to top_changed", []),
     self() ! check_status,
     {ok, #st{parent = Parent, chan_id = ChanId, requests = Reqs}}.
 
 handle_info({gproc_ps_event, top_changed, _}, #st{} = St) ->
     {noreply, check_status(St)};
+handle_info({gproc_ps_event, {tx_event, E}, I}, St) ->
+    lager:debug("tx_event (ignored): ~p, I = ~p", [E, I]),
+    {noreply, St};
 handle_info({'DOWN', _, process, Parent, _}, #st{parent = Parent} = St) ->
     {stop, normal, St};
 handle_info(check_status, St) ->

@@ -2,7 +2,7 @@
   "swagger" : "2.0",
   "info" : {
     "description" : "This is the [Aeternity](https://www.aeternity.com/) node API.",
-    "version" : "2.0.0",
+    "version" : "2.2.0",
     "title" : "Aeternity node",
     "termsOfService" : "https://www.aeternity.com/terms/",
     "contact" : {
@@ -3649,6 +3649,12 @@
         "syncing" : {
           "type" : "boolean"
         },
+        "sync_progress" : {
+          "type" : "number",
+          "format" : "float",
+          "minimum" : 0.0,
+          "maximum" : 100.0
+        },
         "listening" : {
           "type" : "boolean"
         },
@@ -3689,6 +3695,7 @@
         "node_revision" : "node_revision",
         "solutions" : 0,
         "node_version" : "node_version",
+        "sync_progress" : 14.65813,
         "protocols" : [ {
           "effective_at_height" : 0,
           "version" : 1
@@ -3921,7 +3928,7 @@
     },
     "ContractCallObject" : {
       "type" : "object",
-      "required" : [ "caller_id", "caller_nonce", "contract_id", "gas_price", "gas_used", "height", "return_type", "return_value" ],
+      "required" : [ "caller_id", "caller_nonce", "contract_id", "gas_price", "gas_used", "height", "log", "return_type", "return_value" ],
       "properties" : {
         "caller_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3941,6 +3948,12 @@
         "gas_used" : {
           "type" : "integer"
         },
+        "log" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/Event"
+          }
+        },
         "return_value" : {
           "$ref" : "#/definitions/EncodedByteArray"
         },
@@ -3952,12 +3965,47 @@
       "example" : {
         "gas_price" : 1,
         "return_type" : "return_type",
-        "return_value" : { },
+        "return_value" : null,
+        "log" : [ {
+          "address" : null,
+          "data" : { },
+          "topics" : [ 5, 5 ]
+        }, {
+          "address" : null,
+          "data" : { },
+          "topics" : [ 5, 5 ]
+        } ],
         "caller_id" : { },
         "contract_id" : null,
         "gas_used" : 5,
         "caller_nonce" : 0,
         "height" : 6
+      }
+    },
+    "Event" : {
+      "type" : "object",
+      "required" : [ "address", "data", "topics" ],
+      "properties" : {
+        "address" : {
+          "description" : "Contract address",
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "topics" : {
+          "type" : "array",
+          "description" : "Event topics",
+          "items" : {
+            "type" : "integer"
+          }
+        },
+        "data" : {
+          "description" : "Log event data (as contract byte array).",
+          "$ref" : "#/definitions/EncodedByteArray"
+        }
+      },
+      "example" : {
+        "address" : null,
+        "data" : { },
+        "topics" : [ 5, 5 ]
       }
     },
     "Error" : {
@@ -4176,7 +4224,16 @@
           "call_obj" : {
             "gas_price" : 1,
             "return_type" : "return_type",
-            "return_value" : { },
+            "return_value" : null,
+            "log" : [ {
+              "address" : null,
+              "data" : { },
+              "topics" : [ 5, 5 ]
+            }, {
+              "address" : null,
+              "data" : { },
+              "topics" : [ 5, 5 ]
+            } ],
             "caller_id" : { },
             "contract_id" : null,
             "gas_used" : 5,
@@ -4190,7 +4247,16 @@
           "call_obj" : {
             "gas_price" : 1,
             "return_type" : "return_type",
-            "return_value" : { },
+            "return_value" : null,
+            "log" : [ {
+              "address" : null,
+              "data" : { },
+              "topics" : [ 5, 5 ]
+            }, {
+              "address" : null,
+              "data" : { },
+              "topics" : [ 5, 5 ]
+            } ],
             "caller_id" : { },
             "contract_id" : null,
             "gas_used" : 5,
@@ -4224,7 +4290,16 @@
         "call_obj" : {
           "gas_price" : 1,
           "return_type" : "return_type",
-          "return_value" : { },
+          "return_value" : null,
+          "log" : [ {
+            "address" : null,
+            "data" : { },
+            "topics" : [ 5, 5 ]
+          }, {
+            "address" : null,
+            "data" : { },
+            "topics" : [ 5, 5 ]
+          } ],
           "caller_id" : { },
           "contract_id" : null,
           "gas_used" : 5,

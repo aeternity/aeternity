@@ -1,28 +1,47 @@
-version: 2
-
-references:
-  container_config: &container_config
+version: 2.1
+executors:
+  infrastructure_container_unstable:
+    docker:
+      - image: aeternity/infrastructure:latest
+  infrastructure_container_stable:
+    docker:
+      - image: aeternity/infrastructure:stable
+  builder_container_stable:
     docker:
       - image: aeternity/builder
         user: builder
+
+references:
+  container_config: &container_config
+    resource_class: large
     working_directory: ~/aeternity
     environment:
       OTP_VERSION: 20.3.8
   container_otp_plt: &container_otp_plt _build/default/rebar3_20.3.8_plt
 
+  container2_config: &container2_config
+    docker:
+      - image: aeternity/builder:otp21
+        user: builder
+    working_directory: ~/aeternity
+    environment:
+      OTP_VERSION: 21.2.3
+  container2_otp_plt: &container2_otp_plt _build/default/rebar3_21.2.3_plt
+
   infrastructure_config_environment: &infrastructure_config_environment
+    resource_class: large
     DOCKERHUB_REPO: aeternity/aeternity
     S3_BUILDS_BUCKET: aeternity-node-builds
     S3_RELEASES_BUCKET: aeternity-node-releases
 
   infrastructure_config: &infrastructure_config
-    docker:
-      - image: aeternity/infrastructure
+    resource_class: large
     working_directory: ~/aeternity
     environment:
       <<: *infrastructure_config_environment
 
   machine_config: &machine_config
+    resource_class: large
     machine:
       docker_layer_caching: true
     working_directory: ~/aeternity
@@ -79,8 +98,7 @@ references:
 
   tag_regex: &tag_regex /^v.*$/
   stable_tag_regex: &stable_tag_regex /^v2\..*$/
-  next_tag_regex: &next_tag_regex /^v2\..*minerva.*$/
-  next_branch: &next_branch minerva
+  next_branch: &next_branch fortuna
 
   rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
   restore_rebar_cache: &restore_rebar_cache
@@ -106,6 +124,19 @@ references:
       key: *machine_build_cache_key
       paths:
         - "_build"
+
+  macos_package_cache_key: &macos_package_cache_key macos-package-cache-v1
+  restore_macos_package_cache: &restore_macos_package_cache
+    restore_cache:
+      key: *macos_package_cache_key
+
+  save_macos_package_cache: &save_macos_package_cache
+    save_cache:
+      key: *macos_package_cache_key
+      paths:
+        - "/usr/local/Homebrew"
+        - "/usr/local/opt"
+        - "/usr/local/Cellar"
 
   packages_workspace: &packages_workspace /tmp/packages
   set_package_path: &set_package_path
@@ -349,6 +380,7 @@ references:
 
 jobs:
   build:
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -367,6 +399,7 @@ jobs:
       - *fail_notification
 
   test:
+    executor: builder_container_stable
     <<: *container_config
     parallelism: 2
     environment:
@@ -374,6 +407,7 @@ jobs:
     steps: *test_steps
 
   test_roma:
+    executor: builder_container_stable
     <<: *container_config
     parallelism: 2
     environment:
@@ -381,18 +415,21 @@ jobs:
     steps: *test_steps
 
   eunit:
+    executor: builder_container_stable
     <<: *container_config
     environment:
       - MAKE_TARGET: eunit
     steps: *eunit_steps
 
   eunit_roma:
+    executor: builder_container_stable
     <<: *container_config
     environment:
       - MAKE_TARGET: eunit-roma
     steps: *eunit_steps
 
   aevm_tests:
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -405,6 +442,7 @@ jobs:
       - *fail_notification
 
   static_analysis:
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -432,7 +470,33 @@ jobs:
           command: test "${OTP_VERSION:?}" = $(cat $(erl -noinput -eval 'io:format("~s", [filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])]), init:stop().'))
       - *fail_notification
 
+  extra_static_analysis:
+    <<: *container2_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - *restore_build_cache
+      - restore_cache:
+          keys:
+            - new-dialyzer-cache-v2-{{ .Branch }}-{{ .Revision }}
+            - new-dialyzer-cache-v2-{{ .Branch }}-
+            - new-dialyzer-cache-v2-
+      - run:
+          name: Update dialyzer PLT
+          command: make dialyzer-install
+      - save_cache:
+          key: new-dialyzer-cache-v2-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - *container2_otp_plt
+      - run: make dialyzer
+      - run:
+          name: Check OTP version (for effective CI caching)
+          # How to retrieve OTP version in installed OTP development system: http://erlang.org/doc/system_principles/versions.html
+          command: test "${OTP_VERSION:?}" = $(cat $(erl -noinput -eval 'io:format("~s", [filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])]), init:stop().'))
+      - *fail_notification
+
   rebar_lock_check:
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -440,6 +504,7 @@ jobs:
       - *fail_notification
 
   linux_package:
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -460,6 +525,7 @@ jobs:
       - *fail_notification
 
   upload_build_artifacts:
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     steps:
       - checkout
@@ -482,6 +548,7 @@ jobs:
       - *fail_notification
 
   deploy_api_docs:
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -498,12 +565,17 @@ jobs:
     working_directory: ~/aeternity
     steps:
       - checkout
+      - *restore_macos_package_cache
       - run:
           name: Install required tools
           command: |
             brew update
             brew install libsodium
+            brew link libsodium
             brew install file://`pwd`/deployment/homebrew/erlang.rb
+            brew link erlang
+            for erlang_dep in $(brew deps erlang); do brew link $erlang_dep; done
+      - *save_macos_package_cache
       - *set_package_path
       - *build_package
       - *test_package
@@ -521,6 +593,7 @@ jobs:
       - *fail_notification
 
   uat_tests:
+    executor: builder_container_stable
     <<: *container_config
     steps:
       - checkout
@@ -575,6 +648,7 @@ jobs:
       - *fail_notification
 
   docker_push_tag:
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     steps:
       - checkout
@@ -589,6 +663,7 @@ jobs:
             docker push ${DOCKERHUB_REPO:?}:latest
 
   uat_chain_snapshot:
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     environment:
       - BACKUP_ENV: uat
@@ -599,6 +674,7 @@ jobs:
           path: *chain_snapshots
 
   main_chain_snapshot:
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     environment:
       - BACKUP_ENV: main
@@ -663,6 +739,7 @@ jobs:
           path: *system_test_host_logs
 
   deploy_integration:
+    executor: infrastructure_container_unstable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: integration
@@ -670,18 +747,21 @@ jobs:
     steps: *deploy_steps
 
   deploy_dev1:
+    executor: infrastructure_container_unstable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: dev1
     steps: *deploy_steps
 
   deploy_dev2:
+    executor: infrastructure_container_unstable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: dev2
     steps: *deploy_steps
 
   deploy_uat_blue:
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: uat
@@ -690,6 +770,7 @@ jobs:
     steps: *deploy_steps
 
   deploy_uat_green:
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: uat
@@ -698,6 +779,7 @@ jobs:
     steps: *deploy_steps
 
   deploy_next:
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: next
@@ -705,6 +787,7 @@ jobs:
     steps: *deploy_steps
 
   deploy_unstable:
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: unstable
@@ -712,6 +795,7 @@ jobs:
     steps: *deploy_steps
 
   upload_packages_osx:
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     <<: *upload_package
     environment:
@@ -719,6 +803,7 @@ jobs:
       PKG_TARGET_OS: macos
 
   upload_packages_linux:
+    executor: infrastructure_container_stable
     <<: *infrastructure_config
     <<: *upload_package
     environment:
@@ -858,6 +943,16 @@ workflows:
             tags:
               only: *tag_regex
 
+      - extra_static_analysis:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
       - rebar_lock_check:
           requires:
             - build
@@ -884,6 +979,8 @@ workflows:
           filters:
             branches:
               ignore:
+                - env/dev1
+                - env/dev2
                 - system-tests
             tags:
               only: *tag_regex
@@ -1056,7 +1153,7 @@ workflows:
                 - master
     jobs:
       - uat_chain_snapshot
-      - main_chain_snapshot
+#      - main_chain_snapshot
 
   system_tests:
     triggers:

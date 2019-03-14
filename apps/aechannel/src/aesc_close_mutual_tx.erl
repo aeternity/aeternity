@@ -28,6 +28,12 @@
          responder_amount_final/1
         ]).
 
+-ifdef(TEST).
+-export([set_channel_id/2]).
+-endif.
+
+-export([channel_pubkey/1]).
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -105,7 +111,8 @@ check(#channel_close_mutual_tx{}, Trees,_Env) ->
     %% Checks in process/3
     {ok, Trees}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) ->
+                     {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_close_mutual_tx{from_id = FromId} = Tx, Trees, Env) ->
     FromPubkey = aeser_id:specialize(FromId, account),
     Instructions =
@@ -205,4 +212,12 @@ responder_amount_final(#channel_close_mutual_tx{responder_amount_final  = Amount
 -spec version() -> non_neg_integer().
 version() ->
     ?CHANNEL_CLOSE_MUTUAL_TX_VSN.
+
+%%%===================================================================
+%%% Test setters 
+%%%===================================================================
+-dialyzer({nowarn_function, set_channel_id/2}).
+set_channel_id(Tx, ChannelId) ->
+    channel = aeser_id:specialize_type(ChannelId),
+    Tx#channel_close_mutual_tx{channel_id = ChannelId}.
 

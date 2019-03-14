@@ -442,15 +442,14 @@ create_same_account(_Cfg) ->
     %% Test channel with oneself is not allowed
     TxSpecI = aesc_test_utils:create_tx_spec(
                 PubKey, PubKey,
-                #{initiator_amount => 100,
-                  channel_reserve => 2,
-                  fee => 20000}, S),
+                #{}, S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
     {error, initiator_is_responder} = aetx:process(TxI, Trees, Env),
     ok.
 
 create_insufficient_funds(_Cfg) ->
-    {Loaded, NotLoaded, S} = create_loaded_accounts(100, 1),
+    {Loaded, NotLoaded, S} = create_loaded_accounts(60000 * aec_test_utils:min_gas_price(),
+                                                    1),
     Trees = aesc_test_utils:trees(S),
     Height = 1,
     Env = aetx_env:tx_env(Height),
@@ -458,16 +457,16 @@ create_insufficient_funds(_Cfg) ->
     %% Test insufficient initiator funds
     TxSpecI = aesc_test_utils:create_tx_spec(
                 NotLoaded, Loaded,
-                #{initiator_amount => 1,
-                  fee => 50000}, S),
+                #{initiator_amount => 2,
+                  fee => 50000 * aec_test_utils:min_gas_price()}, S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
     {error, insufficient_funds} = aetx:process(TxI, Trees, Env),
 
     %% Test insufficient responder funds
     TxSpecR = aesc_test_utils:create_tx_spec(
                 Loaded, NotLoaded,
-                #{initiator_amount => 1,
-                  fee => 50000}, S),
+                #{responder_amount => 2,
+                  fee => 50000 * aec_test_utils:min_gas_price()}, S),
     {ok, TxR} = aesc_create_tx:new(TxSpecR),
     {error, insufficient_funds} = aetx:process(TxR, Trees, Env),
 
@@ -475,26 +474,25 @@ create_insufficient_funds(_Cfg) ->
 
 
 create_insufficient_funds_reserve(_Cfg) ->
-    {Loaded, NotLoaded, S} = create_loaded_accounts(100000, 100000),
+    {Loaded1, Loaded2, S} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
+                                                   100000 * aec_test_utils:min_gas_price()),
     Trees = aesc_test_utils:trees(S),
     Height = 1,
     Env = aetx_env:tx_env(Height),
 
     %% Test initiator funds lower than channel reserve
     TxSpecI = aesc_test_utils:create_tx_spec(
-                NotLoaded, Loaded,
+                Loaded1, Loaded2,
                 #{initiator_amount => 1,
-                  channel_reserve => 2,
-                  fee => 50000}, S),
+                  channel_reserve => 2}, S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
     {error, insufficient_initiator_amount} = aetx:process(TxI, Trees, Env),
 
     %% Test responder funds lower than channel reserve
     TxSpecR = aesc_test_utils:create_tx_spec(
-                Loaded, NotLoaded,
+                Loaded1, Loaded2,
                 #{responder_amount => 1,
-                  channel_reserve => 2,
-                  fee => 50000}, S),
+                  channel_reserve => 2}, S),
     {ok, TxR} = aesc_create_tx:new(TxSpecR),
     {error, insufficient_responder_amount} = aetx:process(TxR, Trees, Env),
 
@@ -510,7 +508,8 @@ create_loaded_accounts(FAmt, SAmt) ->
     {First, Second, S3}.
 
 create_wrong_nonce(_Cfg) ->
-    {Initiator, Responder, S0} = create_loaded_accounts(100000, 100000),
+    {Initiator, Responder, S0} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
+                                                        100000 * aec_test_utils:min_gas_price()),
     Nonce = 42,
     S = aesc_test_utils:set_account_nonce(Initiator, Nonce, S0),
     Trees = aesc_test_utils:trees(S),
@@ -672,8 +671,8 @@ close_solo_unknown_from(Cfg) ->
 
 %% Test wrong amounts (different than channel balance)
 close_solo_wrong_amounts(Cfg) ->
-    IAmt = 35,
-    RAmt = 42,
+    IAmt = 35 * aec_test_utils:min_gas_price(),
+    RAmt = 42 * aec_test_utils:min_gas_price(),
     Test =
         fun(Closer, ICloseAmt, RCloseAmt) ->
             run(#{cfg => Cfg, initiator_amount => IAmt, responder_amount => RAmt},
@@ -728,8 +727,8 @@ close_solo_delegate_not_allowed(Cfg) ->
 %%%===================================================================
 
 close_mutual(Cfg) ->
-    StartIAmt = 100000,
-    StartRAmt = 100000,
+    StartIAmt = 100000 * aec_test_utils:min_gas_price(),
+    StartRAmt = 100000 * aec_test_utils:min_gas_price(),
     ChannelAmount = StartIAmt + StartRAmt,
 
     Test =
@@ -751,7 +750,7 @@ close_mutual(Cfg) ->
                     ?assertEqual(RAmt, R1 - R0)  % assert responder delta
                 end])
         end,
-    Fee = 50000,
+    Fee = 50000 * aec_test_utils:min_gas_price(),
 
     CorrectAmt = fun(IAmt) -> ChannelAmount - Fee - IAmt end,
     %% normal cases
@@ -776,8 +775,8 @@ close_mutual(Cfg) ->
     ok.
 
 close_mutual_wrong_amounts(Cfg) ->
-    StartIAmt = 100000,
-    StartRAmt = 100000,
+    StartIAmt = 100000 * aec_test_utils:min_gas_price(),
+    StartRAmt = 100000 * aec_test_utils:min_gas_price(),
 
     Test =
         fun(IAmt, RAmt, Fee, Err) ->
@@ -790,14 +789,18 @@ close_mutual_wrong_amounts(Cfg) ->
         end,
 
     % sum too big
-    Test(100000, 100000, 50000, wrong_amounts),
-    % nonce too small
-    Test(50, 50, 0, too_low_fee),
+    Test(100000 * aec_test_utils:min_gas_price(),
+         100000 * aec_test_utils:min_gas_price(),
+         50000 * aec_test_utils:min_gas_price(), 
+         wrong_amounts),
+    % fee too small
+    Test(50 * aec_test_utils:min_gas_price(),
+         50 * aec_test_utils:min_gas_price(), 0, too_low_fee),
     ok.
 
 close_mutual_wrong_nonce(Cfg) ->
-    StartIAmt = 100000,
-    StartRAmt = 100000,
+    StartIAmt = 100000 * aec_test_utils:min_gas_price(),
+    StartRAmt = 100000 * aec_test_utils:min_gas_price(),
     InitiatorNonce = 42,
 
     Test =
@@ -820,8 +823,8 @@ close_mutual_wrong_nonce(Cfg) ->
 
 
 close_mutual_missing_channel(Cfg) ->
-    StartIAmt = 100000,
-    StartRAmt = 100000,
+    StartIAmt = 100000 * aec_test_utils:min_gas_price(),
+    StartRAmt = 100000 * aec_test_utils:min_gas_price(),
     ChannelHashSize = aeser_api_encoder:byte_size_for_type(channel),
     FakeChannelPubKey = <<42:ChannelHashSize/unit:8>>,
 
@@ -834,8 +837,8 @@ close_mutual_missing_channel(Cfg) ->
     ok.
 
 close_mutual_already_closing(Cfg) ->
-    StartIAmt = 100000,
-    StartRAmt = 100000,
+    StartIAmt = 100000 * aec_test_utils:min_gas_price(),
+    StartRAmt = 100000 * aec_test_utils:min_gas_price(),
 
     Test =
         fun(Closer) ->
@@ -930,7 +933,8 @@ slash_by_delegate(Cfg) ->
         fun(Closer, Round0, Round1) ->
             run(#{cfg => Cfg},
                [fun(Props) ->
-                    {Delegate1, Delegate2, S} = create_loaded_accounts(100000, 100000),
+                    {Delegate1, Delegate2, S} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
+                                                                       100000 * aec_test_utils:min_gas_price()),
                     Props#{cfg => [{state, S} | Cfg],
                            delegate_ids => [aeser_id:create(account, Delegate1),
                                             aeser_id:create(account, Delegate2)]}
@@ -1032,7 +1036,8 @@ slash_not_participant(Cfg) ->
                  positive(fun close_solo_/2),
                  fun(#{state := S0} = Props) ->
                     {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                    S1 = aesc_test_utils:set_account_balance(NewAcc, 500000, S),
+                    S1 = aesc_test_utils:set_account_balance(NewAcc,
+                                                             500000 * aec_test_utils:min_gas_price(), S),
                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
                     Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                  end,
@@ -1165,7 +1170,7 @@ slash_missing_channel(Cfg) ->
 
 deposit(Cfg) ->
     Amount = 10,
-    Fee = 50000,
+    Fee = 50000 * aec_test_utils:min_gas_price(),
     Test =
         fun(Depositor, RoleKey) ->
             run(#{cfg => Cfg},
@@ -1220,40 +1225,40 @@ deposit_insufficent_funds(Cfg) ->
         end,
     lists:foreach(
         fun(Depositor) ->
-            Test(Depositor, 12, 50000, insufficient_funds),
-            Test(Depositor, 10, 50000, insufficient_funds),
+            Test(Depositor, 12, 50000 * aec_test_utils:min_gas_price(), insufficient_funds),
+            Test(Depositor, 10, 50000 * aec_test_utils:min_gas_price(), insufficient_funds),
             Test(Depositor, 10, 0, too_low_fee)
         end,
         ?ROLES),
     ok.
 
 deposit_wrong_nonce(Cfg) ->
-    test_both_wrong_nonce(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
+    test_both_wrong_nonce(Cfg, fun deposit_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 deposit_missing_channel(Cfg) ->
-    test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
+    test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 deposit_closing(Cfg) ->
-    test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
+    test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 deposit_older_round(Cfg) ->
-    test_both_old_round(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}, old_round).
+    test_both_old_round(Cfg, fun deposit_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}, old_round).
 
 deposit_can_not_replace_create(Cfg) ->
-    test_both_can_not_replace_create(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
+    test_both_can_not_replace_create(Cfg, fun deposit_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 deposit_not_participant(Cfg) ->
-    test_not_participant(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
+    test_not_participant(Cfg, fun deposit_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 deposit_delegate_not_allowed(Cfg) ->
-    test_delegate_not_allowed(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
+    test_delegate_not_allowed(Cfg, fun deposit_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 %%%===================================================================
 %%% Withdraw
 %%%===================================================================
 withdraw(Cfg) ->
     Amount = 10,
-    Fee = 50000,
+    Fee = 50000 * aec_test_utils:min_gas_price(),
     Test =
         fun(Depositor, RoleKey) ->
             run(#{cfg => Cfg},
@@ -1306,33 +1311,33 @@ withdraw_insufficent_funds(Cfg) ->
         end,
     lists:foreach(
         fun(Withdrawer) ->
-            Test(Withdrawer, 11, 50000, not_enough_channel_funds),
+            Test(Withdrawer, 11, 50000 * aec_test_utils:min_gas_price(), not_enough_channel_funds),
             % keep at least 2*channel_reserve in the channel
-            Test(Withdrawer, 9, 50000, not_enough_channel_funds)
+            Test(Withdrawer, 9, 50000 * aec_test_utils:min_gas_price(), not_enough_channel_funds)
         end,
         ?ROLES),
     ok.
 
 withdraw_wrong_nonce(Cfg) ->
-    test_both_wrong_nonce(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
+    test_both_wrong_nonce(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 withdraw_missing_channel(Cfg) ->
-    test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
+    test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 withdraw_closing(Cfg) ->
-    test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
+    test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 withdraw_older_round(Cfg) ->
-    test_both_old_round(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}, old_round).
+    test_both_old_round(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}, old_round).
 
 withdraw_can_not_replace_create(Cfg) ->
-    test_both_can_not_replace_create(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
+    test_both_can_not_replace_create(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 withdraw_not_participant(Cfg) ->
-    test_not_participant(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
+    test_not_participant(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 withdraw_delegate_not_allowed(Cfg) ->
-    test_delegate_not_allowed(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
+    test_delegate_not_allowed(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000 * aec_test_utils:min_gas_price()}).
 
 get_balances(K1, K2, S) ->
     {get_balance(K1, S), get_balance(K2, S)}.
@@ -1439,14 +1444,15 @@ settle_wrong_amounts(Cfg) ->
                 ])
         end,
     % settle tx amounts must be equal to the last on-chain tx
+    CorrectFee = 50000 * aec_test_utils:min_gas_price(),
     ActualTest =
         fun(Closer, Setler) ->
             % someone has more
-            Test(Closer, Setler, CloseAmtI + 1, CloseAmtR, 50000, insufficient_channel_funds),
-            Test(Closer, Setler, CloseAmtI, CloseAmtR + 1, 50000, insufficient_channel_funds),
+            Test(Closer, Setler, CloseAmtI + 1, CloseAmtR, CorrectFee, insufficient_channel_funds),
+            Test(Closer, Setler, CloseAmtI, CloseAmtR + 1, CorrectFee, insufficient_channel_funds),
             % someone has less
-            Test(Closer, Setler, CloseAmtI - 1, CloseAmtR, 50000, wrong_amt),
-            Test(Closer, Setler, CloseAmtI, CloseAmtR - 1, 50000, wrong_amt),
+            Test(Closer, Setler, CloseAmtI - 1, CloseAmtR, CorrectFee, wrong_amt),
+            Test(Closer, Setler, CloseAmtI, CloseAmtR - 1, CorrectFee, wrong_amt),
 
             % fee
             Test(Closer, Setler, CloseAmtI, CloseAmtR, 0, too_low_fee)
@@ -1566,7 +1572,8 @@ settle_not_participant(Cfg) ->
                 set_prop(height, 21),
                 fun(#{state := S0} = Props) ->
                     {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                    S1 = aesc_test_utils:set_account_balance(NewAcc, 100000, S),
+                    S1 = aesc_test_utils:set_account_balance(NewAcc,
+                                                             100000 * aec_test_utils:min_gas_price(), S),
                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
                     Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                 end,
@@ -1580,7 +1587,8 @@ settle_delegate_not_allowed(Cfg) ->
         fun(Closer) ->
             run(#{cfg => Cfg},
               [fun(Props) ->
-                    {Delegate1, Delegate2, S} = create_loaded_accounts(100000, 100000),
+                    {Delegate1, Delegate2, S} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
+                                                                       100000 * aec_test_utils:min_gas_price()),
                     Props#{cfg => [{state, S} | Cfg],
                             delegate_ids => [aeser_id:create(account, Delegate1),
                                              aeser_id:create(account, Delegate2)]}
@@ -1636,7 +1644,7 @@ snapshot_solo(Cfg) ->
                 set_from(PreActor),
                 set_prop(round, OldRound),
                 set_prop(amount, 1),
-                set_prop(fee, 50000),
+                set_prop(fee, 50000 * aec_test_utils:min_gas_price()),
                 set_prop(state_hash, OldStateHash),
                 positive(Action),
                 set_from(Snapshoter),
@@ -1664,15 +1672,15 @@ snapshot_solo(Cfg) ->
 
 % no one can post a snapshot_tx to a closed channel
 snapshot_closed_channel(Cfg) ->
-    IAmt = 100000,
-    RAmt = 100000,
+    IAmt = 100000 * aec_test_utils:min_gas_price(),
+    RAmt = 100000 * aec_test_utils:min_gas_price(),
 
     Test =
         fun(Snapshoter) ->
             run(#{cfg => Cfg, initiator_amount => IAmt, responder_amount => RAmt},
                [positive(fun create_channel_/2),
                 set_from(initiator),
-                set_prop(fee, 50000),
+                set_prop(fee, 50000 * aec_test_utils:min_gas_price()),
                 prepare_balances_for_mutual_close(),
                 positive(fun close_mutual_/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
@@ -1732,8 +1740,8 @@ fp_after_create(Cfg) ->
     ContractRound = 10,
     AfterCreate =
         fun(Owner, Forcer, GasPrice, GasLimit) ->
-            run(#{cfg => Cfg, initiator_amount => 10000000,
-                              responder_amount => 10000000,
+            run(#{cfg => Cfg, initiator_amount => 10000000 * aec_test_utils:min_gas_price(),
+                              responder_amount => 10000000 * aec_test_utils:min_gas_price(),
                  channel_reserve => 1},
                [positive(fun create_channel_/2),
                 set_prop(gas_price, GasPrice),
@@ -1748,9 +1756,9 @@ fp_after_create(Cfg) ->
                 || Owner  <- ?ROLES,
                    Forcer <- ?ROLES]
         end,
-    Test(1, 100000),
-    Test(2, 100000),
-    Test(3, 100000),
+    Test(1 * aec_test_utils:min_gas_price(), 100000 * aec_test_utils:min_gas_price()),
+    Test(2 * aec_test_utils:min_gas_price(), 100000 * aec_test_utils:min_gas_price()),
+    Test(3 * aec_test_utils:min_gas_price(), 100000 * aec_test_utils:min_gas_price()),
     ok.
 
 fp_after_deposit(Cfg) ->
@@ -2477,8 +2485,8 @@ fp_use_onchain_oracle(Cfg) ->
     QueryFee = 50000,
     CallOnChain =
         fun(Owner, Forcer) ->
-            IAmt0 = 10000000,
-            RAmt0 = 10000000,
+            IAmt0 = 10000000 * aec_test_utils:min_gas_price(),
+            RAmt0 = 10000000 * aec_test_utils:min_gas_price(),
             ContractCreateRound = 10,
             run(#{cfg => Cfg, initiator_amount => IAmt0,
                               responder_amount => RAmt0,
@@ -2496,24 +2504,22 @@ fp_use_onchain_oracle(Cfg) ->
                 create_trees_if_not_present(),
                 set_from(Owner, owner, owner_privkey),
                 fun(#{oracle := Oracle} = Props) ->
-                    EncodedOracleId = aeu_hex:hexstring_encode(Oracle),
+                    EncodedOracleId = address_encode(Oracle),
                     (create_contract_in_trees(_Round    = ContractCreateRound,
                                              _Contract = "channel_on_chain_contract_oracle",
-                                             _InitArgs = <<"(",EncodedOracleId/binary, ", \"", Question/binary, "\")">>,
+                                             _InitArgs = [EncodedOracleId, quote(Question)],
                                              _Deposit  = 2))(Props)
                 end,
 
                 % place some calls to that contract
-                force_call_contract_first(Forcer, <<"place_bet">>, <<"\"Lorem\"">>,
+                force_call_contract_first(Forcer, <<"place_bet">>, [<<"\"Lorem\"">>],
                                           FPRound),
-                force_call_contract(Forcer, <<"place_bet">>, <<"\"Ipsum\"">>),
+                force_call_contract(Forcer, <<"place_bet">>, [<<"\"Ipsum\"">>]),
 
                 % try resolving a contract with wrong query id
                 fun(Props) ->
-                    EncodedQueryId = aeu_hex:hexstring_encode(<<1234:42/unit:8>>),
-                    (force_call_contract(Forcer, <<"resolve">>,
-                                         <<"(", EncodedQueryId/binary,
-                                           ")">>))(Props)
+                    EncodedQueryId = address_encode(<<1234:12/unit:8>>),
+                    (force_call_contract(Forcer, <<"resolve">>, [EncodedQueryId]))(Props)
                 end,
                 assert_last_channel_result(<<"no response">>, string),
 
@@ -2527,38 +2533,37 @@ fp_use_onchain_oracle(Cfg) ->
                     Props
                 end,
 
+                fun(#{query_id := QueryId} = Props) ->
+                    EncodedQueryId = address_encode(QueryId),
+                    (force_call_contract(Forcer, <<"get_question">>, [EncodedQueryId]))(Props)
+                end,
+                assert_last_channel_result(Question, string),
+
                 % there is currently no bet for the correct answer, try anyway
                 fun(#{query_id := QueryId} = Props) ->
-                    EncodedQueryId = aeu_hex:hexstring_encode(QueryId),
-                    (force_call_contract(Forcer, <<"resolve">>,
-                                         <<"(", EncodedQueryId/binary,
-                                           ")">>))(Props)
+                    EncodedQueryId = address_encode(QueryId),
+                    (force_call_contract(Forcer, <<"resolve">>, [EncodedQueryId]))(Props)
                 end,
                 assert_last_channel_result(<<"no winning bet">>, string),
 
                 % place a winnning bet
-                force_call_contract(Forcer, <<"place_bet">>, <<"\"", Answer/binary,"\"">>),
+                force_call_contract(Forcer, <<"place_bet">>, [quote(Answer)]),
                 fun(#{query_id := QueryId} = Props) ->
-                    EncodedQueryId = aeu_hex:hexstring_encode(QueryId),
-                    (force_call_contract(Forcer, <<"resolve">>,
-                                         <<"(", EncodedQueryId/binary,
-                                           ")">>))(Props)
+                    EncodedQueryId = address_encode(QueryId),
+                    (force_call_contract(Forcer, <<"resolve">>, [EncodedQueryId]))(Props)
                 end,
                 assert_last_channel_result(<<"ok">>, string),
 
                 % verify that Oracle.get_question works
                 fun(#{query_id := QueryId} = Props) ->
-                    EncodedQueryId = aeu_hex:hexstring_encode(QueryId),
-                    (force_call_contract(Forcer, <<"get_question">>,
-                                         <<"(", EncodedQueryId/binary,
-                                           ")">>))(Props)
+                    EncodedQueryId = address_encode(QueryId),
+                    (force_call_contract(Forcer, <<"get_question">>, [EncodedQueryId]))(Props)
                 end,
                 assert_last_channel_result(Question, string),
 
                 % verify that Oracle.query_fee works
-                fun(#{query_id := QueryId} = Props) ->
-                    (force_call_contract(Forcer, <<"query_fee">>,
-                                         <<"()">>))(Props)
+                fun(#{query_id := _QueryId} = Props) ->
+                    (force_call_contract(Forcer, <<"query_fee">>, []))(Props)
                 end,
                 assert_last_channel_result(QueryFee, word)
                ])
@@ -2576,9 +2581,8 @@ fp_use_onchain_name_resolution(Cfg) ->
         fun(Forcer, K, Found) when is_binary(K) andalso is_boolean(Found) ->
             fun(Props) ->
               run(Props,
-                  [force_call_contract(Forcer, <<"can_resolve">>,
-                                    <<"(\"", Name/binary, "\",\"", K/binary, "\")">>),
-                  assert_last_channel_result(Found, bool)])
+                  [force_call_contract(Forcer, <<"can_resolve">>, [quote(Name), quote(K)]),
+                   assert_last_channel_result(Found, bool)])
             end
         end,
 
@@ -2599,11 +2603,9 @@ fp_use_onchain_name_resolution(Cfg) ->
                 set_from(Owner, owner, owner_privkey),
                 create_contract_in_trees(_Round    = ContractCreateRound,
                                          _Contract = "channel_on_chain_contract_name_resolution",
-                                         _InitArgs = <<"()">>,
+                                         _InitArgs = [],
                                          _Deposit  = 2),
-                force_call_contract_first(Forcer, <<"can_resolve">>,
-                                          <<"(\"", Name/binary, "\",\"oracle\")">>,
-                                          FPRound),
+                force_call_contract_first(Forcer, <<"can_resolve">>, [quote(Name), quote(<<"oracle">>)], FPRound),
                 assert_last_channel_result(false, bool),
                 register_name(Name,
                               [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)},
@@ -2626,7 +2628,7 @@ fp_use_onchain_enviroment(Cfg) ->
         fun(Forcer, Fun, RType, R) ->
             fun(Props) ->
               run(Props,
-                  [force_call_contract(Forcer, Fun, <<"()">>),
+                  [force_call_contract(Forcer, Fun, []),
                   assert_last_channel_result(R, RType)])
             end
         end,
@@ -2656,11 +2658,9 @@ fp_use_onchain_enviroment(Cfg) ->
                 set_from(Owner, owner, owner_privkey),
                 create_contract_in_trees(_Round    = ContractCreateRound,
                                          _Contract = "channel_env",
-                                         _InitArgs = <<"()">>,
+                                         _InitArgs = [],
                                          _Deposit  = 2),
-                force_call_contract_first(Forcer, <<"block_height">>,
-                                          <<"()">>,
-                                          FPRound),
+                force_call_contract_first(Forcer, <<"block_height">>, [], FPRound),
                 fun(#{height := H} = Props) ->
                     (assert_last_channel_result(H, word))(Props)
                 end,
@@ -2687,19 +2687,20 @@ fp_use_remote_call(Cfg) ->
             fun(Props) ->
                 Bin = integer_to_binary(Int),
                 RemoteContract = maps:get(remote_contract, Props),
-                Address = aeu_hex:hexstring_encode(RemoteContract),
-                Args = <<"(", Address/binary, ", ", Bin/binary, ")">>,
+                Address = address_encode(RemoteContract),
+                Args = [Address, Bin],
                 (force_call_contract(Forcer, <<"call">>, Args))(Props)
             end
         end,
-    PushContractId =
-        fun(Key) ->
-            rename_prop(contract_id, Key, keep_old)
-        end,
-    PopContractId =
-        fun(Key) ->
-            rename_prop(Key, contract_id, keep_old)
-        end,
+
+    Save = fun(Key1, Key2) -> rename_prop(Key1, Key2, keep_old) end,
+    Load = fun(Key1, Key2) -> Save(Key2, Key1) end,
+    SaveContract = fun(Key) ->
+                       [Save(contract_id, Key), Save(contract_file, {Key, file})]
+                   end,
+    LoadContract = fun(Key) ->
+                       [Load(contract_id, Key), Load(contract_file, {Key, file})]
+                   end,
 
     CallOnChain =
         fun(Owner, Forcer) ->
@@ -2719,24 +2720,24 @@ fp_use_remote_call(Cfg) ->
                 set_from(Owner, owner, owner_privkey),
                 create_contract_in_trees(_Round    = ContractCreateRound,
                                          _Contract = "identity",
-                                         _InitArgs = <<"()">>,
+                                         _InitArgs = [],
                                          _Deposit  = 2),
-                PushContractId(remote_contract),
+                SaveContract(remote_contract),
                 fun(#{contract_id := RemoteContract} = Props) ->
                     Props#{remote_contract => RemoteContract}
                 end,
                 % create the second contract
                 create_contract_in_trees(_Round1    = ContractCreateRound + 10,
                                          _Contract2 = "remote_call",
-                                         _InitArgs2 = <<"()">>,
+                                         _InitArgs2 = [],
                                          _Deposit2  = 2),
-                PushContractId(second_contract),
-                PopContractId(remote_contract),
-                force_call_contract_first(Forcer, <<"main">>, <<"(42)">>,
+                SaveContract(second_contract),
+                LoadContract(remote_contract),
+                force_call_contract_first(Forcer, <<"main">>, [<<"42">>],
                                           FPRound),
                 assert_last_channel_result(42, word),% it works
 
-                PopContractId(second_contract),
+                LoadContract(second_contract),
                 %% contract has a hardcoded expectation for `value = 10` for
                 %% the remote call
                 %% this means that the contract must have at least 10 tokens
@@ -2760,8 +2761,8 @@ fp_use_onchain_contract(Cfg) ->
         fun(Forcer, ContractHandle) ->
             fun(Props) ->
                 RemoteContract = maps:get(ContractHandle, Props),
-                Address = aeu_hex:hexstring_encode(RemoteContract),
-                Args = <<"(", Address/binary, ")">>,
+                Address = address_encode(RemoteContract),
+                Args = [Address],
                 run(Props,
                     [ force_call_contract(Forcer, <<"increment">>, Args),
                       force_call_contract(Forcer, <<"get">>, Args)
@@ -2786,67 +2787,7 @@ fp_use_onchain_contract(Cfg) ->
                               responder_amount => RAmt0,
                   lock_period => LockPeriod,
                   channel_reserve => 1},
-               [positive(fun create_channel_/2),
-                set_prop(height, FPHeight0),
-
-                % create off-chain contract that is going to be used in the
-                % remote call later
-                create_trees_if_not_present(),
-                set_from(Owner, owner, owner_privkey),
-                create_contract_in_trees(_Round    = ContractCreateRound,
-                                         _Contract = "counter",
-                                         _InitArgs = <<"(42)">>,
-                                         _Deposit  = 2),
-                PushContractId(remote_contract),
-                fun(#{contract_id := RemoteContract} = Props) ->
-                    Props#{remote_contract => RemoteContract}
-                end,
-                % create the second contract
-                create_contract_in_trees(_Round1    = ContractCreateRound + 10,
-                                         _Contract2 = "remote_call",
-                                         _InitArgs2 = <<"()">>,
-                                         _Deposit2  = 2),
-                PushContractId(second_contract),
-                create_contract_in_onchain_trees(_OnchainContract = "counter",
-                                                 _OnchainCInitArgs = <<"(42)">>,
-                                                 _OnchainDeposit  = 2),
-                PushContractId(onchain_contract),
-                PopContractId(remote_contract),
-                force_call_contract_first(Forcer, <<"tick">>, <<"()">>,
-                                          FPRound),
-                force_call_contract(Forcer, <<"get">>, <<"()">>),
-                assert_last_channel_result(43, word),% it works
-
-                PopContractId(second_contract),
-                set_prop(call_deposit, 2),
-                RemoteCall(Forcer, remote_contract),
-                assert_last_channel_result(44, word), % it works remote
-                fun(Props) ->
-                    RemoteContract = maps:get(onchain_contract, Props),
-                    Address = aeu_hex:hexstring_encode(RemoteContract),
-                    Args = <<"(", Address/binary, ")">>,
-                    run(Props#{check_not_all_gas_used => false},
-                        %% force progress succededs but all gas is consumed
-                        %% because on-chain contract is not reachable
-                        [ force_call_contract(Forcer, <<"increment">>, Args)])
-                end,
-                fun(#{state := S,
-                      signed_force_progress := SignedForceProgressTx,
-                      solo_payload := #{update := Update,
-                                        round  := Round}} = Props) ->
-                    {_ContractId, Caller} = aesc_offchain_update:extract_call(Update),
-                    TxHashContractPubkey = aesc_utils:tx_hash_to_contract_pubkey(
-                                          aetx_sign:hash(SignedForceProgressTx)),
-                    CallId = aect_call:id(Caller,
-                                          Round,
-                                          TxHashContractPubkey),
-                    Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
-                                                    S),
-                    GasUsed = aect_call:gas_used(Call),
-                    GasLimit = maps:get(gas_limit, Props, 10000000),
-                    ?assertEqual(GasUsed, GasLimit), % assert all gas
-                    Props
-                end])
+               [])
         end,
     [CallOnChain(Owner, Forcer) || Owner  <- ?ROLES,
                                    Forcer <- ?ROLES],
@@ -2856,8 +2797,8 @@ fp_use_onchain_contract(Cfg) ->
 % no one can post a force progress to a closed channel
 fp_closed_channel(Cfg) ->
     Round = 10,
-    IStartAmt = 200000,
-    RStartAmt = 200000,
+    IStartAmt = 200000 * aec_test_utils:min_gas_price(),
+    RStartAmt = 200000 * aec_test_utils:min_gas_price(),
 
     Test =
         fun(Owner, Forcer) ->
@@ -2888,14 +2829,15 @@ fp_not_participant(Cfg) ->
                 get_onchain_balances(before_force),
                 set_prop(round, Round),
                 set_from(Forcer),
-                fun(#{contract_id := ContractId} = Props) ->
-                    (create_contract_call_payload(ContractId, <<"main">>,
-                                                  <<"42">>, 1))(Props)
+                fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                                  [<<"42">>], 1))(Props)
                 end,
-                set_prop(fee, 100000),
+                set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
                 fun(#{state := S0} = Props) ->
                     {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                    S1 = aesc_test_utils:set_account_balance(NewAcc, 1000000, S),
+                    S1 = aesc_test_utils:set_account_balance(NewAcc,
+                                                             1000000 * aec_test_utils:min_gas_price(), S),
                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
                     Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                 end,
@@ -2940,7 +2882,7 @@ fp_payload_from_another_channel(Cfg) ->
                 set_from(Owner, owner, owner_privkey),
                 create_contract_in_trees(_Round    = 6,
                                          _Contract = "identity",
-                                         _InitArgs = <<"()">>,
+                                         _InitArgs = [],
                                          _Deposit  = 2),
                 % use the payload of channelA in a force progress in channelB
                 fun(#{different_payload := Payload} = Props) ->
@@ -3080,11 +3022,11 @@ fp_solo_payload_invalid_state_hash(Cfg) ->
                 set_from(Forcer),
                 set_prop(round, Round),
                 set_prop(fake_solo_state_hash, FakeStateHash),
-                fun(#{contract_id := ContractId} = Props) ->
-                    (create_contract_call_payload(ContractId, <<"main">>,
-                                                  <<"42">>, 1))(Props)
+                fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                                  [<<"42">>], 1))(Props)
                 end,
-                set_prop(fee, 100000),
+                set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
                 different_state_hash_produced(SnapshotRound,
                                               SnapshotStateHash)])
         end,
@@ -3098,7 +3040,7 @@ fp_solo_payload_closing_overflowing_balances(Cfg) ->
     CreateDeposit = 2,
     CallDeposit = 1,
     Test =
-        fun(Owner, Forcer) ->
+        fun(Owner, _Forcer) ->
             run(#{cfg => Cfg, initiator_amount => 30,
                               responder_amount => 30,
                  channel_reserve => 1},
@@ -3134,11 +3076,11 @@ fp_solo_payload_closing_overflowing_balances(Cfg) ->
                 set_prop(contract_create_deposit, CreateDeposit),
                 create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
                 set_prop(round, Round),
-                fun(#{contract_id := ContractId} = Props) ->
-                    (create_contract_call_payload(ContractId, <<"main">>,
-                                                  <<"42">>, 1))(Props)
+                fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                                  [<<"42">>], 1))(Props)
                 end,
-                set_prop(fee, 100000),
+                set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
                 fun(#{channel_pubkey := ChannelPubKey,
                       state := S} = Props) ->
                     Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
@@ -3260,11 +3202,11 @@ fp_solo_payload_broken_update_(Cfg, Update, Error) ->
                 set_prop(round, Round),
                 set_prop(solo_payload_update, Update),
                 set_prop(fake_solo_state_hash, FakeStateHash),
-                fun(#{contract_id := ContractId} = Props) ->
-                    (create_contract_call_payload(ContractId, <<"main">>,
-                                                  <<"42">>, 1))(Props)
+                fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                                  [<<"42">>], 1))(Props)
                 end,
-                set_prop(fee, 100000),
+                set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
                 negative(fun force_progress_/2, {error, Error})])
         end,
     [Test(Owner, Forcer) || Owner  <- ?ROLES,
@@ -3294,16 +3236,16 @@ fp_solo_payload_broken_call(Cfg) ->
                                 ?ABI_VERSION, 1,
                                 CallData,
                                 [],
-                                _GasPrice = 1,
+                                _GasPrice = aec_test_utils:min_gas_price(),
                                 _GasLimit = 10000000),
                     Props#{solo_payload_update => Update}
                 end,
                 set_prop(fake_solo_state_hash, FakeStateHash),
-                fun(#{contract_id := ContractId} = Props) ->
-                    (create_contract_call_payload(ContractId, <<"main">>,
-                                                  <<"42">>, 1))(Props)
+                fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                                  [<<"42">>], 1))(Props)
                 end,
-                set_prop(fee, 100000),
+                set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
                 positive(fun force_progress_/2),
                 fun(#{state := S,
                       signed_force_progress := SignedForceProgressTx,
@@ -3365,8 +3307,8 @@ fp_insufficent_tokens(Cfg) ->
                 || Owner  <- ?ROLES,
                    Forcer <- ?ROLES]
         end,
-    Test(1, 1001, 1000),
-    Test(2, 500,  999),
+    Test(aec_test_utils:min_gas_price(), 1001, 1000),
+    Test(2 * aec_test_utils:min_gas_price(), 500,  999),
     ok.
 
 fp_insufficent_gas_price(Cfg) ->
@@ -3400,8 +3342,7 @@ fp_register_name(Cfg) ->
     Name = <<"bla.test">>,
     Salt = 42,
     {ok, NameAscii} = aens_utils:to_ascii(Name),
-    CHash           = aeu_hex:hexstring_encode(
-                        aens_hash:commitment_hash(NameAscii, Salt)),
+    CHash           = address_encode(aens_hash:commitment_hash(NameAscii, Salt)),
     ?TEST_LOG("Commitment hash ~p", [aens_hash:commitment_hash(NameAscii,
                                                                Salt)]),
     StateHashSize = aeser_api_encoder:byte_size_for_type(state),
@@ -3411,13 +3352,9 @@ fp_register_name(Cfg) ->
     SignContractAddress =
         fun(PubK, PrivK, ConId) ->
             BinToSign = <<PubK/binary, ConId/binary>>,
-            SigBin = <<Word1:256, Word2:256>> =
-                enacl:sign_detached(aec_governance:add_network_id(BinToSign), PrivK),
-            %_Sig = aeu_hex:hexstring_encode(aeso_heap:to_binary({Word1, Word2}, 0))
+            SigBin = enacl:sign_detached(aec_governance:add_network_id(BinToSign), PrivK),
             ?TEST_LOG("Signature binary ~p", [SigBin]),
-            Word11 = integer_to_binary(Word1),
-            Word21 = integer_to_binary(Word2),
-            <<"(", Word11/binary, ", ", Word21/binary, ")">>
+            address_encode(SigBin)
         end,
     ContractName = "aens",
 
@@ -3430,7 +3367,7 @@ fp_register_name(Cfg) ->
           fun(#{} = Props) ->
               S0 = aesc_test_utils:new_state(),
               {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-              S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000, S),
+              S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000 * aec_test_utils:min_gas_price(), S),
               PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
               ?TEST_LOG("Owner: pubkey ~p, privkey: ~p", [NewAcc, PrivKey]),
               Props#{state => S1, onchain_contract_owner_pubkey => NewAcc,
@@ -3440,7 +3377,7 @@ fp_register_name(Cfg) ->
           fun(#{onchain_contract_owner_pubkey := PubKey,
                 state := S0} = Props) ->
             {ok, BinCode} =  compile_contract(ContractName),
-            {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
+            {ok, CallData} = encode_call_data(ContractName, <<"init">>, []),
             Nonce = 1,
             {ok, ContractCreateTx} =
                 aect_create_tx:new(
@@ -3452,15 +3389,15 @@ fp_register_name(Cfg) ->
                       deposit     => 1,
                       amount      => 1,
                       gas         => 123456,
-                      gas_price   => 1,
+                      gas_price   => aec_test_utils:min_gas_price(),
                       call_data   => CallData,
-                      fee         => 1000000}),
+                      fee         => 1000000 * aec_test_utils:min_gas_price()}),
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
-            {ok, OnChainTrees1} = aetx:process(ContractCreateTx,
-                                                OnChainTrees,
-                                                TxEnv),
+            {ok, OnChainTrees1, _} = aetx:process(ContractCreateTx,
+                                                  OnChainTrees,
+                                                  TxEnv),
             S1 = aesc_test_utils:set_trees(OnChainTrees1, S0),
             ContractId = aect_contracts:compute_contract_pubkey(PubKey, Nonce),
             ?TEST_LOG("Contract created on-chain, id ~p", [ContractId]),
@@ -3472,18 +3409,15 @@ fp_register_name(Cfg) ->
           fun(#{onchain_contract_owner_pubkey := OPubKey,
                 onchain_contract_owner_privkey := OPrivKey,
                 onchain_contract_id := ContractId,
-                code := Code,
+                code := _Code,
                 state := S0} = Props) ->
             Nonce = 2,
             Sig = SignContractAddress(OPubKey, OPrivKey, ContractId),
-            NameOwner = aeu_hex:hexstring_encode(OPubKey),
-            PreclaimArgs = <<"(", NameOwner/binary, ",",
-                                  CHash/binary, ",",
-                                  Sig/binary,
-                              ")">>,
+            NameOwner = address_encode(OPubKey),
+            PreclaimArgs = [NameOwner, CHash, Sig],
             ?TEST_LOG("Preclaim function arguments ~p", [PreclaimArgs]),
-            {ok, CallData} = aect_sophia:encode_call_data(Code, <<"signedPreclaim">>,
-                                                          PreclaimArgs),
+            {ok, CallData} = encode_call_data(ContractName, <<"signedPreclaim">>,
+                                              PreclaimArgs),
             ?TEST_LOG("CallData ~p", [CallData]),
             true = is_binary(CallData),
             {ok, CallTx} =
@@ -3495,15 +3429,15 @@ fp_register_name(Cfg) ->
                       abi_version => ?ABI_VERSION,
                       amount      => 1,
                       gas         => 123456,
-                      gas_price   => 1,
+                      gas_price   => aec_test_utils:min_gas_price(),
                       call_data   => CallData,
-                      fee         => 500000}),
+                      fee         => 500000 * aec_test_utils:min_gas_price()}),
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
-            {ok, OnChainTrees1} = aetx:process(CallTx,
-                                                OnChainTrees,
-                                                TxEnv),
+            {ok, OnChainTrees1, _} = aetx:process(CallTx,
+                                                  OnChainTrees,
+                                                  TxEnv),
             CallId = aect_call:id(OPubKey,
                                   Nonce,
                                   ContractId),
@@ -3543,18 +3477,15 @@ fp_register_name(Cfg) ->
                   set_from(Owner, owner, owner_privkey),
                   create_contract_in_trees(_Round    = ContractCreateRound,
                                           _Contract = ContractName,
-                                          _InitArgs = <<"()">>,
+                                          _InitArgs = [],
                                           _Deposit  = 2),
                   % force progress contract on-chain
                   fun(#{contract_id := ContractId,
                         from_pubkey := Pubkey,
                         from_privkey := Privkey} = Props) ->
                       Sig = SignContractAddress(Pubkey, Privkey, ContractId),
-                      Account = aeu_hex:hexstring_encode(Pubkey),
-                      PreclaimArgs = <<"(", Account/binary, ",",
-                                            CHash/binary, ",",
-                                            Sig/binary,
-                                        ")">>,
+                      Account = address_encode(Pubkey),
+                      PreclaimArgs = [Account, CHash, Sig],
                       ?TEST_LOG("Off-chain preclaim args ~p", [PreclaimArgs]),
                       (force_call_contract_first(Forcer, <<"signedPreclaim">>,
                                             PreclaimArgs, FPRound))(Props)
@@ -3762,7 +3693,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
           fun(#{} = Props) ->
               S0 = aesc_test_utils:new_state(),
               {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-              S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000, S),
+              S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000 * aec_test_utils:min_gas_price(), S),
               PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
               ?TEST_LOG("Owner: pubkey ~p, privkey: ~p", [NewAcc, PrivKey]),
               Props#{state => S1, onchain_contract_owner_pubkey => NewAcc,
@@ -3772,7 +3703,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
           fun(#{onchain_contract_owner_pubkey := PubKey,
                 state := S0} = Props) ->
             {ok, BinCode} = compile_contract(ContractName),
-            {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
+            {ok, CallData} = encode_call_data(ContractName, <<"init">>, []),
             Nonce = 1,
             {ok, ContractCreateTx} =
                 aect_create_tx:new(
@@ -3784,15 +3715,15 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       deposit     => 1,
                       amount      => 1,
                       gas         => 123456,
-                      gas_price   => 1,
+                      gas_price   => aec_test_utils:min_gas_price(),
                       call_data   => CallData,
-                      fee         => 1000000}),
+                      fee         => 1000000 * aec_test_utils:min_gas_price()}),
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
-            {ok, OnChainTrees1} = aetx:process(ContractCreateTx,
-                                                OnChainTrees,
-                                                TxEnv),
+            {ok, OnChainTrees1,_} = aetx:process(ContractCreateTx,
+                                                 OnChainTrees,
+                                                 TxEnv),
             S1 = aesc_test_utils:set_trees(OnChainTrees1, S0),
             ContractId = aect_contracts:compute_contract_pubkey(PubKey, Nonce),
             ?TEST_LOG("Contract created on-chain, id ~p", [ContractId]),
@@ -3827,15 +3758,15 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       abi_version => ?ABI_VERSION,
                       amount      => 1,
                       gas         => 123456,
-                      gas_price   => 1,
+                      gas_price   => aec_test_utils:min_gas_price(),
                       call_data   => CallData,
-                      fee         => 500000}),
+                      fee         => 500000 * aec_test_utils:min_gas_price()}),
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
-            {ok, OnChainTrees1} = aetx:process(CallTx,
-                                                OnChainTrees,
-                                                TxEnv),
+            {ok, OnChainTrees1,_} = aetx:process(CallTx,
+                                                 OnChainTrees,
+                                                 TxEnv),
             CallId = aect_call:id(OPubKey,
                                   Nonce,
                                   ContractId),
@@ -3878,7 +3809,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                   set_from(Owner, owner, owner_privkey),
                   create_contract_in_trees(_Round    = ContractCreateRound,
                                           _Contract = ContractName,
-                                          _InitArgs = <<"()">>,
+                                          _InitArgs = [],
                                           _Deposit  = 2),
                   oracle_query(aeso_heap:to_binary(<<"Some question">>, 0), 10),
                   % force progress contract on-chain
@@ -3974,7 +3905,7 @@ fp_register_oracle(Cfg) ->
           fun(#{} = Props) ->
               S0 = aesc_test_utils:new_state(),
               {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-              S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000, S),
+              S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000 * aec_test_utils:min_gas_price(), S),
               PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
               ?TEST_LOG("Owner: pubkey ~p, privkey: ~p", [NewAcc, PrivKey]),
               Props#{state => S1, onchain_contract_owner_pubkey => NewAcc,
@@ -3984,7 +3915,7 @@ fp_register_oracle(Cfg) ->
           fun(#{onchain_contract_owner_pubkey := PubKey,
                 state := S0} = Props) ->
             {ok, BinCode} = compile_contract(ContractName),
-            {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
+            {ok, CallData} = encode_call_data(ContractName, <<"init">>, []),
             Nonce = 1,
             {ok, ContractCreateTx} =
                 aect_create_tx:new(
@@ -3996,15 +3927,15 @@ fp_register_oracle(Cfg) ->
                       deposit     => 1,
                       amount      => 1,
                       gas         => 123456,
-                      gas_price   => 1,
+                      gas_price   => aec_test_utils:min_gas_price(),
                       call_data   => CallData,
-                      fee         => 1000000}),
+                      fee         => 1000000 * aec_test_utils:min_gas_price()}),
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
-            {ok, OnChainTrees1} = aetx:process(ContractCreateTx,
-                                                OnChainTrees,
-                                                TxEnv),
+            {ok, OnChainTrees1,_} = aetx:process(ContractCreateTx,
+                                                 OnChainTrees,
+                                                 TxEnv),
             S1 = aesc_test_utils:set_trees(OnChainTrees1, S0),
             ContractId = aect_contracts:compute_contract_pubkey(PubKey, Nonce),
             ?TEST_LOG("Contract created on-chain, id ~p", [ContractId]),
@@ -4031,15 +3962,15 @@ fp_register_oracle(Cfg) ->
                       abi_version => ?ABI_VERSION,
                       amount      => 1,
                       gas         => 123456,
-                      gas_price   => 1,
+                      gas_price   => aec_test_utils:min_gas_price(),
                       call_data   => CallData,
-                      fee         => 600000}),
+                      fee         => 600000 * aec_test_utils:min_gas_price()}),
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
-            {ok, OnChainTrees1} = aetx:process(CallTx,
-                                                OnChainTrees,
-                                                TxEnv),
+            {ok, OnChainTrees1,_} = aetx:process(CallTx,
+                                                 OnChainTrees,
+                                                 TxEnv),
             CallId = aect_call:id(OPubKey,
                                   Nonce,
                                   ContractId),
@@ -4078,14 +4009,13 @@ fp_register_oracle(Cfg) ->
                   set_from(Owner, owner, owner_privkey),
                   create_contract_in_trees(_Round    = ContractCreateRound,
                                           _Contract = ContractName,
-                                          _InitArgs = <<"()">>,
+                                          _InitArgs = [],
                                           _Deposit  = 2),
                   % force progress contract on-chain
                   fun(#{contract_id := ContractId,
                         from_pubkey := Pubkey,
                         from_privkey := Privkey} = Props) ->
                       Sig = SignAddress(Pubkey, Privkey, ContractId),
-                      Account = aeu_hex:hexstring_encode(Pubkey),
                       CallData = RegisterCallData(Pubkey, Sig),
                       (force_call_contract_first_with_calldata(Forcer,
                                             CallData, FPRound))(Props)
@@ -4133,7 +4063,7 @@ create_contract_poi_and_payload(Round, ContractRound, Owner, Opts) ->
 
     fun(Props0) ->
         {Contract, ContractInitProps} =
-            maps:get(contract_name, Props0, {"identity", <<"()">>}),
+            maps:get(contract_name, Props0, {"identity", []}),
         ContractCreateDeposit =
             maps:get(contract_create_deposit, Props0, 2),
         run(Props0,
@@ -4189,27 +4119,27 @@ set_balances_in_trees(IBal, RBal) ->
     end.
 
 negative_force_progress_sequence(Round, Forcer, ErrMsg) ->
-    Fee = 300000,
+    Fee = 300000 * aec_test_utils:min_gas_price(),
     fun(Props0) ->
         DepositAmt = maps:get(call_deposit, Props0, 1),
         run(Props0,
            [get_onchain_balances(before_force),
             set_from(Forcer),
             set_prop(round, Round),
-            fun(#{contract_id := ContractId} = Props) ->
-                (create_contract_call_payload(ContractId, <<"main">>,
-                                              <<"42">>, DepositAmt))(Props)
+            fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+                (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                              [<<"42">>], DepositAmt))(Props)
             end,
             set_prop(fee, Fee),
             negative(fun force_progress_/2, {error, ErrMsg})])
       end.
 
 force_progress_sequence(Round, Forcer) ->
-    Fee = 300000,
+    Fee = 300000 * aec_test_utils:min_gas_price(),
     fun(Props0) ->
         DepositAmt = maps:get(call_deposit, Props0, 1),
         {FunName, FunParams} = maps:get(contract_function_call, Props0,
-                                        {<<"main">>, <<"42">>}),
+                                        {<<"main">>, [<<"42">>]}),
         run(Props0,
            [get_onchain_balances(before_force),
             fun(#{state_hash := StateHash, offchain_trees := OffChainTrees} = Props) ->
@@ -4218,8 +4148,8 @@ force_progress_sequence(Round, Forcer) ->
             end,
             set_from(Forcer),
             set_prop(round, Round),
-            fun(#{contract_id := ContractId} = Props) ->
-                (create_contract_call_payload(ContractId, FunName,
+            fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+                (create_contract_call_payload(ContractId, CName, FunName,
                                               FunParams, DepositAmt))(Props)
             end,
             set_prop(fee, Fee),
@@ -4323,7 +4253,7 @@ rename_prop(Key1, Key2, KeepOld) ->
 
 prepare_balances_for_mutual_close() ->
     fun(#{initiator_amount := IAmt, responder_amount := RAmt} = Props) ->
-        Fee = maps:get(fee, Props, 50000),
+        Fee = maps:get(fee, Props, 50000 * aec_test_utils:min_gas_price()),
         Props#{initiator_amount_final => IAmt - Fee, responder_amount_final => RAmt, fee => Fee}
     end.
 
@@ -4364,14 +4294,12 @@ create_payload(Key) ->
         Props#{Key => Payload}
     end.
 
-create_contract_call_payload(ContractId, Fun, Args, Amount) ->
-    create_contract_call_payload(solo_payload, ContractId, Fun, Args, Amount).
+create_contract_call_payload(ContractId, ContractName, Fun, Args, Amount) ->
+    create_contract_call_payload(solo_payload, ContractId, ContractName, Fun, Args, Amount).
 
-create_contract_call_payload(Key, ContractId, Fun, Args, Amount) ->
-    fun(#{trees := Trees0} = Props) ->
-        Contract = aect_test_utils:get_contract(ContractId, #{trees => Trees0}),
-        Code = aect_contracts:code(Contract),
-        {ok, CallData} = aect_sophia:encode_call_data(Code, Fun, Args),
+create_contract_call_payload(Key, ContractId, ContractName, Fun, Args, Amount) ->
+    fun(Props) ->
+        {ok, CallData} = encode_call_data(ContractName, Fun, Args),
         %% assert calldata is correct:
         true = is_binary(CallData),
         (create_contract_call_payload_with_calldata(Key, ContractId, CallData,
@@ -4393,7 +4321,7 @@ create_contract_call_payload_with_calldata(Key, ContractId, CallData, Amount) ->
                     aeser_id:create(contract, ContractId),
                     ?ABI_VERSION, Amount, CallData,
                     [],
-                    _GasPrice = maps:get(gas_price, Props, 1),
+                    _GasPrice = maps:get(gas_price, Props, aec_test_utils:min_gas_price()),
                     _GasLimit = maps:get(gas_limit, Props, 10000000))),
         {UpdatedTrees, StateHash} =
             case maps:get(fake_solo_state_hash, Props, none) of
@@ -4462,7 +4390,7 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
                 not_set -> compile_contract(ContractName);
                 Compiler when is_function(Compiler)-> Compiler(ContractName)
             end,
-        {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, InitArg),
+        {ok, CallData} = encode_call_data(ContractName, <<"init">>, InitArg),
         VmVersion = maps:get(vm_version, Props, ?VM_VERSION),
         ABIVersion = maps:get(abi_version, Props, ?ABI_VERSION),
         Update = aesc_offchain_update:op_new_contract(aeser_id:create(account, Owner),
@@ -4482,7 +4410,7 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
             true -> error(contract_already_present); % something is wrong with the test
             false -> pass
         end,
-        Props#{trees => Trees, contract_id => ContractId,
+        Props#{trees => Trees, contract_id => ContractId, contract_file => ContractName,
                contract_ids => [ContractId | ContractIds]}
     end.
 
@@ -4491,7 +4419,7 @@ create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->
           owner := Owner} = Props) ->
         Trees0 = aesc_test_utils:trees(State0),
         {ok, BinCode} = compile_contract(ContractName),
-        {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, InitArg),
+        {ok, CallData} = encode_call_data(ContractName, <<"init">>, InitArg),
         Nonce = aesc_test_utils:next_nonce(Owner, State0),
         {ok, AetxCreateTx} =
             aect_create_tx:new(#{owner_id    => aeser_id:create(account, Owner),
@@ -4502,23 +4430,23 @@ create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->
                                  deposit     => Deposit,
                                  amount      => 0,
                                  gas         => 123467,
-                                 gas_price   => 1,
+                                 gas_price   => aec_test_utils:min_gas_price(),
                                  call_data   => CallData,
-                                 fee         => 10}),
+                                 fee         => 10 * aec_test_utils:min_gas_price()}),
         {contract_create_tx, CreateTx} = aetx:specialize_type(AetxCreateTx),
         Env = tx_env(Props),
         {ok, _} = aect_create_tx:check(CreateTx, Trees0, Env),
-        {ok, Trees} = aect_create_tx:process(CreateTx, Trees0, Env),
+        {ok, Trees, _} = aect_create_tx:process(CreateTx, Trees0, Env),
         ContractId = aect_contracts:compute_contract_pubkey(Owner, Nonce),
         State = aesc_test_utils:set_trees(Trees, State0),
-        Props#{state => State, contract_id => ContractId}
+        Props#{state => State, contract_file => ContractName, contract_id => ContractId}
     end.
 
 run(Cfg, Funs) ->
     lists:foldl(
         fun(Fun, Props) -> Fun(Props) end,
         Cfg,
-        Funs).
+        lists:flatten(Funs)).
 
 apply_on_trees_(#{height := Height} = Props, SignedTx, S, positive) ->
     Trees = aens_test_utils:trees(S),
@@ -4544,7 +4472,7 @@ apply_on_trees_(#{height := Height} = Props, SignedTx, S, {negative, ExpectedErr
     Env = aetx_env:tx_env(Height),
     case aetx:process(Tx, Trees, Env) of
         ExpectedError -> pass;
-        {ok, _} -> throw(negative_case_passed)
+        {ok, _, _} -> throw(negative_case_passed)
     end,
     Props.
 
@@ -4587,7 +4515,7 @@ create_from_state(S, DefaultSpec) ->
     {ok, Tx} = aesc_create_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
     Env      = aetx_env:tx_env(Height),
-    {ok, [SignedTx], Trees1} =
+    {ok, [SignedTx], Trees1, _Events} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     S3 = aesc_test_utils:set_trees(Trees1, S2),
 
@@ -4620,7 +4548,7 @@ create_from_state(S, DefaultSpec) ->
 %%%
 
 create_channel_(#{cfg := Cfg} = Props, _) ->
-    CreateOpts = maps:filter(
+    CreateOpts0 = maps:filter(
                    fun(K, _V) -> lists:member(K, [state, initiator_amount,
                                                  responder_amount,
                                                  channel_reserve,
@@ -4628,6 +4556,10 @@ create_channel_(#{cfg := Cfg} = Props, _) ->
                                                  delegate_ids])
                    end,
                    Props),
+    IAmt = maps:get(initiator_amount, Props, 30 * aec_test_utils:min_gas_price()),
+    RAmt = maps:get(responder_amount, Props, 70 * aec_test_utils:min_gas_price()),
+    CreateOpts = CreateOpts0#{initiator_amount => IAmt,
+                              responder_amount => RAmt}, % ensure amounts
     {PubKey1, PubKey2, ChannelPubKey, _, S0} = create_(Cfg, CreateOpts),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
@@ -4636,9 +4568,9 @@ create_channel_(#{cfg := Cfg} = Props, _) ->
 
     %% Get channel and account funds
 
-    IAmt = maps:get(initiator_amount, Props, 30),
-    RAmt = maps:get(responder_amount, Props, 70),
-    Fee = maps:get(fee, Props, 50000),
+    IAmt = maps:get(initiator_amount, Props, 30 * aec_test_utils:min_gas_price()),
+    RAmt = maps:get(responder_amount, Props, 70 * aec_test_utils:min_gas_price()),
+    Fee = maps:get(fee, Props, 50000 * aec_test_utils:min_gas_price()),
 
     Props#{ channel_pubkey    => ChannelPubKey,
             initiator_amount  => IAmt,
@@ -4662,7 +4594,7 @@ close_solo_(#{channel_pubkey    := ChannelPubKey,
               initiator_privkey := IPrivkey,
               responder_privkey := RPrivkey} = Props, Expected) ->
 
-    Fee = maps:get(fee, Props, 50000),
+    Fee = maps:get(fee, Props, 50000 * aec_test_utils:min_gas_price()),
     %% Create close_solo tx and apply it on state trees
     Round = maps:get(round, Props, 10),
     PayloadSpec0 = #{initiator_amount => IAmt,
@@ -4795,11 +4727,12 @@ force_progress_(#{channel_pubkey    := ChannelPubKey,
                   initiator_privkey := _IPrivkey,
                   responder_privkey := _RPrivkey} = Props, Expected) ->
 
+    Spec0 = #{fee => Fee},
     ForceProTxSpec = aesc_test_utils:force_progress_tx_spec(ChannelPubKey, From,
                                                             Payload,
                                                             Update, StateHash,
                                                             Round, OffChainTrees,
-                                                            #{fee => Fee}, S),
+                                                            Spec0, S),
     {ok, ForceProTx} = aesc_force_progress_tx:new(ForceProTxSpec),
 
     SignedTx = aec_test_utils:sign_tx(ForceProTx, [FromPrivkey]),
@@ -4913,11 +4846,11 @@ test_both_payload_from_different_channel(Cfg, Fun) ->
     [Test(Role) || Role <- ?ROLES],
     ok.
 
-test_both_old_round(Cfg, Fun) ->
-    test_both_old_round(Cfg, Fun, #{}).
+%% test_both_old_round(Cfg, Fun) ->
+%%     test_both_old_round(Cfg, Fun, #{}).
 
-test_both_old_round(Cfg, Fun, Props) ->
-    test_both_old_round(Cfg, Fun, Props, same_round).
+%% test_both_old_round(Cfg, Fun, Props) ->
+%%     test_both_old_round(Cfg, Fun, Props, same_round).
 
 test_both_old_round(Cfg, Fun, Props, Reason) ->
     Test0 =
@@ -4927,7 +4860,7 @@ test_both_old_round(Cfg, Fun, Props, Reason) ->
                 set_prop(round, R1),
                 set_from(First),
                 set_prop(amount, 1),
-                set_prop(fee, 50000),
+                set_prop(fee, 50000 * aec_test_utils:min_gas_price()),
                 positive(fun deposit_/2),
                 set_prop(round, R2),
                 set_from(Second),
@@ -4953,7 +4886,7 @@ test_both_can_not_replace_create(Cfg, Fun, Props) ->
                 set_prop(round, 1),
                 set_from(Poster),
                 set_prop(amount, 1),
-                set_prop(fee, 50000),
+                set_prop(fee, 50000 * aec_test_utils:min_gas_price()),
                 negative(Fun, {error, same_round})])
         end,
     [Test(Poster) || Poster <- ?ROLES],
@@ -5059,7 +4992,8 @@ test_delegate_not_allowed(Cfg, Fun) ->
 test_delegate_not_allowed(Cfg, Fun, InitProps) ->
     run(InitProps#{cfg => Cfg},
       [fun(Props) ->
-            {Delegate1, Delegate2, S} = create_loaded_accounts(100000, 100000),
+            {Delegate1, Delegate2, S} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
+                                                               100000 * aec_test_utils:min_gas_price()),
             Props#{cfg => [{state, S} | Cfg],
                     delegate_ids => [aeser_id:create(account, Delegate1),
                                      aeser_id:create(account, Delegate2)]}
@@ -5081,7 +5015,9 @@ test_not_participant(Cfg, Fun, InitProps) ->
         [positive(fun create_channel_/2),
          fun(#{state := S0} = Props) ->
             {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-            S1 = aesc_test_utils:set_account_balance(NewAcc, 500000, S),
+            S1 = aesc_test_utils:set_account_balance(NewAcc,
+                                                     500000 * aec_test_utils:min_gas_price(),
+                                                     S),
             PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
             Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
          end,
@@ -5093,7 +5029,7 @@ register_new_oracle(QFormat, RFormat, QueryFee) ->
         run(Props0,
            [fun(#{state := S0} = Props) ->
                 {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                S1 = aesc_test_utils:set_account_balance(NewAcc, 500000, S),
+                S1 = aesc_test_utils:set_account_balance(NewAcc, 500000 * aec_test_utils:min_gas_price(), S),
                 Props#{state => S1, oracle => NewAcc}
             end,
             fun(#{state := S, oracle := Oracle} = Props) ->
@@ -5151,7 +5087,7 @@ register_name(Name, Pointers0) ->
            [% create dummy account to hold the name
             fun(#{state := S0} = Props) ->
                 {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                S1 = aesc_test_utils:set_account_balance(NewAcc, 1000000, S),
+                S1 = aesc_test_utils:set_account_balance(NewAcc, 1000000 * aec_test_utils:min_gas_price(), S),
                 Props#{state => S1, name_owner => NewAcc}
             end,
             % preclaim
@@ -5203,11 +5139,11 @@ force_call_contract_first(Forcer, Fun, Args, Round) ->
             create_fp_trees(),
             create_payload(),
             set_prop(round, Round),
-            fun(#{contract_id := ContractId} = Props) ->
-                (create_contract_call_payload(ContractId, Fun,
+            fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+                (create_contract_call_payload(ContractId, CName, Fun,
                                               Args, 1))(Props)
             end,
-            set_prop(fee, 1000000),
+            set_prop(fee, 1000000 * aec_test_utils:min_gas_price()),
             positive(fun force_progress_/2)
             ])
     end.
@@ -5225,7 +5161,7 @@ force_call_contract_first_with_calldata(Forcer, CallData, Round) ->
                    solo_payload,
                    ContractId, CallData, 1))(Props)
             end,
-            set_prop(fee, 600000),
+            set_prop(fee, 600000 * aec_test_utils:min_gas_price()),
             positive(fun force_progress_/2)
             ])
     end.
@@ -5244,7 +5180,7 @@ force_call_contract(Forcer, Fun, Args, Round) ->
         run(Props0,
             [set_prop(contract_function_call, {Fun, Args}),
             create_fp_trees(),
-            set_prop(fee, 500000),
+            set_prop(fee, 500000 * aec_test_utils:min_gas_price()),
             set_prop(payload, <<>>),
             force_progress_sequence(Round, Forcer)])
     end.
@@ -5264,7 +5200,7 @@ assert_last_channel_result(Result, Type) ->
         Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
                                         S),
         EncRValue = aect_call:return_value(Call),
-        {ok, Result} = aeso_heap:from_binary(Type, EncRValue),
+        ?assertMatch({X, X}, {{ok, Result}, aeso_heap:from_binary(Type, EncRValue)}),
         Props
     end.
 
@@ -5322,13 +5258,15 @@ fp_fork_awareness(Cfg) ->
                 create_contract_poi_and_payload(Round - 1,
                                                 _ContractCreateRound = 10,
                                                 _ContractOwner = Forcer),
-                set_prop(fee, 100000),
                 set_from(Forcer),
                 set_prop(round, Round),
-                fun(#{contract_id := ContractId} = Props) ->
-                    (create_contract_call_payload(ContractId, <<"main">>,
-                                                  <<"42">>, 1))(Props)
+                fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                                  [<<"42">>], 1))(Props)
                 end,
+                set_prop(height, HeightBelow),
+                set_prop(fee, 100000 * aec_governance:minimum_gas_price(HeightBelow)),
+                set_prop(gas_price, aec_governance:minimum_gas_price(HeightBelow)),
                 fun(#{contract_id := ContractId,
                       trees := Trees0} = Props) ->
                     Contract = aect_test_utils:get_contract(ContractId, #{trees => Trees0}),
@@ -5339,11 +5277,16 @@ fp_fork_awareness(Cfg) ->
                     Props
                 end,
                 % rejected before the fork
-                set_prop(height, HeightBelow),
-                negative(fun force_progress_/2, {error,
-                                                 PreForkErrMsg}),
+                negative(fun force_progress_/2, {error, PreForkErrMsg}),
                 % accepted after the fork
                 set_prop(height, HeightAbove),
+                set_prop(fee, 100000 * aec_governance:minimum_gas_price(HeightAbove)),
+                set_prop(gas_price, aec_governance:minimum_gas_price(HeightAbove)),
+                %% recompute the update with the new gas price
+                fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+                    (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                                  [<<"42">>], 1))(Props)
+                end,
                 positive(fun force_progress_/2)
                ])
         end,
@@ -5360,3 +5303,15 @@ fp_fork_awareness(Cfg) ->
                               {Vm, CodeSVsn, Error} <- ForkChecks],
     ok.
 
+encode_call_data(ContractName, Function, Arguments) ->
+   {ok, Contract} = aect_test_utils:read_contract(contract_filename(ContractName)),
+   ct:pal("ENCODE:\n----\n~s\n----\nWhat: ~p",
+          [Contract, {binary_to_list(Function),
+           lists:map(fun binary_to_list/1, Arguments)}]),
+   aect_sophia:encode_call_data(Contract, Function, Arguments).
+
+address_encode(Binary) ->
+    <<_:16, HexStr/binary>> = aeu_hex:hexstring_encode(Binary),
+    <<"#", HexStr/binary>>.
+
+quote(Bin) -> <<$", Bin/binary, $">>.

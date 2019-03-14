@@ -85,7 +85,7 @@ preclaim(Cfg) ->
     {ok, Tx} = aens_preclaim_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Env      = aetx_env:tx_env(Height),
-    {ok, [SignedTx], Trees1} =
+    {ok, [SignedTx], Trees1, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     S2 = aens_test_utils:set_trees(Trees1, S1),
 
@@ -157,7 +157,7 @@ claim(Cfg) ->
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Env      = aetx_env:tx_env(Height),
 
-    {ok, [SignedTx], Trees1} =
+    {ok, [SignedTx], Trees1, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     S2 = aens_test_utils:set_trees(Trees1, S1),
 
@@ -190,7 +190,7 @@ claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     none = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees)),
 
     %% Apply claim tx, and verify locked coins holder got locked coins
-    {ok, [SignedTx], Trees1} =
+    {ok, [SignedTx], Trees1, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     {value, Account1} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees1)),
     LockedCoinsFee    = aec_accounts:balance(Account1),
@@ -201,7 +201,7 @@ claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     {value, Account2} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees2)),
 
     %% Apply claim tx, and verify locked coins holder got locked coins
-    {ok, [SignedTx], Trees3} =
+    {ok, [SignedTx], Trees3, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees2, Env),
     {value, Account3} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees3)),
     LockedCoinsFee = aec_accounts:balance(Account3) - aec_accounts:balance(Account2),
@@ -292,7 +292,7 @@ update(Cfg) ->
     {ok, Tx} = aens_update_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Env      = aetx_env:tx_env(Height),
-    {ok, [SignedTx], Trees1} =
+    {ok, [SignedTx], Trees1, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
 
     %% Check name present, with both pointers and TTL set
@@ -382,7 +382,7 @@ transfer(Cfg) ->
     {ok, Tx} = aens_transfer_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Env      = aetx_env:tx_env(Height),
-    {ok, [SignedTx], Trees2} =
+    {ok, [SignedTx], Trees2, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees1, Env),
 
     %% Check name new owner
@@ -456,7 +456,7 @@ revoke(Cfg) ->
     {ok, Tx} = aens_revoke_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Env      = aetx_env:tx_env(Height),
-    {ok, [SignedTx], Trees1} =
+    {ok, [SignedTx], Trees1, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
 
     %% Check name revoked

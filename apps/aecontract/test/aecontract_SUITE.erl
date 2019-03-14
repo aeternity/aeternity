@@ -395,7 +395,7 @@ create_contract_init_error(_Cfg) ->
     Overrides = #{ code => ContractCode
                  , call_data => make_calldata_from_code(ContractCode, <<"init">>, {<<123:256>>, 0})
                  , gas => 10000
-                 , gas_price => 1
+                 , gas_price => aec_test_utils:min_gas_price() 
                  },
     Tx = create_tx(PubKey, Overrides, S1),
 
@@ -467,7 +467,7 @@ create_contract_init_error_illegal_instructions_in_sophia(_Cfg) ->
 
 create_contract_init_error_illegal_instruction_(OP, ErrReason) when is_binary(ErrReason) ->
     state(aect_test_utils:new_state()),
-    Acc = call(fun new_account/2, [10000000]),
+    Acc = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     {ok, Code} = compile_contract(minimal_init),
     HackedCode = hack_bytecode(Code, OP),
     Gas = 9000,
@@ -494,7 +494,7 @@ create_version_too_high(Cfg) ->
     Overrides    = #{ code => IdContract
                     , call_data => CallData
                     , gas => 10000
-                    , gas_price => 1
+                    , gas_price => aec_test_utils:min_gas_price()
                     },
     Tx           = create_tx(PubKey, Overrides, S1),
     Res = sign_and_apply_transaction(Tx, PrivKey, S1),
@@ -522,7 +522,7 @@ hack_bytecode(Code, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
         , {byte_code, binary}],
     aeser_chain_objects:serialize(compiler_sophia, Version, Template, Fields).
 
-create_contract(_Cfg) -> create_contract_(1).
+create_contract(_Cfg) -> create_contract_(aec_test_utils:min_gas_price()).
 
 create_contract_(ContractCreateTxGasPrice) ->
     S  = aect_test_utils:new_state(),
@@ -585,34 +585,40 @@ create_contract_(ContractCreateTxGasPrice) ->
 
 create_contract_upfront_fee(_Cfg) ->
     F = fun(X) -> sender_balance_in_create(#{fee => X}) end,
-    V1 = 1000000,
-    V2 = 2000000,
+    V1 = 1000000 * aec_test_utils:min_gas_price(),
+    V2 = 2000000 * aec_test_utils:min_gas_price(),
     ?assertEqual(F(V1) + V1 - V2, F(V2)),
     ok.
 
 create_contract_upfront_gas(_Cfg) ->
-    F = fun(P, G) -> sender_balance_in_create(#{gas_price => P, gas => G, fee => 1000000}) end,
-    P1 = 1,
+    F = fun(P, G) -> sender_balance_in_create(#{gas_price => P, gas => G,
+                                                fee => 1000000 * aec_test_utils:min_gas_price()})
+        end,
+    P1 = aec_test_utils:min_gas_price(),
     G1 = 200000,
     G2 = 300000,
     V1 = P1 * G1,
     V2 = P1 * G2, %% Same gas price, different gas limit.
     Bal1 = F(P1, G1),
     ?assertEqual(Bal1 + V1 - V2, F(_P2=P1, G2)),
-    P3 = 2,
+    P3 = 2 * aec_test_utils:min_gas_price(),
     V3 = P3 * G1, %% Different gas price, same gas limit.
     ?assertEqual(Bal1 + V1 - V3, F(P3, _G3=G1)),
     ok.
 
 create_contract_upfront_amount(_Cfg) ->
-    F = fun(X) -> sender_balance_in_create(#{amount => X, fee => 1000000}) end,
+    F = fun(X) -> sender_balance_in_create(#{amount => X,
+                                             fee => 1000000 * aec_test_utils:min_gas_price()})
+        end,
     V1 = 10,
     V2 = 20,
     ?assertEqual(F(V1) + V1 - V2, F(V2)),
     ok.
 
 create_contract_upfront_deposit(_Cfg) ->
-    F = fun(X) -> sender_balance_in_create(#{deposit => X, fee => 1000000}) end,
+    F = fun(X) -> sender_balance_in_create(#{deposit => X,
+                                             fee => 1000000 * aec_test_utils:min_gas_price()})
+        end,
     V1 = 10,
     V2 = 20,
     ?assertEqual(F(V1) + V1 - V2, F(V2)),
@@ -620,7 +626,7 @@ create_contract_upfront_deposit(_Cfg) ->
 
 sender_balance_in_create(CreateTxOpts) ->
     state(aect_test_utils:new_state()),
-    Sender = call(fun new_account/2, [10000000]),
+    Sender = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     Ct = call(fun create_contract/5, [Sender, upfront_charges, {}, CreateTxOpts]),
     SenderBalInCt = call(fun call_contract/6, [Sender, Ct, initialSenderBalance, word, {}]),
     SenderBalInCt.
@@ -634,7 +640,7 @@ sign_and_apply_transaction(Tx, PrivKey, S1, Height) ->
     Env0     = aetx_env:tx_env(Height),
     Env      = aetx_env:set_beneficiary(Env0, ?BENEFICIARY_PUBKEY),
     case aec_block_micro_candidate:apply_block_txs_strict([SignedTx], Trees, Env) of
-        {ok, [SignedTx], Trees1} ->
+        {ok, [SignedTx], Trees1, _} ->
             S2 = aect_test_utils:set_trees(Trees1, S1),
             {ok, S2};
         {error, R} ->
@@ -649,7 +655,7 @@ sign_and_apply_transaction_strict(Tx, PrivKey, S1, Height) ->
     Trees    = aect_test_utils:trees(S1),
     Env0     = aetx_env:tx_env(Height),
     Env      = aetx_env:set_beneficiary(Env0, ?BENEFICIARY_PUBKEY),
-    {ok, AcceptedTxs, Trees1} =
+    {ok, AcceptedTxs, Trees1, _} =
         aec_block_micro_candidate:apply_block_txs_strict([SignedTx], Trees, Env),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
@@ -661,17 +667,17 @@ sign_and_apply_transaction_strict(Tx, PrivKey, S1, Height) ->
 
 call_contract_negative_insufficient_funds(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1 = call(fun new_account/2, [2000000]),
+    Acc1 = call(fun new_account/2, [2000000 * aec_test_utils:min_gas_price()]),
     IdC = call(fun create_contract/4, [Acc1, identity, {}]),
 
-    Fee = 600000,
+    Fee = 600000 * aec_test_utils:min_gas_price(),
     Value = 10,
-    Bal = 600008 = Fee + Value - 2,
+    Bal = Fee + Value - 2,
     S = aect_test_utils:set_account_balance(Acc1, Bal, state()),
     CallData = make_calldata_from_id(IdC, main, 42, S),
     CallTx = aect_test_utils:call_tx(Acc1, IdC,
                                      #{call_data => CallData,
-                                       gas_price => 1,
+                                       gas_price => aec_test_utils:min_gas_price(),
                                        amount    => Value,
                                        fee       => Fee}, S),
     {error, _, _} = sign_and_apply_transaction(CallTx, aect_test_utils:priv_key(Acc1, S), S),
@@ -681,7 +687,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
 
 call_contract_negative_gas_price_zero(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1 = call(fun new_account/2, [2000000]),
+    Acc1 = call(fun new_account/2, [2000000 * aec_test_utils:min_gas_price()]),
     IdC  = call(fun create_contract/4, [Acc1, identity, {}]),
     S    = state(),
 
@@ -697,7 +703,7 @@ call_contract_negative(_Cfg) ->
     %% PLACEHOLDER
     ok.
 
-call_contract(_Cfg) -> call_contract_(2).
+call_contract(_Cfg) -> call_contract_(2 * aec_test_utils:min_gas_price()).
 
 call_contract_(ContractCallTxGasPrice) ->
     S  = aect_test_utils:new_state(),
@@ -712,20 +718,21 @@ call_contract_(ContractCallTxGasPrice) ->
 
     {ok, IdContract} = compile_contract(identity),
     CallDataInit = make_calldata_from_code(IdContract, init, {}),
+    MinGasPrice  = aec_test_utils:min_gas_price(),
     Overrides    = #{ code => IdContract
                     , call_data => CallDataInit
                     , gas => 10000
-                    , gas_price => 1
+                    , gas_price => MinGasPrice
                     },
     CreateTx     = create_tx(Owner, Overrides, S2),
-    ?assertEqual(1, aect_create_tx:gas_price(aetx:tx(CreateTx))),
+    ?assertEqual(MinGasPrice, aect_create_tx:gas_price(aetx:tx(CreateTx))),
 
     %% Test that the create transaction is accepted
     {SignedTx, [SignedTx], S3} = sign_and_apply_transaction_strict(CreateTx, OwnerPrivKey, S2),
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, aetx:nonce(CreateTx)),
 
     %% Now check that we can call it.
-    Fee           = 600000,
+    Fee           = 600000 * aec_test_utils:min_gas_price(),
     Value         = 52,
     CallData = make_calldata_from_code(IdContract, main, 42),
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
@@ -763,27 +770,27 @@ call_contract_(ContractCallTxGasPrice) ->
 
 call_contract_upfront_fee(_Cfg) ->
     F = fun(X) -> sender_balance_in_call(#{fee => X}) end,
-    V1 = 1000000,
-    V2 = 2000000,
+    V1 = 1000000 * aec_test_utils:min_gas_price(),
+    V2 = 2000000 * aec_test_utils:min_gas_price(),
     ?assertEqual(F(V1) + V1 - V2, F(V2)),
     ok.
 
 call_contract_upfront_gas(_Cfg) ->
-    F = fun(P, G) -> sender_balance_in_call(#{gas_price => P, gas => G, fee => 750000}) end,
-    P1 = 1,
+    F = fun(P, G) -> sender_balance_in_call(#{gas_price => P, gas => G, fee => 750000 * aec_test_utils:min_gas_price()}) end,
+    P1 = 1 * aec_test_utils:min_gas_price(),
     G1 = 20000,
     G2 = 30000,
     V1 = P1 * G1,
     V2 = P1 * G2, %% Same gas price, different gas limit.
     Bal1 = F(P1, G1),
     ?assertEqual(Bal1 + V1 - V2, F(_P2=P1, G2)),
-    P3 = 2,
+    P3 = 2 * aec_test_utils:min_gas_price(),
     V3 = P3 * G1, %% Different gas price, same gas limit.
     ?assertEqual(Bal1 + V1 - V3, F(P3, _G3=G1)),
     ok.
 
 call_contract_upfront_amount(_Cfg) ->
-    F = fun(X) -> sender_balance_in_call(#{amount => X, fee => 750000}) end,
+    F = fun(X) -> sender_balance_in_call(#{amount => X, fee => 750000 * aec_test_utils:min_gas_price()}) end,
     V1 = 10,
     V2 = 20,
     ?assertEqual(F(V1) + V1 - V2, F(V2)),
@@ -791,19 +798,20 @@ call_contract_upfront_amount(_Cfg) ->
 
 sender_balance_in_call(CallTxOpts) ->
     state(aect_test_utils:new_state()),
-    Sender = call(fun new_account/2, [10000000]),
+    Sender = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     Ct = call(fun create_contract/4, [Sender, upfront_charges, {}]),
     _SenderBalInCt = call(fun call_contract/7, [Sender, Ct, senderBalance, word, {}, CallTxOpts]).
 
 %% Check behaviour of contract call error - especially re value / amount.
 call_contract_error_value(_Cfg) ->
-    F = 600000,
+    F = 600000 * aec_test_utils:min_gas_price(),
     G = 60000,
-    DefaultOpts = #{fee => F, gas_price => 1, gas => G, amount => 0},
+    GasPrice = aec_test_utils:min_gas_price(),
+    DefaultOpts = #{fee => F, gas_price => GasPrice, gas => G, amount => 0},
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
     %% Initialization.
     state(aect_test_utils:new_state()),
-    Acc1 = call(fun new_account/2, [10000000]),
+    Acc1 = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     IdC = call(fun create_contract/5, [Acc1, value_on_err, {}, DefaultOpts#{deposit => 0}]),
     RemC = call(fun create_contract/5, [Acc1, remote_value_on_err, {}, DefaultOpts#{deposit => 0}]),
     0 = call(fun account_balance/2, [IdC]),
@@ -812,22 +820,22 @@ call_contract_error_value(_Cfg) ->
     S0 = state(),
     {{11, GasUsed1}, S1} = call_contract(Acc1, IdC, ok, word, {}, DefaultOpts#{amount := 3, return_gas_used => true}, S0),
     ?assertMatch(U when U < G, GasUsed1),
-    ?assertEqual(Bal(Acc1, S0) - (F + GasUsed1 + 3), Bal(Acc1, S1)),
+    ?assertEqual(Bal(Acc1, S0) - (F + GasUsed1 * GasPrice + 3), Bal(Acc1, S1)),
     ?assertEqual(Bal(RemC, S0), Bal(RemC, S1)),
     ?assertEqual(Bal(IdC, S0) + 3, Bal(IdC, S1)),
     {{11, GasUsed2}, S2} = call_contract(Acc1, RemC, callOk, word, {IdC, 10}, DefaultOpts#{amount := 14, return_gas_used => true}, S1),
-    ?assertEqual(Bal(Acc1, S1) - (F + GasUsed2 + 14), Bal(Acc1, S2)),
+    ?assertEqual(Bal(Acc1, S1) - (F + GasUsed2 * GasPrice + 14), Bal(Acc1, S2)),
     ?assertEqual(Bal(RemC, S1) + (14 - 10), Bal(RemC, S2)),
     ?assertEqual(Bal(IdC, S1) + 10, Bal(IdC, S2)),
     %% Check no transfer of value in calls that err.
     {{{error, <<"out_of_gas">>}, GasUsed3}, S3} = call_contract(Acc1, IdC, err, word, {}, DefaultOpts#{amount := 5, return_gas_used => true}, S2),
     ?assertEqual(G, GasUsed3),
-    ?assertEqual(Bal(Acc1, S2) - (F + GasUsed3), Bal(Acc1, S3)),
+    ?assertEqual(Bal(Acc1, S2) - (F + GasUsed3 * GasPrice), Bal(Acc1, S3)),
     ?assertEqual(Bal(RemC, S2), Bal(RemC, S3)),
     ?assertEqual(Bal(IdC, S2), Bal(IdC, S3)),
     {{{error, <<"out_of_gas">>}, GasUsed4}, S4} = call_contract(Acc1, RemC, callErr, word, {IdC, 7}, DefaultOpts#{amount := 13, return_gas_used => true}, S3),
     ?assertEqual(G, GasUsed4),
-    ?assertEqual(Bal(Acc1, S3) - (F + GasUsed4), Bal(Acc1, S4)),
+    ?assertEqual(Bal(Acc1, S3) - (F + GasUsed4 * GasPrice), Bal(Acc1, S4)),
     ?assertEqual(Bal(RemC, S3), Bal(RemC, S4)),
     ?assertEqual(Bal(IdC, S3), Bal(IdC, S4)),
     %% Check that you can limit the amount of gas in an error call
@@ -836,7 +844,7 @@ call_contract_error_value(_Cfg) ->
     ?assert(GasUsed5 < G),
     ct:pal("Bal(Acc1, S4): ~p", [Bal(Acc1, S4)]),
     ct:pal("GasUsed: ~p", [GasUsed5]),
-    ?assertEqual(Bal(Acc1, S4) - (F + GasUsed5), Bal(Acc1, S5)),
+    ?assertEqual(Bal(Acc1, S4) - (F + GasUsed5 * GasPrice), Bal(Acc1, S5)),
     ?assertEqual(Bal(RemC, S4), Bal(RemC, S5)),
     ?assertEqual(Bal(IdC, S4), Bal(IdC, S5)),
     ok.
@@ -972,7 +980,7 @@ create_tx(Owner, Spec0, State) ->
     Spec = maps:merge(
         #{ abi_version => aect_test_utils:latest_sophia_abi_version()
          , vm_version  => maps:get(vm_version, Spec0, vm_version())
-         , fee         => 1000000
+         , fee         => 1000000 * aec_test_utils:min_gas_price()
          , deposit     => 10
          , amount      => 200
          , gas         => 10000 }, Spec0),
@@ -1051,7 +1059,7 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
                 #{ nonce       => Nonce
                  , abi_version => aect_test_utils:latest_sophia_abi_version()
                  , call_data   => Calldata
-                 , fee         => 1000000
+                 , fee         => maps:get(fee, Options, 1000000 * aec_test_utils:min_gas_price())
                  , amount      => 0
                  , gas         => 140000
                  }, maps:without([height, return_gas_used, return_logs], Options)), S),
@@ -1112,7 +1120,7 @@ translate_pubkeys(X) -> X.
 
 sophia_identity(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1 = ?call(new_account, 10000000),
+    Acc1 = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     %% Remote calling the identity contract
     IdC   = ?call(create_contract, Acc1, identity, {}),
     RemC  = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
@@ -1127,11 +1135,16 @@ sophia_vm_interaction(Cfg) ->
     ForkHeight    = ?config(fork_height, Cfg),
     RomaHeight    = ForkHeight - 1,
     MinervaHeight = ForkHeight + 1,
-    Acc           = ?call(new_account, 10000000),
+    MinervaGasPrice = aec_governance:minimum_gas_price(MinervaHeight),
+    MinerMinGasPrice= aec_tx_pool:minimum_miner_gas_price(),
+    MinGasPrice   = max(MinerMinGasPrice, MinerMinGasPrice),
+    Acc           = ?call(new_account, 10000000 * MinGasPrice),
     RomaSpec      = #{height => RomaHeight, vm_version => ?VM_AEVM_SOPHIA_1,
                       amount => 100},
     MinervaSpec   = #{height => MinervaHeight, vm_version => ?VM_AEVM_SOPHIA_2,
-                      amount => 100},
+                      amount => 100,
+                      gas_price => MinGasPrice,
+                      fee => 1000000 * MinGasPrice},
     {ok, IdCode}  = compile_contract_vsn(identity, ?AESOPHIA_1),
     {ok, RemCode} = compile_contract_vsn(remote_call, ?AESOPHIA_1),
 
@@ -1142,10 +1155,14 @@ sophia_vm_interaction(Cfg) ->
     RemCMinerva = ?call(create_contract_with_code, Acc, RemCode, {}, MinervaSpec),
 
     %% Check that we cannot create contracts with vm1 after the fork
-    BadSpec    = RomaSpec#{height => MinervaHeight},
+    BadSpec    = RomaSpec#{height => MinervaHeight,
+                           gas_price => MinGasPrice,
+                           fee => 100000 * MinGasPrice},
     {error, illegal_vm_version} = ?call(fail_create_contract_with_code, Acc, IdCode, {}, BadSpec),
 
-    MinervaCallSpec = #{height => MinervaHeight},
+    MinervaCallSpec = #{height => MinervaHeight,
+                        gas_price => MinGasPrice,
+                        fee => 1000000 * MinGasPrice},
 
     %% Call directly VM1
     42 = ?call(call_contract, Acc, IdCRoma,    main, word, 42, MinervaCallSpec),
@@ -1172,7 +1189,7 @@ sophia_vm_interaction(Cfg) ->
 
 sophia_exploits(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc  = ?call(new_account, 10000000),
+    Acc  = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     {ok, Code} = compile_contract(exploits),
     StringType = aeso_heap:to_binary(string),
     HackedCode = hack_type(<<"pair">>, {return, StringType}, Code),
@@ -1206,7 +1223,7 @@ hack_type(HackFun, NewType, Code) ->
 
 sophia_no_reentrant(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc   = ?call(new_account, 10000000),
+    Acc   = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, identity, {}),
     RemC  = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
     Err   = {error, <<"reentrant_call">>},
@@ -1216,7 +1233,7 @@ sophia_no_reentrant(_Cfg) ->
 
 sophia_state(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1         = ?call(new_account, 10000000),
+    Acc1         = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     InitStack    = [<<"top">>, <<"middle">>, <<"bottom">>],
     Stack        = ?call(create_contract, Acc1, stack, InitStack),
     3            = ?call(call_contract,   Acc1, Stack, size, word, {}),
@@ -1232,7 +1249,7 @@ sophia_state(_Cfg) ->
 %% There was a bug matching on _::_.
 sophia_match_bug(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1      = ?call(new_account, 10000000),
+    Acc1      = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Poly      = ?call(create_contract, Acc1, polymorphism_test, {}),
     [5, 7, 9] = ?call(call_contract, Acc1, Poly, foo, {list, word}, {}),
     [1, 0, 3] = ?call(call_contract, Acc1, Poly, bar, {list, word}, {}),
@@ -1241,8 +1258,8 @@ sophia_match_bug(_Cfg) ->
 
 sophia_spend(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1         = ?call(new_account, 20000000),
-    Acc2         = ?call(new_account, 20000000),
+    Acc1         = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
+    Acc2         = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct1          = ?call(create_contract, Acc1, spend_test, {}, #{amount => 10000}),
     Ct2          = ?call(create_contract, Acc1, spend_test, {}, #{amount => 20000}),
     10000        = ?call(call_contract, Acc1, Ct1, get_balance, word, {}),
@@ -1253,10 +1270,12 @@ sophia_spend(_Cfg) ->
     5000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct2),
     10000        = ?call(call_contract, Acc1, Ct1, get_balance, word, {}),
     5000         = ?call(call_contract, Acc1, Ct2, get_balance, word, {}),
-    20015000     = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
+    Ct1ExpBal0   = 20000000 * aec_test_utils:min_gas_price() + 15000,
+    Ct1ExpBal0   = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
     %% Spend in nested call
-    20021000     = ?call(call_contract, Acc1, Ct2, spend_from, word, {Ct1, Acc2, 6000}),
-    20021000     = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
+    Ct1ExpBal1   = Ct1ExpBal0 + 6000,
+    Ct1ExpBal1   = ?call(call_contract, Acc1, Ct2, spend_from, word, {Ct1, Acc2, 6000}),
+    Ct1ExpBal1   = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
     4000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct1),
     5000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct2),
 
@@ -1267,7 +1286,7 @@ sophia_spend(_Cfg) ->
 
 sophia_typed_calls(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc    = ?call(new_account, 20000000),
+    Acc    = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Server = ?call(create_contract, Acc, multiplication_server, {}, #{amount => 0}),
     Client = ?call(create_contract, Acc, contract_types, Server, #{amount => 1000}),
     2      = ?call(call_contract, Acc, Client, get_n, word, {}),
@@ -1283,7 +1302,7 @@ sophia_typed_calls(_Cfg) ->
 
 sophia_call_origin(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc       = ?call(new_account, 10000000000),
+    Acc       = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     EnvC      = ?call(create_contract, Acc, environment, {0}, #{}),
     RemC      = ?call(create_contract, Acc, environment, EnvC, #{}),
 
@@ -1312,7 +1331,7 @@ sophia_oracles(_Cfg) ->
     state(aect_test_utils:new_state()),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
-    Acc               = ?call(new_account, 20000000),
+    Acc               = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     BogusOracle       = <<123:256>>,
     QueryFee          = 100,
@@ -1358,7 +1377,7 @@ sophia_oracles_type_error_arg(_Cfg) ->
     state(aect_test_utils:new_state()),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
-    Acc               = ?call(new_account, 10000000),
+    Acc               = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QueryFee          = 100,
     TTL               = 15,
@@ -1372,7 +1391,7 @@ sophia_oracles_type_error_out(_Cfg) ->
     state(aect_test_utils:new_state()),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
-    Acc               = ?call(new_account, 10000000),
+    Acc               = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QueryFee          = 100,
     TTL               = 15,
@@ -1386,7 +1405,7 @@ sophia_oracles_type_error_out(_Cfg) ->
 sophia_oracles_interact_with_no_vm_oracle(_Cfg) ->
     state(aect_test_utils:new_state()),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
-    Acc = <<AId:256>> = ?call(new_account, 10000000),
+    Acc = <<AId:256>> = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Ct                = ?call(create_contract, Acc, oracles_no_vm, {}, #{amount => 100000}),
     ok                = ?call(register_no_vm_oracle, Acc),
     Question          = <<"Manchester United vs Brommapojkarna">>,
@@ -1413,7 +1432,7 @@ register_no_vm_oracle(PubKey, S) ->
     Nonce = aect_test_utils:next_nonce(PubKey, S),
     {ok, Tx}  = aeo_register_tx:new(#{ account_id      => aeser_id:create(account, PubKey)
                                      , oracle_ttl      => {delta, 20}
-                                     , fee             => 100000
+                                     , fee             => 100000 * aec_test_utils:min_gas_price()
                                      , nonce           => Nonce
                                      , query_fee       => 5
                                      , query_format    => <<"Say someting">>
@@ -1609,7 +1628,7 @@ combine_ttl_scenarios(Cmds1, Cmds2) ->
 
 run_ttl_scenario(Scenario) ->
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 10000000000),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     [ begin
         Ct = ?call(create_contract, Acc, oracles, {}, #{amount => 10000}),
         io:format("Testing ~p\n", [Cmds]),
@@ -1799,8 +1818,8 @@ sophia_oracles_qfee__flow_up_to_respond_(Cbs,
     RespondTxOpts  = #{fee => TxFee, gas_price => GasPrice, amount => 0},
 
     state(aect_test_utils:new_state()),
-    OperatorAcc = call(fun new_account/2, [10000000]),
-    UserAcc = call(fun new_account/2, [10000000]),
+    OperatorAcc = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
+    UserAcc = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     CCbs = closed_oracle_cbs(Cbs,
                              OperatorAcc, UserAcc,
                              InitialOracleCtBalance,
@@ -1844,8 +1863,8 @@ sophia_oracles_qfee__flow_up_to_query_(InitialState,
     QueryTxOpts    = #{fee => TxFee, gas_price => GasPrice, amount => QueryTxValue},
 
     state(InitialState),
-    OperatorAcc = call(fun new_account/2, [10000000]),
-    UserAcc = call(fun new_account/2, [10000000]),
+    OperatorAcc = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
+    UserAcc = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     CCbs = closed_oracle_cbs(Cbs,
                              OperatorAcc, UserAcc,
                              InitialOracleCtBalance,
@@ -1879,8 +1898,8 @@ sophia_oracles_qfee__basic(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__basic__data_(),
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
@@ -1921,8 +1940,8 @@ sophia_oracles_qfee__basic__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__basic__data_(),
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
@@ -1976,8 +1995,8 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle(_Cf
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__data_(),
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
@@ -2010,8 +2029,8 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__re
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__data_(),
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
@@ -2055,8 +2074,8 @@ sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__data_(),
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
@@ -2089,8 +2108,8 @@ sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote(_
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__data_(),
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
@@ -2137,8 +2156,8 @@ sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__data_(),
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
@@ -2162,8 +2181,8 @@ sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__data_(),
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
@@ -2199,8 +2218,8 @@ sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
-    TxFee = 600000,
-    GasPrice = 1,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
@@ -2229,8 +2248,8 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle(_C
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
     InitialOracleCtBalance = 0,
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
@@ -2254,8 +2273,8 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_th
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
@@ -2279,8 +2298,8 @@ sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__remote(_C
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
@@ -2309,8 +2328,8 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle__r
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
     InitialOracleCtBalance = 0,
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
@@ -2335,8 +2354,8 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_th
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
@@ -2363,8 +2382,8 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_takes_from_rich_orac
     QueryTxValue = RegisterTxQFee,
     QueryRemoteCtValue = QueryTxValue0,
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee, remote_value => QueryRemoteCtValue},
     RespondOpts = #{},
@@ -2395,8 +2414,8 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_p
     QueryTxValue = RegisterTxQFee,
     QueryRemoteCtValue = QueryTxValue0,
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee, remote_value => QueryRemoteCtValue},
     {{OperatorAcc, UserAcc},
@@ -2423,8 +2442,8 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_r
     QueryTxValue = RegisterTxQFee,
     QueryRemoteCtValue = QueryTxValue0,
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee, remote_value => QueryRemoteCtValue},
     {{OperatorAcc, UserAcc},
@@ -2462,8 +2481,8 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle(_
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle__data_(),
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
@@ -2491,8 +2510,8 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_poor_
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle__data_(),
     InitialOracleCtBalance = 0,
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
@@ -2516,8 +2535,8 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_rich_
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle__data_(),
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
@@ -2549,8 +2568,8 @@ sophia_oracles_qfee__error_after_primop(_Cfg) ->
                        oracle_query_from_contract_(unsafeCreateQueryThenErr, UserAcc, OCt, OCt, Opts, TxOpts, S)
                end},
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
@@ -2578,7 +2597,7 @@ sophia_oracles_qfee__inner_error_after_primop__remote(_Cfg) ->
         sophia_oracles_qfee__basic__data_(),
 
     InitialState0 = aect_test_utils:new_state(),
-    {TmpAcc, InitialState1} = new_account(10000000, InitialState0),
+    {TmpAcc, InitialState1} = new_account(10000000 * aec_test_utils:min_gas_price(), InitialState0),
     {OracleErrCt, InitialState} = create_contract(TmpAcc, oracles_err, {}, #{amount => 0}, InitialState1),
 
     Cbs =
@@ -2588,8 +2607,8 @@ sophia_oracles_qfee__inner_error_after_primop__remote(_Cfg) ->
                        oracle_query_from_remote_contract_(callUnsafeCreateQueryThenErr, UserAcc, RCt, OracleErrCt, OCt, Opts, TxOpts, S)
                end},
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
@@ -2626,8 +2645,8 @@ sophia_oracles_qfee__outer_error_after_primop__remote(_Cfg) ->
                        oracle_query_from_remote_contract_(callUnsafeCreateQueryAndThenErr, UserAcc, RCt, OCt, Opts, TxOpts, S)
                end},
 
-    TxFee = 600000,
-    GasPrice = 2,
+    TxFee = 600000 * aec_test_utils:min_gas_price(),
+    GasPrice = 2 * aec_test_utils:min_gas_price(),
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
@@ -2662,7 +2681,7 @@ sophia_oracles_qfee__outer_error_after_primop__remote(_Cfg) ->
          respond_ttl  :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(non_neg_integer())}).
 sophia_oracles_gas_ttl__measure_gas_used(Sc, Height, Gas) ->
     state(aect_test_utils:new_state()),
-    Caller = call(fun new_account/2, [100000000000]),
+    Caller = call(fun new_account/2, [100000000000 * aec_test_utils:min_gas_price()]),
     Ct = call(fun create_contract/4, [Caller, oracles_gas, {}]),
     QFee=1,
     Args = {QFee,
@@ -2672,7 +2691,7 @@ sophia_oracles_gas_ttl__measure_gas_used(Sc, Height, Gas) ->
             Sc#oracles_gas_ttl_scenario.respond_ttl},
     Opts = #{height => Height,
              return_gas_used => true,
-             gas_price => 1,
+             gas_price => aec_test_utils:min_gas_price(),
              gas => Gas,
              amount => QFee},
     {_Result, _GasUsed} = call(fun call_contract/7, [Caller, Ct, happyPathWithAllBuiltinsAtSameHeight, {tuple, []}, Args, Opts]).
@@ -2830,8 +2849,8 @@ sophia_signatures_oracles(_Cfg) ->
     state(aect_test_utils:new_state()),
     RelativeTTL         = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL            = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
-    Acc                 = ?call(new_account, 1000000000),
-    Orc                 = ?call(new_account, 1000000000),
+    Acc                 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Orc                 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Ct                  = ?call(create_contract, Acc, oracles, {}),
     QueryFee            = 13,
     TTL                 = 50,
@@ -2874,7 +2893,7 @@ sophia_signatures_oracles(_Cfg) ->
 
 sophia_signatures_aens(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc      = ?call(new_account, 20000000),
+    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
     Name     = <<"foo.test">>,
     APubkey  = 1,
@@ -2894,7 +2913,7 @@ sophia_signatures_aens(_Cfg) ->
     none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
 
     %% AENS transactions from contract - using 3rd party account
-    NameAcc         = ?call(new_account, 20000000),
+    NameAcc         = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Name1           = <<"bla.test">>,
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
@@ -2944,8 +2963,8 @@ sign(Material, KeyHolder) ->
 %% Testing map functions and primitives
 sophia_maps(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 1000000000),
-    Ct  = ?call(create_contract, Acc, maps, {}, #{fee => 2000000}),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, maps, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
 
     Call = fun(Fn, Type, Args) -> ?call(call_contract, Acc, Ct, Fn, Type, Args) end,
 
@@ -3117,7 +3136,7 @@ sophia_maps(_Cfg) ->
 
 sophia_map_benchmark(Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc  = ?call(new_account, 100000000),
+    Acc  = ?call(new_account, 100000000 * aec_test_utils:min_gas_price()),
     N    = proplists:get_value(n, Cfg, 10),
     Map  = maps:from_list([{I, list_to_binary(integer_to_list(I))} || I <- lists:seq(1, N) ]),
     {ok, Code} = compile_contract(maps_benchmark),
@@ -3314,7 +3333,7 @@ sophia_map_benchmark(Cfg) ->
 
 sophia_big_map_benchmark(Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 100000000000000),
+    Acc = ?call(new_account, 100000000000000 * aec_test_utils:min_gas_price()),
     N     = proplists:get_value(n, Cfg, 1000),
     Batch = proplists:get_value(batch, Cfg, N),
     Key   = proplists:get_value(key, Cfg, 0),
@@ -3333,7 +3352,7 @@ sophia_big_map_benchmark(Cfg) ->
 
 sophia_pmaps(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 1000000000),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, primitive_map, 0),
     {} = ?call(call_contract, Acc, Ct, set_remote, {tuple, []}, Ct),
 
@@ -3376,7 +3395,7 @@ sophia_pmaps(_Cfg) ->
 
 sophia_chess(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 1000000000),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     {Ct, _Gas} = ?call(create_contract, Acc, chess, {}, #{gas => 1000000, return_gas_used => true}),
     {some, <<"black king">>}  = ?call(call_contract, Acc, Ct, piece, {option, string}, {8, 5}),
     {some, <<"white queen">>} = ?call(call_contract, Acc, Ct, piece, {option, string}, {1, 4}),
@@ -3390,7 +3409,7 @@ sophia_chess(_Cfg) ->
 
 sophia_map_of_maps(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 1000000000),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     {Ct, _Gas} = ?call(create_contract, Acc, map_of_maps, {}, #{gas => 1000000, return_gas_used => true}),
     {}         = ?call(call_contract, Acc, Ct, setup_state, {tuple, []}, {}),
 
@@ -3403,8 +3422,8 @@ sophia_map_of_maps(_Cfg) ->
 
 sophia_variant_types(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc = <<AccId:256>> = ?call(new_account, 10000000),
-    Ct  = ?call(create_contract, Acc, variant_types, {}, #{fee => 2000000}),
+    Acc = <<AccId:256>> = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, variant_types, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
     Call = fun(Fn, Type, Args) -> ?call(call_contract, Acc, Ct, Fn, Type, Args) end,
     Color  = {variant_t, [{red, []}, {green, []}, {blue, []}, {grey, [word]}]},
     StateR = {tuple, [word, word, Color]},
@@ -3420,7 +3439,7 @@ sophia_variant_types(_Cfg) ->
 
 sophia_chain(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc         = ?call(new_account, 10000000),
+    Acc         = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = ?BENEFICIARY_PUBKEY,
     Ct1         = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
     Beneficiary = ?call(call_contract, Acc, Ct1, miner, word, {}),
@@ -3428,7 +3447,7 @@ sophia_chain(_Cfg) ->
 
 sophia_savecoinbase(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 10000000),
+    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = ?BENEFICIARY_PUBKEY,
 
     %% Create chain contract and check that address is stored.
@@ -3451,7 +3470,7 @@ sophia_no_callobject_for_remote_calls(_Cfg) ->
                  end,
 
     state(aect_test_utils:new_state()),
-    Acc   = ?call(new_account, 10000000),
+    Acc   = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, identity, {}),
     RemC  = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
     RemC2 = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
@@ -3472,7 +3491,7 @@ sophia_no_callobject_for_remote_calls(_Cfg) ->
 
 sophia_operators(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc   = ?call(new_account, 1000000000),
+    Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, operators, {}),
 
     ?assertEqual(14, ?call(call_contract, Acc, IdC, int_op, word, {5, 9, <<"+">>})),
@@ -3509,7 +3528,7 @@ sophia_bits(_Cfg) ->
     ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_2,
               bitmaps_not_in_roma),
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 1000000000),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
 
     C = ?call(create_contract, Acc, bits, {}),
 
@@ -3576,7 +3595,7 @@ sophia_bits(_Cfg) ->
 
 sophia_int_to_str(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc   = ?call(new_account, 1000000000),
+    Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, int_to_str, {}),
 
     ITests = ["0", "5", "12345", "-2345",
@@ -3605,7 +3624,7 @@ sophia_int_to_str(_Cfg) ->
 
 sophia_events(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc   = ?call(new_account, 1000000000),
+    Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, events, {}),
 
     ?assertMatch({{},[{_, _, <<"bar">>}]},
@@ -3628,7 +3647,7 @@ sophia_crypto(_Cfg) ->
     set_compiler_version(?VM_AEVM_SOPHIA_1, ?AESOPHIA_2),
 
     state(aect_test_utils:new_state()),
-    Acc   = ?call(new_account, 1000000000),
+    Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, crypto, {}),
 
     Sign = fun(Bin, PrivK) ->
@@ -3681,7 +3700,7 @@ sophia_safe_math(Cfg) ->
 
 sophia_safe_math() ->
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 1000000000000),
+    Acc = ?call(new_account, 1000000000000 * aec_test_utils:min_gas_price()),
     C   = ?call(create_contract, Acc, safe_math, {}),
 
     <<Medium:17/unit:8>> = list_to_binary(lists:duplicate(17, $x)),
@@ -3721,7 +3740,7 @@ sophia_safe_math() ->
 
 sophia_safe_math_old() ->
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 1000000000000),
+    Acc = ?call(new_account, 1000000000000 * aec_test_utils:min_gas_price()),
     C   = ?call(create_contract, Acc, safe_math, {}),
 
     <<Medium:17/unit:8>> = list_to_binary(lists:duplicate(17, $x)),
@@ -3755,7 +3774,7 @@ sophia_safe_math_old() ->
 
 sophia_bad_code(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc  = ?call(new_account, 10000000),
+    Acc  = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     {ok, Code} = compile_contract(bad_code),
     %% Switch DUP3 against DUP11 - will make init crash...
     HackedCode1 = hack_dup(130, 139, Code),
@@ -3779,7 +3798,7 @@ hack_dup(A, B, <<X:8, Rest/binary>>) -> <<X:8, (hack_dup(A, B, Rest))/binary>>.
 
 sophia_bad_init(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc   = ?call(new_account, 1000000000),
+    Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
 
     BadByteCode = <<249,2,163,70,1,160,148,150,21,128,247,154,18,103,230,176,30,42,133,14,242,51,251,159,51,
          139,248,89,9,137,137,170,12,8,199,205,43,82,249,1,206,249,1,203,160,185,201,86,242,139,
@@ -3813,7 +3832,7 @@ sophia_bad_init(_Cfg) ->
 
 sophia_heap_to_heap_bug(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc   = ?call(new_account, 1000000000),
+    Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, expose_put_size_check_bug, {}),
 
     ?assertMatchVM(
@@ -3839,7 +3858,7 @@ run_scenario(#fundme_scenario
 
     state(aect_test_utils:new_state()),
     Denomination  = 1000 * 1000,
-    StartingFunds = 1000 * 1000 * Denomination,
+    StartingFunds = 1000 * 1000 * Denomination * aec_test_utils:min_gas_price(),
     InvestorNames = [ Investor || {contribute, Investor, _Amount, _Height} <- Events ],
 
     %% Set up accounts
@@ -3881,7 +3900,7 @@ run_scenario(#fundme_scenario
             false -> Contributed(Name)
         end end, Investors),
 
-    GasDelta = 5000000,
+    GasDelta = 5000000 * aec_test_utils:min_gas_price(),
     Is = fun(_, Expect, Actual) when Expect - GasDelta =< Actual, Actual =< Expect -> true;
             (Tag, Expect, Actual) -> {Scenario, Tag, Actual, is_not, Expect, minus_gas} end,
 
@@ -3956,7 +3975,7 @@ aens_preclaim(PubKey, Name, Options, S) ->
     Salt   = rand:uniform(10000),
     Nonce  = aect_test_utils:next_nonce(PubKey, S),
     Height = maps:get(height, Options, 1),
-    Fee    = maps:get(fee, Options, 50000),
+    Fee    = maps:get(fee, Options, 50000 * aec_test_utils:min_gas_price()),
     TTL    = maps:get(ttl, Options, 1000),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash = aens_hash:commitment_hash(NameAscii, Salt),
@@ -3975,7 +3994,7 @@ aens_claim(PubKey, Name, Salt, S) ->
 aens_claim(PubKey, Name, Salt, Options, S) ->
     Nonce  = aect_test_utils:next_nonce(PubKey, S),
     Height = maps:get(height, Options, 2),
-    Fee    = maps:get(fee, Options, 50000),
+    Fee    = maps:get(fee, Options, 50000 * aec_test_utils:min_gas_price()),
     TTL    = maps:get(ttl, Options, 1000),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     NameHash = aens_hash:name_hash(NameAscii),
@@ -3995,7 +4014,7 @@ aens_revoke(PubKey, Hash, S) ->
 aens_revoke(PubKey, Hash, Options, S) ->
     Nonce  = aect_test_utils:next_nonce(PubKey, S),
     Height = maps:get(height, Options, 3),
-    Fee    = maps:get(fee, Options, 50000),
+    Fee    = maps:get(fee, Options, 50000 * aec_test_utils:min_gas_price()),
     TTL    = maps:get(ttl, Options, 1000),
     {ok, Tx} = aens_revoke_tx:new(#{ account_id => aeser_id:create(account, PubKey),
                                      nonce      => Nonce,
@@ -4012,7 +4031,7 @@ aens_update(PubKey, NameHash, Pointers, S) ->
 aens_update(PubKey, NameHash, Pointers, Options, S) ->
     Nonce     = aect_test_utils:next_nonce(PubKey, S),
     Height    = maps:get(height, Options, 2),
-    Fee       = maps:get(fee, Options, 50000),
+    Fee    = maps:get(fee, Options, 50000 * aec_test_utils:min_gas_price()),
     TTL       = maps:get(ttl, Options, 1000),
     ClientTTL = maps:get(client_ttl, Options, 1000),
     NameTTL   = maps:get(name_ttl, Options, 1000),
@@ -4030,7 +4049,7 @@ aens_update(PubKey, NameHash, Pointers, Options, S) ->
 
 sophia_aens(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc      = ?call(new_account, 20000000),
+    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
     Name     = <<"foo.test">>,
     APubkey  = 1,
@@ -4088,11 +4107,16 @@ sophia_aens(_Cfg) ->
 
 sophia_state_handling(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc      = ?call(new_account, 50000000),
+    Acc      = ?call(new_account, 50000000 * aec_test_utils:min_gas_price()),
+    ContractName =
+        case vm_version() of
+            ?VM_AEVM_SOPHIA_1 -> state_handling_v1;
+            _                 -> state_handling
+        end,
     Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
     %% Test an init function that calls a remote contract to compute the state
-    Ct1      = ?call(create_contract, Acc, state_handling, {Ct0, 1}, #{ amount => 100000 }),
-    Ct2      = ?call(create_contract, Acc, state_handling, {Ct0, 2}, #{ amount => 100000 }),
+    Ct1      = ?call(create_contract, Acc, ContractName, {Ct0, 1}, #{ amount => 100000 }),
+    Ct2      = ?call(create_contract, Acc, ContractName, {Ct0, 2}, #{ amount => 100000 }),
     MapT     = {map, word, word},
     StateT   = {tuple, [word, string, MapT]},
     UnitT    = {tuple, []},
@@ -4157,9 +4181,14 @@ sophia_state_handling(_Cfg) ->
 
 sophia_state_gas(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc      = ?call(new_account, 20000000),
+    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
+    ContractName =
+        case vm_version() of
+            ?VM_AEVM_SOPHIA_1 -> state_handling_v1;
+            _                 -> state_handling
+        end,
     Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
-    Ct1      = ?call(create_contract, Acc, state_handling, {Ct0, 1}, #{ amount => 100000 }),
+    Ct1      = ?call(create_contract, Acc, ContractName, {Ct0, 1}, #{ amount => 100000 }),
     %% MapT     = {map, word, word},
     %% StateT   = {tuple, [word, string, MapT]},
     UnitT    = {tuple, []},
@@ -4214,7 +4243,7 @@ get_ct_store(Ct) ->
 
 create_store(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1  = ?call(new_account, 100),
+    Acc1  = ?call(new_account, 100 * aec_test_utils:min_gas_price()),
     Ct1   = ?call(insert_contract, Acc1, <<"Code for C1">>),
     Ct1   = ?call(get_contract, Ct1),
     Empty = #{},
@@ -4223,7 +4252,7 @@ create_store(_Cfg) ->
 
 read_store(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1   = ?call(new_account, 100),
+    Acc1   = ?call(new_account, 100 * aec_test_utils:min_gas_price()),
     Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
     Ct1    = ?call(get_contract, Ct1),
     Store1 = #{ <<0>> => <<42>> },
@@ -4236,7 +4265,7 @@ read_store(_Cfg) ->
 
 store_zero_value(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1   = ?call(new_account, 100),
+    Acc1   = ?call(new_account, 100 * aec_test_utils:min_gas_price()),
     Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
     Ct1    = ?call(get_contract, Ct1),
     Store1 = #{ <<0>> => <<42>>
@@ -4253,7 +4282,7 @@ store_zero_value(_Cfg) ->
 
 merge_new_zero_value(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1   = ?call(new_account, 100),
+    Acc1   = ?call(new_account, 100 * aec_test_utils:min_gas_price()),
     Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
     Ct1    = ?call(get_contract, Ct1),
     Store1 = #{ <<0>> => <<42>>
@@ -4285,7 +4314,7 @@ enter_contract(Contract, S) ->
 
 call_missing(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1      = ?call(new_account, 10000000),
+    Acc1      = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
     Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
     42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {Contract2, 42}),
@@ -4295,7 +4324,7 @@ call_missing(_Cfg) ->
 
 call_wrong_type(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1     = ?call(new_account, 10000000),
+    Acc1     = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
     Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
     42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {Contract2, 42}),

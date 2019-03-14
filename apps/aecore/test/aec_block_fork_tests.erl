@@ -2,6 +2,8 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-include_lib("aecontract/include/hard_forks.hrl").
+
 %%%===================================================================
 %%% Test cases
 %%%===================================================================
@@ -51,6 +53,31 @@ apply_minerva_test_() ->
         end}
      ]}.
 
+load_files_smoke_test_() ->
+    {foreach,
+     fun() ->
+         meck:new(aec_fork_block_settings, [passthrough]),
+         {ok, WorkDir} = file:get_cwd(),
+         DataAecoreDir =  WorkDir ++ "/data/aecore/",
+         meck:expect(aec_fork_block_settings, file_name,
+            fun(?ROMA_PROTOCOL_VSN) ->
+                DataAecoreDir ++ ".genesis/accounts.json";
+                (?MINERVA_PROTOCOL_VSN) ->
+                DataAecoreDir ++ ".minerva/accounts.json" end),
+         ok
+     end,
+     fun(ok) ->
+         meck:unload(aec_fork_block_settings),
+         ok
+     end,
+     [ {"Load the real accounts.json files",
+        fun() ->
+            T0 = make_trees(aec_fork_block_settings:genesis_accounts()),
+            _T1 = aec_block_fork:apply_minerva(T0),
+            ok
+        end}
+     ]}.
+
 meck_minerva_accounts(AccountsList) ->
     meck:expect(aec_fork_block_settings, minerva_accounts,
                 fun() -> AccountsList end).
@@ -82,7 +109,7 @@ make_trees(AccountsList) ->
     Trees = aec_trees:new_without_backend(),
     AccTrees =
         lists:foldl(
-            fun({Pubkey, Balance}, AccumAccTrees) when Balance > 0 ->
+            fun({Pubkey, Balance}, AccumAccTrees) when Balance >= 0 ->
                 Account = aec_accounts:new(Pubkey, Balance),
                 aec_accounts_trees:enter(Account, AccumAccTrees)
             end,

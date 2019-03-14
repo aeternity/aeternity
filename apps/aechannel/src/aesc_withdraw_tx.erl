@@ -35,6 +35,11 @@
          updates/1,
          round/1]).
 
+-ifdef(TEST).
+-export([set_channel_id/2,
+         set_round/2,
+         set_state_hash/2]).
+-endif.
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -131,7 +136,7 @@ check(#channel_withdraw_tx{}, Trees,_Env) ->
     %% Checks in process/3
     {ok, Trees}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_withdraw_tx{round = Round} = Tx, Trees, Env) ->
     Instructions =
         aec_tx_processor:channel_withdraw_tx_instructions(
@@ -241,3 +246,19 @@ round(#channel_withdraw_tx{round = Round}) ->
 -spec version() -> non_neg_integer().
 version() ->
     ?CHANNEL_WITHDRAW_TX_VSN.
+
+%%%===================================================================
+%%% Test setters 
+%%%===================================================================
+-dialyzer({nowarn_function, set_channel_id/2}).
+set_channel_id(Tx, ChannelId) ->
+    channel = aeser_id:specialize_type(ChannelId),
+    Tx#channel_withdraw_tx{channel_id = ChannelId}.
+
+-dialyzer({nowarn_function, set_round/2}).
+set_round(Tx, Round) when is_integer(Round) ->
+    Tx#channel_withdraw_tx{round = Round}.
+
+-dialyzer({nowarn_function, set_state_hash/2}).
+set_state_hash(Tx, Hash) ->
+    Tx#channel_withdraw_tx{state_hash = Hash}.

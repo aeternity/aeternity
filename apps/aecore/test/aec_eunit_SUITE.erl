@@ -12,7 +12,7 @@
 
 -define(STARTED_APPS_WHITELIST, [runtime_tools, parse_trans, folsom, bear, setup, hut, hex2bin,
                                  inet_cidr, inet_ext, lhttpc, rand_compat, xmerl, aecuckoo,
-                                 aecuckooprebuilt]).
+                                 aecuckooprebuilt, getopt, eblake2]).
 -define(TO_BE_STOPPED_APPS_BLACKLIST, []).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server, %% by test framework

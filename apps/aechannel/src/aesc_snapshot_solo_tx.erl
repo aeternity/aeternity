@@ -111,14 +111,14 @@ check(#channel_snapshot_solo_tx{payload    = Payload,
         Err -> Err
     end.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_snapshot_solo_tx{payload    = Payload,
                                   fee        = Fee,
                                   nonce      = Nonce} = Tx,
-        Trees,_Env) ->
+        Trees, Env) ->
     ChannelPubKey = channel_pubkey(Tx),
     FromPubKey    = from_pubkey(Tx),
-    aesc_utils:process_solo_snapshot(ChannelPubKey, FromPubKey, Nonce, Fee, Payload, Trees).
+    aesc_utils:process_solo_snapshot(ChannelPubKey, FromPubKey, Nonce, Fee, Payload, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_snapshot_solo_tx{} = Tx, _) ->

@@ -13,6 +13,7 @@ rem Set required vars defaults
 IF "%PACKAGE_PATH%"=="" SET "PACKAGE_PATH=/tmp/win_package_build"
 IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\msys64"
 IF "%PLATFORM%"=="" SET "PLATFORM=x64"
+IF "%BUILD_PATH%"=="" GOTO :PACKAGEABORT_MISSINGBUILDPATH
 SET BASH_BIN="%WIN_MSYS2_ROOT%\usr\bin\bash"
 SET RELEASE_PATH=%BUILD_PATH%/_build/prod/rel/aeternity
 
@@ -46,7 +47,11 @@ rem Copy release into package environment
 %BASH_BIN% -lc "mkdir -p \"%PACKAGE_PATH%/aeternity-windows-w64/usr/lib\""
 %BASH_BIN% -lc "cp -R \"%RELEASE_PATH%\" \"%PACKAGE_PATH%/aeternity-windows-w64/usr/lib/\""
 %BASH_BIN% -lc "mkdir -p \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
+
+@echo Current time: %time%
+rem Copy genisis and hard-fork account migrations into top-level data folder
 %BASH_BIN% -lc "cp -R \"%RELEASE_PATH%/data/aecore/.genesis\" \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
+%BASH_BIN% -lc "cp -R \"%RELEASE_PATH%/data/aecore/.minerva\" \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
 
 @echo Current time: %time%
 rem Build packages
@@ -62,3 +67,8 @@ SET /p PACKAGE_VERSION=<%~dp0%\..\..\REVISION
 
 @echo Current time: %time%
 rem Finished package phase
+exit /B 0
+
+:PACKAGEABORT_MISSINGBUILDPATH
+@echo ERROR: Missing environment variable BUILD_PATH
+exit /B 1

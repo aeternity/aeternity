@@ -199,7 +199,7 @@ contract_call(ABI, EncodedCode, Function, Argument) ->
     Call =
         fun(CodeOrAddress, Arg) ->
           case aect_dispatch:call(ABI, CodeOrAddress, Function, Arg) of
-              {ok, Result} -> {ok, aeser_api_encoder:encode(contract_bytearray, Result)};
+              {ok, Result, _} -> {ok, aeser_api_encoder:encode(contract_bytearray, Result)};
               {error, _ErrorMsg} = Err -> Err
           end
         end,

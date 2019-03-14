@@ -170,7 +170,15 @@ patron() ->
 %% to a cluster of older nodes.
 new_node_joins_network(Cfg) ->
     Compatible = "aeternity/aeternity:v1.4.0", %% Latest version it should be compatible with
-    OldBaseSpec = #{backend => aest_docker, source  => {pull, Compatible}, config_guest_path => "/home/aeternity/.epoch/epoch/epoch.yaml"},
+    PatronAddress = aeser_api_encoder:encode(account_pubkey,
+                                              maps:get(pubkey, patron())),
+    %% have all nodes share the same accounts_test.json
+    GenesisAccounts = [{PatronAddress, 123400000000000000000000000000}],
+    OldBaseSpec = #{backend => aest_docker,
+                    source  => {pull, Compatible},
+                    config_guest_path => "/home/aeternity/.epoch/epoch/epoch.yaml",
+                    genesis_accounts => GenesisAccounts
+                   },
     ct:log("Testing compatiblity of aeternity/aeternity:local with ~p", [Compatible]),
 
     OldNode1 = OldBaseSpec#{
@@ -182,10 +190,11 @@ new_node_joins_network(Cfg) ->
       peers   => [old_node1]},
 
     NewNode =  #{
-      name    => new_node1,
-      peers   => [old_node1],
-      backend => aest_docker,
-      source  => {pull, "aeternity/aeternity:local"}},
+      name             => new_node1,
+      peers            => [old_node1],
+      backend          => aest_docker,
+      source           => {pull, "aeternity/aeternity:local"},
+      genesis_accounts => GenesisAccounts},
 
     setup_nodes([OldNode1, OldNode2, NewNode], Cfg),
 

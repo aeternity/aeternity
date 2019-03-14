@@ -95,9 +95,21 @@ format(Fmt, Args) ->
 
 node_spec(Name, DbHostPath) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
-    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:local"}, db_path => {DbHostPath, DbGuestPath}}).
+    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:local"},
+                                db_path => {DbHostPath, DbGuestPath},
+                                genesis_accounts => genesis_accounts()}).
 
 %% Last Roma release.
 roma_node_spec(Name, DbHostPath) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
-    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v1.4.0"}, db_path => {DbHostPath, DbGuestPath}, config_guest_path => "/home/aeternity/.epoch/epoch/epoch.yaml"}).
+    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v1.4.0"},
+                                db_path => {DbHostPath, DbGuestPath},
+                                config_guest_path => "/home/aeternity/.epoch/epoch/epoch.yaml",
+                                genesis_accounts => genesis_accounts()}).
+
+genesis_accounts() ->
+    %% have all nodes share the same accounts_test.json
+    PatronPubkey = <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
+    PatronAddress = aeser_api_encoder:encode(account_pubkey, PatronPubkey),
+    [{PatronAddress, 123400000000000000000000000000}].
+

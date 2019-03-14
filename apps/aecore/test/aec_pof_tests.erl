@@ -68,12 +68,12 @@ validation_fail_siblings() ->
 
 make_fraud_headers() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAccounts = [{PubKey, 1000000}],
+    PresetAccounts = [{PubKey, 1000000 * aec_test_utils:min_gas_price()}],
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
 
     %% Create main chain
     TxsFun = fun(1) ->
-                     Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000, 2), PrivKey),
+                     Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000 * aec_test_utils:min_gas_price(), 2), PrivKey),
                      [Tx1];
                 (_) ->
                      []
@@ -83,7 +83,7 @@ make_fraud_headers() ->
     [_KB0,_KB1, MB] = blocks_only_chain(Chain0),
 
     CommonChain = [B0, B1],
-    Txs = [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000, 3), PrivKey)],
+    Txs = [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000 * aec_test_utils:min_gas_price(), 3), PrivKey)],
     Fork = aec_test_utils:extend_block_chain_with_micro_blocks(CommonChain, Txs),
     [_, _, MBF] = blocks_only_chain(Fork),
 

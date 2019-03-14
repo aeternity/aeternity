@@ -54,13 +54,13 @@ create_with_state(Block, KeyBlock, Txs, Trees) ->
 
 -spec apply_block_txs(list(aetx_sign:signed_tx()), aec_trees:trees(),
                       aetx_env:env()) ->
-        {ok, list(aetx_sign:signed_tx()), aec_trees:trees()}.
+        {ok, list(aetx_sign:signed_tx()), aec_trees:trees(), aetx_env:events()}.
 apply_block_txs(Txs, Trees, Env) ->
     int_apply_block_txs(Txs, Trees, Env, false).
 
 -spec apply_block_txs_strict(list(aetx_sign:signed_tx()), aec_trees:trees(),
                              aetx_env:env()) ->
-        {ok, list(aetx_sign:signed_tx()), aec_trees:trees()} | {error, term()}.
+        {ok, list(aetx_sign:signed_tx()), aec_trees:trees(), aetx_env:events()} | {error, term()}.
 apply_block_txs_strict(Txs, Trees, Env) ->
     int_apply_block_txs(Txs, Trees, Env, true).
 
@@ -123,7 +123,7 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     Env = aetx_env:tx_env_from_key_header(KeyHeader, PrevKeyHash,
                                           Time, PrevBlockHash),
 
-    {ok, Txs1, Trees2} = int_apply_block_txs(Txs, Trees, Env, false),
+    {ok, Txs1, Trees2, Events} = int_apply_block_txs(Txs, Trees, Env, false),
 
     TxsTree = aec_txs_trees:from_txs(Txs1),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(TxsTree)),
@@ -134,7 +134,8 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
                                     aec_trees:hash(Trees2), TxsRootHash, Txs1,
                                     Time, PoF, Version),
 
-    BlockInfo = #{ trees => Trees2, txs_tree => TxsTree, tx_env => Env},
+    Env1 = aetx_env:set_events(Env, Events),
+    BlockInfo = #{ trees => Trees2, txs_tree => TxsTree, tx_env => Env1},
     {ok, NewBlock, BlockInfo}.
 
 determine_new_time(PrevBlock) ->
@@ -174,14 +175,14 @@ get_pof(KeyBlock, PrevBlockHash, PrevBlock) ->
 
 %% Non-strict
 int_apply_block_txs(Txs, Trees, Env, false) ->
-    {ok, Txs1, _InvalidTxs, Trees1} =
+    {ok, Txs1, _InvalidTxs, Trees1, Events} =
         aec_trees:apply_txs_on_state_trees(Txs, Trees, Env),
-    {ok, Txs1, Trees1};
+    {ok, Txs1, Trees1, Events};
 %% strict
 int_apply_block_txs(Txs, Trees, Env, true) ->
     case aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Env) of
-        {ok, Txs1, [], Trees1} ->
-            {ok, Txs1, Trees1};
+        {ok, Txs1, [], Trees1, Events} ->
+            {ok, Txs1, Trees1, Events};
         Err = {error, _} ->
             Err
     end.
@@ -189,9 +190,9 @@ int_apply_block_txs(Txs, Trees, Env, true) ->
 int_update(MaxGas, Block, Txs, BlockInfo) ->
     Env = maps:get(tx_env, BlockInfo),
     case add_txs_to_trees(MaxGas, maps:get(trees, BlockInfo), Txs, Env) of
-        {[], _} ->
+        {[], _, _} ->
             {error, no_change};
-        {Txs1, Trees1} ->
+        {Txs1, Trees1, Env1} ->
             Txs0 = aec_blocks:txs(Block),
             TxsTree1 = aec_txs_trees:add_txs(Txs1, length(Txs0), maps:get(txs_tree, BlockInfo)),
             {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree1),
@@ -199,27 +200,29 @@ int_update(MaxGas, Block, Txs, BlockInfo) ->
                          Block, TxsRootHash, aec_trees:hash(Trees1),
                          Txs0 ++ Txs1),
             NewBlockInfo = BlockInfo#{ trees => Trees1
-                                     , txs_tree => TxsTree1 },
+                                     , txs_tree => TxsTree1
+                                     , tx_env => Env1 },
             {ok, NewBlock, NewBlockInfo}
     end.
 
 add_txs_to_trees(MaxGas, Trees, Txs, Env) ->
     add_txs_to_trees(MaxGas, Trees, Txs, [], Env).
 
-add_txs_to_trees(_MaxGas, Trees, [], Acc,_Env) ->
-    {lists:reverse(Acc), Trees};
+add_txs_to_trees(_MaxGas, Trees, [], Acc, Env) ->
+    {lists:reverse(Acc), Trees, Env};
 add_txs_to_trees(MaxGas, Trees, [Tx | Txs], Acc, Env) ->
     TxGas = aetx:gas_limit(aetx_sign:tx(Tx), aetx_env:height(Env)),
     case TxGas =< MaxGas of
         true ->
             case aec_trees:apply_txs_on_state_trees([Tx], Trees, Env) of
-                {ok, [], _, _} ->
+                {ok, [], _, _, _} ->
                     add_txs_to_trees(MaxGas, Trees, Txs, Acc, Env);
-                {ok, [Tx], _, Trees1} ->
-                    add_txs_to_trees(MaxGas - TxGas, Trees1, Txs, [Tx | Acc], Env)
+                {ok, [Tx], _, Trees1, Events} ->
+                    Env1 = aetx_env:set_events(Env, Events),
+                    add_txs_to_trees(MaxGas - TxGas, Trees1, Txs, [Tx | Acc], Env1)
             end;
         false ->
-            {lists:reverse(Acc), Trees}
+            {lists:reverse(Acc), Trees, Env}
     end.
 
 %% Respect nonces order

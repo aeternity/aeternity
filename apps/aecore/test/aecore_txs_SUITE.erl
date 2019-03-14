@@ -73,15 +73,15 @@ txs_gc(Config) ->
     Height0 = 0,
 
     %% Add a bunch of transactions...
-    {ok, TxH1} = add_spend_tx(N1, 1000, 20000,  1,  10), %% Ok
-    {ok, _GC1} = add_spend_tx(N1, 1000, 20000,  2,  10), %% Should expire ?EXPIRE_TX_TTL after
+    {ok, TxH1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  1,  10), %% Ok
+    {ok, _GC1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  2,  10), %% Should expire ?EXPIRE_TX_TTL after
                                                          %% TxH2 is on chain = ~1 + 2 = ~3
-    {ok, TxH2} = add_spend_tx(N1, 1000, 20001,  2,  10), %% Duplicate should be preferred
-    {ok, TxH3} = add_spend_tx(N1, 1000, 20000,  3,  10), %% Ok
+    {ok, TxH2} = add_spend_tx(N1, 1000, 20001 * aec_test_utils:min_gas_price(),  2,  10), %% Duplicate should be preferred
+    {ok, TxH3} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  3,  10), %% Ok
 
-    {ok, TxH5} = add_spend_tx(N1, 1000, 20000,  5,  10), %% Non consecutive nonce
-    {ok, _}    = add_spend_tx(N1, 1000, 20000,  7,  10), %% Non consecutive nonce
-    {ok, _}    = add_spend_tx(N1, 1000, 20000,  8,  7),  %% Short TTL - expires at 7
+    {ok, TxH5} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  5,  10), %% Non consecutive nonce
+    {ok, _}    = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  7,  10), %% Non consecutive nonce
+    {ok, _}    = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  8,  7),  %% Short TTL - expires at 7
 
     %% Now there should be 7 transactions in mempool
     pool_check(N1, 7),
@@ -104,7 +104,7 @@ txs_gc(Config) ->
     pool_check(N1, 3),
 
     %% Add the missing tx
-    {ok, TxH4} = add_spend_tx(N1, 1000, 20000,  4,  10), %% consecutive nonce
+    {ok, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  10), %% consecutive nonce
 
     %% Mine to get TxH4-5 onto chain
     {ok, Blocks2} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH4, TxH5], 10),
@@ -178,11 +178,11 @@ missing_tx_gossip(Config) ->
     %% Ping interval was 500 ms, wait that long
     timer:sleep(2 * 500),
 
-    {ok, TxH1} = add_spend_tx(N1, 1000, 20000,  1,  100), %% Ok
-    {ok, TxH2} = add_spend_tx(N1, 1000, 20000,  2,  100), %% Ok
-    {ok, TxH3} = add_spend_tx(N1, 1000, 20000,  3,  100), %% Ok
-    {ok, TxH4} = add_spend_tx(N1, 1000, 20000,  4,  100), %% Ok
-    {ok, TxH5} = add_spend_tx(N2, 1000, 20000,  5,  100), %% Ok
+    {ok, TxH1} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  1,  100), %% Ok
+    {ok, TxH2} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  2,  100), %% Ok
+    {ok, TxH3} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  3,  100), %% Ok
+    {ok, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  100), %% Ok
+    {ok, TxH5} = add_spend_tx(N2, 1000, 20000 * aec_test_utils:min_gas_price(),  5,  100), %% Ok
 
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3, TxH4], 5),
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N2, [TxH5], 5),
@@ -195,9 +195,9 @@ check_coinbase_validation(Config) ->
     N1 = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:connect(N1),
     {ok, TxH1, Ct1, Code} =
-        create_contract_tx(N1, chain, <<"()">>,  300000,  1,  100),
+        create_contract_tx(N1, chain, [],  300000 * aec_test_utils:min_gas_price(),  1,  100),
     {ok, TxH2} =
-        call_contract_tx(N1, Ct1, Code, <<"save_coinbase">>, <<"()">>, 600000,  2,  100),
+        call_contract_tx(N1, Ct1, Code, <<"save_coinbase">>, [], 600000 * aec_test_utils:min_gas_price(),  2,  100),
     {ok, _} =
         aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], 10),
 
@@ -247,7 +247,7 @@ micro_block_cycle(Config) ->
     timer:sleep(1000), %% Make sure we're leader
 
     [ begin
-        add_spend_tx(N1, 1000, 20000,  Nonce, 10000),
+        add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(), Nonce, 10000),
         timer:sleep(MBC div 3)
       end || Nonce <- lists:seq(1,30) ],
 
@@ -284,8 +284,9 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     OwnerKey = maps:get(pubkey, patron()),
     Owner    = aeser_id:create(account, OwnerKey),
     File     = lists:concat(["contracts/", Name]),
+    {ok, Contract} = aect_test_utils:read_contract(File),
     {ok, Code} = aect_test_utils:compile_contract(File),
-    {ok, CallData} = aect_sophia:encode_call_data(Code, <<"init">>, Args),
+    {ok, CallData} = aect_sophia:encode_call_data(Contract, <<"init">>, Args),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     VM  = aect_test_utils:latest_sophia_vm_version(),
     {ok, CreateTx} = aect_create_tx:new(#{ nonce       => Nonce
@@ -298,13 +299,13 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
                                          , amount      => 0
                                          , gas         => 100000
                                          , owner_id    => Owner
-                                         , gas_price   => 1
+                                         , gas_price   => aec_test_utils:min_gas_price() 
                                          , ttl         => TTL
                                          }),
     CTx = aec_test_utils:sign_tx(CreateTx, maps:get(privkey, patron())),
     Res = rpc:call(Node, aec_tx_pool, push, [CTx]),
     ContractKey = aect_contracts:compute_contract_pubkey(OwnerKey, Nonce),
-    {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey, Code}.
+    {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey, Contract}.
 
 call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
     Caller       = aeser_id:create(account, maps:get(pubkey, patron())),
@@ -318,7 +319,7 @@ call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
                                      , fee         => Fee
                                      , amount      => 0
                                      , gas         => 100000
-                                     , gas_price   => 1
+                                     , gas_price   => aec_test_utils:min_gas_price() 
                                      , call_data   => CallData
                                      , ttl         => TTL
                                      }),
