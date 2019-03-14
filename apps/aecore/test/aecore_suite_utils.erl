@@ -497,7 +497,7 @@ expected_logs() ->
      "aeternity_pow_cuckoo.log", "aeternity_metrics.log"].
 
 await_sync_complete(T0, Nodes) ->
-    [aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],
+    [ok = aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],
     AllEvents = lists:flatten(
                   [aecore_suite_utils:events_since(N, chain_sync, T0) || N <- Nodes]
                  ),
