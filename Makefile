@@ -29,7 +29,7 @@ AE_DEB_NAME="Aeternity Team"
 
 
 # Packages from master MUST be pre-releases. Git master version
-# usually is always higher then the last stable release. However
+# usually is higher then the last stable release. However
 # packages with newer stable version MUST always have higher version
 # than master in Debian/Ubuntu packaging context. The only way to
 # achieve this is when master packages are a pre-release (
