@@ -610,7 +610,7 @@ jobs:
     steps:
       - run:
           name: Checkout Ubuntu packaging branch
-          command: git clone https://github.com/aeternity/aeternity.git -b ubuntu_pacakging_162439771 --single-branch
+          command: git clone https://github.com/aeternity/aeternity.git -b ubuntu_pacakging_162439771 --single-branch .
       - *build_ubuntu_package
       - *test_package
       - store_artifacts:
