@@ -165,6 +165,7 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
              , tx_env      := TxEnv0
              , origin      := <<OriginAddr0:?PUB_SIZE/unit:8>>
              } = CallDef) ->
+    OldContext = aetx_env:context(TxEnv0),
     TxEnv = aetx_env:set_context(TxEnv0, aetx_contract),
     ChainState0 = chain_state(CallDef, TxEnv, VMVersion),
     <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
@@ -209,7 +210,7 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
                     {
                       create_call(GasUsed, ok, Out, Log, Call),
                       aec_vm_chain:get_trees(ChainState),
-                      aec_vm_chain:get_tx_env(ChainState)
+                      aetx_env:set_context(aec_vm_chain:get_tx_env(ChainState), OldContext)
                     };
                 {revert, Out, GasLeft} ->
                     GasUsed = Gas - GasLeft,
