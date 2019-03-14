@@ -10,6 +10,10 @@ executors:
     docker:
       - image: aeternity/builder
         user: builder
+  builder_container_1804:
+    docker:
+      - image: aeternity/builder:1804
+        user: builder
 
 references:
   container_config: &container_config
@@ -160,6 +164,16 @@ references:
         make prod-package
         mkdir ${PACKAGES_DIR:?}
         mv _build/prod/rel/aeternity/aeternity-$(cat VERSION).tar.gz ${PACKAGE_TARBALL:?}
+
+  build_ubuntu_package: &build_ubuntu_package
+    run:
+      name: Build Ubuntu package (*.deb)
+      environment:
+        PACKAGES_DIR: *packages_workspace
+      command: |
+        make prod-deb-package
+        mkdir ${PACKAGES_DIR:?}
+        mv _build/../../*aeternity-node_$(cat VERSION).*.deb ${PACKAGES_DIR:?}
 
   package_tests_workspace: &package_tests_workspace /tmp/package_tests
   test_package: &test_package
@@ -588,6 +602,29 @@ jobs:
           root: *packages_workspace
           paths:
             - "*.tar.gz"
+      - *fail_notification
+
+  ubuntu_package:
+    executor: builder_container_1804
+    <<: *container_config
+    steps:
+      - run:
+          name: Checkout Ubuntu packaging branch
+          command: git clone https://github.com/aeternity/aeternity.git -b ubuntu_pacakging_162439771 --single-branch
+      - *set_package_path
+      - *build_ubuntu_package
+      - *test_package
+      - store_artifacts:
+          path: /tmp/package_tests/node1/log
+      - store_artifacts:
+          path: /tmp/package_tests/node2/log
+      - store_artifacts:
+          path: /tmp/package_tests/node3/log
+      - *store_package_artifacts
+      - persist_to_workspace:
+          root: *packages_workspace
+          paths:
+            - "*.deb"
       - *fail_notification
 
   upload_build_artifacts:
@@ -1084,6 +1121,11 @@ workflows:
                 - system-tests
             tags:
               only: *tag_regex
+
+      - ubuntu_package:
+          filters:
+            branches:
+              only: ci_deb_package_build_162439780
 
       - upload_build_artifacts:
           requires:
