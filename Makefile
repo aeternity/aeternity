@@ -22,7 +22,7 @@ PACKAGE_SPEC_WIN32 ?= ../ci/appveyor/package.cfg
 
 AE_DEB_VERSION=`cat VERSION`
 AE_DEB_DCH_REL_NOTE= \
-"Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASENOTES-`cat VERSION`.md"
+"Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-`cat VERSION`.md"
 
 AE_DEB_EMAIL="info@aeternity.com"
 AE_DEB_NAME="Aeternity Team"
