@@ -21,6 +21,7 @@
          stop_node/2,
          get_node_db_config/1,
          delete_node_db_if_persisted/1,
+         expected_mine_rate/0,
          mine_blocks/2,
          mine_blocks/3,
          mine_all_txs/1,
@@ -211,6 +212,9 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
     cmd("rm", ".", ".", ["-r", MnesiaDir], [], false),
     {false, _} = {filelib:is_file(MnesiaDir), MnesiaDir},
     ok.
+
+expected_mine_rate() ->
+    ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE.
 
 mine_key_blocks(Node, NumBlocksToMine) ->
     mine_blocks(Node, NumBlocksToMine, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, key).
