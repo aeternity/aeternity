@@ -67,6 +67,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 -define(OPS_BIN, "aeternity").
+-define(DEFAULT_CUSTOM_EXPECTED_MINE_RATE, 100).
 
 %% Keys for P2P communication
 peer_keys() ->
@@ -212,13 +213,13 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
     ok.
 
 mine_key_blocks(Node, NumBlocksToMine) ->
-    mine_blocks(Node, NumBlocksToMine, 100, key).
+    mine_blocks(Node, NumBlocksToMine, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, key).
 
 mine_micro_blocks(Node, NumBlocksToMine) ->
-    mine_blocks(Node, NumBlocksToMine, 100, micro).
+    mine_blocks(Node, NumBlocksToMine, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, micro).
 
 mine_blocks(Node, NumBlocksToMine) ->
-    mine_blocks(Node, NumBlocksToMine, 100, any).
+    mine_blocks(Node, NumBlocksToMine, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, any).
 
 mine_blocks(Node, NumBlocksToMine, MiningRate) ->
     mine_blocks(Node, NumBlocksToMine, MiningRate, any).
@@ -257,7 +258,7 @@ mine_all_txs(Node, MaxBlocks) ->
     end.
 
 mine_blocks_until_txs_on_chain(Node, TxHashes, MaxBlocks) ->
-    mine_blocks_until_txs_on_chain(Node, TxHashes, 100, MaxBlocks).
+    mine_blocks_until_txs_on_chain(Node, TxHashes, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, MaxBlocks).
 
 mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
     ok = rpc:call(
