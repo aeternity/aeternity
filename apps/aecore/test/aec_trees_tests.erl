@@ -50,7 +50,7 @@ signatures_check_test_() ->
         fun () ->
             SignedSpend =
                     aec_test_utils:signed_spend_tx(
-                      #{recipient_id => aec_id:create(account, <<1:32/unit:8>>),
+                      #{recipient_id => aeser_id:create(account, <<1:32/unit:8>>),
                         amount => 1,
                         fee => 20000 * aec_test_utils:min_gas_price(),
                         nonce => 1,
@@ -91,7 +91,7 @@ process_txs_test_() ->
         fun () ->
             SignedSpend =
                     aec_test_utils:signed_spend_tx(
-                      #{recipient_id => aec_id:create(account, <<1:32/unit:8>>),
+                      #{recipient_id => aeser_id:create(account, <<1:32/unit:8>>),
                         amount => 1,
                         fee => 20000 * aec_test_utils:min_gas_price(),
                         nonce => 1,
@@ -114,8 +114,8 @@ process_txs_test_() ->
      ]}.
 
 make_spend_tx(Sender, Recipient) ->
-    {ok, SpendTx} = aec_spend_tx:new(#{sender_id => aec_id:create(account, Sender),
-                                       recipient_id => aec_id:create(account, Recipient),
+    {ok, SpendTx} = aec_spend_tx:new(#{sender_id => aeser_id:create(account, Sender),
+                                       recipient_id => aeser_id:create(account, Recipient),
                                        amount => 1,
                                        fee => 20000 * aec_test_utils:min_gas_price(),
                                        nonce => 1,
@@ -723,7 +723,7 @@ translate_store(C) ->
 ct_create_tx(Sender, VmVersion, ABIVersion) ->
     Spec =
         #{ fee         => 750000
-         , owner_id    => aec_id:create(account, Sender)
+         , owner_id    => aeser_id:create(account, Sender)
          , nonce       => 0
          , code        => <<"NOT PROPER BYTE CODE">>
          , vm_version  => VmVersion

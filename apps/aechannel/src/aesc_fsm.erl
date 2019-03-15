@@ -1274,8 +1274,8 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
       abi_version := ABIVersion,
       amount      := Amount,
       call_data   := CallData} = Opts,
-    Update = aesc_offchain_update:op_call_contract(aec_id:create(account, FromPub),
-                                                   aec_id:create(contract, ContractPubKey),
+    Update = aesc_offchain_update:op_call_contract(aeser_id:create(account, FromPub),
+                                                   aeser_id:create(contract, ContractPubKey),
                                                    ABIVersion, Amount,
                                                    CallData, CallStack),
     Updates = [Update],
@@ -1725,8 +1725,8 @@ new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
                #data{opts = DOpts, on_chain_id = Chan, state = State}) ->
     #{initiator := Initiator,
       responder := Responder} = DOpts,
-    ChanId = aec_id:create(channel, Chan),
-    FromId = aec_id:create(account, From),
+    ChanId = aeser_id:create(channel, Chan),
+    FromId = aeser_id:create(account, From),
     {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
     {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
     Fee = maps:get(fee, Opts),
@@ -1743,7 +1743,7 @@ new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
 new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                                      amount := Amount} = Opts,
                #data{on_chain_id = ChanId, state=State}) ->
-    Updates = [aesc_offchain_update:op_deposit(aec_id:create(account, FromId), Amount)],
+    Updates = [aesc_offchain_update:op_deposit(aeser_id:create(account, FromId), Amount)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
@@ -1755,8 +1755,8 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
     {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
     Opts1 = maps:merge(Opts, #{state_hash => StateHash,
                                round      => LastRound + 1,
-                               channel_id => aec_id:create(channel, ChanId),
-                               from_id    => aec_id:create(account, FromId)
+                               channel_id => aeser_id:create(channel, ChanId),
+                               from_id    => aeser_id:create(account, FromId)
                                }),
     lager:debug("deposit_tx Opts = ~p", [Opts1]),
     {ok, _} = Ok = aesc_deposit_tx:new(Opts1),
@@ -1765,7 +1765,7 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
 new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                                       amount := Amount} = Opts,
                #data{on_chain_id = ChanId, state=State}) ->
-    Updates = [aesc_offchain_update:op_withdraw(aec_id:create(account, ToId), Amount)],
+    Updates = [aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
@@ -1777,8 +1777,8 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
     {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
     Opts1 = maps:merge(Opts, #{state_hash => StateHash,
                                round      => LastRound + 1,
-                               channel_id => aec_id:create(channel, ChanId),
-                               to_id      => aec_id:create(account, ToId)
+                               channel_id => aeser_id:create(channel, ChanId),
+                               to_id      => aeser_id:create(account, ToId)
                               }),
     lager:debug("withdraw_tx Opts = ~p", [Opts1]),
     {ok, _} = Ok = aesc_withdraw_tx:new(Opts1),
@@ -1793,8 +1793,8 @@ new_onchain_tx(channel_create_tx, Opts,
                                responder => Responder}),
     lager:debug("create_tx Opts = ~p", [Opts1]),
     Opts2 = Opts1#{ state_hash    => StateHash
-                  , initiator_id  => aec_id:create(account, Initiator)
-                  , responder_id  => aec_id:create(account, Responder)
+                  , initiator_id  => aeser_id:create(account, Initiator)
+                  , responder_id  => aeser_id:create(account, Responder)
                   },
     {ok, _} = Ok = aesc_create_tx:new(Opts2),
     Ok.
@@ -1854,8 +1854,8 @@ slash_tx(Account, Nonce, _Round, SignedTx, #data{ on_chain_id = ChanId
     TTL = adjust_ttl(maps:get(ttl, Opts1, 0)),
     {ok, Poi} = aesc_offchain_state:poi([{account, Initiator},
                                          {account, Responder}], State),
-    {ok, _} = Ok = aesc_slash_tx:new(#{ channel_id => aec_id:create(channel, ChanId)
-                                      , from_id    => aec_id:create(account, Account)
+    {ok, _} = Ok = aesc_slash_tx:new(#{ channel_id => aeser_id:create(channel, ChanId)
+                                      , from_id    => aeser_id:create(account, Account)
                                       , payload    => aetx_sign:serialize_to_binary(SignedTx)
                                       , poi        => Poi
                                       , ttl        => TTL
@@ -1880,8 +1880,8 @@ close_solo_tx(Account, Nonce, #data{ on_chain_id = ChanId
     {_Round, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
     {ok, Poi} = aesc_offchain_state:poi([{account, Initiator},
                                          {account, Responder}], State),
-    {ok,_} = Ok = aesc_slash_tx:new(#{ channel_id => aec_id:create(channel, ChanId)
-                                     , from_id    => aec_id:create(account, Account)
+    {ok,_} = Ok = aesc_slash_tx:new(#{ channel_id => aeser_id:create(channel, ChanId)
+                                     , from_id    => aeser_id:create(account, Account)
                                      , payload    => aetx_sign:serialize_to_binary(SignedTx)
                                      , poi        => Poi
                                      , ttl        => TTL
@@ -1948,7 +1948,7 @@ new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts 
       code        := Code,
       deposit     := Deposit,
       call_data   := CallData} = Opts,
-    Updates = [aesc_offchain_update:op_new_contract(aec_id:create(account, Owner),
+    Updates = [aesc_offchain_update:op_new_contract(aeser_id:create(account, Owner),
                                                     VmVersion, ABIVersion, Code, Deposit, CallData)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
@@ -2320,8 +2320,8 @@ check_update_ack_(SignedTx, HalfSignedTx) ->
 
 handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
                                                        , opts = Opts } = D) ->
-    Updates = [aesc_offchain_update:op_transfer(aec_id:create(account, FromPub),
-                                                aec_id:create(account, ToPub), Amount)],
+    Updates = [aesc_offchain_update:op_transfer(aeser_id:create(account, FromPub),
+                                                aeser_id:create(account, ToPub), Amount)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,

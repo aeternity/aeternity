@@ -10,8 +10,8 @@
 trunc_test() ->
     T0 = ?TESTED_MODULE:empty(),
 
-    Owner1 = aec_id:create(account, <<"_______________k1_______________">>),
-    Owner2 = aec_id:create(account, <<"_______________k2_______________">>),
+    Owner1 = aeser_id:create(account, <<"_______________k1_______________">>),
+    Owner2 = aeser_id:create(account, <<"_______________k2_______________">>),
 
     MakeStore = fun(Map) -> aect_contracts_store:put_map(Map, aect_contracts_store:new()) end,
     St1 = MakeStore(#{<<"1">> => <<"a">>}),
@@ -40,7 +40,7 @@ new_contract() ->
     new_contract(#{}).
 
 new_contract(Override) ->
-    Map = #{ owner_id    => aec_id:create(account, <<4711:32/unit:8>>)
+    Map = #{ owner_id    => aeser_id:create(account, <<4711:32/unit:8>>)
            , nonce       => 42
            , code        => <<"THIS IS NOT ACTUALLY PROPER BYTE CODE">>
            , vm_version  => ?VM_AEVM_SOLIDITY_1

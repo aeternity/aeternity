@@ -150,7 +150,7 @@ create_tx(PubKey, Spec0, State) ->
 
 create_tx_default_spec(PubKey, State) ->
     #{ fee         => 1000000 * aec_test_utils:min_gas_price()
-     , owner_id    => aec_id:create(account, PubKey)
+     , owner_id    => aeser_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , code        => dummy_bytecode()
      , vm_version  => latest_sophia_vm_version()
@@ -164,10 +164,11 @@ create_tx_default_spec(PubKey, State) ->
      }.
 
 dummy_bytecode() ->
+    {ok, Version} = aeso_compiler:version(),
     aect_sophia:serialize(#{byte_code => <<"NOT PROPER BYTE CODE">>,
                             type_info => [],  %% No type info
                             contract_source => "NOT PROPER SOURCE STRING",
-                            compiler_version => aeso_compiler:version()}
+                            compiler_version => Version}
                          ).
 
 %%%===================================================================
@@ -184,8 +185,8 @@ call_tx(PubKey, ContractKey, Spec0, State) ->
 
 call_tx_default_spec(PubKey, ContractKey, State) ->
     #{ fee         => 600000 * aec_test_utils:min_gas_price()
-     , contract_id => aec_id:create(contract, ContractKey)
-     , caller_id   => aec_id:create(account, PubKey)
+     , contract_id => aeser_id:create(contract, ContractKey)
+     , caller_id   => aeser_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , abi_version => latest_sophia_abi_version()
      , amount      => 100

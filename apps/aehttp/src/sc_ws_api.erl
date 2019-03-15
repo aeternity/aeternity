@@ -133,7 +133,7 @@ process_fsm_(#{type := sign,
                                                orelse Tag =:= funding_created
                                                orelse Tag =:= update
                                                orelse Tag =:= update_ack ->
-    EncTx = aehttp_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx)),
+    EncTx = aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx)),
     Tag1 =
         case Tag of
             create_tx -> <<"initiator_sign">>;
@@ -164,24 +164,24 @@ process_fsm_(#{type := report,
             {info, {died, _}} -> #{event => <<"died">>};
             {info, _} when is_atom(Event) -> #{event => atom_to_binary(Event, utf8)};
             {on_chain_tx, Tx} ->
-                EncodedTx = aehttp_api_encoder:encode(transaction,
+                EncodedTx = aeser_api_encoder:encode(transaction,
                                                aetx_sign:serialize_to_binary(Tx)),
                 #{tx => EncodedTx};
             {_, NewState} when Tag == update; Tag == leave ->
-                Bin = aehttp_api_encoder:encode(transaction,
+                Bin = aeser_api_encoder:encode(transaction,
                                          aetx_sign:serialize_to_binary(NewState)),
                 #{state => Bin};
             {conflict, #{channel_id := ChId,
                          round      := Round}} ->
-                         #{channel_id => aehttp_api_encoder:encode(channel, ChId),
+                         #{channel_id => aeser_api_encoder:encode(channel, ChId),
                            round => Round};
             {message, #{channel_id  := ChId,
                         from        := From,
                         to          := To,
                         info        := Info}} ->
-                #{message => #{channel_id => aehttp_api_encoder:encode(channel, ChId),
-                               from => aehttp_api_encoder:encode(account_pubkey, From),
-                               to => aehttp_api_encoder:encode(account_pubkey, To),
+                #{message => #{channel_id => aeser_api_encoder:encode(channel, ChId),
+                               from => aeser_api_encoder:encode(account_pubkey, From),
+                               to => aeser_api_encoder:encode(account_pubkey, To),
                                info => Info}};
             {error, Msg} -> #{message => Msg};
             {debug, Msg} -> #{message => Msg}

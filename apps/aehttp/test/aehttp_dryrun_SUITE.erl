@@ -190,22 +190,22 @@ dry_run(TopHash, Txs) ->
 
 dry_run(TopHash, Txs, Accounts) ->
     http_request(internal_address(), post, "debug/transactions/dry-run",
-                 #{ top => aehttp_api_encoder:encode(key_block_hash, TopHash),
-                    accounts => [ A#{pub_key => aehttp_api_encoder:encode(account_pubkey, PK)}
+                 #{ top => aeser_api_encoder:encode(key_block_hash, TopHash),
+                    accounts => [ A#{pub_key => aeser_api_encoder:encode(account_pubkey, PK)}
                                   || A = #{pub_key := PK } <- Accounts ],
-                    txs => [aehttp_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx)) || Tx <- Txs] }).
+                    txs => [aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx)) || Tx <- Txs] }).
 
 get_genesis_hash() ->
     {ok, 200, #{<<"genesis_key_block_hash">> := EncGenesisHash}} = get_status(),
-    {ok, GenesisHash} = aehttp_api_encoder:safe_decode(key_block_hash, EncGenesisHash),
+    {ok, GenesisHash} = aeser_api_encoder:safe_decode(key_block_hash, EncGenesisHash),
     GenesisHash.
 
 get_status() ->
     http_request(external_address(), get, "status", #{}).
 
 create_spend_tx(Sender, Recipient, Amount, Fee, Nonce, TTL) ->
-    SenderId = aec_id:create(account, Sender),
-    RecipientId = aec_id:create(account, Recipient),
+    SenderId = aeser_id:create(account, Sender),
+    RecipientId = aeser_id:create(account, Recipient),
     Params = #{ sender_id    => SenderId,
                 recipient_id => RecipientId,
                 amount       => Amount,
@@ -217,7 +217,7 @@ create_spend_tx(Sender, Recipient, Amount, Fee, Nonce, TTL) ->
     Tx.
 
 create_contract_tx(Owner, Nonce, Code, CallData) ->
-    OwnerId = aec_id:create(account, Owner),
+    OwnerId = aeser_id:create(account, Owner),
     Params = #{ owner_id => OwnerId,
                 code => Code,
                 call_data => CallData,
@@ -233,8 +233,8 @@ create_contract_tx(Owner, Nonce, Code, CallData) ->
     Tx.
 
 call_contract_tx(Caller, Contract, Nonce, CallData) ->
-    CallerId = aec_id:create(account, Caller),
-    ContractId = aec_id:create(contract, Contract),
+    CallerId = aeser_id:create(account, Caller),
+    ContractId = aeser_id:create(contract, Contract),
     Params = #{ caller_id => CallerId,
                 contract_id => ContractId,
                 call_data => CallData,

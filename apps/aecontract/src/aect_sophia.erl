@@ -92,7 +92,7 @@ serialize(#{byte_code := ByteCode, type_info := TypeInfo,
              , {byte_code, ByteCode} ] ++
              [ {compiler_version, BinVersion} || SophiaContractVersion > ?SOPHIA_CONTRACT_VSN_1 ],
              %% Add version here in release when Minerva height has been reached
-    aec_object_serialization:serialize(compiler_sophia,
+    aeser_chain_objects:serialize(compiler_sophia,
                                        SophiaContractVersion,
                                        serialization_template(SophiaContractVersion),
                                        Fields
@@ -100,13 +100,13 @@ serialize(#{byte_code := ByteCode, type_info := TypeInfo,
 
 -spec deserialize(binary()) -> wrapped_code().
 deserialize(Binary) ->
-    case aec_object_serialization:deserialize_type_and_vsn(Binary) of
+    case aeser_chain_objects:deserialize_type_and_vsn(Binary) of
         {compiler_sophia = Type, ?SOPHIA_CONTRACT_VSN_1 = Vsn, _Rest} ->
             Template = serialization_template(Vsn),
             [ {source_hash, Hash}
             , {type_info, TypeInfo}
             , {byte_code, ByteCode}
-            ] = aec_object_serialization:deserialize(Type, Vsn, Template, Binary),
+            ] = aeser_chain_objects:deserialize(Type, Vsn, Template, Binary),
             #{ source_hash => Hash
              , type_info => TypeInfo
              , byte_code => ByteCode
@@ -118,7 +118,7 @@ deserialize(Binary) ->
             , {type_info, TypeInfo}
             , {byte_code, ByteCode}
             , {compiler_version, CompilerVersion}
-            ] = aec_object_serialization:deserialize(Type, Vsn, Template, Binary),
+            ] = aeser_chain_objects:deserialize(Type, Vsn, Template, Binary),
             #{ source_hash => Hash
              , type_info => TypeInfo
              , byte_code => ByteCode

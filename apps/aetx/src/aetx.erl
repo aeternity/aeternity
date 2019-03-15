@@ -168,7 +168,7 @@ new(Callback, Tx) ->
     Type = Callback:type(),
     {Vsn, Fields} = Callback:serialize(Tx),
     Template = Callback:serialization_template(Vsn),
-    Size = byte_size(aec_object_serialization:serialize(Type, Vsn, Template, Fields)),
+    Size = byte_size(aeser_chain_objects:serialize(Type, Vsn, Template, Fields)),
     #aetx{ type = Type, cb = Callback, size = Size, tx = Tx }.
 
 -spec fee(Tx :: tx()) -> Fee :: integer().
@@ -369,7 +369,7 @@ serialize_for_client(#aetx{ cb = CB, type = Type, tx = Tx }) ->
 -spec serialize_to_binary(Tx :: tx()) -> term().
 serialize_to_binary(#aetx{ cb = CB, type = Type, tx = Tx }) ->
     {Vsn, Fields} = CB:serialize(Tx),
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
       Type,
       Vsn,
       CB:serialization_template(Vsn),
@@ -378,10 +378,10 @@ serialize_to_binary(#aetx{ cb = CB, type = Type, tx = Tx }) ->
 -spec deserialize_from_binary(Bin :: binary()) -> Tx :: tx().
 deserialize_from_binary(Bin) ->
     {Type, Vsn, RawFields} =
-        aec_object_serialization:deserialize_type_and_vsn(Bin),
+        aeser_chain_objects:deserialize_type_and_vsn(Bin),
     CB = type_to_cb(Type),
     Template = CB:serialization_template(Vsn),
-    Fields = aec_serialization:decode_fields(Template, RawFields),
+    Fields = aeserialization:decode_fields(Template, RawFields),
     #aetx{cb = CB, type = Type, size = byte_size(Bin), tx = CB:deserialize(Vsn, Fields)}.
 
 type_to_cb(spend_tx)                  -> aec_spend_tx;

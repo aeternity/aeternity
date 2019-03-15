@@ -35,9 +35,9 @@ basic_serialize() ->
 
 basic_getters() ->
     C = aect_contracts:new(create_tx()),
-    ?assert(aec_id:is_id(id(C))),
+    ?assert(aeser_id:is_id(id(C))),
     ?assert(is_binary(pubkey(C))),
-    ?assert(aec_id:is_id(owner_id(C))),
+    ?assert(aeser_id:is_id(owner_id(C))),
     ?assert(is_binary(owner_pubkey(C))),
     ok.
 
@@ -73,7 +73,7 @@ create_tx() ->
     create_tx(#{}).
 
 create_tx(Override) ->
-    Map = #{ owner_id    => aec_id:create(account, <<4711:32/unit:8>>)
+    Map = #{ owner_id    => aeser_id:create(account, <<4711:32/unit:8>>)
            , nonce       => 42
            , code        => <<"THIS IS NOT ACTUALLY PROPER BYTE CODE">>
            , vm_version  => ?VM_AEVM_SOLIDITY_1

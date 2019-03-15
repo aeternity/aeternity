@@ -121,8 +121,8 @@ get_call(ContractPubkey, CallerPubkey, Round, CallsTree) ->
                          non_neg_integer(), aect_call_state_tree:tree()) ->
                          aect_call_state_tree:tree().
 insert_failed_call(ContractPubkey, CallerPubkey, Round, GasPrice, GasLimit, CallsTree) ->
-    Caller = aec_id:create(account, CallerPubkey),
-    Contract = aec_id:create(contract, ContractPubkey),
+    Caller = aeser_id:create(account, CallerPubkey),
+    Contract = aeser_id:create(contract, ContractPubkey),
     Call0 = aect_call:new(Caller, Round, Contract, Round, GasPrice),
     Call1 = aect_call:set_gas_used(GasLimit, Call0), % all gas is consumed
     Call2 = aect_call:set_return_type(error, Call1),

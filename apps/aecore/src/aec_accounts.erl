@@ -23,7 +23,7 @@
 -define(ACCOUNT_TYPE, account).
 
 -record(account, {
-          id             :: aec_id:id(),
+          id             :: aeser_id:id(),
           balance = 0    :: non_neg_integer(),
           nonce = 0      :: non_neg_integer()}).
 
@@ -34,16 +34,16 @@
 
 -spec new(aec_keys:pubkey(), non_neg_integer()) -> account().
 new(Pubkey, Balance) ->
-    Id = aec_id:create(account, Pubkey),
+    Id = aeser_id:create(account, Pubkey),
     #account{id = Id, balance = Balance}.
 
--spec id(account()) -> aec_id:id().
+-spec id(account()) -> aeser_id:id().
 id(#account{id = Id}) ->
     Id.
 
 -spec pubkey(account()) -> aec_keys:pubkey().
 pubkey(#account{id = Id}) ->
-    aec_id:specialize(Id, account).
+    aeser_id:specialize(Id, account).
 
 -spec balance(account()) -> non_neg_integer().
 balance(#account{balance = Balance}) ->
@@ -75,7 +75,7 @@ spend_without_nonce_bump(#account{balance = Balance0} = Account0, Amount) ->
 
 -spec serialize(account()) -> deterministic_account_binary_with_pubkey().
 serialize(Account) ->
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
       ?ACCOUNT_TYPE, ?ACCOUNT_VSN,
       serialization_template(?ACCOUNT_VSN),
       [ {nonce, nonce(Account)}
@@ -86,12 +86,12 @@ serialize(Account) ->
 deserialize(Pubkey, SerializedAccount) ->
     [ {nonce, Nonce}
     , {balance, Balance}
-    ] = aec_object_serialization:deserialize(
+    ] = aeser_chain_objects:deserialize(
           ?ACCOUNT_TYPE,
           ?ACCOUNT_VSN,
           serialization_template(?ACCOUNT_VSN),
           SerializedAccount),
-    #account{ id = aec_id:create(account, Pubkey)
+    #account{ id = aeser_id:create(account, Pubkey)
             , balance = Balance
             , nonce = Nonce
             }.
@@ -105,7 +105,7 @@ serialization_template(?ACCOUNT_VSN) ->
 serialize_for_client(#account{id      = Id,
                               balance = Balance,
                               nonce   = Nonce}) ->
-    #{<<"id">>      => aehttp_api_encoder:encode(id_hash, Id),
+    #{<<"id">>      => aeser_api_encoder:encode(id_hash, Id),
       <<"balance">> => Balance,
       <<"nonce">>   => Nonce}.
 

@@ -40,16 +40,16 @@ apply_signed_txs_test_() ->
                BlockHeight = 30,
                %% Create 2 signed transactions (1 valid, 1 invalid)
                {ok, SpendTx} = aec_spend_tx:new(
-                                 #{sender_id => aec_id:create(account, MinerPubkey),
-                                   recipient_id => aec_id:create(account, ?RECIPIENT_PUBKEY),
+                                 #{sender_id => aeser_id:create(account, MinerPubkey),
+                                   recipient_id => aeser_id:create(account, ?RECIPIENT_PUBKEY),
                                    amount => 40,
                                    fee => 20000,
                                    ttl => 100,
                                    nonce => 11,
                                    payload => <<"">>}),
                {ok, OverBalanceTx} = aec_spend_tx:new(
-                                       #{sender_id => aec_id:create(account, MinerPubkey),
-                                         recipient_id => aec_id:create(account, ?RECIPIENT_PUBKEY),
+                                       #{sender_id => aeser_id:create(account, MinerPubkey),
+                                         recipient_id => aeser_id:create(account, ?RECIPIENT_PUBKEY),
                                          amount => 30000,
                                          fee => 20000,
                                          ttl => 100,

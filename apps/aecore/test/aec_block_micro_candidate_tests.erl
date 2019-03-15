@@ -17,7 +17,7 @@
                      178,143,191,176,251,107,170,15,223,140,13,57,96,171,79,
                      43,181,14,1,149,98,104,64,190,242,52,152,159,190,216,30,
                      49,94,251,20,75,9,85,29,82,35,178,98,75,188,72,242,141>>).
--define(TEST_ID, aec_id:create(account, ?TEST_PUB)).
+-define(TEST_ID, aeser_id:create(account, ?TEST_PUB)).
 
 block_extension_test_() ->
     {foreach,
@@ -66,9 +66,9 @@ block_extension_test_() ->
           Call = aect_call:set_gas_used(
                    GasUsed,
                    aect_call:new(
-                     aec_id:create(account, <<"caller_address........(32 bytes)">>),
+                     aeser_id:create(account, <<"caller_address........(32 bytes)">>),
                      _CallerNonce = 1,
-                     aec_id:create(contract, <<"contract_address......(32 bytes)">>),
+                     aeser_id:create(contract, <<"contract_address......(32 bytes)">>),
                      _BlockHeight = 42,
                      GasPrice)),
 

@@ -346,7 +346,7 @@ serialize_to_binary(#mic_block{} = Block) ->
             error({serialization_error, What});
         {ok, Template} ->
             Txs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- txs(Block)],
-            Rest = aec_object_serialization:serialize(
+            Rest = aeser_chain_objects:serialize(
                      micro_block,
                      Vsn,
                      Template,
@@ -372,7 +372,7 @@ deserialize_micro_block_from_binary(Bin, Header) ->
     case serialization_template(micro, aec_headers:height(Header), Vsn) of
         {ok, Template} ->
             [{txs, Txs0}, {pof, PoF0}] =
-                aec_object_serialization:deserialize(micro_block, Vsn, Template, Bin),
+                aeser_chain_objects:deserialize(micro_block, Vsn, Template, Bin),
             Txs = [aetx_sign:deserialize_from_binary(Tx)
                    || Tx <- Txs0],
             PoF = aec_pof:deserialize(PoF0),

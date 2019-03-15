@@ -11,9 +11,9 @@
 -define(TEST_MODULE, aec_spend_tx).
 
 -define(SENDER_PUBKEY, <<"_________sender_pubkey__________">>).
--define(SENDER_ID,  aec_id:create(account, ?SENDER_PUBKEY)).
+-define(SENDER_ID,  aeser_id:create(account, ?SENDER_PUBKEY)).
 -define(RECIPIENT_PUBKEY, <<"________recipient_pubkey________">>).
--define(RECIPIENT_ID, aec_id:create(account, ?RECIPIENT_PUBKEY)).
+-define(RECIPIENT_ID, aeser_id:create(account, ?RECIPIENT_PUBKEY)).
 
 
 check_test_() ->
@@ -46,7 +46,7 @@ check_test_() ->
       end},
      {"Sender account does not exist in state trees",
       fun() ->
-              BogusSender = aec_id:create(account, <<42:256>>),
+              BogusSender = aeser_id:create(account, <<42:256>>),
               {ok, SpendTx} = spend_tx(#{fee => 20000, sender_id => BogusSender,
                                          payload => <<"">>}),
               StateTree = aec_test_utils:create_state_tree(),

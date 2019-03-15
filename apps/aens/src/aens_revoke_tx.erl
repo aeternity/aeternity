@@ -38,9 +38,9 @@
 -define(NAME_REVOKE_TX_TYPE, name_revoke_tx).
 
 -record(ns_revoke_tx, {
-          account_id :: aec_id:id(),
+          account_id :: aeser_id:id(),
           nonce      :: integer(),
-          name_id    :: aec_id:id(),
+          name_id    :: aeser_id:id(),
           fee        :: integer(),
           ttl        :: aetx:tx_ttl()
          }).
@@ -58,8 +58,8 @@ new(#{account_id := AccountId,
       nonce      := Nonce,
       name_id    := NameId,
       fee        := Fee} = Args) ->
-    account = aec_id:specialize_type(AccountId),
-    name    = aec_id:specialize_type(NameId),
+    account = aeser_id:specialize_type(AccountId),
+    name    = aeser_id:specialize_type(NameId),
     Tx = #ns_revoke_tx{account_id = AccountId,
                        nonce      = Nonce,
                        name_id    = NameId,
@@ -87,11 +87,11 @@ ttl(#ns_revoke_tx{ttl = TTL}) ->
 nonce(#ns_revoke_tx{nonce = Nonce}) ->
     Nonce.
 
--spec account_id(tx()) -> aec_id:id().
+-spec account_id(tx()) -> aeser_id:id().
 account_id(#ns_revoke_tx{account_id = AccountId}) ->
     AccountId.
 
--spec name_id(tx()) -> aec_id:id().
+-spec name_id(tx()) -> aeser_id:id().
 name_id(#ns_revoke_tx{name_id = NameId}) ->
     NameId.
 
@@ -136,8 +136,8 @@ deserialize(?NAME_REVOKE_TX_VSN,
             , {name_id, NameId}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    account = aec_id:specialize_type(AccountId),
-    name    = aec_id:specialize_type(NameId),
+    account = aeser_id:specialize_type(AccountId),
+    name    = aeser_id:specialize_type(NameId),
     #ns_revoke_tx{account_id = AccountId,
                   nonce      = Nonce,
                   name_id    = NameId,
@@ -158,9 +158,9 @@ for_client(#ns_revoke_tx{account_id = AccountId,
                          name_id    = NameId,
                          fee        = Fee,
                          ttl        = TTL}) ->
-    #{<<"account_id">> => aehttp_api_encoder:encode(id_hash, AccountId),
+    #{<<"account_id">> => aeser_api_encoder:encode(id_hash, AccountId),
       <<"nonce">>      => Nonce,
-      <<"name_id">>    => aehttp_api_encoder:encode(id_hash, NameId),
+      <<"name_id">>    => aeser_api_encoder:encode(id_hash, NameId),
       <<"fee">>        => Fee,
       <<"ttl">>        => TTL}.
 
@@ -169,10 +169,10 @@ for_client(#ns_revoke_tx{account_id = AccountId,
 %%%===================================================================
 
 account_pubkey(#ns_revoke_tx{account_id = AccountId}) ->
-    aec_id:specialize(AccountId, account).
+    aeser_id:specialize(AccountId, account).
 
 name_hash(#ns_revoke_tx{name_id = NameId}) ->
-    aec_id:specialize(NameId, name).
+    aeser_id:specialize(NameId, name).
 
 version() ->
     ?NAME_REVOKE_TX_VSN.

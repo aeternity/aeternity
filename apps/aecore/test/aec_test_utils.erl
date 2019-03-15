@@ -452,7 +452,7 @@ sign_tx(Tx, PrivKeys) when is_list(PrivKeys) ->
 
 signed_spend_tx(ArgsMap) ->
     {ok, SenderAccount, Privkey} = wait_for_pubkey(),
-    ArgsMap1 = maps:put(sender_id, aec_id:create(account, SenderAccount), ArgsMap),
+    ArgsMap1 = maps:put(sender_id, aeser_id:create(account, SenderAccount), ArgsMap),
     {ok, SpendTx} = aec_spend_tx:new(ArgsMap1),
     sign_tx(SpendTx, Privkey).
 

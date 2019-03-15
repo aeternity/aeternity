@@ -545,7 +545,7 @@ spend_tx(ToId, Amount, State = #{running := From}) ->
     case Amount =< Balance of
         true ->
             Spec =
-                #{sender_id    => aec_id:create(account, <<From:256>>),
+                #{sender_id    => aeser_id:create(account, <<From:256>>),
                   recipient_id => ToId,
                   amount       => Amount,
                   fee          => 0,
@@ -558,8 +558,8 @@ spend_tx(ToId, Amount, State = #{running := From}) ->
 
 spend(Tx, State = #{accounts := Accounts}) ->
     {aec_spend_tx, STx} = aetx:specialize_callback(Tx),
-    <<To:256>> = aec_id:specialize(aec_spend_tx:recipient_id(STx), account),
-    <<From:256>> = aec_id:specialize(aec_spend_tx:sender_id(STx), account),
+    <<To:256>> = aeser_id:specialize(aec_spend_tx:recipient_id(STx), account),
+    <<From:256>> = aeser_id:specialize(aec_spend_tx:sender_id(STx), account),
     Amount = aec_spend_tx:amount(STx),
     FromBalance = get_balance(<<From:256>>, State),
     ToBalance = get_balance(<<To:256>>, State),
@@ -611,7 +611,7 @@ call_contract(<<Contract:256>>, Gas, Value, CallData, _, _, S = #{running := Cal
 oracle_register_tx(PubKey = <<Account:256>>, QueryFee, TTL, QFormat, RFormat, ABIVersion,_State) ->
     io:format("oracle_register(~p, ~p, ~p, ~p, ~p)\n", [Account, QueryFee, TTL, QFormat, RFormat]),
     Spec =
-        #{account_id      => aec_id:create(account, PubKey),
+        #{account_id      => aeser_id:create(account, PubKey),
           nonce           => 1,
           query_format    => aeso_heap:to_binary(QFormat),
           response_format => aeso_heap:to_binary(RFormat),
@@ -643,9 +643,9 @@ oracle_register(Tx, Signature, State) ->
 oracle_query_tx(OracleKey = <<Oracle:256>>, Q, Value, QTTL, RTTL,_State) ->
     io:format("oracle_query(~p, ~p, ~p, ~p, ~p)\n", [Oracle, Q, Value, QTTL, RTTL]),
     Spec =
-        #{sender_id     => aec_id:create(account, OracleKey),
+        #{sender_id     => aeser_id:create(account, OracleKey),
           nonce         => 1,
-          oracle_id     => aec_id:create(oracle, OracleKey),
+          oracle_id     => aeser_id:create(oracle, OracleKey),
           query         => aeso_heap:to_binary(Q),
           query_fee     => 0,
           query_ttl     => QTTL,
@@ -657,7 +657,7 @@ oracle_query_tx(OracleKey = <<Oracle:256>>, Q, Value, QTTL, RTTL,_State) ->
 
 oracle_query(Tx, State) ->
     {aeo_query_tx, OTx} = aetx:specialize_callback(Tx),
-    <<Oracle:256>> = aec_id:specialize(aeo_query_tx:sender_id(OTx), account),
+    <<Oracle:256>> = aeser_id:specialize(aeo_query_tx:sender_id(OTx), account),
     <<QueryId:256>> = aeo_query_tx:query_id(OTx),
     QBin = aeo_query_tx:query(OTx),
     {ok, Fmt} = oracle_query_format(<<Oracle:256>>, State),
@@ -679,7 +679,7 @@ oracle_query(Tx, State) ->
 oracle_respond_tx(OracleKey, QueryIdKey = <<QueryId:256>>, R, RTTL,_State) ->
     io:format("oracle_respond(~p, ~p)\n", [QueryId, R]),
     Spec =
-        #{oracle_id    => aec_id:create(oracle, OracleKey),
+        #{oracle_id    => aeser_id:create(oracle, OracleKey),
           nonce        => 1,
           query_id     => QueryIdKey,
           response     => aeso_heap:to_binary(R),
@@ -692,7 +692,7 @@ oracle_respond_tx(OracleKey, QueryIdKey = <<QueryId:256>>, R, RTTL,_State) ->
 oracle_respond(Tx, _Signature, State) ->
     {aeo_response_tx, OTx} = aetx:specialize_callback(Tx),
     <<QueryId:256>> = aeo_response_tx:query_id(OTx),
-    Oracle = aec_id:specialize(aeo_response_tx:oracle_id(OTx), oracle),
+    Oracle = aeser_id:specialize(aeo_response_tx:oracle_id(OTx), oracle),
     RBin = aeo_response_tx:response(OTx),
     {ok, Fmt} = oracle_response_format(Oracle, State),
     {ok, R} = aeso_heap:from_binary(Fmt, RBin),
@@ -708,7 +708,7 @@ oracle_respond(Tx, _Signature, State) ->
 oracle_extend_tx(OracleKey = <<Oracle:256>>, OTTL, _State) ->
     io:format("oracle_extend(~p, ~p)\n", [Oracle, OTTL]),
     Spec =
-        #{oracle_id  => aec_id:create(oracle, OracleKey),
+        #{oracle_id  => aeser_id:create(oracle, OracleKey),
           nonce      => 1,
           oracle_ttl => OTTL,
           fee        => 0,
@@ -718,7 +718,7 @@ oracle_extend_tx(OracleKey = <<Oracle:256>>, OTTL, _State) ->
 
 oracle_extend(Tx, _Signature, State) ->
     {aeo_extend_tx, OTx} = aetx:specialize_callback(Tx),
-    <<Oracle:256>> = aec_id:specialize(aeo_extend_tx:oracle_id(OTx), oracle),
+    <<Oracle:256>> = aeser_id:specialize(aeo_extend_tx:oracle_id(OTx), oracle),
     OTTL = aeo_extend_tx:oracle_ttl(OTx),
     case maps:get(oracles, State, #{}) of
         #{Oracle := O} = Oracles ->

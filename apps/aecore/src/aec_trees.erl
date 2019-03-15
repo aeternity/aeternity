@@ -367,7 +367,7 @@ deserialize_from_db(Bin) when is_binary(Bin) ->
     , {oracles_cache_hash, OraclesCache}
     , {accounts_hash, Accounts}
     ] = lists:map(fun db_deserialize_hash/1,
-                  aec_object_serialization:deserialize(
+                  aeser_chain_objects:deserialize(
                     trees_db,
                     ?AEC_TREES_VERSION,
                     db_serialization_template(?AEC_TREES_VERSION),
@@ -383,7 +383,7 @@ deserialize_from_db(Bin) when is_binary(Bin) ->
 
 -spec serialize_for_db(trees()) -> binary().
 serialize_for_db(#trees{} = Trees) ->
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
       trees_db,
       ?AEC_TREES_VERSION,
       db_serialization_template(?AEC_TREES_VERSION),
@@ -426,7 +426,7 @@ serialize_to_binary(#trees{} = Trees) ->
           , oracles   = Oracles
           , accounts  = Accounts
           } = Trees,
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
       state_trees,
       ?AEC_TREES_VERSION,
       binary_serialization_template(?AEC_TREES_VERSION),
@@ -441,7 +441,7 @@ serialize_to_binary(#trees{} = Trees) ->
 -spec serialize_to_client(trees()) -> binary().
 serialize_to_client(#trees{} = Trees) ->
     TreesBinary = serialize_to_binary(Trees),
-    aehttp_api_encoder:encode(state_trees, TreesBinary).
+    aeser_api_encoder:encode(state_trees, TreesBinary).
 
 -spec deserialize_from_binary_without_backend(binary()) -> trees().
 deserialize_from_binary_without_backend(Bin) ->
@@ -451,7 +451,7 @@ deserialize_from_binary_without_backend(Bin) ->
     , {ns, NS}
     , {oracles, Oracles}
     , {accounts, Accounts}
-    ] = aec_object_serialization:deserialize(
+    ] = aeser_chain_objects:deserialize(
             state_trees,
             ?AEC_TREES_VERSION,
             binary_serialization_template(?AEC_TREES_VERSION),
@@ -712,7 +712,7 @@ internal_serialize_poi_fields(#poi{ accounts  = Accounts
     ].
 
 internal_serialize_poi_from_fields(Fields) ->
-    aec_object_serialization:serialize(trees_poi,
+    aeser_chain_objects:serialize(trees_poi,
                                        ?POI_VSN,
                                        internal_serialize_poi_template(?POI_VSN),
                                        Fields).
@@ -732,7 +732,7 @@ internal_deserialize_poi(Bin) ->
     , {contracts , Contracts}
     , {ns        , Ns}
     , {oracles   , Oracles}
-    ] = aec_object_serialization:deserialize(trees_poi, ?POI_VSN, Template, Bin),
+    ] = aeser_chain_objects:deserialize(trees_poi, ?POI_VSN, Template, Bin),
 
     #poi{ accounts  = from_poi_serialization_format(Accounts)
         , calls     = from_poi_serialization_format(Calls)

@@ -44,10 +44,10 @@
 -define(NAME_TRANSFER_TX_TYPE, name_transfer_tx).
 
 -record(ns_transfer_tx, {
-          account_id   :: aec_id:id(),
+          account_id   :: aeser_id:id(),
           nonce        :: integer(),
-          name_id      :: aec_id:id(),
-          recipient_id :: aec_id:id(),
+          name_id      :: aeser_id:id(),
+          recipient_id :: aeser_id:id(),
           fee          :: integer(),
           ttl          :: aetx:tx_ttl()
          }).
@@ -66,9 +66,9 @@ new(#{account_id   := AccountId,
       name_id      := NameId,
       recipient_id := RecipientId,
       fee          := Fee} = Args) ->
-    account = aec_id:specialize_type(AccountId),
-    name    = aec_id:specialize_type(NameId),
-    case aec_id:specialize_type(RecipientId) of
+    account = aeser_id:specialize_type(AccountId),
+    name    = aeser_id:specialize_type(NameId),
+    case aeser_id:specialize_type(RecipientId) of
         account -> ok;
         name    -> ok
     end,
@@ -105,10 +105,10 @@ origin(#ns_transfer_tx{} = Tx) ->
     account_pubkey(Tx).
 
 account_pubkey(#ns_transfer_tx{account_id = AccountId}) ->
-    aec_id:specialize(AccountId, account).
+    aeser_id:specialize(AccountId, account).
 
 name_hash(#ns_transfer_tx{name_id = NameId}) ->
-    aec_id:specialize(NameId, name).
+    aeser_id:specialize(NameId, name).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_transfer_tx{}, Trees,_Env) ->
@@ -154,9 +154,9 @@ deserialize(?NAME_TRANSFER_TX_VSN,
             , {recipient_id, RecipientId}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    account = aec_id:specialize_type(AccountId),
-    name    = aec_id:specialize_type(NameId),
-    case aec_id:specialize_type(RecipientId) of
+    account = aeser_id:specialize_type(AccountId),
+    name    = aeser_id:specialize_type(NameId),
+    case aeser_id:specialize_type(RecipientId) of
         account -> ok;
         name -> ok
     end,
@@ -183,10 +183,10 @@ for_client(#ns_transfer_tx{account_id   = AccountId,
                            recipient_id = RecipientId,
                            fee          = Fee,
                            ttl          = TTL}) ->
-    #{<<"account_id">>   => aehttp_api_encoder:encode(id_hash, AccountId),
+    #{<<"account_id">>   => aeser_api_encoder:encode(id_hash, AccountId),
       <<"nonce">>        => Nonce,
-      <<"name_id">>      => aehttp_api_encoder:encode(id_hash, NameId),
-      <<"recipient_id">> => aehttp_api_encoder:encode(id_hash, RecipientId),
+      <<"name_id">>      => aeser_api_encoder:encode(id_hash, NameId),
+      <<"recipient_id">> => aeser_api_encoder:encode(id_hash, RecipientId),
       <<"fee">>          => Fee,
       <<"ttl">>          => TTL}.
 
@@ -196,14 +196,14 @@ for_client(#ns_transfer_tx{account_id   = AccountId,
 
 -ifdef(TEST).
 recipient_pubkey(#ns_transfer_tx{recipient_id = RecipientId}) ->
-    aec_id:specialize(RecipientId, account).
+    aeser_id:specialize(RecipientId, account).
 -endif.
 
--spec account_id(tx()) -> aec_id:id().
+-spec account_id(tx()) -> aeser_id:id().
 account_id(#ns_transfer_tx{account_id = AccountId}) ->
     AccountId.
 
--spec name_id(tx()) -> aec_id:id().
+-spec name_id(tx()) -> aeser_id:id().
 name_id(#ns_transfer_tx{name_id = NameId}) ->
     NameId.
 

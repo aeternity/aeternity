@@ -730,7 +730,7 @@ environment_contract(Config) ->
     %% Block hash.
     ct:pal("Calling block_hash\n"),
     {ok, 200, #{<<"hash">> := ExpectedBlockHash}} = get_key_block_at_height(2),
-    {_, <<BHInt:256/integer-unsigned>>} = aehttp_api_encoder:decode(ExpectedBlockHash),
+    {_, <<BHInt:256/integer-unsigned>>} = aeser_api_encoder:decode(ExpectedBlockHash),
 
     call_func(BPub, BPriv, EncCPub, <<"block_hash">>, <<"(2)">>, {<<"int">>, BHInt}),
 
@@ -744,7 +744,7 @@ environment_contract(Config) ->
     Beneficiary = fun(Hdr) ->
                     #{<<"prev_key_hash">> := KeyHash} = Hdr,
                     {ok, 200, #{<<"beneficiary">> := B}} = get_key_block(KeyHash),
-                    {_, <<BInt:256/integer-unsigned>>} = aehttp_api_encoder:decode(B),
+                    {_, <<BInt:256/integer-unsigned>>} = aeser_api_encoder:decode(B),
                     BInt
                   end,
     call_func(BPub, BPriv, EncCPub, <<"coinbase">>, <<"()">>, {<<"address">>, Beneficiary}),
@@ -1100,7 +1100,7 @@ events_contract(Config) ->
     F1Check = fun([#{<<"address">> := Addr, <<"topics">> := Ts, <<"data">> := Data}]) ->
                 <<E1:256>> = aec_hash:hash(evm, <<"Event1">>),
                 ?assertEqual(Addr, EncCPub),
-                ?assertEqual(Data, aehttp_api_encoder:encode(contract_bytearray, <<"bar">>)),
+                ?assertEqual(Data, aeser_api_encoder:encode(contract_bytearray, <<"bar">>)),
                 ?assertMatch([E1, 1, 2], Ts)
               end,
     call_func(APub, APriv, EncCPub, <<"f1">>, args_to_binary([1, {string, "bar"}]), {log, F1Check}),
@@ -1109,7 +1109,7 @@ events_contract(Config) ->
                 <<E2:256>> = aec_hash:hash(evm, <<"Event2">>),
                 <<A:256>>  = APub,
                 ?assertEqual(Addr, EncCPub),
-                ?assertEqual(Data, aehttp_api_encoder:encode(contract_bytearray, <<"foo">>)),
+                ?assertEqual(Data, aeser_api_encoder:encode(contract_bytearray, <<"foo">>)),
                 ?assertEqual([E2, A], Ts)
               end,
     call_func(APub, APriv, EncCPub, <<"f2">>, args_to_binary([{string, "foo"}]), {log, F2Check}),
@@ -1187,7 +1187,7 @@ addr(Addr) -> <<Int:256>> = Addr, word(Int).
 %% Internal access functions.
 
 get_balance(Pubkey) ->
-    Addr = aehttp_api_encoder:encode(account_pubkey, Pubkey),
+    Addr = aeser_api_encoder:encode(account_pubkey, Pubkey),
     {ok,200,#{<<"balance">> := Balance}} = get_account_by_pubkey(Addr),
     Balance.
 
@@ -1229,7 +1229,7 @@ compile_test_contract(Dir, Name) ->
     case lists:last(Versions) of
         ?ROMA_PROTOCOL_VSN ->
             {ok, Code} = aect_test_utils:compile_filename(1, FileName),
-            aehttp_api_encoder:encode(contract_bytearray, Code);
+            aeser_api_encoder:encode(contract_bytearray, Code);
         ?MINERVA_PROTOCOL_VSN ->
             {ok, SophiaCode} = file:read_file(FileName),
             {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
@@ -1354,7 +1354,7 @@ call_func(Pub, Priv, EncCPub, Fun, Args, CallerSet, Check) ->
     put(fun_calls, Calls ++ [{Tx, Check}]).
 
 get_nonce(Pub) ->
-    Address = aehttp_api_encoder:encode(account_pubkey, Pub),
+    Address = aeser_api_encoder:encode(account_pubkey, Pub),
     %% Generate a nonce.
     {ok,200,#{<<"nonce">> := Nonce0}} = get_account_by_pubkey(Address),
     Nonces = get(nonces),
@@ -1430,7 +1430,7 @@ basic_call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
     {CallReturn,ContractCallTxHash}.
 
 contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
-    Address = aehttp_api_encoder:encode(account_pubkey, Pubkey),
+    Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
     %% Generate a nonce.
     {ok,200,#{<<"nonce">> := Nonce0}} = get_account_by_pubkey(Address),
     Nonce = Nonce0 + 1,
@@ -1478,7 +1478,7 @@ get_prn() ->
 
 contract_call_compute_tx(Pubkey, Privkey, EncodedContractPubkey,
                          Function, Argument, CallerSet) ->
-    Address = aehttp_api_encoder:encode(account_pubkey, Pubkey),
+    Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
     %% Generate a nonce.
     {ok,200,#{<<"nonce">> := Nonce0}} = get_account_by_pubkey(Address),
     Nonce = Nonce0 + 1,
@@ -1487,7 +1487,7 @@ contract_call_compute_tx(Pubkey, Privkey, EncodedContractPubkey,
 
 contract_call_compute_tx(Pubkey, Privkey, Nonce, EncodedContractPubkey,
                          Function, Argument, CallerSet) ->
-    Address = aehttp_api_encoder:encode(account_pubkey, Pubkey),
+    Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
 
     CallInput =
         case Argument of
@@ -1576,7 +1576,7 @@ get_tx(TxHash) ->
 
 create_spend_tx(RecipientId, Amount, Fee) ->
     Sender = maps:get(pubkey, aecore_suite_utils:patron()),
-    SenderId = aehttp_api_encoder:encode(account_pubkey, Sender),
+    SenderId = aeser_api_encoder:encode(account_pubkey, Sender),
     create_spend_tx(SenderId, RecipientId, Amount, Fee, <<"post spend tx">>).
 
 create_spend_tx(SenderId, RecipientId, Amount, Fee, Payload) ->
@@ -1597,10 +1597,10 @@ post_tx(TxSerialized) ->
     http_request(Host, post, "transactions", #{tx => TxSerialized}).
 
 sign_tx(Tx) ->
-    {ok, TxSer} = aehttp_api_encoder:safe_decode(transaction, Tx),
+    {ok, TxSer} = aeser_api_encoder:safe_decode(transaction, Tx),
     UTx = aetx:deserialize_from_binary(TxSer),
     STx = aec_test_utils:sign_tx(UTx, [maps:get(privkey, aecore_suite_utils:patron())]),
-    aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(STx)).
+    aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(STx)).
 
 %% ============================================================
 %% private functions
@@ -1695,7 +1695,7 @@ new_account(Balance) ->
     {Pubkey,Privkey} = generate_key_pair(),
     Fee = 20000 * ?DEFAULT_GAS_PRICE,
     {ok, 200, #{<<"tx">> := SpendTx}} =
-        create_spend_tx(aehttp_api_encoder:encode(account_pubkey, Pubkey), Balance, Fee),
+        create_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Balance, Fee),
     SignedSpendTx = sign_tx(SpendTx),
     {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_tx(SignedSpendTx),
     {Pubkey,Privkey,SpendTxHash}.
@@ -1704,7 +1704,7 @@ sign_and_post_create_compute_tx(Privkey, CreateEncoded) ->
     {ok,200,#{<<"tx">> := EncodedUnsignedTx,
               <<"contract_id">> := EncodedPubkey}} =
         get_contract_create_compute(CreateEncoded),
-    {ok,DecodedPubkey} = aehttp_api_encoder:safe_decode(contract_pubkey,
+    {ok,DecodedPubkey} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                  EncodedPubkey),
     Tx = sign_and_post_tx(Privkey, EncodedUnsignedTx),
     {Tx,EncodedPubkey,DecodedPubkey}.
@@ -1715,12 +1715,12 @@ sign_and_post_call_compute_tx(Privkey, CallEncoded) ->
     sign_and_post_tx(Privkey, EncodedUnsignedTx).
 
 sign_and_post_tx(PrivKey, EncodedUnsignedTx) ->
-    {ok,SerializedUnsignedTx} = aehttp_api_encoder:safe_decode(transaction,
+    {ok,SerializedUnsignedTx} = aeser_api_encoder:safe_decode(transaction,
                                                         EncodedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
     SignedTx = aec_test_utils:sign_tx(UnsignedTx, PrivKey),
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
-    SendTx = aehttp_api_encoder:encode(transaction, SerializedTx),
+    SendTx = aeser_api_encoder:encode(transaction, SerializedTx),
     {ok,200,#{<<"tx_hash">> := TxHash}} = post_tx(SendTx),
     #{tx_hash => TxHash, tx_encoded => EncodedUnsignedTx}.
 

@@ -92,7 +92,7 @@ serialize(peer, Peer, ?VSN_1) ->
     Flds = [ {host,   maps:get(host, Peer)}
            , {port,   maps:get(port, Peer)}
            , {pubkey, maps:get(pubkey, Peer)} ],
-    aeu_rlp:encode(aec_serialization:encode_fields(Template, Flds));
+    aeser_rlp:encode(aeserialization:encode_fields(Template, Flds));
 serialize(response, Response, Vsn = ?RESPONSE_VSN) ->
     serialize_flds(response, Vsn,
               [ {result, maps:get(result, Response)}
@@ -104,13 +104,13 @@ serialize(close, _, Vsn = ?CLOSE_VSN) ->
 
 serialize_flds(Type, Vsn, Flds) ->
     Template = [{vsn, int} | serialization_template(Type, Vsn)],
-    List = aec_serialization:encode_fields(Template, [{vsn, Vsn} | Flds]),
-    aeu_rlp:encode(List).
+    List = aeserialization:encode_fields(Template, [{vsn, Vsn} | Flds]),
+    aeser_rlp:encode(List).
 
 deserialize(Type, Binary) ->
     try
-        [VsnBin | Fields] = aeu_rlp:decode(Binary),
-        [{vsn, Vsn}] = aec_serialization:decode_fields([{vsn, int}], [VsnBin]),
+        [VsnBin | Fields] = aeser_rlp:decode(Binary),
+        [{vsn, Vsn}] = aeserialization:decode_fields([{vsn, int}], [VsnBin]),
         deserialize(rev_tag(Type), Vsn, Fields)
     catch _:Reason ->
         {error, Reason}
@@ -184,96 +184,96 @@ deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN ->
         , {difficulty, Difficulty}
         , {best_hash, _TopHash}
         , {sync_allowed, _SyncAllowed}
-        , {peers, PeersBin} ] = aec_serialization:decode_fields(
+        , {peers, PeersBin} ] = aeserialization:decode_fields(
                                     serialization_template(ping, Vsn),
                                     PingFlds),
     Peers = deserialize(peers, Vsn, PeersBin),
     PingData1 = replace_keys(PingData, [{peers, Peers}, {difficulty, Difficulty}]),
     {ping, Vsn, maps:from_list(PingData1)};
 deserialize(get_header_by_hash, Vsn, GetHeaderFlds) when Vsn == ?GET_HEADER_BY_HASH_VSN ->
-    [{hash, Hash}] = aec_serialization:decode_fields(
+    [{hash, Hash}] = aeserialization:decode_fields(
                          serialization_template(get_header_by_hash, Vsn), GetHeaderFlds),
     {get_header_by_hash, Vsn, #{ hash => Hash }};
 deserialize(get_header_by_height, Vsn, GetHeaderFlds) when Vsn == ?VSN_1 ->
-    [{height, Height}] = aec_serialization:decode_fields(
+    [{height, Height}] = aeserialization:decode_fields(
                              serialization_template(get_header_by_height, Vsn),
                              GetHeaderFlds),
     {get_header_by_height, Vsn, #{ height => Height }};
 deserialize(get_header_by_height, Vsn, GetHeaderFlds) when Vsn == ?GET_HEADER_BY_HEIGHT_VSN ->
     [{height, Height}, {top_hash, TopHash}] =
-        aec_serialization:decode_fields(serialization_template(get_header_by_height, Vsn),
+        aeserialization:decode_fields(serialization_template(get_header_by_height, Vsn),
                                         GetHeaderFlds),
     {get_header_by_height, Vsn, #{ height => Height, top_hash => TopHash }};
 deserialize(header, Vsn, HeaderFlds) when Vsn == ?HEADER_VSN ->
-    [{hdr, Hdr}] = aec_serialization:decode_fields(
+    [{hdr, Hdr}] = aeserialization:decode_fields(
                        serialization_template(header, Vsn), HeaderFlds),
     {header, Vsn, #{ hdr => Hdr }};
 deserialize(get_n_successors, Vsn, GetNFlds) when Vsn == ?VSN_1 ->
     [ {hash, Hash}
-    , {n, N} ] = aec_serialization:decode_fields(
+    , {n, N} ] = aeserialization:decode_fields(
                      serialization_template(get_n_successors, Vsn), GetNFlds),
     {get_n_successors, Vsn, #{ hash => Hash, n => N }};
 deserialize(get_n_successors, Vsn, GetNFlds) when Vsn == ?GET_N_SUCCESSORS_VSN ->
     [ {from_hash, FromHash}
     , {target_hash, TargetHash}
-    , {n, N} ] = aec_serialization:decode_fields(
+    , {n, N} ] = aeserialization:decode_fields(
                      serialization_template(get_n_successors, Vsn), GetNFlds),
     {get_n_successors, Vsn, #{ from_hash => FromHash, target_hash => TargetHash, n => N }};
 deserialize(header_hashes, Vsn, HeaderHashesFlds) when Vsn == ?HEADER_HASHES_VSN ->
-    [{header_hashes, HHs}] = aec_serialization:decode_fields(
+    [{header_hashes, HHs}] = aeserialization:decode_fields(
                        serialization_template(header_hashes, Vsn), HeaderHashesFlds),
     {header_hashes, Vsn, #{ header_hashes => HHs }};
 deserialize(block_txs, Vsn, BlockTxsFlds) when Vsn == ?BLOCK_TXS_VSN ->
     [{hash, Hash}, {txs, Txs}] =
-        aec_serialization:decode_fields(serialization_template(block_txs, Vsn), BlockTxsFlds),
+        aeserialization:decode_fields(serialization_template(block_txs, Vsn), BlockTxsFlds),
     {block_txs, Vsn, #{ hash => Hash, txs => Txs }};
 deserialize(get_block_txs, Vsn, GetBlockTxsFlds) when Vsn == ?GET_BLOCK_TXS_VSN ->
     [{hash, Hash}, {tx_hashes, TxHashes}] =
-        aec_serialization:decode_fields(serialization_template(get_block_txs, Vsn), GetBlockTxsFlds),
+        aeserialization:decode_fields(serialization_template(get_block_txs, Vsn), GetBlockTxsFlds),
     {get_block_txs, Vsn, #{ hash => Hash, tx_hashes => TxHashes }};
 deserialize(key_block, Vsn, KeyBlockFlds) when Vsn == ?KEY_BLOCK_VSN ->
     [{key_block, KeyBlock}] =
-        aec_serialization:decode_fields(serialization_template(key_block, Vsn), KeyBlockFlds),
+        aeserialization:decode_fields(serialization_template(key_block, Vsn), KeyBlockFlds),
     {key_block, Vsn, #{ key_block => KeyBlock }};
 deserialize(micro_block, Vsn, MicroBlockFlds) when Vsn == ?MICRO_BLOCK_VSN ->
     [{micro_block, MicroBlock}, {light, Light}] =
-        aec_serialization:decode_fields(serialization_template(micro_block, Vsn), MicroBlockFlds),
+        aeserialization:decode_fields(serialization_template(micro_block, Vsn), MicroBlockFlds),
     {micro_block, Vsn, #{ micro_block => MicroBlock, light => Light }};
 deserialize(get_generation, Vsn, GetGenFlds) when Vsn == ?GET_GENERATION_VSN ->
     [{hash, Hash}, {forward, Fwd}] =
-        aec_serialization:decode_fields(serialization_template(get_generation, Vsn), GetGenFlds),
+        aeserialization:decode_fields(serialization_template(get_generation, Vsn), GetGenFlds),
     {get_generation, Vsn, #{ hash => Hash, forward => Fwd }};
 deserialize(generation, Vsn, GenerationFlds) when Vsn == ?GENERATION_VSN ->
     [{key_block, KeyBlock}, {micro_blocks, MicroBlocks}, {forward, Fwd}] =
-        aec_serialization:decode_fields(serialization_template(generation, Vsn), GenerationFlds),
+        aeserialization:decode_fields(serialization_template(generation, Vsn), GenerationFlds),
     {generation, Vsn, #{ key_block => KeyBlock, micro_blocks => MicroBlocks, forward => Fwd }};
 deserialize(txs, Vsn, TxsFlds) when Vsn == ?TXS_VSN ->
-    [{txs, Txs}] = aec_serialization:decode_fields(
+    [{txs, Txs}] = aeserialization:decode_fields(
                        serialization_template(txs, Vsn), TxsFlds),
     {txs, Vsn, #{ txs => Txs }};
 deserialize(txps_init, Vsn, TxpsInitFlds) when Vsn == ?TX_POOL_SYNC_INIT_VSN ->
-    [] = aec_serialization:decode_fields(
+    [] = aeserialization:decode_fields(
              serialization_template(txps_init, Vsn), TxpsInitFlds),
     {txps_init, Vsn, #{}};
 deserialize(txps_unfold, Vsn, TxpsUnfoldFlds) when Vsn == ?TX_POOL_SYNC_UNFOLD_VSN ->
-    [{unfolds, Unfolds}] = aec_serialization:decode_fields(
+    [{unfolds, Unfolds}] = aeserialization:decode_fields(
                                serialization_template(txps_unfold, Vsn), TxpsUnfoldFlds),
     {txps_unfold, Vsn, #{ unfolds => Unfolds }};
 deserialize(txps_get, Vsn, TxpsGetFlds) when Vsn == ?TX_POOL_SYNC_GET_VSN ->
-    [{tx_hashes, TxHashes}] = aec_serialization:decode_fields(
+    [{tx_hashes, TxHashes}] = aeserialization:decode_fields(
                                serialization_template(txps_get, Vsn), TxpsGetFlds),
     {txps_get, Vsn, #{ tx_hashes => TxHashes }};
 deserialize(txps_finish, Vsn, TxpsFinishFlds) when Vsn == ?TX_POOL_SYNC_FINISH_VSN ->
-    [{done, Done}] = aec_serialization:decode_fields(
+    [{done, Done}] = aeserialization:decode_fields(
                          serialization_template(txps_finish, Vsn), TxpsFinishFlds),
     {txps_finish, Vsn, #{ done => Done }};
 deserialize(peers, Vsn, PeerBins) ->
-    [ deserialize(peer, Vsn, aeu_rlp:decode(PeerBin)) || PeerBin <- PeerBins ];
+    [ deserialize(peer, Vsn, aeser_rlp:decode(PeerBin)) || PeerBin <- PeerBins ];
 deserialize(peer, Vsn, PeerFlds) ->
     PeerData =
         [ {host, _Host}
         , {port, _Port}
-        , {pubkey, _PK} ] = aec_serialization:decode_fields(
+        , {pubkey, _PK} ] = aeserialization:decode_fields(
                                 serialization_template(peer, Vsn),
                                 PeerFlds),
     maps:from_list(PeerData);
@@ -281,7 +281,7 @@ deserialize(response, Vsn, RspFlds) when Vsn == ?RESPONSE_VSN ->
     [ {result, Result}
     , {type,   Type}
     , {reason, Reason}
-    , {object, Object} ] = aec_serialization:decode_fields(
+    , {object, Object} ] = aeserialization:decode_fields(
                                serialization_template(response, ?RESPONSE_VSN),
                                RspFlds),
     R = #{ result => Result, type => rev_tag(Type) },

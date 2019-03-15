@@ -53,9 +53,9 @@
 -define(is_non_neg_integer(X), (is_integer(X) andalso (X >= 0))).
 
 -record(contract_call_tx, {
-          caller_id        :: aec_id:id(),
+          caller_id        :: aeser_id:id(),
           nonce            :: integer(),
-          contract_id      :: aec_id:id(),
+          contract_id      :: aeser_id:id(),
           abi_version      :: aect_contracts:abi_version(),
           fee              :: integer(),
           ttl              :: aetx:tx_ttl(),
@@ -72,9 +72,9 @@
           }).
 
 -record(db_contract_call_tx, {
-          caller_id        :: aec_id:id(),
+          caller_id        :: aeser_id:id(),
           nonce            :: integer(),
-          contract_id      :: aec_id:id(),
+          contract_id      :: aeser_id:id(),
           abi_version      :: aect_contracts:abi_version(),
           fee              :: integer(),
           ttl              :: aetx:tx_ttl(),
@@ -103,11 +103,11 @@ new(#{caller_id   := CallerId,
     CallStack = maps:get(call_stack, Args, []),
     TTL = maps:get(ttl, Args, 0),
     CallOrigin =
-        case aec_id:specialize(CallerId) of
+        case aeser_id:specialize(CallerId) of
             {contract, Pubkey} -> maps:get(origin, Args, Pubkey);
             {account,  Pubkey} -> maps:get(origin, Args, Pubkey)
         end,
-    contract = aec_id:specialize_type(ContractId),
+    contract = aeser_id:specialize_type(ContractId),
     Tx = #contract_call_tx{caller_id   = CallerId,
                            nonce       = Nonce,
                            contract_id = ContractId,
@@ -141,7 +141,7 @@ from_db_format(Tuple) ->
            call_stack       = CallStack
           } ->
             CallOrigin =
-                case aec_id:specialize(CallerId) of
+                case aeser_id:specialize(CallerId) of
                     {contract, Pubkey} -> Pubkey;
                     {account,  Pubkey} -> Pubkey
                 end,
@@ -276,8 +276,8 @@ deserialize(?CONTRACT_CALL_TX_VSN,
             , {gas, Gas}
             , {gas_price, GasPrice}
             , {call_data, CallData}]) ->
-    {account, Origin} = aec_id:specialize(CallerId),
-    contract = aec_id:specialize_type(ContractId),
+    {account, Origin} = aeser_id:specialize(CallerId),
+    contract = aeser_id:specialize_type(ContractId),
     #contract_call_tx{caller_id   = CallerId,
                       nonce       = Nonce,
                       contract_id = ContractId,
@@ -318,35 +318,35 @@ for_client(#contract_call_tx{caller_id   = CallerId,
                              gas         = Gas,
                              gas_price   = GasPrice,
                              call_data   = CallData}) ->
-    #{<<"caller_id">>   => aehttp_api_encoder:encode(id_hash, CallerId),
+    #{<<"caller_id">>   => aeser_api_encoder:encode(id_hash, CallerId),
       <<"nonce">>       => Nonce,
-      <<"contract_id">> => aehttp_api_encoder:encode(id_hash, ContractId),
+      <<"contract_id">> => aeser_api_encoder:encode(id_hash, ContractId),
       <<"abi_version">> => aeu_hex:hexstring_encode(<<ABIVersion:16>>),
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL,
       <<"amount">>      => Amount,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,
-      <<"call_data">>   => aehttp_api_encoder:encode(contract_bytearray, CallData)}.
+      <<"call_data">>   => aeser_api_encoder:encode(contract_bytearray, CallData)}.
 
 %% -- Getters ----------------------------------------------------------------
 
--spec caller_id(tx()) -> aec_id:id().
+-spec caller_id(tx()) -> aeser_id:id().
 caller_id(#contract_call_tx{caller_id = CallerId}) ->
     CallerId.
 
 -spec caller_pubkey(tx()) -> aec_keys:pubkey().
 caller_pubkey(#contract_call_tx{caller_id = CallerId}) ->
-    {_, CallerPubkey} = aec_id:specialize(CallerId),
+    {_, CallerPubkey} = aeser_id:specialize(CallerId),
     CallerPubkey.
 
--spec contract_id(tx()) -> aec_id:id().
+-spec contract_id(tx()) -> aeser_id:id().
 contract_id(#contract_call_tx{contract_id = ContractId}) ->
     ContractId.
 
 -spec contract_pubkey(tx()) -> aec_keys:pubkey().
 contract_pubkey(#contract_call_tx{contract_id = ContractId}) ->
-  aec_id:specialize(ContractId, contract).
+  aeser_id:specialize(ContractId, contract).
 
 -spec abi_version(tx()) -> aect_contracts:abi_version().
 abi_version(#contract_call_tx{abi_version = ABIVersion}) ->

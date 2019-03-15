@@ -97,10 +97,10 @@ handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
                         {ok, Tx} = aect_create_tx:new(Data),
                         {CB, CTx} = aetx:specialize_callback(Tx),
                         ContractPubKey = CB:contract_pubkey(CTx),
-                        #{tx => aehttp_api_encoder:encode(transaction,
+                        #{tx => aeser_api_encoder:encode(transaction,
                                                   aetx:serialize_to_binary(Tx)),
                           contract_id =>
-                              aehttp_api_encoder:encode(contract_pubkey, ContractPubKey)
+                              aeser_api_encoder:encode(contract_pubkey, ContractPubKey)
                          }
                     end)
                 ],
@@ -123,10 +123,10 @@ handle_request_('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, 
                         {ok, Tx} = aect_create_tx:new(Data),
                         {CB, CTx} = aetx:specialize_callback(Tx),
                         ContractPubKey = CB:contract_pubkey(CTx),
-                        #{tx => aehttp_api_encoder:encode(transaction,
+                        #{tx => aeser_api_encoder:encode(transaction,
                                                   aetx:serialize_to_binary(Tx)),
                           contract_id =>
-                              aehttp_api_encoder:encode(contract_pubkey, ContractPubKey)
+                              aeser_api_encoder:encode(contract_pubkey, ContractPubKey)
                          }
                     end)
                 ],
@@ -181,7 +181,7 @@ handle_request_('CompileContract', Req, _Context) ->
             %% TODO: Handle other languages
             case aehttp_logic:contract_compile(Code, Options) of
                  {ok, ByteCode} ->
-                     {200, [], #{bytecode => aehttp_api_encoder:encode(contract_bytearray, ByteCode)}};
+                     {200, [], #{bytecode => aeser_api_encoder:encode(contract_bytearray, ByteCode)}};
                  {error, ErrorMsg} ->
                      {403, [], #{reason => ErrorMsg}}
              end;
@@ -230,7 +230,7 @@ handle_request_('EncodeCalldata', Req, _Context) ->
             case contract_call_input_funargs(Input) of
                 {ok, Function, Argument} ->
                     %% TODO: Handle other languages
-                    case aehttp_api_encoder:safe_decode(contract_bytearray, EncodedCode) of
+                    case aeser_api_encoder:safe_decode(contract_bytearray, EncodedCode) of
                         {ok, Code} ->
                             case aehttp_logic:contract_encode_call_data(ABI, Code, Function, Argument) of
                                 {ok, Result} ->
@@ -468,7 +468,7 @@ handle_request_('PostOracleRespond', #{'OracleRespondTx' := Req}, _Context) ->
 handle_request_('GetNodeBeneficiary', _, _Context) ->
     case aec_conductor:get_beneficiary() of
         {ok, PubKey} ->
-            {200, [], #{pub_key => aehttp_api_encoder:encode(account_pubkey, PubKey)}};
+            {200, [], #{pub_key => aeser_api_encoder:encode(account_pubkey, PubKey)}};
         {error, Reason} ->
             {404, [], #{reason =>  atom_to_binary(Reason, utf8)}}
     end;
@@ -477,7 +477,7 @@ handle_request_('GetNodePubkey', _, _Context) ->
     case aec_keys:pubkey() of
         {ok, Pubkey} ->
             %% TODO: rename pub_key to pubkey
-            {200, [], #{pub_key => aehttp_api_encoder:encode(account_pubkey, Pubkey)}};
+            {200, [], #{pub_key => aeser_api_encoder:encode(account_pubkey, Pubkey)}};
         {error, key_not_found} ->
             {404, [], #{reason => <<"Public key not found">>}}
     end;
@@ -487,7 +487,7 @@ handle_request_('GetCommitmentId', Req, _Context) ->
     Salt         = maps:get('salt', Req),
     case aens:get_commitment_hash(Name, Salt) of
         {ok, CHash} ->
-            EncodedCHash = aehttp_api_encoder:encode(commitment, CHash),
+            EncodedCHash = aeser_api_encoder:encode(commitment, CHash),
             {200, [], #{commitment_id => EncodedCHash}};
         {error, Reason} ->
             ReasonBin = atom_to_binary(Reason, utf8),

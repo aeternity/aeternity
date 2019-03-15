@@ -75,13 +75,13 @@ end_per_suite(_Config) -> ok.
 %=== TEST CASES ================================================================
 
 test_node_starts_with_30k_accounts(Cfg) ->
-    MikeAddress = aehttp_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
+    MikeAddress = aeser_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
     Alice = maps:get(pubkey, ?ALICE),
     NodeConfig = #{ beneficiary      => MikeAddress},
     GenesisAccounts =
         lists:map(
             fun({PK, Amount}) ->
-                Address = aehttp_api_encoder:encode(account_pubkey, PK),
+                Address = aeser_api_encoder:encode(account_pubkey, PK),
                 {Address, Amount}
             end,
             [{Alice, 1234} | random_accounts(_Cnt = 30000)]),

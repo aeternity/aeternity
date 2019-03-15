@@ -252,7 +252,7 @@ mine_all_txs(Node, MaxBlocks) ->
     case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
         {ok, []} -> {ok, []};
         {ok, Txs} ->
-            TxsHs = [ aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(T)) || T <- Txs],
+            TxsHs = [ aeser_api_encoder:encode(tx_hash, aetx_sign:hash(T)) || T <- Txs],
             mine_blocks_until_txs_on_chain(Node, TxsHs, MaxBlocks)
     end.
 
@@ -307,7 +307,7 @@ txs_not_in_microblock(MB, TxHashes) ->
 
 tx_in_microblock(MB, TxHash) ->
     lists:any(fun(STx) ->
-                aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
+                aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
               end, aec_blocks:txs(MB)).
 
 mine_blocks_loop(Cnt, Type) ->
@@ -389,8 +389,8 @@ wait_for_height_(Node, Height) ->
 
 spend(Node, FromPub, ToPub, Amount, Fee) ->
     {ok, Nonce} = rpc:call(Node, aec_next_nonce, pick_for_account, [FromPub]),
-    Params = #{sender_id    => aec_id:create(account, FromPub),
-               recipient_id => aec_id:create(account, ToPub),
+    Params = #{sender_id    => aeser_id:create(account, FromPub),
+               recipient_id => aeser_id:create(account, ToPub),
                amount       => Amount,
                fee          => Fee,
                nonce        => Nonce,
@@ -773,7 +773,7 @@ default_config(N, Config) ->
           #{<<"hwm">> => 500},
       <<"mining">> =>
           #{<<"autostart">> => false,
-            <<"beneficiary">> => aehttp_api_encoder:encode(account_pubkey, PubKey),
+            <<"beneficiary">> => aeser_api_encoder:encode(account_pubkey, PubKey),
             <<"beneficiary_reward_delay">> => 2},
       <<"chain">> =>
           #{<<"persist">> => true},
@@ -809,7 +809,7 @@ keys_dir(N, Config) ->
 %% Use localhost here, because some systems have both 127.0.0.1 and 127.0.1.1
 %% defined, resulting in a conflict during testing
 peer_info(N) ->
-    list_to_binary(["aenode://", aehttp_api_encoder:encode(peer_pubkey, pubkey(N)),
+    list_to_binary(["aenode://", aeser_api_encoder:encode(peer_pubkey, pubkey(N)),
                   "@localhost:", integer_to_list(port_number(N))]).
 
 port_number(dev1) -> 3015;

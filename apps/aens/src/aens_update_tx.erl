@@ -40,9 +40,9 @@
 -define(NAME_UPDATE_TX_TYPE, name_update_tx).
 
 -record(ns_update_tx, {
-          account_id :: aec_id:id(),
+          account_id :: aeser_id:id(),
           nonce      :: integer(),
-          name_id    :: aec_id:id(),
+          name_id    :: aeser_id:id(),
           name_ttl   :: integer(),
           pointers   :: list(aens_pointer:pointer()),
           client_ttl :: integer(),
@@ -66,8 +66,8 @@ new(#{account_id := AccountId,
       pointers   := Pointers,
       client_ttl := ClientTTL,
       fee        := Fee} = Args) ->
-    account = aec_id:specialize_type(AccountId),
-    name    = aec_id:specialize_type(NameId),
+    account = aeser_id:specialize_type(AccountId),
+    name    = aeser_id:specialize_type(NameId),
     %% TODO: check pointers: length, unique keys? unique ids?
     Tx = #ns_update_tx{account_id = AccountId,
                        nonce      = Nonce,
@@ -155,8 +155,8 @@ deserialize(?NAME_UPDATE_TX_VSN,
             , {client_ttl, ClientTTL}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    account = aec_id:specialize_type(AccountId),
-    name = aec_id:specialize_type(NameId),
+    account = aeser_id:specialize_type(AccountId),
+    name = aeser_id:specialize_type(NameId),
     #ns_update_tx{account_id = AccountId,
                   nonce      = Nonce,
                   name_id    = NameId,
@@ -186,9 +186,9 @@ for_client(#ns_update_tx{account_id = AccountId,
                          client_ttl = ClientTTL,
                          fee        = Fee,
                          ttl        = TTL}) ->
-    #{<<"account_id">> => aehttp_api_encoder:encode(id_hash, AccountId),
+    #{<<"account_id">> => aeser_api_encoder:encode(id_hash, AccountId),
       <<"nonce">>      => Nonce,
-      <<"name_id">>    => aehttp_api_encoder:encode(id_hash, NameId),
+      <<"name_id">>    => aeser_api_encoder:encode(id_hash, NameId),
       <<"name_ttl">>   => NameTTL,
       <<"pointers">>   => [aens_pointer:serialize_for_client(P) || P <- Pointers],
       <<"client_ttl">> => ClientTTL,
@@ -216,10 +216,10 @@ client_ttl(#ns_update_tx{client_ttl = ClientTTL}) ->
 %%%===================================================================
 
 account_pubkey(#ns_update_tx{account_id = AccountId}) ->
-    aec_id:specialize(AccountId, account).
+    aeser_id:specialize(AccountId, account).
 
 name_hash(#ns_update_tx{name_id = NameId}) ->
-    aec_id:specialize(NameId, name).
+    aeser_id:specialize(NameId, name).
 
 version() ->
     ?NAME_UPDATE_TX_VSN.

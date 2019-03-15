@@ -380,7 +380,7 @@ set_beneficiary(#state{mining_state = MiningState} = State) ->
 get_beneficiary() ->
     case aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary">>], aecore, beneficiary) of
         {ok, EncodedBeneficiary} ->
-            case aehttp_api_encoder:safe_decode(account_pubkey, EncodedBeneficiary) of
+            case aeser_api_encoder:safe_decode(account_pubkey, EncodedBeneficiary) of
                 {ok, _Beneficiary} = Result ->
                     Result;
                 {error, Reason} ->

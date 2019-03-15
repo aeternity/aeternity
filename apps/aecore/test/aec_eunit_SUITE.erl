@@ -12,7 +12,7 @@
 
 -define(STARTED_APPS_WHITELIST, [runtime_tools, parse_trans, folsom, bear, setup, hut, hex2bin,
                                  inet_cidr, inet_ext, lhttpc, rand_compat, xmerl, aecuckoo,
-                                 aecuckooprebuilt, getopt]).
+                                 aecuckooprebuilt, getopt, eblake2]).
 -define(TO_BE_STOPPED_APPS_BLACKLIST, []).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server, %% by test framework
@@ -123,7 +123,7 @@ prepare_app_start_(App, Config) ->
     TempDir = aec_test_utils:create_temp_key_dir(),
     application:set_env(aecore, keys_dir, TempDir),
     application:set_env(aecore, peer_password, <<"secret">>),
-    application:set_env(aecore, beneficiary, aehttp_api_encoder:encode(account_pubkey, <<"_________my_public_key__________">>)),
+    application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, <<"_________my_public_key__________">>)),
 
     {ok, Deps0} = application:get_key(App, applications),
     Deps = maybe_add_mnesia(App, Deps0), % mnesia is started manually in aecore_app

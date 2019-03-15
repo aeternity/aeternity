@@ -170,7 +170,7 @@ patron() ->
 %% to a cluster of older nodes.
 new_node_joins_network(Cfg) ->
     Compatible = "aeternity/aeternity:v1.4.0", %% Latest version it should be compatible with
-    PatronAddress = aehttp_api_encoder:encode(account_pubkey,
+    PatronAddress = aeser_api_encoder:encode(account_pubkey,
                                               maps:get(pubkey, patron())),
     %% have all nodes share the same accounts_test.json
     GenesisAccounts = [{PatronAddress, 123400000000000000000000000000}],
@@ -249,7 +249,7 @@ new_node_joins_network(Cfg) ->
     ct:log("Node 3 at height ~p: ~p", [Length, Height3]),
 
     %% Checks node 3 is synchronized with nodes 1 and 2
-    ?assertEqual(Height1#{info => aehttp_api_encoder:encode(contract_bytearray, <<>>)}, Height3),
+    ?assertEqual(Height1#{info => aeser_api_encoder:encode(contract_bytearray, <<>>)}, Height3),
     ok.
 
 %% When we stop and restart a node we will be able to read the blocks

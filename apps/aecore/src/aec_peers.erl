@@ -277,7 +277,7 @@ get_connection(PeerId) ->
 parse_peer_address(PeerAddress) ->
     case http_uri:parse(PeerAddress) of
         {ok, {aenode, EncPubKey, Host, Port, _Path, _Query}} ->
-            case aehttp_api_encoder:safe_decode(peer_pubkey, to_binary(EncPubKey)) of
+            case aeser_api_encoder:safe_decode(peer_pubkey, to_binary(EncPubKey)) of
                 {ok, PubKey} ->
                     PeerInfo = #{
                         pubkey => PubKey,
@@ -295,7 +295,7 @@ parse_peer_address(PeerAddress) ->
 %% @doc Encodes peer info map to a peer URI.
 -spec encode_peer_address(peer_info()) -> binary().
 encode_peer_address(#{ pubkey := PubKey, host := Host, port := Port }) ->
-    list_to_binary(["aenode://", aehttp_api_encoder:encode(peer_pubkey, PubKey), "@",
+    list_to_binary(["aenode://", aeser_api_encoder:encode(peer_pubkey, PubKey), "@",
                     Host, ":", integer_to_list(Port)]).
 
 %--- CONNECTION MANAGMENT FUNCTIONS FOR aec_peer_connection ONLY ---------------
@@ -350,7 +350,7 @@ peer_id(#peer{ pubkey = PubKey }) ->
 %% @doc Tries formating a peer for logging.
 -spec ppp(peer_id() | peer_info() | peer()) -> string().
 ppp(PeerId) when is_binary(PeerId) ->
-    Str = lists:flatten(io_lib:format("~p", [aehttp_api_encoder:encode(peer_pubkey, PeerId)])),
+    Str = lists:flatten(io_lib:format("~p", [aeser_api_encoder:encode(peer_pubkey, PeerId)])),
     lists:sublist(Str, 4, 10) ++ "..." ++ lists:sublist(Str, length(Str) - 9, 7);
 ppp(#{ pubkey := PK }) -> ppp(PK);
 ppp(#peer{ pubkey = PK }) -> ppp(PK);

@@ -211,7 +211,7 @@ make_update_tx(Updates, #state{signed_tx = LastSignedTx, trees=Trees},
                            OnChainEnv, Reserve),
     StateHash = aec_trees:hash(Trees1),
     {ok, OffchainTx} =
-        aesc_offchain_tx:new(#{channel_id => aec_id:create(channel, ChannelPubKey),
+        aesc_offchain_tx:new(#{channel_id => aeser_id:create(channel, ChannelPubKey),
                                state_hash => StateHash,
                                updates    => Updates,
                                round      => NextRound}),
@@ -373,5 +373,5 @@ serialize_for_client_tx_or_notx(?NO_TX) ->
     <<"">>;
 serialize_for_client_tx_or_notx(Tx) ->
     STx = aetx_sign:serialize_to_binary(Tx),
-    aehttp_api_encoder:encode(transaction, STx).
+    aeser_api_encoder:encode(transaction, STx).
 

@@ -8,11 +8,11 @@
 -define(OP_CREATE_CONTRACT, 3).
 -define(OP_CALL_CONTRACT,   4).
 
--opaque update() :: {?OP_TRANSFER, aec_id:id(), aec_id:id(), non_neg_integer()}
-        | {?OP_WITHDRAW | ?OP_DEPOSIT, aec_id:id(), non_neg_integer()}
-        | {?OP_CREATE_CONTRACT, aec_id:id(), aect_contracts:vm_version(), aect_contracts:abi_version(),
+-opaque update() :: {?OP_TRANSFER, aeser_id:id(), aeser_id:id(), non_neg_integer()}
+        | {?OP_WITHDRAW | ?OP_DEPOSIT, aeser_id:id(), non_neg_integer()}
+        | {?OP_CREATE_CONTRACT, aeser_id:id(), aect_contracts:vm_version(), aect_contracts:abi_version(),
            binary(), non_neg_integer(), binary()}
-        | {?OP_CALL_CONTRACT, aec_id:id(), aec_id:id(), aect_contracts:abi_version(),
+        | {?OP_CALL_CONTRACT, aeser_id:id(), aeser_id:id(), aect_contracts:abi_version(),
            non_neg_integer(), aect_call:call(), [non_neg_integer()],
            non_neg_integer(), non_neg_integer()}.
 
@@ -39,44 +39,44 @@
          extract_amounts/1,
          extract_abi_version/1]).
 
--spec op_transfer(aec_id:id(), aec_id:id(), non_neg_integer()) -> update().
+-spec op_transfer(aeser_id:id(), aeser_id:id(), non_neg_integer()) -> update().
 op_transfer(From, To, Amount) ->
-    account = aec_id:specialize_type(From),
-    account = aec_id:specialize_type(To),
+    account = aeser_id:specialize_type(From),
+    account = aeser_id:specialize_type(To),
     {?OP_TRANSFER, From, To, Amount}.
 
--spec op_deposit(aec_id:id(), non_neg_integer()) -> update().
+-spec op_deposit(aeser_id:id(), non_neg_integer()) -> update().
 op_deposit(Acct, Amount) ->
-    account = aec_id:specialize_type(Acct),
+    account = aeser_id:specialize_type(Acct),
     {?OP_DEPOSIT, Acct, Amount}.
 
--spec op_withdraw(aec_id:id(), non_neg_integer()) -> update().
+-spec op_withdraw(aeser_id:id(), non_neg_integer()) -> update().
 op_withdraw(Acct, Amount) ->
-    account = aec_id:specialize_type(Acct),
+    account = aeser_id:specialize_type(Acct),
     {?OP_WITHDRAW, Acct, Amount}.
 
--spec op_new_contract(aec_id:id(), aect_contracts:vm_version(), aect_contracts:abi_version(),
+-spec op_new_contract(aeser_id:id(), aect_contracts:vm_version(), aect_contracts:abi_version(),
            binary(), non_neg_integer(), binary()) -> update().
 op_new_contract(OwnerId, VmVersion, ABIVersion, Code, Deposit, CallData) ->
-    account = aec_id:specialize_type(OwnerId),
+    account = aeser_id:specialize_type(OwnerId),
     {?OP_CREATE_CONTRACT, OwnerId, VmVersion, ABIVersion, Code, Deposit, CallData}.
 
 
--spec op_call_contract(aec_id:id(), aec_id:id(), aect_contracts:abi_version(),
+-spec op_call_contract(aeser_id:id(), aeser_id:id(), aect_contracts:abi_version(),
                        non_neg_integer(), Call, [non_neg_integer()]) -> update()
     when Call :: _.
 op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData, CallStack) ->
     op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData,
                      CallStack, 1, 1000000).
--spec op_call_contract(aec_id:id(), aec_id:id(), aect_contracts:abi_version(),
+-spec op_call_contract(aeser_id:id(), aeser_id:id(), aect_contracts:abi_version(),
                        non_neg_integer(), Call,
                        [non_neg_integer()],
                        non_neg_integer(), non_neg_integer()) -> update()
     when Call :: _.
 op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData, CallStack,
                  GasPrice, Gas) ->
-    account = aec_id:specialize_type(CallerId),
-    contract = aec_id:specialize_type(ContractId),
+    account = aeser_id:specialize_type(CallerId),
+    contract = aeser_id:specialize_type(ContractId),
     {?OP_CALL_CONTRACT, CallerId, ContractId, ABIVersion, Amount, CallData,
      CallStack, GasPrice, Gas}.
 
@@ -125,35 +125,35 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
 -spec for_client(update()) -> map().
 for_client({?OP_TRANSFER, From, To, Amount}) ->
     #{<<"op">> => <<"OffChainTransfer">>, % swagger name
-      <<"from">> => aehttp_api_encoder:encode(id_hash, From),
-      <<"to">> => aehttp_api_encoder:encode(id_hash, To),
+      <<"from">> => aeser_api_encoder:encode(id_hash, From),
+      <<"to">> => aeser_api_encoder:encode(id_hash, To),
       <<"am">>   => Amount};
 for_client({?OP_WITHDRAW, To, Amount}) ->
     #{<<"op">> => <<"OffChainWithdrawal">>, % swagger name
-      <<"to">> => aehttp_api_encoder:encode(id_hash, To),
+      <<"to">> => aeser_api_encoder:encode(id_hash, To),
       <<"am">>   => Amount};
 for_client({?OP_DEPOSIT, From, Amount}) ->
     #{<<"op">> => <<"OffChainDeposit">>, % swagger name
-      <<"from">> => aehttp_api_encoder:encode(id_hash, From),
+      <<"from">> => aeser_api_encoder:encode(id_hash, From),
       <<"am">>   => Amount};
 for_client({?OP_CREATE_CONTRACT, OwnerId, VmVersion, ABIVersion, Code, Deposit, CallData}) ->
     #{<<"op">>          => <<"OffChainNewContract">>, % swagger name
-      <<"owner">>       => aehttp_api_encoder:encode(id_hash, OwnerId),
+      <<"owner">>       => aeser_api_encoder:encode(id_hash, OwnerId),
       <<"vm_version">>  => VmVersion,
       <<"abi_version">> => ABIVersion,
       <<"code">>        => Code,
       <<"deposit">>     => Deposit,
-      <<"call_data">>   => aehttp_api_encoder:encode(contract_bytearray, CallData)};
+      <<"call_data">>   => aeser_api_encoder:encode(contract_bytearray, CallData)};
 for_client({?OP_CALL_CONTRACT, CallerId, ContractId, ABIVersion, Amount,
             CallData, CallStack, GasPrice, Gas}) ->
     #{<<"op">>          => <<"OffChainCallContract">>, % swagger name
-      <<"caller">>      => aehttp_api_encoder:encode(id_hash, CallerId),
-      <<"contract">>    => aehttp_api_encoder:encode(id_hash, ContractId),
+      <<"caller">>      => aeser_api_encoder:encode(id_hash, CallerId),
+      <<"contract">>    => aeser_api_encoder:encode(id_hash, ContractId),
       <<"abi_version">> => ABIVersion,
       <<"amount">>      => Amount,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,
-      <<"call_data">>   => aehttp_api_encoder:encode(contract_bytearray, CallData),
+      <<"call_data">>   => aeser_api_encoder:encode(contract_bytearray, CallData),
       <<"call_stack">>  => CallStack}.
 
 -spec serialize(update()) -> binary().
@@ -161,7 +161,7 @@ serialize(Update) ->
     Fields = update2fields(Update),
     Vsn = ?UPDATE_VSN,
     UpdateType = element(1, Update),
-    aec_object_serialization:serialize(
+    aeser_chain_objects:serialize(
       ut2type(UpdateType),
       Vsn,
       update_serialization_template(Vsn, UpdateType),
@@ -170,10 +170,10 @@ serialize(Update) ->
 -spec deserialize(binary()) -> update().
 deserialize(Bin) ->
     {Type, Vsn, RawFields} =
-        aec_object_serialization:deserialize_type_and_vsn(Bin),
+        aeser_chain_objects:deserialize_type_and_vsn(Bin),
     UpdateType = type2ut(Type),
     Template = update_serialization_template(Vsn, UpdateType),
-    Fields = aec_serialization:decode_fields(Template, RawFields),
+    Fields = aeserialization:decode_fields(Template, RawFields),
     fields2update(UpdateType, Fields).
 
 update2fields({?OP_TRANSFER, From, To, Amount}) ->
@@ -302,10 +302,10 @@ remove_tokens(Pubkey, Amount, Trees, Reserve) ->
     aec_trees:set_accounts(Trees, AccountTrees1).
 
 account_pubkey(Id) ->
-    aec_id:specialize(Id, account).
+    aeser_id:specialize(Id, account).
 
 contract_pubkey(Id) ->
-    aec_id:specialize(Id, contract).
+    aeser_id:specialize(Id, contract).
 
 -spec extract_caller(update()) -> aec_keys:pubkey().
 extract_caller({?OP_CALL_CONTRACT, CallerId, _, _, _, _, _, _, _}) ->

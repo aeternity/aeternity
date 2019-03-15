@@ -60,15 +60,15 @@
 -type vsn() :: non_neg_integer().
 
 -record(channel_create_tx, {
-          initiator_id       :: aec_id:id(),
+          initiator_id       :: aeser_id:id(),
           initiator_amount   :: non_neg_integer(),
-          responder_id       :: aec_id:id(),
+          responder_id       :: aeser_id:id(),
           responder_amount   :: non_neg_integer(),
           channel_reserve    :: non_neg_integer(),
           lock_period        :: non_neg_integer(),
           ttl                :: aetx:tx_ttl(),
           fee                :: non_neg_integer(),
-          delegate_ids       :: [aec_id:id()],
+          delegate_ids       :: [aeser_id:id()],
           state_hash         :: binary(),
           nonce              :: non_neg_integer()
          }).
@@ -95,9 +95,9 @@ new(#{initiator_id       := InitiatorId,
       nonce              := Nonce} = Args) ->
     true = aesc_utils:check_state_hash_size(StateHash),
     DelegateIds = maps:get(delegate_ids, Args, []),
-    lists:foreach(fun(D) -> account = aec_id:specialize_type(D) end, DelegateIds),
-    account = aec_id:specialize_type(InitiatorId),
-    account = aec_id:specialize_type(ResponderId),
+    lists:foreach(fun(D) -> account = aeser_id:specialize_type(D) end, DelegateIds),
+    account = aeser_id:specialize_type(InitiatorId),
+    account = aeser_id:specialize_type(ResponderId),
     Tx = #channel_create_tx{initiator_id       = InitiatorId,
                             responder_id       = ResponderId,
                             initiator_amount   = InitiatorAmount,
@@ -198,9 +198,9 @@ deserialize(?CHANNEL_CREATE_TX_VSN,
             , {delegate_ids      , DelegateIds}
             , {state_hash        , StateHash}
             , {nonce             , Nonce}]) ->
-    account = aec_id:specialize_type(InitiatorId),
-    account = aec_id:specialize_type(ResponderId),
-    [account = aec_id:specialize_type(D) || D <- DelegateIds],
+    account = aeser_id:specialize_type(InitiatorId),
+    account = aeser_id:specialize_type(ResponderId),
+    [account = aeser_id:specialize_type(D) || D <- DelegateIds],
     true = aesc_utils:check_state_hash_size(StateHash),
     #channel_create_tx{initiator_id       = InitiatorId,
                        initiator_amount   = InitiatorAmount,
@@ -226,16 +226,16 @@ for_client(#channel_create_tx{initiator_id       = InitiatorId,
                               delegate_ids       = DelegateIds,
                               state_hash         = StateHash,
                               fee                = Fee}) ->
-    #{<<"initiator_id">>       => aehttp_api_encoder:encode(id_hash, InitiatorId),
+    #{<<"initiator_id">>       => aeser_api_encoder:encode(id_hash, InitiatorId),
       <<"initiator_amount">>   => InitiatorAmount,
-      <<"responder_id">>       => aehttp_api_encoder:encode(id_hash, ResponderId),
+      <<"responder_id">>       => aeser_api_encoder:encode(id_hash, ResponderId),
       <<"responder_amount">>   => ResponderAmount,
       <<"channel_reserve">>    => ChannelReserve,
       <<"lock_period">>        => LockPeriod,
       <<"nonce">>              => Nonce,
       <<"ttl">>                => TTL,
-      <<"delegate_ids">>       => [aehttp_api_encoder:encode(id_hash, D) || D <- DelegateIds],
-      <<"state_hash">>         => aehttp_api_encoder:encode(state, StateHash),
+      <<"delegate_ids">>       => [aeser_api_encoder:encode(id_hash, D) || D <- DelegateIds],
+      <<"state_hash">>         => aeser_api_encoder:encode(state, StateHash),
       <<"fee">>                => Fee}.
 
 serialization_template(?CHANNEL_CREATE_TX_VSN) ->
@@ -256,13 +256,13 @@ serialization_template(?CHANNEL_CREATE_TX_VSN) ->
 %%% Getters
 %%%===================================================================
 
--spec initiator_id(tx()) -> aec_id:id().
+-spec initiator_id(tx()) -> aeser_id:id().
 initiator_id(#channel_create_tx{initiator_id = InitiatorId}) ->
     InitiatorId.
 
 -spec initiator_pubkey(tx()) -> aec_keys:pubkey().
 initiator_pubkey(#channel_create_tx{initiator_id = InitiatorId}) ->
-    aec_id:specialize(InitiatorId, account).
+    aeser_id:specialize(InitiatorId, account).
 
 -spec initiator_amount(tx()) -> non_neg_integer().
 initiator_amount(#channel_create_tx{initiator_amount = InitiatorAmount}) ->
@@ -276,13 +276,13 @@ channel_reserve(#channel_create_tx{channel_reserve = ChannelReserve}) ->
 lock_period(#channel_create_tx{lock_period = LockPeriod}) ->
     LockPeriod.
 
--spec responder_id(tx()) -> aec_id:id().
+-spec responder_id(tx()) -> aeser_id:id().
 responder_id(#channel_create_tx{responder_id = ResponderId}) ->
     ResponderId.
 
 -spec responder_pubkey(tx()) -> aec_keys:pubkey().
 responder_pubkey(#channel_create_tx{responder_id = ResponderId}) ->
-    aec_id:specialize(ResponderId, account).
+    aeser_id:specialize(ResponderId, account).
 
 -spec responder_amount(tx()) -> non_neg_integer().
 responder_amount(#channel_create_tx{responder_amount = ResponderAmount}) ->
@@ -295,7 +295,7 @@ channel_pubkey(#channel_create_tx{nonce = Nonce} = Tx) ->
 -spec channel_id(tx()) -> aesc_channels:id().
 channel_id(#channel_create_tx{} = Tx) ->
     Key = channel_pubkey(Tx),
-    aec_id:create(channel, Key).
+    aeser_id:create(channel, Key).
 
 -spec state_hash(tx()) -> binary().
 state_hash(#channel_create_tx{state_hash = StateHash}) -> StateHash.
@@ -312,7 +312,7 @@ delegate_ids(#channel_create_tx{delegate_ids = DelegateIds}) ->
 
 -spec delegate_pubkeys(tx()) -> [aec_keys:pubkey()].
 delegate_pubkeys(#channel_create_tx{delegate_ids = DelegateIds}) ->
-    [aec_id:specialize(D, account) || D <- DelegateIds].
+    [aeser_id:specialize(D, account) || D <- DelegateIds].
 
 %%%===================================================================
 %%% Internal functions

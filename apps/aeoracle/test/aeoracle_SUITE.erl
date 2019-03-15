@@ -370,7 +370,7 @@ query_oracle_negative(Cfg) ->
 
     %% Test bad sender key
     BadSenderKey = <<42:32/unit:8>>,
-    OracleId     = aec_id:create(oracle, OracleKey),
+    OracleId     = aeser_id:create(oracle, OracleKey),
     Q1 = aeo_test_utils:query_tx(BadSenderKey, OracleId, S2),
     {error, account_not_found} = aetx:process(Q1, Trees, Env),
 
@@ -389,7 +389,7 @@ query_oracle_negative(Cfg) ->
     {error, too_low_fee} = aetx:process(Q4, Trees, Env),
 
     %% Test bad oracle key
-    BadOracleId = aec_id:create(oracle, <<42:32/unit:8>>),
+    BadOracleId = aeser_id:create(oracle, <<42:32/unit:8>>),
     Q5 = aeo_test_utils:query_tx(SenderKey, BadOracleId, S2),
     {error, oracle_does_not_exist} = aetx:process(Q5, Trees, Env),
 
@@ -413,7 +413,7 @@ query_oracle_negative(Cfg) ->
 query_oracle_negative_dynamic_fee(Cfg) ->
     {OracleKey, S}  = register_oracle(Cfg, #{oracle_ttl => {block, 2000 + ?ORACLE_QUERY_HEIGHT},
                                              fee => 25000 * aec_test_utils:min_gas_price()}),
-    OracleId        = aec_id:create(oracle, OracleKey),
+    OracleId        = aeser_id:create(oracle, OracleKey),
     {SenderKey, S2} = aeo_test_utils:setup_new_account(S),
     Trees           = aeo_test_utils:trees(S2),
     CurrHeight      = ?ORACLE_QUERY_HEIGHT,
@@ -453,7 +453,7 @@ query_oracle_type_check(_Cfg) ->
                                                         query_format => QFmt,
                                                         response_format => RFmt
                                                        }),
-                OracleId        = aec_id:create(oracle, OracleKey),
+                OracleId        = aeser_id:create(oracle, OracleKey),
                 {SenderKey, S2} = aeo_test_utils:setup_new_account(S),
                 Trees           = aeo_test_utils:trees(S2),
                 CurrHeight      = ?ORACLE_QUERY_HEIGHT,
@@ -490,7 +490,7 @@ query_oracle_(_Cfg, _RegTxOpts, QueryTxOpts, {OracleKey, S1}) ->
     Trees           = aeo_test_utils:trees(S2),
     CurrHeight      = ?ORACLE_QUERY_HEIGHT,
     PrivKey         = aeo_test_utils:priv_key(SenderKey, S2),
-    OracleId        = aec_id:create(oracle, OracleKey),
+    OracleId        = aeser_id:create(oracle, OracleKey),
 
     Q1 = aeo_test_utils:query_tx(SenderKey, OracleId, QueryTxOpts, S2),
     %% Test that QueryTX is accepted

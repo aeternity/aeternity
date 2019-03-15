@@ -71,8 +71,8 @@ test_mining_algorithms_compatibility(Cfg) ->
 
     #{ public := PubKey1 } = enacl:sign_keypair(),
     #{ public := PubKey2 } = enacl:sign_keypair(),
-    Beneficiary1 = aehttp_api_encoder:encode(account_pubkey, PubKey1),
-    Beneficiary2 = aehttp_api_encoder:encode(account_pubkey, PubKey2),
+    Beneficiary1 = aeser_api_encoder:encode(account_pubkey, PubKey1),
+    Beneficiary2 = aeser_api_encoder:encode(account_pubkey, PubKey2),
 
     %% Setup nodes
     setup([?NODE1], #{ beneficiary => Beneficiary1, algorithm => <<"mean15-generic">> }, Cfg),

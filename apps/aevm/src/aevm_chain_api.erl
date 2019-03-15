@@ -39,7 +39,7 @@
 
 %% -- Accounts --
 
--callback spend_tx(Recipient :: aec_id:id(),
+-callback spend_tx(Recipient :: aeser_id:id(),
                    Amount :: non_neg_integer(),
                    State :: chain_state()) ->
     {ok, aetx:tx()}.

@@ -41,9 +41,9 @@
 -define(NAME_PRECLAIM_TX_TYPE, name_preclaim_tx).
 
 -record(ns_preclaim_tx, {
-          account_id    :: aec_id:id(),
+          account_id    :: aeser_id:id(),
           nonce         :: integer(),
-          commitment_id :: aec_id:id(),
+          commitment_id :: aeser_id:id(),
           fee           :: integer(),
           ttl           :: aetx:tx_ttl()
          }).
@@ -61,8 +61,8 @@ new(#{account_id    := AccountId,
       nonce         := Nonce,
       commitment_id := CommitmentId,
       fee           := Fee} = Args) ->
-    account    = aec_id:specialize_type(AccountId),
-    commitment = aec_id:specialize_type(CommitmentId),
+    account    = aeser_id:specialize_type(AccountId),
+    commitment = aeser_id:specialize_type(CommitmentId),
     Tx = #ns_preclaim_tx{account_id    = AccountId,
                          nonce         = Nonce,
                          commitment_id = CommitmentId,
@@ -135,8 +135,8 @@ deserialize(?NAME_PRECLAIM_TX_VSN,
             , {commitment_id, CommitmentId}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    account = aec_id:specialize_type(AccountId),
-    commitment = aec_id:specialize_type(CommitmentId),
+    account = aeser_id:specialize_type(AccountId),
+    commitment = aeser_id:specialize_type(CommitmentId),
     #ns_preclaim_tx{account_id    = AccountId,
                     nonce         = Nonce,
                     commitment_id = CommitmentId,
@@ -157,9 +157,9 @@ for_client(#ns_preclaim_tx{account_id    = AccountId,
                            commitment_id = CommitmentId,
                            fee           = Fee,
                            ttl           = TTL}) ->
-    #{<<"account_id">>    => aehttp_api_encoder:encode(id_hash, AccountId),
+    #{<<"account_id">>    => aeser_api_encoder:encode(id_hash, AccountId),
       <<"nonce">>         => Nonce,
-      <<"commitment_id">> => aehttp_api_encoder:encode(id_hash, CommitmentId),
+      <<"commitment_id">> => aeser_api_encoder:encode(id_hash, CommitmentId),
       <<"fee">>           => Fee,
       <<"ttl">>           => TTL}.
 
@@ -167,11 +167,11 @@ for_client(#ns_preclaim_tx{account_id    = AccountId,
 %%% Getters
 %%%===================================================================
 
--spec account_id(tx()) -> aec_id:id().
+-spec account_id(tx()) -> aeser_id:id().
 account_id(#ns_preclaim_tx{account_id = AccountId}) ->
     AccountId.
 
--spec commitment_id(tx()) -> aec_id:id().
+-spec commitment_id(tx()) -> aeser_id:id().
 commitment_id(#ns_preclaim_tx{commitment_id = CommitmentId}) ->
     CommitmentId.
 
@@ -180,10 +180,10 @@ commitment_id(#ns_preclaim_tx{commitment_id = CommitmentId}) ->
 %%%===================================================================
 
 account_pubkey(#ns_preclaim_tx{account_id = AccountId}) ->
-    aec_id:specialize(AccountId, account).
+    aeser_id:specialize(AccountId, account).
 
 commitment_hash(#ns_preclaim_tx{commitment_id = CommitmentId}) ->
-    aec_id:specialize(CommitmentId, commitment).
+    aeser_id:specialize(CommitmentId, commitment).
 
 version() ->
     ?NAME_PRECLAIM_TX_VSN.

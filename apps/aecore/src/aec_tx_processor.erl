@@ -59,7 +59,7 @@
 -opaque op() :: {atom(), tuple()}.
 
 -type pubkey() :: aec_keys:pubkey().
--type id()     :: aec_id:id().
+-type id()     :: aeser_id:id().
 -type hash()   :: aec_hash:hash().
 -type nonce()  :: non_neg_integer().
 -type ttl()    :: non_neg_integer().
@@ -559,8 +559,8 @@ name_preclaim_op(AccountPubkey, CommitmentHash, DeltaTTL
 
 name_preclaim({AccountPubkey, CommitmentHash, DeltaTTL}, S) ->
     assert_not_commitment(CommitmentHash, S),
-    Id      = aec_id:create(commitment, CommitmentHash),
-    OwnerId = aec_id:create(account, AccountPubkey),
+    Id      = aeser_id:create(commitment, CommitmentHash),
+    OwnerId = aeser_id:create(account, AccountPubkey),
     Commitment = aens_commitments:new(Id, OwnerId, DeltaTTL, S#state.height),
     cache_put(commitment, Commitment, S).
 
@@ -845,10 +845,10 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
 get_call_env_specific(CallerPubKey, GasLimit, GasPrice, Amount, Fee, S) ->
     case aetx_env:context(S#state.tx_env) of
         aetx_transaction ->
-            {aec_id:create(account, CallerPubKey),
+            {aeser_id:create(account, CallerPubKey),
              Fee + GasLimit * GasPrice + Amount};
         aetx_contract ->
-            {aec_id:create(contract, CallerPubKey),
+            {aeser_id:create(contract, CallerPubKey),
              Amount}
     end.
 
@@ -964,7 +964,7 @@ run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, Origin, Amount,
     S1 = cache_write_through(S),
     ContractId = aect_contracts:id(Contract),
     Call = aect_call:new(CallerId, Nonce, ContractId, S#state.height, GasPrice),
-    {_, CallerPubKey} = aec_id:specialize(CallerId),
+    {_, CallerPubKey} = aeser_id:specialize(CallerId),
     CallDef = #{ caller      => CallerPubKey
                , contract    => aect_contracts:pubkey(Contract)
                , gas         => GasLimit
@@ -999,7 +999,7 @@ int_resolve_name(NameHash, S) ->
         {ok, Id} ->
             %% Intentionally admissive to allow for all kinds of IDs for
             %% backwards compatibility.
-            {_Tag, Pubkey} = aec_id:specialize(Id),
+            {_Tag, Pubkey} = aeser_id:specialize(Id),
             {Pubkey, S1};
         {error, What} ->
             runtime_error(What)
@@ -1015,7 +1015,7 @@ account_spend(Account, Amount, S) ->
     cache_put(account, Account1, S).
 
 specialize_account(RecipientID) ->
-    case aec_id:specialize(RecipientID) of
+    case aeser_id:specialize(RecipientID) of
         {name, NameHash}   -> {name, NameHash};
         {oracle, Pubkey}   -> {account, Pubkey};
         {contract, Pubkey} -> {account, Pubkey};

@@ -46,7 +46,7 @@ serialize(#{header1  := Header1,
            }) ->
     SerializedHdr1 = aec_headers:serialize_to_binary(Header1),
     SerializedHdr2 = aec_headers:serialize_to_binary(Header2),
-    Bin = aec_object_serialization:serialize(
+    Bin = aeser_chain_objects:serialize(
             pof,
             ?POF_VSN,
             serialization_template(?POF_VSN),
@@ -62,7 +62,7 @@ deserialize([PoFBin]) when is_binary(PoFBin) ->
     [ {header1, SerializedHdr}
     , {header2, SerializedFraudHdr}
     , {pubkey, PubKey}
-    ] = aec_object_serialization:deserialize(
+    ] = aeser_chain_objects:deserialize(
           pof,
           ?POF_VSN,
           serialization_template(?POF_VSN),

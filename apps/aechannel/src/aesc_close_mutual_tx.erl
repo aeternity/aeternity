@@ -44,8 +44,8 @@
 -define(CHANNEL_CLOSE_MUTUAL_TX_TYPE, channel_close_mutual_tx).
 
 -record(channel_close_mutual_tx, {
-          channel_id              :: aec_id:id(),
-          from_id                 :: aec_id:id(),
+          channel_id              :: aeser_id:id(),
+          from_id                 :: aeser_id:id(),
           initiator_amount_final  :: non_neg_integer(),
           responder_amount_final  :: non_neg_integer(),
           ttl                     :: aetx:tx_ttl(),
@@ -68,8 +68,8 @@ new(#{channel_id              := ChannelId,
       responder_amount_final  := ResponderAmount,
       fee                     := Fee,
       nonce                   := Nonce} = Args) ->
-    channel = aec_id:specialize_type(ChannelId),
-    account = aec_id:specialize_type(FromId),
+    channel = aeser_id:specialize_type(ChannelId),
+    account = aeser_id:specialize_type(FromId),
     Tx = #channel_close_mutual_tx{
             channel_id              = ChannelId,
             from_id                 = FromId,
@@ -101,10 +101,10 @@ nonce(#channel_close_mutual_tx{nonce = Nonce}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_close_mutual_tx{from_id = FromId}) ->
-    aec_id:specialize(FromId, account).
+    aeser_id:specialize(FromId, account).
 
 channel_pubkey(#channel_close_mutual_tx{channel_id = ChannelId}) ->
-    aec_id:specialize(ChannelId, channel).
+    aeser_id:specialize(ChannelId, channel).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_close_mutual_tx{}, Trees,_Env) ->
@@ -114,7 +114,7 @@ check(#channel_close_mutual_tx{}, Trees,_Env) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) ->
                      {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_close_mutual_tx{from_id = FromId} = Tx, Trees, Env) ->
-    FromPubkey = aec_id:specialize(FromId, account),
+    FromPubkey = aeser_id:specialize(FromId, account),
     Instructions =
         aec_tx_processor:channel_close_mutual_tx_instructions(
           FromPubkey,
@@ -162,7 +162,7 @@ deserialize(?CHANNEL_CLOSE_MUTUAL_TX_VSN,
             , {ttl                    , TTL}
             , {fee                    , Fee}
             , {nonce                  , Nonce}]) ->
-    channel = aec_id:specialize_type(ChannelId),
+    channel = aeser_id:specialize_type(ChannelId),
     #channel_close_mutual_tx{channel_id             = ChannelId,
                              from_id                = FromId,
                              initiator_amount_final = InitiatorAmount,
@@ -179,8 +179,8 @@ for_client(#channel_close_mutual_tx{channel_id             = ChannelId,
                                     ttl                    = TTL,
                                     fee                    = Fee,
                                     nonce                  = Nonce}) ->
-    #{<<"channel_id">>              => aehttp_api_encoder:encode(id_hash, ChannelId),
-      <<"from_id">>                 => aehttp_api_encoder:encode(id_hash, FromId),
+    #{<<"channel_id">>              => aeser_api_encoder:encode(id_hash, ChannelId),
+      <<"from_id">>                 => aeser_api_encoder:encode(id_hash, FromId),
       <<"initiator_amount_final">>  => InitiatorAmount,
       <<"responder_amount_final">>  => ResponderAmount,
       <<"ttl">>                     => TTL,
@@ -218,6 +218,6 @@ version() ->
 %%%===================================================================
 -dialyzer({nowarn_function, set_channel_id/2}).
 set_channel_id(Tx, ChannelId) ->
-    channel = aec_id:specialize_type(ChannelId),
+    channel = aeser_id:specialize_type(ChannelId),
     Tx#channel_close_mutual_tx{channel_id = ChannelId}.
 
