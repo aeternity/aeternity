@@ -290,8 +290,7 @@ groups() ->
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
        {group, naming},
-       {group, channel_websocket},
-       {group, channel_websocket_legacy}
+       {group, channel_websocket}
       ]},
 
      %% /key-blocks/* /micro-blocks/* /generations/*
@@ -528,9 +527,6 @@ groups() ->
       [naming_system_manage_name
       ]},
      {channel_websocket, [sequence],
-      channel_websocket_sequence()
-     },
-     {channel_websocket_legacy, [sequence],
       channel_websocket_sequence()
      },
      {continuous_sc_ws, [sequence],
@@ -774,12 +770,6 @@ init_per_group(channel_websocket = Group, Config) ->
                                     priv_key => RPrivkey,
                                     start_amt => RStartAmt}},
     [{participants, Participants} | Config2];
-init_per_group(channel_websocket_legacy, Config) ->
-    Config1 = init_per_group(channel_websocket, Config),
-    Config2 = lists:keyreplace(
-                node_start_group, 1, Config1,
-                {node_start_group, channel_websocket_legacy}),
-    lists:keystore(sc_ws_protocol, 1, Config2, {sc_ws_protocol, <<"legacy">>});
 init_per_group(Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
@@ -3569,11 +3559,6 @@ sc_ws_get_both_balances(ConnPid, PubKeyI, PubKeyR, Config) ->
 query_balances(ConnPid, Accounts, Config) ->
     query_balances_(ConnPid, Accounts, sc_ws_protocol(Config)).
 
-query_balances_(ConnPid, Accounts, <<"legacy">>) ->
-    ?WS:send_tagged(ConnPid, <<"get">>, <<"balances">>,
-                    #{<<"accounts">> => Accounts}),
-    {ok, <<"balances">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
-    {ok, Res};
 query_balances_(ConnPid, Accounts, <<"json-rpc">>) ->
     {ok, ?WS:json_rpc_call(
             ConnPid, #{ <<"method">> => <<"channels.get.balances">>
@@ -3604,12 +3589,6 @@ decode_signed_tx(EncodedSignedTx) ->
 query_state(ConnPid, Config) ->
     query_state_(ConnPid, sc_ws_protocol(Config)).
 
-query_state_(ConnPid, <<"legacy">>) ->
-    %% get.offchain_state doesn't require any parameter, but not suplying one
-    %% will remove "payload" key from request and cause error in legacy API
-    ?WS:send_tagged(ConnPid, <<"get">>, <<"offchain_state">>, #{<<"a">> => <<"a">>}),
-    {ok, <<"offchain_state">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
-    {ok, Res};
 query_state_(ConnPid, <<"json-rpc">>) ->
     {ok, ?WS:json_rpc_call(
         ConnPid, #{ <<"method">> => <<"channels.get.offchain_state">>
@@ -3653,10 +3632,6 @@ sc_ws_get_contract(ConnPid, Pubkey, Config) ->
 query_contract(ConnPid, Pubkey, Config) ->
     query_contract_(ConnPid, Pubkey, sc_ws_protocol(Config)).
 
-query_contract_(ConnPid, Pubkey, <<"legacy">>) ->
-    ?WS:send_tagged(ConnPid, <<"get">>, <<"contract">>, #{<<"pubkey">> => Pubkey}),
-    {ok, <<"contract">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
-    {ok, Res};
 query_contract_(ConnPid, Pubkey, <<"json-rpc">>) ->
     {ok, ?WS:json_rpc_call(
         ConnPid, #{ <<"method">> => <<"channels.get.contract">>
@@ -5912,16 +5887,12 @@ ws_get_call_params(Update, UnsignedTx) ->
 %% wait_for_channel_msg(ConnPid, Action, Config) ->
 %%     wait_for_channel_msg_(ConnPid, Action, sc_ws_protocol(Config)).
 
-wait_for_channel_msg_(ConnPid, Action, <<"legacy">>) ->
-    ?WS:wait_for_channel_msg(ConnPid, Action);
 wait_for_channel_msg_(ConnPid, Action, <<"json-rpc">>) ->
     wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>).
 
 wait_for_channel_event(ConnPid, Action, Config) ->
     wait_for_channel_event_(ConnPid, Action, sc_ws_protocol(Config)).
 
-wait_for_channel_event_(ConnPid, Action, <<"legacy">>) ->
-    ?WS:wait_for_channel_event(ConnPid, Action);
 wait_for_channel_event_(ConnPid, error, <<"json-rpc">>) ->
     case ?WS:wait_for_channel_msg(ConnPid, error) of   % whole msg
         {ok, #{ <<"jsonrpc">> := <<"2.0">>
@@ -5949,9 +5920,6 @@ wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>) ->
 wait_for_channel_event(Event, ConnPid, Type, Config) ->
     wait_for_channel_event_(Event, ConnPid, Type, sc_ws_protocol(Config)).
 
-wait_for_channel_event_(Event, ConnPid, Type, <<"legacy">>) ->
-    {ok, #{<<"event">> := Event}} = ?WS:wait_for_channel_event(ConnPid, Type),
-    ok;
 wait_for_channel_event_(Event, ConnPid, Action, <<"json-rpc">>) ->
     {ok, #{ <<"data">> := #{ <<"event">> := Event } }} =
         wait_for_json_rpc_action(ConnPid, Action),
@@ -5960,12 +5928,6 @@ wait_for_channel_event_(Event, ConnPid, Action, <<"json-rpc">>) ->
 wait_for_channel_leave_msg(ConnPid, Config) ->
     wait_for_channel_leave_msg_(ConnPid, sc_ws_protocol(Config)).
 
-wait_for_channel_leave_msg_(ConnPid, <<"legacy">> = L) ->
-    {ok, #{ <<"channel_id">> := ChId,
-            <<"payload">> := P }} =
-        wait_for_channel_msg_(ConnPid, leave, L),
-    #{ <<"state">> := St } = P,
-    {ok, #{id => ChId, state => St}};
 wait_for_channel_leave_msg_(ConnPid, <<"json-rpc">>) ->
     {ok, #{ <<"channel_id">> := ChId,
             <<"data">> := #{ <<"state">> := St } }} =
@@ -6009,8 +5971,6 @@ method_pfx(Action) ->
 ws_send(ConnPid, Action, Payload, Config) ->
     ws_send_(ConnPid, Action, Payload, sc_ws_protocol(Config)).
 
-ws_send_(ConnPid, Action, Payload, <<"legacy">>) ->
-    ?WS:send(ConnPid, Action, Payload);
 ws_send_(ConnPid, Action, Payload, <<"json-rpc">>) ->
     ?WS:json_rpc_notify(ConnPid, #{ <<"method">> => <<"channels.", (bin(Action))/binary>>
                                   , <<"params">> => Payload }).
@@ -6018,8 +5978,6 @@ ws_send_(ConnPid, Action, Payload, <<"json-rpc">>) ->
 ws_send_tagged(ConnPid, Action, Tag, Payload, Config) ->
     ws_send_tagged_(ConnPid, Action, Tag, Payload, sc_ws_protocol(Config)).
 
-ws_send_tagged_(ConnPid, Action, Tag, Payload, <<"legacy">>) ->
-    ?WS:send_tagged(ConnPid, Action, Tag, Payload);
 ws_send_tagged_(ConnPid, Action, Tag, Payload, <<"json-rpc">>) ->
     ?WS:json_rpc_notify(
        ConnPid,

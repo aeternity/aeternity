@@ -23,8 +23,7 @@
 init(Req, _Opts) ->
     lager:debug("init(~p, ~p)", [Req, _Opts]),
     {cowboy_websocket, Req,
-     maps:merge(#{<<"protocol">> => <<"legacy">>},
-                maps:from_list(cowboy_req:parse_qs(Req)))}.
+     maps:from_list(cowboy_req:parse_qs(Req))}.
 
 -spec websocket_init(map()) -> {ok, handler()} | {stop, undefined}.
 websocket_init(Params) ->
