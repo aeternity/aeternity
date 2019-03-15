@@ -55,7 +55,7 @@
                 ws_address :: string() | undefined,
                 regs:: #register{},
                 calls = [] :: [{non_neg_integer(), pid()}],
-                protocol = legacy :: legacy | json_rpc
+                protocol :: json_rpc
                }).
 
 start_link(Host, Port) ->

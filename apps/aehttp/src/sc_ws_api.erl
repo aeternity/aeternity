@@ -1,9 +1,9 @@
 -module(sc_ws_api).
 
--define(PROTOCOLS, [legacy, jsonrpc]).
+-define(PROTOCOLS, [jsonrpc]).
 
 %TODO type -> opaque
--opaque protocol() :: legacy | jsonrpc.
+-opaque protocol() :: jsonrpc.
 -type response() :: {reply, map()} | no_reply | stop.
 
 -export_type([protocol/0,
@@ -41,7 +41,6 @@
 -spec protocol(binary()) -> protocol().
 protocol(P) ->
     case P of
-        <<"legacy">>   -> legacy;
         <<"json-rpc">> -> jsonrpc;
         _Other ->
             erlang:error(invalid_protocol)
@@ -65,8 +64,7 @@ process_from_fsm(Protocol, Msg, ChannelId) ->
 
 protocol_to_impl(Protocol) ->
     case Protocol of
-        jsonrpc -> sc_ws_api_jsonrpc;
-        legacy  -> sc_ws_api_legacy
+        jsonrpc -> sc_ws_api_jsonrpc
     end.
 
 notify(Protocol, Msg, ChannelId) ->
