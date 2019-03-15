@@ -195,6 +195,15 @@ ct-roma: internal-build
 		$(REBAR) ct $(CT_TEST_FLAGS) --sys_config config/test-roma.config; \
 	fi
 
+ct-fortuna: KIND=test
+ct-fortuna: internal-build
+	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
+	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
+		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
+	else \
+		$(REBAR) ct $(CT_TEST_FLAGS) --sys_config config/test-fortuna.config; \
+	fi
+
 REVISION:
 	@git rev-parse HEAD > $@
 
@@ -205,6 +214,10 @@ eunit: internal-build
 eunit-roma: KIND=test
 eunit-roma: internal-build
 	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_roma_testnet" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
+
+eunit-fortuna: KIND=test
+eunit-fortuna: internal-build
+	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_fortuna_testnet" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
 
 all-tests: eunit ct
 

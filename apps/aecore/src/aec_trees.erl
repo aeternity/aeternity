@@ -241,6 +241,8 @@ perform_pre_transformations(Trees, Height) ->
             case aec_hard_forks:is_fork_height(Height) of
                 {true, ?MINERVA_PROTOCOL_VSN} -> % hard fork time
                     aec_block_fork:apply_minerva(Trees2);
+                {true, ?FORTUNA_PROTOCOL_VSN} -> % hard fork time
+                    aec_block_fork:apply_fortuna(Trees2);
                 false -> Trees2
             end
     end.

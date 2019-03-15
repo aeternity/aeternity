@@ -126,6 +126,7 @@ mock_genesis_and_forks(PresetAccounts) ->
     meck:new(aec_fork_block_settings, [passthrough]),
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_fork_block_settings, minerva_accounts, 0, []),
+    meck:expect(aec_fork_block_settings, fortuna_accounts, 0, []),
     ok.
 
 unmock_genesis_and_forks() ->

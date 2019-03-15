@@ -43,6 +43,7 @@
 
 -define(SOPHIA_ROMA, 1).
 -define(SOPHIA_MINERVA, 2).
+-define(SOPHIA_FORTUNA, 2). %% TODO: Revise this if sophia gets bumped
 -define(CURRENT_SOPHIA, ?SOPHIA_MINERVA).
 
 %%%===================================================================
@@ -94,19 +95,22 @@ assert_state_equal(Exp, Act) ->
 latest_sophia_vm_version() ->
     case latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_1;
-        ?MINERVA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_2
+        ?MINERVA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_2;
+        ?FORTUNA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_2 %% TODO: Revise this when vm is bumped
     end.
 
 latest_sophia_abi_version() ->
     case latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> ?ABI_SOPHIA_1;
-        ?MINERVA_PROTOCOL_VSN -> ?ABI_SOPHIA_1
+        ?MINERVA_PROTOCOL_VSN -> ?ABI_SOPHIA_1;
+        ?FORTUNA_PROTOCOL_VSN -> ?ABI_SOPHIA_1
     end.
 
 latest_sophia_version() ->
     case latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> ?SOPHIA_ROMA;
-        ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_MINERVA
+        ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_MINERVA;
+        ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA
     end.
 
 latest_protocol_version() ->

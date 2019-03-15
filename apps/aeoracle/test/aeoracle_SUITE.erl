@@ -172,9 +172,17 @@ register_oracle_negative(_Cfg) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?ROMA_PROTOCOL_VSN end),
     ?assertMatch({ok, _, _}, aetx:process(RTx8, Trees, Env)),
     ?assertMatch({ok, _, _}, aetx:process(RTx9, Trees, Env)),
-    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?MINERVA_PROTOCOL_VSN end),
     % set same minimum gas price as in Roma
     meck:expect(aec_governance, minimum_gas_price, fun(_) -> 1 end),
+
+    %% Test Minerva release
+    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?MINERVA_PROTOCOL_VSN end),
+    ?assertEqual({error, bad_query_format}, aetx:process(RTx8, Trees, Env)),
+    ?assertEqual({error, bad_response_format}, aetx:process(RTx9, Trees, Env)),
+    ?assertMatch({ok, _, _}, aetx:process(RTx10, Trees, Env)),
+
+    %% Test Fortuna release
+    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
     ?assertEqual({error, bad_query_format}, aetx:process(RTx8, Trees, Env)),
     ?assertEqual({error, bad_response_format}, aetx:process(RTx9, Trees, Env)),
     ?assertMatch({ok, _, _}, aetx:process(RTx10, Trees, Env)),
