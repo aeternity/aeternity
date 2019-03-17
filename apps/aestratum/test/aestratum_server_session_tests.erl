@@ -3,6 +3,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(TEST_MODULE, aestratum_server_session).
+
 -define(JSONRPC_MODULE, aestratum_jsonrpc).
 -define(NONCE_MODULE, aestratum_nonce).
 -define(TARGET_MODULE, aestratum_target).
@@ -62,7 +63,7 @@ server_session() ->
 
       %% subscribed - error
       fun(Pid) -> t(Pid, when_subscribed(timeout)) end,
-      %% TODO: fun(Pid) -> t(Pid, when_subscribed(configure)) end,
+      fun(Pid) -> t(Pid, when_subscribed(configure)) end,
       fun(Pid) -> t(Pid, when_subscribed(subscribe)) end,
       fun(Pid) -> t(Pid, when_subscribed(submit)) end,
       fun(Pid) -> t(Pid, when_subscribed(not_req)) end,
@@ -73,8 +74,8 @@ server_session() ->
 
       %% authorized - error
       fun(Pid) -> t(Pid, when_authorized(timeout)) end,
-      %% TODO: fun(Pid) -> t(Pid, when_authorized(configure)) end,
-      %% TODO: fun(Pid) -> t(Pid, when_authorized(subscribe)) end,
+      fun(Pid) -> t(Pid, when_authorized(configure)) end,
+      fun(Pid) -> t(Pid, when_authorized(subscribe)) end,
       fun(Pid) -> t(Pid, when_authorized(authorize)) end,
       fun(Pid) -> t(Pid, when_authorized(not_req)) end,
       fun(Pid) -> t(Pid, when_authorized(jsonrpc_errors)) end,
@@ -206,11 +207,10 @@ when_connected(configure) ->
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(subscribe) ->
+    T = <<"when connected - subscribe">>,
     Host = <<"ae.testpool.com">>,
     Port = 10000,
-    ExtraNonce = aestratum_nonce:new(extra, 100, 4),
-    mock(subscribe, #{host => Host, port => Port, extra_nonce => ExtraNonce}),
-    T = <<"when connected - subscribe">>,
+    ExtraNonce = ?NONCE_MODULE:new(extra, 100, 4),
     L = [{{conn, #{type => req, method => subscribe, id => 0,
                    user_agent => <<"aeminer/1.0.0">>, session_id => null,
                    host => Host, port => Port}},
@@ -220,6 +220,7 @@ when_connected(subscribe) ->
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ExtraNonce}}
          }],
+    mock(subscribe, #{host => Host, port => Port, extra_nonce => ExtraNonce}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_configured(timeout) ->
@@ -273,11 +274,11 @@ when_configured(jsonrpc_errors) ->
     T = <<"when configured - jsonrpc_errors">>,
     prep_configured(T) ++ jsonrpc_errors(T, configured, configured);
 when_configured(subscribe) ->
+    T = <<"when configured - subscribe">>,
     Host = <<"ae.testpool.com">>,
     Port = 10000,
-    ExtraNonce = aestratum_nonce:new(extra, 222, 3),
-    mock(subscribe, #{host => Host, port => Port, extra_nonce => ExtraNonce}),
-    T = <<"when configured - subscribe">>,
+    ExtraNonce = ?NONCE_MODULE:new(extra, 222, 3),
+    Opts = #{host => Host, port => Port, extra_nonce => ExtraNonce},
     L = [{{conn, #{type => req, method => subscribe, id => 1,
                    user_agent => <<"aeminer/1.0.0">>, session_id => null,
                    host => Host, port => Port}},
@@ -287,12 +288,13 @@ when_configured(subscribe) ->
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ExtraNonce}}
          }],
+    mock(subscribe, Opts),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_subscribed(timeout) ->
     T = <<"when subscribed - timeout">>,
     Opts = #{host => <<"aepool.com">>, port => 9999,
-             extra_nonce => aestratum_nonce:new(extra, 123, 1)},
+             extra_nonce => ?NONCE_MODULE:new(extra, 123, 1)},
     L = [{{conn, timeout},
           {stop,
            #{phase => disconnected, timer_phase => undefined,
@@ -300,11 +302,22 @@ when_subscribed(timeout) ->
          }],
     mock(subscribe, Opts),
     prep_subscribed(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
+when_subscribed(configure) ->
+    T = <<"when subscribed - configure">>,
+    Opts = #{host => <<"pool.ae">>, port => 8944,
+             extra_nonce => ?NONCE_MODULE:new(extra, 542689, 4)},
+    L = [{{conn, #{type => req, method => configure, id => 2, params => []}},
+          {send,
+           #{type => rsp, method => configure, id => 2, reason => unknown_error},
+           #{phase => subscribed, timer_phase => subscribed}}
+         }],
+    mock(subscribe, Opts),
+    prep_subscribed(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(subscribe) ->
     T = <<"when subscribed - subscribe">>,
     Host = <<"test.aepool.com">>,
     Port = 12345,
-    ExtraNonce = aestratum_nonce:new(extra, 987, 4),
+    ExtraNonce = ?NONCE_MODULE:new(extra, 987, 4),
     Opts = #{host => Host, port => Port, extra_nonce => ExtraNonce},
     L = [{{conn, #{type => req, method => subscribe, id => 2,
                    user_agent => <<"aeminer/1.0.0">>, session_id => null,
@@ -318,7 +331,7 @@ when_subscribed(subscribe) ->
     prep_subscribed(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(submit) ->
     T = <<"when subscribed - submit">>,
-    ExtraNonce = aestratum_nonce:new(extra, 999, 3),
+    ExtraNonce = ?NONCE_MODULE:new(extra, 999, 3),
     Opts = #{host => <<"test.aepool.com">>, port => 12345,
              extra_nonce => ExtraNonce},
     L = [{{conn, #{type => req, method => submit, id => 2,
@@ -333,7 +346,7 @@ when_subscribed(submit) ->
     prep_subscribed(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(not_req) ->
     T = <<"when subscribed - not_req">>,
-    ExtraNonce = aestratum_nonce:new(extra, 1, 2),
+    ExtraNonce = ?NONCE_MODULE:new(extra, 1, 2),
     Opts = #{host => <<"mypool.net">>, port => 3214, extra_nonce => ExtraNonce},
     L = [{{conn, #{type => rsp, method => configure, id => 2, result => []}},
           {send,
@@ -345,13 +358,13 @@ when_subscribed(not_req) ->
     prep_subscribed(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(jsonrpc_errors) ->
     T = <<"when subscribed - jsonrpc_errors">>,
-    ExtraNonce = aestratum_nonce:new(extra, 100, 5),
+    ExtraNonce = ?NONCE_MODULE:new(extra, 100, 5),
     Opts = #{host => <<"mypool.net">>, port => 8877, extra_nonce => ExtraNonce},
     mock(subscribe, Opts),
     prep_subscribed(T, Opts) ++ jsonrpc_errors(T, subscribed, subscribed);
 when_subscribed(authorize_failure) ->
     T = <<"when subscribed - authorize_failure">>,
-    ExtraNonce = aestratum_nonce:new(extra, 4254, 4),
+    ExtraNonce = ?NONCE_MODULE:new(extra, 4254, 4),
     Opts = #{host => <<"aepool.org">>, port => 5429, extra_nonce => ExtraNonce,
              user_and_password => invalid},
     L = [{{conn, #{type => req, method => authorize, id => 2,
@@ -365,7 +378,7 @@ when_subscribed(authorize_failure) ->
     prep_subscribed(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(authorize_success) ->
     T = <<"when subscribed - authorize_success">>,
-    ExtraNonce = aestratum_nonce:new(extra, 4254, 4),
+    ExtraNonce = ?NONCE_MODULE:new(extra, 4254, 4),
     Opts = #{host => <<"aepool.org">>, port => 5429, extra_nonce => ExtraNonce,
              user_and_password => valid},
     L = [{{conn, #{type => req, method => authorize, id => 2,
@@ -380,7 +393,7 @@ when_subscribed(authorize_success) ->
 
 when_authorized(timeout) ->
     T = <<"when authorized - timeout">>,
-    ExtraNonce = aestratum_nonce:new(extra, 999, 3),
+    ExtraNonce = ?NONCE_MODULE:new(extra, 999, 3),
     Opts = #{host => <<"test.aepool.com">>, port => 12345,
              extra_nonce => ExtraNonce, user_and_password => valid},
     L = [{{conn, timeout},
@@ -390,9 +403,37 @@ when_authorized(timeout) ->
          }],
     mock(authorize, Opts),
     prep_authorized(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
+when_authorized(configure) ->
+    T = <<"when authorized - configure">>,
+    ExtraNonce = ?NONCE_MODULE:new(extra, 16#ff11, 2),
+    Opts = #{host => <<"aepool.com">>, port => 8765,
+             extra_nonce => ExtraNonce, user_and_password => valid},
+    L = [{{conn, #{type => req, method => configure, id => 3, params => []}},
+          {send,
+           #{type => rsp, method => configure, id => 3, reason => unknown_error},
+           #{phase => authorized, timer_phase => undefined}}
+         }],
+    mock(authorize, Opts),
+    prep_authorized(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
+when_authorized(subscribe) ->
+    T = <<"when authorized - subscribe">>,
+    Host = <<"ae.testpool.com">>,
+    Port = 12345,
+    ExtraNonce = ?NONCE_MODULE:new(extra, 123456, 4),
+    Opts = #{host => Host, port => Port,
+             extra_nonce => ExtraNonce, user_and_password => valid},
+    L = [{{conn, #{type => req, method => subscribe, id => 3,
+                   user_agent => <<"aeminer/1.2.3">>, session_id => null,
+                   host => Host, port => Port}},
+          {send,
+           #{type => rsp, method => configure, id => 3, reason => unknown_error},
+           #{phase => authorized, timer_phase => undefined}}
+         }],
+    mock(authorize, Opts),
+    prep_authorized(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(authorize) ->
     T = <<"when authorized - authorize">>,
-    ExtraNonce = aestratum_nonce:new(extra, 999, 3),
+    ExtraNonce = ?NONCE_MODULE:new(extra, 999, 3),
     Opts = #{host => <<"test.aepool.com">>, port => 12345,
              extra_nonce => ExtraNonce, user_and_password => valid},
     L = [{{conn, #{type => req, method => authorize, id => 3,
@@ -405,7 +446,7 @@ when_authorized(authorize) ->
     prep_authorized(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(not_req) ->
     T = <<"when authorized - not_req">>,
-    ExtraNonce = aestratum_nonce:new(extra, 1000, 5),
+    ExtraNonce = ?NONCE_MODULE:new(extra, 1000, 5),
     Opts = #{host => <<"test.aepool.com">>, port => 2222,
              extra_nonce => ExtraNonce, user_and_password => valid},
     L = [{{conn, #{type => rsp, method => subscribe, id => 3,
@@ -419,14 +460,14 @@ when_authorized(not_req) ->
 when_authorized(jsonrpc_errors) ->
     T = <<"when authorized - jsonrpc_errors">>,
     Opts = #{host => <<"test.aepool.com">>, port => 6535,
-             extra_nonce => aestratum_nonce:new(extra, 31155, 4),
+             extra_nonce => ?NONCE_MODULE:new(extra, 31155, 4),
              user_and_password => valid},
     mock(authorize, Opts),
     prep_authorized(T, Opts) ++ jsonrpc_errors(T, authorized, undefined);
 when_authorized(set_initial_share_target) ->
     T = <<"when authorized - set_initial_share_target">>,
     InitialShareTarget = 100000000,
-    ExtraNonce = aestratum_nonce:new(extra, 43215, 5),
+    ExtraNonce = ?NONCE_MODULE:new(extra, 43215, 5),
     Opts = #{host => <<"pool.net">>, port => 13245,
              extra_nonce => ExtraNonce, user_and_password => valid,
              initial_share_target => InitialShareTarget},
@@ -442,7 +483,7 @@ when_authorized(set_initial_share_target) ->
 
 when_set_initial_share_target(timeout) ->
     T = <<"when set initial target - timeout">>,
-    ExtraNonce = aestratum_nonce:new(extra, 3129, 5),
+    ExtraNonce = ?NONCE_MODULE:new(extra, 3129, 5),
     Opts = #{host => <<"ae.pool.com">>, port => 2532,
              extra_nonce => ExtraNonce, user_and_password => valid,
              initial_share_target => 1234567890},
@@ -455,7 +496,7 @@ when_set_initial_share_target(timeout) ->
     prep_set_initial_share_target(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_set_initial_share_target(new_block_no_target_change) ->
     T = <<"when set initial target - new_block_no_target_change">>,
-    ExtraNonce = aestratum_nonce:new(extra, 3129, 5),
+    ExtraNonce = ?NONCE_MODULE:new(extra, 3129, 5),
     BlockHash = binary:copy(<<"1">>, 64),
     BlockTarget = 1000,
     BlockVersion = 1,
@@ -476,7 +517,7 @@ when_set_initial_share_target(new_block_no_target_change) ->
     prep_set_initial_share_target(T, Opts) ++ [{T, test, E, R} || {E, R} <- L];
 when_set_initial_share_target(new_block_target_change) ->
     T = <<"when set initial target - new_block_target_change">>,
-    ExtraNonce = aestratum_nonce:new(extra, 54302, 4),
+    ExtraNonce = ?NONCE_MODULE:new(extra, 54302, 4),
     BlockHash = binary:copy(<<"1">>, 64),
     BlockTarget = 11111,
     BlockVersion = 1,
@@ -509,7 +550,7 @@ when_set_initial_share_target(new_block_target_change) ->
              extra_nonce => ExtraNonce, accept_blocks => false}}
          },
          %% The previuos new block was skipped, the send notify event will
-         %% cause sending noftify notification and will restore processing of
+         %% cause sending notify notification and will restore processing of
          %% new blocks.
          {{chain, {send_notify, #{job_id => JobId, hash => BlockHash,
                                   target => BlockTarget, version => BlockVersion,
