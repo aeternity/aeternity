@@ -7,6 +7,7 @@
          stop/0,
          add/2,
          del/1,
+         member/1,
          find/1,
          size/0
         ]).
@@ -49,6 +50,12 @@ del(User) when is_binary(User) ->
     gen_server:call(?SERVER, {del_user, User});
 del(ConnPid) when is_pid(ConnPid) ->
     gen_server:call(?SERVER, {del_conn_pid, ConnPid}).
+
+-spec member(user() | conn_pid()) -> boolean().
+member(User) when is_binary(User) ->
+    ets:member(?TAB, User);
+member(ConnPid) when is_pid(ConnPid) ->
+    ets:member(?TAB_REV, ConnPid).
 
 -spec find(user() | conn_pid()) -> {ok, value()} | {error, not_found}.
 find(User) when is_binary(User) ->

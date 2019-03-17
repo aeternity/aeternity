@@ -2,7 +2,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--compile({no_auto_import,[size/1]}).
+-compile({no_auto_import, [size/1]}).
 
 -define(TEST_MODULE, aestratum_user_register).
 
@@ -25,6 +25,10 @@ user_register_test_() ->
       fun(_) -> del(valid_nonexistent) end,
       fun(_) -> del(valid_existent_by_user) end,
       fun(_) -> del(valid_existent_by_conn_pid) end,
+      fun(_) -> member(exception) end,
+      fun(_) -> member(valid_nonexistent) end,
+      fun(_) -> member(valid_existent_by_user) end,
+      fun(_) -> member(valid_existent_by_conn_pid) end,
       fun(_) -> find(exception) end,
       fun(_) -> find(valid_nonexistent) end,
       fun(_) -> find(valid_existent_by_user) end,
@@ -62,6 +66,23 @@ del(valid_existent_by_conn_pid) ->
     T = <<"del - valid existent by conn PID">>,
     {_User, ConnPid} = prep_single_user(),
     [{T, ?_assertEqual(ok, ?TEST_MODULE:del(ConnPid))}].
+
+member(exception) ->
+    T = <<"member - exception">>,
+    L = ["foo", bar, [], atom],
+    [{T, ?_assertException(error, function_clause, ?TEST_MODULE:member(I))} || I <- L];
+member(valid_nonexistent) ->
+    T = <<"member - valid_nonexistent">>,
+    L = [<<"foo">>, ?TEST_USER1, new_pid()],
+    [{T, ?_assertEqual(false, ?TEST_MODULE:member(I))} || I <- L];
+member(valid_existent_by_user) ->
+    T = <<"member - valid_existent_by_user">>,
+    {User, _ConnPid} = prep_single_user(),
+    [{T, ?_assert(?TEST_MODULE:member(User))}];
+member(valid_existent_by_conn_pid) ->
+    T = <<"member - valid_existent_by_conn_pid">>,
+    {User, ConnPid} = prep_single_user(),
+    [{T, ?_assert(?TEST_MODULE:member(ConnPid))}].
 
 find(exception) ->
     T = <<"find - exception">>,
