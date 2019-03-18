@@ -1,4 +1,4 @@
--module(aestratum_server_session).
+-module(aestratum_session).
 
 %% TODO: type spec
 %% TODO: add functions for setting share_target, share_target_diff_threshold,

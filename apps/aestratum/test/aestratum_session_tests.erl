@@ -1,8 +1,8 @@
--module(aestratum_server_session_tests).
+-module(aestratum_session_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(TEST_MODULE, aestratum_server_session).
+-define(TEST_MODULE, aestratum_session).
 
 -define(JSONRPC_MODULE, aestratum_jsonrpc).
 -define(NONCE_MODULE, aestratum_nonce).
@@ -144,6 +144,7 @@ server_session() ->
       fun(Pid) -> t(Pid, when_set_target(configure)) end,
       fun(Pid) -> t(Pid, when_set_target(subscribe)) end,
       fun(Pid) -> t(Pid, when_set_target(authorize)) end,
+      %% TODO: submit
       fun(Pid) -> t(Pid, when_set_target(not_req)) end,
       fun(Pid) -> t(Pid, when_set_target(jsonrpc_errors)) end,
       %% set_target - success
