@@ -234,6 +234,33 @@
 -define(WS, aehttp_ws_test_utils).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
+
+-define(ALICE, {
+    <<177,181,119,188,211,39,203,57,229,94,108,2,107,214, 167,74,27,
+      53,222,108,6,80,196,174,81,239,171,117,158,65,91,102>>,
+    <<145,69,14,254,5,22,194,68,118,57,0,134,66,96,8,20,124,253,238,
+      207,230,147,95,173,161,192,86,195,165,186,115,251,177,181,119,
+      188,211,39,203,57,229,94,108,2,107,214,167,74,27,53,222,108,6,
+      80,196,174,81,239,171,117,158,65,91,102>>}).
+
+-define(BOB, {
+    <<103,28,85,70,70,73,69,117,178,180,148,246,81,104,
+      33,113,6,99,216,72,147,205,210,210,54,3,122,84,195,
+      62,238,132>>,
+    <<59,130,10,50,47,94,36,188,50,163,253,39,81,120,89,219,72,88,68,
+      154,183,225,78,92,9,216,215,59,108,82,203,25,103,28,85,70,70,
+      73,69,117,178,180,148,246,81,104,33,113,6,99,216,72,147,205,
+      210,210,54,3,122,84,195,62,238,132>>}).
+
+-define(CAROL, {
+    <<200,171,93,11,3,93,177,65,197,27,123,127,177,165,
+      190,211,20,112,79,108,85,78,88,181,26,207,191,211,
+      40,225,138,154>>,
+    <<237,12,20,128,115,166,32,106,220,142,111,97,141,104,201,130,56,
+      100,64,142,139,163,87,166,185,94,4,159,217,243,160,169,200,171,
+      93,11,3,93,177,65,197,27,123,127,177,165,190,211,20,112,79,108,
+      85,78,88,181,26,207,191,211,40,225,138,154>>}).
+
 all() ->
     [
      {group, all}
@@ -740,8 +767,8 @@ init_per_group(channel_websocket = Group, Config) ->
     IStartAmt = 5000000 * aec_test_utils:min_gas_price(),
     RStartAmt = 5000000 * aec_test_utils:min_gas_price(),
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
-    {IPubkey, IPrivkey} = initialize_account(IStartAmt),
-    {RPubkey, RPrivkey} = initialize_account(RStartAmt),
+    {IPubkey, IPrivkey} = initialize_account(IStartAmt, ?ALICE),
+    {RPubkey, RPrivkey} = initialize_account(RStartAmt, ?BOB),
 
     Config2 = lists:keystore(sc_ws_protocol, 1, Config1, {sc_ws_protocol, <<"json-rpc">>}),
 
@@ -3475,6 +3502,12 @@ assert_balance(Pubkey, ExpectedBalance) ->
     {ok, 200, #{<<"balance">> := ExpectedBalance}} =
         get_accounts_by_pubkey_sut(Address).
 
+assert_balance_at_least(Pubkey, MinExpectedBalance) ->
+    Address = aehttp_api_encoder:encode(account_pubkey, Pubkey),
+    {ok, 200, #{<<"balance">> := Balance}} =
+        get_accounts_by_pubkey_sut(Address),
+    true = MinExpectedBalance =< Balance.
+
 assert_trees_balance(Trees, Pubkey, ExpectedBalance) ->
     AccTrees = aec_trees:accounts(Trees),
     {value, Account} = aec_accounts_trees:lookup(Pubkey, AccTrees),
@@ -4215,18 +4248,21 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
     {OraclePubkey, OraclePrivkey} =
-        initialize_account(2000000 * aec_test_utils:min_gas_price()),
+        initialize_account(2000000 * aec_test_utils:min_gas_price(),
+                           ?CAROL),
     SophiaStringType = aeso_heap:to_binary(string, 0),
     QueryFee = 3,
-    QueryTTL = 30,
-    ResponseTTL = 30,
+    OracleTTL = 20,
+    QueryTTL = 5,
+    ResponseTTL = 5,
     Question = <<"Fill me in with something reasonable">>,
     register_oracle(OraclePubkey, OraclePrivkey,
                     #{query_format    => SophiaStringType,
                       response_format => SophiaStringType,
                       query_fee       => QueryFee,
                       query_ttl       => QueryTTL,
-                      abi_version     => latest_sophia_abi()
+                      abi_version     => latest_sophia_abi(),
+                      oracle_ttl      => {delta, OracleTTL}
                      }),
     OracleQuerySequence =
         fun(Q0, R0) ->
@@ -4235,6 +4271,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             QueryId = query_oracle(OraclePubkey, OraclePrivkey, %oracle asks oracle
                                   OraclePubkey,
                                   #{query        => Q,
+                                    query_ttl    => {delta, QueryTTL - 1},
                                     response_ttl => {delta, ResponseTTL}}),
             respond_oracle(OraclePubkey, OraclePrivkey, QueryId,
                           R, #{response_ttl => {delta, ResponseTTL}}),
@@ -4386,7 +4423,7 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
     {NamePubkey, NamePrivkey} =
-        initialize_account(2000000 * aec_test_utils:min_gas_price()),
+        initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
 
     EncodedCode = contract_byte_code("channel_on_chain_contract_name_resolution"),
     InitArgument = <<"()">>,
@@ -4683,7 +4720,7 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
 
     % registering the name on-chain
     {NamePubkey, NamePrivkey} =
-        initialize_account(2000000 * aec_test_utils:min_gas_price()),
+        initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
     register_name(NamePubkey, NamePrivkey, Name,
                   [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)}]),
 
@@ -4694,6 +4731,18 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
 
 
 register_oracle(OraclePubkey, OraclePrivkey, Opts) ->
+    case rpc(aec_chain, get_oracle, [OraclePubkey]) of
+        {error, not_found} -> pass;
+        {ok, Oracle} ->
+            TopHeader = rpc(?NODE, aec_chain, top_header, []),
+            Height = aec_headers:height(TopHeader),
+            TTL = aeo_oracles:ttl(Oracle), % absolute TTL
+            ExpBlocksCnt = TTL - Height,
+            ct:log("Already an oracle, mining ~p blocks so it expires",
+                   [ExpBlocksCnt]),
+            Node = aecore_suite_utils:node_name(?NODE),
+            aecore_suite_utils:mine_key_blocks(Node, ExpBlocksCnt + 1)
+    end,
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [OraclePubkey]),
     Tx = aeo_test_utils:register_tx(OraclePubkey, Opts#{nonce => Nonce}, #{}),
     sign_post_mine(Tx, OraclePrivkey),
@@ -4771,7 +4820,10 @@ update_pointers(Owner, OwnerPrivKey, Name, Pointers0) ->
 
 
 initialize_account(Amount) ->
-    {Pubkey, Privkey} = generate_key_pair(),
+    KeyPair = {_Pubkey, _Privkey} = generate_key_pair(),
+    initialize_account(Amount, KeyPair).
+
+initialize_account(Amount, {Pubkey, Privkey}) ->
     Fee = ?SPEND_FEE,
     BlocksToMine = 3,
 
@@ -4783,7 +4835,7 @@ initialize_account(Amount) ->
         post_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Amount, Fee),
     TxHash = sign_and_post_tx(SpendTx),
     ok = wait_for_tx_hash_on_chain(TxHash),
-    assert_balance(Pubkey, Amount),
+    assert_balance_at_least(Pubkey, Amount),
     {Pubkey, Privkey}.
 
 update_volley_(FirstConnPid, FirstPrivkey, SecondConnPid, SecondPrivkey, Config) ->
