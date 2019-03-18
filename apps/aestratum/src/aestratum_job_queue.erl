@@ -3,8 +3,10 @@
 -export([new/0,
          add/2,
          member/2,
+         find/2,
          get_front/1,
          get_rear/1,
+         replace/3,
          share_target/3
         ]).
 
@@ -20,13 +22,28 @@ add(Job, Queue) ->
 member(JobId, Queue) ->
     aestratum_lqueue:keymember(JobId, Queue).
 
+find(JobId, Queue) ->
+    case aestratum_lqueue:keyfind(JobId, Queue) of
+        {JobId, Job} -> {ok, Job};
+        false        -> {error, not_found}
+    end.
+
 %% Front - the oldest element of the queue.
 get_front(Queue) ->
-    aestratum_lqueue:get(Queue).
+    case aestratum_lqueue:get(Queue) of
+        {ok, {_JobId, Job}}  -> {ok, Job};
+        {error, empty} = Err -> Err
+    end.
 
 %% Rear - the newest element of the queue.
 get_rear(Queue) ->
-    aestratum_lqueue:get_r(Queue).
+    case aestratum_lqueue:get_r(Queue) of
+        {ok, {_JobId, Job}}  -> {ok, Job};
+        {error, empty} = Err -> Err
+    end.
+
+replace(JobId, Job, Queue) ->
+    aestratum_lqueue:keyreplace(JobId, Job, Queue).
 
 %% The job queue must have at least ?QUEUE_LEN_THRESHOLD items in order to
 %% compute the new share target from the previous share targets.

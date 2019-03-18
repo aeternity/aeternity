@@ -45,9 +45,9 @@ init([]) ->
 handle_call({get, ExtraNonceNBytes}, _From, State) ->
     case handle_get(ExtraNonceNBytes, State) of
         {ok, ExtraNonce, State1} ->
-            {reply, ExtraNonce, State1};
+            {reply, {ok, ExtraNonce}, State1};
         {error, Rsn, State1} ->
-            {reply, Rsn, State1}
+            {reply, {error, Rsn}, State1}
     end;
 handle_call({free, ExtraNonce}, _From, State) ->
     {ok, State1} = handle_free(ExtraNonce, State),

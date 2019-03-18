@@ -1,6 +1,10 @@
 -module(aestratum_server_session).
 
-%% TODO: eunit
+%% TODO: type spec
+%% TODO: add functions for setting share_target, share_target_diff_threshold,
+%% desired_solve_time, max_solve_time.... - this will work with
+%% aestratum_user_register - look up conn pid based on the public key and call
+%% aestratum_handler:set(ConnPid, Something) - it's per connection setting.
 
 -export([new/0,
          handle_event/2,
@@ -8,11 +12,7 @@
         ]).
 
 -ifdef(TEST).
--export([get_host/0,
-         get_port/0,
-         get_extra_nonce/1,
-         state/1
-        ]).
+-export([state/1]).
 -endif.
 
 -record(state, {
@@ -28,12 +28,15 @@
           submissions
          }).
 
+-define(HOST, application:get_env(aestratum, host, <<"pool.aeternity.com">>)).
+-define(PORT, application:get_env(aestratum, port, 9999)).
 -define(MSG_TIMEOUT, application:get_env(aestratum, timeout, 30000)).
 -define(EXTRA_NONCE_NBYTES, application:get_env(aestratum, extra_nonce_nbytes, 4)).
 -define(INITIAL_SHARE_TARGET, application:get_env(aestratum, initial_share_target, 1)).
 -define(SHARE_TARGET_DIFF_THRESHOLD, application:get_env(aestratum, share_target_diff_threshold, 5.0)).
 -define(DESIRED_SOLVE_TIME, application:get_env(aestratum, desired_solve_time, 30000)).
 -define(MAX_SOLVE_TIME, ?DESIRED_SOLVE_TIME * 2).
+-define(EDGE_BITS, 29).
 
 %% API.
 
@@ -64,12 +67,12 @@ handle_conn_event(timeout, State) ->
 handle_conn_event(close, State) ->
     {stop, close_session(State)}.
 
-handle_chain_event(set_initial_share_target, State) ->
-    handle_chain_set_initial_share_target(State);
-handle_chain_event({new_block, Block}, State) ->
-    handle_chain_new_block(Block, State);
-handle_chain_event({send_notify, Job}, State) ->
-    handle_chain_send_notify(Job, State).
+handle_chain_event({recv_block, Block}, State) ->
+    handle_chain_recv_block(Block, State);
+handle_chain_event(set_target, State) ->
+    handle_chain_set_target(State);
+handle_chain_event({notify, Job}, State) ->
+    handle_chain_notify(Job, State).
 
 %% Handle received messages from client.
 
@@ -86,16 +89,21 @@ recv_msg(#{type := req, method := authorize} = Req,
          #state{phase = subscribed} = State) ->
     send_authorize_rsp(Req, State);
 recv_msg(#{type := req, method := submit} = Req,
+         #state{phase = authorized, share_target = undefined} = State) ->
+    %% The submit request is not accepted before the set_target notification
+    %% is sent.
+    send_unknown_error_rsp(Req, target_not_set, State);
+recv_msg(#{type := req, method := submit} = Req,
          #state{phase = authorized} = State) ->
     send_submit_rsp(Req, State);
+recv_msg(#{type := req, method := submit} = Req,
+         #state{phase = subscribed} = State) ->
+    send_unauthorized_worker_rsp(Req, null, State);
 recv_msg(#{type := req, method := Method} = Req,
          #state{phase = Phase} = State) when
       ((Method =:= authorize) or (Method =:= submit)) and
       ((Phase =:= connected) or (Phase =:= configured)) ->
     send_not_subscribed_rsp(Req, null, State);
-recv_msg(#{type := req, method := submit} = Req,
-         #state{phase = subscribed} = State) ->
-    send_unauthorized_worker_rsp(Req, null, State);
 recv_msg(Msg, State) ->
     send_unknown_error_rsp(Msg, unexpected_msg, State).
 
@@ -140,16 +148,16 @@ handle_conn_timeout(State) ->
 %% Server to client responses.
 
 send_configure_rsp(Req, State) ->
-    send_configure_rsp1(validate_configure_req(Req), Req, State).
+    send_configure_rsp1(validate_configure_req(Req, State), Req, State).
 
 send_subscribe_rsp(Req, State) ->
-    send_subscribe_rsp1(validate_subscribe_req(Req), Req, State).
+    send_subscribe_rsp1(validate_subscribe_req(Req, State), Req, State).
 
 send_authorize_rsp(Req, State) ->
-    send_authorize_rsp1(validate_authorize_req(Req), Req, State).
+    send_authorize_rsp1(validate_authorize_req(Req, State), Req, State).
 
 send_submit_rsp(Req, State) ->
-    send_submit_rsp1(validate_submit_req(Req), Req, State).
+    send_submit_rsp1(validate_submit_req(Req, State), Req, State).
 
 send_configure_rsp1(ok, #{id := Id}, #state{timer = Timer} = State) ->
     %% TODO: there are no configure params currently
@@ -186,7 +194,7 @@ send_authorize_rsp1(ok, #{id := Id, user := User},
     RspMap = #{type => rsp, method => authorize, id => Id, result => true},
     %% After the authorization, the server is supposed to send an initial
     %% target.
-    self() ! {chain, set_initial_share_target},
+    self() ! {chain, set_target},
     %% No need to set timer after authorization, there are no further expected
     %% requests within a time period. Submit requests do not require timeout.
     %% Job queue is initialized to make it ready to accept client sumbissions.
@@ -200,17 +208,36 @@ send_authorize_rsp1({error, user_and_password}, #{id := Id}, State) ->
     %% authorize request.
     {send, encode(RspMap), State}.
 
-send_submit_rsp1(ok, #{id := Id, user := User, job_id := JobId,
-                       miner_nonce := MinerNonce, pow := Pow}, State) ->
-    %% TODO: read from the database based on JobId: BlockVersion, HeaderHash,
-    %% Target, ExtraNonce and verify the submitted solution
-    %% TODO: if successful, write the solution/share to the db and compute
-    %% reward which will be paid later (at least 180 block)
-    Submitted = true,
-    RspMap = #{type => rsp, method => submit, id => Id, result => Submitted},
-    {send, encode(RspMap), State}.
-%%send_submit_rsp1({error, Rsn}, Req, State) ->
-%%    Submitted = false, ....
+send_submit_rsp1({ok, Share, Job}, #{id := Id} = Req,
+                 #state{jobs = Jobs} = State) ->
+    JobId = aestratum_job:id(Job),
+    Job1 = aestratum_job:add_share(Share, Job),
+    Jobs1 = aestratum_job_queue:replace(JobId, Job1, Jobs),
+    %% TODO: save with aestratum_reward
+    case aestratum_share:validity(Share) of
+        valid_block ->
+            %% TODO: submit to the chain
+            ok;
+        valid_share ->
+            ok
+    end,
+    RspMap = #{type => rsp, method => submit, id => Id, result => true},
+    {send, encode(RspMap), State#state{jobs = Jobs1}};
+send_submit_rsp1({error, user_not_found}, Req, State) ->
+    %% TODO: there is going to be support for multiple workers/connection
+    %% so this may happen when the request comes from an unknow worker.
+    %% The format of a user will be "public_key.worker"
+    send_unauthorized_worker_rsp(Req, null, State);
+send_submit_rsp1({error, job_not_found}, Req, State) ->
+    send_job_not_found_rsp(Req, null, State);
+send_submit_rsp1({error, invalid_miner_nonce = Rsn}, Req, State) ->
+    send_unknown_error_rsp(Req, Rsn, State);
+send_submit_rsp1({error, duplicate_share}, Req, State) ->
+    send_duplicate_share_rsp(Req, null, State);
+send_submit_rsp1({error, invalid_solution = Rsn}, Req, State) ->
+    send_unknown_error_rsp(Req, Rsn, State);
+send_submit_rsp1({error, high_target_share}, Req, State) ->
+    send_low_difficulty_share_rsp(Req, null, State).
 
 %% Stratum error responses.
 
@@ -253,31 +280,22 @@ error_data(Data) when is_atom(Data) ->
 
 %% Handle chain related messages.
 
-handle_chain_set_initial_share_target(State) ->
-    ShareTarget = ?INITIAL_SHARE_TARGET,
-    State1 = State#state{accept_blocks = true,
-                         share_target = ShareTarget,
-                         share_target_diff_threshold = ?SHARE_TARGET_DIFF_THRESHOLD,
-                         desired_solve_time = ?DESIRED_SOLVE_TIME,
-                         max_solve_time = ?MAX_SOLVE_TIME},
-    send_set_target_ntf(ShareTarget, State1).
-
-handle_chain_new_block(#{hash := BlockHash, target := BlockTarget,
-                         version := BlockVersion} = NewBlock,
+handle_chain_recv_block(#{block_hash := BlockHash, block_version := BlockVersion,
+                          block_target := BlockTarget} = NewBlock,
                        #state{phase = authorized, accept_blocks = true,
                               jobs = Jobs} = State) ->
-    JobId = aestratum_job:make_id(BlockHash, BlockTarget, BlockVersion),
+    JobId = aestratum_job:make_id(BlockHash, BlockVersion, BlockTarget),
     case aestratum_job_queue:member(JobId, Jobs) of
         true  -> {no_send, State};  %% Unlikely to happen?
-        false -> handle_chain_new_block1(NewBlock#{job_id => JobId}, State)
+        false -> handle_chain_recv_block1(NewBlock#{job_id => JobId}, State)
     end;
-handle_chain_new_block(_NewBlock, State) ->
+handle_chain_recv_block(_NewBlock, State) ->
     %% Skip this new block. The session is not ready to handle it.
     %% The phase is not authorized or the accept_blocks is set to false.
     {no_send, State}.
 
-handle_chain_new_block1(#{hash := BlockHash, target := BlockTarget,
-                          version := BlockVersion, job_id := JobId} = NewJobInfo,
+handle_chain_recv_block1(#{block_hash := BlockHash, block_version := BlockVersion,
+                           block_target := BlockTarget, job_id := JobId} = NewJobInfo,
                         #state{share_target = ShareTarget,
                                share_target_diff_threshold = ShareTargetDiffThreshold,
                                desired_solve_time = DesiredSolveTime,
@@ -299,33 +317,44 @@ handle_chain_new_block1(#{hash := BlockHash, target := BlockTarget,
         end,
     case aestratum_target:diff(NewJobShareTarget, OldJobShareTarget) of
         {_Change, Percent} when Percent > ShareTargetDiffThreshold ->
-            %% We stop accepting blocks until the {chain, {send_notify, ...}}
+            %% We stop accepting blocks until the {chain, {notify, ...}}
             %% event is processed. There might be some other new block chain
             %% events in the message queue of this process, these are skipped.
             %% We copy share target, desired solve time and max solve time
             %% as these values were used for the new target computation and can
-            %% be changed in the state when processing
-            %% {chain, {send_notify, ...}} event.
+            %% be changed in the state when processing {chain, {notify, ...}}
+            %% event.
             NewJobInfo1 = NewJobInfo#{share_target => NewJobShareTarget,
                                       desired_solve_time => DesiredSolveTime,
                                       max_solve_time => MaxSolveTime},
-            self() ! {chain, {send_notify, NewJobInfo1}},
+            self() ! {chain, {notify, NewJobInfo1}},
             State1 = State#state{accept_blocks = false},
             send_set_target_ntf(NewJobShareTarget, State1);
         _Other ->
-            Job = aestratum_job:new(JobId, BlockHash, BlockTarget, BlockVersion,
+            Job = aestratum_job:new(JobId, BlockHash, BlockVersion, BlockTarget,
                                     OldJobShareTarget, DesiredSolveTime, MaxSolveTime),
             %% TODO: compute if the client's job queueu should be cleaned.
             State1 = State#state{jobs = aestratum_job_queue:add(Job, Jobs)},
             send_notify_ntf(JobId, BlockHash, BlockVersion, true, State1)
     end.
 
-handle_chain_send_notify(#{job_id := JobId, hash := BlockHash, target := BlockTarget,
-                           version := BlockVersion, share_target := ShareTarget,
-                           desired_solve_time := DesiredSolveTime,
-                           max_solve_time := MaxSolveTime},
-                         #state{accept_blocks = false, jobs = Jobs} = State) ->
-    Job = aestratum_job:new(JobId, BlockHash, BlockTarget, BlockVersion,
+handle_chain_set_target(State) ->
+    ShareTarget = ?INITIAL_SHARE_TARGET,
+    State1 =
+        State#state{accept_blocks = true,
+                    share_target = ShareTarget,
+                    share_target_diff_threshold = ?SHARE_TARGET_DIFF_THRESHOLD,
+                    desired_solve_time = ?DESIRED_SOLVE_TIME,
+                    max_solve_time = ?MAX_SOLVE_TIME},
+    send_set_target_ntf(ShareTarget, State1).
+
+handle_chain_notify(#{job_id := JobId, block_hash := BlockHash,
+                      block_version := BlockVersion, block_target := BlockTarget,
+                      share_target := ShareTarget,
+                      desired_solve_time := DesiredSolveTime,
+                      max_solve_time := MaxSolveTime},
+                    #state{accept_blocks = false, jobs = Jobs} = State) ->
+    Job = aestratum_job:new(JobId, BlockHash, BlockVersion, BlockTarget,
                             ShareTarget, DesiredSolveTime, MaxSolveTime),
     Jobs1 = aestratum_job_queue:add(Job, Jobs),
     State1 = State#state{accept_blocks = true, jobs = Jobs1},
@@ -375,64 +404,129 @@ maybe_cancel_timer(undefined) ->
 cancel_timer({TRef, _Phase}) when is_reference(TRef) ->
     erlang:cancel_timer(TRef).
 
-validate_configure_req(#{params := []}) ->
+validate_configure_req(#{params := []}, _State) ->
     ok.
 
-validate_subscribe_req(Req) ->
-    run([fun check_user_agent/1,
-         fun check_session_id/1,
-         fun check_host/1,
-         fun check_port/1], Req).
+validate_subscribe_req(Req, State) ->
+    run([fun check_user_agent/2,
+         fun check_session_id/2,
+         fun check_host/2,
+         fun check_port/2], Req, State).
 
-validate_authorize_req(Req) ->
-    run([fun check_user_and_password/1], Req).
+validate_authorize_req(Req, State) ->
+    run([fun check_user_and_password/2], Req, State).
 
-validate_submit_req(Req) ->
-    run([fun check_job/1], Req).
+validate_submit_req(Req, State) ->
+    run([fun check_user/3,
+         fun check_job_id/3,
+         fun check_miner_nonce/3,
+         fun check_duplicate_share/3,
+         fun check_solution/3,
+         fun check_target/3], Req, State, #{}).
 
-check_user_agent(#{user_agent := _UserAgent}) ->
+check_user_agent(#{user_agent := _UserAgent}, _State) ->
     %% Some user agents may not by supported by the server
     ok.
 
-check_session_id(#{session_id := _SessionId}) ->
+check_session_id(#{session_id := _SessionId}, _State) ->
     ok.
 
-check_host(#{host := Host}) ->
-    check_host1(Host, ?MODULE:get_host()).
+check_host(#{host := Host}, _State) ->
+    check_host1(Host, ?HOST).
 
 check_host1(Host, Host) ->
     ok;
 check_host1(Host, Host1) ->
     validation_exception({host, Host, Host1}).
 
-check_port(#{port := Port}) ->
-    check_port1(Port, ?MODULE:get_port()).
+check_port(#{port := Port}, _State) ->
+    check_port1(Port, ?PORT).
 
 check_port1(Port, Port) ->
     ok;
 check_port1(Port, Port1) ->
     validation_exception({port, Port, Port1}).
 
-check_user_and_password(#{user := User, password := null}) ->
+check_user_and_password(#{user := User, password := null}, _State) ->
     %% TODO: user as "public_key.worker"?
-    case aestratum_user_register:find(User) of
-        %% Return error when the user is already present, ok otherwise.
-        {error, not_found} -> ok;
-        {ok, _Value}       -> validation_exception(user_and_password)
+    case aestratum_user_register:member(User) of
+        %% The user must not be present already
+        false -> ok;
+        true  -> validation_exception(user_and_password)
     end.
 
-check_job(#{user := User, job_id := JobId, miner_nonce := MinerNonce,
-            pow := Pow}) ->
-    %% TODO: read from DB and check job id, user,...
-    %% TODO: validate solution and target
-    ok.
+check_user(#{user := User}, _State, _Extra) ->
+    case aestratum_user_register:member(User) of
+        true  -> continue;
+        false -> {done, {error, user_not_found}}
+    end.
 
-run(Funs, Data) ->
+check_job_id(#{job_id := JobId}, #state{jobs = Jobs}, _Extra) ->
+    case aestratum_job_queue:find(JobId, Jobs) of
+         {ok, Job}          -> {add_extra, #{job => Job}};
+         {error, not_found} -> {done, {error, job_not_found}}
+    end.
+
+check_miner_nonce(#{miner_nonce := MinerNonce},
+                  #state{extra_nonce = ExtraNonce}, _Extra) ->
+    MinerNonceNBytes = aestratum_nonce:complement_nbytes(ExtraNonce),
+    case aestratum_nonce:is_valid_bin(miner, MinerNonce, MinerNonceNBytes) of
+        true  -> continue;
+        false -> {done, {error, invalid_miner_nonce}}
+    end.
+
+check_duplicate_share(#{user := User, miner_nonce := MinerNonce, pow := Pow},
+                      #state{extra_nonce = ExtraNonce}, #{job := Job}) ->
+    MinerNonceNBytes = aestratum_nonce:complement_nbytes(ExtraNonce),
+    MinerNonceVal = aestratum_nonce:to_int(miner, MinerNonce, MinerNonceNBytes),
+    MinerNonce1 = aestratum_nonce:new(miner, MinerNonceVal, MinerNonceNBytes),
+    case aestratum_job:is_share_present(MinerNonce1, Pow, Job) of
+        true  -> {done, {error, duplicate_share}};
+        false -> {add_extra, #{miner_nonce => MinerNonce1}}
+    end.
+
+check_solution(#{user := User, pow := Pow}, #state{extra_nonce = ExtraNonce},
+               #{job := Job, miner_nonce := MinerNonce}) ->
+    BlockHash = aestratum_job:block_hash(Job),
+    BlockVersion = aestratum_job:block_version(Job),
+    Nonce = aestratum_nonce:merge(ExtraNonce, MinerNonce),
+    case aestratum_miner:verify_proof(BlockHash, BlockVersion, Nonce,
+                                      Pow, ?EDGE_BITS) of
+        true  -> continue;
+        false -> {done, {error, invalid_solution}}
+    end.
+
+check_target(#{user := User, pow := Pow}, _State,
+             #{job := Job, miner_nonce := MinerNonce}) ->
+    BlockTarget = aestratum_job:block_target(Job),
+    ShareTarget = aestratum_job:share_target(Job),
+    case aestratum_miner:get_target(Pow, ?EDGE_BITS) of
+        Target when Target =< BlockTarget ->  %% TODO =< or just < ?
+            Share = aestratum_share:new(User, MinerNonce, Pow, valid_block),
+            {done, {ok, Share, Job}};
+        Target when Target =< ShareTarget ->  %% TODO: =< or just < ?
+            Share = aestratum_share:new(User, MinerNonce, Pow, valid_share),
+            {done, {ok, Share, Job}};
+        _Other ->
+            {done, {error, high_target_share}}
+    end.
+
+run(Funs, Data, State) ->
     try
-        lists:foreach(fun(Fun) -> Fun(Data) end, Funs)
+        lists:foreach(fun(Fun) -> Fun(Data, State) end, Funs)
     catch
         throw:{validation_error, Rsn} ->
             validation_error(Rsn, Data)
+    end.
+
+run([Fun | Funs], Req, State, Extra) ->
+    case Fun(Req, State, Extra) of
+        {add_extra, M} when is_map(M) ->
+            run(Funs, Req, State, maps:merge(Extra, M));
+        continue ->
+            run(Funs, Req, State, Extra);
+        {done, Res} ->
+            Res
     end.
 
 validation_error(Rsn, #{method := Method} = Data) when is_atom(Rsn) ->
@@ -446,27 +540,19 @@ encode(Map) ->
     {ok, RawMsg} = aestratum_jsonrpc:encode(Map),
     RawMsg.
 
-get_host() ->
-    <<"ae.pool.com">>.
-
-get_port() ->
-    9999.
-
-get_extra_nonce(ExtraNonceBytes) ->
-    MaxExtraNonce = aestratum_nonce:max(ExtraNonceBytes),
-    aestratum_extra_nonce_cache:get(MaxExtraNonce).
-
 %% Used for testing only.
 
 -ifdef(TEST).
 state(#state{phase = Phase, timer = Timer, extra_nonce = ExtraNonce,
-             accept_blocks = AcceptBlocks}) ->
+             accept_blocks = AcceptBlocks, share_target = ShareTarget}) ->
     #{phase => Phase,
       timer_phase => case Timer of
                          {_, TPhase} -> TPhase;
                          undefined -> undefined
                      end,
       extra_nonce => ExtraNonce,
-      accept_blocks => AcceptBlocks
+      accept_blocks => AcceptBlocks,
+      share_target => ShareTarget
      }.
 -endif.
+
