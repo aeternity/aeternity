@@ -462,7 +462,9 @@ signed_spend_tx(ArgsMap) ->
 %% DestRelDir is the release being set up
 copy_forks_dir(SourceRelDir, DestRelDir) ->
     copy_fork_dir(SourceRelDir, DestRelDir, ?ROMA_PROTOCOL_VSN),
-    copy_fork_dir(SourceRelDir, DestRelDir, ?MINERVA_PROTOCOL_VSN).
+    copy_fork_dir(SourceRelDir, DestRelDir, ?MINERVA_PROTOCOL_VSN),
+    copy_fork_dir(SourceRelDir, DestRelDir, ?FORTUNA_PROTOCOL_VSN).
+
 
 copy_fork_dir(SourceRelDir, DestRelDir, Release) ->
     GenesisDir = aec_fork_block_settings:dir(Release), % ex data/aecore/.genesis

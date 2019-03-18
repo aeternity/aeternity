@@ -35,7 +35,7 @@ minerva_accounts() -> preset_accounts(?MINERVA_PROTOCOL_VSN,
 
 -spec fortuna_accounts() -> list().
 fortuna_accounts() -> preset_accounts(?FORTUNA_PROTOCOL_VSN,
-                                      minerva_accounts_file_missing).
+                                      fortuna_accounts_file_missing).
 
 -spec preset_accounts(aec_hard_forks:protocol_vsn(), atom()) -> list().
 preset_accounts(Release, ErrorMsg) ->
