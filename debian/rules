@@ -1,21 +1,8 @@
 #!/usr/bin/make -f
 # -*- makefile -*-
 
-
-#CFLAGS:= $(shell dpkg-buildflags --get CFLAGS) $(CPPFLAGS)
-#CFLAGS += -Wno-error=format-security
-#CXXFLAGS:= $(shell dpkg-buildflags --get CXXFLAGS) $(CPPFLAGS)
-#CXXFLAGS += -Wno-error=format-security
-
-#CFLAGS := ""
-#CXXFLAGS := ""
-#CPPFLAGS := ""
-#DEB_BUILD_OPTIONS=noopt
-
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
-
-#export DEB_BUILD_MAINT_OPTIONS=hardening=-all
 
 %:
 	dh $@
