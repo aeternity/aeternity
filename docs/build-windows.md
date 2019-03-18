@@ -50,7 +50,7 @@ You can execute the script directly in a `cmd` window.
 ## Building
 
 Open a [MSYS2][msys2] shell with the proper paths set. You can use the helper
-script `scipts/windows/msys2_shell.bat` to do so.
+script `scripts/windows/msys2_shell.bat` to do so.
 
 That script uses the following environment variables:
 
