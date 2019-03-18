@@ -426,33 +426,33 @@ validate_submit_req(Req, State) ->
 
 check_user_agent(#{user_agent := _UserAgent}, _State) ->
     %% Some user agents may not by supported by the server
-    ok.
+    continue.
 
 check_session_id(#{session_id := _SessionId}, _State) ->
-    ok.
+    continue.
 
 check_host(#{host := Host}, _State) ->
     check_host1(Host, ?HOST).
 
 check_host1(Host, Host) ->
-    ok;
+    continue;
 check_host1(Host, Host1) ->
-    validation_exception({host, Host, Host1}).
+    {done, {error, host_mismatch}}.
 
 check_port(#{port := Port}, _State) ->
     check_port1(Port, ?PORT).
 
 check_port1(Port, Port) ->
-    ok;
+    continue;
 check_port1(Port, Port1) ->
-    validation_exception({port, Port, Port1}).
+    {done, {error, port_mismatch}}.
 
 check_user_and_password(#{user := User, password := null}, _State) ->
     %% TODO: user as "public_key.worker"?
     case aestratum_user_register:member(User) of
         %% The user must not be present already
-        false -> ok;
-        true  -> validation_exception(user_and_password)
+        false -> continue;
+        true  -> {done, {error, user_and_password}}
     end.
 
 check_user(#{user := User}, _State, _Extra) ->
@@ -511,13 +511,15 @@ check_target(#{user := User, pow := Pow}, _State,
             {done, {error, high_target_share}}
     end.
 
-run(Funs, Data, State) ->
-    try
-        lists:foreach(fun(Fun) -> Fun(Data, State) end, Funs)
-    catch
-        throw:{validation_error, Rsn} ->
-            validation_error(Rsn, Data)
-    end.
+run([Fun | Funs], Req, State) ->
+    case Fun(Req, State) of
+        continue ->
+            run(Funs, Req, State);
+        {done, Res} ->
+            Res
+    end;
+run([], _Req, _State) ->
+    ok.
 
 run([Fun | Funs], Req, State, Extra) ->
     case Fun(Req, State, Extra) of
@@ -528,13 +530,6 @@ run([Fun | Funs], Req, State, Extra) ->
         {done, Res} ->
             Res
     end.
-
-validation_error(Rsn, #{method := Method} = Data) when is_atom(Rsn) ->
-    lager:warning("Server session error, method: ~p, reason: ~p", [Method, Rsn]),
-    {error, Rsn}.
-
-validation_exception(Rsn) ->
-    throw({validation_error, Rsn}).
 
 encode(Map) ->
     {ok, RawMsg} = aestratum_jsonrpc:encode(Map),
