@@ -11,9 +11,9 @@ override_dh_auto_build:
 	$(MAKE) prod-build
 
 override_dh_auto_clean:
-#	$(MAKE) prod-clean
-#	$(MAKE) clean
-#	$(MAKE) distclean
+	$(MAKE) prod-clean
+	$(MAKE) clean
+	$(MAKE) distclean
 
 #override_dh_makeslibs:
 override_dh_auto_test:
