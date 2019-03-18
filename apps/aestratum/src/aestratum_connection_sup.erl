@@ -32,7 +32,7 @@ ranch_listener() ->
                      {num_acceptors, NumAcceptors},
                      {port, Port}],
     Protocol      = aestratum_handler,
-    ProtocolOpts  = [{module, aestratum_server_session},
+    ProtocolOpts  = [{module, aestratum_session},
                      {max_connections, NumAcceptors + MaxConnections}],
     ranch:child_spec(aestratum_listener,
                      ranch_mod(Transport), TransportOpts,
