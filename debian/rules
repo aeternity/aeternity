@@ -13,13 +13,12 @@
 #DEB_BUILD_OPTIONS=noopt
 
 # Uncomment this to turn on verbose mode.
-export DH_VERBOSE=1
+#export DH_VERBOSE=1
 
-export DEB_BUILD_MAINT_OPTIONS=hardening=-all
+#export DEB_BUILD_MAINT_OPTIONS=hardening=-all
 
 %:
 	dh $@
-#--with rebar
 
 override_dh_auto_build:
 	$(MAKE) prod-build
