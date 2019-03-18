@@ -3503,7 +3503,7 @@ assert_balance(Pubkey, ExpectedBalance) ->
         get_accounts_by_pubkey_sut(Address).
 
 assert_balance_at_least(Pubkey, MinExpectedBalance) ->
-    Address = aehttp_api_encoder:encode(account_pubkey, Pubkey),
+    Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
     {ok, 200, #{<<"balance">> := Balance}} =
         get_accounts_by_pubkey_sut(Address),
     true = MinExpectedBalance =< Balance.
