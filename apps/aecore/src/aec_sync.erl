@@ -110,7 +110,8 @@ handle_worker(Task, Action) ->
 %% to pick a random hash from the hashes in the pool.
 
 -record(sync_task, {id, chain, pool = [], agreed,
-                    adding = [], pending = [], workers = []}).
+                    adding = [], pending = [],
+                    workers = [] :: [{PeerId::binary(), pid()}]}).
 -record(state, { sync_tasks = []                 :: [#sync_task{}]
                , last_generation_in_sync = false :: boolean()
                , top_target = 0                  :: aec_blocks:height()
