@@ -1,5 +1,7 @@
 -module(aec_metrics_rpt_dest_tests).
 
+-import(aec_test_utils, [running_apps/0, loaded_apps/0, restore_stopped_and_unloaded_apps/2]).
+
 -ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -10,8 +12,8 @@
 
 read_config_test_() ->
     [{foreach,
-      fun config_setup/0,
-      fun cleanup/1,
+      fun setup/0,
+      fun teardown/1,
       [
        {"basic prefix filtering", fun prefix_filter/0}
      , {"PT #154133896", fun system_log_only/0}
@@ -130,15 +132,16 @@ set_config(Rules) ->
                         {ok, Rules}
                 end).
 
-config_setup() ->
-    {ok, Apps} = application:ensure_all_started(exometer_core),
+setup() ->
+    InitialApps = {running_apps(), loaded_apps()},
+    {ok, _} = application:ensure_all_started(exometer_core),
     create_metrics(),
     meck:new(aeu_env, [passthrough]),
-    {Apps, [aeu_env]}.
+    {InitialApps, [aeu_env]}.
 
-cleanup({StartedApps, Mocks}) ->
-    [application:stop(A) || A <- lists:reverse(StartedApps)],
-    [meck:unload(M) || M <- Mocks].
+teardown({{OldRunningApps, OldLoadedApps}, Mocks}) ->
+    [meck:unload(M) || M <- Mocks],
+    ok = restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps).
 
 create_metrics() ->
     [exometer:new(N, T, O)
