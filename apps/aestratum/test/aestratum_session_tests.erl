@@ -114,6 +114,7 @@ server_session() ->
       fun(Pid) -> t(Pid, when_configured(conn_submit)) end,
       fun(Pid) -> t(Pid, when_configured(conn_not_req)) end,
       fun(Pid) -> t(Pid, when_configured(conn_jsonrpc_errors)) end,
+      fun(Pid) -> t(Pid, when_configured(chain_recv_block)) end,
       %% configured - success
       fun(Pid) -> t(Pid, when_configured(conn_subscribe)) end,
 
@@ -124,6 +125,7 @@ server_session() ->
       fun(Pid) -> t(Pid, when_subscribed(conn_submit)) end,
       fun(Pid) -> t(Pid, when_subscribed(conn_not_req)) end,
       fun(Pid) -> t(Pid, when_subscribed(conn_jsonrpc_errors)) end,
+      fun(Pid) -> t(Pid, when_subscribed(chain_recv_block)) end,
       %% subscribed - success
       fun(Pid) -> t(Pid, when_subscribed(conn_authorize_failure)) end,
       fun(Pid) -> t(Pid, when_subscribed(conn_authorize_success)) end,
@@ -136,6 +138,7 @@ server_session() ->
       fun(Pid) -> t(Pid, when_authorized(conn_submit)) end,
       fun(Pid) -> t(Pid, when_authorized(conn_not_req)) end,
       fun(Pid) -> t(Pid, when_authorized(conn_jsonrpc_errors)) end,
+      fun(Pid) -> t(Pid, when_authorized(chain_recv_block)) end,
       %% conn_authorized - success
       fun(Pid) -> t(Pid, when_authorized(chain_set_target)) end,
 
@@ -357,6 +360,16 @@ when_configured(conn_not_req) ->
 when_configured(conn_jsonrpc_errors) ->
     T = <<"when configured - conn_jsonrpc_errors">>,
     prep_configured(T) ++ jsonrpc_errors(T, configured, configured);
+when_configured(chain_recv_block) ->
+    T = <<"when configured - chain_recv_block">>,
+    L = [{{chain, #{event => recv_block,
+                    block => #{block_hash => ?BLOCK_HASH1,
+                               block_version => ?BLOCK_VERSION,
+                               block_target => ?BLOCK_TARGET1}}},
+          {no_send,
+           #{phase => configured, timer_phase => configured}}
+         }],
+    prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(conn_subscribe) ->
     T = <<"when configured - conn_subscribe">>,
     L = [{{conn, #{type => req, method => subscribe, id => 1,
@@ -427,6 +440,17 @@ when_subscribed(conn_jsonrpc_errors) ->
     T = <<"when subscribed - conn_jsonrpc_errors">>,
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
     prep_subscribed(T) ++ jsonrpc_errors(T, subscribed, subscribed);
+when_subscribed(chain_recv_block) ->
+    T = <<"when subscribed - chain_recv_block">>,
+    L = [{{chain, #{event => recv_block,
+                    block => #{block_hash => ?BLOCK_HASH1,
+                               block_version => ?BLOCK_VERSION,
+                               block_target => ?BLOCK_TARGET1}}},
+          {no_send,
+           #{phase => subscribed, timer_phase => subscribed}}
+         }],
+    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
+    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_authorize_failure) ->
     T = <<"when subscribed - conn_authorize_failure">>,
     L = [{{conn, #{type => req, method => authorize, id => 2,
@@ -513,6 +537,19 @@ when_authorized(conn_jsonrpc_errors) ->
     T = <<"when authorized - conn_jsonrpc_errors">>,
     mock_authorize(#{}),
     prep_authorized(T) ++ jsonrpc_errors(T, authorized, undefined);
+when_authorized(chain_recv_block) ->
+    %% The set_target must come before the session can start accepting blocks.
+    T = <<"when authorized - chain_recv_block">>,
+    L = [{{chain, #{event => recv_block,
+                    block => #{block_hash => ?BLOCK_HASH1,
+                               block_version => ?BLOCK_VERSION,
+                               block_target => ?BLOCK_TARGET1}}},
+          {no_send,
+           #{phase => authorized, timer_phase => undefined,
+             share_target => undefined}}
+         }],
+    mock_authorize(#{}),
+    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(chain_set_target) ->
     T = <<"when authorized - chain_set_target">>,
     L = [{{chain, #{event => set_target}},
