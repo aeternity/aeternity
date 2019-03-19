@@ -414,6 +414,14 @@ jobs:
       - MAKE_TARGET: ct-roma
     steps: *test_steps
 
+  test_fortuna:
+    executor: builder_container_stable
+    <<: *container_config
+    parallelism: 2
+    environment:
+      - MAKE_TARGET: ct-fortuna
+    steps: *test_steps
+
   eunit:
     executor: builder_container_stable
     <<: *container_config
@@ -426,6 +434,13 @@ jobs:
     <<: *container_config
     environment:
       - MAKE_TARGET: eunit-roma
+    steps: *eunit_steps
+
+  eunit_fortuna:
+    executor: builder_container_stable
+    <<: *container_config
+    environment:
+      - MAKE_TARGET: eunit-fortuna
     steps: *eunit_steps
 
   aevm_tests:
@@ -878,6 +893,16 @@ workflows:
                 - env/dev2
                 - system-tests
 
+      - test_fortuna:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
       - eunit:
           requires:
             - build
@@ -891,6 +916,18 @@ workflows:
               only: *tag_regex
 
       - eunit_roma:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
+
+      - eunit_fortuna:
           requires:
             - build
           filters:
@@ -998,8 +1035,10 @@ workflows:
           requires:
             - test
             - test_roma
+            - test_fortuna
             - eunit
             - eunit_roma
+            - eunit_fortuna
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -1013,8 +1052,10 @@ workflows:
           requires:
             - test
             - test_roma
+            - test_fortuna
             - eunit
             - eunit_roma
+            - eunit_fortuna
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -1081,6 +1122,7 @@ workflows:
           requires:
             - eunit
             - eunit_roma
+            - eunit_fortuna
             - static_analysis
             - rebar_lock_check
             - linux_package
@@ -1105,6 +1147,7 @@ workflows:
           requires:
             - eunit
             - eunit_roma
+            - eunit_fortuna
             - static_analysis
             - rebar_lock_check
             - linux_package
@@ -1119,6 +1162,7 @@ workflows:
           requires:
             - eunit
             - eunit_roma
+            - eunit_fortuna
             - static_analysis
             - rebar_lock_check
             - osx_package
@@ -1133,6 +1177,7 @@ workflows:
           requires:
             - eunit
             - eunit_roma
+            - eunit_fortuna
             - static_analysis
             - rebar_lock_check
             - hodl_artefact_upload
