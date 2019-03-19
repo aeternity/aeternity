@@ -21,6 +21,7 @@
          stop_node/2,
          get_node_db_config/1,
          delete_node_db_if_persisted/1,
+         expected_mine_rate/0,
          mine_blocks/2,
          mine_blocks/3,
          mine_all_txs/1,
@@ -67,6 +68,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 -define(OPS_BIN, "aeternity").
+-define(DEFAULT_CUSTOM_EXPECTED_MINE_RATE, 100).
 
 %% Keys for P2P communication
 peer_keys() ->
@@ -211,14 +213,17 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
     {false, _} = {filelib:is_file(MnesiaDir), MnesiaDir},
     ok.
 
+expected_mine_rate() ->
+    ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE.
+
 mine_key_blocks(Node, NumBlocksToMine) ->
-    mine_blocks(Node, NumBlocksToMine, 100, key).
+    mine_blocks(Node, NumBlocksToMine, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, key).
 
 mine_micro_blocks(Node, NumBlocksToMine) ->
-    mine_blocks(Node, NumBlocksToMine, 100, micro).
+    mine_blocks(Node, NumBlocksToMine, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, micro).
 
 mine_blocks(Node, NumBlocksToMine) ->
-    mine_blocks(Node, NumBlocksToMine, 100, any).
+    mine_blocks(Node, NumBlocksToMine, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, any).
 
 mine_blocks(Node, NumBlocksToMine, MiningRate) ->
     mine_blocks(Node, NumBlocksToMine, MiningRate, any).
@@ -257,7 +262,7 @@ mine_all_txs(Node, MaxBlocks) ->
     end.
 
 mine_blocks_until_txs_on_chain(Node, TxHashes, MaxBlocks) ->
-    mine_blocks_until_txs_on_chain(Node, TxHashes, 100, MaxBlocks).
+    mine_blocks_until_txs_on_chain(Node, TxHashes, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, MaxBlocks).
 
 mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
     ok = rpc:call(
@@ -497,7 +502,7 @@ expected_logs() ->
      "aeternity_pow_cuckoo.log", "aeternity_metrics.log"].
 
 await_sync_complete(T0, Nodes) ->
-    [aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],
+    [ok = aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],
     AllEvents = lists:flatten(
                   [aecore_suite_utils:events_since(N, chain_sync, T0) || N <- Nodes]
                  ),
