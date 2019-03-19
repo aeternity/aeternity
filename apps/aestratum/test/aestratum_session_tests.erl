@@ -147,7 +147,7 @@ server_session() ->
       fun(Pid) -> t(Pid, when_set_target(conn_configure)) end,
       fun(Pid) -> t(Pid, when_set_target(conn_subscribe)) end,
       fun(Pid) -> t(Pid, when_set_target(conn_authorize)) end,
-      %% TODO: conn_submit
+      fun(Pid) -> t(Pid, when_set_target(conn_submit)) end,
       fun(Pid) -> t(Pid, when_set_target(conn_not_req)) end,
       fun(Pid) -> t(Pid, when_set_target(conn_jsonrpc_errors)) end,
       %% set_target - success
@@ -566,7 +566,7 @@ when_set_target(conn_timeout) ->
     T = <<"when set target - conn_timeout">>,
     L = [{{conn, #{event => timeout}},
           {no_send,
-           #{phase => authorized}}
+           #{phase => authorized, share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -575,7 +575,7 @@ when_set_target(conn_configure) ->
     L = [{{conn, #{type => req, method => configure, id => 3, params => []}},
           {send,
            #{type => rsp, method => configure, id => 3, reason => unknown_error},
-           #{phase => authorized, timer_phase => undefined}}
+           #{phase => authorized, share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -586,7 +586,7 @@ when_set_target(conn_subscribe) ->
                    host => ?HOST_VALID, port => ?PORT_VALID}},
           {send,
            #{type => rsp, method => configure, id => 3, reason => unknown_error},
-           #{phase => authorized, timer_phase => undefined}}
+           #{phase => authorized, share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -596,7 +596,20 @@ when_set_target(conn_authorize) ->
                    user => ?USER_IN_REGISTER, password => null}},
           {send,
            #{type => rsp, method => authorize, id => 3, reason => unknown_error},
-           #{phase => authorized, timer_phase => undefined}}
+           #{phase => authorized, share_target => ?SHARE_TARGET}}
+         }],
+    mock_set_target(#{}),
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
+when_set_target(conn_submit) ->
+    %% There was no block received yet and so there are no jobs in the queue.
+    T = <<"when set target - conn_submit">>,
+    L = [{{conn, #{type => req, method => submit, id => 3,
+                   user => ?USER_IN_REGISTER, job_id => ?JOB_ID1,
+                   miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
+                   pow => ?POW}},
+          {send,
+           #{type => rsp, method => submit, id => 3, reason => job_not_found},
+           #{phase => authorized, share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -606,7 +619,7 @@ when_set_target(conn_not_req) ->
                    reason => parse_error, data => null}},
           {send,
            #{type => rsp, method => subscribe, id => 3, reason => unknown_error},
-           #{phase => authorized, timer_phase => undefined}}
+           #{phase => authorized, share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -625,7 +638,8 @@ when_set_target(chain_recv_block, no_target_change) ->
            #{type => ntf, method => notify, job_id => ?JOB_ID1,
              block_hash => ?BLOCK_HASH1, block_version => ?BLOCK_VERSION,
              empty_queue => true},
-           #{phase => authorized, accept_blocks => true}}
+           #{phase => authorized, accept_blocks => true,
+             share_target => ?SHARE_TARGET}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
