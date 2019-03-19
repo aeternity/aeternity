@@ -97,70 +97,70 @@ server_session() ->
      end,
      [fun(Pid) -> t(Pid, init()) end,
       %% connected - error
-      fun(Pid) -> t(Pid, when_connected(timeout)) end,
-      fun(Pid) -> t(Pid, when_connected(authorize)) end,
-      fun(Pid) -> t(Pid, when_connected(submit)) end,
-      fun(Pid) -> t(Pid, when_connected(not_req)) end,
-      fun(Pid) -> t(Pid, when_connected(jsonrpc_errors)) end,
+      fun(Pid) -> t(Pid, when_connected(conn_timeout)) end,
+      fun(Pid) -> t(Pid, when_connected(conn_authorize)) end,
+      fun(Pid) -> t(Pid, when_connected(conn_submit)) end,
+      fun(Pid) -> t(Pid, when_connected(conn_not_req)) end,
+      fun(Pid) -> t(Pid, when_connected(conn_jsonrpc_errors)) end,
       fun(Pid) -> t(Pid, when_connected(chain_recv_block)) end,
       %% connected - success
-      fun(Pid) -> t(Pid, when_connected(configure)) end,
-      fun(Pid) -> t(Pid, when_connected(subscribe)) end,
+      fun(Pid) -> t(Pid, when_connected(conn_configure)) end,
+      fun(Pid) -> t(Pid, when_connected(conn_subscribe)) end,
 
       %% configured - error
-      fun(Pid) -> t(Pid, when_configured(timeout)) end,
-      fun(Pid) -> t(Pid, when_configured(configure)) end,
-      fun(Pid) -> t(Pid, when_configured(authorize)) end,
-      fun(Pid) -> t(Pid, when_configured(submit)) end,
-      fun(Pid) -> t(Pid, when_configured(not_req)) end,
-      fun(Pid) -> t(Pid, when_configured(jsonrpc_errors)) end,
+      fun(Pid) -> t(Pid, when_configured(conn_timeout)) end,
+      fun(Pid) -> t(Pid, when_configured(conn_configure)) end,
+      fun(Pid) -> t(Pid, when_configured(conn_authorize)) end,
+      fun(Pid) -> t(Pid, when_configured(conn_submit)) end,
+      fun(Pid) -> t(Pid, when_configured(conn_not_req)) end,
+      fun(Pid) -> t(Pid, when_configured(conn_jsonrpc_errors)) end,
       %% configured - success
-      fun(Pid) -> t(Pid, when_configured(subscribe)) end,
+      fun(Pid) -> t(Pid, when_configured(conn_subscribe)) end,
 
       %% subscribed - error
-      fun(Pid) -> t(Pid, when_subscribed(timeout)) end,
-      fun(Pid) -> t(Pid, when_subscribed(configure)) end,
-      fun(Pid) -> t(Pid, when_subscribed(subscribe)) end,
-      fun(Pid) -> t(Pid, when_subscribed(submit)) end,
-      fun(Pid) -> t(Pid, when_subscribed(not_req)) end,
-      fun(Pid) -> t(Pid, when_subscribed(jsonrpc_errors)) end,
+      fun(Pid) -> t(Pid, when_subscribed(conn_timeout)) end,
+      fun(Pid) -> t(Pid, when_subscribed(conn_configure)) end,
+      fun(Pid) -> t(Pid, when_subscribed(conn_subscribe)) end,
+      fun(Pid) -> t(Pid, when_subscribed(conn_submit)) end,
+      fun(Pid) -> t(Pid, when_subscribed(conn_not_req)) end,
+      fun(Pid) -> t(Pid, when_subscribed(conn_jsonrpc_errors)) end,
       %% subscribed - success
-      fun(Pid) -> t(Pid, when_subscribed(authorize_failure)) end,
-      fun(Pid) -> t(Pid, when_subscribed(authorize_success)) end,
+      fun(Pid) -> t(Pid, when_subscribed(conn_authorize_failure)) end,
+      fun(Pid) -> t(Pid, when_subscribed(conn_authorize_success)) end,
 
       %% authorized - error
-      fun(Pid) -> t(Pid, when_authorized(timeout)) end,
-      fun(Pid) -> t(Pid, when_authorized(configure)) end,
-      fun(Pid) -> t(Pid, when_authorized(subscribe)) end,
-      fun(Pid) -> t(Pid, when_authorized(authorize)) end,
-      fun(Pid) -> t(Pid, when_authorized(submit)) end,
-      fun(Pid) -> t(Pid, when_authorized(not_req)) end,
-      fun(Pid) -> t(Pid, when_authorized(jsonrpc_errors)) end,
-      %% authorized - success
-      fun(Pid) -> t(Pid, when_authorized(set_target)) end,
+      fun(Pid) -> t(Pid, when_authorized(conn_timeout)) end,
+      fun(Pid) -> t(Pid, when_authorized(conn_configure)) end,
+      fun(Pid) -> t(Pid, when_authorized(conn_subscribe)) end,
+      fun(Pid) -> t(Pid, when_authorized(conn_authorize)) end,
+      fun(Pid) -> t(Pid, when_authorized(conn_submit)) end,
+      fun(Pid) -> t(Pid, when_authorized(conn_not_req)) end,
+      fun(Pid) -> t(Pid, when_authorized(conn_jsonrpc_errors)) end,
+      %% conn_authorized - success
+      fun(Pid) -> t(Pid, when_authorized(chain_set_target)) end,
 
       %% set_target - error
-      fun(Pid) -> t(Pid, when_set_target(timeout)) end,
-      fun(Pid) -> t(Pid, when_set_target(configure)) end,
-      fun(Pid) -> t(Pid, when_set_target(subscribe)) end,
-      fun(Pid) -> t(Pid, when_set_target(authorize)) end,
-      %% TODO: submit
-      fun(Pid) -> t(Pid, when_set_target(not_req)) end,
-      fun(Pid) -> t(Pid, when_set_target(jsonrpc_errors)) end,
+      fun(Pid) -> t(Pid, when_set_target(conn_timeout)) end,
+      fun(Pid) -> t(Pid, when_set_target(conn_configure)) end,
+      fun(Pid) -> t(Pid, when_set_target(conn_subscribe)) end,
+      fun(Pid) -> t(Pid, when_set_target(conn_authorize)) end,
+      %% TODO: conn_submit
+      fun(Pid) -> t(Pid, when_set_target(conn_not_req)) end,
+      fun(Pid) -> t(Pid, when_set_target(conn_jsonrpc_errors)) end,
       %% set_target - success
-      fun(Pid) -> t(Pid, when_set_target(recv_block, no_target_change)) end,
-      fun(Pid) -> t(Pid, when_set_target(recv_block, target_change)) end,
+      fun(Pid) -> t(Pid, when_set_target(chain_recv_block, no_target_change)) end,
+      fun(Pid) -> t(Pid, when_set_target(chain_recv_block, target_change)) end,
 
-      %% recv_block - submit error
-      fun(Pid) -> t(Pid, when_recv_block(submit, user_not_found)) end,
-      fun(Pid) -> t(Pid, when_recv_block(submit, job_not_found)) end,
-      fun(Pid) -> t(Pid, when_recv_block(submit, invalid_miner_nonce)) end,
-      fun(Pid) -> t(Pid, when_recv_block(submit, duplicate_share)) end,
-      fun(Pid) -> t(Pid, when_recv_block(submit, invalid_solution)) end,
-      fun(Pid) -> t(Pid, when_recv_block(submit, high_target_share)) end,
-      %% recv_block - submit success
-      fun(Pid) -> t(Pid, when_recv_block(submit, valid_share)) end,
-      fun(Pid) -> t(Pid, when_recv_block(submit, valid_block)) end
+      %% recv_block - conn_submit error
+      fun(Pid) -> t(Pid, when_recv_block(conn_submit, user_not_found)) end,
+      fun(Pid) -> t(Pid, when_recv_block(conn_submit, job_not_found)) end,
+      fun(Pid) -> t(Pid, when_recv_block(conn_submit, invalid_miner_nonce)) end,
+      fun(Pid) -> t(Pid, when_recv_block(conn_submit, duplicate_share)) end,
+      fun(Pid) -> t(Pid, when_recv_block(conn_submit, invalid_solution)) end,
+      fun(Pid) -> t(Pid, when_recv_block(conn_submit, high_target_share)) end,
+      %% recv_block - conn_submit success
+      fun(Pid) -> t(Pid, when_recv_block(conn_submit, valid_share)) end,
+      fun(Pid) -> t(Pid, when_recv_block(conn_submit, valid_block)) end
      ]}.
 
 %% T - title
@@ -230,16 +230,16 @@ init() ->
          }],
     [{T, test, E, R} || {E, R} <- L].
 
-when_connected(timeout) ->
-    T = <<"when connected - timeout">>,
+when_connected(conn_timeout) ->
+    T = <<"when connected - conn_timeout">>,
     L = [{{conn, #{event => timeout}},
           {stop,
            #{phase => disconnected, timer_phase => undefined,
              extra_nonce => undefined}}
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_connected(authorize) ->
-    T = <<"when connected - authorize">>,
+when_connected(conn_authorize) ->
+    T = <<"when connected - conn_authorize">>,
     L = [{{conn, #{type => req, method => authorize, id => 0,
                    user => ?USER_NOT_IN_REGISTER, password => null}},
           {send,
@@ -248,8 +248,8 @@ when_connected(authorize) ->
             extra_nonce => undefined}}
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_connected(submit) ->
-    T = <<"when connected - submit">>,
+when_connected(conn_submit) ->
+    T = <<"when connected - conn_submit">>,
     L = [{{conn, #{type => req, method => submit, id => 0,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID1,
                    miner_nonce => <<"0123456789">>, pow => ?POW}},
@@ -259,8 +259,8 @@ when_connected(submit) ->
             extra_nonce => undefined}}
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_connected(not_req) ->
-    T = <<"when connected - not_req">>,
+when_connected(conn_not_req) ->
+    T = <<"when connected - conn_not_req">>,
     %% Server receives unexpected message - response.
     L = [{{conn, #{type => rsp, method => configure, id => null,
                    reason => parse_error, data => <<"foo">>}},
@@ -271,8 +271,8 @@ when_connected(not_req) ->
              extra_nonce => undefined}}
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_connected(jsonrpc_errors) ->
-    T = <<"when connected - jsonrpc_errors">>,
+when_connected(conn_jsonrpc_errors) ->
+    T = <<"when connected - conn_jsonrpc_errors">>,
     prep_connected(T) ++ jsonrpc_errors(T, connected, connected);
 when_connected(chain_recv_block) ->
     T = <<"when connected - chain_recv_block">>,
@@ -284,8 +284,8 @@ when_connected(chain_recv_block) ->
            #{phase => connected, timer_phase => connected}}
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_connected(configure) ->
-    T = <<"when connected - configure">>,
+when_connected(conn_configure) ->
+    T = <<"when connected - conn_configure">>,
     L = [{{conn, #{type => req, method => configure, id => 0, params => []}},
           {send,
            #{type => rsp, method => configure, id => 0, result => []},
@@ -293,8 +293,8 @@ when_connected(configure) ->
              extra_nonce => undefined}}
          }],
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_connected(subscribe) ->
-    T = <<"when connected - subscribe">>,
+when_connected(conn_subscribe) ->
+    T = <<"when connected - conn_subscribe">>,
     L = [{{conn, #{type => req, method => subscribe, id => 0,
                    user_agent => ?USER_AGENT, session_id => null,
                    host => ?HOST_VALID, port => ?PORT_VALID}},
@@ -307,16 +307,16 @@ when_connected(subscribe) ->
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L].
 
-when_configured(timeout) ->
-    T = <<"when configured - timeout">>,
+when_configured(conn_timeout) ->
+    T = <<"when configured - conn_timeout">>,
     L = [{{conn, #{event => timeout}},
           {stop,
            #{phase => disconnected, timer_phase => undefined,
             extra_nonce => undefined}}
          }],
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_configured(configure) ->
-    T = <<"when configured - configure">>,
+when_configured(conn_configure) ->
+    T = <<"when configured - conn_configure">>,
     L = [{{conn, #{type => req, method => configure, id => 1, params => []}},
           {send,
            #{type => rsp, method => configure, id => 1, reason => unknown_error},
@@ -324,8 +324,8 @@ when_configured(configure) ->
              extra_nonce => undefined}}
          }],
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_configured(authorize) ->
-    T = <<"when configured - authorize">>,
+when_configured(conn_authorize) ->
+    T = <<"when configured - conn_authorize">>,
     L = [{{conn, #{type => req, method => authorize, id => 1,
                    user => ?USER_NOT_IN_REGISTER, password => null}},
           {send,
@@ -334,8 +334,8 @@ when_configured(authorize) ->
              extra_nonce => undefined}}
          }],
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_configured(submit) ->
-    T = <<"when configured - submit">>,
+when_configured(conn_submit) ->
+    T = <<"when configured - conn_submit">>,
     L = [{{conn, #{type => req, method => submit, id => 1,
                    user => ?USER_NOT_IN_REGISTER, job_id => ?JOB_ID1,
                    miner_nonce => <<"0123456789">>, pow => ?POW}},
@@ -345,8 +345,8 @@ when_configured(submit) ->
              extra_nonce => undefined}}
          }],
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_configured(not_req) ->
-    T = <<"when configured - not_req">>,
+when_configured(conn_not_req) ->
+    T = <<"when configured - conn_not_req">>,
     L = [{{conn, #{type => rsp, method => configure, id => 1, result => []}},
           {send,
            #{type => rsp, method => configure, id => 1, reason => unknown_error},
@@ -354,11 +354,11 @@ when_configured(not_req) ->
              extra_nonce => undefined}}
          }],
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_configured(jsonrpc_errors) ->
-    T = <<"when configured - jsonrpc_errors">>,
+when_configured(conn_jsonrpc_errors) ->
+    T = <<"when configured - conn_jsonrpc_errors">>,
     prep_configured(T) ++ jsonrpc_errors(T, configured, configured);
-when_configured(subscribe) ->
-    T = <<"when configured - subscribe">>,
+when_configured(conn_subscribe) ->
+    T = <<"when configured - conn_subscribe">>,
     L = [{{conn, #{type => req, method => subscribe, id => 1,
                    user_agent => ?USER_AGENT, session_id => null,
                    host => ?HOST_VALID, port => ?PORT_VALID}},
@@ -371,8 +371,8 @@ when_configured(subscribe) ->
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L].
 
-when_subscribed(timeout) ->
-    T = <<"when subscribed - timeout">>,
+when_subscribed(conn_timeout) ->
+    T = <<"when subscribed - conn_timeout">>,
     L = [{{conn, #{event => timeout}},
           {stop,
            #{phase => disconnected, timer_phase => undefined,
@@ -380,8 +380,8 @@ when_subscribed(timeout) ->
          }],
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(configure) ->
-    T = <<"when subscribed - configure">>,
+when_subscribed(conn_configure) ->
+    T = <<"when subscribed - conn_configure">>,
     L = [{{conn, #{type => req, method => configure, id => 2, params => []}},
           {send,
            #{type => rsp, method => configure, id => 2, reason => unknown_error},
@@ -389,8 +389,8 @@ when_subscribed(configure) ->
          }],
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(subscribe) ->
-    T = <<"when subscribed - subscribe">>,
+when_subscribed(conn_subscribe) ->
+    T = <<"when subscribed - conn_subscribe">>,
     L = [{{conn, #{type => req, method => subscribe, id => 2,
                    user_agent => ?USER_AGENT,  session_id => null,
                    host => ?HOST_VALID, port => ?PORT_VALID}},
@@ -401,8 +401,8 @@ when_subscribed(subscribe) ->
          }],
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(submit) ->
-    T = <<"when subscribed - submit">>,
+when_subscribed(conn_submit) ->
+    T = <<"when subscribed - conn_submit">>,
     L = [{{conn, #{type => req, method => submit, id => 2,
                    user => ?USER_NOT_IN_REGISTER, job_id => ?JOB_ID1,
                    miner_nonce => <<"0123456789">>, pow => ?POW}},
@@ -413,8 +413,8 @@ when_subscribed(submit) ->
          }],
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(not_req) ->
-    T = <<"when subscribed - not_req">>,
+when_subscribed(conn_not_req) ->
+    T = <<"when subscribed - conn_not_req">>,
     L = [{{conn, #{type => rsp, method => configure, id => 2, result => []}},
           {send,
            #{type => rsp, method => configure, id => 2, reason => unknown_error},
@@ -423,12 +423,12 @@ when_subscribed(not_req) ->
          }],
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(jsonrpc_errors) ->
-    T = <<"when subscribed - jsonrpc_errors">>,
+when_subscribed(conn_jsonrpc_errors) ->
+    T = <<"when subscribed - conn_jsonrpc_errors">>,
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
     prep_subscribed(T) ++ jsonrpc_errors(T, subscribed, subscribed);
-when_subscribed(authorize_failure) ->
-    T = <<"when subscribed - authorize_failure">>,
+when_subscribed(conn_authorize_failure) ->
+    T = <<"when subscribed - conn_authorize_failure">>,
     L = [{{conn, #{type => req, method => authorize, id => 2,
                    user => ?USER_IN_REGISTER, password => null}},
            {send,
@@ -438,8 +438,8 @@ when_subscribed(authorize_failure) ->
          }],
     mock_authorize(#{}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(authorize_success) ->
-    T = <<"when subscribed - authorize_success">>,
+when_subscribed(conn_authorize_success) ->
+    T = <<"when subscribed - conn_authorize_success">>,
     L = [{{conn, #{type => req, method => authorize, id => 2,
                    user => ?USER_NOT_IN_REGISTER, password => null}},
            {send,
@@ -450,16 +450,16 @@ when_subscribed(authorize_success) ->
     mock_authorize(#{}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L].
 
-when_authorized(timeout) ->
-    T = <<"when authorized - timeout">>,
+when_authorized(conn_timeout) ->
+    T = <<"when authorized - conn_timeout">>,
     L = [{{conn, #{event => timeout}},
           {no_send,
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_authorized(configure) ->
-    T = <<"when authorized - configure">>,
+when_authorized(conn_configure) ->
+    T = <<"when authorized - conn_configure">>,
     L = [{{conn, #{type => req, method => configure, id => 3, params => []}},
           {send,
            #{type => rsp, method => configure, id => 3, reason => unknown_error},
@@ -467,8 +467,8 @@ when_authorized(configure) ->
          }],
     mock_authorize(#{}),
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_authorized(subscribe) ->
-    T = <<"when authorized - subscribe">>,
+when_authorized(conn_subscribe) ->
+    T = <<"when authorized - conn_subscribe">>,
     L = [{{conn, #{type => req, method => subscribe, id => 3,
                    user_agent => ?USER_AGENT, session_id => null,
                    host => ?HOST_VALID, port => ?PORT_VALID}},
@@ -478,8 +478,8 @@ when_authorized(subscribe) ->
          }],
     mock_authorize(#{}),
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_authorized(authorize) ->
-    T = <<"when authorized - authorize">>,
+when_authorized(conn_authorize) ->
+    T = <<"when authorized - conn_authorize">>,
     L = [{{conn, #{type => req, method => authorize, id => 3,
                    user => ?USER_IN_REGISTER, password => null}},
           {send,
@@ -488,8 +488,8 @@ when_authorized(authorize) ->
          }],
     mock_authorize(#{}),
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_authorized(submit) ->
-    T = <<"when authorized - submit">>,
+when_authorized(conn_submit) ->
+    T = <<"when authorized - conn_submit">>,
     L = [{{conn, #{type => req, method => submit, id => 3,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID1,
                    miner_nonce => <<"0000">>, pow => ?POW}},
@@ -499,8 +499,8 @@ when_authorized(submit) ->
          }],
     mock_authorize(#{}),
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_authorized(not_req) ->
-    T = <<"when authorized - not_req">>,
+when_authorized(conn_not_req) ->
+    T = <<"when authorized - conn_not_req">>,
     L = [{{conn, #{type => rsp, method => subscribe, id => 3,
                    reason => parse_error, data => null}},
           {send,
@@ -509,12 +509,12 @@ when_authorized(not_req) ->
          }],
     mock_authorize(#{}),
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_authorized(jsonrpc_errors) ->
-    T = <<"when authorized - jsonrpc_errors">>,
+when_authorized(conn_jsonrpc_errors) ->
+    T = <<"when authorized - conn_jsonrpc_errors">>,
     mock_authorize(#{}),
     prep_authorized(T) ++ jsonrpc_errors(T, authorized, undefined);
-when_authorized(set_target) ->
-    T = <<"when authorized - set_target">>,
+when_authorized(chain_set_target) ->
+    T = <<"when authorized - chain_set_target">>,
     L = [{{chain, #{event => set_target}},
           {send,
            #{type => ntf, method => set_target,
@@ -525,16 +525,16 @@ when_authorized(set_target) ->
     mock_set_target(#{}),
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L].
 
-when_set_target(timeout) ->
-    T = <<"when set target - timeout">>,
+when_set_target(conn_timeout) ->
+    T = <<"when set target - conn_timeout">>,
     L = [{{conn, #{event => timeout}},
           {no_send,
            #{phase => authorized}}
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_set_target(configure) ->
-    T = <<"when set target - configure">>,
+when_set_target(conn_configure) ->
+    T = <<"when set target - conn_configure">>,
     L = [{{conn, #{type => req, method => configure, id => 3, params => []}},
           {send,
            #{type => rsp, method => configure, id => 3, reason => unknown_error},
@@ -542,8 +542,8 @@ when_set_target(configure) ->
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_set_target(subscribe) ->
-    T = <<"when set target - subscribe">>,
+when_set_target(conn_subscribe) ->
+    T = <<"when set target - conn_subscribe">>,
     L = [{{conn, #{type => req, method => subscribe, id => 3,
                    user_agent => ?USER_AGENT, session_id => null,
                    host => ?HOST_VALID, port => ?PORT_VALID}},
@@ -553,8 +553,8 @@ when_set_target(subscribe) ->
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_set_target(authorize) ->
-    T = <<"when set target - authorize">>,
+when_set_target(conn_authorize) ->
+    T = <<"when set target - conn_authorize">>,
     L = [{{conn, #{type => req, method => authorize, id => 3,
                    user => ?USER_IN_REGISTER, password => null}},
           {send,
@@ -563,8 +563,8 @@ when_set_target(authorize) ->
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_set_target(not_req) ->
-    T = <<"when set target - not_req">>,
+when_set_target(conn_not_req) ->
+    T = <<"when set target - conn_not_req">>,
     L = [{{conn, #{type => rsp, method => configure, id => 3,
                    reason => parse_error, data => null}},
           {send,
@@ -573,13 +573,13 @@ when_set_target(not_req) ->
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_set_target(jsonrpc_errors) ->
-    T = <<"when set target - jsonrpc_errors">>,
+when_set_target(conn_jsonrpc_errors) ->
+    T = <<"when set target - conn_jsonrpc_errors">>,
     mock_set_target(#{}),
     prep_set_target(T) ++ jsonrpc_errors(T, authorized, undefined).
 
-when_set_target(recv_block, no_target_change) ->
-    T = <<"when set target - recv_block, no_target_change">>,
+when_set_target(chain_recv_block, no_target_change) ->
+    T = <<"when set target - chain_recv_block, no_target_change">>,
     L = [{{chain, #{event => recv_block,
                     block => #{block_hash => ?BLOCK_HASH1,
                                block_version => ?BLOCK_VERSION,
@@ -592,8 +592,8 @@ when_set_target(recv_block, no_target_change) ->
          }],
     mock_recv_block(#{new_share_target => no_change}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_set_target(recv_block, target_change) ->
-    T = <<"when set target - recv_block, target_change">>,
+when_set_target(chain_recv_block, target_change) ->
+    T = <<"when set target - chain_recv_block, target_change">>,
     L = [{{chain, #{event => recv_block,
                     block => #{block_hash => ?BLOCK_HASH1,
                                block_version => ?BLOCK_VERSION,
@@ -635,8 +635,8 @@ when_set_target(recv_block, target_change) ->
                       share_target_diff_threshold => 5.0}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L].
 
-when_recv_block(submit, user_not_found) ->
-    T = <<"when set target - submit, user_not_found">>,
+when_recv_block(conn_submit, user_not_found) ->
+    T = <<"when set target - conn_submit, user_not_found">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_NOT_IN_REGISTER, job_id => ?JOB_ID1,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE), pow => ?POW}},
@@ -646,8 +646,8 @@ when_recv_block(submit, user_not_found) ->
          }],
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, job_not_found) ->
-    T = <<"when set target - submit, job_not_found">>,
+when_recv_block(conn_submit, job_not_found) ->
+    T = <<"when set target - conn_submit, job_not_found">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_NOT_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE), pow => ?POW}},
@@ -657,8 +657,8 @@ when_recv_block(submit, job_not_found) ->
          }],
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, invalid_miner_nonce) ->
-    T = <<"when set target - submit, invalid_miner_nonce">>,
+when_recv_block(conn_submit, invalid_miner_nonce) ->
+    T = <<"when set target - conn_submit, invalid_miner_nonce">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?MINER_NONCE_BIN_INVALID, pow => ?POW}},
@@ -669,8 +669,8 @@ when_recv_block(submit, invalid_miner_nonce) ->
          }],
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, duplicate_share) ->
-    T = <<"when set target - submit, duplicate_share">>,
+when_recv_block(conn_submit, duplicate_share) ->
+    T = <<"when set target - conn_submit, duplicate_share">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE_DUPLICATE),
@@ -681,8 +681,8 @@ when_recv_block(submit, duplicate_share) ->
          }],
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, invalid_solution) ->
-    T = <<"when set target - submit, invalid_solution">>,
+when_recv_block(conn_submit, invalid_solution) ->
+    T = <<"when set target - conn_submit, invalid_solution">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
@@ -694,8 +694,8 @@ when_recv_block(submit, invalid_solution) ->
          }],
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, high_target_share) ->
-    T = <<"when set target - submit, high_target_share">>,
+when_recv_block(conn_submit, high_target_share) ->
+    T = <<"when set target - conn_submit, high_target_share">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
@@ -706,8 +706,8 @@ when_recv_block(submit, high_target_share) ->
          }],
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, valid_share) ->
-    T = <<"when set target - submit, high_target_share">>,
+when_recv_block(conn_submit, valid_share) ->
+    T = <<"when set target - conn_submit, high_target_share">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
@@ -718,8 +718,8 @@ when_recv_block(submit, valid_share) ->
          }],
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, valid_block) ->
-    T = <<"when set target - submit, high_target_share">>,
+when_recv_block(conn_submit, valid_block) ->
+    T = <<"when set target - conn_submit, high_target_share">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
