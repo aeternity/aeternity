@@ -3582,20 +3582,16 @@ channel_send_conn_open_infos(RConnPid, IConnPid, Config) ->
 
 channel_send_locking_infos(IConnPid, RConnPid, Config) ->
     {ok, #{<<"event">> := <<"own_funding_locked">>}} = wait_for_channel_event(IConnPid, info, Config),
-    ?WS:log(IConnPid, info, "Funding has been confirmed locally on-chain"),
     {ok, #{<<"event">> := <<"own_funding_locked">>}} = wait_for_channel_event(RConnPid, info, Config),
-    ?WS:log(RConnPid, info, "Funding has been confirmed locally on-chain"),
 
     {ok, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(IConnPid, info, Config),
-    ?WS:log(IConnPid, info, "Funding has been confirmed on-chain by other party"),
     {ok, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(RConnPid, info, Config),
-    ?WS:log(RConnPid, info, "Funding has been confirmed on-chain by other party").
+    ok.
 
 channel_send_chan_open_infos(RConnPid, IConnPid, Config) ->
     {ok, #{<<"event">> := <<"open">>}} = wait_for_channel_event(IConnPid, info, Config),
-    ?WS:log(IConnPid, info, "Channel is `open` and ready to use"),
     {ok, #{<<"event">> := <<"open">>}} = wait_for_channel_event(RConnPid, info, Config),
-    ?WS:log(RConnPid, info, "Channel is `open` and ready to use").
+    ok.
 
 channel_participants_balances(IPubkey, RPubkey) ->
     {ok, 200, #{<<"balance">> := BalI}} =
