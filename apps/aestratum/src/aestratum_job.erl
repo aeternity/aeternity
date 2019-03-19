@@ -13,12 +13,14 @@
          max_solve_time/1,
          created/1,
          shares/1,
+         error_shares/1,
          is_submitted/1,
          solve_time/1,
          make_id/3
         ]).
 
 -export([add_share/2,
+         add_error_share/2,
          is_share_present/3
         ]).
 
@@ -33,6 +35,7 @@
           desired_solve_time,
           max_solve_time,
           shares,
+          error_shares,
           created
         }).
 
@@ -50,6 +53,7 @@ new(Id, BlockHash, BlockVersion, BlockTarget, ShareTarget,
          desired_solve_time = DesiredSolveTime,
          max_solve_time = MaxSolveTime,
          shares = [],
+         error_shares = [],
          created = aestratum_utils:timestamp()}.
 
 id(#job{id = Id}) ->
@@ -79,6 +83,9 @@ created(#job{created = Created}) ->
 shares(#job{shares = Shares}) ->
     Shares.
 
+error_shares(#job{error_shares = ErrorShares}) ->
+    ErrorShares.
+
 is_submitted(#job{shares = Shares}) when Shares =/= [] ->
     true;
 is_submitted(#job{shares = []}) ->
@@ -99,6 +106,10 @@ make_id(BlockHash, BlockVersion, BlockTarget) ->
 add_share(Share, #job{shares = Shares} = Job) ->
     %% TODO: add limit on how many shares can be submitted per job.
     Job#job{shares = [Share | Shares]}.
+
+add_error_share(ErrorShare, #job{error_shares = ErrorShares} = Job) ->
+    %% TODO: add limit on how many error shares can be submitted per job.
+    Job#job{error_shares = [ErrorShare | ErrorShares]}.
 
 is_share_present(MinerNonce, Pow, #job{shares = Shares}) ->
     lists:any(

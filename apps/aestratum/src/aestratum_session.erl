@@ -235,7 +235,7 @@ send_submit_rsp1({ok, Share, Job}, #{id := Id}, #state{jobs = Jobs} = State) ->
 send_submit_rsp1({error, Share, Job}, #{id := Id} = Req,
                  #state{jobs = Jobs} = State) when Job =/= undefined ->
     JobId = aestratum_job:id(Job),
-    Job1 = aestratum_job:add_share(Share, Job),
+    Job1 = aestratum_job:add_error_share(Share, Job),
     Jobs1 = aestratum_job_queue:replace(JobId, Job1, Jobs),
     State1 = State#state{jobs = Jobs1},
     case aestratum_share:validity(Share) of
@@ -255,7 +255,9 @@ send_submit_rsp1({error, Share, Job}, #{id := Id} = Req,
             {send, encode(RspMap), State1}
     end;
 send_submit_rsp1({error, Share, undefined}, Req, State) ->
-    %% The share is not saved here as there is no job associated with it.
+    %% The share is not saved here as there is no job associated with it. This
+    %% can be a security issue, we need to check how many of these are
+    %% submitted and possibly ban/disconnect the client.
     job_not_found = aestratum_share:validity(Share),
     send_job_not_found_rsp(Req, null, State).
 
