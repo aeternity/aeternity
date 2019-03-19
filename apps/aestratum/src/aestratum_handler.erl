@@ -20,7 +20,6 @@
 -record(state, {
           socket,
           transport,
-          module,
           session
          }).
 
@@ -35,23 +34,21 @@ start_link(Ref, Socket, Transport, Opts) ->
 
 %% Callbacks.
 
-init({Ref, Socket, Transport, Opts}) ->
+init({Ref, Socket, Transport, _Opts}) ->
     ok = ranch:accept_ack(Ref),
     ok = Transport:setopts(Socket, [{active, once}, {packet, line},
                                     {keepalive, true}]),
-    Mod = proplists:get_value(module, Opts),
     gen_server:cast(self(), init_session),
     gen_server:enter_loop(?MODULE, [], #state{socket = Socket,
-                                              transport = Transport,
-                                              module = Mod}).
+                                              transport = Transport}).
 
 handle_call(_Request, _From, State) ->
 	{reply, ok, State}.
 
-handle_cast(init_session, #state{module = Mod} = State) ->
+handle_cast(init_session, #state{} = State) ->
     %% TODO: subscribe to chain events
-    Session = Mod:new(),
-    Res = Mod:handle_event({conn, init}, Session),
+    Session = aestratum_session:new(),
+    Res = aestratum_session:handle_event({conn, init}, Session),
     result(Res, State).
 
 handle_info({SocketType, _Socket, Data}, State) when ?IS_MSG(SocketType) ->
@@ -62,49 +59,50 @@ handle_info({SocketError, _Socket, Rsn}, State) when ?IS_ERROR(SocketError) ->
     handle_socket_error(Rsn, State);
 handle_info(timeout, State) ->
     handle_socket_timeout(State);
+%% TODO: handle new key block candidate.
 handle_info({chain, Event}, State) ->
     handle_chain_event(Event, State);
 handle_info(_Info, State) ->
 	{stop, normal, State}.
 
-terminate(_Reason, #state{module = Mod, session = Session}) ->
-    Mod:close(Session).
+terminate(_Reason, #state{session = Session}) ->
+    aestratum_session:close(Session).
 
 %% Internal functions.
 
 handle_socket_data(Data, #state{socket = Socket, transport = Transport,
-                                module = Mod, session = Session} = State) ->
-	Res = Mod:handle_event({conn, Data}, Session),
+                                session = Session} = State) ->
+	Res = aestratum_session:handle_event({conn, Data}, Session),
 	case is_stop(Res) of
 	    true -> ok;
 	    false -> Transport:setopts(Socket, [{active, once}])
     end,
     result(Res, State).
 
-handle_socket_close(#state{module = Mod, session = Session} = State) ->
-    Res = Mod:handle_event({conn, close}, Session),
+handle_socket_close(#state{session = Session} = State) ->
+    Res = aestratum_session:handle_event({conn, close}, Session),
     result(Res, State).
 
-handle_socket_error(_Rsn, #state{module = Mod, session = Session} = State) ->
+handle_socket_error(_Rsn, #state{session = Session} = State) ->
     %% TODO: log error
-    Res = Mod:handle_event({conn, close}, Session),
+    Res = aestratum_session:handle_event({conn, close}, Session),
     result(Res, State).
 
-handle_socket_timeout(#state{module = Mod, session = Session} = State) ->
-    Res = Mod:handle_event({conn, timeout}, Session),
+handle_socket_timeout(#state{session = Session} = State) ->
+    Res = aestratum_session:handle_event({conn, timeout}, Session),
     result(Res, State).
 
-handle_chain_event(Event, #state{module = Mod, session = Session} = State) ->
-    Res = Mod:handle_event({chain, Event}, Session),
+handle_chain_event(Event, #state{session = Session} = State) ->
+    Res = aestratum_session:handle_event({chain, Event}, Session),
     result(Res, State).
 
-result({send, Data, #state{module = Mod} = Session},
+result({send, Data, Session},
        #state{socket = Socket, transport = Transport} = State) ->
     case send_data(Data, Socket, Transport) of
         ok ->
             {noreply, State#state{session = Session}};
         {error, _Rsn} ->
-            Res = Mod:handle_event({conn, close}, Session),
+            Res = aestratum_session:handle_event({conn, close}, Session),
             result(Res, State)
     end;
 result({no_send, Session}, State) ->
