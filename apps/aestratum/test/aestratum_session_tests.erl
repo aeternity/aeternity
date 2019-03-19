@@ -4,10 +4,7 @@
 
 -define(TEST_MODULE, aestratum_session).
 
-<<<<<<< HEAD
 -define(ENV_MODULE, aestratum_env).
-=======
->>>>>>> Rename aestratum_server_session to aestratum_session
 -define(JSONRPC_MODULE, aestratum_jsonrpc).
 -define(NONCE_MODULE, aestratum_nonce).
 -define(TARGET_MODULE, aestratum_target).
@@ -16,10 +13,7 @@
 -define(JOB_MODULE, aestratum_job).
 -define(JOB_QUEUE_MODULE, aestratum_job_queue).
 -define(MINER_MODULE, aestratum_miner).
-<<<<<<< HEAD
 -define(AESTRATUM_MODULE, aestratum).
-=======
->>>>>>> Rename aestratum_server_session to aestratum_session
 
 -define(HOST_VALID, <<"pool.aeternity.com">>).
 -define(HOST_INVALID, <<>>).
@@ -29,13 +23,8 @@
 
 -define(USER_AGENT, <<"aeminer/1.2.3">>).
 
-<<<<<<< HEAD
 -define(EXTRA_NONCE_BYTES_VALID, 4).
 -define(EXTRA_NONCE_BYTES_INVALID, 8).
-=======
--define(EXTRA_NONCE_NBYTES_VALID, 4).
--define(EXTRA_NONCE_NBYTES_INVALID, 8).
->>>>>>> Rename aestratum_server_session to aestratum_session
 
 -define(EXTRA_NONCE, ?NONCE_MODULE:new(extra, 16#aabbccdd, 4)).
 
@@ -50,7 +39,6 @@
 -define(POW_SHARE_TARGET, lists:seq(1101, 1142)).
 -define(POW_BLOCK_TARGET, lists:seq(1201, 1242)).
 
-<<<<<<< HEAD
 -define(ACCOUNT_IN_REGISTER, <<"ak_1111111111111111111111111111111111111111111111111">>).
 -define(ACCOUNT_IN_REGISTER_DIFFERENT_CLIENT,
         <<"ak_111111111111111111111111111111111111111eeeeeeeabc">>).
@@ -65,10 +53,6 @@
 -define(USER_NOT_IN_REGISTER, {?ACCOUNT_NOT_IN_REGISTER, ?WORKER_NOT_IN_REGISTER}).
 -define(USER_NOT_IN_REGISTER_WITH_EXHAUSTED_WORKER_COUNT,
         {?ACCOUNT_NOT_IN_REGISTER_WITH_EXHAUSTED_WORKER_COUNT, ?WORKER_NOT_IN_REGISTER}).
-=======
--define(USER_IN_REGISTER, <<"ak_1111111111111111111111111111111111111111111111111">>).
--define(USER_NOT_IN_REGISTER, <<"ak_2222222222222222222222222222222222222222222222222">>).
->>>>>>> Rename aestratum_server_session to aestratum_session
 
 -define(BLOCK_HASH1, binary:copy(<<"1">>, 64)).
 -define(BLOCK_HASH2, binary:copy(<<"2">>, 64)).
@@ -111,10 +95,7 @@ server_session() ->
              meck:new(?JOB_MODULE, [passthrough]),
              meck:new(?JOB_QUEUE_MODULE, [passthrough]),
              meck:new(?MINER_MODULE, [passthrough]),
-<<<<<<< HEAD
              meck:new(?AESTRATUM_MODULE, [passthrough]),
-=======
->>>>>>> Rename aestratum_server_session to aestratum_session
              meck:new(?TEST_MODULE, [passthrough]),
              {ok, Pid} = aestratum_dummy_handler:start_link(?TEST_MODULE),
              Pid
@@ -126,16 +107,12 @@ server_session() ->
              meck:unload(?JOB_MODULE),
              meck:unload(?JOB_QUEUE_MODULE),
              meck:unload(?MINER_MODULE),
-<<<<<<< HEAD
              meck:unload(?AESTRATUM_MODULE),
-=======
->>>>>>> Rename aestratum_server_session to aestratum_session
              meck:unload(?TEST_MODULE),
              aestratum_dummy_handler:stop(Pid)
      end,
      [fun(Pid) -> t(Pid, init()) end,
       %% connected - error
-<<<<<<< HEAD
       fun(Pid) -> t(Pid, when_connected(conn_timeout)) end,
       fun(Pid) -> t(Pid, when_connected(conn_authorize)) end,
       fun(Pid) -> t(Pid, when_connected(conn_submit)) end,
@@ -200,6 +177,7 @@ server_session() ->
       fun(Pid) -> t(Pid, when_set_target(conn_authorize)) end,
       fun(Pid) -> t(Pid, when_set_target(chain_recv_block, no_target_change)) end,
       fun(Pid) -> t(Pid, when_set_target(chain_recv_block, target_change)) end,
+      fun(Pid) -> t(Pid, when_set_target(chain_recv_block, no_target_change, skip_1_block)) end,
 
       %% recv_block - conn_submit error
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, job_not_found)) end,
@@ -213,72 +191,6 @@ server_session() ->
       %% recv_block - conn_submit success
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, valid_share)) end,
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, valid_block)) end
-=======
-      fun(Pid) -> t(Pid, when_connected(timeout)) end,
-      fun(Pid) -> t(Pid, when_connected(authorize)) end,
-      fun(Pid) -> t(Pid, when_connected(submit)) end,
-      fun(Pid) -> t(Pid, when_connected(not_req)) end,
-      fun(Pid) -> t(Pid, when_connected(jsonrpc_errors)) end,
-      fun(Pid) -> t(Pid, when_connected(chain_recv_block)) end,
-      %% connected - success
-      fun(Pid) -> t(Pid, when_connected(configure)) end,
-      fun(Pid) -> t(Pid, when_connected(subscribe)) end,
-
-      %% configured - error
-      fun(Pid) -> t(Pid, when_configured(timeout)) end,
-      fun(Pid) -> t(Pid, when_configured(configure)) end,
-      fun(Pid) -> t(Pid, when_configured(authorize)) end,
-      fun(Pid) -> t(Pid, when_configured(submit)) end,
-      fun(Pid) -> t(Pid, when_configured(not_req)) end,
-      fun(Pid) -> t(Pid, when_configured(jsonrpc_errors)) end,
-      %% configured - success
-      fun(Pid) -> t(Pid, when_configured(subscribe)) end,
-
-      %% subscribed - error
-      fun(Pid) -> t(Pid, when_subscribed(timeout)) end,
-      fun(Pid) -> t(Pid, when_subscribed(configure)) end,
-      fun(Pid) -> t(Pid, when_subscribed(subscribe)) end,
-      fun(Pid) -> t(Pid, when_subscribed(submit)) end,
-      fun(Pid) -> t(Pid, when_subscribed(not_req)) end,
-      fun(Pid) -> t(Pid, when_subscribed(jsonrpc_errors)) end,
-      %% subscribed - success
-      fun(Pid) -> t(Pid, when_subscribed(authorize_failure)) end,
-      fun(Pid) -> t(Pid, when_subscribed(authorize_success)) end,
-
-      %% authorized - error
-      fun(Pid) -> t(Pid, when_authorized(timeout)) end,
-      fun(Pid) -> t(Pid, when_authorized(configure)) end,
-      fun(Pid) -> t(Pid, when_authorized(subscribe)) end,
-      fun(Pid) -> t(Pid, when_authorized(authorize)) end,
-      fun(Pid) -> t(Pid, when_authorized(submit)) end,
-      fun(Pid) -> t(Pid, when_authorized(not_req)) end,
-      fun(Pid) -> t(Pid, when_authorized(jsonrpc_errors)) end,
-      %% authorized - success
-      fun(Pid) -> t(Pid, when_authorized(set_target)) end,
-
-      %% set_target - error
-      fun(Pid) -> t(Pid, when_set_target(timeout)) end,
-      fun(Pid) -> t(Pid, when_set_target(configure)) end,
-      fun(Pid) -> t(Pid, when_set_target(subscribe)) end,
-      fun(Pid) -> t(Pid, when_set_target(authorize)) end,
-      %% TODO: submit
-      fun(Pid) -> t(Pid, when_set_target(not_req)) end,
-      fun(Pid) -> t(Pid, when_set_target(jsonrpc_errors)) end,
-      %% set_target - success
-      fun(Pid) -> t(Pid, when_set_target(recv_block, no_target_change)) end,
-      fun(Pid) -> t(Pid, when_set_target(recv_block, target_change)) end,
-
-      %% recv_block - submit error
-      fun(Pid) -> t(Pid, when_recv_block(submit, user_not_found)) end,
-      fun(Pid) -> t(Pid, when_recv_block(submit, job_not_found)) end,
-      fun(Pid) -> t(Pid, when_recv_block(submit, invalid_miner_nonce)) end,
-      fun(Pid) -> t(Pid, when_recv_block(submit, duplicate_share)) end,
-      fun(Pid) -> t(Pid, when_recv_block(submit, invalid_solution)) end,
-      fun(Pid) -> t(Pid, when_recv_block(submit, high_target_share)) end,
-      %% recv_block - submit success
-      fun(Pid) -> t(Pid, when_recv_block(submit, valid_share)) end,
-      fun(Pid) -> t(Pid, when_recv_block(submit, valid_block)) end
->>>>>>> Rename aestratum_server_session to aestratum_session
      ]}.
 
 %% T - title
@@ -299,7 +211,6 @@ t(Pid, Data) ->
     lists:filter(fun({_T, _Assert}) -> true;
                     (no_test) -> false end, Asserts).
 
-<<<<<<< HEAD
 event({conn, D}) ->
     case maps:get(event, D, undefined) of
         E when E =/= undefined ->
@@ -313,13 +224,6 @@ event({conn, D}) ->
 event({chain, D}) ->
     %% This is always an event.
     {chain, D}.
-=======
-event({conn, D}) when is_map(D) ->
-    {ok, D1} = ?JSONRPC_MODULE:encode(D),
-    {conn, D1};
-event(Other) ->
-    Other.
->>>>>>> Rename aestratum_server_session to aestratum_session
 
 result(Pid, {_A, S}, {A1, S1}) ->
     Ks = maps:keys(S),
@@ -350,7 +254,6 @@ maybe_rsp_result(_D, D1M0) ->
 
 init() ->
     T = <<"init - server">>,
-<<<<<<< HEAD
     L = [{{conn, #{event => init}},
           {no_send,
            #{phase => connected, timer_phase => connected}}
@@ -361,31 +264,14 @@ init() ->
 when_connected(conn_timeout) ->
     T = <<"when connected - conn_timeout">>,
     L = [{{conn, #{event => timeout}},
-=======
-    L = [{{conn, init},
-          {no_send,
-           #{phase => connected, timer_phase => connected}}
-         }],
-    [{T, test, E, R} || {E, R} <- L].
-
-when_connected(timeout) ->
-    T = <<"when connected - timeout">>,
-    L = [{{conn, timeout},
->>>>>>> Rename aestratum_server_session to aestratum_session
           {stop,
            #{phase => disconnected, timer_phase => undefined,
              extra_nonce => undefined}}
          }],
-<<<<<<< HEAD
     mock_connect(#{}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(conn_authorize) ->
     T = <<"when connected - conn_authorize">>,
-=======
-    prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_connected(authorize) ->
-    T = <<"when connected - authorize">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => authorize, id => 0,
                    user => ?USER_NOT_IN_REGISTER, password => null}},
           {send,
@@ -393,16 +279,10 @@ when_connected(authorize) ->
            #{phase => connected, timer_phase => connected,
             extra_nonce => undefined}}
          }],
-<<<<<<< HEAD
     mock_connect(#{}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(conn_submit) ->
     T = <<"when connected - conn_submit">>,
-=======
-    prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_connected(submit) ->
-    T = <<"when connected - submit">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => submit, id => 0,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID1,
                    miner_nonce => <<"0123456789">>, pow => ?POW}},
@@ -411,16 +291,10 @@ when_connected(submit) ->
            #{phase => connected, timer_phase => connected,
             extra_nonce => undefined}}
          }],
-<<<<<<< HEAD
     mock_connect(#{}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(conn_not_req) ->
     T = <<"when connected - conn_not_req">>,
-=======
-    prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_connected(not_req) ->
-    T = <<"when connected - not_req">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     %% Server receives unexpected message - response.
     L = [{{conn, #{type => rsp, method => configure, id => null,
                    reason => parse_error, data => <<"foo">>}},
@@ -430,7 +304,6 @@ when_connected(not_req) ->
            #{phase => connected, timer_phase => connected,
              extra_nonce => undefined}}
          }],
-<<<<<<< HEAD
     mock_connect(#{}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(conn_jsonrpc_errors) ->
@@ -450,39 +323,16 @@ when_connected(chain_recv_block) ->
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(conn_configure) ->
     T = <<"when connected - conn_configure">>,
-=======
-    prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_connected(jsonrpc_errors) ->
-    T = <<"when connected - jsonrpc_errors">>,
-    prep_connected(T) ++ jsonrpc_errors(T, connected, connected);
-when_connected(chain_recv_block) ->
-    T = <<"when connected - chain_recv_block">>,
-    L = [{{chain, {recv_block, #{block_hash => ?BLOCK_HASH1,
-                                 block_version => ?BLOCK_VERSION,
-                                 block_target => ?BLOCK_TARGET1}}},
-          {no_send,
-           #{phase => connected, timer_phase => connected}}
-         }],
-    prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_connected(configure) ->
-    T = <<"when connected - configure">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => configure, id => 0, params => []}},
           {send,
            #{type => rsp, method => configure, id => 0, result => []},
            #{phase => configured, timer_phase => configured,
              extra_nonce => undefined}}
          }],
-<<<<<<< HEAD
     mock_connect(#{}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(conn_subscribe) ->
     T = <<"when connected - conn_subscribe">>,
-=======
-    prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_connected(subscribe) ->
-    T = <<"when connected - subscribe">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => subscribe, id => 0,
                    user_agent => ?USER_AGENT, session_id => null,
                    host => ?HOST_VALID, port => ?PORT_VALID}},
@@ -492,51 +342,30 @@ when_connected(subscribe) ->
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ?EXTRA_NONCE}}
          }],
-<<<<<<< HEAD
     mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_configured(conn_timeout) ->
     T = <<"when configured - conn_timeout">>,
     L = [{{conn, #{event => timeout}},
-=======
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L].
-
-when_configured(timeout) ->
-    T = <<"when configured - timeout">>,
-    L = [{{conn, timeout},
->>>>>>> Rename aestratum_server_session to aestratum_session
           {stop,
            #{phase => disconnected, timer_phase => undefined,
             extra_nonce => undefined}}
          }],
-<<<<<<< HEAD
     mock_configure(#{}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(conn_configure) ->
     T = <<"when configured - conn_configure">>,
-=======
-    prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_configured(configure) ->
-    T = <<"when configured - configure">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => configure, id => 1, params => []}},
           {send,
            #{type => rsp, method => configure, id => 1, reason => unknown_error},
            #{phase => configured, timer_phase => configured,
              extra_nonce => undefined}}
          }],
-<<<<<<< HEAD
     mock_configure(#{}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(conn_authorize) ->
     T = <<"when configured - conn_authorize">>,
-=======
-    prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_configured(authorize) ->
-    T = <<"when configured - authorize">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => authorize, id => 1,
                    user => ?USER_NOT_IN_REGISTER, password => null}},
           {send,
@@ -544,16 +373,10 @@ when_configured(authorize) ->
            #{phase => configured, timer_phase => configured,
              extra_nonce => undefined}}
          }],
-<<<<<<< HEAD
     mock_configure(#{}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(conn_submit) ->
     T = <<"when configured - conn_submit">>,
-=======
-    prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_configured(submit) ->
-    T = <<"when configured - submit">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => submit, id => 1,
                    user => ?USER_NOT_IN_REGISTER, job_id => ?JOB_ID1,
                    miner_nonce => <<"0123456789">>, pow => ?POW}},
@@ -562,23 +385,16 @@ when_configured(submit) ->
            #{phase => configured, timer_phase => configured,
              extra_nonce => undefined}}
          }],
-<<<<<<< HEAD
     mock_configure(#{}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(conn_not_req) ->
     T = <<"when configured - conn_not_req">>,
-=======
-    prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_configured(not_req) ->
-    T = <<"when configured - not_req">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => rsp, method => configure, id => 1, result => []}},
           {send,
            #{type => rsp, method => configure, id => 1, reason => unknown_error},
            #{phase => configured, timer_phase => configured,
              extra_nonce => undefined}}
          }],
-<<<<<<< HEAD
     mock_configure(#{}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(conn_jsonrpc_errors) ->
@@ -597,14 +413,6 @@ when_configured(chain_recv_block) ->
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(conn_subscribe) ->
     T = <<"when configured - conn_subscribe">>,
-=======
-    prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_configured(jsonrpc_errors) ->
-    T = <<"when configured - jsonrpc_errors">>,
-    prep_configured(T) ++ jsonrpc_errors(T, configured, configured);
-when_configured(subscribe) ->
-    T = <<"when configured - subscribe">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => subscribe, id => 1,
                    user_agent => ?USER_AGENT, session_id => null,
                    host => ?HOST_VALID, port => ?PORT_VALID}},
@@ -614,52 +422,29 @@ when_configured(subscribe) ->
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ?EXTRA_NONCE}}
          }],
-<<<<<<< HEAD
     mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_subscribed(conn_timeout) ->
     T = <<"when subscribed - conn_timeout">>,
     L = [{{conn, #{event => timeout}},
-=======
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L].
-
-when_subscribed(timeout) ->
-    T = <<"when subscribed - timeout">>,
-    L = [{{conn, timeout},
->>>>>>> Rename aestratum_server_session to aestratum_session
           {stop,
            #{phase => disconnected, timer_phase => undefined,
              extra_nonce => undefined}}
          }],
-<<<<<<< HEAD
     mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_configure) ->
     T = <<"when subscribed - conn_configure">>,
-=======
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(configure) ->
-    T = <<"when subscribed - configure">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => configure, id => 2, params => []}},
           {send,
            #{type => rsp, method => configure, id => 2, reason => unknown_error},
            #{phase => subscribed, timer_phase => subscribed}}
          }],
-<<<<<<< HEAD
     mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_subscribe) ->
     T = <<"when subscribed - conn_subscribe">>,
-=======
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(subscribe) ->
-    T = <<"when subscribed - subscribe">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => subscribe, id => 2,
                    user_agent => ?USER_AGENT,  session_id => null,
                    host => ?HOST_VALID, port => ?PORT_VALID}},
@@ -668,7 +453,6 @@ when_subscribed(subscribe) ->
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ?EXTRA_NONCE}}
          }],
-<<<<<<< HEAD
     mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 %% Account is already in register, but has a different connection PID - it's a
@@ -688,12 +472,6 @@ when_subscribed(conn_authorize_duplicate_account) ->
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_submit) ->
     T = <<"when subscribed - conn_submit">>,
-=======
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(submit) ->
-    T = <<"when subscribed - submit">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => submit, id => 2,
                    user => ?USER_NOT_IN_REGISTER, job_id => ?JOB_ID1,
                    miner_nonce => <<"0123456789">>, pow => ?POW}},
@@ -702,24 +480,16 @@ when_subscribed(submit) ->
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ?EXTRA_NONCE}}
          }],
-<<<<<<< HEAD
     mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_not_req) ->
     T = <<"when subscribed - conn_not_req">>,
-=======
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(not_req) ->
-    T = <<"when subscribed - not_req">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => rsp, method => configure, id => 2, result => []}},
           {send,
            #{type => rsp, method => configure, id => 2, reason => unknown_error},
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ?EXTRA_NONCE}}
          }],
-<<<<<<< HEAD
     mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_jsonrpc_errors) ->
@@ -739,27 +509,6 @@ when_subscribed(chain_recv_block) ->
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_authorize) ->
     T = <<"when subscribed - conn_authorize">>,
-=======
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(jsonrpc_errors) ->
-    T = <<"when subscribed - jsonrpc_errors">>,
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_subscribed(T, #{}) ++ jsonrpc_errors(T, subscribed, subscribed);
-when_subscribed(authorize_failure) ->
-    T = <<"when subscribed - authorize_failure">>,
-    L = [{{conn, #{type => req, method => authorize, id => 2,
-                   user => ?USER_IN_REGISTER, password => null}},
-           {send,
-            #{type => rsp, method => authorize, id => 2, result => false},
-            #{phase => subscribed, timer_phase => subscribed,
-              extra_nonce => ?EXTRA_NONCE}}
-         }],
-    mock_authorize(#{}),
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(authorize_success) ->
-    T = <<"when subscribed - authorize_success">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => authorize, id => 2,
                    user => ?USER_NOT_IN_REGISTER, password => null}},
            {send,
@@ -768,47 +517,27 @@ when_subscribed(authorize_success) ->
               extra_nonce => ?EXTRA_NONCE}}
          }],
     mock_authorize(#{}),
-<<<<<<< HEAD
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_authorized(conn_timeout) ->
     T = <<"when authorized - conn_timeout">>,
     L = [{{conn, #{event => timeout}},
-=======
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L].
-
-when_authorized(timeout) ->
-    T = <<"when authorized - timeout">>,
-    L = [{{conn, timeout},
->>>>>>> Rename aestratum_server_session to aestratum_session
           {no_send,
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
-<<<<<<< HEAD
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(conn_configure) ->
     T = <<"when authorized - conn_configure">>,
-=======
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_authorized(configure) ->
-    T = <<"when authorized - configure">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => configure, id => 3, params => []}},
           {send,
            #{type => rsp, method => configure, id => 3, reason => unknown_error},
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
-<<<<<<< HEAD
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(conn_subscribe) ->
     T = <<"when authorized - conn_subscribe">>,
-=======
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_authorized(subscribe) ->
-    T = <<"when authorized - subscribe">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => subscribe, id => 3,
                    user_agent => ?USER_AGENT, session_id => null,
                    host => ?HOST_VALID, port => ?PORT_VALID}},
@@ -817,7 +546,6 @@ when_authorized(subscribe) ->
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
-<<<<<<< HEAD
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
 %% A worker tries to authorize using an account which is already authorized by
 %% a different connection/client. All workers must share the same account name
@@ -866,21 +594,6 @@ when_authorized(conn_authorize_account_mismatch) ->
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(conn_submit) ->
     T = <<"when authorized - conn_submit">>,
-=======
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_authorized(authorize) ->
-    T = <<"when authorized - authorize">>,
-    L = [{{conn, #{type => req, method => authorize, id => 3,
-                   user => ?USER_IN_REGISTER, password => null}},
-          {send,
-           #{type => rsp, method => authorize, id => 3, reason => unknown_error},
-           #{phase => authorized, timer_phase => undefined}}
-         }],
-    mock_authorize(#{}),
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_authorized(submit) ->
-    T = <<"when authorized - submit">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => submit, id => 3,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID1,
                    miner_nonce => <<"0000">>, pow => ?POW}},
@@ -889,15 +602,9 @@ when_authorized(submit) ->
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
-<<<<<<< HEAD
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(conn_not_req) ->
     T = <<"when authorized - conn_not_req">>,
-=======
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_authorized(not_req) ->
-    T = <<"when authorized - not_req">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => rsp, method => subscribe, id => 3,
                    reason => parse_error, data => null}},
           {send,
@@ -905,7 +612,6 @@ when_authorized(not_req) ->
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
-<<<<<<< HEAD
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(conn_jsonrpc_errors) ->
     T = <<"when authorized - conn_jsonrpc_errors">>,
@@ -938,21 +644,10 @@ when_authorized(conn_authorize) ->
 when_authorized(chain_set_target) ->
     T = <<"when authorized - chain_set_target">>,
     L = [{{chain, #{event => set_target}},
-=======
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_authorized(jsonrpc_errors) ->
-    T = <<"when authorized - jsonrpc_errors">>,
-    mock_authorize(#{}),
-    prep_authorized(T, #{}) ++ jsonrpc_errors(T, authorized, undefined);
-when_authorized(set_target) ->
-    T = <<"when authorized - set_target">>,
-    L = [{{chain, set_target},
->>>>>>> Rename aestratum_server_session to aestratum_session
           {send,
            #{type => ntf, method => set_target,
              target => ?TARGET_MODULE:to_hex(?SHARE_TARGET)},
            #{phase => authorized, timer_phase => undefined,
-<<<<<<< HEAD
              initial_share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
@@ -977,38 +672,11 @@ when_set_target(conn_configure) ->
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_set_target(conn_subscribe) ->
     T = <<"when set target - conn_subscribe">>,
-=======
-             share_target => ?SHARE_TARGET}}
-         }],
-    mock_set_target(#{}),
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L].
-
-when_set_target(timeout) ->
-    T = <<"when set target - timeout">>,
-    L = [{{conn, timeout},
-          {no_send,
-           #{phase => authorized}}
-         }],
-    mock_set_target(#{}),
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_set_target(configure) ->
-    T = <<"when set target - configure">>,
-    L = [{{conn, #{type => req, method => configure, id => 3, params => []}},
-          {send,
-           #{type => rsp, method => configure, id => 3, reason => unknown_error},
-           #{phase => authorized, timer_phase => undefined}}
-         }],
-    mock_set_target(#{}),
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_set_target(subscribe) ->
-    T = <<"when set target - subscribe">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => subscribe, id => 3,
                    user_agent => ?USER_AGENT, session_id => null,
                    host => ?HOST_VALID, port => ?PORT_VALID}},
           {send,
            #{type => rsp, method => configure, id => 3, reason => unknown_error},
-<<<<<<< HEAD
            #{phase => authorized, initial_share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
@@ -1070,29 +738,10 @@ when_set_target(conn_submit) ->
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_set_target(conn_not_req) ->
     T = <<"when set target - conn_not_req">>,
-=======
-           #{phase => authorized, timer_phase => undefined}}
-         }],
-    mock_set_target(#{}),
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_set_target(authorize) ->
-    T = <<"when set target - authorize">>,
-    L = [{{conn, #{type => req, method => authorize, id => 3,
-                   user => ?USER_IN_REGISTER, password => null}},
-          {send,
-           #{type => rsp, method => authorize, id => 3, reason => unknown_error},
-           #{phase => authorized, timer_phase => undefined}}
-         }],
-    mock_set_target(#{}),
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_set_target(not_req) ->
-    T = <<"when set target - not_req">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => rsp, method => configure, id => 3,
                    reason => parse_error, data => null}},
           {send,
            #{type => rsp, method => subscribe, id => 3, reason => unknown_error},
-<<<<<<< HEAD
            #{phase => authorized, initial_share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
@@ -1119,27 +768,10 @@ when_set_target(chain_recv_block, no_target_change) ->
                     block => #{block_hash => ?BLOCK_HASH1,
                                block_version => ?BLOCK_VERSION,
                                block_target => ?BLOCK_TARGET1}}},
-=======
-           #{phase => authorized, timer_phase => undefined}}
-         }],
-    mock_set_target(#{}),
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_set_target(jsonrpc_errors) ->
-    T = <<"when set target - jsonrpc_errors">>,
-    mock_set_target(#{}),
-    prep_set_target(T, #{}) ++ jsonrpc_errors(T, authorized, undefined).
-
-when_set_target(recv_block, no_target_change) ->
-    T = <<"when set target - recv_block, no_target_change">>,
-    L = [{{chain, {recv_block, #{block_hash => ?BLOCK_HASH1,
-                                 block_version => ?BLOCK_VERSION,
-                                 block_target => ?BLOCK_TARGET1}}},
->>>>>>> Rename aestratum_server_session to aestratum_session
           {send,
            #{type => ntf, method => notify, job_id => ?JOB_ID1,
              block_hash => ?BLOCK_HASH1, block_version => ?BLOCK_VERSION,
              empty_queue => true},
-<<<<<<< HEAD
            #{phase => authorized, accept_blocks => true,
              initial_share_target => ?SHARE_TARGET}}
          }],
@@ -1151,17 +783,6 @@ when_set_target(chain_recv_block, target_change) ->
                     block => #{block_hash => ?BLOCK_HASH1,
                                block_version => ?BLOCK_VERSION,
                                block_target => ?BLOCK_TARGET1}}},
-=======
-           #{phase => authorized, accept_blocks => true}}
-         }],
-    mock_recv_block(#{new_share_target => no_change}),
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_set_target(recv_block, target_change) ->
-    T = <<"when set target - recv_block, target_change">>,
-    L = [{{chain, {recv_block, #{block_hash => ?BLOCK_HASH1,
-                                 block_version => ?BLOCK_VERSION,
-                                 block_target => ?BLOCK_TARGET1}}},
->>>>>>> Rename aestratum_server_session to aestratum_session
           {send,
            %% NOTE: we don't test the target value here, there is a dedicated
            %% test module for that (or will be!).
@@ -1173,23 +794,16 @@ when_set_target(recv_block, target_change) ->
          %% That job caused set_target notification, so it's supposed to be
          %% first after set_target, other new blocks in between are just
          %% skipped.
-<<<<<<< HEAD
          {{chain, #{event => recv_block,
                     block => #{block_hash => ?BLOCK_HASH2,
                                block_version => ?BLOCK_VERSION,
                                block_target => ?BLOCK_TARGET2}}},
-=======
-         {{chain, {recv_block, #{block_hash => ?BLOCK_HASH2,
-                                 block_version => ?BLOCK_VERSION,
-                                 block_target => ?BLOCK_TARGET2}}},
->>>>>>> Rename aestratum_server_session to aestratum_session
           {no_send,
            #{phase => authorized, accept_blocks => false}}
          },
          %% The previuos new block was skipped, the notify event will cause
          %% sending of notify notification and will restore processing of
          %% new blocks.
-<<<<<<< HEAD
          {{chain, #{event => notify,
                     job_info => #{job_id => ?JOB_ID1, block_hash => ?BLOCK_HASH1,
                                   block_version => ?BLOCK_VERSION,
@@ -1197,14 +811,6 @@ when_set_target(recv_block, target_change) ->
                                   share_target => ?SHARE_TARGET,
                                   desired_solve_time => ?DESIRED_SOLVE_TIME,
                                   max_solve_time => ?MAX_SOLVE_TIME}}},
-=======
-         {{chain, {notify, #{job_id => ?JOB_ID1, block_hash => ?BLOCK_HASH1,
-                             block_version => ?BLOCK_VERSION,
-                             block_target => ?BLOCK_TARGET1,
-                             share_target => ?SHARE_TARGET,
-                             desired_solve_time => ?DESIRED_SOLVE_TIME,
-                             max_solve_time => ?MAX_SOLVE_TIME}}},
->>>>>>> Rename aestratum_server_session to aestratum_session
           #{type => ntf, method => notify, job_id => ?JOB_ID1,
             block_hash => ?BLOCK_HASH1, block_version => ?BLOCK_VERSION,
             empty_queue => true},
@@ -1212,7 +818,43 @@ when_set_target(recv_block, target_change) ->
          }],
     mock_recv_block(#{new_share_target => {increase, 10.0},
                       share_target_diff_threshold => 5.0}),
-<<<<<<< HEAD
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L].
+
+when_set_target(chain_recv_block, no_target_change, skip_1_block) ->
+    T = <<"when set target - chain_recv_block, no_target_change, skip_1_block">>,
+    L = [{{chain, #{event => recv_block,
+                    block => #{block_hash => ?BLOCK_HASH1,
+                               block_version => ?BLOCK_VERSION,
+                               block_target => ?BLOCK_TARGET1}}},
+          {send,
+           #{type => ntf, method => notify, job_id => ?JOB_ID1,
+             block_hash => ?BLOCK_HASH1, block_version => ?BLOCK_VERSION,
+             empty_queue => true},
+           #{phase => authorized, accept_blocks => true,
+             initial_share_target => ?SHARE_TARGET}}
+         },
+         %% The next received block is skipped (no notify is sent).
+         {{chain, #{event => recv_block,
+                    block => #{block_hash => ?BLOCK_HASH2,
+                               block_version => ?BLOCK_VERSION,
+                               block_target => ?BLOCK_TARGET2}}},
+          {no_send,
+           #{phase => authorized, accept_blocks => true,
+             initial_share_target => ?SHARE_TARGET}}
+         },
+         %% The next received block is not skipped.
+         {{chain, #{event => recv_block,
+                    block => #{block_hash => ?BLOCK_HASH2,
+                               block_version => ?BLOCK_VERSION,
+                               block_target => ?BLOCK_TARGET2}}},
+          {send,
+           #{type => ntf, method => notify, job_id => ?JOB_ID2,
+             block_hash => ?BLOCK_HASH2, block_version => ?BLOCK_VERSION,
+             empty_queue => true},
+           #{phase => authorized, accept_blocks => true,
+             initial_share_target => ?SHARE_TARGET}}
+          }],
+    mock_recv_block(#{new_share_target => no_change, skip_num_blocks => 1}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_recv_block(conn_submit, job_not_found) ->
@@ -1239,34 +881,6 @@ when_recv_block(conn_submit, user_not_found) ->
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, invalid_miner_nonce) ->
     T = <<"when recv block - conn_submit, invalid_miner_nonce">>,
-=======
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L].
-
-when_recv_block(submit, user_not_found) ->
-    T = <<"when set target - submit, user_not_found">>,
-    L = [{{conn, #{type => req, method => submit, id => 4,
-                   user => ?USER_NOT_IN_REGISTER, job_id => ?JOB_ID1,
-                   miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE), pow => ?POW}},
-          {send,
-           #{type => rsp, method => submit, id => 4, reason => unauthorized_worker},
-           #{phase => authorized}}
-         }],
-    mock_recv_block(#{new_share_target => no_change}),
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, job_not_found) ->
-    T = <<"when set target - submit, job_not_found">>,
-    L = [{{conn, #{type => req, method => submit, id => 4,
-                   user => ?USER_IN_REGISTER, job_id => ?JOB_ID_NOT_IN_QUEUE,
-                   miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE), pow => ?POW}},
-          {send,
-           #{type => rsp, method => submit, id => 4, reason => job_not_found},
-           #{phase => authorized}}
-         }],
-    mock_recv_block(#{new_share_target => no_change}),
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, invalid_miner_nonce) ->
-    T = <<"when set target - submit, invalid_miner_nonce">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?MINER_NONCE_BIN_INVALID, pow => ?POW}},
@@ -1276,15 +890,9 @@ when_recv_block(submit, invalid_miner_nonce) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-<<<<<<< HEAD
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, duplicate_share) ->
     T = <<"when recv block - conn_submit, duplicate_share">>,
-=======
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, duplicate_share) ->
-    T = <<"when set target - submit, duplicate_share">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE_DUPLICATE),
@@ -1294,15 +902,9 @@ when_recv_block(submit, duplicate_share) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-<<<<<<< HEAD
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, invalid_solution) ->
     T = <<"when recv block - conn_submit, invalid_solution">>,
-=======
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, invalid_solution) ->
-    T = <<"when set target - submit, invalid_solution">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
@@ -1313,15 +915,9 @@ when_recv_block(submit, invalid_solution) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-<<<<<<< HEAD
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, high_target_share) ->
     T = <<"when recv block - conn_submit, high_target_share">>,
-=======
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, high_target_share) ->
-    T = <<"when set target - submit, high_target_share">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
@@ -1331,7 +927,6 @@ when_recv_block(submit, high_target_share) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-<<<<<<< HEAD
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, max_solve_time_exceeded) ->
     T = <<"when recv block - conn_submit, max_solve_time_exceeded">>,
@@ -1347,11 +942,6 @@ when_recv_block(conn_submit, max_solve_time_exceeded) ->
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, valid_share) ->
     T = <<"when recv block - conn_submit, valid_share">>,
-=======
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, valid_share) ->
-    T = <<"when set target - submit, high_target_share">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
@@ -1361,15 +951,9 @@ when_recv_block(submit, valid_share) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-<<<<<<< HEAD
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, valid_block) ->
     T = <<"when recv block - conn_submit, valid_block">>,
-=======
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
-when_recv_block(submit, valid_block) ->
-    T = <<"when set target - submit, high_target_share">>,
->>>>>>> Rename aestratum_server_session to aestratum_session
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
@@ -1379,7 +963,6 @@ when_recv_block(submit, valid_block) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-<<<<<<< HEAD
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 mock_connect(_Opts) ->
@@ -1404,32 +987,14 @@ mock_subscribe(#{extra_nonce_bytes := ExtraNoncebytes} = Opts) ->
                 fun(N) when N =:= ?EXTRA_NONCE_BYTES_VALID ->
                         {ok, ?EXTRA_NONCE};
                    (N) when N =:= ?EXTRA_NONCE_BYTES_INVALID ->
-=======
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L].
-
-mock_subscribe(#{extra_nonce_nbytes := ExtraNonceNBytes} = Opts) ->
-    case maps:get(is_host_valid, Opts, true) of
-        true  -> application:set_env(aestratum, host, ?HOST_VALID);
-        false -> ok
-    end,
-    case maps:get(is_port_valid, Opts, true) of
-        true  -> application:set_env(aestratum, port, ?PORT_VALID);
-        false -> ok
-    end,
-    application:set_env(aestratum, extra_nonce_nbytes, ExtraNonceNBytes),
-    meck:expect(?EXTRA_NONCE_CACHE_MODULE, get,
-                fun(N) when N =:= ?EXTRA_NONCE_NBYTES_VALID ->
-                        {ok, ?EXTRA_NONCE};
-                   (N) when N =:= ?EXTRA_NONCE_NBYTES_INVALID ->
->>>>>>> Rename aestratum_server_session to aestratum_session
                         {error, extra_nonce_not_found}
                 end),
     meck:expect(?EXTRA_NONCE_CACHE_MODULE, free, fun(_) -> ok end),
     ok.
 
-mock_authorize(_Opts) ->
-<<<<<<< HEAD
+mock_authorize(Opts) ->
     mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
+    ?ENV_MODULE:set(#{skip_num_blocks => maps:get(skip_num_blocks, Opts, 0)}),
     meck:expect(?USER_REGISTER_MODULE, add, fun(_, _, _) -> ok end),
     meck:expect(?USER_REGISTER_MODULE, del, fun(_) -> ok end),
     meck:expect(?USER_REGISTER_MODULE, member,
@@ -1453,32 +1018,20 @@ mock_authorize(_Opts) ->
                         {error, worker_count_exhausted};
                    (A, _W) when A =:= ?ACCOUNT_NOT_IN_REGISTER ->
                         {error, account_not_found}
-=======
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    meck:expect(?USER_REGISTER_MODULE, add, fun(_, _) -> ok end),
-    meck:expect(?USER_REGISTER_MODULE, del, fun(_) -> ok end),
-    meck:expect(?USER_REGISTER_MODULE, member,
-                fun(U) when U =:= ?USER_IN_REGISTER     -> true;
-                   (U) when U =:= ?USER_NOT_IN_REGISTER -> false
->>>>>>> Rename aestratum_server_session to aestratum_session
                 end),
     ok.
 
-mock_set_target(_Opts) ->
-    mock_authorize(#{}),
-<<<<<<< HEAD
+mock_set_target(Opts) ->
+    mock_authorize(Opts),
     ?ENV_MODULE:set(#{initial_share_target => ?SHARE_TARGET,
-                        max_share_target => ?SHARE_TARGET,
-                        share_target_diff_threshold => 5.0,
-                        desired_solve_time => 30000,
-                        max_solve_time => 60000}),
+                      max_share_target => ?SHARE_TARGET,
+                      share_target_diff_threshold => 5.0,
+                      desired_solve_time => 30000,
+                      max_solve_time => 60000}),
     ok.
-=======
-    application:set_env(aestratum, initial_share_target, ?SHARE_TARGET).
->>>>>>> Rename aestratum_server_session to aestratum_session
 
 mock_recv_block(Opts) ->
-    mock_set_target(#{}),
+    mock_set_target(Opts),
     case maps:get(new_share_target, Opts, undefined) of
         NewShareTarget when NewShareTarget =/= undefined ->
             meck:expect(?TARGET_MODULE, diff, fun(_, _) -> NewShareTarget end);
@@ -1487,12 +1040,7 @@ mock_recv_block(Opts) ->
     end,
     case maps:get(share_target_diff_threshold, Opts, undefined) of
         ShareTargetDiffThreshold when ShareTargetDiffThreshold =/= undefined ->
-<<<<<<< HEAD
             ?ENV_MODULE:set(#{share_target_diff_threshold => ShareTargetDiffThreshold});
-=======
-            application:set_env(aestratum, share_target_diff_threshold,
-                                ShareTargetDiffThreshold);
->>>>>>> Rename aestratum_server_session to aestratum_session
         undefined ->
             ok
     end,
@@ -1533,17 +1081,10 @@ mock_recv_block(Opts) ->
                                 end
                         end
                 end),
-<<<<<<< HEAD
     meck:expect(?AESTRATUM_MODULE, submit_share, fun(_, _, _) -> ok end),
     meck:expect(?AESTRATUM_MODULE, submit_solution, fun(_, _, _) -> ok end),
-    case maps:get(max_solve_time, Opts, undefined) of
-        MaxSolveTime when MaxSolveTime =/= undefined ->
-            ?ENV_MODULE:set(#{max_solve_time => MaxSolveTime});
-        undefined ->
-            ?ENV_MODULE:set(#{max_solve_time => 30000})
-    end,
-=======
->>>>>>> Rename aestratum_server_session to aestratum_session
+    ?ENV_MODULE:set(#{max_solve_time => maps:get(max_solve_time, Opts, 30000)}),
+    ?ENV_MODULE:set(#{edge_bits => maps:get(edge_bits, Opts, 29)}),
     ok.
 
 prep_connected(T) ->
@@ -1555,7 +1096,6 @@ prep_configured(T) ->
          conn_configure(0)],
     [{T, no_test, E, R} || {E, R} <- L].
 
-<<<<<<< HEAD
 prep_subscribed(T) ->
     L = [conn_init(),
          conn_configure(0),
@@ -1584,36 +1124,6 @@ prep_recv_block(T) ->
          conn_authorize(2),
          chain_set_target(),
          chain_recv_block()],
-=======
-prep_subscribed(T, Opts) ->
-    L = [conn_init(),
-         conn_configure(0),
-         conn_subscribe(1, Opts)],
-    [{T, no_test, E, R} || {E, R} <- L].
-
-prep_authorized(T, Opts) ->
-    L = [conn_init(),
-         conn_configure(0),
-         conn_subscribe(1, Opts),
-         conn_authorize(2, Opts)],
-    [{T, no_test, E, R} || {E, R} <- L].
-
-prep_set_target(T, Opts) ->
-    L = [conn_init(),
-         conn_configure(0),
-         conn_subscribe(1, Opts),
-         conn_authorize(2, Opts),
-         chain_set_target(Opts)],
-    [{T, no_test, E, R} || {E, R} <- L].
-
-prep_recv_block(T, Opts) ->
-    L = [conn_init(),
-         conn_configure(0),
-         conn_subscribe(1, Opts),
-         conn_authorize(2, Opts),
-         chain_set_target(Opts),
-         chain_recv_block(Opts)],
->>>>>>> Rename aestratum_server_session to aestratum_session
     [{T, no_test, E, R} || {E, R} <- L].
 
 jsonrpc_errors(T, Phase, TimerPhase) ->
@@ -1627,11 +1137,7 @@ jsonrpc_errors(T, Phase, TimerPhase) ->
     [{T, test, E, R} || {E, R} <- L].
 
 conn_init() ->
-<<<<<<< HEAD
     {{conn, #{event => init}},
-=======
-    {{conn, init},
->>>>>>> Rename aestratum_server_session to aestratum_session
      {no_send, #{phase => connected, timer_phase => connected}}
     }.
 
@@ -1642,11 +1148,7 @@ conn_configure(Id) ->
       #{phase => configured, timer_phase => configured}}
     }.
 
-<<<<<<< HEAD
 conn_subscribe(Id) ->
-=======
-conn_subscribe(Id, _Opts) ->
->>>>>>> Rename aestratum_server_session to aestratum_session
     {{conn, #{type => req, method => subscribe, id => Id,
               user_agent => ?USER_AGENT, session_id => null,
               host => ?HOST_VALID, port => ?PORT_VALID}},
@@ -1657,11 +1159,7 @@ conn_subscribe(Id, _Opts) ->
         extra_nonce => ?EXTRA_NONCE}}
     }.
 
-<<<<<<< HEAD
 conn_authorize(Id) ->
-=======
-conn_authorize(Id, _Opts) ->
->>>>>>> Rename aestratum_server_session to aestratum_session
     {{conn, #{type => req, method => authorize, id => Id,
               user => ?USER_NOT_IN_REGISTER, password => null}},
      {send,
@@ -1669,31 +1167,19 @@ conn_authorize(Id, _Opts) ->
       #{phase => authorized, timer_phase => undefined}}
     }.
 
-<<<<<<< HEAD
 chain_set_target() ->
     {{chain, #{event => set_target}},
-=======
-chain_set_target(_Opts) ->
-    {{chain, set_target},
->>>>>>> Rename aestratum_server_session to aestratum_session
      {send,
       #{type => ntf, method => set_target,
         target => ?TARGET_MODULE:to_hex(?SHARE_TARGET)},
       #{phase => authorized, timer_phase => undefined}}
     }.
 
-<<<<<<< HEAD
 chain_recv_block() ->
     {{chain, #{event => recv_block,
                block => #{block_hash => ?BLOCK_HASH1,
                           block_version => ?BLOCK_VERSION,
                           block_target => ?BLOCK_TARGET1}}},
-=======
-chain_recv_block(_Opts) ->
-    {{chain, {recv_block, #{block_hash => ?BLOCK_HASH1,
-                            block_version => ?BLOCK_VERSION,
-                            block_target => ?BLOCK_TARGET1}}},
->>>>>>> Rename aestratum_server_session to aestratum_session
      {send,
       #{type => ntf, method => notify, job_id => ?JOB_ID1,
         block_hash => ?BLOCK_HASH1, block_version => ?BLOCK_VERSION,
@@ -1702,71 +1188,46 @@ chain_recv_block(_Opts) ->
     }.
 
 conn_make_parse_error(Phase, TimerPhase) ->
-<<<<<<< HEAD
     {{conn, #{event => recv_data, data => <<"some random binary">>}},
-=======
-    {{conn, <<"some random binary">>},
->>>>>>> Rename aestratum_server_session to aestratum_session
      {send,
       #{type => rsp, method => undefined, id => null, reason => parse_error},
       #{phase => Phase, timer_phase => TimerPhase}}
     }.
 
 conn_make_invalid_msg(no_id, Phase, TimerPhase) ->
-<<<<<<< HEAD
     {{conn, #{event => recv_data,
               data => <<"{\"jsonrpc\":\"2.0\",\"id\":\"none\"}">>}},
-=======
-    {{conn, <<"{\"jsonrpc\":\"2.0\",\"id\":\"none\"}">>},
->>>>>>> Rename aestratum_server_session to aestratum_session
      {send,
       #{type => rsp, method => undefined, id => null, reason => invalid_msg},
       #{phase => Phase, timer_phase => TimerPhase}}
     };
 conn_make_invalid_msg(id, Phase, TimerPhase) ->
-<<<<<<< HEAD
     {{conn, #{event => recv_data,
               data => <<"{\"jsonrpc\":\"2.0\",\"id\":100}">>}},
-=======
-    {{conn, <<"{\"jsonrpc\":\"2.0\",\"id\":100}">>},
->>>>>>> Rename aestratum_server_session to aestratum_session
      {send,
       #{type => rsp, method => undefined, id => 100, reason => invalid_msg},
       #{phase => Phase, timer_phase => TimerPhase}}
     }.
 
 conn_make_invalid_method(no_id, Phase, TimerPhase) ->
-<<<<<<< HEAD
     {{conn, #{event => recv_data,
               data => <<"{\"jsonrpc\":\"2.0\",\"id\":-10,\"method\":\"foo\",\"params\":[]}">>}},
-=======
-    {{conn, <<"{\"jsonrpc\":\"2.0\",\"id\":-10,\"method\":\"foo\",\"params\":[]}">>},
->>>>>>> Rename aestratum_server_session to aestratum_session
      {send,
       #{type => rsp, method => undefined, id => null, reason => invalid_method},
       #{phase => Phase, timer_phase => TimerPhase}}
     };
 conn_make_invalid_method(id, Phase, TimerPhase) ->
-<<<<<<< HEAD
     {{conn, #{event => recv_data,
               data => <<"{\"jsonrpc\":\"2.0\",\"id\":200,\"method\":\"foo\",\"params\":[]}">>}},
-=======
-    {{conn, <<"{\"jsonrpc\":\"2.0\",\"id\":200,\"method\":\"foo\",\"params\":[]}">>},
->>>>>>> Rename aestratum_server_session to aestratum_session
      {send,
       #{type => rsp, method => undefined, id => 200, reason => invalid_method},
       #{phase => Phase, timer_phase => TimerPhase}}
     }.
 
 conn_make_invalid_param(Phase, TimerPhase) ->
-<<<<<<< HEAD
     {{conn, #{event => recv_data,
               data => <<"{\"jsonrpc\":\"2.0\",\"id\":300,\"method\":\"mining.subscribe\","
                         "\"params\":[\"aeminer/1.0\",\"invalid session_id\",\"aepool.com\",9876]}">>}},
-=======
-    {{conn, <<"{\"jsonrpc\":\"2.0\",\"id\":300,\"method\":\"mining.subscribe\","
-              "\"params\":[\"aeminer/1.0\",\"invalid session_id\",\"aepool.com\",9876]}">>},
->>>>>>> Rename aestratum_server_session to aestratum_session
      {send,
       #{type => rsp, method => subscribe, id => 300, reason => invalid_param},
       #{phase => Phase, timer_phase => TimerPhase}}
@@ -1774,7 +1235,4 @@ conn_make_invalid_param(Phase, TimerPhase) ->
 
 %% TODO: howto create internal error?
 %%conn_make_internal_error()
-<<<<<<< HEAD
 
-=======
->>>>>>> Rename aestratum_server_session to aestratum_session
