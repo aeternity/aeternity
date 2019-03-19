@@ -459,7 +459,7 @@ check_host(#{host := Host}, _State) ->
 
 check_host1(Host, Host) ->
     continue;
-check_host1(Host, Host1) ->
+check_host1(_Host, _Host1) ->
     {done, {error, host_mismatch}}.
 
 check_port(#{port := Port}, _State) ->
@@ -467,7 +467,7 @@ check_port(#{port := Port}, _State) ->
 
 check_port1(Port, Port) ->
     continue;
-check_port1(Port, Port1) ->
+check_port1(_Port, _Port1) ->
     {done, {error, port_mismatch}}.
 
 check_user_and_password(#{user := User, password := null}, _State) ->
@@ -507,7 +507,7 @@ check_miner_nonce(_Req, #state{extra_nonce = ExtraNonce},
             {done, {error, Share1, Job}}
     end.
 
-check_duplicate_share(#{user := User, pow := Pow}, #state{extra_nonce = ExtraNonce},
+check_duplicate_share(#{pow := Pow}, _State,
                       #{miner_nonce := MinerNonce, share := Share, job := Job}) ->
     case aestratum_job:is_share_present(MinerNonce, Pow, Job) of
         false ->
@@ -520,7 +520,7 @@ check_duplicate_share(#{user := User, pow := Pow}, #state{extra_nonce = ExtraNon
 %% TODO: check_share_timestamp? If a share is submitted long after a job was
 %% created.
 
-check_solution(#{user := User, pow := Pow}, #state{extra_nonce = ExtraNonce},
+check_solution(#{pow := Pow}, #state{extra_nonce = ExtraNonce},
                #{miner_nonce := MinerNonce, share := Share, job := Job}) ->
     BlockHash = aestratum_job:block_hash(Job),
     BlockVersion = aestratum_job:block_version(Job),
@@ -534,8 +534,7 @@ check_solution(#{user := User, pow := Pow}, #state{extra_nonce = ExtraNonce},
             {done, {error, Share1, Job}}
     end.
 
-check_target(#{user := User, pow := Pow}, _State,
-             #{miner_nonce := MinerNonce, share := Share, job := Job}) ->
+check_target(#{pow := Pow}, _State, #{share := Share, job := Job}) ->
     BlockTarget = aestratum_job:block_target(Job),
     ShareTarget = aestratum_job:share_target(Job),
     case aestratum_miner:get_target(Pow, ?EDGE_BITS) of
