@@ -12,6 +12,7 @@ Regarding renaming, this release:
   * Example usage of the tool:
     * Using absolute path of database directory - `./bin/aeternity rename_db '/node/aeternity/node/my-old-db-path'`;
     * Using relative path of database directory (or when `chain` > `db_path` is not set in the config) - `./bin/aeternity rename_db data`;
+    * On Windows using absolute path of database directory - `.\usr\lib\aeternity\bin\aeternity.cmd rename_db C:\node\aeternity\node\my-old-db-path`;
     * If you are running a node using Docker (assuming you either don't have `db_path` set in your config, or it is set to `/home/aeternity/node/data`) - `docker run --entrypoint=/bin/bash -v ~/.aeternity/myaedb:/home/aeternity/node/data/mnesia -v ~/.aeternity/myaeternity.yaml:/home/aeternity/.aeternity/aeternity/aeternity.yaml aeternity/aeternity -c "/home/aeternity/node/bin/aeternity rename_db /home/aeternity/node/data"`
   * Please use `rename_db` tool when your node is **not running**.
   * Note that, for some environments (e.g. Docker), the node may not be able  to start for the first time after database renaming. If that is the case, please retry to start a node, and the node should manage to start at the second attempt.
