@@ -980,7 +980,7 @@ broken_decode_sophia_data(_Config) ->
     %% Field valid according to schema but invalid for handler.
     {ok, 400, #{<<"reason">> := <<"bad_type">>}} =
         get_contract_decode_data(#{'sophia-type' => <<"foo">>, data => D}),
-    {ok, 400, #{<<"reason">> := <<"Data must be hex encoded">>}} =
+    {ok, 400, #{<<"reason">> := <<"Data must be a contract bytearray (\"cb_...\")">>}} =
         get_contract_decode_data(#{'sophia-type' => T, data => <<"foo">>}),
     %% Field valid for both schema and handler, though data
     %% interpreted in a different way than the specified type spec.
