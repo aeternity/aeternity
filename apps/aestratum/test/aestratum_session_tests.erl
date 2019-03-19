@@ -379,7 +379,7 @@ when_subscribed(timeout) ->
              extra_nonce => undefined}}
          }],
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(configure) ->
     T = <<"when subscribed - configure">>,
     L = [{{conn, #{type => req, method => configure, id => 2, params => []}},
@@ -388,7 +388,7 @@ when_subscribed(configure) ->
            #{phase => subscribed, timer_phase => subscribed}}
          }],
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(subscribe) ->
     T = <<"when subscribed - subscribe">>,
     L = [{{conn, #{type => req, method => subscribe, id => 2,
@@ -400,7 +400,7 @@ when_subscribed(subscribe) ->
              extra_nonce => ?EXTRA_NONCE}}
          }],
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(submit) ->
     T = <<"when subscribed - submit">>,
     L = [{{conn, #{type => req, method => submit, id => 2,
@@ -412,7 +412,7 @@ when_subscribed(submit) ->
              extra_nonce => ?EXTRA_NONCE}}
          }],
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(not_req) ->
     T = <<"when subscribed - not_req">>,
     L = [{{conn, #{type => rsp, method => configure, id => 2, result => []}},
@@ -422,11 +422,11 @@ when_subscribed(not_req) ->
              extra_nonce => ?EXTRA_NONCE}}
          }],
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(jsonrpc_errors) ->
     T = <<"when subscribed - jsonrpc_errors">>,
     mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
-    prep_subscribed(T, #{}) ++ jsonrpc_errors(T, subscribed, subscribed);
+    prep_subscribed(T) ++ jsonrpc_errors(T, subscribed, subscribed);
 when_subscribed(authorize_failure) ->
     T = <<"when subscribed - authorize_failure">>,
     L = [{{conn, #{type => req, method => authorize, id => 2,
@@ -437,7 +437,7 @@ when_subscribed(authorize_failure) ->
               extra_nonce => ?EXTRA_NONCE}}
          }],
     mock_authorize(#{}),
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(authorize_success) ->
     T = <<"when subscribed - authorize_success">>,
     L = [{{conn, #{type => req, method => authorize, id => 2,
@@ -448,7 +448,7 @@ when_subscribed(authorize_success) ->
               extra_nonce => ?EXTRA_NONCE}}
          }],
     mock_authorize(#{}),
-    prep_subscribed(T, #{}) ++ [{T, test, E, R} || {E, R} <- L].
+    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_authorized(timeout) ->
     T = <<"when authorized - timeout">>,
@@ -457,7 +457,7 @@ when_authorized(timeout) ->
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(configure) ->
     T = <<"when authorized - configure">>,
     L = [{{conn, #{type => req, method => configure, id => 3, params => []}},
@@ -466,7 +466,7 @@ when_authorized(configure) ->
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(subscribe) ->
     T = <<"when authorized - subscribe">>,
     L = [{{conn, #{type => req, method => subscribe, id => 3,
@@ -477,7 +477,7 @@ when_authorized(subscribe) ->
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(authorize) ->
     T = <<"when authorized - authorize">>,
     L = [{{conn, #{type => req, method => authorize, id => 3,
@@ -487,7 +487,7 @@ when_authorized(authorize) ->
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(submit) ->
     T = <<"when authorized - submit">>,
     L = [{{conn, #{type => req, method => submit, id => 3,
@@ -498,7 +498,7 @@ when_authorized(submit) ->
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(not_req) ->
     T = <<"when authorized - not_req">>,
     L = [{{conn, #{type => rsp, method => subscribe, id => 3,
@@ -508,11 +508,11 @@ when_authorized(not_req) ->
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_authorized(jsonrpc_errors) ->
     T = <<"when authorized - jsonrpc_errors">>,
     mock_authorize(#{}),
-    prep_authorized(T, #{}) ++ jsonrpc_errors(T, authorized, undefined);
+    prep_authorized(T) ++ jsonrpc_errors(T, authorized, undefined);
 when_authorized(set_target) ->
     T = <<"when authorized - set_target">>,
     L = [{{chain, #{event => set_target}},
@@ -523,7 +523,7 @@ when_authorized(set_target) ->
              share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
-    prep_authorized(T, #{}) ++ [{T, test, E, R} || {E, R} <- L].
+    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_set_target(timeout) ->
     T = <<"when set target - timeout">>,
@@ -532,7 +532,7 @@ when_set_target(timeout) ->
            #{phase => authorized}}
          }],
     mock_set_target(#{}),
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_set_target(configure) ->
     T = <<"when set target - configure">>,
     L = [{{conn, #{type => req, method => configure, id => 3, params => []}},
@@ -541,7 +541,7 @@ when_set_target(configure) ->
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_set_target(#{}),
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_set_target(subscribe) ->
     T = <<"when set target - subscribe">>,
     L = [{{conn, #{type => req, method => subscribe, id => 3,
@@ -552,7 +552,7 @@ when_set_target(subscribe) ->
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_set_target(#{}),
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_set_target(authorize) ->
     T = <<"when set target - authorize">>,
     L = [{{conn, #{type => req, method => authorize, id => 3,
@@ -562,7 +562,7 @@ when_set_target(authorize) ->
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_set_target(#{}),
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_set_target(not_req) ->
     T = <<"when set target - not_req">>,
     L = [{{conn, #{type => rsp, method => configure, id => 3,
@@ -572,11 +572,11 @@ when_set_target(not_req) ->
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_set_target(#{}),
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_set_target(jsonrpc_errors) ->
     T = <<"when set target - jsonrpc_errors">>,
     mock_set_target(#{}),
-    prep_set_target(T, #{}) ++ jsonrpc_errors(T, authorized, undefined).
+    prep_set_target(T) ++ jsonrpc_errors(T, authorized, undefined).
 
 when_set_target(recv_block, no_target_change) ->
     T = <<"when set target - recv_block, no_target_change">>,
@@ -591,7 +591,7 @@ when_set_target(recv_block, no_target_change) ->
            #{phase => authorized, accept_blocks => true}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_set_target(recv_block, target_change) ->
     T = <<"when set target - recv_block, target_change">>,
     L = [{{chain, #{event => recv_block,
@@ -633,7 +633,7 @@ when_set_target(recv_block, target_change) ->
          }],
     mock_recv_block(#{new_share_target => {increase, 10.0},
                       share_target_diff_threshold => 5.0}),
-    prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L].
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_recv_block(submit, user_not_found) ->
     T = <<"when set target - submit, user_not_found">>,
@@ -645,7 +645,7 @@ when_recv_block(submit, user_not_found) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(submit, job_not_found) ->
     T = <<"when set target - submit, job_not_found">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
@@ -656,7 +656,7 @@ when_recv_block(submit, job_not_found) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(submit, invalid_miner_nonce) ->
     T = <<"when set target - submit, invalid_miner_nonce">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
@@ -668,7 +668,7 @@ when_recv_block(submit, invalid_miner_nonce) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(submit, duplicate_share) ->
     T = <<"when set target - submit, duplicate_share">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
@@ -680,7 +680,7 @@ when_recv_block(submit, duplicate_share) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(submit, invalid_solution) ->
     T = <<"when set target - submit, invalid_solution">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
@@ -693,7 +693,7 @@ when_recv_block(submit, invalid_solution) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(submit, high_target_share) ->
     T = <<"when set target - submit, high_target_share">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
@@ -705,7 +705,7 @@ when_recv_block(submit, high_target_share) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(submit, valid_share) ->
     T = <<"when set target - submit, high_target_share">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
@@ -717,7 +717,7 @@ when_recv_block(submit, valid_share) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
+    prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(submit, valid_block) ->
     T = <<"when set target - submit, high_target_share">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
@@ -729,7 +729,7 @@ when_recv_block(submit, valid_block) ->
            #{phase => authorized}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
-    prep_recv_block(T, #{}) ++ [{T, test, E, R} || {E, R} <- L].
+    prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 mock_subscribe(#{extra_nonce_nbytes := ExtraNonceNBytes} = Opts) ->
     case maps:get(is_host_valid, Opts, true) of
@@ -827,34 +827,34 @@ prep_configured(T) ->
          conn_configure(0)],
     [{T, no_test, E, R} || {E, R} <- L].
 
-prep_subscribed(T, Opts) ->
+prep_subscribed(T) ->
     L = [conn_init(),
          conn_configure(0),
-         conn_subscribe(1, Opts)],
+         conn_subscribe(1)],
     [{T, no_test, E, R} || {E, R} <- L].
 
-prep_authorized(T, Opts) ->
+prep_authorized(T) ->
     L = [conn_init(),
          conn_configure(0),
-         conn_subscribe(1, Opts),
-         conn_authorize(2, Opts)],
+         conn_subscribe(1),
+         conn_authorize(2)],
     [{T, no_test, E, R} || {E, R} <- L].
 
-prep_set_target(T, Opts) ->
+prep_set_target(T) ->
     L = [conn_init(),
          conn_configure(0),
-         conn_subscribe(1, Opts),
-         conn_authorize(2, Opts),
-         chain_set_target(Opts)],
+         conn_subscribe(1),
+         conn_authorize(2),
+         chain_set_target()],
     [{T, no_test, E, R} || {E, R} <- L].
 
-prep_recv_block(T, Opts) ->
+prep_recv_block(T) ->
     L = [conn_init(),
          conn_configure(0),
-         conn_subscribe(1, Opts),
-         conn_authorize(2, Opts),
-         chain_set_target(Opts),
-         chain_recv_block(Opts)],
+         conn_subscribe(1),
+         conn_authorize(2),
+         chain_set_target(),
+         chain_recv_block()],
     [{T, no_test, E, R} || {E, R} <- L].
 
 jsonrpc_errors(T, Phase, TimerPhase) ->
@@ -879,7 +879,7 @@ conn_configure(Id) ->
       #{phase => configured, timer_phase => configured}}
     }.
 
-conn_subscribe(Id, _Opts) ->
+conn_subscribe(Id) ->
     {{conn, #{type => req, method => subscribe, id => Id,
               user_agent => ?USER_AGENT, session_id => null,
               host => ?HOST_VALID, port => ?PORT_VALID}},
@@ -890,7 +890,7 @@ conn_subscribe(Id, _Opts) ->
         extra_nonce => ?EXTRA_NONCE}}
     }.
 
-conn_authorize(Id, _Opts) ->
+conn_authorize(Id) ->
     {{conn, #{type => req, method => authorize, id => Id,
               user => ?USER_NOT_IN_REGISTER, password => null}},
      {send,
@@ -898,7 +898,7 @@ conn_authorize(Id, _Opts) ->
       #{phase => authorized, timer_phase => undefined}}
     }.
 
-chain_set_target(_Opts) ->
+chain_set_target() ->
     {{chain, #{event => set_target}},
      {send,
       #{type => ntf, method => set_target,
@@ -906,7 +906,7 @@ chain_set_target(_Opts) ->
       #{phase => authorized, timer_phase => undefined}}
     }.
 
-chain_recv_block(_Opts) ->
+chain_recv_block() ->
     {{chain, #{event => recv_block,
                block => #{block_hash => ?BLOCK_HASH1,
                           block_version => ?BLOCK_VERSION,
