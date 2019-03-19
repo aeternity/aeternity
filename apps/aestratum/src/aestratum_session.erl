@@ -43,10 +43,10 @@
 new() ->
     #state{phase = connected}.
 
-handle_event({conn, What}, State) ->
-    handle_conn_event(What, State);
-handle_event({chain, What}, State) ->
-    handle_chain_event(What, State).
+handle_event({conn, Event}, State) ->
+    handle_conn_event(Event, State);
+handle_event({chain, Event}, State) ->
+    handle_chain_event(Event, State).
 
 close(#state{} = State) ->
     close_session(State),
@@ -54,25 +54,25 @@ close(#state{} = State) ->
 
 %% Internal functions.
 
-handle_conn_event(init, #state{phase = connected} = State) ->
+handle_conn_event(#{event := init}, #state{phase = connected} = State) ->
     {no_send, State#state{timer = set_timer(connected)}};
-handle_conn_event(RawMsg, State) when is_binary(RawMsg) ->
+handle_conn_event(#{event := recv_data, data := RawMsg}, State) ->
     case aestratum_jsonrpc:decode(RawMsg) of
         {ok, Msg}    -> recv_msg(Msg, State);
         {error, Rsn} -> recv_msg_error(Rsn, State)
     end;
 %% TODO: {reconnect, Host, Port, WaitTime},...
-handle_conn_event(timeout, State) ->
+handle_conn_event(#{event := timeout}, State) ->
     handle_conn_timeout(State);
-handle_conn_event(close, State) ->
-    {stop, close_session(State)}.
+handle_conn_event(#{event := close}, State) ->
+    handle_conn_close(State).
 
-handle_chain_event({recv_block, Block}, State) ->
+handle_chain_event(#{event := recv_block, block := Block}, State) ->
     handle_chain_recv_block(Block, State);
-handle_chain_event(set_target, State) ->
+handle_chain_event(#{event := set_target}, State) ->
     handle_chain_set_target(State);
-handle_chain_event({notify, Job}, State) ->
-    handle_chain_notify(Job, State).
+handle_chain_event(#{event := notify, job_info := JobInfo}, State) ->
+    handle_chain_notify(JobInfo, State).
 
 %% Handle received messages from client.
 
@@ -88,14 +88,15 @@ recv_msg(#{type := req, method := subscribe} = Req,
 recv_msg(#{type := req, method := authorize} = Req,
          #state{phase = subscribed} = State) ->
     send_authorize_rsp(Req, State);
+%% Submit request is accepted only when the connection is in authorized phase
+%% and the share target is set (set_target notification was sent to the client).
+recv_msg(#{type := req, method := submit} = Req,
+         #state{phase = authorized, share_target = ShareTarget} = State) when
+      ShareTarget =/= undefined ->
+    send_submit_rsp(Req, State);
 recv_msg(#{type := req, method := submit} = Req,
          #state{phase = authorized, share_target = undefined} = State) ->
-    %% The submit request is not accepted before the set_target notification
-    %% is sent.
     send_unknown_error_rsp(Req, target_not_set, State);
-recv_msg(#{type := req, method := submit} = Req,
-         #state{phase = authorized} = State) ->
-    send_submit_rsp(Req, State);
 recv_msg(#{type := req, method := submit} = Req,
          #state{phase = subscribed} = State) ->
     send_unauthorized_worker_rsp(Req, null, State);
@@ -144,6 +145,9 @@ handle_conn_timeout(#state{phase = Phase, timer = {_TRef, Phase}} = State) when
     {stop, close_session(State)};
 handle_conn_timeout(State) ->
     {no_send, State}.
+
+handle_conn_close(State) ->
+    {stop, close_session(State)}.
 
 %% Server to client responses.
 
@@ -194,7 +198,7 @@ send_authorize_rsp1(ok, #{id := Id, user := User},
     RspMap = #{type => rsp, method => authorize, id => Id, result => true},
     %% After the authorization, the server is supposed to send an initial
     %% target.
-    self() ! {chain, set_target},
+    self() ! {chain, #{event => set_target}},
     %% No need to set timer after authorization, there are no further expected
     %% requests within a time period. Submit requests do not require timeout.
     %% Job queue is initialized to make it ready to accept client sumbissions.
@@ -327,7 +331,7 @@ handle_chain_recv_block1(#{block_hash := BlockHash, block_version := BlockVersio
             NewJobInfo1 = NewJobInfo#{share_target => NewJobShareTarget,
                                       desired_solve_time => DesiredSolveTime,
                                       max_solve_time => MaxSolveTime},
-            self() ! {chain, {notify, NewJobInfo1}},
+            self() ! {chain, #{event => notify, job_info => NewJobInfo1}},
             State1 = State#state{accept_blocks = false},
             send_set_target_ntf(NewJobShareTarget, State1);
         _Other ->
@@ -393,7 +397,7 @@ maybe_free_extra_nonce(undefined) ->
     ok.
 
 set_timer(Phase) ->
-    TRef = erlang:send_after(?MSG_TIMEOUT, self(), timeout),
+    TRef = erlang:send_after(?MSG_TIMEOUT, self(), {conn, #{event => timeout}}),
     {TRef, Phase}.
 
 maybe_cancel_timer({_TRef, _Phase} = Timer) ->
@@ -484,6 +488,9 @@ check_duplicate_share(#{user := User, miner_nonce := MinerNonce, pow := Pow},
         true  -> {done, {error, duplicate_share}};
         false -> {add_extra, #{miner_nonce => MinerNonce1}}
     end.
+
+%% TODO: check_share_timestamp? If a share is submitted long after a job was
+%% created.
 
 check_solution(#{user := User, pow := Pow}, #state{extra_nonce = ExtraNonce},
                #{job := Job, miner_nonce := MinerNonce}) ->

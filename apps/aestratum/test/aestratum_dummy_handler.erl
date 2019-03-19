@@ -75,7 +75,7 @@ result({send, Data, Session} = Res, #state{module = Module} = State) ->
         ok ->
             Res;
         {error, _Rsn} ->
-            Res1 = Module:handle_event({conn, close}, Session),
+            Res1 = Module:handle_event({conn, #{event => close}}, Session),
             result(Res1, State)
     end;
 result({no_send, _Session} = Res, _State) ->

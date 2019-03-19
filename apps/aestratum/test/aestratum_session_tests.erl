@@ -181,11 +181,19 @@ t(Pid, Data) ->
     lists:filter(fun({_T, _Assert}) -> true;
                     (no_test) -> false end, Asserts).
 
-event({conn, D}) when is_map(D) ->
-    {ok, D1} = ?JSONRPC_MODULE:encode(D),
-    {conn, D1};
-event(Other) ->
-    Other.
+event({conn, D}) ->
+    case maps:get(event, D, undefined) of
+        E when E =/= undefined ->
+            %% Map has event key, so it's an event already.
+            {conn, D};
+        undefined ->
+            %% Map doesn't have event key, so it's a message that needs encoding.
+            {ok, D1} = ?JSONRPC_MODULE:encode(D),
+            {conn, #{event => recv_data, data => D1}}
+    end;
+event({chain, D}) ->
+    %% This is always an event.
+    {chain, D}.
 
 result(Pid, {_A, S}, {A1, S1}) ->
     Ks = maps:keys(S),
@@ -216,7 +224,7 @@ maybe_rsp_result(_D, D1M0) ->
 
 init() ->
     T = <<"init - server">>,
-    L = [{{conn, init},
+    L = [{{conn, #{event => init}},
           {no_send,
            #{phase => connected, timer_phase => connected}}
          }],
@@ -224,7 +232,7 @@ init() ->
 
 when_connected(timeout) ->
     T = <<"when connected - timeout">>,
-    L = [{{conn, timeout},
+    L = [{{conn, #{event => timeout}},
           {stop,
            #{phase => disconnected, timer_phase => undefined,
              extra_nonce => undefined}}
@@ -268,9 +276,10 @@ when_connected(jsonrpc_errors) ->
     prep_connected(T) ++ jsonrpc_errors(T, connected, connected);
 when_connected(chain_recv_block) ->
     T = <<"when connected - chain_recv_block">>,
-    L = [{{chain, {recv_block, #{block_hash => ?BLOCK_HASH1,
-                                 block_version => ?BLOCK_VERSION,
-                                 block_target => ?BLOCK_TARGET1}}},
+    L = [{{chain, #{event => recv_block,
+                    block => #{block_hash => ?BLOCK_HASH1,
+                               block_version => ?BLOCK_VERSION,
+                               block_target => ?BLOCK_TARGET1}}},
           {no_send,
            #{phase => connected, timer_phase => connected}}
          }],
@@ -300,7 +309,7 @@ when_connected(subscribe) ->
 
 when_configured(timeout) ->
     T = <<"when configured - timeout">>,
-    L = [{{conn, timeout},
+    L = [{{conn, #{event => timeout}},
           {stop,
            #{phase => disconnected, timer_phase => undefined,
             extra_nonce => undefined}}
@@ -364,7 +373,7 @@ when_configured(subscribe) ->
 
 when_subscribed(timeout) ->
     T = <<"when subscribed - timeout">>,
-    L = [{{conn, timeout},
+    L = [{{conn, #{event => timeout}},
           {stop,
            #{phase => disconnected, timer_phase => undefined,
              extra_nonce => undefined}}
@@ -443,7 +452,7 @@ when_subscribed(authorize_success) ->
 
 when_authorized(timeout) ->
     T = <<"when authorized - timeout">>,
-    L = [{{conn, timeout},
+    L = [{{conn, #{event => timeout}},
           {no_send,
            #{phase => authorized, timer_phase => undefined}}
          }],
@@ -506,7 +515,7 @@ when_authorized(jsonrpc_errors) ->
     prep_authorized(T, #{}) ++ jsonrpc_errors(T, authorized, undefined);
 when_authorized(set_target) ->
     T = <<"when authorized - set_target">>,
-    L = [{{chain, set_target},
+    L = [{{chain, #{event => set_target}},
           {send,
            #{type => ntf, method => set_target,
              target => ?TARGET_MODULE:to_hex(?SHARE_TARGET)},
@@ -518,7 +527,7 @@ when_authorized(set_target) ->
 
 when_set_target(timeout) ->
     T = <<"when set target - timeout">>,
-    L = [{{conn, timeout},
+    L = [{{conn, #{event => timeout}},
           {no_send,
            #{phase => authorized}}
          }],
@@ -571,9 +580,10 @@ when_set_target(jsonrpc_errors) ->
 
 when_set_target(recv_block, no_target_change) ->
     T = <<"when set target - recv_block, no_target_change">>,
-    L = [{{chain, {recv_block, #{block_hash => ?BLOCK_HASH1,
-                                 block_version => ?BLOCK_VERSION,
-                                 block_target => ?BLOCK_TARGET1}}},
+    L = [{{chain, #{event => recv_block,
+                    block => #{block_hash => ?BLOCK_HASH1,
+                               block_version => ?BLOCK_VERSION,
+                               block_target => ?BLOCK_TARGET1}}},
           {send,
            #{type => ntf, method => notify, job_id => ?JOB_ID1,
              block_hash => ?BLOCK_HASH1, block_version => ?BLOCK_VERSION,
@@ -584,9 +594,10 @@ when_set_target(recv_block, no_target_change) ->
     prep_set_target(T, #{}) ++ [{T, test, E, R} || {E, R} <- L];
 when_set_target(recv_block, target_change) ->
     T = <<"when set target - recv_block, target_change">>,
-    L = [{{chain, {recv_block, #{block_hash => ?BLOCK_HASH1,
-                                 block_version => ?BLOCK_VERSION,
-                                 block_target => ?BLOCK_TARGET1}}},
+    L = [{{chain, #{event => recv_block,
+                    block => #{block_hash => ?BLOCK_HASH1,
+                               block_version => ?BLOCK_VERSION,
+                               block_target => ?BLOCK_TARGET1}}},
           {send,
            %% NOTE: we don't test the target value here, there is a dedicated
            %% test module for that (or will be!).
@@ -598,21 +609,23 @@ when_set_target(recv_block, target_change) ->
          %% That job caused set_target notification, so it's supposed to be
          %% first after set_target, other new blocks in between are just
          %% skipped.
-         {{chain, {recv_block, #{block_hash => ?BLOCK_HASH2,
-                                 block_version => ?BLOCK_VERSION,
-                                 block_target => ?BLOCK_TARGET2}}},
+         {{chain, #{event => recv_block,
+                    block => #{block_hash => ?BLOCK_HASH2,
+                               block_version => ?BLOCK_VERSION,
+                               block_target => ?BLOCK_TARGET2}}},
           {no_send,
            #{phase => authorized, accept_blocks => false}}
          },
          %% The previuos new block was skipped, the notify event will cause
          %% sending of notify notification and will restore processing of
          %% new blocks.
-         {{chain, {notify, #{job_id => ?JOB_ID1, block_hash => ?BLOCK_HASH1,
-                             block_version => ?BLOCK_VERSION,
-                             block_target => ?BLOCK_TARGET1,
-                             share_target => ?SHARE_TARGET,
-                             desired_solve_time => ?DESIRED_SOLVE_TIME,
-                             max_solve_time => ?MAX_SOLVE_TIME}}},
+         {{chain, #{event => notify,
+                    job_info => #{job_id => ?JOB_ID1, block_hash => ?BLOCK_HASH1,
+                                  block_version => ?BLOCK_VERSION,
+                                  block_target => ?BLOCK_TARGET1,
+                                  share_target => ?SHARE_TARGET,
+                                  desired_solve_time => ?DESIRED_SOLVE_TIME,
+                                  max_solve_time => ?MAX_SOLVE_TIME}}},
           #{type => ntf, method => notify, job_id => ?JOB_ID1,
             block_hash => ?BLOCK_HASH1, block_version => ?BLOCK_VERSION,
             empty_queue => true},
@@ -855,7 +868,7 @@ jsonrpc_errors(T, Phase, TimerPhase) ->
     [{T, test, E, R} || {E, R} <- L].
 
 conn_init() ->
-    {{conn, init},
+    {{conn, #{event => init}},
      {no_send, #{phase => connected, timer_phase => connected}}
     }.
 
@@ -886,7 +899,7 @@ conn_authorize(Id, _Opts) ->
     }.
 
 chain_set_target(_Opts) ->
-    {{chain, set_target},
+    {{chain, #{event => set_target}},
      {send,
       #{type => ntf, method => set_target,
         target => ?TARGET_MODULE:to_hex(?SHARE_TARGET)},
@@ -894,9 +907,10 @@ chain_set_target(_Opts) ->
     }.
 
 chain_recv_block(_Opts) ->
-    {{chain, {recv_block, #{block_hash => ?BLOCK_HASH1,
-                            block_version => ?BLOCK_VERSION,
-                            block_target => ?BLOCK_TARGET1}}},
+    {{chain, #{event => recv_block,
+               block => #{block_hash => ?BLOCK_HASH1,
+                          block_version => ?BLOCK_VERSION,
+                          block_target => ?BLOCK_TARGET1}}},
      {send,
       #{type => ntf, method => notify, job_id => ?JOB_ID1,
         block_hash => ?BLOCK_HASH1, block_version => ?BLOCK_VERSION,
@@ -905,41 +919,46 @@ chain_recv_block(_Opts) ->
     }.
 
 conn_make_parse_error(Phase, TimerPhase) ->
-    {{conn, <<"some random binary">>},
+    {{conn, #{event => recv_data, data => <<"some random binary">>}},
      {send,
       #{type => rsp, method => undefined, id => null, reason => parse_error},
       #{phase => Phase, timer_phase => TimerPhase}}
     }.
 
 conn_make_invalid_msg(no_id, Phase, TimerPhase) ->
-    {{conn, <<"{\"jsonrpc\":\"2.0\",\"id\":\"none\"}">>},
+    {{conn, #{event => recv_data,
+              data => <<"{\"jsonrpc\":\"2.0\",\"id\":\"none\"}">>}},
      {send,
       #{type => rsp, method => undefined, id => null, reason => invalid_msg},
       #{phase => Phase, timer_phase => TimerPhase}}
     };
 conn_make_invalid_msg(id, Phase, TimerPhase) ->
-    {{conn, <<"{\"jsonrpc\":\"2.0\",\"id\":100}">>},
+    {{conn, #{event => recv_data,
+              data => <<"{\"jsonrpc\":\"2.0\",\"id\":100}">>}},
      {send,
       #{type => rsp, method => undefined, id => 100, reason => invalid_msg},
       #{phase => Phase, timer_phase => TimerPhase}}
     }.
 
 conn_make_invalid_method(no_id, Phase, TimerPhase) ->
-    {{conn, <<"{\"jsonrpc\":\"2.0\",\"id\":-10,\"method\":\"foo\",\"params\":[]}">>},
+    {{conn, #{event => recv_data,
+              data => <<"{\"jsonrpc\":\"2.0\",\"id\":-10,\"method\":\"foo\",\"params\":[]}">>}},
      {send,
       #{type => rsp, method => undefined, id => null, reason => invalid_method},
       #{phase => Phase, timer_phase => TimerPhase}}
     };
 conn_make_invalid_method(id, Phase, TimerPhase) ->
-    {{conn, <<"{\"jsonrpc\":\"2.0\",\"id\":200,\"method\":\"foo\",\"params\":[]}">>},
+    {{conn, #{event => recv_data,
+              data => <<"{\"jsonrpc\":\"2.0\",\"id\":200,\"method\":\"foo\",\"params\":[]}">>}},
      {send,
       #{type => rsp, method => undefined, id => 200, reason => invalid_method},
       #{phase => Phase, timer_phase => TimerPhase}}
     }.
 
 conn_make_invalid_param(Phase, TimerPhase) ->
-    {{conn, <<"{\"jsonrpc\":\"2.0\",\"id\":300,\"method\":\"mining.subscribe\","
-              "\"params\":[\"aeminer/1.0\",\"invalid session_id\",\"aepool.com\",9876]}">>},
+    {{conn, #{event => recv_data,
+              data => <<"{\"jsonrpc\":\"2.0\",\"id\":300,\"method\":\"mining.subscribe\","
+                        "\"params\":[\"aeminer/1.0\",\"invalid session_id\",\"aepool.com\",9876]}">>}},
      {send,
       #{type => rsp, method => subscribe, id => 300, reason => invalid_param},
       #{phase => Phase, timer_phase => TimerPhase}}
@@ -947,3 +966,4 @@ conn_make_invalid_param(Phase, TimerPhase) ->
 
 %% TODO: howto create internal error?
 %%conn_make_internal_error()
+
