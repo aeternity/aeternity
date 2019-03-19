@@ -126,6 +126,7 @@ change_latest_log(DbDir, FromNode, ToNode) ->
             ok = disk_log_open_file(LatestLogNewFile, ?LATEST_LOG_NEW),
             ok = write_changed_log_file(?LATEST_LOG, ?LATEST_LOG_NEW, FromNode, ToNode),
             ok = disk_log_sync(?LATEST_LOG_NEW),
+            ok = disk_log_close(?LATEST_LOG),
             ok = disk_log_close(?LATEST_LOG_NEW),
             ok = replace_file(LatestLogFile, LatestLogNewFile),
             ok;
