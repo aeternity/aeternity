@@ -155,12 +155,13 @@ server_session() ->
       fun(Pid) -> t(Pid, when_set_target(chain_recv_block, target_change)) end,
 
       %% recv_block - conn_submit error
-      fun(Pid) -> t(Pid, when_recv_block(conn_submit, user_not_found)) end,
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, job_not_found)) end,
+      fun(Pid) -> t(Pid, when_recv_block(conn_submit, user_not_found)) end,
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, invalid_miner_nonce)) end,
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, duplicate_share)) end,
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, invalid_solution)) end,
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, high_target_share)) end,
+      fun(Pid) -> t(Pid, when_recv_block(conn_submit, max_solve_time_exceeded)) end,
       %% recv_block - conn_submit success
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, valid_share)) end,
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, valid_block)) end
@@ -686,19 +687,8 @@ when_set_target(chain_recv_block, target_change) ->
                       share_target_diff_threshold => 5.0}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L].
 
-when_recv_block(conn_submit, user_not_found) ->
-    T = <<"when set target - conn_submit, user_not_found">>,
-    L = [{{conn, #{type => req, method => submit, id => 4,
-                   user => ?USER_NOT_IN_REGISTER, job_id => ?JOB_ID1,
-                   miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE), pow => ?POW}},
-          {send,
-           #{type => rsp, method => submit, id => 4, reason => unauthorized_worker},
-           #{phase => authorized}}
-         }],
-    mock_recv_block(#{new_share_target => no_change}),
-    prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, job_not_found) ->
-    T = <<"when set target - conn_submit, job_not_found">>,
+    T = <<"when recv block - conn_submit, job_not_found">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_NOT_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE), pow => ?POW}},
@@ -708,8 +698,19 @@ when_recv_block(conn_submit, job_not_found) ->
          }],
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
+when_recv_block(conn_submit, user_not_found) ->
+    T = <<"when recv block - conn_submit, user_not_found">>,
+    L = [{{conn, #{type => req, method => submit, id => 4,
+                   user => ?USER_NOT_IN_REGISTER, job_id => ?JOB_ID1,
+                   miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE), pow => ?POW}},
+          {send,
+           #{type => rsp, method => submit, id => 4, reason => unauthorized_worker},
+           #{phase => authorized}}
+         }],
+    mock_recv_block(#{new_share_target => no_change}),
+    prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, invalid_miner_nonce) ->
-    T = <<"when set target - conn_submit, invalid_miner_nonce">>,
+    T = <<"when recv block - conn_submit, invalid_miner_nonce">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?MINER_NONCE_BIN_INVALID, pow => ?POW}},
@@ -721,7 +722,7 @@ when_recv_block(conn_submit, invalid_miner_nonce) ->
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, duplicate_share) ->
-    T = <<"when set target - conn_submit, duplicate_share">>,
+    T = <<"when recv block - conn_submit, duplicate_share">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE_DUPLICATE),
@@ -733,7 +734,7 @@ when_recv_block(conn_submit, duplicate_share) ->
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, invalid_solution) ->
-    T = <<"when set target - conn_submit, invalid_solution">>,
+    T = <<"when recv block - conn_submit, invalid_solution">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
@@ -746,7 +747,7 @@ when_recv_block(conn_submit, invalid_solution) ->
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, high_target_share) ->
-    T = <<"when set target - conn_submit, high_target_share">>,
+    T = <<"when recv block - conn_submit, high_target_share">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
@@ -757,8 +758,20 @@ when_recv_block(conn_submit, high_target_share) ->
          }],
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
+when_recv_block(conn_submit, max_solve_time_exceeded) ->
+    T = <<"when recv block - conn_submit, max_solve_time_exceeded">>,
+    L = [{{conn, #{type => req, method => submit, id => 4,
+                   user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
+                   miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
+                   pow => ?POW_BLOCK_TARGET}},
+          {send,
+           #{type => rsp, method => submit, id => 4, result => false},
+           #{phase => authorized, max_solve_time => -100}}
+         }],
+    mock_recv_block(#{new_share_target => no_change, max_solve_time => -100}),
+    prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, valid_share) ->
-    T = <<"when set target - conn_submit, high_target_share">>,
+    T = <<"when recv block - conn_submit, valid_share">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
@@ -770,7 +783,7 @@ when_recv_block(conn_submit, valid_share) ->
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_recv_block(conn_submit, valid_block) ->
-    T = <<"when set target - conn_submit, high_target_share">>,
+    T = <<"when recv block - conn_submit, valid_block">>,
     L = [{{conn, #{type => req, method => submit, id => 4,
                    user => ?USER_IN_REGISTER, job_id => ?JOB_ID_IN_QUEUE,
                    miner_nonce => ?NONCE_MODULE:to_hex(?MINER_NONCE),
@@ -867,6 +880,12 @@ mock_recv_block(Opts) ->
                                 end
                         end
                 end),
+    case maps:get(max_solve_time, Opts, undefined) of
+        MaxSolveTime when MaxSolveTime =/= undefined ->
+            application:set_env(aestratum, max_solve_time, MaxSolveTime);
+        undefined ->
+            application:set_env(aestratum, max_solve_time, 30000)
+    end,
     ok.
 
 prep_connected(T) ->

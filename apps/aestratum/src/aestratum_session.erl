@@ -35,7 +35,7 @@
 -define(INITIAL_SHARE_TARGET, application:get_env(aestratum, initial_share_target, 1)).
 -define(SHARE_TARGET_DIFF_THRESHOLD, application:get_env(aestratum, share_target_diff_threshold, 5.0)).
 -define(DESIRED_SOLVE_TIME, application:get_env(aestratum, desired_solve_time, 30000)).
--define(MAX_SOLVE_TIME, ?DESIRED_SOLVE_TIME * 2).
+-define(MAX_SOLVE_TIME, application:get_env(aestratum, max_solve_time, 40000)).
 -define(EDGE_BITS, 29).
 
 %% API.
@@ -160,8 +160,17 @@ send_subscribe_rsp(Req, State) ->
 send_authorize_rsp(Req, State) ->
     send_authorize_rsp1(validate_authorize_req(Req, State), Req, State).
 
-send_submit_rsp(Req, State) ->
-    send_submit_rsp1(validate_submit_req(Req, State), Req, State).
+send_submit_rsp(#{user := User, miner_nonce := MinerNonce, pow := Pow} = Req, State) ->
+    %% MinerNonce is guaranteed (by decoder) to be of valid size and hex
+    %% encoded. What is not guaranteed here is that the miner nonce bytes +
+    %% extra nonce bytes are not 8 together.
+    %% TODO: move below to aestratum_nonce module
+    MinerNonceNBytes = byte_size(MinerNonce) div 2,
+    MinerNonceVal = aestratum_nonce:to_int(miner, MinerNonce, MinerNonceNBytes),
+    MinerNonce1 = aestratum_nonce:new(miner, MinerNonceVal, MinerNonceNBytes),
+    Share = aestratum_share:new(User, MinerNonce1, Pow),
+    Extra = #{miner_nonce => MinerNonce1, share => Share},
+    send_submit_rsp1(validate_submit_req(Req, State, Extra), Req, State).
 
 send_configure_rsp1(ok, #{id := Id}, #state{timer = Timer} = State) ->
     %% TODO: there are no configure params currently
@@ -212,36 +221,43 @@ send_authorize_rsp1({error, user_and_password}, #{id := Id}, State) ->
     %% authorize request.
     {send, encode(RspMap), State}.
 
-send_submit_rsp1({ok, Share, Job}, #{id := Id} = Req,
-                 #state{jobs = Jobs} = State) ->
+send_submit_rsp1({ok, Share, Job}, #{id := Id}, #state{jobs = Jobs} = State) ->
     JobId = aestratum_job:id(Job),
     Job1 = aestratum_job:add_share(Share, Job),
     Jobs1 = aestratum_job_queue:replace(JobId, Job1, Jobs),
     %% TODO: save with aestratum_reward
     case aestratum_share:validity(Share) of
-        valid_block ->
-            %% TODO: submit to the chain
-            ok;
-        valid_share ->
-            ok
+        valid_block -> ok; %% TODO: submit to the chain
+        valid_share -> ok
     end,
     RspMap = #{type => rsp, method => submit, id => Id, result => true},
     {send, encode(RspMap), State#state{jobs = Jobs1}};
-send_submit_rsp1({error, user_not_found}, Req, State) ->
-    %% TODO: there is going to be support for multiple workers/connection
-    %% so this may happen when the request comes from an unknow worker.
-    %% The format of a user will be "public_key.worker"
-    send_unauthorized_worker_rsp(Req, null, State);
-send_submit_rsp1({error, job_not_found}, Req, State) ->
-    send_job_not_found_rsp(Req, null, State);
-send_submit_rsp1({error, invalid_miner_nonce = Rsn}, Req, State) ->
-    send_unknown_error_rsp(Req, Rsn, State);
-send_submit_rsp1({error, duplicate_share}, Req, State) ->
-    send_duplicate_share_rsp(Req, null, State);
-send_submit_rsp1({error, invalid_solution = Rsn}, Req, State) ->
-    send_unknown_error_rsp(Req, Rsn, State);
-send_submit_rsp1({error, high_target_share}, Req, State) ->
-    send_low_difficulty_share_rsp(Req, null, State).
+send_submit_rsp1({error, Share, Job}, #{id := Id} = Req,
+                 #state{jobs = Jobs} = State) when Job =/= undefined ->
+    JobId = aestratum_job:id(Job),
+    Job1 = aestratum_job:add_share(Share, Job),
+    Jobs1 = aestratum_job_queue:replace(JobId, Job1, Jobs),
+    State1 = State#state{jobs = Jobs1},
+    case aestratum_share:validity(Share) of
+        user_not_found ->
+            send_unauthorized_worker_rsp(Req, null, State1);
+        invalid_miner_nonce = Rsn ->
+            send_unknown_error_rsp(Req, Rsn, State1);
+        duplicate_share ->
+            send_duplicate_share_rsp(Req, null, State1);
+        invalid_solution = Rsn ->
+            send_unknown_error_rsp(Req, Rsn, State1);
+        high_target_share ->
+            send_low_difficulty_share_rsp(Req, null, State1);
+        max_solve_time_exceeded ->
+            %% TODO: send unknow_error with data set instead?
+            RspMap = #{type => rsp, method => submit, id => Id, result => false},
+            {send, encode(RspMap), State1}
+    end;
+send_submit_rsp1({error, Share, undefined}, Req, State) ->
+    %% The share is not saved here as there is no job associated with it.
+    job_not_found = aestratum_share:validity(Share),
+    send_job_not_found_rsp(Req, null, State).
 
 %% Stratum error responses.
 
@@ -420,13 +436,14 @@ validate_subscribe_req(Req, State) ->
 validate_authorize_req(Req, State) ->
     run([fun check_user_and_password/2], Req, State).
 
-validate_submit_req(Req, State) ->
-    run([fun check_user/3,
-         fun check_job_id/3,
+validate_submit_req(Req, State, Extra) ->
+    run([fun check_job_id/3,
+         fun check_user/3,
          fun check_miner_nonce/3,
          fun check_duplicate_share/3,
          fun check_solution/3,
-         fun check_target/3], Req, State, #{}).
+         fun check_target/3,
+         fun check_timestamp/3], Req, State, Extra).
 
 check_user_agent(#{user_agent := _UserAgent}, _State) ->
     %% Some user agents may not by supported by the server
@@ -459,63 +476,88 @@ check_user_and_password(#{user := User, password := null}, _State) ->
         true  -> {done, {error, user_and_password}}
     end.
 
-check_user(#{user := User}, _State, _Extra) ->
-    case aestratum_user_register:member(User) of
-        true  -> continue;
-        false -> {done, {error, user_not_found}}
-    end.
-
-check_job_id(#{job_id := JobId}, #state{jobs = Jobs}, _Extra) ->
+check_job_id(#{job_id := JobId}, #state{jobs = Jobs}, #{share := Share}) ->
     case aestratum_job_queue:find(JobId, Jobs) of
-         {ok, Job}          -> {add_extra, #{job => Job}};
-         {error, not_found} -> {done, {error, job_not_found}}
+         {ok, Job} ->
+            {add_extra, #{job => Job}};
+         {error, not_found} ->
+            Share1 = aestratum_share:set_validity(job_not_found, Share),
+            {done, {error, Share1, undefined}}
     end.
 
-check_miner_nonce(#{miner_nonce := MinerNonce},
-                  #state{extra_nonce = ExtraNonce}, _Extra) ->
-    MinerNonceNBytes = aestratum_nonce:complement_nbytes(ExtraNonce),
-    case aestratum_nonce:is_valid_bin(miner, MinerNonce, MinerNonceNBytes) of
-        true  -> continue;
-        false -> {done, {error, invalid_miner_nonce}}
+check_user(#{user := User}, _State, #{share := Share, job := Job}) ->
+    case aestratum_user_register:member(User) of
+        true ->
+            continue;
+        false ->
+            Share1 = aestratum_share:set_validity(user_not_found, Share),
+            {done, {error, Share1, Job}}
     end.
 
-check_duplicate_share(#{user := User, miner_nonce := MinerNonce, pow := Pow},
-                      #state{extra_nonce = ExtraNonce}, #{job := Job}) ->
-    MinerNonceNBytes = aestratum_nonce:complement_nbytes(ExtraNonce),
-    MinerNonceVal = aestratum_nonce:to_int(miner, MinerNonce, MinerNonceNBytes),
-    MinerNonce1 = aestratum_nonce:new(miner, MinerNonceVal, MinerNonceNBytes),
-    case aestratum_job:is_share_present(MinerNonce1, Pow, Job) of
-        true  -> {done, {error, duplicate_share}};
-        false -> {add_extra, #{miner_nonce => MinerNonce1}}
+check_miner_nonce(_Req, #state{extra_nonce = ExtraNonce},
+                  #{miner_nonce := MinerNonce, share := Share, job := Job}) ->
+    ComplementNBytes = aestratum_nonce:complement_nbytes(ExtraNonce),
+    case aestratum_nonce:nbytes(MinerNonce) =:= ComplementNBytes of
+        true ->
+            continue;
+        false ->
+            Share1 = aestratum_share:set_validity(invalid_miner_nonce, Share),
+            {done, {error, Share1, Job}}
+    end.
+
+check_duplicate_share(#{user := User, pow := Pow}, #state{extra_nonce = ExtraNonce},
+                      #{miner_nonce := MinerNonce, share := Share, job := Job}) ->
+    case aestratum_job:is_share_present(MinerNonce, Pow, Job) of
+        false ->
+            continue;
+        true ->
+            Share1 = aestratum_share:set_validity(duplicate_share, Share),
+            {done, {error, Share1, Job}}
     end.
 
 %% TODO: check_share_timestamp? If a share is submitted long after a job was
 %% created.
 
 check_solution(#{user := User, pow := Pow}, #state{extra_nonce = ExtraNonce},
-               #{job := Job, miner_nonce := MinerNonce}) ->
+               #{miner_nonce := MinerNonce, share := Share, job := Job}) ->
     BlockHash = aestratum_job:block_hash(Job),
     BlockVersion = aestratum_job:block_version(Job),
     Nonce = aestratum_nonce:merge(ExtraNonce, MinerNonce),
     case aestratum_miner:verify_proof(BlockHash, BlockVersion, Nonce,
                                       Pow, ?EDGE_BITS) of
-        true  -> continue;
-        false -> {done, {error, invalid_solution}}
+        true ->
+            continue;
+        false ->
+            Share1 = aestratum_share:set_validity(invalid_solution, Share),
+            {done, {error, Share1, Job}}
     end.
 
 check_target(#{user := User, pow := Pow}, _State,
-             #{job := Job, miner_nonce := MinerNonce}) ->
+             #{miner_nonce := MinerNonce, share := Share, job := Job}) ->
     BlockTarget = aestratum_job:block_target(Job),
     ShareTarget = aestratum_job:share_target(Job),
     case aestratum_miner:get_target(Pow, ?EDGE_BITS) of
         Target when Target =< BlockTarget ->  %% TODO =< or just < ?
-            Share = aestratum_share:new(User, MinerNonce, Pow, valid_block),
-            {done, {ok, Share, Job}};
+            Share1 = aestratum_share:set_validity(valid_block, Share),
+            {add_extra, #{share => Share1}};
         Target when Target =< ShareTarget ->  %% TODO: =< or just < ?
-            Share = aestratum_share:new(User, MinerNonce, Pow, valid_share),
+            Share1 = aestratum_share:set_validity(valid_share, Share),
+            {add_extra, #{share => Share1}};
+        _Other ->
+            Share1 = aestratum_share:set_validity(high_target_share, Share),
+            {done, {error, Share1, Job}}
+    end.
+
+check_timestamp(_Req, #state{max_solve_time = MaxSolveTime},
+                #{share := Share, job := Job}) ->
+    case aestratum_share:created(Share) - aestratum_job:created(Job) of
+        SolveTime when SolveTime =< MaxSolveTime ->
+            %% Validity already set in the check_target/3 check.
             {done, {ok, Share, Job}};
         _Other ->
-            {done, {error, high_target_share}}
+            %% Solve time is greater than the max solve time.
+            Share1 = aestratum_share:set_validity(max_solve_time_exceeded, Share),
+            {done, {error, Share1, Job}}
     end.
 
 run([Fun | Funs], Req, State) ->
@@ -546,7 +588,8 @@ encode(Map) ->
 
 -ifdef(TEST).
 state(#state{phase = Phase, timer = Timer, extra_nonce = ExtraNonce,
-             accept_blocks = AcceptBlocks, share_target = ShareTarget}) ->
+             accept_blocks = AcceptBlocks, share_target = ShareTarget,
+             max_solve_time = MaxSolveTime}) ->
     #{phase => Phase,
       timer_phase => case Timer of
                          {_, TPhase} -> TPhase;
@@ -554,7 +597,8 @@ state(#state{phase = Phase, timer = Timer, extra_nonce = ExtraNonce,
                      end,
       extra_nonce => ExtraNonce,
       accept_blocks => AcceptBlocks,
-      share_target => ShareTarget
+      share_target => ShareTarget,
+      max_solve_time => MaxSolveTime
      }.
 -endif.
 

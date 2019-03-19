@@ -3,7 +3,7 @@
 %% TODO: type spec
 %% TODO: eunit
 
--export([new/4,
+-export([new/3,
          user/1,
          miner_nonce/1,
          pow/1,
@@ -11,7 +11,9 @@
          created/1
         ]).
 
--export([is_duplicate/3]).
+-export([set_validity/2,
+         is_duplicate/3
+        ]).
 
 -record(share, {
           user,
@@ -21,9 +23,11 @@
           created
          }).
 
-new(User, MinerNonce, Pow, Validity) ->
-    #share{user = User, miner_nonce = MinerNonce, pow = Pow,
-           validity = Validity, created = aestratum_utils:timestamp()}.
+new(User, MinerNonce, Pow) ->
+    #share{user = User,
+           miner_nonce = MinerNonce,
+           pow = Pow,
+           created = aestratum_utils:timestamp()}.
 
 user(#share{user = User}) ->
     User.
@@ -39,6 +43,9 @@ validity(#share{validity = Validity}) ->
 
 created(#share{created = Created}) ->
     Created.
+
+set_validity(Validity, #share{} = Share) ->
+    Share#share{validity = Validity}.
 
 is_duplicate(MinerNonce, Pow, #share{miner_nonce = MinerNonce, pow = Pow}) ->
     true;
