@@ -20,7 +20,7 @@ SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
 
 PACKAGE_SPEC_WIN32 ?= ../ci/appveyor/package.cfg
 
-AE_DEB_VERSION=`cat VERSION`
+AE_DEB_PKG_VERSION=`cat VERSION`
 AE_DEB_DCH_REL_NOTE= \
 "Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-`cat VERSION`.md"
 
@@ -53,7 +53,7 @@ else
 endif
 
 ifeq ($(AE_DEB_GIT_MASTER), true)
-        AE_DEB_VERSION=`cat VERSION`"-1-git-master~"`date +%Y%m%d%H%M%S`
+        AE_DEB_PKG_VERSION=`cat VERSION`"-1-git-master~"`date +%Y%m%d%H%M%S`
 endif
 
 all:	local-build
@@ -434,7 +434,7 @@ internal-ct: internal-build
 prod-deb-package:
 	@export DEBEMAIL=$(AE_DEB_EMAIL); \
 	export DEBFULLNAME=$(AE_DEB_NAME) ;\
-	dch -v $(AE_DEB_VERSION) $(AE_DEB_DCH_REL_NOTE); \
+	dch -v $(AE_DEB_PKG_VERSION) $(AE_DEB_DCH_REL_NOTE); \
 	dch -r $(AE_DEB_DCH_REL_NOTE);
 	debuild -uc -us
 
