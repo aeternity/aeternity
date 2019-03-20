@@ -20,8 +20,8 @@ Regarding renaming, this release:
   * In case your database gets badly corrupted during the process (this should not happen though), please remove all the files from your database directory, and sync again.
 
 For the rest, this release:
-* Adds `channels.get.offchain_state` method to channel websocket API
-* Adds a `channels.get.contract` method to channel WebSocket API
+* Adds `channels.get.offchain_state` method to channel websocket API.
+* Adds a `channels.get.contract` method to channel WebSocket API.
 * Refines the error message returned by the user API `/debug/contracts/code/decode-data` when decoding Sophia data.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.2.0
