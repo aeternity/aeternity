@@ -23,7 +23,8 @@
           put_map/2,
           remove/2,
           subtree/2,
-          write_cache/1 ]).
+          write_cache/1,
+          serialize_for_client/1 ]).
 
 -export_type([store/0, key/0, val/0]).
 
@@ -85,4 +86,11 @@ find_keys({<<>>, _Val, Iter}, Map) ->
     find_keys(aeu_mtrees:iterator_next(Iter), Map);
 find_keys({Key, Val, Iter}, Map) ->
     find_keys(aeu_mtrees:iterator_next(Iter), Map#{ Key => Val }).
+
+-spec serialize_for_client(store()) -> #{binary() := binary()}.
+serialize_for_client(Store) ->
+    maps:from_list(
+        [ {aeser_api_encoder:encode(contract_store_key, Key),
+           aeser_api_encoder:encode(contract_store_value, Val)} || {Key, Val} <- maps:to_list(contents(Store)) ]
+    ).
 

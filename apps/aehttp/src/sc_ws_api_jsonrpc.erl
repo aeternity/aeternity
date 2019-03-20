@@ -349,6 +349,26 @@ process_request(#{<<"method">> := <<"channels.get.offchain_state">>,
                     , {int, type} => reply
                     , payload => aesc_offchain_state:serialize_for_client(State) }}
     end;
+process_request(#{<<"method">> := <<"channels.get.contract">>,
+                  <<"params">> := #{<<"pubkey">> := PubkeyE}}, FsmPid) ->
+    case aeser_api_encoder:safe_decode(contract_pubkey, PubkeyE) of
+        {ok, Pubkey} ->
+            case aesc_fsm:get_contract(FsmPid, Pubkey) of
+                {ok, Contract} ->
+                    ContractState = aect_contracts:state(Contract),
+                    %% maps:remove should be removed with PT-164539296
+                    SerializedContract = maps:remove(<<"log">>, aect_contracts:serialize_for_client(Contract)),
+                    Resp = #{<<"contract">> => SerializedContract,
+                             <<"contract_state">> => aect_contracts_store:serialize_for_client(ContractState)},
+                    {reply, #{action => <<"get">>
+                            , tag    => <<"contract">>
+                            , {int, type} => reply
+                            , payload => Resp }};
+                {error, _Reason} = Err -> Err
+            end;
+        {error, _Reason} ->
+            {error, broken_encoding}
+    end;
 process_request(#{<<"method">> := <<"channels.get.poi">>,
                   <<"params">> := Filter}, FsmPid) ->
     AccountsE   = maps:get(<<"accounts">>, Filter, []),
