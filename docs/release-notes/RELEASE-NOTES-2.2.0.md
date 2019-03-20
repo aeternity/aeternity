@@ -20,10 +20,9 @@ Regarding renaming, this release:
   * In case your database gets badly corrupted during the process (this should not happen though), please remove all the files from your database directory, and sync again.
 
 For the rest, this release:
-
-* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
-
-TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+* Adds `channels.get.offchain_state` method to channel websocket API.
+* Adds a `channels.get.contract` method to channel WebSocket API.
+* Refines the error message returned by the user API `/debug/contracts/code/decode-data` when decoding Sophia data.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.2.0
 
