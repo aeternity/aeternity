@@ -3,7 +3,7 @@
 Run below command to install latest version of aeternity node.
 
 ```bash
-curl -O https://raw.githubusercontent.com/aeternity/aeternity/v2.2.0/scripts/install.sh && chmod +x install.sh && ./install.sh 2.2.0
+curl -O https://raw.githubusercontent.com/aeternity/installer/v1.0.0/install.sh && chmod +x install.sh && ./install.sh 2.2.0
 ```
 
 See the documentation below detailed instructions for manual installation.
