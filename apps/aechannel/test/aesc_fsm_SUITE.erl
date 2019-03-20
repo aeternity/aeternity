@@ -61,9 +61,6 @@
 -define(LONG_TIMEOUT, 60000).
 -define(PORT, 9325).
 
--define(OP_TRANSFER, 0).
--define(OP_WITHDRAW, 1).
--define(OP_DEPOSIT , 2).
 -define(BOGUS_PUBKEY, <<12345:32/unit:8>>).
 -define(BOGUS_PRIVKEY, <<12345:64/unit:8>>).
 
@@ -1704,7 +1701,7 @@ if_debug(_, _, Y) -> Y.
 
 apply_updates([], R) ->
     R;
-apply_updates([{?OP_TRANSFER, FromId, ToId, Amount} | T], R) ->
+apply_updates([{transfer, FromId, ToId, Amount} | T], R) -> %TODO:FIX THIS
     From = aeser_id:specialize(FromId, account),
     To = aeser_id:specialize(ToId, account),
     #{ initiator_amount := IAmt0
