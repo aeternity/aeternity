@@ -5,6 +5,7 @@
 -export([start_link/2,
          start_link_channel/4,
          start_channel/4,
+         set_log_file/2,
          set_role/2,
          log/3,
          send/3, send/4, send/5,
@@ -123,6 +124,9 @@ wait_for_connect(Pid) ->
 
 set_role(ConnPid, Role) when is_atom(Role) ->
     set_options(ConnPid, #{role => Role}).
+
+set_log_file(ConnPid, LogFile) ->
+    ConnPid ! {set_logfile, LogFile}.
 
 log(ConnPid, Type, Info) when Type==info;
                               Type==init;
@@ -382,6 +386,7 @@ websocket_handle({pong, Nonce}, _ConnState, #state{regs=Register}=State) ->
 websocket_handle({text, MsgBin}, _ConnState, #state{role=Role}=State) ->
     Msg = jsx:decode(MsgBin, [return_maps]),
     do_log(recv, MsgBin, State),
+    maybe_produce_info_from_msg(Msg, State),
     case Role of
         undefined ->
             ct:log("Received msg ~p~n", [Msg]);
@@ -467,6 +472,10 @@ websocket_info({set_options, #{ role := Role
                          log      = Log,
                          protocol = get_protocol(Opts, Proto0)},
     do_log(init, WsAddress, State1),
+    {ok, State1};
+websocket_info({set_logfile, LogFile}, _ConnState, State) ->
+    Log = open_log(LogFile),
+    State1 = State#state{log = Log},
     {ok, State1};
 websocket_info({log, Type, Msg}, _ConnState, State) ->
     do_log(Type, Msg, State),
@@ -611,6 +620,7 @@ get_logfile(Opts) ->
 open_log(undefined) ->
     undefined;
 open_log(F) ->
+    filelib:ensure_dir(F),
     Name = filename:basename(F),
     {ok, _} = disk_log:open([{name, Name},
                              {file, F},
@@ -620,37 +630,47 @@ open_log(F) ->
 do_log(_Dir, _Msg, #state{log = undefined}) ->
     ok;
 do_log(info, Msg, #state{log = Log, role = Role}) ->
-    TimeStr = log_time_str(),
     LogMsg = io_lib:format("~n"
-                           "#### ~w: (~s)~n"
-                           "> ~s~n", [Role, TimeStr, Msg]),
+                           "#### ~w info~n"
+                           "> ~s~n", [Role, Msg]),
     disk_log:blog(Log, LogMsg);
 do_log(Dir, Msg, #state{log = Log, role = Role}) ->
     {Lang, MsgStr} = try {"javascript", jsx:prettify(Msg)}
                      catch error:_ -> {"", Msg}
                      end,
-    TimeStr = log_time_str(),
     LogMsg = io_lib:format(
                "~n"
                "#### ~s~n"
                "```~s~n"
                "~s~n"
-               "```~n", [log_header_str(Dir, Role, TimeStr), Lang, MsgStr]),
+               "```~n", [log_header_str(Dir, Role), Lang, MsgStr]),
     disk_log:blog(Log, LogMsg).
 
-log_header_str(Dir, Role, TimeStr) ->
+log_header_str(Dir, Role) ->
     {Fmt, Args} =
         case Dir of
-            send -> {"~w ---> (~s)", [Role, TimeStr]};
-            recv -> {"~w <--- (~s)", [Role, TimeStr]};
-            init -> {"~w init (~s)", [Role, TimeStr]};
-            info -> {"~w info (~s)", [Role, TimeStr]}
+            send -> {"~w ---> node", [Role]};
+            recv -> {"~w <--- node", [Role]};
+            init -> {"~w opens a WebSocket connection", [Role]};
+            info -> {"~w info (~s)", [Role]}
         end,
     io_lib:format(Fmt, Args).
 
-log_time_str() ->
-    {_,_,USec} = Now = os:timestamp(),
-    {{Y,Mo,D}, {H,Mi,S}} = calendar:now_to_datetime(Now),
-    Ms = USec div 1000,
-    io_lib:format("~4w-~2..0w-~2..0w ~2..0w:~2..0w:~2..0w.~w",
-                  [Y, Mo, D, H, Mi, S, Ms]).
+maybe_produce_info_from_msg(#{<<"params">> := #{<<"data">> := #{<<"event">> := Event}}},
+                            S) ->
+    maybe_produce_info_for_event(Event, S);
+maybe_produce_info_from_msg(_Msg, _S) ->
+    pass.
+
+maybe_produce_info_for_event(<<"channel_open">>, S) ->
+    do_log(info, "Received an WebSocket opening request", S);
+maybe_produce_info_for_event(<<"channel_accept">>, S) ->
+    do_log(info, "Received an WebSocket connection accepted", S);
+maybe_produce_info_for_event(<<"own_funding_locked">>, S) ->
+    do_log(info, "Funding has been confirmed locally on-chain", S);
+maybe_produce_info_for_event(<<"funding_locked">>, S) ->
+    do_log(info, "Funding has been confirmed on-chain by other party", S);
+maybe_produce_info_for_event(<<"open">>, S) ->
+    do_log(info, "Channel is `open` and ready to use", S);
+maybe_produce_info_for_event(_, _S) ->
+    pass.

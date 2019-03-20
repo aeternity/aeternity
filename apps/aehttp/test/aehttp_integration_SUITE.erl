@@ -234,6 +234,33 @@
 -define(WS, aehttp_ws_test_utils).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
+
+-define(ALICE, {
+    <<177,181,119,188,211,39,203,57,229,94,108,2,107,214, 167,74,27,
+      53,222,108,6,80,196,174,81,239,171,117,158,65,91,102>>,
+    <<145,69,14,254,5,22,194,68,118,57,0,134,66,96,8,20,124,253,238,
+      207,230,147,95,173,161,192,86,195,165,186,115,251,177,181,119,
+      188,211,39,203,57,229,94,108,2,107,214,167,74,27,53,222,108,6,
+      80,196,174,81,239,171,117,158,65,91,102>>}).
+
+-define(BOB, {
+    <<103,28,85,70,70,73,69,117,178,180,148,246,81,104,
+      33,113,6,99,216,72,147,205,210,210,54,3,122,84,195,
+      62,238,132>>,
+    <<59,130,10,50,47,94,36,188,50,163,253,39,81,120,89,219,72,88,68,
+      154,183,225,78,92,9,216,215,59,108,82,203,25,103,28,85,70,70,
+      73,69,117,178,180,148,246,81,104,33,113,6,99,216,72,147,205,
+      210,210,54,3,122,84,195,62,238,132>>}).
+
+-define(CAROL, {
+    <<200,171,93,11,3,93,177,65,197,27,123,127,177,165,
+      190,211,20,112,79,108,85,78,88,181,26,207,191,211,
+      40,225,138,154>>,
+    <<237,12,20,128,115,166,32,106,220,142,111,97,141,104,201,130,56,
+      100,64,142,139,163,87,166,185,94,4,159,217,243,160,169,200,171,
+      93,11,3,93,177,65,197,27,123,127,177,165,190,211,20,112,79,108,
+      85,78,88,181,26,207,191,211,40,225,138,154>>}).
+
 all() ->
     [
      {group, all}
@@ -522,28 +549,7 @@ groups() ->
       channel_websocket_sequence()
      },
      {continuous_sc_ws, [sequence],
-      [
-       %% both can deposit
-       sc_ws_deposit,
-       %% both can withdraw
-       sc_ws_withdraw,
-       %% ensure port is reusable
-       sc_ws_failed_update,
-       sc_ws_generic_messages,
-       sc_ws_update_conflict,
-       sc_ws_contracts,
-       %% both can refer on-chain objects - oracle
-       sc_ws_oracle_contract,
-       %% both can refer on-chain objects - name service
-       sc_ws_nameservice_contract,
-       %% both can refer on-chain objects - chain environment
-       sc_ws_enviroment_contract,
-       %% both can call a remote contract
-       sc_ws_remote_call_contract,
-       %% both can call a remote contract refering on-chain data
-       sc_ws_remote_call_contract_refering_onchain_data,
-       sc_ws_wrong_call_data
-      ]}
+      channel_continuous_sequence()}
     ].
 
 channel_websocket_sequence() ->
@@ -557,6 +563,29 @@ channel_websocket_sequence() ->
       {group, continuous_sc_ws}
     ].
 
+channel_continuous_sequence() ->
+    [
+      %% both can deposit
+      sc_ws_deposit,
+      %% both can withdraw
+      sc_ws_withdraw,
+      %% ensure port is reusable
+      sc_ws_failed_update,
+      sc_ws_generic_messages,
+      sc_ws_update_conflict,
+      sc_ws_contracts,
+      %% both can refer on-chain objects - oracle
+      sc_ws_oracle_contract,
+      %% both can refer on-chain objects - name service
+      sc_ws_nameservice_contract,
+      %% both can refer on-chain objects - chain environment
+      sc_ws_enviroment_contract,
+      %% both can call a remote contract
+      sc_ws_remote_call_contract,
+      %% both can call a remote contract refering on-chain data
+      sc_ws_remote_call_contract_refering_onchain_data,
+      sc_ws_wrong_call_data
+    ].
 
 suite() ->
     [].
@@ -738,8 +767,8 @@ init_per_group(channel_websocket = Group, Config) ->
     IStartAmt = 5000000 * aec_test_utils:min_gas_price(),
     RStartAmt = 5000000 * aec_test_utils:min_gas_price(),
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
-    {IPubkey, IPrivkey} = initialize_account(IStartAmt),
-    {RPubkey, RPrivkey} = initialize_account(RStartAmt),
+    {IPubkey, IPrivkey} = initialize_account(IStartAmt, ?ALICE),
+    {RPubkey, RPrivkey} = initialize_account(RStartAmt, ?BOB),
 
     Config2 = lists:keystore(sc_ws_protocol, 1, Config1, {sc_ws_protocol, <<"json-rpc">>}),
 
@@ -823,7 +852,17 @@ init_per_testcase(Case, Config) when
         Case =:= disabled_debug_endpoints; Case =:= enabled_debug_endpoints ->
     {ok, HttpInternal} = rpc(?NODE, application, get_env, [aehttp, internal]),
     [{http_internal_config, HttpInternal} | init_per_testcase_all(Config)];
-init_per_testcase(_Case, Config) ->
+init_per_testcase(Case, Config) ->
+    case lists:member(Case, channel_continuous_sequence()) of
+        true ->
+            LogFile = docs_log_file(Config),
+            #{initiator := IConnPid,
+              responder := RConnPid} = proplists:get_value(channel_clients, Config),
+            ?WS:set_log_file(IConnPid, LogFile),
+            ?WS:set_log_file(RConnPid, LogFile);
+        false ->
+            pass
+    end,
     init_per_testcase_all(Config).
 
 init_per_testcase_all(Config) ->
@@ -3463,6 +3502,12 @@ assert_balance(Pubkey, ExpectedBalance) ->
     {ok, 200, #{<<"balance">> := ExpectedBalance}} =
         get_accounts_by_pubkey_sut(Address).
 
+assert_balance_at_least(Pubkey, MinExpectedBalance) ->
+    Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
+    {ok, 200, #{<<"balance">> := Balance}} =
+        get_accounts_by_pubkey_sut(Address),
+    true = MinExpectedBalance =< Balance.
+
 assert_trees_balance(Trees, Pubkey, ExpectedBalance) ->
     AccTrees = aec_trees:accounts(Trees),
     {value, Account} = aec_accounts_trees:lookup(Pubkey, AccTrees),
@@ -3537,20 +3582,16 @@ channel_send_conn_open_infos(RConnPid, IConnPid, Config) ->
 
 channel_send_locking_infos(IConnPid, RConnPid, Config) ->
     {ok, #{<<"event">> := <<"own_funding_locked">>}} = wait_for_channel_event(IConnPid, info, Config),
-    ?WS:log(IConnPid, info, "Funding has been confirmed locally on-chain"),
     {ok, #{<<"event">> := <<"own_funding_locked">>}} = wait_for_channel_event(RConnPid, info, Config),
-    ?WS:log(RConnPid, info, "Funding has been confirmed locally on-chain"),
 
     {ok, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(IConnPid, info, Config),
-    ?WS:log(IConnPid, info, "Funding has been confirmed on-chain by other party"),
     {ok, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(RConnPid, info, Config),
-    ?WS:log(RConnPid, info, "Funding has been confirmed on-chain by other party").
+    ok.
 
 channel_send_chan_open_infos(RConnPid, IConnPid, Config) ->
     {ok, #{<<"event">> := <<"open">>}} = wait_for_channel_event(IConnPid, info, Config),
-    ?WS:log(IConnPid, info, "Channel is `open` and ready to use"),
     {ok, #{<<"event">> := <<"open">>}} = wait_for_channel_event(RConnPid, info, Config),
-    ?WS:log(RConnPid, info, "Channel is `open` and ready to use").
+    ok.
 
 channel_participants_balances(IPubkey, RPubkey) ->
     {ok, 200, #{<<"balance">> := BalI}} =
@@ -4203,18 +4244,21 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
     {OraclePubkey, OraclePrivkey} =
-        initialize_account(2000000 * aec_test_utils:min_gas_price()),
+        initialize_account(2000000 * aec_test_utils:min_gas_price(),
+                           ?CAROL),
     SophiaStringType = aeso_heap:to_binary(string, 0),
     QueryFee = 3,
-    QueryTTL = 30,
-    ResponseTTL = 30,
+    OracleTTL = 20,
+    QueryTTL = 5,
+    ResponseTTL = 5,
     Question = <<"Fill me in with something reasonable">>,
     register_oracle(OraclePubkey, OraclePrivkey,
                     #{query_format    => SophiaStringType,
                       response_format => SophiaStringType,
                       query_fee       => QueryFee,
                       query_ttl       => QueryTTL,
-                      abi_version     => latest_sophia_abi()
+                      abi_version     => latest_sophia_abi(),
+                      oracle_ttl      => {delta, OracleTTL}
                      }),
     OracleQuerySequence =
         fun(Q0, R0) ->
@@ -4223,6 +4267,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             QueryId = query_oracle(OraclePubkey, OraclePrivkey, %oracle asks oracle
                                   OraclePubkey,
                                   #{query        => Q,
+                                    query_ttl    => {delta, QueryTTL - 1},
                                     response_ttl => {delta, ResponseTTL}}),
             respond_oracle(OraclePubkey, OraclePrivkey, QueryId,
                           R, #{response_ttl => {delta, ResponseTTL}}),
@@ -4374,7 +4419,7 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
     {NamePubkey, NamePrivkey} =
-        initialize_account(2000000 * aec_test_utils:min_gas_price()),
+        initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
 
     EncodedCode = contract_byte_code("channel_on_chain_contract_name_resolution"),
     InitArgument = <<"()">>,
@@ -4671,7 +4716,7 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
 
     % registering the name on-chain
     {NamePubkey, NamePrivkey} =
-        initialize_account(2000000 * aec_test_utils:min_gas_price()),
+        initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
     register_name(NamePubkey, NamePrivkey, Name,
                   [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)}]),
 
@@ -4682,6 +4727,18 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, ConnPid1, Co
 
 
 register_oracle(OraclePubkey, OraclePrivkey, Opts) ->
+    case rpc(aec_chain, get_oracle, [OraclePubkey]) of
+        {error, not_found} -> pass;
+        {ok, Oracle} ->
+            TopHeader = rpc(?NODE, aec_chain, top_header, []),
+            Height = aec_headers:height(TopHeader),
+            TTL = aeo_oracles:ttl(Oracle), % absolute TTL
+            ExpBlocksCnt = TTL - Height,
+            ct:log("Already an oracle, mining ~p blocks so it expires",
+                   [ExpBlocksCnt]),
+            Node = aecore_suite_utils:node_name(?NODE),
+            aecore_suite_utils:mine_key_blocks(Node, ExpBlocksCnt + 1)
+    end,
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [OraclePubkey]),
     Tx = aeo_test_utils:register_tx(OraclePubkey, Opts#{nonce => Nonce}, #{}),
     sign_post_mine(Tx, OraclePrivkey),
@@ -4759,7 +4816,10 @@ update_pointers(Owner, OwnerPrivKey, Name, Pointers0) ->
 
 
 initialize_account(Amount) ->
-    {Pubkey, Privkey} = generate_key_pair(),
+    KeyPair = {_Pubkey, _Privkey} = generate_key_pair(),
+    initialize_account(Amount, KeyPair).
+
+initialize_account(Amount, {Pubkey, Privkey}) ->
     Fee = ?SPEND_FEE,
     BlocksToMine = 3,
 
@@ -4771,7 +4831,7 @@ initialize_account(Amount) ->
         post_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Amount, Fee),
     TxHash = sign_and_post_tx(SpendTx),
     ok = wait_for_tx_hash_on_chain(TxHash),
-    assert_balance(Pubkey, Amount),
+    assert_balance_at_least(Pubkey, Amount),
     {Pubkey, Privkey}.
 
 update_volley_(FirstConnPid, FirstPrivkey, SecondConnPid, SecondPrivkey, Config) ->
@@ -5932,29 +5992,30 @@ blocks_to_mine_1(Height, Delay, Goal, N, Acc) ->
     end.
 
 channel_ws_start(Role, Opts, Config) ->
-    Opts1 = set_log_option(Opts, Config),
+    LogFile = docs_log_file(Config),
+    Opts1 = Opts#{ {int,logfile} => LogFile },
     {Host, Port} = channel_ws_host_and_port(),
     ?WS:start_channel(Host, Port, Role, Opts1).
 
-set_log_option(Opts, Config) ->
+docs_log_file(Config) ->
     %% TCLogBase = atom_to_list(?config(tc_name, Config)),
     TCLogBase = log_basename(Config),
-    MsgLogFile = filename:join(?config(priv_dir, Config), TCLogBase ++ ".md"),
+    {aehttp_integration_SUITE, TestName} = proplists:get_value(current, ct:get_status()),
+    MsgLogFile = filename:join([?config(priv_dir, Config), TCLogBase,
+                               atom_to_list(TestName)++ ".md"]),
     ct:log("MsgLogFile = ~p", [MsgLogFile]),
-    Opts#{ {int,logfile} => MsgLogFile }.
+    MsgLogFile.
 
 log_basename(Config) ->
+    Protocol = binary_to_list(?config(sc_ws_protocol, Config)),
     GOpts = ?config(tc_group_properties, Config),
-    GPath = ?config(tc_group_path, Config),
     GName = ?config(name, GOpts),
-    Path = [?config(name, Opts) || Opts <- GPath],
-    intersperse(remove_leading_all(lists:reverse([GName|Path])), ".").
-
-remove_leading_all([all|T]) -> T;
-remove_leading_all(L      ) -> L.
-
-intersperse([H|T], Delim) ->
-    lists:flatten([H | [[Delim, E] || E <- T]]).
+    SubDir =
+        case GName =:= continuous_sc_ws of
+            true -> filename:join(Protocol, "continuous");
+            false -> Protocol
+        end,
+    filename:join("channel_docs", SubDir).
 
 sign_and_post_tx(EncodedUnsignedTx) ->
     sign_and_post_tx(EncodedUnsignedTx, on_node).
