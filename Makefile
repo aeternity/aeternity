@@ -432,10 +432,10 @@ internal-ct: internal-build
 	fi
 
 prod-deb-package:
-	export DEBEMAIL=$(AE_DEB_EMAIL); \
+	@export DEBEMAIL=$(AE_DEB_EMAIL); \
 	export DEBFULLNAME=$(AE_DEB_NAME) ;\
 	dch -v $(AE_DEB_VERSION) $(AE_DEB_DCH_REL_NOTE); \
-	dch -r $(AE_DEB_DCH_REL_NOTE); \
+	dch -r $(AE_DEB_DCH_REL_NOTE);
 	debuild -uc -us
 
 .PHONY: \
