@@ -432,10 +432,13 @@ internal-ct: internal-build
 	fi
 
 prod-deb-package:
-	@export DEBEMAIL=$(AE_DEB_EMAIL); \
-	export DEBFULLNAME=$(AE_DEB_NAME) ;\
-	dch -v $(AE_DEB_PKG_VERSION) $(AE_DEB_DCH_REL_NOTE); \
-	dch -r $(AE_DEB_DCH_REL_NOTE);
+	@if [ ! -f debian/changelog ] ; \
+	then \
+		export DEBEMAIL=$(AE_DEB_EMAIL); \
+		export DEBFULLNAME=$(AE_DEB_NAME) ; \
+		dch --create --package=aeternity-node -v $(AE_DEB_PKG_VERSION) $(AE_DEB_DCH_REL_NOTE); \
+		dch -r $(AE_DEB_DCH_REL_NOTE); \
+	fi ;
 	debuild -uc -us
 
 .PHONY: \
