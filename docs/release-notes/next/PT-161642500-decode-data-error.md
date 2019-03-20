@@ -1,1 +1,0 @@
-* Refines the error message returned by the user API `/debug/contracts/code/decode-data` when decoding Sophia data.
