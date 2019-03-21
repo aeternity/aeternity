@@ -130,10 +130,12 @@ test_simple_different_nodes_channel(Cfg) ->
     test_different_nodes_channel_(#{}, #{}, Cfg).
 
 test_compat_with_initiator_node_using_minerva_initial_channel_version(Cfg) ->
-    test_different_nodes_channel_(node_base_spec_with_minerva_initial_channel_version(), #{}, Cfg).
+    test_different_nodes_channel_(set_genesis_accounts(node_base_spec_with_minerva_initial_channel_version()),
+                                  set_genesis_accounts(#{}), Cfg).
 
 test_compat_with_responder_node_using_minerva_initial_channel_version(Cfg) ->
-    test_different_nodes_channel_(#{}, node_base_spec_with_minerva_initial_channel_version(), Cfg).
+    test_different_nodes_channel_(set_genesis_accounts(#{}),
+                                  set_genesis_accounts(node_base_spec_with_minerva_initial_channel_version()), Cfg).
 
 test_different_nodes_channel_(InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg) ->
     ChannelOpts = #{
@@ -241,5 +243,11 @@ on_chain_channel(Cfg) ->
     wait_for_value({balance, maps:get(pubkey, ?ALICE), 100}, NodeNames, 5000, []).
 
 node_base_spec_with_minerva_initial_channel_version() ->
-    #{source => {pull, "aeternity/aeternity:v2.0.0"}, config_guest_path => "/home/aeternity/.epoch/epoch/epoch.yaml"}.
+    #{source => {pull, "aeternity/aeternity:v2.0.0"}}.
 
+set_genesis_accounts(Spec) ->
+    PatronAddress = aeser_api_encoder:encode(account_pubkey,
+                                              maps:get(pubkey, ?MIKE)),
+    %% have all nodes share the same accounts_test.json
+    GenesisAccounts = [{PatronAddress, 123400000000000000000000000000}],
+    Spec#{genesis_accounts => GenesisAccounts}.
