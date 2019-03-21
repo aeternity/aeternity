@@ -20,14 +20,6 @@ SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
 
 PACKAGE_SPEC_WIN32 ?= ../ci/appveyor/package.cfg
 
-AE_DEB_PKG_VERSION=`cat VERSION`
-AE_DEB_DCH_REL_NOTE= \
-"Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-`cat VERSION`.md"
-
-AE_DEB_EMAIL="info@aeternity.com"
-AE_DEB_NAME="Aeternity Team"
-
-
 # Packages from master MUST be pre-releases. Git master version
 # usually is higher then the last stable release. However
 # packages with newer stable version MUST always have higher version
@@ -39,22 +31,14 @@ AE_DEB_NAME="Aeternity Team"
 # unreleased/not stable version (i.e. builds) MUST always have higher
 # version (i.e. pre-release). Otherwise package managers and repository management
 # software complain.
+AE_DEB_PKG_VERSION ?= `cat VERSION`
+AE_DEB_DCH_REL_NOTE= \
+"Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-`cat VERSION`.md"
 
-# Test source for master branch. Needs special treatment for Debian
-# packages.
-ifeq (, $(shell which git))
-  ifneq (,$(shell cat .git/HEAD | grep master))
-	AE_DEB_GIT_MASTER=true
-  endif
-else
-  ifneq (, $(shell git rev-parse --abbrev-ref HEAD|grep master))
-	AE_DEB_GIT_MASTER=true
-  endif
-endif
+AE_DEB_EMAIL="info@aeternity.com"
+AE_DEB_NAME="Aeternity Team"
 
-ifeq ($(AE_DEB_GIT_MASTER), true)
-        AE_DEB_PKG_VERSION=`cat VERSION`"-1-git-master~"`date +%Y%m%d%H%M%S`
-endif
+
 
 all:	local-build
 
