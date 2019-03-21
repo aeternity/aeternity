@@ -23,7 +23,7 @@ For the rest, this release:
 * Adds `channels.get.offchain_state` method to channel websocket API.
 * Adds a `channels.get.contract` method to channel WebSocket API.
 * Refines the error message returned by the user API `/debug/contracts/code/decode-data` when decoding Sophia data.
-* Moves the quick installer in it's own repository https://github.com/aeternity/installer
+* Moves the quick installer in its own repository https://github.com/aeternity/installer
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.2.0
 
