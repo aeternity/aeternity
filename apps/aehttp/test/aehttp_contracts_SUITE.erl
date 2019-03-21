@@ -1225,12 +1225,13 @@ compile_test_contract(Dir, Name) ->
     FileName = filename:join(Dir, Name ++ ".aes"),
     Versions = rpc(aec_hard_forks, sorted_protocol_versions, []),
     %% TODO: This can be handled by a parameter to the compile
-    %%       endpoint once it is there
+    %%       endpoint once it is there - the thing below is not entirely
+    %%       correct...
     case lists:last(Versions) of
         ?ROMA_PROTOCOL_VSN ->
             {ok, Code} = aect_test_utils:compile_filename(1, FileName),
             aeser_api_encoder:encode(contract_bytearray, Code);
-        ?MINERVA_PROTOCOL_VSN ->
+        Vsn when Vsn == ?MINERVA_PROTOCOL_VSN; Vsn == ?FORTUNA_PROTOCOL_VSN ->
             {ok, SophiaCode} = file:read_file(FileName),
             {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
             Code

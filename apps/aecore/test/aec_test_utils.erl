@@ -126,6 +126,7 @@ mock_genesis_and_forks(PresetAccounts) ->
     meck:new(aec_fork_block_settings, [passthrough]),
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
     meck:expect(aec_fork_block_settings, minerva_accounts, 0, []),
+    meck:expect(aec_fork_block_settings, fortuna_accounts, 0, []),
     ok.
 
 unmock_genesis_and_forks() ->
@@ -461,7 +462,9 @@ signed_spend_tx(ArgsMap) ->
 %% DestRelDir is the release being set up
 copy_forks_dir(SourceRelDir, DestRelDir) ->
     copy_fork_dir(SourceRelDir, DestRelDir, ?ROMA_PROTOCOL_VSN),
-    copy_fork_dir(SourceRelDir, DestRelDir, ?MINERVA_PROTOCOL_VSN).
+    copy_fork_dir(SourceRelDir, DestRelDir, ?MINERVA_PROTOCOL_VSN),
+    copy_fork_dir(SourceRelDir, DestRelDir, ?FORTUNA_PROTOCOL_VSN).
+
 
 copy_fork_dir(SourceRelDir, DestRelDir, Release) ->
     GenesisDir = aec_fork_block_settings:dir(Release), % ex data/aecore/.genesis

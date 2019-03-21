@@ -219,6 +219,7 @@ get_network_id() ->
     %% Needed for eunit
     case init:get_argument(network_id) of
         {ok, [["local_roma_testnet"]]} -> <<"local_roma_testnet">>;
+        {ok, [["local_fortuna_testnet"]]} -> <<"local_fortuna_testnet">>;
         _ ->
             aeu_env:user_config_or_env([<<"fork_management">>, <<"network_id">>],
                                        aecore, network_id, ?NETWORK_ID)

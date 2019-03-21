@@ -1,10 +1,18 @@
 -module(aec_block_fork).
 
--export([apply_minerva/1]).
+-export([apply_minerva/1,
+         apply_fortuna/1
+        ]).
 
 -spec apply_minerva(aec_trees:trees()) -> aec_trees:trees().
 apply_minerva(Trees) ->
-    Accounts = aec_fork_block_settings:minerva_accounts(), 
+    apply_accounts_file(Trees, aec_fork_block_settings:minerva_accounts()).
+
+-spec apply_fortuna(aec_trees:trees()) -> aec_trees:trees().
+apply_fortuna(Trees) ->
+    apply_accounts_file(Trees, aec_fork_block_settings:fortuna_accounts()).
+
+apply_accounts_file(Trees, Accounts) ->
     AccTrees =
         lists:foldl(
             fun({Pubkey, Balance}, AccumAccTrees) when

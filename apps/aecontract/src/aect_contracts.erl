@@ -129,17 +129,22 @@ is_legal_serialization_at_height(?ABI_SOPHIA_1, Vsn, Height) ->
 is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_1, abi := ?ABI_SOPHIA_1}, ProtocolVersion) ->
     case ProtocolVersion of
         ?ROMA_PROTOCOL_VSN    -> true;
-        ?MINERVA_PROTOCOL_VSN -> false
+        ?MINERVA_PROTOCOL_VSN -> false;
+        ?FORTUNA_PROTOCOL_VSN -> false
     end;
 is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_2, abi := ?ABI_SOPHIA_1}, ProtocolVersion) ->
     case ProtocolVersion of
         ?ROMA_PROTOCOL_VSN    -> false;
-        ?MINERVA_PROTOCOL_VSN -> true
+        ?MINERVA_PROTOCOL_VSN -> true;
+        ?FORTUNA_PROTOCOL_VSN -> true %% TODO: Revise this before release
     end;
 is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
     case ProtocolVersion of
         ?ROMA_PROTOCOL_VSN    when VMVersion =:= ?VM_AEVM_SOPHIA_1 -> true;
         ?MINERVA_PROTOCOL_VSN when VMVersion =:= ?VM_AEVM_SOPHIA_1;
+                                   VMVersion =:= ?VM_AEVM_SOPHIA_2 -> true;
+        %% TODO: Revise this before release
+        ?FORTUNA_PROTOCOL_VSN when VMVersion =:= ?VM_AEVM_SOPHIA_1;
                                    VMVersion =:= ?VM_AEVM_SOPHIA_2 -> true;
         _                     when VMVersion =:= ?VM_AEVM_SOLIDITY_1 -> ?VM_AEVM_SOLIDITY_1_enabled;
         _ -> false

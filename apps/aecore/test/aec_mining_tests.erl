@@ -36,7 +36,8 @@ mine_block_test_() ->
                  % let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
                  Nonce = case aec_hard_forks:protocol_effective_at_height(Height + 1) of
                              ?ROMA_PROTOCOL_VSN    -> 1566115190779737391;
-                             ?MINERVA_PROTOCOL_VSN -> 391854272740078490
+                             ?MINERVA_PROTOCOL_VSN -> 391854272740078490;
+                             ?FORTUNA_PROTOCOL_VSN -> 16268778677103909311
                          end,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}], ?TEST_PUB),
@@ -114,7 +115,8 @@ generate_valid_test_data(TopBlock, Tries) ->
                             [{TopBlock, aec_trees:new()}], ?TEST_PUB),
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
     Target = aec_blocks:target(BlockCandidate),
-    case ?TEST_MODULE:generate(HeaderBin, Target, Nonce, 0) of
+    [Config] = aec_mining:get_miner_configs(),
+    case ?TEST_MODULE:generate(HeaderBin, Target, Nonce, Config, undefined) of
         {ok, {Nonce1, _Evd}} ->
             {ok, BlockCandidate, Nonce1};
         {error, no_solution} ->

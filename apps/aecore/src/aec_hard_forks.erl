@@ -24,7 +24,8 @@
 %% Maps consensus protocol version to minimum height at which such
 %% version is effective.  The height must be strictly increasing with
 %% the version.
--type protocol_vsn() :: ?MINERVA_PROTOCOL_VSN
+-type protocol_vsn() :: ?FORTUNA_PROTOCOL_VSN
+                      | ?MINERVA_PROTOCOL_VSN
                       | ?ROMA_PROTOCOL_VSN.
 -type protocols() :: #{protocol_vsn() => aec_blocks:height()}.
 
@@ -70,16 +71,25 @@ is_fork_height(Height) ->
 protocols_from_network_id(<<"ae_mainnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
      , ?MINERVA_PROTOCOL_VSN  => 47800
+     %% , ?FORTUNA_PROTOCOL_VSN => Not yet decided
      };
 protocols_from_network_id(<<"ae_uat">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
      , ?MINERVA_PROTOCOL_VSN  => 40900
+     %% , ?FORTUNA_PROTOCOL_VSN => Not yet decided
      };
 protocols_from_network_id(<<"local_roma_testnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
      %%, ?MINERVA_PROTOCOL_VSN  => Excluded for testing old protocol
+     %%, ?FORTUNA_PROTOCOL_VSN  => Excluded for testing old protocol
+     };
+protocols_from_network_id(<<"local_fortuna_testnet">>) ->
+    #{ ?ROMA_PROTOCOL_VSN     => 0
+     %%, ?MINERVA_PROTOCOL_VSN  => Excluded for testing coming protocol
+     , ?FORTUNA_PROTOCOL_VSN  => 1
      };
 protocols_from_network_id(_ID) ->
+    %% TODO: At some point, switch to run FORTUNA as default
     case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
         undefined ->
             #{ ?ROMA_PROTOCOL_VSN     => 0
