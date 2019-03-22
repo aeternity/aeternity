@@ -13,6 +13,8 @@
         , empty_with_backend/0
         , get_call/3
         , insert_call/2
+        , insert_call/3
+        , insert_auth_call/3
         , lookup_call/3
         , new_with_backend/1
         , iterator/1
@@ -72,18 +74,26 @@ prune_without_backend(Trees) ->
     aec_trees:set_calls(Trees, empty()).
 
 -spec insert_call(aect_call:call(), tree()) -> tree().
-insert_call(Call, Tree = #call_tree{ calls = CtTree}) ->
+insert_call(Call, Tree) ->
     %% Construct the Id to store in the tree.
     CtId       = aect_call:contract_pubkey(Call),
     CallId     = aect_call:id(Call),
     CallTreeId = call_tree_id(CtId, CallId),
+    insert_call_(Call, CallTreeId, Tree).
 
-    %% Insert the new call into the history
-    Serialized = aect_call:serialize(Call),
-    CtTree1    = aeu_mtrees:insert(CallTreeId, Serialized, CtTree),
+-spec insert_call(aect_call:call(), aect_call:id(), tree()) -> tree().
+insert_call(Call, CallId, Tree) ->
+    %% Construct the Id to store in the tree.
+    CtId       = aect_call:contract_pubkey(Call),
+    CallTreeId = call_tree_id(CtId, CallId),
+    insert_call_(Call, CallTreeId, Tree).
 
-    %% Update the calls tree
-    Tree#call_tree{ calls = CtTree1}.
+-spec insert_auth_call(aect_call:call(), aect_call:id(), tree()) -> tree().
+insert_auth_call(Call, AuthCallId, Tree) ->
+    %% Construct the Id to store in the tree.
+    CtId       = aect_call:caller_pubkey(Call),
+    CallTreeId = call_tree_id(CtId, AuthCallId),
+    insert_call_(Call, CallTreeId, Tree).
 
 -spec lookup_call(aect_contracts:pubkey(), aect_call:id(), tree()) ->
     {value, aect_call:call()} | none.
@@ -152,3 +162,11 @@ serialization_template(?VSN) ->
 
 call_tree_id(ContractId, CallId) ->
     <<ContractId/binary, CallId/binary>>.
+
+insert_call_(Call, CallTreeId, Tree = #call_tree{ calls = CtTree}) ->
+    %% Insert the new call into the history
+    Serialized = aect_call:serialize(Call),
+    CtTree1    = aeu_mtrees:insert(CallTreeId, Serialized, CtTree),
+
+    %% Update the calls tree
+    Tree#call_tree{ calls = CtTree1}.

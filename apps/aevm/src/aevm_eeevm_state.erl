@@ -13,6 +13,7 @@
         , add_trace/2
         , add_callcreates/2
         , address/1
+        , auth_tx_hash/1
         , blockhash/2
         , bloom/2
         , calldepth/1
@@ -129,6 +130,7 @@ init(#{ env  := Env
          , gas_limit  => maps:get(currentGasLimit, Env)
          , number     => maps:get(currentNumber, Env)
          , timestamp  => maps:get(currentTimestamp, Env)
+         , auth_tx_hash => maps:get(authTxHash, Env)
 
          , ext_code_blocks => get_ext_code_blocks(Pre)
          , ext_code_sizes  => get_ext_code_sizes(Pre)
@@ -596,6 +598,7 @@ logs(State)        -> maps:get(logs, State).
 storage(State)     -> maps:get(storage, State).
 value(State)       -> maps:get(value, State).
 timestamp(State)   -> maps:get(timestamp, State).
+auth_tx_hash(State) -> maps:get(auth_tx_hash, State).
 
 do_trace(State)    -> maps:get(do_trace, State).
 trace(State)       -> maps:get(trace, State).

@@ -96,6 +96,8 @@ tx_base_gas(channel_slash_tx) -> ?TX_BASE_GAS;
 tx_base_gas(channel_settle_tx) -> ?TX_BASE_GAS;
 tx_base_gas(channel_snapshot_solo_tx) -> ?TX_BASE_GAS;
 tx_base_gas(channel_withdraw_tx) -> ?TX_BASE_GAS;
+tx_base_gas(ga_attach_tx) -> 5 * ?TX_BASE_GAS;
+tx_base_gas(ga_meta_tx) -> 30 * ?TX_BASE_GAS;
 tx_base_gas(name_preclaim_tx) -> ?TX_BASE_GAS;
 tx_base_gas(name_revoke_tx) -> ?TX_BASE_GAS;
 tx_base_gas(name_transfer_tx) -> ?TX_BASE_GAS;
@@ -174,7 +176,8 @@ primop_base_gas(?PRIM_CALL_CRYPTO_SHA3           ) -> 30;   %% Same as gas cost 
 primop_base_gas(?PRIM_CALL_CRYPTO_SHA256         ) -> 30;
 primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B        ) -> 30;
 primop_base_gas(?PRIM_CALL_CRYPTO_SHA256_STRING  ) -> 30;
-primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B_STRING ) -> 30.
+primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B_STRING ) -> 30;
+primop_base_gas(?PRIM_CALL_AUTH_TX_HASH          ) -> 0.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Naming system variables

@@ -92,7 +92,7 @@ latest_sophia_vm_version() ->
     case latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_1;
         ?MINERVA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_2;
-        ?FORTUNA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_2 %% TODO: Revise this when vm is bumped
+        ?FORTUNA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_3
     end.
 
 latest_sophia_abi_version() ->

@@ -1,0 +1,7 @@
+contract Auth1 =
+  record state = { secret : int }
+
+  function init(s : int) = { secret = s }
+
+  function authorize(s : int, x : int) : bool =
+    state.secret == s

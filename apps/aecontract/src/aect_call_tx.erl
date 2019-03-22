@@ -203,7 +203,7 @@ signers(Tx, _) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#contract_call_tx{} = Tx, Trees, Env) ->
     %% Assert
-    aetx_transaction = aetx_env:context(Env),
+    true = (aetx_contract =/= aetx_env:context(Env)),
     Instructions =
         aec_tx_processor:contract_call_tx_instructions(
           caller_pubkey(Tx),

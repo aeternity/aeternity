@@ -35,7 +35,9 @@
 -export([tx/1]).
 -endif.
 
--define(IS_CONTRACT_TX(T), ((T =:= contract_create_tx) or (T =:= contract_call_tx) or (T =:= channel_force_progress_tx))).
+-define(IS_CONTRACT_TX(T), ((T =:= contract_create_tx) or (T =:= contract_call_tx)
+                            or (T =:= channel_force_progress_tx)
+                            or (T =:= ga_meta_tx) or (T =:= ga_attach_tx))).
 
 %%%===================================================================
 %%% Types
@@ -60,6 +62,8 @@
                  | name_revoke_tx
                  | contract_create_tx
                  | contract_call_tx
+                 | ga_attach_tx
+                 | ga_meta_tx
                  | channel_create_tx
                  | channel_deposit_tx
                  | channel_withdraw_tx
@@ -83,6 +87,8 @@
                      | aens_revoke_tx:tx()
                      | aect_create_tx:tx()
                      | aect_call_tx:tx()
+                     | aega_attach_tx:tx()
+                     | aega_meta_tx:tx()
                      | aesc_create_tx:tx()
                      | aesc_deposit_tx:tx()
                      | aesc_withdraw_tx:tx()
@@ -205,6 +211,8 @@ gas_limit(#aetx{type = oracle_response_tx, size = Size, tx = Tx }, Height) ->
         {error, _Rsn} ->
             0
     end;
+gas_limit(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height) ->
+    base_gas(ga_meta_tx) + size_gas(Size) + CB:gas_limit(Tx, Height);
 gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height) when Type =/= channel_offchain_tx ->
     base_gas(Type) + size_gas(Size) + CB:gas(Tx);
 gas_limit(#aetx{ type = channel_offchain_tx }, _Height) ->
@@ -290,7 +298,8 @@ from_db_format(#aetx{} = Tx) ->
 check(Tx, Trees, Env) ->
     case aetx_env:context(Env) of
         aetx_transaction -> check_tx(Tx, Trees, Env);
-        aetx_contract    -> check_contract(Tx, Trees, Env)
+        aetx_contract    -> check_contract(Tx, Trees, Env);
+        aetx_ga          -> check_tx(Tx, Trees, Env) %% GA_TODO: more checks or maybe less checks?
     end.
 
 check_contract(#aetx{ cb = CB, tx = Tx }, Trees, Env) ->
