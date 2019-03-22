@@ -5192,7 +5192,7 @@ wait_for_signed_transaction_in_block(SignedTx) ->
 
 wait_for_tx_hash_on_chain(TxHash) ->
     case aecore_suite_utils:mine_blocks_until_txs_on_chain(
-            aecore_suite_utils:node_name(?NODE), [TxHash], 10) of
+            aecore_suite_utils:node_name(?NODE), [TxHash], 20) of
         {ok, _Blocks} -> ok;
         {error, _Reason} -> did_not_mine
     end.
