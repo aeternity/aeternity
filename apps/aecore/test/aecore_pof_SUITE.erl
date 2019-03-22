@@ -22,6 +22,8 @@
 
 -import(aecore_suite_utils, [patron/0]).
 
+-define(MAX_MINED_BLOCKS, 20).
+
 all() ->
     [ siblings_on_key_block
     , siblings_on_micro_block
@@ -82,7 +84,7 @@ siblings_on_key_block(Config) ->
     {ok, Tx0a} = add_spend_tx(N1, 1000000, 20000 * aec_test_utils:min_gas_price(), 1, 10, patron(), PK1),
     {ok, Tx0b} = add_spend_tx(N1, 1000000, 20000 * aec_test_utils:min_gas_price(), 2, 10, patron(), PK2),
 
-    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx0a, Tx0b], 5),
+    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx0a, Tx0b], ?MAX_MINED_BLOCKS),
 
     {ok, N1Blocks2} = aecore_suite_utils:mine_key_blocks(N1, 1),
 
@@ -117,7 +119,7 @@ siblings_on_micro_block(Config) ->
     {ok, Tx0c} = add_spend_tx(N1, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 3, 10, patron(), PK3),
 
     Txs = [Tx0a, Tx0b, Tx0c],
-    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, Txs, 5),
+    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, Txs, ?MAX_MINED_BLOCKS),
 
     Top = ensure_top_is_a_micro(N1, Account3, 1),
 

@@ -48,6 +48,8 @@
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(DEFAULT_GAS_PRICE, aec_test_utils:min_gas_price()).
 
+-define(MAX_MINED_BLOCKS, 20).
+
 all() ->
     [
      {group, contracts}
@@ -111,7 +113,7 @@ init_for_contracts(Config) ->
     {DPubkey, DPrivkey, STx4} = new_account(StartAmt),
 
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(
-                                    NodeName, [STx1, STx2, STx3, STx4], 10),
+                                    NodeName, [STx1, STx2, STx3, STx4], ?MAX_MINED_BLOCKS),
 
     %% Save account information.
     Accounts = #{acc_a => #{pub_key => APubkey,
@@ -1275,7 +1277,7 @@ force_fun_calls(Node) ->
 
     %% Then really put them on the chain
     TxHashes = [ TxHash || {#{tx_hash := TxHash}, _} <- Calls ],
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, TxHashes, 20),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, TxHashes, ?MAX_MINED_BLOCKS),
     check_calls(Calls).
 
 dry_run_txs(Calls) ->
@@ -1738,7 +1740,7 @@ wait_for_tx_hash_on_chain(Node, TxHash) ->
     case tx_in_chain(TxHash) of
         true -> ok;
         false ->
-            case aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], 20) of
+            case aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], ?MAX_MINED_BLOCKS) of
                 {ok, _Blocks} -> ok;
                 {error, _Reason} -> did_not_mine
             end
