@@ -324,17 +324,6 @@ references:
         dmesg > ${SYSTEM_TEST_HOST_LOGS_DIR:?}/dmesg.log
       when: always
 
-  chain_snapshots: &chain_snapshots /tmp/chain_snapshots
-  snapshot_chain: &snapshot_chain
-    run:
-      name: Snapshot of environment blockchain
-      environment:
-        - BACKUP_DIR: *chain_snapshots
-      command: |
-        export BACKUP_SUFFIX=${BACKUP_ENV:?}_db_backup_$(date +%s)
-        cd /infrastructure && make mnesia_backup
-      no_output_timeout: 30m
-
   test_steps: &test_steps
     - checkout
     - *restore_rebar_cache
@@ -676,28 +665,6 @@ jobs:
             docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} -t ${DOCKERHUB_REPO:?}:latest .
             docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
             docker push ${DOCKERHUB_REPO:?}:latest
-
-  uat_chain_snapshot:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    environment:
-      - BACKUP_ENV: uat
-    steps:
-      - *setup_secrets
-      - *snapshot_chain
-      - store_artifacts:
-          path: *chain_snapshots
-
-  main_chain_snapshot:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    environment:
-      - BACKUP_ENV: main
-    steps:
-      - *setup_secrets
-      - *snapshot_chain
-      - store_artifacts:
-          path: *chain_snapshots
 
   docker_system_tests:
     <<: *machine_config
@@ -1186,19 +1153,6 @@ workflows:
               ignore: /.*/
             tags:
               only: *stable_tag_regex
-
-  chain_snapshots:
-    triggers:
-      - schedule:
-          # run At minute 0 past hour 0. UTC
-          cron: "0 0 * * *"
-          filters:
-            branches:
-              only:
-                - master
-    jobs:
-      - uat_chain_snapshot
-#      - main_chain_snapshot
 
   system_tests:
     triggers:
