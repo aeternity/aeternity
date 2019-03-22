@@ -20,13 +20,6 @@
     on_chain_channel/1
 ]).
 
--export([
-    test_compat_with_initiator_node_using_specific_versions_2_1/1,
-    test_compat_with_initiator_node_using_specific_versions_2_2/1,
-    test_compat_with_responder_node_using_specific_versions_2_1/1,
-    test_compat_with_responder_node_using_specific_versions_2_2/1
-]).
-
 -import(aest_nodes, [
     spec/3,
     setup_nodes/2,
@@ -103,10 +96,6 @@ all() -> [
     test_compat_with_responder_node_using_minerva_initial_channel_version,
     test_compat_with_initiator_node_using_latest_stable_version,
     test_compat_with_responder_node_using_latest_stable_version,
-    test_compat_with_initiator_node_using_specific_versions_2_1,
-    test_compat_with_initiator_node_using_specific_versions_2_2,
-    test_compat_with_responder_node_using_specific_versions_2_1,
-    test_compat_with_responder_node_using_specific_versions_2_2,
     on_chain_channel
 ].
 
@@ -159,21 +148,6 @@ test_compat_with_initiator_node_using_latest_stable_version(Cfg) ->
 test_compat_with_responder_node_using_latest_stable_version(Cfg) ->
     test_different_nodes_channel_(set_genesis_accounts(#{}),
                                   set_genesis_accounts(node_base_spec_with_latest_stable_version()), Cfg).
-
-test_compat_with_initiator_node_using_specific_versions_2_1(Cfg) ->
-    test_different_nodes_channel_(set_genesis_accounts(node_base_spec_with_specific_version("v2.1.0")),
-                                  set_genesis_accounts(#{}), Cfg).
-
-test_compat_with_initiator_node_using_specific_versions_2_2(Cfg) ->
-    test_different_nodes_channel_(set_genesis_accounts(node_base_spec_with_specific_version("v2.2.0")),
-                                  set_genesis_accounts(#{}), Cfg).
-
-test_compat_with_responder_node_using_specific_versions_2_1(Cfg) ->
-    test_different_nodes_channel_(set_genesis_accounts(#{}),
-                                  set_genesis_accounts(node_base_spec_with_specific_version("v2.1.0")), Cfg).
-test_compat_with_responder_node_using_specific_versions_2_2(Cfg) ->
-    test_different_nodes_channel_(set_genesis_accounts(#{}),
-                                  set_genesis_accounts(node_base_spec_with_specific_version("v2.2.0")), Cfg).
 
 test_different_nodes_channel_(InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg) ->
     ChannelOpts = #{
@@ -285,9 +259,6 @@ node_base_spec_with_minerva_initial_channel_version() ->
 
 node_base_spec_with_latest_stable_version() ->
     #{source => {pull, "aeternity/aeternity:latest"}}.
-
-node_base_spec_with_specific_version(Tag) ->
-    #{source => {pull, "aeternity/aeternity:" ++ Tag}}.
 
 set_genesis_accounts(Spec) ->
     PatronAddress = aeser_api_encoder:encode(account_pubkey,

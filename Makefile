@@ -228,14 +228,11 @@ smoke-test: docker smoke-test-run
 
 smoke-test-run: KIND=system_test
 smoke-test-run: internal-build
-	@$(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_channels_SUITE
+	@$(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
 
 system-smoke-test-deps:
 	$(MAKE) docker
-	docker pull "aeternity/aeternity:v2.0.0"
-	docker pull "aeternity/aeternity:v2.1.0"
-	docker pull "aeternity/aeternity:v2.2.0"
-	docker pull "aeternity/aeternity:latest"
+	docker pull "aeternity/aeternity:v1.4.0"
 
 local-system-test: KIND=system_test
 local-system-test: internal-build
