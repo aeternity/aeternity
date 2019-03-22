@@ -21,6 +21,8 @@
 
 -define(NODE, dev1).
 
+-define(MAX_MINED_BLOCKS, 20).
+
 all() ->
     [ {group, dry_run}
     ].
@@ -63,7 +65,7 @@ init_per_group(_, Config) ->
     {DPubkey, DPrivkey, STx4} = new_account(StartAmt),
 
     {ok, KBs} = aecore_suite_utils:mine_blocks_until_txs_on_chain(
-                                    NodeName, [STx1, STx2, STx3, STx4], 5),
+                                    NodeName, [STx1, STx2, STx3, STx4], ?MAX_MINED_BLOCKS),
 
     Top = lists:last(KBs),
 

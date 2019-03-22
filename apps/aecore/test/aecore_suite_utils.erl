@@ -24,7 +24,6 @@
          expected_mine_rate/0,
          mine_blocks/2,
          mine_blocks/3,
-         mine_all_txs/1,
          mine_all_txs/2,
          mine_blocks_until_txs_on_chain/3,
          mine_key_blocks/2,
@@ -249,9 +248,6 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Type) ->
             erlang:error(Reason)
     end.
 
-
-mine_all_txs(Node) ->
-    mine_all_txs(Node, 5).
 
 mine_all_txs(Node, MaxBlocks) ->
     case rpc:call(Node, aec_tx_pool, peek, [infinity]) of

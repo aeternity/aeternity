@@ -74,6 +74,8 @@
 -define(SLOGAN, {slogan, {?FUNCTION_NAME, ?LINE}}).
 -define(SLOGAN(I), {slogan, {?FUNCTION_NAME, ?LINE, I}}).
 
+-define(MAX_MINED_BLOCKS, 20).
+
 all() ->
     [{group, all_tests}].
 
@@ -659,7 +661,7 @@ channel_subverted(Cfg) ->
     ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
-        aecore_suite_utils:node_name(dev1), [TxHash], 20),
+        aecore_suite_utils:node_name(dev1), [TxHash], ?MAX_MINED_BLOCKS),
     {ok,_} = receive_from_fsm(info, I, fun died_subverted/1, ?TIMEOUT, Debug),
     {ok,_} = receive_from_fsm(info, R, fun died_subverted/1, ?TIMEOUT, Debug),
     check_info(500).
@@ -850,7 +852,7 @@ multiple_channels_t(NumCs, FromPort, Msg, Slogan, Cfg) ->
             end,
             Txs),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
-        aecore_suite_utils:node_name(dev1), TxHashes, 20),
+        aecore_suite_utils:node_name(dev1), TxHashes, ?MAX_MINED_BLOCKS),
     mine_blocks(dev1, ?MINIMUM_DEPTH),
     Cs = collect_acks(Cs, channel_ack, NumCs),
     ct:log("channel pids collected: ~p", [Cs]),
@@ -1734,7 +1736,7 @@ wait_for_signed_transaction_in_block(_, _, #{mine_blocks := {ask,_}}) ->
 wait_for_signed_transaction_in_block(Node, SignedTx, _Debug) ->
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     NodeName = aecore_suite_utils:node_name(Node),
-    case aecore_suite_utils:mine_blocks_until_txs_on_chain(NodeName, [TxHash], 10) of
+    case aecore_suite_utils:mine_blocks_until_txs_on_chain(NodeName, [TxHash], ?MAX_MINED_BLOCKS) of
         {ok, _Blocks} -> ok;
         {error, _Reason} -> did_not_mine
     end.

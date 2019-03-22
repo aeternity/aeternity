@@ -41,6 +41,8 @@
 
 -import(aecore_suite_utils, [patron/0]).
 
+-define(MAX_MINED_BLOCKS, 20).
+
 all() ->
     [ {group, all_nodes} ].
 
@@ -398,7 +400,7 @@ crash_syncing_worker(Config) ->
     aecore_suite_utils:stop_node(Dev2, Config),
 
     %% Hotfix - make sure mempool is empty
-    aecore_suite_utils:mine_all_txs(N1, 10),
+    aecore_suite_utils:mine_all_txs(N1, ?MAX_MINED_BLOCKS),
     {ok, []} = rpc:call(N1, aec_tx_pool, peek, [infinity], 5000),
 
     Top1 = rpc:call(N1, aec_chain, top_block, [], 5000),
@@ -555,25 +557,25 @@ large_msgs(Config) ->
     %% Insert enough transactions to make a large generation
     Blob = fun(Size) -> << <<171:8>> || _ <- lists:seq(1, Size) >> end,
     {ok, Tx1} = add_spend_tx(N1, 10, 1500000 * aec_test_utils:min_gas_price(), 1, 100, Blob(16#ffff)),
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx1], 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx1], ?MAX_MINED_BLOCKS),
 
     {ok, Tx2} = add_spend_tx(N1, 10, 3000000 * aec_test_utils:min_gas_price(), 2, 100, Blob(16#1ffff)),
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx2], 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx2], ?MAX_MINED_BLOCKS),
 
     {ok, Tx3} = add_spend_tx(N1, 10, 4000000 * aec_test_utils:min_gas_price(), 3, 100, Blob(16#2ffff)),
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx3], 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx3], ?MAX_MINED_BLOCKS),
 
     {ok, Tx4} = add_spend_tx(N1, 10, 8000000 * aec_test_utils:min_gas_price(), 4, 100, Blob(16#5ffff)),
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx4], 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx4], ?MAX_MINED_BLOCKS),
 
     {ok, Tx5} = add_spend_tx(N1, 10, 1500000 * aec_test_utils:min_gas_price(), 5, 100, Blob(16#fce3)), %% Should exactly fit in one message
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx5], 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx5], ?MAX_MINED_BLOCKS),
 
     {ok, Tx6} = add_spend_tx(N1, 10, 1500000 * aec_test_utils:min_gas_price(), 6, 100, Blob(16#fce4)), %% Wee bit too large
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx6], 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx6], ?MAX_MINED_BLOCKS),
 
     {ok, Tx7} = add_spend_tx(N1, 10, 3000000 * aec_test_utils:min_gas_price(), 7, 100, Blob(16#1fcb8)), %% Even multiple of fragment size
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx7], 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx7], ?MAX_MINED_BLOCKS),
 
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev2, Config),

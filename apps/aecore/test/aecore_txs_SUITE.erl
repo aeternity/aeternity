@@ -25,6 +25,8 @@
 
 -import(aecore_suite_utils, [patron/0]).
 
+-define(MAX_MINED_BLOCKS, 20).
+
 all() ->
     [ micro_block_cycle
     , missing_tx_gossip
@@ -87,7 +89,7 @@ txs_gc(Config) ->
     pool_check(N1, 7),
 
     %% Mine to get TxH1-3 onto chain
-    {ok, Blocks1} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3], 10),
+    {ok, Blocks1} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3], ?MAX_MINED_BLOCKS),
     Height1 = Height0 + length(Blocks1), %% Very unlikely to be > 6...
 
     %% At Height1 there should be 4 transactions in mempool
@@ -107,7 +109,7 @@ txs_gc(Config) ->
     {ok, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  10), %% consecutive nonce
 
     %% Mine to get TxH4-5 onto chain
-    {ok, Blocks2} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH4, TxH5], 10),
+    {ok, Blocks2} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH4, TxH5], ?MAX_MINED_BLOCKS),
     Height3 = Height2 + length(Blocks2),
 
     %% Now if at height 5 or 6 there should be 2 transactions in mempool
@@ -184,8 +186,8 @@ missing_tx_gossip(Config) ->
     {ok, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  100), %% Ok
     {ok, TxH5} = add_spend_tx(N2, 1000, 20000 * aec_test_utils:min_gas_price(),  5,  100), %% Ok
 
-    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3, TxH4], 5),
-    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N2, [TxH5], 5),
+    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3, TxH4], ?MAX_MINED_BLOCKS),
+    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N2, [TxH5], ?MAX_MINED_BLOCKS),
 
     ok.
 
@@ -199,7 +201,7 @@ check_coinbase_validation(Config) ->
     {ok, TxH2} =
         call_contract_tx(N1, Ct1, Code, <<"save_coinbase">>, [], 600000 * aec_test_utils:min_gas_price(),  2,  100),
     {ok, _} =
-        aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], 10),
+        aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], ?MAX_MINED_BLOCKS),
 
     %% Start a second node with distinct beneficiary.
     aecore_suite_utils:start_node(dev2, Config),

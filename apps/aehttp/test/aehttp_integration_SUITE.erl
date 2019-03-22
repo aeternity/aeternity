@@ -261,6 +261,8 @@
       93,11,3,93,177,65,197,27,123,127,177,165,190,211,20,112,79,108,
       85,78,88,181,26,207,191,211,40,225,138,154>>}).
 
+-define(MAX_MINED_BLOCKS, 20).
+
 all() ->
     [
      {group, all}
@@ -1582,7 +1584,7 @@ nonce_limit(Config) ->
     [{_, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 5),
 
-    aecore_suite_utils:mine_all_txs(Node),
+    aecore_suite_utils:mine_all_txs(Node, ?MAX_MINED_BLOCKS),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     Txs = lists:map(
@@ -3102,7 +3104,7 @@ pending_transactions(_Config) ->
             || SignedTx <- PendingTxs],
     ct:log("Pending txs: ~p", [PendingTxs]),
     ct:log("Pending tx hashes: ~p", [PendingTxHashes]),
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, PendingTxHashes, 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, PendingTxHashes, ?MAX_MINED_BLOCKS),
 
     %% Mine for the reward delay to avoid worrying about start of the chain effects
     Delay = rpc(aec_governance, beneficiary_reward_delay, []),
@@ -3157,7 +3159,7 @@ pending_transactions(_Config) ->
     PendingTxHashes2 =
         [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))
             || SignedTx <- NodeTxs],
-    {ok, MinedBlocks2a} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, PendingTxHashes2, 10),
+    {ok, MinedBlocks2a} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, PendingTxHashes2, ?MAX_MINED_BLOCKS),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
@@ -5192,7 +5194,7 @@ wait_for_signed_transaction_in_block(SignedTx) ->
 
 wait_for_tx_hash_on_chain(TxHash) ->
     case aecore_suite_utils:mine_blocks_until_txs_on_chain(
-            aecore_suite_utils:node_name(?NODE), [TxHash], 10) of
+            aecore_suite_utils:node_name(?NODE), [TxHash], ?MAX_MINED_BLOCKS) of
         {ok, _Blocks} -> ok;
         {error, _Reason} -> did_not_mine
     end.
