@@ -13,10 +13,15 @@
 -export([
     test_simple_same_node_channel/1,
     test_simple_different_nodes_channel/1,
+    test_compat_with_initiator_node_using_minerva_initial_channel_version/1,
+    test_compat_with_responder_node_using_minerva_initial_channel_version/1,
+    test_compat_with_initiator_node_using_latest_stable_version/1,
+    test_compat_with_responder_node_using_latest_stable_version/1,
     on_chain_channel/1
 ]).
 
 -import(aest_nodes, [
+    spec/3,
     setup_nodes/2,
     start_node/2,
     wait_for_value/4,
@@ -87,6 +92,10 @@
 all() -> [
     test_simple_same_node_channel,
     test_simple_different_nodes_channel,
+    test_compat_with_initiator_node_using_minerva_initial_channel_version,
+    test_compat_with_responder_node_using_minerva_initial_channel_version,
+    test_compat_with_initiator_node_using_latest_stable_version,
+    test_compat_with_responder_node_using_latest_stable_version,
     on_chain_channel
 ].
 
@@ -119,9 +128,28 @@ test_simple_same_node_channel(Cfg) ->
         responder_amount => 50000 * aest_nodes:gas_price(),
         push_amount => 2 * aest_nodes:gas_price()
     },
-    simple_channel_test(ChannelOpts, Cfg).
+    simple_channel_test(ChannelOpts, #{}, #{}, Cfg).
 
 test_simple_different_nodes_channel(Cfg) ->
+    test_different_nodes_channel_(#{}, #{}, Cfg).
+
+test_compat_with_initiator_node_using_minerva_initial_channel_version(Cfg) ->
+    test_different_nodes_channel_(set_genesis_accounts(node_base_spec_with_minerva_initial_channel_version()),
+                                  set_genesis_accounts(#{}), Cfg).
+
+test_compat_with_responder_node_using_minerva_initial_channel_version(Cfg) ->
+    test_different_nodes_channel_(set_genesis_accounts(#{}),
+                                  set_genesis_accounts(node_base_spec_with_minerva_initial_channel_version()), Cfg).
+
+test_compat_with_initiator_node_using_latest_stable_version(Cfg) ->
+    test_different_nodes_channel_(set_genesis_accounts(node_base_spec_with_latest_stable_version()),
+                                  set_genesis_accounts(#{}), Cfg).
+
+test_compat_with_responder_node_using_latest_stable_version(Cfg) ->
+    test_different_nodes_channel_(set_genesis_accounts(#{}),
+                                  set_genesis_accounts(node_base_spec_with_latest_stable_version()), Cfg).
+
+test_different_nodes_channel_(InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg) ->
     ChannelOpts = #{
         initiator_node => node1,
         initiator_id   => ?BOB,
@@ -131,9 +159,9 @@ test_simple_different_nodes_channel(Cfg) ->
         responder_amount => 50000 * aest_nodes:gas_price(),
         push_amount => 2
     },
-    simple_channel_test(ChannelOpts, Cfg).
+    simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg).
 
-simple_channel_test(ChannelOpts, Cfg) ->
+simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg) ->
     #{
         initiator_id     := IAccount,
         initiator_amount := IAmt,
@@ -144,7 +172,7 @@ simple_channel_test(ChannelOpts, Cfg) ->
 
     MikePubkey = aeser_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
     NodeConfig = #{ beneficiary => MikePubkey },
-    setup([?NODE1, ?NODE2], NodeConfig, Cfg),
+    setup([spec(node1, [], InitiatorNodeBaseSpec), spec(node2, [node1], ResponderNodeBaseSpec)], NodeConfig, Cfg),
     NodeNames = [node1, node2],
     start_node(node1, Cfg),
     start_node(node2, Cfg),
@@ -225,3 +253,16 @@ on_chain_channel(Cfg) ->
 
     wait_for_value({balance, maps:get(pubkey, ?BOB), 100}, NodeNames, 5000, []),
     wait_for_value({balance, maps:get(pubkey, ?ALICE), 100}, NodeNames, 5000, []).
+
+node_base_spec_with_minerva_initial_channel_version() ->
+    #{source => {pull, "aeternity/aeternity:v2.0.0"}}.
+
+node_base_spec_with_latest_stable_version() ->
+    #{source => {pull, "aeternity/aeternity:latest"}}.
+
+set_genesis_accounts(Spec) ->
+    PatronAddress = aeser_api_encoder:encode(account_pubkey,
+                                              maps:get(pubkey, ?MIKE)),
+    %% have all nodes share the same accounts_test.json
+    GenesisAccounts = [{PatronAddress, 123400000000000000000000000000}],
+    Spec#{genesis_accounts => GenesisAccounts}.
