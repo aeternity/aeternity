@@ -1,10 +1,11 @@
 # Build from source
 
-This document describes how to build an Aeternity node from source on current Ubuntu 16.04.4 LTS or Ubuntu 18.04 LTS.
+This document describes how to build an Aeternity node from source on current Ubuntu 16.04.4 LTS, Ubuntu 18.04 LTS and MacOS (latest).
 The commands below assume you are logged in with `sudo` user.
 
 ## Dependencies installation
 
+## Ubuntu
 ### Common tools and libraries
 
 Make sure your Ubuntu version and it's packages are up to date, then install required tools and libraries:
@@ -67,6 +68,20 @@ curl -fsSL -o libsodium-src.tar.gz "$LIBSODIUM_DOWNLOAD_URL" \
 && sudo make install \
 && sudo ldconfig \
 && cd ..
+```
+
+## MacOS
+
+Install `brew` if not done yet:
+```
+/usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+```
+Also, install dependencies:
+```
+brew update
+brew install erlang
+brew install openssl libsodium
+brew install autoconf
 ```
 
 For more details read the [dedicated Libsodium documentation](https://download.libsodium.org/doc/installation/).
