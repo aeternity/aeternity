@@ -32,6 +32,18 @@
         , spend_tx_instructions/5
         ]).
 
+-ifdef(TEST).
+-export([evaluate/1, do_eval/3]).
+-define(do_eval(Instr, Ts, Env),
+        begin
+            evaluate(Instr),
+            do_eval(Instr, Ts, Env)
+        end).
+-else.
+-define(do_eval(Instr, Ts, Env),
+        do_eval(Instr, Ts, Env)).
+-endif.
+
 
 -include_lib("aecore/include/aec_hash.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -80,6 +92,16 @@
 -spec eval([op()], aec_trees:trees(), aetx_env:env()) ->
                   {ok, aec_trees:trees(), aetx_env:env()} | {error, atom()}.
 eval([_|_] = Instructions, Trees, TxEnv) ->
+    %% The macro below makes mocking possible in QuickCheck tests
+    ?do_eval(Instructions, Trees, TxEnv).
+
+-ifdef(TEST).
+%% Keep this function, it is used in mocking in QuickCheck tests
+evaluate(_Instructions) ->
+    ok.
+-endif.
+
+do_eval(Instructions, Trees, TxEnv) ->
     S = new_state(Trees, aetx_env:height(TxEnv), TxEnv),
     case int_eval(Instructions, S) of
         {ok, S1} -> {ok, S1#state.trees, S1#state.tx_env};
@@ -1191,7 +1213,7 @@ assert_name_claimed(Name) ->
 
 assert_contract_byte_code(?ABI_SOPHIA_1, SerializedCode, CallData, S) ->
     try aect_sophia:deserialize(SerializedCode) of
-        #{type_info := TypeInfo, 
+        #{type_info := TypeInfo,
           contract_vsn := Vsn} ->
             case aect_sophia:is_legal_serialization_at_height(Vsn, S#state.height) of
                 true ->
