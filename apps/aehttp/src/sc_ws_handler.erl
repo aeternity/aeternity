@@ -271,6 +271,7 @@ read_channel_options(Params) ->
          Read(<<"initiator_amount">>, initiator_amount, #{type => integer}),
          Read(<<"responder_amount">>, responder_amount, #{type => integer}),
          Read(<<"channel_reserve">>, channel_reserve, #{type => integer}),
+         Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false}),
          Read(<<"ttl">>, ttl, #{type => integer, mandatory => false}),
          Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}])
         ] ++ lists:map(ReadTimeout, aesc_fsm:timeouts() ++ [awaiting_open,
