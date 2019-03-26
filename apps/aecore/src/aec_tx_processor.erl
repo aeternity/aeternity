@@ -974,9 +974,14 @@ contract_call_success(Call, GasLimit, S) ->
 contract_call_fail(Call, Fee, S) ->
     S1 = cache_put(call, Call, S),
     UsedAmount = aect_call:gas_used(Call) * aect_call:gas_price(Call) + Fee,
-    %% For backwards compatibility, the account of the contract
-    %% needs to be created
-    {_, S2} = ensure_account(aect_call:contract_pubkey(Call), S1),
+    S2 = case S#state.protocol >= ?FORTUNA_PROTOCOL_VSN of
+             true  -> S1;
+             false ->
+                 %% For backwards compatibility, the account of the contract
+                 %% needs to be created
+                 {_, S20} = ensure_account(aect_call:contract_pubkey(Call), S1),
+                 S20
+         end,
     {Account, S3} = get_account(aect_call:caller_pubkey(Call), S2),
     account_spend(Account, UsedAmount, S3).
 

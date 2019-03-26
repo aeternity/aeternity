@@ -28,6 +28,7 @@
         , call_wrong_type/1
         , create_contract/1
         , create_contract_init_error/1
+        , create_contract_init_error_no_create_account/1
         , create_contract_init_error_the_invalid_instruction/1
         , create_contract_init_error_illegal_instruction_one_hex_digit/1
         , create_contract_init_error_illegal_instruction_two_hex_digits/1
@@ -140,7 +141,7 @@
 %%%===================================================================
 
 all() ->
-    [{group, vm_interaction}, {group, aevm_1}, {group, aevm_2}, {group, aevm_3}].
+    [{group, protocol_interaction}, {group, aevm_1}, {group, aevm_2}, {group, aevm_3}].
 
 %% To skip one level of indirection...
 -define(ALL_TESTS, [{group, transactions}, {group, state_tree}, {group, sophia},
@@ -150,8 +151,9 @@ groups() ->
     [ {aevm_1, [sequence], ?ALL_TESTS}
     , {aevm_2, [sequence], ?ALL_TESTS}
     , {aevm_3, [sequence], ?ALL_TESTS}
-    , {vm_interaction, [], [sophia_vm_interaction
-                            ]}
+    , {protocol_interaction, [], [ sophia_vm_interaction
+                                 , create_contract_init_error_no_create_account
+                                 ]}
     , {transactions, [], [ create_contract
                          , create_contract_init_error
                          , create_contract_init_error_the_invalid_instruction
@@ -297,22 +299,26 @@ init_per_group(aevm_3, Cfg) ->
                 fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
     [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_3},
      {protocol, fortuna} | Cfg];
-init_per_group(vm_interaction, Cfg) ->
-    Height = 10,
-    Fun = fun(H) when H <  Height -> ?ROMA_PROTOCOL_VSN;
-             (H) when H >= Height -> ?MINERVA_PROTOCOL_VSN
+init_per_group(protocol_interaction, Cfg) ->
+    MHeight = 10,
+    FHeight = 15,
+    Fun = fun(H) when H <  MHeight -> ?ROMA_PROTOCOL_VSN;
+             (H) when H <  FHeight -> ?MINERVA_PROTOCOL_VSN;
+             (H) when H >= FHeight -> ?FORTUNA_PROTOCOL_VSN
           end,
     meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
     [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_2},
-     {fork_height, Height},
-     {protocol, minerva} | Cfg];
+     {fork_heights, #{ minerva => MHeight,
+                       fortuna => FHeight
+                     }},
+     {protocol, fortuna} | Cfg];
 init_per_group(_Grp, Cfg) ->
     Cfg.
 
 end_per_group(Grp, Cfg) when Grp =:= aevm_1;
                              Grp =:= aevm_2;
                              Grp =:= aevm_3;
-                             Grp =:= vm_interaction ->
+                             Grp =:= protocol_interaction ->
     meck:unload(aec_hard_forks),
     Cfg;
 end_per_group(_Grp, Cfg) ->
@@ -445,6 +451,40 @@ create_contract_init_error(_Cfg) ->
                  - aect_create_tx:fee(aetx:tx(Tx))
                  - aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
                  aec_accounts:balance(aect_test_utils:get_account(PubKey, S2))),
+    ok.
+
+create_contract_init_error_no_create_account(Cfg) ->
+    S  = aect_test_utils:new_state(),
+    S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
+    {PubKey, S1} = aect_test_utils:setup_new_account(S0),
+    PrivKey      = aect_test_utils:priv_key(PubKey, S1),
+
+    {ok, Code} = compile_contract(init_error),
+    Overrides = #{ code => Code
+                 , call_data => make_calldata_from_code(Code, <<"init">>, {<<123:256>>, 0})
+                 , gas => 10000
+                 , gas_price => aec_test_utils:min_gas_price()
+                 },
+
+    Tx = create_tx(PubKey, Overrides, S1),
+
+    ForkHeights   = ?config(fork_heights, Cfg),
+    MinervaHeight = maps:get(fortuna, ForkHeights) - 1,
+    FortunaHeight = maps:get(fortuna, ForkHeights) + 1,
+
+    {ok, S2Minerva} = sign_and_apply_transaction(Tx, PrivKey, S1, MinervaHeight),
+    {ok, S2Fortuna} = sign_and_apply_transaction(Tx, PrivKey, S1, FortunaHeight),
+
+    %% Check that the contract is not created
+    ContractKey = aect_contracts:compute_contract_pubkey(PubKey, aetx:nonce(Tx)),
+    ?assertMatch({none, _}, lookup_contract_by_id(ContractKey, S2Minerva)),
+    ?assertMatch({none, _}, lookup_contract_by_id(ContractKey, S2Fortuna)),
+
+    %% In Minerva, the failing init should     create the contract account.
+    %% In Fortuna, the failing init should NOT create the contract account.
+    ?assertMatch({value, _}, aect_test_utils:lookup_account(ContractKey, S2Minerva)),
+    ?assertMatch(none      , aect_test_utils:lookup_account(ContractKey, S2Fortuna)),
+
     ok.
 
 create_contract_init_error_the_invalid_instruction(_Cfg) ->
@@ -1145,12 +1185,12 @@ sophia_identity(_Cfg) ->
 
 sophia_vm_interaction(Cfg) ->
     state(aect_test_utils:new_state()),
-    ForkHeight    = ?config(fork_height, Cfg),
-    RomaHeight    = ForkHeight - 1,
-    MinervaHeight = ForkHeight + 1,
+    ForkHeights   = ?config(fork_heights, Cfg),
+    RomaHeight    = maps:get(minerva, ForkHeights) - 1,
+    MinervaHeight = maps:get(fortuna, ForkHeights) - 1,
     MinervaGasPrice = aec_governance:minimum_gas_price(MinervaHeight),
     MinerMinGasPrice= aec_tx_pool:minimum_miner_gas_price(),
-    MinGasPrice   = max(MinerMinGasPrice, MinerMinGasPrice),
+    MinGasPrice   = max(MinervaGasPrice, MinerMinGasPrice),
     Acc           = ?call(new_account, 10000000 * MinGasPrice),
     RomaSpec      = #{height => RomaHeight, vm_version => ?VM_AEVM_SOPHIA_1,
                       amount => 100},
