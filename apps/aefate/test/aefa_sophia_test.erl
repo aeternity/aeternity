@@ -22,8 +22,8 @@ run(Chain, Contract, Function, Arguments) ->
     aefa_fate:run(make_call(Contract, Function, Arguments), Chain).
 
 expect(Chain, Contract, Function, Arguments, Expect) ->
-    #{ accumulator := Result,
-       trace       := Trace } = run(Chain, Contract, Function, Arguments),
+    {ok, #{ accumulator := Result,
+            trace       := Trace }} = run(Chain, Contract, Function, Arguments),
     ?assertMatch({Expect, _}, {Result, Trace}).
 
 %% For now, implement pipeline here.
@@ -40,9 +40,10 @@ setup_chain(Contracts) ->
     #{ contracts => Contracts }.
 
 make_call(Contract, Function, Arguments) ->
+    EncArgs  = list_to_tuple([aeb_fate_data:encode(A) || A <- Arguments]),
+    Calldata = {tuple, {Function, {tuple, EncArgs}}},
     #{ contract => Contract,
-       function => Function,
-       arguments => Arguments }.
+       call => aeb_fate_encoding:serialize(Calldata) }.
 
 %% -- Actual tests --
 
