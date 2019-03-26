@@ -380,7 +380,14 @@ save_store(#{ chain_state := ChainState
                     case heap_to_heap(Type, Ptr, State, ?WORD_SIZE_BYTES) of
                         {ok, StateValue1, GasUsed} ->
                             Store = aevm_eeevm_store:set_sophia_state(ct_version(State), StateValue1, storage(State)),
-                            {ok, spend_gas(GasUsed, State#{ chain_state => ChainAPI:set_store(Store, ChainState) })};
+                            if VmVersion =< ?VM_AEVM_SOPHIA_2 ->
+                                    {ok, spend_gas(GasUsed, State#{ chain_state => ChainAPI:set_store(Store, ChainState)})};
+                               true ->
+                                    try {ok, spend_gas(GasUsed, State#{ chain_state => ChainAPI:set_store(Store, ChainState)})}
+                                    catch throw:?aevm_eval_error(out_of_gas, _GasLeft) ->
+                                            {error, out_of_gas}
+                                    end
+                            end;
                         {error, _} ->
                             {error, out_of_gas}
                     end
