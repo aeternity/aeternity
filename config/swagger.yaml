@@ -3084,6 +3084,7 @@ definitions:
         minimum: 0
         maximum: 65535
       log:
+        description: 'DEPRECATED'
         type: string
       active:
         type: boolean

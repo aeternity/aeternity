@@ -4038,7 +4038,8 @@
           "maximum" : 65535
         },
         "log" : {
-          "type" : "string"
+          "type" : "string",
+          "description" : "DEPRECATED"
         },
         "active" : {
           "type" : "boolean"
