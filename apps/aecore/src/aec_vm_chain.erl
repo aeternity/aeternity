@@ -421,7 +421,7 @@ oracle_query_fee(Oracle, #state{trees = ChainTrees, vm_version=VMVersion}) ->
         {value, O} ->
             Fee = aeo_oracles:query_fee(O),
             {ok, Fee};
-        none when VMVersion =:= ?VM_AEVM_SOPHIA_2 ->
+        none when ?IS_VM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 ->
             {error, no_such_oracle};
         none when VMVersion =:= ?VM_AEVM_SOPHIA_1 ->
             %% Backwards compatible bug.

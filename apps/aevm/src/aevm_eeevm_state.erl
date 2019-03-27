@@ -293,7 +293,7 @@ heap_to_heap(Type, Ptr, State) ->
     case vm_version(State) of
         ?VM_AEVM_SOPHIA_1 ->
             heap_to_heap(Type, Ptr, State, ?BUGGY_WORD_SIZE_BYTES);
-        ?VM_AEVM_SOPHIA_2 ->
+        VMVersion when ?IS_VM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 ->
             heap_to_heap(Type, Ptr, State, ?WORD_SIZE_BYTES)
     end.
 
@@ -306,7 +306,7 @@ heap_to_heap_sized(Type, Value, Offset, State) ->
     case vm_version(State) of
         ?VM_AEVM_SOPHIA_1 ->
             heap_to_heap_sized(Type, Value, Offset, State, ?BUGGY_WORD_SIZE_BYTES);
-        ?VM_AEVM_SOPHIA_2 ->
+        VMVersion when ?IS_VM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 ->
             heap_to_heap_sized(Type, Value, Offset, State, ?WORD_SIZE_BYTES)
     end.
 
@@ -723,4 +723,3 @@ bloom_bits(Hash) ->
 
 bloom_bit(<<Bits:16/integer, Rest/bitstring>>) ->
     {Bits band 2047, Rest}.
-
