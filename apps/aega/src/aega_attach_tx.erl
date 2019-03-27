@@ -127,7 +127,7 @@ call_id(#ga_attach_tx{} = Tx) ->
     aect_call:id(owner_pubkey(Tx), nonce(Tx), contract_pubkey(Tx)).
 
 -spec is_legal_contract_version(aect_contracts:version()) -> boolean().
-is_legal_contract_version(#{vm := VMVersion}) when ?IS_VM_SOPHIA(VMVersion) ->
+is_legal_contract_version(#{vm := VMVersion, abi := ?ABI_SOPHIA_1}) when ?IS_VM_SOPHIA(VMVersion) ->
     VMVersion >= ?VM_AEVM_SOPHIA_2;
 is_legal_contract_version(#{}) ->
     false.
