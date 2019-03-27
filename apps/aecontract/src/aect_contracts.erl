@@ -114,6 +114,10 @@
 is_legal_call(X, X) -> true;
 is_legal_call(#{vm := ?VM_AEVM_SOPHIA_2, abi := X},
               #{vm := ?VM_AEVM_SOPHIA_1, abi := X}) -> true;
+is_legal_call(#{vm := ?VM_AEVM_SOPHIA_3, abi := X},
+              #{vm := ?VM_AEVM_SOPHIA_2, abi := X}) -> true;
+is_legal_call(#{vm := ?VM_AEVM_SOPHIA_3, abi := X},
+              #{vm := ?VM_AEVM_SOPHIA_1, abi := X}) -> true;
 is_legal_call(_, _) -> false.
 
 -spec is_legal_version_at_height(vm_usage_type(), version(), height()) -> boolean().
@@ -138,6 +142,12 @@ is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_2, abi := ?ABI_SOPH
         ?MINERVA_PROTOCOL_VSN -> true;
         ?FORTUNA_PROTOCOL_VSN -> true %% TODO: Revise this before release
     end;
+is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_3, abi := ?ABI_SOPHIA_1}, ProtocolVersion) ->
+    case ProtocolVersion of
+        ?ROMA_PROTOCOL_VSN    -> false;
+        ?MINERVA_PROTOCOL_VSN -> false;
+        ?FORTUNA_PROTOCOL_VSN -> true
+    end;
 is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
     case ProtocolVersion of
         ?ROMA_PROTOCOL_VSN    when VMVersion =:= ?VM_AEVM_SOPHIA_1 -> true;
@@ -145,7 +155,8 @@ is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
                                    VMVersion =:= ?VM_AEVM_SOPHIA_2 -> true;
         %% TODO: Revise this before release
         ?FORTUNA_PROTOCOL_VSN when VMVersion =:= ?VM_AEVM_SOPHIA_1;
-                                   VMVersion =:= ?VM_AEVM_SOPHIA_2 -> true;
+                                   VMVersion =:= ?VM_AEVM_SOPHIA_2;
+                                   VMVersion =:= ?VM_AEVM_SOPHIA_3 -> true;
         _                     when VMVersion =:= ?VM_AEVM_SOLIDITY_1 -> ?VM_AEVM_SOLIDITY_1_enabled;
         _ -> false
     end;
@@ -458,6 +469,7 @@ is_legal_version(#{vm := VM, abi := ABI}) ->
     case {VM, ABI} of
         {?VM_AEVM_SOPHIA_1,   ?ABI_SOPHIA_1}   -> true;
         {?VM_AEVM_SOPHIA_2,   ?ABI_SOPHIA_1}   -> true;
+        {?VM_AEVM_SOPHIA_3,   ?ABI_SOPHIA_1}   -> true;
         {?VM_AEVM_SOLIDITY_1, ?ABI_SOLIDITY_1} -> ?VM_AEVM_SOLIDITY_1_enabled;
         _                                      -> false
     end.
