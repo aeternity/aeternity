@@ -4069,8 +4069,13 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
     SenderConnPid = maps:get(SenderRole, Clients),
     AckConnPid = maps:get(AckRole, Clients),
     {SStartB, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
-    ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx]),
-    ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx]),
+    ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx,
+                                                              error]),
+    ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
+                                                           error]),
+    ws_send(SenderConnPid, <<"deposit">>, #{amount => <<"2">>}, Config),
+    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+        wait_for_channel_event(SenderConnPid, error, Config),
     ws_send(SenderConnPid, <<"deposit">>, #{amount => 2}, Config),
     UnsignedStateTx = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"deposit_tx">>, Config),
     {ok, #{<<"event">> := <<"deposit_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
@@ -4096,8 +4101,10 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
 
     {ok, #{<<"event">> := <<"deposit_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, #{<<"event">> := <<"deposit_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
-    ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx]),
-    ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx]),
+    ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx,
+                                                                error]),
+    ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
+                                                             error]),
     ok.
 
 sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
@@ -4116,8 +4123,13 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
     SenderConnPid = maps:get(SenderRole, Clients),
     AckConnPid = maps:get(AckRole, Clients),
     {SStartB, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
-    ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx]),
-    ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx]),
+    ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx,
+                                                              error]),
+    ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
+                                                           error]),
+    ws_send(SenderConnPid, <<"deposit">>, #{amount => <<"2">>}, Config),
+    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+        wait_for_channel_event(SenderConnPid, error, Config),
     ws_send(SenderConnPid, <<"withdraw">>, #{amount => 2}, Config),
     UnsignedStateTx = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"withdraw_tx">>, Config),
     {ok, #{<<"event">> := <<"withdraw_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
@@ -4142,8 +4154,10 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
 
     {ok, #{<<"event">> := <<"withdraw_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, #{<<"event">> := <<"withdraw_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
-    ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx]),
-    ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx]),
+    ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx,
+                                                                error]),
+    ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
+                                                            error]),
     ok.
 
 sc_ws_contracts(Config) ->
@@ -6250,6 +6264,7 @@ data_code_to_reason([1004])      -> <<"call_not_found">>;
 data_code_to_reason([1005])      -> <<"broken_encoding: accounts">>;
 data_code_to_reason([1006])      -> <<"broken_encoding: contracts">>;
 data_code_to_reason([1007])      -> <<"contract_init_failed">>;
+data_code_to_reason([1008])      -> <<"invalid_number">>;
 data_code_to_reason([1005,1006]) -> <<"broken_encoding: accounts, contracts">>;
 data_code_to_reason([Code])      -> sc_ws_api_jsonrpc:error_data_msg(Code).
 

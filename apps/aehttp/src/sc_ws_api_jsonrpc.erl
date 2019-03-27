@@ -125,6 +125,7 @@ json_rpc_error_object(negative_amount     , R) -> error_obj(3     , [1002], R);
 json_rpc_error_object(invalid_pubkeys     , R) -> error_obj(3     , [1003], R);
 json_rpc_error_object(call_not_found      , R) -> error_obj(3     , [1004], R);
 json_rpc_error_object(contract_init_failed, R) -> error_obj(3     , [1007], R);
+json_rpc_error_object(invalid_number      , R) -> error_obj(3     , [1008], R);
 json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
 json_rpc_error_object(not_found           , R) -> error_obj(3     , [100] , R);
@@ -192,6 +193,7 @@ error_data_msgs() ->
      , 1005 => <<"Broken encoding: accounts">>
      , 1006 => <<"Broken encoding: contracts">>
      , 1007 => <<"Contract init failed">>
+     , 1008 => <<"Invalid number">>
      }.
 
 broken_encoding_code(accounts ) -> 1005;
@@ -207,6 +209,8 @@ process_incoming(Msg, FsmPid) ->
                         no_reply       -> no_reply;
                         {reply, Reply} -> Reply
                     catch
+                        error:{validation_error, _Name, invalid_number} ->
+                            {error, invalid_number};
                         error:E ->
                             lager:debug("CAUGHT E=~p / Req = ~p / ~p",
                                         [E, Req, erlang:get_stacktrace()]),
@@ -230,9 +234,11 @@ process_request(#{<<"method">> := <<"channels.update.new">>,
                    <<"params">> := #{<<"from">>    := FromB,
                                      <<"to">>      := ToB,
                                      <<"amount">>  := Amount}}, FsmPid) ->
+    assert_integer(amount, Amount),
     case {aeser_api_encoder:safe_decode(account_pubkey, FromB),
           aeser_api_encoder:safe_decode(account_pubkey, ToB)} of
         {{ok, From}, {ok, To}} ->
+            assert_integer(amount, Amount),
             case aesc_fsm:upd_transfer(FsmPid, From, To, Amount) of
                 ok -> no_reply;
                 {error, _Reason} = Err -> Err
@@ -245,6 +251,7 @@ process_request(#{<<"method">> := <<"channels.update.new_contract">>,
                                     <<"deposit">>     := Deposit,
                                     <<"code">>        := CodeE,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
+    assert_integer(deposit, Deposit),
     case {bytearray_decode(CodeE), bytearray_decode(CallDataE)} of
         {{ok, Code}, {ok, CallData}} ->
             case aesc_fsm:upd_create_contract(FsmPid,
@@ -262,6 +269,7 @@ process_request(#{<<"method">> := <<"channels.update.new_contract_from_onchain">
                   <<"params">> := #{<<"deposit">>     := Deposit,
                                     <<"contract">>    := OnChainContractE,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
+    assert_integer(deposit, Deposit),
     case {aeser_api_encoder:safe_decode(contract_pubkey, OnChainContractE),
           bytearray_decode(CallDataE)} of
         {{ok, OnChainContract}, {ok, CallData}} ->
@@ -285,6 +293,7 @@ process_request(#{<<"method">> := <<"channels.update.call_contract">>,
                                     <<"abi_version">> := ABIVersion,
                                     <<"amount">>      := Amount,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
+    assert_integer(amount, Amount),
     case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
@@ -302,6 +311,7 @@ process_request(#{<<"method">> := <<"channels.get.contract_call">>,
                   <<"params">> := #{<<"contract">>   := ContractE,
                                     <<"caller">>     := CallerE,
                                     <<"round">>      := Round}}, FsmPid) ->
+    assert_integer(round, Round),
     case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
           aeser_api_encoder:safe_decode(account_pubkey, CallerE)} of
         {{ok, Contract}, {ok, Caller}} ->
@@ -321,6 +331,7 @@ process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
                                     <<"abi_version">> := ABIVersion,
                                     <<"amount">>      := Amount,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
+    assert_integer(amount, Amount),
     case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
@@ -446,12 +457,14 @@ process_request(#{<<"method">> := <<"channels.message">>,
     end;
 process_request(#{<<"method">> := <<"channels.deposit">>,
                     <<"params">> := #{<<"amount">>  := Amount}}, FsmPid) ->
+    assert_integer(amount, Amount),
     case aesc_fsm:upd_deposit(FsmPid, #{amount => Amount}) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err
     end;
 process_request(#{<<"method">> := <<"channels.withdraw">>,
                     <<"params">> := #{<<"amount">>  := Amount}}, FsmPid) ->
+    assert_integer(amount, Amount),
     case aesc_fsm:upd_withdraw(FsmPid, #{amount => Amount}) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err
@@ -516,4 +529,7 @@ opt_type(_, Bin) ->
 
 bin(A) when is_atom(A)   -> atom_to_binary(A, utf8);
 bin(B) when is_binary(B) -> B.
+
+assert_integer(_Name, Value) when is_integer(Value) -> ok;
+assert_integer(Name, _Value) -> error({validation_error, Name, invalid_number}).
 

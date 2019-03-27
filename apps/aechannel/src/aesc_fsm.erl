@@ -326,14 +326,18 @@ respond(Port, #{} = Opts0) ->
 
 upd_transfer(_Fsm, _From, _To, Amount) when Amount < 0 ->
     {error, negative_amount};
-upd_transfer(Fsm, From, To, Amount) ->
+upd_transfer(Fsm, From, To, Amount) when is_integer(Amount), Amount > 0 ->
     lager:debug("upd_transfer(~p, ~p, ~p, ~p)", [Fsm, From, To, Amount]),
     gen_statem:call(Fsm, {upd_transfer, From, To, Amount}).
 
+upd_deposit(_Fsm, #{amount := Amt}) when Amt < 0 ->
+    {error, negative_amount};
 upd_deposit(Fsm, #{amount := Amt} = Opts) when is_integer(Amt), Amt > 0 ->
     lager:debug("upd_deposit(~p)", [Opts]),
     gen_statem:call(Fsm, {upd_deposit, Opts}).
 
+upd_withdraw(_Fsm, #{amount := Amt}) when Amt < 0 ->
+    {error, negative_amount};
 upd_withdraw(Fsm, #{amount := Amt} = Opts) when is_integer(Amt), Amt > 0 ->
     lager:debug("upd_withdraw(~p)", [Opts]),
     gen_statem:call(Fsm, {upd_withdraw, Opts}).
