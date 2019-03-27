@@ -148,6 +148,12 @@ is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_3, abi := ?ABI_SOPH
         ?MINERVA_PROTOCOL_VSN -> false;
         ?FORTUNA_PROTOCOL_VSN -> true
     end;
+is_legal_version_in_protocol(create, #{vm := ?VM_FATE_SOPHIA_1, abi := ?ABI_SOPHIA_1}, ProtocolVersion) ->
+    case ProtocolVersion of
+        ?ROMA_PROTOCOL_VSN    -> false;
+        ?MINERVA_PROTOCOL_VSN -> false;
+        ?FORTUNA_PROTOCOL_VSN -> ?VM_FATE_SOPHIA_1_enabled %% TODO: Revise this before release
+    end;
 is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
     case ProtocolVersion of
         ?ROMA_PROTOCOL_VSN    when VMVersion =:= ?VM_AEVM_SOPHIA_1 -> true;
@@ -157,6 +163,7 @@ is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
         ?FORTUNA_PROTOCOL_VSN when VMVersion =:= ?VM_AEVM_SOPHIA_1;
                                    VMVersion =:= ?VM_AEVM_SOPHIA_2;
                                    VMVersion =:= ?VM_AEVM_SOPHIA_3 -> true;
+        ?FORTUNA_PROTOCOL_VSN when VMVersion =:= ?VM_FATE_SOPHIA_1 -> ?VM_FATE_SOPHIA_1_enabled; %% TODO: Revise this before release
         _                     when VMVersion =:= ?VM_AEVM_SOLIDITY_1 -> ?VM_AEVM_SOLIDITY_1_enabled;
         _ -> false
     end;
@@ -470,6 +477,7 @@ is_legal_version(#{vm := VM, abi := ABI}) ->
         {?VM_AEVM_SOPHIA_1,   ?ABI_SOPHIA_1}   -> true;
         {?VM_AEVM_SOPHIA_2,   ?ABI_SOPHIA_1}   -> true;
         {?VM_AEVM_SOPHIA_3,   ?ABI_SOPHIA_1}   -> true;
+        {?VM_FATE_SOPHIA_1,   ?ABI_SOPHIA_1}   -> ?VM_FATE_SOPHIA_1_enabled;
         {?VM_AEVM_SOLIDITY_1, ?ABI_SOLIDITY_1} -> ?VM_AEVM_SOLIDITY_1_enabled;
         _                                      -> false
     end.
