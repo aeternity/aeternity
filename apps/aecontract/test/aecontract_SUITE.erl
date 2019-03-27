@@ -112,6 +112,7 @@
         , sophia_crypto/1
         , sophia_safe_math/1
         , sophia_heap_to_heap_bug/1
+        , sophia_too_little_gas_for_mem/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -139,7 +140,7 @@
 %%%===================================================================
 
 all() ->
-    [{group, vm_interaction}, {group, aevm_1}, {group, aevm_2}].
+    [{group, vm_interaction}, {group, aevm_1}, {group, aevm_2}, {group, aevm_3}].
 
 %% To skip one level of indirection...
 -define(ALL_TESTS, [{group, transactions}, {group, state_tree}, {group, sophia},
@@ -148,6 +149,7 @@ all() ->
 groups() ->
     [ {aevm_1, [sequence], ?ALL_TESTS}
     , {aevm_2, [sequence], ?ALL_TESTS}
+    , {aevm_3, [sequence], ?ALL_TESTS}
     , {vm_interaction, [], [sophia_vm_interaction
                             ]}
     , {transactions, [], [ create_contract
@@ -215,7 +217,9 @@ groups() ->
                                  sophia_events,
                                  sophia_crypto,
                                  sophia_safe_math,
-                                 sophia_heap_to_heap_bug]}
+                                 sophia_heap_to_heap_bug,
+                                 sophia_too_little_gas_for_mem
+                               ]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
         [ sophia_oracles_ttl__extend_after_expiry
@@ -288,6 +292,11 @@ init_per_group(aevm_2, Cfg) ->
                 fun(_) -> ?MINERVA_PROTOCOL_VSN end),
     [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_2},
      {protocol, minerva} | Cfg];
+init_per_group(aevm_3, Cfg) ->
+    meck:expect(aec_hard_forks, protocol_effective_at_height,
+                fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
+    [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_3},
+     {protocol, fortuna} | Cfg];
 init_per_group(vm_interaction, Cfg) ->
     Height = 10,
     Fun = fun(H) when H <  Height -> ?ROMA_PROTOCOL_VSN;
@@ -302,6 +311,7 @@ init_per_group(_Grp, Cfg) ->
 
 end_per_group(Grp, Cfg) when Grp =:= aevm_1;
                              Grp =:= aevm_2;
+                             Grp =:= aevm_3;
                              Grp =:= vm_interaction ->
     meck:unload(aec_hard_forks),
     Cfg;
@@ -314,23 +324,26 @@ init_per_testcase(_TC, Config) ->
     SophiaVersion = ?config(sophia_version, Config),
     ProtocolVersion = case ?config(protocol, Config) of
                           roma    -> ?ROMA_PROTOCOL_VSN;
-                          minerva -> ?MINERVA_PROTOCOL_VSN
+                          minerva -> ?MINERVA_PROTOCOL_VSN;
+                          fortuna -> ?FORTUNA_PROTOCOL_VSN
                       end,
     put('$vm_version', VmVersion),
     put('$sophia_version', SophiaVersion),
     put('$protocol_version', ProtocolVersion),
     Config.
 
--define(assertMatchVM(Res, ExpVm1, ExpVm2),
+-define(assertMatchVM(Res, ExpVm1, ExpVm2, ExpVm3),
     case vm_version() of
         ?VM_AEVM_SOPHIA_1 -> ?assertMatch(ExpVm1, Res);
-        ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res)
+        ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res);
+        ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res)
     end).
 
 -define(assertMatchProtocol(Res, ExpRoma, ExpMinerva),
     case protocol_version() of
         ?ROMA_PROTOCOL_VSN -> ?assertMatch(ExpRoma, Res);
-        ?MINERVA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res)
+        ?MINERVA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res);
+        ?FORTUNA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res)
     end).
 
 -define(skipRest(Res, Reason),
@@ -395,7 +408,7 @@ create_contract_init_error(_Cfg) ->
     Overrides = #{ code => ContractCode
                  , call_data => make_calldata_from_code(ContractCode, <<"init">>, {<<123:256>>, 0})
                  , gas => 10000
-                 , gas_price => aec_test_utils:min_gas_price() 
+                 , gas_price => aec_test_utils:min_gas_price()
                  },
     Tx = create_tx(PubKey, Overrides, S1),
 
@@ -488,8 +501,8 @@ create_version_too_high(Cfg) ->
     {ok, IdContract} = compile_contract_vsn(identity, 2),
     ct:log("Compiled Contract = ~p\n", [aect_sophia:deserialize(IdContract)]),
 
-    IdContractMap = aect_sophia:deserialize(IdContract),
-    
+    _IdContractMap = aect_sophia:deserialize(IdContract),
+
     CallData     = make_calldata_from_code(IdContract, init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallData
@@ -1316,7 +1329,7 @@ sophia_call_origin(_Cfg) ->
         %% In Roma, the Call.caller and Call.origin is the same.
         RemCInt,
         %% After Roma, the Call.caller and Call.origin is NOT the same.
-        AccInt),
+        AccInt, AccInt),
     RemCInt = ?call(call_contract, Acc, RemC, nested_caller, word, {}),
 
     ok.
@@ -1347,7 +1360,7 @@ sophia_oracles(_Cfg) ->
     ?assertMatchVM(
         ?call(call_contract, Acc, Ct, queryFee, word, BogusOracle),
         32,          %% On ROMA this is broken, returns 32.
-        {error, _}), %% Fixed in MINERVA
+        {error, _}, {error, _}), %% Fixed in MINERVA
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 4001}),
     NonceAfterRespond = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
@@ -3068,7 +3081,7 @@ sophia_maps(_Cfg) ->
             Actual  = {Call(size_state_i, word, {}),
                        Call(size_state_s, word, {})},
             %% Maps.size was broken i ROMA, fixed in Minerva
-            ?assertMatchVM(Actual, Expect1, Expect2)
+            ?assertMatchVM(Actual, Expect1, Expect2, Expect2)
         end,
 
     %% Reset the state
@@ -3637,7 +3650,7 @@ sophia_events(_Cfg) ->
 
     ok.
 
--define(assertMatchVM1OOG(Exp, Res), ?assertMatchVM(Res, {{error, <<"out_of_gas">>}, _}, Exp)).
+-define(assertMatchVM1OOG(Exp, Res), ?assertMatchVM(Res, {{error, <<"out_of_gas">>}, _}, Exp, Exp)).
 
 set_compiler_version(Vm, Compiler) ->
     [ put('$sophia_version', Compiler) || vm_version() == Vm ].
@@ -3695,7 +3708,7 @@ sophia_crypto(_Cfg) ->
 sophia_safe_math(Cfg) ->
     case ?config(vm_version, Cfg) of
         ?VM_AEVM_SOPHIA_1 -> sophia_safe_math_old();
-        ?VM_AEVM_SOPHIA_2 -> sophia_safe_math()
+        VMVersion when ?IS_VM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 -> sophia_safe_math()
     end.
 
 sophia_safe_math() ->
@@ -3838,9 +3851,22 @@ sophia_heap_to_heap_bug(_Cfg) ->
     ?assertMatchVM(
         ?call(call_contract, Acc, IdC, f, word, {100}, #{return_gas_used => true}),
         {{error,<<"out_of_gas">>}, _Gas}, %% Bad size check kicks in
-        {1, _Gas}),                       %% But works on new VM.
+        {1, _Gas}, {1, _Gas}),            %% But works on new VM.
 
     ok.
+
+sophia_too_little_gas_for_mem(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    IdC   = ?call(create_contract, Acc, counter, {4}),
+
+    {_, GasUsed} = ?call(call_contract, Acc, IdC, tick, word, {}, #{gas => 1000, return_gas_used => true}),
+
+    Res = ?call(call_contract, Acc, IdC, tick, word, {}, #{gas => GasUsed - 1}),
+    ?assertMatchVM(Res, {error,{throw,{aevm_eval_error,out_of_gas,0}}},
+                        {error,{throw,{aevm_eval_error,out_of_gas,0}}},
+                        {error,<<"out_of_gas">>}).
+
 
 %% The crowd funding example.
 
