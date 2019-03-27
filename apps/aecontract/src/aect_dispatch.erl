@@ -126,7 +126,7 @@ call_common(CallData, CallDataType, OutType, ContractPubkey, Code, Store,
 %% used.
 
 -spec run(map(), map()) -> {aect_call:call(), aec_trees:trees(), aetx_env:env()}.
-run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_VM_SOPHIA(VM) ->
+run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_AEVM_SOPHIA(VM) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
     %% TODO: update aeso_abi and pass Version

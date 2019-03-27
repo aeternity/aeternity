@@ -943,7 +943,7 @@ contract_init_call_success(InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
     %% The return value is cleared for successful init calls.
     InitCall1   = aect_call:set_return_value(<<>>, InitCall),
     case aect_contracts:ct_version(Contract) of
-        #{vm := V} = CTVersion when ?IS_VM_SOPHIA(V) ->
+        #{vm := V} = CTVersion when ?IS_AEVM_SOPHIA(V) ->
             %% Set the initial state of the contract
             case aevm_eeevm_store:from_sophia_state(CTVersion, ReturnValue) of
                 {ok, Store} ->

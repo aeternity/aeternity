@@ -1184,11 +1184,11 @@ is_valid_instruction(?OR            ,_VM) -> true;
 is_valid_instruction(?XOR           ,_VM) -> true;
 is_valid_instruction(?NOT           ,_VM) -> true;
 is_valid_instruction(?BYTE          ,_VM) -> true;
-is_valid_instruction(?SHL           ,VM)  -> (?IS_VM_SOPHIA(VM) andalso VM >= ?VM_AEVM_SOPHIA_2)
+is_valid_instruction(?SHL           ,VM)  -> (?IS_AEVM_SOPHIA(VM) andalso VM >= ?VM_AEVM_SOPHIA_2)
                                              orelse VM == ?VM_AEVM_SOLIDITY_1;
-is_valid_instruction(?SHR           ,VM)  -> (?IS_VM_SOPHIA(VM) andalso VM >= ?VM_AEVM_SOPHIA_2)
+is_valid_instruction(?SHR           ,VM)  -> (?IS_AEVM_SOPHIA(VM) andalso VM >= ?VM_AEVM_SOPHIA_2)
                                              orelse VM == ?VM_AEVM_SOLIDITY_1;
-is_valid_instruction(?SAR           ,VM)  -> (?IS_VM_SOPHIA(VM) andalso VM >= ?VM_AEVM_SOPHIA_2)
+is_valid_instruction(?SAR           ,VM)  -> (?IS_AEVM_SOPHIA(VM) andalso VM >= ?VM_AEVM_SOPHIA_2)
                                              orelse VM == ?VM_AEVM_SOLIDITY_1;
 is_valid_instruction(16#1e          ,_VM) -> false;
 is_valid_instruction(16#1f          ,_VM) -> false;
@@ -1213,16 +1213,16 @@ is_valid_instruction(?BALANCE       ,_VM) -> true;
 is_valid_instruction(?ORIGIN        ,_VM) -> true;
 is_valid_instruction(?CALLER        ,_VM) -> true;
 is_valid_instruction(?CALLVALUE     ,_VM) -> true;
-is_valid_instruction(?CALLDATALOAD  , VM) -> not ?IS_VM_SOPHIA(VM);
-is_valid_instruction(?CALLDATASIZE  , VM) -> not ?IS_VM_SOPHIA(VM);
-is_valid_instruction(?CALLDATACOPY  , VM) -> not ?IS_VM_SOPHIA(VM);
+is_valid_instruction(?CALLDATALOAD  , VM) -> not ?IS_AEVM_SOPHIA(VM);
+is_valid_instruction(?CALLDATASIZE  , VM) -> not ?IS_AEVM_SOPHIA(VM);
+is_valid_instruction(?CALLDATACOPY  , VM) -> not ?IS_AEVM_SOPHIA(VM);
 is_valid_instruction(?CODESIZE      ,_VM) -> true;
 is_valid_instruction(?CODECOPY      ,_VM) -> true;
 is_valid_instruction(?GASPRICE      ,_VM) -> true;
 is_valid_instruction(?EXTCODESIZE   ,_VM) -> true;
 is_valid_instruction(?EXTCODECOPY   ,_VM) -> true;
-is_valid_instruction(?RETURNDATASIZE, VM) -> not ?IS_VM_SOPHIA(VM);
-is_valid_instruction(?RETURNDATACOPY, VM) -> not ?IS_VM_SOPHIA(VM);
+is_valid_instruction(?RETURNDATASIZE, VM) -> not ?IS_AEVM_SOPHIA(VM);
+is_valid_instruction(?RETURNDATACOPY, VM) -> not ?IS_AEVM_SOPHIA(VM);
 is_valid_instruction(16#3f          ,_VM) -> false; %% EXTCODEHASH
 is_valid_instruction(?BLOCKHASH     ,_VM) -> true;
 is_valid_instruction(?COINBASE      ,_VM) -> true;
@@ -1244,8 +1244,8 @@ is_valid_instruction(?POP           ,_VM) -> true;
 is_valid_instruction(?MLOAD         ,_VM) -> true;
 is_valid_instruction(?MSTORE        ,_VM) -> true;
 is_valid_instruction(?MSTORE8       ,_VM) -> true;
-is_valid_instruction(?SLOAD         , VM) -> not ?IS_VM_SOPHIA(VM);
-is_valid_instruction(?SSTORE        , VM) -> not ?IS_VM_SOPHIA(VM);
+is_valid_instruction(?SLOAD         , VM) -> not ?IS_AEVM_SOPHIA(VM);
+is_valid_instruction(?SSTORE        , VM) -> not ?IS_AEVM_SOPHIA(VM);
 is_valid_instruction(?JUMP          ,_VM) -> true;
 is_valid_instruction(?JUMPI         ,_VM) -> true;
 is_valid_instruction(?PC            ,_VM) -> true;
@@ -1326,11 +1326,11 @@ is_valid_instruction(?LOG2          ,_VM) -> true;
 is_valid_instruction(?LOG3          ,_VM) -> true;
 is_valid_instruction(?LOG4          ,_VM) -> true;
 is_valid_instruction(OP             ,_VM) when 16#a5 =< OP, OP =< 16#ef -> false; %% 75 instructions.
-is_valid_instruction(?CREATE        , VM) -> not ?IS_VM_SOPHIA(VM);
+is_valid_instruction(?CREATE        , VM) -> not ?IS_AEVM_SOPHIA(VM);
 is_valid_instruction(?CALL          ,_VM) -> true;
-is_valid_instruction(?CALLCODE      , VM) -> not ?IS_VM_SOPHIA(VM);
+is_valid_instruction(?CALLCODE      , VM) -> not ?IS_AEVM_SOPHIA(VM);
 is_valid_instruction(?RETURN        ,_VM) -> true;
-is_valid_instruction(?DELEGATECALL  , VM) -> not ?IS_VM_SOPHIA(VM);
+is_valid_instruction(?DELEGATECALL  , VM) -> not ?IS_AEVM_SOPHIA(VM);
 is_valid_instruction(16#f5          ,_VM) -> false; %% CREATE2
 is_valid_instruction(16#f6          ,_VM) -> false;
 is_valid_instruction(16#f7          ,_VM) -> false;
@@ -1341,7 +1341,7 @@ is_valid_instruction(16#fb          ,_VM) -> false;
 is_valid_instruction(16#fc          ,_VM) -> false;
 is_valid_instruction(?REVERT        ,_VM) -> true;
 is_valid_instruction(?INVALID       ,_VM) -> false; %% Designated invalid instruction.
-is_valid_instruction(?SUICIDE       , VM) -> not ?IS_VM_SOPHIA(VM).
+is_valid_instruction(?SUICIDE       , VM) -> not ?IS_AEVM_SOPHIA(VM).
 
 %% ------------------------------------------------------------------------
 %% ARITHMETIC
@@ -1352,7 +1352,7 @@ is_valid_instruction(?SUICIDE       , VM) -> not ?IS_VM_SOPHIA(VM).
 truncate(X, VM) -> check_safe_math(X, signed(X), VM).
 
 %% VM_AEVM_SOPHIA_2 and above uses safe arithmetic
-arith_error(_, VM) when ?IS_VM_SOPHIA(VM), VM >= ?VM_AEVM_SOPHIA_2 ->
+arith_error(_, VM) when ?IS_AEVM_SOPHIA(VM), VM >= ?VM_AEVM_SOPHIA_2 ->
     eval_error(arithmetic_error);
 arith_error(X, _) -> X.
 
@@ -1363,7 +1363,7 @@ add(Arg1, Arg2, VM) -> truncate(signed(Arg1) + signed(Arg2), VM).
 mul(Arg1, Arg2, VM) -> truncate(signed(Arg1) * signed(Arg2), VM).
 sub(Arg1, Arg2, VM) -> truncate(signed(Arg1) - signed(Arg2), VM).
 
-exp(Arg1, Arg2, VM) when ?IS_VM_SOPHIA(VM), VM >= ?VM_AEVM_SOPHIA_2 ->
+exp(Arg1, Arg2, VM) when ?IS_AEVM_SOPHIA(VM), VM >= ?VM_AEVM_SOPHIA_2 ->
     pow(signed(Arg1), signed(Arg2), VM);
 exp(Arg1, Arg2, VM) -> pow(Arg1, Arg2, VM). %% Allow negative exponents for VM < SOPHIA_2
 
@@ -1603,7 +1603,7 @@ get_call_input(StateIn, IOffsetIx, ISizeIx) ->
     case aevm_eeevm_state:vm_version(State) of
         ?VM_AEVM_SOLIDITY_1 ->
             {I, OutT, State};
-        VM when ?IS_VM_SOPHIA(VM) ->
+        VM when ?IS_AEVM_SOPHIA(VM) ->
             {I, OutT, spend_gas_common({call_data}, aevm_gas:mem_gas(byte_size(I) div 32, State), State)}
     end.
 
@@ -1695,12 +1695,12 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend,
                     case VmVersion of
                         ?VM_AEVM_SOLIDITY_1 ->
                             eval_error(What);
-                        VM when ?IS_VM_SOPHIA(VM), CallGas =:= GasSpent, not GasIsLimited ->
+                        VM when ?IS_AEVM_SOPHIA(VM), CallGas =:= GasSpent, not GasIsLimited ->
                             %% When the gas IS NOT explicitly limited,
                             %% and all gas was consumed in the call,
                             %% all gas in the current execution is consumed.
                             eval_error(What);
-                        VM when ?IS_VM_SOPHIA(VM), GasIsLimited ->
+                        VM when ?IS_AEVM_SOPHIA(VM), GasIsLimited ->
                             %% When the gas IS explicitly limited, or
                             %% there was an exception below in the call stack
                             %% in a call that WAS explicitly limited,

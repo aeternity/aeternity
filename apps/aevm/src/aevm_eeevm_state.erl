@@ -179,9 +179,9 @@ init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
         ?VM_AEVM_SOLIDITY_1 ->
             aevm_eeevm_store:init(Store, State1);
         VmVersion when (CallDataType =:= undefined orelse OutType =:= undefined)
-                       andalso ?IS_VM_SOPHIA(VmVersion) ->
+                       andalso ?IS_AEVM_SOPHIA(VmVersion) ->
             error({bad_vm_setup, missing_call_data_type});
-        VmVersion when ?IS_VM_SOPHIA(VmVersion) ->
+        VmVersion when ?IS_AEVM_SOPHIA(VmVersion) ->
             case is_reentrant_call(State) of
                 true -> %% Sophia doesn't allow reentrant calls
                     init_error(reentrant_call);
@@ -232,7 +232,7 @@ import_state_from_store(Store, State0) ->
 
 do_return(Us0, Us1, State) ->
     case vm_version(State) of
-        VMV when ?IS_VM_SOPHIA(VMV) ->
+        VMV when ?IS_AEVM_SOPHIA(VMV) ->
             %% In Sophia Us1 is a pointer to the actual value.
             %% The type of the value is in the state (from meta data)
             Type = out_type(State),
@@ -251,7 +251,7 @@ do_return(Us0, Us1, State) ->
 do_revert(Us0, Us1, State0) ->
     %% Us0 is a pointer to the revert string binary and Us1 is its size.
     case vm_version(State0) of
-        VMV when ?IS_VM_SOPHIA(VMV) ->
+        VMV when ?IS_AEVM_SOPHIA(VMV) ->
             %% In Sophia Us1 is a pointer to the actual value.
             %% The type of the value is always string.
             case heap_to_binary(string, Us1, State0) of
@@ -293,7 +293,7 @@ heap_to_heap(Type, Ptr, State) ->
     case vm_version(State) of
         ?VM_AEVM_SOPHIA_1 ->
             heap_to_heap(Type, Ptr, State, ?BUGGY_WORD_SIZE_BYTES);
-        VMVersion when ?IS_VM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 ->
+        VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 ->
             heap_to_heap(Type, Ptr, State, ?WORD_SIZE_BYTES)
     end.
 
@@ -306,7 +306,7 @@ heap_to_heap_sized(Type, Value, Offset, State) ->
     case vm_version(State) of
         ?VM_AEVM_SOPHIA_1 ->
             heap_to_heap_sized(Type, Value, Offset, State, ?BUGGY_WORD_SIZE_BYTES);
-        VMVersion when ?IS_VM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 ->
+        VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 ->
             heap_to_heap_sized(Type, Value, Offset, State, ?WORD_SIZE_BYTES)
     end.
 
@@ -325,7 +325,7 @@ return_contract_call_result(To, Input, Addr,_Size, ReturnData, Type, State) ->
     case vm_version(State) of
         ?VM_AEVM_SOLIDITY_1 ->
             {1, aevm_eeevm_memory:write_area(Addr, ReturnData, State)};
-        VMV when ?IS_VM_SOPHIA(VMV) ->
+        VMV when ?IS_AEVM_SOPHIA(VMV) ->
             %% For Sophia, ignore the Addr and put the result on the
             %% top of the heap
             HeapSize = aevm_eeevm_memory:size_in_words(State) * 32,
@@ -367,7 +367,7 @@ save_store(#{ chain_state := ChainState
         ?VM_AEVM_SOLIDITY_1 ->
             Store = aevm_eeevm_store:to_binary(State),
             {ok, State#{ chain_state => ChainAPI:set_store(Store, ChainState)}};
-        VMV when ?IS_VM_SOPHIA(VMV) ->
+        VMV when ?IS_AEVM_SOPHIA(VMV) ->
             %% A typerep for the state type is on top of the stack, and the state
             %% pointer is at address 0.
             {Addr, _} = aevm_eeevm_memory:load(0, State),
@@ -399,7 +399,7 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
         ?VM_AEVM_SOLIDITY_1 ->
             {Arg, State1} = aevm_eeevm_memory:get_area(IOffset, ISize, State),
             {Arg, undefined, State1};
-        VMVersion when ?IS_VM_SOPHIA(VMVersion) ->
+        VMVersion when ?IS_AEVM_SOPHIA(VMVersion) ->
             %% In Sophia:
             %%   ISize is the (integer) type hash for primops that needs to be
             %%         type checked (otherwise 0).
@@ -474,7 +474,7 @@ write_heap_value(HeapValue, State) ->
 
 call_contract(Caller, Target, CallGas, Value, Data, State) ->
     case vm_version(State) of
-        VMV when ?IS_VM_SOPHIA(VMV), Target == ?PRIM_CALLS_CONTRACT ->
+        VMV when ?IS_AEVM_SOPHIA(VMV), Target == ?PRIM_CALLS_CONTRACT ->
             aevm_ae_primops:call(CallGas, Value, Data, State);
         _ ->
             CallStack  = [Caller | call_stack(State)],

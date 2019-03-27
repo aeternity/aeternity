@@ -510,7 +510,7 @@ crypto_call(Gas, Op, _Value, Data, State) ->
     case aevm_eeevm_state:vm_version(State) of
         ?VM_AEVM_SOPHIA_1 ->
             {error, out_of_gas};
-        VMVersion when ?IS_VM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 ->
+        VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 ->
             crypto_call(Gas, Op, Data, State)
     end.
 

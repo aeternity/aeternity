@@ -3748,7 +3748,7 @@ sophia_crypto(_Cfg) ->
 sophia_safe_math(Cfg) ->
     case ?config(vm_version, Cfg) of
         ?VM_AEVM_SOPHIA_1 -> sophia_safe_math_old();
-        VMVersion when ?IS_VM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 -> sophia_safe_math()
+        VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 -> sophia_safe_math()
     end.
 
 sophia_safe_math() ->
