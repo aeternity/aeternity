@@ -425,6 +425,8 @@ type_to_cb(name_revoke_tx)            -> aens_revoke_tx;
 type_to_cb(name_create_tx)            -> aens_create_tx;
 type_to_cb(contract_call_tx)          -> aect_call_tx;
 type_to_cb(contract_create_tx)        -> aect_create_tx;
+type_to_cb(ga_attach_tx)              -> aega_attach_tx;
+type_to_cb(ga_meta_tx)                -> aega_meta_tx;
 type_to_cb(channel_create_tx)         -> aesc_create_tx;
 type_to_cb(channel_deposit_tx)        -> aesc_deposit_tx;
 type_to_cb(channel_withdraw_tx)       -> aesc_withdraw_tx;

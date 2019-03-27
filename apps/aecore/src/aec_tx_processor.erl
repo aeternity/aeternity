@@ -928,6 +928,7 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
     RollbackS = S,
     TotalAmount    = Fee + GasLimit * GasPrice,
     {Account, S1}  = get_account(OwnerPubkey, S),
+    assert_basic_account(Account), %% No re-attach
     assert_account_balance(Account, TotalAmount),
     assert_ga_create_version(ABIVersion, VMVersion, S),
     assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData, AuthFun, S),
