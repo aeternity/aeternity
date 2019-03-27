@@ -729,7 +729,73 @@ tx_pool_test_() ->
             tx_pool_gc(8),
             ?assertMatch({ok, []}, aec_tx_pool:peek(infinity))
 
-        end}
+        end},
+      {"Test Origins cache GC",
+       fun() ->
+               %% Initialize chain
+               aec_test_utils:stop_chain_db(),
+
+               PubKey = new_pubkey(),
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
+                           [{PubKey, 100000}]),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               {ok,_} = aec_chain_state:insert_block(GenesisBlock),
+
+               %% The first block needs to be a key-block
+               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PubKey),
+               {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
+               {ok,_} = aec_chain_state:insert_block(KeyBlock1),
+               ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
+               ok = aec_keys:promote_candidate(aec_blocks:miner(KeyBlock1)),
+
+               %% Prepare transactions
+               STx11 = a_signed_tx(PubKey, PubKey, 1, 20000),
+               STx12 = a_signed_tx(PubKey, PubKey, 1, 30000),
+               STx21 = a_signed_tx(PubKey, PubKey, 2, 20000),
+               STx22 = a_signed_tx(PubKey, PubKey, 2, 30000),
+               STx31 = a_signed_tx(PubKey, PubKey, 3, 20000),
+               STx32 = a_signed_tx(PubKey, PubKey, 3, 30000),
+
+               %% Post transactions
+               ?assertEqual(ok, aec_tx_pool:push(STx11)),
+               ?assertEqual(ok, aec_tx_pool:push(STx12)),
+               ?assertEqual(ok, aec_tx_pool:push(STx21)),
+               ?assertEqual(ok, aec_tx_pool:push(STx22)),
+               ?assertEqual(ok, aec_tx_pool:push(STx31)),
+               ?assertEqual(ok, aec_tx_pool:push(STx32)),
+
+               ?assertMatch({ok, [_, _, _, _, _, _]}, aec_tx_pool:peek(infinity)),
+
+               %% Add transactions to the chain
+               TopBlock = aec_chain:top_block(),
+               {ok, USCandidate1, _} = aec_block_micro_candidate:create(TopBlock),
+               {ok, Candidate1} = aec_keys:sign_micro_block(USCandidate1),
+               {ok, Top} = aec_blocks:hash_internal_representation(Candidate1),
+               {ok,_} = aec_chain_state:insert_block(Candidate1),
+               ?assertEqual(Top, aec_chain:top_block_hash()),
+               aec_tx_pool:top_change(micro, KeyHash1, Top),
+
+               %% Post more transactions from the same origin
+               STx41 = a_signed_tx(PubKey, PubKey, 4, 20000),
+               STx42 = a_signed_tx(PubKey, PubKey, 4, 30000),
+               ?assertEqual(ok, aec_tx_pool:push(STx41)),
+               ?assertEqual(ok, aec_tx_pool:push(STx42)),
+
+               %% Transactions with higher fee made it into the chain
+               ?assertEqual({error, already_accepted}, aec_tx_pool:push(STx12)),
+               ?assertEqual({error, already_accepted}, aec_tx_pool:push(STx22)),
+               ?assertEqual({error, already_accepted}, aec_tx_pool:push(STx32)),
+
+               %% The rest is in the mempool
+               ?assertMatch({ok, [_, _, _, _, _]}, aec_tx_pool:peek(infinity)),
+
+               %% GC removes stale transactions with nonce lower than 4
+               ok = aec_tx_pool:origins_cache_gc(),
+
+               %% Only transactions with nonce=4 are not GCed
+               ?assertMatch({ok, [STx42, STx41]}, aec_tx_pool:peek(infinity))
+       end}
      ]}.
 
 tx_pool_gc(Height) ->
