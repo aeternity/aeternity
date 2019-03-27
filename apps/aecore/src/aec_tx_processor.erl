@@ -1095,7 +1095,7 @@ assert_oracle_abi_version(ABIVersion, S) ->
 assert_oracle_formats(_QFormat,_RFormat, ?ABI_NO_VM,_S) ->
     %% The format strings can be anything
     ok;
-assert_oracle_formats(QFormat, RFormat, ?ABI_SOPHIA_1, S) ->
+assert_oracle_formats(QFormat, RFormat, ?ABI_AEVM_SOPHIA_1, S) ->
     case S#state.protocol >= ?MINERVA_PROTOCOL_VSN of
         false ->
             %% Backwards compatible: no check of this.
@@ -1144,7 +1144,7 @@ assert_oracle_format_match(Oracle, Format, Content) ->
         ?ABI_NO_VM ->
             %% No interpretation of the format, nor content.
             ok;
-        ?ABI_SOPHIA_1 ->
+        ?ABI_AEVM_SOPHIA_1 ->
             %% Check that the content can be decoded as the type
             %% and that if we encoded it again, it becomes the content.
             {ok, TypeRep} = aeso_heap:from_binary(typerep, Format),
@@ -1216,7 +1216,7 @@ assert_name_claimed(Name) ->
         revoked -> runtime_error(name_revoked)
     end.
 
-assert_contract_byte_code(?ABI_SOPHIA_1, SerializedCode, CallData, S) ->
+assert_contract_byte_code(?ABI_AEVM_SOPHIA_1, SerializedCode, CallData, S) ->
     try aect_sophia:deserialize(SerializedCode) of
         #{type_info := TypeInfo,
           contract_vsn := Vsn} ->

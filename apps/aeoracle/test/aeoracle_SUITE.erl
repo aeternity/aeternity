@@ -162,7 +162,7 @@ register_oracle_negative(_Cfg) ->
     {error, bad_abi_version} = aetx:process(RTx7, Trees, aetx_env:set_height(Env, 2)),
 
     %% Test bad format strings
-    ABISophia = #{abi_version => ?ABI_SOPHIA_1,
+    ABISophia = #{abi_version => ?ABI_AEVM_SOPHIA_1,
                   query_format => aeso_heap:to_binary(word),
                   response_format => aeso_heap:to_binary(word)
                  },

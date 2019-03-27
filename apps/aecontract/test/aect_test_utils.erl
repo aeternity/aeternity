@@ -102,9 +102,9 @@ latest_sophia_vm_version() ->
 
 latest_sophia_abi_version() ->
     case latest_protocol_version() of
-        ?ROMA_PROTOCOL_VSN    -> ?ABI_SOPHIA_1;
-        ?MINERVA_PROTOCOL_VSN -> ?ABI_SOPHIA_1;
-        ?FORTUNA_PROTOCOL_VSN -> ?ABI_SOPHIA_1
+        ?ROMA_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1;
+        ?MINERVA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1;
+        ?FORTUNA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1
     end.
 
 latest_sophia_version() ->
