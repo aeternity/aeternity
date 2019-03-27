@@ -15,6 +15,7 @@ IF "%OTP_VERSION%"=="" SET "OTP_VERSION=20.3"
 IF "%WIN_OTP_PATH%"=="" SET "WIN_OTP_PATH=C:\Program Files\erl"
 IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\msys64"
 IF "%PLATFORM%"=="" SET "PLATFORM=x64"
+IF "%FORCE_SYRENE_REINSTALL%"=="" SET "FORCE_SYRENE_REINSTALL=false"
 SET BASH_BIN="%WIN_MSYS2_ROOT%\usr\bin\bash"
 SET PACMAN=pacman --noconfirm --needed -S
 SET PACMAN_RM=pacman --noconfirm -Rsc
@@ -89,9 +90,11 @@ START "" /WAIT "%TMP%\%OTP_PACKAGE%" /S
 @echo Current time: %time%
 rem Ensure Styrene is installed
 
-IF EXIST "%WIN_STYRENE_PATH%" GOTO STYRENEINSTALLED
+IF EXIST "%WIN_STYRENE_PATH%" IF "%FORCE_SYRENE_REINSTALL%" NEQ "true" GOTO STYRENEINSTALLED
+%BASH_BIN% -lc "rm -rf \"${ORIGINAL_TEMP}/styrene\""
 %BASH_BIN% -lc "git clone https://github.com/achadwick/styrene.git \"${ORIGINAL_TEMP}/styrene\""
 %BASH_BIN% -lc "cd \"${ORIGINAL_TEMP}/styrene\" && git fetch origin && git checkout v0.3.0"
+%BASH_BIN% -lc "cd \"${ORIGINAL_TEMP}/styrene\" && /mingw64/bin/pip3 uninstall -y styrene"
 %BASH_BIN% -lc "cd \"${ORIGINAL_TEMP}/styrene\" && /mingw64/bin/pip3 install ."
 :STYRENEINSTALLED
 
