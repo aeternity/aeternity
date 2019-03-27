@@ -202,9 +202,12 @@ string() ->
             , {<<"addr_to_str">>, [{address, <<2,32,118,81,108,18,247,243,45,243,82,75,
                                                159,144,74,117,157,38,78,99,114,239,
                                                217,210,67,40,207,3,52,111,208,53>>}],
-               <<"9JXTUemAURfCd8BDQZcXK4Gk8Hwfqxf1ASSYNrQnhjz">>}
-            , {<<"addr_to_str">>, [{address, "9JXTUemAURfCd8BDQZcXK4Gk8Hwfqxf1ASSYNrQnhjz"}],
-               <<"9JXTUemAURfCd8BDQZcXK4Gk8Hwfqxf1ASSYNrQnhjz">>}
+              <<"ak_wKvyTJ147VfZWeGVUnx274hVWRFL2cN5FPrNeGgTWPjpXS17">>}
+            , {<<"addr_to_str">>, [{address, <<"ak_wKvyTJ147VfZWeGVUnx274hVWRFL2cN5FPrNeGgTWPjpXS17">>}],
+               %% TODO: Should be  <<"ak_wKvyTJ147VfZWeGVUnx274hVWRFL2cN5FPrNeGgTWPjpXS17">>
+               %% with latest aebytecode version.
+               <<"ak_bfm4SvXeu4uunNMayrMhZ6TsoZ17k5XadQbxHGXztLhA8PqAnKCcQdAkML6i6vsNh5zxmHaxoEP">>
+              }
             , {<<"str_reverse">>, [<<"">>], <<"">>}
             , {<<"str_reverse">>, [<<"1">>], <<"1">>}
             , {<<"str_reverse">>, [<<"12">>], <<"21">>}
@@ -492,12 +495,12 @@ contracts() ->
              , [ {0, [ {'PUSH', {arg, 0}}
                      , {'PUSH', {arg, 1}}
                      , {'TUPLE', {immediate, 2}}
-                     , {'ELEMENT', integer, {stack, 0}, {immediate, 1}, {stack, 0}}
+                     , {'ELEMENT', {stack, 0}, {immediate, 1}, {stack, 0}}
                      , 'RETURN']}
                ]}
            , {<<"element">>
              , {[{tuple, [integer, integer]}, integer], integer}
-             , [ {0, [ {'ELEMENT', integer, {stack, 0}, {arg, 1}, {arg, 0}}
+             , [ {0, [ {'ELEMENT', {stack, 0}, {arg, 1}, {arg, 0}}
                      , 'RETURN']}
                ]}
            ]
