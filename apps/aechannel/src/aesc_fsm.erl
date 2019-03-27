@@ -280,8 +280,7 @@ timer_subst(mutual_closing          ) -> accept;
 timer_subst(channel_closing         ) -> idle.
 
 default_timeouts() ->
-    #{ open           => 120000
-     , accept         => 120000
+    #{ accept         => 120000
      , funding_create => 120000
      , funding_sign   => 120000
      , funding_lock   => 360000
