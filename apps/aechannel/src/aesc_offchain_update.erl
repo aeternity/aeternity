@@ -3,30 +3,30 @@
 -define(INITIAL_VSN, 1).
 -define(PINNED_BLOCKHASH_VSN, 2).
 
--define(TOP_BLOCK, <<>>).
+-define(NO_BLOCK, <<>>).
 
--type(pinned_block_hash() :: aec_blocks:block_header_hash() | ?TOP_BLOCK).
+-type(pinned_block_hash() :: aec_blocks:block_header_hash() | ?NO_BLOCK).
 
 -record(transfer, {
           from_id                 :: aeser_id:id(),
           to_id                   :: aeser_id:id(),
           amount                  :: non_neg_integer(),
-          vsn = ?PINNED_BLOCKHASH_VSN      :: non_neg_integer(),
-          block_hash = ?TOP_BLOCK :: pinned_block_hash() 
+          vsn = ?INITIAL_VSN      :: non_neg_integer(),
+          block_hash = ?NO_BLOCK  :: pinned_block_hash() 
          }).
 
 -record(withdraw, {
           to_id                   :: aeser_id:id(),
           amount                  :: non_neg_integer(),
-          vsn = ?PINNED_BLOCKHASH_VSN      :: non_neg_integer(),
-          block_hash = ?TOP_BLOCK :: pinned_block_hash() 
+          vsn = ?INITIAL_VSN      :: non_neg_integer(),
+          block_hash = ?NO_BLOCK  :: pinned_block_hash() 
          }).
 
 -record(deposit, {
           from_id                 :: aeser_id:id(),
           amount                  :: non_neg_integer(),
-          vsn = ?PINNED_BLOCKHASH_VSN      :: non_neg_integer(),
-          block_hash = ?TOP_BLOCK :: pinned_block_hash() 
+          vsn = ?INITIAL_VSN      :: non_neg_integer(),
+          block_hash = ?NO_BLOCK  :: pinned_block_hash() 
          }).
 
 -record(create_contract, {
@@ -36,8 +36,8 @@
           code                    :: binary(),
           deposit                 :: non_neg_integer(),
           call_data               :: binary(),
-          vsn = ?PINNED_BLOCKHASH_VSN      :: non_neg_integer(),
-          block_hash = ?TOP_BLOCK :: pinned_block_hash() 
+          vsn = ?INITIAL_VSN      :: non_neg_integer(),
+          block_hash = ?NO_BLOCK  :: pinned_block_hash()
          }).
 
 -record(call_contract, {
@@ -49,8 +49,8 @@
           call_stack              :: [non_neg_integer()],
           gas_price               :: non_neg_integer(),
           gas                     :: non_neg_integer(),
-          vsn = ?PINNED_BLOCKHASH_VSN      :: non_neg_integer(),
-          block_hash = ?TOP_BLOCK :: pinned_block_hash() 
+          vsn = ?INITIAL_VSN      :: non_neg_integer(),
+          block_hash = ?NO_BLOCK  :: pinned_block_hash() 
          }).
 
 -opaque update() :: #transfer{}
@@ -62,7 +62,8 @@
 -type update_type() :: transfer | withdraw | deposit | create_contract |
                        call_contract.
 
--export_type([update/0]).
+-export_type([update/0,
+              pinned_block_hash/0]).
 
 -export([ op_transfer/3
         , op_deposit/2
@@ -83,7 +84,9 @@
          extract_caller/1,
          extract_contract_pubkey/1,
          extract_amounts/1,
-         extract_abi_version/1]).
+         extract_abi_version/1,
+         no_pinned_block/0
+         ]).
 
 -spec op_transfer(aeser_id:id(), aeser_id:id(), non_neg_integer()) -> update().
 op_transfer(From, To, Amount) ->
@@ -289,7 +292,7 @@ fields2update(Vsn, Type, Fields0) ->
     Fields =
         case Vsn of
             ?INITIAL_VSN -> Fields0 ++ [{vsn, Vsn},
-                                        {block_hash, ?TOP_BLOCK}];
+                                        {block_hash, ?NO_BLOCK}];
             ?PINNED_BLOCKHASH_VSN -> Fields0
         end,
     fields2update(Type, Fields).
@@ -469,6 +472,9 @@ extract_amounts(Update) ->
 -spec extract_abi_version(update()) -> aect_contracts:abi_version().
 extract_abi_version(#call_contract{abi_version = ABIVersion}) ->
     ABIVersion.
+
+-spec no_pinned_block() -> pinned_block_hash().
+no_pinned_block() -> ?NO_BLOCK.
 
 update_error(Err) ->
     error({off_chain_update_error, Err}).
