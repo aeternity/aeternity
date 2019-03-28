@@ -1,11 +1,12 @@
 # Build from source
 
-This document describes how to build an Aeternity node from source on current Ubuntu 16.04.4 LTS or Ubuntu 18.04 LTS.
+This document describes how to build an Aeternity node from source on current Ubuntu 16.04.4 LTS, Ubuntu 18.04 LTS and MacOS (latest).
 The commands below assume you are logged in with `sudo` user.
 
 ## Dependencies installation
 
-### Common tools and libraries
+### Ubuntu
+#### Common tools and libraries
 
 Make sure your Ubuntu version and it's packages are up to date, then install required tools and libraries:
 ```bash
@@ -14,17 +15,17 @@ sudo apt-get -qq update \
 && sudo apt-get -qq -y install git curl autoconf build-essential ncurses-dev libssl-dev
 ```
 
-### OTP install
+#### OTP install
 
 Required Erlang OTP version is `20.1`.
 
-#### Ubuntu 18.04
+##### Ubuntu 18.04
 
 ```bash
 sudo apt-get install erlang
 ```
 
-#### Ubuntu 16.04
+##### Ubuntu 16.04
 
 Ubuntu 16.04 ships with outdated erlang version. Version 20 can be installed from source:
 
@@ -40,11 +41,11 @@ curl -fsSL -o otp-src.tar.gz "$OTP_DOWNLOAD_URL" \
 && cd ..
 ```
 
-### Libsodium install
+#### Libsodium install
 
 Required Libsodium version is `1.0.16`.
 
-#### Ubuntu 18.04
+##### Ubuntu 18.04
 
 Since Ubuntu 18.04 ships with libsodium version 1.0.16 it can be installed from apt package:
 
@@ -52,7 +53,7 @@ Since Ubuntu 18.04 ships with libsodium version 1.0.16 it can be installed from 
 sudo apt-get install libsodium-dev
 ```
 
-#### Ubuntu 16.04
+##### Ubuntu 16.04
 
 Ubuntu 16.04 ships with older than required version of libsodium thus it must be installed from source running below commands:
 
@@ -67,6 +68,20 @@ curl -fsSL -o libsodium-src.tar.gz "$LIBSODIUM_DOWNLOAD_URL" \
 && sudo make install \
 && sudo ldconfig \
 && cd ..
+```
+
+### MacOS
+
+Install `brew` if not done yet:
+```
+/usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+```
+Also, install dependencies:
+```
+brew update
+brew install erlang
+brew install openssl libsodium
+brew install autoconf
 ```
 
 For more details read the [dedicated Libsodium documentation](https://download.libsodium.org/doc/installation/).
