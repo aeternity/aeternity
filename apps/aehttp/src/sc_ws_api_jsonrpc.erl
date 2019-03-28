@@ -209,7 +209,7 @@ process_incoming(Msg, FsmPid) ->
                         no_reply       -> no_reply;
                         {reply, Reply} -> Reply
                     catch
-                        error:{validation_error, _Name, invalid_number} ->
+                        error:{validation_error, invalid_number} ->
                             {error, invalid_number};
                         error:E ->
                             lager:debug("CAUGHT E=~p / Req = ~p / ~p",
@@ -234,11 +234,10 @@ process_request(#{<<"method">> := <<"channels.update.new">>,
                    <<"params">> := #{<<"from">>    := FromB,
                                      <<"to">>      := ToB,
                                      <<"amount">>  := Amount}}, FsmPid) ->
-    assert_integer(amount, Amount),
+    assert_integer(Amount),
     case {aeser_api_encoder:safe_decode(account_pubkey, FromB),
           aeser_api_encoder:safe_decode(account_pubkey, ToB)} of
         {{ok, From}, {ok, To}} ->
-            assert_integer(amount, Amount),
             case aesc_fsm:upd_transfer(FsmPid, From, To, Amount) of
                 ok -> no_reply;
                 {error, _Reason} = Err -> Err
@@ -251,7 +250,9 @@ process_request(#{<<"method">> := <<"channels.update.new_contract">>,
                                     <<"deposit">>     := Deposit,
                                     <<"code">>        := CodeE,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
-    assert_integer(deposit, Deposit),
+    assert_integer(Deposit),
+    assert_integer(VmVersion),
+    assert_integer(ABIVersion),
     case {bytearray_decode(CodeE), bytearray_decode(CallDataE)} of
         {{ok, Code}, {ok, CallData}} ->
             case aesc_fsm:upd_create_contract(FsmPid,
@@ -269,7 +270,7 @@ process_request(#{<<"method">> := <<"channels.update.new_contract_from_onchain">
                   <<"params">> := #{<<"deposit">>     := Deposit,
                                     <<"contract">>    := OnChainContractE,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
-    assert_integer(deposit, Deposit),
+    assert_integer(Deposit),
     case {aeser_api_encoder:safe_decode(contract_pubkey, OnChainContractE),
           bytearray_decode(CallDataE)} of
         {{ok, OnChainContract}, {ok, CallData}} ->
@@ -293,7 +294,8 @@ process_request(#{<<"method">> := <<"channels.update.call_contract">>,
                                     <<"abi_version">> := ABIVersion,
                                     <<"amount">>      := Amount,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
-    assert_integer(amount, Amount),
+    assert_integer(Amount),
+    assert_integer(ABIVersion),
     case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
@@ -311,7 +313,7 @@ process_request(#{<<"method">> := <<"channels.get.contract_call">>,
                   <<"params">> := #{<<"contract">>   := ContractE,
                                     <<"caller">>     := CallerE,
                                     <<"round">>      := Round}}, FsmPid) ->
-    assert_integer(round, Round),
+    assert_integer(Round),
     case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
           aeser_api_encoder:safe_decode(account_pubkey, CallerE)} of
         {{ok, Contract}, {ok, Caller}} ->
@@ -331,7 +333,8 @@ process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
                                     <<"abi_version">> := ABIVersion,
                                     <<"amount">>      := Amount,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
-    assert_integer(amount, Amount),
+    assert_integer(Amount),
+    assert_integer(ABIVersion),
     case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
@@ -457,14 +460,14 @@ process_request(#{<<"method">> := <<"channels.message">>,
     end;
 process_request(#{<<"method">> := <<"channels.deposit">>,
                     <<"params">> := #{<<"amount">>  := Amount}}, FsmPid) ->
-    assert_integer(amount, Amount),
+    assert_integer(Amount),
     case aesc_fsm:upd_deposit(FsmPid, #{amount => Amount}) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err
     end;
 process_request(#{<<"method">> := <<"channels.withdraw">>,
                     <<"params">> := #{<<"amount">>  := Amount}}, FsmPid) ->
-    assert_integer(amount, Amount),
+    assert_integer(Amount),
     case aesc_fsm:upd_withdraw(FsmPid, #{amount => Amount}) of
         ok -> no_reply;
         {error, _Reason} = Err -> Err
@@ -530,6 +533,6 @@ opt_type(_, Bin) ->
 bin(A) when is_atom(A)   -> atom_to_binary(A, utf8);
 bin(B) when is_binary(B) -> B.
 
-assert_integer(_Name, Value) when is_integer(Value) -> ok;
-assert_integer(Name, _Value) -> error({validation_error, Name, invalid_number}).
+assert_integer(Value) when is_integer(Value) -> ok;
+assert_integer(_Value) -> error({validation_error, invalid_number}).
 

@@ -49,7 +49,6 @@
 
 -type vsn() :: non_neg_integer().
 
-%% HERE
 -record(channel_withdraw_tx, {
           channel_id  :: aeser_id:id(),
           to_id       :: aeser_id:id(),

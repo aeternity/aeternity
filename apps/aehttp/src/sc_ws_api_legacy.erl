@@ -80,7 +80,7 @@ process_incoming(Req, FsmPid) ->
         no_reply       -> no_reply;
         {reply, Reply} -> {reply, Reply}
     catch
-        error:{validation_error, _Name, invalid_number} ->
+        error:{validation_error, invalid_number} ->
             {error, invalid_number};
         error:E ->
             lager:debug("CAUGHT E=~p / Req = ~p / ~p",

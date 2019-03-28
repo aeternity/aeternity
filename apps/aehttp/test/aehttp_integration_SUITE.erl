@@ -3743,8 +3743,10 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                 {RConnPid, IConnPid, RPubkey, RPrivkey,
                                     IPubkey, IPrivkey}
         end,
-    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, update, get]),
-    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, update]),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, update,
+                                                         get, error]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, update,
+                                                         error]),
 
     %% sender initiates an update
     GetBothBalances = fun(ConnPid) ->
@@ -3753,10 +3755,15 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                       end,
     {ok, {Ba0, Bb0} = Bal0} = GetBothBalances(IConnPid),
     ct:log("Balances before: ~p", [Bal0]),
+    UpdateOpts = #{from => aeser_api_encoder:encode(account_pubkey, StarterPubkey),
+                   to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
+                   amount => Amount},
     ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
-        #{from => aeser_api_encoder:encode(account_pubkey, StarterPubkey),
-          to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
-          amount => Amount}, Config),
+                   UpdateOpts#{amount => <<"1">>}, Config),
+    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+        wait_for_channel_event(StarterPid, error, Config),
+    ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
+                   UpdateOpts, Config),
 
     %% starter signs the new state
     UnsignedStateTx = channel_sign_tx(StarterPid, StarterPrivkey, <<"update">>, Config),
@@ -3795,8 +3802,10 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     assert_trees_balance(StateTrees, StarterPubkey, Ba1),
     assert_trees_balance(StateTrees, AcknowledgerPubkey, Bb1),
 
-    ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, info, update, get]),
-    ok = ?WS:unregister_test_for_channel_events(RConnPid, [sign, info, update]),
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, info, update,
+                                                           get, error]),
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, [sign, info, update,
+                                                           error]),
 
     ok.
 
@@ -4261,12 +4270,30 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
             offchain ->
                 fun(Owner, EncodedCode, EncodedInitData, Deposit) ->
                     {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
-                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                    NewContractOpts =
                         #{vm_version  => latest_sophia_vm(),
                           abi_version => latest_sophia_abi(),
                           deposit     => Deposit,
                           code        => EncodedCode,
-                          call_data   => EncodedInitData}, Config),
+                          call_data   => EncodedInitData},
+                    % incorrect calls
+                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                        NewContractOpts#{deposit => <<"1">>}, Config),
+                    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+                        wait_for_channel_event(OwnerConnPid, error, Config),
+
+                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                        NewContractOpts#{vm_version => <<"1">>}, Config),
+                    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+                        wait_for_channel_event(OwnerConnPid, error, Config),
+
+                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                        NewContractOpts#{abi_version => <<"1">>}, Config),
+                    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+                        wait_for_channel_event(OwnerConnPid, error, Config),
+                    % correct call
+                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                        NewContractOpts, Config),
 
                     UnsignedStateTx = CreateVolley(),
                     contract_id_from_create_update(OwnerPubKey, UnsignedStateTx)
@@ -4276,10 +4303,19 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
                     EncodedOnChainPubkey = post_contract_onchain(EncodedCode, EncodedInitData),
 
                     {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
-                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract_from_onchain">>,
+                    NewContractOpts =
                         #{deposit     => Deposit,
                           contract    => EncodedOnChainPubkey,
-                          call_data   => EncodedInitData}, Config),
+                          call_data   => EncodedInitData},
+                    % incorrect call
+                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract_from_onchain">>,
+                        NewContractOpts#{deposit => <<"1">>}, Config),
+                    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+                        wait_for_channel_event(OwnerConnPid, error, Config),
+
+                    % correct call
+                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract_from_onchain">>,
+                        NewContractOpts, Config),
 
                     UnsignedStateTx = CreateVolley(),
                     contract_id_from_create_update(OwnerPubKey, UnsignedStateTx)
@@ -5141,11 +5177,23 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
                                                                    contract_bytearray_decode(Code),
                                                                    Function,
                                                                    Argument),
+    CallOpts =
+        #{contract    => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
+          abi_version => latest_sophia_abi(),
+          amount      => Amount,
+          call_data   => EncodedMainData},
+    % invalid call
     ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
-                   #{contract    => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
-                     abi_version => latest_sophia_abi(),
-                     amount      => Amount,
-                     call_data   => EncodedMainData}, Config),
+                   CallOpts#{amount => <<"1">>}, Config),
+    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+        wait_for_channel_event(SenderConnPid, error, Config),
+    ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
+                   CallOpts#{abi_version => <<"1">>}, Config),
+    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+        wait_for_channel_event(SenderConnPid, error, Config),
+    % correct call
+    ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
+                   CallOpts, Config),
     _UnsignedStateTx = UpdateVolley().
 
 dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
@@ -5159,11 +5207,22 @@ dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
                                                                    Function,
                                                                    Argument),
     ok = ?WS:register_test_for_channel_event(SenderConnPid, dry_run),
+    CallOpts =
+        #{contract   => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
+          abi_version => latest_sophia_abi(),
+          amount     => Amount,
+          call_data  => EncodedMainData},
+    % invalid call
     ws_send_tagged(SenderConnPid, <<"dry_run">>, <<"call_contract">>,
-                   #{contract   => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
-                     abi_version => latest_sophia_abi(),
-                     amount     => Amount,
-                     call_data  => EncodedMainData}, Config),
+                   CallOpts#{amount => <<"1">>}, Config),
+    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+        wait_for_channel_event(SenderConnPid, error, Config),
+    ws_send_tagged(SenderConnPid, <<"dry_run">>, <<"call_contract">>,
+                   CallOpts#{abi_version => <<"1">>}, Config),
+    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+        wait_for_channel_event(SenderConnPid, error, Config),
+    ws_send_tagged(SenderConnPid, <<"dry_run">>, <<"call_contract">>,
+                   CallOpts, Config),
     {ok, <<"call_contract">>, CallRes} = wait_for_channel_event(SenderConnPid, dry_run, Config),
     ok = ?WS:unregister_test_for_channel_event(SenderConnPid, dry_run),
     #{<<"caller_id">>         := _CallerId,
@@ -6143,8 +6202,13 @@ ws_get_decoded_result(ConnPid1, ConnPid2, Type, Tx, Config) ->
     %% helper lambda for decoded result
     GetCallResult =
         fun(ConnPid) ->
+            GetParams = ws_get_call_params(Tx),
             ws_send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
-                           ws_get_call_params(Tx), Config),
+                           GetParams#{round => <<"2">>}, Config),
+            {ok, #{<<"reason">> := <<"invalid_number">>}} =
+                wait_for_channel_event(ConnPid, error, Config),
+            ws_send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
+                           GetParams, Config),
             {ok, <<"contract_call">>, Res} = wait_for_channel_event(ConnPid, get, Config),
             Res
         end,
