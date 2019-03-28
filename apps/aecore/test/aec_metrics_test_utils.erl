@@ -17,6 +17,7 @@ make_port_map(Devs, Config) ->
     ct:log("Ports = ~p", [Ports]),
     PortMap = zip(Devs, Ports),
     ct:log("PortMap = ~p", [PortMap]),
+    false = lists:keyfind(logger_port_map, 1, Config),
     lists:keystore(logger_port_map, 1, Config,
                    {logger_port_map, PortMap}).
 
