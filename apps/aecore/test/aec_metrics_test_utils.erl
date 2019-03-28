@@ -3,7 +3,7 @@
 -export([make_port_map/2,
          set_statsd_port_config/3,
          start_statsd_loggers/1,
-         stop_statsd_loggers/1,
+         stop_statsd_loggers/0,
          fetch_data/0]).
 
 make_port_map(Devs, Config) ->
@@ -83,7 +83,7 @@ start_statsd_logger_(Id, Port, Loggers) ->
                    {pid, Pid}]} | Loggers]
     end.
 
-stop_statsd_loggers(_Config) ->
+stop_statsd_loggers() ->
     Children = supervisor:which_children(exometer_report_logger_sup),
     ct:log("Logger Children = ~p", [Children]),
     [ok = stop_logger(C) || C <- Children],
