@@ -171,7 +171,7 @@ init_per_group(_Group, Config) ->
 end_per_group(Group, Config) when Group =:= one_blocked;
                                    Group =:= large_msgs ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
-    aec_metrics_test_utils:stop_statsd_loggers(Config),
+    ok = aec_metrics_test_utils:stop_statsd_loggers(Config),
     stop_devs(Config),
     %% reset dev1 config to no longer block any peers.
     Config1 = config({devs, [dev1]}, Config),
@@ -182,12 +182,12 @@ end_per_group(Group, Config) when Group =:= one_blocked;
                                      [{add_peers, true}]);
 end_per_group(mempool_sync, Config) ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
-    aec_metrics_test_utils:stop_statsd_loggers(Config),
+    ok = aec_metrics_test_utils:stop_statsd_loggers(Config),
     Devs = proplists:get_value(devs, Config, []),
     stop_devs([dev3 | Devs], Config);
 end_per_group(_, Config) ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
-    aec_metrics_test_utils:stop_statsd_loggers(Config),
+    ok = aec_metrics_test_utils:stop_statsd_loggers(Config),
     stop_devs(Config).
 
 stop_devs(Config) ->
