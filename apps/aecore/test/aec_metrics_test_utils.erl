@@ -1,7 +1,7 @@
 -module(aec_metrics_test_utils).
 
 -export([make_port_map/2,
-         set_statsd_port_config/3,
+         maybe_set_statsd_port_in_user_config/3,
          start_statsd_loggers/1,
          stop_statsd_loggers/0,
          fetch_data/0]).
@@ -20,7 +20,7 @@ make_port_map(Devs, Config) ->
     lists:keystore(logger_port_map, 1, Config,
                    {logger_port_map, PortMap}).
 
-set_statsd_port_config(Dev, Cfg, CTConfig) ->
+maybe_set_statsd_port_in_user_config(Dev, Cfg, CTConfig) ->
     case lists:keyfind(logger_port_map, 1, CTConfig) of
         {_, PM} ->
             case lists:keyfind(Dev, 1, PM) of
