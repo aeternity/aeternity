@@ -179,16 +179,19 @@ end_per_group(Group, Config) when Group =:= one_blocked;
     EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
     aecore_suite_utils:create_config(Dev1, Config,
                                      maps:without([<<"blocked_peers">>], EpochCfg),
-                                     [{add_peers, true}]);
+                                     [{add_peers, true}]),
+    ok;
 end_per_group(mempool_sync, Config) ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
     ok = aec_metrics_test_utils:stop_statsd_loggers(),
     Devs = proplists:get_value(devs, Config, []),
-    stop_devs([dev3 | Devs], Config);
+    stop_devs([dev3 | Devs], Config),
+    ok;
 end_per_group(_, Config) ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
     ok = aec_metrics_test_utils:stop_statsd_loggers(),
-    stop_devs(Config).
+    stop_devs(Config),
+    ok.
 
 stop_devs(Config) ->
     Devs = proplists:get_value(devs, Config, []),
