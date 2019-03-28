@@ -360,7 +360,7 @@
                     "default" : "data"
                 },
                 "hard_forks" : {
-                    "description" : "The consensus protocol versions with respective effective heights",
+                    "description" : "The consensus protocol versions with respective effective heights. Ignored if 'fork_management > network_id' has value 'ae_mainnet' or 'ae_uat'.",
                     "type" : "object",
                     "additionalProperties" : false,
                     "patternProperties" : {
@@ -846,7 +846,9 @@
                 "network_id" : {
                     "description" :
                     "Identification of the network in case of hard forks.",
-                    "type" : "string"}
+                    "type" : "string",
+                    "default" : "ae_mainnet"
+                }
             }
         }
     },
