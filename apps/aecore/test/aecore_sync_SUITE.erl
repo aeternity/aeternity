@@ -40,6 +40,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 -import(aecore_suite_utils, [patron/0]).
+-import(aec_test_utils, [running_apps/0, loaded_apps/0, restore_stopped_and_unloaded_apps/2]).
 
 -define(MAX_MINED_BLOCKS, 20).
 
@@ -152,20 +153,31 @@ end_per_suite(Config) ->
 init_per_group(TwoNodes, Config) when
         TwoNodes == two_nodes; TwoNodes == semantically_invalid_tx;
         TwoNodes == mempool_sync ->
-    config({devs, [dev1, dev2]}, Config);
+    Config1 = config({devs, [dev1, dev2]}, Config),
+    InitialApps = {running_apps(), loaded_apps()},
+    {ok, _} = application:ensure_all_started(exometer_core),
+    ok = aec_metrics_test_utils:start_statsd_loggers(aec_metrics_test_utils:port_map(Config1)),
+    [{initial_apps, InitialApps} | Config1];
 init_per_group(three_nodes, Config) ->
-    config({devs, [dev1, dev2, dev3]}, Config);
+    Config1 = config({devs, [dev1, dev2, dev3]}, Config),
+    InitialApps = {running_apps(), loaded_apps()},
+    {ok, _} = application:ensure_all_started(exometer_core),
+    ok = aec_metrics_test_utils:start_statsd_loggers(aec_metrics_test_utils:port_map(Config1)),
+    [{initial_apps, InitialApps} | Config1];
 init_per_group(Group, Config) when Group =:= one_blocked;
                                    Group =:= large_msgs ->
     Config1 = config({devs, [dev1, dev2]}, Config),
+    InitialApps = {running_apps(), loaded_apps()},
+    {ok, _} = application:ensure_all_started(exometer_core),
+    ok = aec_metrics_test_utils:start_statsd_loggers(aec_metrics_test_utils:port_map(Config1)),
     [Dev1, Dev2 | _] = proplists:get_value(devs, Config1),
     EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
     aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
                                             [{block_peers, [ Dev2 ]},
                                              {add_peers, true}
                                             ]),
-    Config1;
-init_per_group(_Group, Config) ->
+    [{initial_apps, InitialApps} | Config1];
+init_per_group(all_nodes, Config) ->
     Config.
 
 end_per_group(Group, Config) when Group =:= one_blocked;
@@ -173,6 +185,8 @@ end_per_group(Group, Config) when Group =:= one_blocked;
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
     ok = aec_metrics_test_utils:stop_statsd_loggers(),
     stop_devs(Config),
+    {_, {OldRunningApps, OldLoadedApps}} = proplists:lookup(initial_apps, Config),
+    ok = restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps),
     %% reset dev1 config to no longer block any peers.
     Config1 = config({devs, [dev1]}, Config),
     [Dev1 | _] = proplists:get_value(devs, Config1),
@@ -186,12 +200,23 @@ end_per_group(mempool_sync, Config) ->
     ok = aec_metrics_test_utils:stop_statsd_loggers(),
     Devs = proplists:get_value(devs, Config, []),
     stop_devs([dev3 | Devs], Config),
+    {_, {OldRunningApps, OldLoadedApps}} = proplists:lookup(initial_apps, Config),
+    ok = restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps),
     ok;
-end_per_group(_, Config) ->
+end_per_group(Group, Config) when Group =:= two_nodes;
+                                  Group =:= three_nodes;
+                                  Group =:= semantically_invalid_tx ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
     ok = aec_metrics_test_utils:stop_statsd_loggers(),
     stop_devs(Config),
-    ok.
+    case proplists:lookup(initial_apps, Config) of
+        none -> ok;
+        {_, {OldRunningApps, OldLoadedApps}} ->
+            ok = restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps)
+    end,
+    ok;
+end_per_group(all_nodes, _Config) ->
+   ok.
 
 stop_devs(Config) ->
     Devs = proplists:get_value(devs, Config, []),
@@ -688,10 +713,10 @@ ensure_new_tx_(T, Tx) ->
     lists:member(Tx, Txs).
 
 config({devs, Devs}, Config) ->
-    aec_metrics_test_utils:start_statsd_loggers(
-      [{devs, Devs}, {nodes, [aecore_suite_utils:node_tuple(Dev)
-                              || Dev <- Devs]}
-       | Config]).
+    [ {devs, Devs}
+    , {nodes, [aecore_suite_utils:node_tuple(Dev) || Dev <- Devs]}
+    | Config
+    ].
 
 node_db_cfg(Node) ->
     {ok, DbCfg} = aecore_suite_utils:get_node_db_config(
