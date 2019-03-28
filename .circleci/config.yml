@@ -720,6 +720,14 @@ jobs:
       - DEPLOY_DOWNTIME: 900 #15M
     steps: *deploy_steps
 
+  deploy_next:
+    executor: infrastructure_container_unstable
+    <<: *infrastructure_config
+    environment:
+      - DEPLOY_ENV: next
+      - DEPLOY_DOWNTIME: 900 #15M
+    steps: *deploy_steps
+
   deploy_dev1:
     executor: infrastructure_container_unstable
     <<: *infrastructure_config
@@ -1005,6 +1013,23 @@ workflows:
             branches:
               only:
                 - master
+
+      - deploy_next:
+          requires:
+            - test
+            - test_roma
+            - test_fortuna
+            - eunit
+            - eunit_roma
+            - eunit_fortuna
+            - aevm_tests
+            - uat_tests
+            - static_analysis
+            - rebar_lock_check
+            - linux_package
+          filters:
+            branches:
+              only: master
 
       - deploy_dev1:
           requires:
