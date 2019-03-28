@@ -35,12 +35,12 @@ obe_otp_64_gcc_vsn_map="
     .*=>default
 "
 
-MSYS2_ROOT=${MSYS2_ROOT:-"${C_DRV}/msys64"}
-WIN_MSYS2_ROOT=${WIN_MSYS2_ROOT:-"${WIN_C_DRV}\\msys64"}
-
 C_DRV="/c"
 WIN_C_DRV="C:\\"
 IN_CYGWIN=false
+
+MSYS2_ROOT=${MSYS2_ROOT:-"${C_DRV}/msys64"}
+WIN_MSYS2_ROOT=${WIN_MSYS2_ROOT:-"${WIN_C_DRV}\\msys64"}
 
 PRG_FLS64="${C_DRV}/Program Files"
 PRG_FLS32="${C_DRV}/Program Files (x86)"
