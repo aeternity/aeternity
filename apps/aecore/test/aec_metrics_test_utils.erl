@@ -26,10 +26,10 @@ set_statsd_port_config(Dev, Cfg, CTConfig) ->
             case lists:keyfind(Dev, 1, PM) of
                 {_, Port} ->
                     insert_port_config(Port, Cfg);
-                _ ->
+                false ->
                     Cfg
             end;
-        _ ->
+        false ->
             Cfg
     end.
 
