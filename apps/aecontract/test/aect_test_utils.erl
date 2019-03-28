@@ -23,6 +23,7 @@
         , setup_new_account/2
         , setup_miner_account/2
         , get_account/2
+        , lookup_account/2
         , next_nonce/2
         , trees/1
         , read_contract/1
@@ -227,6 +228,9 @@ set_account_balance(PubKey, NewBalance, State) ->
 
 get_account(PubKey, State) ->
     aec_accounts_trees:get(PubKey, aec_trees:accounts(trees(State))).
+
+lookup_account(PubKey, State) ->
+    aec_accounts_trees:lookup(PubKey, aec_trees:accounts(trees(State))).
 
 set_account(Account, State) ->
     Trees   = trees(State),
