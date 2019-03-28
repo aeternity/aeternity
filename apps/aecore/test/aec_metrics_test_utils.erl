@@ -42,17 +42,8 @@ insert_port_config(Port, Cfg) ->
             Cfg#{<<"metrics">> => #{<<"port">> => Port}}
     end.
 
-start_statsd_loggers(Config0) ->
-    Devs = proplists:get_value(devs, Config0, []),
-    {PortMap, Config} = case lists:keyfind(logger_port_map, 1, Config0) of
-                            false ->
-                                NewConfig = make_port_map(Devs, Config0),
-                                {_, PM} = lists:keyfind(
-                                            logger_port_map, 1, NewConfig),
-                                {PM, NewConfig};
-                            {_, PM} ->
-                                {PM, Config0}
-                        end,
+start_statsd_loggers(Config) ->
+    {_, PortMap} = lists:keyfind(logger_port_map, 1, Config),
     ct:log("PortMap = ~p", [PortMap]),
     Loggers0 = proplists:get_value(loggers, Config, []),
     ct:log("Loggers0 = ~p", [Loggers0]),
