@@ -26,6 +26,7 @@ tx_pool_test_() ->
              aec_test_utils:mock_block_target_validation(), %% Mocks aec_governance.
              {ok, _} = aec_tx_pool_gc:start_link(),
              {ok, _} = aec_tx_pool:start_link(),
+             ok = aec_tx_pool_gc:origins_cache_init(),
              %% Start `aec_keys` merely for generating realistic test
              %% signed txs - as a node would do.
              ets:new(?TAB, [public, ordered_set, named_table]),
@@ -791,7 +792,7 @@ tx_pool_test_() ->
                ?assertMatch({ok, [_, _, _, _, _]}, aec_tx_pool:peek(infinity)),
 
                %% GC removes stale transactions with nonce lower than 4
-               ok = aec_tx_pool:origins_cache_gc(),
+               ok = aec_tx_pool_gc:origins_cache_gc(),
 
                %% Only transactions with nonce=4 are not GCed
                ?assertMatch({ok, [STx42, STx41]}, aec_tx_pool:peek(infinity))

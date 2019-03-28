@@ -47,11 +47,15 @@
         ]).
 
 %% exports used by GC (should perhaps be in a common lib module)
--export([ top_height/0
+-export([ origins_cache/0
+        , origins_cache_max_size/0
         , pool_db/0
         , pool_db_nonce/0
+        , pool_db_key/1
         , pool_db_gc/0
+        , pool_db_peek/4
         , raw_delete/2
+        , gc_db/1
         ]).
 
 -include("aec_tx_pool.hrl").
@@ -62,14 +66,14 @@
 -export([peek_db/0]).
 -export([peek_visited/0]).
 -export([peek_nonces/0]).
--export([origins_cache_gc/0]).
 -endif.
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--export_type([ pool_db/0
+-export_type([ dbs/0
+             , pool_db/0
              , pool_db_key/0
              , tx_hash/0]).
 
@@ -84,6 +88,7 @@
               visited_db = pool_db_visited() :: pool_db(),
               nonce_db   = pool_db_nonce()   :: pool_db(),
               gc_db      = pool_db_gc()      :: pool_db()}).
+-type dbs() :: #dbs{}.
 
 -record(state, { dbs = #dbs{}
                , sync_top_calc           :: pid() | undefined
@@ -205,9 +210,6 @@ peek_visited() ->
 peek_nonces() ->
     #dbs{nonce_db = NDb} = dbs(),
     [N || {N} <- ets:tab2list(NDb)].
-
-origins_cache_gc() ->
-    gen_server:call(?SERVER, origins_cache_gc).
 -endif.
 
 %% The specified maximum number of transactions avoids requiring
@@ -253,6 +255,7 @@ pool_db_nonce() -> ?MEMPOOL_NONCE.
 pool_db_gc() -> ?MEMPOOL_GC.
 
 origins_cache() -> ?ORIGINS_CACHE.
+origins_cache_max_size() -> ?ORIGINS_CACHE_MAX_SIZE.
 
 %% This function is primarily used to sync with the aec_tx_pool server,
 %% in order to preserve order of operations (e.g. if you push a tx, then
@@ -262,6 +265,10 @@ dbs() ->
 
 raw_delete(#dbs{} = Dbs, Key) ->
     pool_db_raw_delete(Dbs, Key).
+
+-spec gc_db(dbs()) -> pool_db().
+gc_db(#dbs{gc_db = GcDb}) ->
+    GcDb.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -283,18 +290,8 @@ init([]) ->
              end,
     ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
     ets:delete(Handled),
-    ok = start_origins_cache_gc(),
     lager:debug("init: GCHeight = ~p", [GCHeight]),
     {ok, #state{gc_height = GCHeight}}.
-
--ifdef(TEST).
-start_origins_cache_gc() ->
-    ok.
--else.
-start_origins_cache_gc() ->
-    erlang:send_after(rand:uniform(10000), self(), origins_cache_gc),
-    ok.
--endif.
 
 handle_call(Req, From, St) ->
     ?TC(handle_call_(Req, From, St), Req).
@@ -314,9 +311,6 @@ handle_call_({peek, MaxNumberOfTxs, Account}, _From, #state{dbs = Dbs} = State)
     {reply, {ok, Txs}, State};
 handle_call_(dbs, _From, #state{dbs = Dbs} = State) ->
     {reply, Dbs, State};
-handle_call_(origins_cache_gc, _From, State) ->
-    ok = origins_cache_gc(State),
-    {reply, ok, State};
 handle_call_(Request, From, State) ->
     lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
     {noreply, State}.
@@ -342,10 +336,6 @@ handle_cast_(Msg, State) ->
 handle_info(Msg, St) ->
     ?TC(handle_info_(Msg, St), Msg).
 
-handle_info_(origins_cache_gc, #state{} = State) ->
-    ok = origins_cache_gc(State),
-    erlang:send_after(30000, self(), origins_cache_gc),
-    {noreply, State};
 handle_info_({P, new_gc_height, GCHeight}, #state{sync_top_calc = P} = State) ->
     aec_tx_pool_gc:gc(GCHeight, State#state.dbs),
     {noreply, State#state{sync_top_calc = undefined, gc_height = GCHeight}};
@@ -500,13 +490,14 @@ get_gc_height(#state{gc_height = H} = State) when is_integer(H) ->
     {H, State}.
 
 do_update_sync_top_target(NewSyncTop, #state{ gc_height = GCHeight
-                                            , sync_top_calc = OldP } = State) ->
+                                            , sync_top_calc = OldP
+                                            , dbs = Dbs } = State) ->
     case OldP of
         undefined ->
             Me = self(),
             NewP = proc_lib:spawn_link(
                      fun() ->
-                             do_update_sync_top(NewSyncTop, GCHeight, Me)
+                             do_update_sync_top(NewSyncTop, GCHeight, Me, Dbs)
                      end),
             State#state{ sync_top_calc = NewP, gc_height = undefined };
         _ when is_pid(OldP) ->
@@ -514,7 +505,7 @@ do_update_sync_top_target(NewSyncTop, #state{ gc_height = GCHeight
             do_update_sync_top_target(NewSyncTop, State1)
     end.
 
-do_update_sync_top(NewSyncTop, GCHeight, Parent) ->
+do_update_sync_top(NewSyncTop, GCHeight, Parent, Dbs) ->
     LocalTop = top_height(),
     lager:debug("do_update_sync_top(~p,~p,~p), LocalTop = ~p",
                 [NewSyncTop, GCHeight, Parent, LocalTop]),
@@ -526,7 +517,7 @@ do_update_sync_top(NewSyncTop, GCHeight, Parent) ->
             %% this means that the sync was aborted - in this case we
             %% re-adjust the GC-height for all TXs in order not to carry around
             %% transactions unnecessarily.
-            aec_tx_pool_gc:adjust_ttl(GCHeight - NewGCHeight);
+            aec_tx_pool_gc:adjust_ttl(GCHeight - NewGCHeight, Dbs);
         false ->
             ok
     catch
@@ -662,108 +653,18 @@ update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight
                     Key = pool_db_key(Tx),
                     pool_db_raw_delete(Dbs, Key),
                     aec_tx_pool_gc:delete_hash(GCDb, TxHash),
-                    ok = add_to_origins_cache(OriginsCache, Tx);
+                    add_to_origins_cache(OriginsCache, Tx);
                 true ->
                     Key = pool_db_key(Tx),
                     pool_db_raw_put(Dbs, GCHeight, Key, Tx, TxHash)
             end
     end.
 
-%%===================================================================
-%% Origins cache
-%%
-%% Origins/accounts cache keeps track of {origin, nonce} pairs which
-%% have been added to the chain. This allows earlier
-%% garbage collection of potentially hanging transactions from
-%% the same origin/account, but with nonce that will block them
-%% from ever getting into the chain.
-%% E.g. if a transaction from sender X with nonce Y made it into the
-%% chain, all pending transactions from X with nonce =< Y can
-%% be removed from the mempool.
-
 add_to_origins_cache(OriginsCache, SignedTx) ->
-    case ets:info(OriginsCache, size) < ?ORIGINS_CACHE_MAX_SIZE of
-        true ->
-            Tx     = aetx_sign:tx(SignedTx),
-            Origin = aetx:origin(Tx),
-            Nonce  = aetx:nonce(Tx),
-            case ets:lookup(OriginsCache, Origin) of
-                [] ->
-                    true = ets:insert(OriginsCache, {Origin, Nonce}),
-                    ok;
-                [{Origin, N}] ->
-                    %% Always keep the highest included nonce in cache
-                    case Nonce > N of
-                        true ->
-                            true = ets:insert(OriginsCache, {Origin, Nonce}),
-                            ok;
-                        false -> ok
-                    end
-            end;
-        false -> ok
-    end.
-
-origins_cache_gc(#state{origins_cache = OriginsCache, dbs = Dbs}) ->
-    EntriesToProcess = 100,
-    case origins_cache_get(OriginsCache, EntriesToProcess) of
-        [] -> ok;
-        CacheEntries ->
-            case aec_chain:get_block_state(aec_chain:top_block_hash()) of
-                error ->
-                    lager:info("Error trying to get top block state");
-                {ok, Trees} ->
-                    AccountsTree = aec_trees:accounts(Trees),
-                    origins_cache_gc(CacheEntries, AccountsTree, OriginsCache, Dbs)
-            end
-    end.
-
-origins_cache_get(OriginsCache, Size) ->
-    Pat = [{ '_', [], ['$_'] }],
-    case ets:select(OriginsCache, Pat, Size) of
-        '$end_of_table'  -> [];
-        {Entries, _Cont} -> Entries
-    end.
-
-origins_cache_gc([], _AccountsTree, _OriginsCache, _Dbs) ->
-    ok;
-origins_cache_gc([{Origin, Nonce} | Rest], AccountsTree, OriginsCache, Dbs) ->
-    case pool_db_peek(Dbs, 50, Origin, Nonce) of
-        [] ->
-            %% No hanging stale transactions, remove Origin from cache
-            true = ets:delete(Origin, OriginsCache);
-        SignedTxs ->
-            %% Origin cache information may be stale.
-            %% Re-check transactions, based on the account nonce from
-            %% accounts state tree.
-            case get_account(Origin, {account_trees, AccountsTree}) of
-                none -> ok;
-                {value, Account} ->
-                    AccountNonce = aec_accounts:nonce(Account),
-                    SignedTxsForGc = filter_txs_by_account_nonce(SignedTxs, AccountNonce),
-                    remove_txs_from_dbs(SignedTxsForGc, Dbs)
-            end
-    end,
-    origins_cache_gc(Rest, AccountsTree, OriginsCache, Dbs).
-
-filter_txs_by_account_nonce(SignedTxs, AccountNonce) ->
-    lists:filter(fun(SignedTx) ->
-                         Tx = aetx_sign:tx(SignedTx),
-                         aetx:nonce(Tx) =< AccountNonce
-                 end, SignedTxs).
-
-remove_txs_from_dbs([], _Dbs) ->
-    ok;
-remove_txs_from_dbs([SignedTx | Rest], #dbs{gc_db = GcDb} = Dbs) ->
-    TxHash = aetx_sign:hash(SignedTx),
-    case aec_db:gc_tx(TxHash) of
-        ok ->
-            raw_delete(Dbs, pool_db_key(SignedTx)),
-            aec_tx_pool_gc:delete_hash(GcDb, TxHash);
-        {error, Reason} ->
-            lager:debug("TX Origin-based garbage collect of ~p failed: ~p",
-                        [pp(TxHash), Reason])
-    end,
-    remove_txs_from_dbs(Rest, Dbs).
+    Tx     = aetx_sign:tx(SignedTx),
+    Origin = aetx:origin(Tx),
+    Nonce  = aetx:nonce(Tx),
+    ok = aec_tx_pool_gc:add_to_origins_cache(OriginsCache, Origin, Nonce).
 
 -spec check_pool_db_put(aetx_sign:signed_tx(), tx_hash(), event()) ->
                                ignore | ok | {error, atom()}.
