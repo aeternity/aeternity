@@ -26,7 +26,6 @@ tx_pool_test_() ->
              aec_test_utils:mock_block_target_validation(), %% Mocks aec_governance.
              {ok, _} = aec_tx_pool_gc:start_link(),
              {ok, _} = aec_tx_pool:start_link(),
-             ok = aec_tx_pool_gc:origins_cache_init(),
              %% Start `aec_keys` merely for generating realistic test
              %% signed txs - as a node would do.
              ets:new(?TAB, [public, ordered_set, named_table]),

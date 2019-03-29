@@ -47,7 +47,8 @@
         ]).
 
 %% exports used by GC (should perhaps be in a common lib module)
--export([ origins_cache/0
+-export([ dbs_/0
+        , origins_cache/0
         , origins_cache_max_size/0
         , pool_db/0
         , pool_db_nonce/0
@@ -266,6 +267,10 @@ dbs() ->
 
 raw_delete(#dbs{} = Dbs, Key) ->
     pool_db_raw_delete(Dbs, Key).
+
+-spec dbs_() -> dbs().
+dbs_() ->
+    #dbs{}.
 
 -spec gc_db(dbs()) -> pool_db().
 gc_db(#dbs{gc_db = GcDb}) ->

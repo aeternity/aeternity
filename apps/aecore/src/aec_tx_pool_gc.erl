@@ -18,8 +18,7 @@
         ]).
 
 -ifdef(TEST).
--export([ origins_cache_init/0
-        , origins_cache_gc/0
+-export([ origins_cache_gc/0
         , stop/0]).
 -endif.
 
@@ -49,8 +48,10 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {origins_cache :: aec_tx_pool:origins_cache() | undefined,
-                dbs :: aec_tx_pool:dbs() | undefined}).
+%% More cleanup is needed here...
+-record(state,
+        {origins_cache = aec_tx_pool:origins_cache() :: aec_tx_pool:origins_cache(),
+         dbs = aec_tx_pool:dbs_() :: aec_tx_pool:dbs()}).
 
 %%%===================================================================
 %%% API
@@ -81,9 +82,6 @@ add_to_origins_cache(OriginsCache, Origin, Nonce) ->
     gen_server:cast(?SERVER, {add_to_origins_cache, OriginsCache, Origin, Nonce}).
 
 -ifdef(TEST).
-origins_cache_init() ->
-    gen_server:call(?SERVER, origins_cache_init).
-
 origins_cache_gc() ->
     gen_server:call(?SERVER, origins_cache_gc).
 
@@ -105,11 +103,7 @@ init([]) ->
     ok = start_origins_cache_gc(),
     {ok, #state{}}.
 
-handle_call(origins_cache_init, _From, _S) ->
-    S = init_state(),
-    {reply, ok, S};
-handle_call(origins_cache_gc, _From, #state{dbs = Dbs, origins_cache = OriginsCache} = S)
-  when Dbs =/= undefined andalso OriginsCache =/= undefined ->
+handle_call(origins_cache_gc, _From, S) ->
     ok = origins_cache_gc(S),
     {reply, ok, S};
 handle_call(_Req, _From, S) ->
@@ -129,12 +123,7 @@ handle_cast(Msg, S) ->
     lager:warning("Ignoring unknown cast message: ~p", [Msg]),
     {noreply, S}.
 
-handle_info(init_origins_cache_gc, _S) ->
-    S = init_state(),
-    erlang:send_after(30000, self(), origins_cache_gc),
-    {noreply, S};
-handle_info(origins_cache_gc, #state{dbs = Dbs, origins_cache = OriginsCache} = S)
-  when Dbs =/= undefined andalso OriginsCache =/= undefined ->
+handle_info(origins_cache_gc, S) ->
     ok = origins_cache_gc(S),
     erlang:send_after(30000, self(), origins_cache_gc),
     {noreply, S};
@@ -205,7 +194,7 @@ start_origins_cache_gc() ->
     ok.
 -else.
 start_origins_cache_gc() ->
-    erlang:send_after(30000 + rand:uniform(10000), self(), init_origins_cache_gc),
+    erlang:send_after(30000 + rand:uniform(10000), self(), origins_cache_gc),
     ok.
 -endif.
 
@@ -252,7 +241,7 @@ origins_cache_get(OriginsCache, Size) ->
 origins_cache_gc([], _AccountsTree, _OriginsCache, _Dbs) ->
     ok;
 origins_cache_gc([{Origin, Nonce} | Rest], AccountsTree, OriginsCache, Dbs) ->
-    case aec_tx_pool:pool_db_peek(Dbs, 50, Origin, Nonce) of
+    case aec_tx_pool:pool_db_peek(aec_tx_pool:pool_db(), 50, Origin, Nonce) of
         [] ->
             %% No hanging stale transactions, remove Origin from cache
             true = ets:delete(Origin, OriginsCache);
@@ -289,12 +278,6 @@ remove_txs_from_dbs([SignedTx | Rest], Dbs) ->
                         [pp(TxHash), Reason])
     end,
     remove_txs_from_dbs(Rest, Dbs).
-
-init_state() ->
-    %% Should dbs and origins cache be shared between aec_tx_pool and aec_tx_pool_gc?
-    Dbs = aec_tx_pool:dbs(),
-    OriginsCache = aec_tx_pool:origins_cache(),
-    #state{dbs = Dbs, origins_cache = OriginsCache}.
 
 get_account(AccountKey, AccountsTrees) ->
     aec_accounts_trees:lookup(AccountKey, AccountsTrees).
