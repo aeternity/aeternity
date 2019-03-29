@@ -189,6 +189,11 @@ do_gc_([{TxHash, Key} | TxHashes], Dbs, GCDb) ->
 %% chain, all pending transactions from X with nonce =< Y can
 %% be removed from the mempool.
 
+%% Limit of origins to be processed in a single GC run
+-define(OC_ENTRIES_TO_PROCESS_COUNT, 100).
+%% Limit of transactions from a single origin to be processed in a single GC run
+-define(OC_TXS_PER_ORIGIN_COUNT, 50).
+
 -ifdef(TEST).
 start_origins_cache_gc() ->
     ok.
@@ -218,8 +223,7 @@ do_add_to_origins_cache(OriginsCache, Origin, Nonce) ->
     end.
 
 origins_cache_gc(#state{origins_cache = OriginsCache, dbs = Dbs}) ->
-    EntriesToProcess = 100,
-    case origins_cache_get(OriginsCache, EntriesToProcess) of
+    case origins_cache_get(OriginsCache, ?OC_ENTRIES_TO_PROCESS_COUNT) of
         [] -> ok;
         CacheEntries ->
             case aec_chain:get_block_state(aec_chain:top_block_hash()) of
@@ -241,7 +245,7 @@ origins_cache_get(OriginsCache, Size) ->
 origins_cache_gc([], _AccountsTree, _OriginsCache, _Dbs) ->
     ok;
 origins_cache_gc([{Origin, Nonce} | Rest], AccountsTree, OriginsCache, Dbs) ->
-    case aec_tx_pool:pool_db_peek(aec_tx_pool:pool_db(), 50, Origin, Nonce) of
+    case aec_tx_pool:pool_db_peek(aec_tx_pool:pool_db(), ?OC_TXS_PER_ORIGIN_COUNT, Origin, Nonce) of
         [] ->
             %% No hanging stale transactions, remove Origin from cache
             true = ets:delete(Origin, OriginsCache);
