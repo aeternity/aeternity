@@ -641,7 +641,7 @@ maps_contract(Config) ->
     call_func(BPub, BPriv, EncTestPub, <<"list_state_s">>, <<"(\"xxx\")">>),
     call_func(BPub, BPriv, EncMapsPub, <<"member_state_s">>, <<"(\"xxx\")">>, {<<"bool">>, 1}),
 
-    force_fun_calls(Node),
+    force_fun_calls(Node, 10 * ?MAX_MINED_BLOCKS), %% Many txs, so wait for longer.
 
     ok.
 
@@ -1269,6 +1269,9 @@ init_fun_calls() ->
     put(fun_calls, []), put(nonces, []).
 
 force_fun_calls(Node) ->
+    force_fun_calls(Node, ?MAX_MINED_BLOCKS).
+
+force_fun_calls(Node, MaxMinedBlocks) ->
     Calls = put(fun_calls, []),
     put(nonces, []),
 
@@ -1277,7 +1280,7 @@ force_fun_calls(Node) ->
 
     %% Then really put them on the chain
     TxHashes = [ TxHash || {#{tx_hash := TxHash}, _} <- Calls ],
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, TxHashes, ?MAX_MINED_BLOCKS),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, TxHashes, MaxMinedBlocks),
     check_calls(Calls).
 
 dry_run_txs(Calls) ->
