@@ -66,11 +66,17 @@
               pinned_block_hash/0]).
 
 -export([ op_transfer/3
+        , op_transfer/4
         , op_deposit/2
+        , op_deposit/3
         , op_withdraw/2
+        , op_withdraw/3
         , op_new_contract/6
+        , op_new_contract/7
         , op_call_contract/6
+        , op_call_contract/7
         , op_call_contract/8
+        , op_call_contract/9
         ]).
 
 -export([serialize/1,
@@ -90,56 +96,119 @@
 
 -spec op_transfer(aeser_id:id(), aeser_id:id(), non_neg_integer()) -> update().
 op_transfer(From, To, Amount) ->
+    op_transfer(From, To, Amount, no_pinned_block(), ?INITIAL_VSN).
+
+-spec op_transfer(aeser_id:id(), aeser_id:id(), non_neg_integer(),
+                  pinned_block_hash()) -> update().
+op_transfer(From, To, Amount, BlockHash) ->
+    op_transfer(From, To, Amount, BlockHash, ?PINNED_BLOCKHASH_VSN).
+
+-spec op_transfer(aeser_id:id(), aeser_id:id(), non_neg_integer(),
+                  pinned_block_hash(), non_neg_integer()) -> update().
+op_transfer(From, To, Amount, BlockHash, Vsn) ->
     account = aeser_id:specialize_type(From),
     account = aeser_id:specialize_type(To),
-    #transfer{from_id = From,
-              to_id   = To,
-              amount  = Amount}.
+    #transfer{from_id     = From,
+              to_id       = To,
+              amount      = Amount,
+              vsn         = Vsn,
+              block_hash  = BlockHash}.
 
 -spec op_deposit(aeser_id:id(), non_neg_integer()) -> update().
 op_deposit(FromId, Amount) ->
+    op_deposit(FromId, Amount, no_pinned_block(), ?INITIAL_VSN).
+
+-spec op_deposit(aeser_id:id(), non_neg_integer(), pinned_block_hash())
+    -> update().
+op_deposit(FromId, Amount, BlockHash) ->
+    op_deposit(FromId, Amount, BlockHash, ?PINNED_BLOCKHASH_VSN).
+
+-spec op_deposit(aeser_id:id(), non_neg_integer(),
+                 pinned_block_hash(), non_neg_integer()) -> update().
+op_deposit(FromId, Amount, BlockHash, Vsn) ->
     account = aeser_id:specialize_type(FromId),
-    #deposit{from_id = FromId, amount = Amount}.
+    #deposit{from_id = FromId, amount = Amount,
+             block_hash = BlockHash, vsn = Vsn}.
 
 -spec op_withdraw(aeser_id:id(), non_neg_integer()) -> update().
 op_withdraw(ToId, Amount) ->
+    op_withdraw(ToId, Amount, no_pinned_block(), ?INITIAL_VSN).
+
+-spec op_withdraw(aeser_id:id(), non_neg_integer(), pinned_block_hash()) -> update().
+op_withdraw(ToId, Amount, BlockHash) ->
+    op_withdraw(ToId, Amount, BlockHash, ?PINNED_BLOCKHASH_VSN).
+
+-spec op_withdraw(aeser_id:id(), non_neg_integer(), pinned_block_hash(),
+                  non_neg_integer()) -> update().
+op_withdraw(ToId, Amount, BlockHash, Vsn) ->
     account = aeser_id:specialize_type(ToId),
-    #withdraw{to_id = ToId, amount = Amount}.
+    #withdraw{to_id = ToId, amount = Amount,
+              block_hash = BlockHash, vsn = Vsn}.
 
 -spec op_new_contract(aeser_id:id(), aect_contracts:vm_version(), aect_contracts:abi_version(),
            binary(), non_neg_integer(), binary()) -> update().
 op_new_contract(OwnerId, VmVersion, ABIVersion, Code, Deposit, CallData) ->
+    op_new_contract(OwnerId, VmVersion, ABIVersion, Code, Deposit, CallData,
+                    no_pinned_block(), ?INITIAL_VSN).
+
+-spec op_new_contract(aeser_id:id(), aect_contracts:vm_version(), aect_contracts:abi_version(),
+           binary(), non_neg_integer(), binary(), pinned_block_hash()) -> update().
+op_new_contract(OwnerId, VmVersion, ABIVersion, Code, Deposit, CallData,
+                BlockHash) ->
+    op_new_contract(OwnerId, VmVersion, ABIVersion, Code, Deposit, CallData,
+                    BlockHash, ?PINNED_BLOCKHASH_VSN).
+
+-spec op_new_contract(aeser_id:id(), aect_contracts:vm_version(), aect_contracts:abi_version(),
+           binary(), non_neg_integer(), binary(), pinned_block_hash(),
+           non_neg_integer()) -> update().
+op_new_contract(OwnerId, VmVersion, ABIVersion, Code, Deposit, CallData,
+                BlockHash, Vsn) ->
     account = aeser_id:specialize_type(OwnerId),
     #create_contract{owner_id    = OwnerId,
                      vm_version  = VmVersion,
                      abi_version = ABIVersion,
                      code        = Code,
                      deposit     = Deposit,
-                     call_data   = CallData}.
+                     call_data   = CallData,
+                     block_hash  = BlockHash,
+                     vsn         = Vsn}.
 
 -spec op_call_contract(aeser_id:id(), aeser_id:id(), aect_contracts:abi_version(),
                        non_neg_integer(), Call, [non_neg_integer()]) -> update()
     when Call :: _.
 op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData, CallStack) ->
     op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData,
-                     CallStack, 1, 1000000).
+                     CallStack, 1, 1000000, no_pinned_block(), ?INITIAL_VSN).
+
+-spec op_call_contract(aeser_id:id(), aeser_id:id(), aect_contracts:abi_version(),
+                       non_neg_integer(), Call, [non_neg_integer()],
+                       pinned_block_hash()) -> update()
+    when Call :: _.
+op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData,
+                 CallStack, BlockHash) ->
+    op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData,
+                     CallStack, 1, 1000000, BlockHash, ?PINNED_BLOCKHASH_VSN).
+
 -spec op_call_contract(aeser_id:id(), aeser_id:id(), aect_contracts:abi_version(),
                        non_neg_integer(), Call,
                        [non_neg_integer()],
-                       non_neg_integer(), non_neg_integer()) -> update()
+                       non_neg_integer(), non_neg_integer(),
+                       pinned_block_hash(), non_neg_integer()) -> update()
     when Call :: _.
 op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData, CallStack,
-                 GasPrice, Gas) ->
+                 GasPrice, Gas, BlockHash, Vsn) ->
     account = aeser_id:specialize_type(CallerId),
     contract = aeser_id:specialize_type(ContractId),
-    #call_contract{caller_id = CallerId,
-                   contract_id = ContractId,
-                   abi_version = ABIVersion,
-                   amount = Amount,
-                   call_data = CallData,
-                   call_stack = CallStack,
-                   gas_price = GasPrice,
-                   gas = Gas}.
+    #call_contract{caller_id    = CallerId,
+                   contract_id  = ContractId,
+                   abi_version  = ABIVersion,
+                   amount       = Amount,
+                   call_data    = CallData,
+                   call_stack   = CallStack,
+                   gas_price    = GasPrice,
+                   gas          = Gas,
+                   block_hash   = BlockHash,
+                   vsn          = Vsn}.
 
 -spec apply_on_trees(aesc_offchain_update:update(), aec_trees:trees(),
                      aec_trees:trees(), aetx_env:env(),
@@ -301,29 +370,30 @@ fields2update(Vsn, Type, Fields0) ->
 fields2update(transfer, [{from,       From},
                          {to,         To},
                          {amount,     Amount},
-                         {vsn,        _Vsn},
-                         {block_hash, _BH}]) ->
-    op_transfer(From, To, Amount);
+                         {vsn,        Vsn},
+                         {block_hash, BlockHash}]) ->
+    op_transfer(From, To, Amount, BlockHash, Vsn);
 fields2update(deposit, [{from,       From},
                         {amount,     Amount},
-                        {vsn,        _Vsn},
-                        {block_hash, _BH}]) ->
-    op_deposit(From, Amount);
+                        {vsn,        Vsn},
+                        {block_hash, BlockHash}]) ->
+    op_deposit(From, Amount, BlockHash, Vsn);
 fields2update(withdraw, [{to,         To},
                          {amount,     Amount},
-                         {vsn,        _Vsn},
-                         {block_hash, _BH}]) ->
-    op_withdraw(To, Amount);
+                         {vsn,        Vsn},
+                         {block_hash, BlockHash}]) ->
+    op_withdraw(To, Amount, BlockHash, Vsn);
 fields2update(create_contract, [{owner,       OwnerId},
                                 {ct_version,  CTVersion},
                                 {code,        Code},
                                 {deposit,     Deposit},
                                 {call_data,   CallData},
-                                {vsn,         _Vsn},
-                                {block_hash,  _BH}]) ->
+                                {vsn,         Vsn},
+                                {block_hash,  BlockHash}]) ->
     #{vm := VmVersion, abi := ABIVersion} = aect_contracts:split_vm_abi(CTVersion),
-    op_new_contract(OwnerId, VmVersion, ABIVersion, Code, Deposit, CallData);
-      fields2update(call_contract, [ {caller,       CallerId},
+    op_new_contract(OwnerId, VmVersion, ABIVersion, Code, Deposit,
+                    CallData, BlockHash, Vsn);
+fields2update(call_contract, [ {caller,       CallerId},
                                {contract,     ContractId},
                                {abi_version,  ABIVersion},
                                {amount,       Amount},
@@ -331,10 +401,10 @@ fields2update(create_contract, [{owner,       OwnerId},
                                {gas_price,    GasPrice},
                                {call_data,    CallData},
                                {call_stack,   CallStack},
-                               {vsn,          _Vsn},
-                               {block_hash,   _BH}]) ->
+                               {vsn,          Vsn},
+                               {block_hash,   BlockHash}]) ->
     op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData,
-                     CallStack, GasPrice, Gas).
+                     CallStack, GasPrice, Gas, BlockHash, Vsn).
 
 -spec ut2type(update_type())  -> atom().
 ut2type(transfer)             -> channel_offchain_update_transfer;
