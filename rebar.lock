@@ -14,7 +14,7 @@
   1},
  {<<"aeminer">>,
   {git,"https://github.com/aeternity/aeminer.git",
-      {ref,"17d7a8d45894c56aeac08c2f379745b03672e65d"}},
+      {ref,"9ff46af11981378bbaef0a2efdb3b028ed7cf9f7"}},
   0},
  {<<"aeserialization">>,
   {git,"https://github.com/aeternity/aeserialization.git",
