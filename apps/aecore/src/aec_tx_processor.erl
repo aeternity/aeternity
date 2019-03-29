@@ -22,6 +22,7 @@
         , contract_create_tx_instructions/11
         , ga_attach_tx_instructions/10
         , ga_meta_tx_instructions/7
+        , ga_set_meta_tx_res_instructions/3
         , name_claim_tx_instructions/5
         , name_preclaim_tx_instructions/5
         , name_revoke_tx_instructions/4
@@ -240,6 +241,10 @@ ga_meta_tx_instructions(OwnerPubkey, AuthData, ABIVersion,
                  GasLimit, GasPrice, Fee, InnerTx)
     ].
 
+-spec ga_set_meta_tx_res_instructions(pubkey(), binary(), 'ok' | {error, term()}) -> [op()].
+ga_set_meta_tx_res_instructions(OwnerPubkey, AuthData, Result) ->
+    [ ga_set_meta_res_op(OwnerPubkey, AuthData, Result) ].
+
 -spec contract_create_tx_instructions(pubkey(), amount(), amount(),
                                       non_neg_integer(), non_neg_integer(),
                                       abi_version(), vm_version(),
@@ -383,6 +388,7 @@ eval_one({Op, Args}, S) ->
         contract_create           -> contract_create(Args, S);
         ga_attach                 -> ga_attach(Args, S);
         ga_meta                   -> ga_meta(Args, S);
+        ga_set_meta_res           -> ga_set_meta_res(Args, S);
         name_claim                -> name_claim(Args, S);
         name_preclaim             -> name_preclaim(Args, S);
         name_revoke               -> name_revoke(Args, S);
@@ -954,6 +960,22 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
                                    Fee, AuthFun, RollbackS, S4)
     end.
 
+ga_set_meta_res_op(OwnerPubkey, AuthData, Res) ->
+    {ga_set_meta_res, {OwnerPubkey, AuthData, Res}}.
+
+ga_set_meta_res({OwnerPubkey, AuthData, Res}, S) ->
+    AuthId = aega_meta_tx:auth_id(OwnerPubkey, AuthData),
+    {AuthCall, S1} = get_auth_call(AuthId, S),
+    AuthCall1 =
+        case Res of
+            ok ->
+                aect_call:set_return_type(ok, AuthCall);
+            {error, _} ->
+                %% GA_TODO: Also store error reason?!
+                aect_call:set_return_type(error, AuthCall)
+        end,
+    cache_put(auth_call, {AuthId, AuthCall1}, S1).
+
 ga_meta_op(OwnerPubkey, AuthData, ABIVersion,
            GasLimit, GasPrice, Fee, InnerTx
           ) when ?IS_HASH(OwnerPubkey),
@@ -991,7 +1013,9 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, _InnerTx}, S) -
                     Refund = (GasLimit - aect_call:gas_used(Call)) * aect_call:gas_price(Call),
                     {CallerAccount, S4} = get_account(OwnerPK, S3),
                     S5 = account_earn(CallerAccount, Refund, S4),
-                    cache_put(auth_call, {aega_meta_tx:auth_id(OwnerPK, AuthData), Call}, S5);
+                    AuthCallId = aega_meta_tx:auth_id(OwnerPK, AuthData),
+                    assert_auth_call_object_not_exist(AuthCallId, S5),
+                    cache_put(auth_call, {AuthCallId, Call}, S5);
                 {ok, 0} -> %% false
                     runtime_error(authentication_failed);
                 {error, E} ->
@@ -1002,7 +1026,6 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, _InnerTx}, S) -
         Fail when (Fail =:= revert orelse Fail =:= error) ->
             runtime_error(authentication_failed)
     end.
-
 
 %%%-------------------------------------------------------------------
 
@@ -1506,6 +1529,16 @@ assert_contract_call_stack(CallStack, S) ->
         _Other -> runtime_error(nonempty_call_stack)
     end.
 
+assert_auth_call_object_not_exist(AuthCallId, S) ->
+    case cache_find(auth_call, AuthCallId, S) of
+        none ->
+            case trees_find(auth_call, AuthCallId, S) of
+                none -> ok;
+                {value, _} -> runtime_error(auth_call_object_already_exist)
+            end;
+        {value, _} -> runtime_error(auth_call_object_already_exist)
+    end.
+
 assert_not_channel(ChannelPubkey, S) ->
     case find_x(channel, ChannelPubkey, S) of
         none -> ok;
@@ -1572,6 +1605,17 @@ runtime_error(Error) ->
 
 get_account(Key, S) ->
     get_x(account, Key, account_not_found, S).
+
+get_auth_call(Key, S) ->
+    case cache_find(auth_call, Key, S) of
+        {value, C} -> {C, S};
+        none ->
+            case trees_find(auth_call, Key, S) of
+                none -> none;
+                {value, Val} ->
+                    {Val, cache_put(auth_call, {Key, Val}, S)}
+            end
+    end.
 
 get_channel(Key, S) ->
     get_x(channel, Key, channel_does_not_exist, S).
@@ -1641,6 +1685,9 @@ trees_find(account, Key, #state{trees = Trees} = S) ->
 %% trees_find(call, Key, #state{trees = Trees} = S) ->
 %%     CTree = aec_trees:calls(Trees),
 %%     aect_call_state_tree:lookup(get_var(Key, call, S), CTree);
+trees_find(auth_call, Key, #state{trees = Trees}) ->
+    CTree = aec_trees:calls(Trees),
+    aect_call_state_tree:lookup_call(Key, CTree);
 trees_find(channel, Key, #state{trees = Trees} = S) ->
     CTree = aec_trees:channels(Trees),
     aesc_state_tree:lookup(get_var(Key, channel, S), CTree);
@@ -1692,10 +1739,14 @@ cache_put(account, Val, #state{cache = C} = S) ->
     S#state{cache = dict:store({account, Pubkey}, Val, C)};
 cache_put(auth_call, {Id, Val}, #state{cache = C} = S) ->
     S#state{cache = dict:store({auth_call, Id}, Val, C)};
-cache_put(call, {Id, Val}, #state{cache = C} = S) ->
+cache_put(call, {CallId, Val}, #state{cache = C} = S) ->
+    CtId = aect_call:contract_pubkey(Val),
+    Id   = aect_call_state_tree:mk_call_tree_id(CtId, CallId),
     S#state{cache = dict:store({call, Id}, Val, C)};
 cache_put(call, Val, #state{cache = C} = S) ->
-    Id = aect_call:id(Val),
+    CtId   = aect_call:contract_pubkey(Val),
+    CallId = aect_call:id(Val),
+    Id     = aect_call_state_tree:mk_call_tree_id(CtId, CallId),
     S#state{cache = dict:store({call, Id}, Val, C)};
 cache_put(channel, Val, #state{cache = C} = S) ->
     Pubkey = aesc_channels:pubkey(Val),
@@ -1726,9 +1777,9 @@ cache_write_through_fun({account,_Pubkey}, Account, Trees) ->
     ATrees  = aec_trees:accounts(Trees),
     ATrees1 = aec_accounts_trees:enter(Account, ATrees),
     aec_trees:set_accounts(Trees, ATrees1);
-cache_write_through_fun({auth_call, Id}, Call, Trees) ->
+cache_write_through_fun({auth_call, CallId}, Call, Trees) ->
     CTree  = aec_trees:calls(Trees),
-    CTree1 = aect_call_state_tree:insert_auth_call(Call, Id, CTree),
+    CTree1 = aect_call_state_tree:enter_call(Call, CallId, CTree),
     aec_trees:set_calls(Trees, CTree1);
 cache_write_through_fun({call, Id}, Call, Trees) ->
     CTree  = aec_trees:calls(Trees),

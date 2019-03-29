@@ -11,11 +11,14 @@
 -export([ commit_to_db/1
         , empty/0
         , empty_with_backend/0
+        , enter_call/3
+        , get_call/2
         , get_call/3
         , insert_call/2
         , insert_call/3
-        , insert_auth_call/3
+        , lookup_call/2
         , lookup_call/3
+        , mk_call_tree_id/2
         , new_with_backend/1
         , iterator/1
         , prune/2
@@ -82,23 +85,21 @@ insert_call(Call, Tree) ->
     insert_call_(Call, CallTreeId, Tree).
 
 -spec insert_call(aect_call:call(), aect_call:id(), tree()) -> tree().
-insert_call(Call, CallId, Tree) ->
-    %% Construct the Id to store in the tree.
-    CtId       = aect_call:contract_pubkey(Call),
-    CallTreeId = call_tree_id(CtId, CallId),
+insert_call(Call, CallTreeId, Tree) ->
     insert_call_(Call, CallTreeId, Tree).
 
--spec insert_auth_call(aect_call:call(), aect_call:id(), tree()) -> tree().
-insert_auth_call(Call, AuthCallId, Tree) ->
-    %% Construct the Id to store in the tree.
-    CtId       = aect_call:caller_pubkey(Call),
-    CallTreeId = call_tree_id(CtId, AuthCallId),
-    insert_call_(Call, CallTreeId, Tree).
+-spec enter_call(aect_call:call(), aect_call:id(), tree()) -> tree().
+enter_call(Call, CallTreeId, Tree) ->
+    enter_call_(Call, CallTreeId, Tree).
 
 -spec lookup_call(aect_contracts:pubkey(), aect_call:id(), tree()) ->
     {value, aect_call:call()} | none.
 lookup_call(CtPubkey, CallId, Tree) ->
-    case aeu_mtrees:lookup(call_tree_id(CtPubkey, CallId), Tree#call_tree.calls) of
+    lookup_call(call_tree_id(CtPubkey, CallId), Tree).
+
+-spec lookup_call(aect_call:id(), tree()) -> {value, aect_call:call()} | none.
+lookup_call(CallTreeId, #call_tree{ calls = Calls }) ->
+    case aeu_mtrees:lookup(CallTreeId, Calls) of
         {value, Val} -> {value, aect_call:deserialize(Val)};
         none         -> none
     end.
@@ -109,8 +110,11 @@ iterator(Tree) ->
 
 -spec get_call(aect_contracts:pubkey(), aect_call:id(), tree()) ->
     aect_call:call().
-get_call(CtPubkey, CallId, #call_tree{ calls = CtTree }) ->
-    CallTreeId = call_tree_id(CtPubkey, CallId),
+get_call(CtPubkey, CallId, Tree) ->
+    get_call(call_tree_id(CtPubkey, CallId), Tree).
+
+-spec get_call(aect_call:id(), tree()) -> aect_call:call().
+get_call(CallTreeId, #call_tree{ calls = CtTree }) ->
     aect_call:deserialize(aeu_mtrees:get(CallTreeId, CtTree)).
 
 -ifdef(TEST).
@@ -156,6 +160,11 @@ from_binary_without_backend(Bin) ->
 
 serialization_template(?VSN) ->
     [{calls, binary}].
+
+-spec mk_call_tree_id(aect_contracts:pubkey(), aect_call:id()) -> aect_call:id().
+mk_call_tree_id(OwnerPubkey, Id) ->
+    call_tree_id(OwnerPubkey, Id).
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -167,6 +176,13 @@ insert_call_(Call, CallTreeId, Tree = #call_tree{ calls = CtTree}) ->
     %% Insert the new call into the history
     Serialized = aect_call:serialize(Call),
     CtTree1    = aeu_mtrees:insert(CallTreeId, Serialized, CtTree),
+
+    %% Update the calls tree
+    Tree#call_tree{ calls = CtTree1}.
+
+enter_call_(Call, CallTreeId, Tree = #call_tree{ calls = CtTree}) ->
+    Serialized = aect_call:serialize(Call),
+    CtTree1    = aeu_mtrees:enter(CallTreeId, Serialized, CtTree),
 
     %% Update the calls tree
     Tree#call_tree{ calls = CtTree1}.

@@ -174,33 +174,29 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
     Env = add_tx_hash(Env0, tx(Tx)),
     case aec_tx_processor:eval(AuthInstructions, Trees, Env) of
         {ok, Trees1, Env1} ->
-            Env2 = set_ga_context(Env1, Tx),
-            case aetx:process(tx(Tx), Trees1, Env2) of
-                {ok, Trees2, Env3} ->
-                    {ok, Trees2, reset_ga_context(Env3, aetx_env:context(Env1))};
-                %% GA_TODO: How carefully should we try to avoid this?
-                %%          It will be a confusing case for users...
-                {error, _} =_E  ->
-                    {ok, Trees1, Env1}
-            end;
+            %% Successful authentication - we have a call object in Trees1
+            Env11 = set_ga_context(Env1, Tx),
+            {InnerRes, Trees2, Env2} =
+                case aetx:process(tx(Tx), Trees1, Env11) of
+                    {ok, Trees21, Env21} ->
+                        {ok, Trees21, reset_ga_context(Env21, aetx_env:context(Env1))};
+                    Err = {error, _Reason}  ->
+                        {Err, Trees1, Env1}
+                end,
+            Trees22 = set_meta_result(InnerRes, Tx, Trees2, Env2),
+            {ok, Trees22, Env2};
         Err = {error, _} ->
             Err
     end.
 
-add_tx_hash(Env0, Aetx) ->
-    BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Aetx)),
-    aetx_env:set_ga_tx_hash(Env0, aec_hash:hash(tx, BinForNetwork)).
-
-set_ga_context(Env0, Tx) ->
-    Env1 = aetx_env:set_context(Env0, aetx_ga),
-    Env2 = aetx_env:set_ga_id(Env1, ga_pubkey(Tx)),
-    Env3 = aetx_env:set_ga_nonce(Env2, auth_id(Tx)),
-    aetx_env:set_ga_tx_hash(Env3, undefined).
-
-reset_ga_context(Env0, Context) ->
-    Env1 = aetx_env:set_context(Env0, Context),
-    Env2 = aetx_env:set_ga_id(Env1, undefined),
-    aetx_env:set_ga_nonce(Env2, undefined).
+set_meta_result(ok, _Tx, Trees, _Env) ->
+    Trees;
+set_meta_result(Err = {error, _}, Tx, Trees, Env) ->
+    SetInstructions =
+        aec_tx_processor:ga_set_meta_tx_res_instructions(
+            ga_pubkey(Tx), auth_data(Tx), Err),
+    {ok, Trees1, _Env} = aec_tx_processor:eval(SetInstructions, Trees, Env),
+    Trees1.
 
 serialize(#ga_meta_tx{ga_id       = GAId,
                       auth_data   = AuthData,
@@ -276,4 +272,19 @@ for_client(#ga_meta_tx{ ga_id       = GAId,
 -spec version() -> non_neg_integer().
 version() ->
     ?GA_META_TX_VSN.
+
+add_tx_hash(Env0, Aetx) ->
+    BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Aetx)),
+    aetx_env:set_ga_tx_hash(Env0, aec_hash:hash(tx, BinForNetwork)).
+
+set_ga_context(Env0, Tx) ->
+    Env1 = aetx_env:set_context(Env0, aetx_ga),
+    Env2 = aetx_env:set_ga_id(Env1, ga_pubkey(Tx)),
+    Env3 = aetx_env:set_ga_nonce(Env2, auth_id(Tx)),
+    aetx_env:set_ga_tx_hash(Env3, undefined).
+
+reset_ga_context(Env0, Context) ->
+    Env1 = aetx_env:set_context(Env0, Context),
+    Env2 = aetx_env:set_ga_id(Env1, undefined),
+    aetx_env:set_ga_nonce(Env2, undefined).
 
