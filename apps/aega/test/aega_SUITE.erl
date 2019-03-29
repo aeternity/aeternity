@@ -24,6 +24,7 @@
         , simple_contract_create/1
         , simple_contract_call/1
         , simple_re_attach_fail/1
+        , simple_spend_from_fail/1
 
         , basic_attach/1
         , basic_spend_from/1
@@ -67,6 +68,7 @@ groups() ->
                    , simple_contract_create
                    , simple_contract_call
                    , simple_re_attach_fail
+                   , simple_spend_from_fail
                    ]}
     , {basic, [], [ basic_attach
                   , basic_spend_from
@@ -168,7 +170,7 @@ simple_spend_from(_Cfg) ->
 
     AuthOpts    = #{ prep_fun => fun(_) -> simple_auth(["123", "1"]) end },
     PreBalance  = ?call(account_balance, Acc2),
-    {ok, _}     = ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000 * MinGP),
+    {ok, #{tx_res := ok}} = ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000 * MinGP),
     PostBalance = ?call(account_balance, Acc2),
     ?assertMatch({X, Y} when X + 500 == Y, {PreBalance, PostBalance}),
 
@@ -194,7 +196,7 @@ simple_contract_create(_Cfg) ->
     {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
 
     AuthOpts = #{ prep_fun => fun(_) -> simple_auth(["123", "1"]) end },
-    {ok, #{init_res := ok}} = ?call(ga_create, Acc1, AuthOpts, "identity", []),
+    {ok, #{tx_res := ok, init_res := ok}} = ?call(ga_create, Acc1, AuthOpts, "identity", []),
 
     ok.
 
@@ -205,11 +207,11 @@ simple_contract_call(_Cfg) ->
     {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
 
     AuthOpts = #{ prep_fun => fun(_) -> simple_auth(["123", "1"]) end },
-    {ok, #{init_res := ok, ct_pubkey := Ct}} =
+    {ok, #{tx_res := ok, init_res := ok, ct_pubkey := Ct}} =
         ?call(ga_create, Acc1, AuthOpts, "identity", []),
 
     AuthOpts2 = #{ prep_fun => fun(_) -> simple_auth(["123", "2"]) end },
-    {ok, #{call_res := ok, call_val := Val}} =
+    {ok, #{tx_res := ok, call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main", ["42"]),
     ?assertMatch("42", decode_call_result("identity", "main", ok, Val)),
 
@@ -222,8 +224,23 @@ simple_re_attach_fail(_Cfg) ->
     {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
 
     AuthOpts = #{ prep_fun => fun(_) -> simple_auth(["123", "1"]) end },
-    {ok, #{failed_as_expected := true}} =
+    {ok, #{tx_res := error}} =
         ?call(ga_attach, Acc1, AuthOpts, "simple_auth", "authorize", ["123"]),
+
+    ok.
+
+simple_spend_from_fail(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
+
+    AuthOpts   = #{ prep_fun => fun(_) -> simple_auth(["123", "1"]) end },
+    PreBalance  = ?call(account_balance, Acc2),
+    {ok, #{tx_res := error}} = ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000),
+    PostBalance = ?call(account_balance, Acc2),
+    ?assertEqual(PreBalance, PostBalance),
 
     ok.
 
@@ -397,11 +414,12 @@ meta(Owner, AuthOpts, InnerTx, Opts, S) ->
     %% Getting here means authentication passed
     CallKey  = aec_hash:hash(pubkey, <<Owner/binary, AuthData/binary>>),
     CallTree = aect_test_utils:calls(S1),
-    Call     = aect_call_state_tree:get_call(Owner, CallKey, CallTree),
+    Call     = aect_call_state_tree:get_call(CallKey, CallTree),
 
     GasUsed = aect_call:gas_used(Call),
     AuthCost = aetx:fee(MetaTx) + aetx:gas_price(MetaTx) * GasUsed,
-    Res0 = #{ auth_gas => GasUsed, auth_cost => AuthCost },
+    Res0 = #{ auth_gas => GasUsed, auth_cost => AuthCost,
+              tx_res => aect_call:return_type(Call) },
 
     Res =
         case aetx:specialize_type(InnerTx) of
@@ -419,14 +437,7 @@ meta(Owner, AuthOpts, InnerTx, Opts, S) ->
                             call_val => aect_call:return_value(InnerCall),
                             call_gas => aect_call:gas_used(InnerCall) }};
             {ga_attach_tx, GTx} ->
-                %% The inner TX should not succeed,
-                {Bal0, _} = account_balance(Owner, S),
-                {Bal1, _} = account_balance(Owner, S1),
-                ?assertMatch({X, Y} when X == Y + AuthCost, {Bal0, Bal1}),
-                {Ct0, _} = account_contract(Owner, S),
-                {Ct1, _} = account_contract(Owner, S1),
-                ?assertEqual(Ct0, Ct1),
-                {ok, Res0#{failed_as_expected => true}}
+                {ok, Res0}
         end,
     {Res, S1}.
 
