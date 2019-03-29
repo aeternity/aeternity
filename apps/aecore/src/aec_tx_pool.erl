@@ -763,10 +763,13 @@ int_check_nonce(Tx, Source, Event) ->
     %% Check is conservative and only rejects certain cases
     Unsigned = aetx_sign:tx(Tx),
     TxNonce = aetx:nonce(Unsigned),
+    {TxType, _} = aetx:specialize_type(Unsigned),
     case aetx:origin(Unsigned) of
         undefined -> {error, no_origin};
         Pubkey when is_binary(Pubkey) ->
             case TxNonce > 0 of
+                false when TxType == ga_meta_tx ->
+                    ok; %% These transaction have nonce inside AuthData...
                 false ->
                     {error, illegal_nonce};
                 true ->
