@@ -48,6 +48,7 @@
 
 %% exports used by GC (should perhaps be in a common lib module)
 -export([ dbs_/0
+        , gc_db/1
         , origins_cache/0
         , origins_cache_max_size/0
         , pool_db/0
@@ -56,7 +57,6 @@
         , pool_db_gc/0
         , pool_db_peek/4
         , raw_delete/2
-        , gc_db/1
         ]).
 
 -include("aec_tx_pool.hrl").
