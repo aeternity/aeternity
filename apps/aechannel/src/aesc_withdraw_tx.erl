@@ -250,15 +250,15 @@ version() ->
 %%%===================================================================
 %%% Test setters 
 %%%===================================================================
--dialyzer({nowarn_function, set_channel_id/2}).
+
+-ifdef(TEST).
 set_channel_id(Tx, ChannelId) ->
     channel = aeser_id:specialize_type(ChannelId),
     Tx#channel_withdraw_tx{channel_id = ChannelId}.
 
--dialyzer({nowarn_function, set_round/2}).
 set_round(Tx, Round) when is_integer(Round) ->
     Tx#channel_withdraw_tx{round = Round}.
 
--dialyzer({nowarn_function, set_state_hash/2}).
 set_state_hash(Tx, Hash) ->
     Tx#channel_withdraw_tx{state_hash = Hash}.
+-endif.

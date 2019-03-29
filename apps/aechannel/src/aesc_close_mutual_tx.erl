@@ -216,8 +216,9 @@ version() ->
 %%%===================================================================
 %%% Test setters 
 %%%===================================================================
--dialyzer({nowarn_function, set_channel_id/2}).
+
+-ifdef(TEST).
 set_channel_id(Tx, ChannelId) ->
     channel = aeser_id:specialize_type(ChannelId),
     Tx#channel_close_mutual_tx{channel_id = ChannelId}.
-
+-endif.
