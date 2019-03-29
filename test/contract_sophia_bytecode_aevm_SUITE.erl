@@ -237,9 +237,6 @@ failing_call(Contract, Fun, Args, Env, Options) ->
             Err
     end.
 
-reverting_call(Contract, Fun, Args, Env) ->
-    reverting_call(Contract, Fun, Args, Env, #{}).
-
 reverting_call(Contract, Fun, Args, Env, Options) ->
     case make_call(Contract, Fun, Args, Env, Options) of
         {ok, Result, _} ->
