@@ -127,8 +127,11 @@ info_test_() ->
                RomaHeight = ?TEST_MODULE:height(raw_key_header_roma(MinervaHeight)),
                WithInfo = ?TEST_MODULE:set_info(RawKey, <<123:?OPTIONAL_INFO_BYTES/unit:8>>),
                SerMinerva = ?TEST_MODULE:serialize_to_binary(WithInfo),
-               <<_Version:32, Flags:32, Height:64, Rest/binary>> = SerMinerva,
-               SerRoma = <<?ROMA_PROTOCOL_VSN:64, Flags:32, RomaHeight:32, Rest/binary>>,
+               CommonVersionBits = 32,
+               CommonFlagsBits = 32,
+               CommonHeightBits = 64,
+               <<?MINERVA_PROTOCOL_VSN:CommonVersionBits, Flags:CommonFlagsBits, MinervaHeight:CommonHeightBits, Rest/binary>> = SerMinerva,
+               SerRoma = <<?ROMA_PROTOCOL_VSN:CommonVersionBits, Flags:CommonFlagsBits, RomaHeight:CommonHeightBits, Rest/binary>>,
                ?assertException(error, malformed_header,
                                 ?TEST_MODULE:deserialize_from_binary(SerRoma)),
                ok
