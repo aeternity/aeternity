@@ -73,6 +73,7 @@
          terminate/2, code_change/3]).
 
 -export_type([ dbs/0
+             , origins_cache/0
              , pool_db/0
              , pool_db_key/0
              , tx_hash/0]).

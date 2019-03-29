@@ -45,13 +45,12 @@
 
 -export_type([pool_db_gc_key/0]).
 
--type pool_db() :: atom().
 -type pool_db_gc_key() :: aec_tx_pool:tx_hash().
 
 -define(SERVER, ?MODULE).
 
--record(state, {origins_cache :: aec_tx_pool:origins_cache(),
-                dbs :: aec_tx_pool:dbs()}).
+-record(state, {origins_cache :: aec_tx_pool:origins_cache() | undefined,
+                dbs :: aec_tx_pool:dbs() | undefined}).
 
 %%%===================================================================
 %%% API
@@ -109,7 +108,8 @@ init([]) ->
 handle_call(origins_cache_init, _From, _S) ->
     S = init_state(),
     {reply, ok, S};
-handle_call(origins_cache_gc, _From, S) ->
+handle_call(origins_cache_gc, _From, #state{dbs = Dbs, origins_cache = OriginsCache} = S)
+  when Dbs =/= undefined andalso OriginsCache =/= undefined ->
     ok = origins_cache_gc(S),
     {reply, ok, S};
 handle_call(_Req, _From, S) ->
@@ -133,7 +133,8 @@ handle_info(init_origins_cache_gc, _S) ->
     S = init_state(),
     erlang:send_after(30000, self(), origins_cache_gc),
     {noreply, S};
-handle_info(origins_cache_gc, #state{} = S) ->
+handle_info(origins_cache_gc, #state{dbs = Dbs, origins_cache = OriginsCache} = S)
+  when Dbs =/= undefined andalso OriginsCache =/= undefined ->
     ok = origins_cache_gc(S),
     erlang:send_after(30000, self(), origins_cache_gc),
     {noreply, S};
@@ -259,7 +260,7 @@ origins_cache_gc([{Origin, Nonce} | Rest], AccountsTree, OriginsCache, Dbs) ->
             %% Origin cache information may be stale.
             %% Re-check transactions, based on the account nonce from
             %% accounts state tree.
-            case get_account(Origin, {account_trees, AccountsTree}) of
+            case get_account(Origin, AccountsTree) of
                 none -> ok;
                 {value, Account} ->
                     AccountNonce = aec_accounts:nonce(Account),
@@ -295,8 +296,5 @@ init_state() ->
     OriginsCache = aec_tx_pool:origins_cache(),
     #state{dbs = Dbs, origins_cache = OriginsCache}.
 
-%% This can be moved to common lib shared with aec_tx_pool
-get_account(AccountKey, {account_trees, AccountsTrees}) ->
-    aec_accounts_trees:lookup(AccountKey, AccountsTrees);
-get_account(AccountKey, {block_hash, BlockHash}) ->
-    aec_chain:get_account_at_hash(AccountKey, BlockHash).
+get_account(AccountKey, AccountsTrees) ->
+    aec_accounts_trees:lookup(AccountKey, AccountsTrees).
