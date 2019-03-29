@@ -245,7 +245,7 @@ origins_cache_get(OriginsCache, Size) ->
 origins_cache_gc([], _AccountsTree, _OriginsCache, _Dbs) ->
     ok;
 origins_cache_gc([{Origin, Nonce} | Rest], AccountsTree, OriginsCache, Dbs) ->
-    case aec_tx_pool:pool_db_peek(aec_tx_pool:pool_db(), ?OC_TXS_PER_ORIGIN_COUNT, Origin, Nonce) of
+    case aec_tx_pool:pool_db_peek(Dbs, ?OC_TXS_PER_ORIGIN_COUNT, Origin, Nonce) of
         [] ->
             %% No hanging stale transactions, remove Origin from cache
             true = ets:delete(Origin, OriginsCache);

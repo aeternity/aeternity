@@ -558,7 +558,7 @@ pool_db_open(DbName, ExtraOpts) ->
 origins_cache_open(Name) ->
     ets:new(Name, [set, public, named_table]).
 
--spec pool_db_peek(pool_db(), MaxNumber::pos_integer() | infinity,
+-spec pool_db_peek(dbs(), MaxNumber::pos_integer() | infinity,
                    aec_keys:pubkey() | all, non_neg_integer() | all) ->
                           [pool_db_value()].
 pool_db_peek(_, 0, _, _) -> [];
