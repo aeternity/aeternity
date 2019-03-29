@@ -7,7 +7,10 @@
 
 -module(aec_test_utils).
 
--export([ mock_time/0
+-export([ running_apps/0
+        , loaded_apps/0
+        , restore_stopped_and_unloaded_apps/2
+        , mock_time/0
         , unmock_time/0
         , mock_difficulty_as_target/0
         , unmock_difficulty_as_target/0
@@ -70,6 +73,21 @@
 -endif.
 
 -define(GENESIS_ACCOUNTS, [{<<"_________my_public_key__________">>, 100}]).
+
+running_apps() ->
+    lists:map(fun({A,_,_}) -> A end, application:which_applications()).
+
+loaded_apps() ->
+    lists:map(fun({A,_,_}) -> A end, application:loaded_applications()).
+
+restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps) ->
+    BadRunningApps = running_apps() -- OldRunningApps,
+    lists:foreach(fun(A) -> ok = application:stop(A) end, BadRunningApps),
+    BadLoadedApps = loaded_apps() -- OldLoadedApps,
+    lists:foreach(fun(A) -> ok = application:unload(A) end, BadLoadedApps),
+    OldRunningApps = running_apps(),
+    OldLoadedApps = loaded_apps(),
+    ok.
 
 genesis_accounts() ->
   ?GENESIS_ACCOUNTS.

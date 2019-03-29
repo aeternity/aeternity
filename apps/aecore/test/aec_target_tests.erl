@@ -5,6 +5,8 @@
 %%%=============================================================================
 -module(aec_target_tests).
 
+-import(aec_test_utils, [running_apps/0, loaded_apps/0, restore_stopped_and_unloaded_apps/2]).
+
 -include_lib("eunit/include/eunit.hrl").
 
 -include_lib("aeminer/include/aeminer.hrl").
@@ -15,8 +17,8 @@
 
 target_adj_test_() ->
     {setup,
-     fun setup_target/0,
-     fun teardown_target/1,
+     fun setup/0,
+     fun teardown/1,
      [{"With constant PoW capacity the target will stabilize (seed = " ++ integer_to_list(S) ++ ")",
       fun() ->
           Seed = {1, S, S},
@@ -42,17 +44,18 @@ target_adj_test_() ->
       end} || S <- lists:seq(1, 10) ]
      }.
 
-setup_target() ->
-    setup(),
+setup() ->
+    InitialApps = {running_apps(), loaded_apps()},
+    {ok, _} = application:ensure_all_started(aeutils),
     meck:new(aec_txs_trees, [passthrough]),
     meck:new(aec_conductor, [passthrough]),
     meck:expect(aec_txs_trees, from_txs, fun([]) -> fake_txs_tree end),
-    meck:expect(aec_txs_trees, root_hash, fun(fake_txs_tree) -> {ok, ?FAKE_TXS_TREE_HASH} end).
+    meck:expect(aec_txs_trees, root_hash, fun(fake_txs_tree) -> {ok, ?FAKE_TXS_TREE_HASH} end),
+    {InitialApps, [aec_txs_trees, aec_conductor]}.
 
-teardown_target(X) ->
-    meck:unload(aec_txs_trees),
-    meck:unload(aec_conductor),
-    teardown(X).
+teardown({{OldRunningApps, OldLoadedApps}, Mocks}) ->
+    [meck:unload(M) || M <- Mocks],
+    ok = restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps).
 
 mine_blocks_only_chain(Chain, N, PC) ->
     aec_test_utils:blocks_only_chain(mine_chain_with_state(Chain, N, PC)).
@@ -90,10 +93,3 @@ mine(Difficulty, N) ->
 %% Human readable difficulty
 hr_difficulty(Block) ->
     aec_blocks:difficulty(Block) / ?DIFFICULTY_INTEGER_FACTOR.
-
-setup() ->
-    application:start(crypto).
-
-teardown(_) ->
-    application:stop(crypto).
-

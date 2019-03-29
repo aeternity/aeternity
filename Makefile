@@ -6,6 +6,7 @@ REBAR ?= ./rebar3
 EUNIT_VM_ARGS = $(CURDIR)/config/eunit.vm.args
 EUNIT_SYS_CONFIG = $(CURDIR)/config/eunit.sys.config
 EUNIT_TEST_FLAGS ?=
+EUNIT_REBAR_FLAGS ?=
 
 CT_TEST_FLAGS ?=
 ST_CT_FLAGS = --logdir system_test/logs
@@ -209,7 +210,7 @@ REVISION:
 
 eunit: KIND=test
 eunit: internal-build
-	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG)" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
+	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG)" ./rebar3 do eunit $(EUNIT_REBAR_FLAGS) $(EUNIT_TEST_FLAGS)
 
 eunit-roma: KIND=test
 eunit-roma: internal-build

@@ -1,9 +1,10 @@
 -module(aec_metrics_test_utils).
 
 -export([make_port_map/2,
-         set_statsd_port_config/3,
+         port_map/1,
+         maybe_set_statsd_port_in_user_config/3,
          start_statsd_loggers/1,
-         stop_statsd_loggers/1,
+         stop_statsd_loggers/0,
          fetch_data/0]).
 
 make_port_map(Devs, Config) ->
@@ -17,19 +18,24 @@ make_port_map(Devs, Config) ->
     ct:log("Ports = ~p", [Ports]),
     PortMap = zip(Devs, Ports),
     ct:log("PortMap = ~p", [PortMap]),
+    false = lists:keyfind(logger_port_map, 1, Config),
     lists:keystore(logger_port_map, 1, Config,
                    {logger_port_map, PortMap}).
 
-set_statsd_port_config(Dev, Cfg, CTConfig) ->
+port_map(Config) ->
+    {_, PortMap} = lists:keyfind(logger_port_map, 1, Config),
+    PortMap.
+
+maybe_set_statsd_port_in_user_config(Dev, Cfg, CTConfig) ->
     case lists:keyfind(logger_port_map, 1, CTConfig) of
         {_, PM} ->
             case lists:keyfind(Dev, 1, PM) of
                 {_, Port} ->
                     insert_port_config(Port, Cfg);
-                _ ->
+                false ->
                     Cfg
             end;
-        _ ->
+        false ->
             Cfg
     end.
 
@@ -42,49 +48,29 @@ insert_port_config(Port, Cfg) ->
             Cfg#{<<"metrics">> => #{<<"port">> => Port}}
     end.
 
-start_statsd_loggers(Config0) ->
-    Devs = proplists:get_value(devs, Config0, []),
-    {PortMap, Config} = case lists:keyfind(logger_port_map, 1, Config0) of
-                            false ->
-                                NewConfig = make_port_map(Devs, Config0),
-                                {_, PM} = lists:keyfind(
-                                            logger_port_map, 1, NewConfig),
-                                {PM, NewConfig};
-                            {_, PM} ->
-                                {PM, Config0}
-                        end,
+start_statsd_loggers(PortMap) ->
     ct:log("PortMap = ~p", [PortMap]),
-    Loggers0 = proplists:get_value(loggers, Config, []),
-    ct:log("Loggers0 = ~p", [Loggers0]),
-    Loggers1 = lists:foldl(
-                 fun({Id, Port}, Acc) ->
-                         start_statsd_logger_(Id, Port, Acc)
-                 end, Loggers0, PortMap),
+    [] = loggers(),
+    Loggers1 = lists:map(
+                 fun({Id, Port}) ->
+                         start_statsd_logger_(Id, Port)
+                 end, PortMap),
     ct:log("Loggers1 = ~p", [Loggers1]),
-    lists:keystore(loggers, 1, Config, {loggers, Loggers1}).
+    ok.
 
-start_statsd_logger_(Id, Port, Loggers) ->
-    case lists:keyfind(Id, 1, Loggers) of
-        {_, Info} ->
-            case lists:keyfind(port, 1, Info) of
-                {_, Port} -> Loggers;
-                {_, OldPort} ->
-                    error({logger_on_different_port, [{id, Id},
-                                                      {old_port, OldPort},
-                                                      {new_port, Port}]})
-            end;
-        false ->
-            application:ensure_all_started(exometer_core),
-            {ok, Pid} = exometer_report_logger:new([{id, Id},
-                                                    {input, [{mode, udp},
-                                                             {port, Port}]},
-                                                    {output, [{mode, ets}]}]),
-            [{Id, [{port, Port},
-                   {pid, Pid}]} | Loggers]
-    end.
+start_statsd_logger_(Id, Port) ->
+    {ok, Pid} = exometer_report_logger:new([{id, Id},
+                                            {input, [{mode, udp},
+                                                     {port, Port}]},
+                                            {output, [{mode, ets}]}]),
+    {Id, [{port, Port},
+          {pid, Pid}]}.
 
-stop_statsd_loggers(_Config) ->
-    Children = supervisor:which_children(exometer_report_logger_sup),
+loggers() ->
+    supervisor:which_children(exometer_report_logger_sup).
+
+stop_statsd_loggers() ->
+    Children = loggers(),
     ct:log("Logger Children = ~p", [Children]),
     [ok = stop_logger(C) || C <- Children],
     ok.
