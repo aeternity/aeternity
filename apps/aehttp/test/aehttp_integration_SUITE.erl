@@ -210,6 +210,8 @@
 %% channel websocket endpoints
 -export(
    [sc_ws_timeout_open/1,
+    sc_ws_min_depth_not_reached_timeout/1,
+    sc_ws_min_depth_is_modifiable/1,
     sc_ws_basic_open_close/1,
     sc_ws_failed_update/1,
     sc_ws_generic_messages/1,
@@ -234,6 +236,7 @@
 -define(WS, aehttp_ws_test_utils).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
+-define(DEFAULT_MIN_DEPTH, 4).
 
 -define(ALICE, {
     <<177,181,119,188,211,39,203,57,229,94,108,2,107,214, 167,74,27,
@@ -557,6 +560,8 @@ groups() ->
 channel_websocket_sequence() ->
     [
       sc_ws_timeout_open,
+      sc_ws_min_depth_not_reached_timeout,
+      sc_ws_min_depth_is_modifiable,
       sc_ws_basic_open_close,
       %% both can start close mutual
       sc_ws_close_mutual,
@@ -3526,6 +3531,9 @@ channel_sign_tx(ConnPid, Privkey, Tag, Config) ->
     Tx.
 
 sc_ws_open_(Config) ->
+    sc_ws_open_(Config, #{}, ?DEFAULT_MIN_DEPTH).
+
+sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
 
@@ -3538,7 +3546,7 @@ sc_ws_open_(Config) ->
 
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
-    ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}, Config),
+    ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, ChannelOpts0, Config),
     {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, ChannelOpts), Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
@@ -3564,7 +3572,8 @@ sc_ws_open_(Config) ->
     assert_balance(RPubkey, RStartAmt - RAmt),
 
     % mine min depth
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 4),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                       MinBlocksToMine),
 
     channel_send_locking_infos(IConnPid, RConnPid, Config),
 
@@ -4080,7 +4089,8 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
     Fee = aetx:fee(aetx_sign:tx(SignedDepositTx)),
     {SStartB1, _, _} = {SStartB - 2 - Fee, SStartB1, SStartB},
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   ?DEFAULT_MIN_DEPTH),
     {ok, #{<<"event">> := <<"own_deposit_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, #{<<"event">> := <<"own_deposit_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
 
@@ -4125,7 +4135,8 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
     Fee = aetx:fee(aetx_sign:tx(SignedWTx)),
     {SStartB1, _, _} = {SStartB + 2 - Fee, SStartB1, SStartB},
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   ?DEFAULT_MIN_DEPTH),
     {ok, #{<<"event">> := <<"own_withdraw_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, #{<<"event">> := <<"own_withdraw_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
 
@@ -5213,6 +5224,41 @@ sc_ws_timeout_open(Config) ->
     ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
     ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
     ok.
+
+sc_ws_min_depth_not_reached_timeout(Config) ->
+    #{initiator := #{pub_key := IPubkey},
+      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
+
+    IAmt = 70000 * aec_test_utils:min_gas_price(),
+    RAmt = 40000 * aec_test_utils:min_gas_price(),
+    ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt,
+                                  #{timeout_funding_lock => 100}, Config),
+    {ok, IConnPid} = channel_ws_start(initiator,
+                                           maps:put(host, <<"localhost">>, ChannelOpts), Config),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
+
+    {ok, RConnPid} = channel_ws_start(responder, ChannelOpts, Config),
+
+    ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign, on_chain_tx]),
+
+    channel_send_conn_open_infos(RConnPid, IConnPid, Config),
+
+    channel_create(Config, IConnPid, RConnPid),
+
+    % mine min depth - 1
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                       ?DEFAULT_MIN_DEPTH - 1),
+
+    ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
+    ok = wait_for_channel_event(<<"died">>, RConnPid, info, Config),
+    ok.
+
+
+sc_ws_min_depth_is_modifiable(Config0) ->
+    Config = sc_ws_open_(Config0, #{minimum_depth => ?DEFAULT_MIN_DEPTH},
+                         ?DEFAULT_MIN_DEPTH),
+    ok = sc_ws_update_(Config),
+    ok = sc_ws_close_(Config).
 
 sc_ws_basic_open_close(Config0) ->
     Config = sc_ws_open_(Config0),
