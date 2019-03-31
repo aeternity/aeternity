@@ -21,7 +21,7 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -142,8 +142,8 @@ serialize(#oracle_response_tx{oracle_id    = OracleId,
                               response     = Response,
                               response_ttl = {?ttl_delta_atom, ResponseTTLValue},
                               fee          = Fee,
-                              ttl          = TTL}) ->
-    {version(),
+                              ttl          = TTL} = Tx) ->
+    {version(Tx),
     [ {oracle_id, OracleId}
     , {nonce, Nonce}
     , {query_id, QueryId}
@@ -183,8 +183,8 @@ serialization_template(?ORACLE_RESPONSE_TX_VSN) ->
     , {ttl, int}
     ].
 
--spec version() -> non_neg_integer().
-version() ->
+-spec version(tx()) -> non_neg_integer().
+version(_) ->
     ?ORACLE_RESPONSE_TX_VSN.
 
 for_client(#oracle_response_tx{oracle_id = OracleId,

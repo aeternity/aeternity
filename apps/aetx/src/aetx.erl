@@ -113,7 +113,7 @@
 
 -callback type() -> atom().
 
--callback version() -> non_neg_integer().
+-callback version(tx_instance()) -> non_neg_integer().
 
 -callback fee(Tx :: tx_instance()) ->
     Fee :: integer().
@@ -360,7 +360,8 @@ custom_apply(Fun, #aetx{ cb = CB, tx = Tx}, Trees, Env) ->
 -spec serialize_for_client(Tx :: tx()) -> map().
 serialize_for_client(#aetx{ cb = CB, type = Type, tx = Tx }) ->
     Res0 = CB:for_client(Tx),
-    Res1 = Res0#{ <<"type">> => type_to_swagger_name(Type), <<"version">> => CB:version() },
+    Res1 = Res0#{ <<"type">> => type_to_swagger_name(Type),
+                  <<"version">> => CB:version(Tx) },
     case maps:get(<<"ttl">>, Res1, 0) of
         0 -> maps:remove(<<"ttl">>, Res1);
         _ -> Res1

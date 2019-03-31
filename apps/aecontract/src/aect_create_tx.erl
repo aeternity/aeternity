@@ -21,7 +21,7 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -232,8 +232,8 @@ serialize(#contract_create_tx{owner_id   = OwnerId,
                               amount     = Amount,
                               gas        = Gas,
                               gas_price  = GasPrice,
-                              call_data  = CallData}) ->
-    {version(),
+                              call_data  = CallData} = Tx) ->
+    {version(Tx),
      [ {owner_id, OwnerId}
      , {nonce, Nonce}
      , {code, Code}
@@ -313,7 +313,7 @@ for_client(#contract_create_tx{ owner_id    = OwnerId,
 %%%===================================================================
 %%% Internal functions
 
--spec version() -> non_neg_integer().
-version() ->
+-spec version(tx()) -> non_neg_integer().
+version(_) ->
     ?CONTRACT_CREATE_TX_VSN.
 

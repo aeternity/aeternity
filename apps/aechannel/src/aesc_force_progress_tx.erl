@@ -20,7 +20,7 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -170,8 +170,8 @@ serialize(#channel_force_progress_tx{channel_id     = ChannelId,
                                      offchain_trees = OffChainTrees,
                                      ttl            = TTL,
                                      fee            = Fee,
-                                     nonce          = Nonce}) ->
-    {version(),
+                                     nonce          = Nonce} = Tx) ->
+    {version(Tx),
      [ {channel_id    , ChannelId}
      , {from_id       , FromId}
      , {payload       , Payload}
@@ -268,11 +268,7 @@ round(#channel_force_progress_tx{round = Round}) ->
 state_hash(#channel_force_progress_tx{state_hash = StateHash}) ->
     StateHash.
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-
--spec version() -> non_neg_integer().
-version() ->
+-spec version(tx()) -> non_neg_integer().
+version(_) ->
     ?CHANNEL_FORCE_PROGRESS_TX_VSN.
 

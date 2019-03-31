@@ -21,7 +21,7 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -248,11 +248,11 @@ serialize(#contract_call_tx{caller_id   = CallerId,
                             amount      = Amount,
                             gas         = Gas,
                             gas_price   = GasPrice,
-                            call_data   = CallData}) ->
+                            call_data   = CallData} = Tx) ->
     %% Note that the call_stack is not serialized. This is ok since we don't
     %% serialize transactions originating from contract execution, and for
     %% top-level transactions the call_stack is always empty.
-    {version(),
+    {version(Tx),
      [ {caller_id, CallerId}
      , {nonce, Nonce}
      , {contract_id, ContractId}
@@ -304,8 +304,8 @@ serialization_template(?CONTRACT_CALL_TX_VSN) ->
     , {call_data, binary}
     ].
 
--spec version() -> non_neg_integer().
-version() ->
+-spec version(tx()) -> non_neg_integer().
+version(_) ->
     ?CONTRACT_CALL_TX_VSN.
 
 for_client(#contract_call_tx{caller_id   = CallerId,

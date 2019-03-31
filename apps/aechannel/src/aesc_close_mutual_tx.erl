@@ -19,7 +19,7 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -142,8 +142,8 @@ serialize(#channel_close_mutual_tx{channel_id             = ChannelId,
                                    responder_amount_final = ResponderAmount,
                                    ttl                    = TTL,
                                    fee                    = Fee,
-                                   nonce                  = Nonce}) ->
-    {version(),
+                                   nonce                  = Nonce} = Tx) ->
+    {version(Tx),
      [ {channel_id              , ChannelId}
      , {from_id                 , FromId}
      , {initiator_amount_final  , InitiatorAmount}
@@ -205,12 +205,8 @@ initiator_amount_final(#channel_close_mutual_tx{initiator_amount_final  = Amount
 responder_amount_final(#channel_close_mutual_tx{responder_amount_final  = Amount}) ->
     Amount.
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-
--spec version() -> non_neg_integer().
-version() ->
+-spec version(tx()) -> non_neg_integer().
+version(_) ->
     ?CHANNEL_CLOSE_MUTUAL_TX_VSN.
 
 %%%===================================================================

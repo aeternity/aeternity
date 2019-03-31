@@ -21,7 +21,7 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -167,8 +167,8 @@ serialize(#channel_withdraw_tx{channel_id = ChannelId,
                                fee        = Fee,
                                state_hash = StateHash,
                                round      = Round,
-                               nonce      = Nonce}) ->
-    {version(),
+                               nonce      = Nonce} = Tx) ->
+    {version(Tx),
      [ {channel_id , ChannelId}
      , {to_id      , ToId}
      , {amount     , Amount}
@@ -238,12 +238,8 @@ updates(#channel_withdraw_tx{to_id = ToId, amount = Amount}) ->
 round(#channel_withdraw_tx{round = Round}) ->
     Round.
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-
--spec version() -> non_neg_integer().
-version() ->
+-spec version(tx()) -> non_neg_integer().
+version(_) ->
     ?CHANNEL_WITHDRAW_TX_VSN.
 
 %%%===================================================================

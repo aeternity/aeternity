@@ -1,7 +1,7 @@
 -module(aesc_offchain_tx).
 
--behaviour(aetx).
--behaviour(aesc_signable_transaction).
+-behavior(aetx).
+-behavior(aesc_signable_transaction).
 
 %% Behavior API
 -export([new/1,
@@ -14,7 +14,7 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -41,17 +41,22 @@
 %%% Types
 %%%===================================================================
 
--define(CHANNEL_OFFCHAIN_TX_VSN, 1).
+-define(INITIAL_VSN, 1).
+-define(PINNED_BLOCK_VSN, 2).
+
 -define(CHANNEL_OFFCHAIN_TX_TYPE, channel_offchain_tx).
 -define(CHANNEL_OFFCHAIN_TX_FEE, 0).   % off-chain
+-define(NO_PINNED_BLOCK, <<>>).
 
 -type vsn() :: non_neg_integer().
+-type pinned_block_hash() :: ?NO_PINNED_BLOCK | aec_blocks:block_header_hash().
 
 -record(channel_offchain_tx, {
           channel_id         :: aeser_id:id(),
           updates            :: [aesc_offchain_update:update()],
           state_hash         :: binary(),
-          round              :: non_neg_integer()
+          round              :: non_neg_integer(),
+          block_hash         :: pinned_block_hash()
          }).
 
 -opaque tx() :: #channel_offchain_tx{}.
@@ -66,13 +71,15 @@
 new(#{channel_id         := ChannelId,
       state_hash         := StateHash,
       updates            := Updates,
-      round              := Round}) ->
+      round              := Round} = Opts) ->
     channel = aeser_id:specialize_type(ChannelId),
+    BlockHash = maps:get(block_hash, Opts, ?NO_PINNED_BLOCK),
     Tx = #channel_offchain_tx{
             channel_id         = ChannelId,
             updates            = Updates,
             state_hash         = StateHash,
-            round              = Round},
+            round              = Round,
+            block_hash         = BlockHash},
     {ok, aetx:new(?MODULE, Tx)}.
 
 type() ->
@@ -128,17 +135,29 @@ serialize(#channel_offchain_tx{
              channel_id         = ChannelId,
              updates            = Updates0,
              state_hash         = StateHash,
-             round              = Round}) ->
+             round              = Round,
+             block_hash         = BlockHash} = Tx) ->
     Updates = [aesc_offchain_update:serialize(U) || U <- Updates0],
-    {version(),
-     [ {channel_id        , ChannelId}
-     , {round             , Round}
-     , {updates           , Updates}
-     , {state_hash        , StateHash}
-     ]}.
+    case version(Tx) of
+        ?INITIAL_VSN ->
+            {?INITIAL_VSN,
+            [ {channel_id        , ChannelId}
+            , {round             , Round}
+            , {updates           , Updates}
+            , {state_hash        , StateHash}
+            ]};
+        ?PINNED_BLOCK_VSN ->
+            {?PINNED_BLOCK_VSN,
+            [ {channel_id        , ChannelId}
+            , {round             , Round}
+            , {updates           , Updates}
+            , {state_hash        , StateHash}
+            , {block_hash        , BlockHash}
+            ]}
+    end.
 
 -spec deserialize(vsn(), list()) -> tx().
-deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
+deserialize(?INITIAL_VSN,
             [ {channel_id        , ChannelId}
             , {round             , Round}
             , {updates           , Updates0}
@@ -149,24 +168,47 @@ deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
        channel_id         = ChannelId,
        updates            = Updates,
        state_hash         = StateHash,
-       round              = Round}.
+       round              = Round,
+       block_hash         = ?NO_PINNED_BLOCK};
+deserialize(?PINNED_BLOCK_VSN,
+            [ {channel_id        , ChannelId}
+            , {round             , Round}
+            , {updates           , Updates0}
+            , {state_hash        , StateHash}
+            , {block_hash        , BlockHash}]) ->
+    channel = aeser_id:specialize_type(ChannelId),
+    Updates = [aesc_offchain_update:deserialize(U) || U <- Updates0],
+    #channel_offchain_tx{
+       channel_id         = ChannelId,
+       updates            = Updates,
+       state_hash         = StateHash,
+       round              = Round,
+       block_hash         = BlockHash}.
 
 -spec for_client(tx()) -> map().
 for_client(#channel_offchain_tx{
               updates            = Updates,
               state_hash         = StateHash,
               channel_id         = ChannelId,
-              round              = Round}) ->
+              round              = Round,
+              block_hash         = BlockHash}) ->
     #{<<"channel_id">>         => aeser_api_encoder:encode(id_hash, ChannelId),
       <<"round">>              => Round,
       <<"updates">>            => [aesc_offchain_update:for_client(D) || D <- Updates],
       <<"state_hash">>         => aeser_api_encoder:encode(state, StateHash)}.
 
-serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
+serialization_template(?INITIAL_VSN) ->
     [ {channel_id        , id}
     , {round             , int}
     , {updates           , [binary]}
     , {state_hash        , binary}
+    ];
+serialization_template(?PINNED_BLOCK_VSN) ->
+    [ {channel_id        , id}
+    , {round             , int}
+    , {updates           , [binary]}
+    , {state_hash        , binary}
+    , {block_hash        , binary}
     ].
 
 %%%===================================================================
@@ -205,13 +247,10 @@ set_value(#channel_offchain_tx{} = Tx, state_hash, Hash) when
   is_binary(Hash) ->
     Tx#channel_offchain_tx{state_hash=Hash}.
 
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-
-version() ->
-    ?CHANNEL_OFFCHAIN_TX_VSN.
+version(#channel_offchain_tx{block_hash = ?NO_PINNED_BLOCK}) ->
+    ?INITIAL_VSN;
+version(#channel_offchain_tx{}) ->
+    ?PINNED_BLOCK_VSN.
 
 %%%===================================================================
 %%% Test setters 

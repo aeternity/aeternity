@@ -19,7 +19,7 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -120,8 +120,8 @@ serialize(#ns_revoke_tx{account_id = AccountId,
                         nonce      = Nonce,
                         name_id    = NameId,
                         fee        = Fee,
-                        ttl        = TTL}) ->
-    {version(),
+                        ttl        = TTL} = Tx) ->
+    {version(Tx),
      [ {account_id, AccountId}
      , {nonce, Nonce}
      , {name_id, NameId}
@@ -174,6 +174,7 @@ account_pubkey(#ns_revoke_tx{account_id = AccountId}) ->
 name_hash(#ns_revoke_tx{name_id = NameId}) ->
     aeser_id:specialize(NameId, name).
 
-version() ->
+-spec version(tx()) -> non_neg_integer().
+version(_) ->
     ?NAME_REVOKE_TX_VSN.
 

@@ -19,7 +19,7 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -138,8 +138,8 @@ serialize(#channel_close_solo_tx{channel_id = ChannelId,
                                  poi        = PoI,
                                  ttl        = TTL,
                                  fee        = Fee,
-                                 nonce      = Nonce}) ->
-    {version(),
+                                 nonce      = Nonce} = Tx) ->
+    {version(Tx),
      [ {channel_id, ChannelId}
      , {from_id   , FromId}
      , {payload   , Payload}
@@ -194,11 +194,7 @@ serialization_template(?CHANNEL_CLOSE_SOLO_TX_VSN) ->
     , {nonce     , int}
     ].
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-
--spec version() -> non_neg_integer().
-version() ->
+-spec version(tx()) -> non_neg_integer().
+version(_) ->
     ?CHANNEL_CLOSE_SOLO_TX_VSN.
 
