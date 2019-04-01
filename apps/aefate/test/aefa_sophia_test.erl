@@ -33,8 +33,8 @@ compile_contract(Code) ->
 compile_contract(Code, Options) ->
     {ok, Ast} = aeso_parser:string(Code),
     TypedAst  = aeso_ast_infer_types:infer(Ast, Options),
-    ICode     = aeso_ast_to_icode:convert_typed(TypedAst, Options),
-    aeso_icode_to_fate:compile(ICode, Options).
+    FCode     = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
+    aeso_fcode_to_fate:compile(FCode, Options).
 
 setup_chain(Contracts) ->
     #{ contracts => Contracts }.
@@ -65,6 +65,9 @@ identity() ->
      "    if   (x == 0) 0\n"
      "    elif (y == 0) x + 1\n"
      "    else x + y\n"
+     "  function local (x : int) =\n"
+     "    let y = x + 1\n"
+     "    y + y\n"
     }.
 
 id_tests() ->
@@ -77,7 +80,8 @@ id_tests() ->
     , {"plus4'", [142],  146}
     , {"dec",    [0],     -1}
     , {"dec",    [14],    13}
-    , {"sub2",   [20],    18} ] ++
+    , {"sub2",   [20],    18}
+    , {"local",  [20],    42} ] ++
     [ {"eq0",  [X], X == 0} || X <- [0, 99] ] ++
     [ {"eq3",  [X], X == 3} || X <- [3, -100] ] ++
     [ {"pred", [X], max(0, X - 1)} || X <- [0, 100] ] ++
