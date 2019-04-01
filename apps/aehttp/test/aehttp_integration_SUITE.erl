@@ -1214,7 +1214,7 @@ mine_key_block(HeaderBin, Target, Nonce, Config, Attempts) when Attempts > 0 ->
         {ok, {_Nonce, _PowEvidence}} = Res ->
             Res;
         {error, no_solution} ->
-            mine_key_block(HeaderBin, Target, aeminer_pow:next_nonce(Nonce, Config), Config, Attempts - 1)
+            mine_key_block(HeaderBin, Target, aeminer_pow:trim_nonce(aeminer_pow:next_nonce(Nonce, Config), Config), Config, Attempts - 1)
     end;
 mine_key_block(_HeaderBin, _Target, _Nonce, _Config, 0) ->
     {error, no_solution}.
