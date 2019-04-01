@@ -225,7 +225,7 @@ test_iterator_prefix([Prefix|Left], Sorted, Tree) ->
 test_iterator_prefix([], [],_Tree) ->
     ok.
 
-test_iterator_one_prefix(Iterator, Tree, Prefix, [{Key, Val}|Left] = Vals) ->
+test_iterator_one_prefix(Iterator, Tree, Prefix, [{Key, Val}|Left] = Vals) when is_bitstring(Key) ->
     case aeu_mp_trees:iterator_next(Iterator) of
         '$end_of_table' -> Vals;
         {IKey, IVal, Iterator1} ->
@@ -234,7 +234,6 @@ test_iterator_one_prefix(Iterator, Tree, Prefix, [{Key, Val}|Left] = Vals) ->
             ?assertEqual(IKey, Key),
             ?assertEqual(IVal, Val),
             %% Prefix iterator starting from key skips key.
-            _KeyS = bit_size(Key),
             Opts =  [{with_prefix, Key}],
             NewIterator = aeu_mp_trees:iterator_from(Key, Tree, Opts),
             case Left of
