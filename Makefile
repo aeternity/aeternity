@@ -446,4 +446,5 @@ prod-deb-package:
 	swagger swagger-docs swagger-check swagger-version-check \
 	rebar-lock-check \
 	python-env python-ws-test python-uats python-single-uat python-release-test python-package-win32-test \
-	REVISION
+	REVISION \
+	prod-deb-package
