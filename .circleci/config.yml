@@ -408,6 +408,14 @@ jobs:
       - MAKE_TARGET: ct-fortuna
     steps: *test_steps
 
+  test_mnesia_leveled:
+    executor: builder_container_stable
+    <<: *container_config
+    parallelism: 2
+    environment:
+      - MAKE_TARGET: ct-mnesia-leveled
+    steps: *test_steps
+
   eunit:
     executor: builder_container_stable
     <<: *container_config
@@ -427,6 +435,13 @@ jobs:
     <<: *container_config
     environment:
       - MAKE_TARGET: eunit-fortuna
+    steps: *eunit_steps
+
+  eunit_mnesia_leveled:
+    executor: builder_container_stable
+    <<: *container_config
+    environment:
+      - MAKE_TARGET: eunit-mnesia-leveled
     steps: *eunit_steps
 
   aevm_tests:
@@ -853,6 +868,16 @@ workflows:
                 - env/dev2
                 - system-tests
 
+      - test_mnesia_leveled:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
       - eunit:
           requires:
             - build
@@ -878,6 +903,18 @@ workflows:
               only: *tag_regex
 
       - eunit_fortuna:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
+
+      - eunit_mnesia_leveled:
           requires:
             - build
           filters:
@@ -985,9 +1022,11 @@ workflows:
             - test
             - test_roma
             - test_fortuna
+            - test_mnesia_leveled
             - eunit
             - eunit_roma
             - eunit_fortuna
+            - eunit_mnesia_leveled
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -1002,9 +1041,11 @@ workflows:
             - test
             - test_roma
             - test_fortuna
+            - test_mnesia_leveled
             - eunit
             - eunit_roma
             - eunit_fortuna
+            - eunit_mnesia_leveled
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -1019,9 +1060,11 @@ workflows:
             - test
             - test_roma
             - test_fortuna
+            - test_mnesia_leveled
             - eunit
             - eunit_roma
             - eunit_fortuna
+            - eunit_mnesia_leveled
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -1074,6 +1117,7 @@ workflows:
             - eunit
             - eunit_roma
             - eunit_fortuna
+            - eunit_mnesia_leveled
             - static_analysis
             - rebar_lock_check
             - linux_package
@@ -1099,6 +1143,7 @@ workflows:
             - eunit
             - eunit_roma
             - eunit_fortuna
+            - eunit_mnesia_leveled
             - static_analysis
             - rebar_lock_check
             - linux_package
@@ -1114,6 +1159,7 @@ workflows:
             - eunit
             - eunit_roma
             - eunit_fortuna
+            - eunit_mnesia_leveled
             - static_analysis
             - rebar_lock_check
             - osx_package
@@ -1129,6 +1175,7 @@ workflows:
             - eunit
             - eunit_roma
             - eunit_fortuna
+            - eunit_mnesia_leveled
             - static_analysis
             - rebar_lock_check
             - hodl_artefact_upload

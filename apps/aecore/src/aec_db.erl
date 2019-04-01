@@ -235,6 +235,8 @@ backend_mode(_            , #{persist := false} = M) -> M#{module => mnesia,
                                                            alias => ram_copies};
 backend_mode(<<"rocksdb">>, #{persist := true } = M) -> M#{module => mnesia_rocksdb,
                                                            alias => rocksdb_copies};
+backend_mode(<<"leveled">>, #{persist := true } = M) -> M#{module => mnesia_leveled,
+                                                           alias => leveled_copies};
 backend_mode(<<"mnesia">> , #{persist := true } = M) -> M#{module => mnesia,
                                                            alias => disc_copies}.
 
@@ -665,7 +667,7 @@ wait_for_tables(Tabs, Sofar, _, _) ->
     %% This is serious and user intervention needed. Stop the system instead 
     %% of keeping retrying, but also raise an error for the crash log.
     init:stop(),
-    error({tables_not_loaded, Tabs}).
+    erlang:error({tables_not_loaded, Tabs}).
 
 %% Initialization routines
 
@@ -678,9 +680,8 @@ check_db() ->
         initialize_db(Mode, Storage)
     catch
         error:Reason ->
-            lager:error("CAUGHT error:~p / ~p",
-                        [Reason, erlang:get_stacktrace()]),
-            error(Reason)
+            error_logger:error_msg("CAUGHT error:~p / ~p~n", [Reason, erlang:get_stacktrace()]),
+            erlang:error(Reason)
     end.
 
 %% Test interface
@@ -725,11 +726,10 @@ ensure_mnesia_tables(Mode, Storage) ->
                 [] -> ok;
                 Errors ->
                     lager:error("Database check failed: ~p", [Errors]),
-                    error({table_check, Errors})
+                    erlang:error({table_check, Errors})
             end;
         ok ->
-            [{atomic,ok} = mnesia:create_table(T, Spec)
-             || {T, Spec} <- Tables],
+            [{atomic,ok} = mnesia:create_table(T, Spec) || {T, Spec} <- Tables],
             run_hooks('$aec_db_create_tables', Mode),
             ok
     end.

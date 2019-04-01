@@ -136,12 +136,18 @@ create_configs(NodesList, CTConfig, CustomConfig, Options) ->
     [create_config(N, CTConfig, CustomConfig, Options) || N <- NodesList].
 
 create_config(Node, CTConfig, CustomConfig, Options) ->
+    DbBackendConfig = case os:getenv("AETERNITY_TESTCONFIG_DB_BACKEND") of
+        false ->
+            #{};
+        Backend ->
+            #{<<"chain">> => #{<<"db_backend">> => binary:list_to_bin(Backend)}}
+    end,
     EpochCfgPath = epoch_config_dir(Node, CTConfig),
     ok = filelib:ensure_dir(EpochCfgPath),
     MergedCfg = maps_merge(default_config(Node, CTConfig), CustomConfig),
-    MergedCfg1 = aec_metrics_test_utils:maybe_set_statsd_port_in_user_config(
-                   Node, MergedCfg, CTConfig),
-    Config = config_apply_options(Node, MergedCfg1, Options),
+    MergedCfg1 = aec_metrics_test_utils:maybe_set_statsd_port_in_user_config(Node, MergedCfg, CTConfig),
+    MergedCfg2 = maps_merge(MergedCfg1, DbBackendConfig),
+    Config = config_apply_options(Node, MergedCfg2, Options),
     write_keys(Node, Config),
     write_config(EpochCfgPath, Config).
 
