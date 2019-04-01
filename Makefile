@@ -35,6 +35,7 @@ AE_DEB_PKG_VERSION ?= `cat VERSION`
 AE_DEB_DCH_REL_NOTE= \
 "Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-`cat VERSION`.md"
 
+AE_DEB_PKG_NAME="aeternity-node"
 AE_DEB_EMAIL="info@aeternity.com"
 AE_DEB_NAME="Aeternity Team"
 
@@ -420,7 +421,7 @@ prod-deb-package:
 	then \
 		export DEBEMAIL=$(AE_DEB_EMAIL); \
 		export DEBFULLNAME=$(AE_DEB_NAME) ; \
-		dch --create --package=aeternity-node -v $(AE_DEB_PKG_VERSION) $(AE_DEB_DCH_REL_NOTE); \
+		dch --create --package=$(AE_DEB_PKG_NAME) -v $(AE_DEB_PKG_VERSION) $(AE_DEB_DCH_REL_NOTE); \
 		dch -r $(AE_DEB_DCH_REL_NOTE); \
 	fi ;
 	debuild -uc -us
