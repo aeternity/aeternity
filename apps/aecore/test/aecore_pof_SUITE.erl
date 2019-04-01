@@ -90,7 +90,7 @@ siblings_on_key_block(Config) ->
 
     Top = lists:last(N1Blocks2),
     ?assertEqual(key, aec_blocks:type(Top)),
-    siblings_common(Top, N1, N2, Account1, Account2, _Fraud = false).
+    siblings_common(Top, N1, N2, Account1, Account2).
 
 
 siblings_on_micro_block(Config) ->
@@ -125,7 +125,7 @@ siblings_on_micro_block(Config) ->
 
     ?assertEqual(micro, aec_blocks:type(Top)),
 
-    siblings_common(Top, N1, N2, Account1, Account2, _Fraud = true).
+    siblings_common(Top, N1, N2, Account1, Account2).
 
 ensure_top_is_a_micro(_Node,_Account, Nonce) when Nonce > 5 ->
     %% We give it five attempts then fail.
@@ -140,7 +140,7 @@ ensure_top_is_a_micro(Node, Account, Nonce) ->
         key -> ensure_top_is_a_micro(Node, Account, Nonce + 1)
     end.
 
-siblings_common(TopBlock, N1, N2, Account1, Account2, Fraud) ->
+siblings_common(TopBlock, N1, N2, Account1, Account2) ->
     ct:pal("Waiting for sync"),
     %% Wait until the chain is synced.
     {ok, ExpectedTop1} = aec_blocks:hash_internal_representation(TopBlock),

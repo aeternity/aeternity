@@ -5949,19 +5949,6 @@ uenc(I) when is_integer(I) ->
 uenc(V) ->
     http_uri:encode(V).
 
-get_saved_config(Config, Names) ->
-    case ?config(saved_config, Config) of
-        {Name, ConfigList} ->
-            case lists:member(Name, Names) of
-                true ->
-                    {ok, ConfigList};
-                false ->
-                    erlang:error({unexpected_saved_config, Name})
-            end;
-        Other ->
-            erlang:error({unexpected, Other})
-    end.
-
 process_http_return(R) ->
     case R of
         {ok, {{_, ReturnCode, _State}, _Head, Body}} ->
