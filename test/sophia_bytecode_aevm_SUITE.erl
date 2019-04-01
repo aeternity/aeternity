@@ -21,12 +21,6 @@ all() ->
       execute_identity_fun_from_sophia_file ].
 
 execute_identity_fun_from_sophia_file(_Cfg) ->
-    %% Should work for both versions of serialized contracts
-    execute_identity_fun_from_sophia_file(_Cfg, 1),
-    execute_identity_fun_from_sophia_file(_Cfg, 2).
-
-
-execute_identity_fun_from_sophia_file(_Cfg, ContractVersion) ->
     CodeDir = filename:join(code:lib_dir(aevm), "../../extras/test/contracts"),
     FileName = filename:join(CodeDir, "identity.aes"),
     {ok, ContractBin} = file:read_file(FileName),
