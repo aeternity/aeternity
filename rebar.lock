@@ -83,7 +83,7 @@
  {<<"lhttpc">>,{pkg,<<"lhttpc">>,<<"1.6.2">>},1},
  {<<"lz4">>,
   {git,"https://github.com/szktty/erlang-lz4",
-      {ref,"6bc5efe93bab327788bcde24374f16044b549dd8"}},
+      {ref,"e7ccf4fc9a806982055f26772522c3543c89d1b5"}},
   2},
  {<<"mnesia_leveled">>,
   {git,"https://github.com/aeternity/mnesia_leveled.git",
