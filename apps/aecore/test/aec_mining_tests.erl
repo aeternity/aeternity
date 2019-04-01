@@ -6,6 +6,8 @@
 %%%=============================================================================
 -module(aec_mining_tests).
 
+-export([generate_valid_test_data/2]). %% For silencing warning of unused function.
+
 -import(aec_test_utils, [running_apps/0, loaded_apps/0, restore_stopped_and_unloaded_apps/2]).
 
 -include_lib("eunit/include/eunit.hrl").
