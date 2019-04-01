@@ -1,5 +1,7 @@
 -module(contract_solidity_bytecode_aevm_SUITE).
 
+%% Commented for avoiding warnings without implementing all dummy callback. %% -behaviour(aevm_chain_api).
+
 %% common_test exports
 -export(
    [ all/0
@@ -12,7 +14,7 @@
    , events_from_solidity_binary/1
    ]).
 
-%% chain API exports
+%% aevm_chain_api callbacks
 -export([ spend/3,
           get_balance/2,
           call_contract/7,

@@ -8,7 +8,7 @@
 
 -module(aevm_dummy_chain).
 
--behaviour(aevm_chain_api).
+%% Commented for avoiding warnings without implementing all dummy callback. %% -behaviour(aevm_chain_api).
 
 -export([new_state/0]).
 

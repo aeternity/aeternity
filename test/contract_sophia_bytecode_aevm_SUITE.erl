@@ -1,5 +1,6 @@
 -module(contract_sophia_bytecode_aevm_SUITE).
--behaviour(aevm_chain_api).
+
+%% Commented for avoiding warnings without implementing all dummy callback. %% -behaviour(aevm_chain_api).
 
 -include_lib("stdlib/include/assert.hrl").
 
@@ -26,7 +27,7 @@
    , blockhash/2
    ]).
 
-%% chain API exports
+%% aevm_chain_api callbacks
 -export([ get_height/1,
           spend_tx/3,
           spend/2,
