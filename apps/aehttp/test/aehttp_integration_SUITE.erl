@@ -7,7 +7,7 @@
 %%
 
 -include_lib("stdlib/include/assert.hrl").
--include_lib("apps/aecontract/src/aecontract.hrl").
+
 %% common_test exports
 -export(
    [

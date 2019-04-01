@@ -12,7 +12,7 @@
     execute_identity_fun_from_sophia_file/1
    ]).
 
--include("apps/aecontract/src/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include_lib("common_test/include/ct.hrl").
 

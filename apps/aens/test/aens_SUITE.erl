@@ -30,7 +30,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 
--include_lib("apps/aecore/include/blocks.hrl").
+-include("../../aecore/include/blocks.hrl").
 
 %%%===================================================================
 %%% Common test framework

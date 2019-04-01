@@ -50,7 +50,7 @@
           oracle_extend_tx/3,
           oracle_extend/3]).
 
--include("apps/aecontract/src/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 -define(ABI_SOPHIA, aect_test_utils:latest_sophia_abi_version()).

@@ -17,8 +17,8 @@
         ]).
 
 -include_lib("common_test/include/ct.hrl").
--include_lib("apps/aecore/include/blocks.hrl").
--include_lib("apps/aecontract/src/aecontract.hrl").
+-include_lib("aecore/include/blocks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 -define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
 -define(BOGUS_PREV_HASH, <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>).

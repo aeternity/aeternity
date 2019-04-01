@@ -1,5 +1,5 @@
 -module(aect_channel_contract).
--include_lib("apps/aecore/include/blocks.hrl").
+-include("../../aecore/include/blocks.hrl").
 -include("aecontract.hrl").
 
 -export([new/6,

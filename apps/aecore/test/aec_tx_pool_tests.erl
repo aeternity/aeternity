@@ -6,7 +6,7 @@
 -module(aec_tx_pool_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("apps/aecontract/src/aecontract.hrl").
+-include("../../aecontract/include/aecontract.hrl").
 
 -define(TAB, aec_tx_pool_test_keys).
 

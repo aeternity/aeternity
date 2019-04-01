@@ -25,8 +25,8 @@
         , ttl_defaults/0
         ]).
 
--include_lib("apps/aecore/include/blocks.hrl").
--include_lib("apps/aecontract/src/aecontract.hrl").
+-include("../../aecore/include/blocks.hrl").
+-include("../../aecontract/include/aecontract.hrl").
 
 %%%===================================================================
 %%% Test state

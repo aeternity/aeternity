@@ -191,10 +191,10 @@
         ]).
 
 -include_lib("common_test/include/ct.hrl").
--include_lib("apps/aecore/include/blocks.hrl").
+-include("../../aecore/include/blocks.hrl").
 -include_lib("stdlib/include/assert.hrl").
--include_lib("apps/aecontract/src/aecontract.hrl").
--include_lib("aecontract/include/hard_forks.hrl").
+-include("../../aecontract/include/aecontract.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BOGUS_CHANNEL, <<1:?MINER_PUB_BYTES/unit:8>>).

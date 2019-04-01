@@ -7,7 +7,7 @@
 -module(aeo_register_tx).
 
 -include("oracle_txs.hrl").
--include_lib("apps/aecontract/src/aecontract.hrl").
+-include("../../aecontract/include/aecontract.hrl").
 
 -behavior(aetx).
 

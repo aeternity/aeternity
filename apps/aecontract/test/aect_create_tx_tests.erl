@@ -8,7 +8,7 @@
 -module(aect_create_tx_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("apps/aecontract/src/aecontract.hrl").
+-include("../include/aecontract.hrl").
 
 basic_test_() ->
     [ {"Gas-related getters test", fun gas_getters/0}

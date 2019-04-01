@@ -37,7 +37,7 @@
 -export_type([signed_tx/0,
               binary_signed_tx/0]).
 
--include_lib("apps/aecore/include/blocks.hrl").
+-include("../../aecore/include/blocks.hrl").
 
 -record(signed_tx, {
           tx                         :: aetx:tx(),

@@ -7,9 +7,9 @@
 
 -module(aect_sophia).
 
--include("aecontract.hrl").
--include_lib("apps/aecore/include/blocks.hrl").
--include_lib("aecontract/include/hard_forks.hrl").
+-include("../include/aecontract.hrl").
+-include("../../aecore/include/blocks.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 -export([ compile/2
         , decode_data/2

@@ -45,9 +45,9 @@
 -endif.
 
 
--include_lib("aecore/include/aec_hash.hrl").
--include_lib("aecontract/include/hard_forks.hrl").
--include_lib("apps/aecontract/src/aecontract.hrl").
+-include("../include/aec_hash.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
+-include("../../aecontract/include/aecontract.hrl").
 
 -record(state, { trees      :: aec_trees:trees()
                , height     :: non_neg_integer()

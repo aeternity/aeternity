@@ -23,7 +23,7 @@
         ]).
 
 -include("aevm_eeevm.hrl").
--include_lib("aecontract/src/aecontract.hrl").
+-include("../../aecontract/include/aecontract.hrl").
 -include_lib("aesophia/include/aeso_heap.hrl").
 
 -define(SOPHIA_STATE_KEY,      <<0>>).

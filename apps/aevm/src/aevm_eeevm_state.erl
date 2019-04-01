@@ -74,7 +74,7 @@
         , vm_version/1
         ]).
 
--include_lib("aecontract/src/aecontract.hrl").
+-include_lib("../../aecontract/include/aecontract.hrl").
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_eeevm.hrl").
 
