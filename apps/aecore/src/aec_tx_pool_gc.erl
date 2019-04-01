@@ -248,7 +248,7 @@ origins_cache_gc([{Origin, Nonce} | Rest], AccountsTree, OriginsCache, Dbs) ->
     case aec_tx_pool:pool_db_peek(Dbs, ?OC_TXS_PER_ORIGIN_COUNT, Origin, Nonce) of
         [] ->
             %% No hanging stale transactions, remove Origin from cache
-            true = ets:delete(Origin, OriginsCache);
+            true = ets:delete(OriginsCache, Origin);
         SignedTxs ->
             %% Origin cache information may be stale.
             %% Re-check transactions, based on the account nonce from
