@@ -326,6 +326,7 @@ version() ->
 %%% Test setters 
 %%%===================================================================
 
--dialyzer({nowarn_function, set_state_hash/2}).
+-ifdef(TEST).
 set_state_hash(Tx, Hash) ->
     Tx#channel_create_tx{state_hash = Hash}.
+-endif.
