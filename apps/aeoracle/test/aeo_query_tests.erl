@@ -9,7 +9,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--import(aeo_query, [ deserialize/1
+-import(aeo_query, [ deserialize/2
                    , ttl/1
                    , fee/1
                    , id/1
@@ -39,7 +39,7 @@ basic_test_() ->
 
 basic_serialize() ->
     O = new_query(1),
-    ?assertEqual(O, deserialize(serialize(O))),
+    ?assertEqual(O, deserialize(aeo_query:id(O), serialize(O))),
     ok.
 
 new_query(Height) ->

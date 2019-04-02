@@ -661,7 +661,11 @@ tx_hash_to_contract_pubkey(TxHash) ->
 
 add_call(Call0, TxHash, Trees) ->
     ContractPubkey = tx_hash_to_contract_pubkey(TxHash),
-    Call = aect_call:set_contract(ContractPubkey, Call0),
+    Call1 = aect_call:set_contract(ContractPubkey, Call0),
+    %% GA_TODO: This is not right in a GA context :rolling_eyes:
+    Call  = aect_call:set_id(aect_call:id(aect_call:caller_pubkey(Call1),
+                                          aect_call:caller_nonce(Call1),
+                                          ContractPubkey), Call1),
     aect_utils:insert_call_in_trees(Call, Trees).
 
 -spec add_event(aec_trees:trees(), binary(), aetx_env:env()) ->

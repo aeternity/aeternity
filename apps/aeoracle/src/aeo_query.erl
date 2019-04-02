@@ -9,12 +9,13 @@
 
 %% API
 -export([ add_response/3
-        , deserialize/1
+        , deserialize/2
         , deserialize_from_fields/3
         , serialization_type/0
         , serialization_template/1
         , ttl/1
         , fee/1
+        , ga_id/2
         , id/1
         , id/3
         , is_open/1
@@ -32,6 +33,7 @@
         , serialize_for_client/1
         , set_ttl/2
         , set_fee/2
+        , set_id/2
         , set_oracle/2
         , set_query/2
         , set_response/2
@@ -55,7 +57,8 @@
 -type oracle_response() :: 'undefined' | aeo_oracles:response().
 -type relative_ttl()    :: aeo_oracles:relative_ttl().
 
--record(query, { sender_id    :: aeser_id:id()
+-record(query, { id           :: id()
+               , sender_id    :: aeser_id:id()
                , sender_nonce :: non_neg_integer()
                , oracle_id    :: aeser_id:id()
                , query        :: oracle_query()
@@ -100,7 +103,8 @@ new(QTx, BlockHeight) ->
           non_neg_integer(), non_neg_integer(), aeo_oracles:relative_ttl()) ->
              query().
 new(OraclePubkey, SenderPubkey, SenderNonce, Query, Fee, AbsoluteQTTL, RTTL) ->
-    I = #query{ sender_id    = aeser_id:create(account, SenderPubkey)
+    I = #query{ id           = id(SenderPubkey, SenderNonce, OraclePubkey)
+              , sender_id    = aeser_id:create(account, SenderPubkey)
               , sender_nonce = SenderNonce
               , oracle_id    = aeser_id:create(oracle, OraclePubkey)
               , query        = Query
@@ -129,7 +133,7 @@ add_response(Height, Response, Q = #query{ response_ttl = RTTL }) ->
 -spec serialize(query()) -> binary().
 serialize(#query{} = I) ->
     {delta, RespTTLValue} = response_ttl(I),
-    {Response, HasRresponse}
+    {Response, HasResponse}
         = case response(I) of
               undefined -> {<<>>, false};
               Bin when is_binary(Bin) -> {Bin, true}
@@ -141,21 +145,21 @@ serialize(#query{} = I) ->
       , {sender_nonce, sender_nonce(I)}
       , {oracle_id, oracle_id(I)}
       , {query, query(I)}
-      , {has_response, HasRresponse}
+      , {has_response, HasResponse}
       , {response, Response}
       , {ttl, ttl(I)}
       , {response_ttl, RespTTLValue}
       , {fee, fee(I)}
       ]).
 
--spec deserialize(binary()) -> query().
-deserialize(B) ->
+-spec deserialize(id(), binary()) -> query().
+deserialize(QueryId, Bin) ->
     Fields = aeser_chain_objects:deserialize(
                 ?ORACLE_QUERY_TYPE, ?ORACLE_QUERY_VSN,
-                serialization_template(?ORACLE_QUERY_VSN), B),
-    deserialize_from_fields(?ORACLE_QUERY_VSN, unused, Fields).
+                serialization_template(?ORACLE_QUERY_VSN), Bin),
+    deserialize_from_fields(?ORACLE_QUERY_VSN, QueryId, Fields).
 
-deserialize_from_fields(?ORACLE_QUERY_VSN, _Pubkey,
+deserialize_from_fields(?ORACLE_QUERY_VSN, QueryId,
     [ {sender_id, SenderId}
     , {sender_nonce, SenderNonce}
     , {oracle_id, OracleId}
@@ -169,7 +173,8 @@ deserialize_from_fields(?ORACLE_QUERY_VSN, _Pubkey,
                    false -> undefined;
                    true -> Response0
                end,
-    #query{ sender_id      = SenderId
+    #query{ id             = QueryId
+          , sender_id      = SenderId
           , sender_nonce   = SenderNonce
           , oracle_id      = OracleId
           , query          = Query
@@ -223,8 +228,8 @@ serialize_for_client(#query{sender_id    = SenderId,
 %%% Getters
 
 -spec id(query()) -> id().
-id(#query{} = Q) ->
-    id(sender_pubkey(Q), sender_nonce(Q), oracle_pubkey(Q)).
+id(#query{id = Id}) ->
+    Id.
 
 -spec id(aec_keys:pubkey(), non_neg_integer(), aec_keys:pubkey()) -> id().
 id(SenderPubkey, Nonce, OraclePubkey) ->
@@ -232,6 +237,10 @@ id(SenderPubkey, Nonce, OraclePubkey) ->
             Nonce:?NONCE_SIZE,
             OraclePubkey:?PUB_SIZE/binary>>,
     aec_hash:hash(pubkey, Bin).
+
+-spec ga_id(id(), aec_keys:pubkey()) -> id().
+ga_id(<<_:?PUB_SIZE/unit:8>> = GANonce, <<_:?PUB_SIZE/unit:8>> = CtPubkey) ->
+    aec_hash:hash(pubkey, <<GANonce/binary, CtPubkey/binary>>).
 
 -spec sender_id(query()) -> aeser_id:id().
 sender_id(#query{sender_id = SenderId}) ->
@@ -275,6 +284,10 @@ fee(#query{fee = Fee}) ->
 
 %%%===================================================================
 %%% Setters
+
+-spec set_id(id(), query()) -> query().
+set_id(<<_:?PUB_SIZE/unit:8>> = X, I) ->
+    I#query{id = X}.
 
 -spec set_sender(aec_keys:pubkey(), query()) -> query().
 set_sender(X, I) ->

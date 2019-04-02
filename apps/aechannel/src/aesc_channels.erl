@@ -72,6 +72,8 @@
 -opaque channel() :: #channel{}.
 
 -type serialized() :: binary().
+-type hash32() :: <<_:256>>.
+-type sc_nonce() :: non_neg_integer() | hash32().
 
 -export_type([id/0,
               pubkey/0,
@@ -85,6 +87,7 @@
 -define(CHANNEL_VSN, 1).
 
 -define(PUB_SIZE, 32).
+-define(HASH_SIZE, 32).
 -define(NONCE_SIZE, 256).
 
 %%%===================================================================
@@ -168,7 +171,7 @@ snapshot_solo(Ch, PayloadTx) ->
                solo_round         = 0,
                state_hash         = StateHash}.
 
--spec force_progress(channel(), binary(), seq_number(), 
+-spec force_progress(channel(), binary(), seq_number(),
                      amount(), amount(),
                      aec_blocks:height()) -> channel().
 force_progress(Ch0, StateHash, Round, IAmt, RAmt, Height) ->
@@ -204,12 +207,15 @@ is_solo_closed(#channel{locked_until = LockedUntil} = Channel, Height) ->
 is_solo_closing(Channel) ->
     not is_active(Channel).
 
--spec pubkey(pubkey(), non_neg_integer(), pubkey()) -> pubkey().
+-spec pubkey(pubkey(), sc_nonce(), pubkey()) -> pubkey().
 pubkey(<<_:?PUB_SIZE/binary>> = InitiatorPubKey, Nonce,
+       <<_:?PUB_SIZE/binary>> = ResponderPubKey)  when is_integer(Nonce) ->
+    Bin = <<InitiatorPubKey/binary, Nonce:?NONCE_SIZE, ResponderPubKey/binary>>,
+    aec_hash:hash(pubkey, Bin);
+pubkey(<<_:?PUB_SIZE/binary>> = InitiatorPubKey,
+       <<_:?HASH_SIZE/binary>> = Nonce,
        <<_:?PUB_SIZE/binary>> = ResponderPubKey) ->
-    Bin = <<InitiatorPubKey:?PUB_SIZE/binary,
-            Nonce:?NONCE_SIZE,
-            ResponderPubKey:?PUB_SIZE/binary>>,
+    Bin = <<InitiatorPubKey/binary, Nonce/binary, ResponderPubKey/binary>>,
     aec_hash:hash(pubkey, Bin).
 
 -spec is_last_state_forced(channel()) -> boolean().
@@ -220,7 +226,7 @@ is_last_state_forced(#channel{solo_round = SoloRound}) ->
           aec_keys:pubkey(), non_neg_integer(),
           non_neg_integer(), [aec_keys:pubkey()],
           aec_hash:hash(), non_neg_integer(),
-          non_neg_integer()) -> channel().
+          sc_nonce()) -> channel().
 new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount,
     ReserveAmount, DelegatePubkeys, StateHash, LockPeriod, Nonce) ->
     PubKey = pubkey(InitiatorPubKey, Nonce, ResponderPubKey),

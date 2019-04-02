@@ -540,7 +540,7 @@ query_response_negative(Cfg) ->
 
     %% Test bad query id
     OIO = aeo_state_tree:get_query(OracleKey, ID, aec_trees:oracles(Trees)),
-    BadId = aeo_query:id(aeo_query:set_sender_nonce(42, OIO)),
+    BadId = aeo_query:id(aeo_query:sender_pubkey(OIO), 42, aeo_query:oracle_pubkey(OIO)),
     RTx5 = aeo_test_utils:response_tx(OracleKey, BadId, <<"42">>, S1),
     {error, no_matching_oracle_query} = aetx:process(RTx5, Trees, Env),
 
