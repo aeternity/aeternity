@@ -181,27 +181,27 @@ dialyzer: $(SWAGGER_ENDPOINTS_SPEC)
 ct: KIND=test
 ct: SYSCONFIG=config/test.config
 ct: AETERNITY_TESTCONFIG_DB_BACKEND=mnesia
-ct: SYSCONFIG=config/test.config
-ct: internal-build
-	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
-	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
-		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
-	else \
-		AETERNITY_TESTCONFIG_DB_BACKEND=$(AETERNITY_TESTCONFIG_DB_BACKEND) \
-			$(REBAR) ct $(CT_TEST_FLAGS) --sys_config $(SYSCONFIG); \
-	fi
+ct: internal-ct
 
-ct-roma:
-	@$(MAKE) ct SYSCONFIG=config/test-roma.config
+ct-roma: KIND=test
+ct-roma: SYSCONFIG=config/test-roma.config
+ct-roma: AETERNITY_TESTCONFIG_DB_BACKEND=mnesia
+ct-roma: internal-ct
 
-ct-fortuna:
-	@$(MAKE) ct SYSCONFIG=config/test-fortuna.config
+ct-fortuna: KIND=test
+ct-fortuna: SYSCONFIG=config/test-fortuna.config
+ct-fortuna: AETERNITY_TESTCONFIG_DB_BACKEND=mnesia
+ct-fortuna: internal-ct
 
-ct-mnesia-leveled:
-	@$(MAKE) ct AETERNITY_TESTCONFIG_DB_BACKEND=leveled
+ct-mnesia-leveled: KIND=test
+ct-mnesia-leveled: SYSCONFIG=config/test.config
+ct-mnesia-leveled: AETERNITY_TESTCONFIG_DB_BACKEND=leveled
+ct-mnesia-leveled: internal-ct
 
-ct-mnesia-rocksdb:
-	@$(MAKE) ct AETERNITY_TESTCONFIG_DB_BACKEND=rocksdb
+ct-mnesia-rocksdb: KIND=test
+ct-mnesia-rocksdb: SYSCONFIG=config/test.config
+ct-mnesia-rocksdb: AETERNITY_TESTCONFIG_DB_BACKEND=rocksdb
+ct-mnesia-rocksdb: internal-ct
 
 REVISION:
 	@git rev-parse HEAD > $@
@@ -390,6 +390,18 @@ internal-clean: $$(KIND)
 internal-distclean: $$(KIND)
 	@rm -rf ./_build/$(KIND)
 
+internal-ct: $$(KIND)
+internal-ct: $$(SYSCONFIG)
+internal-ct: $$(AETERNITY_TESTCONFIG_DB_BACKEND)
+internal-ct: internal-build
+	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
+	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
+		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
+	else \
+		AETERNITY_TESTCONFIG_DB_BACKEND=$(AETERNITY_TESTCONFIG_DB_BACKEND) \
+			$(REBAR) ct $(CT_TEST_FLAGS) --sys_config $(SYSCONFIG); \
+	fi
+
 .PHONY: \
 	all console \
 	local-build local-start local-stop local-attach \
@@ -398,10 +410,12 @@ internal-distclean: $$(KIND)
 	dev1-start dev1-stop dev1-attach dev1-clean dev1-distclean \
 	dev2-start dev2-stop dev2-attach dev2-clean dev2-distclean \
 	dev3-start dev3-stop dev3-attach dev3-clean dev3-distclean \
-	internal-start internal-stop internal-attach internal-clean internal-compile-deps \
+	internal-start internal-stop internal-attach internal-clean internal-compile-deps internal-ct \
 	dialyzer \
 	docker docker-clean \
-	test smoke-test smoke-test-run system-test aevm-test-deps\
+	test smoke-test smoke-test-run system-test aevm-test-deps \
+	ct ct-roma ct-fortuna ct-mnesia-leveled ct-mnesia-rocksdb \
+	eunit eunit-roma eunit-fortuna \
 	system-smoke-test-deps system-test-deps \
 	kill killall \
 	clean distclean \
