@@ -254,6 +254,7 @@ bits() ->
 
 make_call(Contract, Function, Arguments) ->
     #{ contract  => Contract
+     , gas => 100000
      , call => aeb_fate_encoding:serialize(
                  {tuple, {Function, {tuple, list_to_tuple(
                                               [aeb_fate_data:encode(A) || A <- Arguments]
