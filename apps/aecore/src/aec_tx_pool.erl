@@ -16,6 +16,8 @@
 -define(MEMPOOL_VISITED, mempool_visited).
 -define(MEMPOOL_NONCE, mempool_nonce).
 -define(MEMPOOL_GC, mempool_gc).
+-define(ORIGINS_CACHE, origins_cache).
+-define(ORIGINS_CACHE_MAX_SIZE, 5000).
 -define(KEY(NegFee, NegGasPrice, Origin, Nonce, TxHash),
            {NegFee, NegGasPrice, Origin, Nonce, TxHash}).
 -define(VALUE_POS, 2).
@@ -45,10 +47,15 @@
         ]).
 
 %% exports used by GC (should perhaps be in a common lib module)
--export([ top_height/0
+-export([ dbs_/0
+        , gc_db/1
+        , origins_cache/0
+        , origins_cache_max_size/0
         , pool_db/0
         , pool_db_nonce/0
+        , pool_db_key/1
         , pool_db_gc/0
+        , pool_db_peek/4
         , raw_delete/2
         ]).
 
@@ -66,7 +73,9 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--export_type([ pool_db/0
+-export_type([ dbs/0
+             , origins_cache/0
+             , pool_db/0
              , pool_db_key/0
              , tx_hash/0]).
 
@@ -81,6 +90,7 @@
               visited_db = pool_db_visited() :: pool_db(),
               nonce_db   = pool_db_nonce()   :: pool_db(),
               gc_db      = pool_db_gc()      :: pool_db()}).
+-type dbs() :: #dbs{}.
 
 -record(state, { dbs = #dbs{}
                , sync_top_calc           :: pid() | undefined
@@ -89,7 +99,8 @@
                  %% txs while syncing with a stronger (i.e. with a
                  %% higher cumulative difficulty) and much longer
                  %% fork - typically at bootstrap.
-               , gc_height = 0 :: aec_blocks:height() | undefined }).
+               , gc_height = 0 :: aec_blocks:height() | undefined
+               , origins_cache = origins_cache() :: origins_cache() }).
 
 -type negated_fee() :: non_pos_integer().
 -type non_pos_integer() :: neg_integer() | 0.
@@ -100,6 +111,8 @@
 -type pool_db_value() :: aetx_sign:signed_tx().
 
 -type pool_db() :: atom().
+
+-type origins_cache() :: atom().
 
 -type event() :: tx_created | tx_received.
 
@@ -243,6 +256,9 @@ pool_db_visited() -> ?MEMPOOL_VISITED.
 pool_db_nonce() -> ?MEMPOOL_NONCE.
 pool_db_gc() -> ?MEMPOOL_GC.
 
+origins_cache() -> ?ORIGINS_CACHE.
+origins_cache_max_size() -> ?ORIGINS_CACHE_MAX_SIZE.
+
 %% This function is primarily used to sync with the aec_tx_pool server,
 %% in order to preserve order of operations (e.g. if you push a tx, then
 %% peek, you should see the tx you just pushed.)
@@ -251,6 +267,14 @@ dbs() ->
 
 raw_delete(#dbs{} = Dbs, Key) ->
     pool_db_raw_delete(Dbs, Key).
+
+-spec dbs_() -> dbs().
+dbs_() ->
+    #dbs{}.
+
+-spec gc_db(dbs()) -> pool_db().
+gc_db(#dbs{gc_db = GcDb}) ->
+    GcDb.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -263,10 +287,11 @@ init([]) ->
     %% The gc db should be owned by this process to ensure that the gc state
     %% is consistent with the actual mempool if any of the servers restart.
     {ok, _GCDb} = pool_db_open(pool_db_gc(), [{keypos, #tx.hash}]),
+    origins_cache_open(origins_cache()),
     GCHeight = top_height(),
     Handled  = ets:new(init_tx_pool, [private]),
     InitF  = fun(TxHash, _) ->
-                     update_pool_on_tx_hash(TxHash, {#dbs{}, GCHeight}, Handled),
+                     update_pool_on_tx_hash(TxHash, {#dbs{}, origins_cache(), GCHeight}, Handled),
                      ok
              end,
     ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
@@ -288,7 +313,7 @@ handle_call_({top_change, Type, OldHash, NewHash}, _From, State) ->
 handle_call_({peek, MaxNumberOfTxs, Account}, _From, #state{dbs = Dbs} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
        MaxNumberOfTxs =:= infinity ->
-    Txs = pool_db_peek(Dbs, MaxNumberOfTxs, Account),
+    Txs = pool_db_peek(Dbs, MaxNumberOfTxs, Account, all),
     {reply, {ok, Txs}, State};
 handle_call_(dbs, _From, #state{dbs = Dbs} = State) ->
     {reply, Dbs, State};
@@ -471,25 +496,22 @@ get_gc_height(#state{gc_height = H} = State) when is_integer(H) ->
     {H, State}.
 
 do_update_sync_top_target(NewSyncTop, #state{ gc_height = GCHeight
-                                            , sync_top_calc = OldP } = State) ->
+                                            , sync_top_calc = OldP
+                                            , dbs = Dbs } = State) ->
     case OldP of
         undefined ->
             Me = self(),
             NewP = proc_lib:spawn_link(
                      fun() ->
-                             do_update_sync_top(NewSyncTop, GCHeight, Me)
+                             do_update_sync_top(NewSyncTop, GCHeight, Me, Dbs)
                      end),
             State#state{ sync_top_calc = NewP, gc_height = undefined };
         _ when is_pid(OldP) ->
             {_, State1} = get_gc_height(State),
             do_update_sync_top_target(NewSyncTop, State1)
-            %% unlink(OldP),
-            %% exit(OldP, kill),
-            %% do_update_sync_top_target(
-            %%   NewSyncTop, State#state{sync_top_calc = undefined})
     end.
 
-do_update_sync_top(NewSyncTop, GCHeight, Parent) ->
+do_update_sync_top(NewSyncTop, GCHeight, Parent, Dbs) ->
     LocalTop = top_height(),
     lager:debug("do_update_sync_top(~p,~p,~p), LocalTop = ~p",
                 [NewSyncTop, GCHeight, Parent, LocalTop]),
@@ -501,7 +523,7 @@ do_update_sync_top(NewSyncTop, GCHeight, Parent) ->
             %% this means that the sync was aborted - in this case we
             %% re-adjust the GC-height for all TXs in order not to carry around
             %% transactions unnecessarily.
-            aec_tx_pool_gc:adjust_ttl(GCHeight - NewGCHeight);
+            aec_tx_pool_gc:adjust_ttl(GCHeight - NewGCHeight, Dbs);
         false ->
             ok
     catch
@@ -532,14 +554,22 @@ pool_db_open(DbName) ->
 pool_db_open(DbName, ExtraOpts) ->
     {ok, ets:new(DbName, [ordered_set, public, named_table] ++ ExtraOpts)}.
 
--spec pool_db_peek(pool_db(), MaxNumber::pos_integer() | infinity, aec_keys:pubkey() | all) ->
+-spec origins_cache_open(CacheName :: atom()) -> origins_cache().
+origins_cache_open(Name) ->
+    ets:new(Name, [set, public, named_table]).
+
+-spec pool_db_peek(dbs(), MaxNumber::pos_integer() | infinity,
+                   aec_keys:pubkey() | all, non_neg_integer() | all) ->
                           [pool_db_value()].
-pool_db_peek(_, 0, _) -> [];
-pool_db_peek(#dbs{db = Db, visited_db = VDb}, Max, all) ->
+pool_db_peek(_, 0, _, _) -> [];
+pool_db_peek(#dbs{db = Db, visited_db = VDb}, Max, all, _MaxNonce) ->
     Pat = [{ '_', [], ['$_'] }],
     pool_db_peek_(VDb, Db, Pat, Max);
-pool_db_peek(#dbs{db = Db, visited_db = VDb}, Max, Account) ->
+pool_db_peek(#dbs{db = Db, visited_db = VDb}, Max, Account, all) ->
     Pat = [{ {?KEY('_', '_', Account, '_', '_'), '_'}, [], ['$_'] }],
+    pool_db_peek_(VDb, Db, Pat, Max);
+pool_db_peek(#dbs{db = Db, visited_db = VDb}, Max, Account, MaxNonce) ->
+    Pat = [{ {?KEY('_', '_', Account, '$1', '_'), '_'}, [ {'=<', '$1' , MaxNonce} ], ['$_'] }],
     pool_db_peek_(VDb, Db, Pat, Max).
 
 pool_db_peek_(VDb, Db, Pat, Max) ->
@@ -590,16 +620,16 @@ do_top_change(Type, OldHash, NewHash, State0) ->
     %% NG: does this work for common ancestor for micro blocks?
     {ok, Ancestor} = aec_chain:find_common_ancestor(OldHash, NewHash),
     {GCHeight, State} = get_gc_height(State0),
-    Info = {State#state.dbs, GCHeight},
+    Info = {State#state.dbs, State#state.origins_cache, GCHeight},
 
     Handled = ets:new(foo, [private, set]),
     update_pool_from_blocks(Ancestor, OldHash, Info, Handled),
     update_pool_from_blocks(Ancestor, NewHash, Info, Handled),
     ets:delete(Handled),
     Ret = case Type of
-        key -> revisit(State#state.dbs);
-        micro -> ok
-    end,
+              key -> revisit(State#state.dbs);
+              micro -> ok
+          end,
     {Ret, State}.
 
 update_pool_from_blocks(Hash, Hash,_Info,_Handled) -> ok;
@@ -617,7 +647,7 @@ safe_get_tx_hashes(Hash) ->
         {value, Hashes} -> Hashes
     end.
 
-update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, GCHeight}, Handled) ->
+update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight}, Handled) ->
     case ets:member(Handled, TxHash) of
         true -> ok;
         false ->
@@ -628,12 +658,19 @@ update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, GCHeight}, Handled) ->
                     %% Added to chain
                     Key = pool_db_key(Tx),
                     pool_db_raw_delete(Dbs, Key),
-                    aec_tx_pool_gc:delete_hash(GCDb, TxHash);
+                    aec_tx_pool_gc:delete_hash(GCDb, TxHash),
+                    add_to_origins_cache(OriginsCache, Tx);
                 true ->
                     Key = pool_db_key(Tx),
                     pool_db_raw_put(Dbs, GCHeight, Key, Tx, TxHash)
             end
     end.
+
+add_to_origins_cache(OriginsCache, SignedTx) ->
+    Tx     = aetx_sign:tx(SignedTx),
+    Origin = aetx:origin(Tx),
+    Nonce  = aetx:nonce(Tx),
+    ok = aec_tx_pool_gc:add_to_origins_cache(OriginsCache, Origin, Nonce).
 
 -spec check_pool_db_put(aetx_sign:signed_tx(), tx_hash(), event()) ->
                                ignore | ok | {error, atom()}.
