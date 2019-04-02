@@ -350,7 +350,7 @@
                     "description" : "Choice of database backend.",
                     "type" : "string",
                     "pattern" : "^([a-z]+|([a-z0-9\\*]+:[a-z]+)|([a-z0-9\\*]+:[a-z]+(\\h*\\|\\h*[a-z0-9\\*]+:[a-z]+))+)$",
-                    "example" : "'rocksdb' OR 'unix:rocksdb' OR 'unix:rocksdb|*:mnesia",
+                    "example" : "'rocksdb' OR 'unix:rocksdb' OR 'unix:rocksdb|*:mnesia' OR (EXPERIMENTAL) 'leveled'",
                     "default" : "unix:rocksdb|*:mnesia"
                 },
                 "db_path"   : {
