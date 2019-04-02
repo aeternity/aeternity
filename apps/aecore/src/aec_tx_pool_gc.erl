@@ -165,6 +165,7 @@ do_gc_([{TxHash, Key} | TxHashes], Dbs, GCDb) ->
         ok ->
             aec_tx_pool:raw_delete(Dbs, Key),
             ets:delete(GCDb, TxHash),
+            aec_metrics:try_update([ae,epoch,aecore,tx_pool,gced], 1),
             lager:debug("Garbage collected ~p", [pp(TxHash)]);
         {error, tx_not_found} ->
             lager:info("TX garbage collect failed ~p not found",
@@ -276,7 +277,8 @@ remove_txs_from_dbs([SignedTx | Rest], Dbs) ->
     case aec_db:gc_tx(TxHash) of
         ok ->
             aec_tx_pool:raw_delete(Dbs, aec_tx_pool:pool_db_key(SignedTx)),
-            delete_hash(aec_tx_pool:gc_db(Dbs), TxHash);
+            delete_hash(aec_tx_pool:gc_db(Dbs), TxHash),
+            aec_metrics:try_update([ae,epoch,aecore,tx_pool,origin_gced], 1);
         {error, Reason} ->
             lager:debug("TX Origin-based garbage collect of ~p failed: ~p",
                         [pp(TxHash), Reason])
