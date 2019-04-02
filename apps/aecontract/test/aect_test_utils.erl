@@ -256,7 +256,6 @@ compile_contract(Compiler, File) ->
     compile_filename(Compiler, FileName).
 
 compile(?SOPHIA_FORTUNA_FATE, File) ->
-    ct:pal("File: ~p\n", [File]),
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
     {_Env, ByteCode} = aeb_fate_asm:asm_to_bytecode(Source, []),

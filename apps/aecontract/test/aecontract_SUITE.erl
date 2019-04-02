@@ -1182,7 +1182,8 @@ call_result(?ABI_FATE_SOPHIA_1,_Type, Call) ->
         ok     ->
             Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             aeb_fate_data:decode(Res);
-        error  -> {error, aect_call:return_value(Call)};
+        error  ->
+            {error, aect_call:return_value(Call)};
         revert ->
             Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             {revert, aeb_fate_data:decode(Res)}
@@ -1248,7 +1249,6 @@ format_fate_args(X) ->
 sophia_identity(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc1 = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
-    %% Remote calling the identity contract
     IdC   = ?call(create_contract, Acc1, identity, {}),
     42    = ?call(call_contract,   Acc1, IdC, main, word, 42),
     ok.
