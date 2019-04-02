@@ -8,7 +8,7 @@
 
 -module(aevm_ethereum_test_chain).
 
--behaviour(aevm_chain_api).
+%% Commented for avoiding warnings without implementing all dummy callback. %% -behaviour(aevm_chain_api).
 
 -export([new_state/1]).
 
@@ -16,7 +16,6 @@
 -export([get_balance/2,
          get_store/1,
          set_store/2,
-         spend/3,
          call_contract/7]).
 
 -define(MASK160, ((1 bsl 160) -1)).
@@ -46,9 +45,6 @@ get_store(#{ env :=_Env,
 set_store(Store, State) ->
     maps:put(storage, Store, State).
 
--spec spend(aec_keys:pubkey(), non_neg_integer(), chain_state()) ->
-          {ok, chain_state()} | {error, term()}.
-spend(_Recipient, _Amount, _S)  -> {error, cant_spend_with_dummy_chain}.
 -spec call_contract(aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), binary(),
                     [non_neg_integer()], aec_keys:pubkey(), chain_state()) ->
         {ok, aevm_chain_api:call_result(), chain_state()} | {error, term()}.

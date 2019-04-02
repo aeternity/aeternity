@@ -1,5 +1,7 @@
 -module(contract_solidity_bytecode_aevm_SUITE).
 
+%% Commented for avoiding warnings without implementing all dummy callback. %% -behaviour(aevm_chain_api).
+
 %% common_test exports
 -export(
    [ all/0
@@ -12,11 +14,22 @@
    , events_from_solidity_binary/1
    ]).
 
-%% chain API exports
--export([ spend/3, get_balance/2, call_contract/7, get_store/1, set_store/2,
-          oracle_register/7, oracle_query/6, oracle_query_format/2, oracle_response_format/2,
-          oracle_respond/5, oracle_get_answer/3,
-          oracle_query_fee/2, oracle_query_response_ttl/3, oracle_get_question/3, oracle_extend/4]).
+%% aevm_chain_api callbacks
+-export([ spend/3,
+          get_balance/2,
+          call_contract/7,
+          get_store/1,
+          set_store/2,
+          oracle_register/7,
+          oracle_query/6,
+          oracle_query_format/2,
+          oracle_response_format/2,
+          oracle_respond/5,
+          oracle_get_answer/3,
+          oracle_query_fee/2,
+          oracle_query_response_ttl/3,
+          oracle_get_question/3,
+          oracle_extend/4]).
 
 
 -include_lib("common_test/include/ct.hrl").

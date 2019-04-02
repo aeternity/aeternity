@@ -198,6 +198,12 @@
 -callback get_store(chain_state()) -> store().
 -callback set_store(store(), chain_state()) -> chain_state().
 
+-callback get_contract_fun_types(Target :: pubkey(),
+                                 VMVersion :: aect_contracts:version(),
+                                 TypeHash :: binary(),
+                                 State :: chain_state()) ->
+    {ok, ArgType::aeso_sophia:type(), OutType::aeso_sophia:type()} | {error, term()}.
+
 %% -- Call results -----------------------------------------------------------
 
 -spec call_result(binary(), non_neg_integer()) -> call_result().
