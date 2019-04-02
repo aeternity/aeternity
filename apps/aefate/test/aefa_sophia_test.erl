@@ -45,11 +45,23 @@ make_call(Contract, Function, Arguments) ->
     #{ contract => Contract,
        call => aeb_fate_encoding:serialize(Calldata) }.
 
+mk_test(Contracts, Tests) ->
+    Main  = element(1, hd(Contracts)),
+    Chain = compile_contracts(Contracts),
+    Pr    = fun(X) -> io_lib:format("~p", [X]) end,
+    [{lists:flatten(io_lib:format("~s(~s) -> ~p", [Fun, string:join(lists:map(Pr, Args), ", "), Res])),
+      fun() -> expect(Chain, Main, list_to_binary(Fun), Args, Res) end}
+    || {Fun, Args, Res} <- Tests ].
+
+run_eunit(Test) ->
+    [ begin io:format("~s\n", [Name]), Fun() end || {Name, Fun} <- ?MODULE:Test() ],
+    ok.
+
 %% -- Actual tests --
 
-identity() ->
-    {<<"identity">>,
-     "contract Id =\n"
+arithmetic() ->
+    {<<"arithmetic">>,
+     "contract Arith =\n"
      "  function id    (x : int) = x\n"
      "  function inc   (x : int) = x + 1\n"
      "  function inc'  (x : int) = 1 + x\n"
@@ -70,7 +82,7 @@ identity() ->
      "    y + y\n"
     }.
 
-id_tests() ->
+arith_tests() ->
     Nest = fun(0, _) -> 0; (X, 0) -> X + 1; (X, Y) -> X + Y end,
     [ {"id",     [142],  142}
     , {"inc",    [142],  143}
@@ -88,16 +100,29 @@ id_tests() ->
     [ {"nest", [X, Y], Nest(X, Y)} || X <- [0, 10], Y <- [0, -99] ] ++
     [].
 
-id_test(Chain, Fun, Args, Res) ->
-    expect(Chain, <<"identity">>, list_to_binary(Fun), Args, Res).
+arith_test_() -> mk_test([arithmetic()], arith_tests()).
 
-id_test_() ->
-    Chain = compile_contracts([identity()]),
-    Pr    = fun(X) -> io_lib:format("~p", [X]) end,
-    [{lists:flatten(io_lib:format("~s(~s) -> ~p", [Fun, string:join(lists:map(Pr, Arg), ", "), Res])),
-      fun() -> id_test(Chain, Fun, Arg, Res) end}
-    || {Fun, Arg, Res} <- id_tests() ].
+tuples() ->
+    {<<"arithmetic">>,
+     "contract Tuples =\n"
+     "  function fst(p : (int, string)) =\n"
+     "    switch(p)\n"
+     "      (x, y) => x\n"
+     "  function fst'(p : (int, string)) =\n"
+     "    switch(p)\n"
+     "      (x, _) => x\n"
+     "  function snd(p : (int, string)) =\n"
+     "    switch(p)\n"
+     "      (x, y) => y\n"
+     "  function snd'(p : (int, string)) =\n"
+     "    switch(p)\n"
+     "      (_, y) => y\n"
+    }.
 
-run_eunit(Test) ->
-    [ begin io:format("~s\n", [Name]), Fun() end || {Name, Fun} <- ?MODULE:Test() ],
-    ok.
+tuple_tests() -> lists:flatten(
+    [ [{Fst, [{42, <<"forty-two">>}], 42}              || Fst <- ["fst", "fst"]],
+      [{Snd, [{42, <<"forty-two">>}], <<"forty-two">>} || Snd <- ["snd", "snd'"]]
+    ]).
+
+tuple_test_() -> mk_test([tuples()], tuple_tests()).
+
