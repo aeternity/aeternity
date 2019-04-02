@@ -538,7 +538,7 @@ create_version_too_high(Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    {ok, IdContract} = compile_contract_vsn(identity, 2),
+    {ok, IdContract} = compile_contract_vsn(identity, ?AESOPHIA_2),
     ct:log("Compiled Contract = ~p\n", [aect_sophia:deserialize(IdContract)]),
 
     _IdContractMap = aect_sophia:deserialize(IdContract),
@@ -555,7 +555,7 @@ create_version_too_high(Cfg) ->
     case proplists:get_value(protocol, Cfg) of
         roma ->
             {error, illegal_contract_compiler_version, _} = Res;
-        _ ->
+        P when P =:= minerva; P =:= fortuna ->
             {ok, _} = Res
     end.
 

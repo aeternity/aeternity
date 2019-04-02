@@ -1767,7 +1767,6 @@ hard_fork_inserts_new_accounts() ->
     ok.
 
 meck_minerva_fork_height(Height) ->
-    Version = aec_hard_forks:protocol_effective_at_height(Height),
     meck:expect(aec_hard_forks, is_fork_height,
                 fun(H) ->
                     case H =:= Height of

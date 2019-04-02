@@ -2754,43 +2754,14 @@ fp_use_remote_call(Cfg) ->
 
 
 fp_use_onchain_contract(Cfg) ->
-    FPRound = 20,
     LockPeriod = 10,
-    FPHeight0 = 20,
-    RemoteCall =
-        fun(Forcer, ContractHandle) ->
-            fun(Props) ->
-                RemoteContract = maps:get(ContractHandle, Props),
-                Address = address_encode(RemoteContract),
-                Args = [Address],
-                run(Props,
-                    [ force_call_contract(Forcer, <<"increment">>, Args),
-                      force_call_contract(Forcer, <<"get">>, Args)
-                    ])
-            end
-        end,
-    PushContractId =
-        fun(Key) ->
-            rename_prop(contract_id, Key, keep_old)
-        end,
-    PopContractId =
-        fun(Key) ->
-            rename_prop(Key, contract_id, keep_old)
-        end,
-
-    CallOnChain =
-        fun(Owner, Forcer) ->
-            IAmt0 = 30,
-            RAmt0 = 30,
-            ContractCreateRound = 10,
-            run(#{cfg => Cfg, initiator_amount => IAmt0,
-                              responder_amount => RAmt0,
-                  lock_period => LockPeriod,
-                  channel_reserve => 1},
-               [])
-        end,
-    [CallOnChain(Owner, Forcer) || Owner  <- ?ROLES,
-                                   Forcer <- ?ROLES],
+    IAmt0 = 30,
+    RAmt0 = 30,
+    run(#{cfg => Cfg, initiator_amount => IAmt0,
+        responder_amount => RAmt0,
+        lock_period => LockPeriod,
+        channel_reserve => 1},
+        []),
     ok.
 
 
@@ -4412,34 +4383,6 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
         end,
         Props#{trees => Trees, contract_id => ContractId, contract_file => ContractName,
                contract_ids => [ContractId | ContractIds]}
-    end.
-
-create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->
-    fun(#{state := State0,
-          owner := Owner} = Props) ->
-        Trees0 = aesc_test_utils:trees(State0),
-        {ok, BinCode} = compile_contract(ContractName),
-        {ok, CallData} = encode_call_data(ContractName, <<"init">>, InitArg),
-        Nonce = aesc_test_utils:next_nonce(Owner, State0),
-        {ok, AetxCreateTx} =
-            aect_create_tx:new(#{owner_id    => aeser_id:create(account, Owner),
-                                 nonce       => Nonce,
-                                 code        => BinCode,
-                                 vm_version  => ?VM_VERSION,
-                                 abi_version => ?ABI_VERSION,
-                                 deposit     => Deposit,
-                                 amount      => 0,
-                                 gas         => 123467,
-                                 gas_price   => aec_test_utils:min_gas_price(),
-                                 call_data   => CallData,
-                                 fee         => 10 * aec_test_utils:min_gas_price()}),
-        {contract_create_tx, CreateTx} = aetx:specialize_type(AetxCreateTx),
-        Env = tx_env(Props),
-        {ok, _} = aect_create_tx:check(CreateTx, Trees0, Env),
-        {ok, Trees, _} = aect_create_tx:process(CreateTx, Trees0, Env),
-        ContractId = aect_contracts:compute_contract_pubkey(Owner, Nonce),
-        State = aesc_test_utils:set_trees(Trees, State0),
-        Props#{state => State, contract_file => ContractName, contract_id => ContractId}
     end.
 
 run(Cfg, Funs) ->

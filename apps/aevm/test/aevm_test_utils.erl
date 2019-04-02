@@ -8,6 +8,7 @@
 
 -export([ testcase_generate/2
         , testcase_generate/3
+        , dump_words/1
         ]).
 
 -define(EUNIT_NOAUTO, true).
