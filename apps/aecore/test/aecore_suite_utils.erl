@@ -138,7 +138,7 @@ create_configs(NodesList, CTConfig, CustomConfig, Options) ->
 create_config(Node, CTConfig, CustomConfig, Options) ->
     DbBackendConfig = case os:getenv("AETERNITY_TESTCONFIG_DB_BACKEND") of
         false ->
-            #{};
+            ct:fail("The mandatory environment variable is not set: AETERNITY_TESTCONFIG_DB_BACKEND");
         Backend ->
             #{<<"chain">> => #{<<"db_backend">> => binary:list_to_bin(Backend)}}
     end,
