@@ -2012,7 +2012,8 @@ sophia_oracles_qfee__flow_up_to_query_(InitialState,
            CCbs#oracle_cbs.query) of
         %% Exporting AccCt, States, GasUsed. Naughty, naughty!
         {{error, <<"out_of_gas">>},AccCt,States,GasUsed} -> ok;
-        {revert,AccCt,States,GasUsed} -> ok
+        {{revert, <<"causing a late error">>},AccCt,States,GasUsed} -> ok;
+        {{revert, <<"insufficient value for qfee">>},AccCt,States,GasUsed} -> ok
     end,
      %% State before oracle init, after registration, and after query.
     {{OracleAcc, CallingCt}, [S0, S1, S2]} = {AccCt,States},
@@ -4061,7 +4062,10 @@ run_scenario(#fundme_scenario
     ExpectedResult =
         fun({withdraw, _, _, ok})       -> {};
            ({withdraw, _, _, error})    -> {error, <<"out_of_gas">>};
-           ({withdraw, _, _, revert})   -> revert;
+           ({withdraw, beneficiary, 2100, revert}) -> {revert, <<"Project was not funded">>};
+           ({withdraw, beneficiary, 2200, revert}) -> {revert, <<"Not a contributor or beneficiary">>};
+           ({withdraw, {investor, 5}, _, revert}) -> {revert, <<"Project was funded">>};
+           ({withdraw, {investor, 3}, _, revert}) -> {revert, <<"Not a contributor or beneficiary">>};
            ({contribute, _, _, Height}) -> Height < Deadline end,
     lists:foreach(fun({E, Res}) ->
         Expect = ExpectedResult(E),
