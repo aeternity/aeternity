@@ -174,9 +174,9 @@ dup_accumulator(#es{accumulator = X, accumulator_stack = Stack} = ES) ->
 
 -spec dup_accumulator(pos_integer(), state()) -> state().
 dup_accumulator(N, #es{accumulator = X, accumulator_stack = Stack} = ES) ->
-    {X1, Stack} = get_n(N, [X|Stack]),
+    {X1, Stack1} = get_n(N, [X|Stack]),
     ES#es{ accumulator = X1
-         , accumulator_stack = [X|Stack]}.
+         , accumulator_stack = [X|Stack1]}.
 
 get_n(0, [X|XS]) -> {X, [X|XS]};
 get_n(N, [X|XS]) ->
