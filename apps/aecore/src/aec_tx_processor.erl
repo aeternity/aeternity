@@ -955,6 +955,10 @@ contract_init_call_success(InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
                     FailCall  = aect_call:set_return_type(error, FailCall0),
                     contract_call_fail(FailCall, Fee, RollbackS)
             end;
+        #{vm := V} when ?IS_FATE_SOPHIA(V) ->
+            %% TODO: For now just use the initial store since the store is not implemented yet.
+            S1 = cache_put(contract, Contract, S),
+            contract_call_success(InitCall1, GasLimit, S1);
         #{vm := ?VM_AEVM_SOLIDITY_1} ->
             %% Solidity inital call returns the code to store in the contract.
             Contract1 = aect_contracts:set_code(ReturnValue, Contract),
@@ -1216,13 +1220,15 @@ assert_name_claimed(Name) ->
         revoked -> runtime_error(name_revoked)
     end.
 
-assert_contract_byte_code(?ABI_AEVM_SOPHIA_1, SerializedCode, CallData, S) ->
+assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S)
+  when ABIVersion =:= ?ABI_AEVM_SOPHIA_1;
+       ABIVersion =:= ?ABI_FATE_SOPHIA_1 ->
     try aect_sophia:deserialize(SerializedCode) of
         #{type_info := TypeInfo,
           contract_vsn := Vsn} ->
             case aect_sophia:is_legal_serialization_at_height(Vsn, S#state.height) of
                 true ->
-                    assert_contract_init_function(CallData, TypeInfo);
+                    assert_contract_init_function(ABIVersion, CallData, TypeInfo);
                 false ->
                     runtime_error(illegal_contract_compiler_version)
             end
@@ -1231,7 +1237,13 @@ assert_contract_byte_code(?ABI_AEVM_SOPHIA_1, SerializedCode, CallData, S) ->
 assert_contract_byte_code(?ABI_SOLIDITY_1, _SerializedCode, _CallData, _S) ->
     ok.
 
-assert_contract_init_function(CallData, TypeInfo) ->
+assert_contract_init_function(?ABI_FATE_SOPHIA_1, CallData,_TypeInfo) ->
+    try aeb_fate_encoding:deserialize(CallData) of
+        %% TODO: Proper call data abstraction
+        _ -> ok
+    catch _:_ -> runtime_error(bad_init_function)
+    end;
+assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo) ->
     case aeso_abi:get_function_hash_from_calldata(CallData) of
         {ok, Hash} ->
             case aeso_abi:function_name_from_type_hash(Hash, TypeInfo) of

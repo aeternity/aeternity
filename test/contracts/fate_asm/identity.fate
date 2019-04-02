@@ -1,0 +1,11 @@
+;; CONTRACT: Identity
+FUNCTION init() -> {tuple, []}
+  RETURNR ()
+
+FUNCTION main(integer) ->  integer
+  RETURNR arg0
+
+;; Test the code from the shell
+;; _build/default/rel/aessembler/bin/aessembler console
+
+;; aeb_aefa:file("../../../../test/asm_code/identity.fate", []).

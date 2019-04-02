@@ -17,6 +17,9 @@
          ___VM_VERSION___ =:= ?VM_AEVM_SOPHIA_2 orelse
          ___VM_VERSION___ =:= ?VM_AEVM_SOPHIA_1)).
 
+-define(IS_FATE_SOPHIA(___VM_VERSION___),
+        (___VM_VERSION___ =:= ?VM_FATE_SOPHIA_1)).
+
 -ifdef(TEST).
 -define(VM_AEVM_SOLIDITY_1_enabled, true).
 -else.

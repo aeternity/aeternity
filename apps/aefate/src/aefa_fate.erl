@@ -8,6 +8,13 @@
 -module(aefa_fate).
 -export([run/2]).
 
+-export([ gas/1
+        , logs/1
+        , final_trees/1
+        , return_value/1
+        , tx_env/1
+        ]).
+
 -export([get_trace/1]).
 
 %% Type handling.
@@ -54,14 +61,33 @@
 %%%===================================================================
 
 run(What, Chain) ->
-    EngineState = setup_engine(What, Chain),
-    try execute(EngineState) of
+    try execute(setup_engine(What, Chain)) of
         Res -> {ok, Res}
     catch
         throw:{?MODULE, E, ES} -> {error, E, ES}
     end.
 
-get_trace(#{trace := T}) -> T.
+get_trace(#{trace := T}) ->
+    T.
+
+return_value(#{accumulator := A}) ->
+    A.
+
+tx_env(#{chain := #{tx_env := TxEnv}}) ->
+    TxEnv.
+
+gas(#{gas := Gas}) ->
+    %% TODO: The gas is not calculated yet
+    Gas.
+
+logs(#{logs := Logs}) ->
+    %% TODO: Logs are not constructed yet
+    Logs.
+
+final_trees(#{chain := #{trees := Trees}}) ->
+    %% TODO: This should push cached changes to the trees
+    Trees.
+
 
 %%%===================================================================
 %%% Internal functions
@@ -148,12 +174,14 @@ step([I|Is], EngineState0) ->
 
 
 setup_engine(#{ contract := Contract
-              , call := Call},
+              , call := Call
+              , gas := Gas
+              },
              Chain) ->
     {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
-    ES1 = new_engine_state(Chain),
+    ES1 = new_engine_state(Gas, Chain),
     ES2 = set_function(Contract, Function, ES1),
     ES3 = push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
@@ -418,7 +446,7 @@ store_var(Var, Val, [Env|Envs]) ->
 %% New state
 
 
-new_engine_state(Chain) ->
+new_engine_state(Gas, Chain) ->
     #{ current_bb => 0
      , bbs => #{}
      , memory => [] %% Stack of environments (name => val)
@@ -431,6 +459,8 @@ new_engine_state(Chain) ->
      , current_contract => ?FATE_VOID
      , current_function => ?FATE_VOID
      , call_stack => []
+     , gas => Gas %% TODO: Not used properly yet
+     , logs => [] %% TODO: Not used properly yet
      }.
 
 %% ----------------------------
