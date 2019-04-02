@@ -18,7 +18,8 @@
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1
+         for_client/1,
+         valid_at_protocol/2
         ]).
 
 % aesc_signable_transaction callbacks
@@ -37,6 +38,8 @@
          set_round/2,
          set_state_hash/2]).
 -endif.
+
+-include_lib("aecontract/include/hard_forks.hrl").
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -251,6 +254,14 @@ version(#channel_offchain_tx{block_hash = ?NO_PINNED_BLOCK}) ->
     ?INITIAL_VSN;
 version(#channel_offchain_tx{}) ->
     ?PINNED_BLOCK_VSN.
+
+-spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
+valid_at_protocol(Protocol, Tx) ->
+    case version(Tx) of
+        ?INITIAL_VSN -> true;
+        ?PINNED_BLOCK_VSN when Protocol =:= ?FORTUNA_PROTOCOL_VSN -> true;
+        _ -> false
+    end.
 
 %%%===================================================================
 %%% Test setters 

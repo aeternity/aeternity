@@ -156,6 +156,10 @@
 -callback for_client(Tx :: tx_instance()) ->
     map().
 
+-callback valid_at_protocol(Protocol :: aec_hard_forks:protocol_vsn(),
+                            Tx :: tx_instance()) -> boolean().
+
+
 -optional_callbacks([gas_price/1]).
 
 %%%===================================================================
@@ -256,6 +260,11 @@ ttl(#aetx{ cb = CB, tx = Tx }) ->
         N -> N
     end.
 
+-spec valid_at_protocol(Protocol :: aec_hard_forks:protocol_vsn(),
+                      Tx :: tx()) -> boolean().
+valid_at_protocol(Protocol, #aetx{ cb = CB, tx = Tx }) ->
+    CB:valid_at_protocol(Protocol, Tx). 
+
 -spec size(Tx :: tx()) -> pos_integer().
 size(#aetx{ size = Size }) ->
     Size.
@@ -291,7 +300,9 @@ check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
     Checks =
         [fun() -> check_minimum_fee(AeTx, Env) end,
          fun() -> check_minimum_gas_price(AeTx, aetx_env:height(Env)) end,
-         fun() -> check_ttl(AeTx, Env) end],
+         fun() -> check_ttl(AeTx, Env) end,
+         fun() -> check_protocol_at_height(AeTx, aetx_env:height(Env)) end
+        ],
     case aeu_validation:run(Checks) of
         ok             -> CB:check(Tx, Trees, Env);
         {error, _} = E -> E
@@ -327,6 +338,13 @@ check_ttl(AeTx, Env) ->
     case ttl(AeTx) >= aetx_env:height(Env) of
         true  -> ok;
         false -> {error, ttl_expired}
+    end.
+
+check_protocol_at_height(AeTx, Height) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    case valid_at_protocol(Protocol, AeTx) of
+        true  -> ok;
+        false -> {error, invalid_at_height}
     end.
 
 %%%===================================================================

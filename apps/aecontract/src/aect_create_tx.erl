@@ -25,7 +25,8 @@
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1
+         for_client/1,
+         valid_at_protocol/2
         ]).
 
 %% Additional getters
@@ -310,10 +311,11 @@ for_client(#contract_create_tx{ owner_id    = OwnerId,
       <<"gas_price">>   => GasPrice,
       <<"call_data">>   => aeser_api_encoder:encode(contract_bytearray, CallData)}.
 
-%%%===================================================================
-%%% Internal functions
-
 -spec version(tx()) -> non_neg_integer().
 version(_) ->
     ?CONTRACT_CREATE_TX_VSN.
+
+-spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
+valid_at_protocol(_, _) ->
+    true.
 

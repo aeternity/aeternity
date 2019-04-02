@@ -25,7 +25,8 @@
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1
+         for_client/1,
+         valid_at_protocol/2
         ]).
 
 %% Additional getters
@@ -186,6 +187,10 @@ serialization_template(?ORACLE_RESPONSE_TX_VSN) ->
 -spec version(tx()) -> non_neg_integer().
 version(_) ->
     ?ORACLE_RESPONSE_TX_VSN.
+
+-spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
+valid_at_protocol(_, _) ->
+    true.
 
 for_client(#oracle_response_tx{oracle_id = OracleId,
                                nonce     = Nonce,
