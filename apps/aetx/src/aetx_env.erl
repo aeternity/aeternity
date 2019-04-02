@@ -19,7 +19,7 @@
         , tx_env/1
         ]).
 
--include_lib("apps/aecore/include/blocks.hrl").
+-include("../../aecore/include/blocks.hrl").
 
 -endif.
 

@@ -1,7 +1,7 @@
 -module(aect_state_tree_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("apps/aecontract/src/aecontract.hrl").
+-include("../include/aecontract.hrl").
 
 -define(TESTED_MODULE, aect_state_tree).
 

@@ -29,7 +29,7 @@
                         , dry_run_results/1
                         ]).
 
--include_lib("aecontract/src/aecontract.hrl").
+-include("../../aecontract/include/aecontract.hrl").
 
 -spec forbidden( OperationID :: atom() ) -> boolean().
 forbidden(OpId) ->

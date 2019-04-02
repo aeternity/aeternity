@@ -1,0 +1,16 @@
+{application, test,
+ [{description, "Ugly rebar3 hack to make include_lib work for Aeternity"},
+  {vsn, {cmd, "cat ../../VERSION"}},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib,
+    aecore,     %% we use blocks.hrl
+    aecontract  %% we use contracts.hrl
+   ]},
+  {env,[]},
+  {modules, []},
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

@@ -40,10 +40,10 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
--include_lib("apps/aecore/include/blocks.hrl").
--include_lib("apps/aeoracle/include/oracle_txs.hrl").
--include_lib("apps/aecontract/src/aecontract.hrl").
--include_lib("apps/aecontract/include/hard_forks.hrl").
+-include("../../aecore/include/blocks.hrl").
+-include("../include/oracle_txs.hrl").
+-include("../../aecontract/include/aecontract.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 -define(GENESIS_HEIGHT, aec_block_genesis:height()).
 

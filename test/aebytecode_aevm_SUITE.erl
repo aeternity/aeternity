@@ -11,7 +11,7 @@
    [ execute_identy_fun_from_file/1
    ]).
 
--include("apps/aecontract/src/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 all() ->

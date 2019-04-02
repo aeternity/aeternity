@@ -21,7 +21,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
--include_lib("apps/aecontract/src/aecontract.hrl").
+-include("../../aecontract/include/aecontract.hrl").
 
 -import(aecore_suite_utils, [patron/0]).
 

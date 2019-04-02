@@ -39,7 +39,7 @@
         , latest_protocol_version/0
         ]).
 
--include_lib("aecontract/src/aecontract.hrl").
+-include("../include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
 -define(SOPHIA_ROMA, 1).

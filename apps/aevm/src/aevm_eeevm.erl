@@ -26,7 +26,7 @@
 -export([code_get_op/2]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
--include_lib("aecontract/src/aecontract.hrl").
+-include("../../aecontract/include/aecontract.hrl").
 -include("aevm_eeevm.hrl").
 -include("aevm_ae_primops.hrl").
 

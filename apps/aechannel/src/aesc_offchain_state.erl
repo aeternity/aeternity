@@ -1,7 +1,6 @@
 -module(aesc_offchain_state).
 
--include_lib("apps/aecore/include/blocks.hrl").
--include("apps/aecontract/src/aecontract.hrl").
+-include("../../aecore/include/blocks.hrl").
 
 -define(NO_TX, no_tx).
 

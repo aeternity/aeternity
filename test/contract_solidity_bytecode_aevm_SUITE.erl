@@ -21,7 +21,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
--include("apps/aecontract/src/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 %% ------------------------------------------------------------------------
 %% Test cases

@@ -11,8 +11,6 @@
          ttl_expiry/2
         ]).
 
--include_lib("apps/aecontract/src/aecontract.hrl").
-
 -spec ttl_delta(aec_blocks:height(), aeo_oracles:ttl()) ->
     non_neg_integer() | {error, too_low_height}.
 ttl_delta(_CurrHeight, {delta, D}) -> D;

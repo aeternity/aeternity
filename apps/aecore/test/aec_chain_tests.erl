@@ -10,7 +10,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -include_lib("aeminer/include/aeminer.hrl").
--include_lib("aecontract/src/aecontract.hrl").
+-include("../../aecontract/include/aecontract.hrl").
 -include_lib("aecore/include/blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 

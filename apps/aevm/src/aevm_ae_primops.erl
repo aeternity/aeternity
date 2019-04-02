@@ -15,7 +15,7 @@
         ]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
--include_lib("aecontract/src/aecontract.hrl").
+-include("../../aecontract/include/aecontract.hrl").
 -include("aevm_ae_primops.hrl").
 
 -record(chain, {api, state, abi_version}).
