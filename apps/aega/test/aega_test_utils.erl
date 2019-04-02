@@ -46,7 +46,7 @@ ga_meta_tx_default(PubKey) ->
      , ga_id       => aeser_id:create(account, PubKey)
      , abi_version => aect_test_utils:latest_sophia_abi_version()
      , gas         => 50000
-     , gas_price   => 1 * aec_test_utils:min_gas_price()
+     , gas_price   => 1000 * aec_test_utils:min_gas_price()
      , ttl         => 0
      }.
 
@@ -72,5 +72,21 @@ read_contract(Name0) ->
     Name = filename:join("contracts", Name0),
     {ok, BinSrc} = aect_test_utils:read_contract(Name),
     {ok, binary_to_list(BinSrc)}.
+
+to_hex_lit(Len, Bin) ->
+    [_, _ | Xs] = binary_to_list(aeu_hex:hexstring_encode(Bin)),
+    "#" ++
+        if length(Xs) < Len * 2 ->
+            lists:duplicate(Len * 2 - length(Xs), $0) ++ Xs;
+           true ->
+            Xs
+        end.
+
+hash_lit_to_bin("#" ++ Hex) ->
+    if length(Hex) rem 2 == 1 ->
+        aeu_hex:hexstring_decode(list_to_binary("0x0" ++ Hex));
+       true ->
+        aeu_hex:hexstring_decode(list_to_binary("0x" ++ Hex))
+    end.
 
 

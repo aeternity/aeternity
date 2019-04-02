@@ -30,6 +30,12 @@
         , basic_spend_from/1
         , basic_contract_create/1
         , basic_contract_call/1
+
+        , oracle_register/1
+        , oracle_query/1
+        , oracle_query_x2/1
+        , oracle_respond/1
+        , oracle_extend/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -58,6 +64,7 @@ all() ->
 groups() ->
     [ {all, [], [ {group, simple}
                 , {group, basic}
+                , {group, oracle}
                 ]}
 
     , {simple, [], [ simple_attach
@@ -75,6 +82,12 @@ groups() ->
                   , basic_contract_create
                   , basic_contract_call
                   ]}
+    , {oracle, [], [ oracle_register
+                   , oracle_query
+                   , oracle_query_x2
+                   , oracle_respond
+                   , oracle_extend
+                   ]}
     ].
 
 init_per_group(all, Cfg) ->
@@ -85,15 +98,6 @@ init_per_group(all, Cfg) ->
             [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_3},
              {protocol, fortuna} | Cfg]
     end;
-%% init_per_group(vm_interaction, Cfg) ->
-%%     Height = 10,
-%%     Fun = fun(H) when H <  Height -> ?ROMA_PROTOCOL_VSN;
-%%              (H) when H >= Height -> ?MINERVA_PROTOCOL_VSN
-%%           end,
-%%     meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
-%%     [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_2},
-%%      {fork_height, Height},
-%%      {protocol, minerva} | Cfg];
 init_per_group(_Grp, Cfg) ->
     Cfg.
 
@@ -133,13 +137,13 @@ init_per_testcase(_TC, Config) ->
 
 simple_attach(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1 = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
     ok.
 
 simple_double_attach_fail(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1 = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
 
     {failed, not_a_basic_account} =
@@ -150,8 +154,8 @@ simple_double_attach_fail(_Cfg) ->
 simple_spend_to(_Cfg) ->
     state(aect_test_utils:new_state()),
     MinGP = aec_test_utils:min_gas_price(),
-    Acc1 = ?call(new_account, 10000000 * MinGP),
-    Acc2 = ?call(new_account, 10000000 * MinGP),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
     {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
 
     PreBalance  = ?call(account_balance, Acc1),
@@ -164,8 +168,8 @@ simple_spend_to(_Cfg) ->
 simple_spend_from(_Cfg) ->
     state(aect_test_utils:new_state()),
     MinGP = aec_test_utils:min_gas_price(),
-    Acc1 = ?call(new_account, 10000000 * MinGP),
-    Acc2 = ?call(new_account, 10000000 * MinGP),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
     {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
 
     AuthOpts    = #{ prep_fun => fun(_) -> simple_auth(["123", "1"]) end },
@@ -179,8 +183,8 @@ simple_spend_from(_Cfg) ->
 simple_failed_auth(_Cfg) ->
     state(aect_test_utils:new_state()),
     MinGP = aec_test_utils:min_gas_price(),
-    Acc1 = ?call(new_account, 10000000 * MinGP),
-    Acc2 = ?call(new_account, 10000000 * MinGP),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
     {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
 
     AuthOpts = #{ prep_fun => fun(_) -> simple_auth(["1234", "1"]) end },
@@ -249,15 +253,15 @@ simple_spend_from_fail(_Cfg) ->
 %%%===================================================================
 basic_attach(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1 = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
     ok.
 
 basic_spend_from(_Cfg) ->
     state(aect_test_utils:new_state()),
     MinGP = aec_test_utils:min_gas_price(),
-    Acc1 = ?call(new_account, 10000000 * MinGP),
-    Acc2 = ?call(new_account, 10000000 * MinGP),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
     {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
 
     AuthOpts    = #{ prep_fun => fun(TxHash) -> ?call(basic_auth, Acc1, "1", TxHash) end },
@@ -296,6 +300,81 @@ basic_contract_call(_Cfg) ->
 
     ok.
 
+%%%===================================================================
+%%% Oracle GA tests
+%%%===================================================================
+oracle_register(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+
+    AuthOpts = #{ prep_fun => fun(TxHash) -> ?call(basic_auth, Acc1, "1", TxHash) end },
+    {ok, #{tx_res := ok, oracle_id := _}} =
+        ?call(ga_oracle_register, Acc1, AuthOpts, <<"Question...">>, <<"Answer...">>, 50),
+
+    ok.
+
+oracle_query(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+
+    Auth = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc1, N, Tx) end } end,
+    {ok, #{tx_res := ok, oracle_id := _OracleId}} =
+        ?call(ga_oracle_register, Acc1, Auth("1"), <<"Question...">>, <<"Answer...">>, 50),
+
+    {ok, #{tx_res := ok, oracle_query_id := _QueryId}} =
+        ?call(ga_oracle_query, Acc1, Auth("2"), <<"How are you?">>),
+
+    ok.
+
+oracle_query_x2(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+
+    Auth = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc1, N, Tx) end } end,
+    {ok, #{tx_res := ok, oracle_id := _OracleId}} =
+        ?call(ga_oracle_register, Acc1, Auth("1"), <<"Question...">>, <<"Answer...">>, 50),
+
+    {ok, #{tx_res := ok, oracle_query_id := QueryId1}} =
+        ?call(ga_oracle_query, Acc1, Auth("2"), <<"How are you?">>),
+
+    {ok, #{tx_res := ok, oracle_query_id := QueryId2}} =
+        ?call(ga_oracle_query, Acc1, Auth("3"), <<"How are you?">>),
+
+    ?assertMatch({X, Y} when X /= Y, {QueryId1, QueryId2}),
+
+    ok.
+
+oracle_respond(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+
+    Auth = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc1, N, Tx) end } end,
+    {ok, #{tx_res := ok, oracle_id := _OracleId}} =
+        ?call(ga_oracle_register, Acc1, Auth("1"), <<"Question...">>, <<"Answer...">>, 50),
+
+    {ok, #{tx_res := ok, oracle_query_id := QueryId}} =
+        ?call(ga_oracle_query, Acc1, Auth("2"), <<"How are you?">>),
+
+    {ok, #{tx_res := ok}} =
+        ?call(ga_oracle_response, Acc1, Auth("3"), QueryId, <<"I am fine, thanks!">>),
+    ok.
+
+oracle_extend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+
+    Auth = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc1, N, Tx) end } end,
+    {ok, #{tx_res := ok, oracle_id := _OracleId}} =
+        ?call(ga_oracle_register, Acc1, Auth("1"), <<"Question...">>, <<"Answer...">>, 50),
+
+    {ok, #{tx_res := ok}} =
+        ?call(ga_oracle_extend, Acc1, Auth("2"), 100),
+    ok.
 %%%===================================================================
 %%% More elaborate operations
 %%%===================================================================
@@ -394,7 +473,42 @@ ga_attach(Owner, AuthOpts, Contract, AuthFun, InitArgs, Opts, S) ->
     AttachTx = aega_test_utils:ga_attach_tx(Owner, Options1),
     meta(Owner, AuthOpts, AttachTx, Opts, S).
 
+ga_oracle_register(Caller, AuthOpts, QSpec, ASpec, TTL, S) ->
+    ga_oracle_register(Caller, AuthOpts, QSpec, ASpec, TTL, #{}, S).
 
+ga_oracle_register(Caller, AuthOpts, QSpec, ASpec, TTL, Opts, S) ->
+    Opts1 = maps:merge(#{query_format => QSpec, response_format => ASpec, nonce => 0,
+                         oracles_ttl => {delta, TTL}}, maps:without([height], Opts)),
+    RegTx = aeo_test_utils:register_tx(Caller, Opts1, S),
+
+    meta(Caller, AuthOpts, RegTx, Opts, S).
+
+ga_oracle_query(Caller, AuthOpts, Q, S) ->
+    ga_oracle_query(Caller, AuthOpts, Q, #{}, S).
+
+ga_oracle_query(Caller, AuthOpts, Q, Opts, S) ->
+    Opts1 = maps:merge(#{query => Q, nonce => 0}, maps:without([height], Opts)),
+    QueryTx = aeo_test_utils:query_tx(Caller, aeser_id:create(oracle, Caller), Opts1, S),
+
+    meta(Caller, AuthOpts, QueryTx, Opts, S).
+
+ga_oracle_response(Caller, AuthOpts, QId, Answer, S) ->
+    ga_oracle_response(Caller, AuthOpts, QId, Answer, #{}, S).
+
+ga_oracle_response(Caller, AuthOpts, QId, Answer, Opts, S) ->
+    Opts1 = maps:merge(#{nonce => 0}, maps:without([height], Opts)),
+    ResponseTx = aeo_test_utils:response_tx(Caller, QId, Answer, Opts1, S),
+
+    meta(Caller, AuthOpts, ResponseTx, Opts, S).
+
+ga_oracle_extend(Caller, AuthOpts, TTL, S) ->
+    ga_oracle_extend(Caller, AuthOpts, TTL, #{}, S).
+
+ga_oracle_extend(Caller, AuthOpts, TTL, Opts, S) ->
+    Opts1 = maps:merge(#{nonce => 0, oracle_ttl => {delta, TTL}}, maps:without([height], Opts)),
+    ExtendTx = aeo_test_utils:extend_tx(Caller, Opts1, S),
+
+    meta(Caller, AuthOpts, ExtendTx, Opts, S).
 
 meta(Owner, AuthOpts, InnerTx, Opts, S) ->
     Fail     = maps:get(fail, Opts, false),
@@ -412,9 +526,12 @@ meta(Owner, AuthOpts, InnerTx, Opts, S) ->
                end,
 
     %% Getting here means authentication passed
-    CallKey  = aec_hash:hash(pubkey, <<Owner/binary, AuthData/binary>>),
-    CallTree = aect_test_utils:calls(S1),
-    Call     = aect_call_state_tree:get_call(CallKey, CallTree),
+    AuthId        = aega_meta_tx:auth_id(Owner, AuthData),
+    {AuthCtId, _} = account_contract(Owner, S),
+    {_, AuthCtPK} = aeser_id:specialize(AuthCtId),
+    CallKey       = aect_call:ga_id(AuthId, AuthCtPK),
+    CallTree      = aect_test_utils:calls(S1),
+    Call          = aect_call_state_tree:get_call(Owner, CallKey, CallTree),
 
     GasUsed = aect_call:gas_used(Call),
     AuthCost = aetx:fee(MetaTx) + aetx:gas_price(MetaTx) * GasUsed,
@@ -426,17 +543,28 @@ meta(Owner, AuthOpts, InnerTx, Opts, S) ->
             {spend_tx, _SpendTx} ->
                 {ok, Res0#{ total_cost => AuthCost + aetx:fee(InnerTx) }};
             {contract_create_tx, _CCTx} ->
-                ContractKey = aect_contracts:compute_contract_pubkey(Owner, CallKey),
-                InitCall    = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
-                {ok, Res0#{ ct_pubkey => ContractKey
+                NewContract = aect_contracts:compute_contract_pubkey(Owner, AuthId),
+                InitCallId  = aect_call:ga_id(AuthId, NewContract),
+                InitCall    = aect_call_state_tree:get_call(NewContract, InitCallId, CallTree),
+                {ok, Res0#{ ct_pubkey => NewContract
                           , init_res  => aect_call:return_type(InitCall) }};
             {contract_call_tx, CCTx} ->
-                ContractKey = aect_call_tx:contract_pubkey(CCTx),
-                InnerCall   = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
+                Contract    = aect_call_tx:contract_pubkey(CCTx),
+                InnerCallId = aect_call:ga_id(AuthId, Contract),
+                InnerCall   = aect_call_state_tree:get_call(Contract, InnerCallId, CallTree),
                 {ok, Res0#{ call_res => aect_call:return_type(InnerCall),
                             call_val => aect_call:return_value(InnerCall),
                             call_gas => aect_call:gas_used(InnerCall) }};
             {ga_attach_tx, GTx} ->
+                {ok, Res0};
+            {oracle_register_tx, ORegTx} ->
+                {ok, Res0#{oracle_id => aeo_register_tx:account_pubkey(ORegTx)}};
+            {oracle_query_tx, OQueryTx} ->
+                OPK = aeo_query_tx:oracle_pubkey(OQueryTx),
+                {ok, Res0#{oracle_query_id => aec_hash:hash(pubkey, <<AuthId/binary, OPK/binary>>)}};
+            {oracle_response_tx, _OResponseTx} ->
+                {ok, Res0};
+            {oracle_extend_tx, _} ->
                 {ok, Res0}
         end,
     {Res, S1}.
@@ -539,10 +667,10 @@ account_contract(PK, S) ->
 %%     Trees = aec_trees:perform_pre_transformations(aect_test_utils:trees(S), Height),
 %%     {ok, aect_test_utils:set_trees(Trees, S)}.
 
-get_contract_state(Contract) ->
-    S = state(),
-    {{value, C}, _} = lookup_contract_by_id(Contract, S),
-    aect_contracts_store:contents(aect_contracts:state(C)).
+%% get_contract_state(Contract) ->
+%%     S = state(),
+%%     {{value, C}, _} = lookup_contract_by_id(Contract, S),
+%%     aect_contracts_store:contents(aect_contracts:state(C)).
 
 %% insert_contract(Account, Code, S) ->
 %%     Contract  = make_contract(Account, Code, S),
@@ -561,10 +689,10 @@ get_contract_state(Contract) ->
 %%     Contract       = aect_state_tree:get_contract(ContractPubkey, Contracts),
 %%     {Contract, S}.
 
-lookup_contract_by_id(ContractKey, S) ->
-    Contracts = aect_test_utils:contracts(S),
-    X         = aect_state_tree:lookup_contract(ContractKey, Contracts),
-    {X, S}.
+%% lookup_contract_by_id(ContractKey, S) ->
+%%     Contracts = aect_test_utils:contracts(S),
+%%     X         = aect_state_tree:lookup_contract(ContractKey, Contracts),
+%%     {X, S}.
 
 %% get_call(Contract0, Call0, S) ->
 %%     CallId         = aect_call:id(Call0),
@@ -625,35 +753,24 @@ decode_call_result(Name0, Fun, Type, Val) ->
     {ok, AST} = aeso_compiler:to_sophia_value(binary_to_list(BinSrc), Fun, Type, Val),
     prettypr:format(aeso_pretty:expr(AST)).
 
-to_hex_lit(Len, Bin) ->
-    [_, _ | Xs] = binary_to_list(aeu_hex:hexstring_encode(Bin)),
-    "#" ++
-        if length(Xs) < Len * 2 ->
-            lists:duplicate(Len * 2 - length(Xs), $0) ++ Xs;
-           true ->
-            Xs
-        end.
-
-hash_lit_to_bin("#" ++ Hex) ->
-    if length(Hex) rem 2 == 1 ->
-        aeu_hex:hexstring_decode(list_to_binary("0x0" ++ Hex));
-       true ->
-        aeu_hex:hexstring_decode(list_to_binary("0x" ++ Hex))
-    end.
-
 simple_auth(Args) ->
     aega_test_utils:make_calldata("simple_auth", "authorize", Args).
 
 basic_auth(GA, Nonce, TxHash, S) ->
-    {GACt, _}  = account_contract(GA, S),
-    {contract, ContractPK} = aeser_id:specialize(GACt),
-    {ok, Call} = dry_run(ContractPK, "basic_auth", "to_sign", [to_hex_lit(32, TxHash), Nonce], S),
-    ok   = aect_call:return_type(Call),
-    Val  = aect_call:return_value(Call),
-    Hash = decode_call_result("basic_auth", "to_sign", ok, Val),
+%%     {GACt, _}  = account_contract(GA, S),
+%%     {contract, ContractPK} = aeser_id:specialize(GACt),
+%%     {ok, Call} = dry_run(ContractPK, "basic_auth", "to_sign", [aega_test_utils:to_hex_lit(32, TxHash), Nonce], S),
+%%     ok   = aect_call:return_type(Call),
+%%     Val  = aect_call:return_value(Call),
+%%     Hash = decode_call_result("basic_auth", "to_sign", ok, Val),
 
     GAPrivKey  = aect_test_utils:priv_key(GA, S),
-    Sign = enacl:sign_detached(hash_lit_to_bin(Hash), GAPrivKey),
+    %% Sign = enacl:sign_detached(hash_lit_to_bin(Hash), GAPrivKey),
 
-    {aega_test_utils:make_calldata("basic_auth", "authorize", [Nonce, to_hex_lit(64, Sign)]), S}.
+    Sign = basic_auth(list_to_integer(Nonce), TxHash, GAPrivKey),
 
+    {aega_test_utils:make_calldata("basic_auth", "authorize", [Nonce, aega_test_utils:to_hex_lit(64, Sign)]), S}.
+
+basic_auth(Nonce, TxHash, Privkey) ->
+    Val = <<32:256, TxHash/binary, Nonce:256>>,
+    enacl:sign_detached(aec_hash:hash(tx, Val), Privkey).
