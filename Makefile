@@ -179,41 +179,29 @@ dialyzer: $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) dialyzer
 
 ct: KIND=test
+ct: SYSCONFIG=config/test.config
+ct: AETERNITY_TESTCONFIG_DB_BACKEND=mnesia
+ct: SYSCONFIG=config/test.config
 ct: internal-build
 	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
 	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
 		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
 	else \
-		$(REBAR) ct $(CT_TEST_FLAGS) --sys_config config/test.config; \
+		AETERNITY_TESTCONFIG_DB_BACKEND=$(AETERNITY_TESTCONFIG_DB_BACKEND) \
+			$(REBAR) ct $(CT_TEST_FLAGS) --sys_config $(SYSCONFIG); \
 	fi
 
-ct-roma: KIND=test
-ct-roma: internal-build
-	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
-	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
-		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
-	else \
-		$(REBAR) ct $(CT_TEST_FLAGS) --sys_config config/test-roma.config; \
-	fi
+ct-roma:
+	@$(MAKE) ct SYSCONFIG=config/test-roma.config
 
-ct-fortuna: KIND=test
-ct-fortuna: internal-build
-	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
-	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
-		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
-	else \
-		$(REBAR) ct $(CT_TEST_FLAGS) --sys_config config/test-fortuna.config; \
-	fi
+ct-fortuna:
+	@$(MAKE) ct SYSCONFIG=config/test-fortuna.config
 
-ct-mnesia-leveled: KIND=test
-ct-mnesia-leveled: internal-build
-	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
-	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
-		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
-	else \
-		AETERNITY_TESTCONFIG_DB_BACKEND=leveled \
-			$(REBAR) ct $(CT_TEST_FLAGS) --sys_config config/test-mnesia-leveled.config; \
-	fi
+ct-mnesia-leveled:
+	@$(MAKE) ct AETERNITY_TESTCONFIG_DB_BACKEND=leveled
+
+ct-mnesia-rocksdb:
+	@$(MAKE) ct AETERNITY_TESTCONFIG_DB_BACKEND=rocksdb
 
 REVISION:
 	@git rev-parse HEAD > $@
@@ -229,11 +217,6 @@ eunit-roma: internal-build
 eunit-fortuna: KIND=test
 eunit-fortuna: internal-build
 	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_fortuna_testnet" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
-
-eunit-mnesia-leveled: KIND=test
-eunit-mnesia-leveled: internal-build
-	@AETERNITY_TESTCONFIG_DB_BACKEND=leveled \
-		ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG)" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
 
 all-tests: eunit ct
 
