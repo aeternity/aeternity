@@ -7,12 +7,12 @@ It:
 * Adds `channels.update.new_contract_from_onchain` method to channel websocket API.
 * Exposes setting `minimum_depth` in WebSocket connection creation in State
   Channels WebSocket API
-* Unifies State Channel's WebSocket API timeouts: `open` fallbacks to `idle`
-* Improves the stability of the State Channels WebSocket API
+* Unifies State Channel's WebSocket API timeouts: `open` fallbacks to `idle`.
+* Improves the stability of the State Channels WebSocket API.
 * Deprecates the `log` field in the contract object in the user HTTP API.
-* Add beta support for new database backend [leveled](https://github.com/martinsumner/leveled)
-  * Enable by setting the configuration `chain->db_backend` in `aeternity.yaml` to `leveled`
-  * When first enabling a new database backend you must rename your database folder, or delete it, and resynchronize the chain
+* Adds beta support for new database backend [leveled](https://github.com/martinsumner/leveled).
+  * Enable by setting the configuration `chain->db_backend` in `aeternity.yaml` to `leveled`.
+  * When first enabling a new database backend you must rename your database folder, or delete it, and resynchronize the chain.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.3.0
 
