@@ -271,7 +271,7 @@ references:
     run:
       name: Create localnet with docker-compose
       command: |
-        sudo -u ubuntu -E -H IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose up -d
+        sudo -u ubuntu -E -H IMAGE_TAG=${CIRCLE_BRANCH/\//_} docker-compose up -d
 
   docker_compose_healthcheck: &docker_compose_healthcheck
     run:
