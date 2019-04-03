@@ -38,6 +38,7 @@ AE_DEB_DCH_REL_NOTE= \
 AE_DEB_PKG_NAME="aeternity-node"
 AE_DEB_MAINT_EMAIL="info@aeternity.com"
 AE_DEB_MAINT_NAME="Aeternity Team"
+DEB_PKG_CHANGELOG_FILE=debian/changelog
 
 
 
@@ -416,14 +417,13 @@ internal-ct: internal-build
 			$(REBAR) ct $(CT_TEST_FLAGS) --sys_config $(SYSCONFIG); \
 	fi
 
-prod-deb-package:
-	@if [ ! -f debian/changelog ] ; \
-	then \
-		export DEBEMAIL=$(AE_DEB_MAINT_EMAIL); \
-		export DEBFULLNAME=$(AE_DEB_MAINT_NAME) ; \
-		dch --create --package=$(AE_DEB_PKG_NAME) -v $(AE_DEB_PKG_VERSION) $(AE_DEB_DCH_REL_NOTE); \
-		dch -r $(AE_DEB_DCH_REL_NOTE); \
-	fi ;
+$(DEB_PKG_CHANGELOG_FILE):
+	@export DEBEMAIL=$(AE_DEB_MAINT_EMAIL); \
+	export DEBFULLNAME=$(AE_DEB_MAINT_NAME) ; \
+	dch --create --package=$(AE_DEB_PKG_NAME) -v $(AE_DEB_PKG_VERSION) $(AE_DEB_DCH_REL_NOTE); \
+	dch -r $(AE_DEB_DCH_REL_NOTE)
+
+prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
 	debuild -b -uc -us
 
 .PHONY: \
