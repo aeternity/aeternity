@@ -23,5 +23,7 @@
  {[ae,epoch,aecore,tx_pool,push,illegal]     , counter     , []},
  {[ae,epoch,aecore,tx_pool,push,error]       , counter     , []},
  {[ae,epoch,aecore,tx_pool,push,ignore]      , counter     , []},
+ {[ae,epoch,aecore,tx_pool,gced]             , counter     , []},
+ {[ae,epoch,aecore,tx_pool,origin_gced]      , counter     , []},
  {[ae,epoch,aecore,sync,progress]            , gauge       , []}
 ].
