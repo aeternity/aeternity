@@ -226,6 +226,7 @@ variant() ->
         {F,A,R} <-
             [ {<<"switch">>, [{variant, [0,1], 0, {}}], 0}
             , {<<"switch">>, [{variant, [0,1], 1, {42}}], 42}
+            , {<<"switch2">>, [{variant, [0,1,2], 1, {42}}], {error,<<"Type error in switch: wrong size 3">>}}
             , {<<"test">>, [{variant, [0,1], 1, {42}}, 1], true}
             , {<<"test">>, [{variant, [0,1], 1, {42}}, 2], false}
             , {<<"element">>, [{variant, [0,1], 1, {42}}, 1], 42}
@@ -609,6 +610,12 @@ contracts() ->
      , <<"variant">> =>
            [ {<<"switch">>
              , {[{variant, [0,1]}], integer}
+             , [ {0, [ {'SWITCH_V2', {arg,0}, {immediate, 1}, {immediate, 2}}]}
+               , {1, [{'RETURNR', {immediate, 0}}]}
+               , {2, [{'RETURNR', {immediate, 42}}]}
+               ]}
+           , {<<"switch2">>
+             , {[{variant, [0,1,2]}], integer}
              , [ {0, [ {'SWITCH_V2', {arg,0}, {immediate, 1}, {immediate, 2}}]}
                , {1, [{'RETURNR', {immediate, 0}}]}
                , {2, [{'RETURNR', {immediate, 42}}]}
