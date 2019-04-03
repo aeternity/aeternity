@@ -424,7 +424,7 @@ prod-deb-package:
 		dch --create --package=$(AE_DEB_PKG_NAME) -v $(AE_DEB_PKG_VERSION) $(AE_DEB_DCH_REL_NOTE); \
 		dch -r $(AE_DEB_DCH_REL_NOTE); \
 	fi ;
-	debuild -uc -us
+	debuild -b -uc -us
 
 .PHONY: \
 	all console \
