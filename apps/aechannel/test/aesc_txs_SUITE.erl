@@ -203,6 +203,7 @@
 -define(ABI_VERSION, aect_test_utils:latest_sophia_abi_version()).
 -define(TEST_LOG(Format, Data), ct:log(Format, Data)).
 -define(MINERVA_FORK_HEIGHT, 1000).
+-define(FORTUNA_FORK_HEIGHT, 10000).
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -397,7 +398,9 @@ end_per_group(_Group, _Config) ->
 init_per_testcase(fp_fork_awareness, Config) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height,
                 fun(V) when V < ?MINERVA_FORK_HEIGHT -> ?ROMA_PROTOCOL_VSN;
-                   (_)                               -> ?MINERVA_PROTOCOL_VSN end),
+                   (V) when V < ?FORTUNA_FORK_HEIGHT -> ?MINERVA_PROTOCOL_VSN;
+                   (_)                               -> ?FORTUNA_PROTOCOL_VSN
+                end),
     Config;
 init_per_testcase(_, Config) ->
     Config.
@@ -5176,14 +5179,23 @@ contract_filename(ContractName) ->
 %% test that a force progress transaction can NOT produce an on-chain
 %% contract with a code with the wrong serialization
 fp_fork_awareness(Cfg) ->
-    HeightBelow = 123,
-    HeightAbove = 1234,
+    RomaHeight = 123,
+    MinervaHeight = 1234,
+    FortunaHeight = 12345,
 
+    SophiaVsn1 = 1,
+    SophiaVsn2 = 2,
     % ensure assumptions regarding heights
-    true = HeightBelow < ?MINERVA_FORK_HEIGHT,
-    false = aect_sophia:is_legal_serialization_at_height(?MINERVA_PROTOCOL_VSN, HeightBelow),
-    true = HeightAbove > ?MINERVA_FORK_HEIGHT,
-    true = aect_sophia:is_legal_serialization_at_height(?MINERVA_PROTOCOL_VSN, HeightAbove),
+    true = RomaHeight < ?MINERVA_FORK_HEIGHT,
+    true = aect_sophia:is_legal_serialization_at_height(SophiaVsn1, RomaHeight),
+    false = aect_sophia:is_legal_serialization_at_height(SophiaVsn2, RomaHeight),
+    true = MinervaHeight >= ?MINERVA_FORK_HEIGHT,
+    true = MinervaHeight < ?FORTUNA_FORK_HEIGHT,
+    true = aect_sophia:is_legal_serialization_at_height(SophiaVsn2, MinervaHeight),
+    true = FortunaHeight >= ?FORTUNA_FORK_HEIGHT,
+    true = aect_sophia:is_legal_serialization_at_height(SophiaVsn2, FortunaHeight),
+
+    BlockHash = <<42:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
 
     FP =
         fun(Forcer, Vm, CodeSVsn, PreForkErrMsg) ->
@@ -5207,9 +5219,9 @@ fp_fork_awareness(Cfg) ->
                     (create_contract_call_payload(ContractId, CName, <<"main">>,
                                                   [<<"42">>], 1))(Props)
                 end,
-                set_prop(height, HeightBelow),
-                set_prop(fee, 100000 * aec_governance:minimum_gas_price(HeightBelow)),
-                set_prop(gas_price, aec_governance:minimum_gas_price(HeightBelow)),
+                set_prop(height, RomaHeight),
+                set_prop(fee, 100000 * aec_governance:minimum_gas_price(RomaHeight)),
+                set_prop(gas_price, aec_governance:minimum_gas_price(RomaHeight)),
                 fun(#{contract_id := ContractId,
                       trees := Trees0} = Props) ->
                     Contract = aect_test_utils:get_contract(ContractId, #{trees => Trees0}),
@@ -5222,9 +5234,9 @@ fp_fork_awareness(Cfg) ->
                 % rejected before the fork
                 negative(fun force_progress_/2, {error, PreForkErrMsg}),
                 % accepted after the fork
-                set_prop(height, HeightAbove),
-                set_prop(fee, 100000 * aec_governance:minimum_gas_price(HeightAbove)),
-                set_prop(gas_price, aec_governance:minimum_gas_price(HeightAbove)),
+                set_prop(height, MinervaHeight),
+                set_prop(fee, 100000 * aec_governance:minimum_gas_price(MinervaHeight)),
+                set_prop(gas_price, aec_governance:minimum_gas_price(MinervaHeight)),
                 %% recompute the update with the new gas price
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
                     (create_contract_call_payload(ContractId, CName, <<"main">>,
