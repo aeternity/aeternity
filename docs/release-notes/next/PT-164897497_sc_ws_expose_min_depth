@@ -1,2 +1,0 @@
-* Exposes setting `minimum_depth` in WebSocket connection creation in State
-  Channels WebSocket API
