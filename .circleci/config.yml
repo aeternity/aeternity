@@ -265,7 +265,7 @@ references:
     run:
       name: Build latest docker image
       command: |
-        IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose build node1
+        IMAGE_TAG=${CIRCLE_BRANCH/\//_} docker-compose build node1
 
   docker_compose_start: &docker_compose_start
     run:
