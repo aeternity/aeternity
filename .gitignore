@@ -53,3 +53,7 @@ aeternity*windows*.zip
 aeternity*windows*.exe
 apps/*/test/*.xfm
 apps/aefate/aefate
+debian/.debhelper/
+debian/aeternity-node*
+debian/changelog
+debian/files
