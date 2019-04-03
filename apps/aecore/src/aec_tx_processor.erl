@@ -21,7 +21,7 @@
         , contract_call_tx_instructions/11
         , contract_create_tx_instructions/11
         , ga_attach_tx_instructions/10
-        , ga_meta_tx_instructions/7
+        , ga_meta_tx_instructions/6
         , ga_set_meta_tx_res_instructions/3
         , name_claim_tx_instructions/5
         , name_preclaim_tx_instructions/5
@@ -234,11 +234,11 @@ ga_attach_tx_instructions(OwnerPubkey, GasLimit, GasPrice, ABIVersion, VMVersion
     ].
 
 -spec ga_meta_tx_instructions(pubkey(), binary(), abi_version(),
-                              amount(), amount(), fee(), aetx:tx()) -> [op()].
+                              amount(), amount(), fee()) -> [op()].
 ga_meta_tx_instructions(OwnerPubkey, AuthData, ABIVersion,
-                        GasLimit, GasPrice, Fee, InnerTx) ->
+                        GasLimit, GasPrice, Fee) ->
     [ ga_meta_op(OwnerPubkey, AuthData, ABIVersion,
-                 GasLimit, GasPrice, Fee, InnerTx)
+                 GasLimit, GasPrice, Fee)
     ].
 
 -spec ga_set_meta_tx_res_instructions(pubkey(), binary(), 'ok' | {error, term()}) -> [op()].
@@ -430,16 +430,16 @@ force_inc_account_nonce_op(Pubkey, Nonce) when ?IS_HASH(Pubkey),
 
 inc_account_nonce({Pubkey, Nonce, Force}, #state{} = S) ->
     {Account, S1} = get_account(Pubkey, S),
-    case aetx_env:context(S#state.tx_env) of
-        aetx_ga ->
+    case lists:member(Pubkey, aetx_env:ga_auth_ids(S#state.tx_env)) of
+        true ->
             assert_ga_active(S),
             assert_generalized_account(Account),
             assert_ga_env(Pubkey, Nonce, S),
             S1;
-        Context ->
+        false ->
             assert_basic_account(Account),
             assert_account_nonce(Account, Nonce),
-            case Context of
+            case aetx_env:context(S#state.tx_env) of
                 aetx_contract when (not Force) andalso
                                    S#state.protocol > ?ROMA_PROTOCOL_VSN ->
                     %% We have checked that the account exists, and that it has
@@ -570,11 +570,11 @@ oracle_query({OraclePubkey, SenderPubkey, SenderNonce,
                       AbsoluteQTTL, ResponseTTL) of
         QueryObject0 ->
             QueryObject =
-                case aetx_env:context(S#state.tx_env) of
-                    aetx_ga ->
-                        QId = aeo_query:ga_id(aetx_env:ga_nonce(S#state.tx_env), OraclePubkey),
+                case aetx_env:ga_nonce(S#state.tx_env, SenderPubkey) of
+                    {value, GANonce} ->
+                        QId = aeo_query:ga_id(GANonce, OraclePubkey),
                         aeo_query:set_id(QId, QueryObject0);
-                    Ctxt when Ctxt == aetx_transaction; Ctxt == aetx_contract ->
+                    none ->
                         QueryObject0
                 end,
             assert_not_oracle_query(QueryObject, S),
@@ -747,11 +747,9 @@ channel_create({InitiatorPubkey, InitiatorAmount,
     assert_channel_reserve_amount(ReserveAmount, InitiatorAmount,
                                   ResponderAmount),
     assert_not_equal(InitiatorPubkey, ResponderPubkey, initiator_is_responder),
-    Nonce = case aetx_env:context(S#state.tx_env) of
-                aetx_ga ->
-                    aetx_env:ga_nonce(S#state.tx_env);
-                Ctxt when Ctxt == aetx_transaction; Ctxt == aetx_contract ->
-                    Nonce0
+    Nonce = case aetx_env:ga_nonce(S#state.tx_env, InitiatorPubkey) of
+                {value, NonceX} -> NonceX;
+                none            -> Nonce0
             end,
     Channel = aesc_channels:new(InitiatorPubkey, InitiatorAmount,
                                 ResponderPubkey, ResponderAmount,
@@ -997,8 +995,7 @@ ga_set_meta_res({OwnerPubkey, AuthData, Res}, S) ->
         end,
     cache_put(auth_call, AuthCall1, S2).
 
-ga_meta_op(OwnerPubkey, AuthData, ABIVersion,
-           GasLimit, GasPrice, Fee, InnerTx
+ga_meta_op(OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee
           ) when ?IS_HASH(OwnerPubkey),
                  ?IS_NON_NEG_INTEGER(GasLimit),
                  ?IS_NON_NEG_INTEGER(GasPrice),
@@ -1006,9 +1003,9 @@ ga_meta_op(OwnerPubkey, AuthData, ABIVersion,
                  is_binary(AuthData),
                  ?IS_NON_NEG_INTEGER(Fee) ->
     {ga_meta,
-     {OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}}.
+     {OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee}}.
 
-ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, _InnerTx}, S) ->
+ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee}, S) ->
     assert_ga_active(S),
     RollbackS = S,
     {Account, S1} = get_account(OwnerPK, S),
@@ -1085,9 +1082,9 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
     %% and transfer the funds (amount) to the contract account.
     CTVersion      = #{vm => VMVersion, abi => ABIVersion},
     S2             = account_spend(Account, TotalAmount, S1),
-    Nonce = case aetx_env:context(S#state.tx_env) of
-                aetx_ga -> aetx_env:ga_nonce(S#state.tx_env);
-                _       -> Nonce0
+    Nonce = case aetx_env:ga_nonce(S#state.tx_env, OwnerPubkey) of
+                {value, NonceX} -> NonceX;
+                none            -> Nonce0
             end,
     Contract       = aect_contracts:new(OwnerPubkey, Nonce, CTVersion,
                                         SerializedCode, Deposit),
@@ -1150,12 +1147,11 @@ contract_init_call_success(InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
 %%% Helpers for instructions
 
 set_call_object_id(Call, #state{ tx_env = TxEnv }) ->
-    case aetx_env:context(TxEnv) of
-        aetx_ga ->
-            CallId = aect_call:ga_id(aetx_env:ga_nonce(TxEnv),
-                                     aect_call:contract_pubkey(Call)),
+    case aetx_env:ga_nonce(TxEnv, aect_call:caller_pubkey(Call)) of
+        {value, Nonce} ->
+            CallId = aect_call:ga_id(Nonce, aect_call:contract_pubkey(Call)),
             aect_call:set_id(CallId, Call);
-        Ctxt when Ctxt == aetx_transaction; Ctxt == aetx_contract ->
+        none ->
             Call
     end.
 
@@ -1293,12 +1289,10 @@ assert_generalized_account(Account) ->
     end.
 
 assert_ga_env(Pubkey, Nonce, #state{tx_env = Env}) ->
-    GAId    = aetx_env:ga_id(Env),
-    GANonce = aetx_env:ga_nonce(Env),
-    if Nonce =/= 0          -> runtime_error(nonce_in_ga_tx_should_be_zero);
-       GAId =/= Pubkey      -> runtime_error(bad_ga_tx_env);
-       GANonce == undefined -> runtime_error(bad_ga_tx_env);
-       true                 -> ok
+    GANonce = aetx_env:ga_nonce(Env, Pubkey),
+    if Nonce =/= 0     -> runtime_error(nonce_in_ga_tx_should_be_zero);
+       GANonce == none -> runtime_error(bad_ga_tx_env);
+       true            -> ok
     end.
 
 assert_account_nonce(Account, Nonce) ->

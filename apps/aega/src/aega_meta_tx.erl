@@ -57,7 +57,7 @@
           gas_price   :: amount(),
           fee         :: amount(),
           ttl         :: aetx:tx_ttl(),
-          tx          :: aetx:tx()
+          tx          :: aetx_sign:signed_tx()
         }).
 
 -opaque tx() :: #ga_meta_tx{}.
@@ -85,7 +85,7 @@ gas(#ga_meta_tx{gas = Gas}) ->
 
 -spec gas_limit(tx(), non_neg_integer()) -> amount().
 gas_limit(#ga_meta_tx{gas = Gas, tx = InnerTx}, Height) ->
-    aetx:gas_limit(InnerTx, Height) + Gas.
+    aetx:gas_limit(aetx_sign:tx(InnerTx), Height) + Gas.
 
 -spec gas_price(tx()) -> amount().
 gas_price(#ga_meta_tx{gas_price = GasPrice}) ->
@@ -103,7 +103,7 @@ auth_id(#ga_meta_tx{auth_data = AuthData} = Tx) ->
 auth_id(GAPubkey, AuthData) ->
     aec_hash:hash(pubkey, <<GAPubkey/binary, AuthData/binary>>).
 
--spec tx(tx()) -> aetx:tx().
+-spec tx(tx()) -> aetx_sign:signed_tx().
 tx(#ga_meta_tx{tx = Tx}) ->
     Tx.
 
@@ -169,22 +169,25 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
           abi_version(Tx),
           gas(Tx),
           gas_price(Tx),
-          fee(Tx),
-          tx(Tx)),
-    Env = add_tx_hash(Env0, tx(Tx)),
+          fee(Tx)),
+    Env = add_tx_hash(Env0, aetx_sign:tx(tx(Tx))),
     case aec_tx_processor:eval(AuthInstructions, Trees, Env) of
         {ok, Trees1, Env1} ->
             %% Successful authentication - we have a call object in Trees1
             Env11 = set_ga_context(Env1, Tx),
             {InnerRes, Trees2, Env2} =
-                case aetx:process(tx(Tx), Trees1, Env11) of
-                    {ok, Trees21, Env21} ->
-                        {ok, Trees21, reset_ga_context(Env21, aetx_env:context(Env1))};
-                    Err = {error, _Reason}  ->
+                case aetx_sign:verify(tx(Tx), Trees1, Env11) of
+                    ok ->
+                        case aetx:process(aetx_sign:tx(tx(Tx)), Trees1, Env11) of
+                            {ok, Trees21, Env21}    -> {ok, Trees21, Env21};
+                            Err = {error, _Reason}  -> {Err, Trees1, Env1}
+                        end;
+                    Err = {error, _Reason} ->
                         {Err, Trees1, Env1}
                 end,
-            Trees22 = set_meta_result(InnerRes, Tx, Trees2, Env2),
-            {ok, Trees22, Env2};
+            Env22   = reset_ga_context(Env2, Tx, Env1),
+            Trees22 = set_meta_result(InnerRes, Tx, Trees2, Env22),
+            {ok, Trees22, Env22};
         Err = {error, _} ->
             Err
     end.
@@ -192,6 +195,7 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
 set_meta_result(ok, _Tx, Trees, _Env) ->
     Trees;
 set_meta_result(Err = {error, _}, Tx, Trees, Env) ->
+    ct:pal("Setting error: ~p\n", [Err]),
     SetInstructions =
         aec_tx_processor:ga_set_meta_tx_res_instructions(
             ga_pubkey(Tx), auth_data(Tx), Err),
@@ -206,7 +210,7 @@ serialize(#ga_meta_tx{ga_id       = GAId,
                       gas_price   = GasPrice,
                       ttl         = TTL,
                       tx          = InnerTx}) ->
-    SerTx = aetx:serialize_to_binary(InnerTx),
+    SerTx = aetx_sign:serialize_to_binary(InnerTx),
     {version(),
      [ {ga_id, GAId}
      , {auth_data, AuthData}
@@ -228,7 +232,7 @@ deserialize(?GA_META_TX_VSN,
             , {ttl, TTL}
             , {tx, SerTx}]) ->
     account = aeser_id:specialize_type(GAId),
-    Tx = aetx:deserialize_from_binary(SerTx),
+    Tx = aetx_sign:deserialize_from_binary(SerTx),
     #ga_meta_tx{ga_id       = GAId,
                 auth_data   = AuthData,
                 abi_version = ABIVersion,
@@ -264,7 +268,7 @@ for_client(#ga_meta_tx{ ga_id       = GAId,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,
       <<"ttl">>         => TTL,
-      <<"tx">>          => aetx:serialize_for_client(InnerTx)}.
+      <<"tx">>          => aetx_sign:serialize_for_client_pending(InnerTx)}.
 
 %%%===================================================================
 %%% Internal functions
@@ -273,18 +277,18 @@ for_client(#ga_meta_tx{ ga_id       = GAId,
 version() ->
     ?GA_META_TX_VSN.
 
-add_tx_hash(Env0, Aetx) ->
-    BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Aetx)),
+add_tx_hash(Env0, Tx) ->
+    BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
     aetx_env:set_ga_tx_hash(Env0, aec_hash:hash(tx, BinForNetwork)).
 
 set_ga_context(Env0, Tx) ->
     Env1 = aetx_env:set_context(Env0, aetx_ga),
-    Env2 = aetx_env:set_ga_id(Env1, ga_pubkey(Tx)),
-    Env3 = aetx_env:set_ga_nonce(Env2, auth_id(Tx)),
+    Env2 = aetx_env:add_ga_auth_id(Env1, ga_pubkey(Tx)),
+    Env3 = aetx_env:add_ga_nonce(Env2, ga_pubkey(Tx), auth_id(Tx)),
     aetx_env:set_ga_tx_hash(Env3, undefined).
 
-reset_ga_context(Env0, Context) ->
-    Env1 = aetx_env:set_context(Env0, Context),
-    Env2 = aetx_env:set_ga_id(Env1, undefined),
-    aetx_env:set_ga_nonce(Env2, undefined).
+reset_ga_context(Env0, Tx, OldEnv) ->
+    Env1 = aetx_env:set_context(Env0, aetx_env:context(OldEnv)),
+    Env2 = aetx_env:del_ga_auth_id(Env1, ga_pubkey(Tx)),
+    aetx_env:del_ga_nonce(Env2, ga_pubkey(Tx)).
 
