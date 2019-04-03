@@ -1027,6 +1027,8 @@ workflows:
             tags:
               only: *tag_regex
 
+      - osx_package_with_libs_flags: {}
+
       - deploy_integration:
           requires:
             - test
