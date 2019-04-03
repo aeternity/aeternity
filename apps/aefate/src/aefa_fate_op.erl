@@ -211,8 +211,7 @@ switch(Arg0, Arg1, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
     if ?IS_FATE_VARIANT(Value) ->
             ?FATE_VARIANT(Arities, Tag, _T) = Value,
-            if Tag < length(Arities)
-               , Tag < N ->
+            if length(Arities) =:= N ->
                     BB = lists:nth(Tag + 1, Arg1),
                     {jump, BB, ES1};
                true -> aefa_fate:abort({bad_variant_tag, Tag}, ES1)
