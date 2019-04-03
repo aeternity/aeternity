@@ -3760,7 +3760,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                    amount => Amount},
     ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
                    UpdateOpts#{amount => <<"1">>}, Config),
-    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+    {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(StarterPid, error, Config),
     ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
                    UpdateOpts, Config),
@@ -4083,7 +4083,7 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
     ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
                                                            error]),
     ws_send(SenderConnPid, <<"deposit">>, #{amount => <<"2">>}, Config),
-    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+    {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     ws_send(SenderConnPid, <<"deposit">>, #{amount => 2}, Config),
     UnsignedStateTx = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"deposit_tx">>, Config),
@@ -4137,7 +4137,7 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
     ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
                                                            error]),
     ws_send(SenderConnPid, <<"deposit">>, #{amount => <<"2">>}, Config),
-    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+    {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     ws_send(SenderConnPid, <<"withdraw">>, #{amount => 2}, Config),
     UnsignedStateTx = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"withdraw_tx">>, Config),
@@ -4279,17 +4279,17 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
                     % incorrect calls
                     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                         NewContractOpts#{deposit => <<"1">>}, Config),
-                    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+                    {ok, #{<<"reason">> := <<"not_a_number">>}} =
                         wait_for_channel_event(OwnerConnPid, error, Config),
 
                     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                         NewContractOpts#{vm_version => <<"1">>}, Config),
-                    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+                    {ok, #{<<"reason">> := <<"not_a_number">>}} =
                         wait_for_channel_event(OwnerConnPid, error, Config),
 
                     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                         NewContractOpts#{abi_version => <<"1">>}, Config),
-                    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+                    {ok, #{<<"reason">> := <<"not_a_number">>}} =
                         wait_for_channel_event(OwnerConnPid, error, Config),
                     % correct call
                     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
@@ -4310,7 +4310,7 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
                     % incorrect call
                     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract_from_onchain">>,
                         NewContractOpts#{deposit => <<"1">>}, Config),
-                    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+                    {ok, #{<<"reason">> := <<"not_a_number">>}} =
                         wait_for_channel_event(OwnerConnPid, error, Config),
 
                     % correct call
@@ -5185,11 +5185,11 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
     % invalid call
     ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
                    CallOpts#{amount => <<"1">>}, Config),
-    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+    {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
                    CallOpts#{abi_version => <<"1">>}, Config),
-    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+    {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     % correct call
     ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
@@ -5215,11 +5215,11 @@ dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
     % invalid call
     ws_send_tagged(SenderConnPid, <<"dry_run">>, <<"call_contract">>,
                    CallOpts#{amount => <<"1">>}, Config),
-    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+    {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     ws_send_tagged(SenderConnPid, <<"dry_run">>, <<"call_contract">>,
                    CallOpts#{abi_version => <<"1">>}, Config),
-    {ok, #{<<"reason">> := <<"invalid_number">>}} =
+    {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     ws_send_tagged(SenderConnPid, <<"dry_run">>, <<"call_contract">>,
                    CallOpts, Config),
@@ -6205,7 +6205,7 @@ ws_get_decoded_result(ConnPid1, ConnPid2, Type, Tx, Config) ->
             GetParams = ws_get_call_params(Tx),
             ws_send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
                            GetParams#{round => <<"2">>}, Config),
-            {ok, #{<<"reason">> := <<"invalid_number">>}} =
+            {ok, #{<<"reason">> := <<"not_a_number">>}} =
                 wait_for_channel_event(ConnPid, error, Config),
             ws_send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
                            GetParams, Config),
@@ -6328,7 +6328,7 @@ data_code_to_reason([1004])      -> <<"call_not_found">>;
 data_code_to_reason([1005])      -> <<"broken_encoding: accounts">>;
 data_code_to_reason([1006])      -> <<"broken_encoding: contracts">>;
 data_code_to_reason([1007])      -> <<"contract_init_failed">>;
-data_code_to_reason([1008])      -> <<"invalid_number">>;
+data_code_to_reason([1008])      -> <<"not_a_number">>;
 data_code_to_reason([1005,1006]) -> <<"broken_encoding: accounts, contracts">>;
 data_code_to_reason([Code])      -> sc_ws_api_jsonrpc:error_data_msg(Code).
 

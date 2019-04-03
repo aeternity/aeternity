@@ -125,7 +125,7 @@ json_rpc_error_object(negative_amount     , R) -> error_obj(3     , [1002], R);
 json_rpc_error_object(invalid_pubkeys     , R) -> error_obj(3     , [1003], R);
 json_rpc_error_object(call_not_found      , R) -> error_obj(3     , [1004], R);
 json_rpc_error_object(contract_init_failed, R) -> error_obj(3     , [1007], R);
-json_rpc_error_object(invalid_number      , R) -> error_obj(3     , [1008], R);
+json_rpc_error_object(not_a_number        , R) -> error_obj(3     , [1008], R);
 json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
 json_rpc_error_object(not_found           , R) -> error_obj(3     , [100] , R);
@@ -193,7 +193,7 @@ error_data_msgs() ->
      , 1005 => <<"Broken encoding: accounts">>
      , 1006 => <<"Broken encoding: contracts">>
      , 1007 => <<"Contract init failed">>
-     , 1008 => <<"Invalid number">>
+     , 1008 => <<"Not a number">>
      }.
 
 broken_encoding_code(accounts ) -> 1005;
@@ -209,8 +209,8 @@ process_incoming(Msg, FsmPid) ->
                         no_reply       -> no_reply;
                         {reply, Reply} -> Reply
                     catch
-                        error:{validation_error, invalid_number} ->
-                            {error, invalid_number};
+                        error:{validation_error, not_a_number} ->
+                            {error, not_a_number};
                         error:E ->
                             lager:debug("CAUGHT E=~p / Req = ~p / ~p",
                                         [E, Req, erlang:get_stacktrace()]),
@@ -534,5 +534,5 @@ bin(A) when is_atom(A)   -> atom_to_binary(A, utf8);
 bin(B) when is_binary(B) -> B.
 
 assert_integer(Value) when is_integer(Value) -> ok;
-assert_integer(_Value) -> error({validation_error, invalid_number}).
+assert_integer(_Value) -> error({validation_error, not_a_number}).
 
