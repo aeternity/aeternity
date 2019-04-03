@@ -361,38 +361,32 @@ multi-build: dev1-build
 # Build rules
 #
 
-.SECONDEXPANSION:
-
-internal-compile-deps: $$(KIND)
+internal-compile-deps:
 	@$(REBAR) as $(KIND) compile -d
 
-internal-package: $$(KIND)
 internal-package: REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) as $(KIND) tar
 
-internal-build: $$(KIND)
+internal-build:
 internal-build: REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) as $(KIND) release
 
-internal-start: $$(KIND)
+internal-start:
 	@./_build/$(KIND)/$(CORE) start
 
-internal-stop: $$(KIND)
+internal-stop:
 	@./_build/$(KIND)/$(CORE) stop
 
-internal-attach: $$(KIND)
+internal-attach:
 	@./_build/$(KIND)/$(CORE) attach
 
-internal-clean: $$(KIND)
+internal-clean:
 	@rm -rf ./_build/$(KIND)/rel/aeternity/data/mnesia
 	@rm -rf ./_build/$(KIND)/rel/*/log/*
 
-internal-distclean: $$(KIND)
+internal-distclean:
 	@rm -rf ./_build/$(KIND)
 
-internal-ct: $$(KIND)
-internal-ct: $$(SYSCONFIG)
-internal-ct: $$(AETERNITY_TESTCONFIG_DB_BACKEND)
 internal-ct: internal-build
 	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
 	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
