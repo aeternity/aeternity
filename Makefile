@@ -367,7 +367,6 @@ internal-compile-deps:
 internal-package: REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) as $(KIND) tar
 
-internal-build:
 internal-build: REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) as $(KIND) release
 
