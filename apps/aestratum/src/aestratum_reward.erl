@@ -91,14 +91,10 @@ table_vsn(_) -> 1.
 %%% API
 %%%===================================================================
 
-start_link(LastN, Beneficiaries)
+start_link(LastN, {BenefSumPcts, Beneficiaries})
   when is_integer(LastN), LastN > 0, LastN =< ?MAX_ROUNDS,
        is_map(Beneficiaries) ->
-    SumPcts = maps:fold(fun (_Account, PctShare, Sum) when PctShare > 0 ->
-                                Sum + PctShare
-                        end, 0, Beneficiaries),
-    true = SumPcts < 100,
-    Args = [LastN, {SumPcts, Beneficiaries}],
+    Args = [LastN, {BenefSumPcts, Beneficiaries}],
     gen_server:start_link({local, ?MODULE}, ?MODULE, Args, []).
 
 
@@ -167,12 +163,14 @@ format_status(_Opt, Status) ->
 %%% Internal functions
 %%%===================================================================
 
-sort_key(_) ->
+-spec sort_key() -> sort_key().
+sort_key() ->
     abs(erlang:unique_integer([monotonic])).
 
-
+-spec store_share(miner_pubkey(), pos_integer(), binary()) ->
+                         {ok, #aestratum_share{}, #aestratum_hash{}}.
 store_share(Miner, MinerTarget, Hash) ->
-    SortKey = sort_key(Hash),
+    SortKey = sort_key(),
     Share = #aestratum_share{key = SortKey,
                              hash = Hash,
                              target = MinerTarget,
@@ -183,17 +181,20 @@ store_share(Miner, MinerTarget, Hash) ->
     ok = mnesia:write(HashR),
     {ok, Share, HashR}.
 
+-spec store_round() -> {ok, #aestratum_round{}}.
 store_round() ->
-    Round = #aestratum_round{key = sort_key(new_round)},
+    Round = #aestratum_round{key = sort_key()},
     ok = mnesia:write(Round),
     {ok, Round}.
 
-store_reward(Height, Hash, BenefRewards, MinerRewards, TokensLeft, LastRoundKey) ->
+-spec store_reward(non_neg_integer(), binary(), map(), map(), amount(), sort_key()) ->
+                          {ok, #aestratum_reward{}}.
+store_reward(Height, Hash, BenefRewards, MinerRewards, Amount, LastRoundKey) ->
     Reward = #aestratum_reward{height = Height,
                                hash = Hash,
                                pool = BenefRewards,
                                miners = MinerRewards,
-                               unpaid = TokensLeft,
+                               amount = Amount,
                                round_key = LastRoundKey},
     ok = mnesia:write(Reward),
     {ok, Reward}.
@@ -201,12 +202,12 @@ store_reward(Height, Hash, BenefRewards, MinerRewards, TokensLeft, LastRoundKey)
 
 maybe_compute_rewards(State) ->
     on_reward_share(
-      fun (#reward_key_block{height = Height, hash = Hash} = RewardKeyBlock) ->
+      fun (#reward_key_block{height = Height, hash = Hash, tokens = Amount} = RewardKeyBlock) ->
               case compute_rewards(RewardKeyBlock, State) of
-                  {ok, BenefRewards, MinerRewards, TokensLeft, LastRoundShareKey} ->
+                  {ok, BenefRewards, MinerRewards, LastRoundShareKey} ->
                       store_reward(Height, Hash,
                                    BenefRewards, MinerRewards,
-                                   TokensLeft, LastRoundShareKey);
+                                   Amount, LastRoundShareKey);
                   Error ->
                       Error
               end
@@ -247,13 +248,9 @@ compute_rewards(#reward_key_block{share_key = RewardShareKey,
             Selector = shares_selector(FirstShareKey, LastRoundShareKey),
             SliceCont = mnesia:select(?SHARES_TAB, Selector, ?SHARES_BATCH_LENGTH, read),
             {SumScores, MinerGroups} = sum_group_shares(SliceCont, BlockTarget),
-            BenefTokens = round(BlockReward * (BenefSumPcts / 100)),
-            {_, _, BenefTokensLeft, BenefRewards} =
-                fold_rewards(BenefSumPcts, BenefTokens, Beneficiaries),
-            MinerTokens = BlockReward - BenefTokens + BenefTokensLeft,
-            {_, _, TokensLeft, MinerRewards} =
-                fold_rewards(SumScores, MinerTokens, MinerGroups),
-            {ok, BenefRewards, MinerRewards, TokensLeft, LastRoundShareKey};
+            BenefRewards = fold_rewards(BenefSumPcts, Beneficiaries),
+            MinerRewards = fold_rewards(SumScores, MinerGroups),
+            {ok, BenefRewards, MinerRewards, LastRoundShareKey};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -293,32 +290,16 @@ sum_group_shares({Shares, Cont}, BlockTarget, SumScores, Groups) ->
 
 sum_group_share(#aestratum_share{miner = Miner, target = MinerTarget},
                 {BlockTarget, SumScore, Groups}) ->
+    Total = maps:get(Miner, Groups, 0),
     Score = MinerTarget / BlockTarget,
-    Groups1 = case Groups of
-                  #{Miner := TotalScore} ->
-                      Groups#{Miner => TotalScore + Score};
-                  #{} ->
-                      Groups#{Miner => Score}
-              end,
-    {BlockTarget, SumScore + Score, Groups1}.
+    {BlockTarget, SumScore + Score, Groups#{Miner => Total + Score}}.
 
 
-fold_rewards(SumScores, Tokens, Beneficiaries) ->
-    maps:fold(fun reward/3, {SumScores, Tokens, Tokens, #{}}, Beneficiaries).
-
-reward(_Account, _Score, {SumScores, BlockReward, 0, Rewards}) ->
-    {SumScores, BlockReward, 0, Rewards};
-reward(Account, Score, {SumScores, BlockReward, TokensLeft, Rewards}) ->
-    RelScore = Score / SumScores,
-    Tokens = min(round(RelScore * BlockReward), TokensLeft),
-    %% io:format("/// SUM = ~g | SCORE = ~8f | GSCORE = ~8f | LEFT = ~5w | TOKENS = ~5w~n",
-    %%           [SumScores * 1.0, Score * 1.0, RelScore, TokensLeft, Tokens]),
-    if Tokens < ?MIN_TX_FEE ->
-            {SumScores, BlockReward, TokensLeft, Rewards};
-       true ->
-            Rewards1 = maps:put(Account, Tokens, Rewards),
-            {SumScores, BlockReward, TokensLeft - Tokens, Rewards1}
-    end.
+fold_rewards(SumScores, Beneficiaries) ->
+    maps:fold(fun (BenefPK, Score, Rewards) ->
+                      RelScore = Score / SumScores,
+                      Rewards#{BenefPK => RelScore}
+              end, #{}, Beneficiaries).
 
 
 delete_old_records(Height) ->
