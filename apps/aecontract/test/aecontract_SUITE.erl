@@ -548,7 +548,7 @@ create_version_too_high(Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    {ok, IdContract} = compile_contract_vsn(identity, ?AESOPHIA_2),
+    {ok, IdContract} = compile_contract_vsn(identity, ?SOPHIA_MINERVA),
     ct:log("Compiled Contract = ~p\n", [aect_sophia:deserialize(IdContract)]),
 
     _IdContractMap = aect_sophia:deserialize(IdContract),
