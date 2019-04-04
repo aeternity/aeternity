@@ -224,12 +224,13 @@ string() ->
 variant() ->
     [ {<<"variant">>, F, A, R} ||
         {F,A,R} <-
-            [ {<<"switch">>, [{variant, 2, 0, {}}], 0}
-            , {<<"switch">>, [{variant, 2, 1, {42}}], 42}
-            , {<<"test">>, [{variant, 2, 1, {42}}, 1], true}
-            , {<<"test">>, [{variant, 2, 1, {42}}, 2], false}
-            , {<<"element">>, [{variant, 2, 1, {42}}, 1], 42}
-            , {<<"make">>, [2, 1, 1, [42]], {variant, 2, 1, {42}}}
+            [ {<<"switch">>, [{variant, [0,1], 0, {}}], 0}
+            , {<<"switch">>, [{variant, [0,1], 1, {42}}], 42}
+            , {<<"switch2">>, [{variant, [0,1,2], 1, {42}}], {error,<<"Type error in switch: wrong size 3">>}}
+            , {<<"test">>, [{variant, [0,1], 1, {42}}, 1], true}
+            , {<<"test">>, [{variant, [0,1], 1, {42}}, 2], false}
+            , {<<"element">>, [{variant, [0,1], 1, {42}}, 1], 42}
+            , {<<"make">>, [[0,1], 1, 1, [42]], {variant, [0,1], 1, {42}}}
             ]
     ].
 
@@ -608,23 +609,29 @@ contracts() ->
 
      , <<"variant">> =>
            [ {<<"switch">>
-             , {[{variant, 2}], integer}
+             , {[{variant, [0,1]}], integer}
+             , [ {0, [ {'SWITCH_V2', {arg,0}, {immediate, 1}, {immediate, 2}}]}
+               , {1, [{'RETURNR', {immediate, 0}}]}
+               , {2, [{'RETURNR', {immediate, 42}}]}
+               ]}
+           , {<<"switch2">>
+             , {[{variant, [0,1,2]}], integer}
              , [ {0, [ {'SWITCH_V2', {arg,0}, {immediate, 1}, {immediate, 2}}]}
                , {1, [{'RETURNR', {immediate, 0}}]}
                , {2, [{'RETURNR', {immediate, 42}}]}
                ]}
            , {<<"test">>
-             , {[{variant, 2}, integer], boolean}
+             , {[{variant, [0,1]}, integer], boolean}
              , [ {0, [ {'VARIANT_TEST', {stack, 0}, {arg,0}, {arg, 1}}
                      , 'RETURN']}
                ]}
            , {<<"element">>
-             , {[{variant, 2}, integer], integer}
+             , {[{variant, [0,1]}, integer], integer}
              , [ {0, [ {'VARIANT_ELEMENT', {stack, 0}, {arg,0}, {arg, 1}}
                      , 'RETURN']}
                ]}
            , {<<"make">>
-             , {[integer, integer, integer, {list, integer}], {variant, 2}}
+             , {[{list, integer}, integer, integer, {list, integer}], {variant, [0,1]}}
              , [ {0, [ {'STORE', {var, 1}, {arg, 0}}
                      , {'STORE', {var, 2}, {arg, 1}}
                      , {'STORE', {var, 3}, {arg, 3}}

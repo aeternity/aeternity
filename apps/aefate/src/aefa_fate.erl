@@ -80,8 +80,8 @@ abort({bad_arguments_to_element, Index, Tuple}, ES) ->
     ?t("Bad argument to element, Tuple: ~p, Index: ~p", [Tuple, Index], ES);
 abort({bad_element_type, Type, Value}, ES) ->
     ?t("Type error in element: ~p is not of type ~p", [Value, Type], ES);
-abort({bad_variant_tag, Tag, Size}, ES) ->
-    ?t("Type error in switch: tag ~p is larger than ~p", [Tag, Size], ES);
+abort({bad_variant_tag, Tag}, ES) ->
+    ?t("Type error in switch: tag ~p is larger than switch op", [Tag], ES);
 abort({bad_variant_size, Size}, ES) ->
     ?t("Type error in switch: wrong size ~p", [Size], ES);
 abort(hd_on_empty_list, ES) ->

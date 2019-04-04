@@ -178,14 +178,14 @@ jumpif(Arg0, Arg1, EngineState) ->
 switch(Arg0, Arg1, Arg2, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
     if ?IS_FATE_VARIANT(Value) ->
-            ?FATE_VARIANT(Size, Tag, _T) = Value,
-            if Size =:= 2 ->
+            ?FATE_VARIANT(Arities, Tag, _T) = Value,
+            if length(Arities) =:= 2 ->
+                    %% Tag can only be 0 or 1 or the variant is broken.
                     case Tag of
                         0 -> {jump, Arg1, ES1};
-                        1 -> {jump, Arg2, ES1};
-                        _ -> aefa_fate:abort({bad_variant_tag, Tag, Size}, ES1)
+                        1 -> {jump, Arg2, ES1}
                     end;
-               true -> aefa_fate:abort({bad_variant_size, Size}, ES1)
+               true -> aefa_fate:abort({bad_variant_size, length(Arities)}, ES1)
             end;
        true -> aefa_fate:abort({value_does_not_match_type,Value, variant}, ES1)
     end.
@@ -193,15 +193,15 @@ switch(Arg0, Arg1, Arg2, EngineState) ->
 switch(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
     if ?IS_FATE_VARIANT(Value) ->
-            ?FATE_VARIANT(Size, Tag, _T) = Value,
-            if Size =:= 3 ->
+            ?FATE_VARIANT(Arities, Tag, _T) = Value,
+            if length(Arities) =:= 3 ->
+                    %% Tag can only be 0, 1 or 2 or the variant is broken.
                     case Tag of
                         0 -> {jump, Arg1, ES1};
                         1 -> {jump, Arg2, ES1};
-                        2 -> {jump, Arg3, ES1};
-                        _ -> aefa_fate:abort({bad_variant_tag, Tag, Size}, ES1)
+                        2 -> {jump, Arg3, ES1}
                     end;
-               true -> aefa_fate:abort({bad_variant_size, Size}, ES1)
+               true -> aefa_fate:abort({bad_variant_size, length(Arities)}, ES1)
             end;
        true -> aefa_fate:abort({value_does_not_match_type,Value, variant}, ES1)
     end.
@@ -210,11 +210,11 @@ switch(Arg0, Arg1, EngineState) ->
     N = length(Arg1),
     {Value, ES1} = get_op_arg(Arg0, EngineState),
     if ?IS_FATE_VARIANT(Value) ->
-            ?FATE_VARIANT(Size, Tag, _T) = Value,
-            if Size =:= N ->
+            ?FATE_VARIANT(Arities, Tag, _T) = Value,
+            if length(Arities) =:= N ->
                     BB = lists:nth(Tag + 1, Arg1),
                     {jump, BB, ES1};
-               true -> aefa_fate:abort({bad_variant_size, Size}, ES1)
+               true -> aefa_fate:abort({bad_variant_tag, Tag}, ES1)
             end;
        true -> aefa_fate:abort({value_does_not_match_type, Value, variant}, ES1)
     end.
@@ -399,7 +399,8 @@ int_to_addr(Arg0, Arg1, EngineState) ->
 %% ------------------------------------------------------
 %% Variant instructions
 %% ------------------------------------------------------
-%% A Variant type has a Size (number of different tags).
+%% A Variant type has a list of arities.
+%%  (the arity of each tag).
 %% A Variant also has a tag.
 %% A Variant has a tuple of values which size and types
 %%   are decided by the tag.
@@ -411,10 +412,10 @@ int_to_addr(Arg0, Arg1, EngineState) ->
 %% variants of size 2, 3 and N.
 
 variant(Arg0, Arg1, Arg2, Arg3, EngineState) ->
-    {Size, ES1} = get_op_arg(Arg1, EngineState),
+    {Arities, ES1} = get_op_arg(Arg1, EngineState),
     {Tag, ES2} = get_op_arg(Arg2, ES1),
     {N, ES3} = get_op_arg(Arg3, ES2),
-    {Result, ES4} = make_variant(Size, Tag, N, ES3),
+    {Result, ES4} = make_variant(Arities, Tag, N, ES3),
     write(Arg0, Result, ES4).
 
 variant_test(Arg0, Arg1, Arg2, EngineState) ->
@@ -659,18 +660,17 @@ write({arg, N}, _, ES) ->
 %% ------------------------------------------------------
 
 
-make_variant(Size, Tag, NoElements, ES)  when ?IS_FATE_INTEGER(Size)
+make_variant(Arities, Tag, NoElements, ES)  when ?IS_FATE_LIST(Arities)
                                               , ?IS_FATE_INTEGER(Tag)
                                               , ?IS_FATE_INTEGER(NoElements)
                                               , NoElements >= 0
-                                              , Size >= 0
-                                              , Tag < Size
+                                              , Tag < length(Arities)
                                               , Tag >= 0 ->
     {Elements, ES2} = aefa_fate:pop_n(NoElements, ES),
     Values = list_to_tuple(Elements),
-    {aeb_fate_data:make_variant(Size, Tag, Values), ES2};
-make_variant(Size, Tag, NoElements, ES) ->
-    aefa_fate:abort({bad_arguments_to_make_variant, Size, Tag, NoElements}, ES).
+    {aeb_fate_data:make_variant(Arities, Tag, Values), ES2};
+make_variant(Arities, Tag, NoElements, ES) ->
+    aefa_fate:abort({bad_arguments_to_make_variant, Arities, Tag, NoElements}, ES).
 
 %% ------------------------------------------------------
 %% Tuple instructions
