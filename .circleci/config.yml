@@ -174,12 +174,12 @@ references:
       path: *packages_workspace
       destination: /
 
+
   upload_release_artifacts: &upload_release_artifacts
     run:
       name: Upload release artifacts to central repository (AWS)
       command: |
         aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
-        aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
 
   setup_secrets: &setup_secrets
     run:
@@ -363,6 +363,18 @@ references:
       - *setup_secrets
       - *upload_github_release_asset
       - *upload_release_artifacts
+
+  upload_latest_artifacts: &upload_latest_artifacts
+    - checkout
+    - *set_package_path
+    - *setup_secrets
+    - attach_workspace:
+        at: *packages_workspace
+    - run:
+        name: Upload build artifacts to central repository (AWS)
+        command: |
+          aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
+    - *fail_notification
 
 jobs:
   build:
@@ -659,6 +671,19 @@ jobs:
             docker push ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH:?}
       - *fail_notification
 
+  docker_push_latest:
+    executor: infrastructure_container_stable
+    <<: *infrastructure_config
+    steps:
+      - checkout
+      - *setup_secrets
+      - *setup_remote_docker
+      - run:
+          name: Build and push Docker image to DockerHub
+          command: |
+            docker login -u $DOCKER_USER -p $DOCKER_PASS
+            docker push ${DOCKERHUB_REPO:?}:latest
+
   docker_push_tag:
     executor: infrastructure_container_stable
     <<: *infrastructure_config
@@ -792,6 +817,23 @@ jobs:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: ubuntu
 
+  upload_latest_packages_osx:
+    executor: infrastructure_container_stable
+    <<: *infrastructure_config
+    <<: *upload_package
+    environment:
+      <<: *infrastructure_config_environment
+      PKG_TARGET_OS: macos
+    steps: *upload_latest_artifacts
+
+  upload_latest_packages_linux:
+    executor: infrastructure_container_stable
+    <<: *infrastructure_config
+    <<: *upload_package
+    environment:
+      <<: *infrastructure_config_environment
+      PKG_TARGET_OS: ubuntu
+    steps: *upload_latest_artifacts
 # CircleCI skips a job for a tag by default.
 # A job must have a filters tags section to run as a part of a tag push
 # and all its transitively dependent jobs must also have a filters tags section.
@@ -817,17 +859,6 @@ workflows:
                 - env/dev2
                 - system-tests
                 - master
-
-      - deploy_api_docs:
-          requires:
-            - static_analysis
-            - rebar_lock_check
-            - hodl_green
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *stable_tag_regex
 
       - docker_system_smoke_tests:
           requires:
@@ -1174,6 +1205,53 @@ workflows:
             - static_analysis
             - rebar_lock_check
             - hodl_artefact_upload
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
+
+      - hodl_latest:
+          type: approval
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
+
+
+      - upload_latest_packages_linux:
+          requires:
+            - linux_package
+            - hodl_latest
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
+
+      - upload_latest_packages_osx:
+          requires:
+            - osx_package
+            - hodl_latest
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
+
+      - deploy_api_docs:
+          requires:
+            - hodl_latest
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
+
+      - docker_push_latest:
+          requires:
+            - hodl_latest
           filters:
             branches:
               ignore: /.*/
