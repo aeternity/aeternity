@@ -10,6 +10,8 @@
 
 -behaviour(gen_server).
 
+-include("aestratum.hrl").
+-include_lib("aecore/include/blocks.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
 %% Mnesia
@@ -32,44 +34,12 @@
 
 -define(KEYBLOCK_ROUNDS_DELAY, 180).
 -define(MAX_ROUNDS, 10).
--define(MIN_TX_FEE, 0). %% for now - revisit later... (in smallest denominated coin unit)
 -define(SHARES_BATCH_LENGTH, 1000).
 
 -define(LOG_INFO(Format, Args), io:format("REWARD [INFO]: " ++ Format ++ "\n", Args)).
 -define(LOG_ERROR(Format, Args), io:format("REWARD [ERROR]: " ++ Format ++ "\n", Args)).
 
--define(HASHES_TAB, aestratum_hash).
--define(SHARES_TAB, aestratum_share).
--define(ROUNDS_TAB, aestratum_round).
--define(REWARDS_TAB, aestratum_reward).
-
--define(TABS, [?HASHES_TAB, ?SHARES_TAB, ?ROUNDS_TAB, ?REWARDS_TAB]).
-
-%%%===================================================================
-%%% PERSISTENT STATE
-%%%===================================================================
-
--record(aestratum_hash,
-        {hash   :: binary(),
-         key    :: non_neg_integer()}).
-
--record(aestratum_share,
-        {key    :: non_neg_integer(),
-         hash   :: binary(),
-         target :: non_neg_integer(), % miner's target
-         miner  :: binary()}).        % public key
-
--record(aestratum_round,
-        {key    :: non_neg_integer(),
-         val    :: term()}).          % not used, mnesia needs it
-
--record(aestratum_reward,
-        {height  :: non_neg_integer(),
-         hash    :: binary(),
-         pool    :: #{binary() => non_neg_integer()},
-         miners  :: #{binary() => non_neg_integer()},
-         unpaid  :: non_neg_integer(),
-         round_key :: non_neg_integer()}).
+-type amount() :: non_neg_integer().
 
 %%%===================================================================
 %%% MNESIA CREATE TABLE HOOKS (driven by aec_db)
@@ -95,7 +65,8 @@ check_tables(Acc) ->
 table_specs(?HASHES_TAB, Mode) -> ?TAB_DEF(?HASHES_TAB, set, Mode);
 table_specs(?SHARES_TAB, Mode) -> ?TAB_DEF(?SHARES_TAB, ordered_set, Mode);
 table_specs(?ROUNDS_TAB, Mode) -> ?TAB_DEF(?ROUNDS_TAB, ordered_set, Mode);
-table_specs(?REWARDS_TAB, Mode) -> ?TAB_DEF(?REWARDS_TAB, ordered_set, Mode).
+table_specs(?REWARDS_TAB, Mode) -> ?TAB_DEF(?REWARDS_TAB, ordered_set, Mode);
+table_specs(?PAYMENTS_TAB, Mode) -> ?TAB_DEF(?PAYMENTS_TAB, ordered_set, Mode).
 
 tables_specs(Mode) -> [table_specs(Tab, Mode) || Tab <- ?TABS].
 
@@ -148,14 +119,7 @@ confirm_payout(Height) ->
 init([LastN, {BeneficiariesPctShare, Beneficiaries}]) ->
     State = #state{last_n = LastN,
                    benefs = {BeneficiariesPctShare, Beneficiaries}},
-    transaction(
-      fun () ->
-              mnesia:table_info(?ROUNDS_TAB, size) == 0 andalso store_round(),
-              [aestratum_chain:payout_rewards(R#aestratum_reward.height,
-                                              R#aestratum_reward.pool,
-                                              R#aestratum_reward.miners) ||
-                  R <- mnesia:match_object(#aestratum_reward{_ = '_'})]
-      end),
+    transaction(fun () -> mnesia:table_info(?ROUNDS_TAB, size) == 0 andalso store_round() end),
     {ok, State}.
 
 

@@ -29,11 +29,12 @@
         {id      :: {Height :: non_neg_integer(), Index :: non_neg_integer()},
          total   :: non_neg_integer(),
          relmap  :: #{binary() => float()},
-         fee     :: undefined | non_neg_integer(),
-         gas     :: undefined | non_neg_integer(),
          absmap  :: undefined | #{binary() => non_neg_integer()},
          tx_hash :: undefined | binary(),
          nonce   :: undefined | non_neg_integer(),
+         fee     :: undefined | non_neg_integer(),
+         gas     :: undefined | non_neg_integer(), % min gas - for transaction
+         run_gas :: undefined | non_neg_integer(), % contract gas - for computation
          date    :: undefined | erlang:date()}).
 
 -record(aestratum_candidate,
@@ -87,3 +88,7 @@
 -define(POOL_PERCENT_SUM,     ?CFG(pool_percent_sum)).
 -define(POOL_PERCENT_SHARES,  ?CFG(pool_percent_shares)).
 -define(POOL_RELATIVE_SHARES, ?CFG(pool_relative_shares)).
+
+%% INTERNAL (not configurable from config)
+-define(REWARD_KEYBLOCK_DELAY, ?CFG(reward_keyblock_delay)).
+-define(PAYOUT_KEYBLOCK_DELAY, ?CFG(payout_keyblock_delay)).
