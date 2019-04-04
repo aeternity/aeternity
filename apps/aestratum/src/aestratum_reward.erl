@@ -40,6 +40,9 @@
 -define(LOG_ERROR(Format, Args), io:format("REWARD [ERROR]: " ++ Format ++ "\n", Args)).
 
 -type amount() :: non_neg_integer().
+-type sort_key() :: non_neg_integer().
+-type reward_return() :: {ok, #aestratum_reward{} | not_our_share} |
+                         {error, no_range | cant_get_top_key_block}.
 
 %%%===================================================================
 %%% MNESIA CREATE TABLE HOOKS (driven by aec_db)
@@ -78,13 +81,13 @@ table_vsn(_) -> 1.
 
 -record(state,
         {last_n :: non_neg_integer(),
-         benefs :: {TotalCutPcts :: number(), [{Account :: binary(), CutPcts :: float()}]}}).
+         benefs :: {TotalCutPcts :: number(), #{miner_pubkey() => float()}}}).
 
 -record(reward_key_block,
-        {share_key :: non_neg_integer(),
+        {share_key :: sort_key(),
          height    :: non_neg_integer(),
          target    :: non_neg_integer(),
-         tokens    :: non_neg_integer(),
+         tokens    :: amount(),
          hash      :: binary()}).
 
 %%%===================================================================
@@ -122,19 +125,17 @@ init([LastN, {BeneficiariesPctShare, Beneficiaries}]) ->
 handle_cast(keyblock, State) ->
     transaction(fun () -> store_round() end),
     case maybe_compute_rewards(State) of
-        {ok, #aestratum_reward{height = Height,
-                               pool   = PoolRewards,
-                               miners = MinersRewards}} ->
+        {ok, #aestratum_reward{height = Height, pool = PoolRewards, miners = MinersRewards}} ->
             aestratum_chain:payout_rewards(Height, PoolRewards, MinersRewards);
         {ok, not_our_share} ->
             ok;
-        Error ->
-            ?LOG_ERROR("failed to compute rewards: ~p", [Error])
+        {error, Reason} ->
+            ?LOG_ERROR("failed to compute rewards: ~p", [Reason])
     end,
     {noreply, State};
 
-handle_cast({submit_share, Miner, MinerTarget, Hash}, State) ->
-    transaction(fun () -> store_share(Miner, MinerTarget, Hash) end),
+handle_cast({submit_share, <<MinerPK:?MINER_PUB_BYTES/binary>>, MinerTarget, Hash}, State) ->
+    transaction(fun () -> store_share(MinerPK, MinerTarget, Hash) end),
     {noreply, State};
 
 handle_cast({confirm_payout, Height}, State) ->
@@ -199,7 +200,7 @@ store_reward(Height, Hash, BenefRewards, MinerRewards, Amount, LastRoundKey) ->
     ok = mnesia:write(Reward),
     {ok, Reward}.
 
-
+-spec maybe_compute_rewards(#state{}) -> reward_return().
 maybe_compute_rewards(State) ->
     on_reward_share(
       fun (#reward_key_block{height = Height, hash = Hash, tokens = Amount} = RewardKeyBlock) ->
@@ -213,7 +214,8 @@ maybe_compute_rewards(State) ->
               end
       end).
 
-
+-spec on_reward_share(fun((#reward_key_block{}) -> reward_return() | no_return())) ->
+                             reward_return() | no_return().
 on_reward_share(TxFun) ->
     case aestratum_chain:get_reward_key_header(?KEYBLOCK_ROUNDS_DELAY) of
         {ok, KeyHeader} ->
@@ -233,14 +235,14 @@ on_reward_share(TxFun) ->
                               {ok, not_our_share}
                       end
               end);
-        Error ->
-            Error
+        {error, Reason} ->
+            {error, Reason}
     end.
 
-
-compute_rewards(#reward_key_block{share_key = RewardShareKey,
-                                   target = BlockTarget,
-                                   tokens = BlockReward},
+-spec compute_rewards(#reward_key_block{}, #state{}) ->
+                             {ok, map(), map(), sort_key()} |
+                             {error, no_range}.
+compute_rewards(#reward_key_block{share_key = RewardShareKey, target = BlockTarget},
                 #state{last_n = N,
                        benefs = {BenefSumPcts, Beneficiaries}}) ->
     case shares_range(RewardShareKey, N) of
@@ -255,7 +257,9 @@ compute_rewards(#reward_key_block{share_key = RewardShareKey,
             {error, Reason}
     end.
 
-
+-spec shares_range(sort_key(), pos_integer()) ->
+                          {ok, sort_key(), sort_key()} |
+                          {error, no_range}.
 shares_range(RewardShareKey, N) ->
     First = case mnesia:prev(?ROUNDS_TAB, RewardShareKey) of
                 '$end_of_table' -> RewardShareKey;
@@ -270,7 +274,7 @@ shares_range(RewardShareKey, N) ->
             {error, no_range}
     end.
 
-
+-spec shares_selector(sort_key(), sort_key()) -> ets:match_spec().
 shares_selector(FirstKey, LastKey) ->
     ets:fun2ms(fun (#aestratum_share{key = SK} = Share)
                      when SK >= FirstKey, SK =< LastKey -> Share
@@ -322,6 +326,7 @@ delete_old_records(Height) ->
     end.
 
 
+-spec transaction(fun (() -> any())) -> any() | no_return().
 transaction(Fun) when is_function(Fun, 0) ->
     mnesia:activity(transaction, Fun).
 
