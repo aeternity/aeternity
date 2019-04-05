@@ -156,6 +156,7 @@ groups() ->
     , {aevm_3, [sequence], ?ALL_TESTS}
     , {fate_1, [sequence], [ create_contract
                            , sophia_identity
+                           , sophia_remote_identity
                            ]}
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account

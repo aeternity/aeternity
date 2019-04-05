@@ -51,7 +51,8 @@ bits_test_() ->
     make_calls(bits()).
 
 make_calls(ListOfCalls) ->
-    Chain = setup_chain(),
+    Cache = setup_contracts(),
+    Chain = #{},
     [{lists:flatten(io_lib:format("call(~p,~p,~p)->~p~n~p : ~p",
                                   [C,F,A,R,
                                    aefate_test_utils:encode(A),
@@ -61,7 +62,7 @@ make_calls(ListOfCalls) ->
               Call = make_call(C,F,A),
               case R of
                   {error, E} ->
-                      case aefa_fate:run(Call, Chain) of
+                      case aefa_fate:run_with_cache(Call, Chain, Cache) of
                           {ok, nomatch} -> ok;
                           {error, Error, #{trace := Trace}} ->
                               ?assertEqual({E, Trace}, {Error, Trace})
@@ -69,7 +70,7 @@ make_calls(ListOfCalls) ->
                   _ ->
                       FateRes = aefate_test_utils:encode(R),
                       {ok, #{accumulator := Res,
-                             trace := Trace}} = aefa_fate:run(Call, Chain),
+                             trace := Trace}} = aefa_fate:run_with_cache(Call, Chain, Cache),
                       ?assertEqual({FateRes, Trace}, {Res, Trace})
               end
       end}
@@ -254,7 +255,7 @@ bits() ->
 
 
 make_call(Contract, Function, Arguments) ->
-    #{ contract  => Contract
+    #{ contract  => pad_contract_name(Contract)
      , gas => 100000
      , call => aeb_fate_encoding:serialize(
                  {tuple, {Function, {tuple, list_to_tuple(
@@ -265,22 +266,25 @@ make_call(Contract, Function, Arguments) ->
                 )
      }.
 
-
-setup_chain() ->
-    #{ contracts => setup_contracts()}.
-
 setup_contracts() ->
     Cs = contracts(),
-    NewCs = [{C, setup_contract(Functions)}
+    NewCs = [{aeb_fate_data:make_address(pad_contract_name(C)), setup_contract(Functions)}
              || {C, Functions} <- maps:to_list(Cs)],
     maps:from_list(NewCs).
+
+pad_contract_name(Name) ->
+    PadSize = 32 - byte_size(Name),
+    iolist_to_binary([Name, lists:duplicate(PadSize, "_")]).
 
 setup_contract(Functions) ->
     lists:foldl(
       fun({FunctionName, Signature, BBs}, State) ->
               set_function_code(FunctionName, Signature, BBs, State)
       end,
-      #{functions => #{}},
+      #{functions => #{},
+        annotations => #{},
+        symbols => #{}
+       },
       Functions).
 
 set_function_code(Name, Signature, BBs, #{functions := Functions} = S) ->
@@ -290,7 +294,6 @@ set_function_code(Name, Signature, BBs, #{functions := Functions} = S) ->
 set_bbs([], BBs) -> BBs;
 set_bbs([{N, Code}|Rest], BBs) ->
     set_bbs(Rest, BBs#{N => Code}).
-
 
 contracts() ->
     #{ <<"test">> =>
@@ -326,7 +329,9 @@ contracts() ->
            , { <<"remote_call">>
              , {[integer],integer}
              , [ {0, [ {'PUSH', {arg,0}},
-                       {'CALL_R', {immediate, <<"remote">>}, {immediate, <<"add_five">>}} ]}
+                       {'CALL_R',
+                        {immediate, aeb_fate_data:make_address(pad_contract_name(<<"remote">>))},
+                        {immediate, <<"add_five">>}} ]}
                , {1, [ {'INC', {stack, 0}},
                        'RETURN']}
                ]
@@ -334,7 +339,9 @@ contracts() ->
            , { <<"remote_tailcall">>
              , {[integer],integer}
              , [ {0, [ {'PUSH', {arg,0}},
-                       {'CALL_TR', {immediate, <<"remote">>}, {immediate, <<"add_five">>}} ]}
+                       {'CALL_TR',
+                        {immediate, aeb_fate_data:make_address(pad_contract_name(<<"remote">>))},
+                        {immediate, <<"add_five">>}} ]}
                ]
              }
            ]
