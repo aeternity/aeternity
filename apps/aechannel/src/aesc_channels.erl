@@ -290,7 +290,7 @@ new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount, InitAcco
              state_hash           = StateHash,
              round                = Round,
              solo_round           = 0,
-             locked_until         = 0, % zero means "not closing" as well
+             locked_until         = 0, % zero means "active" as well
              lock_period          = LockPeriod,
              version              = Version}.
 
