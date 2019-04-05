@@ -751,13 +751,31 @@ channel_create({InitiatorPubkey, InitiatorAmount,
                 {value, NonceX} -> NonceX;
                 none            -> Nonce0
             end,
+    {InitAccount, S1} = get_account(InitiatorPubkey, S),
+    {RespAccount, S2} = get_account(ResponderPubkey, S1),
     Channel = aesc_channels:new(InitiatorPubkey, InitiatorAmount,
                                 ResponderPubkey, ResponderAmount,
+                                InitAccount, RespAccount,
                                 ReserveAmount, DelegatePubkeys,
-                                StateHash, LockPeriod, Nonce),
+                                StateHash, LockPeriod, Nonce,
+                                S#state.height),
     ChannelPubkey = aesc_channels:pubkey(Channel),
-    assert_not_channel(ChannelPubkey, S),
-    cache_put(channel, Channel, S).
+    assert_not_channel(ChannelPubkey, S2),
+    S3 = copy_contract_state_for_auth(Channel, InitAccount, S2),
+    S4 = copy_contract_state_for_auth(Channel, RespAccount, S3),
+    cache_put(channel, Channel, S4).
+
+copy_contract_state_for_auth(Ch, Account, S) ->
+    case aec_accounts:type(Account) of
+        basic -> S;
+        generalized ->
+            {_, ContractPK} = aeser_id:specialize(aec_accounts:ga_contract(Account)),
+            {Contract, S1 = #state{trees = Trees}} = get_contract(ContractPK, S),
+            StoreKey = aesc_channels:auth_store_key(aec_accounts:id(Account), Ch),
+            CtTree  = aec_trees:contracts(Trees),
+            CtTree1 =  aect_state_tree:copy_contract_store(Contract, StoreKey, CtTree),
+            S1#state{trees = aec_trees:set_contracts(Trees, CtTree1)}
+    end.
 
 %%%-------------------------------------------------------------------
 

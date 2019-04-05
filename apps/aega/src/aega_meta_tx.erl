@@ -39,6 +39,9 @@
          tx/1
         ]).
 
+-export([set_tx/2
+        ]).
+
 -define(GA_META_TX_VSN, 1).
 -define(GA_META_TX_TYPE, ga_meta_tx).
 
@@ -106,6 +109,10 @@ auth_id(GAPubkey, AuthData) ->
 -spec tx(tx()) -> aetx_sign:signed_tx().
 tx(#ga_meta_tx{tx = Tx}) ->
     Tx.
+
+-spec set_tx(aetx_sign:signed_tx(), tx()) -> tx().
+set_tx(NewTx, Tx) ->
+    Tx#ga_meta_tx{tx = NewTx}.
 
 %%%===================================================================
 %%% Behavior API
@@ -195,7 +202,7 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
 set_meta_result(ok, _Tx, Trees, _Env) ->
     Trees;
 set_meta_result(Err = {error, _}, Tx, Trees, Env) ->
-    ct:pal("Setting error: ~p\n", [Err]),
+    %% ct:pal("Setting error: ~p\n", [Err]),
     SetInstructions =
         aec_tx_processor:ga_set_meta_tx_res_instructions(
             ga_pubkey(Tx), auth_data(Tx), Err),
