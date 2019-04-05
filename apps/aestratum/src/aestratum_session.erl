@@ -30,7 +30,7 @@
 
 -define(HOST, application:get_env(aestratum, host, <<"pool.aeternity.com">>)).
 -define(PORT, application:get_env(aestratum, port, 9999)).
--define(MSG_TIMEOUT, application:get_env(aestratum, timeout, 30000)).
+-define(MSG_TIMEOUT, application:get_env(aestratum, msg_timeout, 30000)).
 -define(EXTRA_NONCE_NBYTES, application:get_env(aestratum, extra_nonce_nbytes, 4)).
 -define(INITIAL_SHARE_TARGET, application:get_env(aestratum, initial_share_target, 1)).
 -define(SHARE_TARGET_DIFF_THRESHOLD, application:get_env(aestratum, share_target_diff_threshold, 5.0)).

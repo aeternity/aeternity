@@ -934,33 +934,9 @@
                 "beneficiaries" : {
                     "type" : "array",
                     "items" : {
-                        "description" : "Public key receiving poold reward to percent share map",
+                        "description" : "Public key receiving pool reward to percent share map.",
                         "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(\.[0-9]*)?$"
                     }
-                },
-                "extra_nonce_bytes" : {
-                    "type" : "integer"
-                },
-                "initial_target" : {
-                    "type" : "integer"
-                },
-                "max_target" : {
-                    "type" : "integer"
-                },
-                "max_connections" : {
-                    "type" : "integer"
-                },
-                "num_acceptors" : {
-                    "type" : "integer"
-                },
-                "transport" : {
-                    "type" : "string",
-                    "enum" : ["tcp", "ssl"]
-                },
-                "port" : {
-                    "description" : "Port number of the ... ???.",
-                    "type" : "integer",
-                    "minimum" : 0
                 },
                 "keys" : {
                     "type"    : "object",
@@ -971,6 +947,66 @@
                             "type" : "string"
                         }
                     }
+                },
+                "extra_nonce_bytes" : {
+                    "type" : "integer",
+                    "default" : 4
+                },
+                "initial_share_target" : {
+                    "type" : "integer"
+                },
+                "max_share_target" : {
+                    "type" : "integer",
+                    "minimum" : 1,
+                    "maximum" : 115790322390251417039241401711187164934754157181743688420499462401711837020160
+                },
+                "desired_solve_time" : {
+                    "type" : "integer",
+                    "minimum" : 1,
+                    "maximum" : 180,
+                    "default" : 30
+                },
+                "max_solve_time" : {
+                    "type" : "integer",
+                    "minimum" : 1,
+                    "maximum" : 360,
+                    "default" : 60
+                },
+                "share_target_diff_threshold" : {
+                    "type" : "number",
+                    "default" : 5.0
+                },
+                "max_jobs" : {
+                    "type" : "integer",
+                    "default" : 20
+                },
+                "max_connections" : {
+                    "type" : "integer",
+                    "default" : 1024
+                },
+                "num_acceptors" : {
+                    "type" : "integer",
+                    "default" : 100
+                },
+                "transport" : {
+                    "type" : "string",
+                    "enum" : ["tcp", "ssl"],
+                    "default" : "tcp"
+                },
+                "msg_timeout" : {
+                    "type" : "integer",
+                    "default" : 15
+                },
+                "host" : {
+                    "type" : "string",
+                    "default" : "pool.aeternity.com"
+                },
+                "port" : {
+                    "description" : "Port number of Stratum server.",
+                    "type" : "integer",
+                    "minimum" : 0,
+                    "maximum" : 65535,
+                    "default" : 9999
                 }
             }
         }
