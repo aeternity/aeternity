@@ -168,6 +168,8 @@ send_payment(#aestratum_payment{fee = Fee,
     SignedTx = aetx_sign:new(CallTx, [enacl:sign_detached(SerializedTx, SK)]),
     TxHash = aetx_sign:hash(SignedTx),
     aec_tx_pool:push(SignedTx),
+    ?info("payment contract call tx ~p pushed to mempool, rewarding ~p beneficiaries using fee ~p and gas ~p",
+          [TxHash, maps:size(Transfers), Fee, Gas]),
     transaction(fun () -> mnesia:write(P#aestratum_payment{tx_hash = TxHash}) end),
     TxHash.
 
@@ -178,6 +180,8 @@ create_payments(Height, BlockReward, PoolRewards, MinersRewards,
     MinerRewards = BlockReward - BenefRewards,
     P0 = create_payment(Height, 0, BenefRewards, PoolRewards, Caller, Contract),
     Ps = create_payments(Height, 1, MinerRewards, MinersRewards, Caller, Contract),
+    ?info("created payments at block height ~p, for ~p pool operators and ~p miners, distributing ~p tokens",
+          [Height, maps:size(PoolRewards), maps:size(MinerRewards), BlockReward]),
     Ps#{0 => P0}.
 
 
@@ -203,10 +207,6 @@ create_payment(Height, BatchIdx, Amount, RelativeRewards, CallerAcc,
     Fee = round(MinFee * ?PAYMENT_CONTRACT_MIN_FEE_MULTIPLIER),
     Gas = round(MinGas * ?PAYMENT_CONTRACT_MIN_GAS_MULTIPLIER),
     RewardAmount = Amount - Fee - Gas,
-
-    %% io:format("////////// FEE = ~p | GAS = ~p | REWARD_AMOUNT = ~p~n",
-    %%           [Fee, Gas, RewardAmount]),
-
     true = RewardAmount > 0,
     Transfers = calculate_rewards(RelativeRewards, RewardAmount),
     #aestratum_payment{height = Height,
@@ -275,12 +275,10 @@ delete_complete_payments() ->
     Checks = lists:foldl(
                fun (#aestratum_payment{tx_hash = TxHash, height = Height}, Acc) ->
                        {AllSeen, SeenTxs} = maps:get(Height, Acc, {true, []}),
-                       maps:put(Height,
-                                case aec_chain:find_tx_with_location(TxHash) of
-                                    {<<_/binary>>, _} -> {AllSeen, [TxHash | SeenTxs]};
-                                    _ -> {false, SeenTxs}
-                                end,
-                                Acc)
+                       Acc#{Height => case aec_chain:find_tx_with_location(TxHash) of
+                                          {<<_/binary>>, _} -> {AllSeen, [TxHash | SeenTxs]};
+                                          _ -> {false, SeenTxs}
+                                      end}
                end, #{}, Payments),
     maps:fold(fun (Height, {AllSeen, SeenTxs}, _) ->
                       SeenTxs /= [] andalso delete_payment_records(SeenTxs),
