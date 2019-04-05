@@ -134,7 +134,7 @@ handle_cast(keyblock, State) ->
         {ok, not_our_share} ->
             ok;
         {error, Reason} ->
-            ?LOG_ERROR("failed to compute rewards: ~p", [Reason])
+            ?error("failed to compute rewards: ~p", [Reason])
     end,
     {noreply, State};
 
@@ -338,6 +338,7 @@ delete_old_records(Height) ->
             [mnesia:delete(?HASHES_TAB, H, write) || H <- Hashes],
             [mnesia:delete(?ROUNDS_TAB, R, write) || R <- Rounds],
             mnesia:delete(?REWARDS_TAB, Height, write),
+            ?info("deleted records for height ~p", [Height]),
             ok;
         [] ->
             %% this shouldn't happen, since rewards are deleted one by one
