@@ -28,7 +28,7 @@ expect(Chain, Contract, Function, Arguments, Expect) ->
 
 %% For now, implement pipeline here.
 compile_contract(Code) ->
-    compile_contract(Code, []).
+    compile_contract(Code, [{debug, [scode, opt, opt_rules, compile]}]).
 
 compile_contract(Code, Options) ->
     {ok, Ast} = aeso_parser:string(Code),
@@ -73,6 +73,7 @@ arithmetic() ->
      "  function eq0   (x : int) = x == 0\n"
      "  function eq3   (x : int) = x == 3\n"
      "  function pred  (x : int) = if (x == 0) 0 else x - 1\n"
+     "  function iadd  (x, y)    = (x + y) + 3\n"
      "  function nest  (x : int, y : int) =\n"
      "    if   (x == 0) 0\n"
      "    elif (y == 0) x + 1\n"
@@ -103,7 +104,7 @@ arith_tests() ->
 arith_test_() -> mk_test([arithmetic()], arith_tests()).
 
 tuples() ->
-    {<<"arithmetic">>,
+    {<<"tuples">>,
      "contract Tuples =\n"
      "  function fst(p : (int, string)) =\n"
      "    switch(p)\n"
@@ -117,12 +118,64 @@ tuples() ->
      "  function snd'(p : (int, string)) =\n"
      "    switch(p)\n"
      "      (_, y) => y\n"
+     "  function sum(p) =\n"
+     "    switch(p)\n"
+     "      (x, y) => x + y\n"
+     "  function swap(p : (int, string)) =\n"
+     "    switch(p)\n"
+     "      (x, y) => (y, x)\n"
+     "  function id(p : (int, int, string)) =\n"
+     "    switch(p)\n"
+     "      (x, y, z) => (x, y, z)\n"
+     "  function nest(p : ((int, int), string)) =\n"
+     "    switch(p)\n"
+     "      (xy, z) => switch(xy) (x, y) => (x, y, z)\n"
+    "  function deep(p : ((int, int), (int, int))) =\n"
+    "    switch(p)\n"
+    "      ((x, y), (z, w)) => (x, y, z, w)\n"
+    "  function deep_sum(p : ((int, int), (int, int))) =\n"
+    "    switch(p)\n"
+    "      ((x, y), (z, w)) => x + y + z + w\n"
     }.
 
-tuple_tests() -> lists:flatten(
-    [ [{Fst, [{42, <<"forty-two">>}], 42}              || Fst <- ["fst", "fst"]],
-      [{Snd, [{42, <<"forty-two">>}], <<"forty-two">>} || Snd <- ["snd", "snd'"]]
+tuple_tests() ->
+    A    = 42,
+    B    = 199,
+    S    = <<"forty-two">>,
+    lists:flatten(
+    [ [],
+      [{Fst, [{A, S}], A} || Fst <- ["fst", "fst"]],
+      [{Snd, [{A, S}], S} || Snd <- ["snd", "snd'"]],
+      [{"sum",  [{A, B}], A + B}],
+      [{"swap", [{A, S}], {tuple, {S, A}}}],
+      [{"id",   [{A, B, S}],   {tuple, {A, B, S}}}],
+      [{"nest", [{{A, B}, S}], {tuple, {A, B, S}}}],
+      [{"deep", [{{A, B}, {A + 1, B + 1}}], {tuple, {A, B, A + 1, B + 1}}}],
+      []
     ]).
 
 tuple_test_() -> mk_test([tuples()], tuple_tests()).
+
+patterns() ->
+    {<<"patterns">>,
+     "contract PatternMatching =\n"
+     "  function or(p : (bool, bool)) =\n"
+     "    switch(p)\n"
+     "      (false, y) => y\n"
+     "      (true,  _) => true\n"
+     "  function and'(p : (bool, bool)) =\n"
+     "    switch(p)\n"
+     "      (x, false) => false\n"
+     "      (x, true)  => x\n"
+     ""}.
+
+pattern_tests() ->
+    lists:flatten(
+      [ [],
+        [{"or",   [{A, B}], A or  B} || A <- [false, true], B <- [false, true]],
+        [{"and'", [{A, B}], A and B} || A <- [false, true], B <- [false, true]],
+        []
+      ]).
+
+pattern_test_() -> mk_test([patterns()], pattern_tests()).
 
