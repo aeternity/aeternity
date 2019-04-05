@@ -3,11 +3,13 @@
 -behavior(application).
 
 -export([start/2,
-         stop/1]).
+         stop/1
+        ]).
 
 start(_Type, _Args) ->
-    {ok, Config} = aeu_env:user_config(<<"stratum">>),
-    aestratum_sup:start_link(Config).
+    {ok, Cfg} = aestratum_config:read(),
+    aestratum_sup:start_link(Cfg).
 
 stop(_State) ->
 	ok.
+
