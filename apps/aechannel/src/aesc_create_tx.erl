@@ -153,7 +153,8 @@ process(#channel_create_tx{} = Tx, Trees, Env) ->
           state_hash(Tx),
           lock_period(Tx),
           fee(Tx),
-          nonce(Tx)),
+          nonce(Tx),
+          round(Tx)),
     aec_tx_processor:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
