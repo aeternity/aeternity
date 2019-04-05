@@ -303,8 +303,8 @@ maybe_convert_oracle_arg(OracleId, Arg, State) ->
     case aeo_state_tree:lookup_oracle(OracleId, aec_trees:oracles(Trees)) of
         {value, Oracle} ->
             case aeo_oracles:abi_version(Oracle) of
-                ?ABI_NO_VM    -> Arg;
-                ?ABI_SOPHIA_1 -> aeso_heap:to_binary(Arg)
+                ?ABI_NO_VM         -> Arg;
+                ?ABI_AEVM_SOPHIA_1 -> aeso_heap:to_binary(Arg)
             end;
         none ->
             %% Will fail later
@@ -369,7 +369,7 @@ oracle_get_answer(OracleId, QueryId, #state{trees = ChainTrees}) ->
                     ResponseFormat = aeo_oracles:response_format(Oracle),
                     ABIVersion = aeo_oracles:abi_version(Oracle),
                     case oracle_typerep(ABIVersion, ResponseFormat) of
-                        {ok, Type} when ABIVersion =:= ?ABI_SOPHIA_1 ->
+                        {ok, Type} when ABIVersion =:= ?ABI_AEVM_SOPHIA_1 ->
                             try aeso_heap:from_binary(Type, Answer) of
                                 {ok, Result} -> {ok, {some, Result}};
                                 {error, _} -> {error, bad_answer}
@@ -421,7 +421,7 @@ oracle_query_fee(Oracle, #state{trees = ChainTrees, vm_version=VMVersion}) ->
         {value, O} ->
             Fee = aeo_oracles:query_fee(O),
             {ok, Fee};
-        none when ?IS_VM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 ->
+        none when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 ->
             {error, no_such_oracle};
         none when VMVersion =:= ?VM_AEVM_SOPHIA_1 ->
             %% Backwards compatible bug.
@@ -462,7 +462,7 @@ oracle_response_format(Oracle, #state{trees = ChainTrees}) ->
 oracle_typerep(?ABI_NO_VM,_BinaryFormat) ->
     %% Treat this as a string
     {ok, string};
-oracle_typerep(?ABI_SOPHIA_1, BinaryFormat) ->
+oracle_typerep(?ABI_AEVM_SOPHIA_1, BinaryFormat) ->
     try aeso_heap:from_binary(typerep, BinaryFormat) of
         {ok, Format} -> {ok, Format};
         {error, _} -> {error, bad_typerep}

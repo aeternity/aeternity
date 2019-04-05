@@ -390,10 +390,10 @@ get_value(Id, Key, Store) ->
         Val  -> Val
     end.
 
-is_valid_key(#{vm := VM}, ?SOPHIA_STATE_KEY)      when ?IS_VM_SOPHIA(VM) -> true;
-is_valid_key(#{vm := VM}, ?SOPHIA_STATE_TYPE_KEY) when ?IS_VM_SOPHIA(VM) -> true;
-is_valid_key(#{vm := VM}, ?SOPHIA_STATE_MAPS_KEY) when ?IS_VM_SOPHIA(VM) -> true;
-is_valid_key(#{vm := VM}, K) when ?IS_VM_SOPHIA(VM) -> is_binary(K) andalso byte_size(K) >= 32;
+is_valid_key(#{vm := VM}, ?SOPHIA_STATE_KEY)      when ?IS_AEVM_SOPHIA(VM) -> true;
+is_valid_key(#{vm := VM}, ?SOPHIA_STATE_TYPE_KEY) when ?IS_AEVM_SOPHIA(VM) -> true;
+is_valid_key(#{vm := VM}, ?SOPHIA_STATE_MAPS_KEY) when ?IS_AEVM_SOPHIA(VM) -> true;
+is_valid_key(#{vm := VM}, K) when ?IS_AEVM_SOPHIA(VM) -> is_binary(K) andalso byte_size(K) >= 32;
 is_valid_key(#{vm := ?VM_AEVM_SOLIDITY_1}, K) -> is_binary_map_key(K).
 
 %% -- Store API --

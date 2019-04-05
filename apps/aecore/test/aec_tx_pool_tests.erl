@@ -822,7 +822,7 @@ signed_ct_create_tx(Sender, Nonce, Fee, GasPrice) ->
          , nonce       => Nonce
          , code        => <<"NOT PROPER BYTE CODE">>
          , vm_version  => ?VM_AEVM_SOPHIA_2
-         , abi_version => ?ABI_SOPHIA_1
+         , abi_version => ?ABI_AEVM_SOPHIA_1
          , deposit     => 10
          , amount      => 200
          , gas         => 100000

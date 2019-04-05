@@ -88,7 +88,7 @@ handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
                  %% TEMP: Keep abi_version optional for one release cycle
                  read_required_params([owner_id, code, vm_version, deposit,
                                        amount, gas, gas_price, fee, call_data]),
-                 read_optional_params([{ttl, ttl, '$no_value'}, {abi_version, abi_version, ?ABI_SOPHIA_1}]),
+                 read_optional_params([{ttl, ttl, '$no_value'}, {abi_version, abi_version, ?ABI_AEVM_SOPHIA_1}]),
                  api_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
                  get_nonce_from_account_id(owner_id),
                  contract_bytearray_params_decode([code, call_data]),
@@ -113,7 +113,7 @@ handle_request_('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, 
                                        amount, gas, gas_price, fee
                                        ]),
                  read_optional_params([{X, X, '$no_value'} || X <- [ttl, arguments, call]]
-                                      ++ [{abi_version, abi_version, ?ABI_SOPHIA_1}]),
+                                      ++ [{abi_version, abi_version, ?ABI_AEVM_SOPHIA_1}]),
                  api_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
                  get_nonce_from_account_id(owner_id),
                  contract_bytearray_params_decode([code]),

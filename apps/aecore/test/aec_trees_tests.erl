@@ -491,13 +491,13 @@ poi_test_() ->
        fun() ->
                IllegalKeys = [<<3>>, <<4, 17>>, <<16>>],
                [check_poi_for_contract_with_invalid_store_with_binary_keys(
-                  ?VM_AEVM_SOPHIA_1, ?ABI_SOPHIA_1, #{K => <<"v">>}) || K <- IllegalKeys]
+                  ?VM_AEVM_SOPHIA_1, ?ABI_AEVM_SOPHIA_1, #{K => <<"v">>}) || K <- IllegalKeys]
        end},
       {"Serialized Sophia contract PoI with invalid contract store key fails verification",
        fun() ->
                IllegalKeys = [<<3>>, <<4, 17>>, <<16>>],
                [check_poi_for_contract_with_invalid_store_with_binary_keys(
-                  ?VM_AEVM_SOPHIA_2, ?ABI_SOPHIA_1, #{K => <<"v">>}) || K <- IllegalKeys]
+                  ?VM_AEVM_SOPHIA_2, ?ABI_AEVM_SOPHIA_1, #{K => <<"v">>}) || K <- IllegalKeys]
        end}
     ].
 

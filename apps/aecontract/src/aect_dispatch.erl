@@ -126,7 +126,13 @@ call_common(CallData, CallDataType, OutType, ContractPubkey, Code, Store,
 %% used.
 
 -spec run(map(), map()) -> {aect_call:call(), aec_trees:trees(), aetx_env:env()}.
-run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_VM_SOPHIA(VM) ->
+run(#{vm := VM} = Version, #{ code := SerializedCode} = CallDef) when ?IS_FATE_SOPHIA(VM) ->
+    #{ byte_code := Code
+     , type_info :=_TypeInfo} = aect_sophia:deserialize(SerializedCode),
+    %% TODO: Check calldata
+    CallDef1 = CallDef#{code => aeb_fate_asm:bytecode_to_fate_code(Code, [])},
+    run_common(Version, CallDef1);
+run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_AEVM_SOPHIA(VM) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
     %% TODO: update aeso_abi and pass Version
@@ -141,7 +147,7 @@ run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_VM_SOPH
             Call = maps:get(call, CallDef),
             Trees = maps:get(trees, CallDef),
             Env = maps:get(tx_env, CallDef),
-            {create_call(Gas, error, What, [], Call), Trees, Env}
+            {create_call(Gas, error, What, [], Call, VM), Trees, Env}
     end;
 run(#{vm := ?VM_AEVM_SOLIDITY_1, abi := ?ABI_SOLIDITY_1} = Version, CallDef) ->
     run_common(Version, CallDef);
@@ -150,6 +156,65 @@ run(_, #{ call := Call} = _CallDef) ->
     %% Wrong VM/ABI version just return an unchanged call.
     Call.
 
+-define(FATE_VM_SPEC_FIELDS, [ trees
+                             , tx_env
+                             , caller
+                             , origin
+                             , gas_price
+                             ]).
+
+run_common(#{vm := ?VM_FATE_SOPHIA_1 = VMVersion, abi := ABIVersion},
+           #{ amount      :=_Value
+            , call        := Call
+            , call_data   := CallData
+%%%         , call_stack  := CallStack
+            , caller      := <<_:?PUB_SIZE/unit:8>>
+            , code        := Code
+%%%         , store       := Store
+            , contract    := <<_:?PUB_SIZE/unit:8>> = ContractAddress
+            , gas         := Gas
+            , gas_price   :=_GasPrice
+            , trees       := Trees
+            , tx_env      := TxEnv0
+            , origin      := <<_:?PUB_SIZE/unit:8>>
+            } = CallDef) ->
+    case ABIVersion =:= ?ABI_FATE_SOPHIA_1 of
+        false ->
+            error({illegal_abi, ?VM_FATE_SOPHIA_1, ABIVersion});
+        true ->
+            OldContext  = aetx_env:context(TxEnv0),
+            Spec = #{ contract => ContractAddress
+                    , call     => CallData
+                    , gas      => Gas
+                    },
+            Env0 = maps:with(?FATE_VM_SPEC_FIELDS, CallDef),
+            %% TODO: This should be replaced once the fate
+            %% chain connection is implemented
+            Env  = Env0#{ contracts => #{ContractAddress => Code}
+                        , tx_env   => aetx_env:set_context(TxEnv0, aetx_contract)
+                        },
+
+            case aefa_fate:run(Spec, Env) of
+                {ok, ResultState} ->
+                    ReturnValue = aefa_fate:return_value(ResultState),
+                    Out         = aeb_fate_encoding:serialize(ReturnValue),
+                    TxEnvOut0   = aefa_fate:tx_env(ResultState),
+                    TxEnvOut    = aetx_env:set_context(TxEnvOut0, OldContext),
+                    GasUsed     = Gas - aefa_fate:gas(ResultState),
+                    TreesOut    = aefa_fate:final_trees(ResultState),
+                    Log         = aefa_fate:logs(ResultState),
+                    { create_call(GasUsed, ok, Out, Log, Call, VMVersion)
+                    , TreesOut
+                    , TxEnvOut
+                    };
+                {error, Out, ResultState} ->
+                    GasUsed = Gas - aefa_fate:gas(ResultState),
+                    { create_call(GasUsed, error, Out, [], Call, VMVersion)
+                    , Trees
+                    , TxEnv0
+                    }
+            end
+    end;
 run_common(#{vm := VMVersion, abi := ABIVersion},
            #{  amount      := Value
              , call        := Call
@@ -208,30 +273,33 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
                     ChainState = aevm_eeevm_state:chain_state(ResultState),
                     Log = aevm_eeevm_state:logs(ResultState),
                     {
-                      create_call(GasUsed, ok, Out, Log, Call),
+                      create_call(GasUsed, ok, Out, Log, Call, VMVersion),
                       aec_vm_chain:get_trees(ChainState),
                       aetx_env:set_context(aec_vm_chain:get_tx_env(ChainState), OldContext)
                     };
                 {revert, Out, GasLeft} ->
                     GasUsed = Gas - GasLeft,
-                    {create_call(GasUsed, revert, Out, [], Call), Trees, TxEnv0};
+                    {create_call(GasUsed, revert, Out, [], Call, VMVersion), Trees, TxEnv0};
                 {error, What, GasLeft} ->
                     %% If we ran out of gas in a recursive call there
                     %% might still be gas held back by the caller.
                     GasUsed = Gas - GasLeft,
-                    {create_call(GasUsed, error, What, [], Call), Trees, TxEnv0}
+                    {create_call(GasUsed, error, What, [], Call, VMVersion), Trees, TxEnv0}
             end
     catch
         throw:{init_error, What} ->
             ?DEBUG_LOG("Init error ~p", [What]),
-            {create_call(Gas, error, What, [], Call), Trees, TxEnv0}
+            {create_call(Gas, error, What, [], Call, VMVersion), Trees, TxEnv0}
     end.
 
-create_call(GasUsed, Type, Value, Log, Call) when Type == ok; Type == revert ->
+create_call(GasUsed, Type, Value, Log, Call,_VMVersion) when Type == ok; Type == revert ->
     Call1 = aect_call:set_return_value(Value, Call),
     create_call(GasUsed, Type, Log, Call1);
-create_call(GasUsed, error = Type, Value, Log, Call)  ->
+create_call(GasUsed, error = Type, Value, Log, Call, VMVersion) when ?IS_AEVM_SOPHIA(VMVersion) ->
     Call1 = aect_call:set_return_value(error_to_binary(Value), Call),
+    create_call(GasUsed, Type, Log, Call1);
+create_call(GasUsed, error = Type, Value, Log, Call, VMVersion) when ?IS_FATE_SOPHIA(VMVersion) ->
+    Call1 = aect_call:set_return_value(Value, Call),
     create_call(GasUsed, Type, Log, Call1).
 
 create_call(GasUsed, Type, Log, Call) ->

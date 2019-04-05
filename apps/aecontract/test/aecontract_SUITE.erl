@@ -42,6 +42,7 @@
         , create_version_too_high/1
         , state_tree/1
         , sophia_identity/1
+        , sophia_remote_identity/1
         , sophia_vm_interaction/1
         , sophia_state/1
         , sophia_match_bug/1
@@ -126,15 +127,13 @@
 -include("../include/aecontract.hrl").
 -include("../../aecore/include/blocks.hrl").
 
+-include("aect_sophia_vsn.hrl").
+
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
 
 -define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING(X), {variant, 0, [X]}).
 -define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(X), {variant, 1, [X]}).
-
--define(AESOPHIA_1, 1).
--define(AESOPHIA_2, 2).
--define(LATEST_AESOPHIA, ?AESOPHIA_2).
 
 %%%===================================================================
 %%% Common test framework
@@ -151,6 +150,9 @@ groups() ->
     [ {aevm_1, [sequence], ?ALL_TESTS}
     , {aevm_2, [sequence], ?ALL_TESTS}
     , {aevm_3, [sequence], ?ALL_TESTS}
+    , {fate_1, [sequence], [ create_contract
+                           , sophia_identity
+                           ]}
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account
                                  ]}
@@ -183,6 +185,7 @@ groups() ->
                                     ]}
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
+                                 sophia_remote_identity,
                                  sophia_no_reentrant,
                                  sophia_state,
                                  sophia_match_bug,
@@ -287,18 +290,23 @@ groups() ->
 init_per_group(aevm_1, Cfg) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height,
                 fun(_) -> ?ROMA_PROTOCOL_VSN end),
-    [{sophia_version, ?AESOPHIA_1}, {vm_version, ?VM_AEVM_SOPHIA_1},
-     {protocol, roma} | Cfg];
+    [{sophia_version, ?SOPHIA_ROMA}, {vm_version, ?VM_AEVM_SOPHIA_1},
+     {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, roma} | Cfg];
 init_per_group(aevm_2, Cfg) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height,
                 fun(_) -> ?MINERVA_PROTOCOL_VSN end),
-    [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_2},
-     {protocol, minerva} | Cfg];
+    [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
+     {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, minerva} | Cfg];
 init_per_group(aevm_3, Cfg) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height,
                 fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
-    [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_3},
-     {protocol, fortuna} | Cfg];
+    [{sophia_version, ?SOPHIA_FORTUNA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
+     {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg];
+init_per_group(fate_1, Cfg) ->
+    meck:expect(aec_hard_forks, protocol_effective_at_height,
+                fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
+    [{sophia_version, ?SOPHIA_FORTUNA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
+     {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, fortuna} | Cfg];
 init_per_group(protocol_interaction, Cfg) ->
     MHeight = 10,
     FHeight = 15,
@@ -307,7 +315,7 @@ init_per_group(protocol_interaction, Cfg) ->
              (H) when H >= FHeight -> ?FORTUNA_PROTOCOL_VSN
           end,
     meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
-    [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_2},
+    [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
      {fork_heights, #{ minerva => MHeight,
                        fortuna => FHeight
                      }},
@@ -327,6 +335,7 @@ end_per_group(_Grp, Cfg) ->
 %% Process dict magic in the right process ;-)
 init_per_testcase(_TC, Config) ->
     VmVersion = ?config(vm_version, Config),
+    ABIVersion = ?config(abi_version, Config),
     SophiaVersion = ?config(sophia_version, Config),
     ProtocolVersion = case ?config(protocol, Config) of
                           roma    -> ?ROMA_PROTOCOL_VSN;
@@ -334,6 +343,7 @@ init_per_testcase(_TC, Config) ->
                           fortuna -> ?FORTUNA_PROTOCOL_VSN
                       end,
     put('$vm_version', VmVersion),
+    put('$abi_version', ABIVersion),
     put('$sophia_version', SophiaVersion),
     put('$protocol_version', ProtocolVersion),
     Config.
@@ -538,7 +548,7 @@ create_version_too_high(Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    {ok, IdContract} = compile_contract_vsn(identity, ?AESOPHIA_2),
+    {ok, IdContract} = compile_contract_vsn(identity, ?SOPHIA_MINERVA),
     ct:log("Compiled Contract = ~p\n", [aect_sophia:deserialize(IdContract)]),
 
     _IdContractMap = aect_sophia:deserialize(IdContract),
@@ -619,7 +629,13 @@ create_contract_(ContractCreateTxGasPrice) ->
     %% Check that the created init call has the correct details not from the contract create tx
     ?assertEqual(ContractKey, aect_call:contract_pubkey(InitCall)),
     _ = aect_call:height(InitCall), %% Unclear if this needed.
-    ?assertMatch(X when X > 0, aect_call:gas_used(InitCall)),
+    case sophia_version() of
+        ?SOPHIA_FORTUNA_FATE ->
+            %% TODO: Gas is not used in FATE yet
+            ?assertMatch(X when X =:= 0, aect_call:gas_used(InitCall));
+        _ ->
+            ?assertMatch(X when X > 0, aect_call:gas_used(InitCall))
+    end,
     ?assertEqual(ok, aect_call:return_type(InitCall)),
     _ = aect_call:return_value(InitCall), %% Value shall be the unit value.
 
@@ -1014,6 +1030,12 @@ vm_version() ->
         X         -> X
     end.
 
+abi_version() ->
+    case get('$abi_version') of
+        undefined -> aect_test_utils:latest_sophia_abi_version();
+        X         -> X
+    end.
+
 protocol_version() ->
     case get('$protocol_version') of
         undefined -> aect_test_utils:latest_protocol_version();
@@ -1022,7 +1044,7 @@ protocol_version() ->
 
 sophia_version() ->
     case get('$sophia_version') of
-        undefined -> ?LATEST_AESOPHIA;
+        undefined -> error(could_not_find_sophia_version);
         X         -> X
     end.
 
@@ -1031,7 +1053,7 @@ create_tx(Owner, State) ->
 
 create_tx(Owner, Spec0, State) ->
     Spec = maps:merge(
-        #{ abi_version => aect_test_utils:latest_sophia_abi_version()
+        #{ abi_version => abi_version()
          , vm_version  => maps:get(vm_version, Spec0, vm_version())
          , fee         => 1000000 * aec_test_utils:min_gas_price()
          , deposit     => 10
@@ -1040,7 +1062,14 @@ create_tx(Owner, Spec0, State) ->
     aect_test_utils:create_tx(Owner, Spec, State).
 
 compile_contract(Name) ->
-    aect_test_utils:compile_contract(sophia_version(), lists:concat(["contracts/", Name, ".aes"])).
+    case vm_version() of
+        Vsn when ?IS_AEVM_SOPHIA(Vsn) ->
+            File = lists:concat(["contracts/", Name, ".aes"]),
+            aect_test_utils:compile_contract(sophia_version(), File);
+        Vsn when ?IS_FATE_SOPHIA(Vsn) ->
+            File = lists:concat(["contracts/fate_asm/", Name, ".fate"]),
+            aect_test_utils:compile_contract(sophia_version(), File)
+    end.
 
 compile_contract_vsn(Name, Vsn) ->
     meck:new(aect_sophia, [passthrough]),
@@ -1110,7 +1139,7 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
     CallTx   = aect_test_utils:call_tx(Caller, ContractKey,
                 maps:merge(
                 #{ nonce       => Nonce
-                 , abi_version => aect_test_utils:latest_sophia_abi_version()
+                 , abi_version => abi_version()
                  , call_data   => Calldata
                  , fee         => maps:get(fee, Options, 1000000 * aec_test_utils:min_gas_price())
                  , amount      => 0
@@ -1123,13 +1152,9 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
             CallKey  = aect_call:id(Caller, Nonce, ContractKey),
             CallTree = aect_test_utils:calls(S1),
             Call     = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
-            Result   =
-                case aect_call:return_type(Call) of
-                    ok     -> {ok, Res} = aeso_heap:from_binary(Type, aect_call:return_value(Call)),
-                              Res;
-                    error  -> {error, aect_call:return_value(Call)};
-                    revert -> revert
-                end,
+            {_, Tx}  = aetx:specialize_type(CallTx),
+            ABI      = aect_call_tx:abi_version(Tx),
+            Result   = call_result(ABI, Type, Call),
             Result1 = case maps:get(return_logs, Options, false) of
                         true -> {Result, aect_call:log(Call)};
                         false -> Result end,
@@ -1141,37 +1166,94 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
             {{error, R}, S1}
     end.
 
+call_result(?ABI_AEVM_SOPHIA_1, Type, Call) ->
+    case aect_call:return_type(Call) of
+        error  ->
+            {error, aect_call:return_value(Call)};
+        ok ->
+            {ok, Res} = aeso_heap:from_binary(Type, aect_call:return_value(Call)),
+            Res;
+        revert ->
+            {ok, Res} = aeso_heap:from_binary(string, aect_call:return_value(Call)),
+            {revert, Res}
+    end;
+call_result(?ABI_FATE_SOPHIA_1,_Type, Call) ->
+    case aect_call:return_type(Call) of
+        ok     ->
+            Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
+            aeb_fate_data:decode(Res);
+        error  ->
+            {error, aect_call:return_value(Call)};
+        revert ->
+            Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
+            {revert, aeb_fate_data:decode(Res)}
+    end.
+
 account_balance(PubKey, S) ->
     Account = aect_test_utils:get_account(PubKey, S),
     {aec_accounts:balance(Account), S}.
 
-make_calldata_raw(<<FunHashInt:256>>, Args0) ->
-    Args = translate_pubkeys(if is_tuple(Args0) -> Args0; true -> {Args0} end),
-    aeso_heap:to_binary({FunHashInt, Args}).
-
 make_calldata_from_code(Code, Fun, Args) when is_atom(Fun) ->
     make_calldata_from_code(Code, atom_to_binary(Fun, latin1), Args);
 make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
-    #{type_info := TypeInfo} = aect_sophia:deserialize(Code),
-    case aeso_abi:type_hash_from_function_name(Fun, TypeInfo) of
-        {ok, TypeHash} -> make_calldata_raw(TypeHash, Args);
-        {error, _} = Err -> error({bad_function, Fun, Err})
+    case abi_version() of
+        ?ABI_AEVM_SOPHIA_1 ->
+            #{type_info := TypeInfo} = aect_sophia:deserialize(Code),
+            case aeso_abi:type_hash_from_function_name(Fun, TypeInfo) of
+                {ok, <<FunHashInt:256>>} ->
+                    Args1 = format_aevm_args(if is_tuple(Args) -> Args;
+                                                true -> {Args}
+                                             end),
+                    aeso_heap:to_binary({FunHashInt, Args1});
+                {error, _} = Err -> error({bad_function, Fun, Err})
+            end;
+        ?ABI_FATE_SOPHIA_1 ->
+            %% TODO: Move this into aefa_fate
+            Args1 = format_fate_args(if is_tuple(Args) -> Args;
+                                        true -> {Args}
+                                     end),
+            FunctionId = make_fate_function_id(Fun),
+            aeb_fate_encoding:serialize(aeb_fate_data:encode({FunctionId, Args1}))
     end.
+
+%% TODO: This does not belong here
+make_fate_function_id(FunctionName) when is_binary(FunctionName) ->
+    %% Use first 4 bytes of blake hash
+    <<B:32,_:28/binary>> = aec_hash:blake2b_256_hash(FunctionName),
+    <<B:32>>.
 
 make_calldata_from_id(Id, Fun, Args, State) ->
     {{value, C}, _S} = lookup_contract_by_id(Id, State),
     make_calldata_from_code(aect_contracts:code(C), Fun, Args).
 
-translate_pubkeys(<<N:256>>) -> N;
-translate_pubkeys([H|T]) ->
-  [translate_pubkeys(H) | translate_pubkeys(T)];
-translate_pubkeys(T) when is_tuple(T) ->
-  list_to_tuple(translate_pubkeys(tuple_to_list(T)));
-translate_pubkeys(M) when is_map(M) ->
-  maps:from_list(translate_pubkeys(maps:to_list(M)));
-translate_pubkeys(X) -> X.
+format_aevm_args(<<N:256>>) -> N;
+format_aevm_args([H|T]) ->
+  [format_aevm_args(H) | format_aevm_args(T)];
+format_aevm_args(T) when is_tuple(T) ->
+  list_to_tuple(format_aevm_args(tuple_to_list(T)));
+format_aevm_args(M) when is_map(M) ->
+  maps:from_list(format_aevm_args(maps:to_list(M)));
+format_aevm_args(X) -> X.
+
+format_fate_args(<<_:256>> = B) ->
+    {address, B}; %% Assume it is an address
+format_fate_args([H|T]) ->
+    [format_fate_args(H) | format_fate_args(T)];
+format_fate_args(T) when is_tuple(T) ->
+    list_to_tuple(format_fate_args(tuple_to_list(T)));
+format_fate_args(M) when is_map(M) ->
+    maps:from_list(format_fate_args(maps:to_list(M)));
+format_fate_args(X) ->
+    X.
 
 sophia_identity(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    IdC   = ?call(create_contract, Acc1, identity, {}),
+    42    = ?call(call_contract,   Acc1, IdC, main, word, 42),
+    ok.
+
+sophia_remote_identity(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc1 = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     %% Remote calling the identity contract
@@ -1198,8 +1280,8 @@ sophia_vm_interaction(Cfg) ->
                       amount => 100,
                       gas_price => MinGasPrice,
                       fee => 1000000 * MinGasPrice},
-    {ok, IdCode}  = compile_contract_vsn(identity, ?AESOPHIA_1),
-    {ok, RemCode} = compile_contract_vsn(remote_call, ?AESOPHIA_1),
+    {ok, IdCode}  = compile_contract_vsn(identity, ?SOPHIA_ROMA),
+    {ok, RemCode} = compile_contract_vsn(remote_call, ?SOPHIA_ROMA),
 
     %% Create contracts on both side of the fork
     IdCRoma     = ?call(create_contract_with_code, Acc, IdCode, {}, RomaSpec),
@@ -1930,7 +2012,8 @@ sophia_oracles_qfee__flow_up_to_query_(InitialState,
            CCbs#oracle_cbs.query) of
         %% Exporting AccCt, States, GasUsed. Naughty, naughty!
         {{error, <<"out_of_gas">>},AccCt,States,GasUsed} -> ok;
-        {revert,AccCt,States,GasUsed} -> ok
+        {{revert, <<"causing a late error">>},AccCt,States,GasUsed} -> ok;
+        {{revert, <<"insufficient value for qfee">>},AccCt,States,GasUsed} -> ok
     end,
      %% State before oracle init, after registration, and after query.
     {{OracleAcc, CallingCt}, [S0, S1, S2]} = {AccCt,States},
@@ -3697,7 +3780,7 @@ set_compiler_version(Vm, Compiler) ->
 
 sophia_crypto(_Cfg) ->
     %% Override compiler version
-    set_compiler_version(?VM_AEVM_SOPHIA_1, ?AESOPHIA_2),
+    set_compiler_version(?VM_AEVM_SOPHIA_1, ?SOPHIA_MINERVA),
 
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
@@ -3748,7 +3831,7 @@ sophia_crypto(_Cfg) ->
 sophia_safe_math(Cfg) ->
     case ?config(vm_version, Cfg) of
         ?VM_AEVM_SOPHIA_1 -> sophia_safe_math_old();
-        VMVersion when ?IS_VM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 -> sophia_safe_math()
+        VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 -> sophia_safe_math()
     end.
 
 sophia_safe_math() ->
@@ -3979,7 +4062,10 @@ run_scenario(#fundme_scenario
     ExpectedResult =
         fun({withdraw, _, _, ok})       -> {};
            ({withdraw, _, _, error})    -> {error, <<"out_of_gas">>};
-           ({withdraw, _, _, revert})   -> revert;
+           ({withdraw, beneficiary, 2100, revert}) -> {revert, <<"Project was not funded">>};
+           ({withdraw, beneficiary, 2200, revert}) -> {revert, <<"Not a contributor or beneficiary">>};
+           ({withdraw, {investor, 5}, _, revert}) -> {revert, <<"Project was funded">>};
+           ({withdraw, {investor, 3}, _, revert}) -> {revert, <<"Not a contributor or beneficiary">>};
            ({contribute, _, _, Height}) -> Height < Deadline end,
     lists:foreach(fun({E, Res}) ->
         Expect = ExpectedResult(E),

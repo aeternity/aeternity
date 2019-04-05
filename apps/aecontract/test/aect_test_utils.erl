@@ -41,12 +41,7 @@
 
 -include("../include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
-
--define(SOPHIA_ROMA, 1).
--define(SOPHIA_MINERVA, 2).
--define(SOPHIA_FORTUNA, 2). %% TODO: Revise this if sophia gets bumped
--define(CURRENT_SOPHIA, ?SOPHIA_MINERVA).
-
+-include("aect_sophia_vsn.hrl").
 %%%===================================================================
 %%% Test state
 %%%===================================================================
@@ -102,16 +97,16 @@ latest_sophia_vm_version() ->
 
 latest_sophia_abi_version() ->
     case latest_protocol_version() of
-        ?ROMA_PROTOCOL_VSN    -> ?ABI_SOPHIA_1;
-        ?MINERVA_PROTOCOL_VSN -> ?ABI_SOPHIA_1;
-        ?FORTUNA_PROTOCOL_VSN -> ?ABI_SOPHIA_1
+        ?ROMA_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1;
+        ?MINERVA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1;
+        ?FORTUNA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1
     end.
 
 latest_sophia_version() ->
     case latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> ?SOPHIA_ROMA;
         ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_MINERVA;
-        ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA
+        ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA_AEVM
     end.
 
 latest_protocol_version() ->
@@ -251,11 +246,26 @@ compile_filename(Compiler, FileName) ->
 compile_contract(File) ->
     compile_contract(latest_sophia_version(), File).
 
+compile_contract(?SOPHIA_FORTUNA_FATE, File) ->
+    CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
+    FileName = filename:join(CodeDir, filename:rootname(File, ".fate") ++ ".fate"),
+    compile_filename(?SOPHIA_FORTUNA_FATE, FileName);
 compile_contract(Compiler, File) ->
     CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
     FileName = filename:join(CodeDir, filename:rootname(File, ".aes") ++ ".aes"),
     compile_filename(Compiler, FileName).
 
+compile(?SOPHIA_FORTUNA_FATE, File) ->
+    {ok, AsmBin} = file:read_file(File),
+    Source = binary_to_list(AsmBin),
+    {_Env, ByteCode} = aeb_fate_asm:asm_to_bytecode(Source, []),
+    {ok, aect_sophia:serialize(#{ byte_code => ByteCode
+                                , contract_source => Source %% TODO: This is wrong.
+                                , compiler_version => 1     %% TODO: This is wrong.
+                                , type_info => []           %% TODO: This is wrong.
+                                })};
+compile(?SOPHIA_FORTUNA_AEVM, File) ->
+    compile(?SOPHIA_MINERVA, File);
 compile(?SOPHIA_MINERVA, File) ->
     {ok, ContractBin} = file:read_file(File),
     aect_sophia:compile(ContractBin, <<>>);

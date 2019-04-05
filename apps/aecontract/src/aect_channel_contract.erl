@@ -34,7 +34,7 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
                     %% when creating a contract in a contract.
     VmVersion = aect_contracts:vm_version(Contract),
     %% Assert VmVersion before running!
-    [error({illegal_vm_version, VmVersion}) || not ?IS_VM_SOPHIA(VmVersion)],
+    [error({illegal_vm_version, VmVersion}) || not ?IS_AEVM_SOPHIA(VmVersion)],
 
     CallDef = make_call_def(OwnerPubKey, ContractPubKey,
                             _Gas = 1000000, _GasPrice = 1,
@@ -76,7 +76,7 @@ run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
     Store = aect_contracts:state(Contract),
     VmVersion = aect_contracts:vm_version(Contract),
     case aect_contracts:abi_version(Contract) =:= ABIVersion of
-        true when ?IS_VM_SOPHIA(VmVersion) -> ok;
+        true when ?IS_AEVM_SOPHIA(VmVersion) -> ok;
         true                               -> erlang:error(wrong_vm_version);
         false                              -> erlang:error(wrong_abi_version)
     end,
