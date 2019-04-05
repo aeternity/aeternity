@@ -343,11 +343,11 @@ the Debian changelog file policy. This is the approach used.
 cd ae_node_source/
 DEBEMAIL=info@aeternity.com
 DEBFULLNAME="Aeternity Team"
-AE_VERSION=$(cat VERSION)
-AE_VERSION_NOTE="Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-$AE_VERSION.md"
-
-dch -v $AE_VERSION $AE_VERSION_NOTE
-dch -r  $AE_VERSION_NOTE
+AE_DEB_PKG_NAME="aeternity-node"
+AE_DEB_PKG_VERSION=$(cat VERSION)
+AE_DEB_DCH_REL_NOTE="Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-${AE_DEB_PKG_VERSION}.md"
+dch --create --package=$AE_DEB_PKG_NAME -v $AE_DEB_PKG_VERSION $AE_DEB_DCH_REL_NOTE
+dch -r $(AE_DEB_DCH_REL_NOTE)
 ```
 
 Both commands are required and cannot be combined. The `-v` option
