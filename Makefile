@@ -20,6 +20,28 @@ SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
 
 PACKAGE_SPEC_WIN32 ?= ../ci/appveyor/package.cfg
 
+# Packages from master MUST be pre-releases. Git master version
+# usually is higher then the last stable release. However
+# packages with newer stable version MUST always have higher version
+# than master in Debian/Ubuntu packaging context. The only way to
+# achieve this is when master packages are a pre-release (
+# pkg-name_version~unique_higher_number ).
+
+# Additionally the same (as in name) package from master for the same
+# unreleased/not stable version (i.e. builds) MUST always have higher
+# version (i.e. pre-release). Otherwise package managers and repository management
+# software complain.
+AE_DEB_PKG_VERSION ?= `cat VERSION`
+AE_DEB_DCH_REL_NOTE= \
+"Release notes are available in /usr/share/doc/aeternity-node/docs/release-notes/RELEASE-NOTES-`cat VERSION`.md"
+
+AE_DEB_PKG_NAME="aeternity-node"
+AE_DEB_MAINT_EMAIL="info@aeternity.com"
+AE_DEB_MAINT_NAME="Aeternity Team"
+DEB_PKG_CHANGELOG_FILE=debian/changelog
+
+
+
 all:	local-build
 
 $(SWAGGER_ENDPOINTS_SPEC):
@@ -395,6 +417,15 @@ internal-ct: internal-build
 			$(REBAR) ct $(CT_TEST_FLAGS) --sys_config $(SYSCONFIG); \
 	fi
 
+$(DEB_PKG_CHANGELOG_FILE):
+	@export DEBEMAIL=$(AE_DEB_MAINT_EMAIL); \
+	export DEBFULLNAME=$(AE_DEB_MAINT_NAME) ; \
+	dch --create --package=$(AE_DEB_PKG_NAME) -v $(AE_DEB_PKG_VERSION) $(AE_DEB_DCH_REL_NOTE); \
+	dch -r $(AE_DEB_DCH_REL_NOTE)
+
+prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
+	debuild -b -uc -us
+
 .PHONY: \
 	all console \
 	local-build local-start local-stop local-attach \
@@ -415,4 +446,5 @@ internal-ct: internal-build
 	swagger swagger-docs swagger-check swagger-version-check \
 	rebar-lock-check \
 	python-env python-ws-test python-uats python-single-uat python-release-test python-package-win32-test \
-	REVISION
+	REVISION \
+	prod-deb-package

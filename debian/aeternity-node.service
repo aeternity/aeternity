@@ -1,0 +1,17 @@
+[Unit]
+Description=Aeternity node
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Type=forking
+User=aeternity
+Group=aeternity
+ExecStart=/opt/aeternity/node/bin/aeternity start
+ExecStop=/opt/aeternity/node/bin/aeternity stop
+Restart=on-failure
+# Systemd does not play well with user set limits with ulimit.
+LimitNOFILE=24576
+
+[Install]
+WantedBy=multi-user.target

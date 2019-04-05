@@ -1,0 +1,17 @@
+Source: aeternity-node
+Section: misc
+Maintainer: Aeternity Team <info@aeternity.com>
+Build-Depends: debhelper, ncurses-dev, libssl-dev, git, curl,
+	       autoconf, build-essential,
+	       erlang ( >=1:20.2-1), erlang-base ( >=1:20.2-1),
+	       erlang-dev ( >=1:20.2-1), erlang-edoc ( >=1:20.2-1)
+Build-Conflicts: erlang ( >=1:21), erlang-base ( >=1:21),
+	        erlang-dev ( >=1:21), erlang-edoc ( >=1:21)
+
+Package: aeternity-node
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: AEternity blockchain implementation in Erlang.
+ Optimized for scalability via smart contracts inside
+ state-channels. Has a built-in oracle for integration with real-world
+ data.

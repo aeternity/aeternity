@@ -1,0 +1,24 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	$(MAKE) prod-build
+
+override_dh_auto_clean:
+	$(MAKE) prod-clean
+	$(MAKE) clean
+	$(MAKE) distclean
+
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym
+
+#override_dh_makeslibs:
+override_dh_auto_test:
+#override_dh_shlibdeps:
+#	dh_shlibdeps --exclude=libsodium $@
