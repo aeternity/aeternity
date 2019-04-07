@@ -286,8 +286,8 @@ for_client(#channel_force_progress_tx{payload       = Payload,
                                                 aec_trees:serialize_to_binary(OffChainTrees)),
       <<"ttl">>           => TTL,
       <<"fee">>           => Fee,
+      <<"block_hash">>    => aesc_pinned_block:serialize_for_client(BlockHash),
       <<"nonce">>         => Nonce}.
-      %<<"block_hash">>         => aesc_pinned_block:serialize_for_client(BlockHash), TODO
 
 serialization_template(?INITIAL_VSN) ->
     [ {channel_id     , id}

@@ -186,6 +186,11 @@ deserialize(?PINNED_BLOCK_VSN,
        round              = Round,
        block_hash         = aesc_pinned_block:deserialize(BlockHash)}.
 
+%% off-chain transactions are included on-chain as a serialized payload
+%% in a force progress transactions thus the callback
+%% aesc_offchain_tx:for_client/1 is never executed for an off-chain tx
+%% via HTTP API, but it might be used by State Channel's WebSocket API
+%% Note: not documented in swagger.yaml
 -spec for_client(tx()) -> map().
 for_client(#channel_offchain_tx{
               updates            = Updates,
@@ -196,7 +201,7 @@ for_client(#channel_offchain_tx{
     #{<<"channel_id">>         => aeser_api_encoder:encode(id_hash, ChannelId),
       <<"round">>              => Round,
       <<"updates">>            => [aesc_offchain_update:for_client(D) || D <- Updates],
-      %<<"block_hash">>         => aesc_pinned_block:serialize_for_client(BlockHash), TODO
+      <<"block_hash">>         => aesc_pinned_block:serialize_for_client(BlockHash),
       <<"state_hash">>         => aeser_api_encoder:encode(state, StateHash)}.
 
 serialization_template(?INITIAL_VSN) ->

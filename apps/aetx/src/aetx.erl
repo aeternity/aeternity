@@ -449,6 +449,7 @@ type_to_swagger_name(channel_close_mutual_tx)   -> <<"ChannelCloseMutualTx">>;
 type_to_swagger_name(channel_slash_tx)          -> <<"ChannelSlashTx">>;
 type_to_swagger_name(channel_settle_tx)         -> <<"ChannelSettleTx">>;
 type_to_swagger_name(channel_snapshot_solo_tx)  -> <<"ChannelSnapshotSoloTx">>;
+%% not exposed in HTTP API:
 type_to_swagger_name(channel_offchain_tx)       -> <<"ChannelOffchainTx">>.
 
 -spec specialize_type(Tx :: tx()) -> {tx_type(), tx_instance()}.
