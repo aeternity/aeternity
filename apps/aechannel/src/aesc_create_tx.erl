@@ -51,11 +51,14 @@
 -ifdef(TEST).
 -export([set_state_hash/2]).
 -endif.
+
+-include_lib("aecontract/include/hard_forks.hrl").
 %%%===================================================================
 %%% Types
 %%%===================================================================
 
--define(CHANNEL_CREATE_TX_VSN, 1).
+-define(INITIAL_VSN, 1).
+-define(PINNED_BLOCK_VSN, 2).
 -define(CHANNEL_CREATE_TX_TYPE, channel_create_tx).
 
 -type vsn() :: non_neg_integer().
@@ -71,7 +74,8 @@
           fee                :: non_neg_integer(),
           delegate_ids       :: [aeser_id:id()],
           state_hash         :: binary(),
-          nonce              :: non_neg_integer()
+          nonce              :: non_neg_integer(),
+          block_hash         :: aesc_pinned_block:hash()
          }).
 
 -opaque tx() :: #channel_create_tx{}.
@@ -99,6 +103,7 @@ new(#{initiator_id       := InitiatorId,
     lists:foreach(fun(D) -> account = aeser_id:specialize_type(D) end, DelegateIds),
     account = aeser_id:specialize_type(InitiatorId),
     account = aeser_id:specialize_type(ResponderId),
+    BlockHash = maps:get(block_hash, Args, aesc_pinned_block:no_hash()),
     Tx = #channel_create_tx{initiator_id       = InitiatorId,
                             responder_id       = ResponderId,
                             initiator_amount   = InitiatorAmount,
@@ -109,7 +114,8 @@ new(#{initiator_id       := InitiatorId,
                             fee                = Fee,
                             delegate_ids       = DelegateIds,
                             state_hash         = StateHash,
-                            nonce              = Nonce},
+                            nonce              = Nonce,
+                            block_hash         = BlockHash},
     {ok, aetx:new(?MODULE, Tx)}.
 
 type() ->
@@ -171,23 +177,42 @@ serialize(#channel_create_tx{initiator_id       = InitiatorId,
                              fee                = Fee,
                              delegate_ids       = DelegateIds,
                              state_hash         = StateHash,
-                             nonce              = Nonce} = Tx) ->
-    {version(Tx),
-     [ {initiator_id      , InitiatorId}
-     , {initiator_amount  , InitiatorAmount}
-     , {responder_id      , ResponderId}
-     , {responder_amount  , ResponderAmount}
-     , {channel_reserve   , ChannelReserve}
-     , {lock_period       , LockPeriod}
-     , {ttl               , TTL}
-     , {fee               , Fee}
-     , {delegate_ids      , DelegateIds}
-     , {state_hash        , StateHash}
-     , {nonce             , Nonce}
-     ]}.
+                             nonce              = Nonce,
+                             block_hash         = BlockHash} = Tx) ->
+    case version(Tx) of
+        ?INITIAL_VSN ->
+            {?INITIAL_VSN,
+            [ {initiator_id      , InitiatorId}
+            , {initiator_amount  , InitiatorAmount}
+            , {responder_id      , ResponderId}
+            , {responder_amount  , ResponderAmount}
+            , {channel_reserve   , ChannelReserve}
+            , {lock_period       , LockPeriod}
+            , {ttl               , TTL}
+            , {fee               , Fee}
+            , {delegate_ids      , DelegateIds}
+            , {state_hash        , StateHash}
+            , {nonce             , Nonce}
+            ]};
+        ?PINNED_BLOCK_VSN ->
+            {?PINNED_BLOCK_VSN,
+            [ {initiator_id      , InitiatorId}
+            , {initiator_amount  , InitiatorAmount}
+            , {responder_id      , ResponderId}
+            , {responder_amount  , ResponderAmount}
+            , {channel_reserve   , ChannelReserve}
+            , {lock_period       , LockPeriod}
+            , {ttl               , TTL}
+            , {fee               , Fee}
+            , {delegate_ids      , DelegateIds}
+            , {state_hash        , StateHash}
+            , {nonce             , Nonce}
+            , {block_hash        , aesc_pinned_block:serialize(BlockHash)}
+            ]}
+    end.
 
 -spec deserialize(vsn(), list()) -> tx().
-deserialize(?CHANNEL_CREATE_TX_VSN,
+deserialize(?INITIAL_VSN,
             [ {initiator_id      , InitiatorId}
             , {initiator_amount  , InitiatorAmount}
             , {responder_id      , ResponderId}
@@ -213,7 +238,37 @@ deserialize(?CHANNEL_CREATE_TX_VSN,
                        fee                = Fee,
                        delegate_ids       = DelegateIds,
                        state_hash         = StateHash,
-                       nonce              = Nonce}.
+                       nonce              = Nonce,
+                       block_hash         = aesc_pinned_block:no_hash()};
+deserialize(?PINNED_BLOCK_VSN,
+            [ {initiator_id      , InitiatorId}
+            , {initiator_amount  , InitiatorAmount}
+            , {responder_id      , ResponderId}
+            , {responder_amount  , ResponderAmount}
+            , {channel_reserve   , ChannelReserve}
+            , {lock_period       , LockPeriod}
+            , {ttl               , TTL}
+            , {fee               , Fee}
+            , {delegate_ids      , DelegateIds}
+            , {state_hash        , StateHash}
+            , {nonce             , Nonce}
+            , {block_hash        , BlockHash}]) ->
+    account = aeser_id:specialize_type(InitiatorId),
+    account = aeser_id:specialize_type(ResponderId),
+    [account = aeser_id:specialize_type(D) || D <- DelegateIds],
+    true = aesc_utils:check_state_hash_size(StateHash),
+    #channel_create_tx{initiator_id       = InitiatorId,
+                       initiator_amount   = InitiatorAmount,
+                       responder_id       = ResponderId,
+                       responder_amount   = ResponderAmount,
+                       channel_reserve    = ChannelReserve,
+                       lock_period        = LockPeriod,
+                       ttl                = TTL,
+                       fee                = Fee,
+                       delegate_ids       = DelegateIds,
+                       state_hash         = StateHash,
+                       nonce              = Nonce,
+                       block_hash         = aesc_pinned_block:deserialize(BlockHash)}.
 
 -spec for_client(tx()) -> map().
 for_client(#channel_create_tx{initiator_id       = InitiatorId,
@@ -226,7 +281,8 @@ for_client(#channel_create_tx{initiator_id       = InitiatorId,
                               ttl                = TTL,
                               delegate_ids       = DelegateIds,
                               state_hash         = StateHash,
-                              fee                = Fee}) ->
+                              fee                = Fee,
+                              block_hash         = BlockHash}) ->
     #{<<"initiator_id">>       => aeser_api_encoder:encode(id_hash, InitiatorId),
       <<"initiator_amount">>   => InitiatorAmount,
       <<"responder_id">>       => aeser_api_encoder:encode(id_hash, ResponderId),
@@ -238,8 +294,9 @@ for_client(#channel_create_tx{initiator_id       = InitiatorId,
       <<"delegate_ids">>       => [aeser_api_encoder:encode(id_hash, D) || D <- DelegateIds],
       <<"state_hash">>         => aeser_api_encoder:encode(state, StateHash),
       <<"fee">>                => Fee}.
+      %<<"block_hash">>         => aesc_pinned_block:serialize_for_client(BlockHash), TODO
 
-serialization_template(?CHANNEL_CREATE_TX_VSN) ->
+serialization_template(?INITIAL_VSN) ->
     [ {initiator_id      , id}
     , {initiator_amount  , int}
     , {responder_id      , id}
@@ -251,6 +308,20 @@ serialization_template(?CHANNEL_CREATE_TX_VSN) ->
     , {delegate_ids      , [id]}
     , {state_hash        , binary}
     , {nonce             , int}
+    ];
+serialization_template(?PINNED_BLOCK_VSN) ->
+    [ {initiator_id      , id}
+    , {initiator_amount  , int}
+    , {responder_id      , id}
+    , {responder_amount  , int}
+    , {channel_reserve   , int}
+    , {lock_period       , int}
+    , {ttl               , int}
+    , {fee               , int}
+    , {delegate_ids      , [id]}
+    , {state_hash        , binary}
+    , {nonce             , int}
+    , {block_hash        , binary}
     ].
 
 %%%===================================================================
@@ -316,12 +387,22 @@ delegate_pubkeys(#channel_create_tx{delegate_ids = DelegateIds}) ->
     [aeser_id:specialize(D, account) || D <- DelegateIds].
 
 -spec version(tx()) -> non_neg_integer().
-version(_) ->
-    ?CHANNEL_CREATE_TX_VSN.
+version(#channel_create_tx{block_hash = BlockHash}) ->
+    case BlockHash =:= aesc_pinned_block:no_hash() of
+        true ->
+            ?INITIAL_VSN;
+        false ->
+            ?PINNED_BLOCK_VSN
+    end.
+
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
-valid_at_protocol(_, _) ->
-    true.
+valid_at_protocol(Protocol, Tx) ->
+    case version(Tx) of
+        ?INITIAL_VSN -> true;
+        ?PINNED_BLOCK_VSN when Protocol =:= ?FORTUNA_PROTOCOL_VSN -> true;
+        _ -> false
+    end.
 
 %%%===================================================================
 %%% Test setters 
