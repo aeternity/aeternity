@@ -974,12 +974,12 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
     S2             = account_spend(Account, TotalAmount, S1),
     Contract       = aect_contracts:new(OwnerPubkey, Nonce, CTVersion,
                                         SerializedCode, 0),
-    ContractPubkey = aect_contracts:pubkey(Contract),
-    {CAccount, S3} = ensure_account(ContractPubkey, S2),
-    OwnerId        = aect_contracts:owner_id(Contract),
-    {InitCall, S4} = run_contract(OwnerId, Contract, GasLimit, GasPrice,
-                                  CallData, OwnerPubkey, _InitAmount = 0,
-                                  _CallStack = [], Nonce, S3),
+    ContractPubkey  = aect_contracts:pubkey(Contract),
+    {_CAccount, S3} = ensure_account(ContractPubkey, S2),
+    OwnerId         = aect_contracts:owner_id(Contract),
+    {InitCall, S4}  = run_contract(OwnerId, Contract, GasLimit, GasPrice,
+                                   CallData, OwnerPubkey, _InitAmount = 0,
+                                   _CallStack = [], Nonce, S3),
     case aect_call:return_type(InitCall) of
         error ->
             ga_attach_fail(InitCall, Fee, RollbackS);
@@ -1025,14 +1025,13 @@ ga_meta_op(OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee
 
 ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee}, S) ->
     assert_ga_active(S),
-    RollbackS = S,
     {Account, S1} = get_account(OwnerPK, S),
     assert_generalized_account(Account),
     CheckAmount = Fee + GasLimit * GasPrice,
     assert_account_balance(Account, CheckAmount),
     AuthContract = aec_accounts:ga_contract(Account),
     {contract, AuthContractPK} = aeser_id:specialize(AuthContract),
-    AuthFunHash = aec_accounts:ga_auth_fun(Account),
+    _AuthFunHash = aec_accounts:ga_auth_fun(Account),
 
     assert_contract_call_version(AuthContractPK, ABIVersion, S),
     S2 = account_spend(Account, CheckAmount, S1),
@@ -1474,13 +1473,13 @@ assert_name_claimed(Name) ->
         revoked -> runtime_error(name_revoked)
     end.
 
-assert_ga_attach_byte_code(?ABI_SOPHIA_1, SerializedCode, CallData, FunHash, S) ->
+assert_ga_attach_byte_code(?ABI_AEVM_SOPHIA_1, SerializedCode, CallData, FunHash, S) ->
     try aect_sophia:deserialize(SerializedCode) of
         #{type_info := TypeInfo,
           contract_vsn := Vsn} ->
             case aect_sophia:is_legal_serialization_at_height(Vsn, S#state.height) of
                 true ->
-                    assert_contract_init_function(CallData, TypeInfo),
+                    assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo),
                     %% GA_TODO: Also check return type of Auth function.
                     assert_function_hash_in_code(FunHash, TypeInfo);
                 false ->

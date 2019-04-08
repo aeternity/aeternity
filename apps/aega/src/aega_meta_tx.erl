@@ -8,7 +8,7 @@
 
 -behavior(aetx).
 
--include_lib("apps/aecontract/src/aecontract.hrl").
+-include("../../aecontract/include/aecontract.hrl").
 
 %% Behavior API
 -export([new/1,

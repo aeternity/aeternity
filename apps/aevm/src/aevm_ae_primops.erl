@@ -511,7 +511,7 @@ aens_call_revoke(Data, #chain{api = API, state = State} = Chain) ->
 %% ------------------------------------------------------------------
 auth_call(Gas, Op, _Value, Data, State) ->
     case {aevm_eeevm_state:vm_version(State), Op} of
-        {VM, _} when ?IS_VM_SOPHIA(VM), VM >= ?VM_AEVM_SOPHIA_3 ->
+        {VMVersion, _} when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_3 ->
             auth_call(Gas, Op, Data, State);
         {_, _} -> {error, out_of_gas}
     end.
