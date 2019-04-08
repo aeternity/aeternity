@@ -286,10 +286,8 @@ delete_complete_payments() ->
               end, ok, Checks).
 
 
-
 delete_payment_records(TxHashes) ->
-    transaction(fun () -> [mnesia:delete(?PAYMENTS_TAB, Tx, write) || Tx <- TxHashes] end).
-
+    transaction(fun () -> aestratum_db:delete_payment_records(TxHashes) end).
 
 transaction(Fun) when is_function(Fun, 0) ->
     mnesia:activity(transaction, Fun).

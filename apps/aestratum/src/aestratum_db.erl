@@ -10,23 +10,26 @@
 
 -export([check_tables/1,
          create_tables/1,
-         delete_tables/0]).
+         delete_tables/0,
+         clear_tables/0]).
 
 -export([sort_key/0,
          is_empty/1,
          get_hash/1,
          store_share/3,
+         mark_share_as_solution/2,
          store_round/0,
          store_payment/1,
-         update_payment/7,
+         update_payment/4,
+         delete_payment/1,
          get_candidate/1,
          store_candidate/3,
          delete_candidates_older_than/1,
          shares_range/1,
          shares_selector/2,
          shares_slices/1,
-         delete_reward_records/1,
-         delete_payment_records/1]).
+         payments/1,
+         delete_reward_records/1]).
 
 -include("aestratum.hrl").
 -include("aestratum_log.hrl").
@@ -57,6 +60,8 @@ create_tables(Mode) ->
 delete_tables() ->
     [mnesia:delete_table(Tab) || Tab <- ?TABS].
 
+clear_tables() ->
+    [mnesia:clear_table(Tab) || Tab <- ?TABS].
 
 check_tables(Acc) ->
     check_tables() ++ Acc.
@@ -85,15 +90,24 @@ sort_key() ->
                          {ok, #aestratum_share{}, #aestratum_hash{}}.
 store_share(Miner, MinerTarget, Hash) ->
     SortKey = sort_key(),
-    Share = #aestratum_share{key = SortKey,
-                             hash = Hash,
+    Share = #aestratum_share{key    = SortKey,
+                             hash   = Hash,
                              target = MinerTarget,
-                             miner = Miner},
+                             miner  = Miner},
     HashR = #aestratum_hash{hash = Hash,
-                            key = SortKey},
+                            key  = SortKey},
     ok = mnesia:write(Share),
     ok = mnesia:write(HashR),
     {ok, Share, HashR}.
+
+-spec mark_share_as_solution(binary(), pos_integer()) -> ok.
+mark_share_as_solution(ShareHash, BlockHash) ->
+    [#aestratum_hash{key = Key}] = mnesia:read(?HASHES_TAB, ShareHash),
+    [#aestratum_share{} = Share] = mnesia:read(?SHARES_TAB, Key),
+    ok = mnesia:delete({?HASHES_TAB, ShareHash}),
+    ok = mnesia:write(#aestratum_hash{hash = BlockHash, key = Key}),
+    ok = mnesia:write(Share#aestratum_share{hash = BlockHash}).
+
 
 -spec store_round() -> {ok, #aestratum_round{}}.
 store_round() ->
@@ -106,16 +120,15 @@ store_payment(#aestratum_payment{} = P) ->
     ok = mnesia:write(P),
     {ok, P}.
 
-update_payment(#aestratum_payment{} = P, AbsMap, Fee, Gas, TxHash, Nonce, Date) ->
-    P1 = P#aestratum_payment{fee = Fee,
-                             gas = Gas,
-                             absmap = AbsMap,
+update_payment(#aestratum_payment{} = P, AbsMap, TxHash, Date) ->
+    P1 = P#aestratum_payment{absmap  = AbsMap,
                              tx_hash = TxHash,
-                             nonce = Nonce,
-                             date = Date},
+                             date    = Date},
     ok = mnesia:write(P1),
     {ok, P1}.
 
+delete_payment({_, _} = Id) ->
+    ok = mnesia:delete({?PAYMENTS_TAB, Id}).
 
 get_candidate(BlockHash) ->
     case mnesia:read(aestratum_candidate, BlockHash) of
@@ -143,6 +156,10 @@ delete_candidates_older_than(Date) ->
 
 
 get_hash(Hash) ->
+    file:write_file("/tmp/aestratum-hash-lookups.txt",
+                    io_lib:format("get ~p~nin ~p~n~n",
+                                  [Hash, mnesia:dirty_all_keys(?HASHES_TAB)]),
+                    [append]),
     mnesia:dirty_read(?HASHES_TAB, Hash).
 
 
@@ -170,6 +187,9 @@ shares_selector(FirstKey, LastKey) ->
 shares_slices(Selector) ->
     mnesia:select(?SHARES_TAB, Selector, ?SHARES_BATCH_LENGTH, read).
 
+payments(Height) ->
+    Spec = ets:fun2ms(fun (#aestratum_payment{id = {H, _}} = P) when H == Height -> P end),
+    mnesia:select(?PAYMENTS_TAB, Spec).
 
 delete_reward_records(Height) ->
     case mnesia:read(aestratum_reward, Height) of
@@ -190,9 +210,6 @@ delete_reward_records(Height) ->
             %% this shouldn't happen, since rewards are deleted one by one
             ok
     end.
-
-delete_payment_records(TxHashes) ->
-    [mnesia:delete(?PAYMENTS_TAB, Tx, write) || Tx <- TxHashes].
 
 is_empty(Tab) ->
     mnesia:table_info(Tab, size) == 0.
