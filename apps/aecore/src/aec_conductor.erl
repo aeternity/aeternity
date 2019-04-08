@@ -646,10 +646,14 @@ preempt_if_new_top(#state{ top_block_hash = OldHash,
             BlockType = aec_blocks:type(NewBlock),
             ok = aec_tx_pool:top_change(BlockType, OldHash, NewHash),
 
-            aec_events:publish(top_changed, NewHash),
+            Hdr = aec_blocks:to_header(NewBlock),
+            Height = aec_headers:height(Hdr),
+            aec_events:publish(top_changed, #{ block_hash => NewHash
+                                             , block_type => BlockType
+                                             , prev_hash  => aec_headers:prev_hash(Hdr)
+                                             , height     => Height }),
             maybe_publish_top(Origin, NewBlock),
-            aec_metrics:try_update([ae,epoch,aecore,chain,height],
-                                   aec_blocks:height(NewBlock)),
+            aec_metrics:try_update([ae,epoch,aecore,chain,height], Height),
             State1 = State#state{top_block_hash = NewHash},
             KeyHash = aec_blocks:prev_key_hash(NewBlock),
             %% A new micro block from the same generation should

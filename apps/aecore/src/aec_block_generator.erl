@@ -172,7 +172,7 @@ add_new_tx(S = #state{ worker = Worker }, Tx) ->
         {_WPid, _WRef} -> S#state{ new_txs = [Tx | S#state.new_txs] }
     end.
 
-preempt_generation(S, NewTop) ->
+preempt_generation(S, #{ block_hash := NewTop }) ->
     S1 = stop_worker(S),
     start_worker_block(S1, NewTop).
 

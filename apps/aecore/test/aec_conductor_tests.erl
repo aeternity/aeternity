@@ -603,7 +603,10 @@ expect_top_event_hashes([],_AllowMissing) ->
     ok;
 expect_top_event_hashes(Expected, AllowMissing) ->
     receive
-        {gproc_ps_event, top_changed, #{info := Hash}} ->
+        {gproc_ps_event, top_changed, #{info := #{ block_hash := Hash
+                                                 , block_type := _
+                                                 , prev_hash  := _
+                                                 , height     := _ }}} ->
             NewExpected = Expected -- [Hash],
             case lists:member(Hash, Expected) of
                 true  -> expect_top_event_hashes(NewExpected, AllowMissing);
