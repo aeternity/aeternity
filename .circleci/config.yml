@@ -373,7 +373,7 @@ references:
     - run:
         name: Upload build artifacts to central repository (AWS)
         command: |
-          aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
+          aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
     - *fail_notification
 
 jobs:
