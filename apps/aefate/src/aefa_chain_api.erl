@@ -6,7 +6,20 @@
 %%%-------------------------------------------------------------------
 -module(aefa_chain_api).
 
--export([ contract_fate_code/2
+-export([ new/1
+        ]).
+
+-export([ account_balance/2
+        , beneficiary/1
+        , contract_fate_code/2
+        , difficulty/1
+        , final_trees/1
+        , gas_limit/1
+        , gas_price/1
+        , generation/1
+        , origin/1
+        , timestamp_in_msecs/1
+        , tx_env/1
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
@@ -18,35 +31,99 @@
 %%%       a lower level in the dependency graph later.
 %%%-------------------------------------------------------------------
 
-%%%===================================================================
+-record(state, { primop_state :: aeprimop_state:state()
+               , gas_price    :: non_neg_integer()
+               , origin       :: binary()
+               }).
+
+-type state() :: #state{}.
+-type pubkey() :: <<_:256>>.
+%%===================================================================
 %%% API
 %%% ===================================================================
 
-contract_fate_code(Pubkey, #{ contracts := ContractCache } = Chain) ->
-    case maps:get(Pubkey, ContractCache, none) of
-        none ->
-            CTrees = aec_trees:contracts(maps:get(trees, Chain)),
-            case aect_state_tree:lookup_contract(Pubkey, CTrees, [no_store]) of
-                {value, Contract} ->
-                    case aect_contracts:vm_version(Contract) of
-                        VMV when ?IS_FATE_SOPHIA(VMV) ->
-                            SerCode = aect_contracts:code(Contract),
-                            #{ byte_code := ByteCode} = aect_sophia:deserialize(SerCode),
-                            try aeb_fate_asm:bytecode_to_fate_code(ByteCode, []) of
-                                FateCode ->
-                                    Cache1 = ContractCache#{ Pubkey => ByteCode },
-                                    Chain1 = Chain#{ contracts => Cache1},
-                                    {ok, FateCode, Chain1}
-                            catch _:_ -> error
-                            end;
-                        _ ->
-                            error
+%%%-------------------------------------------------------------------
+%%% External API for infrastructure
+
+new(#{ gas_price := GasPrice
+     , origin := Origin
+     , trees  := Trees
+     , tx_env := TxEnv
+     }) ->
+    #state{ primop_state = aeprimop_state:new(Trees, TxEnv)
+          , gas_price    = GasPrice
+          , origin       = Origin
+          }.
+
+-spec tx_env(state()) -> aetx_env:env().
+tx_env(#state{primop_state = PState}) ->
+    aeprimop_state:tx_env(PState).
+
+-spec final_trees(state()) -> aec_trees:trees().
+final_trees(#state{primop_state = PState}) ->
+    aeprimop_state:final_trees(PState).
+
+%%%-------------------------------------------------------------------
+%%% Basic getters
+
+-spec origin(state()) -> aeb_fate_data:fate_address().
+origin(#state{origin = Origin}) ->
+    aeb_fate_data:make_address(Origin).
+
+-spec gas_price(state()) -> aeb_fate_data:fate_integer().
+gas_price(#state{gas_price = GasPrice}) ->
+    aeb_fate_data:make_integer(GasPrice).
+
+-spec beneficiary(state()) -> aeb_fate_data:fate_address().
+beneficiary(#state{} = S) ->
+    aeb_fate_data:make_address(aetx_env:beneficiary(tx_env(S))).
+
+-spec generation(state()) -> aeb_fate_data:fate_integer().
+generation(#state{} = S) ->
+    aeb_fate_data:make_integer(aetx_env:height(tx_env(S))).
+
+-spec difficulty(state()) -> aeb_fate_data:fate_integer().
+difficulty(#state{} = S) ->
+    aeb_fate_data:make_integer(aetx_env:difficulty(tx_env(S))).
+
+-spec gas_limit(state()) -> aeb_fate_data:fate_integer().
+gas_limit(#state{}) ->
+    %% Should be tied to height if this is changed.
+    aeb_fate_data:make_integer(aec_governance:block_gas_limit()).
+
+-spec timestamp_in_msecs(state()) -> aeb_fate_data:fate_integer().
+timestamp_in_msecs(#state{} = S) ->
+    aeb_fate_data:make_integer(aetx_env:time_in_msecs(tx_env(S))).
+
+%%%-------------------------------------------------------------------
+%%% Slightly more involved getters with caching
+
+-spec contract_fate_code(pubkey(), state()) -> 'error' |
+                                               {'ok', binary(), state()}.
+contract_fate_code(Pubkey, #state{primop_state = PState} = S) ->
+    case aeprimop_state:find_contract_without_store(Pubkey, PState) of
+        none -> error;
+        {value, Contract} ->
+            case aect_contracts:vm_version(Contract) of
+                VMV when ?IS_FATE_SOPHIA(VMV) ->
+                    SerCode = aect_contracts:code(Contract),
+                    #{ byte_code := ByteCode} = aect_sophia:deserialize(SerCode),
+                    try aeb_fate_asm:bytecode_to_fate_code(ByteCode, []) of
+                        FateCode -> {ok, FateCode, S#state{primop_state = PState}}
+                    catch _:_ -> error
                     end;
-                none ->
+                _ ->
                     error
-            end;
-        ByteCode when is_binary(ByteCode) ->
-            try {ok, aeb_fate_asm:bytecode_to_fate_code(ByteCode, []), Chain}
-            catch _:_ -> error
             end
+    end.
+
+-spec account_balance(pubkey(), state()) -> 'error' |
+                                            {'ok', aeb_fate_data:fate_integer(), state()}.
+account_balance(Pubkey, #state{primop_state = PState} = S) ->
+    case aeprimop_state:find_account(Pubkey, PState) of
+        {Account, PState1} ->
+            Balance = aeb_fate_data:make_integer(aec_accounts:balance(Account)),
+            {ok, Balance, S#state{primop_state = PState1}};
+        none ->
+            error
     end.

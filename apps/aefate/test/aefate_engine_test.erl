@@ -52,7 +52,13 @@ bits_test_() ->
 
 make_calls(ListOfCalls) ->
     Cache = setup_contracts(),
-    Chain = #{},
+    %% Dummy values since they should not come into play in this test
+    Spec = #{ trees => aec_trees:new_without_backend()
+            , caller => <<123:256>>
+            , origin => <<123:256>>
+            , gas_price => 1
+            , tx_env => aetx_env:tx_env(1)
+            },
     [{lists:flatten(io_lib:format("call(~p,~p,~p)->~p~n~p : ~p",
                                   [C,F,A,R,
                                    aefate_test_utils:encode(A),
@@ -62,7 +68,7 @@ make_calls(ListOfCalls) ->
               Call = make_call(C,F,A),
               case R of
                   {error, E} ->
-                      case aefa_fate:run_with_cache(Call, Chain, Cache) of
+                      case aefa_fate:run_with_cache(Call, Spec, Cache) of
                           {ok, nomatch} -> ok;
                           {error, Error, #{trace := Trace}} ->
                               ?assertEqual({E, Trace}, {Error, Trace})
@@ -70,7 +76,7 @@ make_calls(ListOfCalls) ->
                   _ ->
                       FateRes = aefate_test_utils:encode(R),
                       {ok, #{accumulator := Res,
-                             trace := Trace}} = aefa_fate:run_with_cache(Call, Chain, Cache),
+                             trace := Trace}} = aefa_fate:run_with_cache(Call, Spec, Cache),
                       ?assertEqual({FateRes, Trace}, {Res, Trace})
               end
       end}

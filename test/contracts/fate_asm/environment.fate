@@ -1,0 +1,64 @@
+;; CONTRACT environment
+
+FUNCTION init() -> {tuple, []}
+  RETURNR ()
+
+FUNCTION contract_address() -> address
+  ADDRESS a
+  RETURN
+
+FUNCTION contract_balance() -> integer
+  BALANCE a
+  RETURN
+
+FUNCTION call_origin() -> address
+  ORIGIN a
+  RETURN
+
+FUNCTION call_caller() -> address
+  CALLER a
+  RETURN
+
+FUNCTION remote_call_caller(address) -> address
+  CALL_TR arg0 call_caller
+
+FUNCTION remote_call_origin(address) -> address
+  CALL_TR arg0 call_origin
+
+;; Not implemented as instruction yet
+;; FUNCTION call_value() -> integer
+;;   VALUE
+;;   RETURN
+
+FUNCTION call_gas_price() -> integer
+  GASPRICE a
+  RETURN
+
+;; Defined as wrong arity in aebytecode
+;; FUNCTION block_hash(integer) -> hash
+;;   BLOCKHASH a arg0
+;;   RETURN
+
+FUNCTION beneficiary() -> address
+  BENEFICIARY a
+  RETURN
+
+FUNCTION timestamp() -> integer
+  TIMESTAMP a
+  RETURN
+
+FUNCTION generation() -> integer
+  GENERATION a
+  RETURN
+
+FUNCTION difficulty() -> integer
+  DIFFICULTY a
+  RETURN
+
+FUNCTION gas_limit() -> integer
+  GASLIMIT a
+  RETURN
+
+FUNCTION gas() -> integer
+  GAS a
+  RETURN

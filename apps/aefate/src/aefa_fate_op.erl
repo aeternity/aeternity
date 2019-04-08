@@ -492,31 +492,45 @@ bits_and(Arg0, Arg1, Arg2, EngineState) ->
 bits_diff(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(bits_difference, {Arg0, Arg1, Arg2}, EngineState).
 
-address(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+address(Arg0, EngineState) ->
+    Address = ?FATE_ADDRESS(_) = maps:get(current_contract, EngineState),
+    write(Arg0, Address, EngineState).
 
-balance(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+balance(Arg0, #{ chain_api := API} = EngineState) ->
+    ?FATE_ADDRESS(Pubkey) = maps:get(current_contract, EngineState),
+    {ok, Balance, API1} = aefa_chain_api:account_balance(Pubkey, API),
+    write(Arg0, Balance, EngineState#{chain_api => API1}).
 
-origin(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+origin(Arg0, #{ chain_api := API } = EngineState) ->
+    write(Arg0, aefa_chain_api:origin(API), EngineState).
 
-caller(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+caller(Arg0, #{ caller := ?FATE_ADDRESS(_) = Address } = EngineState) ->
+    write(Arg0, Address, EngineState).
 
-gasprice(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+gasprice(Arg0, #{ chain_api := API } = EngineState) ->
+    write(Arg0, aefa_chain_api:gas_price(API), EngineState).
 
 blockhash(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
 
-beneficiary(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+beneficiary(Arg0, #{ chain_api := API } = EngineState) ->
+    write(Arg0, aefa_chain_api:beneficiary(API), EngineState).
 
-timestamp(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+timestamp(Arg0, #{ chain_api := API } = EngineState) ->
+    write(Arg0, aefa_chain_api:timestamp_in_msecs(API), EngineState).
 
-generation(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+generation(Arg0, #{ chain_api := API } = EngineState) ->
+    write(Arg0, aefa_chain_api:generation(API), EngineState).
 
 microblock(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
 
-difficulty(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+difficulty(Arg0, #{ chain_api := API } = EngineState) ->
+    write(Arg0, aefa_chain_api:difficulty(API), EngineState).
 
-gaslimit(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+gaslimit(Arg0, #{ chain_api := API } = EngineState) ->
+    write(Arg0, aefa_chain_api:gas_limit(API), EngineState).
 
-gas(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+gas(Arg0, #{ gas := Gas} = EngineState) ->
+    write(Arg0, aeb_fate_data:make_integer(Gas), EngineState).
 
 log(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
 

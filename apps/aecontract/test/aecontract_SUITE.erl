@@ -40,6 +40,8 @@
         , create_contract_upfront_amount/1
         , create_contract_upfront_deposit/1
         , create_version_too_high/1
+        , fate_call_origin/1
+        , fate_environment/1
         , state_tree/1
         , sophia_identity/1
         , sophia_remote_identity/1
@@ -157,7 +159,9 @@ groups() ->
     , {fate_1, [sequence], [ create_contract
                            , sophia_identity
                            , sophia_remote_identity
-                           ]}
+                           , fate_environment
+                           , fate_call_origin
+                          ]}
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account
                                  ]}
@@ -359,7 +363,8 @@ init_per_testcase(_TC, Config) ->
     case vm_version() of
         ?VM_AEVM_SOPHIA_1 -> ?assertMatch(ExpVm1, Res);
         ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res);
-        ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res)
+        ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res); %% Should be the same
+        ?VM_FATE_SOPHIA_1 -> ?assertMatch(ExpVm3, Res)  %% where applicable
     end).
 
 -define(assertMatchProtocol(Res, ExpRoma, ExpMinerva),
@@ -713,8 +718,7 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
 sign_and_apply_transaction(Tx, PrivKey, S1, Height) ->
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
-    Env0     = aetx_env:tx_env(Height),
-    Env      = aetx_env:set_beneficiary(Env0, ?BENEFICIARY_PUBKEY),
+    Env      = default_tx_env(Height),
     case aec_block_micro_candidate:apply_block_txs_strict([SignedTx], Trees, Env) of
         {ok, [SignedTx], Trees1, _} ->
             S2 = aect_test_utils:set_trees(Trees1, S1),
@@ -729,13 +733,14 @@ sign_and_apply_transaction_strict(Tx, PrivKey, S1) ->
 sign_and_apply_transaction_strict(Tx, PrivKey, S1, Height) ->
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
-    Env0     = aetx_env:tx_env(Height),
-    Env      = aetx_env:set_beneficiary(Env0, ?BENEFICIARY_PUBKEY),
+    Env      = default_tx_env(Height),
     {ok, AcceptedTxs, Trees1, _} =
         aec_block_micro_candidate:apply_block_txs_strict([SignedTx], Trees, Env),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 
+default_tx_env(Height) ->
+    aetx_env:set_beneficiary(aetx_env:tx_env(Height), ?BENEFICIARY_PUBKEY).
 
 %%%===================================================================
 %%% Call contract
@@ -1462,7 +1467,6 @@ sophia_call_origin(_Cfg) ->
     RemCInt = ?call(call_contract, Acc, RemC, nested_caller, word, {}),
 
     ok.
-
 
 %% Oracles tests
 
@@ -4500,4 +4504,61 @@ call_wrong_type(_Cfg) ->
     42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {Contract2, 42}),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract1, remote_wrong_type, word,
                                       {Contract2, <<"hello">>}),
+    ok.
+
+%%%===================================================================
+%%% FATE specific tests
+%%%===================================================================
+
+fate_environment(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = <<AccInt:256>> = ?call(new_account, 100000000 * aec_test_utils:min_gas_price()),
+    InitialBalance = 4711,
+    Contract = <<ContractInt:256>> = ?call(create_contract, Acc, environment, {},
+                                           #{amount => InitialBalance}),
+    %% TODO: aeb_fate_data:decode/1 should not make addresses as integers
+    ?assertEqual({address, ContractInt},
+                 ?call(call_contract, Acc, Contract, contract_address, word, {})),
+    ?assertEqual({address, AccInt},
+                 ?call(call_contract, Acc, Contract, call_origin, word, {})),
+    ?assertEqual(InitialBalance,
+                 ?call(call_contract, Acc, Contract, contract_balance, word, {})),
+    GasPrice = aec_test_utils:min_gas_price() + 1,
+    ?assertEqual(GasPrice,
+                 ?call(call_contract, Acc, Contract, call_gas_price, word, {},
+                       #{gas_price => GasPrice})),
+    Height  = 3,
+    Env     = default_tx_env(Height),
+    <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(Env),
+    ?assertEqual({address, BeneficiaryInt},
+                 ?call(call_contract, Acc, Contract, beneficiary, word, {})),
+    ?assertEqual(Height, ?call(call_contract, Acc, Contract, generation, word, {},
+                               #{height => Height})),
+    Difficulty = aetx_env:difficulty(Env),
+    ?assertEqual(Difficulty, ?call(call_contract, Acc, Contract, difficulty, word, {})),
+    GasLimit = aec_governance:block_gas_limit(),
+    ?assertEqual(GasLimit, ?call(call_contract, Acc, Contract, gas_limit, word, {})),
+    Gas = ?call(call_contract, Acc, Contract, gas, word, {}),
+    ?assert(is_integer(Gas)),
+    Time1 = aeu_time:now_in_msecs(),
+    Timestamp = ?call(call_contract, Acc, Contract, timestamp, word, {}),
+    Time2 = aeu_time:now_in_msecs(),
+    ?assert(Time1 < Timestamp andalso Timestamp < Time2),
+
+    ok.
+
+fate_call_origin(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc       = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    EnvC      = ?call(create_contract, Acc, environment, {}, #{}),
+    RemC      = ?call(create_contract, Acc, environment, {}, #{}),
+
+    <<AccInt:256>> = Acc,
+    <<RemCInt:256>> = RemC,
+
+    {address, AccInt}  = ?call(call_contract, Acc, RemC, call_caller, word, {}),
+    {address, AccInt}  = ?call(call_contract, Acc, RemC, call_origin, word, {}),
+    {address, RemCInt} = ?call(call_contract, Acc, RemC, remote_call_caller, word, {EnvC}),
+    {address, AccInt}  = ?call(call_contract, Acc, RemC, remote_call_origin, word, {EnvC}),
+
     ok.

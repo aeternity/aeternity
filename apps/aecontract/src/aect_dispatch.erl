@@ -185,13 +185,13 @@ run_common(#{vm := ?VM_FATE_SOPHIA_1 = VMVersion, abi := ABIVersion},
             OldContext  = aetx_env:context(TxEnv0),
             Spec = #{ contract => ContractAddress
                     , call     => CallData
+                    , code     => Code
                     , gas      => Gas
                     },
             Env0 = maps:with(?FATE_VM_SPEC_FIELDS, CallDef),
             %% TODO: This should be replaced once the fate
             %% chain connection is implemented
-            Env  = Env0#{ contracts => #{ContractAddress => Code}
-                        , tx_env   => aetx_env:set_context(TxEnv0, aetx_contract)
+            Env  = Env0#{ tx_env   => aetx_env:set_context(TxEnv0, aetx_contract)
                         },
 
             case aefa_fate:run(Spec, Env) of
