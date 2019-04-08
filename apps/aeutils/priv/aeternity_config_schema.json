@@ -928,6 +928,10 @@
             "type"    : "object",
             "additionalProperties": false,
             "properties" : {
+                "enabled" : {
+                    "type" : "boolean",
+                    "default" : false
+                },
                 "reward_last_rounds" : {
                     "type" : "integer"
                 },

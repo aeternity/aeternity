@@ -16,12 +16,16 @@ start_link(Cfg) ->
 %% supervisor callbacks.
 
 init(Cfg) ->
-    Procs =
-        [aestratum_chain(Cfg),
-         aestratum_reward(Cfg),
-         aestratum_extra_nonce_cache(Cfg),
-         aestratum_user_register(Cfg),
-         ranch_listener(Cfg)],
+    Procs = case maps:get(enabled, Cfg) of
+                true ->
+                    [aestratum_chain(Cfg),
+                     aestratum_reward(Cfg),
+                     aestratum_extra_nonce_cache(Cfg),
+                     aestratum_user_register(Cfg),
+                     ranch_listener(Cfg)];
+                false ->
+                    []
+            end,
     {ok, {{one_for_all, 1, 5}, Procs}}.
 
 %% Internal functions.
@@ -68,4 +72,3 @@ ranch_listener(#{conn_cfg :=
 
 ranch_mod(<<"tcp">>) -> ranch_tcp;
 ranch_mod(<<"ssl">>) -> ranch_ssl.
-

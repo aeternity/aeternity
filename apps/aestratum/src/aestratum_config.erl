@@ -6,7 +6,8 @@
 read() ->
     {ok, Cfg} = aeu_env:user_config(<<"stratum">>),
     Cfg1 = maps:from_list(Cfg),
-    Cfg2 = #{conn_cfg    => conn_config(Cfg1),
+    Cfg2 = #{enabled     => maps:get(<<"enabled">>, Cfg1),
+             conn_cfg    => conn_config(Cfg1),
              session_cfg => session_config(Cfg1),
              reward_cfg  => reward_config(Cfg1)},
     case validate_config(Cfg2) of
@@ -126,4 +127,3 @@ binary_to_number(B) ->
         {'EXIT', {badarg, _}} -> binary_to_float(B);
         I -> I
     end.
-
