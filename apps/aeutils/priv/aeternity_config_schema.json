@@ -345,9 +345,7 @@
                 "persist" : {
                     "description" :
                     "If true, all changes to the chain are written to disk.",
-                    "type" : "boolean",
-                    "default" : true
-                },
+                    "type" : "boolean" },
                 "db_backend" : {
                     "description" : "Choice of database backend.",
                     "type" : "string",
@@ -970,6 +968,10 @@
                             "type" : "integer",
                             "default" : 4
                         },
+                        "skip_num_blocks" : {
+                            "type" : "integer",
+                            "default" : 10
+                        },
                         "initial_share_target" : {
                             "type" : "integer"
                         },
@@ -993,6 +995,10 @@
                         "share_target_diff_threshold" : {
                             "type" : "number",
                             "default" : 5.0
+                        },
+                        "edge_bits" : {
+                            "type" : "number",
+                            "default" : 29
                         },
                         "max_jobs" : {
                             "type" : "integer",
