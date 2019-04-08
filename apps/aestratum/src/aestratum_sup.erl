@@ -21,6 +21,7 @@ start_link(Cfg) ->
 init(Cfg) ->
     Procs = case maps:get(enabled, Cfg) of
                 true ->
+                    aestratum_db:create_tables(disc), % ensure needed tables are present
                     [aestratum_chain(Cfg),
                      aestratum_reward(Cfg),
                      aestratum_extra_nonce_cache(Cfg),
