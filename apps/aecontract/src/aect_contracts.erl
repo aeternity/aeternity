@@ -283,9 +283,8 @@ serialization_template(?CONTRACT_VSN) ->
 
 -spec compute_contract_pubkey(aec_keys:pubkey(), ct_nonce()) -> aec_keys:pubkey().
 compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, Nonce) when is_integer(Nonce), Nonce >= 0  ->
-    NonceBin = binary:encode_unsigned(Nonce),
-    compute_contract_pubkey(Owner, NonceBin);
-compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, NonceBin) when is_binary(NonceBin) ->
+    aec_hash:hash(pubkey, <<Owner/binary, (binary:encode_unsigned(Nonce))/binary>>);
+compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, <<_:?HASH_SIZE/binary>> = NonceBin) ->
     aec_hash:hash(pubkey, <<Owner/binary, NonceBin/binary>>).
 
 -spec compute_contract_store_id(aec_keys:pubkey()) -> store_id().

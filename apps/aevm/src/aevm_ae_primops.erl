@@ -557,7 +557,6 @@ crypto_call(_, _, _, _) ->
 
 crypto_call_ecverify(_Gas, Data, State) ->
     [Msg, PK, Sig] = get_args([word, word, sign_t()], Data),
-    io:format("ECVERIFY:\nMsg: ~p\nSig: ~p\nPub: ~p\n", [<<Msg:256>>, to_sign(Sig), <<PK:256>>]),
     Res =
         case enacl:sign_verify_detached(to_sign(Sig), <<Msg:256>>, <<PK:256>>) of
             {ok, _}    -> {ok, <<1:256>>};

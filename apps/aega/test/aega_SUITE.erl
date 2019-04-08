@@ -253,7 +253,7 @@ simple_re_attach_fail(_Cfg) ->
     {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
 
     AuthOpts = #{ prep_fun => fun(_) -> simple_auth(["123", "1"]) end },
-    {ok, #{tx_res := error}} =
+    {ok, #{tx_res := error, tx_value := <<"not_a_basic_account">>}} =
         ?call(ga_attach, Acc1, AuthOpts, "simple_auth", "authorize", ["123"]),
 
     ok.
@@ -267,7 +267,8 @@ simple_spend_from_fail(_Cfg) ->
 
     AuthOpts   = #{ prep_fun => fun(_) -> simple_auth(["123", "1"]) end },
     PreBalance  = ?call(account_balance, Acc2),
-    {ok, #{tx_res := error}} = ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000),
+    {ok, #{tx_res := error, tx_value := <<"too_low_fee">>}} =
+        ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000),
     PostBalance = ?call(account_balance, Acc2),
     ?assertEqual(PreBalance, PostBalance),
 
@@ -600,7 +601,7 @@ channel_force_progress(_Cfg) ->
 
     {CtId, OffState1} = aega_test_utils:add_contract(Acc1, ?call(dry_run, contract_create, {"identity", []}), OffState),
 
-    {ok, #{tx_res := ok, round := 4}} =
+    {ok, #{tx_res := ok, round := 4, call_res := ok}} =
         ?call(ga_channel_force_progress, Acc1, Auth("2"), ChId, OffState1, CtId, "identity", "main", ["42"]),
 
     ok.
@@ -897,7 +898,7 @@ meta(Owner, AuthOpts, InnerTx0, Opts, S) ->
     GasUsed = aect_call:gas_used(Call),
     AuthCost = aetx:fee(MetaTx) + aetx:gas_price(MetaTx) * GasUsed,
     Res0 = #{ auth_gas => GasUsed, auth_cost => AuthCost,
-              tx_res => aect_call:return_type(Call) },
+              tx_res => aect_call:return_type(Call), tx_value => aect_call:return_value(Call) },
 
     Res =
         case aetx:specialize_type(InnerTx) of
@@ -927,10 +928,14 @@ meta(Owner, AuthOpts, InnerTx0, Opts, S) ->
                                                  aesc_create_tx:responder_pubkey(CCTx)),
                 {ok, Res0#{channel_id => ChannelId}};
             {channel_force_progress_tx, CFPTx} ->
-                ChId = aesc_force_progress_tx:channel_pubkey(CFPTx),
-                ChannelTrees = aec_trees:channels(aect_test_utils:trees(S1)),
-                {value, Channel} = aesc_state_tree:lookup(ChId, ChannelTrees),
-                {ok, Res0#{ round => aesc_channels:round(Channel) }};
+                ChId                = aesc_force_progress_tx:channel_pubkey(CFPTx),
+                ChannelTrees        = aec_trees:channels(aect_test_utils:trees(S1)),
+                {value, Channel}    = aesc_state_tree:lookup(ChId, ChannelTrees),
+                ContractPlaceholder = aesc_utils:tx_hash_to_contract_pubkey(aetx_sign:hash(SMetaTx)),
+                InnerCallId         = aect_call:ga_id(AuthId, ContractPlaceholder),
+                InnerCall           = aect_call_state_tree:get_call(ContractPlaceholder, InnerCallId, CallTree),
+                {ok, Res0#{round => aesc_channels:round(Channel),
+                           call_res => aect_call:return_type(InnerCall)}};
             {Tx, _} when Tx == oracle_response_tx; Tx == oracle_extend_tx;
                          Tx == channel_deposit_tx; Tx == channel_withdraw_tx;
                          Tx == channel_snapshot_solo_tx; Tx == channel_close_mutual_tx;

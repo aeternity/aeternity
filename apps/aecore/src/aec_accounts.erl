@@ -110,7 +110,7 @@ spend_without_nonce_bump(#account{balance = Balance0} = Account0, Amount) ->
 
 -spec type(account()) -> basic | generalized.
 type(#account{ ga_contract = undefined }) -> basic;
-type(#account{})                          -> generalized.
+type(#account{ ga_contract = C })         -> contract = aeser_id:specialize_type(C), generalized.
 
 is_legal_at_height(Account, Height) ->
     case type(Account) of

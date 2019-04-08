@@ -905,7 +905,7 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
                  assert_account_nonce(CallerAccount, Nonce),
                  CallerAccount1 = aec_accounts:set_nonce(CallerAccount, Nonce),
                  account_spend(CallerAccount1, TotalAmount, S1);
-             _Other ->
+             Other when Other == aetx_transaction; Other == aetx_ga ->
                  account_spend(CallerAccount, TotalAmount, S1)
          end,
     {ContractAccount, S3} = get_account(ContractPubkey, S2),
@@ -919,14 +919,14 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
             case Context of
                 aetx_contract ->
                     {return, Call, S5}; %% Return instead of store
-                _Other2 ->
+                Other2 when Other2 == aetx_transaction; Other2 == aetx_ga ->
                     contract_call_success(Call, GasLimit, S5)
             end;
         Fail when (Fail =:= revert orelse Fail =:= error) ->
             case Context of
                 aetx_contract ->
                     {return, Call, S}; %% Return instead of store
-                _Other2 ->
+                Other2 when Other2 == aetx_transaction; Other2 == aetx_ga ->
                     contract_call_fail(Call, Fee, S)
             end
     end.
@@ -934,11 +934,9 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
 get_call_env_specific(CallerPubKey, GasLimit, GasPrice, Amount, Fee, S) ->
     case aetx_env:context(S#state.tx_env) of
         aetx_contract ->
-            {aeser_id:create(contract, CallerPubKey),
-             Amount};
-        _Other ->
-            {aeser_id:create(account, CallerPubKey),
-             Fee + GasLimit * GasPrice + Amount}
+            {aeser_id:create(contract, CallerPubKey), Amount};
+        Other when Other == aetx_transaction; Other == aetx_ga ->
+            {aeser_id:create(account, CallerPubKey), Fee + GasLimit * GasPrice + Amount}
     end.
 
 %%%-------------------------------------------------------------------
@@ -982,12 +980,12 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
                                    _CallStack = [], Nonce, S3),
     case aect_call:return_type(InitCall) of
         error ->
-            ga_attach_fail(InitCall, Fee, RollbackS);
+            contract_call_fail(InitCall, Fee, RollbackS);
         revert ->
-            ga_attach_fail(InitCall, Fee, RollbackS);
+            contract_call_fail(InitCall, Fee, RollbackS);
         ok ->
-            ga_attach_init_success(InitCall, Contract, GasLimit,
-                                   Fee, AuthFun, RollbackS, S4)
+            contract_init_call_success({attach, AuthFun}, InitCall, Contract,
+                                       GasLimit, Fee, RollbackS, S4)
     end.
 
 ga_set_meta_res_op(OwnerPubkey, AuthData, Res) ->
@@ -1007,11 +1005,18 @@ ga_set_meta_res({OwnerPubkey, AuthData, Res}, S) ->
         case Res of
             ok ->
                 aect_call:set_return_type(ok, AuthCall);
-            {error, _} ->
-                %% GA_TODO: Also store error reason?!
-                aect_call:set_return_type(error, AuthCall)
+            {error, Reason} ->
+                aect_call:set_return_type(error,
+                    aect_call:set_return_value(error_to_binary(Reason), AuthCall))
         end,
     cache_put(auth_call, AuthCall1, S2).
+
+error_to_binary(Atom) when is_atom(Atom) ->
+    atom_to_binary(Atom, utf8);
+error_to_binary(Bin) when is_binary(Bin) ->
+    Bin;
+error_to_binary(_) ->
+    <<"unknown_error">>.
 
 ga_meta_op(OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee
           ) when ?IS_HASH(OwnerPubkey),
@@ -1031,14 +1036,13 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee}, S) ->
     assert_account_balance(Account, CheckAmount),
     AuthContract = aec_accounts:ga_contract(Account),
     {contract, AuthContractPK} = aeser_id:specialize(AuthContract),
-    _AuthFunHash = aec_accounts:ga_auth_fun(Account),
+    AuthFunHash = aec_accounts:ga_auth_fun(Account),
 
     assert_contract_call_version(AuthContractPK, ABIVersion, S),
+    assert_auth_data_function(AuthData, AuthFunHash),
     S2 = account_spend(Account, CheckAmount, S1),
     {Contract, _} = get_contract(AuthContractPK, S2),
-    %% GA_TODO: assert AuthFunHash matches AuthData
     CallerId   = aeser_id:create(account, OwnerPK),
-    %% GA_TODO: pass the TX-hash into a special env: Auth.tx_hash?!
     {Call, S3} = run_contract(CallerId, Contract, GasLimit, GasPrice,
                               AuthData, OwnerPK, _Amount = 0, _CallStack = [], _Nonce = 0, S2),
     case aect_call:return_type(Call) of
@@ -1118,8 +1122,8 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
         revert ->
             contract_call_fail(InitCall, Fee, RollbackS);
         ok ->
-            contract_init_call_success(InitCall, Contract, GasLimit, Fee,
-                                       RollbackS, S5)
+            contract_init_call_success(contract, InitCall, Contract,
+                                       GasLimit, Fee, RollbackS, S5)
     end.
 
 %%%-------------------------------------------------------------------
@@ -1132,7 +1136,7 @@ tx_event(Name, #state{tx_env = Env} = S) ->
 
 %%%-------------------------------------------------------------------
 
-contract_init_call_success(InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
+contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
     ReturnValue = aect_call:return_value(InitCall),
     %% The return value is cleared for successful init calls.
     InitCall1   = aect_call:set_return_value(<<>>, InitCall),
@@ -1143,7 +1147,12 @@ contract_init_call_success(InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
                 {ok, Store} ->
                     Contract1 = aect_contracts:set_state(Store, Contract),
                     S1 = cache_put(contract, Contract1, S),
-                    contract_call_success(InitCall1, GasLimit, S1);
+                    case Type of
+                        contract ->
+                            contract_call_success(InitCall1, GasLimit, S1);
+                        {attach, AuthFun} ->
+                            ga_attach_success(InitCall1, GasLimit, AuthFun, S1)
+                    end;
                 {error, _} ->
                     FailCall0 = aect_call:set_return_value(<<"out_of_gas">>, InitCall),
                     FailCall  = aect_call:set_return_type(error, FailCall0),
@@ -1218,23 +1227,6 @@ run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, Origin, Amount,
     {Call1, Trees1, Env1} = aect_dispatch:run(CTVersion, CallDef),
     {Call1, S1#state{trees = Trees1, tx_env = Env1}}.
 
-ga_attach_init_success(InitCall, Contract, GasLimit, Fee, AuthFun, RollbackS, S) ->
-    ReturnValue = aect_call:return_value(InitCall),
-    %% The return value is cleared for successful init calls.
-    InitCall1   = aect_call:set_return_value(<<>>, InitCall),
-    CTVersion   = aect_contracts:ct_version(Contract),
-    %% Set the initial state of the contract
-    case aevm_eeevm_store:from_sophia_state(CTVersion, ReturnValue) of
-        {ok, Store} ->
-            Contract1 = aect_contracts:set_state(Store, Contract),
-            S1 = cache_put(contract, Contract1, S),
-            ga_attach_success(InitCall1, GasLimit, AuthFun, S1);
-        {error, _} ->
-            FailCall0 = aect_call:set_return_value(<<"out_of_gas">>, InitCall),
-            FailCall  = aect_call:set_return_type(error, FailCall0),
-            ga_attach_fail(FailCall, Fee, RollbackS)
-    end.
-
 ga_attach_success(Call, GasLimit, AuthFun, S) ->
     Refund = (GasLimit - aect_call:gas_used(Call)) * aect_call:gas_price(Call),
     {CallerAccount, S1} = get_account(aect_call:caller_pubkey(Call), S),
@@ -1242,12 +1234,6 @@ ga_attach_success(Call, GasLimit, AuthFun, S) ->
     {ok, CallerAccount1} = aec_accounts:attach_ga_contract(CallerAccount, Contract, AuthFun),
     S2 = account_earn(CallerAccount1, Refund, S1),
     cache_put(call, set_call_object_id(Call, S2), S2).
-
-ga_attach_fail(Call, Fee, S) ->
-    S1 = cache_put(call, set_call_object_id(Call, S), S),
-    UsedAmount = aect_call:gas_used(Call) * aect_call:gas_price(Call) + Fee,
-    {Account, S2} = get_account(aect_call:caller_pubkey(Call), S1),
-    account_spend(Account, UsedAmount, S2).
 
 int_lock_amount(0, #state{} = S) ->
     %% Don't risk creating an account for the locked amount if there is none.
@@ -1475,13 +1461,11 @@ assert_name_claimed(Name) ->
 
 assert_ga_attach_byte_code(?ABI_AEVM_SOPHIA_1, SerializedCode, CallData, FunHash, S) ->
     try aect_sophia:deserialize(SerializedCode) of
-        #{type_info := TypeInfo,
-          contract_vsn := Vsn} ->
+        #{type_info := TypeInfo, contract_vsn := Vsn} ->
             case aect_sophia:is_legal_serialization_at_height(Vsn, S#state.height) of
                 true ->
                     assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo),
-                    %% GA_TODO: Also check return type of Auth function.
-                    assert_function_hash_in_code(FunHash, TypeInfo);
+                    assert_auth_function(FunHash, TypeInfo);
                 false ->
                     runtime_error(illegal_contract_compiler_version)
             end
@@ -1521,10 +1505,18 @@ assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo) ->
         _Other -> runtime_error(bad_init_function)
     end.
 
-assert_function_hash_in_code(Hash, TypeInfo) ->
-    case aeso_abi:function_name_from_type_hash(Hash, TypeInfo) of
-        {ok, _}    -> ok;
-        {error, _} -> runtime_error(bad_function_hash)
+assert_auth_data_function(AuthData, AuthFunHash) ->
+    case aeso_abi:get_function_hash_from_calldata(AuthData) of
+        {ok, AuthFunHash} -> ok;
+        {ok, _OtherHash}  -> runtime_error(wrong_auth_function);
+        _Other            -> runtime_error(bad_auth_data)
+    end.
+
+assert_auth_function(Hash, TypeInfo) ->
+    case aeso_abi:typereps_from_type_hash(Hash, TypeInfo) of
+        {ok, _ArgType, word}     -> ok;
+        {ok, _ArgType, _OutType} -> runtime_error(bad_auth_function_return_type);
+        {error, _}               -> runtime_error(bad_function_hash)
     end.
 
 assert_contract_create_version(ABIVersion, VMVersion, S) ->
@@ -1578,6 +1570,7 @@ assert_auth_call_object_not_exist(Call, S) ->
             end;
         {value, _} -> runtime_error(auth_call_object_already_exist)
     end.
+
 
 assert_not_channel(ChannelPubkey, S) ->
     case find_x(channel, ChannelPubkey, S) of

@@ -148,7 +148,7 @@ unpack_payload(Tx) ->
     case aetx:specialize_type(aetx_sign:tx(Tx)) of
         {channel_offchain_tx, OffChainTx} -> {ok, OffChainTx};
         {ga_meta_tx, GAMetaTx}            -> unpack_payload(aega_meta_tx:tx(GAMetaTx));
-        _                                 -> {error, bad_offchain_state_type}
+        {_, _}                            -> {error, bad_offchain_state_type}
     end.
 
 -spec is_payload_valid_at_protocol(aec_hard_forks:protocol_vsn(), binary()) -> boolean().
@@ -440,48 +440,55 @@ verify_signatures(Channel, SignedState, Trees, Env, CheckedSigners) ->
 verify_signature(Channel, MetaTx, Trees, Env) ->
     SignerId = aega_meta_tx:ga_id(MetaTx),
     case aesc_channels:auth_for_id(SignerId, Channel) of
-        {ok, {AuthFun, AuthContractId}} ->
-            %% GA_TODO: assert AuthFun
-            Height = aetx_env:height(Env),
-            {_, SignerPK} = aeser_id:specialize(SignerId),
-            {_, AuthContractPK} = aeser_id:specialize(AuthContractId),
-            Call = aect_call:new(SignerId, 0, AuthContractId, Height,
-                                 aega_meta_tx:gas_price(MetaTx)),
-            CTree = aec_trees:contracts(Trees),
-            StoreKey = aesc_channels:auth_store_key(SignerId, Channel),
-            case {aect_state_tree:lookup_contract(AuthContractPK, CTree, [no_store]),
-                  aect_state_tree:read_contract_store(StoreKey, CTree)} of
-                {{value, Contract}, {ok, Store}} ->
-                    CallDef = #{ caller      => SignerPK
-                               , contract    => AuthContractPK
-                               , gas         => aega_meta_tx:gas_limit(MetaTx, Height)
-                               , gas_price   => aega_meta_tx:gas_price(MetaTx)
-                               , call_data   => aega_meta_tx:auth_data(MetaTx)
-                               , amount      => 0
-                               , call_stack  => []
-                               , code        => aect_contracts:code(Contract)
-                               , store       => Store
-                               , call        => Call
-                               , trees       => Trees
-                               , tx_env      => set_auth_tx_hash(aega_meta_tx:tx(MetaTx), Env)
-                               , off_chain   => false
-                               , origin      => SignerPK
-                               },
-                    CTVersion = aect_contracts:ct_version(Contract),
-                    {Call1, _Trees1, _Env1} = aect_dispatch:run(CTVersion, CallDef),
-                    case check_auth_result(Call1) of
-                        ok               -> {ok, SignerPK, aega_meta_tx:tx(MetaTx)};
-                        Err = {error, _} -> Err
-                    end;
-                {none, _} ->
-                    {error, signature_verification_failed_no_contract};
-                {_, {error, _}} ->
-                    {error, signature_verification_failed_no_state}
+        {ok, {AuthFunHash, AuthContractId}} ->
+            case aeso_abi:get_function_hash_from_calldata(aega_meta_tx:auth_data(MetaTx)) of
+                {ok, AuthFunHash} -> verify_signature_(Channel, SignerId, AuthContractId,
+                                                       MetaTx, Trees, Env);
+                {ok, _OtherHash}  -> {error, wrong_auth_function};
+                _Other            -> {error, bad_auth_data}
             end;
         {ok, basic} ->
             {error, meta_tx_for_basic_account};
         Err = {error, _} ->
             Err
+    end.
+
+verify_signature_(Channel, SignerId, AuthContractId, MetaTx, Trees, Env) ->
+    Height = aetx_env:height(Env),
+    {_, SignerPK} = aeser_id:specialize(SignerId),
+    {_, AuthContractPK} = aeser_id:specialize(AuthContractId),
+    Call = aect_call:new(SignerId, 0, AuthContractId, Height,
+                         aega_meta_tx:gas_price(MetaTx)),
+    CTree = aec_trees:contracts(Trees),
+    StoreKey = aesc_channels:auth_store_key(SignerId, Channel),
+    case {aect_state_tree:lookup_contract(AuthContractPK, CTree, [no_store]),
+          aect_state_tree:read_contract_store(StoreKey, CTree)} of
+        {{value, Contract}, {ok, Store}} ->
+            CallDef = #{ caller      => SignerPK
+                       , contract    => AuthContractPK
+                       , gas         => aega_meta_tx:gas_limit(MetaTx, Height)
+                       , gas_price   => aega_meta_tx:gas_price(MetaTx)
+                       , call_data   => aega_meta_tx:auth_data(MetaTx)
+                       , amount      => 0
+                       , call_stack  => []
+                       , code        => aect_contracts:code(Contract)
+                       , store       => Store
+                       , call        => Call
+                       , trees       => Trees
+                       , tx_env      => set_auth_tx_hash(aega_meta_tx:tx(MetaTx), Env)
+                       , off_chain   => false
+                       , origin      => SignerPK
+                       },
+            CTVersion = aect_contracts:ct_version(Contract),
+            {Call1, _Trees1, _Env1} = aect_dispatch:run(CTVersion, CallDef),
+            case check_auth_result(Call1) of
+                ok               -> {ok, SignerPK, aega_meta_tx:tx(MetaTx)};
+                Err = {error, _} -> Err
+            end;
+        {none, _} ->
+            {error, signature_verification_failed_no_contract};
+        {_, {error, _}} ->
+            {error, signature_verification_failed_no_state}
     end.
 
 check_auth_result(Call) ->
@@ -661,7 +668,7 @@ process_force_progress(Tx, OffChainTrees, TxHash, Height, Trees, Env) ->
     Trees1 = consume_gas_and_fee(Call, Fee, FromPubKey, Nonce, Trees),
 
     % add a receipt call in the calls state tree
-    Trees2 = add_call(Call, TxHash, Trees1),
+    Trees2 = add_call(Call, TxHash, Trees1, Env),
 
     ?TEST_LOG("Expected hash ~p", [ExpectedHash]),
     ?TEST_LOG("Computed hash ~p", [ComputedHash]),
@@ -758,13 +765,19 @@ tx_hash_to_contract_pubkey(TxHash) ->
             <<Short/binary, 0:BytesToPad/unit:8>>
     end.
 
-add_call(Call0, TxHash, Trees) ->
+add_call(Call0, TxHash, Trees, Env) ->
     ContractPubkey = tx_hash_to_contract_pubkey(TxHash),
-    Call1 = aect_call:set_contract(ContractPubkey, Call0),
-    %% GA_TODO: This is not right in a GA context :rolling_eyes:
-    Call  = aect_call:set_id(aect_call:id(aect_call:caller_pubkey(Call1),
-                                          aect_call:caller_nonce(Call1),
-                                          ContractPubkey), Call1),
+    Call1          = aect_call:set_contract(ContractPubkey, Call0),
+    Caller         = aect_call:caller_pubkey(Call1),
+    NewId =
+        case aetx_env:ga_nonce(Env, Caller) of
+            {value, Nonce} ->
+                aect_call:ga_id(Nonce, ContractPubkey);
+            none ->
+                aect_call:id(Caller, aect_call:caller_nonce(Call1), ContractPubkey)
+        end,
+
+    Call = aect_call:set_id(NewId, Call1),
     aect_utils:insert_call_in_trees(Call, Trees).
 
 -spec add_event(aec_trees:trees(), binary(), aetx_env:env()) ->

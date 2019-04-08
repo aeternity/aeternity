@@ -297,9 +297,10 @@ from_db_format(#aetx{} = Tx) ->
 
 check(Tx, Trees, Env) ->
     case aetx_env:context(Env) of
-        aetx_transaction -> check_tx(Tx, Trees, Env);
-        aetx_contract    -> check_contract(Tx, Trees, Env);
-        aetx_ga          -> check_tx(Tx, Trees, Env) %% GA_TODO: more checks or maybe less checks?
+        aetx_contract    ->
+            check_contract(Tx, Trees, Env);
+        Ctxt when Ctxt == aetx_transaction; Ctxt == aetx_ga ->
+            check_tx(Tx, Trees, Env)
     end.
 
 check_contract(#aetx{ cb = CB, tx = Tx }, Trees, Env) ->
