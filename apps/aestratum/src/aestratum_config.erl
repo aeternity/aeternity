@@ -11,9 +11,9 @@ read() ->
     {ok, Cfg} = aeu_env:user_config(<<"stratum">>),
     Cfg1 = maps:from_list(Cfg),
     Cfg2 = #{enabled     => maps:get(<<"enabled">>, Cfg1),
-             conn_cfg    => conn_config(Cfg1),
-             session_cfg => session_config(Cfg1),
-             reward_cfg  => reward_config(Cfg1)},
+             conn_cfg    => conn_config(maps:from_list(maps:get(<<"connection">>, Cfg1, []))),
+             session_cfg => session_config(maps:from_list(maps:get(<<"session">>, Cfg1, []))),
+             reward_cfg  => reward_config(maps:from_list(maps:get(<<"reward">>, Cfg1, [])))},
     case validate_config(Cfg2) of
         {ok, C} = Res ->
             setup_env(C),
