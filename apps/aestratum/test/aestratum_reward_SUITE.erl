@@ -33,14 +33,14 @@ all() ->
 init_per_suite(_) ->
     ok = application:start(gproc),
     ok = mnesia:start(),
-    aestratum_reward:create_tables(ram),
+    [_ | _] = aestratum_db:create_tables(ram),
 
     meck:new(aestratum_chain, [passthrough]),
     meck:expect(aestratum_chain, get_reward_key_header, 1, {error, cant_get_top_key_block}),
 
     %% dbg:tracer(),
     %% dbg:p(all, call),
-    %% dbg:tpl(aestratum_reward, sort_key, [{'_', [], [{return_trace}]}]),
+    %% dbg:tpl(aestratum_reward, start_link, [{'_', [], [{return_trace}]}]),
     %% dbg:tpl(aestratum_reward, submit_share, [{'_', [], [{return_trace}]}]),
 
     spawn(fun () ->
@@ -192,8 +192,12 @@ check_amounts(Config, Height) ->
     #{pool := Pool, miners := Miners} = get_map(aestratum_reward, Height),
     {_, PoolTokens} = lists:keyfind(pool_total_tokens, 1, Config),
     {_, MinerTokens} = lists:keyfind(miners_total_tokens, 1, Config),
-    true = sum_values(aestratum_chain:calculate_rewards(Pool, PoolTokens)) == PoolTokens,
-    true = sum_values(aestratum_chain:calculate_rewards(Miners, MinerTokens)) == MinerTokens.
+    PoolSum = sum_values(aestratum_chain:calculate_rewards(Pool, PoolTokens)),
+    MinerSum = sum_values(aestratum_chain:calculate_rewards(Miners, MinerTokens)),
+    %% during computations with floats, imprecisions can add up so we distribute
+    %% smaller amount than we could.
+    true = PoolSum =< PoolTokens andalso (PoolTokens - PoolSum) =< 10,
+    true = MinerSum =< MinerTokens andalso (MinerTokens - MinerSum) =< 10.
 
 
 tabs() -> [aestratum_hash, aestratum_share, aestratum_round, aestratum_reward].
