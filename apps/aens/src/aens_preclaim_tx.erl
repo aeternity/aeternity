@@ -103,13 +103,13 @@ check(#ns_preclaim_tx{} = _Tx, Trees,_Env) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 process(#ns_preclaim_tx{} = PreclaimTx, Trees, Env) ->
     Instructions =
-        aec_tx_processor:name_preclaim_tx_instructions(
+        aeprimop:name_preclaim_tx_instructions(
           account_pubkey(PreclaimTx),
           commitment_hash(PreclaimTx),
           aec_governance:name_preclaim_expiration(),
           fee(PreclaimTx),
           nonce(PreclaimTx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_preclaim_tx{} = Tx, _) ->

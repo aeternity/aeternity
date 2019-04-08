@@ -119,13 +119,13 @@ check(#ns_transfer_tx{}, Trees,_Env) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#ns_transfer_tx{} = TTx, Trees, Env) ->
     Instructions =
-        aec_tx_processor:name_transfer_tx_instructions(
+        aeprimop:name_transfer_tx_instructions(
           account_pubkey(TTx),
           recipient_id(TTx),
           name_hash(TTx),
           fee(TTx),
           nonce(TTx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_transfer_tx{} = Tx, _) ->

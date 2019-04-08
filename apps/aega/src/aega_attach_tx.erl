@@ -195,7 +195,7 @@ signers(#ga_attach_tx{} = Tx, _) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#ga_attach_tx{} = Tx, Trees, Env) ->
     Instructions =
-        aec_tx_processor:ga_attach_tx_instructions(
+        aeprimop:ga_attach_tx_instructions(
           owner_pubkey(Tx),
           gas(Tx),
           gas_price(Tx),
@@ -206,7 +206,7 @@ process(#ga_attach_tx{} = Tx, Trees, Env) ->
           call_data(Tx),
           fee(Tx),
           nonce(Tx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 serialize(#ga_attach_tx{owner_id   = OwnerId,
                         nonce      = Nonce,

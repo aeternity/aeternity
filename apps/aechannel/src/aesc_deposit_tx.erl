@@ -143,7 +143,7 @@ check(#channel_deposit_tx{}, Trees,_Env) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_deposit_tx{} = Tx, Trees, Env) ->
     Instructions =
-        aec_tx_processor:channel_deposit_tx_instructions(
+        aeprimop:channel_deposit_tx_instructions(
           from_pubkey(Tx),
           channel_pubkey(Tx),
           amount(Tx),
@@ -151,7 +151,7 @@ process(#channel_deposit_tx{} = Tx, Trees, Env) ->
           round(Tx),
           fee(Tx),
           nonce(Tx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}
                                         | {error, channel_not_found}.

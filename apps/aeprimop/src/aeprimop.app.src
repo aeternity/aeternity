@@ -1,0 +1,19 @@
+{application, aeprimop,
+ [{description, "Primops for aeternity chain objects"},
+  {vsn, {cmd, "cat ../../VERSION"}},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib,
+    aeserialization,
+    aecontract,
+    aechannel,
+    aens,
+    aeoracle
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {licenses, []},
+  {links, []}
+ ]}.

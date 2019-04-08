@@ -112,14 +112,14 @@ process(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
                            responder_amount_final = ResponderAmount} = Tx,
         Trees, Env) ->
     Instructions =
-        aec_tx_processor:channel_settle_tx_instructions(
+        aeprimop:channel_settle_tx_instructions(
           from_pubkey(Tx),
           channel_pubkey(Tx),
           InitiatorAmount,
           ResponderAmount,
           fee(Tx),
           nonce(Tx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_settle_tx{} = Tx, _) ->

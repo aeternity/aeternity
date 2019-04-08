@@ -111,11 +111,11 @@ signers(#oracle_extend_tx{} = Tx, _) ->
 process(#oracle_extend_tx{} = Tx, Trees, Env) ->
     {delta, DeltaTTL} = oracle_ttl(Tx),
     Instructions =
-        aec_tx_processor:oracle_extend_tx_instructions(oracle_pubkey(Tx),
+        aeprimop:oracle_extend_tx_instructions(oracle_pubkey(Tx),
                                                        DeltaTTL,
                                                        fee(Tx),
                                                        nonce(Tx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 serialize(#oracle_extend_tx{oracle_id  = OracleId,
                             nonce      = Nonce,

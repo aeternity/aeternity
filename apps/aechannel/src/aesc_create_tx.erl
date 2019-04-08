@@ -143,7 +143,7 @@ check(#channel_create_tx{}, Trees,_Env) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_create_tx{} = Tx, Trees, Env) ->
     Instructions =
-        aec_tx_processor:channel_create_tx_instructions(
+        aeprimop:channel_create_tx_instructions(
           initiator_pubkey(Tx),
           initiator_amount(Tx),
           responder_pubkey(Tx),
@@ -155,7 +155,7 @@ process(#channel_create_tx{} = Tx, Trees, Env) ->
           fee(Tx),
           nonce(Tx),
           round(Tx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_create_tx{} = Tx, _) ->

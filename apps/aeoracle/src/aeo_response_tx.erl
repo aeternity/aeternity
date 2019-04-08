@@ -129,13 +129,13 @@ signers(#oracle_response_tx{} = Tx, _) ->
 process(#oracle_response_tx{} = RTx, Trees, Env) ->
     {delta, RTTL} = response_ttl(RTx),
     Instructions =
-        aec_tx_processor:oracle_response_tx_instructions(oracle_pubkey(RTx),
+        aeprimop:oracle_response_tx_instructions(oracle_pubkey(RTx),
                                                          query_id(RTx),
                                                          response(RTx),
                                                          RTTL,
                                                          fee(RTx),
                                                          nonce(RTx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 serialize(#oracle_response_tx{oracle_id    = OracleId,
                               nonce        = Nonce,

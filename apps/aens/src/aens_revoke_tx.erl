@@ -108,9 +108,9 @@ check(#ns_revoke_tx{}, Trees,_Env) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 process(#ns_revoke_tx{} = Tx, Trees, Env) ->
     Instructions =
-        aec_tx_processor:name_revoke_tx_instructions(
+        aeprimop:name_revoke_tx_instructions(
           account_pubkey(Tx), name_hash(Tx), fee(Tx), nonce(Tx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_revoke_tx{} = Tx, _) ->

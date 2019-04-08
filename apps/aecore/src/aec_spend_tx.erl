@@ -141,12 +141,12 @@ signers(#spend_tx{} = Tx, _) -> {ok, [sender_pubkey(Tx)]}.
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 process(#spend_tx{} = SpendTx, Trees, Env) ->
     Instructions =
-        aec_tx_processor:spend_tx_instructions(sender_pubkey(SpendTx),
+        aeprimop:spend_tx_instructions(sender_pubkey(SpendTx),
                                                recipient_id(SpendTx),
                                                amount(SpendTx),
                                                fee(SpendTx),
                                                nonce(SpendTx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 serialize(#spend_tx{sender_id    = SenderId,
                     recipient_id = RecipientId,

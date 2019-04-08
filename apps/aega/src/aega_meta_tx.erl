@@ -172,7 +172,7 @@ signers(#ga_meta_tx{}, _) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#ga_meta_tx{} = Tx, Trees, Env0) ->
     AuthInstructions =
-        aec_tx_processor:ga_meta_tx_instructions(
+        aeprimop:ga_meta_tx_instructions(
           ga_pubkey(Tx),
           auth_data(Tx),
           abi_version(Tx),
@@ -180,7 +180,7 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
           gas_price(Tx),
           fee(Tx)),
     Env = add_tx_hash(Env0, aetx_sign:tx(tx(Tx))),
-    case aec_tx_processor:eval(AuthInstructions, Trees, Env) of
+    case aeprimop:eval(AuthInstructions, Trees, Env) of
         {ok, Trees1, Env1} ->
             %% Successful authentication - we have a call object in Trees1
             Env11 = set_ga_context(Env1, Tx),
@@ -206,9 +206,9 @@ set_meta_result(ok, _Tx, Trees, _Env) ->
 set_meta_result(Err = {error, _}, Tx, Trees, Env) ->
     %% ct:pal("Setting error: ~p\n", [Err]),
     SetInstructions =
-        aec_tx_processor:ga_set_meta_tx_res_instructions(
+        aeprimop:ga_set_meta_tx_res_instructions(
             ga_pubkey(Tx), auth_data(Tx), Err),
-    {ok, Trees1, _Env} = aec_tx_processor:eval(SetInstructions, Trees, Env),
+    {ok, Trees1, _Env} = aeprimop:eval(SetInstructions, Trees, Env),
     Trees1.
 
 serialize(#ga_meta_tx{ga_id       = GAId,
