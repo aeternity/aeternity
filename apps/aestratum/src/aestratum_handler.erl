@@ -4,7 +4,6 @@
 -behaviour(gen_server).
 
 %% TODO: eunit
-%% TODO: type spec
 
 %% API
 -export([start_link/4]).
@@ -17,10 +16,22 @@
          terminate/2
         ]).
 
+-type ref()         :: term().
+
+-type socket()      :: gen_tcp:socket().
+
+-type transport()   :: gen_tcp
+                     | ssl.
+
+-type session()     :: aestratum_session:session()
+                     | undefined.
+
+-type opts()        :: proplists:proplist().
+
 -record(state, {
-          socket,
-          transport,
-          session
+          socket    :: socket(),
+          transport :: transport(),
+          session   :: session()
          }).
 
 -define(IS_MSG(T), ((T =:= tcp) or (T =:= ssl))).
@@ -29,6 +40,7 @@
 
 %% API.
 
+-spec start_link(ref(), socket(), transport(), opts()) -> {ok, pid()}.
 start_link(Ref, Socket, Transport, Opts) ->
 	{ok, proc_lib:spawn_link(?MODULE, init, [{Ref, Socket, Transport, Opts}])}.
 
@@ -68,8 +80,10 @@ handle_info({chain, _Event} = ChainEvent, State) ->
 handle_info(_Info, State) ->
 	{stop, normal, State}.
 
-terminate(_Reason, #state{session = Session}) ->
-    aestratum_session:close(Session).
+terminate(_Rsn, #state{session = Session}) when Session =/= undefined ->
+    aestratum_session:close(Session);
+terminate(_Rsn, _State) ->
+    ok.
 
 %% Internal functions.
 

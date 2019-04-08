@@ -18,6 +18,8 @@
          handle_cast/2
         ]).
 
+-export_type([user/0]).
+
 -define(SERVER, ?MODULE).
 
 -define(TAB, aestratum_user_register).

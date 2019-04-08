@@ -2,7 +2,11 @@
 
 -export([read/0]).
 
--spec read() -> {ok, map()} | {error, term()}.
+-export_type([config/0]).
+
+-type config() :: map().
+
+-spec read() -> {ok, config()} | {error, term()}.
 read() ->
     {ok, Cfg} = aeu_env:user_config(<<"stratum">>),
     Cfg1 = maps:from_list(Cfg),

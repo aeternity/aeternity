@@ -8,8 +8,11 @@
 %% supervisor callbacks.
 -export([init/1]).
 
+-type config() :: aestratum_config:config().
+
 %% API.
 
+-spec start_link(config()) -> {ok, pid()}.
 start_link(Cfg) ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, Cfg).
 
@@ -64,8 +67,7 @@ ranch_listener(#{conn_cfg :=
                      {num_acceptors, NAcceptors},
                      {port, Port}],
     Protocol      = aestratum_handler,
-    ProtocolOpts  = [{module, aestratum_session},
-                     {max_connections, NAcceptors + MaxConns}],
+    ProtocolOpts  = [],
     ranch:child_spec(aestratum_listener,
                      ranch_mod(Transport), TransportOpts,
                      Protocol, ProtocolOpts).

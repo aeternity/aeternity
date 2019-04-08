@@ -4,7 +4,6 @@
 %% TODO: add functions for setting share_target, share_target_diff_threshold,
 %% desired_solve_time, max_solve_time.... - this will work with
 %% aestratum_user_register - look up conn pid based on the public key and call
-%% aestratum_handler:set(ConnPid, Something) - it's per connection setting.
 
 -export([new/0,
          handle_event/2,
@@ -14,6 +13,8 @@
 -ifdef(TEST).
 -export([state/1]).
 -endif.
+
+-export_type([session/0]).
 
 -record(state, {
           phase,
@@ -27,6 +28,8 @@
           jobs,
           submissions
          }).
+
+-opaque session() :: #state{}.
 
 -define(HOST, application:get_env(aestratum, host, <<"pool.aeternity.com">>)).
 -define(PORT, application:get_env(aestratum, port, 9999)).
