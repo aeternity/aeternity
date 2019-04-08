@@ -373,8 +373,7 @@ references:
     - run:
         name: Upload build artifacts to central repository (AWS)
         command: |
-          echo "uploading latest"
-          #aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
+          aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
     - *fail_notification
 
 jobs:
@@ -682,9 +681,8 @@ jobs:
       - run:
           name: Build and push Docker image to DockerHub
           command: |
-            echo "pushing latest"
-            #docker login -u $DOCKER_USER -p $DOCKER_PASS
-            #docker push ${DOCKERHUB_REPO:?}:latest
+            docker login -u $DOCKER_USER -p $DOCKER_PASS
+            docker push ${DOCKERHUB_REPO:?}:latest
 
   docker_push_tag:
     executor: infrastructure_container_stable
@@ -1217,12 +1215,9 @@ workflows:
           type: approval
           filters:
             branches:
-              only: add_additional_separate_ci_for_latest_artefacts_164307557
-#            branches:
-#              ignore: /.*/
-#            tags:
-#              only: *stable_tag_regex
-
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
 
       - upload_latest_packages_linux:
           requires:
@@ -1230,11 +1225,9 @@ workflows:
             - hodl_latest
           filters:
             branches:
-              only: add_additional_separate_ci_for_latest_artefacts_164307557
-#            branches:
-#              ignore: /.*/
-#            tags:
-#              only: *stable_tag_regex
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
 
       - upload_latest_packages_osx:
           requires:
@@ -1242,33 +1235,28 @@ workflows:
             - hodl_latest
           filters:
             branches:
-              only: add_additional_separate_ci_for_latest_artefacts_164307557
-#            branches:
-#              ignore: /.*/
-#            tags:
-#              only: *stable_tag_regex
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
 
       - deploy_api_docs:
           requires:
             - hodl_latest
           filters:
             branches:
-              only: add_additional_separate_ci_for_latest_artefacts_164307557
-#            branches:
-#              ignore: /.*/
-#            tags:
-#              only: *stable_tag_regex
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
 
       - docker_push_latest:
           requires:
             - hodl_latest
           filters:
             branches:
-              only: add_additional_separate_ci_for_latest_artefacts_164307557
-#            branches:
-#              ignore: /.*/
-#            tags:
-#              only: *stable_tag_regex
+            branches:
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
 
   system_tests:
     triggers:
