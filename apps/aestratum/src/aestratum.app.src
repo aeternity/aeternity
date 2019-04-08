@@ -11,8 +11,7 @@
     aestratum_lib
    ]},
   {mod,{aestratum_app,[]}},
-  {env, [{'$aec_db_create_tables', {aestratum_reward, create_tables}},
-         {'$aec_db_check_tables', {aestratum_reward, check_tables}}]},
+  {env, []},
   {modules, []},
   {maintainers, []},
   {licenses, []},
