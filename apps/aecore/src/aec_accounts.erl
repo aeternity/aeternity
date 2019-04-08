@@ -31,7 +31,7 @@
 -include_lib("aecontract/include/hard_forks.hrl").
 
 -define(ACCOUNT_VSN_1, 1). %% {Nonce, Balance}
--define(ACCOUNT_VSN_2, 2). %% {Flags, Nonce, Balance, GA_Contract}
+-define(ACCOUNT_VSN_2, 2). %% {Flags, Nonce, Balance, GA_Contract, GA_AuthFun}
 -define(ACCOUNT_TYPE, account).
 
 -type fun_hash() :: <<_:256>>.
@@ -138,6 +138,7 @@ serialize_generalized(Account) ->
       ?ACCOUNT_TYPE, ?ACCOUNT_VSN_2,
       serialization_template(?ACCOUNT_VSN_2),
       [ {flags, flags(Account)}
+      , {nonce, nonce(Account)}
       , {balance, balance(Account)}
       , {ga_contract, ga_contract(Account)}
       , {ga_auth_fun, ga_auth_fun(Account)}
@@ -157,12 +158,14 @@ deserialize(Pubkey, SerializedAccount) ->
                     };
         {?ACCOUNT_TYPE = Type, ?ACCOUNT_VSN_2 = Vsn, _Rest} ->
             [ {flags, Flags}
+            , {nonce, Nonce}
             , {balance, Balance}
             , {ga_contract, GAContract}
             , {ga_auth_fun, GAAuthFun}
             ] = aeser_chain_objects:deserialize(
                     Type, Vsn, serialization_template(Vsn), SerializedAccount),
             #account{ id = aeser_id:create(account, Pubkey)
+                    , nonce = Nonce
                     , balance = Balance
                     , flags = Flags
                     , ga_contract = GAContract
@@ -176,12 +179,14 @@ serialization_template(?ACCOUNT_VSN_1) ->
     ];
 serialization_template(?ACCOUNT_VSN_2) ->
     [ {flags, int}
+    , {nonce, int}
     , {balance, int}
     , {ga_contract, id}
     , {ga_auth_fun, binary}
     ].
 
 -spec serialize_for_client(account()) -> map().
+%% GA_TODO: More info on generalize accounts ;-)
 serialize_for_client(#account{id      = Id,
                               balance = Balance,
                               nonce   = Nonce}) ->
