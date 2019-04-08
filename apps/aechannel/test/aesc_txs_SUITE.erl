@@ -186,8 +186,13 @@
          fp_register_oracle/1,
          fp_oracle_query/1,
          fp_oracle_extend/1,
-         fp_oracle_respond/1,
-         fp_fork_awareness/1
+         fp_oracle_respond/1
+        ]).
+
+% fork related tests
+-export([ fp_sophia_versions/1
+        , fp_payload_with_pinnned_env/1
+        , fp_pinnned_env/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -374,9 +379,12 @@ groups() ->
        fp_register_oracle,
        fp_oracle_query,
        fp_oracle_extend,
-       fp_oracle_respond,
-
-       fp_fork_awareness
+       fp_oracle_respond
+      ]},
+     {fork_awareness, [sequence],
+      [ fp_sophia_versions
+      , fp_payload_with_pinnned_env
+      , fp_pinnned_env
       ]}
     ].
 
@@ -389,25 +397,25 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
-init_per_group(_Group, Config) ->
-    Config.
-
-end_per_group(_Group, _Config) ->
-    ok.
-
-init_per_testcase(fp_fork_awareness, Config) ->
+init_per_group(fork_awareness, Config) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height,
                 fun(V) when V < ?MINERVA_FORK_HEIGHT -> ?ROMA_PROTOCOL_VSN;
                    (V) when V < ?FORTUNA_FORK_HEIGHT -> ?MINERVA_PROTOCOL_VSN;
                    (_)                               -> ?FORTUNA_PROTOCOL_VSN
                 end),
     Config;
+init_per_group(_Group, Config) ->
+    Config.
+
+end_per_group(fork_awareness, _Config) ->
+    meck:unload(aec_hard_forks),
+    ok;
+end_per_group(_Group, _Config) ->
+    ok.
+
 init_per_testcase(_, Config) ->
     Config.
 
-end_per_testcase(fp_fork_awareness, _Config) ->
-    meck:unload(aec_hard_forks),
-    ok;
 end_per_testcase(_Case, _Config) ->
     ok.
 
@@ -4105,7 +4113,10 @@ negative_force_progress_sequence(Round, Forcer, ErrMsg) ->
                                               [<<"42">>], DepositAmt))(Props)
             end,
             set_prop(fee, Fee),
-            negative(fun force_progress_/2, {error, ErrMsg})])
+            negative(fun force_progress_/2, {error, ErrMsg}),
+            fun(#{signed_force_progress := SignedForceProgressTx}) -> % revert changes, espl in off-chain trees
+                Props0#{signed_force_progress => SignedForceProgressTx}
+            end])
       end.
 
 force_progress_sequence(Round, Forcer) ->
@@ -4255,14 +4266,21 @@ create_payload(Key) ->
           responder_pubkey  := RPubkey,
           initiator_privkey := IPrivkey,
           responder_privkey := RPrivkey} = Props) ->
+
         PayloadSpec0 = #{initiator_amount => IAmt,
                         responder_amount  => RAmt,
                         round => maps:get(round, Props, 11)},
         PayloadSpec =
-            case maps:get(state_hash, Props, none) of
-                none -> PayloadSpec0;
-                V -> PayloadSpec0#{state_hash => V}
-            end,
+            lists:foldl(
+                fun({PropsKey, OffChainKey}, Accum) ->
+                    case maps:get(PropsKey, Props, none) of
+                        none -> Accum;
+                        V -> maps:put(OffChainKey, V, Accum)
+                    end
+                end,
+                PayloadSpec0,
+                [{state_hash, state_hash},
+                 {payload_bloch_hash, block_hash}]),
         Payload = aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
                                         [IPrivkey, RPrivkey], PayloadSpec),
         Props#{Key => Payload}
@@ -4674,11 +4692,16 @@ force_progress_(#{channel_pubkey    := ChannelPubKey,
                   responder_privkey := _RPrivkey} = Props, Expected) ->
 
     Spec0 = #{fee => Fee},
-    ForceProTxSpec = aesc_test_utils:force_progress_tx_spec(ChannelPubKey, From,
-                                                            Payload,
-                                                            Update, StateHash,
-                                                            Round, OffChainTrees,
-                                                            Spec0, S),
+    ForceProTxSpec0 = aesc_test_utils:force_progress_tx_spec(ChannelPubKey, From,
+                                                             Payload,
+                                                             Update, StateHash,
+                                                             Round, OffChainTrees,
+                                                             Spec0, S),
+    ForceProTxSpec =
+        case maps:get(pinned_block, Props, no_pinned_block) of
+            no_pinned_block -> ForceProTxSpec0;
+            PinnedBlock -> ForceProTxSpec0#{block_hash => PinnedBlock}
+        end,
     {ok, ForceProTx} = aesc_force_progress_tx:new(ForceProTxSpec),
 
     SignedTx = aec_test_utils:sign_tx(ForceProTx, [FromPrivkey]),
@@ -5177,8 +5200,8 @@ contract_filename(ContractName) ->
                   filename:basename(ContractName, ".aes") ++ ".aes"]).
 
 %% test that a force progress transaction can NOT produce an on-chain
-%% contract with a code with the wrong serialization
-fp_fork_awareness(Cfg) ->
+%% contract with a code with the wrong Sophia serialization
+fp_sophia_versions(Cfg) ->
     RomaHeight = 123,
     MinervaHeight = 1234,
     FortunaHeight = 12345,
@@ -5194,8 +5217,6 @@ fp_fork_awareness(Cfg) ->
     true = aect_sophia:is_legal_serialization_at_height(SophiaVsn2, MinervaHeight),
     true = FortunaHeight >= ?FORTUNA_FORK_HEIGHT,
     true = aect_sophia:is_legal_serialization_at_height(SophiaVsn2, FortunaHeight),
-
-    BlockHash = <<42:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
 
     FP =
         fun(Forcer, Vm, CodeSVsn, PreForkErrMsg) ->
@@ -5257,6 +5278,109 @@ fp_fork_awareness(Cfg) ->
     [FP(Forcer, Vm, CodeSVsn, Error) || Forcer <- ?ROLES,
                               {Vm, CodeSVsn, Error} <- ForkChecks],
     ok.
+
+fp_pinnned_env(Cfg) ->
+    MinervaHeight = 1234,
+    FortunaHeight = 12345,
+
+    AssertFPVersion =
+        fun(ExpectedVsn) ->
+            fun(#{signed_force_progress := SignedFP} = Props) ->
+                {channel_force_progress_tx, FP}
+                    = aetx:specialize_type(aetx_sign:tx(SignedFP)),
+                {ExpectedVsn, _}
+                    = {aesc_force_progress_tx:version(FP), ExpectedVsn},
+                Props
+            end
+        end,
+    % ensure assumptions regarding heights
+    true = MinervaHeight < ?FORTUNA_FORK_HEIGHT,
+    true = FortunaHeight >= ?FORTUNA_FORK_HEIGHT,
+
+    BlockHash = <<42:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+
+    IStartAmt = 200000 * aec_test_utils:min_gas_price(),
+    RStartAmt = 200000 * aec_test_utils:min_gas_price(),
+    FP =
+        fun(Owner, Forcer, BlockType) ->
+            Round = 42,
+            run(#{cfg => Cfg, initiator_amount => IStartAmt,
+                              responder_amount => RStartAmt,
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                create_contract_poi_and_payload(Round - 1, 5, Owner),
+                %% adding the optional pinned_block will produce vsn=2 force
+                %% progress transactions
+                set_prop(pinned_block, aesc_pinned_block:block_hash(BlockHash,
+                                                                    BlockType)),
+
+                %% using this new format with the minerva height will fail
+                set_prop(height, MinervaHeight),
+                negative_force_progress_sequence(Round, Forcer, invalid_at_height),
+                AssertFPVersion(2), %% assert vsn =2
+
+                %% same poi and payload, force progress with the new serialization
+                %% will succeed
+                set_prop(height, FortunaHeight),
+                force_progress_sequence(Round, Forcer),
+                AssertFPVersion(2)
+               ])
+        end,
+    BlockTypes = [key, micro],
+    [FP(Owner, Forcer, BlockType) || Owner     <- ?ROLES,
+                                     Forcer    <- ?ROLES,
+                                     BlockType <- BlockTypes],
+    ok.
+
+fp_payload_with_pinnned_env(Cfg) ->
+    MinervaHeight = 1234,
+    FortunaHeight = 12345,
+
+    AssertFPVersion =
+        fun(ExpectedVsn) ->
+            fun(#{payload := PayloadBin} = Props) ->
+                Props
+            end
+        end,
+    % ensure assumptions regarding heights
+    true = MinervaHeight < ?FORTUNA_FORK_HEIGHT,
+    true = FortunaHeight >= ?FORTUNA_FORK_HEIGHT,
+
+    BlockHash = <<42:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+
+    IStartAmt = 200000 * aec_test_utils:min_gas_price(),
+    RStartAmt = 200000 * aec_test_utils:min_gas_price(),
+    FP =
+        fun(Owner, Forcer, BlockType) ->
+            Round = 42,
+            run(#{cfg => Cfg, initiator_amount => IStartAmt,
+                              responder_amount => RStartAmt,
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                create_contract_poi_and_payload(Round - 1, 5, Owner),
+                %% adding the optional payloadpinned_block will produce vsn=2
+                %% off-chain transaction as a payload
+                set_prop(payload_pinned_block,
+                         aesc_pinned_block:block_hash(BlockHash, BlockType)),
+
+                %% using this new format with the minerva height will fail
+                set_prop(height, MinervaHeight),
+                negative_force_progress_sequence(Round, Forcer, invalid_at_height),
+                AssertFPVersion(2), %% assert vsn =2
+
+                %% same poi and payload, force progress with the new serialization
+                %% will succeed
+                set_prop(height, FortunaHeight),
+                force_progress_sequence(Round, Forcer),
+                AssertFPVersion(2)
+               ])
+        end,
+    BlockTypes = [key, micro],
+    [FP(Owner, Forcer, BlockType) || Owner     <- ?ROLES,
+                                     Forcer    <- ?ROLES,
+                                     BlockType <- BlockTypes],
+    ok.
+
 
 encode_call_data(ContractName, Function, Arguments) ->
    {ok, Contract} = aect_test_utils:read_contract(contract_filename(ContractName)),

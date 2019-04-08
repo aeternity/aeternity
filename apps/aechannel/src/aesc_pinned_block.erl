@@ -58,7 +58,7 @@ deserialize(Bin) ->
 
 serialization_template(?VSN) ->
     [{hash, binary},
-     {type, integer}].
+     {type, int}].
 
 type_to_int(key)   -> ?KEYBLOCK;
 type_to_int(micro) -> ?MICROBLOCK.
