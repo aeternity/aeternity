@@ -265,13 +265,13 @@ references:
     run:
       name: Build latest docker image
       command: |
-        IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose build node1
+        IMAGE_TAG=${CIRCLE_BRANCH/\//_} docker-compose build node1
 
   docker_compose_start: &docker_compose_start
     run:
       name: Create localnet with docker-compose
       command: |
-        sudo -u ubuntu -E -H IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose up -d
+        sudo -u ubuntu -E -H IMAGE_TAG=${CIRCLE_BRANCH/\//_} docker-compose up -d
 
   docker_compose_healthcheck: &docker_compose_healthcheck
     run:
@@ -656,7 +656,7 @@ jobs:
           name: Push Docker image to DockerHub
           command: |
             docker login -u $DOCKER_USER -p $DOCKER_PASS
-            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH:?}
+            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_}
       - *fail_notification
 
   docker_push_tag:
