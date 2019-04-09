@@ -684,7 +684,7 @@ jobs:
             docker login -u $DOCKER_USER -p $DOCKER_PASS
             docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} .
             docker tag ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} ${DOCKERHUB_REPO:?}:latest
-            docekr push ${DOCKERHUB_REPO:?}:latest
+            docker push ${DOCKERHUB_REPO:?}:latest
 
   docker_push_tag:
     executor: infrastructure_container_stable
