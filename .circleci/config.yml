@@ -682,7 +682,7 @@ jobs:
           name: Build and push Docker image to DockerHub
           command: |
             docker login -u $DOCKER_USER -p $DOCKER_PASS
-            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} .
+            docker pull ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
             docker tag ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} ${DOCKERHUB_REPO:?}:latest
             docker push ${DOCKERHUB_REPO:?}:latest
 
