@@ -821,7 +821,6 @@ jobs:
   upload_latest_packages_osx:
     executor: infrastructure_container_stable
     <<: *infrastructure_config
-    <<: *upload_package
     environment:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: macos
@@ -830,7 +829,6 @@ jobs:
   upload_latest_packages_linux:
     executor: infrastructure_container_stable
     <<: *infrastructure_config
-    <<: *upload_package
     environment:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: ubuntu
