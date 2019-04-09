@@ -607,6 +607,7 @@ jobs:
   ubuntu_package:
     executor: builder_container_1804
     <<: *container_config
+    working_directory: ~/aeternity_deb
     steps:
       - checkout
       - *build_ubuntu_package
@@ -1119,8 +1120,6 @@ workflows:
               only: *tag_regex
 
       - ubuntu_package:
-          requires:
-            - linux_package
           filters:
             branches:
               only: ci_deb_package_build_162439780
