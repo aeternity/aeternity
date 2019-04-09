@@ -435,7 +435,7 @@ validate_configure_req(#{params := []}, _State) ->
 validate_subscribe_req(Req, State) ->
     run([fun check_user_agent/2,
          fun check_session_id/2,
-         fun check_host/2,
+         %%fun check_host/2,  %% TODO: check disabled due to testing
          fun check_port/2], Req, State).
 
 validate_authorize_req(Req, State) ->
