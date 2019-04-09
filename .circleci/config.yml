@@ -1119,6 +1119,8 @@ workflows:
               only: *tag_regex
 
       - ubuntu_package:
+          requires:
+            - linux_package
           filters:
             branches:
               only: ci_deb_package_build_162439780
