@@ -239,7 +239,9 @@ groups() ->
        snapshot_solo,
        {group, snapshot_solo_negative},
        {group, force_progress},
-       {group, force_progress_negative}]
+       {group, force_progress_negative},
+       {group, fork_awareness}
+      ]
      },
      {create_negative, [sequence],
       [create_missing_account,
@@ -2884,7 +2886,6 @@ fp_payload_not_co_signed(Cfg) ->
             run(#{cfg => Cfg},
                [positive(fun create_channel_/2),
                 set_from(initiator),
-                set_prop(fee, 1),
                 create_contract_poi_and_payload(Round - 1, 5, Owner),
                 fun(#{payload := PayloadBin} = Props) ->
                     Payload = aetx_sign:deserialize_from_binary(PayloadBin),
@@ -4101,7 +4102,16 @@ set_balances_in_trees(IBal, RBal) ->
     end.
 
 negative_force_progress_sequence(Round, Forcer, ErrMsg) ->
-    Fee = 300000 * aec_test_utils:min_gas_price(),
+    Fee = 500000 * aec_test_utils:min_gas_price(),
+    SetIfNotPresent =
+        fun(Key, DefaultValue) ->
+            fun(Props) ->
+                case maps:is_key(Key, Props) of
+                    true -> Props;
+                    false -> maps:put(Key, DefaultValue, Props)
+                end
+            end
+        end,
     fun(Props0) ->
         DepositAmt = maps:get(call_deposit, Props0, 1),
         run(Props0,
@@ -4112,7 +4122,8 @@ negative_force_progress_sequence(Round, Forcer, ErrMsg) ->
                 (create_contract_call_payload(ContractId, CName, <<"main">>,
                                               [<<"42">>], DepositAmt))(Props)
             end,
-            set_prop(fee, Fee),
+            SetIfNotPresent(fee, Fee),
+            SetIfNotPresent(height, 42),
             negative(fun force_progress_/2, {error, ErrMsg}),
             fun(#{signed_force_progress := SignedForceProgressTx}) -> % revert changes, espl in off-chain trees
                 Props0#{signed_force_progress => SignedForceProgressTx}
@@ -4280,7 +4291,7 @@ create_payload(Key) ->
                 end,
                 PayloadSpec0,
                 [{state_hash, state_hash},
-                 {payload_bloch_hash, block_hash}]),
+                 {payload_pinned_block, block_hash}]),
         Payload = aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
                                         [IPrivkey, RPrivkey], PayloadSpec),
         Props#{Key => Payload}
@@ -4413,7 +4424,7 @@ run(Cfg, Funs) ->
         lists:flatten(Funs)).
 
 apply_on_trees_(#{height := Height} = Props, SignedTx, S, positive) ->
-    Trees = aens_test_utils:trees(S),
+    Trees = aesc_test_utils:trees(S),
     Res =
         case maps:get(aetx_env, Props, none) of
             none ->
@@ -4431,11 +4442,11 @@ apply_on_trees_(#{height := Height} = Props, SignedTx, S, positive) ->
             throw({case_failed, Err})
     end;
 apply_on_trees_(#{height := Height} = Props, SignedTx, S, {negative, ExpectedError}) ->
-    Trees = aens_test_utils:trees(S),
-    Tx = aetx_sign:tx(SignedTx),
-    Env = aetx_env:tx_env(Height),
-    case aetx:process(Tx, Trees, Env) of
+    Trees = aesc_test_utils:trees(S),
+    case aesc_test_utils:apply_on_trees_without_sigs_check([SignedTx], Trees,
+                                                            Height) of
         ExpectedError -> pass;
+        {error, Unexpected} -> throw({unexpected_error, Unexpected});
         {ok, _, _} -> throw(negative_case_passed)
     end,
     Props.
@@ -5241,7 +5252,7 @@ fp_sophia_versions(Cfg) ->
                                                   [<<"42">>], 1))(Props)
                 end,
                 set_prop(height, RomaHeight),
-                set_prop(fee, 100000 * aec_governance:minimum_gas_price(RomaHeight)),
+                set_prop(fee, 500000 * aec_governance:minimum_gas_price(RomaHeight)),
                 set_prop(gas_price, aec_governance:minimum_gas_price(RomaHeight)),
                 fun(#{contract_id := ContractId,
                       trees := Trees0} = Props) ->
@@ -5256,7 +5267,7 @@ fp_sophia_versions(Cfg) ->
                 negative(fun force_progress_/2, {error, PreForkErrMsg}),
                 % accepted after the fork
                 set_prop(height, MinervaHeight),
-                set_prop(fee, 100000 * aec_governance:minimum_gas_price(MinervaHeight)),
+                set_prop(fee, 500000 * aec_governance:minimum_gas_price(MinervaHeight)),
                 set_prop(gas_price, aec_governance:minimum_gas_price(MinervaHeight)),
                 %% recompute the update with the new gas price
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
@@ -5336,9 +5347,12 @@ fp_payload_with_pinnned_env(Cfg) ->
     MinervaHeight = 1234,
     FortunaHeight = 12345,
 
-    AssertFPVersion =
+    AssertPayloadVersion =
         fun(ExpectedVsn) ->
             fun(#{payload := PayloadBin} = Props) ->
+                {ok, _SignedTx, OffChainTx} = aesc_utils:deserialize_payload(PayloadBin),
+                {ExpectedVsn, _}
+                    = {aesc_offchain_tx:version(OffChainTx), ExpectedVsn},
                 Props
             end
         end,
@@ -5357,22 +5371,22 @@ fp_payload_with_pinnned_env(Cfg) ->
                               responder_amount => RStartAmt,
                  channel_reserve => 1},
                [positive(fun create_channel_/2),
-                create_contract_poi_and_payload(Round - 1, 5, Owner),
                 %% adding the optional payloadpinned_block will produce vsn=2
                 %% off-chain transaction as a payload
                 set_prop(payload_pinned_block,
                          aesc_pinned_block:block_hash(BlockHash, BlockType)),
+                create_contract_poi_and_payload(Round - 1, 5, Owner),
 
                 %% using this new format with the minerva height will fail
                 set_prop(height, MinervaHeight),
                 negative_force_progress_sequence(Round, Forcer, invalid_at_height),
-                AssertFPVersion(2), %% assert vsn =2
+                AssertPayloadVersion(2), %% assert vsn =2
 
                 %% same poi and payload, force progress with the new serialization
                 %% will succeed
                 set_prop(height, FortunaHeight),
                 force_progress_sequence(Round, Forcer),
-                AssertFPVersion(2)
+                AssertPayloadVersion(2)
                ])
         end,
     BlockTypes = [key, micro],
