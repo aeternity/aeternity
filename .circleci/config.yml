@@ -1254,7 +1254,6 @@ workflows:
             - hodl_latest
           filters:
             branches:
-            branches:
               ignore: /.*/
             tags:
               only: *stable_tag_regex
