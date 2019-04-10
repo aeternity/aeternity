@@ -108,7 +108,7 @@ handle_info(chain_payment_tx_check, #state{} = State) ->
 handle_info({gproc_ps_event, stratum_new_candidate, #{info := Info}}, State) ->
     lager:debug("New candidate in stratum"),
     State1 = case Info of
-                {_HeaderBin, _Candidate, _Target} ->
+                [{_HeaderBin, _Candidate, _Target}] ->
                     State#state{new_keyblock_candidate = Info};
                 _ ->
                     lager:info("Malformed Candidate for Stratum ~p", [Info]),
