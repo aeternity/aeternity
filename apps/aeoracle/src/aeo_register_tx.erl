@@ -23,11 +23,12 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1
+         for_client/1,
+         valid_at_protocol/2
         ]).
 
 %% Additional getters
@@ -169,13 +170,13 @@ serialize(#oracle_register_tx{account_id      = AccountId,
                               oracle_ttl      = {TTLType0, TTLValue},
                               fee             = Fee,
                               ttl             = TTL,
-                              abi_version     = ABIVersion}) ->
+                              abi_version     = ABIVersion} = Tx) ->
     TTLType = case TTLType0 of
                   ?ttl_delta_atom -> ?ttl_delta_int;
                   ?ttl_block_atom -> ?ttl_block_int
               end,
 
-    {version(),
+    {version(Tx),
     [ {account_id, AccountId}
     , {nonce, Nonce}
     , {query_format, QueryFormat}
@@ -229,9 +230,13 @@ serialization_template(?ORACLE_REGISTER_TX_VSN) ->
     , {abi_version, int}
     ].
 
--spec version() -> non_neg_integer().
-version() ->
+-spec version(tx()) -> non_neg_integer().
+version(_) ->
     ?ORACLE_REGISTER_TX_VSN.
+
+-spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
+valid_at_protocol(_, _) ->
+    true.
 
 for_client(#oracle_register_tx{account_id      = AccountId,
                                nonce           = Nonce,

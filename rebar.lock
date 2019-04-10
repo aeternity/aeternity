@@ -18,7 +18,7 @@
   0},
  {<<"aeserialization">>,
   {git,"https://github.com/aeternity/aeserialization.git",
-      {ref,"6dce265753af4e651f77746e77ea125145c85dd3"}},
+      {ref,"ecde108939ca407d8f92e991f062e51fc13f3beb"}},
   0},
  {<<"aesophia">>,
   {git,"https://github.com/aeternity/aesophia.git",

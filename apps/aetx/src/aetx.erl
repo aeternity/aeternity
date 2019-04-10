@@ -113,7 +113,7 @@
 
 -callback type() -> atom().
 
--callback version() -> non_neg_integer().
+-callback version(tx_instance()) -> non_neg_integer().
 
 -callback fee(Tx :: tx_instance()) ->
     Fee :: integer().
@@ -155,6 +155,10 @@
 
 -callback for_client(Tx :: tx_instance()) ->
     map().
+
+-callback valid_at_protocol(Protocol :: aec_hard_forks:protocol_vsn(),
+                            Tx :: tx_instance()) -> boolean().
+
 
 -optional_callbacks([gas_price/1]).
 
@@ -256,6 +260,11 @@ ttl(#aetx{ cb = CB, tx = Tx }) ->
         N -> N
     end.
 
+-spec valid_at_protocol(Protocol :: aec_hard_forks:protocol_vsn(),
+                      Tx :: tx()) -> boolean().
+valid_at_protocol(Protocol, #aetx{ cb = CB, tx = Tx }) ->
+    CB:valid_at_protocol(Protocol, Tx). 
+
 -spec size(Tx :: tx()) -> pos_integer().
 size(#aetx{ size = Size }) ->
     Size.
@@ -291,7 +300,9 @@ check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
     Checks =
         [fun() -> check_minimum_fee(AeTx, Env) end,
          fun() -> check_minimum_gas_price(AeTx, aetx_env:height(Env)) end,
-         fun() -> check_ttl(AeTx, Env) end],
+         fun() -> check_ttl(AeTx, Env) end,
+         fun() -> check_protocol_at_height(AeTx, aetx_env:height(Env)) end
+        ],
     case aeu_validation:run(Checks) of
         ok             -> CB:check(Tx, Trees, Env);
         {error, _} = E -> E
@@ -329,6 +340,13 @@ check_ttl(AeTx, Env) ->
         false -> {error, ttl_expired}
     end.
 
+check_protocol_at_height(AeTx, Height) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    case valid_at_protocol(Protocol, AeTx) of
+        true  -> ok;
+        false -> {error, invalid_at_height}
+    end.
+
 %%%===================================================================
 %%% Processing transactions
 %%%===================================================================
@@ -360,7 +378,8 @@ custom_apply(Fun, #aetx{ cb = CB, tx = Tx}, Trees, Env) ->
 -spec serialize_for_client(Tx :: tx()) -> map().
 serialize_for_client(#aetx{ cb = CB, type = Type, tx = Tx }) ->
     Res0 = CB:for_client(Tx),
-    Res1 = Res0#{ <<"type">> => type_to_swagger_name(Type), <<"version">> => CB:version() },
+    Res1 = Res0#{ <<"type">> => type_to_swagger_name(Type),
+                  <<"version">> => CB:version(Tx) },
     case maps:get(<<"ttl">>, Res1, 0) of
         0 -> maps:remove(<<"ttl">>, Res1);
         _ -> Res1
@@ -430,6 +449,7 @@ type_to_swagger_name(channel_close_mutual_tx)   -> <<"ChannelCloseMutualTx">>;
 type_to_swagger_name(channel_slash_tx)          -> <<"ChannelSlashTx">>;
 type_to_swagger_name(channel_settle_tx)         -> <<"ChannelSettleTx">>;
 type_to_swagger_name(channel_snapshot_solo_tx)  -> <<"ChannelSnapshotSoloTx">>;
+%% not exposed in HTTP API:
 type_to_swagger_name(channel_offchain_tx)       -> <<"ChannelOffchainTx">>.
 
 -spec specialize_type(Tx :: tx()) -> {tx_type(), tx_instance()}.

@@ -20,11 +20,12 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1
+         for_client/1,
+         valid_at_protocol/2
         ]).
 
 %% Getters
@@ -119,8 +120,8 @@ serialize(#ns_preclaim_tx{account_id    = AccountId,
                           nonce         = Nonce,
                           commitment_id = CommitmentId,
                           fee           = Fee,
-                          ttl           = TTL}) ->
-    {version(),
+                          ttl           = TTL} = Tx) ->
+    {version(Tx),
      [ {account_id, AccountId}
      , {nonce, Nonce}
      , {commitment_id, CommitmentId}
@@ -185,6 +186,11 @@ account_pubkey(#ns_preclaim_tx{account_id = AccountId}) ->
 commitment_hash(#ns_preclaim_tx{commitment_id = CommitmentId}) ->
     aeser_id:specialize(CommitmentId, commitment).
 
-version() ->
+-spec version(tx()) -> non_neg_integer().
+version(_) ->
     ?NAME_PRECLAIM_TX_VSN.
+
+-spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
+valid_at_protocol(_, _) ->
+    true.
 

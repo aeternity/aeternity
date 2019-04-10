@@ -21,11 +21,12 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1
+         for_client/1,
+         valid_at_protocol/2
         ]).
 
 %% Additional getters
@@ -178,12 +179,12 @@ serialize(#oracle_query_tx{sender_id    = SenderId,
                            query_ttl    = {QueryTTLType0, QueryTTLValue},
                            response_ttl = {?ttl_delta_atom, ResponseTTLValue},
                            fee          = Fee,
-                           ttl          = TTL}) ->
+                           ttl          = TTL} = Tx) ->
     QueryTTLType = case QueryTTLType0 of
                        ?ttl_delta_atom -> ?ttl_delta_int;
                        ?ttl_block_atom -> ?ttl_block_int
                    end,
-    {version(),
+    {version(Tx),
      [ {sender_id, SenderId}
      , {nonce, Nonce}
      , {oracle_id, OracleId}
@@ -239,9 +240,13 @@ serialization_template(?ORACLE_QUERY_TX_VSN) ->
     , {ttl, int}
     ].
 
--spec version() -> non_neg_integer().
-version() ->
+-spec version(tx()) -> non_neg_integer().
+version(_) ->
     ?ORACLE_QUERY_TX_VSN.
+
+-spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
+valid_at_protocol(_, _) ->
+    true.
 
 for_client(#oracle_query_tx{sender_id = SenderId,
                             nonce      = Nonce,

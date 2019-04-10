@@ -3381,6 +3381,10 @@
           "description" : "Channel's next state_hash",
           "$ref" : "#/definitions/EncodedHash"
         },
+        "block_hash" : {
+          "description" : "The block hash the forced progress used as an on-chain environment",
+          "$ref" : "#/definitions/EncodedHash"
+        },
         "ttl" : {
           "type" : "integer",
           "format" : "int64",

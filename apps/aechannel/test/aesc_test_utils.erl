@@ -182,8 +182,11 @@ apply_on_trees_without_sigs_check([SignedTx], Trees, Height) ->
 apply_on_trees_without_sigs_check_with_env([SignedTx], Trees, Env0) ->
     Tx = aetx_sign:tx(SignedTx),
     Env = aetx_env:set_signed_tx(Env0, {value, SignedTx}),
-    {ok, Trees1, _} = aetx:process(Tx, Trees, Env),
-    {ok, [SignedTx], Trees1}.
+    case aetx:process(Tx, Trees, Env) of
+        {ok, Trees1, _} ->
+            {ok, [SignedTx], Trees1};
+        {error, _} = Err -> Err
+    end.
 
 %%%===================================================================
 %%% Create tx
@@ -391,12 +394,17 @@ state_tx(ChannelPubKey, Initiator, Responder, Spec0) ->
                 aec_trees:hash(Trees);
             V -> V
         end,
-    {ok, StateTx} =
-        aesc_offchain_tx:new(
-            #{channel_id         => aeser_id:create(channel, ChannelPubKey),
-              updates            => maps:get(updates, Spec, []),
-              state_hash         => StateHash,
-              round              => maps:get(round, Spec)}),
+    OffChainSpec0
+        = #{channel_id         => aeser_id:create(channel, ChannelPubKey),
+            updates            => maps:get(updates, Spec, []),
+            state_hash         => StateHash,
+            round              => maps:get(round, Spec)},
+    OffChainSpec =
+        case maps:get(block_hash, Spec0, none) of
+            none -> OffChainSpec0;
+            Val -> OffChainSpec0#{block_hash => Val}
+        end,
+    {ok, StateTx} = aesc_offchain_tx:new(OffChainSpec),
     StateTx.
 
 state_tx_spec() ->
