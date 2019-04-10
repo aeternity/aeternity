@@ -228,7 +228,10 @@ send_submit_rsp1({ok, Share, Job}, #{id := Id}, #state{jobs = Jobs} = State) ->
     JobId = aestratum_job:id(Job),
     Job1 = aestratum_job:add_share(Share, Job),
     Jobs1 = aestratum_job_queue:replace(JobId, Job1, Jobs),
-    %% TODO: save with aestratum_reward
+    User = aestratum_share:user(Share),
+    ShareTarget = aestratum_job:share_target(Job),
+    BlockHash = aestratum_job:block_hash(Job),
+    aestratum_reward:submit_share(User, ShareTarget, BlockHash),
     case aestratum_share:validity(Share) of
         valid_block -> ok; %% TODO: submit to the chain
         valid_share -> ok
