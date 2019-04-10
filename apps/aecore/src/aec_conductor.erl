@@ -791,17 +791,6 @@ start_mining_(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}}
     %% Regenerate the candidate.
     epoch_mining:info("Key block candidate for old top hash; regenerating"),
     create_key_block_candidate(State);
-start_mining_(#state{stratum_mode = true,
-                     key_block_candidates = [{HeaderBin, Candidate = #candidate{refs = StratumRefs}} | Candidates]} = State)
-  when StratumRefs =:= 0  ->
-    poch_mining:info("Stratum dispatch ~p", [HeaderBin]),
-    Target            = aec_blocks:target(Candidate#candidate.block),
-    Info              = [{top_block_hash, State#state.top_block_hash}],
-    aec_events:publish(start_mining, Info), %% TODO: check if need to swap for stratum specific
-    aec_events:publish(stratum_new_candidate, [{HeaderBin, Candidate, Target}]),
-    Candidate1 = register_stratum(Candidate),
-    State1 = State#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]},
-    start_mining_(State1);
 start_mining_(#state{stratum_mode = false, key_block_candidates = [{HeaderBin, Candidate} | Candidates]} = State) ->
     case available_miner_instance(State) of
         none -> State;
@@ -823,7 +812,18 @@ start_mining_(#state{stratum_mode = false, key_block_candidates = [{HeaderBin, C
             State3 = register_miner_instance(Instance, Pid, State2),
             epoch_mining:info("Miner ~p started", [Pid]),
             start_mining_(State3)
-    end.
+    end;
+start_mining_(#state{stratum_mode = true,
+                     key_block_candidates = [{HeaderBin, #candidate{refs = StratumRefs} = Candidate} | Candidates]} = State)
+  when StratumRefs =:= 0  ->
+    epoch_mining:info("Stratum dispatch ~p", [HeaderBin]),
+    Target            = aec_blocks:target(Candidate#candidate.block),
+    Info              = [{top_block_hash, State#state.top_block_hash}],
+    aec_events:publish(start_mining, Info), %% TODO: check if need to swap for stratum specific
+    aec_events:publish(stratum_new_candidate, [{HeaderBin, Candidate, Target}]),
+    Candidate1 = register_stratum(Candidate),
+    State1 = State#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]},
+    State1.
 
 register_stratum(Candidate = #candidate{refs  = Refs}) ->
     Candidate#candidate{refs  = Refs + 1}.
