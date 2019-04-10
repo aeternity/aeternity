@@ -191,6 +191,9 @@
 
 % fork related tests
 -export([ fp_sophia_versions/1
+        , close_solo_payload_with_pinnned_env/1
+        , slash_payload_with_pinnned_env/1
+        , snapshot_solo_payload_with_pinnned_env/1
         , fp_payload_with_pinnned_env/1
         , fp_pinnned_env/1
         ]).
@@ -385,6 +388,9 @@ groups() ->
       ]},
      {fork_awareness, [sequence],
       [ fp_sophia_versions
+      , close_solo_payload_with_pinnned_env
+      , slash_payload_with_pinnned_env
+      , snapshot_solo_payload_with_pinnned_env
       , fp_payload_with_pinnned_env
       , fp_pinnned_env
       ]}
@@ -4575,17 +4581,18 @@ close_solo_(#{channel_pubkey    := ChannelPubKey,
     PayloadSpec0 = #{initiator_amount => IAmt,
                      responder_amount => RAmt,
                      round => Round},
-    PayloadSpec =
-        case maps:get(state_hash, Props, not_passed) of
-            not_passed -> PayloadSpec0;
-            Hash -> PayloadSpec0#{state_hash => Hash}
-        end,
-    Payload = maps:get(payload, Props,
-                       aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
-                                               [IPrivkey, RPrivkey], PayloadSpec)),
     PoI =  maps:get(poi, Props,
                     aesc_test_utils:proof_of_inclusion([{IPubkey, IAmt},
                                                         {RPubkey, RAmt}])),
+    StateHash =
+        case maps:get(state_hash, Props, not_passed) of
+            not_passed -> aec_trees:poi_hash(PoI);
+            Hash -> Hash
+        end,
+    PayloadSpec = PayloadSpec0#{state_hash => StateHash},
+    Payload = maps:get(payload, Props,
+                       aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
+                                               [IPrivkey, RPrivkey], PayloadSpec)),
     Spec =
         case Props of
             #{nonce := Nonce} -> #{fee => Fee, nonce => Nonce};
@@ -5343,7 +5350,80 @@ fp_pinnned_env(Cfg) ->
                                      BlockType <- BlockTypes],
     ok.
 
+close_solo_payload_with_pinnned_env(Cfg) ->
+    generic_payload_with_pinnned_env_(Cfg,
+        fun(Round, Closer, ErrMsg) ->
+            fun(Props) ->
+                run(Props,
+                    [ set_prop(round, Round),
+                      set_from(Closer),
+                      poi_participants_only(),
+                      negative(fun close_solo_/2, {error, ErrMsg})])
+            end
+        end,
+        fun(Round, Closer) ->
+            fun(Props) ->
+                run(Props,
+                    [ set_prop(round, Round),
+                      set_from(Closer),
+                      positive(fun close_solo_/2)])
+            end
+        end).
+
+slash_payload_with_pinnned_env(Cfg) ->
+    generic_payload_with_pinnned_env_(Cfg,
+        fun(Round, Closer, ErrMsg) ->
+            CloseRound = 2,
+            true = CloseRound < Round,
+            fun(Props) ->
+                run(Props,
+                    [ set_prop(round, CloseRound),
+                      rename_prop(payload, new_vsn_payload, delete_old),
+                      rename_prop(payload_pinned_block,
+                                  payload_pinned_block_hidden, delete_old),
+                      create_payload(),
+                      set_from(Closer),
+                      poi_participants_only(),
+                      positive(fun close_solo_/2),
+                      set_prop(round, Round),
+                      rename_prop(new_vsn_payload, payload, delete_old),
+                      negative(fun slash_/2, {error, ErrMsg})])
+            end
+        end,
+        fun(Round, Closer) ->
+            fun(Props) ->
+                run(Props,
+                    [ set_prop(round, Round),
+                      set_from(Closer),
+                      positive(fun slash_/2)])
+            end
+        end).
+
+snapshot_solo_payload_with_pinnned_env(Cfg) ->
+    generic_payload_with_pinnned_env_(Cfg,
+        fun(Round, Snapshotter, ErrMsg) ->
+            fun(Props) ->
+                run(Props,
+                    [ set_prop(round, Round),
+                      set_from(Snapshotter),
+                      negative(fun snapshot_solo_/2, {error, ErrMsg})])
+            end
+        end,
+        fun(Round, Snapshotter) ->
+            fun(Props) ->
+                run(Props,
+                    [ set_prop(round, Round),
+                      set_from(Snapshotter),
+                      positive(fun snapshot_solo_/2)])
+            end
+        end).
+
 fp_payload_with_pinnned_env(Cfg) ->
+    generic_payload_with_pinnned_env_(Cfg,
+          fun negative_force_progress_sequence/3,
+          fun force_progress_sequence/2).
+
+generic_payload_with_pinnned_env_(Cfg, Negative, Positive) ->
     MinervaHeight = 1234,
     FortunaHeight = 12345,
 
@@ -5379,13 +5459,13 @@ fp_payload_with_pinnned_env(Cfg) ->
 
                 %% using this new format with the minerva height will fail
                 set_prop(height, MinervaHeight),
-                negative_force_progress_sequence(Round, Forcer, invalid_at_height),
+                Negative(Round, Forcer, invalid_at_height),
                 AssertPayloadVersion(2), %% assert vsn =2
 
                 %% same poi and payload, force progress with the new serialization
                 %% will succeed
                 set_prop(height, FortunaHeight),
-                force_progress_sequence(Round, Forcer),
+                Positive(Round, Forcer),
                 AssertPayloadVersion(2)
                ])
         end,
