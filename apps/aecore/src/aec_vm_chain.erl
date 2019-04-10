@@ -231,11 +231,11 @@ oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat,
 oracle_register(Tx, Signature, State) ->
     on_chain_only(State, fun() -> oracle_register_(Tx, Signature, State) end).
 
-oracle_register_(Tx, Signature, State = #state{account = ContractKey}) ->
+oracle_register_(Tx, Signature, State) ->
     {aeo_register_tx, OTx} = aetx:specialize_callback(Tx),
     AccountKey = aeo_register_tx:account_pubkey(OTx),
     Result =
-        case check_account_signature(AccountKey, ContractKey, Signature) of
+        case check_account_signature(AccountKey, Signature, State) of
             ok                -> apply_transaction(Tx, State);
             Err_ = {error, _} -> Err_
         end,
@@ -322,7 +322,7 @@ oracle_respond_(Tx, Signature, State = #state{ account = ContractKey }) ->
     OracleKey = aeo_response_tx:oracle_pubkey(OTx),
     QueryId = aeo_response_tx:query_id(OTx),
     Bin = <<QueryId/binary, ContractKey/binary>>,
-    case check_signature(OracleKey, ContractKey, Bin, Signature) of
+    case check_signature(OracleKey, ContractKey, Bin, Signature, State) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
@@ -348,10 +348,10 @@ oracle_extend_tx_(Oracle, TTL, State) ->
 oracle_extend(Tx, Signature, State) ->
     on_chain_only(State, fun() -> oracle_extend_(Tx,Signature, State) end).
 
-oracle_extend_(Tx, Signature, State = #state{ account = ContractKey }) ->
+oracle_extend_(Tx, Signature, State) ->
     {aeo_extend_tx, OTx} = aetx:specialize_callback(Tx),
     OracleKey = aeo_extend_tx:oracle_pubkey(OTx),
-    case check_account_signature(OracleKey, ContractKey, Signature) of
+    case check_account_signature(OracleKey, Signature, State) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
@@ -470,18 +470,27 @@ oracle_typerep(?ABI_AEVM_SOPHIA_1, BinaryFormat) ->
         _:_ -> {error, bad_typerep}
     end.
 
-check_account_signature(AKey, CKey, Signature) ->
-    check_signature(AKey, CKey, <<AKey/binary, CKey/binary>>, Signature).
+check_account_signature(AKey, Signature, #state{ account = CKey } = State) ->
+    check_signature(AKey, CKey, <<AKey/binary, CKey/binary>>, Signature, State).
 
-check_name_signature(AKey, Hash, CKey, Signature) ->
-    check_signature(AKey, CKey, <<AKey/binary, Hash/binary, CKey/binary>>, Signature).
+check_name_signature(AKey, Hash, Signature, #state{ account = CKey } = State) ->
+    check_signature(AKey, CKey, <<AKey/binary, Hash/binary, CKey/binary>>, Signature, State).
 
-check_signature(AKey, AKey, _Binary, _Signature) -> ok;
-check_signature(AKey, _CKey, Binary, Signature) ->
-    BinaryForNetwork = aec_governance:add_network_id(Binary),
-    case enacl:sign_verify_detached(Signature, BinaryForNetwork, AKey) of
-       {ok, _}    -> ok;
-       {error, _} -> {error, signature_check_failed}
+check_signature(AKey, AKey, _Binary, _Signature, _State) -> ok;
+check_signature(AKey, _CKey, Binary, Signature, State) ->
+    Trees = get_trees(State),
+    case aec_accounts_trees:lookup(AKey, aec_trees:accounts(Trees)) of
+        none -> {error, signature_check_failed};
+        {value, Account} ->
+            case aec_accounts:type(Account) of
+                generalized -> {error, signature_check_failed};
+                basic ->
+                    BinaryForNetwork = aec_governance:add_network_id(Binary),
+                    case enacl:sign_verify_detached(Signature, BinaryForNetwork, AKey) of
+                       {ok, _}    -> ok;
+                       {error, _} -> {error, signature_check_failed}
+                    end
+            end
     end.
 
 %%    AENS
@@ -521,10 +530,10 @@ aens_preclaim_tx_(Addr, CHash, State) ->
 aens_preclaim(Tx, Signature, State) ->
     on_chain_only(State, fun() -> aens_preclaim_(Tx, Signature, State) end).
 
-aens_preclaim_(Tx, Signature, #state{ account = ContractKey} = State) ->
+aens_preclaim_(Tx, Signature, State) ->
     {aens_preclaim_tx, NSTx} = aetx:specialize_callback(Tx),
     Addr = aeser_id:specialize(aens_preclaim_tx:account_id(NSTx), account),
-    case check_account_signature(Addr, ContractKey, Signature) of
+    case check_account_signature(Addr, Signature, State) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
@@ -550,12 +559,12 @@ aens_claim_tx_(Addr, Name, Salt, State) ->
 aens_claim(Tx, Signature, State) ->
     on_chain_only(State, fun() -> aens_claim_(Tx, Signature, State) end).
 
-aens_claim_(Tx, Signature, #state{ account = ContractKey } = State) ->
+aens_claim_(Tx, Signature, State) ->
     {aens_claim_tx, NSTx} = aetx:specialize_callback(Tx),
     Addr = aeser_id:specialize(aens_claim_tx:account_id(NSTx), account),
     Name = aens_claim_tx:name(NSTx),
     {ok, Hash} = aens:get_name_hash(Name),
-    case check_name_signature(Addr, Hash, ContractKey, Signature) of
+    case check_name_signature(Addr, Hash, Signature, State) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
@@ -581,11 +590,11 @@ aens_transfer_tx_(FromAddr, ToAddr, Hash, State) ->
 aens_transfer(Tx, Signature, State) ->
     on_chain_only(State, fun() -> aens_transfer_(Tx, Signature, State) end).
 
-aens_transfer_(Tx, Signature, #state{ account = ContractKey } = State) ->
+aens_transfer_(Tx, Signature, State) ->
     {aens_transfer_tx, NSTx} = aetx:specialize_callback(Tx),
     FromAddr = aeser_id:specialize(aens_transfer_tx:account_id(NSTx), account),
     Hash = aeser_id:specialize(aens_transfer_tx:name_id(NSTx), name),
-    case check_name_signature(FromAddr, Hash, ContractKey, Signature) of
+    case check_name_signature(FromAddr, Hash, Signature, State) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
@@ -610,11 +619,11 @@ aens_revoke_tx_(Addr, Hash, State) ->
 aens_revoke(Tx, Signature, State) ->
     on_chain_only(State, fun() -> aens_revoke_(Tx, Signature, State) end).
 
-aens_revoke_(Tx, Signature, #state{ account = ContractKey } = State) ->
+aens_revoke_(Tx, Signature, State) ->
     {aens_revoke_tx, NSTx} = aetx:specialize_callback(Tx),
     Addr = aeser_id:specialize(aens_revoke_tx:account_id(NSTx), account),
     Hash = aeser_id:specialize(aens_revoke_tx:name_id(NSTx), name),
-    case check_name_signature(Addr, Hash, ContractKey, Signature) of
+    case check_name_signature(Addr, Hash, Signature, State) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.

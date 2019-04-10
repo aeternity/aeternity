@@ -22,11 +22,7 @@
   0},
  {<<"aesophia">>,
   {git,"https://github.com/aeternity/aesophia.git",
-<<<<<<< HEAD
       {ref,"910971282643c186cd68d7d148d4ccaeac5ab347"}},
-=======
-      {ref,"fd6dac22573a36cd01b1db3bcef79ca7c819a662"}},
->>>>>>> d67c1f74... Upgrade rebar references - aeserialization, aebytecode and aesophia
   0},
  {<<"base58">>,
   {git,"https://github.com/aeternity/erl-base58.git",
