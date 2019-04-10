@@ -266,7 +266,7 @@ version(#channel_offchain_tx{block_hash = BlockHash}) ->
 valid_at_protocol(Protocol, Tx) ->
     case version(Tx) of
         ?INITIAL_VSN -> true;
-        ?PINNED_BLOCK_VSN when Protocol =:= ?FORTUNA_PROTOCOL_VSN -> true;
+        ?PINNED_BLOCK_VSN when Protocol >= ?FORTUNA_PROTOCOL_VSN -> true;
         _ -> false
     end.
 

@@ -24,7 +24,7 @@
 
 -define(VSN, 1).
 -define(NO_PINNED_BLOCK, <<>>).
--define(BINATY_NO_PINNED_BLOCK, <<>>).
+-define(BINARY_NO_PINNED_BLOCK, <<>>).
 -opaque hash() :: ?NO_PINNED_BLOCK | #pinned{}.
 -export_type([hash/0]).
 
@@ -37,7 +37,7 @@ block_hash(BH, Type) when Type =:= key;
     #pinned{hash = BH, type = Type}.
 
 -spec serialize(hash()) -> binary().
-serialize(?NO_PINNED_BLOCK) -> ?BINATY_NO_PINNED_BLOCK;
+serialize(?NO_PINNED_BLOCK) -> ?BINARY_NO_PINNED_BLOCK;
 serialize(#pinned{hash = BH, type = Type}) ->
     Vsn = ?VSN,
     aeser_chain_objects:serialize(
@@ -48,7 +48,7 @@ serialize(#pinned{hash = BH, type = Type}) ->
        {type, type_to_int(Type)}]).
 
 -spec deserialize(binary()) -> hash().
-deserialize(?BINATY_NO_PINNED_BLOCK) -> ?NO_PINNED_BLOCK;
+deserialize(?BINARY_NO_PINNED_BLOCK) -> ?NO_PINNED_BLOCK;
 deserialize(Bin) ->
     {pinned_block, ?VSN, RawFields} =
         aeser_chain_objects:deserialize_type_and_vsn(Bin),

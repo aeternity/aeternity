@@ -352,7 +352,7 @@ valid_at_protocol(Protocol, #channel_force_progress_tx{payload = Payload} = Tx) 
     CorrectTxVsn =
         case version(Tx) of
             ?INITIAL_VSN -> true;
-            ?PINNED_BLOCK_VSN when Protocol =:= ?FORTUNA_PROTOCOL_VSN -> true;
+            ?PINNED_BLOCK_VSN when Protocol >= ?FORTUNA_PROTOCOL_VSN -> true;
             _ -> false
         end,
     CorrectPayloadVsn =
