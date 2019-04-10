@@ -200,6 +200,6 @@ version(_) ->
     ?CHANNEL_CLOSE_SOLO_TX_VSN.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
-valid_at_protocol(_, _) ->
-    true.
+valid_at_protocol(Protocol, #channel_close_solo_tx{payload = Payload}) ->
+    aesc_utils:is_payload_valid_at_protocol(Protocol, Payload).
 
