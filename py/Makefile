@@ -1,13 +1,15 @@
 BIN = $(abspath bin)
 NOSE = $(BIN)/nosetests
-PYTHON = $(BIN)/python
+PYTHON ?= $(BIN)/python
 PYTHON_TESTS = $(abspath tests)
 PIP = $(BIN)/pip
+VIRTUALENV ?= virtualenv
+VIRTUALENV_PYTHON ?= python2.7
 
 
 .PHONY: venv-present
 venv-present:
-	@virtualenv --python=python2.7 -q .
+	@$(VIRTUALENV) --python=$(VIRTUALENV_PYTHON) -q .
 
 .PHONY: env
 env: venv-present
@@ -23,7 +25,7 @@ single-uat:
 
 .PHONY: release-test
 release-test:
-	@$(PYTHON) $(PYTHON_TESTS)/release.py --workdir="$(WORKDIR)" --tarball=$(TARBALL) --blocks=100 --version=$(VER)
+	@$(PYTHON) $(PYTHON_TESTS)/release.py --workdir="$(WORKDIR)" --package=$(PACKAGE) --blocks=100 --version=$(VER)
 
 .PHONY: package-win32-test
 package-win32-test:
