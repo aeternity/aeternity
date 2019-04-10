@@ -1173,10 +1173,10 @@ call_result(?ABI_AEVM_SOPHIA_1, Type, Call) ->
         error  ->
             {error, aect_call:return_value(Call)};
         ok ->
-            {ok, Res} = aeso_heap:from_binary(Type, aect_call:return_value(Call)),
+            {ok, Res} = aeb_heap:from_binary(Type, aect_call:return_value(Call)),
             Res;
         revert ->
-            {ok, Res} = aeso_heap:from_binary(string, aect_call:return_value(Call)),
+            {ok, Res} = aeb_heap:from_binary(string, aect_call:return_value(Call)),
             {revert, Res}
     end;
 call_result(?ABI_FATE_SOPHIA_1,_Type, Call) ->
@@ -1201,12 +1201,12 @@ make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
     case abi_version() of
         ?ABI_AEVM_SOPHIA_1 ->
             #{type_info := TypeInfo} = aect_sophia:deserialize(Code),
-            case aeso_abi:type_hash_from_function_name(Fun, TypeInfo) of
+            case aeb_abi:type_hash_from_function_name(Fun, TypeInfo) of
                 {ok, <<FunHashInt:256>>} ->
                     Args1 = format_aevm_args(if is_tuple(Args) -> Args;
                                                 true -> {Args}
                                              end),
-                    aeso_heap:to_binary({FunHashInt, Args1});
+                    aeb_heap:to_binary({FunHashInt, Args1});
                 {error, _} = Err -> error({bad_function, Fun, Err})
             end;
         ?ABI_FATE_SOPHIA_1 ->
@@ -1328,7 +1328,7 @@ sophia_exploits(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc  = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     {ok, Code} = compile_contract(exploits),
-    StringType = aeso_heap:to_binary(string),
+    StringType = aeb_heap:to_binary(string),
     HackedCode = hack_type(<<"pair">>, {return, StringType}, Code),
     C = ?call(create_contract_with_code, Acc, HackedCode, {}, #{}),
     Err = {error, <<"out_of_gas">>},
@@ -3591,13 +3591,13 @@ sophia_savecoinbase(_Cfg) ->
     %% Create chain contract and check that address is stored.
     Ct1 = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
     #{<<0>> := Val1} = get_contract_state(Ct1),
-    {ok, {LastBf}} = aeso_heap:from_binary({tuple, [word]}, Val1),
+    {ok, {LastBf}} = aeb_heap:from_binary({tuple, [word]}, Val1),
     <<LastBf:?BENEFICIARY_PUB_BYTES/unit:8>> = Ct1,
 
     %% Call chain.save_coinbase() and make sure beneficiary is stored.
     ?call(call_contract, Acc, Ct1, save_coinbase, word, {}),
     #{<<0>> := Val2}  = get_contract_state(Ct1),
-    {ok, {LastBf2}} = aeso_heap:from_binary({tuple, [word]}, Val2),
+    {ok, {LastBf2}} = aeb_heap:from_binary({tuple, [word]}, Val2),
     Beneficiary = LastBf2,
     ok.
 
@@ -3813,7 +3813,7 @@ sophia_crypto(_Cfg) ->
     %% Test hash functions
     String = <<"12345678901234567890123456789012-andsomemore">>,
     Data   = [{none, <<"foo">>}, {{some, 100432}, String}],
-    Bin    = aeso_heap:to_binary(Data),
+    Bin    = aeb_heap:to_binary(Data),
     <<Sha3:256>>      = aec_hash:hash(evm, Bin),
     <<Sha256:256>>    = aec_hash:sha256_hash(Bin),
     <<Blake2b:256>>   = aec_hash:blake2b_256_hash(Bin),

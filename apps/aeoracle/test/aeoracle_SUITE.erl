@@ -163,8 +163,8 @@ register_oracle_negative(_Cfg) ->
 
     %% Test bad format strings
     ABISophia = #{abi_version => ?ABI_AEVM_SOPHIA_1,
-                  query_format => aeso_heap:to_binary(word),
-                  response_format => aeso_heap:to_binary(word)
+                  query_format => aeb_heap:to_binary(word),
+                  response_format => aeb_heap:to_binary(word)
                  },
     RTx8 = aeo_test_utils:register_tx(PubKey, ABISophia#{query_format => <<"foo">>}, S1),
     RTx9 = aeo_test_utils:register_tx(PubKey, ABISophia#{response_format => <<"foo">>}, S1),
@@ -455,7 +455,7 @@ query_oracle_negative_dynamic_fee(Cfg) ->
     ok.
 
 query_oracle_type_check(_Cfg) ->
-    RFmt = aeso_heap:to_binary(word),
+    RFmt = aeb_heap:to_binary(word),
     F = fun(QFmt, Query, ABIVersion) ->
                 {OracleKey, S}  = register_oracle([], #{abi_version => ABIVersion,
                                                         query_format => QFmt,
@@ -469,10 +469,10 @@ query_oracle_type_check(_Cfg) ->
                 Tx = aeo_test_utils:query_tx(SenderKey, OracleId, #{query => Query}, S2),
                 aetx:process(Tx, Trees, Env)
         end,
-    Int = aeso_heap:to_binary(1),
-    IntFmt = aeso_heap:to_binary(word),
-    String = aeso_heap:to_binary(<<"foo">>),
-    StringFmt = aeso_heap:to_binary(string),
+    Int = aeb_heap:to_binary(1),
+    IntFmt = aeb_heap:to_binary(word),
+    String = aeb_heap:to_binary(<<"foo">>),
+    StringFmt = aeb_heap:to_binary(string),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     ?assertEqual({error, bad_format}, F(StringFmt, Int, ABI)),
     ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ABI)),
@@ -635,8 +635,8 @@ query_response_fee_depends_on_response_size(Cfg) ->
     ok.
 
 query_response_type_check(_Cfg) ->
-    QFmt  = aeso_heap:to_binary(string),
-    Query = aeso_heap:to_binary(<<"who?">>),
+    QFmt  = aeb_heap:to_binary(string),
+    Query = aeb_heap:to_binary(<<"who?">>),
     F = fun(RFmt, Resp, ABIVersion) ->
                 RegisterOpts = #{abi_version => ABIVersion,
                                  query_format => QFmt,
@@ -649,10 +649,10 @@ query_response_type_check(_Cfg) ->
                 Tx = aeo_test_utils:response_tx(OracleKey, ID, Resp, S),
                 aetx:process(Tx, Trees, Env)
         end,
-    Int = aeso_heap:to_binary(1),
-    IntFmt = aeso_heap:to_binary(word),
-    String = aeso_heap:to_binary(<<"foo">>),
-    StringFmt = aeso_heap:to_binary(string),
+    Int = aeb_heap:to_binary(1),
+    IntFmt = aeb_heap:to_binary(word),
+    String = aeb_heap:to_binary(<<"foo">>),
+    StringFmt = aeb_heap:to_binary(string),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     ?assertEqual({error, bad_format}, F(StringFmt, Int, ABI)),
     ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ABI)),

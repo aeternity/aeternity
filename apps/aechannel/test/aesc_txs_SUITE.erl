@@ -804,7 +804,7 @@ close_mutual_wrong_amounts(Cfg) ->
     % sum too big
     Test(100000 * aec_test_utils:min_gas_price(),
          100000 * aec_test_utils:min_gas_price(),
-         50000 * aec_test_utils:min_gas_price(), 
+         50000 * aec_test_utils:min_gas_price(),
          wrong_amounts),
     % fee too small
     Test(50 * aec_test_utils:min_gas_price(),
@@ -2492,9 +2492,9 @@ fp_use_onchain_oracle(Cfg) ->
     LockPeriod = 10,
     FPHeight0 = 20,
     Question = <<"To be, or not to be?">>,
-    OQuestion = aeso_heap:to_binary(Question, 0),
+    OQuestion = aeb_heap:to_binary(Question, 0),
     Answer = <<"oh, yes">>,
-    OResponse = aeso_heap:to_binary(Answer, 0),
+    OResponse = aeb_heap:to_binary(Answer, 0),
     QueryFee = 50000,
     CallOnChain =
         fun(Owner, Forcer) ->
@@ -2509,8 +2509,8 @@ fp_use_onchain_oracle(Cfg) ->
                 set_prop(height, FPHeight0),
 
                 % create oracle
-                register_new_oracle(aeso_heap:to_binary(string, 0),
-                                    aeso_heap:to_binary(string, 0),
+                register_new_oracle(aeb_heap:to_binary(string, 0),
+                                    aeb_heap:to_binary(string, 0),
                                     QueryFee),
 
                 % create off-chain contract
@@ -3611,7 +3611,7 @@ fp_oracle_query(Cfg) ->
             RelativeTTL = {variant, 0, [10]},
             Args = {IntOracleId, <<"Very much of a question">>, QueryFee, RelativeTTL, RelativeTTL},
             ?TEST_LOG("Oracle createQuery function arguments ~p", [Args]),
-            aeso_heap:to_binary({FunHashInt, Args})
+            aeb_heap:to_binary({FunHashInt, Args})
         end,
     fp_oracle_action(Cfg, ProduceCallData).
 
@@ -3632,9 +3632,9 @@ fp_oracle_respond(Cfg) ->
             ?TEST_LOG("Signature binary ~p", [SigBin]),
             Sig = {Word1, Word2},
             Args = {IntOracleId, IntQueryId, Sig,
-                    aeso_heap:to_binary(42, 0)},
+                    aeb_heap:to_binary(42, 0)},
             ?TEST_LOG("Oracle respond function arguments ~p", [Args]),
-            aeso_heap:to_binary({FunHashInt, Args})
+            aeb_heap:to_binary({FunHashInt, Args})
         end,
     fp_oracle_action(Cfg, ProduceCallData).
 
@@ -3654,7 +3654,7 @@ fp_oracle_extend(Cfg) ->
             Sig = {Word1, Word2},
             Args = {IntOracleId, Sig, RelativeTTL},
             ?TEST_LOG("Oracle respond function arguments ~p", [Args]),
-            aeso_heap:to_binary({FunHashInt, Args})
+            aeb_heap:to_binary({FunHashInt, Args})
         end,
     fp_oracle_action(Cfg, ProduceCallData).
 
@@ -3715,10 +3715,10 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                     code => BinCode}
           end,
           % create oracle
-          register_new_oracle(aeso_heap:to_binary(string, 0),
-                              aeso_heap:to_binary(word, 0),
+          register_new_oracle(aeb_heap:to_binary(string, 0),
+                              aeb_heap:to_binary(word, 0),
                               QueryFee),
-          oracle_query(aeso_heap:to_binary(<<"Some question">>, 0), 10),
+          oracle_query(aeb_heap:to_binary(<<"Some question">>, 0), 10),
           % call contract on-chain
           fun(#{onchain_contract_owner_pubkey := OPubKey,
                 onchain_contract_owner_privkey := OPrivKey,
@@ -3771,8 +3771,8 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                 [ % test contract on-chain:
                   % create account for being contract owner
                   positive(fun create_channel_/2),
-                  register_new_oracle(aeso_heap:to_binary(string, 0),
-                                      aeso_heap:to_binary(word, 0),
+                  register_new_oracle(aeb_heap:to_binary(string, 0),
+                                      aeb_heap:to_binary(word, 0),
                                       QueryFee),
                   % store state on-chain via snapshot
                   set_from(initiator),
@@ -3794,7 +3794,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                                           _Contract = ContractName,
                                           _InitArgs = [],
                                           _Deposit  = 2),
-                  oracle_query(aeso_heap:to_binary(<<"Some question">>, 0), 10),
+                  oracle_query(aeb_heap:to_binary(<<"Some question">>, 0), 10),
                   % force progress contract on-chain
                   fun(#{contract_id   := ContractId,
                         oracle        := Oracle,
@@ -3850,7 +3850,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
 get_oracle_fun_hash_int(Function) ->
     {ok, Code} = compile_contract("oracles"),
     TypeInfo = maps:get(type_info, aect_sophia:deserialize(Code)),
-    {ok, <<IntFunHash:256>>} = aeso_abi:type_hash_from_function_name(
+    {ok, <<IntFunHash:256>>} = aeb_abi:type_hash_from_function_name(
                                Function, TypeInfo),
     IntFunHash.
 
@@ -3875,7 +3875,7 @@ fp_register_oracle(Cfg) ->
             RelativeTTL = {variant, 0, [10]},
             RegisterArgs = {IntPubKey, Sig, 2, RelativeTTL},
             ?TEST_LOG("Oracle register function arguments ~p", [RegisterArgs]),
-            aeso_heap:to_binary({IntFunHash, RegisterArgs})
+            aeb_heap:to_binary({IntFunHash, RegisterArgs})
         end,
     ContractName = "oracles",
 
@@ -5180,7 +5180,7 @@ assert_last_channel_result(Result, Type) ->
         Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
                                         S),
         EncRValue = aect_call:return_value(Call),
-        ?assertMatch({X, X}, {{ok, Result}, aeso_heap:from_binary(Type, EncRValue)}),
+        ?assertMatch({X, X}, {{ok, Result}, aeb_heap:from_binary(Type, EncRValue)}),
         Props
     end.
 

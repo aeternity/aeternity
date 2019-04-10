@@ -28,7 +28,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
     {ok, Compiled} = aeso_compiler:from_string(Contract, [pp_icode, pp_assembler]),
     #{ byte_code := Code,
        type_info := TypeInfo} = Compiled,
-    {ok, ArgType} = aeso_abi:arg_typerep_from_function(<<"main">>, TypeInfo),
+    {ok, ArgType} = aeb_abi:arg_typerep_from_function(<<"main">>, TypeInfo),
     CallDataType = {tuple, [word, ArgType]},
     OutType = word,
 
@@ -38,7 +38,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
     VM = aect_test_utils:latest_sophia_vm_version(),
     {ok, Store} = aevm_eeevm_store:from_sophia_state(
                     #{vm => VM, abi => ABI},
-                    aeso_heap:to_binary({{tuple, []}, {}})),
+                    aeb_heap:to_binary({{tuple, []}, {}})),
     {ok, Res} =
         aevm_eeevm:eval(
           aevm_eeevm_state:init(

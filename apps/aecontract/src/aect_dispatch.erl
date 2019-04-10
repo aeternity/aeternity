@@ -79,8 +79,8 @@ sophia_call(ContractKey, Function, Argument) ->
             #{type_info := TypeInfo,
               byte_code := Code} = aect_sophia:deserialize(SerializedCode),
             {_Hash, Function, ArgTypeBin, OutTypeBin} = lists:keyfind(Function, 2, TypeInfo),
-            {ok, ArgType} = aeso_heap:from_binary(typerep, ArgTypeBin),
-            {ok, OutType} = aeso_heap:from_binary(typerep, OutTypeBin),
+            {ok, ArgType} = aeb_heap:from_binary(typerep, ArgTypeBin),
+            {ok, OutType} = aeb_heap:from_binary(typerep, OutTypeBin),
             CallDataType = {tuple, [word, ArgType]},
             call_common(CallData, CallDataType, OutType, ContractKey, Code,
                         Store, TxEnv, Trees, CTVersion)
@@ -135,8 +135,8 @@ run(#{vm := VM} = Version, #{ code := SerializedCode} = CallDef) when ?IS_FATE_S
 run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_AEVM_SOPHIA(VM) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
-    %% TODO: update aeso_abi and pass Version
-    case aeso_abi:check_calldata(maps:get(call_data, CallDef), TypeInfo) of
+    %% TODO: update aeb_abi and pass Version
+    case aeb_abi:check_calldata(maps:get(call_data, CallDef), TypeInfo) of
         {ok, CallDataType, OutType} ->
             CallDef1 = CallDef#{code => Code,
                                 call_data_type => CallDataType,

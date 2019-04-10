@@ -1041,7 +1041,7 @@ broken_decode_sophia_data(_Config) ->
 
 %% Used in contract-decode endpoint tests.
 to_contract_bytearray(Term) ->
-    aeser_api_encoder:encode(contract_bytearray, aeso_heap:to_binary(Term)).
+    aeser_api_encoder:encode(contract_bytearray, aeb_heap:to_binary(Term)).
 
 contract_bytearray_decode(X) ->
     case aeser_api_encoder:safe_decode(contract_bytearray, X) of
@@ -2393,7 +2393,7 @@ contract_create_transaction_init_error(_Config) ->
                               <<"sophia">>,
                               contract_bytearray_decode(EncodedCode),
                               <<"init">>, <<"(0x123, 0)">>),
-    EncodedInitCallData = aeser_api_encoder:encode(contract_bytearray, aeso_heap:to_binary({<<"init">>, {}})),
+    EncodedInitCallData = aeser_api_encoder:encode(contract_bytearray, aeb_heap:to_binary({<<"init">>, {}})),
     ValidEncoded = #{ owner_id    => MinerAddress,
                       code        => EncodedCode,
                       vm_version  => latest_sophia_vm(),
@@ -3898,7 +3898,7 @@ query_state(ConnPid, Config) ->
     query_state_(ConnPid, sc_ws_protocol(Config)).
 
 query_state_(ConnPid, <<"legacy">>) ->
-    %% get.offchain_state doesn't require any parameter, but not suplying one 
+    %% get.offchain_state doesn't require any parameter, but not suplying one
     %% will remove "payload" key from request and cause error in legacy API
     ?WS:send_tagged(ConnPid, <<"get">>, <<"offchain_state">>, #{<<"a">> => <<"a">>}),
     {ok, <<"offchain_state">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
@@ -4376,7 +4376,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
     {OraclePubkey, OraclePrivkey} =
         initialize_account(2000000 * aec_test_utils:min_gas_price(),
                            ?CAROL),
-    SophiaStringType = aeso_heap:to_binary(string, 0),
+    SophiaStringType = aeb_heap:to_binary(string, 0),
     QueryFee = 3,
     OracleTTL = 20,
     QueryTTL = 5,
@@ -4392,8 +4392,8 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
                      }),
     OracleQuerySequence =
         fun(Q0, R0) ->
-            Q = aeso_heap:to_binary(Q0, 0),
-            R = aeso_heap:to_binary(R0, 0),
+            Q = aeb_heap:to_binary(Q0, 0),
+            R = aeb_heap:to_binary(R0, 0),
             QueryId = query_oracle(OraclePubkey, OraclePrivkey, %oracle asks oracle
                                   OraclePubkey,
                                   #{query        => Q,
@@ -6384,7 +6384,7 @@ sc_ws_broken_init_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
     {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
     {ok, Code} = aeser_api_encoder:safe_decode(contract_bytearray,
                                                 EncodedCode),
-    %% call main instead of init 
+    %% call main instead of init
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
                                   <<"sophia">>, Code, <<"main">>, <<"(1)">>),
     {_CreateVolley, OwnerConnPid, _OwnerPubKey} = GetVolley(Owner),
