@@ -9,6 +9,7 @@
 -behavior(aetx).
 
 -include("../../aecontract/include/aecontract.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 %% Behavior API
 -export([new/1,
@@ -21,11 +22,12 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1
+         for_client/1,
+         valid_at_protocol/2
         ]).
 %% Additional getters
 -export([abi_version/1,
@@ -216,9 +218,9 @@ serialize(#ga_meta_tx{ga_id       = GAId,
                       gas         = Gas,
                       gas_price   = GasPrice,
                       ttl         = TTL,
-                      tx          = InnerTx}) ->
+                      tx          = InnerTx} = Tx) ->
     SerTx = aetx_sign:serialize_to_binary(InnerTx),
-    {version(),
+    {version(Tx),
      [ {ga_id, GAId}
      , {auth_data, AuthData}
      , {abi_version, ABIVersion}
@@ -277,12 +279,16 @@ for_client(#ga_meta_tx{ ga_id       = GAId,
       <<"ttl">>         => TTL,
       <<"tx">>          => aetx_sign:serialize_for_client_pending(InnerTx)}.
 
+-spec version(tx()) -> non_neg_integer().
+version(_) ->
+    ?GA_META_TX_VSN.
+
+-spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
+valid_at_protocol(P, #ga_meta_tx{}) ->
+    P >= ?FORTUNA_PROTOCOL_VSN.
+
 %%%===================================================================
 %%% Internal functions
-
--spec version() -> non_neg_integer().
-version() ->
-    ?GA_META_TX_VSN.
 
 add_tx_hash(Env0, Tx) ->
     BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),

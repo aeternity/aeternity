@@ -686,7 +686,8 @@ check_pool_db_put(Tx, TxHash, Event) ->
             lager:debug("Already have GC:ed tx: ~p", [TxHash]),
             ignore;
         not_found ->
-            Checks = [ fun check_signature/4
+            Checks = [ fun check_valid_at_protocol/4
+                     , fun check_signature/4
                      , fun check_nonce/4
                      , fun check_minimum_fee/4
                      , fun check_minimum_gas_price/4
@@ -742,6 +743,9 @@ check_tx_ttl(STx, _Hash, Height, _Event) ->
         true  -> {error, ttl_expired};
         false -> ok
     end.
+
+check_valid_at_protocol(STx, _Hash, Height, _Event) ->
+    aetx:check_valid_at_protocol(aetx_sign:tx(STx), Height).
 
 check_signature(Tx, Hash, _Height, _Event) ->
     {ok, Trees} = aec_chain:get_top_state(),

@@ -9,6 +9,7 @@
 -behavior(aetx).
 
 -include("../../aecontract/include/aecontract.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 %% Behavior API
 -export([new/1,
@@ -21,11 +22,12 @@
          check/3,
          process/3,
          signers/2,
-         version/0,
+         version/1,
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1
+         for_client/1,
+         valid_at_protocol/2
         ]).
 
 %% Additional getters
@@ -215,8 +217,8 @@ serialize(#ga_attach_tx{owner_id   = OwnerId,
                         ttl        = TTL,
                         gas        = Gas,
                         gas_price  = GasPrice,
-                        call_data  = CallData}) ->
-    {version(),
+                        call_data  = CallData} = Tx) ->
+    {version(Tx),
      [ {owner_id, OwnerId}
      , {nonce, Nonce}
      , {code, Code}
@@ -287,10 +289,14 @@ for_client(#ga_attach_tx{ owner_id    = OwnerId,
       <<"gas_price">>   => GasPrice,
       <<"call_data">>   => aeser_api_encoder:encode(contract_bytearray, CallData)}.
 
+-spec version(tx()) -> non_neg_integer().
+version(_) ->
+    ?GA_ATTACH_TX_VSN.
+
+-spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
+valid_at_protocol(P, #ga_attach_tx{}) ->
+    P >= ?FORTUNA_PROTOCOL_VSN.
+
 %%%===================================================================
 %%% Internal functions
-
--spec version() -> non_neg_integer().
-version() ->
-    ?GA_ATTACH_TX_VSN.
 
