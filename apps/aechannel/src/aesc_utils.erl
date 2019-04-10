@@ -16,6 +16,7 @@
          deserialize_payload/1,
          is_payload_valid_at_protocol/2,
          check_solo_close_payload/8,
+         is_payload_valid_at_protocol/2,
          check_slash_payload/8,
          check_solo_snapshot_payload/7,
          check_force_progress/5,
