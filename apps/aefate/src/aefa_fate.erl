@@ -284,7 +284,7 @@ check_type({list, any}, L) when ?IS_FATE_LIST(L) ->
 check_type({list, ET}, L) when ?IS_FATE_LIST(L) ->
     check_same_type(ET, ?FATE_LIST_VALUE(L));
 check_type({tuple, Elements}, T) when ?IS_FATE_TUPLE(T) ->
-    check_all_types(Elements, aeb_fate_data:tuple_to_list(T));
+    check_all_types(Elements, ?FATE_TUPLE_ELEMENTS(T));
 check_type({map, Key, Value}, M) when ?IS_FATE_MAP(M) ->
     {Ks, Vs} = lists:unzip(maps:to_list(?FATE_MAP_VALUE(M))),
     check_same_type(Key, Ks) andalso
