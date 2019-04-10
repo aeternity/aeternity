@@ -81,8 +81,8 @@ The macOS package has:
 In case you have installed either of them in a non-default path, you could use symlink(s) to work around the issue.
 You can check that those symlinks are correct by running the following script and following any printed instructions:
 ```bash
-test $(readlink /usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib) = "$(brew --prefix openssl)"/lib/libcrypto.1.0.0.dylib || echo WARNING: Run: ln -s "$(brew --prefix openssl)"/lib/libcrypto.1.0.0.dylib /usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib
-test $(readlink /usr/local/opt/libsodium/lib/libsodium.23.dylib)  = "$(brew --prefix libsodium)"/lib/libsodium.23.dylib  || echo WARNING: Run: ln -s "$(brew --prefix libsodium)"/lib/libsodium.23.dylib /usr/local/opt/libsodium/lib/libsodium.23.dylib
+test "$(readlink /usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib)" = "$(brew --prefix openssl)"/lib/libcrypto.1.0.0.dylib || echo WARNING: Run: ln -s "$(brew --prefix openssl)"/lib/libcrypto.1.0.0.dylib /usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib
+test "$(readlink /usr/local/opt/libsodium/lib/libsodium.23.dylib)"  = "$(brew --prefix libsodium)"/lib/libsodium.23.dylib  || echo WARNING: Run: ln -s "$(brew --prefix libsodium)"/lib/libsodium.23.dylib /usr/local/opt/libsodium/lib/libsodium.23.dylib
 ```
 
 ## Deploy node
