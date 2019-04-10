@@ -155,10 +155,10 @@ unpack_payload(Tx) ->
 -spec is_payload_valid_at_protocol(aec_hard_forks:protocol_vsn(), binary()) -> boolean().
 is_payload_valid_at_protocol(Protocol, Payload) ->
     case aesc_utils:deserialize_payload(Payload) of
-        {error, _} -> false;
-        {ok, last_onchain} -> true; %% using tx already on-chain
-        {ok, _SignedTx, OffChainTx} ->
-            aesc_offchain_tx:valid_at_protocol(Protocol, OffChainTx)
+        {error, _}                  -> false;
+        {ok, last_onchain}          -> true; %% using tx already on-chain
+        {ok, SignedTx, _OffChainTx} ->
+            aetx:valid_at_protocol(Protocol, aetx_sign:tx(SignedTx))
     end.
 
 %%%===================================================================

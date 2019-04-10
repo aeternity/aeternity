@@ -29,7 +29,9 @@
         , signers/2
         , specialize_type/1
         , specialize_callback/1
-        , update_tx/2]).
+        , update_tx/2
+        , valid_at_protocol/2
+        , check_protocol_at_height/2]).
 
 -ifdef(TEST).
 -export([tx/1]).
@@ -271,7 +273,7 @@ ttl(#aetx{ cb = CB, tx = Tx }) ->
 -spec valid_at_protocol(Protocol :: aec_hard_forks:protocol_vsn(),
                       Tx :: tx()) -> boolean().
 valid_at_protocol(Protocol, #aetx{ cb = CB, tx = Tx }) ->
-    CB:valid_at_protocol(Protocol, Tx). 
+    CB:valid_at_protocol(Protocol, Tx).
 
 -spec size(Tx :: tx()) -> pos_integer().
 size(#aetx{ size = Size }) ->

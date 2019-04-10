@@ -745,7 +745,7 @@ check_tx_ttl(STx, _Hash, Height, _Event) ->
     end.
 
 check_valid_at_protocol(STx, _Hash, Height, _Event) ->
-    aetx:check_valid_at_protocol(aetx_sign:tx(STx), Height).
+    aetx:check_protocol_at_height(aetx_sign:tx(STx), Height).
 
 check_signature(Tx, Hash, _Height, _Event) ->
     {ok, Trees} = aec_chain:get_top_state(),

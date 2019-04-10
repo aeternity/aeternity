@@ -284,8 +284,9 @@ version(_) ->
     ?GA_META_TX_VSN.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
-valid_at_protocol(P, #ga_meta_tx{}) ->
-    P >= ?FORTUNA_PROTOCOL_VSN.
+valid_at_protocol(P, #ga_meta_tx{ tx = SignedTx }) ->
+    P >= ?FORTUNA_PROTOCOL_VSN andalso
+        aetx:valid_at_protocol(P, aetx_sign:tx(SignedTx)).
 
 %%%===================================================================
 %%% Internal functions
