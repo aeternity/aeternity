@@ -68,6 +68,7 @@ init([]) ->
             ?CHILD(aec_keys, 5000, worker),
             ?CHILD(aec_tx_pool_gc, 5000, worker),
             ?CHILD(aec_tx_pool, 5000, worker),
+            ?CHILD(aec_tx_gc, 5000, worker),
             ?CHILD(aec_conductor_sup, 5000, supervisor),
             ?CHILD(aec_connection_sup, 5000, supervisor)
            ],

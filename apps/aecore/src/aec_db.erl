@@ -59,12 +59,16 @@
         , remove_tx_from_mempool/1
         , remove_tx_location/1
         , gc_tx/1
+        , remove_tx_gc/1
         ]).
 
 %% Only to be used from aec_tx_pool:init/1
 -export([ fold_mempool/2
         ]).
 
+%% Only to be used from aec_tx_gc:init/1
+-export([ foreach_tx_gc/1
+        ]).
 
 %% MP trees backend
 -export([ find_accounts_node/1
@@ -144,6 +148,7 @@ tables(Mode) ->
    , ?TAB(aec_tx_location)
    , ?TAB(aec_tx_pool)
    , ?TAB(aec_discovered_pof)
+   , ?TAB(aec_tx_gc)
     ].
 
 tab(Mode0, Record, Attributes, Extra) ->
@@ -280,6 +285,7 @@ write_block(Block, Hash) ->
                    TxHashes = [begin
                                    STxHash = aetx_sign:hash(STx),
                                    write_signed_tx(STxHash, STx),
+                                   delete(aec_tx_gc, STxHash), %% In case tx from a block was already GCed.
                                    STxHash
                                end
                                || STx <- Txs],
@@ -558,12 +564,17 @@ gc_tx(TxHash) ->
            BlockHash when is_binary(BlockHash) ->
                {error, BlockHash};
            mempool ->
-               delete(aec_tx_pool, TxHash);
+               delete(aec_tx_pool, TxHash),
+               delete(aec_signed_tx, TxHash),
+               write(aec_tx_gc, #aec_tx_gc{key = TxHash, value = 0});
            none ->
                ok;
            not_found ->
                {error, tx_not_found}
        end).
+
+remove_tx_gc(TxHash) ->
+    ?t(delete(aec_tx_gc, TxHash)).
 
 get_signed_tx(Hash) ->
     [#aec_signed_tx{value = DBSTx}] = ?t(read(aec_signed_tx, Hash)),
@@ -588,8 +599,15 @@ find_tx_location(STxHash) ->
            [] ->
                case mnesia:read(aec_tx_pool, STxHash) of
                    [] -> case mnesia:read(aec_signed_tx, STxHash) of
-                             [] -> not_found;
-                             [_] -> none
+                             [] ->
+                                 case mnesia:read(aec_tx_gc, STxHash) of
+                                     []  -> not_found;
+                                     [_] -> none
+                                 end;
+                             [_] ->
+                                 %% For backwards compatibility: before aec_tx_gc was introduced,
+                                 %% aec_signed_tx objects were stored forever, even after GC.
+                                 none
                          end;
                    [_] -> mempool
                end;
@@ -641,6 +659,15 @@ fold_mempool(FunIn, InitAcc) ->
                   FunIn(Hash, Acc)
           end,
     ?t(mnesia:foldl(Fun, InitAcc, aec_tx_pool)).
+
+foreach_tx_gc(Fun) ->
+    foreach_tx_gc(mnesia:first(aec_tx_gc), Fun).
+
+foreach_tx_gc('$end_of_table', _Fun) ->
+    ok;
+foreach_tx_gc(Key, Fun) ->
+    Fun(Key),
+    foreach_tx_gc(mnesia:next(aec_tx_gc, Key), Fun).
 
 %% start phase hook to load the database
 

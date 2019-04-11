@@ -156,13 +156,14 @@ do_gc(Height, Dbs) ->
               GCDb, [{ #tx{hash = '$1', ttl = '$2', key = '$3', _ = '_'},
                        [{'=<', '$2', Height}],
                        [{{'$1', '$3'}}] }]),
-    do_gc_(GCTxs, Dbs, GCDb).
+    do_gc_(GCTxs, Dbs, GCDb, Height).
 
-do_gc_([], _Dbs, _GCDb) ->
+do_gc_([], _Dbs, _GCDb, _Height) ->
     ok;
-do_gc_([{TxHash, Key} | TxHashes], Dbs, GCDb) ->
+do_gc_([{TxHash, Key} | TxHashes], Dbs, GCDb, Height) ->
     case aec_db:gc_tx(TxHash) of
         ok ->
+            aec_tx_gc:schedule_removal(TxHash, Height),
             aec_tx_pool:raw_delete(Dbs, Key),
             ets:delete(GCDb, TxHash),
             aec_metrics:try_update([ae,epoch,aecore,tx_pool,gced], 1),
@@ -176,7 +177,7 @@ do_gc_([{TxHash, Key} | TxHashes], Dbs, GCDb) ->
                        [pp(BlockHash), pp(TxHash)]),
             ok
     end,
-    do_gc_(TxHashes, Dbs, GCDb).
+    do_gc_(TxHashes, Dbs, GCDb, Height).
 
 %%===================================================================
 %% Origins cache

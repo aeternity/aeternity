@@ -344,6 +344,7 @@ handle_info(Msg, St) ->
 
 handle_info_({P, new_gc_height, GCHeight}, #state{sync_top_calc = P} = State) ->
     aec_tx_pool_gc:gc(GCHeight, State#state.dbs),
+    aec_tx_gc:gc(GCHeight),
     {noreply, State#state{sync_top_calc = undefined, gc_height = GCHeight}};
 handle_info_({'ETS-TRANSFER', _, _, _}, State) ->
     {noreply, State};
