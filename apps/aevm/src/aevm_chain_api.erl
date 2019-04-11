@@ -57,8 +57,8 @@
 -callback oracle_register_tx(Account :: pubkey(),
                             QueryFee :: non_neg_integer(),
                             TTL :: aeo_oracles:ttl(),
-                            DecodedQType :: aeso_sophia:type(),
-                            DecodedRType :: aeso_sophia:type(),
+                            DecodedQType :: aeb_aevm_data:type(),
+                            DecodedRType :: aeb_aevm_data:type(),
                             VMVersion :: pos_integer(),
                             ChainState :: chain_state()) ->
     {ok, aetx:tx()} | {error, term()}.
@@ -139,7 +139,7 @@
 
 -callback aens_resolve(Name :: binary(),
                        Key :: binary(),
-                       Type :: aeso_sophia:type(),
+                       Type :: aeb_aevm_data:type(),
                        ChainState :: chain_state()) ->
     {ok, none | {some, term()}} | {error, term()}.
 
@@ -202,7 +202,7 @@
                                  VMVersion :: aect_contracts:version(),
                                  TypeHash :: binary(),
                                  State :: chain_state()) ->
-    {ok, ArgType::aeso_sophia:type(), OutType::aeso_sophia:type()} | {error, term()}.
+    {ok, ArgType::aeb_aevm_data:type(), OutType::aeb_aevm_data:type()} | {error, term()}.
 
 %% -- Call results -----------------------------------------------------------
 

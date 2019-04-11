@@ -200,8 +200,8 @@ spend(Tx, State) ->
 
 %%    Oracle
 -spec oracle_register_tx(aec_keys:pubkey(), non_neg_integer(), aeo_oracles:ttl(),
-                         aeso_sophia:type(), aeso_sophia:type(), aect_contracts:abi_version(),
-                         chain_state()) ->
+                         aeb_aevm_data:type(), aeb_aevm_data:type(),
+                         aect_contracts:abi_version(), chain_state()) ->
     {ok, aetx:tx()} | {error, term()}.
 oracle_register_tx(AccountKey, QueryFee, TTL, QFormat, RFormat, ABIVersion, State) ->
     on_chain_only(State, fun() -> oracle_register_tx_(AccountKey, QueryFee, TTL,
@@ -212,8 +212,8 @@ oracle_register_tx(AccountKey, QueryFee, TTL, QFormat, RFormat, ABIVersion, Stat
 oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat,
                     RFormat, ABIVersion, State) ->
     Nonce = next_nonce(AccountKey, State),
-    BinaryQueryFormat = aeso_heap:to_binary(QFormat),
-    BinaryResponseFormat = aeso_heap:to_binary(RFormat),
+    BinaryQueryFormat = aeb_heap:to_binary(QFormat),
+    BinaryResponseFormat = aeb_heap:to_binary(RFormat),
     Spec =
         #{account_id      => aeser_id:create(account, AccountKey),
           nonce           => Nonce,
@@ -304,7 +304,7 @@ maybe_convert_oracle_arg(OracleId, Arg, State) ->
         {value, Oracle} ->
             case aeo_oracles:abi_version(Oracle) of
                 ?ABI_NO_VM         -> Arg;
-                ?ABI_AEVM_SOPHIA_1 -> aeso_heap:to_binary(Arg)
+                ?ABI_AEVM_SOPHIA_1 -> aeb_heap:to_binary(Arg)
             end;
         none ->
             %% Will fail later
@@ -370,7 +370,7 @@ oracle_get_answer(OracleId, QueryId, #state{trees = ChainTrees}) ->
                     ABIVersion = aeo_oracles:abi_version(Oracle),
                     case oracle_typerep(ABIVersion, ResponseFormat) of
                         {ok, Type} when ABIVersion =:= ?ABI_AEVM_SOPHIA_1 ->
-                            try aeso_heap:from_binary(Type, Answer) of
+                            try aeb_heap:from_binary(Type, Answer) of
                                 {ok, Result} -> {ok, {some, Result}};
                                 {error, _} -> {error, bad_answer}
                             catch _:_ ->
@@ -400,7 +400,7 @@ oracle_get_question(OracleId, QueryId, #state{trees = ChainTrees}) ->
                     %% We treat the question as a non-sophia string
                     {ok, aeo_query:query(Query)};
                 {ok, QueryType} ->
-                    try aeso_heap:from_binary(QueryType, aeo_query:query(Query)) of
+                    try aeb_heap:from_binary(QueryType, aeo_query:query(Query)) of
                         {ok, Question} ->
                             {ok, Question};
                         {error, _} ->
@@ -463,7 +463,7 @@ oracle_typerep(?ABI_NO_VM,_BinaryFormat) ->
     %% Treat this as a string
     {ok, string};
 oracle_typerep(?ABI_AEVM_SOPHIA_1, BinaryFormat) ->
-    try aeso_heap:from_binary(typerep, BinaryFormat) of
+    try aeb_heap:from_binary(typerep, BinaryFormat) of
         {ok, Format} -> {ok, Format};
         {error, _} -> {error, bad_typerep}
     catch
@@ -632,7 +632,7 @@ get_contract_fun_types(Target, VMVersion, TypeHash, State) ->
                 true ->
                     SerializedCode = aect_contracts:code(Contract),
                     #{type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
-                    aeso_abi:typereps_from_type_hash(TypeHash, TypeInfo);
+                    aeb_abi:typereps_from_type_hash(TypeHash, TypeInfo);
                 false ->
                     {error, {wrong_vm_version, ContractVMVersion}}
             end;
