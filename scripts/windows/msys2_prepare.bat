@@ -76,13 +76,6 @@ rem Set up msys2 env variables
 COPY %~dp0\msys2_env_build.sh %WIN_MSYS2_ROOT%\etc\profile.d\env_build.sh
 
 @echo Current time: %time%
-rem Upgrade the MSYS2 platform
-
-%BASH_BIN% -lc "%PACMAN% -y pacman"
-@echo Current time: %time%
-%BASH_BIN% -lc "%PACMAN% -u"
-
-@echo Current time: %time%
 rem Remove 32-bit tools
 
 %BASH_BIN% -lc "pacman -Qet | grep i686 | awk '{ print $1; }' | xargs %PACMAN_RM% || true"
@@ -92,6 +85,13 @@ rem Remove 32-bit tools
 rem Remove breaking tools
 
 %BASH_BIN% -lc "%PACMAN_RM% %PACMAN_PACKAGES_REMOVE% || true"
+
+@echo Current time: %time%
+rem Upgrade the MSYS2 platform
+
+%BASH_BIN% -lc "%PACMAN% -y pacman"
+@echo Current time: %time%
+%BASH_BIN% -lc "%PACMAN% -u"
 
 @echo Current time: %time%
 rem Install required tools
