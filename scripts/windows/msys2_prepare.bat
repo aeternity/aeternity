@@ -38,9 +38,6 @@ gcc ^
 git ^
 libopenssl ^
 make ^
-mingw-w64-i686-binutils ^
-mingw-w64-i686-gcc ^
-mingw-w64-i686-nsis ^
 mingw-w64-x86_64-SDL ^
 mingw-w64-x86_64-binutils ^
 mingw-w64-x86_64-gcc ^
@@ -53,10 +50,6 @@ unzip ^
 zip
 
 SET PACMAN_PACKAGES_REMOVE=gcc-fortran ^
-mingw-w64-i686-gcc-ada ^
-mingw-w64-i686-gcc-fortran ^
-mingw-w64-i686-gcc-libgfortran ^
-mingw-w64-i686-gcc-objc ^
 mingw-w64-x86_64-gcc-ada ^
 mingw-w64-x86_64-gcc-fortran ^
 mingw-w64-x86_64-gcc-libgfortran ^
@@ -88,6 +81,12 @@ rem Upgrade the MSYS2 platform
 %BASH_BIN% -lc "%PACMAN% -y pacman"
 @echo Current time: %time%
 %BASH_BIN% -lc "%PACMAN% -u"
+
+@echo Current time: %time%
+rem Remove 32-bit tools
+
+%BASH_BIN% -lc "pacman -Qet | grep i686 | awk '{ print $1; }' | xargs %PACMAN_RM% || true"
+%BASH_BIN% -lc "pacman -Qdt | grep i686 | awk '{ print $1; }' | xargs %PACMAN_RM% || true"
 
 @echo Current time: %time%
 rem Remove breaking tools
