@@ -90,7 +90,7 @@ after_build:
   - cmd: '%APPVEYOR_BUILD_FOLDER%\ci\appveyor\package.bat'
 
 test_script:
-#  - cmd: '%APPVEYOR_BUILD_FOLDER%\ci\appveyor\test.bat'
+  - cmd: '%APPVEYOR_BUILD_FOLDER%\ci\appveyor\test.bat'
   - sh: epmd -daemon
   - sh: make ct
 
