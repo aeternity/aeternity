@@ -28,7 +28,6 @@ IF "%WIN_OTP_PATH%"=="" SET "WIN_OTP_PATH=C:\Program Files\erl"
 SET "BASH_BIN=%WIN_MSYS2_ROOT%\usr\bin\bash"
 SET "PACMAN=pacman --noconfirm --needed -S"
 SET "PACMAN_RM=pacman --noconfirm -Rsc"
-SET "PIP=/mingw64/bin/pip3 install"
 SET "WIN_STYRENE_PATH=%TMP%\styrene"
 
 SET PACMAN_PACKAGES=base-devel ^
@@ -92,11 +91,6 @@ rem Upgrade the MSYS2 platform
 rem Remove breaking tools
 
 %BASH_BIN% -lc "%PACMAN_RM% %PACMAN_PACKAGES_REMOVE% || true"
-
-@echo Current time: %time%
-rem Install additional python packages
-
-%BASH_BIN% -lc "%PIP% -r py/requirements-win32.txt"
 
 @echo Current time: %time%
 rem Ensure Erlang/OTP %OTP_VERSION% is installed
