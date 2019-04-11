@@ -15,9 +15,10 @@
          check_state_hash_size/1,
          deserialize_payload/1,
          is_payload_valid_at_protocol/2,
-         check_solo_close_payload/7,
+         check_solo_close_payload/8,
+         is_payload_valid_at_protocol/2,
          check_slash_payload/8,
-         check_solo_snapshot_payload/6,
+         check_solo_snapshot_payload/7,
          check_force_progress/5,
          process_solo_close/9,
          process_slash/9,
@@ -123,6 +124,9 @@ check_is_peer(PubKey, Peers) ->
 check_state_hash_size(Hash) ->
     byte_size(Hash) =:= aeser_api_encoder:byte_size_for_type(state).
 
+%% From FORTUNA_PROTOCOL_VSN the payload (due to Generalized accounts) can
+%% now be either a double signed aesc_offchain_tx, a single signed, single
+%% (MetaTx-)wrapped aesc_offchain_tx or a double wrapped aesc_offchain_tx
 -spec deserialize_payload(binary()) -> {ok, aetx_sign:signed_tx(), aesc_offchain_tx:tx()}
                                          | {ok, last_onchain}
                                          | {error, bad_offchain_state_type}.
@@ -131,24 +135,30 @@ deserialize_payload(<<>>) ->
 deserialize_payload(Payload) ->
     try
         SignedTx = aetx_sign:deserialize_from_binary(Payload),
-        Tx       = aetx_sign:tx(SignedTx),
-        case aetx:specialize_type(Tx) of
-            {channel_offchain_tx, PayloadTx} ->
+        case unpack_payload(SignedTx) of
+            {ok, PayloadTx} ->
                 {ok, SignedTx, PayloadTx};
-            _ ->
-                {error, bad_offchain_state_type}
+            Err = {error, _} ->
+                Err
         end
     catch _:_ ->
             {error, payload_deserialization_failed}
     end.
 
+unpack_payload(Tx) ->
+    case aetx:specialize_type(aetx_sign:tx(Tx)) of
+        {channel_offchain_tx, OffChainTx} -> {ok, OffChainTx};
+        {ga_meta_tx, GAMetaTx}            -> unpack_payload(aega_meta_tx:tx(GAMetaTx));
+        {_, _}                            -> {error, bad_offchain_state_type}
+    end.
+
 -spec is_payload_valid_at_protocol(aec_hard_forks:protocol_vsn(), binary()) -> boolean().
 is_payload_valid_at_protocol(Protocol, Payload) ->
     case aesc_utils:deserialize_payload(Payload) of
-        {error, _} -> false;
-        {ok, last_onchain} -> true; %% using tx already on-chain
-        {ok, _SignedTx, OffChainTx} ->
-            aesc_offchain_tx:valid_at_protocol(Protocol, OffChainTx)
+        {error, _}                  -> false;
+        {ok, last_onchain}          -> true; %% using tx already on-chain
+        {ok, SignedTx, _OffChainTx} ->
+            aetx:valid_at_protocol(Protocol, aetx_sign:tx(SignedTx))
     end.
 
 %%%===================================================================
@@ -156,13 +166,13 @@ is_payload_valid_at_protocol(Protocol, Payload) ->
 %%%===================================================================
 
 check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
-                         PoI, Trees) ->
+                         PoI, Trees, Env) ->
     case get_vals([get_channel(ChannelPubKey, Trees),
                    deserialize_payload(Payload)]) of
         {error, _} = E -> E;
         {ok, [Channel, last_onchain]} ->
             Checks =
-                [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
+                [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
                  fun() -> check_is_active(Channel) end,
                  fun() -> check_root_hash_in_channel(Channel, PoI) end,
                  fun() -> check_peers_and_amounts_in_poi(Channel, PoI) end
@@ -170,18 +180,17 @@ check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
             aeu_validation:run(Checks);
         {ok, [Channel, {SignedState, PayloadTx}]} ->
             Checks =
-                [ fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce,
-                                                    Fee) end,
+                [ fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
                   fun() -> check_is_active(Channel) end,
                   fun() -> check_payload(Channel, PayloadTx, FromPubKey, SignedState,
-                                          Trees, solo_close) end,
+                                          Trees, Env, solo_close) end,
                   fun() -> check_poi(Channel, PayloadTx, PoI) end
                 ],
             aeu_validation:run(Checks)
     end.
 
 check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
-                    PoI, _Height, Trees) ->
+                    PoI, Trees, Env) ->
     case get_vals([get_channel(ChannelPubKey, Trees),
                    deserialize_payload(Payload)]) of
         {error, _} = E -> E;
@@ -189,17 +198,17 @@ check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
             {error, slash_must_have_payload};
         {ok, [Channel, {SignedState, PayloadTx}]} ->
             Checks =
-                [ fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce,
-                                                    Fee) end,
+                [ fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
                   fun() -> check_is_closing(Channel) end,
                   fun() -> check_payload(Channel, PayloadTx, FromPubKey, SignedState,
-                                          Trees, slash) end,
+                                         Trees, Env, slash) end,
                   fun() -> check_poi(Channel, PayloadTx, PoI) end
                 ],
             aeu_validation:run(Checks)
     end.
 
-check_force_progress(Tx, Payload, OffChainTrees, Height, Trees) ->
+check_force_progress(Tx, Payload, OffChainTrees, Trees, Env) ->
+    Height = aetx_env:height(Env),
     ?TEST_LOG("Checking force progress:\nTx: ~p,\nPayload: ~p,\nOffChainTrees: ~p,\nHeight: ~p",
               [Tx, Payload, OffChainTrees, Height]),
     ChannelPubKey = aesc_force_progress_tx:channel_pubkey(Tx),
@@ -219,7 +228,7 @@ check_force_progress(Tx, Payload, OffChainTrees, Height, Trees) ->
                   fun() ->
                       check_force_progress_(PayloadHash, Round,
                               Channel, FromPubKey, Nonce, Fee, Update,
-                              NextRound, OffChainTrees, Height, Trees)
+                              NextRound, OffChainTrees, Height, Trees, Env)
                   end],
               aeu_validation:run(Checks);
 
@@ -232,20 +241,19 @@ check_force_progress(Tx, Payload, OffChainTrees, Height, Trees) ->
               ?TEST_LOG("Payload hash ~p", [PayloadHash]),
               Checks = [
                   fun() -> check_payload(Channel, PayloadTx, FromPubKey,
-                                         SignedState,
-                                         Trees, force_progress)
+                                         SignedState, Trees, Env, force_progress)
                   end,
                   fun() ->
                       check_force_progress_(PayloadHash, Round,
                               Channel, FromPubKey, Nonce, Fee, Update,
-                              NextRound, OffChainTrees, Height, Trees)
+                              NextRound, OffChainTrees, Height, Trees, Env)
                   end],
               aeu_validation:run(Checks)
     end.
 
 check_force_progress_(PayloadHash, PayloadRound,
                       Channel, FromPubKey, Nonce, Fee, Update,
-                      NextRound, OffChainTrees, Height, Trees) ->
+                      NextRound, OffChainTrees, Height, Trees, Env) ->
     Checks =
         [ fun() ->
               case aesc_offchain_update:is_call(Update) of
@@ -294,8 +302,7 @@ check_force_progress_(PayloadHash, PayloadRound,
           fun() ->
               {_Amount, GasPrice, GasLimit} = aesc_offchain_update:extract_amounts(Update),
               RequiredAmount = Fee + GasLimit * GasPrice,
-              aetx_utils:check_account(FromPubKey, Trees, Nonce,
-                                      RequiredAmount)
+              aetx_utils:check_account(FromPubKey, Trees, Nonce, RequiredAmount, Env)
           end],
     Res = aeu_validation:run(Checks),
     ?TEST_LOG("check_force_progress result: ~p", [Res]),
@@ -321,7 +328,7 @@ check_abi_version(_, _, _) ->
     {error, wrong_abi_version}.
 
 check_solo_snapshot_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
-                            Trees) ->
+                            Trees, Env) ->
     case get_vals([aesc_utils:get_channel(ChannelId, Trees),
                    aesc_utils:deserialize_payload(Payload)]) of
         {error, _} = E -> E;
@@ -330,11 +337,10 @@ check_solo_snapshot_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
         {ok, [Channel, {SignedState, PayloadTx}]} ->
             ChannelId = aesc_channels:pubkey(Channel),
             Checks =
-                [ fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce,
-                                                    Fee) end,
+                [ fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee, Env) end,
                   fun() -> check_is_active(Channel) end,
                   fun() -> check_payload(Channel, PayloadTx, FromPubKey, SignedState,
-                                          Trees, solo_snapshot) end
+                                         Trees, Env, solo_snapshot) end
                 ],
             aeu_validation:run(Checks)
     end.
@@ -346,13 +352,13 @@ check_poi(Channel, PayloadTx, PoI) ->
         ],
     aeu_validation:run(Checks).
 
-check_payload(Channel, PayloadTx, FromPubKey, SignedState, Trees, Type) ->
+check_payload(Channel, PayloadTx, FromPubKey, SignedState, Trees, Env, Type) ->
     ChannelId = aesc_channels:id(Channel),
     Checks =
         [ fun() -> check_channel_id_in_payload(Channel, PayloadTx) end,
           fun() -> check_round_in_payload(Channel, PayloadTx, Type) end,
           fun() -> is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type) end,
-          fun() -> aetx_sign:verify(SignedState, Trees) end
+          fun() -> verify_signatures(Channel, SignedState, Trees, Env) end
         ],
     aeu_validation:run(Checks).
 
@@ -396,13 +402,114 @@ is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type) ->
 
 is_peer(FromPubKey, SignedState, Trees) ->
     Tx = aetx_sign:tx(SignedState),
-    case aetx:signers(Tx, Trees) of
+    case signers(Tx, Trees) of
         {ok, Signers} ->
             case lists:member(FromPubKey, Signers) of
                 true  -> ok;
                 false -> {error, account_not_peer}
             end;
         {error, _Reason}=Err -> Err
+    end.
+
+signers(Tx, Trees) ->
+    case aetx:specialize_type(Tx) of
+        {channel_offchain_tx, _} -> aetx:signers(Tx, Trees);
+        {ga_meta_tx, MetaTx}  ->
+            signers(aetx_sign:tx(aega_meta_tx:tx(MetaTx)), Trees)
+    end.
+
+verify_signatures(Channel, SignedState, Trees, Env) ->
+    verify_signatures(Channel, SignedState, Trees, Env, []).
+
+verify_signatures(Channel, SignedState, Trees, Env, CheckedSigners) ->
+    Tx = aetx_sign:tx(SignedState),
+    case aetx:specialize_type(Tx) of
+        {channel_offchain_tx, _} ->
+            {ok, Signers} = aetx:signers(Tx, Trees),
+            BasicSigners  = Signers -- CheckedSigners,
+            aetx_sign:verify_half_signed(BasicSigners, SignedState);
+        {ga_meta_tx, GAMetaTx} ->
+            case verify_signature(Channel, GAMetaTx, Trees, Env) of
+                {ok, Signer, InnerTx} ->
+                    verify_signatures(Channel, InnerTx, Trees, Env,
+                                      [Signer | CheckedSigners]);
+                Err = {error, _} ->
+                    Err
+            end
+    end.
+
+verify_signature(Channel, MetaTx, Trees, Env) ->
+    SignerId = aega_meta_tx:ga_id(MetaTx),
+    case aesc_channels:auth_for_id(SignerId, Channel) of
+        {ok, {AuthFunHash, AuthContractId}} ->
+            case aeb_abi:get_function_hash_from_calldata(aega_meta_tx:auth_data(MetaTx)) of
+                {ok, AuthFunHash} -> verify_signature_(Channel, SignerId, AuthContractId,
+                                                       MetaTx, Trees, Env);
+                {ok, _OtherHash}  -> {error, wrong_auth_function};
+                _Other            -> {error, bad_auth_data}
+            end;
+        {ok, basic} ->
+            {error, meta_tx_for_basic_account};
+        Err = {error, _} ->
+            Err
+    end.
+
+verify_signature_(Channel, SignerId, AuthContractId, MetaTx, Trees, Env) ->
+    Height = aetx_env:height(Env),
+    {_, SignerPK} = aeser_id:specialize(SignerId),
+    {_, AuthContractPK} = aeser_id:specialize(AuthContractId),
+    Call = aect_call:new(SignerId, 0, AuthContractId, Height,
+                         aega_meta_tx:gas_price(MetaTx)),
+    CTree = aec_trees:contracts(Trees),
+    StoreKey = aesc_channels:auth_store_key(SignerId, Channel),
+    case {aect_state_tree:lookup_contract(AuthContractPK, CTree, [no_store]),
+          aect_state_tree:read_contract_store(StoreKey, CTree)} of
+        {{value, Contract}, {ok, Store}} ->
+            CallDef = #{ caller      => SignerPK
+                       , contract    => AuthContractPK
+                       , gas         => aega_meta_tx:gas_limit(MetaTx, Height)
+                       , gas_price   => aega_meta_tx:gas_price(MetaTx)
+                       , call_data   => aega_meta_tx:auth_data(MetaTx)
+                       , amount      => 0
+                       , call_stack  => []
+                       , code        => aect_contracts:code(Contract)
+                       , store       => Store
+                       , call        => Call
+                       , trees       => Trees
+                       , tx_env      => set_auth_tx_hash(aega_meta_tx:tx(MetaTx), Env)
+                       , off_chain   => false
+                       , origin      => SignerPK
+                       },
+            CTVersion = aect_contracts:ct_version(Contract),
+            {Call1, _Trees1, _Env1} = aect_dispatch:run(CTVersion, CallDef),
+            case check_auth_result(Call1) of
+                ok               -> {ok, SignerPK, aega_meta_tx:tx(MetaTx)};
+                Err = {error, _} -> Err
+            end;
+        {none, _} ->
+            {error, signature_verification_failed_no_contract};
+        {_, {error, _}} ->
+            {error, signature_verification_failed_no_state}
+    end.
+
+check_auth_result(Call) ->
+    case aect_call:return_type(Call) of
+        ok ->
+            case aeb_heap:from_binary(word, aect_call:return_value(Call)) of
+                {ok, 1} -> ok;
+                _       -> {error, signature_verification_failed_authenticate_false}
+            end;
+        _  ->
+            {error, signature_verification_failed_contract_error}
+    end.
+
+set_auth_tx_hash(STx, Env) ->
+    Tx = aetx_sign:tx(STx),
+    case aetx:specialize_type(Tx) of
+        {ga_meta_tx, MetaTx} -> set_auth_tx_hash(aega_meta_tx:tx(MetaTx), Env);
+        {channel_offchain_tx, _} ->
+            BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
+            aetx_env:set_ga_tx_hash(Env, aec_hash:hash(tx, BinForNetwork))
     end.
 
 is_delegatable_tx_type(Type) ->
@@ -562,7 +669,7 @@ process_force_progress(Tx, OffChainTrees, TxHash, Height, Trees, Env) ->
     Trees1 = consume_gas_and_fee(Call, Fee, FromPubKey, Nonce, Trees),
 
     % add a receipt call in the calls state tree
-    Trees2 = add_call(Call, TxHash, Trees1),
+    Trees2 = add_call(Call, TxHash, Trees1, Env),
 
     ?TEST_LOG("Expected hash ~p", [ExpectedHash]),
     ?TEST_LOG("Computed hash ~p", [ComputedHash]),
@@ -659,9 +766,19 @@ tx_hash_to_contract_pubkey(TxHash) ->
             <<Short/binary, 0:BytesToPad/unit:8>>
     end.
 
-add_call(Call0, TxHash, Trees) ->
+add_call(Call0, TxHash, Trees, Env) ->
     ContractPubkey = tx_hash_to_contract_pubkey(TxHash),
-    Call = aect_call:set_contract(ContractPubkey, Call0),
+    Call1          = aect_call:set_contract(ContractPubkey, Call0),
+    Caller         = aect_call:caller_pubkey(Call1),
+    NewId =
+        case aetx_env:ga_nonce(Env, Caller) of
+            {value, Nonce} ->
+                aect_call:ga_id(Nonce, ContractPubkey);
+            none ->
+                aect_call:id(Caller, aect_call:caller_nonce(Call1), ContractPubkey)
+        end,
+
+    Call = aect_call:set_id(NewId, Call1),
     aect_utils:insert_call_in_trees(Call, Trees).
 
 -spec add_event(aec_trees:trees(), binary(), aetx_env:env()) ->

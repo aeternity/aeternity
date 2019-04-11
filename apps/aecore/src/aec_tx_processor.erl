@@ -20,6 +20,9 @@
         , contract_call_from_contract_instructions/11
         , contract_call_tx_instructions/11
         , contract_create_tx_instructions/11
+        , ga_attach_tx_instructions/10
+        , ga_meta_tx_instructions/6
+        , ga_set_meta_tx_res_instructions/3
         , name_claim_tx_instructions/5
         , name_preclaim_tx_instructions/5
         , name_revoke_tx_instructions/4
@@ -220,6 +223,28 @@ name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
                      ClientTTL, Pointers)
     ].
 
+-spec ga_attach_tx_instructions(pubkey(), amount(), amount(),
+                                abi_version(), vm_version(),
+                                binary(), binary(), binary(), fee(), nonce()) -> [op()].
+ga_attach_tx_instructions(OwnerPubkey, GasLimit, GasPrice, ABIVersion, VMVersion,
+                          SerializedCode, AuthFun, CallData, Fee, Nonce) ->
+    [ inc_account_nonce_op(OwnerPubkey, Nonce)
+    , ga_attach_op(OwnerPubkey, GasLimit, GasPrice, ABIVersion, VMVersion,
+                   SerializedCode, AuthFun, CallData, Fee, Nonce)
+    ].
+
+-spec ga_meta_tx_instructions(pubkey(), binary(), abi_version(),
+                              amount(), amount(), fee()) -> [op()].
+ga_meta_tx_instructions(OwnerPubkey, AuthData, ABIVersion,
+                        GasLimit, GasPrice, Fee) ->
+    [ ga_meta_op(OwnerPubkey, AuthData, ABIVersion,
+                 GasLimit, GasPrice, Fee)
+    ].
+
+-spec ga_set_meta_tx_res_instructions(pubkey(), binary(), 'ok' | {error, term()}) -> [op()].
+ga_set_meta_tx_res_instructions(OwnerPubkey, AuthData, Result) ->
+    [ ga_set_meta_res_op(OwnerPubkey, AuthData, Result) ].
+
 -spec contract_create_tx_instructions(pubkey(), amount(), amount(),
                                       non_neg_integer(), non_neg_integer(),
                                       abi_version(), vm_version(),
@@ -361,6 +386,9 @@ eval_one({Op, Args}, S) ->
         channel_settle            -> channel_settle(Args, S);
         contract_call             -> contract_call(Args, S);
         contract_create           -> contract_create(Args, S);
+        ga_attach                 -> ga_attach(Args, S);
+        ga_meta                   -> ga_meta(Args, S);
+        ga_set_meta_res           -> ga_set_meta_res(Args, S);
         name_claim                -> name_claim(Args, S);
         name_preclaim             -> name_preclaim(Args, S);
         name_revoke               -> name_revoke(Args, S);
@@ -402,16 +430,25 @@ force_inc_account_nonce_op(Pubkey, Nonce) when ?IS_HASH(Pubkey),
 
 inc_account_nonce({Pubkey, Nonce, Force}, #state{} = S) ->
     {Account, S1} = get_account(Pubkey, S),
-    assert_account_nonce(Account, Nonce),
-    case aetx_env:context(S#state.tx_env) of
-        aetx_contract when (not Force) andalso
-                           S#state.protocol > ?ROMA_PROTOCOL_VSN ->
-            %% We have checked that the account exists, and that it has
-            %% the correct nonce. We are done here.
+    case lists:member(Pubkey, aetx_env:ga_auth_ids(S#state.tx_env)) of
+        true ->
+            assert_ga_active(S),
+            assert_generalized_account(Account),
+            assert_ga_env(Pubkey, Nonce, S),
             S1;
-        _ ->
-            Account1 = aec_accounts:set_nonce(Account, Nonce),
-            cache_put(account, Account1, S1)
+        false ->
+            assert_basic_account(Account),
+            assert_account_nonce(Account, Nonce),
+            case aetx_env:context(S#state.tx_env) of
+                aetx_contract when (not Force) andalso
+                                   S#state.protocol > ?ROMA_PROTOCOL_VSN ->
+                    %% We have checked that the account exists, and that it has
+                    %% the correct nonce. We are done here.
+                    S1;
+                _ ->
+                    Account1 = aec_accounts:set_nonce(Account, Nonce),
+                    cache_put(account, Account1, S1)
+            end
     end.
 
 %%%-------------------------------------------------------------------
@@ -531,7 +568,15 @@ oracle_query({OraclePubkey, SenderPubkey, SenderNonce,
     ResponseTTL = {delta, RTTL},
     try aeo_query:new(OraclePubkey, SenderPubkey, SenderNonce, Query, QueryFee,
                       AbsoluteQTTL, ResponseTTL) of
-        QueryObject ->
+        QueryObject0 ->
+            QueryObject =
+                case aetx_env:ga_nonce(S#state.tx_env, SenderPubkey) of
+                    {value, GANonce} ->
+                        QId = aeo_query:ga_id(GANonce, OraclePubkey),
+                        aeo_query:set_id(QId, QueryObject0);
+                    none ->
+                        QueryObject0
+                end,
             assert_not_oracle_query(QueryObject, S),
             cache_put(oracle_query, QueryObject, S1)
     catch
@@ -698,17 +743,39 @@ channel_create_op(InitiatorPubkey, InitiatorAmount,
 channel_create({InitiatorPubkey, InitiatorAmount,
                 ResponderPubkey, ResponderAmount,
                 ReserveAmount, DelegatePubkeys,
-                StateHash, LockPeriod, Nonce}, S) ->
+                StateHash, LockPeriod, Nonce0}, S) ->
     assert_channel_reserve_amount(ReserveAmount, InitiatorAmount,
                                   ResponderAmount),
     assert_not_equal(InitiatorPubkey, ResponderPubkey, initiator_is_responder),
+    Nonce = case aetx_env:ga_nonce(S#state.tx_env, InitiatorPubkey) of
+                {value, NonceX} -> NonceX;
+                none            -> Nonce0
+            end,
+    {InitAccount, S1} = get_account(InitiatorPubkey, S),
+    {RespAccount, S2} = get_account(ResponderPubkey, S1),
     Channel = aesc_channels:new(InitiatorPubkey, InitiatorAmount,
                                 ResponderPubkey, ResponderAmount,
+                                InitAccount, RespAccount,
                                 ReserveAmount, DelegatePubkeys,
-                                StateHash, LockPeriod, Nonce),
+                                StateHash, LockPeriod, Nonce,
+                                S#state.height),
     ChannelPubkey = aesc_channels:pubkey(Channel),
-    assert_not_channel(ChannelPubkey, S),
-    cache_put(channel, Channel, S).
+    assert_not_channel(ChannelPubkey, S2),
+    S3 = copy_contract_state_for_auth(Channel, InitAccount, S2),
+    S4 = copy_contract_state_for_auth(Channel, RespAccount, S3),
+    cache_put(channel, Channel, S4).
+
+copy_contract_state_for_auth(Ch, Account, S) ->
+    case aec_accounts:type(Account) of
+        basic -> S;
+        generalized ->
+            {_, ContractPK} = aeser_id:specialize(aec_accounts:ga_contract(Account)),
+            {Contract, S1 = #state{trees = Trees}} = get_contract(ContractPK, S),
+            StoreKey = aesc_channels:auth_store_key(aec_accounts:id(Account), Ch),
+            CtTree  = aec_trees:contracts(Trees),
+            CtTree1 =  aect_state_tree:copy_contract_store(Contract, StoreKey, CtTree),
+            S1#state{trees = aec_trees:set_contracts(Trees, CtTree1)}
+    end.
 
 %%%-------------------------------------------------------------------
 
@@ -832,14 +899,14 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
     assert_contract_call_stack(CallStack, S),
     Context = aetx_env:context(S#state.tx_env),
     S2 = case Context of
-             aetx_transaction ->
-                 account_spend(CallerAccount, TotalAmount, S1);
              aetx_contract ->
                  %% Contract as callers only bump nonce at this point.
                  %% For consensus compatibility.
                  assert_account_nonce(CallerAccount, Nonce),
                  CallerAccount1 = aec_accounts:set_nonce(CallerAccount, Nonce),
-                 account_spend(CallerAccount1, TotalAmount, S1)
+                 account_spend(CallerAccount1, TotalAmount, S1);
+             Other when Other == aetx_transaction; Other == aetx_ga ->
+                 account_spend(CallerAccount, TotalAmount, S1)
          end,
     {ContractAccount, S3} = get_account(ContractPubkey, S2),
     S4 = account_earn(ContractAccount, Amount, S3),
@@ -852,26 +919,153 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
             case Context of
                 aetx_contract ->
                     {return, Call, S5}; %% Return instead of store
-                aetx_transaction ->
+                Other2 when Other2 == aetx_transaction; Other2 == aetx_ga ->
                     contract_call_success(Call, GasLimit, S5)
             end;
         Fail when (Fail =:= revert orelse Fail =:= error) ->
             case Context of
                 aetx_contract ->
                     {return, Call, S}; %% Return instead of store
-                aetx_transaction ->
+                Other2 when Other2 == aetx_transaction; Other2 == aetx_ga ->
                     contract_call_fail(Call, Fee, S)
             end
     end.
 
 get_call_env_specific(CallerPubKey, GasLimit, GasPrice, Amount, Fee, S) ->
     case aetx_env:context(S#state.tx_env) of
-        aetx_transaction ->
-            {aeser_id:create(account, CallerPubKey),
-             Fee + GasLimit * GasPrice + Amount};
         aetx_contract ->
-            {aeser_id:create(contract, CallerPubKey),
-             Amount}
+            {aeser_id:create(contract, CallerPubKey), Amount};
+        Other when Other == aetx_transaction; Other == aetx_ga ->
+            {aeser_id:create(account, CallerPubKey), Fee + GasLimit * GasPrice + Amount}
+    end.
+
+%%%-------------------------------------------------------------------
+
+ga_attach_op(OwnerPubkey, GasLimit, GasPrice, ABIVersion, VMVersion,
+             SerializedCode, AuthFun, CallData, Fee, Nonce
+            ) when ?IS_HASH(OwnerPubkey),
+                   ?IS_NON_NEG_INTEGER(GasLimit),
+                   ?IS_NON_NEG_INTEGER(GasPrice),
+                   ?IS_NON_NEG_INTEGER(ABIVersion),
+                   ?IS_NON_NEG_INTEGER(VMVersion),
+                   is_binary(SerializedCode),
+                   is_binary(CallData),
+                   ?IS_NON_NEG_INTEGER(Fee),
+                   ?IS_NON_NEG_INTEGER(Nonce) ->
+    {ga_attach,
+     {OwnerPubkey, GasLimit, GasPrice, ABIVersion, VMVersion,
+      SerializedCode, AuthFun, CallData, Fee, Nonce}}.
+
+ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
+           VMVersion, SerializedCode, AuthFun, CallData, Fee, Nonce}, S) ->
+    assert_ga_active(S),
+    RollbackS = S,
+    TotalAmount    = Fee + GasLimit * GasPrice,
+    {Account, S1}  = get_account(OwnerPubkey, S),
+    assert_basic_account(Account), %% No re-attach
+    assert_account_balance(Account, TotalAmount),
+    assert_ga_create_version(ABIVersion, VMVersion, S),
+    assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData, AuthFun, S),
+    %% Charge the fee, the gas (the unused portion will be refunded)
+    %% and the deposit (stored in the contract) to the contract owner (caller),
+    CTVersion      = #{vm => VMVersion, abi => ABIVersion},
+    S2             = account_spend(Account, TotalAmount, S1),
+    Contract       = aect_contracts:new(OwnerPubkey, Nonce, CTVersion,
+                                        SerializedCode, 0),
+    ContractPubkey  = aect_contracts:pubkey(Contract),
+    {_CAccount, S3} = ensure_account(ContractPubkey, S2),
+    OwnerId         = aect_contracts:owner_id(Contract),
+    {InitCall, S4}  = run_contract(OwnerId, Contract, GasLimit, GasPrice,
+                                   CallData, OwnerPubkey, _InitAmount = 0,
+                                   _CallStack = [], Nonce, S3),
+    case aect_call:return_type(InitCall) of
+        error ->
+            contract_call_fail(InitCall, Fee, RollbackS);
+        revert ->
+            contract_call_fail(InitCall, Fee, RollbackS);
+        ok ->
+            contract_init_call_success({attach, AuthFun}, InitCall, Contract,
+                                       GasLimit, Fee, RollbackS, S4)
+    end.
+
+ga_set_meta_res_op(OwnerPubkey, AuthData, Res) ->
+    {ga_set_meta_res, {OwnerPubkey, AuthData, Res}}.
+
+ga_set_meta_res({OwnerPubkey, AuthData, Res}, S) ->
+    {Account, S1} = get_account(OwnerPubkey, S),
+    assert_generalized_account(Account),
+
+    GAContractId             = aec_accounts:ga_contract(Account),
+    {contract, GAContractPK} = aeser_id:specialize(GAContractId),
+    AuthId                   = aega_meta_tx:auth_id(OwnerPubkey, AuthData),
+    AuthCallId               = aect_call:ga_id(AuthId, GAContractPK),
+    {AuthCall, S2}           = get_auth_call(OwnerPubkey, AuthCallId, S1),
+
+    AuthCall1 =
+        case Res of
+            ok ->
+                aect_call:set_return_type(ok, AuthCall);
+            {error, Reason} ->
+                aect_call:set_return_type(error,
+                    aect_call:set_return_value(error_to_binary(Reason), AuthCall))
+        end,
+    cache_put(auth_call, AuthCall1, S2).
+
+error_to_binary(Atom) when is_atom(Atom) ->
+    atom_to_binary(Atom, utf8);
+error_to_binary(Bin) when is_binary(Bin) ->
+    Bin;
+error_to_binary(_) ->
+    <<"unknown_error">>.
+
+ga_meta_op(OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee
+          ) when ?IS_HASH(OwnerPubkey),
+                 ?IS_NON_NEG_INTEGER(GasLimit),
+                 ?IS_NON_NEG_INTEGER(GasPrice),
+                 ?IS_NON_NEG_INTEGER(ABIVersion),
+                 is_binary(AuthData),
+                 ?IS_NON_NEG_INTEGER(Fee) ->
+    {ga_meta,
+     {OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee}}.
+
+ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee}, S) ->
+    assert_ga_active(S),
+    {Account, S1} = get_account(OwnerPK, S),
+    assert_generalized_account(Account),
+    CheckAmount = Fee + GasLimit * GasPrice,
+    assert_account_balance(Account, CheckAmount),
+    AuthContract = aec_accounts:ga_contract(Account),
+    {contract, AuthContractPK} = aeser_id:specialize(AuthContract),
+    AuthFunHash = aec_accounts:ga_auth_fun(Account),
+
+    assert_contract_call_version(AuthContractPK, ABIVersion, S),
+    assert_auth_data_function(AuthData, AuthFunHash),
+    S2 = account_spend(Account, CheckAmount, S1),
+    {Contract, _} = get_contract(AuthContractPK, S2),
+    CallerId   = aeser_id:create(account, OwnerPK),
+    {Call, S3} = run_contract(CallerId, Contract, GasLimit, GasPrice,
+                              AuthData, OwnerPK, _Amount = 0, _CallStack = [], _Nonce = 0, S2),
+    case aect_call:return_type(Call) of
+        ok ->
+            case aeb_heap:from_binary(word, aect_call:return_value(Call)) of
+                {ok, 1} -> %% true!
+                    Refund = (GasLimit - aect_call:gas_used(Call)) * aect_call:gas_price(Call),
+                    {CallerAccount, S4} = get_account(OwnerPK, S3),
+                    S5 = account_earn(CallerAccount, Refund, S4),
+                    AuthId = aega_meta_tx:auth_id(OwnerPK, AuthData),
+                    AuthCallId = aect_call:ga_id(AuthId, aect_call:contract_pubkey(Call)),
+                    Call1 = aect_call:set_id(AuthCallId, Call),
+                    assert_auth_call_object_not_exist(Call1, S5),
+                    cache_put(auth_call, Call1, S5);
+                {ok, 0} -> %% false
+                    runtime_error(authentication_failed);
+                {error, E} ->
+                    lager:info("Unexpected authentication return_value ~p (~p)",
+                               [aect_call:return_value(Call), E]),
+                    runtime_error(authentication_failed)
+            end;
+        Fail when (Fail =:= revert orelse Fail =:= error) ->
+            runtime_error(authentication_failed)
     end.
 
 %%%-------------------------------------------------------------------
@@ -896,7 +1090,7 @@ contract_create_op(OwnerPubkey, Amount, Deposit, GasLimit,
       CallData, Fee, Nonce}}.
 
 contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
-                 ABIVersion, VMVersion, SerializedCode, CallData, Fee, Nonce},
+                 ABIVersion, VMVersion, SerializedCode, CallData, Fee, Nonce0},
                 S) ->
     RollbackS = S,
     TotalAmount    = Amount + Deposit + Fee + GasLimit * GasPrice,
@@ -909,6 +1103,10 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
     %% and transfer the funds (amount) to the contract account.
     CTVersion      = #{vm => VMVersion, abi => ABIVersion},
     S2             = account_spend(Account, TotalAmount, S1),
+    Nonce = case aetx_env:ga_nonce(S#state.tx_env, OwnerPubkey) of
+                {value, NonceX} -> NonceX;
+                none            -> Nonce0
+            end,
     Contract       = aect_contracts:new(OwnerPubkey, Nonce, CTVersion,
                                         SerializedCode, Deposit),
     ContractPubkey = aect_contracts:pubkey(Contract),
@@ -917,15 +1115,15 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
     OwnerId        = aect_contracts:owner_id(Contract),
     {InitCall, S5} = run_contract(OwnerId, Contract, GasLimit, GasPrice,
                                   CallData, OwnerPubkey, _InitAmount = 0,
-                                  _CallStack = [], Nonce, S4),
+                                  _CallStack = [], Nonce0, S4),
     case aect_call:return_type(InitCall) of
         error ->
             contract_call_fail(InitCall, Fee, RollbackS);
         revert ->
             contract_call_fail(InitCall, Fee, RollbackS);
         ok ->
-            contract_init_call_success(InitCall, Contract, GasLimit, Fee,
-                                       RollbackS, S5)
+            contract_init_call_success(contract, InitCall, Contract,
+                                       GasLimit, Fee, RollbackS, S5)
     end.
 
 %%%-------------------------------------------------------------------
@@ -938,7 +1136,7 @@ tx_event(Name, #state{tx_env = Env} = S) ->
 
 %%%-------------------------------------------------------------------
 
-contract_init_call_success(InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
+contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
     ReturnValue = aect_call:return_value(InitCall),
     %% The return value is cleared for successful init calls.
     InitCall1   = aect_call:set_return_value(<<>>, InitCall),
@@ -949,7 +1147,12 @@ contract_init_call_success(InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
                 {ok, Store} ->
                     Contract1 = aect_contracts:set_state(Store, Contract),
                     S1 = cache_put(contract, Contract1, S),
-                    contract_call_success(InitCall1, GasLimit, S1);
+                    case Type of
+                        contract ->
+                            contract_call_success(InitCall1, GasLimit, S1);
+                        {attach, AuthFun} ->
+                            ga_attach_success(InitCall1, GasLimit, AuthFun, S1)
+                    end;
                 {error, _} ->
                     FailCall0 = aect_call:set_return_value(<<"out_of_gas">>, InitCall),
                     FailCall  = aect_call:set_return_type(error, FailCall0),
@@ -969,14 +1172,23 @@ contract_init_call_success(InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
 %%%===================================================================
 %%% Helpers for instructions
 
+set_call_object_id(Call, #state{ tx_env = TxEnv }) ->
+    case aetx_env:ga_nonce(TxEnv, aect_call:caller_pubkey(Call)) of
+        {value, Nonce} ->
+            CallId = aect_call:ga_id(Nonce, aect_call:contract_pubkey(Call)),
+            aect_call:set_id(CallId, Call);
+        none ->
+            Call
+    end.
+
 contract_call_success(Call, GasLimit, S) ->
     Refund = (GasLimit - aect_call:gas_used(Call)) * aect_call:gas_price(Call),
     {CallerAccount, S1} = get_account(aect_call:caller_pubkey(Call), S),
     S2 = account_earn(CallerAccount, Refund, S1),
-    cache_put(call, Call, S2).
+    cache_put(call, set_call_object_id(Call, S2), S2).
 
 contract_call_fail(Call, Fee, S) ->
-    S1 = cache_put(call, Call, S),
+    S1 = cache_put(call, set_call_object_id(Call, S), S),
     UsedAmount = aect_call:gas_used(Call) * aect_call:gas_price(Call) + Fee,
     S2 = case S#state.protocol >= ?FORTUNA_PROTOCOL_VSN of
              true  -> S1;
@@ -1014,6 +1226,14 @@ run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, Origin, Amount,
     CTVersion = aect_contracts:ct_version(Contract),
     {Call1, Trees1, Env1} = aect_dispatch:run(CTVersion, CallDef),
     {Call1, S1#state{trees = Trees1, tx_env = Env1}}.
+
+ga_attach_success(Call, GasLimit, AuthFun, S) ->
+    Refund = (GasLimit - aect_call:gas_used(Call)) * aect_call:gas_price(Call),
+    {CallerAccount, S1} = get_account(aect_call:caller_pubkey(Call), S),
+    Contract = aeser_id:create(contract, aect_call:contract_pubkey(Call)),
+    {ok, CallerAccount1} = aec_accounts:attach_ga_contract(CallerAccount, Contract, AuthFun),
+    S2 = account_earn(CallerAccount1, Refund, S1),
+    cache_put(call, set_call_object_id(Call, S2), S2).
 
 int_lock_amount(0, #state{} = S) ->
     %% Don't risk creating an account for the locked amount if there is none.
@@ -1058,6 +1278,25 @@ assert(false, Error) -> runtime_error(Error).
 
 assert_not_equal(X, X, Error) -> runtime_error(Error);
 assert_not_equal(_, _, _) -> ok.
+
+assert_basic_account(Account) ->
+    case aec_accounts:type(Account) of
+        basic       -> ok;
+        generalized -> runtime_error(not_a_basic_account)
+    end.
+
+assert_generalized_account(Account) ->
+    case aec_accounts:type(Account) of
+        generalized -> ok;
+        basic       -> runtime_error(not_a_generalized_account)
+    end.
+
+assert_ga_env(Pubkey, Nonce, #state{tx_env = Env}) ->
+    GANonce = aetx_env:ga_nonce(Env, Pubkey),
+    if Nonce =/= 0     -> runtime_error(nonce_in_ga_tx_should_be_zero);
+       GANonce == none -> runtime_error(bad_ga_tx_env);
+       true            -> ok
+    end.
 
 assert_account_nonce(Account, Nonce) ->
     case aec_accounts:nonce(Account) of
@@ -1220,6 +1459,19 @@ assert_name_claimed(Name) ->
         revoked -> runtime_error(name_revoked)
     end.
 
+assert_ga_attach_byte_code(?ABI_AEVM_SOPHIA_1, SerializedCode, CallData, FunHash, S) ->
+    try aect_sophia:deserialize(SerializedCode) of
+        #{type_info := TypeInfo, contract_vsn := Vsn} ->
+            case aect_sophia:is_legal_serialization_at_height(Vsn, S#state.height) of
+                true ->
+                    assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo),
+                    assert_auth_function(FunHash, TypeInfo);
+                false ->
+                    runtime_error(illegal_contract_compiler_version)
+            end
+    catch _:_ -> runtime_error(bad_sophia_code)
+    end.
+
 assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S)
   when ABIVersion =:= ?ABI_AEVM_SOPHIA_1;
        ABIVersion =:= ?ABI_FATE_SOPHIA_1 ->
@@ -1253,6 +1505,20 @@ assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo) ->
         _Other -> runtime_error(bad_init_function)
     end.
 
+assert_auth_data_function(AuthData, AuthFunHash) ->
+    case aeb_abi:get_function_hash_from_calldata(AuthData) of
+        {ok, AuthFunHash} -> ok;
+        {ok, _OtherHash}  -> runtime_error(wrong_auth_function);
+        _Other            -> runtime_error(bad_auth_data)
+    end.
+
+assert_auth_function(Hash, TypeInfo) ->
+    case aeb_abi:typereps_from_type_hash(Hash, TypeInfo) of
+        {ok, _ArgType, word}     -> ok;
+        {ok, _ArgType, _OutType} -> runtime_error(bad_auth_function_return_type);
+        {error, _}               -> runtime_error(bad_function_hash)
+    end.
+
 assert_contract_create_version(ABIVersion, VMVersion, S) ->
     CTVersion = #{abi => ABIVersion, vm => VMVersion},
     Height = S#state.height,
@@ -1261,6 +1527,21 @@ assert_contract_create_version(ABIVersion, VMVersion, S) ->
         false -> runtime_error(illegal_vm_version)
     end.
 
+assert_ga_active(S) ->
+    Height = S#state.height,
+    case aec_hard_forks:protocol_effective_at_height(Height) of
+        P when P < ?FORTUNA_PROTOCOL_VSN ->
+            runtime_error(generalize_accounts_not_available_at_height);
+        _P ->
+            ok
+    end.
+
+assert_ga_create_version(ABIVersion, VMVersion, _S) ->
+    CTVersion = #{abi => ABIVersion, vm => VMVersion},
+    case aega_attach_tx:is_legal_contract_version(CTVersion) of
+        true  -> ok;
+        false -> runtime_error(illegal_vm_version)
+    end.
 
 assert_contract_call_version(Pubkey, ABIVersion, S) ->
     Contract  = get_contract_without_store(Pubkey, S),
@@ -1275,9 +1556,21 @@ assert_contract_call_version(Pubkey, ABIVersion, S) ->
 assert_contract_call_stack(CallStack, S) ->
     case aetx_env:context(S#state.tx_env) of
         aetx_contract    when is_list(CallStack) -> ok;
-        aetx_transaction when CallStack =:= [] -> ok;
-        aetx_transaction -> runtime_error(nonempty_call_stack)
+        _Other when CallStack =:= [] -> ok;
+        _Other -> runtime_error(nonempty_call_stack)
     end.
+
+assert_auth_call_object_not_exist(Call, S) ->
+    AuthCallId = aect_call:id(Call),
+    case cache_find(auth_call, AuthCallId, S) of
+        none ->
+            case trees_find(auth_call, {aect_call:contract_pubkey(Call), AuthCallId}, S) of
+                none -> ok;
+                {value, _} -> runtime_error(auth_call_object_already_exist)
+            end;
+        {value, _} -> runtime_error(auth_call_object_already_exist)
+    end.
+
 
 assert_not_channel(ChannelPubkey, S) ->
     case find_x(channel, ChannelPubkey, S) of
@@ -1345,6 +1638,17 @@ runtime_error(Error) ->
 
 get_account(Key, S) ->
     get_x(account, Key, account_not_found, S).
+
+get_auth_call(CtId, AuthCallId, S) ->
+    case cache_find(auth_call, AuthCallId, S) of
+        {value, C} -> {C, S};
+        none ->
+            case trees_find(auth_call, {CtId, AuthCallId}, S) of
+                none -> none;
+                {value, Val} ->
+                    {Val, cache_put(auth_call, Val, S)}
+            end
+    end.
 
 get_channel(Key, S) ->
     get_x(channel, Key, channel_does_not_exist, S).
@@ -1414,6 +1718,9 @@ trees_find(account, Key, #state{trees = Trees} = S) ->
 %% trees_find(call, Key, #state{trees = Trees} = S) ->
 %%     CTree = aec_trees:calls(Trees),
 %%     aect_call_state_tree:lookup(get_var(Key, call, S), CTree);
+trees_find(auth_call, {CtId, AuthCallId}, #state{trees = Trees}) ->
+    CTree = aec_trees:calls(Trees),
+    aect_call_state_tree:lookup_call(CtId, AuthCallId, CTree);
 trees_find(channel, Key, #state{trees = Trees} = S) ->
     CTree = aec_trees:channels(Trees),
     aesc_state_tree:lookup(get_var(Key, channel, S), CTree);
@@ -1438,6 +1745,7 @@ trees_find(oracle_query, Key, #state{trees = Trees} = S) ->
 %%% Cache
 
 -define(IS_TAG(X), ((X =:= account)
+                    orelse (X =:= auth_call)
                     orelse (X =:= call)
                     orelse (X =:= channel)
                     orelse (X =:= contract)
@@ -1462,6 +1770,9 @@ cache_drop(commitment, Hash, #state{cache = C} = S) ->
 cache_put(account, Val, #state{cache = C} = S) ->
     Pubkey = aec_accounts:pubkey(Val),
     S#state{cache = dict:store({account, Pubkey}, Val, C)};
+cache_put(auth_call, Val, #state{cache = C} = S) ->
+    Id = aect_call:id(Val),
+    S#state{cache = dict:store({auth_call, Id}, Val, C)};
 cache_put(call, Val, #state{cache = C} = S) ->
     Id = aect_call:id(Val),
     S#state{cache = dict:store({call, Id}, Val, C)};
@@ -1494,7 +1805,11 @@ cache_write_through_fun({account,_Pubkey}, Account, Trees) ->
     ATrees  = aec_trees:accounts(Trees),
     ATrees1 = aec_accounts_trees:enter(Account, ATrees),
     aec_trees:set_accounts(Trees, ATrees1);
-cache_write_through_fun({call,_Id}, Call, Trees) ->
+cache_write_through_fun({auth_call, _Id}, Call, Trees) ->
+    CTree  = aec_trees:calls(Trees),
+    CTree1 = aect_call_state_tree:enter_auth_call(Call, CTree),
+    aec_trees:set_calls(Trees, CTree1);
+cache_write_through_fun({call, _Id}, Call, Trees) ->
     CTree  = aec_trees:calls(Trees),
     CTree1 = aect_call_state_tree:insert_call(Call, CTree),
     aec_trees:set_calls(Trees, CTree1);

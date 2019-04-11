@@ -106,13 +106,11 @@ channel_pubkey(#channel_slash_tx{channel_id = ChannelId}) ->
 check(#channel_slash_tx{payload    = Payload,
                         poi        = PoI,
                         fee        = Fee,
-                        nonce      = Nonce} = Tx,
-      Trees, Env) ->
-    Height        = aetx_env:height(Env),
+                        nonce      = Nonce} = Tx, Trees, Env) ->
     ChannelPubKey = channel_pubkey(Tx),
     FromPubKey    = from_pubkey(Tx),
-    case aesc_utils:check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee,
-                                   Payload, PoI, Height, Trees) of
+    case aesc_utils:check_slash_payload(ChannelPubKey, FromPubKey, Nonce,
+                                        Fee, Payload, PoI, Trees, Env) of
         ok -> {ok, Trees};
         Err -> Err
     end.

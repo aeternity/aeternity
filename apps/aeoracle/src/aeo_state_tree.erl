@@ -116,17 +116,17 @@ insert_query(I, Tree) ->
     add_query(insert, I, Tree).
 
 -spec get_query(aeo_oracles:pubkey(), aeo_query:id(), tree()) -> query().
-get_query(OracleId, Id, Tree) ->
-    TreeId = <<OracleId/binary, Id/binary>>,
+get_query(OracleId, QId, Tree) ->
+    TreeId = <<OracleId/binary, QId/binary>>,
     Serialized = aeu_mtrees:get(TreeId, Tree#oracle_tree.otree),
-    aeo_query:deserialize(Serialized).
+    aeo_query:deserialize(QId, Serialized).
 
 -spec lookup_query(aeo_oracles:pubkey(), aeo_query:id(), tree()) ->
     {'value', query()} | none.
-lookup_query(OracleId, Id, Tree) ->
-    TreeId = <<OracleId/binary, Id/binary>>,
+lookup_query(OracleId, QId, Tree) ->
+    TreeId = <<OracleId/binary, QId/binary>>,
     case aeu_mtrees:lookup(TreeId, Tree#oracle_tree.otree) of
-        {value, Val} -> {value, aeo_query:deserialize(Val)};
+        {value, Val} -> {value, aeo_query:deserialize(QId, Val)};
         none -> none
     end.
 
@@ -187,8 +187,8 @@ oracle_list(#oracle_tree{otree = OTree}) ->
 
 -spec query_list(tree()) -> list(query()).
 query_list(#oracle_tree{otree = OTree}) ->
-    [ aeo_query:deserialize(Val)
-      || {Key, Val} <- aeu_mtrees:to_list(OTree),
+    [ aeo_query:deserialize(QId, Val)
+      || {Key = <<_:?PUB_SIZE/unit:8, QId/binary>>, Val} <- aeu_mtrees:to_list(OTree),
          byte_size(Key) > ?PUB_SIZE
     ].
 -endif.
@@ -291,7 +291,8 @@ int_delete_query(Id, {OTree, ATree}) ->
     ATree1 =
         case aeu_mtrees:lookup(Id, OTree) of
             {value, Val} ->
-                Q = aeo_query:deserialize(Val),
+                <<_:?PUB_SIZE/unit:8, QId/binary>> = Id,
+                Q = aeo_query:deserialize(QId, Val),
                 oracle_refund(Q, ATree);
             none ->
                 ATree
@@ -335,7 +336,8 @@ find_oracle_queries(OracleId, FromQueryId, QueryType, Max, #oracle_tree{otree = 
 find_oracle_queries(Iterator, QueryType, N, Acc) when N > 0 ->
     case aeu_mtrees:iterator_next(Iterator) of
         {Key, Value, NextIterator} when byte_size(Key) > ?PUB_SIZE ->
-            Query = aeo_query:deserialize(Value),
+            <<_:?PUB_SIZE/unit:8, QId/binary>> = Key,
+            Query = aeo_query:deserialize(QId, Value),
             case {QueryType, aeo_query:is_open(Query)} of
                 {open, true} ->
                     find_oracle_queries(NextIterator, QueryType, N - 1, [Query | Acc]);

@@ -29,13 +29,17 @@
         , signers/2
         , specialize_type/1
         , specialize_callback/1
-        , update_tx/2]).
+        , update_tx/2
+        , valid_at_protocol/2
+        , check_protocol_at_height/2]).
 
 -ifdef(TEST).
 -export([tx/1]).
 -endif.
 
--define(IS_CONTRACT_TX(T), ((T =:= contract_create_tx) or (T =:= contract_call_tx) or (T =:= channel_force_progress_tx))).
+-define(IS_CONTRACT_TX(T), ((T =:= contract_create_tx) or (T =:= contract_call_tx)
+                            or (T =:= channel_force_progress_tx)
+                            or (T =:= ga_meta_tx) or (T =:= ga_attach_tx))).
 
 %%%===================================================================
 %%% Types
@@ -60,6 +64,8 @@
                  | name_revoke_tx
                  | contract_create_tx
                  | contract_call_tx
+                 | ga_attach_tx
+                 | ga_meta_tx
                  | channel_create_tx
                  | channel_deposit_tx
                  | channel_withdraw_tx
@@ -83,6 +89,8 @@
                      | aens_revoke_tx:tx()
                      | aect_create_tx:tx()
                      | aect_call_tx:tx()
+                     | aega_attach_tx:tx()
+                     | aega_meta_tx:tx()
                      | aesc_create_tx:tx()
                      | aesc_deposit_tx:tx()
                      | aesc_withdraw_tx:tx()
@@ -205,6 +213,8 @@ gas_limit(#aetx{type = oracle_response_tx, size = Size, tx = Tx }, Height) ->
         {error, _Rsn} ->
             0
     end;
+gas_limit(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height) ->
+    base_gas(ga_meta_tx) + size_gas(Size) + CB:gas_limit(Tx, Height);
 gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height) when Type =/= channel_offchain_tx ->
     base_gas(Type) + size_gas(Size) + CB:gas(Tx);
 gas_limit(#aetx{ type = channel_offchain_tx }, _Height) ->
@@ -263,7 +273,7 @@ ttl(#aetx{ cb = CB, tx = Tx }) ->
 -spec valid_at_protocol(Protocol :: aec_hard_forks:protocol_vsn(),
                       Tx :: tx()) -> boolean().
 valid_at_protocol(Protocol, #aetx{ cb = CB, tx = Tx }) ->
-    CB:valid_at_protocol(Protocol, Tx). 
+    CB:valid_at_protocol(Protocol, Tx).
 
 -spec size(Tx :: tx()) -> pos_integer().
 size(#aetx{ size = Size }) ->
@@ -289,8 +299,10 @@ from_db_format(#aetx{} = Tx) ->
 
 check(Tx, Trees, Env) ->
     case aetx_env:context(Env) of
-        aetx_transaction -> check_tx(Tx, Trees, Env);
-        aetx_contract    -> check_contract(Tx, Trees, Env)
+        aetx_contract    ->
+            check_contract(Tx, Trees, Env);
+        Ctxt when Ctxt == aetx_transaction; Ctxt == aetx_ga ->
+            check_tx(Tx, Trees, Env)
     end.
 
 check_contract(#aetx{ cb = CB, tx = Tx }, Trees, Env) ->
@@ -416,6 +428,8 @@ type_to_cb(name_revoke_tx)            -> aens_revoke_tx;
 type_to_cb(name_create_tx)            -> aens_create_tx;
 type_to_cb(contract_call_tx)          -> aect_call_tx;
 type_to_cb(contract_create_tx)        -> aect_create_tx;
+type_to_cb(ga_attach_tx)              -> aega_attach_tx;
+type_to_cb(ga_meta_tx)                -> aega_meta_tx;
 type_to_cb(channel_create_tx)         -> aesc_create_tx;
 type_to_cb(channel_deposit_tx)        -> aesc_deposit_tx;
 type_to_cb(channel_withdraw_tx)       -> aesc_withdraw_tx;

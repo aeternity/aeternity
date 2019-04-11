@@ -9,6 +9,8 @@
 
 %% API
 -export([ commit_to_db/1
+        , copy_contract_store/3
+        , read_contract_store/2
         , empty/0
         , empty_with_backend/0
         , get_contract/2
@@ -78,6 +80,28 @@ insert_contract(Contract, Tree = #contract_tree{ contracts = CtTree }) ->
     CtTree1    = aeu_mtrees:insert(Pubkey, Serialized, CtTree),
     CtTree2    = insert_store(Contract, CtTree1),
     Tree#contract_tree{ contracts = CtTree2 }.
+
+-spec copy_contract_store(aect_contracts:contract(),
+                          aect_contracts:pubkey(), tree()) -> tree().
+copy_contract_store(Contract, NewId, Tree = #contract_tree{ contracts = CtTree }) ->
+    Id    = aect_contracts:compute_contract_store_id(NewId),
+    Store = aect_contracts:state(Contract),
+    %% Write a value at the store id to make it possible to get it as a
+    %% subtree.
+    CtTree1 = aeu_mtrees:insert(Id, <<0>>, CtTree),
+    CtTree2 = insert_store_nodes(Id, aect_contracts_store:contents(Store), CtTree1),
+    Tree#contract_tree{ contracts = CtTree2 }.
+
+-spec read_contract_store(aect_contracts:pubkey(), tree()) ->
+        {ok, aect_contracts_store:store()} | {error, term()}.
+read_contract_store(StoreKey, #contract_tree{ contracts = CtTree }) ->
+    StoreId = aect_contracts:compute_contract_store_id(StoreKey),
+    case aeu_mtrees:read_only_subtree(StoreId, CtTree) of
+        {ok, Subtree} ->
+            {ok, aect_contracts_store:new(Subtree)};
+        Err = {error, _} ->
+            Err
+    end.
 
 insert_store(Contract, CtTree) ->
     Id = aect_contracts:store_id(Contract),

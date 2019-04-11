@@ -1,0 +1,19 @@
+// Contract replicating "normal" Aeternity authentication
+contract BasicAuth =
+  record state = { nonce : int, owner : address }
+
+  function init() = { nonce = 1, owner = Call.caller }
+
+  function authorize(n : int, s : signature) : bool =
+    require(n >= state.nonce, "Nonce too low")
+    require(n =< state.nonce, "Nonce too high")
+    put(state{ nonce = n + 1 })
+    switch(Auth.tx_hash)
+      None          => abort("Not in Auth context")
+      Some(tx_hash) => Crypto.ecverify(to_sign(tx_hash, n), state.owner, s)
+
+  function to_sign(h : hash, n : int) =
+    Crypto.blake2b((h, n))
+
+  private function require(b : bool, err : string) =
+    if(!b) abort(err)

@@ -28,6 +28,9 @@
         , consensus_version/1
         , context/1
         , difficulty/1
+        , ga_auth_ids/1
+        , ga_nonce/2
+        , ga_tx_hash/1
         , height/1
         , key_hash/1
         , signed_tx/1
@@ -36,8 +39,13 @@
         ]).
 
 %% Setters
--export([ set_beneficiary/2
+-export([ add_ga_auth_id/2
+        , add_ga_nonce/3
+        , del_ga_auth_id/2
+        , del_ga_nonce/2
+        , set_beneficiary/2
         , set_context/2
+        , set_ga_tx_hash/2
         , set_height/2
         , set_signed_tx/2
         , tx_event/2
@@ -52,14 +60,18 @@
 
 %% Where does this transaction come from? Is it a top level transaction
 %% or was it created by a smart contract. In the latter case the fee
-%% logic is different.
--type context() :: 'aetx_transaction' | 'aetx_contract'.
+%% logic is different. It can also be the inner transaction of a
+%% ga_meta_tx, and a third set of rules apply.
+-type context() :: 'aetx_transaction' | 'aetx_contract' | 'aetx_ga'.
 -type wrapped_tx() :: {'value', aetx_sign:signed_tx()} | 'none'.
 -type events() :: map().
 
 -record(env, { consensus_version :: non_neg_integer()
              , beneficiary       :: aec_keys:pubkey()
              , context           :: context()
+             , ga_auth_ids = []  :: [aec_keys:pubkey()]
+             , ga_nonces = []    :: [{aec_keys:pubkey(), binary()}]
+             , ga_tx_hash        :: undefined | binary()
              , difficulty        :: aeminer_pow:difficulty()
              , height            :: aec_blocks:height()
              , key_hash          :: aec_blocks:block_header_hash()
@@ -185,6 +197,44 @@ height(#env{height = X}) -> X.
 
 -spec set_height(env(), aec_blocks:height()) -> env().
 set_height(Env, X) -> Env#env{height = X}.
+
+%%------
+
+-spec ga_auth_ids(env()) -> [aec_keys:pubkey()].
+ga_auth_ids(#env{ga_auth_ids = X}) -> X.
+
+-spec add_ga_auth_id(env(), aec_keys:pubkey()) -> env().
+add_ga_auth_id(Env = #env{ga_auth_ids = Ids}, X) ->
+    Env#env{ga_auth_ids = [X | Ids]}.
+
+-spec del_ga_auth_id(env(), aec_keys:pubkey()) -> env().
+del_ga_auth_id(Env = #env{ga_auth_ids = Ids}, X) ->
+    Env#env{ga_auth_ids = Ids -- [X]}.
+
+%%------
+
+-spec ga_nonce(env(), aec_keys:pubkey()) -> none | {value, binary()}.
+ga_nonce(#env{ga_nonces = X}, Pubkey) ->
+    case lists:keyfind(Pubkey, 1, X) of
+        false      -> none;
+        {_, Nonce} -> {value, Nonce}
+    end.
+
+-spec add_ga_nonce(env(), aec_keys:pubkey(), binary()) -> env().
+add_ga_nonce(Env = #env{ga_nonces = Xs}, Pk, Nonce) ->
+    Env#env{ga_nonces = lists:keystore(Pk, 1, Xs, {Pk, Nonce})}.
+
+-spec del_ga_nonce(env(), aec_keys:pubkey()) -> env().
+del_ga_nonce(Env = #env{ga_nonces = Xs}, Pk) ->
+    Env#env{ga_nonces = lists:keydelete(Pk, 1, Xs)}.
+
+%%------
+
+-spec ga_tx_hash(env()) -> undefined | binary().
+ga_tx_hash(#env{ga_tx_hash = X}) -> X.
+
+-spec set_ga_tx_hash(env(), undefined | binary()) -> env().
+set_ga_tx_hash(Env, X) -> Env#env{ga_tx_hash = X}.
 
 %%------
 

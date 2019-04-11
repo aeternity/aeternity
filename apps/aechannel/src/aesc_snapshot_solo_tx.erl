@@ -102,12 +102,11 @@ from_pubkey(#channel_snapshot_solo_tx{from_id = FromId}) ->
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_snapshot_solo_tx{payload    = Payload,
                                 fee        = Fee,
-                                nonce      = Nonce} = Tx,
-      Trees, _Env) ->
+                                nonce      = Nonce} = Tx, Trees, Env) ->
     ChannelPubKey = channel_pubkey(Tx),
     FromPubKey    = from_pubkey(Tx),
-    case aesc_utils:check_solo_snapshot_payload(ChannelPubKey, FromPubKey, Nonce, Fee,
-                                        Payload, Trees) of
+    case aesc_utils:check_solo_snapshot_payload(
+           ChannelPubKey, FromPubKey, Nonce, Fee, Payload, Trees, Env) of
         ok -> {ok, Trees};
         Err -> Err
     end.

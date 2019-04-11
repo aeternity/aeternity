@@ -9,7 +9,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--import(aect_call, [ deserialize/1
+-import(aect_call, [ deserialize/2
                    , return_value/1
                    , gas_price/1
                    , gas_used/1
@@ -41,9 +41,9 @@ basic_test_() ->
 
 basic_serialize() ->
     C = new_call(call_tx(), 1),
-    ?assertEqual(C, deserialize(serialize(C))),
+    ?assertEqual(C, deserialize(aect_call:id(C), serialize(C))),
     ExecutedCall = executed_call(C),
-    ?assertEqual(ExecutedCall, deserialize(serialize(ExecutedCall))),
+    ?assertEqual(ExecutedCall, deserialize(aect_call:id(C), serialize(ExecutedCall))),
     ok.
 
 basic_getters() ->

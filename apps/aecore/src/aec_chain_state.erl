@@ -899,7 +899,7 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
 
 calculate_gas_fee(Calls) ->
     F = fun(_, SerCall, GasFeeIn) ->
-                Call = aect_call:deserialize(SerCall),
+                Call = aect_call:deserialize(<<>>, SerCall),
                 GasFee = aect_call:gas_used(Call) * aect_call:gas_price(Call),
                 GasFee + GasFeeIn
         end,

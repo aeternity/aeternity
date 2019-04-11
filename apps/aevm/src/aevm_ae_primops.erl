@@ -63,6 +63,8 @@ call_(Gas, Value, Data, StateIn) ->
                 map_call(Gas, PrimOp, Value, Data, StateIn);
             true when ?PRIM_CALL_IN_CRYPTO_RANGE(PrimOp) ->
                 crypto_call(Gas, PrimOp, Value, Data, StateIn);
+            true when ?PRIM_CALL_IN_AUTH_RANGE(PrimOp) ->
+                auth_call(Gas, PrimOp, Value, Data, StateIn);
             true ->
                 ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
                                  state = aevm_eeevm_state:chain_state(StateIn),
@@ -205,6 +207,8 @@ types(?PRIM_CALL_CRYPTO_SHA256_STRING, _HeapValue, _Store, _State) ->
     {[string], word};
 types(?PRIM_CALL_CRYPTO_BLAKE2B_STRING, _HeapValue, _Store, _State) ->
     {[string], word};
+types(?PRIM_CALL_AUTH_TX_HASH, _HeapValue, _Store, _State) ->
+    {[], aeso_icode:option_typerep(word)};
 types(_, _, _, _) ->
     {[], tuple0_t()}.
 
@@ -502,6 +506,28 @@ aens_call_revoke(Data, #chain{api = API, state = State} = Chain) ->
         {error, _} = Err -> Err
     end.
 
+%% ------------------------------------------------------------------
+%% Auth operations.
+%% ------------------------------------------------------------------
+auth_call(Gas, Op, _Value, Data, State) ->
+    case {aevm_eeevm_state:vm_version(State), Op} of
+        {VMVersion, _} when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_3 ->
+            auth_call(Gas, Op, Data, State);
+        {_, _} -> {error, out_of_gas}
+    end.
+
+auth_call(Gas, ?PRIM_CALL_AUTH_TX_HASH, Data, State) ->
+    auth_call_tx_hash(Gas, Data, State);
+auth_call(_, _, _, _) ->
+    {error, out_of_gas}.
+
+auth_call_tx_hash(_Gas, _Data, State) ->
+    Res =
+        case aevm_eeevm_state:auth_tx_hash(State) of
+            undefined      -> {ok, aeb_heap:to_binary(none)};
+            <<TxHash:256>> -> {ok, aeb_heap:to_binary({some, TxHash})}
+        end,
+    {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_AUTH_TX_HASH), State}.
 
 %% ------------------------------------------------------------------
 %% Crypto operations.

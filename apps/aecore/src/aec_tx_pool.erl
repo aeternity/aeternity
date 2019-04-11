@@ -686,7 +686,8 @@ check_pool_db_put(Tx, TxHash, Event) ->
             lager:debug("Already have GC:ed tx: ~p", [TxHash]),
             ignore;
         not_found ->
-            Checks = [ fun check_signature/4
+            Checks = [ fun check_valid_at_protocol/4
+                     , fun check_signature/4
                      , fun check_nonce/4
                      , fun check_minimum_fee/4
                      , fun check_minimum_gas_price/4
@@ -743,6 +744,9 @@ check_tx_ttl(STx, _Hash, Height, _Event) ->
         false -> ok
     end.
 
+check_valid_at_protocol(STx, _Hash, Height, _Event) ->
+    aetx:check_protocol_at_height(aetx_sign:tx(STx), Height).
+
 check_signature(Tx, Hash, _Height, _Event) ->
     {ok, Trees} = aec_chain:get_top_state(),
     case aetx_sign:verify(Tx, Trees) of
@@ -763,9 +767,13 @@ int_check_nonce(Tx, Source, Event) ->
     %% Check is conservative and only rejects certain cases
     Unsigned = aetx_sign:tx(Tx),
     TxNonce = aetx:nonce(Unsigned),
-    case aetx:origin(Unsigned) of
-        undefined -> {error, no_origin};
-        Pubkey when is_binary(Pubkey) ->
+    {TxType, MetaTx} = aetx:specialize_type(Unsigned),
+    case {aetx:origin(Unsigned), TxType} of
+        {undefined, _} ->
+            {error, no_origin};
+        {Pubkey, ga_meta_tx} when is_binary(Pubkey) ->
+            int_check_meta_tx(TxNonce, MetaTx, Pubkey, Source);
+        {Pubkey, _} when is_binary(Pubkey) ->
             case TxNonce > 0 of
                 false ->
                     {error, illegal_nonce};
@@ -785,6 +793,22 @@ int_check_nonce(Tx, Source, Event) ->
                     end
             end
     end.
+
+int_check_meta_tx(0, MetaTx, Pubkey, Source) ->
+    case get_account(Pubkey, Source) of
+        {value, Account} ->
+            TotalAmount = aega_meta_tx:gas(MetaTx) * aega_meta_tx:gas_price(MetaTx)
+                            + aega_meta_tx:fee(MetaTx),
+            case TotalAmount >= aec_accounts:balance(Account) of
+                true  -> ok;
+                false -> {error, insufficient_funds}
+            end;
+        _ ->
+            {error, authenticating_account_does_not_exist}
+    end;
+int_check_meta_tx(_, _, _, _) ->
+    {error, illegal_nonce}.
+
 
 nonce_check_by_event(tx_created) -> true;
 nonce_check_by_event(tx_received) -> false;

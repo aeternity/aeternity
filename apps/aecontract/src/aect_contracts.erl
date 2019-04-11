@@ -86,6 +86,7 @@
 -type serial_version() :: 0..16#FFFFFFFF.
 -type height() :: non_neg_integer().
 -type vm_usage_type() ::  'call' | 'create' | 'oracle_register'.
+-type ct_nonce() :: non_neg_integer() | binary().
 
 -export_type([ contract/0
              , amount/0
@@ -186,7 +187,7 @@ new(RTx) ->
         aect_create_tx:code(RTx),
         aect_create_tx:deposit(RTx)).
 
--spec new(aec_keys:pubkey(), integer(), version(), binary(), amount()) -> contract().
+-spec new(aec_keys:pubkey(), ct_nonce(), version(), binary(), amount()) -> contract().
 %% NOTE: Should only be used for contract execution without transaction
 new(Owner, Nonce, CTVersion, Code, Deposit) ->
     Pubkey = compute_contract_pubkey(Owner, Nonce),
@@ -280,9 +281,10 @@ serialization_template(?CONTRACT_VSN) ->
     , {deposit, int}
     ].
 
--spec compute_contract_pubkey(aec_keys:pubkey(), non_neg_integer()) -> aec_keys:pubkey().
-compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, Nonce) when Nonce >= 0  ->
-    NonceBin = binary:encode_unsigned(Nonce),
+-spec compute_contract_pubkey(aec_keys:pubkey(), ct_nonce()) -> aec_keys:pubkey().
+compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, Nonce) when is_integer(Nonce), Nonce >= 0  ->
+    aec_hash:hash(pubkey, <<Owner/binary, (binary:encode_unsigned(Nonce))/binary>>);
+compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, <<_:?HASH_SIZE/binary>> = NonceBin) ->
     aec_hash:hash(pubkey, <<Owner/binary, NonceBin/binary>>).
 
 -spec compute_contract_store_id(aec_keys:pubkey()) -> store_id().

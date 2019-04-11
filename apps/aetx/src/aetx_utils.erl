@@ -8,7 +8,7 @@
 
 %% API
 -export([check_account/3,
-         check_account/4,
+         check_account/5,
          check_ttl/2]).
 
 %%%===================================================================
@@ -20,12 +20,13 @@
 -spec check_account(Account :: aec_keys:pubkey(),
                     Trees   :: aec_trees:trees(),
                     Nonce   :: non_neg_integer(),
-                    Amount  :: non_neg_integer()) -> ok | {error, term()}.
-check_account(AccountPubKey, Trees, Nonce, Amount) ->
+                    Amount  :: non_neg_integer(),
+                    Env     :: aetx_env:env()   ) -> ok | {error, term()}.
+check_account(AccountPubKey, Trees, Nonce, Amount, Env) ->
     case get_account(AccountPubKey, Trees) of
         {value, Account} ->
             BalanceOk = check_balance(Account, Amount),
-            NonceOk   = check_nonce(Account, Nonce),
+            NonceOk   = check_nonce(Account, Nonce, Env),
             checks_ok([BalanceOk, NonceOk]);
         none ->
             {error, account_not_found}
@@ -71,14 +72,23 @@ check_balance(Account, Amount) ->
             {error, insufficient_funds}
     end.
 
--spec check_nonce(aec_accounts:account(), non_neg_integer()) ->
+-spec check_nonce(aec_accounts:account(), non_neg_integer(), aetx_env:env()) ->
         ok | {error, account_nonce_too_high | account_nonce_too_low}.
-check_nonce(Account, Nonce) ->
-    AccountNonce = aec_accounts:nonce(Account),
-    if
-        Nonce =:= (AccountNonce + 1) -> ok;
-        Nonce =< AccountNonce -> {error, account_nonce_too_high};
-        Nonce > AccountNonce -> {error, account_nonce_too_low}
+check_nonce(Account, Nonce, Env) ->
+    case aec_accounts:type(Account) of
+        basic ->
+            AccountNonce = aec_accounts:nonce(Account),
+            if
+                Nonce =:= (AccountNonce + 1) -> ok;
+                Nonce =< AccountNonce -> {error, account_nonce_too_high};
+                Nonce > AccountNonce -> {error, account_nonce_too_low}
+            end;
+        generalized ->
+            GANonce = aetx_env:ga_nonce(Env, aec_accounts:pubkey(Account)),
+            if Nonce =/= 0     -> {error, nonce_in_ga_tx_should_be_zero};
+               GANonce == none -> {error, bad_ga_tx_env};
+               true            -> ok
+            end
     end.
 
 -spec checks_ok(list(ok | {error, term()})) -> ok | {error, term()}.

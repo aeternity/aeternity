@@ -23,6 +23,7 @@
          add_signatures/2,
          tx/1,
          verify/2,
+         verify/3,
          verify_half_signed/2,
          from_db_format/1,
          signatures/1]).
@@ -87,6 +88,18 @@ from_db_format(#signed_tx{tx = Tx} = STx) ->
 -spec signatures(signed_tx()) -> list(binary()).
 signatures(#signed_tx{signatures = Sigs}) ->
     Sigs.
+
+-spec verify(signed_tx(), aec_trees:trees(), aetx_env:env()) ->
+    ok | {error, signature_verification_failed}.
+verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees, TxEnv) ->
+    Bin = aetx:serialize_to_binary(Tx),
+    case aetx:signers(Tx, Trees) of
+        {ok, Signers} ->
+            RemainingSigners = Signers -- aetx_env:ga_auth_ids(TxEnv),
+            verify_signatures(RemainingSigners, Bin, Sigs);
+        {error, _Reason} ->
+            {error, signature_verification_failed}
+    end.
 
 -spec verify(signed_tx(), aec_trees:trees()) -> ok | {error, signature_check_failed}.
 verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees) ->

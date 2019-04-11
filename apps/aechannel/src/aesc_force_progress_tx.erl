@@ -145,11 +145,8 @@ from_pubkey(#channel_force_progress_tx{from_id = FromId}) ->
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_force_progress_tx{payload       = Payload,
-                                 offchain_trees= OffChainTrees} = Tx,
-      Trees, Env) ->
-    Height = aetx_env:height(Env),
-    case aesc_utils:check_force_progress(Tx, Payload,
-                                   OffChainTrees, Height, Trees) of
+                                 offchain_trees= OffChainTrees} = Tx, Trees, Env) ->
+    case aesc_utils:check_force_progress( Tx, Payload, OffChainTrees, Trees, Env) of
         ok -> {ok, Trees};
         Err -> Err
     end.

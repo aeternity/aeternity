@@ -106,12 +106,11 @@ from_pubkey(#channel_close_solo_tx{from_id = FromPubKey}) ->
 check(#channel_close_solo_tx{payload    = Payload,
                              poi        = PoI,
                              fee        = Fee,
-                             nonce      = Nonce} = Tx,
-      Trees,_Env) ->
+                             nonce      = Nonce} = Tx, Trees, Env) ->
     ChannelPubKey  = channel_pubkey(Tx),
-    FromPubKey = from_pubkey(Tx),
-    case aesc_utils:check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee,
-                                        Payload, PoI, Trees) of
+    FromPubKey     = from_pubkey(Tx),
+    case aesc_utils:check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce,
+                                             Fee, Payload, PoI, Trees, Env) of
         ok -> {ok, Trees};
         Err -> Err
     end.
