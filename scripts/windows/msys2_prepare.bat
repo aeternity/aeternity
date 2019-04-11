@@ -98,7 +98,7 @@ rem Ensure Erlang/OTP %OTP_VERSION% is installed
 IF EXIST "%WIN_OTP_PATH%%ERTS_VERSION%\bin\" GOTO OTPINSTALLED
 SET "OTP_PACKAGE=otp_win64_%OTP_VERSION%.exe"
 SET "OTP_URL=http://erlang.org/download/%OTP_PACKAGE%"
-PowerShell -Command "(New-Object System.Net.WebClient).DownloadFile(\"%OTP_URL%\", \"%TMP\%OTP_PACKAGE%\")"
+PowerShell -Command "(New-Object System.Net.WebClient).DownloadFile(\"%OTP_URL%\", \"%TMP%\%OTP_PACKAGE%\")"
 START "" /WAIT "%TMP%\%OTP_PACKAGE%" /S
 :OTPINSTALLED
 
