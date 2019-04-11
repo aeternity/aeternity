@@ -68,13 +68,13 @@ replace(JobId, Job, Queue) ->
 %% compute the new share target from the previous share targets.
 -spec share_target(desired_solve_time(), max_share_target(), job_queue()) ->
     {ok, share_target()} | {error, term()}.
-share_target(DesiredSolveTime, MaxTarget, Queue) ->
+share_target(DesiredSolveTime, MaxShareTarget, Queue) ->
     case aestratum_lqueue:len(Queue) of
         N when N >= ?QUEUE_LEN_THRESHOLD ->
             TargetsAndSolveTimes =
                 [{aestratum_job:share_target(Job), aestratum_job:solve_time(Job)}
                  || {_JobId, Job} <- aestratum_lqueue:to_list(Queue)],
-            {ok, aestratum_target:recalculate(TargetsAndSolveTimes, DesiredSolveTime, MaxTarget)};
+            {ok, aestratum_target:recalculate(TargetsAndSolveTimes, DesiredSolveTime, MaxShareTarget)};
         _Other ->
             {error, not_enough_jobs}
     end.

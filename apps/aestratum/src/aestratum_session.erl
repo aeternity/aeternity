@@ -22,6 +22,7 @@
           extra_nonce,
           accept_blocks = false,
           share_target,
+          max_share_target,
           share_target_diff_threshold,
           desired_solve_time,
           max_solve_time,
@@ -36,6 +37,7 @@
 -define(MSG_TIMEOUT, application:get_env(aestratum, msg_timeout, 30000)).
 -define(EXTRA_NONCE_NBYTES, application:get_env(aestratum, extra_nonce_nbytes, 4)).
 -define(INITIAL_SHARE_TARGET, application:get_env(aestratum, initial_share_target, 1)).
+-define(MAX_SHARE_TARGET, application:get_env(aestratum, max_share_target, aestratum_target:max())).
 -define(SHARE_TARGET_DIFF_THRESHOLD, application:get_env(aestratum, share_target_diff_threshold, 5.0)).
 -define(DESIRED_SOLVE_TIME, application:get_env(aestratum, desired_solve_time, 30000)).
 -define(MAX_SOLVE_TIME, application:get_env(aestratum, max_solve_time, 40000)).
@@ -325,6 +327,7 @@ handle_chain_recv_block(_NewBlock, State) ->
 handle_chain_recv_block1(#{block_hash := BlockHash, block_version := BlockVersion,
                            block_target := BlockTarget, job_id := JobId} = NewJobInfo,
                         #state{share_target = ShareTarget,
+                               max_share_target = MaxShareTarget,
                                share_target_diff_threshold = ShareTargetDiffThreshold,
                                desired_solve_time = DesiredSolveTime,
                                max_solve_time = MaxSolveTime,
@@ -339,7 +342,7 @@ handle_chain_recv_block1(#{block_hash := BlockHash, block_version := BlockVersio
     %% If there are enough jobs in the queue, we calculate the new job's
     %% target from them, otherwise we use the initial share target.
     NewJobShareTarget =
-        case aestratum_job_queue:share_target(DesiredSolveTime, MaxSolveTime, Jobs) of
+        case aestratum_job_queue:share_target(DesiredSolveTime, MaxShareTarget, Jobs) of
             {ok, NewShareTarget}     -> NewShareTarget;
             {error, not_enough_jobs} -> ShareTarget
         end,
@@ -371,6 +374,7 @@ handle_chain_set_target(State) ->
     State1 =
         State#state{accept_blocks = true,
                     share_target = ShareTarget,
+                    max_share_target = ?MAX_SHARE_TARGET,
                     share_target_diff_threshold = ?SHARE_TARGET_DIFF_THRESHOLD,
                     desired_solve_time = ?DESIRED_SOLVE_TIME,
                     max_solve_time = ?MAX_SOLVE_TIME},
