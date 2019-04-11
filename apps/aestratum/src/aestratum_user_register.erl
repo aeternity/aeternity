@@ -9,6 +9,7 @@
          del/1,
          member/1,
          find/1,
+         notify/1,
          size/0
         ]).
 
@@ -78,6 +79,10 @@ find(ConnPid) when is_pid(ConnPid) ->
             {error, not_found}
     end.
 
+-spec notify(term()) -> ok.
+notify(Msg) ->
+    gen_server:cast(?SERVER, {notify, Msg}).
+
 -spec size() -> non_neg_integer().
 size() ->
     proplists:get_value(size, ets:info(?TAB)).
@@ -96,8 +101,8 @@ handle_call({del_user, User}, _From, State) ->
 handle_call({del_conn_pid, ConnPid}, _From, State) ->
     handle_del_conn_pid(ConnPid, State).
 
-handle_cast(_Req, State) ->
-    {noreply, State}.
+handle_cast({notify, Msg}, State) ->
+    handle_notify(Msg, State).
 
 %% Internal functions.
 
@@ -133,9 +138,15 @@ handle_del_conn_pid(ConnPid, State) ->
         end,
     {reply, Reply, State}.
 
+handle_notify(Msg, State) ->
+    ets:safe_fixtable(?TAB, true),
+    send_notify(ets:first(?TAB), Msg),
+    ets:safe_fixtable(?TAB, false),
+    {noreply, State}.
+
 add_entries(User, ConnPid) ->
-    Entry = {User,#{conn_pid => ConnPid,
-                    created => aestratum_utils:timestamp()}},
+    Entry = {User, #{conn_pid => ConnPid,
+                     created => aestratum_utils:timestamp()}},
     ets:insert(?TAB, Entry),
     ets:insert(?TAB_REV, {ConnPid, User}),
     ok.
@@ -143,5 +154,12 @@ add_entries(User, ConnPid) ->
 del_entries(User, ConnPid) ->
     ets:delete(?TAB, User),
     ets:delete(?TAB_REV, ConnPid),
+    ok.
+
+send_notify(User, Msg) when User =/= '$end_of_table' ->
+    [{User, #{conn_pid := ConnPid}}] = ets:lookup(?TAB, User),
+    ConnPid ! Msg,
+    send_notify(ets:next(?TAB, User), Msg);
+send_notify('$end_of_table', _Msg) ->
     ok.
 

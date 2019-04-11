@@ -33,6 +33,9 @@ user_register_test_() ->
       fun(_) -> find(valid_nonexistent) end,
       fun(_) -> find(valid_existent_by_user) end,
       fun(_) -> find(valid_existent_by_conn_pid) end,
+      fun(_) -> notify(no_users) end,
+      fun(_) -> notify(single_user) end,
+      fun(_) -> notify(multiple_users) end,
       fun(_) -> size(empty) end,
       fun(_) -> size(single_user) end,
       fun(_) -> size(multiple_users) end,
@@ -81,7 +84,7 @@ member(valid_existent_by_user) ->
     [{T, ?_assert(?TEST_MODULE:member(User))}];
 member(valid_existent_by_conn_pid) ->
     T = <<"member - valid_existent_by_conn_pid">>,
-    {User, ConnPid} = prep_single_user(),
+    {_User, ConnPid} = prep_single_user(),
     [{T, ?_assert(?TEST_MODULE:member(ConnPid))}].
 
 find(exception) ->
@@ -103,6 +106,26 @@ find(valid_existent_by_conn_pid) ->
     [{T, ?LET({ok, V}, ?TEST_MODULE:find(ConnPid),
               ?_assert(maps:get(user, V) =:= User))}].
 
+notify(no_users) ->
+    T = <<"notify - no users">>,
+    [{T, ?_assertEqual(ok, ?TEST_MODULE:notify(<<"message">>))}];
+notify(single_user) ->
+    T = <<"notify - single user">>,
+    Msg = <<"test message">>,
+    {_User, ConnPid} = prep_single_receiver(Msg),
+    ok = ?TEST_MODULE:notify(Msg),
+    [{T, ?_assertEqual(Msg, receiver_result(self(), ConnPid))}];
+notify(multiple_users) ->
+    T = <<"notify - multiple users">>,
+    Msg = #{msg => test_msg},
+    [{?TEST_USER1, ConnPid1},
+     {?TEST_USER2, ConnPid2},
+     {?TEST_USER3, ConnPid3}] = prep_multiple_receivers(Msg),
+    ok = ?TEST_MODULE:notify(Msg),
+    [{T, ?_assertEqual(Msg, receiver_result(self(), ConnPid1))},
+     {T, ?_assertEqual(Msg, receiver_result(self(), ConnPid2))},
+     {T, ?_assertEqual(Msg, receiver_result(self(), ConnPid3))}].
+
 size(empty) ->
     T = <<"size - empty">>,
     [{T, ?_assertEqual(0, ?TEST_MODULE:size())}];
@@ -115,16 +138,10 @@ size(multiple_users) ->
     Us = prep_multiple_users(),
     [{T, ?_assertEqual(length(Us), ?TEST_MODULE:size())}].
 
-prep_single_user() ->
-    ConnPid = new_pid(),
-    ok = ?TEST_MODULE:add(?TEST_USER1, ConnPid),
-    1 = ?TEST_MODULE:size(),
-    {?TEST_USER1, ConnPid}.
-
 complex_check() ->
     [{?TEST_USER1, ConnPid1},
      {?TEST_USER2, ConnPid2},
-     {?TEST_USER3, ConnPid3}] = prep_multiple_users(),
+     {?TEST_USER3, _ConnPid3}] = prep_multiple_users(),
     ?assertEqual(3, ?TEST_MODULE:size()),
     ?assertEqual(ok, ?TEST_MODULE:add(<<"foo">>, new_pid())),
     ?assertEqual(4, ?TEST_MODULE:size()),
@@ -145,6 +162,18 @@ complex_check() ->
 
     ?assertEqual(1, ?TEST_MODULE:size()).
 
+prep_single_user() ->
+    ConnPid = new_pid(),
+    ok = ?TEST_MODULE:add(?TEST_USER1, ConnPid),
+    1 = ?TEST_MODULE:size(),
+    {?TEST_USER1, ConnPid}.
+
+prep_single_receiver(Msg) ->
+    ConnPid = new_receiver(Msg),
+    ok = ?TEST_MODULE:add(?TEST_USER1, ConnPid),
+    1 = ?TEST_MODULE:size(),
+    {?TEST_USER1, ConnPid}.
+
 prep_multiple_users() ->
     ConnPid1 = new_pid(),
     ConnPid2 = new_pid(),
@@ -155,7 +184,35 @@ prep_multiple_users() ->
     3 = ?TEST_MODULE:size(),
     [{?TEST_USER1, ConnPid1}, {?TEST_USER2, ConnPid2}, {?TEST_USER3, ConnPid3}].
 
+prep_multiple_receivers(Msg) ->
+    ConnPid1 = new_receiver(Msg),
+    ConnPid2 = new_receiver(Msg),
+    ConnPid3 = new_receiver(Msg),
+    ok = ?TEST_MODULE:add(?TEST_USER1, ConnPid1),
+    ok = ?TEST_MODULE:add(?TEST_USER2, ConnPid2),
+    ok = ?TEST_MODULE:add(?TEST_USER3, ConnPid3),
+    3 = ?TEST_MODULE:size(),
+    [{?TEST_USER1, ConnPid1}, {?TEST_USER2, ConnPid2}, {?TEST_USER3, ConnPid3}].
+
 %% This is just to get a PID. The process itself is not important.
 new_pid() ->
     spawn(fun() -> ok end).
+
+new_receiver(Msg) ->
+    spawn(fun() ->
+                  Res =
+                    receive
+                        Msg    -> Msg;
+                        _Other -> unexpected_msg
+                    after
+                        5000   -> receiver_msg_timeout
+                    end,
+                  receive
+                      {get_result, From} -> From ! Res
+                  end
+          end).
+
+receiver_result(From, ConnPid) ->
+    ConnPid ! {get_result, From},
+    receive Res -> Res end.
 
