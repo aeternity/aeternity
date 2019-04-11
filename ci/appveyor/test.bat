@@ -63,9 +63,9 @@ GOTO FIND_NEXT_STEP
 rem Run test: eunit
 bash -lc "cd %BUILD_PATH% && \
 	  epmd -daemon && \
-	  make python-env && \
+	  make python-env PIP=/mingw64/bin/pip3 && \
 	  mkdir %PACKAGE_TESTS_DIR% && \
-	  make python-release-test WORKDIR=%PACKAGE_TESTS_DIR% PACKAGE=`pwd`/%PACKAGE_ZIPARCHIVE%"
+	  make python-release-test WORKDIR=%PACKAGE_TESTS_DIR% PACKAGE=`pwd`/%PACKAGE_ZIPARCHIVE% PYTHON=/mingw64/bin/python3"
 
 :FINISHED_TESTING
 
