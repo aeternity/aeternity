@@ -14,6 +14,7 @@
          check_round_greater_than_last/3,
          check_state_hash_size/1,
          deserialize_payload/1,
+         is_payload_valid_at_protocol/2,
          check_solo_close_payload/7,
          check_slash_payload/8,
          check_solo_snapshot_payload/6,
@@ -141,6 +142,14 @@ deserialize_payload(Payload) ->
             {error, payload_deserialization_failed}
     end.
 
+-spec is_payload_valid_at_protocol(aec_hard_forks:protocol_vsn(), binary()) -> boolean().
+is_payload_valid_at_protocol(Protocol, Payload) ->
+    case aesc_utils:deserialize_payload(Payload) of
+        {error, _} -> false;
+        {ok, last_onchain} -> true; %% using tx already on-chain
+        {ok, _SignedTx, OffChainTx} ->
+            aesc_offchain_tx:valid_at_protocol(Protocol, OffChainTx)
+    end.
 
 %%%===================================================================
 %%% Check payload for slash, solo close and snapshot

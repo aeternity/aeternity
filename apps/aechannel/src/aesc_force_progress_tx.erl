@@ -355,12 +355,7 @@ valid_at_protocol(Protocol, #channel_force_progress_tx{payload = Payload} = Tx) 
             ?PINNED_BLOCK_VSN when Protocol >= ?FORTUNA_PROTOCOL_VSN -> true;
             _ -> false
         end,
-    CorrectPayloadVsn =
-        case aesc_utils:deserialize_payload(Payload) of
-            {error, _} -> false;
-            {ok, last_onchain} -> true; %% already on-chain
-            {ok, _SignedTx, OffChainTx} ->
-                aesc_offchain_tx:valid_at_protocol(Protocol, OffChainTx)
-        end,
+    CorrectPayloadVsn = aesc_utils:is_payload_valid_at_protocol(Protocol,
+                                                                Payload),
     CorrectTxVsn andalso CorrectPayloadVsn.
 
