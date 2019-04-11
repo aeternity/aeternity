@@ -11,16 +11,18 @@
 @rem    WIN_MSYS2_ROOT
 
 SETLOCAL ENABLEEXTENSIONS
-cd %APPVEYOR_BUILD_FOLDER%
+IF "%APPVEYOR_BUILD_FOLDER%"=="" (
+	cd %~dp0\..\..\
+) ELSE (
+	cd %APPVEYOR_BUILD_FOLDER%
+)
+SET /p PACKAGE_VERSION=<%~dp0%\..\..\REVISION
 
 rem Set required vars defaults
 
 IF "%ERTS_VERSION%"=="" SET "ERTS_VERSION=9.3"
 IF "%PACKAGE_TESTS_DIR%"=="" SET "PACKAGE_TESTS_DIR=/tmp/package_tests"
-IF "%PACKAGE_ZIPARCHIVE%"=="" (
-	SET /p PACKAGE_VERSION=<%~dp0%\..\..\REVISION
-	SET "PACKAGE_ZIPARCHIVE=aeternity-%PACKAGE_VERSION%"
-)
+IF "%PACKAGE_ZIPARCHIVE%"=="" SET "PACKAGE_ZIPARCHIVE=aeternity-%PACKAGE_VERSION%-windows-x86_64.zip"
 IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\msys64"
 IF "%PLATFORM%"=="" SET "PLATFORM=x64"
 IF "%TEST_STEPS%"=="" SET "TEST_STEPS=ct"
@@ -61,11 +63,11 @@ GOTO FIND_NEXT_STEP
 :TEST_release
 @echo Current time: %time%
 rem Run test: release
-bash -lc "cd %BUILD_PATH% && ^
-	  epmd -daemon && ^
-	  make python-env PIP=/mingw64/bin/pip3 && ^
-	  mkdir %PACKAGE_TESTS_DIR% && ^
-	  make python-release-test WORKDIR=%PACKAGE_TESTS_DIR% PACKAGE=`pwd`/%PACKAGE_ZIPARCHIVE% PYTHON=/mingw64/bin/python3"
+bash -lc ^"cd %BUILD_PATH% ^&^& ^
+           epmd -daemon ^&^& ^
+           make python-env PIP=/mingw64/bin/pip3 ^&^& ^
+           mkdir %PACKAGE_TESTS_DIR% ^&^& ^
+           make python-release-test WORKDIR=%PACKAGE_TESTS_DIR% PACKAGE=`pwd`/%PACKAGE_ZIPARCHIVE% PYTHON=/mingw64/bin/python3^"
 
 :FINISHED_TESTING
 
