@@ -1,0 +1,8 @@
+##
+## This is a subset of the dependencies defined in py/requirements.txt. These dependencies can't be installed via the OS
+## package manager.
+##
+msgpack==0.6.1
+pystache==0.5.4
+urllib3==1.24.1
+waiting==1.4.1

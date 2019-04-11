@@ -1,3 +1,10 @@
+##
+## When updating these dependencies you must ensure that the relevant entries in the following files are kept up-to-date.
+## as well. This is required due to the more complicated python setup on Windows/msys2. Look for the tag WINDOWS_PYTHON.
+##
+## - scripts/windows/msys2_prepare.py
+## - py/requirements-win32.txt
+##
 base58==0.2.5
 certifi==2017.7.27.1
 cffi==1.11.5

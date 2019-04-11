@@ -2,29 +2,33 @@
 @rem Script to prepare msys2 environment for builds.
 @rem Required vars:
 @rem    ERTS_VERSION
+@rem    FORCE_STYRENE_REINSTALL
+@rem    JDK_URL
 @rem    OTP_VERSION
-@rem    WIN_OTP_PATH
+@rem    PLATFORM
 @rem    WIN_JDK_BASEPATH
 @rem    WIN_JDK_PATH
-@rem    JDK_URL
 @rem    WIN_MSYS2_ROOT
-@rem    PLATFORM
+@rem    WIN_OTP_PATH
 
 SETLOCAL ENABLEEXTENSIONS
 
 rem Set required vars defaults
+
 IF "%ERTS_VERSION%"=="" SET "ERTS_VERSION=9.3"
+IF "%FORCE_STYRENE_REINSTALL%"=="" SET "FORCE_STYRENE_REINSTALL=false"
+IF "%JDK_URL%"=="" SET "JDK_URL=https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_windows-x64_bin.zip"
 IF "%OTP_VERSION%"=="" SET "OTP_VERSION=20.3"
-IF "%WIN_OTP_PATH%"=="" SET "WIN_OTP_PATH=C:\Program Files\erl"
+IF "%PLATFORM%"=="" SET "PLATFORM=x64"
 IF "%WIN_JDK_BASEPATH%"=="" SET "WIN_JDK_BASEPATH=C:\Program Files\Java"
 IF "%WIN_JDK_PATH%"=="" SET "WIN_JDK_PATH=C:\Program Files\Java\jdk11"
-IF "%JDK_URL%"=="" SET "JDK_URL=https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_windows-x64_bin.zip"
 IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\msys64"
-IF "%PLATFORM%"=="" SET "PLATFORM=x64"
-IF "%FORCE_STYRENE_REINSTALL%"=="" SET "FORCE_STYRENE_REINSTALL=false"
+IF "%WIN_OTP_PATH%"=="" SET "WIN_OTP_PATH=C:\Program Files\erl"
+
 SET "BASH_BIN=%WIN_MSYS2_ROOT%\usr\bin\bash"
 SET "PACMAN=pacman --noconfirm --needed -S"
 SET "PACMAN_RM=pacman --noconfirm -Rsc"
+SET "PIP=/mingw64/bin/pip3 install"
 SET "WIN_STYRENE_PATH=%TMP%\styrene"
 
 SET PACMAN_PACKAGES=base-devel ^
@@ -57,6 +61,14 @@ mingw-w64-x86_64-gcc-fortran ^
 mingw-w64-x86_64-gcc-libgfortran ^
 mingw-w64-x86_64-gcc-objc
 
+:: WINDOWS_PYTHON
+:: These package are dependencies for the release tests as originally defined in py/requirements.txt
+:: On Windows/msys2 we need to install these via the OS package manager though.
+SET PACMAN_PYTHON_PACKAGES=mingw-w64-x86_64-python3-nose ^
+mingw-w64-x86_64-python3-pip ^
+mingw-w64-x86_64-python3-pynacl ^
+mingw-w64-x86_64-python3-yaml
+
 @echo Current time: %time%
 rem Set the paths appropriately
 
@@ -82,9 +94,9 @@ rem Remove breaking tools
 %BASH_BIN% -lc "%PACMAN_RM% %PACMAN_PACKAGES_REMOVE% || true"
 
 @echo Current time: %time%
-rem Install required tools
+rem Install additional python packages
 
-%BASH_BIN% -lc "%PACMAN% %PACMAN_PACKAGES%"
+%BASH_BIN% -lc "%PIP% -r py/requirements-win32.txt"
 
 @echo Current time: %time%
 rem Ensure Erlang/OTP %OTP_VERSION% is installed
@@ -112,8 +124,8 @@ IF EXIST "%WIN_STYRENE_PATH%" IF "%FORCE_STYRENE_REINSTALL%" NEQ "true" GOTO STY
 %BASH_BIN% -lc "rm -rf \"${ORIGINAL_TEMP}/styrene\""
 %BASH_BIN% -lc "git clone https://github.com/achadwick/styrene.git \"${ORIGINAL_TEMP}/styrene\""
 %BASH_BIN% -lc "cd \"${ORIGINAL_TEMP}/styrene\" && git fetch origin && git checkout v0.3.0"
-%BASH_BIN% -lc "cd \"${ORIGINAL_TEMP}/styrene\" && /mingw64/bin/pip3 uninstall -y styrene"
-%BASH_BIN% -lc "cd \"${ORIGINAL_TEMP}/styrene\" && /mingw64/bin/pip3 install ."
+%BASH_BIN% -lc "cd \"${ORIGINAL_TEMP}/styrene\" && %PIP% uninstall -y styrene"
+%BASH_BIN% -lc "cd \"${ORIGINAL_TEMP}/styrene\" && %PIP% install ."
 :STYRENEINSTALLED
 
 @echo Current time: %time%

@@ -25,12 +25,12 @@ environment:
       OTP_VERSION: 20.1
       ERTS_VERSION: 9.1
       BUILD_STEP: build
-      TEST_STEP: ct
+      TEST_STEPS: ct,release
     - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
       OTP_VERSION: 20.3
       ERTS_VERSION: 9.3
       BUILD_STEP: build
-      TEST_STEP: ct
+      TEST_STEPS: ct,release
       #
       #    NOTE: This job can be used as a backup to CircleCI. Only enable it temporarily when needed.
       #
