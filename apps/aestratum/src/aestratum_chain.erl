@@ -107,13 +107,16 @@ handle_info(chain_payment_tx_check, #chain_state{} = State) ->
     delete_complete_payments(),
     {noreply, State};
 handle_info({gproc_ps_event, stratum_new_candidate, #{info := Info}}, State) ->
-    ?info("new candidate: ~p", [Info]),
+    ?info("new candidate info: ~p", [Info]),
     State1 = case Info of
-                 [{HeaderBin, #candidate{block = Block}, Target}] ->
+                 [{_HeaderBin, #candidate{block = {key_block, KeyHeader}}, TargetSCI}] ->
+                     Target = aeminer_pow:scientific_to_integer(TargetSCI),
+                     {ok, HeaderHash} = aec_headers:hash_header(KeyHeader),
+                     BlockHash = list_to_binary(aeu_hex:bin_to_hex(HeaderHash)),
                      Payload = #{event => recv_block,
                                  block => #{block_target => Target,
-                                            block_hash => aeu_hex:bin_to_hex(HeaderBin),
-                                            block_version => aec_blocks:version(Block)}},
+                                            block_hash => BlockHash,
+                                            block_version => aec_headers:version(KeyHeader)}},
                      aestratum_user_register:notify({chain, Payload}),
                      State#chain_state{new_keyblock_candidate = Info};
                  _ ->
