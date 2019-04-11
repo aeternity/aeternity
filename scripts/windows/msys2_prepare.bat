@@ -93,6 +93,10 @@ rem Remove breaking tools
 %BASH_BIN% -lc "%PACMAN_RM% %PACMAN_PACKAGES_REMOVE% || true"
 
 @echo Current time: %time%
+rem Install required tools
+%BASH_BIN% -lc "%PACMAN% %PACMAN_PACKAGES% %PACMAN_PYTHON_PACKAGES%"
+
+@echo Current time: %time%
 rem Ensure Erlang/OTP %OTP_VERSION% is installed
 
 IF EXIST "%WIN_OTP_PATH%%ERTS_VERSION%\bin\" GOTO OTPINSTALLED
