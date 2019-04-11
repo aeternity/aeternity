@@ -834,6 +834,17 @@ jobs:
       <<: *infrastructure_config_environment
       PKG_TARGET_OS: ubuntu
     steps: *upload_latest_artifacts
+
+
+  verify_release_artifacts:
+    executor: infrastructure_container_stable
+    <<: *infrastructure_config
+    steps:
+      - run:
+          name: Verify release artifacts
+          command: |
+            /infrastructure/scripts/check_release_artifacts.sh ${CIRCLE_TAG}
+
 # CircleCI skips a job for a tag by default.
 # A job must have a filters tags section to run as a part of a tag push
 # and all its transitively dependent jobs must also have a filters tags section.
@@ -1251,6 +1262,18 @@ workflows:
       - docker_push_latest:
           requires:
             - hodl_latest
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: *stable_tag_regex
+
+      - verify_release_artifacts:
+          requires:
+            - upload_release_artifacts
+            - upload_packages_linux
+            - upload_packages_osx
+            - docker_push_tag
           filters:
             branches:
               ignore: /.*/
