@@ -54,9 +54,9 @@ make_calls(ListOfCalls) ->
     Chain = setup_chain(),
     [{lists:flatten(io_lib:format("call(~p,~p,~p)->~p~n~p : ~p",
                                   [C,F,A,R,
-                                   aeb_fate_data:encode(A),
+                                   aefate_test_utils:encode(A),
                                    aeb_fate_encoding:serialize(
-                                     aeb_fate_data:encode(A))])),
+                                     aefate_test_utils:encode(A))])),
       fun() ->
               Call = make_call(C,F,A),
               case R of
@@ -67,7 +67,7 @@ make_calls(ListOfCalls) ->
                               ?assertEqual({E, Trace}, {Error, Trace})
                       end;
                   _ ->
-                      FateRes = aeb_fate_data:encode(R),
+                      FateRes = aefate_test_utils:encode(R),
                       {ok, #{accumulator := Res,
                              trace := Trace}} = aefa_fate:run(Call, Chain),
                       ?assertEqual({FateRes, Trace}, {Res, Trace})
@@ -258,7 +258,7 @@ make_call(Contract, Function, Arguments) ->
      , gas => 100000
      , call => aeb_fate_encoding:serialize(
                  {tuple, {Function, {tuple, list_to_tuple(
-                                              [aeb_fate_data:encode(A) || A <- Arguments]
+                                              [aefate_test_utils:encode(A) || A <- Arguments]
                                              )}
                          }
                  }
@@ -288,9 +288,9 @@ set_function_code(Name, Signature, BBs, #{functions := Functions} = S) ->
     maps:put(functions, NewFunctions, S).
 
 set_bbs([], BBs) -> BBs;
-set_bbs([{N, Code}|Rest], BBs) -> 
+set_bbs([{N, Code}|Rest], BBs) ->
     set_bbs(Rest, BBs#{N => Code}).
-     
+
 
 contracts() ->
     #{ <<"test">> =>
@@ -698,5 +698,3 @@ contracts() ->
            ]
 
        }.
-
-
