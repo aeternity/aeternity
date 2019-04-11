@@ -5,7 +5,7 @@
     "properties" : {
         "peers" : {
             "description" :
-            "Pre-configured addresses of epoch nodes to contact. If not set TestNet seed peers will be used.",
+            "Pre-configured addresses of nodes to contact. If not set TestNet seed peers will be used.",
             "type"  : "array",
             "items" : {
                 "type" : "string",
@@ -16,7 +16,7 @@
         },
         "blocked_peers" : {
             "description" :
-            "Pre-configured addresses of epoch nodes NOT to contact",
+            "Pre-configured addresses of nodes NOT to contact",
             "type"  : "array",
             "items" : {
                 "type" : "string",
@@ -641,7 +641,7 @@
         },
         "regulators" : {
             "description" :
-            "Queues regulating the load in an epoch node. Each queue may have a combination of 'rate', 'counter', 'max_size' and 'max_time' parameters. Set a parameter to 0 if you want it to have no effect.",
+            "Queues regulating the load in a node. Each queue may have a combination of 'rate', 'counter', 'max_size' and 'max_time' parameters. Set a parameter to 0 if you want it to have no effect.",
             "type" : "object",
             "additionalProperties" : false,
             "properties" : {
