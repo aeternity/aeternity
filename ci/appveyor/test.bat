@@ -60,11 +60,11 @@ GOTO FIND_NEXT_STEP
 
 :TEST_release
 @echo Current time: %time%
-rem Run test: eunit
-bash -lc "cd %BUILD_PATH% && \
-	  epmd -daemon && \
-	  make python-env PIP=/mingw64/bin/pip3 && \
-	  mkdir %PACKAGE_TESTS_DIR% && \
+rem Run test: release
+bash -lc "cd %BUILD_PATH% && ^
+	  epmd -daemon && ^
+	  make python-env PIP=/mingw64/bin/pip3 && ^
+	  mkdir %PACKAGE_TESTS_DIR% && ^
 	  make python-release-test WORKDIR=%PACKAGE_TESTS_DIR% PACKAGE=`pwd`/%PACKAGE_ZIPARCHIVE% PYTHON=/mingw64/bin/python3"
 
 :FINISHED_TESTING

@@ -36,6 +36,7 @@ cmake ^
 curl ^
 gcc ^
 git ^
+libopenssl ^
 make ^
 mingw-w64-i686-binutils ^
 mingw-w64-i686-gcc ^
