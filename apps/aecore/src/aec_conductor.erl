@@ -188,14 +188,15 @@ init(Options) ->
     State2 = set_option(autostart, Options, State1),
     {ok, State3} = set_beneficiary(State2),
     State4 = init_miner_instances(State3),
+    State5 = set_stratum_mode(State4),
 
     aec_metrics:try_update([ae,epoch,aecore,chain,height],
                            aec_blocks:height(aec_chain:top_block())),
-    epoch_mining:info("Miner process initilized ~p", [State4]),
+    epoch_mining:info("Miner process initilized ~p", [State5]),
     aec_events:subscribe(candidate_block),
     %% NOTE: The init continues at handle_info(init_continue, State).
     self() ! init_continue,
-    {ok, State4}.
+    {ok, State5}.
 
 init_chain_state() ->
     case aec_chain:genesis_hash() of
@@ -403,6 +404,15 @@ get_beneficiary() ->
         undefined ->
             {error, beneficiary_not_configured}
     end.
+
+set_stratum_mode(State) ->
+    StratumMode = case aeu_env:user_config_or_env([<<"stratum">>, <<"enabled">>], aecore, stratum_enabled) of
+                      {ok, IsStratumEnabled} ->
+                          IsStratumEnabled;
+                      undefined ->
+                          false
+                  end,
+    State#state{stratum_mode=StratumMode}.
 
 %%%===================================================================
 %%% Handle monitor messages
