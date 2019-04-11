@@ -167,7 +167,7 @@ references:
         epmd -daemon
         make python-env
         mkdir ${PACKAGE_TESTS_DIR:?}
-        make python-package-win32-test python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} TARBALL=${PACKAGE_TARBALL:?}
+        make python-package-win32-test python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} PACKAGE=${PACKAGE_TARBALL:?}
 
   store_package_artifacts: &store_package_artifacts
     store_artifacts:
