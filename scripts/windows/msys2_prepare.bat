@@ -28,6 +28,7 @@ IF "%WIN_OTP_PATH%"=="" SET "WIN_OTP_PATH=C:\Program Files\erl"
 SET "BASH_BIN=%WIN_MSYS2_ROOT%\usr\bin\bash"
 SET "PACMAN=pacman --noconfirm --needed -S"
 SET "PACMAN_RM=pacman --noconfirm -Rsc"
+SET "PIP=/mingw64/bin/pip3"
 SET "WIN_STYRENE_PATH=%TMP%\styrene"
 
 SET PACMAN_PACKAGES=base-devel ^
