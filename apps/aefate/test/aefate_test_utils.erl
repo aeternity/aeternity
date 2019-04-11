@@ -6,7 +6,11 @@
 
 -module(aefate_test_utils).
 
--export([encode/1]).
+-export([encode/1,
+         decode/1
+        ]).
+
+-include_lib("aebytecode/include/aeb_fate_data.hrl").
 
 %% Encode is a convinience function for testing, encoding an Erlang term
 %% to a Fate term, but it can not distinguish between e.g. 32-byte strings
@@ -58,3 +62,21 @@ encode_address(Type, S) when is_list(S) ->
     catch _:_ ->
             erlang:error({bad_address_encoding, Type, S})
     end.
+
+decode(I) when ?IS_FATE_INTEGER(I)          -> I;
+decode(?FATE_TRUE)                          -> true;
+decode(?FATE_FALSE)                         -> false;
+decode(L) when ?IS_FATE_LIST(L)             -> [decode(E) || E <- L];
+decode(?FATE_ADDRESS(<<Address:256>>))      -> {address, Address};
+decode(?FATE_HASH(H))                       -> {hash, H};
+decode(?FATE_SIGNATURE(S))                  -> {signature, S};
+decode(?FATE_CONTRACT(<<X:256>>))           -> {contract, X};
+decode(?FATE_ORACLE(<<X:256>>))             -> {oracle, X};
+decode(?FATE_NAME(<<X:256>>))               -> {name, X};
+decode(?FATE_CHANNEL(<<X:256>>))            -> {channel, X};
+decode(?FATE_BITS(Bits))                    -> {bits, Bits};
+decode(?FATE_TUPLE(T))                      -> erlang:list_to_tuple([decode(E) || E <- T]);
+decode(?FATE_VARIANT(Arities, Tag, Values)) -> {variant, Arities, Tag, Values};
+decode(S) when ?IS_FATE_STRING(S)           -> binary_to_list(S);
+decode(M) when ?IS_FATE_MAP(M)              ->
+    maps:from_list([{decode(K), decode(V)} || {K, V} <- maps:to_list(M)]).
