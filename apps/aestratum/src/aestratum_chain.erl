@@ -37,6 +37,7 @@
 -define(PAYMENT_CONTRACT_MIN_GAS_MULTIPLIER, 1.3).
 
 -include("aestratum.hrl").
+-include_lib("aecore/src/aec_conductor.hrl").
 -include_lib("aecontract/src/aecontract.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
@@ -44,7 +45,7 @@
 %%% STATE
 %%%===================================================================
 
--record(state,
+-record(chain_state,
         {last_keyblock,
          new_keyblock_candidate,
          benef_sum_pcts,
@@ -80,11 +81,11 @@ init([BenefSumPcts, {SignPubKey, SignPrivKey}]) ->
 
     aec_events:subscribe(stratum_new_candidate),
 
-    {ok, #state{last_keyblock = aec_chain:top_key_block_hash(),
-                benef_sum_pcts = BenefSumPcts,
-                caller_account = CallerAccount,
-                sign_priv_key = SignPrivKey,
-                contract = Contract1}}. %% TODO
+    {ok, #chain_state{last_keyblock = aec_chain:top_key_block_hash(),
+                      benef_sum_pcts = BenefSumPcts,
+                      caller_account = CallerAccount,
+                      sign_priv_key = SignPrivKey,
+                      contract = Contract1}}. %% TODO
 
 
 handle_call(_Req, _From, State) ->
@@ -98,22 +99,27 @@ handle_cast(_Req, State) ->
     {noreply, State}.
 
 
-handle_info(chain_top_check, #state{} = State) ->
+handle_info(chain_top_check, #chain_state{} = State) ->
     NewKB = aec_chain:top_key_block_hash(),
-    NewKB == State#state.last_keyblock orelse aestratum_reward:keyblock(),
-    {noreply, State#state{last_keyblock = NewKB}};
-handle_info(chain_payment_tx_check, #state{} = State) ->
+    NewKB == State#chain_state.last_keyblock orelse aestratum_reward:keyblock(),
+    {noreply, State#chain_state{last_keyblock = NewKB}};
+handle_info(chain_payment_tx_check, #chain_state{} = State) ->
     delete_complete_payments(),
     {noreply, State};
 handle_info({gproc_ps_event, stratum_new_candidate, #{info := Info}}, State) ->
-    lager:debug("New candidate in stratum"),
+    ?info("new candidate: ~p", [Info]),
     State1 = case Info of
-                [{_HeaderBin, _Candidate, _Target}] ->
-                    State#state{new_keyblock_candidate = Info};
-                _ ->
-                    lager:info("Malformed Candidate for Stratum ~p", [Info]),
-                    State
-    end,
+                 [{HeaderBin, #candidate{block = Block}, Target}] ->
+                     Payload = #{event => recv_block,
+                                 block => #{block_target => Target,
+                                            block_hash => aeu_hex:bin_to_hex(HeaderBin),
+                                            block_version => aec_blocks:version(Block)}},
+                     aestratum_user_register:notify({chain, Payload}),
+                     State#chain_state{new_keyblock_candidate = Info};
+                 _ ->
+                     lager:info("Malformed Candidate for Stratum ~p", [Info]),
+                     State
+             end,
     {noreply, State1};
 handle_info(_Req, State) ->
     {noreply, State}.
@@ -168,7 +174,7 @@ send_payment(#aestratum_payment{fee = Fee,
                                 gas = Gas,
                                 rewards = Transfers,
                                 tx_hash = undefined} = P,
-             #state{caller_account = Caller, contract = Contract, sign_priv_key = SK}) ->
+             #chain_state{caller_account = Caller, contract = Contract, sign_priv_key = SK}) ->
     Opts = #{fee => Fee, gas => Gas},
     ContractData = {maps:get(contract_pk, Contract), maps:get(contract_source, Contract)},
     {ok, CallTx} = create_payout_call_tx(Transfers, Caller, ContractData, Opts),
@@ -183,8 +189,8 @@ send_payment(#aestratum_payment{fee = Fee,
 
 
 create_payments(Height, BlockReward, PoolRewards, MinersRewards,
-                #state{caller_account = Caller, contract = Contract} = State) ->
-    BenefRewards = round(BlockReward * (State#state.benef_sum_pcts / 100)),
+                #chain_state{caller_account = Caller, contract = Contract} = State) ->
+    BenefRewards = round(BlockReward * (State#chain_state.benef_sum_pcts / 100)),
     MinerRewards = BlockReward - BenefRewards,
     P0 = create_payment(Height, 0, BenefRewards, PoolRewards, Caller, Contract),
     Ps = create_payments(Height, 1, MinerRewards, MinersRewards, Caller, Contract),
