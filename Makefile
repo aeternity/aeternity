@@ -426,7 +426,7 @@ $(DEB_PKG_CHANGELOG_FILE):
 	dch --create --package=$(AE_DEB_PKG_NAME) -v $(AE_DEB_PKG_VERSION) $(AE_DEB_DCH_REL_NOTE); \
 	dch -r $(AE_DEB_DCH_REL_NOTE)
 
-prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
+prod-deb-package: $(DEB_PKG_CHANGELOG_FILE) prod-clean clean distclean
 	debuild -b -uc -us
 
 .PHONY: \
