@@ -634,7 +634,7 @@ attach(Owner, Contract, AuthFun, Args, Opts, S) ->
             Fail  = maps:get(fail, Opts, false),
             Nonce = aect_test_utils:next_nonce(Owner, S),
             Calldata = aega_test_utils:make_calldata(Src, "init", Args),
-            {ok, AuthFunHash} = aeso_abi:type_hash_from_function_name(list_to_binary(AuthFun), TI),
+            {ok, AuthFunHash} = aeb_abi:type_hash_from_function_name(list_to_binary(AuthFun), TI),
             Options1 = maps:merge(#{nonce => Nonce, code => C,
                                     auth_fun => AuthFunHash, call_data => Calldata},
                                   maps:without([height, return_return_value, return_gas_used, fail], Opts)),
@@ -697,7 +697,7 @@ ga_attach(Owner, AuthOpts, Contract, AuthFun, InitArgs, S) ->
 ga_attach(Owner, AuthOpts, Contract, AuthFun, InitArgs, Opts, S) ->
     {ok, #{src := Src, bytecode := Code, map := #{type_info := TI}}} = get_contract(Contract),
     Calldata = aega_test_utils:make_calldata(Src, "init", InitArgs),
-    {ok, AuthFunHash} = aeso_abi:type_hash_from_function_name(list_to_binary(AuthFun), TI),
+    {ok, AuthFunHash} = aeb_abi:type_hash_from_function_name(list_to_binary(AuthFun), TI),
     Options1 = maps:merge(#{nonce => 0, code => Code, auth_fun => AuthFunHash,
                             call_data => Calldata}, maps:without([height], Opts)),
     AttachTx = aega_test_utils:ga_attach_tx(Owner, Options1),

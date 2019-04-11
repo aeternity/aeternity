@@ -442,7 +442,7 @@ verify_signature(Channel, MetaTx, Trees, Env) ->
     SignerId = aega_meta_tx:ga_id(MetaTx),
     case aesc_channels:auth_for_id(SignerId, Channel) of
         {ok, {AuthFunHash, AuthContractId}} ->
-            case aeso_abi:get_function_hash_from_calldata(aega_meta_tx:auth_data(MetaTx)) of
+            case aeb_abi:get_function_hash_from_calldata(aega_meta_tx:auth_data(MetaTx)) of
                 {ok, AuthFunHash} -> verify_signature_(Channel, SignerId, AuthContractId,
                                                        MetaTx, Trees, Env);
                 {ok, _OtherHash}  -> {error, wrong_auth_function};
@@ -495,7 +495,7 @@ verify_signature_(Channel, SignerId, AuthContractId, MetaTx, Trees, Env) ->
 check_auth_result(Call) ->
     case aect_call:return_type(Call) of
         ok ->
-            case aeso_heap:from_binary(word, aect_call:return_value(Call)) of
+            case aeb_heap:from_binary(word, aect_call:return_value(Call)) of
                 {ok, 1} -> ok;
                 _       -> {error, signature_verification_failed_authenticate_false}
             end;

@@ -524,8 +524,8 @@ auth_call(_, _, _, _) ->
 auth_call_tx_hash(_Gas, _Data, State) ->
     Res =
         case aevm_eeevm_state:auth_tx_hash(State) of
-            undefined      -> {ok, aeso_heap:to_binary(none)};
-            <<TxHash:256>> -> {ok, aeso_heap:to_binary({some, TxHash})}
+            undefined      -> {ok, aeb_heap:to_binary(none)};
+            <<TxHash:256>> -> {ok, aeb_heap:to_binary({some, TxHash})}
         end,
     {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_AUTH_TX_HASH), State}.
 

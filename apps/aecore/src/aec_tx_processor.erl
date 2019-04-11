@@ -1047,7 +1047,7 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee}, S) ->
                               AuthData, OwnerPK, _Amount = 0, _CallStack = [], _Nonce = 0, S2),
     case aect_call:return_type(Call) of
         ok ->
-            case aeso_heap:from_binary(word, aect_call:return_value(Call)) of
+            case aeb_heap:from_binary(word, aect_call:return_value(Call)) of
                 {ok, 1} -> %% true!
                     Refund = (GasLimit - aect_call:gas_used(Call)) * aect_call:gas_price(Call),
                     {CallerAccount, S4} = get_account(OwnerPK, S3),
@@ -1506,14 +1506,14 @@ assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo) ->
     end.
 
 assert_auth_data_function(AuthData, AuthFunHash) ->
-    case aeso_abi:get_function_hash_from_calldata(AuthData) of
+    case aeb_abi:get_function_hash_from_calldata(AuthData) of
         {ok, AuthFunHash} -> ok;
         {ok, _OtherHash}  -> runtime_error(wrong_auth_function);
         _Other            -> runtime_error(bad_auth_data)
     end.
 
 assert_auth_function(Hash, TypeInfo) ->
-    case aeso_abi:typereps_from_type_hash(Hash, TypeInfo) of
+    case aeb_abi:typereps_from_type_hash(Hash, TypeInfo) of
         {ok, _ArgType, word}     -> ok;
         {ok, _ArgType, _OutType} -> runtime_error(bad_auth_function_return_type);
         {error, _}               -> runtime_error(bad_function_hash)
