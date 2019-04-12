@@ -1270,7 +1270,7 @@ workflows:
 
       - verify_release_artifacts:
           requires:
-            - upload_release_artifacts
+            - upload_build_artifacts
             - upload_packages_linux
             - upload_packages_osx
             - docker_push_tag
