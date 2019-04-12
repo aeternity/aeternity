@@ -36,6 +36,7 @@ cmake ^
 curl ^
 gcc ^
 git ^
+libcurl ^
 libopenssl ^
 make ^
 mingw-w64-x86_64-SDL ^
