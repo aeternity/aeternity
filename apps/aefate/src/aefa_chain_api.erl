@@ -9,6 +9,7 @@
 -export([ new/1
         ]).
 
+%% Getters
 -export([ account_balance/2
         , beneficiary/1
         , contract_fate_code/2
@@ -20,6 +21,10 @@
         , origin/1
         , timestamp_in_msecs/1
         , tx_env/1
+        ]).
+
+%% Modifiers
+-export([ spend/4
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
@@ -127,3 +132,21 @@ account_balance(Pubkey, #state{primop_state = PState} = S) ->
         none ->
             error
     end.
+
+%%%-------------------------------------------------------------------
+%%% Operations modifying state
+
+spend(FromPubkey, ToPubkey, Amount, State) ->
+    eval_primops([ aeprimop:spend_op(FromPubkey, ToPubkey, Amount)
+                 ], State).
+
+eval_primops(Ops, #state{primop_state = PState} = S) ->
+    case aeprimop:eval_on_primop_state(Ops, PState) of
+        {ok, PState1} ->
+            {ok, S#state{primop_state = PState1}};
+        {ok, Return, PState1} ->
+            {ok, Return, S#state{primop_state = PState1}};
+        {error, Atom} = Err when is_atom(Atom) ->
+            Err
+    end.
+

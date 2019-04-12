@@ -159,6 +159,7 @@ groups() ->
     , {fate_1, [sequence], [ create_contract
                            , sophia_identity
                            , sophia_remote_identity
+                           , sophia_spend
                            , fate_environment
                            , fate_call_origin
                           ]}
@@ -548,7 +549,7 @@ create_contract_init_error_illegal_instruction_(OP, ErrReason) when is_binary(Er
     Gas = 9000,
     CreateTxOpts = #{gas => Gas},
     Opts = CreateTxOpts#{return_return_value => true, return_gas_used => true},
-    {{_, {ReturnType, ReturnValue}}, GasUsed} = call(fun create_contract_with_code/5, [Acc, HackedCode, {}, Opts]),
+    {{_, {ReturnType, ReturnValue}}, GasUsed} = call(fun init_fail_create_contract_with_code/5, [Acc, HackedCode, {}, Opts]),
     ?assertEqual(error, ReturnType),
     ?assertEqual(ErrReason, ReturnValue),
     ?assertEqual(Gas, GasUsed),
@@ -1101,16 +1102,19 @@ create_contract(Owner, Name, Args, Options, S) ->
             error({fail, {error, compile_should_work, got, Reason}})
     end.
 
-fail_create_contract_with_code(Owner, Code, Args, Options, S) ->
-    try create_contract_with_code(Owner, Code, Args, Options, S, true) of
+tx_fail_create_contract_with_code(Owner, Code, Args, Options, S) ->
+    try create_contract_with_code(Owner, Code, Args, Options, S, true, false) of
         _ -> error(succeeded)
     catch throw:{ok, R, S1} -> {{error, R}, S1}
     end.
 
-create_contract_with_code(Owner, Code, Args, Options, S) ->
-    create_contract_with_code(Owner, Code, Args, Options, S, false).
+init_fail_create_contract_with_code(Owner, Code, Args, Options, S) ->
+    create_contract_with_code(Owner, Code, Args, Options, S, false, true).
 
-create_contract_with_code(Owner, Code, Args, Options, S, Fail) ->
+create_contract_with_code(Owner, Code, Args, Options, S) ->
+    create_contract_with_code(Owner, Code, Args, Options, S, false, false).
+
+create_contract_with_code(Owner, Code, Args, Options, S, TxFail, InitFail) ->
     Nonce       = aect_test_utils:next_nonce(Owner, S),
     CallData    = make_calldata_from_code(Code, init, Args),
     Options1    = maps:merge(#{nonce => Nonce, code => Code, call_data => CallData},
@@ -1119,20 +1123,25 @@ create_contract_with_code(Owner, Code, Args, Options, S, Fail) ->
     Height      = maps:get(height, Options, 1),
     PrivKey     = aect_test_utils:priv_key(Owner, S),
     S1          = case sign_and_apply_transaction(CreateTx, PrivKey, S, Height) of
-                      {ok, TmpS} when not Fail -> TmpS;
-                      {ok,_TmpS} when Fail -> error({error, succeeded});
-                      {error, R,_TmpS} when not Fail -> error(R);
-                      {error, R, TmpS} when Fail -> throw({ok, R, TmpS})
+                      {ok, TmpS} when not TxFail -> TmpS;
+                      {ok,_TmpS} when TxFail -> error({error, succeeded});
+                      {error, R,_TmpS} when not TxFail -> error(R);
+                      {error, R, TmpS} when TxFail -> throw({ok, R, TmpS})
                   end,
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, Nonce),
     CallKey     = aect_call:id(Owner, Nonce, ContractKey),
     CallTree    = aect_test_utils:calls(S1),
     Call        = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
     Result0     = ContractKey,
+    ReturnValue = aect_call:return_value(Call),
+    ReturnType  = aect_call:return_type(Call),
+    []          = [error({failed_contract_create, ReturnValue})
+                   || (InitFail andalso ReturnType =:= ok)
+                          orelse (not InitFail andalso ReturnType =/= ok)],
     Result1     =
         case maps:get(return_return_value, Options, false) of
             false -> Result0;
-            true  -> {Result0, {aect_call:return_type(Call), aect_call:return_value(Call)}}
+            true  -> {Result0, {ReturnType, ReturnValue}}
         end,
     case maps:get(return_gas_used, Options, false) of
         false -> {Result1, S1};
@@ -1305,7 +1314,7 @@ sophia_vm_interaction(Cfg) ->
     BadSpec    = RomaSpec#{height => MinervaHeight,
                            gas_price => MinGasPrice,
                            fee => 100000 * MinGasPrice},
-    {error, illegal_vm_version} = ?call(fail_create_contract_with_code, Acc, IdCode, {}, BadSpec),
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec),
 
     MinervaCallSpec = #{height => MinervaHeight,
                         gas_price => MinGasPrice,
@@ -3925,7 +3934,7 @@ sophia_bad_code(_Cfg) ->
     {ok, Code} = compile_contract(bad_code),
     %% Switch DUP3 against DUP11 - will make init crash...
     HackedCode1 = hack_dup(130, 139, Code),
-    case ?call(create_contract_with_code, Acc, HackedCode1, {}, #{}) of
+    case ?call(init_fail_create_contract_with_code, Acc, HackedCode1, {}, #{}) of
         X when is_binary(X) -> ok;
         Err                 -> error(Err)
     end,
@@ -3970,7 +3979,7 @@ sophia_bad_init(_Cfg) ->
          0,89,144,129,82,89,96,64,1,144,129,82,96,32,144,3,96,0,89,144,129,82,129,82,96,32,144,3,
          96,6,129,82,129,82,144,86,91,80,130,145,80,80,98,0,0,112,86>>,
 
-    case ?call(create_contract_with_code, Acc, BadByteCode, {}, #{return_return_value => true}) of
+    case ?call(init_fail_create_contract_with_code, Acc, BadByteCode, {}, #{return_return_value => true}) of
         {_X, {error, <<"out_of_gas">>}} -> ok;
         Err                             -> error(Err)
     end,
@@ -4516,7 +4525,6 @@ fate_environment(_Cfg) ->
     InitialBalance = 4711,
     Contract = <<ContractInt:256>> = ?call(create_contract, Acc, environment, {},
                                            #{amount => InitialBalance}),
-    %% TODO: aeb_fate_data:decode/1 should not make addresses as integers
     ?assertEqual({address, ContractInt},
                  ?call(call_contract, Acc, Contract, contract_address, word, {})),
     ?assertEqual({address, AccInt},

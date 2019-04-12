@@ -75,6 +75,7 @@
         , bits_diff/4
         , address/2
         , balance/2
+        , balance_other/3
         , origin/2
         , caller/2
         , gasprice/2
@@ -501,6 +502,20 @@ balance(Arg0, #{ chain_api := API} = EngineState) ->
     {ok, Balance, API1} = aefa_chain_api:account_balance(Pubkey, API),
     write(Arg0, Balance, EngineState#{chain_api => API1}).
 
+balance_other(Arg0, Arg1, #{ chain_api := API} = ES) ->
+    case get_op_arg(Arg1, ES) of
+        {?FATE_ADDRESS(Pubkey), ES1} ->
+            case aefa_chain_api:account_balance(Pubkey, API) of
+                {ok, Balance, API1} ->
+                    write(Arg0, Balance, ES1#{chain_api => API1});
+                error ->
+                    %% Unknown accounts have balance 0
+                    write(Arg0, aeb_fate_data:make_integer(0), ES)
+            end;
+        {Value, ES1} ->
+            aefa_fate:abort({value_does_not_match_type, Value, address}, ES1)
+    end.
+
 origin(Arg0, #{ chain_api := API } = EngineState) ->
     write(Arg0, aefa_chain_api:origin(API), EngineState).
 
@@ -544,7 +559,19 @@ log(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _Arg5, _EngineState) -> exit({error, op_n
 
 deactivate(_EngineState) -> exit({error, op_not_implemented_yet}).
 
-spend(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
+spend(Arg0, Arg1, #{current_contract := ?FATE_ADDRESS(FromPubkey)} = ES0) ->
+    {Amount, ES1} = get_op_arg(Arg0, ES0),
+    [aefa_fate:abort({value_does_not_match_type, Amount, integer}, ES1)
+     || not ?IS_FATE_INTEGER(Amount)],
+    case get_op_arg(Arg1, ES1) of
+        {?FATE_ADDRESS(ToPubkey), #{chain_api := API} = ES2} ->
+            case aefa_chain_api:spend(FromPubkey, ToPubkey, Amount, API) of
+                {ok, API1}    -> ES2#{chain_api => API1};
+                {error, What} -> aefa_fate:abort({primop_error, spend, What}, ES2)
+            end;
+        {Other, ES2} ->
+            aefa_fate:abort({value_does_not_match_type, Other, address}, ES2)
+    end.
 
 oracle_register(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _Arg5, _EngineState) -> exit({error, op_not_implemented_yet}).
 
