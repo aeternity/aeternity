@@ -68,7 +68,6 @@ bash -lc ^"cd %BUILD_PATH% ^&^& ^
            make python-env PIP=/mingw64/bin/pip3 ^&^& ^
            mkdir %PACKAGE_TESTS_DIR% ^&^& ^
            curl --version ^&^& ^
-           curl --help ^&^& ^
            make python-release-test WORKDIR=%PACKAGE_TESTS_DIR% PACKAGE=`pwd`/%PACKAGE_ZIPARCHIVE% PYTHON=/mingw64/bin/python3^"
 
 :FINISHED_TESTING
