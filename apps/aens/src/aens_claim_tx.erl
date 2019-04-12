@@ -104,13 +104,13 @@ check(#ns_claim_tx{}, Trees, _Env) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 process(#ns_claim_tx{} = ClaimTx, Trees, Env) ->
     Instructions =
-        aec_tx_processor:name_claim_tx_instructions(
+        aeprimop:name_claim_tx_instructions(
           account_pubkey(ClaimTx),
           name(ClaimTx),
           name_salt(ClaimTx),
           fee(ClaimTx),
           nonce(ClaimTx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_claim_tx{} = Tx, _) ->

@@ -112,7 +112,7 @@ check(#ns_update_tx{} = _Tx, Trees,_Env) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#ns_update_tx{} = UTx, Trees, Env) ->
     Instructions =
-        aec_tx_processor:name_update_tx_instructions(
+        aeprimop:name_update_tx_instructions(
           account_pubkey(UTx),
           name_hash(UTx),
           name_ttl(UTx),
@@ -120,7 +120,7 @@ process(#ns_update_tx{} = UTx, Trees, Env) ->
           pointers(UTx),
           fee(UTx),
           nonce(UTx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_update_tx{} = Tx, _) ->

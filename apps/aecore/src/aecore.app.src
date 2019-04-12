@@ -36,6 +36,7 @@
     aeminer,
     aetx,
     aevm,
+    aeprimop,
     aeoracle,
     aechannel,
     aecontract,

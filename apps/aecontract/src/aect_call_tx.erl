@@ -208,7 +208,7 @@ process(#contract_call_tx{} = Tx, Trees, Env) ->
       aetx_ga          -> ok
     end,
     Instructions =
-        aec_tx_processor:contract_call_tx_instructions(
+        aeprimop:contract_call_tx_instructions(
           caller_pubkey(Tx),
           contract_pubkey(Tx),
           call_data(Tx),
@@ -220,7 +220,7 @@ process(#contract_call_tx{} = Tx, Trees, Env) ->
           call_origin(Tx),
           fee(Tx),
           nonce(Tx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 -spec process_call_from_contract(tx(), aec_trees:trees(), aetx_env:env()) ->
                                         {ok, aect_call:call(), aec_trees:trees()}
@@ -229,7 +229,7 @@ process_call_from_contract(#contract_call_tx{} = Tx, Trees, Env) ->
     %% Assert
     aetx_contract = aetx_env:context(Env),
     Instructions =
-        aec_tx_processor:contract_call_from_contract_instructions(
+        aeprimop:contract_call_from_contract_instructions(
           caller_pubkey(Tx),
           contract_pubkey(Tx),
           call_data(Tx),
@@ -241,7 +241,7 @@ process_call_from_contract(#contract_call_tx{} = Tx, Trees, Env) ->
           call_origin(Tx),
           fee(Tx),
           nonce(Tx)),
-    aec_tx_processor:eval_with_return(Instructions, Trees, Env).
+    aeprimop:eval_with_return(Instructions, Trees, Env).
 
 serialize(#contract_call_tx{caller_id   = CallerId,
                             nonce       = Nonce,

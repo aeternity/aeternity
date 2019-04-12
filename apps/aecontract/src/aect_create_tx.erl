@@ -209,7 +209,7 @@ signers(#contract_create_tx{} = Tx, _) ->
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#contract_create_tx{} = Tx, Trees, Env) ->
     Instructions =
-        aec_tx_processor:contract_create_tx_instructions(
+        aeprimop:contract_create_tx_instructions(
           owner_pubkey(Tx),
           amount(Tx),
           deposit(Tx),
@@ -221,7 +221,7 @@ process(#contract_create_tx{} = Tx, Trees, Env) ->
           call_data(Tx),
           fee(Tx),
           nonce(Tx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 serialize(#contract_create_tx{owner_id   = OwnerId,
                               nonce      = Nonce,

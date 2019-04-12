@@ -117,14 +117,14 @@ check(#channel_close_mutual_tx{}, Trees,_Env) ->
 process(#channel_close_mutual_tx{from_id = FromId} = Tx, Trees, Env) ->
     FromPubkey = aeser_id:specialize(FromId, account),
     Instructions =
-        aec_tx_processor:channel_close_mutual_tx_instructions(
+        aeprimop:channel_close_mutual_tx_instructions(
           FromPubkey,
           channel_pubkey(Tx),
           initiator_amount_final(Tx),
           responder_amount_final(Tx),
           nonce(Tx),
           fee(Tx)),
-    aec_tx_processor:eval(Instructions, Trees, Env).
+    aeprimop:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}
                                         | {error, channel_not_found}.
