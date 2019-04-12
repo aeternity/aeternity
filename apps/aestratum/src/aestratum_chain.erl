@@ -114,7 +114,7 @@ handle_info({gproc_ps_event, stratum_new_candidate, #{info := Info}}, State) ->
                      BlockHash = aestratum_miner:hash_data(HeaderBin),
                      ChainEvent = #{event => recv_block,
                                     block => #{block_target => Target,
-                                               block_hash => BlockHash,
+                                               block_hash => hex_encode(BlockHash),
                                                block_version => aec_headers:version(KeyHeader)}},
                      aestratum_user_register:notify({chain, ChainEvent}),
                      State#chain_state{new_keyblock_candidate = Info};
@@ -322,9 +322,8 @@ split_list(Xs, BatchSize, Res) ->
         error:badarg -> [Xs | Res]
     end.
 
-
-
-
+hex_encode(Data) ->
+    list_to_binary(string:to_lower(aeu_hex:bin_to_hex(Data))).
 
 
 
