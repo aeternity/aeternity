@@ -111,6 +111,7 @@
 -type ttl()    :: non_neg_integer().
 -type fee()    :: non_neg_integer().
 -type amount() :: non_neg_integer().
+-type var_or_hash() :: {var, term()} | hash().
 -type oracle_type_format() :: aeo_oracles:type_format().
 -type abi_version() :: aect_contracts:abi_version().
 -type vm_version()  :: aect_contracts:vm_version().
@@ -485,6 +486,7 @@ inc_account_nonce({Pubkey, Nonce, Force}, #state{} = S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec spend_op(pubkey(), var_or_hash(), non_neg_integer()) -> op().
 spend_op(From, To, Amount) when ?IS_HASH(From),
                                 ?IS_VAR_OR_HASH(To),
                                 ?IS_NON_NEG_INTEGER(Amount) ->
