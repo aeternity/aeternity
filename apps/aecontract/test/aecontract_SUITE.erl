@@ -331,6 +331,7 @@ init_per_group(_Grp, Cfg) ->
 end_per_group(Grp, Cfg) when Grp =:= aevm_1;
                              Grp =:= aevm_2;
                              Grp =:= aevm_3;
+                             Grp =:= fate_1;
                              Grp =:= protocol_interaction ->
     meck:unload(aec_hard_forks),
     Cfg;
