@@ -331,7 +331,7 @@ quickcheck-system-test-dir:
 .PHONY: eqc
 eqc: | eqc/.git
 	## TODO Re-fetch repo if version not found in local repo.
-	( cd $@ && git reset --quiet --soft $(EQC_TEST_VERSION) && git stash --quiet --all; )
+	#( cd $@ && git reset --quiet --soft $(EQC_TEST_VERSION) && git stash --quiet --all; )
 
 eqc/.git:
 	git clone --quiet --no-checkout $(EQC_TEST_REPO) $(@D)
