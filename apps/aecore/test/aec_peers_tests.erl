@@ -1128,7 +1128,6 @@ global_setup() ->
     meck:expect(aec_keys, peer_privkey, fun() -> {ok, <<"7000000000000000">>} end),
     meck:expect(aec_keys, peer_pubkey, fun() -> {ok, <<"7000000000000000">>} end),
 
-    aec_test_utils:fake_start_aehttp(), %% tricking aec_peers
     ok.
 
 global_teardown(_) ->

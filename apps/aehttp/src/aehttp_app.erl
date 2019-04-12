@@ -36,7 +36,6 @@ start(_StartType, _StartArgs) ->
     {ok, Pid} = aehttp_sup:start_link(),
     ok = start_http_api(),
     ok = start_channel_websocket(),
-    gproc:reg({n,l,{epoch, app, aehttp}}),
     {ok, Pid}.
 
 
