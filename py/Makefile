@@ -6,6 +6,7 @@ PIP ?= $(BIN)/pip
 VIRTUALENV ?= virtualenv
 VIRTUALENV_PYTHON ?= python2.7
 UNAME_S = $(shell uname -s)
+BLOCKS ?= 25
 
 .PHONY: venv-present
 venv-present:
@@ -33,7 +34,7 @@ single-uat:
 
 .PHONY: release-test
 release-test:
-	@$(PYTHON) $(PYTHON_TESTS)/release.py --workdir="$(WORKDIR)" --package=$(PACKAGE) --blocks=100 --version=$(VER)
+	@$(PYTHON) $(PYTHON_TESTS)/release.py --workdir="$(WORKDIR)" --package=$(PACKAGE) --blocks=$(BLOCKS) --version=$(VER)
 
 .PHONY: package-win32-test
 package-win32-test:
