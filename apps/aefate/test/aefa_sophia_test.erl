@@ -167,15 +167,89 @@ patterns() ->
      "    switch(p)\n"
      "      (x, false) => false\n"
      "      (x, true)  => x\n"
-     ""}.
+    "  function tuple_catchall(p : (bool, bool)) =\n"
+    "    switch(p)\n"
+    "      (true, y) => y\n"
+    "      _         => false\n"
+    "  function complex_match(p : (bool, bool, bool)) =\n"
+    "    switch(p)\n"
+    "      (x1,    false, z1)   => (1, x1,    false, z1)\n"
+    "      (false, y2,    true) => (2, false, y2,    true)\n"
+    "      (true,  true,  z3)   => (3, true,  true,  z3)\n"
+    "      (x4,    y4,    z4)   => (4, x4,    y4,    z4)\n"
+    "  function lit_match(p : (int, bool)) =\n"
+    "    switch(p)\n"
+    "      (7, y) => y\n"
+    "      _         => false\n"
+    "  function even(n : int) =\n"
+    "    switch(n)\n"
+    "      0 => true\n"
+    "      1 => false\n"
+    "      2 => true\n"
+    "      3 => false\n"
+    "      4 => true\n"
+    "      5 => false\n"
+    "      _ => true\n"
+    ""}.
+
+values({tuple, []}) -> [{}];
+values({tuple, [T | Ts]}) ->
+    [ list_to_tuple([V | tuple_to_list(Vs)])
+      || V  <- values(T),
+         Vs <- values({tuple, Ts}) ];
+values(bool) -> [false, true];
+values(int)  -> [0, 7].
 
 pattern_tests() ->
+    Boolx2 = {tuple, [bool, bool]},
+    Boolx3 = {tuple, [bool, bool, bool]},
+    Funs = [{"or", Boolx2, fun({A, B}) -> A or B end},
+             {"and'", Boolx2, fun({A, B}) -> A and B end},
+             {"tuple_catchall", Boolx2, fun({A, B}) -> A and B end},
+             {"lit_match", {tuple, [int, bool]},
+              fun({7, Y}) -> Y; (_) -> false end},
+             {"complex_match", Boolx3, fun({X, false, Z})    -> {tuple, {1, X, false, Z}};
+                                          ({false, Y, true}) -> {tuple, {2, false, Y, true}};
+                                          ({true, true, Z})  -> {tuple, {3, true, true, Z}};
+                                          ({X, Y, Z})        -> {tuple, {4, X, Y, Z}} end}],
     lists:flatten(
       [ [],
-        [{"or",   [{A, B}], A or  B} || A <- [false, true], B <- [false, true]],
-        [{"and'", [{A, B}], A and B} || A <- [false, true], B <- [false, true]],
+        [{Name, [X], Fun(X)} || {Name, T, Fun} <- Funs, X <- values(T)],
+        [{"even", [N], not lists:member(N, [1, 3, 5])} || N <- lists:seq(-1, 7)],
         []
       ]).
 
 pattern_test_() -> mk_test([patterns()], pattern_tests()).
+
+records() ->
+    {<<"records">>,
+     "contract Records =\n"
+     "  type number = int\n"
+     "  record r1 = {x : bool, z : bool, w : int}\n"
+     "  record r2 = {x : number, y : r1}\n"
+     "  function rec_match(a : r2) : (int, r1) =\n"
+     "    switch(a)\n"
+     "      {x = 4}          => (1, a.y)\n"
+     "      {y = {x = true}} => (2, {x = false, z = true, w = 0})\n"
+     "      {x = x, y = r}   => (3, r { z = x == 0, w = x })\n"
+     "  function rec_modify(a : r1) = a { w @ n = n + 1 }\n"
+     ""}.
+
+record_tests() ->
+    RecMatch = fun({4, {X, Z, W}})    -> {tuple, {1, {tuple, {X, Z, W}}}};
+                  ({_, {true, _, _}}) -> {tuple, {2, {tuple, {false, true, 0}}}};
+                  ({X, {X1, _, _}})   -> {tuple, {3, {tuple, {X1, X == 0, X}}}}
+               end,
+    RecMatchTests = [{4, {true,  false, 10}},
+                     {3, {true,  true,  20}},
+                     {2, {false, false, 30}}],
+
+    lists:flatten(
+      [[],
+       [{"rec_match", [Input], RecMatch(Input)}
+        || Input <- RecMatchTests],
+       []
+      ]).
+
+record_test_() -> mk_test([records()], record_tests()).
 
