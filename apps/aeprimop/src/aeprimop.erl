@@ -9,6 +9,7 @@
 
 -export([ eval/3
         , eval_with_return/3
+        , eval_on_primop_state/2
         ]).
 
 %% Simple access tx instructions API
@@ -34,6 +35,12 @@
         , oracle_response_tx_instructions/6
         , spend_tx_instructions/5
         ]).
+
+%% Direct op API (mainly for FATE).
+-export([ spend_op/3
+        ]).
+
+
 
 -import(aeprimop_state, [ delete_x/3
                         , find_account/2
@@ -104,6 +111,7 @@
 -type ttl()    :: non_neg_integer().
 -type fee()    :: non_neg_integer().
 -type amount() :: non_neg_integer().
+-type var_or_hash() :: {var, term()} | hash().
 -type oracle_type_format() :: aeo_oracles:type_format().
 -type abi_version() :: aect_contracts:abi_version().
 -type vm_version()  :: aect_contracts:vm_version().
@@ -136,8 +144,10 @@ do_eval(Instructions, Trees, TxEnv) ->
         {error, _} = Err -> Err
     end.
 
+-type return_val() :: term().
 -spec eval_with_return([op()], aec_trees:trees(), aetx_env:env()) ->
-                              {ok, term(), aec_trees:trees(), aetx_env:env()} | {error, atom()}.
+                              {ok, return_val(), aec_trees:trees(), aetx_env:env()}
+                                  | {error, atom()}.
 eval_with_return([_|_] = Instructions, Trees, TxEnv) ->
     S = aeprimop_state:new(Trees, aetx_env:height(TxEnv), TxEnv),
     case int_eval(Instructions, S) of
@@ -145,6 +155,13 @@ eval_with_return([_|_] = Instructions, Trees, TxEnv) ->
         {ok, Return, S1} -> {ok, Return, S1#state.trees, S1#state.tx_env};
         {error, _} = Err -> Err
     end.
+
+-spec eval_on_primop_state([op()], aeprimop_state:state()) ->
+                                  {ok, aeprimop_state:state()}
+                                      | {ok, return_val(), aeprimop_state:state()}
+                                      | {error, atom()}.
+eval_on_primop_state([_|_] = Instructions, State) ->
+    int_eval(Instructions, State).
 
 -spec spend_tx_instructions(pubkey(), id(), amount(), fee(), nonce()) -> [op()].
 spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
@@ -469,6 +486,7 @@ inc_account_nonce({Pubkey, Nonce, Force}, #state{} = S) ->
 
 %%%-------------------------------------------------------------------
 
+-spec spend_op(pubkey(), var_or_hash(), non_neg_integer()) -> op().
 spend_op(From, To, Amount) when ?IS_HASH(From),
                                 ?IS_VAR_OR_HASH(To),
                                 ?IS_NON_NEG_INTEGER(Amount) ->

@@ -130,7 +130,7 @@ run(#{vm := VM} = Version, #{ code := SerializedCode} = CallDef) when ?IS_FATE_S
     #{ byte_code := Code
      , type_info :=_TypeInfo} = aect_sophia:deserialize(SerializedCode),
     %% TODO: Check calldata
-    CallDef1 = CallDef#{code => aeb_fate_asm:bytecode_to_fate_code(Code, [])},
+    CallDef1 = CallDef#{code => Code},
     run_common(Version, CallDef1);
 run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_AEVM_SOPHIA(VM) ->
     #{ byte_code := Code
@@ -167,10 +167,10 @@ run_common(#{vm := ?VM_FATE_SOPHIA_1 = VMVersion, abi := ABIVersion},
            #{ amount      :=_Value
             , call        := Call
             , call_data   := CallData
-%%%         , call_stack  := CallStack
+            , call_stack  :=_CallStack %% Unused for FATE
             , caller      := <<_:?PUB_SIZE/unit:8>>
             , code        := Code
-%%%         , store       := Store
+            , store       :=_Store  %% TODO: Not used yet
             , contract    := <<_:?PUB_SIZE/unit:8>> = ContractAddress
             , gas         := Gas
             , gas_price   :=_GasPrice
@@ -185,13 +185,13 @@ run_common(#{vm := ?VM_FATE_SOPHIA_1 = VMVersion, abi := ABIVersion},
             OldContext  = aetx_env:context(TxEnv0),
             Spec = #{ contract => ContractAddress
                     , call     => CallData
+                    , code     => Code
                     , gas      => Gas
                     },
             Env0 = maps:with(?FATE_VM_SPEC_FIELDS, CallDef),
             %% TODO: This should be replaced once the fate
             %% chain connection is implemented
-            Env  = Env0#{ contracts => #{ContractAddress => Code}
-                        , tx_env   => aetx_env:set_context(TxEnv0, aetx_contract)
+            Env  = Env0#{ tx_env   => aetx_env:set_context(TxEnv0, aetx_contract)
                         },
 
             case aefa_fate:run(Spec, Env) of

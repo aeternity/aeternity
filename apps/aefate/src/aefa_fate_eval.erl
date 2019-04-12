@@ -44,7 +44,7 @@ eval({'PUSH' , Arg0}, EngineState) ->
 eval('DUPA', EngineState) ->
     {next, aefa_fate_op:dup(EngineState)};
 
-eval({'DUP', Arg0}, EngineState) ->
+eval({'DUP' , Arg0}, EngineState) ->
     {next, aefa_fate_op:dup(Arg0, EngineState)};
 
 eval({'POP' , Arg0}, EngineState) ->
@@ -185,7 +185,7 @@ eval({'VARIANT_ELEMENT' , Arg0, Arg1, Arg2}, EngineState) ->
 eval('BITS_NONEA', EngineState) ->
     {next, aefa_fate_op:bits_none(EngineState)};
 
-eval({'BITS_NONE', Arg0}, EngineState) ->
+eval({'BITS_NONE' , Arg0}, EngineState) ->
     {next, aefa_fate_op:bits_none(Arg0, EngineState)};
 
 eval('BITS_ALLA', EngineState) ->
@@ -329,6 +329,9 @@ eval('SHA256', EngineState) ->
 eval('BLAKE2B', EngineState) ->
     {next, aefa_fate_op:blake2b(EngineState)};
 
+eval({'BALANCE_OTHER' , Arg0, Arg1}, EngineState) ->
+    {next, aefa_fate_op:balance_other(Arg0, Arg1, EngineState)};
+
 eval({'DUMMY7ARG' , Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6}, EngineState) ->
     {next, aefa_fate_op:dummyarg(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, EngineState)};
 
@@ -346,4 +349,3 @@ eval('NOP', EngineState) ->
 
 eval(Op,_EngineState) ->
     throw({error, unknown_op, Op}).
-

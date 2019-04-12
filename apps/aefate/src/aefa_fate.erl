@@ -47,6 +47,11 @@
         , abort/2
         ]).
 
+%% For unit tests
+-ifdef(TEST).
+-export([ run_with_cache/3
+        ]).
+-endif.
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 
@@ -60,8 +65,17 @@
 %%% API
 %%%===================================================================
 
-run(What, Chain) ->
-    try execute(setup_engine(What, Chain)) of
+-ifdef(TEST).
+run_with_cache(What, Spec, Cache) ->
+    try execute(setup_engine(What, Spec, Cache)) of
+        Res -> {ok, Res}
+    catch
+        throw:{?MODULE, E, ES} -> {error, E, ES}
+    end.
+-endif.
+
+run(What, Env) ->
+    try execute(setup_engine(What, Env)) of
         Res -> {ok, Res}
     catch
         throw:{?MODULE, E, ES} -> {error, E, ES}
@@ -73,8 +87,8 @@ get_trace(#{trace := T}) ->
 return_value(#{accumulator := A}) ->
     A.
 
-tx_env(#{chain := #{tx_env := TxEnv}}) ->
-    TxEnv.
+tx_env(#{chain_api := API}) ->
+    aefa_chain_api:tx_env(API).
 
 gas(#{gas := Gas}) ->
     %% TODO: The gas is not calculated yet
@@ -84,9 +98,8 @@ logs(#{logs := Logs}) ->
     %% TODO: Logs are not constructed yet
     Logs.
 
-final_trees(#{chain := #{trees := Trees}}) ->
-    %% TODO: This should push cached changes to the trees
-    Trees.
+final_trees(#{chain_api := API}) ->
+    aefa_chain_api:final_trees(API).
 
 
 %%%===================================================================
@@ -137,7 +150,12 @@ abort({value_does_not_match_type, Val, Type}, ES) ->
 abort({trying_to_reach_bb, BB}, ES) ->
     ?t("Trying to jump to non existing bb: ~p", [BB], ES);
 abort({trying_to_call_function, Name}, ES) ->
-    ?t("Trying to call undefined function: ~p", [Name], ES).
+    ?t("Trying to call undefined function: ~p", [Name], ES);
+abort({trying_to_call_contract, Pubkey}, ES) ->
+    ?t("Trying to call invalid contract: ~p", [Pubkey], ES);
+abort(bad_byte_code, ES) ->
+    ?t("Bad byte code", [], ES).
+
 
 abort(E) -> throw({add_engine_state, E}).
 
@@ -171,39 +189,54 @@ step([I|Is], EngineState0) ->
 
 %% -----------------------------------------------------------
 
+setup_engine(#{ contract := <<_:256>> = ContractPubkey
+              , code := ByteCode} = Spec, State) ->
+    try aeb_fate_asm:bytecode_to_fate_code(ByteCode, []) of
+        Code ->
+            Address = aeb_fate_data:make_address(ContractPubkey),
+            Cache = #{ Address => Code },
+            setup_engine(Spec, State, Cache)
+    catch _:_ ->
+            abort(bad_bytecode, no_state)
+    end.
 
-
-setup_engine(#{ contract := Contract
+setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , call := Call
               , gas := Gas
               },
-             Chain) ->
+             Spec, Cache) ->
     {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
-    ES1 = new_engine_state(Gas, Chain),
-    ES2 = set_function(Contract, Function, ES1),
+    Address = aeb_fate_data:make_address(ContractPubkey),
+    ES1 = new_engine_state(Gas, Spec, aefa_chain_api:new(Spec), Cache),
+    ES2 = set_function(Address, Function, ES1),
     ES3 = push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
     {ok, ES4} = check_signature_and_bind_args(Signature, ES3),
-    ES4.
+    ES4#{caller => aeb_fate_data:make_address(maps:get(caller, Spec))}.
 
-
-
-set_function(Contract, Function, #{ chain := Chain
-                                  , contracts := Contracts} = ES) ->
+set_function(?FATE_ADDRESS(_) = Address, Function,
+             #{ current_contract := Address } = ES) ->
+    set_current_function(Function, ES);
+set_function(?FATE_ADDRESS(Pubkey) = Address, Function,
+             #{ chain_api := APIState, contracts := Contracts} = ES) ->
     {ES2, #{functions := Code}} =
-        case maps:get(Contract, Contracts, void) of
+        case maps:get(Address, Contracts, void) of
             void ->
-                ContractCode = chain_get_contract(Contract, Chain),
-                {ES#{contracts => maps:put(Contract, ContractCode, Contracts)},
-                 ContractCode};
-            ContractCode ->
-                {ES, ContractCode}
+                case aefa_chain_api:contract_fate_code(Pubkey, APIState) of
+                    {ok, ContractCode, APIState1} ->
+                        Cache = maps:put(Pubkey, ContractCode, Contracts),
+                        {ES#{contracts => Cache, chain_api => APIState1}, ContractCode};
+                    error ->
+                        abort({trying_to_call_contract, Pubkey}, ES)
+                end;
+            ContractCode -> {ES, ContractCode}
         end,
-    ES3 = ES2#{current_contract => Contract},
+    ES3 = ES2#{current_contract => Address},
     ES4 = ES3#{functions => Code},
-    set_current_function(Function, ES4).
+    ES5 = ES4#{caller => maps:get(current_contract, ES)},
+    set_current_function(Function, ES5).
 
 %get_current_contract(#{current_contract := Contract}) ->
 %    Contract.
@@ -446,30 +479,23 @@ store_var(Var, Val, [Env|Envs]) ->
 %% New state
 
 
-new_engine_state(Gas, Chain) ->
+new_engine_state(Gas, Spec, APIState, Contracts) ->
     #{ current_bb => 0
      , bbs => #{}
      , memory => [] %% Stack of environments (name => val)
-     , chain => Chain
+     , chain_api => APIState
      , trace => []
      , accumulator => ?FATE_VOID
      , accumulator_stack => []
      , functions => #{} %% Cache for current contract.
-     , contracts => #{} %% Cache for loaded contracts.
+     , contracts => Contracts %% Cache for loaded contracts.
      , current_contract => ?FATE_VOID
      , current_function => ?FATE_VOID
      , call_stack => []
+     , caller => aeb_fate_data:make_address(maps:get(caller, Spec))
      , gas => Gas %% TODO: Not used properly yet
      , logs => [] %% TODO: Not used properly yet
      }.
 
 %% ----------------------------
-
-%% TODO: real chain interface
-chain_get_contract(ContractAddress, #{ contracts :=  Contracts} = _Chain) ->
-    case maps:get(ContractAddress, Contracts, void) of
-        void -> throw({error, calling, ContractAddress});
-        C -> C
-    end.
-
 
