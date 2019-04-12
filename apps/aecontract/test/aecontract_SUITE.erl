@@ -141,7 +141,10 @@
 %%%===================================================================
 
 all() ->
-    [{group, protocol_interaction}, {group, aevm_1}, {group, aevm_2}, {group, aevm_3}].
+    [{group, protocol_interaction},
+     {group, aevm_1}, {group, aevm_2}, {group, aevm_3},
+     {group, fate_1}
+    ].
 
 %% To skip one level of indirection...
 -define(ALL_TESTS, [{group, transactions}, {group, state_tree}, {group, sophia},
@@ -328,6 +331,7 @@ init_per_group(_Grp, Cfg) ->
 end_per_group(Grp, Cfg) when Grp =:= aevm_1;
                              Grp =:= aevm_2;
                              Grp =:= aevm_3;
+                             Grp =:= fate_1;
                              Grp =:= protocol_interaction ->
     meck:unload(aec_hard_forks),
     Cfg;
@@ -1183,12 +1187,12 @@ call_result(?ABI_FATE_SOPHIA_1,_Type, Call) ->
     case aect_call:return_type(Call) of
         ok     ->
             Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-            aeb_fate_data:decode(Res);
+            aefate_test_utils:decode(Res);
         error  ->
             {error, aect_call:return_value(Call)};
         revert ->
             Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-            {revert, aeb_fate_data:decode(Res)}
+            {revert, aefate_test_utils:decode(Res)}
     end.
 
 account_balance(PubKey, S) ->
@@ -1215,7 +1219,7 @@ make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
                                         true -> {Args}
                                      end),
             FunctionId = make_fate_function_id(Fun),
-            aeb_fate_encoding:serialize(aeb_fate_data:encode({FunctionId, Args1}))
+            aeb_fate_encoding:serialize(aefate_test_utils:encode({FunctionId, Args1}))
     end.
 
 %% TODO: This does not belong here
