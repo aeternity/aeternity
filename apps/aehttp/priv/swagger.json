@@ -106,7 +106,13 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200"
+              "type" : "object",
+              "properties" : {
+                "hash" : {
+                  "type" : "string",
+                  "description" : "Hash"
+                }
+              }
             }
           },
           "404" : {
@@ -129,7 +135,14 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_1"
+              "type" : "object",
+              "properties" : {
+                "height" : {
+                  "type" : "integer",
+                  "format" : "int64",
+                  "description" : "Height"
+                }
+              }
             }
           },
           "404" : {
@@ -393,7 +406,15 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_2"
+              "type" : "object",
+              "properties" : {
+                "count" : {
+                  "type" : "integer",
+                  "format" : "int64",
+                  "description" : "Count",
+                  "minimum" : 1
+                }
+              }
             }
           },
           "400" : {
@@ -1102,7 +1123,12 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_3"
+              "type" : "object",
+              "properties" : {
+                "pubkey" : {
+                  "type" : "string"
+                }
+              }
             }
           }
         }
@@ -2212,7 +2238,9 @@
       "items" : {
         "type" : "integer",
         "format" : "int32"
-      }
+      },
+      "minItems" : 42,
+      "maxItems" : 42
     },
     "Uri" : {
       "type" : "string"
@@ -2267,15 +2295,10 @@
         }
       },
       "example" : {
-        "prev_hash" : null,
         "nonce" : 1,
         "version" : 5,
-        "miner" : null,
         "target" : 6,
-        "beneficiary" : null,
-        "state_hash" : null,
         "pow" : "",
-        "prev_key_hash" : null,
         "time" : 5,
         "hash" : { },
         "height" : 0,
@@ -2322,15 +2345,9 @@
         }
       },
       "example" : {
-        "txs_hash" : null,
-        "state_hash" : null,
-        "signature" : null,
         "pof_hash" : "pof_hash",
-        "prev_hash" : null,
-        "prev_key_hash" : null,
         "time" : 7,
         "version" : 9,
-        "hash" : null,
         "height" : 2
       }
     },
@@ -2346,27 +2363,16 @@
       },
       "example" : {
         "micro_block" : {
-          "txs_hash" : null,
-          "state_hash" : null,
-          "signature" : null,
           "pof_hash" : "pof_hash",
-          "prev_hash" : null,
-          "prev_key_hash" : null,
           "time" : 7,
           "version" : 9,
-          "hash" : null,
           "height" : 2
         },
         "key_block" : {
-          "prev_hash" : null,
           "nonce" : 1,
           "version" : 5,
-          "miner" : null,
           "target" : 6,
-          "beneficiary" : null,
-          "state_hash" : null,
           "pow" : "",
-          "prev_key_hash" : null,
           "time" : 5,
           "hash" : { },
           "height" : 0,
@@ -2393,7 +2399,6 @@
           },
           "block_hash" : { },
           "block_height" : 6,
-          "hash" : null,
           "signatures" : [ "signatures", "signatures" ]
         }, {
           "tx" : {
@@ -2402,7 +2407,6 @@
           },
           "block_hash" : { },
           "block_height" : 6,
-          "hash" : null,
           "signatures" : [ "signatures", "signatures" ]
         } ]
       }
@@ -2524,7 +2528,6 @@
         }
       },
       "example" : {
-        "oracle_id" : null,
         "response_ttl" : {
           "type" : "delta",
           "value" : 1
@@ -2534,8 +2537,7 @@
         "fee" : 5,
         "sender_nonce" : 0,
         "id" : { },
-        "ttl" : 6,
-        "sender_id" : null
+        "ttl" : 6
       }
     },
     "OracleQueries" : {
@@ -2551,7 +2553,6 @@
       },
       "example" : {
         "oracle_queries" : [ {
-          "oracle_id" : null,
           "response_ttl" : {
             "type" : "delta",
             "value" : 1
@@ -2561,10 +2562,8 @@
           "fee" : 5,
           "sender_nonce" : 0,
           "id" : { },
-          "ttl" : 6,
-          "sender_id" : null
+          "ttl" : 6
         }, {
-          "oracle_id" : null,
           "response_ttl" : {
             "type" : "delta",
             "value" : 1
@@ -2574,8 +2573,7 @@
           "fee" : 5,
           "sender_nonce" : 0,
           "id" : { },
-          "ttl" : 6,
-          "sender_id" : null
+          "ttl" : 6
         } ]
       }
     },
@@ -2616,7 +2614,6 @@
         "fee" : 6,
         "ttl" : 1,
         "nonce" : 5,
-        "sender_id" : null,
         "recipient_id" : { }
       }
     },
@@ -2764,8 +2761,7 @@
         "fee" : 6,
         "query_fee" : 0,
         "ttl" : 1,
-        "nonce" : 5,
-        "sender_id" : null
+        "nonce" : 5
       }
     },
     "OracleRespondTx" : {
@@ -2803,7 +2799,6 @@
           "type" : "delta",
           "value" : 1
         },
-        "oracle_id" : null,
         "query_id" : { },
         "response" : "response",
         "fee" : 0,
@@ -2871,10 +2866,8 @@
         "id" : { },
         "ttl" : 0,
         "pointers" : [ {
-          "id" : null,
           "key" : "key"
         }, {
-          "id" : null,
           "key" : "key"
         } ]
       }
@@ -2901,13 +2894,6 @@
           "type" : "integer",
           "format" : "int64"
         }
-      },
-      "example" : {
-        "commitment_id" : { },
-        "account_id" : null,
-        "fee" : 0,
-        "ttl" : 6,
-        "nonce" : 1
       }
     },
     "NameClaimTx" : {
@@ -2936,14 +2922,6 @@
           "type" : "integer",
           "format" : "int64"
         }
-      },
-      "example" : {
-        "name_salt" : 0,
-        "account_id" : { },
-        "fee" : 6,
-        "name" : "name",
-        "ttl" : 1,
-        "nonce" : 5
       }
     },
     "NameUpdateTx" : {
@@ -2982,22 +2960,6 @@
           "type" : "integer",
           "format" : "int64"
         }
-      },
-      "example" : {
-        "name_ttl" : 0,
-        "client_ttl" : 6,
-        "account_id" : null,
-        "fee" : 1,
-        "name_id" : { },
-        "ttl" : 5,
-        "nonce" : 5,
-        "pointers" : [ {
-          "id" : null,
-          "key" : "key"
-        }, {
-          "id" : null,
-          "key" : "key"
-        } ]
       }
     },
     "NameTransferTx" : {
@@ -3025,14 +2987,6 @@
           "type" : "integer",
           "format" : "int64"
         }
-      },
-      "example" : {
-        "account_id" : null,
-        "fee" : 0,
-        "name_id" : { },
-        "ttl" : 6,
-        "nonce" : 1,
-        "recipient_id" : null
       }
     },
     "NameRevokeTx" : {
@@ -3057,13 +3011,6 @@
           "type" : "integer",
           "format" : "int64"
         }
-      },
-      "example" : {
-        "account_id" : null,
-        "fee" : 0,
-        "name_id" : { },
-        "ttl" : 6,
-        "nonce" : 1
       }
     },
     "CommitmentId" : {
@@ -3099,7 +3046,6 @@
         }
       },
       "example" : {
-        "id" : null,
         "key" : "key"
       }
     },
@@ -3167,14 +3113,11 @@
       },
       "example" : {
         "delegate_ids" : [ null, null ],
-        "responder_id" : null,
         "locked_until" : 9,
         "lock_period" : 0,
         "responder_amount" : 0,
         "initiator_amount" : 0,
         "round" : 0,
-        "initiator_id" : null,
-        "state_hash" : null,
         "id" : { },
         "solo_round" : 0,
         "channel_amount" : 0,
@@ -3235,19 +3178,6 @@
           "description" : "Root hash of the channel's internal state tree",
           "$ref" : "#/definitions/EncodedHash"
         }
-      },
-      "example" : {
-        "responder_amount" : 0,
-        "initiator_amount" : 0,
-        "initiator_id" : { },
-        "responder_id" : null,
-        "state_hash" : null,
-        "fee" : 0,
-        "push_amount" : 0,
-        "ttl" : 0,
-        "nonce" : 0,
-        "lock_period" : 0,
-        "channel_reserve" : 0
       }
     },
     "ChannelDepositTx" : {
@@ -3290,16 +3220,6 @@
           "description" : "Channel's next round",
           "minimum" : 0
         }
-      },
-      "example" : {
-        "amount" : 0,
-        "from_id" : null,
-        "round" : 0,
-        "state_hash" : null,
-        "fee" : 0,
-        "channel_id" : { },
-        "ttl" : 0,
-        "nonce" : 0
       }
     },
     "ChannelWithdrawTx" : {
@@ -3342,16 +3262,6 @@
           "description" : "Channel's next round",
           "minimum" : 0
         }
-      },
-      "example" : {
-        "amount" : 0,
-        "round" : 0,
-        "state_hash" : null,
-        "fee" : 0,
-        "to_id" : null,
-        "channel_id" : { },
-        "ttl" : 0,
-        "nonce" : 0
       }
     },
     "ChannelForceProgressTx" : {
@@ -3441,15 +3351,6 @@
           "format" : "int64",
           "minimum" : 0
         }
-      },
-      "example" : {
-        "from_id" : null,
-        "responder_amount_final" : 0,
-        "fee" : 0,
-        "initiator_amount_final" : 0,
-        "channel_id" : { },
-        "ttl" : 0,
-        "nonce" : 0
       }
     },
     "ChannelCloseSoloTx" : {
@@ -3484,15 +3385,6 @@
           "type" : "string",
           "description" : "Proof of inclusion containing information for closing the channel"
         }
-      },
-      "example" : {
-        "from_id" : null,
-        "payload" : "payload",
-        "fee" : 0,
-        "poi" : "poi",
-        "channel_id" : { },
-        "ttl" : 0,
-        "nonce" : 0
       }
     },
     "ChannelSlashTx" : {
@@ -3527,15 +3419,6 @@
           "type" : "string",
           "description" : "Proof of inclusion containing information for closing the channel"
         }
-      },
-      "example" : {
-        "from_id" : null,
-        "payload" : "payload",
-        "fee" : 0,
-        "poi" : "poi",
-        "channel_id" : { },
-        "ttl" : 0,
-        "nonce" : 0
       }
     },
     "ChannelSettleTx" : {
@@ -3573,15 +3456,6 @@
           "format" : "int64",
           "minimum" : 0
         }
-      },
-      "example" : {
-        "from_id" : null,
-        "responder_amount_final" : 0,
-        "fee" : 0,
-        "initiator_amount_final" : 0,
-        "channel_id" : { },
-        "ttl" : 0,
-        "nonce" : 0
       }
     },
     "ChannelSnapshotSoloTx" : {
@@ -3612,14 +3486,6 @@
           "format" : "int64",
           "minimum" : 0
         }
-      },
-      "example" : {
-        "from_id" : null,
-        "payload" : "payload",
-        "fee" : 0,
-        "channel_id" : { },
-        "ttl" : 0,
-        "nonce" : 0
       }
     },
     "PubKey" : {
@@ -3761,7 +3627,6 @@
         },
         "block_hash" : { },
         "block_height" : 6,
-        "hash" : null,
         "signatures" : [ "signatures", "signatures" ]
       }
     },
@@ -3969,18 +3834,14 @@
       "example" : {
         "gas_price" : 1,
         "return_type" : "return_type",
-        "return_value" : null,
         "log" : [ {
-          "address" : null,
           "data" : { },
           "topics" : [ 5, 5 ]
         }, {
-          "address" : null,
           "data" : { },
           "topics" : [ 5, 5 ]
         } ],
         "caller_id" : { },
-        "contract_id" : null,
         "gas_used" : 5,
         "caller_nonce" : 0,
         "height" : 6
@@ -4007,7 +3868,6 @@
         }
       },
       "example" : {
-        "address" : null,
         "data" : { },
         "topics" : [ 5, 5 ]
       }
@@ -4061,7 +3921,6 @@
       "example" : {
         "vm_version" : 5248,
         "log" : "log",
-        "owner_id" : null,
         "active" : true,
         "deposit" : 1,
         "abi_version" : 39500,
@@ -4229,18 +4088,14 @@
           "call_obj" : {
             "gas_price" : 1,
             "return_type" : "return_type",
-            "return_value" : null,
             "log" : [ {
-              "address" : null,
               "data" : { },
               "topics" : [ 5, 5 ]
             }, {
-              "address" : null,
               "data" : { },
               "topics" : [ 5, 5 ]
             } ],
             "caller_id" : { },
-            "contract_id" : null,
             "gas_used" : 5,
             "caller_nonce" : 0,
             "height" : 6
@@ -4252,18 +4107,14 @@
           "call_obj" : {
             "gas_price" : 1,
             "return_type" : "return_type",
-            "return_value" : null,
             "log" : [ {
-              "address" : null,
               "data" : { },
               "topics" : [ 5, 5 ]
             }, {
-              "address" : null,
               "data" : { },
               "topics" : [ 5, 5 ]
             } ],
             "caller_id" : { },
-            "contract_id" : null,
             "gas_used" : 5,
             "caller_nonce" : 0,
             "height" : 6
@@ -4295,18 +4146,14 @@
         "call_obj" : {
           "gas_price" : 1,
           "return_type" : "return_type",
-          "return_value" : null,
           "log" : [ {
-            "address" : null,
             "data" : { },
             "topics" : [ 5, 5 ]
           }, {
-            "address" : null,
             "data" : { },
             "topics" : [ 5, 5 ]
           } ],
           "caller_id" : { },
-          "contract_id" : null,
           "gas_used" : 5,
           "caller_nonce" : 0,
           "height" : 6
@@ -4610,7 +4457,6 @@
         "amount" : 0,
         "call_data" : { },
         "caller_id" : { },
-        "contract_id" : null,
         "fee" : 0,
         "gas" : 0,
         "abi_version" : 9606,
@@ -4687,7 +4533,6 @@
       "example" : {
         "gas_price" : 0,
         "amount" : 0,
-        "contract_id" : null,
         "fee" : 0,
         "nonce" : 0,
         "ttl" : 0,
@@ -4770,15 +4615,10 @@
       "example" : {
         "micro_blocks" : [ { }, { } ],
         "key_block" : {
-          "prev_hash" : null,
           "nonce" : 1,
           "version" : 5,
-          "miner" : null,
           "target" : 6,
-          "beneficiary" : null,
-          "state_hash" : null,
           "pow" : "",
-          "prev_key_hash" : null,
           "time" : 5,
           "hash" : { },
           "height" : 0,

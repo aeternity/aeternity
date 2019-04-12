@@ -39,10 +39,15 @@ local setup differs, you need to set these variables yourself.
 
 ```
 ERTS_VERSION=9.3
+FORCE_STYRENE_REINSTALL=false
+JDK_URL=https://download.java.net/java/GA/jdk11/9/GPL/openjdk-11.0.2_windows-x64_bin.zip
 OTP_VERSION=20.3
-WIN_OTP_PATH=C:\Program Files\erl
-WIN_MSYS2_ROOT=C:\msys64
 PLATFORM=x64
+WIN_JDK_BASEPATH=C:\Program Files\Java
+WIN_JDK_PATH=C:\Program Files\Java\jdk11
+WIN_MSYS2_ROOT=C:\msys64
+WIN_OTP_PATH=C:\Program Files\erl
+
 ```
 
 You can execute the script directly in a `cmd` window.
@@ -55,8 +60,8 @@ script `scripts/windows/msys2_shell.bat` to do so.
 That script uses the following environment variables:
 
 ```
-WIN_MSYS2_ROOT=C:\msys64
 PLATFORM=x64
+WIN_MSYS2_ROOT=C:\msys64
 ```
 
 In the opened shell go into your build directory and build the system like on
