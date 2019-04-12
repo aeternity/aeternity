@@ -104,7 +104,7 @@ timestamp_in_msecs(#state{} = S) ->
 %%% Slightly more involved getters with caching
 
 -spec contract_fate_code(pubkey(), state()) -> 'error' |
-                                               {'ok', binary(), state()}.
+                                               {'ok', term(), state()}.
 contract_fate_code(Pubkey, #state{primop_state = PState} = S) ->
     case aeprimop_state:find_contract_without_store(Pubkey, PState) of
         none -> error;
