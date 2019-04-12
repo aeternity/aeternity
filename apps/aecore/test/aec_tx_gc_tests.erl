@@ -21,6 +21,7 @@ tx_gc_test_() ->
              {ok, _} = aec_tx_pool_gc:start_link(),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_tx_gc:start_link(),
+             meck:new(aec_governance, [passthrough]),
              meck:expect(aec_governance, minimum_gas_price, 1, 1),
              meck:new(aec_tx_pool, [passthrough]),
              meck:expect(aec_tx_pool, minimum_miner_gas_price, 0, 1),
@@ -37,6 +38,7 @@ tx_gc_test_() ->
              ok = aec_tx_pool:stop(),
              ok = aec_tx_pool_gc:stop(),
              meck:unload(aec_tx_pool),
+             meck:unload(aec_governance),
              ok
      end,
      [{"Test that GCed transactions are removed from the DB",

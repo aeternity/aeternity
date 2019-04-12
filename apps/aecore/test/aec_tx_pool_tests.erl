@@ -24,6 +24,7 @@ tx_pool_test_() ->
              GB = aec_test_utils:genesis_block(),
              aec_chain_state:insert_block(GB),
              aec_test_utils:mock_block_target_validation(), %% Mocks aec_governance.
+             {ok, _} = aec_tx_gc:start_link(),
              {ok, _} = aec_tx_pool_gc:start_link(),
              {ok, _} = aec_tx_pool:start_link(),
              %% Start `aec_keys` merely for generating realistic test
@@ -49,6 +50,7 @@ tx_pool_test_() ->
              aec_test_utils:unmock_block_target_validation(), %% Unloads aec_governance mock.
              ok = aec_tx_pool:stop(),
              ok = aec_tx_pool_gc:stop(),
+             ok = aec_tx_gc:stop(),
              meck:unload(aeu_time),
              meck:unload(aec_jobs_queues),
              meck:unload(aec_tx_pool),

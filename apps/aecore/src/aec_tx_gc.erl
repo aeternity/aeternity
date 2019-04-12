@@ -53,9 +53,10 @@
 %%% API
 %%%===================================================================
 
--spec schedule_removal(aec_tx_pool:tx_hash(), aec_blocks:height()) -> ok.
+-spec schedule_removal(aec_tx_pool:tx_hash() | atom(), aec_blocks:height()) -> ok.
 schedule_removal(TxHash, Height) ->
-    add_tx_gc(TxHash, Height + ?TTL).
+    add_tx_gc(TxHash, Height + ?TTL),
+    ok.
 
 -spec gc(aec_blocks:height()) -> ok.
 gc(Height) ->

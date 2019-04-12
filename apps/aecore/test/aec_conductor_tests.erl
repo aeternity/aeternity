@@ -31,10 +31,12 @@ setup_minimal() ->
     aec_test_utils:mock_time(),
     {ok, _} = aec_tx_pool_gc:start_link(),
     {ok, _} = aec_tx_pool:start_link(),
+    {ok, _} = aec_tx_gc:start_link(),
     TmpKeysDir.
 
 teardown_minimal(TmpKeysDir) ->
     ok = application:unset_env(aecore, beneficiary),
+    ok = aec_tx_gc:stop(),
     ok = aec_tx_pool:stop(),
     ok = aec_tx_pool_gc:stop(),
     aec_block_generator:stop(),
