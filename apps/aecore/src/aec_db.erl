@@ -627,11 +627,11 @@ add_tx(STx) ->
        end).
 
 add_tx_hash_to_mempool(TxHash) when is_binary(TxHash) ->
-    Obj = #aec_tx_pool{key = TxHash, value = []},
+    Obj = #aec_tx_pool{key = TxHash, value = ?TX_IN_MEMPOOL},
     ?t(write(aec_tx_pool, Obj)).
 
 is_in_tx_pool(TxHash) ->
-    ?t(mnesia:read(aec_tx_pool, TxHash)) =/= [].
+    ?t(mnesia:read(aec_tx_pool, TxHash)) =/= ?TX_IN_MEMPOOL.
 
 remove_tx_from_mempool(TxHash) when is_binary(TxHash) ->
     ?t(delete(aec_tx_pool, TxHash)).

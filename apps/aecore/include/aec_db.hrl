@@ -13,8 +13,8 @@
 -record(aec_name_service_cache , {key, value}).
 -record(aec_name_service_state , {key, value}).
 
--record(aec_signed_tx          , {key, value}).
--record(aec_tx_location        , {key, value}).
--record(aec_tx_pool            , {key, value}).
+-record(aec_signed_tx          , {key :: SignedTxHash :: aec_hash:hash(), value :: aetx_sign:signed_tx() | tuple()}).
+-record(aec_tx_location        , {key :: SignedTxHash :: aec_hash:hash(), value :: BlockHash :: aec_hash:hash()}).
+-record(aec_tx_pool            , {key :: SignedTxHash :: aec_hash:hash(), value :: PlaceHolder :: []}).
 -record(aec_discovered_pof     , {key, value}).
 
