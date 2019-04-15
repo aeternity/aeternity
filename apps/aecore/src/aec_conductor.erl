@@ -313,6 +313,9 @@ handle_info(init_continue, State) ->
 handle_info({worker_reply, Pid, Res}, State) ->
     State1 = handle_worker_reply(Pid, Res, State),
     {noreply, State1};
+handle_info({stratum_reply, Res}, State) ->
+    State1 = handle_stratum_reply(Res, State),
+    {noreply, State1};
 handle_info({'DOWN', Ref, process, Pid, Why}, State) when Why =/= normal->
     State1 = handle_monitor_message(Ref, Pid, Why, State),
     {noreply, State1};
@@ -535,6 +538,9 @@ wrap_worker_fun(Fun) ->
     fun() ->
             Server ! {worker_reply, self(), Fun()}
     end.
+
+handle_stratum_reply(Reply, State) ->
+    worker_reply(mining, Reply, State).
 
 handle_worker_reply(Pid, Reply, State) ->
     Workers = State#state.workers,
@@ -829,8 +835,9 @@ start_mining_(#state{stratum_mode = true,
     epoch_mining:info("Stratum dispatch ~p", [HeaderBin]),
     Target            = aec_blocks:target(Candidate#candidate.block),
     Info              = [{top_block_hash, State#state.top_block_hash}],
+    Server            = self(),
     aec_events:publish(start_mining, Info), %% TODO: check if need to swap for stratum specific
-    aec_events:publish(stratum_new_candidate, [{HeaderBin, Candidate, Target}]),
+    aec_events:publish(stratum_new_candidate, [{HeaderBin, Candidate, Target, Server}]),
     Candidate1 = register_stratum(Candidate),
     State1 = State#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]},
     State1.
@@ -843,8 +850,9 @@ register_miner(Candidate = #candidate{refs  = Refs}, Nonce, MinerConfig) ->
     Candidate#candidate{refs  = Refs + 1,
                         nonce = NextNonce}.
 
-handle_mining_reply(_Reply, #state{key_block_candidates = undefined} = State) ->
+handle_mining_reply(Reply, #state{key_block_candidates = undefined} = State) ->
     %% Something invalidated the block candidates already.
+    epoch_mining:debug("Candidate invalidated in conductor ~p", [Reply]),
     start_mining_(State);
 handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
     Candidates = State#state.key_block_candidates,

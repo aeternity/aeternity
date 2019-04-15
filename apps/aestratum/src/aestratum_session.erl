@@ -226,7 +226,8 @@ send_authorize_rsp1({error, user_and_password}, #{id := Id}, State) ->
     %% authorize request.
     {send, encode(RspMap), State}.
 
-send_submit_rsp1({ok, Share, Job}, #{id := Id}, #state{jobs = Jobs} = State) ->
+send_submit_rsp1({ok, Share, Job}, #{id := Id, miner_nonce := MinerNonce, pow := Pow},
+                 #state{jobs = Jobs} = State) ->
     JobId = aestratum_job:id(Job),
     Job1 = aestratum_job:add_share(Share, Job),
     Jobs1 = aestratum_job_queue:replace(JobId, Job1, Jobs),
@@ -235,7 +236,7 @@ send_submit_rsp1({ok, Share, Job}, #{id := Id}, #state{jobs = Jobs} = State) ->
     BlockHash = aestratum_job:block_hash(Job),
     aestratum_reward:submit_share(User, ShareTarget, BlockHash),
     case aestratum_share:validity(Share) of
-        valid_block -> ok; %% TODO: submit to the chain
+        valid_block -> aestratum_chain:submit_solution(BlockHash, MinerNonce, Pow);
         valid_share -> ok
     end,
     RspMap = #{type => rsp, method => submit, id => Id, result => true},
