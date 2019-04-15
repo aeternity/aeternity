@@ -18,7 +18,7 @@ override_dh_auto_build:
 # when run in CircleCI. Prevents the presence of broken/dummy
 # debian/rules.
 override_dh_auto_clean:
-	if [ -z "$CIRCLECI" ]; then \
+	if [ -z "$$CIRCLECI" ]; then \
 		$(MAKE) prod-clean; \
 		$(MAKE) clean; \
 		$(MAKE) distclean; \
