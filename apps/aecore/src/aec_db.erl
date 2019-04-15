@@ -566,7 +566,7 @@ gc_tx(TxHash) ->
            mempool ->
                delete(aec_tx_pool, TxHash),
                delete(aec_signed_tx, TxHash),
-               write(aec_tx_gc, #aec_tx_gc{key = TxHash, value = 0});
+               write(aec_tx_gc, #aec_tx_gc{key = TxHash, value = []});
            none ->
                ok;
            not_found ->
