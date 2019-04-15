@@ -332,6 +332,9 @@ eval('BLAKE2B', EngineState) ->
 eval({'BALANCE_OTHER' , Arg0, Arg1}, EngineState) ->
     {next, aefa_fate_op:balance_other(Arg0, Arg1, EngineState)};
 
+eval({'SETELEMENT' , Arg0, Arg1, Arg2, Arg3}, EngineState) ->
+    {next, aefa_fate_op:setelement(Arg0, Arg1, Arg2, Arg3, EngineState)};
+
 eval({'DUMMY7ARG' , Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6}, EngineState) ->
     {next, aefa_fate_op:dummyarg(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, EngineState)};
 

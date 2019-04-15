@@ -16,7 +16,7 @@ gen_dispatch(Filename) ->
     Instructions = lists:flatten([gen_eval(Op)++"\n" || Op <- Ops]),
     io:format(File,
               "~s"
-              "eval(Op, EngineState) ->\n"
+              "eval(Op,_EngineState) ->\n"
               "    throw({error, unknown_op, Op}).\n"
              , [Instructions]),
     io:format(File, "\n", []),
