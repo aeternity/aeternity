@@ -302,7 +302,7 @@ check_same_type(T, [A|As]) ->
 bind_args(N, _, [], Mem, EngineState) ->
     new_env(Mem, drop(N, EngineState));
 bind_args(N, [Arg|Args], [Type|Types], Mem, EngineState) ->
-    bind_args(N+1, Args, Types, Mem#{{arg, N} => {Arg, Type}}, EngineState).
+    bind_args(N+1, Args, Types, Mem#{{arg, N} => {val, Arg}}, EngineState).
 
 %% TODO: Add types (and tests).
 check_type(any, _) -> true;
@@ -461,19 +461,19 @@ pop_call_stack(#{ call_stack := [{Contract, Function, BB, Mem}| Rest]
 new_env(Mem, #{ memory := Envs} = EngineState) ->
     EngineState#{ memory => [Mem|Envs]}.
 
-lookup_var(Var, [Env|Envs], ES) ->
+lookup_var(Var, [Env|_Envs], ES) ->
     case maps:get(Var, Env, undefined) of
-        {Value, _Type} ->
+        {val, Value} ->
             Value;
         undefined ->
-            lookup_var(Var, Envs, ES)
+            abort({undefined_var, Var}, ES)
     end;
 lookup_var(Var, [], ES) ->
     abort({undefined_var, Var}, ES).
 
+
 store_var(Var, Val, [Env|Envs]) ->
-    T = type(Val),
-    [Env#{ Var => {Val, T}} | Envs].
+    [Env#{ Var => {val, Val}} | Envs].
 
 %% ------------------------------------------------------
 %% New state

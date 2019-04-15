@@ -144,6 +144,8 @@ memory_restore() ->
     [ {<<"memory">>, F, A, R} ||
         {F,A,R} <-
             [ {<<"call">>, [17], 17}
+            , {<<"call2">>, [17], 17}
+            , {<<"call3">>, [17], {error, <<"Undefined var: {var,1}">>}}
             ]
     ].
 
@@ -233,7 +235,7 @@ variant() ->
         {F,A,R} <-
             [ {<<"switch">>, [{variant, [0,1], 0, {}}], 0}
             , {<<"switch">>, [{variant, [0,1], 1, {42}}], 42}
-            , {<<"switch2">>, [{variant, [0,1,2], 1, {42}}], {error,<<"Type error in switch: wrong size 3">>}}
+            , {<<"switch2">>, [{variant, [0,1,2], 1, {42}}], {error, <<"Type error in switch: wrong size 3">>}}
             , {<<"test">>, [{variant, [0,1], 1, {42}}, 1], true}
             , {<<"test">>, [{variant, [0,1], 1, {42}}, 2], false}
             , {<<"element">>, [{variant, [0,1], 1, {42}}, 1], 42}
@@ -448,10 +450,37 @@ contracts() ->
                      , 'RETURN'
                      ]}
                ]}
+           ,  {<<"call2">>
+             , {[integer], integer}
+             , [ {0, [ {'STORE', {var, 2}, {arg, 0}}
+                     , {'PUSH', {immediate, 0}}
+                     , {'CALL', {immediate, <<"write">>}}
+                     ]
+                 }
+               , {1, [ {'PUSH', {var, 2}}
+                     , 'RETURN'
+                     ]}
+               ]}
+           ,  {<<"call3">>
+             , {[integer], integer}
+             , [ {0, [ {'STORE', {var, 1}, {arg, 0}}
+                     , {'PUSH', {immediate, 0}}
+                     , {'CALL', {immediate, <<"read">>}}
+                     ]
+                 }
+               , {1, [ {'PUSH', {var, 1}}
+                     , 'RETURN'
+                     ]}
+               ]}
            , {<<"write">>
              , {[integer], integer}
              , [ {0, [ {'STORE', {var, 1}, {arg, 0}}
                      , {'RETURNR', {var, 1}}
+                     ]}
+               ]}
+           , {<<"read">>
+             , {[integer], integer}
+             , [ {0, [ {'RETURNR', {var, 1}}
                      ]}
                ]}
            , {<<"dest_add">>
