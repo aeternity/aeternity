@@ -56,6 +56,19 @@ The `master` branch tracks the ongoing efforts towards the next stable release t
 [latest-release]: https://github.com/aeternity/aeternity/releases/latest
 [master]: https://github.com/aeternity/aeternity/tree/master
 
+## Quick Start
+
+By using the installer to install the latest stable version:
+```bash
+bash <(curl -s https://raw.githubusercontent.com/aeternity/installer/v2.0.0/install.sh)
+```
+
+Or running a docker container (latest tag):
+```bash
+docker pull aeternity/aeternity
+docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity
+```
+
 ## Installation
 
 See the documenation on how to:
