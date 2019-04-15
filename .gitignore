@@ -57,3 +57,6 @@ debian/.debhelper/
 debian/aeternity-node*
 debian/changelog
 debian/files
+apps/aefate/src/aefa_fate_eval.erl
+apps/aefate/aefateasm
+apps/aefate/aefateasm.cmd
