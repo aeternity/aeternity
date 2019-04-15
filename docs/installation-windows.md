@@ -20,9 +20,8 @@ The helper scripts are located in the `installer` Git repository.
 You may download the whole repository by
 
 1. Downloading the [Git repository](https://github.com/aeternity/installer) itself;
-2. Or downloading and unpacking a
-   [Zip archive](https://github.com/aeternity/installer/archive/v1.0.0.zip)
-   provided by Github.
+2. Or downloading and unpacking a zip archive from
+    [latest GitHub release](https://github.com/aeternity/installer/releases/latest)
 
 Alternatively, you can also download the individual scripts:
 
