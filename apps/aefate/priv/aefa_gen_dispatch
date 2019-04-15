@@ -33,6 +33,7 @@ do_main(Filename) ->
     Ops = aeb_fate_generate_ops:get_ops(),
     Instructions = lists:flatten([gen_eval(Op)++"\n" || Op <- Ops]),
     io:format(File,
+	      "%%\n%% This file is generated. Any modifications will be overwritten.\n%%\n"
 	      "-module(aefa_fate_eval).\n\n"
 	      "-export([eval/2]).\n\n"
               "~s"
