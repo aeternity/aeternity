@@ -13,6 +13,7 @@
         , find_auth_call/3
         , find_channel/2
         , find_commitment/2
+        , find_contract_without_store/2
         , find_name/2
         , find_oracle/2
         , find_oracle_query/3
@@ -41,9 +42,15 @@
 
 -export([ cache_write_through/1
         , set_var/4
+        , tx_env/1
         ]).
 
 -include("aeprimop_state.hrl").
+
+-type state() :: #state{}.
+
+-export_type([ state/0
+             ]).
 
 %%%===================================================================
 %%% API
@@ -66,6 +73,9 @@ new(Trees, Height, TxEnv) ->
 final_trees(State) ->
     #state{ trees = Trees} = cache_write_through(State),
     Trees.
+
+tx_env(#state{tx_env = TxEnv}) ->
+    TxEnv.
 
 %%%===================================================================
 %%% Error handling
@@ -121,6 +131,18 @@ get_contract(Key, S) ->
 put_contract(Object, S) ->
     cache_put(contract, Object, S).
 
+%% NOTE: This does not cache the contract to avoid over-writing
+%% the correct store later
+find_contract_without_store(Pubkey, S) ->
+    case cache_find(contract, Pubkey, S) of
+        {value, _} = Res -> Res;
+        none ->
+            CTree = aec_trees:contracts(S#state.trees),
+            aect_state_tree:lookup_contract(Pubkey, CTree, [no_store])
+    end.
+
+%% NOTE: This does not cache the contract to avoid over-writing
+%% the correct store later
 get_contract_without_store(Pubkey, S) ->
     case cache_find(contract, Pubkey, S) of
         {value, C} -> C;

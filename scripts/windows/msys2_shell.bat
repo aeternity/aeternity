@@ -1,14 +1,14 @@
 @echo on
 @rem Script to open a msys2 shell ready for building.
 @rem Required vars:
-@rem    WIN_MSYS2_ROOT
 @rem    PLATFORM
+@rem    WIN_MSYS2_ROOT
 
 SETLOCAL ENABLEEXTENSIONS
 
 rem Set required vars defaults
-IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\msys64"
 IF "%PLATFORM%"=="" SET "PLATFORM=x64"
+IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\msys64"
 
 @echo Current time: %time%
 rem Set the paths appropriately

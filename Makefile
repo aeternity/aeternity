@@ -13,7 +13,7 @@ ST_CT_FLAGS = --logdir system_test/logs
 ST_CT_DIR = --dir system_test/common
 ST_CT_LOCALDIR = --dir system_test/only_local
 
-SWAGGER_CODEGEN_CLI_V = 2.3.1
+SWAGGER_CODEGEN_CLI_V = 2.4.4
 SWAGGER_CODEGEN_CLI = swagger/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
 SWAGGER_CODEGEN = java -jar $(SWAGGER_CODEGEN_CLI)
 SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
@@ -306,7 +306,7 @@ python-single-uat: swagger
 	( cd $(PYTHON_DIR) && TEST_NAME=$(TEST_NAME) $(MAKE) single-uat; )
 
 python-release-test: swagger
-	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" TARBALL=$(TARBALL) VER=$(VER) $(MAKE) release-test; )
+	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" PACKAGE=$(PACKAGE) VER=$(VER) $(MAKE) release-test; )
 
 python-package-win32-test:
 	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" PACKAGESPECFILE=$(PACKAGE_SPEC_WIN32) $(MAKE) package-win32-test; )

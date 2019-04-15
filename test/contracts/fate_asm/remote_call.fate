@@ -1,0 +1,12 @@
+;; CONTRACT: Identity
+FUNCTION init() -> {tuple, []}
+  RETURNR ()
+
+FUNCTION call(address, integer) ->  integer
+  PUSH    arg1
+  CALL_TR arg0 main
+
+FUNCTION staged_call(address, address, integer) ->  integer
+  PUSH    arg2
+  PUSH    arg0
+  CALL_TR arg1 call

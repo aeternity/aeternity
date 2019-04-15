@@ -352,4 +352,3 @@ eval('NOP', EngineState) ->
 
 eval(Op,_EngineState) ->
     throw({error, unknown_op, Op}).
-
