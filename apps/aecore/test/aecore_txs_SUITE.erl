@@ -183,16 +183,22 @@ missing_tx_gossip(Config) ->
     {ok, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  100), %% Ok
     {ok, TxH5} = add_spend_tx(N2, 1000, 20000 * aec_test_utils:min_gas_price(),  5,  100), %% Ok
 
-    none = rpc:call(N2, aec_chain, find_tx_with_location, [TxH1]),
-    none = rpc:call(N2, aec_chain, find_tx_with_location, [TxH4]),
+    {ok, Tx1Hash} = aeser_api_encoder:safe_decode(tx_hash, TxH1),
+    {ok, Tx4Hash} = aeser_api_encoder:safe_decode(tx_hash, TxH4),
+    {ok, Tx5Hash} = aeser_api_encoder:safe_decode(tx_hash, TxH5),
+    ?assertMatch({mempool, _}, rpc:call(N1, aec_chain, find_tx_with_location, [Tx1Hash])), %% Smoke test approach used in the following for checking txs.
+    ?assertMatch({mempool, _}, rpc:call(N2, aec_chain, find_tx_with_location, [Tx5Hash])), %% Smoke test approach used in the following for checking txs.
+
+    none = rpc:call(N2, aec_chain, find_tx_with_location, [Tx1Hash]),
+    none = rpc:call(N2, aec_chain, find_tx_with_location, [Tx4Hash]),
 
     %% Set the same mining_rate to validate target
     %% Only needed when chain more than 18 blocks
     ok = rpc:call(N2, application, set_env, [aecore, expected_mine_rate, aecore_suite_utils:expected_mine_rate()], 5000),
     {ok, MinedKeyBlocks1} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3, TxH4], ?MAX_MINED_BLOCKS),
     aecore_suite_utils:wait_for_height(N2, aec_blocks:height(lists:last(MinedKeyBlocks1))),
-    ?assertMatch(X when is_binary(X), rpc:call(N2, aec_chain, find_tx_with_location, [TxH1])),
-    ?assertMatch(X when is_binary(X), rpc:call(N2, aec_chain, find_tx_with_location, [TxH4])),
+    ?assertMatch({X,_} when is_binary(X), rpc:call(N2, aec_chain, find_tx_with_location, [Tx1Hash])),
+    ?assertMatch({X,_} when is_binary(X), rpc:call(N2, aec_chain, find_tx_with_location, [Tx4Hash])),
 
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N2, [TxH5], ?MAX_MINED_BLOCKS),
 
