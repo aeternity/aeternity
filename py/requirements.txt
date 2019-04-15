@@ -18,10 +18,10 @@ nose-xunitmp==0.4.0
 pycparser==2.18
 PyNaCl==1.2.1
 pystache==0.5.4
-PyYAML==3.12
-requests==2.18.1
+PyYAML==5.1
+requests==2.21.0
 rlp==0.6.0
 six==1.10.0
-urllib3==1.21.1
+urllib3==1.24.1
 waiting==1.4.1
 websocket-client==0.44.0
