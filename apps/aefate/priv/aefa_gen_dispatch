@@ -1,22 +1,42 @@
--module(aefa_gen_dispatch).
+#!/usr/bin/env escript
+%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
+%%
 %% Helper to generate code for eval dispatch.
 %% Could be extended with fetching and writing arguments
 %% and checking types in the future.
-%% When new instructions have been added or changend in the
-%% Fate op specification in aebytecode do:
-%% $ make console
-%% 1> aefa_gen_dispatch:gen_dispatch("aefa_fate_eval.template").
-%% Put the template code in aefa_fate_eval.erl at the right place.
 %%
--export([gen_dispatch/1]).
+-mode(compile).
 
-gen_dispatch(Filename) ->
+main(Args) ->
+    {ShowHelp, OutFile} = process_args(Args),
+    maybe_show_help(ShowHelp),
+    do_main(OutFile).
+
+usage() ->
+    io:format("Usage: aefa_gen_dispatch [--help | OUT_FILE]~n", []).
+
+process_args(["--help" | _]) ->
+    {true, nil};
+process_args([OutFile]) ->
+    {false, OutFile};
+process_args(_) ->
+    {true, nil}.
+
+maybe_show_help(true) ->
+    usage(),
+    halt(0);
+maybe_show_help(false) ->
+    ok.
+
+do_main(Filename) ->
     {ok, File} = file:open(Filename, [write]),
     Ops = aeb_fate_generate_ops:get_ops(),
     Instructions = lists:flatten([gen_eval(Op)++"\n" || Op <- Ops]),
     io:format(File,
+	      "-module(aefa_fate_eval).\n\n"
+	      "-export([eval/2]).\n\n"
               "~s"
-              "eval(Op,_EngineState) ->\n"
+              "eval(Op, _EngineState) ->\n"
               "    throw({error, unknown_op, Op}).\n"
              , [Instructions]),
     io:format(File, "\n", []),
