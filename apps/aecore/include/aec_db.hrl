@@ -17,4 +17,4 @@
 -record(aec_tx_location        , {key :: SignedTxHash :: aec_hash:hash(), value :: BlockHash :: aec_hash:hash()}).
 -record(aec_tx_pool            , {key :: SignedTxHash :: aec_hash:hash(), value :: PlaceHolder :: []}).
 -record(aec_discovered_pof     , {key, value}).
--record(aec_tx_gc              , {key, value}).
+-record(aec_tx_gc              , {key :: SignedTxHash :: aec_hash:hash(), value :: PlaceHolder :: 0}).
