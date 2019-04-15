@@ -57,7 +57,6 @@
         , sign_micro_block/2
         , sign_tx/2
         , signed_spend_tx/1
-        , fake_start_aehttp/0
         , wait_for_pubkey/0
         , min_gas_price/0
         ]).
@@ -547,9 +546,6 @@ mktempd({unix, _}) ->
 nonl([$\n]) -> [];
 nonl([]) -> [];
 nonl([H|T]) -> [H|nonl(T)].
-
-fake_start_aehttp() ->
-    gproc:reg({n,l,{epoch, app, aehttp}}).
 
 
 %%%=============================================================================
