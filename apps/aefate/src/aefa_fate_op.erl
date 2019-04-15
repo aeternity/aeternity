@@ -110,6 +110,7 @@
         , sha3/1
         , sha256/1
         , blake2b/1
+        , setelement/5
         , dummyarg/8
         , dummyarg/9
         , abort/2
@@ -322,8 +323,50 @@ tuple(Arg0, EngineState) ->
        true -> aefa_fate:abort({invalid_tuple_size, Arg0}, EngineState)
     end.
 
-element_op(Arg0, Arg1, Arg2, EngineState) ->
-    tuple_element(Arg0, Arg1, Arg2, EngineState).
+make_tuple(Size, ES) ->
+    {Elements, ES2} = aefa_fate:pop_n(Size, ES),
+    Tuple = list_to_tuple(Elements),
+    FateTuple = aeb_fate_data:make_tuple(Tuple),
+    aefa_fate:push(FateTuple, ES2).
+
+
+element_op(To, Which, TupleArg, ES) ->
+    {Index, ES1} = get_op_arg(Which, ES),
+    {FateTuple, ES2} = get_op_arg(TupleArg, ES1),
+    case aefa_fate:check_type(integer, Index)
+        andalso (Index >= 0)
+        andalso ?IS_FATE_TUPLE(FateTuple) of
+        false -> aefa_fate:abort({bad_arguments_to_element, Index, FateTuple}, ES);
+        true ->
+            ?FATE_TUPLE(Tuple) = FateTuple,
+            case size(Tuple) > Index of
+                true ->
+                    V = element(Index+1, Tuple),
+                    write(To, V, ES2);
+                false ->
+                    aefa_fate:abort({element_index_out_of_bounds, Index}, ES)
+            end
+    end.
+
+setelement(Arg0, Arg1, Arg2, Arg3, EngineState) ->
+    {Index, ES1} = get_op_arg(Arg1, EngineState),
+    {FateTuple, ES2} = get_op_arg(Arg2, ES1),
+    {Element, ES3} = get_op_arg(Arg3, ES2),
+    case aefa_fate:check_type(integer, Index)
+        andalso (Index >= 0)
+        andalso ?IS_FATE_TUPLE(FateTuple) of
+        false -> aefa_fate:abort({bad_arguments_to_setelement, Index, FateTuple}, ES3);
+        true ->
+            ?FATE_TUPLE(Tuple) = FateTuple,
+            case size(Tuple) > Index of
+                true ->
+                    NewT = erlang:setelement(Index+1, Tuple, Element),
+                    write(Arg0, NewT, ES3);
+                false ->
+                    aefa_fate:abort({element_index_out_of_bounds, Index}, ES3)
+            end
+    end.
+
 
 %% ------------------------------------------------------
 %% Map instructions
@@ -677,28 +720,8 @@ make_variant(Arities, Tag, NoElements, ES) ->
 %% ------------------------------------------------------
 
 
-make_tuple(Size, ES) ->
-    {Elements, ES2} = aefa_fate:pop_n(Size, ES),
-    Tuple = list_to_tuple(Elements),
-    FateTuple = aeb_fate_data:make_tuple(Tuple),
-    aefa_fate:push(FateTuple, ES2).
 
 
-tuple_element(To, Which, TupleArg, ES) ->
-    {Index, ES1} = get_op_arg(Which, ES),
-    {FateTuple, ES2} = get_op_arg(TupleArg, ES1),
-    case aefa_fate:check_type(integer, Index) andalso ?IS_FATE_TUPLE(FateTuple) of
-        false -> aefa_fate:abort({bad_arguments_to_element, Index, FateTuple}, ES);
-        true ->
-            ?FATE_TUPLE(Tuple) = FateTuple,
-            case size(Tuple) > Index of
-                true ->
-                    V = element(Index+1, Tuple),
-                    write(To, V, ES2);
-                false ->
-                    aefa_fate:abort({element_index_out_of_bounds, Index}, ES)
-            end
-    end.
 
 %% Unary operations
 op(get, A) ->
