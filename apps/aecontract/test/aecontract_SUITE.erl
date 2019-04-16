@@ -642,13 +642,7 @@ create_contract_(ContractCreateTxGasPrice) ->
     %% Check that the created init call has the correct details not from the contract create tx
     ?assertEqual(ContractKey, aect_call:contract_pubkey(InitCall)),
     _ = aect_call:height(InitCall), %% Unclear if this needed.
-    case sophia_version() of
-        ?SOPHIA_FORTUNA_FATE ->
-            %% TODO: Gas is not used in FATE yet
-            ?assertMatch(X when X =:= 0, aect_call:gas_used(InitCall));
-        _ ->
-            ?assertMatch(X when X > 0, aect_call:gas_used(InitCall))
-    end,
+    ?assertMatch(X when X > 0, aect_call:gas_used(InitCall)),
     ?assertEqual(ok, aect_call:return_type(InitCall)),
     _ = aect_call:return_value(InitCall), %% Value shall be the unit value.
 
