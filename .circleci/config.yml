@@ -170,8 +170,21 @@ references:
       name: Build Ubuntu package (*.deb)
       environment:
         PACKAGES_DIR: *packages_workspace
+        # The *clean commands are for work-around in CircleCI
+        # Debian/Ubuntu package building (clean issues; fakeroot and
+        # rebar3).
+        #
+        # The debian/rules file has conditional *clean targets based on
+        # DEB_SKIP_DH_AUTO_CLEAN.
+        #
+        # This prevents the presence of broken/dummy debian/rules file without
+        # clean targets. For example when running debuild directly without
+        # `make prod-deb-package`.
       command: |
-        make prod-deb-package
+        make prod-clean
+        make clean
+        make distclean
+        make prod-deb-package DEB_SKIP_DH_AUTO_CLEAN=true
         mkdir ${PACKAGES_DIR:?}
         mv _build/../../*aeternity-node_$(cat VERSION)*.deb ${PACKAGES_DIR:?}
 

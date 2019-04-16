@@ -40,20 +40,6 @@ AE_DEB_MAINT_EMAIL="info@aeternity.com"
 AE_DEB_MAINT_NAME="Aeternity Team"
 DEB_PKG_CHANGELOG_FILE=debian/changelog
 
-# Work-around CircleCI Debian/Ubuntu package building (clean issues;
-# fakeroot and rebar3).  Define *clean prerequisites for
-# prod-deb-package only when running in CircleCI.
-#
-# The debian/rules file has conditional *clean targets based on
-# CIRCLECI variable as well.
-#
-# This prevents the presence of broken/dummy debian/rules file without
-# clean targets. For example when running debuild directly without
-# `make prod-deb-package`.
-ifdef CIRCLECI
- AE_DEB_PKG_CI_PREREQUISITE = prod-clean clean distclean
-endif
-
 all:	local-build
 
 $(SWAGGER_ENDPOINTS_SPEC):
@@ -438,8 +424,8 @@ $(DEB_PKG_CHANGELOG_FILE):
 	dch --create --package=$(AE_DEB_PKG_NAME) -v $(AE_DEB_PKG_VERSION) $(AE_DEB_DCH_REL_NOTE); \
 	dch -r $(AE_DEB_DCH_REL_NOTE)
 
-prod-deb-package: $(DEB_PKG_CHANGELOG_FILE) $(AE_DEB_PKG_CI_PREREQUISITE)
-	debuild --preserve-envvar CIRCLECI -b -uc -us
+prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
+	debuild --preserve-envvar DEB_SKIP_DH_AUTO_CLEAN -b -uc -us
 
 .PHONY: \
 	all console \
