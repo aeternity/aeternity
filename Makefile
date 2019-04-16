@@ -242,8 +242,11 @@ eunit-fortuna: internal-build
 
 all-tests: eunit ct
 
-docker:
+docker: dockerignore-check
 	@docker build -t aeternity/aeternity:local .
+
+dockerignore-check: | .gitignore .dockerignore
+	bash -c "diff <(grep '^apps/' $(word 1,$|) | sort) <(grep '^apps/' $(word 2,$|) | sort)"
 
 ST_DOCKER_FILTER=--filter label=epoch_system_test=true
 
@@ -436,7 +439,7 @@ prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
 	dev3-start dev3-stop dev3-attach dev3-clean dev3-distclean \
 	internal-start internal-stop internal-attach internal-clean internal-compile-deps internal-ct \
 	dialyzer \
-	docker docker-clean \
+	docker docker-clean dockerignore-check \
 	test smoke-test smoke-test-run system-test aevm-test-deps \
 	ct ct-roma ct-fortuna ct-mnesia-leveled ct-mnesia-rocksdb \
 	eunit eunit-roma eunit-fortuna \
