@@ -13,6 +13,7 @@
 -define(JOB_QUEUE_MODULE, aestratum_job_queue).
 -define(MINER_MODULE, aestratum_miner).
 -define(REWARD_MODULE, aestratum_reward).
+-define(CHAIN_MODULE, aestratum_chain).
 
 -define(HOST_VALID, <<"pool.aeternity.com">>).
 -define(HOST_INVALID, <<>>).
@@ -83,6 +84,7 @@ server_session() ->
              meck:new(?JOB_QUEUE_MODULE, [passthrough]),
              meck:new(?MINER_MODULE, [passthrough]),
              meck:new(?REWARD_MODULE, [passthrough]),
+             meck:new(?CHAIN_MODULE, [passthrough]),
              meck:new(?TEST_MODULE, [passthrough]),
              {ok, Pid} = aestratum_dummy_handler:start_link(?TEST_MODULE),
              Pid
@@ -95,6 +97,7 @@ server_session() ->
              meck:unload(?JOB_QUEUE_MODULE),
              meck:unload(?MINER_MODULE),
              meck:unload(?REWARD_MODULE),
+             meck:unload(?CHAIN_MODULE),
              meck:unload(?TEST_MODULE),
              aestratum_dummy_handler:stop(Pid)
      end,
@@ -884,6 +887,7 @@ mock_recv_block(Opts) ->
                         end
                 end),
     meck:expect(?REWARD_MODULE, submit_share, fun(_, _, _) -> ok end),
+    meck:expect(?CHAIN_MODULE, submit_solution, fun(_, _, _) -> ok end),
     case maps:get(max_solve_time, Opts, undefined) of
         MaxSolveTime when MaxSolveTime =/= undefined ->
             application:set_env(aestratum, max_solve_time, MaxSolveTime);
