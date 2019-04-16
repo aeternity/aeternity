@@ -445,7 +445,7 @@ send_notify_ntf(JobId, BlockHash, BlockVersion, EmptyQueue, #state{} = State) ->
 %% Helper functions.
 
 close_session(#state{phase = Phase, extra_nonce = ExtraNonce,
-                     timer = Timer} = State) ->
+                     timer = Timer} = State) when Phase =/= disconnected ->
     maybe_free_extra_nonce(ExtraNonce),
     maybe_cancel_timer(Timer),
     case Phase of
@@ -454,7 +454,9 @@ close_session(#state{phase = Phase, extra_nonce = ExtraNonce,
     end,
     ?INFO("close_session", []),
     State#state{phase = disconnected, extra_nonce = undefined,
-                timer = undefined}.
+                timer = undefined};
+close_session(State) ->
+    State.
 
 maybe_free_extra_nonce(ExtraNonce) when ExtraNonce =/= undefined ->
     aestratum_extra_nonce_cache:free(ExtraNonce),
