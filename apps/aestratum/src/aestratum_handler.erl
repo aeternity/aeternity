@@ -16,6 +16,8 @@
          terminate/2
         ]).
 
+-include("aestratum_log.hrl").
+
 -type ref()         :: term().
 
 -type socket()      :: gen_tcp:socket().
@@ -50,6 +52,8 @@ init({Ref, Socket, Transport, _Opts}) ->
     ok = ranch:accept_ack(Ref),
     ok = Transport:setopts(Socket, [{active, once}, {packet, line},
                                     {keepalive, true}]),
+    {ok, {Ip, Port}} = inet:peername(Socket),
+    ?INFO("new_client_connection, ip: ~p, port: ~p", [Ip, Port]),
     gen_server:cast(self(), init_session),
     gen_server:enter_loop(?MODULE, [], #state{socket = Socket,
                                               transport = Transport}).
@@ -98,11 +102,12 @@ handle_socket_data(Data, #state{socket = Socket, transport = Transport,
     result(Res, State).
 
 handle_socket_close(#state{session = Session} = State) ->
+    ?INFO("socket_close", []),
     Res = aestratum_session:handle_event({conn, #{event => close}}, Session),
     result(Res, State).
 
-handle_socket_error(_Rsn, #state{session = Session} = State) ->
-    %% TODO: log error
+handle_socket_error(Rsn, #state{session = Session} = State) ->
+    ?ERROR("socket_error, reason: ~p", [Rsn]),
     Res = aestratum_session:handle_event({conn, #{event => close}}, Session),
     result(Res, State).
 
@@ -119,7 +124,8 @@ result({send, Data, Session},
     case send_data(Data, Socket, Transport) of
         ok ->
             {noreply, State#state{session = Session}};
-        {error, _Rsn} ->
+        {error, Rsn} ->
+            ?ERROR("socket_send, reason: ~p, data: ~p", [Rsn, Data]),
             Event = #{event => close},
             Res = aestratum_session:handle_event({conn, Event}, Session),
             result(Res, State)

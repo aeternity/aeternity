@@ -11,6 +11,7 @@
 -behaviour(gen_server).
 
 -include("aestratum.hrl").
+-include("aestratum_log.hrl").
 -include_lib("aecore/include/blocks.hrl").
 
 %% API
@@ -94,7 +95,7 @@ handle_cast(keyblock, State) ->
         {ok, not_our_share} ->
             ok;
         {error, Reason} ->
-            ?error("failed to compute rewards: ~p", [Reason])
+            ?ERROR("failed to compute rewards: ~p", [Reason])
     end,
     {noreply, State};
 

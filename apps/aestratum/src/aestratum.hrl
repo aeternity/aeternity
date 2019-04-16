@@ -41,6 +41,3 @@
 
 -define(TABS, [?HASHES_TAB, ?SHARES_TAB, ?ROUNDS_TAB, ?REWARDS_TAB, ?PAYMENTS_TAB]).
 
--define(info(Format, Args), lager:log(aestratum_lager_event, info, [], Format, Args)).
--define(warn(Format, Args), lager:log(aestratum_lager_event, warning, [], Format, Args)).
--define(error(Format, Args), lager:log(aestratum_lager_event, error, [], Format, Args)).

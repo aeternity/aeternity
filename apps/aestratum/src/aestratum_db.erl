@@ -24,6 +24,7 @@
          delete_payment_records/1]).
 
 -include("aestratum.hrl").
+-include("aestratum_log.hrl").
 -include_lib("aecore/include/blocks.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
@@ -147,7 +148,7 @@ delete_reward_records(Height) ->
             [mnesia:delete(?HASHES_TAB, H, write) || H <- Hashes],
             [mnesia:delete(?ROUNDS_TAB, R, write) || R <- Rounds],
             mnesia:delete(?REWARDS_TAB, Height, write),
-            ?info("deleted records for height ~p", [Height]),
+            ?INFO("deleted records for height ~p", [Height]),
             ok;
         [] ->
             %% this shouldn't happen, since rewards are deleted one by one
