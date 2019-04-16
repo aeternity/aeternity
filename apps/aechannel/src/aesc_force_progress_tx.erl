@@ -37,6 +37,9 @@
          updates/1,
          round/1]).
 
+-export([from_db_format/1
+        ]).
+
 -include_lib("aecontract/include/hard_forks.hrl").
 %%%===================================================================
 %%% Types
@@ -47,6 +50,19 @@
 -define(CHANNEL_FORCE_PROGRESS_TX_TYPE, channel_force_progress_tx).
 
 -type vsn() :: non_neg_integer().
+
+-record(old_fp_db_record, {
+          channel_id    :: aeser_id:id(),
+          from_id       :: aeser_id:id(),
+          payload       :: binary(),
+          update        :: tuple(),
+          state_hash    :: binary(),
+          round         :: aesc_channels:seq_number(),
+          offchain_trees:: aec_trees:trees(),
+          ttl           :: aetx:tx_ttl(),
+          fee           :: non_neg_integer(),
+          nonce         :: non_neg_integer()
+         }).
 
 -record(channel_force_progress_tx, {
           channel_id    :: aeser_id:id(),
@@ -65,6 +81,45 @@
 -opaque tx() :: #channel_force_progress_tx{}.
 
 -export_type([tx/0]).
+
+%%%===================================================================
+%%% Conversion of old db format
+
+-spec from_db_format(tx()) -> tx().
+from_db_format(#channel_force_progress_tx{} = Tx) ->
+    Tx;
+from_db_format(Tuple) ->
+    case setelement(1, Tuple, old_fp_db_record) of
+        #old_fp_db_record{
+            channel_id    = ChannelId,
+            from_id       = FromId,
+            payload       = Payload,
+            update        = Update,
+            state_hash    = StateHash,
+            round         = Round,
+            offchain_trees= OffChainTrees,
+            ttl           = TTL,
+            fee           = Fee,
+            nonce         = Nonce
+          } ->
+            channel = aeser_id:specialize_type(ChannelId),
+            account = aeser_id:specialize_type(FromId),
+            #channel_force_progress_tx{
+                channel_id    = ChannelId,
+                from_id       = FromId,
+                payload       = Payload,
+                update        = aesc_offchain_update:from_db_format(Update),
+                state_hash    = StateHash,
+                round         = Round,
+                offchain_trees= OffChainTrees,
+                ttl           = TTL,
+                fee           = Fee,
+                nonce         = Nonce,
+                block_hash    = aesc_pinned_block:no_hash()
+              };
+        _ ->
+            error(illegal_db_format)
+    end.
 
 %%%===================================================================
 %%% Behaviour API
