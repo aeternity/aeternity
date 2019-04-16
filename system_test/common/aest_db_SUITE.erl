@@ -12,6 +12,7 @@
 % Test cases
 -export([
          node_can_reuse_db_of_other_node/1,
+         node_can_reuse_db_of_latest_stable_node/1,
          roma_node_can_reuse_db_of_other_roma_node/1,
          minerva_node_with_epoch_db_can_reuse_db_of_roma_node/1,
          node_can_reuse_db_of_roma_node/1,
@@ -32,6 +33,7 @@
 
 all() -> [
           node_can_reuse_db_of_other_node,
+          node_can_reuse_db_of_latest_stable_node,
           roma_node_can_reuse_db_of_other_roma_node,
           minerva_node_with_epoch_db_can_reuse_db_of_roma_node,
           node_can_reuse_db_of_roma_node,
@@ -52,7 +54,10 @@ end_per_suite(_Config) -> ok.
 %=== TEST CASES ================================================================
 
 node_can_reuse_db_of_other_node(Cfg) ->
-    node_can_reuse_db_of_other_node_(fun node_spec/2, Cfg).
+    node_can_reuse_db_of_other_node_(fun local_node_spec/2, Cfg).
+
+node_can_reuse_db_of_latest_stable_node(Cfg) ->
+    node_can_reuse_db_of_other_node_(fun latest_node_spec/2, fun local_node_spec/2, Cfg).
 
 roma_node_can_reuse_db_of_other_roma_node(Cfg) ->
     node_can_reuse_db_of_other_node_(fun roma_node_spec/2, Cfg).
@@ -61,11 +66,11 @@ minerva_node_with_epoch_db_can_reuse_db_of_roma_node(Cfg) ->
     node_can_reuse_db_of_other_node_(fun roma_node_spec/2, fun minerva_with_epoch_name_in_db_spec/2, Cfg).
 
 node_can_reuse_db_of_roma_node(Cfg) ->
-    node_can_reuse_db_of_other_node_(fun roma_node_spec/2, fun node_spec/2,
+    node_can_reuse_db_of_other_node_(fun roma_node_spec/2, fun local_node_spec/2,
                                      [{rename_db_fun, fun run_rename_db_script/2} | Cfg]).
 
 node_can_reuse_db_of_minerva_node_with_epoch_db(Cfg) ->
-    node_can_reuse_db_of_other_node_(fun minerva_with_epoch_name_in_db_spec/2, fun node_spec/2,
+    node_can_reuse_db_of_other_node_(fun minerva_with_epoch_name_in_db_spec/2, fun local_node_spec/2,
         [{rename_db_fun, fun run_rename_db_script/2} | Cfg]).
 
 %=== INTERNAL FUNCTIONS ========================================================
@@ -133,7 +138,7 @@ run_rename_db_script(DbHostPath, Cfg) ->
     ?assertEqual(DbSchema, DbSchemaBackup),
     ok.
 
-node_spec(Name, DbHostPath) ->
+local_node_spec(Name, DbHostPath) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
     aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:local"},
                                 db_path => {DbHostPath, DbGuestPath},
@@ -145,6 +150,12 @@ node_spec_custom_entrypoint(Name, DbHostPath) ->
                                 db_path => {DbHostPath, DbGuestPath},
                                 entrypoint => [<<"sleep">>],
                                 custom_command => [<<"98127308917209371890273">>]}).
+
+latest_node_spec(Name, DbHostPath) ->
+    DbGuestPath = "/home/aeternity/node/data/mnesia",
+    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:latest"},
+                                db_path => {DbHostPath, DbGuestPath},
+                                genesis_accounts => genesis_accounts()}).
 
 %% Last Roma release.
 roma_node_spec(Name, DbHostPath) ->
