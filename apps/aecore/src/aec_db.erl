@@ -132,6 +132,11 @@ tables() -> tables(ram).
 tables(Mode) when Mode==ram; Mode==disc ->
     tables(expand_mode(Mode));
 tables(Mode) ->
+    tables_mandatory(Mode) ++ tables_created_if_not_present(Mode).
+
+tables_mandatory(Mode) when Mode==ram; Mode==disc ->
+    tables_mandatory(expand_mode(Mode));
+tables_mandatory(Mode) ->
     [?TAB(aec_blocks)
    , ?TAB(aec_headers, [{index, [height]}])
    , ?TAB(aec_chain_state)
@@ -148,7 +153,12 @@ tables(Mode) ->
    , ?TAB(aec_tx_location)
    , ?TAB(aec_tx_pool)
    , ?TAB(aec_discovered_pof)
-   , ?TAB(aec_tx_gc)
+    ].
+
+tables_created_if_not_present(Mode) when Mode==ram; Mode==disc ->
+    tables_created_if_not_present(expand_mode(Mode));
+tables_created_if_not_present(Mode) ->
+    [?TAB(aec_tx_gc)
     ].
 
 tab(Mode0, Record, Attributes, Extra) ->
@@ -746,28 +756,39 @@ add_index_plugins() ->
     ok.
 
 ensure_mnesia_tables(Mode, Storage) ->
-    Tables = tables(Mode),
+    TablesMandatory = tables_mandatory(Mode),
+    TablesOptional = tables_created_if_not_present(Mode),
     case Storage of
         existing_schema ->
-            case check_mnesia_tables(Tables, []) of
-                [] -> ok;
+            case check_mnesia_tables(TablesMandatory, [], []) of
+                [] ->
+                    case check_mnesia_tables(TablesOptional, [], [{create_missing_tables, true}]) of
+                        [] -> ok;
+                        Errors ->
+                            lager:error("Database check failed: ~p", [Errors]),
+                            erlang:error({table_check, Errors})
+                    end;
                 Errors ->
                     lager:error("Database check failed: ~p", [Errors]),
                     erlang:error({table_check, Errors})
             end;
         ok ->
-            [{atomic,ok} = mnesia:create_table(T, Spec) || {T, Spec} <- Tables],
+            Tables = TablesMandatory ++ TablesOptional,
+            [{atomic,ok} = mnesia:create_table(T, Spec) || {T, Spec} <- Tables ],
             run_hooks('$aec_db_create_tables', Mode),
             ok
     end.
 
-check_mnesia_tables([{Table, Spec}|Left], Acc) ->
-    NewAcc = check_table(Table, Spec, Acc),
-    check_mnesia_tables(Left, NewAcc);
-check_mnesia_tables([], Acc) ->
+check_mnesia_tables([{Table, Spec}|Left], Acc, Opts) ->
+    NewAcc = check_table(Table, Spec, Acc, Opts),
+    check_mnesia_tables(Left, NewAcc, Opts);
+check_mnesia_tables([], Acc, _Opts) ->
     fold_hooks('$aec_db_check_tables', Acc).
 
 check_table(Table, Spec, Acc) ->
+    check_table(Table, Spec, Acc, []).
+
+check_table(Table, Spec, Acc, Opts) ->
     try mnesia:table_info(Table, user_properties) of
         [{vsn, Vsn}] ->
             case proplists:get_value(user_properties, Spec) of
@@ -778,7 +799,15 @@ check_table(Table, Spec, Acc) ->
                                  |Acc]
             end;
         Other -> [{missing_version, Table, Other}|Acc]
-    catch _:_ -> [{missing_table, Table}|Acc]
+    catch _:_ ->
+            case proplists:get_value(create_missing_tables, Opts, false) of
+                false ->
+                    [{missing_table, Table} | Acc];
+                true ->
+                    lager:info("Creating missing table ~p", [Table]),
+                    {atomic, ok} = mnesia:create_table(Table, Spec),
+                    Acc
+            end
     end.
 
 assert_schema_node_name(#{persist := false}) ->
