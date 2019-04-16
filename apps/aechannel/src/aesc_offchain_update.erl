@@ -70,6 +70,38 @@
          extract_amounts/1,
          extract_abi_version/1]).
 
+-export([from_db_format/1
+        ]).
+
+-spec from_db_format(tuple()) -> update().
+from_db_format(#transfer{} = U) ->
+    U;
+from_db_format(#withdraw{} = U) ->
+    U;
+from_db_format(#deposit{} = U) ->
+    U;
+from_db_format(#create_contract{} = U) ->
+    U;
+from_db_format(#call_contract{} = U) ->
+    U;
+from_db_format(Tuple) ->
+    OldType = element(1, Tuple),
+    NewType = maps:get(OldType, #{0 => transfer,
+                                  1 => withdraw,
+                                  2 => deposit,
+                                  3 => create_contract,
+                                  4 => call_contract}),
+    Updated = setelement(1, Tuple, NewType),
+    case Updated of
+        #transfer{} -> Updated;
+        #withdraw{} -> Updated;
+        #deposit{} -> Updated;
+        #create_contract{} -> Updated;
+        #call_contract{} -> Updated;
+        _ ->
+            error(illegal_db_format)
+    end.
+
 -spec op_transfer(aeser_id:id(), aeser_id:id(), non_neg_integer()) -> update().
 op_transfer(From, To, Amount) ->
     account = aeser_id:specialize_type(From),
