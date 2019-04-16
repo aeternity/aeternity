@@ -139,10 +139,10 @@ returnr(Arg0, EngineState) ->
 
 
 call(Arg0, EngineState) ->
-    Signature = aefa_fate:get_function_signature(Arg0, EngineState),
-    {ok, ES2} = aefa_fate:check_signature_and_bind_args(Signature, EngineState),
-    ES3 = aefa_fate:push_return_address(ES2),
-    {jump, 0,  aefa_fate:set_current_function(Arg0, ES3)}.
+    ES1 = aefa_fate:push_return_address(EngineState),
+    Signature = aefa_fate:get_function_signature(Arg0, ES1),
+    {ok, ES2} = aefa_fate:check_signature_and_bind_args(Signature, ES1),
+    {jump, 0,  aefa_fate:set_current_function(Arg0, ES2)}.
 
 call_r(Arg0, Arg1, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
