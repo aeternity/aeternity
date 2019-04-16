@@ -1,1 +1,1 @@
-* Introduces new database garbage collection of aec_signed_tx objects.
+* Introduces garbage collection of transactions from the database.
