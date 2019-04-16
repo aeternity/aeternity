@@ -23,14 +23,13 @@ py/tests/swagger_client
 py/share
 nosetests.xml
 *.pyc
-apps/aecore/priv/keys
 .chain
 REVISION
+apps/aecore/priv/keys
 apps/aehttp/priv/swagger-ui
 apps/aehttp/priv/swagger-docs
 apps/aeutils/src/endpoints.erl
 apps/aecore/c_src/*.[1-9][0-9]o
-apps/aecore/priv/keys
 aevm_external
 apps/*/doc/*.html
 apps/*/doc/edoc-info

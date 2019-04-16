@@ -24,7 +24,6 @@ apps/aehttp/priv/swagger-docs
 apps/aeutils/src/endpoints.erl
 apps/aecore/c_src/*.[1-9][0-9]o
 apps/aecore/c_src/cuckoo
-apps/aecore/priv/keys
 apps/*/doc/*.html
 apps/*/doc/edoc-info
 apps/*/doc/erlang.png
