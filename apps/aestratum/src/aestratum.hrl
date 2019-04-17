@@ -28,6 +28,7 @@
         {tx_hash :: binary(),
          height  :: non_neg_integer(),
          index   :: non_neg_integer(),
+         nonce   :: non_neg_integer(),
          fee     :: non_neg_integer(),
          gas     :: non_neg_integer(),
          rewards :: map()}).

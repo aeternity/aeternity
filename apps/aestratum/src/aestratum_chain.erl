@@ -14,8 +14,8 @@
 %% TODO: type specs
 
 %% API.
--export([start_link/2,
-         payout_rewards/3,
+-export([start_link/3,
+         payout_rewards/4,
          get_reward_key_header/1,
          hash_header/1,
          header_info/1]).
@@ -34,6 +34,8 @@
 -define(PAYMENT_CONTRACT_BATCH_SIZE, 100).
 -define(PAYMENT_CONTRACT_MIN_FEE_MULTIPLIER, 2.0).
 -define(PAYMENT_CONTRACT_MIN_GAS_MULTIPLIER, 1.3).
+-define(PAYMENT_CONTRACT_INIT_GAS, 250). % measured
+-define(PAYMENT_CONTRACT_GAS_PER_TRANSFER, 22000). % measured
 
 -include("aestratum.hrl").
 -include_lib("aecore/src/aec_conductor.hrl").
@@ -48,43 +50,42 @@
         {last_keyblock,
          new_keyblock_candidate,
          benef_sum_pcts,
-         caller_account,
-         sign_priv_key,
+         caller_nonce,
+         caller_pub_key,
+         caller_priv_key,
          contract}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-start_link(BenefSumPcts, {_, _} = Keys) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [BenefSumPcts, Keys], []).
+start_link(BenefSumPcts, {_, _} = Keys, ContractPubKey) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [BenefSumPcts, Keys, ContractPubKey], []).
 
-payout_rewards(Height, PoolRewards, MinersRewards) ->
-    gen_server:cast(?MODULE, {payout_rewards, Height, PoolRewards, MinersRewards}).
+-spec payout_rewards(non_neg_integer(), non_neg_integer(), map(), map()) -> ok.
+payout_rewards(Height, BlockReward, PoolRewards, MinersRewards) ->
+    gen_server:cast(?MODULE, {payout_rewards, Height, BlockReward, PoolRewards, MinersRewards}).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
-init([BenefSumPcts, {SignPubKey, SignPrivKey}]) ->
+init([BenefSumPcts, {CallerPubKey, CallerPrivKey}, ContractPubKey]) ->
+    ContractPath = filename:join(code:priv_dir(aestratum), "Payout.aes"),
     {ok, _} = timer:send_interval(?CHAIN_TOP_CHECK_INTERVAL, chain_top_check),
     {ok, _} = timer:send_interval(?CHAIN_PAYMENT_TX_CHECK_INTERVAL, chain_payment_tx_check),
-    {ok, #{} = Contract} =
-        aeso_compiler:file(filename:join(code:priv_dir(aestratum), "Payout.aes")),
-
-    %% TODO - get balance from chain
-    CallerAccount = aec_accounts:new(SignPubKey, 1000000000000000000000),
-    %% TODO - get address of contract from deployment
-    {contract_pubkey, ContractPK} = aehttp_api_encoder:decode(?PAYMENT_CONTRACT),
-    Contract1 = Contract#{contract_pk => ContractPK},
-
+    {ok, Contract} = aeso_compiler:file(ContractPath),
+    {value, CallerAcc} = aec_chain:get_account(CallerPubKey),
+    CallerAddress = aehttp_api_encoder:encode(account_pubkey, CallerPubKey),
+    ?info("using Stratum operator account ~s (balance = ~p, nonce = ~p)",
+          [CallerAddress, aec_accounts:balance(CallerAcc), aec_accounts:nonce(CallerAcc)]),
     aec_events:subscribe(stratum_new_candidate),
-
     {ok, #chain_state{last_keyblock = aec_chain:top_key_block_hash(),
                       benef_sum_pcts = BenefSumPcts,
-                      caller_account = CallerAccount,
-                      sign_priv_key = SignPrivKey,
-                      contract = Contract1}}. %% TODO
+                      caller_nonce = aec_accounts:nonce(CallerAcc),
+                      caller_pub_key = CallerPubKey,
+                      caller_priv_key = CallerPrivKey,
+                      contract = Contract#{contract_pk => ContractPubKey}}}.
 
 
 handle_call(_Req, _From, State) ->
@@ -92,8 +93,9 @@ handle_call(_Req, _From, State) ->
 
 
 handle_cast({payout_rewards, Height, BlockReward, PoolRewards, MinersRewards}, State) ->
-    spawn(fun () -> send_payments(Height, BlockReward, PoolRewards, MinersRewards, State) end),
-    {noreply, State};
+    State1 = send_payments(Height, BlockReward, PoolRewards, MinersRewards, State),
+    {noreply, State1};
+
 handle_cast(_Req, State) ->
     {noreply, State}.
 
@@ -161,64 +163,74 @@ hash_header(KeyHeader) ->
 header_info({KeyHeader, Hash}) ->
     {value, Fees} = aec_db:find_block_fees(Hash),
     Height = aec_headers:height(KeyHeader),
-    Target = aec_headers:target(KeyHeader),
+    Target = aeminer_pow:scientific_to_integer(aec_headers:target(KeyHeader)),
     Tokens = aec_coinbase:coinbase_at_height(Height) + Fees,
     {ok, Height, Target, Tokens}.
 
 
 send_payments(Height, BlockReward, PoolRewards, MinersRewards, State) ->
     Payments = create_payments(Height, BlockReward, PoolRewards, MinersRewards, State),
-    maps:map(fun (_, #aestratum_payment{} = P) -> send_payment(P, State) end, Payments).
+    LastNonce = lists:foldl(fun (#aestratum_payment{nonce = Nonce} = P, MaxNonce) ->
+                                    send_payment(P, State),
+                                    max(Nonce, MaxNonce)
+                            end, State#chain_state.caller_nonce, Payments),
+    State#chain_state{caller_nonce = LastNonce + 1}.
 
 
-send_payment(#aestratum_payment{fee = Fee,
+send_payment(#aestratum_payment{nonce = Nonce,
+                                fee = Fee,
                                 gas = Gas,
                                 rewards = Transfers,
                                 tx_hash = undefined} = P,
-             #chain_state{caller_account = Caller, contract = Contract, sign_priv_key = SK}) ->
+             #chain_state{caller_pub_key = CallerPK, caller_priv_key = CallerSK,
+                          contract = #{contract_pk := ContractPK, contract_source := Source}}) ->
     Opts = #{fee => Fee, gas => Gas},
-    ContractData = {maps:get(contract_pk, Contract), maps:get(contract_source, Contract)},
-    {ok, CallTx} = create_payout_call_tx(Transfers, Caller, ContractData, Opts),
+    CallerData = {CallerPK, Nonce},
+    ContractData = {ContractPK, Source},
+    {ok, CallTx} = create_payout_call_tx(Transfers, CallerData, ContractData, Opts),
     SerializedTx = aec_governance:add_network_id(aetx:serialize_to_binary(CallTx)),
-    SignedTx = aetx_sign:new(CallTx, [enacl:sign_detached(SerializedTx, SK)]),
+    SignedTx = aetx_sign:new(CallTx, [enacl:sign_detached(SerializedTx, CallerSK)]),
     TxHash = aetx_sign:hash(SignedTx),
     aec_tx_pool:push(SignedTx),
-    ?info("payment contract call tx ~p pushed to mempool, rewarding ~p beneficiaries using fee ~p and gas ~p",
-          [TxHash, maps:size(Transfers), Fee, Gas]),
+    ?info("payment contract call tx ~p (caller nonce = ~p) pushed to mempool, rewarding ~p beneficiaries using fee ~p and gas ~p",
+          [TxHash, Nonce, maps:size(Transfers), Fee, Gas]),
     transaction(fun () -> mnesia:write(P#aestratum_payment{tx_hash = TxHash}) end),
     TxHash.
 
 
 create_payments(Height, BlockReward, PoolRewards, MinersRewards,
-                #chain_state{caller_account = Caller, contract = Contract} = State) ->
-    BenefRewards = round(BlockReward * (State#chain_state.benef_sum_pcts / 100)),
-    MinerRewards = BlockReward - BenefRewards,
-    P0 = create_payment(Height, 0, BenefRewards, PoolRewards, Caller, Contract),
-    Ps = create_payments(Height, 1, MinerRewards, MinersRewards, Caller, Contract),
+                #chain_state{caller_pub_key = CallerPK, caller_nonce = Nonce,
+                             contract = Contract} = State) ->
+    BenefTokens = round(BlockReward * (State#chain_state.benef_sum_pcts / 100)),
+    MinerTokens = BlockReward - BenefTokens,
+    P0 = create_payment(Height, 0, BenefTokens, PoolRewards, {CallerPK, Nonce}, Contract),
+    Ps = create_payments(Height, 1, MinerTokens, MinersRewards, {CallerPK, Nonce + 1}, Contract),
     ?info("created payments at block height ~p, for ~p pool operators and ~p miners, distributing ~p tokens",
-          [Height, maps:size(PoolRewards), maps:size(MinerRewards), BlockReward]),
-    Ps#{0 => P0}.
+          [Height, maps:size(PoolRewards), maps:size(MinersRewards), BlockReward]),
+    [P0 | Ps].
 
 
-create_payments(Height, StartBatchIdx, Amount, RelativeRewards, CallerAcc, Contract) ->
+create_payments(Height, StartBatchIdx, Amount, RelativeRewards,
+                {CallerPK, CallerNonce}, Contract) ->
     Batches = split_list(maps:to_list(RelativeRewards), ?PAYMENT_CONTRACT_BATCH_SIZE),
-    {_, Payments} =
+    {_, _, Payments} =
         lists:foldl(
-          fun (Batch, {I, Acc}) ->
+          fun (Batch, {BatchIdx, Nonce, Acc}) ->
                   RelShare = lists:foldl(fun ({_, X}, Sum) -> Sum + X end, 0, Batch),
                   BatchAmount = trunc(RelShare * Amount),
                   Batch1 = maps:from_list(Batch),
-                  Payment = create_payment(Height, I, BatchAmount, Batch1, CallerAcc, Contract),
-                  {I + 1, Acc#{I => Payment}}
-          end, {StartBatchIdx, #{}}, Batches),
-    Payments.
+                  Payment = create_payment(Height, BatchIdx, BatchAmount, Batch1,
+                                           {CallerPK, Nonce}, Contract),
+                  {BatchIdx + 1, Nonce + 1, [Payment | Acc]}
+          end, {StartBatchIdx, CallerNonce, []}, Batches),
+    lists:reverse(Payments).
 
 
-create_payment(Height, BatchIdx, Amount, RelativeRewards, CallerAcc,
+create_payment(Height, BatchIdx, Amount, RelativeRewards, {CallerPK, CallerNonce},
                #{contract_pk := ContractPK, contract_source := ContractSource}) ->
     ContractData = {ContractPK, ContractSource},
     Transfers0 = calculate_rewards(RelativeRewards, Amount),
-    {MinFee, MinGas} = estimate_costs(Transfers0, CallerAcc, ContractData),
+    {MinFee, MinGas} = estimate_costs(Transfers0, {CallerPK, CallerNonce}, ContractData),
     Fee = round(MinFee * ?PAYMENT_CONTRACT_MIN_FEE_MULTIPLIER),
     Gas = round(MinGas * ?PAYMENT_CONTRACT_MIN_GAS_MULTIPLIER),
     RewardAmount = Amount - Fee - Gas,
@@ -226,6 +238,7 @@ create_payment(Height, BatchIdx, Amount, RelativeRewards, CallerAcc,
     Transfers = calculate_rewards(RelativeRewards, RewardAmount),
     #aestratum_payment{height = Height,
                        index = BatchIdx,
+                       nonce = CallerNonce,
                        fee = Fee,
                        gas = Gas,
                        rewards = Transfers}.
@@ -240,12 +253,14 @@ calculate_rewards(Transfers, Amount) ->
     ResTransfers.
 
 
-estimate_costs(Transfers, CallerAcc, {ContractPK, ContractSource}) ->
-    estimate_costs(Transfers, CallerAcc, {ContractPK, ContractSource},
+estimate_costs(Transfers, {CallerPK, CallerNonce}, {ContractPK, ContractSource}) ->
+    estimate_costs(Transfers, {CallerPK, CallerNonce}, {ContractPK, ContractSource},
                    #{height => aec_tx_pool:top_height()}).
-estimate_costs(Transfers, CallerAcc, {ContractPK, ContractSource}, Opts) ->
+estimate_costs(Transfers, {CallerPK, CallerNonce}, {ContractPK, ContractSource}, Opts) ->
     Height = maps:get(height, Opts, aec_tx_pool:top_height()),
-    {ok, Tx} = create_payout_call_tx(Transfers, CallerAcc, {ContractPK, ContractSource},
+    {ok, Tx} = create_payout_call_tx(Transfers,
+                                     {CallerPK, CallerNonce},
+                                     {ContractPK, ContractSource},
                                      #{height => Height}),
     {aetx:min_fee(Tx, Height), aetx:min_gas(Tx, Height)}.
 
@@ -255,20 +270,19 @@ min_gas_price() ->
         aec_tx_pool:minimum_miner_gas_price()).
 
 
-create_payout_call_tx(Transfers, CallerAcc, {ContractPK, ContractSource}, Opts) ->
+create_payout_call_tx(Transfers, {CallerPK, CallerNonce}, {ContractPK, ContractSrc}, Opts) ->
     Amount   = maps:fold(fun (_, Tokens, Total) -> Tokens + Total end, 0, Transfers),
     CallArgs = format_payout_call_args(Transfers),
-    {ok, CallData, _, _} = aeso_compiler:create_calldata(ContractSource, "payout", [CallArgs]),
-    SufficientGas  = 250 + (maps:size(Transfers) * 22000),
+    {ok, CallData, _, _} = aeso_compiler:create_calldata(ContractSrc, "payout", [CallArgs]),
     <<Int256:256>> = <<1:256/little-unsigned-integer-unit:1>>,
     Args = #{contract_id => aec_id:create(contract, ContractPK),
-             caller_id   => aec_accounts:id(CallerAcc),
-             nonce       => aec_accounts:nonce(CallerAcc) + 1,
+             caller_id   => aec_id:create(account, CallerPK),
+             nonce       => maps:get(caller_nonce, Opts, CallerNonce),
              call_data   => CallData,
              abi_version => ?ABI_SOPHIA_1,
              amount      => Amount,
              fee         => maps:get(fee, Opts, Int256),
-             gas         => maps:get(gas, Opts, SufficientGas),
+             gas         => maps:get(gas, Opts, contract_gas(maps:size(Transfers))),
              gas_price   => maps:get(gas_price, Opts, min_gas_price())},
     {ok, Tx0} = aect_call_tx:new(Args),
     Height    = maps:get(height, Opts, aec_tx_pool:top_height()),
@@ -276,10 +290,14 @@ create_payout_call_tx(Transfers, CallerAcc, {ContractPK, ContractSource}, Opts) 
     aect_call_tx:new(Args#{fee => MinFee}).
 
 
+contract_gas(TransfersCount) ->
+    ?PAYMENT_CONTRACT_INIT_GAS + (TransfersCount * ?PAYMENT_CONTRACT_GAS_PER_TRANSFER).
+
 format_payout_call_args(#{} = Transfers) ->
-    Tuples = maps:fold(fun (PK, Tokens, Acc) ->
-                               ["(#" ++ aeu_hex:bin_to_hex(PK) ++ "," ++
-                                    integer_to_list(Tokens) ++ ")" | Acc]
+    Tuples = maps:fold(fun (Address, Tokens, Acc) ->
+                               {account_pubkey, PK} = aehttp_api_encoder:decode(Address),
+                               HexPK = aeu_hex:bin_to_hex(PK),
+                               ["(#" ++ HexPK ++ "," ++ integer_to_list(Tokens) ++ ")" | Acc]
                        end, [], Transfers),
     "[" ++ string:join(Tuples, ",") ++ "]".
 
