@@ -236,6 +236,12 @@ read_channel_options(Params) ->
         fun(K, V) ->
             fun(M) -> maps:put(K, V, M) end
         end,
+    Error =
+        fun({error, _} = Err) ->
+            fun(_M) ->
+                Err
+            end
+        end,
     ReadMap =
         fun(MapName, Prefix, Opts) ->
             fun(Name) ->
@@ -255,26 +261,48 @@ read_channel_options(Params) ->
                                                      mandatory => false}),
     ReadReport = ReadMap(report, <<"report">>, #{type => boolean,
                                                      mandatory => false}),
+    OnChainOpts =
+        case (read_param(<<"existing_channel_id">>, existing_channel_id,
+                         #{type => {hash, channel}, mandatory => false}))(Params) of
+            not_set ->  %Channel open scenario
+                [Read(<<"push_amount">>, push_amount, #{type => integer}),
+                 Read(<<"initiator_id">>, initiator, #{type => {hash, account_pubkey}}),
+                 Read(<<"responder_id">>, responder, #{type => {hash, account_pubkey}}),
+                 Read(<<"lock_period">>, lock_period, #{type => integer}),
+                 Read(<<"channel_reserve">>, channel_reserve, #{type => integer}),
+                 Read(<<"initiator_amount">>, initiator_amount, #{type => integer}),
+                 Read(<<"responder_amount">>, responder_amount, #{type => integer})];
+            {ok, ExistingID} ->  %Channel reestablish (already opened) scenario
+                case aec_chain:get_channel(ExistingID) of
+                    {ok, Channel} ->
+                        [Put(existing_channel_id, ExistingID),
+                         Read(<<"offchain_tx">>, offchain_tx, #{type => serialized_tx}),
+                         % push_amount is only used in open and is not preserved.
+                         % 0 guarantees passing checks (executed amount check is the
+                         % same as onchain check)
+                         Put(push_amount, 0),
+                         Put(initiator, aesc_channels:initiator_pubkey(Channel)),
+                         Put(responder, aesc_channels:responder_pubkey(Channel)),
+                         Put(lock_period, aesc_channels:lock_period(Channel)),
+                         Put(channel_reserve, aesc_channels:channel_reserve(Channel)),
+                         Put(initiator_amount, aesc_channels:initiator_amount(Channel)),
+                         Put(responder_amount, aesc_channels:responder_amount(Channel))];
+                    {error, _} = Err ->
+                        [Error(Err)]
+                end;
+            {error, _} = Err ->
+                [Error(Err)]
+        end,
     lists:foldl(
         fun(_, {error, _} = Err) -> Err;
             (Fun, Accum) -> Fun(Accum)
         end,
         #{},
-        [Read(<<"initiator_id">>, initiator, #{type => {hash, account_pubkey}}),
-         Read(<<"responder_id">>, responder, #{type => {hash, account_pubkey}}),
-         Read(<<"existing_channel_id">>, existing_channel_id,
-              #{type => {hash, channel}, mandatory => false}),
-         Read(<<"offchain_tx">>, offchain_tx,
-              #{type => serialized_tx, mandatory => false}),
-         Read(<<"lock_period">>, lock_period, #{type => integer}),
-         Read(<<"push_amount">>, push_amount, #{type => integer}),
-         Read(<<"initiator_amount">>, initiator_amount, #{type => integer}),
-         Read(<<"responder_amount">>, responder_amount, #{type => integer}),
-         Read(<<"channel_reserve">>, channel_reserve, #{type => integer}),
-         Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false}),
+        [Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false}),
          Read(<<"ttl">>, ttl, #{type => integer, mandatory => false}),
          Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}])
-        ] ++ lists:map(ReadTimeout, aesc_fsm:timeouts() ++ [awaiting_open,
+        ] ++ OnChainOpts
+          ++ lists:map(ReadTimeout, aesc_fsm:timeouts() ++ [awaiting_open,
                                                             initialized])
           ++ lists:map(ReadReport, aesc_fsm:report_tags())
      ).

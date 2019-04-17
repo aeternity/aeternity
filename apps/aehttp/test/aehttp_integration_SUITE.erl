@@ -4032,9 +4032,10 @@ sc_ws_leave_(Config) ->
     Options = proplists:get_value(channel_options, Config),
     Port = maps:get(port, Options),
     RPort = Port+1,
-    ReestablOptions = maps:merge(Options, #{existing_channel_id => IDi,
-                                            offchain_tx => StI,
-                                            port => RPort}),
+    ReestablOptions = #{existing_channel_id => IDi,
+                        offchain_tx => StI,
+                        port => RPort,
+                        protocol => maps:get(protocol, Options)},
     ReestablOptions.
 
 
