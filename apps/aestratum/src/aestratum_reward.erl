@@ -86,8 +86,11 @@ init([LastN, {BeneficiariesPctShare, Beneficiaries}]) ->
 handle_cast(keyblock, State) ->
     transaction(fun () -> aestratum_db:store_round() end),
     case maybe_compute_rewards(State) of
-        {ok, #aestratum_reward{height = Height, pool = PoolRewards, miners = MinersRewards}} ->
-            aestratum_chain:payout_rewards(Height, PoolRewards, MinersRewards);
+        {ok, #aestratum_reward{height = Height,
+                               amount = Tokens,
+                               pool = PoolRewards,
+                               miners = MinersRewards}} ->
+            aestratum_chain:payout_rewards(Height, Tokens, PoolRewards, MinersRewards);
         {ok, not_our_share} ->
             ok;
         {error, Reason} ->
