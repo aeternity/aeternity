@@ -2,9 +2,9 @@
 
 [This][this-release] is a maintenance release.
 It:
-* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
-
-TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+* Reduces the parameters required when reestablishing a state channel from the WebSocket user API.
+  The node retrieves the rest of the parameters from the on-chain channel indicated by the specified channel identifier parameter.
+  Please refer to the documentation of the intended usage of the user API for details.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.4.0
 
