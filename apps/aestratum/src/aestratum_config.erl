@@ -2,6 +2,8 @@
 
 -export([read/0]).
 
+-include("aestratum.hrl").
+
 -export_type([config/0]).
 
 -type config() :: map().
@@ -9,17 +11,22 @@
 -spec read() -> {ok, config()} | {error, term()}.
 read() ->
     {ok, Cfg} = aeu_env:user_config(<<"stratum">>),
-    Cfg1 = maps:from_list(Cfg),
-    Cfg2 = #{enabled     => maps:get(<<"enabled">>, Cfg1),
-             conn_cfg    => conn_config(maps:from_list(maps:get(<<"connection">>, Cfg1, []))),
-             session_cfg => session_config(maps:from_list(maps:get(<<"session">>, Cfg1, []))),
-             reward_cfg  => reward_config(maps:from_list(maps:get(<<"reward">>, Cfg1, [])))},
-    case validate_config(Cfg2) of
-        {ok, C} = Res ->
-            setup_env(C),
-            Res;
-        {error, _Rsn} = Res ->
-            Res
+    case maps:from_list(Cfg) of
+        #{<<"enabled">> := true} = Cfg1 ->
+            ToMap = fun (Section) -> maps:from_list(maps:get(Section, Cfg1, [])) end,
+            Cfg2 = #{enabled     => true,
+                     conn_cfg    => conn_config(ToMap(<<"connection">>)),
+                     session_cfg => session_config(ToMap(<<"session">>)),
+                     reward_cfg  => reward_config(ToMap(<<"reward">>))},
+            case validate_config(Cfg2) of
+                {ok, C} = Res ->
+                    setup_env(C),
+                    Res;
+                {error, _Rsn} = Res ->
+                    Res
+            end;
+        #{<<"enabled">> := false} ->
+            {ok, #{enabled => false}}
     end.
 
 conn_config(Cfg) ->
@@ -60,22 +67,39 @@ reward_config(Cfg) ->
     [{<<"dir">>, Dir}] = maps:get(<<"keys">>, Cfg),
     {ok, PubKey}  = read_key(Dir, "sign_key.pub"),
     {ok, PrivKey} = read_key(Dir, "sign_key"),
+    ContractPubKey =
+        case aec_governance:get_network_id() of
+            <<"ae_uat">> ->
+                {contract_pubkey, ContractPK} =
+                    aehttp_api_encoder:decode(?PAYMENT_CONTRACT_TESTNET_ADDRESS),
+                ?info("using Stratum payment contract ~s", [?PAYMENT_CONTRACT_TESTNET_ADDRESS]),
+                ContractPK;
+            <<"ae_mainnet">> ->
+                %% TODO
+                ?error("Stratum payment contract for MAINNET is not deployed yet", []),
+                exit(stratum_payment_contract_for_mainnet_not_deployed)
+                %% ?PAYMENT_CONTRACT_MAINNET_ADDRESS
+        end,
     Beneficiaries =
         lists:foldl(fun (Bnf, Acc) ->
-                            [BnfPK0, PctShare0] = binary:split(Bnf, <<":">>),
-                            %% TODO: get rid of aehttp_api_encoder
-                            {account_pubkey, BnfPK} = aehttp_api_encoder:decode(BnfPK0),
-                            PctShare = binary_to_number(PctShare0),
-                            Acc#{BnfPK => maps:get(BnfPK, Acc, 0) + PctShare}
+                            [<<"ak_", _/binary>> = AccountAddr, PctShareBin] =
+                                binary:split(Bnf, <<":">>),
+                            PctShare = binary_to_number(PctShareBin),
+                            Acc#{AccountAddr => maps:get(AccountAddr, Acc, 0) + PctShare}
                     end, #{}, BeneficiariesAddrPctShares),
     #{reward_last_nrounds  => RewardLastNRounds,
       key_pair             => {PubKey, PrivKey},
+      contract_pub_key     => ContractPubKey,
       beneficiaries        => Beneficiaries,
       beneficiaries_reward => lists:sum(maps:values(Beneficiaries))}.
 
 validate_config(Cfg) ->
-    case run([fun check_extra_nonce_nbytes/1,
-              fun check_beneficiaries_reward/1], Cfg) of
+    Checks = [fun check_extra_nonce_nbytes/1,
+              fun check_beneficiaries_reward/1,
+              fun check_keypair/1,
+              fun check_account/1,
+              fun check_contract/1],
+    case run(Checks, Cfg) of
         ok                  -> {ok, Cfg};
         {error, _Rsn} = Res -> Res
     end.
@@ -122,6 +146,39 @@ check_beneficiaries_reward(#{reward_cfg := RewardCfg}) ->
         N when N < 100.0 -> ok;
         _Other           -> {error, beneficiaries_reward_too_high}
     end.
+
+check_keypair(#{reward_cfg := #{key_pair := KeyPair}}) ->
+    {<<PK:32/binary>>, <<SK:64/binary>>} = KeyPair,
+    Bin = crypto:strong_rand_bytes(100),
+    Sig = enacl:sign_detached(Bin, SK),
+    case enacl:sign_verify_detached(Sig, Bin, PK) of
+        {ok, _} ->
+            ok;
+        {error, _} ->
+            {error, invalid_stratum_keys}
+    end.
+
+check_account(#{reward_cfg := #{key_pair := {PK, _}}}) ->
+    case aec_chain:get_account(PK) of
+        {value, _} ->
+            ok;
+        none ->
+            Address = aehttp_api_encoder:encode(account_pubkey, PK),
+            {error, {stratum_account_not_found, Address}}
+    end.
+
+check_contract(#{reward_cfg := #{contract_pub_key := ContractPK}}) ->
+    Address = case aec_governance:get_network_id() of
+                  <<"ae_uat">> -> ?PAYMENT_CONTRACT_TESTNET_ADDRESS;
+                  <<"ae_mainnet">> -> ?PAYMENT_CONTRACT_MAINNET_ADDRESS
+              end,
+    case aehttp_api_encoder:decode(Address) of
+        {contract_pubkey, ContractPK} ->
+            ok;
+        _ ->
+            {error, {stratum_contract_invalid, Address}}
+    end.
+
 
 read_key(Dir, File) ->
     file:read_file(filename:join([code:priv_dir(aestratum), Dir, File])).

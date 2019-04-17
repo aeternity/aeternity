@@ -18,27 +18,25 @@ start_link(Cfg) ->
 
 %% supervisor callbacks.
 
-init(Cfg) ->
-    Procs = case maps:get(enabled, Cfg) of
-                true ->
-                    aestratum_db:create_tables(disc), % ensure needed tables are present
-                    [aestratum_chain(Cfg),
-                     aestratum_reward(Cfg),
-                     aestratum_extra_nonce_cache(Cfg),
-                     aestratum_user_register(Cfg),
-                     ranch_listener(Cfg)];
-                false ->
-                    []
-            end,
+init(#{enabled := false}) ->
+    {ok, {{one_for_all, 1, 5}, []}};
+init(#{enabled := true} = Cfg) ->
+    aestratum_db:create_tables(disc), % ensure needed tables are present
+    Procs = [aestratum_chain(Cfg),
+             aestratum_reward(Cfg),
+             aestratum_extra_nonce_cache(Cfg),
+             aestratum_user_register(Cfg),
+             ranch_listener(Cfg)],
     {ok, {{one_for_all, 1, 5}, Procs}}.
 
 %% Internal functions.
 
 aestratum_chain(#{reward_cfg :=
                   #{key_pair := KeyPair,
+                    contract_pub_key := ContractPubKey,
                     beneficiaries_reward := BeneficiariesReward}}) ->
     {aestratum_chain,
-     {aestratum_chain, start_link, [BeneficiariesReward, KeyPair]},
+     {aestratum_chain, start_link, [BeneficiariesReward, KeyPair, ContractPubKey]},
      permanent, 5000, worker, [aestratum_chain]}.
 
 aestratum_reward(#{reward_cfg :=
