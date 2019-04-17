@@ -70,7 +70,7 @@ table_vsn(_) -> 1.
 sort_key() ->
     abs(erlang:unique_integer([monotonic])).
 
--spec store_share(miner_pubkey(), pos_integer(), binary()) ->
+-spec store_share(binary(), pos_integer(), binary()) ->
                          {ok, #aestratum_share{}, #aestratum_hash{}}.
 store_share(Miner, MinerTarget, Hash) ->
     SortKey = sort_key(),
