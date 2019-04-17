@@ -206,14 +206,14 @@ sum_values(#{} = Xs) -> lists:sum(maps:values(Xs)).
 
 get_key_share_hash(Height, Config) ->
     {key_hashes, KeyShareHashes} = lists:keyfind(key_hashes, 1, Config),
-    <<"MINER_", _/binary>> = lists:nth(Height, KeyShareHashes).
+    <<"ak_MINER_", _/binary>> = lists:nth(Height, KeyShareHashes).
 
 get_map(Tab, Key) ->
     [Record] = mnesia:dirty_read(Tab, Key),
     aestratum_reward:to_map(Record).
 
-mock_chain(Height, <<"MINER_", _/binary>> = Hash) ->
-    [<<"MINER_", _/binary>> = Miner, _] = binary:split(Hash, <<" ">>),
+mock_chain(Height, <<"ak_MINER_", _/binary>> = Hash) ->
+    [<<"ak_MINER_", _/binary>> = Miner, _] = binary:split(Hash, <<" ">>),
     meck:expect(aestratum_chain, get_reward_key_header,
                 fun (_) ->
                         KH = {key_header,
@@ -242,36 +242,36 @@ mock_chain(Height, <<"MINER_", _/binary>> = Hash) ->
     ok.
 
 
--define(TEST_MINERS, [<<"MINER_A_012345678901234567890123">>,
-                      <<"MINER_B_012345678901234567890123">>,
-                      <<"MINER_C_012345678901234567890123">>,
-                      <<"MINER_D_012345678901234567890123">>,
-                      <<"MINER_E_012345678901234567890123">>,
-                      <<"MINER_F_012345678901234567890123">>,
-                      <<"MINER_G_012345678901234567890123">>,
-                      <<"MINER_H_012345678901234567890123">>,
-                      <<"MINER_I_012345678901234567890123">>,
-                      <<"MINER_J_012345678901234567890123">>,
-                      <<"MINER_K_012345678901234567890123">>,
-                      <<"MINER_L_012345678901234567890123">>,
-                      <<"MINER_M_012345678901234567890123">>,
-                      <<"MINER_N_012345678901234567890123">>,
-                      <<"MINER_O_012345678901234567890123">>,
-                      <<"MINER_P_012345678901234567890123">>,
-                      <<"MINER_Q_012345678901234567890123">>,
-                      <<"MINER_R_012345678901234567890123">>,
-                      <<"MINER_S_012345678901234567890123">>,
-                      <<"MINER_T_012345678901234567890123">>,
-                      <<"MINER_U_012345678901234567890123">>,
-                      <<"MINER_V_012345678901234567890123">>,
-                      <<"MINER_W_012345678901234567890123">>,
-                      <<"MINER_X_012345678901234567890123">>,
-                      <<"MINER_Y_012345678901234567890123">>,
-                      <<"MINER_Z_012345678901234567890123">>]).
+-define(TEST_MINERS, [<<"ak_MINER_A_012345678901234567890123">>,
+                      <<"ak_MINER_B_012345678901234567890123">>,
+                      <<"ak_MINER_C_012345678901234567890123">>,
+                      <<"ak_MINER_D_012345678901234567890123">>,
+                      <<"ak_MINER_E_012345678901234567890123">>,
+                      <<"ak_MINER_F_012345678901234567890123">>,
+                      <<"ak_MINER_G_012345678901234567890123">>,
+                      <<"ak_MINER_H_012345678901234567890123">>,
+                      <<"ak_MINER_I_012345678901234567890123">>,
+                      <<"ak_MINER_J_012345678901234567890123">>,
+                      <<"ak_MINER_K_012345678901234567890123">>,
+                      <<"ak_MINER_L_012345678901234567890123">>,
+                      <<"ak_MINER_M_012345678901234567890123">>,
+                      <<"ak_MINER_N_012345678901234567890123">>,
+                      <<"ak_MINER_O_012345678901234567890123">>,
+                      <<"ak_MINER_P_012345678901234567890123">>,
+                      <<"ak_MINER_Q_012345678901234567890123">>,
+                      <<"ak_MINER_R_012345678901234567890123">>,
+                      <<"ak_MINER_S_012345678901234567890123">>,
+                      <<"ak_MINER_T_012345678901234567890123">>,
+                      <<"ak_MINER_U_012345678901234567890123">>,
+                      <<"ak_MINER_V_012345678901234567890123">>,
+                      <<"ak_MINER_W_012345678901234567890123">>,
+                      <<"ak_MINER_X_012345678901234567890123">>,
+                      <<"ak_MINER_Y_012345678901234567890123">>,
+                      <<"ak_MINER_Z_012345678901234567890123">>]).
 
 -define(TEST_MINERS_LENGTH, 26).
 
-miner_target(<<"MINER_", X:8, "_", _/binary>>) -> round(?MAX_TARGET / (2 * 0.4 * (X - 63))).
+miner_target(<<"ak_MINER_", X:8, "_", _/binary>>) -> round(?MAX_TARGET / (2 * 0.4 * (X - 63))).
 
 submit_share({Miner, Target, Hash}) ->
     aestratum_reward:submit_share(Miner, Target, Hash).
@@ -310,10 +310,10 @@ submit_rand_rounds_with_key_shares(Rounds, SharesPerRound)
 
 
 beneficiaries() ->
-    #{<<"benef_1">> => 1,
-      <<"benef_2">> => 2,
-      <<"benef_4">> => 4,
-      <<"benef_8">> => 8}.
+    #{<<"ak_benef_1">> => 1,
+      <<"ak_benef_2">> => 2,
+      <<"ak_benef_4">> => 4,
+      <<"ak_benef_8">> => 8}.
 
 shares_split() ->
     PoolShare = sum_values(beneficiaries()),

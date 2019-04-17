@@ -63,7 +63,8 @@ start_link(LastN, {BenefSumPcts, Beneficiaries})
 keyblock() ->
     gen_server:cast(?MODULE, keyblock).
 
-submit_share(Miner, MinerTarget, Hash) ->
+submit_share(<<"ak_", _/binary>> = Miner, MinerTarget, <<Hash/binary>>) ->
+    true = is_integer(MinerTarget) andalso MinerTarget >= 0,
     gen_server:cast(?MODULE, {submit_share, Miner, MinerTarget, Hash}).
 
 confirm_payout(Height) ->
@@ -94,8 +95,8 @@ handle_cast(keyblock, State) ->
     end,
     {noreply, State};
 
-handle_cast({submit_share, <<MinerPK:?MINER_PUB_BYTES/binary>>, MinerTarget, Hash}, State) ->
-    transaction(fun () -> aestratum_db:store_share(MinerPK, MinerTarget, Hash) end),
+handle_cast({submit_share, Miner, MinerTarget, Hash}, State) ->
+    transaction(fun () -> aestratum_db:store_share(Miner, MinerTarget, Hash) end),
     {noreply, State};
 
 handle_cast({confirm_payout, Height}, State) ->
