@@ -1,3 +1,7 @@
+-define(PAYMENT_CONTRACT_TESTNET_ADDRESS, <<"ct_jgo43gdpikScyo5munDvsVWBJDugjkMtqPHUfzGJyuWAFFUuB">>).
+-define(PAYMENT_CONTRACT_MAINNET_ADDRESS, <<"TODO">>).
+
+
 -record(aestratum_hash,
         {hash   :: binary(),
          key    :: non_neg_integer()}).
