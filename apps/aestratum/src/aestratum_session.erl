@@ -18,21 +18,99 @@
 
 -export_type([session/0]).
 
+-type phase()                         :: connected
+                                       | configured
+                                       | subscribed
+                                       | authorized
+                                       | disconnected.
+
+-type timer()                         :: {reference(), phase()}.
+
+-type extra_nonce()                   :: aestratum_nonce:part_nonce().
+
+-type accept_blocks()                 :: boolean().
+
+-type share_target()                  :: aestratum_target:int_target().
+
+-type max_share_target()              :: aestratum_target:int_target().
+
+-type share_target_diff_threshold()   :: float().
+
+-type desired_solve_time()            :: aestratum_target:solve_time().
+
+-type max_solve_time()                :: aestratum_target:solve_time().
+
+-type job_queue()                     :: aestratum_job_queue:job_queue().
+
+-type raw_msg()                       :: aestratum_jsonrpc:raw_msg().
+
+-type event()                         :: {conn, conn_event()}
+                                       | {chain, chain_event()}.
+
+-type conn_event()                    :: conn_init_event()
+                                       | conn_recv_data_event()
+                                       | conn_timeout_event()
+                                       | conn_close_event().
+
+-type conn_init_event()               :: #{event              => init}.
+
+-type conn_recv_data_event()          :: #{event              => recv_data,
+                                           data               => raw_msg()}.
+
+-type conn_timeout_event()            :: #{event              => timeout}.
+
+-type conn_close_event()              :: #{event              => close}.
+
+-type chain_event()                   :: chain_recv_block_event()
+                                       | chain_set_target_event()
+                                       | chain_notify_event().
+
+-type chain_recv_block_event()        :: #{event              => recv_block,
+                                           block              => block()}.
+
+-type chain_set_target_event()        :: #{event              => set_target}.
+
+-type chain_notify_event()            :: #{event              => notify,
+                                           job_info           => job_info()}.
+
+-type action()                        :: {send, raw_msg(), session()}
+                                       | {no_send, session()}
+                                       | {stop, session()}.
+
+-type block()                         :: #{block_hash         => block_hash(),
+                                           block_version      => block_version(),
+                                           block_target       => block_target()}.
+
+-type job_info()                      :: #{job_id             => job_id(),
+                                           block_hash         => block_hash(),
+                                           block_version      => block_version(),
+                                           block_target       => block_target(),
+                                           share_target       => share_target(),
+                                           desired_solve_time => desired_solve_time(),
+                                           max_solve_time     => max_solve_time()}.
+
+-type job_id()                        :: aestratum_job:id().
+
+-type block_hash()                    :: binary().
+
+-type block_version()                 :: pos_integer().
+
+-type block_target()                  :: aestratum_target:int_target().
+
 -record(state, {
-          phase,
-          timer,
-          extra_nonce,
-          accept_blocks = false,
-          share_target,
-          max_share_target,
-          share_target_diff_threshold,
-          desired_solve_time,
-          max_solve_time,
-          jobs,
-          submissions
+          phase                       :: phase(),
+          timer                       :: timer() | undefined,
+          extra_nonce                 :: extra_nonce() | undefined,
+          accept_blocks = false       :: accept_blocks(),
+          share_target                :: share_target() | undefined,
+          max_share_target            :: max_share_target() | undefined,
+          share_target_diff_threshold :: share_target_diff_threshold() | undefined,
+          desired_solve_time          :: desired_solve_time() | undefined,
+          max_solve_time              :: max_solve_time() | undefined,
+          jobs                        :: job_queue() | undefined
          }).
 
--opaque session() :: #state{}.
+-opaque session()                     :: #state{}.
 
 -define(HOST, application:get_env(aestratum, host, <<"pool.aeternity.com">>)).
 -define(PORT, application:get_env(aestratum, port, 9999)).
@@ -47,14 +125,17 @@
 
 %% API.
 
+-spec new() -> session().
 new() ->
     #state{phase = connected}.
 
+-spec handle_event(event(), session()) -> action().
 handle_event({conn, Event}, State) ->
     handle_conn_event(Event, State);
 handle_event({chain, Event}, State) ->
     handle_chain_event(Event, State).
 
+-spec close(session()) -> ok.
 close(#state{} = State) ->
     close_session(State),
     ok.
@@ -201,7 +282,7 @@ send_submit_rsp(#{user := User, miner_nonce := MinerNonce, pow := Pow} = Req, St
 
 send_configure_rsp1(ok, #{id := Id}, #state{timer = Timer} = State) ->
     %% TODO: there are no configure params currently
-    cancel_timer(Timer),
+    maybe_cancel_timer(Timer),
     RspMap = #{type => rsp, method => configure, id => Id, result => []},
     ?INFO("send_configure_rsp, rsp: ~p", [RspMap]),
     {send, encode(RspMap), State#state{phase = configured,
@@ -209,7 +290,7 @@ send_configure_rsp1(ok, #{id := Id}, #state{timer = Timer} = State) ->
 %%send_configure_rsp1({error, Rsn}, ...
 
 send_subscribe_rsp1(ok, #{id := Id} = Req, #state{timer = Timer} = State) ->
-    cancel_timer(Timer),
+    maybe_cancel_timer(Timer),
     %% TODO: Session resumption not supported (yet).
     ExtraNonceNBytes = ?EXTRA_NONCE_NBYTES,
     case aestratum_extra_nonce_cache:get(ExtraNonceNBytes) of
@@ -231,7 +312,7 @@ send_subscribe_rsp1({error, Rsn}, Req, State) ->
 
 send_authorize_rsp1(ok, #{id := Id, user := User},
                     #state{timer = Timer} = State) ->
-    cancel_timer(Timer),
+    maybe_cancel_timer(Timer),
     aestratum_user_register:add(User, self()),
     RspMap = #{type => rsp, method => authorize, id => Id, result => true},
     %% After the authorization, the server is supposed to send an initial
@@ -468,13 +549,10 @@ set_timer(Phase) ->
     TRef = erlang:send_after(?MSG_TIMEOUT, self(), {conn, #{event => timeout}}),
     {TRef, Phase}.
 
-maybe_cancel_timer({_TRef, _Phase} = Timer) ->
-    cancel_timer(Timer);
+maybe_cancel_timer({TRef, _Phase}) when is_reference(TRef) ->
+    erlang:cancel_timer(TRef);
 maybe_cancel_timer(undefined) ->
     ok.
-
-cancel_timer({TRef, _Phase}) when is_reference(TRef) ->
-    erlang:cancel_timer(TRef).
 
 validate_configure_req(#{params := []}, _State) ->
     ok.

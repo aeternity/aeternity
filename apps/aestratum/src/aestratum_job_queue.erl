@@ -10,6 +10,8 @@
          share_target/3
         ]).
 
+-export_type([job_queue/0]).
+
 -define(QUEUE_LEN_THRESHOLD, 3).
 -define(MAX_JOBS, application:get_env(aestratum, max_jobs, 20)).
 
