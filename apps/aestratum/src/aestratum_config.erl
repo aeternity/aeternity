@@ -3,6 +3,7 @@
 -export([read/0]).
 
 -include("aestratum.hrl").
+-include("aestratum_log.hrl").
 
 -export_type([config/0]).
 
@@ -67,19 +68,10 @@ reward_config(Cfg) ->
     [{<<"dir">>, Dir}] = maps:get(<<"keys">>, Cfg),
     {ok, PubKey}  = read_key(Dir, "sign_key.pub"),
     {ok, PrivKey} = read_key(Dir, "sign_key"),
-    ContractPubKey =
-        case aec_governance:get_network_id() of
-            <<"ae_uat">> ->
-                {contract_pubkey, ContractPK} =
-                    aehttp_api_encoder:decode(?PAYMENT_CONTRACT_TESTNET_ADDRESS),
-                ?info("using Stratum payment contract ~s", [?PAYMENT_CONTRACT_TESTNET_ADDRESS]),
-                ContractPK;
-            <<"ae_mainnet">> ->
-                %% TODO
-                ?error("Stratum payment contract for MAINNET is not deployed yet", []),
-                exit(stratum_payment_contract_for_mainnet_not_deployed)
-                %% ?PAYMENT_CONTRACT_MAINNET_ADDRESS
-        end,
+    ContractAddress = case aec_governance:get_network_id() of
+                          <<"ae_uat">> -> ?PAYMENT_CONTRACT_TESTNET_ADDRESS;
+                          <<"ae_mainnet">> -> ?PAYMENT_CONTRACT_MAINNET_ADDRESS
+                      end,
     Beneficiaries =
         lists:foldl(fun (Bnf, Acc) ->
                             [<<"ak_", _/binary>> = AccountAddr, PctShareBin] =
@@ -89,7 +81,7 @@ reward_config(Cfg) ->
                     end, #{}, BeneficiariesAddrPctShares),
     #{reward_last_nrounds  => RewardLastNRounds,
       key_pair             => {PubKey, PrivKey},
-      contract_pub_key     => ContractPubKey,
+      contract_address     => ContractAddress,
       beneficiaries        => Beneficiaries,
       beneficiaries_reward => lists:sum(maps:values(Beneficiaries))}.
 
@@ -167,16 +159,12 @@ check_account(#{reward_cfg := #{key_pair := {PK, _}}}) ->
             {error, {stratum_account_not_found, Address}}
     end.
 
-check_contract(#{reward_cfg := #{contract_pub_key := ContractPK}}) ->
-    Address = case aec_governance:get_network_id() of
-                  <<"ae_uat">> -> ?PAYMENT_CONTRACT_TESTNET_ADDRESS;
-                  <<"ae_mainnet">> -> ?PAYMENT_CONTRACT_MAINNET_ADDRESS
-              end,
-    case aehttp_api_encoder:decode(Address) of
-        {contract_pubkey, ContractPK} ->
+check_contract(#{reward_cfg := #{contract_address := ContractAddress}}) ->
+    case aehttp_api_encoder:decode(ContractAddress) of
+        {contract_pubkey, _} ->
             ok;
         _ ->
-            {error, {stratum_contract_invalid, Address}}
+            {error, {stratum_contract_invalid, ContractAddress}}
     end.
 
 

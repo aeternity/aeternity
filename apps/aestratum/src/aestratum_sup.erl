@@ -33,10 +33,10 @@ init(#{enabled := true} = Cfg) ->
 
 aestratum_chain(#{reward_cfg :=
                   #{key_pair := KeyPair,
-                    contract_pub_key := ContractPubKey,
+                    contract_address := ContractAddress,
                     beneficiaries_reward := BeneficiariesReward}}) ->
     {aestratum_chain,
-     {aestratum_chain, start_link, [BeneficiariesReward, KeyPair, ContractPubKey]},
+     {aestratum_chain, start_link, [BeneficiariesReward, KeyPair, ContractAddress]},
      permanent, 5000, worker, [aestratum_chain]}.
 
 aestratum_reward(#{reward_cfg :=
