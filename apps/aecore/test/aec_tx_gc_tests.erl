@@ -157,6 +157,10 @@ tx_gc_test_() ->
                %% Check that F1KeyBlock1 is now the top
                ?assertEqual(F1KeyBlock1Hash, aec_chain:top_block_hash()),
 
+               %% Transactions are a part of the F1MicroCandidate block
+               ?assertMatch([_], read_tx_location(Tx1Hash)),
+               ?assertMatch([_], read_tx_location(Tx2Hash)),
+
                %% Create a fork that will take over top (call the chain Fork2 = F2)
 
                %% Insert one key block...
@@ -183,18 +187,22 @@ tx_gc_test_() ->
                ?assertMatch({value, _}, aec_db:find_signed_tx(Tx1Hash)),
                ?assertMatch({value, _}, aec_db:find_signed_tx(Tx2Hash)),
 
+               %% Transactions are no longer assigned to F1MicroCandidate block
+               ?assertMatch([], read_tx_location(Tx1Hash)),
+               ?assertMatch([], read_tx_location(Tx2Hash)),
+
                %% Garbage collect these transactions from the database
                %% Mempool GC kicks in at height = 2 (TTL defined in TX)
                %% Transactions GC kicks in at height = 6 (2 + 4)
 
-%% UNCOMMENTING BELOW SHOULD NOT MAKE TEST FAIL!
-%%               ok = aec_tx_pool:sync_garbage_collect(2),
-%%               ok = aec_tx_gc:sync_gc(6),
-%%
-%%               ?assertMatch(none, aec_db:find_signed_tx(Tx1Hash)),
-%%               ?assertMatch(none, aec_db:find_signed_tx(Tx2Hash)),
-%%               ?assertMatch([], read_aec_tx_gc_object(Tx1Hash)),
-%%               ?assertMatch([], read_aec_tx_gc_object(Tx1Hash)),
+               %% UNCOMMENTING BELOW SHOULD NOT MAKE TEST FAIL!
+               %%               ok = aec_tx_pool:sync_garbage_collect(2),
+               %%               ok = aec_tx_gc:sync_gc(6),
+               %%
+               %%               ?assertMatch(none, aec_db:find_signed_tx(Tx1Hash)),
+               %%               ?assertMatch(none, aec_db:find_signed_tx(Tx2Hash)),
+               %%               ?assertMatch([], read_aec_tx_gc_object(Tx1Hash)),
+               %%               ?assertMatch([], read_aec_tx_gc_object(Tx1Hash)),
 
                %% Make Fork1 take over again (add two key blocks to it)
                {ok, F1KeyBlock2} = aec_block_key_candidate:create(F1KeyBlock1, Priv),
@@ -247,4 +255,10 @@ read_aec_tx_gc_object(Hash) ->
     aec_db:transaction(
       fun() ->
               mnesia:read(aec_tx_gc, Hash)
+      end).
+
+read_tx_location(Hash) ->
+    aec_db:transaction(
+      fun() ->
+              mnesia:read(aec_tx_location, Hash)
       end).
