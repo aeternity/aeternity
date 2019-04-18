@@ -151,33 +151,34 @@ state_gas_per_block(oracle_response_tx) -> state_gas_per_block(oracle_register_t
 %% calling contract create transaction or contract call transaction)
 %% at least the gas of the call instruction (e.g. `CALL`) used
 %% for calling the primop.
-primop_base_gas(?PRIM_CALL_SPEND              ) -> 12000;
-primop_base_gas(?PRIM_CALL_ORACLE_REGISTER    ) -> 12000;
-primop_base_gas(?PRIM_CALL_ORACLE_QUERY       ) -> 12000;
-primop_base_gas(?PRIM_CALL_ORACLE_RESPOND     ) -> 12000;
-primop_base_gas(?PRIM_CALL_ORACLE_EXTEND      ) -> 12000;
-primop_base_gas(?PRIM_CALL_ORACLE_GET_ANSWER  ) -> 12000;
-primop_base_gas(?PRIM_CALL_ORACLE_GET_QUESTION) -> 12000;
-primop_base_gas(?PRIM_CALL_ORACLE_QUERY_FEE   ) -> 12000;
-primop_base_gas(?PRIM_CALL_AENS_RESOLVE       ) -> 12000;
-primop_base_gas(?PRIM_CALL_AENS_PRECLAIM      ) -> 12000;
-primop_base_gas(?PRIM_CALL_AENS_CLAIM         ) -> 12000;
-primop_base_gas(?PRIM_CALL_AENS_UPDATE        ) -> 12000;
-primop_base_gas(?PRIM_CALL_AENS_TRANSFER      ) -> 12000;
-primop_base_gas(?PRIM_CALL_AENS_REVOKE        ) -> 12000;
-primop_base_gas(?PRIM_CALL_MAP_EMPTY          ) -> 0;
-primop_base_gas(?PRIM_CALL_MAP_GET            ) -> 0;
-primop_base_gas(?PRIM_CALL_MAP_PUT            ) -> 0;
-primop_base_gas(?PRIM_CALL_MAP_DELETE         ) -> 0;
-primop_base_gas(?PRIM_CALL_MAP_SIZE           ) -> 0;
-primop_base_gas(?PRIM_CALL_MAP_TOLIST         ) -> 0;
-primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY    ) -> 1300;    %% 700 for call + 1300 = 2000
-primop_base_gas(?PRIM_CALL_CRYPTO_SHA3           ) -> 30;   %% Same as gas cost for SHA3 instruction
-primop_base_gas(?PRIM_CALL_CRYPTO_SHA256         ) -> 30;
-primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B        ) -> 30;
-primop_base_gas(?PRIM_CALL_CRYPTO_SHA256_STRING  ) -> 30;
-primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B_STRING ) -> 30;
-primop_base_gas(?PRIM_CALL_AUTH_TX_HASH          ) -> 0.
+primop_base_gas(?PRIM_CALL_SPEND                     ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_REGISTER           ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_QUERY              ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_RESPOND            ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_EXTEND             ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_GET_ANSWER         ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_GET_QUESTION       ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_QUERY_FEE          ) -> 12000;
+primop_base_gas(?PRIM_CALL_AENS_RESOLVE              ) -> 12000;
+primop_base_gas(?PRIM_CALL_AENS_PRECLAIM             ) -> 12000;
+primop_base_gas(?PRIM_CALL_AENS_CLAIM                ) -> 12000;
+primop_base_gas(?PRIM_CALL_AENS_UPDATE               ) -> 12000;
+primop_base_gas(?PRIM_CALL_AENS_TRANSFER             ) -> 12000;
+primop_base_gas(?PRIM_CALL_AENS_REVOKE               ) -> 12000;
+primop_base_gas(?PRIM_CALL_MAP_EMPTY                 ) -> 0;
+primop_base_gas(?PRIM_CALL_MAP_GET                   ) -> 0;
+primop_base_gas(?PRIM_CALL_MAP_PUT                   ) -> 0;
+primop_base_gas(?PRIM_CALL_MAP_DELETE                ) -> 0;
+primop_base_gas(?PRIM_CALL_MAP_SIZE                  ) -> 0;
+primop_base_gas(?PRIM_CALL_MAP_TOLIST                ) -> 0;
+primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY           ) -> 1300;    %% 700 for call + 1300 = 2000
+primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1 ) -> 1300;    %% 700 for call + 1300 = 2000
+primop_base_gas(?PRIM_CALL_CRYPTO_SHA3               ) -> 30;   %% Same as gas cost for SHA3 instruction
+primop_base_gas(?PRIM_CALL_CRYPTO_SHA256             ) -> 30;
+primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B            ) -> 30;
+primop_base_gas(?PRIM_CALL_CRYPTO_SHA256_STRING      ) -> 30;
+primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B_STRING     ) -> 30;
+primop_base_gas(?PRIM_CALL_AUTH_TX_HASH              ) -> 0.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Naming system variables

@@ -72,7 +72,7 @@ binary_to_heap(Type, <<Ptr:32/unit:8, Heap/binary>>, NextId, Offs) ->
                                          aeb_heap:heap_fragment(no_maps(NextId), 32, Heap), Offs),
         {ok, aeb_heap:heap_value(Maps, Addr, list_to_binary(Mem), Offs)}
     catch _:Err ->
-        %%io:format("** Error: binary_to_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
+        %% io:format("** Error: binary_to_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
         {error, Err}
     end;
 binary_to_heap(_Type, <<>>, _NextId, _Offs) ->
@@ -148,6 +148,11 @@ convert(_, _, MaxSize, _, _Visited, string, Val, Heap, BaseAddr) ->
     Bytes = Words * 32,
     check_size(MaxSize, Bytes),
     {BaseAddr, {aeb_heap:maps_with_next_id(Heap), Bytes, [get_chunk(Heap, Val, Bytes)]}};
+convert(_, _, _, _, _, {bytes, Len}, Val, Heap, _) when Len =< 32 ->
+    {Val, {aeb_heap:maps_with_next_id(Heap), 0, []}};
+convert(Input, Output, MaxSize, Store, Visited, {bytes, Len}, Ptr, Heap, BaseAddr) ->
+    Words = (31 + Len) div 32,
+    convert(Input, Output, MaxSize, Store, Visited, {tuple, lists:duplicate(Words, word)}, Ptr, Heap, BaseAddr);
 convert(Input, Output, MaxSize, Store, Visited, {list, T}, Val, Heap, BaseAddr) ->
     <<Nil:256>> = <<(-1):256>>,   %% empty list is -1
     case Val of
@@ -211,7 +216,11 @@ convert(Input, Output, MaxSize, Store, Visited, typerep, Ptr, Heap, BaseAddr) ->
                          [{list, typerep}],          %% tuple
                          [{list, {list, typerep}}],  %% variant
                          [],                         %% typerep
-                         [typerep, typerep]          %% map
+                         [typerep, typerep],         %% map
+                         [not_a_valid_type_crash],   %% fun - not allowed as argument, should crash, only
+                                                     %% needed to get the right number of elements such
+                                                     %% that 'bytes' works.
+                         [word]                      %% bytes
                         ]},
     convert(Input, Output, MaxSize, Store, Visited, Typerep, Ptr, Heap, BaseAddr).
 

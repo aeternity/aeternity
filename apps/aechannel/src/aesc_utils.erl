@@ -14,7 +14,6 @@
          check_round_greater_than_last/3,
          check_state_hash_size/1,
          deserialize_payload/1,
-         is_payload_valid_at_protocol/2,
          check_solo_close_payload/8,
          is_payload_valid_at_protocol/2,
          check_slash_payload/8,

@@ -799,7 +799,7 @@ int_check_meta_tx(0, MetaTx, Pubkey, Source) ->
         {value, Account} ->
             TotalAmount = aega_meta_tx:gas(MetaTx) * aega_meta_tx:gas_price(MetaTx)
                             + aega_meta_tx:fee(MetaTx),
-            case TotalAmount >= aec_accounts:balance(Account) of
+            case TotalAmount =< aec_accounts:balance(Account) of
                 true  -> ok;
                 false -> {error, insufficient_funds}
             end;
