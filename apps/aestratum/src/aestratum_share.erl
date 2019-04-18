@@ -1,6 +1,5 @@
 -module(aestratum_share).
 
-%% TODO: type spec
 %% TODO: eunit
 
 -export([new/3,

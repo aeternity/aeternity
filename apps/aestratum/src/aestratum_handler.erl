@@ -62,11 +62,6 @@ handle_call(_Request, _From, State) ->
 	{reply, ok, State}.
 
 handle_cast(init_session, #state{} = State) ->
-    %% TODO: subscribe to chain events. The event for a new key block candidate
-    %% is exepcted to be:
-    %% {chain #{event => recv_block, block => #{block_hash => BlockHash,
-    %%                                          block_version => BlockVersion,
-    %%                                          block_targe => BlockTarget}}}
     Session = aestratum_session:new(),
     Res = aestratum_session:handle_event({conn, #{event => init}}, Session),
     result(Res, State).

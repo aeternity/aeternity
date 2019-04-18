@@ -1,6 +1,5 @@
 -module(aestratum_session).
 
-%% TODO: type spec
 %% TODO: add functions for setting share_target, share_target_diff_threshold,
 %% desired_solve_time, max_solve_time.... - this will work with
 %% aestratum_user_register - look up conn pid based on the public key and call
@@ -644,9 +643,6 @@ check_duplicate_share(#{pow := Pow}, _State,
             Share1 = aestratum_share:set_validity(duplicate_share, Share),
             {done, {error, Share1, Job}}
     end.
-
-%% TODO: check_share_timestamp? If a share is submitted long after a job was
-%% created.
 
 check_solution(#{pow := Pow}, #state{extra_nonce = ExtraNonce},
                #{miner_nonce := MinerNonce, share := Share, job := Job}) ->
