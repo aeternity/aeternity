@@ -3124,15 +3124,26 @@ pending_transactions(_Config) ->
     {ok, MinedBlocks1} = aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
 
-    ExpectedReward = lists:sum([rpc(aec_governance, block_mine_reward,
-                                    [aec_blocks:height(X) - Delay])
-                                || X <- MinedBlocks1,
-                                   aec_blocks:type(X) =:= key
-                               ]),
+    BlockRewards = fun (Blocks) ->
+                           [begin
+                                Height = aec_blocks:height(B) - Delay,
+                                rpc(aec_governance, block_mine_reward, [Height])
+                            end || B <- Blocks]
+                   end,
 
+    MinedRewards1 =
+        case aec_governance:get_network_id() of
+            <<"local_fortuna_testnet">> ->
+                [Amount - (Amount * aec_governance:protocol_beneficiary_factor() div 1000) ||
+                    Amount <- BlockRewards(MinedBlocks1)];
+            _ ->
+                BlockRewards(MinedBlocks1)
+        end,
+    ExpectedReward1 = lists:sum(MinedRewards1),
     ct:log("Bal0: ~p, Initial Balance: ~p, Blocks to mine: ~p, Expected reward: ~p",
-           [Bal0, InitialBalance, BlocksToMine, ExpectedReward]),
-    ?assertEqual(Bal0, InitialBalance + ExpectedReward),
+           [Bal0, InitialBalance, BlocksToMine, ExpectedReward1]),
+    ?assertEqual(Bal0, InitialBalance + ExpectedReward1),
+
     true = (is_integer(Bal0) andalso Bal0 >= AmountToSpent),
 
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % still empty
@@ -3167,15 +3178,29 @@ pending_transactions(_Config) ->
     %% Make sure we get the reward...
     {ok, MinedBlocks2b} = aecore_suite_utils:mine_key_blocks(Node, Delay),
 
-    ExpectedReward1 = lists:sum([rpc(aec_governance, block_mine_reward,
-                                     [aec_blocks:height(X) - Delay])
-                                 || X <- MinedBlocks2a ++ MinedBlocks2b,
-                                    aec_blocks:type(X) =:= key
-                                ]),
+    MinedRewards2 =
+        case aec_governance:get_network_id() of
+            <<"local_fortuna_testnet">> ->
+                [Amount - (Amount * aec_governance:protocol_beneficiary_factor() div 1000) ||
+                    Amount <- BlockRewards(MinedBlocks2a ++ MinedBlocks2b)];
+            _ ->
+                BlockRewards(MinedBlocks2a ++ MinedBlocks2b)
+        end,
+
+    ExpectedReward2 = lists:sum(MinedRewards2) -
+        case aec_governance:get_network_id() of
+            <<"local_fortuna_testnet">> ->
+                %% We get SPEND_FEE back as miner reward except the cut for protocol beneficiary
+                ?SPEND_FEE * aec_governance:protocol_beneficiary_factor() div 1000;
+            _ ->
+                0
+        end,
     {ok, 200, #{<<"balance">> := Bal1}} = get_balance_at_top(),
     ct:log("Bal1: ~p, Bal0: ~p, Expected reward: ~p, Amount to spend: ~p",
-           [Bal1, Bal0, ExpectedReward1, AmountToSpent]),
-    ?assertEqual(Bal1, Bal0 + ExpectedReward1 - AmountToSpent),
+           [Bal1, Bal0, ExpectedReward2, AmountToSpent]),
+
+    ?assertEqual(Bal1, Bal0 + ExpectedReward2 - AmountToSpent),
+
     {ok, 200, #{<<"balance">> := AmountToSpent}} =
                  get_accounts_by_pubkey_sut(aeser_api_encoder:encode(account_pubkey, ReceiverPubKey)),
     ok.

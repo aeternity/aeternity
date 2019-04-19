@@ -22,6 +22,10 @@
          fraud_report_reward/1,
          state_gas_per_block/1,
          primop_base_gas/1,
+         protocol_beneficiary/0,
+         protocol_beneficiary_factor/0,
+         protocol_beneficiary_activation/1,
+         protocol_beneficiary_enabled/0,
          add_network_id/1,
          add_network_id_last/1,
          get_network_id/0,
@@ -479,3 +483,31 @@ vm_gas_table() ->
        %%   }
        %%   ```
      }.
+
+
+-define(PROTOCOL_BENEFICIARY_ADDRESS, <<"ak_2uN1CEVGs4D5QnFudhp8dSqrwJEMFiTfwvbCK3SJzVYRDiusfd">>). %% TODO: random, change for real
+-define(PROTOCOL_BENEFICIARY_ENABLED, true).
+-define(PROTOCOL_BENEFICIARY_FACTOR, 100). %% 10%
+
+protocol_beneficiary_enabled() ->
+    aeu_env:user_config_or_env([<<"chain">>, <<"protocol_beneficiary_enabled">>],
+                                aecore, protocol_beneficiary_enabled, ?PROTOCOL_BENEFICIARY_ENABLED).
+
+protocol_beneficiary() ->
+    ProtocolBeneficiary0 = aeu_env:user_config_or_env([<<"chain">>, <<"protocol_beneficiary_address">>],
+                                                      aecore, protocol_beneficiary_address, ?PROTOCOL_BENEFICIARY_ADDRESS),
+    case aeser_api_encoder:safe_decode(account_pubkey, ProtocolBeneficiary0) of
+        {ok, ProtocolBeneficiary} -> ProtocolBeneficiary;
+        {error, Reason} -> {error, {protocol_beneficiary_error, Reason}}
+    end.
+
+protocol_beneficiary_factor() ->
+    aeu_env:user_config_or_env([<<"chain">>, <<"protocol_beneficiary_factor">>],
+        aecore, protocol_beneficiary_factor, ?PROTOCOL_BENEFICIARY_FACTOR).
+
+protocol_beneficiary_activation(Height) ->
+    case aec_hard_forks:protocol_effective_at_height(Height) of
+        ?ROMA_PROTOCOL_VSN -> false;
+        ?MINERVA_PROTOCOL_VSN -> false;
+        Vsn when Vsn >= ?FORTUNA_PROTOCOL_VSN -> true
+    end.
