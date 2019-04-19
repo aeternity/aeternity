@@ -370,6 +370,26 @@
                             "minimum" : 0
                         }
                     }
+                },
+                "protocol_beneficiary_address" : {
+                    "description" :
+                    "Public key of beneficiary account that belongs to protocol maintainers.",
+                    "type" : "string",
+                    "example" : "ak_DummyPubKeyDoNotEverUse999999999999999999999999999",
+                    "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*$"
+                },
+                "protocol_beneficiary_enabled" : {
+                    "description" :
+                    "If true, the node will split rewards and send part to protocol_beneficiary_address",
+                    "type" : "boolean"
+                },
+                "protocol_beneficiary_factor" : {
+                    "description" :
+                    "Part of rewards to split and send to protocol_beneficiary_address. Rounded to avoid fractions. 100 is 10%",
+                    "type" : "integer",
+                    "default": 100,
+                    "minimum" : 1,
+                    "maximum" : 1000
                 }
             }
         },

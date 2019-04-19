@@ -24,7 +24,7 @@ tx_pool_test_() ->
              aec_test_utils:mock_genesis_and_forks(),
              GB = aec_test_utils:genesis_block(),
              aec_chain_state:insert_block(GB),
-             aec_test_utils:mock_block_target_validation(), %% Mocks aec_governance.
+             aec_test_utils:mock_governance(), %% Mocks aec_governance.
              {ok, _} = aec_tx_pool_gc:start_link(),
              {ok, _} = aec_tx_pool:start_link(),
              %% Start `aec_keys` merely for generating realistic test
@@ -47,7 +47,7 @@ tx_pool_test_() ->
              ets:delete(?TAB),
              aec_test_utils:stop_chain_db(),
              aec_test_utils:unmock_genesis_and_forks(),
-             aec_test_utils:unmock_block_target_validation(), %% Unloads aec_governance mock.
+             aec_test_utils:unmock_governance(), %% Unloads aec_governance mock.
              ok = aec_tx_pool:stop(),
              ok = aec_tx_pool_gc:stop(),
              meck:unload(aeu_time),

@@ -875,6 +875,7 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     KeyFees  = db_get_fees(hash(KeyNode2)),
     Beneficiary1 = node_beneficiary(KeyNode1),
     Beneficiary2 = node_beneficiary(KeyNode2),
+    BeneficiaryProtocolFoundation = aec_governance:protocol_beneficiary(),
     %% We give the mining reward for the closing block of the generation.
     MineReward2 = aec_governance:block_mine_reward(node_height(KeyNode2)),
     %% Fraud rewards is given for the opening block of the generation
@@ -883,6 +884,11 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     {BeneficiaryReward1, BeneficiaryReward2, LockAmount} =
         calc_rewards(FraudStatus1, FraudStatus2, KeyFees, MineReward2,
                      FraudReward1, node_is_genesis(KeyNode1, State)),
+
+    OldestBeneficiaryHeight = node_height(KeyNode1),
+    {AdjustedReward1, AdjustedReward2, FoundationReward} =
+        reward_split_for_protocol_foundation(BeneficiaryReward1, BeneficiaryReward2, OldestBeneficiaryHeight),
+
     Trees1 =
         lists:foldl(
             fun({K, Amt}, TreesAccum) when Amt > 0 ->
@@ -890,8 +896,9 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
                 (_, TreesAccum) -> TreesAccum
             end,
             Trees,
-            [{Beneficiary1, BeneficiaryReward1},
-             {Beneficiary2, BeneficiaryReward2}]),
+            [{Beneficiary1, AdjustedReward1},
+             {Beneficiary2, AdjustedReward2},
+             {BeneficiaryProtocolFoundation, FoundationReward}]),
     Accounts0 = aec_trees:accounts(Trees1),
     Accounts = aec_accounts_trees:lock_coins(LockAmount, Accounts0),
     aec_trees:set_accounts(Trees1, Accounts).
@@ -1158,3 +1165,17 @@ calc_rewards(FraudStatus1, FraudStatus2, GenerationFees,
     LockedAmount = TotalBlockAmount - B1Amt - B2Amt,
     {B1Amt, B2Amt, LockedAmount}.
 
+reward_split_for_protocol_foundation(BeneficiaryReward1, BeneficiaryReward2, NewestNodeHeight) ->
+    ActivationHeight = aec_governance:protocol_beneficiary_activation(NewestNodeHeight),
+    ActivationFlag = aec_governance:protocol_beneficiary_enabled(),
+    if ActivationHeight and ActivationFlag ->
+        ContribFactor = aec_governance:protocol_beneficiary_factor(),
+        Contrib1 = BeneficiaryReward1 * ContribFactor div 1000, %% todo: drop zeros, div 100 after merges
+        AdjustedBeneficiaryReward1 = BeneficiaryReward1 - Contrib1,
+        Contrib2 = BeneficiaryReward2 * ContribFactor div 1000,
+        AdjustedBeneficiaryReward2 = BeneficiaryReward2 - Contrib2,
+        FoundationReward = Contrib1 + Contrib2,
+        {AdjustedBeneficiaryReward1, AdjustedBeneficiaryReward2, FoundationReward};
+       true ->
+           {BeneficiaryReward1, BeneficiaryReward2, 0}
+    end.
