@@ -20,6 +20,7 @@
 -export([transaction/1,
          dirty/1,
          ensure_transaction/1,
+         ensure_activity/2,
          write/2,
          delete/2,
          read/2]).
@@ -249,11 +250,24 @@ dirty(Fun) when is_function(Fun, 0) ->
 
 ensure_transaction(Fun) when is_function(Fun, 0) ->
     %% TODO: actually, some non-transactions also have an activity state
-    case get(mnesia_activity_state) of undefined ->
+    case get(mnesia_activity_state) of
+        undefined ->
+            transaction(Fun);
+        {_, _, non_transaction} ->
+            %% Transaction inside a dirty context; rely on mnesia to handle it
             transaction(Fun);
         _ -> Fun()
     end.
 
+ensure_activity(transaction, Fun) when is_function(Fun, 0) ->
+    ensure_transaction(Fun);
+ensure_activity(PreferedType, Fun) when is_function(Fun, 0) ->
+    case get(mnesia_activity_state) of
+        undefined ->
+            mnesia:activity(PreferedType, Fun);
+        _ ->
+            Fun()
+    end.
 
 read(Tab, Key) ->
     mnesia:read(Tab, Key).
