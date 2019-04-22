@@ -13,7 +13,9 @@
 
 -include("aestratum_log.hrl").
 
--export_type([session/0]).
+-export_type([key/0,
+              value/0,
+              session/0]).
 
 -type key()                           :: atom().
 
