@@ -659,14 +659,16 @@ channel_detects_close_solo(Cfg) ->
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
         aecore_suite_utils:node_name(dev1), [TxHash], ?MAX_MINED_BLOCKS),
-    TTL = current_height(dev1) + maps:get(lock_period, Spec),
+    LockPeriod = maps:get(lock_period, Spec),
+    TTL = current_height(dev1) + LockPeriod,
     ct:log("Expected TTL = ~p", [TTL]),
     SignedTx = await_on_chain_report(I, #{info => solo_closing}, ?TIMEOUT),
     SignedTx = await_on_chain_report(R, #{info => solo_closing}, ?TIMEOUT),
     {ok,_} = receive_from_fsm(info, I, fun closing/1, ?TIMEOUT, Debug),
     {ok,_} = receive_from_fsm(info, R, fun closing/1, ?TIMEOUT, Debug),
     check_info(500),
-    settle_(TTL, I, R, Debug),
+    settle_(LockPeriod, maps:get(minimum_depth, Spec), I, R, Debug),
+    check_info(500),
     ok.
 
 close_solo_tx(#{ fsm        := Fsm
@@ -769,6 +771,7 @@ check_history(Log) ->
     %% Expected events for initiator so far, in reverse cronological order
     Expected = [{rcv, funding_locked},
                 {snd, funding_locked},
+                {rcv, channel_changed},
                 {rcv, funding_signed},
                 {snd, funding_created},
                 {rcv, signed},
@@ -821,7 +824,9 @@ died_subverted(#{info := {died,_}}) -> ok.
 
 %% solo_closing(#{info := solo_closing}) -> ok.
 
-closing(#{info := closing}) -> ok.
+closing(#{info := closing} = Msg) ->
+    ct:log("matches #{info := closing} - ~p", [Msg]),
+    ok.
 
 multiple_channels(Cfg) ->
     multiple_channels_t(10, 9360, {transfer, 100}, ?SLOGAN, Cfg).
@@ -1233,14 +1238,21 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R) ->
     verify_close_mutual_tx(SignedTx, ChannelId),
     ok.
 
-settle_(TTL, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug) ->
+settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug) ->
     ok = rpc(dev1, aesc_fsm, settle, [FsmI]),
     _ = await_signing_request(settle_tx, I),
+    ct:log("settle_tx signed", []),
     mine_blocks(dev1, TTL + 1, Debug),
-    SignedTx = await_on_chain_report(I, ?TIMEOUT),
-    SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
-    wait_for_signed_transaction_in_block(dev1, SignedTx),
-    verify_settle_tx(SignedTx, ChannelId).
+    SignedTx = await_on_chain_report(I, #{info => channel_closed}, ?TIMEOUT),
+    ct:log("I received On-chain report: ~p", [SignedTx]),
+    SignedTx = await_on_chain_report(R, #{info => channel_closed}, ?TIMEOUT), % same tx
+    ct:log("R received On-chain report: ~p", [SignedTx]),
+    verify_settle_tx(SignedTx, ChannelId),
+    ct:log("settle_tx verified", []),
+    mine_blocks(dev1, MinDepth, Debug),
+    {ok, _} = receive_from_fsm(info, I, closed_confirmed, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(info, R, closed_confirmed, ?TIMEOUT, Debug),
+    ok.
 
 %% Retry N times, T ms apart, if F() raises an exception.
 %% Used in places where there could be a race.
@@ -1458,7 +1470,7 @@ verify_settle_tx(SignedTx, ChannelId) ->
     {channel_settle_tx, Tx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
     {_, ChInfo} = aesc_settle_tx:serialize(Tx),
     true = lists:member(ChannelId,
-        [ aec_id:specialize(ChId, channel) ||
+        [ aeser_id:specialize(ChId, channel) ||
             {channel_id, ChId} <- ChInfo
         ]).
 
