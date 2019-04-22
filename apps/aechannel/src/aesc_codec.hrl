@@ -58,6 +58,7 @@
 -define(CHANNEL_CHANGED, channel_changed).
 -define(CHANNEL_CLOSING, channel_closing).
 -define(CHANNEL_UNLOCKED, channel_unlocked).
+-define(CHANNEL_CLOSED, channel_closed).
 
 %% Error codes
 -define(ERR_VALIDATION, 1).
