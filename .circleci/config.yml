@@ -918,10 +918,10 @@ jobs:
   verify_release_artifacts:
     executor: infrastructure_container_stable
     <<: *infrastructure_config
-    working_directory: /infrastructure
     steps:
       - run:
           name: Verify release artifacts
+          working_directory: /infrastructure
           command: |
             ./scripts/check_release_artifacts.sh ${CIRCLE_TAG}
 
