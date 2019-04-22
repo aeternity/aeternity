@@ -1,13 +1,11 @@
 -module(aestratum_session).
 
-%% TODO: add functions for setting share_target, share_target_diff_threshold,
-%% desired_solve_time, max_solve_time.... - this will work with
-%% aestratum_user_register - look up conn pid based on the public key and call
-
 -export([new/0,
          handle_event/2,
          close/1
         ]).
+
+-export([set/3]).
 
 -ifdef(TEST).
 -export([state/1]).
@@ -16,6 +14,10 @@
 -include("aestratum_log.hrl").
 
 -export_type([session/0]).
+
+-type key()                           :: atom().
+
+-type value()                         :: term().
 
 -type phase()                         :: connected
                                        | configured
@@ -30,6 +32,8 @@
 -type accept_blocks()                 :: boolean().
 
 -type share_target()                  :: aestratum_target:int_target().
+
+-type initial_share_target()          :: aestratum_target:int_target().
 
 -type max_share_target()              :: aestratum_target:int_target().
 
@@ -101,7 +105,7 @@
           timer                       :: timer() | undefined,
           extra_nonce                 :: extra_nonce() | undefined,
           accept_blocks = false       :: accept_blocks(),
-          share_target                :: share_target() | undefined,
+          initial_share_target        :: initial_share_target() | undefined,
           max_share_target            :: max_share_target() | undefined,
           share_target_diff_threshold :: share_target_diff_threshold() | undefined,
           desired_solve_time          :: desired_solve_time() | undefined,
@@ -111,15 +115,6 @@
 
 -opaque session()                     :: #session{}.
 
--define(HOST, application:get_env(aestratum, host, <<"pool.aeternity.com">>)).
--define(PORT, application:get_env(aestratum, port, 9999)).
--define(MSG_TIMEOUT, application:get_env(aestratum, msg_timeout, 30000)).
--define(EXTRA_NONCE_NBYTES, application:get_env(aestratum, extra_nonce_nbytes, 4)).
--define(INITIAL_SHARE_TARGET, application:get_env(aestratum, initial_share_target, 1)).
--define(MAX_SHARE_TARGET, application:get_env(aestratum, max_share_target, aestratum_target:max())).
--define(SHARE_TARGET_DIFF_THRESHOLD, application:get_env(aestratum, share_target_diff_threshold, 5.0)).
--define(DESIRED_SOLVE_TIME, application:get_env(aestratum, desired_solve_time, 30000)).
--define(MAX_SOLVE_TIME, application:get_env(aestratum, max_solve_time, 40000)).
 -define(EDGE_BITS, 29).
 
 %% API.
@@ -138,6 +133,16 @@ handle_event({chain, Event}, Session) ->
 close(#session{} = Session) ->
     close_session(Session),
     ok.
+
+-spec set(key(), value(), session()) -> session().
+set(max_share_target, Val, Session) when is_integer(Val) ->
+    Session#session{max_share_target = Val};
+set(share_target_diff_threshold, Val, Session) when is_float(Val) ->
+    Session#session{share_target_diff_threshold = Val};
+set(desired_solve_time, Val, Session) when is_integer(Val) ->
+    Session#session{desired_solve_time = Val};
+set(max_solve_time, Val, Session) when is_integer(Val) ->
+    Session#session{max_solve_time = Val}.
 
 %% Internal functions.
 
@@ -182,12 +187,13 @@ recv_msg(#{type := req, method := authorize} = Req,
 %% Submit request is accepted only when the connection is in authorized phase
 %% and the share target is set (set_target notification was sent to the client).
 recv_msg(#{type := req, method := submit} = Req,
-         #session{phase = authorized, share_target = ShareTarget} = Session) when
-      ShareTarget =/= undefined ->
+         #session{phase = authorized,
+                  initial_share_target = InitialShareTarget} = Session) when
+      InitialShareTarget =/= undefined ->
     ?INFO("recv_submit_req, req: ~p", [Req]),
     send_submit_rsp(Req, Session);
 recv_msg(#{type := req, method := submit} = Req,
-         #session{phase = authorized, share_target = undefined} = Session) ->
+         #session{phase = authorized, initial_share_target = undefined} = Session) ->
     ?ERROR("recv_submit_req, req: ~p", [Req]),
     send_unknown_error_rsp(Req, target_not_set, Session);
 recv_msg(#{type := req, method := submit} = Req,
@@ -267,7 +273,8 @@ send_subscribe_rsp(Req, Session) ->
 send_authorize_rsp(Req, Session) ->
     send_authorize_rsp1(validate_authorize_req(Req, Session), Req, Session).
 
-send_submit_rsp(#{user := User, miner_nonce := MinerNonce, pow := Pow} = Req, Session) ->
+send_submit_rsp(#{user := User, miner_nonce := MinerNonce, pow := Pow} = Req,
+                Session) ->
     %% MinerNonce is guaranteed (by decoder) to be of valid size and hex
     %% encoded. What is not guaranteed here is that the miner nonce bytes +
     %% extra nonce bytes are not 8 together.
@@ -291,7 +298,7 @@ send_configure_rsp1(ok, #{id := Id}, #session{timer = Timer} = Session) ->
 send_subscribe_rsp1(ok, #{id := Id} = Req, #session{timer = Timer} = Session) ->
     maybe_cancel_timer(Timer),
     %% TODO: Session resumption not supported (yet).
-    ExtraNonceNBytes = ?EXTRA_NONCE_NBYTES,
+    ExtraNonceNBytes = aestratum_env:get(extra_nonce_bytes),
     case aestratum_extra_nonce_cache:get(ExtraNonceNBytes) of
         {ok, ExtraNonce} ->
             SessionId1 = null,
@@ -441,7 +448,7 @@ handle_chain_recv_block(_NewBlock, Session) ->
 
 handle_chain_recv_block1(#{block_hash := BlockHash, block_version := BlockVersion,
                            block_target := BlockTarget, job_id := JobId} = NewJobInfo,
-                        #session{share_target = ShareTarget,
+                        #session{initial_share_target = InitialShareTarget,
                                  max_share_target = MaxShareTarget,
                                  share_target_diff_threshold = ShareTargetDiffThreshold,
                                  desired_solve_time = DesiredSolveTime,
@@ -452,14 +459,14 @@ handle_chain_recv_block1(#{block_hash := BlockHash, block_version := BlockVersio
     OldJobShareTarget =
         case aestratum_job_queue:get_rear(Jobs) of
             {ok, OldJob}   -> aestratum_job:share_target(OldJob);
-            {error, empty} -> ShareTarget
+            {error, empty} -> InitialShareTarget
         end,
     %% If there are enough jobs in the queue, we calculate the new job's
     %% target from them, otherwise we use the initial share target.
     NewJobShareTarget =
         case aestratum_job_queue:share_target(DesiredSolveTime, MaxShareTarget, Jobs) of
             {ok, NewShareTarget}     -> NewShareTarget;
-            {error, not_enough_jobs} -> ShareTarget
+            {error, not_enough_jobs} -> InitialShareTarget
         end,
     case aestratum_target:diff(NewJobShareTarget, OldJobShareTarget) of
         {_Change, Percent} when Percent > ShareTargetDiffThreshold ->
@@ -485,15 +492,19 @@ handle_chain_recv_block1(#{block_hash := BlockHash, block_version := BlockVersio
     end.
 
 handle_chain_set_target(Session) ->
-    ShareTarget = ?INITIAL_SHARE_TARGET,
+    InitialShareTarget = aestratum_env:get(initial_share_target),
+    MaxShareTarget = aestratum_env:get(max_share_target),
+    ShareTargetDiffThreshold = aestratum_env:get(share_target_diff_threshold),
+    DesiredSolveTime = aestratum_env:get(desired_solve_time),
+    MaxSolveTime = aestratum_env:get(max_solve_time),
     Session1 =
         Session#session{accept_blocks = true,
-                        share_target = ShareTarget,
-                        max_share_target = ?MAX_SHARE_TARGET,
-                        share_target_diff_threshold = ?SHARE_TARGET_DIFF_THRESHOLD,
-                        desired_solve_time = ?DESIRED_SOLVE_TIME,
-                        max_solve_time = ?MAX_SOLVE_TIME},
-    send_set_target_ntf(ShareTarget, Session1).
+                        initial_share_target = InitialShareTarget,
+                        max_share_target = MaxShareTarget,
+                        share_target_diff_threshold = ShareTargetDiffThreshold,
+                        desired_solve_time = DesiredSolveTime,
+                        max_solve_time = MaxSolveTime},
+    send_set_target_ntf(InitialShareTarget, Session1).
 
 handle_chain_notify(#{job_id := JobId, block_hash := BlockHash,
                       block_version := BlockVersion, block_target := BlockTarget,
@@ -545,7 +556,8 @@ maybe_free_extra_nonce(undefined) ->
     ok.
 
 set_timer(Phase) ->
-    TRef = erlang:send_after(?MSG_TIMEOUT, self(), {conn, #{event => timeout}}),
+    Timeout = aestratum_env:get(msg_timeout),
+    TRef = erlang:send_after(Timeout, self(), {conn, #{event => timeout}}),
     {TRef, Phase}.
 
 maybe_cancel_timer({TRef, _Phase}) when is_reference(TRef) ->
@@ -582,7 +594,7 @@ check_session_id(#{session_id := _SessionId}, _Session) ->
     continue.
 
 check_host(#{host := Host}, _Session) ->
-    check_host1(Host, ?HOST).
+    check_host1(Host, aestratum_env:get(host)).
 
 check_host1(Host, Host) ->
     continue;
@@ -590,7 +602,7 @@ check_host1(_Host, _Host1) ->
     {done, {error, host_mismatch}}.
 
 check_port(#{port := Port}, _Session) ->
-    check_port1(Port, ?PORT).
+    check_port1(Port, aestratum_env:get(port)).
 
 check_port1(Port, Port) ->
     continue;
@@ -713,7 +725,7 @@ encode(Map) ->
 
 -ifdef(TEST).
 state(#session{phase = Phase, timer = Timer, extra_nonce = ExtraNonce,
-               accept_blocks = AcceptBlocks, share_target = ShareTarget,
+               accept_blocks = AcceptBlocks, initial_share_target = InitialShareTarget,
                max_solve_time = MaxSolveTime}) ->
     #{phase => Phase,
       timer_phase => case Timer of
@@ -722,7 +734,7 @@ state(#session{phase = Phase, timer = Timer, extra_nonce = ExtraNonce,
                      end,
       extra_nonce => ExtraNonce,
       accept_blocks => AcceptBlocks,
-      share_target => ShareTarget,
+      initial_share_target => InitialShareTarget,
       max_solve_time => MaxSolveTime
      }.
 -endif.

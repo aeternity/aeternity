@@ -23,8 +23,8 @@
 
 -define(USER_AGENT, <<"aeminer/1.2.3">>).
 
--define(EXTRA_NONCE_NBYTES_VALID, 4).
--define(EXTRA_NONCE_NBYTES_INVALID, 8).
+-define(EXTRA_NONCE_BYTES_VALID, 4).
+-define(EXTRA_NONCE_BYTES_INVALID, 8).
 
 -define(EXTRA_NONCE, ?NONCE_MODULE:new(extra, 16#aabbccdd, 4)).
 
@@ -314,7 +314,7 @@ when_connected(conn_subscribe) ->
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ?EXTRA_NONCE}}
          }],
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
+    mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_configured(conn_timeout) ->
@@ -388,7 +388,7 @@ when_configured(conn_subscribe) ->
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ?EXTRA_NONCE}}
          }],
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
+    mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_subscribed(conn_timeout) ->
@@ -398,7 +398,7 @@ when_subscribed(conn_timeout) ->
            #{phase => disconnected, timer_phase => undefined,
              extra_nonce => undefined}}
          }],
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
+    mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_configure) ->
     T = <<"when subscribed - conn_configure">>,
@@ -407,7 +407,7 @@ when_subscribed(conn_configure) ->
            #{type => rsp, method => configure, id => 2, reason => unknown_error},
            #{phase => subscribed, timer_phase => subscribed}}
          }],
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
+    mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_subscribe) ->
     T = <<"when subscribed - conn_subscribe">>,
@@ -419,7 +419,7 @@ when_subscribed(conn_subscribe) ->
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ?EXTRA_NONCE}}
          }],
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
+    mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_submit) ->
     T = <<"when subscribed - conn_submit">>,
@@ -431,7 +431,7 @@ when_subscribed(conn_submit) ->
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ?EXTRA_NONCE}}
          }],
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
+    mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_not_req) ->
     T = <<"when subscribed - conn_not_req">>,
@@ -441,11 +441,11 @@ when_subscribed(conn_not_req) ->
            #{phase => subscribed, timer_phase => subscribed,
              extra_nonce => ?EXTRA_NONCE}}
          }],
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
+    mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_jsonrpc_errors) ->
     T = <<"when subscribed - conn_jsonrpc_errors">>,
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
+    mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ jsonrpc_errors(T, subscribed, subscribed);
 when_subscribed(chain_recv_block) ->
     T = <<"when subscribed - chain_recv_block">>,
@@ -456,7 +456,7 @@ when_subscribed(chain_recv_block) ->
           {no_send,
            #{phase => subscribed, timer_phase => subscribed}}
          }],
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
+    mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_authorize_failure) ->
     T = <<"when subscribed - conn_authorize_failure">>,
@@ -553,7 +553,7 @@ when_authorized(chain_recv_block) ->
                                block_target => ?BLOCK_TARGET1}}},
           {no_send,
            #{phase => authorized, timer_phase => undefined,
-             share_target => undefined}}
+             initial_share_target => undefined}}
          }],
     mock_authorize(#{}),
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -564,7 +564,7 @@ when_authorized(chain_set_target) ->
            #{type => ntf, method => set_target,
              target => ?TARGET_MODULE:to_hex(?SHARE_TARGET)},
            #{phase => authorized, timer_phase => undefined,
-             share_target => ?SHARE_TARGET}}
+             initial_share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L].
@@ -573,7 +573,7 @@ when_set_target(conn_timeout) ->
     T = <<"when set target - conn_timeout">>,
     L = [{{conn, #{event => timeout}},
           {no_send,
-           #{phase => authorized, share_target => ?SHARE_TARGET}}
+           #{phase => authorized, initial_share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -582,7 +582,7 @@ when_set_target(conn_configure) ->
     L = [{{conn, #{type => req, method => configure, id => 3, params => []}},
           {send,
            #{type => rsp, method => configure, id => 3, reason => unknown_error},
-           #{phase => authorized, share_target => ?SHARE_TARGET}}
+           #{phase => authorized, initial_share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -593,7 +593,7 @@ when_set_target(conn_subscribe) ->
                    host => ?HOST_VALID, port => ?PORT_VALID}},
           {send,
            #{type => rsp, method => configure, id => 3, reason => unknown_error},
-           #{phase => authorized, share_target => ?SHARE_TARGET}}
+           #{phase => authorized, initial_share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -603,7 +603,7 @@ when_set_target(conn_authorize) ->
                    user => ?USER_IN_REGISTER, password => null}},
           {send,
            #{type => rsp, method => authorize, id => 3, reason => unknown_error},
-           #{phase => authorized, share_target => ?SHARE_TARGET}}
+           #{phase => authorized, initial_share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -616,7 +616,7 @@ when_set_target(conn_submit) ->
                    pow => ?POW}},
           {send,
            #{type => rsp, method => submit, id => 3, reason => job_not_found},
-           #{phase => authorized, share_target => ?SHARE_TARGET}}
+           #{phase => authorized, initial_share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -626,7 +626,7 @@ when_set_target(conn_not_req) ->
                    reason => parse_error, data => null}},
           {send,
            #{type => rsp, method => subscribe, id => 3, reason => unknown_error},
-           #{phase => authorized, share_target => ?SHARE_TARGET}}
+           #{phase => authorized, initial_share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -646,7 +646,7 @@ when_set_target(chain_recv_block, no_target_change) ->
              block_hash => ?BLOCK_HASH1, block_version => ?BLOCK_VERSION,
              empty_queue => true},
            #{phase => authorized, accept_blocks => true,
-             share_target => ?SHARE_TARGET}}
+             initial_share_target => ?SHARE_TARGET}}
          }],
     mock_recv_block(#{new_share_target => no_change}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -801,7 +801,7 @@ when_recv_block(conn_submit, valid_block) ->
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L].
 
-mock_subscribe(#{extra_nonce_nbytes := ExtraNonceNBytes} = Opts) ->
+mock_subscribe(#{extra_nonce_bytes := ExtraNoncebytes} = Opts) ->
     case maps:get(is_host_valid, Opts, true) of
         true  -> application:set_env(aestratum, host, ?HOST_VALID);
         false -> ok
@@ -810,18 +810,18 @@ mock_subscribe(#{extra_nonce_nbytes := ExtraNonceNBytes} = Opts) ->
         true  -> application:set_env(aestratum, port, ?PORT_VALID);
         false -> ok
     end,
-    application:set_env(aestratum, extra_nonce_nbytes, ExtraNonceNBytes),
+    application:set_env(aestratum, extra_nonce_bytes, ExtraNoncebytes),
     meck:expect(?EXTRA_NONCE_CACHE_MODULE, get,
-                fun(N) when N =:= ?EXTRA_NONCE_NBYTES_VALID ->
+                fun(N) when N =:= ?EXTRA_NONCE_BYTES_VALID ->
                         {ok, ?EXTRA_NONCE};
-                   (N) when N =:= ?EXTRA_NONCE_NBYTES_INVALID ->
+                   (N) when N =:= ?EXTRA_NONCE_BYTES_INVALID ->
                         {error, extra_nonce_not_found}
                 end),
     meck:expect(?EXTRA_NONCE_CACHE_MODULE, free, fun(_) -> ok end),
     ok.
 
 mock_authorize(_Opts) ->
-    mock_subscribe(#{extra_nonce_nbytes => ?EXTRA_NONCE_NBYTES_VALID}),
+    mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     meck:expect(?USER_REGISTER_MODULE, add, fun(_, _) -> ok end),
     meck:expect(?USER_REGISTER_MODULE, del, fun(_) -> ok end),
     meck:expect(?USER_REGISTER_MODULE, member,

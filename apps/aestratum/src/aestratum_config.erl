@@ -7,6 +7,22 @@
 -include("aestratum.hrl").
 -include("aestratum_log.hrl").
 
+-define(DEFAULT_HOST, <<"pool.aeternity.com">>).
+-define(DEFAULT_PORT, 9999).
+-define(DEFAULT_TRANSPORT, <<"tcp">>).
+-define(DEFAULT_MAX_CONNECTIONS, 1024).
+-define(DEFAULT_NUM_ACCEPTORS, 100).
+
+-define(DEFAULT_EXTRA_NONCE_BYTES, 4).
+-define(DEFAULT_INITIAL_SHARE_TARGET, aestratum_target:max()).
+-define(DEFAULT_MAX_SHARE_TARGET, aestratum_target:max()).
+-define(DEFAULT_DESIRED_SOLVE_TIME, 30000).
+-define(DEFAULT_MAX_SOLVE_TIME, 60000).
+-define(DEFAULT_SHARE_TARGET_DIFF_THRESHOLD, 5.0).
+-define(DEFAULT_MSG_TIMEOUT, 15000).
+-define(DEFAULT_MAX_JOBS, 20).
+
+-define(DEFAULT_REWARD_LAST_ROUNDS, 2).
 
 setup_env(UserConfig) when is_list(UserConfig) ->
     case maps:from_list(UserConfig) of
@@ -30,24 +46,24 @@ section_keys() ->
     [connection, session, reward].
 
 defaults_schema(connection) ->
-    [{host, <<"pool.aeternity.com">>},
-     {port, 9999},
-     {transport, <<"tcp">>},
-     {max_connections, 1024},
-     {num_acceptors, 100}];
+    [{host, ?DEFAULT_HOST},
+     {port, ?DEFAULT_PORT},
+     {transport, ?DEFAULT_TRANSPORT},
+     {max_connections, ?DEFAULT_MAX_CONNECTIONS},
+     {num_acceptors, ?DEFAULT_NUM_ACCEPTORS}];
 defaults_schema(session) ->
-    [{extra_nonce_bytes, 4},
-     {initial_share_target, 1},
-     {max_share_target, aestratum_target:max()},
-     {desired_solve_time, 301000},
-     {max_solve_time, 601000},
-     {share_target_diff_threshold, 5.0},
-     {msg_timeout, 15100},
-     {max_jobs, 20}];
+    [{extra_nonce_bytes, ?DEFAULT_EXTRA_NONCE_BYTES},
+     {initial_share_target, ?DEFAULT_INITIAL_SHARE_TARGET},
+     {max_share_target, ?DEFAULT_MAX_SHARE_TARGET},
+     {desired_solve_time, ?DEFAULT_DESIRED_SOLVE_TIME},
+     {max_solve_time, ?DEFAULT_MAX_SOLVE_TIME},
+     {share_target_diff_threshold, ?DEFAULT_SHARE_TARGET_DIFF_THRESHOLD},
+     {msg_timeout, ?DEFAULT_MSG_TIMEOUT},
+     {max_jobs, ?DEFAULT_MAX_JOBS}];
 defaults_schema(reward) ->
     [beneficiaries,
      keys,
-     {reward_last_rounds, 2}].
+     {reward_last_rounds, ?DEFAULT_REWARD_LAST_ROUNDS}].
 
 
 section_map(Section, Cfg) ->
@@ -69,7 +85,7 @@ configure(connection, #{connection := #{max_connections := MaxConnections,
                                         transport := Transport} = ConnCfg,
                         session := #{extra_nonce_bytes := ExtraNonceBytes}} = Result) ->
     check_extra_nonce_bytes(MaxConnections, NumAcceptors, ExtraNonceBytes)
-        orelse error(insufficent_extra_nonce_nbytes),
+        orelse error(insufficent_extra_nonce_bytes),
     maps:merge(maps:without([connection], Result),
                maps:put(transport, binary_to_atom(Transport, utf8), ConnCfg));
 configure(session, #{session := SessionCfg} = Result) ->
@@ -142,3 +158,4 @@ config_map(KeysSomeVals, M) ->
 
 resolver(#{} = M) ->
     fun (KSD, Acc) -> put_from_default(KSD, M, Acc) end.
+

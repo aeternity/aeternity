@@ -6,7 +6,9 @@
 %% TODO: eunit
 
 %% API
--export([start_link/4]).
+-export([start_link/4,
+         set/3
+        ]).
 
 %% gen_server.
 -export([init/1,
@@ -25,10 +27,13 @@
 -type transport()   :: gen_tcp
                      | ssl.
 
--type session()     :: aestratum_session:session()
-                     | undefined.
+-type session()     :: aestratum_session:session() | undefined.
 
 -type opts()        :: proplists:proplist().
+
+-type key()         :: aestratum_session:key().
+
+-type value()       :: aestratum_session:value().
 
 -record(state, {
           socket    :: socket(),
@@ -45,6 +50,10 @@
 -spec start_link(ref(), socket(), transport(), opts()) -> {ok, pid()}.
 start_link(Ref, Socket, Transport, Opts) ->
 	{ok, proc_lib:spawn_link(?MODULE, init, [{Ref, Socket, Transport, Opts}])}.
+
+-spec set(key(), value(), pid()) -> ok.
+set(Key, Val, Pid) ->
+    gen_server:cast(Pid, {set, Key, Val}).
 
 %% Callbacks.
 
@@ -64,7 +73,13 @@ handle_call(_Request, _From, State) ->
 handle_cast(init_session, #state{} = State) ->
     Session = aestratum_session:new(),
     Res = aestratum_session:handle_event({conn, #{event => init}}, Session),
-    result(Res, State).
+    result(Res, State);
+handle_cast({set, Key, Val}, #state{session = Session} = State) when
+      Session =/= undefined ->
+    Session1 = aestratum_session:set(Key, Val, Session),
+    {noreply, State#state{session = Session1}};
+handle_cast({set, _Key, _Val}, #state{session = undefined} = State) ->
+    {noreply, State}.
 
 handle_info({SocketType, _Socket, Data}, State) when ?IS_MSG(SocketType) ->
     handle_socket_data(Data, State);
