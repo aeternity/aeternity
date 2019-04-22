@@ -189,7 +189,7 @@ references:
           make prod-deb-package DEB_SKIP_DH_AUTO_CLEAN=true ;
         else
           AE_DEB_PKG_VERSION=$(cat VERSION)-1-git-${CIRCLE_BRANCH}~$(date +%Y%m%d%H%M%S)
-          make prod-deb-package DEB_SKIP_DH_AUTO_CLEAN=true;
+          make prod-deb-package DEB_SKIP_DH_AUTO_CLEAN=true AE_DEB_PKG_VERSION=$AE_DEB_PKG_VERSION;
         fi
         mkdir ${PACKAGES_DIR:?}
         mv _build/../../*aeternity-node_$(cat VERSION)*.deb ${PACKAGES_DIR:?}
