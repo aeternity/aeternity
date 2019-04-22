@@ -34,14 +34,21 @@
          nonce   :: undefined | non_neg_integer(),
          date    :: undefined | erlang:date()}).
 
+-record(aestratum_candidate,
+        {block_hash :: binary(),
+         record     :: #candidate{},
+         date       :: erlang:date()}).
+
 
 -define(HASHES_TAB, aestratum_hash).
 -define(SHARES_TAB, aestratum_share).
 -define(ROUNDS_TAB, aestratum_round).
 -define(REWARDS_TAB, aestratum_reward).
 -define(PAYMENTS_TAB, aestratum_payment).
+-define(CANDIDATES_TAB, aestratum_candidate).
 
--define(TABS, [?HASHES_TAB, ?SHARES_TAB, ?ROUNDS_TAB, ?REWARDS_TAB, ?PAYMENTS_TAB]).
+-define(TABS, [?HASHES_TAB, ?SHARES_TAB, ?ROUNDS_TAB,
+               ?REWARDS_TAB, ?PAYMENTS_TAB, ?CANDIDATES_TAB]).
 
 -define(TXN(Body), mnesia:activity(transaction, fun () -> Body end)).
 

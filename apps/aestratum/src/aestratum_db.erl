@@ -19,6 +19,8 @@
          store_round/0,
          store_payment/1,
          update_payment/7,
+         store_candidate/2,
+         delete_candidates_older_than/1,
          shares_range/1,
          shares_selector/2,
          shares_slices/1,
@@ -65,7 +67,8 @@ table_specs(?HASHES_TAB, Mode) -> ?TAB_DEF(?HASHES_TAB, set, Mode);
 table_specs(?SHARES_TAB, Mode) -> ?TAB_DEF(?SHARES_TAB, ordered_set, Mode);
 table_specs(?ROUNDS_TAB, Mode) -> ?TAB_DEF(?ROUNDS_TAB, ordered_set, Mode);
 table_specs(?REWARDS_TAB, Mode) -> ?TAB_DEF(?REWARDS_TAB, ordered_set, Mode);
-table_specs(?PAYMENTS_TAB, Mode) -> ?TAB_DEF(?PAYMENTS_TAB, ordered_set, Mode).
+table_specs(?PAYMENTS_TAB, Mode) -> ?TAB_DEF(?PAYMENTS_TAB, ordered_set, Mode);
+table_specs(?CANDIDATES_TAB, Mode) -> ?TAB_DEF(?CANDIDATES_TAB, set, Mode).
 
 tables_specs(Mode) -> [table_specs(Tab, Mode) || Tab <- ?TABS].
 
@@ -111,6 +114,23 @@ update_payment(#aestratum_payment{} = P, AbsMap, Fee, Gas, TxHash, Nonce, Date) 
                              date = Date},
     ok = mnesia:write(P1),
     {ok, P1}.
+
+
+store_candidate(HeaderBin, CandidateRecord) ->
+    C  = #aestratum_candidate{block_hash = HeaderBin,
+                              record = CandidateRecord,
+                              date   = erlang:universaltime()},
+    ok = mnesia:write(C),
+    {ok, C}.
+
+
+delete_candidates_older_than(Date) ->
+    Hashes = mnesia:select(?CANDIDATES_TAB,
+                           ets:fun2ms(fun (#aestratum_candidate{date = D} = C)
+                                            when D < Date -> C#aestratum_candidate.block_hash
+                                      end)),
+    [mnesia:delete(?CANDIDATES_TAB, H, write) || H <- Hashes],
+    ok.
 
 
 get_hash(Hash) ->

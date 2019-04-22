@@ -27,6 +27,7 @@
 
 -define(CHAIN_TOP_CHECK_INTERVAL, 1000). % 1 second
 -define(CHAIN_PAYMENT_TX_CHECK_INTERVAL, 10000). % 10 seconds
+-define(CANDIDATE_CACHE_CLEANUP_INTERVAL, timer:minutes(15)).
 
 -define(PAYMENT_CONTRACT_BATCH_SIZE, 100).
 -define(PAYMENT_CONTRACT_MIN_FEE_MULTIPLIER, 2.0).
@@ -80,6 +81,7 @@ init([]) ->
     ?TXN(aestratum_db:is_empty(?ROUNDS_TAB) andalso aestratum_db:store_round()),
     aec_events:subscribe(stratum_new_candidate),
     {ok, _} = timer:send_interval(?CHAIN_TOP_CHECK_INTERVAL, chain_top_check),
+    {ok, _} = timer:send_interval(?CANDIDATE_CACHE_CLEANUP_INTERVAL, candidate_cache_cleanup),
     {ok, #aestratum_state{chain_keyblock_hash = aec_chain:top_key_block_hash()}}.
 
 handle_info(chain_top_check, #aestratum_state{chain_keyblock_hash = LastKB} = S) ->
@@ -110,10 +112,18 @@ handle_info(payout_check, S) ->
                   end
      end};
 
+handle_info(candidate_cache_cleanup, S) ->
+    ?TXN(aestratum_db:delete_candidates_older_than(
+           aestratum_conv:delta_secs_to_universal_datetime(
+             trunc(?CANDIDATE_CACHE_CLEANUP_INTERVAL / 1000) * -1))),
+    {noreply, S};
+
+
 %% TODO: store candidate to mnesia here
 handle_info({gproc_ps_event, stratum_new_candidate,
-             #{info := [{HeaderBin, #candidate{block = {key_block, KH}}, Target, _} = _Info]}},
+             #{info := [{HeaderBin, #candidate{block = {key_block, KH}} = C, Target, _} = _Info]}},
             #aestratum_state{} = State) ->
+    {ok, _}    = aestratum_db:store_candidate(HeaderBin, C),
     TargetInt  = aeminer_pow:scientific_to_integer(Target),
     BlockHash  = aestratum_miner:hash_data(HeaderBin),
     ChainEvent = #{event => recv_block,
@@ -134,7 +144,9 @@ handle_cast({submit_share, Miner, MinerTarget, Hash}, State) ->
     {noreply, State};
 
 handle_cast({submit_solution, BlockHash, MinerNonce, _Pow}, State) ->
+
     ?INFO("got solution for blockhash ~p (miner nonce = ~p)", [BlockHash, MinerNonce]),
+
     {noreply, State};
 
 handle_cast(Req, State) ->

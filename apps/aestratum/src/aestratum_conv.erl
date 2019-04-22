@@ -8,7 +8,10 @@
          account_pubkey_to_address/1,
          account_address_to_pubkey/1,
          contract_address_to_pubkey/1,
-         hex_encode/1]).
+         address_to_hex/1,
+         hex_encode/1,
+         delta_secs_to_universal_datetime/1,
+         delta_secs_to_universal_datetime/2]).
 
 -import(aestratum_fn, [tag_val_err/3]).
 
@@ -35,6 +38,9 @@ account_address_to_pubkey(Addr) ->
 contract_address_to_pubkey(Addr) ->
     tag_val_err(aehttp_api_encoder:decode(Addr), contract_pubkey, invalid_contract_address).
 
+address_to_hex(Addr) ->
+    aeu_hex:bin_to_hex(account_address_to_pubkey(Addr)).
+
 hex_encode(Data) ->
     list_to_binary(string:to_lower(aeu_hex:bin_to_hex(Data))).
 
@@ -50,3 +56,9 @@ list_to_chunks(Xs, ChunkSize, Res) ->
     catch
         error:badarg -> [Xs | Res]
     end.
+
+delta_secs_to_universal_datetime(Delta) ->
+    UTCSecs = calendar:datetime_to_gregorian_seconds(erlang:universaltime()),
+    delta_secs_to_universal_datetime(Delta, UTCSecs).
+delta_secs_to_universal_datetime(Delta, ActualDT) ->
+    calendar:gregorian_seconds_to_datetime(ActualDT + Delta).
