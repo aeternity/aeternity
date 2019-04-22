@@ -5,12 +5,12 @@
 -export([start_link/0,
          submit_share/3,
          submit_solution/3,
+         top_height/0,
          status/0,
-         status/1
-        ]).
-
--export([sent_payments/0,
-         pending_payments/0]).
+         status/1,
+         sent_payments/0,
+         pending_payments/0,
+         select_payments/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -25,21 +25,14 @@
 -import(aestratum_fn, [is_ok/1, ok/0, ok/1, ok/2, ok_err/2, ok_val_err/1, ok_val_err/2,
                        lazy_hd/3, tag_val_err/3, const/1]).
 
--define(KEYBLOCK_ROUNDS_DELAY, 180).
-
+-define(PAYOUT_CHECK_INTERVAL,            timer:minutes(2)).
 -define(CHAIN_TOP_CHECK_INTERVAL,         timer:seconds(1)).
 -define(CHAIN_PAYMENT_TX_CHECK_INTERVAL,  timer:seconds(10)).
 -define(CANDIDATE_CACHE_CLEANUP_INTERVAL, timer:minutes(15)).
 
--define(PAYMENT_CONTRACT_BATCH_SIZE, 100).
-
--define(PAYMENT_CONTRACT_INIT_GAS, 250). % measured
-%-define(PAYMENT_CONTRACT_INIT_GAS, 10000). %
+-define(PAYMENT_CONTRACT_BATCH_SIZE, 1000).
+-define(PAYMENT_CONTRACT_INIT_GAS, 250).           % measured
 -define(PAYMENT_CONTRACT_GAS_PER_TRANSFER, 22000). % measured
-%-define(PAYMENT_CONTRACT_GAS_PER_TRANSFER, 500000). %
-
--define(PAYMENT_CONTRACT_MIN_FEE_MULTIPLIER, 2.0).
--define(PAYMENT_CONTRACT_MIN_GAS_MULTIPLIER, 1.3).
 
 %%%===================================================================
 %%% STATE
@@ -54,7 +47,9 @@
 
 -record(aestratum_state,
         {chain_keyblock_hash,
-         pending_tx,
+         balance,
+         tx_push_pid,
+         pending_tx_id,
          pending_tx_hash}).
 
 %%%===================================================================
@@ -63,12 +58,12 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-submit_share(<<"ak_", _/binary>> = Miner, MinerTarget, <<Hash/binary>>) ->
+submit_share(<<"ak_", _/binary>> = Miner, MinerTarget, <<CandidateBlockHash/binary>>) ->
     true = is_integer(MinerTarget) andalso MinerTarget >= 0,
-    gen_server:cast(?MODULE, {submit_share, Miner, MinerTarget, Hash}).
+    gen_server:cast(?MODULE, {submit_share, Miner, MinerTarget, CandidateBlockHash}).
 
-submit_solution(BlockHash, MinerNonce, Pow) ->
-    gen_server:cast(?MODULE, {submit_solution, BlockHash, MinerNonce, Pow}).
+submit_solution(CandidateBlockHash, Nonce, Pow) ->
+    gen_server:cast(?MODULE, {submit_solution, CandidateBlockHash, Nonce, Pow}).
 
 status() ->
     ConnPids = aestratum_user_register:conn_pids(),
@@ -76,8 +71,8 @@ status() ->
 
 status(Account) when is_binary(Account) ->
     case aestratum_user_register:find(Account) of
-        {ok, ConnPid}      -> aestratum_handler:status(ConnPid);
-        {error, _Rsn} = Err -> Err
+        {ok, #{conn_pid := ConnPid}} -> aestratum_handler:status(ConnPid);
+        {error, _Rsn} = Err          -> Err
     end.
 
 sent_payments() ->
@@ -94,48 +89,100 @@ init([]) ->
     aestratum_env:set(#{pool_relative_shares => PoolRelShares}),
     ?TXN(aestratum_db:is_empty(?ROUNDS_TAB) andalso aestratum_db:store_round()),
     aec_events:subscribe(stratum_new_candidate),
+    {ok, _} = timer:send_interval(?PAYOUT_CHECK_INTERVAL, payout_check),
     {ok, _} = timer:send_interval(?CHAIN_TOP_CHECK_INTERVAL, chain_top_check),
+    {ok, _} = timer:send_interval(?CHAIN_PAYMENT_TX_CHECK_INTERVAL, chain_payment_tx_check),
     {ok, _} = timer:send_interval(?CANDIDATE_CACHE_CLEANUP_INTERVAL, candidate_cache_cleanup),
-    {ok, #aestratum_state{chain_keyblock_hash = aec_chain:top_key_block_hash()}}.
+    State0  = #aestratum_state{chain_keyblock_hash = aec_chain:top_key_block_hash(),
+                               balance             = balance()},
+    State1  = case ?TXN(select_payments(true, 1)) of
+                  [#aestratum_payment{id = TxId, tx_hash = TxHash}] ->
+                      State0#aestratum_state{pending_tx_id   = TxId,
+                                             pending_tx_hash = TxHash};
+                  [] ->
+                      State0
+              end,
+    {ok, State1}.
 
-handle_info(chain_top_check, #aestratum_state{chain_keyblock_hash = LastKB} = S) ->
-    NewKB = aec_chain:top_key_block_hash(),
-    NewKB == LastKB orelse (self() ! keyblock),
-    {noreply, S#aestratum_state{chain_keyblock_hash = NewKB}};
+handle_info(chain_top_check, #aestratum_state{chain_keyblock_hash = LastKB,
+                                              balance = LastBalance} = S) ->
+    S1 = case aec_chain:top_key_block_hash() of
+             LastKB ->
+                 S;
+             NewKB  ->
+                 %% ?INFO("new top blockhash: ~p", [NewKB]),
+                 self() ! keyblock,
+                 NewBalance = balance(),
+                 log_changed_balance(NewBalance, LastBalance),
+                 S#aestratum_state{chain_keyblock_hash = NewKB,
+                                   balance = NewBalance}
+         end,
+    {noreply, S1};
 
 handle_info(keyblock, #aestratum_state{chain_keyblock_hash = <<_/binary>>} = S) ->
     ?TXN(aestratum_db:store_round()),
-    TopHeight = aec_db:get_top_block_height(),
-    if is_integer(TopHeight), TopHeight > ?KEYBLOCK_ROUNDS_DELAY ->
-            RewardHeight = TopHeight - ?KEYBLOCK_ROUNDS_DELAY,
+    case top_height() - ?REWARD_KEYBLOCK_DELAY of
+        RewardHeight when RewardHeight > 0 ->
             case ?TXN(maybe_compute_reward(RewardHeight)) of
+                {ok, not_our_share} ->
+                    ok;
                 {ok, #aestratum_reward{} = R} ->
                     ?TXN(store_payments(R)),
                     self() ! payout_check;
                 {error, Reason} ->
-                    ?ERROR("reward computation failed: ~p", [Reason]);
-                _ ->
-                    ok
+                    ?ERROR("reward computation failed: ~p", [Reason])
             end;
-       true ->
+        _Height ->
             ok
     end,
     {noreply, S};
 
-handle_info(payout_check, S) ->
-    {noreply,
-     case ?TXN(has_payments(true)) of
-         true  -> S;
-         false -> case ?TXN(oldest_unpaid_payment()) of
-                      {ok, P} -> push_payment(P, S);
-                      none -> S
-                  end
-     end};
+handle_info(payout_check, #aestratum_state{tx_push_pid = Pid} = S) when is_pid(Pid) ->
+    {noreply, S};
+handle_info(payout_check, #aestratum_state{tx_push_pid = undefined,
+                                           balance = Balance} = S) ->
+    S1 = case ?TXN(has_payments(true)) of
+             true  ->
+                 S;
+             false ->
+                 case ?TXN(oldest_unpaid_payment()) of
+                     {ok, #aestratum_payment{total = Total} = P} when Total =< Balance ->
+                         push_payment(P, S);
+                     {ok, #aestratum_payment{total = Total} = P} when Total > Balance ->
+                         log_insufficient_balance(Balance, P),
+                         S;
+                     none ->
+                         S
+                 end
+         end,
+    {noreply, S1};
+
+handle_info({'DOWN', _Ref, process, Pid, _Info}, #aestratum_state{tx_push_pid = Pid} = S) ->
+    {noreply, S#aestratum_state{tx_push_pid = undefined}};
+
+handle_info(chain_payment_tx_check, #aestratum_state{tx_push_pid = undefined,
+                                                     pending_tx_id = {Height, _} = TxId,
+                                                     pending_tx_hash = <<TxHash/binary>>} = S) ->
+    S1 = case payout_tx_persisted(TxHash) of
+             true ->
+                 ?TXN(begin
+                          length(aestratum_db:payments(Height)) == 1 andalso
+                              aestratum_db:delete_reward_records(Height),
+                          aestratum_db:delete_payment(TxId)
+                      end),
+                 S#aestratum_state{pending_tx_id = undefined,
+                                   pending_tx_hash = undefined};
+             false ->
+                 S
+         end,
+    {noreply, S1};
+handle_info(chain_payment_tx_check, S) ->
+    {noreply, S};
 
 handle_info(candidate_cache_cleanup, S) ->
     ?TXN(aestratum_db:delete_candidates_older_than(
            aestratum_conv:delta_secs_to_universal_datetime(
-             trunc(?CANDIDATE_CACHE_CLEANUP_INTERVAL / 1000) * -1))),
+             -trunc(?CANDIDATE_CACHE_CLEANUP_INTERVAL / 1000)))),
     {noreply, S};
 
 handle_info({gproc_ps_event, stratum_new_candidate,
@@ -157,17 +204,21 @@ handle_info(Req, State) ->
     {noreply, State}.
 
 
-handle_cast({submit_share, Miner, MinerTarget, Hash}, State) ->
-    ?TXN(aestratum_db:store_share(Miner, MinerTarget, Hash)),
+handle_cast({submit_share, Miner, MinerTarget, CandidateBlockHash}, State) ->
+    ?TXN(aestratum_db:store_share(Miner, MinerTarget, CandidateBlockHash)),
     {noreply, State};
 
-handle_cast({submit_solution, BlockHash, MinerNonce, Pow}, State) ->
-    case ?TXN(aestratum_db:get_candidate(BlockHash)) of
-        {ok, #aestratum_candidate{header = HeaderBin}} ->
-            ?INFO("got solution for blockhash ~p (miner nonce = ~p)", [BlockHash, MinerNonce]),
-            aec_conductor ! {stratum_reply, {{ok, {MinerNonce, Pow}}, HeaderBin}};
+handle_cast({submit_solution, CandidateBlockHash, Nonce, Pow}, State) ->
+    case ?TXN(aestratum_db:get_candidate(CandidateBlockHash)) of
+        {ok, #aestratum_candidate{header = HeaderBin,
+                                  record = #candidate{block = CandidateBlock}}} ->
+            {key_block, KH} = aec_blocks:set_nonce_and_pow(CandidateBlock, Nonce, Pow),
+            {ok, BlockHash} = aec_headers:hash_header(KH),
+            ok = ?TXN(aestratum_db:mark_share_as_solution(CandidateBlockHash, BlockHash)),
+            ?INFO("got solution for blockhash ~p (nonce = ~p)", [BlockHash, Nonce]),
+            aec_conductor ! {stratum_reply, {{ok, {Nonce, Pow}}, HeaderBin}};
         {error, not_found} ->
-            ?ERROR("candidate for block hash ~p lost", [BlockHash])
+            ?ERROR("candidate for blockhash ~p lost", [CandidateBlockHash])
     end,
     {noreply, State};
 
@@ -194,6 +245,27 @@ format_status(_Opt, Status) ->
 %%% Internal functions
 %%%===================================================================
 
+push_payment(#aestratum_payment{id = Id} = P, S) ->
+    try ?TXN(send_payment(P)) of
+        {Pid, TxHash, PayoutTxArgs, AbsMap} ->
+            Date = calendar:now_to_datetime(erlang:timestamp()),
+            P1   = ok_val_err(?TXN(aestratum_db:update_payment(P, AbsMap, TxHash, Date))),
+            log_push_tx(P1, PayoutTxArgs),
+            S#aestratum_state{tx_push_pid = Pid,
+                              pending_tx_id = Id,
+                              pending_tx_hash = TxHash}
+    catch
+        _:Rsn ->
+            ?ERROR("payment ~p failed: ~p", [Id, Rsn]),
+            S
+    end.
+
+
+top_height() ->
+    case aec_chain:top_key_block() of
+        {ok, KB} -> aec_blocks:height(KB);
+        _ -> 0
+    end.
 
 with_reward_share(RewardHeight, Fun) ->
     RewardKH   = ok_val_err(aec_chain:get_key_header_by_height(RewardHeight)),
@@ -236,11 +308,14 @@ maybe_compute_reward(RewardHeight) ->
 
 %%%%%%%%%%
 
+relative_payments(#aestratum_reward{} = Reward) ->
+    relative_payments(Reward, ?PAYMENT_CONTRACT_BATCH_SIZE).
 relative_payments(#aestratum_reward{height = Height, amount = TotalAmount,
-                                    pool = PoolRelMap, miners = MinerRelMap}) ->
+                                    pool = PoolRelMap, miners = MinerRelMap},
+                  BatchSize) ->
     PoolAmount   = round(TotalAmount * ?POOL_PERCENT_SUM / 100),
     MinersAmount = TotalAmount - PoolAmount,
-    MinerBatches = idxs(aestratum_conv:map_to_chunks(MinerRelMap, ?PAYMENT_CONTRACT_BATCH_SIZE), 1),
+    MinerBatches = idxs(aestratum_conv:map_to_chunks(MinerRelMap, BatchSize), 1),
     if PoolAmount >  0 -> [#aestratum_payment{id = {Height, 0},
                                               total = PoolAmount,
                                               relmap = PoolRelMap}];
@@ -261,100 +336,101 @@ payment_spec(_WasPaid = false) ->
 select_payments(WasPaid) ->
     mnesia:select(aestratum_payment, payment_spec(WasPaid), read).
 select_payments(WasPaid, N) ->
-    {Res, _} = mnesia:select(aestratum_payment, payment_spec(WasPaid), N, read),
-    Res.
+    case mnesia:select(aestratum_payment, payment_spec(WasPaid), N, read) of
+        '$end_of_table' -> [];
+        {Res, _} -> Res
+    end.
 
 has_payments(WasPaid) ->
     length(select_payments(WasPaid, 1)) > 0.
 
 oldest_unpaid_payment() ->
-    lazy_hd(select_payments(false, 1), ok(), const(none)).
+    case select_payments(false, 1) of
+        [P | _] -> {ok, P};
+        [] -> none
+    end.
 
 
 send_payment(#aestratum_payment{tx_hash = undefined,
-                                total = TotalAmount,
-                                relmap = RelativeMap} = P) ->
-    Balance      = balance(),
-    TotalAmount  < Balance orelse error({caller_insufficient_funds, Balance, TotalAmount}),
-    AbsoluteMap  = absolute_amounts(RelativeMap, TotalAmount),
-    {Fee, Gas}   = estimate_costs(AbsoluteMap),
-    TotalAmount1 = TotalAmount - Fee - Gas,
-    TotalAmount1 > 0 orelse error({negative_payment, TotalAmount, Fee, Gas}),
-    PayoutTxArgs = payout_call_tx_args(AbsoluteMap, #{fee => Fee, gas => Gas}),
-    {ok, CallTx} = aect_call_tx:new(PayoutTxArgs),
-    BinaryTx     = aec_governance:add_network_id(aetx:serialize_to_binary(CallTx)),
-    SignedTx     = aetx_sign:new(CallTx, [enacl:sign_detached(BinaryTx, ?CALLER_PRIVKEY)]),
-    ok_err(aec_tx_pool:push(SignedTx), pushing_payout_call_tx),
-    TxHash       = aetx_sign:hash(SignedTx),
-    Nonce        = maps:get(nonce, PayoutTxArgs),
-    Date         = calendar:now_to_datetime(erlang:timestamp()),
-    {ok, P1}     = ?TXN(aestratum_db:update_payment(P, AbsoluteMap, Fee, Gas, TxHash, Nonce, Date)),
-    P1.
+                                total = GrossAmount,
+                                relmap = RelativeMap}) ->
+    Balance       = balance(),
+    GrossAmount   < Balance orelse error({caller_insufficient_funds, Balance, GrossAmount}),
+    AbsoluteMap0  = absolute_amounts(RelativeMap, GrossAmount),
+    #{fee := Fee, run_fee := RunFee} = payout_call_tx_args(AbsoluteMap0),
+    NetAmount     = GrossAmount - Fee - RunFee, % what is actually distributed
+    NetAmount     > 0 orelse error({negative_net_amount, NetAmount, {GrossAmount, Fee, RunFee}}),
+    AbsoluteMap   = absolute_amounts(RelativeMap, NetAmount),
+    NetTxArgs     = payout_call_tx_args(AbsoluteMap),
+    CallTx        = ok_val_err(aect_call_tx:new(NetTxArgs)),
+    BinaryTx      = aec_governance:add_network_id(aetx:serialize_to_binary(CallTx)),
+    SignedTx      = aetx_sign:new(CallTx, [enacl:sign_detached(BinaryTx, ?CALLER_PRIVKEY)]),
+    TxHash        = aetx_sign:hash(SignedTx),
+    {Pid, _Mon}   = spawn_monitor(fun () -> tx_pool_push(SignedTx) end),
+    {Pid, TxHash, NetTxArgs, AbsoluteMap}.
 
-
-push_payment(#aestratum_payment{id = Id} = P, S) ->
-    try ?TXN(send_payment(P)) of
-        #aestratum_payment{tx_hash = TH} = P1 ->
-            log_push_tx(P1),
-            S#aestratum_state{pending_tx = Id,
-                              pending_tx_hash = TH}
-    catch
-        _:Rsn ->
-            ?ERROR("payment ~p failed: ~p", [Id, Rsn]),
-            S
-    end.
+tx_pool_push(SignedTx) ->
+    ok_err(aec_tx_pool:push(SignedTx, tx_created, infinity), pushing_payout_call_tx).
 
 
 min_gas_price() ->
     max(aec_governance:minimum_gas_price(1), % latest prototocol on height 1
         aec_tx_pool:minimum_miner_gas_price()).
 
-contract_gas(TransfersCount) ->
-    ?PAYMENT_CONTRACT_INIT_GAS + (TransfersCount * ?PAYMENT_CONTRACT_GAS_PER_TRANSFER).
-
-estimate_costs(Transfers) ->
-    estimate_costs(Transfers, aec_db:get_top_block_height()).
-estimate_costs(Transfers, Height) when is_integer(Height) ->
-    {ok, Tx} = aect_call_tx:new(payout_call_tx_args(Transfers, Height)),
-    {aetx:min_fee(Tx, Height), aetx:min_gas(Tx, Height)}.
+estimate_consumed_gas(NumTransfers) ->
+    ?PAYMENT_CONTRACT_INIT_GAS + NumTransfers * ?PAYMENT_CONTRACT_GAS_PER_TRANSFER.
 
 
 format_payout_call_args(#{} = Transfers) ->
     Tuples = maps:fold(
                fun (Addr, Tokens, Acc) ->
-                       ["(#"
-                        ++ aestratum_conv:address_to_hex(Addr)
+                       ["("
+                        ++ binary_to_list(Addr)
                         ++ ","
                         ++ integer_to_list(Tokens)
                         ++ ")" | Acc]
                end, [], Transfers),
     "[" ++ string:join(Tuples, ",") ++ "]".
 
-%% payout_call_tx_args(Transfers) ->
-%%     payout_call_tx_args(Transfers, aec_tx_pool:top_height()).
 
-payout_call_tx_args(Transfers, Opts) when is_map(Opts) ->
-    payout_call_tx_args(Transfers, aec_db:get_top_block_height(), Opts);
+payout_call_tx_args(Transfers) ->
+    payout_call_tx_args(Transfers, top_height()).
 payout_call_tx_args(Transfers, Height) when is_integer(Height) ->
-    payout_call_tx_args(Transfers, Height, #{}).
-payout_call_tx_args(Transfers, Height, Opts) ->
     {value, Account} = aec_chain:get_account(?CALLER_PUBKEY),
-    SourceCode = maps:get(contract_source, ?CONTRACT),
-    CallArgs   = format_payout_call_args(Transfers),
-    {ok, CallData, _, _} = aeso_compiler:create_calldata(SourceCode, "payout", [CallArgs]),
+    GasPrice = min_gas_price(),
+    CallArgs = format_payout_call_args(Transfers),
+    SrcCode  = maps:get(contract_source, ?CONTRACT),
+    {ok, CallData, _, _} = aeso_compiler:create_calldata(SrcCode, "payout", [CallArgs]),
     <<Int256:256>> = <<1:256/little-unsigned-integer-unit:1>>,
-    Args = #{contract_id => aec_id:create(contract, ?CONTRACT_PUBKEY),
-             caller_id   => aec_id:create(account, ?CALLER_PUBKEY),
+    Args = #{contract_id => aeser_id:create(contract, ?CONTRACT_PUBKEY),
+             caller_id   => aeser_id:create(account, ?CALLER_PUBKEY),
              nonce       => aec_accounts:nonce(Account) + 1,
              call_data   => CallData,
              abi_version => ?ABI_AEVM_SOPHIA_1,
              amount      => sum_values(Transfers),
-             fee         => maps:get(fee, Opts, Int256),
-             gas         => maps:get(gas, Opts, contract_gas(maps:size(Transfers))),
-             gas_price   => maps:get(gas_price, Opts, min_gas_price())},
-    {ok, Tx0} = aect_call_tx:new(Args),
-    Args#{fee => aetx:min_fee(Tx0, Height)}.
+             fee         => Int256,
+             gas         => Int256,
+             gas_price   => Int256},
+    Tx0    = ok_val_err(aect_call_tx:new(Args)),
+    MinGas = aetx:min_gas(Tx0, Height),
+    MinFee = GasPrice * MinGas,
+    RunGas = estimate_consumed_gas(maps:size(Transfers)),
+    RunFee = GasPrice * RunGas,
+    Args#{gas_price => GasPrice,
+          gas => MinGas, fee => MinFee,          % minimal for tx to pass mempool validation
+          run_gas => RunGas, run_fee => RunFee}. % estimation for contract code to finish
 
+
+payout_tx_persisted(TxHash) ->
+    payout_tx_persisted(TxHash, ?PAYOUT_KEYBLOCK_DELAY).
+payout_tx_persisted(TxHash, KeyBlocksDelay) ->
+    case aec_chain:find_tx_location(TxHash) of
+        <<BlockHash/binary>> ->
+            {ok, Block} = aec_chain:get_block(BlockHash),
+            (top_height() - aec_blocks:height(Block)) >= KeyBlocksDelay;
+        _ ->
+            false
+    end.
 
 %%%%%%%%%%
 
@@ -380,9 +456,6 @@ sum_group_share(#aestratum_share{miner = Miner, target = MinerTarget},
     Score = MinerTarget / BlockTarget,
     {BlockTarget, SumScore + Score, Groups#{Miner => Total + Score}}.
 
-
-%% relative_shares(ScoredShares) ->
-%%     relative_shares(ScoredShares, sum_values(ScoredShares)).
 
 relative_shares(ScoredShares, SumScores) ->
     maps:map(fun (_, Score) -> Score / SumScores end, ScoredShares).
@@ -439,16 +512,80 @@ distributor(TotalAmount, F) ->
     end.
 
 
-log_push_tx(#aestratum_payment{id = {Height, I}, tx_hash = <<TH/binary>>, nonce = Nonce,
-                               absmap = AbsMap, total = Total, fee = Fee, gas = Gas}) ->
-    NetTotal = Total - Fee - Gas,
-    NumTrans = maps:size(AbsMap),
+log_push_tx(#aestratum_payment{id = {Height, I}, tx_hash = <<TH/binary>>,
+                               absmap = AbsMap, total = Total},
+            #{nonce := Nonce, fee := Fee, run_fee := RunFee}) ->
+    NetTotal  = Total - Fee - RunFee,
+    NumTrans  = maps:size(AbsMap),
+    EncTxHash = aeser_api_encoder:encode(tx_hash, TH),
     ?INFO("payment contract call tx ~p (~p) pushed to mempool (nonce = ~p, id = ~p), "
-          ++ "distributing reward ~p to ~p beneficiaries using fee ~p and gas ~p",
-          [aestratum_conv:tx_address(TH), TH, Nonce, {Height, I}, NetTotal, NumTrans, Fee, Gas]).
+          ++ "distributing reward ~p to ~p beneficiaries (tx fee = ~p, ct fee = ~p)",
+          [EncTxHash, TH, Nonce, {Height, I}, NetTotal, NumTrans, Fee, RunFee]).
+
+log_changed_balance(NewBalance, LastBalance) when NewBalance > LastBalance ->
+    ?INFO("balance changed: received ~p tokens (total = ~p)",
+          [NewBalance - LastBalance, NewBalance]);
+log_changed_balance(NewBalance, LastBalance) when NewBalance < LastBalance ->
+    ?INFO("balance changed: subtracted ~p tokens (total = ~p)",
+          [LastBalance - NewBalance, NewBalance]);
+log_changed_balance(Balance, Balance) ->
+    ok.
+
+log_insufficient_balance(Balance, #aestratum_payment{total = Total, id = Id})
+  when Balance < Total ->
+    ?INFO("insufficient balance (~p) for payment ~p (needs ~p more tokens), delaying...",
+          [Balance, Id, Total - Balance]).
+
 
 sum_values(M) when is_map(M) ->
     lists:sum(maps:values(M)).
 
 idxs(Xs, From) ->
     lists:zip(lists:seq(From, From + length(Xs) - 1), Xs).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% test_payments() ->
+%%     test_payments(100000000000000000).
+%% test_payments(Amount) ->
+%%     NewAcc = fun () ->
+%%                      #{public := PK} = enacl:crypto_sign_ed25519_keypair(),
+%%                      aeser_api_encoder:encode(account_pubkey, PK)
+%%              end,
+%%     Miners = maps:from_list([{NewAcc(), 0.2} || _ <- lists:seq(1, 5)]),
+%%     Reward = #aestratum_reward{height = top_height(),
+%%                                amount = Amount,
+%%                                pool   = ?POOL_RELATIVE_SHARES,
+%%                                miners = Miners},
+%%     relative_payments(Reward, 1).
+
+%% test() ->
+%%     Payments = test_payments(),
+%%     ?INFO("////////// TEST PAYMENTS = ~p~n", [Payments]),
+%%     ?TXN(store_payments(Payments)),
+%%     ?MODULE ! payout_check.
+
+
+
+%% deploy_payout_contract() ->
+%%     {value, Account} = aec_chain:get_account(?CALLER_PUBKEY),
+%%     #{contract_source := CSrc} = ?CONTRACT,
+%%     CMap = ok_val_err(aeso_compiler:from_string(CSrc, [])),
+%%     Code = aect_sophia:serialize(CMap),
+%%     {ok, CallData, _, _} = aeso_compiler:create_calldata(CSrc, "init", []),
+%%     {ok, CreateTx} =
+%%         aect_create_tx:new(#{owner_id    => aeser_id:create(account, ?CALLER_PUBKEY),
+%%                              nonce       => aec_accounts:nonce(Account) + 1,
+%%                              code        => Code,
+%%                              vm_version  => ?VM_AEVM_SOPHIA_3,
+%%                              abi_version => ?ABI_AEVM_SOPHIA_1,
+%%                              deposit     => 0,
+%%                              amount      => 0,
+%%                              gas         => 100000,
+%%                              gas_price   => min_gas_price(),
+%%                              fee         => 1400000 * min_gas_price(),
+%%                              call_data   => CallData}),
+%%     BinaryTx = aec_governance:add_network_id(aetx:serialize_to_binary(CreateTx)),
+%%     SignedTx = aetx_sign:new(CreateTx, [enacl:sign_detached(BinaryTx, ?CALLER_PRIVKEY)]),
+%%     ok = aec_tx_pool:push(SignedTx),
+%%     {ok, SignedTx, aetx_sign:hash(SignedTx)}.

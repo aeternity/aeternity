@@ -952,11 +952,6 @@
                         "num_acceptors" : {
                             "type" : "integer",
                             "default" : 100
-                        },
-                        "transport" : {
-                            "type" : "string",
-                            "enum" : ["tcp", "ssl"],
-                            "default" : "tcp"
                         }
                     }
                 },
