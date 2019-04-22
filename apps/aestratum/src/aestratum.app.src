@@ -10,7 +10,7 @@
     ranch,
     aestratum_lib
    ]},
-  {mod,{aestratum_app,[]}},
+  {mod,{aestratum_appsup,[]}},
   {env, []},
   {modules, []},
   {maintainers, []},

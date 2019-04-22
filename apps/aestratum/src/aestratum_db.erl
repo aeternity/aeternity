@@ -9,15 +9,17 @@
 -module(aestratum_db).
 
 -export([check_tables/1,
-         create_tables/1]).
+         create_tables/1,
+         delete_tables/0]).
 
 -export([sort_key/0,
          is_empty/1,
          get_hash/1,
          store_share/3,
          store_round/0,
-         store_reward/6,
-         shares_range/2,
+         store_payment/1,
+         update_payment/7,
+         shares_range/1,
          shares_selector/2,
          shares_slices/1,
          delete_reward_records/1,
@@ -48,6 +50,10 @@
 create_tables(Mode) ->
     Specs = [table_specs(Tab, Mode) || {missing_table, Tab} <- check_tables()],
     [{atomic, ok} = mnesia:create_table(Tab, Spec) || {Tab, Spec} <- Specs].
+
+delete_tables() ->
+    [mnesia:delete_table(Tab) || Tab <- ?TABS].
+
 
 check_tables(Acc) ->
     check_tables() ++ Acc.
@@ -91,33 +97,34 @@ store_round() ->
     ok = mnesia:write(Round),
     {ok, Round}.
 
--spec store_reward(non_neg_integer(), binary(), map(), map(), amount(), sort_key()) ->
-                          {ok, #aestratum_reward{}}.
-store_reward(Height, Hash, BenefRewards, MinerRewards, Amount, LastRoundKey) ->
-    Reward = #aestratum_reward{height = Height,
-                               hash = Hash,
-                               pool = BenefRewards,
-                               miners = MinerRewards,
-                               amount = Amount,
-                               round_key = LastRoundKey},
-    ok = mnesia:write(Reward),
-    {ok, Reward}.
+
+store_payment(#aestratum_payment{} = P) ->
+    ok = mnesia:write(P),
+    {ok, P}.
+
+update_payment(#aestratum_payment{} = P, AbsMap, Fee, Gas, TxHash, Nonce, Date) ->
+    P1 = P#aestratum_payment{fee = Fee,
+                             gas = Gas,
+                             absmap = AbsMap,
+                             tx_hash = TxHash,
+                             nonce = Nonce,
+                             date = Date},
+    ok = mnesia:write(P1),
+    {ok, P1}.
 
 
 get_hash(Hash) ->
-    mnesia:read(?HASHES_TAB, Hash).
+    mnesia:dirty_read(?HASHES_TAB, Hash).
 
 
--spec shares_range(sort_key(), pos_integer()) ->
-                          {ok, sort_key(), sort_key()} |
-                          {error, no_range}.
-shares_range(RewardShareKey, N) ->
+-spec shares_range(sort_key()) -> {ok, sort_key(), sort_key()} | {error, no_range}.
+shares_range(RewardShareKey) ->
     First = case mnesia:prev(?ROUNDS_TAB, RewardShareKey) of
                 '$end_of_table' -> RewardShareKey;
                 Val -> Val
             end,
     Selector = ets:fun2ms(fun (#aestratum_round{key = K} = R) when K >= First -> R end),
-    case mnesia:select(?ROUNDS_TAB, Selector, N + 1, read) of
+    case mnesia:select(?ROUNDS_TAB, Selector, ?LAST_N + 1, read) of
         {[_ | _] = Rounds, _Cont} ->
             #aestratum_round{key = Last} = lists:last(Rounds),
             {ok, First, Last};

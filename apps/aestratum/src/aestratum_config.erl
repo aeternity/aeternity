@@ -1,178 +1,133 @@
 -module(aestratum_config).
 
--export([read/0]).
+-export([setup_env/0]).
+
+-import(aestratum_util, [ok_val_err/2, is_ok/1, set_env/1, reset_env/1, val/3]).
 
 -include("aestratum.hrl").
 -include("aestratum_log.hrl").
 
--export_type([config/0]).
-
--type config() :: map().
-
--spec read() -> {ok, config()} | {error, term()}.
-read() ->
-    {ok, Cfg} = aeu_env:user_config(<<"stratum">>),
-    case maps:from_list(Cfg) of
-        #{<<"enabled">> := true} = Cfg1 ->
-            ToMap = fun (Section) -> maps:from_list(maps:get(Section, Cfg1, [])) end,
-            Cfg2 = #{enabled     => true,
-                     conn_cfg    => conn_config(ToMap(<<"connection">>)),
-                     session_cfg => session_config(ToMap(<<"session">>)),
-                     reward_cfg  => reward_config(ToMap(<<"reward">>))},
-            case validate_config(Cfg2) of
-                {ok, C} = Res ->
-                    setup_env(C),
-                    Res;
-                {error, _Rsn} = Res ->
-                    Res
+setup_env() ->
+    {ok, StratumCfg0} = aeu_env:user_config(<<"stratum">>),
+    case maps:from_list(StratumCfg0) of
+        #{<<"enabled">> := true} = StratumCfg ->
+            Put = fun (K, M) -> maps:put(K, section_map(K, StratumCfg), M) end,
+            Cfg = lists:foldl(Put, #{}, section_keys()),
+            case configure(Cfg#{enabled => true}) of
+                {ok, ConfigMap} ->
+                    set_env(ConfigMap),
+                    {ok, ConfigMap};
+                {error, Error} ->
+                    reset_env(#{enabled => false}),
+                    {error, Error}
             end;
         #{<<"enabled">> := false} ->
-            {ok, #{enabled => false}}
+            {ok, reset_env(#{enabled => false})}
     end.
 
-conn_config(Cfg) ->
-    Host = maps:get(<<"host">>, Cfg, <<"pool.aeternity.com">>),
-    Port = maps:get(<<"port">>, Cfg, 9999),
-    Transport = maps:get(<<"transport">>, Cfg, <<"tcp">>),
-    MaxConns = maps:get(<<"max_connections">>, Cfg, 1024),
-    NAcceptors = maps:get(<<"num_acceptors">>, Cfg, 100),
-    #{host       => Host,
-      port       => Port,
-      transport  => Transport,
-      max_conns  => MaxConns,
-      nacceptors => NAcceptors}.
 
-session_config(Cfg) ->
-    ExtraNonceNBytes = maps:get(<<"extra_nonce_bytes">>, Cfg, 4),
-    %% TODO: what the initial share target should be?
-    InitialShareTarget = maps:get(<<"initial_share_target">>, Cfg, 1),
-    %% TODO: what the max share target should be?
-    MaxShareTarget = maps:get(<<"max_share_target">>, Cfg, aestratum_target:max()),
-    DesiredSolveTime = maps:get(<<"desired_solve_time">>, Cfg, 30) * 1000,
-    MaxSolveTime = maps:get(<<"max_solve_time">>, Cfg, 60) * 1000,
-    ShareTargetDiffThreshold = maps:get(<<"share_target_diff_threshold">>, Cfg, 5.0),
-    MsgTimeout = maps:get(<<"msg_timeout">>, Cfg, 15) * 1000,
-    MaxJobs = maps:get(<<"max_jobs">>, Cfg, 20),
-    #{extra_nonce_nbytes          => ExtraNonceNBytes,
-      initial_share_target        => InitialShareTarget,
-      max_share_target            => MaxShareTarget,
-      desired_solve_time          => DesiredSolveTime,
-      max_solve_time              => MaxSolveTime,
-      share_target_diff_threshold => ShareTargetDiffThreshold,
-      max_jobs                    => MaxJobs,
-      msg_timeout                 => MsgTimeout}.
+section_keys() ->
+    [connection, session, reward].
 
-reward_config(Cfg) ->
-    BeneficiariesAddrPctShares = maps:get(<<"beneficiaries">>, Cfg),
-    RewardLastNRounds = maps:get(<<"reward_last_rounds">>, Cfg, 2),
-    [{<<"dir">>, Dir}] = maps:get(<<"keys">>, Cfg),
-    {ok, PubKey}  = read_key(Dir, "sign_key.pub"),
-    {ok, PrivKey} = read_key(Dir, "sign_key"),
-    ContractAddress = case aec_governance:get_network_id() of
-                          <<"ae_uat">> -> ?PAYMENT_CONTRACT_TESTNET_ADDRESS;
-                          <<"ae_mainnet">> -> ?PAYMENT_CONTRACT_MAINNET_ADDRESS
-                      end,
-    Beneficiaries =
+defaults_schema(connection) ->
+    [{host, <<"pool.aeternity.com">>},
+     {port, 9999},
+     {transport, <<"tcp">>},
+     {max_connections, 1024},
+     {num_acceptors, 100}];
+defaults_schema(session) ->
+    [{extra_nonce_bytes, 4},
+     {initial_share_target, 1},
+     {max_share_target, aestratum_target:max()},
+     {desired_solve_time, 301000},
+     {max_solve_time, 601000},
+     {share_target_diff_threshold, 5.0},
+     {msg_timeout, 15100},
+     {max_jobs, 20}];
+defaults_schema(reward) ->
+    [beneficiaries,
+     keys,
+     {reward_last_rounds, 2}].
+
+
+section_map(Section, Cfg) ->
+    aestratum_util:config_map(defaults_schema(Section),
+                              maps:from_list(val(Section, Cfg, []))).
+
+
+configure(RawConfigMap) ->
+    try lists:foldl(fun configure/2, RawConfigMap, section_keys()) of
+        #{} = Result ->
+            {ok, Result}
+    catch
+        _:{error, _} = ErrReason -> ErrReason
+    end.
+
+configure(_Section, {error, Reason}) ->
+    {error, Reason};
+configure(connection, #{connection := #{max_connections := MaxConnections,
+                                        num_acceptors := NumAcceptors,
+                                        transport := Transport} = ConnCfg,
+                        session := #{extra_nonce_bytes := ExtraNonceBytes}} = Result) ->
+    check_extra_nonce_bytes(MaxConnections, NumAcceptors, ExtraNonceBytes)
+        orelse error(insufficent_extra_nonce_nbytes),
+    maps:merge(maps:without([connection], Result),
+               maps:put(transport, binary_to_atom(Transport, utf8), ConnCfg));
+configure(session, #{session := SessionCfg} = Result) ->
+    maps:merge(maps:without([session], Result), SessionCfg);
+configure(reward, #{reward := #{beneficiaries := PoolShareBins,
+                                reward_last_rounds := LastN,
+                                keys := [{<<"dir">>, KeysDir}]}} = Result) ->
+    (is_integer(LastN) andalso LastN > 0 andalso LastN < 10)
+        orelse error({invalid, reward_last_rounds}),
+
+    ContractAddr = case aec_governance:get_network_id() of
+                       <<"ae_uat">> -> ?PAYMENT_CONTRACT_TESTNET_ADDRESS;
+                       <<"ae_mainnet">> -> ?PAYMENT_CONTRACT_MAINNET_ADDRESS
+                   end,
+    ContractPK   = aestratum_util:contract_address_to_pubkey(ContractAddr),
+    ContractPath = filename:join(code:priv_dir(aestratum), "Payout.aes"),
+    Contract     = ok_val_err(aeso_compiler:file(ContractPath), contract_compilation),
+
+    {CallerPK, CallerSK} = CallerKeyPair = read_keys(KeysDir),
+    CallerAddr   = aestratum_util:account_pubkey_to_address(CallerPK),
+    check_keypair_roundtrips(CallerKeyPair) orelse error(invalid_keypair),
+
+    PoolPercentShares =
         lists:foldl(fun (Bnf, Acc) ->
                             [<<"ak_", _/binary>> = AccountAddr, PctShareBin] =
                                 binary:split(Bnf, <<":">>),
-                            PctShare = binary_to_number(PctShareBin),
+                            PctShare = aestratum_util:binary_to_number(PctShareBin),
                             Acc#{AccountAddr => maps:get(AccountAddr, Acc, 0) + PctShare}
-                    end, #{}, BeneficiariesAddrPctShares),
-    #{reward_last_nrounds  => RewardLastNRounds,
-      key_pair             => {PubKey, PrivKey},
-      contract_address     => ContractAddress,
-      beneficiaries        => Beneficiaries,
-      beneficiaries_reward => lists:sum(maps:values(Beneficiaries))}.
+                    end, #{}, PoolShareBins),
+    PoolPercentSum = lists:sum(maps:values(PoolPercentShares)),
+    PoolPercentSum < 100.0 orelse error(beneficiaries_reward_too_high),
 
-validate_config(Cfg) ->
-    Checks = [fun check_extra_nonce_nbytes/1,
-              fun check_beneficiaries_reward/1,
-              fun check_keypair/1,
-              fun check_account/1,
-              fun check_contract/1],
-    case run(Checks, Cfg) of
-        ok                  -> {ok, Cfg};
-        {error, _Rsn} = Res -> Res
-    end.
-
-setup_env(#{conn_cfg := ConnCfg, session_cfg := SessionCfg}) ->
-    set_env(host, ConnCfg),
-    set_env(port, ConnCfg),
-    set_env(msg_timeout, SessionCfg),
-    set_env(extra_nonce_nbytes, SessionCfg),
-    set_env(initial_share_target, SessionCfg),
-    set_env(share_target_diff_threshold, SessionCfg),
-    set_env(desired_solve_time, SessionCfg),
-    set_env(max_solve_time, SessionCfg),
-    set_env(max_jobs, SessionCfg).
-
-set_env(Key, Cfg) ->
-    application:set_env(aestratum, Key, maps:get(Key, Cfg)).
-
-run([Fun | Funs], Cfg) ->
-    case Fun(Cfg) of
-        ok                  -> run(Funs, Cfg);
-        {error, _Rsn} = Res -> Res
-    end;
-run([], _Cfg) ->
-    ok.
-
-check_extra_nonce_nbytes(#{conn_cfg := ConnCfg, session_cfg := SessionCfg}) ->
-    %% The maximum number of connections is a soft limit. In practice, it can
-    %% reach max_connections + the number of acceptors.
-    %% Each client is assigned an unique extra nonce, there needs to be (much)
-    %% more extra nonce values available than possible connections.
-    MaxConns = maps:get(max_conns, ConnCfg),
-    NAcceptors = maps:get(nacceptors, ConnCfg),
-    ExtraNonceNBytes = maps:get(extra_nonce_nbytes, SessionCfg),
-    MaxExtraNonce = aestratum_nonce:max(ExtraNonceNBytes),
-    case ((MaxConns + NAcceptors) * 2) < MaxExtraNonce of
-        true  -> ok;
-        false -> {error, insufficent_extra_nonce_nbytes}
-    end.
-
-check_beneficiaries_reward(#{reward_cfg := RewardCfg}) ->
-    BeneficiariesReward = maps:get(beneficiaries_reward, RewardCfg),
-    case BeneficiariesReward of
-        N when N < 100.0 -> ok;
-        _Other           -> {error, beneficiaries_reward_too_high}
-    end.
-
-check_keypair(#{reward_cfg := #{key_pair := KeyPair}}) ->
-    {<<PK:32/binary>>, <<SK:64/binary>>} = KeyPair,
-    Bin = crypto:strong_rand_bytes(100),
-    Sig = enacl:sign_detached(Bin, SK),
-    case enacl:sign_verify_detached(Sig, Bin, PK) of
-        {ok, _} ->
-            ok;
-        {error, _} ->
-            {error, invalid_stratum_keys}
-    end.
-
-check_account(#{reward_cfg := #{key_pair := {PK, _}}}) ->
-    case aec_chain:get_account(PK) of
-        {value, _} ->
-            ok;
-        none ->
-            Address = aehttp_api_encoder:encode(account_pubkey, PK),
-            {error, {stratum_account_not_found, Address}}
-    end.
-
-check_contract(#{reward_cfg := #{contract_address := ContractAddress}}) ->
-    case aehttp_api_encoder:decode(ContractAddress) of
-        {contract_pubkey, _} ->
-            ok;
-        _ ->
-            {error, {stratum_contract_invalid, ContractAddress}}
-    end.
+    maps:merge(maps:without([reward], Result),
+               #{last_n               => LastN,
+                 contract             => Contract,
+                 contract_pubkey      => ContractPK,
+                 contract_address     => ContractAddr,
+                 caller_pubkey        => CallerPK,
+                 caller_privkey       => CallerSK,
+                 caller_address       => CallerAddr,
+                 pool_percent_sum     => PoolPercentSum,
+                 pool_percent_shares  => PoolPercentShares}).
 
 
-read_key(Dir, File) ->
-    file:read_file(filename:join([code:priv_dir(aestratum), Dir, File])).
+check_extra_nonce_bytes(MaxConnections, NumAcceptors, ExtraNonceBytes) ->
+    ((MaxConnections + NumAcceptors) * 2) < aestratum_nonce:max(ExtraNonceBytes).
 
-binary_to_number(B) ->
-    case catch binary_to_integer(B) of
-        {'EXIT', {badarg, _}} -> binary_to_float(B);
-        I -> I
-    end.
+check_keypair_roundtrips({PK, SK}) ->
+    Sig = enacl:sign_detached(<<"roundtrip">>, SK),
+    is_ok(enacl:sign_verify_detached(Sig, <<"roundtrip">>, PK)).
+
+read_keys(Dir) ->
+    AbsDir = case filename:pathtype(Dir) of
+                 relative -> filename:join(code:priv_dir(aestratum), Dir);
+                 absolute -> Dir
+             end,
+    PKPath = filename:join(AbsDir, <<"sign_key.pub">>),
+    SKPath = filename:join(AbsDir, <<"sign_key">>),
+    {ok_val_err(file:read_file(PKPath), <<"no public key at ", PKPath/binary>>),
+     ok_val_err(file:read_file(SKPath), <<"no privite key at ", SKPath/binary>>)}.
