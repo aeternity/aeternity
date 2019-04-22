@@ -12,8 +12,7 @@
 -define(JOB_MODULE, aestratum_job).
 -define(JOB_QUEUE_MODULE, aestratum_job_queue).
 -define(MINER_MODULE, aestratum_miner).
--define(REWARD_MODULE, aestratum_reward).
--define(CHAIN_MODULE, aestratum_chain).
+-define(AESTRATUM_MODULE, aestratum).
 
 -define(HOST_VALID, <<"pool.aeternity.com">>).
 -define(HOST_INVALID, <<>>).
@@ -83,8 +82,7 @@ server_session() ->
              meck:new(?JOB_MODULE, [passthrough]),
              meck:new(?JOB_QUEUE_MODULE, [passthrough]),
              meck:new(?MINER_MODULE, [passthrough]),
-             meck:new(?REWARD_MODULE, [passthrough]),
-             meck:new(?CHAIN_MODULE, [passthrough]),
+             meck:new(?AESTRATUM_MODULE, [passthrough]),
              meck:new(?TEST_MODULE, [passthrough]),
              {ok, Pid} = aestratum_dummy_handler:start_link(?TEST_MODULE),
              Pid
@@ -96,8 +94,7 @@ server_session() ->
              meck:unload(?JOB_MODULE),
              meck:unload(?JOB_QUEUE_MODULE),
              meck:unload(?MINER_MODULE),
-             meck:unload(?REWARD_MODULE),
-             meck:unload(?CHAIN_MODULE),
+             meck:unload(?AESTRATUM_MODULE),
              meck:unload(?TEST_MODULE),
              aestratum_dummy_handler:stop(Pid)
      end,
@@ -238,6 +235,7 @@ init() ->
           {no_send,
            #{phase => connected, timer_phase => connected}}
          }],
+    mock_connect(#{}),
     [{T, test, E, R} || {E, R} <- L].
 
 when_connected(conn_timeout) ->
@@ -247,6 +245,7 @@ when_connected(conn_timeout) ->
            #{phase => disconnected, timer_phase => undefined,
              extra_nonce => undefined}}
          }],
+    mock_connect(#{}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(conn_authorize) ->
     T = <<"when connected - conn_authorize">>,
@@ -257,6 +256,7 @@ when_connected(conn_authorize) ->
            #{phase => connected, timer_phase => connected,
             extra_nonce => undefined}}
          }],
+    mock_connect(#{}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(conn_submit) ->
     T = <<"when connected - conn_submit">>,
@@ -268,6 +268,7 @@ when_connected(conn_submit) ->
            #{phase => connected, timer_phase => connected,
             extra_nonce => undefined}}
          }],
+    mock_connect(#{}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(conn_not_req) ->
     T = <<"when connected - conn_not_req">>,
@@ -280,9 +281,11 @@ when_connected(conn_not_req) ->
            #{phase => connected, timer_phase => connected,
              extra_nonce => undefined}}
          }],
+    mock_connect(#{}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(conn_jsonrpc_errors) ->
     T = <<"when connected - conn_jsonrpc_errors">>,
+    mock_connect(#{}),
     prep_connected(T) ++ jsonrpc_errors(T, connected, connected);
 when_connected(chain_recv_block) ->
     T = <<"when connected - chain_recv_block">>,
@@ -293,6 +296,7 @@ when_connected(chain_recv_block) ->
           {no_send,
            #{phase => connected, timer_phase => connected}}
          }],
+    mock_connect(#{}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(conn_configure) ->
     T = <<"when connected - conn_configure">>,
@@ -302,6 +306,7 @@ when_connected(conn_configure) ->
            #{phase => configured, timer_phase => configured,
              extra_nonce => undefined}}
          }],
+    mock_connect(#{}),
     prep_connected(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_connected(conn_subscribe) ->
     T = <<"when connected - conn_subscribe">>,
@@ -324,6 +329,7 @@ when_configured(conn_timeout) ->
            #{phase => disconnected, timer_phase => undefined,
             extra_nonce => undefined}}
          }],
+    mock_configure(#{}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(conn_configure) ->
     T = <<"when configured - conn_configure">>,
@@ -333,6 +339,7 @@ when_configured(conn_configure) ->
            #{phase => configured, timer_phase => configured,
              extra_nonce => undefined}}
          }],
+    mock_configure(#{}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(conn_authorize) ->
     T = <<"when configured - conn_authorize">>,
@@ -343,6 +350,7 @@ when_configured(conn_authorize) ->
            #{phase => configured, timer_phase => configured,
              extra_nonce => undefined}}
          }],
+    mock_configure(#{}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(conn_submit) ->
     T = <<"when configured - conn_submit">>,
@@ -354,6 +362,7 @@ when_configured(conn_submit) ->
            #{phase => configured, timer_phase => configured,
              extra_nonce => undefined}}
          }],
+    mock_configure(#{}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(conn_not_req) ->
     T = <<"when configured - conn_not_req">>,
@@ -363,6 +372,7 @@ when_configured(conn_not_req) ->
            #{phase => configured, timer_phase => configured,
              extra_nonce => undefined}}
          }],
+    mock_configure(#{}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(conn_jsonrpc_errors) ->
     T = <<"when configured - conn_jsonrpc_errors">>,
@@ -376,6 +386,7 @@ when_configured(chain_recv_block) ->
           {no_send,
            #{phase => configured, timer_phase => configured}}
          }],
+    mock_configure(#{}),
     prep_configured(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_configured(conn_subscribe) ->
     T = <<"when configured - conn_subscribe">>,
@@ -801,16 +812,24 @@ when_recv_block(conn_submit, valid_block) ->
     mock_recv_block(#{new_share_target => no_change}),
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L].
 
+mock_connect(_Opts) ->
+    aestratum_env:set(#{msg_timeout => 15000}),
+    ok.
+
+mock_configure(Opts) ->
+    mock_connect(Opts).
+
 mock_subscribe(#{extra_nonce_bytes := ExtraNoncebytes} = Opts) ->
+    mock_configure(#{}),
     case maps:get(is_host_valid, Opts, true) of
-        true  -> application:set_env(aestratum, host, ?HOST_VALID);
+        true  -> aestratum_env:set(#{host => ?HOST_VALID});
         false -> ok
     end,
     case maps:get(is_port_valid, Opts, true) of
-        true  -> application:set_env(aestratum, port, ?PORT_VALID);
+        true  -> aestratum_env:set(#{port => ?PORT_VALID});
         false -> ok
     end,
-    application:set_env(aestratum, extra_nonce_bytes, ExtraNoncebytes),
+    aestratum_env:set(#{extra_nonce_bytes => ExtraNoncebytes}),
     meck:expect(?EXTRA_NONCE_CACHE_MODULE, get,
                 fun(N) when N =:= ?EXTRA_NONCE_BYTES_VALID ->
                         {ok, ?EXTRA_NONCE};
@@ -832,7 +851,12 @@ mock_authorize(_Opts) ->
 
 mock_set_target(_Opts) ->
     mock_authorize(#{}),
-    application:set_env(aestratum, initial_share_target, ?SHARE_TARGET).
+    aestratum_env:set(#{initial_share_target => ?SHARE_TARGET,
+                        max_share_target => ?SHARE_TARGET,
+                        share_target_diff_threshold => 5.0,
+                        desired_solve_time => 30000,
+                        max_solve_time => 60000}),
+    ok.
 
 mock_recv_block(Opts) ->
     mock_set_target(#{}),
@@ -844,8 +868,7 @@ mock_recv_block(Opts) ->
     end,
     case maps:get(share_target_diff_threshold, Opts, undefined) of
         ShareTargetDiffThreshold when ShareTargetDiffThreshold =/= undefined ->
-            application:set_env(aestratum, share_target_diff_threshold,
-                                ShareTargetDiffThreshold);
+            aestratum_env:set(#{share_target_diff_threshold => ShareTargetDiffThreshold});
         undefined ->
             ok
     end,
@@ -886,13 +909,13 @@ mock_recv_block(Opts) ->
                                 end
                         end
                 end),
-    meck:expect(?REWARD_MODULE, submit_share, fun(_, _, _) -> ok end),
-    meck:expect(?CHAIN_MODULE, submit_solution, fun(_, _, _) -> ok end),
+    meck:expect(?AESTRATUM_MODULE, submit_share, fun(_, _, _) -> ok end),
+    meck:expect(?AESTRATUM_MODULE, submit_solution, fun(_, _, _) -> ok end),
     case maps:get(max_solve_time, Opts, undefined) of
         MaxSolveTime when MaxSolveTime =/= undefined ->
-            application:set_env(aestratum, max_solve_time, MaxSolveTime);
+            aestratum_env:set(#{max_solve_time => MaxSolveTime});
         undefined ->
-            application:set_env(aestratum, max_solve_time, 30000)
+            aestratum_env:set(#{max_solve_time => 30000})
     end,
     ok.
 
