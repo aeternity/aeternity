@@ -5,7 +5,9 @@
 %% API
 -export([start_link/0,
          submit_share/3,
-         sent_payments/0,
+         submit_solution/3]).
+
+-export([sent_payments/0,
          pending_payments/0]).
 
 %% gen_server callbacks
@@ -60,6 +62,9 @@ start_link() ->
 submit_share(<<"ak_", _/binary>> = Miner, MinerTarget, <<Hash/binary>>) ->
     true = is_integer(MinerTarget) andalso MinerTarget >= 0,
     gen_server:cast(?MODULE, {submit_share, Miner, MinerTarget, Hash}).
+
+submit_solution(BlockHash, MinerNonce, Pow) ->
+    gen_server:cast(?MODULE, {submit_solution, BlockHash, MinerNonce, Pow}).
 
 sent_payments() ->
     ?TXN(select_payments(true)).
@@ -128,6 +133,10 @@ handle_info(Req, State) ->
 
 handle_cast({submit_share, Miner, MinerTarget, Hash}, State) ->
     ?TXN(aestratum_db:store_share(Miner, MinerTarget, Hash)),
+    {noreply, State};
+
+handle_cast({submit_solution, BlockHash, MinerNonce, _Pow}, State) ->
+    ?INFO("got solution for blockhash ~p (miner nonce = ~p)", [BlockHash, MinerNonce]),
     {noreply, State};
 
 handle_cast(Req, State) ->

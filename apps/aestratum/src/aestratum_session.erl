@@ -340,9 +340,9 @@ send_submit_rsp1({ok, Share, Job}, #{id := Id, miner_nonce := MinerNonce, pow :=
     User = aestratum_share:user(Share),
     ShareTarget = aestratum_job:share_target(Job),
     BlockHash = aestratum_job:block_hash(Job),
-    aestratum_reward:submit_share(User, ShareTarget, BlockHash),
+    aestratum:submit_share(User, ShareTarget, BlockHash),
     case aestratum_share:validity(Share) of
-        valid_block -> aestratum_chain:submit_solution(BlockHash, MinerNonce, Pow);
+        valid_block -> aestratum:submit_solution(BlockHash, MinerNonce, Pow);
         valid_share -> ok
     end,
     RspMap = #{type => rsp, method => submit, id => Id, result => true},
@@ -726,4 +726,3 @@ state(#session{phase = Phase, timer = Timer, extra_nonce = ExtraNonce,
       max_solve_time => MaxSolveTime
      }.
 -endif.
-
