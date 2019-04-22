@@ -1,6 +1,8 @@
 -define(PAYMENT_CONTRACT_TESTNET_ADDRESS, <<"ct_jgo43gdpikScyo5munDvsVWBJDugjkMtqPHUfzGJyuWAFFUuB">>).
 -define(PAYMENT_CONTRACT_MAINNET_ADDRESS, <<"TODO">>).
 
+-include_lib("aecore/src/aec_conductor.hrl").
+
 -record(aestratum_hash,
         {hash   :: binary(),
          key    :: non_neg_integer()}).
@@ -56,28 +58,31 @@
 
 -define(ENABLED, ?CFG(enabled)).
 
--define(HOST, ?CFG(host)).
--define(PORT, ?CFG(port)).
--define(TRANSPORT, ?CFG(transport)).
--define(NUM_ACCEPTORS, ?CFG(num_acceptors)).
+%% CONNECTION options
+-define(HOST,            ?CFG(host)).
+-define(PORT,            ?CFG(port)).
+-define(TRANSPORT,       ?CFG(transport)).
+-define(NUM_ACCEPTORS,   ?CFG(num_acceptors)).
 -define(MAX_CONNECTIONS, ?CFG(max_connections)).
 
--define(MAX_JOBS, ?CFG(max_jobs)).
--define(MSG_TIMEOUT, ?CFG(msg_timeout)).
--define(DESIRED_SOLVE_TIME, ?CFG(desired_solve_time)).
--define(MAX_SOLVE_TIME, ?CFG(max_solve_time)).
--define(INITIAL_SHARE_TARGET, ?CFG(initial_share_target)).
--define(MAX_SHARE_TARGET, ?CFG(max_share_target)).
--define(EXTRA_NONCE_BYTES, ?CFG(extra_nonce_bytes)).
+%% SESSION options
+-define(MAX_JOBS,                    ?CFG(max_jobs)).
+-define(MSG_TIMEOUT,                 ?CFG(msg_timeout)).
+-define(DESIRED_SOLVE_TIME,          ?CFG(desired_solve_time)).
+-define(MAX_SOLVE_TIME,              ?CFG(max_solve_time)).
+-define(INITIAL_SHARE_TARGET,        ?CFG(initial_share_target)).
+-define(MAX_SHARE_TARGET,            ?CFG(max_share_target)).
+-define(EXTRA_NONCE_BYTES,           ?CFG(extra_nonce_bytes)).
 -define(SHARE_TARGET_DIFF_THRESHOLD, ?CFG(share_target_diff_threshold)).
 
--define(LAST_N, ?CFG(last_n)).
--define(CONTRACT, ?CFG(contract)).
--define(CONTRACT_ADDRESS, ?CFG(contract_address)).
--define(CONTRACT_PUBKEY, ?CFG(contract_pubkey)).
--define(CALLER_ADDRESS, ?CFG(caller_address)).
--define(CALLER_PRIVKEY, ?CFG(caller_privkey)).
--define(CALLER_PUBKEY, ?CFG(caller_pubkey)).
--define(POOL_PERCENT_SUM, ?CFG(pool_percent_sum)).
--define(POOL_PERCENT_SHARES, ?CFG(pool_percent_shares)).
+%% REWARD options
+-define(LAST_N,               ?CFG(last_n)).
+-define(CONTRACT,             ?CFG(contract)).
+-define(CONTRACT_ADDRESS,     ?CFG(contract_address)).
+-define(CONTRACT_PUBKEY,      ?CFG(contract_pubkey)).
+-define(CALLER_ADDRESS,       ?CFG(caller_address)).
+-define(CALLER_PRIVKEY,       ?CFG(caller_privkey)).
+-define(CALLER_PUBKEY,        ?CFG(caller_pubkey)).
+-define(POOL_PERCENT_SUM,     ?CFG(pool_percent_sum)).
+-define(POOL_PERCENT_SHARES,  ?CFG(pool_percent_shares)).
 -define(POOL_RELATIVE_SHARES, ?CFG(pool_relative_shares)).

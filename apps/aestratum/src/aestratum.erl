@@ -17,7 +17,6 @@
 -include("aestratum_log.hrl").
 -include_lib("aecontract/src/aecontract.hrl").
 -include_lib("aecore/include/blocks.hrl").
--include_lib("aecore/src/aec_conductor.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
 -import(aestratum_fn, [is_ok/1, ok/0, ok/1, ok/2, ok_err/2, ok_val_err/1, ok_val_err/2,
@@ -25,17 +24,19 @@
 
 -define(KEYBLOCK_ROUNDS_DELAY, 180).
 
--define(CHAIN_TOP_CHECK_INTERVAL, 1000). % 1 second
--define(CHAIN_PAYMENT_TX_CHECK_INTERVAL, 10000). % 10 seconds
+-define(CHAIN_TOP_CHECK_INTERVAL,         timer:seconds(1)).
+-define(CHAIN_PAYMENT_TX_CHECK_INTERVAL,  timer:seconds(10)).
 -define(CANDIDATE_CACHE_CLEANUP_INTERVAL, timer:minutes(15)).
 
 -define(PAYMENT_CONTRACT_BATCH_SIZE, 100).
--define(PAYMENT_CONTRACT_MIN_FEE_MULTIPLIER, 2.0).
--define(PAYMENT_CONTRACT_MIN_GAS_MULTIPLIER, 1.3).
+
 -define(PAYMENT_CONTRACT_INIT_GAS, 250). % measured
 %-define(PAYMENT_CONTRACT_INIT_GAS, 10000). %
 -define(PAYMENT_CONTRACT_GAS_PER_TRANSFER, 22000). % measured
 %-define(PAYMENT_CONTRACT_GAS_PER_TRANSFER, 500000). %
+
+-define(PAYMENT_CONTRACT_MIN_FEE_MULTIPLIER, 2.0).
+-define(PAYMENT_CONTRACT_MIN_GAS_MULTIPLIER, 1.3).
 
 %%%===================================================================
 %%% STATE
@@ -127,8 +128,8 @@ handle_info({gproc_ps_event, stratum_new_candidate,
     TargetInt  = aeminer_pow:scientific_to_integer(Target),
     BlockHash  = aestratum_miner:hash_data(HeaderBin),
     ChainEvent = #{event => recv_block,
-                   block => #{block_target => TargetInt,
-                              block_hash => aestratum_conv:hex_encode(BlockHash),
+                   block => #{block_target  => TargetInt,
+                              block_hash    => aestratum_conv:hex_encode(BlockHash),
                               block_version => aec_headers:version(KH)}},
     ?INFO("new candidate with target ~p", [TargetInt]),
     aestratum_user_register:notify({chain, ChainEvent}),
@@ -180,7 +181,7 @@ chain_reward_candidate_key_header(KeyblockRoundsDelay) ->
 
 
 with_reward_share(Fun) ->
-    RewardKH = chain_reward_candidate_key_header(),
+    RewardKH   = chain_reward_candidate_key_header(),
     {ok, Hash} = aec_headers:hash_header(RewardKH),
     case aestratum_db:get_hash(Hash) of
         [#aestratum_hash{key = RewardShareKey}] ->
@@ -203,14 +204,14 @@ maybe_compute_reward() ->
                              target = BlockTarget,
                              height = Height,
                              tokens = Amount,
-                             hash = Hash}) ->
+                             hash   = Hash}) ->
               case relative_miner_rewards(RewardShareKey, BlockTarget) of
                   {ok, MinerRelShares, LastRoundKey} ->
-                      {ok, #aestratum_reward{height = Height,
-                                             hash = Hash,
-                                             pool = ?POOL_RELATIVE_SHARES,
+                      {ok, #aestratum_reward{pool   = ?POOL_RELATIVE_SHARES,
                                              miners = MinerRelShares,
                                              amount = Amount,
+                                             hash   = Hash,
+                                             height = Height,
                                              round_key = LastRoundKey}};
                   Error ->
                       Error
@@ -256,22 +257,22 @@ oldest_unpaid_payment() ->
 
 send_payment(#aestratum_payment{tx_hash = undefined,
                                 total = TotalAmount,
-                                relmap = RelMap} = P) ->
+                                relmap = RelativeMap} = P) ->
     Balance      = balance(),
     TotalAmount  < Balance orelse error({caller_insufficient_funds, Balance, TotalAmount}),
-    {Fee, Gas}   = estimate_costs(absolute_amounts(RelMap, TotalAmount)),
+    AbsoluteMap  = absolute_amounts(RelativeMap, TotalAmount),
+    {Fee, Gas}   = estimate_costs(AbsoluteMap),
     TotalAmount1 = TotalAmount - Fee - Gas,
     TotalAmount1 > 0 orelse error({negative_payment, TotalAmount, Fee, Gas}),
-    AbsMap       = absolute_amounts(RelMap, TotalAmount1),
-    PayoutTxArgs = payout_call_tx_args(AbsMap, #{fee => Fee, gas => Gas}),
-    CallTx   = ok_val_err(aect_call_tx:new(PayoutTxArgs)),
-    BinaryTx = aec_governance:add_network_id(aetx:serialize_to_binary(CallTx)),
-    SignedTx = aetx_sign:new(CallTx, [enacl:sign_detached(BinaryTx, ?CALLER_PRIVKEY)]),
+    PayoutTxArgs = payout_call_tx_args(AbsoluteMap, #{fee => Fee, gas => Gas}),
+    {ok, CallTx} = aect_call_tx:new(PayoutTxArgs),
+    BinaryTx     = aec_governance:add_network_id(aetx:serialize_to_binary(CallTx)),
+    SignedTx     = aetx_sign:new(CallTx, [enacl:sign_detached(BinaryTx, ?CALLER_PRIVKEY)]),
     ok_err(aec_tx_pool:push(SignedTx), pushing_payout_call_tx),
-    TxHash   = aetx_sign:hash(SignedTx),
-    Nonce    = maps:get(nonce, PayoutTxArgs),
-    Date     = calendar:now_to_datetime(erlang:timestamp()),
-    {ok, P1} = ?TXN(aestratum_db:update_payment(P, AbsMap, Fee, Gas, TxHash, Nonce, Date)),
+    TxHash       = aetx_sign:hash(SignedTx),
+    Nonce        = maps:get(nonce, PayoutTxArgs),
+    Date         = calendar:now_to_datetime(erlang:timestamp()),
+    {ok, P1}     = ?TXN(aestratum_db:update_payment(P, AbsoluteMap, Fee, Gas, TxHash, Nonce, Date)),
     P1.
 
 
@@ -306,15 +307,12 @@ format_payout_call_args(#{} = Transfers) ->
     Tuples = maps:fold(
                fun (Addr, Tokens, Acc) ->
                        ["(#"
-                        ++ address_to_hex(Addr)
+                        ++ aestratum_conv:address_to_hex(Addr)
                         ++ ","
                         ++ integer_to_list(Tokens)
                         ++ ")" | Acc]
                end, [], Transfers),
     "[" ++ string:join(Tuples, ",") ++ "]".
-
-address_to_hex(Addr) ->
-    aeu_hex:bin_to_hex(aestratum_conv:account_address_to_pubkey(Addr)).
 
 %% payout_call_tx_args(Transfers) ->
 %%     payout_call_tx_args(Transfers, aec_tx_pool:top_height()).
@@ -325,9 +323,8 @@ payout_call_tx_args(Transfers, Height) when is_integer(Height) ->
     payout_call_tx_args(Transfers, Height, #{}).
 payout_call_tx_args(Transfers, Height, Opts) ->
     {value, Account} = aec_chain:get_account(?CALLER_PUBKEY),
-    Amount = sum_values(Transfers),
-    CallArgs = format_payout_call_args(Transfers),
     SourceCode = maps:get(contract_source, ?CONTRACT),
+    CallArgs   = format_payout_call_args(Transfers),
     {ok, CallData, _, _} = aeso_compiler:create_calldata(SourceCode, "payout", [CallArgs]),
     <<Int256:256>> = <<1:256/little-unsigned-integer-unit:1>>,
     Args = #{contract_id => aec_id:create(contract, ?CONTRACT_PUBKEY),
@@ -335,7 +332,7 @@ payout_call_tx_args(Transfers, Height, Opts) ->
              nonce       => aec_accounts:nonce(Account) + 1,
              call_data   => CallData,
              abi_version => ?ABI_SOPHIA_1,
-             amount      => Amount,
+             amount      => sum_values(Transfers),
              fee         => maps:get(fee, Opts, Int256),
              gas         => maps:get(gas, Opts, contract_gas(maps:size(Transfers))),
              gas_price   => maps:get(gas_price, Opts, min_gas_price())},
@@ -387,7 +384,7 @@ absolute_amounts(NormalizedRelativeShares, Amount) ->
 relative_miner_rewards(RewardShareKey, BlockTarget) ->
     case aestratum_db:shares_range(RewardShareKey) of
         {ok, FirstShareKey, LastRoundShareKey} ->
-            Selector = aestratum_db:shares_selector(FirstShareKey, LastRoundShareKey),
+            Selector  = aestratum_db:shares_selector(FirstShareKey, LastRoundShareKey),
             SliceCont = aestratum_db:shares_slices(Selector),
             {SumScores, Groups} = sum_group_shares(SliceCont, BlockTarget),
             {ok, relative_shares(Groups, SumScores), LastRoundShareKey};
