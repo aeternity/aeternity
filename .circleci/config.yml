@@ -242,24 +242,16 @@ references:
           export DEPLOY_DB_VERSION=$(cat deployment/DB_VERSION)
           cd /infrastructure && make deploy
 
-  upload_github_release_asset:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    steps:
-      - checkout
-      - *set_package_path
-      - *setup_secrets
-      - attach_workspace:
-          at: *packages_workspace
-      - run:
-          name: Upload GitHub Release Asset
-          environment:
-            PACKAGES_DIR: *packages_workspace
-          command: |
-            ./scripts/upload-github-release-assets.sh github_api_token=${GITHUB_API_TOKEN:?} \
-              owner=${CIRCLE_PROJECT_USERNAME} repo=${CIRCLE_PROJECT_REPONAME} \
-              tag=${CIRCLE_TAG} ASSETS=${PACKAGES_DIR:?}/*
-      - *fail_notification
+  upload_github_release_asset: &upload_github_release_asset
+    run:
+      name: Upload GitHub Release Asset
+      working_directory: /infrastructure
+      environment:
+        PACKAGES_DIR: *packages_workspace
+      command: |
+        ./scripts/upload-github-release-assets.sh github_api_token=${GITHUB_API_TOKEN:?} \
+          owner=${CIRCLE_PROJECT_USERNAME} repo=${CIRCLE_PROJECT_REPONAME} \
+          tag=${CIRCLE_TAG} ASSETS=${PACKAGES_DIR:?}/*
 
   fail_notification: &fail_notification
     run:
