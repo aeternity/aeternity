@@ -134,7 +134,8 @@ process_fsm_(#{type := sign,
                                                orelse Tag =:= update
                                                orelse Tag =:= update_ack
                                                orelse Tag =:= slash_tx
-                                               orelse Tag =:= close_solo_tx ->
+                                               orelse Tag =:= close_solo_tx
+                                               orelse Tag =:= settle_tx ->
     EncTx = aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx)),
     Tag1 =
         case Tag of

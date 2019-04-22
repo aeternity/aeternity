@@ -81,6 +81,7 @@
         , get_n_key_headers_backward_from/2
         , hash_is_connected_to_genesis/1
         , hash_is_in_main_chain/1
+        , hash_is_in_main_chain/2
         , insert_block/1
         , insert_block/2
         , gossip_allowed_height_from_top/0
