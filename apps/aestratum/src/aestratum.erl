@@ -19,8 +19,8 @@
 -include_lib("aecore/src/aec_conductor.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
--import(aestratum_util, [is_ok/1, ok/0, ok/1, ok/2, ok_err/2, ok_val_err/1, ok_val_err/2,
-                         lazy_hd/3, tag_val_err/3, const/1]).
+-import(aestratum_fn, [is_ok/1, ok/0, ok/1, ok/2, ok_err/2, ok_val_err/1, ok_val_err/2,
+                       lazy_hd/3, tag_val_err/3, const/1]).
 
 -define(KEYBLOCK_ROUNDS_DELAY, 180).
 
@@ -204,7 +204,7 @@ relative_payments(#aestratum_reward{height = Height, amount = TotalAmount,
                                     pool = PoolRelMap, miners = MinerRelMap}) ->
     PoolAmount   = round(TotalAmount * ?POOL_PERCENT_SUM / 100),
     MinersAmount = TotalAmount - PoolAmount,
-    MinerBatches = aestratum_util:idxs(map_to_batches(MinerRelMap), 1),
+    MinerBatches = idxs(map_to_batches(MinerRelMap), 1),
     if PoolAmount >  0 -> [#aestratum_payment{id = {Height, 0},
                                               total = PoolAmount,
                                               relmap = PoolRelMap}];
@@ -306,7 +306,7 @@ payout_call_tx_args(Transfers, Height) when is_integer(Height) ->
     payout_call_tx_args(Transfers, Height, #{}).
 payout_call_tx_args(Transfers, Height, Opts) ->
     {value, Account} = aec_chain:get_account(?CALLER_PUBKEY),
-    Amount = aestratum_util:sum_values(Transfers),
+    Amount = sum_values(Transfers),
     CallArgs = format_payout_call_args(Transfers),
     SourceCode = maps:get(contract_source, ?CONTRACT),
     {ok, CallData, _, _} = aeso_compiler:create_calldata(SourceCode, "payout", [CallArgs]),
@@ -350,7 +350,7 @@ sum_group_share(#aestratum_share{miner = Miner, target = MinerTarget},
 
 
 %% relative_shares(ScoredShares) ->
-%%     relative_shares(ScoredShares, aestratum_util:sum_values(ScoredShares)).
+%%     relative_shares(ScoredShares, sum_values(ScoredShares)).
 
 relative_shares(ScoredShares, SumScores) ->
     maps:map(fun (_, Score) -> Score / SumScores end, ScoredShares).
@@ -378,7 +378,7 @@ relative_miner_rewards(RewardShareKey, BlockTarget) ->
 
 map_to_batches(Map) ->
     [maps:from_list(Batch) ||
-        Batch <- aestratum_util:split_list(
+        Batch <- aestratum_conv:list_to_chunks(
                    maps:to_list(Map), ?PAYMENT_CONTRACT_BATCH_SIZE)].
 
 batches_to_payments(Batches, Amount, Height) ->
@@ -397,7 +397,7 @@ payment_distributor(Height, TotalAmount) ->
 
 distributor(TotalAmount, F) ->
     fun ({I, BatchShares}, {TokensLeft, Acc}) ->
-            BatchSharesSum = aestratum_util:sum_values(BatchShares),
+            BatchSharesSum = sum_values(BatchShares),
             case min(round(BatchSharesSum * TotalAmount), TokensLeft) of
                 0 ->
                     {TokensLeft, Acc};
@@ -415,3 +415,9 @@ log_push_tx(#aestratum_payment{id = {Height, I}, tx_hash = <<TH/binary>>, nonce 
     ?INFO("payment contract call tx ~p (~p) pushed to mempool (nonce = ~p, id = ~p), "
           ++ "distributing reward ~p to ~p beneficiaries using fee ~p and gas ~p",
           [aestratum_util:tx_address(TH), TH, Nonce, {Height, I}, NetTotal, NumTrans, Fee, Gas]).
+
+sum_values(M) when is_map(M) ->
+    lists:sum(maps:values(M)).
+
+idxs(Xs, From) ->
+    lists:zip(lists:seq(From, From + length(Xs) - 1), Xs).

@@ -2,7 +2,7 @@
 
 -export([setup_env/0]).
 
--import(aestratum_util, [ok_val_err/2, is_ok/1, set_env/1, reset_env/1, val/3]).
+-import(aestratum_fn, [ok_val_err/2, is_ok/1, val/3, key_val/2]).
 
 -include("aestratum.hrl").
 -include("aestratum_log.hrl").
@@ -15,14 +15,14 @@ setup_env() ->
             Cfg = lists:foldl(Put, #{}, section_keys()),
             case configure(Cfg#{enabled => true}) of
                 {ok, ConfigMap} ->
-                    set_env(ConfigMap),
+                    aestratum_env:set(ConfigMap),
                     {ok, ConfigMap};
                 {error, Error} ->
-                    reset_env(#{enabled => false}),
+                    aestratum_env:reset(#{enabled => false}),
                     {error, Error}
             end;
         #{<<"enabled">> := false} ->
-            {ok, reset_env(#{enabled => false})}
+            {ok, aestratum_env:reset(#{enabled => false})}
     end.
 
 
@@ -51,8 +51,7 @@ defaults_schema(reward) ->
 
 
 section_map(Section, Cfg) ->
-    aestratum_util:config_map(defaults_schema(Section),
-                              maps:from_list(val(Section, Cfg, []))).
+    config_map(defaults_schema(Section), maps:from_list(val(Section, Cfg, []))).
 
 
 configure(RawConfigMap) ->
@@ -131,3 +130,15 @@ read_keys(Dir) ->
     SKPath = filename:join(AbsDir, <<"sign_key">>),
     {ok_val_err(file:read_file(PKPath), <<"no public key at ", PKPath/binary>>),
      ok_val_err(file:read_file(SKPath), <<"no privite key at ", SKPath/binary>>)}.
+
+%%%%%%%%%%
+
+put_from_default(KSD, M, Acc) ->
+    {K, Val} = key_val(KSD, M),
+    maps:put(K, Val, Acc).
+
+config_map(KeysSomeVals, M) ->
+    lists:foldl(resolver(M), #{}, KeysSomeVals).
+
+resolver(#{} = M) ->
+    fun (KSD, Acc) -> put_from_default(KSD, M, Acc) end.
