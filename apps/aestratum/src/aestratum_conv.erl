@@ -29,7 +29,6 @@ tx_address(PK) ->
 account_pubkey_to_address(<<PK:32/binary>>) ->
     aehttp_api_encoder:encode(account_pubkey, PK).
 
-
 account_address_to_pubkey(Addr) ->
     tag_val_err(aehttp_api_encoder:decode(Addr), account_pubkey, invalid_account_address).
 

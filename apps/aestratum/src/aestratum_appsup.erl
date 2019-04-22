@@ -15,7 +15,7 @@ start(_Type, _Args) ->
     %% dbg:p(all, call),
     %% dbg:tpl(aestratum, submit_share, [{'_', [], [{return_trace}]}]),
 
-    aestratum_util:ok_val_err(aestratum_config:setup_env(), cant_setup_stratum),
+    aestratum_fn:ok_val_err(aestratum_env:setup(), cant_setup_stratum),
     supervisor:start_link({local, ?MODULE}, ?MODULE, ?ENABLED).
 
 stop(_State) -> ok.

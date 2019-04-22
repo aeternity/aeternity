@@ -1,13 +1,19 @@
 -module(aestratum_env).
 
 %% ENV handling
--export([get/1,
+-export([setup/0,
+         get/1,
          set/1,
          reset/1,
          unset/0, unset/1,
          keys/0]).
 
 %%%%%%%%%%
+
+setup() ->
+    unset(),
+    {ok, UserConfig} = aeu_env:user_config(<<"stratum">>),
+    aestratum_config:setup_env(UserConfig).
 
 get(Key) ->
     {ok, Val} = application:get_env(aestratum, Key),

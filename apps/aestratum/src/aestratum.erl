@@ -2,7 +2,6 @@
 
 -behaviour(gen_server).
 
-%% API
 -export([start_link/0,
          submit_share/3,
          submit_solution/3]).
@@ -72,13 +71,12 @@ sent_payments() ->
 pending_payments() ->
     ?TXN(select_payments(false)).
 
-
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 init([]) ->
     PoolRelShares = relative_shares(?POOL_PERCENT_SHARES, ?POOL_PERCENT_SUM),
-    aestratum_util:set_env(#{pool_relative_shares => PoolRelShares}),
+    aestratum_env:set(#{pool_relative_shares => PoolRelShares}),
     ?TXN(aestratum_db:is_empty(?ROUNDS_TAB) andalso aestratum_db:store_round()),
     aec_events:subscribe(stratum_new_candidate),
     {ok, _} = timer:send_interval(?CHAIN_TOP_CHECK_INTERVAL, chain_top_check),
@@ -120,7 +118,7 @@ handle_info({gproc_ps_event, stratum_new_candidate,
     BlockHash  = aestratum_miner:hash_data(HeaderBin),
     ChainEvent = #{event => recv_block,
                    block => #{block_target => TargetInt,
-                              block_hash => aestratum_util:hex_encode(BlockHash),
+                              block_hash => aestratum_conv:hex_encode(BlockHash),
                               block_version => aec_headers:version(KH)}},
     ?INFO("new candidate with target ~p", [TargetInt]),
     aestratum_user_register:notify({chain, ChainEvent}),
@@ -304,7 +302,7 @@ format_payout_call_args(#{} = Transfers) ->
     "[" ++ string:join(Tuples, ",") ++ "]".
 
 address_to_hex(Addr) ->
-    aeu_hex:bin_to_hex(aestratum_util:account_address_to_pubkey(Addr)).
+    aeu_hex:bin_to_hex(aestratum_conv:account_address_to_pubkey(Addr)).
 
 %% payout_call_tx_args(Transfers) ->
 %%     payout_call_tx_args(Transfers, aec_tx_pool:top_height()).
@@ -423,7 +421,7 @@ log_push_tx(#aestratum_payment{id = {Height, I}, tx_hash = <<TH/binary>>, nonce 
     NumTrans = maps:size(AbsMap),
     ?INFO("payment contract call tx ~p (~p) pushed to mempool (nonce = ~p, id = ~p), "
           ++ "distributing reward ~p to ~p beneficiaries using fee ~p and gas ~p",
-          [aestratum_util:tx_address(TH), TH, Nonce, {Height, I}, NetTotal, NumTrans, Fee, Gas]).
+          [aestratum_conv:tx_address(TH), TH, Nonce, {Height, I}, NetTotal, NumTrans, Fee, Gas]).
 
 sum_values(M) when is_map(M) ->
     lists:sum(maps:values(M)).

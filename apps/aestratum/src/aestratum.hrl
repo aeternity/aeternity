@@ -45,7 +45,7 @@
 
 -define(TXN(Body), mnesia:activity(transaction, fun () -> Body end)).
 
--define(CFG(Key), aestratum_util:get_env(Key)).
+-define(CFG(Key), aestratum_env:get(Key)).
 
 -define(ENABLED, ?CFG(enabled)).
 

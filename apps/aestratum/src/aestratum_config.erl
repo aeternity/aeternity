@@ -1,15 +1,15 @@
 -module(aestratum_config).
 
--export([setup_env/0]).
+-export([setup_env/1]).
 
 -import(aestratum_fn, [ok_val_err/2, is_ok/1, val/3, key_val/2]).
 
 -include("aestratum.hrl").
 -include("aestratum_log.hrl").
 
-setup_env() ->
-    {ok, StratumCfg0} = aeu_env:user_config(<<"stratum">>),
-    case maps:from_list(StratumCfg0) of
+
+setup_env(UserConfig) when is_list(UserConfig) ->
+    case maps:from_list(UserConfig) of
         #{<<"enabled">> := true} = StratumCfg ->
             Put = fun (K, M) -> maps:put(K, section_map(K, StratumCfg), M) end,
             Cfg = lists:foldl(Put, #{}, section_keys()),
@@ -84,19 +84,19 @@ configure(reward, #{reward := #{beneficiaries := PoolShareBins,
                        <<"ae_uat">> -> ?PAYMENT_CONTRACT_TESTNET_ADDRESS;
                        <<"ae_mainnet">> -> ?PAYMENT_CONTRACT_MAINNET_ADDRESS
                    end,
-    ContractPK   = aestratum_util:contract_address_to_pubkey(ContractAddr),
+    ContractPK   = aestratum_conv:contract_address_to_pubkey(ContractAddr),
     ContractPath = filename:join(code:priv_dir(aestratum), "Payout.aes"),
     Contract     = ok_val_err(aeso_compiler:file(ContractPath), contract_compilation),
 
     {CallerPK, CallerSK} = CallerKeyPair = read_keys(KeysDir),
-    CallerAddr   = aestratum_util:account_pubkey_to_address(CallerPK),
+    CallerAddr   = aestratum_conv:account_pubkey_to_address(CallerPK),
     check_keypair_roundtrips(CallerKeyPair) orelse error(invalid_keypair),
 
     PoolPercentShares =
         lists:foldl(fun (Bnf, Acc) ->
                             [<<"ak_", _/binary>> = AccountAddr, PctShareBin] =
                                 binary:split(Bnf, <<":">>),
-                            PctShare = aestratum_util:binary_to_number(PctShareBin),
+                            PctShare = aestratum_conv:binary_to_number(PctShareBin),
                             Acc#{AccountAddr => maps:get(AccountAddr, Acc, 0) + PctShare}
                     end, #{}, PoolShareBins),
     PoolPercentSum = lists:sum(maps:values(PoolPercentShares)),
