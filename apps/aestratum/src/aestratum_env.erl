@@ -3,7 +3,9 @@
 %% ENV handling
 -export([setup/0,
          get/1,
+         get/2,
          set/1,
+         set/2,
          reset/1,
          unset/0, unset/1,
          keys/0]).
@@ -16,11 +18,20 @@ setup() ->
     aestratum_config:setup_env(UserConfig).
 
 get(Key) ->
-    {ok, Val} = application:get_env(aestratum, Key),
-    Val.
+    case application:get_env(aestratum, Key) of
+        {ok, V}   -> V;
+        undefined -> error({config_key_not_set, Key})
+    end.
 
-set(ConfigMap) ->
-    maps:map(fun (K, V) -> application:set_env(aestratum, K, V), V end, ConfigMap).
+get(Key, Default) ->
+    application:get_env(aestratum, Key, Default).
+
+set(Config) when is_map(Config) ->
+    maps:map(fun set/2, Config).
+
+set(K, V) ->
+    application:set_env(aestratum, K, V),
+    V.
 
 reset(ConfigMap) ->
     unset(),
