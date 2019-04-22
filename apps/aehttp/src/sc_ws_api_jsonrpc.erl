@@ -29,7 +29,8 @@
                                Method =:= <<"channels.update">>;
                                Method =:= <<"channels.update_ack">>;
                                Method =:= <<"channels.solo_close_tx">>;
-                               Method =:= <<"channels.slash_tx">>).
+                               Method =:= <<"channels.slash_tx">>;
+                               Method =:= <<"channels.settle_tx">>).
 -define(METHOD_TAG(Method), case Method of
                                 <<"channels.initiator_sign">>    -> create_tx;
                                 <<"channels.deposit_tx">>        -> deposit_tx;
@@ -43,7 +44,8 @@
                                 <<"channels.shutdown_sign_ack">> -> shutdown_ack;
                                 <<"channels.leave">>             -> leave;
                                 <<"channels.solo_close_tx">>     -> solo_close_tx;
-                                <<"channels.slash_tx">>          -> slash_tx
+                                <<"channels.slash_tx">>          -> slash_tx;
+                                <<"channels.settle_tx">>         -> settle_tx
                             end).
 
 unpack(Msg) when is_map(Msg) ->
@@ -507,6 +509,18 @@ process_request(#{<<"method">> := <<"channels.leave">>}, FsmPid) ->
 process_request(#{<<"method">> := <<"channels.shutdown">>}, FsmPid) ->
     lager:warning("Channel WS: closing channel message received"),
     aesc_fsm:shutdown(FsmPid),
+    no_reply;
+process_request(#{<<"method">> := <<"channels.close_solo">>}, FsmPid) ->
+    lager:debug("Channel WS: close_solo message received"),
+    aesc_fsm:close_solo(FsmPid),
+    no_reply;
+process_request(#{<<"method">> := <<"channels.slash">>}, FsmPid) ->
+    lager:debug("Channel WS: slash message received"),
+    aesc_fsm:slash(FsmPid),
+    no_reply;
+process_request(#{<<"method">> := <<"channels.settle">>}, FsmPid) ->
+    lager:debug("Channel WS: settle message received"),
+    aesc_fsm:settle(FsmPid),
     no_reply;
 process_request(#{<<"method">> := _} = Unhandled, _FsmPid) ->
     lager:warning("Channel WS: unhandled action received ~p", [Unhandled]),

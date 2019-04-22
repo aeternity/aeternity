@@ -8,34 +8,13 @@ main([Re | Path]) ->
                            grep(Re, P, Acc)
                    end, {ordsets:new(), ordsets:new()}, Path),
     PidPats = pid_patterns(Pids),
-    %% lager log files are ordered as:
-    %% aeternity.log - newest
-    %% aeternity.log.N - higher N is older
-    %% Ps is an ordset, so reverse to get oldest first
-    [find_pids(P, PidPats) || P <- lists:reverse(Ps)],
-    halt(0);
-main(_) ->
-    usage(),
-    halt(1).
-
-usage() ->
-    io:fwrite("Usage: escript " ++ escript:script_name() ++ " <GrepString> <LogPath>~n"
-              "~n"
-              "This script searches aeternity.log for lines matching <GrepString>,~n"
-              "then iterates, extracting mentioned pids and finding log messages for those pids,~n"
-              "and so on, until fixpoint, then outputs the result.~n").
+    [find_pids(P, PidPats) || P <- Ps],
+    halt(0).
 
 grep(Re, P, {Acc, PAcc}) ->
     x(os:cmd("grep " ++ Re ++ " " ++ P), P, Acc, PAcc).
 
 find_pids(File, Pids) ->
-    try find_pids_(File, Pids)
-    catch error:E ->
-            io:fwrite("CAUGHT ~p (File = ~p)~n", [E, File]),
-            ok
-    end.
-
-find_pids_(File, Pids) ->
     {ok, Bin} = file:read_file(File),
     Lines = string:lexemes(Bin, [$\n]),
     io:fwrite("*** ~s ***~n", [File]),
@@ -63,7 +42,7 @@ x(Out, P, Acc, PAcc) ->
                       grep("'" ++ pid_to_list(Pid) ++ "'", P, AccX)
               end, {NewAcc, PAcc1}, New)
     end.
-
+    
 
 
 extract_pids(String, Acc) ->
@@ -82,3 +61,5 @@ extract_pids(String, Acc) ->
         _ ->
             []
     end.
+
+

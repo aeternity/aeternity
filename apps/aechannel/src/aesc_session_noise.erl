@@ -168,8 +168,9 @@ get_reconnect_params() ->
 
 
 handle_call(close, _From, #st{econn = EConn} = St) ->
+    lager:debug("got close request", []),
     close_econn(EConn),
-    {stop, shutdown, ok, St};
+    {stop, normal, ok, St};
 handle_call(_Req, _From, St) ->
     {reply, {error, unknown_call}, St}.
 
