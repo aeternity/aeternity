@@ -16,10 +16,20 @@ compile_and_run(Contracts, Contract, Function, Arguments) ->
     run(Chain, Contract, Function, Arguments).
 
 compile_contracts(Contracts) ->
-    setup_chain(maps:from_list([ {Name, compile_contract(Code)} || {Name, Code} <- Contracts ])).
+    MkAddr = fun(Name) -> aeb_fate_data:make_address(pad_contract_name(Name)) end,
+    maps:from_list([ {MkAddr(Name), compile_contract(Code)} || {Name, Code} <- Contracts ]).
 
-run(Chain, Contract, Function, Arguments) ->
-    aefa_fate:run(make_call(Contract, Function, Arguments), Chain).
+dummy_spec() ->
+    #{ trees     => aec_trees:new_without_backend(),
+       caller    => <<123:256>>,
+       origin    => <<123:256>>,
+       gas_price => 1,
+       tx_env    => aetx_env:tx_env(1) }.
+
+run(Cache, Contract, Function, Arguments) ->
+    Call = make_call(Contract, Function, Arguments),
+    Spec = dummy_spec(),
+    aefa_fate:run_with_cache(Call, Spec, Cache).
 
 expect(Chain, Contract, Function, Arguments, Expect) ->
     {ok, #{ accumulator := Result,
@@ -36,14 +46,16 @@ compile_contract(Code, Options) ->
     FCode     = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
     aeso_fcode_to_fate:compile(FCode, Options).
 
-setup_chain(Contracts) ->
-    #{ contracts => Contracts }.
-
 make_call(Contract, Function, Arguments) ->
     EncArgs  = list_to_tuple([aefate_test_utils:encode(A) || A <- Arguments]),
     Calldata = {tuple, {Function, {tuple, EncArgs}}},
-    #{ contract => Contract,
-       call => aeb_fate_encoding:serialize(Calldata) }.
+    #{ contract => pad_contract_name(Contract),
+       gas      => 1000000,
+       call     => aeb_fate_encoding:serialize(Calldata) }.
+
+pad_contract_name(Name) ->
+    PadSize = 32 - byte_size(Name),
+    iolist_to_binary([Name, lists:duplicate(PadSize, "_")]).
 
 mk_test(Contracts, Tests) ->
     Main  = element(1, hd(Contracts)),
