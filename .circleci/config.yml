@@ -188,7 +188,7 @@ references:
         then
           make prod-deb-package DEB_SKIP_DH_AUTO_CLEAN=true ;
         else
-          AE_DEB_PKG_VERSION=$(cat VERSION)-1-git-${CIRCLE_BRANCH}~$(date +%Y%m%d%H%M%S)
+          AE_DEB_PKG_VERSION=$(cat VERSION)~git$(date +%Y%m%d%H%M%S).${CIRCLE_SHA1:0:8}-1
           make prod-deb-package DEB_SKIP_DH_AUTO_CLEAN=true AE_DEB_PKG_VERSION=$AE_DEB_PKG_VERSION;
         fi
         mkdir ${PACKAGES_DIR:?}
