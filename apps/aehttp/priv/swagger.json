@@ -712,7 +712,6 @@
     "/transactions/{hash}/info" : {
       "get" : {
         "tags" : [ "external", "transaction" ],
-        "description" : "Get a transaction info by hash",
         "operationId" : "GetTransactionInfoByHash",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -726,7 +725,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/ContractCallObject"
+              "$ref" : "#/definitions/TxInfoObject"
             }
           },
           "400" : {
@@ -2430,10 +2429,18 @@
           "format" : "int64",
           "description" : "Nonce",
           "minimum" : 0
+        },
+        "kind" : {
+          "type" : "string",
+          "enum" : [ "basic", "generalized" ]
+        },
+        "contract_id" : {
+          "$ref" : "#/definitions/EncodedHash"
         }
       },
       "example" : {
         "balance" : 0,
+        "kind" : "basic",
         "id" : { },
         "nonce" : 0
       }
@@ -3593,7 +3600,7 @@
     },
     "GenericSignedTx" : {
       "type" : "object",
-      "required" : [ "block_hash", "block_height", "hash", "signatures", "tx" ],
+      "required" : [ "block_hash", "block_height", "hash", "tx" ],
       "properties" : {
         "tx" : {
           "$ref" : "#/definitions/GenericTx"
@@ -3610,6 +3617,7 @@
         },
         "signatures" : {
           "type" : "array",
+          "description" : "signatures required unless for Generalized Account Meta transactions",
           "items" : {
             "type" : "string"
           },
@@ -3791,6 +3799,40 @@
         "$ref" : "#/definitions/ContractCallTx"
       } ]
     },
+    "TxInfoObject" : {
+      "type" : "object",
+      "properties" : {
+        "call_info" : {
+          "$ref" : "#/definitions/ContractCallObject"
+        },
+        "ga_info" : {
+          "$ref" : "#/definitions/GAObject"
+        }
+      },
+      "example" : {
+        "ga_info" : {
+          "gas_price" : 7,
+          "return_type" : "return_type",
+          "gas_used" : 9,
+          "height" : 2
+        },
+        "call_info" : {
+          "gas_price" : 1,
+          "return_type" : "return_type",
+          "log" : [ {
+            "data" : { },
+            "topics" : [ 5, 5 ]
+          }, {
+            "data" : { },
+            "topics" : [ 5, 5 ]
+          } ],
+          "caller_id" : { },
+          "gas_used" : 5,
+          "caller_nonce" : 0,
+          "height" : 6
+        }
+      }
+    },
     "ContractCallObject" : {
       "type" : "object",
       "required" : [ "caller_id", "caller_nonce", "contract_id", "gas_price", "gas_used", "height", "log", "return_type", "return_value" ],
@@ -3841,6 +3883,37 @@
         "gas_used" : 5,
         "caller_nonce" : 0,
         "height" : 6
+      }
+    },
+    "GAObject" : {
+      "type" : "object",
+      "required" : [ "caller_id", "gas_price", "gas_used", "height", "return_type", "return_value" ],
+      "properties" : {
+        "caller_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "height" : {
+          "type" : "integer"
+        },
+        "gas_price" : {
+          "type" : "integer"
+        },
+        "gas_used" : {
+          "type" : "integer"
+        },
+        "return_value" : {
+          "$ref" : "#/definitions/EncodedByteArray"
+        },
+        "return_type" : {
+          "type" : "string",
+          "description" : "The status of the call 'ok | error | revert'."
+        }
+      },
+      "example" : {
+        "gas_price" : 7,
+        "return_type" : "return_type",
+        "gas_used" : 9,
+        "height" : 2
       }
     },
     "Event" : {

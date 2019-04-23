@@ -69,6 +69,10 @@
         , get_channel/2
         ]).
 
+%%% Generalized Accounts API
+-export([get_ga_call/3
+        ]).
+
 %%% trees
 -export([ get_top_state/0
         ]).
@@ -248,6 +252,27 @@ get_contract_call(ContractId, CallId, BlockHash) ->
         {ok, Trees} ->
             CallTree = aec_trees:calls(Trees),
             case aect_call_state_tree:lookup_call(ContractId, CallId, CallTree) of
+                none -> {error, call_not_found};
+                {value, Call} -> {ok, Call}
+            end
+    end.
+
+%%%===================================================================
+%%% Generalized Accounts
+%%%===================================================================
+
+-spec get_ga_call(binary(), aect_call:id(), binary()) ->
+                               {'ok', aect_call:call()} |
+                               {'error', atom()}.
+get_ga_call(Owner, AuthId, BlockHash) ->
+    {value, Account} = get_account(Owner),
+    {_, AuthCtPK}    = aeser_id:specialize(aec_accounts:ga_contract(Account)),
+    CallId = aect_call:ga_id(AuthId, AuthCtPK),
+    case get_block_state(BlockHash) of
+        error -> {error, no_state_trees};
+        {ok, Trees} ->
+            CallTree = aec_trees:calls(Trees),
+            case aect_call_state_tree:lookup_call(Owner, CallId, CallTree) of
                 none -> {error, call_not_found};
                 {value, Call} -> {ok, Call}
             end

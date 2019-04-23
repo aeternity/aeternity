@@ -31,6 +31,7 @@
 %% API that should be avoided to be used
 -export([serialize_for_client/2,
          serialize_for_client_pending/1,
+         serialize_for_client_inner/2,
          meta_data_from_client_serialized/1,
          serialize_to_binary/1,
          deserialize_from_binary/1]).
@@ -190,16 +191,30 @@ serialize_for_client_pending(#signed_tx{}=S) ->
 
 -spec serialize_for_client(aetx_sign:signed_tx(), integer(), binary(), binary()) ->
     binary() | map().
-serialize_for_client(#signed_tx{tx = Tx, signatures = Sigs}, BlockHeight, BlockHash0, TxHash) ->
-    BlockHash = case BlockHash0 of
-                    <<>> -> <<"none">>;
-                    _ -> aeser_api_encoder:encode(micro_block_hash, BlockHash0)
-                end,
-    #{<<"tx">>           => aetx:serialize_for_client(Tx),
-      <<"block_height">> => BlockHeight,
-      <<"block_hash">>   => BlockHash,
-      <<"hash">>         => aeser_api_encoder:encode(tx_hash, TxHash),
-      <<"signatures">>   => [aeser_api_encoder:encode(signature, S) || S <- Sigs]}.
+serialize_for_client(#signed_tx{} = SigTx, BlockHeight, BlockHash0, TxHash) ->
+    BlockHash =
+        case BlockHash0 of
+            <<>> -> <<"none">>;
+            _ -> aeser_api_encoder:encode(micro_block_hash, BlockHash0)
+        end,
+    MetaData =
+        #{
+          <<"block_height">> => BlockHeight,
+          <<"block_hash">>   => BlockHash,
+          <<"hash">>         => aeser_api_encoder:encode(tx_hash, TxHash)},
+    serialize_for_client_inner(SigTx, MetaData).
+
+%% For inner transactions we leave out block height etc and for generalized
+%% accounts even signatures make no sense.
+-spec serialize_for_client_inner(aetx_sign:signed_tx(), map()) -> binary() | map().
+serialize_for_client_inner(#signed_tx{tx = Tx, signatures = Sigs}, MetaData) ->
+    case aetx:specialize_type(Tx) of
+        {ga_meta_tx, _} ->
+            MetaData#{<<"tx">> => aetx:serialize_for_client(Tx)};
+        _ ->
+            MetaData#{<<"tx">> => aetx:serialize_for_client(Tx),
+                      <<"signatures">> => [aeser_api_encoder:encode(signature, S) || S <- Sigs]}
+    end.
 
 meta_data_from_client_serialized(Serialized) ->
     #{<<"tx">>           := _EncodedTx,

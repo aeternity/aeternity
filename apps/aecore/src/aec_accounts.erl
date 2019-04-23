@@ -186,11 +186,18 @@ serialization_template(?ACCOUNT_VSN_2) ->
     ].
 
 -spec serialize_for_client(account()) -> map().
-%% GA_TODO: More info on generalize accounts ;-)
 serialize_for_client(#account{id      = Id,
                               balance = Balance,
-                              nonce   = Nonce}) ->
-    #{<<"id">>      => aeser_api_encoder:encode(id_hash, Id),
-      <<"balance">> => Balance,
-      <<"nonce">>   => Nonce}.
-
+                              nonce   = Nonce} = Account) ->
+    ExtraInfo =
+        case type(Account) of
+            generalized ->
+                {contract, Contract} = aeser_id:specialize(Account#account.ga_contract),
+                #{<<"kind">>        => <<"generalized">>,
+                  <<"contract_id">> => aeser_api_encoder:encode(contract_pubkey, Contract)};
+            basic ->
+                #{<<"kind">> => <<"basic">>}
+        end,
+    maps:merge(ExtraInfo, #{<<"id">>      => aeser_api_encoder:encode(id_hash, Id),
+                            <<"balance">> => Balance,
+                            <<"nonce">>   => Nonce}).

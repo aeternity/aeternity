@@ -14,7 +14,7 @@
         , get_nonce_from_account_id/1
         , print_state/0
         , get_contract_code/2
-        , get_contract_call_object_from_tx/2
+        , get_info_object_from_tx/3
         , verify_oracle_existence/1
         , verify_oracle_query_existence/2
         , verify_name/1
@@ -205,7 +205,7 @@ get_contract_code(ContractKey, CodeKey) ->
         end
     end.
 
-get_contract_call_object_from_tx(TxKey, CallKey) ->
+get_info_object_from_tx(TxKey, TypeKey, CallKey) ->
     fun(_Req, State) ->
             case maps:get(TxKey, State) of
                 #{tx_block_hash := mempool} ->
@@ -223,7 +223,18 @@ get_contract_call_object_from_tx(TxKey, CallKey) ->
                                     Msg = atom_to_binary(Why, utf8),
                                     {error, {400, [], #{<<"reason">> => Msg}}};
                                 {ok, CallObject} ->
-                                    {ok, maps:put(CallKey, CallObject, State)}
+                                    {ok, maps:put(TypeKey, TxType, maps:put(CallKey, CallObject, State))}
+                            end;
+                        {ga_meta_tx, _} ->
+                            {CB, CTx}        = aetx:specialize_callback(Tx),
+                            Owner            = CB:origin(CTx),
+                            AuthId           = CB:auth_id(CTx),
+                            case aec_chain:get_ga_call(Owner, AuthId, BlockHash) of
+                                {error, Why} ->
+                                    Msg = atom_to_binary(Why, utf8),
+                                    {error, {400, [], #{<<"reason">> => Msg}}};
+                                {ok, CallObject} ->
+                                    {ok, maps:put(TypeKey, ga_meta_tx, maps:put(CallKey, CallObject, State))}
                             end;
                         {_, _} ->
                             {error, {400, [], #{<<"reason">> => <<"Tx is not a create or call">>}}}
