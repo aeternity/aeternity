@@ -1240,16 +1240,30 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R) ->
 
 settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug) ->
     ok = rpc(dev1, aesc_fsm, settle, [FsmI]),
-    _ = await_signing_request(settle_tx, I),
+    {_, SignedTx} = await_signing_request(settle_tx, I),
     ct:log("settle_tx signed", []),
-    mine_blocks(dev1, TTL + 1, Debug),
-    SignedTx = await_on_chain_report(I, #{info => channel_closed}, ?TIMEOUT),
+    {ok, MinedKeyBlocks} = aecore_suite_utils:mine_blocks_until_txs_on_chain(aecore_suite_utils:node_name(dev1), [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))], ?MAX_MINED_BLOCKS),
+    KeyBlocksMissingForTTL = (TTL + 1) - length(MinedKeyBlocks),
+    KeyBlocksMissingForMinDepth =
+        if
+            KeyBlocksMissingForTTL > 0 ->
+                aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(dev1), KeyBlocksMissingForTTL),
+                MinDepth;
+            KeyBlocksMissingForTTL =< 0 ->
+                MinDepth + KeyBlocksMissingForTTL
+        end,
+    SignedTx = await_on_chain_report(I, #{info => channel_closed}, ?TIMEOUT), % same tx
     ct:log("I received On-chain report: ~p", [SignedTx]),
     SignedTx = await_on_chain_report(R, #{info => channel_closed}, ?TIMEOUT), % same tx
     ct:log("R received On-chain report: ~p", [SignedTx]),
     verify_settle_tx(SignedTx, ChannelId),
     ct:log("settle_tx verified", []),
-    mine_blocks(dev1, MinDepth, Debug),
+    if
+        KeyBlocksMissingForMinDepth > 0 ->
+            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(dev1), KeyBlocksMissingForMinDepth);
+        KeyBlocksMissingForMinDepth =< 0 ->
+            ok
+    end,
     {ok, _} = receive_from_fsm(info, I, closed_confirmed, ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(info, R, closed_confirmed, ?TIMEOUT, Debug),
     ok.
