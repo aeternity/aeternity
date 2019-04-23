@@ -32,9 +32,14 @@ run(Cache, Contract, Function, Arguments) ->
     aefa_fate:run_with_cache(Call, Spec, Cache).
 
 expect(Chain, Contract, Function, Arguments, Expect) ->
-    {ok, #{ accumulator := Result,
-            trace       := Trace }} = run(Chain, Contract, Function, Arguments),
-    ?assertMatch({Expect, _}, {Result, Trace}).
+    case run(Chain, Contract, Function, Arguments) of
+        {ok, #{ accumulator := Result,
+                trace       := Trace }} ->
+            ?assertMatch({Expect, _}, {Result, Trace});
+        {error, Err, _} ->
+            io:format("~s\n", [Err]),
+            ?assert(false)
+    end.
 
 %% For now, implement pipeline here.
 compile_contract(Code) ->
@@ -264,4 +269,33 @@ record_tests() ->
       ]).
 
 record_test_() -> mk_test([records()], record_tests()).
+
+variants() ->
+    {<<"variants">>,
+     "contract Variants =\n"
+     "  type number = int\n"
+     "  datatype color('a, 'b) = Red('a, 'b) | Green | Blue(int)\n"
+     "  function scramble(a : color(number, bool)) =\n"
+     "    switch(a)\n"
+     "      Red(x, true) => Blue(x)\n"
+     "      Blue(x)      => Green\n"
+     "      _            => Red(0, 1)\n"
+     ""}.
+
+-define(Red(X, Y), {variant, [2, 0, 1], 0, {X, Y}}).
+-define(Green,     {variant, [2, 0, 1], 1, {}}).
+-define(Blue(X),   {variant, [2, 0, 1], 2, {X}}).
+
+variant_tests() ->
+    Scramble = fun(?Red(X, true)) -> ?Blue(X);
+                  (?Blue(_)) -> ?Green;
+                  (_) -> ?Red(0, 1) end,
+    ScrambleInput = [ ?Red(2, true), ?Red(1001, false), ?Blue(-99), ?Green ],
+    lists:flatten(
+      [[],
+       [{"scramble", [Input], Scramble(Input)}
+        || Input <- ScrambleInput],
+       []]).
+
+variant_test_() -> mk_test([variants()], variant_tests()).
 
