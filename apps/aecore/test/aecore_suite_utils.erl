@@ -322,7 +322,7 @@ mine_blocks_loop(Cnt, Type) ->
 
 mine_blocks_loop(Blocks, 0,_Type) ->
     {ok, Blocks};
-mine_blocks_loop(Blocks, BlocksToMine, Type) ->
+mine_blocks_loop(Blocks, BlocksToMine, Type) when is_integer(BlocksToMine), BlocksToMine > 0 ->
     {ok, Block} = wait_for_new_block(),
     case aec_blocks:type(Block) of
         micro when Type =:= key ->
