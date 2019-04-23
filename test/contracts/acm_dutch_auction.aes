@@ -1,0 +1,27 @@
+contract DutchAuction =
+
+  record state = { amount : int,
+                   height : int,
+                   dec    : int,
+                   creator : address,   // can be removed when Contract.creator is implemented
+                   sold   : bool }
+
+  private function require(b : bool, err : string) =
+    if(!b) abort(err)
+
+  public function init(price, decrease) : state =
+    require(price > 0 && decrease > 0, "bad args")
+    { amount = price,
+      height = Chain.block_height,
+      dec    = decrease,
+      creator = Call.caller,  // can be removed when Contract.creator is implemented
+      sold   = false }
+
+  public stateful function bid() =
+    require( !(state.sold), "sold")
+    let price =
+      state.amount - (Chain.block_height - state.height) * state.dec
+    require( Contract.balance >= price, "no money")
+    Chain.spend(state.creator, price)   // should be Contract.creator
+    Chain.spend(Call.origin, Contract.balance)
+    put(state{sold = true})

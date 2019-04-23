@@ -5,6 +5,9 @@
 %% consensus protocol applies hence each test reinitializing the chain should
 %% take care of that at the end of the test.
 %%
+%% A single test can be ran using:
+%% make ct SUITE=apps/aehttp/test/aehttp_contracts GROUP=contracts TEST=acm_dutch_auction_contract
+%%
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
@@ -28,6 +31,7 @@
          compiler_error_contract/1,
          counter_contract/1,
          dutch_auction_contract/1,
+         acm_dutch_auction_contract/1,
          environment_contract/1,
          erc20_token_contract/1,
          factorial_contract/1,
@@ -69,6 +73,7 @@ groups() ->
        environment_contract,
        spend_test_contract,
        dutch_auction_contract,
+       acm_dutch_auction_contract,
        fundme_contract,
        erc20_token_contract,
        compiler_error_contract,
@@ -897,6 +902,78 @@ dutch_auction_contract(Config) ->
     revert_call_compute_func(Node, DPub, DPriv, EncCPub,
                              <<"bid">>, <<"()">>,
                              #{amount => 100000,fee => Fee}),
+    ok.
+
+%% acm_dutch_auction_contract(Config)
+%%  Check the DutchAuction contract in the ACM form. We use 3 accounts here, Alice for
+%%  setting up the account, Carl and Bert as
+%%  bidder. This makes it a bit easier to keep track of the values as
+%%  we have gas loses as well.
+
+acm_dutch_auction_contract(Config) ->
+    Node = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APub,
+                 priv_key := APriv},
+      acc_b := #{pub_key := BPub,
+                 priv_key := BPriv},
+      acc_c := #{pub_key := CPub,
+                 priv_key := CPriv}} = proplists:get_value(accounts, Config),
+
+    %% Compile test contract
+    Code = compile_test_contract("acm_dutch_auction"),
+
+    %% Set auction start amount and decrease per mine and fee.
+    StartAmt = 50000,
+    Decrease = 1000,
+    Fee      = 800000 * ?DEFAULT_GAS_PRICE,
+
+    %% Initialise contract owned by Alice .
+    InitArgument = args_to_binary([StartAmt, Decrease]),
+    {EncCPub,_,InitReturn} =
+        create_compute_contract(Node, APub, APriv, Code, InitArgument),
+    #{<<"height">> := Height0} = InitReturn,
+
+    %% Mine 5 times to decrement value.
+    {ok,_} = aecore_suite_utils:mine_key_blocks(Node, 5),
+
+    ABal1 = get_balance(APub),
+    BBal1 = get_balance(BPub),
+    CBal1 = get_balance(CPub),
+
+    %% Call the contract bid function by Bert.
+    {_,#{return := BidReturn}} =
+        call_compute_func(Node, BPub, BPriv,
+                          EncCPub,
+                          <<"bid">>, <<"()">>,
+                          #{amount => 100000,fee => Fee}),
+    #{<<"gas_used">> := GasUsed,<<"height">> := Height1} = BidReturn,
+
+    %% Set the cost from the amount, decrease and diff in height.
+    Cost = StartAmt - (Height1 - Height0) * Decrease,
+
+    ABal2 = get_balance(APub),
+    BBal2 = get_balance(BPub),
+    CBal1 = get_balance(CPub),
+
+    %% Check that the balances are correct, don't forget the gas and the fee.
+    BBal2 = BBal1 - Cost - GasUsed * ?DEFAULT_GAS_PRICE - Fee,
+    ABal2 = ABal1 + Cost,
+
+    %% Now make a bid which should fail as auction has closed.
+    {_, SecondBidReturn} =
+         revert_call_compute_func(Node, CPub, CPriv, EncCPub,
+                                  <<"bid">>, <<"()">>,
+                                  #{amount => 100000,fee => Fee}),
+    ABal2 = get_balance(APub),
+    BBal2 = get_balance(BPub),
+    CBal3 = get_balance(CPub),
+
+    #{<<"gas_used">> := GasUsed2} = SecondBidReturn,
+    %% The second bidder only pays the fee and
+    %% the little gas (170) that the aborted call cost
+
+    ?assertEqual(CBal1 - CBal3, GasUsed2 * ?DEFAULT_GAS_PRICE + Fee),
     ok.
 
 %% fundme_contract(Config)
