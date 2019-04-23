@@ -12,6 +12,8 @@
 -define(KEY_HEADER_MIN_BYTES, 364).
 -define(MIC_HEADER_MIN_BYTES, 216).
 
+-define(KEY_HEADER_INFO_PRE_FORTUNA_RELEASE, 1).
+
 -type(txs_hash() :: <<_:(?TXS_HASH_BYTES*8)>>).
 -type(state_hash() :: <<_:(?STATE_HASH_BYTES*8)>>).
 -type(miner_pubkey() :: <<_:(?MINER_PUB_BYTES*8)>>).

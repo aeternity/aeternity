@@ -216,6 +216,7 @@ from_db_header(Tuple) when is_tuple(Tuple) ->
                     ) -> header().
 new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
                Target, Evd, Nonce, Time, Version) ->
+    Info = default_info_field(Version),
     #key_header{height       = Height,
                 prev_hash    = PrevHash,
                 prev_key     = PrevKeyHash,
@@ -226,8 +227,14 @@ new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
                 pow_evidence = Evd,
                 nonce        = Nonce,
                 time         = Time,
+                info         = Info,
                 version      = Version
                }.
+
+default_info_field(Vsn) when Vsn >= ?MINERVA_PROTOCOL_VSN ->
+    <<?KEY_HEADER_INFO_PRE_FORTUNA_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>;
+default_info_field(_Vsn) ->
+    <<>>.
 
 -spec new_micro_header(height(), block_header_hash(), block_header_hash(),
                        state_hash(), non_neg_integer(), txs_hash(),
