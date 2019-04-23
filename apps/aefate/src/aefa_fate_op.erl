@@ -885,8 +885,8 @@ op(variant_element, A, B)  when ?IS_FATE_VARIANT(A)
                                 , ?IS_FATE_INTEGER(B)
                                 , B >= 0 ->
     ?FATE_VARIANT(_S, _T, Values) = A,
-    if size(Values) >= B ->
-            element(B, Values);
+    if size(Values) > B ->
+            element(B + 1, Values);
        true ->
             aefa_fate:abort({type_error, variant_element, B, A})
     end;
