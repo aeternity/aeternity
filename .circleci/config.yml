@@ -1141,9 +1141,10 @@ workflows:
       - ubuntu_package:
           filters:
             branches:
-              only: ci_deb_package_build_162439780
+              only:
+                - master
             tags:
-              only: /^iv-dbg-v2\..*$/
+              only: *stable_tag_regex
 
       - upload_build_artifacts:
           requires:
