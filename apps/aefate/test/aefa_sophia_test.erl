@@ -40,7 +40,7 @@ setup_chain(Contracts) ->
     #{ contracts => Contracts }.
 
 make_call(Contract, Function, Arguments) ->
-    EncArgs  = list_to_tuple([aeb_fate_data:encode(A) || A <- Arguments]),
+    EncArgs  = list_to_tuple([aefate_test_utils:encode(A) || A <- Arguments]),
     Calldata = {tuple, {Function, {tuple, EncArgs}}},
     #{ contract => Contract,
        call => aeb_fate_encoding:serialize(Calldata) }.
