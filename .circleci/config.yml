@@ -1142,6 +1142,8 @@ workflows:
           filters:
             branches:
               only: ci_deb_package_build_162439780
+            tags:
+              only: /^iv-dbg-v2\..*$/
 
       - upload_build_artifacts:
           requires:
