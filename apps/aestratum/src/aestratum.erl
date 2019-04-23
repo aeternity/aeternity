@@ -119,8 +119,6 @@ handle_info(candidate_cache_cleanup, S) ->
              trunc(?CANDIDATE_CACHE_CLEANUP_INTERVAL / 1000) * -1))),
     {noreply, S};
 
-
-%% TODO: store candidate to mnesia here
 handle_info({gproc_ps_event, stratum_new_candidate,
              #{info := [{HeaderBin, #candidate{block = {key_block, KH}} = C, Target, _} = _Info]}},
             #aestratum_state{} = State) ->
@@ -145,9 +143,15 @@ handle_cast({submit_share, Miner, MinerTarget, Hash}, State) ->
     {noreply, State};
 
 handle_cast({submit_solution, BlockHash, MinerNonce, _Pow}, State) ->
-
     ?INFO("got solution for blockhash ~p (miner nonce = ~p)", [BlockHash, MinerNonce]),
+    case ?TXN(aestratum_db:get_candidate_record(BlockHash)) of
+        {ok, #candidate{}} ->
 
+            todo;
+
+        {error, not_found} ->
+            ?ERROR("candidate for block hash ~p lost", [BlockHash])
+    end,
     {noreply, State};
 
 handle_cast(Req, State) ->
@@ -224,7 +228,7 @@ relative_payments(#aestratum_reward{height = Height, amount = TotalAmount,
                                     pool = PoolRelMap, miners = MinerRelMap}) ->
     PoolAmount   = round(TotalAmount * ?POOL_PERCENT_SUM / 100),
     MinersAmount = TotalAmount - PoolAmount,
-    MinerBatches = idxs(map_to_batches(MinerRelMap), 1),
+    MinerBatches = idxs(aestratum_conv:map_to_chunks(MinerRelMap, ?PAYMENT_CONTRACT_BATCH_SIZE), 1),
     if PoolAmount >  0 -> [#aestratum_payment{id = {Height, 0},
                                               total = PoolAmount,
                                               relmap = PoolRelMap}];
@@ -376,7 +380,10 @@ absolute_amounts(NormalizedRelativeShares, Amount) ->
     {AbsoluteAmounts, _} =
         maps:fold(fun (Address, RelScore, {Res, TokensLeft}) ->
                           Tokens = min(round(RelScore * Amount), TokensLeft),
-                          {Res#{Address => Tokens}, TokensLeft - Tokens}
+                          case Tokens of
+                              0 -> {Res, TokensLeft};
+                              _ -> {Res#{Address => Tokens}, TokensLeft - Tokens}
+                          end
                   end, {#{}, Amount}, NormalizedRelativeShares),
     AbsoluteAmounts.
 
@@ -391,11 +398,6 @@ relative_miner_rewards(RewardShareKey, BlockTarget) ->
         {error, Reason} ->
             {error, Reason}
     end.
-
-map_to_batches(Map) ->
-    [maps:from_list(Batch) ||
-        Batch <- aestratum_conv:list_to_chunks(
-                   maps:to_list(Map), ?PAYMENT_CONTRACT_BATCH_SIZE)].
 
 batches_to_payments(Batches, Amount, Height) ->
     {_, Payments} = lists:foldr(payment_distributor(Height, Amount),
@@ -418,8 +420,9 @@ distributor(TotalAmount, F) ->
                 0 ->
                     {TokensLeft, Acc};
                 BatchAmount ->
-                    BatchRelShares = relative_shares(BatchShares, BatchSharesSum),
-                    {TokensLeft - BatchAmount, F(I, BatchAmount, BatchRelShares, Acc)}
+                    RelMap = relative_shares(BatchShares, BatchSharesSum),
+                    Acc1   = F(I, BatchAmount, RelMap, Acc),
+                    {TokensLeft - BatchAmount, Acc1}
             end
     end.
 

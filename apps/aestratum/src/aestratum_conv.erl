@@ -4,6 +4,7 @@
          binary_to_number/1,
          list_to_chunks/2,
          list_to_chunks/3,
+         map_to_chunks/2,
          tx_address/1,
          account_pubkey_to_address/1,
          account_address_to_pubkey/1,
@@ -62,3 +63,6 @@ delta_secs_to_universal_datetime(Delta) ->
     delta_secs_to_universal_datetime(Delta, UTCSecs).
 delta_secs_to_universal_datetime(Delta, ActualDT) ->
     calendar:gregorian_seconds_to_datetime(ActualDT + Delta).
+
+map_to_chunks(Map, ChunkSize) ->
+    [maps:from_list(Chunk) || Chunk <- list_to_chunks(maps:to_list(Map), ChunkSize)].

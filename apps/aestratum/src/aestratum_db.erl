@@ -19,6 +19,7 @@
          store_round/0,
          store_payment/1,
          update_payment/7,
+         get_candidate_record/1,
          store_candidate/2,
          delete_candidates_older_than/1,
          shares_range/1,
@@ -114,6 +115,13 @@ update_payment(#aestratum_payment{} = P, AbsMap, Fee, Gas, TxHash, Nonce, Date) 
                              date = Date},
     ok = mnesia:write(P1),
     {ok, P1}.
+
+
+get_candidate_record(BlockHash) ->
+    case mnesia:read(aestratum_candidate, BlockHash) of
+        [#aestratum_candidate{record = #candidate{} = Rec}] -> {ok, Rec};
+        [] -> {error, not_found}
+    end.
 
 
 store_candidate(HeaderBin, CandidateRecord) ->
