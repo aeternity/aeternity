@@ -361,7 +361,7 @@ setelement(Arg0, Arg1, Arg2, Arg3, EngineState) ->
             ?FATE_TUPLE(Tuple) = FateTuple,
             case size(Tuple) > Index of
                 true ->
-                    NewT = erlang:setelement(Index+1, Tuple, Element),
+                    NewT = ?FATE_TUPLE(erlang:setelement(Index+1, Tuple, Element)),
                     write(Arg0, NewT, ES3);
                 false ->
                     aefa_fate:abort({element_index_out_of_bounds, Index}, ES3)
