@@ -42,14 +42,19 @@ raw_key_header_minerva(MinervaHeight) ->
 raw_key_header_roma(MinervaHeight) ->
     ?TEST_MODULE:set_version_and_height(raw_key_header(), ?ROMA_PROTOCOL_VSN, MinervaHeight - 1).
 
+raw_key_header_fortuna(FortunaHeight) ->
+    ?TEST_MODULE:set_version_and_height(raw_key_header(), ?FORTUNA_PROTOCOL_VSN, FortunaHeight).
+
 info_test_() ->
     MinervaHeight = 10,
+    FortunaHeight = 15,
     {foreach,
      fun() ->
              meck:new(aec_hard_forks, [passthrough]),
              meck:expect(aec_hard_forks, protocol_effective_at_height,
-                         fun(X) when X < MinervaHeight -> ?ROMA_PROTOCOL_VSN;
-                            (X) when X >= MinervaHeight -> ?MINERVA_PROTOCOL_VSN
+                         fun(X) when X <  MinervaHeight -> ?ROMA_PROTOCOL_VSN;
+                            (X) when X <  FortunaHeight -> ?MINERVA_PROTOCOL_VSN;
+                            (X) when X >= FortunaHeight -> ?FORTUNA_PROTOCOL_VSN
                          end),
              ok
      end,
@@ -167,6 +172,60 @@ info_test_() ->
                ?assertException(error, malformed_header,
                                ?TEST_MODULE:deserialize_from_binary(TestBinary)),
                ok
+       end},
+      {"Default value of the info field in the pre release of Fortuna: Minerva protocol",
+       fun() ->
+               RawKey = raw_key_header_minerva(MinervaHeight),
+               WithInfo = ?TEST_MODULE:new_key_header(
+                             ?TEST_MODULE:height(RawKey),
+                             ?TEST_MODULE:prev_hash(RawKey),
+                             ?TEST_MODULE:prev_key_hash(RawKey),
+                             ?TEST_MODULE:root_hash(RawKey),
+                             ?TEST_MODULE:miner(RawKey),
+                             ?TEST_MODULE:beneficiary(RawKey),
+                             ?TEST_MODULE:target(RawKey),
+                             ?TEST_MODULE:pow(RawKey),
+                             ?TEST_MODULE:nonce(RawKey),
+                             ?TEST_MODULE:time_in_msecs(RawKey),
+                             ?MINERVA_PROTOCOL_VSN),
+               Info = <<?KEY_HEADER_INFO_PRE_FORTUNA_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>,
+               ?assertEqual(Info, ?TEST_MODULE:info(WithInfo))
+       end},
+      {"Default value of the info field in the pre release of Fortuna: Roma protocol",
+       fun() ->
+               RawKey = raw_key_header_roma(MinervaHeight),
+               WithInfo = ?TEST_MODULE:new_key_header(
+                             ?TEST_MODULE:height(RawKey),
+                             ?TEST_MODULE:prev_hash(RawKey),
+                             ?TEST_MODULE:prev_key_hash(RawKey),
+                             ?TEST_MODULE:root_hash(RawKey),
+                             ?TEST_MODULE:miner(RawKey),
+                             ?TEST_MODULE:beneficiary(RawKey),
+                             ?TEST_MODULE:target(RawKey),
+                             ?TEST_MODULE:pow(RawKey),
+                             ?TEST_MODULE:nonce(RawKey),
+                             ?TEST_MODULE:time_in_msecs(RawKey),
+                             ?ROMA_PROTOCOL_VSN),
+               Info = <<>>,
+               ?assertEqual(Info, ?TEST_MODULE:info(WithInfo))
+       end},
+      {"Default value of the info field in the pre release of Fortuna: Fortuna protocol",
+       fun() ->
+               RawKey = raw_key_header_fortuna(FortunaHeight),
+               WithInfo = ?TEST_MODULE:new_key_header(
+                             ?TEST_MODULE:height(RawKey),
+                             ?TEST_MODULE:prev_hash(RawKey),
+                             ?TEST_MODULE:prev_key_hash(RawKey),
+                             ?TEST_MODULE:root_hash(RawKey),
+                             ?TEST_MODULE:miner(RawKey),
+                             ?TEST_MODULE:beneficiary(RawKey),
+                             ?TEST_MODULE:target(RawKey),
+                             ?TEST_MODULE:pow(RawKey),
+                             ?TEST_MODULE:nonce(RawKey),
+                             ?TEST_MODULE:time_in_msecs(RawKey),
+                             ?FORTUNA_PROTOCOL_VSN),
+               Info = <<?KEY_HEADER_INFO_PRE_FORTUNA_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>,
+               ?assertEqual(Info, ?TEST_MODULE:info(WithInfo))
        end}
      ]}.
 
