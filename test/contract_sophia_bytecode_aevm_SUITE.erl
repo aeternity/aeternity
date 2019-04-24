@@ -5,7 +5,10 @@
 -include_lib("stdlib/include/assert.hrl").
 
 %% common_test exports
--export([all/0]).
+-export([ all/0
+        , init_per_testcase/2
+        , end_per_testcase/2
+        ]).
 
 %% test case exports
 -export(
@@ -81,6 +84,9 @@ init_per_testcase(_, Config) ->
 
 end_per_testcase(_Case, _Config) ->
     ok.
+
+protocol_version() ->
+    case get('$protocol_version') of Vsn when is_integer(Vsn) -> Vsn end.
 
 compile_contract(Name) ->
     FileName = filename:join(["contracts", atom_to_list(Name) ++ ".aes"]),
@@ -780,7 +786,7 @@ blockhash(N,_State) ->
     <<N:256/unsigned-integer>>.
 
 encode_address(Type, Int) ->
-    case get('$protocol_version') of
+    case protocol_version() of
         Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN; Type == hash ->
             "#" ++ integer_to_list(Int, 16);
         _ ->
