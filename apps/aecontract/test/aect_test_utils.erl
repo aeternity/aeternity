@@ -332,7 +332,7 @@ encode_call_data(?SOPHIA_FORTUNA_AEVM, Code, Fun, Args) ->
     end;
 encode_call_data(_LegacyVsn, SrcFile, Fun, Args) ->
     Compiler = compiler_cmd(?SOPHIA_MINERVA),
-    Esc = fun(Str) -> string:replace(string:replace(Str, "\\", "\\\\", all), "\"", "\\\"", all) end,
+    Esc = fun(Str) -> lists:flatten(string:replace(string:replace(Str, "\\", "\\\\", all), "\"", "\\\"", all)) end,
     Cmd = Compiler ++ " --create_calldata " ++ contract_filename(aevm, SrcFile) ++
           " --calldata_fun " ++ binary_to_list(Fun) ++ " --calldata_args \"" ++
           string:join(lists:map(Esc, lists:map(fun binary_to_list/1, Args)), ", ") ++ "\"",

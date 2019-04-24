@@ -3,6 +3,7 @@
 %% Commented for avoiding warnings without implementing all dummy callback. %% -behaviour(aevm_chain_api).
 
 -include_lib("stdlib/include/assert.hrl").
+-include_lib("aecontract/test/aect_sophia_vsn.hrl").
 
 %% common_test exports
 -export([ all/0
@@ -92,7 +93,7 @@ compile_contract(Name) ->
     FileName = filename:join(["contracts", atom_to_list(Name) ++ ".aes"]),
     {ok, Source} = aect_test_utils:read_contract(FileName),
     {ok, Serialized} = aect_test_utils:compile_contract(FileName),
-    #{source => Source, bytecode => Serialized}.
+    #{source => Source, bytecode => Serialized, file => FileName}.
 
 %% execute_call(Contract, CallData, ChainState) ->
 %%     execute_call(Contract, CallData, ChainState, #{}).
@@ -197,11 +198,20 @@ do_execute_call(#{ code := Code
 
 
 make_call(Contract, Fun, Args, Env, Options) ->
-    #{Contract := #{source := Code}} = Env,
+    {ok, CallData} = encode_call_data(Contract, Fun, Args, Env),
+    execute_call(Contract, CallData, Env, Options).
+
+encode_call_data(Contract, Fun, Args, Env) ->
+    #{Contract := #{source := SrcBin, file := FileName}} = Env,
     FunBin  = atom_to_binary(Fun, utf8),
     ArgsBin = [ list_to_binary(A) || A <- Args ],
-    {ok, CallData} = aect_sophia:encode_call_data(Code, FunBin, ArgsBin),
-    execute_call(Contract, CallData, Env, Options).
+    case protocol_version() of
+        Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN ->
+            aect_test_utils:encode_call_data(?SOPHIA_MINERVA, FileName, FunBin, ArgsBin);
+        _ ->
+            aect_test_utils:encode_call_data(?SOPHIA_FORTUNA_AEVM, SrcBin, FunBin, ArgsBin)
+    end.
+
 
 create_contract(Address, Code, Args, Env) ->
     create_contract(Address, Code, Args, Env, #{}).
