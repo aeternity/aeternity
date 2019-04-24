@@ -31,6 +31,11 @@
         , basic_contract_create/1
         , basic_contract_call/1
 
+        , bitcoin_attach/1
+        , bitcoin_spend_from/1
+        , bitcoin_contract_create/1
+        , bitcoin_contract_call/1
+
         , oracle_register/1
         , oracle_query/1
         , oracle_query_x2/1
@@ -52,7 +57,7 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
--include("../..//aecore/include/blocks.hrl").
+-include("../../aecore/include/blocks.hrl").
 -include("../../aecontract/include/aecontract.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
@@ -61,9 +66,7 @@
 -define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING(X), {variant, 0, [X]}).
 -define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(X), {variant, 1, [X]}).
 
--define(AESOPHIA_1, 1).
--define(AESOPHIA_2, 2).
--define(LATEST_AESOPHIA, ?AESOPHIA_2).
+-include("../../aecontract/test/aect_sophia_vsn.hrl").
 
 %%%===================================================================
 %%% Common test framework
@@ -75,6 +78,7 @@ all() ->
 groups() ->
     [ {all, [], [ {group, simple}
                 , {group, basic}
+                , {group, bitcoin}
                 , {group, oracle}
                 , {group, channel}
                 ]}
@@ -89,17 +93,26 @@ groups() ->
                    , simple_re_attach_fail
                    , simple_spend_from_fail
                    ]}
+
     , {basic, [], [ basic_attach
                   , basic_spend_from
                   , basic_contract_create
                   , basic_contract_call
                   ]}
+
+    , {bitcoin, [], [ bitcoin_attach
+                    , bitcoin_spend_from
+                    , bitcoin_contract_create
+                    , bitcoin_contract_call
+                    ]}
+
     , {oracle, [], [ oracle_register
                    , oracle_query
                    , oracle_query_x2
                    , oracle_respond
                    , oracle_extend
                    ]}
+
     , {channel, [], [ channel_create
                     , channel_deposit
                     , channel_withdraw
@@ -118,7 +131,7 @@ init_per_group(all, Cfg) ->
         ?ROMA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
         ?FORTUNA_PROTOCOL_VSN ->
-            [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_3},
+            [{sophia_version, ?SOPHIA_FORTUNA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
              {protocol, fortuna} | Cfg]
     end;
 init_per_group(_Grp, Cfg) ->
@@ -321,6 +334,67 @@ basic_contract_call(_Cfg) ->
         ?call(ga_create, Acc1, AuthOpts, "identity", []),
 
     AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(basic_auth, Acc1, "2", TxHash) end },
+    {ok, #{call_res := ok, call_val := Val}} =
+        ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main", ["42"]),
+    ?assertMatch("42", decode_call_result("identity", "main", ok, Val)),
+
+    ok.
+
+%%%===================================================================
+%%% Bitcoin GA tests
+%%%===================================================================
+-define(SECP256K1_PRIV, <<129,67,4,165,74,42,181,117,141,36,184,24,52,32,144,252,
+                          23,236,21,76,171,79,8,23,32,235,57,139,176,168,252,102>>).
+-define(SECP256K1_PUB,  <<80,178,23,109,30,43,94,53,192,188,114,212,49,16,33,
+                          105,167,148,214,246,21,27,109,98,205,82,189,171,145,130,
+                          125,240,129,214,86,90,80,15,173,39,24,188,245,26,101,87,
+                          79,253,25,20,6,201,7,238,228,119,14,10,72,126,210,21,198,125>>).
+-define(B_OWNER, aega_test_utils:to_hex_lit(64, ?SECP256K1_PUB)).
+
+bitcoin_attach(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    {ok, _} = ?call(attach, Acc1, "bitcoin_auth", "authorize", [?B_OWNER]),
+    ok.
+
+bitcoin_spend_from(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "bitcoin_auth", "authorize", [?B_OWNER]),
+
+    AuthOpts    = #{ prep_fun => fun(TxHash) -> ?call(bitcoin_auth, Acc1, "1", TxHash) end },
+    PreBalance  = ?call(account_balance, Acc2),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000 * MinGP),
+    PostBalance = ?call(account_balance, Acc2),
+    ?assertMatch({X, Y} when X + 500 == Y, {PreBalance, PostBalance}),
+
+    ok.
+
+bitcoin_contract_create(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "bitcoin_auth", "authorize", [?B_OWNER]),
+
+    AuthOpts = #{ prep_fun => fun(TxHash) -> ?call(bitcoin_auth, Acc1, "1", TxHash) end },
+    {ok, #{init_res := ok}} = ?call(ga_create, Acc1, AuthOpts, "identity", []),
+
+    ok.
+
+bitcoin_contract_call(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "bitcoin_auth", "authorize", [?B_OWNER]),
+
+    AuthOpts = #{ prep_fun => fun(TxHash) -> ?call(bitcoin_auth, Acc1, "1", TxHash) end },
+    {ok, #{init_res := ok, ct_pubkey := Ct}} =
+        ?call(ga_create, Acc1, AuthOpts, "identity", []),
+
+    AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(bitcoin_auth, Acc1, "2", TxHash) end },
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main", ["42"]),
     ?assertMatch("42", decode_call_result("identity", "main", ok, Val)),
@@ -1132,7 +1206,7 @@ vm_version() ->
 
 sophia_version() ->
     case get('$sophia_version') of
-        undefined -> ?LATEST_AESOPHIA;
+        undefined -> ?SOPHIA_FORTUNA_AEVM;
         X         -> X
     end.
 
@@ -1169,3 +1243,18 @@ basic_auth(GA, Nonce, TxHash, S) ->
 basic_auth(Nonce, TxHash, Privkey) ->
     Val = <<32:256, TxHash/binary, Nonce:256>>,
     enacl:sign_detached(aec_hash:hash(tx, Val), Privkey).
+
+bitcoin_auth(_GA, Nonce, TxHash, S) ->
+    Val = <<32:256, TxHash/binary, (list_to_integer(Nonce)):256>>,
+    Sig = crypto:sign(ecdsa, sha256, {digest, aec_hash:hash(tx, Val)}, [?SECP256K1_PRIV, secp256k1]),
+    {aega_test_utils:make_calldata("bitcoin_auth", "authorize", [Nonce, der_decode(Sig)]), S}.
+
+der_decode(<<16#30, _:16, 32, R:32/binary, _, 32, S:32/binary>>) ->
+    aega_test_utils:to_hex_lit(64, <<R:32/binary, S:32/binary>>);
+der_decode(<<16#30, _:16, 33, _, R:32/binary, _, 32, S:32/binary>>) ->
+    aega_test_utils:to_hex_lit(64, <<R:32/binary, S:32/binary>>);
+der_decode(<<16#30, _:16, 32, R:32/binary, _, 33, _, S:32/binary>>) ->
+    aega_test_utils:to_hex_lit(64, <<R:32/binary, S:32/binary>>);
+der_decode(<<16#30, _:16, 33, _, R:32/binary, _, 33, _, S:32/binary>>) ->
+    aega_test_utils:to_hex_lit(64, <<R:32/binary, S:32/binary>>).
+

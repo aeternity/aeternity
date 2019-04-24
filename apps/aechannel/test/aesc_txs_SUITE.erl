@@ -203,6 +203,7 @@
 -include_lib("stdlib/include/assert.hrl").
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
+-include("../../aecontract/test/aect_sophia_vsn.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BOGUS_CHANNEL, <<1:?MINER_PUB_BYTES/unit:8>>).
@@ -422,11 +423,14 @@ end_per_group(_Group, _Config) ->
     ok.
 
 init_per_testcase(_, Config) ->
+    put('$protocol_version', aect_test_utils:latest_protocol_version()),
     Config.
 
 end_per_testcase(_Case, _Config) ->
     ok.
 
+protocol_version() ->
+    case get('$protocol_version') of Vsn when is_integer(Vsn) -> Vsn end.
 
 
 %%%===================================================================
@@ -2523,7 +2527,7 @@ fp_use_onchain_oracle(Cfg) ->
                 create_trees_if_not_present(),
                 set_from(Owner, owner, owner_privkey),
                 fun(#{oracle := Oracle} = Props) ->
-                    EncodedOracleId = address_encode(Oracle),
+                    EncodedOracleId = address_encode(oracle_pubkey, Oracle),
                     (create_contract_in_trees(_Round    = ContractCreateRound,
                                              _Contract = "channel_on_chain_contract_oracle",
                                              _InitArgs = [EncodedOracleId, quote(Question)],
@@ -2537,7 +2541,7 @@ fp_use_onchain_oracle(Cfg) ->
 
                 % try resolving a contract with wrong query id
                 fun(Props) ->
-                    EncodedQueryId = address_encode(<<1234:12/unit:8>>),
+                    EncodedQueryId = address_encode(oracle_query_id, <<1234:32/unit:8>>),
                     (force_call_contract(Forcer, <<"resolve">>, [EncodedQueryId]))(Props)
                 end,
                 assert_last_channel_result(<<"no response">>, string),
@@ -2553,14 +2557,14 @@ fp_use_onchain_oracle(Cfg) ->
                 end,
 
                 fun(#{query_id := QueryId} = Props) ->
-                    EncodedQueryId = address_encode(QueryId),
+                    EncodedQueryId = address_encode(oracle_query_id, QueryId),
                     (force_call_contract(Forcer, <<"get_question">>, [EncodedQueryId]))(Props)
                 end,
                 assert_last_channel_result(Question, string),
 
                 % there is currently no bet for the correct answer, try anyway
                 fun(#{query_id := QueryId} = Props) ->
-                    EncodedQueryId = address_encode(QueryId),
+                    EncodedQueryId = address_encode(oracle_query_id, QueryId),
                     (force_call_contract(Forcer, <<"resolve">>, [EncodedQueryId]))(Props)
                 end,
                 assert_last_channel_result(<<"no winning bet">>, string),
@@ -2568,14 +2572,14 @@ fp_use_onchain_oracle(Cfg) ->
                 % place a winnning bet
                 force_call_contract(Forcer, <<"place_bet">>, [quote(Answer)]),
                 fun(#{query_id := QueryId} = Props) ->
-                    EncodedQueryId = address_encode(QueryId),
+                    EncodedQueryId = address_encode(oracle_query_id, QueryId),
                     (force_call_contract(Forcer, <<"resolve">>, [EncodedQueryId]))(Props)
                 end,
                 assert_last_channel_result(<<"ok">>, string),
 
                 % verify that Oracle.get_question works
                 fun(#{query_id := QueryId} = Props) ->
-                    EncodedQueryId = address_encode(QueryId),
+                    EncodedQueryId = address_encode(oracle_query_id, QueryId),
                     (force_call_contract(Forcer, <<"get_question">>, [EncodedQueryId]))(Props)
                 end,
                 assert_last_channel_result(Question, string),
@@ -2706,7 +2710,7 @@ fp_use_remote_call(Cfg) ->
             fun(Props) ->
                 Bin = integer_to_binary(Int),
                 RemoteContract = maps:get(remote_contract, Props),
-                Address = address_encode(RemoteContract),
+                Address = address_encode(contract_pubkey, RemoteContract),
                 Args = [Address, Bin],
                 (force_call_contract(Forcer, <<"call">>, Args))(Props)
             end
@@ -3331,7 +3335,7 @@ fp_register_name(Cfg) ->
     Name = <<"bla.test">>,
     Salt = 42,
     {ok, NameAscii} = aens_utils:to_ascii(Name),
-    CHash           = address_encode(aens_hash:commitment_hash(NameAscii, Salt)),
+    CHash           = address_encode(hash, aens_hash:commitment_hash(NameAscii, Salt)),
     ?TEST_LOG("Commitment hash ~p", [aens_hash:commitment_hash(NameAscii,
                                                                Salt)]),
     StateHashSize = aeser_api_encoder:byte_size_for_type(state),
@@ -3343,7 +3347,7 @@ fp_register_name(Cfg) ->
             BinToSign = <<PubK/binary, ConId/binary>>,
             SigBin = enacl:sign_detached(aec_governance:add_network_id(BinToSign), PrivK),
             ?TEST_LOG("Signature binary ~p", [SigBin]),
-            address_encode(SigBin)
+            address_encode(hash, SigBin)
         end,
     ContractName = "aens",
 
@@ -3402,7 +3406,7 @@ fp_register_name(Cfg) ->
                 state := S0} = Props) ->
             Nonce = 2,
             Sig = SignContractAddress(OPubKey, OPrivKey, ContractId),
-            NameOwner = address_encode(OPubKey),
+            NameOwner = address_encode(account_pubkey, OPubKey),
             PreclaimArgs = [NameOwner, CHash, Sig],
             ?TEST_LOG("Preclaim function arguments ~p", [PreclaimArgs]),
             {ok, CallData} = encode_call_data(ContractName, <<"signedPreclaim">>,
@@ -3473,7 +3477,7 @@ fp_register_name(Cfg) ->
                         from_pubkey := Pubkey,
                         from_privkey := Privkey} = Props) ->
                       Sig = SignContractAddress(Pubkey, Privkey, ContractId),
-                      Account = address_encode(Pubkey),
+                      Account = address_encode(account_pubkey, Pubkey),
                       PreclaimArgs = [Account, CHash, Sig],
                       ?TEST_LOG("Off-chain preclaim args ~p", [PreclaimArgs]),
                       (force_call_contract_first(Forcer, <<"signedPreclaim">>,
@@ -5477,14 +5481,24 @@ generic_payload_with_pinnned_env_(Cfg, Negative, Positive) ->
 
 
 encode_call_data(ContractName, Function, Arguments) ->
-   {ok, Contract} = aect_test_utils:read_contract(contract_filename(ContractName)),
-   ct:pal("ENCODE:\n----\n~s\n----\nWhat: ~p",
+    {ok, Contract} = aect_test_utils:read_contract(contract_filename(ContractName)),
+    ct:pal("ENCODE:\n----\n~s\n----\nWhat: ~p",
           [Contract, {binary_to_list(Function),
            lists:map(fun binary_to_list/1, Arguments)}]),
-   aect_sophia:encode_call_data(Contract, Function, Arguments).
+    case protocol_version() of
+        Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN ->
+            aect_test_utils:encode_call_data(?SOPHIA_MINERVA, contract_filename(ContractName), Function, Arguments);
+        _ ->
+            aect_test_utils:encode_call_data(?SOPHIA_FORTUNA_AEVM, Contract, Function, Arguments)
+    end.
 
-address_encode(Binary) ->
-    <<_:16, HexStr/binary>> = aeu_hex:hexstring_encode(Binary),
-    <<"#", HexStr/binary>>.
+address_encode(Type, Binary) ->
+    case protocol_version() of
+        Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN; Type == hash ->
+            <<_:16, HexStr/binary>> = aeu_hex:hexstring_encode(Binary),
+            <<"#", HexStr/binary>>;
+        _ ->
+            aeser_api_encoder:encode(Type, Binary)
+    end.
 
 quote(Bin) -> <<$", Bin/binary, $">>.

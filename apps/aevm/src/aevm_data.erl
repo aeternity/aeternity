@@ -72,7 +72,7 @@ binary_to_heap(Type, <<Ptr:32/unit:8, Heap/binary>>, NextId, Offs) ->
                                          aeb_heap:heap_fragment(no_maps(NextId), 32, Heap), Offs),
         {ok, aeb_heap:heap_value(Maps, Addr, list_to_binary(Mem), Offs)}
     catch _:Err ->
-        %%io:format("** Error: binary_to_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
+        %% io:format("** Error: binary_to_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
         {error, Err}
     end;
 binary_to_heap(_Type, <<>>, _NextId, _Offs) ->

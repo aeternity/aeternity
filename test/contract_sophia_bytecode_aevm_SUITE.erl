@@ -3,9 +3,13 @@
 %% Commented for avoiding warnings without implementing all dummy callback. %% -behaviour(aevm_chain_api).
 
 -include_lib("stdlib/include/assert.hrl").
+-include_lib("aecontract/test/aect_sophia_vsn.hrl").
 
 %% common_test exports
--export([all/0]).
+-export([ all/0
+        , init_per_testcase/2
+        , end_per_testcase/2
+        ]).
 
 %% test case exports
 -export(
@@ -53,6 +57,7 @@
 
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(ABI_SOPHIA, aect_test_utils:latest_sophia_abi_version()).
 -define(VM_SOPHIA, aect_test_utils:latest_sophia_vm_version()).
@@ -74,11 +79,21 @@ all() -> [ execute_identity_fun_from_sophia_file,
            dutch_auction,
            oracles].
 
+init_per_testcase(_, Config) ->
+    put('$protocol_version', aect_test_utils:latest_protocol_version()),
+    Config.
+
+end_per_testcase(_Case, _Config) ->
+    ok.
+
+protocol_version() ->
+    case get('$protocol_version') of Vsn when is_integer(Vsn) -> Vsn end.
+
 compile_contract(Name) ->
     FileName = filename:join(["contracts", atom_to_list(Name) ++ ".aes"]),
     {ok, Source} = aect_test_utils:read_contract(FileName),
     {ok, Serialized} = aect_test_utils:compile_contract(FileName),
-    #{source => Source, bytecode => Serialized}.
+    #{source => Source, bytecode => Serialized, file => FileName}.
 
 %% execute_call(Contract, CallData, ChainState) ->
 %%     execute_call(Contract, CallData, ChainState, #{}).
@@ -183,11 +198,20 @@ do_execute_call(#{ code := Code
 
 
 make_call(Contract, Fun, Args, Env, Options) ->
-    #{Contract := #{source := Code}} = Env,
+    {ok, CallData} = encode_call_data(Contract, Fun, Args, Env),
+    execute_call(Contract, CallData, Env, Options).
+
+encode_call_data(Contract, Fun, Args, Env) ->
+    #{Contract := #{source := SrcBin, file := FileName}} = Env,
     FunBin  = atom_to_binary(Fun, utf8),
     ArgsBin = [ list_to_binary(A) || A <- Args ],
-    {ok, CallData} = aect_sophia:encode_call_data(Code, FunBin, ArgsBin),
-    execute_call(Contract, CallData, Env, Options).
+    case protocol_version() of
+        Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN ->
+            aect_test_utils:encode_call_data(?SOPHIA_MINERVA, FileName, FunBin, ArgsBin);
+        _ ->
+            aect_test_utils:encode_call_data(?SOPHIA_FORTUNA_AEVM, SrcBin, FunBin, ArgsBin)
+    end.
+
 
 create_contract(Address, Code, Args, Env) ->
     create_contract(Address, Code, Args, Env, #{}).
@@ -263,7 +287,7 @@ sophia_remote_call(_Cfg) ->
     Env        = create_contract(16#1234, IdCode, [],
                  create_contract(1, CallerCode, [],
                     initial_state(#{}, #{1 => 20000}))),
-    42         = successful_call_(1, word, call, ["#1234", "42"], Env),
+    42         = successful_call_(1, word, call, [encode_address(contract_pubkey, 16#1234), "42"], Env),
     ok.
 
 sophia_remote_call_negative(_Cfg) ->
@@ -273,13 +297,13 @@ sophia_remote_call_negative(_Cfg) ->
     Env        = create_contract(16#1234, IdCode, [],
                  create_contract(1, CallerCode, [],
                     initial_state(#{}))),
-    out_of_gas = failing_call(1, call, ["#1234", "42"], Env),
+    out_of_gas = failing_call(1, call, [encode_address(contract_pubkey, 16#1234), "42"], Env),
     ok.
 
 sophia_factorial(_Cfg) ->
     Code    = compile_contract(factorial),
-    Env     = create_contract(999001, Code, [encode_address(999002)],
-              create_contract(999002, Code, [encode_address(999001)],
+    Env     = create_contract(999001, Code, [encode_address(contract_pubkey, 999002)],
+              create_contract(999002, Code, [encode_address(contract_pubkey, 999001)],
                 initial_state(#{}))),
     3628800 = successful_call_(999001, word, fac, ["10"], Env),
     ok.
@@ -297,7 +321,7 @@ remote_multi_argument_call(_Cfg) ->
                  create_contract(16#102, RemoteCode, [],
                  create_contract(16#103, RemoteCode, [],
                  initial_state(#{}, #{16#102 => 20000})))),
-    42         = successful_call_(16#102, word, staged_call, ["#101", "#102", "42"], Env),
+    42         = successful_call_(16#102, word, staged_call, [encode_address(contract_pubkey, 16#101), encode_address(contract_pubkey, 16#102), "42"], Env),
     ok.
 
 spend_tests(_Cfg) ->
@@ -313,18 +337,18 @@ spend_tests(_Cfg) ->
     900          = successful_call_(101, word, get_balance, [], Env3),
     2100         = successful_call_(102, word, get_balance, [], Env3),
     %% Spending in nested call
-    {900, Env4}  = successful_call(101, word, withdraw_from, [encode_address(102), "1000"], Env3, #{caller => 1}),
+    {900, Env4}  = successful_call(101, word, withdraw_from, [encode_address(contract_pubkey, 102), "1000"], Env3, #{caller => 1}),
     #{1 := 11000, 101 := 900, 102 := 1100} = maps:get(accounts, Env4),
     ok.
 
 complex_types(_Cfg) ->
     Code = compile_contract(complex_types),
     Env0 = initial_state(#{}),
-    Env  = create_contract(101, Code, [encode_address(101)], Env0),
+    Env  = create_contract(101, Code, [encode_address(contract_pubkey, 101)], Env0),
     21                      = successful_call_(101, word, sum, ["[1,2,3,4,5,6]"], Env),
     [1, 2, 3, 4, 5, 6]      = successful_call_(101, {list, word}, up_to, ["6"], Env),
     [1, 2, 3, 4, 5, 6]      = successful_call_(101, {list, word}, remote_list, ["6"], Env),
-    {<<"answer:">>, 21}     = successful_call_(101, {tuple, [string, word]}, remote_triangle, [encode_address(101), "6"], Env),
+    {<<"answer:">>, 21}     = successful_call_(101, {tuple, [string, word]}, remote_triangle, [encode_address(contract_pubkey, 101), "6"], Env),
     <<"string">>            = successful_call_(101, string, remote_string, [], Env),
     {99, <<"luftballons">>} = successful_call_(101, {tuple, [word, string]}, remote_pair, ["99", "\"luftballons\""], Env),
     [1, 2, 3]               = successful_call_(101, {list, word}, filter_some, ["[None, Some(1), Some(2), None, Some(3)]"], Env),
@@ -368,14 +392,14 @@ environment(_Cfg) ->
                },
     State0 = initial_state(#{environment => ChainEnv},
                            #{Address => Balance, Caller => CallerBalance}),
-    State   = create_contract(Address2, Code, [encode_address(Address)],
-              create_contract(Address, Code, [encode_address(Address2)], State0)),
+    State   = create_contract(Address2, Code, [encode_address(contract_pubkey, Address)],
+              create_contract(Address, Code, [encode_address(contract_pubkey, Address2)], State0)),
     Options = maps:merge(#{ caller => Caller, value  => Value }, ChainEnv),
     Call1   = fun(Fun, Arg) -> successful_call_(Address, word, Fun, [Arg], State, Options) end,
     Call    = fun(Fun)      -> successful_call_(Address, word, Fun, [], State, Options) end,
 
     Address  = Call(contract_address),
-    Address2 = Call1(nested_address, encode_address(Address2)),
+    Address2 = Call1(nested_address, encode_address(contract_pubkey, Address2)),
     Balance  = Call(contract_balance),
 
     Origin   = Call(call_origin),
@@ -386,7 +410,7 @@ environment(_Cfg) ->
     49       = Call1(nested_value, "99"),
     GasPrice = Call(call_gas_price),
 
-    CallerBalance = Call1(get_balance, encode_address(Caller)),
+    CallerBalance = Call1(get_balance, encode_address(account_pubkey, Caller)),
     0             = Call1(block_hash, integer_to_list(BlockHeight)),
     0             = Call1(block_hash, integer_to_list(BlockHeight + 1)),
     0             = Call1(block_hash, integer_to_list(BlockHeight - 257)),
@@ -464,7 +488,7 @@ dutch_auction(_Cfg) ->
     ChainEnv = #{origin => 11, currentNumber => 20},
     Env0 = initial_state(#{ environment => ChainEnv },
                          #{ Badr => 1000, Cadr => 1000, 1 => 10000 }),
-    Env1 = create_contract(Dadr, DaCode, [encode_address(101), "500", "5"], Env0,
+    Env1 = create_contract(Dadr, DaCode, [encode_address(account_pubkey, 101), "500", "5"], Env0,
                            #{ currentNumber => 42 }),
     %% Currently this is how we can add value to an account for a call.
     Env2 = increment_account(Dadr, 500, Env1),
@@ -494,17 +518,17 @@ oracles(_Cfg) ->
     ChainEnv = #{ currentNumber => 20 },
     Env0 = initial_state(#{ environment => ChainEnv }, #{101 => QFee}),
     Env1 = create_contract(101, Code, [], Env0),
-    {101, Env2} = successful_call(101, word, registerOracle, [encode_address(101), integer_to_list(QFee), "RelativeTTL(10)"], Env1),
-    {Q, Env3}   = successful_call(101, word, createQuery, [encode_address(101), "\"why?\"", integer_to_list(QFee),
+    {101, Env2} = successful_call(101, word, registerOracle, [encode_address(account_pubkey, 101), integer_to_list(QFee), "RelativeTTL(10)"], Env1),
+    {Q, Env3}   = successful_call(101, word, createQuery, [encode_address(oracle_pubkey, 101), "\"why?\"", integer_to_list(QFee),
                                                            "RelativeTTL(10)", "RelativeTTL(11)"], Env2, #{value => QFee}),
-    QArg        = encode_address(Q),
-    OandQArg    = [encode_address(101), QArg],
+    QArg        = encode_address(oracle_query_id, Q),
+    OandQArg    = [encode_address(oracle_pubkey, 101), QArg],
     none        = successful_call_(101, {option, word}, getAnswer, OandQArg, Env3),
-    {{}, Env4}  = successful_call(101, {tuple, []}, respond, [encode_address(101), QArg, "42"], Env3),
+    {{}, Env4}  = successful_call(101, {tuple, []}, respond, [encode_address(oracle_pubkey, 101), QArg, "42"], Env3),
     {some, 42}  = successful_call_(101, {option, word}, getAnswer, OandQArg, Env4),
     <<"why?">>  = successful_call_(101, string, getQuestion, OandQArg, Env4),
-    QFee        = successful_call_(101, word, queryFee, [encode_address(101)], Env4),
-    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, [encode_address(101), "RelativeTTL(100)"], Env4),
+    QFee        = successful_call_(101, word, queryFee, [encode_address(oracle_pubkey, 101)], Env4),
+    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, [encode_address(oracle_pubkey, 101), "RelativeTTL(100)"], Env4),
     #{oracles :=
           #{101 := #{
              nonce := 1,
@@ -771,5 +795,12 @@ blockhash(N,_State) ->
     %% Dummy value to check that we reach this.
     <<N:256/unsigned-integer>>.
 
-encode_address(Int) ->
-    "#" ++ integer_to_list(Int, 16).
+encode_address(Type, Int) ->
+    case protocol_version() of
+        Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN; Type == hash ->
+            "#" ++ integer_to_list(Int, 16);
+        _ ->
+            binary_to_list(aeser_api_encoder:encode(Type, <<Int:32/unit:8>>))
+    end.
+
+

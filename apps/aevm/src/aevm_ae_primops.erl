@@ -197,6 +197,8 @@ types(?PRIM_CALL_SPEND,_HeapValue,_Store,_State) ->
     {[word], tuple0_t()};
 types(?PRIM_CALL_CRYPTO_ECVERIFY, _HeapValue, _Store, _State) ->
     {[word, word, sign_t()], word};
+types(?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1, _HeapValue, _Store, _State) ->
+    {[hash_t(), bytes_t(64), bytes_t(64)], word};
 types(?PRIM_CALL_CRYPTO_SHA3, _HeapValue, _Store, _State) ->
     {[typerep, word], word};
 types(?PRIM_CALL_CRYPTO_SHA256, _HeapValue, _Store, _State) ->
@@ -313,8 +315,11 @@ call_chain(Callback, State) ->
 oracle_ttl_t() ->
     {variant_t, [{delta, [word]}, {block, [word]}]}. %% `word` decoded as non-negative integer.
 
-sign_t() ->
-    {tuple, [word, word]}.
+sign_t() -> bytes_t(64).
+hash_t() -> bytes_t(32).
+
+bytes_t(Len) when Len =< 32 -> word;
+bytes_t(Len)                -> {tuple, lists:duplicate((Len + 31) div 32, word)}.
 
 oracle_call_register(_Value, Data,
                      #chain{api = API, state = State, abi_version = ABIVersion} = Chain) ->
@@ -536,12 +541,19 @@ crypto_call(Gas, Op, _Value, Data, State) ->
     case aevm_eeevm_state:vm_version(State) of
         ?VM_AEVM_SOPHIA_1 ->
             {error, out_of_gas};
-        VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 ->
+        VMVersion when ?IS_AEVM_SOPHIA(VMVersion) andalso
+                       VMVersion >= ?VM_AEVM_SOPHIA_2 andalso
+                       Op < ?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1 ->
+            crypto_call(Gas, Op, Data, State);
+        VMVersion when ?IS_AEVM_SOPHIA(VMVersion) andalso
+                       VMVersion >= ?VM_AEVM_SOPHIA_3 ->
             crypto_call(Gas, Op, Data, State)
     end.
 
 crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECVERIFY, Data, State) ->
     crypto_call_ecverify(Gas, Data, State);
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1, Data, State) ->
+    crypto_call_ecverify_secp256k1(Gas, Data, State);
 crypto_call(Gas, ?PRIM_CALL_CRYPTO_SHA3, Data, State) ->
     crypto_call_generic_hash(?PRIM_CALL_CRYPTO_SHA3, Gas, Data, State);
 crypto_call(Gas, ?PRIM_CALL_CRYPTO_SHA256, Data, State) ->
@@ -556,13 +568,39 @@ crypto_call(_, _, _, _) ->
     {error, out_of_gas}.
 
 crypto_call_ecverify(_Gas, Data, State) ->
-    [Msg, PK, Sig] = get_args([word, word, sign_t()], Data),
+    [MsgHash, PK, Sig] = get_args([hash_t(), word, sign_t()], Data),
     Res =
-        case enacl:sign_verify_detached(to_sign(Sig), <<Msg:256>>, <<PK:256>>) of
+        case enacl:sign_verify_detached(to_sign(Sig), <<MsgHash:256>>, <<PK:256>>) of
             {ok, _}    -> {ok, <<1:256>>};
             {error, _} -> {ok, <<0:256>>}
         end,
     {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY), State}.
+
+crypto_call_ecverify_secp256k1(_Gas, Data, State) ->
+    [MsgHash0, Pubkey0, Sig0] = get_args([hash_t(), bytes_t(64), bytes_t(64)], Data),
+    MsgHash = <<MsgHash0:32/unit:8>>,
+    Pubkey  = ecdsa_pk(words_to_bin(64, Pubkey0)),
+    Sig     = ecdsa_der_sig(words_to_bin(64, Sig0)),
+    Res =
+        %% Note that `sha256` is just there to indicate the length (32 bytes) of
+        %% the digest, nothing is hashed with SHA256!
+        case crypto:verify(ecdsa, sha256, {digest, MsgHash}, Sig, [Pubkey, secp256k1]) of
+            true  -> {ok, <<1:256>>};
+            false -> {ok, <<0:256>>}
+        end,
+    {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1), State}.
+
+%% Convert to OpenSSL expected formats...
+ecdsa_pk(Pubkey = <<_:64/binary>>) ->
+    <<16#04, Pubkey:64/binary>>.
+
+ecdsa_der_sig(<<R:32/binary, S:32/binary>>) ->
+    R1 = der_sig_part(R),
+    S1 = der_sig_part(S),
+    <<16#30, (byte_size(R1) + byte_size(S1)), R1/binary, S1/binary>>.
+
+der_sig_part(P = <<1:1, _/bitstring>>) -> <<2, 33, 0:8, P/binary>>;
+der_sig_part(P)                        -> <<2, 32, P/binary>>.
 
 crypto_call_generic_hash(PrimOp, Gas, Data, State) ->
     [Type, Ptr] = get_args([typerep, word], Data),
@@ -746,5 +784,7 @@ state_gas(Tag, {delta, TTL}) ->
       aec_governance:state_gas_per_block(Tag),
       TTL).
 
-to_sign({W1, W2}) ->
-    <<W1:256, W2:256>>.
+to_sign(Sig) -> words_to_bin(64, Sig).
+
+words_to_bin(Len, Ws) when is_tuple(Ws) ->
+    binary:part(<< <<W:32/unit:8>> || W <- tuple_to_list(Ws) >>, 0, Len).

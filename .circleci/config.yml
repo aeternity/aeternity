@@ -19,14 +19,14 @@ references:
       OTP_VERSION: 20.3.8
   container_otp_plt: &container_otp_plt _build/default/rebar3_20.3.8_plt
 
-  container2_config: &container2_config
+  container_otp21_config: &container_otp21_config
     docker:
       - image: aeternity/builder:otp21
         user: builder
     working_directory: ~/aeternity
     environment:
       OTP_VERSION: 21.2.3
-  container2_otp_plt: &container2_otp_plt _build/default/rebar3_21.2.3_plt
+  container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.2.3_plt
 
   infrastructure_config_environment: &infrastructure_config_environment
     resource_class: large
@@ -108,6 +108,11 @@ references:
   restore_build_cache: &restore_build_cache
     restore_cache:
       key: *build_cache_key
+
+  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v1-{{ .Revision }}
+  restore_build_otp21_cache: &restore_build_otp21_cache
+    restore_cache:
+      key: *build_otp21_cache_key
 
   machine_build_cache_key: &machine_build_cache_key machine-build-cache-v5-{{ .Branch }}-{{ .Revision }}
   restore_machine_build_cache: &restore_machine_build_cache
@@ -402,6 +407,26 @@ jobs:
       - *store_rebar3_crashdump
       - *fail_notification
 
+  build_otp21:
+    executor: builder_container_stable
+    <<: *container_otp21_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - run:
+          name: Build
+          command: make KIND=test
+      - save_cache:
+          key: *build_otp21_cache_key
+          paths:
+            - "_build"
+      - save_cache:
+          key: *rebar_cache_key
+          paths:
+            - .cache/rebar3
+      - *store_rebar3_crashdump
+      - *fail_notification
+
   test:
     executor: builder_container_stable
     <<: *container_config
@@ -508,24 +533,24 @@ jobs:
       - *store_rebar3_crashdump
       - *fail_notification
 
-  extra_static_analysis:
-    <<: *container2_config
+  static_analysis_otp21:
+    <<: *container_otp21_config
     steps:
       - checkout
       - *restore_rebar_cache
-      - *restore_build_cache
+      - *restore_build_otp21_cache
       - restore_cache:
           keys:
-            - new-dialyzer-cache-v2-{{ .Branch }}-{{ .Revision }}
-            - new-dialyzer-cache-v2-{{ .Branch }}-
-            - new-dialyzer-cache-v2-
+            - dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
+            - dialyzer-otp21-cache-v2-{{ .Branch }}-
+            - dialyzer-otp21-cache-v2-
       - run:
           name: Update dialyzer PLT
           command: make dialyzer-install
       - save_cache:
-          key: new-dialyzer-cache-v2-{{ .Branch }}-{{ .Revision }}
+          key: dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
           paths:
-            - *container2_otp_plt
+            - *container_otp21_plt
       - run: make dialyzer
       - run:
           name: Check OTP version (for effective CI caching)
@@ -874,6 +899,16 @@ workflows:
             tags:
               only: *tag_regex
 
+      - build_otp21:
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
+
       - docker_smoke_tests:
           filters:
             branches:
@@ -1020,9 +1055,9 @@ workflows:
             tags:
               only: *tag_regex
 
-      - extra_static_analysis:
+      - static_analysis_otp21:
           requires:
-            - build
+            - build_otp21
           filters:
             branches:
               ignore:

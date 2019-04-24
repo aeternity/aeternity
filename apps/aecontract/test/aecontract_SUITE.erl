@@ -1069,21 +1069,34 @@ create_tx(Owner, Spec0, State) ->
     aect_test_utils:create_tx(Owner, Spec, State).
 
 compile_contract(Name) ->
+    aect_test_utils:compile_contract(sophia_version(), contract_name(Name)).
+
+contract_name(Name) ->
     case vm_version() of
-        Vsn when ?IS_AEVM_SOPHIA(Vsn) ->
-            File = lists:concat(["contracts/", Name, ".aes"]),
-            aect_test_utils:compile_contract(sophia_version(), File);
-        Vsn when ?IS_FATE_SOPHIA(Vsn) ->
-            File = lists:concat(["contracts/fate_asm/", Name, ".fate"]),
-            aect_test_utils:compile_contract(sophia_version(), File)
+        VmVer when ?IS_AEVM_SOPHIA(VmVer) ->
+            case lists:member(Name, [fundme]) of
+                true when VmVer >= ?VM_AEVM_SOPHIA_3 ->
+                    filename:join(["contracts", "aevm_3", lists:concat([Name, ".aes"])]);
+                _ ->
+                    filename:join("contracts", lists:concat([Name, ".aes"]))
+            end;
+        VmVer when ?IS_FATE_SOPHIA(VmVer) ->
+            filename:join(["contracts", "fate_asm", lists:concat([Name, ".fate"])])
     end.
 
 compile_contract_vsn(Name, Vsn) ->
-    meck:new(aect_sophia, [passthrough]),
-    meck:expect(aect_sophia, serialize, fun(Map) -> aect_sophia:serialize(Map, Vsn) end),
-    Res = compile_contract(Name),
-    meck:unload(aect_sophia),
-    Res.
+    case compile_contract(Name) of
+        {ok, ByteCode} ->
+            Map = aect_sophia:deserialize(ByteCode),
+            case maps:get(contract_vsn, Map) of
+                Vsn -> {ok, ByteCode};
+                _   ->
+                    {ok, BinSrc} = aect_test_utils:read_contract(contract_name(Name)),
+                    {ok, aect_sophia:serialize(Map#{contract_source => maps:get(contract_source, Map, binary_to_list(BinSrc)),
+                                                    compiler_version => maps:get(compiler_version, Map, <<"1.4.0">>)}, Vsn)}
+            end;
+        Err -> Err
+    end.
 
 create_contract(Owner, Name, Args, S) ->
     create_contract(Owner, Name, Args, #{}, S).
@@ -3793,12 +3806,20 @@ set_compiler_version(Vm, Compiler) ->
     [ put('$sophia_version', Compiler) || vm_version() == Vm ].
 
 sophia_crypto(_Cfg) ->
-    %% Override compiler version
+    %% Override compiler version and contract serialization version
+    RealCompilerVersion = sophia_version(),
     set_compiler_version(?VM_AEVM_SOPHIA_1, ?SOPHIA_MINERVA),
 
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
-    IdC   = ?call(create_contract, Acc, crypto, {}),
+
+    IdC = case RealCompilerVersion of
+              ?SOPHIA_ROMA ->
+                  {ok, CCode}  = compile_contract_vsn(crypto, ?SOPHIA_ROMA),
+                  ?call(create_contract_with_code, Acc, CCode, {}, #{});
+              _ ->
+                  ?call(create_contract, Acc, crypto, {})
+          end,
 
     Sign = fun(Bin, PrivK) ->
                <<W1:256, W2:256>> = enacl:sign_detached(Bin, PrivK), {W1, W2}

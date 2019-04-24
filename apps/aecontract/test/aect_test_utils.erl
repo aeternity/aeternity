@@ -31,6 +31,7 @@
         , compile_contract/2
         , compile_filename/1
         , compile_filename/2
+        , encode_call_data/4
         , assert_state_equal/2
         , get_oracle_queries/2
         , dummy_bytecode/0
@@ -233,9 +234,14 @@ set_account(Account, State) ->
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
 read_contract(Name) ->
+    file:read_file(contract_filename(aevm, Name)).
+
+contract_filename(Type, Name) ->
     CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
-    FileName = filename:join(CodeDir, filename:rootname(Name, ".aes") ++ ".aes"),
-    file:read_file(FileName).
+    case Type of
+        aevm -> filename:join(CodeDir, filename:rootname(Name, ".aes") ++ ".aes");
+        fate -> filename:join(CodeDir, filename:rootname(Name, ".fate") ++ ".fate")
+    end.
 
 compile_filename(FileName) ->
     compile(latest_sophia_version(), FileName).
@@ -247,13 +253,9 @@ compile_contract(File) ->
     compile_contract(latest_sophia_version(), File).
 
 compile_contract(?SOPHIA_FORTUNA_FATE, File) ->
-    CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
-    FileName = filename:join(CodeDir, filename:rootname(File, ".fate") ++ ".fate"),
-    compile_filename(?SOPHIA_FORTUNA_FATE, FileName);
+    compile_filename(?SOPHIA_FORTUNA_FATE, contract_filename(fate, File));
 compile_contract(Compiler, File) ->
-    CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
-    FileName = filename:join(CodeDir, filename:rootname(File, ".aes") ++ ".aes"),
-    compile_filename(Compiler, FileName).
+    compile_filename(Compiler, contract_filename(aevm, File)).
 
 compile(?SOPHIA_FORTUNA_FATE, File) ->
     {ok, AsmBin} = file:read_file(File),
@@ -265,12 +267,10 @@ compile(?SOPHIA_FORTUNA_FATE, File) ->
                                 , type_info => []           %% TODO: This is wrong.
                                 })};
 compile(?SOPHIA_FORTUNA_AEVM, File) ->
-    compile(?SOPHIA_MINERVA, File);
-compile(?SOPHIA_MINERVA, File) ->
     {ok, ContractBin} = file:read_file(File),
     aect_sophia:compile(ContractBin, <<>>);
-compile(?SOPHIA_ROMA, File) ->
-    case aehttp_logic:contract_compile(File) of
+compile(LegacyVersion, File) ->
+    case legacy_compile(LegacyVersion, File) of
         {ok, Code}      -> {ok, Code};
         {error, Reason} -> {error, {compiler_error, File, Reason}}
     end.
@@ -278,6 +278,74 @@ compile(?SOPHIA_ROMA, File) ->
 new_key_pair() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     {PubKey, PrivKey}.
+
+legacy_compile(Vsn, SrcFile) ->
+    Compiler = compiler_cmd(Vsn),
+    OutFile  = tempfile_name("tmp_sophia_", [{ext, ".aeb"}]),
+    Cmd = Compiler ++ " " ++ SrcFile ++ " -o " ++ OutFile,
+    Output = os:cmd(Cmd),
+    try
+        {ok, Bin} = file:read_file(OutFile),
+        aeser_api_encoder:safe_decode(contract_bytearray, Bin)
+    catch _:_ ->
+        {error, <<"Compiler error">>}
+    after
+        cleanup_tempfiles()
+    end.
+
+compiler_cmd(Vsn) ->
+    BaseDir = filename:join([code:priv_dir(aesophia_cli), "bin"]),
+    case Vsn of
+        ?SOPHIA_ROMA    -> filename:join([BaseDir, "v1.4.0", "aesophia_cli"]);
+        ?SOPHIA_MINERVA -> filename:join([BaseDir, "v2.1.0", "aesophia_cli"])
+    end.
+
+tempfile_name(Prefix, Opts) ->
+    File = tempfile:name(Prefix, Opts),
+    case get('$tmp_files') of
+        undefined -> put('$tmp_files', [File]);
+        Files     -> put('$tmp_files', [File | Files])
+    end,
+    File.
+
+cleanup_tempfiles() ->
+    case get('$tmp_files') of
+        Files when is_list(Files) -> [ delete_file(F) || F <- Files ];
+        _                         -> ok
+    end.
+
+delete_file(F) ->
+    try
+        file:delete(F)
+    catch _:_ ->
+        ok
+    end.
+
+encode_call_data(?SOPHIA_FORTUNA_AEVM, Code, Fun, Args) ->
+    try aeso_compiler:create_calldata(binary_to_list(Code), binary_to_list(Fun),
+                                      lists:map(fun binary_to_list/1, Args)) of
+        {error, _} = Err -> Err;
+        {ok, Data,_DataType,_OutType} when is_binary(Data) ->
+            {ok, Data}
+    catch _T:_E ->
+        {error, <<"bad argument">>}
+    end;
+encode_call_data(_LegacyVsn, SrcFile, Fun, Args) ->
+    Compiler = compiler_cmd(?SOPHIA_MINERVA),
+    Esc = fun(Str) -> lists:flatten(string:replace(string:replace(Str, "\\", "\\\\", all), "\"", "\\\"", all)) end,
+    Cmd = Compiler ++ " --create_calldata " ++ contract_filename(aevm, SrcFile) ++
+          " --calldata_fun " ++ binary_to_list(Fun) ++ " --calldata_args \"" ++
+          string:join(lists:map(Esc, lists:map(fun binary_to_list/1, Args)), ", ") ++ "\"",
+    Output = os:cmd(Cmd),
+    try
+        [_, CalldataStr] = string:lexemes(Output, "\n"),
+        aeser_api_encoder:safe_decode(contract_bytearray, list_to_binary(CalldataStr))
+    catch _:_ ->
+        {error, <<"Compiler error">>}
+    after
+        cleanup_tempfiles()
+    end.
+
 
 %%%===================================================================
 %%% Oracles
