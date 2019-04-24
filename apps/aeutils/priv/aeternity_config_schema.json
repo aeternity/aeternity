@@ -618,6 +618,56 @@
                 }
             }
         },
+        "monitoring" : {
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "active" : {
+                    "description" : "If true, the monitoring will start.",
+                    "type" : "boolean",
+                    "default" : false
+                },
+                "publisher" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "autostart" : {
+                            "description" : "If true, the monitoring will start posting transactions.",
+                            "type" : "boolean",
+                            "default" : false
+                        },
+                        "amount" : {
+                            "description" :
+                            "Amount to set up in monitoring spend transaction.",
+                            "type" : "integer",
+                            "minimum" : 0
+                        },
+                        "interval" : {
+                            "description" :
+                            "How often (in ms) to try post monitoring transaction.",
+                            "type" : "integer",
+                            "minimum" : 0
+                        },
+                        "ttl" : {
+                            "description" : "Number of blocks before tx is garbage collected.",
+                            "type" : "integer",
+                            "minimum" : 0
+                        },
+                        "pubkey" : {
+                            "description" : "Public key of transaction publisher.",
+                            "type" : "string",
+                            "example" : "ak_DummyPubKeyDoNotEverUse999999999999999999999999999",
+                            "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*$"
+                        },
+                        "privkey" : {
+                            "description" : "Private key of transaction publisher serialized as signature.",
+                            "example" : "sg_3Y...EF",
+                            "type" : "string"
+                        }
+                    }
+                }
+            }
+        },
         "load_levels" : {
             "description" :
             "Overload sampler configurations. These monitor potential pain points in the system for indications of overload.",

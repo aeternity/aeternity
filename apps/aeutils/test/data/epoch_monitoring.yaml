@@ -1,0 +1,10 @@
+monitoring:
+    active: true
+    publisher:
+        autostart: true
+        amount: 20001
+        interval: 10001
+        ttl: 12
+        # random pub-priv pair generated
+        pubkey: "ak_9mDv1NLmrChs4nrZ3k8PXSBoDYM49rnJA9FsnfnfJqp6Mezqp"
+        privkey: "sg_KmWt6jJ7Pd1PVEdM6ECcofUt6gxJ6rPMdZi2NjBuGWnfuR5uNcwkKve5Jq5VeKGypKVRSLJkHniGnb9BD3azoErwfgSxt"
