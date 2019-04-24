@@ -1246,7 +1246,7 @@ basic_auth(Nonce, TxHash, Privkey) ->
 
 bitcoin_auth(_GA, Nonce, TxHash, S) ->
     Val = <<32:256, TxHash/binary, (list_to_integer(Nonce)):256>>,
-    Sig = crypto:sign(ecdsa, sha256, aec_hash:hash(tx, Val), [?SECP256K1_PRIV, secp256k1]),
+    Sig = crypto:sign(ecdsa, sha256, {digest, aec_hash:hash(tx, Val)}, [?SECP256K1_PRIV, secp256k1]),
     {aega_test_utils:make_calldata("bitcoin_auth", "authorize", [Nonce, der_decode(Sig)]), S}.
 
 der_decode(<<16#30, _:16, 32, R:32/binary, _, 32, S:32/binary>>) ->

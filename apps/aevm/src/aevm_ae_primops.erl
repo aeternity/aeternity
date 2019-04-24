@@ -582,7 +582,9 @@ crypto_call_ecverify_secp256k1(_Gas, Data, State) ->
     Pubkey  = ecdsa_pk(words_to_bin(64, Pubkey0)),
     Sig     = ecdsa_der_sig(words_to_bin(64, Sig0)),
     Res =
-        case crypto:verify(ecdsa, sha256, MsgHash, Sig, [Pubkey, secp256k1]) of
+        %% Note that `sha256` is just there to indicate the length (32 bytes) of
+        %% the digest, nothing is hashed with SHA256!
+        case crypto:verify(ecdsa, sha256, {digest, MsgHash}, Sig, [Pubkey, secp256k1]) of
             true  -> {ok, <<1:256>>};
             false -> {ok, <<0:256>>}
         end,
