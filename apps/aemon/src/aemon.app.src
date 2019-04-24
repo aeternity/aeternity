@@ -1,0 +1,21 @@
+%% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
+{application, aemon,
+ [{description, "AE monitoring"},
+  {vsn, {cmd, "cat ../../VERSION"}},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib,
+    lager,
+    aetx,
+    aeutils,
+    aeserialization,
+    aecore
+   ]},
+  {mod,{aemon_app,[]}},
+  {env,[ ]},
+  {modules, []},
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

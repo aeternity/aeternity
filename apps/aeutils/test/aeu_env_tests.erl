@@ -68,6 +68,7 @@ test_data_config_files() ->
      filename:join([Dir, DataDir, "epoch_prebuilt_miner.yaml"]),
      filename:join([Dir, DataDir, "epoch_deprecated_miner.yaml"]),
      filename:join([Dir, DataDir, "epoch_deprecated_debug_api.yaml"]),
+     filename:join([Dir, DataDir, "epoch_monitoring.yaml"]),
      filename:join([Dir, DataDir, "epoch_nice.yaml"])].
 
 get_test_config_base() ->
