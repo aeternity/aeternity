@@ -52,6 +52,8 @@
         , channel_close_solo_w_update/1
         , channel_slash/1
         , channel_force_progress/1
+
+        , wrap_unrelated_tx/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -81,6 +83,7 @@ groups() ->
                 , {group, bitcoin}
                 , {group, oracle}
                 , {group, channel}
+                , {group, negative}
                 ]}
 
     , {simple, [], [ simple_attach
@@ -124,6 +127,9 @@ groups() ->
                     , channel_slash
                     , channel_force_progress
                     ]}
+
+    , {negative, [], [ wrap_unrelated_tx
+                     ]}
     ].
 
 init_per_group(all, Cfg) ->
@@ -679,6 +685,37 @@ channel_force_progress(_Cfg) ->
         ?call(ga_channel_force_progress, Acc1, Auth("2"), ChId, OffState1, CtId, "identity", "main", ["42"]),
 
     ok.
+
+%%%===================================================================
+%%% Negative tests
+%%%===================================================================
+wrap_unrelated_tx(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+
+    AuthOpts = #{ prep_fun => fun(TxHash) -> ?call(basic_auth, Acc1, "1", TxHash) end },
+
+    State   = state(),
+    FromId  = aeser_id:create(account, Acc2),
+    ToId    = aeser_id:create(account, Acc1),
+    SpendTx = aega_test_utils:spend_tx(#{sender_id => FromId, recipient_id => ToId,
+                                         amount => 2000, fee => 20000 * MinGP,
+                                         nonce => aect_test_utils:next_nonce(Acc2, State) }),
+    PrivKey = aect_test_utils:priv_key(Acc2, State),
+
+    SignedTx = aec_test_utils:sign_tx(SpendTx, PrivKey),
+
+    {{ok, #{tx_res := ok}}, _State} =
+        meta(Acc1, AuthOpts, SignedTx, #{}, State),
+
+    ok.
+
+
+
+
 %%%===================================================================
 %%% More elaborate operations
 %%%===================================================================

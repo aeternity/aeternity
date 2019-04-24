@@ -22,7 +22,7 @@
         , contract_call_tx_instructions/11
         , contract_create_tx_instructions/11
         , ga_attach_tx_instructions/10
-        , ga_meta_tx_instructions/6
+        , ga_meta_tx_instructions/7
         , ga_set_meta_tx_res_instructions/3
         , name_claim_tx_instructions/5
         , name_preclaim_tx_instructions/5
@@ -274,12 +274,12 @@ ga_attach_tx_instructions(OwnerPubkey, GasLimit, GasPrice, ABIVersion, VMVersion
                    SerializedCode, AuthFun, CallData, Fee, Nonce)
     ].
 
--spec ga_meta_tx_instructions(pubkey(), binary(), abi_version(),
-                              amount(), amount(), fee()) -> [op()].
+-spec ga_meta_tx_instructions(pubkey(), binary(), abi_version(), amount(),
+                              amount(), fee(), aetx_sign:signed_tx()) -> [op()].
 ga_meta_tx_instructions(OwnerPubkey, AuthData, ABIVersion,
-                        GasLimit, GasPrice, Fee) ->
+                        GasLimit, GasPrice, Fee, InnerTx) ->
     [ ga_meta_op(OwnerPubkey, AuthData, ABIVersion,
-                 GasLimit, GasPrice, Fee)
+                 GasLimit, GasPrice, Fee, InnerTx)
     ].
 
 -spec ga_set_meta_tx_res_instructions(pubkey(), binary(), 'ok' | {error, term()}) -> [op()].
@@ -1053,7 +1053,7 @@ error_to_binary(Bin) when is_binary(Bin) ->
 error_to_binary(_) ->
     <<"unknown_error">>.
 
-ga_meta_op(OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee
+ga_meta_op(OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx
           ) when ?IS_HASH(OwnerPubkey),
                  ?IS_NON_NEG_INTEGER(GasLimit),
                  ?IS_NON_NEG_INTEGER(GasPrice),
@@ -1061,12 +1061,13 @@ ga_meta_op(OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee
                  is_binary(AuthData),
                  ?IS_NON_NEG_INTEGER(Fee) ->
     {ga_meta,
-     {OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee}}.
+     {OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}}.
 
-ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee}, S) ->
+ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
     assert_ga_active(S),
     {Account, S1} = get_account(OwnerPK, S),
     assert_generalized_account(Account),
+    assert_relevant_signature(OwnerPK, InnerTx, S1),
     CheckAmount = Fee + GasLimit * GasPrice,
     assert_account_balance(Account, CheckAmount),
     AuthContract = aec_accounts:ga_contract(Account),
@@ -1325,6 +1326,20 @@ assert_generalized_account(Account) ->
         generalized -> ok;
         basic       -> runtime_error(not_a_generalized_account)
     end.
+
+assert_relevant_signature(AccountPK, STx, State) ->
+    Tx = aetx_sign:tx(STx),
+    case aetx:specialize_type(Tx) of
+        {ga_meta_tx, GAMetaTx} ->
+            assert_relevant_signature(AccountPK, aega_meta_tx:tx(GAMetaTx), State);
+        {_, _} ->
+            {ok, Signers} = aetx:signers(Tx, State#state.trees),
+            case lists:member(AccountPK, Signers) of
+                true  -> ok;
+                false -> {error, non_relevant_signature}
+            end
+    end.
+
 
 assert_ga_env(Pubkey, Nonce, #state{tx_env = Env}) ->
     GANonce = aetx_env:ga_nonce(Env, Pubkey),
