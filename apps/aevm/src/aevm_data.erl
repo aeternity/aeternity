@@ -148,11 +148,6 @@ convert(_, _, MaxSize, _, _Visited, string, Val, Heap, BaseAddr) ->
     Bytes = Words * 32,
     check_size(MaxSize, Bytes),
     {BaseAddr, {aeb_heap:maps_with_next_id(Heap), Bytes, [get_chunk(Heap, Val, Bytes)]}};
-convert(_, _, _, _, _, {bytes, Len}, Val, Heap, _) when Len =< 32 ->
-    {Val, {aeb_heap:maps_with_next_id(Heap), 0, []}};
-convert(Input, Output, MaxSize, Store, Visited, {bytes, Len}, Ptr, Heap, BaseAddr) ->
-    Words = (31 + Len) div 32,
-    convert(Input, Output, MaxSize, Store, Visited, {tuple, lists:duplicate(Words, word)}, Ptr, Heap, BaseAddr);
 convert(Input, Output, MaxSize, Store, Visited, {list, T}, Val, Heap, BaseAddr) ->
     <<Nil:256>> = <<(-1):256>>,   %% empty list is -1
     case Val of
@@ -216,11 +211,7 @@ convert(Input, Output, MaxSize, Store, Visited, typerep, Ptr, Heap, BaseAddr) ->
                          [{list, typerep}],          %% tuple
                          [{list, {list, typerep}}],  %% variant
                          [],                         %% typerep
-                         [typerep, typerep],         %% map
-                         [not_a_valid_type_crash],   %% fun - not allowed as argument, should crash, only
-                                                     %% needed to get the right number of elements such
-                                                     %% that 'bytes' works.
-                         [word]                      %% bytes
+                         [typerep, typerep]          %% map
                         ]},
     convert(Input, Output, MaxSize, Store, Visited, Typerep, Ptr, Heap, BaseAddr).
 
