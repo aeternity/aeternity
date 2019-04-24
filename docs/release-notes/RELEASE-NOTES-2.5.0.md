@@ -2,7 +2,7 @@
 
 [This][this-release] is a maintenance release.
 It:
-* Adds network monitoring capability to the node. This is disabled by default. Please refer to the docs/monitoring.md document for the intended usage.
+* Adds network monitoring capability to the node. This is disabled by default. Please refer to the [docs/monitoring.md](/docs/monitoring.md) document for the intended usage.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.5.0
 
