@@ -430,7 +430,7 @@ end_per_testcase(_Case, _Config) ->
     ok.
 
 protocol_version() ->
-    get('$protocol_version').
+    case get('$protocol_version') of Vsn when is_integer(Vsn) -> Vsn end.
 
 
 %%%===================================================================
