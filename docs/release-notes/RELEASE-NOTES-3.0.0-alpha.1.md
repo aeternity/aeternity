@@ -9,9 +9,9 @@ TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` M
 
 TODO: When preparing the release, concatenate all `/docs/release-notes/next-fortuna/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
 
-[this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.5.0
+[this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.0.0-alpha.1
 
-This release is backward compatible with previous `v2.4.*`, `v2.3.*` and `v2.2.*` releases.
+This release is backward compatible with previous `v2.5.*`, `v2.4.*`, `v2.3.*` and `v2.2.*` releases.
 
 Please join the mainnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
@@ -29,8 +29,8 @@ You can run a node by either:
 * Running the published [Docker image `aeternity/aeternity`][docker]; or
 * [Building a release binary from source][build].
 
-[docker]: https://github.com/aeternity/aeternity/blob/v2.5.0/docs/docker.md
-[build]: https://github.com/aeternity/aeternity/blob/v2.5.0/docs/build.md
+[docker]: https://github.com/aeternity/aeternity/blob/v3.0.0-alpha.1/docs/docker.md
+[build]: https://github.com/aeternity/aeternity/blob/v3.0.0-alpha.1/docs/build.md
 
 The instructions for configuring the node using the Docker image are in [the dedicated separate document][docker].
 
@@ -42,9 +42,9 @@ The node user API is documented:
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
 
-[swagger-yaml]: https://github.com/aeternity/aeternity/blob/v2.5.0/config/swagger.yaml
-[swagger-ui]: https://aeternity.github.io/api-docs/?config=https://raw.githubusercontent.com/aeternity/aeternity/v2.5.0/apps/aehttp/priv/swagger.json
-[api-doc]: https://github.com/aeternity/protocol/blob/aeternity-node-v2.5.0/node/api/README.md
+[swagger-yaml]: https://github.com/aeternity/aeternity/blob/v3.0.0-alpha.1/config/swagger.yaml
+[swagger-ui]: https://aeternity.github.io/api-docs/?config=https://raw.githubusercontent.com/aeternity/aeternity/v3.0.0-alpha.1/apps/aehttp/priv/swagger.json
+[api-doc]: https://github.com/aeternity/protocol/blob/aeternity-node-v3.0.0-alpha.1/node/api/README.md
 
 ## Install node
 
