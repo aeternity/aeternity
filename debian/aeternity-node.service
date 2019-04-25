@@ -4,10 +4,10 @@ Requires=network-online.target
 After=network-online.target
 
 [Service]
-Type=forking
+Type=simple
 User=aeternity
 Group=aeternity
-ExecStart=/opt/aeternity/node/bin/aeternity start
+ExecStart=/opt/aeternity/node/bin/aeternity foreground &
 ExecStop=/opt/aeternity/node/bin/aeternity stop
 Restart=on-failure
 # Systemd does not play well with user set limits with ulimit.
