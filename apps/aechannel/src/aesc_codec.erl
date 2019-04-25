@@ -289,22 +289,27 @@ dec_fnd_locked(<< ChanId:32/binary
      , channel_id           => OnChainId }.
 
 -type update_msg() :: #{ channel_id := chan_id()
+                       , block_hash := binary()
                        , data       := binary()}.
 -spec enc_update(update_msg()) -> binary().
 enc_update(#{ channel_id := ChanId
+            , block_hash := BlockHash
             , data   := Data }) ->
     Length = byte_size(Data),
     << ?ID_UPDATE:1 /unit:8
      , ChanId    :32/binary
+     , BlockHash :32/binary
      , Length    :2 /unit:8
      , Data      :Length/bytes >>.
 
 -spec dec_update(binary()) -> update_msg().
 dec_update(<< ChanId:32/binary
+            , BlockHash :32/binary
             , Length:2 /unit:8
             , Data/bytes >>) ->
     Length = byte_size(Data),
     #{ channel_id => ChanId
+     , block_hash => BlockHash
      , data   => Data }.
 
 -type update_ack_msg() :: #{ channel_id := chan_id()

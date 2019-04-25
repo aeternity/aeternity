@@ -83,6 +83,8 @@
 -type sign_tag() :: create_tx
                   | funding_created.
 
+-define(DUMMY_BLOCK_HASH, <<12345:32/unit:8>>).
+
 -define(MINIMUM_DEPTH, 4). % number of blocks until an opening tx
                            % should be considered final
 
@@ -2229,6 +2231,7 @@ send_update_msg(SignedTx, #data{ on_chain_id = OnChainId
                                , session     = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ channel_id => OnChainId
+           , block_hash => ?DUMMY_BLOCK_HASH
            , data       => TxBin },
     aesc_session_noise:update(Sn, Msg),
     log(snd, ?UPDATE, Msg, Data).
@@ -2243,6 +2246,7 @@ check_update_msg(Type, Msg, D) ->
     end.
 
 check_update_msg_(Type, #{ channel_id := ChanId
+                         , block_hash := ?DUMMY_BLOCK_HASH
                          , data       := TxBin } = Msg,
                   #data{ on_chain_id = ChanId } = D) ->
     try aetx_sign:deserialize_from_binary(TxBin) of
