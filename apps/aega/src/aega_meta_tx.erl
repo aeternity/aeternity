@@ -158,8 +158,6 @@ nonce(#ga_meta_tx{}) ->
 origin(#ga_meta_tx{} = Tx) ->
     ga_pubkey(Tx).
 
-%% Owner should exist, and have enough funds for the fee, the amount
-%% the deposit and the gas
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ga_meta_tx{}, Trees,_Env) ->
     %% Checks in process/3
@@ -178,7 +176,8 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
           abi_version(Tx),
           gas(Tx),
           gas_price(Tx),
-          fee(Tx)),
+          fee(Tx),
+          tx(Tx)),
     Env = add_tx_hash(Env0, aetx_sign:tx(tx(Tx))),
     case aeprimop:eval(AuthInstructions, Trees, Env) of
         {ok, Trees1, Env1} ->
