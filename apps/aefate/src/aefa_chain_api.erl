@@ -27,6 +27,9 @@
 -export([ spend/4
         ]).
 
+-export_type([ state/0
+             ]).
+
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include("../../aecontract/include/aecontract.hrl").
 
@@ -50,6 +53,7 @@
 %%%-------------------------------------------------------------------
 %%% External API for infrastructure
 
+-spec new(map()) -> state().
 new(#{ gas_price := GasPrice
      , origin := Origin
      , trees  := Trees

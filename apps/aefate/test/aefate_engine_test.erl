@@ -70,13 +70,15 @@ make_calls(ListOfCalls) ->
                   {error, E} ->
                       case aefa_fate:run_with_cache(Call, Spec, Cache) of
                           {ok, nomatch} -> ok;
-                          {error, Error, #{trace := Trace}} ->
+                          {error, Error, ES} ->
+                              Trace = aefa_engine_state:trace(ES),
                               ?assertEqual({E, Trace}, {Error, Trace})
                       end;
                   _ ->
                       FateRes = aefate_test_utils:encode(R),
-                      {ok, #{accumulator := Res,
-                             trace := Trace}} = aefa_fate:run_with_cache(Call, Spec, Cache),
+                      {ok, ES} = aefa_fate:run_with_cache(Call, Spec, Cache),
+                      Res = aefa_engine_state:accumulator(ES),
+                      Trace = aefa_engine_state:trace(ES),
                       ?assertEqual({FateRes, Trace}, {Res, Trace})
               end
       end}

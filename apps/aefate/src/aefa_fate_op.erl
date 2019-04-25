@@ -142,7 +142,7 @@ call(Arg0, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
     Signature = aefa_fate:get_function_signature(Arg0, ES1),
     {ok, ES2} = aefa_fate:check_signature_and_bind_args(Signature, ES1),
-    {jump, 0,  aefa_fate:set_current_function(Arg0, ES2)}.
+    {jump, 0, aefa_fate:set_local_function(Arg0, ES2)}.
 
 call_r(Arg0, Arg1, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
@@ -155,7 +155,7 @@ call_r(Arg0, Arg1, EngineState) ->
 call_t(Arg0, EngineState) ->
     Signature = aefa_fate:get_function_signature(Arg0, EngineState),
     {ok, ES2} = aefa_fate:check_signature_and_bind_args(Signature, EngineState),
-    {jump, 0, aefa_fate:set_current_function(Arg0, ES2)}.
+    {jump, 0, aefa_fate:set_local_function(Arg0, ES2)}.
 
 call_tr(Arg0, Arg1, EngineState) ->
     {Address, ES1} = get_op_arg(Arg0, EngineState),
@@ -537,20 +537,23 @@ bits_diff(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(bits_difference, {Arg0, Arg1, Arg2}, EngineState).
 
 address(Arg0, EngineState) ->
-    Address = ?FATE_ADDRESS(_) = maps:get(current_contract, EngineState),
+    Address = ?FATE_ADDRESS(_) = aefa_engine_state:current_contract(EngineState),
     write(Arg0, Address, EngineState).
 
-balance(Arg0, #{ chain_api := API} = EngineState) ->
-    ?FATE_ADDRESS(Pubkey) = maps:get(current_contract, EngineState),
+balance(Arg0, EngineState) ->
+    API = aefa_engine_state:chain_api(EngineState),
+    ?FATE_ADDRESS(Pubkey) = aefa_engine_state:current_contract(EngineState),
     {ok, Balance, API1} = aefa_chain_api:account_balance(Pubkey, API),
-    write(Arg0, Balance, EngineState#{chain_api => API1}).
+    write(Arg0, Balance, aefa_engine_state:set_chain_api(API1, EngineState)).
 
-balance_other(Arg0, Arg1, #{ chain_api := API} = ES) ->
+balance_other(Arg0, Arg1, ES) ->
+    API = aefa_engine_state:chain_api(ES),
     case get_op_arg(Arg1, ES) of
         {?FATE_ADDRESS(Pubkey), ES1} ->
             case aefa_chain_api:account_balance(Pubkey, API) of
                 {ok, Balance, API1} ->
-                    write(Arg0, Balance, ES1#{chain_api => API1});
+                    ES2 = aefa_engine_state:set_chain_api(API1, ES1),
+                    write(Arg0, Balance, ES2);
                 error ->
                     %% Unknown accounts have balance 0
                     write(Arg0, aeb_fate_data:make_integer(0), ES)
@@ -559,35 +562,44 @@ balance_other(Arg0, Arg1, #{ chain_api := API} = ES) ->
             aefa_fate:abort({value_does_not_match_type, Value, address}, ES1)
     end.
 
-origin(Arg0, #{ chain_api := API } = EngineState) ->
+origin(Arg0, EngineState) ->
+    API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:origin(API), EngineState).
 
-caller(Arg0, #{ caller := ?FATE_ADDRESS(_) = Address } = EngineState) ->
+caller(Arg0, EngineState) ->
+    Address = aefa_engine_state:caller(EngineState),
     write(Arg0, Address, EngineState).
 
-gasprice(Arg0, #{ chain_api := API } = EngineState) ->
+gasprice(Arg0, EngineState) ->
+    API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:gas_price(API), EngineState).
 
 blockhash(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
 
-beneficiary(Arg0, #{ chain_api := API } = EngineState) ->
+beneficiary(Arg0, EngineState) ->
+    API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:beneficiary(API), EngineState).
 
-timestamp(Arg0, #{ chain_api := API } = EngineState) ->
+timestamp(Arg0, EngineState) ->
+    API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:timestamp_in_msecs(API), EngineState).
 
-generation(Arg0, #{ chain_api := API } = EngineState) ->
+generation(Arg0, EngineState) ->
+    API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:generation(API), EngineState).
 
 microblock(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
 
-difficulty(Arg0, #{ chain_api := API } = EngineState) ->
+difficulty(Arg0, EngineState) ->
+    API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:difficulty(API), EngineState).
 
-gaslimit(Arg0, #{ chain_api := API } = EngineState) ->
+gaslimit(Arg0, EngineState) ->
+    API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:gas_limit(API), EngineState).
 
-gas(Arg0, #{ gas := Gas} = EngineState) ->
+gas(Arg0, EngineState) ->
+    Gas = aefa_engine_state:gas(EngineState),
     write(Arg0, aeb_fate_data:make_integer(Gas), EngineState).
 
 log(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
@@ -602,14 +614,16 @@ log(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _Arg5, _EngineState) -> exit({error, op_n
 
 deactivate(_EngineState) -> exit({error, op_not_implemented_yet}).
 
-spend(Arg0, Arg1, #{current_contract := ?FATE_ADDRESS(FromPubkey)} = ES0) ->
+spend(Arg0, Arg1, ES0) ->
+    ?FATE_ADDRESS(FromPubkey) = aefa_engine_state:current_contract(ES0),
     {Amount, ES1} = get_op_arg(Arg0, ES0),
     [aefa_fate:abort({value_does_not_match_type, Amount, integer}, ES1)
      || not ?IS_FATE_INTEGER(Amount)],
     case get_op_arg(Arg1, ES1) of
-        {?FATE_ADDRESS(ToPubkey), #{chain_api := API} = ES2} ->
+        {?FATE_ADDRESS(ToPubkey), ES2} ->
+            API = aefa_engine_state:chain_api(ES2),
             case aefa_chain_api:spend(FromPubkey, ToPubkey, Amount, API) of
-                {ok, API1}    -> ES2#{chain_api => API1};
+                {ok, API1}    -> aefa_engine_state:set_chain_api(API1, ES2);
                 {error, What} -> aefa_fate:abort({primop_error, spend, What}, ES2)
             end;
         {Other, ES2} ->
@@ -712,31 +726,23 @@ ter_op(Op, {To, One, Two, Three}, ES) ->
     Result = gop(Op, ValueOne, ValueTwo, ValueThree, ES3),
     write(To, Result, ES3).
 
-get_op_arg({stack, 0}, #{ accumulator := A
-                        , accumulator_stack := [S|Stack] } = ES) ->
-    {A, ES#{accumulator => S, accumulator_stack => Stack}};
-get_op_arg({stack, 0}, #{ accumulator := A
-                        , accumulator_stack := [] } = ES) ->
-    {A, ES#{accumulator := ?FATE_VOID}};
-get_op_arg({arg,_N} = Var, #{ memory := Mem } = ES) ->
-    Value = aefa_fate:lookup_var(Var, Mem, ES),
+get_op_arg({stack, 0}, ES) ->
+    aefa_engine_state:pop_accumulator(ES);
+get_op_arg({arg,_N} = Var, ES) ->
+    Value = aefa_fate:lookup_var(Var, ES),
     {Value, ES};
-get_op_arg({var,_N} = Var, #{ memory := Mem } = ES) ->
-    Value = aefa_fate:lookup_var(Var, Mem, ES),
+get_op_arg({var,_N} = Var, ES) ->
+    Value = aefa_fate:lookup_var(Var, ES),
     {Value, ES};
-get_op_arg({immediate, X}, ES) -> {X, ES}.
+get_op_arg({immediate, X}, ES) ->
+    {X, ES}.
 
-write({stack, 0}, Val, #{ accumulator := ?FATE_VOID} = ES) ->
-    ES#{accumulator := Val};
-write({stack, 0}, Val, #{ accumulator := A,
-                           accumulator_stack := Stack} = ES) ->
-             ES#{accumulator => Val,
-                 accumulator_stack => [A | Stack]};
-write({var, _} = Name,  Val, #{ memory := Mem } = ES) ->
-    NewMem = aefa_fate:store_var(Name, Val, Mem),
-    ES#{ memory => NewMem};
+write({stack, 0}, Val, ES) ->
+    aefa_engine_state:push_accumulator(Val, ES);
+write({var, _} = Name,  Val, ES) ->
+    aefa_fate:store_var(Name, Val, ES);
 write({arg, N}, _, ES) ->
-     aefa_fate:abort({cannot_write_to_arg, N}, ES).
+    aefa_fate:abort({cannot_write_to_arg, N}, ES).
 
 
 %% ------------------------------------------------------
