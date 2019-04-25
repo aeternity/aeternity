@@ -47,7 +47,7 @@
 
 -record(aetx, { type :: tx_type()
               , cb   :: module()
-              , size :: pos_integer()
+              , size :: non_neg_integer() %% 0 needed for ga inner tx
               , tx   :: tx_instance() }).
 
 -opaque tx() :: #aetx{}.
