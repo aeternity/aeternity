@@ -2,7 +2,12 @@
 
 [This][this-release] is a maintenance release.
 It:
-* Adds network monitoring capability to the node. This is disabled by default. Please refer to the [docs/monitoring.md](/docs/monitoring.md) document for the intended usage.
+* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
+* Does all the things mentioned temporarily in files [/docs/release-notes/next-fortuna/PT-*.md](/docs/release-notes/next-fortuna/).
+
+TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+
+TODO: When preparing the release, concatenate all `/docs/release-notes/next-fortuna/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v2.5.0
 
