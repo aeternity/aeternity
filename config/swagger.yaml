@@ -2638,9 +2638,6 @@ definitions:
       state_hash:
         $ref: '#/definitions/EncodedHash'
         description: 'Channel''s next state_hash'
-      block_hash:
-        $ref: '#/definitions/EncodedHash'
-        description: 'The block hash the forced progress used as an on-chain environment'
       ttl:
         type: integer
         format: int64

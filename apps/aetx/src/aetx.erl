@@ -290,11 +290,6 @@ from_db_format(#aetx{ cb = aect_create_tx, tx = Tx } = AETx) ->
         Tx  -> AETx;
         Tx1 -> AETx#aetx{ tx = Tx1 }
     end;
-from_db_format(#aetx{ cb = aesc_force_progress_tx, tx = Tx } = AETx) ->
-    case aesc_force_progress_tx:from_db_format(Tx) of
-        Tx  -> AETx;
-        Tx1 -> AETx#aetx{ tx = Tx1 }
-    end;
 from_db_format(#aetx{} = Tx) ->
     Tx.
 

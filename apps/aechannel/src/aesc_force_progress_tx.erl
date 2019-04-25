@@ -37,9 +37,6 @@
          updates/1,
          round/1]).
 
--export([from_db_format/1
-        ]).
-
 -include_lib("aecontract/include/hard_forks.hrl").
 %%%===================================================================
 %%% Types
@@ -51,19 +48,6 @@
 
 -type vsn() :: non_neg_integer().
 
--record(old_fp_db_record, {
-          channel_id    :: aeser_id:id(),
-          from_id       :: aeser_id:id(),
-          payload       :: binary(),
-          update        :: tuple(),
-          state_hash    :: binary(),
-          round         :: aesc_channels:seq_number(),
-          offchain_trees:: aec_trees:trees(),
-          ttl           :: aetx:tx_ttl(),
-          fee           :: non_neg_integer(),
-          nonce         :: non_neg_integer()
-         }).
-
 -record(channel_force_progress_tx, {
           channel_id    :: aeser_id:id(),
           from_id       :: aeser_id:id(),
@@ -74,52 +58,12 @@
           offchain_trees:: aec_trees:trees(),
           ttl           :: aetx:tx_ttl(),
           fee           :: non_neg_integer(),
-          nonce         :: non_neg_integer(),
-          block_hash    :: aesc_pinned_block:hash()
+          nonce         :: non_neg_integer()
          }).
 
 -opaque tx() :: #channel_force_progress_tx{}.
 
 -export_type([tx/0]).
-
-%%%===================================================================
-%%% Conversion of old db format
-
--spec from_db_format(tx()) -> tx().
-from_db_format(#channel_force_progress_tx{} = Tx) ->
-    Tx;
-from_db_format(Tuple) ->
-    case setelement(1, Tuple, old_fp_db_record) of
-        #old_fp_db_record{
-            channel_id    = ChannelId,
-            from_id       = FromId,
-            payload       = Payload,
-            update        = Update,
-            state_hash    = StateHash,
-            round         = Round,
-            offchain_trees= OffChainTrees,
-            ttl           = TTL,
-            fee           = Fee,
-            nonce         = Nonce
-          } ->
-            channel = aeser_id:specialize_type(ChannelId),
-            account = aeser_id:specialize_type(FromId),
-            #channel_force_progress_tx{
-                channel_id    = ChannelId,
-                from_id       = FromId,
-                payload       = Payload,
-                update        = aesc_offchain_update:from_db_format(Update),
-                state_hash    = StateHash,
-                round         = Round,
-                offchain_trees= OffChainTrees,
-                ttl           = TTL,
-                fee           = Fee,
-                nonce         = Nonce,
-                block_hash    = aesc_pinned_block:no_hash()
-              };
-        _ ->
-            error(illegal_db_format)
-    end.
 
 %%%===================================================================
 %%% Behaviour API
@@ -137,7 +81,6 @@ new(#{channel_id    := ChannelId,
       nonce         := Nonce} = Args) ->
     channel = aeser_id:specialize_type(ChannelId),
     account = aeser_id:specialize_type(FromId),
-    BlockHash = maps:get(block_hash, Args, aesc_pinned_block:no_hash()),
     Tx = #channel_force_progress_tx{
             channel_id    = ChannelId,
             from_id       = FromId,
@@ -148,8 +91,7 @@ new(#{channel_id    := ChannelId,
             offchain_trees= OffChainTrees,
             ttl           = maps:get(ttl, Args, 0),
             fee           = Fee,
-            nonce         = Nonce,
-            block_hash    = BlockHash},
+            nonce         = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
 
 type() ->
@@ -228,8 +170,7 @@ serialize(#channel_force_progress_tx{channel_id     = ChannelId,
                                      offchain_trees = OffChainTrees,
                                      ttl            = TTL,
                                      fee            = Fee,
-                                     nonce          = Nonce,
-                                     block_hash     = BlockHash} = Tx) ->
+                                     nonce          = Nonce} = Tx) ->
     SerializedUpdate = aesc_offchain_update:serialize(Update),
     SerializedTrees = aec_trees:serialize_to_binary(OffChainTrees),
     case version(Tx) of
@@ -245,20 +186,6 @@ serialize(#channel_force_progress_tx{channel_id     = ChannelId,
             , {ttl           , TTL}
             , {fee           , Fee}
             , {nonce         , Nonce}
-            ]};
-        ?PINNED_BLOCK_VSN ->
-            {?PINNED_BLOCK_VSN,
-            [ {channel_id    , ChannelId}
-            , {from_id       , FromId}
-            , {payload       , Payload}
-            , {round         , Round}
-            , {update        , SerializedUpdate}
-            , {state_hash    , StateHash}
-            , {offchain_trees, SerializedTrees}
-            , {ttl           , TTL}
-            , {fee           , Fee}
-            , {nonce         , Nonce}
-            , {block_hash    , aesc_pinned_block:serialize(BlockHash)}
             ]}
     end.
 
@@ -287,36 +214,7 @@ deserialize(?INITIAL_VSN,
                                   aec_trees:deserialize_from_binary_without_backend(OffChainTrees),
                                ttl            = TTL,
                                fee            = Fee,
-                               nonce          = Nonce,
-                               block_hash     = aesc_pinned_block:no_hash()};
-deserialize(?PINNED_BLOCK_VSN,
-            [ {channel_id     , ChannelId}
-            , {from_id        , FromId}
-            , {payload        , Payload}
-            , {round          , Round}
-            , {update         , UpdateBin}
-            , {state_hash     , StateHash}
-            , {offchain_trees , OffChainTrees}
-            , {ttl            , TTL}
-            , {fee            , Fee}
-            , {nonce          , Nonce}
-            , {block_hash     , BlockHash}
-            ]) ->
-    channel = aeser_id:specialize_type(ChannelId),
-    account = aeser_id:specialize_type(FromId),
-    Update = aesc_offchain_update:deserialize(UpdateBin),
-    #channel_force_progress_tx{channel_id     = ChannelId,
-                               from_id        = FromId,
-                               payload        = Payload,
-                               round          = Round,
-                               state_hash     = StateHash,
-                               update         = Update,
-                               offchain_trees =
-                                  aec_trees:deserialize_from_binary_without_backend(OffChainTrees),
-                               ttl            = TTL,
-                               fee            = Fee,
-                               nonce          = Nonce,
-                               block_hash     = aesc_pinned_block:deserialize(BlockHash)}.
+                               nonce          = Nonce}.
 
 -spec for_client(tx()) -> map().
 for_client(#channel_force_progress_tx{payload       = Payload,
@@ -326,8 +224,7 @@ for_client(#channel_force_progress_tx{payload       = Payload,
                                       offchain_trees= OffChainTrees,
                                       ttl           = TTL,
                                       fee           = Fee,
-                                      nonce         = Nonce,
-                                      block_hash    = BlockHash} = Tx) ->
+                                      nonce         = Nonce} = Tx) ->
     #{<<"channel_id">>    => aeser_api_encoder:encode(id_hash, channel(Tx)),
       <<"from_id">>       => aeser_api_encoder:encode(id_hash, from_id(Tx)),
       <<"payload">>       => aeser_api_encoder:encode(transaction, Payload),
@@ -338,7 +235,6 @@ for_client(#channel_force_progress_tx{payload       = Payload,
                                                 aec_trees:serialize_to_binary(OffChainTrees)),
       <<"ttl">>           => TTL,
       <<"fee">>           => Fee,
-      <<"block_hash">>    => aesc_pinned_block:serialize_for_client(BlockHash),
       <<"nonce">>         => Nonce}.
 
 serialization_template(?INITIAL_VSN) ->
@@ -352,19 +248,6 @@ serialization_template(?INITIAL_VSN) ->
     , {ttl            , int}
     , {fee            , int}
     , {nonce          , int}
-    ];
-serialization_template(?PINNED_BLOCK_VSN) ->
-    [ {channel_id     , id}
-    , {from_id        , id}
-    , {payload        , binary}
-    , {round          , int}
-    , {update         , binary}
-    , {state_hash     , binary}
-    , {offchain_trees , binary}
-    , {ttl            , int}
-    , {fee            , int}
-    , {nonce          , int}
-    , {block_hash     , binary}
     ].
 
 %%%===================================================================
@@ -391,21 +274,14 @@ state_hash(#channel_force_progress_tx{state_hash = StateHash}) ->
     StateHash.
 
 -spec version(tx()) -> non_neg_integer().
-version(#channel_force_progress_tx{block_hash = BlockHash}) ->
-    case BlockHash =:= aesc_pinned_block:no_hash() of
-        true ->
-            ?INITIAL_VSN;
-        false ->
-            ?PINNED_BLOCK_VSN
-    end.
+version(_) ->
+    ?INITIAL_VSN.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(Protocol, #channel_force_progress_tx{payload = Payload} = Tx) ->
     CorrectTxVsn =
         case version(Tx) of
-            ?INITIAL_VSN -> true;
-            ?PINNED_BLOCK_VSN when Protocol >= ?FORTUNA_PROTOCOL_VSN -> true;
-            _ -> false
+            ?INITIAL_VSN -> true
         end,
     CorrectPayloadVsn = aesc_utils:is_payload_valid_at_protocol(Protocol,
                                                                 Payload),
