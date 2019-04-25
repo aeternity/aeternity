@@ -948,8 +948,6 @@ workflows:
                 - env/dev1
                 - env/dev2
                 - system-tests
-            tags:
-              only: *tag_regex
 
       - docker_smoke_tests:
           filters:
