@@ -30,6 +30,7 @@
         , basic_spend_from/1
         , basic_contract_create/1
         , basic_contract_call/1
+        , basic_minimum_fee/1
 
         , bitcoin_attach/1
         , bitcoin_spend_from/1
@@ -98,6 +99,7 @@ groups() ->
                   , basic_spend_from
                   , basic_contract_create
                   , basic_contract_call
+                  , basic_minimum_fee
                   ]}
 
     , {bitcoin, [], [ bitcoin_attach
@@ -337,6 +339,60 @@ basic_contract_call(_Cfg) ->
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main", ["42"]),
     ?assertMatch("42", decode_call_result("identity", "main", ok, Val)),
+
+    ok.
+
+basic_minimum_fee(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Height = 1,
+    MinGP = aec_governance:minimum_gas_price(Height),
+    Acc1 = ?call(new_account, 1000000000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+
+    %% First find out what the minimum fee is for a spend tx.
+    From = Acc1,
+    To   = <<4711:256>>,
+    DummyTx = aega_test_utils:spend_tx(#{sender_id    => aeser_id:create(account, From),
+                                         recipient_id => aeser_id:create(account, To),
+                                         amount       => 4711,
+                                         height       => Height,
+                                         nonce        => 0}),
+    MinimumSpendFee = aetx:min_fee(DummyTx, Height),
+
+    %% When the transaction is wrapped in a meta transaction, the size of the
+    %% inner transaction is paid for by the meta transaction.
+    SizeFee = aetx:size(DummyTx) * aec_governance:byte_gas() * MinGP,
+    MinimumInnerFee = MinimumSpendFee - SizeFee,
+
+    %% Make sure that we actually are setting a fee that is lower than
+    %% what should pass if the tx wasn't an inner tx.
+    ?assert(MinimumSpendFee > MinimumInnerFee),
+
+    %% Make sure we are right at the limit of the minimum fee for the inner tx.
+    SpendTx1 = aega_test_utils:spend_tx(#{sender_id    => aeser_id:create(account, From),
+                                          recipient_id => aeser_id:create(account, To),
+                                          amount       => 4711,
+                                          height       => Height,
+                                          nonce        => 0,
+                                          fee          => MinimumInnerFee - 1
+                                         }),
+    AuthOpts1 = #{ prep_fun => fun(TxHash) -> ?call(basic_auth, Acc1, "1", TxHash) end },
+    ?assertMatch({ok, #{tx_res := error,
+                        tx_value := <<"too_low_fee">>}},
+                 ?call(meta, From, AuthOpts1, SpendTx1, #{})),
+
+    %% But if we use just the right fee, the tx should be accepted.
+    SpendTx2 = aega_test_utils:spend_tx(#{sender_id    => aeser_id:create(account, From),
+                                          recipient_id => aeser_id:create(account, To),
+                                          amount       => 4711,
+                                          height       => Height,
+                                          nonce        => 0,
+                                          fee          => MinimumInnerFee
+                                         }),
+
+    AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(basic_auth, Acc1, "2", TxHash) end },
+    ?assertMatch({ok, #{tx_res := ok}},
+                 ?call(meta, From, AuthOpts2, SpendTx2, #{})),
 
     ok.
 
