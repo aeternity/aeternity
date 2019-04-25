@@ -1,6 +1,8 @@
 # About this release
 
-[This][this-release] is a maintenance release.
+[This][this-release] is the first experimental Fortuna release.
+It marks the freeze of the Fortuna consensus protocol.
+
 It:
 * Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
 * Does all the things mentioned temporarily in files [/docs/release-notes/next-fortuna/PT-*.md](/docs/release-notes/next-fortuna/).
@@ -11,9 +13,10 @@ TODO: When preparing the release, concatenate all `/docs/release-notes/next-fort
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.0.0-alpha.1
 
-This release is backward compatible with previous `v2.5.*`, `v2.4.*`, `v2.3.*` and `v2.2.*` releases.
+The node is able to start from a database produced by `v2.5.*` releases.
+For the rest, this release is not backward compatible with `v2.*` releases as it removes deprecated functionalities.
 
-Please join the mainnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
+Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
 
 The instructions below describe:
