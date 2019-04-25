@@ -29,7 +29,11 @@ dummy_spec() ->
 run(Cache, Contract, Function, Arguments) ->
     Call = make_call(Contract, Function, Arguments),
     Spec = dummy_spec(),
-    aefa_fate:run_with_cache(Call, Spec, Cache).
+    try
+        aefa_fate:run_with_cache(Call, Spec, Cache)
+    catch _:{error, Err} ->
+              {error, Err, []}
+    end.
 
 expect(Chain, Contract, Function, Arguments, Expect) ->
     case run(Chain, Contract, Function, Arguments) of
@@ -37,8 +41,7 @@ expect(Chain, Contract, Function, Arguments, Expect) ->
                 trace       := Trace }} ->
             ?assertMatch({Expect, _}, {Result, Trace});
         {error, Err, _} ->
-            io:format("~s\n", [Err]),
-            ?assert(false)
+            ?assertMatch({error, Err}, Expect)
     end.
 
 %% For now, implement pipeline here.
@@ -280,6 +283,14 @@ variants() ->
      "      Red(x, true) => Blue(x)\n"
      "      Blue(x)      => Green\n"
      "      _            => Red(0, 1)\n"
+     "  datatype r = A(bool, bool)\n"
+     "  function missing1(a : r) : int =\n"
+     "    switch(a)\n"
+     "      A(false, false) => 1\n"
+     "  function missing2(a : color(r, int)) : int =\n"
+     "    switch(a)\n"
+     "      Red(A(false, false), y) => y\n"
+     "      _ => 0\n"
      ""}.
 
 -define(Red(X, Y), {variant, [2, 0, 1], 0, {X, Y}}).
@@ -291,10 +302,18 @@ variant_tests() ->
                   (?Blue(_)) -> ?Green;
                   (_) -> ?Red(0, 1) end,
     ScrambleInput = [ ?Red(2, true), ?Red(1001, false), ?Blue(-99), ?Green ],
+    Missing1 = fun({variant, [2], 0, {false, false}}) -> 1;
+                  (_) -> {error, op_not_implemented_yet} end,
+    Missing1Input = [{variant, [2], 0, {A, B}} || A <- [false, true], B <- [false, true]],
+    Missing2 = fun(?Red({variant, [2], 0, {false, false}}, X)) -> X;
+                  (_) -> 0 end,
+    Missing2Input = [?Red({variant, [2], 0, {A, B}}, 5) || A <- [false, true], B <- [false, true]] ++
+                    [?Green, ?Blue(42)],
     lists:flatten(
       [[],
-       [{"scramble", [Input], Scramble(Input)}
-        || Input <- ScrambleInput],
+       [{"scramble", [Input], Scramble(Input)} || Input <- ScrambleInput],
+       [{"missing1", [Input], Missing1(Input)} || Input <- Missing1Input],
+       [{"missing2", [Input], Missing2(Input)} || Input <- Missing2Input],
        []]).
 
 variant_test_() -> mk_test([variants()], variant_tests()).
