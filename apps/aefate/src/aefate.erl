@@ -71,7 +71,7 @@ load_file(FileName, Opts) ->
             case aefa_fate:run(What, Chain) of
                 {ok, Env} ->
                     print_after_run(Verbose, Code, Chain, Env),
-                    io:format("~0p~n", [maps:get(accumulator, Env)]);
+                    io:format("~0p~n", [aefa_engine_state:accumulator(Env)]);
                 {error, Error, Env} ->
                     print_after_run(Verbose, Code, Chain, Env),
                     io:format("~p~n", [Error])

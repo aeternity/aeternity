@@ -50,8 +50,8 @@ gen_eval(#{ opname            := Name
           , constructor       := Constructor
           }) ->
     io_lib:format(
-      "eval(~w,  #{ gas := Gas } = EngineState) ->\n"
-      "    aefa_fate_op:~w(EngineState#{ gas => Gas - ~w});\n",
+      "eval(~w, EngineState) ->\n"
+      "    aefa_fate_op:~w(aefa_engine_state:spend_gas(~w, EngineState));\n",
       [Name, Constructor, Gas]);
 gen_eval(#{ opname            := Name
           , format            := atomic
@@ -59,8 +59,8 @@ gen_eval(#{ opname            := Name
           , constructor       := Constructor
           }) ->
     io_lib:format(
-      "eval(~w, #{ gas := Gas } = EngineState) ->\n"
-      "    {next, aefa_fate_op:~w(EngineState#{ gas => Gas - ~w})};\n",
+      "eval(~w, EngineState) ->\n"
+      "    {next, aefa_fate_op:~w(aefa_engine_state:spend_gas(~w, EngineState))};\n",
       [Name, Constructor, Gas]);
 gen_eval(#{ opname            := Name
           , opcode            :=_OpCode
@@ -78,8 +78,8 @@ gen_eval(#{ opname            := Name
     Args  = gen_arg_matches(FateFormat, 0),
     CArgs = [io_lib:format("Arg~w, ", [N]) || N <- lists:seq(0, Arity-1)],
     io_lib:format(
-      "eval({~w~s}, #{ gas := Gas } = EngineState) ->\n"
-      "    aefa_fate_op:~w(~sEngineState#{ gas => Gas - ~w});\n",
+      "eval({~w~s}, EngineState) ->\n"
+      "    aefa_fate_op:~w(~saefa_engine_state:spend_gas(~w, EngineState));\n",
       [Name, Args, Constructor, CArgs, Gas]);
 gen_eval(#{ opname            := Name
           , opcode            :=_OpCode
@@ -97,8 +97,8 @@ gen_eval(#{ opname            := Name
     Args  = gen_arg_matches(FateFormat, 0),
     CArgs = [io_lib:format("Arg~w, ", [N]) || N <- lists:seq(0, Arity-1)],
     io_lib:format(
-      "eval({~w~s}, #{ gas := Gas } = EngineState) ->\n"
-      "    {next, aefa_fate_op:~w(~sEngineState#{ gas => Gas - ~w})};\n",
+      "eval({~w~s}, EngineState) ->\n"
+      "    {next, aefa_fate_op:~w(~saefa_engine_state:spend_gas(~w, EngineState))};\n",
       [Name, Args, Constructor, CArgs, Gas]).
 
 

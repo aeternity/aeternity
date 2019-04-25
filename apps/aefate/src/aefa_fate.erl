@@ -23,7 +23,7 @@
         , check_type/2
         , get_function_signature/2
         , push_return_address/1
-        , set_current_function/2
+        , set_local_function/2
         , set_function/3
         , type/1
         ]
@@ -31,7 +31,7 @@
 
 
 %% Memory handling.
--export([ lookup_var/3
+-export([ lookup_var/2
         , store_var/3]).
 
 %% Stack handling.
@@ -56,7 +56,7 @@
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 
 -ifdef(TEST).
--define(trace(I,S), S#{trace => [{I, erlang:process_info(self(), reductions)} |get_trace(S)]}).
+-define(trace(I,S), aefa_engine_state:add_trace(I, S)).
 -else.
 -define(trace(I,S), S).
 -endif.
@@ -81,25 +81,23 @@ run(What, Env) ->
         throw:{?MODULE, E, ES} -> {error, E, ES}
     end.
 
-get_trace(#{trace := T}) ->
-    T.
+get_trace(EngineState) ->
+    aefa_engine_state:trace(EngineState).
 
-return_value(#{accumulator := A}) ->
-    A.
+return_value(EngineState) ->
+    aefa_engine_state:accumulator(EngineState).
 
-tx_env(#{chain_api := API}) ->
-    aefa_chain_api:tx_env(API).
+tx_env(EngineState) ->
+    aefa_chain_api:tx_env(aefa_engine_state:chain_api(EngineState)).
 
-gas(#{gas := Gas}) ->
-    %% TODO: The gas is not calculated yet
-    Gas.
+gas(EngineState) ->
+    aefa_engine_state:gas(EngineState).
 
-logs(#{logs := Logs}) ->
-    %% TODO: Logs are not constructed yet
-    Logs.
+logs(EngineState) ->
+    aefa_engine_state:logs(EngineState).
 
-final_trees(#{chain_api := API}) ->
-    aefa_chain_api:final_trees(API).
+final_trees(EngineState) ->
+    aefa_chain_api:final_trees(aefa_engine_state:chain_api(EngineState)).
 
 
 %%%===================================================================
@@ -160,7 +158,7 @@ abort(bad_byte_code, ES) ->
 abort(E) -> throw({add_engine_state, E}).
 
 execute(EngineState) ->
-    Instructions = current_bb(EngineState),
+    Instructions = aefa_engine_state:current_bb_instructions(EngineState),
     loop(Instructions, EngineState).
 
 loop(Instructions, EngineState) ->
@@ -173,7 +171,8 @@ loop(Instructions, EngineState) ->
     end.
 
 step([], EngineState) ->
-    BB = next_bb_index(EngineState),
+    %% TODO check BB + 1 exists.
+    BB = aefa_engine_state:current_bb(EngineState) + 1,
     {jump, BB, EngineState};
 step([I|Is], EngineState0) ->
     ES = ?trace(I, EngineState0),
@@ -183,9 +182,6 @@ step([I|Is], EngineState0) ->
         {stop, _NewState} = Res -> Res
 
     end.
-
-
-
 
 %% -----------------------------------------------------------
 
@@ -209,77 +205,81 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
     Address = aeb_fate_data:make_address(ContractPubkey),
-    ES1 = new_engine_state(Gas, Spec, aefa_chain_api:new(Spec), Cache),
+    ES1 = aefa_engine_state:new(Gas, Spec, aefa_chain_api:new(Spec), Cache),
     ES2 = set_function(Address, Function, ES1),
     ES3 = push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
     {ok, ES4} = check_signature_and_bind_args(Signature, ES3),
-    ES4#{caller => aeb_fate_data:make_address(maps:get(caller, Spec))}.
+    aefa_engine_state:set_caller(aeb_fate_data:make_address(maps:get(caller, Spec)), ES4).
 
-set_function(?FATE_ADDRESS(_) = Address, Function,
-             #{ current_contract := Address } = ES) ->
-    set_current_function(Function, ES);
-set_function(?FATE_ADDRESS(Pubkey) = Address, Function,
-             #{ chain_api := APIState, contracts := Contracts} = ES) ->
-    {ES2, #{functions := Code}} =
-        case maps:get(Address, Contracts, void) of
-            void ->
-                case aefa_chain_api:contract_fate_code(Pubkey, APIState) of
-                    {ok, ContractCode, APIState1} ->
-                        Cache = maps:put(Pubkey, ContractCode, Contracts),
-                        {ES#{contracts => Cache, chain_api => APIState1}, ContractCode};
-                    error ->
-                        abort({trying_to_call_contract, Pubkey}, ES)
-                end;
-            ContractCode -> {ES, ContractCode}
-        end,
-    ES3 = ES2#{current_contract => Address},
-    ES4 = ES3#{functions => Code},
-    ES5 = ES4#{caller => maps:get(current_contract, ES)},
-    set_current_function(Function, ES5).
+set_function(?FATE_ADDRESS(_) = Address, Function, ES) ->
+    case aefa_engine_state:current_contract(ES) =:= Address of
+        true ->
+            case aefa_engine_state:current_function(ES) =:= Function of
+                true ->
+                    ES;
+                false ->
+                    set_local_function(Function, ES)
+            end;
+        false ->
+            set_remote_function(Address, Function, ES)
+    end.
 
-%get_current_contract(#{current_contract := Contract}) ->
-%    Contract.
+set_remote_function(?FATE_ADDRESS(Pubkey) = Address, Function, ES) ->
+    Contracts = aefa_engine_state:contracts(ES),
+    case maps:get(Address, Contracts, void) of
+        void ->
+            APIState  = aefa_engine_state:chain_api(ES),
+            case aefa_chain_api:contract_fate_code(Pubkey, APIState) of
+                {ok, ContractCode, APIState1} ->
+                    Contracts1 = maps:put(Pubkey, ContractCode, Contracts),
+                    ES1 = aefa_engine_state:set_contracts(Contracts1, ES),
+                    ES2 = aefa_engine_state:set_chain_api(APIState1, ES1),
+                    ES3 = aefa_engine_state:update_for_remote_call(Address, ContractCode, ES2),
+                    set_local_function(Function, ES3);
+                error ->
+                    abort({trying_to_call_contract, Pubkey}, ES)
+            end;
+        ContractCode ->
+            ES1 = aefa_engine_state:update_for_remote_call(Address, ContractCode, ES),
+            set_local_function(Function, ES1)
+    end.
 
-
-set_current_function(Function, ES) ->
+set_local_function(Function, ES) ->
     BBs = get_function_code(Function, ES),
-    ES#{current_function => Function
-       , current_bb => 0
-       , bbs := BBs
-       }.
+    ES1 = aefa_engine_state:set_current_function(Function, ES),
+    ES2 = aefa_engine_state:set_current_bb(0, ES1),
+    aefa_engine_state:set_bbs(BBs, ES2).
 
-
-get_function_code(Name, #{functions := Functions} = ES) ->
-    case maps:get(Name, Functions, void) of
+get_function_code(Name, ES) ->
+    case maps:get(Name, aefa_engine_state:functions(ES), void) of
         void -> abort({trying_to_call_function, Name}, ES);
         {_Signature, Code} -> Code
     end.
 
-get_function_signature(Name,  #{functions := Functions} = ES) ->
-    case maps:get(Name, Functions, void) of
+get_function_signature(Name, ES) ->
+    case maps:get(Name, aefa_engine_state:functions(ES), void) of
         void -> abort({trying_to_call_function, Name}, ES);
         {Signature, _Code} -> Signature
     end.
 
-check_return_type(#{current_function := Function,
-                    accumulator := Acc} = ES) ->
-    {_ArgTypes, RetSignature} = get_function_signature(Function, ES),
+check_return_type(ES) ->
+    Current = aefa_engine_state:current_function(ES),
+    {_ArgTypes, RetSignature} = get_function_signature(Current, ES),
+    Acc = aefa_engine_state:accumulator(ES),
     case check_type(RetSignature, Acc) of
         true -> ES;
         false -> abort({bad_return_type, Acc, RetSignature}, ES)
     end.
 
-check_signature_and_bind_args({ArgTypes, _RetSignature},
-                #{ accumulator := Acc
-                 , accumulator_stack := Stack}
-               = EngineState) ->
-    Args = [Acc | Stack],
+check_signature_and_bind_args({ArgTypes, _RetSignature}, ES) ->
+    Stack = aefa_engine_state:accumulator_stack(ES),
+    Args = [aefa_engine_state:accumulator(ES) | Stack],
     case check_arg_types(ArgTypes, Args) of
         ok ->
-            {ok, bind_args(0, Args, ArgTypes, #{}, EngineState)};
+            {ok, bind_args(0, Args, ArgTypes, #{}, ES)};
         {error, T, V}  ->
-            abort({value_does_not_match_type, V, T}, EngineState)
+            abort({value_does_not_match_type, V, T}, ES)
     end.
 
 check_arg_types([], _) -> ok;
@@ -297,11 +297,10 @@ check_same_type(_, []) -> true;
 check_same_type(T, [A|As]) ->
     check_type(T, A) andalso check_same_type(T, As).
 
-
-
 bind_args(N, _, [], Mem, EngineState) ->
-    new_env(Mem, drop(N, EngineState));
-bind_args(N, [Arg|Args], [Type|Types], Mem, EngineState) ->
+    ES1 = drop(N, EngineState),
+    aefa_engine_state:push_env(Mem, ES1);
+bind_args(N, [Arg|Args], [_Type|Types], Mem, EngineState) ->
     bind_args(N+1, Args, Types, Mem#{{arg, N} => {val, Arg}}, EngineState).
 
 %% TODO: Add types (and tests).
@@ -337,165 +336,72 @@ type([]) -> {list, any}.
 %% TODO: handle all types.
 
 jump(BB, ES) ->
-    NewES = set_current_bb_index(BB, ES),
-    Instructions = current_bb(NewES),
+    NewES = aefa_engine_state:set_current_bb(BB, ES),
+    Instructions = aefa_engine_state:current_bb_instructions(NewES),
     {Instructions, NewES}.
-
-
 
 %% ------------------------------------------------------
 %% Arguments & Accumulator (-stack)
 %% ------------------------------------------------------
-
-
-push_arguments(Args, #{ accumulator := X
-                      , accumulator_stack := XS} = ES) ->
-    push_arguments(lists:reverse(Args), X, XS, ES).
-
-push_arguments([], Acc, Stack, ES) ->
-    ES#{ accumulator := Acc
-       , accumulator_stack := Stack};
-push_arguments([A|As], Acc, Stack, ES ) ->
-    push_arguments(As, A, [Acc | Stack], ES).
-
-
-pop(#{ accumulator := X, accumulator_stack := []} = ES) ->
-    {X, ES#{accumulator => ?FATE_VOID}};
-pop(#{ accumulator := X, accumulator_stack := [V|Stack]} = ES) ->
-    {X, ES#{ accumulator => V
-           , accumulator_stack := Stack
-           }}.
+push_arguments(Args, ES) ->
+    aefa_engine_state:push_arguments(Args, ES).
 
 pop_n(0, ES) -> {[], ES};
 pop_n(N, ES) ->
     {Values, ES1} = pop_n(N-1, ES),
-    {Value, ES2} = pop(ES1),
+    {Value, ES2} = aefa_engine_state:pop_accumulator(ES1),
     {[Value | Values], ES2}.
 
 
-dup(#{ accumulator := X, accumulator_stack := Stack} = ES) ->
-    ES#{ accumulator => X
-       , accumulator_stack := [X|Stack]}.
+dup(ES) ->
+    aefa_engine_state:dup_accumulator(ES).
 
-dup(N, #{ accumulator := X, accumulator_stack := Stack} = ES) ->
-    {X1, Stack} = get_n(N, [X|Stack]),
-    ES#{ accumulator => X1
-       , accumulator_stack := Stack}.
+dup(N, ES) ->
+    aefa_engine_state:dup_accumulator(N, ES).
 
-get_n(0, [X|XS]) -> {X, [X|XS]};
-get_n(N, [X|XS]) ->
-    {Y, List} = get_n(N-1, XS),
-    {Y, [X|List]}.
+drop(N, ES) ->
+    aefa_engine_state:drop_accumulator(N, ES).
 
-
-drop(0, ES) -> ES;
-drop(N, #{ accumulator := _, accumulator_stack := [V|Stack]} = ES) ->
-    drop(N-1, ES#{ accumulator => V, accumulator_stack => Stack});
-drop(N, #{ accumulator := _, accumulator_stack := []} = ES) ->
-    drop(N-1, ES#{ accumulator => ?FATE_VOID, accumulator_stack => []}).
-
-push(V,
-     #{ accumulator := ?FATE_VOID
-      , accumulator_stack := [] } = ES) ->
-    ES#{ accumulator => V
-       , accumulator_stack => []};
-push(V,
-     #{ accumulator := X
-      , accumulator_stack := Stack } = ES) ->
-    ES#{ accumulator => V
-       , accumulator_stack => [X|Stack]}.
-
-
-
-%% ------------------------------------------------------
-%% BBs
-set_current_bb_index(BB, ES) ->
-    ES#{ current_bb => BB }.
-
-current_bb(#{ current_bb := BB} = ES) ->
-    get_bb(BB, ES).
-
-get_bb(BB, #{bbs := BBS} = ES) ->
-    case maps:get(BB, BBS, void) of
-        void -> abort({trying_to_reach_bb, BB}, ES);
-        Instructions -> Instructions
-    end.
-
-next_bb_index(#{ current_bb := BB}) ->
-    %% TODO check BB + 1 exists.
-    BB + 1.
-
+push(V, ES) ->
+    aefa_engine_state:push_accumulator(V, ES).
 
 %% ------------------------------------------------------
 %% Call stack
 
-push_return_address(#{ current_bb := BB
-                     , current_function := Function
-                     , current_contract := Contract
-                     , call_stack := Stack
-                     , memory := Mem} = ES) ->
-    ES#{ call_stack => [{Contract, Function, BB+1, Mem}|Stack]}.
+push_return_address(ES) ->
+    aefa_engine_state:push_return_address(ES).
 
-pop_call_stack(#{ call_stack := []} = ES) -> {stop, ES};
-pop_call_stack(#{ call_stack := [{Contract, Function, BB, Mem}| Rest]
-                , current_contract := CurrentContract
-                , current_function := CurrentFunction} = ES) ->
-    ES1 = ES#{ call_stack => Rest,
-               %% The memory is functional and restored
-               %% to the version before the call.
-               memory => Mem},
-    if CurrentContract =:= Contract -> %% Local return
-            if CurrentFunction =:= Function -> % self return
-                    {jump, BB, ES1};
-               true -> %% Other function same contract
-                    ES2 = set_current_function(Function, ES1),
-                    {jump, BB, ES2}
-            end;
-       true -> %% Non local return
-            ES2 = set_function(Contract, Function, ES1),
-            {jump, BB, ES2}
+pop_call_stack(ES) ->
+    case aefa_engine_state:call_stack(ES) of
+        [] -> {stop, ES};
+        [{Contract, Function, BB, Mem}| Rest] ->
+            ES1 = aefa_engine_state:set_call_stack(Rest, ES),
+            %% The memory is functional and restored
+            %% to the version before the call.
+            ES2 = aefa_engine_state:set_memory(Mem, ES1),
+            ES3 = set_function(Contract, Function, ES2),
+            {jump, BB, ES3}
     end.
 
 %% ------------------------------------------------------
 %% Memory
-new_env(Mem, #{ memory := Envs} = EngineState) ->
-    EngineState#{ memory => [Mem|Envs]}.
 
-lookup_var(Var, [Env|_Envs], ES) ->
-    case maps:get(Var, Env, undefined) of
-        {val, Value} ->
-            Value;
-        undefined ->
+lookup_var(Var, ES) ->
+    case aefa_engine_state:memory(ES) of
+        [Env|_Envs] ->
+            case maps:get(Var, Env, undefined) of
+                {val, Value} ->
+                    Value;
+                undefined ->
+                    abort({undefined_var, Var}, ES)
+            end;
+        [] ->
             abort({undefined_var, Var}, ES)
-    end;
-lookup_var(Var, [], ES) ->
-    abort({undefined_var, Var}, ES).
+    end.
 
 
-store_var(Var, Val, [Env|Envs]) ->
-    [Env#{ Var => {val, Val}} | Envs].
-
-%% ------------------------------------------------------
-%% New state
-
-
-new_engine_state(Gas, Spec, APIState, Contracts) ->
-    #{ current_bb => 0
-     , bbs => #{}
-     , memory => [] %% Stack of environments (name => val)
-     , chain_api => APIState
-     , trace => []
-     , accumulator => ?FATE_VOID
-     , accumulator_stack => []
-     , functions => #{} %% Cache for current contract.
-     , contracts => Contracts %% Cache for loaded contracts.
-     , current_contract => ?FATE_VOID
-     , current_function => ?FATE_VOID
-     , call_stack => []
-     , caller => aeb_fate_data:make_address(maps:get(caller, Spec))
-     , gas => Gas %% TODO: Not used properly yet
-     , logs => [] %% TODO: Not used properly yet
-     }.
+store_var(Var, Val, ES) ->
+    [Env|Envs] = aefa_engine_state:memory(ES),
+    aefa_engine_state:set_memory([Env#{ Var => {val, Val}} | Envs], ES).
 
 %% ----------------------------
-
