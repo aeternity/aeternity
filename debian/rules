@@ -10,10 +10,18 @@
 override_dh_auto_build:
 	$(MAKE) prod-build
 
+# Work-around CircleCI Debian/Ubuntu package building (clean issues;
+# fakeroot and rebar3).
+#
+# Run *clean targets only when not running in CircleCI.  CircleCI
+# config runs the clean targets before building (debuild). Prevents
+# the presence of broken/dummy debian/rules.
 override_dh_auto_clean:
-	$(MAKE) prod-clean
-	$(MAKE) clean
-	$(MAKE) distclean
+	if [ -z "$$DEB_SKIP_DH_AUTO_CLEAN" ]; then \
+		$(MAKE) prod-clean; \
+		$(MAKE) clean; \
+		$(MAKE) distclean; \
+	fi
 
 override_dh_strip:
 	dh_strip --no-automatic-dbgsym

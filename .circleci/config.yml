@@ -10,6 +10,10 @@ executors:
     docker:
       - image: aeternity/builder
         user: builder
+  builder_container_1804:
+    docker:
+      - image: aeternity/builder:1804
+        user: builder
 
 references:
   container_config: &container_config
@@ -160,6 +164,35 @@ references:
         make prod-package
         mkdir ${PACKAGES_DIR:?}
         mv _build/prod/rel/aeternity/aeternity-$(cat VERSION).tar.gz ${PACKAGE_TARBALL:?}
+
+  build_ubuntu_package: &build_ubuntu_package
+    run:
+      name: Build Ubuntu package (*.deb)
+      environment:
+        PACKAGES_DIR: *packages_workspace
+        # The *clean commands are for work-around in CircleCI
+        # Debian/Ubuntu package building (clean issues; fakeroot and
+        # rebar3).
+        #
+        # The debian/rules file has conditional *clean targets based on
+        # DEB_SKIP_DH_AUTO_CLEAN.
+        #
+        # This prevents the presence of broken/dummy debian/rules file without
+        # clean targets. For example when running debuild directly without
+        # `make prod-deb-package`.
+      command: |
+        make prod-clean
+        make clean
+        make distclean
+        if [ "$CIRCLE_TAG" ];
+        then
+          make prod-deb-package DEB_SKIP_DH_AUTO_CLEAN=true ;
+        else
+          AE_DEB_PKG_VERSION=$(cat VERSION)~git$(date +%Y%m%d%H%M%S).${CIRCLE_SHA1:0:8}-1
+          make prod-deb-package DEB_SKIP_DH_AUTO_CLEAN=true AE_DEB_PKG_VERSION=$AE_DEB_PKG_VERSION;
+        fi
+        mkdir ${PACKAGES_DIR:?}
+        mv _build/../../*aeternity-node_$(cat VERSION)*.deb ${PACKAGES_DIR:?}
 
   package_tests_workspace: &package_tests_workspace /tmp/package_tests
   test_package: &test_package
@@ -588,6 +621,15 @@ jobs:
           root: *packages_workspace
           paths:
             - "*.tar.gz"
+      - *fail_notification
+
+  ubuntu_package:
+    executor: builder_container_1804
+    <<: *container_config
+    working_directory: ~/aeternity_deb
+    steps:
+      - checkout
+      - *build_ubuntu_package
       - *fail_notification
 
   upload_build_artifacts:
@@ -1084,6 +1126,14 @@ workflows:
                 - system-tests
             tags:
               only: *tag_regex
+
+      - ubuntu_package:
+          filters:
+            branches:
+              only:
+                - master
+            tags:
+              only: *stable_tag_regex
 
       - upload_build_artifacts:
           requires:

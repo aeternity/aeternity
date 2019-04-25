@@ -40,8 +40,6 @@ AE_DEB_MAINT_EMAIL="info@aeternity.com"
 AE_DEB_MAINT_NAME="Aeternity Team"
 DEB_PKG_CHANGELOG_FILE=debian/changelog
 
-
-
 all:	local-build
 
 $(SWAGGER_ENDPOINTS_SPEC):
@@ -427,7 +425,7 @@ $(DEB_PKG_CHANGELOG_FILE):
 	dch -r $(AE_DEB_DCH_REL_NOTE)
 
 prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
-	debuild -b -uc -us
+	debuild --preserve-envvar DEB_SKIP_DH_AUTO_CLEAN -b -uc -us
 
 .PHONY: \
 	all console \
