@@ -725,6 +725,7 @@ cmd_run(Cmd, Dir, BinDir, Args, Env, FindLocalBin) ->
                              {error, Err, Res};
                          {P, {data, Msg}} ->
                              Fun(Fun, P, Res ++ Msg)
+                     after 30000 -> {error, timeout, Res}
                      end
              end,
     WaitFun(WaitFun, Port, "").

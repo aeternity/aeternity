@@ -7,6 +7,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 -include("../../aecontract/include/aecontract.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 -define(TAB, aec_tx_pool_test_keys).
 
@@ -409,12 +410,19 @@ tx_pool_test_() ->
                  PK2 = new_pubkey(),
                  PK3 = new_pubkey(),
                  PK4 = new_pubkey(),
+                 PK5 = new_pubkey(),
 
                  meck:expect(aec_fork_block_settings, genesis_accounts, 0,
-                             [{PK1, 100000}, {PK2, 100000}, {PK3, 100000}, {PK4, 100000}]),
+                             [{PK1, 100000}, {PK2, 100000}, {PK3, 100000}, {PK4, 100000},
+                              {PK5, 10000000000000000000000}]),
                  {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                  aec_test_utils:start_chain_db(),
                  {ok,_} = aec_chain_state:insert_block(GenesisBlock),
+
+                 %% Bring the chain to height 1
+                 {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK1),
+                 {ok,_} = aec_chain_state:insert_block(KeyBlock1),
+                 WithMetaTx = aec_hard_forks:protocol_effective_at_height(1) >= ?FORTUNA_PROTOCOL_VSN,
 
                  STxs =
                    [ a_signed_tx        (_Sender=PK1, me,_Nonce=1,_Fee=300000)
@@ -425,16 +433,20 @@ tx_pool_test_() ->
                    , signed_ct_create_tx(        PK4,           1,     300000,_GasPrice=1100000000)
                    , signed_ct_call_tx  (        PK4,           2,     600000,          9000000000)
                    , signed_ct_call_tx  (        PK4,           3,     900000,          1)
-                   ],
+                   ] ++
+                   [ a_meta_tx          (        PK5,                  350000,          1,      1) || WithMetaTx ] ++
+                   [ a_meta_tx          (        PK5,                  350000,          1,  51000) || WithMetaTx ] ++
+                   [ a_meta_tx          (        PK5,                  299999, 1010000000,      1) || WithMetaTx ],
 
                  [?assertEqual(ok, aec_tx_pool:push(Tx)) || Tx <- STxs],
-                 {ok, CurrentMempoolSigned} = aec_tx_pool:peek(10),
+                 {ok, CurrentMempoolSigned} = aec_tx_pool:peek(20),
                  %% extract transactions without verification
                  CurrentMempool = [ aetx_sign:tx(STx) || STx <- CurrentMempoolSigned ],
 
                  MempoolOrder = [{aetx:origin(Tx), aetx:nonce(Tx)} || Tx <- CurrentMempool],
                  %% this is not-optimal order: transactions for PK1 and PK4 are invalid in that order
-                 CorrectOrder = [{PK4,3},{PK2,1},{PK2,2},{PK4,2},{PK1,3},{PK1,2},{PK4,1},{PK1,1}],
+                 CorrectOrder0 = [{PK4,3},{PK2,1},{PK2,2},{PK4,2},{PK1,3},{PK5,0},{PK1,2},{PK5,0},{PK4,1},{PK5,0},{PK1,1}],
+                 CorrectOrder  = [{PK, N} || {PK, N} <- CorrectOrder0, PK /= PK5 orelse WithMetaTx ],
 
                  ?assertEqual(CorrectOrder, MempoolOrder),
 
@@ -471,10 +483,14 @@ tx_pool_test_() ->
                aec_test_utils:stop_chain_db(),
                PK = new_pubkey(),
                meck:expect(aec_fork_block_settings, genesis_accounts, 0,
-                           [{PK, 100000}]),
+                           [{PK, 100000000}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
                {ok,_} = aec_chain_state:insert_block(GenesisBlock),
+
+               %% Bring the chain to height 1
+               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK),
+               {ok,_} = aec_chain_state:insert_block(KeyBlock1),
 
                MaxGas = aec_governance:block_gas_limit(),
 
@@ -513,6 +529,18 @@ tx_pool_test_() ->
                STx6 = signed_ct_call_tx(PK, _Nonce6=3,_Fee6=1000000,_GasPrice6=9000000000),
                ?assertEqual(ok, aec_tx_pool:push(STx6)),
                ?assertEqual({ok, [STx3, STx5, STx6]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
+
+               %% If applicable, add a MetaTx
+               case aec_hard_forks:protocol_effective_at_height(1) >= ?FORTUNA_PROTOCOL_VSN of
+                   true ->
+                       aec_tx_pool:restore_mempool(),
+                       STx7 = a_meta_tx(PK, 200000, 1, 1),
+                       ?assertEqual(ok, aec_tx_pool:push(STx7)),
+                       ?assertEqual({ok, [STx3, STx5, STx6, STx7]},
+                                    aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash()));
+                    false ->
+                       ok
+               end,
 
                ok
        end},
@@ -805,15 +833,18 @@ a_signed_tx(Sender, Recipient, Nonce, Fee) ->
     a_signed_tx(Sender, Recipient, Nonce, Fee,0).
 
 a_signed_tx(Sender, Recipient, Nonce, Fee, TTL) ->
-    {ok, Tx} = aec_spend_tx:new(#{sender_id => acct(Sender),
-                                  recipient_id => acct(Recipient),
-                                  amount => 1,
-                                  nonce => Nonce,
-                                  fee => Fee,
-                                  ttl => TTL,
-                                  payload => <<"">>}),
+    {ok, Tx} = a_spend_tx(Sender, Recipient, Nonce, Fee, TTL),
     {ok, STx} = sign(Sender, Tx),
     STx.
+
+a_spend_tx(Sender, Recipient, Nonce, Fee, TTL) ->
+    aec_spend_tx:new(#{sender_id => acct(Sender),
+                       recipient_id => acct(Recipient),
+                       amount => 1,
+                       nonce => Nonce,
+                       fee => Fee,
+                       ttl => TTL,
+                       payload => <<"">>}).
 
 signed_ct_create_tx(Sender, Nonce, Fee, GasPrice) ->
     Spec =
@@ -851,6 +882,19 @@ signed_ct_call_tx(Sender, Nonce, Fee, GasPrice) ->
     {ok, Tx} = aect_call_tx:new(Spec),
     {ok, STx} = sign(Sender, Tx),
     STx.
+
+a_meta_tx(Sender, OuterFee, GasPrice, InnerFee) ->
+    {ok, Tx} = a_spend_tx(Sender, Sender, 0, InnerFee, 0),
+    STx = aetx_sign:new(Tx, []),
+    {ok, MTx} =
+        aega_meta_tx:new(#{ga_id       => aeser_id:create(account, Sender),
+                           auth_data   => <<"">>,
+                           abi_version => 1,
+                           gas         => 50000,
+                           gas_price   => GasPrice,
+                           fee         => OuterFee,
+                           tx          => STx}),
+    aetx_sign:new(MTx, []).
 
 sign(me, Tx) ->
     {ok, PrivKey} = aec_keys:sign_privkey(),

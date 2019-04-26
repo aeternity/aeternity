@@ -384,12 +384,21 @@ int_get_candidate(MaxGas, BlockHash, #dbs{db = Db} = DBs) ->
     lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
     GasLimit = aec_governance:tx_base_gas(spend_tx),
+    Acc0     = #{ tree => gb_trees:empty(), txs => [] },
     {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, GasLimit, MinMinerGasPrice, Trees,
-                                          Header, DBs, gb_trees:empty()),
+                                          Header, DBs, Acc0),
     {ok, _, Acc1} = int_get_candidate(
                       DBs#dbs.visited_db, RemGas, GasLimit, MinMinerGasPrice, Trees, Header,
                       DBs, Acc),
-    {ok, gb_trees:values(Acc1)}.
+    #{ tree := AccTree, txs := AccTxs } = Acc1,
+
+    %% Move Txs to visited *after* revisiting visited!
+    Txs = [ begin
+                move_to_visited(DbX, DBs, KeyX, TxX),
+                TxX
+            end || {DbX, KeyX, TxX} <- gb_trees:values(AccTree) ++ lists:reverse(AccTxs) ],
+
+    {ok, Txs}.
 
 int_get_candidate(Db, Gas, GasLimit, MinMinerGasPrice, Trees, Header, DBs, Acc)
   when Gas > GasLimit ->
@@ -427,10 +436,11 @@ fold_txs([], Gas, _, _, _, _, _, _, Acc) ->
     {Gas, Acc}.
 
 int_get_candidate_({?KEY(_, _, Account, Nonce, _) = Key, Tx},
-                   Gas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Acc) ->
-    case gb_trees:is_defined({Account, Nonce}, Acc) of
-        true ->
-            %% The earlier must have had higher fee. Skip this tx.
+                   Gas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height,
+                   Acc = #{ tree := AccTree }) ->
+    case gb_trees:is_defined({Account, Nonce}, AccTree) of
+        true when Nonce > 0 ->
+            %% The earlier non-meta Tx must have had higher fee. Skip this tx.
             {Gas, Acc};
         false ->
             check_candidate(
@@ -439,7 +449,8 @@ int_get_candidate_({?KEY(_, _, Account, Nonce, _) = Key, Tx},
 
 check_candidate(Db, #dbs{gc_db = GCDb} = Dbs,
                 ?KEY(_, _, Account, Nonce, TxHash) = Key, Tx,
-                AccountsTree, Height, Gas, MinMinerGasPrice, Acc) ->
+                AccountsTree, Height, Gas, MinMinerGasPrice,
+                Acc = #{ tree := AccTree, txs := AccTxs }) ->
     Tx1 = aetx_sign:tx(Tx),
     TxTTL = aetx:ttl(Tx1),
     TxGas = aetx:gas_limit(Tx1, Height),
@@ -449,9 +460,12 @@ check_candidate(Db, #dbs{gc_db = GCDb} = Dbs,
         true ->
             case Gas - TxGas of
                 RemGas when RemGas >= 0 ->
-                    move_to_visited(Db, Dbs, Key, Tx),
-                    Acc1 = gb_trees:insert({Account, Nonce}, Tx, Acc),
-                    {RemGas, Acc1};
+                    case Nonce of
+                        0 -> %% Meta tx
+                            {RemGas, Acc#{ txs := [{Db, Key, Tx} | AccTxs] }};
+                        _N ->
+                            {RemGas, Acc#{ tree := gb_trees:insert({Account, Nonce}, {Db, Key, Tx}, AccTree) }}
+                    end;
                 _ ->
                     %% Check the rest of txs, maybe some of them fits
                     %% into the gas limit.
@@ -543,7 +557,7 @@ pool_db_key(SignedTx) ->
     %%       * negative fee and negative gas price place high profit
     %%         transactions at the beginning
     %%       * ordered_set type enables implicit overwrite of the same txs
-    ?KEY(-aetx:fee(Tx), -int_gas_price(Tx),
+    ?KEY(-aetx:deep_fee(Tx), -int_gas_price(Tx),
          aetx:origin(Tx), aetx:nonce(Tx), aetx_sign:hash(SignedTx)).
 
 -spec pool_db_open(DbName :: atom()) -> {ok, pool_db()}.
