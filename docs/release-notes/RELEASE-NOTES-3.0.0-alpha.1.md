@@ -13,7 +13,7 @@ TODO: When preparing the release, concatenate all `/docs/release-notes/next-fort
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.0.0-alpha.1
 
-The node is able to start from a database produced by `v2.5.*` releases.
+The node is able to start from a database produced by `v2.5.*`, `v2.4.*`, `v2.3.*` and `v2.2.*` releases.
 For the rest, this release is not backward compatible with `v2.*` releases as it removes deprecated functionalities.
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
