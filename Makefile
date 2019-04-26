@@ -307,7 +307,7 @@ quickcheck-test: eqc
 	$(warning This target is known to fail.)
 	$(MAKE) quickcheck-test-dir EQC_DIR=$</aecore_eqc
 	$(MAKE) quickcheck-test-dir EQC_DIR=$</aeminer_eqc
-	$(MAKE) quickcheck-test-dir EQC_DIR=$</aesophia_eqc
+	#$(MAKE) quickcheck-test-dir EQC_DIR=$</aesophia_eqc
 	$(MAKE) quickcheck-test-dir EQC_DIR=$</aeutils_eqc
 
 .PHONY: quickcheck-integration-test
