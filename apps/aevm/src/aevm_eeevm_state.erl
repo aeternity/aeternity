@@ -425,6 +425,7 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                             aevm_eeevm:eval_error(out_of_gas)
                     end
                 end,
+            InAuth  = undefined /= aevm_eeevm_state:auth_tx_hash(State),
             case Target == ?PRIM_CALLS_CONTRACT of
                 true ->
                     %% The first argument is the primop id, throw out_of_gas otherwise
@@ -443,6 +444,8 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                         error ->
                             aevm_eeevm:eval_error(out_of_gas)
                     end;
+                false when InAuth ->
+                    aevm_eeevm:eval_error(out_of_gas);
                 false ->
                     %% The first element in the arg tuple is the function hash,
                     %% throw out_of_gas otherwise

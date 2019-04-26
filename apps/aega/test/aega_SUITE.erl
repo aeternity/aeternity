@@ -54,6 +54,7 @@
         , channel_force_progress/1
 
         , wrap_unrelated_tx/1
+        , cripple_auth/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -129,6 +130,7 @@ groups() ->
                     ]}
 
     , {negative, [], [ wrap_unrelated_tx
+                     , cripple_auth
                      ]}
     ].
 
@@ -708,11 +710,39 @@ wrap_unrelated_tx(_Cfg) ->
 
     SignedTx = aec_test_utils:sign_tx(SpendTx, PrivKey),
 
+
     {{ok, #{tx_res := ok}}, _State} =
         meta(Acc1, AuthOpts, SignedTx, #{}, State),
 
     ok.
 
+cripple_auth(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
+    {ok, #{ct := Acc2Ct}} = ?call(attach, Acc2, "simple_auth", "do_auth_test", ["0"]),
+
+    %% Create a remote contract and add some tokens to the Acc2's auth contract
+    Auth1 = fun(N) -> #{ prep_fun => fun(_) -> simple_auth(["123", N]) end } end,
+    {ok, #{tx_res := ok, init_res := ok, ct_pubkey := Ct}} =
+        ?call(ga_create, Acc1, Auth1("1"), "identity", []),
+
+    {ok, #{tx_res := ok}} = ?call(ga_spend, Acc1, Auth1("2"), Acc2Ct, 10000000, 20000 * MinGP),
+
+    %% Now try the crazy stuff
+    CtLit = binary_to_list(aeser_api_encoder:encode(contract_pubkey, Ct)),
+    Acc1Lit = binary_to_list(aeser_api_encoder:encode(account_pubkey, Acc1)),
+    Auth2 = fun(A) -> #{ prep_fun => fun(_) -> aega_test_utils:make_calldata("simple_auth", "do_auth_test", [A]) end } end,
+    {failed, authentication_failed} =
+        ?call(ga_spend, Acc2, Auth2("Spend(" ++ Acc1Lit ++ ", 1000)"), Acc1, 500, 20000 * MinGP, #{fail => true}),
+    {failed, authentication_failed} =
+        ?call(ga_spend, Acc2, Auth2("OracleReg"), Acc1, 500, 20000 * MinGP, #{fail => true}),
+    {failed, authentication_failed} =
+        ?call(ga_spend, Acc2, Auth2("RemoteCall(" ++ CtLit ++ ")"), Acc1, 500, 20000 * MinGP, #{fail => true}),
+
+    ok.
 
 
 
@@ -763,7 +793,7 @@ attach(Owner, Contract, AuthFun, Args, Opts, S) ->
             CallTree = aect_test_utils:calls(S1),
             Call     = aect_call_state_tree:get_call(ConKey, CallKey, CallTree),
 
-            {{ok, aect_call:return_type(Call)}, S1};
+            {{ok, #{res => aect_call:return_type(Call), ct => ConKey}}, S1};
         _ ->
             error(bad_contract)
     end.

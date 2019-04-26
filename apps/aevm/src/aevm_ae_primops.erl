@@ -55,6 +55,7 @@ call_(Gas, Value, Data, StateIn) ->
     try
         PrimOp = get_primop(Data),
         BaseGas = aec_governance:primop_base_gas(PrimOp),
+        InAuth  = undefined /= aevm_eeevm_state:auth_tx_hash(StateIn),
         case BaseGas =< Gas of
             false ->
                 {error, ?AEVM_PRIMOP_ERR_REASON_OOG({base, PrimOp}, BaseGas, StateIn)};
@@ -65,6 +66,8 @@ call_(Gas, Value, Data, StateIn) ->
                 crypto_call(Gas, PrimOp, Value, Data, StateIn);
             true when ?PRIM_CALL_IN_AUTH_RANGE(PrimOp) ->
                 auth_call(Gas, PrimOp, Value, Data, StateIn);
+            true when InAuth ->
+                {error, ?AEVM_PRIMOP_ERR_REASON_OOG({base, PrimOp}, BaseGas, StateIn)};
             true ->
                 ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
                                  state = aevm_eeevm_state:chain_state(StateIn),
