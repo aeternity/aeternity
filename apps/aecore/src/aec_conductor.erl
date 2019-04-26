@@ -775,6 +775,7 @@ start_mining(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}} 
                     top_block_hash = TopHash } = State) when OldHash =/= TopHash ->
     %% Candidate generated with stale top hash.
     %% Regenerate the candidate.
+    epoch_mining:info("Key block candidate for old top hash; regenerating"),
     create_key_block_candidate(State);
 start_mining(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]} = State) ->
     case available_miner_instance(State) of
@@ -979,19 +980,25 @@ handle_post_block(Block, State) ->
     end.
 
 handle_mined_block(Block, State) ->
-    epoch_mining:info("Block mined: Height = ~p; Hash = ~s",
+    epoch_mining:info("Block mined: Height = ~p; Hash = ~p",
                       [aec_blocks:height(Block),
-                       as_hex(aec_blocks:root_hash(Block))]),
+                       ok(aec_blocks:hash_internal_representation(Block))]),
     handle_add_block(Block, State, block_created).
 
 handle_signed_block(Block, State) ->
-    epoch_mining:info("Block signed: Height = ~p; Hash = ~s",
+    epoch_mining:info("Block signed: Height = ~p; Hash = ~p",
                       [aec_blocks:height(Block),
-                       as_hex(aec_blocks:root_hash(Block))]),
+                       ok(aec_blocks:hash_internal_representation(Block))]),
     handle_add_block(Block, State, micro_block_created).
 
 as_hex(S) ->
     [io_lib:format("~2.16.0b", [X]) || <<X:8>> <= S].
+
+ok({ok, Value}) ->
+    Value;
+ok(Other) ->
+    Other.
+
 
 handle_add_block(Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(Block),
@@ -999,6 +1006,20 @@ handle_add_block(Block, #state{} = State, Origin) ->
 
 handle_add_block(Header, Block, State, Origin) ->
     {ok, Hash} = aec_headers:hash_header(Header),
+    Prev = aec_headers:prev_hash(Header),
+    case Prev =:= State#state.top_block_hash of
+        false when Origin =:= block_created;
+                   Origin =:= micro_block_created;
+                   Origin =:= block_received;
+                   Origin =:= micro_block_received ->
+            epoch_mining:info("Mined block has old top - discarding (~p)", [Prev]),
+            {{error, obsolete}, State};
+        _ ->
+            handle_add_block(Header, Block, Hash, Prev, State, Origin)
+    end.
+
+handle_add_block(Header, Block, Hash, Prev, State, Origin) ->
+    epoch_mining:info("trying to add block (hash=~p, prev=~p)", [Hash, Prev]),
     case aec_chain:has_block(Hash) of
         true ->
             epoch_mining:debug("Block already in chain", []),
