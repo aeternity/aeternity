@@ -67,6 +67,7 @@
 
 -export_type([tx/0]).
 
+%% Record introduced temporarily during Fortuna development, shipped in releases 2.4.0 and 2.5.0, and potentially stored in DB.
 -record(v2_db_record, {	
           channel_id    :: aeser_id:id(),	
           from_id       :: aeser_id:id(),	
