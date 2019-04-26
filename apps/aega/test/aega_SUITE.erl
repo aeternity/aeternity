@@ -43,6 +43,11 @@
         , oracle_respond/1
         , oracle_extend/1
 
+        , multi_wrap_spend/1
+        , multi_wrap_sc_create/1
+        , multi_wrap_sc_close_mutual/1
+        , multi_wrap_sc_solo_snapshot/1
+
         , channel_create/1
         , channel_deposit/1
         , channel_withdraw/1
@@ -84,6 +89,7 @@ groups() ->
                 , {group, basic}
                 , {group, bitcoin}
                 , {group, oracle}
+                , {group, multi_wrap}
                 , {group, channel}
                 , {group, negative}
                 ]}
@@ -118,6 +124,12 @@ groups() ->
                    , oracle_respond
                    , oracle_extend
                    ]}
+
+    , {multi_wrap, [], [ multi_wrap_spend
+                       , multi_wrap_sc_create
+                       , multi_wrap_sc_close_mutual
+                       , multi_wrap_sc_solo_snapshot
+                       ]}
 
     , {channel, [], [ channel_create
                     , channel_deposit
@@ -542,7 +554,94 @@ oracle_extend(_Cfg) ->
     ok.
 
 %%%===================================================================
-%%% Oracle GA tests
+%%% Multi wrapping GA tests
+%%%===================================================================
+multi_wrap_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+    Auth = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc1, N, Tx) end } end,
+
+    SpendTx = aega_test_utils:spend_tx(#{sender_id    => aeser_id:create(account, Acc1),
+                                         recipient_id => aeser_id:create(account, Acc2),
+                                         amount       => 12345,
+                                         fee          => 20000 * MinGP,
+                                         nonce        => 0}),
+
+    %% First an incorrect inner "signing"
+    {_AuthData1, _InnerTx1, MetaTx1} = prep_meta(Acc1, Auth("444"), SpendTx),
+    {ok, #{tx_res := error}} =
+        ?call(meta, Acc1, Auth("1"), MetaTx1, #{}),
+
+    %% Now the happy case
+    {_AuthData2, _InnerTx2, MetaTx2} = prep_meta(Acc1, Auth("3"), SpendTx),
+    {ok, #{tx_res := ok}} =
+        ?call(meta, Acc1, Auth("2"), MetaTx2, #{}),
+
+    ok.
+
+multi_wrap_sc_create(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Acc2 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+    {ok, _} = ?call(attach, Acc2, "basic_auth", "authorize", []),
+    Auth1 = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc1, N, Tx) end } end,
+    Auth2 = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc2, N, Tx) end } end,
+
+    Amnt = 1000000 * aec_test_utils:min_gas_price(),
+    OffState = aega_test_utils:new_state(Acc1, Amnt, {basic, "2"}, Acc2, Amnt, {basic, "2"}),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_channel_create, Acc1, Auth1("1"), Acc2, Auth2("1"), OffState, #{}),
+
+    ok.
+
+multi_wrap_sc_close_mutual(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Acc2 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+    {ok, _} = ?call(attach, Acc2, "basic_auth", "authorize", []),
+    Auth1 = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc1, N, Tx) end } end,
+    Auth2 = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc2, N, Tx) end } end,
+
+    Amnt = 1000000 * aec_test_utils:min_gas_price(),
+    OffState = aega_test_utils:new_state(Acc1, Amnt, {basic, "2"}, Acc2, Amnt, {basic, "2"}),
+    {ok, #{tx_res := ok, channel_id := CId}} =
+        ?call(ga_channel_create, Acc1, Auth1("1"), Acc2, Auth2("1"), OffState, #{}),
+
+    {ok, #{tx_res := ok}} =
+        ?call(ga_channel_close_mutual, Acc1, Auth1("2"), CId, Acc2, Auth2("2"), OffState, #{}),
+
+    ok.
+
+multi_wrap_sc_solo_snapshot(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Acc2 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    {ok, _} = ?call(attach, Acc1, "basic_auth", "authorize", []),
+    {ok, _} = ?call(attach, Acc2, "basic_auth", "authorize", []),
+    Auth1 = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc1, N, Tx) end } end,
+    Auth2 = fun(N) -> #{ prep_fun => fun(Tx) -> ?call(basic_auth, Acc2, N, Tx) end } end,
+
+    Amnt = 1000000 * aec_test_utils:min_gas_price(),
+    OffState = aega_test_utils:new_state(Acc1, Amnt, {basic, "2"}, Acc2, Amnt, {basic, "2"}),
+    {ok, #{tx_res := ok, channel_id := CId}} =
+        ?call(ga_channel_create, Acc1, Auth1("1"), Acc2, Auth2("1"), OffState, #{}),
+
+    BadOffState = aega_test_utils:new_state(Acc1, Amnt, {basic, "2"}, Acc2, Amnt, {basic, "1"}),
+    {ok, #{tx_res := error, tx_value := <<"signature_verification_failed_contract_error">>}} =
+        ?call(ga_channel_snapshot_solo, Acc1, Auth1("2"), CId, BadOffState),
+
+    {ok, #{tx_res := ok}} =
+        ?call(ga_channel_snapshot_solo, Acc1, Auth1("3"), CId, OffState),
+
+    ok.
+
+%%%===================================================================
+%%% Channel GA tests
 %%%===================================================================
 channel_create(_Cfg) ->
     state(aect_test_utils:new_state()),
@@ -805,6 +904,15 @@ cripple_auth(_Cfg) ->
 %%%===================================================================
 %%% More elaborate operations
 %%%===================================================================
+sign_and_apply_tx(Fail, Initiator, Tx, Opts, S) ->
+    Height   = maps:get(height, Opts, 1),
+    PrivKey  = aect_test_utils:priv_key(Initiator, S),
+    case sign_and_apply_transaction(Tx, PrivKey, S, Height) of
+        {ok, TmpS} when not Fail -> TmpS;
+        {ok,_TmpS} when Fail -> error({error, succeeded});
+        {error, R,_TmpS} when not Fail -> error(R);
+        {error, R, TmpS} when Fail -> throw({fail, R, TmpS})
+    end.
 
 spend(From, To, Amount, Fee, State) ->
     spend(From, To, Amount, Fee, #{}, State).
@@ -815,12 +923,8 @@ spend(From, To, Amount, Fee, Opts, State) ->
     SpendTx = aega_test_utils:spend_tx(#{sender_id => FromId, recipient_id => ToId,
                                          amount => Amount, fee => Fee,
                                          nonce => aect_test_utils:next_nonce(From, State) }),
-    Height  = maps:get(height, Opts, 1),
-    PrivKey = aect_test_utils:priv_key(From, State),
-    case sign_and_apply_transaction(SpendTx, PrivKey, State, Height) of
-        {ok, TmpS}       -> {ok, TmpS};
-        {error, R,_TmpS} -> error(R)
-    end.
+    S1 = sign_and_apply_tx(false, From, SpendTx, Opts, State),
+    {ok, S1}.
 
 attach(Owner, Contract, AuthFun, Args, S) ->
     attach(Owner, Contract, AuthFun, Args, #{}, S).
@@ -836,14 +940,8 @@ attach(Owner, Contract, AuthFun, Args, Opts, S) ->
                                     auth_fun => AuthFunHash, call_data => Calldata},
                                   maps:without([height, return_return_value, return_gas_used, fail], Opts)),
             AttachTx = aega_test_utils:ga_attach_tx(Owner, Options1),
-            Height   = maps:get(height, Opts, 1),
-            PrivKey  = aect_test_utils:priv_key(Owner, S),
-            S1       = case sign_and_apply_transaction(AttachTx, PrivKey, S, Height) of
-                           {ok, TmpS} when not Fail -> TmpS;
-                           {ok,_TmpS} when Fail -> error({error, succeeded});
-                           {error, R,_TmpS} when not Fail -> error(R);
-                           {error, R, TmpS} when Fail -> throw({fail, R, TmpS})
-                       end,
+            S1       = sign_and_apply_tx(Fail, Owner, AttachTx, Opts, S),
+
             ConKey   = aect_contracts:compute_contract_pubkey(Owner, Nonce),
             CallKey  = aect_call:id(Owner, Nonce, ConKey),
             CallTree = aect_test_utils:calls(S1),
@@ -938,9 +1036,9 @@ ga_oracle_extend(Caller, AuthOpts, TTL, Opts, S) ->
     meta(Caller, AuthOpts, ExtendTx, Opts, S).
 
 ga_channel_create(Initiator, AuthOpts, Responder, OffState, S) ->
-    ga_channel_create(Initiator, AuthOpts, Responder, OffState, #{}, S).
+    ga_channel_create(Initiator, AuthOpts, Responder, plain, OffState, #{}, S).
 
-ga_channel_create(Initiator, AuthOpts, Responder, OffState, Opts, S) ->
+ga_channel_create(Initiator, AuthOpts1, Responder, AuthOpts2, OffState, Opts, S) ->
     IAmnt = aega_test_utils:balance(Initiator, OffState),
     RAmnt = aega_test_utils:balance(Responder, OffState),
     SHash = aega_test_utils:state_hash(OffState),
@@ -949,7 +1047,7 @@ ga_channel_create(Initiator, AuthOpts, Responder, OffState, Opts, S) ->
 
     {ok, SCCreateTx} = aesc_create_tx:new(aesc_test_utils:create_tx_spec(Initiator, Responder, Opts1, S)),
 
-    meta(Initiator, AuthOpts, basic_sign_tx(Responder, SCCreateTx, S), Opts, S).
+    meta(Initiator, AuthOpts1, sign_tx(Responder, AuthOpts2, SCCreateTx, S), Opts, S).
 
 ga_channel_deposit(Depositor, AuthOpts, CId, Acc2, Amnt, S) ->
     ga_channel_deposit(Depositor, AuthOpts, CId, Acc2, Amnt, #{}, S).
@@ -987,9 +1085,9 @@ ga_channel_snapshot_solo(Snapshoter, AuthOpts, CId, OffState, Opts, S) ->
     meta(Snapshoter, AuthOpts, SCSnapshotTx, Opts, S).
 
 ga_channel_close_mutual(Acc1, AuthOpts, CId, Acc2, OffState, S) ->
-    ga_channel_close_mutual(Acc1, AuthOpts, CId, Acc2, OffState, #{}, S).
+    ga_channel_close_mutual(Acc1, AuthOpts, CId, Acc2, plain, OffState, #{}, S).
 
-ga_channel_close_mutual(Acc1, AuthOpts, CId, Acc2, OffState, Opts, S) ->
+ga_channel_close_mutual(Acc1, AuthOpts1, CId, Acc2, AuthOpts2, OffState, Opts, S) ->
     IAmnt = aega_test_utils:balance(Acc1, OffState) - 25000 * aec_test_utils:min_gas_price(),
     RAmnt = aega_test_utils:balance(Acc2, OffState) - 25000 * aec_test_utils:min_gas_price(),
     Opts1 = maps:merge(#{nonce => 0, initiator_amount_final => IAmnt,
@@ -999,7 +1097,7 @@ ga_channel_close_mutual(Acc1, AuthOpts, CId, Acc2, OffState, Opts, S) ->
     {ok, SCMutualCloseTx} = aesc_close_mutual_tx:new(
                           aesc_test_utils:close_mutual_tx_spec(CId, Opts1, S)),
 
-    meta(Acc1, AuthOpts, basic_sign_tx(Acc2, SCMutualCloseTx, S), Opts, S).
+    meta(Acc1, AuthOpts1, sign_tx(Acc2, AuthOpts2, SCMutualCloseTx, S), Opts, S).
 
 ga_channel_close_solo(Acc1, AuthOpts, CId, Acc2, OffState, S) ->
     ga_channel_close_solo(Acc1, AuthOpts, CId, Acc2, OffState, #{}, S).
@@ -1063,8 +1161,13 @@ ga_channel_force_progress(Acc1, AuthOpts, CId, OffState, CtId, Contract, Fun, Ar
 
     meta(Acc1, AuthOpts, SCForceProgressTx, Opts, S).
 
+
+
 meta(Owner, AuthOpts, InnerTx0, Opts, S) ->
-    Fail     = maps:get(fail, Opts, false),
+    {AuthData, InnerTx, MetaTx} = prep_meta(Owner, AuthOpts, InnerTx0),
+    do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S).
+
+prep_meta(Owner, AuthOpts, InnerTx0) ->
     {InnerTx, InnerSTx} =
         try aetx_sign:tx(InnerTx0) of
             Tx_ -> {Tx_, InnerTx0}
@@ -1075,8 +1178,12 @@ meta(Owner, AuthOpts, InnerTx0, Opts, S) ->
     AuthData = make_authdata(AuthOpts, aec_hash:hash(tx, TxBin)),
     Options1 = maps:merge(#{auth_data => AuthData, tx => InnerSTx}, AuthOpts),
     MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),
-    SMetaTx  = aetx_sign:new(MetaTx, []),
+    {AuthData, InnerTx, MetaTx}.
+
+do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S) ->
+    Fail     = maps:get(fail, Opts, false),
     Height   = maps:get(height, Opts, 1),
+    SMetaTx  = aetx_sign:new(MetaTx, []),
     S1       = case apply_transaction(SMetaTx, S, Height) of
                    {ok, TmpS} when not Fail       -> TmpS;
                    {ok,_TmpS} when Fail           -> error({error, succeeded});
@@ -1094,11 +1201,13 @@ meta(Owner, AuthOpts, InnerTx0, Opts, S) ->
 
     GasUsed = aect_call:gas_used(Call),
     AuthCost = aetx:fee(MetaTx) + aetx:gas_price(MetaTx) * GasUsed,
-    Res0 = #{ auth_gas => GasUsed, auth_cost => AuthCost,
-              tx_res => aect_call:return_type(Call), tx_value => aect_call:return_value(Call) },
+    Res00 = #{ auth_gas => GasUsed, auth_cost => AuthCost,
+               tx_res => aect_call:return_type(Call), tx_value => aect_call:return_value(Call) },
+
+    {Res0, InnerTx1} = peel_onion(Res00, InnerTx, S1),
 
     Res =
-        case aetx:specialize_type(InnerTx) of
+        case aetx:specialize_type(InnerTx1) of
             {spend_tx, _SpendTx} ->
                 {ok, Res0#{ total_cost => AuthCost + aetx:fee(InnerTx) }};
             {contract_create_tx, _CCTx} ->
@@ -1137,11 +1246,29 @@ meta(Owner, AuthOpts, InnerTx0, Opts, S) ->
                          Tx == channel_deposit_tx; Tx == channel_withdraw_tx;
                          Tx == channel_snapshot_solo_tx; Tx == channel_close_mutual_tx;
                          Tx == channel_close_solo_tx; Tx == channel_settle_tx;
-                         Tx == channel_slash_tx; Tx == ga_attach_tx ->
+                         Tx == channel_slash_tx; Tx == ga_attach_tx; Tx == ga_meta_tx ->
                 {ok, Res0}
         end,
     {Res, S1}.
 
+peel_onion(Res = #{ tx_res := TxRes }, InnerTx, S) ->
+    case aetx:specialize_type(InnerTx) of
+        {ga_meta_tx, GAMetaTx} when TxRes == ok ->
+            Owner         = aega_meta_tx:ga_pubkey(GAMetaTx),
+            AuthId        = aega_meta_tx:auth_id(Owner, aega_meta_tx:auth_data(GAMetaTx)),
+            {AuthCtId, _} = account_contract(Owner, S),
+            {_, AuthCtPK} = aeser_id:specialize(AuthCtId),
+            CallKey       = aect_call:ga_id(AuthId, AuthCtPK),
+            CallTree      = aect_test_utils:calls(S),
+            Call          = aect_call_state_tree:get_call(Owner, CallKey, CallTree),
+            GasUsed       = aect_call:gas_used(Call),
+            AuthCost      = aetx:fee(InnerTx) + aetx:gas_price(InnerTx) * GasUsed,
+            Res1 = Res#{ auth_gas  := GasUsed + maps:get(auth_gas, Res),
+                         auth_cost := AuthCost + maps:get(auth_cost, Res) },
+            peel_onion(Res1, aetx_sign:tx(aega_meta_tx:tx(GAMetaTx)), S);
+        _ ->
+            {Res, InnerTx}
+    end.
 
 dry_run(Op, Args, S) ->
     {Acc, S1} = new_account(10000000 * aec_test_utils:min_gas_price(), S),
@@ -1203,9 +1330,18 @@ sign_and_apply_transaction(Tx, PrivKey, S, Height) ->
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     apply_transaction(SignedTx, S, Height).
 
-basic_sign_tx(Pubkey, Tx, S) ->
+sign_tx(Pubkey, plain, Tx, S) ->
     PrivKey  = aect_test_utils:priv_key(Pubkey, S),
-    aec_test_utils:sign_tx(Tx, PrivKey).
+    aec_test_utils:sign_tx(Tx, PrivKey);
+sign_tx(Pubkey, AuthOpts, Tx, _S) ->
+    TxBin    = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
+    AuthData = make_authdata(AuthOpts, aec_hash:hash(tx, TxBin)),
+    Options1 = #{auth_data => AuthData, tx => aetx_sign:new(Tx, [])},
+    MetaTx   = aega_test_utils:ga_meta_tx(Pubkey, Options1),
+    aetx_sign:new(MetaTx, []).
+
+basic_sign_tx(Pubkey, Tx, S) ->
+    sign_tx(Pubkey, plain, Tx, S).
 
 apply_transaction(Tx, S1, Height) ->
     Trees    = aect_test_utils:trees(S1),
