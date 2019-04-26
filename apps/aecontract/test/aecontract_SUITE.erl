@@ -118,6 +118,7 @@
         , sophia_heap_to_heap_bug/1
         , sophia_namespaces/1
         , sophia_too_little_gas_for_mem/1
+        , sophia_bytes/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -234,6 +235,7 @@ groups() ->
                                  sophia_safe_math,
                                  sophia_heap_to_heap_bug,
                                  sophia_namespaces,
+                                 sophia_bytes,
                                  sophia_too_little_gas_for_mem
                                ]}
     , {sophia_oracles_ttl, [],
@@ -1255,6 +1257,11 @@ make_calldata_from_id(Id, Fun, Args, State) ->
     make_calldata_from_code(aect_contracts:code(C), Fun, Args).
 
 format_aevm_args(<<N:256>>) -> N;
+format_aevm_args({bytes, Bin}) ->
+    case to_words(Bin) of
+        [W] -> W;
+        Ws  -> list_to_tuple(Ws)
+    end;
 format_aevm_args([H|T]) ->
   [format_aevm_args(H) | format_aevm_args(T)];
 format_aevm_args(T) when is_tuple(T) ->
@@ -1262,6 +1269,12 @@ format_aevm_args(T) when is_tuple(T) ->
 format_aevm_args(M) when is_map(M) ->
   maps:from_list(format_aevm_args(maps:to_list(M)));
 format_aevm_args(X) -> X.
+
+to_words(Bin) ->
+    N      = byte_size(Bin),
+    PadN   = (N + 31) div 32 * 32,
+    Padded = <<Bin/binary, 0:(PadN - N)/unit:8>>,
+    [ W || <<W:32/unit:8>> <= Padded ].
 
 format_fate_args(<<_:256>> = B) ->
     {address, B}; %% Assume it is an address
@@ -4023,6 +4036,22 @@ sophia_namespaces(_Cfg) ->
     %% Check that we can't call the library functions directly
     {'EXIT', {bad_function, _, _}, _} = ?call(call_contract, Acc, C, reverse, {list, word}, [1, 2, 3]),
     ok.
+
+sophia_bytes(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_3, bytes_not_in_minerva),
+    state(aect_test_utils:new_state()),
+    Acc  = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    C    = ?call(create_contract, Acc, bytes_equality, {}),
+    Bytes = fun(W) -> [{bytes, <<N:W/unit:8>>} || N <- [0, 1, 256, -1, 1 bsl ((W - 1) * 8)]] end,
+    Test  = fun(Op, W, A, B) ->
+                Fun = list_to_atom(lists:concat([Op, W])),
+                Res = case Op of eq -> A == B; ne -> A /= B end,
+                ?assertMatch({Fun, A, B, Res},
+                             {Fun, A, B, ?call(call_contract, Acc, C, Fun, bool, {A, B})})
+            end,
+    [ Test(Op, W, A, B) || W <- [16, 32, 47, 64, 65], Op <- [eq, ne], A <- Bytes(W), B <- Bytes(W) ],
+    ok.
+
 
 sophia_too_little_gas_for_mem(_Cfg) ->
     state(aect_test_utils:new_state()),
