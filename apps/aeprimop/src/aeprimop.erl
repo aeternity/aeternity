@@ -1517,6 +1517,7 @@ assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S)
                 true ->
                     assert_contract_init_function(ABIVersion, CallData, TypeInfo);
                 false ->
+                    io:format("Vsn: ~p, Height: ~p~n", [Vsn, S#state.height]),
                     runtime_error(illegal_contract_compiler_version)
             end
     catch _:_ -> runtime_error(bad_sophia_code)
