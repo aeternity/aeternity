@@ -1242,12 +1242,16 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug) ->
     ok = rpc(dev1, aesc_fsm, settle, [FsmI]),
     {_, SignedTx} = await_signing_request(settle_tx, I),
     ct:log("settle_tx signed", []),
-    {ok, MinedKeyBlocks} = aecore_suite_utils:mine_blocks_until_txs_on_chain(aecore_suite_utils:node_name(dev1), [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))], ?MAX_MINED_BLOCKS),
+    {ok, MinedKeyBlocks} = aecore_suite_utils:mine_blocks_until_txs_on_chain(
+                             aecore_suite_utils:node_name(dev1),
+                             [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))],
+                             ?MAX_MINED_BLOCKS),
     KeyBlocksMissingForTTL = (TTL + 1) - length(MinedKeyBlocks),
     KeyBlocksMissingForMinDepth =
         if
             KeyBlocksMissingForTTL > 0 ->
-                aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(dev1), KeyBlocksMissingForTTL),
+                aecore_suite_utils:mine_key_blocks(
+                  aecore_suite_utils:node_name(dev1), KeyBlocksMissingForTTL),
                 MinDepth;
             KeyBlocksMissingForTTL =< 0 ->
                 MinDepth + KeyBlocksMissingForTTL
@@ -1266,6 +1270,10 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug) ->
     end,
     {ok, _} = receive_from_fsm(info, I, closed_confirmed, ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(info, R, closed_confirmed, ?TIMEOUT, Debug),
+    ct:log("closed_confirmed received from both", []),
+    {ok,_} = receive_from_fsm(info, I, fun died_normal/1, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(info, R, fun died_normal/1, ?TIMEOUT, Debug),
+    ct:log("died_normal detected from both", []),
     ok.
 
 %% Retry N times, T ms apart, if F() raises an exception.
