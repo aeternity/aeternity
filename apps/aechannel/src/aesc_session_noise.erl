@@ -75,9 +75,18 @@ shutdown           (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN     , Msg}).
 shutdown_ack       (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ACK , Msg}).
 
 close(Session) ->
-    try call(Session, close)
-    catch
-        error:_ -> ok
+    case process_info(Session, backtrace) of
+        undefined -> ok;
+        {_, BT} ->
+            try call(Session, close)
+            catch
+                error:_ -> ok;
+                exit:R ->
+                    lager:error("CAUGHT exit:~p, BT = ~s", [R, BT]),
+                    unlink(Session),
+                    exit(Session, kill),
+                    ok
+            end
     end.
 
 -define(GEN_SERVER_OPTS, []).
@@ -191,7 +200,7 @@ handle_info_({noise, EConn, Data}, #st{econn = EConn} = St) ->
     {noreply, St};
 handle_info_({tcp_closed, _Port}, #st{parent = Pid} = St) ->
     aesc_fsm:connection_died(Pid),
-    {stop, shutdown, St};
+    {stop, normal, St};
 handle_info_(_Msg, St) ->
     lager:debug("Unknown handle_info_(~p)", [_Msg]),
     {noreply, St}.
