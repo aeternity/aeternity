@@ -1011,6 +1011,19 @@ meta(Owner, AuthOpts, InnerTx0, Opts, S) ->
     Res0 = #{ auth_gas => GasUsed, auth_cost => AuthCost,
               tx_res => aect_call:return_type(Call), tx_value => aect_call:return_value(Call) },
 
+    DeepFee  = aetx:deep_fee(MetaTx, aect_test_utils:trees(S1)),
+    case aect_call:return_type(Call) of
+        ok ->
+            %% The total amount of fees should include the fees for
+            %% the inner tx (transitively) as well
+            InnerDeepFee = aetx:deep_fee(InnerTx, aect_test_utils:trees(S1)),
+            ?assert(InnerDeepFee > 0),
+            ?assertEqual(DeepFee, aetx:fee(MetaTx) + InnerDeepFee);
+        error ->
+            %% Only the fee of the meta transaction should be deducted
+            ?assertEqual(DeepFee, aetx:fee(MetaTx))
+    end,
+
     Res =
         case aetx:specialize_type(InnerTx) of
             {spend_tx, _SpendTx} ->

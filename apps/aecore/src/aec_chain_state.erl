@@ -910,7 +910,7 @@ apply_micro_block_transactions(Node, FeesIn, Trees) ->
     Txs = db_get_txs(hash(Node)),
     TotalFees = lists:foldl(
                   fun(SignedTx, AccFee) ->
-                          Fee = aetx:fee(aetx_sign:tx(SignedTx)),
+                          Fee = aetx:deep_fee(aetx_sign:tx(SignedTx), Trees),
                           AccFee + Fee
                   end, FeesIn, Txs),
     KeyHeader = db_get_header(prev_key_hash(Node)),

@@ -38,6 +38,7 @@
          ga_pubkey/1,
          gas_limit/2,
          gas_price/1,
+         inner_tx_was_succesful/2,
          tx/1
         ]).
 
@@ -209,6 +210,18 @@ set_meta_result(Err = {error, _}, Tx, Trees, Env) ->
             ga_pubkey(Tx), auth_data(Tx), Err),
     {ok, Trees1, _Env} = aeprimop:eval(SetInstructions, Trees, Env),
     Trees1.
+
+-spec inner_tx_was_succesful(tx(), aec_trees:trees()) -> boolean().
+inner_tx_was_succesful(Tx, Trees) ->
+    Pubkey   = ga_pubkey(Tx),
+    Account  = aec_accounts_trees:get(Pubkey, aec_trees:accounts(Trees)),
+    Contract = aec_accounts:ga_contract(Account),
+    CallId   = aect_call:ga_id(auth_id(Tx), aeser_id:specialize(Contract, contract)),
+    Call     = aect_call_state_tree:get_call(Pubkey, CallId, aec_trees:calls(Trees)),
+    case aect_call:return_type(Call) of
+        ok    -> true;
+        error -> false
+    end.
 
 serialize(#ga_meta_tx{ga_id       = GAId,
                       auth_data   = AuthData,
