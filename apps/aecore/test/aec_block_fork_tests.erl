@@ -54,18 +54,18 @@ apply_minerva_test_() ->
      ]}.
 
 load_files_smoke_test_() ->
-    {foreach,
+    [{foreach,
      fun() ->
          meck:new(aec_fork_block_settings, [passthrough]),
          {ok, WorkDir} = file:get_cwd(),
          DataAecoreDir =  WorkDir ++ "/data/aecore/",
          meck:expect(aec_fork_block_settings, file_name,
             fun(?ROMA_PROTOCOL_VSN) ->
-                    DataAecoreDir ++ ".genesis/accounts.json";
+                    DataAecoreDir ++ ".genesis/" ++ File;
                 (?MINERVA_PROTOCOL_VSN) ->
-                    DataAecoreDir ++ ".minerva/accounts.json";
+                    DataAecoreDir ++ ".minerva/" ++ File;
                 (?FORTUNA_PROTOCOL_VSN) ->
-                    DataAecoreDir ++ ".fortuna/accounts.json"
+                    DataAecoreDir ++ ".fortuna/" ++ File
             end),
          ok
      end,
@@ -73,14 +73,14 @@ load_files_smoke_test_() ->
          meck:unload(aec_fork_block_settings),
          ok
      end,
-     [ {"Load the real accounts.json files",
+     [ {"Load the real account files",
         fun() ->
             T0 = make_trees(aec_fork_block_settings:genesis_accounts()),
             T1 = aec_block_fork:apply_minerva(T0),
             _T2 = aec_block_fork:apply_fortuna(T1),
             ok
         end}
-     ]}.
+     ]} || File <- ["accounts.json", "accounts_uat.json", "accounts_test.json"] ].
 
 meck_minerva_accounts(AccountsList) ->
     meck:expect(aec_fork_block_settings, minerva_accounts,
