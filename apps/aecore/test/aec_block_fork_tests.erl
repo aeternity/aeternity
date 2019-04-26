@@ -61,9 +61,12 @@ load_files_smoke_test_() ->
          DataAecoreDir =  WorkDir ++ "/data/aecore/",
          meck:expect(aec_fork_block_settings, file_name,
             fun(?ROMA_PROTOCOL_VSN) ->
-                DataAecoreDir ++ ".genesis/accounts.json";
+                    DataAecoreDir ++ ".genesis/accounts.json";
                 (?MINERVA_PROTOCOL_VSN) ->
-                DataAecoreDir ++ ".minerva/accounts.json" end),
+                    DataAecoreDir ++ ".minerva/accounts.json";
+                (?FORTUNA_PROTOCOL_VSN) ->
+                    DataAecoreDir ++ ".fortuna/accounts.json"
+            end),
          ok
      end,
      fun(ok) ->
@@ -73,7 +76,8 @@ load_files_smoke_test_() ->
      [ {"Load the real accounts.json files",
         fun() ->
             T0 = make_trees(aec_fork_block_settings:genesis_accounts()),
-            _T1 = aec_block_fork:apply_minerva(T0),
+            T1 = aec_block_fork:apply_minerva(T0),
+            _T2 = aec_block_fork:apply_fortuna(T1),
             ok
         end}
      ]}.
