@@ -8,13 +8,24 @@ main([Re | Path]) ->
                            grep(Re, P, Acc)
                    end, {ordsets:new(), ordsets:new()}, Path),
     PidPats = pid_patterns(Pids),
-    [find_pids(P, PidPats) || P <- Ps],
+    %% lager log files are ordered as:
+    %% aeternity.log - newest
+    %% aeternity.log.N - higher N is older
+    %% Ps is an ordset, so reverse to get oldest first
+    [find_pids(P, PidPats) || P <- lists:reverse(Ps)],
     halt(0).
 
 grep(Re, P, {Acc, PAcc}) ->
     x(os:cmd("grep " ++ Re ++ " " ++ P), P, Acc, PAcc).
 
 find_pids(File, Pids) ->
+    try find_pids_(File, Pids)
+    catch error:E ->
+            io:fwrite("CAUGHT ~p (File = ~p)~n", [E, File]),
+            ok
+    end.
+
+find_pids_(File, Pids) ->
     {ok, Bin} = file:read_file(File),
     Lines = string:lexemes(Bin, [$\n]),
     io:fwrite("*** ~s ***~n", [File]),

@@ -3346,6 +3346,9 @@ channel_create(Config, IConnPid, RConnPid) ->
     % mine the create_tx
     ok = wait_for_signed_transaction_in_block(SignedCrTx),
 
+    {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
+    {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
+
     ChannelCreateFee.
 
 sc_ws_update_(Config) ->
@@ -3803,6 +3806,7 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
 
 sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
                               orelse Origin =:= responder ->
+    ct:log("withdraw test, Origin == ~p", [Origin]),
     Participants = proplists:get_value(participants, Config),
     Clients = proplists:get_value(channel_clients, Config),
     {SenderRole, AckRole} =
@@ -3852,6 +3856,7 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
                                                                 error]),
     ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
                                                             error]),
+    ct:log("sequence successful", []),
     ok.
 
 sc_ws_contracts(Config) ->
@@ -4963,6 +4968,9 @@ wait_for_tx_hash_on_chain(TxHash) ->
     end.
 
 sc_ws_timeout_open(Config) ->
+    with_trace(fun sc_ws_timeout_open_/1, Config, "sc_ws_timeout_open").
+
+sc_ws_timeout_open_(Config) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
 
@@ -4978,13 +4986,17 @@ sc_ws_timeout_open(Config) ->
     ok.
 
 sc_ws_min_depth_not_reached_timeout(Config) ->
+    with_trace(fun sc_ws_min_depth_not_reached_timeout_/1, Config,
+               "sc_ws_min_depth_not_reached_timeout").
+
+sc_ws_min_depth_not_reached_timeout_(Config) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
 
     IAmt = 70000 * aec_test_utils:min_gas_price(),
     RAmt = 40000 * aec_test_utils:min_gas_price(),
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt,
-                                  #{timeout_funding_lock => 100}, Config),
+                                  #{timeout_funding_lock => 500}, Config),
     {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, ChannelOpts), Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
@@ -4998,8 +5010,9 @@ sc_ws_min_depth_not_reached_timeout(Config) ->
     channel_create(Config, IConnPid, RConnPid),
 
     % mine min depth - 1
+    %% (but actually -2 since min_depth often adds one for extra measure)
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
-                                       ?DEFAULT_MIN_DEPTH - 1),
+                                       ?DEFAULT_MIN_DEPTH - 2),
 
     ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
     ok = wait_for_channel_event(<<"died">>, RConnPid, info, Config),
@@ -5096,7 +5109,10 @@ sc_ws_update_conflict(Config) ->
          responder]),
     ok.
 
-sc_ws_close_mutual(Config0) ->
+sc_ws_close_mutual(Config) ->
+    with_trace(fun sc_ws_close_mutual_/1, Config, "sc_ws_close_mutual").
+
+sc_ws_close_mutual_(Config0) ->
     lists:foreach(
         fun(WhoCloses) ->
             Config = sc_ws_open_(Config0),
@@ -6102,3 +6118,49 @@ extract_contract_pubkey(#{<<"op">> := <<"OffChainCallContract">>,
     {ok, ContractPubKey} = aeser_api_encoder:safe_decode(contract_pubkey, EncContractId),
     ContractPubKey.
 
+with_trace(F, Config, File) ->
+    with_trace(F, Config, File, on_error).
+
+with_trace(F, Config, File, When) ->
+    ct:log("with_trace ...", []),
+    TTBRes = aesc_ttb:on_nodes([node()|get_nodes()], File),
+    ct:log("Trace set up: ~p", [TTBRes]),
+    try F(Config)
+    catch
+	error:R ->
+	    Stack = erlang:get_stacktrace(),
+	    ct:pal("Error ~p~nStack = ~p", [R, Stack]),
+	    ttb_stop(),
+	    erlang:error(R);
+	exit:R ->
+	    Stack = erlang:get_stacktrace(),
+	    ct:pal("Exit ~p~nStack = ~p", [R, Stack]),
+	    ttb_stop(),
+	    exit(R);
+        throw:Res ->
+            ct:pal("Caught throw:~p", [Res]),
+            throw(Res)
+    end,
+    case When of
+        on_error ->
+            ct:log("Discarding trace", []),
+            aesc_ttb:stop_nofetch();
+        always ->
+            ttb_stop()
+    end,
+    ok.
+
+ttb_stop() ->
+    Dir = aesc_ttb:stop(),
+    Out = filename:join(filename:dirname(Dir),
+			filename:basename(Dir) ++ ".txt"),
+    case aesc_ttb:format(Dir, Out, #{limit => 30000}) of
+        {error, Reason} ->
+            ct:pal("TTB formatting error: ~p", [Reason]);
+        _ ->
+            ok
+    end,
+    ct:pal("Formatted trace log in ~s~n", [Out]).
+
+get_nodes() ->
+    [aecore_suite_utils:node_name(?NODE)].

@@ -39,6 +39,8 @@
         , dict_db_put/3
         ]).
 
+-export([record_fields/1]).
+
 -export_type([ tree/0
              , iterator/0
              , iterator_opts/0
@@ -97,6 +99,14 @@
 
 -type unfold_leaf() :: {leaf, path()}.
 -type unfold_node() :: {node, path(), enc_node()}.
+
+%% ==================================================================
+%% Tracing support
+record_fields(mpt ) -> record_info(fields, mpt);
+record_fields(iter) -> record_info(fields, iter);
+record_fields(db  ) -> aeu_mp_trees_db:record_fields(db);
+record_fields(_   ) -> no.
+%% ==================================================================
 
 %%%===================================================================
 %%% API

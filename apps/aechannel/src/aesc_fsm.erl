@@ -83,7 +83,11 @@
 -export([timeouts/0,
          report_tags/0]).
 
+-export([patterns/0,
+         record_fields/1]).
+
 -include("aesc_codec.hrl").
+%% -include_lib("trace_runner/include/trace_runner.hrl").
 
 -type role() :: initiator | responder.
 -type sign_tag() :: create_tx
@@ -191,6 +195,17 @@
                             ; S=:=awaiting_update_ack
                             ; S=:=awaiting_leave_ack
                             ; S=:=mutual_closing ).
+
+%% ==================================================================
+%% Tracing support
+patterns() ->
+    [{?MODULE, F, A, []} || {F,A} <- ?MODULE:module_info(exports),
+                            not lists:member(F, [module_info, patterns])].
+
+record_fields(data ) -> record_info(fields, data);
+record_fields(w    ) -> aesc_window:record_fields(w);
+record_fields(Other) -> aesc_offchain_state:record_fields(Other).
+%% ==================================================================
 
 -ifdef(TEST).
 -define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p / ~p", [Err, erlang:get_stacktrace()])).
@@ -477,7 +492,8 @@ client_died(Fsm) ->
 connection_died(Fsm) ->
     %TODO: possibility for reconnect
     lager:debug("connection to participant died(~p)", [Fsm]),
-    stop_ok(catch gen_statem:stop(Fsm)).
+    gen_statem:cast(Fsm, ?DISCONNECT).
+    
 
 stop_ok(ok) ->
     ok;
@@ -1163,8 +1179,6 @@ awaiting_leave_ack(cast, {?LEAVE_ACK, Msg}, D) ->
         {error, _} = Err ->
             close(Err, D)
     end;
-awaiting_leave_ack(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
 awaiting_leave_ack(timeout, awaiting_leave_ack = T, D) ->
     close({timeout, T}, D);
 awaiting_leave_ack(cast, {?LEAVE, Msg}, D) ->
@@ -1653,8 +1667,14 @@ handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
 
 handle_common_event_(timeout, St = T, St, _, D) ->
     close({timeout, T}, D);
-handle_common_event_(cast, {?DISCONNECT, _}, _St, _, D) ->
-    close(disconnect, D);
+handle_common_event_(cast, {?DISCONNECT, _} = Msg, _St, _, D) ->
+    D1 = log(rcv, ?DISCONNECT, Msg, D),
+    case D1#data.channel_status of
+        closing ->
+            keep_state(D1);
+        _ ->
+            close(disconnect, D1)
+    end;
 handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
     lager:debug("got ~p", [Msg]),
     D1 = log(rcv, ?CHANNEL_CLOSING, Msg, D),
@@ -3018,7 +3038,10 @@ default_report_flags() ->
 
 
 report_on_chain_tx(Info, SignedTx, D) ->
-    report(on_chain_tx, #{tx => SignedTx, info => Info}, D).
+    {Type,_} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    report(on_chain_tx, #{ tx => SignedTx
+                         , type => Type
+                         , info => Info}, D).
 
 report(Tag, St, D) -> report_info(do_rpt(Tag, D), Tag, St, D).
 
@@ -3238,3 +3261,6 @@ next_round(#data{state = State}) ->
     {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
     Round + 1.
 
+%% %% for tracing only
+%% event(_, _, _) ->
+%%     ok.

@@ -34,6 +34,8 @@
         , to_binary_without_backend/1
         ]).
 
+-export([record_fields/1]).
+
 -export_type([tree/0]).
 
 %%%===================================================================
@@ -49,6 +51,13 @@
 -opaque tree() :: #contract_tree{}.
 
 -define(VSN, 1).
+
+%% ==================================================================
+%% Tracing support
+record_fields(contract_tree) -> record_info(fields, contract_tree);
+record_fields(_            ) -> no.         
+%% ==================================================================
+
 
 %%%===================================================================
 %%% API

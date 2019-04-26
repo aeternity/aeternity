@@ -9,6 +9,8 @@
          info_find/3,
          to_list/1]).
 
+-export([record_fields/1]).
+
 -export_type([window/0]).
 
 -define(KEEP, 10).
@@ -23,6 +25,13 @@
            }).
 
 -type window() :: #w{}.
+
+%% ==================================================================
+%% Tracing support
+record_fields(w) -> record_info(fields, w);
+record_fields(_) -> no.
+%% ==================================================================
+
 
 -spec new() -> window().
 new() ->
