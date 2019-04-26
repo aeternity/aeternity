@@ -1,0 +1,18 @@
+#!/bin/sh
+
+## Script printing human-readable time (seconds granularity) reported by miner in key block at specified height.
+
+function human_time_s() {
+  erl -milliseconds "${1:?}" -noinput -eval '
+{ok, [[MsS]]} = init:get_argument(milliseconds),
+Ms = list_to_integer(MsS),
+S = Ms div 1000,
+io:fwrite("~p~n", [(fun({{Y,M,D}, Time}) -> {{1970+Y,M,D}, Time} end)(calendar:gregorian_seconds_to_datetime(S))]), %% Mileading day.
+init:stop().'
+}
+
+ApiAddress="${1:?}"
+ExtApiPort=3013
+KeyBlockHeight="${2:?}"
+
+human_time_s "$(curl -sS http://${ApiAddress:?}:${ExtApiPort:?}/v2/key-blocks/height/${KeyBlockHeight:?} | jq .time)"
