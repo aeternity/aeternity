@@ -80,7 +80,12 @@ shutdown_ack       (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ACK , Msg}).
 close(Session) ->
     try call(Session, close)
     catch
-        error:_ -> ok
+        error:_ -> ok;
+        exit:R ->
+            lager:error("CAUGHT exit:~p, ~p", [R, erlang:get_stacktrace()]),
+            unlink(Session),
+            exit(Session, kill),
+            ok
     end.
 
 -define(GEN_SERVER_OPTS, []).
@@ -130,6 +135,7 @@ establish({accept, Port, Opts}, St) ->
     lager:debug("listen: TcpOpts = ~p", [TcpOpts]),
     {ok, LSock} = gen_tcp:listen(Port, TcpOpts),
     {ok, TcpSock} = gen_tcp:accept(LSock),
+    lager:debug("Accept TcpSock = ~p", [TcpSock]),
     %% TODO: extract/check something from FinalState?
     EnoiseOpts = enoise_opts(accept, Opts),
     lager:debug("EnoiseOpts (accept) = ~p", [EnoiseOpts]),
@@ -139,7 +145,9 @@ establish({accept, Port, Opts}, St) ->
 establish({connect, Host, Port, Opts}, St) ->
     TcpOpts = tcp_opts(connect, Opts),
     lager:debug("connect: TcpOpts = ~p", [TcpOpts]),
-    {ok, TcpSock} = connect_tcp(Host, Port, TcpOpts),
+    {ok, TcpSock} =
+        connect_tcp(Host, Port, St#st.parent_mon_ref, TcpOpts),
+    lager:debug("Connect TcpSock = ~p", [TcpSock]),
     %% TODO: extract/check something from FinalState?
     EnoiseOpts = enoise_opts(connect, Opts),
     lager:debug("EnoiseOpts (connect) = ~p", [EnoiseOpts]),
@@ -147,24 +155,39 @@ establish({connect, Host, Port, Opts}, St) ->
     %% tell_fsm({accept, EConn}, St),
     St#st{econn = EConn}.
 
-connect_tcp(Host, Port, Opts) ->
+connect_tcp(Host, Port, Ref, Opts) ->
     {Timeout, Retries} = get_reconnect_params(),
-    connect_tcp(Retries, Host, Port, Opts, Timeout).
+    connect_tcp(Retries, Host, Port, Ref, Opts, Timeout).
 
-connect_tcp(0, _, _, _, _) ->
+connect_tcp(0, _, _, _, _, _) ->
     erlang:error(connect_timeout);
-connect_tcp(Retries, Host, Port, Opts, Timeout) when Retries > 0 ->
+connect_tcp(Retries, Host, Port, Ref, Opts, Timeout)
+  when Retries > 0 ->
     case gen_tcp:connect(Host, Port, Opts, Timeout) of
         {ok, _TcpSock} = Ok ->
             Ok;
         {error, _} ->
-            timer:sleep(1000),
-            connect_tcp(Retries-1, Host, Port, Opts, Timeout)
+            sleep(Timeout, Ref),
+            connect_tcp(Retries-1, Host, Port, Ref, Opts, Timeout)
     end.
+
+sleep(T, Ref) ->
+    receive
+        {'$gen_call', From, close} = Msg ->
+            lager:debug("Got ~p while sleeping", [Msg]),
+            gen:reply(From, ok),
+            exit(normal);
+        {'DOWN', Ref, _, _, _} = Msg ->
+            lager:debug("Got ~p while sleeping", [Msg]),
+            exit(shutdown)
+    after T ->
+            ok
+    end.
+
 
 get_reconnect_params() ->
     %% {ConnectTimeout, Retries}
-    {10000, 30}.
+    {3000, 40}.  %% total 2 minutes
 
 
 handle_call(close, _From, #st{econn = EConn} = St) ->
@@ -211,7 +234,7 @@ handle_info_({noise, EConn, Data}, #st{econn = EConn} = St) ->
     {noreply, St};
 handle_info_({tcp_closed, _Port}, #st{parent = Pid} = St) ->
     aesc_fsm:connection_died(Pid),
-    {stop, shutdown, St};
+    {stop, normal, St};
 handle_info_(_Msg, St) ->
     lager:debug("Unknown handle_info_(~p)", [_Msg]),
     {noreply, St}.

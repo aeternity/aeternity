@@ -3461,6 +3461,9 @@ channel_create(Config, IConnPid, RConnPid) ->
     % mine the create_tx
     ok = wait_for_signed_transaction_in_block(SignedCrTx),
 
+    {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
+    {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
+
     ChannelCreateFee.
 
 sc_ws_update_(Config) ->
@@ -3926,6 +3929,7 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
 
 sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
                               orelse Origin =:= responder ->
+    ct:log("withdraw test, Origin == ~p", [Origin]),
     Participants = proplists:get_value(participants, Config),
     Clients = proplists:get_value(channel_clients, Config),
     {SenderRole, AckRole} =
@@ -3975,6 +3979,7 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
                                                                 error]),
     ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
                                                             error]),
+    ct:log("sequence successful", []),
     ok.
 
 sc_ws_contracts(Config) ->
@@ -5160,7 +5165,7 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
     IAmt = 70000 * aec_test_utils:min_gas_price(),
     RAmt = 40000 * aec_test_utils:min_gas_price(),
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt,
-                                  #{timeout_funding_lock => 100}, Config),
+                                  #{timeout_funding_lock => 500}, Config),
     {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, ChannelOpts), Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
@@ -5174,8 +5179,9 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
     channel_create(Config, IConnPid, RConnPid),
 
     % mine min depth - 1
+    %% (but actually -2 since min_depth often adds one for extra measure)
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
-                                       ?DEFAULT_MIN_DEPTH - 1),
+                                       ?DEFAULT_MIN_DEPTH - 2),
 
     ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
     ok = wait_for_channel_event(<<"died">>, RConnPid, info, Config),

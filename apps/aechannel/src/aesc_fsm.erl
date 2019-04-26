@@ -203,7 +203,7 @@ patterns() ->
                             not lists:member(F, [module_info, patterns])].
 
 record_fields(data ) -> record_info(fields, data);
-record_fields(w    ) -> record_info(fields, w);
+record_fields(w    ) -> aesc_window:record_fields(w);
 record_fields(Other) -> aesc_offchain_state:record_fields(Other).
 %% ==================================================================
 
@@ -492,7 +492,8 @@ client_died(Fsm) ->
 connection_died(Fsm) ->
     %TODO: possibility for reconnect
     lager:debug("connection to participant died(~p)", [Fsm]),
-    stop_ok(catch gen_statem:stop(Fsm)).
+    gen_statem:cast(Fsm, ?DISCONNECT).
+    
 
 stop_ok(ok) ->
     ok;
@@ -1186,8 +1187,6 @@ awaiting_leave_ack(cast, {?LEAVE_ACK, Msg}, D) ->
         {error, _} = Err ->
             close(Err, D)
     end;
-awaiting_leave_ack(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
 awaiting_leave_ack(timeout, awaiting_leave_ack = T, D) ->
     close({timeout, T}, D);
 awaiting_leave_ack(cast, {?LEAVE, Msg}, D) ->
@@ -1676,8 +1675,14 @@ handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
 
 handle_common_event_(timeout, St = T, St, _, D) ->
     close({timeout, T}, D);
-handle_common_event_(cast, {?DISCONNECT, _}, _St, _, D) ->
-    close(disconnect, D);
+handle_common_event_(cast, {?DISCONNECT, _} = Msg, _St, _, D) ->
+    D1 = log(rcv, ?DISCONNECT, Msg, D),
+    case D1#data.channel_status of
+        closing ->
+            keep_state(D1);
+        _ ->
+            close(disconnect, D1)
+    end;
 handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
     lager:debug("got ~p", [Msg]),
     D1 = log(rcv, ?CHANNEL_CLOSING, Msg, D),
@@ -3041,7 +3046,10 @@ default_report_flags() ->
 
 
 report_on_chain_tx(Info, SignedTx, D) ->
-    report(on_chain_tx, #{tx => SignedTx, info => Info}, D).
+    {Type,_} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    report(on_chain_tx, #{ tx => SignedTx
+                         , type => Type
+                         , info => Info}, D).
 
 report(Tag, St, D) -> report_info(do_rpt(Tag, D), Tag, St, D).
 
