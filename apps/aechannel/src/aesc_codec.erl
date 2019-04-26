@@ -268,7 +268,7 @@ enc_fnd_signed(#{temporary_channel_id := ChanId,
     Length = byte_size(Data),
     << ?ID_FND_SIGNED:1 /unit:8
      , ChanId        :32/binary
-     , BlockHash      :32/binary
+     , BlockHash     :32/binary
      , Length        :2 /unit:8
      , Data          :Length/bytes >>.
 
@@ -389,19 +389,23 @@ dec_dep_created(<< ChanId:32/binary
 
 -spec enc_dep_signed(deposit_msg()) -> binary().
 enc_dep_signed(#{ channel_id := ChanId
+                , block_hash := BlockHash
                 , data       := Data }) ->
     Length = byte_size(Data),
     << ?ID_DEP_SIGNED:1 /unit:8
      , ChanId        :32/binary
+     , BlockHash     :32/binary
      , Length        :2 /unit:8
      , Data/bytes >>.
 
 -spec dec_dep_signed(binary()) -> deposit_msg().
 dec_dep_signed(<< ChanId:32/binary
+                , BlockHash:32/binary
                 , Length:2 /unit:8
                 , Data/bytes >>) ->
     Length = byte_size(Data),
     #{ channel_id => ChanId
+     , block_hash => BlockHash
      , data       => Data }.
 
 -spec enc_dep_locked(deposit_msg()) -> binary().
@@ -443,40 +447,49 @@ dec_dep_err(<< ChanId :32/binary
      , error_code => ErrCode }.
 
 -type withdrawal_msg() :: #{ channel_id := chan_id()
+                           , block_hash := binary()
                            , data       := binary()}.
 
 -spec enc_wdraw_created(withdrawal_msg()) -> binary().
 enc_wdraw_created(#{ channel_id := ChanId
+                   , block_hash := BlockHash
                    , data       := Data }) ->
     Length = byte_size(Data),
     << ?ID_WDRAW_CREATED:1 /unit:8
      , ChanId           :32/binary
+     , BlockHash        :32/binary
      , Length           :2 /unit:8
      , Data/bytes >>.
 
 -spec dec_wdraw_created(binary()) -> withdrawal_msg().
 dec_wdraw_created(<< ChanId:32/binary
+                   , BlockHash:32/binary
                    , Length:2 /unit:8
                    , Data/bytes >>) ->
     Length = byte_size(Data),
     #{ channel_id => ChanId
+     , block_hash => BlockHash
      , data       => Data }.
 
 -spec enc_wdraw_signed(withdrawal_msg()) -> binary().
 enc_wdraw_signed(#{ channel_id := ChanId
+                  , block_hash := BlockHash
                   , data       := Data }) ->
     Length = byte_size(Data),
     << ?ID_WDRAW_SIGNED:1 /unit:8
      , ChanId          :32/binary
+     , BlockHash       :32/binary
      , Length          :2 /unit:8
      , Data/bytes >>.
 
 -spec dec_wdraw_signed(binary()) -> withdrawal_msg().
 dec_wdraw_signed(<< ChanId:32/binary
-                   , Length:2 /unit:8
-                   , Data/bytes >>) ->
+                  , BlockHash:32/binary
+                  , Length:2 /unit:8
+                  , Data/bytes >>) ->
     Length = byte_size(Data),
     #{ channel_id => ChanId
+     , block_hash => BlockHash
      , data       => Data }.
 
 -spec enc_wdraw_locked(withdrawal_msg()) -> binary().
@@ -560,43 +573,53 @@ dec_leave_ack(<< ChanId:32/binary >>) ->
     #{ channel_id => ChanId }.
 
 -type shutdown_msg() :: #{channel_id := chan_id(),
+                          block_hash := binary(),
                           data       := binary() }.
 
 -spec enc_shutdown(shutdown_msg()) -> binary().
 enc_shutdown(#{channel_id := ChanId,
+               block_hash := BlockHash,
                data       := Data }) ->
     Length = byte_size(Data),
     << ?ID_SHUTDOWN:1 /unit:8
      , ChanId      :32/binary
+     , BlockHash   :32/binary
      , Length      :2 /unit:8
      , Data        :Length/bytes >>.
 
 -spec dec_shutdown(binary()) -> shutdown_msg().
 dec_shutdown(<< ChanId:32/binary
+              , BlockHash:32/binary
               , Length:2 /unit:8
               , Data/bytes >>) ->
     Length = byte_size(Data),
     #{ channel_id => ChanId
+     , block_hash => BlockHash
      , data       => Data }.
 
 -type shutdown_ack_msg() :: #{channel_id := chan_id(),
+                              block_hash := binary(),
                               data       := binary() }.
 
 -spec enc_shutdown_ack(shutdown_ack_msg()) -> binary().
 enc_shutdown_ack(#{channel_id := ChanId,
+                   block_hash := BlockHash,
                    data       := Data }) ->
     Length = byte_size(Data),
     << ?ID_SHUTDOWN_ACK:1 /unit:8
      , ChanId          :32/binary
+     , BlockHash       :32/binary
      , Length          :2 /unit:8
      , Data            :Length/bytes >>.
 
 -spec dec_shutdown_ack(binary()) -> shutdown_ack_msg().
 dec_shutdown_ack(<< ChanId:32/binary
+                  , BlockHash:32/binary
                   , Length:2 /unit:8
                   , Data/bytes >>) ->
     Length = byte_size(Data),
     #{ channel_id => ChanId
+     , block_hash => BlockHash
      , data       => Data }.
 
 -type inband_msg() :: #{channel_id := chan_id(),
