@@ -47,7 +47,7 @@
 
 -record(aetx, { type :: tx_type()
               , cb   :: module()
-              , size :: pos_integer()
+              , size :: non_neg_integer() %% 0 needed for ga inner tx
               , tx   :: tx_instance() }).
 
 -opaque tx() :: #aetx{}.
@@ -327,7 +327,14 @@ check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
 
 check_minimum_fee(AeTx, Env) ->
     Height = aetx_env:height(Env),
-    case min_fee(AeTx, Height) of
+    AeTx1 = case aetx_env:context(Env) of
+                aetx_ga ->
+                    %% Size is paid for by the outermost meta tx
+                    AeTx#aetx{size = 0};
+                Ctx when Ctx =:= aetx_transaction; Ctx =:= aetx_contract ->
+                    AeTx
+            end,
+    case min_fee(AeTx1, Height) of
         MinFee when MinFee > 0 ->
             case fee(AeTx) >= MinFee of
                 true  -> ok;
