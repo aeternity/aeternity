@@ -37,6 +37,9 @@
          updates/1,
          round/1]).
 
+-export([from_db_format/1
+        ]).
+
 -include_lib("aecontract/include/hard_forks.hrl").
 %%%===================================================================
 %%% Types
@@ -44,6 +47,7 @@
 
 -define(INITIAL_VSN, 1).
 -define(PINNED_BLOCK_VSN, 2).
+-define(LATEST_VSN, 3).
 -define(CHANNEL_FORCE_PROGRESS_TX_TYPE, channel_force_progress_tx).
 
 -type vsn() :: non_neg_integer().
@@ -64,6 +68,57 @@
 -opaque tx() :: #channel_force_progress_tx{}.
 
 -export_type([tx/0]).
+
+-record(v2_db_record, {	
+          channel_id    :: aeser_id:id(),	
+          from_id       :: aeser_id:id(),	
+          payload       :: binary(),	
+          update        :: tuple(),	
+          state_hash    :: binary(),	
+          round         :: aesc_channels:seq_number(),	
+          offchain_trees:: aec_trees:trees(),	
+          ttl           :: aetx:tx_ttl(),	
+          fee           :: non_neg_integer(),	
+          nonce         :: non_neg_integer(),
+					block_hash    :: binary()
+         }).
+%%%===================================================================
+%%% Conversion of old db format
+
+ -spec from_db_format(tx()) -> tx().
+from_db_format(#channel_force_progress_tx{} = Tx) ->
+    Tx;
+from_db_format(Tuple) ->
+    case setelement(1, Tuple, old_fp_db_record) of
+        #v2_db_record{
+            channel_id    = ChannelId,
+            from_id       = FromId,
+            payload       = Payload,
+            update        = Update,
+            state_hash    = StateHash,
+            round         = Round,
+            offchain_trees= OffChainTrees,
+            ttl           = TTL,
+            fee           = Fee,
+            nonce         = Nonce
+          } ->
+            channel = aeser_id:specialize_type(ChannelId),
+            account = aeser_id:specialize_type(FromId),
+            #channel_force_progress_tx{
+                channel_id    = ChannelId,
+                from_id       = FromId,
+                payload       = Payload,
+                update        = aesc_offchain_update:from_db_format(Update),
+                state_hash    = StateHash,
+                round         = Round,
+                offchain_trees= OffChainTrees,
+                ttl           = TTL,
+                fee           = Fee,
+                nonce         = Nonce
+              };
+        _ ->
+            error(illegal_db_format)
+    end.
 
 %%%===================================================================
 %%% Behaviour API
@@ -174,8 +229,8 @@ serialize(#channel_force_progress_tx{channel_id     = ChannelId,
     SerializedUpdate = aesc_offchain_update:serialize(Update),
     SerializedTrees = aec_trees:serialize_to_binary(OffChainTrees),
     case version(Tx) of
-        ?INITIAL_VSN ->
-            {?INITIAL_VSN,
+        ?LATEST_VSN ->
+            {?LATEST_VSN,
             [ {channel_id    , ChannelId}
             , {from_id       , FromId}
             , {payload       , Payload}
@@ -190,7 +245,7 @@ serialize(#channel_force_progress_tx{channel_id     = ChannelId,
     end.
 
 -spec deserialize(vsn(), list()) -> tx().
-deserialize(?INITIAL_VSN,
+deserialize(Vsn,
             [ {channel_id     , ChannelId}
             , {from_id        , FromId}
             , {payload        , Payload}
@@ -200,7 +255,8 @@ deserialize(?INITIAL_VSN,
             , {offchain_trees , OffChainTrees}
             , {ttl            , TTL}
             , {fee            , Fee}
-            , {nonce          , Nonce}]) ->
+            , {nonce          , Nonce}]) when Vsn =:= ?INITIAL_VSN;
+                                              Vsn =:= ?LATEST_VSN ->
     channel = aeser_id:specialize_type(ChannelId),
     account = aeser_id:specialize_type(FromId),
     Update = aesc_offchain_update:deserialize(UpdateBin),
@@ -214,7 +270,21 @@ deserialize(?INITIAL_VSN,
                                   aec_trees:deserialize_from_binary_without_backend(OffChainTrees),
                                ttl            = TTL,
                                fee            = Fee,
-                               nonce          = Nonce}.
+                               nonce          = Nonce};
+deserialize(?PINNED_BLOCK_VSN,
+            [ {channel_id     , _ChannelId}
+            , {from_id        , _FromId}
+            , {payload        , _Payload}
+            , {round          , _Round}
+            , {update         , _UpdateBin}
+            , {state_hash     , _StateHash}
+            , {offchain_trees , _OffChainTrees}
+            , {ttl            , _TTL}
+            , {fee            , _Fee}
+            , {nonce          , _Nonce}
+            , {block_hash     , _RemovedField}] = Fields) ->
+    deserialize(?LATEST_VSN,
+                lists:reverse(tl(lists:reverse(Fields)))).% drop block_hash
 
 -spec for_client(tx()) -> map().
 for_client(#channel_force_progress_tx{payload       = Payload,
@@ -237,7 +307,8 @@ for_client(#channel_force_progress_tx{payload       = Payload,
       <<"fee">>           => Fee,
       <<"nonce">>         => Nonce}.
 
-serialization_template(?INITIAL_VSN) ->
+serialization_template(Vsn) when Vsn =:= ?INITIAL_VSN;
+                                 Vsn =:= ?LATEST_VSN ->
     [ {channel_id     , id}
     , {from_id        , id}
     , {payload        , binary}
@@ -248,6 +319,19 @@ serialization_template(?INITIAL_VSN) ->
     , {ttl            , int}
     , {fee            , int}
     , {nonce          , int}
+    ];
+serialization_template(?PINNED_BLOCK_VSN) ->
+    [ {channel_id     , id}
+    , {from_id        , id}
+    , {payload        , binary}
+    , {round          , int}
+    , {update         , binary}
+    , {state_hash     , binary}
+    , {offchain_trees , binary}
+    , {ttl            , int}
+    , {fee            , int}
+    , {nonce          , int}
+    , {block_hash     , binary}
     ].
 
 %%%===================================================================
@@ -275,13 +359,13 @@ state_hash(#channel_force_progress_tx{state_hash = StateHash}) ->
 
 -spec version(tx()) -> non_neg_integer().
 version(_) ->
-    ?INITIAL_VSN.
+    ?LATEST_VSN.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(Protocol, #channel_force_progress_tx{payload = Payload} = Tx) ->
     CorrectTxVsn =
         case version(Tx) of
-            ?INITIAL_VSN -> true
+            ?LATEST_VSN -> true
         end,
     CorrectPayloadVsn = aesc_utils:is_payload_valid_at_protocol(Protocol,
                                                                 Payload),
