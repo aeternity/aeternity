@@ -44,8 +44,6 @@
 %%%===================================================================
 
 -define(INITIAL_VSN, 1).
--define(PINNED_BLOCK_VSN, 2).
--define(LATEST_VSN, 3).
 
 -define(CHANNEL_OFFCHAIN_TX_TYPE, channel_offchain_tx).
 -define(CHANNEL_OFFCHAIN_TX_FEE, 0).   % off-chain
@@ -136,8 +134,8 @@ serialize(#channel_offchain_tx{
              round              = Round} = Tx) ->
     Updates = [aesc_offchain_update:serialize(U) || U <- Updates0],
     case version(Tx) of
-        ?LATEST_VSN ->
-            {?LATEST_VSN,
+        ?INITIAL_VSN ->
+            {?INITIAL_VSN,
             [ {channel_id        , ChannelId}
             , {round             , Round}
             , {updates           , Updates}
@@ -146,27 +144,18 @@ serialize(#channel_offchain_tx{
     end.
 
 -spec deserialize(vsn(), list()) -> tx().
-deserialize(Vsn,
+deserialize(?INITIAL_VSN,
             [ {channel_id        , ChannelId}
             , {round             , Round}
             , {updates           , Updates0}
-            , {state_hash        , StateHash}]) when Vsn =:= ?INITIAL_VSN;
-                                                     Vsn =:= ?LATEST_VSN->
+            , {state_hash        , StateHash}]) ->
     channel = aeser_id:specialize_type(ChannelId),
     Updates = [aesc_offchain_update:deserialize(U) || U <- Updates0],
     #channel_offchain_tx{
        channel_id         = ChannelId,
        updates            = Updates,
        state_hash         = StateHash,
-       round              = Round};
-deserialize(?PINNED_BLOCK_VSN,
-            [ {channel_id        , _ChannelId}
-            , {round             , _Round}
-            , {updates           , _Updates0}
-            , {state_hash        , _StateHash}
-            , {block_hash        , _Depricated}] = Fields) ->
-    deserialize(?LATEST_VSN,
-                lists:reverse(tl(lists:reverse(Fields)))).% drop block_hash
+       round              = Round}.
 
 %% off-chain transactions are included on-chain as a serialized payload
 %% in a force progress transactions thus the callback
@@ -184,19 +173,11 @@ for_client(#channel_offchain_tx{
       <<"updates">>            => [aesc_offchain_update:for_client(D) || D <- Updates],
       <<"state_hash">>         => aeser_api_encoder:encode(state, StateHash)}.
 
-serialization_template(Vsn) when Vsn =:= ?INITIAL_VSN;
-                                 Vsn =:= ?LATEST_VSN->
+serialization_template(?INITIAL_VSN) ->
     [ {channel_id        , id}
     , {round             , int}
     , {updates           , [binary]}
     , {state_hash        , binary}
-    ];
-serialization_template(?PINNED_BLOCK_VSN) ->
-    [ {channel_id        , id}
-    , {round             , int}
-    , {updates           , [binary]}
-    , {state_hash        , binary}
-    , {block_hash        , binary}
     ].
 
 %%%===================================================================
@@ -236,12 +217,12 @@ set_value(#channel_offchain_tx{} = Tx, state_hash, Hash) when
     Tx#channel_offchain_tx{state_hash=Hash}.
 
 version(_) ->
-    ?LATEST_VSN.
+    ?INITIAL_VSN.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
-valid_at_protocol(Protocol, Tx) ->
+valid_at_protocol(_Protocol, Tx) ->
     case version(Tx) of
-        ?LATEST_VSN -> true
+        ?INITIAL_VSN -> true
     end.
 
 %%%===================================================================
