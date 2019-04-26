@@ -2004,11 +2004,13 @@ send_funding_created_msg(SignedTx, #data{channel_id = Ch,
                                          session    = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ temporary_channel_id => Ch
-           ,  data                => TxBin},
+           , block_hash           => ?DUMMY_BLOCK_HASH
+           , data                 => TxBin},
     aesc_session_noise:funding_created(Sn, Msg),
     log(snd, ?FND_CREATED, Msg, Data).
 
 check_funding_created_msg(#{ temporary_channel_id := ChanId
+                           , block_hash           := ?DUMMY_BLOCK_HASH
                            , data                 := TxBin } = Msg,
                           #data{ state = State, opts = Opts, 
                                  channel_id = ChanId } = Data) ->
@@ -2025,16 +2027,17 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
             Err
     end.
 
-
 send_funding_signed_msg(SignedTx, #data{channel_id = Ch,
                                         session    = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ temporary_channel_id  => Ch
+           , block_hash            => ?DUMMY_BLOCK_HASH
            , data                  => TxBin},
     aesc_session_noise:funding_signed(Sn, Msg),
     log(snd, ?FND_CREATED, Msg, Data).
 
 check_funding_signed_msg(#{ temporary_channel_id := ChanId
+                          , block_hash           := ?DUMMY_BLOCK_HASH
                           , data                 := TxBin} = Msg,
                           #data{ channel_id = ChanId } = Data) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
@@ -2073,11 +2076,13 @@ send_deposit_created_msg(SignedTx, #data{on_chain_id = Ch,
                                          session     = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ channel_id => Ch
+           , block_hash => ?DUMMY_BLOCK_HASH
            , data       => TxBin},
     aesc_session_noise:deposit_created(Sn, Msg),
     log(snd, ?DEP_CREATED, Msg, Data).
 
 check_deposit_created_msg(#{ channel_id := ChanId
+                           , block_hash := ?DUMMY_BLOCK_HASH
                            , data       := TxBin} = Msg,
                           #data{on_chain_id = ChanId} = Data) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),

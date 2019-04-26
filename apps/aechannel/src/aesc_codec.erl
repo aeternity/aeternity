@@ -233,43 +233,53 @@ dec_ch_reest_ack(<< ChainHash:32/binary
 
 
 -type fnd_created_msg() :: #{ temporary_channel_id := chan_id()
+                            , block_hash           := binary()
                             , data                 := binary()}.
 
 -spec enc_fnd_created(fnd_created_msg()) -> binary().
 enc_fnd_created(#{ temporary_channel_id := ChanId
+                 , block_hash           := BlockHash
                  , data                 := Data }) ->
     Length = byte_size(Data),
     << ?ID_FND_CREATED:1 /unit:8
      , ChanId         :32/binary
+     , BlockHash      :32/binary
      , Length         :2 /unit:8
      , Data           :Length/bytes >>.
 
 -spec dec_fnd_created(binary()) -> fnd_created_msg().
 dec_fnd_created(<< ChanId:32/binary
+                 , BlockHash:32/binary
                  , Length:2/unit:8
                  , Data/binary >>) ->
     Length = byte_size(Data),
     #{ temporary_channel_id => ChanId
+     , block_hash           => BlockHash
      , data                 => Data}.
 
 -type fnd_signed_msg() :: #{ temporary_channel_id := chan_id()
+                           , block_hash           := binary()
                            , data                 := binary()}.
 
 -spec enc_fnd_signed(fnd_signed_msg()) -> binary().
 enc_fnd_signed(#{temporary_channel_id := ChanId,
+                 block_hash           := BlockHash,
                  data                 := Data}) ->
     Length = byte_size(Data),
     << ?ID_FND_SIGNED:1 /unit:8
      , ChanId        :32/binary
+     , BlockHash      :32/binary
      , Length        :2 /unit:8
      , Data          :Length/bytes >>.
 
 -spec dec_fnd_signed(binary()) -> fnd_signed_msg().
 dec_fnd_signed(<< ChanId:32/binary
+                , BlockHash:32/binary
                 , Length:2/unit:8
                 , Data/binary >>) ->
     Length = byte_size(Data),
     #{ temporary_channel_id => ChanId
+     , block_hash           => BlockHash
      , data                 => Data}.
 
 -type fnd_locked_msg() :: #{ temporary_channel_id := chan_id()
@@ -353,23 +363,28 @@ dec_update_err(<< ChanId :32/binary
      , error_code => ErrCode }.
 
 -type deposit_msg() :: #{ channel_id := chan_id()
+                        , block_hash := binary()
                         , data       := binary()}.
 
 -spec enc_dep_created(deposit_msg()) -> binary().
 enc_dep_created(#{ channel_id := ChanId
+                 , block_hash := BlockHash
                  , data       := Data }) ->
     Length = byte_size(Data),
     << ?ID_DEP_CREATED:1 /unit:8
      , ChanId         :32/binary
+     , BlockHash      :32/binary
      , Length         :2 /unit:8
      , Data/bytes >>.
 
 -spec dec_dep_created(binary()) -> deposit_msg().
 dec_dep_created(<< ChanId:32/binary
+                 , BlockHash:32/binary
                  , Length:2 /unit:8
                  , Data/bytes >>) ->
     Length = byte_size(Data),
     #{ channel_id => ChanId
+     , block_hash => BlockHash
      , data       => Data }.
 
 -spec enc_dep_signed(deposit_msg()) -> binary().
