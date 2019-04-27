@@ -15,6 +15,8 @@
 -type workers() :: orddict:orddict(pid(), worker_info()).
 -type mining_state() :: 'running' | 'stopped'.
 
+-type mining_opts() :: #{ strictly_follow_top => boolean() }.
+
 -type candidate_hash() :: aec_blocks:block_header_hash().
 -record(candidate, {block     :: aec_blocks:block(),
                     nonce     :: aeminer_pow:nonce() | 'undefined',
@@ -39,6 +41,7 @@
                 blocked_tags            = []      :: ordsets:ordset(atom()),
                 keys_ready              = false   :: boolean(),
                 mining_state            = stopped :: mining_state(),
+                mining_opts             = #{}     :: mining_opts(),
                 top_block_hash                    :: binary() | 'undefined',
                 top_key_block_hash                :: binary() | 'undefined',
                 workers                 = []      :: workers(),
