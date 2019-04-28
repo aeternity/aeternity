@@ -212,35 +212,62 @@ get_info_object_from_tx(TxKey, TypeKey, CallKey) ->
                     {error, {404, [], #{<<"reason">> => <<"Tx not mined">>}}};
                 #{tx_block_hash := BlockHash, tx := STx} ->
                     Tx = aetx_sign:tx(STx),
-                    case aetx:specialize_type(Tx) of
-                        {TxType, _} when TxType =:= contract_create_tx;
-                                         TxType =:= contract_call_tx ->
-                            {CB, CTx} = aetx:specialize_callback(Tx),
-                            Contract  = CB:contract_pubkey(CTx),
-                            CallId    = CB:call_id(CTx),
-                            case aec_chain:get_contract_call(Contract, CallId, BlockHash) of
-                                {error, Why} ->
-                                    Msg = atom_to_binary(Why, utf8),
-                                    {error, {400, [], #{<<"reason">> => Msg}}};
-                                {ok, CallObject} ->
-                                    {ok, maps:put(TypeKey, TxType, maps:put(CallKey, CallObject, State))}
-                            end;
-                        {ga_meta_tx, _} ->
-                            {CB, CTx}        = aetx:specialize_callback(Tx),
-                            Owner            = CB:origin(CTx),
-                            AuthId           = CB:auth_id(CTx),
-                            case aec_chain:get_ga_call(Owner, AuthId, BlockHash) of
-                                {error, Why} ->
-                                    Msg = atom_to_binary(Why, utf8),
-                                    {error, {400, [], #{<<"reason">> => Msg}}};
-                                {ok, CallObject} ->
-                                    {ok, maps:put(TypeKey, ga_meta_tx, maps:put(CallKey, CallObject, State))}
-                            end;
-                        {_, _} ->
-                            {error, {400, [], #{<<"reason">> => <<"Tx is not a create or call">>}}}
+                    {TxType, _} = aetx:specialize_type(Tx),
+                    case get_info_object_signed_tx(BlockHash, STx) of
+                        {ok, InfoObject} ->
+                            {ok, maps:put(TypeKey, TxType, maps:put(CallKey, InfoObject, State))};
+                        {error, transaction_without_info} ->
+                            %% Potentialluy one could return
+                            %% {ok, maps:put(TypeKey, TxType, maps:put(CallKey, atom_to_binary(TxType, utf8), State))};
+                            %% That is not backward compatible, but consistent with inner Txs
+                            {error, {400, [], #{<<"reason">> => <<"Tx has no info">>}}};
+                        {error, Why} ->
+                            Msg = atom_to_binary(Why, utf8),
+                            {error, {400, [], #{<<"reason">> => Msg}}}
                     end
             end
     end.
+
+get_info_object_signed_tx(BlockHash, STx) ->
+    Tx = aetx_sign:tx(STx),
+    case aetx:specialize_type(Tx) of
+        {TxType, _} when TxType =:= contract_create_tx;
+                         TxType =:= contract_call_tx ->
+            {CB, CTx} = aetx:specialize_callback(Tx),
+            Contract  = CB:contract_pubkey(CTx),
+            CallId    = CB:call_id(CTx),
+            aec_chain:get_contract_call(Contract, CallId, BlockHash);
+        {ga_meta_tx, _} ->
+            {CB, CTx} = aetx:specialize_callback(Tx),
+            get_ga_meta_tx_info(BlockHash, CB, CTx);
+        {_TxType, _} ->
+            {error, transaction_without_info}
+    end.
+
+
+get_ga_meta_tx_info(BlockHash, CB, CTx) ->
+    Owner     = CB:origin(CTx),
+    AuthId    = CB:auth_id(CTx),
+    case aec_chain:get_ga_call(Owner, AuthId, BlockHash) of
+        {ok, GAObject} ->
+            SInnerTx = CB:tx(CTx),
+            {InnerTxType, _} = aetx:specialize_type(aetx_sign:tx(SInnerTx)),
+            case aega_call:return_type(GAObject) of
+                ok ->
+                    case get_info_object_signed_tx(BlockHash, SInnerTx) of
+                        {error, _} ->
+                            %% Type is all we know from inner transaction
+                            {ok, aega_call:set_inner(InnerTxType, GAObject)};
+                        {ok, InnerObject} ->
+                            {ok, aega_call:set_inner({InnerTxType, InnerObject}, GAObject)}
+                    end;
+                _ ->
+                    {ok, aega_call:set_inner(InnerTxType, GAObject)}
+            end;
+        Error ->
+            Error
+    end.
+
 
 verify_oracle_existence(OracleKey) ->
     fun(_Req, State) ->

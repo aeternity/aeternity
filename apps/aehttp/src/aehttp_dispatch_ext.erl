@@ -417,9 +417,13 @@ handle_request_('GetTransactionInfoByHash', Params, _Config) ->
                  get_info_object_from_tx(tx, tx_type, info),
                  ok_response(
                     fun(#{info := Info, tx_type := ga_meta_tx}) ->
-                            #{<<"ga_info">> => aect_call:serialize_for_client(Info)};
+                            #{<<"ga_info">> => aega_call:serialize_for_client(Info)};
+                       (#{info := Info, tx_type := TxType}) when TxType =:= contract_create_tx;
+                                                                 TxType =:= contract_call_tx ->
+                            #{<<"call_info">> => aect_call:serialize_for_client(Info)};
                        (#{info := Info, tx_type := _}) ->
-                            #{<<"call_info">> => aect_call:serialize_for_client(Info)}
+                            %% info is assumed to be a binary
+                            #{<<"tx_info">> => Info}
                     end)
                 ],
     process_request(ParseFuns, Params);

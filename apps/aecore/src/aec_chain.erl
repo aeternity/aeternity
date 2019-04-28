@@ -262,7 +262,7 @@ get_contract_call(ContractId, CallId, BlockHash) ->
 %%%===================================================================
 
 -spec get_ga_call(binary(), aect_call:id(), binary()) ->
-                               {'ok', aect_call:call()} |
+                               {'ok', aega_call:call()} |
                                {'error', atom()}.
 get_ga_call(Owner, AuthId, BlockHash) ->
     {value, Account} = get_account(Owner),
@@ -274,7 +274,15 @@ get_ga_call(Owner, AuthId, BlockHash) ->
             CallTree = aec_trees:calls(Trees),
             case aect_call_state_tree:lookup_call(Owner, CallId, CallTree) of
                 none -> {error, call_not_found};
-                {value, Call} -> {ok, Call}
+                {value, Call} ->
+                    GAId        = aect_call:caller_id(Call),
+                    Id          = CallId,
+                    GasPrice    = aect_call:gas_price(Call),
+                    GasUsed     = aect_call:gas_used(Call),
+                    Height      = aect_call:height(Call),
+                    ReturnType  = aect_call:return_type(Call),
+                    ReturnValue = aect_call:return_value(Call),
+                    {ok, aega_call:new(GAId, Id, Height, GasPrice, GasUsed, ReturnType, ReturnValue)}
             end
     end.
 

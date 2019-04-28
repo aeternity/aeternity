@@ -3807,6 +3807,9 @@
         },
         "ga_info" : {
           "$ref" : "#/definitions/GAObject"
+        },
+        "tx_info" : {
+          "type" : "string"
         }
       },
       "example" : {
@@ -3816,6 +3819,7 @@
           "gas_used" : 9,
           "height" : 2
         },
+        "tx_info" : "tx_info",
         "call_info" : {
           "gas_price" : 1,
           "return_type" : "return_type",
@@ -3906,7 +3910,10 @@
         },
         "return_type" : {
           "type" : "string",
-          "description" : "The status of the call 'ok | error | revert'."
+          "description" : "The status of the call 'ok | error'."
+        },
+        "inner_object" : {
+          "$ref" : "#/definitions/TxInfoObject"
         }
       },
       "example" : {

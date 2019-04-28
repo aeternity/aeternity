@@ -37,6 +37,8 @@
         , set_log/2
         ]).
 
+-export([assert_fields/1]).  %% for aega_call asserting an inner tx
+
 -define(CONTRACT_INTERACTION_TYPE, contract_call).
 -define(CONTRACT_INTERACTION_VSN, 2).
 
@@ -188,6 +190,7 @@ deserialize_return_type(0) -> ok;
 deserialize_return_type(1) -> error;
 deserialize_return_type(2) -> revert.
 
+-spec serialize_for_client(call()) -> map().
 serialize_for_client(#call{caller_id    = CallerId,
                            caller_nonce = CallerNonce,
                            height       = Height,

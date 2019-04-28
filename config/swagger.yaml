@@ -3019,6 +3019,8 @@ definitions:
           $ref: '#/definitions/ContractCallObject'
         ga_info:
           $ref: '#/definitions/GAObject'
+        tx_info:
+          type: string
   ContractCallObject:
     type: object
     properties:
@@ -3067,8 +3069,10 @@ definitions:
       return_value:
         $ref: '#/definitions/EncodedByteArray'
       return_type:
-        description: The status of the call 'ok | error | revert'.
+        description: The status of the call 'ok | error'.
         type: string
+      inner_object:
+         $ref: '#/definitions/TxInfoObject'
     required:
       - caller_id
       - height

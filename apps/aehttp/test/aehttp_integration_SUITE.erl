@@ -2305,7 +2305,7 @@ contract_transactions(_Config) ->    % miner has an account
                                                       ?SPEND_FEE),
     SpendTxHash = sign_and_post_tx(SpendTx),
     ok = wait_for_tx_hash_on_chain(SpendTxHash),
-    {ok, 400, #{<<"reason">> := <<"Tx is not a create or call">>}} =
+    {ok, 400, #{<<"reason">> := <<"Tx has no info">>}} =
         get_contract_call_object(SpendTxHash),
 
     ok.

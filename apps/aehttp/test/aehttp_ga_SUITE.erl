@@ -33,6 +33,8 @@
         , meta_meta_fail_auth/1
         , meta_meta_fail/1
         , meta_meta_spend/1
+        , attach_second/1
+        , meta_4_fail/1
         ]).
 
 -define(NODE, dev1).
@@ -59,6 +61,7 @@ groups() ->
       , meta_meta_fail_auth
       , meta_meta_fail
       , meta_meta_spend
+      , meta_4_fail
       ]},
 
      {ga_info, [sequence],
@@ -139,24 +142,32 @@ end_per_testcase(_Case, Config) ->
 attach(Config) ->
     %% Get account information.
     #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
-    Addr = aeser_api_encoder:encode(account_pubkey, APub),
-    {ok, 200, AccountA0} = account_by_pubkey(Addr),
-    ABal0 = maps:get(<<"balance">>, AccountA0),
-    ?assertEqual(<<"basic">>, maps:get(<<"kind">>, AccountA0)),
+    attach_account(APub, APriv, Config).
 
-    #{tx_hash := AttachTx} = post_attach_tx(APub, APriv),
+attach_second(Config) ->
+    %% Get account information.
+    #{acc_b := #{pub_key := BPub, priv_key := BPriv}} = proplists:get_value(accounts, Config),
+    attach_account(BPub, BPriv, Config).
+
+attach_account(Pub, Priv, _Config) ->
+    Addr = aeser_api_encoder:encode(account_pubkey, Pub),
+    {ok, 200, Account0} = account_by_pubkey(Addr),
+    Bal0 = maps:get(<<"balance">>, Account0),
+    ?assertEqual(<<"basic">>, maps:get(<<"kind">>, Account0)),
+
+    #{tx_hash := AttachTx} = post_attach_tx(Pub, Priv),
 
     ?MINE_TXS([AttachTx]),
 
-    {ok, 200, AccountA1} = account_by_pubkey(Addr),
-    ABal1 = maps:get(<<"balance">>, AccountA1),
+    {ok, 200, Account1} = account_by_pubkey(Addr),
+    Bal1 = maps:get(<<"balance">>, Account1),
 
     %% test that we can return GAAttachTx via http interface
     {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAAttachTx">>}}} = get_tx(AttachTx),
 
-    ct:pal("Cost: ~p", [ABal0 - ABal1]),
+    ct:pal("Cost: ~p", [Bal0 - Bal1]),
     MGP = aec_test_utils:min_gas_price(),
-    ?assertEqual(ABal1, ABal0 - 1000000 * MGP - 411 * MGP),
+    ?assertEqual(Bal1, Bal0 - 1000000 * MGP - 411 * MGP),
     ok.
 
 attach_fail(Config) ->
@@ -325,6 +336,35 @@ meta_meta_spend(Config) ->
     ?assertEqual(ABal1, ABal0 - (2*(MetaFee + 4711 * 1000 * MGP) + 20000 * MGP + 10000)),
     ok.
 
+meta_4_fail(Config) ->
+    %% Get account information.
+    #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
+    ABal0 = get_balance(APub),
+    MGP = aec_test_utils:min_gas_price(),
+    MetaFee = 4590000 * MGP,
+
+    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["8", "9", "10", "12"], APub, 10000, 20000, MetaFee),
+
+    ?MINE_TXS([MetaTx]),
+
+    ABal1 = get_balance(APub),
+
+    %% test that we can return GAMetaTx via http interface
+    {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>}} = JSONTx} = get_tx(MetaTx),
+    ct:log("Transaction: ~p", [JSONTx]),
+
+    {ok, 200, #{<<"ga_info">> := GAInfo}} =
+        get_contract_call_object(MetaTx),
+
+    ct:log("Transaction info: ~p", [GAInfo]),
+    #{<<"return_type">> := <<"ok">>} = GAInfo,
+%% Here we should get info on inner Tx failure
+
+    ct:pal("Cost1: ~p", [ABal0 - ABal1]),
+    ?assertEqual(ABal1, ABal0 - 3*(MetaFee + 4711 * 1000 * MGP)),
+    ok.
+
+
 
 
 get_account_by_pubkey(Config) ->
@@ -396,13 +436,11 @@ spend_tx (AccPK, _AccSK, Nonce, Recipient, Amount, Fee) ->
                   , fee => Fee
                   , nonce => Nonce },
     SpendTx    = aega_test_utils:spend_tx(SpendTxMap),
-    ct:log("Inner spend Tx: ~p", [SpendTx]),
     SpendTx.
 
 post_ga_spend_tx(AccPK, AccSK, Nonces, Recipient, Amount, Fee, MetaFee) ->
     InnerTx = spend_tx(AccPK, AccSK, 0, Recipient, Amount, Fee),
     SMetaTx = ga_spend_tx(lists:reverse(Nonces), AccPK, AccSK, InnerTx, MetaFee),
-    ct:log("Signed Tx: ~p", [SMetaTx]),
     post_aetx(SMetaTx).
 
 ga_spend_tx([], _AccPK, _AccSK, InnerTx, _MetaFee) ->
@@ -413,7 +451,6 @@ ga_spend_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee) ->
                     [Nonce, aega_test_utils:to_hex_lit(64, Signature)]),
     MetaTx    = aega_test_utils:ga_meta_tx(AccPK,
                     #{ auth_data => AuthData, tx => aetx_sign:new(InnerTx, []), fee => MetaFee }),
-    ct:log("(Inner) Tx: ~p", [MetaTx]),
     ga_spend_tx(Nonces, AccPK, AccSK, MetaTx, MetaFee).
 
 basic_auth(Nonce, Tx, Privkey) ->
