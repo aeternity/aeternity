@@ -44,6 +44,7 @@
 %%%===================================================================
 
 -define(INITIAL_VSN, 1).
+-define(NO_UPDATES, 2).
 
 -define(CHANNEL_OFFCHAIN_TX_TYPE, channel_offchain_tx).
 -define(CHANNEL_OFFCHAIN_TX_FEE, 0).   % off-chain
