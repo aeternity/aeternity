@@ -1,0 +1,6 @@
+* Changes the HTTP API for /transactions/info
+  This HTTP endpoint used to just return a contract call object, but now returns <<"call_info">> => ContractCallObject instead, i.e. an extra tagis added
+  Additional tag provided is <<"ga_info">> which is what this endpoint returns when the providsed transaction hash points to a generalized accounts transaction.
+* Changes the HTTP API for /transactions by giving the kind of account of the owner of the transaction
+  Either a basic account (as before) or a generalized account
+  Signatures are only provided for inner transactions with basic accounts.
