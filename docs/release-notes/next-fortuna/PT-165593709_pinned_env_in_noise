@@ -1,0 +1,2 @@
+* Introduces a pinned environment in State Channels noise protocol. This is
+  not backwards compatible

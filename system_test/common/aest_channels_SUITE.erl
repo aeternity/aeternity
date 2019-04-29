@@ -13,10 +13,6 @@
 -export([
     test_simple_same_node_channel/1,
     test_simple_different_nodes_channel/1,
-    test_compat_with_initiator_node_using_minerva_initial_channel_version/1,
-    test_compat_with_responder_node_using_minerva_initial_channel_version/1,
-    test_compat_with_initiator_node_using_latest_stable_version/1,
-    test_compat_with_responder_node_using_latest_stable_version/1,
     on_chain_channel/1
 ]).
 
@@ -92,10 +88,6 @@
 all() -> [
     test_simple_same_node_channel,
     test_simple_different_nodes_channel,
-    test_compat_with_initiator_node_using_minerva_initial_channel_version,
-    test_compat_with_responder_node_using_minerva_initial_channel_version,
-    test_compat_with_initiator_node_using_latest_stable_version,
-    test_compat_with_responder_node_using_latest_stable_version,
     on_chain_channel
 ].
 
@@ -132,22 +124,6 @@ test_simple_same_node_channel(Cfg) ->
 
 test_simple_different_nodes_channel(Cfg) ->
     test_different_nodes_channel_(#{}, #{}, Cfg).
-
-test_compat_with_initiator_node_using_minerva_initial_channel_version(Cfg) ->
-    test_different_nodes_channel_(set_genesis_accounts(node_base_spec_with_minerva_initial_channel_version()),
-                                  set_genesis_accounts(#{}), Cfg).
-
-test_compat_with_responder_node_using_minerva_initial_channel_version(Cfg) ->
-    test_different_nodes_channel_(set_genesis_accounts(#{}),
-                                  set_genesis_accounts(node_base_spec_with_minerva_initial_channel_version()), Cfg).
-
-test_compat_with_initiator_node_using_latest_stable_version(Cfg) ->
-    test_different_nodes_channel_(set_genesis_accounts(node_base_spec_with_latest_stable_version()),
-                                  set_genesis_accounts(#{}), Cfg).
-
-test_compat_with_responder_node_using_latest_stable_version(Cfg) ->
-    test_different_nodes_channel_(set_genesis_accounts(#{}),
-                                  set_genesis_accounts(node_base_spec_with_latest_stable_version()), Cfg).
 
 test_different_nodes_channel_(InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg) ->
     ChannelOpts = #{
@@ -253,9 +229,6 @@ on_chain_channel(Cfg) ->
 
     wait_for_value({balance, maps:get(pubkey, ?BOB), 100}, NodeNames, 5000, []),
     wait_for_value({balance, maps:get(pubkey, ?ALICE), 100}, NodeNames, 5000, []).
-
-node_base_spec_with_minerva_initial_channel_version() ->
-    #{source => {pull, "aeternity/aeternity:v2.0.0"}}.
 
 node_base_spec_with_latest_stable_version() ->
     #{source => {pull, "aeternity/aeternity:latest"}}.
