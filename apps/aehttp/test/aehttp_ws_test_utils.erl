@@ -331,7 +331,7 @@ inform(Origin, Action, #state{} = State) ->
     inform(Origin, Action, undefined, [], State).
 
 inform(Origin, Action, Tag, Payload, #state{regs = Register}) ->
-    ct:log("inform(~p, ~p, ~p, ~p)", [Origin, Action, Tag]),
+    ct:log("inform(~p, ~p, ~p, ~p)", [Origin, Action, Tag, Payload]),
     RegisteredPids = get_registered_pids({Origin, Action}, Register),
     lists:foreach(
       fun(Pid) -> inform_registered(Pid, Origin, Action, Tag, Payload) end,

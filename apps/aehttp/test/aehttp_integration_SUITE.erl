@@ -5292,7 +5292,7 @@ sc_ws_timeout_open(Config) ->
     RAmt = 4,
 
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt,
-                                  #{timeout_accept => 100}, Config),
+                                  #{timeout_accept => 500}, Config),
     {ok, IConnPid} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts), Config),
     ok = ?WS:register_test_for_channel_event(IConnPid, info),
     ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
