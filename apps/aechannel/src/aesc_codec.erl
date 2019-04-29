@@ -408,7 +408,9 @@ dec_dep_signed(<< ChanId:32/binary
      , block_hash => BlockHash
      , data       => Data }.
 
--spec enc_dep_locked(deposit_msg()) -> binary().
+-type dep_locked_msg() :: #{ channel_id := chan_id()
+                           , data       := binary()}.
+-spec enc_dep_locked(dep_locked_msg()) -> binary().
 enc_dep_locked(#{ channel_id := ChanId
                 , data       := Data }) ->
     Length = byte_size(Data),
@@ -417,7 +419,7 @@ enc_dep_locked(#{ channel_id := ChanId
      , Length        :2 /unit:8
      , Data/bytes >>.
 
--spec dec_dep_locked(binary()) -> deposit_msg().
+-spec dec_dep_locked(binary()) -> dep_locked_msg().
 dec_dep_locked(<< ChanId:32/binary
                 , Length:2 /unit:8
                 , Data/bytes >>) ->
@@ -492,7 +494,9 @@ dec_wdraw_signed(<< ChanId:32/binary
      , block_hash => BlockHash
      , data       => Data }.
 
--spec enc_wdraw_locked(withdrawal_msg()) -> binary().
+-type wdraw_locked_msg() :: #{ channel_id := chan_id()
+                             , data       := binary()}.
+-spec enc_wdraw_locked(wdraw_locked_msg()) -> binary().
 enc_wdraw_locked(#{ channel_id := ChanId
                   , data       := Data }) ->
     Length = byte_size(Data),
@@ -501,7 +505,7 @@ enc_wdraw_locked(#{ channel_id := ChanId
      , Length          :2 /unit:8
      , Data/bytes >>.
 
--spec dec_wdraw_locked(binary()) -> withdrawal_msg().
+-spec dec_wdraw_locked(binary()) -> wdraw_locked_msg().
 dec_wdraw_locked(<< ChanId:32/binary
                   , Length:2 /unit:8
                   , Data/bytes >>) ->
