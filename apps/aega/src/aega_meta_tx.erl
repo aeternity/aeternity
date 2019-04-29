@@ -34,6 +34,7 @@
          auth_data/1,
          auth_id/1,
          auth_id/2,
+         call_id/2,
          ga_id/1,
          ga_pubkey/1,
          gas_limit/2,
@@ -211,12 +212,17 @@ set_meta_result(Err = {error, _}, Tx, Trees, Env) ->
     {ok, Trees1, _Env} = aeprimop:eval(SetInstructions, Trees, Env),
     Trees1.
 
--spec inner_tx_was_succesful(tx(), aec_trees:trees()) -> boolean().
-inner_tx_was_succesful(Tx, Trees) ->
+-spec call_id(tx(), aec_trees:trees()) -> aect_call:id().
+call_id(Tx, Trees) ->
     Pubkey   = ga_pubkey(Tx),
     Account  = aec_accounts_trees:get(Pubkey, aec_trees:accounts(Trees)),
     Contract = aec_accounts:ga_contract(Account),
-    CallId   = aect_call:ga_id(auth_id(Tx), aeser_id:specialize(Contract, contract)),
+    aect_call:ga_id(auth_id(Tx), aeser_id:specialize(Contract, contract)).
+
+-spec inner_tx_was_succesful(tx(), aec_trees:trees()) -> boolean().
+inner_tx_was_succesful(Tx, Trees) ->
+    Pubkey   = ga_pubkey(Tx),
+    CallId   = call_id(Tx, Trees),
     Call     = aect_call_state_tree:get_call(Pubkey, CallId, aec_trees:calls(Trees)),
     case aect_call:return_type(Call) of
         ok    -> true;
