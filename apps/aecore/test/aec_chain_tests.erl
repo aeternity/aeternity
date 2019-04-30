@@ -11,6 +11,7 @@
 
 -include_lib("aeminer/include/aeminer.hrl").
 -include("../../aecontract/include/aecontract.hrl").
+-include("../../aecontract/test/aect_sophia_vsn.hrl").
 -include_lib("aecore/include/blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
@@ -1287,7 +1288,10 @@ token_supply_test_() ->
      , {"Test sum of oracles", fun token_supply_oracles/0}
      , {"Test sum of channels", fun token_supply_channels/0}
      , {"Test sum of contracts", fun token_supply_contracts/0}
-     ]
+     ] ++
+         [{"Test sum of generalized accounts", fun token_supply_ga/0}
+          || aect_test_utils:latest_protocol_version() >= ?FORTUNA_PROTOCOL_VSN
+         ]
     }.
 
 token_supply_coinbase() ->
@@ -1502,7 +1506,7 @@ token_supply_channels() ->
 token_supply_contracts() ->
     TestHeight = 10,
     %% We don't want to care about coinbase this time.
-    Delay = 1000,
+    Delay = 5,
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     PresetAmount = 10000000 * aec_test_utils:min_gas_price(),
     PresetAccounts = [{PubKey, PresetAmount}],
@@ -1514,12 +1518,10 @@ token_supply_contracts() ->
     {ok, Contract} = aect_test_utils:read_contract("contracts/identity.aes"),
     {ok, Code}     = aect_test_utils:compile_contract("contracts/identity.aes"),
     {ok, InitCallData} = aect_sophia:encode_call_data(Contract, <<"init">>, []),
-    CreateContractFun =
-        fun(Nonce) ->
-                make_contract_create_tx(PubKey, Code, InitCallData, Nonce,
-                                        Deposit, Amount, Fee, Gas, GasPrice)
-        end,
-    TxsFun = fun(1) -> [aec_test_utils:sign_tx(CreateContractFun(1), [PrivKey])];
+    CreateTx = make_contract_create_tx(PubKey, Code, InitCallData, 1,
+                                       Deposit, Amount, Fee, Gas, GasPrice),
+    SCreateTx = aec_test_utils:sign_tx(CreateTx, [PrivKey]),
+    TxsFun = fun(1) -> [SCreateTx];
                 (_) -> []
              end,
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
@@ -1534,16 +1536,96 @@ token_supply_contracts() ->
     ?assertEqual(0, maps:get(contracts, Map1)),
 
     %% The contract is created
+    GasFee     = get_used_gas_fee(SCreateTx),
     {ok, Map2} = aec_chain:sum_tokens_at_height(2),
-    KnownContractAmount = Fee - Amount - Deposit,
-    HighestCost = KnownContractAmount + GasPrice * Gas,
-    LowestCost =  KnownContractAmount,
-    ?assert(PresetAmount - HighestCost < maps:get(accounts, Map2)),
-    ?assert(PresetAmount - LowestCost  > maps:get(accounts, Map2)),
+    ?assertEqual(PresetAmount - GasFee - Fee - Amount - Deposit, maps:get(accounts, Map2)),
     ?assertEqual(Amount + Deposit, maps:get(contracts, Map2)),
 
     ok.
 
+token_supply_ga() ->
+    TestHeight = 10,
+    Delay = 5,
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    PresetAmount = 10000000 * aec_test_utils:min_gas_price(),
+    PresetAccounts = [{PubKey, PresetAmount}],
+    Fee     = 100000 * aec_test_utils:min_gas_price(),
+    Gas     = 1000,
+    GasPrice = aec_test_utils:min_gas_price(),
+    {ok, CodeMap} = aega_test_utils:get_contract(?SOPHIA_FORTUNA_AEVM, "simple_auth.aes"),
+    #{ bytecode := ByteCode
+     , map      := #{type_info := TypeInfo}
+     , src      := Src} = CodeMap,
+    {ok, InitCallData} = aect_sophia:encode_call_data(list_to_binary(Src), <<"init">>, [<<"123">>]),
+    {ok, MetaCallData} = aect_sophia:encode_call_data(list_to_binary(Src), <<"authorize">>, [<<"123">>, <<"1">>]),
+    {ok, AuthFunHash}  = aeb_abi:type_hash_from_function_name(<<"authorize">>, TypeInfo),
+    AttachTx = make_ga_attach_tx(PubKey, ByteCode, AuthFunHash, InitCallData, 1,
+                                 Fee, Gas, GasPrice),
+    SAttachTx = aec_test_utils:sign_tx(AttachTx, [PrivKey]),
+    SpendTx = make_spend_tx(PubKey, 0, <<4711:256>>, Fee),
+    InnerTx = aetx_sign:new(SpendTx, []),
+    MetaTx  = make_ga_meta_tx(PubKey, MetaCallData, InnerTx, Fee, Gas, GasPrice),
+    SMetaTx = aetx_sign:new(MetaTx, []),
+    TxsFun = fun(1) -> [SAttachTx];
+                (2) -> [SMetaTx];
+                (_) -> []
+             end,
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    meck:expect(aec_governance, beneficiary_reward_delay, 0, Delay),
+    Targets = lists:duplicate(TestHeight, ?GENESIS_TARGET),
+    Chain = gen_blocks_only_chain_by_target(PresetAccounts, Targets, 111, TxsFun),
+    ok = write_blocks_to_chain(Chain),
+
+    AttachFee    = aetx:fee(AttachTx),
+    MetaFee      = aetx:fee(MetaTx),
+    SpendFee     = aetx:fee(SpendTx),
+    {ok, H3}     = aec_chain:get_key_header_by_height(3),
+    {ok, Trees2} = aec_chain:get_block_state(aec_headers:prev_hash(H3)),
+    DeepFee      = aetx:deep_fee(MetaTx, Trees2),
+
+    %% Check the assumptions on the fees for GA attach and meta
+    ?assertEqual(AttachFee, Fee),
+    ?assertEqual(MetaFee, Fee),
+    ?assertEqual(SpendFee, Fee),
+    ?assertEqual(DeepFee, MetaFee + SpendFee),
+
+    %% Find the used gas and gas price
+    AttachGasFee = get_used_gas_fee(SAttachTx),
+    MetaGasFee = get_used_gas_fee(SMetaTx),
+
+    %% Check that the fees for GA attach and meta are put as pending.
+    {ok, #{pending_rewards := Pending1}} = aec_chain:sum_tokens_at_height(1),
+    {ok, #{pending_rewards := Pending2}} = aec_chain:sum_tokens_at_height(2),
+    {ok, #{pending_rewards := Pending3}} = aec_chain:sum_tokens_at_height(3),
+
+    Coinbase1 = aec_coinbase:coinbase_at_height(1),
+    Coinbase2 = aec_coinbase:coinbase_at_height(2),
+    Coinbase3 = aec_coinbase:coinbase_at_height(3),
+
+    Reward1 = Pending2 - Pending1,
+    Reward2 = Pending3 - Pending2,
+
+    ?assertEqual(Pending1, Coinbase1),
+    ?assertEqual(Reward1, Coinbase2 + AttachFee + AttachGasFee),
+    ?assertEqual(Reward2, Coinbase3 + DeepFee + MetaGasFee),
+
+    %% Check that the fees for GA attach and meta are given to the miner.
+    RewardHeight1 = 1 + Delay,
+    RewardHeight2 = 2 + Delay,
+    RewardHeight3 = 3 + Delay,
+
+    {ok, #{pending_rewards := PendingReward1}} = aec_chain:sum_tokens_at_height(RewardHeight1),
+    {ok, #{pending_rewards := PendingReward2}} = aec_chain:sum_tokens_at_height(RewardHeight2),
+    {ok, #{pending_rewards := PendingReward3}} = aec_chain:sum_tokens_at_height(RewardHeight3),
+
+    ?assertEqual(PendingReward2, (PendingReward1
+                                  + aec_coinbase:coinbase_at_height(RewardHeight2)
+                                  - Reward1)),
+    ?assertEqual(PendingReward3, (PendingReward2
+                                  + aec_coinbase:coinbase_at_height(RewardHeight3)
+                                  - Reward2)),
+
+    ok.
 
 %%%===================================================================
 %%% Internal functions
@@ -1709,9 +1791,55 @@ make_contract_create_tx(Pubkey, Code, CallData, Nonce, Deposit, Amount, Fee,
                                     fee        => Fee}),
     Tx.
 
+make_ga_attach_tx(Pubkey, Code, AuthFun, CallData, Nonce, Fee, Gas, GasPrice) ->
+    OwnerId = aeser_id:create(account, Pubkey),
+    ABI = aect_test_utils:latest_sophia_abi_version(),
+    VM  = aect_test_utils:latest_sophia_vm_version(),
+    {ok, Tx} = aega_attach_tx:new(#{owner_id   => OwnerId,
+                                    nonce      => Nonce,
+                                    code       => Code,
+                                    auth_fun   => AuthFun,
+                                    abi_version => ABI,
+                                    vm_version => VM,
+                                    gas        => Gas,
+                                    gas_price  => GasPrice,
+                                    call_data  => CallData,
+                                    fee        => Fee}),
+    Tx.
+
+make_ga_meta_tx(Pubkey, AuthData, InnerTx, Fee, Gas, GasPrice) ->
+    AccountId = aeser_id:create(account, Pubkey),
+    ABI = aect_test_utils:latest_sophia_abi_version(),
+    {ok, Tx} = aega_meta_tx:new(#{ ga_id       => AccountId
+                                 , auth_data   => AuthData
+                                 , abi_version => ABI
+                                 , gas         => Gas
+                                 , gas_price   => GasPrice
+                                 , fee         => Fee
+                                 , tx          => InnerTx}),
+    Tx.
+
 reward_40(Fee) -> Fee * 4 div 10.
 
 reward_60(Fee) -> Fee - reward_40(Fee).
+
+get_used_gas_fee(STx) ->
+    Hash = aec_db:find_tx_location(aetx_sign:hash(STx)),
+    Tx = aetx_sign:tx(STx),
+    {CB, RawTx} = aetx:specialize_callback(Tx),
+    case aetx:specialize_type(Tx) of
+        {ga_meta_tx, RawTx} ->
+            {ok, TmpTrees} = aec_chain:get_block_state(Hash),
+            CPubkey = CB:ga_pubkey(RawTx),
+            CallId = CB:call_id(RawTx, TmpTrees),
+            {ok, Call}  = aec_chain:get_contract_call(CPubkey, CallId, Hash),
+            aect_call:gas_used(Call) * aect_call:gas_price(Call);
+        _ ->
+            CallId = CB:call_id(RawTx),
+            CPubkey = CB:contract_pubkey(RawTx),
+            {ok, Call}  = aec_chain:get_contract_call(CPubkey, CallId, Hash),
+            aect_call:gas_used(Call) * aect_call:gas_price(Call)
+    end.
 
 %%%===================================================================
 %%% Hard forking tests

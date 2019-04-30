@@ -1206,6 +1206,19 @@ do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S) ->
 
     {Res0, InnerTx1} = peel_onion(Res00, InnerTx, S1),
 
+    DeepFee  = aetx:deep_fee(MetaTx, aect_test_utils:trees(S1)),
+    case aect_call:return_type(Call) of
+        ok ->
+            %% The total amount of fees should include the fees for
+            %% the inner tx (transitively) as well
+            InnerDeepFee = aetx:deep_fee(InnerTx, aect_test_utils:trees(S1)),
+            ?assert(InnerDeepFee > 0),
+            ?assertEqual(DeepFee, aetx:fee(MetaTx) + InnerDeepFee);
+        error ->
+            %% Only the fee of the meta transaction should be deducted
+            ?assertEqual(DeepFee, aetx:fee(MetaTx))
+    end,
+
     Res =
         case aetx:specialize_type(InnerTx1) of
             {spend_tx, _SpendTx} ->

@@ -908,11 +908,6 @@ calculate_gas_fee(Calls) ->
 
 apply_micro_block_transactions(Node, FeesIn, Trees) ->
     Txs = db_get_txs(hash(Node)),
-    TotalFees = lists:foldl(
-                  fun(SignedTx, AccFee) ->
-                          Fee = aetx:fee(aetx_sign:tx(SignedTx)),
-                          AccFee + Fee
-                  end, FeesIn, Txs),
     KeyHeader = db_get_header(prev_key_hash(Node)),
     Env = aetx_env:tx_env_from_key_header(KeyHeader, prev_key_hash(Node),
                                           node_time(Node), prev_hash(Node)),
@@ -921,6 +916,11 @@ apply_micro_block_transactions(Node, FeesIn, Trees) ->
             if map_size(Events) > 0 -> lager:debug("tx_events = ~p", [Events]);
                true -> ok
             end,
+            TotalFees = lists:foldl(
+                          fun(SignedTx, AccFee) ->
+                                  Fee = aetx:deep_fee(aetx_sign:tx(SignedTx), NewTrees),
+                                  AccFee + Fee
+                          end, FeesIn, Txs),
             {NewTrees, TotalFees, Events};
         {error,_What} -> internal_error(invalid_transactions_in_block)
     end.

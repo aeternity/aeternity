@@ -314,12 +314,11 @@ fees_at_height(N, [{B, S} | Chain], Acc, Beneficiary) ->
         Height =:= N ->
             case aec_blocks:type(B) of
                 key ->
-                    GasFees = aec_chain_state:calculate_gas_fee(aec_trees:calls(S)),
-                    {Acc + GasFees, aec_blocks:beneficiary(B), Beneficiary};
+                    {Acc, aec_blocks:beneficiary(B), Beneficiary};
                 micro ->
                     TxFees = lists:foldl(
                           fun(SignedTx, AccFee) ->
-                                  Fee = aetx:fee(aetx_sign:tx(SignedTx)),
+                                  Fee = aetx:deep_fee(aetx_sign:tx(SignedTx), S),
                                   AccFee + Fee
                           end, 0, aec_blocks:txs(B)),
                     fees_at_height(N, Chain, Acc + TxFees, Beneficiary)
@@ -327,7 +326,14 @@ fees_at_height(N, [{B, S} | Chain], Acc, Beneficiary) ->
         Height =:= N + 1 ->
             case aec_blocks:type(B) of
                 key ->
-                    fees_at_height(N, Chain, Acc, aec_blocks:beneficiary(B));
+                    GasFees =
+                        case Chain of
+                            [{_, S1}|_] ->
+                                aec_chain_state:calculate_gas_fee(aec_trees:calls(S1));
+                            [] ->
+                                0
+                        end,
+                    fees_at_height(N, Chain, Acc + GasFees, aec_blocks:beneficiary(B));
                 micro ->
                     fees_at_height(N, Chain, Acc, Beneficiary)
             end;

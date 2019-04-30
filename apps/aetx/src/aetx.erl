@@ -9,6 +9,7 @@
 -module(aetx).
 
 -export([ accounts/1
+        , deep_fee/2
         , deserialize_from_binary/1
         , fee/1
         , from_db_format/1
@@ -186,6 +187,28 @@ new(Callback, Tx) ->
 -spec fee(Tx :: tx()) -> Fee :: integer().
 fee(#aetx{ cb = CB, tx = Tx }) ->
     CB:fee(Tx).
+
+-spec deep_fee(Tx :: tx(), Trees :: aec_trees:trees()) -> Fee :: integer().
+deep_fee(#aetx{} = AeTx, Trees) ->
+    %% If this is a generalized account meta tx we need to dig deeper
+    %% into the inner transactions. Note that more than one meta tx
+    %% can be wrapped around each other.
+    deep_fee(AeTx, Trees, 0).
+
+deep_fee(AeTx, Trees, AccFee0) ->
+    AccFee = fee(AeTx) + AccFee0,
+    case specialize_type(AeTx) of
+        {ga_meta_tx, MetaTx} ->
+            CB = type_to_cb(ga_meta_tx),
+            case CB:inner_tx_was_succesful(MetaTx, Trees) of
+                true  ->
+                    deep_fee(aetx_sign:tx(CB:tx(MetaTx)), Trees, AccFee);
+                false ->
+                    AccFee
+            end;
+        {_, _} ->
+            AccFee
+    end.
 
 %% In case 0 is returned, the tx will not be included in the micro block
 %% candidate by the mempool.
