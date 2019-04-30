@@ -276,7 +276,7 @@ for_client(#ga_meta_tx{ ga_id       = GAId,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,
       <<"ttl">>         => TTL,
-      <<"tx">>          => aetx_sign:serialize_for_client_pending(InnerTx)}.
+      <<"tx">>          => aetx_sign:serialize_for_client_inner(InnerTx, #{})}.
 
 -spec version(tx()) -> non_neg_integer().
 version(_) ->
@@ -304,4 +304,3 @@ reset_ga_context(Env0, Tx, OldEnv) ->
     Env1 = aetx_env:set_context(Env0, aetx_env:context(OldEnv)),
     Env2 = aetx_env:del_ga_auth_id(Env1, ga_pubkey(Tx)),
     aetx_env:del_ga_nonce(Env2, ga_pubkey(Tx)).
-

@@ -466,6 +466,8 @@ type_to_swagger_name(name_revoke_tx)            -> <<"NameRevokeTx">>;
 type_to_swagger_name(name_create_tx)            -> <<"NameCreateTx">>;
 type_to_swagger_name(contract_call_tx)          -> <<"ContractCallTx">>;
 type_to_swagger_name(contract_create_tx)        -> <<"ContractCreateTx">>;
+type_to_swagger_name(ga_attach_tx)              -> <<"GAAttachTx">>;
+type_to_swagger_name(ga_meta_tx)                -> <<"GAMetaTx">>;
 type_to_swagger_name(channel_create_tx)         -> <<"ChannelCreateTx">>;
 type_to_swagger_name(channel_deposit_tx)        -> <<"ChannelDepositTx">>;
 type_to_swagger_name(channel_withdraw_tx)       -> <<"ChannelWithdrawTx">>;

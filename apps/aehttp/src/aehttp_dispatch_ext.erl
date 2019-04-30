@@ -14,7 +14,7 @@
                         , get_nonce_from_account_id/1
                         , print_state/0
                         , get_contract_code/2
-                        , get_contract_call_object_from_tx/2
+                        , get_info_object_from_tx/3
                         , verify_oracle_existence/1
                         , verify_oracle_query_existence/2
                         , verify_name/1
@@ -93,7 +93,6 @@ queue('GetNameEntryByName')                     -> ?READ_Q;
 queue('GetChannelByPubkey')                     -> ?READ_Q;
 queue('GetPeerPubkey')                          -> ?READ_Q;
 queue('GetStatus')                              -> ?READ_Q;
-queue('GetContractCallFromTx')                  -> ?READ_Q;
 queue('GetPeerKey')                             -> ?READ_Q;
 %% update transactions (default to update in catch-all)
 queue('PostTransaction')                        -> ?WRITE_Q;
@@ -415,13 +414,20 @@ handle_request_('GetTransactionInfoByHash', Params, _Config) ->
     ParseFuns = [read_required_params([hash]),
                  api_decode([{hash, tx_hash, tx_hash}]),
                  get_transaction(tx_hash, tx),
-                 get_contract_call_object_from_tx(tx, contract_call),
+                 get_info_object_from_tx(tx, tx_type, info),
                  ok_response(
-                    fun(#{contract_call := Call}) ->
-                            aect_call:serialize_for_client(Call)
+                    fun(#{info := Info, tx_type := ga_meta_tx}) ->
+                            #{<<"ga_info">> => aega_call:serialize_for_client(Info)};
+                       (#{info := Info, tx_type := TxType}) when TxType =:= contract_create_tx;
+                                                                 TxType =:= contract_call_tx ->
+                            #{<<"call_info">> => aect_call:serialize_for_client(Info)};
+                       (#{info := Info, tx_type := _}) ->
+                            %% info is assumed to be a binary
+                            #{<<"tx_info">> => Info}
                     end)
                 ],
     process_request(ParseFuns, Params);
+
 
 handle_request_('PostTransaction', #{'Tx' := Tx}, _Context) ->
     case aeser_api_encoder:safe_decode(transaction, maps:get(<<"tx">>, Tx)) of
@@ -615,18 +621,6 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"pending_transactions_count">> => PendingTxsCount,
        <<"network_id">>                 => aec_governance:get_network_id()}};
 
-handle_request_('GetContractCallFromTx', Req, _Context) ->
-    ParseFuns = [read_required_params([tx_hash]),
-                 api_decode([{tx_hash, tx_hash, tx_hash}]),
-                 get_transaction(tx_hash, tx),
-                 get_contract_call_object_from_tx(tx, contract_call),
-                 ok_response(
-                    fun(#{contract_call := Call}) ->
-                            aect_call:serialize_for_client(Call)
-                    end)
-                ],
-    process_request(ParseFuns, Req);
-
 handle_request_('GetPeerKey', _Req, _Context) ->
     case aehttp_logic:peer_pubkey() of
         {ok, PeerKey} ->
@@ -674,4 +668,3 @@ deserialize_transaction(Tx) ->
     catch
         _:_ -> {error, broken_tx}
     end.
-

@@ -1633,14 +1633,14 @@ post_contract_and_call_tx(_Config) ->
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
 
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
-    ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
+    ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_contract_call_object(ContractCreateTxHash)),
 
     % mine
     ok = wait_for_tx_hash_on_chain(ContractCreateTxHash),
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
-    ?assertMatch({ok, 200, _}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
+    ?assertMatch({ok, 200, _}, get_contract_call_object(ContractCreateTxHash)),
 
     {ok, EncodedCallData} = aehttp_logic:contract_encode_call_data(
                               <<"sophia">>, Code, <<"main">>, <<"42">>),
@@ -1656,24 +1656,19 @@ post_contract_and_call_tx(_Config) ->
     ContractCallTxHash = sign_and_post_tx(EncodedUnsignedContractCallTx),
 
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCallTxHash)),
-    ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCallTxHash)),
+    ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_contract_call_object(ContractCallTxHash)),
 
     % mine
     ok = wait_for_tx_hash_on_chain(ContractCallTxHash),
     ?assert(tx_in_chain(ContractCallTxHash)),
 
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCallTxHash)),
-    ?assertMatch({ok, 200, _}, get_transactions_info_by_hash_sut(ContractCallTxHash)),
+    ?assertMatch({ok, 200, _}, get_contract_call_object(ContractCallTxHash)),
     ok.
 
 get_transactions_by_hash_sut(Hash) ->
     Host = external_address(),
     http_request(Host, get, "transactions/" ++ http_uri:encode(Hash), []).
-
-get_transactions_info_by_hash_sut(Hash) ->
-    Host = external_address(),
-    Hash1 = http_uri:encode(Hash),
-    http_request(Host, get, "transactions/" ++ binary_to_list(Hash1) ++ "/info", []).
 
 post_transactions_sut(Tx) ->
     Host = external_address(),
@@ -1735,7 +1730,8 @@ get_contract(_Config) ->
     ok = wait_for_tx_hash_on_chain(ContractCreateTxHash),
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
-    {ok, 200, #{<<"return_value">> := _InitStateAndType}} = get_contract_call_object(ContractCreateTxHash),
+    {ok, 200, #{<<"call_info">> := #{<<"return_value">> := _InitStateAndType}}} =
+        get_contract_call_object(ContractCreateTxHash),
 
     VM = latest_sophia_vm(),
     ABI = latest_sophia_abi(),
@@ -2093,7 +2089,7 @@ contract_transactions(_Config) ->    % miner has an account
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
     %% Get the contract init call object
-    {ok, 200, InitCallObject} = get_contract_call_object(ContractCreateTxHash),
+    {ok, 200, #{<<"call_info">> := InitCallObject}} = get_contract_call_object(ContractCreateTxHash),
     ?assertEqual(MinerAddress, maps:get(<<"caller_id">>, InitCallObject)),
     ?assertEqual(get_tx_nonce(ContractCreateTxHash), maps:get(<<"caller_nonce">>, InitCallObject)),
     ?assertEqual(aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
@@ -2174,7 +2170,7 @@ contract_transactions(_Config) ->    % miner has an account
     ?assert(tx_in_chain(ContractCallTxHash)),
 
     %% Get the call object
-    {ok, 200, CallObject} = get_contract_call_object(ContractCallTxHash),
+    {ok, 200, #{<<"call_info">> := CallObject}} = get_contract_call_object(ContractCallTxHash),
     ?assertEqual(MinerAddress, maps:get(<<"caller_id">>, CallObject, <<>>)),
     ?assertEqual(get_tx_nonce(ContractCallTxHash), maps:get(<<"caller_nonce">>, CallObject)),
     ?assertEqual(aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
@@ -2233,7 +2229,7 @@ contract_transactions(_Config) ->    % miner has an account
     ?assert(tx_in_chain(ContractCallComputeTxHash)),
 
     %% Get the call object
-    {ok, 200, CallObject1} = get_contract_call_object(ContractCallComputeTxHash),
+    {ok, 200, #{<<"call_info">> := CallObject1}} = get_contract_call_object(ContractCallComputeTxHash),
     ?assertEqual(MinerAddress, maps:get(<<"caller_id">>, CallObject1, <<>>)),
     ?assertEqual(aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
                  maps:get(<<"contract_id">>, CallObject1, <<>>)),
@@ -2309,7 +2305,7 @@ contract_transactions(_Config) ->    % miner has an account
                                                       ?SPEND_FEE),
     SpendTxHash = sign_and_post_tx(SpendTx),
     ok = wait_for_tx_hash_on_chain(SpendTxHash),
-    {ok, 400, #{<<"reason">> := <<"Tx is not a create or call">>}} =
+    {ok, 400, #{<<"reason">> := <<"Tx has no info">>}} =
         get_contract_call_object(SpendTxHash),
 
     ok.
@@ -2371,7 +2367,7 @@ contract_create_compute_transaction(_Config) ->
 
 
     %% Get the call object
-    {ok, 200, CallObject} = get_contract_call_object(ContractCallComputeTxHash),
+    {ok, 200, #{<<"call_info">> := CallObject}} = get_contract_call_object(ContractCallComputeTxHash),
 
     {ok, 200, #{<<"data">> := DecodedCallReturnValue}} =
         get_contract_decode_data(
@@ -2425,7 +2421,7 @@ contract_create_transaction_init_error(_Config) ->
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
     %% Get the contract init call object
-    {ok, 200, InitCallObject} = get_contract_call_object(ContractCreateTxHash),
+    {ok, 200, #{<<"call_info">> := InitCallObject}} = get_contract_call_object(ContractCreateTxHash),
     ?assertEqual(MinerAddress, maps:get(<<"caller_id">>, InitCallObject)),
     ?assertEqual(get_tx_nonce(ContractCreateTxHash), maps:get(<<"caller_nonce">>, InitCallObject)),
     ?assertEqual(aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
@@ -4353,14 +4349,14 @@ post_contract_onchain(EncodedCode, EncodedInitCallData) ->
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
 
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
-    ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
+    ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_contract_call_object(ContractCreateTxHash)),
 
     % mine
     ok = wait_for_tx_hash_on_chain(ContractCreateTxHash),
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
-    ?assertMatch({ok, 200, _}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
+    ?assertMatch({ok, 200, _}, get_contract_call_object(ContractCreateTxHash)),
     ?assertMatch({ok, 200, #{<<"id">>          := EncodedContractPubKey,
         <<"owner_id">>    := Pubkey,
         <<"active">>      := true,

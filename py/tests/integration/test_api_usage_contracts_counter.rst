@@ -95,7 +95,7 @@ Bob ensures that the published contract create transaction is included in the ch
 ...      timeout_seconds=30)
 True
 >>> contract_init_call_object = ae_node['external_api'].get_transaction_info_by_hash(contract_create_tx_hash)
->>> print(contract_init_call_object.return_type)
+>>> print(contract_init_call_object.call_info.return_type)
 ok
 
 Step 2: Alice retrieves the value of the counter on the chain
@@ -149,14 +149,14 @@ Alice ensures that the published contract call transaction is included in the ch
 ...      timeout_seconds=30)
 True
 >>> contract_call_object = ae_node['external_api'].get_transaction_info_by_hash(contract_call_tx_hash)
->>> print(contract_call_object.return_type)
+>>> print(contract_call_object.call_info.return_type)
 ok
 
 Alice decodes the return value - off-chain, using the Aeternity node API.
 
->>> print(contract_call_object.return_value) # doctest: +ELLIPSIS
+>>> print(contract_call_object.call_info.return_value) # doctest: +ELLIPSIS
 cb_...
 >>> from swagger_client.models.sophia_binary_data import SophiaBinaryData
 >>> ae_node['internal_api'].decode_data(SophiaBinaryData(sophia_type=counter_contract_get_function_return_value_type,
-...                                                         data=contract_call_object.return_value)).data
+...                                                         data=contract_call_object.call_info.return_value)).data
 {u'type': u'word', u'value': 21}

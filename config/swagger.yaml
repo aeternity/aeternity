@@ -600,7 +600,6 @@ paths:
         - external
         - transaction
       operationId: GetTransactionInfoByHash
-      description: 'Get a transaction info by hash'
       produces:
         - application/json
       parameters:
@@ -613,7 +612,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/ContractCallObject'
+            $ref: '#/definitions/TxInfoObject'
         '400':
           description: 'Invalid hash'
           schema:
@@ -2006,6 +2005,11 @@ definitions:
         description: 'Nonce'
         format: int64
         minimum: 0
+      kind:
+        type: string
+        enum: [basic, generalized]
+      contract_id:
+        $ref: '#/definitions/EncodedHash'
     required:
       - id
       - balance
@@ -2902,6 +2906,7 @@ definitions:
       hash:
         $ref: '#/definitions/EncodedHash'
       signatures:
+        description: 'signatures required unless for Generalized Account Meta transactions'
         type: array
         minItems: 1
         items:
@@ -2911,7 +2916,6 @@ definitions:
       - block_height
       - block_hash
       - hash
-      - signatures
   GenericTx:
     type: object
     discriminator: type
@@ -3008,6 +3012,15 @@ definitions:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ContractCallTx'
+  TxInfoObject:
+     type: object
+     properties:
+        call_info:
+          $ref: '#/definitions/ContractCallObject'
+        ga_info:
+          $ref: '#/definitions/GAObject'
+        tx_info:
+          type: string
   ContractCallObject:
     type: object
     properties:
@@ -3040,6 +3053,31 @@ definitions:
       - gas_price
       - gas_used
       - log
+      - return_value
+      - return_type
+  GAObject:
+    type: object
+    properties:
+      caller_id:
+        $ref: '#/definitions/EncodedHash'
+      height:
+        type: integer
+      gas_price:
+        type: integer
+      gas_used:
+        type: integer
+      return_value:
+        $ref: '#/definitions/EncodedByteArray'
+      return_type:
+        description: The status of the call 'ok | error'.
+        type: string
+      inner_object:
+         $ref: '#/definitions/TxInfoObject'
+    required:
+      - caller_id
+      - height
+      - gas_price
+      - gas_used
       - return_value
       - return_type
   Event:

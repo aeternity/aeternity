@@ -1331,7 +1331,7 @@ create_compute_contract(NodeName, Pubkey, Privkey, Code, InitArgument, CallerSet
     ?assert(tx_in_chain(TxHash)),
 
     %% Get value of last call.
-    {ok,200,InitReturn} = get_contract_call_object(TxHash),
+    {ok,200, #{<<"call_info">> := InitReturn}} = get_contract_call_object(TxHash),
     ct:pal("Init return ~p\n", [InitReturn]),
 
     {EncodedContractPubkey,DecodedContractPubkey,InitReturn}.
@@ -1376,7 +1376,7 @@ check_calls(Calls) ->
 
 check_call({#{tx_hash := TxHash}, Check}) ->
     ct:log("Checking: ~p", [TxHash]),
-    {ok, 200, CallReturn} = get_contract_call_object(TxHash),
+    {ok, 200, #{<<"call_info">> := CallReturn}} = get_contract_call_object(TxHash),
     ct:pal("Call return ~p\n", [CallReturn]),
     check_call_(Check, CallReturn, TxHash).
 
@@ -1506,7 +1506,7 @@ basic_call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
     ?assert(tx_in_chain(ContractCallTxHash)),
 
     %% Get the call object and return value.
-    {ok,200,CallReturn} = get_contract_call_object(ContractCallTxHash),
+    {ok,200, #{<<"call_info">> := CallReturn}} = get_contract_call_object(ContractCallTxHash),
     ct:pal("Call return ~p\n", [CallReturn]),
 
     {CallReturn,ContractCallTxHash}.
