@@ -73,6 +73,13 @@ mk_test(Contracts, Tests) ->
       fun() -> expect(Chain, Main, list_to_binary(Fun), Args, Res) end}
     || {Fun, Args, Res} <- Tests ].
 
+run_call(Code, Fun, Args) ->
+    Cache = compile_contracts([{<<"test">>, Code}]),
+    case run(Cache, <<"test">>, list_to_binary(Fun), Args) of
+        {ok, #{ accumulator := Result }} -> Result;
+        {error, Err, #{trace := Trace}} -> {error, Err, [I || {I, _} <- Trace]}
+    end.
+
 run_eunit(Test) ->
     [ begin io:format("~s\n", [Name]), Fun() end || {Name, Fun} <- ?MODULE:Test() ],
     ok.
@@ -317,4 +324,25 @@ variant_tests() ->
        []]).
 
 variant_test_() -> mk_test([variants()], variant_tests()).
+
+operators() ->
+    {<<"operators">>,
+     "contract Operators =\n"
+     "  function arith(x, y) = [x + y, x - y, x * y, x / y, x mod y, x ^ y]\n"
+     "  function list(xs, ys : list(int)) = [0 :: xs, xs ++ ys]\n"
+     "  function compare(x, y : (int, int)) = [x == y, x != y, x < y, x > y, x =< y, x >= y]\n"
+     "  function bool(x, y, z : int) = x == y && x > z || y >= z\n"}.
+
+operator_tests() ->
+    Bool = fun(X, Y, Z) -> X == Y andalso X > Z orelse Y >= Z end,
+    lists:flatten(
+      [[],
+       [{"arith", [11, 3], [11 + 3, 11 - 3, 11 * 3, 11 div 3, 11 rem 3, 11 * 11 * 11]}],
+       [{"list", [[1, 2, 3], [4, 5, 6]], [[0, 1, 2, 3], [1, 2, 3, 4, 5, 6]]}],
+       [{"compare", [{1, 2}, {1, 3}], [false, true, true, false, true, false]}],
+       [{"bool", [X, Y, Z], Bool(X, Y, Z)}
+        || X <- [0, 1, 5], Y <- [0, 1, 5], Z <- [0, 1, 5]],
+       []]).
+
+operator_test_() -> mk_test([operators()], operator_tests()).
 
