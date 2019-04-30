@@ -9,6 +9,7 @@
 -module(aetx).
 
 -export([ accounts/1
+        , deep_fee/1
         , deep_fee/2
         , deserialize_from_binary/1
         , fee/1
@@ -187,6 +188,23 @@ new(Callback, Tx) ->
 -spec fee(Tx :: tx()) -> Fee :: integer().
 fee(#aetx{ cb = CB, tx = Tx }) ->
     CB:fee(Tx).
+
+-spec deep_fee(Tx :: tx()) -> Fee :: integer().
+deep_fee(#aetx{} = AeTx) ->
+    %% If this is a generalized account meta tx we need to dig deeper
+    %% into the inner transactions. Note that more than one meta tx
+    %% can be wrapped around each other.
+    deep_fee_(AeTx, 0).
+
+deep_fee_(AeTx, AccFee0) ->
+    AccFee = fee(AeTx) + AccFee0,
+    case specialize_type(AeTx) of
+        {ga_meta_tx, MetaTx} ->
+            CB = type_to_cb(ga_meta_tx),
+            deep_fee_(aetx_sign:tx(CB:tx(MetaTx)), AccFee);
+        {_, _} ->
+            AccFee
+    end.
 
 -spec deep_fee(Tx :: tx(), Trees :: aec_trees:trees()) -> Fee :: integer().
 deep_fee(#aetx{} = AeTx, Trees) ->
