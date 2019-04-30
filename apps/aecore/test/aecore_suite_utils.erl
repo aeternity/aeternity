@@ -724,7 +724,10 @@ cmd_run(Cmd, Dir, BinDir, Args, Env, FindLocalBin) ->
                          {P, {exit_status, Err}} ->
                              {error, Err, Res};
                          {P, {data, Msg}} ->
-                             Fun(Fun, P, Res ++ Msg)
+                             Fun(Fun, P, Res ++ Msg);
+                         AMsg ->
+                             ct:log("Ignoring unrecognized message received: ~p", [AMsg]),
+                             Fun(Fun, P, Res)
                      after 30000 -> {error, timeout, Res}
                      end
              end,
