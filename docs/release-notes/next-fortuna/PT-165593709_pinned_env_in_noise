@@ -1,2 +1,2 @@
-* Introduces a pinned environment in State Channels noise protocol. This is
+* Introduces a pinned environment in State Channels noise protocol (off-chain), by introducing a `block_hash` field in some of the messages. This is
   not backwards compatible
