@@ -630,6 +630,10 @@ jobs:
     steps:
       - checkout
       - *build_ubuntu_package
+      - persist_to_workspace:
+          root: *packages_workspace
+          paths:
+            - "*.deb"
       - *fail_notification
 
   upload_build_artifacts:
