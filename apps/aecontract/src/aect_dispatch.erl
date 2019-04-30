@@ -32,7 +32,6 @@
 
 %% -- Running contract code off chain ---------------------------------------
 
-%% TODO: replace language string with vm_version number.
 call(<<"sophia-address">>, ContractKey, Function, Argument) ->
     sophia_call(ContractKey, Function, Argument);
 call(<<"evm">>, Code, _, CallData) ->
