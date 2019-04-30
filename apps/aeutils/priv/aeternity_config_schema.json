@@ -381,7 +381,8 @@
                 "protocol_beneficiary_enabled" : {
                     "description" :
                     "If true, the node will split rewards and send part to protocol_beneficiary_address",
-                    "type" : "boolean"
+                    "type" : "boolean",
+                    "default" : true
                 },
                 "protocol_beneficiary_factor" : {
                     "description" :
