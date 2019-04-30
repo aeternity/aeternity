@@ -385,7 +385,7 @@
                 },
                 "protocol_beneficiary_factor" : {
                     "description" :
-                    "Part of rewards to split and send to protocol_beneficiary_address. Rounded to avoid fractions. 100 is 10%",
+                    "Part of rewards to split and send to protocol_beneficiary_address. Truncated to avoid fractions. 100 is 10%",
                     "type" : "integer",
                     "default": 100,
                     "minimum" : 1,
