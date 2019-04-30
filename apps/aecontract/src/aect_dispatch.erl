@@ -11,7 +11,6 @@
 
 %% API
 -export([ call/4
-        , encode_call_data/4
         , run/2]).
 
 -define(PUB_SIZE, 32).
@@ -32,15 +31,6 @@
 -endif.
 
 %% -- Running contract code off chain ---------------------------------------
-
-%% TODO: replace language string with vm_version number.
-encode_call_data(<<"sophia">>, Code, Function, Argument) ->
-    aect_sophia:encode_call_data(Code, Function, Argument);
-encode_call_data(<<"evm">>,_Code, Function, Argument) ->
-    %% TODO: Check that Function exists in Contract.
-    {ok, <<Function/binary, Argument/binary>>};
-encode_call_data(_, _, _, _) ->
-    {error, <<"Unknown call ABI">>}.
 
 %% TODO: replace language string with vm_version number.
 call(<<"sophia-address">>, ContractKey, Function, Argument) ->

@@ -33,7 +33,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
     OutType = word,
 
     %% Create the call data
-    {ok, CallData} = aect_sophia:encode_call_data(ContractBin, <<"main">>, [<<"42">>]),
+    {ok, CallData} = aect_test_utils:encode_call_data(ContractBin, <<"main">>, [<<"42">>]),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     VM = aect_test_utils:latest_sophia_vm_version(),
     {ok, Store} = aevm_eeevm_store:from_sophia_state(

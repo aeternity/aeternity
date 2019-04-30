@@ -1517,7 +1517,7 @@ token_supply_contracts() ->
     GasPrice = aec_test_utils:min_gas_price(),
     {ok, Contract} = aect_test_utils:read_contract("contracts/identity.aes"),
     {ok, Code}     = aect_test_utils:compile_contract("contracts/identity.aes"),
-    {ok, InitCallData} = aect_sophia:encode_call_data(Contract, <<"init">>, []),
+    {ok, InitCallData} = aect_test_utils:encode_call_data(Contract, <<"init">>, []),
     CreateTx = make_contract_create_tx(PubKey, Code, InitCallData, 1,
                                        Deposit, Amount, Fee, Gas, GasPrice),
     SCreateTx = aec_test_utils:sign_tx(CreateTx, [PrivKey]),
@@ -1556,8 +1556,8 @@ token_supply_ga() ->
     #{ bytecode := ByteCode
      , map      := #{type_info := TypeInfo}
      , src      := Src} = CodeMap,
-    {ok, InitCallData} = aect_sophia:encode_call_data(list_to_binary(Src), <<"init">>, [<<"123">>]),
-    {ok, MetaCallData} = aect_sophia:encode_call_data(list_to_binary(Src), <<"authorize">>, [<<"123">>, <<"1">>]),
+    {ok, InitCallData} = aect_test_utils:encode_call_data(list_to_binary(Src), <<"init">>, [<<"123">>]),
+    {ok, MetaCallData} = aect_test_utils:encode_call_data(list_to_binary(Src), <<"authorize">>, [<<"123">>, <<"1">>]),
     {ok, AuthFunHash}  = aeb_abi:type_hash_from_function_name(<<"authorize">>, TypeInfo),
     AttachTx = make_ga_attach_tx(PubKey, ByteCode, AuthFunHash, InitCallData, 1,
                                  Fee, Gas, GasPrice),

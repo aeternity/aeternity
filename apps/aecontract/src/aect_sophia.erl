@@ -11,9 +11,7 @@
 -include("../../aecore/include/blocks.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
 
--export([ compile/2
-        , decode_data/2
-        , encode_call_data/3
+-export([ decode_data/2
         , serialize/1
         , serialize/2
         , deserialize/1
@@ -36,42 +34,6 @@
 %% Therefore, switch the present version to ?SOPHIA_CONTRACT_VSN_2 when release
 %% after hard fork.
 -define(SOPHIA_CONTRACT_VSN, ?SOPHIA_CONTRACT_VSN_1).
-
-
--spec compile(binary(), binary()) -> {ok, binary()} | {error, binary()}.
-compile(ContractAsBinString, OptionsAsBinString) ->
-    ContractText = binary_to_list(ContractAsBinString),
-    Options = parse_options(OptionsAsBinString),
-    try aeso_compiler:from_string(ContractText, Options) of
-        {ok, Map} -> {ok, serialize(Map)};
-        {error, _} = Err -> Err
-    catch
-        %% General programming errors in the compiler.
-        error:Error ->
-            Where = hd(erlang:get_stacktrace()),
-            ErrorString = io_lib:format("Error: ~p in\n   ~p", [Error,Where]),
-            {error, list_to_binary(ErrorString)}
-    end.
-
-parse_options(OptionsBinString) ->
-    parse_options(OptionsBinString, []).
-
-parse_options(<<" ", Rest/binary>>, Acc) ->
-    parse_options(Rest, Acc);
-parse_options(<<"pp_sophia_code", Rest/binary>>, Acc) ->
-    parse_options(Rest, [pp_sophia_code | Acc]);
-parse_options(<<"pp_ast", Rest/binary>>, Acc) ->
-    parse_options(Rest, [pp_ast | Acc]);
-parse_options(<<"pp_icode", Rest/binary>>, Acc) ->
-    parse_options(Rest, [pp_icode | Acc]);
-parse_options(<<"pp_assembler", Rest/binary>>, Acc) ->
-    parse_options(Rest, [pp_assembler | Acc]);
-parse_options(<<"pp_bytecode", Rest/binary>>, Acc) ->
-    parse_options(Rest, [pp_bytecode | Acc]);
-parse_options(<<_:8, Rest/binary>>, Acc) ->
-    %% TODO: give nice error instead of just ignoring stray chars.
-    parse_options(Rest, Acc);
-parse_options(<<>>, Acc) -> Acc.
 
 is_legal_serialization_at_height(?SOPHIA_CONTRACT_VSN_1, _Height) ->
     true;
@@ -136,19 +98,6 @@ serialization_template(?SOPHIA_CONTRACT_VSN_1) ->
 serialization_template(?SOPHIA_CONTRACT_VSN_2) ->
     serialization_template(?SOPHIA_CONTRACT_VSN_1) ++
         [ {compiler_version, binary}].
-
--spec encode_call_data(binary(), binary(), [binary()]) ->
-                              {ok, binary()} | {error, binary()}.
-encode_call_data(Code, Function, Arguments) ->
-    try aeso_compiler:create_calldata(binary_to_list(Code), binary_to_list(Function),
-                                      lists:map(fun binary_to_list/1, Arguments)) of
-        {error, _} = Err -> Err;
-        {ok, Data,_DataType,_OutType} when is_binary(Data) ->
-            {ok, Data}
-    catch _T:_E ->
-        {error, <<"bad argument">>}
-    end.
-
 
 decode_data(Type, Data) ->
     case get_type(Type) of

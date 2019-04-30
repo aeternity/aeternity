@@ -241,11 +241,8 @@ contract_decode_data(Type, Data) ->
             end
     end.
 
-contract_encode_call_data(<<"evm">>, Code, Function, Argument) ->
-    case aect_dispatch:encode_call_data(<<"evm">>, Code, Function, Argument) of
-        {ok, ByteCode} -> {ok, aeser_api_encoder:encode(contract_bytearray, ByteCode)};
-        {error, _ErrorMsg} = Err -> Err
-    end;
+contract_encode_call_data(<<"evm">>, _Code, _Function, _Argument) ->
+    {error, <<"deprecated">>};
 contract_encode_call_data(<<"sophia">>, Code, Function, Argument) ->
     case sophia_encode_call_data(Code, Function, Argument) of
         {ok, ByteCode} -> {ok, aeser_api_encoder:encode(contract_bytearray, ByteCode)};

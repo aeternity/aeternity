@@ -31,6 +31,7 @@
         , compile_contract/2
         , compile_filename/1
         , compile_filename/2
+        , encode_call_data/3
         , encode_call_data/4
         , assert_state_equal/2
         , get_oracle_queries/2
@@ -268,7 +269,10 @@ compile(?SOPHIA_FORTUNA_FATE, File) ->
                                 })};
 compile(?SOPHIA_FORTUNA_AEVM, File) ->
     {ok, ContractBin} = file:read_file(File),
-    aect_sophia:compile(ContractBin, <<>>);
+    case aeso_compiler:from_string(binary_to_list(ContractBin), []) of
+        {ok, Map}        -> {ok, aect_sophia:serialize(Map)};
+        {error, _} = Err -> Err
+    end;
 compile(LegacyVersion, File) ->
     case legacy_compile(LegacyVersion, File) of
         {ok, Code}      -> {ok, Code};
@@ -320,6 +324,9 @@ delete_file(F) ->
     catch _:_ ->
         ok
     end.
+
+encode_call_data(Code, Fun, Args) ->
+    encode_call_data(latest_sophia_version(), Code, Fun, Args).
 
 encode_call_data(?SOPHIA_FORTUNA_AEVM, Code, Fun, Args) ->
     try aeso_compiler:create_calldata(binary_to_list(Code), binary_to_list(Fun),
