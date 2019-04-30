@@ -83,6 +83,8 @@
 -type sign_tag() :: create_tx
                   | funding_created.
 
+-define(DUMMY_BLOCK_HASH, <<12345:32/unit:8>>).
+
 -define(MINIMUM_DEPTH, 4). % number of blocks until an opening tx
                            % should be considered final
 
@@ -2002,11 +2004,13 @@ send_funding_created_msg(SignedTx, #data{channel_id = Ch,
                                          session    = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ temporary_channel_id => Ch
-           ,  data                => TxBin},
+           , block_hash           => ?DUMMY_BLOCK_HASH
+           , data                 => TxBin},
     aesc_session_noise:funding_created(Sn, Msg),
     log(snd, ?FND_CREATED, Msg, Data).
 
 check_funding_created_msg(#{ temporary_channel_id := ChanId
+                           , block_hash           := ?DUMMY_BLOCK_HASH
                            , data                 := TxBin } = Msg,
                           #data{ state = State, opts = Opts, 
                                  channel_id = ChanId } = Data) ->
@@ -2023,16 +2027,17 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
             Err
     end.
 
-
 send_funding_signed_msg(SignedTx, #data{channel_id = Ch,
                                         session    = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ temporary_channel_id  => Ch
+           , block_hash            => ?DUMMY_BLOCK_HASH
            , data                  => TxBin},
     aesc_session_noise:funding_signed(Sn, Msg),
     log(snd, ?FND_CREATED, Msg, Data).
 
 check_funding_signed_msg(#{ temporary_channel_id := ChanId
+                          , block_hash           := ?DUMMY_BLOCK_HASH
                           , data                 := TxBin} = Msg,
                           #data{ channel_id = ChanId } = Data) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
@@ -2071,11 +2076,13 @@ send_deposit_created_msg(SignedTx, #data{on_chain_id = Ch,
                                          session     = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ channel_id => Ch
+           , block_hash => ?DUMMY_BLOCK_HASH
            , data       => TxBin},
     aesc_session_noise:deposit_created(Sn, Msg),
     log(snd, ?DEP_CREATED, Msg, Data).
 
 check_deposit_created_msg(#{ channel_id := ChanId
+                           , block_hash := ?DUMMY_BLOCK_HASH
                            , data       := TxBin} = Msg,
                           #data{on_chain_id = ChanId} = Data) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
@@ -2092,11 +2099,13 @@ send_deposit_signed_msg(SignedTx, #data{on_chain_id = Ch,
                                         session     = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ channel_id  => Ch
+           , block_hash  => ?DUMMY_BLOCK_HASH
            , data        => TxBin},
     aesc_session_noise:deposit_signed(Sn, Msg),
     log(snd, ?DEP_SIGNED, Msg, Data).
 
 check_deposit_signed_msg(#{ channel_id := ChanId
+                          , block_hash := ?DUMMY_BLOCK_HASH
                           , data       := TxBin} = Msg,
                           #data{on_chain_id = ChanId} = Data) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
@@ -2164,11 +2173,13 @@ send_withdraw_created_msg(SignedTx, #data{on_chain_id = Ch,
                                           session     = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ channel_id => Ch
+           , block_hash => ?DUMMY_BLOCK_HASH
            , data       => TxBin},
     aesc_session_noise:wdraw_created(Sn, Msg),
     log(snd, ?WDRAW_CREATED, Msg, Data).
 
 check_withdraw_created_msg(#{ channel_id := ChanId
+                            , block_hash := ?DUMMY_BLOCK_HASH
                             , data       := TxBin} = Msg,
                            #data{on_chain_id = ChanId} = Data) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
@@ -2185,11 +2196,13 @@ send_withdraw_signed_msg(SignedTx, #data{on_chain_id = Ch,
                                          session     = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ channel_id  => Ch
+           , block_hash => ?DUMMY_BLOCK_HASH
            , data        => TxBin},
     aesc_session_noise:wdraw_signed(Sn, Msg),
     log(snd, ?WDRAW_SIGNED, Msg, Data).
 
 check_withdraw_signed_msg(#{ channel_id := ChanId
+                           , block_hash := ?DUMMY_BLOCK_HASH
                            , data       := TxBin} = Msg,
                           #data{on_chain_id = ChanId} = Data) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
@@ -2229,6 +2242,7 @@ send_update_msg(SignedTx, #data{ on_chain_id = OnChainId
                                , session     = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ channel_id => OnChainId
+           , block_hash => ?DUMMY_BLOCK_HASH
            , data       => TxBin },
     aesc_session_noise:update(Sn, Msg),
     log(snd, ?UPDATE, Msg, Data).
@@ -2243,6 +2257,7 @@ check_update_msg(Type, Msg, D) ->
     end.
 
 check_update_msg_(Type, #{ channel_id := ChanId
+                         , block_hash := ?DUMMY_BLOCK_HASH
                          , data       := TxBin } = Msg,
                   #data{ on_chain_id = ChanId } = D) ->
     try aetx_sign:deserialize_from_binary(TxBin) of
@@ -2393,10 +2408,13 @@ send_shutdown_ack_msg(SignedTx, #data{session = Session} = Data) ->
 shutdown_msg(SignedTx, #data{ on_chain_id = OnChainId }) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     #{ channel_id => OnChainId
+     , block_hash => ?DUMMY_BLOCK_HASH
      , data       => TxBin }.
 
 
-check_shutdown_msg(#{channel_id := ChanId, data := TxBin} = Msg,
+check_shutdown_msg(#{channel_id := ChanId,
+                     block_hash := ?DUMMY_BLOCK_HASH,
+                     data := TxBin} = Msg,
                    #data{on_chain_id = ChanId} = D) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case check_tx_and_verify_signatures(SignedTx, channel_close_mutual_tx,
@@ -2423,7 +2441,8 @@ serialize_close_mutual_tx(Tx) ->
     {_, Elems} = aesc_close_mutual_tx:serialize(Tx),
     lists:keydelete(nonce, 1, Elems).
 
-check_shutdown_ack_msg(#{data := TxBin} = Msg,
+check_shutdown_ack_msg(#{data       := TxBin,
+                         block_hash := ?DUMMY_BLOCK_HASH} = Msg,
                        #data{latest = {shutdown, MySignedTx}} = D) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case check_tx_and_verify_signatures(SignedTx, channel_close_mutual_tx,
