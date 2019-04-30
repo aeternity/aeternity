@@ -1193,11 +1193,7 @@ workflows:
 
       - deploy_next:
           requires:
-            - test
-            - test_roma
             - test_fortuna
-            - test_mnesia_leveled
-            - test_mnesia_rocksdb
             - eunit
             - eunit_roma
             - eunit_fortuna
