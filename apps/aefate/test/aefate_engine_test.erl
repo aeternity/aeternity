@@ -622,7 +622,7 @@ contracts() ->
      , <<"string">> =>
            [ {<<"str_equal">>
              , {[string, string], boolean}
-             , [ {0, [ {'STR_EQ', {stack, 0}, {arg, 0}, {arg, 1}}
+             , [ {0, [ {'EQ', {stack, 0}, {arg, 0}, {arg, 1}}
                      , 'RETURN']}
                ]}
            , {<<"str_join">>

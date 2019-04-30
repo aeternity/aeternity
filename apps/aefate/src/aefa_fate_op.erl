@@ -52,7 +52,7 @@
         , hd/3
         , tl/3
         , length/3
-        , str_eq/4
+        , append/4
         , str_join/4
         , int_to_str/3
         , addr_to_str/3
@@ -418,12 +418,12 @@ tl(Arg0, Arg1, EngineState) ->
 length(Arg0, Arg1, EngineState) ->
     un_op(length, {Arg0, Arg1}, EngineState).
 
+append(Arg0, Arg1, Arg2, EngineState) ->
+    bin_op(append, {Arg0, Arg1, Arg2}, EngineState).
+
 %% ------------------------------------------------------
 %% String instructions
 %% ------------------------------------------------------
-
-str_eq(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(str_equal, {Arg0, Arg1, Arg2}, EngineState).
 
 str_join(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(str_join, {Arg0, Arg1, Arg2}, EngineState).
@@ -867,11 +867,8 @@ op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
                     aefa_fate:abort({type_error, cons, Hd, aefa_fate:type(OldHd)})
             end
     end;
-op(str_equal, A, B) when ?IS_FATE_STRING(A)
-                         , ?IS_FATE_STRING(B) ->
-    aeb_fate_data:make_boolean(?FATE_STRING_VALUE(A)
-                           =:=
-                               ?FATE_STRING_VALUE(B));
+op(append, A, B) when ?IS_FATE_LIST(A), ?IS_FATE_LIST(B) ->
+    aeb_fate_data:make_list(?FATE_LIST_VALUE(A) ++ ?FATE_LIST_VALUE(B));
 op(str_join, A, B) when ?IS_FATE_STRING(A)
                          , ?IS_FATE_STRING(B) ->
     aeb_fate_data:make_string(<<?FATE_STRING_VALUE(A)/binary,
