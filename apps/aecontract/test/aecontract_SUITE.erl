@@ -145,8 +145,8 @@
 
 all() ->
     [{group, protocol_interaction},
-     {group, aevm_1}, {group, aevm_2}, {group, aevm_3},
-     {group, fate_1}
+     {group, aevm},
+     {group, fate}
     ].
 
 %% To skip one level of indirection...
@@ -154,10 +154,8 @@ all() ->
                     {group, store}, {group, remote_call_type_errors}]).
 
 groups() ->
-    [ {aevm_1, [sequence], ?ALL_TESTS}
-    , {aevm_2, [sequence], ?ALL_TESTS}
-    , {aevm_3, [sequence], ?ALL_TESTS}
-    , {fate_1, [sequence], [ create_contract
+    [ {aevm, [sequence], ?ALL_TESTS}
+    , {fate, [sequence],  [ create_contract
                            , sophia_identity
                            , sophia_remote_identity
                            , sophia_spend
@@ -300,46 +298,60 @@ groups() ->
                           ]}
     ].
 
-init_per_group(aevm_1, Cfg) ->
-    meck:expect(aec_hard_forks, protocol_effective_at_height,
-                fun(_) -> ?ROMA_PROTOCOL_VSN end),
-    [{sophia_version, ?SOPHIA_ROMA}, {vm_version, ?VM_AEVM_SOPHIA_1},
-     {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, roma} | Cfg];
-init_per_group(aevm_2, Cfg) ->
-    meck:expect(aec_hard_forks, protocol_effective_at_height,
-                fun(_) -> ?MINERVA_PROTOCOL_VSN end),
-    [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
-     {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, minerva} | Cfg];
-init_per_group(aevm_3, Cfg) ->
-    meck:expect(aec_hard_forks, protocol_effective_at_height,
-                fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
-    [{sophia_version, ?SOPHIA_FORTUNA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
-     {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg];
-init_per_group(fate_1, Cfg) ->
-    meck:expect(aec_hard_forks, protocol_effective_at_height,
-                fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
-    [{sophia_version, ?SOPHIA_FORTUNA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
-     {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, fortuna} | Cfg];
+init_per_group(aevm, Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?ROMA_PROTOCOL_VSN ->
+            ct:pal("Running tests under Roma protocol"),
+            meck:expect(aec_hard_forks, protocol_effective_at_height,
+                        fun(_) -> ?ROMA_PROTOCOL_VSN end),
+            [{sophia_version, ?SOPHIA_ROMA}, {vm_version, ?VM_AEVM_SOPHIA_1},
+             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, roma} | Cfg];
+        ?MINERVA_PROTOCOL_VSN ->
+            ct:pal("Running tests under Minerva protocol"),
+            meck:expect(aec_hard_forks, protocol_effective_at_height,
+                        fun(_) -> ?MINERVA_PROTOCOL_VSN end),
+            [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
+             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, minerva} | Cfg];
+        ?FORTUNA_PROTOCOL_VSN ->
+            ct:pal("Running tests under Fortuna protocol"),
+            meck:expect(aec_hard_forks, protocol_effective_at_height,
+                        fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
+            [{sophia_version, ?SOPHIA_FORTUNA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
+             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg]
+    end;
+init_per_group(fate, Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?FORTUNA_PROTOCOL_VSN ->
+            meck:expect(aec_hard_forks, protocol_effective_at_height,
+                        fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
+            [{sophia_version, ?SOPHIA_FORTUNA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
+             {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, fortuna} | Cfg];
+        _ ->
+            {skip, fate_not_available}
+    end;
 init_per_group(protocol_interaction, Cfg) ->
-    MHeight = 10,
-    FHeight = 15,
-    Fun = fun(H) when H <  MHeight -> ?ROMA_PROTOCOL_VSN;
-             (H) when H <  FHeight -> ?MINERVA_PROTOCOL_VSN;
-             (H) when H >= FHeight -> ?FORTUNA_PROTOCOL_VSN
-          end,
-    meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
-    [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
-     {fork_heights, #{ minerva => MHeight,
-                       fortuna => FHeight
-                     }},
-     {protocol, fortuna} | Cfg];
+    case aect_test_utils:latest_protocol_version() of
+        ?FORTUNA_PROTOCOL_VSN ->
+            MHeight = 10,
+            FHeight = 15,
+            Fun = fun(H) when H <  MHeight -> ?ROMA_PROTOCOL_VSN;
+                     (H) when H <  FHeight -> ?MINERVA_PROTOCOL_VSN;
+                     (H) when H >= FHeight -> ?FORTUNA_PROTOCOL_VSN
+                  end,
+            meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
+            [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
+             {fork_heights, #{ minerva => MHeight,
+                               fortuna => FHeight
+                             }},
+             {protocol, fortuna} | Cfg];
+        _ ->
+            {skip, only_test_protocol_interaction_on_latest_protocol}
+    end;
 init_per_group(_Grp, Cfg) ->
     Cfg.
 
-end_per_group(Grp, Cfg) when Grp =:= aevm_1;
-                             Grp =:= aevm_2;
-                             Grp =:= aevm_3;
-                             Grp =:= fate_1;
+end_per_group(Grp, Cfg) when Grp =:= aevm;
+                             Grp =:= fate;
                              Grp =:= protocol_interaction ->
     meck:unload(aec_hard_forks),
     Cfg;
