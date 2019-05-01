@@ -295,6 +295,36 @@ aevm-test-deps:
 $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests:
 	@git clone https://github.com/ethereum/tests.git $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests
 
+.PHONY: eqc-registration
+eqc-registration:
+	erl -noinput -run eqc force_registration "$${EQC_REGISTRATION_KEY:?}" -run init stop
+
+.PHONY: eqc-start
+eqc-start:
+	erl -noinput -run eqc start -run init stop
+
+EQC_LIB_VSN = 1.44.1
+EQC_LIB_DOWNLOAD_URL = http://quviq-licencer.com/downloads/eqcR20-$(EQC_LIB_VSN).zip
+EQC_LIB_DOWNLOAD_SHA256 = c02a978cb7b7665fee220dda303c86fd517b89ce7fdafc5cc7181eadab26424e
+EQC_LIB_ROOT_DIR = "Quviq QuickCheck version $(EQC_LIB_VSN)"
+
+.PHONY: eqc-lib-registration eqc-lib-start
+eqc-lib-registration eqc-lib-start: eqc-lib-%: | eqc-lib/eqc
+	( export ERL_LIBS="$(CURDIR)"/$(word 1,$|)/$(EQC_LIB_ROOT_DIR); $(MAKE) eqc-$*; )
+
+eqc-lib/eqc: | eqc-lib/eqc.zip
+	unzip $(word 1,$|) -d $@
+	ls -d $@/$(EQC_LIB_ROOT_DIR) > /dev/null
+	ls $@/$(EQC_LIB_ROOT_DIR)/eqc-$(EQC_LIB_VSN)/ebin/eqc.beam > /dev/null
+
+.SECONDARY: eqc-lib/eqc.zip
+eqc-lib/eqc.zip: | eqc-lib/eqc.zip.unchecked
+	echo "$(EQC_LIB_DOWNLOAD_SHA256)  $(word 1,$|)" | shasum -a 256 -c -
+	mv $(word 1,$|) $@
+
+.INTERMEDIATE: eqc-lib/eqc.zip.unchecked
+eqc-lib/eqc.zip.unchecked:
+	curl -fsSL --create-dirs -o $@ $(EQC_LIB_DOWNLOAD_URL)
 
 python-env:
 	( cd $(PYTHON_DIR) && $(MAKE) env; )
