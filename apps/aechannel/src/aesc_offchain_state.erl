@@ -8,6 +8,7 @@
                , calls                  :: aect_call_state_tree:tree()
                , signed_tx = ?NO_TX     :: aetx_sign:signed_tx() | ?NO_TX
                , half_signed_tx = ?NO_TX:: aetx_sign:signed_tx() | ?NO_TX
+               , pending_update = []    :: [aesc_offchain_update:update()]
               }).
 
 -opaque state() :: #state{}.

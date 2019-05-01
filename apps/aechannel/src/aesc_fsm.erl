@@ -81,7 +81,18 @@
 
 -type role() :: initiator | responder.
 -type sign_tag() :: create_tx
-                  | funding_created.
+                  | funding_created
+                  | slash_tx
+                  | deposit_tx
+                  | withdraw_tx
+                  | close_solo_tx
+                  | ?FND_CREATED
+                  | ?DEP_CREATED
+                  | ?WDRAW_CREATED
+                  | ?UPDATE
+                  | ?UPDATE_ACK
+                  | ?SHUTDOWN
+                  | ?SHUTDOWN_ACK.
 
 -define(DUMMY_BLOCK_HASH, <<12345:32/unit:8>>).
 
@@ -134,6 +145,16 @@
            , b = []        :: list()
            }).
 
+-type latest_op() :: undefined % no pending op
+                   | {sign, sign_tag(), aetx_sign:signed_tx()}
+                   | {shutdown | deposit | withdraw, aetx_sign:signed_tx()}
+                   | {watch, ?WATCH_FND
+                           | ?WATCH_DEP
+                           | ?WATCH_WDRAW
+                           | deposit
+                           | withdraw, TxHash :: binary(), aetx_sign:signed_tx()}
+                   | {reestablish, OffChainTx :: aetx_sign:signed_tx()}.
+
 -record(data, { role                   :: role()
               , channel_status         :: undefined | open
               , cur_statem_state       :: undefined | atom()
@@ -145,7 +166,7 @@
               , on_chain_id            :: undefined | binary()
               , create_tx              :: undefined | any()
               , watcher                :: undefined | pid()
-              , latest = undefined     :: undefined | any()
+              , latest = undefined     :: latest_op()
               , ongoing_update = false :: boolean()
               , last_reported_update   :: undefined | non_neg_integer()
               , log = #w{}             :: #w{}
@@ -484,7 +505,7 @@ init(#{opts := Opts0} = Arg) ->
              ], Opts0),
     Session = start_session(Arg, Opts),
     {ok, State} = aesc_offchain_state:new(Opts),
-    Data = #data{role    = Role,
+    Data = #data{role   = Role,
                 client  = Client,
                 session = Session,
                 opts    = Opts,
@@ -636,7 +657,7 @@ initialized(cast, {?CH_ACCEPT, Msg}, #data{role = initiator} = D) ->
         {ok, D1} ->
             gproc_register(D1),
             report(info, channel_accept, D1),
-            {ok, CTx} = create_tx_for_signing(D1),
+            {ok, CTx, _Updates} = create_tx_for_signing(D1),
             D2 = request_signing(create_tx, CTx, D1),
             next_state(awaiting_signature, D2);
         {error, _} = Error ->
@@ -1243,7 +1264,7 @@ handle_call_(open, {upd_deposit, #{amount := Amt} = Opts}, From,
         {ok, _Other}  -> error(conflicting_accounts);
         error         -> ok
     end,
-    {ok, DepTx} = dep_tx_for_signing(Opts#{acct => FromPub}, D),
+    {ok, DepTx, _Updates} = dep_tx_for_signing(Opts#{acct => FromPub}, D),
     D1 = request_signing(deposit_tx, DepTx, D),
     gen_statem:reply(From, ok),
     next_state(awaiting_signature, set_ongoing(D1));
@@ -1255,7 +1276,7 @@ handle_call_(open, {upd_withdraw, #{amount := Amt} = Opts}, From,
         {ok, _Other}  -> error(conflicting_accounts);
         error         -> ok
     end,
-    {ok, DepTx} = wdraw_tx_for_signing(Opts#{acct => ToPub}, D),
+    {ok, DepTx, _Updates} = wdraw_tx_for_signing(Opts#{acct => ToPub}, D),
     D1 = request_signing(withdraw_tx, DepTx, D),
     gen_statem:reply(From, ok),
     next_state(awaiting_signature, set_ongoing(D1));
@@ -1331,7 +1352,7 @@ handle_call_(open, {get_contract_call, Contract, Caller, Round}, From,
         end,
     keep_state(D, [{reply, From, Response}]);
 handle_call_(open, shutdown, From, D) ->
-    {ok, CloseTx} = close_mutual_tx_for_signing(D),
+    {ok, CloseTx, _Updates} = close_mutual_tx_for_signing(D),
     D1 = request_signing(?SHUTDOWN, CloseTx, D),
     gen_statem:reply(From, ok),
     next_state(awaiting_signature, set_ongoing(D1));
@@ -1724,11 +1745,11 @@ new_onchain_tx_for_signing_(Type, Opts, D) ->
     FeeSpecified = maps:is_key(fee, Opts),
     Defaults = tx_defaults(Type, Opts, D),
     Opts1 = maps:merge(Defaults, Opts),
-    {ok, Tx} = new_onchain_tx(Type, Opts1, D),
+    {ok, Tx, Updates} = new_onchain_tx(Type, Opts1, D),
     CurHeight = cur_height(),
     case {aetx:min_fee(Tx, CurHeight), aetx:fee(Tx)} of
         {MinFee, Fee} when MinFee =< Fee ->
-            {ok, Tx};
+            {ok, Tx, Updates};
         {MinFee, Fee} when FeeSpecified ->
             lager:debug("Specified fee (~p) is too low for ~p (Min: ~p)",
                         [Fee, Type, MinFee]),
@@ -1739,6 +1760,11 @@ new_onchain_tx_for_signing_(Type, Opts, D) ->
             new_onchain_tx(Type, Opts1#{fee => trunc(MinFee * 1.1)}, D)
     end.
 
+-spec new_onchain_tx(channel_create_tx
+                   | channel_close_mutual_tx
+                   | channel_deposit_tx
+                   | channel_withdraw_tx, map(), #data{}) ->
+    {ok, aetx:tx(), [aesc_offchain_update:update()]}.
 new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
                #data{opts = DOpts, on_chain_id = Chan, state = State}) ->
     #{initiator := Initiator,
@@ -1751,13 +1777,15 @@ new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
     Nonce = maps:get(nonce, Opts),
     TTL = maps:get(ttl, Opts, 0), %% 0 means no TTL limit
     {IAmt1, RAmt1} = pay_close_mutual_fee(Fee, IAmt, RAmt),
-    aesc_close_mutual_tx:new(#{ channel_id             => ChanId
-                              , from_id                => FromId
-                              , initiator_amount_final => IAmt1
-                              , responder_amount_final => RAmt1
-                              , ttl                    => TTL
-                              , fee                    => Fee
-                              , nonce                  => Nonce });
+    {ok, CloseMutualTx} =
+        aesc_close_mutual_tx:new(#{ channel_id             => ChanId
+                                  , from_id                => FromId
+                                  , initiator_amount_final => IAmt1
+                                  , responder_amount_final => RAmt1
+                                  , ttl                    => TTL
+                                  , fee                    => Fee
+                                  , nonce                  => Nonce }),
+    {ok, CloseMutualTx, []};
 new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                                      amount := Amount} = Opts,
                #data{on_chain_id = ChanId, state=State}) ->
@@ -1777,8 +1805,8 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                                from_id    => aeser_id:create(account, FromId)
                                }),
     lager:debug("deposit_tx Opts = ~p", [Opts1]),
-    {ok, _} = Ok = aesc_deposit_tx:new(Opts1),
-    Ok;
+    {ok, DepositTx} = aesc_deposit_tx:new(Opts1),
+    {ok, DepositTx, Updates};
 
 new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                                       amount := Amount} = Opts,
@@ -1799,8 +1827,8 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                                to_id      => aeser_id:create(account, ToId)
                               }),
     lager:debug("withdraw_tx Opts = ~p", [Opts1]),
-    {ok, _} = Ok = aesc_withdraw_tx:new(Opts1),
-    Ok;
+    {ok, WithdrawTx} = aesc_withdraw_tx:new(Opts1),
+    {ok, WithdrawTx, Updates};
 
 new_onchain_tx(channel_create_tx, Opts,
                #data{opts = #{initiator := Initiator,
@@ -1814,8 +1842,8 @@ new_onchain_tx(channel_create_tx, Opts,
                   , initiator_id  => aeser_id:create(account, Initiator)
                   , responder_id  => aeser_id:create(account, Responder)
                   },
-    {ok, _} = Ok = aesc_create_tx:new(Opts2),
-    Ok.
+    {ok, CreateTx} = aesc_create_tx:new(Opts2),
+    {ok, CreateTx, []}. % no updates
 
 create_tx_for_signing(#data{opts = #{ initiator := Initiator
                                     , initiator_amount := IAmt
@@ -2423,7 +2451,7 @@ check_shutdown_msg(#{channel_id := ChanId,
                                         not_close_mutual_tx) of
         ok ->
             RealCloseTx = aetx_sign:tx(SignedTx),
-            {ok, FakeCloseTx} = fake_close_mutual_tx(RealCloseTx, D),
+            {ok, FakeCloseTx, []} = fake_close_mutual_tx(RealCloseTx, D),
             {channel_close_mutual_tx, FakeTxI} = aetx:specialize_type(FakeCloseTx),
             {channel_close_mutual_tx, RealTxI} = aetx:specialize_type(RealCloseTx),
             case (serialize_close_mutual_tx(FakeTxI) ==
@@ -2560,14 +2588,16 @@ send_conflict_msg(?WDRAW_ERR, Sn, Msg) ->
 check_update_err_msg(Msg, D) ->
     check_op_error_msg(?UPDATE_ERR, Msg, D).
 
-request_signing(Tag, Obj, #data{} = D) ->
-    request_signing(Tag, Obj, Obj, D).
+request_signing(Tag, Aetx, #data{} = D) ->
+    request_signing(Tag, Aetx, aetx_sign:new(Aetx, []), D).
 
-request_signing(Tag, Obj, Ref, #data{client = Client} = D) ->
-    Msg = rpt_message(sign, Tag, Obj, D),
+-spec request_signing(sign_tag(), aetx:tx(),
+                      aetx_sign:signed_tx(), #data{}) -> #data{}.
+request_signing(Tag, Aetx, SignedTx, #data{client = Client} = D) ->
+    Msg = rpt_message(sign, Tag, Aetx, D),
     Client ! {?MODULE, self(), Msg},
     lager:debug("signing(~p) requested", [Tag]),
-    D#data{ latest = {sign, Tag, Ref}
+    D#data{ latest = {sign, Tag, SignedTx}
           , log    = log_msg(req, sign, Msg, D#data.log)}.
 
 default_minimum_depth(initiator  ) -> undefined;
