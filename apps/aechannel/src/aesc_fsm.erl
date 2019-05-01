@@ -657,8 +657,8 @@ initialized(cast, {?CH_ACCEPT, Msg}, #data{role = initiator} = D) ->
         {ok, D1} ->
             gproc_register(D1),
             report(info, channel_accept, D1),
-            {ok, CTx, _Updates} = create_tx_for_signing(D1),
-            D2 = request_signing(create_tx, CTx, D1),
+            {ok, CTx, Updates} = create_tx_for_signing(D1),
+            D2 = request_signing(create_tx, CTx, Updates, D1),
             next_state(awaiting_signature, D2);
         {error, _} = Error ->
             close(Error, D)
@@ -805,11 +805,12 @@ awaiting_signature(Type, Msg, D) ->
 accepted(enter, _OldSt, _D) -> keep_state_and_data;
 accepted(cast, {?FND_CREATED, Msg}, #data{role = responder} = D) ->
     case check_funding_created_msg(Msg, D) of
-        {ok, SignedTx, D1} ->
+        {ok, SignedTx, Updates, D1} ->
             report(info, funding_created, D1),
             lager:debug("funding_created: ~p", [SignedTx]),
             D2 = request_signing(
-                   ?FND_CREATED, aetx_sign:tx(SignedTx), SignedTx, D1),
+                   ?FND_CREATED, aetx_sign:tx(SignedTx), SignedTx,
+                   Updates, D1),
             next_state(awaiting_signature, D2);
         {error, Error} ->
              close(Error, D)
@@ -990,11 +991,12 @@ awaiting_initial_state(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_initial_state(cast, {?UPDATE, Msg}, #data{role = responder} = D) ->
     lager:debug("got {update, ~p}", [Msg]),
     case check_update_msg(initial, Msg, D) of
-        {ok, SignedTx, D1} ->
+        {ok, SignedTx, Updates, D1} ->
             lager:debug("update_msg checks out", []),
             report(info, update, D1),
             D2 = request_signing(
-                   ?UPDATE_ACK, aetx_sign:tx(SignedTx), SignedTx, D1),
+                   ?UPDATE_ACK, aetx_sign:tx(SignedTx), SignedTx,
+                   Updates, D1),
             next_state(awaiting_signature, D2);
         {error,_} = Error ->
             %% TODO: do we do a dispute challenge here?
@@ -1103,10 +1105,11 @@ open(enter, _OldSt, D) ->
     keep_state(D1#data{ongoing_update = false});
 open(cast, {?UPDATE, Msg}, D) ->
     case check_update_msg(normal, Msg, D) of
-        {ok, SignedTx, D1} ->
+        {ok, SignedTx, Updates, D1} ->
             report(info, update, D1),
             D2 = request_signing(
-                   ?UPDATE_ACK, aetx_sign:tx(SignedTx), SignedTx, D1),
+                   ?UPDATE_ACK, aetx_sign:tx(SignedTx), SignedTx,
+                   Updates, D1),
             next_state(awaiting_signature, set_ongoing(D2));
         {error, _Error} ->
             handle_update_conflict(?UPDATE, D)
@@ -1118,22 +1121,24 @@ open(cast, {?UPDATE_ERR, Msg}, D) ->
     keep_state(D);
 open(cast, {?DEP_CREATED, Msg}, D) ->
     case check_deposit_created_msg(Msg, D) of
-        {ok, SignedTx, D1} ->
+        {ok, SignedTx, Updates, D1} ->
             report(info, deposit_created, D1),
             lager:debug("deposit_created: ~p", [SignedTx]),
             D2 = request_signing(
-                   ?DEP_CREATED, aetx_sign:tx(SignedTx), SignedTx, D1),
+                   ?DEP_CREATED, aetx_sign:tx(SignedTx), SignedTx,
+                   Updates, D1),
             next_state(awaiting_signature, set_ongoing(D2));
         {error, _Error} ->
             handle_update_conflict(?DEP_CREATED, D)
     end;
 open(cast, {?WDRAW_CREATED, Msg}, D) ->
     case check_withdraw_created_msg(Msg, D) of
-        {ok, SignedTx, D1} ->
+        {ok, SignedTx, Updates, D1} ->
             report(info, withdraw_created, D1),
             lager:debug("withdraw_created: ~p", [SignedTx]),
             D2 = request_signing(
-                   ?WDRAW_CREATED, aetx_sign:tx(SignedTx), SignedTx, D1),
+                   ?WDRAW_CREATED, aetx_sign:tx(SignedTx), SignedTx,
+                   Updates, D1),
             next_state(awaiting_signature, set_ongoing(D2));
         {error, _Error} ->
             handle_update_conflict(?WDRAW_CREATED, D)
@@ -1165,9 +1170,10 @@ open(cast, {?LEAVE, Msg}, D) ->
     end;
 open(cast, {?SHUTDOWN, Msg}, D) ->
     case check_shutdown_msg(Msg, D) of
-        {ok, SignedTx, D1} ->
+        {ok, SignedTx, Updates, D1} ->
             D2 = request_signing(
-                   ?SHUTDOWN_ACK, aetx_sign:tx(SignedTx), SignedTx, D1),
+                   ?SHUTDOWN_ACK, aetx_sign:tx(SignedTx), SignedTx,
+                   Updates, D1),
             next_state(awaiting_signature, D2);
         {error, E} ->
             close({shutdown_error, E}, D)
@@ -1264,8 +1270,8 @@ handle_call_(open, {upd_deposit, #{amount := Amt} = Opts}, From,
         {ok, _Other}  -> error(conflicting_accounts);
         error         -> ok
     end,
-    {ok, DepTx, _Updates} = dep_tx_for_signing(Opts#{acct => FromPub}, D),
-    D1 = request_signing(deposit_tx, DepTx, D),
+    {ok, DepTx, Updates} = dep_tx_for_signing(Opts#{acct => FromPub}, D),
+    D1 = request_signing(deposit_tx, DepTx, Updates, D),
     gen_statem:reply(From, ok),
     next_state(awaiting_signature, set_ongoing(D1));
 handle_call_(open, {upd_withdraw, #{amount := Amt} = Opts}, From,
@@ -1276,8 +1282,8 @@ handle_call_(open, {upd_withdraw, #{amount := Amt} = Opts}, From,
         {ok, _Other}  -> error(conflicting_accounts);
         error         -> ok
     end,
-    {ok, DepTx, _Updates} = wdraw_tx_for_signing(Opts#{acct => ToPub}, D),
-    D1 = request_signing(withdraw_tx, DepTx, D),
+    {ok, DepTx, Updates} = wdraw_tx_for_signing(Opts#{acct => ToPub}, D),
+    D1 = request_signing(withdraw_tx, DepTx, Updates, D),
     gen_statem:reply(From, ok),
     next_state(awaiting_signature, set_ongoing(D1));
 handle_call_(open, leave, From, #data{} = D) ->
@@ -1326,7 +1332,7 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
                                                                    UpdState),
                 keep_state(D, [{reply, From, {ok, Call}}]);
             execute ->
-                D1 = request_signing(?UPDATE, Tx1, D),
+                D1 = request_signing(?UPDATE, Tx1, Updates, D),
                 gen_statem:reply(From, ok),
                 next_state(awaiting_signature, set_ongoing(D1))
           end
@@ -1352,8 +1358,8 @@ handle_call_(open, {get_contract_call, Contract, Caller, Round}, From,
         end,
     keep_state(D, [{reply, From, Response}]);
 handle_call_(open, shutdown, From, D) ->
-    {ok, CloseTx, _Updates} = close_mutual_tx_for_signing(D),
-    D1 = request_signing(?SHUTDOWN, CloseTx, D),
+    {ok, CloseTx, Updates} = close_mutual_tx_for_signing(D),
+    D1 = request_signing(?SHUTDOWN, CloseTx, Updates, D),
     gen_statem:reply(From, ok),
     next_state(awaiting_signature, set_ongoing(D1));
 handle_call_(open, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
@@ -1440,8 +1446,8 @@ handle_call_(St, close_solo, From, D) ->
         channel_closing ->
             keep_state(D, [{reply, From, {error, channel_closing}}]);
         _ ->
-            {ok, CloseSoloTx} = close_solo_tx_for_signing(D),
-            D1 = request_signing(close_solo_tx, CloseSoloTx, D),
+            {ok, CloseSoloTx, Updates} = close_solo_tx_for_signing(D),
+            D1 = request_signing(close_solo_tx, CloseSoloTx, Updates, D),
             next_state(awaiting_signature, D1, [{reply, From, ok}])
     end;
 handle_call_(_, {strict_checks, Strict}, From, #data{} = D) when
@@ -1479,8 +1485,8 @@ handle_common_event_(cast, {?CHANNEL_CLOSING, ChanId} = Msg, _St, _,
     D1 = log(rcv, ?CHANNEL_CLOSING, Msg, D),
     case check_closing_event(D1) of
         {can_slash, Round, SignedTx} ->
-            {ok, SlashTx} = slash_tx_for_signing(Round, SignedTx, D1),
-            D2 = request_signing(slash_tx, SlashTx, D1),
+            {ok, SlashTx, Updates} = slash_tx_for_signing(Round, SignedTx, D1),
+            D2 = request_signing(slash_tx, SlashTx, Updates, D1),
             next_state(awaiting_signature, D2);
         {ok, Other} ->
             lager:debug("Channel not solo-closing: ~p", [Other]),
@@ -1900,14 +1906,14 @@ slash_tx(Account, Nonce, _Round, SignedTx, #data{ on_chain_id = ChanId
     TTL = adjust_ttl(maps:get(ttl, Opts1, 0)),
     {ok, Poi} = aesc_offchain_state:poi([{account, Initiator},
                                          {account, Responder}], State),
-    {ok, _} = Ok = aesc_slash_tx:new(#{ channel_id => aeser_id:create(channel, ChanId)
-                                      , from_id    => aeser_id:create(account, Account)
-                                      , payload    => aetx_sign:serialize_to_binary(SignedTx)
-                                      , poi        => Poi
-                                      , ttl        => TTL
-                                      , fee        => Fee
-                                      , nonce      => Nonce }),
-    Ok.
+    {ok, Tx} = aesc_slash_tx:new(#{ channel_id => aeser_id:create(channel, ChanId)
+                                  , from_id    => aeser_id:create(account, Account)
+                                  , payload    => aetx_sign:serialize_to_binary(SignedTx)
+                                  , poi        => Poi
+                                  , ttl        => TTL
+                                  , fee        => Fee
+                                  , nonce      => Nonce }),
+    {ok, Tx, []}.
 
 close_solo_tx_for_signing(D) ->
     Account = my_account(D),
@@ -1926,14 +1932,14 @@ close_solo_tx(Account, Nonce, #data{ on_chain_id = ChanId
     {_Round, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
     {ok, Poi} = aesc_offchain_state:poi([{account, Initiator},
                                          {account, Responder}], State),
-    {ok,_} = Ok = aesc_slash_tx:new(#{ channel_id => aeser_id:create(channel, ChanId)
-                                     , from_id    => aeser_id:create(account, Account)
-                                     , payload    => aetx_sign:serialize_to_binary(SignedTx)
-                                     , poi        => Poi
-                                     , ttl        => TTL
-                                     , fee        => Fee
-                                     , nonce      => Nonce }),
-    Ok.
+    {ok, Tx} = aesc_slash_tx:new(#{ channel_id => aeser_id:create(channel, ChanId)
+                                  , from_id    => aeser_id:create(account, Account)
+                                  , payload    => aetx_sign:serialize_to_binary(SignedTx)
+                                  , poi        => Poi
+                                  , ttl        => TTL
+                                  , fee        => Fee
+                                  , nonce      => Nonce }),
+    {ok, Tx, []}.
 
 tx_defaults(Type, Opts, #data{ on_chain_id = ChanId } = D) ->
     Default = tx_defaults_(Type, Opts, D),
@@ -2000,7 +2006,7 @@ new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts 
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
                                                   OnChainTrees, OnChainEnv, ChannelOpts),
-         D1 = request_signing(?UPDATE, Tx1, D),
+         D1 = request_signing(?UPDATE, Tx1, Updates, D),
          gen_statem:reply(From, ok),
          next_state(awaiting_signature, set_ongoing(D1))
     catch
@@ -2385,7 +2391,7 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
                                                   OnChainTrees, OnChainEnv, Opts),
-         D1 = request_signing(?UPDATE, Tx1, D),
+         D1 = request_signing(?UPDATE, Tx1, Updates, D),
          gen_statem:reply(From, ok),
          next_state(awaiting_signature, D1)
     catch
@@ -2588,12 +2594,14 @@ send_conflict_msg(?WDRAW_ERR, Sn, Msg) ->
 check_update_err_msg(Msg, D) ->
     check_op_error_msg(?UPDATE_ERR, Msg, D).
 
-request_signing(Tag, Aetx, #data{} = D) ->
-    request_signing(Tag, Aetx, aetx_sign:new(Aetx, []), D).
+request_signing(Tag, Aetx, Updates, #data{} = D) ->
+    request_signing(Tag, Aetx, aetx_sign:new(Aetx, []), Updates, D).
 
 -spec request_signing(sign_tag(), aetx:tx(),
-                      aetx_sign:signed_tx(), #data{}) -> #data{}.
-request_signing(Tag, Aetx, SignedTx, #data{client = Client} = D) ->
+                      aetx_sign:signed_tx(),
+                      [aesc_offchain_update:update()],
+                      #data{}) -> #data{}.
+request_signing(Tag, Aetx, SignedTx, _Updates, #data{client = Client} = D) ->
     Msg = rpt_message(sign, Tag, Aetx, D),
     Client ! {?MODULE, self(), Msg},
     lager:debug("signing(~p) requested", [Tag]),
