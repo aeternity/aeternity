@@ -83,7 +83,11 @@
 -export([timeouts/0,
          report_tags/0]).
 
+-export([patterns/0,
+         record_fields/1]).
+
 -include("aesc_codec.hrl").
+-include_lib("trace_runner/include/trace_runner.hrl").
 
 -type role() :: initiator | responder.
 -type sign_tag() :: create_tx
@@ -165,6 +169,18 @@
                             ; S=:=awaiting_update_ack
                             ; S=:=awaiting_leave_ack
                             ; S=:=mutual_closing ).
+
+%% ==================================================================
+%% Tracing support
+patterns() ->
+    [{?MODULE, '_', '_', []}].
+    %% [{?MODULE, F, A, []} || {F,A} <- ?MODULE:module_info(exports),
+    %%                         not lists:member(F, [module_info, patterns])].
+
+record_fields(data ) -> record_info(fields, data);
+record_fields(w    ) -> aesc_window:record_fields(w);
+record_fields(Other) -> aesc_offchain_state:record_fields(Other).
+%% ==================================================================
 
 -ifdef(TEST).
 -define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p / ~p", [Err, erlang:get_stacktrace()])).
@@ -3105,3 +3121,6 @@ next_round(#data{state = State}) ->
     {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
     Round + 1.
 
+%% for tracing only
+event(_, _, _) ->
+    ok.

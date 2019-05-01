@@ -5300,6 +5300,10 @@ sc_ws_timeout_open(Config) ->
     ok.
 
 sc_ws_min_depth_not_reached_timeout(Config) ->
+    with_trace(fun sc_ws_min_depth_not_reached_timeout_/1, Config,
+               "sc_ws_min_depth_not_reached_timeout").
+
+sc_ws_min_depth_not_reached_timeout_(Config) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
 
@@ -6470,3 +6474,36 @@ mine_micro_block_emptying_mempool_or_fail(Node) ->
     end,
     %% Reached unless failed.
     {ok, [KeyBlock, MicroBlock]}.
+
+
+with_trace(F, Config, File) ->
+    ct:log("with_trace ...", []),
+    TTBRes = aesc_ttb:on_nodes([node()|get_nodes()], File),
+    ct:log("Trace set up: ~p", [TTBRes]),
+    try F(Config)
+    catch
+	error:R ->
+	    Stack = erlang:get_stacktrace(),
+	    ttb_stop(),
+	    ct:log("Error ~p; Stack = ~p", [R, Stack]),
+	    erlang:error(R);
+	exit:R ->
+	    ttb_stop(),
+	    exit(R);
+        throw:Res ->
+            ct:log("Caught throw:~p", [Res]),
+            throw(Res)
+    end,
+    ct:log("Discarding trace", []),
+    aesc_ttb:stop_nofetch(),
+    ok.
+
+ttb_stop() ->
+    Dir = aesc_ttb:stop(),
+    Out = filename:join(filename:dirname(Dir),
+			filename:basename(Dir) ++ ".txt"),
+    aesc_ttb:format(Dir, Out),
+    ct:log("Formatted trace log in ~s~n", [Out]).
+
+get_nodes() ->
+    [aecore_suite_utils:node_name(?NODE)].

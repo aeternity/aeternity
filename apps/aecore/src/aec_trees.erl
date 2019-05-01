@@ -59,6 +59,8 @@
          verify_poi/4
         ]).
 
+-export([record_fields/1]).
+
 -ifdef(TEST).
 -export([internal_serialize_poi_fields/1,
          internal_serialize_poi_from_fields/1
@@ -98,6 +100,19 @@
              ]).
 
 -define(VERSION, 1).
+
+%% ==================================================================
+%% Tracing support
+record_fields(trees) -> record_info(fields, trees);
+record_fields(poi  ) -> record_info(fields, poi);
+record_fields(_    ) -> {check_mods, [ aeu_mp_trees
+                                     , aec_accounts_trees
+                                     , aect_state_tree
+                                     , aect_call_state_tree
+                                     , aec_state_tree
+                                     , aens_state_tree
+                                     , aeo_state_tree ]}.
+%% ==================================================================
 
 %%%%=============================================================================
 %% API

@@ -39,6 +39,14 @@
          prune_calls/1
         ]).
 
+-export([record_fields/1]).
+
+%% ==================================================================
+%% Tracing support
+record_fields(state) -> record_info(fields, state);
+record_fields(Other) -> aec_trees:record_fields(Other).
+%% ==================================================================
+
 
 -spec new(map()) -> {ok, state()}.
 new(Opts) ->

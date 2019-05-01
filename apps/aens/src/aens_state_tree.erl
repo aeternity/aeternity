@@ -27,6 +27,8 @@
         , to_binary_without_backend/1
         ]).
 
+-export([record_fields/1]).
+
 %% Export for test
 -ifdef(TEST).
 -export([ name_list/1
@@ -57,6 +59,13 @@
 -export_type([tree/0]).
 
 -define(VSN, 1).
+
+%% ==================================================================
+%% Tracing support
+record_fields(ns_tree) -> record_info(fields, ns_tree);
+record_fields(_      ) -> no.
+%% ==================================================================
+
 %%%===================================================================
 %%% API
 %%%===================================================================

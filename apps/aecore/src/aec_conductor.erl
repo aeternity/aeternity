@@ -249,13 +249,13 @@ handle_call(stop_mining,_From, State = #state{ consensus = Cons }) ->
                           key_block_candidates = undefined},
     {reply, ok, create_key_block_candidate(State2)};
 handle_call({start_mining, _Opts},_From, #state{mining_state = 'running'} = State) ->
-    epoch_mining:info("Mining running"),
+    epoch_mining:info("Mining running: ~p" ++ print_opts(State)),
     {reply, ok, State};
 handle_call({start_mining, _Opts},_From, State = #state{ beneficiary = undefined }) ->
     epoch_mining:error("Cannot start mining - beneficiary not configured"),
     {reply, {error, beneficiary_not_configured}, State};
 handle_call({start_mining,Opts},_From, State = #state{ consensus = Cons }) ->
-    epoch_mining:info("Mining started"),
+    epoch_mining:info("Mining started" ++ print_opts(State)),
     State1 = start_mining_(State#state{mining_state = 'running', consensus = Cons#consensus{leader = false},
                                       mining_opts = Opts}),
     {reply, ok, State1};
@@ -265,7 +265,7 @@ handle_call(get_mining_workers, _From, State) ->
     {reply, worker_pids_by_tag(mining, State), State};
 handle_call(is_leader, _From, State = #state{ consensus = Cons }) ->
     {reply, Cons#consensus.leader, State};
-handle_call(reinit_chain, _From, State1 = #state{ consensus = Cons }) ->
+handle_call(reinit_chain, _From, State1 = #state{ consensus = Cons } = State) ->
     %% NOTE: ONLY FOR TEST
     ok = reinit_chain_state(),
     TopBlockHash = aec_chain:top_block_hash(),
@@ -280,7 +280,7 @@ handle_call(reinit_chain, _From, State1 = #state{ consensus = Cons }) ->
                 epoch_mining:info("Mining stopped"),
                 State3 = kill_all_workers(State2),
                 hard_reset_block_generator(),
-                epoch_mining:info("Mining started"),
+                epoch_mining:info("Mining started" ++ print_opts(State)),
                 start_mining_(State3#state{mining_state = running,
                                            micro_block_candidate = undefined,
                                            key_block_candidates = undefined,
@@ -330,6 +330,16 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+print_opts(#state{ mining_opts = Opts }) ->
+    case map_size(Opts) of
+        0 ->
+            "";
+        _ ->
+            lists:flatten(io_lib:fwrite(": ~p", [Opts]))
+    end.
+        
+
 
 try_fetch_and_make_candidate() ->
     case aec_block_generator:get_candidate() of
@@ -1014,7 +1024,7 @@ handle_add_block(Header, Block, State, Origin) ->
     case {StrictlyFollow, Prev =:= State#state.top_block_hash} of
         {true, false} when Origin =:= block_created;
                            Origin =:= micro_block_created ->
-            epoch_mining:info("Mined block has old top - discarding (~p)", [Prev]),
+            epoch_mining:info("Mined block has old top - discarding (~p)", [Hash]),
             {{error, obsolete}, State};
         _ ->
             handle_add_block(Block, Hash, Prev, State, Origin)

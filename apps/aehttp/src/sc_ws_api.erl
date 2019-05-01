@@ -14,6 +14,11 @@
          process_from_fsm/3
         ]).
 
+-export([patterns/0]).
+
+-include_lib("trace_runner/include/trace_runner.hrl").
+
+
 %%%===================================================================
 %%% Behaviour definition
 %%%===================================================================
@@ -33,6 +38,22 @@
 
 -callback process_incoming(Msg :: map() | list(map()), FsmPid :: pid()) ->
     {reply, map()} | no_reply | stop.
+
+
+%%%==================================================================
+%%% Trace settings
+%%%==================================================================
+
+patterns() ->
+    [{sc_ws_handler, init, 2, []}, {?MODULE, '_', '_', []}].
+    %% [{sc_ws_handler, init, 2, []} |
+    %%  [{?MODULE, F, A, []} || {F, A} <- [ {protocol, 0}
+    %%                                    , {response, 0}
+    %%                                    , {process_from_client, 4}
+    %%                                    , {process_from_fsm, 3}
+    %%                                    ]]].
+
+
 
 %%%===================================================================
 %%% API
