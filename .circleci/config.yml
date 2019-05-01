@@ -851,9 +851,12 @@ jobs:
       - checkout
       - *restore_quickcheck_cache
       - run:
+          command: |
+            make eqc-lib/eqc
+      - run:
           name: QuickCheck Registration
           command: |
-            make eqc-lib-registration && make eqc-lib-start
+            echo "make eqc-lib-registration && make eqc-lib-start"
       - run:
           name: QuickCheck Tests
           environment:
@@ -862,7 +865,7 @@ jobs:
             EQC_EUNIT_TESTING_TIME_MULTIPLIER: 40
           no_output_timeout: 30m
           command: |
-            make eqc-lib-test
+            echo "make eqc-lib-test"
       - *save_quickcheck_cache
       - *store_rebar3_crashdump
       - *fail_notification
@@ -963,6 +966,13 @@ jobs:
 # and all its transitively dependent jobs must also have a filters tags section.
 workflows:
   version: 2
+  tmp_eqc_run:
+    jobs:
+      - quickcheck_tests:
+          filters:
+            branches:
+              only: PT-164548714-eqc-run--ci
+
   build_test_deploy:
     jobs:
       - build:
@@ -972,6 +982,7 @@ workflows:
                 - env/dev1
                 - env/dev2
                 - system-tests
+                - PT-164548714-eqc-run--ci
             tags:
               only: *tag_regex
 
@@ -982,6 +993,7 @@ workflows:
                 - env/dev1
                 - env/dev2
                 - system-tests
+                - PT-164548714-eqc-run--ci
 
       - docker_smoke_tests:
           filters:
@@ -991,6 +1003,7 @@ workflows:
                 - env/dev2
                 - system-tests
                 - master
+                - PT-164548714-eqc-run--ci
 
       - docker_system_smoke_tests:
           requires:
@@ -1156,6 +1169,7 @@ workflows:
             branches:
               ignore:
                 - system-tests
+                - PT-164548714-eqc-run--ci
             tags:
               only: *tag_regex
 
