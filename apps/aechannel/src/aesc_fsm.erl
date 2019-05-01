@@ -2043,17 +2043,19 @@ send_funding_created_msg(SignedTx, #data{channel_id = Ch,
     aesc_session_noise:funding_created(Sn, Msg),
     log(snd, ?FND_CREATED, Msg, Data).
 
+%% TODO: use Updates for validation
 check_funding_created_msg(#{ temporary_channel_id := ChanId
                            , block_hash           := ?DUMMY_BLOCK_HASH
                            , data                 := TxBin } = Msg,
                           #data{ state = State, opts = Opts, 
                                  channel_id = ChanId } = Data) ->
+    Updates = [],
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case verify_signatures_channel_create(SignedTx, initiator) of
         ok ->
             case check_update_tx(initial, SignedTx, State, Opts) of
                 ok ->
-                    {ok, SignedTx, log(rcv, ?FND_CREATED, Msg, Data)};
+                    {ok, SignedTx, Updates, log(rcv, ?FND_CREATED, Msg, Data)};
                 {error, _} = Error ->
                     Error
             end;
@@ -2115,17 +2117,19 @@ send_deposit_created_msg(SignedTx, #data{on_chain_id = Ch,
     aesc_session_noise:deposit_created(Sn, Msg),
     log(snd, ?DEP_CREATED, Msg, Data).
 
+%% TODO: use Updates for validation
 check_deposit_created_msg(#{ channel_id := ChanId
                            , block_hash := ?DUMMY_BLOCK_HASH
                            , data       := TxBin} = Msg,
                           #data{on_chain_id = ChanId} = Data) ->
+    Updates = [],
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case check_tx_and_verify_signatures(SignedTx, channel_deposit_tx,
                                         Data,
                                         [other_account(Data)],
                                         not_deposit_tx) of
         ok ->
-            {ok, SignedTx, log(rcv, ?DEP_CREATED, Msg, Data)};
+            {ok, SignedTx, Updates, log(rcv, ?DEP_CREATED, Msg, Data)};
         {error, _} = Err -> Err
     end.
 
@@ -2212,17 +2216,19 @@ send_withdraw_created_msg(SignedTx, #data{on_chain_id = Ch,
     aesc_session_noise:wdraw_created(Sn, Msg),
     log(snd, ?WDRAW_CREATED, Msg, Data).
 
+%% TODO: use Updates for validation
 check_withdraw_created_msg(#{ channel_id := ChanId
                             , block_hash := ?DUMMY_BLOCK_HASH
                             , data       := TxBin} = Msg,
                            #data{on_chain_id = ChanId} = Data) ->
+    Updates = [],
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case check_tx_and_verify_signatures(SignedTx, channel_withdraw_tx,
                                         Data,
                                         pubkeys(other_participant, Data),
                                         not_withdraw_tx) of
         ok ->
-            {ok, SignedTx, log(rcv, ?WDRAW_CREATED, Msg, Data)};
+            {ok, SignedTx, Updates, log(rcv, ?WDRAW_CREATED, Msg, Data)};
         {error, _} = Err -> Err
     end.
 
@@ -2294,16 +2300,22 @@ check_update_msg_(Type, #{ channel_id := ChanId
                          , block_hash := ?DUMMY_BLOCK_HASH
                          , data       := TxBin } = Msg,
                   #data{ on_chain_id = ChanId } = D) ->
+    Updates = [], %% TODO: read from noise
     try aetx_sign:deserialize_from_binary(TxBin) of
         SignedTx ->
-            check_signed_update_tx(Type, SignedTx, Msg, D)
+            case check_signed_update_tx(Type, SignedTx, Updates, D) of
+                ok ->
+                    {ok, SignedTx, Updates, log(rcv, ?UPDATE, Msg, D)};
+                {error, _} = Err -> Err
+            end
     catch
         error:E ->
             ?LOG_CAUGHT(E),
             {error, {deserialize, E}}
     end.
 
-check_signed_update_tx(Type, SignedTx, Msg,
+%% TODO: use Updates for validation
+check_signed_update_tx(Type, SignedTx, _Updates,
                        #data{state = State, opts = Opts} = D) ->
     lager:debug("check_signed_update_tx(~p)", [SignedTx]),
     case check_tx_and_verify_signatures(SignedTx, channel_offchain_tx,
@@ -2311,8 +2323,7 @@ check_signed_update_tx(Type, SignedTx, Msg,
                                         pubkeys(other_participant, D), not_offchain_tx) of
         ok ->
             case check_update_tx(Type, SignedTx, State, Opts) of
-                ok ->
-                    {ok, SignedTx, log(rcv, ?UPDATE, Msg, D)};
+                ok -> ok;
                 {error, _} = Error ->
                     Error
             end;
@@ -2446,10 +2457,12 @@ shutdown_msg(SignedTx, #data{ on_chain_id = OnChainId }) ->
      , data       => TxBin }.
 
 
+%% TODO: use Updates for validation
 check_shutdown_msg(#{channel_id := ChanId,
                      block_hash := ?DUMMY_BLOCK_HASH,
                      data := TxBin} = Msg,
                    #data{on_chain_id = ChanId} = D) ->
+    Updates = [],
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case check_tx_and_verify_signatures(SignedTx, channel_close_mutual_tx,
                                         D,
@@ -2463,7 +2476,7 @@ check_shutdown_msg(#{channel_id := ChanId,
             case (serialize_close_mutual_tx(FakeTxI) ==
                       serialize_close_mutual_tx(RealTxI)) of
                 true ->
-                    {ok, SignedTx, log(rcv, ?SHUTDOWN, Msg, D)};
+                    {ok, SignedTx, Updates, log(rcv, ?SHUTDOWN, Msg, D)};
                 false ->
                     {error, shutdown_tx_validation}
             end;
@@ -2601,6 +2614,7 @@ request_signing(Tag, Aetx, Updates, #data{} = D) ->
                       aetx_sign:signed_tx(),
                       [aesc_offchain_update:update()],
                       #data{}) -> #data{}.
+%% TODO: use _Updates
 request_signing(Tag, Aetx, SignedTx, _Updates, #data{client = Client} = D) ->
     Msg = rpt_message(sign, Tag, Aetx, D),
     Client ! {?MODULE, self(), Msg},
