@@ -155,6 +155,16 @@ references:
       # construct and export PACKAGE_TARBALL environment variable available to all jobs
       command: .circleci/set_package_path.sh
 
+  quickcheck_cache_key: &quickcheck_cache_key quickcheck-cache-v1
+  restore_quickcheck_cache: &restore_quickcheck_cache
+    restore_cache:
+      key: *quickcheck_cache_key
+  save_quickcheck_cache: &save_quickcheck_cache
+    save_cache:
+      key: *quickcheck_cache_key
+      paths:
+        - "eqc-lib/eqc.zip"
+
   build_package: &build_package
     run:
       name: Build Package Tarball
@@ -834,6 +844,29 @@ jobs:
       - store_artifacts:
           path: *system_test_host_logs
 
+  quickcheck_tests:
+    executor: builder_container_stable
+    <<: *container_config
+    steps:
+      - checkout
+      - *restore_quickcheck_cache
+      - run:
+          name: QuickCheck Registration
+          command: |
+            make eqc-lib-registration && make eqc-lib-start
+      - run:
+          name: QuickCheck Tests
+          environment:
+            # > [Jobs have a maximum runtime of 5 hours.](https://circleci.com/docs/2.0/configuration-reference/#jobs).
+            # If max job runtime reached, reduce this testing time multiplier variable (or parallelize job).
+            EQC_EUNIT_TESTING_TIME_MULTIPLIER: 40
+          no_output_timeout: 30m
+          command: |
+            make eqc-lib-test
+      - *save_quickcheck_cache
+      - *store_rebar3_crashdump
+      - *fail_notification
+
   deploy_integration:
     executor: infrastructure_container_unstable
     <<: *infrastructure_config
@@ -1386,3 +1419,14 @@ workflows:
                 - master
     jobs:
       - docker_system_tests
+
+  property_based_tests:
+    triggers:
+      - schedule:
+          cron: "0 0,12 * * *"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - quickcheck_tests
