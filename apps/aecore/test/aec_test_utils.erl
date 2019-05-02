@@ -305,16 +305,15 @@ grant_fees(FromHeight, Chain, TreesIn, BeneficiaryAccount) ->
     Beneficiary1Reward = round(0.4 * Fees),
     BlockReward = aec_governance:block_mine_reward(FromHeight + 1),
     Beneficiary2Reward = Fees - Beneficiary1Reward + BlockReward,
-    {Benefits1, Benefits2, BenefitsProto} =
-        case aec_governance:protocol_beneficiary_activation(FromHeight) and
-             aec_governance:protocol_beneficiary_enabled() of
+    {{Benefits1, Benefits2}, BenefitsProto} =
+        case aec_dev_reward:enabled() andalso aec_dev_reward:activated(FromHeight) of
             true ->
-                %% Assume we keep div 1000 in aec_chain_state:
-                ContribFactor = aec_governance:protocol_beneficiary_factor(),
-                AdjBeneficiary1Reward = Beneficiary1Reward * (1000 - ContribFactor) div 1000,
-                AdjBeneficiary2Reward = Beneficiary2Reward * (1000 - ContribFactor) div 1000,
-                ProtocolBeneficiaryReward = (Beneficiary1Reward + Beneficiary2Reward) * ContribFactor div 1000,
-                {AdjBeneficiary1Reward, AdjBeneficiary2Reward, ProtocolBeneficiaryReward};
+                AllocShares = 100,
+                TotalShares = 1000,
+                AbsContrib1 = Beneficiary1Reward * AllocShares div TotalShares,
+                AbsContrib2 = Beneficiary2Reward * AllocShares div TotalShares,
+                DevContrib  = AbsContrib1 + AbsContrib2,
+                {{Beneficiary1Reward - AbsContrib1, Beneficiary2Reward - AbsContrib2}, DevContrib};
             false ->
                 {Beneficiary1Reward, Beneficiary2Reward, 0}
         end,

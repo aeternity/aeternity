@@ -112,9 +112,8 @@ chain:
       "1": 0
       "2": 1
     # section describing reward split
-    protocol_beneficiary_address: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999"
-    protocol_beneficiary_enabled: true
-    protocol_beneficiary_factor: 100
+    protocol_beneficiaries: ["ak_DummyPubKeyDoNotEverUse999999999999999999999999999:100"]
+    protocol_beneficiaries_enabled: true
 
 mining:
     # Start mining automatically.
