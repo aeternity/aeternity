@@ -34,10 +34,9 @@ FUNCTION call_gas_price() -> integer
   GASPRICE a
   RETURN
 
-;; Defined as wrong arity in aebytecode
-;; FUNCTION block_hash(integer) -> hash
-;;   BLOCKHASH a arg0
-;;   RETURN
+FUNCTION block_hash(integer) -> integer
+  BLOCKHASH a arg0
+  RETURN
 
 FUNCTION beneficiary() -> address
   BENEFICIARY a

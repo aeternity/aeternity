@@ -11,6 +11,7 @@
         , init_per_group/2
         , end_per_group/2
         , init_per_testcase/2
+        , end_per_testcase/2
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -359,7 +360,19 @@ end_per_group(_Grp, Cfg) ->
     Cfg.
 
 %% Process dict magic in the right process ;-)
+init_per_testcase(fate_environment, Config) ->
+    meck:new(aefa_chain_api, [passthrough]),
+    meck:expect(aefa_chain_api, blockhash,
+                fun(N, S) when is_integer(N) ->
+                        %% Just to ensure the arg format
+                        _ = aefa_chain_api:generation(S),
+                        aeb_fate_data:make_integer(N)
+                end),
+    init_per_testcase_common(Config);
 init_per_testcase(_TC, Config) ->
+    init_per_testcase_common(Config).
+
+init_per_testcase_common(Config) ->
     VmVersion = ?config(vm_version, Config),
     ABIVersion = ?config(abi_version, Config),
     SophiaVersion = ?config(sophia_version, Config),
@@ -373,6 +386,12 @@ init_per_testcase(_TC, Config) ->
     put('$sophia_version', SophiaVersion),
     put('$protocol_version', ProtocolVersion),
     Config.
+
+end_per_testcase(fate_environment, _Config) ->
+    meck:unload(aefa_chain_api),
+    ok;
+end_per_testcase(_TC,_Config) ->
+    ok.
 
 -define(assertMatchVM(Res, ExpVm1, ExpVm2, ExpVm3),
     case vm_version() of
@@ -4609,6 +4628,19 @@ fate_environment(_Cfg) ->
     Time2 = aeu_time:now_in_msecs(),
     ?assert(Time1 < Timestamp andalso Timestamp < Time2),
 
+    %% Block hash is mocked to return the height if it gets a valid height
+    %% since we don't have a chain.
+    BHHeight = 1000,
+    ?assertEqual(0, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight},
+                          #{height => BHHeight})),
+    ?assertEqual(0, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight + 1},
+                          #{height => BHHeight})),
+    ?assertEqual(0, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight - 256},
+                          #{height => BHHeight})),
+    ?assertEqual(BHHeight - 1, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight - 1},
+                                     #{height => BHHeight})),
+    ?assertEqual(BHHeight - 255, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight - 255},
+                                       #{height => BHHeight})),
     ok.
 
 fate_call_origin(_Cfg) ->
