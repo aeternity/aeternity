@@ -246,12 +246,13 @@ unmock_difficulty_as_target() ->
 
 mock_governance() ->
     meck:new(aec_governance, [passthrough]),
+    meck:new(aec_dev_reward, [passthrough]),
     meck:new(aec_target, [passthrough]),
     meck:expect(aec_governance, key_blocks_to_check_difficulty_count, 0, 1),
-    meck:expect(aec_governance, protocol_beneficiary_activation, 1, true),
-    meck:expect(aec_governance, protocol_beneficiary_enabled, 0, true),
+    meck:expect(aec_dev_reward, activated, 1, true),
+    meck:expect(aec_dev_reward, enabled, 0, true),
     #{ public := PubKeyProtocol, secret := _ } = enacl:sign_keypair(),
-    meck:expect(aec_governance, protocol_beneficiary, 0, PubKeyProtocol),
+    meck:expect(aec_dev_reward, beneficiaries, 0, [{PubKeyProtocol, 100}]),
     meck:expect(aec_target, verify, 2, ok).
 
 unmock_governance() ->
@@ -317,8 +318,9 @@ grant_fees(FromHeight, Chain, TreesIn, BeneficiaryAccount) ->
             false ->
                 {Beneficiary1Reward, Beneficiary2Reward, 0}
         end,
+    [{DevRewardPK, _} | _] = aec_dev_reward:beneficiaries(),
     grant_fees_iter({Benefits1, Beneficiary1}, {Benefits2, Beneficiary2},
-                    {BenefitsProto, aec_governance:protocol_beneficiary()}, FromHeight, TreesIn).
+                    {BenefitsProto, DevRewardPK}, FromHeight, TreesIn).
 
 grant_fees_iter(_, {Benefits2, Beneficiary2}, {0,_}, 0, TreesIn) ->
     aec_trees:grant_fee(Beneficiary2, TreesIn, Benefits2);

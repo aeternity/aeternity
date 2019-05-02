@@ -980,18 +980,18 @@ fees_test_() ->
     }.
 
 fees_three_beneficiaries_with_split() ->
-    meck:expect(aec_governance, protocol_beneficiary_enabled, 0, true),
+    meck:expect(aec_dev_reward, enabled, 0, true),
     fees_three_beneficiaries().
 
 fees_three_beneficiaries_without_split() ->
-    meck:expect(aec_governance, protocol_beneficiary_enabled, 0, false),
+    meck:expect(aec_dev_reward, enabled, 0, false),
     fees_three_beneficiaries().
 
 fees_three_beneficiaries() ->
     #{ public := PubKeyProtocol, secret := _ } = enacl:sign_keypair(),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, 3),
-    meck:expect(aec_governance, protocol_beneficiary_activation, 1, true),
-    meck:expect(aec_governance, protocol_beneficiary, 0, PubKeyProtocol),
+    meck:expect(aec_dev_reward, activated, 1, true),
+    meck:expect(aec_dev_reward, beneficiaries, 0, [{PubKeyProtocol, 100}]),
 
     %% Two accounts to act as sender and receiver.
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
@@ -1066,7 +1066,7 @@ fees_three_beneficiaries() ->
     ?assertEqual(split_reward(aec_governance:block_mine_reward(3) + reward_60(Fee3)),
                  orddict:fetch(PubKey8, DictBal2)),
 
-    case aec_governance:protocol_beneficiary_enabled() of
+    case aec_dev_reward:enabled() of
         true ->
             TotalRewards = aec_governance:block_mine_reward(1) + aec_governance:block_mine_reward(2) + aec_governance:block_mine_reward(3)
                 + Fee1 + Fee2 + Fee3,
@@ -1083,17 +1083,17 @@ fees_three_beneficiaries() ->
     ok.
 
 fees_delayed_reward_with_split() ->
-    meck:expect(aec_governance, protocol_beneficiary_enabled, 0, true),
+    meck:expect(aec_dev_reward, enabled, 0, true),
     fees_delayed_reward().
 
 fees_delayed_reward_without_split() ->
-    meck:expect(aec_governance, protocol_beneficiary_enabled, 0, false),
+    meck:expect(aec_dev_reward, enabled, 0, false),
     fees_delayed_reward().
 
 fees_delayed_reward() ->
     %% Delay reward by 2 key blocks / generations.
     meck:expect(aec_governance, beneficiary_reward_delay, 0, 2),
-    meck:expect(aec_governance, protocol_beneficiary_activation, 1, true),
+    meck:expect(aec_dev_reward, activated, 1, true),
 
     %% Two accounts to act as sender and receiver.
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
@@ -1876,9 +1876,9 @@ get_used_gas_fee(STx) ->
     end.
 
 split_reward(Fee) ->
-    case aec_governance:protocol_beneficiary_enabled() of
+    case aec_dev_reward:enabled() of
         true ->
-            ContribFactor = aec_governance:protocol_beneficiary_factor(),
+            ContribFactor = aec_dev_reward:allocated_shares(),
             Fee * (1000 - ContribFactor) div 1000;
         false ->
             Fee
