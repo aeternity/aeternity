@@ -93,7 +93,7 @@ compile_contract(Name) ->
     FileName = filename:join(["contracts", atom_to_list(Name) ++ ".aes"]),
     {ok, Source} = aect_test_utils:read_contract(FileName),
     {ok, Serialized} = aect_test_utils:compile_contract(FileName),
-    #{source => Source, bytecode => Serialized, file => FileName}.
+    #{source => Source, bytecode => Serialized}.
 
 %% execute_call(Contract, CallData, ChainState) ->
 %%     execute_call(Contract, CallData, ChainState, #{}).
@@ -202,12 +202,12 @@ make_call(Contract, Fun, Args, Env, Options) ->
     execute_call(Contract, CallData, Env, Options).
 
 encode_call_data(Contract, Fun, Args, Env) ->
-    #{Contract := #{source := SrcBin, file := FileName}} = Env,
+    #{Contract := #{source := SrcBin}} = Env,
     FunBin  = atom_to_binary(Fun, utf8),
     ArgsBin = [ list_to_binary(A) || A <- Args ],
     case protocol_version() of
         Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN ->
-            aect_test_utils:encode_call_data(?SOPHIA_MINERVA, FileName, FunBin, ArgsBin);
+            aect_test_utils:encode_call_data(?SOPHIA_MINERVA, SrcBin, FunBin, ArgsBin);
         _ ->
             aect_test_utils:encode_call_data(?SOPHIA_FORTUNA_AEVM, SrcBin, FunBin, ArgsBin)
     end.

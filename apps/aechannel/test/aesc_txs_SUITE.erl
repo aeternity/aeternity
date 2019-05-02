@@ -5395,7 +5395,7 @@ encode_call_data(ContractName, Function, Arguments) ->
            lists:map(fun binary_to_list/1, Arguments)}]),
     case protocol_version() of
         Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN ->
-            aect_test_utils:encode_call_data(?SOPHIA_MINERVA, contract_filename(ContractName), Function, Arguments);
+            aect_test_utils:encode_call_data(?SOPHIA_MINERVA, Contract, Function, Arguments);
         _ ->
             aect_test_utils:encode_call_data(?SOPHIA_FORTUNA_AEVM, Contract, Function, Arguments)
     end.
@@ -5411,30 +5411,30 @@ address_encode(Type, Binary) ->
 
 quote(Bin) -> <<$", Bin/binary, $">>.
 
-create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->	
-    fun(#{state := State0,	
-          owner := Owner} = Props) ->	
-        Trees0 = aesc_test_utils:trees(State0),	
-        {ok, BinCode} = compile_contract(ContractName),	
-        {ok, CallData} = encode_call_data(ContractName, <<"init">>, InitArg),	
-        Nonce = aesc_test_utils:next_nonce(Owner, State0),	
-        {ok, AetxCreateTx} =	
-            aect_create_tx:new(#{owner_id    => aeser_id:create(account, Owner),	
-                                 nonce       => Nonce,	
-                                 code        => BinCode,	
-                                 vm_version  => aect_test_utils:latest_sophia_vm_version(),	
-                                 abi_version => aect_test_utils:latest_sophia_abi_version(),	
-                                 deposit     => Deposit,	
-                                 amount      => 0,	
-                                 gas         => 123467,	
-                                 gas_price   => aec_test_utils:min_gas_price(),	
-                                 call_data   => CallData,	
-                                 fee         => 10 * aec_test_utils:min_gas_price()}),	
-        {contract_create_tx, CreateTx} = aetx:specialize_type(AetxCreateTx),	
-        Env = tx_env(Props),	
-        {ok, _} = aect_create_tx:check(CreateTx, Trees0, Env),	
-        {ok, Trees, _} = aect_create_tx:process(CreateTx, Trees0, Env),	
-        ContractId = aect_contracts:compute_contract_pubkey(Owner, Nonce),	
-        State = aesc_test_utils:set_trees(Trees, State0),	
-        Props#{state => State, contract_file => ContractName, contract_id => ContractId}	
+create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->
+    fun(#{state := State0,
+          owner := Owner} = Props) ->
+        Trees0 = aesc_test_utils:trees(State0),
+        {ok, BinCode} = compile_contract(ContractName),
+        {ok, CallData} = encode_call_data(ContractName, <<"init">>, InitArg),
+        Nonce = aesc_test_utils:next_nonce(Owner, State0),
+        {ok, AetxCreateTx} =
+            aect_create_tx:new(#{owner_id    => aeser_id:create(account, Owner),
+                                 nonce       => Nonce,
+                                 code        => BinCode,
+                                 vm_version  => aect_test_utils:latest_sophia_vm_version(),
+                                 abi_version => aect_test_utils:latest_sophia_abi_version(),
+                                 deposit     => Deposit,
+                                 amount      => 0,
+                                 gas         => 123467,
+                                 gas_price   => aec_test_utils:min_gas_price(),
+                                 call_data   => CallData,
+                                 fee         => 10 * aec_test_utils:min_gas_price()}),
+        {contract_create_tx, CreateTx} = aetx:specialize_type(AetxCreateTx),
+        Env = tx_env(Props),
+        {ok, _} = aect_create_tx:check(CreateTx, Trees0, Env),
+        {ok, Trees, _} = aect_create_tx:process(CreateTx, Trees0, Env),
+        ContractId = aect_contracts:compute_contract_pubkey(Owner, Nonce),
+        State = aesc_test_utils:set_trees(Trees, State0),
+        Props#{state => State, contract_file => ContractName, contract_id => ContractId}
     end.

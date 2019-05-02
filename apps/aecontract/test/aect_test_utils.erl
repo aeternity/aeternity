@@ -341,7 +341,10 @@ encode_call_data(?SOPHIA_FORTUNA_AEVM, Code, Fun, Args) ->
     catch _T:_E ->
         {error, <<"bad argument">>}
     end;
-encode_call_data(_LegacyVsn, SrcFile, Fun, Args) ->
+encode_call_data(_LegacyVsn, Code, Fun, Args0) ->
+    SrcFile = tempfile_name("sophia_code", [{ext, ".aes"}]),
+    Args    = legacy_args(Args0),
+    ok = file:write_file(SrcFile, Code),
     Compiler = compiler_cmd(?SOPHIA_MINERVA),
     Esc = fun(Str) -> lists:flatten(string:replace(string:replace(Str, "\\", "\\\\", all), "\"", "\\\"", all)) end,
     Cmd = Compiler ++ " --create_calldata " ++ contract_filename(aevm, SrcFile) ++
@@ -388,6 +391,20 @@ get_type(Type) ->
         {error, ErrorAtom} ->
             {error, unicode:characters_to_binary(atom_to_list(ErrorAtom))}
     end.
+
+%% Convert to old style hex literals.
+legacy_args(Args) ->
+    lists:map(fun legacy_arg/1, Args).
+
+legacy_arg(Str) when is_list(Str) -> legacy_arg(list_to_binary(Str));
+legacy_arg(Bin) when is_binary(Bin) ->
+    try aeser_api_encoder:decode(Bin) of
+        {_, Val} -> <<"0x", Hex/binary>> = aeu_hex:hexstring_encode(Val),
+                    <<"#", Hex/binary>>
+    catch _:_ ->
+        Bin
+    end;
+legacy_arg(X) -> X.
 
 %%%===================================================================
 %%% Oracles

@@ -12,7 +12,6 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
--include("../../aecontract/test/aect_sophia_vsn.hrl").
 
 %% common_test exports
 -export([
@@ -951,7 +950,10 @@ fundme_contract(Config) ->
                  priv_key := DPriv}} = proplists:get_value(accounts, Config),
 
     %% Compile test contract "fundme.aes"
-    Contract = compile_test_contract("aevm_3/fundme"),
+    Contract = case aect_test_utils:latest_protocol_version() of
+                   Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN -> compile_test_contract("fundme");
+                   _                                    -> compile_test_contract("aevm_3/fundme")
+               end,
 
     %% Get the current height.
     {ok,200,#{<<"height">> := StartHeight}} = get_key_blocks_current_height(),
@@ -1206,19 +1208,12 @@ call_func_decode(NodeName, Pubkey, Privkey, EncCPubkey,
     Value.
 
 %% Contract interface functions.
-compiler_vsn() ->
-    case lists:last(rpc(aec_hard_forks, sorted_protocol_versions, [])) of
-        ?ROMA_PROTOCOL_VSN -> ?SOPHIA_ROMA;
-        ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_MINERVA;
-        ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA_AEVM
-    end.
-
 compile_test_contract(Name) ->
     compile_test_contract_(filename:join("contracts", lists:concat([Name, ".aes"]))).
 
 compile_test_contract_(FileName) ->
     {ok, BinSrc} = aect_test_utils:read_contract(FileName),
-    {ok, Code} = aect_test_utils:compile_contract(compiler_vsn(), FileName),
+    {ok, Code} = aect_test_utils:compile_contract(FileName),
     #{ bytecode => aeser_api_encoder:encode(contract_bytearray, Code),
        code     => Code,
        src      => binary_to_list(BinSrc) }.
@@ -1688,16 +1683,6 @@ wait_for_tx_hash_on_chain(Node, TxHash) ->
                 {error, _Reason} -> did_not_mine
             end
     end.
-
-%% make_params(L) ->
-%%     make_params(L, []).
-
-%% make_params([], Accum) ->
-%%     maps:from_list(Accum);
-%% make_params([H | T], Accum) when is_map(H) ->
-%%     make_params(T, maps:to_list(H) ++ Accum);
-%% make_params([{K, V} | T], Accum) ->
-%%     make_params(T, [{K, V} | Accum]).
 
 generate_key_pair() ->
     #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
