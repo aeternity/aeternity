@@ -60,3 +60,4 @@ debian/aeternity-node*
 debian/changelog
 debian/files
 eqc-lib
+eqc
