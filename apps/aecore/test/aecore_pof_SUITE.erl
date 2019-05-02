@@ -238,16 +238,19 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
                                 || X <- lists:seq(N1KeyBlocksCount + 1, N2Height - PofDelay),
                                     X =/= FraudHeight]) + FraudReward,
 
-            {value, FoundationAcc} = rpc:call(N2, aec_chain, get_account,
-                                              [aec_governance:protocol_beneficiary()]),
-
-            FoundationBal = aec_accounts:balance(FoundationAcc),
+            BenefTotal = rpc:call(N2, aec_dev_reward, total_shares, []),
+            BenefFactor = rpc:call(N2, aec_dev_reward, allocated_shares, []),
+            FoundationBenefs = rpc:call(N2, aec_dev_reward, beneficiaries, []),
+            FoundationBal = lists:sum([begin
+                                           {value, Acc} = rpc:call(N2, aec_chain, get_account, [PK]),
+                                           aec_accounts:balance(Acc)
+                                       end || {PK, _} <- FoundationBenefs]),
 
             %% Foundation gets some fraction of the reward. The foundation reward then
             %% must be deducted from the reward to get the actual reward that goes to
             %% the beneficiary.
-            FoundationReward1 = (Reward1 - Block1Reward) * aec_governance:protocol_beneficiary_factor() div 1000,
-            FoundationReward2 = Reward2 * aec_governance:protocol_beneficiary_factor() div 1000,
+            FoundationReward1 = (Reward1 - Block1Reward) * BenefFactor div BenefTotal,
+            FoundationReward2 = Reward2 * BenefFactor div BenefTotal,
 
             %% There are no tx fees included in the calculation so the FoundationBal
             %% must be at least the sum of all foundation rewards (without the fees).
@@ -345,4 +348,3 @@ get_lock_holder_balance(N) ->
             _Bal = aec_accounts:balance(Acc);
         none -> 0
     end.
-

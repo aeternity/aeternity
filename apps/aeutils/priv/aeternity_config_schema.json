@@ -371,26 +371,19 @@
                         }
                     }
                 },
-                "protocol_beneficiary_address" : {
+                "protocol_beneficiaries_enabled" : {
                     "description" :
-                    "Public key of beneficiary account that belongs to protocol maintainers.",
-                    "type" : "string",
-                    "example" : "ak_DummyPubKeyDoNotEverUse999999999999999999999999999",
-                    "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*$"
-                },
-                "protocol_beneficiary_enabled" : {
-                    "description" :
-                    "If true, the node will split rewards and send part to protocol_beneficiary_address",
+                    "If true, the node will split rewards and send part to protocol_beneficiaries",
                     "type" : "boolean",
                     "default" : true
                 },
-                "protocol_beneficiary_factor" : {
-                    "description" :
-                    "Part of rewards to split and send to protocol_beneficiary_address. Truncated to avoid fractions. 100 is 10%",
-                    "type" : "integer",
-                    "default": 100,
-                    "minimum" : 1,
-                    "maximum" : 1000
+                "protocol_beneficiaries" : {
+                    "type" : "array",
+                    "items" : {
+                        "description" : "Public keys belonging to protocol maintainers with reward shares (100 is 10%).",
+                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+$"
+                    },
+                    "default" : ["ak_2uN1CEVGs4D5QnFudhp8dSqrwJEMFiTfwvbCK3SJzVYRDiusfd:100"]
                 }
             }
         },
