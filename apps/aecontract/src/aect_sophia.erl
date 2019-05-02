@@ -11,11 +11,11 @@
 -include("../../aecore/include/blocks.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
 
--export([ decode_data/2
-        , serialize/1
+-export([ serialize/1
         , serialize/2
         , deserialize/1
         , is_legal_serialization_at_height/2
+        , prepare_for_json/2
         ]).
 
 -type wrapped_code() :: #{ source_hash := aec_hash:hash()
@@ -98,30 +98,6 @@ serialization_template(?SOPHIA_CONTRACT_VSN_1) ->
 serialization_template(?SOPHIA_CONTRACT_VSN_2) ->
     serialization_template(?SOPHIA_CONTRACT_VSN_1) ++
         [ {compiler_version, binary}].
-
-decode_data(Type, Data) ->
-    case get_type(Type) of
-        {ok, SophiaType} ->
-            try aeb_heap:from_binary(SophiaType, Data) of
-                {ok, Term} ->
-                    try prepare_for_json(SophiaType, Term) of
-                        R -> {ok, R}
-                    catch throw:R -> R
-                    end;
-                {error, _} -> {error, <<"bad type/data">>}
-            catch _T:_E ->    {error, <<"bad argument">>}
-            end;
-        {error, _} = E -> E
-    end.
-
-get_type(BinaryString) ->
-    String = unicode:characters_to_list(BinaryString, utf8),
-    case aeso_compiler:sophia_type_to_typerep(String) of
-        {ok, _Type} = R -> R;
-        {error, ErrorAtom} ->
-            {error, unicode:characters_to_binary(atom_to_list(ErrorAtom))}
-    end.
-
 
 prepare_for_json(word, Integer) when is_integer(Integer) ->
     #{ <<"type">> => <<"word">>,

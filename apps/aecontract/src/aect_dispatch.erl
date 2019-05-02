@@ -10,8 +10,7 @@
 -include("../include/aecontract.hrl").
 
 %% API
--export([ call/4
-        , run/2]).
+-export([run/2]).
 
 -define(PUB_SIZE, 32).
 
@@ -29,85 +28,6 @@
 -define(DEBUG_LOG(Format, Data), lager:debug(Format, Data)).
 -define(ST(), {}).
 -endif.
-
-%% -- Running contract code off chain ---------------------------------------
-
-call(<<"sophia-address">>, ContractKey, Function, Argument) ->
-    sophia_call(ContractKey, Function, Argument);
-call(<<"evm">>, Code, _, CallData) ->
-    solidity_call(Code, CallData);
-call(_, _, _, _) ->
-    {error, <<"Unknown call ABI">>}.
-
-solidity_call(Code, CallData) ->
-    CTVersion = #{vm => ?VM_AEVM_SOLIDITY_1, abi => ?ABI_SOLIDITY_1},
-    CallDataType   = undefined,
-    OutType        = undefined,
-    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    Owner          = <<123456:32/unit:8>>,
-    Deposit        = 0,
-    Contract       = aect_contracts:new(Owner, 1, CTVersion, Code, Deposit),
-    Store          = aect_contracts:state(Contract),
-    ContractKey    = aect_contracts:pubkey(Contract),
-    Trees1         = aect_utils:insert_contract_in_trees(Contract, Trees),
-    call_common(CallData, CallDataType, OutType, ContractKey, Code, Store,
-                TxEnv, Trees1, CTVersion).
-
-sophia_call(ContractKey, Function, Argument) ->
-    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    ContractsTree  = aec_trees:contracts(Trees),
-    Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
-    SerializedCode = aect_contracts:code(Contract),
-    Store          = aect_contracts:state(Contract),
-    CTVersion      = aect_contracts:ct_version(Contract),
-
-    case aehttp_logic:sophia_encode_call_data(SerializedCode, Function, Argument) of
-        {error, Error} ->
-            {error, list_to_binary(io_lib:format("~p", [Error]))};
-        {ok, CallData} ->
-            #{type_info := TypeInfo,
-              byte_code := Code} = aect_sophia:deserialize(SerializedCode),
-            {_Hash, Function, ArgTypeBin, OutTypeBin} = lists:keyfind(Function, 2, TypeInfo),
-            {ok, ArgType} = aeb_heap:from_binary(typerep, ArgTypeBin),
-            {ok, OutType} = aeb_heap:from_binary(typerep, OutTypeBin),
-            CallDataType = {tuple, [word, ArgType]},
-            call_common(CallData, CallDataType, OutType, ContractKey, Code,
-                        Store, TxEnv, Trees, CTVersion)
-    end.
-
-call_common(CallData, CallDataType, OutType, ContractPubkey, Code, Store,
-            TxEnv, Trees, CTVersion) ->
-    ContractId = aeser_id:create(contract, ContractPubkey),
-    Height = aetx_env:height(TxEnv),
-    GasPrice = 1,
-    Caller = <<123:?PUB_SIZE/unit:8>>,
-    CallerId = aeser_id:create(account, Caller),
-    CallIn = aect_call:new(CallerId,_Nonce=0, ContractId, Height, GasPrice),
-    Spec = #{ code           => Code
-            , call           => CallIn
-            , store          => Store
-            , contract       => ContractPubkey
-            , caller         => Caller
-            , call_data      => CallData
-            , call_data_type => CallDataType
-            , call_stack     => []
-            , off_chain      => false
-            , out_type       => OutType
-            , gas            => 100000000000000000
-            , gas_price      => GasPrice
-            , origin         => <<123:?PUB_SIZE/unit:8>>
-            , amount         => 0
-            , trees          => Trees
-            , tx_env         => TxEnv
-            },
-    {Call,_TreesOut,Env1} = run_common(CTVersion, Spec),
-    ReturnValue = aect_call:return_value(Call),
-    case aect_call:return_type(Call) of
-        ok     -> {ok, ReturnValue, Env1};
-        error  -> {error, ReturnValue};
-        revert -> {error, ReturnValue}
-    end.
-
 
 %% -- Running contract code on chain ---------------------------------------
 

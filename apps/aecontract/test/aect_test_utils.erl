@@ -33,6 +33,7 @@
         , compile_filename/2
         , encode_call_data/3
         , encode_call_data/4
+        , decode_data/2
         , assert_state_equal/2
         , get_oracle_queries/2
         , dummy_bytecode/0
@@ -325,12 +326,15 @@ delete_file(F) ->
         ok
     end.
 
+to_str(Bin) when is_binary(Bin) -> binary_to_list(Bin);
+to_str(Str)                     -> Str.
+
 encode_call_data(Code, Fun, Args) ->
     encode_call_data(latest_sophia_version(), Code, Fun, Args).
 
 encode_call_data(?SOPHIA_FORTUNA_AEVM, Code, Fun, Args) ->
-    try aeso_compiler:create_calldata(binary_to_list(Code), binary_to_list(Fun),
-                                      lists:map(fun binary_to_list/1, Args)) of
+    try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
+                                      lists:map(fun to_str/1, Args)) of
         {error, _} = Err -> Err;
         {ok, Data,_DataType,_OutType} when is_binary(Data) ->
             {ok, Data}
@@ -341,8 +345,8 @@ encode_call_data(_LegacyVsn, SrcFile, Fun, Args) ->
     Compiler = compiler_cmd(?SOPHIA_MINERVA),
     Esc = fun(Str) -> lists:flatten(string:replace(string:replace(Str, "\\", "\\\\", all), "\"", "\\\"", all)) end,
     Cmd = Compiler ++ " --create_calldata " ++ contract_filename(aevm, SrcFile) ++
-          " --calldata_fun " ++ binary_to_list(Fun) ++ " --calldata_args \"" ++
-          string:join(lists:map(Esc, lists:map(fun binary_to_list/1, Args)), ", ") ++ "\"",
+          " --calldata_fun " ++ to_str(Fun) ++ " --calldata_args \"" ++
+          string:join(lists:map(Esc, lists:map(fun to_str/1, Args)), ", ") ++ "\"",
     Output = os:cmd(Cmd),
     try
         [_, CalldataStr] = string:lexemes(Output, "\n"),
@@ -353,6 +357,37 @@ encode_call_data(_LegacyVsn, SrcFile, Fun, Args) ->
         cleanup_tempfiles()
     end.
 
+decode_data(Type, <<"cb_", _/binary>> = EncData) ->
+    case aeser_api_encoder:safe_decode(contract_bytearray, EncData) of
+        {ok, Data} ->
+            decode_data_(Type, Data);
+        Err = {error, _} ->
+            Err
+    end;
+decode_data(Type, Data) ->
+    decode_data_(Type, Data).
+
+decode_data_(Type, Data) ->
+    case get_type(Type) of
+        {ok, SophiaType} ->
+            try aeb_heap:from_binary(SophiaType, Data) of
+                {ok, Term} ->
+                    try aect_sophia:prepare_for_json(SophiaType, Term) of
+                        R -> {ok, R}
+                    catch throw:R -> R
+                    end;
+                {error, _} -> {error, <<"bad type/data">>}
+            catch _T:_E ->    {error, <<"bad argument">>}
+            end;
+        {error, _} = E -> E
+    end.
+
+get_type(Type) ->
+    case aeso_compiler:sophia_type_to_typerep(to_str(Type)) of
+        {ok, _Type} = R -> R;
+        {error, ErrorAtom} ->
+            {error, unicode:characters_to_binary(atom_to_list(ErrorAtom))}
+    end.
 
 %%%===================================================================
 %%% Oracles
