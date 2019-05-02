@@ -79,7 +79,7 @@
         , origin/2
         , caller/2
         , gasprice/2
-        , blockhash/2
+        , blockhash/3
         , beneficiary/2
         , timestamp/2
         , generation/2
@@ -120,6 +120,7 @@
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
+-include("../../aecore/include/blocks.hrl").
 
 %% ------------------------------------------------------------------------
 %% Operations
@@ -574,7 +575,23 @@ gasprice(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:gas_price(API), EngineState).
 
-blockhash(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+blockhash(Arg0, Arg1, ES) ->
+    case get_op_arg(Arg1, ES) of
+        {?FATE_INTEGER_VALUE(N), ES1} when ?IS_FATE_INTEGER(N) ->
+            GenesisHeight = aec_block_genesis:height(),
+            API = aefa_engine_state:chain_api(ES1),
+            CurrentHeight = aefa_chain_api:generation(API),
+            case (N < GenesisHeight orelse
+                  N >= CurrentHeight orelse
+                  N =< CurrentHeight - 256) of
+                true ->
+                    write(Arg0, aeb_fate_data:make_integer(0), ES1);
+                false ->
+                    write(Arg0, aefa_chain_api:blockhash(N, API), ES1)
+            end;
+        {Value, ES1} ->
+            aefa_fate:abort({value_does_not_match_type, Value, integer}, ES1)
+    end.
 
 beneficiary(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
