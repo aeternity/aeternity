@@ -188,19 +188,17 @@ dec_ch_accept(<< ChainHash      :32/binary
 enc_ch_reestabl(#{ chain_hash := ChainHash
                  , channel_id := ChanId
                  , data       := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_CH_REESTABL:1 /unit:8
      , ChainHash      :32/binary
      , ChanId         :32/binary
-     , Length         :2 /unit:8
-     , Data           :Length/bytes>>.
+     , EncData        /bytes>>.
 
 -spec dec_ch_reestabl(binary()) -> ch_reestabl_msg().
 dec_ch_reestabl(<< ChainHash:32/binary
                  , ChanId   :32/binary
-                 , Length   :2 /unit:8
-                 , Data/binary >>) ->
-    Length = byte_size(Data),
+                 , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ chain_hash => ChainHash
      , channel_id => ChanId
      , data       => Data }.
@@ -214,19 +212,17 @@ dec_ch_reestabl(<< ChainHash:32/binary
 enc_ch_reestabl_ack(#{ chain_hash := ChainHash
                      , channel_id := ChanId
                      , data       := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_CH_REEST_ACK:1 /unit:8
      , ChainHash       :32/binary
      , ChanId          :32/binary
-     , Length          :2 /unit:8
-     , Data            :Length/bytes>>.
+     , EncData        /bytes>>.
 
 -spec dec_ch_reest_ack(binary()) -> ch_reestabl_ack_msg().
 dec_ch_reest_ack(<< ChainHash:32/binary
                   , ChanId   :32/binary
-                  , Length   :2 /unit:8
-                  , Data/binary >>) ->
-    Length = byte_size(Data),
+                  , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ chain_hash => ChainHash
      , channel_id => ChanId
      , data       => Data }.
@@ -240,19 +236,17 @@ dec_ch_reest_ack(<< ChainHash:32/binary
 enc_fnd_created(#{ temporary_channel_id := ChanId
                  , block_hash           := BlockHash
                  , data                 := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_FND_CREATED:1 /unit:8
      , ChanId         :32/binary
      , BlockHash      :32/binary
-     , Length         :2 /unit:8
-     , Data           :Length/bytes >>.
+     , EncData        /bytes >>.
 
 -spec dec_fnd_created(binary()) -> fnd_created_msg().
 dec_fnd_created(<< ChanId:32/binary
                  , BlockHash:32/binary
-                 , Length:2/unit:8
-                 , Data/binary >>) ->
-    Length = byte_size(Data),
+                 , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ temporary_channel_id => ChanId
      , block_hash           => BlockHash
      , data                 => Data}.
@@ -265,19 +259,17 @@ dec_fnd_created(<< ChanId:32/binary
 enc_fnd_signed(#{temporary_channel_id := ChanId,
                  block_hash           := BlockHash,
                  data                 := Data}) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_FND_SIGNED:1 /unit:8
      , ChanId        :32/binary
      , BlockHash     :32/binary
-     , Length        :2 /unit:8
-     , Data          :Length/bytes >>.
+     , EncData        /bytes >>.
 
 -spec dec_fnd_signed(binary()) -> fnd_signed_msg().
 dec_fnd_signed(<< ChanId:32/binary
                 , BlockHash:32/binary
-                , Length:2/unit:8
-                , Data/binary >>) ->
-    Length = byte_size(Data),
+                , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ temporary_channel_id => ChanId
      , block_hash           => BlockHash
      , data                 => Data}.
@@ -305,19 +297,17 @@ dec_fnd_locked(<< ChanId:32/binary
 enc_update(#{ channel_id := ChanId
             , block_hash := BlockHash
             , data   := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_UPDATE:1 /unit:8
      , ChanId    :32/binary
      , BlockHash :32/binary
-     , Length    :2 /unit:8
-     , Data      :Length/bytes >>.
+     , EncData   /bytes >>.
 
 -spec dec_update(binary()) -> update_msg().
 dec_update(<< ChanId:32/binary
             , BlockHash :32/binary
-            , Length:2 /unit:8
-            , Data/bytes >>) ->
-    Length = byte_size(Data),
+            , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ channel_id => ChanId
      , block_hash => BlockHash
      , data   => Data }.
@@ -327,17 +317,15 @@ dec_update(<< ChanId:32/binary
 -spec enc_update_ack(update_ack_msg()) -> binary().
 enc_update_ack(#{ channel_id := ChanId
                 , data       := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_UPDATE_ACK:1 /unit:8
      , ChanId        :32/binary
-     , Length        :2 /unit:8
-     , Data          :Length/bytes >>.
+     , EncData       /bytes >>.
 
 -spec dec_update_ack(binary()) -> update_ack_msg().
 dec_update_ack(<< ChanId:32/binary
-                , Length:2 /unit:8
-                , Data/bytes >>) ->
-    Length = byte_size(Data),
+                , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ channel_id => ChanId
      , data   => Data }.
 
@@ -370,19 +358,17 @@ dec_update_err(<< ChanId :32/binary
 enc_dep_created(#{ channel_id := ChanId
                  , block_hash := BlockHash
                  , data       := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_DEP_CREATED:1 /unit:8
      , ChanId         :32/binary
      , BlockHash      :32/binary
-     , Length         :2 /unit:8
-     , Data/bytes >>.
+     , EncData/bytes >>.
 
 -spec dec_dep_created(binary()) -> deposit_msg().
 dec_dep_created(<< ChanId:32/binary
                  , BlockHash:32/binary
-                 , Length:2 /unit:8
-                 , Data/bytes >>) ->
-    Length = byte_size(Data),
+                 , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ channel_id => ChanId
      , block_hash => BlockHash
      , data       => Data }.
@@ -391,19 +377,17 @@ dec_dep_created(<< ChanId:32/binary
 enc_dep_signed(#{ channel_id := ChanId
                 , block_hash := BlockHash
                 , data       := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_DEP_SIGNED:1 /unit:8
      , ChanId        :32/binary
      , BlockHash     :32/binary
-     , Length        :2 /unit:8
-     , Data/bytes >>.
+     , EncData/bytes >>.
 
 -spec dec_dep_signed(binary()) -> deposit_msg().
 dec_dep_signed(<< ChanId:32/binary
                 , BlockHash:32/binary
-                , Length:2 /unit:8
-                , Data/bytes >>) ->
-    Length = byte_size(Data),
+                , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ channel_id => ChanId
      , block_hash => BlockHash
      , data       => Data }.
@@ -413,17 +397,15 @@ dec_dep_signed(<< ChanId:32/binary
 -spec enc_dep_locked(dep_locked_msg()) -> binary().
 enc_dep_locked(#{ channel_id := ChanId
                 , data       := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_DEP_LOCKED:1 /unit:8
      , ChanId        :32/binary
-     , Length        :2 /unit:8
-     , Data/bytes >>.
+     , EncData/bytes >>.
 
 -spec dec_dep_locked(binary()) -> dep_locked_msg().
 dec_dep_locked(<< ChanId:32/binary
-                , Length:2 /unit:8
-                , Data/bytes >>) ->
-    Length = byte_size(Data),
+                , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ channel_id => ChanId
      , data       => Data }.
 
@@ -456,19 +438,17 @@ dec_dep_err(<< ChanId :32/binary
 enc_wdraw_created(#{ channel_id := ChanId
                    , block_hash := BlockHash
                    , data       := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_WDRAW_CREATED:1 /unit:8
      , ChanId           :32/binary
      , BlockHash        :32/binary
-     , Length           :2 /unit:8
-     , Data/bytes >>.
+     , EncData/bytes >>.
 
 -spec dec_wdraw_created(binary()) -> withdrawal_msg().
 dec_wdraw_created(<< ChanId:32/binary
                    , BlockHash:32/binary
-                   , Length:2 /unit:8
-                   , Data/bytes >>) ->
-    Length = byte_size(Data),
+                   , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ channel_id => ChanId
      , block_hash => BlockHash
      , data       => Data }.
@@ -477,19 +457,17 @@ dec_wdraw_created(<< ChanId:32/binary
 enc_wdraw_signed(#{ channel_id := ChanId
                   , block_hash := BlockHash
                   , data       := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_WDRAW_SIGNED:1 /unit:8
      , ChanId          :32/binary
      , BlockHash       :32/binary
-     , Length          :2 /unit:8
-     , Data/bytes >>.
+     , EncData/bytes >>.
 
 -spec dec_wdraw_signed(binary()) -> withdrawal_msg().
 dec_wdraw_signed(<< ChanId:32/binary
                   , BlockHash:32/binary
-                  , Length:2 /unit:8
-                  , Data/bytes >>) ->
-    Length = byte_size(Data),
+                  , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ channel_id => ChanId
      , block_hash => BlockHash
      , data       => Data }.
@@ -499,17 +477,15 @@ dec_wdraw_signed(<< ChanId:32/binary
 -spec enc_wdraw_locked(wdraw_locked_msg()) -> binary().
 enc_wdraw_locked(#{ channel_id := ChanId
                   , data       := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_WDRAW_LOCKED:1 /unit:8
      , ChanId          :32/binary
-     , Length          :2 /unit:8
-     , Data/bytes >>.
+     , EncData/bytes >>.
 
 -spec dec_wdraw_locked(binary()) -> wdraw_locked_msg().
 dec_wdraw_locked(<< ChanId:32/binary
-                  , Length:2 /unit:8
-                  , Data/bytes >>) ->
-    Length = byte_size(Data),
+                  , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ channel_id => ChanId
      , data       => Data }.
 
@@ -540,17 +516,15 @@ dec_wdraw_err(<< ChanId :32/binary
 -spec enc_error(error_msg()) -> binary().
 enc_error(#{ channel_id := ChanId
            , data       := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_ERROR :1 /unit:8
      , ChanId    :32/binary
-     , Length    :2 /unit:8
-     , Data      :Length/bytes >>.
+     , EncData   /bytes >>.
 
 -spec dec_error(binary()) -> error_msg().
 dec_error(<< ChanId:32/binary
-           , Length:2 /unit:8
-           , Data/bytes >>) ->
-    Length = byte_size(Data),
+           , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ channel_id => ChanId
      , data       => Data }.
 
@@ -584,19 +558,17 @@ dec_leave_ack(<< ChanId:32/binary >>) ->
 enc_shutdown(#{channel_id := ChanId,
                block_hash := BlockHash,
                data       := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_SHUTDOWN:1 /unit:8
      , ChanId      :32/binary
      , BlockHash   :32/binary
-     , Length      :2 /unit:8
-     , Data        :Length/bytes >>.
+     , EncData     /bytes >>.
 
 -spec dec_shutdown(binary()) -> shutdown_msg().
 dec_shutdown(<< ChanId:32/binary
               , BlockHash:32/binary
-              , Length:2 /unit:8
-              , Data/bytes >>) ->
-    Length = byte_size(Data),
+              , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ channel_id => ChanId
      , block_hash => BlockHash
      , data       => Data }.
@@ -609,19 +581,17 @@ dec_shutdown(<< ChanId:32/binary
 enc_shutdown_ack(#{channel_id := ChanId,
                    block_hash := BlockHash,
                    data       := Data }) ->
-    Length = byte_size(Data),
+    EncData = encode_data(Data),
     << ?ID_SHUTDOWN_ACK:1 /unit:8
      , ChanId          :32/binary
      , BlockHash       :32/binary
-     , Length          :2 /unit:8
-     , Data            :Length/bytes >>.
+     , EncData         /bytes >>.
 
 -spec dec_shutdown_ack(binary()) -> shutdown_ack_msg().
 dec_shutdown_ack(<< ChanId:32/binary
                   , BlockHash:32/binary
-                  , Length:2 /unit:8
-                  , Data/bytes >>) ->
-    Length = byte_size(Data),
+                  , EncData/binary >>) ->
+    Data = decode_data(EncData),
     #{ channel_id => ChanId
      , block_hash => BlockHash
      , data       => Data }.
@@ -671,3 +641,20 @@ assert_max_length(Max, L, Field) ->
        true ->
             ok
     end.
+
+encode_data(Data) ->
+    encode_data(Data, 2).
+
+encode_data(Data, LengthBytes) ->
+    Length = byte_size(Data),
+    <<Length:LengthBytes/unit:8
+    , Data  /bytes >>.
+
+decode_data(Bin) ->
+    decode_data(Bin, 2).
+
+decode_data(Bin, LengthBytes) ->
+    <<Length:LengthBytes/unit:8
+    , Data  /bytes >> = Bin,
+    Length = byte_size(Data),
+    Data.
