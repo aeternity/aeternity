@@ -2009,7 +2009,11 @@ definitions:
         type: string
         enum: [basic, generalized]
       contract_id:
+        description: 'Id of authorization contract for generalized account'
         $ref: '#/definitions/EncodedHash'
+      auth_fun:
+        description: 'Name of authorization function for generalized account'
+        type: string
     required:
       - id
       - balance
