@@ -1333,10 +1333,15 @@ assert_relevant_signature(AccountPK, STx, State) ->
         {ga_meta_tx, GAMetaTx} ->
             assert_relevant_signature(AccountPK, aega_meta_tx:tx(GAMetaTx), State);
         {_, _} ->
-            {ok, Signers} = aetx:signers(Tx, State#state.trees),
-            case lists:member(AccountPK, Signers) of
-                true  -> ok;
-                false -> {error, non_relevant_signature}
+            case aetx:signers(Tx, State#state.trees) of
+                {ok, Signers} ->
+                    aetx:signers(Tx, State#state.trees),
+                    case lists:member(AccountPK, Signers) of
+                        true  -> ok;
+                        false -> runtime_error(non_relevant_signature)
+                    end;
+                {error, Reason} ->
+                    runtime_error(Reason)
             end
     end.
 
