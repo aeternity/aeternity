@@ -18,9 +18,6 @@
         , verify_oracle_existence/1
         , verify_oracle_query_existence/2
         , verify_name/1
-        , compute_contract_create_data/0
-        , compute_contract_call_data/0
-        , contract_call_input_funargs/1
         , read_optional_param/3
         , get_poi/3
         , get_block_from_chain/1
@@ -406,7 +403,6 @@ poi_decode(PoIKey) ->
         end
     end.
 
-
 ttl_decode(TTLKey) ->
     ttl_decode(TTLKey, [<<"delta">>, <<"block">>]).
 
@@ -461,75 +457,6 @@ unsigned_tx_response(NewTxFun) when is_function(NewTxFun, 1) ->
             }
         end,
     ok_response(RespFun).
-
-compute_contract_create_data() ->
-    fun(_Req, State) ->
-        #{ code := Code } = State,
-        FunArgs =
-            case State of
-                #{ arguments := Argument } -> %% legacy calldata creation
-                    {<<"init">>, Argument};
-                #{ call := CallCode } ->
-                    {<<>>, CallCode};
-                _ ->
-                    {error, <<"Missing 'call' or 'arguments'">>}
-            end,
-        Fail = fun(ErrorMsg) ->
-                   Reason = <<"Failed to compute create_data, reason: ",
-                                           ErrorMsg/binary>>,
-                   {error, {400, [], #{<<"reason">> => Reason}}}
-               end,
-        case FunArgs of
-            {error, ErrorMsg} -> Fail(ErrorMsg);
-            {Fun, Args} ->
-                case aehttp_logic:sophia_encode_call_data(Code, Fun, Args) of
-                    {ok, CallData} ->
-                        {ok, maps:put(call_data, CallData, State)};
-                    {error, ErrorMsg} when is_binary(ErrorMsg) ->
-                        Fail(ErrorMsg)
-                end
-        end
-    end.
-
-compute_contract_call_data() ->
-    fun(_Req, State) ->
-        #{contract_code := Code } = State,
-        FunArgs =
-            case State of
-                #{ function := Fun, arguments := Args} ->
-                    {Fun, Args};    %% Legacy calldata creation
-                #{ call := CallCode } ->
-                    {<<>>, CallCode};
-                _ ->
-                    {error, <<"Missing 'call' or 'function'/'arguments'">>}
-            end,
-        Fail = fun(ErrorMsg) ->
-                   Reason = <<"Failed to compute call_data, reason: ",
-                                           ErrorMsg/binary>>,
-                   {error, {400, [], #{<<"reason">> => Reason}}}
-               end,
-        case FunArgs of
-            {error, ErrorMsg} -> Fail(ErrorMsg);
-            {Function, Argument} ->
-                case aehttp_logic:sophia_encode_call_data(Code, Function, Argument) of
-                    {ok, CallData} ->
-                        {ok, maps:put(call_data, CallData, State)};
-                    {error, ErrorMsg} when is_binary(ErrorMsg) ->
-                        Fail(ErrorMsg)
-                end
-        end
-    end.
-
-contract_call_input_funargs(CallInput) ->
-    case CallInput of
-        #{ <<"function">> := Fun, <<"arg">> := Arg } ->
-            {ok, Fun, Arg};
-        #{ <<"call">> := Code } ->
-            {ok, <<>>, Code};
-        _ ->
-            {error, <<"Either 'call' or 'function'/'arg' required">>}
-    end.
-
 
 prepare_dry_run_params([], State) -> {ok, State};
 prepare_dry_run_params([Param | Params], State) ->

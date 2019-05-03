@@ -8,7 +8,8 @@
     lager,
     crypto,
     aetx,
-    aesophia
+    aeserialization,
+    aebytecode
    ]},
   {env,[]},
   {modules, []},

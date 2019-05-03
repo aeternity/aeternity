@@ -135,7 +135,7 @@ types(?PRIM_CALL_AENS_RESOLVE, HeapValue, Store,_State) ->
     T = {tuple, [word, word, word, typerep]},
     {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
     {ok, {_Prim, _, _, OutType}} = aeb_heap:from_binary(T, Bin),
-    {[string, string, typerep], aeso_icode:option_typerep(OutType)};
+    {[string, string, typerep], option_t(OutType)};
 types(?PRIM_CALL_AENS_REVOKE,_HeapValue,_Store,_State) ->
     {[word, word, sign_t()], tuple0_t()};
 types(?PRIM_CALL_AENS_TRANSFER,_HeapValue,_Store,_State) ->
@@ -151,7 +151,7 @@ types(?PRIM_CALL_MAP_GET, HeapValue, Store, State) ->
     {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
     {ok, {_Prim, Id}} = aeb_heap:from_binary(T, Bin),
     {_KeyType, ValType} = aevm_eeevm_maps:map_type(Id, State),
-    {[word, word], aeso_icode:option_typerep(ValType)};
+    {[word, word], option_t(ValType)};
 types(?PRIM_CALL_MAP_PUT,_HeapValue,_Store,_State) ->
     {[word, word, word], word};
 types(?PRIM_CALL_MAP_SIZE,_HeapValue,_Store,_State) ->
@@ -167,7 +167,7 @@ types(?PRIM_CALL_ORACLE_EXTEND,_HeapValue,_Store,_State) ->
 types(?PRIM_CALL_ORACLE_GET_ANSWER, HeapValue, Store, State) ->
     case oracle_response_type_from_chain(HeapValue, Store, State) of
         {ok, RType} ->
-            {[word, word], aeso_icode:option_typerep(RType)};
+            {[word, word], option_t(RType)};
         {error, _} ->
             {[], tuple0_t()}
     end;
@@ -213,7 +213,7 @@ types(?PRIM_CALL_CRYPTO_SHA256_STRING, _HeapValue, _Store, _State) ->
 types(?PRIM_CALL_CRYPTO_BLAKE2B_STRING, _HeapValue, _Store, _State) ->
     {[string], word};
 types(?PRIM_CALL_AUTH_TX_HASH, _HeapValue, _Store, _State) ->
-    {[], aeso_icode:option_typerep(word)};
+    {[], option_t(word)};
 types(_, _, _, _) ->
     {[], tuple0_t()}.
 
@@ -222,6 +222,9 @@ tuple0_t() ->
 
 ttl_t() ->
     {variant, [[word], [word]]}.
+
+option_t(T) ->
+    {variant, [[], [T]]}.
 
 oracle_response_type_from_chain(HeapValue, Store, State) ->
     oracle_type_from_chain(HeapValue, Store, State, response).

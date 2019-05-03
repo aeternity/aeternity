@@ -993,38 +993,6 @@ paths:
           description: Owner account not found
           schema:
             $ref: '#/definitions/Error'
-  /debug/contracts/create/compute:
-    post:
-      tags:
-        - internal
-        - contract
-        - debug
-      operationId: PostContractCreateCompute
-      description: '(DEPRECATED to-be-removed in 3.0) - Compute the call_data for SOPHIA and get a contract_create transaction object'
-      deprecated: true
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          required: true
-          schema:
-            $ref: '#/definitions/ContractCreateCompute'
-      responses:
-        '200':
-          description: Successful operation
-          schema:
-            $ref: '#/definitions/CreateContractUnsignedTx'
-        '400':
-          description: Invalid transaction
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Owner account not found
-          schema:
-            $ref: '#/definitions/Error'
   /debug/contracts/call:
     post:
       tags:
@@ -1043,38 +1011,6 @@ paths:
           required: true
           schema:
             $ref: '#/definitions/ContractCallTx'
-      responses:
-        '200':
-          description: Successful operation
-          schema:
-            $ref: '#/definitions/UnsignedTx'
-        '400':
-          description: Invalid transaction
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Caller account or contract not found
-          schema:
-            $ref: '#/definitions/Error'
-  /debug/contracts/call/compute:
-    post:
-      tags:
-        - internal
-        - contract
-        - debug
-      operationId: PostContractCallCompute
-      description: '(DEPRECATED to-be-removed in 3.0) - Compute the call_data for SOPHIA and get contract_call transaction object'
-      deprecated: true
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          required: true
-          schema:
-            $ref: '#/definitions/ContractCallCompute'
       responses:
         '200':
           description: Successful operation
@@ -1703,64 +1639,6 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-  /debug/contracts/code/compile:
-    post:
-      tags:
-        - internal
-        - contract
-        - debug
-      operationId: 'CompileContract'
-      description: '(DEPRECATED to-be-removed in 3.0) - Compile a sophia contract from source and return byte code'
-      deprecated: true
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: contract code
-          required: true
-          schema:
-            $ref: '#/definitions/Contract'
-      responses:
-        '200':
-          description: Byte code response
-          schema:
-            $ref: '#/definitions/ByteCode'
-        '403':
-          description: Invalid contract
-          schema:
-            $ref: '#/definitions/Error'
-  /debug/contracts/code/call:
-    post:
-      tags:
-        - internal
-        - contract
-        - debug
-      operationId: 'CallContract'
-      description: '(DEPRECATED to-be-removed in 3.0) - Call a sophia function with a given name and argument in the given bytecode off chain.'
-      deprecated: true
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: contract call
-          required: true
-          schema:
-            $ref: '#/definitions/ContractCallInput'
-      responses:
-        '200':
-          description: Resulting state map
-          schema:
-            $ref: '#/definitions/CallResult'
-        '403':
-          description: Invalid contract
-          schema:
-            $ref: '#/definitions/Error'
   /debug/transactions/dry-run:
     post:
       tags:
@@ -1786,64 +1664,6 @@ paths:
             $ref: '#/definitions/DryRunResults'
         '403':
           description: Invalid input
-          schema:
-            $ref: '#/definitions/Error'
-  /debug/contracts/code/decode-data:
-    post:
-      tags:
-        - internal
-        - contract
-        - debug
-      operationId: 'DecodeData'
-      description: '(DEPRECATED to-be-removed in 3.0) - Decode Sophia return data encoded according to Sophia ABI.'
-      deprecated: true
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Binary data in Sophia ABI format
-          required: true
-          schema:
-            $ref: '#/definitions/SophiaBinaryData'
-      responses:
-        '200':
-          description: Json encoded data
-          schema:
-            $ref: '#/definitions/SophiaJsonData'
-        '400':
-          description: Invalid data
-          schema:
-            $ref: '#/definitions/Error'
-  /debug/contracts/code/encode-calldata:
-    post:
-      tags:
-        - internal
-        - contract
-        - debug
-      operationId: 'EncodeCalldata'
-      description: '(DEPRECATED to-be-removed in 3.0) - Encode sophia data and function name according to sophia ABI.'
-      deprecated: true
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Arguments in sophia
-          required: true
-          schema:
-            $ref: '#/definitions/ContractCallInput'
-      responses:
-        '200':
-          description: Binary ecoded calldata
-          schema:
-            $ref: '#/definitions/Calldata'
-        '403':
-          description: Invalid contract
           schema:
             $ref: '#/definitions/Error'
   /debug/token-supply/height/{height}:
@@ -3161,16 +2981,6 @@ definitions:
               type: string
     required:
       - store
-  Contract:
-    type: object
-    properties:
-      code:
-        type: string
-      options:
-        type: string
-    required:
-      - code
-      - options
   ByteCode:
     type: object
     properties:
@@ -3178,30 +2988,6 @@ definitions:
         type: string
     required:
       - bytecode
-  ContractCallInput:
-    type: object
-    properties:
-      abi:
-        type: string
-      code:
-        type: string
-      function:
-        type: string
-      arg:
-       type: string
-      call:
-       type: string
-       description: Source code for a contract with a function __call() = f(args), if calling a function f
-    required:
-      - abi
-      - code
-  CallResult:
-    type: object
-    properties:
-      out:
-        type: string
-    required:
-      - out
   DryRunInput:
     type: object
     properties:
@@ -3253,32 +3039,8 @@ definitions:
     required:
       - type
       - result
-  Calldata:
-    type: object
-    properties:
-      calldata:
-        $ref: '#/definitions/EncodedByteArray'
-    required:
-      - calldata
   EncodedByteArray:
     type: string
-  SophiaBinaryData:
-    type: object
-    properties:
-      sophia-type:
-        type: string
-      data:
-        type: string
-    required:
-      - sophia-type
-      - data
-  SophiaJsonData:
-    type: object
-    properties:
-      data:
-        type: object
-    required:
-      - data
   Peer:
     type: string
     description: 'Aeternity node'
@@ -3359,69 +3121,6 @@ definitions:
       - gas_price
       - fee
       - call_data
-  ContractCreateCompute:
-    type: object
-    properties:
-      owner_id:
-        type: string
-        description: Contract owner pub_key
-      nonce:
-        description: 'Owner''s nonce'
-        type: integer
-      code:
-        description: 'Contract''s code'
-        type: string
-      vm_version:
-        description: 'Virtual machine''s version'
-        type: integer
-        minimum: 0
-        maximum: 65535
-      abi_version:
-        description: 'ABI version'
-        type: integer
-        minimum: 0
-        maximum: 65535
-      deposit:
-        description: Deposit
-        type: integer
-        minimum: 0
-      amount:
-        description: Amount
-        type: integer
-        minimum: 0
-      gas:
-        description: Contract gas
-        type: integer
-        minimum: 0
-      gas_price:
-        description: Gas price
-        type: integer
-        minimum: 0
-      fee:
-        description: Transaction fee
-        type: integer
-        minimum: 0
-      ttl:
-        description: Transaction TTL
-        type: integer
-        minimum: 0
-      arguments:
-        description: Contract call data init function arguments (deprecated, use call)
-        type: string
-      call:
-        description: Source code for a contract with a function __call() = init(args)
-        type: string
-    required:
-      - owner_id
-      - code
-      - vm_version
-      # abi_version is optional for now, should be required eventually
-      # - abi_version
-      - deposit
-      - amount
-      - gas
-      - gas_price
-      - fee
   ContractCallTx:
     type: object
     properties:
@@ -3479,68 +3178,6 @@ definitions:
       - gas
       - gas_price
       - call_data
-  ContractCallCompute:
-    type: object
-    properties:
-      caller_id:
-        $ref: '#/definitions/EncodedHash'
-        description: Contract caller pub_key
-      nonce:
-        description: 'Caller''s nonce'
-        type: integer
-      contract_id:
-        $ref: '#/definitions/EncodedHash'
-        description: 'Contract''s pub_key'
-      # Old name vm_version kept for backwards compatibility
-      # should be removed and then abi_version should be required
-      vm_version:
-        description: 'VM version'
-        type: integer
-        minimum: 0
-        maximum: 65535
-      abi_version:
-        description: 'ABI version'
-        type: integer
-        minimum: 0
-        maximum: 65535
-      fee:
-        description: Transaction fee
-        type: integer
-        minimum: 0
-      ttl:
-        description: Transaction TTL
-        type: integer
-        minimum: 0
-      amount:
-        description: Amount
-        type: integer
-        minimum: 0
-      gas:
-        description: Contract gas
-        type: integer
-        minimum: 0
-      gas_price:
-        description: Gas price
-        type: integer
-        minimum: 0
-      function:
-        description: Contract call data function (deprecated, use call)
-        type: string
-      arguments:
-        description: Contract call data function arguments (deprecated, use call)
-        type: string
-      call:
-        type: string
-        description: Source code for a contract with a function __call() = f(args), if calling a function f
-    required:
-      - caller_id
-      - contract_id
-      # Should be requried once vm_version is gone
-      # - abi_version
-      - fee
-      - amount
-      - gas
-      - gas_price
   UnsignedTx:
     type: object
     properties:

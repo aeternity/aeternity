@@ -251,16 +251,12 @@ do_execute_call(#{ code := Code
     Result = aevm_eeevm:eval(State),
     Result.
 
-
-
-
 make_call(Contract, Fun, Args, Env, Options) ->
-    #{ Contract := Code } = Env,
-    CallData = aect_dispatch:encode_call_data(<<"evm">>, Code,
-                                              list_to_binary(atom_to_list(Fun)),
-                                              Args),
+    CallData = encode_calldata(list_to_binary(atom_to_list(Fun)), Args),
     execute_call(Contract, CallData, Env, Options).
 
+encode_calldata(Function, Argument) ->
+    {ok, <<Function/binary, Argument/binary>>}.
 
 successful_call_(Contract, Type, Fun, Args, Env) ->
     {Res, _Env1} = successful_call(Contract, Type, Fun, Args, Env),

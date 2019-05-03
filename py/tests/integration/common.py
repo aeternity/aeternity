@@ -8,6 +8,7 @@ import shutil
 import logging
 import base64
 import nacl.encoding
+import subprocess
 
 from swagger_client.rest import ApiException
 from swagger_client.api.external_api import ExternalApi
@@ -330,5 +331,22 @@ def setup_beneficiary():
     beneficiary = {'privk': ben_priv, 'pubk': ben_pub,
            'enc_pubk': integration.keys.address(ben_pub)}
     return beneficiary
+
+def compile_contract(file):
+    compiler_cmd = os.path.join(os.getcwd(), 'integration', 'aesophia_cli')
+    bytecode = subprocess.check_output([compiler_cmd, file]).splitlines()[-1]
+    return bytecode
+
+def encode_calldata(file, function, args):
+    compiler_cmd = os.path.join(os.getcwd(), 'integration', 'aesophia_cli')
+    calldata = subprocess.check_output([compiler_cmd, '--create_calldata', file, '--calldata_fun',
+                                        function, '--calldata_args', args]).splitlines()[-1]
+    return calldata
+
+def decode_data(type, data):
+    compiler_cmd = os.path.join(os.getcwd(), 'integration', 'aesophia_cli')
+    value = subprocess.check_output([compiler_cmd, '--decode_data', data,
+                                     '--decode_type', type]).splitlines()[-1]
+    return value
 
 logging.getLogger("urllib3").setLevel(logging.ERROR)

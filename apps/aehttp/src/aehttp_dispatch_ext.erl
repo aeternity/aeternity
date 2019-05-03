@@ -20,8 +20,6 @@
                         , verify_name/1
                         , ttl_decode/1
                         , poi_decode/1
-                        , compute_contract_create_data/0
-                        , compute_contract_call_data/0
                         , relative_ttl_decode/1
                         , unsigned_tx_response/1
                         , get_transaction/2

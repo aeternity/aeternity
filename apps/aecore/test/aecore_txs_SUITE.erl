@@ -301,7 +301,7 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     File     = lists:concat(["contracts/", Name]),
     {ok, Contract} = aect_test_utils:read_contract(File),
     {ok, Code} = aect_test_utils:compile_contract(File),
-    {ok, CallData} = aect_sophia:encode_call_data(Contract, <<"init">>, Args),
+    {ok, CallData} = aect_test_utils:encode_call_data(Contract, <<"init">>, Args),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     VM  = aect_test_utils:latest_sophia_vm_version(),
     {ok, CreateTx} = aect_create_tx:new(#{ nonce       => Nonce
@@ -314,7 +314,7 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
                                          , amount      => 0
                                          , gas         => 100000
                                          , owner_id    => Owner
-                                         , gas_price   => aec_test_utils:min_gas_price() 
+                                         , gas_price   => aec_test_utils:min_gas_price()
                                          , ttl         => TTL
                                          }),
     CTx = aec_test_utils:sign_tx(CreateTx, maps:get(privkey, patron())),
@@ -325,7 +325,7 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
 call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
     Caller       = aeser_id:create(account, maps:get(pubkey, patron())),
     ContractID   = aeser_id:create(contract, Contract),
-    {ok, CallData} = aect_sophia:encode_call_data(Code, Function, Args),
+    {ok, CallData} = aect_test_utils:encode_call_data(Code, Function, Args),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     {ok, CallTx} = aect_call_tx:new(#{ nonce       => Nonce
                                      , caller_id   => Caller
@@ -334,7 +334,7 @@ call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
                                      , fee         => Fee
                                      , amount      => 0
                                      , gas         => 100000
-                                     , gas_price   => aec_test_utils:min_gas_price() 
+                                     , gas_price   => aec_test_utils:min_gas_price()
                                      , call_data   => CallData
                                      , ttl         => TTL
                                      }),

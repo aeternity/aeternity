@@ -4,16 +4,12 @@
 -export([handle_request/3]).
 
 -import(aeu_debug, [pp/1]).
--import(aehttp_helpers, [ get_block_from_chain/1
-                        , parse_map_to_atom_keys/0
+-import(aehttp_helpers, [ parse_map_to_atom_keys/0
                         , read_required_params/1
                         , read_optional_params/1
                         , api_decode/1
                         , get_nonce_from_account_id/1
                         , get_contract_code/2
-                        , compute_contract_create_data/0
-                        , compute_contract_call_data/0
-                        , contract_call_input_funargs/1
                         , verify_name/1
                         , nameservice_pointers_decode/1
                         , ttl_decode/1
@@ -106,32 +102,6 @@ handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request_('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, _Context) ->
-    ParseFuns = [parse_map_to_atom_keys(),
-                 %% TEMP: Keep abi_version optional for one release cycle
-                 read_required_params([owner_id, code, vm_version, deposit,
-                                       amount, gas, gas_price, fee
-                                       ]),
-                 read_optional_params([{X, X, '$no_value'} || X <- [ttl, arguments, call]]
-                                      ++ [{abi_version, abi_version, ?ABI_AEVM_SOPHIA_1}]),
-                 api_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
-                 get_nonce_from_account_id(owner_id),
-                 contract_bytearray_params_decode([code]),
-                 compute_contract_create_data(),
-                 ok_response(
-                    fun(Data) ->
-                        {ok, Tx} = aect_create_tx:new(Data),
-                        {CB, CTx} = aetx:specialize_callback(Tx),
-                        ContractPubKey = CB:contract_pubkey(CTx),
-                        #{tx => aeser_api_encoder:encode(transaction,
-                                                  aetx:serialize_to_binary(Tx)),
-                          contract_id =>
-                              aeser_api_encoder:encode(contract_pubkey, ContractPubKey)
-                         }
-                    end)
-                ],
-    process_request(ParseFuns, Req);
-
 handle_request_('PostContractCall', #{'ContractCallTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  %% TEMP: Keep vm_version as an alias for abi_version for one release cycle
@@ -149,101 +119,12 @@ handle_request_('PostContractCall', #{'ContractCallTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request_('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Context) ->
-    ParseFuns = [parse_map_to_atom_keys(),
-                 %% TEMP: Keep vm_version as an alias for abi_version for one release cycle
-                 read_required_params([caller_id, contract_id,
-                                       amount, gas, gas_price, fee]),
-                 read_optional_params([{X, X, '$no_value'} || X <- [ttl, function, arguments, call]] ++
-                 %% This is not entirely correct, but it will work and fail in the right way...
-                                      [{vm_version, abi_version, '$no_value'}, {abi_version, abi_version, '$no_value'}] ),
-                 api_decode([{caller_id, caller_id, {id_hash, [account_pubkey]}},
-                                {contract_id, contract_id, {id_hash, [contract_pubkey]}}]),
-                 get_nonce_from_account_id(caller_id),
-                 get_contract_code(contract_id, contract_code),
-                 compute_contract_call_data(),
-                 unsigned_tx_response(fun aect_call_tx:new/1)
-                ],
-    process_request(ParseFuns, Req);
-
 handle_request_('DryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([txs]),
                  read_optional_params([{top, top, top}, {accounts, accounts, []}]),
                  do_dry_run()],
     process_request(ParseFuns, Req);
-
-handle_request_('CompileContract', Req, _Context) ->
-    case Req of
-        #{'Contract' :=
-              #{ <<"code">> := Code
-               , <<"options">> := Options }} ->
-            %% TODO: Handle other languages
-            case aehttp_logic:contract_compile(Code, Options) of
-                 {ok, ByteCode} ->
-                     {200, [], #{bytecode => aeser_api_encoder:encode(contract_bytearray, ByteCode)}};
-                 {error, ErrorMsg} ->
-                     {403, [], #{reason => ErrorMsg}}
-             end;
-        _ -> {403, [], #{reason => <<"Bad request">>}}
-    end;
-
-handle_request_('CallContract', Req, _Context) ->
-    case Req of
-        #{'ContractCallInput' :=
-              #{ <<"abi">> := ABI
-               , <<"code">> := Code } = Input} ->
-            case contract_call_input_funargs(Input) of
-                {ok, Function, Argument} ->
-                    case aehttp_logic:contract_call(ABI, Code, Function, Argument) of
-                        {ok, Result} ->
-                            {200, [], #{ out => Result}};
-                        {error, ErrorMsg} ->
-                            {403, [], #{reason => ErrorMsg}}
-                    end;
-                {error, Reason} ->
-                    {403, [], #{reason => <<"Bad request: ", Reason/binary>>}}
-            end;
-        _ -> {403, [], #{reason => <<"Bad request">>}}
-    end;
-
-handle_request_('DecodeData', Req, _Context) ->
-    case Req of
-        #{'SophiaBinaryData' :=
-              #{ <<"sophia-type">>  := Type
-               , <<"data">>  := Data
-               }} ->
-            case aehttp_logic:contract_decode_data(Type, Data) of
-                {ok, Result} ->
-                    {200, [], #{ data => Result}};
-                {error, ErrorMsg} ->
-                    {400, [], #{reason => ErrorMsg}}
-            end
-    end;
-
-handle_request_('EncodeCalldata', Req, _Context) ->
-    case Req of
-        #{'ContractCallInput' :=
-              #{ <<"abi">>  := ABI
-               , <<"code">> := EncodedCode
-               } = Input} ->
-            case contract_call_input_funargs(Input) of
-                {ok, Function, Argument} ->
-                    %% TODO: Handle other languages
-                    case aeser_api_encoder:safe_decode(contract_bytearray, EncodedCode) of
-                        {ok, Code} ->
-                            case aehttp_logic:contract_encode_call_data(ABI, Code, Function, Argument) of
-                                {ok, Result} ->
-                                    {200, [], #{ calldata => Result}};
-                                {error, ErrorMsg} ->
-                                    {403, [], #{reason => ErrorMsg}}
-                            end;
-                        {error, _} -> {403, [], #{reason => <<"Bad request">>}}
-                    end;
-                {error, Reason} -> {403, [], #{reason => <<"Bad request: ", Reason/binary>>}}
-            end;
-        _ -> {403, [], #{reason => <<"Bad request">>}}
-    end;
 
 handle_request_('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
