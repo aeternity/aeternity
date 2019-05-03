@@ -11,29 +11,17 @@ from swagger_client.rest import ApiException
 
 from swagger_client.models.tx import Tx
 from swagger_client.models.spend_tx import SpendTx
-from swagger_client.models.contract import Contract
 from swagger_client.models.contract_create_tx import ContractCreateTx
 from swagger_client.models.contract_call_tx import ContractCallTx
-from swagger_client.models.contract_call_input import ContractCallInput
 
 import keys
 
 settings = common.test_settings(__name__.split(".")[-1])
 
-def read_id_contract(api):
-    # Read a contract
+def id_contract():
     currentFile = __file__
     dirPath = os.path.dirname(currentFile)
-    contract_file = open(dirPath + "/identity.aes", "r")
-    contract_string = contract_file.read()
-
-    # Compile contract to bytecode
-    contract = Contract( contract_string, "")
-    compilation_result = api.compile_contract(contract)
-    assert_regexp_matches(compilation_result.bytecode, 'cb_.*')
-
-    return compilation_result.bytecode
-
+    return dirPath + "/identity.aes"
 
 def test_contract_create():
     test_settings = settings["test_contract_create"]
@@ -117,11 +105,8 @@ def test_contract_call():
                   + create_settings["create_contract"]["deposit"]
                   + create_settings["create_contract"]["amount"])
 
-    bytecode = read_id_contract(internal_api)
-    call_input = ContractCallInput("sophia-address", encoded_contract_id,
-                                             call_contract["data"]["function"],
-                                             call_contract["data"]["argument"])
-    result = internal_api.call_contract(call_input)
+    bytecode = common.compile_contract(id_contract())
+    calldata = common.encode_calldata(id_contract(), call_contract["data"]["function"], call_contract["data"]["argument"])
     contract_call_obj = ContractCallTx(
         caller_id=test_settings["alice"]["pubkey"],
         contract_id=encoded_contract_id,
@@ -131,7 +116,7 @@ def test_contract_call():
         amount=call_contract["amount"],
         gas=call_contract["gas"],
         gas_price=call_contract["gas_price"],
-        call_data=result.out)
+        call_data=calldata)
 
 
     call_tx_obj = internal_api.post_contract_call(contract_call_obj)
@@ -147,48 +132,13 @@ def test_contract_call():
     common.ensure_transaction_posted(external_api, signed_call)
     alice_balance = common.get_account_balance(external_api, alice_address)
 
-    # The call runs out of gas and all gas is consumed
-    # assert contract called:
     assert_equals(alice_balance0, alice_balance
                   + test_settings["contract_call"]["fee"]
-                  + test_settings["contract_call"]["gas"] * test_settings["contract_call"]["gas_price"])
+                  + test_settings["contract_call"]["amount"]
+                  + test_settings["contract_call"]["gas_used"] * test_settings["contract_call"]["gas_price"])
     print("Fee and gas was consumed, transaction is part of the chain")
 
     cleanup(node, root_dir)
-
-
-def test_contract_on_chain_call_off_chain():
-    test_settings = settings["test_contract_call"]
-    create_settings = settings["test_contract_create"]
-    beneficiary = common.setup_beneficiary()
-    (node, (root_dir, external_api, internal_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
-
-    private_key = keys.new_private()
-    public_key = keys.public_key(private_key)
-
-    alice_address = keys.address(public_key)
-
-    test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user(beneficiary, "alice", test_settings, external_api, internal_api)
-
-    ## create contract
-    encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api, internal_api)
-    unsigned_tx = common.api_decode(encoded_tx)
-
-    signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
-    common.ensure_transaction_posted(external_api, signed)
-
-    call_contract = test_settings["contract_call"]
-    call_input = ContractCallInput("sophia-address", encoded_contract_id,\
-                                   call_contract["data"]["function"],\
-                                   call_contract["data"]["argument"])
-    result = internal_api.call_contract(call_input)
-
-    assert_equals(common.hexstring_to_contract_bytearray('0x000000000000000000000000000000000000000000000000000000000000002a'),
-                   result.out)
-
-    cleanup(node, root_dir)
-
 
 def test_spend():
     # Alice should be able to create a spend transaction to send tokens to
@@ -268,14 +218,8 @@ def send_tokens_to_user(beneficiary, user, test_settings, external_api, internal
                                      1)
 
 def get_unsigned_contract_create(owner_id, contract, external_api, internal_api):
-    bytecode = read_id_contract(internal_api)
-    call_input = ContractCallInput("sophia",
-                                   bytecode,
-                                   contract["function"],
-                                   contract["argument"])
-    print("Call input:", call_input)
-    result = internal_api.encode_calldata(call_input)
-    call_data = result.calldata
+    bytecode = common.compile_contract(id_contract())
+    calldata = common.encode_calldata(id_contract(), contract["function"], contract["argument"])
 
     print("OWNERID", owner_id)
     contract_create_tx_obj = ContractCreateTx(
@@ -289,6 +233,6 @@ def get_unsigned_contract_create(owner_id, contract, external_api, internal_api)
         gas_price=contract["gas_price"],
         fee=contract["fee"],
         ttl=100,
-        call_data=call_data)
+        call_data=calldata)
     tx_obj = internal_api.post_contract_create(contract_create_tx_obj)
     return (tx_obj.tx, tx_obj.contract_id)

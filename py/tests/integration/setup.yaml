@@ -96,15 +96,6 @@ tests: # test specific settings
         amount: 7
         fee: 20000000000000
   test_contracts:
-    test_compile_and_call_id:
-      nodes:
-        alice: dev1
-    test_encode_id_call:
-      nodes:
-        alice: dev1
-    test_id_call:
-      nodes:
-        alice: dev1
   test_unsigned_tx:
     test_contract_create:
       nodes:
@@ -123,7 +114,7 @@ tests: # test specific settings
         gas_price: 1000000000
         fee: 200000000000000
         function: "init"
-        argument: "()"
+        argument: ""
     test_contract_call:
       nodes:
         node: dev1
@@ -136,9 +127,10 @@ tests: # test specific settings
         fee: 500000000000000
         amount: 10
         gas: 5500
+        gas_used: 192
         gas_price: 1000000000
         data:
-          function: main
+          function: "main"
           argument: "42"
     test_spend:
       nodes:

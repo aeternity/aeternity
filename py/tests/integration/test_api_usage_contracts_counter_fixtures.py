@@ -8,6 +8,7 @@ def globs(globs):
     currentFile = __file__
     dirPath = os.path.dirname(currentFile)
     globs['counter_contract'] = read_file(dirPath + "/counter.aes")
+    globs['counter_contract_file'] = dirPath + "/counter.aes"
     return globs
 
 def setup_test(test):

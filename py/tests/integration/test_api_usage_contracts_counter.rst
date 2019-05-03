@@ -33,17 +33,15 @@ Assumption: Bob has enough tokens.
 
 Bob computes - off-chain, using the Aeternity node API - the bytecode of the contract.
 
->>> from swagger_client.models.contract import Contract
->>> contract_bytecode = ae_node['internal_api'].compile_contract(Contract(counter_contract, options="")).bytecode
+>>> import common
+>>> contract_bytecode = common.compile_contract(counter_contract_file)
 >>> print(contract_bytecode) # doctest: +ELLIPSIS
 cb_...
 
 Bob computes - off-chain, using the Aeternity node API - the initialization call data.
 
 >>> counter_init_value = 21
->>> contract_init_call_data = {'f': "init", 'arg': "({})".format(counter_init_value)}
->>> from swagger_client.models.contract_call_input import ContractCallInput
->>> encoded_init_call_data = ae_node['internal_api'].encode_calldata(ContractCallInput("sophia", contract_bytecode, contract_init_call_data['f'], contract_init_call_data['arg'])).calldata
+>>> encoded_init_call_data = common.encode_calldata(counter_contract_file, "init", str(counter_init_value))
 
 Bob computes - off-chain, using the Aeternity node API - the unsigned contract create transaction.
 
@@ -110,9 +108,9 @@ Assumption: Alice has enough tokens.
 
 Alice computes - off-chain, using the Aeternity node API - the unsigned contract call transaction.
 
->>> contract_call_data = {'f': "get", 'arg': "()"}
->>> from swagger_client.models.contract_call_compute import ContractCallCompute
->>> unsigned_contract_call_tx = common.api_decode(ae_node['internal_api'].post_contract_call_compute(ContractCallCompute(
+>>> contract_call_data = common.encode_calldata(counter_contract_file, "get", "")
+>>> from swagger_client.models.contract_call_tx import ContractCallTx
+>>> unsigned_contract_call_tx = common.api_decode(ae_node['internal_api'].post_contract_call(ContractCallTx(
 ...   caller_id=users['a']['encoded_pub_key'],
 ...   nonce=1,
 ...   contract_id=contract_id,
@@ -121,8 +119,7 @@ Alice computes - off-chain, using the Aeternity node API - the unsigned contract
 ...   amount=0,
 ...   gas=20000,
 ...   gas_price=1000000000,
-...   function=contract_call_data['f'],
-...   arguments=contract_call_data['arg'])).tx)
+...   call_data=contract_call_data)).tx)
 
 Alice signs - locally - the contract call transaction.
 
@@ -156,7 +153,5 @@ Alice decodes the return value - off-chain, using the Aeternity node API.
 
 >>> print(contract_call_object.call_info.return_value) # doctest: +ELLIPSIS
 cb_...
->>> from swagger_client.models.sophia_binary_data import SophiaBinaryData
->>> ae_node['internal_api'].decode_data(SophiaBinaryData(sophia_type=counter_contract_get_function_return_value_type,
-...                                                         data=contract_call_object.call_info.return_value)).data
-{u'type': u'word', u'value': 21}
+>>> common.decode_data(counter_contract_get_function_return_value_type, contract_call_object.call_info.return_value)
+'21'
