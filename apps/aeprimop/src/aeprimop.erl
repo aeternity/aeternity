@@ -1340,8 +1340,8 @@ assert_relevant_signature(AccountPK, STx, State) ->
                         true  -> ok;
                         false -> runtime_error(non_relevant_signature)
                     end;
-                {error, Reason} ->
-                    runtime_error(Reason)
+                {error, _} ->
+                    runtime_error(non_relevant_signature)
             end
     end.
 
