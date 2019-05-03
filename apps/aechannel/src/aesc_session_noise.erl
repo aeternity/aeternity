@@ -187,7 +187,7 @@ sleep(T, Ref) ->
 
 get_reconnect_params() ->
     %% {ConnectTimeout, Retries}
-    {10000, 30}.
+    {3000, 40}.  %% total 2 minutes
 
 
 handle_call(close, _From, #st{econn = EConn} = St) ->
