@@ -265,7 +265,7 @@ handle_call(get_mining_workers, _From, State) ->
     {reply, worker_pids_by_tag(mining, State), State};
 handle_call(is_leader, _From, State = #state{ consensus = Cons }) ->
     {reply, Cons#consensus.leader, State};
-handle_call(reinit_chain, _From, State1 = #state{ consensus = Cons } = State) ->
+handle_call(reinit_chain, _From, State1 = #state{ consensus = Cons }) ->
     %% NOTE: ONLY FOR TEST
     ok = reinit_chain_state(),
     TopBlockHash = aec_chain:top_block_hash(),
