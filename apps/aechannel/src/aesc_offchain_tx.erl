@@ -69,7 +69,7 @@
 new(#{channel_id         := ChannelId,
       state_hash         := StateHash,
       updates            := Updates,
-      round              := Round} = Opts) ->
+      round              := Round}) ->
     channel = aeser_id:specialize_type(ChannelId),
     Tx = #channel_offchain_tx{
             channel_id         = ChannelId,
