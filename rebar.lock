@@ -115,7 +115,7 @@
       {ref,"c818ddc20004ab26e09900e35608a58b5c8429a5"}},
   0},
  {<<"trace_runner">>,
-  {git,"git://github.com/uwiger/trace_runner",
+  {git,"git://github.com/uwiger/trace_runner.git",
       {ref,"44a0ded559af76ab8643478d221c09ada078d2db"}},
   0},
  {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.4.1">>},1},
