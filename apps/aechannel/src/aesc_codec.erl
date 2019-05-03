@@ -182,97 +182,101 @@ dec_ch_accept(<< ChainHash      :32/binary
 
 -type ch_reestabl_msg() :: #{ chain_hash := hash()
                             , channel_id := chan_id()
-                            , data := binary() }.
+                            , data := #{tx := binary()} }.
 
 -spec enc_ch_reestabl(ch_reestabl_msg()) -> binary().
 enc_ch_reestabl(#{ chain_hash := ChainHash
                  , channel_id := ChanId
-                 , data       := Data }) ->
-    EncData = encode_data(Data),
+                 , data       := #{tx := Tx}}) ->
+    EncTx = encode_data(Tx),
     << ?ID_CH_REESTABL:1 /unit:8
      , ChainHash      :32/binary
      , ChanId         :32/binary
-     , EncData        /bytes>>.
+     , EncTx          /bytes>>.
 
 -spec dec_ch_reestabl(binary()) -> ch_reestabl_msg().
 dec_ch_reestabl(<< ChainHash:32/binary
                  , ChanId   :32/binary
-                 , EncData/binary >>) ->
-    Data = decode_data(EncData),
+                 , EncTx    /binary >>) ->
+    Tx = decode_data(EncTx),
     #{ chain_hash => ChainHash
      , channel_id => ChanId
-     , data       => Data }.
+     , data       => #{tx => Tx} }.
 
 
 -type ch_reestabl_ack_msg() :: #{ chain_hash := hash()
                                 , channel_id := chan_id()
-                                , data := binary() }.
+                                , data := #{tx := binary()} }.
 
 -spec enc_ch_reestabl_ack(ch_reestabl_ack_msg()) -> binary().
 enc_ch_reestabl_ack(#{ chain_hash := ChainHash
                      , channel_id := ChanId
-                     , data       := Data }) ->
-    EncData = encode_data(Data),
+                     , data       := #{tx := Tx}}) ->
+    EncTx = encode_data(Tx),
     << ?ID_CH_REEST_ACK:1 /unit:8
      , ChainHash       :32/binary
      , ChanId          :32/binary
-     , EncData        /bytes>>.
+     , EncTx           /bytes>>.
 
 -spec dec_ch_reest_ack(binary()) -> ch_reestabl_ack_msg().
 dec_ch_reest_ack(<< ChainHash:32/binary
                   , ChanId   :32/binary
-                  , EncData/binary >>) ->
-    Data = decode_data(EncData),
+                  , EncTx    /binary >>) ->
+    Tx = decode_data(EncTx),
     #{ chain_hash => ChainHash
      , channel_id => ChanId
-     , data       => Data }.
-
+     , data       => #{tx => Tx} }.
 
 -type fnd_created_msg() :: #{ temporary_channel_id := chan_id()
                             , block_hash           := binary()
-                            , data                 := binary()}.
+                            , data                 := #{tx      := binary(),
+                                                        updates := [binary()]}}.
 
 -spec enc_fnd_created(fnd_created_msg()) -> binary().
 enc_fnd_created(#{ temporary_channel_id := ChanId
                  , block_hash           := BlockHash
-                 , data                 := Data }) ->
-    EncData = encode_data(Data),
+                 , data                 := #{tx      := Tx,
+                                             updates := Updates}}) ->
+    EncTx = encode_data(Tx),
+    EncUpds = encode_data_list(Updates),
     << ?ID_FND_CREATED:1 /unit:8
      , ChanId         :32/binary
      , BlockHash      :32/binary
-     , EncData        /bytes >>.
+     , EncTx          /bytes
+     , EncUpds        /bytes >>.
 
 -spec dec_fnd_created(binary()) -> fnd_created_msg().
 dec_fnd_created(<< ChanId:32/binary
                  , BlockHash:32/binary
-                 , EncData/binary >>) ->
-    Data = decode_data(EncData),
+                 , Rest/binary >>) ->
+    [Tx | Updates] = decode_data_list(Rest),
     #{ temporary_channel_id => ChanId
      , block_hash           => BlockHash
-     , data                 => Data}.
+     , data                 => #{tx      => Tx,
+                                 updates => Updates}}.
 
 -type fnd_signed_msg() :: #{ temporary_channel_id := chan_id()
                            , block_hash           := binary()
-                           , data                 := binary()}.
+                           , data                 := #{tx := binary()}}.
 
 -spec enc_fnd_signed(fnd_signed_msg()) -> binary().
 enc_fnd_signed(#{temporary_channel_id := ChanId,
                  block_hash           := BlockHash,
-                 data                 := Data}) ->
-    EncData = encode_data(Data),
+                 data                 := #{tx := Tx}}) ->
+    EncTx = encode_data(Tx),
     << ?ID_FND_SIGNED:1 /unit:8
      , ChanId        :32/binary
      , BlockHash     :32/binary
-     , EncData        /bytes >>.
+     , EncTx         /bytes >>.
 
 -spec dec_fnd_signed(binary()) -> fnd_signed_msg().
 dec_fnd_signed(<< ChanId:32/binary
                 , BlockHash:32/binary
-                , EncData/binary >>) ->
-    Data = decode_data(EncData),
+                , EncTx/binary >>) ->
+    Tx = decode_data(EncTx),
     #{ temporary_channel_id => ChanId
      , block_hash           => BlockHash
-     , data                 => Data}.
+     , data                 => #{tx => Tx}}.
 
 -type fnd_locked_msg() :: #{ temporary_channel_id := chan_id()
                            , channel_id           := chan_id()}.
@@ -292,42 +296,47 @@ dec_fnd_locked(<< ChanId:32/binary
 
 -type update_msg() :: #{ channel_id := chan_id()
                        , block_hash := binary()
-                       , data       := binary()}.
+                       , data       := #{tx      := binary(),
+                                         updates := [binary()]}}.
 -spec enc_update(update_msg()) -> binary().
 enc_update(#{ channel_id := ChanId
             , block_hash := BlockHash
-            , data   := Data }) ->
-    EncData = encode_data(Data),
+            , data       := #{tx      := Tx,
+                              updates := Updates}}) ->
+    EncTx = encode_data(Tx),
+    EncUpds = encode_data_list(Updates),
     << ?ID_UPDATE:1 /unit:8
      , ChanId    :32/binary
      , BlockHash :32/binary
-     , EncData   /bytes >>.
+     , EncTx     /bytes
+     , EncUpds   /bytes >>.
 
 -spec dec_update(binary()) -> update_msg().
 dec_update(<< ChanId:32/binary
             , BlockHash :32/binary
-            , EncData/binary >>) ->
-    Data = decode_data(EncData),
+            , Rest/binary >>) ->
+    [Tx | Updates] = decode_data_list(Rest),
     #{ channel_id => ChanId
      , block_hash => BlockHash
-     , data   => Data }.
+     , data       => #{tx      => Tx,
+                       updates => Updates}}.
 
 -type update_ack_msg() :: #{ channel_id := chan_id()
-                           , data       := binary()}.
+                           , data       := #{tx := binary()}}.
 -spec enc_update_ack(update_ack_msg()) -> binary().
 enc_update_ack(#{ channel_id := ChanId
-                , data       := Data }) ->
-    EncData = encode_data(Data),
+                , data       := #{tx := Tx} }) ->
+    EncTx = encode_data(Tx),
     << ?ID_UPDATE_ACK:1 /unit:8
      , ChanId        :32/binary
-     , EncData       /bytes >>.
+     , EncTx         /bytes >>.
 
 -spec dec_update_ack(binary()) -> update_ack_msg().
 dec_update_ack(<< ChanId:32/binary
-                , EncData/binary >>) ->
-    Data = decode_data(EncData),
+                , EncTx/binary >>) ->
+    Tx = decode_data(EncTx),
     #{ channel_id => ChanId
-     , data   => Data }.
+     , data   => #{tx => Tx} }.
 
 -type update_err_msg() :: #{ channel_id := chan_id()
                            , round      := non_neg_integer()
@@ -352,62 +361,71 @@ dec_update_err(<< ChanId :32/binary
 
 -type deposit_msg() :: #{ channel_id := chan_id()
                         , block_hash := binary()
-                        , data       := binary()}.
+                        , data       := #{tx      := binary(),
+                                          updates := [binary()]}}.
 
 -spec enc_dep_created(deposit_msg()) -> binary().
 enc_dep_created(#{ channel_id := ChanId
                  , block_hash := BlockHash
-                 , data       := Data }) ->
-    EncData = encode_data(Data),
+                 , data       := #{tx      := Tx,
+                                   updates := Updates}}) ->
+    EncTx = encode_data(Tx),
+    EncUpds = encode_data_list(Updates),
     << ?ID_DEP_CREATED:1 /unit:8
      , ChanId         :32/binary
      , BlockHash      :32/binary
-     , EncData/bytes >>.
+     , EncTx          /bytes
+     , EncUpds        /bytes >>.
 
 -spec dec_dep_created(binary()) -> deposit_msg().
 dec_dep_created(<< ChanId:32/binary
                  , BlockHash:32/binary
-                 , EncData/binary >>) ->
-    Data = decode_data(EncData),
+                 , Rest/binary >>) ->
+    [Tx | Updates] = decode_data_list(Rest),
     #{ channel_id => ChanId
      , block_hash => BlockHash
-     , data       => Data }.
+     , data       => #{tx      => Tx,
+                       updates => Updates}}.
 
--spec enc_dep_signed(deposit_msg()) -> binary().
+-type deposit_ack_msg() :: #{ channel_id := chan_id()
+                            , block_hash := binary()
+                            , data       := #{tx := binary()}}.
+
+-spec enc_dep_signed(deposit_ack_msg()) -> binary().
 enc_dep_signed(#{ channel_id := ChanId
                 , block_hash := BlockHash
-                , data       := Data }) ->
-    EncData = encode_data(Data),
+                , data       := #{tx := Tx} }) ->
+    EncTx = encode_data(Tx),
     << ?ID_DEP_SIGNED:1 /unit:8
      , ChanId        :32/binary
      , BlockHash     :32/binary
-     , EncData/bytes >>.
+     , EncTx         /bytes >>.
 
--spec dec_dep_signed(binary()) -> deposit_msg().
+-spec dec_dep_signed(binary()) -> deposit_ack_msg().
 dec_dep_signed(<< ChanId:32/binary
                 , BlockHash:32/binary
-                , EncData/binary >>) ->
-    Data = decode_data(EncData),
+                , EncTx/binary >>) ->
+    Tx = decode_data(EncTx),
     #{ channel_id => ChanId
      , block_hash => BlockHash
-     , data       => Data }.
+     , data       => #{tx => Tx} }.
 
 -type dep_locked_msg() :: #{ channel_id := chan_id()
-                           , data       := binary()}.
+                           , data       := #{tx_hash := binary()}}.
 -spec enc_dep_locked(dep_locked_msg()) -> binary().
 enc_dep_locked(#{ channel_id := ChanId
-                , data       := Data }) ->
-    EncData = encode_data(Data),
+                , data       := #{tx_hash := TxHash} }) ->
+    EncTxHash = encode_data(TxHash),
     << ?ID_DEP_LOCKED:1 /unit:8
      , ChanId        :32/binary
-     , EncData/bytes >>.
+     , EncTxHash     /bytes >>.
 
 -spec dec_dep_locked(binary()) -> dep_locked_msg().
 dec_dep_locked(<< ChanId:32/binary
-                , EncData/binary >>) ->
-    Data = decode_data(EncData),
+                , EncTxHash/binary >>) ->
+    TxHash = decode_data(EncTxHash),
     #{ channel_id => ChanId
-     , data       => Data }.
+     , data       => #{tx_hash => TxHash} }.
 
 -type dep_err_msg() :: #{ channel_id := chan_id()
                         , round      := non_neg_integer()
@@ -432,62 +450,70 @@ dec_dep_err(<< ChanId :32/binary
 
 -type withdrawal_msg() :: #{ channel_id := chan_id()
                            , block_hash := binary()
-                           , data       := binary()}.
+                           , data       := #{tx      := binary(),
+                                             updates := [binary()]}}.
 
 -spec enc_wdraw_created(withdrawal_msg()) -> binary().
 enc_wdraw_created(#{ channel_id := ChanId
                    , block_hash := BlockHash
-                   , data       := Data }) ->
-    EncData = encode_data(Data),
+                   , data                 := #{tx      := Tx,
+                                               updates := Updates}}) ->
+    EncTx = encode_data(Tx),
+    EncUpds = encode_data_list(Updates),
     << ?ID_WDRAW_CREATED:1 /unit:8
      , ChanId           :32/binary
      , BlockHash        :32/binary
-     , EncData/bytes >>.
+     , EncTx            /bytes
+     , EncUpds          /bytes>>.
 
 -spec dec_wdraw_created(binary()) -> withdrawal_msg().
 dec_wdraw_created(<< ChanId:32/binary
                    , BlockHash:32/binary
-                   , EncData/binary >>) ->
-    Data = decode_data(EncData),
+                   , Rest/binary >>) ->
+    [Tx | Updates] = decode_data_list(Rest),
     #{ channel_id => ChanId
      , block_hash => BlockHash
-     , data       => Data }.
+     , data       => #{tx      => Tx,
+                       updates => Updates}}.
 
--spec enc_wdraw_signed(withdrawal_msg()) -> binary().
+-type withdrawal_ack_msg() :: #{ channel_id := chan_id()
+                               , block_hash := binary()
+                               , data       := #{tx := binary()}}.
+-spec enc_wdraw_signed(withdrawal_ack_msg()) -> binary().
 enc_wdraw_signed(#{ channel_id := ChanId
                   , block_hash := BlockHash
-                  , data       := Data }) ->
-    EncData = encode_data(Data),
+                  , data       := #{tx := Tx} }) ->
+    EncTx = encode_data(Tx),
     << ?ID_WDRAW_SIGNED:1 /unit:8
      , ChanId          :32/binary
      , BlockHash       :32/binary
-     , EncData/bytes >>.
+     , EncTx           /bytes >>.
 
--spec dec_wdraw_signed(binary()) -> withdrawal_msg().
+-spec dec_wdraw_signed(binary()) -> withdrawal_ack_msg().
 dec_wdraw_signed(<< ChanId:32/binary
                   , BlockHash:32/binary
-                  , EncData/binary >>) ->
-    Data = decode_data(EncData),
+                  , EncTx/binary >>) ->
+    Tx = decode_data(EncTx),
     #{ channel_id => ChanId
      , block_hash => BlockHash
-     , data       => Data }.
+     , data       => #{tx => Tx} }.
 
 -type wdraw_locked_msg() :: #{ channel_id := chan_id()
-                             , data       := binary()}.
+                             , data       := #{tx_hash := binary()}}.
 -spec enc_wdraw_locked(wdraw_locked_msg()) -> binary().
 enc_wdraw_locked(#{ channel_id := ChanId
-                  , data       := Data }) ->
-    EncData = encode_data(Data),
+                  , data       := #{tx_hash := TxHash} }) ->
+    EncTxHash = encode_data(TxHash),
     << ?ID_WDRAW_LOCKED:1 /unit:8
      , ChanId          :32/binary
-     , EncData/bytes >>.
+     , EncTxHash       /bytes >>.
 
 -spec dec_wdraw_locked(binary()) -> wdraw_locked_msg().
 dec_wdraw_locked(<< ChanId:32/binary
-                  , EncData/binary >>) ->
-    Data = decode_data(EncData),
+                  , EncTxHash/binary >>) ->
+    TxHash = decode_data(EncTxHash),
     #{ channel_id => ChanId
-     , data       => Data }.
+     , data       => #{tx_hash => TxHash} }.
 
 -type wdraw_err_msg() :: #{ channel_id := chan_id()
                           , round      := non_neg_integer()
@@ -552,49 +578,45 @@ dec_leave_ack(<< ChanId:32/binary >>) ->
 
 -type shutdown_msg() :: #{channel_id := chan_id(),
                           block_hash := binary(),
-                          data       := binary() }.
+                          data       := #{tx := binary()} }.
 
 -spec enc_shutdown(shutdown_msg()) -> binary().
 enc_shutdown(#{channel_id := ChanId,
                block_hash := BlockHash,
-               data       := Data }) ->
-    EncData = encode_data(Data),
+               data       := #{tx := Tx} }) ->
+    EncTx = encode_data(Tx),
     << ?ID_SHUTDOWN:1 /unit:8
      , ChanId      :32/binary
      , BlockHash   :32/binary
-     , EncData     /bytes >>.
+     , EncTx       /bytes >>.
 
 -spec dec_shutdown(binary()) -> shutdown_msg().
 dec_shutdown(<< ChanId:32/binary
               , BlockHash:32/binary
-              , EncData/binary >>) ->
-    Data = decode_data(EncData),
+              , EncTx/binary >>) ->
+    Tx = decode_data(EncTx),
     #{ channel_id => ChanId
      , block_hash => BlockHash
-     , data       => Data }.
+     , data       => #{tx => Tx} }.
 
--type shutdown_ack_msg() :: #{channel_id := chan_id(),
-                              block_hash := binary(),
-                              data       := binary() }.
-
--spec enc_shutdown_ack(shutdown_ack_msg()) -> binary().
+-spec enc_shutdown_ack(shutdown_msg()) -> binary().
 enc_shutdown_ack(#{channel_id := ChanId,
                    block_hash := BlockHash,
-                   data       := Data }) ->
-    EncData = encode_data(Data),
+                   data       := #{tx := Tx} }) ->
+    EncTx = encode_data(Tx),
     << ?ID_SHUTDOWN_ACK:1 /unit:8
      , ChanId          :32/binary
      , BlockHash       :32/binary
-     , EncData         /bytes >>.
+     , EncTx           /bytes >>.
 
--spec dec_shutdown_ack(binary()) -> shutdown_ack_msg().
+-spec dec_shutdown_ack(binary()) -> shutdown_msg().
 dec_shutdown_ack(<< ChanId:32/binary
                   , BlockHash:32/binary
-                  , EncData/binary >>) ->
-    Data = decode_data(EncData),
+                  , EncTx/binary >>) ->
+    Tx = decode_data(EncTx),
     #{ channel_id => ChanId
      , block_hash => BlockHash
-     , data       => Data }.
+     , data       => #{tx => Tx} }.
 
 -type inband_msg() :: #{channel_id := chan_id(),
                         from       := binary(),
@@ -658,3 +680,20 @@ decode_data(Bin, LengthBytes) ->
     , Data  /bytes >> = Bin,
     Length = byte_size(Data),
     Data.
+
+encode_data_list(List) ->
+    lists:foldl(
+        fun(Data, AccumBin) ->
+            EncData = encode_data(Data),
+            <<AccumBin/binary, EncData/binary>>
+        end,
+        <<>>,
+        List).
+
+decode_data_list(Bin) ->
+    decode_data_list(Bin, []).
+
+decode_data_list(<<>>, Result) -> lists:reverse(Result);
+decode_data_list(<<Length:2/unit:8, Rest/bytes>>, Result) ->
+    <<Data:Length/binary, Rest1/binary>> = Rest,
+    decode_data_list(Rest1, [Data | Result]).
