@@ -283,7 +283,7 @@ legacy_compile(Vsn, SrcFile) ->
     Compiler = compiler_cmd(Vsn),
     OutFile  = tempfile_name("tmp_sophia_", [{ext, ".aeb"}]),
     Cmd = Compiler ++ " " ++ SrcFile ++ " -o " ++ OutFile,
-    Output = os:cmd(Cmd),
+    _Output = os:cmd(Cmd),
     try
         {ok, Bin} = file:read_file(OutFile),
         aeser_api_encoder:safe_decode(contract_bytearray, Bin)
