@@ -1113,9 +1113,6 @@ ga_channel_close_solo(Acc1, AuthOpts, CId, Acc2, OffState, Opts, S) ->
 
     meta(Acc1, AuthOpts, SCSoloCloseTx, Opts, S).
 
-ga_channel_settle(Acc1, AuthOpts, CId, Acc2, OffState, S) ->
-    ga_channel_settle(Acc1, AuthOpts, CId, Acc2, OffState, #{}, S).
-
 ga_channel_settle(Acc1, AuthOpts, CId, Acc2, OffState, Opts, S) ->
     IAmnt = aega_test_utils:balance(Acc1, OffState),% - 25000 * aec_test_utils:min_gas_price(),
     RAmnt = aega_test_utils:balance(Acc2, OffState),% - 25000 * aec_test_utils:min_gas_price(),
@@ -1126,9 +1123,6 @@ ga_channel_settle(Acc1, AuthOpts, CId, Acc2, OffState, Opts, S) ->
                           aesc_test_utils:settle_tx_spec(CId, Acc1, Opts1, S)),
 
     meta(Acc1, AuthOpts, SCSettleTx, Opts, S).
-
-ga_channel_slash(Acc1, AuthOpts, CId, Acc2, OffState, S) ->
-    ga_channel_slash(Acc1, AuthOpts, CId, Acc2, OffState, #{}, S).
 
 ga_channel_slash(Acc1, AuthOpts, CId, Acc2, OffState, Opts, S) ->
     Opts1 = maps:merge(#{nonce => 0}, maps:without([height], Opts)),
