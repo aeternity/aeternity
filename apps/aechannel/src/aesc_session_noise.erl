@@ -78,18 +78,14 @@ shutdown           (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN     , Msg}).
 shutdown_ack       (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ACK , Msg}).
 
 close(Session) ->
-    case process_info(Session, backtrace) of
-        undefined -> ok;
-        {_, BT} ->
-            try call(Session, close)
-            catch
-                error:_ -> ok;
-                exit:R ->
-                    lager:error("CAUGHT exit:~p, BT = ~s", [R, BT]),
-                    unlink(Session),
-                    exit(Session, kill),
-                    ok
-            end
+    try call(Session, close)
+    catch
+        error:_ -> ok;
+        exit:R ->
+            lager:error("CAUGHT exit:~p, ~p", [R, erlang:get_stacktrace()]),
+            unlink(Session),
+            exit(Session, kill),
+            ok
     end.
 
 -define(GEN_SERVER_OPTS, []).

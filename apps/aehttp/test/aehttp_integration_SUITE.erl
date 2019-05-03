@@ -6496,10 +6496,12 @@ with_trace(F, Config, File, When) ->
     catch
 	error:R ->
 	    Stack = erlang:get_stacktrace(),
-	    ttb_stop(),
 	    ct:pal("Error ~p~nStack = ~p", [R, Stack]),
+	    ttb_stop(),
 	    erlang:error(R);
 	exit:R ->
+	    Stack = erlang:get_stacktrace(),
+	    ct:pal("Exit ~p~nStack = ~p", [R, Stack]),
 	    ttb_stop(),
 	    exit(R);
         throw:Res ->
