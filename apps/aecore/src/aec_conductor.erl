@@ -280,7 +280,7 @@ handle_call(reinit_chain, _From, State1 = #state{ consensus = Cons }) ->
                 epoch_mining:info("Mining stopped"),
                 State3 = kill_all_workers(State2),
                 hard_reset_block_generator(),
-                epoch_mining:info("Mining started" ++ print_opts(State)),
+                epoch_mining:info("Mining started" ++ print_opts(State3)),
                 start_mining_(State3#state{mining_state = running,
                                            micro_block_candidate = undefined,
                                            key_block_candidates = undefined,
