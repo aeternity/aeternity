@@ -173,9 +173,8 @@
 %% ==================================================================
 %% Tracing support
 patterns() ->
-    [{?MODULE, '_', '_', []}].
-    %% [{?MODULE, F, A, []} || {F,A} <- ?MODULE:module_info(exports),
-    %%                         not lists:member(F, [module_info, patterns])].
+    [{?MODULE, F, A, []} || {F,A} <- ?MODULE:module_info(exports),
+                            not lists:member(F, [module_info, patterns])].
 
 record_fields(data ) -> record_info(fields, data);
 record_fields(w    ) -> aesc_window:record_fields(w);
@@ -2901,7 +2900,10 @@ default_report_flags() ->
 
 
 report_on_chain_tx(Info, SignedTx, D) ->
-    report(on_chain_tx, #{tx => SignedTx, info => Info}, D).
+    {Type,_} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    report(on_chain_tx, #{ tx => SignedTx
+                         , type => Type
+                         , info => Info}, D).
 
 report(Tag, St, D) -> report_info(do_rpt(Tag, D), Tag, St, D).
 

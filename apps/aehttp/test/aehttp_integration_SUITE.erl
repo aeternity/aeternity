@@ -3649,6 +3649,9 @@ channel_create(Config, IConnPid, RConnPid) ->
     % mine the create_tx
     ok = wait_for_signed_transaction_in_block(SignedCrTx),
 
+    {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
+    {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
+
     ChannelCreateFee.
 
 sc_ws_update_(Config) ->
@@ -5285,6 +5288,9 @@ wait_for_tx_hash_on_chain(TxHash) ->
     end.
 
 sc_ws_timeout_open(Config) ->
+    with_trace(fun sc_ws_timeout_open_/1, Config, "sc_ws_timeout_open").
+
+sc_ws_timeout_open_(Config) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
 
@@ -5422,7 +5428,10 @@ sc_ws_update_conflict(Config) ->
          responder]),
     ok.
 
-sc_ws_close_mutual(Config0) ->
+sc_ws_close_mutual(Config) ->
+    with_trace(fun sc_ws_close_mutual_/1, Config, "sc_ws_close_mutual").
+
+sc_ws_close_mutual_(Config0) ->
     lists:foreach(
         fun(WhoCloses) ->
             Config = sc_ws_open_(Config0),
@@ -6477,6 +6486,9 @@ mine_micro_block_emptying_mempool_or_fail(Node) ->
 
 
 with_trace(F, Config, File) ->
+    with_trace(F, Config, File, on_error).
+
+with_trace(F, Config, File, When) ->
     ct:log("with_trace ...", []),
     TTBRes = aesc_ttb:on_nodes([node()|get_nodes()], File),
     ct:log("Trace set up: ~p", [TTBRes]),
@@ -6485,25 +6497,35 @@ with_trace(F, Config, File) ->
 	error:R ->
 	    Stack = erlang:get_stacktrace(),
 	    ttb_stop(),
-	    ct:log("Error ~p; Stack = ~p", [R, Stack]),
+	    ct:pal("Error ~p~nStack = ~p", [R, Stack]),
 	    erlang:error(R);
 	exit:R ->
 	    ttb_stop(),
 	    exit(R);
         throw:Res ->
-            ct:log("Caught throw:~p", [Res]),
+            ct:pal("Caught throw:~p", [Res]),
             throw(Res)
     end,
-    ct:log("Discarding trace", []),
-    aesc_ttb:stop_nofetch(),
+    case When of
+        on_error ->
+            ct:log("Discarding trace", []),
+            aesc_ttb:stop_nofetch();
+        always ->
+            ttb_stop()
+    end,
     ok.
 
 ttb_stop() ->
     Dir = aesc_ttb:stop(),
     Out = filename:join(filename:dirname(Dir),
 			filename:basename(Dir) ++ ".txt"),
-    aesc_ttb:format(Dir, Out),
-    ct:log("Formatted trace log in ~s~n", [Out]).
+    case aesc_ttb:format(Dir, Out, #{limit => 30000}) of
+        {error, Reason} ->
+            ct:pal("TTB formatting error: ~p", [Reason]);
+        _ ->
+            ok
+    end,
+    ct:pal("Formatted trace log in ~s~n", [Out]).
 
 get_nodes() ->
     [aecore_suite_utils:node_name(?NODE)].
