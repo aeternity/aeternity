@@ -866,8 +866,8 @@ wrap_unrelated_tx(_Cfg) ->
     SignedTx = aec_test_utils:sign_tx(SpendTx, PrivKey),
 
 
-    {{ok, #{tx_res := ok}}, _State} =
-        meta(Acc1, AuthOpts, SignedTx, #{}, State),
+    {failed, non_relevant_signature} =
+        ?call(meta, Acc1, AuthOpts, SignedTx, #{fail => true}),
 
     ok.
 
