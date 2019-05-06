@@ -123,9 +123,9 @@ handle_info(candidate_cache_cleanup, S) ->
 handle_info({gproc_ps_event, stratum_new_candidate,
              #{info := [{HeaderBin, #candidate{block = {key_block, KH}} = C, Target, _} = _Info]}},
             #aestratum_state{} = State) ->
-    {ok, _}    = aestratum_db:store_candidate(HeaderBin, C),
-    TargetInt  = aeminer_pow:scientific_to_integer(Target),
     BlockHash  = aestratum_miner:hash_data(HeaderBin),
+    {ok, _}    = ?TXN(aestratum_db:store_candidate(BlockHash, HeaderBin, C)),
+    TargetInt  = aeminer_pow:scientific_to_integer(Target),
     ChainEvent = #{event => recv_block,
                    block => #{block_target  => TargetInt,
                               block_hash    => aestratum_conv:hex_encode(BlockHash),
@@ -143,13 +143,11 @@ handle_cast({submit_share, Miner, MinerTarget, Hash}, State) ->
     ?TXN(aestratum_db:store_share(Miner, MinerTarget, Hash)),
     {noreply, State};
 
-handle_cast({submit_solution, BlockHash, MinerNonce, _Pow}, State) ->
-    ?INFO("got solution for blockhash ~p (miner nonce = ~p)", [BlockHash, MinerNonce]),
-    case ?TXN(aestratum_db:get_candidate_record(BlockHash)) of
-        {ok, #candidate{}} ->
-
-            todo;
-
+handle_cast({submit_solution, BlockHash, MinerNonce, Pow}, State) ->
+    case ?TXN(aestratum_db:get_candidate(BlockHash)) of
+        {ok, #aestratum_candidate{header = HeaderBin}} ->
+            ?INFO("got solution for blockhash ~p (miner nonce = ~p)", [BlockHash, MinerNonce]),
+            aec_conductor ! {stratum_reply, {{ok, {MinerNonce, Pow}}, HeaderBin}};
         {error, not_found} ->
             ?ERROR("candidate for block hash ~p lost", [BlockHash])
     end,

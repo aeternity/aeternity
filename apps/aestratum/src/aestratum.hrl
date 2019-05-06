@@ -38,6 +38,7 @@
 
 -record(aestratum_candidate,
         {block_hash :: binary(),
+         header     :: binary(),
          record     :: #candidate{},
          date       :: erlang:date()}).
 
