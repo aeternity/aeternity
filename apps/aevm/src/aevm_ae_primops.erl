@@ -600,13 +600,14 @@ crypto_call_ecverify_secp256k1(_Gas, Data, State) ->
 ecdsa_pk(Pubkey = <<_:64/binary>>) ->
     <<16#04, Pubkey:64/binary>>.
 
-ecdsa_der_sig(<<R:32/binary, S:32/binary>>) ->
-    R1 = der_sig_part(R),
-    S1 = der_sig_part(S),
-    <<16#30, (byte_size(R1) + byte_size(S1)), R1/binary, S1/binary>>.
+ecdsa_der_sig(<<R0:32/binary, S0:32/binary>>) ->
+    {R1, S1} = {der_sig_part(R0), der_sig_part(S0)},
+    {LR, LS} = {byte_size(R1), byte_size(S1)},
+    <<16#30, (4 + LR + LS), 16#02, LR, R1/binary, 16#02, LS, S1/binary>>.
 
-der_sig_part(P = <<1:1, _/bitstring>>) -> <<2, 33, 0:8, P/binary>>;
-der_sig_part(P)                        -> <<2, 32, P/binary>>.
+der_sig_part(P = <<1:1, _/bitstring>>) -> <<0:8, P/binary>>;
+der_sig_part(<<0, Rest/binary>>)       -> der_sig_part(Rest);
+der_sig_part(P)                        -> P.
 
 crypto_call_generic_hash(PrimOp, Gas, Data, State) ->
     [Type, Ptr] = get_args([typerep, word], Data),
