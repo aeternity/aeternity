@@ -139,10 +139,11 @@ returnr(Arg0, EngineState) ->
 
 
 call(Arg0, EngineState) ->
-    ES1 = aefa_fate:push_return_address(EngineState),
-    Signature = aefa_fate:get_function_signature(Arg0, ES1),
+    {Fun, ES0} = get_op_arg(Arg0, EngineState),
+    ES1 = aefa_fate:push_return_address(ES0),
+    Signature = aefa_fate:get_function_signature(Fun, ES1),
     {ok, ES2} = aefa_fate:check_signature_and_bind_args(Signature, ES1),
-    {jump, 0, aefa_fate:set_local_function(Arg0, ES2)}.
+    {jump, 0, aefa_fate:set_local_function(Fun, ES2)}.
 
 call_r(Arg0, Arg1, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
@@ -153,9 +154,10 @@ call_r(Arg0, Arg1, EngineState) ->
     {jump, 0, ES4}.
 
 call_t(Arg0, EngineState) ->
-    Signature = aefa_fate:get_function_signature(Arg0, EngineState),
-    {ok, ES2} = aefa_fate:check_signature_and_bind_args(Signature, EngineState),
-    {jump, 0, aefa_fate:set_local_function(Arg0, ES2)}.
+    {Fun, ES0} = get_op_arg(Arg0, EngineState),
+    Signature = aefa_fate:get_function_signature(Fun, ES0),
+    {ok, ES2} = aefa_fate:check_signature_and_bind_args(Signature, ES0),
+    {jump, 0, aefa_fate:set_local_function(Fun, ES2)}.
 
 call_tr(Arg0, Arg1, EngineState) ->
     {Address, ES1} = get_op_arg(Arg0, EngineState),
