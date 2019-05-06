@@ -41,7 +41,7 @@ expect(Chain, Contract, Function, Arguments, Expect) ->
                 trace       := Trace }} ->
             ?assertMatch({Expect, _}, {Result, Trace});
         {error, Err, _} ->
-            ?assertMatch({error, Err}, Expect)
+            ?assertMatch(Expect, {error, Err})
     end.
 
 %% For now, implement pipeline here.
@@ -345,4 +345,39 @@ operator_tests() ->
        []]).
 
 operator_test_() -> mk_test([operators()], operator_tests()).
+
+funcalls() ->
+    {<<"funcalls">>,
+     "contract FunCalls =\n"
+     "  private function fst(x : 'a, y : 'b) = x\n"
+     "  function call(x : int) =\n"
+     "    if(fst(x == 42, 0)) fst(x, false)\n"
+     "    else\n"
+     "      fst(x + 1, \"__\")\n"}.
+
+funcall_tests() ->
+    lists:flatten(
+      [[],
+       [{"call", [42], 42},
+        {"call", [43], 44}],
+       []]).
+
+funcall_test_() -> mk_test([funcalls()], funcall_tests()).
+
+maps() ->
+    {<<"maps">>,
+     "contract Maps =\n"
+     "  function test(m : map(int, int), y : int) =\n"
+     "    let m1 = m{ [y] = y }\n"
+     "    let m2 = {}\n"
+     "    let m3 = m1{ [y] @ n = m2[y = n] + 1 }\n"
+     "    (m3[y], {[0] = m3})\n"}.
+
+map_tests() ->
+    lists:flatten(
+      [[],
+       [{"test", [#{3 => 5}, 5], {tuple, {6, #{0 => #{3 => 5, 5 => 6}}}}}],
+       []]).
+
+map_test_() -> mk_test([maps()], map_tests()).
 
