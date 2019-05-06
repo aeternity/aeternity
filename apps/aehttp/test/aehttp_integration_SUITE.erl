@@ -5316,7 +5316,7 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
     IAmt = 70000 * aec_test_utils:min_gas_price(),
     RAmt = 40000 * aec_test_utils:min_gas_price(),
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt,
-                                  #{timeout_funding_lock => 100}, Config),
+                                  #{timeout_funding_lock => 500}, Config),
     {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, ChannelOpts), Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
