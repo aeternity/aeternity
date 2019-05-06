@@ -16,8 +16,9 @@ compile_and_run(Contracts, Contract, Function, Arguments) ->
     run(Chain, Contract, Function, Arguments).
 
 compile_contracts(Contracts) ->
-    MkAddr = fun(Name) -> aeb_fate_data:make_address(pad_contract_name(Name)) end,
-    maps:from_list([ {MkAddr(Name), compile_contract(Code)} || {Name, Code} <- Contracts ]).
+    maps:from_list([ {make_address(Name), compile_contract(Code)} || {Name, Code} <- Contracts ]).
+
+make_address(Name) -> aeb_fate_data:make_address(pad_contract_name(Name)).
 
 dummy_spec() ->
     #{ trees     => aec_trees:new_without_backend(),
@@ -404,4 +405,26 @@ higher_order_tests() ->
        []]).
 
 higher_order_test_() -> mk_test([higher_order()], higher_order_tests()).
+
+remote() ->
+    [{<<"main">>,
+      "contract Remote =\n"
+      "  function remote : int => int\n"
+      "contract Main =\n"
+      "  function bla(r : Remote) = r.remote\n"
+      "  function test(r : Remote) =\n"
+      "    r.remote(42)\n"
+      "      + r.remote(value = 100, 100)\n"
+      "      + bla(r)(value = 77, gas = 88, 99)\n"},
+     {<<"remote">>,
+      "contract Remote =\n"
+      "  function remote(x : int) = x * 2\n"}].
+
+remote_tests() ->
+    lists:flatten(
+      [[],
+       [{"test", [make_address(<<"remote">>)], 2 * (42 + 100 + 99)}],
+       []]).
+
+remote_test_() -> mk_test(remote(), remote_tests()).
 
