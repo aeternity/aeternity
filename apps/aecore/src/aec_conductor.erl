@@ -1008,10 +1008,7 @@ handle_signed_block(Block, State) ->
     handle_add_block(Block, State, micro_block_created).
 
 ok({ok, Value}) ->
-    Value;
-ok(Other) ->
-    Other.
-
+    Value.
 
 handle_add_block(Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(Block),

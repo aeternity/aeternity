@@ -5330,8 +5330,9 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
     channel_create(Config, IConnPid, RConnPid),
 
     % mine min depth - 1
+    %% (but actually -2 since min_depth often adds one for extra measure)
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
-                                       ?DEFAULT_MIN_DEPTH - 1),
+                                       ?DEFAULT_MIN_DEPTH - 2),
 
     ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
     ok = wait_for_channel_event(<<"died">>, RConnPid, info, Config),

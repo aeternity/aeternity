@@ -116,7 +116,7 @@
   0},
  {<<"trace_runner">>,
   {git,"git://github.com/uwiger/trace_runner.git",
-      {ref,"44a0ded559af76ab8643478d221c09ada078d2db"}},
+      {ref,"303ef2f8a85748daa3852c8342b55c61de0f62d3"}},
   0},
  {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.4.1">>},1},
  {<<"yamerl">>,{pkg,<<"yamerl">>,<<"0.7.0">>},0}]}.

@@ -87,7 +87,7 @@
          record_fields/1]).
 
 -include("aesc_codec.hrl").
--include_lib("trace_runner/include/trace_runner.hrl").
+%% -include_lib("trace_runner/include/trace_runner.hrl").
 
 -type role() :: initiator | responder.
 -type sign_tag() :: create_tx
@@ -3123,6 +3123,6 @@ next_round(#data{state = State}) ->
     {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
     Round + 1.
 
-%% for tracing only
-event(_, _, _) ->
-    ok.
+%% %% for tracing only
+%% event(_, _, _) ->
+%%     ok.
