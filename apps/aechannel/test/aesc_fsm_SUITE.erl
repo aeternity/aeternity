@@ -1603,7 +1603,8 @@ mine_blocks(_Node, _N, #{mine_blocks := {ask, Pid},
 mine_blocks(_, _, #{mine_blocks := false}) ->
     ok;
 mine_blocks(Node, N, _) ->
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), N).
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), N,
+                                       #{strictly_follow_top => true}).
 
 opt_add_tx_to_debug(SignedTx, #{mine_blocks := {ask, _}} = Debug) ->
     Debug#{signed_tx => SignedTx};
@@ -1613,7 +1614,8 @@ opt_add_tx_to_debug(_, Debug) ->
 prep_initiator(Node) ->
     {PrivKey, PubKey} = aecore_suite_utils:sign_keys(Node),
     ct:log("initiator Pubkey = ~p", [PubKey]),
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), 30),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), 30,
+                                      #{strictly_follow_top => true}),
     ct:log("initiator: 30 blocks mined on ~p", [Node]),
     {ok, Balance} = rpc(Node, aehttp_logic, get_account_balance, [PubKey]),
     #{role => initiator,
