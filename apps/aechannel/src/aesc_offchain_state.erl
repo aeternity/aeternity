@@ -8,7 +8,7 @@
                , calls                  :: aect_call_state_tree:tree()
                , signed_tx = ?NO_TX     :: aetx_sign:signed_tx() | ?NO_TX
                , half_signed_tx = ?NO_TX:: aetx_sign:signed_tx() | ?NO_TX
-               , pending_update = []    :: [aesc_offchain_update:update()]
+               , pending_updates= []    :: [aesc_offchain_update:update()]
               }).
 
 -opaque state() :: #state{}.
@@ -16,8 +16,8 @@
 -export_type([state/0]).
 
 -export([ new/1                       %%  (Opts) -> {ok, Tx, State}
-        , check_initial_update_tx/5   %%  (SignedTx, State, OnChainTrees, OnChainEnv, Opts)
-        , check_update_tx/5           %%  (SignedTx, State, OnChainTrees, OnChainEnv, Opts)
+        , check_initial_update_tx/6   %%  (SignedTx, Updates, State, OnChainTrees, OnChainEnv, Opts)
+        , check_update_tx/6           %%  (SignedTx, Updates, State, OnChainTrees, OnChainEnv, Opts)
         , check_reestablish_tx/2      %%  (SignedTx, State) -> {ok,NewSt} | error()
         , is_latest_signed_tx/2       %%  (SignedTx, State) -> boolean()
         , verify_signatures/2         %%  (SignedTx, State)
@@ -100,9 +100,9 @@ is_latest_signed_tx(SignedTx, #state{signed_tx = LatestSignedTx}) ->
     aetx_sign:serialize_to_binary(SignedTx)
         == aetx_sign:serialize_to_binary(LatestSignedTx).
 
--spec check_initial_update_tx(aetx_sign:signed_tx(), state(),
+-spec check_initial_update_tx(aetx_sign:signed_tx(), [aesc_offchain_update:update()], state(),
                               aec_trees:trees(), aetx_env:env(), map()) -> ok | {error, atom()}.
-check_initial_update_tx(SignedTx, State, _OnChainTrees, _OnChainEnv, _Opts) ->
+check_initial_update_tx(SignedTx, _Updates, State, _OnChainTrees, _OnChainEnv, _Opts) ->
     Aetx = aetx_sign:tx(SignedTx),
     {Mod, Tx} = aetx:specialize_callback(Aetx),
     Checks =
@@ -140,9 +140,10 @@ check_reestablish_tx(SignedTx, State) ->
             {error, not_mutually_signed}
     end.
 
--spec check_update_tx(aetx_sign:signed_tx(), state(), aec_trees:trees(),
+-spec check_update_tx(aetx_sign:signed_tx(), [aesc_offchain_update:update()],
+                      state(), aec_trees:trees(),
                       aetx_env:env(), map()) -> ok | {error, atom()}.
-check_update_tx(SignedTx, #state{signed_tx = OldSignedTx}=State, OnChainTrees,
+check_update_tx(SignedTx, Updates, #state{signed_tx = OldSignedTx}=State, OnChainTrees,
                  OnChainEnv, Opts) when OldSignedTx =/= ?NO_TX ->
     lager:debug("check_update_tx(State = ~p)", [State]),
     Tx = aetx_sign:tx(SignedTx),
@@ -159,14 +160,13 @@ check_update_tx(SignedTx, #state{signed_tx = OldSignedTx}=State, OnChainTrees,
             case PrevRound == LastRound of
                 true ->
                     lager:debug("PrevRound == LastRound", []),
-                    check_update_tx_(Mod, TxI, State, OnChainTrees,
+                    check_update_tx_(Mod, TxI, Updates, State, OnChainTrees,
                                      OnChainEnv, Opts);
                 false -> {error, invalid_previous_round}
             end
     end.
 
-check_update_tx_(Mod, RefTx, #state{} = State, OnChainTrees, OnChainEnv, Opts) ->
-    Updates = Mod:updates(RefTx),
+check_update_tx_(Mod, RefTx, Updates, #state{} = State, OnChainTrees, OnChainEnv, Opts) ->
     try Tx1 = make_update_tx(Updates, State, OnChainTrees, OnChainEnv, Opts),
          {Mod1, Tx1I} = aetx:specialize_callback(Tx1),
          case Mod1:state_hash(Tx1I) =:= Mod:state_hash(RefTx) of

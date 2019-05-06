@@ -146,7 +146,8 @@
            }).
 
 -type latest_op() :: undefined % no pending op
-                   | {sign, sign_tag(), aetx_sign:signed_tx()}
+                   | {sign, sign_tag(), aetx_sign:signed_tx(), [aesc_offchain_update:update()]}
+                   | {ack, sign_tag(), aetx_sign:signed_tx(), [aesc_offchain_update:update()]}
                    | {shutdown | deposit | withdraw, aetx_sign:signed_tx()}
                    | {watch, ?WATCH_FND
                            | ?WATCH_DEP
@@ -685,88 +686,104 @@ awaiting_signature(cast, {Req, _} = Msg, #data{ongoing_update = true} = D)
     lager:debug("race detected: ~p", [Msg]),
     handle_update_conflict(Req, D);
 awaiting_signature(cast, {?SIGNED, slash_tx, SignedTx} = Msg,
-                   #data{latest = {sign, slash_tx, _CTx}} = D) ->
+                   #data{latest = {sign, slash_tx, _CTx, _}} = D) ->
     lager:debug("slash_tx signed", []),
     %% TODO: Would be prudent to check the SignedTx before pushing
     ok = aec_tx_pool:push(SignedTx),
     next_state(channel_closing, log(rcv, ?SIGNED, Msg, D#data{latest = undefined}));
 awaiting_signature(cast, {?SIGNED, create_tx, Tx} = Msg,
-                   #data{role = initiator, latest = {sign, create_tx, _CTx}} = D) ->
-    maybe_check_sigs_create(Tx, initiator,
+                   #data{role = initiator, latest = {sign, create_tx, CTx,
+                                                     Updates}} = D) ->
+    maybe_check_sigs_create(Tx, Updates, initiator,
                             fun() ->
                                 next_state(half_signed, send_funding_created_msg(
                                     Tx, log(rcv, ?SIGNED, Msg,
-                                            D#data{latest = undefined})))
+                                            D#data{latest = {ack, create_tx,
+                                                             CTx, Updates}})))
                             end, D);
 awaiting_signature(cast, {?SIGNED, deposit_tx, Tx} = Msg,
-                   #data{latest = {sign, deposit_tx, _DTx}} = D) ->
-    maybe_check_sigs(Tx, channel_deposit_tx, not_deposit_tx, me,
+                   #data{latest = {sign, deposit_tx, DTx, Updates}} = D) ->
+    maybe_check_sigs(Tx, Updates, channel_deposit_tx, not_deposit_tx, me,
         fun() ->
             next_state(dep_half_signed,
-                  send_deposit_created_msg(
-                  Tx, log(rcv, ?SIGNED, Msg, D#data{latest = undefined})))
+                  send_deposit_created_msg(Tx, Updates,
+                      log(rcv, ?SIGNED, Msg, D#data{latest = {ack,
+                                                              deposit_tx, DTx,
+                                                     Updates}})))
         end, D);
 awaiting_signature(cast, {?SIGNED, withdraw_tx, Tx} = Msg,
-                   #data{latest = {sign, withdraw_tx, _DTx}} = D) ->
-    maybe_check_sigs(Tx, channel_withdraw_tx, not_withdraw_tx, me,
+                   #data{latest = {sign, withdraw_tx, WTx, Updates}} = D) ->
+    maybe_check_sigs(Tx, Updates, channel_withdraw_tx, not_withdraw_tx, me,
         fun() ->
             next_state(wdraw_half_signed,
-                    send_withdraw_created_msg(
-                    Tx, log(rcv, ?SIGNED, Msg, D#data{latest = undefined})))
+                    send_withdraw_created_msg(Tx, Updates,
+                        log(rcv, ?SIGNED, Msg, D#data{latest = {ack,
+                                                                withdraw_tx,
+                                                                WTx, Updates}})))
         end, D);
 awaiting_signature(cast, {?SIGNED, ?FND_CREATED, SignedTx} = Msg,
                    #data{role = responder,
-                         latest = {sign, ?FND_CREATED, HSCTx}} = D) ->
+                         latest = {sign, ?FND_CREATED, HSCTx, Updates}} = D) ->
     NewSignedTx = aetx_sign:add_signatures(
                     HSCTx, aetx_sign:signatures(SignedTx)),
-    maybe_check_sigs_create(NewSignedTx, both,
+    maybe_check_sigs_create(NewSignedTx, Updates, both,
         fun() ->
             D1 = send_funding_signed_msg(
                   NewSignedTx,
-                  log(rcv, ?SIGNED, Msg, D#data{create_tx = NewSignedTx})),
+                  log(rcv, ?SIGNED, Msg, D#data{create_tx = NewSignedTx,
+                                                latest = {ack, ?FND_CREATED,
+                                                          HSCTx, Updates}})),
             report(on_chain_tx, NewSignedTx, D1),
             {ok, D2} = start_min_depth_watcher(?WATCH_FND, NewSignedTx, D1),
             gproc_register_on_chain_id(D2),
             next_state(awaiting_locked, D2)
         end, D);
 awaiting_signature(cast, {?SIGNED, ?DEP_CREATED, SignedTx} = Msg,
-                   #data{latest = {sign, ?DEP_CREATED, HSCTx}} = D) ->
+                   #data{latest = {sign, ?DEP_CREATED, HSCTx, Updates}} = D) ->
     NewSignedTx = aetx_sign:add_signatures(
                     HSCTx, aetx_sign:signatures(SignedTx)),
-    maybe_check_sigs(NewSignedTx, channel_deposit_tx, not_deposit_tx, both,
+    maybe_check_sigs(NewSignedTx, Updates, channel_deposit_tx, not_deposit_tx, both,
         fun() ->
-            D1 = send_deposit_signed_msg(NewSignedTx, D),
+            D1 = send_deposit_signed_msg(NewSignedTx,
+                                          D#data{latest = {ack,
+                                                           ?DEP_CREATED,
+                                                           HSCTx, Updates}}),
             report(on_chain_tx, NewSignedTx, D1),
             {ok, D2} = start_min_depth_watcher(?WATCH_DEP, NewSignedTx, D1),
             next_state(awaiting_locked,
                       log(rcv, ?SIGNED, Msg, D2))
         end, D);
 awaiting_signature(cast, {?SIGNED, ?WDRAW_CREATED, SignedTx} = Msg,
-                   #data{latest = {sign, ?WDRAW_CREATED, HSCTx}} = D) ->
+                   #data{latest = {sign, ?WDRAW_CREATED, HSCTx, Updates}} = D) ->
     NewSignedTx = aetx_sign:add_signatures(
                     HSCTx, aetx_sign:signatures(SignedTx)),
-    maybe_check_sigs(NewSignedTx, channel_withdraw_tx, not_withdraw_tx, both,
+    maybe_check_sigs(NewSignedTx, Updates, channel_withdraw_tx, not_withdraw_tx, both,
         fun() ->
-            D1 = send_withdraw_signed_msg(NewSignedTx, D#data{latest = undefined}),
+            D1 = send_withdraw_signed_msg(NewSignedTx,
+                                          D#data{latest = {ack,
+                                                           ?WDRAW_CREATED,
+                                                           HSCTx, Updates}}),
             report(on_chain_tx, NewSignedTx, D1),
             {ok, D2} = start_min_depth_watcher(?WATCH_WDRAW, NewSignedTx, D1),
             next_state(awaiting_locked, log(rcv, ?SIGNED, Msg, D2))
         end, D);
-awaiting_signature(cast, {?SIGNED, ?UPDATE, SignedTx} = Msg, D) ->
-    maybe_check_sigs(SignedTx, channel_offchain_tx, not_offchain_tx, me,
+awaiting_signature(cast, {?SIGNED, ?UPDATE, SignedTx} = Msg,
+                   #data{latest = {sign, ?UPDATE, OCTx, Updates}} = D) ->
+    maybe_check_sigs(SignedTx, Updates, channel_offchain_tx, not_offchain_tx, me,
         fun() ->
             D1 = send_update_msg(
-                  SignedTx,
+                  SignedTx, Updates,
                   D#data{state = aesc_offchain_state:set_half_signed_tx(
                                     SignedTx, D#data.state)}),
             next_state(awaiting_update_ack,
-                      log(rcv, ?SIGNED, Msg, D1#data{latest = undefined}))
+                      log(rcv, ?SIGNED, Msg, D1#data{latest = {ack, ?UPDATE,
+                                                               OCTx, Updates}}))
         end, D);
 awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK, SignedTx} = Msg,
-                   #data{latest = {sign, ?UPDATE_ACK, OCTx}, opts = Opts} = D) ->
+                   #data{latest = {sign, ?UPDATE_ACK, OCTx, Updates}, opts = Opts} = D) ->
     NewSignedTx = aetx_sign:add_signatures(
                     OCTx, aetx_sign:signatures(SignedTx)),
-    maybe_check_sigs(NewSignedTx, channel_offchain_tx, not_offchain_tx, both,
+    maybe_check_sigs(NewSignedTx, Updates, channel_offchain_tx, not_offchain_tx, both,
         fun() ->
             D1 = send_update_ack_msg(NewSignedTx, D),
             {OnChainEnv, OnChainTrees} =
@@ -778,8 +795,9 @@ awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK, SignedTx} = Msg,
                         latest = undefined},
             next_state(open, D2)
         end, D);
-awaiting_signature(cast, {?SIGNED, ?SHUTDOWN, SignedTx} = Msg, D) ->
-    maybe_check_sigs(SignedTx, channel_close_mutual_tx, not_close_mutual_tx, me,
+awaiting_signature(cast, {?SIGNED, ?SHUTDOWN, SignedTx} = Msg,
+                   #data{latest = {sign, ?SHUTDOWN, _, Updates}} = D) ->
+    maybe_check_sigs(SignedTx, Updates, channel_close_mutual_tx, not_close_mutual_tx, me,
         fun() ->
             D1 = send_shutdown_msg(SignedTx, D),
             D2 = D1#data{latest = {shutdown, SignedTx},
@@ -787,10 +805,10 @@ awaiting_signature(cast, {?SIGNED, ?SHUTDOWN, SignedTx} = Msg, D) ->
             next_state(mutual_closing, D2)
         end, D);
 awaiting_signature(cast, {?SIGNED, ?SHUTDOWN_ACK, SignedTx} = Msg,
-                   #data{latest = {sign, ?SHUTDOWN_ACK, CMTx}} = D) ->
+                   #data{latest = {sign, ?SHUTDOWN_ACK, CMTx, Updates}} = D) ->
     NewSignedTx = aetx_sign:add_signatures(
                     CMTx, aetx_sign:signatures(SignedTx)),
-    maybe_check_sigs(NewSignedTx, channel_close_mutual_tx, not_close_mutual_tx, both,
+    maybe_check_sigs(NewSignedTx, Updates, channel_close_mutual_tx, not_close_mutual_tx, both,
         fun() ->
             D1 = send_shutdown_ack_msg(NewSignedTx, D),
             D2 = D1#data{latest = undefined,
@@ -1345,7 +1363,7 @@ handle_call_(awaiting_signature, Msg, From,
   when ?UPDATE_REQ(element(1,Msg)) ->
     %% Race detection!
     lager:debug("race detected: ~p", [Msg]),
-    {sign, OngoingOp, _} = D#data.latest,
+    {sign, OngoingOp, _, _} = D#data.latest,
     gen_statem:reply(From, {error, conflict}),
     lager:debug("calling handle_update_conflict", []),
     handle_update_conflict(OngoingOp, D#data{latest = undefined});
@@ -2044,7 +2062,6 @@ send_funding_created_msg(SignedTx, #data{channel_id = Ch,
     aesc_session_noise:funding_created(Sn, Msg),
     log(snd, ?FND_CREATED, Msg, Data).
 
-%% TODO: use Updates for validation
 check_funding_created_msg(#{ temporary_channel_id := ChanId
                            , block_hash           := ?DUMMY_BLOCK_HASH
                            , data                 := #{tx      := TxBin,
@@ -2055,7 +2072,7 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case verify_signatures_channel_create(SignedTx, initiator) of
         ok ->
-            case check_update_tx(initial, SignedTx, State, Opts) of
+            case check_update_tx(initial, SignedTx, Updates, State, Opts) of
                 ok ->
                     {ok, SignedTx, Updates, log(rcv, ?FND_CREATED, Msg, Data)};
                 {error, _} = Error ->
@@ -2110,10 +2127,8 @@ check_funding_locked_msg(#{ temporary_channel_id := TmpChanId
             {error, temporary_channel_id_mismatch}
     end.
 
-send_deposit_created_msg(SignedTx, #data{on_chain_id = Ch,
-                                         session     = Sn} = Data) ->
-    %% TODO: Updates
-    Updates = [],
+send_deposit_created_msg(SignedTx, Updates,
+                         #data{on_chain_id = Ch, session     = Sn} = Data) ->
     UBins = [aesc_offchain_update:serialize(U) || U <- Updates],
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ channel_id => Ch
@@ -2131,7 +2146,7 @@ check_deposit_created_msg(#{ channel_id := ChanId
                           #data{on_chain_id = ChanId} = Data) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-    case check_tx_and_verify_signatures(SignedTx, channel_deposit_tx,
+    case check_tx_and_verify_signatures(SignedTx, Updates, channel_deposit_tx,
                                         Data,
                                         [other_account(Data)],
                                         not_deposit_tx) of
@@ -2152,9 +2167,10 @@ send_deposit_signed_msg(SignedTx, #data{on_chain_id = Ch,
 check_deposit_signed_msg(#{ channel_id := ChanId
                           , block_hash := ?DUMMY_BLOCK_HASH
                           , data       := #{tx := TxBin}} = Msg,
-                          #data{on_chain_id = ChanId} = Data) ->
+                          #data{on_chain_id = ChanId,
+                                latest = {ack, deposit_tx, _, Updates}} = Data) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-    case check_tx_and_verify_signatures(SignedTx, channel_deposit_tx,
+    case check_tx_and_verify_signatures(SignedTx, Updates, channel_deposit_tx,
                                         Data,
                                         both_accounts(Data),
                                         not_deposit_tx) of
@@ -2214,11 +2230,9 @@ check_op_error_msg(Op, #{ channel_id := ChanId
             {error, chain_id_mismatch}
     end.
 
-send_withdraw_created_msg(SignedTx, #data{on_chain_id = Ch,
-                                          session     = Sn} = Data) ->
+send_withdraw_created_msg(SignedTx, Updates,
+                          #data{on_chain_id = Ch, session = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
-    %% TODO: Updates
-    Updates = [],
     UBins = [aesc_offchain_update:serialize(U) || U <- Updates],
     Msg = #{ channel_id => Ch
            , block_hash => ?DUMMY_BLOCK_HASH
@@ -2235,7 +2249,7 @@ check_withdraw_created_msg(#{ channel_id := ChanId
                   #data{ on_chain_id = ChanId } = Data) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-    case check_tx_and_verify_signatures(SignedTx, channel_withdraw_tx,
+    case check_tx_and_verify_signatures(SignedTx, Updates, channel_withdraw_tx,
                                         Data,
                                         pubkeys(other_participant, Data),
                                         not_withdraw_tx) of
@@ -2256,9 +2270,11 @@ send_withdraw_signed_msg(SignedTx, #data{on_chain_id = Ch,
 check_withdraw_signed_msg(#{ channel_id := ChanId
                            , block_hash := ?DUMMY_BLOCK_HASH
                            , data       := #{tx := TxBin}} = Msg,
-                          #data{on_chain_id = ChanId} = Data) ->
+                          #data{on_chain_id = ChanId,
+                                latest = Latest} = Data) ->
+    {ack, withdraw_tx, _, Updates} = Latest,
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-    case check_tx_and_verify_signatures(SignedTx, channel_withdraw_tx,
+    case check_tx_and_verify_signatures(SignedTx, Updates, channel_withdraw_tx,
                                         Data,
                                         pubkeys(both, Data),
                                         not_withdraw_tx) of
@@ -2290,9 +2306,8 @@ check_withdraw_locked_msg(#{ channel_id := ChanId
             {error, channel_id_mismatch}
     end.
 
-send_update_msg(SignedTx, #data{ on_chain_id = OnChainId
-                               , session     = Sn} = Data) ->
-    Updates = [], %% TODO: hook actual updats
+send_update_msg(SignedTx, Updates,
+                #data{ on_chain_id = OnChainId, session = Sn} = Data) ->
     UBins = [aesc_offchain_update:serialize(U) || U <- Updates],
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ channel_id => OnChainId
@@ -2330,15 +2345,14 @@ check_update_msg_(Type, #{ channel_id := ChanId
             {error, {deserialize, E}}
     end.
 
-%% TODO: use Updates for validation
-check_signed_update_tx(Type, SignedTx, _Updates,
+check_signed_update_tx(Type, SignedTx, Updates,
                        #data{state = State, opts = Opts} = D) ->
     lager:debug("check_signed_update_tx(~p)", [SignedTx]),
-    case check_tx_and_verify_signatures(SignedTx, channel_offchain_tx,
+    case check_tx_and_verify_signatures(SignedTx, Updates, channel_offchain_tx,
                                         D,
                                         pubkeys(other_participant, D), not_offchain_tx) of
         ok ->
-            case check_update_tx(Type, SignedTx, State, Opts) of
+            case check_update_tx(Type, SignedTx, Updates, State, Opts) of
                 ok -> ok;
                 {error, _} = Error ->
                     Error
@@ -2346,15 +2360,15 @@ check_signed_update_tx(Type, SignedTx, _Updates,
         {error, _} = Err -> Err
     end.
 
-check_update_tx(initial, SignedTx, State, Opts) ->
+check_update_tx(initial, SignedTx, Updates, State, Opts) ->
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    aesc_offchain_state:check_initial_update_tx(SignedTx, State,
+    aesc_offchain_state:check_initial_update_tx(SignedTx, Updates, State,
                                                 OnChainTrees, OnChainEnv, Opts);
-check_update_tx(normal, SignedTx, State, Opts) ->
+check_update_tx(normal, SignedTx, Updates, State, Opts) ->
       {OnChainEnv, OnChainTrees} =
           aetx_env:tx_env_and_trees_from_top(aetx_contract),
-      aesc_offchain_state:check_update_tx(SignedTx, State,
+      aesc_offchain_state:check_update_tx(SignedTx, Updates, State,
                                           OnChainTrees, OnChainEnv, Opts).
 
 check_update_ack_msg(Msg, D) ->
@@ -2379,10 +2393,13 @@ check_update_ack_msg_(#{ channel_id := ChanId
     end.
 
 check_signed_update_ack_tx(SignedTx, Msg,
-                           #data{state = State, opts = Opts} = D) ->
+                           #data{state = State, opts = Opts,
+                                %TODO Tag
+                                latest = Latest} = D) ->
+    {ack, ?UPDATE, _, Updates} = Latest,
     HalfSignedTx = aesc_offchain_state:get_latest_half_signed_tx(State),
     try  ok = check_update_ack_(SignedTx, HalfSignedTx),
-         case check_tx_and_verify_signatures(SignedTx, channel_offchain_tx,
+         case check_tx_and_verify_signatures(SignedTx, Updates, channel_offchain_tx,
                                              D,
                                              pubkeys(both, D), not_offchain_tx) of
               ok ->
@@ -2480,7 +2497,7 @@ check_shutdown_msg(#{channel_id := ChanId,
                    #data{on_chain_id = ChanId} = D) ->
     Updates = [],
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-    case check_tx_and_verify_signatures(SignedTx, channel_close_mutual_tx,
+    case check_tx_and_verify_signatures(SignedTx, Updates, channel_close_mutual_tx,
                                         D,
                                         [other_account(D)],
                                         not_close_mutual_tx) of
@@ -2508,7 +2525,7 @@ check_shutdown_ack_msg(#{data       := #{tx := TxBin},
                          block_hash := ?DUMMY_BLOCK_HASH} = Msg,
                        #data{latest = {shutdown, MySignedTx}} = D) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-    case check_tx_and_verify_signatures(SignedTx, channel_close_mutual_tx,
+    case check_tx_and_verify_signatures(SignedTx, [], channel_close_mutual_tx,
                                         D,
                                         both_accounts(D),
                                         not_close_mutual_tx) of
@@ -2631,11 +2648,11 @@ request_signing(Tag, Aetx, Updates, #data{} = D) ->
                       [aesc_offchain_update:update()],
                       #data{}) -> #data{}.
 %% TODO: use _Updates
-request_signing(Tag, Aetx, SignedTx, _Updates, #data{client = Client} = D) ->
+request_signing(Tag, Aetx, SignedTx, Updates, #data{client = Client} = D) ->
     Msg = rpt_message(sign, Tag, Aetx, D),
     Client ! {?MODULE, self(), Msg},
     lager:debug("signing(~p) requested", [Tag]),
-    D#data{ latest = {sign, Tag, SignedTx}
+    D#data{ latest = {sign, Tag, SignedTx, Updates}
           , log    = log_msg(req, sign, Msg, D#data.log)}.
 
 default_minimum_depth(initiator  ) -> undefined;
@@ -2888,7 +2905,7 @@ verify_signatures(Pubkeys, SignedTx) ->
         _ -> {error, bad_signature}
     end.
 
-check_tx_and_verify_signatures(SignedTx, Type, Data, Pubkeys, ErrTypeMsg) ->
+check_tx_and_verify_signatures(SignedTx, Updates, Type, Data, Pubkeys, ErrTypeMsg) ->
     ChannelPubkey = cur_channel_id(Data),
     ExpectedRound = next_round(Data),
     #data{state = State, opts = Opts} = Data,
@@ -2903,14 +2920,14 @@ check_tx_and_verify_signatures(SignedTx, Type, Data, Pubkeys, ErrTypeMsg) ->
                             _ -> tx_round(Aetx) =:= ExpectedRound
                         end,
                     case CorrectRound of
-                        true ->
-                            case check_update_tx(normal, SignedTx, State, Opts) of
+                        false ->
+                            {error, wrong_round};
+                        true when is_list(Updates) ->
+                            case check_update_tx(normal, SignedTx, Updates, State, Opts) of
                                 ok ->
                                     verify_signatures(Pubkeys, SignedTx);
                                 {error, E} -> {error, E}
-                            end;
-                        false ->
-                            {error, wrong_round}
+                            end
                     end;
                 _ ->
                   {error, different_channel_id}
@@ -2919,14 +2936,14 @@ check_tx_and_verify_signatures(SignedTx, Type, Data, Pubkeys, ErrTypeMsg) ->
             {error, ErrTypeMsg}
     end.
 
-maybe_check_sigs_create(Tx, Who, NextState,
+maybe_check_sigs_create(Tx, Updates, Who, NextState,
                        #data{state = State, opts = Opts} = D) ->
     CheckSigs =
         case D#data.strict_checks of
             true ->
                 case verify_signatures_channel_create(Tx, Who) of
                     ok ->
-                        case check_update_tx(initial, Tx, State, Opts) of
+                        case check_update_tx(initial, Tx, Updates, State, Opts) of
                             ok -> true;
                             {error, E} -> {false, E}
                         end;
@@ -2941,7 +2958,7 @@ maybe_check_sigs_create(Tx, Who, NextState,
             keep_state(D)
     end.
 
-maybe_check_sigs(Tx, TxType, WrongTxTypeMsg, Who, NextState, D)
+maybe_check_sigs(Tx, Updates, TxType, WrongTxTypeMsg, Who, NextState, D)
         when Who =:= me
       orelse Who =:= other_participant
       orelse Who =:= both ->
@@ -2949,7 +2966,7 @@ maybe_check_sigs(Tx, TxType, WrongTxTypeMsg, Who, NextState, D)
     CheckSigs =
         case D#data.strict_checks of
             true ->
-               case check_tx_and_verify_signatures(Tx, TxType,
+               case check_tx_and_verify_signatures(Tx, Updates, TxType,
                                                     D,
                                                     Pubkeys, WrongTxTypeMsg) of
                     ok -> true;
