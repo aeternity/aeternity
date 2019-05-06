@@ -14,11 +14,12 @@
 
 -define(ENABLED, true).
 -define(TOTAL_SHARES, 1000). % 100 shares == 10% of the reward
--define(BENEFICIARIES, ["ak_2uN1CEVGs4D5QnFudhp8dSqrwJEMFiTfwvbCK3SJzVYRDiusfd:100"]). % TODO: address
+%%% for: "ak_2uN1CEVGs4D5QnFudhp8dSqrwJEMFiTfwvbCK3SJzVYRDiusfd:100" TODO - use actual pubkey for real account
+-define(BENEFICIARIES, [{<<250,151,56,184,99,123,38,230,217,93,156,146,231,90,209,233,15,203,25,102,32,140,178,207,59,171,81,2,249,197,198,61>>, 100}]).
 
 ensure_env() ->
     Enabled = cfg(<<"protocol_beneficiaries_enabled">>, ?ENABLED),
-    Benefs0 = cfg(<<"protocol_beneficiaries">>, ?BENEFICIARIES),
+    Benefs0 = cfg(<<"protocol_beneficiaries">>, lists:map(fun unparse_beneficiary/1, ?BENEFICIARIES)),
     case Enabled andalso parse_beneficiaries(Benefs0) of
         false ->
             application:set_env(aecore, dev_reward_enabled, false);
@@ -43,21 +44,36 @@ ensure_env() ->
 cfg(Key, Default) ->
     aeu_env:user_config([<<"chain">>, Key], Default).
 
+env(Key, Default) ->
+    aeu_env:get_env(aecore, Key, Default).
+
 enabled() ->
-    {ok, Res} = aeu_env:get_env(aecore, dev_reward_enabled),
-    Res.
+    env(dev_reward_enabled, true).
 beneficiaries() ->
-    {ok, Res} = aeu_env:get_env(aecore, dev_reward_beneficiaries),
-    Res.
+    env(dev_reward_beneficiaries, ?BENEFICIARIES).
 total_shares() ->
     ?TOTAL_SHARES.
 allocated_shares() ->
-    {ok, Res} = aeu_env:get_env(aecore, dev_reward_allocated_shares),
-    Res.
+    case env(dev_reward_allocated_shares, undefined) of
+        undefined ->
+            AllocShares = lists:foldl(fun ({_, X}, A) -> A + X end, 0, beneficiaries()),
+            application:set_env(aecore, dev_reward_allocated_shares, AllocShares),
+            AllocShares;
+        Res ->
+            Res
+    end.
 
 activated(Height) ->
-    aec_hard_forks:protocol_effective_at_height(Height) >= ?FORTUNA_PROTOCOL_VSN.
+    case env(dev_reward_activated, undefined) of %% for eunit to avoid mocking
+        undefined ->
+            aec_hard_forks:protocol_effective_at_height(Height) >= ?FORTUNA_PROTOCOL_VSN;
+        Val when is_boolean(Val) ->
+            Val
+    end.
 
+
+unparse_beneficiary({PK, Share}) ->
+    <<(aeser_api_encoder:encode(account_pubkey, PK))/binary, ":", (integer_to_binary(Share))/binary>>.
 
 parse_beneficiary(BeneficiaryShareStr) ->
     Regex = "^(?'account'ak_[1-9A-HJ-NP-Za-km-z]*):(?'share'[0-9]+)$",
