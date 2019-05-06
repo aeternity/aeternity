@@ -980,18 +980,21 @@ fees_test_() ->
     }.
 
 fees_three_beneficiaries_with_split() ->
-    meck:expect(aec_dev_reward, enabled, 0, true),
-    fees_three_beneficiaries().
+    #{public := PubKeyProtocol} = enacl:sign_keypair(),
+    with_dev_reward_env_instrumentation([{dev_reward_enabled, true},
+                                         {dev_reward_activated, true},
+                                         {dev_reward_beneficiaries, [{PubKeyProtocol, 100}]}],
+                                        fun fees_three_beneficiaries/0).
 
 fees_three_beneficiaries_without_split() ->
-    meck:expect(aec_dev_reward, enabled, 0, false),
-    fees_three_beneficiaries().
+    #{public := PubKeyProtocol} = enacl:sign_keypair(),
+    with_dev_reward_env_instrumentation([{dev_reward_enabled, false},
+                                         {dev_reward_activated, true},
+                                         {dev_reward_beneficiaries, [{PubKeyProtocol, 100}]}],
+                                        fun fees_three_beneficiaries/0).
 
 fees_three_beneficiaries() ->
-    #{ public := PubKeyProtocol, secret := _ } = enacl:sign_keypair(),
     meck:expect(aec_governance, beneficiary_reward_delay, 0, 3),
-    meck:expect(aec_dev_reward, activated, 1, true),
-    meck:expect(aec_dev_reward, beneficiaries, 0, [{PubKeyProtocol, 100}]),
 
     %% Two accounts to act as sender and receiver.
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
@@ -1066,6 +1069,7 @@ fees_three_beneficiaries() ->
     ?assertEqual(split_reward(aec_governance:block_mine_reward(3) + reward_60(Fee3)),
                  orddict:fetch(PubKey8, DictBal2)),
 
+    [{PubKeyProtocol, _}] = aec_dev_reward:beneficiaries(),
     case aec_dev_reward:enabled() of
         true ->
             TotalRewards = aec_governance:block_mine_reward(1) + aec_governance:block_mine_reward(2) + aec_governance:block_mine_reward(3)
@@ -1082,18 +1086,20 @@ fees_three_beneficiaries() ->
     ?assertEqual(error, orddict:find(PubKey5, DictBal2)),
     ok.
 
+
 fees_delayed_reward_with_split() ->
-    meck:expect(aec_dev_reward, enabled, 0, true),
-    fees_delayed_reward().
+    with_dev_reward_env_instrumentation([{dev_reward_enabled, true},
+                                         {dev_reward_activated, true}],
+                                        fun fees_delayed_reward/0).
 
 fees_delayed_reward_without_split() ->
-    meck:expect(aec_dev_reward, enabled, 0, false),
-    fees_delayed_reward().
+    with_dev_reward_env_instrumentation([{dev_reward_enabled, false},
+                                         {dev_reward_activated, true}],
+                                        fun fees_delayed_reward/0).
 
 fees_delayed_reward() ->
     %% Delay reward by 2 key blocks / generations.
     meck:expect(aec_governance, beneficiary_reward_delay, 0, 2),
-    meck:expect(aec_dev_reward, activated, 1, true),
 
     %% Two accounts to act as sender and receiver.
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
@@ -1154,6 +1160,24 @@ fees_delayed_reward() ->
     ?assertEqual({ok, split_reward(MiningReward1 + MiningReward2 + MiningReward3 + Fee1 + Fee2)},
                  orddict:find(PubKey3, DictBal3)),
     ok.
+
+
+%% HACK to avoid mocking of aec_dev_reward module - doing so will uncover race conditions
+%% between repeated setup and teardown functions (as the mocked module is global)
+with_dev_reward_env_instrumentation(KVs, F) ->
+    Prev = lists:foldl(
+             fun ({K, _}, Acc) ->
+                     case application:get_env(aecore, K) of
+                         {ok, PrevVal} -> [{set_env, [K, PrevVal]} | Acc];
+                         undefined -> [{unset_env, [K]} | Acc]
+                     end
+             end, [], KVs),
+    [application:set_env(aecore, K, V) || {K, V} <- KVs],
+    try F()
+    after
+        [apply(application, AppF, [aecore | Args]) || {AppF, Args} <- Prev]
+    end.
+
 
 %%%===================================================================
 %%% PoF test
