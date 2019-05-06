@@ -92,14 +92,15 @@ handle_info(chain_top_check, #aestratum_state{chain_keyblock_hash = LastKB} = S)
 
 handle_info(keyblock, #aestratum_state{chain_keyblock_hash = <<_/binary>>} = S) ->
     ?TXN(aestratum_db:store_round()),
-    case ?TXN(maybe_compute_reward()) of
-        {ok, not_our_share} ->
-            ok;
+    RewardHeight = aec_tx_pool:top_height() - ?KEYBLOCK_ROUNDS_DELAY,
+    case RewardHeight > 0 andalso ?TXN(maybe_compute_reward(RewardHeight)) of
         {ok, #aestratum_reward{} = R} ->
             ?TXN(store_payments(R)),
             self() ! payout_check;
         {error, Reason} ->
-            ?ERROR("reward computation failed: ~p", [Reason])
+            ?ERROR("reward computation failed: ~p", [Reason]);
+        _ ->
+            ok
     end,
     {noreply, S};
 
@@ -177,15 +178,9 @@ format_status(_Opt, Status) ->
 %%% Internal functions
 %%%===================================================================
 
-chain_reward_candidate_key_header() ->
-    chain_reward_candidate_key_header(?KEYBLOCK_ROUNDS_DELAY).
-chain_reward_candidate_key_header(KeyblockRoundsDelay) ->
-    Height = aec_tx_pool:top_height() - KeyblockRoundsDelay,
-    ok_val_err(aec_chain:get_key_header_by_height(Height)).
 
-
-with_reward_share(Fun) ->
-    RewardKH   = chain_reward_candidate_key_header(),
+with_reward_share(RewardHeight, Fun) ->
+    RewardKH   = ok_val_err(aec_chain:get_key_header_by_height(RewardHeight)),
     {ok, Hash} = aec_headers:hash_header(RewardKH),
     case aestratum_db:get_hash(Hash) of
         [#aestratum_hash{key = RewardShareKey}] ->
@@ -202,8 +197,9 @@ with_reward_share(Fun) ->
     end.
 
 
-maybe_compute_reward() ->
+maybe_compute_reward(RewardHeight) ->
     with_reward_share(
+      RewardHeight,
       fun (#reward_key_block{share_key = RewardShareKey,
                              target = BlockTarget,
                              height = Height,
