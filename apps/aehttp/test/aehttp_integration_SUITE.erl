@@ -644,19 +644,23 @@ init_per_group(on_micro_block = Group, Config) ->
     {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, ?SPEND_FEE),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     ct:log("Spend tx ~p", [Tx]),
-    {ok, [KeyBlock, MicroBlock]} = mine_micro_block_emptying_mempool_or_fail(Node),
-    true = aec_blocks:is_key_block(KeyBlock),
-    false = aec_blocks:is_key_block(MicroBlock),
-    {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
-    [{prev_key_block, KeyBlock},
-     {prev_key_block_hash, hash(key, KeyBlock)},
-     {prev_key_block_height, aec_blocks:height(KeyBlock)},
-     {current_block, MicroBlock},
-     {current_block_hash, hash(micro, MicroBlock)},
-     {current_block_height, aec_blocks:height(KeyBlock)},
-     {current_block_txs, [Tx]},
-     {current_block_type, micro_block},
-     {pending_key_block, PendingKeyBlock} | Config1];
+    case mine_micro_block_emptying_mempool_or_fail(Node, 3) of
+        {ok, [KeyBlock, MicroBlock]} ->
+            true = aec_blocks:is_key_block(KeyBlock),
+            false = aec_blocks:is_key_block(MicroBlock),
+            {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
+            [{prev_key_block, KeyBlock},
+             {prev_key_block_hash, hash(key, KeyBlock)},
+             {prev_key_block_height, aec_blocks:height(KeyBlock)},
+             {current_block, MicroBlock},
+             {current_block_hash, hash(micro, MicroBlock)},
+             {current_block_height, aec_blocks:height(KeyBlock)},
+             {current_block_txs, [Tx]},
+             {current_block_type, micro_block},
+             {pending_key_block, PendingKeyBlock} | Config1];
+        {error, Reason} ->
+            ct:fail({could_not_setup_on_micro_block, Reason})
+    end;
 init_per_group(block_info, Config) ->
     Config;
 %% account_endpoints
@@ -707,14 +711,18 @@ init_per_group(tx_is_pending = Group, Config) ->
 init_per_group(tx_is_on_chain = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
-    {ok, [KeyBlock, MicroBlock]} = mine_micro_block_emptying_mempool_or_fail(Node),
-    true = aec_blocks:is_key_block(KeyBlock),
-    false = aec_blocks:is_key_block(MicroBlock),
-    [Tx] = aec_blocks:txs(MicroBlock),
-    [{on_chain_txs, [{aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
-     {block_with_txs, MicroBlock},
-     {block_with_txs_hash, hash(micro, MicroBlock)},
-     {block_with_txs_height, aec_blocks:height(KeyBlock)} | Config1];
+    case mine_micro_block_emptying_mempool_or_fail(Node, 3) of
+        {ok, [KeyBlock, MicroBlock]} ->
+            true = aec_blocks:is_key_block(KeyBlock),
+            false = aec_blocks:is_key_block(MicroBlock),
+            [Tx] = aec_blocks:txs(MicroBlock),
+            [{on_chain_txs, [{aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
+             {block_with_txs, MicroBlock},
+             {block_with_txs_hash, hash(micro, MicroBlock)},
+             {block_with_txs_height, aec_blocks:height(KeyBlock)} | Config1];
+        {error, Reason} ->
+            ct:fail({could_not_setup_tx_is_on_chain, Reason})
+    end;
 init_per_group(post_tx_to_mempool = Group, Config) ->
     Config1 = start_node(Group, Config),
     [ {NodeId, Node} | _ ] = ?config(nodes, Config1),
@@ -6085,27 +6093,31 @@ sc_ws_broken_call_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
     #{<<"return_type">> := <<"error">>} = Res,
     ok.
 
-mine_micro_block_emptying_mempool_or_fail(Node) ->
-    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
+mine_micro_block_emptying_mempool_or_fail(_Node, 0) ->
+    {error, retries_exhausted};
+mine_micro_block_emptying_mempool_or_fail(Node, Retries) ->
+    %% Very rarely we get two key-blocks followed by a microblock
+    {ok, Blocks} = aecore_suite_utils:mine_micro_blocks(Node, 1),
+    [MicroBlock, KeyBlock | _] = lists:reverse(Blocks),
     true = aec_blocks:is_key_block(KeyBlock),
     false = aec_blocks:is_key_block(MicroBlock),
+
     case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
-        {ok, []} -> ok;
+        {ok, []} ->
+            {ok, [KeyBlock, MicroBlock]};
         {ok, [_|_] = MempoolTxs} ->
+            %% So, Tx(s) is/are back in the mempool, this means (unless some Txs arrived
+            %% from thin air) that we had a micro-fork. Let's check what state we stopped in
+            timer:sleep(100), %% and avoid races...
             NewBlocks = aecore_suite_utils:flush_new_blocks(),
-            case
-                (length(NewBlocks) =:= 1) andalso aec_blocks:is_key_block(hd(NewBlocks)) andalso
-                (aec_blocks:hash_internal_representation(KeyBlock) =:= {ok, aec_blocks:prev_key_hash(MicroBlock)}) andalso
-                (aec_blocks:prev_key_hash(MicroBlock) =:= aec_blocks:prev_key_hash(hd(NewBlocks)))
-            of
-                true ->
-                    ct:fail("Key block mined shortly after micro block mined pushed the micro block out of the chain.");
-                false ->
-                    ct:pal(
-                        "Unexpected transactions in mempool:~n~p~nUnexpected new block events:~n~p",
-                        [MempoolTxs, NewBlocks]),
-                    ct:fail("Unexpected transactions in mempool")
+            case [ aec_blocks:type(B) || B <- NewBlocks ] of
+                [key, micro] -> %% We had a microfork but then added the Tx again!
+                    {ok, NewBlocks};
+                [key]        -> %% We had a microfork and stopped, we can retry
+                    mine_micro_block_emptying_mempool_or_fail(Node, Retries - 1);
+                _Other       ->
+                    ct:log("Key block mined shortly after micro block:\nTxs in mempool: ~p\n"
+                           "More blocks mined: ~p\n", [MempoolTxs, NewBlocks]),
+                    {error, micro_block_pushed_out_of_chain}
             end
-    end,
-    %% Reached unless failed.
-    {ok, [KeyBlock, MicroBlock]}.
+    end.
