@@ -46,7 +46,7 @@ expect(Chain, Contract, Function, Arguments, Expect) ->
 
 %% For now, implement pipeline here.
 compile_contract(Code) ->
-    compile_contract(Code, [{debug, [scode, opt, opt_rules, compile]}]).
+    compile_contract(Code, [{debug, [scode, opt, opt_rules, compile]}, pp_fcode]).
 
 compile_contract(Code, Options) ->
     {ok, Ast} = aeso_parser:string(Code),
@@ -380,4 +380,28 @@ map_tests() ->
        []]).
 
 map_test_() -> mk_test([maps()], map_tests()).
+
+higher_order() ->
+    {<<"higher_order">>,
+     "contract HigherOrder =\n"
+     "  private function curry(f : ('a, 'b) => 'c) =\n"
+     "    (x) => (y) => f(x, y)\n"
+     "  private function map(f : 'a => 'b, xs : list('a)) =\n"
+     "    switch(xs)\n"
+     "      [] => []\n"
+     "      x :: xs => f(x) :: map(f, xs)\n"
+     "  private function map'() = map\n"
+     "  private function plus(x, y) = x + y\n"
+     "  function test1(xs : list(int)) = map(curry(plus)(5), xs)\n"
+     "  function test2(xs : list(int)) = map'()(((x) => (y) => ((x, y) => x + y)(x, y))(100), xs)\n"}.
+
+
+higher_order_tests() ->
+    lists:flatten(
+      [[],
+       [{"test1", [[1, 2, 3]], [6, 7, 8]}],
+       [{"test2", [[1, 2, 3]], [101, 102, 103]}],
+       []]).
+
+higher_order_test_() -> mk_test([higher_order()], higher_order_tests()).
 
