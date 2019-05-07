@@ -44,7 +44,7 @@
 
 -include("../include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
--include("aect_sophia_vsn.hrl").
+-include("include/aect_sophia_vsn.hrl").
 %%%===================================================================
 %%% Test state
 %%%===================================================================

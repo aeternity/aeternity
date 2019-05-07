@@ -13,7 +13,7 @@
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
--include_lib("aecontract/test/aect_sophia_vsn.hrl").
+-include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
 
 %% common_test exports

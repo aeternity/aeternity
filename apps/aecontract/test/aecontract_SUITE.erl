@@ -132,7 +132,7 @@
 -include("../include/aecontract.hrl").
 -include("../../aecore/include/blocks.hrl").
 
--include("aect_sophia_vsn.hrl").
+-include("include/aect_sophia_vsn.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).

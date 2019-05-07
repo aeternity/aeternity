@@ -11,7 +11,7 @@
 
 -include_lib("aeminer/include/aeminer.hrl").
 -include("../../aecontract/include/aecontract.hrl").
--include("../../aecontract/test/aect_sophia_vsn.hrl").
+-include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 -include_lib("aecore/include/blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
