@@ -630,6 +630,7 @@ jobs:
     steps:
       - checkout
       - *build_ubuntu_package
+      - *store_package_artifacts
       - *fail_notification
 
   upload_build_artifacts:
