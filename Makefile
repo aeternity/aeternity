@@ -12,6 +12,8 @@ ST_CT_FLAGS = --logdir system_test/logs
 ST_CT_DIR = --dir system_test/common
 ST_CT_LOCALDIR = --dir system_test/only_local
 
+EQC_EUNIT_TEST_FLAGS ?=
+
 SWAGGER_CODEGEN_CLI_V = 2.4.4
 SWAGGER_CODEGEN_CLI = swagger/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
 SWAGGER_CODEGEN = java -jar $(SWAGGER_CODEGEN_CLI)
@@ -64,7 +66,10 @@ endif
 ifdef TEST
 CT_TEST_FLAGS += --case=$(TEST)
 EUNIT_TEST_FLAGS += --module=$(TEST)
+EQC_EUNIT_TEST_FLAGS += --module=$(TEST)
 unexport TEST
+else
+EQC_EUNIT_TEST_FLAGS += --app eqc_test
 endif
 
 ifdef VERBOSE
@@ -297,7 +302,7 @@ $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests:
 
 .PHONY: eqc-test
 eqc-test: eqc
-	$(REBAR) as test,eqc eunit --app eqc_test
+	$(REBAR) as test,eqc eunit $(EQC_EUNIT_TEST_FLAGS)
 
 EQC_TEST_REPO = https://github.com/Quviq/epoch-eqc.git
 EQC_TEST_VERSION = 71b0ad8e
