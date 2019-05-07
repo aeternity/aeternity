@@ -38,9 +38,11 @@ run(Cache, Contract, Function, Arguments) ->
 
 expect(Chain, Contract, Function, Arguments, Expect) ->
     case run(Chain, Contract, Function, Arguments) of
-        {ok, #{ accumulator := Result,
-                trace       := Trace }} ->
-            ?assertMatch({Expect, _}, {Result, Trace});
+        {ok, ES} ->
+            Result = aefa_engine_state:accumulator(ES),
+            Trace  = aefa_engine_state:trace(ES),
+            [ io:format("~p\n", [I]) || Result /= Expect, {I, _} <- Trace ],
+            ?assertMatch(Expect, Result);
         {error, Err, _} ->
             ?assertMatch(Expect, {error, Err})
     end.
