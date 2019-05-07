@@ -12,6 +12,9 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/test/aect_sophia_vsn.hrl").
+
 
 %% common_test exports
 -export([
@@ -32,6 +35,7 @@
          dutch_auction_contract/1,
          acm_dutch_auction_contract/1,
          environment_contract/1,
+         environment_contract_fate/1,
          erc20_token_contract/1,
          factorial_contract/1,
          fundme_contract/1,
@@ -54,11 +58,15 @@
 
 all() ->
     [
-     {group, contracts}
+     {group, contracts},
+     {group, fate}
     ].
 
 groups() ->
     [
+     {fate, [
+             environment_contract_fate
+             ]},
      {contracts, [],
       [
        identity_contract,
@@ -133,7 +141,7 @@ init_for_contracts(Config) ->
     [{accounts,Accounts},{node_name,NodeName}|Config].
 
 init_per_group(contracts, Config) -> init_for_contracts(Config);
-init_per_group(remote, Config) -> init_for_contracts(Config).
+init_per_group(fate, Config) -> init_for_contracts(Config).
 
 end_per_group(_Group, Config) ->
     RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
@@ -749,6 +757,133 @@ environment_contract(Config) ->
 
     ok.
 
+environment_contract_fate(Config) ->
+    Node = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APub,
+                 priv_key := APriv},
+      acc_b := #{pub_key := BPub,
+                 priv_key := BPriv}} = proplists:get_value(accounts, Config),
+
+    BBal0 = get_balance(BPub),
+
+    %% Compile test contract "environment.aes"
+    Contract = compile_test_contract(fate, "environment"),
+
+    ContractBalance = 10000,
+
+    %% Initialise contract owned by Alice setting balance to 10000.
+    {EncCPub, DecCPub, _} =
+        create_contract(Node, APub, APriv, Contract, "()", #{amount => ContractBalance}),
+
+    %% Get the initial balance.
+    BBal1 = get_balance(BPub),
+
+    init_fun_calls(),
+
+    %% Address.
+    ct:pal("Calling contract_address\n"),
+    call_func(BPub, BPriv, EncCPub, Contract, "contract_address", "()",
+              {fate, {address, binary:decode_unsigned(DecCPub)}}),
+
+    %% Balance.
+    ct:pal("Calling contract_balance\n"),
+    call_func(BPub, BPriv, EncCPub, Contract, "contract_balance", "()",
+              {fate, ContractBalance}),
+
+    %% Origin.
+    ct:pal("Calling call_origin\n"),
+    call_func(BPub, BPriv, EncCPub, Contract, "call_origin", "()",
+              {fate, {address, binary:decode_unsigned(BPub)}}),
+    ct:pal("Calling remote_call_origin\n"),
+    <<"ct_", Rest/binary>> = EncCPub,
+    Address = binary_to_list(<<"@ak_", Rest/binary>>),
+    call_func(BPub, BPriv, EncCPub, Contract, "remote_call_origin",
+              "(" ++ Address ++ ")", {fate, {address, binary:decode_unsigned(BPub)}}),
+
+    %% Caller.
+    ct:pal("Calling call_caller\n"),
+    call_func(BPub, BPriv, EncCPub, Contract, "call_caller", "(" ++ Address ++ ")"),
+    ct:pal("Calling remote_call_caller\n"),
+    call_func(BPub, BPriv, EncCPub, Contract, "remote_call_caller",
+              "(" ++ Address ++ ")", {fate, {address, binary:decode_unsigned(DecCPub)}}),
+
+    %% %% Value.
+    %% ct:pal("Calling call_value\n"),
+    %% call_func(BPub, BPriv, EncCPub, Contract, "call_value", [],
+    %%           #{amount => 5}, {"int", 5}),
+    %% ct:pal("Calling nested_value\n"),
+    %% call_func(BPub, BPriv, EncCPub, Contract, "nested_value", ["42"]),
+
+    %% Gas price.
+    ct:pal("Calling call_gas_price\n"),
+    ExpectedGasPrice = 2 * ?DEFAULT_GAS_PRICE,
+    call_func(BPub, BPriv, EncCPub, Contract, "call_gas_price", "()",
+              #{gas_price => ExpectedGasPrice}, {fate, ExpectedGasPrice}),
+
+    %% Account balances.
+    ct:pal("Calling get_balance\n"),
+    ABal = get_balance(APub),
+    EncAPub = aeser_api_encoder:encode(account_pubkey, APub),
+    AAddress = "@" ++ binary_to_list(EncAPub),
+    call_func(BPub, BPriv, EncCPub, Contract, "get_balance", "(" ++ AAddress ++ ")",
+              {fate, ABal}),
+    call_func(BPub, BPriv, EncCPub, Contract, "contract_balance", "()",
+              {fate, ContractBalance}),
+
+    %% Block hash.
+    ct:pal("Calling block_hash\n"),
+    {ok, 200, #{<<"hash">> := ExpectedBlockHash}} = get_key_block_at_height(2),
+    {_, <<BHInt:256/integer-unsigned>>} = aeser_api_encoder:decode(ExpectedBlockHash),
+
+    call_func(BPub, BPriv, EncCPub, Contract, "block_hash", "(2)", {fate, BHInt}),
+
+    %% Block hash. With value out of bounds
+    ct:pal("Calling block_hash out of bounds\n"),
+    call_func(BPub, BPriv, EncCPub, Contract, "block_hash", "(10000000)", {fate, 0}),
+
+    %% Beneficiary.
+    ct:pal("Calling beneficiary\n"),
+
+    Beneficiary = fun(Hdr) ->
+                    #{<<"prev_key_hash">> := KeyHash} = Hdr,
+                    {ok, 200, #{<<"beneficiary">> := B}} = get_key_block(KeyHash),
+                    {_, <<BInt:256/integer-unsigned>>} = aeser_api_encoder:decode(B),
+                    {address, BInt}
+                  end,
+    call_func(BPub, BPriv, EncCPub, Contract, "beneficiary", "()", {fate, Beneficiary}),
+
+    %% Block timestamp.
+    ct:pal("Calling timestamp\n"),
+
+    Timestamp = fun(Hdr) -> maps:get(<<"time">>, Hdr) end,
+    call_func(BPub, BPriv, EncCPub, Contract, "timestamp", "()", {fate, Timestamp}),
+
+    %% Block height.
+    ct:pal("Calling block_height\n"),
+    BlockHeight = fun(Hdr) -> maps:get(<<"height">>, Hdr) end,
+    call_func(BPub, BPriv, EncCPub, Contract, "generation", "()", {fate, BlockHeight}),
+
+    %% Difficulty.
+    ct:pal("Calling difficulty\n"),
+    Difficulty = fun(Hdr) ->
+                    #{<<"prev_key_hash">> := KeyHash} = Hdr,
+                    {ok, 200, #{<<"target">> := T}} = get_key_block(KeyHash),
+                    aeminer_pow:target_to_difficulty(T)
+                 end,
+    call_func(BPub, BPriv, EncCPub, Contract, "difficulty", "()", {fate, Difficulty}),
+
+    %% Gas limit.
+    ct:pal("Calling gas_limit\n"),
+    call_func(BPub, BPriv, EncCPub, Contract, "gas_limit", "()",
+              {fate, aec_governance:block_gas_limit()}),
+
+    force_fun_calls(Node),
+
+    ct:pal("B Balances ~p, ~p, ~p\n", [BBal0, BBal1, get_balance(BPub)]),
+
+    ok.
+
 %% spend_test_contract(Config)
 %%  Check the SpendTest contract.
 
@@ -1209,18 +1344,35 @@ call_func_decode(NodeName, Pubkey, Privkey, EncCPubkey,
 
 %% Contract interface functions.
 compile_test_contract(Name) ->
-    compile_test_contract_(filename:join("contracts", lists:concat([Name, ".aes"]))).
+    compile_test_contract(aevm, Name).
 
-compile_test_contract_(FileName) ->
+compile_test_contract(aevm, Name) ->
+    FileName = filename:join("contracts", lists:concat([Name, ".aes"])),
     {ok, BinSrc} = aect_test_utils:read_contract(FileName),
     {ok, Code} = aect_test_utils:compile_contract(FileName),
     #{ bytecode => aeser_api_encoder:encode(contract_bytearray, Code),
+       vm       => aect_test_utils:latest_sophia_vm_version(),
+       abi      => aect_test_utils:latest_sophia_abi_version(),
        code     => Code,
-       src      => binary_to_list(BinSrc) }.
+       src      => binary_to_list(BinSrc) };
+compile_test_contract(fate, Name) ->
+    FileName = filename:join(["contracts", "fate_asm", lists:concat([Name, ".fate"])]),
+    {ok, Code} = aect_test_utils:compile_contract(?SOPHIA_FORTUNA_FATE, FileName),
+    #{ bytecode => aeser_api_encoder:encode(contract_bytearray, Code),
+       vm       => ?VM_FATE_SOPHIA_1,
+       abi      => ?ABI_FATE_SOPHIA_1,
+       code     => Code
+     }.
 
 encode_calldata(Contract, Fun, Args) ->
-    {ok, CData} = aect_test_utils:encode_call_data(maps:get(src, Contract), Fun, Args),
-    {ok, aeser_api_encoder:encode(contract_bytearray, CData)}.
+    case maps:get(abi, Contract) of
+        ?ABI_AEVM_SOPHIA_1 ->
+            {ok, CData} = aect_test_utils:encode_call_data(maps:get(src, Contract), Fun, Args),
+            {ok, aeser_api_encoder:encode(contract_bytearray, CData)};
+        ?ABI_FATE_SOPHIA_1 ->
+            CData = aeb_fate_asm:function_call(lists:concat([Fun, Args])),
+            {ok, aeser_api_encoder:encode(contract_bytearray, CData)}
+    end.
 
 create_contract(NodeName, Pubkey, Privkey, Contract, InitArgs) ->
     create_contract(NodeName, Pubkey, Privkey, Contract, InitArgs, #{}).
@@ -1320,6 +1472,10 @@ check_call_(Check, CallObject, TxHash) ->
             ?assertEqual(<<"revert">>, RetType)
     end.
 
+check_value(Val0, {fate, ExpVal}) ->
+    Val = decode_data(fate, Val0),
+    ct:log("~p decoded\nas ~p\ninto ~p =??= ~p", [Val0, fate, Val, ExpVal]),
+    ?assertEqual(ExpVal, Val);
 check_value(Val0, {Type, ExpVal}) ->
     #{<<"value">> := Val} = decode_data(Type, Val0),
     ct:log("~p decoded\nas ~p\ninto ~p =??= ~p", [Val0, Type, Val, ExpVal]),
@@ -1335,8 +1491,8 @@ call_func(Pub, Priv, EncCPub, Contract, Fun, Args, Check) ->
 call_func(Pub, Priv, EncCPub, Contract, Fun, Args, CallerSet, Check) ->
     Nonce = get_nonce(Pub),
     {ok, CallData} = encode_calldata(Contract, Fun, Args),
-
-    Tx = contract_call_tx(Pub, Priv, Nonce, EncCPub, CallData, CallerSet),
+    ABI = maps:get(abi, Contract),
+    Tx = contract_call_tx(Pub, Priv, Nonce, EncCPub, ABI, CallData, CallerSet),
 
     Calls = get(fun_calls),
     put(fun_calls, Calls ++ [{Tx, Check}]).
@@ -1393,8 +1549,9 @@ revert_call_compute_func(NodeName, Pubkey, Privkey, EncCPubkey,
 basic_call_compute_func(NodeName, Pubkey, Privkey, EncCPubkey,
                         Contract, Function, Argument, CallerSet) ->
     {ok, CallData} = encode_calldata(Contract, Function, Argument),
+    ABI = maps:get(abi, Contract),
     #{tx_hash := ContractCallTxHash} =
-        contract_call_tx(Pubkey, Privkey, EncCPubkey, CallData, CallerSet),
+        contract_call_tx(Pubkey, Privkey, EncCPubkey, ABI, CallData, CallerSet),
 
     %% Mine blocks and check that it is in the chain.
     ok = wait_for_tx_hash_on_chain(NodeName, ContractCallTxHash),
@@ -1416,8 +1573,8 @@ contract_create_tx(Pubkey, Privkey, Contract, CallData, CallerSet) ->
     ContractInitEncoded0 = #{ owner_id => Address,
                               code => maps:get(bytecode, Contract),
                               call_data => CallData,
-                              vm_version => aect_test_utils:latest_sophia_vm_version(),
-                              abi_version => aect_test_utils:latest_sophia_abi_version(),
+                              vm_version => maps:get(vm, Contract),
+                              abi_version => maps:get(abi, Contract),
                               deposit => 0,
                               amount => 0,      %Initial balance
                               gas => 100000,   %May need a lot of gas
@@ -1427,20 +1584,20 @@ contract_create_tx(Pubkey, Privkey, Contract, CallData, CallerSet) ->
     ContractInitEncoded = maps:merge(ContractInitEncoded0, CallerSet),
     sign_and_post_create_tx(Privkey, ContractInitEncoded).
 
-contract_call_tx(Pubkey, Privkey, EncCPubkey, CallData, CallerSet) ->
+contract_call_tx(Pubkey, Privkey, EncCPubkey, ABI, CallData, CallerSet) ->
     Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
     %% Generate a nonce.
     {ok,200,#{<<"nonce">> := Nonce0}} = get_account_by_pubkey(Address),
     Nonce = Nonce0 + 1,
-    contract_call_tx(Pubkey, Privkey, Nonce, EncCPubkey, CallData, CallerSet).
+    contract_call_tx(Pubkey, Privkey, Nonce, EncCPubkey, ABI, CallData, CallerSet).
 
-contract_call_tx(Pubkey, Privkey, Nonce, EncCPubkey, CallData, CallerSet) ->
+contract_call_tx(Pubkey, Privkey, Nonce, EncCPubkey, ABI, CallData, CallerSet) ->
     Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
 
     ContractCallEncoded0 = #{ caller_id => Address,
                               contract_id => EncCPubkey,
                               call_data   => CallData,
-                              abi_version => aect_test_utils:latest_sophia_abi_version(),
+                              abi_version => ABI,
                               amount => 0,
                               gas => 100000,    %May need a lot of gas
                               gas_price => ?DEFAULT_GAS_PRICE,
