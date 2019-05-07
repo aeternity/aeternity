@@ -79,7 +79,7 @@
         , origin/2
         , caller/2
         , gasprice/2
-        , blockhash/2
+        , blockhash/3
         , beneficiary/2
         , timestamp/2
         , generation/2
@@ -576,7 +576,7 @@ gasprice(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:gas_price(API), EngineState).
 
-blockhash(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+blockhash(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
 
 beneficiary(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
