@@ -12,7 +12,7 @@
 -include_lib("aecontract/include/hard_forks.hrl").
 
 
--define(ENABLED, true).
+-define(ENABLED, false).
 -define(TOTAL_SHARES, 1000). % 100 shares == 10% of the reward
 %%% for: "ak_2uN1CEVGs4D5QnFudhp8dSqrwJEMFiTfwvbCK3SJzVYRDiusfd:100" TODO - use actual pubkey for real account
 -define(BENEFICIARIES, [{<<250,151,56,184,99,123,38,230,217,93,156,146,231,90,209,233,15,203,25,102,32,140,178,207,59,171,81,2,249,197,198,61>>, 100}]).
@@ -48,7 +48,7 @@ env(Key, Default) ->
     aeu_env:get_env(aecore, Key, Default).
 
 enabled() ->
-    env(dev_reward_enabled, true).
+    env(dev_reward_enabled, ?ENABLED).
 beneficiaries() ->
     env(dev_reward_beneficiaries, ?BENEFICIARIES).
 total_shares() ->
