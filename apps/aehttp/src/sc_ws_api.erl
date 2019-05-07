@@ -136,7 +136,7 @@ process_fsm_(#{type := sign,
                                    orelse Tag =:= update
                                    orelse Tag =:= update_ack ->
     EncTx = aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx)),
-    SerializedUpdates = [aesc_offchain_update:update(U) || U <- Updates],
+    SerializedUpdates = [aesc_offchain_update:for_client(U) || U <- Updates],
     Tag1 =
         case Tag of
             create_tx -> <<"initiator_sign">>;
