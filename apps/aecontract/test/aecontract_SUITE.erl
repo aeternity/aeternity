@@ -4597,6 +4597,8 @@ call_wrong_type(_Cfg) ->
 fate_environment(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc = <<AccInt:256>> = ?call(new_account, 100000000 * aec_test_utils:min_gas_price()),
+    Acc1Balance = 123456789,
+    <<Acc1Int:256>> = ?call(new_account, Acc1Balance),
     InitialBalance = 4711,
     Contract = <<ContractInt:256>> = ?call(create_contract, Acc, environment, {},
                                            #{amount => InitialBalance}),
@@ -4606,6 +4608,8 @@ fate_environment(_Cfg) ->
                  ?call(call_contract, Acc, Contract, call_origin, word, {})),
     ?assertEqual(InitialBalance,
                  ?call(call_contract, Acc, Contract, contract_balance, word, {})),
+    ?assertEqual(Acc1Balance,
+                 ?call(call_contract, Acc, Contract, get_balance, word, {{address, Acc1Int}})),
     GasPrice = aec_test_utils:min_gas_price() + 1,
     ?assertEqual(GasPrice,
                  ?call(call_contract, Acc, Contract, call_gas_price, word, {},

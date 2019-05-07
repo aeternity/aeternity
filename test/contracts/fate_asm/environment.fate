@@ -11,6 +11,10 @@ FUNCTION contract_balance() -> integer
   BALANCE a
   RETURN
 
+FUNCTION get_balance(address) -> integer
+  BALANCE_OTHER a arg0
+  RETURN
+
 FUNCTION call_origin() -> address
   ORIGIN a
   RETURN
