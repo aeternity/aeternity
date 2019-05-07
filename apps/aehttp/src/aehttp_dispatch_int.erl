@@ -81,10 +81,9 @@ handle_request_('PostSpend', #{'SpendTx' := Req}, _Context) ->
 
 handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 %% TEMP: Keep abi_version optional for one release cycle
-                 read_required_params([owner_id, code, vm_version, deposit,
+                 read_required_params([owner_id, code, vm_version, abi_version, deposit,
                                        amount, gas, gas_price, fee, call_data]),
-                 read_optional_params([{ttl, ttl, '$no_value'}, {abi_version, abi_version, ?ABI_AEVM_SOPHIA_1}]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
                  get_nonce_from_account_id(owner_id),
                  contract_bytearray_params_decode([code, call_data]),
@@ -104,12 +103,9 @@ handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
 
 handle_request_('PostContractCall', #{'ContractCallTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 %% TEMP: Keep vm_version as an alias for abi_version for one release cycle
-                 read_required_params([caller_id, contract_id,
+                 read_required_params([caller_id, contract_id, abi_version,
                                        amount, gas, gas_price, fee, call_data]),
-                 read_optional_params([{ttl, ttl, '$no_value'}] ++
-                 %% This is not entirely correct, but it will work and fail in the right way...
-                                      [{vm_version, abi_version, '$no_value'}, {abi_version, abi_version, '$no_value'}] ),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{caller_id, caller_id, {id_hash, [account_pubkey]}},
                                 {contract_id, contract_id, {id_hash, [contract_pubkey]}}]),
                  get_nonce_from_account_id(caller_id),
@@ -298,8 +294,7 @@ handle_request_('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
                  read_required_params([account_id, {query_format, query_format},
                                        {response_format, response_format},
                                        query_fee, oracle_ttl, fee]),
-                 %% TEMP: Keep vm_version as an alias for abi_version for one release cycle
-                 read_optional_params([{ttl, ttl, '$no_value'}, {abi_version, abi_version, 0}, {vm_version, abi_version, '$no_value'}]),
+                 read_optional_params([{ttl, ttl, '$no_value'}, {abi_version, abi_version, 0}]),
                  api_decode([{account_id, account_id, {id_hash, [account_pubkey]}}]),
                  get_nonce_from_account_id(account_id),
                  ttl_decode(oracle_ttl),

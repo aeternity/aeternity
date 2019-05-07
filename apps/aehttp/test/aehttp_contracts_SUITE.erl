@@ -1424,26 +1424,8 @@ contract_create_tx(Pubkey, Privkey, Contract, CallData, CallerSet) ->
                               gas_price => ?DEFAULT_GAS_PRICE,
                               fee => 1400000 * ?DEFAULT_GAS_PRICE,
                               nonce => Nonce },
-    ContractInitEncoded1 = maps:merge(ContractInitEncoded0, CallerSet),
-    ContractInitEncoded = test_backwards_compatible_api(abi_optional, ContractInitEncoded1),
+    ContractInitEncoded = maps:merge(ContractInitEncoded0, CallerSet),
     sign_and_post_create_tx(Privkey, ContractInitEncoded).
-
-test_backwards_compatible_api(abi_optional, Map) ->
-    case get_prn() rem 2 of
-        0 -> Map;
-        1 -> maps:remove(abi_version, Map)
-    end;
-test_backwards_compatible_api(abi_or_vm, Map) ->
-    case get_prn() rem 2 of
-        0 -> Map;
-        1 -> maps:remove(abi_version, Map#{vm_version => maps:get(abi_version, Map)})
-    end.
-
-get_prn() ->
-    case get('$prn') of
-        undefined            -> put('$prn', 1), 1;
-        N when is_integer(N) -> put('$prn', N+1), N+1
-    end.
 
 contract_call_tx(Pubkey, Privkey, EncCPubkey, CallData, CallerSet) ->
     Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
@@ -1464,8 +1446,7 @@ contract_call_tx(Pubkey, Privkey, Nonce, EncCPubkey, CallData, CallerSet) ->
                               gas_price => ?DEFAULT_GAS_PRICE,
                               fee => 800000 * ?DEFAULT_GAS_PRICE,
                               nonce => Nonce },
-    ContractCallEncoded1 = maps:merge(ContractCallEncoded0, CallerSet),
-    ContractCallEncoded = test_backwards_compatible_api(abi_or_vm, ContractCallEncoded1),
+    ContractCallEncoded = maps:merge(ContractCallEncoded0, CallerSet),
     sign_and_post_call_tx(Privkey, ContractCallEncoded).
 
 
