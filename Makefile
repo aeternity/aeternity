@@ -13,6 +13,7 @@ ST_CT_DIR = --dir system_test/common
 ST_CT_LOCALDIR = --dir system_test/only_local
 
 EQC_EUNIT_TEST_FLAGS ?=
+EQC_EUNIT_TESTING_TIME_MULTIPLIER ?= 1
 
 SWAGGER_CODEGEN_CLI_V = 2.4.4
 SWAGGER_CODEGEN_CLI = swagger/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
@@ -302,7 +303,7 @@ $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests:
 
 .PHONY: eqc-test
 eqc-test: eqc
-	$(REBAR) as test,eqc eunit $(EQC_EUNIT_TEST_FLAGS)
+	env ERL_FLAGS="-eqc_testing_time_multiplier $(EQC_EUNIT_TESTING_TIME_MULTIPLIER)" $(REBAR) as test,eqc eunit $(EQC_EUNIT_TEST_FLAGS)
 
 EQC_TEST_REPO = https://github.com/Quviq/epoch-eqc.git
 EQC_TEST_VERSION = 71b0ad8e
