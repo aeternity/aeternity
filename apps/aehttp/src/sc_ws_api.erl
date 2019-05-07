@@ -123,17 +123,20 @@ process_fsm(#{msg := Msg,
 -spec process_fsm_(term(), binary(), protocol()) -> no_reply | {reply, map()} | {error, atom()}.
 process_fsm_(#{type := sign,
                tag  := Tag,
-               info := Tx}, ChannelId, Protocol) when Tag =:= create_tx
-                                               orelse Tag =:= deposit_tx
-                                               orelse Tag =:= deposit_created
-                                               orelse Tag =:= withdraw_tx
-                                               orelse Tag =:= withdraw_created
-                                               orelse Tag =:= shutdown
-                                               orelse Tag =:= shutdown_ack
-                                               orelse Tag =:= funding_created
-                                               orelse Tag =:= update
-                                               orelse Tag =:= update_ack ->
+               info := #{tx := Tx, 
+                         updates := Updates}},
+                ChannelId, Protocol) when Tag =:= create_tx
+                                   orelse Tag =:= deposit_tx
+                                   orelse Tag =:= deposit_created
+                                   orelse Tag =:= withdraw_tx
+                                   orelse Tag =:= withdraw_created
+                                   orelse Tag =:= shutdown
+                                   orelse Tag =:= shutdown_ack
+                                   orelse Tag =:= funding_created
+                                   orelse Tag =:= update
+                                   orelse Tag =:= update_ack ->
     EncTx = aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx)),
+    SerializedUpdates = [aesc_offchain_update:update(U) || U <- Updates],
     Tag1 =
         case Tag of
             create_tx -> <<"initiator_sign">>;
@@ -147,7 +150,8 @@ process_fsm_(#{type := sign,
     notify(Protocol,
            #{action  => <<"sign">>,
              tag => Tag1,
-             payload => #{tx => EncTx}},
+             payload => #{tx => EncTx,
+                          updates => SerializedUpdates}},
            ChannelId);
 process_fsm_(#{type := report,
                tag  := Tag,

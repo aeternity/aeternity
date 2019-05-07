@@ -2158,7 +2158,6 @@ send_deposit_created_msg(SignedTx, Updates,
     aesc_session_noise:deposit_created(Sn, Msg),
     log(snd, ?DEP_CREATED, Msg, Data).
 
-%% TODO: use Updates for validation
 check_deposit_created_msg(#{ channel_id := ChanId
                            , block_hash := ?DUMMY_BLOCK_HASH
                            , data       := #{tx      := TxBin,
@@ -2261,7 +2260,6 @@ send_withdraw_created_msg(SignedTx, Updates,
     aesc_session_noise:wdraw_created(Sn, Msg),
     log(snd, ?WDRAW_CREATED, Msg, Data).
 
-%% TODO: use Updates for validation
 check_withdraw_created_msg(#{ channel_id := ChanId
                             , block_hash := ?DUMMY_BLOCK_HASH
                             , data       := #{tx      := TxBin, 
@@ -2509,7 +2507,7 @@ shutdown_msg(SignedTx, #data{ on_chain_id = OnChainId }) ->
      , data       => #{tx => TxBin} }.
 
 
-%% TODO: use Updates for validation
+%% TODO1: use Updates for validation
 check_shutdown_msg(#{channel_id := ChanId,
                      block_hash := ?DUMMY_BLOCK_HASH,
                      data := #{tx := TxBin}} = Msg,
@@ -2666,9 +2664,10 @@ request_signing(Tag, Aetx, Updates, #data{} = D) ->
                       aetx_sign:signed_tx(),
                       [aesc_offchain_update:update()],
                       #data{}) -> #data{}.
-%% TODO: use _Updates
 request_signing(Tag, Aetx, SignedTx, Updates, #data{client = Client} = D) ->
-    Msg = rpt_message(sign, Tag, Aetx, D),
+    Info = #{tx => Aetx,
+             updates => Updates},
+    Msg = rpt_message(sign, Tag, Info, D),
     Client ! {?MODULE, self(), Msg},
     lager:debug("signing(~p) requested", [Tag]),
     D#data{ latest = {sign, Tag, SignedTx, Updates}

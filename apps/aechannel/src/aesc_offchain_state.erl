@@ -8,7 +8,6 @@
                , calls                  :: aect_call_state_tree:tree()
                , signed_tx = ?NO_TX     :: aetx_sign:signed_tx() | ?NO_TX
                , half_signed_tx = ?NO_TX:: aetx_sign:signed_tx() | ?NO_TX
-               , pending_updates= []    :: [aesc_offchain_update:update()]
               }).
 
 -opaque state() :: #state{}.
@@ -214,7 +213,6 @@ make_update_tx(Updates, #state{signed_tx = LastSignedTx, trees=Trees},
     {ok, OffchainTx} =
         aesc_offchain_tx:new(#{channel_id => aeser_id:create(channel, ChannelPubKey),
                                state_hash => StateHash,
-                               updates    => Updates,
                                round      => NextRound}),
     OffchainTx.
 

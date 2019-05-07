@@ -25,7 +25,6 @@
 % aesc_signable_transaction callbacks
 -export([channel_id/1,
          channel_pubkey/1,
-         updates/1,
          round/1,
          state_hash/1]).
 
@@ -54,7 +53,7 @@
 
 -record(channel_offchain_tx, {
           channel_id         :: aeser_id:id(),
-          updates = none     :: [aesc_offchain_update:update()] | none, 
+          updates = none     :: [binary()] | none, 
           state_hash         :: binary(),
           round              :: non_neg_integer()
          }).
@@ -70,13 +69,11 @@
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{channel_id         := ChannelId,
       state_hash         := StateHash,
-      round              := Round} = Opts) ->
+      round              := Round}) ->
     channel = aeser_id:specialize_type(ChannelId),
-    Updates = maps:get(updates, Opts, none),
     Tx = #channel_offchain_tx{
             channel_id         = ChannelId,
             state_hash         = StateHash,
-            updates            = Updates,
             round              = Round},
     {ok, aetx:new(?MODULE, Tx)}.
 
@@ -130,19 +127,19 @@ signers(#channel_offchain_tx{} = Tx, Trees) ->
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_offchain_tx{
              channel_id         = ChannelId,
-             updates            = UpdatesBins,
              state_hash         = StateHash,
              round              = Round} = Tx) ->
     case version(Tx) of
         ?INITIAL_VSN ->
+            #channel_offchain_tx{updates = UpdatesBins} = Tx,
             {?INITIAL_VSN,
             [ {channel_id        , ChannelId}
             , {round             , Round}
-            , {updates           , [aesc_offchain_update:serialize(U) || U <- UpdatesBins]}
+            , {updates           , UpdatesBins}
             , {state_hash        , StateHash}
             ]};
         ?NO_UPDATES_VSN ->
-            {?INITIAL_VSN,
+            {?NO_UPDATES_VSN,
             [ {channel_id        , ChannelId}
             , {round             , Round}
             , {state_hash        , StateHash}
@@ -153,12 +150,12 @@ serialize(#channel_offchain_tx{
 deserialize(?INITIAL_VSN,
             [ {channel_id        , ChannelId}
             , {round             , Round}
-            , {updates           , UpdateBins} 
+            , {updates           , UpdatesBins} 
             , {state_hash        , StateHash}]) ->
     channel = aeser_id:specialize_type(ChannelId),
     #channel_offchain_tx{
        channel_id         = ChannelId,
-       updates            = [aesc_offchain_update:deserialize(U) || U <- UpdateBins],
+       updates            = UpdatesBins,
        state_hash         = StateHash,
        round              = Round};
 deserialize(?NO_UPDATES_VSN,
@@ -208,11 +205,6 @@ channel_pubkey(#channel_offchain_tx{channel_id = ChannelId}) ->
 -spec channel_id(tx()) -> aesc_channels:id().
 channel_id(#channel_offchain_tx{channel_id = ChannelId}) ->
     ChannelId.
-
-% keep it for backwards compatibility of currently running channels
--spec updates(tx()) -> [aesc_offchain_update:update()].
-updates(#channel_offchain_tx{updates = Updates}) ->
-    Updates.
 
 -spec round(tx()) -> aesc_channels:seq_number().
 round(#channel_offchain_tx{round = Round}) ->
