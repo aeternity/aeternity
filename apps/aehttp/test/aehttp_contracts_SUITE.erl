@@ -141,7 +141,11 @@ init_for_contracts(Config) ->
     [{accounts,Accounts},{node_name,NodeName}|Config].
 
 init_per_group(contracts, Config) -> init_for_contracts(Config);
-init_per_group(fate, Config) -> init_for_contracts(Config).
+init_per_group(fate, Config) ->
+    case aect_test_utils:latest_protocol_version() >= ?FORTUNA_PROTOCOL_VSN of
+        true  -> init_for_contracts(Config);
+        false -> {skip, fate_not_available}
+    end.
 
 end_per_group(_Group, Config) ->
     RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
