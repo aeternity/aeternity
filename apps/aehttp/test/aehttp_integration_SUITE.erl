@@ -5141,7 +5141,7 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
                   initiator_amount => IAmt,
                   responder_amount => RAmt,
                   channel_reserve => 2,
-                  protocol => proplists:get_value(sc_ws_protocol, Config, <<"legacy">>)
+                  protocol => sc_ws_protocol(Config)
                 }, Other).
 
 peers(_Config) ->
