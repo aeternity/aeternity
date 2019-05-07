@@ -148,7 +148,7 @@ call(Arg0, EngineState) ->
 call_r(Arg0, Arg1, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
     {Address, ES2} = get_op_arg(Arg0, ES1),
-    ES3 = aefa_fate:set_function(Address, Arg1, ES2),
+    ES3 = aefa_fate:set_remote_function(Address, Arg1, ES2),
     Signature = aefa_fate:get_function_signature(Arg1, ES3),
     {ok, ES4} = aefa_fate:check_signature_and_bind_args(Signature, ES3),
     {jump, 0, ES4}.
@@ -160,7 +160,7 @@ call_t(Arg0, EngineState) ->
 
 call_tr(Arg0, Arg1, EngineState) ->
     {Address, ES1} = get_op_arg(Arg0, EngineState),
-    ES2 = aefa_fate:set_function(Address, Arg1, ES1),
+    ES2 = aefa_fate:set_remote_function(Address, Arg1, ES1),
     Signature = aefa_fate:get_function_signature(Arg1, ES2),
     {ok, ES3} = aefa_fate:check_signature_and_bind_args(Signature, ES2),
     {jump, 0, ES3}.

@@ -23,8 +23,9 @@
         , check_type/2
         , get_function_signature/2
         , push_return_address/1
-        , set_local_function/2
         , set_function/3
+        , set_local_function/2
+        , set_remote_function/3
         , type/1
         ]
        ).
