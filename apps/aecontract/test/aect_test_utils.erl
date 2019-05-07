@@ -370,6 +370,10 @@ decode_data(Type, <<"cb_", _/binary>> = EncData) ->
 decode_data(Type, Data) ->
     decode_data_(Type, Data).
 
+decode_data_(fate, Data) ->
+    try {ok, aefate_test_utils:decode(aeb_fate_encoding:deserialize(Data))}
+    catch _:_ -> {error, <<"bad fate data">>}
+    end;
 decode_data_(Type, Data) ->
     case get_type(Type) of
         {ok, SophiaType} ->
