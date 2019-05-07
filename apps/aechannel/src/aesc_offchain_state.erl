@@ -22,8 +22,8 @@
         , is_latest_signed_tx/2       %%  (SignedTx, State) -> boolean()
         , verify_signatures/2         %%  (SignedTx, State)
         , make_update_tx/5            %%  (Updates, State, OnChainTrees, OnChainEnv, Opts) -> Tx
-        , set_signed_tx/5             %%  (SignedTx, State0, OnChainTrees, OnCHainEnv, Opts) -> State
-        , set_signed_tx/6             %%  (SignedTx, State0, OnChainTrees, OnCHainEnv, Opts, CheckSigs) -> State
+        , set_signed_tx/6             %%  (SignedTx, Updates, State0, OnChainTrees, OnCHainEnv, Opts) -> State
+        , set_signed_tx/7             %%  (SignedTx, Updates, State0, OnChainTrees, OnCHainEnv, Opts, CheckSigs) -> State
         , set_half_signed_tx/2        %%  (SignedTx, State0) -> State
         , get_latest_half_signed_tx/1 %%  (State) -> SignedTx
         , get_latest_signed_tx/1      %%  (State) -> {Round, SignedTx}
@@ -227,15 +227,18 @@ apply_updates(Updates, Round, Trees, OnChainTrees, OnChainEnv, Reserve) ->
         Trees,
         Updates).
 
--spec set_signed_tx(aetx_sign:signed_tx(), state(), aec_trees:trees(),
+-spec set_signed_tx(aetx_sign:signed_tx(), [aesc_offchain_update:update()],
+                    state(), aec_trees:trees(),
                     aetx_env:env(), map()) -> state().
-set_signed_tx(SignedTx, #state{}=State, OnChainTrees,
+set_signed_tx(SignedTx, Updates, #state{}=State, OnChainTrees,
               OnChainEnv, Opts) ->
-    set_signed_tx(SignedTx, State, OnChainTrees, OnChainEnv, Opts, true).
+    set_signed_tx(SignedTx, Updates, State, OnChainTrees, OnChainEnv, Opts, true).
 
--spec set_signed_tx(aetx_sign:signed_tx(), state(), aec_trees:trees(),
+
+-spec set_signed_tx(aetx_sign:signed_tx(), [aesc_offchain_update:update()],
+                    state(), aec_trees:trees(),
                     aetx_env:env(), map(), boolean()) -> state().
-set_signed_tx(SignedTx, #state{}=State, OnChainTrees,
+set_signed_tx(SignedTx, Updates, #state{}=State, OnChainTrees,
               OnChainEnv, Opts, CheckSigs) ->
     case CheckSigs of
         true ->
@@ -271,7 +274,7 @@ set_signed_tx(SignedTx, #state{}=State, OnChainTrees,
                     end,
                     {aect_call_state_tree:prune_without_backend(State#state.trees),
                      State#state.calls},
-                    Mod:updates(TxI)),
+                    Updates),
             State#state{signed_tx = SignedTx, half_signed_tx = ?NO_TX,
                         trees=Trees, calls=Calls}
     end.
