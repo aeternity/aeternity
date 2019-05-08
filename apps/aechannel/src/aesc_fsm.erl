@@ -2506,8 +2506,6 @@ shutdown_msg(SignedTx, #data{ on_chain_id = OnChainId }) ->
      , block_hash => ?DUMMY_BLOCK_HASH
      , data       => #{tx => TxBin} }.
 
-
-%% TODO1: use Updates for validation
 check_shutdown_msg(#{channel_id := ChanId,
                      block_hash := ?DUMMY_BLOCK_HASH,
                      data := #{tx := TxBin}} = Msg,
