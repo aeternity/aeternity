@@ -3124,6 +3124,7 @@ pending_transactions(_Config) ->
     {ok, MinedBlocks1} = aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
 
+    DevRewardEnabled = rpc(aec_dev_reward, enabled, []),
     DevRewardSharesSum = rpc(aec_dev_reward, allocated_shares, []),
     DevRewardTotalShares = rpc(aec_dev_reward, total_shares, []),
 
@@ -3135,7 +3136,7 @@ pending_transactions(_Config) ->
                    end,
 
     MinedRewards1 =
-        case aec_governance:get_network_id() of
+        case DevRewardEnabled andalso aec_governance:get_network_id() of
             <<"local_fortuna_testnet">> ->
                 [Amount - (Amount * DevRewardSharesSum div DevRewardTotalShares) ||
                     Amount <- BlockRewards(MinedBlocks1)];
@@ -3182,7 +3183,7 @@ pending_transactions(_Config) ->
     {ok, MinedBlocks2b} = aecore_suite_utils:mine_key_blocks(Node, Delay),
 
     MinedRewards2 =
-        case aec_governance:get_network_id() of
+        case DevRewardEnabled andalso aec_governance:get_network_id() of
             <<"local_fortuna_testnet">> ->
                 [Amount - (Amount * DevRewardSharesSum div DevRewardTotalShares) ||
                     Amount <- BlockRewards(MinedBlocks2a ++ MinedBlocks2b)];
@@ -3191,7 +3192,7 @@ pending_transactions(_Config) ->
         end,
 
     ExpectedReward2 = lists:sum(MinedRewards2) -
-        case aec_governance:get_network_id() of
+        case DevRewardEnabled andalso aec_governance:get_network_id() of
             <<"local_fortuna_testnet">> ->
                 %% We get SPEND_FEE back as miner reward except the cut for protocol beneficiary
                 ?SPEND_FEE * DevRewardSharesSum div DevRewardTotalShares;
