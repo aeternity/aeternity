@@ -5,9 +5,9 @@
 -export([ return/1
         , returnr/2
         , call/2
-        , call_r/3
+        , call_r/4
         , call_t/2
-        , call_tr/3
+        , call_tr/4
         , jump/2
         , jumpif/3
         , switch/4
@@ -138,34 +138,54 @@ returnr(Arg0, EngineState) ->
     ES2 = aefa_fate:check_return_type(ES1),
     aefa_fate:pop_call_stack(ES2).
 
-
 call(Arg0, EngineState) ->
-    {Fun, ES0} = get_op_arg(Arg0, EngineState),
-    ES1 = aefa_fate:push_return_address(ES0),
-    Signature = aefa_fate:get_function_signature(Fun, ES1),
-    {ok, ES2} = aefa_fate:check_signature_and_bind_args(Signature, ES1),
-    {jump, 0, aefa_fate:set_local_function(Fun, ES2)}.
-
-call_r(Arg0, Arg1, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
-    {Address, ES2} = get_op_arg(Arg0, ES1),
-    ES3 = aefa_fate:set_remote_function(Address, Arg1, ES2),
-    Signature = aefa_fate:get_function_signature(Arg1, ES3),
-    {ok, ES4} = aefa_fate:check_signature_and_bind_args(Signature, ES3),
-    {jump, 0, ES4}.
+    call_t(Arg0, ES1).
 
 call_t(Arg0, EngineState) ->
-    {Fun, ES0} = get_op_arg(Arg0, EngineState),
-    Signature = aefa_fate:get_function_signature(Fun, ES0),
-    {ok, ES2} = aefa_fate:check_signature_and_bind_args(Signature, ES0),
+    {Fun, ES1} = get_op_arg(Arg0, EngineState),
+    Signature = aefa_fate:get_function_signature(Fun, ES1),
+    ok = aefa_fate:check_signature(Signature, ES1),
+    ES2 = aefa_fate:bind_args_from_signature(Signature, ES1),
     {jump, 0, aefa_fate:set_local_function(Fun, ES2)}.
 
-call_tr(Arg0, Arg1, EngineState) ->
+call_r(Arg0, Arg1, Arg2, EngineState) ->
+    Sender = aefa_engine_state:current_contract(EngineState),
+    ES1 = aefa_fate:push_return_address(EngineState),
+    call_r_common(Arg0, Arg1, Arg2, Sender, ES1).
+
+call_tr(Arg0, Arg1, Arg2, EngineState) ->
+    Sender = aefa_engine_state:current_contract(EngineState),
+    call_r_common(Arg0, Arg1, Arg2, Sender, EngineState).
+
+call_r_common(Arg0, Arg1, Arg2, Sender, EngineState) ->
     {Address, ES1} = get_op_arg(Arg0, EngineState),
-    ES2 = aefa_fate:set_remote_function(Address, Arg1, ES1),
-    Signature = aefa_fate:get_function_signature(Arg1, ES2),
-    {ok, ES3} = aefa_fate:check_signature_and_bind_args(Signature, ES2),
-    {jump, 0, ES3}.
+    {Value, ES2} = get_op_arg(Arg2, ES1),
+    ES3 = aefa_fate:set_remote_function(Address, Arg1, ES2),
+    Signature = aefa_fate:get_function_signature(Arg1, ES3),
+    ok = aefa_fate:check_signature(Signature, ES3),
+    ES4 = aefa_fate:bind_args_from_signature(Signature, ES3),
+    ES5 = transfer_value(Sender, Address, Value, ES4),
+    {jump, 0, ES5}.
+
+transfer_value(?FATE_ADDRESS(_From), ?FATE_ADDRESS(_To), Value, ES) when not ?IS_FATE_INTEGER(Value) ->
+    aefa_fate:abort({value_does_not_match_type, Value, integer}, ES);
+transfer_value(?FATE_ADDRESS(From), ?FATE_ADDRESS(To), Value, ES) ->
+    case ?FATE_INTEGER_VALUE(Value) of
+        IntValue when IntValue < 0 ->
+            aefa_fate:abort({call_error, negative_value}, ES);
+        0 ->
+            aefa_engine_state:set_call_value(0, ES);
+        IntValue ->
+            ES1 = aefa_engine_state:set_call_value(IntValue, ES),
+            API = aefa_engine_state:chain_api(ES1),
+            case aefa_chain_api:spend(From, To, IntValue, API) of
+                {ok, API1} ->
+                    aefa_engine_state:set_chain_api(API1, ES1);
+                {error, What} ->
+                    aefa_fate:abort({call_error, What}, ES1)
+            end
+    end.
 
 %% ------------------------------------------------------
 %% Control flow instructions

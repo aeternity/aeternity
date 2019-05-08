@@ -42,6 +42,7 @@
         , create_contract_upfront_deposit/1
         , create_version_too_high/1
         , fate_call_origin/1
+        , fate_call_value/1
         , fate_environment/1
         , state_tree/1
         , sophia_identity/1
@@ -158,11 +159,12 @@ all() ->
 groups() ->
     [ {aevm, [sequence], ?ALL_TESTS}
     , {fate, [sequence],  [ create_contract
-                           , sophia_identity
-                           , sophia_remote_identity
-                           , sophia_spend
-                           , fate_environment
-                           , fate_call_origin
+                          , sophia_identity
+                          , sophia_remote_identity
+                          , sophia_spend
+                          , fate_environment
+                          , fate_call_origin
+                          , fate_call_value
                           ]}
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account
@@ -4730,4 +4732,20 @@ fate_call_origin(_Cfg) ->
     {address, RemCInt} = ?call(call_contract, Acc, RemC, remote_call_caller, word, {EnvC}),
     {address, AccInt}  = ?call(call_contract, Acc, RemC, remote_call_origin, word, {EnvC}),
 
+    ok.
+
+fate_call_value(_Cfg) ->
+    %% Test that we can use the value parameter to transfer funds in FATE
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    C1       = ?call(create_contract, Acc, spend_test, {}, #{}),
+    C2       = ?call(create_contract, Acc, spend_test, {}, #{}),
+    Bal1     = ?call(call_contract, Acc, C1, get_balance, word, {}),
+    Amount   = 12345,
+    Bal2     = ?call(call_contract, Acc, C1, get_balance, word, {}, #{amount => Amount}),
+    ?assertEqual(Amount + Bal1, Bal2),
+    Bal3     = ?call(call_contract, Acc, C2, spend_as_call, word, {C1, Amount}, #{amount => Amount}),
+    ?assertEqual(Amount + Bal2, Bal3),
+    Bal4     = ?call(call_contract, Acc, C1, get_balance, word, {}, #{}),
+    ?assertEqual(Bal3, Bal4),
     ok.

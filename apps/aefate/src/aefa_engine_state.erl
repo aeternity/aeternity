@@ -6,7 +6,7 @@
 %%%-------------------------------------------------------------------
 -module(aefa_engine_state).
 
--export([ new/4
+-export([ new/5
         ]).
 
 %% Getters
@@ -14,6 +14,7 @@
         , accumulator_stack/1
         , bbs/1
         , call_stack/1
+        , call_value/1
         , caller/1
         , chain_api/1
         , contracts/1
@@ -32,6 +33,7 @@
         , set_accumulator_stack/2
         , set_bbs/2
         , set_call_stack/2
+        , set_call_value/2
         , set_caller/2
         , set_chain_api/2
         , set_contracts/2
@@ -75,6 +77,7 @@
             , bbs               :: map()
             , call_stack        :: [term()] %% TODO: Better type
             , caller            :: aeb_fate_data:fate_address()
+            , call_value        :: non_neg_integer()
             , chain_api         :: aefa_chain_api:state()
             , contracts         :: map() %% Cache for loaded contracts.
             , current_bb        :: non_neg_integer()
@@ -91,13 +94,16 @@
 -export_type([ state/0
              ]).
 
--spec new(non_neg_integer(), map(), aefa_chain_api:state(), map()) -> state().
-new(Gas, Spec, APIState, Contracts) ->
+-spec new(non_neg_integer(), non_neg_integer(), map(), aefa_chain_api:state(), map()) -> state().
+new(Gas, Value, Spec, APIState, Contracts) ->
+    [error({bad_init_arg, X, Y}) || {X, Y} <- [{gas, Gas}, {value, Value}],
+                                    not (is_integer(Y) andalso Y >= 0)],
     #es{ accumulator       = ?FATE_VOID
        , accumulator_stack = []
        , bbs               = #{}
        , call_stack        = []
        , caller            = aeb_fate_data:make_address(maps:get(caller, Spec))
+       , call_value        = Value
        , chain_api         = APIState
        , contracts         = Contracts
        , current_bb        = 0
@@ -145,8 +151,9 @@ push_return_address(#es{ current_bb = BB
                        , current_function = Function
                        , current_contract = Contract
                        , call_stack = Stack
+                       , call_value = Value
                        , memory = Mem} = ES) ->
-    ES#es{call_stack = [{Contract, Function, BB+1, Mem}|Stack]}.
+    ES#es{call_stack = [{Contract, Function, BB+1, Mem, Value}|Stack]}.
 
 
 -spec push_accumulator(aeb_fate_data:fate_type(), state()) -> state().
@@ -250,6 +257,16 @@ call_stack(#es{call_stack = X}) ->
 -spec set_call_stack(list(), state()) -> state().
 set_call_stack(X, ES) ->
     ES#es{call_stack = X}.
+
+%%%------------------
+
+-spec call_value(state()) -> non_neg_integer().
+call_value(#es{call_value = X}) ->
+    X.
+
+-spec set_call_value(non_neg_integer(), state()) -> state().
+set_call_value(X, ES) when is_integer(X), X >= 0 ->
+    ES#es{call_value = X}.
 
 %%%------------------
 

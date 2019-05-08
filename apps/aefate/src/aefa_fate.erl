@@ -18,8 +18,9 @@
 -export([get_trace/1]).
 
 %% Type handling.
--export([ check_return_type/1
-        , check_signature_and_bind_args/2
+-export([ bind_args_from_signature/2
+        , check_return_type/1
+        , check_signature/2
         , check_type/2
         , get_function_signature/2
         , push_return_address/1
@@ -152,6 +153,12 @@ abort({trying_to_call_function, Name}, ES) ->
     ?t("Trying to call undefined function: ~p", [Name], ES);
 abort({trying_to_call_contract, Pubkey}, ES) ->
     ?t("Trying to call invalid contract: ~p", [Pubkey], ES);
+abort(negative_value_in_call, ES) ->
+    ?t("Trying to transfer negative value in call", [], ES);
+abort({call_error, What}, ES) ->
+    ?t("Error in call: ~w", [What], ES);
+abort({primop_error, Which, What}, ES) ->
+    ?t("Error in ~w: ~w", [Which, What], ES);
 abort(bad_byte_code, ES) ->
     ?t("Bad byte code", [], ES).
 
@@ -200,17 +207,19 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
 setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , call := Call
               , gas := Gas
+              , value := Value
               },
              Spec, Cache) ->
     {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
     Address = aeb_fate_data:make_address(ContractPubkey),
-    ES1 = aefa_engine_state:new(Gas, Spec, aefa_chain_api:new(Spec), Cache),
+    ES1 = aefa_engine_state:new(Gas, Value, Spec, aefa_chain_api:new(Spec), Cache),
     ES2 = set_function(Address, Function, ES1),
     ES3 = push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
-    {ok, ES4} = check_signature_and_bind_args(Signature, ES3),
+    ok = check_signature(Signature, ES3),
+    ES4 = bind_args_from_signature(Signature, ES3),
     aefa_engine_state:set_caller(aeb_fate_data:make_address(maps:get(caller, Spec)), ES4).
 
 set_function(?FATE_ADDRESS(_) = Address, Function, ES) ->
@@ -273,15 +282,20 @@ check_return_type(ES) ->
         false -> abort({bad_return_type, Acc, RetSignature}, ES)
     end.
 
-check_signature_and_bind_args({ArgTypes, _RetSignature}, ES) ->
+check_signature({ArgTypes, _RetSignature}, ES) ->
     Stack = aefa_engine_state:accumulator_stack(ES),
     Args = [aefa_engine_state:accumulator(ES) | Stack],
     case check_arg_types(ArgTypes, Args) of
         ok ->
-            {ok, bind_args(0, Args, ArgTypes, #{}, ES)};
+            ok;
         {error, T, V}  ->
             abort({value_does_not_match_type, V, T}, ES)
     end.
+
+bind_args_from_signature({ArgTypes, _RetSignature}, ES) ->
+    Stack = aefa_engine_state:accumulator_stack(ES),
+    Args = [aefa_engine_state:accumulator(ES) | Stack],
+    bind_args(0, Args, ArgTypes, #{}, ES).
 
 check_arg_types([], _) -> ok;
 check_arg_types([T|Ts], [A|As]) ->
@@ -377,10 +391,9 @@ push_return_address(ES) ->
 pop_call_stack(ES) ->
     case aefa_engine_state:call_stack(ES) of
         [] -> {stop, ES};
-        [{Contract, Function, BB, Mem}| Rest] ->
-            ES1 = aefa_engine_state:set_call_stack(Rest, ES),
-            %% The memory is functional and restored
-            %% to the version before the call.
+        [{Contract, Function, BB, Mem, Value}| Rest] ->
+            ES0 = aefa_engine_state:set_call_value(Value, ES),
+            ES1 = aefa_engine_state:set_call_stack(Rest, ES0),
             ES2 = aefa_engine_state:set_memory(Mem, ES1),
             ES3 = set_function(Contract, Function, ES2),
             {jump, BB, ES3}
