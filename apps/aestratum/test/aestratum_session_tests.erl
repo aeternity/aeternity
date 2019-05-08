@@ -4,6 +4,7 @@
 
 -define(TEST_MODULE, aestratum_session).
 
+-define(ENV_MODULE, aestratum_env).
 -define(JSONRPC_MODULE, aestratum_jsonrpc).
 -define(NONCE_MODULE, aestratum_nonce).
 -define(TARGET_MODULE, aestratum_target).
@@ -38,8 +39,20 @@
 -define(POW_SHARE_TARGET, lists:seq(1101, 1142)).
 -define(POW_BLOCK_TARGET, lists:seq(1201, 1242)).
 
--define(USER_IN_REGISTER, <<"ak_1111111111111111111111111111111111111111111111111">>).
--define(USER_NOT_IN_REGISTER, <<"ak_2222222222222222222222222222222222222222222222222">>).
+-define(ACCOUNT_IN_REGISTER, <<"ak_1111111111111111111111111111111111111111111111111">>).
+-define(ACCOUNT_IN_REGISTER_DIFFERENT_CLIENT,
+        <<"ak_111111111111111111111111111111111111111eeeeeeeabc">>).
+-define(ACCOUNT_NOT_IN_REGISTER, <<"ak_2222222222222222222222222222222222222222222222222">>).
+-define(ACCOUNT_NOT_IN_REGISTER_WITH_EXHAUSTED_WORKER_COUNT,
+        <<"ak_111111111111111111111111111111111111111fffffffabc">>).
+
+-define(WORKER_IN_REGISTER, <<"worker1">>).
+-define(WORKER_NOT_IN_REGISTER, <<"worker2">>).
+
+-define(USER_IN_REGISTER, {?ACCOUNT_IN_REGISTER, ?WORKER_IN_REGISTER}).
+-define(USER_NOT_IN_REGISTER, {?ACCOUNT_NOT_IN_REGISTER, ?WORKER_NOT_IN_REGISTER}).
+-define(USER_NOT_IN_REGISTER_WITH_EXHAUSTED_WORKER_COUNT,
+        {?ACCOUNT_NOT_IN_REGISTER_WITH_EXHAUSTED_WORKER_COUNT, ?WORKER_NOT_IN_REGISTER}).
 
 -define(BLOCK_HASH1, binary:copy(<<"1">>, 64)).
 -define(BLOCK_HASH2, binary:copy(<<"2">>, 64)).
@@ -125,40 +138,49 @@ server_session() ->
       fun(Pid) -> t(Pid, when_subscribed(conn_timeout)) end,
       fun(Pid) -> t(Pid, when_subscribed(conn_configure)) end,
       fun(Pid) -> t(Pid, when_subscribed(conn_subscribe)) end,
+      fun(Pid) -> t(Pid, when_subscribed(conn_authorize_duplicate_account)) end,
       fun(Pid) -> t(Pid, when_subscribed(conn_submit)) end,
       fun(Pid) -> t(Pid, when_subscribed(conn_not_req)) end,
       fun(Pid) -> t(Pid, when_subscribed(conn_jsonrpc_errors)) end,
       fun(Pid) -> t(Pid, when_subscribed(chain_recv_block)) end,
       %% subscribed - success
-      fun(Pid) -> t(Pid, when_subscribed(conn_authorize_failure)) end,
-      fun(Pid) -> t(Pid, when_subscribed(conn_authorize_success)) end,
+      fun(Pid) -> t(Pid, when_subscribed(conn_authorize)) end,
 
       %% authorized - error
       fun(Pid) -> t(Pid, when_authorized(conn_timeout)) end,
       fun(Pid) -> t(Pid, when_authorized(conn_configure)) end,
       fun(Pid) -> t(Pid, when_authorized(conn_subscribe)) end,
-      fun(Pid) -> t(Pid, when_authorized(conn_authorize)) end,
+      fun(Pid) -> t(Pid, when_authorized(conn_authorize_duplicate_account)) end,
+      fun(Pid) -> t(Pid, when_authorized(conn_authorize_duplicate_worker)) end,
+      fun(Pid) -> t(Pid, when_authorized(conn_authorize_worker_count_exhausted)) end,
+      fun(Pid) -> t(Pid, when_authorized(conn_authorize_account_mismatch)) end,
       fun(Pid) -> t(Pid, when_authorized(conn_submit)) end,
       fun(Pid) -> t(Pid, when_authorized(conn_not_req)) end,
       fun(Pid) -> t(Pid, when_authorized(conn_jsonrpc_errors)) end,
       fun(Pid) -> t(Pid, when_authorized(chain_recv_block)) end,
       %% conn_authorized - success
+      fun(Pid) -> t(Pid, when_authorized(conn_authorize)) end,
       fun(Pid) -> t(Pid, when_authorized(chain_set_target)) end,
 
       %% set_target - error
       fun(Pid) -> t(Pid, when_set_target(conn_timeout)) end,
       fun(Pid) -> t(Pid, when_set_target(conn_configure)) end,
       fun(Pid) -> t(Pid, when_set_target(conn_subscribe)) end,
-      fun(Pid) -> t(Pid, when_set_target(conn_authorize)) end,
+      fun(Pid) -> t(Pid, when_set_target(conn_authorize_duplicate_account)) end,
+      fun(Pid) -> t(Pid, when_set_target(conn_authorize_duplicate_worker)) end,
+      fun(Pid) -> t(Pid, when_set_target(conn_authorize_worker_count_exhausted)) end,
+      fun(Pid) -> t(Pid, when_set_target(conn_authorize_account_mismatch)) end,
       fun(Pid) -> t(Pid, when_set_target(conn_submit)) end,
       fun(Pid) -> t(Pid, when_set_target(conn_not_req)) end,
       fun(Pid) -> t(Pid, when_set_target(conn_jsonrpc_errors)) end,
       %% set_target - success
+      fun(Pid) -> t(Pid, when_set_target(conn_authorize)) end,
       fun(Pid) -> t(Pid, when_set_target(chain_recv_block, no_target_change)) end,
       fun(Pid) -> t(Pid, when_set_target(chain_recv_block, target_change)) end,
 
       %% recv_block - conn_submit error
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, job_not_found)) end,
+      %% TODO: test sending a share with an account of a different client
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, user_not_found)) end,
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, invalid_miner_nonce)) end,
       fun(Pid) -> t(Pid, when_recv_block(conn_submit, duplicate_share)) end,
@@ -432,6 +454,21 @@ when_subscribed(conn_subscribe) ->
          }],
     mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
+%% Account is already in register, but has a different connection PID - it's a
+%% different client. It's not allowed to have multiple connections with the
+%% same account.
+when_subscribed(conn_authorize_duplicate_account) ->
+    T = <<"when subscribed - conn_authorize_duplicate_account">>,
+    L = [{{conn, #{type => req, method => authorize, id => 2,
+                   user => {?ACCOUNT_IN_REGISTER_DIFFERENT_CLIENT, ?WORKER_NOT_IN_REGISTER},
+                   password => null}},
+           {send,
+            #{type => rsp, method => authorize, id => 2, result => false},
+            #{phase => subscribed, timer_phase => subscribed,
+              extra_nonce => ?EXTRA_NONCE}}
+         }],
+    mock_authorize(#{}),
+    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
 when_subscribed(conn_submit) ->
     T = <<"when subscribed - conn_submit">>,
     L = [{{conn, #{type => req, method => submit, id => 2,
@@ -469,19 +506,8 @@ when_subscribed(chain_recv_block) ->
          }],
     mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
     prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(conn_authorize_failure) ->
-    T = <<"when subscribed - conn_authorize_failure">>,
-    L = [{{conn, #{type => req, method => authorize, id => 2,
-                   user => ?USER_IN_REGISTER, password => null}},
-           {send,
-            #{type => rsp, method => authorize, id => 2, result => false},
-            #{phase => subscribed, timer_phase => subscribed,
-              extra_nonce => ?EXTRA_NONCE}}
-         }],
-    mock_authorize(#{}),
-    prep_subscribed(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_subscribed(conn_authorize_success) ->
-    T = <<"when subscribed - conn_authorize_success">>,
+when_subscribed(conn_authorize) ->
+    T = <<"when subscribed - conn_authorize">>,
     L = [{{conn, #{type => req, method => authorize, id => 2,
                    user => ?USER_NOT_IN_REGISTER, password => null}},
            {send,
@@ -520,12 +546,47 @@ when_authorized(conn_subscribe) ->
          }],
     mock_authorize(#{}),
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_authorized(conn_authorize) ->
-    T = <<"when authorized - conn_authorize">>,
+%% A worker tries to authorize using an account which is already authorized by
+%% a different connection/client. All workers must share the same account name
+%% per connection.
+when_authorized(conn_authorize_duplicate_account) ->
+    T = <<"when authorized - conn_authorize_duplicate_account">>,
+    L = [{{conn, #{type => req, method => authorize, id => 3,
+                   user => {?ACCOUNT_IN_REGISTER_DIFFERENT_CLIENT, ?WORKER_NOT_IN_REGISTER},
+                   password => null}},
+          {send,
+           #{type => rsp, method => authorize, id => 3, result => false},
+           #{phase => authorized, timer_phase => undefined}}
+         }],
+    mock_authorize(#{}),
+    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
+when_authorized(conn_authorize_duplicate_worker) ->
+    T = <<"when authorized - conn_authorize_duplicate_worker">>,
     L = [{{conn, #{type => req, method => authorize, id => 3,
                    user => ?USER_IN_REGISTER, password => null}},
           {send,
-           #{type => rsp, method => authorize, id => 3, reason => unknown_error},
+           #{type => rsp, method => authorize, id => 3, result => false},
+           #{phase => authorized, timer_phase => undefined}}
+         }],
+    mock_authorize(#{}),
+    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
+when_authorized(conn_authorize_worker_count_exhausted) ->
+    T = <<"when authorized - conn_authorize_worker_count_exhausted">>,
+    L = [{{conn, #{type => req, method => authorize, id => 3,
+                   user => ?USER_NOT_IN_REGISTER_WITH_EXHAUSTED_WORKER_COUNT,
+                   password => null}},
+          {send,
+           #{type => rsp, method => authorize, id => 3, result => false},
+           #{phase => authorized, timer_phase => undefined}}
+         }],
+    mock_authorize(#{}),
+    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
+when_authorized(conn_authorize_account_mismatch) ->
+    T = <<"when authorized - conn_authorize_account_mismatch">>,
+    L = [{{conn, #{type => req, method => authorize, id => 3,
+                   user => ?USER_NOT_IN_REGISTER, password => null}},
+          {send,
+           #{type => rsp, method => authorize, id => 3, result => false},
            #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
@@ -565,6 +626,17 @@ when_authorized(chain_recv_block) ->
           {no_send,
            #{phase => authorized, timer_phase => undefined,
              initial_share_target => undefined}}
+         }],
+    mock_authorize(#{}),
+    prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
+when_authorized(conn_authorize) ->
+    T = <<"when authorized - conn_authorize">>,
+    L = [{{conn, #{type => req, method => authorize, id => 3,
+                   user => {?ACCOUNT_IN_REGISTER, ?WORKER_NOT_IN_REGISTER},
+                   password => null}},
+          {send,
+           #{type => rsp, method => authorize, id => 3, result => true},
+           #{phase => authorized, timer_phase => undefined}}
          }],
     mock_authorize(#{}),
     prep_authorized(T) ++ [{T, test, E, R} || {E, R} <- L];
@@ -608,12 +680,44 @@ when_set_target(conn_subscribe) ->
          }],
     mock_set_target(#{}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
-when_set_target(conn_authorize) ->
-    T = <<"when set target - conn_authorize">>,
+when_set_target(conn_authorize_duplicate_account) ->
+    T = <<"when set target - conn_authorize_duplicate_account">>,
+    L = [{{conn, #{type => req, method => authorize, id => 3,
+                   user => {?ACCOUNT_IN_REGISTER_DIFFERENT_CLIENT, ?WORKER_NOT_IN_REGISTER},
+                   password => null}},
+          {send,
+           #{type => rsp, method => authorize, id => 3, result => false},
+           #{phase => authorized, initial_share_target => ?SHARE_TARGET}}
+         }],
+    mock_set_target(#{}),
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
+when_set_target(conn_authorize_duplicate_worker) ->
+    T = <<"when set target - conn_authorize_duplicate_worker">>,
     L = [{{conn, #{type => req, method => authorize, id => 3,
                    user => ?USER_IN_REGISTER, password => null}},
           {send,
-           #{type => rsp, method => authorize, id => 3, reason => unknown_error},
+           #{type => rsp, method => authorize, id => 3, result => false},
+           #{phase => authorized, initial_share_target => ?SHARE_TARGET}}
+         }],
+    mock_set_target(#{}),
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
+when_set_target(conn_authorize_worker_count_exhausted) ->
+    T = <<"when set target - conn_authorize_worker_count_exhausted">>,
+    L = [{{conn, #{type => req, method => authorize, id => 3,
+                   user => ?USER_NOT_IN_REGISTER_WITH_EXHAUSTED_WORKER_COUNT,
+                   password => null}},
+          {send,
+           #{type => rsp, method => authorize, id => 3, result => false},
+           #{phase => authorized, initial_share_target => ?SHARE_TARGET}}
+         }],
+    mock_set_target(#{}),
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
+when_set_target(conn_authorize_account_mismatch) ->
+    T = <<"when set target - conn_authorize_account_mismatch">>,
+    L = [{{conn, #{type => req, method => authorize, id => 3,
+                   user => ?USER_NOT_IN_REGISTER, password => null}},
+          {send,
+           #{type => rsp, method => authorize, id => 3, result => false},
            #{phase => authorized, initial_share_target => ?SHARE_TARGET}}
          }],
     mock_set_target(#{}),
@@ -644,7 +748,18 @@ when_set_target(conn_not_req) ->
 when_set_target(conn_jsonrpc_errors) ->
     T = <<"when set target - conn_jsonrpc_errors">>,
     mock_set_target(#{}),
-    prep_set_target(T) ++ jsonrpc_errors(T, authorized, undefined).
+    prep_set_target(T) ++ jsonrpc_errors(T, authorized, undefined);
+when_set_target(conn_authorize) ->
+    T = <<"when set target - conn_authorize">>,
+    L = [{{conn, #{type => req, method => authorize, id => 3,
+                   user => {?ACCOUNT_IN_REGISTER, ?WORKER_NOT_IN_REGISTER},
+                   password => null}},
+          {send,
+           #{type => rsp, method => authorize, id => 3, result => true},
+           #{phase => authorized, initial_share_target => ?SHARE_TARGET}}
+         }],
+    mock_set_target(#{}),
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 when_set_target(chain_recv_block, no_target_change) ->
     T = <<"when set target - chain_recv_block, no_target_change">>,
@@ -813,7 +928,7 @@ when_recv_block(conn_submit, valid_block) ->
     prep_recv_block(T) ++ [{T, test, E, R} || {E, R} <- L].
 
 mock_connect(_Opts) ->
-    aestratum_env:set(#{msg_timeout => 15000}),
+    ?ENV_MODULE:set(#{msg_timeout => 15000}),
     ok.
 
 mock_configure(Opts) ->
@@ -822,14 +937,14 @@ mock_configure(Opts) ->
 mock_subscribe(#{extra_nonce_bytes := ExtraNoncebytes} = Opts) ->
     mock_configure(#{}),
     case maps:get(is_host_valid, Opts, true) of
-        true  -> aestratum_env:set(#{host => ?HOST_VALID});
+        true  -> ?ENV_MODULE:set(#{host => ?HOST_VALID});
         false -> ok
     end,
     case maps:get(is_port_valid, Opts, true) of
-        true  -> aestratum_env:set(#{port => ?PORT_VALID});
+        true  -> ?ENV_MODULE:set(#{port => ?PORT_VALID});
         false -> ok
     end,
-    aestratum_env:set(#{extra_nonce_bytes => ExtraNoncebytes}),
+    ?ENV_MODULE:set(#{extra_nonce_bytes => ExtraNoncebytes}),
     meck:expect(?EXTRA_NONCE_CACHE_MODULE, get,
                 fun(N) when N =:= ?EXTRA_NONCE_BYTES_VALID ->
                         {ok, ?EXTRA_NONCE};
@@ -841,17 +956,35 @@ mock_subscribe(#{extra_nonce_bytes := ExtraNoncebytes} = Opts) ->
 
 mock_authorize(_Opts) ->
     mock_subscribe(#{extra_nonce_bytes => ?EXTRA_NONCE_BYTES_VALID}),
-    meck:expect(?USER_REGISTER_MODULE, add, fun(_, _) -> ok end),
+    meck:expect(?USER_REGISTER_MODULE, add, fun(_, _, _) -> ok end),
     meck:expect(?USER_REGISTER_MODULE, del, fun(_) -> ok end),
     meck:expect(?USER_REGISTER_MODULE, member,
-                fun(U) when U =:= ?USER_IN_REGISTER     -> true;
-                   (U) when U =:= ?USER_NOT_IN_REGISTER -> false
+                fun(A, _) when A =:= ?ACCOUNT_IN_REGISTER ->
+                        both;
+                   (A, _) when A =:= ?ACCOUNT_IN_REGISTER_DIFFERENT_CLIENT ->
+                        account_only;
+                   (A, _) when A =:= ?ACCOUNT_NOT_IN_REGISTER ->
+                        neither;
+                   (A, _) when A =:= ?ACCOUNT_NOT_IN_REGISTER_WITH_EXHAUSTED_WORKER_COUNT ->
+                        neither
+                end),
+    meck:expect(?USER_REGISTER_MODULE, add_worker,
+                fun(A, W) when (A =:= ?ACCOUNT_IN_REGISTER) and
+                               (W =:= ?WORKER_NOT_IN_REGISTER) ->
+                        ok;
+                   (A, W) when (A =:= ?ACCOUNT_IN_REGISTER) and
+                               (W =:= ?WORKER_IN_REGISTER) ->
+                        {error, worker_already_present};
+                   (A, _W) when A =:= ?ACCOUNT_NOT_IN_REGISTER_WITH_EXHAUSTED_WORKER_COUNT ->
+                        {error, worker_count_exhausted};
+                   (A, _W) when A =:= ?ACCOUNT_NOT_IN_REGISTER ->
+                        {error, account_not_found}
                 end),
     ok.
 
 mock_set_target(_Opts) ->
     mock_authorize(#{}),
-    aestratum_env:set(#{initial_share_target => ?SHARE_TARGET,
+    ?ENV_MODULE:set(#{initial_share_target => ?SHARE_TARGET,
                         max_share_target => ?SHARE_TARGET,
                         share_target_diff_threshold => 5.0,
                         desired_solve_time => 30000,
@@ -868,7 +1001,7 @@ mock_recv_block(Opts) ->
     end,
     case maps:get(share_target_diff_threshold, Opts, undefined) of
         ShareTargetDiffThreshold when ShareTargetDiffThreshold =/= undefined ->
-            aestratum_env:set(#{share_target_diff_threshold => ShareTargetDiffThreshold});
+            ?ENV_MODULE:set(#{share_target_diff_threshold => ShareTargetDiffThreshold});
         undefined ->
             ok
     end,
@@ -913,9 +1046,9 @@ mock_recv_block(Opts) ->
     meck:expect(?AESTRATUM_MODULE, submit_solution, fun(_, _, _) -> ok end),
     case maps:get(max_solve_time, Opts, undefined) of
         MaxSolveTime when MaxSolveTime =/= undefined ->
-            aestratum_env:set(#{max_solve_time => MaxSolveTime});
+            ?ENV_MODULE:set(#{max_solve_time => MaxSolveTime});
         undefined ->
-            aestratum_env:set(#{max_solve_time => 30000})
+            ?ENV_MODULE:set(#{max_solve_time => 30000})
     end,
     ok.
 

@@ -21,6 +21,7 @@
 -define(DEFAULT_SHARE_TARGET_DIFF_THRESHOLD, 5.0).
 -define(DEFAULT_MSG_TIMEOUT, 15000).
 -define(DEFAULT_MAX_JOBS, 20).
+-define(DEFAULT_MAX_WORKERS, 20).
 
 -define(DEFAULT_REWARD_LAST_ROUNDS, 2).
 
@@ -59,7 +60,8 @@ defaults_schema(session) ->
      {max_solve_time, ?DEFAULT_MAX_SOLVE_TIME},
      {share_target_diff_threshold, ?DEFAULT_SHARE_TARGET_DIFF_THRESHOLD},
      {msg_timeout, ?DEFAULT_MSG_TIMEOUT},
-     {max_jobs, ?DEFAULT_MAX_JOBS}];
+     {max_jobs, ?DEFAULT_MAX_JOBS},
+     {max_workers, ?DEFAULT_MAX_WORKERS}];  %% Per connection.
 defaults_schema(reward) ->
     [beneficiaries,
      keys,

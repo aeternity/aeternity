@@ -183,7 +183,8 @@ recv_msg(#{type := req, method := subscribe} = Req,
     ?INFO("recv_subscribe_req, req: ~p", [Req]),
     send_subscribe_rsp(Req, Session);
 recv_msg(#{type := req, method := authorize} = Req,
-         #session{phase = subscribed} = Session) ->
+         #session{phase = Phase} = Session) when
+      (Phase =:= subscribed) or (Phase =:= authorized) ->
     ?INFO("recv_authorize_req, req: ~p", [Req]),
     send_authorize_rsp(Req, Session);
 %% Submit request is accepted only when the connection is in authorized phase
@@ -311,17 +312,17 @@ send_subscribe_rsp1(ok, #{id := Id} = Req, #session{timer = Timer} = Session) ->
             %% Set timer for authorize request.
             {send, encode(RspMap),
              Session#session{phase = subscribed, timer = set_timer(subscribed),
-                         extra_nonce = ExtraNonce}};
+                             extra_nonce = ExtraNonce}};
         {error, Rsn} ->
             send_unknown_error_rsp(Req, Rsn, Session)
     end;
 send_subscribe_rsp1({error, Rsn}, Req, Session) ->
     send_unknown_error_rsp(Req, Rsn, Session).
 
-send_authorize_rsp1(ok, #{id := Id, user := User},
+send_authorize_rsp1({ok, first_worker}, #{id := Id, user := {Account, Worker}},
                     #session{timer = Timer} = Session) ->
     maybe_cancel_timer(Timer),
-    aestratum_user_register:add(User, self()),
+    aestratum_user_register:add(Account, Worker, self()),
     RspMap = #{type => rsp, method => authorize, id => Id, result => true},
     %% After the authorization, the server is supposed to send an initial
     %% target.
@@ -333,11 +334,20 @@ send_authorize_rsp1(ok, #{id := Id, user := User},
     {send, encode(RspMap),
      Session#session{phase = authorized, timer = undefined,
                      jobs = aestratum_job_queue:new()}};
-send_authorize_rsp1({error, user_and_password}, #{id := Id}, Session) ->
-    RspMap = #{type => rsp, method => authorize, id => Id,
-               result => false},
-    %% Timer is not cancelled, the client has a chance to send another
-    %% authorize request.
+send_authorize_rsp1({ok, other_worker}, #{id := Id, user := {Account, Worker}},
+                    Session) ->
+    RspMap =
+        case aestratum_user_register:add_worker(Account, Worker) of
+            ok ->
+                #{type => rsp, method => authorize, id => Id, result => true};
+            {error, Rsn} ->
+                ?ERROR("add_worker, reason: ~p", [Rsn]),
+                #{type => rsp, method => authorize, id => Id, result => false}
+        end,
+    ?INFO("send_authorize_rsp, rsp: ~p", [RspMap]),
+    {send, encode(RspMap), Session};
+send_authorize_rsp1({error, _Rsn}, #{id := Id}, Session) ->
+    RspMap = #{type => rsp, method => authorize, id => Id, result => false},
     ?INFO("send_authorize_rsp, rsp: ~p", [RspMap]),
     {send, encode(RspMap), Session}.
 
@@ -611,12 +621,18 @@ check_port1(Port, Port) ->
 check_port1(_Port, _Port1) ->
     {done, {error, port_mismatch}}.
 
-check_user_and_password(#{user := User, password := null}, _Session) ->
-    %% TODO: user as "public_key.worker"?
-    case aestratum_user_register:member(User) of
-        %% The user must not be present already
-        false -> continue;
-        true  -> {done, {error, user_and_password}}
+check_user_and_password(#{user := {Account, _Worker}, password := null},
+                        #session{phase = Phase}) ->
+    case {Phase, aestratum_user_register:member(Account, self())} of
+        {subscribed, neither}      -> {done, {ok, first_worker}};
+        {authorized, both}         -> {done, {ok, other_worker}};
+        %% Connection is authorized, but it's a different client/process.
+        {authorized, account_only} -> {done, {error, conn_pid_mismatch}};
+        %% Connection is subscribed, but other connection uses the same account
+        %% and maybe worker name.
+        {subscribed, _}            -> {done, {error, account_authorized}};
+        %% A worker tries to authorise using an account that doesn't match.
+        {authorized, neither}      -> {done, {error, account_mismatch}}
     end.
 
 check_job_id(#{job_id := JobId}, #session{jobs = Jobs}, #{share := Share}) ->
@@ -628,11 +644,13 @@ check_job_id(#{job_id := JobId}, #session{jobs = Jobs}, #{share := Share}) ->
             {done, {error, Share1, undefined}}
     end.
 
-check_user(#{user := User}, _Session, #{share := Share, job := Job}) ->
-    case aestratum_user_register:member(User) of
-        true ->
+check_user(#{user := {Account, _Worker}}, _Session, #{share := Share, job := Job}) ->
+    case aestratum_user_register:member(Account, self()) of
+        both ->
             continue;
-        false ->
+        _Other ->
+            %% Here a user could send a share to a different account. It could
+            %% be checked here and logged - to be considered.
             Share1 = aestratum_share:set_validity(user_not_found, Share),
             {done, {error, Share1, Job}}
     end.
