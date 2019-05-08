@@ -332,6 +332,8 @@ type(B) when ?IS_FATE_BITS(B)     -> bits;
 type(A) when ?IS_FATE_ADDRESS(A)  -> address;
 type(S) when ?IS_FATE_STRING(S)   -> string;
 type([E|L]) when ?IS_FATE_LIST(L) -> {list, type(E)};
+type(T) when ?IS_FATE_TUPLE(T)    -> {tuple, lists:map(fun type/1, tuple_to_list(element(2, T)))};
+type(?FATE_VARIANT(Sizes, _, _))  -> {variant, Sizes};
 type([]) -> {list, any}.
 %% TODO: handle all types.
 

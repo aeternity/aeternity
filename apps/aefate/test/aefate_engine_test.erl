@@ -240,7 +240,7 @@ variant() ->
             , {<<"switch2">>, [{variant, [0,1,2], 1, {42}}], {error, <<"Type error in switch: wrong size 3">>}}
             , {<<"test">>, [{variant, [0,1], 1, {42}}, 1], true}
             , {<<"test">>, [{variant, [0,1], 1, {42}}, 2], false}
-            , {<<"element">>, [{variant, [0,1], 1, {42}}, 1], 42}
+            , {<<"element">>, [{variant, [0,1], 1, {42}}, 0], 42}
             , {<<"make">>, [[0,1], 1, 1, [42]], {variant, [0,1], 1, {42}}}
             ]
     ].
@@ -622,7 +622,7 @@ contracts() ->
      , <<"string">> =>
            [ {<<"str_equal">>
              , {[string, string], boolean}
-             , [ {0, [ {'STR_EQ', {stack, 0}, {arg, 0}, {arg, 1}}
+             , [ {0, [ {'EQ', {stack, 0}, {arg, 0}, {arg, 1}}
                      , 'RETURN']}
                ]}
            , {<<"str_join">>

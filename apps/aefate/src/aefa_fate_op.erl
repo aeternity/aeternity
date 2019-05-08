@@ -52,7 +52,7 @@
         , hd/3
         , tl/3
         , length/3
-        , str_eq/4
+        , append/4
         , str_join/4
         , int_to_str/3
         , addr_to_str/3
@@ -79,7 +79,7 @@
         , origin/2
         , caller/2
         , gasprice/2
-        , blockhash/2
+        , blockhash/3
         , beneficiary/2
         , timestamp/2
         , generation/2
@@ -139,10 +139,11 @@ returnr(Arg0, EngineState) ->
 
 
 call(Arg0, EngineState) ->
-    ES1 = aefa_fate:push_return_address(EngineState),
-    Signature = aefa_fate:get_function_signature(Arg0, ES1),
+    {Fun, ES0} = get_op_arg(Arg0, EngineState),
+    ES1 = aefa_fate:push_return_address(ES0),
+    Signature = aefa_fate:get_function_signature(Fun, ES1),
     {ok, ES2} = aefa_fate:check_signature_and_bind_args(Signature, ES1),
-    {jump, 0, aefa_fate:set_local_function(Arg0, ES2)}.
+    {jump, 0, aefa_fate:set_local_function(Fun, ES2)}.
 
 call_r(Arg0, Arg1, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
@@ -153,9 +154,10 @@ call_r(Arg0, Arg1, EngineState) ->
     {jump, 0, ES4}.
 
 call_t(Arg0, EngineState) ->
-    Signature = aefa_fate:get_function_signature(Arg0, EngineState),
-    {ok, ES2} = aefa_fate:check_signature_and_bind_args(Signature, EngineState),
-    {jump, 0, aefa_fate:set_local_function(Arg0, ES2)}.
+    {Fun, ES0} = get_op_arg(Arg0, EngineState),
+    Signature = aefa_fate:get_function_signature(Fun, ES0),
+    {ok, ES2} = aefa_fate:check_signature_and_bind_args(Signature, ES0),
+    {jump, 0, aefa_fate:set_local_function(Fun, ES2)}.
 
 call_tr(Arg0, Arg1, EngineState) ->
     {Address, ES1} = get_op_arg(Arg0, EngineState),
@@ -361,7 +363,7 @@ setelement(Arg0, Arg1, Arg2, Arg3, EngineState) ->
             ?FATE_TUPLE(Tuple) = FateTuple,
             case size(Tuple) > Index of
                 true ->
-                    NewT = erlang:setelement(Index+1, Tuple, Element),
+                    NewT = ?FATE_TUPLE(erlang:setelement(Index+1, Tuple, Element)),
                     write(Arg0, NewT, ES3);
                 false ->
                     aefa_fate:abort({element_index_out_of_bounds, Index}, ES3)
@@ -418,12 +420,12 @@ tl(Arg0, Arg1, EngineState) ->
 length(Arg0, Arg1, EngineState) ->
     un_op(length, {Arg0, Arg1}, EngineState).
 
+append(Arg0, Arg1, Arg2, EngineState) ->
+    bin_op(append, {Arg0, Arg1, Arg2}, EngineState).
+
 %% ------------------------------------------------------
 %% String instructions
 %% ------------------------------------------------------
-
-str_eq(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(str_equal, {Arg0, Arg1, Arg2}, EngineState).
 
 str_join(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(str_join, {Arg0, Arg1, Arg2}, EngineState).
@@ -574,7 +576,7 @@ gasprice(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:gas_price(API), EngineState).
 
-blockhash(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+blockhash(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
 
 beneficiary(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
@@ -867,11 +869,8 @@ op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
                     aefa_fate:abort({type_error, cons, Hd, aefa_fate:type(OldHd)})
             end
     end;
-op(str_equal, A, B) when ?IS_FATE_STRING(A)
-                         , ?IS_FATE_STRING(B) ->
-    aeb_fate_data:make_boolean(?FATE_STRING_VALUE(A)
-                           =:=
-                               ?FATE_STRING_VALUE(B));
+op(append, A, B) when ?IS_FATE_LIST(A), ?IS_FATE_LIST(B) ->
+    aeb_fate_data:make_list(?FATE_LIST_VALUE(A) ++ ?FATE_LIST_VALUE(B));
 op(str_join, A, B) when ?IS_FATE_STRING(A)
                          , ?IS_FATE_STRING(B) ->
     aeb_fate_data:make_string(<<?FATE_STRING_VALUE(A)/binary,
@@ -885,8 +884,8 @@ op(variant_element, A, B)  when ?IS_FATE_VARIANT(A)
                                 , ?IS_FATE_INTEGER(B)
                                 , B >= 0 ->
     ?FATE_VARIANT(_S, _T, Values) = A,
-    if size(Values) >= B ->
-            element(B, Values);
+    if size(Values) > B ->
+            element(B + 1, Values);
        true ->
             aefa_fate:abort({type_error, variant_element, B, A})
     end;
