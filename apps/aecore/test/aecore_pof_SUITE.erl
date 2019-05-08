@@ -206,7 +206,8 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
 
     %% Mine some key blocks now to check the rewards
     PofDelay = rpc:call(N2, aec_governance, beneficiary_reward_delay, []),
-    case rpc:call(N2, aec_governance, get_network_id, []) of
+    DevRewardEnabled = rpc:call(N2, aec_dev_reward, enabled, []),
+    case DevRewardEnabled andalso rpc:call(N2, aec_governance, get_network_id, []) of
         %% Foundation reward split happens at height N - 4.
         <<"local_fortuna_testnet">> ->
             Delay = PofDelay + 4,
@@ -237,7 +238,6 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
             Reward2 = lists:sum([aec_governance:block_mine_reward(X)
                                 || X <- lists:seq(N1KeyBlocksCount + 1, N2Height - PofDelay),
                                     X =/= FraudHeight]) + FraudReward,
-
             BenefTotal = rpc:call(N2, aec_dev_reward, total_shares, []),
             BenefFactor = rpc:call(N2, aec_dev_reward, allocated_shares, []),
             FoundationBenefs = rpc:call(N2, aec_dev_reward, beneficiaries, []),
