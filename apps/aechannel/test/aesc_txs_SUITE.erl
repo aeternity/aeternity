@@ -198,7 +198,7 @@
 -include_lib("stdlib/include/assert.hrl").
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
--include("../../aecontract/test/aect_sophia_vsn.hrl").
+-include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BOGUS_CHANNEL, <<1:?MINER_PUB_BYTES/unit:8>>).

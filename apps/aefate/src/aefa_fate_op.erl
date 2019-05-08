@@ -120,6 +120,7 @@
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
+-include("../../aecore/include/blocks.hrl").
 
 %% ------------------------------------------------------------------------
 %% Operations
@@ -148,7 +149,7 @@ call(Arg0, EngineState) ->
 call_r(Arg0, Arg1, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
     {Address, ES2} = get_op_arg(Arg0, ES1),
-    ES3 = aefa_fate:set_function(Address, Arg1, ES2),
+    ES3 = aefa_fate:set_remote_function(Address, Arg1, ES2),
     Signature = aefa_fate:get_function_signature(Arg1, ES3),
     {ok, ES4} = aefa_fate:check_signature_and_bind_args(Signature, ES3),
     {jump, 0, ES4}.
@@ -161,7 +162,7 @@ call_t(Arg0, EngineState) ->
 
 call_tr(Arg0, Arg1, EngineState) ->
     {Address, ES1} = get_op_arg(Arg0, EngineState),
-    ES2 = aefa_fate:set_function(Address, Arg1, ES1),
+    ES2 = aefa_fate:set_remote_function(Address, Arg1, ES1),
     Signature = aefa_fate:get_function_signature(Arg1, ES2),
     {ok, ES3} = aefa_fate:check_signature_and_bind_args(Signature, ES2),
     {jump, 0, ES3}.
@@ -576,7 +577,23 @@ gasprice(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
     write(Arg0, aefa_chain_api:gas_price(API), EngineState).
 
-blockhash(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
+blockhash(Arg0, Arg1, ES) ->
+    case get_op_arg(Arg1, ES) of
+        {?FATE_INTEGER_VALUE(N), ES1} when ?IS_FATE_INTEGER(N) ->
+            GenesisHeight = aec_block_genesis:height(),
+            API = aefa_engine_state:chain_api(ES1),
+            CurrentHeight = aefa_chain_api:generation(API),
+            case (N < GenesisHeight orelse
+                  N >= CurrentHeight orelse
+                  N =< CurrentHeight - 256) of
+                true ->
+                    write(Arg0, aeb_fate_data:make_integer(0), ES1);
+                false ->
+                    write(Arg0, aefa_chain_api:blockhash(N, API), ES1)
+            end;
+        {Value, ES1} ->
+            aefa_fate:abort({value_does_not_match_type, Value, integer}, ES1)
+    end.
 
 beneficiary(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),

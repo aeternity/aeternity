@@ -75,7 +75,7 @@
 -define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING(X), {variant, 0, [X]}).
 -define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(X), {variant, 1, [X]}).
 
--include("../../aecontract/test/aect_sophia_vsn.hrl").
+-include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
 %%%===================================================================
 %%% Common test framework

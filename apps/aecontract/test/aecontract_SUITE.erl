@@ -11,6 +11,7 @@
         , init_per_group/2
         , end_per_group/2
         , init_per_testcase/2
+        , end_per_testcase/2
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -131,7 +132,7 @@
 -include("../include/aecontract.hrl").
 -include("../../aecore/include/blocks.hrl").
 
--include("aect_sophia_vsn.hrl").
+-include("include/aect_sophia_vsn.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
@@ -359,7 +360,19 @@ end_per_group(_Grp, Cfg) ->
     Cfg.
 
 %% Process dict magic in the right process ;-)
+init_per_testcase(fate_environment, Config) ->
+    meck:new(aefa_chain_api, [passthrough]),
+    meck:expect(aefa_chain_api, blockhash,
+                fun(N, S) when is_integer(N) ->
+                        %% Just to ensure the arg format
+                        _ = aefa_chain_api:generation(S),
+                        aeb_fate_data:make_integer(N)
+                end),
+    init_per_testcase_common(Config);
 init_per_testcase(_TC, Config) ->
+    init_per_testcase_common(Config).
+
+init_per_testcase_common(Config) ->
     VmVersion = ?config(vm_version, Config),
     ABIVersion = ?config(abi_version, Config),
     SophiaVersion = ?config(sophia_version, Config),
@@ -373,6 +386,12 @@ init_per_testcase(_TC, Config) ->
     put('$sophia_version', SophiaVersion),
     put('$protocol_version', ProtocolVersion),
     Config.
+
+end_per_testcase(fate_environment, _Config) ->
+    meck:unload(aefa_chain_api),
+    ok;
+end_per_testcase(_TC,_Config) ->
+    ok.
 
 -define(assertMatchVM(Res, ExpVm1, ExpVm2, ExpVm3),
     case vm_version() of
@@ -4578,6 +4597,8 @@ call_wrong_type(_Cfg) ->
 fate_environment(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc = <<AccInt:256>> = ?call(new_account, 100000000 * aec_test_utils:min_gas_price()),
+    Acc1Balance = 123456789,
+    <<Acc1Int:256>> = ?call(new_account, Acc1Balance),
     InitialBalance = 4711,
     Contract = <<ContractInt:256>> = ?call(create_contract, Acc, environment, {},
                                            #{amount => InitialBalance}),
@@ -4587,6 +4608,8 @@ fate_environment(_Cfg) ->
                  ?call(call_contract, Acc, Contract, call_origin, word, {})),
     ?assertEqual(InitialBalance,
                  ?call(call_contract, Acc, Contract, contract_balance, word, {})),
+    ?assertEqual(Acc1Balance,
+                 ?call(call_contract, Acc, Contract, get_balance, word, {{address, Acc1Int}})),
     GasPrice = aec_test_utils:min_gas_price() + 1,
     ?assertEqual(GasPrice,
                  ?call(call_contract, Acc, Contract, call_gas_price, word, {},
@@ -4609,6 +4632,19 @@ fate_environment(_Cfg) ->
     Time2 = aeu_time:now_in_msecs(),
     ?assert(Time1 < Timestamp andalso Timestamp < Time2),
 
+    %% Block hash is mocked to return the height if it gets a valid height
+    %% since we don't have a chain.
+    BHHeight = 1000,
+    ?assertEqual(0, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight},
+                          #{height => BHHeight})),
+    ?assertEqual(0, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight + 1},
+                          #{height => BHHeight})),
+    ?assertEqual(0, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight - 256},
+                          #{height => BHHeight})),
+    ?assertEqual(BHHeight - 1, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight - 1},
+                                     #{height => BHHeight})),
+    ?assertEqual(BHHeight - 255, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight - 255},
+                                       #{height => BHHeight})),
     ok.
 
 fate_call_origin(_Cfg) ->

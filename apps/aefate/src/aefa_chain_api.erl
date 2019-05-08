@@ -12,6 +12,7 @@
 %% Getters
 -export([ account_balance/2
         , beneficiary/1
+        , blockhash/2
         , contract_fate_code/2
         , difficulty/1
         , final_trees/1
@@ -32,6 +33,7 @@
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include("../../aecontract/include/aecontract.hrl").
+-include("../../aecore/include/blocks.hrl").
 
 %%%-------------------------------------------------------------------
 %%% NOTE: We accept that this module causes havoc in the dependency
@@ -106,6 +108,35 @@ timestamp_in_msecs(#state{} = S) ->
 
 %%%-------------------------------------------------------------------
 %%% Slightly more involved getters with caching
+
+-spec blockhash(non_neg_integer(), #state{}) -> aeb_fate_data:fate_integer().
+blockhash(Height, #state{} = S) ->
+    TxEnv = tx_env(S),
+    case aetx_env:key_hash(TxEnv) of
+        <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> ->
+            %% For channels
+            aeb_fate_data:make_integer(0);
+        KeyHash ->
+            {ok, Header} = aec_chain:get_key_header_by_height(Height),
+            {ok, Hash} = aec_headers:hash_header(Header),
+            %% Make sure that this is an ancestor
+            case aec_chain:find_common_ancestor(Hash, KeyHash) of
+                {ok, <<N:?BLOCK_HEADER_HASH_BYTES/unit:8 >> = Hash} ->
+                    aeb_fate_data:make_integer(N);
+                {ok, _Other} ->
+                    <<N:?BLOCK_HEADER_HASH_BYTES/unit:8 >> =
+                        traverse_to_key_hash(Height, KeyHash),
+                    aeb_fate_data:make_integer(N)
+            end
+    end.
+
+traverse_to_key_hash(H, KeyHash) ->
+    {ok, Header} = aec_chain:get_header(KeyHash),
+    case aec_headers:height(Header) of
+        Height when Height =:= H -> KeyHash;
+        Height when Height =:= H + 1 -> aec_headers:prev_key_hash(Header);
+        _Height -> traverse_to_key_hash(H, aec_headers:prev_key_hash(Header))
+    end.
 
 -spec contract_fate_code(pubkey(), state()) -> 'error' |
                                                {'ok', term(), state()}.
