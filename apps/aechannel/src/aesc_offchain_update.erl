@@ -203,18 +203,18 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
 
 -spec for_client(update()) -> map().
 for_client(#transfer{from_id = FromId, to_id = ToId, amount = Amount}) ->
-    #{<<"op">> => <<"OffChainTransfer">>, % swagger name
-      <<"from">> => aeser_api_encoder:encode(id_hash, FromId),
-      <<"to">> => aeser_api_encoder:encode(id_hash, ToId),
-      <<"am">>   => Amount};
+    #{<<"op">>      => <<"OffChainTransfer">>, % swagger name
+      <<"from">>    => aeser_api_encoder:encode(id_hash, FromId),
+      <<"to">>      => aeser_api_encoder:encode(id_hash, ToId),
+      <<"amount">>  => Amount};
 for_client(#withdraw{to_id = ToId, amount = Amount}) ->
-    #{<<"op">> => <<"OffChainWithdrawal">>, % swagger name
-      <<"to">> => aeser_api_encoder:encode(id_hash, ToId),
-      <<"am">>   => Amount};
+    #{<<"op">>      => <<"OffChainWithdrawal">>, % swagger name
+      <<"to">>      => aeser_api_encoder:encode(id_hash, ToId),
+      <<"amount">>  => Amount};
 for_client(#deposit{from_id = FromId, amount = Amount}) ->
-    #{<<"op">> => <<"OffChainDeposit">>, % swagger name
-      <<"from">> => aeser_api_encoder:encode(id_hash, FromId),
-      <<"am">>   => Amount};
+    #{<<"op">>      => <<"OffChainDeposit">>, % swagger name
+      <<"from">>    => aeser_api_encoder:encode(id_hash, FromId),
+      <<"amount">>  => Amount};
 for_client(#create_contract{owner_id = OwnerId, vm_version  = VmVersion,
                          abi_version = ABIVersion, code = Code,
                          deposit = Deposit, call_data   = CallData}) ->
@@ -227,7 +227,7 @@ for_client(#create_contract{owner_id = OwnerId, vm_version  = VmVersion,
       <<"call_data">>   => aeser_api_encoder:encode(contract_bytearray, CallData)};
 for_client(#call_contract{caller_id = CallerId, contract_id = ContractId,
                           abi_version = ABIVersion, amount = Amount,
-                           call_data = CallData, call_stack = CallStack,
+                          call_data = CallData, call_stack = CallStack,
                           gas_price = GasPrice, gas = Gas}) ->
     #{<<"op">>          => <<"OffChainCallContract">>, % swagger name
       <<"caller">>      => aeser_api_encoder:encode(id_hash, CallerId),
