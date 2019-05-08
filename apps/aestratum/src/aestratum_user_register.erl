@@ -73,7 +73,7 @@ member(Account) when is_binary(Account) ->
 member(ConnPid) when is_pid(ConnPid) ->
     ets:member(?TAB_REV, ConnPid).
 
--spec member(account(), conn_pid()) -> boolean().
+-spec member(account(), conn_pid()) -> both | account_only | neither.
 member(Account, ConnPid) when is_binary(Account) and is_pid(ConnPid) ->
     case ets:lookup(?TAB, Account) of
         [{Account, #{conn_pid := ConnPid}}] ->
