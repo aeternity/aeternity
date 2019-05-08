@@ -356,10 +356,10 @@ send_submit_rsp1({ok, Share, Job}, #{id := Id, miner_nonce := MinerNonce, pow :=
     JobId = aestratum_job:id(Job),
     Job1 = aestratum_job:add_share(Share, Job),
     Jobs1 = aestratum_job_queue:replace(JobId, Job1, Jobs),
-    User = aestratum_share:user(Share),
+    {Account, _Worker} = aestratum_share:user(Share),
     ShareTarget = aestratum_job:share_target(Job),
     BlockHash = aestratum_job:block_hash(Job),
-    aestratum:submit_share(User, ShareTarget, BlockHash),
+    aestratum:submit_share(Account, ShareTarget, BlockHash),
     case aestratum_share:validity(Share) of
         valid_block -> aestratum:submit_solution(BlockHash, MinerNonce, Pow);
         valid_share -> ok
