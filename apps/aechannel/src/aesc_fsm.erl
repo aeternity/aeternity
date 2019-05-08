@@ -1355,7 +1355,10 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
     Updates = [Update],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    Height = aetx_env:height(OnChainEnv),
+    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
+                                                  ActiveProtocol,
                                                   OnChainTrees, OnChainEnv, ChannelOpts),
          case ExecType of
             dry_run ->
@@ -1836,7 +1839,10 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
     Updates = [aesc_offchain_update:op_deposit(aeser_id:create(account, FromId), Amount)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    Height = aetx_env:height(OnChainEnv),
+    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
+                                                        ActiveProtocol,
                                                         OnChainTrees,
                                                         OnChainEnv, Opts),
     {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
@@ -1858,7 +1864,10 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
     Updates = [aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    Height = aetx_env:height(OnChainEnv),
+    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
+                                                        ActiveProtocol,
                                                         OnChainTrees,
                                                         OnChainEnv, Opts),
     {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
@@ -2042,7 +2051,9 @@ new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts 
                                                     VmVersion, ABIVersion, Code, Deposit, CallData)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
+    Height = aetx_env:height(OnChainEnv),
+    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
+    try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ActiveProtocol,
                                                   OnChainTrees, OnChainEnv, ChannelOpts),
          D1 = request_signing(?UPDATE, Tx1, Updates, D),
          gen_statem:reply(From, ok),
@@ -2384,10 +2395,13 @@ check_update_tx(initial, SignedTx, Updates, State, Opts) ->
     aesc_offchain_state:check_initial_update_tx(SignedTx, Updates, State,
                                                 OnChainTrees, OnChainEnv, Opts);
 check_update_tx(normal, SignedTx, Updates, State, Opts) ->
-      {OnChainEnv, OnChainTrees} =
-          aetx_env:tx_env_and_trees_from_top(aetx_contract),
-      aesc_offchain_state:check_update_tx(SignedTx, Updates, State,
-                                          OnChainTrees, OnChainEnv, Opts).
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    Height = aetx_env:height(OnChainEnv),
+    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
+    aesc_offchain_state:check_update_tx(SignedTx, Updates, State,
+                                        ActiveProtocol,
+                                        OnChainTrees, OnChainEnv, Opts).
 
 check_update_ack_msg(Msg, D) ->
     lager:debug("check_update_ack_msg(~p)", [Msg]),
@@ -2450,7 +2464,10 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
                                                 aeser_id:create(account, ToPub), Amount)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    Height = aetx_env:height(OnChainEnv),
+    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
+                                                  ActiveProtocol,
                                                   OnChainTrees, OnChainEnv, Opts),
          D1 = request_signing(?UPDATE, Tx1, Updates, D),
          gen_statem:reply(From, ok),

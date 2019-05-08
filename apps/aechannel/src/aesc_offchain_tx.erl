@@ -71,7 +71,11 @@ new(#{channel_id         := ChannelId,
       state_hash         := StateHash,
       round              := Round} = Opts) ->
     channel = aeser_id:specialize_type(ChannelId),
-    Updates = maps:get(updates, Opts, none),
+    Updates =
+        case maps:get(updates, Opts, none) of
+            none -> none;
+            Us -> [aesc_offchain_update:serialize(U) || U <- Us]
+        end,
     Tx = #channel_offchain_tx{
             channel_id         = ChannelId,
             state_hash         = StateHash,
