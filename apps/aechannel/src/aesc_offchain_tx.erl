@@ -69,11 +69,13 @@
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{channel_id         := ChannelId,
       state_hash         := StateHash,
-      round              := Round}) ->
+      round              := Round} = Opts) ->
     channel = aeser_id:specialize_type(ChannelId),
+    Updates = maps:get(updates, Opts, none),
     Tx = #channel_offchain_tx{
             channel_id         = ChannelId,
             state_hash         = StateHash,
+            updates            = Updates,
             round              = Round},
     {ok, aetx:new(?MODULE, Tx)}.
 
