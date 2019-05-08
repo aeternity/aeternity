@@ -8,6 +8,7 @@
         , call_r/4
         , call_t/2
         , call_tr/4
+        , call_value/2
         , jump/2
         , jumpif/3
         , switch/4
@@ -640,6 +641,10 @@ gaslimit(Arg0, EngineState) ->
 gas(Arg0, EngineState) ->
     Gas = aefa_engine_state:gas(EngineState),
     write(Arg0, aeb_fate_data:make_integer(Gas), EngineState).
+
+call_value(Arg0, EngineState) ->
+    Value = aefa_engine_state:call_value(EngineState),
+    write(Arg0, aeb_fate_data:make_integer(Value), EngineState).
 
 log(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
 

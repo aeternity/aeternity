@@ -8,6 +8,7 @@
 -compile([export_all, nowarn_export_all]).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("aebytecode/include/aeb_fate_data.hrl").
 
 %% -- Compiling and running --
 
@@ -20,16 +21,27 @@ compile_contracts(Contracts) ->
 
 make_address(Name) -> aeb_fate_data:make_address(pad_contract_name(Name)).
 
-dummy_spec() ->
-    #{ trees     => aec_trees:new_without_backend(),
-       caller    => <<123:256>>,
-       origin    => <<123:256>>,
+dummy_spec(Cache) ->
+    Caller = <<123:256>>,
+    #{ trees     => dummy_trees(Caller, Cache),
+       caller    => Caller,
+       origin    => Caller,
        gas_price => 1,
        tx_env    => aetx_env:tx_env(1) }.
 
+dummy_trees(Caller, Cache) ->
+    %% All contracts and the caller must have accounts
+    Trees = aec_trees:new_without_backend(),
+    Pubkeys = [Caller| [X || ?FATE_ADDRESS(X) <- maps:keys(Cache)]],
+    ATrees = lists:foldl(fun(Pubkey, Acc) ->
+                                 Account = aec_accounts:new(Pubkey, 10000),
+                                 aec_accounts_trees:enter(Account, Acc)
+                         end, aec_trees:accounts(Trees), Pubkeys),
+    aec_trees:set_accounts(Trees, ATrees).
+
 run(Cache, Contract, Function, Arguments) ->
     Call = make_call(Contract, Function, Arguments),
-    Spec = dummy_spec(),
+    Spec = dummy_spec(Cache),
     try
         aefa_fate:run_with_cache(Call, Spec, Cache)
     catch _:{error, Err} ->
@@ -62,6 +74,7 @@ make_call(Contract, Function, Arguments) ->
     Calldata = {tuple, {Function, {tuple, EncArgs}}},
     #{ contract => pad_contract_name(Contract),
        gas      => 1000000,
+       value    => 10000,
        call     => aeb_fate_encoding:serialize(Calldata) }.
 
 pad_contract_name(Name) ->

@@ -4703,6 +4703,12 @@ fate_environment(_Cfg) ->
     Time2 = aeu_time:now_in_msecs(),
     ?assert(Time1 < Timestamp andalso Timestamp < Time2),
 
+    SentValue = 12340,
+    Value1 = ?call(call_contract, Acc, Contract, call_value, word, {}, #{amount => SentValue}),
+    ?assertEqual(SentValue, Value1),
+    Value2 = ?call(call_contract, Acc, Contract, remote_call_value, word, {Contract, 2*SentValue}, #{amount => 3*SentValue}),
+    ?assertEqual(2*SentValue, Value2),
+
     %% Block hash is mocked to return the height if it gets a valid height
     %% since we don't have a chain.
     BHHeight = 1000,
