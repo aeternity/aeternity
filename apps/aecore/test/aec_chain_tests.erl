@@ -958,40 +958,34 @@ time_summary_N_blocks() ->
 %%%===================================================================
 %%% Fees test
 
-fees_test_() ->
-    {foreach,
-     fun() ->
-             aec_test_utils:start_chain_db(),
-             setup_meck_and_keys()
-     end,
-     fun(TmpDir) ->
-             aec_test_utils:stop_chain_db(),
-             teardown_meck_and_keys(TmpDir)
-     end,
-     [{"Check fee division between three beneficiaries with reward split",
-       fun fees_three_beneficiaries_with_split/0},
-       {"Check fee division between three beneficiaries without reward split",
-       fun fees_three_beneficiaries_without_split/0},
-      {"Check reward is delayed with reward split",
-       fun fees_delayed_reward_with_split/0},
-      {"Check reward is delayed without reward split",
-       fun fees_delayed_reward_without_split/0}
-     ]
-    }.
-
-fees_three_beneficiaries_with_split() ->
+fees_test_setup(Enabled, Activated, BeneficiaryShare) ->
     #{public := PubKeyProtocol} = enacl:sign_keypair(),
-    with_dev_reward_env_instrumentation([{dev_reward_enabled, true},
-                                         {dev_reward_activated, true},
-                                         {dev_reward_beneficiaries, [{PubKeyProtocol, 100}]}],
-                                        fun fees_three_beneficiaries/0).
+    application:set_env(aecore, dev_reward_enabled, Enabled),
+    application:set_env(aecore, dev_reward_activated, Activated),
+    application:set_env(aecore, dev_reward_allocated_shares, BeneficiaryShare),
+    application:set_env(aecore, dev_reward_beneficiaries, [{PubKeyProtocol, 100}]),
+    aec_test_utils:start_chain_db(),
+    setup_meck_and_keys().
 
-fees_three_beneficiaries_without_split() ->
-    #{public := PubKeyProtocol} = enacl:sign_keypair(),
-    with_dev_reward_env_instrumentation([{dev_reward_enabled, false},
-                                         {dev_reward_activated, true},
-                                         {dev_reward_beneficiaries, [{PubKeyProtocol, 100}]}],
-                                        fun fees_three_beneficiaries/0).
+fees_test_teardown(TmpDir) ->
+    aec_test_utils:stop_chain_db(),
+    teardown_meck_and_keys(TmpDir).
+
+
+%%% Check fee division between three beneficiaries with reward split
+fees_three_beneficiaries_with_split_test_() ->
+    {setup,
+     fun() -> fees_test_setup(true, true, 100) end,
+     fun fees_test_teardown/1,
+     fun fees_three_beneficiaries/0}.
+
+%%% Check fee division between three beneficiaries without reward split
+fees_three_beneficiaries_without_split_test_() ->
+    {setup,
+     fun() -> fees_test_setup(false, true, 100) end,
+     fun fees_test_teardown/1,
+     fun fees_three_beneficiaries/0}.
+
 
 fees_three_beneficiaries() ->
     meck:expect(aec_governance, beneficiary_reward_delay, 0, 3),
@@ -1087,15 +1081,20 @@ fees_three_beneficiaries() ->
     ok.
 
 
-fees_delayed_reward_with_split() ->
-    with_dev_reward_env_instrumentation([{dev_reward_enabled, true},
-                                         {dev_reward_activated, true}],
-                                        fun fees_delayed_reward/0).
+%%% Check reward is delayed with reward split
+fees_delayed_reward_with_split_test_() ->
+    {setup,
+     fun() -> fees_test_setup(true, true, 100) end,
+     fun fees_test_teardown/1,
+     fun fees_delayed_reward/0}.
 
-fees_delayed_reward_without_split() ->
-    with_dev_reward_env_instrumentation([{dev_reward_enabled, false},
-                                         {dev_reward_activated, true}],
-                                        fun fees_delayed_reward/0).
+%%% Check reward is delayed without reward split
+fees_delayed_reward_without_split_test_() ->
+    {setup,
+     fun() -> fees_test_setup(false, true, 100) end,
+     fun fees_test_teardown/1,
+     fun fees_delayed_reward/0}.
+
 
 fees_delayed_reward() ->
     %% Delay reward by 2 key blocks / generations.
@@ -1160,23 +1159,6 @@ fees_delayed_reward() ->
     ?assertEqual({ok, split_reward(MiningReward1 + MiningReward2 + MiningReward3 + Fee1 + Fee2)},
                  orddict:find(PubKey3, DictBal3)),
     ok.
-
-
-%% HACK to avoid mocking of aec_dev_reward module - doing so will uncover race conditions
-%% between repeated setup and teardown functions (as the mocked module is global)
-with_dev_reward_env_instrumentation(KVs, F) ->
-    Prev = lists:foldl(
-             fun ({K, _}, Acc) ->
-                     case application:get_env(aecore, K) of
-                         {ok, PrevVal} -> [{set_env, [K, PrevVal]} | Acc];
-                         undefined -> [{unset_env, [K]} | Acc]
-                     end
-             end, [], KVs),
-    [application:set_env(aecore, K, V) || {K, V} <- KVs],
-    try F()
-    after
-        [apply(application, AppF, [aecore | Args]) || {AppF, Args} <- Prev]
-    end.
 
 
 %%%===================================================================
