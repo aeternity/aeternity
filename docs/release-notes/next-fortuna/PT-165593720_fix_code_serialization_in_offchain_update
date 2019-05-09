@@ -1,0 +1,2 @@
+* Adds a serialization for the `code` element of the off-chain update for
+  creating a new off-chain contract.
