@@ -4234,7 +4234,7 @@
         "$ref" : "#/definitions/OffChainUpdate"
       }, {
         "type" : "object",
-        "required" : [ "am", "from", "to" ],
+        "required" : [ "amount", "from", "to" ],
         "properties" : {
           "from" : {
             "description" : "Sender of tokens",
@@ -4244,7 +4244,7 @@
             "description" : "Receiver of tokens",
             "$ref" : "#/definitions/EncodedHash"
           },
-          "am" : {
+          "amount" : {
             "type" : "integer",
             "format" : "int64",
             "description" : "Amount of tokens to transfer"
@@ -4257,13 +4257,13 @@
         "$ref" : "#/definitions/OffChainUpdate"
       }, {
         "type" : "object",
-        "required" : [ "am", "to" ],
+        "required" : [ "amount", "to" ],
         "properties" : {
           "to" : {
             "description" : "Withdrawer of tokens",
             "$ref" : "#/definitions/EncodedHash"
           },
-          "am" : {
+          "amount" : {
             "type" : "integer",
             "format" : "int64",
             "description" : "Amount of tokens to withdraw"
@@ -4276,13 +4276,13 @@
         "$ref" : "#/definitions/OffChainUpdate"
       }, {
         "type" : "object",
-        "required" : [ "am", "from" ],
+        "required" : [ "amount", "from" ],
         "properties" : {
           "from" : {
             "description" : "Depositor of tokens",
             "$ref" : "#/definitions/EncodedHash"
           },
-          "am" : {
+          "amount" : {
             "type" : "integer",
             "format" : "int64",
             "description" : "Amount of tokens to deposit"

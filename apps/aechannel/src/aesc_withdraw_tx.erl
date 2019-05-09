@@ -33,7 +33,6 @@
 -export([channel_id/1,
          channel_pubkey/1,
          state_hash/1,
-         updates/1,
          round/1]).
 
 -ifdef(TEST).
@@ -232,9 +231,6 @@ serialization_template(?CHANNEL_WITHDRAW_TX_VSN) ->
     ].
 
 state_hash(#channel_withdraw_tx{state_hash = StateHash}) -> StateHash.
-
-updates(#channel_withdraw_tx{to_id = ToId, amount = Amount}) ->
-    [aesc_offchain_update:op_withdraw(ToId, Amount)].
 
 round(#channel_withdraw_tx{round = Round}) ->
     Round.

@@ -338,7 +338,7 @@ update_with_soft_reject(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1]),
     {I1, _} = await_signing_request(update, I, Debug),
-    Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx) ->
+    Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx, _Updates) ->
                      {error, conflict} = rpc(dev1, aesc_fsm, upd_transfer,
                                              [Fsm1, PubR, PubI, 1]),
                      {Rx, SignedTx}
@@ -385,7 +385,7 @@ deposit_with_soft_reject(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => 1}]),
     {I1, _} = await_signing_request(deposit_tx, I, Debug),
-    Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx) ->
+    Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx, _Updates) ->
                      {error, conflict} = rpc(dev1, aesc_fsm, upd_transfer,
                                              [Fsm1, PubR, PubI, 1]),
                      {Rx, SignedTx}
@@ -432,7 +432,7 @@ withdraw_with_soft_reject(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => 1}]),
     {I1, _} = await_signing_request(withdraw_tx, I, Debug),
-    Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx) ->
+    Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx, _Updates) ->
                      {error, conflict} = rpc(dev1, aesc_fsm, upd_transfer,
                                              [Fsm1, PubR, PubI, 1]),
                      {Rx, SignedTx}
@@ -1086,13 +1086,14 @@ wrong_round_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
 wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
               push_amount := PushAmount} = Spec, Port, Debug},
               Malicious, SignTxFun, ErrResponse) ->
-    Action = fun sign_signing_request/3,
+    Action = fun sign_signing_request/4,
     TryCheating =
         fun(Tag, #{priv := Priv} = Signer, Debug1) ->
-            receive {aesc_fsm, Fsm, #{type := sign, tag := Tag, info := Tx} = Msg} ->
+            receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
+                                      info := #{tx := Tx, updates := Updates}} = Msg} ->
                     log(Debug1, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
                     SignedTx = SignTxFun(Tx, Priv),
-                    Action(Tag, Signer, SignedTx)
+                    Action(Tag, Signer, SignedTx, Updates)
             after ?TIMEOUT ->
                     error(timeout)
             end
@@ -1158,13 +1159,15 @@ wrong_action_modified_tx({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                  {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
                   DetectConflictFun,
                   fun(Tag, #{priv := Priv} = Signer, Debug1) ->
-                      Action = fun sign_signing_request/3,
-                      receive {aesc_fsm, Fsm, #{type := sign, tag := Tag, info := Tx0} = Msg} ->
+                      Action = fun sign_signing_request/4,
+                      receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
+                                                info := #{tx := Tx0,
+                                                          updates := Updates}} = Msg} ->
                               log(Debug1, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
                               Tx = ModifyTxFun(Tx0, Fsm),
                               log(Debug1, "modified ~p", [Tx]),
                               SignedTx = aec_test_utils:sign_tx(Tx, [Priv]),
-                              Action(Tag, Signer, SignedTx)
+                              Action(Tag, Signer, SignedTx, Updates)
                       after ?TIMEOUT ->
                               error(timeout)
                       end
@@ -1471,22 +1474,23 @@ await_signing_request(Tag, R, Debug) ->
     await_signing_request(Tag, R, ?TIMEOUT, Debug).
 
 await_signing_request(Tag, R, Timeout, Debug) ->
-    Action = fun sign_signing_request/3,
+    Action = fun sign_signing_request/4,
     await_signing_request(Tag, R, Action, Timeout, Debug).
 
 await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R,
                       Action, Timeout, Debug) ->
-    receive {aesc_fsm, Fsm, #{type := sign, tag := Tag, info := Tx} = Msg} ->
+    receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
+                              info := #{tx := Tx, updates := Updates}} = Msg} ->
             log(Debug, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
             SignedTx = aec_test_utils:sign_tx(Tx, [Priv]),
-            Action(Tag, R, SignedTx)
+            Action(Tag, R, SignedTx, Updates)
     after Timeout ->
             error(timeout)
     end.
 
-sign_signing_request(Tag, #{fsm := Fsm} = R, SignedTx) ->
+sign_signing_request(Tag, #{fsm := Fsm} = R, SignedTx, Updates) ->
     aesc_fsm:signing_response(Fsm, Tag, SignedTx),
-    {check_amounts(R, SignedTx), SignedTx}.
+    {check_amounts(R, SignedTx, Updates), SignedTx}.
 
 await_on_chain_report(#{fsm := Fsm}, Timeout) ->
     receive {aesc_fsm, Fsm, #{type := report, tag := on_chain_tx, info := SignedTx}} ->
@@ -1641,10 +1645,10 @@ rpc(Node, Mod, Fun, Args, Debug) ->
     log(Debug, "rpc(~p,~p,~p,~p) -> ~p", [Node, Mod, Fun, Args, Res]),
     Res.
 
-check_amounts(R, SignedTx) ->
+check_amounts(R, SignedTx, Updates) ->
     case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of
-        {aesc_offchain_tx, TxI} ->
-            apply_updates(aesc_offchain_tx:updates(TxI), R);
+        {aesc_offchain_tx, _TxI} ->
+            apply_updates(Updates, R);
         {aesc_deposit_tx, TxD} ->
             Deposit = aesc_deposit_tx:amount(TxD),
             From = aesc_deposit_tx:origin(TxD),

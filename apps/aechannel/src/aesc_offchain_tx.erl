@@ -25,7 +25,6 @@
 % aesc_signable_transaction callbacks
 -export([channel_id/1,
          channel_pubkey/1,
-         updates/1,
          round/1,
          state_hash/1]).
 
@@ -39,11 +38,13 @@
          set_state_hash/2]).
 -endif.
 
+-include_lib("aecontract/include/hard_forks.hrl").
 %%%===================================================================
 %%% Types
 %%%===================================================================
 
 -define(INITIAL_VSN, 1).
+-define(NO_UPDATES_VSN, 2).
 
 -define(CHANNEL_OFFCHAIN_TX_TYPE, channel_offchain_tx).
 -define(CHANNEL_OFFCHAIN_TX_FEE, 0).   % off-chain
@@ -52,7 +53,7 @@
 
 -record(channel_offchain_tx, {
           channel_id         :: aeser_id:id(),
-          updates            :: [aesc_offchain_update:update()],
+          updates = none     :: [binary()] | none, 
           state_hash         :: binary(),
           round              :: non_neg_integer()
          }).
@@ -68,13 +69,17 @@
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{channel_id         := ChannelId,
       state_hash         := StateHash,
-      updates            := Updates,
-      round              := Round}) ->
+      round              := Round} = Opts) ->
     channel = aeser_id:specialize_type(ChannelId),
+    Updates =
+        case maps:get(updates, Opts, none) of
+            none -> none;
+            Us -> [aesc_offchain_update:serialize(U) || U <- Us]
+        end,
     Tx = #channel_offchain_tx{
             channel_id         = ChannelId,
-            updates            = Updates,
             state_hash         = StateHash,
+            updates            = Updates,
             round              = Round},
     {ok, aetx:new(?MODULE, Tx)}.
 
@@ -106,7 +111,6 @@ origin(#channel_offchain_tx{}) ->
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_offchain_tx{
          channel_id         = _ChannelId,
-         updates            = _Updates,
          state_hash         = _State,
          round              = _Round},
       Trees,_Env) ->
@@ -129,16 +133,21 @@ signers(#channel_offchain_tx{} = Tx, Trees) ->
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_offchain_tx{
              channel_id         = ChannelId,
-             updates            = Updates0,
              state_hash         = StateHash,
              round              = Round} = Tx) ->
-    Updates = [aesc_offchain_update:serialize(U) || U <- Updates0],
     case version(Tx) of
         ?INITIAL_VSN ->
+            #channel_offchain_tx{updates = UpdatesBins} = Tx,
             {?INITIAL_VSN,
             [ {channel_id        , ChannelId}
             , {round             , Round}
-            , {updates           , Updates}
+            , {updates           , UpdatesBins}
+            , {state_hash        , StateHash}
+            ]};
+        ?NO_UPDATES_VSN ->
+            {?NO_UPDATES_VSN,
+            [ {channel_id        , ChannelId}
+            , {round             , Round}
             , {state_hash        , StateHash}
             ]}
     end.
@@ -147,15 +156,24 @@ serialize(#channel_offchain_tx{
 deserialize(?INITIAL_VSN,
             [ {channel_id        , ChannelId}
             , {round             , Round}
-            , {updates           , Updates0}
+            , {updates           , UpdatesBins} 
             , {state_hash        , StateHash}]) ->
     channel = aeser_id:specialize_type(ChannelId),
-    Updates = [aesc_offchain_update:deserialize(U) || U <- Updates0],
     #channel_offchain_tx{
        channel_id         = ChannelId,
-       updates            = Updates,
+       updates            = UpdatesBins,
+       state_hash         = StateHash,
+       round              = Round};
+deserialize(?NO_UPDATES_VSN,
+            [ {channel_id        , ChannelId}
+            , {round             , Round}
+            , {state_hash        , StateHash}]) ->
+    channel = aeser_id:specialize_type(ChannelId),
+    #channel_offchain_tx{
+       channel_id         = ChannelId,
        state_hash         = StateHash,
        round              = Round}.
+
 
 %% off-chain transactions are included on-chain as a serialized payload
 %% in a force progress transactions thus the callback
@@ -164,19 +182,22 @@ deserialize(?INITIAL_VSN,
 %% Note: not documented in swagger.yaml
 -spec for_client(tx()) -> map().
 for_client(#channel_offchain_tx{
-              updates            = Updates,
               state_hash         = StateHash,
               channel_id         = ChannelId,
               round              = Round}) ->
     #{<<"channel_id">>         => aeser_api_encoder:encode(id_hash, ChannelId),
       <<"round">>              => Round,
-      <<"updates">>            => [aesc_offchain_update:for_client(D) || D <- Updates],
       <<"state_hash">>         => aeser_api_encoder:encode(state, StateHash)}.
 
 serialization_template(?INITIAL_VSN) ->
     [ {channel_id        , id}
     , {round             , int}
     , {updates           , [binary]}
+    , {state_hash        , binary}
+    ];
+serialization_template(?NO_UPDATES_VSN) ->
+    [ {channel_id        , id}
+    , {round             , int}
     , {state_hash        , binary}
     ].
 
@@ -190,10 +211,6 @@ channel_pubkey(#channel_offchain_tx{channel_id = ChannelId}) ->
 -spec channel_id(tx()) -> aesc_channels:id().
 channel_id(#channel_offchain_tx{channel_id = ChannelId}) ->
     ChannelId.
-
--spec updates(tx()) -> [aesc_offchain_update:update()].
-updates(#channel_offchain_tx{updates = Updates}) ->
-    Updates.
 
 -spec round(tx()) -> aesc_channels:seq_number().
 round(#channel_offchain_tx{round = Round}) ->
@@ -216,13 +233,18 @@ set_value(#channel_offchain_tx{} = Tx, state_hash, Hash) when
   is_binary(Hash) ->
     Tx#channel_offchain_tx{state_hash=Hash}.
 
-version(_) ->
-    ?INITIAL_VSN.
+version(#channel_offchain_tx{updates = Updates}) ->
+    case Updates of
+        none -> ?NO_UPDATES_VSN;
+        _ when is_list(Updates) -> ?INITIAL_VSN
+    end.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
-valid_at_protocol(_Protocol, Tx) ->
+valid_at_protocol(Protocol, Tx) ->
     case version(Tx) of
-        ?INITIAL_VSN -> true
+        ?INITIAL_VSN -> true;
+        ?NO_UPDATES_VSN when Protocol =:= ?FORTUNA_PROTOCOL_VSN -> true;
+        _ -> false
     end.
 
 %%%===================================================================

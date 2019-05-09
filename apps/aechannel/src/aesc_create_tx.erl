@@ -45,7 +45,6 @@
 -export([channel_id/1,
          channel_pubkey/1,
          state_hash/1,
-         updates/1,
          round/1]).
 
 -ifdef(TEST).
@@ -301,9 +300,6 @@ channel_id(#channel_create_tx{} = Tx) ->
 
 -spec state_hash(tx()) -> binary().
 state_hash(#channel_create_tx{state_hash = StateHash}) -> StateHash.
-
-updates(#channel_create_tx{}) ->
-    [].
 
 -spec round(tx()) -> non_neg_integer().
 round(#channel_create_tx{}) ->

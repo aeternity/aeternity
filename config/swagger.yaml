@@ -3221,14 +3221,14 @@ definitions:
           to:
             $ref: '#/definitions/EncodedHash'
             description: Receiver of tokens
-          am:
+          amount:
             type: integer
             description: Amount of tokens to transfer
             format: int64
         required:
           - from
           - to
-          - am
+          - amount
   OffChainWithdrawal:
     allOf:
       - $ref: '#/definitions/OffChainUpdate'
@@ -3237,13 +3237,13 @@ definitions:
           to:
             $ref: '#/definitions/EncodedHash'
             description: Withdrawer of tokens
-          am:
+          amount:
             type: integer
             description: Amount of tokens to withdraw
             format: int64
         required:
           - to
-          - am
+          - amount
   OffChainDeposit:
     allOf:
       - $ref: '#/definitions/OffChainUpdate'
@@ -3252,13 +3252,13 @@ definitions:
           from:
             $ref: '#/definitions/EncodedHash'
             description: Depositor of tokens
-          am:
+          amount:
             type: integer
             description: Amount of tokens to deposit
             format: int64
         required:
           - from
-          - am
+          - amount
   OffChainNewContract:
     allOf:
       - $ref: '#/definitions/OffChainUpdate'
