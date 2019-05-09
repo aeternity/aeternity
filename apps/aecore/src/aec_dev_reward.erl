@@ -54,14 +54,8 @@ beneficiaries() ->
 total_shares() ->
     ?TOTAL_SHARES.
 allocated_shares() ->
-    case env(dev_reward_allocated_shares, undefined) of
-        undefined ->
-            AllocShares = lists:foldl(fun ({_, X}, A) -> A + X end, 0, beneficiaries()),
-            application:set_env(aecore, dev_reward_allocated_shares, AllocShares),
-            AllocShares;
-        Res ->
-            Res
-    end.
+    {ok, V} = aeu_env:get_env(aecore, dev_reward_allocated_shares),
+    V.
 
 activated(Height) ->
     case env(dev_reward_activated, undefined) of %% for eunit to avoid mocking
