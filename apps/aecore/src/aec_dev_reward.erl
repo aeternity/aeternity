@@ -105,8 +105,8 @@ split(BeneficiaryReward1, BeneficiaryReward2, NewestNodeHeight) ->
         {true, true} ->
             AllocShares = allocated_shares(),
             TotalShares = total_shares(),
-            AbsContrib1 = BeneficiaryReward1 * AllocShares div TotalShares,
-            AbsContrib2 = BeneficiaryReward2 * AllocShares div TotalShares,
+            AbsContrib1 = (BeneficiaryReward1 * AllocShares) div TotalShares,
+            AbsContrib2 = (BeneficiaryReward2 * AllocShares) div TotalShares,
             DevContrib  = AbsContrib1 + AbsContrib2,
             {_, DevRewards} =
                 lists:foldl(
