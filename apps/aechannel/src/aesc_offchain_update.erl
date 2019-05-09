@@ -222,7 +222,7 @@ for_client(#create_contract{owner_id = OwnerId, vm_version  = VmVersion,
       <<"owner">>       => aeser_api_encoder:encode(id_hash, OwnerId),
       <<"vm_version">>  => VmVersion,
       <<"abi_version">> => ABIVersion,
-      <<"code">>        => Code,
+      <<"code">>        => aeser_api_encoder:encode(contract_bytearray, Code),
       <<"deposit">>     => Deposit,
       <<"call_data">>   => aeser_api_encoder:encode(contract_bytearray, CallData)};
 for_client(#call_contract{caller_id = CallerId, contract_id = ContractId,
