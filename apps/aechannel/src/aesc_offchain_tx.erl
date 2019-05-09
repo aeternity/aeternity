@@ -243,7 +243,7 @@ version(#channel_offchain_tx{updates = Updates}) ->
 valid_at_protocol(Protocol, Tx) ->
     case version(Tx) of
         ?INITIAL_VSN -> true;
-        ?NO_UPDATES_VSN when Protocol =:= ?FORTUNA_PROTOCOL_VSN -> true;
+        ?NO_UPDATES_VSN when Protocol >= ?FORTUNA_PROTOCOL_VSN -> true;
         _ -> false
     end.
 
