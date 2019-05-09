@@ -138,6 +138,7 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
              , trees       := Trees
              , tx_env      := TxEnv0
              , origin      := <<OriginAddr0:?PUB_SIZE/unit:8>>
+             , creator     := <<CreatorAddr:?PUB_SIZE/unit:8>>
              } = CallDef) ->
     OldContext = aetx_env:context(TxEnv0),
     TxEnv = aetx_env:set_context(TxEnv0, aetx_contract),
@@ -164,6 +165,7 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
              gas            => Gas,
              gasPrice       => GasPrice,
              origin         => OriginAddr,
+             creator        => CreatorAddr,
              value          => Value,
              call_stack     => CallStack
             },

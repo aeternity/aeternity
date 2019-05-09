@@ -159,6 +159,8 @@ primop_base_gas(?PRIM_CALL_ORACLE_EXTEND             ) -> 12000;
 primop_base_gas(?PRIM_CALL_ORACLE_GET_ANSWER         ) -> 12000;
 primop_base_gas(?PRIM_CALL_ORACLE_GET_QUESTION       ) -> 12000;
 primop_base_gas(?PRIM_CALL_ORACLE_QUERY_FEE          ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_CHECK              ) -> 5000;
+primop_base_gas(?PRIM_CALL_ORACLE_CHECK_QUERY        ) -> 5000;
 primop_base_gas(?PRIM_CALL_AENS_RESOLVE              ) -> 12000;
 primop_base_gas(?PRIM_CALL_AENS_PRECLAIM             ) -> 12000;
 primop_base_gas(?PRIM_CALL_AENS_CLAIM                ) -> 12000;
@@ -178,7 +180,10 @@ primop_base_gas(?PRIM_CALL_CRYPTO_SHA256             ) -> 30;
 primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B            ) -> 30;
 primop_base_gas(?PRIM_CALL_CRYPTO_SHA256_STRING      ) -> 30;
 primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B_STRING     ) -> 30;
-primop_base_gas(?PRIM_CALL_AUTH_TX_HASH              ) -> 0.
+primop_base_gas(?PRIM_CALL_AUTH_TX_HASH              ) -> 0;
+primop_base_gas(?PRIM_CALL_ADDR_IS_CONTRACT          ) -> 5000;
+primop_base_gas(?PRIM_CALL_ADDR_IS_ORACLE            ) -> 5000.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Naming system variables

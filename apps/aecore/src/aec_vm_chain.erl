@@ -19,6 +19,8 @@
           get_balance/2,
           get_store/1,
           set_store/2,
+          oracle_check/4,
+          oracle_check_query/5,
           oracle_extend_tx/3,
           oracle_extend/3,
           oracle_get_answer/3,
@@ -44,6 +46,8 @@
           aens_revoke/3,
           spend_tx/3,
           spend/2,
+          addr_is_contract/2,
+          addr_is_oracle/2,
           get_contract_fun_types/4
         ]).
 
@@ -459,6 +463,44 @@ oracle_response_format(Oracle, #state{trees = ChainTrees}) ->
             {error, no_such_oracle}
     end.
 
+oracle_check(Oracle, QFormat, RFormat, #state{trees = ChainTrees}) ->
+    Trees = get_on_chain_trees(ChainTrees),
+    case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
+        {value, O} ->
+            {ok, ChainRFormat} = oracle_typerep(aeo_oracles:abi_version(O),
+                                                aeo_oracles:response_format(O)),
+            {ok, ChainQFormat} = oracle_typerep(aeo_oracles:abi_version(O),
+                                                aeo_oracles:query_format(O)),
+            Equal = (QFormat == ChainQFormat) andalso (RFormat == ChainRFormat),
+            {ok, bool2word(Equal)};
+        none ->
+            {ok, bool2word(false)}
+    end.
+
+oracle_check_query(Oracle, Query, QFormat, RFormat, #state{trees = ChainTrees}) ->
+    Trees = get_on_chain_trees(ChainTrees),
+    OraclesTree = aec_trees:oracles(Trees),
+    case aeo_state_tree:lookup_query(Oracle, Query, OraclesTree) of
+        {value, _} ->
+            {value, O} = aeo_state_tree:lookup_oracle(Oracle, OraclesTree),
+            {ok, ChainRFormat} = oracle_typerep(aeo_oracles:abi_version(O),
+                                                aeo_oracles:response_format(O)),
+            {ok, ChainQFormat} = oracle_typerep(aeo_oracles:abi_version(O),
+                                                aeo_oracles:query_format(O)),
+            ABIVersion         = aeo_oracles:abi_version(O),
+            case ABIVersion of
+                ?ABI_NO_VM -> %% Question/Response is non-sophia string
+                    Equal = string == QFormat andalso string == ChainQFormat andalso
+                            string == RFormat andalso string == ChainRFormat,
+                    {ok, bool2word(Equal)};
+                _Other ->
+                    Equal = (QFormat == ChainQFormat) andalso (RFormat == ChainRFormat),
+                    {ok, bool2word(Equal)}
+            end;
+        none ->
+            {ok, bool2word(false)}
+    end.
+
 oracle_typerep(?ABI_NO_VM,_BinaryFormat) ->
     %% Treat this as a string
     {ok, string};
@@ -469,6 +511,15 @@ oracle_typerep(?ABI_AEVM_SOPHIA_1, BinaryFormat) ->
     catch
         _:_ -> {error, bad_typerep}
     end.
+
+%%    Address
+addr_is_contract(Addr, #state{ trees = CTrees }) ->
+    Trees = get_on_chain_trees(CTrees),
+    {ok, bool2word(aect_state_tree:is_contract(Addr, aec_trees:contracts(Trees)))}.
+
+addr_is_oracle(Addr, #state{ trees = CTrees }) ->
+    Trees = get_on_chain_trees(CTrees),
+    {ok, bool2word(aeo_state_tree:is_oracle(Addr, aec_trees:oracles(Trees)))}.
 
 check_account_signature(AKey, Signature, #state{ account = CKey } = State) ->
     check_signature(AKey, CKey, <<AKey/binary, CKey/binary>>, Signature, State).
@@ -824,3 +875,6 @@ binary_to_error(<<"unknown_error">>) -> unknown_error;
 binary_to_error(E) ->
     ?DEBUG_LOG("**** Unknown error: ~p\n", [E]),
     unknown_error.
+
+bool2word(false) -> 0;
+bool2word(true)  -> 1.

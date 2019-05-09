@@ -106,6 +106,7 @@ make_call_def(OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amount,
     , off_chain       => true
     , on_chain_trees  => OnChainTrees
     , origin          => OwnerPubKey
+    , creator         => OwnerPubKey
     }.
 
 

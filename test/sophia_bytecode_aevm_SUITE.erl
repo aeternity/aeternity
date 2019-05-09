@@ -52,6 +52,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
                           gas => 1000000,
                           gasPrice => 1,
                           origin => 0,
+                          creator => 0,
                           value => 0 },
                env => #{currentCoinbase => 0,
                         currentDifficulty => 0,

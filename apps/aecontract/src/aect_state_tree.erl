@@ -17,6 +17,7 @@
         , get_contract/3
         , insert_contract/2
         , enter_contract/2
+        , is_contract/2
         , lookup_contract/2
         , lookup_contract/3
         , new_with_backend/1
@@ -160,6 +161,12 @@ add_store(Contract, CtTree) ->
     Store = aect_contracts_store:new(Subtree),
     aect_contracts:set_state(Store, Contract).
 
+-spec is_contract(aect_contracts:pubkey(), tree()) -> boolean().
+is_contract(Pubkey, #contract_tree{ contracts = CtTree }) ->
+    case aeu_mtrees:lookup(Pubkey, CtTree) of
+        {value, _} -> true;
+        none       -> false
+    end.
 
 -spec lookup_contract(aect_contracts:pubkey(), tree()) -> {value, aect_contracts:contract()} | none.
 lookup_contract(Pubkey, Tree) ->

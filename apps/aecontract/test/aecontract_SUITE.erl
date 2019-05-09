@@ -120,6 +120,7 @@
         , sophia_namespaces/1
         , sophia_too_little_gas_for_mem/1
         , sophia_bytes/1
+        , sophia_address_checks/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -235,6 +236,7 @@ groups() ->
                                  sophia_heap_to_heap_bug,
                                  sophia_namespaces,
                                  sophia_bytes,
+                                 sophia_address_checks,
                                  sophia_too_little_gas_for_mem
                                ]}
     , {sophia_oracles_ttl, [],
@@ -4081,6 +4083,67 @@ sophia_bytes(_Cfg) ->
                              {Fun, A, B, ?call(call_contract, Acc, C, Fun, bool, {A, B})})
             end,
     [ Test(Op, W, A, B) || W <- [16, 32, 47, 64, 65], Op <- [eq, ne], A <- Bytes(W), B <- Bytes(W) ],
+    ok.
+
+sophia_address_checks(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_3, address_checks_not_in_minerva),
+    state(aect_test_utils:new_state()),
+    Acc  = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    C1   = ?call(create_contract, Acc, address_checks, {}),
+    C2   = ?call(create_contract, Acc, address_checks, {}),
+
+    false = ?call(call_contract, Acc, C1, is_c, bool, Acc),
+    true  = ?call(call_contract, Acc, C1, is_c, bool, C1),
+    true  = ?call(call_contract, Acc, C1, is_c, bool, C2),
+
+    false = ?call(call_contract, Acc, C2, is_c, bool, Acc),
+    true  = ?call(call_contract, Acc, C2, is_c, bool, C1),
+    true  = ?call(call_contract, Acc, C2, is_c, bool, C2),
+
+    ?call(call_contract, Acc, C1, register1, word, {}),
+    false = ?call(call_contract, Acc, C1, is_o, bool, Acc),
+    true  = ?call(call_contract, Acc, C1, is_o, bool, C1),
+    false = ?call(call_contract, Acc, C1, is_o, bool, C2),
+
+    ?call(call_contract, Acc, C2, register2, word, {}),
+    false = ?call(call_contract, Acc, C2, is_o, bool, Acc),
+    true  = ?call(call_contract, Acc, C2, is_o, bool, C1),
+    true  = ?call(call_contract, Acc, C2, is_o, bool, C2),
+
+    false = ?call(call_contract, Acc, C2, check_o1, bool, Acc),
+    true  = ?call(call_contract, Acc, C2, check_o1, bool, C1),
+    false = ?call(call_contract, Acc, C2, check_o1, bool, C2),
+
+    false = ?call(call_contract, Acc, C1, check_o2, bool, Acc),
+    false = ?call(call_contract, Acc, C1, check_o2, bool, C1),
+    true  = ?call(call_contract, Acc, C1, check_o2, bool, C2),
+
+    OQ11 = ?call(call_contract, Acc, C1, query1, word, {C1, <<"foo">>}),
+    OQ12 = ?call(call_contract, Acc, C2, query1, word, {C1, <<"bar">>}),
+
+    OQ21 = ?call(call_contract, Acc, C1, query2, word, {C2, {12, 13}}),
+    OQ22 = ?call(call_contract, Acc, C2, query2, word, {C2, {13, 14}}),
+
+    %% Check that neither accounts nor contracts pass as queries
+    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, Fun, bool, {X, X}))
+      || Cx <- [C1, C2], Fun <- [check_oq1, check_oq2], X <- [Acc, C1, C2] ],
+
+    %% Check that queries from oracle 1 does not pass as query 2
+    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, check_oq2, bool, {C1, X}))
+      || Cx <- [C1, C2], X <- [<<OQ11:256>>, <<OQ12:256>>] ],
+
+    %% Check that queries from oracle 2 does not pass as query 1
+    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, check_oq1, bool, {C2, X}))
+      || Cx <- [C1, C2], X <- [<<OQ21:256>>, <<OQ22:256>>] ],
+
+    %% Check that queries from oracle 1 does pass as query 1
+    [ ?assertEqual(true, ?call(call_contract, Acc, Cx, check_oq1, bool, {C1, X}))
+      || Cx <- [C1, C2], X <- [<<OQ11:256>>, <<OQ12:256>>] ],
+
+    %% Check that queries from oracle 2 does pass as query 2
+    [ ?assertEqual(true, ?call(call_contract, Acc, Cx, check_oq2, bool, {C2, X}))
+      || Cx <- [C1, C2], X <- [<<OQ21:256>>, <<OQ22:256>>] ],
+
     ok.
 
 

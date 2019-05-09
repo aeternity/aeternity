@@ -214,8 +214,9 @@ get_config({DirPath, TestName,_Opts}) ->
                   , vm_version => ?VM_AEVM_SOLIDITY_1
                   , abi_version => ?ABI_SOLIDITY_1
                   },
+    maps:update_with(exec, fun(Exec) -> maps:merge(#{creator => undefined}, Exec) end,
     maps:update_with(env, fun(Env) -> maps:merge(DefaultEnv, Env) end,
-                     TestConfig).
+                     TestConfig)).
 
 get_config_file(DirPath, TestName) ->
     FileName = config_filename(DirPath, TestName),

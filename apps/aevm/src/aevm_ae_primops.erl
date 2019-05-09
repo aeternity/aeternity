@@ -18,7 +18,7 @@
 -include("../../aecontract/include/aecontract.hrl").
 -include("aevm_ae_primops.hrl").
 
--record(chain, {api, state, abi_version}).
+-record(chain, {api, state, abi_version, vm_version}).
 
 -ifdef(COMMON_TEST).
 -define(TEST_LOG(Format, Data),
@@ -71,7 +71,8 @@ call_(Gas, Value, Data, StateIn) ->
             true ->
                 ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
                                  state = aevm_eeevm_state:chain_state(StateIn),
-                                 abi_version = aevm_eeevm_state:abi_version(StateIn)
+                                 abi_version = aevm_eeevm_state:abi_version(StateIn),
+                                 vm_version  = aevm_eeevm_state:vm_version(StateIn)
                                 },
                 case call_primop(PrimOp, Value, Data, ChainIn) of
                     {error, _} = Err ->
@@ -112,7 +113,10 @@ call_primop(PrimOp, Value, Data, State)
     oracle_call(PrimOp, Value, Data, State);
 call_primop(PrimOp, Value, Data, State)
   when ?PRIM_CALL_IN_AENS_RANGE(PrimOp) ->
-    aens_call(PrimOp, Value, Data, State).
+    aens_call(PrimOp, Value, Data, State);
+call_primop(PrimOp, Value, Data, State)
+  when ?PRIM_CALL_IN_ADDRESS_RANGE(PrimOp) ->
+     address_call(PrimOp, Value, Data, State).
 
 is_local_primop(Data) ->
     aeb_primops:is_local_primop_op(get_primop(Data)).
@@ -196,6 +200,10 @@ types(?PRIM_CALL_ORACLE_RESPOND, HeapValue, Store, State) ->
         {error, _} ->
             {[], tuple0_t()}
     end;
+types(?PRIM_CALL_ORACLE_CHECK,_HeapValue,_Store,_State) ->
+    {[word, typerep, typerep], word};
+types(?PRIM_CALL_ORACLE_CHECK_QUERY,_HeapValue,_Store,_State) ->
+    {[word, word, typerep, typerep], word};
 types(?PRIM_CALL_SPEND,_HeapValue,_Store,_State) ->
     {[word], tuple0_t()};
 types(?PRIM_CALL_CRYPTO_ECVERIFY, _HeapValue, _Store, _State) ->
@@ -214,6 +222,10 @@ types(?PRIM_CALL_CRYPTO_BLAKE2B_STRING, _HeapValue, _Store, _State) ->
     {[string], word};
 types(?PRIM_CALL_AUTH_TX_HASH, _HeapValue, _Store, _State) ->
     {[], option_t(word)};
+types(?PRIM_CALL_ADDR_IS_CONTRACT, _HeapValue, _Store, _State) ->
+    {[word], word};
+types(?PRIM_CALL_ADDR_IS_ORACLE, _HeapValue, _Store, _State) ->
+    {[word], word};
 types(_, _, _, _) ->
     {[], tuple0_t()}.
 
@@ -287,6 +299,12 @@ oracle_call(?PRIM_CALL_ORACLE_GET_QUESTION, Value, Data, State) ->
     oracle_call_get_question(Value, Data, State);
 oracle_call(?PRIM_CALL_ORACLE_QUERY_FEE, Value, Data, State) ->
     oracle_call_query_fee(Value, Data, State);
+oracle_call(?PRIM_CALL_ORACLE_CHECK, Value, Data, State = #chain{ vm_version = VM })
+        when ?IS_AEVM_SOPHIA(VM), VM >= ?VM_AEVM_SOPHIA_3 ->
+    oracle_call_check(Value, Data, State);
+oracle_call(?PRIM_CALL_ORACLE_CHECK_QUERY, Value, Data, State = #chain{ vm_version = VM })
+        when ?IS_AEVM_SOPHIA(VM), VM >= ?VM_AEVM_SOPHIA_3 ->
+    oracle_call_check_query(Value, Data, State);
 oracle_call(PrimOp, _, _, _) ->
     {error, {illegal_oracle_primop_call, PrimOp}}.
 
@@ -457,6 +475,21 @@ oracle_call_query_fee(_Value, Data, State) ->
     Callback = fun(API, ChainState) -> API:oracle_query_fee(<<Oracle:256>>, ChainState) end,
     no_dynamic_gas(fun() -> query_chain(Callback, State) end).
 
+
+oracle_call_check(_Value, Data, State) ->
+    [Oracle, QFormat, RFormat] = get_args([word, typerep, typerep], Data),
+    Callback = fun(API, ChainState) -> API:oracle_check(<<Oracle:256>>, QFormat, RFormat, ChainState) end,
+    no_dynamic_gas(fun() -> query_chain(Callback, State) end).
+
+
+oracle_call_check_query(_Value, Data, State) ->
+    [Oracle, Query, QFormat, RFormat] = get_args([word, word, typerep, typerep], Data),
+    Callback = fun(API, ChainState) ->
+                   API:oracle_check_query(<<Oracle:256>>, <<Query:256>>, QFormat,
+                                          RFormat, ChainState)
+               end,
+    no_dynamic_gas(fun() -> query_chain(Callback, State) end).
+
 %% ------------------------------------------------------------------
 %% AENS operations.
 %% ------------------------------------------------------------------
@@ -516,6 +549,28 @@ aens_call_revoke(Data, #chain{api = API, state = State} = Chain) ->
             no_dynamic_gas(fun() -> cast_chain(Callback, Chain) end);
         {error, _} = Err -> Err
     end.
+
+
+
+%% ------------------------------------------------------------------
+%% Address operations.
+%% ------------------------------------------------------------------
+address_call(Op, _Value, Data, State = #chain{ vm_version = VMVersion })
+        when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_3 ->
+    address_call(Op, Data, State);
+address_call(_, _, _, _) ->
+    {error, out_of_gas}.
+
+address_call(?PRIM_CALL_ADDR_IS_ORACLE, Data, State) ->
+    [Addr] = get_args([word], Data),
+    Callback = fun(API, ChainState) -> API:addr_is_oracle(<<Addr:256>>, ChainState) end,
+    no_dynamic_gas(fun() -> query_chain(Callback, State) end);
+address_call(?PRIM_CALL_ADDR_IS_CONTRACT, Data, State) ->
+    [Addr] = get_args([word], Data),
+    Callback = fun(API, ChainState) -> API:addr_is_contract(<<Addr:256>>, ChainState) end,
+    no_dynamic_gas(fun() -> query_chain(Callback, State) end);
+address_call(_, _, _) ->
+    {error, out_of_gas}.
 
 %% ------------------------------------------------------------------
 %% Auth operations.

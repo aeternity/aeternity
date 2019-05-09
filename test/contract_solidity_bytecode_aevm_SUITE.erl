@@ -230,6 +230,7 @@ do_execute_call(#{ code := Code
                     , gasPrice => GasPrice
                     , origin => Origin
                     , value => Value
+                    , creator => undefined %% Not in solidity VM
                     },
            env => #{ currentCoinbase => CoinBase
                    , currentDifficulty => Difficulty
