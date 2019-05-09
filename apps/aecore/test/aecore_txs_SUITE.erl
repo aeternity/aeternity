@@ -93,17 +93,14 @@ txs_gc(Config) ->
     Height1 = Height0 + length(Blocks1), %% Very unlikely to be > 6...
 
     %% At Height1 there should be 4 transactions in mempool
-    case Height1 of
-        2                -> pool_check(N1, 4);
-        HH1 when HH1 > 2 -> ct:log("Skipping assert; micro fork advanced height to far...")
-    end,
+    pool_check(N1, 4, {Height1, 2}),
 
     %% Mine 1 more key block to ensure one TX is GC:ed.
     aecore_suite_utils:mine_key_blocks(N1, 1),
     Height2 = Height1 + 1,
 
     %% Now at Height2 there should be 3 transactions in mempool - _GC1 is GC:ed
-    pool_check(N1, 3),
+    pool_check(N1, 3, {Height2, 6}),
 
     %% Add the missing tx
     {ok, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  10), %% consecutive nonce
@@ -113,10 +110,7 @@ txs_gc(Config) ->
     Height3 = Height2 + length(Blocks2),
 
     %% Now if at height 5 or 6 there should be 2 transactions in mempool
-    case Height3 of
-        HH3 when HH3 =<6 -> pool_check(N1, 2);
-        HH3 when HH3 > 6 -> ct:log("Skipping assert; micro fork advanced height to far...")
-    end,
+    pool_check(N1, 2, {Height3, 6}),
 
     %% Mine 1 more key block if Height is 5 ensure one TX should be GC:ed.
     [ aecore_suite_utils:mine_key_blocks(N1, 7 - Height3) || Height3 < 7 ],
@@ -124,10 +118,7 @@ txs_gc(Config) ->
     Height4 = max(Height3, 7),
 
     %% Now there should be 1 transaction in mempool
-    case Height4 of
-        7                -> pool_check(N1, 1);
-        HH4 when HH4 > 7 -> ct:log("Skipping assert; micro fork advanced height to far...")
-    end,
+    pool_check(N1, 1, {Height4, 7}),
 
     %% Mine 2 more blocks then all TXs should be GC:ed. Height>=10
     aecore_suite_utils:mine_key_blocks(N1, 3),
@@ -138,9 +129,14 @@ txs_gc(Config) ->
     ok = aecore_suite_utils:check_for_logs([dev1], Config).
 
 pool_check(Node, ExpectedNTxs) ->
-    pool_check(Node, ExpectedNTxs, 5).
+    pool_check_(Node, ExpectedNTxs, 5).
 
-pool_check(Node, ExpectedNTxs, Retries) ->
+pool_check(_Node, _ExpectedNTxs, {Height, MaxHeight}) when Height > MaxHeight ->
+    ct:log("Skipping assert; micro fork advanced height to far...");
+pool_check(Node, ExpectedNTxs, _) ->
+    pool_check_(Node, ExpectedNTxs, 5).
+
+pool_check_(Node, ExpectedNTxs, Retries) ->
     {ok, Txs} = pool_peek(Node),
     ct:log("pool_check: pool has ~p TXs, expected ~p\n", [length(Txs), ExpectedNTxs]),
     case ExpectedNTxs == length(Txs) of
@@ -153,7 +149,7 @@ pool_check(Node, ExpectedNTxs, Retries) ->
             ct:fail({pool_check_failed, {expected, ExpectedNTxs, got, length(Txs)}});
         _ ->
             timer:sleep(500),
-            pool_check(Node, ExpectedNTxs, Retries - 1)
+            pool_check_(Node, ExpectedNTxs, Retries - 1)
     end.
 
 pool_peek(Node) ->
