@@ -383,6 +383,7 @@
                         "description" : "Public keys belonging to protocol maintainers with reward shares (100 is 10%).",
                         "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+$"
                     },
+                    "minItems": 1,
                     "default" : ["ak_2uN1CEVGs4D5QnFudhp8dSqrwJEMFiTfwvbCK3SJzVYRDiusfd:100"]
                 }
             }
