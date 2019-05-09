@@ -49,6 +49,7 @@
         , get_mining_state/0
         , get_mining_workers/0
         , start_mining/0
+        , start_mining/1
         , stop_mining/0
         , is_leader/0
         , get_beneficiary/0
@@ -111,7 +112,11 @@ get_miner_instances() ->
 
 -spec start_mining() -> 'ok'.
 start_mining() ->
-    gen_server:call(?SERVER, start_mining).
+    start_mining(#{}).
+
+-spec start_mining(mining_opts()) -> 'ok'.
+start_mining(Opts) when is_map(Opts) ->
+    gen_server:call(?SERVER, {start_mining, Opts}).
 
 -spec stop_mining() -> 'ok'.
 stop_mining() ->
@@ -243,15 +248,16 @@ handle_call(stop_mining,_From, State = #state{ consensus = Cons }) ->
     State2 = State1#state{mining_state = 'stopped',
                           key_block_candidates = undefined},
     {reply, ok, create_key_block_candidate(State2)};
-handle_call(start_mining,_From, #state{mining_state = 'running'} = State) ->
-    epoch_mining:info("Mining running"),
+handle_call({start_mining, _Opts},_From, #state{mining_state = 'running'} = State) ->
+    epoch_mining:info("Mining running: ~p" ++ print_opts(State)),
     {reply, ok, State};
-handle_call(start_mining,_From, State = #state{ beneficiary = undefined }) ->
+handle_call({start_mining, _Opts},_From, State = #state{ beneficiary = undefined }) ->
     epoch_mining:error("Cannot start mining - beneficiary not configured"),
     {reply, {error, beneficiary_not_configured}, State};
-handle_call(start_mining,_From, State = #state{ consensus = Cons }) ->
-    epoch_mining:info("Mining started"),
-    State1 = start_mining(State#state{mining_state = 'running', consensus = Cons#consensus{leader = false}}),
+handle_call({start_mining, Opts},_From, State = #state{ consensus = Cons }) ->
+    epoch_mining:info("Mining started" ++ print_opts(State)),
+    State1 = start_mining_(State#state{mining_state = 'running', consensus = Cons#consensus{leader = false},
+                                      mining_opts = Opts}),
     {reply, ok, State1};
 handle_call(get_mining_state,_From, State) ->
     {reply, State#state.mining_state, State};
@@ -274,11 +280,11 @@ handle_call(reinit_chain, _From, State1 = #state{ consensus = Cons }) ->
                 epoch_mining:info("Mining stopped"),
                 State3 = kill_all_workers(State2),
                 hard_reset_block_generator(),
-                epoch_mining:info("Mining started"),
-                start_mining(State3#state{mining_state = running,
-                                          micro_block_candidate = undefined,
-                                          key_block_candidates = undefined,
-                                          consensus = Cons#consensus{leader = false}})
+                epoch_mining:info("Mining started" ++ print_opts(State3)),
+                start_mining_(State3#state{mining_state = running,
+                                           micro_block_candidate = undefined,
+                                           key_block_candidates = undefined,
+                                           consensus = Cons#consensus{leader = false}})
         end,
     {reply, ok, State};
 handle_call(Request, _From, State) ->
@@ -302,7 +308,7 @@ handle_info({gproc_ps_event, candidate_block, #{info := new_candidate}}, State) 
             {noreply, State#state{ micro_block_candidate = undefined }}
     end;
 handle_info(init_continue, State) ->
-    {noreply, start_mining(State)};
+    {noreply, start_mining_(State)};
 handle_info({worker_reply, Pid, Res}, State) ->
     State1 = handle_worker_reply(Pid, Res, State),
     {noreply, State1};
@@ -324,6 +330,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+print_opts(#state{ mining_opts = Opts }) ->
+    case map_size(Opts) of
+        0 ->
+            "";
+        _ ->
+            lists:flatten(io_lib:fwrite(": ~p", [Opts]))
+    end.
 
 try_fetch_and_make_candidate() ->
     case aec_block_generator:get_candidate() of
@@ -404,7 +418,7 @@ handle_monitor_message(Ref, Pid, Why, State) ->
             State1 = state_cleanup_after_worker(State, Tag, Pid),
             State2 = maybe_unblock_tag(Tag, State1),
             State3 = erase_worker(Pid, State2),
-            start_mining(State3)
+            start_mining_(State3)
     end.
 
 %%%===================================================================
@@ -750,7 +764,7 @@ wait_for_keys_worker(N) ->
     end.
 
 handle_wait_for_keys_reply(keys_ready, State) ->
-    start_mining(State#state{keys_ready = true});
+    start_mining_(State#state{keys_ready = true});
 handle_wait_for_keys_reply(timeout, State) ->
     %% TODO: We should probably die hard at some point instead of retrying.
     epoch_mining:error("Timed out waiting for keys. Retrying."),
@@ -759,24 +773,25 @@ handle_wait_for_keys_reply(timeout, State) ->
 %%%===================================================================
 %%% Worker: Start mining
 
-start_mining(#state{keys_ready = false} = State) ->
+start_mining_(#state{keys_ready = false} = State) ->
     %% We need to get the keys first
     wait_for_keys(State);
-start_mining(#state{key_block_candidates = undefined,
+start_mining_(#state{key_block_candidates = undefined,
                     beneficiary         = Beneficiary} = State) when Beneficiary =/= undefined ->
     %% If the mining is turned off and beneficiary is configured,
     %% the key block candidate is still created, but not mined.
     %% The candidate can be retrieved via the API and other nodes can mine it.
     State1 = kill_all_workers_with_tag(create_key_block_candidate, State),
     create_key_block_candidate(State1);
-start_mining(#state{mining_state = stopped} = State) ->
+start_mining_(#state{mining_state = stopped} = State) ->
     State;
-start_mining(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}} | _],
+start_mining_(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}} | _],
                     top_block_hash = TopHash } = State) when OldHash =/= TopHash ->
     %% Candidate generated with stale top hash.
     %% Regenerate the candidate.
+    epoch_mining:info("Key block candidate for old top hash; regenerating"),
     create_key_block_candidate(State);
-start_mining(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]} = State) ->
+start_mining_(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]} = State) ->
     case available_miner_instance(State) of
         none -> State;
         Instance ->
@@ -796,7 +811,7 @@ start_mining(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]
             {State2, Pid} = dispatch_worker(mining, Fun, State1),
             State3 = register_miner_instance(Instance, Pid, State2),
             epoch_mining:info("Miner ~p started", [Pid]),
-            start_mining(State3)
+            start_mining_(State3)
     end.
 
 register_miner(Candidate = #candidate{refs  = Refs}, Nonce, MinerConfig) ->
@@ -806,7 +821,7 @@ register_miner(Candidate = #candidate{refs  = Refs}, Nonce, MinerConfig) ->
 
 handle_mining_reply(_Reply, #state{key_block_candidates = undefined} = State) ->
     %% Something invalidated the block candidates already.
-    start_mining(State);
+    start_mining_(State);
 handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
     Candidates = State#state.key_block_candidates,
     %% Check that the solution is for one of the valid candidates.
@@ -820,12 +835,12 @@ handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
                     State2;
                 {{error, Reason}, State2} ->
                     epoch_mining:error("Block insertion failed: ~p.", [Reason]),
-                    start_mining(State2)
+                    start_mining_(State2)
             end;
         undefined ->
             %% This mining effort was for an earlier block candidate.
             epoch_mining:error("Found solution for old block", []),
-            start_mining(State)
+            start_mining_(State)
     end;
 handle_mining_reply({{error, no_solution}, HeaderBin}, State) ->
     aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
@@ -843,7 +858,7 @@ handle_mining_reply({{error, {runtime, Reason}}, HeaderBin}, State) ->
 
 retry_mining(S = #state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]}, HeaderBin) ->
     Candidate1 = Candidate#candidate{refs = Candidate#candidate.refs - 1},
-    start_mining(S#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]});
+    start_mining_(S#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]});
 retry_mining(S = #state{key_block_candidates = Candidates}, HeaderBin) when is_list(Candidates) ->
     case proplists:get_value(HeaderBin, Candidates) of
         undefined ->
@@ -927,7 +942,7 @@ create_key_block_candidate(#state{beneficiary = undefined} = State) ->
 create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_hash = TopHash}} | _],
                                   top_block_hash       = TopHash} = State) ->
     %% We have the most recent candidate already. Just start mining.
-    start_mining(State);
+    start_mining_(State);
 create_key_block_candidate(#state{top_block_hash = TopHash,
                                   beneficiary    = Beneficiary} = State) ->
     epoch_mining:info("Creating key block candidate on the top"),
@@ -950,13 +965,13 @@ handle_key_block_candidate_reply({{ok, KeyBlockCandidate}, TopHash},
                      _         -> [{HeaderBin, Candidate} | Candidates0]
                  end,
     State1 = State#state{key_block_candidates = Candidates},
-    start_mining(State1);
+    start_mining_(State1);
 handle_key_block_candidate_reply({{ok, _KeyBlockCandidate}, _OldTopHash},
                                  #state{top_block_hash = _TopHash} = State) ->
     epoch_mining:debug("Created key block candidate is already stale, create a new one", []),
     create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, key_not_found}, _}, State) ->
-    start_mining(State#state{keys_ready = false});
+    start_mining_(State#state{keys_ready = false});
 handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
     epoch_mining:error("Creation of key block candidate failed: ~p", [Reason]),
     create_key_block_candidate(State).
@@ -979,19 +994,20 @@ handle_post_block(Block, State) ->
     end.
 
 handle_mined_block(Block, State) ->
-    epoch_mining:info("Block mined: Height = ~p; Hash = ~s",
+    epoch_mining:info("Block mined: Height = ~p; Hash = ~p",
                       [aec_blocks:height(Block),
-                       as_hex(aec_blocks:root_hash(Block))]),
+                       ok(aec_blocks:hash_internal_representation(Block))]),
     handle_add_block(Block, State, block_created).
 
 handle_signed_block(Block, State) ->
-    epoch_mining:info("Block signed: Height = ~p; Hash = ~s",
+    epoch_mining:info("Block signed: Height = ~p; Hash = ~p",
                       [aec_blocks:height(Block),
-                       as_hex(aec_blocks:root_hash(Block))]),
+                       ok(aec_blocks:hash_internal_representation(Block))]),
     handle_add_block(Block, State, micro_block_created).
 
-as_hex(S) ->
-    [io_lib:format("~2.16.0b", [X]) || <<X:8>> <= S].
+ok({ok, Value}) ->
+    Value.
+
 
 handle_add_block(Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(Block),
@@ -999,6 +1015,19 @@ handle_add_block(Block, #state{} = State, Origin) ->
 
 handle_add_block(Header, Block, State, Origin) ->
     {ok, Hash} = aec_headers:hash_header(Header),
+    Prev = aec_headers:prev_hash(Header),
+    StrictlyFollow = maps:get(strictly_follow_top, State#state.mining_opts, false),
+    case {StrictlyFollow, Prev =:= State#state.top_block_hash} of
+        {true, false} when Origin =:= block_created;
+                           Origin =:= micro_block_created ->
+            epoch_mining:info("Mined block has old top - discarding (~p)", [Hash]),
+            {{error, obsolete}, State};
+        _ ->
+            handle_add_block(Block, Hash, Prev, State, Origin)
+    end.
+
+handle_add_block(Block, Hash, Prev, State, Origin) ->
+    epoch_mining:info("trying to add block (hash=~p, prev=~p)", [Hash, Prev]),
     case aec_chain:has_block(Hash) of
         true ->
             epoch_mining:debug("Block already in chain", []),
@@ -1087,7 +1116,7 @@ setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) 
                 State1
         end,
     case RestartMining of
-        true  -> start_mining(State2);
+        true  -> start_mining_(State2);
         false -> State2
     end.
 

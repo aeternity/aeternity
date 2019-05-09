@@ -24,10 +24,13 @@
          expected_mine_rate/0,
          mine_blocks/2,
          mine_blocks/3,
+         mine_blocks/4,
          mine_all_txs/2,
          mine_blocks_until_txs_on_chain/3,
          mine_key_blocks/2,
+         mine_key_blocks/3,
          mine_micro_blocks/2,
+         mine_micro_blocks/3,
          wait_for_height/2,
          flush_new_blocks/0,
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
@@ -222,26 +225,35 @@ expected_mine_rate() ->
     ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE.
 
 mine_key_blocks(Node, NumBlocksToMine) ->
-    mine_blocks(Node, NumBlocksToMine, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, key).
+    mine_key_blocks(Node, NumBlocksToMine, #{}).
+
+mine_key_blocks(Node, NumBlocksToMine, Opts) ->
+    mine_blocks(Node, NumBlocksToMine, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, key, Opts).
 
 mine_micro_blocks(Node, NumBlocksToMine) ->
-    mine_blocks(Node, NumBlocksToMine, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, micro).
+    mine_micro_blocks(Node, NumBlocksToMine, #{}).
+
+mine_micro_blocks(Node, NumBlocksToMine, Opts) ->
+    mine_blocks(Node, NumBlocksToMine, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, micro, Opts).
 
 mine_blocks(Node, NumBlocksToMine) ->
-    mine_blocks(Node, NumBlocksToMine, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, any).
+    mine_blocks(Node, NumBlocksToMine, #{}).
 
-mine_blocks(Node, NumBlocksToMine, MiningRate) ->
-    mine_blocks(Node, NumBlocksToMine, MiningRate, any).
+mine_blocks(Node, NumBlocksToMine, Opts) when is_map(Opts) ->
+    mine_blocks(Node, NumBlocksToMine, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, any, Opts).
 
-mine_blocks(Node, NumBlocksToMine, MiningRate, Type) ->
+mine_blocks(Node, NumBlocksToMine, MiningRate, Opts) ->
+    mine_blocks(Node, NumBlocksToMine, MiningRate, any, Opts).
+
+mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
     ok = rpc:call(
            Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
            5000),
     [] = flush_new_blocks(),
     aecore_suite_utils:subscribe(Node, block_created),
     aecore_suite_utils:subscribe(Node, micro_block_created),
-    StartRes = rpc:call(Node, aec_conductor, start_mining, [], 5000),
-    ct:log("aec_conductor:start_mining() (~p) -> ~p", [Node, StartRes]),
+    StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
+    ct:log("aec_conductor:start_mining(~p) (~p) -> ~p", [Opts, Node, StartRes]),
     Res = mine_blocks_loop(NumBlocksToMine, Type),
     StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
     ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
@@ -322,7 +334,7 @@ mine_blocks_loop(Cnt, Type) ->
 
 mine_blocks_loop(Blocks, 0,_Type) ->
     {ok, Blocks};
-mine_blocks_loop(Blocks, BlocksToMine, Type) ->
+mine_blocks_loop(Blocks, BlocksToMine, Type) when is_integer(BlocksToMine), BlocksToMine > 0 ->
     {ok, Block} = wait_for_new_block(),
     case aec_blocks:type(Block) of
         micro when Type =:= key ->
@@ -781,7 +793,7 @@ default_config(N, Config) ->
           #{<<"dir">> => iolist_to_binary(keys_dir(N, Config)),
             <<"peer_password">> => iolist_to_binary(io_lib:format("~w.~w.~w", [A,B,C]))},
       <<"logging">> =>
-          #{<<"hwm">> => 500},
+          #{<<"hwm">> => 5000},
       <<"mining">> =>
           #{<<"autostart">> => false,
             <<"beneficiary">> => aeser_api_encoder:encode(account_pubkey, PubKey),
