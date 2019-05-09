@@ -429,7 +429,6 @@ loop(CP, StateIn) ->
                 ?CREATOR ->
                     %% 0x2f Creator δ=0 α=1
                     %% Get address of contract creator.
-                    %% µ's[0] ≡ Ia
                     Arg = aevm_eeevm_state:creator(State0),
                     State1 = push(Arg, State0),
                     next_instruction(CP, State, State1);
