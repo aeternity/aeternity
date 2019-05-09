@@ -1,0 +1,18 @@
+#!/bin/sh
+
+## Script printing human-readable time reported by miner in key block at specified height.
+
+function human_time_s() {
+  erl -milliseconds "${1:?}" -noinput -eval '
+{ok, [[MsS]]} = init:get_argument(milliseconds),
+Ms = list_to_integer(MsS),
+HumanReadableString = calendar:system_time_to_rfc3339(Ms, [{offset, "Z"}, {unit, millisecond}]), %% OTP >= 21.0
+io:fwrite("~s~n", [HumanReadableString]),
+init:stop().'
+}
+
+ApiAddress="${1:?}"
+ExtApiPort=3013
+KeyBlockHeight="${2:?}"
+
+human_time_s "$(curl -sS http://${ApiAddress:?}:${ExtApiPort:?}/v2/key-blocks/height/${KeyBlockHeight:?} | jq .time)"

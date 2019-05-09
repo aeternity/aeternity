@@ -20,6 +20,11 @@ minerva_accounts_test_() ->
                   fun ?TEST_MODULE:minerva_accounts/0,
                   minerva_accounts_file_missing).
 
+fortuna_accounts_test_() ->
+    release_based(?ROOT_DIR ++ "/.fortuna",
+                  fun ?TEST_MODULE:fortuna_accounts/0,
+                  fortuna_accounts_file_missing).
+
 release_based(Dir, ReadAccountsFun, MissingErr) ->
     {foreach,
      fun() ->
