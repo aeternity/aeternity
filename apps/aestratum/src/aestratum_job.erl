@@ -15,7 +15,8 @@
          error_shares/1,
          is_submitted/1,
          solve_time/1,
-         make_id/3
+         make_id/3,
+         status/1
         ]).
 
 -export([add_share/2,
@@ -146,6 +147,28 @@ solve_time(#job{max_solve_time = MaxSolveTime, shares = []}) ->
 -spec make_id(block_hash(), block_version(), block_target()) -> term(). %% TODO
 make_id(BlockHash, BlockVersion, BlockTarget) ->
     make_id1(BlockHash, BlockVersion, BlockTarget).
+
+-spec status(job()) -> map().
+status(#job{id = Id,
+            block_hash = BlockHash,
+            block_version = BlockVersion,
+            block_target = BlockTarget,
+            share_target = ShareTarget,
+            desired_solve_time = DesiredSolveTime,
+            max_solve_time = MaxSolveTime,
+            shares = Shares,
+            error_shares = ErrorShares,
+            created = Created}) ->
+    #{id => Id,
+      block_hash => BlockHash,
+      block_version => BlockVersion,
+      block_target => BlockTarget,
+      share_target => ShareTarget,
+      desired_solve_time => DesiredSolveTime,
+      max_solve_time => MaxSolveTime,
+      shares => [aestratum_share:status(S) || S <- Shares],
+      error_shares => [aestratum_share:status(S) || S <- ErrorShares],
+      created => Created}.
 
 -spec add_share(share(), job()) -> job().
 add_share(Share, #job{shares = Shares} = Job) ->

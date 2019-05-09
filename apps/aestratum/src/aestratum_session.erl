@@ -5,7 +5,9 @@
          close/1
         ]).
 
--export([set/3]).
+-export([set/3,
+         status/1
+        ]).
 
 -ifdef(TEST).
 -export([state/1]).
@@ -145,6 +147,24 @@ set(desired_solve_time, Val, Session) when is_integer(Val) ->
     Session#session{desired_solve_time = Val};
 set(max_solve_time, Val, Session) when is_integer(Val) ->
     Session#session{max_solve_time = Val}.
+
+-spec status(session()) -> map().
+status(#session{phase = Phase,
+                extra_nonce = ExtraNonce,
+                initial_share_target = InitialShareTarget,
+                max_share_target = MaxShareTarget,
+                share_target_diff_threshold = ShareTargetDiffThreshold,
+                desired_solve_time = DesiredSolveTime,
+                max_solve_time = MaxSolveTime,
+                jobs = Jobs}) ->
+    #{phase => Phase,
+      extra_nonce => aestratum_nonce:to_hex(ExtraNonce),
+      initial_share_target => aestratum_taget:to_hex(InitialShareTarget),
+      max_share_target => aestratum_taget:to_hex(MaxShareTarget),
+      share_target_diff_threshold => ShareTargetDiffThreshold,
+      desired_solve_time => DesiredSolveTime,
+      max_solve_time => MaxSolveTime,
+      jobs => [aestratum_job:status(J) || J <- aestratum_job_queue:to_list(Jobs)]}.
 
 %% Internal functions.
 

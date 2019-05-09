@@ -7,7 +7,8 @@
          miner_nonce/1,
          pow/1,
          validity/1,
-         created/1
+         created/1,
+         status/1
         ]).
 
 -export([set_validity/2,
@@ -73,6 +74,18 @@ validity(#share{validity = Validity}) ->
 -spec created(share()) -> created().
 created(#share{created = Created}) ->
     Created.
+
+-spec status(share()) -> map().
+status(#share{user = User,
+              miner_nonce = MinerNonce,
+              pow = Pow,
+              validity = Validity,
+              created = Created}) ->
+    #{user => User,
+      miner_nonce => aestratum_nonce:to_hex(MinerNonce),
+      pow => Pow,
+      validity => Validity,
+      created => Created}.
 
 -spec set_validity(validity(), share()) -> share().
 set_validity(Validity, #share{} = Share) ->

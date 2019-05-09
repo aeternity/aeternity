@@ -7,7 +7,8 @@
 
 %% API
 -export([start_link/4,
-         set/3
+         set/3,
+         status/1
         ]).
 
 %% gen_server.
@@ -55,6 +56,10 @@ start_link(Ref, Socket, Transport, Opts) ->
 set(Key, Val, Pid) ->
     gen_server:cast(Pid, {set, Key, Val}).
 
+-spec status(pid()) -> map().
+status(Pid) ->
+    gen_server:call(Pid, status).
+
 %% Callbacks.
 
 init({Ref, Socket, Transport, _Opts}) ->
@@ -67,8 +72,9 @@ init({Ref, Socket, Transport, _Opts}) ->
     gen_server:enter_loop(?MODULE, [], #state{socket = Socket,
                                               transport = Transport}).
 
-handle_call(_Request, _From, State) ->
-	{reply, ok, State}.
+handle_call(status, _From, State) ->
+    Reply = handle_status(State),
+    {reply, Reply, State}.
 
 handle_cast(init_session, #state{} = State) ->
     Session = aestratum_session:new(),
@@ -128,6 +134,11 @@ handle_conn_event(ConnEvent, #state{session = Session} = State) ->
 handle_chain_event(ChainEvent, #state{session = Session} = State) ->
     Res = aestratum_session:handle_event(ChainEvent, Session),
     result(Res, State).
+
+handle_status(#state{socket = Socket, transport = Transport,
+                     session = Session}) ->
+    #{conn => #{socket => Socket, transport => Transport},
+      session => aestratum_session:status(Session)}.
 
 result({send, Data, Session},
        #state{socket = Socket, transport = Transport} = State) ->

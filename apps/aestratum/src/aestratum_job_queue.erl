@@ -7,7 +7,8 @@
          get_front/1,
          get_rear/1,
          replace/3,
-         share_target/3
+         share_target/3,
+         to_list/1
         ]).
 
 -export_type([job_queue/0]).
@@ -80,4 +81,8 @@ share_target(DesiredSolveTime, MaxShareTarget, Queue) ->
         _Other ->
             {error, not_enough_jobs}
     end.
+
+-spec to_list(job_queue()) -> [job()].
+to_list(Queue) ->
+    aestratum_lqueue:to_list(Queue).
 
