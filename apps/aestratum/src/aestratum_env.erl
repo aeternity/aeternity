@@ -12,7 +12,7 @@
 
 setup() ->
     unset(),
-    {ok, UserConfig} = aeu_env:user_config(<<"stratum">>),
+    UserConfig = aeu_env:user_config(<<"stratum">>, [{<<"enabled">>, false}]),
     aestratum_config:setup_env(UserConfig).
 
 get(Key) ->
