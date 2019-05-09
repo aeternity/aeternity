@@ -26,18 +26,16 @@ ensure_env() ->
         {ok, Beneficiaries} ->
             {_, Shares} = lists:unzip(Beneficiaries),
             AllocShares = lists:sum(Shares),
-            case AllocShares =< ?TOTAL_SHARES of
-                true ->
+            if AllocShares == 0 ->
+                    exit({invalid_protocol_beneficiaries, sum_shares_is_zero});
+               AllocShares > ?TOTAL_SHARES ->
+                    exit({invalid_protocol_beneficiaries, sum_shares_too_large});
+               AllocShares =< ?TOTAL_SHARES ->
                     application:set_env(aecore, dev_reward_enabled, true),
                     application:set_env(aecore, dev_reward_allocated_shares, AllocShares),
-                    application:set_env(aecore, dev_reward_beneficiaries, Beneficiaries);
-                false ->
-                    lager:error("sum of shares for protocol beneficiaries is too large (> ~p)",
-                                [?TOTAL_SHARES]),
-                    exit({invalid_protocol_beneficiaries, sum_shares_too_large})
+                    application:set_env(aecore, dev_reward_beneficiaries, Beneficiaries)
             end;
         {error, Reason} ->
-            lager:error("invalid protocol beneficiaries: ~p", [Reason]),
             exit({invalid_protocol_beneficiaries, Reason})
     end.
 
@@ -83,7 +81,7 @@ parse_beneficiary(BeneficiaryShareStr) ->
             error({invalid_protocol_beneficiary_share, BeneficiaryShareStr})
     end.
 
-parse_beneficiaries(BeneficiarySharesStrs) ->
+parse_beneficiaries([_|_] = BeneficiarySharesStrs) ->
     try lists:foldl(fun (Str, Acc) -> [parse_beneficiary(Str) | Acc] end,
                     [], BeneficiarySharesStrs) of
         Parsed ->
