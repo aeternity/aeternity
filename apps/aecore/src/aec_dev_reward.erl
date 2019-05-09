@@ -101,22 +101,21 @@ parse_beneficiaries(BeneficiarySharesStrs) ->
 
 
 split(BeneficiaryReward1, BeneficiaryReward2, NewestNodeHeight) ->
-    case {activated(NewestNodeHeight), enabled()} of
-        {true, true} ->
+    case enabled() andalso activated(NewestNodeHeight) of
+        true ->
             AllocShares = allocated_shares(),
             TotalShares = total_shares(),
             AbsContrib1 = (BeneficiaryReward1 * AllocShares) div TotalShares,
             AbsContrib2 = (BeneficiaryReward2 * AllocShares) div TotalShares,
             DevContrib  = AbsContrib1 + AbsContrib2,
-            {_, DevRewards} =
+            {Leftover, [{PK0, Amount0} | RemDevRewards]} =
                 lists:foldl(
                   fun ({PK, PKShares}, {Remaining, Acc}) ->
-                          Reward0 = DevContrib * PKShares div AllocShares,
-                          Reward1 = min(Reward0, Remaining),
-                          {Remaining - Reward1, [{PK, Reward1} | Acc]}
+                          Reward = DevContrib * PKShares div AllocShares,
+                          {Remaining - Reward, [{PK, Reward} | Acc]}
                   end, {DevContrib, []}, beneficiaries()),
             {{BeneficiaryReward1 - AbsContrib1, BeneficiaryReward2 - AbsContrib2},
-             DevRewards};
-        {A, E} when is_boolean(A), is_boolean(E) ->
+             [{PK0, Amount0 + Leftover} | RemDevRewards]};
+        false ->
             {{BeneficiaryReward1, BeneficiaryReward2}, []}
     end.
