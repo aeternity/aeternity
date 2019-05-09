@@ -117,6 +117,6 @@ split(BeneficiaryReward1, BeneficiaryReward2, NewestNodeHeight) ->
                   end, {DevContrib, []}, beneficiaries()),
             {{BeneficiaryReward1 - AbsContrib1, BeneficiaryReward2 - AbsContrib2},
              DevRewards};
-        _ ->
+        {A, E} when is_boolean(A), is_boolean(E) ->
             {{BeneficiaryReward1, BeneficiaryReward2}, []}
     end.
