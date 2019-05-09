@@ -249,7 +249,7 @@ handle_call(stop_mining,_From, State = #state{ consensus = Cons }) ->
                           key_block_candidates = undefined},
     {reply, ok, create_key_block_candidate(State2)};
 handle_call({start_mining, _Opts},_From, #state{mining_state = 'running'} = State) ->
-    epoch_mining:info("Mining running: ~p" ++ print_opts(State)),
+    epoch_mining:info("Mining running" ++ print_opts(State)),
     {reply, ok, State};
 handle_call({start_mining, _Opts},_From, State = #state{ beneficiary = undefined }) ->
     epoch_mining:error("Cannot start mining - beneficiary not configured"),
@@ -336,7 +336,7 @@ print_opts(#state{ mining_opts = Opts }) ->
         0 ->
             "";
         _ ->
-            lists:flatten(io_lib:fwrite(": ~p", [Opts]))
+            lists:flatten(io_lib:fwrite(": ~w", [Opts]))
     end.
 
 try_fetch_and_make_candidate() ->
@@ -1020,14 +1020,14 @@ handle_add_block(Header, Block, State, Origin) ->
     case {StrictlyFollow, Prev =:= State#state.top_block_hash} of
         {true, false} when Origin =:= block_created;
                            Origin =:= micro_block_created ->
-            epoch_mining:info("Mined block has old top - discarding (~p)", [Hash]),
+            epoch_mining:info("Mined block has old top - discarding (~w)", [Hash]),
             {{error, obsolete}, State};
         _ ->
             handle_add_block(Block, Hash, Prev, State, Origin)
     end.
 
 handle_add_block(Block, Hash, Prev, State, Origin) ->
-    epoch_mining:info("trying to add block (hash=~p, prev=~p)", [Hash, Prev]),
+    epoch_mining:debug("trying to add block (hash=~w, prev=~w)", [Hash, Prev]),
     case aec_chain:has_block(Hash) of
         true ->
             epoch_mining:debug("Block already in chain", []),
