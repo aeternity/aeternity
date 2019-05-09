@@ -17,12 +17,12 @@
 
 -export([get_trace/1]).
 
-%% Type handling.
 -export([ bind_args_from_signature/2
         , check_return_type/1
         , check_signature/2
         , check_type/2
         , get_function_signature/2
+        , push_gas_cap/2
         , push_return_address/1
         , set_function/3
         , set_local_function/2
@@ -388,9 +388,27 @@ push(V, ES) ->
 push_return_address(ES) ->
     aefa_engine_state:push_return_address(ES).
 
+%% Push a gas cap on the call stack to limit the available gas, but keep the
+%% remaining gas around.
+push_gas_cap(Gas, ES) when not ?IS_FATE_INTEGER(Gas) ->
+    abort({value_does_not_match_type, Gas, integer}, ES);
+push_gas_cap(Gas, ES) when ?IS_FATE_INTEGER(Gas) ->
+    GasInt = ?FATE_INTEGER_VALUE(Gas),
+    case GasInt > 0 of
+        false ->
+            abort({call_error, bad_gas_cap}, ES);
+        true ->
+            aefa_engine_state:push_gas_cap(GasInt, ES)
+    end.
+
 pop_call_stack(ES) ->
     case aefa_engine_state:call_stack(ES) of
         [] -> {stop, ES};
+        [{gas_store, StoredGas}| Rest] ->
+            Gas = StoredGas + aefa_engine_state:gas(ES),
+            ES1 = aefa_engine_state:set_gas(Gas, ES),
+            ES2 = aefa_engine_state:set_call_stack(Rest, ES1),
+            pop_call_stack(ES2);
         [{Contract, Function, BB, Mem, Value}| Rest] ->
             ES0 = aefa_engine_state:set_call_value(Value, ES),
             ES1 = aefa_engine_state:set_call_stack(Rest, ES0),

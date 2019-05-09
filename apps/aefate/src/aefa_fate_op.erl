@@ -8,6 +8,8 @@
         , call_r/4
         , call_t/2
         , call_tr/4
+        , call_gr/5
+        , call_gtr/5
         , call_value/2
         , jump/2
         , jumpif/3
@@ -168,6 +170,27 @@ call_r_common(Arg0, Arg1, Arg2, Sender, EngineState) ->
     ES4 = aefa_fate:bind_args_from_signature(Signature, ES3),
     ES5 = transfer_value(Sender, Address, Value, ES4),
     {jump, 0, ES5}.
+
+call_gr(Arg0, Arg1, Arg2, Arg3, EngineState) ->
+    Sender = aefa_engine_state:current_contract(EngineState),
+    ES1 = aefa_fate:push_return_address(EngineState),
+    call_gr_common(Arg0, Arg1, Arg2, Arg3, Sender, ES1).
+
+call_gtr(Arg0, Arg1, Arg2, Arg3, EngineState) ->
+    Sender = aefa_engine_state:current_contract(EngineState),
+    call_gr_common(Arg0, Arg1, Arg2, Arg3, Sender, EngineState).
+
+call_gr_common(Arg0, Arg1, Arg2, Arg3, Sender, EngineState) ->
+    {Address, ES1} = get_op_arg(Arg0, EngineState),
+    {Value, ES2}   = get_op_arg(Arg2, ES1),
+    {GasCap, ES3}  = get_op_arg(Arg3, ES2),
+    ES4 = aefa_fate:set_remote_function(Address, Arg1, ES3),
+    Signature = aefa_fate:get_function_signature(Arg1, ES4),
+    ok = aefa_fate:check_signature(Signature, ES4),
+    ES5 = aefa_fate:bind_args_from_signature(Signature, ES4),
+    ES6 = transfer_value(Sender, Address, Value, ES5),
+    ES7 = aefa_fate:push_gas_cap(GasCap, ES6),
+    {jump, 0, ES7}.
 
 transfer_value(?FATE_ADDRESS(_From), ?FATE_ADDRESS(_To), Value, ES) when not ?IS_FATE_INTEGER(Value) ->
     aefa_fate:abort({value_does_not_match_type, Value, integer}, ES);

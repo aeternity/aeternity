@@ -56,6 +56,7 @@
         , push_accumulator/2
         , push_arguments/2
         , push_env/2
+        , push_gas_cap/2
         , push_return_address/1
         , spend_gas/2
         , update_for_remote_call/3
@@ -75,7 +76,7 @@
 -record(es, { accumulator       :: void_or_fate()
             , accumulator_stack :: [aeb_fate_data:fate_type()]
             , bbs               :: map()
-            , call_stack        :: [term()] %% TODO: Better type
+            , call_stack        :: [tuple()] %% TODO: Better type
             , caller            :: aeb_fate_data:fate_address()
             , call_value        :: non_neg_integer()
             , chain_api         :: aefa_chain_api:state()
@@ -155,6 +156,15 @@ push_return_address(#es{ current_bb = BB
                        , memory = Mem} = ES) ->
     ES#es{call_stack = [{Contract, Function, BB+1, Mem, Value}|Stack]}.
 
+-spec push_gas_cap(pos_integer(), state()) -> state().
+push_gas_cap(GasCap, #es{gas = AvailableGas} = ES) when GasCap >= AvailableGas ->
+    %% Nothing is reserved
+    ES;
+push_gas_cap(GasCap, #es{ gas = AvailableGas
+                        , call_stack = Stack} = ES) when GasCap < AvailableGas ->
+    ES#es{ call_stack = [{gas_store, AvailableGas - GasCap}|Stack]
+         , gas        = GasCap
+         }.
 
 -spec push_accumulator(aeb_fate_data:fate_type(), state()) -> state().
 push_accumulator(V, #es{ accumulator = ?FATE_VOID
