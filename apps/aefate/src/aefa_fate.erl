@@ -18,13 +18,13 @@
 -export([get_trace/1]).
 
 -export([ bind_args_from_signature/2
+        , check_remote/2
         , check_return_type/1
         , check_signature/2
         , check_type/2
         , get_function_signature/2
         , push_gas_cap/2
         , push_return_address/1
-        , set_function/3
         , set_local_function/2
         , set_remote_function/3
         , type/1
@@ -168,6 +168,8 @@ abort({call_error, What}, ES) ->
     ?t("Error in call: ~w", [What], ES);
 abort({primop_error, Which, What}, ES) ->
     ?t("Error in ~w: ~w", [Which, What], ES);
+abort(reentrant_call, ES) ->
+    ?t("Reentrant call", [], ES);
 abort(out_of_gas, ES) ->
     ?t("Out of gas", [], ES);
 abort(bad_byte_code, ES) ->
@@ -226,24 +228,21 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
     Arguments = tuple_to_list(ArgTuple),
     Address = aeb_fate_data:make_address(ContractPubkey),
     ES1 = aefa_engine_state:new(Gas, Value, Spec, aefa_chain_api:new(Spec), Cache),
-    ES2 = set_function(Address, Function, ES1),
-    ES3 = push_arguments(Arguments, ES2),
+    ES2 = set_remote_function(Address, Function, ES1),
+    ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
     ok = check_signature(Signature, ES3),
     ES4 = bind_args_from_signature(Signature, ES3),
     aefa_engine_state:set_caller(aeb_fate_data:make_address(maps:get(caller, Spec)), ES4).
 
-set_function(?FATE_ADDRESS(_) = Address, Function, ES) ->
-    case aefa_engine_state:current_contract(ES) =:= Address of
-        true ->
-            case aefa_engine_state:current_function(ES) =:= Function of
-                true ->
-                    ES;
-                false ->
-                    set_local_function(Function, ES)
-            end;
-        false ->
-            set_remote_function(Address, Function, ES)
+check_remote(Address, EngineState) when not ?IS_FATE_ADDRESS(Address) ->
+    abort({value_does_not_match_type, Address, address}, EngineState);
+check_remote(Address, EngineState) ->
+    case aefa_engine_state:check_reentrant_remote(Address, EngineState) of
+        {ok, ES} ->
+            ES;
+        error ->
+            abort(reentrant_call, EngineState)
     end.
 
 set_remote_function(?FATE_ADDRESS(Pubkey) = Address, Function, ES) ->
@@ -371,8 +370,6 @@ jump(BB, ES) ->
 %% ------------------------------------------------------
 %% Arguments & Accumulator (-stack)
 %% ------------------------------------------------------
-push_arguments(Args, ES) ->
-    aefa_engine_state:push_arguments(Args, ES).
 
 pop_n(0, ES) -> {[], ES};
 pop_n(N, ES) ->
@@ -397,7 +394,7 @@ push(V, ES) ->
 %% Call stack
 
 push_return_address(ES) ->
-    aefa_engine_state:push_return_address(ES).
+    aefa_engine_state:push_call_stack(ES).
 
 %% Push a gas cap on the call stack to limit the available gas, but keep the
 %% remaining gas around.
@@ -413,19 +410,15 @@ push_gas_cap(Gas, ES) when ?IS_FATE_INTEGER(Gas) ->
     end.
 
 pop_call_stack(ES) ->
-    case aefa_engine_state:call_stack(ES) of
-        [] -> {stop, ES};
-        [{gas_store, StoredGas}| Rest] ->
-            Gas = StoredGas + aefa_engine_state:gas(ES),
-            ES1 = aefa_engine_state:set_gas(Gas, ES),
-            ES2 = aefa_engine_state:set_call_stack(Rest, ES1),
-            pop_call_stack(ES2);
-        [{Contract, Function, BB, Mem, Value}| Rest] ->
-            ES0 = aefa_engine_state:set_call_value(Value, ES),
-            ES1 = aefa_engine_state:set_call_stack(Rest, ES0),
-            ES2 = aefa_engine_state:set_memory(Mem, ES1),
-            ES3 = set_function(Contract, Function, ES2),
-            {jump, BB, ES3}
+    case aefa_engine_state:pop_call_stack(ES) of
+        empty ->
+            {stop, ES};
+        {local, Function, BB, ES1} ->
+            ES2 = set_local_function(Function, ES1),
+            {jump, BB, ES2};
+        {remote, Contract, Function, BB, ES1} ->
+            ES2 = set_remote_function(Contract, Function, ES1),
+            {jump, BB, ES2}
     end.
 
 collect_gas_stores([{gas_store, Gas}|Left], AccGas) ->

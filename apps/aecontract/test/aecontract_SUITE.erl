@@ -164,6 +164,7 @@ groups() ->
                           , sophia_identity
                           , sophia_remote_identity
                           , sophia_spend
+                          , sophia_no_reentrant
                           , fate_environment
                           , fate_call_origin
                           , fate_call_value
@@ -414,6 +415,18 @@ end_per_testcase(_TC,_Config) ->
         ?ROMA_PROTOCOL_VSN -> ?assertMatch(ExpRoma, Res);
         ?MINERVA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res);
         ?FORTUNA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res)
+    end).
+
+-define(assertMatchAEVM(__Exp, __Res),
+    case ?IS_AEVM_SOPHIA(vm_version()) of
+        true  -> ?assertMatch(__Exp, __Res);
+        false -> ok
+    end).
+
+-define(assertMatchFATE(__Exp, __Res),
+    case ?IS_AEVM_SOPHIA(vm_version()) of
+        true  -> ok;
+        false -> ?assertMatch(__Exp, __Res)
     end).
 
 -define(skipRest(Res, Reason),
@@ -1451,9 +1464,10 @@ sophia_no_reentrant(_Cfg) ->
     Acc   = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, identity, {}),
     RemC  = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
-    Err   = {error, <<"reentrant_call">>},
-            %% Should fail due to reentrancy
-    Err   = ?call(call_contract, Acc, RemC, staged_call, word, {IdC, RemC, 77}),
+    Res   = ?call(call_contract, Acc, RemC, staged_call, word, {IdC, RemC, 77}),
+    %% Should fail due to reentrancy
+    ?assertMatchFATE({error, <<"Reentrant call">>}, Res),
+    ?assertMatchAEVM({error, <<"reentrant_call">>}, Res),
     ok.
 
 sophia_state(_Cfg) ->
@@ -4687,6 +4701,7 @@ fate_environment(_Cfg) ->
     InitialBalance = 4711,
     Contract = <<ContractInt:256>> = ?call(create_contract, Acc, environment, {},
                                            #{amount => InitialBalance}),
+    Remote = ?call(create_contract, Acc, environment, {}, #{amount => InitialBalance}),
     ?assertEqual({address, ContractInt},
                  ?call(call_contract, Acc, Contract, contract_address, word, {})),
     ?assertEqual({address, AccInt},
@@ -4720,7 +4735,7 @@ fate_environment(_Cfg) ->
     SentValue = 12340,
     Value1 = ?call(call_contract, Acc, Contract, call_value, word, {}, #{amount => SentValue}),
     ?assertEqual(SentValue, Value1),
-    Value2 = ?call(call_contract, Acc, Contract, remote_call_value, word, {Contract, 2*SentValue}, #{amount => 3*SentValue}),
+    Value2 = ?call(call_contract, Acc, Contract, remote_call_value, word, {Remote, 2*SentValue}, #{amount => 3*SentValue}),
     ?assertEqual(2*SentValue, Value2),
 
     %% Block hash is mocked to return the height if it gets a valid height
