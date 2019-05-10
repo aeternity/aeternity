@@ -112,7 +112,8 @@ final_trees(EngineState) ->
 -spec runtime_error(Format :: string(), [term()],
                     aefa_engine_state:state()) -> no_return().
 runtime_error(S, A, ES) ->
-    ES1 = abort_out_of_gas(ES),
+    Gas = collect_gas_stores(aefa_engine_state:call_stack(ES), 0),
+    ES1 = aefa_engine_state:set_gas(Gas, ES),
     throw({?MODULE, iolist_to_binary(io_lib:format(S, A)), ES1}).
 
 %% Runtime error messages for dry run and debugging.
@@ -427,16 +428,13 @@ pop_call_stack(ES) ->
             {jump, BB, ES3}
     end.
 
-abort_out_of_gas(ES) ->
-    %% Collect any stored gas in the call stack
-    out_of_gas(aefa_engine_state:call_stack(ES), 0, ES).
+collect_gas_stores([{gas_store, Gas}|Left], AccGas) ->
+    collect_gas_stores(Left, AccGas + Gas);
+collect_gas_stores([{_, _, _, _, _}|Left], AccGas) ->
+    collect_gas_stores(Left, AccGas);
+collect_gas_stores([], AccGas) ->
+    AccGas.
 
-out_of_gas([{gas_store, Gas}|Left], AccGas, ES) ->
-    out_of_gas(Left, AccGas + Gas, ES);
-out_of_gas([{_, _, _, _, _}|Left], AccGas, ES) ->
-    out_of_gas(Left, AccGas, ES);
-out_of_gas([], AccGas, ES) ->
-    aefa_engine_state:set_gas(AccGas, ES).
 
 %% ------------------------------------------------------
 %% Memory
