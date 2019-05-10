@@ -882,12 +882,12 @@ awaiting_signature(cast, {?SIGNED, ?SHUTDOWN_ACK, SignedTx} = Msg,
             close(close_mutual, D2)
         end, D);
 awaiting_signature(cast, {?SIGNED, settle_tx, SignedTx} = Msg,
-                   #data{latest = {sign, settle_tx, _STx, _Updates}} = D) ->
-    maybe_check_sigs(SignedTx, channel_settle_tx, not_settle_tx, me,
+                   #data{latest = {sign, settle_tx, _STx, Updates}} = D) ->
+    maybe_check_sigs(SignedTx, Updates, channel_settle_tx, not_settle_tx, me,
         fun() ->
                 D1 = D#data{log = log_msg(rcv, ?SIGNED, Msg, D#data.log),
                             latest = undefined},
-                settle_signed(SignedTx, D1)
+                settle_signed(SignedTx, Updates, D1)
         end, D);
                                                         
 %% Other
@@ -1052,7 +1052,7 @@ withdraw_locked_complete(SignedTx, Updates, #data{state = State, opts = Opts} = 
                                                             OnChainEnv, Opts)},
     next_state(open, D1).
 
-settle_signed(SignedTx, #data{ on_chain_id = ChId} = D) ->
+settle_signed(SignedTx, Updates, #data{ on_chain_id = ChId} = D) ->
     lager:debug("SignedTx = ~p", [SignedTx]),
     case aec_chain:get_channel(ChId) of
         {ok, Ch} ->
@@ -1061,11 +1061,11 @@ settle_signed(SignedTx, #data{ on_chain_id = ChId} = D) ->
                 case is_channel_locked(LockedUntil) of
                     true ->
                         lager:debug("channel is locked", []),
-                        start_min_depth_watcher(unlock, SignedTx, D);
+                        start_min_depth_watcher(unlock, SignedTx, Updates, D);
                     false ->
                         lager:debug("channel not locked, pushing settle", []),
                         ok = aec_tx_pool:push(SignedTx),
-                        start_min_depth_watcher(close, SignedTx, D)
+                        start_min_depth_watcher(close, SignedTx, Updates, D)
                 end,
             next_state(channel_closing, D1);
         {error,_} = Error ->
@@ -1627,14 +1627,15 @@ handle_call_(St, close_solo, From, D) ->
             keep_state(D, [{reply, From, {error, channel_closing}}]);
         _ ->
             {ok, CloseSoloTx, Updates} = close_solo_tx_for_signing(D),
-            D1 = set_ongoing(request_signing(close_solo_tx, CloseSoloTx, D)),
+            D1 = set_ongoing(request_signing(
+                               close_solo_tx, CloseSoloTx, Updates, D)),
             next_state(awaiting_signature, D1, [{reply, From, ok}])
     end;
 handle_call_(St, slash, From, D) ->
     case St of
         channel_closing ->
-            {ok, SlashTx} = slash_tx_for_signing(D),
-            D1 = set_ongoing(request_signing(slash_tx, SlashTx, D)),
+            {ok, SlashTx, Updates} = slash_tx_for_signing(D),
+            D1 = set_ongoing(request_signing(slash_tx, SlashTx, Updates, D)),
             next_state(awaiting_signature, D1, [{reply, From, ok}]);
         _ ->
             keep_state(D, [{reply, From, {error, channel_not_closing}}])
@@ -1642,8 +1643,8 @@ handle_call_(St, slash, From, D) ->
 handle_call_(St, settle, From, D) ->
     case St of
         channel_closing ->
-            {ok, SettleTx} = settle_tx_for_signing(D),
-            D1 = set_ongoing(request_signing(settle_tx, SettleTx, D)),
+            {ok, SettleTx, Updates} = settle_tx_for_signing(D),
+            D1 = set_ongoing(request_signing(settle_tx, SettleTx, Updates, D)),
             next_state(awaiting_signature, D1, [{reply, From, ok}]);
         _ ->
             keep_state(D, [{reply, From, {error, channel_not_closed}}])
@@ -1690,7 +1691,7 @@ handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
         {can_slash, Round, SignedTx} ->
             {ok, SlashTx, Updates} = slash_tx_for_signing(Round, SignedTx, D1),
             report_on_chain_tx(can_slash, SignedTx, D1),
-            D2 = set_ongoing(request_signing(slash_tx, SlashTx, D1)),
+            D2 = set_ongoing(request_signing(slash_tx, SlashTx, Updates, D1)),
             next_state(awaiting_signature, D2);
         {ok, proper_solo_closing, SignedTx} ->
             lager:debug("Channel solo-closing", []),
@@ -1724,7 +1725,7 @@ handle_common_event_(cast, {?CHANNEL_CHANGED, #{tx_hash := TxHash} = Info} = Msg
 handle_common_event_(cast, {?CHANNEL_CLOSED, #{tx := SignedTx} = _Info} = Msg, _St, _, D) ->
     %% Start a minimum-depth watch, then (if confirmed) terminate
     report_on_chain_tx(channel_closed, SignedTx, D),
-    {ok, D1} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_CLOSED}, SignedTx, D),
+    {ok, D1} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_CLOSED}, SignedTx, [], D),
     next_state(channel_closed, log(rcv, msg_type(Msg), Msg, D1));
 handle_common_event_({call, From}, Req, St, Mode, D) ->
     case Mode of
@@ -2174,14 +2175,14 @@ settle_tx(Account, Nonce, #data{ opts  = #{initiator := I,
     {ok, RAmt} = aesc_offchain_state:balance(R, State),
     Fee = maps:get(fee, Opts1),
     TTL = adjust_ttl(maps:get(ttl, Opts1, 0)),
-    {ok, _} = Ok = aesc_settle_tx:new(#{ channel_id => aeser_id:create(channel, ChanId)
-                                       , from_id    => aeser_id:create(account, Account)
-                                       , initiator_amount_final => IAmt
-                                       , responder_amount_final => RAmt
-                                       , ttl        => TTL
-                                       , fee        => Fee
-                                       , nonce      => Nonce }),
-    Ok.
+    {ok, Tx} = aesc_settle_tx:new(#{ channel_id => aeser_id:create(channel, ChanId)
+                                   , from_id    => aeser_id:create(account, Account)
+                                   , initiator_amount_final => IAmt
+                                   , responder_amount_final => RAmt
+                                   , ttl        => TTL
+                                   , fee        => Fee
+                                   , nonce      => Nonce }),
+    {ok, Tx, []}.
 
 close_solo_tx_for_signing(D) ->
     Account = my_account(D),
@@ -2931,7 +2932,7 @@ start_min_depth_watcher(Type, SignedTx, Updates,
                                Sub, TxHash, OnChainId, MinDepth, ?MODULE, WOpts),
             evt({watcher, Watcher1}),
             {ok, D1#data{watcher = Watcher1,
-                         latest = {min_depth, Type, TxHash, SignedTx, Updates}}};
+                         latest = {min_depth, Sub, TxHash, SignedTx, Updates}}};
         {{?MIN_DEPTH, Sub}, Pid} when is_pid(Pid) ->
             ok = aesc_fsm_min_depth_watcher:watch_for_min_depth(
                    Pid, TxHash, MinDepth, ?MODULE, Sub),
