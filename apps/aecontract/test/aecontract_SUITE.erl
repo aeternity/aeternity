@@ -1437,6 +1437,7 @@ hack_type(HackFun, NewType, Code) ->
     aeser_chain_objects:serialize(compiler_sophia, Version, Template, Fields).
 
 sophia_functions(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_MINERVA, letfun_broken_pre_sophia_3),
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, functions, {}),
