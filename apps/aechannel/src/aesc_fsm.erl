@@ -96,6 +96,7 @@
                   | deposit_tx
                   | withdraw_tx
                   | close_solo_tx
+                  | settle_tx
                   | ?FND_CREATED
                   | ?DEP_CREATED
                   | ?WDRAW_CREATED
@@ -162,11 +163,14 @@
                    | {sign | ack, sign_tag(), aetx_sign:signed_tx(), [aesc_offchain_update:update()]}
                    | {create | shutdown | deposit | withdraw, aetx_sign:signed_tx(),
                       [aesc_offchain_update:update()]}
-                   | {watch, ?WATCH_FND
-                           | ?WATCH_DEP
-                           | ?WATCH_WDRAW
-                           | deposit
-                           | withdraw,
+                   | {?MIN_DEPTH, ?WATCH_FND
+                                | ?WATCH_DEP
+                                | ?WATCH_WDRAW
+                                | ?WATCH_CLOSED,
+                      TxHash :: binary(), aetx_sign:signed_tx(),
+                      [aesc_offchain_update:update()]}
+                   | {watch, unlock
+                           | close,
                       TxHash :: binary(), aetx_sign:signed_tx(),
                       [aesc_offchain_update:update()]}
                    | {reestablish, OffChainTx :: aetx_sign:signed_tx()}.
@@ -1078,7 +1082,7 @@ is_channel_locked(LockedUntil) ->
 
 awaiting_locked(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_FND, TxHash},
-                #data{latest = {min_depth, ?WATCH_FND, TxHash, CTx, Updates}} = D) ->
+                #data{latest = {?MIN_DEPTH, ?WATCH_FND, TxHash, CTx, Updates}} = D) ->
     report(info, own_funding_locked, D),
     next_state(
       signed, send_funding_locked_msg(D#data{on_chain_id = ChainId,
@@ -1086,7 +1090,7 @@ awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_FND, TxHash},
                                                        Updates}}));
 awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_DEP, TxHash},
                 #data{on_chain_id = ChainId,
-                      latest = {min_depth, ?WATCH_DEP, TxHash, SignedTx, Updates}} = D) ->
+                      latest = {?MIN_DEPTH, ?WATCH_DEP, TxHash, SignedTx, Updates}} = D) ->
     report(info, own_deposit_locked, D),
     next_state(
       dep_signed, send_deposit_locked_msg(
@@ -1094,7 +1098,7 @@ awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_DEP, TxHash},
                     D#data{latest = {deposit, SignedTx, Updates}}));
 awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_WDRAW, TxHash},
                 #data{on_chain_id = ChainId,
-                      latest = {min_depth, ?WATCH_WDRAW, TxHash, SignedTx, Updates}} = D) ->
+                      latest = {?MIN_DEPTH, ?WATCH_WDRAW, TxHash, SignedTx, Updates}} = D) ->
     report(info, own_withdraw_locked, D),
     next_state(
       wdraw_signed, send_withdraw_locked_msg(
@@ -1113,7 +1117,7 @@ awaiting_locked(cast, {?WDRAW_ERR, _Msg}, D) ->
     %% TODO: Stop min depth watcher!
     handle_update_conflict(?WDRAW_SIGNED, D);
 awaiting_locked(cast, {?CHANNEL_CHANGED, #{tx_hash := TxHash}} = Msg,
-                #data{ latest = {min_depth, ?WATCH_DEP, TxHash, _}} = D) ->
+                #data{ latest = {?MIN_DEPTH, ?WATCH_DEP, TxHash, _, _}} = D) ->
     %% Expected
     keep_state(log(rcv, ?CHANNEL_CHANGED, Msg, D));
 awaiting_locked(Type, Msg, D) ->
@@ -1362,7 +1366,7 @@ channel_closing(Type, Msg, D) ->
 channel_closed(enter, _OldSt, D) ->
     keep_state(D#data{ongoing_update = false});
 channel_closed(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_CLOSED, TxHash},
-               #data{ latest = {min_depth, ?WATCH_CLOSED, TxHash, _}
+               #data{ latest = {?MIN_DEPTH, ?WATCH_CLOSED, TxHash, _, _}
                     , on_chain_id = ChainId } = D) ->
     close(closed_confirmed, D);
 channel_closed(cast, {?CHANNEL_CHANGED, _Info} = Msg, D) ->
@@ -1713,7 +1717,7 @@ handle_common_event_(cast, {?CHANNEL_CHANGED, #{tx_hash := TxHash} = Info} = Msg
                      _St, _, D) ->
     D1 = log(rcv, msg_type(Msg), Msg, D),
     case D1#data.latest of
-        {min_depth, _, LatestTxHash, _} when TxHash =/= LatestTxHash ->
+        {?MIN_DEPTH, _, LatestTxHash, _, _} when TxHash =/= LatestTxHash ->
             %% This is a problem: channel changed while waiting to confirm
             %% other tx hash
             close({error, unexpected_tx_on_chain}, D);
@@ -2932,11 +2936,11 @@ start_min_depth_watcher(Type, SignedTx, Updates,
                                Sub, TxHash, OnChainId, MinDepth, ?MODULE, WOpts),
             evt({watcher, Watcher1}),
             {ok, D1#data{watcher = Watcher1,
-                         latest = {min_depth, Sub, TxHash, SignedTx, Updates}}};
+                         latest = {?MIN_DEPTH, Sub, TxHash, SignedTx, Updates}}};
         {{?MIN_DEPTH, Sub}, Pid} when is_pid(Pid) ->
             ok = aesc_fsm_min_depth_watcher:watch_for_min_depth(
                    Pid, TxHash, MinDepth, ?MODULE, Sub),
-            {ok, D1#data{latest = {min_depth, Sub, TxHash, SignedTx, Updates}}};
+            {ok, D1#data{latest = {?MIN_DEPTH, Sub, TxHash, SignedTx, Updates}}};
         {unlock, Pid} when Pid =/= undefined ->
             ok = aesc_fsm_min_depth_watcher:watch_for_unlock(Pid, ?MODULE),
             {ok, D1#data{latest = {watch, unlock, TxHash, SignedTx, Updates}}};
