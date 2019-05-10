@@ -951,6 +951,7 @@ workflows:
                 - system-tests
 
       - docker_smoke_tests:
+          context: ae-node-builds
           filters:
             branches:
               ignore:
@@ -1135,6 +1136,7 @@ workflows:
               only: *stable_tag_regex
 
       - upload_build_artifacts:
+          context: ae-node-builds
           requires:
             - linux_package
           filters:
@@ -1155,6 +1157,7 @@ workflows:
               only: *tag_regex
 
       - deploy_integration:
+          context: ae-node-builds
           requires:
             - test
             - test_roma
@@ -1174,6 +1177,7 @@ workflows:
               only: master
 
       - docker_test_push_branch:
+          context: ae-node-builds
           requires:
             - test
             - test_roma
@@ -1193,6 +1197,7 @@ workflows:
                 - master
 
       - deploy_next:
+          context: ae-node-builds
           requires:
             - test_fortuna
             - eunit
@@ -1208,6 +1213,7 @@ workflows:
               only: master
 
       - deploy_dev1:
+          context: ae-node-builds
           requires:
             - linux_package
           filters:
@@ -1215,6 +1221,7 @@ workflows:
               only: env/dev1
 
       - deploy_dev2:
+          context: ae-node-builds
           requires:
             - linux_package
           filters:
@@ -1246,6 +1253,7 @@ workflows:
               only: *stable_tag_regex
 
       - deploy_uat_blue:
+          context: ae-node-builds
           requires:
             - eunit
             - eunit_roma
@@ -1261,6 +1269,7 @@ workflows:
               only: *stable_tag_regex
 
       - deploy_uat_green:
+          context: ae-node-builds
           requires:
             - deploy_uat_blue
             - hodl_green
@@ -1271,6 +1280,7 @@ workflows:
               only: *stable_tag_regex
 
       - upload_packages_linux:
+          context: ae-node-builds
           requires:
             - eunit
             - eunit_roma
@@ -1286,6 +1296,7 @@ workflows:
               only: *stable_tag_regex
 
       - upload_packages_osx:
+          context: ae-node-builds
           requires:
             - eunit
             - eunit_roma
@@ -1301,6 +1312,7 @@ workflows:
               only: *stable_tag_regex
 
       - docker_push_tag:
+          context: ae-node-builds
           requires:
             - eunit
             - eunit_roma
@@ -1323,6 +1335,7 @@ workflows:
               only: *stable_tag_regex
 
       - upload_latest_packages_linux:
+          context: ae-node-builds
           requires:
             - linux_package
             - hodl_latest
@@ -1333,6 +1346,7 @@ workflows:
               only: *stable_tag_regex
 
       - upload_latest_packages_osx:
+          context: ae-node-builds
           requires:
             - osx_package
             - hodl_latest
@@ -1352,6 +1366,7 @@ workflows:
               only: *stable_tag_regex
 
       - docker_push_latest:
+          context: ae-node-builds
           requires:
             - hodl_latest
           filters:
@@ -1361,6 +1376,7 @@ workflows:
               only: *stable_tag_regex
 
       - verify_release_artifacts:
+          context: ae-node-builds
           requires:
             - upload_build_artifacts
             - upload_packages_linux
