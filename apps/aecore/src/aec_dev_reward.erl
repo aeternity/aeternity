@@ -23,8 +23,9 @@ ensure_env() ->
     case Enabled andalso parse_beneficiaries(Benefs0) of
         false ->
             application:set_env(aecore, dev_reward_enabled, false);
-        {ok, Beneficiaries} ->
-            {_, Shares} = lists:unzip(Beneficiaries),
+        {ok, BenefShares0} ->
+            BenefShares = lists:sort(BenefShares0),
+            {_, Shares} = lists:unzip(BenefShares),
             AllocShares = lists:sum(Shares),
             if AllocShares == 0 ->
                     exit({invalid_protocol_beneficiaries, sum_shares_is_zero});
@@ -33,7 +34,7 @@ ensure_env() ->
                AllocShares =< ?TOTAL_SHARES ->
                     application:set_env(aecore, dev_reward_enabled, true),
                     application:set_env(aecore, dev_reward_allocated_shares, AllocShares),
-                    application:set_env(aecore, dev_reward_beneficiaries, Beneficiaries)
+                    application:set_env(aecore, dev_reward_beneficiaries, BenefShares)
             end;
         {error, Reason} ->
             exit({invalid_protocol_beneficiaries, Reason})
