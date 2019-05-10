@@ -226,7 +226,11 @@ push_env(Mem, ES) ->
 
 -spec spend_gas(non_neg_integer(), state()) -> state().
 spend_gas(X, #es{gas = Gas} = ES) ->
-    ES#es{gas = Gas - X}.
+    NewGas = Gas - X,
+    case NewGas < 0 of
+        true  -> aefa_fate:abort(out_of_gas, ES);
+        false -> ES#es{gas = NewGas}
+    end.
 
 %%%------------------
 

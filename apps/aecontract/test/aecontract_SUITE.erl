@@ -42,6 +42,7 @@
         , create_contract_upfront_deposit/1
         , create_version_too_high/1
         , fate_call_origin/1
+        , fate_call_out_of_gas/1
         , fate_call_value/1
         , fate_environment/1
         , state_tree/1
@@ -165,6 +166,7 @@ groups() ->
                           , fate_environment
                           , fate_call_origin
                           , fate_call_value
+                          , fate_call_out_of_gas
                           ]}
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account
@@ -4754,4 +4756,37 @@ fate_call_value(_Cfg) ->
     ?assertEqual(Amount + Bal2, Bal3),
     Bal4     = ?call(call_contract, Acc, C1, get_balance, word, {}, #{}),
     ?assertEqual(Bal3, Bal4),
+    ok.
+
+fate_call_out_of_gas(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    RemC     = ?call(create_contract, Acc, remote_call, {}, #{}),
+    IdC      = ?call(create_contract, Acc, identity, {}, #{}),
+    Gas      = 100000,
+
+    %% Find out the amount of gas needed.
+    {42, UsedGas1} =
+        ?call(call_contract, Acc, RemC, gas_limit_call, word,
+              {IdC, 42, Gas}, #{ gas => Gas, return_gas_used => true}),
+    ?assert(UsedGas1 < Gas),
+
+    %% Ensure we fail if too little gas.
+    TooLittleGas = UsedGas1 - 1,
+    {{error, <<"Out of gas">>}, TooLittleGas} =
+        ?call(call_contract, Acc, RemC, gas_limit_call, word,
+              {IdC, 42, Gas}, #{ gas => TooLittleGas, return_gas_used => true}),
+
+    %% Ensure we can cap the gas on remote calls and retain the rest.
+    {{error, <<"Out of gas">>}, UsedGas2} =
+        ?call(call_contract, Acc, RemC, gas_limit_call, word,
+              {IdC, 42, 1}, #{ gas => Gas, return_gas_used => true}),
+    ?assert(UsedGas2 < UsedGas1),
+
+    %% Ensure we spend all gas on an uncapped runtime error
+    {{error, <<"Error in call: bad_gas_cap">>}, UsedGas3} =
+        ?call(call_contract, Acc, RemC, gas_limit_call, word,
+              {IdC, 42, -1}, #{ gas => Gas, return_gas_used => true}),
+    ?assertEqual(UsedGas3, Gas),
+
     ok.

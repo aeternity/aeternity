@@ -106,11 +106,19 @@ final_trees(EngineState) ->
 %%% Internal functions
 %%%===================================================================
 
--define(t(__S,__A,__ES), throw({?MODULE, iolist_to_binary(io_lib:format(__S, __A)), __ES})).
+-define(t(__S,__A,__ES),
+        runtime_error(__S,__A,__ES)).
+
+-spec runtime_error(Format :: string(), [term()],
+                    aefa_engine_state:state()) -> no_return().
+runtime_error(S, A, ES) ->
+    ES1 = abort_out_of_gas(ES),
+    throw({?MODULE, iolist_to_binary(io_lib:format(S, A)), ES1}).
 
 %% Runtime error messages for dry run and debugging.
 %% Should result on one tyhpe of runtime error and use all gas when
 %% executed on chain.
+-spec abort(term(), aefa_engine_state:state()) -> no_return().
 abort({invalid_tuple_size, Size}, ES) ->
     ?t("Invalid tuple size: ~p", [Size], ES);
 abort({element_index_out_of_bounds, Index}, ES) ->
@@ -159,6 +167,8 @@ abort({call_error, What}, ES) ->
     ?t("Error in call: ~w", [What], ES);
 abort({primop_error, Which, What}, ES) ->
     ?t("Error in ~w: ~w", [Which, What], ES);
+abort(out_of_gas, ES) ->
+    ?t("Out of gas", [], ES);
 abort(bad_byte_code, ES) ->
     ?t("Bad byte code", [], ES).
 
@@ -416,6 +426,17 @@ pop_call_stack(ES) ->
             ES3 = set_function(Contract, Function, ES2),
             {jump, BB, ES3}
     end.
+
+abort_out_of_gas(ES) ->
+    %% Collect any stored gas in the call stack
+    out_of_gas(aefa_engine_state:call_stack(ES), 0, ES).
+
+out_of_gas([{gas_store, Gas}|Left], AccGas, ES) ->
+    out_of_gas(Left, AccGas + Gas, ES);
+out_of_gas([{_, _, _, _, _}|Left], AccGas, ES) ->
+    out_of_gas(Left, AccGas, ES);
+out_of_gas([], AccGas, ES) ->
+    aefa_engine_state:set_gas(AccGas, ES).
 
 %% ------------------------------------------------------
 %% Memory
