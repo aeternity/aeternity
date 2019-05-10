@@ -1,12 +1,16 @@
-;; CONTRACT: Identity
+;; CONTRACT: Remote call
 FUNCTION init() -> {tuple, []}
   RETURNR ()
 
 FUNCTION call(address, integer) ->  integer
   PUSH    arg1
-  CALL_TR arg0 main
+  CALL_TR arg0 main 0
 
 FUNCTION staged_call(address, address, integer) ->  integer
   PUSH    arg2
   PUSH    arg0
-  CALL_TR arg1 call
+  CALL_TR arg1 call 0
+
+FUNCTION gas_limit_call(address, integer, integer) -> integer
+  PUSH    arg1
+  CALL_GTR arg0 main 0 arg2

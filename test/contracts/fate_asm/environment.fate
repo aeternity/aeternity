@@ -24,15 +24,17 @@ FUNCTION call_caller() -> address
   RETURN
 
 FUNCTION remote_call_caller(address) -> address
-  CALL_TR arg0 call_caller
+  CALL_TR arg0 call_caller 0
 
 FUNCTION remote_call_origin(address) -> address
-  CALL_TR arg0 call_origin
+  CALL_TR arg0 call_origin 0
 
-;; Not implemented as instruction yet
-;; FUNCTION call_value() -> integer
-;;   VALUE
-;;   RETURN
+FUNCTION call_value() -> integer
+  CALL_VALUE a
+  RETURN
+
+FUNCTION remote_call_value(address, integer) -> integer
+  CALL_TR arg0 call_value arg1
 
 FUNCTION call_gas_price() -> integer
   GASPRICE a

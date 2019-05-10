@@ -73,7 +73,7 @@ run(_, #{ call := Call} = _CallDef) ->
                              ]).
 
 run_common(#{vm := ?VM_FATE_SOPHIA_1 = VMVersion, abi := ABIVersion},
-           #{ amount      :=_Value
+           #{ amount      := Value
             , call        := Call
             , call_data   := CallData
             , call_stack  :=_CallStack %% Unused for FATE
@@ -96,6 +96,7 @@ run_common(#{vm := ?VM_FATE_SOPHIA_1 = VMVersion, abi := ABIVersion},
                     , call     => CallData
                     , code     => Code
                     , gas      => Gas
+                    , value    => Value
                     },
             Env0 = maps:with(?FATE_VM_SPEC_FIELDS, CallDef),
             %% TODO: This should be replaced once the fate

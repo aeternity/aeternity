@@ -16,13 +16,13 @@ FUNCTION withdraw(integer) -> integer
 
 FUNCTION withdraw_from(address, integer) -> integer
   PUSH arg1
-  CALL_R arg0 withdraw
+  CALL_R arg0 withdraw 0
   PUSH arg1
   CALL_T withdraw
 
 FUNCTION spend_from(address, address, integer) -> integer
   PUSH arg2
-  CALL_R arg0 withdraw
+  CALL_R arg0 withdraw 0
   SPEND arg2 arg1
   BALANCE_OTHER a arg1
   RETURN
@@ -33,4 +33,8 @@ FUNCTION get_balance() -> integer
 
 FUNCTION get_balance_of(address) -> integer
   BALANCE_OTHER a arg0
+  RETURN
+
+FUNCTION spend_as_call(address, integer) -> integer
+  CALL_R arg0 get_balance arg1
   RETURN

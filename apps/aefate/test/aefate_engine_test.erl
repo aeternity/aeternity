@@ -267,6 +267,7 @@ bits() ->
 make_call(Contract, Function, Arguments) ->
     #{ contract  => pad_contract_name(Contract)
      , gas => 100000
+     , value => 0
      , call => aeb_fate_encoding:serialize(
                  {tuple, {Function, {tuple, list_to_tuple(
                                               [aefate_test_utils:encode(A) || A <- Arguments]
@@ -341,7 +342,9 @@ contracts() ->
              , [ {0, [ {'PUSH', {arg,0}},
                        {'CALL_R',
                         {immediate, aeb_fate_data:make_address(pad_contract_name(<<"remote">>))},
-                        {immediate, <<"add_five">>}} ]}
+                        {immediate, <<"add_five">>},
+                        {immediate, 0}
+                       } ]}
                , {1, [ {'INC', {stack, 0}},
                        'RETURN']}
                ]
@@ -351,7 +354,9 @@ contracts() ->
              , [ {0, [ {'PUSH', {arg,0}},
                        {'CALL_TR',
                         {immediate, aeb_fate_data:make_address(pad_contract_name(<<"remote">>))},
-                        {immediate, <<"add_five">>}} ]}
+                        {immediate, <<"add_five">>},
+                        {immediate, 0}
+                       } ]}
                ]
              }
            ]
