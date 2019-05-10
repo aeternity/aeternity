@@ -9,6 +9,10 @@
          total_shares/0,
          split/3]).
 
+-ifdef(TEST).
+-export([split_int/5]).
+-endif.
+
 -include_lib("aecontract/include/hard_forks.hrl").
 
 
@@ -96,19 +100,32 @@ parse_beneficiaries([_|_] = BeneficiarySharesStrs) ->
 split(BeneficiaryReward1, BeneficiaryReward2, NewestNodeHeight) ->
     case enabled() andalso activated(NewestNodeHeight) of
         true ->
-            AllocShares = allocated_shares(),
-            TotalShares = total_shares(),
-            AbsContrib1 = (BeneficiaryReward1 * AllocShares) div TotalShares,
-            AbsContrib2 = (BeneficiaryReward2 * AllocShares) div TotalShares,
-            DevContrib  = AbsContrib1 + AbsContrib2,
-            {Leftover, [{PK0, Amount0} | RemDevRewards]} =
-                lists:foldl(
-                  fun ({PK, PKShares}, {Remaining, Acc}) ->
-                          Reward = DevContrib * PKShares div AllocShares,
-                          {Remaining - Reward, [{PK, Reward} | Acc]}
-                  end, {DevContrib, []}, beneficiaries()),
-            {{BeneficiaryReward1 - AbsContrib1, BeneficiaryReward2 - AbsContrib2},
-             [{PK0, Amount0 + Leftover} | RemDevRewards]};
+            split_int(BeneficiaryReward1, BeneficiaryReward2,
+                      allocated_shares(), total_shares(),
+                      beneficiaries());
         false ->
             {{BeneficiaryReward1, BeneficiaryReward2}, []}
     end.
+
+split_int(BeneficiaryReward1, BeneficiaryReward2,
+          AllocShares, TotalShares,
+          Beneficiaries = [_|_]) when
+      is_integer(BeneficiaryReward1), BeneficiaryReward1 >= 0,
+      is_integer(BeneficiaryReward2), BeneficiaryReward2 >= 0,
+      is_integer(AllocShares), AllocShares > 0,
+      is_integer(TotalShares), TotalShares > 0,
+      AllocShares =< TotalShares ->
+    %% Assumption: Sum of shares of specified beneficiaries
+    %% (`Beneficiaries`) is equal to specified allocated shares
+    %% (`AllocShares`).
+    AbsContrib1 = (BeneficiaryReward1 * AllocShares) div TotalShares,
+    AbsContrib2 = (BeneficiaryReward2 * AllocShares) div TotalShares,
+    DevContrib  = AbsContrib1 + AbsContrib2,
+    {Leftover, [{PK0, Amount0} | RemDevRewards]} =
+        lists:foldl(
+          fun ({PK, PKShares}, {Remaining, Acc}) ->
+                  Reward = DevContrib * PKShares div AllocShares,
+                  {Remaining - Reward, [{PK, Reward} | Acc]}
+          end, {DevContrib, []}, Beneficiaries),
+    {{BeneficiaryReward1 - AbsContrib1, BeneficiaryReward2 - AbsContrib2},
+     [{PK0, Amount0 + Leftover} | RemDevRewards]}.
