@@ -56,6 +56,7 @@
         , sophia_call_origin/1
         , sophia_no_reentrant/1
         , sophia_exploits/1
+        , sophia_functions/1
         , sophia_oracles/1
         , sophia_oracles_interact_with_no_vm_oracle/1
         , sophia_oracles_ttl__extend_after_expiry/1
@@ -208,6 +209,7 @@ groups() ->
                                  sophia_typed_calls,
                                  sophia_call_origin,
                                  sophia_exploits,
+                                 sophia_functions,
                                  sophia_oracles,
                                  {group, sophia_oracles_ttl},
                                  {group, sophia_oracles_type_error},
@@ -1433,6 +1435,15 @@ hack_type(HackFun, NewType, Code) ->
         , {type_info, [{binary, binary, binary, binary}]}
         , {byte_code, binary}],
     aeser_chain_objects:serialize(compiler_sophia, Version, Template, Fields).
+
+sophia_functions(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, functions, {}),
+    [6, 7, 8]       = ?call(call_contract, Acc, Ct, test1, {list, word}, [1, 2, 3]),
+    [101, 102, 103] = ?call(call_contract, Acc, Ct, test2, {list, word}, [1, 2, 3]),
+    [2, 3, 4]       = ?call(call_contract, Acc, Ct, test3, {list, word}, [1, 2, 3]),
+    ok.
 
 sophia_no_reentrant(_Cfg) ->
     state(aect_test_utils:new_state()),

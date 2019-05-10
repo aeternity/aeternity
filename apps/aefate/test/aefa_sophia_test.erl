@@ -409,14 +409,18 @@ higher_order() ->
      "  private function map'() = map\n"
      "  private function plus(x, y) = x + y\n"
      "  function test1(xs : list(int)) = map(curry(plus)(5), xs)\n"
-     "  function test2(xs : list(int)) = map'()(((x) => (y) => ((x, y) => x + y)(x, y))(100), xs)\n"}.
-
+     "  function test2(xs : list(int)) = map'()(((x) => (y) => ((x, y) => x + y)(x, y))(100), xs)\n"
+     "  function test3(xs : list(int)) =\n"
+     "    let m(f, xs) = map(f, xs)\n"
+     "    m((x) => x + 1, xs)\n"
+    }.
 
 higher_order_tests() ->
     lists:flatten(
       [[],
        [{"test1", [[1, 2, 3]], [6, 7, 8]}],
        [{"test2", [[1, 2, 3]], [101, 102, 103]}],
+       [{"test3", [[1, 2, 3]], [2, 3, 4]}],
        []]).
 
 higher_order_test_() -> mk_test([higher_order()], higher_order_tests()).
