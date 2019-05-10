@@ -429,16 +429,16 @@ remote() ->
       "  function bla(r : Remote) = r.remote\n"
       "  function test(r : Remote) =\n"
       "    r.remote(42)\n"
-      "      + r.remote(value = 100, 100)\n"
-      "      + bla(r)(value = 77, gas = 88, 99)\n"},
+      "      + r.remote(value = 10, 100)\n"
+      "      + bla(r)(value = 11, gas = 88, 99)\n"},
      {<<"remote">>,
       "contract Remote =\n"
-      "  function remote(x : int) = x * 2\n"}].
+      "  function remote(x : int) = x * (2 + Call.value)\n"}].
 
 remote_tests() ->
     lists:flatten(
       [[],
-       [{"test", [make_address(<<"remote">>)], 2 * (42 + 100 + 99)}],
+       [{"test", [make_address(<<"remote">>)], 2 * 42 + (2 + 10) * 100 + (2 + 11) * 99}],
        []]).
 
 remote_test_() -> mk_test(remote(), remote_tests()).
