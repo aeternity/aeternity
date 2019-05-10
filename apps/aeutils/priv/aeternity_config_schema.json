@@ -1003,6 +1003,10 @@
                             "type" : "integer",
                             "default" : 20
                         },
+                        "max_workers" : {
+                            "type" : "integer",
+                            "default" : 20
+                        },
                         "msg_timeout" : {
                             "type" : "integer",
                             "default" : 15
