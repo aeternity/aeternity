@@ -306,7 +306,7 @@ eqc-test: eqc
 	env ERL_FLAGS="-eqc_testing_time_multiplier $(EQC_EUNIT_TESTING_TIME_MULTIPLIER)" $(REBAR) as test,eqc eunit $(EQC_EUNIT_TEST_FLAGS)
 
 EQC_TEST_REPO = https://github.com/Quviq/epoch-eqc.git
-EQC_TEST_VERSION = 71b0ad8e
+EQC_TEST_VERSION = 65221105
 
 .PHONY: eqc
 eqc: | eqc/.git
