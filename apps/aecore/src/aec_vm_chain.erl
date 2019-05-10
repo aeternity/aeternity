@@ -477,26 +477,12 @@ oracle_check(Oracle, QFormat, RFormat, #state{trees = ChainTrees}) ->
             {ok, bool2word(false)}
     end.
 
-oracle_check_query(Oracle, Query, QFormat, RFormat, #state{trees = ChainTrees}) ->
+oracle_check_query(Oracle, Query, QFormat, RFormat, #state{trees = ChainTrees} = State) ->
     Trees = get_on_chain_trees(ChainTrees),
     OraclesTree = aec_trees:oracles(Trees),
     case aeo_state_tree:lookup_query(Oracle, Query, OraclesTree) of
         {value, _} ->
-            {value, O} = aeo_state_tree:lookup_oracle(Oracle, OraclesTree),
-            {ok, ChainRFormat} = oracle_typerep(aeo_oracles:abi_version(O),
-                                                aeo_oracles:response_format(O)),
-            {ok, ChainQFormat} = oracle_typerep(aeo_oracles:abi_version(O),
-                                                aeo_oracles:query_format(O)),
-            ABIVersion         = aeo_oracles:abi_version(O),
-            case ABIVersion of
-                ?ABI_NO_VM -> %% Question/Response is non-sophia string
-                    Equal = string == QFormat andalso string == ChainQFormat andalso
-                            string == RFormat andalso string == ChainRFormat,
-                    {ok, bool2word(Equal)};
-                _Other ->
-                    Equal = (QFormat == ChainQFormat) andalso (RFormat == ChainRFormat),
-                    {ok, bool2word(Equal)}
-            end;
+            oracle_check(Oracle, QFormat, RFormat, State);
         none ->
             {ok, bool2word(false)}
     end.

@@ -4144,6 +4144,12 @@ sophia_address_checks(_Cfg) ->
     [ ?assertEqual(true, ?call(call_contract, Acc, Cx, check_oq2, bool, {C2, X}))
       || Cx <- [C1, C2], X <- [<<OQ21:256>>, <<OQ22:256>>] ],
 
+    C3 = ?call(create_contract, Acc, address_checks, {}),
+    ?call(call_contract, Acc, C3, register1, word, {}),
+    OQ31 = ?call(call_contract, Acc, C1, query1, word, {C3, <<"baz">>}),
+    ?assertEqual(false, ?call(call_contract, Acc, C1, check_oq1, bool, {C1, <<OQ31:256>>})),
+    ?assertEqual(true, ?call(call_contract, Acc, C1, check_oq1, bool, {C3, <<OQ31:256>>})),
+
     ok.
 
 
