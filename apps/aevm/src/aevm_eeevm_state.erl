@@ -26,6 +26,7 @@
         , code/1
         , coinbase/1
         , cp/1
+        , creator/1
         , data/1
         , difficulty/1
         , do_return/3
@@ -122,6 +123,7 @@ init(#{ env  := Env
          , gas         => maps:get(gas, Exec)
          , gas_price   => maps:get(gasPrice, Exec)
          , origin      => maps:get(origin, Exec)
+         , creator     => maps:get(creator, Exec)
          , value       => maps:get(value, Exec)
          , call_stack  => maps:get(call_stack, Exec, [])
 
@@ -589,6 +591,7 @@ jumpdests(State)   -> maps:get(jumpdests, State).
 stack(State)       -> maps:get(stack, State).
 mem(State)         -> maps:get(memory, State).
 number(State)      -> maps:get(number, State).
+creator(State)     -> maps:get(creator, State).
 origin(State)      -> maps:get(origin, State).
 out(State)         -> maps:get(out, State).
 out_type(State)    -> maps:get(out_type, State).

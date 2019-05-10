@@ -478,6 +478,7 @@ verify_signature_(Channel, SignerId, AuthContractId, MetaTx, Trees, Env) ->
                        , tx_env      => set_auth_tx_hash(aega_meta_tx:tx(MetaTx), Env)
                        , off_chain   => false
                        , origin      => SignerPK
+                       , creator     => aect_contracts:owner_pubkey(Contract)
                        },
             CTVersion = aect_contracts:ct_version(Contract),
             {Call1, _Trees1, _Env1} = aect_dispatch:run(CTVersion, CallDef),

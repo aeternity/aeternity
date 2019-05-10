@@ -1258,6 +1258,7 @@ run_contract(CallerId, Contract, GasLimit, GasPrice, CallData, Origin, Amount,
                , tx_env      => S1#state.tx_env
                , off_chain   => false
                , origin      => Origin
+               , creator     => aect_contracts:owner_pubkey(Contract)
                },
     CTVersion = aect_contracts:ct_version(Contract),
     {Call1, Trees1, Env1} = aect_dispatch:run(CTVersion, CallDef),

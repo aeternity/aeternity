@@ -425,6 +425,13 @@ loop(CP, StateIn) ->
                     <<Val:256/integer-unsigned>> = Hash,
                     State4 = push(Val, State3),
                     next_instruction(CP, State, State4);
+                %% 2f: Non-standard Env information
+                ?CREATOR ->
+                    %% 0x2f Creator δ=0 α=1
+                    %% Get address of contract creator.
+                    Arg = aevm_eeevm_state:creator(State0),
+                    State1 = push(Arg, State0),
+                    next_instruction(CP, State, State1);
                 %% 30s: Environmental Information
                 ?ADDRESS ->
                     %% 0x30 Address δ=0 α=1
@@ -1207,7 +1214,7 @@ is_valid_instruction(16#2b          ,_VM) -> false;
 is_valid_instruction(16#2c          ,_VM) -> false;
 is_valid_instruction(16#2d          ,_VM) -> false;
 is_valid_instruction(16#2e          ,_VM) -> false;
-is_valid_instruction(16#2f          ,_VM) -> false;
+is_valid_instruction(?CREATOR       , VM) -> ?IS_AEVM_SOPHIA(VM) andalso VM >= ?VM_AEVM_SOPHIA_3;
 is_valid_instruction(?ADDRESS       ,_VM) -> true;
 is_valid_instruction(?BALANCE       ,_VM) -> true;
 is_valid_instruction(?ORIGIN        ,_VM) -> true;

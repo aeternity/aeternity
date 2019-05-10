@@ -175,6 +175,7 @@ do_execute_call(#{ code := Code
                     , gasPrice => GasPrice
                     , origin => Origin
                     , value => Value
+                    , creator => Origin
                     },
            env => #{ currentCoinbase => CoinBase
                    , currentDifficulty => Difficulty

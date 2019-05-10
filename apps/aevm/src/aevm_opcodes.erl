@@ -51,6 +51,7 @@ opcode(GasTable, ?SHL)            -> { 2,  1, maps:get('GVERYLOW', GasTable)};
 opcode(GasTable, ?SHR)            -> { 2,  1, maps:get('GVERYLOW', GasTable)};
 opcode(GasTable, ?SAR)            -> { 2,  1, maps:get('GVERYLOW', GasTable)};
 opcode(GasTable, ?SHA3)           -> { 2,  1, maps:get('GSHA3', GasTable)};
+opcode(GasTable, ?CREATOR)        -> { 0,  1, maps:get('GBASE', GasTable)};
 opcode(GasTable, ?ADDRESS)        -> { 0,  1, maps:get('GBASE', GasTable)};
 opcode(GasTable, ?BALANCE)        -> { 1,  1, maps:get('GBALANCE', GasTable)};
 opcode(GasTable, ?ORIGIN)         -> { 0,  1, maps:get('GBASE', GasTable)};

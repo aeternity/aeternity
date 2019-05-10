@@ -135,6 +135,26 @@
                                     ChainState :: chain_state()) ->
     {ok, aeo_oracles:relative_ttl()} | {error, term()}.
 
+-callback oracle_check(Oracle :: pubkey(),
+                       QFormat :: aeb_aevm_data:type(),
+                       RFormat :: aeb_aevm_data:type(),
+                       ChainState :: chain_state()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+
+-callback oracle_check_query(Oracle :: pubkey(),
+                             Query :: pubkey(),
+                             QFormat :: aeb_aevm_data:type(),
+                             RFormat :: aeb_aevm_data:type(),
+                             ChainState :: chain_state()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+
+%% -- Address --
+-callback addr_is_contract(Addr :: pubkey(), ChainState :: chain_state()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+
+-callback addr_is_oracle(Addr :: pubkey(), ChainState :: chain_state()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+
 %% -- Name Services --
 
 -callback aens_resolve(Name :: binary(),

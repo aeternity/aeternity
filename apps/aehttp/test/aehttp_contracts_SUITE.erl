@@ -1020,7 +1020,10 @@ acm_dutch_auction_contract(Config) ->
                  priv_key := CPriv}} = proplists:get_value(accounts, Config),
 
     %% Compile test contract
-    Contract = compile_test_contract("acm_dutch_auction"),
+    Contract = case aect_test_utils:latest_protocol_version() of
+                   Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN -> compile_test_contract("acm_dutch_auction");
+                   _                                    -> compile_test_contract("aevm_3/acm_dutch_auction")
+               end,
 
     %% Set auction start amount and decrease per mine and fee.
     StartAmt = 50000,
