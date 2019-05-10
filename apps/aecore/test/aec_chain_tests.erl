@@ -659,9 +659,7 @@ forking_test_() ->
      , {"Test if hash is in main chain", fun fork_is_in_main_chain/0}
      , {"Get a transaction from the right fork", fun fork_get_transaction/0}
      , {"Fork on micro-block", fun fork_on_micro_block/0}
-     , {"Fork on old fork point", fun fork_on_old_fork_point/0}
-     , {"Generate candidate from top with high fork", fun fork_gen_key_candidate/0}
-     ]}.
+     , {"Fork on old fork point", fun fork_on_old_fork_point/0}]}.
 
 fork_on_genesis() ->
     EasyChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 2, 2], 111),
@@ -867,6 +865,36 @@ fork_on_old_fork_point() ->
     ?assertEqual([ok], lists:usort(Res)),
     ok.
 
+
+%%% Generate candidate from top with high fork
+fork_gen_key_candidate_split_disabled_test_() ->
+    {setup,
+     fun () ->
+             aec_test_utils:start_chain_db(),
+             aec_test_utils:dev_reward_setup(false, true, 100),
+             setup_meck_and_keys()
+     end,
+     fun (TmpDir) ->
+             teardown_meck_and_keys(TmpDir),
+             aec_test_utils:stop_chain_db()
+     end,
+     fun fork_gen_key_candidate/0}.
+
+%%% Generate candidate from top with high fork
+fork_gen_key_candidate_split_enabled_test_() ->
+    {setup,
+     fun () ->
+             aec_test_utils:start_chain_db(),
+             aec_test_utils:dev_reward_setup(true, true, 100),
+             setup_meck_and_keys()
+     end,
+     fun (TmpDir) ->
+             teardown_meck_and_keys(TmpDir),
+             aec_test_utils:stop_chain_db()
+     end,
+     fun fork_gen_key_candidate/0}.
+
+
 fork_gen_key_candidate() ->
     %% Make sure a key candidate can be generated when there is a fork
     %% of equal height. Bug found in system tests.
@@ -959,11 +987,7 @@ time_summary_N_blocks() ->
 %%% Fees test
 
 fees_test_setup(Enabled, Activated, BeneficiaryShare) ->
-    #{public := PubKeyProtocol} = enacl:sign_keypair(),
-    application:set_env(aecore, dev_reward_enabled, Enabled),
-    application:set_env(aecore, dev_reward_activated, Activated),
-    application:set_env(aecore, dev_reward_allocated_shares, BeneficiaryShare),
-    application:set_env(aecore, dev_reward_beneficiaries, [{PubKeyProtocol, 100}]),
+    aec_test_utils:dev_reward_setup(Enabled, Activated, BeneficiaryShare),
     aec_test_utils:start_chain_db(),
     setup_meck_and_keys().
 

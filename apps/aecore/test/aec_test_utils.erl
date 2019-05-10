@@ -59,6 +59,7 @@
         , signed_spend_tx/1
         , wait_for_pubkey/0
         , min_gas_price/0
+        , dev_reward_setup/3
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -603,3 +604,15 @@ create_state_tree_with_accounts(Accounts, Backend) ->
 min_gas_price() ->
     max(aec_governance:minimum_gas_price(1), % latest prototocol on height 1
         aec_tx_pool:minimum_miner_gas_price()).
+
+
+%%%=============================================================================
+%%% Dev reward setup
+%%%=============================================================================
+
+dev_reward_setup(Enabled, Activated, BeneficiaryShare) ->
+    #{public := PubKeyProtocol} = enacl:sign_keypair(),
+    application:set_env(aecore, dev_reward_enabled, Enabled),
+    application:set_env(aecore, dev_reward_activated, Activated),
+    application:set_env(aecore, dev_reward_allocated_shares, BeneficiaryShare),
+    application:set_env(aecore, dev_reward_beneficiaries, [{PubKeyProtocol, BeneficiaryShare}]).
