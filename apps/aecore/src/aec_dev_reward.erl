@@ -75,17 +75,21 @@ unparse_beneficiary({PK, Share}) ->
 parse_beneficiary(BeneficiaryShareStr) ->
     Regex = "^(?'account'ak_[1-9A-HJ-NP-Za-km-z]*):(?'share'[0-9]+)$",
     case re:split(BeneficiaryShareStr, Regex, [trim, group, {return, binary}]) of
-        [[<<>>, Account, Share]] ->
-            case aeser_api_encoder:safe_decode(account_pubkey, Account) of
+        [[<<>>, AccountBin, ShareBin]] ->
+            case aeser_api_encoder:safe_decode(account_pubkey, AccountBin) of
                 {ok, PubKey} ->
-                    {PubKey, binary_to_integer(Share)};
+                    Share = binary_to_integer(ShareBin),
+                    Share > 0 orelse error({invalid_share, Share}),
+                    {PubKey, Share};
                 {error, _} ->
-                    error({invalid_protocol_beneficiary, Account})
+                    error({invalid_account, AccountBin})
             end;
         _ ->
-            error({invalid_protocol_beneficiary_share, BeneficiaryShareStr})
+            error({invalid_format, BeneficiaryShareStr})
     end.
 
+parse_beneficiaries([]) ->
+    {error, no_beneficiaries};
 parse_beneficiaries([_|_] = BeneficiarySharesStrs) ->
     try lists:foldl(fun (Str, Acc) -> [parse_beneficiary(Str) | Acc] end,
                     [], BeneficiarySharesStrs) of
