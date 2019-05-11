@@ -18,8 +18,8 @@
 
 -define(ENABLED, false).
 -define(TOTAL_SHARES, 1000). % 100 shares == 10% of the reward
-%%% for: "ak_2A3PZPfMC2X7ZVy4qGXz2xh2Lbh79Q4UvZ5fdH7QVFocEgcKzU:100" TODO - use actual pubkey for mainnet account
--define(BENEFICIARIES, [{<<152,57,168,5,218,153,177,254,226,207,243,133,11,50,143,68,121,242,94,41,187,198,158,67,133,88,6,71,55,26,85,54>>, 100}]).
+%%% for: "ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:100"
+-define(BENEFICIARIES, [{<<172,241,128,85,116,104,119,143,197,105,4,192,224,207,200,138,230,84,111,38,89,33,239,21,201,183,185,209,19,60,109,136>>, 100}]).
 
 ensure_env() ->
     Enabled = cfg(<<"protocol_beneficiaries_enabled">>, ?ENABLED),
