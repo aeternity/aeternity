@@ -203,6 +203,9 @@ pop_call_stack(#es{call_stack = Stack, current_contract = Current} = ES) ->
     end.
 
 pop_seen_contracts(Pubkey, #es{seen_contracts = Seen}) ->
+    %% NOTE: We might have remote tailcalls leaving entries here,
+    %% but not in the actual call stack. Drop until we reach the
+    %% contract we are returning to.
     [_|Seen1] = lists:dropwhile(fun(X) -> X =/= Pubkey end, Seen),
     Seen1.
 
