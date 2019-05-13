@@ -9,16 +9,16 @@ contract AddrCheck =
   type oq_type1 = oracle_query(q_type1, r_type1)
   type oq_type2 = oracle_query(q_type2, r_type2)
 
-  function register1() : o_type1 =
+  stateful function register1() : o_type1 =
     Oracle.register(Contract.address, 12, RelativeTTL(100))
 
-  function register2() : o_type2 =
+  stateful function register2() : o_type2 =
     Oracle.register(Contract.address, 12, RelativeTTL(100))
 
-  function query1(o, q) : oq_type1 =
+  stateful function query1(o, q) : oq_type1 =
     Oracle.query(o, q, 12, RelativeTTL(20), RelativeTTL(30))
 
-  function query2(o, q) : oq_type2 =
+  stateful function query2(o, q) : oq_type2 =
     Oracle.query(o, q, 12, RelativeTTL(20), RelativeTTL(30))
 
   function is_o(a : address) : bool =

@@ -15,7 +15,7 @@ contract FundMe =
   private function require(b : bool, err : string) =
     if(!b) abort(err)
 
-  private function spend(args : spend_args) =
+  private stateful function spend(args : spend_args) =
     Chain.spend(args.recipient, args.amount)
 
   public function init(beneficiary, deadline, goal) : state =

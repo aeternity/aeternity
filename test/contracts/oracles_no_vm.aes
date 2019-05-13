@@ -9,7 +9,7 @@ contract Oracles =
   type oracle_id = oracle(query_t, answer_t)
   type query_id  = oracle_query(query_t, answer_t)
 
-  function createQuery(o    : oracle_id,
+  stateful function createQuery(o    : oracle_id,
                        q    : query_t,
                        qfee : fee,
                        qttl : ttl,
@@ -18,7 +18,7 @@ contract Oracles =
     Oracle.query(o, q, qfee, qttl, rttl)
 
 
-  function respond(o    : oracle_id,
+  stateful function respond(o    : oracle_id,
                    q    : query_id,
                    sign : signature,
                    r    : answer_t) : () =

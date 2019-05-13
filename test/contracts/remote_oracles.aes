@@ -42,7 +42,7 @@ contract RemoteOracles =
       ttl  : Chain.ttl) : oracle(string, int) =
     r.registerOracle(acct, qfee, ttl)
 
-  public function callCreateQuery(
+  public stateful function callCreateQuery(
     r     : Oracles,
     value : int,
     o     : oracle(string, int),
@@ -54,7 +54,7 @@ contract RemoteOracles =
     r.createQuery(value = value, o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  public function callUnsafeCreateQuery(
+  public stateful function callUnsafeCreateQuery(
     r     : Oracles,
     value : int,
     o     : oracle(string, int),
@@ -65,7 +65,7 @@ contract RemoteOracles =
     r.unsafeCreateQuery(value = value, o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  public function callUnsafeCreateQueryThenErr(
+  public stateful function callUnsafeCreateQueryThenErr(
     r     : OraclesErr,
     value : int,
     o     : oracle(string, int),
@@ -76,7 +76,7 @@ contract RemoteOracles =
     r.unsafeCreateQueryThenErr(value = value, o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  public function callUnsafeCreateQueryAndThenErr(
+  public stateful function callUnsafeCreateQueryAndThenErr(
     r     : Oracles,
     value : int,
     o     : oracle(string, int),

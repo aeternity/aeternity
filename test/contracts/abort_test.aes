@@ -8,15 +8,15 @@ contract AbortTest =
     { value = v }
 
   // Aborting
-  public function do_abort(v : int, s : string) : () =
+  public stateful function do_abort(v : int, s : string) : () =
     put_value(v)
     revert_abort(s)
 
   // Accessing the value
   public function get_value() = state.value
-  public function put_value(v : int) = put(state{value = v})
+  public stateful function put_value(v : int) = put(state{value = v})
   public function get_values() : list(int) = [state.value]
-  public function put_values(v : int) = put(state{value = v})
+  public stateful function put_values(v : int) = put(state{value = v})
 
   // Some basic statistics
   public function get_stats(acct : address) =

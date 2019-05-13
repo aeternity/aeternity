@@ -12,7 +12,7 @@ contract Environment =
 
   function init(remote) = {remote = remote}
 
-  function set_remote(remote) = put({remote = remote})
+  stateful function set_remote(remote) = put({remote = remote})
 
   // -- Information about the this contract ---
 
@@ -38,7 +38,7 @@ contract Environment =
 
   // Value
   function call_value() : int = Call.value
-  function nested_value(value : int) : int =
+  stateful function nested_value(value : int) : int =
     state.remote.call_value(value = value / 2)
 
   // Gas price

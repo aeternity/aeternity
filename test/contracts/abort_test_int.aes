@@ -13,15 +13,15 @@ contract AbortTestInt =
     {r = r, value = value}
 
   // Aborting
-  public function do_abort(v : int, s : string) =
+  public stateful function do_abort(v : int, s : string) =
     put_value(v)
     state.r.do_abort(v + 100, s)
 
   // Accessing the value
-  public function put_value(v : int) = put(state{value = v})
+  public stateful function put_value(v : int) = put(state{value = v})
   public function get_value() = state.value
   public function get_values() : list(int) =
     state.value :: state.r.get_values()
-  public function put_values(v : int) =
+  public stateful function put_values(v : int) =
     put_value(v)
     state.r.put_values(v + 1000)

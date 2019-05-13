@@ -3,7 +3,7 @@ contract BitcoinAuth =
 
   function init(owner' : bytes(64)) = { nonce = 1, owner = owner' }
 
-  function authorize(n : int, s : signature) : bool =
+  stateful function authorize(n : int, s : signature) : bool =
     require(n >= state.nonce, "Nonce too low")
     require(n =< state.nonce, "Nonce too high")
     put(state{ nonce = n + 1 })
