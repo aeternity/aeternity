@@ -76,7 +76,7 @@
 -type pubkey() :: aec_keys:pubkey().
 -type amount() :: non_neg_integer().
 -type seq_number() :: non_neg_integer().
--type payload() :: aesc_offchain_tx:tx() | <<>>.
+-type payload() :: aesc_offchain_tx:tx().
 -type hash32() :: <<_:256>>.
 -type auth() :: basic | {hash32(), aeser_id:id()}.
 -type serialized() :: binary().
