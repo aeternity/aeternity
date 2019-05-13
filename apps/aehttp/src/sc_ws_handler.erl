@@ -22,6 +22,7 @@
 
 init(Req, _Opts) ->
     lager:debug("init(~p, ~p)", [Req, _Opts]),
+    process_flag(trap_exit, true),
     {cowboy_websocket, Req,
      maps:from_list(cowboy_req:parse_qs(Req))}.
 
