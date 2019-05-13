@@ -4,7 +4,10 @@
 
 -export([start_link/0,
          submit_share/3,
-         submit_solution/3]).
+         submit_solution/3,
+         status/0,
+         status/1
+        ]).
 
 -export([sent_payments/0,
          pending_payments/0]).
@@ -66,6 +69,16 @@ submit_share(<<"ak_", _/binary>> = Miner, MinerTarget, <<Hash/binary>>) ->
 
 submit_solution(BlockHash, MinerNonce, Pow) ->
     gen_server:cast(?MODULE, {submit_solution, BlockHash, MinerNonce, Pow}).
+
+status() ->
+    ConnPids = aestratum_user_register:conn_pids(),
+    [aestratum_handler:status(ConnPid) || ConnPid <- ConnPids].
+
+status(Account) when is_binary(Account) ->
+    case aestratum_user_register:find(Account) of
+        {ok, ConnPid}      -> aestratum_handler:status(ConnPid);
+        {error, Rsn} = Err -> Err
+    end.
 
 sent_payments() ->
     ?TXN(select_payments(true)).
