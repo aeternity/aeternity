@@ -92,8 +92,9 @@ paths:
             type: object
             properties:
               hash:
+                description: 'Key block hash'
+                # Encoded key block hash 'kh_...'
                 type: string
-                description: 'Hash'
         '404':
           description: 'Block not found'
           schema:
@@ -157,7 +158,8 @@ paths:
           name: hash
           description: 'The hash of the block'
           required: true
-          type : string
+          # Encoded key block hash 'kh_...'
+          type: string
       responses:
         '200':
           description: 'Successful operation'
@@ -235,7 +237,8 @@ paths:
           name: hash
           description: 'The hash of the block'
           required: true
-          type : string
+          # Encoded micro block hash 'mh_...'
+          type: string
       responses:
         '200':
           description: 'Successful operation'
@@ -263,7 +266,8 @@ paths:
           name: hash
           description: 'The hash of the block'
           required: true
-          type : string
+          # Encoded micro block hash 'mh_...'
+          type: string
       responses:
         '200':
           description: 'Successful operation'
@@ -291,6 +295,7 @@ paths:
           name: hash
           description: 'The hash of the block'
           required: true
+          # Encoded micro block hash 'mh_...'
           type: string
         - in: path
           name: index
@@ -325,7 +330,8 @@ paths:
           name: hash
           description: 'The hash of the block'
           required: true
-          type : string
+          # Encoded micro block hash 'mh_...'
+          type: string
       responses:
         '200':
           description: 'Successful operation'
@@ -377,7 +383,8 @@ paths:
           name: hash
           description: 'The hash of the generation'
           required: true
-          type : string
+          # Encoded key block hash 'kh_...'
+          type: string
       responses:
         '200':
           description: 'Successful operation'
@@ -430,6 +437,7 @@ paths:
           name: pubkey
           description: 'The public key of the account'
           required: true
+          # Encoded account pubkey 'ak_...'
           type: string
       responses:
         '200':
@@ -458,6 +466,7 @@ paths:
           name: pubkey
           description: 'The public key of the account'
           required: true
+          # Encoded account pubkey 'ak_...'
           type: string
         - in: path
           name: height
@@ -492,13 +501,14 @@ paths:
           name: pubkey
           description: 'The public key of the account'
           required: true
+          # Encoded account pubkey 'ak_...'
           type: string
         - in: path
           name: hash
           description: 'The hash of the block'
           required: true
+          # Encoded block hash 'kh_...'/'mh_...'
           type: string
-          minimum: 0
       responses:
         '200':
           description: 'Successful operation'
@@ -526,6 +536,7 @@ paths:
           name: pubkey
           description: 'The public key of the account'
           required: true
+          # Encoded account pubkey 'ak_...'
           type: string
       responses:
         '200':
@@ -554,6 +565,7 @@ paths:
           name: hash
           description: 'The hash of the transaction'
           required: true
+          # Encoded account pubkey 'ak_...'
           type: string
       responses:
         '200':
@@ -581,6 +593,7 @@ paths:
           name: hash
           description: 'The hash of the transaction'
           required: true
+          # Encoded transaction hash 'th_...'
           type: string
       responses:
         '200':
@@ -636,6 +649,7 @@ paths:
           name: pubkey
           description: 'The pubkey of the contract'
           required: true
+          # Encoded contract pubkey 'ct_...'
           type: string
       responses:
         '200':
@@ -662,6 +676,7 @@ paths:
           name: pubkey
           description: 'The pubkey of the contract'
           required: true
+          # Encoded contract pubkey 'ct_...'
           type: string
       responses:
         '200':
@@ -690,6 +705,7 @@ paths:
           name: pubkey
           description: 'The pubkey of the contract'
           required: true
+          # Encoded contract pubkey 'ct_...'
           type: string
       responses:
         '200':
@@ -716,6 +732,7 @@ paths:
           name: pubkey
           description: 'Contract pubkey to get proof for'
           required: true
+          # Encoded contract pubkey 'ct_...'
           type: string
       responses:
         '200':
@@ -744,6 +761,7 @@ paths:
           name: pubkey
           description: 'The public key of the oracle'
           required: true
+          # Encoded oracle pubkey 'ok_...'
           type: string
       responses:
         '200':
@@ -772,11 +790,13 @@ paths:
           name: pubkey
           description: 'The public key of the oracle'
           required: true
+          # Encoded oracle pubkey 'ok_...'
           type: string
         - in: query
           name: from
           description: 'Last query id in previous page'
           required: false
+          # Encoded oracle query id 'oq_...'
           type: string
         - in: query
           name: limit
@@ -818,11 +838,13 @@ paths:
           name: pubkey
           description: 'The public key of the oracle'
           required: true
+          # Encoded oracle pubkey 'ok_...'
           type: string
         - in: path
           name: query-id
           description: 'The ID of the query'
           required: true
+          # Encoded oracle query id 'oq_...'
           type: string
       responses:
         '200':
@@ -879,6 +901,7 @@ paths:
           name: pubkey
           description: 'The pubkey of the channel'
           required: true
+          # Encoded channel id 'ch_...'
           type: string
       responses:
         '200':
