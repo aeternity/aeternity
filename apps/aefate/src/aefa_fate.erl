@@ -324,7 +324,7 @@ check_same_type(T, [A|As]) ->
 
 bind_args(N, _, [], Mem, EngineState) ->
     ES1 = drop(N, EngineState),
-    aefa_engine_state:push_env(Mem, ES1);
+    aefa_engine_state:set_memory(Mem, ES1);
 bind_args(N, [Arg|Args], [_Type|Types], Mem, EngineState) ->
     bind_args(N+1, Args, Types, Mem#{{arg, N} => {val, Arg}}, EngineState).
 
@@ -433,21 +433,16 @@ collect_gas_stores([], AccGas) ->
 %% Memory
 
 lookup_var(Var, ES) ->
-    case aefa_engine_state:memory(ES) of
-        [Env|_Envs] ->
-            case maps:get(Var, Env, undefined) of
-                {val, Value} ->
-                    Value;
-                undefined ->
-                    abort({undefined_var, Var}, ES)
-            end;
-        [] ->
+    Env = aefa_engine_state:memory(ES),
+    case maps:get(Var, Env, undefined) of
+        {val, Value} ->
+            Value;
+        undefined ->
             abort({undefined_var, Var}, ES)
     end.
 
-
 store_var(Var, Val, ES) ->
-    [Env|Envs] = aefa_engine_state:memory(ES),
-    aefa_engine_state:set_memory([Env#{ Var => {val, Val}} | Envs], ES).
+    Env = aefa_engine_state:memory(ES),
+    aefa_engine_state:set_memory(Env#{ Var => {val, Val}}, ES).
 
 %% ----------------------------

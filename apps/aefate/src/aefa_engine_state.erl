@@ -58,7 +58,6 @@
         , push_accumulator/2
         , push_arguments/2
         , push_call_stack/1
-        , push_env/2
         , push_gas_cap/2
         , spend_gas/2
         , update_for_remote_call/3
@@ -89,7 +88,7 @@
             , functions         :: map()    %% Cache for current contract.
             , gas               :: integer()
             , logs              :: [term()] %% TODO: Not used properly yet
-            , memory            :: [map()] %% Stack of environments #{name => val}
+            , memory            :: map()    %% Environment #{name => val}
             , seen_contracts    :: [Pubkey :: <<_:256>>]
                                    %% Call stack of contracts (including tail calls)
             , trace             :: list()
@@ -117,7 +116,7 @@ new(Gas, Value, Spec, APIState, Contracts) ->
        , functions         = #{}
        , gas               = Gas
        , logs              = []
-       , memory            = []
+       , memory            = #{}
        , seen_contracts    = []
        , trace             = []
        }.
@@ -266,12 +265,6 @@ current_bb_instructions(#es{current_bb = BB, bbs = BBS} = ES) ->
         void -> aefa_fate:abort({trying_to_reach_bb, BB}, ES);
         Instructions -> Instructions
     end.
-
-%%%------------------
-
--spec push_env(map(), state()) -> state().
-push_env(Mem, ES) ->
-    ES#es{memory = [Mem|ES#es.memory]}.
 
 %%%------------------
 
@@ -425,11 +418,11 @@ set_logs(X, ES) ->
 
 %%%------------------
 
--spec memory(state()) -> list().
+-spec memory(state()) -> map().
 memory(#es{memory = X}) ->
     X.
 
--spec set_memory(list(), state()) -> state().
+-spec set_memory(map(), state()) -> state().
 set_memory(X, ES) ->
     ES#es{memory = X}.
 
