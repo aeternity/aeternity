@@ -3901,13 +3901,21 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
     {ok, #{<<"event">> := <<"deposit_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
     {UnsignedStateTx, Updates} = channel_sign_tx(AckConnPid, AckPrivkey, <<"channels.deposit_ack">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
-    {ok, #{<<"tx">> := EncodedSignedDepositTx}} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
-    {ok, #{<<"tx">> := EncodedSignedDepositTx}} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
+    {ok, #{<<"tx">> := EncodedSignedDepositTx} = E1} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
+    ok = match_info(E1, #{<<"info">> => <<"deposit_signed">>}),
+    {ok, #{<<"tx">> := EncodedSignedDepositTx} = E2} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
+    ok = match_info(E2, #{<<"info">> => <<"deposit_created">>}),
 
     {ok, SSignedDepositTx} = aeser_api_encoder:safe_decode(transaction,
                                                      EncodedSignedDepositTx),
     SignedDepositTx = aetx_sign:deserialize_from_binary(SSignedDepositTx),
     ok = wait_for_signed_transaction_in_block(SignedDepositTx),
+
+    {ok, #{<<"tx">> := EncodedSignedWTx} = Cc1} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
+    ok = match_info(Cc1, #{<<"info">> => <<"channel_changed">>}),
+    {ok, #{<<"tx">> := EncodedSignedWTx} = Cc2} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
+    ok = match_info(Cc2, #{<<"info">> => <<"channel_changed">>}),
+
     % assert acknowledger balance have not changed
     {SStartB1, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
     % assert sender balance has changed
@@ -3956,12 +3964,24 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
     {ok, #{<<"event">> := <<"withdraw_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
     {UnsignedStateTx, Updates} = channel_sign_tx(AckConnPid, AckPrivkey, <<"channels.withdraw_ack">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
-    {ok, #{<<"tx">> := EncodedSignedWTx}} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
-    {ok, #{<<"tx">> := EncodedSignedWTx}} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
+    {ok, #{<<"tx">> := EncodedSignedWTx} = E1} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
+    ok = match_info(E1, #{<<"info">> => <<"withdraw_signed">>}),
+    {ok, #{<<"tx">> := EncodedSignedWTx} = E2} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
+    ok = match_info(E2, #{<<"info">> => <<"withdraw_created">>}),
+
+    ct:log("Got on_chain_tx from both"),
 
     {ok, SSignedWTx} = aeser_api_encoder:safe_decode(transaction, EncodedSignedWTx),
     SignedWTx = aetx_sign:deserialize_from_binary(SSignedWTx),
     ok = wait_for_signed_transaction_in_block(SignedWTx),
+
+    ct:log("Found signed transaction in block"),
+
+    {ok, #{<<"tx">> := EncodedSignedWTx} = Cc1} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
+    ok = match_info(Cc1, #{<<"info">> => <<"channel_changed">>}),
+    {ok, #{<<"tx">> := EncodedSignedWTx} = Cc2} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
+    ok = match_info(Cc2, #{<<"info">> => <<"channel_changed">>}),
+
     % assert acknowledger balance have not changed
     {SStartB1, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
     % assert sender balance has changed
@@ -3969,12 +3989,17 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
     {SStartB1, _, _} = {SStartB + 2 - Fee, SStartB1, SStartB},
 
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ?DEFAULT_MIN_DEPTH),
+                                   ?DEFAULT_MIN_DEPTH, #{strictly_follow_top => true}),
     {ok, #{<<"event">> := <<"own_withdraw_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, #{<<"event">> := <<"own_withdraw_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
 
+    ct:log("own_withdraw_locked from both"),
+
     {ok, #{<<"event">> := <<"withdraw_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
     {ok, #{<<"event">> := <<"withdraw_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
+
+    ct:log("withdraw_locked from both"),
+
     ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx,
                                                                 error]),
     ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
@@ -5103,12 +5128,28 @@ wait_for_signed_transaction_in_pool(SignedTx) ->
     ok = WaitForTx(30). % 30 attempts * 10ms
 
 wait_for_signed_transaction_in_block(SignedTx) ->
-    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
-    wait_for_tx_hash_on_chain(TxHash).
+    Node = aecore_suite_utils:node_name(?NODE),
+    TxHash = aeser_api_encoder:encode(tx_hash, Hash = aetx_sign:hash(SignedTx)),
+    case rpc:call(Node, aec_chain, find_tx_location, [Hash]) of
+        BHash when is_binary(BHash) ->
+            case rpc:call(Node, aec_chain, hash_is_in_main_chain, [BHash]) of
+                true ->
+                    ct:log("Tx is already on chain (BHash = ~p)", [BHash]),
+                    ok;
+                false ->
+                    ct:log("Tx found in a block off-chain (BHash = ~p)", [BHash]),
+                    wait_for_tx_hash_on_chain(TxHash)
+            end;
+        _Other ->
+            ct:log("Current Tx location: ~p", [_Other]),
+            wait_for_tx_hash_on_chain(TxHash)
+    end.
 
 wait_for_tx_hash_on_chain(TxHash) ->
+    Rate = aecore_suite_utils:expected_mine_rate(),
+    Opts = #{strictly_follow_top => true},
     case aecore_suite_utils:mine_blocks_until_txs_on_chain(
-            aecore_suite_utils:node_name(?NODE), [TxHash], ?MAX_MINED_BLOCKS) of
+           aecore_suite_utils:node_name(?NODE), [TxHash], Rate, ?MAX_MINED_BLOCKS, Opts) of
         {ok, _Blocks} -> ok;
         {error, _Reason} -> did_not_mine
     end.
@@ -6133,6 +6174,21 @@ wait_for_channel_event_(Event, ConnPid, Action, <<"json-rpc">>) ->
     {ok, #{ <<"data">> := #{ <<"event">> := Event } }} =
         wait_for_json_rpc_action(ConnPid, Action),
     ok.
+
+match_info(Info, Match) ->
+    maps:fold(fun(K,V,Acc) ->
+                      case maps:find(K, Info) of
+                          {ok, V} ->
+                              Acc;
+                          {ok, V1} when is_map(V), is_map(V1) ->
+                              match_info(V, V1);
+                          {ok, Other} ->
+                              error({info_mismatch, {K, [V, Other]}});
+                          error ->
+                              error({no_such_key, K})
+                      end
+              end, ok, Match).
+
 
 wait_for_channel_leave_msg(ConnPid, Config) ->
     wait_for_channel_leave_msg_(ConnPid, sc_ws_protocol(Config)).
