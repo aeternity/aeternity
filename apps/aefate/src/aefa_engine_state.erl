@@ -90,7 +90,8 @@
             , gas               :: integer()
             , logs              :: [term()] %% TODO: Not used properly yet
             , memory            :: [map()] %% Stack of environments #{name => val}
-            , seen_contracts    :: []      %% Call stack of contracts (including tail calls)
+            , seen_contracts    :: [Pubkey :: <<_:256>>]
+                                   %% Call stack of contracts (including tail calls)
             , trace             :: list()
             }).
 
@@ -177,7 +178,7 @@ push_call_stack(#es{ current_bb = BB
 -spec pop_call_stack(state()) ->
                             'empty' |
                             {'local', _, non_neg_integer(), state()} |
-                            {'remote', aeb_fate_data:address(), _, non_neg_integer(), state()}.
+                            {'remote', aeb_fate_data:fate_address(), _, non_neg_integer(), state()}.
 pop_call_stack(#es{call_stack = Stack, current_contract = Current} = ES) ->
     case Stack of
         [] -> empty;
