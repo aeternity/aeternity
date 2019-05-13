@@ -92,9 +92,7 @@ paths:
             type: object
             properties:
               hash:
-                description: 'Key block hash'
-                # Encoded key block hash 'kh_...'
-                type: string
+                $ref: '#/definitions/EncodedHash'
         '404':
           description: 'Block not found'
           schema:
@@ -115,9 +113,7 @@ paths:
             type: object
             properties:
               height:
-                type: integer
-                description: 'Height'
-                format: int64
+                $ref: '#/definitions/UInt64'
         '404':
           description: 'Block not found'
           schema:
@@ -158,7 +154,8 @@ paths:
           name: hash
           description: 'The hash of the block'
           required: true
-          # Encoded key block hash 'kh_...'
+          # Encoded key block hash
+          # pattern: "^kh_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -183,12 +180,7 @@ paths:
       produces:
         - application/json
       parameters:
-        - in: path
-          name: height
-          description: 'The height of the block'
-          required: true
-          type : integer
-          minimum: 0
+        - $ref: '#/parameters/HeightIn'
       responses:
         '200':
           description: 'Successful operation'
@@ -238,6 +230,7 @@ paths:
           description: 'The hash of the block'
           required: true
           # Encoded micro block hash 'mh_...'
+          # pattern: "^mh_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -267,6 +260,7 @@ paths:
           description: 'The hash of the block'
           required: true
           # Encoded micro block hash 'mh_...'
+          # pattern: "^mh_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -296,6 +290,7 @@ paths:
           description: 'The hash of the block'
           required: true
           # Encoded micro block hash 'mh_...'
+          # pattern: "^mh_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
         - in: path
           name: index
@@ -331,6 +326,7 @@ paths:
           description: 'The hash of the block'
           required: true
           # Encoded micro block hash 'mh_...'
+          # pattern: "^mh_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -339,10 +335,8 @@ paths:
             type: object
             properties:
               count:
-                type: integer
-                minimum: 1
                 description: 'Count'
-                format: int64
+                $ref: '#/definitions/UInt32'
         '400':
           description: 'Invalid hash'
           schema:
@@ -384,6 +378,7 @@ paths:
           description: 'The hash of the generation'
           required: true
           # Encoded key block hash 'kh_...'
+          # pattern: "^kh_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -408,12 +403,7 @@ paths:
       produces:
         - application/json
       parameters:
-        - in: path
-          name: height
-          description: 'The height of the generation'
-          required: true
-          type : integer
-          minimum: 0
+        - $ref: '#/parameters/HeightIn'
       responses:
         '200':
           description: 'Successful operation'
@@ -438,6 +428,7 @@ paths:
           description: 'The public key of the account'
           required: true
           # Encoded account pubkey 'ak_...'
+          # pattern: "^ak_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -467,13 +458,9 @@ paths:
           description: 'The public key of the account'
           required: true
           # Encoded account pubkey 'ak_...'
+          # pattern: "^ak_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
-        - in: path
-          name: height
-          description: 'The height of the key block'
-          required: true
-          type: integer
-          minimum: 0
+        - $ref: '#/parameters/HeightIn'
       responses:
         '200':
           description: 'Successful operation'
@@ -502,12 +489,14 @@ paths:
           description: 'The public key of the account'
           required: true
           # Encoded account pubkey 'ak_...'
+          # pattern: "^ak_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
         - in: path
           name: hash
           description: 'The hash of the block'
           required: true
           # Encoded block hash 'kh_...'/'mh_...'
+          # pattern: "^(kh|mh)_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -536,7 +525,8 @@ paths:
           name: pubkey
           description: 'The public key of the account'
           required: true
-          # Encoded account pubkey 'ak_...'
+          # Encoded transaction hash
+          # pattern: "^th_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -565,7 +555,8 @@ paths:
           name: hash
           description: 'The hash of the transaction'
           required: true
-          # Encoded account pubkey 'ak_...'
+          # Encoded transaction hash
+          # pattern: "^th_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -594,6 +585,7 @@ paths:
           description: 'The hash of the transaction'
           required: true
           # Encoded transaction hash 'th_...'
+          # pattern: "^th_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -650,6 +642,7 @@ paths:
           description: 'The pubkey of the contract'
           required: true
           # Encoded contract pubkey 'ct_...'
+          # pattern: "^ct_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -677,6 +670,7 @@ paths:
           description: 'The pubkey of the contract'
           required: true
           # Encoded contract pubkey 'ct_...'
+          # pattern: "^ct_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -706,6 +700,7 @@ paths:
           description: 'The pubkey of the contract'
           required: true
           # Encoded contract pubkey 'ct_...'
+          # pattern: "^ct_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -733,6 +728,7 @@ paths:
           description: 'Contract pubkey to get proof for'
           required: true
           # Encoded contract pubkey 'ct_...'
+          # pattern: "^ct_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -762,6 +758,7 @@ paths:
           description: 'The public key of the oracle'
           required: true
           # Encoded oracle pubkey 'ok_...'
+          # pattern: "^ok_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -791,12 +788,14 @@ paths:
           description: 'The public key of the oracle'
           required: true
           # Encoded oracle pubkey 'ok_...'
+          # pattern: "^ok_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
         - in: query
           name: from
           description: 'Last query id in previous page'
           required: false
           # Encoded oracle query id 'oq_...'
+          # pattern: "^oq_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
         - in: query
           name: limit
@@ -839,12 +838,14 @@ paths:
           description: 'The public key of the oracle'
           required: true
           # Encoded oracle pubkey 'ok_...'
+          # pattern: "^ok_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
         - in: path
           name: query-id
           description: 'The ID of the query'
           required: true
           # Encoded oracle query id 'oq_...'
+          # pattern: "^oq_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -902,6 +903,7 @@ paths:
           description: 'The pubkey of the channel'
           required: true
           # Encoded channel id 'ch_...'
+          # pattern: "^ch_[1-9A-HJ-NP-Za-km-z]*$"
           type: string
       responses:
         '200':
@@ -1543,11 +1545,7 @@ paths:
           description: 'Name'
           required: true
           type: string
-        - in: query
-          name: salt
-          description: 'Salt'
-          required: true
-          type: integer
+        - $ref: '#/parameters/SaltIn'
       responses:
         '200':
           description: 'Successful operation'
@@ -1651,12 +1649,7 @@ paths:
       produces:
         - application/json
       parameters:
-        - in: path
-          name: height
-          description: 'The key block height after which the tokens are summed'
-          required: true
-          type : integer
-          minimum: 0
+        - $ref: '#/parameters/HeightIn'
       responses:
         '200':
           description: Total token supply at height divided in categories
@@ -1668,50 +1661,103 @@ paths:
             $ref: '#/definitions/Error'
 
 ##
+## Parameters
+##
+
+parameters:
+  HeightIn:
+    in: path
+    name: height
+    description: 'The height'
+    required: true
+    # UInt64
+    type : integer
+    minimum: 0
+    maximum: 18446744073709551615
+  SaltIn:
+    in: query
+    name: salt
+    description: 'Salt'
+    required: true
+    # UInt
+    type: integer
+    minimum: 0
+
+##
 ## Definitions
 ##
 
 definitions:
+  # Swagger doesn't have any proper integer types, we mainly use four
+  # different unsigned integers
+  #  * UInt - unbound unsigned ingegers
+  #  * UInt16 - 16-bit unsigned ingegers
+  #  * UInt32 - 32-bit unsigned ingegers
+  #  * UInt64 - 64-bit unsigned ingegers
+  UInt:
+    type: integer
+    minimum: 0
+  UInt16:
+    type: integer
+    minimum: 0
+    maximum: 65535
+  UInt32:
+    type: integer
+    minimum: 0
+    maximum: 4294967295
+  UInt64:
+    type: integer
+    minimum: 0
+    maximum: 18446744073709551615
+
+  # Block height is special, it can be either a UInt64 or -1 to indicate
+  # that a transaction isn't yet in a block
+  TxBlockHeight:
+    type: integer
+    minimum: -1
+    maximum: 18446744073709551615
+
+
   # Encoded values - this is binary/byte array data that is
   # "typed" and Base58Check/Base64Check encoded
   # (for details see aeserialization/aeser_api_encoder.erl)
   EncodedHash:
     # Base58Check encoded 32-byte hash (key block hash, micro block hash,
     # root hash, etc)
+    # pattern: "^(kh|mh|bf|bx|bs|th)_[1-9A-HJ-NP-Za-km-z]*$"
     description: 'Base58Check encoded tagged hash'
     type: string
   EncodedPubkey:
     # Base58Check encoded 32-byte pubkey (account, contract, oracle, etc)
+    # pattern: "^(ak|ok|ct|ch|pp)_[1-9A-HJ-NP-Za-km-z]*$"
     description: 'Base58Check encoded tagged pubkey'
     type: string
   EncodedValue:
     # Base58Check encoded 32/64-byte value (signature, oracle query id, etc)
+    # pattern: "^(oq|sg|cm|st|nm)_[1-9A-HJ-NP-Za-km-z]*$"
     description: 'Base58Check encoded tagged value'
     type: string
 
   EncodedByteArray:
     # Base64Check encoded byte array
+    # pattern: "^(cb|tx|ck|cv|ba|ov|or|pi|ss|cs)_[0-9A-Za-z+/=]*$"
     description: 'Base64Check encoded tagged byte array'
     type: string
+
 
   Pow:
     type: array
     items:
-      type: integer
-      format: int32
+      $ref: '#/definitions/UInt32'
     minItems: 42
     maxItems: 42
-  Uri:
-    type: string
-    ## format: uri
   KeyBlock:
     type: object
     properties:
       hash:
         $ref: '#/definitions/EncodedHash'
       height:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       prev_hash:
         $ref: '#/definitions/EncodedHash'
       prev_key_hash:
@@ -1723,19 +1769,15 @@ definitions:
       beneficiary:
         $ref: '#/definitions/EncodedPubkey'
       target:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt32'
       pow:
         $ref: '#/definitions/Pow'
       nonce:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       time:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       version:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt32'
       info:
         $ref: '#/definitions/EncodedByteArray'
     required:
@@ -1756,8 +1798,7 @@ definitions:
       hash:
         $ref: '#/definitions/EncodedHash'
       height:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       pof_hash:
         $ref: '#/definitions/EncodedHash'
         description: '"no_fraud" | api encoded Proof of Fraud hash'
@@ -1772,11 +1813,9 @@ definitions:
       signature:
         $ref: '#/definitions/EncodedValue'
       time:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       version:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt32'
     required:
       - hash
       - height
@@ -1808,18 +1847,14 @@ definitions:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedPubkey'
         description: 'Public key'
+        $ref: '#/definitions/EncodedPubkey'
       balance:
-        type: integer
         description: 'Balance'
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       nonce:
-        type: integer
         description: 'Nonce'
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       kind:
         type: string
         enum: [basic, generalized]
@@ -1852,14 +1887,11 @@ definitions:
         # Depending on ABI version it might be a EncodedByteArray
         type: string
       query_fee:
-        type: integer
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       abi_version:
-        type: integer
-        minimum: 0
-        maximum: 65535
+        $ref: '#/definitions/UInt16'
     required:
       - id
       - query_format
@@ -1875,9 +1907,7 @@ definitions:
       sender_id:
         $ref: '#/definitions/EncodedPubkey'
       sender_nonce:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       oracle_id:
         $ref: '#/definitions/EncodedPubkey'
       query:
@@ -1887,13 +1917,11 @@ definitions:
         # Depending on ABI version it might be a EncodedByteArray
         type: string
       ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       response_ttl:
         $ref: '#/definitions/TTL'
       fee:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
     required:
       - id
       - sender_id
@@ -1919,20 +1947,15 @@ definitions:
       recipient_id:
         $ref: '#/definitions/EncodedPubkey'
       amount:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       fee:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       sender_id:
         $ref: '#/definitions/EncodedPubkey'
       nonce:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       payload:
         $ref: '#/definitions/EncodedByteArray'
     required:
@@ -1951,25 +1974,19 @@ definitions:
         # Depending on ABI version it might be a EncodedByteArray
         type: string
       query_fee:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
       oracle_ttl:
         $ref: '#/definitions/TTL'
       account_id:
         $ref: '#/definitions/EncodedPubkey'
       nonce:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       fee:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       abi_version:
-        type: integer
-        minimum: 0
-        maximum: 65535
+        $ref: '#/definitions/UInt16'
     required:
       - query_format
       - response_format
@@ -1981,18 +1998,15 @@ definitions:
     type: object
     properties:
       fee:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
       oracle_ttl:
         $ref: '#/definitions/RelativeTTL'
       oracle_id:
         $ref: '#/definitions/EncodedPubkey'
       nonce:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
     required:
       - fee
       - oracle_ttl
@@ -2006,24 +2020,20 @@ definitions:
         # Depending on ABI version it might be a EncodedByteArray
         type: string
       query_fee:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
       query_ttl:
         $ref: '#/definitions/TTL'
       response_ttl:
         $ref: '#/definitions/RelativeTTL'
       fee:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       sender_id:
         $ref: '#/definitions/EncodedPubkey'
       nonce:
-        type: integer
-        format: int64
-        description: Sender nonce
+        description: 'Sender nonce'
+        $ref: '#/definitions/UInt64'
     required:
       - oracle_id
       - query
@@ -2043,17 +2053,13 @@ definitions:
       response_ttl:
         $ref: '#/definitions/RelativeTTL'
       fee:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       oracle_id:
         $ref: '#/definitions/EncodedPubkey'
       nonce:
-        type: integer
-        format: int64
-        description: Oracle nonce
+        $ref: '#/definitions/UInt64'
     required:
       - query_id
       - response
@@ -2067,9 +2073,7 @@ definitions:
         type: string
         enum: ["delta", "block"]
       value:
-        type: integer
-        format: int64
-        minimum: 1
+        $ref: '#/definitions/UInt64'
     required:
       - type
       - value
@@ -2080,9 +2084,7 @@ definitions:
         type: string
         enum: ["delta"]
       value:
-        type: integer
-        format: int64
-        minimum: 1
+        $ref: '#/definitions/UInt64'
     required:
       - type
       - value
@@ -2090,10 +2092,9 @@ definitions:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedPubkey'
+        $ref: '#/definitions/EncodedValue'
       ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       pointers:
         type: array
         items:
@@ -2108,16 +2109,13 @@ definitions:
       commitment_id:
         $ref: '#/definitions/EncodedValue'
       fee:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       account_id:
         $ref: '#/definitions/EncodedPubkey'
       nonce:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
     required:
       - commitment_id
       - fee
@@ -2128,19 +2126,15 @@ definitions:
       name:
         type: string
       name_salt:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
       fee:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       account_id:
         $ref: '#/definitions/EncodedPubkey'
       nonce:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
     required:
       - name
       - name_salt
@@ -2152,26 +2146,21 @@ definitions:
       name_id:
         $ref: '#/definitions/EncodedValue'
       name_ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       pointers:
         type: array
         items:
           $ref: '#/definitions/NamePointer'
       client_ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       fee:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       account_id:
         $ref: '#/definitions/EncodedPubkey'
       nonce:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
     required:
       - name_id
       - name_ttl
@@ -2187,16 +2176,13 @@ definitions:
       recipient_id:
         $ref: '#/definitions/EncodedPubkey'
       fee:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       account_id:
         $ref: '#/definitions/EncodedPubkey'
       nonce:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
     required:
       - name_id
       - recipient_id
@@ -2208,16 +2194,13 @@ definitions:
       name_id:
         $ref: '#/definitions/EncodedValue'
       fee:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
       account_id:
         $ref: '#/definitions/EncodedPubkey'
       nonce:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
     required:
       - name_id
       - fee
@@ -2256,21 +2239,13 @@ definitions:
       responder_id:
         $ref: '#/definitions/EncodedPubkey'
       channel_amount:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       initiator_amount:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       responder_amount:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       channel_reserve:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       delegate_ids:
         type: array
         items:
@@ -2278,20 +2253,13 @@ definitions:
       state_hash:
         $ref: '#/definitions/EncodedHash'
       round:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       solo_round:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       lock_period:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       locked_until:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt64'
     required:
       - id
       - initiator_id
@@ -2312,39 +2280,23 @@ definitions:
       initiator_id:
         $ref: '#/definitions/EncodedPubkey'
       initiator_amount:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       responder_id:
         $ref: '#/definitions/EncodedPubkey'
       responder_amount:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       push_amount:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       channel_reserve:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       lock_period:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       ttl:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       fee:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       nonce:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       state_hash:
         description: 'Root hash of the channel''s internal state tree'
         $ref: '#/definitions/EncodedHash'
@@ -2366,29 +2318,19 @@ definitions:
       from_id:
         $ref: '#/definitions/EncodedPubkey'
       amount:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       fee:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       nonce:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       state_hash:
         description: 'Root hash of the channel''s internal state tree after the deposit had been applied to it'
         $ref: '#/definitions/EncodedHash'
       round:
-        type: integer
-        format: int64
-        minimum: 0
         description: 'Channel''s next round'
+        $ref: '#/definitions/UInt64'
     required:
       - channel_id
       - from_id
@@ -2405,29 +2347,19 @@ definitions:
       to_id:
         $ref: '#/definitions/EncodedPubkey'
       amount:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       fee:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       nonce:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       state_hash:
         description: 'Root hash of the channel''s internal state tree after the withdraw had been applied to it'
         $ref: '#/definitions/EncodedHash'
       round:
-        type: integer
-        format: int64
-        minimum: 0
         description: 'Channel''s next round'
+        $ref: '#/definitions/UInt64'
     required:
       - channel_id
       - to_id
@@ -2446,28 +2378,20 @@ definitions:
       payload:
         $ref: '#/definitions/EncodedByteArray'
       round:
-        type: integer
-        format: int64
-        minimum: 0
         description: 'Channel''s next round'
+        $ref: '#/definitions/UInt64'
       update:
+        description: 'Update to be applied. Must be a OffChainCallContract'
         $ref: '#/definitions/OffChainUpdate'
-        description: Update to be applied. Must be a OffChainCallContract
       state_hash:
-        $ref: '#/definitions/EncodedHash'
         description: 'Channel''s next state_hash'
+        $ref: '#/definitions/EncodedHash'
       ttl:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       fee:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       nonce:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       offchain_trees:
         $ref: '#/definitions/EncodedByteArray'
         description: 'The whole set of off-chain state trees'
@@ -2489,25 +2413,15 @@ definitions:
       from_id:
         $ref: '#/definitions/EncodedPubkey'
       initiator_amount_final:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       responder_amount_final:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       fee:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       nonce:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
     required:
       - channel_id
       - from_id
@@ -2525,17 +2439,11 @@ definitions:
       payload:
         $ref: '#/definitions/EncodedByteArray'
       ttl:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       fee:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       nonce:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       poi:
         $ref: '#/definitions/EncodedByteArray'
         description: 'Proof of inclusion containing information for closing the channel'
@@ -2555,17 +2463,11 @@ definitions:
       payload:
         $ref: '#/definitions/EncodedByteArray'
       ttl:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       fee:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       nonce:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       poi:
         $ref: '#/definitions/EncodedByteArray'
         description: 'Proof of inclusion containing information for closing the channel'
@@ -2583,25 +2485,15 @@ definitions:
       from_id:
         $ref: '#/definitions/EncodedPubkey'
       initiator_amount_final:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       responder_amount_final:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       ttl:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       fee:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       nonce:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
     required:
       - channel_id
       - from_id
@@ -2619,17 +2511,11 @@ definitions:
       payload:
         $ref: '#/definitions/EncodedByteArray'
       ttl:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       fee:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt'
       nonce:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
     required:
       - channel_id
       - from_id
@@ -2655,12 +2541,9 @@ definitions:
       genesis_key_block_hash:
         $ref: '#/definitions/EncodedHash'
       solutions:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       difficulty:
-        type: number
-        format: int64
+        $ref: '#/definitions/UInt64'
       syncing:
         type: boolean
       sync_progress:
@@ -2679,13 +2562,9 @@ definitions:
       node_revision:
         type: string
       peer_count:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt32'
       pending_transactions_count:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt32'
       network_id:
         type: string
     required:
@@ -2704,13 +2583,9 @@ definitions:
     type: object
     properties:
       version:
-        type: integer
-        format: int64
-        minimum: 1
+        $ref: '#/definitions/UInt32'
       effective_at_height:
-        type: integer
-        format: int64
-        minimum: 0
+        $ref: '#/definitions/UInt64'
     required:
       - version
       - effective_at_height
@@ -2720,7 +2595,7 @@ definitions:
       tx:
         $ref: '#/definitions/GenericTx'
       block_height:
-        type: integer
+        $ref: '#/definitions/TxBlockHeight'
       block_hash:
         description: 'Value "none" means no block in the chain includes the transaction'
         $ref: '#/definitions/EncodedHash'
@@ -2742,8 +2617,7 @@ definitions:
     discriminator: type
     properties:
       version:
-        type: integer
-        format: int64
+        $ref: '#/definitions/UInt32'
       type:
         type: string
     required:
@@ -2848,15 +2722,15 @@ definitions:
       caller_id:
         $ref: '#/definitions/EncodedPubkey'
       caller_nonce:
-        type: integer
+        $ref: '#/definitions/UInt64'
       height:
-        type: integer
+        $ref: '#/definitions/UInt64'
       contract_id:
         $ref: '#/definitions/EncodedPubkey'
       gas_price:
-        type: integer
+        $ref: '#/definitions/UInt'
       gas_used:
-        type: integer
+        $ref: '#/definitions/UInt64'
       log:
         type: array
         items:
@@ -2882,11 +2756,11 @@ definitions:
       caller_id:
         $ref: '#/definitions/EncodedPubkey'
       height:
-        type: integer
+        $ref: '#/definitions/UInt64'
       gas_price:
-        type: integer
+        $ref: '#/definitions/UInt'
       gas_used:
-        type: integer
+        $ref: '#/definitions/UInt64'
       return_value:
         $ref: '#/definitions/EncodedByteArray'
       return_type:
@@ -2911,7 +2785,7 @@ definitions:
         description: Event topics
         type: array
         items:
-          type: integer
+          $ref: '#/definitions/UInt'
       data:
         description: Log event data (as contract byte array).
         $ref: '#/definitions/EncodedByteArray'
@@ -2934,13 +2808,9 @@ definitions:
       owner_id:
         $ref: '#/definitions/EncodedPubkey'
       vm_version:
-        type: integer
-        minimum: 0
-        maximum: 65535
+        $ref: '#/definitions/UInt16'
       abi_version:
-        type: integer
-        minimum: 0
-        maximum: 65535
+        $ref: '#/definitions/UInt16'
       active:
         type: boolean
       referrer_ids:
@@ -2948,7 +2818,7 @@ definitions:
         items:
           $ref: '#/definitions/EncodedPubkey'
       deposit:
-        type: integer
+        $ref: '#/definitions/UInt64'
     required:
       - id
       - owner_id
@@ -3001,7 +2871,7 @@ definitions:
       pub_key:
         $ref: '#/definitions/EncodedPubkey'
       amount:
-        type: integer
+        $ref: '#/definitions/UInt'
     required:
       - pub_key
       - amount
@@ -3056,44 +2926,28 @@ definitions:
         description: Contract owner pub_key
       nonce:
         description: 'Owner''s nonce'
-        type: integer
+        $ref: '#/definitions/UInt64'
       code:
         description: 'Contract''s code'
         $ref: '#/definitions/EncodedByteArray'
       vm_version:
         description: 'Virtual machine''s version'
-        type: integer
-        minimum: 0
-        maximum: 65535
+        $ref: '#/definitions/UInt16'
       abi_version:
         description: 'ABI version'
-        type: integer
-        minimum: 0
-        maximum: 65535
+        $ref: '#/definitions/UInt16'
       deposit:
-        description: Deposit
-        type: integer
-        minimum: 0
+        $ref: '#/definitions/UInt'
       amount:
-        description: Amount
-        type: integer
-        minimum: 0
+        $ref: '#/definitions/UInt'
       gas:
-        description: Contract gas
-        type: integer
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       gas_price:
-        description: Gas price
-        type: integer
-        minimum: 0
+        $ref: '#/definitions/UInt'
       fee:
-        description: Transaction fee
-        type: integer
-        minimum: 0
+        $ref: '#/definitions/UInt'
       ttl:
-        description: Transaction TTL
-        type: integer
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       call_data:
         description: Contract call data
         $ref: '#/definitions/EncodedByteArray'
@@ -3116,35 +2970,23 @@ definitions:
         description: Contract caller pub_key
       nonce:
         description: 'Caller''s nonce'
-        type: integer
+        $ref: '#/definitions/UInt64'
       contract_id:
         $ref: '#/definitions/EncodedPubkey'
         description: 'Contract''s pub_key'
       abi_version:
         description: 'ABI version'
-        type: integer
-        minimum: 0
-        maximum: 65535
+        $ref: '#/definitions/UInt16'
       fee:
-        description: Transaction fee
-        type: integer
-        minimum: 0
+        $ref: '#/definitions/UInt'
       ttl:
-        description: Transaction TTL
-        type: integer
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       amount:
-        description: Amount
-        type: integer
-        minimum: 0
+        $ref: '#/definitions/UInt'
       gas:
-        description: Contract gas
-        type: integer
-        minimum: 0
+        $ref: '#/definitions/UInt64'
       gas_price:
-        description: Gas price
-        type: integer
-        minimum: 0
+        $ref: '#/definitions/UInt'
       call_data:
         description: Contract call data
         $ref: '#/definitions/EncodedByteArray'
@@ -3223,9 +3065,7 @@ definitions:
             $ref: '#/definitions/EncodedPubkey'
             description: Receiver of tokens
           amount:
-            type: integer
-            description: Amount of tokens to transfer
-            format: int64
+            $ref: '#/definitions/UInt'
         required:
           - from
           - to
@@ -3239,9 +3079,7 @@ definitions:
             $ref: '#/definitions/EncodedPubkey'
             description: Withdrawer of tokens
           amount:
-            type: integer
-            description: Amount of tokens to withdraw
-            format: int64
+            $ref: '#/definitions/UInt'
         required:
           - to
           - amount
@@ -3254,9 +3092,7 @@ definitions:
             $ref: '#/definitions/EncodedPubkey'
             description: Depositor of tokens
           amount:
-            type: integer
-            description: Amount of tokens to deposit
-            format: int64
+            $ref: '#/definitions/UInt'
         required:
           - from
           - amount
@@ -3269,21 +3105,13 @@ definitions:
             $ref: '#/definitions/EncodedPubkey'
             description: Contract owner
           vm_version:
-            type: integer
-            description: VM version of the contract
-            minimum: 0
-            maximum: 65535
+            $ref: '#/definitions/UInt16'
           abi_version:
-            type: integer
-            description: ABI version of the contract
-            minimum: 0
-            maximum: 65535
+            $ref: '#/definitions/UInt16'
           code:
             $ref: '#/definitions/ByteCode'
           deposit:
-            type: integer
-            description: Amount of tokens to deposit to the new contract
-            format: int64
+            $ref: '#/definitions/UInt'
           call_data:
             description: Contract call data
             $ref: '#/definitions/EncodedByteArray'
@@ -3305,37 +3133,21 @@ definitions:
           contract:
             $ref: '#/definitions/EncodedPubkey'
             description: Contract address
-          # vm_version kept for backwards compatibility, should be removed
-          vm_version:
-            type: integer
-            description: ABI version for the call/calldata
-            minimum: 0
-            maximum: 65535
           abi_version:
-            type: integer
-            description: ABI version for the call/calldata
-            minimum: 0
-            maximum: 65535
+            $ref: '#/definitions/UInt16'
           amount:
-            type: integer
-            description: Amount of tokens to transfer to the contract
-            format: int64
+            $ref: '#/definitions/UInt'
           gas:
-            type: integer
-            description: Gas limit for the contract call
-            format: int64
+            $ref: '#/definitions/UInt64'
           gas_price:
-            type: integer
-            description: Gas price for the contract call
-            format: int64
+            $ref: '#/definitions/UInt'
           call_data:
             description: Contract call data
             $ref: '#/definitions/EncodedByteArray'
         required:
           - caller
           - contract
-          # should be required once vm_version is removed
-          # - abi_version
+          - abi_version
           - code
           - amount
           - call_data
@@ -3345,30 +3157,31 @@ definitions:
     type: object
     properties:
       accounts:
-        type: integer
         description: Tokens in account balances
+        $ref: '#/definitions/UInt'
       contracts:
-        type: integer
         description: Tokens in contracts
+        $ref: '#/definitions/UInt'
       contract_oracles:
-        type: integer
         description: Tokens in contracts registered as oracles
+        $ref: '#/definitions/UInt'
       locked:
-        type: integer
         description: Tokens locked (not owned by anyone)
+        $ref: '#/definitions/UInt'
       oracles:
-        type: integer
         description: Tokens in accounts registered as oracles
+        $ref: '#/definitions/UInt'
       oracle_queries:
-        type: integer
         description: Tokens in pending oracle queries
+        $ref: '#/definitions/UInt'
       pending_rewards:
-        type: integer
         description: Tokens from fees and coinbase pending in the beneficiary reward delay
+        $ref: '#/definitions/UInt'
       total:
-        type: integer
         description: Sum of all tokens from other fields
+        $ref: '#/definitions/UInt'
 
 externalDocs:
   description: Find out more about Aeternity
   url: 'http://www.aeternity.com'
+
