@@ -159,14 +159,8 @@ call_r(Arg0, Arg1, Arg2, EngineState) ->
 call_tr(Arg0, Arg1, Arg2, EngineState) ->
     {Address, ES1} = get_op_arg(Arg0, EngineState),
     {Value, ES2} = get_op_arg(Arg2, ES1),
-    ES3 = aefa_fate:set_remote_function(Address, Arg1, ES2),
-    Signature = aefa_fate:get_function_signature(Arg1, ES3),
-    ok = aefa_fate:check_signature(Signature, ES3),
-    ES4 = aefa_fate:bind_args_from_signature(Signature, ES3),
-    %% Intentionally on original EngineState
-    Sender = aefa_engine_state:current_contract(EngineState),
-    ES5 = transfer_value(Sender, Address, Value, ES4),
-    {jump, 0, ES5}.
+    ES3 = remote_call_common(Address, Arg1, Value, ES2),
+    {jump, 0, ES3}.
 
 call_gr(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
@@ -176,15 +170,18 @@ call_gtr(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {Address, ES1} = get_op_arg(Arg0, EngineState),
     {Value, ES2}   = get_op_arg(Arg2, ES1),
     {GasCap, ES3}  = get_op_arg(Arg3, ES2),
-    ES4 = aefa_fate:set_remote_function(Address, Arg1, ES3),
-    Signature = aefa_fate:get_function_signature(Arg1, ES4),
-    ok = aefa_fate:check_signature(Signature, ES4),
-    ES5 = aefa_fate:bind_args_from_signature(Signature, ES4),
-    %% Intentionally on original EngineState
-    Sender = aefa_engine_state:current_contract(EngineState),
-    ES6 = transfer_value(Sender, Address, Value, ES5),
-    ES7 = aefa_fate:push_gas_cap(GasCap, ES6),
-    {jump, 0, ES7}.
+    ES4 = remote_call_common(Address, Arg1, Value, ES3),
+    ES5 = aefa_fate:push_gas_cap(GasCap, ES4),
+    {jump, 0, ES5}.
+
+remote_call_common(Address, Function, Value, EngineState) ->
+    Current   = aefa_engine_state:current_contract(EngineState),
+    ES1       = aefa_fate:check_remote(Address, EngineState),
+    ES2       = aefa_fate:set_remote_function(Address, Function, ES1),
+    Signature = aefa_fate:get_function_signature(Function, ES2),
+    ok        = aefa_fate:check_signature(Signature, ES2),
+    ES3       = aefa_fate:bind_args_from_signature(Signature, ES2),
+    transfer_value(Current, Address, Value, ES3).
 
 transfer_value(?FATE_ADDRESS(_From), ?FATE_ADDRESS(_To), Value, ES) when not ?IS_FATE_INTEGER(Value) ->
     aefa_fate:abort({value_does_not_match_type, Value, integer}, ES);

@@ -780,6 +780,9 @@ environment_contract_fate(Config) ->
     {EncCPub, DecCPub, _} =
         create_contract(Node, APub, APriv, Contract, "()", #{amount => ContractBalance}),
 
+    {EncRemoteCPub, DecRemotePub, _} =
+        create_contract(Node, APub, APriv, Contract, "()", #{amount => ContractBalance}),
+
     %% Get the initial balance.
     BBal1 = get_balance(BPub),
 
@@ -800,7 +803,7 @@ environment_contract_fate(Config) ->
     call_func(BPub, BPriv, EncCPub, Contract, "call_origin", "()",
               {fate, {address, binary:decode_unsigned(BPub)}}),
     ct:pal("Calling remote_call_origin\n"),
-    <<"ct_", Rest/binary>> = EncCPub,
+    <<"ct_", Rest/binary>> = EncRemoteCPub,
     Address = binary_to_list(<<"@ak_", Rest/binary>>),
     call_func(BPub, BPriv, EncCPub, Contract, "remote_call_origin",
               "(" ++ Address ++ ")", {fate, {address, binary:decode_unsigned(BPub)}}),
@@ -811,13 +814,6 @@ environment_contract_fate(Config) ->
     ct:pal("Calling remote_call_caller\n"),
     call_func(BPub, BPriv, EncCPub, Contract, "remote_call_caller",
               "(" ++ Address ++ ")", {fate, {address, binary:decode_unsigned(DecCPub)}}),
-
-    %% %% Value.
-    %% ct:pal("Calling call_value\n"),
-    %% call_func(BPub, BPriv, EncCPub, Contract, "call_value", [],
-    %%           #{amount => 5}, {"int", 5}),
-    %% ct:pal("Calling nested_value\n"),
-    %% call_func(BPub, BPriv, EncCPub, Contract, "nested_value", ["42"]),
 
     %% Gas price.
     ct:pal("Calling call_gas_price\n"),
@@ -834,6 +830,14 @@ environment_contract_fate(Config) ->
               {fate, ABal}),
     call_func(BPub, BPriv, EncCPub, Contract, "contract_balance", "()",
               {fate, ContractBalance}),
+
+    %% Value.
+    ct:pal("Calling call_value\n"),
+    call_func(BPub, BPriv, EncCPub, Contract, "call_value", "()",
+              #{amount => 5}, {fate, 5}),
+    ct:pal("Calling remote_call_value\n"),
+    call_func(BPub, BPriv, EncCPub, Contract, "remote_call_value", "(" ++ Address ++", 42)",
+              #{amount => 50}, {fate, 42}),
 
     %% Block hash.
     ct:pal("Calling block_hash\n"),

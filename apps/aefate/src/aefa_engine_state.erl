@@ -48,16 +48,17 @@
         ]).
 
 %% More complex stuff
--export([ current_bb_instructions/1
+-export([ check_reentrant_remote/2
+        , current_bb_instructions/1
         , dup_accumulator/1
         , dup_accumulator/2
         , drop_accumulator/2
         , pop_accumulator/1
+        , pop_call_stack/1
         , push_accumulator/2
         , push_arguments/2
-        , push_env/2
+        , push_call_stack/1
         , push_gas_cap/2
-        , push_return_address/1
         , spend_gas/2
         , update_for_remote_call/3
         ]).
@@ -87,7 +88,9 @@
             , functions         :: map()    %% Cache for current contract.
             , gas               :: integer()
             , logs              :: [term()] %% TODO: Not used properly yet
-            , memory            :: [map()] %% Stack of environments #{name => val}
+            , memory            :: map()    %% Environment #{name => val}
+            , seen_contracts    :: [Pubkey :: <<_:256>>]
+                                   %% Call stack of contracts (including tail calls)
             , trace             :: list()
             }).
 
@@ -113,7 +116,8 @@ new(Gas, Value, Spec, APIState, Contracts) ->
        , functions         = #{}
        , gas               = Gas
        , logs              = []
-       , memory            = []
+       , memory            = #{}
+       , seen_contracts    = []
        , trace             = []
        }.
 
@@ -134,6 +138,19 @@ update_for_remote_call(Address, ContractCode, #es{current_contract = Current} = 
          , caller = Current
          }.
 
+-spec check_reentrant_remote(aeb_fate_data:fate_address(), state()) ->
+                                    {ok, state()} | error.
+check_reentrant_remote(Current, #es{current_contract = Current}) ->
+    error;
+check_reentrant_remote(?FATE_ADDRESS(Pubkey), #es{seen_contracts = Seen} = ES) ->
+    case lists:member(Pubkey, Seen) of
+        true ->
+            error;
+        false ->
+            ?FATE_ADDRESS(Current) = current_contract(ES),
+            {ok, ES#es{seen_contracts = [Current|Seen]}}
+    end.
+
 %%%------------------
 %%% Accumulator stack
 
@@ -147,14 +164,50 @@ push_arguments([], Acc, Stack, ES) ->
 push_arguments([A|As], Acc, Stack, ES) ->
     push_arguments(As, A, [Acc | Stack], ES).
 
--spec push_return_address(state()) -> state().
-push_return_address(#es{ current_bb = BB
-                       , current_function = Function
-                       , current_contract = Contract
-                       , call_stack = Stack
-                       , call_value = Value
-                       , memory = Mem} = ES) ->
+-spec push_call_stack(state()) -> state().
+push_call_stack(#es{ current_bb = BB
+                   , current_function = Function
+                   , current_contract = Contract
+                   , call_stack = Stack
+                   , call_value = Value
+                   , memory = Mem} = ES) ->
     ES#es{call_stack = [{Contract, Function, BB+1, Mem, Value}|Stack]}.
+
+%% TODO: Make better types for all these things
+-spec pop_call_stack(state()) ->
+                            'empty' |
+                            {'local', _, non_neg_integer(), state()} |
+                            {'remote', aeb_fate_data:fate_address(), _, non_neg_integer(), state()}.
+pop_call_stack(#es{call_stack = Stack, current_contract = Current} = ES) ->
+    case Stack of
+        [] -> empty;
+        [{gas_store, StoredGas}| Rest] ->
+            ES1 = ES#es{ gas = StoredGas + gas(ES)
+                       , call_stack = Rest
+                       },
+            pop_call_stack(ES1);
+        [{Current, Function, BB, Mem, Value}| Rest] ->
+            {local, Function, BB,
+             ES#es{ call_value = Value
+                  , memory = Mem
+                  , call_stack = Rest
+                  }};
+        [{?FATE_ADDRESS(Pubkey) = Contract, Function, BB, Mem, Value}| Rest] ->
+            Seen = pop_seen_contracts(Pubkey, ES),
+            {remote, Contract, Function, BB,
+             ES#es{ call_value = Value
+                  , memory = Mem
+                  , call_stack = Rest
+                  , seen_contracts = Seen
+                  }}
+    end.
+
+pop_seen_contracts(Pubkey, #es{seen_contracts = Seen}) ->
+    %% NOTE: We might have remote tailcalls leaving entries here,
+    %% but not in the actual call stack. Drop until we reach the
+    %% contract we are returning to.
+    [_|Seen1] = lists:dropwhile(fun(X) -> X =/= Pubkey end, Seen),
+    Seen1.
 
 -spec push_gas_cap(pos_integer(), state()) -> state().
 push_gas_cap(GasCap, #es{gas = AvailableGas} = ES) when GasCap >= AvailableGas ->
@@ -215,12 +268,6 @@ current_bb_instructions(#es{current_bb = BB, bbs = BBS} = ES) ->
         void -> aefa_fate:abort({trying_to_reach_bb, BB}, ES);
         Instructions -> Instructions
     end.
-
-%%%------------------
-
--spec push_env(map(), state()) -> state().
-push_env(Mem, ES) ->
-    ES#es{memory = [Mem|ES#es.memory]}.
 
 %%%------------------
 
@@ -374,11 +421,11 @@ set_logs(X, ES) ->
 
 %%%------------------
 
--spec memory(state()) -> list().
+-spec memory(state()) -> map().
 memory(#es{memory = X}) ->
     X.
 
--spec set_memory(list(), state()) -> state().
+-spec set_memory(map(), state()) -> state().
 set_memory(X, ES) ->
     ES#es{memory = X}.
 
