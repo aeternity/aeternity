@@ -290,8 +290,7 @@ groups() ->
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
        {group, naming},
-       {group, channel_websocket},
-       {group, channel_websocket_legacy}
+       {group, channel_websocket}
       ]},
 
      %% /key-blocks/* /micro-blocks/* /generations/*
@@ -528,9 +527,6 @@ groups() ->
       [naming_system_manage_name
       ]},
      {channel_websocket, [sequence],
-      channel_websocket_sequence()
-     },
-     {channel_websocket_legacy, [sequence],
       channel_websocket_sequence()
      },
      {continuous_sc_ws, [sequence],
@@ -774,12 +770,6 @@ init_per_group(channel_websocket = Group, Config) ->
                                     priv_key => RPrivkey,
                                     start_amt => RStartAmt}},
     [{participants, Participants} | Config2];
-init_per_group(channel_websocket_legacy, Config) ->
-    Config1 = init_per_group(channel_websocket, Config),
-    Config2 = lists:keyreplace(
-                node_start_group, 1, Config1,
-                {node_start_group, channel_websocket_legacy}),
-    lists:keystore(sc_ws_protocol, 1, Config2, {sc_ws_protocol, <<"legacy">>});
 init_per_group(Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
@@ -3225,15 +3215,16 @@ assert_trees_balance(Trees, Pubkey, ExpectedBalance) ->
     {value, Account} = aec_accounts_trees:lookup(Pubkey, AccTrees),
     ExpectedBalance = aec_accounts:balance(Account).
 
-channel_sign_tx(ConnPid, Privkey, Tag, Config) ->
+channel_sign_tx(ConnPid, Privkey, Method, Config) ->
     {ok, Tag, #{<<"tx">> := EncCreateTx,
                 <<"updates">> := Updates}} = wait_for_channel_event(ConnPid, sign, Config),
+    Method = <<"channels.", (bin(Tag))/binary>>,
     {ok, CreateBinTx} = aeser_api_encoder:safe_decode(transaction, EncCreateTx),
     Tx = aetx:deserialize_from_binary(CreateBinTx),
     SignedCreateTx = aec_test_utils:sign_tx(Tx, Privkey),
     EncSignedCreateTx = aeser_api_encoder:encode(transaction,
                                   aetx_sign:serialize_to_binary(SignedCreateTx)),
-    ws_send(ConnPid, Tag,  #{tx => EncSignedCreateTx}, Config),
+    ws_send_tagged(ConnPid, Method, #{tx => EncSignedCreateTx}, Config),
     {Tx, Updates}.
 
 sc_ws_open_(Config) ->
@@ -3325,10 +3316,10 @@ channel_create(Config, IConnPid, RConnPid) ->
     %% initiator gets to sign a create_tx
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
-    {CrTx, Updates} = channel_sign_tx(IConnPid, IPrivkey, <<"initiator_sign">>, Config),
+    {CrTx, Updates} = channel_sign_tx(IConnPid, IPrivkey, <<"channels.initiator_sign">>, Config),
     {ok, #{<<"event">> := <<"funding_created">>}} = wait_for_channel_event(RConnPid, info, Config),
     %% responder gets to sign a create_tx
-    {CrTx, Updates} = channel_sign_tx(RConnPid, RPrivkey, <<"responder_sign">>, Config),
+    {CrTx, Updates} = channel_sign_tx(RConnPid, RPrivkey, <<"channels.responder_sign">>, Config),
     {ok, #{<<"event">> := <<"funding_signed">>}} = wait_for_channel_event(IConnPid, info, Config),
 
     %% both of them receive the same co-signed channel_create_tx
@@ -3402,11 +3393,11 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
                     SignedCreateTx = aec_test_utils:sign_tx(Tx, Privkey),
                     EncSignedCreateTx = aeser_api_encoder:encode(transaction,
                                                   aetx_sign:serialize_to_binary(SignedCreateTx)),
-                    ws_send(ConnPid, <<"update">>, #{tx => EncSignedCreateTx}, Config)
+                    ws_send_tagged(ConnPid, <<"channels.update">>, #{tx => EncSignedCreateTx}, Config)
             end
         end,
     %% sender initiates an update
-    ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
+    ws_send_tagged(StarterPid, <<"channels.update.new">>,
                    #{from => aeser_api_encoder:encode(account_pubkey, StarterPubkey),
                      to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
                      amount => Amount1}, Config),
@@ -3414,7 +3405,7 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
     %% starter signs the new state
 
     %% acknowledger initiates an update too
-    ws_send_tagged(AcknowledgerPid, <<"update">>, <<"new">>,
+    ws_send_tagged(AcknowledgerPid, <<"channels.update.new">>,
                    #{from => aeser_api_encoder:encode(account_pubkey, StarterPubkey),
                      to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
                      amount => Amount2}, Config),
@@ -3464,15 +3455,15 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     UpdateOpts = #{from => aeser_api_encoder:encode(account_pubkey, StarterPubkey),
                    to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
                    amount => Amount},
-    ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
+    ws_send_tagged(StarterPid, <<"channels.update.new">>,
                    UpdateOpts#{amount => <<"1">>}, Config),
     {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(StarterPid, error, Config),
-    ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
+    ws_send_tagged(StarterPid, <<"channels.update.new">>,
                    UpdateOpts, Config),
 
     %% starter signs the new state
-    {UnsignedStateTx, Updates} = channel_sign_tx(StarterPid, StarterPrivkey, <<"update">>, Config),
+    {UnsignedStateTx, Updates} = channel_sign_tx(StarterPid, StarterPrivkey, <<"channels.update">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
     %% verify contents
     {channel_offchain_tx, _OffchainTx} = aetx:specialize_type(UnsignedStateTx),
@@ -3485,7 +3476,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
 
     %% acknowledger signs the new state
     {ok, #{<<"event">> := <<"update">>}} = wait_for_channel_event(AcknowledgerPid, info, Config),
-    {UnsignedStateTx, Updates} = channel_sign_tx(AcknowledgerPid, AcknowledgerPrivkey, <<"update_ack">>, Config),
+    {UnsignedStateTx, Updates} = channel_sign_tx(AcknowledgerPid, AcknowledgerPrivkey, <<"channels.update_ack">>, Config),
 
     {ok, #{<<"state">> := NewState}} = wait_for_channel_event(IConnPid, update, Config),
     {ok, #{<<"state">> := NewState}} = wait_for_channel_event(RConnPid, update, Config),
@@ -3532,7 +3523,7 @@ channel_update_fail(#{initiator := IConnPid, responder :=RConnPid},
     ok = ?WS:register_test_for_channel_event(StarterPid, error),
 
     %% sender initiates an update
-    ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
+    ws_send_tagged(StarterPid, <<"channels.update.new">>,
                    #{from => aeser_api_encoder:encode(account_pubkey, StarterPubkey),
                      to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
                      amount => Amount}, Config),
@@ -3569,11 +3560,6 @@ sc_ws_get_both_balances(ConnPid, PubKeyI, PubKeyR, Config) ->
 query_balances(ConnPid, Accounts, Config) ->
     query_balances_(ConnPid, Accounts, sc_ws_protocol(Config)).
 
-query_balances_(ConnPid, Accounts, <<"legacy">>) ->
-    ?WS:send_tagged(ConnPid, <<"get">>, <<"balances">>,
-                    #{<<"accounts">> => Accounts}),
-    {ok, <<"balances">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
-    {ok, Res};
 query_balances_(ConnPid, Accounts, <<"json-rpc">>) ->
     {ok, ?WS:json_rpc_call(
             ConnPid, #{ <<"method">> => <<"channels.get.balances">>
@@ -3604,12 +3590,6 @@ decode_signed_tx(EncodedSignedTx) ->
 query_state(ConnPid, Config) ->
     query_state_(ConnPid, sc_ws_protocol(Config)).
 
-query_state_(ConnPid, <<"legacy">>) ->
-    %% get.offchain_state doesn't require any parameter, but not suplying one
-    %% will remove "payload" key from request and cause error in legacy API
-    ?WS:send_tagged(ConnPid, <<"get">>, <<"offchain_state">>, #{<<"a">> => <<"a">>}),
-    {ok, <<"offchain_state">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
-    {ok, Res};
 query_state_(ConnPid, <<"json-rpc">>) ->
     {ok, ?WS:json_rpc_call(
         ConnPid, #{ <<"method">> => <<"channels.get.offchain_state">>
@@ -3653,10 +3633,6 @@ sc_ws_get_contract(ConnPid, Pubkey, Config) ->
 query_contract(ConnPid, Pubkey, Config) ->
     query_contract_(ConnPid, Pubkey, sc_ws_protocol(Config)).
 
-query_contract_(ConnPid, Pubkey, <<"legacy">>) ->
-    ?WS:send_tagged(ConnPid, <<"get">>, <<"contract">>, #{<<"pubkey">> => Pubkey}),
-    {ok, <<"contract">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
-    {ok, Res};
 query_contract_(ConnPid, Pubkey, <<"json-rpc">>) ->
     {ok, ?WS:json_rpc_call(
         ConnPid, #{ <<"method">> => <<"channels.get.contract">>
@@ -3679,12 +3655,10 @@ sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator
 
     CloseMutual =
         fun(CloserConn, CloserPrivkey, OtherConn, OtherPrivkey) ->
-                ws_send(CloserConn, <<"shutdown">>, #{}, Config),
+                ws_send_tagged(CloserConn, <<"channels.shutdown">>, #{}, Config),
 
-            {ShTx, Updates} = channel_sign_tx(CloserConn, CloserPrivkey, <<"shutdown_sign">>, Config),
-            {ShTx, Updates} = channel_sign_tx(OtherConn, OtherPrivkey,
-                                              <<"shutdown_sign_ack">>,
-                                              Config),
+            {ShTx, Updates} = channel_sign_tx(CloserConn, CloserPrivkey, <<"channels.shutdown_sign">>, Config),
+            {ShTx, Updates} = channel_sign_tx(OtherConn, OtherPrivkey, <<"channels.shutdown_sign_ack">>, Config),
             ShTx
         end,
     ShutdownTx =
@@ -3728,7 +3702,7 @@ sc_ws_leave_(Config) ->
     ok = ?WS:register_test_for_events(IConnPid, websocket, [closed]),
     ok = ?WS:register_test_for_events(RConnPid, websocket, [closed]),
     %%
-    ok = ws_send(IConnPid, <<"leave">>, #{}, Config),
+    ok = ws_send_tagged(IConnPid, <<"channels.leave">>, #{}, Config),
     %%
     {ok, #{id := IDi, state := StI}} = wait_for_channel_leave_msg(IConnPid, Config),
     {ok, #{id := IDr, state := StR}} = wait_for_channel_leave_msg(RConnPid, Config),
@@ -3793,13 +3767,13 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
                                                               error]),
     ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
                                                            error]),
-    ws_send(SenderConnPid, <<"deposit">>, #{amount => <<"2">>}, Config),
+    ws_send_tagged(SenderConnPid, <<"channels.deposit">>, #{amount => <<"2">>}, Config),
     {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
-    ws_send(SenderConnPid, <<"deposit">>, #{amount => 2}, Config),
-    {UnsignedStateTx, Updates} = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"deposit_tx">>, Config),
+    ws_send_tagged(SenderConnPid, <<"channels.deposit">>, #{amount => 2}, Config),
+    {UnsignedStateTx, Updates} = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"channels.deposit_tx">>, Config),
     {ok, #{<<"event">> := <<"deposit_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
-    {UnsignedStateTx, Updates} = channel_sign_tx(AckConnPid, AckPrivkey, <<"deposit_ack">>, Config),
+    {UnsignedStateTx, Updates} = channel_sign_tx(AckConnPid, AckPrivkey, <<"channels.deposit_ack">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
     {ok, #{<<"tx">> := EncodedSignedDepositTx}} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
     {ok, #{<<"tx">> := EncodedSignedDepositTx}} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
@@ -3847,13 +3821,13 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
                                                               error]),
     ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
                                                            error]),
-    ws_send(SenderConnPid, <<"withdraw">>, #{amount => <<"2">>}, Config),
+    ws_send_tagged(SenderConnPid, <<"channels.withdraw">>, #{amount => <<"2">>}, Config),
     {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
-    ws_send(SenderConnPid, <<"withdraw">>, #{amount => 2}, Config),
-    {UnsignedStateTx, Updates} = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"withdraw_tx">>, Config),
+    ws_send_tagged(SenderConnPid, <<"channels.withdraw">>, #{amount => 2}, Config),
+    {UnsignedStateTx, Updates} = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"channels.withdraw_tx">>, Config),
     {ok, #{<<"event">> := <<"withdraw_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
-    {UnsignedStateTx, Updates} = channel_sign_tx(AckConnPid, AckPrivkey, <<"withdraw_ack">>, Config),
+    {UnsignedStateTx, Updates} = channel_sign_tx(AckConnPid, AckPrivkey, <<"channels.withdraw_ack">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
     {ok, #{<<"tx">> := EncodedSignedWTx}} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
     {ok, #{<<"tx">> := EncodedSignedWTx}} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
@@ -3988,22 +3962,22 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
                           code        => EncodedCode,
                           call_data   => EncodedInitData},
                     % incorrect calls
-                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
                         NewContractOpts#{deposit => <<"1">>}, Config),
                     {ok, #{<<"reason">> := <<"not_a_number">>}} =
                         wait_for_channel_event(OwnerConnPid, error, Config),
 
-                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
                         NewContractOpts#{vm_version => <<"1">>}, Config),
                     {ok, #{<<"reason">> := <<"not_a_number">>}} =
                         wait_for_channel_event(OwnerConnPid, error, Config),
 
-                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
                         NewContractOpts#{abi_version => <<"1">>}, Config),
                     {ok, #{<<"reason">> := <<"not_a_number">>}} =
                         wait_for_channel_event(OwnerConnPid, error, Config),
                     % correct call
-                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
                         NewContractOpts, Config),
 
                     {UnsignedStateTx, _Updates} = CreateVolley(),
@@ -4019,13 +3993,13 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
                           contract    => EncodedOnChainPubkey,
                           call_data   => EncodedInitData},
                     % incorrect call
-                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract_from_onchain">>,
+                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
                         NewContractOpts#{deposit => <<"1">>}, Config),
                     {ok, #{<<"reason">> := <<"not_a_number">>}} =
                         wait_for_channel_event(OwnerConnPid, error, Config),
 
                     % correct call
-                    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract_from_onchain">>,
+                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
                         NewContractOpts, Config),
 
                     {UnsignedStateTx, _Updates} = CreateVolley(),
@@ -4611,12 +4585,12 @@ initialize_account(Amount, {Pubkey, Privkey}) ->
     {Pubkey, Privkey}.
 
 update_volley_(FirstConnPid, FirstPrivkey, SecondConnPid, SecondPrivkey, Config) ->
-    {UnsignedStateTx, Updates} = channel_sign_tx(FirstConnPid, FirstPrivkey, <<"update">>, Config),
+    {UnsignedStateTx, Updates} = channel_sign_tx(FirstConnPid, FirstPrivkey, <<"channels.update">>, Config),
 
     % acknowledger signs update_ack
     {ok, #{<<"event">> := <<"update">>}} = wait_for_channel_event(SecondConnPid, info, Config),
     {UnsignedStateTx, Updates} = channel_sign_tx(SecondConnPid, SecondPrivkey,
-                                      <<"update_ack">>, Config).
+                                      <<"channels.update_ack">>, Config).
 
 sc_ws_contract_(Config, TestName, Owner) ->
     Participants = proplists:get_value(participants, Config),
@@ -4656,13 +4630,13 @@ sc_ws_contract_(Config, TestName, Owner) ->
     PruneCalls =
         fun(ConnPid) ->
             ok = ?WS:register_test_for_channel_events(ConnPid, [calls_pruned]),
-            ws_send(ConnPid, <<"clean_contract_calls">>, #{}, Config),
+            ws_send_tagged(ConnPid, <<"channels.clean_contract_calls">>, #{}, Config),
             {ok, _} = wait_for_channel_event(ConnPid, calls_pruned, Config),
             ok = ?WS:unregister_test_for_channel_events(ConnPid, [calls_pruned])
         end,
     CallMissingCall =
         fun(Tx, [U], ConnPid) ->
-            ws_send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
+            ws_send_tagged(ConnPid, <<"channels.get.contract_call">>,
                            ws_get_call_params(U, Tx), Config),
             {ok, #{<<"reason">> := <<"call_not_found">>}} = wait_for_channel_event(ConnPid, error, Config),
             ok
@@ -4688,7 +4662,7 @@ sc_ws_contract_(Config, TestName, Owner) ->
 
     GetPoI =
         fun(ConnPid) ->
-            ws_send_tagged(ConnPid, <<"get">>, <<"poi">>,
+            ws_send_tagged(ConnPid, <<"channels.get.poi">>,
                            #{contracts   => [aeser_api_encoder:encode(contract_pubkey, ContractPubKey)],
                              accounts    => [aeser_api_encoder:encode(account_pubkey, SenderPubkey),
                                              aeser_api_encoder:encode(account_pubkey, AckPubkey)]
@@ -4700,7 +4674,7 @@ sc_ws_contract_(Config, TestName, Owner) ->
 
     GetMissingPoI =
         fun(ConnPid, Accs, Cts) ->
-            ws_send_tagged(ConnPid, <<"get">>, <<"poi">>,
+            ws_send_tagged(ConnPid, <<"channels.get.poi">>,
                             #{contracts   => [aeser_api_encoder:encode(contract_pubkey, C) || C <- Cts],
                               accounts    => [aeser_api_encoder:encode(account_pubkey, Acc) || Acc <- Accs]
                             }, Config),
@@ -4751,7 +4725,7 @@ create_contract_(TestName, SenderConnPid, UpdateVolley, Config) ->
     {ok, EncodedInitData} = encode_call_data(
                               contract_code(TestName), "init", InitArgument),
 
-    ws_send_tagged(SenderConnPid, <<"update">>, <<"new_contract">>,
+    ws_send_tagged(SenderConnPid, <<"channels.update.new_contract">>,
                    #{vm_version  => latest_sophia_vm(),
                      abi_version => latest_sophia_abi(),
                      deposit     => 10,
@@ -4876,16 +4850,16 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
           amount      => Amount,
           call_data   => EncodedMainData},
     % invalid call
-    ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
+    ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
                    CallOpts#{amount => <<"1">>}, Config),
     {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
-    ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
+    ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
                    CallOpts#{abi_version => <<"1">>}, Config),
     {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     % correct call
-    ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
+    ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
                    CallOpts, Config),
     {_UnsignedStateTx, _Updates} = UpdateVolley().
 
@@ -4903,15 +4877,15 @@ dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
           amount     => Amount,
           call_data  => EncodedMainData},
     % invalid call
-    ws_send_tagged(SenderConnPid, <<"dry_run">>, <<"call_contract">>,
+    ws_send_tagged(SenderConnPid, <<"channels.dry_run.call_contract">>,
                    CallOpts#{amount => <<"1">>}, Config),
     {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
-    ws_send_tagged(SenderConnPid, <<"dry_run">>, <<"call_contract">>,
+    ws_send_tagged(SenderConnPid, <<"channels.dry_run.call_contract">>,
                    CallOpts#{abi_version => <<"1">>}, Config),
     {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
-    ws_send_tagged(SenderConnPid, <<"dry_run">>, <<"call_contract">>,
+    ws_send_tagged(SenderConnPid, <<"channels.dry_run.call_contract">>,
                    CallOpts, Config),
     {ok, <<"call_contract">>, CallRes} = wait_for_channel_event(SenderConnPid, dry_run, Config),
     ok = ?WS:unregister_test_for_channel_event(SenderConnPid, dry_run),
@@ -5091,7 +5065,7 @@ sc_ws_generic_messages(Config) ->
                 ReceiverEncodedK = aeser_api_encoder:encode(account_pubkey, ReceiverPubkey),
                 ok = ?WS:register_test_for_channel_event(ReceiverPid, message),
 
-                ws_send(SenderPid, <<"message">>,
+                ws_send_tagged(SenderPid, <<"channels.message">>,
                         #{<<"to">> => ReceiverEncodedK,
                           <<"info">> => Msg}, Config),
 
@@ -5167,7 +5141,7 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
                   initiator_amount => IAmt,
                   responder_amount => RAmt,
                   channel_reserve => 2,
-                  protocol => proplists:get_value(sc_ws_protocol, Config, <<"legacy">>)
+                  protocol => sc_ws_protocol(Config)
                 }, Other).
 
 peers(_Config) ->
@@ -5877,11 +5851,11 @@ ws_get_decoded_result(ConnPid1, ConnPid2, Type, [Update], UnsignedTx, Config) ->
     GetCallResult =
         fun(ConnPid) ->
             GetParams = ws_get_call_params(Update, UnsignedTx),
-            ws_send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
+            ws_send_tagged(ConnPid, <<"channels.get.contract_call">>,
                            GetParams#{round => <<"2">>}, Config),
             {ok, #{<<"reason">> := <<"not_a_number">>}} =
                 wait_for_channel_event(ConnPid, error, Config),
-            ws_send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
+            ws_send_tagged(ConnPid, <<"channels.get.contract_call">>,
                            GetParams, Config),
             {ok, <<"contract_call">>, Res} = wait_for_channel_event(ConnPid, get, Config),
             Res
@@ -5912,16 +5886,12 @@ ws_get_call_params(Update, UnsignedTx) ->
 %% wait_for_channel_msg(ConnPid, Action, Config) ->
 %%     wait_for_channel_msg_(ConnPid, Action, sc_ws_protocol(Config)).
 
-wait_for_channel_msg_(ConnPid, Action, <<"legacy">>) ->
-    ?WS:wait_for_channel_msg(ConnPid, Action);
 wait_for_channel_msg_(ConnPid, Action, <<"json-rpc">>) ->
     wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>).
 
 wait_for_channel_event(ConnPid, Action, Config) ->
     wait_for_channel_event_(ConnPid, Action, sc_ws_protocol(Config)).
 
-wait_for_channel_event_(ConnPid, Action, <<"legacy">>) ->
-    ?WS:wait_for_channel_event(ConnPid, Action);
 wait_for_channel_event_(ConnPid, error, <<"json-rpc">>) ->
     case ?WS:wait_for_channel_msg(ConnPid, error) of   % whole msg
         {ok, #{ <<"jsonrpc">> := <<"2.0">>
@@ -5949,9 +5919,6 @@ wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>) ->
 wait_for_channel_event(Event, ConnPid, Type, Config) ->
     wait_for_channel_event_(Event, ConnPid, Type, sc_ws_protocol(Config)).
 
-wait_for_channel_event_(Event, ConnPid, Type, <<"legacy">>) ->
-    {ok, #{<<"event">> := Event}} = ?WS:wait_for_channel_event(ConnPid, Type),
-    ok;
 wait_for_channel_event_(Event, ConnPid, Action, <<"json-rpc">>) ->
     {ok, #{ <<"data">> := #{ <<"event">> := Event } }} =
         wait_for_json_rpc_action(ConnPid, Action),
@@ -5960,12 +5927,6 @@ wait_for_channel_event_(Event, ConnPid, Action, <<"json-rpc">>) ->
 wait_for_channel_leave_msg(ConnPid, Config) ->
     wait_for_channel_leave_msg_(ConnPid, sc_ws_protocol(Config)).
 
-wait_for_channel_leave_msg_(ConnPid, <<"legacy">> = L) ->
-    {ok, #{ <<"channel_id">> := ChId,
-            <<"payload">> := P }} =
-        wait_for_channel_msg_(ConnPid, leave, L),
-    #{ <<"state">> := St } = P,
-    {ok, #{id => ChId, state => St}};
 wait_for_channel_leave_msg_(ConnPid, <<"json-rpc">>) ->
     {ok, #{ <<"channel_id">> := ChId,
             <<"data">> := #{ <<"state">> := St } }} =
@@ -6006,24 +5967,13 @@ data_code_to_reason([Code])      -> sc_ws_api_jsonrpc:error_data_msg(Code).
 method_pfx(Action) ->
     <<"channels.", (bin(Action))/binary>>.
 
-ws_send(ConnPid, Action, Payload, Config) ->
-    ws_send_(ConnPid, Action, Payload, sc_ws_protocol(Config)).
+ws_send_tagged(ConnPid, Method, Payload, Config) ->
+    ws_send_tagged_(ConnPid, Method, Payload, sc_ws_protocol(Config)).
 
-ws_send_(ConnPid, Action, Payload, <<"legacy">>) ->
-    ?WS:send(ConnPid, Action, Payload);
-ws_send_(ConnPid, Action, Payload, <<"json-rpc">>) ->
-    ?WS:json_rpc_notify(ConnPid, #{ <<"method">> => <<"channels.", (bin(Action))/binary>>
-                                  , <<"params">> => Payload }).
-
-ws_send_tagged(ConnPid, Action, Tag, Payload, Config) ->
-    ws_send_tagged_(ConnPid, Action, Tag, Payload, sc_ws_protocol(Config)).
-
-ws_send_tagged_(ConnPid, Action, Tag, Payload, <<"legacy">>) ->
-    ?WS:send_tagged(ConnPid, Action, Tag, Payload);
-ws_send_tagged_(ConnPid, Action, Tag, Payload, <<"json-rpc">>) ->
+ws_send_tagged_(ConnPid, Method, Payload, <<"json-rpc">>) ->
     ?WS:json_rpc_notify(
        ConnPid,
-       #{ <<"method">> => iolist_to_binary([<<"channels.">>, bin(Action), ".", bin(Tag)])
+       #{ <<"method">> => Method
         , <<"params">> => Payload }).
 
 bin(A) when is_atom(A) ->
@@ -6057,7 +6007,7 @@ sc_ws_broken_init_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
     {ok, EncodedInitData} = encode_call_data(
                                   SophiaCode, "main", ["1"]),
     {_CreateVolley, OwnerConnPid, _OwnerPubKey} = GetVolley(Owner),
-    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
                    #{vm_version  => latest_sophia_vm(),
                      abi_version => latest_sophia_abi(),
                      deposit     => 10,
@@ -6078,7 +6028,7 @@ sc_ws_broken_call_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
                                   SophiaCode, "init", []),
 
     {SignVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
-    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
                    #{vm_version  => latest_sophia_vm(),
                      abi_version => latest_sophia_abi(),
                      deposit     => 10,
@@ -6094,14 +6044,14 @@ sc_ws_broken_call_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
     {ok, EncodedCalcCallData} = encode_call_data(
                                   SophiaCalcCode, "sum", ["1", "2"]),
     % call the existing contract with the other contract's call data
-    ws_send_tagged(OwnerConnPid, <<"update">>, <<"call_contract">>,
+    ws_send_tagged(OwnerConnPid, <<"channels.update.call_contract">>,
                    #{contract    => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
                      abi_version => latest_sophia_abi(),
                      amount      => 1,
                      call_data   => EncodedCalcCallData}, Config),
     % contract call succeeds executing
     {UnsignedCallTx, [Update]} = SignVolley(),
-    ws_send_tagged(OwnerConnPid, <<"get">>, <<"contract_call">>,
+    ws_send_tagged(OwnerConnPid, <<"channels.get.contract_call">>,
                    ws_get_call_params(Update, UnsignedCallTx), Config),
     % contract call is present in FSM
     {ok, <<"contract_call">>, Res} = wait_for_channel_event(OwnerConnPid, get, Config),
