@@ -49,7 +49,6 @@ paths:
       description: 'Get the top block (either key or micro block)'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -59,7 +58,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks/current:
     get:
       tags:
@@ -69,7 +67,6 @@ paths:
       description: 'Get the current key block'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -79,7 +76,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks/current/hash:
     get:
       tags:
@@ -89,7 +85,6 @@ paths:
       description: 'Get the hash of the current key block'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -103,7 +98,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks/current/height:
     get:
       tags:
@@ -113,7 +107,6 @@ paths:
       description: 'Get the height of the current key block'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -128,7 +121,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks/pending:
     get:
       tags:
@@ -138,7 +130,6 @@ paths:
       description: 'Get the pending key block'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -152,7 +143,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks/hash/{hash}:
     get:
       tags:
@@ -181,7 +171,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks/height/{height}:
     get:
       tags:
@@ -207,7 +196,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks:
     post:
       tags:
@@ -233,7 +221,6 @@ paths:
           description: 'Invalid block'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /micro-blocks/hash/{hash}/header:
     get:
       tags:
@@ -262,7 +249,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /micro-blocks/hash/{hash}/transactions:
     get:
       tags:
@@ -291,7 +277,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /micro-blocks/hash/{hash}/transactions/index/{index}:
     get:
       tags:
@@ -326,7 +311,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /micro-blocks/hash/{hash}/transactions/count:
     get:
       tags:
@@ -361,7 +345,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /generations/current:
     get:
       tags:
@@ -371,7 +354,6 @@ paths:
       description: 'Get the current generation'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -381,7 +363,6 @@ paths:
           description: 'Generation not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /generations/hash/{hash}:
     get:
       tags:
@@ -410,7 +391,6 @@ paths:
           description: 'Generation not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /generations/height/{height}:
     get:
       tags:
@@ -436,7 +416,6 @@ paths:
           description: 'Generation not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /accounts/{pubkey}:
     get:
       tags:
@@ -465,7 +444,6 @@ paths:
           description: 'Account not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /accounts/{pubkey}/height/{height}:
     get:
       tags:
@@ -500,7 +478,6 @@ paths:
           description: 'Account not found or height not available'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /accounts/{pubkey}/hash/{hash}:
     get:
       tags:
@@ -535,7 +512,6 @@ paths:
           description: 'Account not found or hash not available'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /accounts/{pubkey}/transactions/pending:
     get:
       tags:
@@ -564,7 +540,6 @@ paths:
           description: 'Account not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /transactions/{hash}:
     get:
       tags:
@@ -593,7 +568,6 @@ paths:
           description: 'Transaction not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /transactions/{hash}/info:
     get:
       tags:
@@ -621,7 +595,6 @@ paths:
           description: 'Transaction not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /transactions:
     post:
       tags:
@@ -649,7 +622,6 @@ paths:
           description: 'Invalid transaction'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /contracts/{pubkey}:
     get:
       tags:
@@ -786,7 +758,6 @@ paths:
           description: 'Oracle not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /oracles/{pubkey}/queries:
     get:
       tags:
@@ -833,7 +804,6 @@ paths:
           description: 'Oracle not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /oracles/{pubkey}/queries/{query-id}:
     get:
       tags:
@@ -867,7 +837,6 @@ paths:
           description: 'Oracle query not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /names/{name}:
     get:
       tags:
@@ -896,7 +865,6 @@ paths:
           description: 'Name not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /channels/{pubkey}:
     get:
       tags:
@@ -925,7 +893,6 @@ paths:
           description: 'Channel not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /peers/pubkey:
     get:
       tags:
@@ -935,7 +902,6 @@ paths:
       description: 'Get peer public key'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -944,7 +910,6 @@ paths:
             properties:
               pubkey:
                 type: string
-      security:
   /status:
     get:
       tags:
@@ -954,13 +919,11 @@ paths:
       description: 'Get the status of a node'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/Status'
-      security:
 
   /debug/contracts/create:
     post:
@@ -1539,7 +1502,6 @@ paths:
       description: 'Get pending transactions'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -1575,7 +1537,6 @@ paths:
           description: 'Invalid name'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /debug/accounts/beneficiary:
     get:
       tags:
@@ -1586,7 +1547,6 @@ paths:
       description: 'Get node''s beneficiary public key'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -1596,7 +1556,6 @@ paths:
           description: 'Beneficiary error'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /debug/accounts/node:
     get:
       tags:
@@ -1607,7 +1566,6 @@ paths:
       description: 'Get node''s public key'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -1617,7 +1575,6 @@ paths:
           description: 'Public key not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /debug/peers:
     get:
       tags:
@@ -1628,7 +1585,6 @@ paths:
       description: 'Get node Peers'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: successful operation
@@ -1638,7 +1594,6 @@ paths:
           description: Info not enabled
           schema:
             $ref: '#/definitions/Error'
-      security:
   /debug/transactions/dry-run:
     post:
       tags:
