@@ -27,6 +27,8 @@
          mine_blocks/4,
          mine_all_txs/2,
          mine_blocks_until_txs_on_chain/3,
+         mine_blocks_until_txs_on_chain/4,
+         mine_blocks_until_txs_on_chain/5,
          mine_key_blocks/2,
          mine_key_blocks/3,
          mine_micro_blocks/2,
@@ -279,12 +281,15 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MaxBlocks) ->
     mine_blocks_until_txs_on_chain(Node, TxHashes, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, MaxBlocks).
 
 mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
+    mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, #{}).
+
+mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
     ok = rpc:call(
            Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
            5000),
     [] = flush_new_blocks(),
     aecore_suite_utils:subscribe(Node, block_created),
-    StartRes = rpc:call(Node, aec_conductor, start_mining, [], 5000),
+    StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
     ct:log("aec_conductor:start_mining() (~p) -> ~p", [Node, StartRes]),
     Res = mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, []),
     StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),

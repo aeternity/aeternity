@@ -1116,12 +1116,8 @@ awaiting_locked(cast, {?DEP_ERR, _Msg}, D) ->
 awaiting_locked(cast, {?WDRAW_ERR, _Msg}, D) ->
     %% TODO: Stop min depth watcher!
     handle_update_conflict(?WDRAW_SIGNED, D);
-awaiting_locked(cast, {?CHANNEL_CHANGED, #{tx_hash := TxHash}} = Msg,
-                #data{ latest = {?MIN_DEPTH, ?WATCH_DEP, TxHash, _, _}} = D) ->
-    %% Expected
-    keep_state(log(rcv, ?CHANNEL_CHANGED, Msg, D));
 awaiting_locked(Type, Msg, D) ->
-    lager:debug("Unexpected. Msg = ~p, Latest = ~p", [Msg, D#data.latest]),
+    lager:debug("Unexpected ~p: Msg = ~p, Latest = ~p", [Type, Msg, D#data.latest]),
     handle_common_event(Type, Msg, error, D).
 
 awaiting_initial_state(enter, _OldSt, _D) -> keep_state_and_data;
