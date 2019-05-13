@@ -12,6 +12,9 @@ ST_CT_FLAGS = --logdir system_test/logs
 ST_CT_DIR = --dir system_test/common
 ST_CT_LOCALDIR = --dir system_test/only_local
 
+EQC_EUNIT_TEST_FLAGS ?=
+EQC_EUNIT_TESTING_TIME_MULTIPLIER ?= 1
+
 SWAGGER_CODEGEN_CLI_V = 2.4.4
 SWAGGER_CODEGEN_CLI = swagger/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
 SWAGGER_CODEGEN = java -jar $(SWAGGER_CODEGEN_CLI)
@@ -64,7 +67,10 @@ endif
 ifdef TEST
 CT_TEST_FLAGS += --case=$(TEST)
 EUNIT_TEST_FLAGS += --module=$(TEST)
+EQC_EUNIT_TEST_FLAGS += --module=$(TEST)
 unexport TEST
+else
+EQC_EUNIT_TEST_FLAGS += --app eqc_test
 endif
 
 ifdef VERBOSE
@@ -295,6 +301,51 @@ aevm-test-deps:
 $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests:
 	@git clone https://github.com/ethereum/tests.git $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests
 
+.PHONY: eqc-test
+eqc-test: eqc
+	env ERL_FLAGS="-eqc_testing_time_multiplier $(EQC_EUNIT_TESTING_TIME_MULTIPLIER)" $(REBAR) as test,eqc eunit $(EQC_EUNIT_TEST_FLAGS)
+
+EQC_TEST_REPO = https://github.com/Quviq/epoch-eqc.git
+EQC_TEST_VERSION = 71b0ad8e
+
+.PHONY: eqc
+eqc: | eqc/.git
+	## TODO Re-fetch repo if version not found in local repo.
+	( cd $@ && git reset --quiet --soft $(EQC_TEST_VERSION) && git stash --quiet --all; )
+
+eqc/.git:
+	git clone --quiet --no-checkout $(EQC_TEST_REPO) $(@D)
+
+.PHONY: eqc-registration
+eqc-registration:
+	erl -noinput -run eqc force_registration "$${EQC_REGISTRATION_KEY:?}" -run init stop
+
+.PHONY: eqc-start
+eqc-start:
+	erl -noinput -run eqc start -run init stop
+
+EQC_LIB_VSN = 1.44.1
+EQC_LIB_DOWNLOAD_URL = http://quviq-licencer.com/downloads/eqcR20-$(EQC_LIB_VSN).zip
+EQC_LIB_DOWNLOAD_SHA256 = c02a978cb7b7665fee220dda303c86fd517b89ce7fdafc5cc7181eadab26424e
+EQC_LIB_ROOT_DIR = "Quviq QuickCheck version $(EQC_LIB_VSN)"
+
+.PHONY: eqc-lib-test eqc-lib-registration eqc-lib-start
+eqc-lib-test eqc-lib-registration eqc-lib-start: eqc-lib-%: | eqc-lib/eqc
+	( export ERL_LIBS="$(CURDIR)"/$(word 1,$|)/$(EQC_LIB_ROOT_DIR); $(MAKE) eqc-$*; )
+
+eqc-lib/eqc: | eqc-lib/eqc.zip
+	unzip $(word 1,$|) -d $@
+	ls -d $@/$(EQC_LIB_ROOT_DIR) > /dev/null
+	ls $@/$(EQC_LIB_ROOT_DIR)/eqc-$(EQC_LIB_VSN)/ebin/eqc.beam > /dev/null
+
+.SECONDARY: eqc-lib/eqc.zip
+eqc-lib/eqc.zip: | eqc-lib/eqc.zip.unchecked
+	echo "$(EQC_LIB_DOWNLOAD_SHA256)  $(word 1,$|)" | shasum -a 256 -c -
+	mv $(word 1,$|) $@
+
+.INTERMEDIATE: eqc-lib/eqc.zip.unchecked
+eqc-lib/eqc.zip.unchecked:
+	curl -fsSL --create-dirs -o $@ $(EQC_LIB_DOWNLOAD_URL)
 
 python-env:
 	( cd $(PYTHON_DIR) && $(MAKE) env; )
@@ -362,10 +413,17 @@ clean:
 	@-rm $(SWAGGER_ENDPOINTS_SPEC)
 	( cd $(HTTP_APP) && $(MAKE) clean; )
 	@$(MAKE) multi-distclean
+	@$(MAKE) eqc-clean
 	@rm -rf _build/system_test+test _build/system_test _build/test _build/prod _build/local
 	@rm -rf _build/default/plugins
 	@rm -rf $$(ls -d _build/default/lib/* | grep -v '[^_]rocksdb') ## Dependency `rocksdb` takes long to build.
 
+.PHONY: eqc-clean
+eqc-clean:
+	rm -rf .eqc-info current_counterexample.eqc
+	rm -rf _build/test+eqc
+
+## Do not delete `eqc`.
 distclean: clean
 	( cd otp_patches && $(MAKE) distclean; )
 	( cd $(HTTP_APP) && $(MAKE) distclean; )
