@@ -929,10 +929,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            type: object
-            properties:
-              pubkey:
-                $ref: '#/definitions/EncodedPubkey'
+            $ref: '#/definitions/PeerPubKey'
   /status:
     get:
       tags:
@@ -2638,6 +2635,13 @@ definitions:
       - from_id
       - payload
       - fee
+  PeerPubKey:
+    type: object
+    properties:
+      pubkey:
+        $ref: '#/definitions/EncodedPubkey'
+    required:
+      - pubkey
   PubKey:
     type: object
     properties:

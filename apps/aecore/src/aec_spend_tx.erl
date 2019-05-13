@@ -212,7 +212,7 @@ for_client(#spend_tx{sender_id    = SenderId,
       <<"fee">>          => Fee,
       <<"ttl">>          => TTL,
       <<"nonce">>        => Nonce,
-      <<"payload">>      => Payload}.
+      <<"payload">>      => aeser_api_encoder:encode(bytearray, Payload)}.
 
 -spec version(tx()) -> non_neg_integer().
 version(_) ->

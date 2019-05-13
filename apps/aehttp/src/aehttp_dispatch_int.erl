@@ -73,7 +73,7 @@ handle_request_('PostSpend', #{'SpendTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
                              {recipient_id, recipient_id, {id_hash, AllowedRecipients}}]),
-                 api_optional_decode([{payload, generic_bytearray}]),
+                 api_optional_decode([{payload, bytearray}]),
                  get_nonce_from_account_id(sender_id),
                  unsigned_tx_response(fun aec_spend_tx:new/1)
                 ],
@@ -230,7 +230,7 @@ handle_request_('PostChannelSnapshotSolo', #{'ChannelSnapshotSoloTx' := Req}, _C
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{channel_id, channel_id, {id_hash, [channel]}},
                              {from_id, from_id, {id_hash, [account_pubkey]}},
-                             {payload, payload, generic_bytearray}]),
+                             {payload, payload, bytearray}]),
                  get_nonce_from_account_id(from_id),
                  unsigned_tx_response(fun aesc_snapshot_solo_tx:new/1)
                 ],
@@ -256,7 +256,7 @@ handle_request_('PostChannelCloseSolo', #{'ChannelCloseSoloTx' := Req}, _Context
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{channel_id, channel_id, {id_hash, [channel]}},
                              {from_id, from_id, {id_hash, [account_pubkey]}},
-                             {poi, poi, poi}, {payload, payload, generic_bytearray}]),
+                             {poi, poi, poi}, {payload, payload, bytearray}]),
                  get_nonce_from_account_id(from_id),
                  poi_decode(poi),
                  unsigned_tx_response(fun aesc_close_solo_tx:new/1)
@@ -270,7 +270,7 @@ handle_request_('PostChannelSlash', #{'ChannelSlashTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{channel_id, channel_id, {id_hash, [channel]}},
                              {from_id, from_id, {id_hash, [account_pubkey]}},
-                             {poi, poi, poi}, {payload, payload, generic_bytearray}]),
+                             {poi, poi, poi}, {payload, payload, bytearray}]),
                  get_nonce_from_account_id(from_id),
                  poi_decode(poi),
                  unsigned_tx_response(fun aesc_slash_tx:new/1)
