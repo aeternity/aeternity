@@ -3847,7 +3847,7 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
                                                               error]),
     ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
                                                            error]),
-    ws_send(SenderConnPid, <<"deposit">>, #{amount => <<"2">>}, Config),
+    ws_send(SenderConnPid, <<"withdraw">>, #{amount => <<"2">>}, Config),
     {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     ws_send(SenderConnPid, <<"withdraw">>, #{amount => 2}, Config),
