@@ -932,7 +932,7 @@ paths:
             type: object
             properties:
               pubkey:
-                type: string
+                $ref: '#/definitions/EncodedPubkey'
   /status:
     get:
       tags:
@@ -1675,8 +1675,28 @@ paths:
 ##
 
 definitions:
+  # Encoded values - this is binary/byte array data that is
+  # "typed" and Base58Check/Base64Check encoded
+  # (for details see aeserialization/aeser_api_encoder.erl)
   EncodedHash:
+    # Base58Check encoded 32-byte hash (key block hash, micro block hash,
+    # root hash, etc)
+    description: 'Base58Check encoded tagged hash'
     type: string
+  EncodedPubkey:
+    # Base58Check encoded 32-byte pubkey (account, contract, oracle, etc)
+    description: 'Base58Check encoded tagged pubkey'
+    type: string
+  EncodedValue:
+    # Base58Check encoded 32/64-byte value (signature, oracle query id, etc)
+    description: 'Base58Check encoded tagged value'
+    type: string
+
+  EncodedByteArray:
+    # Base64Check encoded byte array
+    description: 'Base64Check encoded tagged byte array'
+    type: string
+
   Pow:
     type: array
     items:
@@ -1702,9 +1722,9 @@ definitions:
       state_hash:
         $ref: '#/definitions/EncodedHash'
       miner:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       beneficiary:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       target:
         type: integer
         format: int64
@@ -1742,7 +1762,7 @@ definitions:
         type: integer
         format: int64
       pof_hash:
-        type: string
+        $ref: '#/definitions/EncodedHash'
         description: '"no_fraud" | api encoded Proof of Fraud hash'
       prev_hash:
         $ref: '#/definitions/EncodedHash'
@@ -1753,7 +1773,7 @@ definitions:
       txs_hash:
         $ref: '#/definitions/EncodedHash'
       signature:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
       time:
         type: integer
         format: int64
@@ -1791,7 +1811,7 @@ definitions:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
         description: 'Public key'
       balance:
         type: integer
@@ -1808,7 +1828,7 @@ definitions:
         enum: [basic, generalized]
       contract_id:
         description: 'Id of authorization contract for generalized account'
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       auth_fun:
         description: 'Name of authorization function for generalized account'
         type: string
@@ -1820,17 +1840,19 @@ definitions:
     type: object
     properties:
        tx:
-         type: string
+         $ref: '#/definitions/EncodedByteArray'
     required:
       - tx
   RegisteredOracle:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       query_format:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       response_format:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       query_fee:
         type: integer
@@ -1852,18 +1874,20 @@ definitions:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
       sender_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       sender_nonce:
         type: integer
         format: int64
         minimum: 0
       oracle_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       query:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       response:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       ttl:
         type: integer
@@ -1896,7 +1920,7 @@ definitions:
     type: object
     properties:
       recipient_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       amount:
         type: integer
         format: int64
@@ -1908,12 +1932,12 @@ definitions:
         type: integer
         format: int64
       sender_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
       payload:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - recipient_id
       - amount
@@ -1924,8 +1948,10 @@ definitions:
     type: object
     properties:
       query_format:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       response_format:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       query_fee:
         type: integer
@@ -1933,7 +1959,7 @@ definitions:
       oracle_ttl:
         $ref: '#/definitions/TTL'
       account_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -1963,7 +1989,7 @@ definitions:
       oracle_ttl:
         $ref: '#/definitions/RelativeTTL'
       oracle_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -1978,8 +2004,9 @@ definitions:
     type: object
     properties:
       oracle_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       query:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       query_fee:
         type: integer
@@ -1995,7 +2022,7 @@ definitions:
         type: integer
         format: int64
       sender_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2012,8 +2039,9 @@ definitions:
     type: object
     properties:
       query_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
       response:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       response_ttl:
         $ref: '#/definitions/RelativeTTL'
@@ -2024,7 +2052,7 @@ definitions:
         type: integer
         format: int64
       oracle_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2065,7 +2093,7 @@ definitions:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       ttl:
         type: integer
         format: int64
@@ -2081,8 +2109,7 @@ definitions:
     type: object
     properties:
       commitment_id:
-        type: string
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
       fee:
         type: integer
         format: int64
@@ -2090,7 +2117,7 @@ definitions:
         type: integer
         format: int64
       account_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2113,7 +2140,7 @@ definitions:
         type: integer
         format: int64
       account_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2126,8 +2153,7 @@ definitions:
     type: object
     properties:
       name_id:
-        $ref: '#/definitions/EncodedHash'
-        type: string
+        $ref: '#/definitions/EncodedValue'
       name_ttl:
         type: integer
         format: int64
@@ -2145,7 +2171,7 @@ definitions:
         type: integer
         format: int64
       account_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2160,9 +2186,9 @@ definitions:
     type: object
     properties:
       name_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
       recipient_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       fee:
         type: integer
         format: int64
@@ -2170,7 +2196,7 @@ definitions:
         type: integer
         format: int64
       account_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2183,7 +2209,7 @@ definitions:
     type: object
     properties:
       name_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
       fee:
         type: integer
         format: int64
@@ -2191,7 +2217,7 @@ definitions:
         type: integer
         format: int64
       account_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2203,14 +2229,14 @@ definitions:
     type: object
     properties:
       commitment_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
     required:
       - commitment_id
   NameHash:
     type: object
     properties:
       name_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
     required:
       - name_id
   NamePointer:
@@ -2219,7 +2245,7 @@ definitions:
       key:
         type: string
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
     required:
       - key
       - id
@@ -2227,11 +2253,11 @@ definitions:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       initiator_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       responder_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       channel_amount:
         type: integer
         format: int64
@@ -2251,7 +2277,7 @@ definitions:
       delegate_ids:
         type: array
         items:
-          $ref: '#/definitions/EncodedHash'
+          $ref: '#/definitions/EncodedPubkey'
       state_hash:
         $ref: '#/definitions/EncodedHash'
       round:
@@ -2287,13 +2313,13 @@ definitions:
     type: object
     properties:
       initiator_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       initiator_amount:
         type: integer
         format: int64
         minimum: 0
       responder_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       responder_amount:
         type: integer
         format: int64
@@ -2339,9 +2365,9 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       amount:
         type: integer
         format: int64
@@ -2378,9 +2404,9 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       to_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       amount:
         type: integer
         format: int64
@@ -2417,11 +2443,11 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       payload:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
       round:
         type: integer
         format: int64
@@ -2446,7 +2472,7 @@ definitions:
         format: int64
         minimum: 0
       offchain_trees:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedByteArray'
         description: 'The whole set of off-chain state trees'
     required:
       - channel_id
@@ -2462,9 +2488,9 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       initiator_amount_final:
         type: integer
         format: int64
@@ -2496,11 +2522,11 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       payload:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
       ttl:
         type: integer
         format: int64
@@ -2514,7 +2540,7 @@ definitions:
         format: int64
         minimum: 0
       poi:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
         description: 'Proof of inclusion containing information for closing the channel'
     required:
       - channel_id
@@ -2526,11 +2552,11 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       payload:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
       ttl:
         type: integer
         format: int64
@@ -2544,7 +2570,7 @@ definitions:
         format: int64
         minimum: 0
       poi:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
         description: 'Proof of inclusion containing information for closing the channel'
     required:
       - channel_id
@@ -2556,9 +2582,9 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       initiator_amount_final:
         type: integer
         format: int64
@@ -2590,11 +2616,11 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       payload:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
       ttl:
         type: integer
         format: int64
@@ -2616,7 +2642,7 @@ definitions:
     type: object
     properties:
       pub_key:
-        type: string
+        $ref: '#/definitions/EncodedPubkey'
     required:
       - pub_key
   Status:
@@ -2701,7 +2727,7 @@ definitions:
         type: array
         minItems: 1
         items:
-          type: string
+          $ref: '#/definitions/EncodedValue'
     required:
       - tx
       - block_height
@@ -2816,13 +2842,13 @@ definitions:
     type: object
     properties:
       caller_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       caller_nonce:
         type: integer
       height:
         type: integer
       contract_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       gas_price:
         type: integer
       gas_used:
@@ -2850,7 +2876,7 @@ definitions:
     type: object
     properties:
       caller_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       height:
         type: integer
       gas_price:
@@ -2876,7 +2902,7 @@ definitions:
     properties:
       address:
         description: Contract address
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       topics:
         description: Event topics
         type: array
@@ -2900,9 +2926,9 @@ definitions:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       owner_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       vm_version:
         type: integer
         minimum: 0
@@ -2919,7 +2945,7 @@ definitions:
       referrer_ids:
         type: array
         items:
-          $ref: '#/definitions/EncodedHash'
+          $ref: '#/definitions/EncodedPubkey'
       deposit:
         type: integer
     required:
@@ -2943,21 +2969,20 @@ definitions:
               type: string
             value:
               $ref: '#/definitions/EncodedByteArray'
-              type: string
     required:
       - store
   ByteCode:
     type: object
     properties:
       bytecode:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - bytecode
   DryRunInput:
     type: object
     properties:
       top:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       accounts:
         type: array
         description: Accounts
@@ -2967,14 +2992,14 @@ definitions:
         type: array
         description: Txs
         items:
-          $ref: '#/definitions/EncodedHash'
+          $ref: '#/definitions/EncodedByteArray'
     required:
       - txs
   DryRunAccount:
     type: object
     properties:
       pub_key:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       amount:
         type: integer
     required:
@@ -3004,8 +3029,6 @@ definitions:
     required:
       - type
       - result
-  EncodedByteArray:
-    type: string
   Peer:
     type: string
     description: 'Aeternity node'
@@ -3029,14 +3052,14 @@ definitions:
     type: object
     properties:
       owner_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
         description: Contract owner pub_key
       nonce:
         description: 'Owner''s nonce'
         type: integer
       code:
         description: 'Contract''s code'
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
       vm_version:
         description: 'Virtual machine''s version'
         type: integer
@@ -3089,13 +3112,13 @@ definitions:
     type: object
     properties:
       caller_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
         description: Contract caller pub_key
       nonce:
         description: 'Caller''s nonce'
         type: integer
       contract_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
         description: 'Contract''s pub_key'
       abi_version:
         description: 'ABI version'
@@ -3139,7 +3162,7 @@ definitions:
     properties:
       tx:
         description: Unsigned transaction object
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - tx
   PostTxResponse:
@@ -3156,7 +3179,7 @@ definitions:
       - type: object
         properties:
           contract_id:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Address of the contract to be created
         required:
           - contract_id
@@ -3165,7 +3188,7 @@ definitions:
     properties:
       poi:
         description: Proof of inclusion
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - poi
   Generation:
@@ -3176,7 +3199,7 @@ definitions:
       micro_blocks:
         type: array
         items:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
     required:
       - key_block
       - micro_blocks
@@ -3194,10 +3217,10 @@ definitions:
       - type: object
         properties:
           from:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Sender of tokens
           to:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Receiver of tokens
           amount:
             type: integer
@@ -3213,7 +3236,7 @@ definitions:
       - type: object
         properties:
           to:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Withdrawer of tokens
           amount:
             type: integer
@@ -3228,7 +3251,7 @@ definitions:
       - type: object
         properties:
           from:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Depositor of tokens
           amount:
             type: integer
@@ -3243,7 +3266,7 @@ definitions:
       - type: object
         properties:
           owner:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Contract owner
           vm_version:
             type: integer
@@ -3277,10 +3300,10 @@ definitions:
       - type: object
         properties:
           caller:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Contract caller
           contract:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Contract address
           # vm_version kept for backwards compatibility, should be removed
           vm_version:
