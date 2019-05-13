@@ -50,6 +50,9 @@ user_register_test_() ->
       fun(_) -> notify(no_users) end,
       fun(_) -> notify(single_user) end,
       fun(_) -> notify(multiple_users) end,
+      fun(_) -> conn_pids(no_users) end,
+      fun(_) -> conn_pids(single_user) end,
+      fun(_) -> conn_pids(multiple_users) end,
       fun(_) -> size(empty) end,
       fun(_) -> size(single_user) end,
       fun(_) -> size(multiple_users) end,
@@ -181,6 +184,24 @@ notify(multiple_users) ->
     [{T, ?_assertEqual(Msg, receiver_result(self(), ConnPid1))},
      {T, ?_assertEqual(Msg, receiver_result(self(), ConnPid2))},
      {T, ?_assertEqual(Msg, receiver_result(self(), ConnPid3))}].
+
+conn_pids(no_users) ->
+    T = <<"conn_pids - no_users">>,
+    [{T, ?_assertEqual([], ?TEST_MODULE:conn_pids())}];
+conn_pids(single_user) ->
+    T = <<"conn_pids - single_user">>,
+    {?TEST_ACCOUNT1, ?TEST_WORKER1, ConnPid} = prep_single_user(),
+    [{T, ?LET(Pids, ?TEST_MODULE:conn_pids(), ?_assert(Pids =:= [ConnPid]))}];
+conn_pids(multiple_users) ->
+    T = <<"conn_pids - multiple_users">>,
+    [{?TEST_ACCOUNT1, ?TEST_WORKER1, ConnPid1},
+     {?TEST_ACCOUNT2, ?TEST_WORKER2, ConnPid2},
+     {?TEST_ACCOUNT3, ?TEST_WORKER3, ConnPid3}] = prep_multiple_users(),
+    [{T, ?LET(Pids, ?TEST_MODULE:conn_pids(),
+              ?_assertEqual({true, true, true},
+                            {lists:member(ConnPid1, Pids),
+                             lists:member(ConnPid2, Pids),
+                             lists:member(ConnPid3, Pids)}))}].
 
 size(empty) ->
     T = <<"size - empty">>,

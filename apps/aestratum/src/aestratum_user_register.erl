@@ -11,6 +11,7 @@
          member/1, member/2,
          find/1,
          notify/1,
+         conn_pids/0,
          size/0
         ]).
 
@@ -109,6 +110,10 @@ find(ConnPid) when is_pid(ConnPid) ->
 notify(Msg) ->
     gen_server:cast(?SERVER, {notify, Msg}).
 
+-spec conn_pids() -> [pid()].
+conn_pids() ->
+    gen_server:call(?SERVER, conn_pids).
+
 -spec size() -> non_neg_integer().
 size() ->
     proplists:get_value(size, ets:info(?TAB)).
@@ -127,7 +132,9 @@ handle_call({add_worker, Account, Worker}, _From, State) ->
 handle_call({del_user, Account}, _From, State) ->
     handle_del_user(Account, State);
 handle_call({del_conn_pid, ConnPid}, _From, State) ->
-    handle_del_conn_pid(ConnPid, State).
+    handle_del_conn_pid(ConnPid, State);
+handle_call(conn_pids, _From, State) ->
+    handle_conn_pids(State).
 
 handle_cast({notify, Msg}, State) ->
     handle_notify(Msg, State).
@@ -188,6 +195,12 @@ handle_del_conn_pid(ConnPid, State) ->
         end,
     {reply, Reply, State}.
 
+handle_conn_pids(State) ->
+    ets:safe_fixtable(?TAB, true),
+    Reply = get_pids(ets:first(?TAB), []),
+    ets:safe_fixtable(?TAB, false),
+    {reply, Reply, State}.
+
 handle_notify(Msg, State) ->
     ets:safe_fixtable(?TAB, true),
     send_notify(ets:first(?TAB), Msg),
@@ -210,6 +223,12 @@ del_entries(Account, ConnPid) ->
     ets:delete(?TAB, Account),
     ets:delete(?TAB_REV, ConnPid),
     ok.
+
+get_pids(Account, Acc) when Account =/= '$end_of_table' ->
+    [{Account, #{conn_pid := ConnPid}}] = ets:lookup(?TAB, Account),
+    get_pids(ets:next(?TAB, Account), [ConnPid | Acc]);
+get_pids('$end_of_table', Acc) ->
+    Acc.
 
 send_notify(Account, Msg) when Account =/= '$end_of_table' ->
     [{Account, #{conn_pid := ConnPid}}] = ets:lookup(?TAB, Account),
