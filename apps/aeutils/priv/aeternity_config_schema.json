@@ -370,6 +370,21 @@
                             "minimum" : 0
                         }
                     }
+                },
+                "protocol_beneficiaries_enabled" : {
+                    "description" :
+                    "If true, the node will split rewards and send part to protocol_beneficiaries",
+                    "type" : "boolean",
+                    "default" : false
+                },
+                "protocol_beneficiaries" : {
+                    "type" : "array",
+                    "items" : {
+                        "description" : "Public keys belonging to protocol maintainers with reward shares (100 is 10%).",
+                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+$"
+                    },
+                    "minItems": 1,
+                    "default" : ["ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:100"]
                 }
             }
         },

@@ -875,6 +875,7 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     KeyFees  = db_get_fees(hash(KeyNode2)),
     Beneficiary1 = node_beneficiary(KeyNode1),
     Beneficiary2 = node_beneficiary(KeyNode2),
+
     %% We give the mining reward for the closing block of the generation.
     MineReward2 = aec_governance:block_mine_reward(node_height(KeyNode2)),
     %% Fraud rewards is given for the opening block of the generation
@@ -883,15 +884,20 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     {BeneficiaryReward1, BeneficiaryReward2, LockAmount} =
         calc_rewards(FraudStatus1, FraudStatus2, KeyFees, MineReward2,
                      FraudReward1, node_is_genesis(KeyNode1, State)),
-    Trees1 =
-        lists:foldl(
-            fun({K, Amt}, TreesAccum) when Amt > 0 ->
-                    aec_trees:grant_fee(K, TreesAccum, Amt);
-                (_, TreesAccum) -> TreesAccum
-            end,
-            Trees,
-            [{Beneficiary1, BeneficiaryReward1},
-             {Beneficiary2, BeneficiaryReward2}]),
+
+    OldestBeneficiaryHeight = node_height(KeyNode1),
+    {{AdjustedReward1, AdjustedReward2}, DevRewards} =
+        aec_dev_reward:split(BeneficiaryReward1, BeneficiaryReward2,
+                             OldestBeneficiaryHeight),
+
+    Trees1 = lists:foldl(
+               fun({K, Amt}, TreesAccum) when Amt > 0 ->
+                       aec_trees:grant_fee(K, TreesAccum, Amt);
+                  (_, TreesAccum) -> TreesAccum
+               end,
+               Trees,
+               [{Beneficiary1, AdjustedReward1},
+                {Beneficiary2, AdjustedReward2} | DevRewards]),
     Accounts0 = aec_trees:accounts(Trees1),
     Accounts = aec_accounts_trees:lock_coins(LockAmount, Accounts0),
     aec_trees:set_accounts(Trees1, Accounts).
@@ -1157,4 +1163,3 @@ calc_rewards(FraudStatus1, FraudStatus2, GenerationFees,
         end,
     LockedAmount = TotalBlockAmount - B1Amt - B2Amt,
     {B1Amt, B2Amt, LockedAmount}.
-

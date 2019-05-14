@@ -111,6 +111,9 @@ chain:
     hard_forks:
       "1": 0
       "2": 1
+    # section describing reward split
+    protocol_beneficiaries: ["ak_DummyPubKeyDoNotEverUse999999999999999999999999999:100"]
+    protocol_beneficiaries_enabled: true
 
 mining:
     # Start mining automatically.
