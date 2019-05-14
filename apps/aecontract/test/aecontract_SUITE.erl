@@ -144,6 +144,9 @@
 -define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING(X), {variant, 0, [X]}).
 -define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(X), {variant, 1, [X]}).
 
+-define(CONTRACT_SERIALIZATION_VSN_ROMA,    1).
+-define(CONTRACT_SERIALIZATION_VSN_MINERVA, 2).
+
 %% Arguments like <<_:256>> are encoded as addresses.
 %% For FATE we need to distinguish between the type of object.
 %% For test cases that is run both for FATE and AEVM, wrap args in
@@ -632,7 +635,7 @@ create_version_too_high(Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    {ok, IdContract} = compile_contract_vsn(identity, ?SOPHIA_MINERVA),
+    {ok, IdContract} = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_MINERVA),
     ct:log("Compiled Contract = ~p\n", [aect_sophia:deserialize(IdContract)]),
 
     _IdContractMap = aect_sophia:deserialize(IdContract),
@@ -1408,8 +1411,8 @@ sophia_vm_interaction(Cfg) ->
                       amount => 100,
                       gas_price => MinGasPrice,
                       fee => 1000000 * MinGasPrice},
-    {ok, IdCode}  = compile_contract_vsn(identity, ?SOPHIA_ROMA),
-    {ok, RemCode} = compile_contract_vsn(remote_call, ?SOPHIA_ROMA),
+    {ok, IdCode}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_ROMA),
+    {ok, RemCode} = compile_contract_vsn(remote_call, ?CONTRACT_SERIALIZATION_VSN_ROMA),
 
     %% Create contracts on all sides of the fork
     IdCRoma     = ?call(create_contract_with_code, Acc, IdCode, {}, RomaSpec),
@@ -3951,7 +3954,7 @@ sophia_crypto(_Cfg) ->
 
     IdC = case RealCompilerVersion of
               ?SOPHIA_ROMA ->
-                  {ok, CCode}  = compile_contract_vsn(crypto, ?SOPHIA_ROMA),
+                  {ok, CCode}  = compile_contract_vsn(crypto, ?CONTRACT_SERIALIZATION_VSN_ROMA),
                   ?call(create_contract_with_code, Acc, CCode, {}, #{});
               _ ->
                   ?call(create_contract, Acc, crypto, {})
