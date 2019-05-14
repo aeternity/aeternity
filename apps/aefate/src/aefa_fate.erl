@@ -210,8 +210,7 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , code := ByteCode} = Spec, State) ->
     try aeb_fate_asm:bytecode_to_fate_code(ByteCode, []) of
         Code ->
-            Address = aeb_fate_data:make_address(ContractPubkey),
-            Cache = #{ Address => Code },
+            Cache = #{ ContractPubkey => Code },
             setup_engine(Spec, State, Cache)
     catch _:_ ->
             abort(bad_bytecode, no_state)
@@ -226,28 +225,28 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
     {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
-    Address = aeb_fate_data:make_address(ContractPubkey),
+    Contract = aeb_fate_data:make_contract(ContractPubkey),
     ES1 = aefa_engine_state:new(Gas, Value, Spec, aefa_chain_api:new(Spec), Cache),
-    ES2 = set_remote_function(Address, Function, ES1),
+    ES2 = set_remote_function(Contract, Function, ES1),
     ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
     ok = check_signature(Signature, ES3),
     ES4 = bind_args_from_signature(Signature, ES3),
     aefa_engine_state:set_caller(aeb_fate_data:make_address(maps:get(caller, Spec)), ES4).
 
-check_remote(Address, EngineState) when not ?IS_FATE_ADDRESS(Address) ->
-    abort({value_does_not_match_type, Address, address}, EngineState);
-check_remote(Address, EngineState) ->
-    case aefa_engine_state:check_reentrant_remote(Address, EngineState) of
+check_remote(Contract, EngineState) when not ?IS_FATE_CONTRACT(Contract) ->
+    abort({value_does_not_match_type, Contract, contract}, EngineState);
+check_remote(Contract, EngineState) ->
+    case aefa_engine_state:check_reentrant_remote(Contract, EngineState) of
         {ok, ES} ->
             ES;
         error ->
             abort(reentrant_call, EngineState)
     end.
 
-set_remote_function(?FATE_ADDRESS(Pubkey) = Address, Function, ES) ->
+set_remote_function(?FATE_CONTRACT(Pubkey), Function, ES) ->
     Contracts = aefa_engine_state:contracts(ES),
-    case maps:get(Address, Contracts, void) of
+    case maps:get(Pubkey, Contracts, void) of
         void ->
             APIState  = aefa_engine_state:chain_api(ES),
             case aefa_chain_api:contract_fate_code(Pubkey, APIState) of
@@ -255,13 +254,13 @@ set_remote_function(?FATE_ADDRESS(Pubkey) = Address, Function, ES) ->
                     Contracts1 = maps:put(Pubkey, ContractCode, Contracts),
                     ES1 = aefa_engine_state:set_contracts(Contracts1, ES),
                     ES2 = aefa_engine_state:set_chain_api(APIState1, ES1),
-                    ES3 = aefa_engine_state:update_for_remote_call(Address, ContractCode, ES2),
+                    ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, ES2),
                     set_local_function(Function, ES3);
                 error ->
                     abort({trying_to_call_contract, Pubkey}, ES)
             end;
         ContractCode ->
-            ES1 = aefa_engine_state:update_for_remote_call(Address, ContractCode, ES),
+            ES1 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, ES),
             set_local_function(Function, ES1)
     end.
 
@@ -335,6 +334,7 @@ check_type(integer, I) when ?IS_FATE_INTEGER(I) -> true;
 check_type(boolean, B) when ?IS_FATE_BOOLEAN(B) -> true;
 check_type(string, S) when ?IS_FATE_STRING(S) -> true;
 check_type(address, A) when ?IS_FATE_ADDRESS(A) -> true;
+check_type(contract, A) when ?IS_FATE_CONTRACT(A) -> true;
 check_type(bits, B) when ?IS_FATE_BITS(B) -> true;
 check_type({list, any}, L) when ?IS_FATE_LIST(L) ->
     true;

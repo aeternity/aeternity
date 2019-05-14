@@ -144,6 +144,12 @@
 -define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING(X), {variant, 0, [X]}).
 -define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(X), {variant, 1, [X]}).
 
+%% Arguments like <<_:256>> are encoded as addresses.
+%% For FATE we need to distinguish between the type of object.
+%% For test cases that is run both for FATE and AEVM, wrap args in
+%% the constructors below.
+-define(cid(__X__), {'@ct', __X__}).
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -1308,6 +1314,7 @@ make_calldata_from_id(Id, Fun, Args, State) ->
     {{value, C}, _S} = lookup_contract_by_id(Id, State),
     make_calldata_from_code(aect_contracts:code(C), Fun, Args).
 
+format_aevm_args(?cid(<<N:256>>)) -> N;
 format_aevm_args(<<N:256>>) -> N;
 format_aevm_args({bytes, Bin}) ->
     case to_words(Bin) of
@@ -1328,6 +1335,8 @@ to_words(Bin) ->
     Padded = <<Bin/binary, 0:(PadN - N)/unit:8>>,
     [ W || <<W:32/unit:8>> <= Padded ].
 
+format_fate_args(?cid(B)) ->
+    {contract, B};
 format_fate_args(<<_:256>> = B) ->
     {address, B}; %% Assume it is an address
 format_fate_args([H|T]) ->
@@ -1353,9 +1362,9 @@ sophia_remote_identity(_Cfg) ->
     IdC   = ?call(create_contract, Acc1, identity, {}),
     RemC  = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
     42    = ?call(call_contract,   Acc1, IdC, main, word, 42),
-    99    = ?call(call_contract,   Acc1, RemC, call, word, {IdC, 99}),
+    99    = ?call(call_contract,   Acc1, RemC, call, word, {?cid(IdC), 99}),
     RemC2 = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
-    77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {IdC, RemC, 77}),
+    77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {?cid(IdC), ?cid(RemC), 77}),
     ok.
 
 sophia_vm_interaction(Cfg) ->
@@ -1464,7 +1473,7 @@ sophia_no_reentrant(_Cfg) ->
     Acc   = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, identity, {}),
     RemC  = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
-    Res   = ?call(call_contract, Acc, RemC, staged_call, word, {IdC, RemC, 77}),
+    Res   = ?call(call_contract, Acc, RemC, staged_call, word, {?cid(IdC), ?cid(RemC), 77}),
     %% Should fail due to reentrancy
     ?assertMatchFATE({error, <<"Reentrant call">>}, Res),
     ?assertMatchAEVM({error, <<"reentrant_call">>}, Res),
@@ -1513,7 +1522,7 @@ sophia_spend(_Cfg) ->
     Ct1ExpBal0   = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
     %% Spend in nested call
     Ct1ExpBal1   = Ct1ExpBal0 + 6000,
-    Ct1ExpBal1   = ?call(call_contract, Acc1, Ct2, spend_from, word, {Ct1, Acc2, 6000}),
+    Ct1ExpBal1   = ?call(call_contract, Acc1, Ct2, spend_from, word, {?cid(Ct1), Acc2, 6000}),
     Ct1ExpBal1   = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
     4000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct1),
     5000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct2),
@@ -4735,7 +4744,7 @@ fate_environment(_Cfg) ->
     SentValue = 12340,
     Value1 = ?call(call_contract, Acc, Contract, call_value, word, {}, #{amount => SentValue}),
     ?assertEqual(SentValue, Value1),
-    Value2 = ?call(call_contract, Acc, Contract, remote_call_value, word, {Remote, 2*SentValue}, #{amount => 3*SentValue}),
+    Value2 = ?call(call_contract, Acc, Contract, remote_call_value, word, {?cid(Remote), 2*SentValue}, #{amount => 3*SentValue}),
     ?assertEqual(2*SentValue, Value2),
 
     %% Block hash is mocked to return the height if it gets a valid height
@@ -4764,8 +4773,8 @@ fate_call_origin(_Cfg) ->
 
     {address, AccInt}  = ?call(call_contract, Acc, RemC, call_caller, word, {}),
     {address, AccInt}  = ?call(call_contract, Acc, RemC, call_origin, word, {}),
-    {address, RemCInt} = ?call(call_contract, Acc, RemC, remote_call_caller, word, {EnvC}),
-    {address, AccInt}  = ?call(call_contract, Acc, RemC, remote_call_origin, word, {EnvC}),
+    {address, RemCInt} = ?call(call_contract, Acc, RemC, remote_call_caller, word, {?cid(EnvC)}),
+    {address, AccInt}  = ?call(call_contract, Acc, RemC, remote_call_origin, word, {?cid(EnvC)}),
 
     ok.
 
@@ -4779,7 +4788,7 @@ fate_call_value(_Cfg) ->
     Amount   = 12345,
     Bal2     = ?call(call_contract, Acc, C1, get_balance, word, {}, #{amount => Amount}),
     ?assertEqual(Amount + Bal1, Bal2),
-    Bal3     = ?call(call_contract, Acc, C2, spend_as_call, word, {C1, Amount}, #{amount => Amount}),
+    Bal3     = ?call(call_contract, Acc, C2, spend_as_call, word, {?cid(C1), Amount}, #{amount => Amount}),
     ?assertEqual(Amount + Bal2, Bal3),
     Bal4     = ?call(call_contract, Acc, C1, get_balance, word, {}, #{}),
     ?assertEqual(Bal3, Bal4),
@@ -4795,25 +4804,25 @@ fate_call_out_of_gas(_Cfg) ->
     %% Find out the amount of gas needed.
     {42, UsedGas1} =
         ?call(call_contract, Acc, RemC, gas_limit_call, word,
-              {IdC, 42, Gas}, #{ gas => Gas, return_gas_used => true}),
+              {?cid(IdC), 42, Gas}, #{ gas => Gas, return_gas_used => true}),
     ?assert(UsedGas1 < Gas),
 
     %% Ensure we fail if too little gas.
     TooLittleGas = UsedGas1 - 1,
     {{error, <<"Out of gas">>}, TooLittleGas} =
         ?call(call_contract, Acc, RemC, gas_limit_call, word,
-              {IdC, 42, Gas}, #{ gas => TooLittleGas, return_gas_used => true}),
+              {?cid(IdC), 42, Gas}, #{ gas => TooLittleGas, return_gas_used => true}),
 
     %% Ensure we can cap the gas on remote calls and retain the rest.
     {{error, <<"Out of gas">>}, UsedGas2} =
         ?call(call_contract, Acc, RemC, gas_limit_call, word,
-              {IdC, 42, 1}, #{ gas => Gas, return_gas_used => true}),
+              {?cid(IdC), 42, 1}, #{ gas => Gas, return_gas_used => true}),
     ?assert(UsedGas2 < UsedGas1),
 
     %% Ensure we spend all gas on an uncapped runtime error
     {{error, <<"Error in call: bad_gas_cap">>}, UsedGas3} =
         ?call(call_contract, Acc, RemC, gas_limit_call, word,
-              {IdC, 42, -1}, #{ gas => Gas, return_gas_used => true}),
+              {?cid(IdC), 42, -1}, #{ gas => Gas, return_gas_used => true}),
     ?assertEqual(UsedGas3, Gas),
 
     ok.

@@ -778,10 +778,10 @@ environment_contract_fate(Config) ->
 
     %% Initialise contract owned by Alice setting balance to 10000.
     {EncCPub, DecCPub, _} =
-        create_contract(Node, APub, APriv, Contract, "()", #{amount => ContractBalance}),
+        create_contract(Node, APub, APriv, Contract, [], #{amount => ContractBalance}),
 
-    {EncRemoteCPub, DecRemotePub, _} =
-        create_contract(Node, APub, APriv, Contract, "()", #{amount => ContractBalance}),
+    {EncRemoteCPub, _, _} =
+        create_contract(Node, APub, APriv, Contract, [], #{amount => ContractBalance}),
 
     %% Get the initial balance.
     BBal1 = get_balance(BPub),
@@ -790,35 +790,34 @@ environment_contract_fate(Config) ->
 
     %% Address.
     ct:pal("Calling contract_address\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "contract_address", "()",
+    call_func(BPub, BPriv, EncCPub, Contract, "contract_address", [],
               {fate, {address, binary:decode_unsigned(DecCPub)}}),
 
     %% Balance.
     ct:pal("Calling contract_balance\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "contract_balance", "()",
+    call_func(BPub, BPriv, EncCPub, Contract, "contract_balance", [],
               {fate, ContractBalance}),
 
     %% Origin.
     ct:pal("Calling call_origin\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "call_origin", "()",
+    call_func(BPub, BPriv, EncCPub, Contract, "call_origin", [],
               {fate, {address, binary:decode_unsigned(BPub)}}),
     ct:pal("Calling remote_call_origin\n"),
-    <<"ct_", Rest/binary>> = EncRemoteCPub,
-    Address = binary_to_list(<<"@ak_", Rest/binary>>),
+    RemoteFate = binary_to_list(<<"@", EncRemoteCPub/binary>>),
     call_func(BPub, BPriv, EncCPub, Contract, "remote_call_origin",
-              "(" ++ Address ++ ")", {fate, {address, binary:decode_unsigned(BPub)}}),
+              [RemoteFate], {fate, {address, binary:decode_unsigned(BPub)}}),
 
     %% Caller.
     ct:pal("Calling call_caller\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "call_caller", "(" ++ Address ++ ")"),
+    call_func(BPub, BPriv, EncCPub, Contract, "call_caller", [RemoteFate]),
     ct:pal("Calling remote_call_caller\n"),
     call_func(BPub, BPriv, EncCPub, Contract, "remote_call_caller",
-              "(" ++ Address ++ ")", {fate, {address, binary:decode_unsigned(DecCPub)}}),
+              [RemoteFate], {fate, {address, binary:decode_unsigned(DecCPub)}}),
 
     %% Gas price.
     ct:pal("Calling call_gas_price\n"),
     ExpectedGasPrice = 2 * ?DEFAULT_GAS_PRICE,
-    call_func(BPub, BPriv, EncCPub, Contract, "call_gas_price", "()",
+    call_func(BPub, BPriv, EncCPub, Contract, "call_gas_price", [],
               #{gas_price => ExpectedGasPrice}, {fate, ExpectedGasPrice}),
 
     %% Account balances.
@@ -826,17 +825,17 @@ environment_contract_fate(Config) ->
     ABal = get_balance(APub),
     EncAPub = aeser_api_encoder:encode(account_pubkey, APub),
     AAddress = "@" ++ binary_to_list(EncAPub),
-    call_func(BPub, BPriv, EncCPub, Contract, "get_balance", "(" ++ AAddress ++ ")",
+    call_func(BPub, BPriv, EncCPub, Contract, "get_balance", [AAddress],
               {fate, ABal}),
-    call_func(BPub, BPriv, EncCPub, Contract, "contract_balance", "()",
+    call_func(BPub, BPriv, EncCPub, Contract, "contract_balance", [],
               {fate, ContractBalance}),
 
     %% Value.
     ct:pal("Calling call_value\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "call_value", "()",
+    call_func(BPub, BPriv, EncCPub, Contract, "call_value", [],
               #{amount => 5}, {fate, 5}),
     ct:pal("Calling remote_call_value\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "remote_call_value", "(" ++ Address ++", 42)",
+    call_func(BPub, BPriv, EncCPub, Contract, "remote_call_value", [RemoteFate, "42"],
               #{amount => 50}, {fate, 42}),
 
     %% Block hash.
@@ -844,11 +843,11 @@ environment_contract_fate(Config) ->
     {ok, 200, #{<<"hash">> := ExpectedBlockHash}} = get_key_block_at_height(2),
     {_, <<BHInt:256/integer-unsigned>>} = aeser_api_encoder:decode(ExpectedBlockHash),
 
-    call_func(BPub, BPriv, EncCPub, Contract, "block_hash", "(2)", {fate, BHInt}),
+    call_func(BPub, BPriv, EncCPub, Contract, "block_hash", ["2"], {fate, BHInt}),
 
     %% Block hash. With value out of bounds
     ct:pal("Calling block_hash out of bounds\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "block_hash", "(10000000)", {fate, 0}),
+    call_func(BPub, BPriv, EncCPub, Contract, "block_hash", ["10000000"], {fate, 0}),
 
     %% Beneficiary.
     ct:pal("Calling beneficiary\n"),
@@ -859,18 +858,18 @@ environment_contract_fate(Config) ->
                     {_, <<BInt:256/integer-unsigned>>} = aeser_api_encoder:decode(B),
                     {address, BInt}
                   end,
-    call_func(BPub, BPriv, EncCPub, Contract, "beneficiary", "()", {fate, Beneficiary}),
+    call_func(BPub, BPriv, EncCPub, Contract, "beneficiary", [], {fate, Beneficiary}),
 
     %% Block timestamp.
     ct:pal("Calling timestamp\n"),
 
     Timestamp = fun(Hdr) -> maps:get(<<"time">>, Hdr) end,
-    call_func(BPub, BPriv, EncCPub, Contract, "timestamp", "()", {fate, Timestamp}),
+    call_func(BPub, BPriv, EncCPub, Contract, "timestamp", [], {fate, Timestamp}),
 
     %% Block height.
     ct:pal("Calling block_height\n"),
     BlockHeight = fun(Hdr) -> maps:get(<<"height">>, Hdr) end,
-    call_func(BPub, BPriv, EncCPub, Contract, "generation", "()", {fate, BlockHeight}),
+    call_func(BPub, BPriv, EncCPub, Contract, "generation", [], {fate, BlockHeight}),
 
     %% Difficulty.
     ct:pal("Calling difficulty\n"),
@@ -879,11 +878,11 @@ environment_contract_fate(Config) ->
                     {ok, 200, #{<<"target">> := T}} = get_key_block(KeyHash),
                     aeminer_pow:target_to_difficulty(T)
                  end,
-    call_func(BPub, BPriv, EncCPub, Contract, "difficulty", "()", {fate, Difficulty}),
+    call_func(BPub, BPriv, EncCPub, Contract, "difficulty", [], {fate, Difficulty}),
 
     %% Gas limit.
     ct:pal("Calling gas_limit\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "gas_limit", "()",
+    call_func(BPub, BPriv, EncCPub, Contract, "gas_limit", [],
               {fate, aec_governance:block_gas_limit()}),
 
     force_fun_calls(Node),
@@ -1381,7 +1380,9 @@ encode_calldata(Contract, Fun, Args) ->
             {ok, CData} = aect_test_utils:encode_call_data(maps:get(src, Contract), Fun, Args),
             {ok, aeser_api_encoder:encode(contract_bytearray, CData)};
         ?ABI_FATE_SOPHIA_1 ->
-            CData = aeb_fate_asm:function_call(lists:concat([Fun, Args])),
+            Call = [Fun, $(, lists:join($,, Args), $)],
+            String = binary_to_list(iolist_to_binary(Call)),
+            CData = aeb_fate_asm:function_call(String),
             {ok, aeser_api_encoder:encode(contract_bytearray, CData)}
     end.
 
@@ -1475,8 +1476,12 @@ check_call_(Check, CallObject, TxHash) ->
                     check_value(Value, {Type, Fun(BlockHeader)})
             end;
         {_, _} ->
-            ?assertEqual(<<"ok">>, RetType),
-            check_value(Value, Check);
+            case RetType of
+                <<"ok">> ->
+                    check_value(Value, Check);
+                Other ->
+                    error({unexpected, Other, aeser_api_encoder:safe_decode(contract_bytearray, Value)})
+            end;
         error ->
             ?assertEqual(<<"error">>, RetType);
         revert ->

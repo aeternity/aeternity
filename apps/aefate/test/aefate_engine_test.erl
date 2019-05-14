@@ -279,7 +279,7 @@ make_call(Contract, Function, Arguments) ->
 
 setup_contracts() ->
     Cs = contracts(),
-    NewCs = [{aeb_fate_data:make_address(pad_contract_name(C)), setup_contract(Functions)}
+    NewCs = [{pad_contract_name(C), setup_contract(Functions)}
              || {C, Functions} <- maps:to_list(Cs)],
     maps:from_list(NewCs).
 
@@ -341,7 +341,7 @@ contracts() ->
              , {[integer],integer}
              , [ {0, [ {'PUSH', {arg,0}},
                        {'CALL_R',
-                        {immediate, aeb_fate_data:make_address(pad_contract_name(<<"remote">>))},
+                        {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"remote">>))},
                         {immediate, <<"add_five">>},
                         {immediate, 0}
                        } ]}
@@ -353,7 +353,7 @@ contracts() ->
              , {[integer],integer}
              , [ {0, [ {'PUSH', {arg,0}},
                        {'CALL_TR',
-                        {immediate, aeb_fate_data:make_address(pad_contract_name(<<"remote">>))},
+                        {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"remote">>))},
                         {immediate, <<"add_five">>},
                         {immediate, 0}
                        } ]}

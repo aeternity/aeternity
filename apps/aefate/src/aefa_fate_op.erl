@@ -157,9 +157,9 @@ call_r(Arg0, Arg1, Arg2, EngineState) ->
     call_tr(Arg0, Arg1, Arg2, ES1).
 
 call_tr(Arg0, Arg1, Arg2, EngineState) ->
-    {Address, ES1} = get_op_arg(Arg0, EngineState),
+    {Contract, ES1} = get_op_arg(Arg0, EngineState),
     {Value, ES2} = get_op_arg(Arg2, ES1),
-    ES3 = remote_call_common(Address, Arg1, Value, ES2),
+    ES3 = remote_call_common(Contract, Arg1, Value, ES2),
     {jump, 0, ES3}.
 
 call_gr(Arg0, Arg1, Arg2, Arg3, EngineState) ->
@@ -167,25 +167,25 @@ call_gr(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     call_gtr(Arg0, Arg1, Arg2, Arg3, ES1).
 
 call_gtr(Arg0, Arg1, Arg2, Arg3, EngineState) ->
-    {Address, ES1} = get_op_arg(Arg0, EngineState),
+    {Contract, ES1} = get_op_arg(Arg0, EngineState),
     {Value, ES2}   = get_op_arg(Arg2, ES1),
     {GasCap, ES3}  = get_op_arg(Arg3, ES2),
-    ES4 = remote_call_common(Address, Arg1, Value, ES3),
+    ES4 = remote_call_common(Contract, Arg1, Value, ES3),
     ES5 = aefa_fate:push_gas_cap(GasCap, ES4),
     {jump, 0, ES5}.
 
-remote_call_common(Address, Function, Value, EngineState) ->
+remote_call_common(Contract, Function, Value, EngineState) ->
     Current   = aefa_engine_state:current_contract(EngineState),
-    ES1       = aefa_fate:check_remote(Address, EngineState),
-    ES2       = aefa_fate:set_remote_function(Address, Function, ES1),
+    ES1       = aefa_fate:check_remote(Contract, EngineState),
+    ES2       = aefa_fate:set_remote_function(Contract, Function, ES1),
     Signature = aefa_fate:get_function_signature(Function, ES2),
     ok        = aefa_fate:check_signature(Signature, ES2),
     ES3       = aefa_fate:bind_args_from_signature(Signature, ES2),
-    transfer_value(Current, Address, Value, ES3).
+    transfer_value(Current, Contract, Value, ES3).
 
-transfer_value(?FATE_ADDRESS(_From), ?FATE_ADDRESS(_To), Value, ES) when not ?IS_FATE_INTEGER(Value) ->
+transfer_value(_From, ?FATE_CONTRACT(_To), Value, ES) when not ?IS_FATE_INTEGER(Value) ->
     aefa_fate:abort({value_does_not_match_type, Value, integer}, ES);
-transfer_value(?FATE_ADDRESS(From), ?FATE_ADDRESS(To), Value, ES) ->
+transfer_value(From, ?FATE_CONTRACT(To), Value, ES) ->
     case ?FATE_INTEGER_VALUE(Value) of
         IntValue when IntValue < 0 ->
             aefa_fate:abort({call_error, negative_value}, ES);
@@ -575,12 +575,13 @@ bits_diff(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(bits_difference, {Arg0, Arg1, Arg2}, EngineState).
 
 address(Arg0, EngineState) ->
-    Address = ?FATE_ADDRESS(_) = aefa_engine_state:current_contract(EngineState),
+    Pubkey = aefa_engine_state:current_contract(EngineState),
+    Address = aeb_fate_data:make_address(Pubkey),
     write(Arg0, Address, EngineState).
 
 balance(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
-    ?FATE_ADDRESS(Pubkey) = aefa_engine_state:current_contract(EngineState),
+    Pubkey = aefa_engine_state:current_contract(EngineState),
     {ok, Balance, API1} = aefa_chain_api:account_balance(Pubkey, API),
     write(Arg0, Balance, aefa_engine_state:set_chain_api(API1, EngineState)).
 
@@ -673,7 +674,7 @@ log(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _Arg5, _EngineState) -> exit({error, op_n
 deactivate(_EngineState) -> exit({error, op_not_implemented_yet}).
 
 spend(Arg0, Arg1, ES0) ->
-    ?FATE_ADDRESS(FromPubkey) = aefa_engine_state:current_contract(ES0),
+    FromPubkey = aefa_engine_state:current_contract(ES0),
     {Amount, ES1} = get_op_arg(Arg0, ES0),
     [aefa_fate:abort({value_does_not_match_type, Amount, integer}, ES1)
      || not ?IS_FATE_INTEGER(Amount)],

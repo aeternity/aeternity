@@ -14,13 +14,13 @@ FUNCTION withdraw(integer) -> integer
   CALLER a
   CALL_T spend
 
-FUNCTION withdraw_from(address, integer) -> integer
+FUNCTION withdraw_from(contract, integer) -> integer
   PUSH arg1
   CALL_R arg0 withdraw 0
   PUSH arg1
   CALL_T withdraw
 
-FUNCTION spend_from(address, address, integer) -> integer
+FUNCTION spend_from(contract, address, integer) -> integer
   PUSH arg2
   CALL_R arg0 withdraw 0
   SPEND arg2 arg1
@@ -35,6 +35,6 @@ FUNCTION get_balance_of(address) -> integer
   BALANCE_OTHER a arg0
   RETURN
 
-FUNCTION spend_as_call(address, integer) -> integer
+FUNCTION spend_as_call(contract, integer) -> integer
   CALL_R arg0 get_balance arg1
   RETURN
