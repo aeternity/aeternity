@@ -64,7 +64,8 @@
 
 -export([patron/0,
          sign_keys/0,
-         sign_keys/1]).
+         sign_keys/1,
+         meta_tx/4]).
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -721,7 +722,7 @@ cmd_run(Cmd, Dir, BinDir, Args, Env, FindLocalBin) ->
             {args, Args},
             {cd, Dir}
            ],
-    ct:log("Running command ~p in ~p with ~p", [Cmd, Dir, Args]),
+    ct:log("Running command ~p in ~p with ~p, opts ~p", [Cmd, Dir, Args, Opts]),
     Bin = case FindLocalBin of
 	       true ->
                     os:find_executable(Cmd, filename:join(Dir, BinDir));
@@ -1013,3 +1014,16 @@ await_new_jobs_pid_recurse(N, OldP, TRef) ->
     after 100 ->
             await_new_jobs_pid(N, OldP, TRef)
     end.
+
+meta_tx(Owner, AuthOpts, AuthData, InnerTx0) ->
+    InnerSTx =
+        try aetx_sign:tx(InnerTx0) of
+            _Tx -> InnerTx0
+        catch _:_ ->
+            aetx_sign:new(InnerTx0, [])
+        end,
+    Options1 = maps:merge(#{%fee => 50000 * aec_test_utils:min_gas_price(),
+                            auth_data => AuthData, tx => InnerSTx}, AuthOpts),
+    MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),
+    aetx_sign:new(MetaTx, []).
+

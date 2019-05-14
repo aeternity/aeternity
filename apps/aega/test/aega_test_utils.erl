@@ -198,4 +198,3 @@ hash_lit_to_bin("#" ++ Hex) ->
         aeu_hex:hexstring_decode(list_to_binary("0x" ++ Hex))
     end.
 
-

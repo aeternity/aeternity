@@ -22,6 +22,7 @@
          hash/1,
          add_signatures/2,
          tx/1,
+         innermost_tx/1,
          verify/2,
          verify/3,
          verify_half_signed/2,
@@ -77,6 +78,14 @@ add_signatures(#signed_tx{signatures = OldSigs} = Tx, NewSigs)
 %% seems restricted as type.
 tx(#signed_tx{tx = Tx}) ->
     Tx.
+
+-spec innermost_tx(signed_tx()) -> aetx:tx().
+innermost_tx(SignedTx) ->
+    Aetx = aetx_sign:tx(SignedTx),
+    case aetx:specialize_callback(Aetx) of
+        {aega_meta_tx, MetaTx} -> innermost_tx(aega_meta_tx:tx(MetaTx));
+        {_CallBack, _Tx} -> Aetx
+    end.
 
 -spec from_db_format(tuple()) -> signed_tx().
 from_db_format(#signed_tx{tx = Tx} = STx) ->

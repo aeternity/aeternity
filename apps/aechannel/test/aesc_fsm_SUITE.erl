@@ -48,6 +48,10 @@
         , check_incorrect_update/1
         , check_incorrect_mutual_close/1
         , check_mutual_close_with_wrong_amounts/1
+        , attach_initiator/1
+        , attach_responder/1
+        , initiator_spend/1
+        , responder_spend/1
         ]).
 
 %% exports for aehttp_integration_SUITE
@@ -56,6 +60,9 @@
         ]).
 
 -include_lib("common_test/include/ct.hrl").
+-include("../../aecontract/include/aecontract.hrl").
+-include("../../aecontract/test/include/aect_sophia_vsn.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(TIMEOUT, 10000).
 -define(LONG_TIMEOUT, 60000).
@@ -85,29 +92,9 @@ groups() ->
                              , {group, channel_ids}
                              , {group, round_too_low}
                              , {group, round_too_high}
+                             , {group, generalized_accounts}
                              ]},
-     {transactions, [sequence],
-      [
-        create_channel
-      , channel_insufficent_tokens
-      , inband_msgs
-      , upd_transfer
-      , update_with_conflict
-      , update_with_soft_reject
-      , deposit_with_conflict
-      , deposit_with_soft_reject
-      , withdraw_with_conflict
-      , withdraw_with_soft_reject
-      , upd_dep_with_conflict
-      , upd_wdraw_with_conflict
-      , dep_wdraw_with_conflict
-      , deposit
-      , withdraw
-      , channel_subverted
-      , leave_reestablish
-      , leave_reestablish_close
-      , change_config_get_history
-      ]},
+     {transactions, [sequence], transactions_sequence()},
      {throughput, [sequence],
       [
         multiple_channels
@@ -126,7 +113,43 @@ groups() ->
       update_sequence() ++ [check_incorrect_mutual_close]},
      {round_too_low, [sequence], update_sequence()},
      {round_too_high, [sequence], update_sequence()},
-     {state_hash, [sequence], [check_incorrect_create | update_sequence()]}
+     {state_hash, [sequence], [check_incorrect_create | update_sequence()]},
+     {generalized_accounts, [sequence],
+      [ {group, initiator_is_ga}
+      , {group, responder_is_ga}
+      , {group, both_are_ga}
+      ]},
+     {initiator_is_ga, [sequence], ga_sequence()},
+     {responder_is_ga, [sequence], ga_sequence()},
+     {both_are_ga, [sequence], ga_sequence()}
+    ].
+
+ga_sequence() ->
+    [ {group, transactions}
+    , {group, errors}
+    , {group, signatures}
+    , {group, channel_ids}
+    ].
+transactions_sequence() ->
+    [ create_channel
+    , channel_insufficent_tokens
+    , inband_msgs
+    , upd_transfer
+    , update_with_conflict
+    , update_with_soft_reject
+    , deposit_with_conflict
+    , deposit_with_soft_reject
+    , withdraw_with_conflict
+    , withdraw_with_soft_reject
+    , upd_dep_with_conflict
+    , upd_wdraw_with_conflict
+    , dep_wdraw_with_conflict
+    , deposit
+    , withdraw
+    , channel_subverted
+    , leave_reestablish
+    , leave_reestablish_close
+    , change_config_get_history
     ].
 
 update_sequence() ->
@@ -138,13 +161,21 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
+    {_PrivKey, PubKey} = aecore_suite_utils:sign_keys(dev1),
+    TableOwner = new_config_table(),
+    Miner = aeser_api_encoder:encode(account_pubkey, PubKey),
     DefCfg = #{<<"chain">> => #{<<"persist">> => false},
-               <<"mining">> => #{<<"micro_block_cycle">> => 1}},
+               <<"mining">> => #{<<"micro_block_cycle">> => 1,
+                                 <<"beneficiary">> => Miner,
+                                 <<"beneficiary_reward_delay">> => 2}},
     Config1 = aecore_suite_utils:init_per_suite([dev1], DefCfg, [{symlink_name, "latest.aesc_fsm"}, {test_module, ?MODULE}] ++ Config),
-    [{nodes, [aecore_suite_utils:node_tuple(N)
-              || N <- [dev1]]} | Config1].
+    [{nodes, [aecore_suite_utils:node_tuple(N) || N <- [dev1]]},
+     {table_owner, TableOwner}
+     | Config1].
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
+    TableOwner = ?config(table_owner, Config),
+    TableOwner ! die,
     ok.
 
 init_per_group(signatures, Config0) ->
@@ -183,45 +214,101 @@ init_per_group(state_hash, Config0) ->
      {wrong_action, fun wrong_hash_action/4},
      {wrong_action_detailed, fun wrong_hash_action/5}
      | Config];
+init_per_group(Group, Config) when Group =:= initiator_is_ga;
+                                   Group =:= responder_is_ga;
+                                   Group =:= both_are_ga ->
+    case aect_test_utils:latest_protocol_version() of
+        ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
+        ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
+        ?FORTUNA_PROTOCOL_VSN ->
+            Config1 = init_per_group_(Config),
+            ParticipantParams =
+                fun(Secret) ->
+                    #{init_params => [Secret],
+                      prep_fun =>
+                          fun(_, N) ->
+                              simple_auth([Secret, integer_to_list(N)])
+                          end}
+                end,
+            Config2 =
+                [{ga, #{contract    => "simple_auth",
+                        auth_fun    => "authorize",
+                        auth_params => #{initiator => ParticipantParams("1234"),
+                                        responder => ParticipantParams("5678")}}},
+                 {ga_group, true},
+                 {bench_rounds, 100} %% a lower amount than the default 1000
+                    | Config1],
+            case Group of
+                initiator_is_ga ->
+                    attach_initiator(Config2),
+                    initiator_spend(Config2);
+                responder_is_ga ->
+                    attach_responder(Config2),
+                    responder_spend(Config2);
+                both_are_ga ->
+                    attach_initiator(Config2),
+                    initiator_spend(Config2),
+                    attach_responder(Config2),
+                    responder_spend(Config2)
+            end,
+            Config2
+    end;
+init_per_group(generalized_accounts, Config) ->
+    Config;
 init_per_group(_Group, Config) ->
     init_per_group_(Config).
 
 init_per_group_(Config) ->
-    aecore_suite_utils:start_node(dev1, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1)),
-    ct:log("dev1 connected", []),
-    try begin
-            Initiator = prep_initiator(dev1),
-            Responder = prep_responder(Initiator, dev1),
-            [{initiator, Initiator},
-             {responder, Responder},
-             {port, ?PORT},
-             {initiator_amount, 1000000 * aec_test_utils:min_gas_price()},
-             {responder_amount, 1000000 * aec_test_utils:min_gas_price()}
-             | Config]
-        end
-    catch
-        error:Reason ->
-            Trace = erlang:get_stacktrace(),
-            catch stop_node(dev1, Config),
-            error(Reason, Trace)
+    case proplists:get_value(ga_group, Config, false) of
+        true -> Config;
+        false ->
+            aecore_suite_utils:start_node(dev1, Config),
+            aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1)),
+            ct:log("dev1 connected", []),
+            try begin
+                    Initiator = prep_initiator(dev1),
+                    Responder = prep_responder(Initiator, dev1),
+                    [{initiator, Initiator},
+                    {responder, Responder},
+                    {port, ?PORT},
+                    {initiator_amount, 1000000 * aec_test_utils:min_gas_price()},
+                    {responder_amount, 1000000 * aec_test_utils:min_gas_price()}
+                    | Config]
+                end
+            catch
+                error:Reason ->
+                    Trace = erlang:get_stacktrace(),
+                    catch stop_node(dev1, Config),
+                    error(Reason, Trace)
+            end
     end.
 
-end_per_group(_Group, Config) ->
-    _Config1 = stop_node(dev1, Config),
+end_per_group(Group, Config) ->
+    case proplists:get_value(ga_group, Config, false) of
+        true ->
+            case lists:member(Group, [initiator_is_ga,
+                                      responder_is_ga, both_are_ga]) of
+                true ->
+                    _Config1 = stop_node(dev1, Config);
+                false -> pass
+            end;
+        false ->
+            _Config1 = stop_node(dev1, Config)
+    end,
     ok.
 
-init_per_testcase(leave_reestablish, Config) ->
-    [{debug, true} | Config];
 init_per_testcase(_, Config) ->
-    Config.
+    Config1 = load_idx(Config),
+    [{debug, true} | Config1].
 
 end_per_testcase(T, _Config) when T==multiple_channels;
                                   T==many_chs_msg_loop ->
     Node = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:unmock_mempool_nonce_offset(Node),
+    bump_idx(),
     ok;
 end_per_testcase(_Case, _Config) ->
+    bump_idx(),
     ok.
 
 
@@ -238,9 +325,11 @@ create_channel(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{fsm := FsmI, channel_id := ChannelId} = I
      , r := #{} = R} = create_channel_([?SLOGAN|Cfg]),
+
+    {ok, _} = rpc(dev1, aec_chain, get_channel, [ChannelId]),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
-    _ = await_signing_request(shutdown, I, ?TIMEOUT, Debug),
-    _ = await_signing_request(shutdown_ack, R, ?TIMEOUT, Debug),
+    _ = await_signing_request(shutdown, I, ?TIMEOUT, Debug, Cfg),
+    _ = await_signing_request(shutdown_ack, R, ?TIMEOUT, Debug, Cfg),
     SignedTx = await_on_chain_report(I, ?TIMEOUT),
     SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
@@ -273,13 +362,14 @@ inband_msgs(Cfg) ->
      , r := #{} = R
      , spec := #{ initiator := _PubI
                 , responder := PubR }} = create_channel_(
-                                           [?SLOGAN|Cfg]),
+                                           [{push_amount, 1234},
+                                             ?SLOGAN|Cfg]),
     ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"i2r hello">>]),
     {ok,_} =receive_from_fsm(
               message, R,
               fun(#{info := #{info := <<"i2r hello">>}}) -> ok end, 1000, true),
 
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     check_info(500).
 
 upd_transfer(Cfg) ->
@@ -290,14 +380,14 @@ upd_transfer(Cfg) ->
                 , responder := PubR }} = create_channel_(
                                            [?SLOGAN|Cfg]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
-    {I0, R0} = do_update(PubI, PubR, 2, I, R, true),
+    {I0, R0} = do_update(PubI, PubR, 2, I, R, true, Cfg),
     {BalI1, BalR1} = get_both_balances(FsmI, PubI, PubR),
     BalI1 = BalI - 2,
     BalR1 = BalR + 2,
-    {I1, R1} = update_bench(I0, R0),
+    {I1, R1} = update_bench(I0, R0, Cfg),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
-    {_I2, _} = await_signing_request(shutdown, I1),
-    {_R2, _} = await_signing_request(shutdown_ack, R1),
+    {_I2, _} = await_signing_request(shutdown, I1, Cfg),
+    {_R2, _} = await_signing_request(shutdown_ack, R1, Cfg),
     SignedTx = await_on_chain_report(I, ?TIMEOUT),
     SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
@@ -316,7 +406,7 @@ update_with_conflict(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1]),
     rpc(dev1, aesc_fsm, upd_transfer, [FsmR, PubR, PubI, 2]),
-    {_I1, _} = await_signing_request(update, I, Debug),
+    {_I1, _} = await_signing_request(update, I, Debug, Cfg),
     %% FsmR should now detect a conflict
     {ok, _} = receive_from_fsm(update, R, signing_req(), ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(conflict, I, any_msg(), ?TIMEOUT, Debug),
@@ -324,7 +414,7 @@ update_with_conflict(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     check_info(500),
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     ok.
 
 update_with_soft_reject(Cfg) ->
@@ -337,19 +427,19 @@ update_with_soft_reject(Cfg) ->
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1]),
-    {I1, _} = await_signing_request(update, I, Debug),
+    {I1, _} = await_signing_request(update, I, Debug, Cfg),
     Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx, _Updates) ->
                      {error, conflict} = rpc(dev1, aesc_fsm, upd_transfer,
                                              [Fsm1, PubR, PubI, 1]),
                      {Rx, SignedTx}
              end,
-    {R1, _} = await_signing_request(update_ack, R, Reject, ?TIMEOUT, Debug),
+    {R1, _} = await_signing_request(update_ack, R, Reject, ?TIMEOUT, Debug, Cfg),
     {ok, _} = receive_from_fsm(conflict, I1, any_msg(), ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(conflict, R1, any_msg(), ?TIMEOUT, Debug),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     check_info(500),
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     ok.
 
 deposit_with_conflict(Cfg) ->
@@ -363,7 +453,7 @@ deposit_with_conflict(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => 1}]),
     rpc(dev1, aesc_fsm, upd_deposit, [FsmR, #{amount => 2}]),
-    {_I1, _} = await_signing_request(deposit_tx, I, Debug),
+    {_I1, _} = await_signing_request(deposit_tx, I, Debug, Cfg),
     %% FsmR should now detect a conflict
     {ok, _} = receive_from_fsm(deposit_tx, R, signing_req(), ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(conflict, I, any_msg(), ?TIMEOUT, Debug),
@@ -371,7 +461,7 @@ deposit_with_conflict(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     check_info(500),
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     ok.
 
 deposit_with_soft_reject(Cfg) ->
@@ -384,19 +474,19 @@ deposit_with_soft_reject(Cfg) ->
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => 1}]),
-    {I1, _} = await_signing_request(deposit_tx, I, Debug),
+    {I1, _} = await_signing_request(deposit_tx, I, Debug, Cfg),
     Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx, _Updates) ->
                      {error, conflict} = rpc(dev1, aesc_fsm, upd_transfer,
                                              [Fsm1, PubR, PubI, 1]),
                      {Rx, SignedTx}
              end,
-    {R1, _} = await_signing_request(deposit_created, R, Reject, ?TIMEOUT, Debug),
+    {R1, _} = await_signing_request(deposit_created, R, Reject, ?TIMEOUT, Debug, Cfg),
     {ok,_} = receive_from_fsm(conflict, I1, any_msg(), ?TIMEOUT, Debug),
     {ok,_} = receive_from_fsm(conflict, R1, any_msg(), ?TIMEOUT, Debug),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     check_info(500),
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     ok.
 
 withdraw_with_conflict(Cfg) ->
@@ -410,7 +500,7 @@ withdraw_with_conflict(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => 1}]),
     rpc(dev1, aesc_fsm, upd_withdraw, [FsmR, #{amount => 2}]),
-    {_I1, _} = await_signing_request(withdraw_tx, I, Debug),
+    {_I1, _} = await_signing_request(withdraw_tx, I, Debug, Cfg),
     %% FsmR should now detect a conflict
     {ok, _} = receive_from_fsm(withdraw_tx, R, signing_req(), ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(conflict, I, any_msg(), ?TIMEOUT, Debug),
@@ -418,7 +508,7 @@ withdraw_with_conflict(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     check_info(500),
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     ok.
 
 withdraw_with_soft_reject(Cfg) ->
@@ -431,19 +521,19 @@ withdraw_with_soft_reject(Cfg) ->
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => 1}]),
-    {I1, _} = await_signing_request(withdraw_tx, I, Debug),
+    {I1, _} = await_signing_request(withdraw_tx, I, Debug, Cfg),
     Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx, _Updates) ->
                      {error, conflict} = rpc(dev1, aesc_fsm, upd_transfer,
                                              [Fsm1, PubR, PubI, 1]),
                      {Rx, SignedTx}
              end,
-    {R1, _} = await_signing_request(withdraw_created, R, Reject, ?TIMEOUT, Debug),
+    {R1, _} = await_signing_request(withdraw_created, R, Reject, ?TIMEOUT, Debug, Cfg),
     {ok,_} = receive_from_fsm(conflict, I1, any_msg(), ?TIMEOUT, Debug),
     {ok,_} = receive_from_fsm(conflict, R1, any_msg(), ?TIMEOUT, Debug),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     check_info(500),
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     ok.
 
 upd_dep_with_conflict(Cfg) ->
@@ -457,7 +547,7 @@ upd_dep_with_conflict(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1]),
     rpc(dev1, aesc_fsm, upd_deposit, [FsmR, #{amount => 2}]),
-    {_I1, _} = await_signing_request(update, I, Debug),
+    {_I1, _} = await_signing_request(update, I, Debug, Cfg),
     %% FsmR should now detect a conflict
     {ok, _} = receive_from_fsm(deposit_tx, R, signing_req(), ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(conflict, I, any_msg(), ?TIMEOUT, Debug),
@@ -465,7 +555,7 @@ upd_dep_with_conflict(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     check_info(500),
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     ok.
 
 upd_wdraw_with_conflict(Cfg) ->
@@ -479,7 +569,7 @@ upd_wdraw_with_conflict(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1]),
     rpc(dev1, aesc_fsm, upd_withdraw, [FsmR, #{amount => 2}]),
-    {_I1, _} = await_signing_request(update, I, Debug),
+    {_I1, _} = await_signing_request(update, I, Debug, Cfg),
     %% FsmR should now detect a conflict
     {ok, _} = receive_from_fsm(withdraw_tx, R, signing_req(), ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(conflict, I, any_msg(), ?TIMEOUT, Debug),
@@ -487,7 +577,7 @@ upd_wdraw_with_conflict(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     check_info(500),
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     ok.
 
 dep_wdraw_with_conflict(Cfg) ->
@@ -501,7 +591,7 @@ dep_wdraw_with_conflict(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => 1}]),
     rpc(dev1, aesc_fsm, upd_withdraw, [FsmR, #{amount => 2}]),
-    {_I1, _} = await_signing_request(deposit_tx, I, Debug),
+    {_I1, _} = await_signing_request(deposit_tx, I, Debug, Cfg),
     %% FsmR should now detect a conflict
     {ok, _} = receive_from_fsm(withdraw_tx, R, signing_req(), ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(conflict, I, any_msg(), ?TIMEOUT, Debug),
@@ -509,7 +599,7 @@ dep_wdraw_with_conflict(Cfg) ->
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     check_info(500),
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     ok.
 
 signing_req() ->
@@ -532,38 +622,39 @@ any_msg() ->
 %%     rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PKi, PKr, 1], Debug),
 %%     foo.
 
-update_bench(I, R) ->
-    {Time, I1, R1} = do_n(1000, fun update_volley/2, I, R),
-    Fmt = "Time (1*2*1000): ~.1f s; ~.1f mspt; ~.1f tps",
-    Args = [Time/1000, Time/2000, 2000*1000/Time],
+update_bench(I, R, C) ->
+    Rounds = proplists:get_value(bench_rounds, C, 1000),
+    {Time, I1, R1} = do_n(Rounds, fun update_volley/3, I, R, C),
+    Fmt = "Time (1*2*" ++ integer_to_list(Rounds) ++ "): ~.1f s; ~.1f mspt; ~.1f tps",
+    Args = [Time/1000, Time/2000, 2000*Rounds/Time],
     ct:log(Fmt, Args),
     ct:comment(Fmt, Args),
     {I1, R1}.
 
-do_n(N, F, I, R) ->
+do_n(N, F, I, R, C) ->
     TS = erlang:system_time(millisecond),
-    {I1, R1} = do_n_(N, F, I, R),
+    {I1, R1} = do_n_(N, F, I, R, C),
     {erlang:system_time(millisecond) - TS, I1, R1}.
 
-do_n_(0, _, I, R) ->
+do_n_(0, _, I, R, _C) ->
     {I, R};
-do_n_(N, F, I, R) when N > 0 ->
-    {I1, R1} = F(I, R),
-    do_n_(N-1, F, I1, R1).
+do_n_(N, F, I, R, C) when N > 0 ->
+    {I1, R1} = F(I, R, C),
+    do_n_(N-1, F, I1, R1, C).
 
      
-update_volley(#{pub := PubI} = I, #{pub := PubR} = R) ->
-    {I1, R1} = do_update(PubR, PubI, 1, I, R, false),
-    do_update(PubI, PubR, 1, I1, R1, false).
+update_volley(#{pub := PubI} = I, #{pub := PubR} = R, Cfg) ->
+    {I1, R1} = do_update(PubR, PubI, 1, I, R, false, Cfg),
+    do_update(PubI, PubR, 1, I1, R1, false, Cfg).
 
-do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug) ->
+do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
     rpc(dev1, aesc_fsm, upd_transfer, [FsmI, From, To, Amount], Debug),
-    {I1, _} = await_signing_request(update, I, Debug),
-    {R1, _} = await_signing_request(update_ack, R, Debug),
+    {I1, _} = await_signing_request(update, I, Debug, Cfg),
+    {R1, _} = await_signing_request(update_ack, R, Debug, Cfg),
     check_info(if_debug(Debug, 100, 0), Debug),
     {I1, R1}.
 
-msg_volley(#{fsm := FsmI, pub := PubI} = I, #{fsm := FsmR, pub := PubR} = R) ->
+msg_volley(#{fsm := FsmI, pub := PubI} = I, #{fsm := FsmR, pub := PubR} = R, _) ->
     rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"ping">>], false),
     {ok,_} = receive_from_fsm(
                message, R,
@@ -587,28 +678,35 @@ deposit(Cfg) ->
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
     {IAmt0, RAmt0, _, Round0 = 1} = check_fsm_state(FsmI),
     check_info(0),
-    {ok, I1, R1} = deposit_(I, R, Deposit, Round0, Debug),
+    {ok, I1, R1} = deposit_(I, R, Deposit, Round0, Debug, Cfg),
     check_info(500),
-    shutdown_(I1, R1),
+    shutdown_(I1, R1, Cfg),
     ok.
 
-deposit_(#{fsm := FsmI} = I, R, Deposit, Debug) ->
+deposit_(#{fsm := FsmI} = I, R, Deposit, Debug, Cfg) ->
     {_IAmt0, _RAmt0, _, Round0} = check_fsm_state(FsmI),
-    deposit_(I, R, Deposit, Round0, Debug).
+    deposit_(I, R, Deposit, Round0, Debug, Cfg).
 
-deposit_(#{fsm := FsmI} = I, R, Deposit, Round1, Debug) ->
+deposit_(#{fsm := FsmI} = I, R, Deposit, Round1, Debug, Cfg) ->
     ok = rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => Deposit}]),
-    {I1, _} = await_signing_request(deposit_tx, I),
-    {R1, _} = await_signing_request(deposit_created, R),
+    {#{channel_id := ChannelId} = I1, _} = await_signing_request(deposit_tx, I, Cfg),
+    {R1, _} = await_signing_request(deposit_created, R, Cfg),
     SignedTx = await_on_chain_report(I1, ?TIMEOUT),
     SignedTx = await_on_chain_report(R1, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     {IAmt0, RAmt0, _, _Round1} = check_fsm_state(FsmI),
     Round2 = Round1 + 1,
     mine_blocks(dev1, ?MINIMUM_DEPTH),
+    {ok, Channel} = rpc(dev1, aec_chain, get_channel, [ChannelId]),
+    {aesc_deposit_tx, DepositTx} =
+        aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+    ChannelRound = aesc_channels:round(Channel),
+    DepositRound = aesc_deposit_tx:round(DepositTx),
+    ct:log("Channel on-chain round ~p, expected round ~p", [ChannelRound,
+                                                            DepositRound]),
+    {ChannelRound, ChannelRound} = {ChannelRound, DepositRound},
     {IAmt, RAmt0, StateHash, Round2} = check_fsm_state(FsmI),
     {IAmt, _} = {IAmt0 + Deposit, IAmt}, %% assert correct amounts
-    {channel_deposit_tx, DepositTx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
     Round2 = aesc_deposit_tx:round(DepositTx), %% assert correct round
     StateHash = aesc_deposit_tx:state_hash(DepositTx), %% assert correct state hash
     ct:log("I1 = ~p", [I1]),
@@ -630,8 +728,8 @@ withdraw(Cfg) ->
     {IAmt0, RAmt0, _, _Round0 = 1} = check_fsm_state(FsmI),
     check_info(0),
     ok = rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => Withdrawal}]),
-    {I1, _} = await_signing_request(withdraw_tx, I),
-    {_R1, _} = await_signing_request(withdraw_created, R),
+    {I1, _} = await_signing_request(withdraw_tx, I, Cfg),
+    {_R1, _} = await_signing_request(withdraw_created, R, Cfg),
     SignedTx = await_on_chain_report(I1, ?TIMEOUT),
     SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
@@ -639,27 +737,27 @@ withdraw(Cfg) ->
     mine_blocks(dev1, ?MINIMUM_DEPTH),
     {IAmt, RAmt0, StateHash, Round2 = 2} = check_fsm_state(FsmI),
     {IAmt, _} = {IAmt0 - Withdrawal, IAmt}, %% assert correct amounts
-    {channel_withdraw_tx, WithdrawalTx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    {channel_withdraw_tx, WithdrawalTx} =
+        aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
     Round2 = aesc_withdraw_tx:round(WithdrawalTx), %% assert correct round
     StateHash = aesc_withdraw_tx:state_hash(WithdrawalTx), %% assert correct state hash
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
     Expected = {IAmt2, RAmt2},
     {Expected, Expected} = {{IAmt0 - Withdrawal, RAmt0}, Expected},
     check_info(500),
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     ok.
 
 channel_subverted(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := I, r := R } = create_channel_([?SLOGAN|Cfg]),
     {ok, Tx} = close_solo_tx(I, <<>>),
-    #{ priv := IPrivKey } = ?config(initiator, Cfg),
-    SignedCloseSoloTx = aec_test_utils:sign_tx(Tx, [IPrivKey]),
+    {SignedCloseSoloTx, I1} = sign_tx(I, Tx, Cfg),
     ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
         aecore_suite_utils:node_name(dev1), [TxHash], ?MAX_MINED_BLOCKS),
-    {ok,_} = receive_from_fsm(info, I, fun died_subverted/1, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(info, I1, fun died_subverted/1, ?TIMEOUT, Debug),
     {ok,_} = receive_from_fsm(info, R, fun died_subverted/1, ?TIMEOUT, Debug),
     check_info(500).
 
@@ -672,7 +770,14 @@ close_solo_tx(#{ fsm        := Fsm
     ct:log("St = ~p", [St]),
     {ok, PoI} =  rpc(dev1, aesc_fsm, get_poi, [Fsm, [{account, IPubKey},
                                                      {account, RPubKey}]]),
-    {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [IPubKey]),
+    Nonce =
+        case account_type(IPubKey) of
+            basic ->
+                {ok, N} = rpc(dev1, aec_next_nonce, pick_for_account, [IPubKey]),
+                N;
+            generalized ->
+                0
+        end,
     TTL = current_height(dev1) + 100,
     TxSpec = #{ channel_id => aeser_id:create(channel, ChannelId)
               , from_id    => aeser_id:create(account, IPubKey)
@@ -685,7 +790,7 @@ close_solo_tx(#{ fsm        := Fsm
 
 leave_reestablish(Cfg) ->
     #{i := I, r := R} = leave_reestablish_([?SLOGAN|Cfg]),
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     ok.
 
 leave_reestablish_(Cfg) ->
@@ -695,7 +800,7 @@ leave_reestablish_(Cfg) ->
      , r := #{} = R
      , spec := #{ initiator := _PubI
                 , responder := _PubR }} =
-        create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug),
+        create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
     ct:log("I = ~p", [I]),
     ChId = maps:get(channel_id, I),
     Cache1 = cache_status(ChId),
@@ -726,12 +831,12 @@ leave_reestablish_close(Cfg) ->
     Debug = get_debug(Cfg),
     #{i := I, r := R, spec := Spec} = leave_reestablish_([?SLOGAN|Cfg]),
     #{initiator := PubI, responder := PubR} = Spec,
-    {I1, R1} = do_update(PubI, PubR, 1, I, R, Debug),
+    {I1, R1} = do_update(PubI, PubR, 1, I, R, Debug, Cfg),
     ChId = maps:get(channel_id, I1),
     Cache1 = cache_status(ChId),
     [_,_] = in_ram(Cache1),
     false = on_disk(Cache1),
-    shutdown_(I1, R1),
+    shutdown_(I1, R1, Cfg),
     retry(3, 100,
           fun() ->
                   Cache2 = cache_status(ChId),
@@ -756,7 +861,7 @@ change_config_get_history(Cfg) ->
         rpc(dev1, aesc_fsm, change_config, [FsmI, log_keep, -1]),
     {error, invalid_config} =
         rpc(dev1, aesc_fsm, change_config, [FsmI, invalid, config]),
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     check_info(500).
 
 check_history(Log) ->
@@ -868,6 +973,7 @@ multiple_channels_t(NumCs, FromPort, Msg, Slogan, Cfg) ->
 
 check_incorrect_create(Cfg) ->
     {I, R, Spec} = channel_spec(Cfg),
+    config(Cfg),
     Port = proplists:get_value(port, Cfg, ?PORT),
     CreateFun = proplists:get_value(wrong_create, Cfg),
     CreateData = {I, R, Spec, Port, get_debug(Cfg)},
@@ -911,6 +1017,7 @@ wrong_hash_action(ChannelStuff, Poster, Malicious, FsmStuff,
                   bad_state_hash).
 
 check_incorrect_deposit(Cfg) ->
+    config(Cfg),
     Debug = true,
     Fun = proplists:get_value(wrong_action, Cfg),
     #{ i := I
@@ -926,10 +1033,11 @@ check_incorrect_deposit(Cfg) ->
         end,
     [Deposit(Depositor, Malicious) || Depositor <- Roles,
                                       Malicious <- Roles],
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     ok.
 
 check_incorrect_withdrawal(Cfg) ->
+    config(Cfg),
     Debug = true,
     Fun = proplists:get_value(wrong_action, Cfg),
     #{ i := I
@@ -945,17 +1053,19 @@ check_incorrect_withdrawal(Cfg) ->
         end,
     [Deposit(Depositor, Malicious) || Depositor <- Roles,
                                       Malicious <- Roles],
-    shutdown_(I, R),
+    shutdown_(I, R, Cfg),
     ok.
 
 check_incorrect_update(Cfg) ->
+    config(Cfg),
     Fun = proplists:get_value(wrong_action, Cfg),
     Test =
         fun(Depositor, Malicious) ->
+            Cfg1 = load_idx(Cfg),
             Debug = true,
             #{ i := #{pub := IPub, fsm := FsmI} = I
             , r := #{pub := RPub, fsm := FsmR} = R
-            , spec := Spec} = create_channel_([?SLOGAN|Cfg]),
+            , spec := Spec} = create_channel_([?SLOGAN|Cfg1]),
             Port = proplists:get_value(port, Cfg, ?PORT),
             Data = {I, R, Spec, Port, Debug},
             Deposit =
@@ -971,6 +1081,7 @@ check_incorrect_update(Cfg) ->
                 end,
             ok = gen_statem:stop(AliveFsm),
             timer:sleep(1000), % so all sockets are free
+            bump_idx(),
             ok
           end,
     Roles = [initiator, responder],
@@ -979,13 +1090,15 @@ check_incorrect_update(Cfg) ->
     ok.
 
 check_incorrect_mutual_close(Cfg) ->
+    config(Cfg),
     Fun = proplists:get_value(wrong_action_detailed, Cfg),
     Test =
         fun(Depositor, Malicious) ->
+            Cfg1 = load_idx(Cfg),
             Debug = true,
             #{ i := I
              , r := R
-             , spec := Spec} = create_channel_([?SLOGAN|Cfg]),
+             , spec := Spec} = create_channel_([?SLOGAN|Cfg1]),
             Port = proplists:get_value(port, Cfg, ?PORT),
             Data = {I, R, Spec, Port, Debug},
             Fun(Data, Depositor, Malicious,
@@ -995,6 +1108,7 @@ check_incorrect_mutual_close(Cfg) ->
                     timer:sleep(1000),
                     true = rpc(dev1, erlang, process_info, [FsmPid]) =:= undefined
                 end),
+            bump_idx(),
             ok
           end,
     Roles = [initiator, responder],
@@ -1010,7 +1124,7 @@ check_mutual_close_with_wrong_amounts(Cfg) ->
     Port = proplists:get_value(port, Cfg, 9325),
     #{ i := #{fsm := FsmI} = I
      , r := #{fsm := FsmR} = R } =
-        create_channel_from_spec(Si, Sr, Spec, Port, Debug),
+        create_channel_from_spec(Si, Sr, Spec, Port, Debug, Cfg),
     %% We don't have enough funds to cover the closing fee
     {error, insufficient_funds} = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
     timer:sleep(1000),
@@ -1018,8 +1132,9 @@ check_mutual_close_with_wrong_amounts(Cfg) ->
     true = (rpc(dev1, erlang, process_info, [FsmI]) =/= undefined),
     true = (rpc(dev1, erlang, process_info, [FsmR]) =/= undefined),
     %% Deposit funds to cover the closing fee. Then it should work
-    {ok, _I1, _R1} = deposit_(I, R, 20000 * aec_test_utils:min_gas_price(), Debug),
-    ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+    {ok, _I1, _R1} = deposit_(I, R, 20000 * aec_test_utils:min_gas_price(),
+                              Debug, Cfg),
+    shutdown_(I, R, Cfg),
     ok.
 
 wrong_sig_action(ChannelStuff, Poster, Malicious,
@@ -1033,14 +1148,15 @@ wrong_sig_action(ChannelStuff, Poster, Malicious,
 wrong_sig_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                  {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
                   DetectConflictFun) ->
+    Cfg = config(),
     wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                  {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
                   DetectConflictFun,
                   fun(Action, Signer, Debug1) ->
                       {_, _WrongSignedTx} =
-                          await_signing_request(Action, Signer#{priv =>
-                                                                ?BOGUS_PRIVKEY},
-                                                Debug1)
+                          await_signing_request_basic(Action,
+                                                      Signer#{priv => ?BOGUS_PRIVKEY},
+                                                      Debug1, Cfg)
                   end,
                   bad_signature).
 
@@ -1086,6 +1202,7 @@ wrong_round_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
 wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
               push_amount := PushAmount} = Spec, Port, Debug},
               Malicious, SignTxFun, ErrResponse) ->
+    Cfg = config(),
     Action = fun sign_signing_request/4,
     TryCheating =
         fun(Tag, #{priv := Priv} = Signer, Debug1) ->
@@ -1129,7 +1246,7 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
                                       ?TIMEOUT, Debug),
             {ok,_} = receive_from_fsm(info, I1, fun died_subverted/1, ?TIMEOUT, Debug);
         responder ->
-            {_I2, _} = await_signing_request(create_tx, I1, Debug),
+            {_I2, _} = await_signing_request(create_tx, I1, Debug, Cfg),
             receive_from_fsm(info, R1, funding_created, ?TIMEOUT, Debug),
             % default behavor - FSM guards you from sending a bad tx
             {_, WrongTx} = TryCheating(funding_created, R1, Debug),
@@ -1155,6 +1272,7 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
 wrong_action_modified_tx({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                    {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
                     DetectConflictFun, ModifyTxFun, ErrorMsg) ->
+    Cfg = config(),
     wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
                  {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
                   DetectConflictFun,
@@ -1177,6 +1295,7 @@ wrong_action_modified_tx({I, R, _Spec, _Port, Debug}, Poster, Malicious,
 wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
               {FsmFun, FsmFunArg, FsmNewAction, FsmCreatedAction},
                DetectConflictFun, MaliciousSign, ErrMsg) ->
+    Cfg = config(),
     ct:log("Testing with Poster ~p, Malicious ~p",
           [Poster, Malicious]),
     #{fsm := FsmI} = I,
@@ -1205,7 +1324,7 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
             % make sure setting back defaults if process is still there
             rpc(dev1, aesc_fsm, strict_checks, [FsmD, true], Debug);
         false ->
-            {_, _} = await_signing_request(FsmNewAction, D, Debug),
+            {_, _} = await_signing_request(FsmNewAction, D, Debug, Cfg),
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmA, false], Debug),
             {_, _} = MaliciousSign(FsmCreatedAction, A, Debug),
             DetectConflictFun(A, Debug),
@@ -1214,10 +1333,10 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
     check_info(500),
     ok.
 
-shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R) ->
+shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
-    _ = await_signing_request(shutdown, I),
-    _ = await_signing_request(shutdown_ack, R),
+    _ = await_signing_request(shutdown, I, Cfg),
+    _ = await_signing_request(shutdown_ack, R, Cfg),
     SignedTx = await_on_chain_report(I, ?TIMEOUT),
     SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx),
@@ -1281,18 +1400,18 @@ create_multi_channel_(Cfg, Debug) ->
     #{i := I, r := R} = create_channel_(Cfg, Debug),
     Parent = ?config(ack_to, Cfg),
     Parent ! {self(), channel_ack},
-    ch_loop(I, R, Parent).
+    ch_loop(I, R, Parent, Cfg).
 
-ch_loop(I, R, Parent) ->
+ch_loop(I, R, Parent, Cfg) ->
     receive
         {transfer, N} ->
-            {_, I1, R1} = do_n(N, fun update_volley/2, I, R),
+            {_, I1, R1} = do_n(N, fun update_volley/3, I, R, Cfg),
             Parent ! {self(), loop_ack},
-            ch_loop(I1, R1, Parent);
+            ch_loop(I1, R1, Parent, Cfg);
         {msgs, N} ->
-            {_, I1, R1} = do_n(N, fun msg_volley/2, I, R),
+            {_, I1, R1} = do_n(N, fun msg_volley/3, I, R, Cfg),
             Parent ! {self(), loop_ack},
-            ch_loop(I1, R1, Parent);
+            ch_loop(I1, R1, Parent, Cfg);
         die -> ok
     end.
 
@@ -1310,10 +1429,12 @@ create_channel_(Cfg) ->
 create_channel_(Cfg, Debug) ->
     {I, R, Spec} = channel_spec(Cfg),
     Port = proplists:get_value(port, Cfg, 9325),
-    create_channel_from_spec(I, R, Spec, Port, Debug).
+    create_channel_from_spec(I, R, Spec, Port, Debug, Cfg).
 
 channel_spec(Cfg) ->
-    channel_spec(Cfg, 300000, 200000).
+    PushAmount = proplists:get_value(push_amount, Cfg, 200000),
+    ChannelReserve = proplists:get_value(channel_reserve, Cfg, 300000),
+    channel_spec(Cfg, ChannelReserve, PushAmount).
 
 channel_spec(Cfg, ChannelReserve, PushAmount) ->
     I = ?config(initiator, Cfg),
@@ -1354,7 +1475,7 @@ slogan(Cfg) ->
 
 create_channel_from_spec(
   I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
-          push_amount := PushAmount} = Spec, Port, Debug) ->
+          push_amount := PushAmount} = Spec, Port, Debug, Cfg) ->
     IAmt = IAmt0 - PushAmount,
     RAmt = RAmt0 + PushAmount,
     {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
@@ -1368,7 +1489,7 @@ create_channel_from_spec(
     {ok, _} = receive_from_fsm(info, R1, channel_open, ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(info, I1, channel_accept, ?TIMEOUT, Debug),
 
-    {I2, R2} = try await_create_tx_i(I1, R1, Debug)
+    {I2, R2} = try await_create_tx_i(I1, R1, Debug, Cfg)
                catch
                    error:Err ->
                        ct:log("Caught Err = ~p~nMessages = ~p",
@@ -1379,7 +1500,7 @@ create_channel_from_spec(
     CurrentHeight = current_height(dev1),
     SignedTx = await_on_chain_report(I2, ?TIMEOUT),
     SignedTx = await_on_chain_report(R2, ?TIMEOUT), % same tx
-    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
+    ok = wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     mine_blocks(dev1, ?MINIMUM_DEPTH, opt_add_tx_to_debug(SignedTx, Debug)),
     %% in case of multiple channels starting in parallel - the mining above
     %% has no effect (the blocks are mined in another process)
@@ -1416,7 +1537,7 @@ reestablish(ChId, I0, R0, SignedTx, Spec0, Port, Debug) ->
     #{i => I1, r => R1, spec => Spec}.
 
 tx_amounts(SignedTx) ->
-    {Mod, TxI} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    {Mod, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     {Mod:initiator_amount(TxI),
      Mod:responder_amount(TxI)}.
 
@@ -1429,20 +1550,21 @@ set_amounts(IAmt, RAmt, Map) ->
     Map#{initiator_amount => IAmt, responder_amount => RAmt}.
 
 verify_close_mutual_tx(SignedTx, ChannelId) ->
-    {channel_close_mutual_tx, Tx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    {aesc_close_mutual_tx, Tx} =
+        aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     {_, ChInfo} = aesc_close_mutual_tx:serialize(Tx),
     true = lists:member(ChannelId,
         [ aeser_id:specialize(ChId, channel)||
              {channel_id, ChId} <- ChInfo
         ]).
 
-await_create_tx_i(I, R, Debug) ->
-    {I1, _} = await_signing_request(create_tx, I, Debug),
-    await_funding_created_p(I1, R, Debug).
+await_create_tx_i(I, R, Debug, Cfg) ->
+    {I1, _} = await_signing_request(create_tx, I, Debug, Cfg),
+    await_funding_created_p(I1, R, Debug, Cfg).
 
-await_funding_created_p(I, R, Debug) ->
+await_funding_created_p(I, R, Debug, Cfg) ->
     receive_from_fsm(info, R, funding_created, ?TIMEOUT, Debug),
-    {R1, _} = await_signing_request(funding_created, R, Debug),
+    {R1, _} = await_signing_request(funding_created, R, Debug, Cfg),
     await_funding_signed_i(I, R1, Debug).
 
 await_funding_signed_i(I, R, Debug) ->
@@ -1467,25 +1589,54 @@ await_update(#{channel_id := ChId} = R, Timeout, Debug) ->
     #{info := SignedTx} = Msg,
     R#{signed_tx => SignedTx}.
 
-await_signing_request(Tag, R) ->
-    await_signing_request(Tag, R, ?TIMEOUT, true).
+await_signing_request(Tag, R, Cfg) ->
+    await_signing_request(Tag, R, ?TIMEOUT, true, Cfg).
 
-await_signing_request(Tag, R, Debug) ->
-    await_signing_request(Tag, R, ?TIMEOUT, Debug).
+await_signing_request(Tag, R, Debug, Cfg) ->
+    await_signing_request(Tag, R, ?TIMEOUT, Debug, Cfg).
 
-await_signing_request(Tag, R, Timeout, Debug) ->
+await_signing_request_basic(Tag, Signer, Debug, Cfg) ->
     Action = fun sign_signing_request/4,
-    await_signing_request(Tag, R, Action, Timeout, Debug).
+    await_signing_request(Tag, Signer,
+                          Action, ?TIMEOUT, Debug, Cfg, basic).
 
-await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R,
-                      Action, Timeout, Debug) ->
+await_signing_request(Tag, R, Timeout, Debug, Cfg) ->
+    Action = fun sign_signing_request/4,
+    await_signing_request(Tag, R, Action, Timeout, Debug, Cfg).
+
+await_signing_request(Tag, #{fsm := Fsm} = Signer,
+                      Action, Timeout, Debug, Cfg) ->
+    await_signing_request(Tag, #{fsm := Fsm} = Signer,
+                          Action, Timeout, Debug, Cfg, according_account).
+
+await_signing_request(Tag, #{fsm := Fsm} = Signer,
+                      Action, Timeout, Debug, Cfg, SignatureType) ->
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
                               info := #{tx := Tx, updates := Updates}} = Msg} ->
             log(Debug, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
-            SignedTx = aec_test_utils:sign_tx(Tx, [Priv]),
-            Action(Tag, R, SignedTx, Updates)
+            {SignedTx, Signer1} =
+                case SignatureType of
+                    according_account -> sign_tx(Signer, Tx, Cfg);
+                    basic ->
+                        #{priv := Priv} = Signer,
+                        {aec_test_utils:sign_tx(Tx, [Priv]), Signer}
+                end,
+            log(Debug,"SIGNED TX ~p", [SignedTx]),
+            Action(Tag, Signer1, SignedTx, Updates)
     after Timeout ->
             error(timeout)
+    end.
+
+sign_tx(Signer, Tx, Cfg) ->
+    #{role := Role, pub := Pubkey, priv := Priv} = Signer,
+    case account_type(Pubkey) of
+        basic ->
+            {aec_test_utils:sign_tx(Tx, [Priv]), Signer};
+        generalized ->
+            #{auth_idx := N} = Signer,
+            #{auth_params := Auths} = ?config(ga, Cfg),
+            AuthOpts = maps:get(Role, Auths),
+            {meta(Pubkey, AuthOpts, N + 1, Tx), Signer#{auth_idx => N + 1}}
     end.
 
 sign_signing_request(Tag, #{fsm := Fsm} = R, SignedTx, Updates) ->
@@ -1625,7 +1776,8 @@ prep_initiator(Node) ->
     #{role => initiator,
       priv => PrivKey,
       pub  => PubKey,
-      balance => Balance}.
+      balance => Balance,
+      auth_idx => 1}.
 
 prep_responder(#{pub := IPub, balance := IBal} = _Initiator, Node) ->
     NodeName = aecore_suite_utils:node_name(Node),
@@ -1638,7 +1790,8 @@ prep_responder(#{pub := IPub, balance := IBal} = _Initiator, Node) ->
     #{role => responder,
       priv => Priv,
       pub  => Pub,
-      balance => Amount}.
+      balance => Amount,
+      auth_idx => 1}.
 
 rpc(Node, Mod, Fun, Args) -> rpc(Node, Mod, Fun, Args, true).
 
@@ -1648,7 +1801,7 @@ rpc(Node, Mod, Fun, Args, Debug) ->
     Res.
 
 check_amounts(R, SignedTx, Updates) ->
-    case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of
+    case aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)) of
         {aesc_offchain_tx, _TxI} ->
             apply_updates(Updates, R);
         {aesc_deposit_tx, TxD} ->
@@ -1762,4 +1915,137 @@ check_fsm_state(Fsm) ->
 
 get_debug(Config) ->
     proplists:get_bool(debug, Config).
+
+attach_initiator(Cfg) ->
+    #{ pub := IPub, priv := IPrivKey } = proplists:get_value(initiator, Cfg),
+    #{contract    := GAContract,
+      auth_fun    := GAAuthFun,
+      auth_params := #{initiator := #{init_params := GAParams}}} =
+        proplists:get_value(ga, Cfg),
+    attach({IPub, IPrivKey}, GAContract, GAAuthFun, GAParams),
+    ok.
+
+attach_responder(Cfg) ->
+    #{ pub := RPub, priv := RPrivKey } = ?config(responder, Cfg),
+    #{contract    := GAContract,
+      auth_fun    := GAAuthFun,
+      auth_params := #{responder := #{init_params := GAParams}}} = ?config(ga, Cfg),
+    attach({RPub, RPrivKey}, GAContract, GAAuthFun, GAParams),
+    ok.
+
+attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args) ->
+    attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args, #{}).
+
+attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args, Opts) ->
+    case get_contract(Contract) of
+        {ok, #{src := Src, bytecode := C, map := #{type_info := TI}}} ->
+            attach_({Owner, OwnerPrivkey}, Src, C, TI, AuthFun, Args, Opts);
+        _ ->
+            error(bad_contract)
+    end.
+
+attach_({Owner, OwnerPrivkey}, Src, ByteCode, TypeInfo, AuthFun, Args, Opts) ->
+    {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Owner]),
+    Calldata = aega_test_utils:make_calldata(Src, "init", Args),
+    {ok, AuthFunHash} = aeb_abi:type_hash_from_function_name(list_to_binary(AuthFun),
+                                                             TypeInfo),
+    Options1 = maps:merge(#{nonce => Nonce, code => ByteCode,
+                            auth_fun => AuthFunHash, call_data => Calldata},
+                          Opts),
+    AttachTx = aega_test_utils:ga_attach_tx(Owner, Options1),
+
+    SignedTx = aec_test_utils:sign_tx(AttachTx, [OwnerPrivkey]),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
+    wait_for_signed_transaction_in_block(dev1, SignedTx),
+
+%    ConKey   = aect_contracts:compute_contract_pubkey(Owner, Nonce),
+%    CallKey  = aect_call:id(Owner, Nonce, ConKey),
+%    CallTree = aect_test_utils:calls(S1),
+%    Call     = aect_call_state_tree:get_call(ConKey, CallKey, CallTree),
+    ok.
+%    {{ok, #{res => aect_call:return_type(Call), ct => ConKey}}, S1}.
+
+initiator_spend(Cfg) ->
+    ga_spend(initiator, responder, 1234, Cfg),
+    ga_spend(initiator, responder, 42, Cfg),
+    ok.
+
+responder_spend(Cfg) ->
+    ga_spend(responder, initiator, 333, Cfg),
+    ok.
+
+ga_spend(From, To, Amt, Cfg) ->
+    #{pub := SendPub, auth_idx := N} = ?config(From, Cfg),
+    #{pub := ReceivePub} = ?config(To, Cfg),
+    #{auth_params := BothAuths} = ?config(ga, Cfg),
+    Auth = maps:get(From, BothAuths),
+    SpendProps = #{sender_id    => aeser_id:create(account, SendPub),
+                   recipient_id => aeser_id:create(account, ReceivePub),
+                   amount       => Amt,
+                   fee          => 20000 * aec_test_utils:min_gas_price(),
+                   nonce        => 0,
+                   payload      => <<>>},
+    {ok, SpendAetx} = aec_spend_tx:new(SpendProps),
+    SignedTx = meta(SendPub, Auth, N, aetx_sign:new(SpendAetx, [])),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
+    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(
+        aecore_suite_utils:node_name(dev1), [TxHash], ?MAX_MINED_BLOCKS),
+    ok.
+
+get_contract(Name) ->
+    aega_test_utils:get_contract(?VM_AEVM_SOPHIA_3, Name).
+
+account_type(Pubkey) ->
+    {value, Account} = rpc(dev1, aec_chain, get_account, [Pubkey]),
+    aec_accounts:type(Account).
+
+simple_auth(Args) ->
+    aega_test_utils:make_calldata("simple_auth", "authorize", Args).
+
+meta(Owner, AuthOpts, N, InnerTx0) ->
+    InnerTx =
+        case element(1, InnerTx0) of
+            aetx -> InnerTx0;
+            signed_tx -> aetx_sign:innermost_tx(InnerTx0)
+        end,
+    TxBin    = aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx)),
+    AuthData = make_authdata(AuthOpts, N, aec_hash:hash(tx, TxBin)),
+    aecore_suite_utils:meta_tx(Owner, AuthOpts, AuthData, InnerTx).
+
+make_authdata(#{ prep_fun := F }, N, TxHash) ->
+    F(TxHash, N).
+
+new_config_table() ->
+    spawn(fun() ->
+              ets:new(fsm_suite, [set, named_table, public]),
+              ets:insert(fsm_suite, {initiator, 1}),
+              ets:insert(fsm_suite, {responder, 1}),
+              receive
+                  die -> ok
+              end
+          end).
+
+load_idx(Cfg) ->
+    Cfg1 = load_last_idx(initiator, Cfg),
+    load_last_idx(responder, Cfg1).
+
+load_last_idx(Role, Cfg) ->
+    OldValue =
+        case ets:lookup(fsm_suite, Role) of
+            [{Role, IDx}] -> IDx;
+            [] -> 1
+        end,
+    Part = proplists:get_value(Role, Cfg),
+    [{Role, Part#{auth_idx => OldValue}} | Cfg].
+
+bump_idx() ->
+    bump_last_idx(responder, 10000),
+    bump_last_idx(initiator, 10000).
+
+bump_last_idx(Role, Bump) ->
+    ets:update_counter(fsm_suite, Role, Bump).
+
+config() -> get(config).
+config(Cfg) -> put(config, Cfg).
 
