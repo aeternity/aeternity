@@ -1593,8 +1593,7 @@ get_contract(_Config) ->
                              <<"deposit">>     := 2,
                              <<"vm_version">>  := VM,
                              <<"abi_version">> := ABI,
-                             <<"referrer_ids">> := [],
-                             <<"log">>         := <<>>}},
+                             <<"referrer_ids">> := []}},
                  get_contract_sut(EncodedContractPubKey)),
     ?assertEqual({ok, 200, #{<<"bytecode">> => EncodedCode}}, get_contract_code_sut(EncodedContractPubKey)),
     ?assertMatch({ok, 200, #{<<"store">> := [
@@ -4092,8 +4091,7 @@ post_contract_onchain(EncodedCode, EncodedInitCallData) ->
         <<"owner_id">>    := Pubkey,
         <<"active">>      := true,
         <<"deposit">>     := 0,
-        <<"referrer_ids">> := [],
-        <<"log">>         := <<>>}},
+        <<"referrer_ids">> := []}},
         get_contract_sut(EncodedContractPubKey)),
     EncodedContractPubKey.
 
