@@ -15,7 +15,6 @@
    [sc_ws_timeout_open/1,
     sc_ws_attach_initiator/1,
     sc_ws_attach_responder/1,
-    sc_ws_dont_open_ga/1,
     sc_ws_min_depth_not_reached_timeout/1,
     sc_ws_min_depth_is_modifiable/1,
     sc_ws_basic_open_close/1,
@@ -56,6 +55,8 @@
 -define(SLOGAN(Param), slogan(?FUNCTION_NAME, ?LINE, Param)).
 
 -define(ROLES, [initiator, responder]).
+
+-define(SIMPLE_AUTH_GA_SECRET, "42").
 
 -define(ALICE, {
     <<177,181,119,188,211,39,203,57,229,94,108,2,107,214, 167,74,27,
@@ -140,18 +141,18 @@ groups() ->
 
      {ga_initiator, [sequence],
       [ sc_ws_attach_initiator,
-        sc_ws_dont_open_ga
+        sc_ws_basic_open_close
       ]},
 
      {ga_responder, [sequence],
       [ sc_ws_attach_responder,
-        sc_ws_dont_open_ga
+        sc_ws_basic_open_close
       ]},
 
      {ga_both, [sequence],
       [ sc_ws_attach_initiator,
         sc_ws_attach_responder,
-        sc_ws_dont_open_ga
+        sc_ws_basic_open_close
       ]}
 
     ].
@@ -243,7 +244,7 @@ start_node(Config) ->
     aecore_suite_utils:connect(Node),
 
     {ok, 404, _} = get_balance_at_top(),
-    aecore_suite_utils:mine_key_blocks(Node, 3),
+    aecore_suite_utils:mine_key_blocks(Node, 10),
 
     Config1 = lists:keystore(sc_ws_protocol, 1, Config, {sc_ws_protocol, <<"json-rpc">>}),
 
@@ -252,7 +253,7 @@ start_node(Config) ->
 reset_participants(Grp, Config) ->
     Node = ?config(node, Config),
 
-    StartAmt = 5000000 * aec_test_utils:min_gas_price(),
+    StartAmt = 50000000000 * aec_test_utils:min_gas_price(),
 
     Initiator = {IPub, IPriv} = aecore_suite_utils:generate_key_pair(),
     Responder = {RPub, RPriv} = aecore_suite_utils:generate_key_pair(),
@@ -334,32 +335,52 @@ post_tx(TxHash, Tx) ->
 %% Channels
 %%
 assert_balance(Pubkey, ExpectedBalance) ->
-    Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
-    {ok, 200, #{<<"balance">> := ExpectedBalance}} =
-        get_accounts_by_pubkey_sut(Address).
+    assert_balance(Pubkey, ExpectedBalance, equal).
 
-assert_balance_at_least(Pubkey, MinExpectedBalance) ->
+assert_balance_at_most(Pubkey, ExpectedBalance) ->
+    assert_balance(Pubkey, ExpectedBalance, equal_or_less).
+
+assert_balance_at_least(Pubkey, MaxExpectedBalance) ->
+    assert_balance(Pubkey, MaxExpectedBalance, equal_or_greater).
+
+assert_balance(Pubkey, ExpectedBalance, Action) ->
     Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
-    {ok, 200, #{<<"balance">> := Balance}} =
+    {ok, 200, #{<<"balance">> := ActualBalance}} =
         get_accounts_by_pubkey_sut(Address),
-    true = MinExpectedBalance =< Balance.
+    Res =
+        case Action of
+            equal -> ExpectedBalance =:= ActualBalance;
+            equal_or_greater -> ActualBalance >= ExpectedBalance;
+            equal_or_less -> ActualBalance =< ExpectedBalance
+        end,
+    {true, _, _, _} = {Res, ActualBalance, Action, ExpectedBalance}.
 
 assert_trees_balance(Trees, Pubkey, ExpectedBalance) ->
     AccTrees = aec_trees:accounts(Trees),
     {value, Account} = aec_accounts_trees:lookup(Pubkey, AccTrees),
     ExpectedBalance = aec_accounts:balance(Account).
 
-channel_sign_tx(ConnPid, Privkey, Method, Config) ->
-    {ok, Tag, #{<<"tx">> := EncCreateTx,
-                <<"updates">> := Updates}} = wait_for_channel_event(ConnPid, sign, Config),
+channel_sign_tx(Pubkey, ConnPid, Privkey, Method, Config) ->
+    {ok, Tag, #{<<"signed_tx">> := EncSignedTx0,
+                <<"updates">>   := Updates}} = wait_for_channel_event(ConnPid, sign, Config),
     Method = <<"channels.", (bin(Tag))/binary>>,
-    {ok, CreateBinTx} = aeser_api_encoder:safe_decode(transaction, EncCreateTx),
-    Tx = aetx:deserialize_from_binary(CreateBinTx),
-    SignedCreateTx = aec_test_utils:sign_tx(Tx, Privkey),
-    EncSignedCreateTx = aeser_api_encoder:encode(transaction,
-                                  aetx_sign:serialize_to_binary(SignedCreateTx)),
-    ws_call_async_method(ConnPid, Method, #{tx => EncSignedCreateTx}, Config),
-    #{tx => Tx, signed_tx => SignedCreateTx, updates => Updates}.
+    {ok, SignedTxBin} = aeser_api_encoder:safe_decode(transaction, EncSignedTx0),
+    SignedTx0 = aetx_sign:deserialize_from_binary(SignedTxBin),
+    Tx = aetx_sign:innermost_tx(SignedTx0),
+    SignedTx =
+        case account_type(Pubkey) of
+            basic -> aec_test_utils:co_sign_tx(SignedTx0, Privkey);
+            generalized ->
+                MetaTx = simple_auth_meta(Pubkey, ?SIMPLE_AUTH_GA_SECRET,
+                                          "1", % make this incremental
+                                          SignedTx0),
+                MetaTx
+        end,
+    EncSignedTx =
+        aeser_api_encoder:encode(transaction,
+                                 aetx_sign:serialize_to_binary(SignedTx)),
+    ws_call_async_method(ConnPid, Method, #{signed_tx => EncSignedTx}, Config),
+    #{tx => Tx, signed_tx => SignedTx, updates => Updates}.
 
 sc_ws_open_(Config) ->
     sc_ws_open_(Config, #{}).
@@ -402,8 +423,8 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
     RBal = RAmt + PushAmt,
 
     %% ensure new balances
-    assert_balance(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
-    assert_balance(RPubkey, RStartAmt - RAmt),
+    assert_balance_at_most(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
+    assert_balance_at_most(RPubkey, RStartAmt - RAmt),
 
     % mine min depth
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
@@ -454,11 +475,11 @@ channel_create(Config, IConnPid, RConnPid) ->
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
     #{tx := CrTx,
-      updates := Updates} = channel_sign_tx(IConnPid, IPrivkey, <<"channels.initiator_sign">>, Config),
+      updates := Updates} = channel_sign_tx(IPubkey, IConnPid, IPrivkey, <<"channels.initiator_sign">>, Config),
     {ok, #{<<"event">> := <<"funding_created">>}} = wait_for_channel_event(RConnPid, info, Config),
     %% responder gets to sign a create_tx
     #{tx := CrTx,
-      updates := Updates} = channel_sign_tx(RConnPid, RPrivkey, <<"channels.responder_sign">>, Config),
+      updates := Updates} = channel_sign_tx(RPubkey, RConnPid, RPrivkey, <<"channels.responder_sign">>, Config),
     {ok, #{<<"event">> := <<"funding_signed">>}} = wait_for_channel_event(IConnPid, info, Config),
 
     %% both of them receive the same co-signed channel_create_tx
@@ -468,7 +489,7 @@ channel_create(Config, IConnPid, RConnPid) ->
     {ok, SSignedCrTx} = aeser_api_encoder:safe_decode(transaction, EncodedSignedCrTx),
     SignedCrTx = aetx_sign:deserialize_from_binary(SSignedCrTx),
     %% same transaction
-    CrTx = aetx_sign:tx(SignedCrTx),
+    CrTx = aetx_sign:innermost_tx(SignedCrTx),
 
     {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
     IPubkey = aesc_create_tx:initiator_pubkey(Tx),
@@ -529,13 +550,15 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
             case wait_for_channel_event(ConnPid, sign, Config) of
                 {ok, <<"update_ack">>, _} -> %% this is not the message we are looking for
                     TrySignUpdate(ConnPid, Privkey);
-                {ok, <<"update">>, #{<<"tx">> := EncCreateTx}} ->
-                    {ok, CreateBinTx} = aeser_api_encoder:safe_decode(transaction, EncCreateTx),
-                    Tx = aetx:deserialize_from_binary(CreateBinTx),
-                    SignedCreateTx = aec_test_utils:sign_tx(Tx, Privkey),
+                {ok, <<"update">>, #{<<"signed_tx">> := EncSignedCreateTx0}} ->
+                    {ok, SignedCreateBinTx} =
+                        aeser_api_encoder:safe_decode(transaction, EncSignedCreateTx0),
+                    STx = aetx_sign:deserialize_from_binary(SignedCreateBinTx),
+                    SignedCreateTx = aec_test_utils:co_sign_tx(STx, Privkey),
                     EncSignedCreateTx = aeser_api_encoder:encode(transaction,
                                                   aetx_sign:serialize_to_binary(SignedCreateTx)),
-                    ws_send_tagged(ConnPid, <<"channels.update">>, #{tx => EncSignedCreateTx}, Config)
+                    ws_send_tagged(ConnPid, <<"channels.update">>,
+                                   #{signed_tx => EncSignedCreateTx}, Config)
             end
         end,
     %% sender initiates an update
@@ -621,7 +644,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
 
     %% starter signs the new state
     #{tx := UnsignedStateTx,
-      updates := Updates} = channel_sign_tx(StarterPid, StarterPrivkey, <<"channels.update">>, Config),
+      updates := Updates} = channel_sign_tx(StarterPubkey, StarterPid, StarterPrivkey, <<"channels.update">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
     %% verify contents
     {channel_offchain_tx, _OffchainTx} = aetx:specialize_type(UnsignedStateTx),
@@ -635,7 +658,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     %% acknowledger signs the new state
     {ok, #{<<"event">> := <<"update">>}} = wait_for_channel_event(AcknowledgerPid, info, Config),
     #{tx := UnsignedStateTx,
-      updates := Updates} = channel_sign_tx(AcknowledgerPid, AcknowledgerPrivkey, <<"channels.update_ack">>, Config),
+      updates := Updates} = channel_sign_tx(AcknowledgerPubkey, AcknowledgerPid, AcknowledgerPrivkey, <<"channels.update_ack">>, Config),
 
     {ok, #{<<"state">> := NewState}} = wait_for_channel_event(IConnPid, update, Config),
     {ok, #{<<"state">> := NewState}} = wait_for_channel_event(RConnPid, update, Config),
@@ -646,7 +669,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     {ok, Trees} = rpc(aec_chain, get_top_state, []),
     ok = rpc(aetx_sign, verify, [SignedStateTx, Trees]), % RPC because of DB
     {UnsignedStateTx, _} = % same transaction that was signed
-        {aetx_sign:tx(SignedStateTx), UnsignedStateTx},
+        {aetx_sign:innermost_tx(SignedStateTx), UnsignedStateTx},
 
     {ok, {Ba1, Bb1} = Bal1} = GetBothBalances(IConnPid),
     ct:log("Balances after: ~p", [Bal1]),
@@ -817,19 +840,19 @@ sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator
 
 
     CloseMutual =
-        fun(CloserConn, CloserPrivkey, OtherConn, OtherPrivkey) ->
+        fun(CloserPubkey, CloserConn, CloserPrivkey, OtherPubkey, OtherConn, OtherPrivkey) ->
                 ws_send_tagged(CloserConn, <<"channels.shutdown">>, #{}, Config),
 
                 #{tx := ShTx,
-                  updates := Updates} = channel_sign_tx(CloserConn, CloserPrivkey, <<"channels.shutdown_sign">>, Config),
+                  updates := Updates} = channel_sign_tx(CloserPubkey, CloserConn, CloserPrivkey, <<"channels.shutdown_sign">>, Config),
                 #{tx := ShTx,
-                  updates := Updates} = channel_sign_tx(OtherConn, OtherPrivkey, <<"channels.shutdown_sign_ack">>, Config),
+                  updates := Updates} = channel_sign_tx(OtherPubkey, OtherConn, OtherPrivkey, <<"channels.shutdown_sign_ack">>, Config),
             ShTx
         end,
     ShutdownTx =
         case Closer of
-            initiator -> CloseMutual(IConnPid, IPrivkey, RConnPid, RPrivkey);
-            responder -> CloseMutual(RConnPid, RPrivkey, IConnPid, IPrivkey)
+            initiator -> CloseMutual(IPubkey, IConnPid, IPrivkey, RPubkey, RConnPid, RPrivkey);
+            responder -> CloseMutual(RPubkey, RConnPid, RPrivkey, IPubkey, IConnPid, IPrivkey)
         end,
 
     {ok, #{<<"tx">> := EncodedSignedMutualTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
@@ -874,15 +897,15 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, on_chain_tx]),
 
     CloseSolo =
-        fun(CloserConn, CloserPrivKey) ->
+        fun(CloserPubkey, CloserConn, CloserPrivKey) ->
                 ws_send_tagged(CloserConn, <<"channels.close_solo">>, #{}, Config),
-                #{signed_tx := CSTx} = channel_sign_tx(CloserConn, CloserPrivKey,
+                #{signed_tx := CSTx} = channel_sign_tx(CloserPubkey, CloserConn, CloserPrivKey,
                                                        <<"channels.close_solo_sign">>, Config),
                 CSTx
         end,
     CloseSoloTx = case Closer of
-                      initiator -> CloseSolo(IConnPid, IPrivKey);
-                      responder -> CloseSolo(RConnPid, RPrivKey)
+                      initiator -> CloseSolo(IPubKey, IConnPid, IPrivKey);
+                      responder -> CloseSolo(RPubKey, RConnPid, RPrivKey)
                   end,
 
     ok = wait_for_signed_transaction_in_block(CloseSoloTx),
@@ -906,18 +929,18 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
 
 settle_(Config, Closer) when Closer =:= initiator;
                              Closer =:= responder ->
-    #{initiator := #{priv_key := IPrivKey},
-      responder := #{priv_key := RPrivKey}} = proplists:get_value(participants,
-                                                                      Config),
+    #{initiator := #{priv_key := IPrivKey, pub_key := IPubKey},
+      responder := #{priv_key := RPrivKey, pub_key := RPubKey}} =
+          proplists:get_value(participants, Config),
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, Config),
-    {ConnPid, PrivKey} = case Closer of
-                             initiator -> {RConnPid, RPrivKey};
-                             responder -> {IConnPid, IPrivKey}
+    {PubKey, ConnPid, PrivKey} = case Closer of
+                             initiator -> {RPubKey, RConnPid, RPrivKey};
+                             responder -> {IPubKey, IConnPid, IPrivKey}
                          end,
     ws_send_tagged(ConnPid, <<"channels.settle">>, #{}, Config),
 
-    #{signed_tx := SettleTx} = channel_sign_tx(ConnPid, PrivKey,
+    #{signed_tx := SettleTx} = channel_sign_tx(PubKey, ConnPid, PrivKey,
                                                <<"channels.settle_sign">>, Config),
 
     ok = wait_for_signed_transaction_in_block(SettleTx),
@@ -1004,10 +1027,10 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
         wait_for_channel_event(SenderConnPid, error, Config),
     ws_send_tagged(SenderConnPid, <<"channels.deposit">>, #{amount => 2}, Config),
     #{tx := UnsignedStateTx,
-      updates := Updates} = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"channels.deposit_tx">>, Config),
+      updates := Updates} = channel_sign_tx(SenderPubkey, SenderConnPid, SenderPrivkey, <<"channels.deposit_tx">>, Config),
     {ok, #{<<"event">> := <<"deposit_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
     #{tx := UnsignedStateTx,
-      updates := Updates} = channel_sign_tx(AckConnPid, AckPrivkey, <<"channels.deposit_ack">>, Config),
+      updates := Updates} = channel_sign_tx(AckPubkey, AckConnPid, AckPrivkey, <<"channels.deposit_ack">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
     {ok, #{<<"tx">> := EncodedSignedDepositTx} = E1} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
     ok = match_info(E1, #{<<"info">> => <<"deposit_signed">>}),
@@ -1069,10 +1092,10 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
         wait_for_channel_event(SenderConnPid, error, Config),
     ws_send_tagged(SenderConnPid, <<"channels.withdraw">>, #{amount => 2}, Config),
     #{tx := UnsignedStateTx,
-      updates := Updates} = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"channels.withdraw_tx">>, Config),
+      updates := Updates} = channel_sign_tx(SenderPubkey, SenderConnPid, SenderPrivkey, <<"channels.withdraw_tx">>, Config),
     {ok, #{<<"event">> := <<"withdraw_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
     #{tx := UnsignedStateTx,
-      updates := Updates} = channel_sign_tx(AckConnPid, AckPrivkey, <<"channels.withdraw_ack">>, Config),
+      updates := Updates} = channel_sign_tx(AckPubkey, AckConnPid, AckPrivkey, <<"channels.withdraw_ack">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
     {ok, #{<<"tx">> := EncodedSignedWTx} = E1} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
     ok = match_info(E1, #{<<"info">> => <<"withdraw_signed">>}),
@@ -1195,10 +1218,12 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
         fun(Actor) ->
             case Actor =:= Origin of
                 true ->
-                    {fun() -> update_volley_(SenderConnPid, SenderPrivkey, AckConnPid, AckPrivkey, Config) end,
+                    {fun() -> update_volley_(SenderPubkey, SenderConnPid, SenderPrivkey,
+                                             AckPubkey, AckConnPid, AckPrivkey, Config) end,
                      SenderConnPid, SenderPubkey};
                 false ->
-                    {fun() -> update_volley_(AckConnPid, AckPrivkey, SenderConnPid, SenderPrivkey, Config) end,
+                    {fun() -> update_volley_(AckPubkey, AckConnPid, AckPrivkey,
+                                             SenderPubkey, SenderConnPid, SenderPrivkey, Config) end,
                      AckConnPid, AckPubkey}
             end
         end,
@@ -1826,14 +1851,14 @@ initialize_account(Amount, {Pubkey, _Privkey}, Check) ->
         TxHash
     end.
 
-update_volley_(FirstConnPid, FirstPrivkey, SecondConnPid, SecondPrivkey, Config) ->
+update_volley_(FirstPubkey, FirstConnPid, FirstPrivkey, SecondPubkey, SecondConnPid, SecondPrivkey, Config) ->
     #{tx := UnsignedStateTx,
-      updates := Updates} = channel_sign_tx(FirstConnPid, FirstPrivkey, <<"channels.update">>, Config),
+      updates := Updates} = channel_sign_tx(FirstPubkey, FirstConnPid, FirstPrivkey, <<"channels.update">>, Config),
 
     % acknowledger signs update_ack
     {ok, #{<<"event">> := <<"update">>}} = wait_for_channel_event(SecondConnPid, info, Config),
     #{tx := UnsignedStateTx,
-      updates := Updates} = channel_sign_tx(SecondConnPid, SecondPrivkey,
+      updates := Updates} = channel_sign_tx(SecondPubkey, SecondConnPid, SecondPrivkey,
                                             <<"channels.update_ack">>, Config).
 
 sc_ws_contract_(Config, TestName, Owner) ->
@@ -1857,11 +1882,13 @@ sc_ws_contract_(Config, TestName, Owner) ->
     %% helper lambda for update
     UpdateVolley =
         fun() ->
-            update_volley_(SenderConnPid, SenderPrivkey, AckConnPid, AckPrivkey, Config)
+            update_volley_(SenderPubkey, SenderConnPid, SenderPrivkey,
+                           AckPubkey, AckConnPid, AckPrivkey, Config)
         end,
     UpdateVolleyReverse =
         fun() ->
-            update_volley_(AckConnPid, AckPrivkey, SenderConnPid, SenderPrivkey, Config)
+            update_volley_(AckPubkey, AckConnPid, AckPrivkey,
+                           SenderPubkey, SenderConnPid, SenderPrivkey, Config)
         end,
 
     % trigger new contract
@@ -2249,24 +2276,13 @@ sc_ws_timeout_open_(Config) ->
 sc_ws_attach_initiator(Config) ->
     #{initiator := #{pub_key  := Pubkey,
                      priv_key := Privkey}} = proplists:get_value(participants, Config),
-    attach({Pubkey, Privkey}, "simple_auth", "authorize", ["42"]),
+    attach({Pubkey, Privkey}, "simple_auth", "authorize", [?SIMPLE_AUTH_GA_SECRET]),
     ok.
 
 sc_ws_attach_responder(Config) ->
     #{responder := #{pub_key  := Pubkey,
                      priv_key := Privkey}} = proplists:get_value(participants, Config),
-    attach({Pubkey, Privkey}, "simple_auth", "authorize", ["42"]),
-    ok.
-
-sc_ws_dont_open_ga(Config) ->
-    #{initiator := #{pub_key := IPubkey},
-      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
-
-    IAmt = 8,
-    RAmt = 4,
-
-    ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}, Config),
-    {error, rejected} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts), Config),
+    attach({Pubkey, Privkey}, "simple_auth", "authorize", [?SIMPLE_AUTH_GA_SECRET]),
     ok.
 
 sc_ws_min_depth_not_reached_timeout(Config) ->
@@ -2519,15 +2535,15 @@ sign_slash_tx(ConnPid, Who, Config) ->
     sign_tx(ConnPid, <<"slash_tx">>, <<"channels.slash_sign">>, PrivKey, Config).
 
 sign_tx(ConnPid, Tag, ReplyMethod, PrivKey, Config) ->
-    {ok, Tag, #{<<"tx">> := EncTx}} =
+    {ok, Tag, #{<<"signed_tx">> := EncSTx}} =
         wait_for_channel_event(ConnPid, sign, Config),
-    {ok, BinTx} = aeser_api_encoder:safe_decode(transaction, EncTx),
-    Tx = aetx:deserialize_from_binary(BinTx),
-    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
+    {ok, BinSTx} = aeser_api_encoder:safe_decode(transaction, EncSTx),
+    STx = aetx_sign:deserialize_from_binary(BinSTx),
+    SignedTx = aec_test_utils:co_sign_tx(STx, PrivKey),
     EncSignedTx = aeser_api_encoder:encode(
                     transaction,
                     aetx_sign:serialize_to_binary(SignedTx)),
-    ws_send_tagged(ConnPid, ReplyMethod, #{tx => EncSignedTx}, Config),
+    ws_send_tagged(ConnPid, ReplyMethod, #{signed_tx => EncSignedTx}, Config),
     {ok, SignedTx}.
 
 register_channel_events(Events, Pids) ->
@@ -3077,7 +3093,7 @@ attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args, Opts) ->
    end.
 
 attach_({Owner, OwnerPrivkey}, Src, ByteCode, TypeInfo, AuthFun, Args, Opts) ->
-    {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Owner]),
+    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [Owner]),
     Calldata = aega_test_utils:make_calldata(Src, "init", Args),
     FunName = list_to_binary(AuthFun),
     {ok, AuthFunHash} =
@@ -3091,7 +3107,7 @@ attach_({Owner, OwnerPrivkey}, Src, ByteCode, TypeInfo, AuthFun, Args, Opts) ->
     AttachTx = aega_test_utils:ga_attach_tx(Owner, Options1),
 
     SignedTx = aec_test_utils:sign_tx(AttachTx, [OwnerPrivkey]),
-    ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
+    ok = rpc(aec_tx_pool, push, [SignedTx]),
     wait_for_signed_transaction_in_block(SignedTx),
     ok.
 
@@ -3113,3 +3129,18 @@ to_binary(I) when is_integer(I) ->
     integer_to_binary(I);
 to_binary([_|_] = L) ->
     iolist_to_binary([to_binary(X) || X <- L]).
+
+simple_auth_meta(Owner, Secret, GANonce, InnerTx) ->
+    AuthData = simple_auth(Secret, GANonce),
+    meta(Owner, AuthData, InnerTx).
+
+simple_auth(Secret, Nonce) ->
+    aega_test_utils:make_calldata("simple_auth", "authorize", [Secret, Nonce]).
+
+meta(Owner, AuthData, InnerTx) ->
+    aecore_suite_utils:meta_tx(Owner, #{}, AuthData, InnerTx).
+
+account_type(Pubkey) ->
+    {value, Account} = rpc(aec_chain, get_account, [Pubkey]),
+    aec_accounts:type(Account).
+

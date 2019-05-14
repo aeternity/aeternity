@@ -211,7 +211,6 @@
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
--define(WS, aehttp_ws_test_utils).
 
 -define(MAX_MINED_BLOCKS, 20).
 
@@ -3217,7 +3216,6 @@ contract_code(ContractName) ->
     {ok, BinSrc} = aect_test_utils:read_contract(ContractName),
     BinSrc.
 
-
 contract_byte_code(ContractName) ->
     {ok, BinCode} = aect_test_utils:compile_contract(ContractName),
     aeser_api_encoder:encode(contract_bytearray, BinCode).
@@ -3868,3 +3866,18 @@ http_datetime_to_unixtime(S) ->
     BaseSecs = calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}}),
     ExpiresDt = httpd_util:convert_request_date(S),
     calendar:datetime_to_gregorian_seconds(ExpiresDt) - BaseSecs.
+
+simple_auth_meta(Owner, Secret, GANonce, InnerTx) ->
+    AuthData = simple_auth(Secret, GANonce),
+    meta(Owner, AuthData, InnerTx).
+
+simple_auth(Secret, Nonce) ->
+    aega_test_utils:make_calldata("simple_auth", "authorize", [Secret, Nonce]).
+
+meta(Owner, AuthData, InnerTx) ->
+    aecore_suite_utils:meta_tx(Owner, #{}, AuthData, InnerTx).
+
+account_type(Pubkey) ->
+    {value, Account} = rpc(aec_chain, get_account, [Pubkey]),
+    aec_accounts:type(Account).
+

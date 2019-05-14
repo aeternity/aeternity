@@ -141,6 +141,8 @@ check(#channel_create_tx{}, Trees,_Env) ->
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_create_tx{} = Tx, Trees, Env) ->
+    {value, SignedTx} = aetx_env:signed_tx(Env),
+    {ok, ChannelPubkey} = aesc_utils:channel_pubkey(SignedTx),
     Instructions =
         aeprimop:channel_create_tx_instructions(
           initiator_pubkey(Tx),
@@ -153,7 +155,8 @@ process(#channel_create_tx{} = Tx, Trees, Env) ->
           lock_period(Tx),
           fee(Tx),
           nonce(Tx),
-          round(Tx)),
+          round(Tx),
+          ChannelPubkey),
     aeprimop:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.

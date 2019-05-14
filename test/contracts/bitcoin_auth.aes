@@ -14,6 +14,9 @@ contract BitcoinAuth =
   entrypoint to_sign(h : hash, n : int) : hash =
     Crypto.blake2b((h, n))
 
+  function nonce() : int =
+    state.nonce
+
   // Not using builtin require because Sophia version handling in ga test
   // suites is a bit broken (TODO).
   function _require(b : bool, err : string) =

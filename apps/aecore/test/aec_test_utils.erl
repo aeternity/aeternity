@@ -56,6 +56,8 @@
         , copy_forks_dir/2
         , sign_micro_block/2
         , sign_tx/2
+        , co_sign_tx/2
+        , substitute_innermost_tx/2
         , signed_spend_tx/1
         , wait_for_pubkey/0
         , min_gas_price/0
@@ -497,6 +499,38 @@ sign_tx(Tx, PrivKeys) when is_list(PrivKeys) ->
     end,
     Signatures = [ enacl:sign_detached(BinForNetwork, PrivKey) || PrivKey <- PrivKeys ],
     aetx_sign:new(Tx, Signatures).
+
+co_sign_tx(SignedTx, Priv) ->
+    Tx = aetx_sign:innermost_tx(SignedTx), 
+    [NewSignature] = aetx_sign:signatures(aec_test_utils:sign_tx(Tx, [Priv])),
+    add_signature_to_innermost_signed_tx(SignedTx, NewSignature).
+
+add_signature_to_innermost_signed_tx(TopSignedTx, Signature) ->
+    modify_innermost_tx(TopSignedTx,
+        fun(SignedTx) ->
+            aetx_sign:add_signatures(SignedTx, [Signature])
+        end).
+
+substitute_innermost_tx(TopSignedTx, NewInnermostTx) ->
+    modify_innermost_tx(TopSignedTx,
+        fun(SignedTx) ->
+            aetx_sign:set_tx(SignedTx, NewInnermostTx)
+        end).
+
+modify_innermost_tx(SignedTx, ModFun) ->
+    case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of % topmost tx
+        {aega_meta_tx, Meta} ->
+            NewInnerTx =
+                % recursively go to inner layers until the innermost tx is
+                % reached so its singed transaction is updated
+                % note: not tail recursive
+                modify_innermost_tx(aega_meta_tx:tx(Meta),
+                                    ModFun),
+            UpdatedTx = aega_meta_tx:set_tx(NewInnerTx, Meta),
+            aetx_sign:new(aetx:new(aega_meta_tx, UpdatedTx), []);
+        {_, _InnerMostTx} ->
+            ModFun(SignedTx)
+    end.
 
 signed_spend_tx(ArgsMap) ->
     {ok, SenderAccount, Privkey} = wait_for_pubkey(),

@@ -17,11 +17,10 @@
 
 -export([ new/1                       %%  (Opts) -> {ok, Tx, State}
         , check_initial_update_tx/6   %%  (SignedTx, Updates, State, OnChainTrees, OnChainEnv, Opts)
-        , check_update_tx/7           %%  (SignedTx, Updates, State, Protocol, OnChainTrees, OnChainEnv, Opts)
+        , check_update_tx/8           %%  (SignedTx, Updates, State, ChannelPubkey, Protocol, OnChainTrees, OnChainEnv, Opts)
         , check_reestablish_tx/2      %%  (SignedTx, State) -> {ok,NewSt} | error()
         , is_latest_signed_tx/2       %%  (SignedTx, State) -> boolean()
-        , verify_signatures/2         %%  (SignedTx, State)
-        , make_update_tx/6            %%  (Updates, State, Protocol, OnChainTrees, OnChainEnv, Opts) -> Tx
+        , make_update_tx/7            %%  (Updates, State, ChannelPubkey, Protocol, OnChainTrees, OnChainEnv, Opts) -> Tx
         , set_signed_tx/6             %%  (SignedTx, Updates, State0, OnChainTrees, OnCHainEnv, Opts) -> State
         , set_signed_tx/7             %%  (SignedTx, Updates, State0, OnChainTrees, OnCHainEnv, Opts, CheckSigs) -> State
         , set_half_signed_tx/2        %%  (SignedTx, State0) -> State
@@ -111,8 +110,7 @@ is_latest_signed_tx(SignedTx, #state{signed_tx = LatestSignedTx}) ->
 -spec check_initial_update_tx(aetx_sign:signed_tx(), [aesc_offchain_update:update()], state(),
                               aec_trees:trees(), aetx_env:env(), map()) -> ok | {error, atom()}.
 check_initial_update_tx(SignedTx, _Updates, State, _OnChainTrees, _OnChainEnv, _Opts) ->
-    Aetx = aetx_sign:tx(SignedTx),
-    {Mod, Tx} = aetx:specialize_callback(Aetx),
+    {Mod, Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     Checks =
         [ fun() ->
               case Mod of
@@ -149,15 +147,15 @@ check_reestablish_tx(SignedTx, State) ->
     end.
 
 -spec check_update_tx(aetx_sign:signed_tx(), [aesc_offchain_update:update()],
-                      state(), aec_hard_forks:protocol_vsn(), aec_trees:trees(),
+                      state(), binary(), aec_hard_forks:protocol_vsn(), aec_trees:trees(),
                       aetx_env:env(), map()) -> ok | {error, atom()}.
 check_update_tx(SignedTx, Updates, #state{signed_tx = OldSignedTx}=State,
+                ChannelPubkey,
                 Protocol, OnChainTrees,
                 OnChainEnv, Opts) when OldSignedTx =/= ?NO_TX ->
     lager:debug("check_update_tx(State = ~p)", [State]),
-    Tx = aetx_sign:tx(SignedTx),
-    {Mod, TxI} = aetx:specialize_callback(Tx),
-    lager:debug("Tx = ~p", [Tx]),
+    {Mod, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+    lager:debug("Tx = ~p", [TxI]),
     case Mod:valid_at_protocol(Protocol, TxI) of
         false -> {error, invalid_at_height};
         true ->
@@ -173,16 +171,19 @@ check_update_tx(SignedTx, Updates, #state{signed_tx = OldSignedTx}=State,
                         true ->
                             lager:debug("PrevRound == LastRound", []),
                             check_update_tx_(Mod, TxI, Updates, State,
-                                            Protocol, OnChainTrees,
-                                            OnChainEnv, Opts);
+                                             ChannelPubkey,
+                                             Protocol, OnChainTrees,
+                                             OnChainEnv, Opts);
                         false -> {error, invalid_previous_round}
                     end
             end
     end.
 
 check_update_tx_(Mod, RefTx, Updates, #state{} = State,
+                 ChannelPubkey,
                  Protocol, OnChainTrees, OnChainEnv, Opts) ->
-    try Tx1 = make_update_tx(Updates, State, Protocol, OnChainTrees, OnChainEnv, Opts),
+    try Tx1 = make_update_tx(Updates, State, ChannelPubkey,
+                             Protocol, OnChainTrees, OnChainEnv, Opts),
          {Mod1, Tx1I} = aetx:specialize_callback(Tx1),
          case Mod1:state_hash(Tx1I) =:= Mod:state_hash(RefTx) of
              true ->
@@ -194,10 +195,6 @@ check_update_tx_(Mod, RefTx, Updates, #state{} = State,
         error:Reason ->
             {error, Reason}
     end.
-
--spec verify_signatures(aetx_sign:signed_tx(), state()) -> ok | error.
-verify_signatures(SignedTx, #state{trees = Trees}) ->
-    aetx_sign:verify(SignedTx, Trees).
 
 -spec get_contract_call(aect_contracts:pubkey(), aec_keys:pubkey(),
                         non_neg_integer(), state()) -> {error, call_not_found}
@@ -212,15 +209,15 @@ prune_calls(State) ->
     State#state{calls = Calls}.
 
 -spec make_update_tx(list(aesc_offchain_update:update()), state(),
+                     binary(),
                      aec_hard_forks:protocol_vsn(),
                      aec_trees:trees(), aetx_env:env(), map()) -> aetx:tx().
 make_update_tx(Updates, #state{signed_tx = LastSignedTx, trees=Trees},
-               Protocol,
+               ChannelPubkey, Protocol,
                OnChainTrees, OnChainEnv, Opts)
     when LastSignedTx =/= ?NO_TX ->
-    Tx = aetx_sign:tx(LastSignedTx),
-    {Mod, TxI} = aetx:specialize_callback(Tx),
-    ChannelPubKey = Mod:channel_pubkey(TxI),
+    {Mod, TxI} =
+        aetx:specialize_callback(aetx_sign:innermost_tx(LastSignedTx)),
 
     NextRound     = Mod:round(TxI) + 1,
 
@@ -229,7 +226,7 @@ make_update_tx(Updates, #state{signed_tx = LastSignedTx, trees=Trees},
                            OnChainEnv, Reserve),
     StateHash = aec_trees:hash(Trees1),
     Props0 =
-        #{channel_id => aeser_id:create(channel, ChannelPubKey),
+        #{channel_id => aeser_id:create(channel, ChannelPubkey),
           state_hash => StateHash,
           round      => NextRound},
     Props =
@@ -255,7 +252,8 @@ apply_updates(Updates, Round, Trees, OnChainTrees, OnChainEnv, Reserve) ->
                     aetx_env:env(), map()) -> state().
 set_signed_tx(SignedTx, Updates, #state{}=State, OnChainTrees,
               OnChainEnv, Opts) ->
-    set_signed_tx(SignedTx, Updates, State, OnChainTrees, OnChainEnv, Opts, true).
+    set_signed_tx(SignedTx, Updates, State, OnChainTrees, OnChainEnv, Opts,
+                  false).
 
 
 -spec set_signed_tx(aetx_sign:signed_tx(), [aesc_offchain_update:update()],
@@ -268,8 +266,7 @@ set_signed_tx(SignedTx, Updates, #state{}=State, OnChainTrees,
             true = mutually_signed(SignedTx); % ensure it is mutually signed
         false -> pass
     end,
-    Tx = aetx_sign:tx(SignedTx),
-    case aetx:specialize_callback(Tx) of
+    case aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)) of
         {aesc_create_tx, _} ->
             State#state{signed_tx = SignedTx, half_signed_tx = ?NO_TX};
         {Mod, TxI} ->
@@ -313,7 +310,7 @@ get_latest_half_signed_tx(#state{half_signed_tx = Tx}) when Tx =/= ?NO_TX ->
 -spec get_latest_signed_tx(state()) -> {non_neg_integer(), aetx_sign:signed_tx()}.
 get_latest_signed_tx(#state{signed_tx = LastSignedTx})
     when LastSignedTx =/= ?NO_TX ->
-    {tx_round(aetx_sign:tx(LastSignedTx)), LastSignedTx}.
+    {tx_round(LastSignedTx), LastSignedTx}.
 
 -spec get_latest_trees(state()) -> aec_trees:trees().
 get_latest_trees(#state{trees = Trees}) ->
@@ -322,10 +319,10 @@ get_latest_trees(#state{trees = Trees}) ->
 -spec get_fallback_state(state()) -> {non_neg_integer(), state()}.
 get_fallback_state(#state{signed_tx = LastSignedTx}=State)
     when LastSignedTx =/= ?NO_TX ->
-    {tx_round(aetx_sign:tx(LastSignedTx)), State#state{half_signed_tx = ?NO_TX}}.
+    {tx_round(LastSignedTx), State#state{half_signed_tx = ?NO_TX}}.
 
-tx_round(Tx) ->
-    {Mod, TxI} = aetx:specialize_callback(Tx),
+tx_round(SignedTx) ->
+    {Mod, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     Mod:round(TxI).
 
 -spec fallback_to_stable_state(state()) -> state().
@@ -335,13 +332,8 @@ fallback_to_stable_state(#state{signed_tx = LastSignedTx}=State)
 
 -spec mutually_signed(aetx_sign:signed_tx()) -> boolean().
 mutually_signed(SignedTx) ->
-    case aetx_sign:signatures(SignedTx) of
-        [_, _] ->
-            %% mutually signed
-            true;
-        _ ->
-            false
-    end.
+    aesc_utils:count_authentications(SignedTx) =:= 2.
+
 
 -spec balance(aec_keys:pubkey(), state()) -> {ok, non_neg_integer()}
                                            | {error, not_found}.

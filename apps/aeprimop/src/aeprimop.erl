@@ -13,7 +13,7 @@
         ]).
 
 %% Simple access tx instructions API
--export([ channel_create_tx_instructions/11
+-export([ channel_create_tx_instructions/12
         , channel_close_mutual_tx_instructions/6
         , channel_deposit_tx_instructions/7
         , channel_settle_tx_instructions/6
@@ -342,11 +342,13 @@ contract_call_from_contract_instructions(CallerPubKey, ContractPubkey, CallData,
 
 -spec channel_create_tx_instructions(
         pubkey(), amount(), pubkey(), amount(), amount(), [pubkey()],
-        hash(), ttl(), fee(), nonce(), non_neg_integer()) -> [op()].
+        hash(), ttl(), fee(), nonce(), non_neg_integer(),
+        pubkey()) -> [op()].
 channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
                                ResponderPubkey, ResponderAmount,
                                ReserveAmount, DelegatePubkeys,
-                               StateHash, LockPeriod, Fee, Nonce, Round) ->
+                               StateHash, LockPeriod, Fee, Nonce, Round,
+                               ChannelPubkey) ->
     %% The force is not strictly necessary since this cannot be made
     %% from a contract.
     [ force_inc_account_nonce_op(InitiatorPubkey, Nonce)
@@ -356,9 +358,7 @@ channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
                         ResponderPubkey, ResponderAmount,
                         ReserveAmount, DelegatePubkeys,
                         StateHash, LockPeriod, Nonce, Round)
-    , tx_event_op({channel, aesc_channels:pubkey(InitiatorPubkey,
-                                                 Nonce,
-                                                 ResponderPubkey)})
+    , tx_event_op({channel, ChannelPubkey})
     ].
 
 -spec channel_deposit_tx_instructions(pubkey(), pubkey(), amount(), hash(),

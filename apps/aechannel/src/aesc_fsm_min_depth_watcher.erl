@@ -972,19 +972,15 @@ get_signed_tx_(TxHash) ->
 
 is_tx_for_chid(undefined, _) -> false;
 is_tx_for_chid(SignedTx, ChId) ->
-    %% Likely only channel txs have a channel_id/1 callback, so prepare for
-    %% 'undef' exceptions.
-    {CB, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    PK = try CB:channel_pubkey(Tx)
-         catch error:_ -> error end,
-    lager:debug("Pubkey(Tx) = ~p", [PK]),
-    R = case PK of
-            ChId -> true;
-            _    -> false
-        end,
-    lager:debug("(~p) Tx=~p ChId=~p", [R,Tx,ChId]),
-    R.
-
+    case aesc_utils:channel_pubkey(SignedTx) of
+        {error, not_channel_tx} ->
+            false;
+        {ok, ChId} -> % same channel id
+            lager:debug("Tx=~p is has the same channel id ~p", [SignedTx, ChId]),
+            true;
+        {ok, _OtherChId} ->
+            false
+    end.
 
 -spec channel_vsn(undefined | aesc_channels:channel()) -> undefined | chan_vsn().
 channel_vsn(undefined) ->
@@ -1032,7 +1028,7 @@ tx_location_(TxHash, C) ->
     {L, update_tx_log(TxHash, SignedTx, L, Type, C)}.
 
 tx_type(SignedTx) ->
-    {Type, _} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    {Type, _} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
     Type.
 
 in_main_chain(BHash, C) ->
