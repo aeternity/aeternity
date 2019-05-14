@@ -40,7 +40,6 @@ suite() ->
     [].
 
 init_per_suite(Cfg) ->
-    Nodes = [?SERVER_NODE],
     CtCfg = [{symlink_name, "latest.aestratum"},
               {test_module, ?MODULE}] ++ Cfg,
     ServerNodeCfg =
@@ -72,15 +71,12 @@ init_per_suite(Cfg) ->
                          <<"ak_241xf1kQiexbSvWKfn5uve7ugGASjME93zDbr6SGQzYSCMTeQS:2.2">>],
                     <<"keys">> => #{<<"dir">> => <<"stratum_keys">>}}
              }},
-    Cfg1 = aecore_suite_utils:init_per_suite(Nodes, ServerNodeCfg, CtCfg),
-    Cfg2 = [{nodes, [aecore_suite_utils:node_tuple(?SERVER_NODE)]}] ++ Cfg1,
-    pp("CFG", Cfg),
-    pp("CFG1", Cfg1),
+
+    Client1NodeCfg = #{},
+    Cfg1 = aecore_suite_utils:init_per_suite([?SERVER_NODE], ServerNodeCfg, CtCfg),
+    Cfg2 = aestratum_client_suite_utils:init_per_suite([?CLIENT_NODE], Cfg1),
     pp("CFG2", Cfg2),
-    Cfg2,
-    Cfg3 = aestratum_client_suite_utils:init_per_suite([?CLIENT_NODE], Cfg2),
-    pp("CFG3", Cfg3),
-    Cfg3.
+    [{nodes, [aecore_suite_utils:node_tuple(?SERVER_NODE)]}] ++ Cfg2.
 
 pp(Title, Props) ->
     ct:pal("~p", [Title]),
@@ -98,6 +94,7 @@ end_per_suite(_Cfg) ->
 init_per_group(startup, Cfg) ->
     aecore_suite_utils:start_node(?SERVER_NODE, Cfg),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?SERVER_NODE)),
+    aestratum_client_suite_utils:start_node(?CLIENT_NODE, Cfg),
     Cfg;
 init_per_group(_Group, Cfg) ->
     Cfg.
