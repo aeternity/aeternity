@@ -236,28 +236,28 @@ gas_limit(#aetx{type = Type, cb = CB, size = Size, tx = Tx }, Height) when
       Type =:= oracle_extend_tx ->
     case ttl_delta(Height, CB:oracle_ttl(Tx)) of
         {delta, _D} = TTL ->
-            base_gas(Type) + size_gas(Size) + state_gas(Type, TTL);
+            base_gas(Type, Height) + size_gas(Size) + state_gas(Type, TTL);
         {error, _Rsn} ->
             0
     end;
 gas_limit(#aetx{type = oracle_query_tx, size = Size, tx = Tx }, Height) ->
     case ttl_delta(Height, aeo_query_tx:query_ttl(Tx)) of
         {delta, _D} = TTL ->
-            base_gas(oracle_query_tx) + size_gas(Size) + state_gas(oracle_query_tx, TTL);
+            base_gas(oracle_query_tx, Height) + size_gas(Size) + state_gas(oracle_query_tx, TTL);
         {error, _Rsn} ->
             0
     end;
 gas_limit(#aetx{type = oracle_response_tx, size = Size, tx = Tx }, Height) ->
     case ttl_delta(Height, aeo_response_tx:response_ttl(Tx)) of
         {delta, _D} = TTL ->
-            base_gas(oracle_response_tx) + size_gas(Size) + state_gas(oracle_response_tx, TTL);
+            base_gas(oracle_response_tx, Height) + size_gas(Size) + state_gas(oracle_response_tx, TTL);
         {error, _Rsn} ->
             0
     end;
 gas_limit(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height) ->
-    base_gas(ga_meta_tx) + size_gas(Size) + CB:gas_limit(Tx, Height);
-gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height) when Type =/= channel_offchain_tx ->
-    base_gas(Type) + size_gas(Size) + CB:gas(Tx);
+    base_gas(ga_meta_tx, Height) + size_gas(Size) + CB:gas_limit(Tx, Height);
+gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, Height) when Type =/= channel_offchain_tx ->
+    base_gas(Type, Height) + size_gas(Size) + CB:gas(Tx);
 gas_limit(#aetx{ type = channel_offchain_tx }, _Height) ->
     0.
 
@@ -279,8 +279,8 @@ min_gas_price(AETx = #aetx{ cb = CB, tx = Tx }, Height) ->
 min_fee(#aetx{} = AeTx, Height) ->
     min_gas(AeTx, Height) * aec_governance:minimum_gas_price(Height).
 
-min_gas(#aetx{ type = Type, size = Size }, _Height) when ?IS_CONTRACT_TX(Type) ->
-    base_gas(Type) + size_gas(Size);
+min_gas(#aetx{ type = Type, size = Size }, Height) when ?IS_CONTRACT_TX(Type) ->
+    base_gas(Type, Height) + size_gas(Size);
 min_gas(#aetx{} = Tx, Height) ->
     gas_limit(Tx, Height).
 
@@ -531,8 +531,9 @@ specialize_callback(#aetx{ cb = CB, tx = Tx }) -> {CB, Tx}.
 update_tx(#aetx{} = Tx, NewTxI) ->
     Tx#aetx{tx = NewTxI}.
 
-base_gas(Type) ->
-    aec_governance:tx_base_gas(Type).
+base_gas(Type, Height) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    aec_governance:tx_base_gas(Type, Protocol).
 
 size_gas(Size) ->
     Size * aec_governance:byte_gas().
