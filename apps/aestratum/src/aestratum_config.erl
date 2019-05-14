@@ -99,8 +99,8 @@ configure(reward, #{reward := #{beneficiaries := PoolShareBins,
         orelse error({invalid, reward_last_rounds}),
 
     ContractAddr = case aec_governance:get_network_id() of
-                       <<"ae_uat">> -> ?PAYMENT_CONTRACT_TESTNET_ADDRESS;
-                       <<"ae_mainnet">> -> ?PAYMENT_CONTRACT_MAINNET_ADDRESS
+                       <<"ae_mainnet">> -> ?PAYMENT_CONTRACT_MAINNET_ADDRESS;
+                       _Other -> ?PAYMENT_CONTRACT_TESTNET_ADDRESS
                    end,
     ContractPK   = aestratum_conv:contract_address_to_pubkey(ContractAddr),
     ContractPath = filename:join(code:priv_dir(aestratum), "Payout.aes"),
