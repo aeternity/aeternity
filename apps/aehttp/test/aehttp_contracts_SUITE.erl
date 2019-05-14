@@ -1025,7 +1025,7 @@ acm_dutch_auction_contract(Config) ->
     %% Compile test contract
     Contract = case aect_test_utils:latest_protocol_version() of
                    Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN -> compile_test_contract("acm_dutch_auction");
-                   _                                    -> compile_test_contract("aevm_3/acm_dutch_auction")
+                   _                                    -> compile_test_contract("sophia_3/acm_dutch_auction")
                end,
 
     %% Set auction start amount and decrease per mine and fee.
@@ -1097,7 +1097,7 @@ fundme_contract(Config) ->
     %% Compile test contract "fundme.aes"
     Contract = case aect_test_utils:latest_protocol_version() of
                    Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN -> compile_test_contract("fundme");
-                   _                                    -> compile_test_contract("aevm_3/fundme")
+                   _                                    -> compile_test_contract("sophia_3/fundme")
                end,
 
     %% Get the current height.

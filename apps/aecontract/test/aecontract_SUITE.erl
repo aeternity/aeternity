@@ -1155,7 +1155,7 @@ contract_name(Name) ->
         VmVer when ?IS_AEVM_SOPHIA(VmVer) ->
             case lists:member(Name, [fundme]) of
                 true when VmVer >= ?VM_AEVM_SOPHIA_3 ->
-                    filename:join(["contracts", "aevm_3", lists:concat([Name, ".aes"])]);
+                    filename:join(["contracts", "sophia_3", lists:concat([Name, ".aes"])]);
                 _ ->
                     filename:join("contracts", lists:concat([Name, ".aes"]))
             end;
