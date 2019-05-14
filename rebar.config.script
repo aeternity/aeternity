@@ -23,7 +23,6 @@ FilterDepsRocksDb = fun(Deps) ->
 % We check all overlay entries' destinations against these regular expressions,
 % and replacement found matches with the corresponding .cmd entry.
 OverlayReplacements = [
-                       "^bin/epoch$",
                        "^bin/extensions/.*"
                       ],
 
