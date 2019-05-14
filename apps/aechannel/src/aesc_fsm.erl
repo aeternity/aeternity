@@ -194,7 +194,7 @@ patterns() ->
                             not lists:member(F, [module_info, patterns])].
 
 record_fields(data ) -> record_info(fields, data);
-record_fields(w    ) -> record_info(fields, w);
+record_fields(w    ) -> aesc_window:record_fields(w);
 record_fields(Other) -> aesc_offchain_state:record_fields(Other).
 %% ==================================================================
 
