@@ -1148,20 +1148,7 @@ create_tx(Owner, Spec0, State) ->
     aect_test_utils:create_tx(Owner, Spec, State).
 
 compile_contract(Name) ->
-    aect_test_utils:compile_contract(sophia_version(), contract_name(Name)).
-
-contract_name(Name) ->
-    case vm_version() of
-        VmVer when ?IS_AEVM_SOPHIA(VmVer) ->
-            case lists:member(Name, [fundme]) of
-                true when VmVer >= ?VM_AEVM_SOPHIA_3 ->
-                    filename:join(["contracts", "sophia_3", lists:concat([Name, ".aes"])]);
-                _ ->
-                    filename:join("contracts", lists:concat([Name, ".aes"]))
-            end;
-        VmVer when ?IS_FATE_SOPHIA(VmVer) ->
-            filename:join(["contracts", lists:concat([Name, ".aes"])])
-    end.
+    aect_test_utils:compile_contract(sophia_version(), Name).
 
 compile_contract_vsn(Name, Vsn) ->
     case compile_contract(Name) of
@@ -1170,7 +1157,7 @@ compile_contract_vsn(Name, Vsn) ->
             case maps:get(contract_vsn, Map) of
                 Vsn -> {ok, ByteCode};
                 _   ->
-                    {ok, BinSrc} = aect_test_utils:read_contract(contract_name(Name)),
+                    {ok, BinSrc} = aect_test_utils:read_contract(sophia_version(), Name),
                     {ok, aect_sophia:serialize(Map#{contract_source => maps:get(contract_source, Map, binary_to_list(BinSrc)),
                                                     compiler_version => maps:get(compiler_version, Map, <<"1.4.0">>)}, Vsn)}
             end;

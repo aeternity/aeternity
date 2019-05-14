@@ -27,6 +27,7 @@
         , next_nonce/2
         , trees/1
         , read_contract/1
+        , read_contract/2
         , compile_contract/1
         , compile_contract/2
         , compile_filename/1
@@ -239,11 +240,33 @@ set_account(Account, State) ->
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
 read_contract(Name) ->
-    file:read_file(contract_filename(Name)).
+    read_contract(latest_sophia_version(), Name).
 
-contract_filename(Name) ->
+read_contract(Compiler, Name) ->
+    file:read_file(contract_filename(Compiler, Name)).
+
+contract_dirs(?SOPHIA_ROMA)      -> ["sophia_1"];
+contract_dirs(?SOPHIA_MINERVA)   -> ["sophia_2"];
+contract_dirs(?SOPHIA_FORTUNA)   -> ["sophia_3"];
+contract_dirs(?SOPHIA_LIMA_AEVM) -> ["sophia_4_aevm", "sophia_4", "sophia_3"];
+contract_dirs(?SOPHIA_LIMA_FATE) -> ["sophia_4_fate", "sophia_4", "sophia_3"].
+
+contract_filenames(Compiler, Name) when is_atom(Name) ->
+    contract_filenames(Compiler, atom_to_list(Name));
+contract_filenames(Compiler, Name) ->
     CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
-    filename:join(CodeDir, filename:rootname(Name, ".aes") ++ ".aes").
+    Name1 = filename:rootname(Name, ".aes") ++ ".aes",
+    Files = [filename:join([CodeDir] ++ Contracts ++ [SubDir, Name1])
+             || Contracts <- [["contracts"], []],
+                SubDir    <- contract_dirs(Compiler) ++ ["."]],
+    io:format("Files for ~p (compiler ~p): ~p\n", [Name, Compiler, Files]),
+    lists:filter(fun filelib:is_regular/1, Files).
+
+contract_filename(Compiler, Name) ->
+    case contract_filenames(Compiler, Name) of
+        [File | _] -> File;
+        []         -> error({cant_find_contract, Name, [{compiler, Compiler}]})
+    end.
 
 compile_filename(FileName) ->
     compile(latest_sophia_version(), FileName).
@@ -255,7 +278,7 @@ compile_contract(File) ->
     compile_contract(latest_sophia_version(), File).
 
 compile_contract(Compiler, File) ->
-    compile_filename(Compiler, contract_filename(File)).
+    compile_filename(Compiler, contract_filename(Compiler, File)).
 
 compile(?SOPHIA_LIMA_FATE, File) ->
     {ok, AsmBin} = file:read_file(File),
@@ -356,7 +379,7 @@ encode_call_data(_LegacyVsn, Code, Fun, Args0) ->
     ok = file:write_file(SrcFile, Code),
     Compiler = compiler_cmd(?SOPHIA_MINERVA),
     Esc = fun(Str) -> lists:flatten(string:replace(string:replace(Str, "\\", "\\\\", all), "\"", "\\\"", all)) end,
-    Cmd = Compiler ++ " --create_calldata " ++ contract_filename(SrcFile) ++
+    Cmd = Compiler ++ " --create_calldata " ++ contract_filename(?SOPHIA_LIMA_AEVM, SrcFile) ++
           " --calldata_fun " ++ to_str(Fun) ++ " --calldata_args \"" ++
           string:join(lists:map(Esc, lists:map(fun to_str/1, Args)), ", ") ++ "\"",
     Output = os:cmd(Cmd),
