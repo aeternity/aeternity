@@ -1,15 +1,21 @@
 -module(aestratum_client_suite_utils).
 
 -export([init_per_suite/2,
-         init_per_suite/3
+         init_per_suite/3,
+         start_node/2,
+         stop_node/2,
+         connect/1
         ]).
 
--export([start_node/2]).
+-export([node_name/1,
+         node_tuple/1
+        ]).
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 -define(OPS_BIN, "aestratum_client").
+-define(CONFIG_FILE, "aestratum_client.json").
 
 init_per_suite(NodesList, CTCfg) ->
     init_per_suite(NodesList, #{}, CTCfg).
@@ -27,16 +33,29 @@ init_per_suite(NodesList, CustomNodeCfg, CTCfg) ->
     CTCfg1.
 
 start_node(N, Cfg) ->
-    MyDir = node_shortcut(N, Cfg),
-    CfgFilename = proplists:get_value(config_name, Cfg, "default"),
-    Flags = ["-pa ", MyDir, " -config ./" ++ "data/" ++ CfgFilename],
+    TopClientDir = ?config(top_client_dir, Cfg),
+    Flags = ["-pa ", TopClientDir ++ "aestratum_client/_build/test/lib/aestratum_client"],
     aecore_suite_utils:cmd(?OPS_BIN, node_shortcut(N, Cfg), "bin", ["start"],
         [
          {"ERL_FLAGS", Flags},
-         {"AESTRATUM_CLIENT_CONFIG", "data/aestratum_client.json"},
+         {"AESTRATUM_CLIENT_CONFIG", "data/" ++ ?CONFIG_FILE},
          {"RUNNER_LOG_DIR","log"},
          {"CODE_LOADING_MODE", "interactive"}
         ]).
+
+stop_node(N, Cfg) ->
+    aecore_suite_utils:cmd(?OPS_BIN, node_shortcut(N, Cfg), "bin", ["stop"]).
+
+connect(N) ->
+    connect(N, 100),
+    report_node_config(N).
+
+node_name(N) ->
+    [_,H] = re:split(atom_to_list(node()), "@", [{return,list}]),
+    list_to_atom(atom_to_list(N) ++ "@" ++ H).
+
+node_tuple(N) ->
+    {N, node_name(N)}.
 
 create_configs(NodesList, CTCfg, CustomCfg) ->
     {top_dir, Top} = lists:keyfind(top_dir, 1, CTCfg),
@@ -44,7 +63,7 @@ create_configs(NodesList, CTCfg, CustomCfg) ->
     [create_config(N, CfgSchema, CTCfg, CustomCfg) || N <- NodesList].
 
 create_config(Node, CfgSchema, CTCfg, CustomCfg) ->
-    ClientCfgPath = client_config_dir(Node, CTCfg),
+    ClientCfgPath = client_config_path(Node, CTCfg),
     ok = filelib:ensure_dir(ClientCfgPath),
     MergedCfg = maps_merge(default_config(Node, CTCfg), CustomCfg),
     write_config(ClientCfgPath, CfgSchema, MergedCfg).
@@ -69,7 +88,6 @@ default_config(N, Cfg) ->
      }.
 
 write_config(F, CfgSchema, Cfg) ->
-    ct:pal("--- WRITE CFG: ~p", [F]),
     JSON = jsx:prettify(jsx:encode(Cfg)),
     {ok, Fd} = file:open(F, [write]),
     ct:log("Writing config (~p)~n~s", [F, JSON]),
@@ -105,16 +123,52 @@ setup_node(N, Top, Client, Cfg) ->
     Version = binary_to_list(VerB),
     %%
     CfgD = filename:join([Top, "config/", "test"]),
+    PrivD = filename:join([Top, "priv"]),
     RelD = filename:dirname(filename:join([DDir, "releases", Version, "aestratum_client.rel"])),
     cp_file(filename:join(CfgD, "sys.config"),
             filename:join(RelD, "sys.config")),
     cp_file(filename:join(CfgD, "vm.args"),
             filename:join(RelD, "vm.args")),
+    delete_file(filename:join(RelD, "vm.args")), %% cookie and node name
+    make_vm_args_file(filename:join(RelD, "vm.args"), N),
     delete_file(filename:join(RelD, "vm.args.orig")),
     delete_file(filename:join(RelD, "sys.config.orig")).
 
-client_config_dir(N, Cfg) ->
-    filename:join(data_dir(N, Cfg), "aestratum_client.json").
+connect(N, Timeout) when Timeout < 10000 ->
+    timer:sleep(Timeout),
+    case net_kernel:hidden_connect(N) of
+        true ->
+            ct:log("hidden_connect(~p) -> true", [N]),
+            await_status(N, 5),
+            true;
+        false ->
+            ct:log("hidden_connect(~p) -> false, retrying ...", [N]),
+            connect(N, Timeout * 2)
+    end;
+connect(N, _) ->
+    ct:log("exhausted retries (~p)", [N]),
+    erlang:error({could_not_connect, N}).
+
+report_node_config(N) ->
+    [ct:log("~w env: ~p", [A, rpc:call(N, application, get_all_env, [A], 2000)]) ||
+        A <- [aestratum_client]].
+
+await_status(N, Retries) when Retries > 0 ->
+    case client_status(N) of
+        S when is_map(S) ->
+            ok;
+        _Other ->
+            timer:sleep(1000),
+            await_status(N, Retries - 1)
+    end;
+await_status(_N, 0) ->
+    error(timeout_waiting_for_status).
+
+client_status(N) ->
+    rpc:call(N, aestratum_client, status, []).
+
+client_config_path(N, Cfg) ->
+    filename:join(data_dir(N, Cfg), ?CONFIG_FILE).
 
 top_dir(DataDir) ->
     %% Split the DataDir path at "_build"
@@ -123,6 +177,12 @@ top_dir(DataDir) ->
 
 top_client_dir(Top) ->
     Top ++ "_build/test/aestratum_client/".
+
+make_vm_args_file(F, N) ->
+    {ok, S} = file:open(F, [write]),
+    io:format(S, "-sname ~p~n-setcookie aeternity_cookie~n",
+              [atom_to_list(node_name(N))]),
+    file:close(S).
 
 node_shortcut(N, Cfg) ->
     filename:join(shortcut_dir(Cfg), N).
