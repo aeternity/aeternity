@@ -1,6 +1,7 @@
 -module(aestratum_appsup).
 
 -behavior(application).
+-behavior(supervisor).
 
 -export([start/2, stop/1]). % APP
 -export([init/1]).          % SUP
