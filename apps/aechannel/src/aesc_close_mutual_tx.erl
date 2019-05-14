@@ -33,7 +33,9 @@
 -export([set_channel_id/2]).
 -endif.
 
--export([channel_pubkey/1]).
+% aesc_signable_transaction callbacks
+-export([channel_id/1,
+         channel_pubkey/1]).
 
 %%%===================================================================
 %%% Types
@@ -106,6 +108,9 @@ origin(#channel_close_mutual_tx{from_id = FromId}) ->
 
 channel_pubkey(#channel_close_mutual_tx{channel_id = ChannelId}) ->
     aeser_id:specialize(ChannelId, channel).
+
+channel_id(#channel_close_mutual_tx{channel_id = ChannelId}) ->
+    ChannelId.
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_close_mutual_tx{}, Trees,_Env) ->
