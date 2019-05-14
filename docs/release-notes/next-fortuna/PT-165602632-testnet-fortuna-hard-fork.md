@@ -1,1 +1,1 @@
-* Sets the Fortuna testnet hard fork height to block 81600 (approximately Fri 17th May 2019 10:30am CEST).
+* Sets the Fortuna testnet hard fork height to block 82900 (approximately Mon 20th May 2019 at 3:30am CEST).
