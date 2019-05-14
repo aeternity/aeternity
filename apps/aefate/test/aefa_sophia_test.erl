@@ -8,7 +8,6 @@
 -compile([export_all, nowarn_export_all]).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("aebytecode/include/aeb_fate_data.hrl").
 
 %% -- Compiling and running --
 
@@ -17,9 +16,9 @@ compile_and_run(Contracts, Contract, Function, Arguments) ->
     run(Chain, Contract, Function, Arguments).
 
 compile_contracts(Contracts) ->
-    maps:from_list([ {make_address(Name), compile_contract(Code)} || {Name, Code} <- Contracts ]).
+    maps:from_list([ {pad_contract_name(Name), compile_contract(Code)} || {Name, Code} <- Contracts ]).
 
-make_address(Name) -> aeb_fate_data:make_address(pad_contract_name(Name)).
+make_contract(Name) -> aeb_fate_data:make_contract(pad_contract_name(Name)).
 
 dummy_spec(Cache) ->
     Caller = <<123:256>>,
@@ -32,7 +31,7 @@ dummy_spec(Cache) ->
 dummy_trees(Caller, Cache) ->
     %% All contracts and the caller must have accounts
     Trees = aec_trees:new_without_backend(),
-    Pubkeys = [Caller| [X || ?FATE_ADDRESS(X) <- maps:keys(Cache)]],
+    Pubkeys = [Caller| [X || X <- maps:keys(Cache)]],
     ATrees = lists:foldl(fun(Pubkey, Acc) ->
                                  Account = aec_accounts:new(Pubkey, 10000),
                                  aec_accounts_trees:enter(Account, Acc)
@@ -442,7 +441,7 @@ remote() ->
 remote_tests() ->
     lists:flatten(
       [[],
-       [{"test", [make_address(<<"remote">>)], 2 * 42 + (2 + 10) * 100 + (2 + 11) * 99}],
+       [{"test", [make_contract(<<"remote">>)], 2 * 42 + (2 + 10) * 100 + (2 + 11) * 99}],
        []]).
 
 remote_test_() -> mk_test(remote(), remote_tests()).

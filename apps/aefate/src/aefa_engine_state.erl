@@ -72,7 +72,7 @@
 -include("../../aecontract/include/aecontract.hrl").
 
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
--type void_or_address() :: ?FATE_VOID | aeb_fate_data:fate_address().
+-type pubkey() :: <<_:256>>.
 
 -record(es, { accumulator       :: void_or_fate()
             , accumulator_stack :: [aeb_fate_data:fate_type()]
@@ -83,13 +83,13 @@
             , chain_api         :: aefa_chain_api:state()
             , contracts         :: map() %% Cache for loaded contracts.
             , current_bb        :: non_neg_integer()
-            , current_contract  :: void_or_address()
+            , current_contract  :: ?FATE_VOID | pubkey()
             , current_function  :: ?FATE_VOID | binary()
             , functions         :: map()    %% Cache for current contract.
             , gas               :: integer()
             , logs              :: [term()] %% TODO: Not used properly yet
             , memory            :: map()    %% Environment #{name => val}
-            , seen_contracts    :: [Pubkey :: <<_:256>>]
+            , seen_contracts    :: [pubkey()]
                                    %% Call stack of contracts (including tail calls)
             , trace             :: list()
             }).
@@ -130,25 +130,24 @@ add_trace(I, #es{trace = Trace} = ES) ->
     ES#es{trace = [{I, erlang:process_info(self(), reductions)}|Trace]}.
 -endif.
 
--spec update_for_remote_call(aeb_fate_data:fate_address(), term(), state()) -> state().
-update_for_remote_call(Address, ContractCode, #es{current_contract = Current} = ES) ->
+-spec update_for_remote_call(pubkey(), term(), state()) -> state().
+update_for_remote_call(Contract, ContractCode, #es{current_contract = Current} = ES) ->
     #{functions := Code} = ContractCode,
     ES#es{ functions = Code
-         , current_contract = Address
-         , caller = Current
+         , current_contract = Contract
+         , caller = aeb_fate_data:make_address(Current)
          }.
 
--spec check_reentrant_remote(aeb_fate_data:fate_address(), state()) ->
+-spec check_reentrant_remote(aeb_fate_data:fate_contract(), state()) ->
                                     {ok, state()} | error.
-check_reentrant_remote(Current, #es{current_contract = Current}) ->
+check_reentrant_remote(?FATE_CONTRACT(Current), #es{current_contract = Current}) ->
     error;
-check_reentrant_remote(?FATE_ADDRESS(Pubkey), #es{seen_contracts = Seen} = ES) ->
+check_reentrant_remote(?FATE_CONTRACT(Pubkey), #es{seen_contracts = Seen} = ES) ->
     case lists:member(Pubkey, Seen) of
         true ->
             error;
         false ->
-            ?FATE_ADDRESS(Current) = current_contract(ES),
-            {ok, ES#es{seen_contracts = [Current|Seen]}}
+            {ok, ES#es{seen_contracts = [current_contract(ES)|Seen]}}
     end.
 
 %%%------------------
@@ -177,8 +176,9 @@ push_call_stack(#es{ current_bb = BB
 -spec pop_call_stack(state()) ->
                             'empty' |
                             {'local', _, non_neg_integer(), state()} |
-                            {'remote', aeb_fate_data:fate_address(), _, non_neg_integer(), state()}.
-pop_call_stack(#es{call_stack = Stack, current_contract = Current} = ES) ->
+                            {'remote', aeb_fate_data:fate_contract(), _, non_neg_integer(), state()}.
+pop_call_stack(#es{call_stack = Stack,
+                   current_contract = Current} = ES) ->
     case Stack of
         [] -> empty;
         [{gas_store, StoredGas}| Rest] ->
@@ -192,9 +192,9 @@ pop_call_stack(#es{call_stack = Stack, current_contract = Current} = ES) ->
                   , memory = Mem
                   , call_stack = Rest
                   }};
-        [{?FATE_ADDRESS(Pubkey) = Contract, Function, BB, Mem, Value}| Rest] ->
+        [{Pubkey, Function, BB, Mem, Value}| Rest] ->
             Seen = pop_seen_contracts(Pubkey, ES),
-            {remote, Contract, Function, BB,
+            {remote, aeb_fate_data:make_contract(Pubkey), Function, BB,
              ES#es{ call_value = Value
                   , memory = Mem
                   , call_stack = Rest
@@ -371,11 +371,11 @@ set_current_bb(X, ES) ->
 
 %%%------------------
 
--spec current_contract(state()) -> aeb_fate_data:fate_address().
+-spec current_contract(state()) -> pubkey().
 current_contract(#es{current_contract = X}) ->
     X.
 
--spec set_current_contract(aeb_fate_data:fate_address(), state()) -> state().
+-spec set_current_contract(pubkey(), state()) -> state().
 set_current_contract(X, ES) ->
     ES#es{current_contract = X}.
 

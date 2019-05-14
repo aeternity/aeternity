@@ -2,15 +2,15 @@
 FUNCTION init() -> {tuple, []}
   RETURNR ()
 
-FUNCTION call(address, integer) ->  integer
+FUNCTION call(contract, integer) ->  integer
   PUSH    arg1
   CALL_TR arg0 main 0
 
-FUNCTION staged_call(address, address, integer) ->  integer
+FUNCTION staged_call(contract, contract, integer) ->  integer
   PUSH    arg2
   PUSH    arg0
   CALL_TR arg1 call 0
 
-FUNCTION gas_limit_call(address, integer, integer) -> integer
+FUNCTION gas_limit_call(contract, integer, integer) -> integer
   PUSH    arg1
   CALL_GTR arg0 main 0 arg2
