@@ -2941,9 +2941,6 @@ definitions:
         type: integer
         minimum: 0
         maximum: 65535
-      log:
-        description: 'DEPRECATED'
-        type: string
       active:
         type: boolean
       referrer_ids:
@@ -2957,7 +2954,6 @@ definitions:
       - owner_id
       - vm_version
       - abi_version
-      - log
       - active
       - referrer_ids
       - deposit

@@ -3771,7 +3771,7 @@
     },
     "ContractObject" : {
       "type" : "object",
-      "required" : [ "abi_version", "active", "deposit", "id", "log", "owner_id", "referrer_ids", "vm_version" ],
+      "required" : [ "abi_version", "active", "deposit", "id", "owner_id", "referrer_ids", "vm_version" ],
       "properties" : {
         "id" : {
           "$ref" : "#/definitions/EncodedPubkey"
@@ -3789,10 +3789,6 @@
           "minimum" : 0,
           "maximum" : 65535
         },
-        "log" : {
-          "type" : "string",
-          "description" : "DEPRECATED"
-        },
         "active" : {
           "type" : "boolean"
         },
@@ -3808,7 +3804,6 @@
       },
       "example" : {
         "vm_version" : 5248,
-        "log" : "log",
         "active" : true,
         "deposit" : 1,
         "abi_version" : 39500,

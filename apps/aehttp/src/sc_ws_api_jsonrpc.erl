@@ -392,8 +392,7 @@ process_request(#{<<"method">> := <<"channels.get.contract">>,
             case aesc_fsm:get_contract(FsmPid, Pubkey) of
                 {ok, Contract} ->
                     ContractState = aect_contracts:state(Contract),
-                    %% maps:remove should be removed with PT-164539296
-                    SerializedContract = maps:remove(<<"log">>, aect_contracts:serialize_for_client(Contract)),
+                    SerializedContract = aect_contracts:serialize_for_client(Contract),
                     Resp = #{<<"contract">> => SerializedContract,
                              <<"contract_state">> => aect_contracts_store:serialize_for_client(ContractState)},
                     {reply, #{action => <<"get">>
