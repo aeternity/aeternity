@@ -22,13 +22,15 @@ init_per_suite(NodesList, CustomNodeCfg, CTConfig) ->
     CTConfig1.
 
 create_configs(NodesList, CTConfig, CustomConfig) ->
-    [create_config(N, CTConfig, CustomConfig) || N <- NodesList].
+    {top_dir, Top} = lists:keyfind(top_dir, 1, CTConfig),
+    ConfigSchema = filename:join([top_client_dir(Top), "priv", "config_schema.json"]),
+    [create_config(N, ConfigSchema, CTConfig, CustomConfig) || N <- NodesList].
 
-create_config(Node, CTConfig, CustomConfig) ->
+create_config(Node, ConfigSchema, CTConfig, CustomConfig) ->
     ClientCfgPath = client_config_dir(Node, CTConfig),
     ok = filelib:ensure_dir(ClientCfgPath),
     MergedCfg = maps_merge(default_config(Node, CTConfig), CustomConfig),
-    write_config(ClientCfgPath, MergedCfg).
+    write_config(ClientCfgPath, ConfigSchema, MergedCfg).
 
 default_config(N, Config) ->
     #{<<"connection">> =>
@@ -49,7 +51,7 @@ default_config(N, Config) ->
            <<"edge_bits">> => 29}]
      }.
 
-write_config(F, Config) ->
+write_config(F, ConfigSchema, Config) ->
     JSON = jsx:prettify(jsx:encode(Config)),
     {ok, Fd} = file:open(F, [write]),
     ct:log("Writing config (~p)~n~s", [F, JSON]),
@@ -57,7 +59,7 @@ write_config(F, Config) ->
     after
         file:close(Fd)
     end,
-    VRes = aeu_env:check_config(F),
+    VRes = aeu_env:check_config(F, ConfigSchema),
     ct:log("Config (~p) check: ~p", [F, VRes]),
     {ok,_} = VRes.
 
@@ -107,4 +109,3 @@ maps_merge(Map1, Map2) ->
                         true  -> Map#{K => maps_merge(V, maps:get(K, Map))}
                     end
                 end, Map2, maps:to_list(Map1)).
-
