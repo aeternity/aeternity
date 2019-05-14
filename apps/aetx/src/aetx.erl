@@ -269,11 +269,11 @@ gas_price(#aetx{}) ->
 
 -spec min_gas_price(Tx :: tx(), Height :: aec_blocks:height()) -> MinGasPrice :: non_neg_integer().
 min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx }, Height) when ?IS_CONTRACT_TX(Type) ->
-    GasLimit = gas_limit(AETx, Height),
-    min(CB:gas_price(Tx), (CB:fee(Tx) + GasLimit - 1) div GasLimit);
+    Gas = min_gas(AETx, Height),
+    min(CB:gas_price(Tx), (CB:fee(Tx) + Gas - 1) div Gas);
 min_gas_price(AETx = #aetx{ cb = CB, tx = Tx }, Height) ->
-    GasLimit = gas_limit(AETx, Height),
-    (CB:fee(Tx) + GasLimit - 1) div GasLimit.
+    Gas = min_gas(AETx, Height),
+    (CB:fee(Tx) + Gas - 1) div Gas.
 
 -spec min_fee(Tx :: tx(), Height :: aec_blocks:height()) -> Fee :: non_neg_integer().
 min_fee(#aetx{} = AeTx, Height) ->
