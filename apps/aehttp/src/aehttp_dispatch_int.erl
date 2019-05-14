@@ -8,6 +8,8 @@
                         , read_required_params/1
                         , read_optional_params/1
                         , api_decode/1
+                        , api_optional_decode/1
+                        , api_conditional_decode/1
                         , get_nonce_from_account_id/1
                         , get_contract_code/2
                         , verify_name/1
@@ -67,13 +69,11 @@ handle_request_('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
 handle_request_('PostSpend', #{'SpendTx' := Req}, _Context) ->
     AllowedRecipients = [account_pubkey, name, oracle_pubkey, contract_pubkey],
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([sender_id,
-                                       {recipient_id, recipient_id},
-                                        amount, fee, payload]),
+                 read_required_params([sender_id, recipient_id, amount, fee, payload]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
-                                {recipient_id, recipient_id,
-                                 {id_hash, AllowedRecipients}}]),
+                             {recipient_id, recipient_id, {id_hash, AllowedRecipients}}]),
+                 api_optional_decode([{payload, bytearray}]),
                  get_nonce_from_account_id(sender_id),
                  unsigned_tx_response(fun aec_spend_tx:new/1)
                 ],
@@ -229,7 +229,8 @@ handle_request_('PostChannelSnapshotSolo', #{'ChannelSnapshotSoloTx' := Req}, _C
                                        payload, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{channel_id, channel_id, {id_hash, [channel]}},
-                                {from_id, from_id, {id_hash, [account_pubkey]}}]),
+                             {from_id, from_id, {id_hash, [account_pubkey]}},
+                             {payload, payload, bytearray}]),
                  get_nonce_from_account_id(from_id),
                  unsigned_tx_response(fun aesc_snapshot_solo_tx:new/1)
                 ],
@@ -254,8 +255,8 @@ handle_request_('PostChannelCloseSolo', #{'ChannelCloseSoloTx' := Req}, _Context
                                        payload, poi, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{channel_id, channel_id, {id_hash, [channel]}},
-                                {from_id, from_id, {id_hash, [account_pubkey]}},
-                                {poi, poi, poi}]),
+                             {from_id, from_id, {id_hash, [account_pubkey]}},
+                             {poi, poi, poi}, {payload, payload, bytearray}]),
                  get_nonce_from_account_id(from_id),
                  poi_decode(poi),
                  unsigned_tx_response(fun aesc_close_solo_tx:new/1)
@@ -268,8 +269,8 @@ handle_request_('PostChannelSlash', #{'ChannelSlashTx' := Req}, _Context) ->
                                        payload, poi, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{channel_id, channel_id, {id_hash, [channel]}},
-                                {from_id, from_id, {id_hash, [account_pubkey]}},
-                                {poi, poi, poi}]),
+                             {from_id, from_id, {id_hash, [account_pubkey]}},
+                             {poi, poi, poi}, {payload, payload, bytearray}]),
                  get_nonce_from_account_id(from_id),
                  poi_decode(poi),
                  unsigned_tx_response(fun aesc_slash_tx:new/1)
@@ -290,12 +291,14 @@ handle_request_('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
     process_request(ParseFuns, Req);
 
 handle_request_('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
+    IsVmABI = fun(Data) -> maps:get(abi_version, Data, 0) == ?ABI_AEVM_SOPHIA_1 end,
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([account_id, {query_format, query_format},
-                                       {response_format, response_format},
+                 read_required_params([account_id, query_format, response_format,
                                        query_fee, oracle_ttl, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}, {abi_version, abi_version, 0}]),
                  api_decode([{account_id, account_id, {id_hash, [account_pubkey]}}]),
+                 api_conditional_decode([{query_format, {contract_bytearray, IsVmABI}},
+                                         {response_format, {contract_bytearray, IsVmABI}}]),
                  get_nonce_from_account_id(account_id),
                  ttl_decode(oracle_ttl),
                  unsigned_tx_response(fun aeo_register_tx:new/1)
@@ -321,6 +324,7 @@ handle_request_('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
                  api_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
                                 {oracle_id, oracle_id, {id_hash, [oracle_pubkey]}}]),
                  get_nonce_from_account_id(sender_id),
+                 api_optional_decode([{query, contract_bytearray}]),
                  ttl_decode(query_ttl),
                  relative_ttl_decode(response_ttl),
                  verify_oracle_existence(oracle_id),
@@ -334,6 +338,7 @@ handle_request_('PostOracleRespond', #{'OracleRespondTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  api_decode([{oracle_id, oracle_id, {id_hash, [oracle_pubkey]}},
                                 {query_id, query_id, oracle_query_id}]),
+                 api_optional_decode([{response, contract_bytearray}]),
                  get_nonce_from_account_id(oracle_id),
                  relative_ttl_decode(response_ttl),
                  verify_oracle_query_existence(oracle_id, query_id),

@@ -5,6 +5,8 @@
         , read_required_params/1
         , read_optional_params/1
         , api_decode/1
+        , api_optional_decode/1
+        , api_conditional_decode/1
         , contract_bytearray_params_decode/1
         , ttl_decode/1
         , poi_decode/1
@@ -78,6 +80,37 @@ read_optional_params(Params) ->
             end
         end,
         "Not found").
+
+api_optional_decode(Params) ->
+    params_read_fun([ {K, K, T} || {K, T} <- Params ],
+                    fun api_opt_decode_fun/3, "Invalid option").
+
+api_opt_decode_fun({Name, Type}, _, Data) ->
+    Encoded = maps:get(Name, Data),
+    case aeser_api_encoder:safe_decode(Type, Encoded) of
+        {ok, Val}  -> {ok, Val};
+        {error, _} -> {ok, Encoded}
+    end.
+
+api_conditional_decode(Params) ->
+    params_read_fun([ {K, K, T} || {K, T} <- Params ],
+                    fun api_cond_decode_fun/3, "Invalid decode").
+
+api_cond_decode_fun({Name, {Type, Cond}}, _, Data) ->
+    Encoded = maps:get(Name, Data),
+    try
+        case Cond(Data) of
+            true ->
+                case aeser_api_encoder:safe_decode(Type, Encoded) of
+                    {ok, Val}  -> {ok, Val};
+                    {error, _} -> error
+                end;
+            false ->
+                {ok, Encoded}
+        end
+    catch _:_ ->
+        error
+    end.
 
 api_decode(Params) ->
     params_read_fun(Params, fun api_decode_read_fun/3, "Invalid hash").

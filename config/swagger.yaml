@@ -49,7 +49,6 @@ paths:
       description: 'Get the top block (either key or micro block)'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -59,7 +58,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks/current:
     get:
       tags:
@@ -69,7 +67,6 @@ paths:
       description: 'Get the current key block'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -79,7 +76,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks/current/hash:
     get:
       tags:
@@ -89,7 +85,6 @@ paths:
       description: 'Get the hash of the current key block'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -97,13 +92,13 @@ paths:
             type: object
             properties:
               hash:
+                description: 'Key block hash'
+                # Encoded key block hash 'kh_...'
                 type: string
-                description: 'Hash'
         '404':
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks/current/height:
     get:
       tags:
@@ -113,7 +108,6 @@ paths:
       description: 'Get the height of the current key block'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -128,7 +122,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks/pending:
     get:
       tags:
@@ -138,7 +131,6 @@ paths:
       description: 'Get the pending key block'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -152,7 +144,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks/hash/{hash}:
     get:
       tags:
@@ -167,7 +158,8 @@ paths:
           name: hash
           description: 'The hash of the block'
           required: true
-          type : string
+          # Encoded key block hash 'kh_...'
+          type: string
       responses:
         '200':
           description: 'Successful operation'
@@ -181,7 +173,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks/height/{height}:
     get:
       tags:
@@ -207,7 +198,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /key-blocks:
     post:
       tags:
@@ -233,7 +223,6 @@ paths:
           description: 'Invalid block'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /micro-blocks/hash/{hash}/header:
     get:
       tags:
@@ -248,7 +237,8 @@ paths:
           name: hash
           description: 'The hash of the block'
           required: true
-          type : string
+          # Encoded micro block hash 'mh_...'
+          type: string
       responses:
         '200':
           description: 'Successful operation'
@@ -262,7 +252,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /micro-blocks/hash/{hash}/transactions:
     get:
       tags:
@@ -277,7 +266,8 @@ paths:
           name: hash
           description: 'The hash of the block'
           required: true
-          type : string
+          # Encoded micro block hash 'mh_...'
+          type: string
       responses:
         '200':
           description: 'Successful operation'
@@ -291,7 +281,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /micro-blocks/hash/{hash}/transactions/index/{index}:
     get:
       tags:
@@ -306,6 +295,7 @@ paths:
           name: hash
           description: 'The hash of the block'
           required: true
+          # Encoded micro block hash 'mh_...'
           type: string
         - in: path
           name: index
@@ -326,7 +316,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /micro-blocks/hash/{hash}/transactions/count:
     get:
       tags:
@@ -341,7 +330,8 @@ paths:
           name: hash
           description: 'The hash of the block'
           required: true
-          type : string
+          # Encoded micro block hash 'mh_...'
+          type: string
       responses:
         '200':
           description: 'Successful operation'
@@ -361,7 +351,6 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /generations/current:
     get:
       tags:
@@ -371,7 +360,6 @@ paths:
       description: 'Get the current generation'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -381,7 +369,6 @@ paths:
           description: 'Generation not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /generations/hash/{hash}:
     get:
       tags:
@@ -396,7 +383,8 @@ paths:
           name: hash
           description: 'The hash of the generation'
           required: true
-          type : string
+          # Encoded key block hash 'kh_...'
+          type: string
       responses:
         '200':
           description: 'Successful operation'
@@ -410,7 +398,6 @@ paths:
           description: 'Generation not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /generations/height/{height}:
     get:
       tags:
@@ -436,7 +423,6 @@ paths:
           description: 'Generation not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /accounts/{pubkey}:
     get:
       tags:
@@ -451,6 +437,7 @@ paths:
           name: pubkey
           description: 'The public key of the account'
           required: true
+          # Encoded account pubkey 'ak_...'
           type: string
       responses:
         '200':
@@ -465,7 +452,6 @@ paths:
           description: 'Account not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /accounts/{pubkey}/height/{height}:
     get:
       tags:
@@ -480,6 +466,7 @@ paths:
           name: pubkey
           description: 'The public key of the account'
           required: true
+          # Encoded account pubkey 'ak_...'
           type: string
         - in: path
           name: height
@@ -500,7 +487,6 @@ paths:
           description: 'Account not found or height not available'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /accounts/{pubkey}/hash/{hash}:
     get:
       tags:
@@ -515,13 +501,14 @@ paths:
           name: pubkey
           description: 'The public key of the account'
           required: true
+          # Encoded account pubkey 'ak_...'
           type: string
         - in: path
           name: hash
           description: 'The hash of the block'
           required: true
+          # Encoded block hash 'kh_...'/'mh_...'
           type: string
-          minimum: 0
       responses:
         '200':
           description: 'Successful operation'
@@ -535,7 +522,6 @@ paths:
           description: 'Account not found or hash not available'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /accounts/{pubkey}/transactions/pending:
     get:
       tags:
@@ -550,6 +536,7 @@ paths:
           name: pubkey
           description: 'The public key of the account'
           required: true
+          # Encoded account pubkey 'ak_...'
           type: string
       responses:
         '200':
@@ -564,7 +551,6 @@ paths:
           description: 'Account not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /transactions/{hash}:
     get:
       tags:
@@ -579,6 +565,7 @@ paths:
           name: hash
           description: 'The hash of the transaction'
           required: true
+          # Encoded account pubkey 'ak_...'
           type: string
       responses:
         '200':
@@ -593,7 +580,6 @@ paths:
           description: 'Transaction not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /transactions/{hash}/info:
     get:
       tags:
@@ -607,6 +593,7 @@ paths:
           name: hash
           description: 'The hash of the transaction'
           required: true
+          # Encoded transaction hash 'th_...'
           type: string
       responses:
         '200':
@@ -621,7 +608,6 @@ paths:
           description: 'Transaction not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /transactions:
     post:
       tags:
@@ -649,7 +635,6 @@ paths:
           description: 'Invalid transaction'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /contracts/{pubkey}:
     get:
       tags:
@@ -664,6 +649,7 @@ paths:
           name: pubkey
           description: 'The pubkey of the contract'
           required: true
+          # Encoded contract pubkey 'ct_...'
           type: string
       responses:
         '200':
@@ -690,6 +676,7 @@ paths:
           name: pubkey
           description: 'The pubkey of the contract'
           required: true
+          # Encoded contract pubkey 'ct_...'
           type: string
       responses:
         '200':
@@ -718,6 +705,7 @@ paths:
           name: pubkey
           description: 'The pubkey of the contract'
           required: true
+          # Encoded contract pubkey 'ct_...'
           type: string
       responses:
         '200':
@@ -744,6 +732,7 @@ paths:
           name: pubkey
           description: 'Contract pubkey to get proof for'
           required: true
+          # Encoded contract pubkey 'ct_...'
           type: string
       responses:
         '200':
@@ -772,6 +761,7 @@ paths:
           name: pubkey
           description: 'The public key of the oracle'
           required: true
+          # Encoded oracle pubkey 'ok_...'
           type: string
       responses:
         '200':
@@ -786,7 +776,6 @@ paths:
           description: 'Oracle not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /oracles/{pubkey}/queries:
     get:
       tags:
@@ -801,11 +790,13 @@ paths:
           name: pubkey
           description: 'The public key of the oracle'
           required: true
+          # Encoded oracle pubkey 'ok_...'
           type: string
         - in: query
           name: from
           description: 'Last query id in previous page'
           required: false
+          # Encoded oracle query id 'oq_...'
           type: string
         - in: query
           name: limit
@@ -833,7 +824,6 @@ paths:
           description: 'Oracle not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /oracles/{pubkey}/queries/{query-id}:
     get:
       tags:
@@ -848,11 +838,13 @@ paths:
           name: pubkey
           description: 'The public key of the oracle'
           required: true
+          # Encoded oracle pubkey 'ok_...'
           type: string
         - in: path
           name: query-id
           description: 'The ID of the query'
           required: true
+          # Encoded oracle query id 'oq_...'
           type: string
       responses:
         '200':
@@ -867,7 +859,6 @@ paths:
           description: 'Oracle query not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /names/{name}:
     get:
       tags:
@@ -896,7 +887,6 @@ paths:
           description: 'Name not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /channels/{pubkey}:
     get:
       tags:
@@ -911,6 +901,7 @@ paths:
           name: pubkey
           description: 'The pubkey of the channel'
           required: true
+          # Encoded channel id 'ch_...'
           type: string
       responses:
         '200':
@@ -925,7 +916,6 @@ paths:
           description: 'Channel not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /peers/pubkey:
     get:
       tags:
@@ -935,16 +925,11 @@ paths:
       description: 'Get peer public key'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
           schema:
-            type: object
-            properties:
-              pubkey:
-                type: string
-      security:
+            $ref: '#/definitions/PeerPubKey'
   /status:
     get:
       tags:
@@ -954,13 +939,11 @@ paths:
       description: 'Get the status of a node'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/Status'
-      security:
 
   /debug/contracts/create:
     post:
@@ -1539,7 +1522,6 @@ paths:
       description: 'Get pending transactions'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -1575,7 +1557,6 @@ paths:
           description: 'Invalid name'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /debug/accounts/beneficiary:
     get:
       tags:
@@ -1586,7 +1567,6 @@ paths:
       description: 'Get node''s beneficiary public key'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -1596,7 +1576,6 @@ paths:
           description: 'Beneficiary error'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /debug/accounts/node:
     get:
       tags:
@@ -1607,7 +1586,6 @@ paths:
       description: 'Get node''s public key'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -1617,7 +1595,6 @@ paths:
           description: 'Public key not found'
           schema:
             $ref: '#/definitions/Error'
-      security:
   /debug/peers:
     get:
       tags:
@@ -1628,7 +1605,6 @@ paths:
       description: 'Get node Peers'
       produces:
         - application/json
-      parameters:
       responses:
         '200':
           description: successful operation
@@ -1638,7 +1614,6 @@ paths:
           description: Info not enabled
           schema:
             $ref: '#/definitions/Error'
-      security:
   /debug/transactions/dry-run:
     post:
       tags:
@@ -1697,8 +1672,28 @@ paths:
 ##
 
 definitions:
+  # Encoded values - this is binary/byte array data that is
+  # "typed" and Base58Check/Base64Check encoded
+  # (for details see aeserialization/aeser_api_encoder.erl)
   EncodedHash:
+    # Base58Check encoded 32-byte hash (key block hash, micro block hash,
+    # root hash, etc)
+    description: 'Base58Check encoded tagged hash'
     type: string
+  EncodedPubkey:
+    # Base58Check encoded 32-byte pubkey (account, contract, oracle, etc)
+    description: 'Base58Check encoded tagged pubkey'
+    type: string
+  EncodedValue:
+    # Base58Check encoded 32/64-byte value (signature, oracle query id, etc)
+    description: 'Base58Check encoded tagged value'
+    type: string
+
+  EncodedByteArray:
+    # Base64Check encoded byte array
+    description: 'Base64Check encoded tagged byte array'
+    type: string
+
   Pow:
     type: array
     items:
@@ -1724,9 +1719,9 @@ definitions:
       state_hash:
         $ref: '#/definitions/EncodedHash'
       miner:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       beneficiary:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       target:
         type: integer
         format: int64
@@ -1764,7 +1759,7 @@ definitions:
         type: integer
         format: int64
       pof_hash:
-        type: string
+        $ref: '#/definitions/EncodedHash'
         description: '"no_fraud" | api encoded Proof of Fraud hash'
       prev_hash:
         $ref: '#/definitions/EncodedHash'
@@ -1775,7 +1770,7 @@ definitions:
       txs_hash:
         $ref: '#/definitions/EncodedHash'
       signature:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
       time:
         type: integer
         format: int64
@@ -1813,7 +1808,7 @@ definitions:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
         description: 'Public key'
       balance:
         type: integer
@@ -1830,7 +1825,7 @@ definitions:
         enum: [basic, generalized]
       contract_id:
         description: 'Id of authorization contract for generalized account'
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       auth_fun:
         description: 'Name of authorization function for generalized account'
         type: string
@@ -1842,17 +1837,19 @@ definitions:
     type: object
     properties:
        tx:
-         type: string
+         $ref: '#/definitions/EncodedByteArray'
     required:
       - tx
   RegisteredOracle:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       query_format:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       response_format:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       query_fee:
         type: integer
@@ -1874,18 +1871,20 @@ definitions:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
       sender_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       sender_nonce:
         type: integer
         format: int64
         minimum: 0
       oracle_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       query:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       response:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       ttl:
         type: integer
@@ -1918,7 +1917,7 @@ definitions:
     type: object
     properties:
       recipient_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       amount:
         type: integer
         format: int64
@@ -1930,12 +1929,12 @@ definitions:
         type: integer
         format: int64
       sender_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
       payload:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - recipient_id
       - amount
@@ -1946,8 +1945,10 @@ definitions:
     type: object
     properties:
       query_format:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       response_format:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       query_fee:
         type: integer
@@ -1955,7 +1956,7 @@ definitions:
       oracle_ttl:
         $ref: '#/definitions/TTL'
       account_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -1985,7 +1986,7 @@ definitions:
       oracle_ttl:
         $ref: '#/definitions/RelativeTTL'
       oracle_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2000,8 +2001,9 @@ definitions:
     type: object
     properties:
       oracle_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       query:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       query_fee:
         type: integer
@@ -2017,7 +2019,7 @@ definitions:
         type: integer
         format: int64
       sender_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2034,8 +2036,9 @@ definitions:
     type: object
     properties:
       query_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
       response:
+        # Depending on ABI version it might be a EncodedByteArray
         type: string
       response_ttl:
         $ref: '#/definitions/RelativeTTL'
@@ -2046,7 +2049,7 @@ definitions:
         type: integer
         format: int64
       oracle_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2087,7 +2090,7 @@ definitions:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       ttl:
         type: integer
         format: int64
@@ -2103,8 +2106,7 @@ definitions:
     type: object
     properties:
       commitment_id:
-        type: string
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
       fee:
         type: integer
         format: int64
@@ -2112,7 +2114,7 @@ definitions:
         type: integer
         format: int64
       account_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2135,7 +2137,7 @@ definitions:
         type: integer
         format: int64
       account_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2148,8 +2150,7 @@ definitions:
     type: object
     properties:
       name_id:
-        $ref: '#/definitions/EncodedHash'
-        type: string
+        $ref: '#/definitions/EncodedValue'
       name_ttl:
         type: integer
         format: int64
@@ -2167,7 +2168,7 @@ definitions:
         type: integer
         format: int64
       account_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2182,9 +2183,9 @@ definitions:
     type: object
     properties:
       name_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
       recipient_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       fee:
         type: integer
         format: int64
@@ -2192,7 +2193,7 @@ definitions:
         type: integer
         format: int64
       account_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2205,7 +2206,7 @@ definitions:
     type: object
     properties:
       name_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
       fee:
         type: integer
         format: int64
@@ -2213,7 +2214,7 @@ definitions:
         type: integer
         format: int64
       account_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       nonce:
         type: integer
         format: int64
@@ -2225,14 +2226,14 @@ definitions:
     type: object
     properties:
       commitment_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
     required:
       - commitment_id
   NameHash:
     type: object
     properties:
       name_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedValue'
     required:
       - name_id
   NamePointer:
@@ -2241,7 +2242,7 @@ definitions:
       key:
         type: string
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
     required:
       - key
       - id
@@ -2249,11 +2250,11 @@ definitions:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       initiator_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       responder_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       channel_amount:
         type: integer
         format: int64
@@ -2273,7 +2274,7 @@ definitions:
       delegate_ids:
         type: array
         items:
-          $ref: '#/definitions/EncodedHash'
+          $ref: '#/definitions/EncodedPubkey'
       state_hash:
         $ref: '#/definitions/EncodedHash'
       round:
@@ -2309,13 +2310,13 @@ definitions:
     type: object
     properties:
       initiator_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       initiator_amount:
         type: integer
         format: int64
         minimum: 0
       responder_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       responder_amount:
         type: integer
         format: int64
@@ -2361,9 +2362,9 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       amount:
         type: integer
         format: int64
@@ -2400,9 +2401,9 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       to_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       amount:
         type: integer
         format: int64
@@ -2439,11 +2440,11 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       payload:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
       round:
         type: integer
         format: int64
@@ -2468,7 +2469,7 @@ definitions:
         format: int64
         minimum: 0
       offchain_trees:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedByteArray'
         description: 'The whole set of off-chain state trees'
     required:
       - channel_id
@@ -2484,9 +2485,9 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       initiator_amount_final:
         type: integer
         format: int64
@@ -2518,11 +2519,11 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       payload:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
       ttl:
         type: integer
         format: int64
@@ -2536,7 +2537,7 @@ definitions:
         format: int64
         minimum: 0
       poi:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
         description: 'Proof of inclusion containing information for closing the channel'
     required:
       - channel_id
@@ -2548,11 +2549,11 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       payload:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
       ttl:
         type: integer
         format: int64
@@ -2566,7 +2567,7 @@ definitions:
         format: int64
         minimum: 0
       poi:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
         description: 'Proof of inclusion containing information for closing the channel'
     required:
       - channel_id
@@ -2578,9 +2579,9 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       initiator_amount_final:
         type: integer
         format: int64
@@ -2612,11 +2613,11 @@ definitions:
     type: object
     properties:
       channel_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       from_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       payload:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
       ttl:
         type: integer
         format: int64
@@ -2634,11 +2635,18 @@ definitions:
       - from_id
       - payload
       - fee
+  PeerPubKey:
+    type: object
+    properties:
+      pubkey:
+        $ref: '#/definitions/EncodedPubkey'
+    required:
+      - pubkey
   PubKey:
     type: object
     properties:
       pub_key:
-        type: string
+        $ref: '#/definitions/EncodedPubkey'
     required:
       - pub_key
   Status:
@@ -2723,7 +2731,7 @@ definitions:
         type: array
         minItems: 1
         items:
-          type: string
+          $ref: '#/definitions/EncodedValue'
     required:
       - tx
       - block_height
@@ -2838,13 +2846,13 @@ definitions:
     type: object
     properties:
       caller_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       caller_nonce:
         type: integer
       height:
         type: integer
       contract_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       gas_price:
         type: integer
       gas_used:
@@ -2872,7 +2880,7 @@ definitions:
     type: object
     properties:
       caller_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       height:
         type: integer
       gas_price:
@@ -2898,7 +2906,7 @@ definitions:
     properties:
       address:
         description: Contract address
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       topics:
         description: Event topics
         type: array
@@ -2922,9 +2930,9 @@ definitions:
     type: object
     properties:
       id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       owner_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       vm_version:
         type: integer
         minimum: 0
@@ -2941,7 +2949,7 @@ definitions:
       referrer_ids:
         type: array
         items:
-          $ref: '#/definitions/EncodedHash'
+          $ref: '#/definitions/EncodedPubkey'
       deposit:
         type: integer
     required:
@@ -2965,21 +2973,20 @@ definitions:
               type: string
             value:
               $ref: '#/definitions/EncodedByteArray'
-              type: string
     required:
       - store
   ByteCode:
     type: object
     properties:
       bytecode:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - bytecode
   DryRunInput:
     type: object
     properties:
       top:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       accounts:
         type: array
         description: Accounts
@@ -2989,14 +2996,14 @@ definitions:
         type: array
         description: Txs
         items:
-          $ref: '#/definitions/EncodedHash'
+          $ref: '#/definitions/EncodedByteArray'
     required:
       - txs
   DryRunAccount:
     type: object
     properties:
       pub_key:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
       amount:
         type: integer
     required:
@@ -3026,8 +3033,6 @@ definitions:
     required:
       - type
       - result
-  EncodedByteArray:
-    type: string
   Peer:
     type: string
     description: 'Aeternity node'
@@ -3051,14 +3056,14 @@ definitions:
     type: object
     properties:
       owner_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
         description: Contract owner pub_key
       nonce:
         description: 'Owner''s nonce'
         type: integer
       code:
         description: 'Contract''s code'
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
       vm_version:
         description: 'Virtual machine''s version'
         type: integer
@@ -3111,13 +3116,13 @@ definitions:
     type: object
     properties:
       caller_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
         description: Contract caller pub_key
       nonce:
         description: 'Caller''s nonce'
         type: integer
       contract_id:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedPubkey'
         description: 'Contract''s pub_key'
       abi_version:
         description: 'ABI version'
@@ -3161,7 +3166,7 @@ definitions:
     properties:
       tx:
         description: Unsigned transaction object
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - tx
   PostTxResponse:
@@ -3178,7 +3183,7 @@ definitions:
       - type: object
         properties:
           contract_id:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Address of the contract to be created
         required:
           - contract_id
@@ -3187,7 +3192,7 @@ definitions:
     properties:
       poi:
         description: Proof of inclusion
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - poi
   Generation:
@@ -3198,7 +3203,7 @@ definitions:
       micro_blocks:
         type: array
         items:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
     required:
       - key_block
       - micro_blocks
@@ -3216,10 +3221,10 @@ definitions:
       - type: object
         properties:
           from:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Sender of tokens
           to:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Receiver of tokens
           amount:
             type: integer
@@ -3235,7 +3240,7 @@ definitions:
       - type: object
         properties:
           to:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Withdrawer of tokens
           amount:
             type: integer
@@ -3250,7 +3255,7 @@ definitions:
       - type: object
         properties:
           from:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Depositor of tokens
           amount:
             type: integer
@@ -3265,7 +3270,7 @@ definitions:
       - type: object
         properties:
           owner:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Contract owner
           vm_version:
             type: integer
@@ -3299,10 +3304,10 @@ definitions:
       - type: object
         properties:
           caller:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Contract caller
           contract:
-            $ref: '#/definitions/EncodedHash'
+            $ref: '#/definitions/EncodedPubkey'
             description: Contract address
           # vm_version kept for backwards compatibility, should be removed
           vm_version:

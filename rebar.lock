@@ -18,7 +18,7 @@
   0},
  {<<"aeserialization">>,
   {git,"https://github.com/aeternity/aeserialization.git",
-      {ref,"816bf994ffb5cee218c3f22dc5fea296c9e0882e"}},
+      {ref,"3416ff5c1b4f6401bc211106063717ea1bbb1bd2"}},
   0},
  {<<"base58">>,
   {git,"https://github.com/aeternity/erl-base58.git",

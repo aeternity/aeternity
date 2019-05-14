@@ -2574,13 +2574,15 @@ state_channels_withdrawal(ChannelId, MinerPubkey) ->
 
 state_channels_snapshot_solo(ChannelId, MinerPubkey) ->
     _PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
+    Payload = <<"hejsan svejsan">>, %%TODO proper payload
     Encoded = #{channel_id => aeser_api_encoder:encode(channel, ChannelId),
                 from_id => aeser_api_encoder:encode(account_pubkey, MinerPubkey),
-                payload => <<"hejsan svejsan">>, %%TODO proper payload
+                payload => aeser_api_encoder:encode(bytearray, Payload),
                 fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{from_id => aeser_id:create(account, MinerPubkey),
-                          channel_id => aeser_id:create(channel, ChannelId)}),
+                          channel_id => aeser_id:create(channel, ChannelId),
+                          payload => Payload}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_snapshot_solo/1,
                                fun aesc_snapshot_solo_tx:new/1, MinerPubkey),
@@ -2607,15 +2609,17 @@ state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
     ok.
 
 state_channels_close_solo(ChannelId, MinerPubkey) ->
+    Payload = <<"hejsan svejsan">>, %%TODO proper payload
     PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
     Encoded = #{channel_id => aeser_api_encoder:encode(channel, ChannelId),
                 from_id => aeser_api_encoder:encode(account_pubkey, MinerPubkey),
-                payload => <<"hejsan svejsan">>, %%TODO proper payload
+                payload => aeser_api_encoder:encode(bytearray, Payload),
                 poi => aeser_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
                 fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{from_id => aeser_id:create(account, MinerPubkey),
                           channel_id => aeser_id:create(channel, ChannelId),
+                          payload => Payload,
                           poi => PoI}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_close_solo/1,
@@ -2632,15 +2636,17 @@ state_channels_close_solo(ChannelId, MinerPubkey) ->
     ok.
 
 state_channels_slash(ChannelId, MinerPubkey) ->
+    Payload = <<"hejsan svejsan">>, %%TODO proper payload
     PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
     Encoded = #{channel_id => aeser_api_encoder:encode(channel, ChannelId),
                 from_id => aeser_api_encoder:encode(account_pubkey, MinerPubkey),
-                payload => <<"hejsan svejsan">>, %%TODO proper payload
+                payload => aeser_api_encoder:encode(bytearray, Payload),
                 poi => aeser_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
                 fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{from_id => aeser_id:create(account, MinerPubkey),
                           channel_id => aeser_id:create(channel, ChannelId),
+                          payload => Payload,
                           poi => PoI}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_slash/1,
@@ -2683,20 +2689,28 @@ spend_transaction(_Config) ->
     MinerAddress = get_pubkey(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
     RandAddress = random_hash(),
+    Payload = <<"hejsan svejsan">>,
     Encoded = #{sender_id => MinerAddress,
                 recipient_id => aeser_api_encoder:encode(account_pubkey, RandAddress),
                 amount => 2,
                 fee => 100000 * aec_test_utils:min_gas_price(),
                 ttl => 43,
-                payload => <<"hejsan svejsan">>},
+                payload => aeser_api_encoder:encode(bytearray, Payload)
+               },
     Decoded = maps:merge(Encoded,
                         #{sender_id => aeser_id:create(account, MinerPubkey),
-                          recipient_id => aeser_id:create(account, RandAddress)}),
+                          recipient_id => aeser_id:create(account, RandAddress),
+                          payload => Payload}),
     {ok, T} = unsigned_tx_positive_test(Decoded, Encoded,
                                   fun get_spend/1,
                                   fun aec_spend_tx:new/1, MinerPubkey),
     {spend_tx, SpendTx} = aetx:specialize_type(T),
-    <<"hejsan svejsan">> = aec_spend_tx:payload(SpendTx),
+    ?assertEqual(Payload, aec_spend_tx:payload(SpendTx)),
+
+    %% Test that we can also still pass unencoded payload.
+    {ok, _T2} = unsigned_tx_positive_test(Decoded, Encoded#{payload => Payload},
+                                  fun get_spend/1,
+                                  fun aec_spend_tx:new/1, MinerPubkey),
 
     test_invalid_hash({account_pubkey, MinerPubkey}, sender_id, Encoded, fun get_spend/1),
     test_invalid_hash({account_pubkey, MinerPubkey}, {recipient_id, recipient_id}, Encoded, fun get_spend/1),
