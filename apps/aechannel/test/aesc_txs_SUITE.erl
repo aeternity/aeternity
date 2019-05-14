@@ -430,42 +430,53 @@ create(Cfg) ->
         [positive(fun create_channel_/2)]).
 
 create_missing_account(_Cfg) ->
-    {PubKey1, S} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
+    {PubKey, S} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
+    PrivKey = aesc_test_utils:priv_key(PubKey, S),
+
+    {BadPubKey, BadPrivKey} = aesc_test_utils:new_key_pair(), % not present in state
     Trees = aesc_test_utils:trees(S),
     Height = 1,
-    Env = aetx_env:tx_env(Height),
-    BadPubKey = <<42:32/unit:8>>,
+    Env0 = aetx_env:tx_env(Height),
 
-    TxSpec1 = aesc_test_utils:create_tx_spec(BadPubKey, PubKey1, S),
+    TxSpec1 = aesc_test_utils:create_tx_spec(BadPubKey, PubKey, S),
     {ok, Tx1} = aesc_create_tx:new(TxSpec1),
-    {error, account_not_found} = aetx:process(Tx1, Trees, Env),
+    SignedTx1 = aec_test_utils:sign_tx(Tx1, [PrivKey, BadPrivKey]),
+    Env1 = aetx_env:set_signed_tx(Env0, {value, SignedTx1}),
+    {error, account_not_found} = aetx:process(Tx1, Trees, Env1),
 
-    TxSpec2 = aesc_test_utils:create_tx_spec(PubKey1, BadPubKey, S),
+    TxSpec2 = aesc_test_utils:create_tx_spec(PubKey, BadPubKey, S),
     {ok, Tx2} = aesc_create_tx:new(TxSpec2),
-    {error, account_not_found} = aetx:process(Tx2, Trees, Env),
+    SignedTx2 = aec_test_utils:sign_tx(Tx2, [PrivKey, BadPrivKey]),
+    Env2 = aetx_env:set_signed_tx(Env0, {value, SignedTx2}),
+    {error, account_not_found} = aetx:process(Tx2, Trees, Env2),
 
     ok.
 
 create_same_account(_Cfg) ->
     {PubKey, S} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
+    PrivKey = aesc_test_utils:priv_key(PubKey, S),
     Trees = aesc_test_utils:trees(S),
     Height = 1,
-    Env = aetx_env:tx_env(Height),
+    Env0 = aetx_env:tx_env(Height),
 
     %% Test channel with oneself is not allowed
     TxSpecI = aesc_test_utils:create_tx_spec(
                 PubKey, PubKey,
                 #{}, S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
+    SignedTx = aec_test_utils:sign_tx(TxI, [PrivKey]),
+    Env = aetx_env:set_signed_tx(Env0, {value, SignedTx}),
     {error, initiator_is_responder} = aetx:process(TxI, Trees, Env),
     ok.
 
 create_insufficient_funds(_Cfg) ->
     {Loaded, NotLoaded, S} = create_loaded_accounts(60000 * aec_test_utils:min_gas_price(),
                                                     1),
+    LoadedPrivKey = aesc_test_utils:priv_key(Loaded, S),
+    NotLoadedPrivKey = aesc_test_utils:priv_key(NotLoaded, S),
     Trees = aesc_test_utils:trees(S),
     Height = 1,
-    Env = aetx_env:tx_env(Height),
+    Env0 = aetx_env:tx_env(Height),
 
     %% Test insufficient initiator funds
     TxSpecI = aesc_test_utils:create_tx_spec(
@@ -473,7 +484,9 @@ create_insufficient_funds(_Cfg) ->
                 #{initiator_amount => 2,
                   fee => 50000 * aec_test_utils:min_gas_price()}, S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
-    {error, insufficient_funds} = aetx:process(TxI, Trees, Env),
+    SignedTxI = aec_test_utils:sign_tx(TxI, [LoadedPrivKey, NotLoadedPrivKey]),
+    EnvI = aetx_env:set_signed_tx(Env0, {value, SignedTxI}),
+    {error, insufficient_funds} = aetx:process(TxI, Trees, EnvI),
 
     %% Test insufficient responder funds
     TxSpecR = aesc_test_utils:create_tx_spec(
@@ -481,7 +494,9 @@ create_insufficient_funds(_Cfg) ->
                 #{responder_amount => 2,
                   fee => 50000 * aec_test_utils:min_gas_price()}, S),
     {ok, TxR} = aesc_create_tx:new(TxSpecR),
-    {error, insufficient_funds} = aetx:process(TxR, Trees, Env),
+    SignedTxR = aec_test_utils:sign_tx(TxR, [LoadedPrivKey, NotLoadedPrivKey]),
+    EnvR = aetx_env:set_signed_tx(Env0, {value, SignedTxR}),
+    {error, insufficient_funds} = aetx:process(TxR, Trees, EnvR),
 
     ok.
 
@@ -489,9 +504,11 @@ create_insufficient_funds(_Cfg) ->
 create_insufficient_funds_reserve(_Cfg) ->
     {Loaded1, Loaded2, S} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
                                                    100000 * aec_test_utils:min_gas_price()),
+    Loaded1PrivKey = aesc_test_utils:priv_key(Loaded1, S),
+    Loaded2PrivKey = aesc_test_utils:priv_key(Loaded2, S),
     Trees = aesc_test_utils:trees(S),
     Height = 1,
-    Env = aetx_env:tx_env(Height),
+    Env0 = aetx_env:tx_env(Height),
 
     %% Test initiator funds lower than channel reserve
     TxSpecI = aesc_test_utils:create_tx_spec(
@@ -499,7 +516,9 @@ create_insufficient_funds_reserve(_Cfg) ->
                 #{initiator_amount => 1,
                   channel_reserve => 2}, S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
-    {error, insufficient_initiator_amount} = aetx:process(TxI, Trees, Env),
+    SignedTxI = aec_test_utils:sign_tx(TxI, [Loaded1PrivKey, Loaded2PrivKey]),
+    EnvI = aetx_env:set_signed_tx(Env0, {value, SignedTxI}),
+    {error, insufficient_initiator_amount} = aetx:process(TxI, Trees, EnvI),
 
     %% Test responder funds lower than channel reserve
     TxSpecR = aesc_test_utils:create_tx_spec(
@@ -507,7 +526,9 @@ create_insufficient_funds_reserve(_Cfg) ->
                 #{responder_amount => 1,
                   channel_reserve => 2}, S),
     {ok, TxR} = aesc_create_tx:new(TxSpecR),
-    {error, insufficient_responder_amount} = aetx:process(TxR, Trees, Env),
+    SignedTxR = aec_test_utils:sign_tx(TxR, [Loaded1PrivKey, Loaded2PrivKey]),
+    EnvR = aetx_env:set_signed_tx(Env0, {value, SignedTxR}),
+    {error, insufficient_responder_amount} = aetx:process(TxR, Trees, EnvR),
 
     ok.
 
@@ -523,17 +544,22 @@ create_loaded_accounts(FAmt, SAmt) ->
 create_wrong_nonce(_Cfg) ->
     {Initiator, Responder, S0} = create_loaded_accounts(100000 * aec_test_utils:min_gas_price(),
                                                         100000 * aec_test_utils:min_gas_price()),
+    InitiatorPrivKey = aesc_test_utils:priv_key(Initiator, S0),
+    ResponderPrivKey = aesc_test_utils:priv_key(Responder, S0),
     Nonce = 42,
     S = aesc_test_utils:set_account_nonce(Initiator, Nonce, S0),
     Trees = aesc_test_utils:trees(S),
     Height = 1,
-    Env = aetx_env:tx_env(Height),
+    Env0 = aetx_env:tx_env(Height),
 
     Test =
         fun(TestNonce, Err) ->
             TxSpec = aesc_test_utils:create_tx_spec(Initiator, Responder,
                                                     #{nonce => TestNonce}, S),
             {ok, Tx} = aesc_create_tx:new(TxSpec),
+            SignedTx = aec_test_utils:sign_tx(Tx, [InitiatorPrivKey,
+                                                   ResponderPrivKey]),
+            Env = aetx_env:set_signed_tx(Env0, {value, SignedTx}),
             {error, Err} = aetx:process(Tx, Trees, Env)
         end,
     Test(Nonce - 1, account_nonce_too_high),

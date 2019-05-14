@@ -122,7 +122,6 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     KeyHeader = aec_blocks:to_header(KeyBlock),
     Env = aetx_env:tx_env_from_key_header(KeyHeader, PrevKeyHash,
                                           Time, PrevBlockHash),
-
     {ok, Txs1, Trees2, Events} = int_apply_block_txs(Txs, Trees, Env, false),
 
     TxsTree = aec_txs_trees:from_txs(Txs1),
@@ -133,7 +132,6 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     NewBlock = aec_blocks:new_micro(Height, PrevBlockHash, PrevKeyHash,
                                     aec_trees:hash(Trees2), TxsRootHash, Txs1,
                                     Time, PoF, Version),
-
     Env1 = aetx_env:set_events(Env, Events),
     BlockInfo = #{ trees => Trees2, txs_tree => TxsTree, tx_env => Env1},
     {ok, NewBlock, BlockInfo}.
