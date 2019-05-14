@@ -26,6 +26,8 @@
         , serialize_to_client/1
         ]).
 
+-export([record_fields/1]).
+
 -ifdef(TEST).
 -export([to_list/1]).
 -endif.
@@ -46,6 +48,13 @@
 
 -define(VSN, 1).
 -define(PUB_SIZE, 32).
+
+%% ==================================================================
+%% Tracing support
+record_fields(call_tree) -> record_info(fields, call_tree);
+record_fields(_        ) -> no.
+%% ==================================================================
+
 
 %%%===================================================================
 %%% API

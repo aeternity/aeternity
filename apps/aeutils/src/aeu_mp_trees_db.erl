@@ -24,6 +24,8 @@
         , unsafe_write_to_backend/3
         ]).
 
+-export([record_fields/1]).
+
 -export_type([ db/0
              , db_spec/0
              ]).
@@ -59,6 +61,12 @@
 
 %% fun((cache()) -> cache()).
 -type drop_cache_mf() :: {module(), atom()}.
+
+%% ==================================================================
+%% Trace support
+record_fields(db) -> record_info(fields, db);
+record_fields(_ ) -> no.
+%% ==================================================================
 
 %%%===================================================================
 %%% API

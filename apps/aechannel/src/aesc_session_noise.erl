@@ -42,6 +42,9 @@
        , terminate/2
        , code_change/3]).
 
+-export([ patterns/0
+        , record_fields/1]).
+
 -record(st, {parent :: pid()
            , parent_mon_ref :: reference()
            , econn }).
@@ -81,6 +84,23 @@ close(Session) ->
     end.
 
 -define(GEN_SERVER_OPTS, []).
+
+%% ==================================================================
+%% for tracing
+-define(EXCEPTION_TRACE, {'_', [], [{exception_trace}]}).
+patterns() ->
+    exports(?MODULE).
+        %% ++ exports(gen_tcp)
+        %% ++ exports(enoise)
+        %% ++ exports(enoise_connection).
+
+exports(M) ->
+    [{M, F, A, [?EXCEPTION_TRACE]} || {F,A} <- M:module_info(exports)].
+
+
+record_fields(st) -> record_info(fields, st);
+record_fields(_ ) -> no.
+%% ==================================================================
 
 %% Connection establishment
 

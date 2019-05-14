@@ -33,6 +33,8 @@
         , to_binary_without_backend/1
         ]).
 
+-export([record_fields/1]).
+
 -ifdef(TEST).
 -export([ query_list/1
         , oracle_list/1
@@ -74,6 +76,13 @@
 -define(HASH_SIZE, 32).
 
 -define(VSN, 1).
+
+%% ==================================================================
+%% Tracing support
+record_fields(oracle_tree) -> record_info(fields, oracle_tree);
+record_fields(_          ) -> no.
+%% ==================================================================
+
 %%%===================================================================
 %%% API
 %%%===================================================================

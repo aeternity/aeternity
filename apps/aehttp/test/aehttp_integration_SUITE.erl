@@ -5006,6 +5006,9 @@ wait_for_tx_hash_on_chain(TxHash) ->
     end.
 
 sc_ws_timeout_open(Config) ->
+    with_trace(fun sc_ws_timeout_open_/1, Config, "sc_ws_timeout_open").
+
+sc_ws_timeout_open_(Config) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
 
@@ -5021,6 +5024,10 @@ sc_ws_timeout_open(Config) ->
     ok.
 
 sc_ws_min_depth_not_reached_timeout(Config) ->
+    with_trace(fun sc_ws_min_depth_not_reached_timeout_/1, Config,
+               "sc_ws_min_depth_not_reached_timeout").
+
+sc_ws_min_depth_not_reached_timeout_(Config) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
 
@@ -5139,7 +5146,10 @@ sc_ws_update_conflict(Config) ->
          responder]),
     ok.
 
-sc_ws_close_mutual(Config0) ->
+sc_ws_close_mutual(Config) ->
+    with_trace(fun sc_ws_close_mutual_/1, Config, "sc_ws_close_mutual").
+
+sc_ws_close_mutual_(Config0) ->
     lists:foreach(
         fun(WhoCloses) ->
             Config = sc_ws_open_(Config0),
@@ -6145,3 +6155,49 @@ extract_contract_pubkey(#{<<"op">> := <<"OffChainCallContract">>,
     {ok, ContractPubKey} = aeser_api_encoder:safe_decode(contract_pubkey, EncContractId),
     ContractPubKey.
 
+with_trace(F, Config, File) ->
+    with_trace(F, Config, File, on_error).
+
+with_trace(F, Config, File, When) ->
+    ct:log("with_trace ...", []),
+    TTBRes = aesc_ttb:on_nodes([node()|get_nodes()], File),
+    ct:log("Trace set up: ~p", [TTBRes]),
+    try F(Config)
+    catch
+	error:R ->
+	    Stack = erlang:get_stacktrace(),
+	    ct:pal("Error ~p~nStack = ~p", [R, Stack]),
+	    ttb_stop(),
+	    erlang:error(R);
+	exit:R ->
+	    Stack = erlang:get_stacktrace(),
+	    ct:pal("Exit ~p~nStack = ~p", [R, Stack]),
+	    ttb_stop(),
+	    exit(R);
+        throw:Res ->
+            ct:pal("Caught throw:~p", [Res]),
+            throw(Res)
+    end,
+    case When of
+        on_error ->
+            ct:log("Discarding trace", []),
+            aesc_ttb:stop_nofetch();
+        always ->
+            ttb_stop()
+    end,
+    ok.
+
+ttb_stop() ->
+    Dir = aesc_ttb:stop(),
+    Out = filename:join(filename:dirname(Dir),
+			filename:basename(Dir) ++ ".txt"),
+    case aesc_ttb:format(Dir, Out, #{limit => 30000}) of
+        {error, Reason} ->
+            ct:pal("TTB formatting error: ~p", [Reason]);
+        _ ->
+            ok
+    end,
+    ct:pal("Formatted trace log in ~s~n", [Out]).
+
+get_nodes() ->
+    [aecore_suite_utils:node_name(?NODE)].
