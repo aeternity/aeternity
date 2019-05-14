@@ -129,7 +129,7 @@ mining:
 After updating the configuration, the node should be started (or restarted if it's already running):
 
 ```
-~/aeternity/node/bin/aeternity start ## Before version 1.3.0, the executable used to be called `epoch` rather than `aeternity`.
+~/aeternity/node/bin/aeternity start
 ```
 
 ## Configuration
