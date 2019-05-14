@@ -9,7 +9,6 @@
 
 % Test cases
 -export([commands/1]).
--export([deprecated_commands/1]).
 
 -import(aest_nodes, [
     setup_nodes/2,
@@ -39,8 +38,7 @@
 % Please note: this module is part of of the smoke-test target. The combined
 % runtime should be kept below 10 minutes.
 all() -> [
-    commands,
-    deprecated_commands
+    commands
 ].
 
 init_per_testcase(_TC, Config) ->
@@ -53,9 +51,6 @@ end_per_testcase(_TC, Config) ->
 
 commands(Cfg) ->
     commands_("bin/aeternity", Cfg).
-
-deprecated_commands(Cfg) ->
-    commands_("bin/epoch", Cfg).
 
 commands_(OpsBin, Cfg) ->
     setup_nodes([?NODE1], Cfg),

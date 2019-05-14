@@ -17,7 +17,6 @@
 !docker/healthcheck.sh
 !README.md
 !LICENSE
-!scripts/epoch
 apps/*/doc/*.html
 apps/*/doc/edoc-info
 apps/*/doc/erlang.png

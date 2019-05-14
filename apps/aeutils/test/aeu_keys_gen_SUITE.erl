@@ -1,7 +1,6 @@
 -module(aeu_keys_gen_SUITE).
 
 -define(OPS_CMD, "aeternity").
--define(OLD_OPS_CMD, "epoch").
 
 -define(KEYS_DIR, "generated_keys").
 -define(PUB, "key.pub").
@@ -37,11 +36,6 @@
    , midspace_pwd/1
    , rspace_pwd/1
    , spaces_pwd/1
-   , plain_pwd_epoch/1
-   , lspace_pwd_epoch/1
-   , midspace_pwd_epoch/1
-   , rspace_pwd_epoch/1
-   , spaces_pwd_epoch/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -53,11 +47,6 @@ all() ->
     , midspace_pwd
     , rspace_pwd
     , spaces_pwd
-    , plain_pwd_epoch
-    , lspace_pwd_epoch
-    , midspace_pwd_epoch
-    , rspace_pwd_epoch
-    , spaces_pwd_epoch
     ].
 
 init_per_suite(Config) ->
@@ -91,21 +80,6 @@ rspace_pwd(Config) ->
 
 spaces_pwd(Config) ->
     run_and_check_keys_gen(?OPS_CMD, ?PWD_WITH_SPACES, ?APWD_WITH_SPACES, Config).
-
-plain_pwd_epoch(Config) ->
-    run_and_check_keys_gen(?OLD_OPS_CMD, ?PWD, ?PWD, Config).
-
-lspace_pwd_epoch(Config) ->
-    run_and_check_keys_gen(?OLD_OPS_CMD, ?PWD_WITH_LSPACE, ?APWD_WITH_LSPACE, Config).
-
-midspace_pwd_epoch(Config) ->
-    run_and_check_keys_gen(?OLD_OPS_CMD, ?PWD_WITH_MIDSPACE, ?PWD_WITH_MIDSPACE, Config).
-
-rspace_pwd_epoch(Config) ->
-    run_and_check_keys_gen(?OLD_OPS_CMD, ?PWD_WITH_RSPACE, ?APWD_WITH_RSPACE, Config).
-
-spaces_pwd_epoch(Config) ->
-    run_and_check_keys_gen(?OLD_OPS_CMD, ?PWD_WITH_SPACES, ?APWD_WITH_SPACES, Config).
 
 %% ============================================================
 %% Helpers
