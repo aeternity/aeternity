@@ -137,14 +137,6 @@ insert_block(Block, _Origin) ->
     do_insert_block(Block, undefined).
 
 do_insert_block(Block, Origin) ->
-    T1 = erlang:monotonic_time(),
-    R = do_insert_block_(Block, Origin),
-    T2 = erlang:monotonic_time(),
-    Time = erlang:convert_time_unit(T2 - T1, native, microsecond),
-    lager:debug("[t: ~p us]", [Time]),
-    R.
-
-do_insert_block_(Block, Origin) ->
     aec_blocks:assert_block(Block),
     Node = wrap_block(Block),
     try internal_insert(Node, Block, Origin)

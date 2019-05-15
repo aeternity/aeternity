@@ -53,7 +53,7 @@ x(Out, P, Acc, PAcc) ->
                       grep("'" ++ pid_to_list(Pid) ++ "'", P, AccX)
               end, {NewAcc, PAcc1}, New)
     end.
-    
+
 
 
 extract_pids(String, Acc) ->
@@ -72,5 +72,3 @@ extract_pids(String, Acc) ->
         _ ->
             []
     end.
-
-
