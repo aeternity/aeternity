@@ -427,6 +427,12 @@
                     "default" : 1000000000,
                     "minimum" : 1
                 },
+                "max_auth_fun_gas" : {
+                    "description" : "Maximum gas allowed for GAMetaTx authentication function",
+                    "type" : "integer",
+                    "default" : 50000,
+                    "minimum" : 1
+                },
                 "beneficiary_reward_delay" : {
                     "description" : "Delay (in key blocks / generations) for getting mining rewards. Used in governance.",
                     "type" : "integer",

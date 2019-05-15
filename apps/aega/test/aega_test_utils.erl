@@ -45,7 +45,7 @@ ga_meta_tx_default(PubKey) ->
     #{ fee         => 1000000 * aec_test_utils:min_gas_price()
      , ga_id       => aeser_id:create(account, PubKey)
      , abi_version => aect_test_utils:latest_sophia_abi_version()
-     , gas         => 50000
+     , gas         => 20000
      , gas_price   => 1000 * aec_test_utils:min_gas_price()
      , ttl         => 0
      }.

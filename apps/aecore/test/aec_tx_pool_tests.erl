@@ -890,7 +890,7 @@ a_meta_tx(Sender, OuterFee, GasPrice, InnerFee) ->
         aega_meta_tx:new(#{ga_id       => aeser_id:create(account, Sender),
                            auth_data   => <<"">>,
                            abi_version => 1,
-                           gas         => 50000,
+                           gas         => 20000,
                            gas_price   => GasPrice,
                            fee         => OuterFee,
                            tx          => STx}),
