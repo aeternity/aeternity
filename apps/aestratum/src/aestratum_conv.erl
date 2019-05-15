@@ -28,16 +28,16 @@ binary_to_number(B) ->
     end.
 
 tx_address(PK) ->
-    aehttp_api_encoder:encode(transaction, PK).
+    aeser_api_encoder:encode(transaction, PK).
 
 account_pubkey_to_address(<<PK:32/binary>>) ->
-    aehttp_api_encoder:encode(account_pubkey, PK).
+    aeser_api_encoder:encode(account_pubkey, PK).
 
 account_address_to_pubkey(Addr) ->
-    tag_val_err(aehttp_api_encoder:decode(Addr), account_pubkey, invalid_account_address).
+    tag_val_err(aeser_api_encoder:decode(Addr), account_pubkey, invalid_account_address).
 
 contract_address_to_pubkey(Addr) ->
-    tag_val_err(aehttp_api_encoder:decode(Addr), contract_pubkey, invalid_contract_address).
+    tag_val_err(aeser_api_encoder:decode(Addr), contract_pubkey, invalid_contract_address).
 
 address_to_hex(Addr) ->
     aeu_hex:bin_to_hex(account_address_to_pubkey(Addr)).
