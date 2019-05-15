@@ -35,7 +35,6 @@
         , meta_meta_spend/1
         , attach_second/1
         , meta_4_fail/1
-        , large_meta/1
         , mempool/1
         ]).
 
@@ -65,7 +64,6 @@ groups() ->
       , meta_meta_fail
       , meta_meta_spend
       , meta_4_fail
-      , large_meta
       ]},
 
      {ga_info, [sequence],
@@ -376,36 +374,6 @@ meta_4_fail(Config) ->
     ?assertEqual(ABal1, ABal0 - 3*(MetaFee + 4711 * 1000 * MGP)),
     ok.
 
-large_meta(Config) ->
-    %% Get account information.
-    #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
-
-    MGP = aec_test_utils:min_gas_price(),
-    MetaFee = (5 * 15000 + 30000) * MGP,
-
-    %% Prepare MetaTx1 to barely fit in a microblock (wouldn't fit if we counted size twice!)
-    SizeMetaSpend = 380, %% roughly...
-    GasRemain = aec_governance:block_gas_limit() - 5 * 15000 - 15000 - SizeMetaSpend * 20,
-    #{tx_hash := MetaTx1} = post_ga_spend_tx(APub, APriv, ["11"], APub, 10000, 15000 * MGP, MetaFee, GasRemain),
-
-    %% Prepare MetaTx2 to be too big to fit in a microblock
-    #{tx_hash := MetaTx2} = post_ga_spend_tx(APub, APriv, ["12"], APub, 10000, 15000 * MGP, MetaFee, GasRemain + 1000),
-
-    ?MINE_TXS([MetaTx1]),
-
-    {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>},
-                <<"block_height">> := BH1} = JSONTx1} = get_tx(MetaTx1),
-    ct:log("Transaction: ~p", [JSONTx1]),
-
-    {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>},
-                <<"block_height">> := BH2} = JSONTx2} = get_tx(MetaTx2),
-    ct:log("Transaction: ~p", [JSONTx2]),
-
-    ?assertMatch(BH when BH > 0, BH1),
-    ?assertEqual(-1, BH2),
-
-    ok.
-
 %% Test the minimum gas price check
 mempool(Config) ->
     %% Get account information.
@@ -419,6 +387,9 @@ mempool(Config) ->
     not_accepted = post_ga_spend_tx(APub, APriv, ["1"], BPub, 10001, MGP * 15000, TooLowMetaFee),
     %% Test with too low fee in inner Tx
     not_accepted = post_ga_spend_tx(APub, APriv, ["1"], BPub, 10001, MGP * 10000, MetaFee),
+
+    %% Test with too much gas for auth function
+    not_accepted = post_ga_spend_tx(APub, APriv, ["1"], APub, 10001, 15000 * MGP, MetaFee, aec_governance:cap_auth_gas() + 1),
 
     %% Test with exactly the lowest possible fee... Note that there isn't any size gas!
     #{tx_hash := _MetaTx} = post_ga_spend_tx(APub, APriv, ["1"], BPub, 10001, MGP * 15000, MetaFee),
@@ -497,7 +468,7 @@ spend_tx (AccPK, _AccSK, Nonce, Recipient, Amount, Fee) ->
     SpendTx.
 
 post_ga_spend_tx(AccPK, AccSK, Nonces, Recipient, Amount, Fee, MetaFee) ->
-    post_ga_spend_tx(AccPK, AccSK, Nonces, Recipient, Amount, Fee, MetaFee, 50000).
+    post_ga_spend_tx(AccPK, AccSK, Nonces, Recipient, Amount, Fee, MetaFee, 20000).
 
 post_ga_spend_tx(AccPK, AccSK, Nonces, Recipient, Amount, Fee, MetaFee, AuthGas) ->
     InnerTx = spend_tx(AccPK, AccSK, 0, Recipient, Amount, Fee),

@@ -810,16 +810,23 @@ int_check_nonce(Tx, Source, Event) ->
     end.
 
 int_check_meta_tx(0, MetaTx, Pubkey, Source) ->
-    case get_account(Pubkey, Source) of
-        {value, Account} ->
-            TotalAmount = aega_meta_tx:gas(MetaTx) * aega_meta_tx:gas_price(MetaTx)
-                            + aega_meta_tx:fee(MetaTx),
-            case TotalAmount =< aec_accounts:balance(Account) of
-                true  -> ok;
-                false -> {error, insufficient_funds}
+    Gas    = aega_meta_tx:gas(MetaTx),
+    GasCap = aec_governance:cap_auth_gas(),
+    case Gas =< GasCap of
+        true ->
+            case get_account(Pubkey, Source) of
+                {value, Account} ->
+                    TotalAmount = Gas * aega_meta_tx:gas_price(MetaTx) +
+                                    aega_meta_tx:fee(MetaTx),
+                    case TotalAmount =< aec_accounts:balance(Account) of
+                        true  -> ok;
+                        false -> {error, insufficient_funds}
+                    end;
+                _ ->
+                    {error, authenticating_account_does_not_exist}
             end;
-        _ ->
-            {error, authenticating_account_does_not_exist}
+        false ->
+            {error, too_much_gas_for_auth_function}
     end;
 int_check_meta_tx(_, _, _, _) ->
     {error, illegal_nonce}.

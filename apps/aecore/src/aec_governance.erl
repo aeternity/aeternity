@@ -6,6 +6,7 @@
          expected_block_mine_rate/0,
          block_mine_reward/1,
          block_gas_limit/0,
+         cap_auth_gas/0,
          tx_base_gas/2,
          byte_gas/0,
          beneficiary_reward_delay/0,
@@ -51,6 +52,7 @@
 %% size contracts to fit in a microblock at all)
 -define(BLOCK_GAS_LIMIT, 6000000).
 -define(TX_BASE_GAS, 15000).
+-define(CAP_AUTH_GAS, 30000).
 %% Gas for 1 byte of a serialized tx.
 -define(BYTE_GAS, 20).
 -define(POF_REWARD_DIVIDER, 20). %% 5% of the coinbase reward
@@ -86,6 +88,8 @@ block_gas_limit() ->
     application:get_env(aecore, block_gas_limit, ?BLOCK_GAS_LIMIT).
 
 min_tx_gas() -> ?TX_BASE_GAS.
+
+cap_auth_gas() -> ?CAP_AUTH_GAS.
 
 -spec tx_base_gas(aetx:tx_type(), aec_hard_forks:protocol_vsn()) ->
     non_neg_integer().

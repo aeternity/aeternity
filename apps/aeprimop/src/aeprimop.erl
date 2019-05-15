@@ -1065,6 +1065,7 @@ ga_meta_op(OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx
 
 ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
     assert_ga_active(S),
+    assert_meta_gas_cap(GasLimit),
     {Account, S1} = get_account(OwnerPK, S),
     assert_generalized_account(Account),
     assert_relevant_signature(OwnerPK, InnerTx, S1),
@@ -1590,6 +1591,12 @@ assert_ga_active(S) ->
             runtime_error(generalize_accounts_not_available_at_height);
         _P ->
             ok
+    end.
+
+assert_meta_gas_cap(Gas) ->
+    case Gas =< aec_governance:cap_auth_gas() of
+        true  -> ok;
+        false -> runtime_error(too_much_gas_for_auth_function)
     end.
 
 assert_ga_create_version(ABIVersion, VMVersion, _S) ->

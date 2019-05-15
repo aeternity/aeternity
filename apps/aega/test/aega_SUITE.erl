@@ -61,6 +61,7 @@
 
         , wrap_unrelated_tx/1
         , cripple_auth/1
+        , gas_cap_check/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -145,6 +146,7 @@ groups() ->
 
     , {negative, [], [ wrap_unrelated_tx
                      , cripple_auth
+                     , gas_cap_check
                      ]}
     ].
 
@@ -899,7 +901,20 @@ cripple_auth(_Cfg) ->
 
     ok.
 
+gas_cap_check(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
+    Auth1 = fun(N, Gas) -> #{ prep_fun => fun(_) -> simple_auth(["123", N]) end, gas => Gas } end,
 
+    {failed, too_much_gas_for_auth_function} =
+        ?call(ga_spend, Acc1, Auth1("1", 100000), Acc1, 500, 20000 * MinGP, #{ fail => true }),
+
+    {failed, too_much_gas_for_auth_function} =
+        ?call(ga_spend, Acc1, Auth1("1", aec_governance:cap_auth_gas() + 1), Acc1, 500, 20000 * MinGP, #{ fail => true }),
+
+    ok.
 
 %%%===================================================================
 %%% More elaborate operations
