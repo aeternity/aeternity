@@ -105,14 +105,19 @@ handle_info(chain_top_check, #aestratum_state{chain_keyblock_hash = LastKB} = S)
 
 handle_info(keyblock, #aestratum_state{chain_keyblock_hash = <<_/binary>>} = S) ->
     ?TXN(aestratum_db:store_round()),
-    RewardHeight = aec_tx_pool:top_height() - ?KEYBLOCK_ROUNDS_DELAY,
-    case RewardHeight > 0 andalso ?TXN(maybe_compute_reward(RewardHeight)) of
-        {ok, #aestratum_reward{} = R} ->
-            ?TXN(store_payments(R)),
-            self() ! payout_check;
-        {error, Reason} ->
-            ?ERROR("reward computation failed: ~p", [Reason]);
-        _ ->
+    TopHeight = aec_db:get_top_block_height(),
+    if is_integer(TopHeight), TopHeight > ?KEYBLOCK_ROUNDS_DELAY ->
+            RewardHeight = TopHeight - ?KEYBLOCK_ROUNDS_DELAY,
+            case ?TXN(maybe_compute_reward(RewardHeight)) of
+                {ok, #aestratum_reward{} = R} ->
+                    ?TXN(store_payments(R)),
+                    self() ! payout_check;
+                {error, Reason} ->
+                    ?ERROR("reward computation failed: ~p", [Reason]);
+                _ ->
+                    ok
+            end;
+       true ->
             ok
     end,
     {noreply, S};
@@ -308,8 +313,8 @@ contract_gas(TransfersCount) ->
     ?PAYMENT_CONTRACT_INIT_GAS + (TransfersCount * ?PAYMENT_CONTRACT_GAS_PER_TRANSFER).
 
 estimate_costs(Transfers) ->
-    estimate_costs(Transfers, aec_tx_pool:top_height()).
-estimate_costs(Transfers, Height) ->
+    estimate_costs(Transfers, aec_db:get_top_block_height()).
+estimate_costs(Transfers, Height) when is_integer(Height) ->
     {ok, Tx} = aect_call_tx:new(payout_call_tx_args(Transfers, Height)),
     {aetx:min_fee(Tx, Height), aetx:min_gas(Tx, Height)}.
 
@@ -329,7 +334,7 @@ format_payout_call_args(#{} = Transfers) ->
 %%     payout_call_tx_args(Transfers, aec_tx_pool:top_height()).
 
 payout_call_tx_args(Transfers, Opts) when is_map(Opts) ->
-    payout_call_tx_args(Transfers, aec_tx_pool:top_height(), Opts);
+    payout_call_tx_args(Transfers, aec_db:get_top_block_height(), Opts);
 payout_call_tx_args(Transfers, Height) when is_integer(Height) ->
     payout_call_tx_args(Transfers, Height, #{}).
 payout_call_tx_args(Transfers, Height, Opts) ->
