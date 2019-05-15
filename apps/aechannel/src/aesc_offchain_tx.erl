@@ -212,7 +212,7 @@ channel_pubkey(#channel_offchain_tx{channel_id = ChannelId}) ->
 channel_id(#channel_offchain_tx{channel_id = ChannelId}) ->
     ChannelId.
 
--spec round(tx()) -> aesc_channels:seq_number().
+-spec round(tx()) -> aesc_channels:round().
 round(#channel_offchain_tx{round = Round}) ->
     Round.
 
