@@ -190,16 +190,18 @@ error_data_msgs() ->
      , 1002 => <<"Negative amount">>
      , 1003 => <<"Invalid pubkeys">>
      , 1004 => <<"Call not found">>
-     , 1005 => <<"Broken encoding: accounts">>
-     , 1006 => <<"Broken encoding: contracts">>
+     , 1005 => <<"Broken encoding: account pubkey">>
+     , 1006 => <<"Broken encoding: contract pubkey">>
      , 1007 => <<"Contract init failed">>
      , 1008 => <<"Not a number">>
+     , 1009 => <<"Broken encoding: contract bytearray">>
+     , 1010 => <<"Broken encoding: transaction">>
      }.
 
-broken_encoding_code(accounts   ) -> 1005;
-broken_encoding_code(contracts  ) -> 1006;
-broken_encoding_code(bytearray  ) -> 104;
-broken_encoding_code(transaction) -> 104.
+broken_encoding_code(account    ) -> 1005;
+broken_encoding_code(contract   ) -> 1006;
+broken_encoding_code(bytearray  ) -> 1009;
+broken_encoding_code(transaction) -> 1010.
 
 process_incoming(Msg, FsmPid) ->
     ResRev =
@@ -244,7 +246,7 @@ process_request(#{<<"method">> := <<"channels.update.new">>,
                 ok -> no_reply;
                 {error, _Reason} = Err -> Err
             end;
-        _ -> {error, {broken_encoding, [accounts]}}
+        _ -> {error, {broken_encoding, [account]}}
     end;
 process_request(#{<<"method">> := <<"channels.update.new_contract">>,
                   <<"params">> := #{<<"vm_version">>  := VmVersion,
@@ -289,9 +291,9 @@ process_request(#{<<"method">> := <<"channels.update.new_contract_from_onchain">
                     end;
                 {error, _Reason} = Err -> Err
             end;
-        {{error, _}, {ok, _}} -> {error, {broken_encoding, [contracts]}};
+        {{error, _}, {ok, _}} -> {error, {broken_encoding, [contract]}};
         {{ok, _}, {error, _}} -> {error, {broken_encoding, [bytearray]}};
-        {{error, _}, {error, _}} -> {error, {broken_encoding, [contracts, bytearray]}}
+        {{error, _}, {error, _}} -> {error, {broken_encoding, [contract, bytearray]}}
     end;
 process_request(#{<<"method">> := <<"channels.update.call_contract">>,
                   <<"params">> := #{<<"contract">>    := ContractE,
@@ -311,9 +313,9 @@ process_request(#{<<"method">> := <<"channels.update.call_contract">>,
                 ok -> no_reply;
                 {error, _Reason} = Err -> Err
             end;
-        {{error, _}, {ok, _}} -> {error, {broken_encoding, [contracts]}};
+        {{error, _}, {ok, _}} -> {error, {broken_encoding, [contract]}};
         {{ok, _}, {error, _}} -> {error, {broken_encoding, [bytearray]}};
-        {{error, _}, {error, _}} -> {error, {broken_encoding, [contracts, bytearray]}}
+        {{error, _}, {error, _}} -> {error, {broken_encoding, [contract, bytearray]}}
     end;
 process_request(#{<<"method">> := <<"channels.get.contract_call">>,
                   <<"params">> := #{<<"contract">>   := ContractE,
@@ -332,9 +334,9 @@ process_request(#{<<"method">> := <<"channels.get.contract_call">>,
                            , payload    => aect_call:serialize_for_client(Call) }};
                 {error, _Reason} = Err -> Err
             end;
-        {{error, _}, {ok, _}} -> {error, {broken_encoding, [contracts]}};
-        {{ok, _}, {error, _}} -> {error, {broken_encoding, [accounts]}};
-        {{error, _}, {error, _}} -> {error, {broken_encoding, [contracts, accounts]}}
+        {{error, _}, {ok, _}} -> {error, {broken_encoding, [contract]}};
+        {{ok, _}, {error, _}} -> {error, {broken_encoding, [account]}};
+        {{error, _}, {error, _}} -> {error, {broken_encoding, [contract, account]}}
     end;
 process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
                   <<"params">> := #{<<"contract">>    := ContractE,
@@ -358,9 +360,9 @@ process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
                            , payload    => aect_call:serialize_for_client(Call) }};
                 {error, _Reason} = Err -> Err
             end;
-        {{error, _}, {ok, _}} -> {error, {broken_encoding, [contracts]}};
+        {{error, _}, {ok, _}} -> {error, {broken_encoding, [contract]}};
         {{ok, _}, {error, _}} -> {error, {broken_encoding, [bytearray]}};
-        {{error, _}, {error, _}} -> {error, {broken_encoding, [contracts, bytearray]}}
+        {{error, _}, {error, _}} -> {error, {broken_encoding, [contract, bytearray]}}
     end;
 process_request(#{<<"method">> := <<"channels.clean_contract_calls">>}, FsmPid) ->
     ok = aesc_fsm:prune_local_calls(FsmPid),
@@ -384,7 +386,7 @@ process_request(#{<<"method">> := <<"channels.get.balances">>,
                 {error, _Reason} = Err -> Err
             end;
         {error, _} ->
-            {error, {broken_encoding, [accounts]}}
+            {error, {broken_encoding, [account]}}
     end;
 process_request(#{<<"method">> := <<"channels.get.offchain_state">>,
                   <<"params">> := #{}}, FsmPid) ->
@@ -412,7 +414,7 @@ process_request(#{<<"method">> := <<"channels.get.contract">>,
                 {error, _Reason} = Err -> Err
             end;
         {error, _Reason} ->
-            {error, {broken_encoding, [contracts]}}
+            {error, {broken_encoding, [contract]}}
     end;
 process_request(#{<<"method">> := <<"channels.get.poi">>,
                   <<"params">> := Filter}, FsmPid) ->
@@ -449,9 +451,9 @@ process_request(#{<<"method">> := <<"channels.get.poi">>,
                     {reply, Resp};
                 {error, _Reason} = Err -> Err
             end;
-        {{error, _},  {ok, _}}    -> {error, {broken_encoding, [accounts]}};
-        {{ok, _},     {error, _}} -> {error, {broken_encoding, [contracts]}};
-        {{error, _},  {error, _}} -> {error, {broken_encoding, [accounts, contracts]}}
+        {{error, _},  {ok, _}}    -> {error, {broken_encoding, [account]}};
+        {{ok, _},     {error, _}} -> {error, {broken_encoding, [contract]}};
+        {{error, _},  {error, _}} -> {error, {broken_encoding, [account, contract]}}
     end;
 process_request(#{<<"method">> := <<"channels.message">>,
                     <<"params">> := #{<<"to">>    := ToB,
@@ -462,7 +464,7 @@ process_request(#{<<"method">> := <<"channels.message">>,
                 ok -> no_reply;
                 {error, _Reason} = Err -> Err
             end;
-        _ -> {error, {broken_encoding, [accounts]}}
+        _ -> {error, {broken_encoding, [account]}}
     end;
 process_request(#{<<"method">> := <<"channels.deposit">>,
                     <<"params">> := #{<<"amount">>  := Amount}}, FsmPid) ->
@@ -518,7 +520,7 @@ safe_decode_account_keys(Keys) ->
                end, [], Keys)}
     catch
         error:_ ->
-            {error, {broken_encoding, [accounts]}}
+            {error, {broken_encoding, [account]}}
     end.
 
 bytearray_decode(Bytearray) ->
