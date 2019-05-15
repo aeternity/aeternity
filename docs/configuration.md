@@ -120,7 +120,6 @@ chain:
 ```
 
 
-For mainnet network the network ID defaults to `ae_mainnet`.
 
 ## Instructions
 
