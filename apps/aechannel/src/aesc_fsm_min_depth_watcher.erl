@@ -1,4 +1,3 @@
-
 -module(aesc_fsm_min_depth_watcher).
 -behaviour(gen_server).
 
@@ -53,7 +52,6 @@
                    , info      := req_info() }.
 
 -type req() :: close_req() | unlock_req() | watch_req() | tx_req().
-%% -type req() :: map().
 
 -type block_hash() :: binary().
 -type tx_hash()    :: binary().
@@ -70,6 +68,7 @@
                                   , lock_period  := aesc_channels:lock_period()
                                   , locked_until := aesc_channels:locked_until() }.
 
+%% (Commented out since dialyzer complains, but can't really explain why)
 %% -type cache() :: #{ mode := mode()
 %%                   , tx_log := aesc_window:window()
 %%                   , rpt_log := aesc_window:window()
@@ -395,10 +394,6 @@ check_cont({Res, C}, Req, Reqs, St, Acc) when is_map(C) ->
         %%     lager:error("BAD return ~p from Req = ~p", [Other, Req]),
         %%     error({bad_return, Other})
     end.
-%% check_cont(Other, Req, _, _, _) ->
-%%     lager:error("BAD return ~p from Req = ~p", [Other, Req]),
-%%     error({bad_return, Other}).
-
 
 check_req(#{mode := close, locked_until := H} = R,
               #st{chan_id = ChId, chan_vsn = Vsn}, C) ->
@@ -516,13 +511,6 @@ check_req(#{mode := tx_hash, tx_hash := TxHash, min_depth := MinDepth} = R,
             {R#{check_at_height => TopHeight + (MinDepth - Depth)}, C2}
     end.
 
-%% watch_for_channel_change(#{callback_mod := Mod, parent := Parent},
-%%                           #st{closing = true, chan_id = ChanId}, C) ->
-%%     Mod:channel_closing_on_chain(Parent, ChanId),
-%%     {done, C};
-%% watch_for_channel_change(#{check_at_height := _} = R, St, C) ->
-%%     {CurHeight, C1} = top_height(C),
-%%     watch_for_channel_change(CurHeight, R, St, C1);
 watch_for_channel_change(R, St, #{ scenario   := Scenario } = C) ->
     lager:debug("Scenario = ~p", [Scenario]),
     case Scenario of
@@ -534,20 +522,12 @@ watch_for_channel_change(R, St, #{ scenario   := Scenario } = C) ->
             lager:debug("Will check channel on chain (~p)", [Scenario]),
             watch_for_channel_change(CurHeight, R, St, C1)
     end.
-%% watch_for_channel_change(R, St, C) ->
-%%     {CurHeight, C1} = top_height(C),
-%%     lager:debug("CurHeight = ~p", [CurHeight]),
-%%     watch_for_channel_change(
-%%       CurHeight, R#{check_at_height => CurHeight}, St, C1).
 
 watch_for_channel_change(CurHeight, R, #st{chan_id = ChanId} = St, C) ->
     lager:debug("Will check channel status (V=~p)", [St#st.chan_vsn]),
     {Status, C1} = channel_status(ChanId, C),
     lager:debug("Status = ~p", [Status]),
     watch_for_change_in_ch_status(Status, CurHeight, R, St, C1).
-%% watch_for_channel_change(_, R, _, C) ->
-%%     lager:debug("Will not check now", []),
-%%     {R, C}.
 
 watch_for_change_in_ch_status(undefined, _CurHeight, R, _St, C) ->
     lager:debug("No channel object yet", []),
@@ -955,7 +935,7 @@ current_depth(TxHash, C) ->
                     {undefined, C2}
             end
     end.
-        
+
 tx_location(TxHash, C) ->
     cached_get({location, TxHash}, C, fun(C1) -> tx_location_(TxHash, C1) end).
 
