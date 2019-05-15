@@ -18,7 +18,7 @@
 
 -include("aestratum.hrl").
 -include("aestratum_log.hrl").
--include_lib("aecontract/src/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecore/include/blocks.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
@@ -342,7 +342,7 @@ payout_call_tx_args(Transfers, Height, Opts) ->
              caller_id   => aec_id:create(account, ?CALLER_PUBKEY),
              nonce       => aec_accounts:nonce(Account) + 1,
              call_data   => CallData,
-             abi_version => ?ABI_SOPHIA_1,
+             abi_version => ?ABI_AEVM_SOPHIA_1,
              amount      => sum_values(Transfers),
              fee         => maps:get(fee, Opts, Int256),
              gas         => maps:get(gas, Opts, contract_gas(maps:size(Transfers))),
