@@ -15,6 +15,7 @@
         , fee/1
         , from_db_format/1
         , gas_limit/2
+        , inner_gas_limit/2
         , min_gas/2
         , gas_price/1
         , min_gas_price/2
@@ -261,6 +262,10 @@ gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, Height) when Type
 gas_limit(#aetx{ type = channel_offchain_tx }, _Height) ->
     0.
 
+-spec inner_gas_limit(Tx :: tx(), Height :: aec_blocks:height()) -> Gas :: non_neg_integer().
+inner_gas_limit(AETx = #aetx{ size = Size }, Height) ->
+    max(0, gas_limit(AETx, Height) - size_gas(Size)).
+
 -spec gas_price(Tx :: tx()) -> GasPrice :: non_neg_integer() | undefined.
 gas_price(#aetx{ type = Type, cb = CB, tx = Tx }) when ?IS_CONTRACT_TX(Type) ->
     CB:gas_price(Tx);
@@ -268,12 +273,26 @@ gas_price(#aetx{}) ->
     undefined.
 
 -spec min_gas_price(Tx :: tx(), Height :: aec_blocks:height()) -> MinGasPrice :: non_neg_integer().
-min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx }, Height) when ?IS_CONTRACT_TX(Type) ->
-    Gas = min_gas(AETx, Height),
-    min(CB:gas_price(Tx), (CB:fee(Tx) + Gas - 1) div Gas);
-min_gas_price(AETx = #aetx{ cb = CB, tx = Tx }, Height) ->
-    Gas = min_gas(AETx, Height),
-    (CB:fee(Tx) + Gas - 1) div Gas.
+min_gas_price(AETx, Height) ->
+    min_gas_price(AETx, Height, outer).
+
+min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height, Kind) ->
+    %% Compute a fictive gas price from the given Fee
+    FeeGas = if Kind == outer -> min_gas(AETx, Height);
+                Kind == inner -> min_gas(AETx, Height) - size_gas(Size)
+             end,
+    FeeGasPrice = (CB:fee(Tx) + FeeGas - 1) div FeeGas,
+    case Type of
+        ga_meta_tx ->
+            %% Also compute the minimum gas price for the wrapped Tx - make sure
+            %% not to count the size twice!
+            InnerMinGasPrice = min_gas_price(aetx_sign:tx(CB:tx(Tx)), Height, inner),
+            lists:min([CB:gas_price(Tx), FeeGasPrice, InnerMinGasPrice]);
+        _ when ?IS_CONTRACT_TX(Type) ->
+            min(CB:gas_price(Tx), FeeGasPrice);
+        _ ->
+            FeeGasPrice
+    end.
 
 -spec min_fee(Tx :: tx(), Height :: aec_blocks:height()) -> Fee :: non_neg_integer().
 min_fee(#aetx{} = AeTx, Height) ->

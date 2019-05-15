@@ -92,7 +92,7 @@ gas(#ga_meta_tx{gas = Gas}) ->
 
 -spec gas_limit(tx(), non_neg_integer()) -> amount().
 gas_limit(#ga_meta_tx{gas = Gas, tx = InnerTx}, Height) ->
-    aetx:gas_limit(aetx_sign:tx(InnerTx), Height) + Gas.
+    aetx:inner_gas_limit(aetx_sign:tx(InnerTx), Height) + Gas.
 
 -spec gas_price(tx()) -> amount().
 gas_price(#ga_meta_tx{gas_price = GasPrice}) ->
