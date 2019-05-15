@@ -104,7 +104,11 @@ configure(reward, #{reward := #{beneficiaries := PoolShareBins,
                    end,
     ContractPK   = aestratum_conv:contract_address_to_pubkey(ContractAddr),
     ContractPath = filename:join(code:priv_dir(aestratum), "Payout.aes"),
-    Contract     = ok_val_err(aeso_compiler:file(ContractPath), contract_compilation),
+
+    %% This changed a lot for 3.0, so for now it's broken.
+    %%
+    %% Contract     = ok_val_err(aeso_compiler:file(ContractPath), contract_compilation),
+    Contract        = #{},
 
     {CallerPK, CallerSK} = CallerKeyPair = read_keys(KeysDir),
     CallerAddr   = aestratum_conv:account_pubkey_to_address(CallerPK),
@@ -160,4 +164,3 @@ config_map(KeysSomeVals, M) ->
 
 resolver(#{} = M) ->
     fun (KSD, Acc) -> put_from_default(KSD, M, Acc) end.
-
