@@ -77,7 +77,7 @@ status() ->
 status(Account) when is_binary(Account) ->
     case aestratum_user_register:find(Account) of
         {ok, ConnPid}      -> aestratum_handler:status(ConnPid);
-        {error, Rsn} = Err -> Err
+        {error, _Rsn} = Err -> Err
     end.
 
 sent_payments() ->

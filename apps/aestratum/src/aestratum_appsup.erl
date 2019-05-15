@@ -11,11 +11,6 @@
 %%%%%%%%%% APP
 
 start(_Type, _Args) ->
-
-    %% dbg:tracer(),
-    %% dbg:p(all, call),
-    %% dbg:tpl(aestratum, submit_share, [{'_', [], [{return_trace}]}]),
-
     aestratum_fn:ok_val_err(aestratum_env:setup(), cant_setup_stratum),
     supervisor:start_link({local, ?MODULE}, ?MODULE, ?ENABLED).
 
