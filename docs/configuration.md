@@ -106,6 +106,7 @@ The testnet (internally called UAT) has the network ID `ae_uat` - this is set in
 fork_management:
     network_id: ae_uat
 ```
+For mainnet network the network ID defaults to `ae_mainnet`.
 
 ## Block reward initiative
 
