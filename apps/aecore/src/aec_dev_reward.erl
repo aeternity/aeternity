@@ -16,7 +16,7 @@
 -include_lib("aecontract/include/hard_forks.hrl").
 
 
--define(ENABLED, false).
+-define(ENABLED, true).
 -define(TOTAL_SHARES, 1000). % 100 shares == 10% of the reward
 %%% for: "ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:109"
 %%% weighted avg BRI voting result of 1% to 20% (yes) votes is 10.89869526640124746202%, 109 of 1000 shares will be the protocol reward
