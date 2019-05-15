@@ -100,7 +100,7 @@ tx_base_gas(channel_force_progress_tx, Protocol) ->
     case Protocol of
         ?ROMA_PROTOCOL_VSN                -> ?TX_BASE_GAS;
         ?MINERVA_PROTOCOL_VSN             -> ?TX_BASE_GAS;
-        _                                 -> 50 * ?TX_BASE_GAS
+        _                                 -> 30 * ?TX_BASE_GAS
     end;
 tx_base_gas(channel_slash_tx, _)          -> ?TX_BASE_GAS;
 tx_base_gas(channel_settle_tx, _)         -> ?TX_BASE_GAS;
