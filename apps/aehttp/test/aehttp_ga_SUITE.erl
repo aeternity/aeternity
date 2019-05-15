@@ -35,6 +35,8 @@
         , meta_meta_spend/1
         , attach_second/1
         , meta_4_fail/1
+        , large_meta/1
+        , mempool/1
         ]).
 
 -define(NODE, dev1).
@@ -47,7 +49,8 @@
 all() ->
     [
      {group, ga_txs},
-     {group, ga_info}
+     {group, ga_info},
+     {group, ga_mempool}
     ].
 
 groups() ->
@@ -62,13 +65,18 @@ groups() ->
       , meta_meta_fail
       , meta_meta_spend
       , meta_4_fail
+      , large_meta
       ]},
 
      {ga_info, [sequence],
       [ attach
       , get_account_by_pubkey
       , get_account_by_pubkey_and_height
-      ]}
+      ]},
+
+     {ga_mempool, [sequence],
+      [ attach
+      , mempool ]}
     ].
 
 suite() ->
@@ -189,16 +197,16 @@ attach_fail(Config) ->
 
     ok.
 
+%% A Meta with a failing authentication
 meta_fail_auth(Config) ->
-    %% Get account information.
     #{acc_a := #{pub_key := APub, priv_key := APriv},
       acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
     MGP = aec_test_utils:min_gas_price(),
-    MetaFee = 4550000 * MGP,  %% TODO make this into 4600000 to test mempool
+    MetaFee = (5 * 15000 + 30000) * MGP,
 
     #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["100"], BPub, 12345, 20000 * MGP, MetaFee),
 
-    ?MINE_BLOCKS(2),
+    ?MINE_BLOCKS(3),
 
     %% test that we can return GAMetaTx from mempool
     {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>}}} = get_tx(MetaTx),
@@ -206,16 +214,17 @@ meta_fail_auth(Config) ->
     {ok, 404, #{<<"reason">> := _NotMined}} = get_contract_call_object(MetaTx),
     ok.
 
-
+%% A meta with a failing inner TX
 meta_fail(Config) ->
     %% Get account information.
     #{acc_a := #{pub_key := APub, priv_key := APriv},
       acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
     ABal0 = get_balance(APub),
     MGP = aec_test_utils:min_gas_price(),
-    MetaFee = 4590000 * MGP,
+    MetaFee = (5 * 15000 + 30000) * MGP,
 
-    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["1"], BPub, 10001, 2, MetaFee),
+    %% Fail inner tx by spending (far) too much
+    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["1"], BPub, 1000 * MGP * MGP, MGP * 15000, MetaFee),
 
     ?MINE_TXS([MetaTx]),
 
@@ -236,7 +245,7 @@ meta_spend(Config) ->
       acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
     ABal0 = get_balance(APub),
     MGP = aec_test_utils:min_gas_price(),
-    MetaFee = 4590000 * MGP,
+    MetaFee = (5 * 15000 + 30000) * MGP,
 
     #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["2"], BPub, 10000, 20000 * MGP, MetaFee),
 
@@ -260,7 +269,7 @@ meta_meta_fail_auth(Config) ->
       acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
     ABal0 = get_balance(APub),
     MGP = aec_test_utils:min_gas_price(),
-    MetaFee = 4590000 * MGP,
+    MetaFee = (5 * 15000 + 30000) * MGP,
 
     #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["3", "5"], BPub, 10000, 20000 * MGP, MetaFee),
 
@@ -284,9 +293,9 @@ meta_meta_fail(Config) ->
       acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
     ABal0 = get_balance(APub),
     MGP = aec_test_utils:min_gas_price(),
-    MetaFee = 4590000 * MGP,
+    MetaFee = (5 * 15000 + 30000) * MGP,
 
-    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["4", "5"], BPub, 10000, 20, MetaFee),
+    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["4", "5"], BPub, 1000 * MGP * MGP, 15000 * MGP, MetaFee),
 
     ?MINE_TXS([MetaTx]),
 
@@ -300,13 +309,13 @@ meta_meta_fail(Config) ->
         get_contract_call_object(MetaTx),
 
     ct:log("Transaction info: ~p", [GAInfo]),
-    #{<<"return_type">> := <<"ok">>} = GAInfo,
-%% Here we should get info on inner Tx failure
+    #{<<"return_type">> := <<"ok">>, <<"inner_object">> := InnerObj} = GAInfo,
+    #{<<"ga_info">> := #{<<"return_type">> := <<"error">>,
+                         <<"inner_object">> := #{<<"tx_info">> := <<"spend_tx">>}}} = InnerObj,
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
     ?assertEqual(ABal1, ABal0 - 2*(MetaFee + 4711 * 1000 * MGP)),
     ok.
-
 
 meta_meta_spend(Config) ->
     %% Get account information.
@@ -314,7 +323,8 @@ meta_meta_spend(Config) ->
       acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
     ABal0 = get_balance(APub),
     MGP = aec_test_utils:min_gas_price(),
-    MetaFee = 4590000 * MGP,
+    MetaFee = (5 * 15000 + 30000) * MGP,
+
 
     #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["6", "7"], BPub, 10000, 20000 * MGP, MetaFee),
 
@@ -341,9 +351,9 @@ meta_4_fail(Config) ->
     #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
     ABal0 = get_balance(APub),
     MGP = aec_test_utils:min_gas_price(),
-    MetaFee = 4590000 * MGP,
+    MetaFee = (5 * 15000 + 30000) * MGP,
 
-    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["8", "9", "10", "12"], APub, 10000, 20000, MetaFee),
+    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["8", "9", "10", "12"], APub, 10000, 15000 * MGP, MetaFee),
 
     ?MINE_TXS([MetaTx]),
 
@@ -357,15 +367,63 @@ meta_4_fail(Config) ->
         get_contract_call_object(MetaTx),
 
     ct:log("Transaction info: ~p", [GAInfo]),
-    #{<<"return_type">> := <<"ok">>} = GAInfo,
-%% Here we should get info on inner Tx failure
+    #{<<"return_type">> := <<"ok">>, <<"inner_object">> := InnerObj} = GAInfo,
+
+    #{<<"ga_info">> := #{<<"inner_object">> :=
+        #{<<"ga_info">> := #{<<"return_type">> := <<"error">>}}}} = InnerObj,
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
     ?assertEqual(ABal1, ABal0 - 3*(MetaFee + 4711 * 1000 * MGP)),
     ok.
 
+large_meta(Config) ->
+    %% Get account information.
+    #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
 
+    MGP = aec_test_utils:min_gas_price(),
+    MetaFee = (5 * 15000 + 30000) * MGP,
 
+    %% Prepare MetaTx1 to barely fit in a microblock (wouldn't fit if we counted size twice!)
+    SizeMetaSpend = 380, %% roughly...
+    GasRemain = aec_governance:block_gas_limit() - 5 * 15000 - 15000 - SizeMetaSpend * 20,
+    #{tx_hash := MetaTx1} = post_ga_spend_tx(APub, APriv, ["11"], APub, 10000, 15000 * MGP, MetaFee, GasRemain),
+
+    %% Prepare MetaTx2 to be too big to fit in a microblock
+    #{tx_hash := MetaTx2} = post_ga_spend_tx(APub, APriv, ["12"], APub, 10000, 15000 * MGP, MetaFee, GasRemain + 1000),
+
+    ?MINE_TXS([MetaTx1]),
+
+    {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>},
+                <<"block_height">> := BH1} = JSONTx1} = get_tx(MetaTx1),
+    ct:log("Transaction: ~p", [JSONTx1]),
+
+    {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>},
+                <<"block_height">> := BH2} = JSONTx2} = get_tx(MetaTx2),
+    ct:log("Transaction: ~p", [JSONTx2]),
+
+    ?assertMatch(BH when BH > 0, BH1),
+    ?assertEqual(-1, BH2),
+
+    ok.
+
+%% Test the minimum gas price check
+mempool(Config) ->
+    %% Get account information.
+    #{acc_a := #{pub_key := APub, priv_key := APriv},
+      acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
+    MGP = aec_test_utils:min_gas_price(),
+    MetaFee = (5 * 15000 + 20000) * MGP,
+    TooLowMetaFee = (1 * 15000 + 20000) * MGP,
+
+    %% Test with too low fee
+    not_accepted = post_ga_spend_tx(APub, APriv, ["1"], BPub, 10001, MGP * 15000, TooLowMetaFee),
+    %% Test with too low fee in inner Tx
+    not_accepted = post_ga_spend_tx(APub, APriv, ["1"], BPub, 10001, MGP * 10000, MetaFee),
+
+    %% Test with exactly the lowest possible fee... Note that there isn't any size gas!
+    #{tx_hash := _MetaTx} = post_ga_spend_tx(APub, APriv, ["1"], BPub, 10001, MGP * 15000, MetaFee),
+
+    ok.
 
 get_account_by_pubkey(Config) ->
     #{acc_a := #{pub_key := APub}} = proplists:get_value(accounts, Config),
@@ -439,19 +497,23 @@ spend_tx (AccPK, _AccSK, Nonce, Recipient, Amount, Fee) ->
     SpendTx.
 
 post_ga_spend_tx(AccPK, AccSK, Nonces, Recipient, Amount, Fee, MetaFee) ->
+    post_ga_spend_tx(AccPK, AccSK, Nonces, Recipient, Amount, Fee, MetaFee, 50000).
+
+post_ga_spend_tx(AccPK, AccSK, Nonces, Recipient, Amount, Fee, MetaFee, AuthGas) ->
     InnerTx = spend_tx(AccPK, AccSK, 0, Recipient, Amount, Fee),
-    SMetaTx = ga_spend_tx(lists:reverse(Nonces), AccPK, AccSK, InnerTx, MetaFee),
+    SMetaTx = ga_spend_tx(lists:reverse(Nonces), AccPK, AccSK, InnerTx, MetaFee, AuthGas),
     post_aetx(SMetaTx).
 
-ga_spend_tx([], _AccPK, _AccSK, InnerTx, _MetaFee) ->
+ga_spend_tx([], _AccPK, _AccSK, InnerTx, _MetaFee, _AuthGas) ->
     aetx_sign:new(InnerTx, []);
-ga_spend_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee) ->
+ga_spend_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee, AuthGas) ->
     Signature = basic_auth(list_to_integer(Nonce), InnerTx, AccSK),
     AuthData  = aega_test_utils:make_calldata("basic_auth", "authorize",
                     [Nonce, aega_test_utils:to_hex_lit(64, Signature)]),
     MetaTx    = aega_test_utils:ga_meta_tx(AccPK,
-                    #{ auth_data => AuthData, tx => aetx_sign:new(InnerTx, []), fee => MetaFee }),
-    ga_spend_tx(Nonces, AccPK, AccSK, MetaTx, MetaFee).
+                    #{ gas => AuthGas, auth_data => AuthData,
+                       tx => aetx_sign:new(InnerTx, []), fee => MetaFee }),
+    ga_spend_tx(Nonces, AccPK, AccSK, MetaTx, MetaFee, AuthGas).
 
 basic_auth(Nonce, Tx, Privkey) ->
     TxBin = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
@@ -466,8 +528,12 @@ sign_and_post_aetx(PrivKey, Tx) ->
 post_aetx(SignedTx) ->
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
     SendTx       = aeser_api_encoder:encode(transaction, SerializedTx),
-    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_tx(SendTx),
-    #{tx_hash => TxHash, sign_tx => SignedTx}.
+    case post_tx(SendTx) of
+        {ok, 200, #{<<"tx_hash">> := TxHash}} ->
+            #{tx_hash => TxHash, sign_tx => SignedTx};
+        {ok, 400, _} ->
+            not_accepted
+    end.
 
 
 %% ============================================================

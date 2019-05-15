@@ -287,7 +287,6 @@ min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height
             %% Also compute the minimum gas price for the wrapped Tx - make sure
             %% not to count the size twice!
             InnerMinGasPrice = min_gas_price(aetx_sign:tx(CB:tx(Tx)), Height, inner),
-            lager:debug("Failed ~p ~p ~p", [CB:gas_price(Tx), FeeGasPrice, InnerMinGasPrice]),
             lists:min([CB:gas_price(Tx), FeeGasPrice, InnerMinGasPrice]);
         _ when ?IS_CONTRACT_TX(Type) ->
             min(CB:gas_price(Tx), FeeGasPrice);
