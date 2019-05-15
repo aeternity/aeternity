@@ -121,7 +121,8 @@ block_extension_test_() ->
        {"Updating a block does not exceed microblock gas limit",
         fun() ->
             SpendTx = fun(Data) -> aec_test_utils:sign_tx(spend_tx(Data), ?TEST_PRIV) end,
-            Gas = fun(Txs) -> lists:sum(lists:map(fun(T) -> aetx:gas_limit(aetx_sign:tx(T), unused_height) end, Txs)) end,
+            Gas = fun(Txs) -> lists:sum(lists:map(fun(T) -> aetx:gas_limit(aetx_sign:tx(T),
+                                                                           _Height = 10) end, Txs)) end,
 
             %% Reduce number of spend txs necessary for filling up block
             %% (hence reduce time necessary for running test)

@@ -60,6 +60,7 @@
         ]).
 
 -include("aec_tx_pool.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -ifdef(TEST).
 -export([sync_garbage_collect/1]). %% Only for (Unit-)test
@@ -383,12 +384,12 @@ int_get_candidate(MaxGas, BlockHash, #dbs{db = Db} = DBs) ->
     {ok, Header} = aec_chain:get_header(BlockHash),
     lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
-    GasLimit = aec_governance:tx_base_gas(spend_tx),
+    MinTxGas = aec_governance:min_tx_gas(),
     Acc0     = #{ tree => gb_trees:empty(), txs => [] },
-    {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, GasLimit, MinMinerGasPrice, Trees,
+    {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, MinTxGas, MinMinerGasPrice, Trees,
                                           Header, DBs, Acc0),
     {ok, _, Acc1} = int_get_candidate(
-                      DBs#dbs.visited_db, RemGas, GasLimit, MinMinerGasPrice, Trees, Header,
+                      DBs#dbs.visited_db, RemGas, MinTxGas, MinMinerGasPrice, Trees, Header,
                       DBs, Acc),
     #{ tree := AccTree, txs := AccTxs } = Acc1,
 
@@ -400,35 +401,35 @@ int_get_candidate(MaxGas, BlockHash, #dbs{db = Db} = DBs) ->
 
     {ok, Txs}.
 
-int_get_candidate(Db, Gas, GasLimit, MinMinerGasPrice, Trees, Header, DBs, Acc)
-  when Gas > GasLimit ->
+int_get_candidate(Db, Gas, MinTxGas, MinMinerGasPrice, Trees, Header, DBs, Acc)
+  when Gas > MinTxGas ->
     Pat = [{ '_', [], ['$_'] }],
-    int_get_candidate_fold(Gas, GasLimit, MinMinerGasPrice, Db, DBs,
+    int_get_candidate_fold(Gas, MinTxGas, MinMinerGasPrice, Db, DBs,
                            ets:select(Db, Pat, 20),
                            {account_trees, aec_trees:accounts(Trees)},
                            aec_headers:height(Header), Acc);
 int_get_candidate(Gas, _, _, _, _, _, _, Acc) ->
     {ok, Gas, Acc}.
 
-int_get_candidate_fold(Gas, GasLimit, _MinMinerGasPrice, _Db, _Dbs, _Txs,
-                       _ATrees, _Height, Acc) when Gas =< GasLimit ->
+int_get_candidate_fold(Gas, MinTxGas, _MinMinerGasPrice, _Db, _Dbs, _Txs,
+                       _ATrees, _Height, Acc) when Gas =< MinTxGas ->
     {ok, Gas, Acc};
-int_get_candidate_fold(Gas, GasLimit, MinMinerGasPrice, Db, Dbs = #dbs{}, {Txs, Cont},
-                       AccountsTree, Height, Acc) when Gas > GasLimit ->
-    {RemGas, NewAcc} = fold_txs(Txs, Gas, GasLimit, MinMinerGasPrice, Db, Dbs,
+int_get_candidate_fold(Gas, MinTxGas, MinMinerGasPrice, Db, Dbs = #dbs{}, {Txs, Cont},
+                       AccountsTree, Height, Acc) when Gas > MinTxGas ->
+    {RemGas, NewAcc} = fold_txs(Txs, Gas, MinTxGas, MinMinerGasPrice, Db, Dbs,
                                 AccountsTree, Height, Acc),
-    int_get_candidate_fold(RemGas, GasLimit, MinMinerGasPrice, Db, Dbs, ets:select(Cont),
+    int_get_candidate_fold(RemGas, MinTxGas, MinMinerGasPrice, Db, Dbs, ets:select(Cont),
                            AccountsTree, Height, NewAcc);
 int_get_candidate_fold(RemGas, _GL, _MMGP, _Db, _Dbs, '$end_of_table', _AccountsTree,
                        _Height, Acc) ->
     {ok, RemGas, Acc}.
 
-fold_txs([Tx|Txs], Gas, GasLimit, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Acc) ->
-    if Gas > GasLimit ->
+fold_txs([Tx|Txs], Gas, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Acc) ->
+    if Gas > MinTxGas ->
             {Gas1, Acc1} =
                 int_get_candidate_(
                   Tx, Gas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Acc),
-            fold_txs(Txs, Gas1, GasLimit, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Acc1);
+            fold_txs(Txs, Gas1, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Acc1);
        true ->
             {Gas, Acc}
     end;

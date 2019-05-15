@@ -6,7 +6,7 @@
          expected_block_mine_rate/0,
          block_mine_reward/1,
          block_gas_limit/0,
-         tx_base_gas/1,
+         tx_base_gas/2,
          byte_gas/0,
          beneficiary_reward_delay/0,
          locked_coins_holder_account/0,
@@ -26,7 +26,8 @@
          add_network_id_last/1,
          get_network_id/0,
          contributors_messages_hash/0,
-         vm_gas_table/0]).
+         vm_gas_table/0,
+         min_tx_gas/0]).
 
 -include("blocks.hrl").
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
@@ -84,29 +85,38 @@ block_mine_reward(Height) when is_integer(Height), Height > 0 ->
 block_gas_limit() ->
     application:get_env(aecore, block_gas_limit, ?BLOCK_GAS_LIMIT).
 
-tx_base_gas(contract_call_tx) ->  30 * ?TX_BASE_GAS;
-tx_base_gas(contract_create_tx) -> 5 * ?TX_BASE_GAS;
-tx_base_gas(spend_tx) -> ?TX_BASE_GAS;
-tx_base_gas(channel_deposit_tx) -> ?TX_BASE_GAS;
-tx_base_gas(channel_close_mutual_tx) -> ?TX_BASE_GAS;
-tx_base_gas(channel_close_solo_tx) -> ?TX_BASE_GAS;
-tx_base_gas(channel_create_tx) -> ?TX_BASE_GAS;
-tx_base_gas(channel_force_progress_tx) -> ?TX_BASE_GAS;
-tx_base_gas(channel_slash_tx) -> ?TX_BASE_GAS;
-tx_base_gas(channel_settle_tx) -> ?TX_BASE_GAS;
-tx_base_gas(channel_snapshot_solo_tx) -> ?TX_BASE_GAS;
-tx_base_gas(channel_withdraw_tx) -> ?TX_BASE_GAS;
-tx_base_gas(ga_attach_tx) -> 5 * ?TX_BASE_GAS;
-tx_base_gas(ga_meta_tx) -> 5 * ?TX_BASE_GAS;
-tx_base_gas(name_preclaim_tx) -> ?TX_BASE_GAS;
-tx_base_gas(name_revoke_tx) -> ?TX_BASE_GAS;
-tx_base_gas(name_transfer_tx) -> ?TX_BASE_GAS;
-tx_base_gas(name_claim_tx) -> ?TX_BASE_GAS;
-tx_base_gas(name_update_tx) -> ?TX_BASE_GAS;
-tx_base_gas(oracle_extend_tx) -> ?TX_BASE_GAS;
-tx_base_gas(oracle_query_tx) -> ?TX_BASE_GAS;
-tx_base_gas(oracle_register_tx) -> ?TX_BASE_GAS;
-tx_base_gas(oracle_response_tx) -> ?TX_BASE_GAS.
+min_tx_gas() -> ?TX_BASE_GAS.
+
+-spec tx_base_gas(aetx:tx_type(), aec_hard_forks:protocol_vsn()) ->
+    non_neg_integer().
+tx_base_gas(contract_call_tx, _)          -> 30 * ?TX_BASE_GAS;
+tx_base_gas(contract_create_tx, _)        -> 5 * ?TX_BASE_GAS;
+tx_base_gas(spend_tx, _)                  -> ?TX_BASE_GAS;
+tx_base_gas(channel_deposit_tx, _)        -> ?TX_BASE_GAS;
+tx_base_gas(channel_close_mutual_tx, _)   -> ?TX_BASE_GAS;
+tx_base_gas(channel_close_solo_tx, _)     -> ?TX_BASE_GAS;
+tx_base_gas(channel_create_tx, _)         -> ?TX_BASE_GAS;
+tx_base_gas(channel_force_progress_tx, Protocol) ->
+    case Protocol of
+        ?ROMA_PROTOCOL_VSN                -> ?TX_BASE_GAS;
+        ?MINERVA_PROTOCOL_VSN             -> ?TX_BASE_GAS;
+        _                                 -> 30 * ?TX_BASE_GAS
+    end;
+tx_base_gas(channel_slash_tx, _)          -> ?TX_BASE_GAS;
+tx_base_gas(channel_settle_tx, _)         -> ?TX_BASE_GAS;
+tx_base_gas(channel_snapshot_solo_tx, _)  -> ?TX_BASE_GAS;
+tx_base_gas(channel_withdraw_tx, _)       -> ?TX_BASE_GAS;
+tx_base_gas(ga_attach_tx, _)              -> 5 * ?TX_BASE_GAS;
+tx_base_gas(ga_meta_tx, _)                -> 5 * ?TX_BASE_GAS;
+tx_base_gas(name_preclaim_tx, _)          -> ?TX_BASE_GAS;
+tx_base_gas(name_revoke_tx, _)            -> ?TX_BASE_GAS;
+tx_base_gas(name_transfer_tx, _)          -> ?TX_BASE_GAS;
+tx_base_gas(name_claim_tx, _)             -> ?TX_BASE_GAS;
+tx_base_gas(name_update_tx, _)            -> ?TX_BASE_GAS;
+tx_base_gas(oracle_extend_tx, _)          -> ?TX_BASE_GAS;
+tx_base_gas(oracle_query_tx, _)           -> ?TX_BASE_GAS;
+tx_base_gas(oracle_register_tx, _)        -> ?TX_BASE_GAS;
+tx_base_gas(oracle_response_tx, _)        -> ?TX_BASE_GAS.
 
 byte_gas() ->
     ?BYTE_GAS.
