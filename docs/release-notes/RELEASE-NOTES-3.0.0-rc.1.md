@@ -29,7 +29,7 @@ Regarding state channels, this release:
   not backwards compatible.
 * Changes the structure of off-chain transactions: off-chain updates are moved
   out of it so the on-chain world is agnostic to the off-chain update protocol
-  being used as long as force progress expectations are met. This is impacts
+  being used as long as force progress expectations are met. This impacts
   consensus and takes action in Fortuna hard fork.
 * Introduces off-chain updates to State Channels noise session protocol. This
   impacts off-chain protocol.
