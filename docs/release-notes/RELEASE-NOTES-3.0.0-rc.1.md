@@ -4,10 +4,10 @@
 It marks the freeze of the Fortuna consensus protocol and of the user API.
 
 It:
-* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
+* Changed some HTTP API fields from plain `string` to encoded strings. See `swagger.yaml` for details.
+* Fixes the mempool minimum gas price (configured by miner) entrancy check for contract transactions, they incorrectly included the
+  gas in the calculation before.
 * Does all the things mentioned temporarily in files [/docs/release-notes/next-fortuna/PT-*.md](/docs/release-notes/next-fortuna/).
-
-TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
 
 TODO: When preparing the release, concatenate all `/docs/release-notes/next-fortuna/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
 
