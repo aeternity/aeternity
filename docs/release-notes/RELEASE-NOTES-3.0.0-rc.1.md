@@ -9,7 +9,7 @@ Regarding the Fortuna consensus protocol upgrade in testnet, this release:
 * Sets the Fortuna testnet hard fork height to block 82900 (approximately Mon 20th May 2019 at 3:30am CEST).
 
 Regarding the Block Reward Initiative, this release:
-* Introduces mechanism to split mining reward and send to predefined address. This is consensus breaking
+* Introduces a mechanism to split mining reward and send to predefined address. This is consensus breaking.
 
 Regarding introduction of generic accounts from the Fortuna consensus protocol, this release:
 * Adds generalized accounts. See
@@ -26,11 +26,11 @@ Regarding introduction of generic accounts from the Fortuna consensus protocol, 
 
 Regarding state channels, this release:
 * Introduces a pinned environment in State Channels noise protocol (off-chain), by introducing a `block_hash` field in some of the messages. This is
-  not backwards compatible
+  not backwards compatible.
 * Changes the structure of off-chain transactions: off-chain updates are moved
   out of it so the on-chain world is agnostic to the off-chain update protocol
   being used as long as force progress expectations are met. This is impacts
-  consesus and takes action in Fortuna hard fork
+  consensus and takes action in Fortuna hard fork.
 * Introduces off-chain updates to State Channels noise session protocol. This
   impacts off-chain protocol.
 * Revisits JSON serialization of off-chain updates to be in sync with the
@@ -38,25 +38,25 @@ Regarding state channels, this release:
 * Adds a serialization for the `code` element of the off-chain update for
   creating a new off-chain contract.
 * Increases the base price for force progress transactions to be in a
-  correspondence with contract call base price
-* Adjusts StateChannels WebSocket API broken\_encoding errors
+  correspondence with contract call base price.
+* Adjusts StateChannels WebSocket API broken\_encoding errors.
 
 Regarding the Sophia language, this release:
-* Added Address.is_contract, Address.is_oracle, Oracle.check and Oracle.check_query to Sophia and AEVM
-* Adds Contract.creator to Sophia and AEVM
+* Adds Address.is_contract, Address.is_oracle, Oracle.check and Oracle.check_query to Sophia and AEVM.
+* Adds Contract.creator to Sophia and AEVM.
 
 Regarding feature refinements, this release:
 * Changes some HTTP API fields from plain `string` to encoded strings. See `swagger.yaml` for details.
 * Fixes the mempool minimum gas price (configured by miner) entrancy check for contract transactions, they incorrectly included the
   gas in the calculation before.
 * Avoids creating empty contract accounts when contract creation failed. This is consensus breaking and starts from Fortuna hard fork.
-* Fixes bug that caused crash when contract call had just not enough gas to pay for the memory to store the result
+* Fixes bug that caused crash when contract call had just not enough gas to pay for the memory to store the result.
 * Overhauls the swagger.yaml file, including checking the `integer` valued parameters for correctness.
 
 Regarding removal of deprecated functionalities, this release:
-* Removes deprecated compiler HTTP APIs (`debug/contracts/[create/compute, call/compute, code/compile, code/call, decode-data, encode-calldata]`)
+* Removes deprecated compiler HTTP APIs (`debug/contracts/[create/compute, call/compute, code/compile, code/call, decode-data, encode-calldata]`).
 * Removes backwards compatibility w.r.t. `abi_version`/`vm_version` in HTTP API.
-* Removes legacy StateChannels WebSocket protocol
+* Removes legacy StateChannels WebSocket protocol.
 * Removes the deprecated `bin/epoch` operational script.
 * Removes the deprecated `log` field from the contract object in the user APIs.
 
