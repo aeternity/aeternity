@@ -46,10 +46,25 @@ response(OperationId, Method0, Code, Response, Validator) ->
             [ _ = jesse_schema_validator:validate_with_state(Schema, Acc, Validator)
                 || Acc <- Response ],
             ok;
-        Schema ->
+        Schema0 ->
+            Schema = fix_def_refs(Schema0),
             _ = jesse_schema_validator:validate_with_state(Schema, Response, Validator),
             ok
     end.
+
+fix_def_refs(Map) ->
+    fix_def_refs(unused, Map).
+
+fix_def_refs(_, Map) when is_map(Map) ->
+    %% Recursively fix refs (and [drop extra, to be ignored,
+    %% fields](https://tools.ietf.org/html/draft-pbryan-zyp-json-ref-03#section-3)
+    %% since jesse is broken)
+    case maps:get(<<"$ref">>, Map, none) of
+        none -> maps:map(fun fix_def_refs/2, Map);
+        Ref  -> #{ <<"$ref">> => <<"#", Ref/binary>> }
+    end;
+fix_def_refs(_, X) ->
+    X.
 
 -spec request(
     OperationId :: atom(),
