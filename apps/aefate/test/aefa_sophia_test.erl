@@ -63,10 +63,16 @@ compile_contract(Code) ->
     compile_contract(Code, [{debug, [scode, opt, opt_rules, compile]}, pp_fcode]).
 
 compile_contract(Code, Options) ->
-    {ok, Ast} = aeso_parser:string(Code),
-    TypedAst  = aeso_ast_infer_types:infer(Ast, Options),
-    FCode     = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
-    aeso_fcode_to_fate:compile(FCode, Options).
+    try
+        {ok, Ast} = aeso_parser:string(Code),
+        TypedAst  = aeso_ast_infer_types:infer(Ast, Options),
+        FCode     = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
+        aeso_fcode_to_fate:compile(FCode, Options)
+    catch _:{type_errors, Err} ->
+        io:format("~s\n", [Err]),
+        {error, {type_errors, Err}}
+    end.
+
 
 make_call(Contract, Function, Arguments) ->
     EncArgs  = list_to_tuple([aefate_test_utils:encode(A) || A <- Arguments]),
@@ -430,7 +436,7 @@ remote() ->
       "  function remote : int => int\n"
       "contract Main =\n"
       "  function bla(r : Remote) = r.remote\n"
-      "  function test(r : Remote) =\n"
+      "  stateful function test(r : Remote) =\n"
       "    r.remote(42)\n"
       "      + r.remote(value = 10, 100)\n"
       "      + bla(r)(value = 11, gas = 88, 99)\n"},

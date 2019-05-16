@@ -27,13 +27,13 @@ contract StateHandling =
   function read_s() = state.s
   function read_m() = state.m
 
-  function update(new_state : state) = put(new_state)
-  function update_i(new_i) = put(state{ i = new_i })
-  function update_s(new_s) = put(state{ s = new_s })
-  function update_m(new_m) = put(state{ m = new_m })
+  stateful function update(new_state : state) = put(new_state)
+  stateful function update_i(new_i) = put(state{ i = new_i })
+  stateful function update_s(new_s) = put(state{ s = new_s })
+  stateful function update_m(new_m) = put(state{ m = new_m })
 
   function pass_it(r : Remote) = r.look_at(state)
-  function nop(r : Remote) = put(state{ i = state.i })
+  stateful function nop(r : Remote) = put(state{ i = state.i })
   function return_it_s(r : Remote, big : bool) =
     let x = r.return_s(big)
     String.length(x)
@@ -50,10 +50,10 @@ contract StateHandling =
   function pass_update_s(r : Remote, s) = r.fun_update_s(state, s)
   function pass_update_m(r : Remote, m) = r.fun_update_m(state, m)
 
-  function remote_update_i (r : Remote, i)    = put(r.fun_update_i(state, i))
-  function remote_update_s (r : Remote, s)    = put(r.fun_update_s(state, s))
-  function remote_update_m (r : Remote, m)    = put(r.fun_update_m(state, m))
-  function remote_update_mk(r : Remote, k, v) = put(r.fun_update_mk(state, k, v))
+  stateful function remote_update_i (r : Remote, i)    = put(r.fun_update_i(state, i))
+  stateful function remote_update_s (r : Remote, s)    = put(r.fun_update_s(state, s))
+  stateful function remote_update_m (r : Remote, m)    = put(r.fun_update_m(state, m))
+  stateful function remote_update_mk(r : Remote, k, v) = put(r.fun_update_mk(state, k, v))
 
   // remote called
   function look_at(s : state) = ()

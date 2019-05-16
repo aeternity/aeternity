@@ -11,11 +11,11 @@ contract VariantTypes =
 
   function require(b) = if(!b) abort("required")
 
-  function start(bal : int) =
+  stateful function start(bal : int) =
     switch(state)
       Stopped => put(Started({owner = Call.caller, balance = bal, color = Grey(0)}))
 
-  function stop() =
+  stateful function stop() =
     switch(state)
       Started(st) =>
         require(Call.caller == st.owner)
@@ -23,7 +23,7 @@ contract VariantTypes =
         st.balance
 
   function get_color()  = switch(state) Started(st) => st.color
-  function set_color(c) = switch(state) Started(st) => put(Started(st{color = c}))
+  stateful function set_color(c) = switch(state) Started(st) => put(Started(st{color = c}))
 
   function get_state() = state
 

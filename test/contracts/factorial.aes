@@ -9,7 +9,7 @@ contract Factorial =
 
   function init(worker) = {worker = worker}
 
-  function set_worker(worker) = put(state{worker = worker})
+  stateful function set_worker(worker) = put(state{worker = worker})
 
   function fac(x : int) : int =
     if(x == 0) 1

@@ -10,7 +10,7 @@ contract DutchAuction =
                    sold         : bool }
 
   // Add to work around current lack of predefined functions
-  private function spend(to, amount) =
+  private stateful function spend(to, amount) =
     let total = Contract.balance
     Chain.spend(to, amount)
     total - amount

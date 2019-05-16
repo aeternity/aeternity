@@ -13,7 +13,7 @@ contract Auth1 =
   function authorize(s : int, x : int) : bool =
     state.secret == s
 
-  function do_auth_test(at : auth_test) : bool =
+  stateful function do_auth_test(at : auth_test) : bool =
     switch(at)
       Spend(to, tokens) =>
         Chain.spend(to, tokens)

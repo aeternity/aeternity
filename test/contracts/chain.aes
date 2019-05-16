@@ -9,5 +9,5 @@ contract ChainTest =
 
   function miner() = Chain.coinbase
 
-  function save_coinbase() =
+  stateful function save_coinbase() =
     put(state{last_bf = Chain.coinbase})

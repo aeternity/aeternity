@@ -9,22 +9,22 @@ contract Oracles =
   type oracle_id = oracle(query_t, answer_t)
   type query_id  = oracle_query(query_t, answer_t)
 
-  function registerOracle(acct : address,
+  stateful function registerOracle(acct : address,
                           qfee : fee,
                           ttl  : ttl) : oracle_id =
      Oracle.register(acct, qfee, ttl)
 
-  function registerIntIntOracle(acct : address,
+  stateful function registerIntIntOracle(acct : address,
                                 qfee : fee,
                                 ttl  : ttl) : oracle(int, int) =
      Oracle.register(acct, qfee, ttl)
 
-  function registerStringStringOracle(acct : address,
+  stateful function registerStringStringOracle(acct : address,
                                       qfee : fee,
                                       ttl  : ttl) : oracle(string, string) =
      Oracle.register(acct, qfee, ttl)
 
-  function signedRegisterOracle(acct : address,
+  stateful function signedRegisterOracle(acct : address,
                                 sign : signature,
                                 qfee : fee,
                                 ttl  : ttl) : oracle_id =
@@ -33,7 +33,7 @@ contract Oracles =
   function queryFee(o : oracle_id) : fee =
     Oracle.query_fee(o)
 
-  function createQuery(o    : oracle_id,
+  stateful function createQuery(o    : oracle_id,
                        q    : query_t,
                        qfee : fee,
                        qttl : ttl,
@@ -42,7 +42,7 @@ contract Oracles =
     Oracle.query(o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  function unsafeCreateQuery(o    : oracle_id,
+  stateful function unsafeCreateQuery(o    : oracle_id,
                        q    : query_t,
                        qfee : fee,
                        qttl : ttl,
@@ -50,7 +50,7 @@ contract Oracles =
     Oracle.query(o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  function unsafeCreateQueryThenErr(o    : oracle_id,
+  stateful function unsafeCreateQueryThenErr(o    : oracle_id,
                        q    : query_t,
                        qfee : fee,
                        qttl : ttl,
@@ -59,21 +59,21 @@ contract Oracles =
     require(qfee >= 100000000000000000, "causing a late error")
     res
 
-  function extendOracle(o    : oracle_id,
+  stateful function extendOracle(o    : oracle_id,
                         ttl  : ttl) : () =
     Oracle.extend(o, ttl)
 
-  function signedExtendOracle(o    : oracle_id,
+  stateful function signedExtendOracle(o    : oracle_id,
                               sign : signature,   // Signed oracle address
                               ttl  : ttl) : () =
     Oracle.extend(o, signature = sign, ttl)
 
-  function respond(o    : oracle_id,
+  stateful function respond(o    : oracle_id,
                    q    : query_id,
                    r    : answer_t) : () =
     Oracle.respond(o, q, r)
 
-  function signedRespond(o    : oracle_id,
+  stateful function signedRespond(o    : oracle_id,
                          q    : query_id,
                          sign : signature,
                          r    : answer_t) : () =
@@ -96,13 +96,13 @@ contract Oracles =
   datatype complexQuestion = Why(int) | How(string)
   datatype complexAnswer   = NoAnswer | Answer(complexQuestion, string, int)
 
-  function complexOracle(question) =
+  stateful function complexOracle(question) =
     let o = Oracle.register(Contract.address, 0, FixedTTL(1000)) : oracle(complexQuestion, complexAnswer)
     let q = Oracle.query(o, question, 0, RelativeTTL(100), RelativeTTL(100))
     Oracle.respond(o, q, Answer(question, "magic", 1337))
     Oracle.get_answer(o, q)
 
-  function signedComplexOracle(question, sig) =
+  stateful function signedComplexOracle(question, sig) =
     let o = Oracle.register(signature = sig, Contract.address, 0, FixedTTL(1000)) : oracle(complexQuestion, complexAnswer)
     let q = Oracle.query(o, question, 0, RelativeTTL(100), RelativeTTL(100))
     Oracle.respond(o, q, Answer(question, "magic", 1337), signature = sig)

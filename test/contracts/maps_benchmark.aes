@@ -9,11 +9,11 @@ contract Benchmark =
 
   function init(u, m) = { updater = u, map = m }
 
-  function set_updater(u) = put(state{ updater = u })
+  stateful function set_updater(u) = put(state{ updater = u })
 
   function update_map(k : int, v : string, m) = m{ [k] = v }
 
-  function update(a : int, b : int, v : string) =
+  stateful function update(a : int, b : int, v : string) =
     if (a > b) ()
     else
       put(state{ map[a] = v })
@@ -22,7 +22,7 @@ contract Benchmark =
   function get(k) = state.map[k]
   function noop() = ()
 
-  function benchmark(k, v) =
+  stateful function benchmark(k, v) =
     let m = state.updater.update_map(k, v, state.map)
     put(state{ map = m })
     m

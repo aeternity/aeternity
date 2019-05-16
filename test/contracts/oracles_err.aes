@@ -1,6 +1,6 @@
 contract OraclesErr =
 
-  public function unsafeCreateQueryThenErr(
+  public stateful function unsafeCreateQueryThenErr(
     o    : oracle(string, int),
     q    : string,
     qfee  : int,

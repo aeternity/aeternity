@@ -4,7 +4,7 @@ contract BasicAuth =
 
   function init() = { nonce = 1, owner = Call.caller }
 
-  function authorize(n : int, s : signature) : bool =
+  stateful function authorize(n : int, s : signature) : bool =
     require(n >= state.nonce, "Nonce too low")
     require(n =< state.nonce, "Nonce too high")
     put(state{ nonce = n + 1 })

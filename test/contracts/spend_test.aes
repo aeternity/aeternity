@@ -4,19 +4,19 @@ contract SpendContract =
 
 contract SpendTest =
 
-  function spend(to, amount) =
+  stateful function spend(to, amount) =
     let total = Contract.balance
     Chain.spend(to, amount)
     total - amount
 
-  function withdraw(amount) : int =
+  stateful function withdraw(amount) : int =
     spend(Call.caller, amount)
 
-  function withdraw_from(account, amount) =
+  stateful function withdraw_from(account, amount) =
     account.withdraw(amount)
     withdraw(amount)
 
-  function spend_from(from, to, amount) =
+  stateful function spend_from(from, to, amount) =
     from.withdraw(amount)
     Chain.spend(to, amount)
     Chain.balance(to)

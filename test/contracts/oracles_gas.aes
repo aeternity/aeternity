@@ -4,7 +4,7 @@ contract OraclesGas =
   type question_t = string
   type answer_t = int
 
-  public function happyPathWithAllBuiltinsAtSameHeight(
+  public stateful function happyPathWithAllBuiltinsAtSameHeight(
     qfee : fee,
     ottl : Chain.ttl,
     ettl : Chain.ttl,
