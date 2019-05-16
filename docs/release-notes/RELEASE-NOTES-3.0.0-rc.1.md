@@ -7,9 +7,45 @@ It:
 * Changes some HTTP API fields from plain `string` to encoded strings. See `swagger.yaml` for details.
 * Fixes the mempool minimum gas price (configured by miner) entrancy check for contract transactions, they incorrectly included the
   gas in the calculation before.
-* Does all the things mentioned temporarily in files [/docs/release-notes/next-fortuna/PT-*.md](/docs/release-notes/next-fortuna/).
 
-TODO: When preparing the release, concatenate all `/docs/release-notes/next-fortuna/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+* Avoids creating empty contract accounts when contract creation failed. This is consensus breaking and starts from Fortuna hard fork.
+* Fix bug that caused crash when contract call had just not enough gas to pay for the memory to store the result
+* Adds generalized accounts. See
+  [here](https://github.com/aeternity/protocol/blob/aeternity-node-v3.0.0/generalized_accounts/generalized_accounts.md)
+  for a description of the new feature.
+* Changes the HTTP API for /transactions/info
+  This HTTP endpoint used to just return a contract call object, but now returns <<"call_info">> => ContractCallObject instead, i.e. an extra tag is added
+  Additional tag provided is <<"ga_info">> which is what this endpoint returns when the provided transaction hash points to a generalized accounts transaction.
+* Changes the HTTP API for /transactions by giving the kind of account of the owner of the transaction
+  Either a basic account (as before) or a generalized account
+  Signatures are only provided for inner transactions with basic accounts.
+* Introduces a pinned environment in State Channels noise protocol (off-chain), by introducing a `block_hash` field in some of the messages. This is
+  not backwards compatible
+* Removes deprecated compiler HTTP APIs (`debug/contracts/[create/compute, call/compute, code/compile, code/call, decode-data, encode-calldata]`)
+* Remove backwards compatibility w.r.t. `abi_version`/`vm_version` in HTTP API.
+* Added Address.is_contract, Address.is_oracle, Oracle.check and Oracle.check_query to Sophia and AEVM
+* Added Contract.creator to Sophia and AEVM
+* Changes the structure of off-chain transactions: off-chain updates are moved
+  out of it so the on-chain world is agnostic to the off-chain update protocol
+  being used as long as force progress expectations are met. This is impacts
+  consesus and takes action in Fortuna hard fork
+* Off-chain updates introduced to State Channels noise session protocol. This
+  impacts off-chain protocol.
+* Revisited JSON serialization of off-chain updates to be in sync with the
+  corresponding messages for updates' creation. This impacts API.
+* Adds a serialization for the `code` element of the off-chain update for
+  creating a new off-chain contract.
+* Removes legacy StateChannels WebSocket protocol
+* introduce mechanism to split mining reward and send to predefined address. This is consensus breaking
+* Sets the Fortuna testnet hard fork height to block 82900 (approximately Mon 20th May 2019 at 3:30am CEST).
+* Removes the deprecated `bin/epoch` operational script.
+* Removes the deprecated `log` field from the contract object in the user APIs.
+* Increases the base price for force progress transactions to be in a
+  correspondence with contract call base price
+* Added a mining configuration parameter `max_auth_fun_gas` - that limits the amount of gas that can be provided
+  to the authentication function in a GAMetaTx.
+* Adjusts StateChannels WebSocket API broken\_encoding errors
+* Overhaul of the swagger.yaml file, including checking the `integer` valued parameters for correctness.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.0.0-rc.1
 
