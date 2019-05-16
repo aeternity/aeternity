@@ -11,7 +11,7 @@ Regarding the Fortuna consensus protocol upgrade in testnet, this release:
 Regarding the Block Reward Initiative, this release:
 * Introduces a mechanism to split mining reward and send to predefined address. This is consensus breaking.
 
-Regarding introduction of generic accounts from the Fortuna consensus protocol, this release:
+Regarding introduction of generalized accounts from the Fortuna consensus protocol, this release:
 * Adds generalized accounts. See
   [here](https://github.com/aeternity/protocol/blob/aeternity-node-v3.0.0/generalized_accounts/generalized_accounts.md)
   for a description of the new feature.
