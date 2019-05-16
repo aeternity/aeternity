@@ -375,7 +375,7 @@
                     "description" :
                     "If true, the node will split rewards and send part to protocol_beneficiaries",
                     "type" : "boolean",
-                    "default" : false
+                    "default" : true
                 },
                 "protocol_beneficiaries" : {
                     "type" : "array",
@@ -384,7 +384,7 @@
                         "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+$"
                     },
                     "minItems": 1,
-                    "default" : ["ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:100"]
+                    "default" : ["ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:109"]
                 }
             }
         },
