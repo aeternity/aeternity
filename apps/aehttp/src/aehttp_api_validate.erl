@@ -56,7 +56,9 @@ fix_def_refs(Map) ->
     fix_def_refs(unused, Map).
 
 fix_def_refs(_, Map) when is_map(Map) ->
-    %% Recursively fix refs (and drop extra, to be ignored, fields since jesse is broken)
+    %% Recursively fix refs (and [drop extra, to be ignored,
+    %% fields](https://tools.ietf.org/html/draft-pbryan-zyp-json-ref-03#section-3)
+    %% since jesse is broken)
     case maps:get(<<"$ref">>, Map, none) of
         none -> maps:map(fun fix_def_refs/2, Map);
         Ref  -> #{ <<"$ref">> => <<"#", Ref/binary>> }
