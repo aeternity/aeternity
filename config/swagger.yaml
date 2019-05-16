@@ -1690,10 +1690,10 @@ parameters:
 definitions:
   # Swagger doesn't have any proper integer types, we mainly use four
   # different unsigned integers
-  #  * UInt - unbound unsigned ingegers
-  #  * UInt16 - 16-bit unsigned ingegers
-  #  * UInt32 - 32-bit unsigned ingegers
-  #  * UInt64 - 64-bit unsigned ingegers
+  #  * UInt - unbound unsigned integers
+  #  * UInt16 - 16-bit unsigned integers
+  #  * UInt32 - 32-bit unsigned integers
+  #  * UInt64 - 64-bit unsigned integers
   UInt:
     type: integer
     minimum: 0
