@@ -3502,6 +3502,14 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(StarterPid, error, Config),
     ws_send_tagged(StarterPid, <<"channels.update.new">>,
+        UpdateOpts#{from => <<"ABCDEF">>}, Config),
+    {ok, #{<<"reason">> := <<"broken_encoding: accounts">>}} =
+        wait_for_channel_event(StarterPid, error, Config),
+    ws_send_tagged(StarterPid, <<"channels.update.new">>,
+        UpdateOpts#{to => <<"ABCDEF">>}, Config),
+    {ok, #{<<"reason">> := <<"broken_encoding: accounts">>}} =
+        wait_for_channel_event(StarterPid, error, Config),
+    ws_send_tagged(StarterPid, <<"channels.update.new">>,
                    UpdateOpts, Config),
 
     %% starter signs the new state
@@ -4038,6 +4046,14 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
                     ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
                         NewContractOpts#{deposit => <<"1">>}, Config),
                     {ok, #{<<"reason">> := <<"not_a_number">>}} =
+                        wait_for_channel_event(OwnerConnPid, error, Config),
+                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
+                        NewContractOpts#{contract => <<"ABCDEF">>}, Config),
+                    {ok, #{<<"reason">> := <<"broken_encoding: contracts">>}} =
+                        wait_for_channel_event(OwnerConnPid, error, Config),
+                    ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
+                        NewContractOpts#{call_data => <<"ABCDEF">>}, Config),
+                    {ok, #{<<"reason">> := <<"broken_encoding: bytearray">>}} =
                         wait_for_channel_event(OwnerConnPid, error, Config),
 
                     % correct call
@@ -4899,6 +4915,14 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
                    CallOpts#{abi_version => <<"1">>}, Config),
     {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
+    ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
+        CallOpts#{call_data => <<"ABCDEFG">>}, Config),
+    {ok, #{<<"reason">> := <<"broken_encoding: bytearray">>}} =
+        wait_for_channel_event(SenderConnPid, error, Config),
+    ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
+        CallOpts#{contract => <<"ABCDEFG">>}, Config),
+    {ok, #{<<"reason">> := <<"broken_encoding: contracts">>}} =
+        wait_for_channel_event(SenderConnPid, error, Config),
     % correct call
     ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
                    CallOpts, Config),
@@ -4928,6 +4952,14 @@ dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
         wait_for_channel_event(SenderConnPid, error, Config),
     ws_send_tagged(SenderConnPid, <<"channels.dry_run.call_contract">>,
                    CallOpts, Config),
+    ws_send_tagged(SenderConnPid, <<"channels.dry_run.call_contract">>,
+                   CallOpts#{call_data => <<"ABCDEFG">>}, Config),
+    {ok, #{<<"reason">> := <<"broken_encoding: bytearray">>}} =
+        wait_for_channel_event(SenderConnPid, error, Config),
+    ws_send_tagged(SenderConnPid, <<"channels.dry_run.call_contract">>,
+                   CallOpts#{contract => <<"ABCDEFG">>}, Config),
+    {ok, #{<<"reason">> := <<"broken_encoding: contracts">>}} =
+        wait_for_channel_event(SenderConnPid, error, Config),
     {ok, <<"call_contract">>, CallRes} = wait_for_channel_event(SenderConnPid, dry_run, Config),
     ok = ?WS:unregister_test_for_channel_event(SenderConnPid, dry_run),
     #{<<"caller_id">>         := _CallerId,
@@ -5907,6 +5939,14 @@ ws_get_decoded_result(ConnPid1, ConnPid2, Type, [Update], UnsignedTx, Config) ->
             {ok, #{<<"reason">> := <<"not_a_number">>}} =
                 wait_for_channel_event(ConnPid, error, Config),
             ws_send_tagged(ConnPid, <<"channels.get.contract_call">>,
+                GetParams#{caller => <<"ABCEDFG">>}, Config),
+            {ok, #{<<"reason">> := <<"broken_encoding: accounts">>}} =
+                wait_for_channel_event(ConnPid, error, Config),
+            ws_send_tagged(ConnPid, <<"channels.get.contract_call">>,
+                GetParams#{contract => <<"ABCDEFG">>}, Config),
+            {ok, #{<<"reason">> := <<"broken_encoding: contracts">>}} =
+                wait_for_channel_event(ConnPid, error, Config),
+            ws_send_tagged(ConnPid, <<"channels.get.contract_call">>,
                            GetParams, Config),
             {ok, <<"contract_call">>, Res} = wait_for_channel_event(ConnPid, get, Config),
             Res
@@ -6013,6 +6053,8 @@ data_code_to_reason([1006])      -> <<"broken_encoding: contracts">>;
 data_code_to_reason([1007])      -> <<"contract_init_failed">>;
 data_code_to_reason([1008])      -> <<"not_a_number">>;
 data_code_to_reason([1005,1006]) -> <<"broken_encoding: accounts, contracts">>;
+data_code_to_reason([1009])      -> <<"broken_encoding: bytearray">>;
+data_code_to_reason([1010])      -> <<"broken_encoding: transaction">>;
 data_code_to_reason([Code])      -> sc_ws_api_jsonrpc:error_data_msg(Code).
 
 method_pfx(Action) ->
