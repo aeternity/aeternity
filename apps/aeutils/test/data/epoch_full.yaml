@@ -124,6 +124,8 @@ mining:
     expected_mine_rate: 180000
     micro_block_cycle: 3000
     min_miner_gas_price: 1000000000
+    # Maximum gas allowed for GAMetaTx authentication function
+    max_auth_fun_gas: 50000
     # Public key of beneficiary account that will receive fees from mining on a node.
     beneficiary: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999"
     cuckoo:
