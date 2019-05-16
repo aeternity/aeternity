@@ -4,7 +4,7 @@
 It marks the freeze of the Fortuna consensus protocol and of the user API.
 
 It:
-* Changed some HTTP API fields from plain `string` to encoded strings. See `swagger.yaml` for details.
+* Changes some HTTP API fields from plain `string` to encoded strings. See `swagger.yaml` for details.
 * Fixes the mempool minimum gas price (configured by miner) entrancy check for contract transactions, they incorrectly included the
   gas in the calculation before.
 * Does all the things mentioned temporarily in files [/docs/release-notes/next-fortuna/PT-*.md](/docs/release-notes/next-fortuna/).
