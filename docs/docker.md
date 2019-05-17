@@ -109,7 +109,7 @@ For more information see [miner configuration documentation](configuration#miner
 
 ## Testnet
 
-The minimal configuration to join the testnet needs a list of seed peers and network identifier:
+The minimal configuration to join the testnet needs a list of seed peers, network identifier and block reward beneficiary (with number of shares):
 
 ```yaml
 ---
@@ -122,6 +122,9 @@ peers:
 
 fork_management:
     network_id: ae_uat
+
+chain:
+    protocol_beneficiaries: ["ak_2A3PZPfMC2X7ZVy4qGXz2xh2Lbh79Q4UvZ5fdH7QVFocEgcKzU:109"]
 
 ```
 
