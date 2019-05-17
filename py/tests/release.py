@@ -346,7 +346,7 @@ def main(argv):
     max_height = blocks_to_mine + height
     test_failed = False
     try:
-        print("Will mine till block " +  str(max_height))
+        print("Will mine (at least) until block " +  str(max_height))
         sync_height = 0
         while sync_height < max_height:
             time.sleep(1) # check every second
