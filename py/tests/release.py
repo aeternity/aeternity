@@ -34,6 +34,7 @@ keys:
 
 sync:
     port: 9815
+    ping_interval: 15000
 
 peers:
     - aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:9825
@@ -82,6 +83,7 @@ keys:
 
 sync:
     port: 9825
+    ping_interval: 15000
 
 peers:
     - aenode://pp_Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq@localhost:9835
@@ -128,6 +130,7 @@ keys:
 
 sync:
     port: 9835
+    ping_interval: 15000
 
 peers:
     - aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:9825
