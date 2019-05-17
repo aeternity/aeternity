@@ -1,1 +1,0 @@
-* Removes the deprecated `log` field from the contract object in the user APIs.

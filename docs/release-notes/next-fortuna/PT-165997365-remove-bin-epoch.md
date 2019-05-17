@@ -1,1 +1,0 @@
-* Removes the deprecated `bin/epoch` operational script.
