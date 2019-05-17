@@ -111,10 +111,9 @@ For mainnet network the network ID defaults to `ae_mainnet`.
 ### Block reward initiative
 
 The new schema of managing block reward can be tuned with following configuration parameters.
-Mainnet values are included in the base code, however for testnet use below:
+Mainnet values are included in the base code, however for testnet use the following values - to be added in the `chain` section of the config:
 
 ```yaml
-chain:
     protocol_beneficiaries_enabled: true
     protocol_beneficiaries: ["ak_2A3PZPfMC2X7ZVy4qGXz2xh2Lbh79Q4UvZ5fdH7QVFocEgcKzU:109"]
 ```
