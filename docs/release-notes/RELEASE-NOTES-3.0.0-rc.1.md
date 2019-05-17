@@ -13,7 +13,7 @@ Regarding the Block Reward Initiative, this release:
 
 Regarding introduction of generalized accounts from the Fortuna consensus protocol, this release:
 * Adds generalized accounts. See
-  [here](https://github.com/aeternity/protocol/blob/aeternity-node-v3.0.0/generalized_accounts/generalized_accounts.md)
+  [here](https://github.com/aeternity/protocol/blob/aeternity-node-v3.0.0-rc.1/generalized_accounts/generalized_accounts.md)
   for a description of the new feature.
 * Changes the HTTP API for /transactions/info
   This HTTP endpoint used to just return a contract call object, but now returns <<"call_info">> => ContractCallObject instead, i.e. an extra tag is added.
