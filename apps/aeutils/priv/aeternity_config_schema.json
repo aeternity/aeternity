@@ -412,7 +412,7 @@
                 "expected_mine_rate" : {
                     "description" : "Expected mine rate (milliseconds) between blocks. Used in governance.",
                     "type" : "integer",
-                    "default": 300000,
+                    "default": 180000,
                     "minimum" : 1
                 },
                 "micro_block_cycle" : {
