@@ -16,7 +16,7 @@ Regarding introduction of generalized accounts from the Fortuna consensus protoc
   [here](https://github.com/aeternity/protocol/blob/aeternity-node-v3.0.0/generalized_accounts/generalized_accounts.md)
   for a description of the new feature.
 * Changes the HTTP API for /transactions/info
-  This HTTP endpoint used to just return a contract call object, but now returns <<"call_info">> => ContractCallObject instead, i.e. an extra tag is added
+  This HTTP endpoint used to just return a contract call object, but now returns <<"call_info">> => ContractCallObject instead, i.e. an extra tag is added.
   Additional tag provided is <<"ga_info">> which is what this endpoint returns when the provided transaction hash points to a generalized accounts transaction.
 * Changes the HTTP API for /transactions by giving the kind of account of the owner of the transaction
   Either a basic account (as before) or a generalized account
