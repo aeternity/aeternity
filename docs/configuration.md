@@ -97,7 +97,7 @@ listening can be set using the `websocket` > `channel` > `listen_address`
 parameter. Note that this address has a default value of `127.0.0.1` and thus
 the WebSocket endpoint is not exposed.
 
-## Network ID
+### Network ID
 
 The release package is preconfigured with mainnet network_id. Please change the configuration to interact with testnet.
 The testnet (internally called UAT) has the network ID `ae_uat` - this is set in the configuration:
@@ -108,7 +108,7 @@ fork_management:
 ```
 For mainnet network the network ID defaults to `ae_mainnet`.
 
-## Block reward initiative
+### Block reward initiative
 
 The new schema of managing block reward can be tuned with following configuration parameters.
 Mainnet values are included in the base code, however for testnet use below:
