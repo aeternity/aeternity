@@ -333,9 +333,9 @@ def main(argv):
     [setup_node(n, d, curr_dir, version) for n, d in zip(node_names, node_dirs)]
     [start_node(n, d) for n, d in zip(node_names, node_dirs)]
 
-    empty_config = Configuration()
     node_objs = []
     for n in node_names:
+        empty_config = Configuration()
         empty_config.host = SETUP[n]["host"]
         node_objs.append(ExternalApi(ApiClient(configuration=empty_config)))
 
