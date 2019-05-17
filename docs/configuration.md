@@ -119,14 +119,18 @@ chain:
     protocol_beneficiaries: ["ak_2A3PZPfMC2X7ZVy4qGXz2xh2Lbh79Q4UvZ5fdH7QVFocEgcKzU:109"]
 ```
 
+### Peers
 
+If the `peers` key is undefined, the *mainnet* seed peers (built-in in the package source) are used.
+
+If you want to join testnet, you need to set the `peers` key accordingly as an array of peers.
 
 ## Instructions
 
 The instructions below assume that:
 
 * The node is deployed in directory `~/aeternity/node`;
-* No custom peers are specified under the `peers` key in the config. If the `peers` key is undefined, the *mainnet* seed peers (built-in in the package source) are used.
+* You are aiming at joining mainnet.
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
