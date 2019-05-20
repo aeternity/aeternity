@@ -38,9 +38,15 @@ websocket_init(Params) ->
             {stop, undefined};
         {Handler, ChannelOpts} ->
             lager:debug("Starting Channel WS with params ~p", [Params]),
-            {ok, FsmPid} = start_link_fsm(Handler, ChannelOpts),
-            MRef = erlang:monitor(process, FsmPid),
-            {ok, Handler#handler{fsm_pid = FsmPid, fsm_mref = MRef}}
+            case start_link_fsm(Handler, ChannelOpts) of
+                {ok, FsmPid} ->
+                    MRef = erlang:monitor(process, FsmPid),
+                    {ok, Handler#handler{fsm_pid = FsmPid, fsm_mref = MRef}};
+                {error, Err} ->
+                    lager:info("Channel WS failed to start because of ~p; params ~p",
+                       [Err, Params]),
+                    {stop, undefined}
+            end
     end.
 
 -spec websocket_handle(term(), handler()) -> {ok, handler()}.
@@ -86,7 +92,8 @@ set_channel_id_(#{channel_id := A}, #handler{channel_id = B})
 set_channel_id_(_Msg, H) ->
     H.
 
-terminate(_Reason, _PartialReq, #{} = _H) ->
+terminate(Reason, _PartialReq, #{} = _H) ->
+    lager:debug("WebSocket dying because of ~p", [Reason]),
     % not initialized yet
     ok;
 terminate(Reason, _PartialReq, State) ->
@@ -97,22 +104,27 @@ terminate(Reason, _PartialReq, State) ->
             true = unlink(FsmPid),
             ok = aesc_fsm:client_died(FsmPid)
     end,
-    jobs:done(job_id(State)),
+    case job_id(State) of
+        undefined -> pass;
+        JobId -> jobs:done(JobId)
+    end,
     ok.
 
 -spec job_id(handler()) -> term().
+job_id(undefined) -> undefined;
 job_id(#handler{job_id = JobId}) ->
     JobId.
 
 -spec fsm_pid(handler()) -> pid() | undefined.
+fsm_pid(undefined) -> undefined;
 fsm_pid(#handler{fsm_pid = Pid}) ->
     Pid.
 
 -spec start_link_fsm(handler(), map()) -> {ok, pid()}.
 start_link_fsm(#handler{role = initiator, host=Host, port=Port}, Opts) ->
-    {ok, _Pid} = aesc_fsm:initiate(Host, Port, Opts);
+    aesc_fsm:initiate(Host, Port, Opts);
 start_link_fsm(#handler{role = responder, port=Port}, Opts) ->
-    {ok, _Pid} = aesc_fsm:respond(Port, Opts).
+    aesc_fsm:respond(Port, Opts).
 
 set_field(H, host, Val)         -> H#handler{host = Val};
 set_field(H, role, Val)         -> H#handler{role = Val};

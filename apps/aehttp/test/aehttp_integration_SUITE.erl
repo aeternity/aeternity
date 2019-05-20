@@ -200,6 +200,9 @@
 %% channel websocket endpoints
 -export(
    [sc_ws_timeout_open/1,
+    sc_ws_attach_initiator/1,
+    sc_ws_attach_responder/1,
+		sc_ws_dont_open_ga/1,
     sc_ws_min_depth_not_reached_timeout/1,
     sc_ws_min_depth_is_modifiable/1,
     sc_ws_basic_open_close/1,
@@ -221,6 +224,7 @@
 
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(WS, aehttp_ws_test_utils).
@@ -290,7 +294,8 @@ groups() ->
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
        {group, naming},
-       {group, channel_websocket}
+       {group, channel_websocket},
+       {group, channel_ga}
       ]},
 
      %% /key-blocks/* /micro-blocks/* /generations/*
@@ -530,7 +535,26 @@ groups() ->
       channel_websocket_sequence()
      },
      {continuous_sc_ws, [sequence],
-      channel_continuous_sequence()}
+      channel_continuous_sequence()},
+     {channel_ga, [sequence],
+      [{group, generalized_account_initiator},
+       {group, generalized_account_responder},
+       {group, generalized_account_both}
+      ]
+     },
+     {generalized_account_initiator, [sequence],
+      [sc_ws_attach_initiator,
+       sc_ws_dont_open_ga]
+     },
+     {generalized_account_responder, [sequence],
+      [sc_ws_attach_responder,
+       sc_ws_dont_open_ga]
+     },
+     {generalized_account_both, [sequence],
+      [sc_ws_attach_initiator,
+       sc_ws_attach_responder,
+       sc_ws_dont_open_ga]
+     }
     ].
 
 channel_websocket_sequence() ->
@@ -586,6 +610,12 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
+init_per_group(channel_ga, Config) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
+        ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
+        ?FORTUNA_PROTOCOL_VSN -> Config
+    end;
 init_per_group(continuous_sc_ws, Config) ->
     sc_ws_open_(Config);
 init_per_group(all, Config) ->
@@ -752,7 +782,10 @@ init_per_group(nonexistent_name = Group, Config) ->
 init_per_group(name_txs, _Config) ->
     {skip, not_implemented};
 
-init_per_group(channel_websocket = Group, Config) ->
+init_per_group(Group, Config) when Group =:= channel_websocket;
+                                   Group =:= generalized_account_initiator;
+                                   Group =:= generalized_account_responder;
+                                   Group =:= generalized_account_both ->
     Config1 = start_node(Group, Config),
     {ok, 404, _} = get_balance_at_top(),
     IStartAmt = 5000000 * aec_test_utils:min_gas_price(),
@@ -5052,6 +5085,29 @@ sc_ws_timeout_open_(Config) ->
     ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
     ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
     ok.
+ 
+sc_ws_attach_initiator(Config) ->
+    #{initiator := #{pub_key  := Pubkey,
+                     priv_key := Privkey}} = proplists:get_value(participants, Config),
+    attach({Pubkey, Privkey}, "simple_auth", "authorize", ["42"]),
+    ok.
+
+sc_ws_attach_responder(Config) ->
+    #{responder := #{pub_key  := Pubkey,
+                     priv_key := Privkey}} = proplists:get_value(participants, Config),
+    attach({Pubkey, Privkey}, "simple_auth", "authorize", ["42"]),
+    ok.
+
+sc_ws_dont_open_ga(Config) ->
+    #{initiator := #{pub_key := IPubkey},
+      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
+
+    IAmt = 8,
+    RAmt = 4,
+
+    ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}, Config),
+    {error, rejected} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts), Config),
+    ok.
 
 sc_ws_min_depth_not_reached_timeout(Config) ->
     with_trace(fun sc_ws_min_depth_not_reached_timeout_/1, Config,
@@ -6241,3 +6297,29 @@ ttb_stop() ->
 
 get_nodes() ->
     [aecore_suite_utils:node_name(?NODE)].
+
+attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args) ->
+   attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args, #{}).
+
+attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args, Opts) ->
+   case aega_test_utils:get_contract(_SophiaVsn = 3, Contract) of
+       {ok, #{src := Src, bytecode := C, map := #{type_info := TI}}} ->
+           attach_({Owner, OwnerPrivkey}, Src, C, TI, AuthFun, Args, Opts);
+       _ ->
+           error(bad_contract)
+   end.
+
+attach_({Owner, OwnerPrivkey}, Src, ByteCode, TypeInfo, AuthFun, Args, Opts) ->
+    {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Owner]),
+    Calldata = aega_test_utils:make_calldata(Src, "init", Args),
+    {ok, AuthFunHash} = aeb_abi:type_hash_from_function_name(list_to_binary(AuthFun),
+                                                             TypeInfo),
+    Options1 = maps:merge(#{nonce => Nonce, code => ByteCode,
+                            auth_fun => AuthFunHash, call_data => Calldata},
+                            Opts),
+    AttachTx = aega_test_utils:ga_attach_tx(Owner, Options1),
+
+    SignedTx = aec_test_utils:sign_tx(AttachTx, [OwnerPrivkey]),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
+    wait_for_signed_transaction_in_block(SignedTx),
+    ok.

@@ -521,31 +521,39 @@ init(#{opts := Opts0} = Arg) ->
               fun check_rpt_opt/1,
               fun check_log_opt/1
              ], Opts0),
-    Session = start_session(Arg, Opts),
-    {ok, State} = aesc_offchain_state:new(Opts),
-    Data = #data{role   = Role,
-                client  = Client,
-                session = Session,
-                opts    = Opts,
-                state   = State,
-                log     = #w{keep = maps:get(log_keep, Opts)}},
-    lager:debug("Session started, Data = ~p", [Data]),
-    %% TODO: Amend the fsm above to include this step. We have transport-level
-    %% connectivity, but not yet agreement on the channel parameters. We will next send
-    %% a channel_open() message and await a channel_accept().
-    Reestablish = maps:is_key(existing_channel_id, Opts),
-    case Role of
-        initiator ->
-            if Reestablish ->
-                    ok_next(reestablish_init, send_reestablish_msg(Data));
-              true ->
-                    ok_next(initialized, send_open_msg(Data))
-            end;
-        responder ->
-            if Reestablish ->
-                    ok_next(awaiting_reestablish, Data);
-              true ->
-                    ok_next(awaiting_open, Data)
+    #{initiator := Initiator,
+      responder := Responder} = Opts,
+    Checks = [fun() -> check_accounts(Initiator, Responder) end],
+    case aeu_validation:run(Checks) of
+        {error, Err} ->
+            {stop, Err};
+        ok ->
+            Session = start_session(Arg, Opts),
+            {ok, State} = aesc_offchain_state:new(Opts),
+            Data = #data{role   = Role,
+                        client  = Client,
+                        session = Session,
+                        opts    = Opts,
+                        state   = State,
+                        log     = #w{keep = maps:get(log_keep, Opts)}},
+            lager:debug("Session started, Data = ~p", [Data]),
+            %% TODO: Amend the fsm above to include this step. We have transport-level
+            %% connectivity, but not yet agreement on the channel parameters. We will next send
+            %% a channel_open() message and await a channel_accept().
+            Reestablish = maps:is_key(existing_channel_id, Opts),
+            case Role of
+                initiator ->
+                    if Reestablish ->
+                            ok_next(reestablish_init, send_reestablish_msg(Data));
+                      true ->
+                            ok_next(initialized, send_open_msg(Data))
+                    end;
+                responder ->
+                    if Reestablish ->
+                            ok_next(awaiting_reestablish, Data);
+                      true ->
+                            ok_next(awaiting_open, Data)
+                    end
             end
     end.
 
@@ -3043,3 +3051,17 @@ next_round(#data{state = State}) ->
 %% %% for tracing only
 %% event(_, _, _) ->
 %%     ok.
+account_type(Pubkey) ->
+		case aec_chain:get_account(Pubkey) of
+    		{value, Account} ->
+						{ok, aec_accounts:type(Account)};
+				_ -> not_found
+		end.
+
+check_accounts(Initiator, Responder) ->
+    case {account_type(Initiator), account_type(Responder)} of
+        {{ok, basic}, {ok, basic}}  -> ok;
+        {{ok, generalized}, _}      -> {error, generalized_account};
+        {_, {ok, generalized}}      -> {error, generalized_account};
+        _                           -> {error, not_found}
+    end.
