@@ -252,12 +252,8 @@ handle_info({'EXIT', Pid, Reason}, State) ->
     end,
     {noreply, do_terminate_worker(Pid, State, Reason)};
 handle_info(update_sync_progress_metric, State) ->
-    case is_syncing(State) of
-        true ->
-            SyncProgress = sync_progress(State),
-            aec_metrics:try_update([ae,epoch,aecore,sync,progress], SyncProgress);
-        false -> ok
-    end,
+    SyncProgress = sync_progress(State),
+    aec_metrics:try_update([ae,epoch,aecore,sync,progress], SyncProgress),
 
     %% Next try in 30 secs.
     erlang:send_after(30 * 1000, self(), update_sync_progress_metric),
