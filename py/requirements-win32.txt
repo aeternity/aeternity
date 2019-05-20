@@ -4,3 +4,5 @@
 ##
 pystache==0.5.4
 waiting==1.4.1
+urllib3==1.24.1
+requests==2.21.0

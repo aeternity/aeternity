@@ -34,6 +34,7 @@ keys:
 
 sync:
     port: 9815
+    ping_interval: 15000
 
 peers:
     - aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:9825
@@ -82,6 +83,7 @@ keys:
 
 sync:
     port: 9825
+    ping_interval: 15000
 
 peers:
     - aenode://pp_Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq@localhost:9835
@@ -128,6 +130,7 @@ keys:
 
 sync:
     port: 9835
+    ping_interval: 15000
 
 peers:
     - aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:9825
@@ -166,8 +169,8 @@ fork_management:
 
 def node_is_online(api):
     try:
-        top = api.get_current_key_block()
-        return top.height > -1
+        top = api.get_top_block()
+        return top.key_block.height > -1
     except Exception as e:
         return False
 
@@ -330,26 +333,28 @@ def main(argv):
     [setup_node(n, d, curr_dir, version) for n, d in zip(node_names, node_dirs)]
     [start_node(n, d) for n, d in zip(node_names, node_dirs)]
 
-    empty_config = Configuration()
     node_objs = []
     for n in node_names:
+        empty_config = Configuration()
         empty_config.host = SETUP[n]["host"]
         node_objs.append(ExternalApi(ApiClient(configuration=empty_config)))
 
     wait_all_nodes_are_online(node_objs, 30)
 
-    top = node_objs[0].get_current_key_block()
-    height = top.height
+    top = node_objs[0].get_top_block()
+    height = top.key_block.height
     max_height = blocks_to_mine + height
     test_failed = False
     try:
-        print("Will mine till block " +  str(max_height))
-        while height < max_height:
+        print("Will mine (at least) until block " +  str(max_height))
+        sync_height = 0
+        while sync_height < max_height:
             time.sleep(1) # check every second
+            sync_height = max_height
             for name, node in zip(node_names, node_objs):
-                top = node.get_current_key_block() # node is alive and mining
-                print("[" + name + "] height=" + str(top.height))
-                height = max(height, top.height)
+                top = node.get_top_block() # node is alive and mining
+                print("[" + name + "] height=" + str(top.key_block.height))
+                sync_height = min(sync_height, top.key_block.height)
             print("")
     except ApiException as e:
         test_failed = True
