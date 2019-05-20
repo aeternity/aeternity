@@ -120,7 +120,7 @@ fsm_pid(undefined) -> undefined;
 fsm_pid(#handler{fsm_pid = Pid}) ->
     Pid.
 
--spec start_link_fsm(handler(), map()) -> {ok, pid()}.
+-spec start_link_fsm(handler(), map()) -> {ok, pid()} | {error, atom()}.
 start_link_fsm(#handler{role = initiator, host=Host, port=Port}, Opts) ->
     aesc_fsm:initiate(Host, Port, Opts);
 start_link_fsm(#handler{role = responder, port=Port}, Opts) ->
