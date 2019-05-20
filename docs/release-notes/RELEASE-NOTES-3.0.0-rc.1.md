@@ -40,6 +40,8 @@ Regarding state channels, this release:
 * Increases the base price for force progress transactions to be in a
   correspondence with contract call base price.
 * Adjusts StateChannels WebSocket API broken\_encoding errors.
+* Disables usage of provided StateChannels WebSocket API for generalized
+  accounts.
 
 Regarding the Sophia language, this release:
 * Adds Address.is_contract, Address.is_oracle, Oracle.check and Oracle.check_query to Sophia and AEVM.
