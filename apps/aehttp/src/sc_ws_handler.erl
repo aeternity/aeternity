@@ -110,12 +110,12 @@ terminate(Reason, _PartialReq, State) ->
     end,
     ok.
 
--spec job_id(handler()) -> term().
+-spec job_id(handler() | undefined) -> term().
 job_id(undefined) -> undefined;
 job_id(#handler{job_id = JobId}) ->
     JobId.
 
--spec fsm_pid(handler()) -> pid() | undefined.
+-spec fsm_pid(handler() | undefined) -> pid() | undefined.
 fsm_pid(undefined) -> undefined;
 fsm_pid(#handler{fsm_pid = Pid}) ->
     Pid.
