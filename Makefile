@@ -240,12 +240,15 @@ ct-mnesia-rocksdb: AETERNITY_TESTCONFIG_DB_BACKEND=rocksdb
 ct-mnesia-rocksdb: internal-ct
 
 ct-stratum: KIND=test
+ct-stratum: SYSCONFIG=config/test.config
+ct-stratum: AETERNITY_TESTCONFIG_DB_BACKEND=mnesia
 ct-stratum: internal-build stratum-client-internal-build
 	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
 	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
 		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
 	else \
-		$(REBAR) ct --suite apps/aestratum/test/aestratum_integration_SUITE --sys_config config/test.config; \
+		AETERNITY_TESTCONFIG_DB_BACKEND=$(AETERNITY_TESTCONFIG_DB_BACKEND) \
+		$(REBAR) ct --suite apps/aestratum/test/aestratum_integration_SUITE --sys_config $(SYSCONFIG); \
 	fi
 
 stratum-client-internal-build:
