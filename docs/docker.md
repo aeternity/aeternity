@@ -62,14 +62,8 @@ More details about node configuration can be found in [configuration documentati
 
 ### Persisting Data
 
-To persist blockchain data between container runs use [Docker volumes](https://docs.docker.com/engine/admin/volumes/volumes/) and enable chain persistence in your configuration:
-
-```yaml
-# ... SNIP
-chain:
-    persist: true
-# SNIP ...
-```
+The blockchain data is persisted by default, inside the Docker container.
+In order to persist the data in a directory on the host machine, use [Docker volumes](https://docs.docker.com/engine/admin/volumes/volumes/).
 
 Assuming your configuration file path is `~/.aeternity/myaeternity.yaml` on host machine.
 Replace `~/.aeternity/myaedb` with location of your choice where the data will be stored in.
