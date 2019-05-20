@@ -3,7 +3,7 @@ contract GA =
 
   function init() = { secret = 0 }
 
-  function nonce_correct(s : int) : bool =
+  stateful function nonce_correct(s : int) : bool =
     let ok = state.secret == s
     put(state{secret = s + 1})
     ok
