@@ -122,6 +122,7 @@
                  end).
 
 -define(TX_IN_MEMPOOL, []).
+-define(PERSIST, true).
 
 tables() -> tables(ram).
 
@@ -173,7 +174,7 @@ clear_table(Tab) ->
        end).
 
 persisted_valid_genesis_block() ->
-    case application:get_env(aecore, persist, false) of
+    case application:get_env(aecore, persist, ?PERSIST) of
         false ->
             true;
         true ->
@@ -192,7 +193,7 @@ persisted_valid_genesis_block() ->
     end.
 
 backend_mode() ->
-    case application:get_env(aecore, persist, false) of
+    case application:get_env(aecore, persist, ?PERSIST) of
         false -> expand_mode(ram);
         true  -> expand_mode(disc)
     end.
