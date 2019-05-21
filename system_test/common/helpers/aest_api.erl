@@ -52,6 +52,7 @@ sc_open(Params, Cfg) ->
 
     {Host, _Port} = node_ws_int_addr(RNodeName, Cfg),
     Opts = #{
+        protocol => <<"json-rpc">>,
         host => Host,
         port => maps:get(responder_port, Params, 9000),
         initiator_id => aeser_api_encoder:encode(account_pubkey, IPubKey),
@@ -72,13 +73,13 @@ sc_open(Params, Cfg) ->
 
     %% initiator gets to sign a create_tx
     CrTx = sc_wait_and_sign(IConn, IPrivKey, <<"initiator_sign">>),
-    {ok, #{ <<"event">> := <<"funding_created">>} } = ?WS:wait_for_channel_event(RConn, info),
+    {ok, #{ <<"event">> := <<"funding_created">>} } = sc_wait_for_channel_event(RConn, info),
     %% responder gets to sign a create_tx
     CrTx = sc_wait_and_sign(RConn, RPrivKey, <<"responder_sign">>),
-    {ok, #{ <<"event">> := <<"funding_signed">>} } = ?WS:wait_for_channel_event(IConn, info),
+    {ok, #{ <<"event">> := <<"funding_signed">>} } = sc_wait_for_channel_event(IConn, info),
     %% both of them receive the same co-signed channel_create_tx
-    {ok, #{ <<"tx">> := EncSignedCrTx} } = ?WS:wait_for_channel_event(IConn, on_chain_tx),
-    {ok, #{ <<"tx">> := EncSignedCrTx} } = ?WS:wait_for_channel_event(RConn, on_chain_tx),
+    {ok, #{ <<"tx">> := EncSignedCrTx} } = sc_wait_for_channel_event(IConn, on_chain_tx),
+    {ok, #{ <<"tx">> := EncSignedCrTx} } = sc_wait_for_channel_event(RConn, on_chain_tx),
 
     {ok, BinSignedCrTx} = aeser_api_encoder:safe_decode(transaction, EncSignedCrTx),
     SignedCrTx = aetx_sign:deserialize_from_binary(BinSignedCrTx),
@@ -127,8 +128,8 @@ sc_close_mutual(Channel, Closer)
         responder -> sc_close_mutual(RConn, RPrivKey, IConn, IPrivKey)
     end,
 
-    {ok, #{ <<"tx">> := EncSignedMutualTx} } = ?WS:wait_for_channel_event(IConn, on_chain_tx),
-    {ok, #{ <<"tx">> := EncSignedMutualTx} } = ?WS:wait_for_channel_event(RConn, on_chain_tx),
+    {ok, #{ <<"tx">> := EncSignedMutualTx} } = sc_wait_for_channel_event(IConn, on_chain_tx),
+    {ok, #{ <<"tx">> := EncSignedMutualTx} } = sc_wait_for_channel_event(RConn, on_chain_tx),
 
     {ok, BinSignedMutualTx} = aeser_api_encoder:safe_decode(transaction, EncSignedMutualTx),
     SignedMutualTx = aetx_sign:deserialize_from_binary(BinSignedMutualTx),
@@ -162,6 +163,14 @@ sc_start_ws(NodeName, Role, Opts, Cfg) ->
     {Host, Port} = node_ws_ext_addr(NodeName, Cfg),
     ?WS:start_channel(Host, Port, Role, Opts).
 
+sc_wait_for_channel_event(ConnPid, Action) ->
+    case ?WS:wait_for_channel_event(ConnPid, Action) of
+        {ok, #{ <<"params">> := #{ <<"data">> := Data }}} ->
+            {ok, Data};
+        {ok, Tag, #{ <<"params">> := #{ <<"data">> := Data }}} ->
+            {ok, Tag, Data}
+    end.
+
 sc_close_mutual(CloserConn, CloserPrivKey, OtherConn, OtherPrivKey) ->
     ?WS:send(CloserConn, <<"shutdown">>, #{}),
     ShTx = sc_wait_and_sign(CloserConn, CloserPrivKey, <<"shutdown_sign">>),
@@ -170,10 +179,10 @@ sc_close_mutual(CloserConn, CloserPrivKey, OtherConn, OtherPrivKey) ->
 sc_withdraw(SenderConn, SenderPrivKey, Amount, AckConn, AckPrivKey) ->
     ?WS:send(SenderConn, <<"withdraw">>, #{amount => Amount}),
     UnsignedStateTx = sc_wait_and_sign(SenderConn, SenderPrivKey, <<"withdraw_tx">>),
-    {ok, #{ <<"event">> := <<"withdraw_created">> }} = ?WS:wait_for_channel_event(AckConn, info),
+    {ok, #{ <<"event">> := <<"withdraw_created">> }} = sc_wait_for_channel_event(AckConn, info),
     UnsignedStateTx = sc_wait_and_sign(AckConn, AckPrivKey, <<"withdraw_ack">>),
-    {ok, #{ <<"tx">> := EncodedSignedWTx }} = ?WS:wait_for_channel_event(SenderConn, on_chain_tx),
-    {ok, #{ <<"tx">> := EncodedSignedWTx }} = ?WS:wait_for_channel_event(AckConn, on_chain_tx),
+    {ok, #{ <<"tx">> := EncodedSignedWTx }} = sc_wait_for_channel_event(SenderConn, on_chain_tx),
+    {ok, #{ <<"tx">> := EncodedSignedWTx }} = sc_wait_for_channel_event(AckConn, on_chain_tx),
 
     {ok, BinSignedWTx} = aeser_api_encoder:safe_decode(transaction, EncodedSignedWTx),
     SignedWTx = aetx_sign:deserialize_from_binary(BinSignedWTx),
@@ -187,12 +196,12 @@ sc_withdraw(SenderConn, SenderPrivKey, Amount, AckConn, AckPrivKey) ->
     {ok, TxHash, Fee}.
 
 sc_wait_channel_open(IConn, RConn) ->
-    {ok, #{ <<"event">> := <<"channel_open">> }} = ?WS:wait_for_channel_event(RConn, info),
-    {ok, #{ <<"event">> := <<"channel_accept">> }} = ?WS:wait_for_channel_event(IConn, info),
+    {ok, #{ <<"event">> := <<"channel_open">> }} = sc_wait_for_channel_event(RConn, info),
+    {ok, #{ <<"event">> := <<"channel_accept">> }} = sc_wait_for_channel_event(IConn, info),
     ok.
 
 sc_wait_and_sign(Conn, Privkey, Tag) ->
-    {ok, Tag, #{ <<"tx">> := EncTx }} = ?WS:wait_for_channel_event(Conn, sign),
+    {ok, Tag, #{ <<"tx">> := EncTx }} = sc_wait_for_channel_event(Conn, sign),
     {ok, BinTx} = aeser_api_encoder:safe_decode(transaction, EncTx),
     Tx = aetx:deserialize_from_binary(BinTx),
     SignedTx = aec_test_utils:sign_tx(Tx, Privkey),
@@ -202,22 +211,22 @@ sc_wait_and_sign(Conn, Privkey, Tag) ->
     Tx.
 
 sc_wait_funding_locked(InitiatorConn, ResponderConn) ->
-    {ok, #{ <<"event">> := <<"own_funding_locked">> }} = ?WS:wait_for_channel_event(InitiatorConn, info),
-    {ok, #{ <<"event">> := <<"own_funding_locked">> }} = ?WS:wait_for_channel_event(ResponderConn, info),
-    {ok, #{ <<"event">> := <<"funding_locked">> }} = ?WS:wait_for_channel_event(InitiatorConn, info),
-    {ok, #{ <<"event">> := <<"funding_locked">> }} = ?WS:wait_for_channel_event(ResponderConn, info),
+    {ok, #{ <<"event">> := <<"own_funding_locked">> }} = sc_wait_for_channel_event(InitiatorConn, info),
+    {ok, #{ <<"event">> := <<"own_funding_locked">> }} = sc_wait_for_channel_event(ResponderConn, info),
+    {ok, #{ <<"event">> := <<"funding_locked">> }} = sc_wait_for_channel_event(InitiatorConn, info),
+    {ok, #{ <<"event">> := <<"funding_locked">> }} = sc_wait_for_channel_event(ResponderConn, info),
     ok.
 
 sc_wait_open(IConn, RConn) ->
-    {ok, #{ <<"event">> := <<"open">> }} = ?WS:wait_for_channel_event(IConn, info),
-    {ok, #{ <<"event">> := <<"open">> }} = ?WS:wait_for_channel_event(RConn, info),
+    {ok, #{ <<"event">> := <<"open">> }} = sc_wait_for_channel_event(IConn, info),
+    {ok, #{ <<"event">> := <<"open">> }} = sc_wait_for_channel_event(RConn, info),
     ok.
 
 sc_wait_withdraw_locked(SenderConn, AckConn) ->
-    {ok, #{ <<"event">> := <<"own_withdraw_locked">> }} = ?WS:wait_for_channel_event(SenderConn, info),
-    {ok, #{ <<"event">> := <<"own_withdraw_locked">> }} = ?WS:wait_for_channel_event(AckConn, info),
-    {ok, #{ <<"event">> := <<"withdraw_locked">> }} = ?WS:wait_for_channel_event(SenderConn, info),
-    {ok, #{ <<"event">> := <<"withdraw_locked">> }} = ?WS:wait_for_channel_event(AckConn, info),
+    {ok, #{ <<"event">> := <<"own_withdraw_locked">> }} = sc_wait_for_channel_event(SenderConn, info),
+    {ok, #{ <<"event">> := <<"own_withdraw_locked">> }} = sc_wait_for_channel_event(AckConn, info),
+    {ok, #{ <<"event">> := <<"withdraw_locked">> }} = sc_wait_for_channel_event(SenderConn, info),
+    {ok, #{ <<"event">> := <<"withdraw_locked">> }} = sc_wait_for_channel_event(AckConn, info),
     ok.
 
 %--- TRANSACTION FUNCTIONS -----------------------------------------------------
