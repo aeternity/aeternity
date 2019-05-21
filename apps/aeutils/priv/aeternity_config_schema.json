@@ -345,7 +345,9 @@
                 "persist" : {
                     "description" :
                     "If true, all changes to the chain are written to disk.",
-                    "type" : "boolean" },
+                    "type" : "boolean",
+                    "default" : true
+                },
                 "db_backend" : {
                     "description" : "Choice of database backend.",
                     "type" : "string",
