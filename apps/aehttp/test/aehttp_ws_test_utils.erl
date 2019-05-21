@@ -270,14 +270,9 @@ wait_for_event_any(Origin, Action, Timeout) ->
         timeout
     end.
 
-%% consumes messages from the mailbox:
-%% {Sender::pid(), websocket_event, Origin::atom(), Action::atom()}
-%% {Sender::pid(), websocket_event, Origin::atom(), Action::atom(), Payload::map()}
--spec wait_for_event(pid(), atom(), atom()) -> ok | {ok, map()} | timeout.
 wait_for_event(ConnPid, Origin, Action) ->
     wait_for_event(ConnPid, Origin, Action, ?DEFAULT_EVENT_TIMEOUT).
 
--spec wait_for_event(pid(), atom(), atom(), integer()) -> ok | {ok, map()} | timeout.
 wait_for_event(ConnPid, Origin, Action, Timeout) ->
     wait_for_msg(payload, ConnPid, Origin, Action, Timeout).
 
@@ -286,7 +281,11 @@ wait_for_event(ConnPid, Origin, Action, Timeout) ->
 wait_for_msg(ConnPid, Origin, Action, Timeout) ->
     wait_for_msg(msg, ConnPid, Origin, Action, Timeout).
 
--spec wait_for_msg(pid(), atom(), atom(), integer()) -> ok | {ok, map()} | timeout.
+%% consumes messages from the mailbox:
+%% {Sender::pid(), websocket_event, Origin::atom(), Action::atom()}
+%% {Sender::pid(), websocket_event, Origin::atom(), Action::atom(), Payload::map()}
+%% {Sender::pid(), websocket_event, Origin::atom(), Action::atom(), Tag::term(), Payload::map()}
+-spec wait_for_msg(msg | payload, pid(), atom(), atom(), integer()) -> ok | {ok, map()} | {ok, Tag::term(), map()}.
 wait_for_msg(Type, ConnPid, Origin, Action, Timeout) ->
     MRef = erlang:monitor(process, ConnPid),
     try receive
