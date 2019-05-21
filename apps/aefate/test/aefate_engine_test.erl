@@ -264,7 +264,8 @@ bits() ->
 
 
 
-make_call(Contract, Function, Arguments) ->
+make_call(Contract, Function0, Arguments) ->
+    Function = aeb_fate_code:symbol_identifier(Function0),
     #{ contract  => pad_contract_name(Contract)
      , gas => 100000
      , value => 0
@@ -289,22 +290,14 @@ pad_contract_name(Name) ->
 
 setup_contract(Functions) ->
     lists:foldl(
-      fun({FunctionName, Signature, BBs}, State) ->
-              set_function_code(FunctionName, Signature, BBs, State)
+      fun({FunctionName, Signature, BBs}, FateCode) ->
+              set_function_code(FunctionName, Signature, BBs, FateCode)
       end,
-      #{functions => #{},
-        annotations => #{},
-        symbols => #{}
-       },
+      aeb_fate_code:new(),
       Functions).
 
-set_function_code(Name, Signature, BBs, #{functions := Functions} = S) ->
-    NewFunctions = maps:put(Name, {Signature, set_bbs(BBs, #{})}, Functions),
-    maps:put(functions, NewFunctions, S).
-
-set_bbs([], BBs) -> BBs;
-set_bbs([{N, Code}|Rest], BBs) ->
-    set_bbs(Rest, BBs#{N => Code}).
+set_function_code(Name, Signature, BBs, FateCode) ->
+    aeb_fate_code:insert_fun(Name, Signature, maps:from_list(BBs), FateCode).
 
 contracts() ->
     #{ <<"test">> =>
@@ -327,14 +320,14 @@ contracts() ->
              }
            , {<<"call">>, {[integer],integer},
               [{0, [ {'ADD', {stack, 0}, {arg,0}, {immediate, 1}}
-                   , {'CALL', {immediate, <<"inc">>}}]}
+                   , {'CALL', {immediate, aeb_fate_code:symbol_identifier(<<"inc">>)}}]}
               ,{1, [ {'INC', {stack, 0}}
                    , 'RETURN']}
               ]
              }
            , {<<"tailcall">>, {[integer],integer},
               [{0, [ {'ADD', {stack, 0}, {arg,0}, {immediate, 1}}
-                   , {'CALL_T', {immediate, <<"inc">>}}]}
+                   , {'CALL_T', {immediate, aeb_fate_code:symbol_identifier(<<"inc">>)}}]}
               ]
              }
            , { <<"remote_call">>
@@ -342,7 +335,7 @@ contracts() ->
              , [ {0, [ {'PUSH', {arg,0}},
                        {'CALL_R',
                         {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"remote">>))},
-                        {immediate, <<"add_five">>},
+                        {immediate, aeb_fate_code:symbol_identifier(<<"add_five">>)},
                         {immediate, 0}
                        } ]}
                , {1, [ {'INC', {stack, 0}},
@@ -354,7 +347,7 @@ contracts() ->
              , [ {0, [ {'PUSH', {arg,0}},
                        {'CALL_TR',
                         {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"remote">>))},
-                        {immediate, <<"add_five">>},
+                        {immediate, aeb_fate_code:symbol_identifier(<<"add_five">>)},
                         {immediate, 0}
                        } ]}
                ]
@@ -450,7 +443,7 @@ contracts() ->
              , {[integer], integer}
              , [ {0, [ {'STORE', {var, 1}, {arg, 0}}
                      , {'PUSH', {immediate, 0}}
-                     , {'CALL', {immediate, <<"write">>}}
+                     , {'CALL', {immediate, aeb_fate_code:symbol_identifier(<<"write">>)}}
                      ]
                  }
                , {1, [ {'PUSH', {var, 1}}
@@ -461,7 +454,7 @@ contracts() ->
              , {[integer], integer}
              , [ {0, [ {'STORE', {var, 2}, {arg, 0}}
                      , {'PUSH', {immediate, 0}}
-                     , {'CALL', {immediate, <<"write">>}}
+                     , {'CALL', {immediate, aeb_fate_code:symbol_identifier(<<"write">>)}}
                      ]
                  }
                , {1, [ {'PUSH', {var, 2}}
@@ -472,7 +465,7 @@ contracts() ->
              , {[integer], integer}
              , [ {0, [ {'STORE', {var, 1}, {arg, 0}}
                      , {'PUSH', {immediate, 0}}
-                     , {'CALL', {immediate, <<"read">>}}
+                     , {'CALL', {immediate, aeb_fate_code:symbol_identifier(<<"read">>)}}
                      ]
                  }
                , {1, [ {'PUSH', {var, 1}}

@@ -62,7 +62,7 @@ load_file(FileName, Opts) ->
             usage();
         Call ->
             {ok, File} = file:read_file(FileName),
-            Code = aeb_fate_asm:bytecode_to_fate_code(File, Opts),
+            Code = aeb_fate_code:bytecode_to_fate_code(File, Opts),
             SerializedCall = aeb_fate_asm:function_call(Call),
             What = #{ contract => FileName
                     , call => SerializedCall},

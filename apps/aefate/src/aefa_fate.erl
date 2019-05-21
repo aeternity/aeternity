@@ -208,7 +208,7 @@ step([I|Is], EngineState0) ->
 
 setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , code := ByteCode} = Spec, State) ->
-    try aeb_fate_asm:bytecode_to_fate_code(ByteCode, []) of
+    try aeb_fate_code:deserialize(ByteCode) of
         Code ->
             Cache = #{ ContractPubkey => Code },
             setup_engine(Spec, State, Cache)
