@@ -62,7 +62,7 @@ More details about node configuration can be found in [configuration documentati
 
 ### Persisting Data
 
-The blockchain data is persisted by default, inside the Docker container.
+The blockchain data is persisted by default at `/home/aeternity/node/data/mnesia`, inside the Docker container.
 In order to persist the data in a directory on the host machine, use [Docker volumes](https://docs.docker.com/engine/admin/volumes/volumes/).
 
 Replace `~/.aeternity/myaedb` with location of your choice where the data will be stored in.
