@@ -71,7 +71,7 @@ is_fork_height(Height) ->
 protocols_from_network_id(<<"ae_mainnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
      , ?MINERVA_PROTOCOL_VSN  => 47800
-     %% , ?FORTUNA_PROTOCOL_VSN => Not yet decided
+     , ?FORTUNA_PROTOCOL_VSN => 90800
      };
 protocols_from_network_id(<<"ae_uat">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
