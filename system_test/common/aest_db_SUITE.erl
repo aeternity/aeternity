@@ -28,6 +28,12 @@
 -define(MINING_TIMEOUT,   3000).
 -define(GRACEFUL_STOP_TIMEOUT, 60000).
 
+%=== RECORDS ===================================================================
+
+-record(db_reuse_test_spec, {create, % Node spec.
+                             reuse   % Node spec.
+                            }).
+
 %=== COMMON TEST FUNCTIONS =====================================================
 
 all() -> [
@@ -52,32 +58,44 @@ end_per_suite(_Config) -> ok.
 %=== TEST CASES ================================================================
 
 node_can_reuse_db_of_other_node(Cfg) ->
-    node_can_reuse_db_of_other_node_(fun node_spec/2, Cfg).
+    Test = #db_reuse_test_spec{
+              create = fun node_spec/2,
+              reuse = fun node_spec/2},
+    node_can_reuse_db_of_other_node_(Test, Cfg).
 
 roma_node_can_reuse_db_of_other_roma_node(Cfg) ->
-    node_can_reuse_db_of_other_node_(fun roma_node_spec/2, Cfg).
+    Test = #db_reuse_test_spec{
+              create = fun roma_node_spec/2,
+              reuse = fun roma_node_spec/2},
+    node_can_reuse_db_of_other_node_(Test, Cfg).
 
 minerva_node_with_epoch_db_can_reuse_db_of_roma_node(Cfg) ->
-    node_can_reuse_db_of_other_node_(fun roma_node_spec/2, fun minerva_with_epoch_name_in_db_spec/2, Cfg).
+    Test = #db_reuse_test_spec{
+              create = fun roma_node_spec/2,
+              reuse = fun minerva_with_epoch_name_in_db_spec/2},
+    node_can_reuse_db_of_other_node_(Test, Cfg).
 
 node_can_reuse_db_of_roma_node(Cfg) ->
-    node_can_reuse_db_of_other_node_(fun roma_node_spec/2, fun node_spec/2,
+    Test = #db_reuse_test_spec{
+              create = fun roma_node_spec/2,
+              reuse = fun node_spec/2},
+    node_can_reuse_db_of_other_node_(Test,
                                      [{rename_db_fun, fun run_rename_db_script/2} | Cfg]).
 
 node_can_reuse_db_of_minerva_node_with_epoch_db(Cfg) ->
-    node_can_reuse_db_of_other_node_(fun minerva_with_epoch_name_in_db_spec/2, fun node_spec/2,
+    Test = #db_reuse_test_spec{
+              create = fun minerva_with_epoch_name_in_db_spec/2,
+              reuse = fun node_spec/2},
+    node_can_reuse_db_of_other_node_(Test,
         [{rename_db_fun, fun run_rename_db_script/2} | Cfg]).
 
 %=== INTERNAL FUNCTIONS ========================================================
 
-node_can_reuse_db_of_other_node_(NodeSpecFun, Cfg) ->
-    node_can_reuse_db_of_other_node_(NodeSpecFun, NodeSpecFun, Cfg).
-
-node_can_reuse_db_of_other_node_(CreateDbNodeSpecFun, ReuseDbNodeSpecFun, Cfg)
-  when is_function(CreateDbNodeSpecFun, 2),
-       is_function(ReuseDbNodeSpecFun, 2) ->
+node_can_reuse_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg)
+  when is_function(T#db_reuse_test_spec.create, 2),
+       is_function(T#db_reuse_test_spec.reuse, 2) ->
     DbHostPath = node_db_host_path(node1, Cfg),
-    N1 = CreateDbNodeSpecFun(node1, DbHostPath),
+    N1 = (T#db_reuse_test_spec.create)(node1, DbHostPath),
     aest_nodes:setup_nodes([N1], Cfg),
     start_and_wait_node(node1, ?STARTUP_TIMEOUT, Cfg),
     TargetHeight = 3,
@@ -87,7 +105,7 @@ node_can_reuse_db_of_other_node_(CreateDbNodeSpecFun, ReuseDbNodeSpecFun, Cfg)
 
     run_db_rename_fun(DbHostPath, Cfg),
 
-    N2 = ReuseDbNodeSpecFun(node2, DbHostPath),
+    N2 = (T#db_reuse_test_spec.reuse)(node2, DbHostPath),
     aest_nodes:setup_nodes([N2], Cfg),
     start_and_wait_node(node2, ?STARTUP_TIMEOUT, Cfg),
     aest_nodes:wait_for_value({height, TargetHeight}, [node2], ?STARTUP_TIMEOUT, Cfg),
