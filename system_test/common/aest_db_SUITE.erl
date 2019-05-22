@@ -31,9 +31,13 @@
 %=== RECORDS ===================================================================
 
 -record(db_reuse_test_spec, {create,     % Node spec.
+                             populate =  % DB insertion.
+                                 fun populate_db/2,
                              pre_reuse = % DB transformation.
                                  fun(_,_,_) -> ok end,
-                             reuse       % Node spec.
+                             reuse,      % Node spec.
+                             assert =    % DB assertion.
+                                 fun assert_db_reused/3
                             }).
 
 %=== COMMON TEST FUNCTIONS =====================================================
@@ -95,15 +99,15 @@ node_can_reuse_db_of_minerva_node_with_epoch_db(Cfg) ->
 
 node_can_reuse_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg)
   when is_function(T#db_reuse_test_spec.create, 2),
+       is_function(T#db_reuse_test_spec.populate, 2),
        is_function(T#db_reuse_test_spec.pre_reuse, 3),
-       is_function(T#db_reuse_test_spec.reuse, 2) ->
+       is_function(T#db_reuse_test_spec.reuse, 2),
+       is_function(T#db_reuse_test_spec.assert, 3) ->
     DbHostPath = node_db_host_path(node1, Cfg),
     N1 = (T#db_reuse_test_spec.create)(node1, DbHostPath),
     aest_nodes:setup_nodes([N1], Cfg),
     start_and_wait_node(node1, ?STARTUP_TIMEOUT, Cfg),
-    TargetHeight = 3,
-    aest_nodes:wait_for_value({height, TargetHeight}, [node1], TargetHeight * ?MINING_TIMEOUT, Cfg),
-    #{hash := BlockHash} = aest_nodes:get_block(node1, TargetHeight),
+    DbFingerprint = (T#db_reuse_test_spec.populate)(node1, Cfg),
     aest_nodes:stop_node(node1, ?GRACEFUL_STOP_TIMEOUT, Cfg),
 
     ok = (T#db_reuse_test_spec.pre_reuse)(node3, DbHostPath, Cfg),
@@ -111,8 +115,18 @@ node_can_reuse_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg)
     N2 = (T#db_reuse_test_spec.reuse)(node2, DbHostPath),
     aest_nodes:setup_nodes([N2], Cfg),
     start_and_wait_node(node2, ?STARTUP_TIMEOUT, Cfg),
-    aest_nodes:wait_for_value({height, TargetHeight}, [node2], ?STARTUP_TIMEOUT, Cfg),
-    ?assertMatch({ok, 200, _}, get_block_by_hash(node2, BlockHash)),
+    ok = (T#db_reuse_test_spec.assert)(node2, DbFingerprint, Cfg),
+    ok.
+
+populate_db(NodeName, Cfg) ->
+    TargetHeight = 3,
+    aest_nodes:wait_for_value({height, TargetHeight}, [NodeName], TargetHeight * ?MINING_TIMEOUT, Cfg),
+    #{hash := BlockHash} = aest_nodes:get_block(NodeName, TargetHeight),
+    _DbFingerprint = {TargetHeight, BlockHash}.
+
+assert_db_reused(NodeName, {TargetHeight, BlockHash} = _DbFingerprint, Cfg) ->
+    aest_nodes:wait_for_value({height, TargetHeight}, [NodeName], ?STARTUP_TIMEOUT, Cfg),
+    ?assertMatch({ok, 200, _}, get_block_by_hash(NodeName, BlockHash)),
     ok.
 
 get_block_by_hash(NodeName, Hash) ->
