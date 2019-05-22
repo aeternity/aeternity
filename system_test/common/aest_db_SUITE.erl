@@ -30,8 +30,10 @@
 
 %=== RECORDS ===================================================================
 
--record(db_reuse_test_spec, {create, % Node spec.
-                             reuse   % Node spec.
+-record(db_reuse_test_spec, {create,     % Node spec.
+                             pre_reuse = % DB transformation.
+                                 fun(_,_,_) -> ok end,
+                             reuse       % Node spec.
                             }).
 
 %=== COMMON TEST FUNCTIONS =====================================================
@@ -78,21 +80,22 @@ minerva_node_with_epoch_db_can_reuse_db_of_roma_node(Cfg) ->
 node_can_reuse_db_of_roma_node(Cfg) ->
     Test = #db_reuse_test_spec{
               create = fun roma_node_spec/2,
+              pre_reuse = fun run_rename_db_script/3,
               reuse = fun node_spec/2},
-    node_can_reuse_db_of_other_node_(Test,
-                                     [{rename_db_fun, fun run_rename_db_script/2} | Cfg]).
+    node_can_reuse_db_of_other_node_(Test, Cfg).
 
 node_can_reuse_db_of_minerva_node_with_epoch_db(Cfg) ->
     Test = #db_reuse_test_spec{
               create = fun minerva_with_epoch_name_in_db_spec/2,
+              pre_reuse = fun run_rename_db_script/3,
               reuse = fun node_spec/2},
-    node_can_reuse_db_of_other_node_(Test,
-        [{rename_db_fun, fun run_rename_db_script/2} | Cfg]).
+    node_can_reuse_db_of_other_node_(Test, Cfg).
 
 %=== INTERNAL FUNCTIONS ========================================================
 
 node_can_reuse_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg)
   when is_function(T#db_reuse_test_spec.create, 2),
+       is_function(T#db_reuse_test_spec.pre_reuse, 3),
        is_function(T#db_reuse_test_spec.reuse, 2) ->
     DbHostPath = node_db_host_path(node1, Cfg),
     N1 = (T#db_reuse_test_spec.create)(node1, DbHostPath),
@@ -103,7 +106,7 @@ node_can_reuse_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg)
     #{hash := BlockHash} = aest_nodes:get_block(node1, TargetHeight),
     aest_nodes:stop_node(node1, ?GRACEFUL_STOP_TIMEOUT, Cfg),
 
-    run_db_rename_fun(DbHostPath, Cfg),
+    ok = (T#db_reuse_test_spec.pre_reuse)(node3, DbHostPath, Cfg),
 
     N2 = (T#db_reuse_test_spec.reuse)(node2, DbHostPath),
     aest_nodes:setup_nodes([N2], Cfg),
@@ -129,24 +132,16 @@ node_db_host_path(NodeName, Config) ->
 format(Fmt, Args) ->
     iolist_to_binary(io_lib:format(Fmt, Args)).
 
-run_db_rename_fun(DbHostPath, Cfg) ->
-    case proplists:lookup(rename_db_fun, Cfg) of
-        none ->
-            ok;
-        {rename_db_fun, Fun} ->
-            Fun(DbHostPath, Cfg)
-    end.
-
-run_rename_db_script(DbHostPath, Cfg) ->
+run_rename_db_script(UnusedNodeName, DbHostPath, Cfg) when is_atom(UnusedNodeName) ->
     {ok, DbSchema} = file:read_file(filename:join(DbHostPath, "schema.DAT")),
     {error, _} = file:read_file(filename:join(DbHostPath, "schema.DAT.backup")),
-    N3 = node_spec_custom_entrypoint(node3, DbHostPath),
+    N3 = node_spec_custom_entrypoint(UnusedNodeName, DbHostPath),
     aest_nodes:setup_nodes([N3], Cfg),
-    aest_nodes:start_node(node3, Cfg),
+    aest_nodes:start_node(UnusedNodeName, Cfg),
 
-    {0, _} = aest_nodes:run_cmd_in_node_dir(node3, ["bin/aeternity", "rename_db", "data"], #{timeout => 5000}, Cfg),
+    {0, _} = aest_nodes:run_cmd_in_node_dir(UnusedNodeName, ["bin/aeternity", "rename_db", "data"], #{timeout => 5000}, Cfg),
 
-    aest_nodes:stop_container(node3, ?GRACEFUL_STOP_TIMEOUT, Cfg),
+    aest_nodes:stop_container(UnusedNodeName, ?GRACEFUL_STOP_TIMEOUT, Cfg),
     {ok, DbSchemaRenamed} = file:read_file(filename:join(DbHostPath, "schema.DAT")),
     {ok, DbSchemaBackup} = file:read_file(filename:join(DbHostPath, "schema.DAT.backup")),
     ?assertNotEqual(DbSchema, DbSchemaRenamed),
