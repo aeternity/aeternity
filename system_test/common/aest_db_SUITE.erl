@@ -67,39 +67,39 @@ end_per_suite(_Config) -> ok.
 
 node_can_reuse_db_of_other_node(Cfg) ->
     Test = #db_reuse_test_spec{
-              create = fun node_spec/2,
+              create = fun node_mining_spec/2,
               reuse = fun node_spec/2},
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
 roma_node_can_reuse_db_of_other_roma_node(Cfg) ->
     Test = #db_reuse_test_spec{
-              create = fun roma_node_spec/2,
+              create = fun roma_node_mining_spec/2,
               reuse = fun roma_node_spec/2},
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
 minerva_node_with_epoch_db_can_reuse_db_of_roma_node(Cfg) ->
     Test = #db_reuse_test_spec{
-              create = fun roma_node_spec/2,
+              create = fun roma_node_mining_spec/2,
               reuse = fun minerva_with_epoch_name_in_db_spec/2},
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
 node_can_reuse_db_of_roma_node(Cfg) ->
     Test = #db_reuse_test_spec{
-              create = fun roma_node_spec/2,
+              create = fun roma_node_mining_spec/2,
               pre_reuse = fun run_rename_db_script/3,
               reuse = fun node_spec/2},
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
 node_can_reuse_db_of_minerva_node_with_epoch_db(Cfg) ->
     Test = #db_reuse_test_spec{
-              create = fun minerva_with_epoch_name_in_db_spec/2,
+              create = fun minerva_with_epoch_name_in_db_mining_spec/2,
               pre_reuse = fun run_rename_db_script/3,
               reuse = fun node_spec/2},
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
 minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node(Cfg) ->
     Test = #db_reuse_test_spec{
-              create = fun minerva_node_with_channels_update_as_tuple_spec/2,
+              create = fun minerva_node_with_channels_update_as_tuple_mining_spec/2,
               reuse = fun minerva_node_with_channels_update_as_tuple_spec/2},
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
@@ -170,39 +170,60 @@ run_rename_db_script(UnusedNodeName, DbHostPath, Cfg) when is_atom(UnusedNodeNam
     ?assertEqual(DbSchema, DbSchemaBackup),
     ok.
 
+node_mining_spec(Name, DbHostPath) ->
+    node_spec(Name, DbHostPath, true).
 node_spec(Name, DbHostPath) ->
+    node_spec(Name, DbHostPath, false).
+node_spec(Name, DbHostPath, Mining) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
     aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:local"},
                                 db_path => {DbHostPath, DbGuestPath},
+                                mining => #{autostart => Mining},
                                 genesis_accounts => genesis_accounts()}).
 
 node_spec_custom_entrypoint(Name, DbHostPath) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
     aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:local"},
                                 db_path => {DbHostPath, DbGuestPath},
+                                mining => #{autostart => false},
                                 entrypoint => [<<"sleep">>],
                                 custom_command => [<<"98127308917209371890273">>]}).
 
-%% Last Roma release.
+roma_node_mining_spec(Name, DbHostPath) ->
+    roma_node_spec(Name, DbHostPath, true).
 roma_node_spec(Name, DbHostPath) ->
+    roma_node_spec(Name, DbHostPath, false).
+%% Last Roma release.
+roma_node_spec(Name, DbHostPath, Mining) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
     aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v1.4.0"},
                                 db_path => {DbHostPath, DbGuestPath},
                                 config_guest_path => "/home/aeternity/.epoch/epoch/epoch.yaml",
+                                mining => #{autostart => Mining},
                                 genesis_accounts => genesis_accounts()}).
 
-%% Minerva release using old epoch@localhost node name in the db.
+minerva_with_epoch_name_in_db_mining_spec(Name, DbHostPath) ->
+    minerva_with_epoch_name_in_db_spec(Name, DbHostPath, true).
 minerva_with_epoch_name_in_db_spec(Name, DbHostPath) ->
+    minerva_with_epoch_name_in_db_spec(Name, DbHostPath, false).
+%% Minerva release using old epoch@localhost node name in the db.
+minerva_with_epoch_name_in_db_spec(Name, DbHostPath, Mining) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
     aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v2.1.0"},
                                 db_path => {DbHostPath, DbGuestPath},
+                                mining => #{autostart => Mining},
                                 genesis_accounts => genesis_accounts()}).
 
-%% https://github.com/aeternity/aeternity/blob/v2.3.0/apps/aechannel/src/aesc_offchain_update.erl#L15-L17
+minerva_node_with_channels_update_as_tuple_mining_spec(Name, DbHostPath) ->
+    minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath, true).
 minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath) ->
+    minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath, false).
+%% https://github.com/aeternity/aeternity/blob/v2.3.0/apps/aechannel/src/aesc_offchain_update.erl#L15-L17
+minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath, Mining) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
     aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v2.3.0"},
                                 db_path => {DbHostPath, DbGuestPath},
+                                mining => #{autostart => Mining},
                                 genesis_accounts => genesis_accounts()}).
 
 genesis_accounts() ->
