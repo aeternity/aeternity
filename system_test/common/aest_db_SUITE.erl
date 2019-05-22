@@ -73,7 +73,9 @@ node_can_reuse_db_of_minerva_node_with_epoch_db(Cfg) ->
 node_can_reuse_db_of_other_node_(NodeSpecFun, Cfg) ->
     node_can_reuse_db_of_other_node_(NodeSpecFun, NodeSpecFun, Cfg).
 
-node_can_reuse_db_of_other_node_(CreateDbNodeSpecFun, ReuseDbNodeSpecFun, Cfg) ->
+node_can_reuse_db_of_other_node_(CreateDbNodeSpecFun, ReuseDbNodeSpecFun, Cfg)
+  when is_function(CreateDbNodeSpecFun, 2),
+       is_function(ReuseDbNodeSpecFun, 2) ->
     DbHostPath = node_db_host_path(node1, Cfg),
     N1 = CreateDbNodeSpecFun(node1, DbHostPath),
     aest_nodes:setup_nodes([N1], Cfg),
