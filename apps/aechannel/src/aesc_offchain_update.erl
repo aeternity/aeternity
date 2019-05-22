@@ -73,7 +73,7 @@
 -export([from_db_format/1
         ]).
 
--spec from_db_format(tuple()) -> update().
+-spec from_db_format(update() | tuple()) -> update().
 from_db_format(#transfer{} = U) ->
     U;
 from_db_format(#withdraw{} = U) ->
