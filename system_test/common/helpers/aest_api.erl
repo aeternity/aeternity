@@ -172,12 +172,12 @@ sc_wait_for_channel_event(ConnPid, Action) ->
     end.
 
 sc_close_mutual(CloserConn, CloserPrivKey, OtherConn, OtherPrivKey) ->
-    ?WS:send(CloserConn, <<"shutdown">>, #{}),
+    ws_send(CloserConn, <<"shutdown">>, #{}),
     ShTx = sc_wait_and_sign(CloserConn, CloserPrivKey, <<"shutdown_sign">>),
     ShTx = sc_wait_and_sign(OtherConn, OtherPrivKey, <<"shutdown_sign_ack">>).
 
 sc_withdraw(SenderConn, SenderPrivKey, Amount, AckConn, AckPrivKey) ->
-    ?WS:send(SenderConn, <<"withdraw">>, #{amount => Amount}),
+    ws_send(SenderConn, <<"withdraw">>, #{amount => Amount}),
     UnsignedStateTx = sc_wait_and_sign(SenderConn, SenderPrivKey, <<"withdraw_tx">>),
     {ok, #{ <<"event">> := <<"withdraw_created">> }} = sc_wait_for_channel_event(AckConn, info),
     UnsignedStateTx = sc_wait_and_sign(AckConn, AckPrivKey, <<"withdraw_ack">>),
@@ -207,7 +207,7 @@ sc_wait_and_sign(Conn, Privkey, Tag) ->
     SignedTx = aec_test_utils:sign_tx(Tx, Privkey),
     BinSignedTx = aetx_sign:serialize_to_binary(SignedTx),
     EncSignedTx = aeser_api_encoder:encode(transaction, BinSignedTx),
-    ?WS:send(Conn, Tag, #{tx => EncSignedTx}),
+    ws_send(Conn, Tag, #{tx => EncSignedTx}),
     Tx.
 
 sc_wait_funding_locked(InitiatorConn, ResponderConn) ->
@@ -231,3 +231,8 @@ sc_wait_withdraw_locked(SenderConn, AckConn) ->
 
 %--- TRANSACTION FUNCTIONS -----------------------------------------------------
 
+ws_send(ConnPid, Tag, Data) ->
+    Method = <<"channels.", Tag/binary>>,
+    ?WS:json_rpc_notify(ConnPid,
+        #{ <<"method">> => Method
+         , <<"params">> => Data}).
