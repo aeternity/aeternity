@@ -46,6 +46,7 @@ rem Build package environment
 rem Copy release into package environment
 %BASH_BIN% -lc "mkdir -p \"%PACKAGE_PATH%/aeternity-windows-w64/usr/lib\""
 %BASH_BIN% -lc "cp -R \"%RELEASE_PATH%\" \"%PACKAGE_PATH%/aeternity-windows-w64/usr/lib/\""
+%BASH_BIN% -lc "mv -f \"%PACKAGE_PATH%/aeternity-windows-w64/usr/lib/aeternity/REVISION\" \"%PACKAGE_PATH%/aeternity-windows-w64/usr/lib/aeternity/VERSION\" \"%PACKAGE_PATH%/aeternity-windows-w64/\""
 %BASH_BIN% -lc "mkdir -p \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
 
 @echo Current time: %time%

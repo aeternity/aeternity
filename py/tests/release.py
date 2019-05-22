@@ -174,6 +174,13 @@ def node_is_online(api):
     except Exception as e:
         return False
 
+def node_has_version(api):
+    try:
+        status = api.get_status()
+        return len(status.node_version) > 0 and len(status.node_revision) > 0
+    except Exception as e:
+        return False
+
 def wait_all_nodes_are_online(apis, timeout_seconds):
     wait(lambda: all([node_is_online(api) for api in apis]), timeout_seconds, sleep_seconds=1)
 
@@ -286,10 +293,10 @@ def read_argv(argv):
 def tail_logs(temp_dir, log_name):
     n = 200 # last 200 lines
     f = os.path.join(temp_dir, "log", log_name)
-    stdin, stdout = os.popen2("tail -n "+ str(n) + " " + f)
-    stdin.close()
-    lines = "\n".join(stdout.readlines())
-    stdout.close()
+    pipe = subprocess.PIPE
+    p = subprocess.Popen("tail -n "+ str(n) + " " + f, shell=True, stdin=pipe, stdout=pipe, encoding="utf-8")
+    lines = "".join(p.stdout.readlines())
+    p.stdout.close()
     return lines
 
 
@@ -362,6 +369,12 @@ def main(argv):
     except urllib3.exceptions.MaxRetryError as e:
         test_failed = True
         print("node died")
+
+    for name, node in zip(node_names, node_objs):
+        if not node_has_version(node): # node does not report version and revision
+            print("[" + name + "] is not reporting version/revision in /getStatus")
+            test_failed = True
+
     [stop_node(n, d) for n, d in zip(node_names, node_dirs)]
     wait_all_nodes_are_offline(node_objs, 10)
 
