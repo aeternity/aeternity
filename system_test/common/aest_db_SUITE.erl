@@ -16,7 +16,9 @@
          minerva_node_with_epoch_db_can_reuse_db_of_roma_node/1,
          node_can_reuse_db_of_roma_node/1,
          node_can_reuse_db_of_minerva_node_with_epoch_db/1,
-         minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node/1
+         minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node/1,
+         minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node_with_force_progress_tx/1,
+         node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx/1
         ]).
 
 %=== INCLUDES ==================================================================
@@ -49,7 +51,9 @@ all() -> [
           minerva_node_with_epoch_db_can_reuse_db_of_roma_node,
           node_can_reuse_db_of_roma_node,
           node_can_reuse_db_of_minerva_node_with_epoch_db,
-          minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node
+          minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node,
+          minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node_with_force_progress_tx,
+          node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx
          ].
 
 init_per_suite(Config) ->
@@ -101,6 +105,22 @@ minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node(Cfg) -
     Test = #db_reuse_test_spec{
               create = fun minerva_node_with_channels_update_as_tuple_mining_spec/2,
               reuse = fun minerva_node_with_channels_update_as_tuple_spec/2},
+    node_can_reuse_db_of_other_node_(Test, Cfg).
+
+minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node_with_force_progress_tx(Cfg) ->
+    Test = #db_reuse_test_spec{
+              create = fun minerva_node_with_channels_update_as_tuple_spec/2,
+              populate = fun populate_db_with_channels_force_progress_tx/2,
+              reuse = fun minerva_node_with_channels_update_as_tuple_spec/2,
+              assert = fun assert_db_with_tx_reused/3},
+    node_can_reuse_db_of_other_node_(Test, Cfg).
+
+node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx(Cfg) ->
+    Test = #db_reuse_test_spec{
+              create = fun minerva_node_with_channels_update_as_tuple_spec/2,
+              populate = fun populate_db_with_channels_force_progress_tx/2,
+              reuse = fun node_spec/2,
+              assert = fun assert_db_with_tx_reused/3},
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
 %=== INTERNAL FUNCTIONS ========================================================
@@ -228,6 +248,25 @@ minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath, Mining) ->
 
 genesis_accounts() ->
     %% have all nodes share the same accounts_test.json
-    PatronPubkey = <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
+    PatronPubkey = maps:get(pubkey, patron()),
     PatronAddress = aeser_api_encoder:encode(account_pubkey, PatronPubkey),
     [{PatronAddress, 123400000000000000000000000000}].
+
+patron() ->
+    #{ pubkey => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
+       privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>
+     }.
+
+populate_db_with_channels_force_progress_tx(NodeName, _Cfg) ->
+    #{tx_hash := TxHash} =
+        aest_nodes:post_spend_tx( %% TODO aest_nodes:post_force_progress_tx
+          NodeName,
+          patron(),
+          #{ pubkey => maps:get(public, enacl:sign_keypair()) },
+          1,
+          #{amount => 1}),
+    _DbFingerprint = TxHash.
+
+assert_db_with_tx_reused(NodeName, TxHash = _DbFingerprint, _Cfg) ->
+    aest_nodes:wait_for_value({txs_on_node, [TxHash]}, [NodeName], ?STARTUP_TIMEOUT, []), %% Uses GetTransactionByHash
+    ok.
