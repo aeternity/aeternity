@@ -689,8 +689,18 @@ create_contract_(ContractCreateTxGasPrice) ->
 
     %% Test that the create transaction is accepted
     {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1),
-    %% Check that the contract is created
+    %% Check that the contract init call is created
     ContractKey = aect_contracts:compute_contract_pubkey(PubKey, aetx:nonce(Tx)),
+    ?assertEqual([], aect_call_state_tree:to_list(aect_test_utils:calls(S1))),
+    ?assertMatch([_], aect_call_state_tree:to_list(aect_test_utils:calls(S2))),
+    InitCallId = aect_call:id(PubKey, aetx:nonce(Tx), ContractKey),
+    {value, InitCall} = aect_call_state_tree:lookup_call(ContractKey, InitCallId, aect_test_utils:calls(S2)),
+    ReturnValue = aect_call:return_value(InitCall),
+    ReturnType  = aect_call:return_type(InitCall),
+    []          = [error({failed_contract_create, ReturnValue})
+                   || ReturnType =/= ok],
+
+    %% Check that the contract is created
     {{value, Contract}, _} = lookup_contract_by_id(ContractKey, S2),
     %% Check that the created contract has the correct details from the contract create tx
     ?assertEqual(PubKey, aect_contracts:owner_pubkey(Contract)),
@@ -701,11 +711,6 @@ create_contract_(ContractCreateTxGasPrice) ->
     _ = aect_contracts:log(Contract),
     ?assert(aect_contracts:active(Contract)),
     ?assertEqual([], aect_contracts:referrer_ids(Contract)),
-    %% Check that the contract init call is created
-    ?assertEqual([], aect_call_state_tree:to_list(aect_test_utils:calls(S1))),
-    ?assertMatch([_], aect_call_state_tree:to_list(aect_test_utils:calls(S2))),
-    InitCallId = aect_call:id(PubKey, aetx:nonce(Tx), ContractKey),
-    {value, InitCall} = aect_call_state_tree:lookup_call(ContractKey, InitCallId, aect_test_utils:calls(S2)),
     %% Check that the created init call has the correct details from the contract create tx
     ?assertEqual(PubKey, aect_call:caller_pubkey(InitCall)),
     ?assertEqual(aetx:nonce(Tx), aect_call:caller_nonce(InitCall)),
