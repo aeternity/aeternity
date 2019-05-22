@@ -15,7 +15,8 @@
          roma_node_can_reuse_db_of_other_roma_node/1,
          minerva_node_with_epoch_db_can_reuse_db_of_roma_node/1,
          node_can_reuse_db_of_roma_node/1,
-         node_can_reuse_db_of_minerva_node_with_epoch_db/1
+         node_can_reuse_db_of_minerva_node_with_epoch_db/1,
+         minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node/1
         ]).
 
 %=== INCLUDES ==================================================================
@@ -47,7 +48,8 @@ all() -> [
           roma_node_can_reuse_db_of_other_roma_node,
           minerva_node_with_epoch_db_can_reuse_db_of_roma_node,
           node_can_reuse_db_of_roma_node,
-          node_can_reuse_db_of_minerva_node_with_epoch_db
+          node_can_reuse_db_of_minerva_node_with_epoch_db,
+          minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node
          ].
 
 init_per_suite(Config) ->
@@ -93,6 +95,12 @@ node_can_reuse_db_of_minerva_node_with_epoch_db(Cfg) ->
               create = fun minerva_with_epoch_name_in_db_spec/2,
               pre_reuse = fun run_rename_db_script/3,
               reuse = fun node_spec/2},
+    node_can_reuse_db_of_other_node_(Test, Cfg).
+
+minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node(Cfg) ->
+    Test = #db_reuse_test_spec{
+              create = fun minerva_node_with_channels_update_as_tuple_spec/2,
+              reuse = fun minerva_node_with_channels_update_as_tuple_spec/2},
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
 %=== INTERNAL FUNCTIONS ========================================================
@@ -187,6 +195,13 @@ roma_node_spec(Name, DbHostPath) ->
 minerva_with_epoch_name_in_db_spec(Name, DbHostPath) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
     aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v2.1.0"},
+                                db_path => {DbHostPath, DbGuestPath},
+                                genesis_accounts => genesis_accounts()}).
+
+%% https://github.com/aeternity/aeternity/blob/v2.3.0/apps/aechannel/src/aesc_offchain_update.erl#L15-L17
+minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath) ->
+    DbGuestPath = "/home/aeternity/node/data/mnesia",
+    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v2.3.0"},
                                 db_path => {DbHostPath, DbGuestPath},
                                 genesis_accounts => genesis_accounts()}).
 
