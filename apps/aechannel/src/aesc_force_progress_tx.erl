@@ -69,24 +69,27 @@
 
 %% Record introduced temporarily during Fortuna development, shipped in releases 2.4.0 and 2.5.0, and potentially stored in DB.
 -record(v2_db_record, {	
-          channel_id    :: aeser_id:id(),	
-          from_id       :: aeser_id:id(),	
-          payload       :: binary(),	
-          update        :: tuple(),	
-          state_hash    :: binary(),	
-          round         :: aesc_channels:seq_number(),	
-          offchain_trees:: aec_trees:trees(),	
-          ttl           :: aetx:tx_ttl(),	
-          fee           :: non_neg_integer(),	
+          channel_id    :: aeser_id:id(),
+          from_id       :: aeser_id:id(),
+          payload       :: binary(),
+          update        :: tuple(),
+          state_hash    :: binary(),
+          round         :: aesc_channels:seq_number(),
+          offchain_trees:: aec_trees:trees(),
+          ttl           :: aetx:tx_ttl(),
+          fee           :: non_neg_integer(),
           nonce         :: non_neg_integer(),
-					block_hash    :: binary()
+          block_hash    :: binary()
          }).
 %%%===================================================================
 %%% Conversion of old db format
 
 -spec from_db_format(tx()) -> tx().
-from_db_format(#channel_force_progress_tx{} = Tx) ->
-    Tx;
+from_db_format(#channel_force_progress_tx{update = Update} = Tx) ->
+    case aesc_offchain_update:from_db_format(Update) of
+        Update -> Tx; % update is already in new serialization
+        NewSUpdate -> Tx#channel_force_progress_tx{update = NewSUpdate}
+    end;
 from_db_format(Tuple) ->
     case setelement(1, Tuple, v2_db_record) of
         #v2_db_record{
