@@ -1,6 +1,7 @@
 
 contract SpendContract =
   function withdraw : (int) => int
+  function get_balance : () => int
 
 contract SpendTest =
 
@@ -24,3 +25,5 @@ contract SpendTest =
   function get_balance() = Contract.balance
   function get_balance_of(a) = Chain.balance(a)
 
+  stateful function spend_as_call(remote : SpendContract, amount : int) =
+    remote.get_balance(value = amount)

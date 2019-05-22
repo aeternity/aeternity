@@ -1,6 +1,0 @@
-;; CONTRACT: Identity
-FUNCTION init() -> {tuple, []}
-  RETURNR ()
-
-FUNCTION main(integer) ->  integer
-  RETURNR arg0
