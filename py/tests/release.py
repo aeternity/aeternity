@@ -293,10 +293,10 @@ def read_argv(argv):
 def tail_logs(temp_dir, log_name):
     n = 200 # last 200 lines
     f = os.path.join(temp_dir, "log", log_name)
-    stdin, stdout = os.popen2("tail -n "+ str(n) + " " + f)
-    stdin.close()
-    lines = "\n".join(stdout.readlines())
-    stdout.close()
+    pipe = subprocess.PIPE
+    p = subprocess.Popen("tail -n "+ str(n) + " " + f, shell=True, stdin=pipe, stdout=pipe, encoding="utf-8")
+    lines = "".join(p.stdout.readlines())
+    p.stdout.close()
     return lines
 
 
