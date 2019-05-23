@@ -259,12 +259,11 @@ patron() ->
 
 populate_db_with_channels_force_progress_tx(NodeName, _Cfg) ->
     #{tx_hash := TxHash} =
-        aest_nodes:post_spend_tx( %% TODO aest_nodes:post_force_progress_tx
+        aest_nodes:post_force_progress_state_channel_tx(
           NodeName,
           patron(),
-          #{ pubkey => maps:get(public, enacl:sign_keypair()) },
-          1,
-          #{amount => 1}),
+          aeser_id:create(channel, <<42:32/unit:8>>),
+          #{nonce => 1}),
     _DbFingerprint = TxHash.
 
 assert_db_with_tx_reused(NodeName, TxHash = _DbFingerprint, _Cfg) ->

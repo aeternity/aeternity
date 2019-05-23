@@ -50,6 +50,7 @@
          post_close_mutual_state_channel_tx/5,
          post_withdraw_state_channel_tx/5,
          post_deposit_state_channel_tx/5]).
+-export([post_force_progress_state_channel_tx/4]).
 -export([post_oracle_register_tx/3,
          post_oracle_extend_tx/3,
          post_oracle_query_tx/4,
@@ -490,6 +491,19 @@ post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce :=
     BothSigned = aec_test_utils:sign_tx(WithdrawTx, [InSecKey, RespSecKey]),
     Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
     verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
+
+post_force_progress_state_channel_tx(Node, From, ChannelId, #{nonce := _} = Map) ->
+    #{ pubkey := SendPubKey, privkey := SendSecKey } = From,
+    Params = maps:merge(#{ channel_id => ChannelId
+                         , from_id => aeser_id:create(account, SendPubKey)
+                         , payload => <<>>
+                         , update => aesc_offchain_update:op_call_contract(aeser_id:create(account, SendPubKey), aeser_id:create(contract, <<42:32/unit:8>>), 3, 0, <<"calldata">>, [], gas_price(), 1000000)
+                         , state_hash => <<42:32/unit:8>>
+                         , round => 0
+                         , offchain_trees => aec_trees:new()
+                         , fee => 4000000 * gas_price()
+                         , ttl => 10000000 }, Map),
+    post_transaction(Node, aesc_force_progress_tx, SendSecKey, Params, #{}).
 
 post_oracle_register_tx(Node, OAccount, Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OAccount,
