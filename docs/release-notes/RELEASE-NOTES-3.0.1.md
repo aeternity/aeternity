@@ -3,7 +3,7 @@
 [This][this-release] is a backwards-compatible bug fix release for the Fortuna release 3.0.0.
 It:
 * Solves an issue with loading old serialization of
-  `channel_force_progress_tx` and updating it to the new serialization format
+  `channel_force_progress_tx` from the database and updating it to the new serialization format.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.0.1
 
