@@ -210,7 +210,7 @@ encode_call_data(Contract, Fun, Args, Env) ->
         Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN ->
             aect_test_utils:encode_call_data(?SOPHIA_MINERVA, SrcBin, FunBin, ArgsBin);
         _ ->
-            aect_test_utils:encode_call_data(?SOPHIA_FORTUNA_AEVM, SrcBin, FunBin, ArgsBin)
+            aect_test_utils:encode_call_data(?SOPHIA_FORTUNA, SrcBin, FunBin, ArgsBin)
     end.
 
 

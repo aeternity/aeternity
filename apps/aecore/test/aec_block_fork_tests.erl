@@ -65,7 +65,9 @@ load_files_smoke_test_() ->
                 (?MINERVA_PROTOCOL_VSN) ->
                     DataAecoreDir ++ ".minerva/" ++ File;
                 (?FORTUNA_PROTOCOL_VSN) ->
-                    DataAecoreDir ++ ".fortuna/" ++ File
+                    DataAecoreDir ++ ".fortuna/" ++ File;
+                (?LIMA_PROTOCOL_VSN) ->
+                    DataAecoreDir ++ ".lima/" ++ File
             end),
          ok
      end,

@@ -1367,7 +1367,7 @@ compile_test_contract(aevm, Name) ->
        src      => binary_to_list(BinSrc) };
 compile_test_contract(fate, Name) ->
     FileName = filename:join(["contracts", "fate_asm", lists:concat([Name, ".fate"])]),
-    {ok, Code} = aect_test_utils:compile_contract(?SOPHIA_FORTUNA_FATE, FileName),
+    {ok, Code} = aect_test_utils:compile_contract(?SOPHIA_LIMA_FATE, FileName),
     #{ bytecode => aeser_api_encoder:encode(contract_bytearray, Code),
        vm       => ?VM_FATE_SOPHIA_1,
        abi      => ?ABI_FATE_SOPHIA_1,

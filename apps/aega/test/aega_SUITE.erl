@@ -153,8 +153,11 @@ init_per_group(all, Cfg) ->
         ?ROMA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
         ?FORTUNA_PROTOCOL_VSN ->
-            [{sophia_version, ?SOPHIA_FORTUNA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
-             {protocol, fortuna} | Cfg]
+            [{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
+             {protocol, fortuna} | Cfg];
+        ?LIMA_PROTOCOL_VSN ->
+            [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
+             {protocol, lima} | Cfg]
     end;
 init_per_group(_Grp, Cfg) ->
     Cfg.
@@ -169,7 +172,8 @@ init_per_testcase(_TC, Config) ->
     ProtocolVersion = case ?config(protocol, Config) of
                           roma    -> ?ROMA_PROTOCOL_VSN;
                           minerva -> ?MINERVA_PROTOCOL_VSN;
-                          fortuna -> ?FORTUNA_PROTOCOL_VSN
+                          fortuna -> ?FORTUNA_PROTOCOL_VSN;
+                          lima    -> ?LIMA_PROTOCOL_VSN
                       end,
     put('$vm_version', VmVersion),
     put('$sophia_version', SophiaVersion),
@@ -1472,7 +1476,7 @@ vm_version() ->
 
 sophia_version() ->
     case get('$sophia_version') of
-        undefined -> ?SOPHIA_FORTUNA_AEVM;
+        undefined -> ?SOPHIA_LIMA_AEVM;
         X         -> X
     end.
 

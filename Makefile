@@ -203,47 +203,58 @@ dialyzer-install: $(SWAGGER_ENDPOINTS_SPEC)
 dialyzer: $(SWAGGER_ENDPOINTS_SPEC)
 	@$(REBAR) dialyzer
 
-ct: KIND=test
-ct: SYSCONFIG=config/test.config
-ct: AETERNITY_TESTCONFIG_DB_BACKEND=mnesia
-ct: internal-ct
-
 ct-roma: KIND=test
 ct-roma: SYSCONFIG=config/test-roma.config
 ct-roma: AETERNITY_TESTCONFIG_DB_BACKEND=mnesia
 ct-roma: internal-ct
+
+ct-minerva: KIND=test
+ct-minerva: SYSCONFIG=config/test-minerva.config
+ct-minerva: AETERNITY_TESTCONFIG_DB_BACKEND=mnesia
+ct-minerva: internal-ct
 
 ct-fortuna: KIND=test
 ct-fortuna: SYSCONFIG=config/test-fortuna.config
 ct-fortuna: AETERNITY_TESTCONFIG_DB_BACKEND=mnesia
 ct-fortuna: internal-ct
 
+ct-lima: KIND=test
+ct-lima: SYSCONFIG=config/test-lima.config
+ct-lima: AETERNITY_TESTCONFIG_DB_BACKEND=mnesia
+ct-lima: internal-ct
+
 ct-mnesia-leveled: KIND=test
-ct-mnesia-leveled: SYSCONFIG=config/test.config
+ct-mnesia-leveled: SYSCONFIG=config/test-lima.config
 ct-mnesia-leveled: AETERNITY_TESTCONFIG_DB_BACKEND=leveled
 ct-mnesia-leveled: internal-ct
 
 ct-mnesia-rocksdb: KIND=test
-ct-mnesia-rocksdb: SYSCONFIG=config/test.config
+ct-mnesia-rocksdb: SYSCONFIG=config/test-lima.config
 ct-mnesia-rocksdb: AETERNITY_TESTCONFIG_DB_BACKEND=rocksdb
 ct-mnesia-rocksdb: internal-ct
 
 REVISION:
 	@git rev-parse HEAD > $@
 
-eunit: KIND=test
-eunit: internal-build
-	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG)" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
-
 eunit-roma: KIND=test
 eunit-roma: internal-build
 	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_roma_testnet" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
+
+eunit-minerva: KIND=test
+eunit-minerva: internal-build
+	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_minerva_testnet" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
 
 eunit-fortuna: KIND=test
 eunit-fortuna: internal-build
 	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_fortuna_testnet" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
 
-all-tests: eunit ct
+eunit-lima: KIND=test
+eunit-lima: internal-build
+	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_lima_testnet" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
+
+eunit-latest: eunit-lima
+
+all-tests: eunit-lima ct-lima
 
 docker: dockerignore-check
 	@docker build -t aeternity/aeternity:local .
@@ -268,7 +279,7 @@ smoke-test: docker smoke-test-run
 
 smoke-test-run: KIND=system_test
 smoke-test-run: internal-build
-	@$(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
+	@$(REBAR) as $(KIND) do ct-latest $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
 
 system-smoke-test-deps:
 	$(MAKE) docker
@@ -276,7 +287,7 @@ system-smoke-test-deps:
 
 local-system-test: KIND=system_test
 local-system-test: internal-build
-	@$(REBAR) as $(KIND) do ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
+	@$(REBAR) as $(KIND) do ct-latest $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
 
 system-test-deps:
 	$(MAKE) system-smoke-test-deps
@@ -286,7 +297,7 @@ system-test-deps:
 
 system-test: KIND=system_test
 system-test: internal-build
-	@$(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
+	@$(REBAR) as $(KIND) do ct-latest $(ST_CT_DIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
 
 aevm-test: aevm-test-deps
 	@$(REBAR) eunit --application=aevm
@@ -497,8 +508,8 @@ prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
 	dialyzer \
 	docker docker-clean dockerignore-check \
 	test smoke-test smoke-test-run system-test aevm-test-deps \
-	ct ct-roma ct-fortuna ct-mnesia-leveled ct-mnesia-rocksdb \
-	eunit eunit-roma eunit-fortuna \
+	ct-latest ct-roma ct-minerva ct-fortuna ct-lima ct-mnesia-leveled ct-mnesia-rocksdb \
+	eunit-roma eunit-minerva eunit-fortuna eunit-lima\
 	system-smoke-test-deps system-test-deps \
 	kill killall \
 	clean distclean \

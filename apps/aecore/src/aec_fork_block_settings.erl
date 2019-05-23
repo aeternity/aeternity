@@ -5,7 +5,8 @@
 -export([dir/1,
          genesis_accounts/0,
          minerva_accounts/0,
-         fortuna_accounts/0
+         fortuna_accounts/0,
+         lima_accounts/0
         ]).
 
 -export([file_name/1]).
@@ -13,6 +14,7 @@
 -define(GENESIS_DIR, ".genesis").
 -define(MINERVA_DIR, ".minerva").
 -define(FORTUNA_DIR, ".fortuna").
+-define(LIMA_DIR,    ".lima").
 
 
 -spec dir(aec_hard_forks:protocol_vsn()) -> string().
@@ -21,7 +23,8 @@ dir(ProtocolVsn) ->
         case ProtocolVsn of
             ?ROMA_PROTOCOL_VSN    -> ?GENESIS_DIR;
             ?MINERVA_PROTOCOL_VSN -> ?MINERVA_DIR;
-            ?FORTUNA_PROTOCOL_VSN -> ?FORTUNA_DIR
+            ?FORTUNA_PROTOCOL_VSN -> ?FORTUNA_DIR;
+            ?LIMA_PROTOCOL_VSN    -> ?LIMA_DIR
         end,
     filename:join(aeu_env:data_dir(aecore), Dir).
 
@@ -36,6 +39,10 @@ minerva_accounts() -> preset_accounts(?MINERVA_PROTOCOL_VSN,
 -spec fortuna_accounts() -> list().
 fortuna_accounts() -> preset_accounts(?FORTUNA_PROTOCOL_VSN,
                                       fortuna_accounts_file_missing).
+
+-spec lima_accounts() -> list().
+lima_accounts() -> preset_accounts(?LIMA_PROTOCOL_VSN,
+                                   lima_accounts_file_missing).
 
 -spec preset_accounts(aec_hard_forks:protocol_vsn(), atom()) -> list().
 preset_accounts(Release, ErrorMsg) ->

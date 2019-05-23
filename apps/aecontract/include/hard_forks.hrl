@@ -8,3 +8,4 @@
 -define(ROMA_PROTOCOL_VSN, 1).
 -define(MINERVA_PROTOCOL_VSN, 2).
 -define(FORTUNA_PROTOCOL_VSN, 3).
+-define(LIMA_PROTOCOL_VSN, 4).

@@ -19,6 +19,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -import(aecore_suite_utils, [patron/0]).
 
@@ -206,10 +207,11 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
 
     %% Mine some key blocks now to check the rewards
     PofDelay = rpc:call(N2, aec_governance, beneficiary_reward_delay, []),
-    DevRewardEnabled = rpc:call(N2, aec_dev_reward, enabled, []),
-    case DevRewardEnabled andalso rpc:call(N2, aec_governance, get_network_id, []) of
+    DevRewardEnabled  = rpc:call(N2, aec_dev_reward, enabled, []) andalso
+         aect_test_utils:latest_protocol_version() >= ?FORTUNA_PROTOCOL_VSN,
+    case DevRewardEnabled of
         %% Foundation reward split happens at height N - 4.
-        <<"local_fortuna_testnet">> ->
+        true ->
             Delay = PofDelay + 4,
             {ok, _} = aecore_suite_utils:mine_key_blocks(N2, Delay),
 
@@ -266,7 +268,7 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
                 true -> ok;
                 false -> error({bad_balance2, Bal2})
             end;
-        _Other ->
+        false ->
             Delay = PofDelay,
             {ok, _} = aecore_suite_utils:mine_key_blocks(N2, Delay),
 

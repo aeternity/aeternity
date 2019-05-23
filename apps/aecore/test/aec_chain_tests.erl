@@ -1616,7 +1616,7 @@ token_supply_ga() ->
     Fee     = 100000 * aec_test_utils:min_gas_price(),
     Gas     = 1000,
     GasPrice = aec_test_utils:min_gas_price(),
-    {ok, CodeMap} = aega_test_utils:get_contract(?SOPHIA_FORTUNA_AEVM, "simple_auth.aes"),
+    {ok, CodeMap} = aega_test_utils:get_contract(?SOPHIA_FORTUNA, "simple_auth.aes"),
     #{ bytecode := ByteCode
      , map      := #{type_info := TypeInfo}
      , src      := Src} = CodeMap,

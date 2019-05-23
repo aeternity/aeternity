@@ -135,36 +135,42 @@ is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_1, abi := ?ABI_AEVM
     case ProtocolVersion of
         ?ROMA_PROTOCOL_VSN    -> true;
         ?MINERVA_PROTOCOL_VSN -> false;
-        ?FORTUNA_PROTOCOL_VSN -> false
+        ?FORTUNA_PROTOCOL_VSN -> false;
+        ?LIMA_PROTOCOL_VSN    -> false
     end;
 is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_2, abi := ?ABI_AEVM_SOPHIA_1}, ProtocolVersion) ->
     case ProtocolVersion of
         ?ROMA_PROTOCOL_VSN    -> false;
         ?MINERVA_PROTOCOL_VSN -> true;
-        ?FORTUNA_PROTOCOL_VSN -> true %% TODO: Revise this before release
+        ?FORTUNA_PROTOCOL_VSN -> true;
+        ?LIMA_PROTOCOL_VSN    -> false %% TODO: Revise this before release
     end;
 is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_3, abi := ?ABI_AEVM_SOPHIA_1}, ProtocolVersion) ->
     case ProtocolVersion of
         ?ROMA_PROTOCOL_VSN    -> false;
         ?MINERVA_PROTOCOL_VSN -> false;
-        ?FORTUNA_PROTOCOL_VSN -> true
+        ?FORTUNA_PROTOCOL_VSN -> true;
+        ?LIMA_PROTOCOL_VSN    -> true %% TODO: If you bump to VM_AEVM_SOPHIA_3 please turn this off!
     end;
 is_legal_version_in_protocol(create, #{vm := ?VM_FATE_SOPHIA_1, abi := ?ABI_FATE_SOPHIA_1}, ProtocolVersion) ->
     case ProtocolVersion of
         ?ROMA_PROTOCOL_VSN    -> false;
         ?MINERVA_PROTOCOL_VSN -> false;
-        ?FORTUNA_PROTOCOL_VSN -> ?VM_FATE_SOPHIA_1_enabled %% TODO: Revise this before release
+        ?FORTUNA_PROTOCOL_VSN -> false;
+        ?LIMA_PROTOCOL_VSN    -> ?VM_FATE_SOPHIA_1_enabled %% TODO: Revise this before release
     end;
 is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
     case ProtocolVersion of
         ?ROMA_PROTOCOL_VSN    when VMVersion =:= ?VM_AEVM_SOPHIA_1 -> true;
         ?MINERVA_PROTOCOL_VSN when VMVersion =:= ?VM_AEVM_SOPHIA_1;
                                    VMVersion =:= ?VM_AEVM_SOPHIA_2 -> true;
-        %% TODO: Revise this before release
         ?FORTUNA_PROTOCOL_VSN when VMVersion =:= ?VM_AEVM_SOPHIA_1;
                                    VMVersion =:= ?VM_AEVM_SOPHIA_2;
                                    VMVersion =:= ?VM_AEVM_SOPHIA_3 -> true;
-        ?FORTUNA_PROTOCOL_VSN when VMVersion =:= ?VM_FATE_SOPHIA_1 -> ?VM_FATE_SOPHIA_1_enabled; %% TODO: Revise this before release
+        ?LIMA_PROTOCOL_VSN    when VMVersion =:= ?VM_AEVM_SOPHIA_1;
+                                   VMVersion =:= ?VM_AEVM_SOPHIA_2;
+                                   VMVersion =:= ?VM_AEVM_SOPHIA_3 -> true;
+        ?LIMA_PROTOCOL_VSN    when VMVersion =:= ?VM_FATE_SOPHIA_1 -> ?VM_FATE_SOPHIA_1_enabled; %% TODO: Revise this before release
         _                     when VMVersion =:= ?VM_AEVM_SOLIDITY_1 -> ?VM_AEVM_SOLIDITY_1_enabled;
         _ -> false
     end;

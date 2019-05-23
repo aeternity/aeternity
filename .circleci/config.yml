@@ -460,14 +460,6 @@ jobs:
       - *store_rebar3_crashdump
       - *fail_notification
 
-  test:
-    executor: builder_container_stable
-    <<: *container_config
-    parallelism: 2
-    environment:
-      - MAKE_TARGET: ct
-    steps: *test_steps
-
   test_roma:
     executor: builder_container_stable
     <<: *container_config
@@ -476,12 +468,28 @@ jobs:
       - MAKE_TARGET: ct-roma
     steps: *test_steps
 
+  test_minerva:
+    executor: builder_container_stable
+    <<: *container_config
+    parallelism: 2
+    environment:
+      - MAKE_TARGET: ct-minerva
+    steps: *test_steps
+
   test_fortuna:
     executor: builder_container_stable
     <<: *container_config
     parallelism: 2
     environment:
       - MAKE_TARGET: ct-fortuna
+    steps: *test_steps
+
+  test_lima:
+    executor: builder_container_stable
+    <<: *container_config
+    parallelism: 2
+    environment:
+      - MAKE_TARGET: ct-lima
     steps: *test_steps
 
   test_mnesia_leveled:
@@ -500,13 +508,6 @@ jobs:
       - MAKE_TARGET: ct-mnesia-rocksdb
     steps: *test_steps
 
-  eunit:
-    executor: builder_container_stable
-    <<: *container_config
-    environment:
-      - MAKE_TARGET: eunit
-    steps: *eunit_steps
-
   eunit_roma:
     executor: builder_container_stable
     <<: *container_config
@@ -514,11 +515,25 @@ jobs:
       - MAKE_TARGET: eunit-roma
     steps: *eunit_steps
 
+  eunit_minerva:
+    executor: builder_container_stable
+    <<: *container_config
+    environment:
+      - MAKE_TARGET: eunit-minerva
+    steps: *eunit_steps
+
   eunit_fortuna:
     executor: builder_container_stable
     <<: *container_config
     environment:
       - MAKE_TARGET: eunit-fortuna
+    steps: *eunit_steps
+
+  eunit_lima:
+    executor: builder_container_stable
+    <<: *container_config
+    environment:
+      - MAKE_TARGET: eunit-lima
     steps: *eunit_steps
 
   aevm_tests:
@@ -969,16 +984,6 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - test:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
       - test_roma:
           requires:
             - build
@@ -989,7 +994,27 @@ workflows:
                 - env/dev2
                 - system-tests
 
+      - test_minerva:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
       - test_fortuna:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+
+      - test_lima:
           requires:
             - build
           filters:
@@ -1019,18 +1044,6 @@ workflows:
                 - env/dev2
                 - system-tests
 
-      - eunit:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-            tags:
-              only: *tag_regex
-
       - eunit_roma:
           requires:
             - build
@@ -1043,7 +1056,31 @@ workflows:
             tags:
               only: *tag_regex
 
+      - eunit_minerva:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
+
       - eunit_fortuna:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
+
+      - eunit_lima:
           requires:
             - build
           filters:
@@ -1158,14 +1195,16 @@ workflows:
       - deploy_integration:
           context: ae-node-builds
           requires:
-            - test
             - test_roma
+            - test_minerva
             - test_fortuna
+            - test_lima
             - test_mnesia_leveled
             - test_mnesia_rocksdb
-            - eunit
             - eunit_roma
+            - eunit_minerva
             - eunit_fortuna
+            - eunit_lima
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -1178,14 +1217,16 @@ workflows:
       - docker_test_push_branch:
           context: ae-node-builds
           requires:
-            - test
             - test_roma
+            - test_minerva
             - test_fortuna
+            - test_lima
             - test_mnesia_leveled
             - test_mnesia_rocksdb
-            - eunit
             - eunit_roma
+            - eunit_minerva
             - eunit_fortuna
+            - eunit_lima
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -1198,10 +1239,11 @@ workflows:
       - deploy_next:
           context: ae-node-builds
           requires:
-            - test_fortuna
-            - eunit
+            - test_lima
             - eunit_roma
+            - eunit_minerva
             - eunit_fortuna
+            - eunit_lima
             - aevm_tests
             - uat_tests
             - static_analysis
@@ -1254,9 +1296,10 @@ workflows:
       - deploy_uat_blue:
           context: ae-node-builds
           requires:
-            - eunit
             - eunit_roma
+            - eunit_minerva
             - eunit_fortuna
+            - eunit_lima
             - static_analysis
             - rebar_lock_check
             - linux_package
@@ -1281,9 +1324,10 @@ workflows:
       - upload_packages_linux:
           context: ae-node-builds
           requires:
-            - eunit
             - eunit_roma
+            - eunit_minerva
             - eunit_fortuna
+            - eunit_lima
             - static_analysis
             - rebar_lock_check
             - linux_package
@@ -1297,9 +1341,10 @@ workflows:
       - upload_packages_osx:
           context: ae-node-builds
           requires:
-            - eunit
             - eunit_roma
+            - eunit_minerva
             - eunit_fortuna
+            - eunit_lima
             - static_analysis
             - rebar_lock_check
             - osx_package
@@ -1313,9 +1358,10 @@ workflows:
       - docker_push_tag:
           context: ae-node-builds
           requires:
-            - eunit
             - eunit_roma
+            - eunit_minerva
             - eunit_fortuna
+            - eunit_lima
             - static_analysis
             - rebar_lock_check
             - hodl_artefact_upload
