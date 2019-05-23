@@ -1,19 +1,11 @@
 # About this release
 
-[This][this-release] is the stable Fortuna release.
+[This][this-release] is a backwards-compatible bug fix release for the Fortuna release 3.0.0.
 It:
-* Adds all tokens migrated in phase 2 of the token migration. This takes effect at the Fortuna mainnet hardfork height.
-* Disables usage of provided StateChannels WebSocket API for generalized
-  accounts. This is done because FSM is not fully aware of generalized
-  accounts. It is highly recommended for state channels' users **not to
-  upgrade their accounts to generalized ones** as it might impact their state
-  channels' user experience.
-* Sets the Fortuna mainnet hard fork height to block 90800 (approximately Wed 5th June 11am CEST).
-* Changes the default database persistency behaviour (user configuration key `chain > persist`), persisting it by default.
+* Solves an issue with loading old serialization of
+  `channel_force_progress_tx` and updating it to the new serialization format
 
-[this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.0.0
-
-This release is backward compatible with `v3.0.0-rc.1` except for the protocol in the state channels WebSocket and Noise endpoints.
+[this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.0.1
 
 Please join the mainnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
@@ -31,8 +23,8 @@ You can run a node by either:
 * Running the published [Docker image `aeternity/aeternity`][docker]; or
 * [Building a release binary from source][build].
 
-[docker]: https://github.com/aeternity/aeternity/blob/v3.0.0/docs/docker.md
-[build]: https://github.com/aeternity/aeternity/blob/v3.0.0/docs/build.md
+[docker]: https://github.com/aeternity/aeternity/blob/v3.0.1/docs/docker.md
+[build]: https://github.com/aeternity/aeternity/blob/v3.0.1/docs/build.md
 
 The instructions for configuring the node using the Docker image are in [the dedicated separate document][docker].
 
@@ -44,9 +36,9 @@ The node user API is documented:
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
 
-[swagger-yaml]: https://github.com/aeternity/aeternity/blob/v3.0.0/config/swagger.yaml
-[swagger-ui]: https://aeternity.github.io/api-docs/?config=https://raw.githubusercontent.com/aeternity/aeternity/v3.0.0/apps/aehttp/priv/swagger.json
-[api-doc]: https://github.com/aeternity/protocol/blob/aeternity-node-v3.0.0/node/api/README.md
+[swagger-yaml]: https://github.com/aeternity/aeternity/blob/v3.0.1/config/swagger.yaml
+[swagger-ui]: https://aeternity.github.io/api-docs/?config=https://raw.githubusercontent.com/aeternity/aeternity/v3.0.1/apps/aehttp/priv/swagger.json
+[api-doc]: https://github.com/aeternity/protocol/blob/aeternity-node-v3.0.1/node/api/README.md
 
 ## Install node
 
