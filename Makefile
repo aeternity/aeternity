@@ -223,6 +223,8 @@ ct-lima: SYSCONFIG=config/test-lima.config
 ct-lima: AETERNITY_TESTCONFIG_DB_BACKEND=mnesia
 ct-lima: internal-ct
 
+ct-latest: ct-lima
+
 ct-mnesia-leveled: KIND=test
 ct-mnesia-leveled: SYSCONFIG=config/test-lima.config
 ct-mnesia-leveled: AETERNITY_TESTCONFIG_DB_BACKEND=leveled
