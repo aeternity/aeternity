@@ -4,13 +4,11 @@
 -define(DISABLED_PROPS_MODS,
         [ aec_sync_eqc
         , aeso_data_eqc
-        , aeso_heap_eqc
         , aeu_mp_trees_eqc
         , fate_compiler_eqc
         , txs_eqc
         , txs_ga_eqc
         , txs_glue_eqc
-        , txs_hardfork_eqc
         , txs_sign_eqc
         , txs_sign_meta_eqc
         ]).
