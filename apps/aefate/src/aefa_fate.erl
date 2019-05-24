@@ -245,14 +245,14 @@ check_remote(Contract, EngineState) ->
     end.
 
 set_remote_function(?FATE_CONTRACT(Pubkey), Function, ES) ->
-    Contracts = aefa_engine_state:contracts(ES),
-    case maps:get(Pubkey, Contracts, void) of
+    CodeCache = aefa_engine_state:code_cache(ES),
+    case maps:get(Pubkey, CodeCache, void) of
         void ->
             APIState  = aefa_engine_state:chain_api(ES),
             case aefa_chain_api:contract_fate_code(Pubkey, APIState) of
                 {ok, ContractCode, APIState1} ->
-                    Contracts1 = maps:put(Pubkey, ContractCode, Contracts),
-                    ES1 = aefa_engine_state:set_contracts(Contracts1, ES),
+                    CodeCache1 = maps:put(Pubkey, ContractCode, CodeCache),
+                    ES1 = aefa_engine_state:set_code_cache(CodeCache1, ES),
                     ES2 = aefa_engine_state:set_chain_api(APIState1, ES1),
                     ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, ES2),
                     set_local_function(Function, ES3);
