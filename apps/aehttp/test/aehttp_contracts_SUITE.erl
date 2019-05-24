@@ -142,7 +142,7 @@ init_for_contracts(Config) ->
 
 init_per_group(contracts, Config) -> init_for_contracts(Config);
 init_per_group(fate, Config) ->
-    case aect_test_utils:latest_protocol_version() >= ?FORTUNA_PROTOCOL_VSN of
+    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
         true  -> init_for_contracts(Config);
         false -> {skip, fate_not_available}
     end.
