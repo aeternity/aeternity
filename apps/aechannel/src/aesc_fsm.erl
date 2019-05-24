@@ -576,7 +576,7 @@ init(#{opts := Opts0} = Arg) ->
                         session = Session,
                         opts    = Opts,
                         state   = State,
-                        log     = #w{keep = maps:get(log_keep, Opts)}},
+                        log     = aesc_window:new(maps:get(log_keep, Opts))},
             lager:debug("Session started, Data = ~p", [Data]),
             %% TODO: Amend the fsm above to include this step. We have transport-level
             %% connectivity, but not yet agreement on the channel parameters. We will next send
