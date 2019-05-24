@@ -509,7 +509,7 @@ prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
 	docker docker-clean dockerignore-check \
 	test smoke-test smoke-test-run system-test aevm-test-deps \
 	ct-latest ct-roma ct-minerva ct-fortuna ct-lima ct-mnesia-leveled ct-mnesia-rocksdb \
-	eunit-roma eunit-minerva eunit-fortuna eunit-lima\
+	eunit-latest eunit-roma eunit-minerva eunit-fortuna eunit-lima\
 	system-smoke-test-deps system-test-deps \
 	kill killall \
 	clean distclean \
