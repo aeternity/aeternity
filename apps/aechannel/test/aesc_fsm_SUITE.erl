@@ -1032,7 +1032,7 @@ check_mutual_close_with_wrong_amounts(Cfg) ->
     true = (rpc(dev1, erlang, process_info, [FsmI]) =/= undefined),
     true = (rpc(dev1, erlang, process_info, [FsmR]) =/= undefined),
     %% Deposit funds to cover the closing fee. Then it should work
-    {ok, _I1, _R1} = deposit_(I, R, 20000 * aec_test_utils:min_gas_price(), Debug),
+    {ok, _I1, _R1} = deposit_(I, R, 30000 * aec_test_utils:min_gas_price(), Debug),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
     ok.
 
