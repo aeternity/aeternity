@@ -22,7 +22,8 @@
          process_solo_close/9,
          process_slash/9,
          process_force_progress/6,
-         process_solo_snapshot/7
+         process_solo_snapshot/7,
+         is_offchain_tx_type/1
         ]).
 
 -ifdef(TEST).
@@ -150,6 +151,11 @@ unpack_payload(Tx) ->
         {ga_meta_tx, GAMetaTx}            -> unpack_payload(aega_meta_tx:tx(GAMetaTx));
         {_, _}                            -> {error, bad_offchain_state_type}
     end.
+
+is_offchain_tx_type(channel_offchain_tx) -> true;
+is_offchain_tx_type(ga_meta_tx         ) -> true;
+is_offchain_tx_type(_) ->
+    false.
 
 -spec is_payload_valid_at_protocol(aec_hard_forks:protocol_vsn(), binary()) -> boolean().
 is_payload_valid_at_protocol(Protocol, Payload) ->

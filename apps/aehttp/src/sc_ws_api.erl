@@ -159,11 +159,13 @@ process_fsm_(#{type := sign,
     SerializedUpdates = [aesc_offchain_update:for_client(U) || U <- Updates],
     Tag1 =
         case Tag of
-            create_tx -> <<"initiator_sign">>;
-            funding_created -> <<"responder_sign">>;
-            shutdown -> <<"shutdown_sign">>;
-            shutdown_ack -> <<"shutdown_sign_ack">>;
-            deposit_created -> <<"deposit_ack">>;
+            create_tx        -> <<"initiator_sign">>;
+            funding_created  -> <<"responder_sign">>;
+            shutdown         -> <<"shutdown_sign">>;
+            shutdown_ack     -> <<"shutdown_sign_ack">>;
+            close_solo_tx    -> <<"close_solo_sign">>;
+            settle_tx        -> <<"settle_sign">>;
+            deposit_created  -> <<"deposit_ack">>;
             withdraw_created -> <<"withdraw_ack">>;
             T -> atom_to_binary(T, utf8)
         end,
