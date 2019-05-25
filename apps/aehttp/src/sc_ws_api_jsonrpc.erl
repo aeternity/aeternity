@@ -28,9 +28,12 @@
                                Method =:= <<"channels.shutdown_sign_ack">>;
                                Method =:= <<"channels.update">>;
                                Method =:= <<"channels.update_ack">>;
-                               Method =:= <<"channels.solo_close_tx">>;
+                               Method =:= <<"channels.close_solo_tx">>;
+                               Method =:= <<"channels.close_solo_sign">>;
                                Method =:= <<"channels.slash_tx">>;
-                               Method =:= <<"channels.settle_tx">>).
+                               Method =:= <<"channels.slash_sign">>;
+                               Method =:= <<"channels.settle_tx">>;
+                               Method =:= <<"channels.settle_sign">>).
 -define(METHOD_TAG(Method), case Method of
                                 <<"channels.initiator_sign">>    -> create_tx;
                                 <<"channels.deposit_tx">>        -> deposit_tx;
@@ -43,9 +46,12 @@
                                 <<"channels.shutdown_sign">>     -> shutdown;
                                 <<"channels.shutdown_sign_ack">> -> shutdown_ack;
                                 <<"channels.leave">>             -> leave;
-                                <<"channels.solo_close_tx">>     -> solo_close_tx;
+                                <<"channels.close_solo_tx">>     -> close_solo_tx;
+                                <<"channels.close_solo_sign">>   -> close_solo_tx;
                                 <<"channels.slash_tx">>          -> slash_tx;
-                                <<"channels.settle_tx">>         -> settle_tx
+                                <<"channels.shash_sign">>        -> slash_tx;
+                                <<"channels.settle_tx">>         -> settle_tx;
+                                <<"channels.settle_sign">>       -> settle_tx
                             end).
 
 unpack(Msg) when is_map(Msg) ->
@@ -490,7 +496,7 @@ process_request(#{<<"method">> := <<"channels.withdraw">>,
         {error, _Reason} = Err -> Err
     end;
 process_request(#{<<"method">> := Method,
-                    <<"params">> := #{<<"tx">> := EncodedTx}}, FsmPid)
+                  <<"params">> := #{<<"tx">> := EncodedTx}}, FsmPid)
     when ?METHOD_SIGNED(Method) ->
     Tag = ?METHOD_TAG(Method),
     case aeser_api_encoder:safe_decode(transaction, EncodedTx) of

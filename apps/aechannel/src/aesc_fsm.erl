@@ -885,6 +885,17 @@ awaiting_signature(cast, {?SIGNED, ?SHUTDOWN_ACK, SignedTx} = Msg,
             report_on_chain_tx(close_mutual, NewSignedTx, D1),
             close(close_mutual, D2)
         end, D);
+awaiting_signature(cast, {?SIGNED, close_solo_tx, SignedTx} = Msg,
+                   #data{latest = {sign, close_solo_tx, _CSTx, Updates}} = D) ->
+    D1 = D#data{log = log_msg(rcv, ?SIGNED, Msg, D#data.log),
+                latest = undefined},
+    case verify_signatures(pubkeys(me, D), SignedTx) of
+        ok ->
+            close_solo_signed(SignedTx, Updates, D1);
+        {error,_} = Error ->
+            lager:debug("Failed signature check: ~p", [Error]),
+            next_state(open, D1)
+    end;
 awaiting_signature(cast, {?SIGNED, settle_tx, SignedTx} = Msg,
                    #data{latest = {sign, settle_tx, _STx, Updates}} = D) ->
     maybe_check_sigs(SignedTx, Updates, channel_settle_tx, not_settle_tx, me,
@@ -1072,6 +1083,31 @@ settle_signed(SignedTx, Updates, #data{ on_chain_id = ChId} = D) ->
                         start_min_depth_watcher(close, SignedTx, Updates, D)
                 end,
             next_state(channel_closing, D1);
+        {error,_} = Error ->
+            close(Error, D)
+    end.
+
+close_solo_signed(SignedTx, _Updates, #data{ on_chain_id = ChId } = D) ->
+    lager:debug("SignedTx = ~p", [SignedTx]),
+    case aec_chain:get_channel(ChId) of
+        {ok, Ch} ->
+            LockedUntil = aesc_channels:locked_until(Ch),
+            case is_channel_locked(LockedUntil) of
+                false ->
+                    lager:debug("channel not locked: solo-closing", []),
+                    case aec_tx_pool:push(SignedTx) of
+                        ok ->
+                            ok;
+                        {error, Reason} ->
+                            lager:debug("Close_solo tx failed: ~p", [Reason]),
+                            ok
+                    end;
+                true ->
+                    lager:debug("channel is locked: cannot solo-close", []),
+                    ok
+            end,
+            %% Let the watcher pick up the tx once it makes it onto the chain
+            next_state(open, D);
         {error,_} = Error ->
             close(Error, D)
     end.
@@ -2194,12 +2230,20 @@ close_solo_tx(Account, Nonce, #data{ on_chain_id = ChanId
     Fee = maps:get(fee, Opts1),
     TTL = adjust_ttl(maps:get(ttl, Opts1, 0)),
     {_Round, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
+    {Type, _TxI} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    Payload = case aesc_utils:is_offchain_tx_type(Type) of
+                  true ->
+                      aetx_sign:serialize_to_binary(SignedTx);
+                  _ ->
+                      %% on-chain tx, we assume
+                      <<>>
+              end,
     {ok, Poi} = aesc_offchain_state:poi([{account, Initiator},
                                          {account, Responder}], State),
     {ok, Tx} = aesc_close_solo_tx:new(
                  #{ channel_id => aeser_id:create(channel, ChanId)
                   , from_id    => aeser_id:create(account, Account)
-                  , payload    => aetx_sign:serialize_to_binary(SignedTx)
+                  , payload    => Payload
                   , poi        => Poi
                   , ttl        => TTL
                   , fee        => Fee
@@ -2243,7 +2287,7 @@ default_fee(_Tx) ->
     CurHeight = aec_headers:height(aec_chain:top_header()),
     %% this could be fragile on hard fork height if one participant's node had
     %% already forked and the other had not yet
-    20000 * max(aec_governance:minimum_gas_price(CurHeight),
+    30000 * max(aec_governance:minimum_gas_price(CurHeight),
                 aec_tx_pool:minimum_miner_gas_price()).
 
 default_ttl(_Type, Opts, #data{opts = DOpts}) ->
@@ -2577,7 +2621,7 @@ check_update_msg(Type, Msg, D) ->
 
 check_update_msg_(Type, #{ channel_id := ChanId
                          , block_hash := ?NOT_SET_BLOCK_HASH
-                         , data       := #{tx      := TxBin, 
+                         , data       := #{tx      := TxBin,
                                            updates := UpdatesBin}} = Msg,
                   #data{ on_chain_id = ChanId } = D) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
@@ -3268,11 +3312,11 @@ next_round(#data{state = State}) ->
 %% event(_, _, _) ->
 %%     ok.
 account_type(Pubkey) ->
-		case aec_chain:get_account(Pubkey) of
-    		{value, Account} ->
-						{ok, aec_accounts:type(Account)};
-				_ -> not_found
-		end.
+    case aec_chain:get_account(Pubkey) of
+        {value, Account} ->
+            {ok, aec_accounts:type(Account)};
+        _ -> not_found
+    end.
 
 check_accounts(Initiator, Responder) ->
     case {account_type(Initiator), account_type(Responder)} of
