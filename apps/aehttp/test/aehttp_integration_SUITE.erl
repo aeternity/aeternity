@@ -5452,7 +5452,7 @@ sc_ws_close_solo_(Config0) ->
               S = ?SLOGAN(WhoCloses),
               Config = sc_ws_open_(Config0, #{slogan => S}),
               sc_ws_close_solo_(Config, WhoCloses)
-      end, [responder]).
+      end, [initiator, responder]).
 
 sc_ws_leave_reestablish(Config0) ->
     Config = sc_ws_open_(Config0),
