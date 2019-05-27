@@ -16,6 +16,9 @@
 
 -include_lib("aecontract/include/hard_forks.hrl").
 
+%% for testing from a shell
+-export([ init_tests/2 ]).
+
 %% test case exports
 -export([ call_contract/1
         , call_contract_error_value/1
@@ -316,6 +319,22 @@ groups() ->
                           , merge_new_zero_value
                           ]}
     ].
+
+%% For interactive use
+init_tests(Release, VMName) ->
+    IfAEVM = fun(AEVM, Fate) -> if VMName == aevm -> AEVM; VMName == fate -> Fate end end,
+    Versions = [{roma,    {?ROMA_PROTOCOL_VSN,    ?SOPHIA_ROMA,    ?ABI_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_1}},
+                {minerva, {?MINERVA_PROTOCOL_VSN, ?SOPHIA_MINERVA, ?ABI_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_2}},
+                {fortuna, {?FORTUNA_PROTOCOL_VSN, ?SOPHIA_FORTUNA, ?ABI_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_3}},
+                {lima,    {IfAEVM(?FORTUNA_PROTOCOL_VSN, ?LIMA_PROTOCOL_VSN),
+                           IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_LIMA_FATE),
+                           IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
+                           IfAEVM(?VM_AEVM_SOPHIA_3, ?VM_FATE_SOPHIA_1)}}],
+    {Proto, Sophia, ABI, VM} = proplists:get_value(Release, Versions),
+    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> Proto end),
+    Cfg = [{sophia_version, Sophia}, {vm_version, VM},
+           {abi_version, ABI}, {protocol, Release}],
+    init_per_testcase_common(Cfg).
 
 init_per_group(aevm, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
