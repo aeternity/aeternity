@@ -53,7 +53,7 @@ contract FundMe =
     require(state.total >= state.goal, "Project was not funded")
     spend({recipient = state.beneficiary,
            amount    = Contract.balance })
-    put(state{ beneficiary = ak_1111111111111111111111111111113AFEFpt5 })
+    put(state{ beneficiary = #0 })
 
   private stateful function withdraw_contributor() =
     if(state.total >= state.goal)

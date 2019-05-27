@@ -3,7 +3,6 @@ contract DutchAuction =
   record state = { amount : int,
                    height : int,
                    dec    : int,
-                   creator : address,   // can be removed when Contract.creator is implemented
                    sold   : bool }
 
   private function require(b : bool, err : string) =
@@ -14,7 +13,6 @@ contract DutchAuction =
     { amount = price,
       height = Chain.block_height,
       dec    = decrease,
-      creator = Call.caller,  // can be removed when Contract.creator is implemented
       sold   = false }
 
   public stateful function bid() =
@@ -22,6 +20,6 @@ contract DutchAuction =
     let price =
       state.amount - (Chain.block_height - state.height) * state.dec
     require( Contract.balance >= price, "no money")
-    Chain.spend(state.creator, price)   // should be Contract.creator
+    Chain.spend(Contract.creator, price)
     Chain.spend(Call.origin, Contract.balance)
     put(state{sold = true})

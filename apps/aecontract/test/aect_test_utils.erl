@@ -245,11 +245,11 @@ read_contract(Name) ->
 read_contract(Compiler, Name) ->
     file:read_file(contract_filename(Compiler, Name)).
 
-contract_dirs(?SOPHIA_ROMA)      -> ["sophia_1"];
-contract_dirs(?SOPHIA_MINERVA)   -> ["sophia_2"];
-contract_dirs(?SOPHIA_FORTUNA)   -> ["sophia_3"];
-contract_dirs(?SOPHIA_LIMA_AEVM) -> ["sophia_4_aevm", "sophia_4", "sophia_3"];
-contract_dirs(?SOPHIA_LIMA_FATE) -> ["sophia_4_fate", "sophia_4", "sophia_3"].
+contract_dirs(?SOPHIA_ROMA)      -> ["sophia_1" | contract_dirs(?SOPHIA_MINERVA)];
+contract_dirs(?SOPHIA_MINERVA)   -> ["sophia_2" | contract_dirs(?SOPHIA_FORTUNA)];
+contract_dirs(?SOPHIA_FORTUNA)   -> ["sophia_3" | contract_dirs(?SOPHIA_LIMA_AEVM)];
+contract_dirs(?SOPHIA_LIMA_AEVM) -> ["sophia_4_aevm", "sophia_4"];
+contract_dirs(?SOPHIA_LIMA_FATE) -> ["sophia_4_fate", "sophia_4"].
 
 contract_filenames(Compiler, Name) when is_atom(Name) ->
     contract_filenames(Compiler, atom_to_list(Name));
@@ -259,7 +259,7 @@ contract_filenames(Compiler, Name) ->
     Files = [filename:join([CodeDir] ++ Contracts ++ [SubDir, Name1])
              || Contracts <- [["contracts"], []],
                 SubDir    <- contract_dirs(Compiler) ++ ["."]],
-    io:format("Files for ~p (compiler ~p): ~p\n", [Name, Compiler, Files]),
+    %% io:format("Files for ~p (compiler ~p): ~p\n", [Name, Compiler, Files]),
     lists:filter(fun filelib:is_regular/1, Files).
 
 contract_filename(Compiler, Name) ->
