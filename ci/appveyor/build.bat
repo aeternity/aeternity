@@ -15,6 +15,7 @@ IF "%ERTS_VERSION%"=="" SET "ERTS_VERSION=9.3"
 IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\msys64"
 IF "%PLATFORM%"=="" SET "PLATFORM=x64"
 IF "%BUILD_STEP%"=="" SET "BUILD_STEP=build"
+IF "%BUILD_PATH%"=="" GOTO :BUILDABORT_MISSINGBUILDPATH
 SET BASH_BIN="%WIN_MSYS2_ROOT%\usr\bin\bash"
 
 @echo Current time: %time%
@@ -39,3 +40,8 @@ GOTO BUILD_DONE
 
 @echo Current time: %time%
 rem Finished build phase
+exit /B 0
+
+:BUILDABORT_MISSINGBUILDPATH
+@echo ERROR: Missing environment variable BUILD_PATH
+exit /B 1

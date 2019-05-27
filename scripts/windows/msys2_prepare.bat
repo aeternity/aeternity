@@ -90,9 +90,7 @@ rem Remove breaking tools
 @echo Current time: %time%
 rem Upgrade the MSYS2 platform
 
-%BASH_BIN% -lc "%PACMAN% -y pacman"
-@echo Current time: %time%
-%BASH_BIN% -lc "%PACMAN% -u"
+%BASH_BIN% -lc "%PACMAN% -yuu"
 
 @echo Current time: %time%
 rem Install required tools
