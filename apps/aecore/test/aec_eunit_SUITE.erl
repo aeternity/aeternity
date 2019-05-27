@@ -105,6 +105,7 @@ application_test(Config) ->
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, []),
     meck:expect(aec_fork_block_settings, minerva_accounts, 0, []),
     meck:expect(aec_fork_block_settings, fortuna_accounts, 0, []),
+    meck:expect(aec_fork_block_settings, lima_accounts, 0, []),
     {ok,_} = application:ensure_all_started(aecore),
     timer:sleep(100),
     ok = application:stop(aecore),

@@ -1,7 +1,8 @@
 -module(aec_block_fork).
 
 -export([apply_minerva/1,
-         apply_fortuna/1
+         apply_fortuna/1,
+         apply_lima/1
         ]).
 
 -spec apply_minerva(aec_trees:trees()) -> aec_trees:trees().
@@ -11,6 +12,10 @@ apply_minerva(Trees) ->
 -spec apply_fortuna(aec_trees:trees()) -> aec_trees:trees().
 apply_fortuna(Trees) ->
     apply_accounts_file(Trees, aec_fork_block_settings:fortuna_accounts()).
+
+-spec apply_lima(aec_trees:trees()) -> aec_trees:trees().
+apply_lima(Trees) ->
+    apply_accounts_file(Trees, aec_fork_block_settings:lima_accounts()).
 
 apply_accounts_file(Trees, Accounts) ->
     AccTrees =

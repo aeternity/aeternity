@@ -95,21 +95,24 @@ latest_sophia_vm_version() ->
     case latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_1;
         ?MINERVA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_2;
-        ?FORTUNA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_3
+        ?FORTUNA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_3;
+        ?LIMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_3
     end.
 
 latest_sophia_abi_version() ->
     case latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1;
         ?MINERVA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1;
-        ?FORTUNA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1
+        ?FORTUNA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1;
+        ?LIMA_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1
     end.
 
 latest_sophia_version() ->
     case latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> ?SOPHIA_ROMA;
         ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_MINERVA;
-        ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA_AEVM
+        ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA;
+        ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM
     end.
 
 latest_protocol_version() ->
@@ -254,12 +257,12 @@ compile_filename(Compiler, FileName) ->
 compile_contract(File) ->
     compile_contract(latest_sophia_version(), File).
 
-compile_contract(?SOPHIA_FORTUNA_FATE, File) ->
-    compile_filename(?SOPHIA_FORTUNA_FATE, contract_filename(fate, File));
+compile_contract(?SOPHIA_LIMA_FATE, File) ->
+    compile_filename(?SOPHIA_LIMA_FATE, contract_filename(fate, File));
 compile_contract(Compiler, File) ->
     compile_filename(Compiler, contract_filename(aevm, File)).
 
-compile(?SOPHIA_FORTUNA_FATE, File) ->
+compile(?SOPHIA_LIMA_FATE, File) ->
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
     {_Env, ByteCode} = aeb_fate_asm:asm_to_bytecode(Source, []),
@@ -268,7 +271,7 @@ compile(?SOPHIA_FORTUNA_FATE, File) ->
                                 , compiler_version => 1     %% TODO: This is wrong.
                                 , type_info => []           %% TODO: This is wrong.
                                 })};
-compile(?SOPHIA_FORTUNA_AEVM, File) ->
+compile(?SOPHIA_LIMA_AEVM, File) ->
     {ok, ContractBin} = file:read_file(File),
     case aeso_compiler:from_string(binary_to_list(ContractBin), []) of
         {ok, Map}        -> {ok, aect_sophia:serialize(Map)};
@@ -302,7 +305,8 @@ compiler_cmd(Vsn) ->
     BaseDir = filename:join([code:priv_dir(aesophia_cli), "bin"]),
     case Vsn of
         ?SOPHIA_ROMA    -> filename:join([BaseDir, "v1.4.0", "aesophia_cli"]);
-        ?SOPHIA_MINERVA -> filename:join([BaseDir, "v2.1.0", "aesophia_cli"])
+        ?SOPHIA_MINERVA -> filename:join([BaseDir, "v2.1.0", "aesophia_cli"]);
+        ?SOPHIA_FORTUNA -> filename:join([BaseDir, "v3.0.0", "aesophia_cli"])
     end.
 
 tempfile_name(Prefix, Opts) ->
@@ -332,7 +336,7 @@ to_str(Str)                     -> Str.
 encode_call_data(Code, Fun, Args) ->
     encode_call_data(latest_sophia_version(), Code, Fun, Args).
 
-encode_call_data(?SOPHIA_FORTUNA_AEVM, Code, Fun, Args) ->
+encode_call_data(Vsn, Code, Fun, Args) when Vsn >= ?SOPHIA_FORTUNA ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
                                       lists:map(fun to_str/1, Args)) of
         {error, _} = Err -> Err;

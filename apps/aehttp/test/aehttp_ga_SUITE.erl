@@ -96,7 +96,7 @@ init_per_group(_, Config) ->
     case aect_test_utils:latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
-        ?FORTUNA_PROTOCOL_VSN -> init_for_ga(Config)
+        Vsn when Vsn >= ?FORTUNA_PROTOCOL_VSN -> init_for_ga(Config)
     end.
 
 init_for_ga(Config) ->

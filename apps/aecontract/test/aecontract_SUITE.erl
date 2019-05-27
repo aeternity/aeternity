@@ -332,34 +332,43 @@ init_per_group(aevm, Cfg) ->
             ct:pal("Running tests under Fortuna protocol"),
             meck:expect(aec_hard_forks, protocol_effective_at_height,
                         fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
-            [{sophia_version, ?SOPHIA_FORTUNA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
-             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg]
+            [{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
+             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg];
+        ?LIMA_PROTOCOL_VSN ->
+            ct:pal("Running tests under Lima protocol"),
+            meck:expect(aec_hard_forks, protocol_effective_at_height,
+                        fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
+            [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
+             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg]
     end;
 init_per_group(fate, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
-        ?FORTUNA_PROTOCOL_VSN ->
+        ?LIMA_PROTOCOL_VSN ->
             meck:expect(aec_hard_forks, protocol_effective_at_height,
-                        fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
-            [{sophia_version, ?SOPHIA_FORTUNA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
-             {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, fortuna} | Cfg];
+                        fun(_) -> ?LIMA_PROTOCOL_VSN end),
+            [{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
+             {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg];
         _ ->
             {skip, fate_not_available}
     end;
 init_per_group(protocol_interaction, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
-        ?FORTUNA_PROTOCOL_VSN ->
+        ?LIMA_PROTOCOL_VSN ->
             MHeight = 10,
             FHeight = 15,
+            LHeight = 20,
             Fun = fun(H) when H <  MHeight -> ?ROMA_PROTOCOL_VSN;
                      (H) when H <  FHeight -> ?MINERVA_PROTOCOL_VSN;
-                     (H) when H >= FHeight -> ?FORTUNA_PROTOCOL_VSN
+                     (H) when H <  LHeight -> ?FORTUNA_PROTOCOL_VSN;
+                     (H) when H >= LHeight -> ?LIMA_PROTOCOL_VSN
                   end,
             meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
             [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
              {fork_heights, #{ minerva => MHeight,
-                               fortuna => FHeight
+                               fortuna => FHeight,
+                               lima    => LHeight
                              }},
-             {protocol, fortuna} | Cfg];
+             {protocol, lima} | Cfg];
         _ ->
             {skip, only_test_protocol_interaction_on_latest_protocol}
     end;
@@ -394,7 +403,8 @@ init_per_testcase_common(Config) ->
     ProtocolVersion = case ?config(protocol, Config) of
                           roma    -> ?ROMA_PROTOCOL_VSN;
                           minerva -> ?MINERVA_PROTOCOL_VSN;
-                          fortuna -> ?FORTUNA_PROTOCOL_VSN
+                          fortuna -> ?FORTUNA_PROTOCOL_VSN;
+                          lima    -> ?LIMA_PROTOCOL_VSN
                       end,
     put('$vm_version', VmVersion),
     put('$abi_version', ABIVersion),
@@ -418,9 +428,10 @@ end_per_testcase(_TC,_Config) ->
 
 -define(assertMatchProtocol(Res, ExpRoma, ExpMinerva),
     case protocol_version() of
-        ?ROMA_PROTOCOL_VSN -> ?assertMatch(ExpRoma, Res);
+        ?ROMA_PROTOCOL_VSN    -> ?assertMatch(ExpRoma, Res);
         ?MINERVA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res);
-        ?FORTUNA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res)
+        ?FORTUNA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res);
+        ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res)
     end).
 
 -define(assertMatchAEVM(__Exp, __Res),
@@ -638,7 +649,7 @@ create_version_too_high(Cfg) ->
     case proplists:get_value(protocol, Cfg) of
         roma ->
             {error, illegal_contract_compiler_version, _} = Res;
-        P when P =:= minerva; P =:= fortuna ->
+        P when P =:= minerva; P =:= fortuna; P =:= lima ->
             {ok, _} = Res
     end.
 
@@ -1372,56 +1383,91 @@ sophia_vm_interaction(Cfg) ->
     ForkHeights   = ?config(fork_heights, Cfg),
     RomaHeight    = maps:get(minerva, ForkHeights) - 1,
     MinervaHeight = maps:get(fortuna, ForkHeights) - 1,
+    FortunaHeight = maps:get(lima, ForkHeights) - 1,
+    LimaHeight = maps:get(lima, ForkHeights),
     MinervaGasPrice = aec_governance:minimum_gas_price(MinervaHeight),
     MinerMinGasPrice= aec_tx_pool:minimum_miner_gas_price(),
     MinGasPrice   = max(MinervaGasPrice, MinerMinGasPrice),
-    Acc           = ?call(new_account, 10000000 * MinGasPrice),
+    Acc           = ?call(new_account, 10000000000 * MinGasPrice),
     RomaSpec      = #{height => RomaHeight, vm_version => ?VM_AEVM_SOPHIA_1,
                       amount => 100},
     MinervaSpec   = #{height => MinervaHeight, vm_version => ?VM_AEVM_SOPHIA_2,
                       amount => 100,
                       gas_price => MinGasPrice,
                       fee => 1000000 * MinGasPrice},
+    FortunaSpec   = #{height => FortunaHeight, vm_version => ?VM_AEVM_SOPHIA_3,
+                      amount => 100,
+                      gas_price => MinGasPrice,
+                      fee => 1000000 * MinGasPrice},
+    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_AEVM_SOPHIA_3,
+                      amount => 100,
+                      gas_price => MinGasPrice,
+                      fee => 1000000 * MinGasPrice},
     {ok, IdCode}  = compile_contract_vsn(identity, ?SOPHIA_ROMA),
     {ok, RemCode} = compile_contract_vsn(remote_call, ?SOPHIA_ROMA),
 
-    %% Create contracts on both side of the fork
+    %% Create contracts on all sides of the fork
     IdCRoma     = ?call(create_contract_with_code, Acc, IdCode, {}, RomaSpec),
     RemCRoma    = ?call(create_contract_with_code, Acc, RemCode, {}, RomaSpec),
     IdCMinerva  = ?call(create_contract_with_code, Acc, IdCode, {}, MinervaSpec),
     RemCMinerva = ?call(create_contract_with_code, Acc, RemCode, {}, MinervaSpec),
+    IdCFortuna  = ?call(create_contract_with_code, Acc, IdCode, {}, FortunaSpec),
+    RemCFortuna = ?call(create_contract_with_code, Acc, RemCode, {}, FortunaSpec),
+    IdCLima     = ?call(create_contract_with_code, Acc, IdCode, {}, LimaSpec),
+    RemCLima    = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
 
-    %% Check that we cannot create contracts with vm1 after the fork
-    BadSpec    = RomaSpec#{height => MinervaHeight,
-                           gas_price => MinGasPrice,
-                           fee => 100000 * MinGasPrice},
-    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec),
+    %% Check that we cannot create contracts with old vms after the forks
+    BadSpec1   = RomaSpec#{height => MinervaHeight},
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec1),
+    BadSpec2   = RomaSpec#{height => FortunaHeight},
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec2),
+    BadSpec3   = MinervaSpec#{height => LimaHeight},
+    {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec3),
 
-    MinervaCallSpec = #{height => MinervaHeight,
-                        gas_price => MinGasPrice,
-                        fee => 1000000 * MinGasPrice},
+    LatestCallSpec = #{height => LimaHeight,
+                       gas_price => MinGasPrice,
+                       fee => 1000000 * MinGasPrice},
 
-    %% Call directly VM1
-    42 = ?call(call_contract, Acc, IdCRoma,    main, word, 42, MinervaCallSpec),
-    43 = ?call(call_contract, Acc, IdCMinerva, main, word, 43, MinervaCallSpec),
+    %% Call directly old VMs
+    [?assertEqual(42, ?call(call_contract, Acc, Id, main, word, 42, LatestCallSpec))
+     || Id <- [ IdCRoma
+              , IdCMinerva
+              , IdCFortuna]],
 
-    %% Call VM1 -> VM1 and VM2 -> VM1
-    98 = ?call(call_contract, Acc, RemCRoma, call, word, {IdCRoma, 98},
-               MinervaCallSpec),
-    99 = ?call(call_contract, Acc, RemCMinerva, call, word, {IdCRoma, 99},
-               MinervaCallSpec),
+    %% Call oldVM -> oldVM and newVM -> oldVM
+    [?assertEqual(98, ?call(call_contract, Acc, Rem, call, word, {Id, 98},
+                            LatestCallSpec))
+     || {Rem, Id} <- [ {RemCRoma,    IdCRoma}
+                     , {RemCMinerva, IdCRoma}
+                     , {RemCFortuna, IdCRoma}
+                     , {RemCLima,    IdCRoma}
+                     , {RemCMinerva, IdCMinerva}
+                     , {RemCFortuna, IdCMinerva}
+                     , {RemCLima,    IdCMinerva}
+                     , {RemCFortuna, IdCFortuna}
+                     , {RemCLima,    IdCFortuna}
+                     , {RemCLima,    IdCLima}]],
 
-    %% Call VM2 -> VM1 -> VM1
-    77 = ?call(call_contract, Acc, RemCMinerva, staged_call, word,
-               {IdCRoma, RemCRoma, 77}, MinervaCallSpec),
+    %% Call newVM -> oldVM -> oldVM
+    [?assertEqual(77, ?call(call_contract, Acc, Rem1, staged_call, word,
+                            {Id, Rem2, 77}, LatestCallSpec))
+     || {Rem1, Id, Rem2} <- [ {RemCMinerva, IdCRoma, RemCRoma}
+                            , {RemCFortuna, IdCRoma, RemCRoma}
+                            , {RemCLima,    IdCRoma, RemCRoma}
+                            , {RemCFortuna, IdCMinerva, RemCMinerva}
+                            , {RemCLima,    IdCMinerva, RemCMinerva}
+                            , {RemCLima,    IdCFortuna, RemCFortuna}]],
 
-    %% Fail calling VM1 -> VM2
-    {error, _} = ?call(call_contract, Acc, RemCRoma, call, word,
-                       {IdCMinerva, 98}, MinervaCallSpec),
-
-    %% Fail calling VM2 -> VM1 -> VM2
-    {error, _} = ?call(call_contract, Acc, RemCMinerva, staged_call, word,
-                       {IdCRoma, RemCMinerva, 77}, MinervaCallSpec),
+    %% Fail calling oldVM -> newVM
+    [?assertMatch({error, _}, ?call(call_contract, Acc, Rem, call, word,
+                                    {Id, 98}, LatestCallSpec))
+     || {Rem, Id} <- [ {RemCRoma, IdCMinerva}
+                     , {RemCRoma, IdCFortuna}
+                     , {RemCRoma, IdCLima}
+                     , {RemCMinerva, IdCFortuna}
+                     , {RemCMinerva, IdCLima}
+%%                   , {RemCFortuna, IdCLima} TODO: Uncomment when/if this stops working
+                     ]],
     ok.
 
 sophia_exploits(_Cfg) ->

@@ -65,7 +65,9 @@ load_files_smoke_test_() ->
                 (?MINERVA_PROTOCOL_VSN) ->
                     DataAecoreDir ++ ".minerva/" ++ File;
                 (?FORTUNA_PROTOCOL_VSN) ->
-                    DataAecoreDir ++ ".fortuna/" ++ File
+                    DataAecoreDir ++ ".fortuna/" ++ File;
+                (?LIMA_PROTOCOL_VSN) ->
+                    DataAecoreDir ++ ".lima/" ++ File
             end),
          ok
      end,
@@ -77,7 +79,8 @@ load_files_smoke_test_() ->
         fun() ->
             T0 = make_trees(aec_fork_block_settings:genesis_accounts()),
             T1 = aec_block_fork:apply_minerva(T0),
-            _T2 = aec_block_fork:apply_fortuna(T1),
+            T2 = aec_block_fork:apply_fortuna(T1),
+            _T3 = aec_block_fork:apply_lima(T2),
             ok
         end}
      ]} || File <- ["accounts.json", "accounts_uat.json", "accounts_test.json"] ].

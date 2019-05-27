@@ -54,6 +54,7 @@ rem Copy genisis and hard-fork account migrations into top-level data folder
 %BASH_BIN% -lc "cp -R \"%RELEASE_PATH%/data/aecore/.genesis\" \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
 %BASH_BIN% -lc "cp -R \"%RELEASE_PATH%/data/aecore/.minerva\" \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
 %BASH_BIN% -lc "cp -R \"%RELEASE_PATH%/data/aecore/.fortuna\" \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
+%BASH_BIN% -lc "cp -R \"%RELEASE_PATH%/data/aecore/.lima\" \"%PACKAGE_PATH%/aeternity-windows-w64/data/aecore\""
 
 @echo Current time: %time%
 rem Build packages

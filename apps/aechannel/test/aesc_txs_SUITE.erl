@@ -5397,7 +5397,7 @@ encode_call_data(ContractName, Function, Arguments) ->
         Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN ->
             aect_test_utils:encode_call_data(?SOPHIA_MINERVA, Contract, Function, Arguments);
         _ ->
-            aect_test_utils:encode_call_data(?SOPHIA_FORTUNA_AEVM, Contract, Function, Arguments)
+            aect_test_utils:encode_call_data(?SOPHIA_FORTUNA, Contract, Function, Arguments)
     end.
 
 address_encode(Type, Binary) ->

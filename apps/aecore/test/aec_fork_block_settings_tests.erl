@@ -25,6 +25,11 @@ fortuna_accounts_test_() ->
                   fun ?TEST_MODULE:fortuna_accounts/0,
                   fortuna_accounts_file_missing).
 
+lima_accounts_test_() ->
+    release_based(?ROOT_DIR ++ "/.lima",
+                  fun ?TEST_MODULE:lima_accounts/0,
+                  lima_accounts_file_missing).
+
 release_based(Dir, ReadAccountsFun, MissingErr) ->
     {foreach,
      fun() ->
