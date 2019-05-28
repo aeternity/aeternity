@@ -98,7 +98,7 @@ mk_test(Contracts, Tests) ->
 run_call(Code, Fun, Args) ->
     Cache = compile_contracts([{<<"test">>, Code}]),
     case run(Cache, <<"test">>, list_to_binary(Fun), Args) of
-        {ok, #{ accumulator := Result }} -> Result;
+        {ok, ES} -> aefa_engine_state:accumulator(ES);
         {error, Err, #{trace := Trace}} -> {error, Err, [I || {I, _} <- Trace]}
     end.
 
