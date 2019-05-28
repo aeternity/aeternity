@@ -40,7 +40,7 @@
         , and_op/4
         , or_op/4
         , not_op/3
-        , tuple/2
+        , tuple/3
         , element_op/4
         , map_empty/2
         , map_lookup/4
@@ -356,17 +356,17 @@ not_op(Arg0, Arg1, EngineState) ->
 
 %% Make tuple only takes a fixed size.
 %% NOTE: There is no type checking on the arguments on the stack.
-tuple(Arg0, EngineState) ->
-    if is_integer(Arg0) andalso (Arg0 >= 0) ->
-            make_tuple(Arg0, EngineState);
-       true -> aefa_fate:abort({invalid_tuple_size, Arg0}, EngineState)
+tuple(Arg0, Arg1, EngineState) ->
+    if is_integer(Arg1) andalso (Arg1 >= 0) ->
+            make_tuple(Arg0, Arg1, EngineState);
+       true -> aefa_fate:abort({invalid_tuple_size, Arg1}, EngineState)
     end.
 
-make_tuple(Size, ES) ->
+make_tuple(To, Size, ES) ->
     {Elements, ES2} = aefa_fate:pop_n(Size, ES),
     Tuple = list_to_tuple(Elements),
     FateTuple = aeb_fate_data:make_tuple(Tuple),
-    aefa_fate:push(FateTuple, ES2).
+    write(To, FateTuple, ES2).
 
 
 element_op(To, Which, TupleArg, ES) ->
