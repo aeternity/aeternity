@@ -803,11 +803,9 @@ ter_op(Op, {To, One, Two, Three}, ES) ->
 get_op_arg({stack, 0}, ES) ->
     aefa_engine_state:pop_accumulator(ES);
 get_op_arg({arg,_N} = Var, ES) ->
-    Value = aefa_fate:lookup_var(Var, ES),
-    {Value, ES};
+    aefa_fate:lookup_var(Var, ES);
 get_op_arg({var,_N} = Var, ES) ->
-    Value = aefa_fate:lookup_var(Var, ES),
-    {Value, ES};
+    aefa_fate:lookup_var(Var, ES);
 get_op_arg({immediate, X}, ES) ->
     {X, ES}.
 

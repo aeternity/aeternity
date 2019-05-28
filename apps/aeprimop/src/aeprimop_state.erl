@@ -22,6 +22,7 @@
         , get_channel/2
         , get_commitment/3
         , get_contract/2
+        , get_contract_no_cache/2
         , get_contract_without_store/2
         , get_name/2
         , get_oracle/3
@@ -130,6 +131,11 @@ get_contract(Key, S) ->
 
 put_contract(Object, S) ->
     cache_put(contract, Object, S).
+
+%% Used from fate that has its own store cache management
+get_contract_no_cache(Key, S) ->
+    {Contract, _}  = get_x(contract, Key, contract_does_not_exist, S),
+    Contract.
 
 %% NOTE: This does not cache the contract to avoid over-writing
 %% the correct store later

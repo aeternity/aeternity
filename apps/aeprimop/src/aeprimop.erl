@@ -55,6 +55,7 @@
                         , get_channel/2
                         , get_commitment/3
                         , get_contract/2
+                        , get_contract_no_cache/2
                         , get_contract_without_store/2
                         , get_name/2
                         , get_oracle/3
@@ -805,11 +806,12 @@ copy_contract_state_for_auth(Ch, Account, S) ->
         basic -> S;
         generalized ->
             {_, ContractPK} = aeser_id:specialize(aec_accounts:ga_contract(Account)),
-            {Contract, S1 = #state{trees = Trees}} = get_contract(ContractPK, S),
+            Contract = get_contract_no_cache(ContractPK, S),
             StoreKey = aesc_channels:auth_store_key(aec_accounts:id(Account), Ch),
-            CtTree  = aec_trees:contracts(Trees),
-            CtTree1 =  aect_state_tree:copy_contract_store(Contract, StoreKey, CtTree),
-            S1#state{trees = aec_trees:set_contracts(Trees, CtTree1)}
+            Trees    = S#state.trees,
+            CtTree   = aec_trees:contracts(),
+            CtTree1  = aect_state_tree:copy_contract_store(Contract, StoreKey, CtTree),
+            S#state{trees = aec_trees:set_contracts(Trees, CtTree1)}
     end.
 
 %%%-------------------------------------------------------------------
@@ -946,7 +948,7 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
     {ContractAccount, S3} = get_account(ContractPubkey, S2),
     S4 = account_earn(ContractAccount, Amount, S3),
     %% Avoid writing the store back by skipping this state.
-    {Contract, _} = get_contract(ContractPubkey, S4),
+    Contract = get_contract_no_cache(ContractPubkey, S4),
     {Call, S5} = run_contract(CallerId, Contract, GasLimit, GasPrice,
                               CallData, Origin, Amount, CallStack, Nonce, S4),
     case aect_call:return_type(Call) of
@@ -1077,7 +1079,7 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
     assert_contract_call_version(AuthContractPK, ABIVersion, S),
     assert_auth_data_function(AuthData, AuthFunHash),
     S2 = account_spend(Account, CheckAmount, S1),
-    {Contract, _} = get_contract(AuthContractPK, S2),
+    Contract = get_contract_no_cache(AuthContractPK, S2),
     CallerId   = aeser_id:create(account, OwnerPK),
     {Call, S3} = run_contract(CallerId, Contract, GasLimit, GasPrice,
                               AuthData, OwnerPK, _Amount = 0, _CallStack = [], _Nonce = 0, S2),
@@ -1195,8 +1197,11 @@ contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S
                     contract_call_fail(FailCall, Fee, RollbackS)
             end;
         #{vm := V} when ?IS_FATE_SOPHIA(V) ->
-            %% TODO: For now just use the initial store since the store is not implemented yet.
-            S1 = put_contract(Contract, S),
+            %% TODO: For now assume that the full state is in key 1
+            Store0 = aect_contracts_store:new(),
+            Store = aect_contracts_store:put(<<1>>, ReturnValue, Store0),
+            Contract1 = aect_contracts:set_state(Store, Contract),
+            S1 = put_contract(Contract1, S),
             contract_call_success(InitCall1, GasLimit, S1);
         #{vm := ?VM_AEVM_SOLIDITY_1} ->
             %% Solidity inital call returns the code to store in the contract.

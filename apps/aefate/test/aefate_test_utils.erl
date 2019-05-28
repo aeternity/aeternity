@@ -76,8 +76,8 @@ decode(?FATE_ORACLE(<<X:256>>))             -> {oracle, X};
 decode(?FATE_NAME(<<X:256>>))               -> {name, X};
 decode(?FATE_CHANNEL(<<X:256>>))            -> {channel, X};
 decode(?FATE_BITS(Bits))                    -> {bits, Bits};
-decode(?FATE_TUPLE(T))                      -> erlang:list_to_tuple([decode(E) || E <- T]);
+decode(?FATE_TUPLE(T))                      -> list_to_tuple([decode(E) || E <- tuple_to_list(T)]);
 decode(?FATE_VARIANT(Arities, Tag, Values)) -> {variant, Arities, Tag, Values};
-decode(S) when ?IS_FATE_STRING(S)           -> binary_to_list(S);
+decode(S) when ?IS_FATE_STRING(S)           -> S;
 decode(M) when ?IS_FATE_MAP(M)              ->
     maps:from_list([{decode(K), decode(V)} || {K, V} <- maps:to_list(M)]).

@@ -44,9 +44,7 @@
         , create_contract_upfront_amount/1
         , create_contract_upfront_deposit/1
         , create_version_too_high/1
-        , fate_call_origin/1
-        , fate_call_out_of_gas/1
-        , fate_call_value/1
+        , sophia_call_out_of_gas/1
         , fate_environment/1
         , state_tree/1
         , sophia_identity/1
@@ -57,6 +55,7 @@
         , sophia_spend/1
         , sophia_typed_calls/1
         , sophia_call_origin/1
+        , sophia_call_value/1
         , sophia_no_reentrant/1
         , sophia_exploits/1
         , sophia_functions/1
@@ -173,14 +172,15 @@ all() ->
 groups() ->
     [ {aevm, [sequence], ?ALL_TESTS}
     , {fate, [sequence],  [ create_contract
+                          , sophia_call_origin
                           , sophia_identity
                           , sophia_remote_identity
                           , sophia_spend
                           , sophia_no_reentrant
+                          , sophia_call_value
                           , fate_environment
-                          , fate_call_origin
-                          , fate_call_value
-                          , fate_call_out_of_gas
+                          , sophia_call_out_of_gas
+                          , sophia_state_handling
                           ]}
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account
@@ -215,12 +215,14 @@ groups() ->
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
                                  sophia_remote_identity,
+                                 sophia_call_out_of_gas,
                                  sophia_no_reentrant,
                                  sophia_state,
                                  sophia_match_bug,
                                  sophia_spend,
                                  sophia_typed_calls,
                                  sophia_call_origin,
+                                 sophia_call_value,
                                  sophia_exploits,
                                  sophia_functions,
                                  sophia_oracles,
@@ -440,12 +442,12 @@ end_per_testcase(fate_environment, _Config) ->
 end_per_testcase(_TC,_Config) ->
     ok.
 
--define(assertMatchVM(Res, ExpVm1, ExpVm2, ExpVm3),
+-define(assertMatchAEVM(Res, ExpVm1, ExpVm2, ExpVm3),
     case vm_version() of
         ?VM_AEVM_SOPHIA_1 -> ?assertMatch(ExpVm1, Res);
         ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res);
-        ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res); %% Should be the same
-        ?VM_FATE_SOPHIA_1 -> ?assertMatch(ExpVm3, Res)  %% where applicable
+        ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res);
+        ?VM_FATE_SOPHIA_1 -> ok
     end).
 
 -define(assertMatchProtocol(Res, ExpRoma, ExpMinerva),
@@ -1611,22 +1613,31 @@ sophia_typed_calls(_Cfg) ->
 sophia_call_origin(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc       = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
-    EnvC      = ?call(create_contract, Acc, environment, {0}, #{}),
-    RemC      = ?call(create_contract, Acc, environment, EnvC, #{}),
+    EnvC      = ?call(create_contract, Acc, environment, {?cid(<<0:256>>)}, #{}),
+    [error(EnvC) || not is_binary(EnvC)],
+    RemC      = ?call(create_contract, Acc, environment, {?cid(EnvC)}, #{}),
 
     <<AccInt:256>> = Acc,
     <<RemCInt:256>> = RemC,
 
-    AccInt  = ?call(call_contract, Acc, RemC, call_caller, word, {}),
-    AccInt  = ?call(call_contract, Acc, RemC, call_origin, word, {}),
-    ?assertMatchVM(
-        ?call(call_contract, Acc, RemC, nested_origin, word, {}),
+    Caller1  = ?call(call_contract, Acc, RemC, call_caller, word, {}),
+    ?assertMatchFATE({address, AccInt}, Caller1),
+    ?assertMatchAEVM(AccInt, Caller1),
+    Origin1  = ?call(call_contract, Acc, RemC, call_origin, word, {}),
+    ?assertMatchFATE({address, AccInt}, Origin1),
+    ?assertMatchAEVM(AccInt, Origin1),
+    Origin2  = ?call(call_contract, Acc, RemC, nested_origin, word, {}),
+    ?assertMatchAEVM(
+        Origin2,
         %% In Roma, the Call.caller and Call.origin is the same.
         RemCInt,
         %% After Roma, the Call.caller and Call.origin is NOT the same.
-        AccInt, AccInt),
-    RemCInt = ?call(call_contract, Acc, RemC, nested_caller, word, {}),
-
+        AccInt,
+        AccInt),
+    ?assertMatchFATE({address, AccInt}, Origin2),
+    Caller2 = ?call(call_contract, Acc, RemC, nested_caller, word, {}),
+    ?assertMatchAEVM(RemCInt, Caller2),
+    ?assertMatchFATE({address, RemCInt}, Caller2),
     ok.
 
 %% Oracles tests
@@ -1651,7 +1662,7 @@ sophia_oracles(_Cfg) ->
     NonceAfterQuery   = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {CtId, QId}),
     QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Ct),
-    ?assertMatchVM(
+    ?assertMatchAEVM(
         ?call(call_contract, Acc, Ct, queryFee, word, BogusOracle),
         32,          %% On ROMA this is broken, returns 32.
         {error, _}, {error, _}), %% Fixed in MINERVA
@@ -3376,7 +3387,7 @@ sophia_maps(_Cfg) ->
             Actual  = {Call(size_state_i, word, {}),
                        Call(size_state_s, word, {})},
             %% Maps.size was broken i ROMA, fixed in Minerva
-            ?assertMatchVM(Actual, Expect1, Expect2, Expect2)
+            ?assertMatchAEVM(Actual, Expect1, Expect2, Expect2)
         end,
 
     %% Reset the state
@@ -3945,7 +3956,7 @@ sophia_events(_Cfg) ->
 
     ok.
 
--define(assertMatchVM1OOG(Exp, Res), ?assertMatchVM(Res, {{error, <<"out_of_gas">>}, _}, Exp, Exp)).
+-define(assertMatchAEVM1OOG(Exp, Res), ?assertMatchAEVM(Res, {{error, <<"out_of_gas">>}, _}, Exp, Exp)).
 
 set_compiler_version(Vm, Compiler) ->
     [ put('$sophia_version', Compiler) || vm_version() == Vm ].
@@ -3976,16 +3987,16 @@ sophia_crypto(_Cfg) ->
     PrivKey = aect_test_utils:priv_key(PubKey, state()),
     Sig1 = Sign(MsgHash, PrivKey),
 
-    ?assertMatchVM1OOG({1, _}, ?call(call_contract, Acc, IdC, test_verify, word,
+    ?assertMatchAEVM1OOG({1, _}, ?call(call_contract, Acc, IdC, test_verify, word,
                                   {MsgHash, PubKey, Sig1}, #{return_gas_used => true})),
 
-    ?assertMatchVM1OOG({1, _}, ?call(call_contract, Acc, IdC, test_string_verify, word,
+    ?assertMatchAEVM1OOG({1, _}, ?call(call_contract, Acc, IdC, test_string_verify, word,
                                   {Message, PubKey, Sig1}, #{return_gas_used => true})),
 
-    ?assertMatchVM1OOG({0, _}, ?call(call_contract, Acc, IdC, test_verify, word,
+    ?assertMatchAEVM1OOG({0, _}, ?call(call_contract, Acc, IdC, test_verify, word,
                                   {PubKey, PubKey, Sig1}, #{return_gas_used => true})),
 
-    ?assertMatchVM1OOG({0, _}, ?call(call_contract, Acc, IdC, test_string_verify, word,
+    ?assertMatchAEVM1OOG({0, _}, ?call(call_contract, Acc, IdC, test_string_verify, word,
                                   {<<"Not the secret message">>, PubKey, Sig1}, #{return_gas_used => true})),
 
     %% Test hash functions
@@ -4000,11 +4011,11 @@ sophia_crypto(_Cfg) ->
     <<Blake2b_S:256>> = aec_hash:blake2b_256_hash(String),
 
     ?assertMatch({Sha3_S,    _}, ?call(call_contract, Acc, IdC, sha3_str,    word, String, #{return_gas_used => true})),
-    ?assertMatchVM1OOG({Sha256_S,  _}, ?call(call_contract, Acc, IdC, sha256_str,  word, String, #{return_gas_used => true})),
-    ?assertMatchVM1OOG({Blake2b_S, _}, ?call(call_contract, Acc, IdC, blake2b_str, word, String, #{return_gas_used => true})),
-    ?assertMatchVM1OOG({Sha3,      _}, ?call(call_contract, Acc, IdC, sha3,        word, Data,   #{return_gas_used => true})),
-    ?assertMatchVM1OOG({Sha256,    _}, ?call(call_contract, Acc, IdC, sha256,      word, Data,   #{return_gas_used => true})),
-    ?assertMatchVM1OOG({Blake2b,   _}, ?call(call_contract, Acc, IdC, blake2b,     word, Data,   #{return_gas_used => true})),
+    ?assertMatchAEVM1OOG({Sha256_S,  _}, ?call(call_contract, Acc, IdC, sha256_str,  word, String, #{return_gas_used => true})),
+    ?assertMatchAEVM1OOG({Blake2b_S, _}, ?call(call_contract, Acc, IdC, blake2b_str, word, String, #{return_gas_used => true})),
+    ?assertMatchAEVM1OOG({Sha3,      _}, ?call(call_contract, Acc, IdC, sha3,        word, Data,   #{return_gas_used => true})),
+    ?assertMatchAEVM1OOG({Sha256,    _}, ?call(call_contract, Acc, IdC, sha256,      word, Data,   #{return_gas_used => true})),
+    ?assertMatchAEVM1OOG({Blake2b,   _}, ?call(call_contract, Acc, IdC, blake2b,     word, Data,   #{return_gas_used => true})),
 
     ok.
 
@@ -4151,7 +4162,7 @@ sophia_heap_to_heap_bug(_Cfg) ->
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, expose_put_size_check_bug, {}),
 
-    ?assertMatchVM(
+    ?assertMatchAEVM(
         ?call(call_contract, Acc, IdC, f, word, {100}, #{return_gas_used => true}),
         {{error,<<"out_of_gas">>}, _Gas}, %% Bad size check kicks in
         {1, _Gas}, {1, _Gas}),            %% But works on new VM.
@@ -4260,7 +4271,7 @@ sophia_too_little_gas_for_mem(_Cfg) ->
     {_, GasUsed} = ?call(call_contract, Acc, IdC, tick, word, {}, #{gas => 1000, return_gas_used => true}),
 
     Res = ?call(call_contract, Acc, IdC, tick, word, {}, #{gas => GasUsed - 1}),
-    ?assertMatchVM(Res, {error,{throw,{aevm_eval_error,out_of_gas,0}}},
+    ?assertMatchAEVM(Res, {error,{throw,{aevm_eval_error,out_of_gas,0}}},
                         {error,{throw,{aevm_eval_error,out_of_gas,0}}},
                         {error,<<"out_of_gas">>}).
 
@@ -4541,8 +4552,8 @@ sophia_state_handling(_Cfg) ->
         end,
     Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
     %% Test an init function that calls a remote contract to compute the state
-    Ct1      = ?call(create_contract, Acc, ContractName, {Ct0, 1}, #{ amount => 100000 }),
-    Ct2      = ?call(create_contract, Acc, ContractName, {Ct0, 2}, #{ amount => 100000 }),
+    Ct1      = ?call(create_contract, Acc, ContractName, {?cid(Ct0), 1}, #{ amount => 100000 }),
+    Ct2      = ?call(create_contract, Acc, ContractName, {?cid(Ct0), 2}, #{ amount => 100000 }),
     MapT     = {map, word, word},
     StateT   = {tuple, [word, string, MapT]},
     UnitT    = {tuple, []},
@@ -4572,34 +4583,34 @@ sophia_state_handling(_Cfg) ->
     %% just return the state/field and the contract does not change the return
     %% value).
     ?assertEqual({8, <<"hello">>, #{3 => 5}},
-                 ?call(call_contract, Acc, Ct1, pass, StateT, {Ct2})),
-    ?assertEqual(8,           ?call(call_contract, Acc, Ct1, pass_i, word, {Ct2})),
-    ?assertEqual(<<"hello">>, ?call(call_contract, Acc, Ct1, pass_s, string, {Ct2})),
-    ?assertEqual(#{3 => 5},   ?call(call_contract, Acc, Ct1, pass_m, MapT, {Ct2})),
+                 ?call(call_contract, Acc, Ct1, pass, StateT, {?cid(Ct2)})),
+    ?assertEqual(8,           ?call(call_contract, Acc, Ct1, pass_i, word, {?cid(Ct2)})),
+    ?assertEqual(<<"hello">>, ?call(call_contract, Acc, Ct1, pass_s, string, {?cid(Ct2)})),
+    ?assertEqual(#{3 => 5},   ?call(call_contract, Acc, Ct1, pass_m, MapT, {?cid(Ct2)})),
 
     %% Test that we can modify a state passed to a remote contract...
     ?assertEqual({9, <<"hello">>, #{3 => 5}},
-                 ?call(call_contract, Acc, Ct1, pass_update_i, StateT, {Ct2, 9})),
+                 ?call(call_contract, Acc, Ct1, pass_update_i, StateT, {?cid(Ct2), 9})),
     ?assertEqual({8, <<"foo">>, #{3 => 5}},
-                 ?call(call_contract, Acc, Ct1, pass_update_s, StateT, {Ct2, <<"foo">>})),
+                 ?call(call_contract, Acc, Ct1, pass_update_s, StateT, {?cid(Ct2), <<"foo">>})),
     ?assertEqual({8, <<"hello">>, #{2 => 5}},
-                 ?call(call_contract, Acc, Ct1, pass_update_m, StateT, {Ct2, #{2 => 5}})),
+                 ?call(call_contract, Acc, Ct1, pass_update_m, StateT, {?cid(Ct2), #{2 => 5}})),
 
     %% And verify that the state of the contract was not affected by this...
     ?assertEqual({8, <<"hello">>, #{3 => 5}},
                  ?call(call_contract, Acc, Ct1, read, StateT, {})),
 
     %% Test that we can actually use the remotely updated state
-    ?call(call_contract, Acc, Ct1, remote_update_i, UnitT, {Ct2, 9}),
+    ?call(call_contract, Acc, Ct1, remote_update_i, UnitT, {?cid(Ct2), 9}),
     ?assertEqual({9, <<"hello">>, #{3 => 5}},
                  ?call(call_contract, Acc, Ct1, read, StateT, {})),
-    ?call(call_contract, Acc, Ct1, remote_update_s, UnitT, {Ct2, <<"foo">>}),
+    ?call(call_contract, Acc, Ct1, remote_update_s, UnitT, {?cid(Ct2), <<"foo">>}),
     ?assertEqual({9, <<"foo">>, #{3 => 5}},
                  ?call(call_contract, Acc, Ct1, read, StateT, {})),
-    ?call(call_contract, Acc, Ct1, remote_update_m, UnitT, {Ct2, #{2 => 5}}),
+    ?call(call_contract, Acc, Ct1, remote_update_m, UnitT, {?cid(Ct2), #{2 => 5}}),
     ?assertEqual({9, <<"foo">>, #{2 => 5}},
                  ?call(call_contract, Acc, Ct1, read, StateT, {})),
-    ?call(call_contract, Acc, Ct1, remote_update_mk, UnitT, {Ct2, 3, 7}),
+    ?call(call_contract, Acc, Ct1, remote_update_mk, UnitT, {?cid(Ct2), 3, 7}),
     ?assertEqual({9, <<"foo">>, #{2 => 5, 3 => 7}},
                  ?call(call_contract, Acc, Ct1, read, StateT, {})),
 
@@ -4822,24 +4833,8 @@ fate_environment(_Cfg) ->
                                        #{height => BHHeight})),
     ok.
 
-fate_call_origin(_Cfg) ->
-    state(aect_test_utils:new_state()),
-    Acc       = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
-    EnvC      = ?call(create_contract, Acc, environment_no_state, {}, #{}),
-    RemC      = ?call(create_contract, Acc, environment_no_state, {}, #{}),
-
-    <<AccInt:256>> = Acc,
-    <<RemCInt:256>> = RemC,
-
-    {address, AccInt}  = ?call(call_contract, Acc, RemC, call_caller, word, {}),
-    {address, AccInt}  = ?call(call_contract, Acc, RemC, call_origin, word, {}),
-    {address, RemCInt} = ?call(call_contract, Acc, RemC, remote_call_caller, word, {?cid(EnvC)}),
-    {address, AccInt}  = ?call(call_contract, Acc, RemC, remote_call_origin, word, {?cid(EnvC)}),
-
-    ok.
-
-fate_call_value(_Cfg) ->
-    %% Test that we can use the value parameter to transfer funds in FATE
+sophia_call_value(_Cfg) ->
+    %% Test that we can use the value parameter to transfer funds
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     C1       = ?call(create_contract, Acc, spend_test, {}, #{}),
@@ -4854,7 +4849,7 @@ fate_call_value(_Cfg) ->
     ?assertEqual(Bal3, Bal4),
     ok.
 
-fate_call_out_of_gas(_Cfg) ->
+sophia_call_out_of_gas(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     RemC     = ?call(create_contract, Acc, remote_call, {}, #{}),
@@ -4869,20 +4864,23 @@ fate_call_out_of_gas(_Cfg) ->
 
     %% Ensure we fail if too little gas.
     TooLittleGas = UsedGas1 - 1,
-    {{error, <<"Out of gas">>}, TooLittleGas} =
+    {{error, OutOfGas}, TooLittleGas} =
         ?call(call_contract, Acc, RemC, gas_limit_call, word,
               {?cid(IdC), 42, Gas}, #{ gas => TooLittleGas, return_gas_used => true}),
+    ?assertMatchAEVM(<<"out_of_gas">>, OutOfGas),
+    ?assertMatchFATE(<<"Out of gas">>, OutOfGas),
 
     %% Ensure we can cap the gas on remote calls and retain the rest.
-    {{error, <<"Out of gas">>}, UsedGas2} =
+    {{error, OutOfGas}, UsedGas2} =
         ?call(call_contract, Acc, RemC, gas_limit_call, word,
               {?cid(IdC), 42, 1}, #{ gas => Gas, return_gas_used => true}),
     ?assert(UsedGas2 < UsedGas1),
 
-    %% Ensure we spend all gas on an uncapped runtime error
-    {{error, <<"Error in call: bad_gas_cap">>}, UsedGas3} =
+    %% Ensure we spend all gas on an uncapped runtime error (sending in wrong contract)
+    {{error, Error}, UsedGas3} =
         ?call(call_contract, Acc, RemC, gas_limit_call, word,
-              {?cid(IdC), 42, -1}, #{ gas => Gas, return_gas_used => true}),
+              {?cid(RemC), 42, Gas}, #{ gas => Gas, return_gas_used => true}),
     ?assertEqual(UsedGas3, Gas),
-
+    ?assertMatchFATE(<<"Reentrant call">>, Error), %% Fate looks at contract first
+    ?assertMatchAEVM(<<"out_of_gas">>, Error),     %% AEVM cannot find function
     ok.

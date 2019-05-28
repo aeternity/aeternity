@@ -185,7 +185,7 @@ execute(EngineState) ->
 loop(Instructions, EngineState) ->
     case step(Instructions, EngineState) of
         {stop, FinalState} ->
-            FinalState;
+            aefa_engine_state:finalize(FinalState);
         {jump, BB, NewState} ->
             {NewInstructions, State2} = jump(BB, NewState),
             loop(NewInstructions, State2)
@@ -456,17 +456,57 @@ collect_gas_stores([], AccGas) ->
 %% ------------------------------------------------------
 %% Memory
 
+lookup_var({var, N}, ES) when N < 0 ->
+    %% These variables represents the state.
+    lookup_in_store(-N, ES);
 lookup_var(Var, ES) ->
     Env = aefa_engine_state:memory(ES),
     case maps:get(Var, Env, undefined) of
         {val, Value} ->
-            Value;
+            {Value, ES};
         undefined ->
             abort({undefined_var, Var}, ES)
     end.
 
+store_var({var, N}, Val, ES) when N < 0 ->
+    %% These variables represents the state.
+    write_to_store(-N, Val, ES);
 store_var(Var, Val, ES) ->
     Env = aefa_engine_state:memory(ES),
     aefa_engine_state:set_memory(Env#{ Var => {val, Val}}, ES).
+
+lookup_in_store(N, ES) ->
+    Current = aefa_engine_state:current_contract(ES),
+    {Stores, ES1} = ensure_contract_store(Current, ES),
+    case aefa_stores:find_value(Current, N, Stores) of
+        {ok, Val} ->
+            {Val, ES1};
+        {ok, Val, Stores1} ->
+            ES2 = aefa_engine_state:set_stores(Stores1, ES1),
+            {Val, ES2};
+        error ->
+            abort({undefined_in_store, N}, ES1)
+    end.
+
+write_to_store(N, Val, ES) ->
+    io:format("Writing ~p to ~p\n", [Val, N]),
+    Current = aefa_engine_state:current_contract(ES),
+    {Stores, ES1} = ensure_contract_store(Current, ES),
+    Stores1 = aefa_stores:put_value(Current, N, Val, Stores),
+    aefa_engine_state:set_stores(Stores1, ES1).
+
+ensure_contract_store(Pubkey, ES) ->
+    Stores = aefa_engine_state:stores(ES),
+    case aefa_stores:has_contract(Pubkey, Stores) of
+        false ->
+            APIState  = aefa_engine_state:chain_api(ES),
+            {Store, APIState1} = aefa_chain_api:contract_store(Pubkey, APIState),
+            Stores1 = aefa_stores:put_contract_store(Pubkey, Store, Stores),
+            ES1 = aefa_engine_state:set_chain_api(APIState1, ES),
+            {Stores1, aefa_engine_state:set_stores(Stores1, ES1)};
+        true ->
+            {aefa_engine_state:stores(ES), ES}
+    end.
+
 
 %% ----------------------------

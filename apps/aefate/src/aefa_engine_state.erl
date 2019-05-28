@@ -7,6 +7,7 @@
 -module(aefa_engine_state).
 
 -export([ new/5
+        , finalize/1
         ]).
 
 %% Getters
@@ -25,6 +26,7 @@
         , gas/1
         , logs/1
         , memory/1
+        , stores/1
         , trace/1
         ]).
 
@@ -44,6 +46,7 @@
         , set_gas/2
         , set_logs/2
         , set_memory/2
+        , set_stores/2
         , set_trace/2
         ]).
 
@@ -91,6 +94,7 @@
             , memory            :: map()    %% Environment #{name => val}
             , seen_contracts    :: [pubkey()]
                                    %% Call stack of contracts (including tail calls)
+            , stores            :: aefa_stores:store()
             , trace             :: list()
             }).
 
@@ -118,8 +122,13 @@ new(Gas, Value, Spec, APIState, CodeCache) ->
        , logs              = []
        , memory            = #{}
        , seen_contracts    = []
+       , stores            = aefa_stores:new()
        , trace             = []
        }.
+
+-spec finalize(state()) -> state().
+finalize(#es{chain_api = API, stores = Stores} = ES) ->
+    ES#es{chain_api = aefa_stores:finalize(API, Stores)}.
 
 %%%===================================================================
 %%% API
@@ -427,6 +436,16 @@ memory(#es{memory = X}) ->
 -spec set_memory(map(), state()) -> state().
 set_memory(X, ES) ->
     ES#es{memory = X}.
+
+%%%------------------
+
+-spec stores(state()) -> aefa_stores:store().
+stores(#es{stores=X}) ->
+    X.
+
+-spec set_stores(aefa_stores:store(), state()) -> aefa_stores:store().
+set_stores(X, ES) ->
+    ES#es{stores=X}.
 
 %%%------------------
 
