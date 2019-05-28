@@ -242,10 +242,9 @@ transaction(Fun) when is_function(Fun, 0) ->
     mnesia:activity(transaction, Fun).
 
 ensure_transaction(Fun) when is_function(Fun, 0) ->
-    %% TODO: actually, some non-transactions also have an activity state
-    case get(mnesia_activity_state) of undefined ->
+    case mnesia:is_transaction() of false ->
             transaction(Fun);
-        _ -> Fun()
+        true -> Fun()
     end.
 
 
