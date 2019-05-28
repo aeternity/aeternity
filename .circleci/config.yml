@@ -220,19 +220,13 @@ references:
     run:
       name: Upload release artifacts to central repository (AWS)
       command: |
-        aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
-
-  setup_secrets: &setup_secrets
-    run:
-      name: Setup Secrets
-      command: echo "source /infrastructure/import-secrets.sh" >> $BASH_ENV
+        envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
 
   deploy_steps: &deploy_steps
     - checkout
     - *set_package_path
     - attach_workspace:
         at: *packages_workspace
-    - *setup_secrets
     - run:
         name: Deploy
         environment:
@@ -248,7 +242,7 @@ references:
       environment:
         PACKAGES_DIR: *packages_workspace
       command: |
-        /infrastructure/scripts/upload-github-release-assets.sh github_api_token=${GITHUB_API_TOKEN:?} \
+        envdir /secrets /infrastructure/scripts/upload-github-release-assets.sh github_api_token=${GITHUB_API_TOKEN:?} \
           owner=${CIRCLE_PROJECT_USERNAME} repo=${CIRCLE_PROJECT_REPONAME} \
           tag=${CIRCLE_TAG} ASSETS=${PACKAGES_DIR:?}/*
 
@@ -403,21 +397,36 @@ references:
       - *set_package_path
       - attach_workspace:
           at: *packages_workspace
-      - *setup_secrets
+      - setup_secrets
       - *upload_github_release_asset
       - *upload_release_artifacts
 
   upload_latest_artifacts: &upload_latest_artifacts
     - checkout
     - *set_package_path
-    - *setup_secrets
+    - setup_secrets
     - attach_workspace:
         at: *packages_workspace
     - run:
         name: Upload build artifacts to central repository (AWS)
         command: |
-          aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
+          envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
     - *fail_notification
+
+commands:
+  setup_secrets:
+    steps:
+      - run:
+          name: Setup environment secrets
+          command: cd /infrastructure && make secrets SECRETS_OUTPUT_DIR=/secrets
+
+  docker_login:
+    steps:
+      - setup_secrets
+      - run:
+          name: Login to Docker Hub
+          command: |
+            docker login -u $(</secrets/DOCKER_USER) -p $(</secrets/DOCKER_PASS)
 
 jobs:
   build:
@@ -654,15 +663,15 @@ jobs:
     steps:
       - checkout
       - *set_package_path
-      - *setup_secrets
+      - setup_secrets
       - attach_workspace:
           at: *packages_workspace
       - run:
           name: Upload build artifacts to central repository (AWS)
           command: |
-            aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
+            envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
             if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "master" ]; then
-              aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
+              envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
             fi
       - *fail_notification
 
@@ -771,12 +780,11 @@ jobs:
     <<: *infrastructure_config
     steps:
       - checkout
-      - *setup_secrets
       - *setup_remote_docker
+      - docker_login
       - run:
           name: Build and push Docker image to DockerHub
           command: |
-            docker login -u $DOCKER_USER -p $DOCKER_PASS
             docker pull ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
             docker tag ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} ${DOCKERHUB_REPO:?}:latest
             docker push ${DOCKERHUB_REPO:?}:latest
@@ -786,12 +794,11 @@ jobs:
     <<: *infrastructure_config
     steps:
       - checkout
-      - *setup_secrets
       - *setup_remote_docker
+      - docker_login
       - run:
           name: Build and push Docker image to DockerHub
           command: |
-            docker login -u $DOCKER_USER -p $DOCKER_PASS
             docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} .
             docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
 
