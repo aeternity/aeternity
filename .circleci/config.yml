@@ -82,7 +82,7 @@ references:
         sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev
         # Install OTP binary package
         PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~trusty_amd64.deb
-        OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/esl-erlang/FLAVOUR_1_general/${PACKAGE_NAME}
+        OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/debian/pool/${PACKAGE_NAME}
         curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
         sudo dpkg -i ${PACKAGE_NAME}
 
