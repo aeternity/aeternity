@@ -657,8 +657,7 @@ channel_detects_close_solo(Cfg) ->
     SignedCloseSoloTx = aec_test_utils:sign_tx(Tx, [IPrivKey]),
     ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(
-        aecore_suite_utils:node_name(dev1), [TxHash], ?MAX_MINED_BLOCKS),
+    mine_blocks_until_txs_on_chain(dev1, [TxHash]),
     LockPeriod = maps:get(lock_period, Spec),
     TTL = current_height(dev1) + LockPeriod,
     ct:log("Expected TTL = ~p", [TTL]),
@@ -862,8 +861,7 @@ multiple_channels_t(NumCs, FromPort, Msg, Slogan, Cfg) ->
                 aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx))
             end,
             Txs),
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(
-        aecore_suite_utils:node_name(dev1), TxHashes, ?MAX_MINED_BLOCKS),
+    mine_blocks_until_txs_on_chain(dev1, TxHashes),
     mine_blocks(dev1, ?MINIMUM_DEPTH),
     Cs = collect_acks(Cs, channel_ack, NumCs),
     ct:log("channel pids collected: ~p", [Cs]),
@@ -1242,16 +1240,14 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug) ->
     ok = rpc(dev1, aesc_fsm, settle, [FsmI]),
     {_, SignedTx} = await_signing_request(settle_tx, I),
     ct:log("settle_tx signed", []),
-    {ok, MinedKeyBlocks} = aecore_suite_utils:mine_blocks_until_txs_on_chain(
-                             aecore_suite_utils:node_name(dev1),
-                             [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))],
-                             ?MAX_MINED_BLOCKS),
+    {ok, MinedKeyBlocks} = mine_blocks_until_txs_on_chain(
+                             dev1,
+                             [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))]),
     KeyBlocksMissingForTTL = (TTL + 1) - length(MinedKeyBlocks),
     KeyBlocksMissingForMinDepth =
         if
             KeyBlocksMissingForTTL > 0 ->
-                aecore_suite_utils:mine_key_blocks(
-                  aecore_suite_utils:node_name(dev1), KeyBlocksMissingForTTL),
+                mine_key_blocks(dev1, KeyBlocksMissingForTTL),
                 MinDepth;
             KeyBlocksMissingForTTL =< 0 ->
                 MinDepth + KeyBlocksMissingForTTL
@@ -1264,7 +1260,7 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug) ->
     ct:log("settle_tx verified", []),
     if
         KeyBlocksMissingForMinDepth > 0 ->
-            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(dev1), KeyBlocksMissingForMinDepth);
+            mine_key_blocks(dev1, KeyBlocksMissingForMinDepth);
         KeyBlocksMissingForMinDepth =< 0 ->
             ok
     end,
@@ -1689,8 +1685,7 @@ mine_blocks(_Node, _N, #{mine_blocks := {ask, Pid},
 mine_blocks(_, _, #{mine_blocks := false}) ->
     ok;
 mine_blocks(Node, N, _) ->
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), N,
-                                       #{strictly_follow_top => true}).
+    mine_key_blocks(Node, N).
 
 opt_add_tx_to_debug(SignedTx, #{mine_blocks := {ask, _}} = Debug) ->
     Debug#{signed_tx => SignedTx};
@@ -1700,8 +1695,7 @@ opt_add_tx_to_debug(_, Debug) ->
 prep_initiator(Node) ->
     {PrivKey, PubKey} = aecore_suite_utils:sign_keys(Node),
     ct:log("initiator Pubkey = ~p", [PubKey]),
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), 30,
-                                      #{strictly_follow_top => true}),
+    mine_key_blocks(Node, 30),
     ct:log("initiator: 30 blocks mined on ~p", [Node]),
     {ok, Balance} = rpc(Node, aehttp_logic, get_account_balance, [PubKey]),
     #{role => initiator,
@@ -1820,8 +1814,7 @@ wait_for_signed_transaction_in_block(_, _, #{mine_blocks := {ask,_}}) ->
     ok;
 wait_for_signed_transaction_in_block(Node, SignedTx, _Debug) ->
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
-    NodeName = aecore_suite_utils:node_name(Node),
-    case aecore_suite_utils:mine_blocks_until_txs_on_chain(NodeName, [TxHash], ?MAX_MINED_BLOCKS) of
+    case mine_blocks_until_txs_on_chain(Node, [TxHash]) of
         {ok, _Blocks} -> ok;
         {error, _Reason} -> did_not_mine
     end.
@@ -1845,3 +1838,16 @@ check_fsm_state(Fsm) ->
 get_debug(Config) ->
     proplists:get_bool(debug, Config).
 
+mine_blocks_until_txs_on_chain(Node, TxHashes) ->
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(
+      aecore_suite_utils:node_name(Node),
+      TxHashes,
+      aecore_suite_utils:expected_mine_rate(),
+      ?MAX_MINED_BLOCKS,
+      #{strictly_follow_top => true}).
+
+mine_key_blocks(Node, KeyBlocks) ->
+    aecore_suite_utils:mine_key_blocks(
+      aecore_suite_utils:node_name(Node),
+      KeyBlocks,
+      #{strictly_follow_top => true}).
