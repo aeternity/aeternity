@@ -513,14 +513,14 @@ contracts() ->
      , <<"tuple">> =>
            [ {<<"make_0tuple">>
              , {[], {tuple, []}}
-             , [ {0, [ {'TUPLE', {immediate, 0}}
+             , [ {0, [ {'TUPLE', {stack, 0}, {immediate, 0}}
                      , 'RETURN']}
                ]}
            , {<<"make_2tuple">>
              , {[integer, integer], {tuple, [integer, integer]}}
              , [ {0, [ {'PUSH', {arg, 0}}
                      , {'PUSH', {arg, 1}}
-                     , {'TUPLE', {immediate, 2}}
+                     , {'TUPLE', {stack, 0}, {immediate, 2}}
                      ,  'RETURN']}
                ]}
            , {<<"make_5tuple">>
@@ -531,14 +531,14 @@ contracts() ->
                      , {'PUSH', {arg, 2}}
                      , {'PUSH', {arg, 3}}
                      , {'PUSH', {arg, 4}}
-                     , {'TUPLE', {immediate, 5}}
+                     , {'TUPLE', {stack, 0}, {immediate, 5}}
                      ,  'RETURN']}
                ]}
            , {<<"element1">>
              , {[integer, integer], integer}
              , [ {0, [ {'PUSH', {arg, 0}}
                      , {'PUSH', {arg, 1}}
-                     , {'TUPLE', {immediate, 2}}
+                     , {'TUPLE', {stack, 0}, {immediate, 2}}
                      , {'ELEMENT', {stack, 0}, {immediate, 1}, {stack, 0}}
                      , 'RETURN']}
                ]}

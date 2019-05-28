@@ -99,7 +99,9 @@ run_call(Code, Fun, Args) ->
     Cache = compile_contracts([{<<"test">>, Code}]),
     case run(Cache, <<"test">>, list_to_binary(Fun), Args) of
         {ok, ES} -> aefa_engine_state:accumulator(ES);
-        {error, Err, #{trace := Trace}} -> {error, Err, [I || {I, _} <- Trace]}
+        {error, Err, ES} ->
+            io:format("~s\n", [Err]),
+            {error, Err, [I || {I, _} <- aefa_engine_state:trace(ES)]}
     end.
 
 run_eunit(Test) ->
