@@ -1023,10 +1023,7 @@ acm_dutch_auction_contract(Config) ->
                  priv_key := CPriv}} = proplists:get_value(accounts, Config),
 
     %% Compile test contract
-    Contract = case aect_test_utils:latest_protocol_version() of
-                   Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN -> compile_test_contract("acm_dutch_auction");
-                   _                                    -> compile_test_contract("aevm_3/acm_dutch_auction")
-               end,
+    Contract = compile_test_contract("acm_dutch_auction"),
 
     %% Set auction start amount and decrease per mine and fee.
     StartAmt = 50000,
@@ -1095,10 +1092,7 @@ fundme_contract(Config) ->
                  priv_key := DPriv}} = proplists:get_value(accounts, Config),
 
     %% Compile test contract "fundme.aes"
-    Contract = case aect_test_utils:latest_protocol_version() of
-                   Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN -> compile_test_contract("fundme");
-                   _                                    -> compile_test_contract("aevm_3/fundme")
-               end,
+    Contract = compile_test_contract("fundme"),
 
     %% Get the current height.
     {ok,200,#{<<"height">> := StartHeight}} = get_key_blocks_current_height(),
@@ -1357,17 +1351,15 @@ compile_test_contract(Name) ->
     compile_test_contract(aevm, Name).
 
 compile_test_contract(aevm, Name) ->
-    FileName = filename:join("contracts", lists:concat([Name, ".aes"])),
-    {ok, BinSrc} = aect_test_utils:read_contract(FileName),
-    {ok, Code} = aect_test_utils:compile_contract(FileName),
+    {ok, BinSrc} = aect_test_utils:read_contract(Name),
+    {ok, Code}   = aect_test_utils:compile_contract(Name),
     #{ bytecode => aeser_api_encoder:encode(contract_bytearray, Code),
        vm       => aect_test_utils:latest_sophia_vm_version(),
        abi      => aect_test_utils:latest_sophia_abi_version(),
        code     => Code,
        src      => binary_to_list(BinSrc) };
 compile_test_contract(fate, Name) ->
-    FileName = filename:join(["contracts", lists:concat([Name, ".aes"])]),
-    {ok, Code} = aect_test_utils:compile_contract(?SOPHIA_LIMA_FATE, FileName),
+    {ok, Code} = aect_test_utils:compile_contract(?SOPHIA_LIMA_FATE, Name),
     #{ bytecode => aeser_api_encoder:encode(contract_bytearray, Code),
        vm       => ?VM_FATE_SOPHIA_1,
        abi      => ?ABI_FATE_SOPHIA_1,

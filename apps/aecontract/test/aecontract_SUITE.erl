@@ -16,6 +16,9 @@
 
 -include_lib("aecontract/include/hard_forks.hrl").
 
+%% for testing from a shell
+-export([ init_tests/2 ]).
+
 %% test case exports
 -export([ call_contract/1
         , call_contract_error_value/1
@@ -143,6 +146,9 @@
 
 -define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING(X), {variant, 0, [X]}).
 -define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(X), {variant, 1, [X]}).
+
+-define(CONTRACT_SERIALIZATION_VSN_ROMA,    1).
+-define(CONTRACT_SERIALIZATION_VSN_MINERVA, 2).
 
 %% Arguments like <<_:256>> are encoded as addresses.
 %% For FATE we need to distinguish between the type of object.
@@ -313,6 +319,22 @@ groups() ->
                           , merge_new_zero_value
                           ]}
     ].
+
+%% For interactive use
+init_tests(Release, VMName) ->
+    IfAEVM = fun(AEVM, Fate) -> if VMName == aevm -> AEVM; VMName == fate -> Fate end end,
+    Versions = [{roma,    {?ROMA_PROTOCOL_VSN,    ?SOPHIA_ROMA,    ?ABI_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_1}},
+                {minerva, {?MINERVA_PROTOCOL_VSN, ?SOPHIA_MINERVA, ?ABI_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_2}},
+                {fortuna, {?FORTUNA_PROTOCOL_VSN, ?SOPHIA_FORTUNA, ?ABI_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_3}},
+                {lima,    {IfAEVM(?FORTUNA_PROTOCOL_VSN, ?LIMA_PROTOCOL_VSN),
+                           IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_LIMA_FATE),
+                           IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
+                           IfAEVM(?VM_AEVM_SOPHIA_3, ?VM_FATE_SOPHIA_1)}}],
+    {Proto, Sophia, ABI, VM} = proplists:get_value(Release, Versions),
+    meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> Proto end),
+    Cfg = [{sophia_version, Sophia}, {vm_version, VM},
+           {abi_version, ABI}, {protocol, Release}],
+    init_per_testcase_common(Cfg).
 
 init_per_group(aevm, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
@@ -632,7 +654,7 @@ create_version_too_high(Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    {ok, IdContract} = compile_contract_vsn(identity, ?SOPHIA_MINERVA),
+    {ok, IdContract} = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_MINERVA),
     ct:log("Compiled Contract = ~p\n", [aect_sophia:deserialize(IdContract)]),
 
     _IdContractMap = aect_sophia:deserialize(IdContract),
@@ -1145,20 +1167,7 @@ create_tx(Owner, Spec0, State) ->
     aect_test_utils:create_tx(Owner, Spec, State).
 
 compile_contract(Name) ->
-    aect_test_utils:compile_contract(sophia_version(), contract_name(Name)).
-
-contract_name(Name) ->
-    case vm_version() of
-        VmVer when ?IS_AEVM_SOPHIA(VmVer) ->
-            case lists:member(Name, [fundme]) of
-                true when VmVer >= ?VM_AEVM_SOPHIA_3 ->
-                    filename:join(["contracts", "aevm_3", lists:concat([Name, ".aes"])]);
-                _ ->
-                    filename:join("contracts", lists:concat([Name, ".aes"]))
-            end;
-        VmVer when ?IS_FATE_SOPHIA(VmVer) ->
-            filename:join(["contracts", lists:concat([Name, ".aes"])])
-    end.
+    aect_test_utils:compile_contract(sophia_version(), Name).
 
 compile_contract_vsn(Name, Vsn) ->
     case compile_contract(Name) of
@@ -1167,7 +1176,7 @@ compile_contract_vsn(Name, Vsn) ->
             case maps:get(contract_vsn, Map) of
                 Vsn -> {ok, ByteCode};
                 _   ->
-                    {ok, BinSrc} = aect_test_utils:read_contract(contract_name(Name)),
+                    {ok, BinSrc} = aect_test_utils:read_contract(sophia_version(), Name),
                     {ok, aect_sophia:serialize(Map#{contract_source => maps:get(contract_source, Map, binary_to_list(BinSrc)),
                                                     compiler_version => maps:get(compiler_version, Map, <<"1.4.0">>)}, Vsn)}
             end;
@@ -1408,8 +1417,8 @@ sophia_vm_interaction(Cfg) ->
                       amount => 100,
                       gas_price => MinGasPrice,
                       fee => 1000000 * MinGasPrice},
-    {ok, IdCode}  = compile_contract_vsn(identity, ?SOPHIA_ROMA),
-    {ok, RemCode} = compile_contract_vsn(remote_call, ?SOPHIA_ROMA),
+    {ok, IdCode}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_ROMA),
+    {ok, RemCode} = compile_contract_vsn(remote_call, ?CONTRACT_SERIALIZATION_VSN_ROMA),
 
     %% Create contracts on all sides of the fork
     IdCRoma     = ?call(create_contract_with_code, Acc, IdCode, {}, RomaSpec),
@@ -3951,7 +3960,7 @@ sophia_crypto(_Cfg) ->
 
     IdC = case RealCompilerVersion of
               ?SOPHIA_ROMA ->
-                  {ok, CCode}  = compile_contract_vsn(crypto, ?SOPHIA_ROMA),
+                  {ok, CCode}  = compile_contract_vsn(crypto, ?CONTRACT_SERIALIZATION_VSN_ROMA),
                   ?call(create_contract_with_code, Acc, CCode, {}, #{});
               _ ->
                   ?call(create_contract, Acc, crypto, {})
