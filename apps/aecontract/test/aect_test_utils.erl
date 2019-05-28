@@ -239,14 +239,11 @@ set_account(Account, State) ->
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
 read_contract(Name) ->
-    file:read_file(contract_filename(aevm, Name)).
+    file:read_file(contract_filename(Name)).
 
-contract_filename(Type, Name) ->
+contract_filename(Name) ->
     CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
-    case Type of
-        aevm -> filename:join(CodeDir, filename:rootname(Name, ".aes") ++ ".aes");
-        fate -> filename:join(CodeDir, filename:rootname(Name, ".fate") ++ ".fate")
-    end.
+    filename:join(CodeDir, filename:rootname(Name, ".aes") ++ ".aes").
 
 compile_filename(FileName) ->
     compile(latest_sophia_version(), FileName).
@@ -257,20 +254,28 @@ compile_filename(Compiler, FileName) ->
 compile_contract(File) ->
     compile_contract(latest_sophia_version(), File).
 
-compile_contract(?SOPHIA_LIMA_FATE, File) ->
-    compile_filename(?SOPHIA_LIMA_FATE, contract_filename(fate, File));
 compile_contract(Compiler, File) ->
-    compile_filename(Compiler, contract_filename(aevm, File)).
+    compile_filename(Compiler, contract_filename(File)).
 
 compile(?SOPHIA_LIMA_FATE, File) ->
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
-    {_Env, ByteCode} = aeb_fate_asm:asm_to_bytecode(Source, []),
-    {ok, aect_sophia:serialize(#{ byte_code => ByteCode
-                                , contract_source => Source %% TODO: This is wrong.
-                                , compiler_version => 1     %% TODO: This is wrong.
-                                , type_info => []           %% TODO: This is wrong.
-                                })};
+    try
+        {ok, Ast} = aeso_parser:string(Source),
+        Options   = [{debug, [compile]}],
+        TypedAst  = aeso_ast_infer_types:infer(Ast, Options),
+        FCode     = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
+        FateCode  = aeso_fcode_to_fate:compile(FCode, Options),
+        ByteCode  = aeb_fate_code:serialize(FateCode, []),
+        {ok, aect_sophia:serialize(#{ byte_code => ByteCode
+                                    , contract_source => Source
+                                    , compiler_version => 1     %% TODO: This is wrong.
+                                    , type_info => []           %% TODO: This is wrong.
+                                    })}
+    catch _:{type_errors, Err} ->
+        io:format("~s\n", [Err]),
+        {error, {type_errors, Err}}
+    end;
 compile(?SOPHIA_LIMA_AEVM, File) ->
     {ok, ContractBin} = file:read_file(File),
     case aeso_compiler:from_string(binary_to_list(ContractBin), []) of
@@ -351,7 +356,7 @@ encode_call_data(_LegacyVsn, Code, Fun, Args0) ->
     ok = file:write_file(SrcFile, Code),
     Compiler = compiler_cmd(?SOPHIA_MINERVA),
     Esc = fun(Str) -> lists:flatten(string:replace(string:replace(Str, "\\", "\\\\", all), "\"", "\\\"", all)) end,
-    Cmd = Compiler ++ " --create_calldata " ++ contract_filename(aevm, SrcFile) ++
+    Cmd = Compiler ++ " --create_calldata " ++ contract_filename(SrcFile) ++
           " --calldata_fun " ++ to_str(Fun) ++ " --calldata_args \"" ++
           string:join(lists:map(Esc, lists:map(fun to_str/1, Args)), ", ") ++ "\"",
     Output = os:cmd(Cmd),

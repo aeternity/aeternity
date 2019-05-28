@@ -25,3 +25,5 @@ contract RemoteCall =
 
     function plus(x, y) = x + y
 
+    function gas_limit_call(r : Remote1, x : int, y : int) =
+        r.main(gas = y, x)

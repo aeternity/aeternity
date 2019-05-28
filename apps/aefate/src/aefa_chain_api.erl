@@ -148,7 +148,7 @@ contract_fate_code(Pubkey, #state{primop_state = PState} = S) ->
                 VMV when ?IS_FATE_SOPHIA(VMV) ->
                     SerCode = aect_contracts:code(Contract),
                     #{ byte_code := ByteCode} = aect_sophia:deserialize(SerCode),
-                    try aeb_fate_asm:bytecode_to_fate_code(ByteCode, []) of
+                    try aeb_fate_code:deserialize(ByteCode) of
                         FateCode -> {ok, FateCode, S#state{primop_state = PState}}
                     catch _:_ -> error
                     end;

@@ -132,8 +132,7 @@ add_trace(I, #es{trace = Trace} = ES) ->
 
 -spec update_for_remote_call(pubkey(), term(), state()) -> state().
 update_for_remote_call(Contract, ContractCode, #es{current_contract = Current} = ES) ->
-    #{functions := Code} = ContractCode,
-    ES#es{ functions = Code
+    ES#es{ functions = aeb_fate_code:functions(ContractCode)
          , current_contract = Contract
          , caller = aeb_fate_data:make_address(Current)
          }.

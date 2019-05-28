@@ -1,0 +1,63 @@
+
+// Testing primitives for accessing the block chain environment
+contract Interface =
+  function contract_address : () => address
+  function call_origin      : () => address
+  function call_caller      : () => address
+  function call_value       : () => int
+
+contract Environment =
+
+  // Address
+  function contract_address() : address = Contract.address
+  function remote_address(who) : address =
+    who.contract_address(gas = 1000)
+
+  // Balance
+  function contract_balance() : int = Contract.balance
+
+  // -- Information about the current call ---
+
+  // Origin
+  function call_origin()   : address = Call.origin
+  function remote_call_origin(remote : Interface) : address =
+    remote.call_origin()
+
+  // Caller
+  function call_caller() : address = Call.caller
+  function remote_call_caller(remote : Interface) : address =
+    remote.call_caller()
+
+  // Value
+  function call_value() : int = Call.value
+  stateful function remote_call_value(remote : Interface, value : int) : int =
+    remote.call_value(value = value / 2)
+
+  // Gas price
+  function call_gas_price() : int = Call.gas_price
+
+  // -- Information about the chain ---
+
+  // Account balances
+  function get_balance(acct : address) : int = Chain.balance(acct)
+
+  // Block hash
+  function block_hash(height : int) : int = Chain.block_hash(height)
+
+  // Coinbase
+  function beneficiary() : address = Chain.coinbase
+
+  // Block timestamp
+  function timestamp() : int = Chain.timestamp
+
+  // Block height
+  function generation() : int = Chain.block_height
+
+  // Difficulty
+  function difficulty() : int = Chain.difficulty
+
+  // Gas limit
+  function gas_limit() : int = Chain.gas_limit
+
+  // Gas
+  function gas_left() : int = Call.gas_left()

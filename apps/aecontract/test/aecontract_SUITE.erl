@@ -689,8 +689,18 @@ create_contract_(ContractCreateTxGasPrice) ->
 
     %% Test that the create transaction is accepted
     {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1),
-    %% Check that the contract is created
+    %% Check that the contract init call is created
     ContractKey = aect_contracts:compute_contract_pubkey(PubKey, aetx:nonce(Tx)),
+    ?assertEqual([], aect_call_state_tree:to_list(aect_test_utils:calls(S1))),
+    ?assertMatch([_], aect_call_state_tree:to_list(aect_test_utils:calls(S2))),
+    InitCallId = aect_call:id(PubKey, aetx:nonce(Tx), ContractKey),
+    {value, InitCall} = aect_call_state_tree:lookup_call(ContractKey, InitCallId, aect_test_utils:calls(S2)),
+    ReturnValue = aect_call:return_value(InitCall),
+    ReturnType  = aect_call:return_type(InitCall),
+    []          = [error({failed_contract_create, ReturnValue})
+                   || ReturnType =/= ok],
+
+    %% Check that the contract is created
     {{value, Contract}, _} = lookup_contract_by_id(ContractKey, S2),
     %% Check that the created contract has the correct details from the contract create tx
     ?assertEqual(PubKey, aect_contracts:owner_pubkey(Contract)),
@@ -701,11 +711,6 @@ create_contract_(ContractCreateTxGasPrice) ->
     _ = aect_contracts:log(Contract),
     ?assert(aect_contracts:active(Contract)),
     ?assertEqual([], aect_contracts:referrer_ids(Contract)),
-    %% Check that the contract init call is created
-    ?assertEqual([], aect_call_state_tree:to_list(aect_test_utils:calls(S1))),
-    ?assertMatch([_], aect_call_state_tree:to_list(aect_test_utils:calls(S2))),
-    InitCallId = aect_call:id(PubKey, aetx:nonce(Tx), ContractKey),
-    {value, InitCall} = aect_call_state_tree:lookup_call(ContractKey, InitCallId, aect_test_utils:calls(S2)),
     %% Check that the created init call has the correct details from the contract create tx
     ?assertEqual(PubKey, aect_call:caller_pubkey(InitCall)),
     ?assertEqual(aetx:nonce(Tx), aect_call:caller_nonce(InitCall)),
@@ -1152,7 +1157,7 @@ contract_name(Name) ->
                     filename:join("contracts", lists:concat([Name, ".aes"]))
             end;
         VmVer when ?IS_FATE_SOPHIA(VmVer) ->
-            filename:join(["contracts", "fate_asm", lists:concat([Name, ".fate"])])
+            filename:join(["contracts", lists:concat([Name, ".aes"])])
     end.
 
 compile_contract_vsn(Name, Vsn) ->
@@ -4754,9 +4759,9 @@ fate_environment(_Cfg) ->
     Acc1Balance = 123456789,
     <<Acc1Int:256>> = ?call(new_account, Acc1Balance),
     InitialBalance = 4711,
-    Contract = <<ContractInt:256>> = ?call(create_contract, Acc, environment, {},
+    Contract = <<ContractInt:256>> = ?call(create_contract, Acc, environment_no_state, {},
                                            #{amount => InitialBalance}),
-    Remote = ?call(create_contract, Acc, environment, {}, #{amount => InitialBalance}),
+    Remote = ?call(create_contract, Acc, environment_no_state, {}, #{amount => InitialBalance}),
     ?assertEqual({address, ContractInt},
                  ?call(call_contract, Acc, Contract, contract_address, word, {})),
     ?assertEqual({address, AccInt},
@@ -4780,7 +4785,7 @@ fate_environment(_Cfg) ->
     ?assertEqual(Difficulty, ?call(call_contract, Acc, Contract, difficulty, word, {})),
     GasLimit = aec_governance:block_gas_limit(),
     ?assertEqual(GasLimit, ?call(call_contract, Acc, Contract, gas_limit, word, {})),
-    Gas = ?call(call_contract, Acc, Contract, gas, word, {}),
+    Gas = ?call(call_contract, Acc, Contract, gas_left, word, {}),
     ?assert(is_integer(Gas)),
     Time1 = aeu_time:now_in_msecs(),
     Timestamp = ?call(call_contract, Acc, Contract, timestamp, word, {}),
@@ -4790,8 +4795,8 @@ fate_environment(_Cfg) ->
     SentValue = 12340,
     Value1 = ?call(call_contract, Acc, Contract, call_value, word, {}, #{amount => SentValue}),
     ?assertEqual(SentValue, Value1),
-    Value2 = ?call(call_contract, Acc, Contract, remote_call_value, word, {?cid(Remote), 2*SentValue}, #{amount => 3*SentValue}),
-    ?assertEqual(2*SentValue, Value2),
+    Value2 = ?call(call_contract, Acc, Contract, remote_call_value, word, {?cid(Remote), SentValue}, #{amount => 3*SentValue}),
+    ?assertEqual(SentValue, 2*Value2),
 
     %% Block hash is mocked to return the height if it gets a valid height
     %% since we don't have a chain.
@@ -4811,8 +4816,8 @@ fate_environment(_Cfg) ->
 fate_call_origin(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc       = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
-    EnvC      = ?call(create_contract, Acc, environment, {}, #{}),
-    RemC      = ?call(create_contract, Acc, environment, {}, #{}),
+    EnvC      = ?call(create_contract, Acc, environment_no_state, {}, #{}),
+    RemC      = ?call(create_contract, Acc, environment_no_state, {}, #{}),
 
     <<AccInt:256>> = Acc,
     <<RemCInt:256>> = RemC,

@@ -74,7 +74,8 @@ compile_contract(Code, Options) ->
     end.
 
 
-make_call(Contract, Function, Arguments) ->
+make_call(Contract, Function0, Arguments) ->
+    Function = aeb_fate_code:symbol_identifier(Function0),
     EncArgs  = list_to_tuple([aefate_test_utils:encode(A) || A <- Arguments]),
     Calldata = {tuple, {Function, {tuple, EncArgs}}},
     #{ contract => pad_contract_name(Contract),

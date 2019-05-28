@@ -675,11 +675,11 @@ deactivate(_EngineState) -> exit({error, op_not_implemented_yet}).
 
 spend(Arg0, Arg1, ES0) ->
     FromPubkey = aefa_engine_state:current_contract(ES0),
-    {Amount, ES1} = get_op_arg(Arg0, ES0),
-    [aefa_fate:abort({value_does_not_match_type, Amount, integer}, ES1)
-     || not ?IS_FATE_INTEGER(Amount)],
-    case get_op_arg(Arg1, ES1) of
-        {?FATE_ADDRESS(ToPubkey), ES2} ->
+    case get_op_arg(Arg0, ES0) of
+        {?FATE_ADDRESS(ToPubkey), ES1} ->
+            {Amount, ES2} = get_op_arg(Arg1, ES1),
+            [aefa_fate:abort({value_does_not_match_type, Amount, integer}, ES2)
+             || not ?IS_FATE_INTEGER(Amount)],
             API = aefa_engine_state:chain_api(ES2),
             case aefa_chain_api:spend(FromPubkey, ToPubkey, Amount, API) of
                 {ok, API1}    -> aefa_engine_state:set_chain_api(API1, ES2);

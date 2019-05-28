@@ -772,7 +772,7 @@ environment_contract_fate(Config) ->
     BBal0 = get_balance(BPub),
 
     %% Compile test contract "environment.aes"
-    Contract = compile_test_contract(fate, "environment"),
+    Contract = compile_test_contract(fate, "environment_no_state"),
 
     ContractBalance = 10000,
 
@@ -836,7 +836,7 @@ environment_contract_fate(Config) ->
               #{amount => 5}, {fate, 5}),
     ct:pal("Calling remote_call_value\n"),
     call_func(BPub, BPriv, EncCPub, Contract, "remote_call_value", [RemoteFate, "42"],
-              #{amount => 50}, {fate, 42}),
+              #{amount => 50}, {fate, 21}),
 
     %% Block hash.
     ct:pal("Calling block_hash\n"),
@@ -1366,7 +1366,7 @@ compile_test_contract(aevm, Name) ->
        code     => Code,
        src      => binary_to_list(BinSrc) };
 compile_test_contract(fate, Name) ->
-    FileName = filename:join(["contracts", "fate_asm", lists:concat([Name, ".fate"])]),
+    FileName = filename:join(["contracts", lists:concat([Name, ".aes"])]),
     {ok, Code} = aect_test_utils:compile_contract(?SOPHIA_LIMA_FATE, FileName),
     #{ bytecode => aeser_api_encoder:encode(contract_bytearray, Code),
        vm       => ?VM_FATE_SOPHIA_1,
