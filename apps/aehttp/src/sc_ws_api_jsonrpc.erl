@@ -49,7 +49,7 @@
                                 <<"channels.close_solo_tx">>     -> close_solo_tx;
                                 <<"channels.close_solo_sign">>   -> close_solo_tx;
                                 <<"channels.slash_tx">>          -> slash_tx;
-                                <<"channels.shash_sign">>        -> slash_tx;
+                                <<"channels.slash_sign">>        -> slash_tx;
                                 <<"channels.settle_tx">>         -> settle_tx;
                                 <<"channels.settle_sign">>       -> settle_tx
                             end).
