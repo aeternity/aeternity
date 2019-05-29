@@ -181,6 +181,7 @@ groups() ->
                           , fate_environment
                           , sophia_call_out_of_gas
                           , sophia_state_handling
+                          , sophia_maps
                           ]}
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account
@@ -1292,11 +1293,18 @@ call_result(?ABI_AEVM_SOPHIA_1, Type, Call) ->
             {ok, Res} = aeb_heap:from_binary(string, aect_call:return_value(Call)),
             {revert, Res}
     end;
-call_result(?ABI_FATE_SOPHIA_1,_Type, Call) ->
+call_result(?ABI_FATE_SOPHIA_1, Type, Call) ->
     case aect_call:return_type(Call) of
         ok     ->
             Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-            aefate_test_utils:decode(Res);
+            case aefate_test_utils:decode(Res) of
+                {variant, [0,1], 0, {}} when element(1, Type) =:= option ->
+                    none;
+                {variant, [0,1], 1, {Decoded}} when element(1, Type) =:= option ->
+                    {some, Decoded};
+                Decoded ->
+                    Decoded
+            end;
         error  ->
             {error, aect_call:return_value(Call)};
         revert ->
@@ -3309,7 +3317,10 @@ sophia_maps(_Cfg) ->
 
     MkOption = fun(undefined) -> none; (X) -> {some, X} end,
 
-    OogErr = {error, <<"out_of_gas">>},
+    OogErr = case ?IS_FATE_SOPHIA(vm_version()) of
+                 true  -> {error, <<"Maps: Key does not exists">>};
+                 false -> {error, <<"out_of_gas">>}
+             end,
     Calls = lists:append(
         %% get
         [ [{Fn,  Pt, {K, Map}, maps:get(K, Map, OogErr)},
