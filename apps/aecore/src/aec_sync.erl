@@ -201,7 +201,7 @@ handle_cast(set_last_generation_in_sync, State) ->
 handle_cast({schedule_ping, PeerId}, State) ->
     case peer_in_sync(State, PeerId) of
         true ->
-            ok;
+            aec_peers:log_ping(PeerId, ok);
         false ->
             run_job(sync_ping, fun() -> ping_peer(PeerId) end)
     end,
@@ -698,8 +698,7 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
                 end,
             do_work_on_sync_task(PeerId, Task, Res);
         abort_work ->
-            epoch_sync:info("~p aborting sync work against ~p", [self(), PeerId]),
-            schedule_ping(PeerId)
+            epoch_sync:info("~p aborting sync work against ~p", [self(), PeerId])
     end.
 
 post_blocks([]) -> ok;
