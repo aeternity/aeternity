@@ -13,7 +13,17 @@ main([Re | Path]) ->
     %% aeternity.log.N - higher N is older
     %% Ps is an ordset, so reverse to get oldest first
     [find_pids(P, PidPats) || P <- lists:reverse(Ps)],
-    halt(0).
+    halt(0);
+main(_) ->
+    usage(),
+    halt(1).
+
+usage() ->
+    io:fwrite("Usage: escript " ++ escript:script_name() ++ " <GrepString> <LogPath>~n"
+              "~n"
+              "This script searches aeternity.log for lines matching <GrepString>,~n"
+              "then iterates, extracting mentioned pids and finding log messages for those pids,~n"
+              "and so on, until fixpoint, then outputs the result.~n").
 
 grep(Re, P, {Acc, PAcc}) ->
     x(os:cmd("grep " ++ Re ++ " " ++ P), P, Acc, PAcc).
