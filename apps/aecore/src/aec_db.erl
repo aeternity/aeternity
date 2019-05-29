@@ -18,7 +18,9 @@
         ]).
 
 -export([transaction/1,
+         dirty/1,
          ensure_transaction/1,
+         ensure_activity/2,
          write/2,
          delete/2,
          read/2]).
@@ -116,10 +118,7 @@
         {Record, tab(Mode, Record, record_info(fields, Record), Extra)}).
 
 %% start a transaction if there isn't already one
--define(t(Expr), case get(mnesia_activity_state) of undefined ->
-                         transaction(fun() -> Expr end);
-                     _ -> Expr
-                 end).
+-define(t(Expr), ensure_transaction(fun() -> Expr end)).
 
 -define(TX_IN_MEMPOOL, []).
 -define(PERSIST, true).
@@ -244,13 +243,29 @@ backend_mode(<<"mnesia">> , #{persist := true } = M) -> M#{module => mnesia,
 transaction(Fun) when is_function(Fun, 0) ->
     mnesia:activity(transaction, Fun).
 
+dirty(Fun) when is_function(Fun, 0) ->
+    mnesia:activity(async_dirty, Fun).
+
 ensure_transaction(Fun) when is_function(Fun, 0) ->
     %% TODO: actually, some non-transactions also have an activity state
-    case get(mnesia_activity_state) of undefined ->
+    case get(mnesia_activity_state) of
+        undefined ->
+            transaction(Fun);
+        {_, _, non_transaction} ->
+            %% Transaction inside a dirty context; rely on mnesia to handle it
             transaction(Fun);
         _ -> Fun()
     end.
 
+ensure_activity(transaction, Fun) when is_function(Fun, 0) ->
+    ensure_transaction(Fun);
+ensure_activity(PreferedType, Fun) when is_function(Fun, 0) ->
+    case get(mnesia_activity_state) of
+        undefined ->
+            mnesia:activity(PreferedType, Fun);
+        _ ->
+            Fun()
+    end.
 
 read(Tab, Key) ->
     mnesia:read(Tab, Key).
