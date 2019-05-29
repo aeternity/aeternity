@@ -934,11 +934,11 @@ op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
     case ?FATE_LIST_VALUE(Tail) of
         [] -> aeb_fate_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
         [OldHd|_] = Tail ->
-            case aefa_fate:check_type(aefa_fate:type(OldHd), Hd) of
+            case aefa_fate:terms_are_of_same_type(OldHd, Hd) of
                 true ->
                     aeb_fate_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
                 false ->
-                    aefa_fate:abort({type_error, cons, Hd, aefa_fate:type(OldHd)})
+                    aefa_fate:abort({type_error, cons})
             end
     end;
 op(append, A, B) when ?IS_FATE_LIST(A), ?IS_FATE_LIST(B) ->
