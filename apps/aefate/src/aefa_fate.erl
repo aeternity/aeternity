@@ -371,8 +371,8 @@ terms_are_of_same_type(X, Y) when ?IS_FATE_NAME(X), ?IS_FATE_NAME(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_STRING(X), ?IS_FATE_STRING(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_TUPLE(X), ?IS_FATE_TUPLE(Y) ->
     %% NOTE: This could be more thorough, but it costs too much
-    T1 = ?FATE_TUPLE_ELEMENTS(X),
-    T2 = ?FATE_TUPLE_ELEMENTS(Y),
+    ?FATE_TUPLE(T1) = X,
+    ?FATE_TUPLE(T2) = Y,
     tuple_size(T1) =:= tuple_size(T2);
 terms_are_of_same_type(X, Y) when ?IS_FATE_VARIANT(X), ?IS_FATE_VARIANT(Y) ->
     %% NOTE: This could be more thorough, but it costs too much
