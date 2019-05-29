@@ -49,6 +49,8 @@
         , map_delete/4
         , map_member/4
         , map_from_list/3
+        , map_to_list/3
+        , map_size_/3
         , nil/2
         , is_nil/3
         , cons/4
@@ -57,6 +59,7 @@
         , length/3
         , append/4
         , str_join/4
+        , str_length/3
         , int_to_str/3
         , addr_to_str/3
         , str_reverse/3
@@ -90,6 +93,7 @@
         , difficulty/2
         , gaslimit/2
         , gas/2
+        , log/2
         , log/3
         , log/4
         , log/5
@@ -111,9 +115,9 @@
         , aens_transfer/1
         , aens_revoke/1
         , ecverify/1
-        , sha3/1
-        , sha256/1
-        , blake2b/1
+        , sha3/3
+        , sha256/3
+        , blake2b/3
         , setelement/5
         , dummyarg/8
         , dummyarg/9
@@ -433,6 +437,12 @@ map_member(Arg0, Arg1, Arg2, EngineState) ->
 map_from_list(Arg0, Arg1, EngineState) ->
     un_op(map_from_list, {Arg0, Arg1}, EngineState).
 
+map_to_list(_Arg0,_Arg1,_EngineState) ->
+    exit({error, op_not_implemented_yet}).
+
+map_size_(_Arg0,_Arg1,_EngineState) ->
+    exit({error, op_not_implemented_yet}).
+
 %% ------------------------------------------------------
 %% List instructions
 %% ------------------------------------------------------
@@ -465,6 +475,9 @@ append(Arg0, Arg1, Arg2, EngineState) ->
 
 str_join(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(str_join, {Arg0, Arg1, Arg2}, EngineState).
+
+str_length(_Arg0, _Arg1, _EngineState) ->
+    exit({error, op_not_implemented_yet}).
 
 int_to_str(Arg0, Arg1, EngineState) ->
     un_op(int_to_str, {Arg0, Arg1}, EngineState).
@@ -661,6 +674,8 @@ call_value(Arg0, EngineState) ->
     Value = aefa_engine_state:call_value(EngineState),
     write(Arg0, aeb_fate_data:make_integer(Value), EngineState).
 
+log(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+
 log(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
 
 log(_Arg0, _Arg1, _Arg2, _EngineState) -> exit({error, op_not_implemented_yet}).
@@ -717,11 +732,11 @@ aens_revoke(_EngineState) -> exit({error, op_not_implemented_yet}).
 
 ecverify(_EngineState) -> exit({error, op_not_implemented_yet}).
 
-sha3(_EngineState) -> exit({error, op_not_implemented_yet}).
+sha3(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
 
-sha256(_EngineState) -> exit({error, op_not_implemented_yet}).
+sha256(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
 
-blake2b(_EngineState) -> exit({error, op_not_implemented_yet}).
+blake2b(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
 
 dummyarg(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _Arg5, _Arg6, _EngineState) ->
  exit({error, op_not_implemented_yet}).
