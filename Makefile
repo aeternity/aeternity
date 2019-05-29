@@ -293,7 +293,6 @@ local-system-test: internal-build
 
 system-test-deps:
 	$(MAKE) system-smoke-test-deps
-	docker pull "aeternity/aeternity:v2.0.0"
 	docker pull "aeternity/aeternity:v2.1.0"
 	docker pull "aeternity/aeternity:v2.3.0"
 	docker pull "aeternity/aeternity:latest"
