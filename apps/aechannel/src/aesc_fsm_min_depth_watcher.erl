@@ -569,7 +569,7 @@ report_status_change(#{channel := Ch, is_active := IsActive,
               end
       end, C).
 
-report_closed_on_chain(#{ tx_type    := TxType
+report_closed_on_chain(#{ tx_type    := _TxType
                         , tx_hash    := TxHash
                         , block_hash := BHash
                         , height     := Height } = I, R, St, C) ->
