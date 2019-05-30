@@ -50,6 +50,7 @@
          channel_closed_on_chain/2,    %% (Fsm, Info)
          channel_unlocked/2]). %% (Fsm, Info)
 
+%% gem_statem callbacks
 -export([init/1,
          callback_mode/0,
          code_change/4,
@@ -57,7 +58,7 @@
 
 -export([where/2]).
 
-%% FSM states
+%% FSM states (as per gen_statem callback callback_mode/0)
 -export([initialized/3,
          reestablish_init/3,
          accepted/3,
@@ -216,7 +217,10 @@ record_fields(Other) -> aesc_offchain_state:record_fields(Other).
 -define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p", [Err])).
 -endif.
 
-callback_mode() -> [state_functions, state_enter].
+callback_mode() ->
+    [ state_functions %% "... Module:StateName/3, is used."
+    , state_enter %% "... at every **state change**, call the state callback with arguments `(enter, OldState, Data)`. ... a state enter call will be done right before entering the initial state ..."
+    ].
 
 %% State machine
 %% +---+ channel_open                                                         +---+
