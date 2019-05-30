@@ -555,7 +555,8 @@ dry_run_contract(Fsm, #{contract    := _,
 %% FSM initialization
 
 init(#{opts := Opts0} = Arg) ->
-    #{role := Role, client := Client} = Opts0,
+    {Role, Opts1} = maps:take(role, Opts0),
+    Client = maps:get(client, Opts1),
     DefMinDepth = default_minimum_depth(Role),
     Opts = check_opts(
              [
@@ -563,7 +564,7 @@ init(#{opts := Opts0} = Arg) ->
               fun check_timeout_opt/1,
               fun check_rpt_opt/1,
               fun check_log_opt/1
-             ], Opts0),
+             ], Opts1),
     #{initiator := Initiator,
       responder := Responder} = Opts,
     Checks = [fun() -> check_accounts(Initiator, Responder) end],
@@ -571,8 +572,8 @@ init(#{opts := Opts0} = Arg) ->
         {error, Err} ->
             {stop, Err};
         ok ->
-            Session = start_session(Arg, Opts),
-            {ok, State} = aesc_offchain_state:new(Opts),
+            Session = start_session(Arg, Opts#{role => Role}),
+            {ok, State} = aesc_offchain_state:new(Opts#{role => Role}),
             Data = #data{role   = Role,
                         client  = Client,
                         session = Session,
