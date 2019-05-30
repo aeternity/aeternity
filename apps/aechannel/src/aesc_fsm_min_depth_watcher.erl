@@ -364,10 +364,10 @@ check_requests_([#{check_at_height := CheckAt} = R|Reqs], St, C, Acc) ->
     lager:debug("CheckAt: R = ~p", [R]),
     {TopHeight, C1} = top_height(C),
     if TopHeight >= CheckAt ->
-            check_at_height(R, Reqs, St, C, Acc);
+            check_at_height(R, Reqs, St, C1, Acc);
        true ->
             lager:debug("Not yet (TopHeight = ~p), skip", [TopHeight]),
-            check_requests_(Reqs, St, C, [R|Acc])
+            check_requests_(Reqs, St, C1, [R|Acc])
     end;
 check_requests_([Req|Reqs], St, Cache, Acc) ->
     lager:debug("Req = ~p", [Req]),
