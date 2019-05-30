@@ -118,10 +118,7 @@
         {Record, tab(Mode, Record, record_info(fields, Record), Extra)}).
 
 %% start a transaction if there isn't already one
--define(t(Expr), case get(mnesia_activity_state) of undefined ->
-                         transaction(fun() -> Expr end);
-                     _ -> Expr
-                 end).
+-define(t(Expr), ensure_transaction(fun() -> Expr end)).
 
 -define(TX_IN_MEMPOOL, []).
 -define(PERSIST, true).
