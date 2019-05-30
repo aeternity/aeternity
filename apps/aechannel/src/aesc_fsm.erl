@@ -159,6 +159,14 @@
 
 -define(KEEP, 10).
 
+-opaque opts() :: #{ minimum_depth => non_neg_integer() %% Defaulted for responder, not for initiator.
+                   , timeouts := #{state_name() := pos_integer()
+                   , report := map()
+                   , log_keep := non_neg_integer()
+                   , initiator := aec_keys:pubkey()
+                   , responder := aec_keys:pubkey()
+                   }}.
+
 -type latest_op() :: undefined % no pending op
                    | {sign | ack, sign_tag(), aetx_sign:signed_tx(), [aesc_offchain_update:update()]}
                    | {create | shutdown | deposit | withdraw, aetx_sign:signed_tx(),
@@ -174,6 +182,27 @@
                       TxHash :: binary(), aetx_sign:signed_tx(),
                       [aesc_offchain_update:update()]}
                    | {reestablish, OffChainTx :: aetx_sign:signed_tx()}.
+
+-opaque state_name() :: awaiting_open
+                      | awaiting_reestablish
+                      | initialized
+                      | reestablish_init
+                      | awaiting_signature
+                      | accepted
+                      | half_signed
+                      | dep_half_signed
+                      | dep_signed
+                      | wdraw_half_signed
+                      | wdraw_signed
+                      | awaiting_locked
+                      | awaiting_initial_state
+                      | awaiting_update_ack
+                      | awaiting_leave_ack
+                      | signed
+                      | open
+                      | mutual_closing
+                      | channel_closing
+                      | channel_closed.
 
 -record(data, { role                   :: role()
               , channel_status         :: undefined | open | closing
@@ -192,6 +221,9 @@
               , log = aesc_window:new(#{}) :: aesc_window:window()
               , strict_checks = true   :: boolean()
               }).
+
+-opaque data() :: #data{ opts :: opts()
+                       }.
 
 -define(TRANSITION_STATE(S),  S=:=awaiting_signature
                             ; S=:=awaiting_open
@@ -554,6 +586,7 @@ dry_run_contract(Fsm, #{contract    := _,
 %% ======================================================================
 %% FSM initialization
 
+-spec init(term()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(), InitialState}, ...]} when InitialState :: state_name().
 init(#{opts := Opts0} = Arg) ->
     {Role, Opts1} = maps:take(role, Opts0),
     Client = maps:get(client, Opts1),
