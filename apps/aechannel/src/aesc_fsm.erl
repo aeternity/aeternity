@@ -341,8 +341,7 @@ timer_subst(wdraw_signed            ) -> funding_lock;
 timer_subst(initialized             ) -> accept;
 timer_subst(mutual_closing          ) -> accept;
 timer_subst(channel_closing         ) -> idle;
-timer_subst(channel_closed          ) -> idle;
-timer_subst(channel_changed         ) -> idle.
+timer_subst(channel_closed          ) -> idle.
 
 default_timeouts() ->
     #{ accept         => 120000
