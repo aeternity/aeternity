@@ -590,6 +590,12 @@ dry_run_contract(Fsm, #{contract    := _,
 init(#{opts := Opts0} = Arg) ->
     {Role, Opts1} = maps:take(role, Opts0),
     Client = maps:get(client, Opts1),
+    ReestablishOptKeys = [existing_channel_id, offchain_tx],
+    {Reestablish, ReestablishOpts, Opts2} =
+        { maps:is_key(existing_channel_id, Opts1)
+        , maps:with(ReestablishOptKeys, Opts1)
+        , maps:without(ReestablishOptKeys, Opts1)
+        },
     DefMinDepth = default_minimum_depth(Role),
     Opts = check_opts(
              [
@@ -597,7 +603,7 @@ init(#{opts := Opts0} = Arg) ->
               fun check_timeout_opt/1,
               fun check_rpt_opt/1,
               fun check_log_opt/1
-             ], Opts1),
+             ], Opts2),
     #{initiator := Initiator,
       responder := Responder} = Opts,
     Checks = [fun() -> check_accounts(Initiator, Responder) end],
@@ -606,7 +612,7 @@ init(#{opts := Opts0} = Arg) ->
             {stop, Err};
         ok ->
             Session = start_session(Arg, Opts#{role => Role}),
-            {ok, State} = aesc_offchain_state:new(Opts#{role => Role}),
+            {ok, State} = aesc_offchain_state:new(maps:merge(Opts#{role => Role}, ReestablishOpts)),
             Data = #data{role   = Role,
                         client  = Client,
                         session = Session,
@@ -617,11 +623,10 @@ init(#{opts := Opts0} = Arg) ->
             %% TODO: Amend the fsm above to include this step. We have transport-level
             %% connectivity, but not yet agreement on the channel parameters. We will next send
             %% a channel_open() message and await a channel_accept().
-            Reestablish = maps:is_key(existing_channel_id, Opts),
             case Role of
                 initiator ->
                     if Reestablish ->
-                            ok_next(reestablish_init, send_reestablish_msg(Data));
+                            ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
                       true ->
                             ok_next(initialized, send_open_msg(Data))
                     end;
@@ -1900,9 +1905,9 @@ check_open_msg(#{ chain_hash           := ChainHash
             {error, chain_hash_mismatch}
     end.
 
-send_reestablish_msg(#data{ opts = #{ existing_channel_id  := ChId
-                                    , offchain_tx := OffChainTx }
-                          , session = Sn } = Data) ->
+send_reestablish_msg(#{ existing_channel_id := ChId
+                      , offchain_tx := OffChainTx },
+                     #data{ session = Sn } = Data) ->
     ChainHash = aec_chain:genesis_hash(),
     TxBin = aetx_sign:serialize_to_binary(OffChainTx),
     Msg = #{ chain_hash => ChainHash
