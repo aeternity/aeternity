@@ -77,8 +77,7 @@
          open/3,
          channel_closing/3,   % on-chain closing has been detected
          mutual_closing/3,
-         channel_closed/3,
-         disconnected/3]).
+         channel_closed/3]).
 
 -export([timeouts/0,
          report_tags/0]).
@@ -1405,9 +1404,6 @@ channel_closed(cast, {?CHANNEL_CHANGED, _Info} = Msg, D) ->
     close(zombie_channel, log(rcv, msg_type(Msg), Msg, D));
 channel_closed(Type, Msg, D) ->
     handle_common_event(Type, Msg, discard, D).
-
-disconnected(cast, {?CH_REESTABL, _Msg}, D) ->
-    close({error, unexpected_sequence}, D).  % TODO: this is just a placeholder
 
 close(Reason, D) ->
     close_(Reason, log(evt, close, Reason, D)).
