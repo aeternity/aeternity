@@ -153,7 +153,7 @@ unpack_payload(Tx) ->
     end.
 
 is_offchain_tx_type(channel_offchain_tx) -> true;
-is_offchain_tx_type(ga_meta_tx         ) -> true;
+is_offchain_tx_type(ga_meta_tx         ) -> true; %% TODO: inspect the most inner transaction for being off-chain type
 is_offchain_tx_type(_) ->
     false.
 

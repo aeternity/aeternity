@@ -187,7 +187,7 @@ sleep(T, Ref) ->
 
 get_reconnect_params() ->
     %% {ConnectTimeout, Retries}
-    {3000, 40}.  %% total 2 minutes
+    {3000, 40}.  %% max 4 minutes (up to 40 retries, where each retry is up to 3 seconds TCP connection timeout and 3 seconds sleep time).
 
 
 handle_call(close, _From, #st{econn = EConn} = St) ->
