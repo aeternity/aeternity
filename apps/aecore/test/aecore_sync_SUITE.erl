@@ -19,6 +19,7 @@
     mine_on_first_up_to_latest_consensus_protocol/1,
     mine_on_first/1,
     mine_on_second/1,
+    mine_on_second_not_empty/1,
     mine_on_third/1,
     mine_again_on_first/1,
     restart_first/1,
@@ -91,7 +92,7 @@ groups() ->
        mine_on_second, %% doesn't get a delayed reward
        ensure_tx_pools_empty,
        tx_first_pays_second_more_it_can_afford,
-       mine_on_second,
+       mine_on_second_not_empty,
        ensure_tx_pools_one_tx]},
      {mempool_sync, [sequence],
       [start_first_node,
@@ -477,10 +478,13 @@ kill_sync_worker(N, PeerId) ->
     end.
 
 mine_again_on_first(Config) ->
-    mine_and_compare(aecore_suite_utils:node_name(dev1), Config).
+    mine_and_compare(aecore_suite_utils:node_name(dev1), Config, true).
 
 mine_on_second(Config) ->
-    mine_and_compare(aecore_suite_utils:node_name(dev2), Config).
+    mine_and_compare(aecore_suite_utils:node_name(dev2), Config, true).
+
+mine_on_second_not_empty(Config) ->
+    mine_and_compare(aecore_suite_utils:node_name(dev2), Config, false).
 
 restart_first(Config) ->
     restart_node(1, Config).
@@ -504,9 +508,9 @@ restart_node(Nr, Config) ->
     true = expect_same(T0, Config).
 
 mine_on_third(Config) ->
-    mine_and_compare(aecore_suite_utils:node_name(dev3), Config).
+    mine_and_compare(aecore_suite_utils:node_name(dev3), Config, true).
 
-mine_and_compare(N1, Config) ->
+mine_and_compare(N1, Config, EmptyPoolExpected) ->
     AllNodes = [N || {_, N} <- ?config(nodes, Config)],
     PrevTop = rpc:call(N1, aec_chain, top_block, [], 5000),
     %% If there are txs in the mempool, there will be an additional micro block.
@@ -514,8 +518,16 @@ mine_and_compare(N1, Config) ->
     %% blocks.
     %% Better to use: aecore_suite_utils:mine_blocks_until_txs_on_chain/3, but
     %% then we need to pass on the TxHashes... which this test structure does
-    %% make difficult.
-    {ok, [KeyBlock | _Blocks]} = aecore_suite_utils:mine_key_blocks(N1, 4),
+    %% make difficult. But not impossible:
+    {ok, [KeyBlock | _OtherBlocks]} =
+        case rpc:call(N1, aec_tx_pool, peek, [infinity], 5000) of
+            {ok, STxs = [_ | _]} when EmptyPoolExpected ->
+                TxHashes = [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) || STx <- STxs],
+                aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, TxHashes, ?MAX_MINED_BLOCKS);
+            {ok, _} ->
+                aecore_suite_utils:mine_key_blocks(N1, 1)
+        end,
+
     true = aec_blocks:is_key_block(KeyBlock),
     NewTop = rpc:call(N1, aec_chain, top_block, [], 5000),
     true = (NewTop =/= PrevTop),
