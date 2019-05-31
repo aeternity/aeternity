@@ -242,8 +242,9 @@ new_node_joins_network(Cfg) ->
 
     %% Starting http interface takes more time than sync, but:
     %% Wait enough for node 3 to sync but not for it to build a new chain
-    %% Half the length in minging time is not enough to build the complete chain.
-    wait_for_value({height, Length}, [new_node1], MiningTime * (Length div 2), Cfg),
+    %% Since sync is faster than mining (hopefully :-) ) we only wait 3/4 of the
+    %% time it took to mine...
+    wait_for_value({height, Length}, [new_node1], MiningTime * (Length - Length div 4), Cfg),
     ct:log("Node 3 on same height"),
     Height3 = get_block(new_node1, Length),
     ct:log("Node 3 at height ~p: ~p", [Length, Height3]),
@@ -481,7 +482,6 @@ add_spend_txs(Node, SenderAcct, N, NonceStart) ->
 
 add_spend_tx(Node, Sender, Nonce) ->
     %% create new receiver
-    GasPrice = aest_nodes:gas_price(),
     #{ public := RecvPubKey, secret := RecvSecKey } =  enacl:sign_keypair(),
     #{ tx_hash := TxHash} = post_spend_tx(Node, Sender, #{pubkey => RecvPubKey}, Nonce, #{amount => 10000}),
     #{ receiver => RecvPubKey, receiver_sec => RecvSecKey, amount => 10000, tx_hash => TxHash }.
