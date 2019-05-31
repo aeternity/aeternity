@@ -25,6 +25,7 @@
          mine_blocks/2,
          mine_blocks/3,
          mine_blocks/4,
+         mine_blocks/5,
          mine_all_txs/2,
          mine_blocks_until_txs_on_chain/3,
          mine_blocks_until_txs_on_chain/4,
