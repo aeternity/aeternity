@@ -21,7 +21,6 @@
         , check_remote/2
         , check_return_type/1
         , check_signature/2
-        , check_type/2
         , get_function_signature/2
         , push_gas_cap/2
         , push_return_address/1
@@ -287,7 +286,7 @@ check_return_type(ES) ->
     {_ArgTypes, RetSignature} = get_function_signature(Current, ES),
     Acc = aefa_engine_state:accumulator(ES),
     case check_type(RetSignature, Acc) of
-        true -> ES;
+        #{}   -> ES;
         false -> abort({bad_return_type, Acc, RetSignature}, ES)
     end.
 
@@ -306,11 +305,11 @@ bind_args_from_signature({ArgTypes, _RetSignature}, ES) ->
     Args = [aefa_engine_state:accumulator(ES) | Stack],
     bind_args(0, Args, ArgTypes, #{}, ES).
 
-check_arg_types([], _) -> ok;
-check_arg_types([T|Ts], [A|As]) ->
-    case check_type(T,A) of
-        true -> check_arg_types(Ts, As);
-        false -> {error, T, A}
+check_arg_types(Ts, As0) ->
+    As = lists:sublist(As0, length(Ts)),
+    case check_type({tuple, Ts}, {tuple, list_to_tuple(As)}) of
+        #{}   -> ok;
+        false -> {error, Ts, As}
     end.
 
 bind_args(N, _, [], Mem, EngineState) ->
@@ -377,21 +376,40 @@ intersect_types({variant, Ss}, {variant, Ts}) when length(Ss) == length(Ts) ->
     {variant, lists:zipwith(Isect, Ss, Ts)};
 intersect_types(S, T) -> throw({not_compatible, S, T}).
 
-match_type(T, T) -> true;
-match_type(any, _) -> true;
-match_type(_, any) -> true;
-match_type({tvar, _}, _) -> true;  %% TODO: remember instantiation
+match_type(T, T) -> yes_match();
+match_type(any, _) -> yes_match();
+match_type(_, any) -> yes_match();
+match_type({tvar, X}, T) -> #{ X => T };
 match_type({list, T}, {list, S}) -> match_type(T, S);
 match_type({tuple, Ts}, {tuple, Ss}) when length(Ts) == length(Ss) ->
-    lists:all(fun({T, S}) -> match_type(T, S) end, lists:zip(Ts, Ss));
+    merge_match(lists:zipwith(fun match_type/2, Ts, Ss));
 match_type({map, TK, TV}, {map, SK, SV}) ->
-    match_type(TK, SK) andalso match_type(TV, SV);
+    merge_match(match_type(TK, SK), match_type(TV, SV));
 match_type({variant, Ts}, {variant, Ss}) when length(Ts) == length(Ss) ->
     %% Second argument can be partial variant type
-    Match = fun({{tuple, Us}, N}) when is_integer(N) -> length(Us) == N;
-               ({T, S})                              -> match_type(T, S) end,
-    lists:all(Match, lists:zip(Ts, Ss));
-match_type(_, _) -> false.
+    Match = fun({tuple, Us}, N) when length(Us) == N -> yes_match();
+               (T = {tuple, _}, S = {tuple, _})      -> match_type(T, S);
+               (_, _)                                -> no_match() end,
+    merge_match(lists:zipwith(Match, Ts, Ss));
+match_type(_, _) -> no_match().
+
+yes_match() -> #{}.
+no_match() -> false.
+
+merge_match(Xs) ->
+    lists:foldl(fun merge_match/2, yes_match(), Xs).
+
+merge_match(false, _) -> false;
+merge_match(_, false) -> false;
+merge_match(Inst1, Inst2) ->
+    Ins = fun(_, false)  -> false;
+             ({X, T}, M) ->
+                case maps:get(X, M, undefined) of
+                    undefined -> M#{ X => T };
+                    S -> try M#{ X => intersect_types(S, T) }
+                         catch throw:_ -> false end
+                end end,
+    lists:foldl(Ins, Inst2, maps:to_list(Inst1)).
 
 terms_are_of_same_type(X, Y) when ?IS_FATE_INTEGER(X), ?IS_FATE_INTEGER(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_BOOLEAN(X), ?IS_FATE_BOOLEAN(Y) -> true;

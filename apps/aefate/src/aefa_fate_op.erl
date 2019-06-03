@@ -376,8 +376,8 @@ make_tuple(To, Size, ES) ->
 element_op(To, Which, TupleArg, ES) ->
     {Index, ES1} = get_op_arg(Which, ES),
     {FateTuple, ES2} = get_op_arg(TupleArg, ES1),
-    case aefa_fate:check_type(integer, Index)
-        andalso (Index >= 0)
+    case ?IS_FATE_INTEGER(Index)
+        andalso (?FATE_INTEGER_VALUE(Index) >= 0)
         andalso ?IS_FATE_TUPLE(FateTuple) of
         false -> aefa_fate:abort({bad_arguments_to_element, Index, FateTuple}, ES);
         true ->
@@ -395,8 +395,8 @@ setelement(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {Index, ES1} = get_op_arg(Arg1, EngineState),
     {FateTuple, ES2} = get_op_arg(Arg2, ES1),
     {Element, ES3} = get_op_arg(Arg3, ES2),
-    case aefa_fate:check_type(integer, Index)
-        andalso (Index >= 0)
+    case ?IS_FATE_INTEGER(Index)
+        andalso (?FATE_INTEGER_VALUE(Index) >= 0)
         andalso ?IS_FATE_TUPLE(FateTuple) of
         false -> aefa_fate:abort({bad_arguments_to_setelement, Index, FateTuple}, ES3);
         true ->
