@@ -29,6 +29,7 @@ balance_mainnet(H) ->
 balance_testnet(H) ->
     balance(H, ?TESTNET_ACC).
 
+%% Return balance of specified account at key block at specified height.
 balance(H, Account) ->
     {ok, HashNext} = aec_chain:get_key_header_by_height(H+1),
     Hash = aec_headers:prev_key_hash(HashNext),
