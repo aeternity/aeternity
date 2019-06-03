@@ -54,5 +54,7 @@ single(H) ->
     Ben2Split = Ben2 * 109 div 1000,
     Coin = aec_coinbase:coinbase_at_height(H),
     CoinSplit = Coin * 109 div 1000,
+    {value, false} = aec_db:find_block_fraud_status(Hash),
+    {value, false} = aec_db:find_block_fraud_status(begin {ok, Header} = aec_chain:get_header(Hash), aec_headers:prev_key_hash(Header) end),
     DevReward = Ben1Split + Ben2Split + CoinSplit,
     DevReward.
