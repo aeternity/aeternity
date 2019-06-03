@@ -5316,8 +5316,12 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
 
     IAmt = 70000 * aec_test_utils:min_gas_price(),
     RAmt = 40000 * aec_test_utils:min_gas_price(),
+    %% Set the `timeout_funding_lock` to something short enough that the test case completes in
+    %% reasonable time, but not so short that the fsms time out before the `channel_create` has
+    %% time to collect the `on_chain_tx` notifications for the `create_tx`. Also, not so long
+    %% that the 12 second default timeout in `wait_for_channel_event/4` triggers.
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt,
-                                  #{timeout_funding_lock => 500,
+                                  #{timeout_funding_lock => 3000,
                                     slogan => S}, Config),
     {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, ChannelOpts), Config),
