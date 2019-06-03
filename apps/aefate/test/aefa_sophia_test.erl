@@ -67,7 +67,11 @@ compile_contract(Code, Options) ->
         {ok, Ast} = aeso_parser:string(Code),
         TypedAst  = aeso_ast_infer_types:infer(Ast, Options),
         FCode     = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
-        aeso_fcode_to_fate:compile(FCode, Options)
+        Fate      = aeso_fcode_to_fate:compile(FCode, Options),
+        case aeb_fate_code:deserialize(aeb_fate_code:serialize(Fate)) of
+            Fate  -> Fate;
+            Other -> {error, {Other, '/=', Fate}}
+        end
     catch _:{type_errors, Err} ->
         io:format("~s\n", [Err]),
         {error, {type_errors, Err}}
