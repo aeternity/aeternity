@@ -50,6 +50,7 @@
          channel_closed_on_chain/2,    %% (Fsm, Info)
          channel_unlocked/2]). %% (Fsm, Info)
 
+%% gem_statem callbacks
 -export([init/1,
          callback_mode/0,
          code_change/4,
@@ -57,7 +58,7 @@
 
 -export([where/2]).
 
-%% FSM states
+%% FSM states (as per gen_statem callback callback_mode/0)
 -export([initialized/3,
          reestablish_init/3,
          accepted/3,
@@ -77,8 +78,7 @@
          open/3,
          channel_closing/3,   % on-chain closing has been detected
          mutual_closing/3,
-         channel_closed/3,
-         disconnected/3]).
+         channel_closed/3]).
 
 -export([timeouts/0,
          report_tags/0]).
@@ -159,6 +159,14 @@
 
 -define(KEEP, 10).
 
+-opaque opts() :: #{ minimum_depth => non_neg_integer() %% Defaulted for responder, not for initiator.
+                   , timeouts := #{state_name() := pos_integer()
+                   , report := map()
+                   , log_keep := non_neg_integer()
+                   , initiator := aec_keys:pubkey()
+                   , responder := aec_keys:pubkey()
+                   }}.
+
 -type latest_op() :: undefined % no pending op
                    | {sign | ack, sign_tag(), aetx_sign:signed_tx(), [aesc_offchain_update:update()]}
                    | {create | shutdown | deposit | withdraw, aetx_sign:signed_tx(),
@@ -174,6 +182,27 @@
                       TxHash :: binary(), aetx_sign:signed_tx(),
                       [aesc_offchain_update:update()]}
                    | {reestablish, OffChainTx :: aetx_sign:signed_tx()}.
+
+-opaque state_name() :: awaiting_open
+                      | awaiting_reestablish
+                      | initialized
+                      | reestablish_init
+                      | awaiting_signature
+                      | accepted
+                      | half_signed
+                      | dep_half_signed
+                      | dep_signed
+                      | wdraw_half_signed
+                      | wdraw_signed
+                      | awaiting_locked
+                      | awaiting_initial_state
+                      | awaiting_update_ack
+                      | awaiting_leave_ack
+                      | signed
+                      | open
+                      | mutual_closing
+                      | channel_closing
+                      | channel_closed.
 
 -record(data, { role                   :: role()
               , channel_status         :: undefined | open | closing
@@ -192,6 +221,9 @@
               , log = aesc_window:new(#{}) :: aesc_window:window()
               , strict_checks = true   :: boolean()
               }).
+
+-opaque data() :: #data{ opts :: opts()
+                       }.
 
 -define(TRANSITION_STATE(S),  S=:=awaiting_signature
                             ; S=:=awaiting_open
@@ -217,7 +249,13 @@ record_fields(Other) -> aesc_offchain_state:record_fields(Other).
 -define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p", [Err])).
 -endif.
 
-callback_mode() -> [state_functions, state_enter].
+callback_mode() ->
+    [ state_functions %% "... Module:StateName/3, is used."
+    , state_enter     %% "... at every **state change**, call the state callback
+                      %% with arguments `(enter, OldState, Data)`. ... a state
+                      %% enter call will be done right before entering the initial
+                      %% state ..."
+    ].
 
 %% State machine
 %% +---+ channel_open                                                         +---+
@@ -342,8 +380,7 @@ timer_subst(wdraw_signed            ) -> funding_lock;
 timer_subst(initialized             ) -> accept;
 timer_subst(mutual_closing          ) -> accept;
 timer_subst(channel_closing         ) -> idle;
-timer_subst(channel_closed          ) -> idle;
-timer_subst(channel_changed         ) -> idle.
+timer_subst(channel_closed          ) -> idle.
 
 default_timeouts() ->
     #{ accept         => 120000
@@ -552,8 +589,18 @@ dry_run_contract(Fsm, #{contract    := _,
 %% ======================================================================
 %% FSM initialization
 
+-spec init(term()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(),
+                                                   InitialState}, ...]}
+                          when InitialState :: state_name().
 init(#{opts := Opts0} = Arg) ->
-    #{role := Role, client := Client} = Opts0,
+    {Role, Opts1} = maps:take(role, Opts0),
+    Client = maps:get(client, Opts1),
+    ReestablishOptKeys = [existing_channel_id, offchain_tx],
+    {Reestablish, ReestablishOpts, Opts2} =
+        { maps:is_key(existing_channel_id, Opts1)
+        , maps:with(ReestablishOptKeys, Opts1)
+        , maps:without(ReestablishOptKeys, Opts1)
+        },
     DefMinDepth = default_minimum_depth(Role),
     Opts = check_opts(
              [
@@ -561,7 +608,7 @@ init(#{opts := Opts0} = Arg) ->
               fun check_timeout_opt/1,
               fun check_rpt_opt/1,
               fun check_log_opt/1
-             ], Opts0),
+             ], Opts2),
     #{initiator := Initiator,
       responder := Responder} = Opts,
     Checks = [fun() -> check_accounts(Initiator, Responder) end],
@@ -569,8 +616,8 @@ init(#{opts := Opts0} = Arg) ->
         {error, Err} ->
             {stop, Err};
         ok ->
-            Session = start_session(Arg, Opts),
-            {ok, State} = aesc_offchain_state:new(Opts),
+            Session = start_session(Arg, Opts#{role => Role}),
+            {ok, State} = aesc_offchain_state:new(maps:merge(Opts#{role => Role}, ReestablishOpts)),
             Data = #data{role   = Role,
                         client  = Client,
                         session = Session,
@@ -581,11 +628,10 @@ init(#{opts := Opts0} = Arg) ->
             %% TODO: Amend the fsm above to include this step. We have transport-level
             %% connectivity, but not yet agreement on the channel parameters. We will next send
             %% a channel_open() message and await a channel_accept().
-            Reestablish = maps:is_key(existing_channel_id, Opts),
             case Role of
                 initiator ->
                     if Reestablish ->
-                            ok_next(reestablish_init, send_reestablish_msg(Data));
+                            ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
                       true ->
                             ok_next(initialized, send_open_msg(Data))
                     end;
@@ -1406,9 +1452,6 @@ channel_closed(cast, {?CHANNEL_CHANGED, _Info} = Msg, D) ->
 channel_closed(Type, Msg, D) ->
     handle_common_event(Type, Msg, discard, D).
 
-disconnected(cast, {?CH_REESTABL, _Msg}, D) ->
-    close({error, unexpected_sequence}, D).  % TODO: this is just a placeholder
-
 close(Reason, D) ->
     close_(Reason, log(evt, close, Reason, D)).
 
@@ -1867,9 +1910,9 @@ check_open_msg(#{ chain_hash           := ChainHash
             {error, chain_hash_mismatch}
     end.
 
-send_reestablish_msg(#data{ opts = #{ existing_channel_id  := ChId
-                                    , offchain_tx := OffChainTx }
-                          , session = Sn } = Data) ->
+send_reestablish_msg(#{ existing_channel_id := ChId
+                      , offchain_tx := OffChainTx },
+                     #data{ session = Sn } = Data) ->
     ChainHash = aec_chain:genesis_hash(),
     TxBin = aetx_sign:serialize_to_binary(OffChainTx),
     Msg = #{ chain_hash => ChainHash

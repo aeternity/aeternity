@@ -68,18 +68,16 @@
                                   , lock_period  := aesc_channels:lock_period()
                                   , locked_until := aesc_channels:locked_until() }.
 
-%% (Commented out since dialyzer complains, but can't really explain why)
-%% -type cache() :: #{ mode := mode()
-%%                   , tx_log := aesc_window:window()
-%%                   , rpt_log := aesc_window:window()
-%%                   , last_block := block_hash()
-%%                   , chan_vsn   := chan_vsn()
-%%                   , block_hash => block_hash()
-%%                   , scenario   => scenario()
-%%                   , ch_status  => ch_status()
-%%                   , channel    => aesc_channels:channel()
-%%                   , tx_hashes  => [tx_hash()] }.
--type cache() :: map().
+-type cache() :: #{ mode := mode()
+                  , tx_log := aesc_window:window()
+                  , rpt_log := aesc_window:window()
+                  , last_block := block_hash()
+                  , chan_vsn   := chan_vsn()
+                  , block_hash => block_hash()
+                  , scenario   => scenario()
+                  , ch_status  => ch_status()
+                  , channel    => aesc_channels:channel()
+                  , tx_hashes  => [tx_hash()] }.
 
 watch_for_channel_close(Pid, MinDepth, Mod) when is_pid(Pid) ->
     gen_server:call(Pid, close_req(MinDepth, Mod));
