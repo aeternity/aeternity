@@ -326,6 +326,11 @@ variants() ->
      "    switch(a)\n"
      "      Red(A(false, false), y) => y\n"
      "      _ => 0\n"
+     "  function all_red(xs : list(color(int, int))) : bool =\n"
+     "    switch(xs)\n"
+     "      []              => true\n"
+     "      Red(_, _) :: ys => all_red(ys)\n"
+     "      _ :: _          => false\n"
      ""}.
 
 -define(Red(X, Y), {variant, [2, 0, 1], 0, {X, Y}}).
@@ -349,6 +354,9 @@ variant_tests() ->
        [{"scramble", [Input], Scramble(Input)} || Input <- ScrambleInput],
        [{"missing1", [Input], Missing1(Input)} || Input <- Missing1Input],
        [{"missing2", [Input], Missing2(Input)} || Input <- Missing2Input],
+       [{"all_red", [[?Red(1, 2), ?Red(3, 4)]], true},
+        {"all_red", [[?Red(1, 2), ?Green]], false},
+        {"all_red", [[]], true}],
        []]).
 
 variant_test_() -> mk_test([variants()], variant_tests()).
