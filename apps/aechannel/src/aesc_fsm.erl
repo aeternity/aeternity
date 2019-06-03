@@ -251,7 +251,10 @@ record_fields(Other) -> aesc_offchain_state:record_fields(Other).
 
 callback_mode() ->
     [ state_functions %% "... Module:StateName/3, is used."
-    , state_enter %% "... at every **state change**, call the state callback with arguments `(enter, OldState, Data)`. ... a state enter call will be done right before entering the initial state ..."
+    , state_enter     %% "... at every **state change**, call the state callback
+                      %% with arguments `(enter, OldState, Data)`. ... a state
+                      %% enter call will be done right before entering the initial
+                      %% state ..."
     ].
 
 %% State machine
@@ -586,7 +589,9 @@ dry_run_contract(Fsm, #{contract    := _,
 %% ======================================================================
 %% FSM initialization
 
--spec init(term()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(), InitialState}, ...]} when InitialState :: state_name().
+-spec init(term()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(),
+                                                   InitialState}, ...]}
+                          when InitialState :: state_name().
 init(#{opts := Opts0} = Arg) ->
     {Role, Opts1} = maps:take(role, Opts0),
     Client = maps:get(client, Opts1),
