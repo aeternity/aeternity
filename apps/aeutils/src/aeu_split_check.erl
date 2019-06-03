@@ -1,3 +1,6 @@
+%% Utilities for checking the block reward (see module aec_dev_reward).
+%%
+%% Intended for Developer usage from the console of a node.
 -module(aeu_split_check).
 
 -export([
