@@ -50,6 +50,9 @@ variant_test_() ->
 bits_test_() ->
     make_calls(bits()).
 
+fail_test_() ->
+    make_calls(fail()).
+
 make_calls(ListOfCalls) ->
     Cache = setup_contracts(),
     %% Dummy values since they should not come into play in this test
@@ -69,7 +72,10 @@ make_calls(ListOfCalls) ->
               case R of
                   {error, E} ->
                       case aefa_fate:run_with_cache(Call, Spec, Cache) of
-                          {ok, nomatch} -> ok;
+                          {ok, ES} ->
+                              Res = aefa_engine_state:accumulator(ES),
+                              Trace = aefa_engine_state:trace(ES),
+                              ?assertEqual(R, {ok, Res, Trace});
                           {error, Error, ES} ->
                               Trace = aefa_engine_state:trace(ES),
                               ?assertEqual({E, Trace}, {Error, Trace})
@@ -262,7 +268,12 @@ bits() ->
             ]
     ].
 
-
+fail() ->
+    [ {<<"fail">>, F, A, R}
+      || {F, A, R} <-
+            [ {<<"bad_poly_return">>, [1, <<"string">>], {error, <<"some nice error">>}}
+            ]
+    ].
 
 make_call(Contract, Function0, Arguments) ->
     Function = aeb_fate_code:symbol_identifier(Function0),
@@ -738,5 +749,9 @@ contracts() ->
                       , 'RETURN']}]}
 
            ]
+     , <<"fail">> =>
+           [ {<<"bad_poly_return">>
+             , {[{tvar, 0}, {tvar, 1}], {tvar, 0}}
+             , [ {0, [ {'RETURNR', {arg, 1}} ]} ]} ]
 
-       }.
+     }.
