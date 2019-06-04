@@ -3757,7 +3757,7 @@ sc_ws_close_mutual_(Config, Closer) when Closer =:= initiator
 
 
     CloseMutual =
-        fun(CloserPubkey, CloserConn, CloserPrivkey, OtherConn, OtherPubkey, OtherPrivkey) ->
+        fun(CloserPubkey, CloserConn, CloserPrivkey, OtherPubkey, OtherConn, OtherPrivkey) ->
                 ws_send_tagged(CloserConn, <<"channels.shutdown">>, #{}, Config),
 
             {ShTx, Updates} = channel_sign_tx(CloserPubkey, CloserConn, CloserPrivkey, <<"channels.shutdown_sign">>, Config),
