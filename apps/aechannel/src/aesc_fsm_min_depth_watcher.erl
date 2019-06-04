@@ -377,30 +377,29 @@ check_requests_([Req|Reqs], St, Cache, Acc) ->
     lager:debug("Req = ~p", [Req]),
     check_cont(check_req(Req, St, Cache), Req, Reqs, St, Acc);
 check_requests_([], St, Cache, Acc) ->
-    St1 = update_chan_vsn(Cache, St),
+    {St1, Cache1} = update_chan_vsn(Cache, St),
     St1#st{requests = lists:reverse(Acc),
-           last_top = maps:get(top_hash, Cache),
-           tx_log = maps:get(tx_log, Cache),
-           rpt_log = maps:get(rpt_log, Cache)}.
+           last_top = maps:get(top_hash, Cache1),
+           tx_log = maps:get(tx_log, Cache1),
+           rpt_log = maps:get(rpt_log, Cache1)}.
 
 check_at_height(R, Reqs, St, C, Acc) ->
     lager:debug("will check at height", []),
     R1 = maps:remove(check_at_height, R),
     check_cont(check_req(R1, St, C), R1, Reqs, St, Acc).
 
-check_cont({Res, C}, Req, Reqs, St, Acc) when is_map(C) ->
+check_cont({Res, C}, _Req, Reqs, St, Acc) when is_map(C) ->
     case Res of
         done ->
             check_requests_(Reqs, St, C, Acc);
         R1 when is_map(R1) ->
             check_requests_(Reqs, St, C, [R1|Acc])
         %% Other ->
-        %%     lager:error("BAD return ~p from Req = ~p", [Other, Req]),
+        %%     lager:error("BAD return ~p from Req = ~p", [Other, _Req]),
         %%     error({bad_return, Other})
     end.
 
-check_req(#{mode := close, locked_until := H} = R,
-              #st{chan_id = ChId, chan_vsn = Vsn}, C) ->
+check_req(#{mode := close, locked_until := H} = R, #st{chan_id = ChId}, C) ->
     %% Presence of locked_until means we know the channel is/was locked
     Min = maps:get(min_depth, R, 0),
     {TopHeight, C1} = top_height(C),
@@ -499,7 +498,7 @@ check_req(#{mode := watch} = R, #st{chan_id = ChId} = St,
             {R, C}
     end;
 check_req(#{mode := tx_hash, tx_hash := TxHash, min_depth := MinDepth} = R,
-              #st{chan_id = ChanId} = St, C) ->
+              #st{chan_id = ChanId}, C) ->
     #{info := #{parent := Parent}} = R,
     lager:debug("check_status(tx_hash = ~p, parent = ~p)", [TxHash, Parent]),
     case current_depth(TxHash, C) of
@@ -630,20 +629,20 @@ update_chan_vsn(#{ top_hash := Hash
     case maps:find({channel, Hash}, Cache) of
         {ok, #{ closed_at := _ } = Vsn} ->
             lager:debug("Update Vsn = ~p", [Vsn]),
-            St#st{chan_vsn = Vsn,
-                  last_block = Hash};
+            {St#st{chan_vsn = Vsn,
+                   last_block = Hash}, Cache};
         {ok, #{vsn := Vsn, changed := true}} ->
             lager:debug("Update Vsn = ~p", [Vsn]),
-            St#st{chan_vsn = Vsn,
-                  last_block = Hash};
+            {St#st{chan_vsn = Vsn,
+                   last_block = Hash}, Cache};
         error when element(1, S) == has_tx ->
             {Ch, Cache1} = get_channel(St#st.chan_id, Hash, Cache),
             lager:debug("Ch = ~p", [Ch]),
             Vsn = channel_vsn(Ch),
-            St#st{chan_vsn = Vsn,
-                  last_block = Hash};
+            {St#st{chan_vsn = Vsn,
+                   last_block = Hash}, Cache1};
         _ ->
-            St
+            {St, Cache}
     end.
 
 get_ch_status(ChId, Hash, C) ->
@@ -806,15 +805,14 @@ get_txs_since(StopCond, Hash, ChId, C, Acc) ->
             {Acc, C1};
         _ ->
             {Found, C2} = txs_for_chid(ChId, Hash, Hdr, C1),
-            Sorted = sort_txs(Found),
             lager:debug("txs in ~p: ~p", [Hash, Found]),
             PrevHash = aec_headers:prev_hash(Hdr),
-            case stop_cond(StopCond, PrevHash, Sorted) of
-                {true, Sorted1} ->
-                    {[{Hash, Sorted1}|Acc], C2};
+            case stop_cond(StopCond, PrevHash, Found) of
+                {true, Found1} ->
+                    {[{Hash, Found1}|Acc], C2};
                 false ->
                     get_txs_since(
-                      StopCond, PrevHash, ChId, C2, [{Hash, Sorted}|Acc])
+                      StopCond, PrevHash, ChId, C2, [{Hash, Found}|Acc])
             end
     end.
 
@@ -869,16 +867,16 @@ tx_hashes_(Hash, Hdr) ->
     end.
 
 txs_for_chid(ChId, Hash, Hdr, C) ->
+    %% Filter out txs for ChId, preserving the within-block order
     {TxHashes, C1} = tx_hashes(Hash, Hdr, C),
-    lists:foldl(
-      fun(TxHash, {Acc, Cx}) ->
-              {SignedTx, Cx1} = get_signed_tx(TxHash, Cx),
-              lager:debug("SignedTx = ~p", [SignedTx]),
-              case is_tx_for_chid(SignedTx, ChId) of
-                  true  -> {[SignedTx|Acc], Cx1};
-                  false -> {Acc, Cx1}
-              end
-      end, {[], C1}, TxHashes).
+    {_Found, _C2} = lists:foldr(
+                    fun(TxHash, {Acc, Cx}) ->
+                            {SignedTx, Cx1} = get_signed_tx(TxHash, Cx),
+                            case is_tx_for_chid(SignedTx, ChId) of
+                                true  -> {[SignedTx|Acc], Cx1};
+                                false -> {Acc, Cx1}
+                            end
+                    end, {[], C1}, TxHashes).
 
 get_signed_tx(TxHash, C) ->
     cached_get({signed_tx, TxHash}, C, fun() -> get_signed_tx_(TxHash) end).
@@ -890,14 +888,6 @@ get_signed_tx_(TxHash) ->
         none ->
             undefined
     end.
-
-
-sort_txs(Txs) ->
-    lists:sort(fun compare_txs/2, Txs).
-
-%% See lists:sort/2: The fun Comp(A,B) should return true if A =< B
-compare_txs(SignedA, SignedB) ->
-    aetx:nonce(aetx_sign:tx(SignedA)) =< aetx:nonce(aetx_sign:tx(SignedB)).
 
 is_tx_for_chid(undefined, _) -> false;
 is_tx_for_chid(SignedTx, ChId) ->
