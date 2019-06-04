@@ -4,6 +4,7 @@
          change_keep/2,
          add/2,
          pop/1,
+         size/1,
          keyfind/3,
          keymember/3,
          info_find/3,
@@ -18,7 +19,20 @@
 -type size()   :: non_neg_integer().
 -type entry()  :: any().
 
--record(w, { n = 0         :: non_neg_integer()
+%% This is a bounded buffer, optimized for performance.
+%% A counter, `na`, keeps track of the number of elements
+%% in the `a` list (new items are prepended to `a`). When `na` exceeds `keep`,
+%% the contents of `a` are shifted to `b`, and any previous contents of `b`
+%% are discarded. This way, adding to the buffer is always O(1).
+%%
+%% The total size of the buffer can be `> keep`, but no more than `2*keep`
+%% (except temporarily as a result of calling `change_keep/2`.)
+%% The size can be read via `size/1` and amounts to `na + nb`.
+%% Strictly speaking, we only really need to keep track of `na` to know when to
+%% shift, but keeping track of the total size seems like the decent thing to do.
+%%
+-record(w, { na = 0        :: non_neg_integer()
+           , nb = 0        :: non_neg_integer()
            , keep = ?KEEP  :: size()
            , a = []        :: [entry()]
            , b = []        :: [entry()]
@@ -41,23 +55,29 @@ new() ->
 new(Sz) when is_integer(Sz), Sz >= 0 ->
     #w{keep = Sz}.
 
+%% When changing `keep`, we do not modify (e.g. truncate) the data set.
+%% This is for performance reasons, and because we don't strive to keep
+%% the exact size anyway: `keep` is an approximate number.
 -spec change_keep(size(), window()) -> window().
 change_keep(Keep, #w{} = W) when is_integer(Keep), Keep >= 0 ->
     W#w{keep = Keep}.
 
 -spec add(entry(), window()) -> window().
-add(Item, #w{n = N, a = A, keep = Keep} = W) when N < Keep ->
-    W#w{n = N+1, a = [Item|A]};
-add(Item, #w{a = A} = W) ->
-    W#w{n = 1, a = [Item], b = A}.
+add(Item, #w{na = N, a = A, keep = Keep} = W) when N < Keep ->
+    W#w{na = N+1, a = [Item|A]};
+add(Item, #w{na = PrevNa, a = A} = W) ->
+    W#w{na = 1, a = [Item], nb = PrevNa, b = A}.
 
 -spec pop(window()) -> {entry(), window()} | error.
 pop(#w{a = [], b = []}) ->
     error;
-pop(#w{a = [], b = [H|T], n = N} = W) ->
-    {H, W#w{n = N-1, b = T}};
-pop(#w{a = [H|T], n = N} = W) ->
-    {H, W#w{n = N-1, a = T}}.
+pop(#w{a = [], b = [H|T], nb = N} = W) ->
+    {H, W#w{nb = N-1, b = T}};
+pop(#w{a = [H|T], na = N} = W) ->
+    {H, W#w{na = N-1, a = T}}.
+
+-spec size(window()) -> non_neg_integer().
+size(#w{na = Na, nb = Nb}) -> Na + Nb.
 
 -spec to_list(window()) -> [entry()].
 to_list(#w{a = A, b = B}) ->
