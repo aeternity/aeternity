@@ -3009,9 +3009,8 @@ start_min_depth_watcher(Type, SignedTx, Updates,
     {OnChainId, D1} = on_chain_id(D, Tx),
     case {Type, Watcher0} of
         {{?MIN_DEPTH, ?WATCH_FND = Sub}, undefined} ->
-            WOpts = #{},
             {ok, Watcher1} = aesc_fsm_min_depth_watcher:start_link(
-                               Sub, TxHash, OnChainId, MinDepth, ?MODULE, WOpts),
+                               Sub, TxHash, OnChainId, MinDepth, ?MODULE),
             evt({watcher, Watcher1}),
             {ok, D1#data{watcher = Watcher1,
                          latest = {?MIN_DEPTH, Sub, TxHash, SignedTx, Updates}}};
