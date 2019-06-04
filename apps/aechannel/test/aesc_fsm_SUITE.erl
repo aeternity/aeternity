@@ -220,7 +220,7 @@ init_per_group(Group, Config) when Group =:= initiator_is_ga;
     case aect_test_utils:latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
-        ?FORTUNA_PROTOCOL_VSN ->
+        _ ->
             Config1 = init_per_group_(Config),
             ParticipantParams =
                 fun(Secret) ->
