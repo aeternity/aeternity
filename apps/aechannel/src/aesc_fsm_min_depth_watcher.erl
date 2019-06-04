@@ -132,17 +132,16 @@ start_link(Type, TxHash, ChanId, MinDepth, Mod, Opts) ->
     I = #{ parent       => self()
          , type         => Type
          , callback_mod => Mod },
-    DefReqs = [#{ mode      => tx_hash
-                , tx_hash   => TxHash
-                , min_depth => MinDepth
-                , info      => I},
-               #{ mode  => watch
-                , info  => I#{ type => watch } }],
+    Reqs = [#{ mode      => tx_hash
+             , tx_hash   => TxHash
+             , min_depth => MinDepth
+             , info      => I},
+            #{ mode  => watch
+             , info  => I#{ type => watch } }],
     gen_server:start_link(?MODULE, #{parent   => self(),
                                      chan_id  => ChanId,
                                      opts     => Opts,
-                                     requests => maps:get(
-                                                   requests, Opts, DefReqs)},
+                                     requests => Reqs},
                           ?GEN_SERVER_OPTS).
 
 watch(Watcher, Type, TxHash, MinDepth, Mod) ->
