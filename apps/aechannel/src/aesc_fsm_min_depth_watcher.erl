@@ -73,7 +73,7 @@
                   , last_block := block_hash()
                   , chan_vsn   := chan_vsn()
                   , block_hash => block_hash()
-                  , scenario   => scenario()
+                  , scenario   := scenario()
                   , ch_status  => ch_status()
                   , channel    => aesc_channels:channel()
                   , tx_hashes  => [tx_hash()] }.
