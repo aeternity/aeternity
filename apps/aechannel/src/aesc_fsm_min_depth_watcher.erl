@@ -737,7 +737,7 @@ log_tx(#{ tx_hash      := TxHash
         true ->
             St;
         false ->
-            TxLog1 = aesc_window:add({{TxHash, BlockHash}, Info}, TxLog),
+            TxLog1 = aesc_window:add({Key, Info}, TxLog),
             St#st{tx_log = TxLog1}
     end.
 
