@@ -18,6 +18,16 @@
 -export([get_txs_since/2]).
 
 -define(GEN_SERVER_OPTS, []).
+-define(IS_SCENARIO(S),
+        ( (S =:= top)
+          orelse (S =:= next_block)
+          orelse (S =:= fork_switch)
+          orelse ( is_tuple(S)
+                   andalso (tuple_size(S) =:= 2)
+                   andalso (element(1, S) =:= has_tx)
+                   %% TODO Check element(2, S)
+                 )
+        ) ).
 
 -record(st, { parent
             , chan_id
@@ -292,7 +302,7 @@ check_requests(Reqs, St, C, []) ->
     end.
 
 %% If there's a fork switch, don't assume channel state or depth calculations
-reset_if_fork_switch(Reqs, #{scenario := S}) ->
+reset_if_fork_switch(Reqs, #{scenario := S}) when ?IS_SCENARIO(S) ->
     case S of
         fork_switch ->
             [maps:remove(check_at_height,
@@ -464,7 +474,8 @@ check_req(#{mode := unlock} = R, #st{chan_id = ChId, chan_vsn = Vsn} = St, C) ->
             {R, C}
     end;
 check_req(#{mode := watch} = R, #st{chan_id = ChId} = St,
-          #{scenario := Scenario, top_hash := Hash } = C) ->
+          #{scenario := Scenario, top_hash := Hash } = C)
+  when ?IS_SCENARIO(Scenario) ->
     case Scenario of
         {has_tx, {_, #{ type    := TxType
                       , tx_hash := TxHash }}} ->
@@ -505,7 +516,8 @@ check_req(#{mode := tx_hash, tx_hash := TxHash, min_depth := MinDepth} = R,
             {R#{check_at_height => TopHeight + (MinDepth - Depth)}, C2}
     end.
 
-watch_for_channel_change(R, St, #{ scenario   := Scenario } = C) ->
+watch_for_channel_change(R, St, #{ scenario := Scenario } = C)
+  when ?IS_SCENARIO(Scenario) ->
     lager:debug("Scenario = ~p", [Scenario]),
     case Scenario of
         next_block ->
@@ -614,7 +626,7 @@ channel_status_changed(V, #{chan_vsn := V0}) ->
     V =/= V0.
 
 update_chan_vsn(#{ top_hash := Hash
-                 , scenario := S } = Cache, #st{} = St) ->
+                 , scenario := S } = Cache, #st{} = St) when ?IS_SCENARIO(S) ->
     case maps:find({channel, Hash}, Cache) of
         {ok, #{ closed_at := _ } = Vsn} ->
             lager:debug("Update Vsn = ~p", [Vsn]),
@@ -725,7 +737,7 @@ log_tx(#{ tx_hash      := TxHash
         true ->
             St;
         false ->
-            TxLog1 = aesc_window:add({{TxHash, BlockHash}, Info}, TxLog),
+            TxLog1 = aesc_window:add({Key, Info}, TxLog),
             St#st{tx_log = TxLog1}
     end.
 
