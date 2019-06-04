@@ -1,7 +1,7 @@
 -module(aesc_fsm_min_depth_watcher).
 -behaviour(gen_server).
 
--export([start_link/6,       %% (TxHash, ChanId, MinimumDepth, Mod, Opts) -> {ok, Pid}
+-export([start_link/5,       %% (TxHash, ChanId, MinimumDepth, Mod) -> {ok, Pid}
          watch/5,            %% (WatcherPid, Type, TxHash, MinimumDepth, Mod) -> ok
          watch_for_channel_close/3,
          watch_for_unlock/2,
@@ -27,8 +27,7 @@
             , tx_log = aesc_window:new()
             , rpt_log = aesc_window:new()
             , closing = false
-            , requests = []
-            , opts = #{} }).
+            , requests = [] }).
 
 -type mode()       :: close
                     | unlock
@@ -74,7 +73,7 @@
                   , last_block := block_hash()
                   , chan_vsn   := chan_vsn()
                   , block_hash => block_hash()
-                  , scenario   => scenario()
+                  , scenario   := scenario()
                   , ch_status  => ch_status()
                   , channel    => aesc_channels:channel()
                   , tx_hashes  => [tx_hash()] }.
@@ -128,21 +127,19 @@ get_txs_since_(StopCond, ChId) ->
     get_txs_since(StopCond, aec_chain:top_block_hash(), ChId, #{}).
 
 
-start_link(Type, TxHash, ChanId, MinDepth, Mod, Opts) ->
+start_link(Type, TxHash, ChanId, MinDepth, Mod) ->
     I = #{ parent       => self()
          , type         => Type
          , callback_mod => Mod },
-    DefReqs = [#{ mode      => tx_hash
-                , tx_hash   => TxHash
-                , min_depth => MinDepth
-                , info      => I},
-               #{ mode  => watch
-                , info  => I#{ type => watch } }],
+    Reqs = [#{ mode      => tx_hash
+             , tx_hash   => TxHash
+             , min_depth => MinDepth
+             , info      => I},
+            #{ mode  => watch
+             , info  => I#{ type => watch } }],
     gen_server:start_link(?MODULE, #{parent   => self(),
                                      chan_id  => ChanId,
-                                     opts     => Opts,
-                                     requests => maps:get(
-                                                   requests, Opts, DefReqs)},
+                                     requests => Reqs},
                           ?GEN_SERVER_OPTS).
 
 watch(Watcher, Type, TxHash, MinDepth, Mod) ->
@@ -154,15 +151,14 @@ watch(Watcher, Type, TxHash, MinDepth, Mod) ->
                                min_depth    => MinDepth,
                                info         => I }).
 
-init(#{parent := Parent, chan_id := ChanId, requests := Reqs} = I) ->
-    Opts = maps:get(opts, I, #{}),
+init(#{parent := Parent, chan_id := ChanId, requests := Reqs}) ->
     lager:debug("started min_depth watcher for ~p", [Parent]),
     erlang:monitor(process, Parent),
     true = aec_events:subscribe(top_changed),
     true = aec_events:subscribe({tx_event, {channel, ChanId}}),
     lager:debug("subscribed to top_changed", []),
     self() ! check_status,
-    {ok, #st{parent = Parent, chan_id = ChanId, requests = Reqs, opts = Opts}}.
+    {ok, #st{parent = Parent, chan_id = ChanId, requests = Reqs}}.
 
 
 %% Strategy for monitoring the chain.
