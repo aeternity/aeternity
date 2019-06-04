@@ -211,6 +211,7 @@
     sc_ws_update_conflict/1,
     sc_ws_close_mutual/1,
     sc_ws_leave_reestablish/1,
+    sc_ws_ping_pong/1,
     sc_ws_deposit/1,
     sc_ws_withdraw/1,
     sc_ws_contracts/1,
@@ -572,6 +573,7 @@ channel_websocket_sequence() ->
 
 channel_continuous_sequence() ->
     [
+      sc_ws_ping_pong,
       %% both can deposit
       sc_ws_deposit,
       %% both can withdraw
@@ -5251,6 +5253,23 @@ sc_ws_leave_reestablish(Config0) ->
     Config1 = sc_ws_reestablish_(ReestablOptions, Config),
     ok = sc_ws_update_(Config1),
     ok = sc_ws_close_(Config1).
+
+sc_ws_ping_pong(Config) ->
+    #{initiator := IConnPid, responder :=RConnPid} =
+        proplists:get_value(channel_clients, Config),
+    PingPong =
+        fun(ConnPid) ->
+            ok = ?WS:register_test_for_channel_events(ConnPid, [system]),
+            ok = ws_send_tagged(ConnPid, <<"channels.system">>,
+                                #{<<"action">> => <<"ping">>}, Config),
+            {ok, <<"pong">>, #{}} =
+                wait_for_channel_event(ConnPid, system, Config),
+            ok = ?WS:unregister_test_for_channel_events(ConnPid, [system]),
+            ok
+        end,
+    PingPong(IConnPid),
+    PingPong(RConnPid),
+    ok.
 
 sc_ws_deposit(Config) ->
     lists:foreach(
