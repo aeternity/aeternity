@@ -76,10 +76,12 @@
                                   , channel      := aesc_channels:channel()
                                   , lock_period  := aesc_channels:lock_period()
                                   , locked_until := aesc_channels:locked_until() }.
+-type tx_log() :: aesc_window:window({ {tx_hash(), block_hash()}, #{ atom() := term() } }).
+-type rpt_log() :: aesc_window:window({ {changed_on_chain | closing_on_chain | closed_on_chain, tx_hash()}, #{ atom() := term() }}).
 
 -type cache() :: #{ mode := mode()
-                  , tx_log := aesc_window:window()
-                  , rpt_log := aesc_window:window()
+                  , tx_log := tx_log()
+                  , rpt_log := rpt_log()
                   , last_block := block_hash()
                   , chan_vsn   := chan_vsn()
                   , block_hash => block_hash()

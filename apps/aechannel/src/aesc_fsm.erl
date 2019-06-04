@@ -183,6 +183,8 @@
                       [aesc_offchain_update:update()]}
                    | {reestablish, OffChainTx :: aetx_sign:signed_tx()}.
 
+-type log() :: aesc_window:window({Op :: atom(), Type :: atom(), erlang:timestamp(), Msg :: term()}).
+
 -opaque state_name() :: awaiting_open
                       | awaiting_reestablish
                       | initialized
@@ -218,7 +220,7 @@
               , latest = undefined     :: latest_op()
               , ongoing_update = false :: boolean()
               , last_reported_update   :: undefined | non_neg_integer()
-              , log                    :: aesc_window:window()
+              , log                    :: log()
               , strict_checks = true   :: boolean()
               }).
 

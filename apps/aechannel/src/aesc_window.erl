@@ -12,12 +12,12 @@
 
 -export([record_fields/1]).
 
--export_type([window/0]).
+-export_type([window/1]).
 
 -define(KEEP, 10).
 
 -type size()   :: non_neg_integer().
--type entry()  :: any().
+-type entry()  :: tuple().
 
 %% This is a bounded buffer, optimized for performance.
 %% A counter, `na`, keeps track of the number of elements
@@ -34,11 +34,14 @@
 -record(w, { na = 0        :: non_neg_integer()
            , nb = 0        :: non_neg_integer()
            , keep = ?KEEP  :: size()
-           , a = []        :: [entry()]
-           , b = []        :: [entry()]
+           , a = []
+           , b = []
            }).
 
--type window() :: #w{}.
+-type window(Entry) :: #w{ a :: [Entry]
+                         , b :: [Entry]
+                         }.
+-type window() :: window(entry()).
 
 %% ==================================================================
 %% Tracing support
@@ -58,17 +61,18 @@ new(Sz) when is_integer(Sz), Sz >= 0 ->
 %% When changing `keep`, we do not modify (e.g. truncate) the data set.
 %% This is for performance reasons, and because we don't strive to keep
 %% the exact size anyway: `keep` is an approximate number.
--spec change_keep(size(), window()) -> window().
+-spec change_keep(size(), window(Entry)) -> window(Entry) when Entry :: entry().
 change_keep(Keep, #w{} = W) when is_integer(Keep), Keep >= 0 ->
     W#w{keep = Keep}.
 
--spec add(entry(), window()) -> window().
+-spec add(Entry, window(Entry)) -> window(Entry) when Entry :: entry().
 add(Item, #w{na = N, a = A, keep = Keep} = W) when N < Keep ->
     W#w{na = N+1, a = [Item|A]};
 add(Item, #w{na = PrevNa, a = A} = W) ->
     W#w{na = 1, a = [Item], nb = PrevNa, b = A}.
 
--spec pop(window()) -> {entry(), window()} | error.
+-spec pop(window(Entry)) -> {Entry, window(Entry)} | error
+  when Entry :: entry().
 pop(#w{a = [], b = []}) ->
     error;
 pop(#w{a = [], b = [H|T], nb = N} = W) ->
@@ -79,13 +83,14 @@ pop(#w{a = [H|T], na = N} = W) ->
 -spec size(window()) -> non_neg_integer().
 size(#w{na = Na, nb = Nb}) -> Na + Nb.
 
--spec to_list(window()) -> [entry()].
+-spec to_list(window(Entry)) -> [Entry] when Entry :: entry().
 to_list(#w{a = A, b = B}) ->
     A ++ B.
 
 %% Like lists:keyfind/3. Finds the most recent match (if any),
 %% since items are essentially stored in LIFO fashion.
--spec keyfind(any(), non_neg_integer(), window()) -> false | entry().
+-spec keyfind(any(), non_neg_integer(), window(Entry)) -> false | Entry
+  when Entry :: entry().
 keyfind(K, Pos, #w{a = A, b = B}) ->
     case lists:keyfind(K, Pos, A) of
         false ->
@@ -104,8 +109,8 @@ keymember(K, Pos, #w{a = A, b = B}) ->
 %% element is not a map are skipped). If a value in the `KVL' is `undefined',
 %% this will match either the value `undefined' or the key being missing.
 %%
--spec info_find([{any(), any()}], non_neg_integer(), window()) ->
-                       false | entry().
+-spec info_find([{any(), any()}], non_neg_integer(), window(Entry)) ->
+                       false | Entry when Entry :: entry().
 info_find(KVL, Pos, #w{a = A, b = B}) when is_list(KVL) ->
     case info_find_(KVL, Pos, A) of
         false ->
