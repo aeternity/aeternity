@@ -4,7 +4,8 @@
 
 %TODO type -> opaque
 -opaque protocol() :: jsonrpc.
--type response() :: {reply, map()} | no_reply | stop.
+-type reply() :: {{error, atom()}, map()} | map().
+-type response() :: {reply, reply() | [reply()]} | no_reply | stop.
 
 -export_type([protocol/0,
               response/0]).
@@ -37,8 +38,7 @@
     {reply, map()}.
 
 -callback process_incoming(Msg :: map() | list(map()), FsmPid :: pid()) ->
-    {reply, map()} | no_reply | stop.
-
+    response().
 
 %%%==================================================================
 %%% Trace settings
