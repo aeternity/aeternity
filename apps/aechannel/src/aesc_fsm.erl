@@ -218,7 +218,7 @@
               , latest = undefined     :: latest_op()
               , ongoing_update = false :: boolean()
               , last_reported_update   :: undefined | non_neg_integer()
-              , log = aesc_window:new(#{}) :: aesc_window:window()
+              , log                    :: aesc_window:window()
               , strict_checks = true   :: boolean()
               }).
 
