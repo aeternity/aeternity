@@ -3000,7 +3000,7 @@ default_minimum_depth(responder) -> ?MINIMUM_DEPTH.
 
 start_min_depth_watcher(Type, SignedTx, Updates,
                         #data{watcher = Watcher0,
-                              opts = #{minimum_depth := MinDepth} = Opts} = D) ->
+                              opts = #{minimum_depth := MinDepth}} = D) ->
     Tx = aetx_sign:tx(SignedTx),
     TxHash = aetx_sign:hash(SignedTx),
     evt({tx_hash, TxHash}),
@@ -3009,7 +3009,7 @@ start_min_depth_watcher(Type, SignedTx, Updates,
     {OnChainId, D1} = on_chain_id(D, Tx),
     case {Type, Watcher0} of
         {{?MIN_DEPTH, ?WATCH_FND = Sub}, undefined} ->
-            WOpts = maps:get(watcher, Opts, #{}),
+            WOpts = #{},
             {ok, Watcher1} = aesc_fsm_min_depth_watcher:start_link(
                                Sub, TxHash, OnChainId, MinDepth, ?MODULE, WOpts),
             evt({watcher, Watcher1}),
