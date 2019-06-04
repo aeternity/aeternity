@@ -123,7 +123,7 @@
 -define(DEFAULT_INVALID_TX_TTL, 5).
 -else.
 -define(DEFAULT_TX_TTL, 8).
--define(DEFAULT_INVALID_TX_TTL, 2).
+-define(DEFAULT_INVALID_TX_TTL, 5).
 -endif.
 
 -define(DEFAULT_NONCE_BASELINE, 1).
@@ -387,19 +387,20 @@ int_get_candidate(MaxGas, BlockHash, #dbs{db = Db} = DBs) ->
     lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
     MinTxGas = aec_governance:min_tx_gas(),
-    Acc0     = #{ tree => gb_trees:empty(), txs => [] },
+    Acc0     = #{ tree => gb_trees:empty(), txs => [], bad_txs => [] },
     {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, MinTxGas, MinMinerGasPrice, Trees,
                                           Header, DBs, Acc0),
     {ok, _, Acc1} = int_get_candidate(
                       DBs#dbs.visited_db, RemGas, MinTxGas, MinMinerGasPrice, Trees, Header,
                       DBs, Acc),
-    #{ tree := AccTree, txs := AccTxs } = Acc1,
+    #{ tree := AccTree, txs := AccTxs, bad_txs := AccBadTxs } = Acc1,
 
     %% Move Txs to visited *after* revisiting visited!
+    AllVisited = gb_trees:values(AccTree) ++ lists:reverse(AccTxs) ++ lists:reverse(AccBadTxs),
     Txs = [ begin
                 move_to_visited(DbX, DBs, KeyX, TxX),
                 TxX
-            end || {DbX, KeyX, TxX} <- gb_trees:values(AccTree) ++ lists:reverse(AccTxs) ],
+            end || {DbX, KeyX, TxX} <- AllVisited ],
 
     {ok, Txs}.
 
@@ -450,7 +451,7 @@ int_get_candidate_({?KEY(_, _, Account, Nonce, _) = Key, Tx},
               Db, Dbs, Key, Tx, AccountsTree, Height, Gas, MinMinerGasPrice, Acc)
     end.
 
-check_candidate(Db, #dbs{gc_db = GCDb} = Dbs,
+check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
                 ?KEY(_, _, Account, Nonce, TxHash) = Key, Tx,
                 AccountsTree, Height, Gas, MinMinerGasPrice,
                 Acc = #{ tree := AccTree, txs := AccTxs }) ->
@@ -476,9 +477,8 @@ check_candidate(Db, #dbs{gc_db = GCDb} = Dbs,
             end;
         false ->
             %% This is not valid anymore.
-            move_to_visited(Db, Dbs, Key, Tx),
             enter_tx_gc(GCDb, TxHash, Key, Height + invalid_tx_ttl()),
-            {Gas, Acc}
+            {Gas, Acc#{ bad_txs := [{Db, Key, Tx} | maps:get(bad_txs, Acc)] }}
     end.
 
 move_to_visited(VDb, #dbs{visited_db = VDb}, _, _) ->
