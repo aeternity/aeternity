@@ -809,7 +809,7 @@ copy_contract_state_for_auth(Ch, Account, S) ->
             Contract = get_contract_no_cache(ContractPK, S),
             StoreKey = aesc_channels:auth_store_key(aec_accounts:id(Account), Ch),
             Trees    = S#state.trees,
-            CtTree   = aec_trees:contracts(),
+            CtTree   = aec_trees:contracts(Trees),
             CtTree1  = aect_state_tree:copy_contract_store(Contract, StoreKey, CtTree),
             S#state{trees = aec_trees:set_contracts(Trees, CtTree1)}
     end.
