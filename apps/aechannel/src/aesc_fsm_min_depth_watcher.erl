@@ -18,6 +18,18 @@
 -export([get_txs_since/2]).
 
 -define(GEN_SERVER_OPTS, []).
+-define(IS_INFO_OF_SCENARIO_HAS_TX(X),
+        ( is_tuple(X)
+          andalso (tuple_size(X) =:= 2)
+          andalso ( is_tuple(element(1, X))
+                    andalso (tuple_size(element(1, X)) =:= 2)
+                    andalso is_binary(element(1, element(1, X)))
+                    andalso is_binary(element(2, element(1, X)))
+                  )
+          andalso ( is_map(element(2, X))
+                    andalso (map_size(element(2, X)) =:= 3)
+                  )
+        ) ).
 -define(IS_SCENARIO(S),
         ( (S =:= top)
           orelse (S =:= next_block)
@@ -25,7 +37,7 @@
           orelse ( is_tuple(S)
                    andalso (tuple_size(S) =:= 2)
                    andalso (element(1, S) =:= has_tx)
-                   %% TODO Check element(2, S)
+                   andalso ?IS_INFO_OF_SCENARIO_HAS_TX(element(2, S))
                  )
         ) ).
 
@@ -40,8 +52,8 @@
             , requests = [] }).
 
 -record(tx_log_entry,
-        { key   :: {tx_hash(), block_hash()}
-        , value :: #{ atom() := term() }
+        { key   :: tx_log_entry_key()
+        , value :: tx_log_entry_value()
         }).
 
 -record(rpt_log_entry,
@@ -74,7 +86,11 @@
 
 -type block_hash() :: binary().
 -type tx_hash()    :: binary().
--type scenario()   :: top | next_block | fork_switch | {has_tx, tx_hash()}.
+-type info_of_scenario_has_tx() :: {tx_log_entry_key(), tx_log_entry_value()}.
+-type scenario()   :: top
+                    | next_block
+                    | fork_switch
+                    | {has_tx, info_of_scenario_has_tx()}.
 -type chan_vsn()   :: undefined | { aesc_channels:round()
                                   , aesc_channels:solo_round()
                                   , aesc_channels:is_active()
@@ -87,6 +103,10 @@
                                   , lock_period  := aesc_channels:lock_period()
                                   , locked_until := aesc_channels:locked_until() }.
 
+-type tx_log_entry_key() :: {tx_hash(), block_hash()}.
+-type tx_log_entry_value() :: #{ tx_hash := tx_hash()
+                               , block_hash := block_hash()
+                               , block_origin := chain }.
 -type tx_log() :: aesc_window:window(#tx_log_entry{}).
 
 -type rpt_log() :: aesc_window:window(#rpt_log_entry{}).
