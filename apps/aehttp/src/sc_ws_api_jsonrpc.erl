@@ -234,6 +234,9 @@ process_incoming(Msg, FsmPid) ->
     end.
 
 -spec process_request(map(), pid()) -> no_reply | {reply, map()} | {error, term()}.
+process_request(#{<<"method">> := <<"channels.system">>,
+                  <<"params">> := #{<<"action">> := <<"ping">>}}, _FsmPid) ->
+    {reply, #{action => system, tag => pong}};
 process_request(#{<<"method">> := <<"channels.update.new">>,
                    <<"params">> := #{<<"from">>    := FromB,
                                      <<"to">>      := ToB,

@@ -236,8 +236,8 @@ register_test_for_channel_events(ConnPid, Actions) when is_list(Actions)->
     register_test_for_events(ConnPid, ?CHANNEL, Actions).
 
 register_test_for_all_channel_events(ConnPid) ->
-    Actions = aesc_fsm:report_tags(),
-    register_test_for_events(ConnPid, ?CHANNEL, Actions).
+    FSMActions = aesc_fsm:report_tags(),
+    register_test_for_events(ConnPid, ?CHANNEL, [system | FSMActions]).
 
 
 unregister_test_for_channel_event(ConnPid, Action) ->
