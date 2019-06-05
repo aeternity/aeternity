@@ -14,6 +14,7 @@ ST_CT_LOCALDIR = --dir system_test/only_local
 
 EQC_EUNIT_TEST_FLAGS ?=
 EQC_EUNIT_TESTING_TIME_MULTIPLIER ?= 1
+EQC_EUNIT_TEST_FLAGS_FINAL = $(EQC_EUNIT_TEST_FLAGS)
 
 SWAGGER_CODEGEN_CLI_V = 2.4.4
 SWAGGER_CODEGEN_CLI = swagger/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
@@ -67,10 +68,13 @@ endif
 ifdef TEST
 CT_TEST_FLAGS += --case=$(TEST)
 EUNIT_TEST_FLAGS += --module=$(TEST)
-EQC_EUNIT_TEST_FLAGS += --module=$(TEST)
 unexport TEST
+endif
+
+ifdef EQC_TEST
+EQC_EUNIT_TEST_FLAGS_FINAL += --module=$(EQC_TEST)
 else
-EQC_EUNIT_TEST_FLAGS += --app eqc_test
+EQC_EUNIT_TEST_FLAGS_FINAL += --app eqc_test
 endif
 
 ifdef VERBOSE
@@ -316,10 +320,10 @@ $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests:
 
 .PHONY: eqc-test
 eqc-test: eqc
-	env ERL_FLAGS="-eqc_testing_time_multiplier $(EQC_EUNIT_TESTING_TIME_MULTIPLIER)" $(REBAR) as test,eqc eunit $(EQC_EUNIT_TEST_FLAGS)
+	env ERL_FLAGS="-eqc_testing_time_multiplier $(EQC_EUNIT_TESTING_TIME_MULTIPLIER)" $(REBAR) as test,eqc eunit $(EQC_EUNIT_TEST_FLAGS_FINAL)
 
 EQC_TEST_REPO = https://github.com/Quviq/epoch-eqc.git
-EQC_TEST_VERSION = 0a637d3
+EQC_TEST_VERSION = 658e16b
 
 .PHONY: eqc
 eqc: | eqc/.git
