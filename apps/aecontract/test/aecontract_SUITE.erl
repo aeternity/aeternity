@@ -171,7 +171,7 @@ all() ->
 
 groups() ->
     [ {aevm, [sequence], ?ALL_TESTS}
-    , {fate, [sequence],  [ create_contract
+    , {fate,         [],  [ create_contract
                           , sophia_call_origin
                           , sophia_identity
                           , sophia_remote_identity
@@ -182,6 +182,40 @@ groups() ->
                           , sophia_call_out_of_gas
                           , sophia_state_handling
                           , sophia_maps
+
+                          , sophia_remote_identity
+                          , sophia_call_out_of_gas
+                          , sophia_no_reentrant
+                          %%, sophia_state %% TODO: Polymorphism
+                          %%, sophia_match_bug %% TODO: Polymorphism
+                          , sophia_spend
+                          %%, sophia_typed_calls   %% TODO: Compiler bug
+                          %%, sophia_exploits Not applicable
+                          %%, sophia_functions %% TODO: Polymorphism
+                          , sophia_map_benchmark
+                          , sophia_big_map_benchmark
+                          , sophia_variant_types
+                          , sophia_chain
+                          %% , sophia_savecoinbase %% TODO: Aevm specific
+                          %% , sophia_fundme       %% TODO: Abort not implemented
+                          %% , sophia_aens         %% TODO: AENS not implemented
+                          , sophia_state_handling
+                          %% , sophia_state_gas    %% TODO: State gas not implemented
+                          , sophia_no_callobject_for_remote_calls
+                          %% , sophia_operators    %% TODO: Missing operators
+                          %% , sophia_bits
+                          %% , sophia_bad_code
+                          %% , sophia_bad_init
+                          %% , sophia_int_to_str
+                          %% , sophia_events       %% TODO: Event instructions
+                          %% , sophia_crypto       %% TODO: Crypto instructions
+                          %% , sophia_safe_math    %% TODO: Find what is safe/unsafe
+                          , sophia_heap_to_heap_bug
+                          %% , sophia_namespaces   %% TODO: Polymorphism
+                          %% , sophia_bytes
+                          %% , sophia_address_checks %% TODO: Checks not implemented
+                          , sophia_too_little_gas_for_mem
+
                           ]}
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account
@@ -1297,7 +1331,7 @@ call_result(?ABI_FATE_SOPHIA_1, Type, Call) ->
     case aect_call:return_type(Call) of
         ok     ->
             Res = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-            case aefate_test_utils:decode(Res) of
+            case aefate_test_utils:decode(Res, Type) of
                 {variant, [0,1], 0, {}} when element(1, Type) =:= option ->
                     none;
                 {variant, [0,1], 1, {Decoded}} when element(1, Type) =:= option ->
@@ -1606,7 +1640,7 @@ sophia_typed_calls(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc    = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Server = ?call(create_contract, Acc, multiplication_server, {}, #{amount => 0}),
-    Client = ?call(create_contract, Acc, contract_types, Server, #{amount => 1000}),
+    Client = ?call(create_contract, Acc, contract_types, {?cid(Server)}, #{amount => 1000}),
     2      = ?call(call_contract, Acc, Client, get_n, word, {}),
     {}     = ?call(call_contract, Acc, Client, square, {tuple, []}, {}),
     4      = ?call(call_contract, Acc, Client, get_n, word, {}),
@@ -3471,9 +3505,9 @@ sophia_map_benchmark(Cfg) ->
     Map  = maps:from_list([{I, list_to_binary(integer_to_list(I))} || I <- lists:seq(1, N) ]),
     {ok, Code} = compile_contract(maps_benchmark),
     Opts = #{ gas => 1000000, return_gas_used => true },
-    {Ct, InitGas}   = ?call(create_contract, Acc, maps_benchmark, {777, Map}, Opts),
-    Remote          = ?call(create_contract, Acc, maps_benchmark, {888, #{}}, Opts),    %% Can't make remote calls to oneself
-    {{}, SimpleGas} = ?call(call_contract, Acc, Ct, set_updater, {tuple, []}, Remote, Opts),
+    {Ct, InitGas}   = ?call(create_contract, Acc, maps_benchmark, {?cid(<<777:256>>), Map}, Opts),
+    {Remote, _}     = ?call(create_contract, Acc, maps_benchmark, {?cid(<<888:256>>), #{}}, Opts),    %% Can't make remote calls to oneself
+    {{}, SimpleGas} = ?call(call_contract, Acc, Ct, set_updater, {tuple, []}, {?cid(Remote)}, Opts),
     Map1 = Map#{ 5 => <<"five">> },
     {Map1, Gas} = ?call(call_contract, Acc, Ct, benchmark, {map, word, string}, {5, <<"five">>}, Opts),
     io:format("Bytecode size: ~p\nInit   gas used: ~p\nSimple gas used: ~p\nBench  gas used: ~p\n", [byte_size(Code), InitGas, SimpleGas, Gas]),
@@ -3668,7 +3702,7 @@ sophia_big_map_benchmark(Cfg) ->
     Batch = proplists:get_value(batch, Cfg, N),
     Key   = proplists:get_value(key, Cfg, 0),
     Val   = integer_to_binary(Key div Batch),
-    Ct  = ?call(create_contract, Acc, maps_benchmark, {777, #{}}),
+    Ct  = ?call(create_contract, Acc, maps_benchmark, {?cid(<<777:256>>), #{}}),
     _   = [ begin
                 ?call(call_contract, Acc, Ct, update, {tuple, []}, {I, I + Batch - 1, integer_to_binary(I)}, #{ gas => 1000000000 }),
                 io:format(".")
@@ -3762,8 +3796,14 @@ sophia_variant_types(_Cfg) ->
     stopped   = Call(get_state, State, {}),
     {}        = Call(start, Unit, {123}),
     {grey, 0} = Call(get_color, Color, {}),
-    {}        = Call(set_color, Unit, {{variant, 1, []}}), %% green has tag 1
-    {started, {AccId, 123, green}} = Call(get_state, State, {}),
+    Green = case ?IS_FATE_SOPHIA(vm_version()) of
+                true -> {variant, [0, 0, 0, 1], 1, {}};
+                false -> {variant, 1, []}
+            end,
+    {}        = Call(set_color, Unit, {Green}), %% green has tag 1
+    {started, {ExpectAccId, 123, green}} = Call(get_state, State, {}),
+    ?assertMatchFATE({address, AccId}, ExpectAccId),
+    ?assertMatchAEVM(AccId, ExpectAccId),
     ok.
 
 
@@ -3772,7 +3812,9 @@ sophia_chain(_Cfg) ->
     Acc         = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = ?BENEFICIARY_PUBKEY,
     Ct1         = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
-    Beneficiary = ?call(call_contract, Acc, Ct1, miner, word, {}),
+    ExpectMiner = ?call(call_contract, Acc, Ct1, miner, word, {}),
+    ?assertMatchFATE({address, Beneficiary}, ExpectMiner),
+    ?assertMatchAEVM(Beneficiary, ExpectMiner),
     ok.
 
 sophia_savecoinbase(_Cfg) ->
@@ -3810,11 +3852,11 @@ sophia_no_callobject_for_remote_calls(_Cfg) ->
 
     %% A contract call results in only one call object. No call objects are
     %% created for inner calls (of which there are two in this example).
-    77 = ?call(call_contract, Acc, RemC2, staged_call, word, {IdC, RemC, 77}),
+    77 = ?call(call_contract, Acc, RemC2, staged_call, word, {?cid(IdC), ?cid(RemC), 77}),
     ?assertEqual(4, CountCalls()),
 
     %% Let's do one more for good measure
-    88 = ?call(call_contract, Acc, RemC2, staged_call, word, {IdC, RemC, 88}),
+    88 = ?call(call_contract, Acc, RemC2, staged_call, word, {?cid(IdC), ?cid(RemC), 88}),
     ?assertEqual(5, CountCalls()),
 
     ok.
@@ -4033,7 +4075,8 @@ sophia_crypto(_Cfg) ->
 sophia_safe_math(Cfg) ->
     case ?config(vm_version, Cfg) of
         ?VM_AEVM_SOPHIA_1 -> sophia_safe_math_old();
-        VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 -> sophia_safe_math()
+        VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_2 -> sophia_safe_math();
+        VMVersion when ?IS_FATE_SOPHIA(VMVersion) -> sophia_safe_math()
     end.
 
 sophia_safe_math() ->
