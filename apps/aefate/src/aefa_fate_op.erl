@@ -742,8 +742,12 @@ dummyarg(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _Arg5, _Arg6, _EngineState) ->
 dummyarg(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _Arg5, _Arg6, _Arg7, _EngineState) ->
  exit({error, op_not_implemented_yet}).
 
-abort(_Arg0, _EngineState) ->
- exit({error, op_not_implemented_yet}).
+abort(Arg0, EngineState) ->
+    {Value, ES1} = get_op_arg(Arg0, EngineState),
+    case ?IS_FATE_STRING(Value) of
+        true  -> aefa_fate:abort({abort, ?FATE_STRING_VALUE(Value)}, ES1);
+        false -> aefa_fate:abort({value_does_not_match_type, Value, string})
+    end.
 
 exit(_Arg0, _EngineState) ->
  exit({error, op_not_implemented_yet}).
