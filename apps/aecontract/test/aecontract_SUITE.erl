@@ -189,8 +189,8 @@ groups() ->
                           , sophia_state
                           , sophia_match_bug
                           , sophia_spend
-                          %%, sophia_typed_calls   %% TODO: Compiler bug
-                          %%, sophia_exploits Not applicable
+                          %% , sophia_typed_calls   %% TODO: Contract to address not implemented
+                          %% , sophia_exploits Not applicable
                           , sophia_functions
                           , sophia_map_benchmark
                           , sophia_big_map_benchmark
