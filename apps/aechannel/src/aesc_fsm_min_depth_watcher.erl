@@ -85,8 +85,9 @@
 
 -type req() :: close_req() | unlock_req() | watch_req() | tx_req().
 
--type block_hash() :: binary().
--type tx_hash()    :: binary().
+-type block_hash()  :: binary().
+-type tx_hash()     :: binary().
+-type tx_location() :: {block_hash(), aetx:tx_type(), aetx_sign:signed_tx()}.
 -type info_of_scenario_has_tx() :: {tx_log_entry_key(), tx_log_entry_value()}.
 -type scenario()   :: top
                     | next_block
@@ -97,12 +98,19 @@
                                   , aesc_channels:is_active()
                                   , aesc_channels:locked_until()
                                   , aesc_channels:state_hash() }.
--type ch_status() :: undefined | #{ is_active    := aesc_channels:is_active()
-                                  , vsn          := chan_vsn()
-                                  , changed      := boolean()
-                                  , channel      := aesc_channels:channel()
-                                  , lock_period  := aesc_channels:lock_period()
-                                  , locked_until := aesc_channels:locked_until() }.
+-type ch_status() :: undefined
+                   | closed
+                   | #{ is_active    := aesc_channels:is_active()
+                      , vsn          := chan_vsn()
+                      , changed      := boolean()
+                      , channel      := aesc_channels:channel()
+                      , lock_period  := aesc_channels:lock_period()
+                      , locked_until := aesc_channels:locked_until() }.
+
+-type block_info() :: #{ block_hash := block_hash()
+                       , prev_hash  := block_hash()
+                       , block_type := key | micro
+                       , height     := aec_blocks:height() }.
 
 -type tx_log_entry_key() :: {tx_hash(), block_hash()}.
 -type tx_log_entry_value() :: #{ tx           => aetx_sign:signed_tx()
@@ -120,9 +128,15 @@
                   , chan_vsn   := chan_vsn()
                   , block_hash => block_hash()
                   , scenario   := scenario()
-                  , ch_status  => ch_status()
-                  , channel    => aesc_channels:channel()
-                  , tx_hashes  => [tx_hash()] }.
+                  , {location , tx_hash()}  => tx_location()
+                  , {signed_tx, tx_hash()}  => aetx_sign:signed_tx()
+                  , {ch_status    , block_hash()} => ch_status()
+                  , {block_info   , block_hash()} => block_info()
+                  , {height       , block_hash()} => non_neg_integer()
+                  , {header       , block_hash()} => aec_headers:header()
+                  , {in_main_chain, block_hash()} => boolean()
+                  , {channel      , block_hash()} => aesc_channels:channel()
+                  , {tx_hashes    , block_hash()} => [tx_hash()] }.
 
 watch_for_channel_close(Pid, MinDepth, Mod) when is_pid(Pid) ->
     gen_server:call(Pid, close_req(MinDepth, Mod));
