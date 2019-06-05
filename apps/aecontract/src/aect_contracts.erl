@@ -475,7 +475,9 @@ assert_field_store(store = Field, X, Version) when is_map(X) ->
     catch _:_ -> error({illegal, Field, X}) end;
 assert_field_store(store_k = Field, X, #{vm := VM} = Version) when is_binary(X),
                                                                    byte_size(X) > 0,
-                                                                   ?IS_AEVM_SOPHIA(VM) ->
+                                                                   (?IS_AEVM_SOPHIA(VM)
+                                                                    orelse
+                                                                    VM =:= ?VM_AEVM_SOLIDITY_1) ->
     try true = aevm_eeevm_store:is_valid_key(Version, X)
     catch _:_ -> error({illegal, Field, X}) end;
 assert_field_store(store_k, X, #{vm := VM}) when is_binary(X),
