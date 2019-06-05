@@ -126,7 +126,7 @@ init([]) ->
     aec_events:subscribe(tx_created),
     aec_events:subscribe(tx_received),
 
-    Peers = parse_peers(aeu_env:user_map_or_env(<<"peers">>, aecore, peers, [])),
+    Peers = parse_peers(aeu_env:user_config(<<"peers">>, default_peers())),
     BlockedPeers = parse_peers(aeu_env:user_map_or_env(<<"blocked_peers">>, aecore, blocked_peers, [])),
 
     [aec_peers:block_peer(P) || P <- BlockedPeers],
@@ -855,6 +855,13 @@ header_hash(Block) ->
     Header = aec_blocks:to_header(Block),
     {ok, HeaderHash} = aec_headers:hash_header(Header),
     HeaderHash.
+
+default_peers() ->
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">>    -> aeu_env:get_env(aecore, mainnet_peers, []);
+        <<"ae_uat">>        -> aeu_env:get_env(aecore, testnet_peers, []);
+        _                   -> aeu_env:get_env(aecore, peers, [])
+    end.
 
 parse_peers(Ps) ->
     lists:append([ parse_peer(P) || P <- Ps ]).
