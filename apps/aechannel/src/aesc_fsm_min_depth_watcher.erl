@@ -34,10 +34,20 @@
             , chan_vsn
             , last_block                  %% last time we updated channel vsn
             , last_top                    %% the block hash of the last check
-            , tx_log = aesc_window:new()
-            , rpt_log = aesc_window:new()
+            , tx_log = aesc_window:new() :: tx_log()
+            , rpt_log = aesc_window:new() :: rpt_log()
             , closing = false
             , requests = [] }).
+
+-record(tx_log_entry,
+        { key   :: {tx_hash(), block_hash()}
+        , value :: #{ atom() := term() }
+        }).
+
+-record(rpt_log_entry,
+        { key   :: {changed_on_chain | closing_on_chain | closed_on_chain, tx_hash()}
+        , value :: #{ atom() := term() }
+        }).
 
 -type mode()       :: close
                     | unlock
@@ -76,8 +86,10 @@
                                   , channel      := aesc_channels:channel()
                                   , lock_period  := aesc_channels:lock_period()
                                   , locked_until := aesc_channels:locked_until() }.
--type tx_log() :: aesc_window:window({ {tx_hash(), block_hash()}, #{ atom() := term() } }).
--type rpt_log() :: aesc_window:window({ {changed_on_chain | closing_on_chain | closed_on_chain, tx_hash()}, #{ atom() := term() }}).
+
+-type tx_log() :: aesc_window:window(#tx_log_entry{}).
+
+-type rpt_log() :: aesc_window:window(#rpt_log_entry{}).
 
 -type cache() :: #{ mode := mode()
                   , tx_log := tx_log()
@@ -343,11 +355,12 @@ init_cache_(#st{ last_block = LastBlock
 
 %% The TxLog relies on the custom tx events (remember that it's a bounded list)
 find_tx_in_block(BHash, TxLog) ->
-    case aesc_window:info_find([{block_hash, BHash}], 2, TxLog) of
+    Filter = [{block_hash, BHash}],
+    case aesc_window:info_find(Filter, #tx_log_entry.value, TxLog) of
         false ->
             false;
-        LastTx ->
-            LastTx
+        X = #tx_log_entry{} ->
+            {X#tx_log_entry.key, X#tx_log_entry.value}
     end.
 
 %% We do an async_dirty activity for minimal overhead. Note that the analysis
@@ -599,10 +612,11 @@ report_closed_on_chain(#{ tx_type    := _TxType
 
 maybe_report(RptKey, Info, Rpt, C) when is_function(Rpt) ->
     RptLog = maps:get(rpt_log, C),
-    case aesc_window:keyfind(RptKey, 1, RptLog) of
+    case aesc_window:keyfind(RptKey, #rpt_log_entry.key, RptLog) of
         false ->
             C1 = call_rpt(Rpt, C),
-            C1#{rpt_log => aesc_window:add({RptKey, Info}, RptLog)};
+            LogEntry = #rpt_log_entry{key = RptKey, value = Info},
+            C1#{rpt_log => aesc_window:add(LogEntry, RptLog)};
         _ ->
             C
     end.
@@ -734,16 +748,20 @@ log_tx(#{ tx_hash      := TxHash
         , block_origin := _Origin
         , type         := _Type } = Info, #st{tx_log = TxLog} = St) ->
     Key = {TxHash, BlockHash},
-    case aesc_window:keymember(Key, 1, TxLog) of
+    case aesc_window:keymember(Key, #tx_log_entry.key, TxLog) of
         true ->
             St;
         false ->
-            TxLog1 = aesc_window:add({Key, Info}, TxLog),
+            LogEntry = #tx_log_entry{key = Key, value = Info},
+            TxLog1 = aesc_window:add(LogEntry, TxLog),
             St#st{tx_log = TxLog1}
     end.
 
 get_latest_tx(Log) ->
-    {{{_TxHash, _BlockHash}, Tx}, _TxLog1} = aesc_window:pop(Log),
+    {#tx_log_entry{key = {_TxHash, _BlockHash},
+                   value = Tx},
+     _TxLog1} =
+        aesc_window:pop(Log),
     lager:debug("Tx = ~p", [Tx]),
     Tx.
 
@@ -768,11 +786,13 @@ get_txs_since(StopCond, Hash, ChId, C) ->
                   fun({BlockHash, Txs}, Acc) ->
                           lists:foldl(
                             fun(TxHash, Acc1) ->
-                                    aesc_window:add(
-                                      { {TxHash, BlockHash},
-                                        #{ tx_hash      => TxHash
-                                         , block_hash => BlockHash
-                                         , block_origin => chain } }, Acc1)
+                                    LogEntry =
+                                        #tx_log_entry{
+                                           key = {TxHash, BlockHash},
+                                           value = #{ tx_hash      => TxHash
+                                                    , block_hash => BlockHash
+                                                    , block_origin => chain } },
+                                    aesc_window:add(LogEntry, Acc1)
                             end, Acc, Txs)
                   end, TxLog, Found),
             {TxLog1, C2};
@@ -963,11 +983,11 @@ in_main_chain_(Hash, C) ->
 
 update_tx_log(TxHash, BlockHash, #{tx_log := TxLog} =C)
   when is_binary(BlockHash) ->
-    C#{tx_log => aesc_window:add(
-                   { {TxHash, BlockHash},
-                     #{ tx_hash      => TxHash
-                      , block_hash   => BlockHash
-                      , block_origin => chain } }, TxLog)};
+    LogEntry = #tx_log_entry{key = {TxHash, BlockHash},
+                             value = #{ tx_hash      => TxHash
+                                      , block_hash   => BlockHash
+                                      , block_origin => chain } },
+    C#{tx_log => aesc_window:add(LogEntry, TxLog)};
 update_tx_log(_, _, C) ->
     C.
 
