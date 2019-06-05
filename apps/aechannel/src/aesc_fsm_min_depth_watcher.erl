@@ -27,7 +27,8 @@
                     andalso is_binary(element(2, element(1, X)))
                   )
           andalso ( is_map(element(2, X))
-                    andalso (map_size(element(2, X)) =:= 3)
+                    andalso (map_size(element(2, X)) =:= 3
+                             orelse map_size(element(2, X)) =:= 4)
                   )
         ) ).
 -define(IS_SCENARIO(S),
@@ -104,9 +105,10 @@
                                   , locked_until := aesc_channels:locked_until() }.
 
 -type tx_log_entry_key() :: {tx_hash(), block_hash()}.
--type tx_log_entry_value() :: #{ tx_hash := tx_hash()
-                               , block_hash := block_hash()
-                               , block_origin := chain }.
+-type tx_log_entry_value() :: #{ tx           => aetx_sign:signed_tx()
+                               , block_hash   := block_hash()
+                               , block_origin := chain
+                               , type := aetx:tx_type() }.
 -type tx_log() :: aesc_window:window(#tx_log_entry{}).
 
 -type rpt_log() :: aesc_window:window(#rpt_log_entry{}).
@@ -510,9 +512,9 @@ check_req(#{mode := unlock} = R, #st{chan_id = ChId, chan_vsn = Vsn} = St, C) ->
 check_req(#{mode := watch} = R, #st{chan_id = ChId} = St,
           #{scenario := Scenario, top_hash := Hash } = C)
   when ?IS_SCENARIO(Scenario) ->
+    lager:debug("Scenario = ~p", [Scenario]),
     case Scenario of
-        {has_tx, {_, #{ type    := TxType
-                      , tx_hash := TxHash }}} ->
+        {has_tx, {{TxHash,_}, #{ type    := TxType }}} ->
             {Ch, C1} = get_channel(ChId, Hash, C),
             {#{ height := H }, C2} = top_info(Hash, C1),
             case Ch of
@@ -530,6 +532,7 @@ check_req(#{mode := watch} = R, #st{chan_id = ChId} = St,
         fork_switch ->
             watch_for_channel_change(R, St, C);
         _ ->
+            lager:debug("Other scenario - ignore (~p)", [Scenario]),
             {R, C}
     end;
 check_req(#{mode := tx_hash, tx_hash := TxHash, min_depth := MinDepth} = R,
@@ -702,15 +705,16 @@ handle_ch_status_changed(ChId, #{ last_block := Last
     lager:debug("channel status changed, Hash=~p, Last=~p", [Hash,Last]),
     {TxLog, C1} = get_txs_since({any_after_block, Last}, Hash, ChId, C),
     lager:debug("New TxLog: ~p", [TxLog]),
-    #{tx_hash := Tx, block_hash := BlockHash} = get_latest_tx(TxLog),
-    lager:debug("Latest Tx = ~p, Hash = ~p", [Tx, BlockHash]),
-    {Status, C2} = get_basic_ch_status_(ChId, BlockHash, C1),
+    {TxHash, #{tx := Tx, block_hash := BlockHash}, C2} =
+        get_latest_tx(TxLog, C1),
+    lager:debug("Latest TxHash = ~p, Hash = ~p", [TxHash, BlockHash]),
+    {Status, C3} = get_basic_ch_status_(ChId, BlockHash, C2),
     lager:debug("ChStatus(~p) = ~p", [BlockHash, Status]),
     %% Assert that this is really a changed channel object
-    true = channel_status_changed(maps:get(vsn, Status), C2),
+    true = channel_status_changed(maps:get(vsn, Status), C3),
     lager:debug("asserted status changed", []),
     Status1 = Status#{tx => Tx},
-    {Status1, C2#{{channel, BlockHash} => Status1}}.
+    {Status1, C3#{{channel, BlockHash} => Status1}}.
 
 get_basic_ch_status_(ChId, #{ top_hash := Hash } = C) ->
     get_basic_ch_status_(ChId, Hash, C).
@@ -772,18 +776,31 @@ log_tx(#{ tx_hash      := TxHash
         true ->
             St;
         false ->
-            LogEntry = #tx_log_entry{key = Key, value = Info},
+            LogEntry = #tx_log_entry{key = Key,
+                                     value = maps:with([block_hash,
+                                                        block_origin,
+                                                        type], Info)},
             TxLog1 = aesc_window:add(LogEntry, TxLog),
             St#st{tx_log = TxLog1}
     end.
 
-get_latest_tx(Log) ->
-    {#tx_log_entry{key = {_TxHash, _BlockHash},
-                   value = Tx},
+get_latest_tx(Log, C) ->
+    {#tx_log_entry{key = {TxHash, _BlockHash},
+                   value = TxInfo},
      _TxLog1} =
         aesc_window:pop(Log),
-    lager:debug("Tx = ~p", [Tx]),
-    Tx.
+    lager:debug("TxInfo = ~p", [TxInfo]),
+    {TxInfo1, C1} = ensure_signed_tx_included(TxHash, TxInfo, C),
+    {TxHash, TxInfo1, C1}.
+
+ensure_signed_tx_included(TxHash, TxInfo, C) ->
+    case maps:is_key(tx, TxInfo) of
+        true ->
+            {TxInfo, C};
+        false ->
+            {SignedTx, C1} = get_signed_tx(TxHash, C),
+            {TxInfo#{tx => SignedTx}, C1}
+    end.
 
 %% Find recent txs. Two different stop conditions:
 %% - {any_after_block, BlockHash}: Stop as soon as a block is found with
@@ -805,13 +822,16 @@ get_txs_since(StopCond, Hash, ChId, C) ->
                 lists:foldl(
                   fun({BlockHash, Txs}, Acc) ->
                           lists:foldl(
-                            fun(TxHash, Acc1) ->
+                            fun(SignedTx, Acc1) ->
+                                    Type = tx_type(SignedTx),
+                                    TxHash = aetx_sign:hash(SignedTx),
                                     LogEntry =
                                         #tx_log_entry{
                                            key = {TxHash, BlockHash},
-                                           value = #{ tx_hash      => TxHash
+                                           value = #{ tx         => SignedTx
                                                     , block_hash => BlockHash
-                                                    , block_origin => chain } },
+                                                    , block_origin => chain
+                                                    , type => Type } },
                                     aesc_window:add(LogEntry, Acc1)
                             end, Acc, Txs)
                   end, TxLog, Found),
@@ -875,8 +895,8 @@ stop_cond({any_after_block, Hash}, PrevHash, Found) ->
 has_create_tx([]) ->
     false;
 has_create_tx([SignedTx|_] = Found) ->
-    case aetx:specialize_type(aetx_sign:tx(SignedTx)) of
-        {channel_create_tx, _} ->
+    case tx_type(SignedTx) of
+        channel_create_tx ->
             {true, Found};
         _ ->
             false
@@ -978,18 +998,23 @@ tx_location(TxHash, C) ->
     cached_get({location, TxHash}, C, fun(C1) -> tx_location_(TxHash, C1) end).
 
 tx_location_(TxHash, C) ->
-    L = case aec_chain:find_tx_with_location(TxHash) of
+    {L, Type, SignedTx} =
+        case aec_chain:find_tx_with_location(TxHash) of
             none ->
                 lager:debug("couldn't find tx hash", []),
-                undefined;
-            {mempool, _} ->
+                {undefined, undefined, undefined};
+            {mempool, STx} ->
                 lager:debug("tx still in mempool", []),
-                undefined;
-            {BlockHash, _} ->
+                {undefined, tx_type(STx), STx};
+            {BlockHash, STx} ->
                 lager:debug("tx in Block ~p", [BlockHash]),
-                BlockHash
-        end,
-    {L, update_tx_log(TxHash, L, C)}.
+                {BlockHash, tx_type(STx), STx}
+                end,
+    {L, update_tx_log(TxHash, SignedTx, L, Type, C)}.
+
+tx_type(SignedTx) ->
+    {Type, _} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    Type.
 
 in_main_chain(BHash, C) ->
     %% We don't want to use aec_chain_state:hash_is_in_main_chain/1, since we want to
@@ -1001,14 +1026,15 @@ in_main_chain_(Hash, C) ->
     Res = aec_chain_state:hash_is_in_main_chain(Hash, TopHash),
     {Res, C1}.
 
-update_tx_log(TxHash, BlockHash, #{tx_log := TxLog} =C)
+update_tx_log(TxHash, SignedTx, BlockHash, Type, #{tx_log := TxLog} =C)
   when is_binary(BlockHash) ->
     LogEntry = #tx_log_entry{key = {TxHash, BlockHash},
-                             value = #{ tx_hash      => TxHash
+                             value = #{ tx           => SignedTx
                                       , block_hash   => BlockHash
-                                      , block_origin => chain } },
+                                      , block_origin => chain
+                                      , type         => Type } },
     C#{tx_log => aesc_window:add(LogEntry, TxLog)};
-update_tx_log(_, _, C) ->
+update_tx_log(_, _, _, _, C) ->
     C.
 
 top_height(C) ->
