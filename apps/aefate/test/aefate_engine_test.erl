@@ -271,7 +271,11 @@ bits() ->
 fail() ->
     [ {<<"fail">>, F, A, R}
       || {F, A, R} <-
-            [ {<<"bad_poly_return">>, [1, <<"string">>], {error, <<"some nice error">>}}
+            [ {<<"bad_poly_return">>,       [1, <<"string">>], {error, <<"Type error on return: <<\"string\">> is not of type integer">>}}
+            , {<<"bad_return_after_call">>, [false], {error, <<"Type error on return: 3 is not of type boolean">>}}
+            , {<<"bad_tail_call_return">>,  [false], 1}
+                %% TODO: currently type checks on tail calls are not working (no check that inner return type and outer return type match)
+                %% {error, <<"Type error on return: 1 is not of type boolean">>}}
             ]
     ].
 
@@ -752,6 +756,27 @@ contracts() ->
      , <<"fail">> =>
            [ {<<"bad_poly_return">>
              , {[{tvar, 0}, {tvar, 1}], {tvar, 0}}
-             , [ {0, [ {'RETURNR', {arg, 1}} ]} ]} ]
-
+             , [ {0, [ {'RETURNR', {arg, 1}} ]} ]
+             }
+           , {<<"id">>
+             , {[{tvar, 0}], {tvar, 0}}
+             , [ {0, [{'RETURNR', {arg, 0}}] } ]
+             }
+           , {<<"bad_return_after_call">>
+             , {[{tvar, 0}], {tvar, 0}}
+             , [ {0, [ {'PUSH', {immediate, 1}}
+                     , {'CALL', {immediate, aeb_fate_code:symbol_identifier(<<"id">>)}}
+                     ]}
+               , {1, [ {'PUSH', {immediate, 2}}
+                     , {'ADD', {stack, 0}, {stack, 0}, {stack, 0}}
+                     , 'RETURN' ]}
+               ]
+             }
+           , {<<"bad_tail_call_return">>
+             , {[{tvar, 0}], {tvar, 0}}
+             , [ {0, [ {'PUSH', {immediate, 1}}
+                     , {'CALL_T', {immediate, aeb_fate_code:symbol_identifier(<<"id">>)}}
+                     ]}
+               ]
+             } ]
      }.

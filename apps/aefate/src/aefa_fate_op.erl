@@ -152,8 +152,7 @@ call(Arg0, EngineState) ->
 call_t(Arg0, EngineState) ->
     {Fun, ES1} = get_op_arg(Arg0, EngineState),
     Signature = aefa_fate:get_function_signature(Fun, ES1),
-    ok = aefa_fate:check_signature(Signature, ES1),
-    ES2 = aefa_fate:bind_args_from_signature(Signature, ES1),
+    ES2 = aefa_fate:check_signature_and_bind_args(Signature, ES1),
     {jump, 0, aefa_fate:set_local_function(Fun, ES2)}.
 
 call_r(Arg0, Arg1, Arg2, EngineState) ->
@@ -183,8 +182,7 @@ remote_call_common(Contract, Function, Value, EngineState) ->
     ES1       = aefa_fate:check_remote(Contract, EngineState),
     ES2       = aefa_fate:set_remote_function(Contract, Function, ES1),
     Signature = aefa_fate:get_function_signature(Function, ES2),
-    ok        = aefa_fate:check_signature(Signature, ES2),
-    ES3       = aefa_fate:bind_args_from_signature(Signature, ES2),
+    ES3       = aefa_fate:check_signature_and_bind_args(Signature, ES2),
     transfer_value(Current, Contract, Value, ES3).
 
 transfer_value(_From, ?FATE_CONTRACT(_To), Value, ES) when not ?IS_FATE_INTEGER(Value) ->

@@ -17,10 +17,9 @@
 
 -export([get_trace/1]).
 
--export([ bind_args_from_signature/2
-        , check_remote/2
+-export([ check_remote/2
         , check_return_type/1
-        , check_signature/2
+        , check_signature_and_bind_args/2
         , get_function_signature/2
         , push_gas_cap/2
         , push_return_address/1
@@ -229,8 +228,7 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
     ES2 = set_remote_function(Contract, Function, ES1),
     ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
-    ok = check_signature(Signature, ES3),
-    ES4 = bind_args_from_signature(Signature, ES3),
+    ES4 = check_signature_and_bind_args(Signature, ES3),
     aefa_engine_state:set_caller(aeb_fate_data:make_address(maps:get(caller, Spec)), ES4).
 
 check_remote(Contract, EngineState) when not ?IS_FATE_CONTRACT(Contract) ->
@@ -283,19 +281,29 @@ get_function_signature(Name, ES) ->
 
 check_return_type(ES) ->
     Current = aefa_engine_state:current_function(ES),
+    TVars   = aefa_engine_state:current_tvars(ES),
     {_ArgTypes, RetSignature} = get_function_signature(Current, ES),
     Acc = aefa_engine_state:accumulator(ES),
     case check_type(RetSignature, Acc) of
-        #{}   -> ES;
-        false -> abort({bad_return_type, Acc, RetSignature}, ES)
+        false -> abort({bad_return_type, Acc, RetSignature}, ES);
+        Inst  ->
+            case merge_match(Inst, TVars) of
+                false -> abort({bad_return_type, Acc, instantiate_type(TVars, RetSignature)}, ES);
+                #{}   -> ES
+            end
     end.
+
+check_signature_and_bind_args(Signature, ES) ->
+    {ok, Inst} = check_signature(Signature, ES),
+    ES1 = bind_args_from_signature(Signature, ES),
+    aefa_engine_state:set_current_tvars(Inst, ES1).
 
 check_signature({ArgTypes, _RetSignature}, ES) ->
     Stack = aefa_engine_state:accumulator_stack(ES),
     Args = [aefa_engine_state:accumulator(ES) | Stack],
     case check_arg_types(ArgTypes, Args) of
-        ok ->
-            ok;
+        {ok, Inst} ->
+            {ok, Inst};
         {error, T, V}  ->
             abort({value_does_not_match_type, V, T}, ES)
     end.
@@ -308,8 +316,8 @@ bind_args_from_signature({ArgTypes, _RetSignature}, ES) ->
 check_arg_types(Ts, As0) ->
     As = lists:sublist(As0, length(Ts)),
     case check_type({tuple, Ts}, {tuple, list_to_tuple(As)}) of
-        #{}   -> ok;
-        false -> {error, Ts, As}
+        false -> {error, Ts, As};
+        Inst  -> {ok, Inst}
     end.
 
 bind_args(N, _, [], Mem, EngineState) ->
@@ -356,6 +364,13 @@ infer_type(X) -> throw({not_a_fate_value, X}).
 
 infer_element_type(Xs) ->
     lists:foldl(fun intersect_types/2, any, [infer_type(X) || X <- Xs]).
+
+instantiate_type(TVars, {tvar, X})          -> maps:get(X, TVars, {tvar, X});
+instantiate_type(_TVars, T) when is_atom(T) -> T;
+instantiate_type(TVars, {list, T})          -> {list, instantiate_type(TVars, T)};
+instantiate_type(TVars, {tuple, Ts})        -> {tuple, [instantiate_type(TVars, T) || T <- Ts]};
+instantiate_type(TVars, {map, K, V})        -> {map, instantiate_type(TVars, K), instantiate_type(TVars, V)};
+instantiate_type(TVars, {variant, Ts})      -> {variant, [instantiate_type(TVars, T) || T <- Ts]}.
 
 intersect_types(T, any) -> T;
 intersect_types(any, T) -> T;
@@ -487,17 +502,19 @@ pop_call_stack(ES) ->
     case aefa_engine_state:pop_call_stack(ES) of
         empty ->
             {stop, ES};
-        {local, Function, BB, ES1} ->
+        {local, Function, TVars, BB, ES1} ->
             ES2 = set_local_function(Function, ES1),
-            {jump, BB, ES2};
-        {remote, Contract, Function, BB, ES1} ->
+            ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
+            {jump, BB, ES3};
+        {remote, Contract, Function, TVars, BB, ES1} ->
             ES2 = set_remote_function(Contract, Function, ES1),
-            {jump, BB, ES2}
+            ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
+            {jump, BB, ES3}
     end.
 
 collect_gas_stores([{gas_store, Gas}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas + Gas);
-collect_gas_stores([{_, _, _, _, _}|Left], AccGas) ->
+collect_gas_stores([{_, _, _, _, _, _}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas);
 collect_gas_stores([], AccGas) ->
     AccGas.

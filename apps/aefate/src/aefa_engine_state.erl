@@ -22,6 +22,7 @@
         , current_bb/1
         , current_contract/1
         , current_function/1
+        , current_tvars/1
         , functions/1
         , gas/1
         , logs/1
@@ -42,6 +43,7 @@
         , set_current_bb/2
         , set_current_contract/2
         , set_current_function/2
+        , set_current_tvars/2
         , set_functions/2
         , set_gas/2
         , set_logs/2
@@ -88,6 +90,7 @@
             , current_bb        :: non_neg_integer()
             , current_contract  :: ?FATE_VOID | pubkey()
             , current_function  :: ?FATE_VOID | binary()
+            , current_tvars     :: map()    %% Instantiations for type variables in the current call (needed when type checking return value)
             , functions         :: map()    %% Cache for current contract.
             , gas               :: integer()
             , logs              :: [term()] %% TODO: Not used properly yet
@@ -175,16 +178,17 @@ push_arguments([A|As], Acc, Stack, ES) ->
 push_call_stack(#es{ current_bb = BB
                    , current_function = Function
                    , current_contract = Contract
+                   , current_tvars    = TVars
                    , call_stack = Stack
                    , call_value = Value
                    , memory = Mem} = ES) ->
-    ES#es{call_stack = [{Contract, Function, BB+1, Mem, Value}|Stack]}.
+    ES#es{call_stack = [{Contract, Function, TVars, BB + 1, Mem, Value}|Stack]}.
 
 %% TODO: Make better types for all these things
 -spec pop_call_stack(state()) ->
                             'empty' |
-                            {'local', _, non_neg_integer(), state()} |
-                            {'remote', aeb_fate_data:fate_contract(), _, non_neg_integer(), state()}.
+                            {'local', _, map(), non_neg_integer(), state()} |
+                            {'remote', aeb_fate_data:fate_contract(), _, map(), non_neg_integer(), state()}.
 pop_call_stack(#es{call_stack = Stack,
                    current_contract = Current} = ES) ->
     case Stack of
@@ -194,15 +198,15 @@ pop_call_stack(#es{call_stack = Stack,
                        , call_stack = Rest
                        },
             pop_call_stack(ES1);
-        [{Current, Function, BB, Mem, Value}| Rest] ->
-            {local, Function, BB,
+        [{Current, Function, TVars, BB, Mem, Value}| Rest] ->
+            {local, Function, TVars, BB,
              ES#es{ call_value = Value
                   , memory = Mem
                   , call_stack = Rest
                   }};
-        [{Pubkey, Function, BB, Mem, Value}| Rest] ->
+        [{Pubkey, Function, TVars, BB, Mem, Value}| Rest] ->
             Seen = pop_seen_contracts(Pubkey, ES),
-            {remote, aeb_fate_data:make_contract(Pubkey), Function, BB,
+            {remote, aeb_fate_data:make_contract(Pubkey), Function, TVars, BB,
              ES#es{ call_value = Value
                   , memory = Mem
                   , call_stack = Rest
@@ -396,6 +400,16 @@ current_function(#es{current_function = X}) ->
 -spec set_current_function(binary(), state()) -> state().
 set_current_function(X, ES) ->
     ES#es{current_function = X}.
+
+%%%------------------
+
+-spec current_tvars(state()) -> map().
+current_tvars(#es{current_tvars = X}) ->
+    X.
+
+-spec set_current_tvars(map(), state()) -> state().
+set_current_tvars(X, ES) ->
+    ES#es{current_tvars = X}.
 
 %%%------------------
 
