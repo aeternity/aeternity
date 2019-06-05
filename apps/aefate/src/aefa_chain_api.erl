@@ -14,12 +14,14 @@
         , beneficiary/1
         , blockhash/2
         , contract_fate_code/2
+        , contract_store/2
         , difficulty/1
         , final_trees/1
         , gas_limit/1
         , gas_price/1
         , generation/1
         , origin/1
+        , set_contract_store/3
         , timestamp_in_msecs/1
         , tx_env/1
         ]).
@@ -106,6 +108,14 @@ gas_limit(#state{}) ->
 timestamp_in_msecs(#state{} = S) ->
     aeb_fate_data:make_integer(aetx_env:time_in_msecs(tx_env(S))).
 
+-spec set_contract_store(pubkey(), aect_contracts_store:store(), state()) ->
+                                state().
+set_contract_store(Pubkey, Store, #state{primop_state = PState} = S) ->
+    {value, C} = aeprimop_state:find_contract_without_store(Pubkey, PState),
+    C1         = aect_contracts:set_state(Store, C),
+    PState1    = aeprimop_state:put_contract(C1, PState),
+    S#state{primop_state = PState1}.
+
 %%%-------------------------------------------------------------------
 %%% Slightly more involved getters with caching
 
@@ -156,6 +166,13 @@ contract_fate_code(Pubkey, #state{primop_state = PState} = S) ->
                     error
             end
     end.
+
+-spec contract_store(pubkey(), state()) -> {aect_contracts_store:store(), state()}.
+contract_store(Pubkey, #state{primop_state = PState} = S) ->
+    %% If we are looking for the store, we are already running the contract,
+    %% so we can boldly assume it exists and have the correct vm version.
+    {Contract, PState1} = aeprimop_state:get_contract(Pubkey, PState),
+    {aect_contracts:state(Contract), S#state{primop_state = PState1}}.
 
 -spec account_balance(pubkey(), state()) -> 'error' |
                                             {'ok', aeb_fate_data:fate_integer(), state()}.

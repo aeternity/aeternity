@@ -437,11 +437,11 @@ map_member(Arg0, Arg1, Arg2, EngineState) ->
 map_from_list(Arg0, Arg1, EngineState) ->
     un_op(map_from_list, {Arg0, Arg1}, EngineState).
 
-map_to_list(_Arg0,_Arg1,_EngineState) ->
-    exit({error, op_not_implemented_yet}).
+map_to_list(Arg0, Arg1, EngineState) ->
+    un_op(map_to_list, {Arg0, Arg1}, EngineState).
 
-map_size_(_Arg0,_Arg1,_EngineState) ->
-    exit({error, op_not_implemented_yet}).
+map_size_(Arg0, Arg1, EngineState) ->
+    un_op(map_size, {Arg0, Arg1}, EngineState).
 
 %% ------------------------------------------------------
 %% List instructions
@@ -476,8 +476,8 @@ append(Arg0, Arg1, Arg2, EngineState) ->
 str_join(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(str_join, {Arg0, Arg1, Arg2}, EngineState).
 
-str_length(_Arg0, _Arg1, _EngineState) ->
-    exit({error, op_not_implemented_yet}).
+str_length(Arg0, Arg1, EngineState) ->
+    un_op(str_length, {Arg0, Arg1}, EngineState).
 
 int_to_str(Arg0, Arg1, EngineState) ->
     un_op(int_to_str, {Arg0, Arg1}, EngineState).
@@ -803,11 +803,9 @@ ter_op(Op, {To, One, Two, Three}, ES) ->
 get_op_arg({stack, 0}, ES) ->
     aefa_engine_state:pop_accumulator(ES);
 get_op_arg({arg,_N} = Var, ES) ->
-    Value = aefa_fate:lookup_var(Var, ES),
-    {Value, ES};
+    aefa_fate:lookup_var(Var, ES);
 get_op_arg({var,_N} = Var, ES) ->
-    Value = aefa_fate:lookup_var(Var, ES),
-    {Value, ES};
+    aefa_fate:lookup_var(Var, ES);
 get_op_arg({immediate, X}, ES) ->
     {X, ES}.
 
@@ -856,6 +854,12 @@ op('not', A) ->
 op(map_from_list, A) when ?IS_FATE_LIST(A) ->
     KeyValues = [T || ?FATE_TUPLE(T) <- ?FATE_LIST_VALUE(A)],
     aeb_fate_data:make_map(maps:from_list(KeyValues));
+op(map_to_list, A) when ?IS_FATE_MAP(A) ->
+    Tuples = [aeb_fate_data:make_tuple({K, V})
+              || {K, V} <- maps:to_list(?FATE_MAP_VALUE(A))],
+    aeb_fate_data:make_list(Tuples);
+op(map_size, A) when ?IS_FATE_MAP(A) ->
+    aeb_fate_data:make_integer(map_size(?FATE_MAP_VALUE(A)));
 op(hd, A) when ?IS_FATE_LIST(A) ->
     case ?FATE_LIST_VALUE(A) of
         [] -> aefa_fate:abort(hd_on_empty_list);
@@ -879,6 +883,8 @@ op(addr_to_str, A) when ?IS_FATE_ADDRESS(A) ->
     aeser_api_encoder:encode(account_pubkey, Val);
 op(str_reverse, A) when ?IS_FATE_STRING(A) ->
     aeb_fate_data:make_string(binary_reverse(?FATE_STRING_VALUE(A)));
+op(str_length, A) when ?IS_FATE_STRING(A) ->
+    aeb_fate_data:make_integer(byte_size(?FATE_STRING_VALUE(A)));
 op(bits_all, N)  when ?IS_FATE_INTEGER(N) ->
     ?FATE_BITS((1 bsl (N)) - 1);
 op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
@@ -921,6 +927,9 @@ op('and', A, B)  when ?IS_FATE_BOOLEAN(A)
 op('or', A, B)  when ?IS_FATE_BOOLEAN(A)
                     , ?IS_FATE_BOOLEAN(B) ->
     A or B;
+op(map_delete, Map, Key) when ?IS_FATE_MAP(Map),
+                              not ?IS_FATE_MAP(Key) ->
+    maps:remove(Key, ?FATE_MAP_VALUE(Map));
 op(map_lookup, Map, Key) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     case maps:get(Key, ?FATE_MAP_VALUE(Map), void) of

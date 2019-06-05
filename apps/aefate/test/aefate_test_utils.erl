@@ -7,7 +7,8 @@
 -module(aefate_test_utils).
 
 -export([encode/1,
-         decode/1
+         decode/1,
+         decode/2
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
@@ -76,8 +77,61 @@ decode(?FATE_ORACLE(<<X:256>>))             -> {oracle, X};
 decode(?FATE_NAME(<<X:256>>))               -> {name, X};
 decode(?FATE_CHANNEL(<<X:256>>))            -> {channel, X};
 decode(?FATE_BITS(Bits))                    -> {bits, Bits};
-decode(?FATE_TUPLE(T))                      -> erlang:list_to_tuple([decode(E) || E <- T]);
-decode(?FATE_VARIANT(Arities, Tag, Values)) -> {variant, Arities, Tag, Values};
-decode(S) when ?IS_FATE_STRING(S)           -> binary_to_list(S);
+decode(?FATE_TUPLE(T))                      -> list_to_tuple([decode(E) || E <- tuple_to_list(T)]);
+decode(?FATE_VARIANT(Arities, Tag, Values)) -> {variant, Arities, Tag, decode(?FATE_TUPLE(Values))};
+decode(S) when ?IS_FATE_STRING(S)           -> S;
 decode(M) when ?IS_FATE_MAP(M)              ->
     maps:from_list([{decode(K), decode(V)} || {K, V} <- maps:to_list(M)]).
+
+decode(I, word) when ?IS_FATE_INTEGER(I)     -> I;
+decode(I, signed_word) when ?IS_FATE_INTEGER(I) -> I;
+decode(?FATE_TRUE, bool)                     -> true;
+decode(?FATE_FALSE, bool)                    -> false;
+decode(L, {list, T}) when ?IS_FATE_LIST(L)   -> [decode(E, T) || E <- L];
+decode(?FATE_ADDRESS(<<Address:256>>), word) -> {address, Address};
+decode(?FATE_HASH(H), word)                  -> {hash, H};
+decode(?FATE_SIGNATURE(S), word)             -> {signature, S};
+decode(?FATE_CONTRACT(<<X:256>>), word)      -> {contract, X};
+decode(?FATE_ORACLE(<<X:256>>), word)        -> {oracle, X};
+decode(?FATE_NAME(<<X:256>>), word)          -> {name, X};
+decode(?FATE_CHANNEL(<<X:256>>), word)       -> {channel, X};
+decode(?FATE_BITS(Bits), word)               -> {bits, Bits};
+decode(?FATE_TUPLE({}), word)                -> {tuple, []};
+decode(?FATE_TUPLE(Tuple), {tuple, Ts})      ->
+    list_to_tuple([decode(E, T) || {E, T} <- lists:zip(tuple_to_list(Tuple), Ts)]);
+decode(?FATE_VARIANT(Arities, Tag, Values), {option, Type}) ->
+    decode_variant(Arities, [{none, []}, {some, [Type]}], Tag, Values, '$undefined$');
+decode(?FATE_VARIANT(Arities, Tag, Values), {variant_t, Cs}) ->
+    decode_variant(Arities, Cs, Tag, Values, '$undefined$');
+decode(S, string) when ?IS_FATE_STRING(S)           -> S;
+decode(M, {map, KeyType, ValType}) when ?IS_FATE_MAP(M)              ->
+    maps:from_list([{decode(K, KeyType), decode(V, ValType)} || {K, V} <- maps:to_list(M)]).
+
+decode_variant([Arity|Left1], [{C, Types}|Left2], N = 0, Values, Acc) ->
+    %% These are the values that should be returned.
+    '$undefined$' = Acc,
+    case Types of
+        [] when Arity =:= 0 ->
+            decode_variant(Left1, Left2, N - 1, Values, C);
+        [] when Arity =/= 0 ->
+            error(variant_type_error);
+        [_|_] when length(Types) =:= Arity ->
+            Tuple = decode(?FATE_TUPLE(Values), {tuple, Types}),
+            Acc1 = list_to_tuple([C | tuple_to_list(Tuple)]),
+            decode_variant(Left1, Left2, N - 1, Values, Acc1);
+        _ ->
+            error({decode_variant_fail, Types, Arity})
+    end;
+decode_variant([Arity|Left1], [{_C, Types}|Left2], N, Values, Acc) ->
+    case length(Types) =:= Arity of
+        true ->
+            decode_variant(Left1, Left2, N - 1, Values, Acc);
+        false ->
+            error({decode_variant_fail, Types, Arity})
+    end;
+decode_variant([], [], _N, _Values, '$undefined$') ->
+    error(decode_variant_fail);
+decode_variant([], [], _N, _Values, Acc) ->
+    Acc.
+
+

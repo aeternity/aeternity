@@ -7,6 +7,7 @@
 -module(aefa_engine_state).
 
 -export([ new/5
+        , finalize/1
         ]).
 
 %% Getters
@@ -17,7 +18,7 @@
         , call_value/1
         , caller/1
         , chain_api/1
-        , contracts/1
+        , code_cache/1
         , current_bb/1
         , current_contract/1
         , current_function/1
@@ -25,6 +26,7 @@
         , gas/1
         , logs/1
         , memory/1
+        , stores/1
         , trace/1
         ]).
 
@@ -36,7 +38,7 @@
         , set_call_value/2
         , set_caller/2
         , set_chain_api/2
-        , set_contracts/2
+        , set_code_cache/2
         , set_current_bb/2
         , set_current_contract/2
         , set_current_function/2
@@ -44,6 +46,7 @@
         , set_gas/2
         , set_logs/2
         , set_memory/2
+        , set_stores/2
         , set_trace/2
         ]).
 
@@ -81,7 +84,7 @@
             , caller            :: aeb_fate_data:fate_address()
             , call_value        :: non_neg_integer()
             , chain_api         :: aefa_chain_api:state()
-            , contracts         :: map() %% Cache for loaded contracts.
+            , code_cache        :: map() %% Cache for loaded contracts.
             , current_bb        :: non_neg_integer()
             , current_contract  :: ?FATE_VOID | pubkey()
             , current_function  :: ?FATE_VOID | binary()
@@ -91,6 +94,7 @@
             , memory            :: map()    %% Environment #{name => val}
             , seen_contracts    :: [pubkey()]
                                    %% Call stack of contracts (including tail calls)
+            , stores            :: aefa_stores:store()
             , trace             :: list()
             }).
 
@@ -99,7 +103,7 @@
              ]).
 
 -spec new(non_neg_integer(), non_neg_integer(), map(), aefa_chain_api:state(), map()) -> state().
-new(Gas, Value, Spec, APIState, Contracts) ->
+new(Gas, Value, Spec, APIState, CodeCache) ->
     [error({bad_init_arg, X, Y}) || {X, Y} <- [{gas, Gas}, {value, Value}],
                                     not (is_integer(Y) andalso Y >= 0)],
     #es{ accumulator       = ?FATE_VOID
@@ -109,7 +113,7 @@ new(Gas, Value, Spec, APIState, Contracts) ->
        , caller            = aeb_fate_data:make_address(maps:get(caller, Spec))
        , call_value        = Value
        , chain_api         = APIState
-       , contracts         = Contracts
+       , code_cache        = CodeCache
        , current_bb        = 0
        , current_contract  = ?FATE_VOID
        , current_function  = ?FATE_VOID
@@ -118,8 +122,13 @@ new(Gas, Value, Spec, APIState, Contracts) ->
        , logs              = []
        , memory            = #{}
        , seen_contracts    = []
+       , stores            = aefa_stores:new()
        , trace             = []
        }.
+
+-spec finalize(state()) -> state().
+finalize(#es{chain_api = API, stores = Stores} = ES) ->
+    ES#es{chain_api = aefa_stores:finalize(API, Stores)}.
 
 %%%===================================================================
 %%% API
@@ -350,13 +359,13 @@ set_chain_api(X, ES) ->
 
 %%%------------------
 
--spec contracts(state()) -> map().
-contracts(#es{contracts = X}) ->
+-spec code_cache(state()) -> map().
+code_cache(#es{code_cache = X}) ->
     X.
 
--spec set_contracts(map(), state()) -> state().
-set_contracts(X, ES) ->
-    ES#es{contracts = X}.
+-spec set_code_cache(map(), state()) -> state().
+set_code_cache(X, ES) ->
+    ES#es{code_cache = X}.
 
 %%%------------------
 
@@ -427,6 +436,16 @@ memory(#es{memory = X}) ->
 -spec set_memory(map(), state()) -> state().
 set_memory(X, ES) ->
     ES#es{memory = X}.
+
+%%%------------------
+
+-spec stores(state()) -> aefa_stores:store().
+stores(#es{stores=X}) ->
+    X.
+
+-spec set_stores(aefa_stores:store(), state()) -> state().
+set_stores(X, ES) ->
+    ES#es{stores=X}.
 
 %%%------------------
 
