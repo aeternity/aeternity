@@ -425,7 +425,7 @@ maybe_inform(Origin, Action, Tag, Msg, Register) ->
       RegisteredPids),
     %% for easier debugging
     case RegisteredPids == [] of
-        true -> ct:log("No test registered for this event");
+        true -> ct:log("No test registered for this event (Msg = ~p)", [Msg]);
         false -> pass
     end.
 

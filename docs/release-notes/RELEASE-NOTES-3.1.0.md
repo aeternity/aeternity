@@ -8,6 +8,7 @@ It:
   functionality is being built on data frames instead of using the control
   frames.
 * Enhances the HTTP endpoint for channel creation transaction to accept an optional list of delegates.
+* Introduces State Channel fsm-assisted solo-close and slash, and continous chain monitoring
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.1.0
 

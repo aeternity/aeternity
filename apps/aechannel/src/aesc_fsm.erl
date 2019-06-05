@@ -15,6 +15,8 @@
          get_contract_call/4,     %% (fsm(), contract_id(), caller(), round())
          leave/1,
          close_solo/1,
+         slash/1,
+         settle/1,
          shutdown/1,              %% (fsm())
          client_died/1,           %% (fsm())
          connection_died/1,       %% (fsm())
@@ -43,8 +45,12 @@
 
 %% Used by min-depth watcher
 -export([minimum_depth_achieved/4,     %% (Fsm, OnChainId, Type, TxHash)
-         channel_closing_on_chain/2]). %% (Fsm, OnChainId)
+         channel_changed_on_chain/2,   %% (Fsm, Info)
+         channel_closing_on_chain/2,
+         channel_closed_on_chain/2,    %% (Fsm, Info)
+         channel_unlocked/2]). %% (Fsm, Info)
 
+%% gem_statem callbacks
 -export([init/1,
          callback_mode/0,
          code_change/4,
@@ -52,7 +58,7 @@
 
 -export([where/2]).
 
-%% FSM states
+%% FSM states (as per gen_statem callback callback_mode/0)
 -export([initialized/3,
          reestablish_init/3,
          accepted/3,
@@ -72,7 +78,7 @@
          open/3,
          channel_closing/3,   % on-chain closing has been detected
          mutual_closing/3,
-         disconnected/3]).
+         channel_closed/3]).
 
 -export([timeouts/0,
          report_tags/0]).
@@ -90,6 +96,7 @@
                   | deposit_tx
                   | withdraw_tx
                   | close_solo_tx
+                  | settle_tx
                   | ?FND_CREATED
                   | ?DEP_CREATED
                   | ?WDRAW_CREATED
@@ -108,6 +115,8 @@
 -define(WATCH_FND, funding).
 -define(WATCH_DEP, deposit).
 -define(WATCH_WDRAW, withdraw).
+-define(WATCH_CLOSED, closed).
+-define(MIN_DEPTH, min_depth).
 
 -define(UPDATE_CAST(R), R==?UPDATE; R==?DEP_CREATED; R==?WDRAW_CREATED).
 -define(UPDATE_REQ(R),
@@ -142,28 +151,63 @@
                          ; T =:= ?CH_REESTABL
                          ; T =:= ?CH_REEST_ACK).
 
+-define(WATCHER_EVENT(T), T =:= ?CHANNEL_CHANGED
+                        ; T =:= ?CHANNEL_UNLOCKED
+                        ; T =:= ?MIN_DEPTH_ACHIEVED
+                        ; T =:= ?CHANNEL_CLOSING
+                        ; T =:= ?CHANNEL_CLOSED).
+
 -define(KEEP, 10).
--record(w, { n = 0         :: non_neg_integer()
-           , keep = ?KEEP  :: non_neg_integer()
-           , a = []        :: list()
-           , b = []        :: list()
-           }).
+
+-opaque opts() :: #{ minimum_depth => non_neg_integer() %% Defaulted for responder, not for initiator.
+                   , timeouts := #{state_name() := pos_integer()
+                   , report := map()
+                   , log_keep := non_neg_integer()
+                   , initiator := aec_keys:pubkey()
+                   , responder := aec_keys:pubkey()
+                   }}.
 
 -type latest_op() :: undefined % no pending op
                    | {sign | ack, sign_tag(), aetx_sign:signed_tx(), [aesc_offchain_update:update()]}
                    | {create | shutdown | deposit | withdraw, aetx_sign:signed_tx(),
                       [aesc_offchain_update:update()]}
-                   | {watch, ?WATCH_FND
-                           | ?WATCH_DEP
-                           | ?WATCH_WDRAW
-                           | deposit
-                           | withdraw,
+                   | {?MIN_DEPTH, ?WATCH_FND
+                                | ?WATCH_DEP
+                                | ?WATCH_WDRAW
+                                | ?WATCH_CLOSED,
+                      TxHash :: binary(), aetx_sign:signed_tx(),
+                      [aesc_offchain_update:update()]}
+                   | {watch, unlock
+                           | close,
                       TxHash :: binary(), aetx_sign:signed_tx(),
                       [aesc_offchain_update:update()]}
                    | {reestablish, OffChainTx :: aetx_sign:signed_tx()}.
 
+-type log() :: aesc_window:window({Op :: atom(), Type :: atom(), erlang:timestamp(), Msg :: term()}).
+
+-opaque state_name() :: awaiting_open
+                      | awaiting_reestablish
+                      | initialized
+                      | reestablish_init
+                      | awaiting_signature
+                      | accepted
+                      | half_signed
+                      | dep_half_signed
+                      | dep_signed
+                      | wdraw_half_signed
+                      | wdraw_signed
+                      | awaiting_locked
+                      | awaiting_initial_state
+                      | awaiting_update_ack
+                      | awaiting_leave_ack
+                      | signed
+                      | open
+                      | mutual_closing
+                      | channel_closing
+                      | channel_closed.
+
 -record(data, { role                   :: role()
-              , channel_status         :: undefined | open
+              , channel_status         :: undefined | open | closing
               , cur_statem_state       :: undefined | atom()
               , state                  :: aesc_offchain_state:state()
               , session                :: pid()
@@ -176,9 +220,12 @@
               , latest = undefined     :: latest_op()
               , ongoing_update = false :: boolean()
               , last_reported_update   :: undefined | non_neg_integer()
-              , log = #w{}             :: #w{}
+              , log                    :: log()
               , strict_checks = true   :: boolean()
               }).
+
+-opaque data() :: #data{ opts :: opts()
+                       }.
 
 -define(TRANSITION_STATE(S),  S=:=awaiting_signature
                             ; S=:=awaiting_open
@@ -194,7 +241,7 @@ patterns() ->
                             not lists:member(F, [module_info, patterns])].
 
 record_fields(data ) -> record_info(fields, data);
-record_fields(w    ) -> record_info(fields, w);
+record_fields(w    ) -> aesc_window:record_fields(w);
 record_fields(Other) -> aesc_offchain_state:record_fields(Other).
 %% ==================================================================
 
@@ -204,7 +251,13 @@ record_fields(Other) -> aesc_offchain_state:record_fields(Other).
 -define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p", [Err])).
 -endif.
 
-callback_mode() -> [state_functions, state_enter].
+callback_mode() ->
+    [ state_functions %% "... Module:StateName/3, is used."
+    , state_enter     %% "... at every **state change**, call the state callback
+                      %% with arguments `(enter, OldState, Data)`. ... a state
+                      %% enter call will be done right before entering the initial
+                      %% state ..."
+    ].
 
 %% State machine
 %% +---+ channel_open                                                         +---+
@@ -272,8 +325,18 @@ signing_response(Fsm, Tag, Obj) ->
 minimum_depth_achieved(Fsm, ChanId, Type, TxHash) ->
     gen_statem:cast(Fsm, {?MIN_DEPTH_ACHIEVED, ChanId, Type, TxHash}).
 
-channel_closing_on_chain(Fsm, ChanId) ->
-    gen_statem:cast(Fsm, {?CHANNEL_CLOSING, ChanId}).
+channel_changed_on_chain(Fsm, Info) ->
+    gen_statem:cast(Fsm, {?CHANNEL_CHANGED, Info}).
+
+channel_closing_on_chain(Fsm, Info) ->
+    gen_statem:cast(Fsm, {?CHANNEL_CLOSING, Info}).
+
+channel_closed_on_chain(Fsm, Info) ->
+    gen_statem:cast(Fsm, {?CHANNEL_CLOSED, Info}).
+
+channel_unlocked(Fsm, Info) ->
+    lager:debug("sending unlocked", []),
+    gen_statem:cast(Fsm, {?CHANNEL_UNLOCKED, Info}).
 
 where(ChanId, Role) when Role == initiator; Role == responder ->
     gproc:where(gproc_name_by_role(ChanId, Role));
@@ -318,7 +381,8 @@ timer_subst(dep_signed              ) -> funding_lock;
 timer_subst(wdraw_signed            ) -> funding_lock;
 timer_subst(initialized             ) -> accept;
 timer_subst(mutual_closing          ) -> accept;
-timer_subst(channel_closing         ) -> idle.
+timer_subst(channel_closing         ) -> idle;
+timer_subst(channel_closed          ) -> idle.
 
 default_timeouts() ->
     #{ accept         => 120000
@@ -451,6 +515,14 @@ close_solo(Fsm) ->
     lager:debug("close_solo(~p)", [Fsm]),
     gen_statem:call(Fsm, close_solo).
 
+settle(Fsm) ->
+    lager:debug("settle(~p)", [Fsm]),
+    gen_statem:call(Fsm, settle).
+
+slash(Fsm) ->
+    lager:debug("slash(~p)", [Fsm]),
+    gen_statem:call(Fsm, slash).
+
 shutdown(Fsm) ->
     lager:debug("shutdown(~p)", [Fsm]),
     gen_statem:call(Fsm, shutdown).
@@ -458,12 +530,20 @@ shutdown(Fsm) ->
 client_died(Fsm) ->
     %TODO: possibility for reconnect
     lager:debug("client died(~p)", [Fsm]),
-    ok = gen_statem:stop(Fsm).
+    stop_ok(catch gen_statem:stop(Fsm)).
 
 connection_died(Fsm) ->
     %TODO: possibility for reconnect
     lager:debug("connection to participant died(~p)", [Fsm]),
-    ok = gen_statem:stop(Fsm).
+    gen_statem:cast(Fsm, ?DISCONNECT).
+
+
+stop_ok(ok) ->
+    ok;
+stop_ok({'EXIT', noproc}) ->
+    ok;
+stop_ok({'EXIT', {normal,{sys,terminate,_}}}) ->
+    ok.
 
 start_link(#{} = Arg) ->
     gen_statem:start_link(?MODULE, Arg, ?GEN_STATEM_OPTS).
@@ -511,8 +591,18 @@ dry_run_contract(Fsm, #{contract    := _,
 %% ======================================================================
 %% FSM initialization
 
+-spec init(term()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(),
+                                                   InitialState}, ...]}
+                          when InitialState :: state_name().
 init(#{opts := Opts0} = Arg) ->
-    #{role := Role, client := Client} = Opts0,
+    {Role, Opts1} = maps:take(role, Opts0),
+    Client = maps:get(client, Opts1),
+    ReestablishOptKeys = [existing_channel_id, offchain_tx],
+    {Reestablish, ReestablishOpts, Opts2} =
+        { maps:is_key(existing_channel_id, Opts1)
+        , maps:with(ReestablishOptKeys, Opts1)
+        , maps:without(ReestablishOptKeys, Opts1)
+        },
     DefMinDepth = default_minimum_depth(Role),
     Opts = check_opts(
              [
@@ -520,7 +610,7 @@ init(#{opts := Opts0} = Arg) ->
               fun check_timeout_opt/1,
               fun check_rpt_opt/1,
               fun check_log_opt/1
-             ], Opts0),
+             ], Opts2),
     #{initiator := Initiator,
       responder := Responder} = Opts,
     Checks = [fun() -> check_accounts(Initiator, Responder) end],
@@ -528,23 +618,22 @@ init(#{opts := Opts0} = Arg) ->
         {error, Err} ->
             {stop, Err};
         ok ->
-            Session = start_session(Arg, Opts),
-            {ok, State} = aesc_offchain_state:new(Opts),
+            Session = start_session(Arg, Opts#{role => Role}),
+            {ok, State} = aesc_offchain_state:new(maps:merge(Opts#{role => Role}, ReestablishOpts)),
             Data = #data{role   = Role,
                         client  = Client,
                         session = Session,
                         opts    = Opts,
                         state   = State,
-                        log     = #w{keep = maps:get(log_keep, Opts)}},
+                        log     = aesc_window:new(maps:get(log_keep, Opts))},
             lager:debug("Session started, Data = ~p", [Data]),
             %% TODO: Amend the fsm above to include this step. We have transport-level
             %% connectivity, but not yet agreement on the channel parameters. We will next send
             %% a channel_open() message and await a channel_accept().
-            Reestablish = maps:is_key(existing_channel_id, Opts),
             case Role of
                 initiator ->
                     if Reestablish ->
-                            ok_next(reestablish_init, send_reestablish_msg(Data));
+                            ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
                       true ->
                             ok_next(initialized, send_open_msg(Data))
                     end;
@@ -758,8 +847,8 @@ awaiting_signature(cast, {?SIGNED, ?FND_CREATED, SignedTx} = Msg,
                   log(rcv, ?SIGNED, Msg, D#data{create_tx = NewSignedTx,
                                                 latest = {ack, ?FND_CREATED,
                                                           HSCTx, Updates}})),
-            report(on_chain_tx, NewSignedTx, D1),
-            {ok, D2} = start_min_depth_watcher(?WATCH_FND, NewSignedTx,
+            report_on_chain_tx(?FND_CREATED, NewSignedTx, D1),
+            {ok, D2} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_FND}, NewSignedTx,
                                                Updates, D1),
             gproc_register_on_chain_id(D2),
             next_state(awaiting_locked, D2)
@@ -774,8 +863,8 @@ awaiting_signature(cast, {?SIGNED, ?DEP_CREATED, SignedTx} = Msg,
                                           D#data{latest = {ack,
                                                            ?DEP_CREATED,
                                                            HSCTx, Updates}}),
-            report(on_chain_tx, NewSignedTx, D1),
-            {ok, D2} = start_min_depth_watcher(?WATCH_DEP, NewSignedTx,
+            report_on_chain_tx(?DEP_CREATED, NewSignedTx, D1),
+            {ok, D2} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_DEP}, NewSignedTx,
                                                Updates, D1),
             next_state(awaiting_locked,
                       log(rcv, ?SIGNED, Msg, D2))
@@ -790,8 +879,8 @@ awaiting_signature(cast, {?SIGNED, ?WDRAW_CREATED, SignedTx} = Msg,
                                           D#data{latest = {ack,
                                                            ?WDRAW_CREATED,
                                                            HSCTx, Updates}}),
-            report(on_chain_tx, NewSignedTx, D1),
-            {ok, D2} = start_min_depth_watcher(?WATCH_WDRAW, NewSignedTx,
+            report_on_chain_tx(?WDRAW_CREATED, NewSignedTx, D1),
+            {ok, D2} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_WDRAW}, NewSignedTx,
                                                Updates, D1),
             next_state(awaiting_locked, log(rcv, ?SIGNED, Msg, D2))
         end, D);
@@ -841,9 +930,29 @@ awaiting_signature(cast, {?SIGNED, ?SHUTDOWN_ACK, SignedTx} = Msg,
             D1 = send_shutdown_ack_msg(NewSignedTx, D),
             D2 = D1#data{latest = undefined,
                         log    = log_msg(rcv, ?SIGNED, Msg, D1#data.log)},
-            report(on_chain_tx, NewSignedTx, D1),
+            report_on_chain_tx(close_mutual, NewSignedTx, D1),
             close(close_mutual, D2)
         end, D);
+awaiting_signature(cast, {?SIGNED, close_solo_tx, SignedTx} = Msg,
+                   #data{latest = {sign, close_solo_tx, _CSTx, Updates}} = D) ->
+    D1 = D#data{log = log_msg(rcv, ?SIGNED, Msg, D#data.log),
+                latest = undefined},
+    case verify_signatures(pubkeys(me, D), SignedTx) of
+        ok ->
+            close_solo_signed(SignedTx, Updates, D1);
+        {error,_} = Error ->
+            lager:debug("Failed signature check: ~p", [Error]),
+            next_state(open, D1)
+    end;
+awaiting_signature(cast, {?SIGNED, settle_tx, SignedTx} = Msg,
+                   #data{latest = {sign, settle_tx, _STx, Updates}} = D) ->
+    maybe_check_sigs(SignedTx, Updates, channel_settle_tx, not_settle_tx, me,
+        fun() ->
+                D1 = D#data{log = log_msg(rcv, ?SIGNED, Msg, D#data.log),
+                            latest = undefined},
+                settle_signed(SignedTx, Updates, D1)
+        end, D);
+
 %% Other
 awaiting_signature(Type, Msg, D) ->
     handle_common_event(Type, Msg, postpone, D).
@@ -871,11 +980,11 @@ half_signed(cast, {?FND_SIGNED, Msg}, #data{role = initiator,
         {ok, SignedTx, D1} ->
             lager:debug("funding_signed ok", []),
             report(info, funding_signed, D1),
-            report(on_chain_tx, SignedTx, D1),
+            report_on_chain_tx(?FND_SIGNED, SignedTx, D1),
             ok = aec_tx_pool:push(SignedTx),
             D2 = D1#data{create_tx = SignedTx},
             {ack, create_tx, _, Updates} = Latest,
-            {ok, D3} = start_min_depth_watcher(?WATCH_FND, SignedTx, Updates, D2),
+            {ok, D3} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_FND}, SignedTx, Updates, D2),
             next_state(awaiting_locked, D3);
         {error, Error} ->
             close(Error, D)
@@ -892,10 +1001,10 @@ dep_half_signed(cast, {Req, _} = Msg, D) when ?UPDATE_CAST(Req) ->
 dep_half_signed(cast, {?DEP_SIGNED, Msg}, #data{latest = Latest} = D) ->
     case check_deposit_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
-            report(on_chain_tx, SignedTx, D1),
+            report_on_chain_tx(?DEP_SIGNED, SignedTx, D1),
             ok = aec_tx_pool:push(SignedTx),
             {ack, deposit_tx, _, Updates} = Latest,
-            {ok, D2} = start_min_depth_watcher(deposit, SignedTx, Updates, D1),
+            {ok, D2} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_DEP}, SignedTx, Updates, D1),
             next_state(awaiting_locked, D2);
         {error, _Error} ->
             handle_update_conflict(?DEP_SIGNED, D)
@@ -954,10 +1063,11 @@ wdraw_half_signed(cast, {Req,_} = Msg, D) when ?UPDATE_CAST(Req) ->
 wdraw_half_signed(cast, {?WDRAW_SIGNED, Msg}, #data{latest = Latest} = D) ->
     case check_withdraw_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
-            report(on_chain_tx, SignedTx, D1),
+            report_on_chain_tx(?WDRAW_SIGNED, SignedTx, D1),
             ok = aec_tx_pool:push(SignedTx),
             {ack, withdraw_tx, _, Updates} = Latest,
-            {ok, D2} = start_min_depth_watcher(withdraw, SignedTx, Updates, D1),
+            {ok, D2} = start_min_depth_watcher(
+                         {?MIN_DEPTH, ?WATCH_WDRAW}, SignedTx, Updates, D1),
             next_state(awaiting_locked, D2);
         {error, _Error} ->
             handle_update_conflict(?WDRAW_SIGNED, D)
@@ -1005,10 +1115,58 @@ withdraw_locked_complete(SignedTx, Updates, #data{state = State, opts = Opts} = 
                                                             OnChainEnv, Opts)},
     next_state(open, D1).
 
+settle_signed(SignedTx, Updates, #data{ on_chain_id = ChId} = D) ->
+    lager:debug("SignedTx = ~p", [SignedTx]),
+    case aec_chain:get_channel(ChId) of
+        {ok, Ch} ->
+            LockedUntil = aesc_channels:locked_until(Ch),
+            {ok, D1} =
+                case is_channel_locked(LockedUntil) of
+                    true ->
+                        lager:debug("channel is locked", []),
+                        start_min_depth_watcher(unlock, SignedTx, Updates, D);
+                    false ->
+                        lager:debug("channel not locked, pushing settle", []),
+                        ok = aec_tx_pool:push(SignedTx),
+                        start_min_depth_watcher(close, SignedTx, Updates, D)
+                end,
+            next_state(channel_closing, D1);
+        {error,_} = Error ->
+            close(Error, D)
+    end.
+
+close_solo_signed(SignedTx, _Updates, #data{ on_chain_id = ChId } = D) ->
+    lager:debug("SignedTx = ~p", [SignedTx]),
+    case aec_chain:get_channel(ChId) of
+        {ok, Ch} ->
+            LockedUntil = aesc_channels:locked_until(Ch),
+            case is_channel_locked(LockedUntil) of
+                false ->
+                    lager:debug("channel not locked: solo-closing", []),
+                    case aec_tx_pool:push(SignedTx) of
+                        ok ->
+                            ok;
+                        {error, Reason} ->
+                            lager:debug("Close_solo tx failed: ~p", [Reason]),
+                            ok
+                    end;
+                true ->
+                    lager:debug("channel is locked: cannot solo-close", []),
+                    ok
+            end,
+            %% Let the watcher pick up the tx once it makes it onto the chain
+            next_state(open, D);
+        {error,_} = Error ->
+            close(Error, D)
+    end.
+
+is_channel_locked(0) -> false;
+is_channel_locked(LockedUntil) ->
+    LockedUntil >= cur_height().
 
 awaiting_locked(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_FND, TxHash},
-                #data{latest = {watch, ?WATCH_FND, TxHash, CTx, Updates}} = D) ->
+                #data{latest = {?MIN_DEPTH, ?WATCH_FND, TxHash, CTx, Updates}} = D) ->
     report(info, own_funding_locked, D),
     next_state(
       signed, send_funding_locked_msg(D#data{on_chain_id = ChainId,
@@ -1016,7 +1174,7 @@ awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_FND, TxHash},
                                                        Updates}}));
 awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_DEP, TxHash},
                 #data{on_chain_id = ChainId,
-                      latest = {watch, ?WATCH_DEP, TxHash, SignedTx, Updates}} = D) ->
+                      latest = {?MIN_DEPTH, ?WATCH_DEP, TxHash, SignedTx, Updates}} = D) ->
     report(info, own_deposit_locked, D),
     next_state(
       dep_signed, send_deposit_locked_msg(
@@ -1024,7 +1182,7 @@ awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_DEP, TxHash},
                     D#data{latest = {deposit, SignedTx, Updates}}));
 awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_WDRAW, TxHash},
                 #data{on_chain_id = ChainId,
-                      latest = {watch, ?WATCH_WDRAW, TxHash, SignedTx, Updates}} = D) ->
+                      latest = {?MIN_DEPTH, ?WATCH_WDRAW, TxHash, SignedTx, Updates}} = D) ->
     report(info, own_withdraw_locked, D),
     next_state(
       wdraw_signed, send_withdraw_locked_msg(
@@ -1043,6 +1201,7 @@ awaiting_locked(cast, {?WDRAW_ERR, _Msg}, D) ->
     %% TODO: Stop min depth watcher!
     handle_update_conflict(?WDRAW_SIGNED, D);
 awaiting_locked(Type, Msg, D) ->
+    lager:debug("Unexpected ~p: Msg = ~p, Latest = ~p", [Type, Msg, D#data.latest]),
     handle_common_event(Type, Msg, error, D).
 
 awaiting_initial_state(enter, _OldSt, _D) -> keep_state_and_data;
@@ -1112,8 +1271,6 @@ awaiting_leave_ack(cast, {?LEAVE_ACK, Msg}, D) ->
         {error, _} = Err ->
             close(Err, D)
     end;
-awaiting_leave_ack(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
 awaiting_leave_ack(timeout, awaiting_leave_ack = T, D) ->
     close({timeout, T}, D);
 awaiting_leave_ack(cast, {?LEAVE, Msg}, D) ->
@@ -1247,7 +1404,7 @@ mutual_closing(cast, {?SHUTDOWN_ACK, Msg}, D) ->
         {ok, SignedTx, D1} ->
             lager:debug("shutdown_ack ok", []),
             ok = aec_tx_pool:push(SignedTx),
-            report(on_chain_tx, SignedTx, D1),
+            report_on_chain_tx(close_mutual, SignedTx, D1),
             close(close_mutual, D1);
         {error, _} = Error ->
             close(Error, D)
@@ -1257,19 +1414,54 @@ mutual_closing(cast, {closing_signed, _Msg}, D) ->  %% TODO: not using this, rig
 mutual_closing(Type, Msg, D) ->
     handle_common_event(Type, Msg, error, D).
 
-channel_closing(enter, _OldSt, _D) -> keep_state_and_data;
+channel_closing(enter, _OldSt, D) ->
+    D1 = if D#data.channel_status =/= closing ->
+                 report(info, closing, D),
+                 report_update(D#data{channel_status = closing});
+            true ->
+                 report_update(D)
+         end,
+    keep_state(D1#data{ongoing_update = false});
+channel_closing(cast, {?CHANNEL_UNLOCKED, #{chan_id := ChId}} = Msg,
+                #data{on_chain_id = ChId, latest = {watch, unlock, _TxHash, SignedTx, _}} = D) ->
+    lager:debug("channel unlocked", []),
+    D1 = log(rcv, ?CHANNEL_UNLOCKED, Msg, D),
+    {Type, _Tx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    case Type of
+        channel_settle_tx ->
+            lager:debug("pushing settle tx", []),
+            ok = aec_tx_pool:push(SignedTx);
+        _ ->
+            lager:debug("SignedTx of Type ~p - ignoring", [Type]),
+            ok
+    end,
+    keep_state(D1);
 channel_closing(Type, Msg, D) ->
     handle_common_event(Type, Msg, discard, D).
 
-disconnected(cast, {?CH_REESTABL, _Msg}, D) ->
-    %% next_state(closing, D).  % TODO: this is surely wrong
-    close({error, unexpected_sequence}, D).  % TODO: this is just a placeholder
+channel_closed(enter, _OldSt, D) ->
+    keep_state(D#data{ongoing_update = false});
+channel_closed(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_CLOSED, TxHash},
+               #data{ latest = {?MIN_DEPTH, ?WATCH_CLOSED, TxHash, _, _}
+                    , on_chain_id = ChainId } = D) ->
+    close(closed_confirmed, D);
+channel_closed(cast, {?CHANNEL_CHANGED, _Info} = Msg, D) ->
+    %% This is a weird case. The channel was closed, but now isn't.
+    %% This would indicate a fork switch. TODO: detect channel status
+    %% and respond accordingly. For now. Panic and terminate
+    report(info, zombie_channel, D),
+    close(zombie_channel, log(rcv, msg_type(Msg), Msg, D));
+channel_closed(Type, Msg, D) ->
+    handle_common_event(Type, Msg, discard, D).
 
 close(Reason, D) ->
     close_(Reason, log(evt, close, Reason, D)).
 
 close_(close_mutual, D) ->
     report(info, close_mutual, D),
+    {stop, normal, D};
+close_(closed_confirmed, D) ->
+    report(info, closed_confirmed, D),
     {stop, normal, D};
 close_(leave, D) ->
     {stop, normal, D};
@@ -1511,8 +1703,27 @@ handle_call_(St, close_solo, From, D) ->
             keep_state(D, [{reply, From, {error, channel_closing}}]);
         _ ->
             {ok, CloseSoloTx, Updates} = close_solo_tx_for_signing(D),
-            D1 = request_signing(close_solo_tx, CloseSoloTx, Updates, D),
+            D1 = set_ongoing(request_signing(
+                               close_solo_tx, CloseSoloTx, Updates, D)),
             next_state(awaiting_signature, D1, [{reply, From, ok}])
+    end;
+handle_call_(St, slash, From, D) ->
+    case St of
+        channel_closing ->
+            {ok, SlashTx, Updates} = slash_tx_for_signing(D),
+            D1 = set_ongoing(request_signing(slash_tx, SlashTx, Updates, D)),
+            next_state(awaiting_signature, D1, [{reply, From, ok}]);
+        _ ->
+            keep_state(D, [{reply, From, {error, channel_not_closing}}])
+    end;
+handle_call_(St, settle, From, D) ->
+    case St of
+        channel_closing ->
+            {ok, SettleTx, Updates} = settle_tx_for_signing(D),
+            D1 = set_ongoing(request_signing(settle_tx, SettleTx, Updates, D)),
+            next_state(awaiting_signature, D1, [{reply, From, ok}]);
+        _ ->
+            keep_state(D, [{reply, From, {error, channel_not_closed}}])
     end;
 handle_call_(_, {strict_checks, Strict}, From, #data{} = D) when
         is_boolean(Strict) ->
@@ -1541,24 +1752,57 @@ handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
 
 handle_common_event_(timeout, St = T, St, _, D) ->
     close({timeout, T}, D);
-handle_common_event_(cast, {?DISCONNECT, _}, _St, _, D) ->
-    close(disconnect, D);
-handle_common_event_(cast, {?CHANNEL_CLOSING, ChanId} = Msg, _St, _,
-                     #data{on_chain_id = ChanId} = D) ->
+handle_common_event_(cast, {?DISCONNECT, _} = Msg, _St, _, D) ->
+    D1 = log(rcv, ?DISCONNECT, Msg, D),
+    case D1#data.channel_status of
+        closing ->
+            keep_state(D1);
+        _ ->
+            close(disconnect, D1)
+    end;
+handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
     lager:debug("got ~p", [Msg]),
     D1 = log(rcv, ?CHANNEL_CLOSING, Msg, D),
-    case check_closing_event(D1) of
+    case check_closing_event(Info, D1) of
         {can_slash, Round, SignedTx} ->
             {ok, SlashTx, Updates} = slash_tx_for_signing(Round, SignedTx, D1),
-            D2 = request_signing(slash_tx, SlashTx, Updates, D1),
+            report_on_chain_tx(can_slash, SignedTx, D1),
+            D2 = set_ongoing(request_signing(slash_tx, SlashTx, Updates, D1)),
             next_state(awaiting_signature, D2);
-        {ok, Other} ->
-            lager:debug("Channel not solo-closing: ~p", [Other]),
+        {ok, proper_solo_closing, SignedTx} ->
+            lager:debug("Channel solo-closing", []),
+            report_on_chain_tx(solo_closing, SignedTx, D1),
             next_state(channel_closing, D1);
+        {ok, solo_closed, SignedTx} ->
+            lager:debug("Channel solo-closed", []),
+            report_on_chain_tx(solo_closed, SignedTx, D1),
+            close(channel_no_longer_active, D1);
+        {error, channel_active} ->
+            %% Weird, but possible e.g. due to forking (TODO: what might happen next?)
+            keep_state(log(drop, msg_type(Msg), Msg, D));
         {error, _} = Error ->
-            lager:debug("Channel no longer active: ~p", [Error]),
+            %% Couldn't find the channel object on-chain, or something weird happened
+            lager:debug("Channel not found, or other: ~p", [Error]),
             close(channel_no_longer_active, D)
     end;
+handle_common_event_(cast, {?CHANNEL_CHANGED, #{tx_hash := TxHash} = Info} = Msg,
+                     _St, _, D) ->
+    D1 = log(rcv, msg_type(Msg), Msg, D),
+    case D1#data.latest of
+        {?MIN_DEPTH, _, LatestTxHash, _, _} when TxHash =/= LatestTxHash ->
+            %% This is a problem: channel changed while waiting to confirm
+            %% other tx hash
+            close({error, unexpected_tx_on_chain}, D);
+        _ ->
+            lager:debug("Fsm notes channel change ~p", [Info]),
+            report_on_chain_tx(channel_changed, maps:get(tx, Info), D1),
+            keep_state(D1)
+    end;
+handle_common_event_(cast, {?CHANNEL_CLOSED, #{tx := SignedTx} = _Info} = Msg, _St, _, D) ->
+    %% Start a minimum-depth watch, then (if confirmed) terminate
+    report_on_chain_tx(channel_closed, SignedTx, D),
+    {ok, D1} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_CLOSED}, SignedTx, [], D),
+    next_state(channel_closed, log(rcv, msg_type(Msg), Msg, D1));
 handle_common_event_({call, From}, Req, St, Mode, D) ->
     case Mode of
         error_all ->
@@ -1582,6 +1826,7 @@ handle_common_event_(Type, Msg, St, Err, D) when Err==error;
 msg_type(Msg) when is_tuple(Msg) ->
     T = element(1, Msg),
     if ?KNOWN_MSG_TYPE(T) -> T;
+       ?WATCHER_EVENT(T) -> T;
        true -> unknown
     end;
 msg_type(T) -> T.
@@ -1598,10 +1843,11 @@ error_binary(E) when is_atom(E) ->
     atom_to_binary(E, latin1).
 
 
-terminate(Reason, _State, Data) ->
+terminate(Reason, _State, #data{session = Sn} = Data) ->
     lager:debug("terminate(~p, ~p, _)", [Reason, _State]),
     report(info, {died, Reason}, Data),
     report(debug, {log, win_to_list(Data#data.log)}, Data),
+    try aesc_session_noise:close(Sn) catch error:_ -> ok end,
     ok.
 
 code_change(_OldVsn, OldState, OldData, _Extra) ->
@@ -1666,9 +1912,9 @@ check_open_msg(#{ chain_hash           := ChainHash
             {error, chain_hash_mismatch}
     end.
 
-send_reestablish_msg(#data{ opts = #{ existing_channel_id  := ChId
-                                    , offchain_tx := OffChainTx }
-                          , session = Sn } = Data) ->
+send_reestablish_msg(#{ existing_channel_id := ChId
+                      , offchain_tx := OffChainTx },
+                     #data{ session = Sn } = Data) ->
     ChainHash = aec_chain:genesis_hash(),
     TxBin = aetx_sign:serialize_to_binary(OffChainTx),
     Msg = #{ chain_hash => ChainHash
@@ -1960,6 +2206,11 @@ fake_close_mutual_tx(RealCloseTx, D) ->
 new_close_mutual_tx(Opts, D) ->
     new_onchain_tx_for_signing(channel_close_mutual_tx, Opts, D).
 
+
+slash_tx_for_signing(#data{ state = St } = D) ->
+    {Round, SignedTx} = aesc_offchain_state:get_latest_signed_tx(St),
+    slash_tx_for_signing(Round, SignedTx, D).
+
 slash_tx_for_signing(Round, SignedTx, D) ->
     Account = my_account(D),
     {ok, Nonce} = aec_next_nonce:pick_for_account(Account),
@@ -1985,6 +2236,30 @@ slash_tx(Account, Nonce, _Round, SignedTx, #data{ on_chain_id = ChanId
                                   , nonce      => Nonce }),
     {ok, Tx, []}.
 
+settle_tx_for_signing(#data{} = D) ->
+    Account = my_account(D),
+    {ok, Nonce} = aec_next_nonce:pick_for_account(Account),
+    settle_tx(Account, Nonce, D).
+
+settle_tx(Account, Nonce, #data{ opts  = #{initiator := I,
+                                           responder := R} = Opts
+                               , state = State } = D) ->
+    Def = tx_defaults(channel_settle_tx, #{acct => Account}, D),
+    Opts1 = maps:merge(Def, Opts),
+    ChanId = maps:get(channel_id, Opts1),
+    {ok, IAmt} = aesc_offchain_state:balance(I, State),
+    {ok, RAmt} = aesc_offchain_state:balance(R, State),
+    Fee = maps:get(fee, Opts1),
+    TTL = adjust_ttl(maps:get(ttl, Opts1, 0)),
+    {ok, Tx} = aesc_settle_tx:new(#{ channel_id => aeser_id:create(channel, ChanId)
+                                   , from_id    => aeser_id:create(account, Account)
+                                   , initiator_amount_final => IAmt
+                                   , responder_amount_final => RAmt
+                                   , ttl        => TTL
+                                   , fee        => Fee
+                                   , nonce      => Nonce }),
+    {ok, Tx, []}.
+
 close_solo_tx_for_signing(D) ->
     Account = my_account(D),
     {ok, Nonce} = aec_next_nonce:pick_for_account(Account),
@@ -2000,15 +2275,24 @@ close_solo_tx(Account, Nonce, #data{ on_chain_id = ChanId
     Fee = maps:get(fee, Opts1),
     TTL = adjust_ttl(maps:get(ttl, Opts1, 0)),
     {_Round, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
+    {Type, _TxI} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    Payload = case aesc_utils:is_offchain_tx_type(Type) of
+                  true ->
+                      aetx_sign:serialize_to_binary(SignedTx);
+                  _ ->
+                      %% on-chain tx, we assume
+                      <<>>
+              end,
     {ok, Poi} = aesc_offchain_state:poi([{account, Initiator},
                                          {account, Responder}], State),
-    {ok, Tx} = aesc_slash_tx:new(#{ channel_id => aeser_id:create(channel, ChanId)
-                                  , from_id    => aeser_id:create(account, Account)
-                                  , payload    => aetx_sign:serialize_to_binary(SignedTx)
-                                  , poi        => Poi
-                                  , ttl        => TTL
-                                  , fee        => Fee
-                                  , nonce      => Nonce }),
+    {ok, Tx} = aesc_close_solo_tx:new(
+                 #{ channel_id => aeser_id:create(channel, ChanId)
+                  , from_id    => aeser_id:create(account, Account)
+                  , payload    => Payload
+                  , poi        => Poi
+                  , ttl        => TTL
+                  , fee        => Fee
+                  , nonce      => Nonce }),
     {ok, Tx, []}.
 
 tx_defaults(Type, Opts, #data{ on_chain_id = ChanId } = D) ->
@@ -2028,6 +2312,8 @@ tx_defaults_(channel_slash_tx = Tx, Opts, D) ->
     default_ttl(Tx, Opts, D);
 tx_defaults_(channel_close_solo_tx = Tx, Opts, D) ->
     default_ttl(Tx, Opts, D);
+tx_defaults_(channel_settle_tx = Tx, Opts, D) ->
+    default_ttl(Tx, Opts, D);
 tx_defaults_(channel_close_mutual_tx, _Opts, _D) ->
     #{}.
 
@@ -2046,7 +2332,7 @@ default_fee(_Tx) ->
     CurHeight = aec_headers:height(aec_chain:top_header()),
     %% this could be fragile on hard fork height if one participant's node had
     %% already forked and the other had not yet
-    20000 * max(aec_governance:minimum_gas_price(CurHeight),
+    30000 * max(aec_governance:minimum_gas_price(CurHeight),
                 aec_tx_pool:minimum_miner_gas_price()).
 
 default_ttl(_Type, Opts, #data{opts = DOpts}) ->
@@ -2120,7 +2406,7 @@ check_funding_created_msg(#{ temporary_channel_id := ChanId
                            , block_hash           := ?NOT_SET_BLOCK_HASH
                            , data                 := #{tx      := TxBin,
                                                        updates := UpdatesBin}} = Msg,
-                          #data{ state = State, opts = Opts, 
+                          #data{ state = State, opts = Opts,
                                  channel_id = ChanId } = Data) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
@@ -2380,7 +2666,7 @@ check_update_msg(Type, Msg, D) ->
 
 check_update_msg_(Type, #{ channel_id := ChanId
                          , block_hash := ?NOT_SET_BLOCK_HASH
-                         , data       := #{tx      := TxBin, 
+                         , data       := #{tx      := TxBin,
                                            updates := UpdatesBin}} = Msg,
                   #data{ on_chain_id = ChanId } = D) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
@@ -2724,17 +3010,29 @@ start_min_depth_watcher(Type, SignedTx, Updates,
     evt({nonce, Nonce}),
     {OnChainId, D1} = on_chain_id(D, Tx),
     case {Type, Watcher0} of
-        {funding, undefined} ->
+        {{?MIN_DEPTH, ?WATCH_FND = Sub}, undefined} ->
             {ok, Watcher1} = aesc_fsm_min_depth_watcher:start_link(
-                               Type, TxHash, OnChainId, MinDepth, ?MODULE),
+                               Sub, TxHash, OnChainId, MinDepth, ?MODULE),
             evt({watcher, Watcher1}),
             {ok, D1#data{watcher = Watcher1,
-                         latest = {watch, Type, TxHash, SignedTx, Updates}}};
+                         latest = {?MIN_DEPTH, Sub, TxHash, SignedTx, Updates}}};
+        {{?MIN_DEPTH, Sub}, Pid} when is_pid(Pid) ->
+            ok = aesc_fsm_min_depth_watcher:watch_for_min_depth(
+                   Pid, TxHash, MinDepth, ?MODULE, Sub),
+            {ok, D1#data{latest = {?MIN_DEPTH, Sub, TxHash, SignedTx, Updates}}};
+        {unlock, Pid} when Pid =/= undefined ->
+            ok = aesc_fsm_min_depth_watcher:watch_for_unlock(Pid, ?MODULE),
+            {ok, D1#data{latest = {watch, unlock, TxHash, SignedTx, Updates}}};
+        {close, Pid} when Pid =/= undefined ->
+            ok = aesc_fsm_min_depth_watcher:watch_for_channel_close(Pid, MinDepth, ?MODULE),
+            {ok, D1#data{latest = {watch, close, TxHash, SignedTx, Updates}}};
         {_, Pid} when Pid =/= undefined ->  % assertion
+            lager:debug("Unknown Type = ~p, Pid = ~p", [Type, Pid]),
             ok = aesc_fsm_min_depth_watcher:watch(
                    Pid, Type, TxHash, MinDepth, ?MODULE),
             {ok, D1#data{latest = {watch, Type, TxHash, SignedTx, Updates}}}
     end.
+
 
 
 on_chain_id(#data{on_chain_id = ID} = D, _) when ID =/= undefined ->
@@ -2773,8 +3071,6 @@ try_gproc_reg(Key, Value) ->
             error(badarg)
     end.
 
-
-
 gproc_name_by_role(Id, Role) ->
     {n, l, {aesc_channel, {Id, role, Role}}}.
 
@@ -2798,7 +3094,7 @@ cache_state(#data{ on_chain_id = ChId
 
 handle_change_config(log_keep, Keep, #data{log = L} = D)
   when is_integer(Keep), Keep >= 0 ->
-    {ok, ok, D#data{log = L#w{keep = Keep}}};
+    {ok, ok, D#data{log = aesc_window:change_keep(Keep, L)}};
 handle_change_config(_, _, _) ->
     {error, invalid_config}.
 
@@ -2831,6 +3127,12 @@ default_report_flags() ->
      , error        => true
      , debug        => false
      , on_chain_tx  => true}.
+
+report_on_chain_tx(Info, SignedTx, D) ->
+    {Type,_} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    report(on_chain_tx, #{ tx => SignedTx
+                         , type => Type
+                         , info => Info}, D).
 
 report(Tag, St, D) -> report_info(do_rpt(Tag, D), Tag, St, D).
 
@@ -2865,13 +3167,11 @@ do_rpt(Tag, #data{opts = #{report := Rpt}}) ->
 log(Op, Type, M, #data{log = Log0} = D) ->
     D#data{log = log_msg(Op, Type, M, Log0)}.
 
-log_msg(Op, Type, M, #w{n = N, a = A, keep = Keep} = W) when N < Keep ->
-    W#w{n = N+1, a = [{Op, Type, os:timestamp(), M}|A]};
-log_msg(Op, Type, M, #w{a = A} = W) ->
-    W#w{n = 1, a = [{Op, Type, os:timestamp(), M}], b = A}.
+log_msg(Op, Type, M, Log) ->
+    aesc_window:add({Op, Type, os:timestamp(), M}, Log).
 
-win_to_list(#w{a = A, b = B}) ->
-    A ++ B.
+win_to_list(Log) ->
+    aesc_window:to_list(Log).
 
 check_amounts(#{ initiator_amount   := InitiatorAmount0
                , responder_amount   := ResponderAmount0
@@ -2894,42 +3194,43 @@ process_update_error(Reason, From, D) ->
     ?LOG_CAUGHT(Reason),
     keep_state(D, [{reply, From, {error, Reason}}]).
 
-check_closing_event(#data{on_chain_id = ChanId} = D) ->
-    case aec_chain:get_channel(ChanId) of
-        {ok, Channel} ->
-            case aesc_channels:is_active(Channel) of
-                true ->
-                    check_closing_event_(Channel, D);
-                false ->
-                    {error, not_active}
-            end;
-        {error, _} = Error ->
-            Error
-    end.
+check_closing_event(Info, D) ->
+    aec_db:dirty(fun() ->
+                         try check_closing_event_(Info, D)
+                         catch
+                             error:E ->
+                                 ?LOG_CAUGHT(E),
+                                 error(E)
+                         end
+                 end).
 
-check_closing_event_(Ch, #data{state = St}) ->
-    Height = cur_height(),
+check_closing_event_(#{ tx := SignedTx
+                      , channel := Ch
+                      , block_hash := BlockHash}, #data{state = St}) ->
+    %% Get the latest channel object from the chain
     case aesc_channels:is_solo_closing(Ch) of
         true ->
-            {MyLastRound, SignedTx} =
+            {MyLastRound, LastSignedTx} =
                 aesc_offchain_state:get_latest_signed_tx(St),
             case aesc_utils:check_round_greater_than_last(
                    Ch, MyLastRound, slash) of
                 ok ->
                     %% We have a later valid channel state
-                    {can_slash, MyLastRound, SignedTx};
+                    {can_slash, MyLastRound, LastSignedTx};
                 {error, same_round} ->
-                    {ok, proper_solo_closing};
+                    {ok, proper_solo_closing, SignedTx};
                 {error, old_round} ->
                     %% This is weird: presumably, our state is out-of-date
-                    {ok, proper_solo_closing}
+                    {ok, proper_solo_closing, SignedTx}
             end;
         false ->
+            {ok, Hdr} = aec_chain:get_header(BlockHash),
+            Height = aec_headers:height(Hdr),
             case aesc_channels:is_solo_closed(Ch, Height) of
                 true ->
-                    {ok, solo_closed};
+                    {ok, solo_closed, SignedTx};
                 false ->
-                    {ok, not_solo_closing}
+                    {error, not_solo_closing}
             end
     end.
 
@@ -2967,6 +3268,9 @@ check_tx_and_verify_signatures(SignedTx, Updates, Type, Data, Pubkeys, ErrTypeMs
     #data{state = State, opts = Opts} = Data,
     Aetx = aetx_sign:tx(SignedTx),
     case aetx:specialize_type(Aetx) of
+        {channel_settle_tx, _Tx} ->
+            %% TODO: conduct more relevant checks
+            verify_signatures(Pubkeys, SignedTx);
         {Type, _Tx} -> % check type
             case call_cb(Aetx, channel_pubkey, []) of
                 ChannelPubkey -> % expected pubkey
@@ -3052,11 +3356,11 @@ next_round(#data{state = State}) ->
 %% event(_, _, _) ->
 %%     ok.
 account_type(Pubkey) ->
-		case aec_chain:get_account(Pubkey) of
-    		{value, Account} ->
-						{ok, aec_accounts:type(Account)};
-				_ -> not_found
-		end.
+    case aec_chain:get_account(Pubkey) of
+        {value, Account} ->
+            {ok, aec_accounts:type(Account)};
+        _ -> not_found
+    end.
 
 check_accounts(Initiator, Responder) ->
     case {account_type(Initiator), account_type(Responder)} of

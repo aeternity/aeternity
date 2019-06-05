@@ -36,7 +36,7 @@
         , dep_wdraw_with_conflict/1
         , deposit/1
         , withdraw/1
-        , channel_subverted/1
+        , channel_detects_close_solo/1
         , leave_reestablish/1
         , leave_reestablish_close/1
         , change_config_get_history/1
@@ -103,7 +103,7 @@ groups() ->
       , dep_wdraw_with_conflict
       , deposit
       , withdraw
-      , channel_subverted
+      , channel_detects_close_solo
       , leave_reestablish
       , leave_reestablish_close
       , change_config_get_history
@@ -649,19 +649,26 @@ withdraw(Cfg) ->
     shutdown_(I, R),
     ok.
 
-channel_subverted(Cfg) ->
+channel_detects_close_solo(Cfg) ->
     Debug = get_debug(Cfg),
-    #{ i := I, r := R } = create_channel_([?SLOGAN|Cfg]),
+    #{ i := I, r := R, spec := Spec } = create_channel_([?SLOGAN|Cfg]),
     {ok, Tx} = close_solo_tx(I, <<>>),
     #{ priv := IPrivKey } = ?config(initiator, Cfg),
     SignedCloseSoloTx = aec_test_utils:sign_tx(Tx, [IPrivKey]),
     ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(
-        aecore_suite_utils:node_name(dev1), [TxHash], ?MAX_MINED_BLOCKS),
-    {ok,_} = receive_from_fsm(info, I, fun died_subverted/1, ?TIMEOUT, Debug),
-    {ok,_} = receive_from_fsm(info, R, fun died_subverted/1, ?TIMEOUT, Debug),
-    check_info(500).
+    mine_blocks_until_txs_on_chain(dev1, [TxHash]),
+    LockPeriod = maps:get(lock_period, Spec),
+    TTL = current_height(dev1) + LockPeriod,
+    ct:log("Expected TTL = ~p", [TTL]),
+    SignedTx = await_on_chain_report(I, #{info => solo_closing}, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R, #{info => solo_closing}, ?TIMEOUT),
+    {ok,_} = receive_from_fsm(info, I, fun closing/1, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(info, R, fun closing/1, ?TIMEOUT, Debug),
+    check_info(500),
+    settle_(LockPeriod, maps:get(minimum_depth, Spec), I, R, Debug),
+    check_info(500),
+    ok.
 
 close_solo_tx(#{ fsm        := Fsm
                , channel_id := ChannelId }, Payload) ->
@@ -763,6 +770,7 @@ check_history(Log) ->
     %% Expected events for initiator so far, in reverse cronological order
     Expected = [{rcv, funding_locked},
                 {snd, funding_locked},
+                {rcv, channel_changed},
                 {rcv, funding_signed},
                 {snd, funding_created},
                 {rcv, signed},
@@ -813,6 +821,11 @@ died_normal(#{info := {died,normal}}) -> ok.
 %% died_subverted(#{info := {died,channel_closing_on_chain}}) -> ok.
 died_subverted(#{info := {died,_}}) -> ok.
 
+%% solo_closing(#{info := solo_closing}) -> ok.
+
+closing(#{info := closing} = Msg) ->
+    ct:log("matches #{info := closing} - ~p", [Msg]),
+    ok.
 
 multiple_channels(Cfg) ->
     multiple_channels_t(10, 9360, {transfer, 100}, ?SLOGAN, Cfg).
@@ -848,8 +861,7 @@ multiple_channels_t(NumCs, FromPort, Msg, Slogan, Cfg) ->
                 aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx))
             end,
             Txs),
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(
-        aecore_suite_utils:node_name(dev1), TxHashes, ?MAX_MINED_BLOCKS),
+    mine_blocks_until_txs_on_chain(dev1, TxHashes),
     mine_blocks(dev1, ?MINIMUM_DEPTH),
     Cs = collect_acks(Cs, channel_ack, NumCs),
     ct:log("channel pids collected: ~p", [Cs]),
@@ -1018,7 +1030,7 @@ check_mutual_close_with_wrong_amounts(Cfg) ->
     true = (rpc(dev1, erlang, process_info, [FsmI]) =/= undefined),
     true = (rpc(dev1, erlang, process_info, [FsmR]) =/= undefined),
     %% Deposit funds to cover the closing fee. Then it should work
-    {ok, _I1, _R1} = deposit_(I, R, 20000 * aec_test_utils:min_gas_price(), Debug),
+    {ok, _I1, _R1} = deposit_(I, R, 30000 * aec_test_utils:min_gas_price(), Debug),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
     ok.
 
@@ -1224,6 +1236,41 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R) ->
     verify_close_mutual_tx(SignedTx, ChannelId),
     ok.
 
+settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug) ->
+    ok = rpc(dev1, aesc_fsm, settle, [FsmI]),
+    {_, SignedTx} = await_signing_request(settle_tx, I),
+    ct:log("settle_tx signed", []),
+    {ok, MinedKeyBlocks} = mine_blocks_until_txs_on_chain(
+                             dev1,
+                             [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))]),
+    KeyBlocksMissingForTTL = (TTL + 1) - length(MinedKeyBlocks),
+    KeyBlocksMissingForMinDepth =
+        if
+            KeyBlocksMissingForTTL > 0 ->
+                mine_key_blocks(dev1, KeyBlocksMissingForTTL),
+                MinDepth;
+            KeyBlocksMissingForTTL =< 0 ->
+                MinDepth + KeyBlocksMissingForTTL
+        end,
+    SignedTx = await_on_chain_report(I, #{info => channel_closed}, ?TIMEOUT), % same tx
+    ct:log("I received On-chain report: ~p", [SignedTx]),
+    SignedTx = await_on_chain_report(R, #{info => channel_closed}, ?TIMEOUT), % same tx
+    ct:log("R received On-chain report: ~p", [SignedTx]),
+    verify_settle_tx(SignedTx, ChannelId),
+    ct:log("settle_tx verified", []),
+    if
+        KeyBlocksMissingForMinDepth > 0 ->
+            mine_key_blocks(dev1, KeyBlocksMissingForMinDepth);
+        KeyBlocksMissingForMinDepth =< 0 ->
+            ok
+    end,
+    {ok, _} = receive_from_fsm(info, I, closed_confirmed, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(info, R, closed_confirmed, ?TIMEOUT, Debug),
+    ct:log("closed_confirmed received from both", []),
+    {ok,_} = receive_from_fsm(info, I, fun died_normal/1, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(info, R, fun died_normal/1, ?TIMEOUT, Debug),
+    ct:log("died_normal detected from both", []),
+    ok.
 
 %% Retry N times, T ms apart, if F() raises an exception.
 %% Used in places where there could be a race.
@@ -1378,6 +1425,7 @@ create_channel_from_spec(
     log(Debug, "mining blocks on dev1 for minimum depth", []),
     CurrentHeight = current_height(dev1),
     SignedTx = await_on_chain_report(I2, ?TIMEOUT),
+    ct:log("SignedTx = ~p", [SignedTx]),
     SignedTx = await_on_chain_report(R2, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     mine_blocks(dev1, ?MINIMUM_DEPTH, opt_add_tx_to_debug(SignedTx, Debug)),
@@ -1436,6 +1484,14 @@ verify_close_mutual_tx(SignedTx, ChannelId) ->
              {channel_id, ChId} <- ChInfo
         ]).
 
+verify_settle_tx(SignedTx, ChannelId) ->
+    {channel_settle_tx, Tx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    {_, ChInfo} = aesc_settle_tx:serialize(Tx),
+    true = lists:member(ChannelId,
+        [ aeser_id:specialize(ChId, channel) ||
+            {channel_id, ChId} <- ChInfo
+        ]).
+
 await_create_tx_i(I, R, Debug) ->
     {I1, _} = await_signing_request(create_tx, I, Debug),
     await_funding_created_p(I1, R, Debug).
@@ -1492,12 +1548,31 @@ sign_signing_request(Tag, #{fsm := Fsm} = R, SignedTx, Updates) ->
     aesc_fsm:signing_response(Fsm, Tag, SignedTx),
     {check_amounts(R, SignedTx, Updates), SignedTx}.
 
-await_on_chain_report(#{fsm := Fsm}, Timeout) ->
-    receive {aesc_fsm, Fsm, #{type := report, tag := on_chain_tx, info := SignedTx}} ->
-              SignedTx
+await_on_chain_report(R, Timeout) ->
+    await_on_chain_report(R, #{}, Timeout).
+
+await_on_chain_report(#{fsm := Fsm}, Match, Timeout) ->
+    receive
+        {aesc_fsm, Fsm, #{type := report, tag := on_chain_tx,
+                          info := #{tx := SignedTx} = I}} = M ->
+            ct:log("OnChainRpt = ~p", [M]),
+            ok = match_info(I, Match),
+            SignedTx
     after Timeout ->
               error(timeout)
     end.
+
+match_info(Info, Match) ->
+    maps:fold(fun(K,V,Acc) ->
+                      case maps:find(K, Info) of
+                          {ok, V} ->
+                              Acc;
+                          {ok, Other} ->
+                              error({info_mismatch, {K, [V, Other]}});
+                          error ->
+                              error({no_such_key, K})
+                      end
+              end, ok, Match).
 
 await_open_report(#{fsm := Fsm} = R, Timeout, _Debug) ->
     receive {aesc_fsm, Fsm, #{type := report, tag := info, info := open} = Msg} ->
@@ -1571,7 +1646,10 @@ match_msgs(F, Msg, Cont) when is_function(F, 1) ->
             if Cont ->
                     throw(continue);
                true ->
-                    ct:log("Message doesn't match fun: ~p / ~p", [Msg]),
+                    {module, Mod} = erlang:fun_info(F, module),
+                    {name, Name} = erlang:fun_info(F, name),
+                    ct:log("Message doesn't match fun: ~p / ~w:~w/1",
+                           [Msg, Mod, Name]),
                     error({message_mismatch, [Msg]})
             end
     end;
@@ -1607,8 +1685,7 @@ mine_blocks(_Node, _N, #{mine_blocks := {ask, Pid},
 mine_blocks(_, _, #{mine_blocks := false}) ->
     ok;
 mine_blocks(Node, N, _) ->
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), N,
-                                       #{strictly_follow_top => true}).
+    mine_key_blocks(Node, N).
 
 opt_add_tx_to_debug(SignedTx, #{mine_blocks := {ask, _}} = Debug) ->
     Debug#{signed_tx => SignedTx};
@@ -1618,8 +1695,7 @@ opt_add_tx_to_debug(_, Debug) ->
 prep_initiator(Node) ->
     {PrivKey, PubKey} = aecore_suite_utils:sign_keys(Node),
     ct:log("initiator Pubkey = ~p", [PubKey]),
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), 30,
-                                      #{strictly_follow_top => true}),
+    mine_key_blocks(Node, 30),
     ct:log("initiator: 30 blocks mined on ~p", [Node]),
     {ok, Balance} = rpc(Node, aehttp_logic, get_account_balance, [PubKey]),
     #{role => initiator,
@@ -1738,8 +1814,7 @@ wait_for_signed_transaction_in_block(_, _, #{mine_blocks := {ask,_}}) ->
     ok;
 wait_for_signed_transaction_in_block(Node, SignedTx, _Debug) ->
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
-    NodeName = aecore_suite_utils:node_name(Node),
-    case aecore_suite_utils:mine_blocks_until_txs_on_chain(NodeName, [TxHash], ?MAX_MINED_BLOCKS) of
+    case mine_blocks_until_txs_on_chain(Node, [TxHash]) of
         {ok, _Blocks} -> ok;
         {error, _Reason} -> did_not_mine
     end.
@@ -1763,3 +1838,16 @@ check_fsm_state(Fsm) ->
 get_debug(Config) ->
     proplists:get_bool(debug, Config).
 
+mine_blocks_until_txs_on_chain(Node, TxHashes) ->
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(
+      aecore_suite_utils:node_name(Node),
+      TxHashes,
+      aecore_suite_utils:expected_mine_rate(),
+      ?MAX_MINED_BLOCKS,
+      #{strictly_follow_top => true}).
+
+mine_key_blocks(Node, KeyBlocks) ->
+    aecore_suite_utils:mine_key_blocks(
+      aecore_suite_utils:node_name(Node),
+      KeyBlocks,
+      #{strictly_follow_top => true}).

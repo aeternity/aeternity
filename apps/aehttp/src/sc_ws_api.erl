@@ -151,16 +151,21 @@ process_fsm_(#{type := sign,
                                    orelse Tag =:= shutdown_ack
                                    orelse Tag =:= funding_created
                                    orelse Tag =:= update
-                                   orelse Tag =:= update_ack ->
+                                   orelse Tag =:= update_ack
+                                   orelse Tag =:= slash_tx
+                                   orelse Tag =:= close_solo_tx
+                                   orelse Tag =:= settle_tx ->
     EncTx = aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx)),
     SerializedUpdates = [aesc_offchain_update:for_client(U) || U <- Updates],
     Tag1 =
         case Tag of
-            create_tx -> <<"initiator_sign">>;
-            funding_created -> <<"responder_sign">>;
-            shutdown -> <<"shutdown_sign">>;
-            shutdown_ack -> <<"shutdown_sign_ack">>;
-            deposit_created -> <<"deposit_ack">>;
+            create_tx        -> <<"initiator_sign">>;
+            funding_created  -> <<"responder_sign">>;
+            shutdown         -> <<"shutdown_sign">>;
+            shutdown_ack     -> <<"shutdown_sign_ack">>;
+            close_solo_tx    -> <<"close_solo_sign">>;
+            settle_tx        -> <<"settle_sign">>;
+            deposit_created  -> <<"deposit_ack">>;
             withdraw_created -> <<"withdraw_ack">>;
             T -> atom_to_binary(T, utf8)
         end,
@@ -184,10 +189,11 @@ process_fsm_(#{type := report,
         case {Tag, Event} of
             {info, {died, _}} -> #{event => <<"died">>};
             {info, _} when is_atom(Event) -> #{event => atom_to_binary(Event, utf8)};
-            {on_chain_tx, Tx} ->
-                EncodedTx = aeser_api_encoder:encode(transaction,
-                                               aetx_sign:serialize_to_binary(Tx)),
-                #{tx => EncodedTx};
+            {on_chain_tx, #{tx := Tx} = Info} ->
+                EncodedTx = aeser_api_encoder:encode(
+                              transaction,
+                              aetx_sign:serialize_to_binary(Tx)),
+                Info#{tx => EncodedTx};
             {_, NewState} when Tag == update; Tag == leave ->
                 Bin = aeser_api_encoder:encode(transaction,
                                          aetx_sign:serialize_to_binary(NewState)),

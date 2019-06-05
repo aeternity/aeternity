@@ -27,7 +27,13 @@
                                Method =:= <<"channels.shutdown_sign">>;
                                Method =:= <<"channels.shutdown_sign_ack">>;
                                Method =:= <<"channels.update">>;
-                               Method =:= <<"channels.update_ack">>).
+                               Method =:= <<"channels.update_ack">>;
+                               Method =:= <<"channels.close_solo_tx">>;
+                               Method =:= <<"channels.close_solo_sign">>;
+                               Method =:= <<"channels.slash_tx">>;
+                               Method =:= <<"channels.slash_sign">>;
+                               Method =:= <<"channels.settle_tx">>;
+                               Method =:= <<"channels.settle_sign">>).
 -define(METHOD_TAG(Method), case Method of
                                 <<"channels.initiator_sign">>    -> create_tx;
                                 <<"channels.deposit_tx">>        -> deposit_tx;
@@ -39,7 +45,13 @@
                                 <<"channels.update_ack">>        -> update_ack;
                                 <<"channels.shutdown_sign">>     -> shutdown;
                                 <<"channels.shutdown_sign_ack">> -> shutdown_ack;
-                                <<"channels.leave">>             -> leave
+                                <<"channels.leave">>             -> leave;
+                                <<"channels.close_solo_tx">>     -> close_solo_tx;
+                                <<"channels.close_solo_sign">>   -> close_solo_tx;
+                                <<"channels.slash_tx">>          -> slash_tx;
+                                <<"channels.slash_sign">>        -> slash_tx;
+                                <<"channels.settle_tx">>         -> settle_tx;
+                                <<"channels.settle_sign">>       -> settle_tx
                             end).
 
 unpack(Msg) when is_map(Msg) ->
@@ -484,7 +496,7 @@ process_request(#{<<"method">> := <<"channels.withdraw">>,
         {error, _Reason} = Err -> Err
     end;
 process_request(#{<<"method">> := Method,
-                    <<"params">> := #{<<"tx">> := EncodedTx}}, FsmPid)
+                  <<"params">> := #{<<"tx">> := EncodedTx}}, FsmPid)
     when ?METHOD_SIGNED(Method) ->
     Tag = ?METHOD_TAG(Method),
     case aeser_api_encoder:safe_decode(transaction, EncodedTx) of
@@ -503,6 +515,18 @@ process_request(#{<<"method">> := <<"channels.leave">>}, FsmPid) ->
 process_request(#{<<"method">> := <<"channels.shutdown">>}, FsmPid) ->
     lager:warning("Channel WS: closing channel message received"),
     aesc_fsm:shutdown(FsmPid),
+    no_reply;
+process_request(#{<<"method">> := <<"channels.close_solo">>}, FsmPid) ->
+    lager:debug("Channel WS: close_solo message received"),
+    aesc_fsm:close_solo(FsmPid),
+    no_reply;
+process_request(#{<<"method">> := <<"channels.slash">>}, FsmPid) ->
+    lager:debug("Channel WS: slash message received"),
+    aesc_fsm:slash(FsmPid),
+    no_reply;
+process_request(#{<<"method">> := <<"channels.settle">>}, FsmPid) ->
+    lager:debug("Channel WS: settle message received"),
+    aesc_fsm:settle(FsmPid),
     no_reply;
 process_request(#{<<"method">> := _} = Unhandled, _FsmPid) ->
     lager:warning("Channel WS: unhandled action received ~p", [Unhandled]),

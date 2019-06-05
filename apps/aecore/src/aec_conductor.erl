@@ -1008,7 +1008,6 @@ handle_signed_block(Block, State) ->
 ok({ok, Value}) ->
     Value.
 
-
 handle_add_block(Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(Block),
     handle_add_block(Header, Block, State, Origin).
