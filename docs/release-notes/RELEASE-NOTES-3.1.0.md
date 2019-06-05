@@ -8,13 +8,13 @@ It:
   functionality is being built on data frames instead of using the control
   frames.
 * Enhances the HTTP endpoint for channel creation transaction to accept an optional list of delegates.
-* Introduces State Channel fsm-assisted solo-close and slash, and continous chain monitoring
-* The state channel chain watcher now watches the chain continuously
-* The state channel FSM stays open during the closing phase
-* Client WS API for solo-closing, slash and settle
-* SC FSM automatically detects when a slash is needed
-* SC FSM reports to client any time the on-chain channel state changes
-* The SC watcher is now fork-aware
+* Introduces State Channel fsm-assisted solo-close and slash, and continuous chain monitoring.
+  * The state channel chain watcher now watches the chain continuously.
+  * The state channel FSM stays open during the closing phase.
+  * Client WS API for solo-closing, slash and settle.
+  * SC FSM automatically detects when a slash is needed.
+  * SC FSM reports to client any time the on-chain channel state changes.
+  * The SC watcher is now fork-aware.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.1.0
 
