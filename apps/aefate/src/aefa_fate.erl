@@ -489,7 +489,6 @@ lookup_in_store(N, ES) ->
     end.
 
 write_to_store(N, Val, ES) ->
-    io:format("Writing ~p to ~p\n", [Val, N]),
     Current = aefa_engine_state:current_contract(ES),
     {Stores, ES1} = ensure_contract_store(Current, ES),
     Stores1 = aefa_stores:put_value(Current, N, Val, Stores),
