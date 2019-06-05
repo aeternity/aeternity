@@ -189,11 +189,13 @@ handle_request_('PostChannelCreate', #{'ChannelCreateTx' := Req}, _Context) ->
                                        responder_id, responder_amount,
                                        push_amount, channel_reserve,
                                        lock_period, fee]),
-                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 read_optional_params([{ttl, ttl, '$no_value'},
+                                       {delegate_ids, delegate_ids, []}]),
                  api_decode([{initiator_id, initiator_id, {id_hash, [account_pubkey]}},
-                                {responder_id, responder_id, {id_hash, [account_pubkey]}},
-                                {state_hash, state_hash, state}
-                               ]),
+                              {responder_id, responder_id, {id_hash, [account_pubkey]}},
+                              {state_hash, state_hash, state},
+                              {delegate_ids, delegate_ids, {list, {id_hash, [account_pubkey]}}}
+                              ]),
                  get_nonce_from_account_id(initiator_id),
                  unsigned_tx_response(fun aesc_create_tx:new/1)
                 ],

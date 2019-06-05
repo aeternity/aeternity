@@ -124,6 +124,18 @@ api_decode_read_fun({Name, Types}, _, Data) when is_list(Types) ->
                       end
               end,
     lists:foldl(FoldFun, error, Types);
+api_decode_read_fun({Name, {list, Type}}, _, Data) ->
+    EncodedList = maps:get(Name, Data),
+    lists:foldr( % we are prepending the decoded values, foldr to keep the initial order
+        fun(_, error) -> error;
+           (Encoded, {ok, Accum}) ->
+                case aeser_api_encoder:safe_decode(Type, Encoded) of
+                    {error, _} -> error;
+                    {ok, Res} -> {ok, [Res | Accum]}
+                end
+        end,
+        {ok, []},
+        EncodedList);
 api_decode_read_fun({Name, Type}, _, Data) ->
     Encoded = maps:get(Name, Data),
     case aeser_api_encoder:safe_decode(Type, Encoded) of
