@@ -40,7 +40,7 @@
         , and_op/4
         , or_op/4
         , not_op/3
-        , tuple/2
+        , tuple/3
         , element_op/4
         , map_empty/2
         , map_lookup/4
@@ -49,6 +49,8 @@
         , map_delete/4
         , map_member/4
         , map_from_list/3
+        , map_to_list/3
+        , map_size_/3
         , nil/2
         , is_nil/3
         , cons/4
@@ -57,6 +59,7 @@
         , length/3
         , append/4
         , str_join/4
+        , str_length/3
         , int_to_str/3
         , addr_to_str/3
         , str_reverse/3
@@ -90,6 +93,7 @@
         , difficulty/2
         , gaslimit/2
         , gas/2
+        , log/2
         , log/3
         , log/4
         , log/5
@@ -111,9 +115,9 @@
         , aens_transfer/1
         , aens_revoke/1
         , ecverify/1
-        , sha3/1
-        , sha256/1
-        , blake2b/1
+        , sha3/3
+        , sha256/3
+        , blake2b/3
         , setelement/5
         , dummyarg/8
         , dummyarg/9
@@ -356,17 +360,17 @@ not_op(Arg0, Arg1, EngineState) ->
 
 %% Make tuple only takes a fixed size.
 %% NOTE: There is no type checking on the arguments on the stack.
-tuple(Arg0, EngineState) ->
-    if is_integer(Arg0) andalso (Arg0 >= 0) ->
-            make_tuple(Arg0, EngineState);
-       true -> aefa_fate:abort({invalid_tuple_size, Arg0}, EngineState)
+tuple(Arg0, Arg1, EngineState) ->
+    if is_integer(Arg1) andalso (Arg1 >= 0) ->
+            make_tuple(Arg0, Arg1, EngineState);
+       true -> aefa_fate:abort({invalid_tuple_size, Arg1}, EngineState)
     end.
 
-make_tuple(Size, ES) ->
+make_tuple(To, Size, ES) ->
     {Elements, ES2} = aefa_fate:pop_n(Size, ES),
     Tuple = list_to_tuple(Elements),
     FateTuple = aeb_fate_data:make_tuple(Tuple),
-    aefa_fate:push(FateTuple, ES2).
+    write(To, FateTuple, ES2).
 
 
 element_op(To, Which, TupleArg, ES) ->
@@ -433,6 +437,12 @@ map_member(Arg0, Arg1, Arg2, EngineState) ->
 map_from_list(Arg0, Arg1, EngineState) ->
     un_op(map_from_list, {Arg0, Arg1}, EngineState).
 
+map_to_list(_Arg0,_Arg1,_EngineState) ->
+    exit({error, op_not_implemented_yet}).
+
+map_size_(_Arg0,_Arg1,_EngineState) ->
+    exit({error, op_not_implemented_yet}).
+
 %% ------------------------------------------------------
 %% List instructions
 %% ------------------------------------------------------
@@ -465,6 +475,9 @@ append(Arg0, Arg1, Arg2, EngineState) ->
 
 str_join(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(str_join, {Arg0, Arg1, Arg2}, EngineState).
+
+str_length(_Arg0, _Arg1, _EngineState) ->
+    exit({error, op_not_implemented_yet}).
 
 int_to_str(Arg0, Arg1, EngineState) ->
     un_op(int_to_str, {Arg0, Arg1}, EngineState).
@@ -661,6 +674,8 @@ call_value(Arg0, EngineState) ->
     Value = aefa_engine_state:call_value(EngineState),
     write(Arg0, aeb_fate_data:make_integer(Value), EngineState).
 
+log(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+
 log(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
 
 log(_Arg0, _Arg1, _Arg2, _EngineState) -> exit({error, op_not_implemented_yet}).
@@ -717,11 +732,11 @@ aens_revoke(_EngineState) -> exit({error, op_not_implemented_yet}).
 
 ecverify(_EngineState) -> exit({error, op_not_implemented_yet}).
 
-sha3(_EngineState) -> exit({error, op_not_implemented_yet}).
+sha3(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
 
-sha256(_EngineState) -> exit({error, op_not_implemented_yet}).
+sha256(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
 
-blake2b(_EngineState) -> exit({error, op_not_implemented_yet}).
+blake2b(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
 
 dummyarg(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _Arg5, _Arg6, _EngineState) ->
  exit({error, op_not_implemented_yet}).
@@ -919,11 +934,11 @@ op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
     case ?FATE_LIST_VALUE(Tail) of
         [] -> aeb_fate_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
         [OldHd|_] = Tail ->
-            case aefa_fate:check_type(aefa_fate:type(OldHd), Hd) of
+            case aefa_fate:terms_are_of_same_type(OldHd, Hd) of
                 true ->
                     aeb_fate_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
                 false ->
-                    aefa_fate:abort({type_error, cons, Hd, aefa_fate:type(OldHd)})
+                    aefa_fate:abort({type_error, cons})
             end
     end;
 op(append, A, B) when ?IS_FATE_LIST(A), ?IS_FATE_LIST(B) ->

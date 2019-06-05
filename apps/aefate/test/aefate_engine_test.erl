@@ -182,7 +182,7 @@ list() ->
         {F,A,R} <-
             [ {<<"make_nil">>, [], []}
             ,  {<<"cons">>, [42,[]], [42]}
-            ,  {<<"cons_error">>, [42,[true]], {error, <<"Type error in cons: 42 is not of type boolean">>}}
+            ,  {<<"cons_error">>, [42,[true]], {error, <<"Type error in cons: creating polymorphic list">>}}
             ,  {<<"head">>, [[42]], 42}
             ,  {<<"tail">>, [[42]], []}
             ,  {<<"length">>, [[1,2,3,4]], 4}
@@ -513,14 +513,14 @@ contracts() ->
      , <<"tuple">> =>
            [ {<<"make_0tuple">>
              , {[], {tuple, []}}
-             , [ {0, [ {'TUPLE', {immediate, 0}}
+             , [ {0, [ {'TUPLE', {stack, 0}, {immediate, 0}}
                      , 'RETURN']}
                ]}
            , {<<"make_2tuple">>
              , {[integer, integer], {tuple, [integer, integer]}}
              , [ {0, [ {'PUSH', {arg, 0}}
                      , {'PUSH', {arg, 1}}
-                     , {'TUPLE', {immediate, 2}}
+                     , {'TUPLE', {stack, 0}, {immediate, 2}}
                      ,  'RETURN']}
                ]}
            , {<<"make_5tuple">>
@@ -531,14 +531,14 @@ contracts() ->
                      , {'PUSH', {arg, 2}}
                      , {'PUSH', {arg, 3}}
                      , {'PUSH', {arg, 4}}
-                     , {'TUPLE', {immediate, 5}}
+                     , {'TUPLE', {stack, 0}, {immediate, 5}}
                      ,  'RETURN']}
                ]}
            , {<<"element1">>
              , {[integer, integer], integer}
              , [ {0, [ {'PUSH', {arg, 0}}
                      , {'PUSH', {arg, 1}}
-                     , {'TUPLE', {immediate, 2}}
+                     , {'TUPLE', {stack, 0}, {immediate, 2}}
                      , {'ELEMENT', {stack, 0}, {immediate, 1}, {stack, 0}}
                      , 'RETURN']}
                ]}
@@ -652,29 +652,29 @@ contracts() ->
 
      , <<"variant">> =>
            [ {<<"switch">>
-             , {[{variant, [0,1]}], integer}
+             , {[{variant, [{tuple, []}, {tuple, [integer]}]}], integer}
              , [ {0, [ {'SWITCH_V2', {arg,0}, {immediate, 1}, {immediate, 2}}]}
                , {1, [{'RETURNR', {immediate, 0}}]}
                , {2, [{'RETURNR', {immediate, 42}}]}
                ]}
            , {<<"switch2">>
-             , {[{variant, [0,1,2]}], integer}
+             , {[{variant, [{tuple, []}, {tuple, [integer]}, {tuple, [integer, integer]}]}], integer}
              , [ {0, [ {'SWITCH_V2', {arg,0}, {immediate, 1}, {immediate, 2}}]}
                , {1, [{'RETURNR', {immediate, 0}}]}
                , {2, [{'RETURNR', {immediate, 42}}]}
                ]}
            , {<<"test">>
-             , {[{variant, [0,1]}, integer], boolean}
+             , {[{variant, [{tuple, []}, {tuple, [integer]}]}, integer], boolean}
              , [ {0, [ {'VARIANT_TEST', {stack, 0}, {arg,0}, {arg, 1}}
                      , 'RETURN']}
                ]}
            , {<<"element">>
-             , {[{variant, [0,1]}, integer], integer}
+             , {[{variant, [{tuple, []}, {tuple, [integer]}]}, integer], integer}
              , [ {0, [ {'VARIANT_ELEMENT', {stack, 0}, {arg,0}, {arg, 1}}
                      , 'RETURN']}
                ]}
            , {<<"make">>
-             , {[{list, integer}, integer, integer, {list, integer}], {variant, [0,1]}}
+             , {[{list, integer}, integer, integer, {list, integer}], {variant, [{tuple, []}, {tuple, [integer]}]}}
              , [ {0, [ {'STORE', {var, 1}, {arg, 0}}
                      , {'STORE', {var, 2}, {arg, 1}}
                      , {'STORE', {var, 3}, {arg, 3}}

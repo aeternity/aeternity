@@ -27,7 +27,7 @@
         , push_return_address/1
         , set_local_function/2
         , set_remote_function/3
-        , type/1
+        , terms_are_of_same_type/2
         ]
        ).
 
@@ -146,8 +146,8 @@ abort(pow_too_large_exp, ES) ->
     ?t("Arithmetic error: pow with too large exponent", [], ES);
 abort(missin_map_key, ES) ->
     ?t("Maps: Key does not exists", [], ES);
-abort({type_error, cons, Value, Type}, ES) ->
-    ?t("Type error in cons: ~p is not of type ~p", [Value, Type], ES);
+abort({type_error, cons}, ES) ->
+    ?t("Type error in cons: creating polymorphic list", [], ES);
 abort({cannot_write_to_arg, N}, ES) ->
     ?t("Arguments are read only: ~p", [N], ES);
 abort({undefined_var, Var}, ES) ->
@@ -335,6 +335,8 @@ check_type(boolean, B) when ?IS_FATE_BOOLEAN(B) -> true;
 check_type(string, S) when ?IS_FATE_STRING(S) -> true;
 check_type(address, A) when ?IS_FATE_ADDRESS(A) -> true;
 check_type(contract, A) when ?IS_FATE_CONTRACT(A) -> true;
+check_type(oracle, A) when ?IS_FATE_ORACLE(A) -> true;
+check_type(name, A) when ?IS_FATE_NAME(A) -> true;
 check_type(bits, B) when ?IS_FATE_BITS(B) -> true;
 check_type({list, any}, L) when ?IS_FATE_LIST(L) ->
     true;
@@ -346,21 +348,43 @@ check_type({map, Key, Value}, M) when ?IS_FATE_MAP(M) ->
     {Ks, Vs} = lists:unzip(maps:to_list(?FATE_MAP_VALUE(M))),
     check_same_type(Key, Ks) andalso
     check_same_type(Value, Vs);
-check_type({variant, Size}, V) when ?IS_FATE_VARIANT(V) ->
-    ?FATE_VARIANT(VSize,_Tag,_Values) = V,
-    Size =:= VSize;
+check_type({variant, Types}, V) when ?IS_FATE_VARIANT(V) ->
+    ?FATE_VARIANT(Arities, Tag, Value) = V,
+    check_variant_arities(Types, Arities) andalso
+        check_type(lists:nth(Tag + 1, Types), ?FATE_TUPLE(Value));
 check_type(_T, _V) -> false.
 
-type(I) when ?IS_FATE_INTEGER(I)  -> integer;
-type(B) when ?IS_FATE_BOOLEAN(B)  -> boolean;
-type(B) when ?IS_FATE_BITS(B)     -> bits;
-type(A) when ?IS_FATE_ADDRESS(A)  -> address;
-type(S) when ?IS_FATE_STRING(S)   -> string;
-type([E|L]) when ?IS_FATE_LIST(L) -> {list, type(E)};
-type(T) when ?IS_FATE_TUPLE(T)    -> {tuple, lists:map(fun type/1, tuple_to_list(element(2, T)))};
-type(?FATE_VARIANT(Sizes, _, _))  -> {variant, Sizes};
-type([]) -> {list, any}.
-%% TODO: handle all types.
+check_variant_arities([?FATE_TUPLE(Types)|Left1], [Arity|Left2]) ->
+    Arity =:= length(Types) andalso check_variant_arities(Left1, Left2);
+check_variant_arities([], []) ->
+    true;
+check_variant_arities(_, _) ->
+    false.
+
+terms_are_of_same_type(X, Y) when ?IS_FATE_INTEGER(X), ?IS_FATE_INTEGER(Y) -> true;
+terms_are_of_same_type(X, Y) when ?IS_FATE_BOOLEAN(X), ?IS_FATE_BOOLEAN(Y) -> true;
+terms_are_of_same_type(X, Y) when ?IS_FATE_BITS(X), ?IS_FATE_BITS(Y) -> true;
+terms_are_of_same_type(X, Y) when ?IS_FATE_ADDRESS(X), ?IS_FATE_ADDRESS(Y) -> true;
+terms_are_of_same_type(X, Y) when ?IS_FATE_CONTRACT(X), ?IS_FATE_CONTRACT(Y) -> true;
+terms_are_of_same_type(X, Y) when ?IS_FATE_ORACLE(X), ?IS_FATE_ORACLE(Y) -> true;
+terms_are_of_same_type(X, Y) when ?IS_FATE_NAME(X), ?IS_FATE_NAME(Y) -> true;
+terms_are_of_same_type(X, Y) when ?IS_FATE_STRING(X), ?IS_FATE_STRING(Y) -> true;
+terms_are_of_same_type(X, Y) when ?IS_FATE_TUPLE(X), ?IS_FATE_TUPLE(Y) ->
+    %% NOTE: This could be more thorough, but it costs too much
+    ?FATE_TUPLE(T1) = X,
+    ?FATE_TUPLE(T2) = Y,
+    tuple_size(T1) =:= tuple_size(T2);
+terms_are_of_same_type(X, Y) when ?IS_FATE_VARIANT(X), ?IS_FATE_VARIANT(Y) ->
+    %% NOTE: This could be more thorough, but it costs too much
+    ?FATE_VARIANT(Arities1,_Tag1,_Value1) = X,
+    ?FATE_VARIANT(Arities2,_Tag2,_Value2) = Y,
+    Arities1 =:= Arities2;
+terms_are_of_same_type(X, Y) when ?IS_FATE_LIST(X), ?IS_FATE_LIST(Y) ->
+    L1 = ?FATE_LIST_VALUE(X),
+    L2 = ?FATE_LIST_VALUE(Y),
+    L1 =:= [] orelse L2 =:= [] orelse terms_are_of_same_type(hd(L1), hd(L2));
+terms_are_of_same_type(_X,_Y) ->
+    false.
 
 jump(BB, ES) ->
     NewES = aefa_engine_state:set_current_bb(BB, ES),

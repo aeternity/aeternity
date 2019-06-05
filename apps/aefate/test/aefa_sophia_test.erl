@@ -98,8 +98,10 @@ mk_test(Contracts, Tests) ->
 run_call(Code, Fun, Args) ->
     Cache = compile_contracts([{<<"test">>, Code}]),
     case run(Cache, <<"test">>, list_to_binary(Fun), Args) of
-        {ok, #{ accumulator := Result }} -> Result;
-        {error, Err, #{trace := Trace}} -> {error, Err, [I || {I, _} <- Trace]}
+        {ok, ES} -> aefa_engine_state:accumulator(ES);
+        {error, Err, ES} ->
+            io:format("~s\n", [Err]),
+            {error, Err, [I || {I, _} <- aefa_engine_state:trace(ES)]}
     end.
 
 run_eunit(Test) ->
@@ -393,12 +395,16 @@ maps() ->
      "    let m1 = m{ [y] = y }\n"
      "    let m2 = {}\n"
      "    let m3 = m1{ [y] @ n = m2[y = n] + 1 }\n"
-     "    (m3[y], {[0] = m3})\n"}.
+     "    (m3[y], {[0] = m3})\n"
+     "  function upd(m : map(int, int)) = m{[77 = 19] @ n = n + 1}\n"
+     ""}.
 
 map_tests() ->
     lists:flatten(
       [[],
        [{"test", [#{3 => 5}, 5], {tuple, {6, #{0 => #{3 => 5, 5 => 6}}}}}],
+       [{"upd", [#{77 => 100}], #{77 => 101}},
+        {"upd", [#{66 => 100}], #{66 => 100, 77 => 20}}],
        []]).
 
 map_test_() -> mk_test([maps()], map_tests()).

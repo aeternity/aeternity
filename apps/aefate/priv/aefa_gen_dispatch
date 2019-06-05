@@ -45,7 +45,7 @@ do_main(Filename) ->
 
 gen_eval(#{ opname            := Name
           , end_bb            := true
-          , format            := atomic
+          , format            := []
           , gas               := Gas
           , constructor       := Constructor
           }) ->
@@ -54,7 +54,7 @@ gen_eval(#{ opname            := Name
       "    aefa_fate_op:~w(aefa_engine_state:spend_gas(~w, EngineState));\n",
       [Name, Constructor, Gas]);
 gen_eval(#{ opname            := Name
-          , format            := atomic
+          , format            := []
           , gas               := Gas
           , constructor       := Constructor
           }) ->
@@ -64,7 +64,7 @@ gen_eval(#{ opname            := Name
       [Name, Constructor, Gas]);
 gen_eval(#{ opname            := Name
           , opcode            :=_OpCode
-          , args              := Arity
+          , arity             := Arity
           , end_bb            := true
           , format            := FateFormat
           , macro             :=_Macro
@@ -83,7 +83,7 @@ gen_eval(#{ opname            := Name
       [Name, Args, Constructor, CArgs, Gas]);
 gen_eval(#{ opname            := Name
           , opcode            :=_OpCode
-          , args              := Arity
+          , arity             := Arity
           , end_bb            := false
           , format            := FateFormat
           , macro             :=_Macro
