@@ -2560,6 +2560,43 @@ state_channels_create(MinerPubkey, ResponderPubkey) ->
     test_invalid_hash({account_pubkey, MinerPubkey}, initiator_id, Encoded, fun get_channel_create/1),
     test_invalid_hash({account_pubkey, ResponderPubkey}, responder_id, Encoded, fun get_channel_create/1),
     test_missing_address(initiator_id, Encoded, fun get_channel_create/1),
+
+    %% test delegates
+    TestDelegates =
+        fun(Ds) ->
+            Enc = Encoded#{delegate_ids => [aeser_api_encoder:encode(account_pubkey, D)
+                                            || D <- Ds]},
+            Dec = Decoded#{delegate_ids => [aeser_id:create(account, D) || D <- Ds]},
+            {ok, _Tx} = unsigned_tx_positive_test(Dec, Enc,
+                                                  fun get_channel_create/1,
+                                                  fun aesc_create_tx:new/1, MinerPubkey),
+            Msg = list_to_binary("Invalid hash: delegate_ids"),
+            TestBroken =
+                fun(Broken) ->
+                    BrokenDelegates1 = [Broken | maps:get(delegate_ids, Enc)],
+                    BrokenDelegates2 = maps:get(delegate_ids, Enc) ++ [Broken],
+                    {ok, 400, #{<<"reason">> := Msg}} =
+                        get_channel_create(Enc#{delegate_ids =>
+                                                BrokenDelegates1}),
+                    {ok, 400, #{<<"reason">> := Msg}} =
+                        get_channel_create(Enc#{delegate_ids =>
+                                                BrokenDelegates2}),
+                    ok
+                end,
+            CorrectAddress = <<1234:32/unit:8>>,
+            <<_, HashWithBrokenPrefix/binary>> = CorrectAddress,
+            <<_Prefix:3/binary, HashWithNoPrefix/binary>> = CorrectAddress,
+            TestBroken(HashWithBrokenPrefix),
+            TestBroken(HashWithNoPrefix),
+
+
+            ok
+        end,
+    TestDelegates([]),
+    TestDelegates([<<42:32/unit:8>>]),
+    TestDelegates([<<42:32/unit:8>>, <<43:32/unit:8>>]),
+            
+    
     {ok, Tx}.
 
 state_channels_deposit(ChannelId, MinerPubkey) ->

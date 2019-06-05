@@ -2300,6 +2300,10 @@ definitions:
       state_hash:
         description: 'Root hash of the channel''s internal state tree'
         $ref: '#/definitions/EncodedHash'
+      delegate_ids:
+        type: array
+        items:
+          $ref: '#/definitions/EncodedPubkey'
     required:
       - initiator_id
       - initiator_amount
