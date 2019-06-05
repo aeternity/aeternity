@@ -186,12 +186,12 @@ groups() ->
                           , sophia_remote_identity
                           , sophia_call_out_of_gas
                           , sophia_no_reentrant
-                          %%, sophia_state %% TODO: Polymorphism
-                          %%, sophia_match_bug %% TODO: Polymorphism
+                          , sophia_state
+                          , sophia_match_bug
                           , sophia_spend
                           %%, sophia_typed_calls   %% TODO: Compiler bug
                           %%, sophia_exploits Not applicable
-                          %%, sophia_functions %% TODO: Polymorphism
+                          , sophia_functions
                           , sophia_map_benchmark
                           , sophia_big_map_benchmark
                           , sophia_variant_types
@@ -211,7 +211,7 @@ groups() ->
                           %% , sophia_crypto       %% TODO: Crypto instructions
                           %% , sophia_safe_math    %% TODO: Find what is safe/unsafe
                           , sophia_heap_to_heap_bug
-                          %% , sophia_namespaces   %% TODO: Polymorphism
+                          , sophia_namespaces
                           %% , sophia_bytes
                           %% , sophia_address_checks %% TODO: Checks not implemented
                           , sophia_too_little_gas_for_mem
@@ -4231,7 +4231,9 @@ sophia_namespaces(_Cfg) ->
     true  = ?call(call_contract, Acc, C, palindrome, bool, [1, 2, 3, 2, 1]),
     false = ?call(call_contract, Acc, C, palindrome, bool, [1, 2, 3, 2]),
     %% Check that we can't call the library functions directly
-    {'EXIT', {bad_function, _, _}, _} = ?call(call_contract, Acc, C, reverse, {list, word}, [1, 2, 3]),
+    BadFunction = ?call(call_contract, Acc, C, reverse, {list, word}, [1, 2, 3]),
+    ?assertMatchAEVM({'EXIT', {bad_function, _, _}, _}, BadFunction),
+    ?assertMatchFATE({error, <<"Trying to call undefined function: ", _/binary>>}, BadFunction),
     ok.
 
 sophia_bytes(_Cfg) ->
