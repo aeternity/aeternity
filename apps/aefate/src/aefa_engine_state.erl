@@ -443,7 +443,7 @@ set_memory(X, ES) ->
 stores(#es{stores=X}) ->
     X.
 
--spec set_stores(aefa_stores:store(), state()) -> aefa_stores:store().
+-spec set_stores(aefa_stores:store(), state()) -> state().
 set_stores(X, ES) ->
     ES#es{stores=X}.
 

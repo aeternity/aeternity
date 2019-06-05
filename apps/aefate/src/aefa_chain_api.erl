@@ -167,7 +167,7 @@ contract_fate_code(Pubkey, #state{primop_state = PState} = S) ->
             end
     end.
 
--spec contract_store(pubkey(), state()) -> {aect_contract_store:store(), state()}.
+-spec contract_store(pubkey(), state()) -> {aect_contracts_store:store(), state()}.
 contract_store(Pubkey, #state{primop_state = PState} = S) ->
     %% If we are looking for the store, we are already running the contract,
     %% so we can boldly assume it exists and have the correct vm version.

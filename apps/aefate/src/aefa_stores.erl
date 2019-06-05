@@ -36,9 +36,10 @@
                      , terms :: fate_terms()
                      }).
 
+-type fate_val() :: aeb_fate_data:fate_type().
 -type pubkey() :: <<_:256>>.
 -type dirty() :: boolean().
--type fate_terms() :: #{ integer() => {aeb_fate_data:fate_type(), dirty()} }.
+-type fate_terms() :: #{ integer() => {fate_val(), dirty()} }.
 -type contract_cache() :: #{pubkey() => #cache_entry{}}.
 
 -opaque store() :: #store{}.
@@ -54,7 +55,7 @@
 new() ->
   #store{}.
 
--spec put_contract_store(pubkey(), aect_contract_store:store(), store()) -> store().
+-spec put_contract_store(pubkey(), aect_contracts_store:store(), store()) -> store().
 put_contract_store(Pubkey, Store, #store{cache = Cache} = S) ->
     S#store{cache = Cache#{Pubkey => new_contract_cache_entry(Store)}}.
 
@@ -62,7 +63,10 @@ put_contract_store(Pubkey, Store, #store{cache = Cache} = S) ->
 has_contract(Pubkey, #store{cache = Cache}) ->
     maps:is_key(Pubkey, Cache).
 
--spec find_value(pubkey(), non_neg_integer(), store()) -> store().
+-spec find_value(pubkey(), non_neg_integer(), store()) ->
+                    {'ok', fate_val(), store()}
+                  | {'ok', fate_val()}
+                  | 'error'.
 find_value(Pubkey, StorePos, #store{cache = Cache} = S) ->
     case find_term(StorePos, maps:get(Pubkey, Cache)) of
         {ok, Term} ->
@@ -73,8 +77,7 @@ find_value(Pubkey, StorePos, #store{cache = Cache} = S) ->
             error
     end.
 
--spec put_value(pubkey(), non_neg_integer(), aeb_fate_data:fate_type(), store()) ->
-                   store().
+-spec put_value(pubkey(), non_neg_integer(), fate_val(), store()) -> store().
 put_value(Pubkey, StorePos, FateVal, #store{cache = Cache} = S) ->
     Entry = maps:get(Pubkey, Cache),
     Terms = maps:put(StorePos, {FateVal, true}, Entry#cache_entry.terms),
@@ -84,7 +87,7 @@ put_value(Pubkey, StorePos, FateVal, #store{cache = Cache} = S) ->
 %%%===================================================================
 %%% Write through cache to stores
 
--spec finalize(aefa_chain_api:api(), store()) -> aefa_chain_api:api().
+-spec finalize(aefa_chain_api:state(), store()) -> aefa_chain_api:state().
 finalize(API, #store{cache = Cache}) ->
     Stores = maps:fold(fun finalize_entry/3, [], Cache),
     finalize_stores(Stores, API).
