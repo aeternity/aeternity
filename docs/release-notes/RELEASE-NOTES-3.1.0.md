@@ -2,12 +2,12 @@
 
 [This][this-release] is a maintenance release.
 It:
-* Improve scheduling of Ping:s - make sure we keep/restart pinging after synchronization is done.
+* Improves scheduling of Ping:s - make sure we keep/restart pinging after synchronization is done.
 * Adds support for responding of `ping` messages in State Channels' WebSocket
   protocol. Because of browser compatibility issues, the keep alive
   functionality is being built on data frames instead of using the control
   frames.
-* Enhances the HTTP endpoint for channel creation transaction to accept an optional list of delegates
+* Enhances the HTTP endpoint for channel creation transaction to accept an optional list of delegates.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.1.0
 
