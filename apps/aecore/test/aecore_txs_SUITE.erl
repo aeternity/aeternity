@@ -42,7 +42,8 @@ init_per_suite(Config) ->
         },
         <<"mining">> => #{
             <<"micro_block_cycle">> => MicroBlockCycle
-        }
+        },
+        <<"mempool">> => #{ <<"invalid_tx_ttl">> => 2 }
     },
     Config1 = aecore_suite_utils:init_per_suite([dev1, dev2], DefCfg, [{symlink_name, "latest.txs"}, {test_module, ?MODULE}, {micro_block_cycle, MicroBlockCycle}] ++ Config),
     [{nodes, [aecore_suite_utils:node_tuple(dev1),
