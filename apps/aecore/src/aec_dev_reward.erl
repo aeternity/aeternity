@@ -18,13 +18,16 @@
 
 -define(ENABLED, true).
 -define(TOTAL_SHARES, 1000). % 100 shares == 10% of the reward
-%%% for: "ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:109"
 %%% weighted avg BRI voting result of 1% to 20% (yes) votes is 10.89869526640124746202%, 109 of 1000 shares will be the protocol reward
--define(BENEFICIARIES, [{<<172,241,128,85,116,104,119,143,197,105,4,192,224,207,200,138,230,84,111,38,89,33,239,21,201,183,185,209,19,60,109,136>>, 109}]).
+%%% for: "ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:109"
+-define(MAINNET_BENEFICIARIES, [{<<172,241,128,85,116,104,119,143,197,105,4,192,224,207,200,138,230,84,111,38,89,33,239,21,201,183,185,209,19,60,109,136>>, 109}]).
+%%% for: "ak_2A3PZPfMC2X7ZVy4qGXz2xh2Lbh79Q4UvZ5fdH7QVFocEgcKzU:109"
+-define(TESTNET_BENEFICIARIES, [{<<152,57,168,5,218,153,177,254,226,207,243,133,11,50,143,68,121,242,94,41,187,198,158,67,133,88,6,71,55,26,85,54>>, 109}]).
 
 ensure_env() ->
     Enabled = cfg(<<"protocol_beneficiaries_enabled">>, ?ENABLED),
-    Benefs0 = cfg(<<"protocol_beneficiaries">>, lists:map(fun unparse_beneficiary/1, ?BENEFICIARIES)),
+    DefaultBenefs = default_beneficiaries(),
+    Benefs0 = cfg(<<"protocol_beneficiaries">>, lists:map(fun unparse_beneficiary/1, DefaultBenefs)),
     case Enabled andalso parse_beneficiaries(Benefs0) of
         false ->
             application:set_env(aecore, dev_reward_enabled, false);
@@ -51,10 +54,16 @@ cfg(Key, Default) ->
 env(Key, Default) ->
     aeu_env:get_env(aecore, Key, Default).
 
+default_beneficiaries() ->
+    case aec_governance:get_network_id() of
+        <<"ae_uat">> -> ?TESTNET_BENEFICIARIES;
+        _            -> ?MAINNET_BENEFICIARIES
+    end.
+
 enabled() ->
     env(dev_reward_enabled, ?ENABLED).
 beneficiaries() ->
-    env(dev_reward_beneficiaries, ?BENEFICIARIES).
+    env(dev_reward_beneficiaries, ?MAINNET_BENEFICIARIES).
 total_shares() ->
     ?TOTAL_SHARES.
 allocated_shares() ->
