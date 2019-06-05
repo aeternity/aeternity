@@ -1,11 +1,14 @@
 # About this release
 
-[This][this-release] is a backwards-compatible bug fix release for the Fortuna release 3.0.0.
+[This][this-release] is a maintenance release.
 It:
-* Solves an issue with loading old serialization of
-  `channel_force_progress_tx` from the database and updating it to the new serialization format.
+* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
 
-[this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.0.1
+TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+
+[this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.1.0
+
+This release is backward compatible with the previous v3.0.1 release.
 
 Please join the mainnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
@@ -23,8 +26,8 @@ You can run a node by either:
 * Running the published [Docker image `aeternity/aeternity`][docker]; or
 * [Building a release binary from source][build].
 
-[docker]: https://github.com/aeternity/aeternity/blob/v3.0.1/docs/docker.md
-[build]: https://github.com/aeternity/aeternity/blob/v3.0.1/docs/build.md
+[docker]: https://github.com/aeternity/aeternity/blob/v3.1.0/docs/docker.md
+[build]: https://github.com/aeternity/aeternity/blob/v3.1.0/docs/build.md
 
 The instructions for configuring the node using the Docker image are in [the dedicated separate document][docker].
 
@@ -36,9 +39,9 @@ The node user API is documented:
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
 
-[swagger-yaml]: https://github.com/aeternity/aeternity/blob/v3.0.1/config/swagger.yaml
-[swagger-ui]: https://aeternity.github.io/api-docs/?config=https://raw.githubusercontent.com/aeternity/aeternity/v3.0.1/apps/aehttp/priv/swagger.json
-[api-doc]: https://github.com/aeternity/protocol/blob/aeternity-node-v3.0.1/node/api/README.md
+[swagger-yaml]: https://github.com/aeternity/aeternity/blob/v3.1.0/config/swagger.yaml
+[swagger-ui]: https://aeternity.github.io/api-docs/?config=https://raw.githubusercontent.com/aeternity/aeternity/v3.1.0/apps/aehttp/priv/swagger.json
+[api-doc]: https://github.com/aeternity/protocol/blob/aeternity-node-v3.1.0/node/api/README.md
 
 ## Install node
 
