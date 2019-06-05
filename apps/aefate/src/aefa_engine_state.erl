@@ -120,6 +120,7 @@ new(Gas, Value, Spec, APIState, CodeCache) ->
        , current_bb        = 0
        , current_contract  = ?FATE_VOID
        , current_function  = ?FATE_VOID
+       , current_tvars     = #{}
        , functions         = #{}
        , gas               = Gas
        , logs              = []
