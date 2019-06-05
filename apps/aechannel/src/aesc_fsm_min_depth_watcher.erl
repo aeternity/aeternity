@@ -787,11 +787,16 @@ log_tx(#{ tx_hash      := TxHash
 get_latest_tx(Log, C) ->
     {#tx_log_entry{key = {TxHash, _BlockHash},
                    value = TxInfo},
-     _TxLog1} =
+     TxLog1} =
         aesc_window:pop(Log),
     lager:debug("TxInfo = ~p", [TxInfo]),
-    {TxInfo1, C1} = ensure_signed_tx_included(TxHash, TxInfo, C),
-    {TxHash, TxInfo1, C1}.
+    case ensure_signed_tx_included(TxHash, TxInfo, C) of
+        {#{tx := undefined}, C1} ->
+            lager:debug("No such signed tx (~p)", [TxHash]),
+            get_latest_tx(TxLog1, C1#{tx_log => TxLog1});
+        {TxInfo1, C1} ->
+            {TxHash, TxInfo1, C1}
+    end.
 
 ensure_signed_tx_included(TxHash, TxInfo, C) ->
     case maps:is_key(tx, TxInfo) of
@@ -1009,7 +1014,7 @@ tx_location_(TxHash, C) ->
             {BlockHash, STx} ->
                 lager:debug("tx in Block ~p", [BlockHash]),
                 {BlockHash, tx_type(STx), STx}
-                end,
+        end,
     {L, update_tx_log(TxHash, SignedTx, L, Type, C)}.
 
 tx_type(SignedTx) ->
@@ -1026,6 +1031,9 @@ in_main_chain_(Hash, C) ->
     Res = aec_chain_state:hash_is_in_main_chain(Hash, TopHash),
     {Res, C1}.
 
+update_tx_log(_, undefined, undefined, undefined, C) ->
+    %% don't add a non-existing tx
+    C;
 update_tx_log(TxHash, SignedTx, BlockHash, Type, #{tx_log := TxLog} =C)
   when is_binary(BlockHash) ->
     LogEntry = #tx_log_entry{key = {TxHash, BlockHash},
