@@ -96,7 +96,7 @@ git clone https://github.com/aeternity/aeternity.git aeternity_source && cd aete
 
 Identify the version to be built:
 ```
-VERSION=3.0.1
+VERSION=3.1.0
 ```
 
 Checkout the version to be built:
