@@ -640,29 +640,13 @@ crypto_call_ecverify(_Gas, Data, State) ->
 crypto_call_ecverify_secp256k1(_Gas, Data, State) ->
     [MsgHash0, Pubkey0, Sig0] = get_args([hash_t(), bytes_t(64), bytes_t(64)], Data),
     MsgHash = <<MsgHash0:32/unit:8>>,
-    Pubkey  = ecdsa_pk(words_to_bin(64, Pubkey0)),
-    Sig     = ecdsa_der_sig(words_to_bin(64, Sig0)),
-    Res =
-        %% Note that `sha256` is just there to indicate the length (32 bytes) of
-        %% the digest, nothing is hashed with SHA256!
-        case crypto:verify(ecdsa, sha256, {digest, MsgHash}, Sig, [Pubkey, secp256k1]) of
+    Pubkey  = words_to_bin(64, Pubkey0),
+    Sig     = words_to_bin(64, Sig0),
+    Res = case aeu_crypto:ecverify(secp256k1, MsgHash, Pubkey, Sig) of
             true  -> {ok, <<1:256>>};
             false -> {ok, <<0:256>>}
-        end,
+          end,
     {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1), State}.
-
-%% Convert to OpenSSL expected formats...
-ecdsa_pk(Pubkey = <<_:64/binary>>) ->
-    <<16#04, Pubkey:64/binary>>.
-
-ecdsa_der_sig(<<R0:32/binary, S0:32/binary>>) ->
-    {R1, S1} = {der_sig_part(R0), der_sig_part(S0)},
-    {LR, LS} = {byte_size(R1), byte_size(S1)},
-    <<16#30, (4 + LR + LS), 16#02, LR, R1/binary, 16#02, LS, S1/binary>>.
-
-der_sig_part(P = <<1:1, _/bitstring>>) -> <<0:8, P/binary>>;
-der_sig_part(<<0, Rest/binary>>)       -> der_sig_part(Rest);
-der_sig_part(P)                        -> P.
 
 crypto_call_generic_hash(PrimOp, Gas, Data, State) ->
     [Type, Ptr] = get_args([typerep, word], Data),
