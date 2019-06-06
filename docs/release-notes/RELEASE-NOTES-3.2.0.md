@@ -2,19 +2,9 @@
 
 [This][this-release] is a maintenance release.
 It:
-* Improves scheduling of Ping:s - make sure we keep/restart pinging after synchronization is done.
-* Adds support for responding of `ping` messages in State Channels' WebSocket
-  protocol. Because of browser compatibility issues, the keep alive
-  functionality is being built on data frames instead of using the control
-  frames.
-* Enhances the HTTP endpoint for channel creation transaction to accept an optional list of delegates.
-* Introduces State Channel fsm-assisted solo-close and slash, and continuous chain monitoring.
-  * The state channel chain watcher now watches the chain continuously.
-  * The state channel FSM stays open during the closing phase.
-  * Client WS API for solo-closing, slash and settle.
-  * SC FSM automatically detects when a slash is needed.
-  * SC FSM reports to client any time the on-chain channel state changes.
-  * The SC watcher is now fork-aware.
+* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
+
+TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.1.0
 
