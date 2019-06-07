@@ -54,6 +54,7 @@
                                 <<"channels.settle_sign">>       -> settle_tx
                             end).
 
+
 unpack(Msg) when is_map(Msg) ->
     unpack([Msg]);
 unpack(Msg) ->
@@ -81,7 +82,12 @@ notify(Msg, ChannelId) ->
                                 , <<"channel_id">> => ChannelId} }
     }.
 
-reply(no_reply, _, _) -> no_reply;
+reply(no_reply, Msgs, ChannelId) ->
+    case [{#{ payload => <<"ok">>}, M} || #{<<"id">> := _} = M <- Msgs] of
+        [] -> no_reply;
+        [_|_] = Replies ->
+            reply({reply, Replies}, Msgs, ChannelId)
+    end;
 reply(stop, _, _)     -> stop;
 reply({reply,  L}, WholeMsg, ChannelId) when is_list(L) ->
     case [reply({reply, Reply}, WholeMsg, ChannelId) || Reply <- L] of
