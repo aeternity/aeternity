@@ -3345,7 +3345,7 @@ channel_sign_tx(ConnPid, Privkey, Method, Config) ->
     SignedCreateTx = aec_test_utils:sign_tx(Tx, Privkey),
     EncSignedCreateTx = aeser_api_encoder:encode(transaction,
                                   aetx_sign:serialize_to_binary(SignedCreateTx)),
-    ws_send_tagged(ConnPid, Method, #{tx => EncSignedCreateTx}, Config),
+    ws_call_async_method(ConnPid, Method, #{tx => EncSignedCreateTx}, Config),
     #{tx => Tx, signed_tx => SignedCreateTx, updates => Updates}.
 
 sc_ws_open_(Config) ->
@@ -6364,6 +6364,16 @@ method_pfx(Action) ->
 
 ws_send_tagged(ConnPid, Method, Payload, Config) ->
     ws_send_tagged_(ConnPid, Method, Payload, sc_ws_protocol(Config)).
+
+ws_call_async_method(ConnPid, Method, Payload, Config) ->
+    ws_call_async_method(ConnPid, Method, Payload, sc_ws_protocol(Config), Config).
+
+ws_call_async_method(ConnPid, Method, Payload, <<"json-rpc">>, Config) ->
+    <<"ok">> = ?WS:json_rpc_call(
+                  ConnPid, #{ <<"method">> => Method
+                            , <<"params">> => Payload }),
+    ok.
+
 
 ws_send_tagged_(ConnPid, Method, Payload, <<"json-rpc">>) ->
     ?WS:json_rpc_notify(
