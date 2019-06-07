@@ -21,6 +21,20 @@ You should see the console output of the running node and a lot of information r
 
 [Verify if your node is connected to mainnet.](operation.md#verify-that-node-is-connected-to-the-mainnet)
 
+## Testnet
+
+To join the testnet a network_id with value `ae_uat` argument must be pass:
+
+
+```bash
+docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity -network_id ae_uat
+```
+
+You should see the console output of the running node and a lot of information related to syncing with the network.
+
+[Verify if your node is connected to mainnet.](operation.md#verify-that-node-is-connected-to-the-testnet)
+
+See [how to persist the blockchain data](#persisting-data) and [how to enable mining](#mining) below.
 
 ## Docker Image
 
@@ -98,37 +112,6 @@ The example above uses the less memory intensive lean miner, if you want to use 
 You also need to provide beneficiary account in the configuration, please refer to [the beneficiary section in the configuration documentation](configuration.md#beneficiary-account) how to create one if you don't have yet.
 
 For more information see [miner configuration documentation](configuration#miner-configuration).
-
-## Testnet
-
-The minimal configuration to join the testnet needs a list of seed peers, network identifier and block reward beneficiary (with number of shares):
-
-```yaml
----
-peers:
-    # UAT
-    - aenode://pp_QU9CvhAQH56a2kA15tCnWPRJ2srMJW8ZmfbbFTAy7eG4o16Bf@52.10.46.160:3015
-    - aenode://pp_2vhFb3HtHd1S7ynbpbFnEdph1tnDXFSfu4NGtq46S2eM5HCdbC@18.195.109.60:3015
-    - aenode://pp_27xmgQ4N1E3QwHyoutLtZsHW5DSW4zneQJ3CxT5JbUejxtFuAu@13.250.162.250:3015
-    - aenode://pp_DMLqy7Zuhoxe2FzpydyQTgwCJ52wouzxtHWsPGo51XDcxc5c8@13.53.161.215:3015
-
-fork_management:
-    network_id: ae_uat
-
-chain:
-    protocol_beneficiaries: ["ak_2A3PZPfMC2X7ZVy4qGXz2xh2Lbh79Q4UvZ5fdH7QVFocEgcKzU:109"]
-
-```
-
-Assuming your configuration file is located at `~/.aeternity/myaeternity.yaml` on the host machine:
-
-```bash
-docker run -p 3013:3013 -p 3015:3015 -v ~/.aeternity/myaeternity.yaml:/home/aeternity/.aeternity/aeternity/aeternity.yaml aeternity/aeternity
-```
-
-You should see the console output of the running node and a lot of information related to syncing with the network.
-
-See [how to persist the blockchain data](#persisting-data) and [how to enable mining](#mining) above.
 
 
 ## Localnet
