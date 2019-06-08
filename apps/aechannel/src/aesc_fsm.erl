@@ -1703,16 +1703,18 @@ handle_call_(St, close_solo, From, D) ->
             keep_state(D, [{reply, From, {error, channel_closing}}]);
         _ ->
             {ok, CloseSoloTx, Updates} = close_solo_tx_for_signing(D),
+            gen_statem:reply(From, ok),
             D1 = set_ongoing(request_signing(
                                close_solo_tx, CloseSoloTx, Updates, D)),
-            next_state(awaiting_signature, D1, [{reply, From, ok}])
+            next_state(awaiting_signature, D1)
     end;
 handle_call_(St, slash, From, D) ->
     case St of
         channel_closing ->
             {ok, SlashTx, Updates} = slash_tx_for_signing(D),
+            gen_statem:reply(From, ok),
             D1 = set_ongoing(request_signing(slash_tx, SlashTx, Updates, D)),
-            next_state(awaiting_signature, D1, [{reply, From, ok}]);
+            next_state(awaiting_signature, D1);
         _ ->
             keep_state(D, [{reply, From, {error, channel_not_closing}}])
     end;
@@ -1720,8 +1722,9 @@ handle_call_(St, settle, From, D) ->
     case St of
         channel_closing ->
             {ok, SettleTx, Updates} = settle_tx_for_signing(D),
+            gen_statem:reply(From, ok),
             D1 = set_ongoing(request_signing(settle_tx, SettleTx, Updates, D)),
-            next_state(awaiting_signature, D1, [{reply, From, ok}]);
+            next_state(awaiting_signature, D1);
         _ ->
             keep_state(D, [{reply, From, {error, channel_not_closed}}])
     end;
@@ -1765,10 +1768,12 @@ handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
     D1 = log(rcv, ?CHANNEL_CLOSING, Msg, D),
     case check_closing_event(Info, D1) of
         {can_slash, Round, SignedTx} ->
-            {ok, SlashTx, Updates} = slash_tx_for_signing(Round, SignedTx, D1),
+            %% {ok, SlashTx, Updates} = slash_tx_for_signing(Round, SignedTx, D1),
+            %% report_on_chain_tx(can_slash, SignedTx, D1),
+            %% D2 = set_ongoing(request_signing(slash_tx, SlashTx, Updates, D1)),
+            %% next_state(awaiting_signature, D2);
             report_on_chain_tx(can_slash, SignedTx, D1),
-            D2 = set_ongoing(request_signing(slash_tx, SlashTx, Updates, D1)),
-            next_state(awaiting_signature, D2);
+            next_state(channel_closing, D1);
         {ok, proper_solo_closing, SignedTx} ->
             lager:debug("Channel solo-closing", []),
             report_on_chain_tx(solo_closing, SignedTx, D1),
