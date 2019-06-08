@@ -45,13 +45,13 @@
 %%%==================================================================
 
 patterns() ->
-    [{sc_ws_handler, init, 2, []} |
-     [{?MODULE, F, A, []} || {F, A} <- [ {protocol, 0}
-                                       , {response, 0}
-                                       , {process_from_client, 4}
-                                       , {process_from_fsm, 3}
-                                       ]]].
-
+    sc_ws_api_jsonrpc:patterns() ++
+        [{sc_ws_handler, init, 2, []} |
+         [{?MODULE, F, A, []} || {F, A} <- [ {protocol, 0}
+                                           , {response, 0}
+                                           , {process_from_client, 4}
+                                           , {process_from_fsm, 3}
+                                           ]]].
 
 %%%===================================================================
 %%% API
