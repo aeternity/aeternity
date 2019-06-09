@@ -5482,10 +5482,13 @@ sc_ws_slash_(Config0) ->
               Config = sc_ws_open_(Config0, #{slogan => S}),
               sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles)
       end, [{A,B, C} || A <- [initiator],
-                        B <- [responder],
+                        B <- [initiator, responder],
                         C <- [initiator]]).
 
 sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
+    ct:log("WhoCloses  = ~p~n"
+           "WhoSlashes = ~p~n"
+           "WhoSettles = ~p~n", [WhoCloses, WhoSlashes, WhoSettles]),
     true = lists:member(WhoCloses, ?ROLES),
     true = lists:member(WhoSlashes, ?ROLES),
     ct:log("ConfigList = ~p", [Config]),
@@ -5549,23 +5552,11 @@ sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
           , <<"type">> := <<"channel_slash_tx">> }}
         = wait_for_channel_event(SlasherOtherPid, on_chain_tx, Config),
 
-    flush_messages(),
-
     settle_(Config, WhoSettles),
-    ok = unregister_channel_events(MyEvents, Pids),
     ok.
 
 other(initiator) -> responder;
 other(responder) -> initiator.
-
-flush_messages() ->
-    receive
-        Msg ->
-            ct:log("UNHANDLED: ~p", [Msg]),
-            flush_messages()
-    after 0 ->
-            ok
-    end.
 
 sign_slash_tx(ConnPid, Who, Config) ->
     Participants = proplists:get_value(participants, Config),
