@@ -689,7 +689,7 @@ jobs:
 
   osx_package:
     macos:
-      xcode: "10.0.0"
+      xcode: "10.0.0" # 10.0.0 is macOS 10.13.6
     working_directory: ~/aeternity
     steps:
       - checkout
