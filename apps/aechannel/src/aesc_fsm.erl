@@ -1768,7 +1768,6 @@ handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
     D1 = log(rcv, ?CHANNEL_CLOSING, Msg, D),
     case check_closing_event(Info, D1) of
         {can_slash, Round, SignedTx} ->
-            %% {ok, SlashTx, Updates} = slash_tx_for_signing(Round, SignedTx, D1),
             %% report_on_chain_tx(can_slash, SignedTx, D1),
             %% D2 = set_ongoing(request_signing(slash_tx, SlashTx, Updates, D1)),
             %% next_state(awaiting_signature, D2);
