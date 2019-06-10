@@ -14,6 +14,8 @@
 
 -export([process_request/2]).
 
+-export([patterns/0]).
+
 -define(JSONRPC_VERSION, <<"2.0">>).
 
 -define(VERSION, 1).
@@ -54,6 +56,20 @@
                                 <<"channels.settle_sign">>       -> settle_tx
                             end).
 
+
+%%%==================================================================
+%%% Trace settings
+%%%==================================================================
+
+patterns() ->
+    [{?MODULE, F, A, []} || {F, A} <- [ {reply, 3}
+                                      , {notify, 2}
+                                      , {process_request, 2}
+                                      ]].
+
+%%%===================================================================
+%%% Callbacks
+%%%===================================================================
 
 unpack(Msg) when is_map(Msg) ->
     unpack([Msg]);
@@ -528,12 +544,16 @@ process_request(#{<<"method">> := <<"channels.close_solo">>}, FsmPid) ->
     no_reply;
 process_request(#{<<"method">> := <<"channels.slash">>}, FsmPid) ->
     lager:debug("Channel WS: slash message received"),
-    aesc_fsm:slash(FsmPid),
-    no_reply;
+    case aesc_fsm:slash(FsmPid) of
+        ok -> no_reply;
+        {error, _Reason} = Err -> Err
+    end;
 process_request(#{<<"method">> := <<"channels.settle">>}, FsmPid) ->
     lager:debug("Channel WS: settle message received"),
-    aesc_fsm:settle(FsmPid),
-    no_reply;
+    case aesc_fsm:settle(FsmPid) of
+        ok -> no_reply;
+        {error, _Reason} = Err -> Err
+    end;
 process_request(#{<<"method">> := _} = Unhandled, _FsmPid) ->
     lager:warning("Channel WS: unhandled action received ~p", [Unhandled]),
     {error, unhandled};

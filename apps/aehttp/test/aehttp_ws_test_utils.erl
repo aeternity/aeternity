@@ -547,7 +547,7 @@ put_registered_ref(Pid, Ref, #register{mon_refs=Refs}=R) ->
 
 put_registration(RegPid, Event, Register0) ->
     Pids0 = get_registered_pids(Event, Register0),
-    false = lists:member(RegPid, Pids0), % assert there is no double registration
+    no_double_registration(Event, RegPid, Pids0),
     Register =
         case is_pid(RegPid) of
             false -> Register0;
@@ -556,6 +556,12 @@ put_registration(RegPid, Event, Register0) ->
                 put_registered_ref(RegPid, Ref, Register0)
         end,
     set_registered_event(Event, [RegPid | Pids0], Register).
+
+no_double_registration(Event, RegPid, Pids) ->
+    case lists:member(RegPid, Pids) of
+        false -> ok;
+        true  -> error({already_registered, Event})
+    end.
 
 delete_registered(RegPid, Event, Register) ->
     %% do no demonitor the pid because other events could still be registered

@@ -211,6 +211,7 @@
     sc_ws_update_conflict/1,
     sc_ws_close_mutual/1,
     sc_ws_close_solo/1,
+    sc_ws_slash/1,
     sc_ws_leave_reestablish/1,
     sc_ws_ping_pong/1,
     sc_ws_deposit/1,
@@ -236,6 +237,8 @@
 
 -define(SLOGAN, slogan(?FUNCTION_NAME, ?LINE)).
 -define(SLOGAN(Param), slogan(?FUNCTION_NAME, ?LINE, Param)).
+
+-define(ROLES, [initiator, responder]).
 
 -define(ALICE, {
     <<177,181,119,188,211,39,203,57,229,94,108,2,107,214, 167,74,27,
@@ -572,6 +575,8 @@ channel_websocket_sequence() ->
       sc_ws_close_mutual,
       %% both can solo-close
       sc_ws_close_solo,
+      %% fsm informs of slash potential
+      sc_ws_slash,
       %% possible to leave and reestablish channel
       sc_ws_leave_reestablish,
       {group, continuous_sc_ws}
@@ -3550,13 +3555,17 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
 
     ok.
 
+channel_update(Conns, Starter, Participants, Amount, Round, Config) ->
+    channel_update(Conns, Starter, Participants, Amount, Round,
+                   _TestErrors = true, Config).
+
 channel_update(#{initiator := IConnPid, responder :=RConnPid},
                StarterRole,
                #{initiator := #{pub_key := IPubkey,
                                 priv_key := IPrivkey},
                  responder := #{pub_key := RPubkey,
                                 priv_key := RPrivkey}},
-               Amount,_Round,Config) ->
+               Amount,_Round,TestErrors,Config) ->
     true = undefined =/= process_info(IConnPid),
     true = undefined =/= process_info(RConnPid),
     {StarterPid, AcknowledgerPid, StarterPubkey, StarterPrivkey,
@@ -3584,18 +3593,21 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     UpdateOpts = #{from => aeser_api_encoder:encode(account_pubkey, StarterPubkey),
                    to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
                    amount => Amount},
-    ws_send_tagged(StarterPid, <<"channels.update.new">>,
-                   UpdateOpts#{amount => <<"1">>}, Config),
-    {ok, #{<<"reason">> := <<"not_a_number">>}} =
-        wait_for_channel_event(StarterPid, error, Config),
-    ws_send_tagged(StarterPid, <<"channels.update.new">>,
-        UpdateOpts#{from => <<"ABCDEF">>}, Config),
-    {ok, #{<<"reason">> := <<"broken_encoding: accounts">>}} =
-        wait_for_channel_event(StarterPid, error, Config),
-    ws_send_tagged(StarterPid, <<"channels.update.new">>,
-        UpdateOpts#{to => <<"ABCDEF">>}, Config),
-    {ok, #{<<"reason">> := <<"broken_encoding: accounts">>}} =
-        wait_for_channel_event(StarterPid, error, Config),
+    if TestErrors ->
+            ws_send_tagged(StarterPid, <<"channels.update.new">>,
+                           UpdateOpts#{amount => <<"1">>}, Config),
+            {ok, #{<<"reason">> := <<"not_a_number">>}} =
+                wait_for_channel_event(StarterPid, error, Config),
+            ws_send_tagged(StarterPid, <<"channels.update.new">>,
+                           UpdateOpts#{from => <<"ABCDEF">>}, Config),
+            {ok, #{<<"reason">> := <<"broken_encoding: accounts">>}} =
+                wait_for_channel_event(StarterPid, error, Config),
+            ws_send_tagged(StarterPid, <<"channels.update.new">>,
+                           UpdateOpts#{to => <<"ABCDEF">>}, Config),
+            {ok, #{<<"reason">> := <<"broken_encoding: accounts">>}} =
+                wait_for_channel_event(StarterPid, error, Config);
+       true -> ok
+    end,
     ws_send_tagged(StarterPid, <<"channels.update.new">>,
                    UpdateOpts, Config),
 
@@ -3703,6 +3715,10 @@ query_balances_(ConnPid, Accounts, <<"json-rpc">>) ->
     {ok, ?WS:json_rpc_call(
             ConnPid, #{ <<"method">> => <<"channels.get.balances">>
                       , <<"params">> => #{<<"accounts">> => Accounts} })}.
+
+request_slash(ConnPid) ->
+    {ok, ?WS:json_rpc_call(
+            ConnPid, #{ <<"method">> => <<"channels.slash">> })}.
 
 sc_ws_get_state(ConnPid, Config) ->
     {ok, Res} = query_state(ConnPid, Config),
@@ -3843,27 +3859,23 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
       responder := #{pub_key  := RPubKey,
                      priv_key := RPrivKey}} = proplists:get_value(participants,
                                                                       Config),
-    {IStartB, RStartB} = channel_participants_balances(IPubKey, RPubKey),
+    {_IStartB, _RStartB} = channel_participants_balances(IPubKey, RPubKey),
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, on_chain_tx]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, on_chain_tx]),
 
     CloseSolo =
-        fun(CloserConn, CloserPrivKey, OtherConn, OtherPrivKey) ->
+        fun(CloserConn, CloserPrivKey) ->
                 ws_send_tagged(CloserConn, <<"channels.close_solo">>, #{}, Config),
                 #{signed_tx := CSTx} = channel_sign_tx(CloserConn, CloserPrivKey,
                                                        <<"channels.close_solo_sign">>, Config),
                 CSTx
         end,
     CloseSoloTx = case Closer of
-                      initiator -> CloseSolo(IConnPid, IPrivKey, RConnPid, RPrivKey);
-                      responder -> CloseSolo(RConnPid, RPrivKey, IConnPid, IPrivKey)
+                      initiator -> CloseSolo(IConnPid, IPrivKey);
+                      responder -> CloseSolo(RConnPid, RPrivKey)
                   end,
-    %% CloseSoloTxHash = aetx_sign:hash(CloseSoloTx),
-    %% ct:log("CloseSoloTxHash = ~p", [CloseSoloTxHash]),
-
-    %% ok = wait_for_tx_hash_on_chain(CloseSoloTxHash),
 
     ok = wait_for_signed_transaction_in_block(CloseSoloTx),
 
@@ -3873,7 +3885,6 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
                                                  RConnPid, on_chain_tx, Config),
     {ok, SSignedSoloTx} = aeser_api_encoder:safe_decode(transaction, EncodedSignedSoloTx),
     SignedSoloTx = aetx_sign:deserialize_from_binary(SSignedSoloTx),
-    CloseSoloTxHash = aetx_sign:hash(SignedSoloTx),
     SoloTx = aetx_sign:tx(SignedSoloTx),
     {channel_close_solo_tx, _TxI} = aetx:specialize_type(SoloTx),
 
@@ -3887,10 +3898,8 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
 
 settle_(Config, Closer) when Closer =:= initiator;
                              Closer =:= responder ->
-    #{initiator := #{pub_key  := IPubKey,
-                     priv_key := IPrivKey},
-      responder := #{pub_key  := RPubKey,
-                     priv_key := RPrivKey}} = proplists:get_value(participants,
+    #{initiator := #{priv_key := IPrivKey},
+      responder := #{priv_key := RPrivKey}} = proplists:get_value(participants,
                                                                       Config),
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, Config),
@@ -4741,8 +4750,7 @@ register_oracle(OraclePubkey, OraclePrivkey, Opts) ->
     case rpc(aec_chain, get_oracle, [OraclePubkey]) of
         {error, not_found} -> pass;
         {ok, Oracle} ->
-            TopHeader = rpc(?NODE, aec_chain, top_header, []),
-            Height = aec_headers:height(TopHeader),
+            Height = current_height(),
             TTL = aeo_oracles:ttl(Oracle), % absolute TTL
             ExpBlocksCnt = TTL - Height,
             ct:log("Already an oracle, mining ~p blocks so it expires",
@@ -4925,15 +4933,13 @@ sc_ws_contract_(Config, TestName, Owner) ->
 
     GetPoI =
         fun(ConnPid) ->
-            ws_send_tagged(ConnPid, <<"channels.get.poi">>,
-                           #{contracts   => [aeser_api_encoder:encode(contract_pubkey, ContractPubKey)],
-                             accounts    => [aeser_api_encoder:encode(account_pubkey, SenderPubkey),
-                                             aeser_api_encoder:encode(account_pubkey, AckPubkey)]
-                            }, Config),
-
-                    {ok, <<"poi">>, #{<<"poi">> := P}} = wait_for_channel_event(ConnPid, get, Config),
-                    P
-                end,
+                Scope = #{contracts   => [aeser_api_encoder:encode(contract_pubkey, ContractPubKey)],
+                          accounts    => [aeser_api_encoder:encode(account_pubkey, SenderPubkey),
+                                          aeser_api_encoder:encode(account_pubkey, AckPubkey)]
+                         },
+                {ok, #{poi := P}} = sc_ws_get_poi_(ConnPid, Scope, Config),
+                P
+        end,
 
     GetMissingPoI =
         fun(ConnPid, Accs, Cts) ->
@@ -4975,6 +4981,14 @@ sc_ws_contract_(Config, TestName, Owner) ->
     ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, get, error]),
     ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, get, error]),
     ok.
+
+sc_ws_get_poi_(ConnPid, Scope, Config) ->
+    ws_send_tagged(ConnPid, <<"channels.get.poi">>, Scope, Config),
+    {ok, <<"poi">>, #{ channel_id := ChId
+                     , data := #{<<"poi">> := Poi}}} =
+        wait_for_channel_event_full(ConnPid, get, Config),
+    {ok, #{ channel_id => ChId
+          , poi => Poi}}.
 
 contract_id_from_create_update(Owner, OffchainTx) ->
     {CB, Tx} = aetx:specialize_callback(OffchainTx),
@@ -5458,6 +5472,151 @@ sc_ws_close_solo_(Config0) ->
               sc_ws_close_solo_(Config, WhoCloses)
       end, [initiator, responder]).
 
+sc_ws_slash(Config) ->
+    with_trace(fun sc_ws_slash_/1, Config, "sc_ws_slash").
+
+sc_ws_slash_(Config0) ->
+    lists:foreach(
+      fun({WhoCloses, WhoSlashes, WhoSettles}) ->
+              S = ?SLOGAN([WhoCloses, ",", WhoSlashes]),
+              Config = sc_ws_open_(Config0, #{slogan => S}),
+              sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles)
+      end, [{A,B, C} || A <- [initiator],
+                        B <- [initiator, responder],
+                        C <- [initiator]]).
+
+sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
+    ct:log("WhoCloses  = ~p~n"
+           "WhoSlashes = ~p~n"
+           "WhoSettles = ~p~n", [WhoCloses, WhoSlashes, WhoSettles]),
+    true = lists:member(WhoCloses, ?ROLES),
+    true = lists:member(WhoSlashes, ?ROLES),
+    ct:log("ConfigList = ~p", [Config]),
+    #{initiator := #{pub_key  := IPubKey},
+      responder := #{pub_key  := RPubKey}} = Participants =
+        proplists:get_value(participants, Config),
+    #{initiator := IConnPid,
+      responder := RConnPid} = Conns =
+        proplists:get_value(channel_clients, Config),
+    MyEvents = [sign, info, get, on_chain_tx],
+    Pids = [IConnPid, RConnPid],
+    ok = register_channel_events(MyEvents, Pids),
+    %% Fetch ChId and POI for initial state
+    PoiScope = #{accounts => [aeser_api_encoder:encode(account_pubkey, Acc)
+                              || Acc <- [IPubKey, RPubKey]]},
+    {ok, #{ channel_id := ChIdEnc
+          , poi := PoiEnc}} = sc_ws_get_poi_(IConnPid, PoiScope, Config),
+    {channel, ChId} = aeser_api_encoder:decode(ChIdEnc),
+    {poi, PoiSer} = aeser_api_encoder:decode(PoiEnc),
+    Poi = aec_trees:deserialize_poi(PoiSer),
+    %% create a new offchain state
+
+    avoid_double_reg(
+      MyEvents, Pids,
+      fun() ->
+              channel_update(Conns, initiator, Participants, 1, 2,
+                             _TestErrors = false, Config)
+      end),
+    sc_ws_cheating_close_solo_(Config, ChId, Poi, WhoCloses),
+    %%
+    %% Both sides detect slash potential
+    %%
+    SlasherPid = maps:get(WhoSlashes, Conns),
+    SlasherOtherPid = maps:get(other(WhoSlashes), Conns),
+    {ok, #{ <<"info">> := <<"can_slash">>
+          , <<"type">> := <<"channel_offchain_tx">> }}
+        = wait_for_channel_event(SlasherPid, on_chain_tx, Config),
+    {ok, #{ <<"info">> := <<"can_slash">>
+          , <<"type">> := <<"channel_offchain_tx">> }}
+        = wait_for_channel_event(SlasherOtherPid, on_chain_tx, Config),
+    {ok, #{<<"event">> := <<"closing">>}}
+        = wait_for_channel_event(SlasherPid, info, Config),
+    {ok, #{<<"event">> := <<"closing">>}}
+        = wait_for_channel_event(SlasherOtherPid, info, Config),
+    %%
+    %% WhoSlashes initiates a slash
+    %%
+    {ok, <<"ok">>} = request_slash(SlasherPid),
+    {ok, SignedSlashTx} = sign_slash_tx(SlasherPid, WhoSlashes, Config),
+    ct:log("SignedSlashTx = ~p", [SignedSlashTx]),
+    SlashTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedSlashTx)),
+    ct:log("SlashTxHash = ~p", [SlashTxHash]),
+    ok = wait_for_tx_hash_on_chain(SlashTxHash),
+    %%
+    %% Both sides detect slash tx
+    %%
+    {ok, #{ <<"info">> := <<"solo_closing">>
+          , <<"type">> := <<"channel_slash_tx">> }}
+        = wait_for_channel_event(SlasherPid, on_chain_tx, Config),
+    {ok, #{ <<"info">> := <<"solo_closing">>
+          , <<"type">> := <<"channel_slash_tx">> }}
+        = wait_for_channel_event(SlasherOtherPid, on_chain_tx, Config),
+
+    settle_(Config, WhoSettles),
+    ok.
+
+other(initiator) -> responder;
+other(responder) -> initiator.
+
+sign_slash_tx(ConnPid, Who, Config) ->
+    Participants = proplists:get_value(participants, Config),
+    #{priv_key := PrivKey} = maps:get(Who, Participants),
+    sign_tx(ConnPid, <<"slash_tx">>, <<"channels.slash_sign">>, PrivKey, Config).
+
+sign_tx(ConnPid, Tag, ReplyMethod, PrivKey, Config) ->
+    {ok, Tag, #{<<"tx">> := EncTx}} =
+        wait_for_channel_event(ConnPid, sign, Config),
+    {ok, BinTx} = aeser_api_encoder:safe_decode(transaction, EncTx),
+    Tx = aetx:deserialize_from_binary(BinTx),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
+    EncSignedTx = aeser_api_encoder:encode(
+                    transaction,
+                    aetx_sign:serialize_to_binary(SignedTx)),
+    ws_send_tagged(ConnPid, ReplyMethod, #{tx => EncSignedTx}, Config),
+    {ok, SignedTx}.
+
+register_channel_events(Events, Pids) ->
+    [ok = ?WS:register_test_for_channel_events(Pid, Events)
+     || Pid <- Pids],
+    ok.
+
+unregister_channel_events(Events, Pids) ->
+    [ok = ?WS:unregister_test_for_channel_events(Pid, Events)
+     || Pid <- Pids],
+    ok.
+
+avoid_double_reg(Events, Pids, F) ->
+    ok = unregister_channel_events(Events, Pids),
+    Res = F(),
+    ok = register_channel_events(Events, Pids),
+    Res.
+
+sc_ws_cheating_close_solo_(Config, ChId, Poi, WhoCloses) ->
+    %% Create a close_solo based on the create_tx
+    Participants = proplists:get_value(participants, Config),
+    Keys = maps:get(WhoCloses, Participants),
+    #{pub_key := PubKey, priv_key := PrivKey} = Keys,
+    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [PubKey]),
+    TTL = current_height() + 10,
+    Fee = 30000 * aec_test_utils:min_gas_price(),
+    ct:log("Will try to create close_solo_tx~n"
+           "ChId = ~p~n"
+           "PubKey = ~p~n", [ChId, PubKey]),
+    TxOpts = #{ channel_id => aeser_id:create(channel, ChId)
+              , from_id    => aeser_id:create(account, PubKey)
+              , payload    => <<>>
+              , poi        => Poi
+              , ttl        => TTL
+              , fee        => Fee
+              , nonce      => Nonce
+              },
+    ct:log("close_solo_tx: ~p", [TxOpts]),
+    {ok, Tx} = aesc_close_solo_tx:new(TxOpts),
+    SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey]),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedTx]),
+    wait_for_signed_transaction_in_block(SignedTx),
+    ok.
+
 sc_ws_leave_reestablish(Config0) ->
     Config = sc_ws_open_(Config0),
     ReestablOptions = sc_ws_leave_(Config),
@@ -5539,8 +5698,7 @@ peers(_Config) ->
          }).
 
 sum_token_supply(_Config) ->
-    TopHeader = rpc(?NODE, aec_chain, top_header, []),
-    Height = aec_headers:height(TopHeader),
+    Height = current_height(),
     case Height < 2 of
         true ->
             Mine = 2 - Height,
@@ -5566,6 +5724,12 @@ sum_token_supply(_Config) ->
     {ok, 400, #{<<"reason">> := <<"Chain too short">>}} =
         get_token_supply_sut(Height + 5),
     ok.
+
+current_height() ->
+    case rpc(aec_chain, top_header, []) of
+        undefined -> 1;
+        Header -> aec_headers:height(Header) + 1
+    end.
 
 get_token_supply_sut(Height) ->
     Host = internal_address(),
@@ -6123,10 +6287,7 @@ give_tokens(RecipientPubkey, Amount) ->
     ok.
 
 blocks_to_mine(Amount, ChecksCnt) ->
-    Height = case rpc(aec_chain, top_header, []) of
-                 undefined -> 1;
-                 Header -> aec_headers:height(Header) + 1
-             end,
+    Height = current_height(),
     Delay = rpc(aec_governance, beneficiary_reward_delay, []),
     blocks_to_mine_1(Height, Delay, Amount * ChecksCnt, 0, 0).
 
@@ -6268,15 +6429,26 @@ ws_get_call_params(Update, UnsignedTx) ->
 %%     wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>).
 
 wait_for_channel_event(ConnPid, Action, Config) ->
+    case wait_for_channel_event_(ConnPid, Action, sc_ws_protocol(Config)) of
+        {ok, #{error := Error}} ->
+            {ok, Error};
+        {ok, #{data := Data}} ->
+            {ok, Data};
+        {ok, Tag, #{data := Data}} ->
+            {ok, Tag, Data}
+    end.
+
+wait_for_channel_event_full(ConnPid, Action, Config) ->
     wait_for_channel_event_(ConnPid, Action, sc_ws_protocol(Config)).
 
 wait_for_channel_event_(ConnPid, error, <<"json-rpc">>) ->
     case ?WS:wait_for_channel_msg(ConnPid, error) of   % whole msg
         {ok, #{ <<"jsonrpc">> := <<"2.0">>
-              , <<"channel_id">> := _
+              , <<"channel_id">> := ChId
               , <<"id">>      := null
               , <<"error">>   := E } } ->
-            {ok, lift_reason(E)}
+            {ok, #{ channel_id => ChId
+                  , error      => lift_reason(E)}}
     end;
 wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>) ->
     Method = method_pfx(Action),
@@ -6284,14 +6456,14 @@ wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>) ->
     case {?WS:wait_for_channel_msg(ConnPid, Action), Method} of   % whole msg
         {{ok, #{ <<"jsonrpc">> := <<"2.0">>
                , <<"method">>  := <<Method:Sz/binary, _/binary>>
-               , <<"params">>  := #{<<"channel_id">> := _} = Params }}, _} ->
+               , <<"params">>  := #{<<"channel_id">> := ChId} = Params }}, _} ->
             Data = maps:get(<<"data">>, Params, no_data),
-            {ok, Data};
+            {ok, #{channel_id => ChId, data => Data}};
         {{ok, Tag, #{ <<"jsonrpc">> := <<"2.0">>
                     , <<"method">>  := <<Method:Sz/binary, _/binary>>
-                    , <<"params">>  := Params }}, _} ->
+                    , <<"params">>  := #{<<"channel_id">> := ChId} = Params }}, _} ->
             Data = maps:get(<<"data">>, Params, no_data),
-            {ok, Tag, Data}
+            {ok, Tag, #{channel_id => ChId, data => Data}}
     end.
 
 wait_for_channel_event(Event, ConnPid, Type, Config) ->
@@ -6594,4 +6766,8 @@ slogan(F, L, X) ->
     S.
 
 to_binary(A) when is_atom(A) ->
-    atom_to_binary(A, latin1).
+    atom_to_binary(A, latin1);
+to_binary(I) when is_integer(I) ->
+    integer_to_binary(I);
+to_binary([_|_] = L) ->
+    iolist_to_binary([to_binary(X) || X <- L]).
