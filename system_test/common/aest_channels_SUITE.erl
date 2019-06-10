@@ -179,6 +179,14 @@ simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, C
     {ok, CloseTxHash, IChange, RChange} = sc_close_mutual(Chan, initiator),
 
     SplitOpenFee = 10000 * aest_nodes:gas_price(),
+    ct:log("IAmt = ~p~n"
+           "RAmt = ~p~n"
+           "Gas price    = ~p~n"
+           "SplitOpenFee = ~p~n"
+           "PushAmount   = ~p~n"
+           "IChange      = ~p~n"
+           "RChange      = ~p~n", [IAmt, RAmt, aest_nodes:gas_price(),
+                                   SplitOpenFee, PushAmount, IChange, RChange]),
     ?assertEqual(IAmt - 20 * aest_nodes:gas_price() - SplitOpenFee - PushAmount, IChange),
     ?assertEqual(RAmt - 50 * aest_nodes:gas_price() - SplitOpenFee + PushAmount, RChange),
 
