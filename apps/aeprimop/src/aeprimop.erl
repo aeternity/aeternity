@@ -38,6 +38,13 @@
 
 %% Direct op API (mainly for FATE).
 -export([ spend_op/3
+        , force_inc_account_nonce_op/2
+        , oracle_earn_query_fee_op/2
+        , oracle_extend_op/2
+        , oracle_query_op_with_return/7
+        , oracle_register_op/6
+        , oracle_respond_op/3
+        , spend_fee_op/2
         ]).
 
 
@@ -162,7 +169,7 @@ eval_with_return([_|_] = Instructions, Trees, TxEnv) ->
                                       | {ok, return_val(), aeprimop_state:state()}
                                       | {error, atom()}.
 eval_on_primop_state([_|_] = Instructions, State) ->
-    int_eval(Instructions, State).
+    int_eval(Instructions, State, [{cache_write_through, false}]).
 
 -spec spend_tx_instructions(pubkey(), id(), amount(), fee(), nonce()) -> [op()].
 spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
@@ -199,7 +206,7 @@ oracle_query_tx_instructions(OraclePubkey, SenderPubkey, Query,
     [ force_inc_account_nonce_op(SenderPubkey, Nonce)
     , spend_fee_op(SenderPubkey, TxFee + QueryFee)
     , oracle_query_op(OraclePubkey, SenderPubkey, Nonce,
-                      Query, QueryFee, QTTL, RTTL)
+                      Query, QueryFee, QTTL, RTTL, false)
     ].
 
 -spec oracle_response_tx_instructions(pubkey(), hash(), binary(), ttl(),
@@ -397,7 +404,10 @@ channel_settle_tx_instructions(FromPubkey, ChannelPubkey,
 %%% Instruction evaluation
 
 int_eval(Instructions, S) ->
-    try eval_instructions(Instructions, S)
+    int_eval(Instructions, S, [cache_write_through]).
+
+int_eval(Instructions, S, Opts) ->
+    try eval_instructions(Instructions, S, Opts)
     catch
         throw:{?MODULE, What} ->
             {error, What};
@@ -405,19 +415,27 @@ int_eval(Instructions, S) ->
             {error, What}
     end.
 
-eval_instructions([I|Left], S) ->
+eval_instructions([I|Left], S, Opts) ->
     case eval_one(I, S) of
         #state{} = S1 ->
-            eval_instructions(Left, S1);
+            eval_instructions(Left, S1, Opts);
         {return, Return, #state{} = S1} when Left =:= [] ->
-            S2 = aeprimop_state:cache_write_through(S1),
+            S2 = cache_write_through(S1, Opts),
             {ok, Return, S2};
         {return, _Return, #state{}} when Left =/= [] ->
             error(return_not_last)
     end;
-eval_instructions([], S) ->
-    S1 = aeprimop_state:cache_write_through(S),
+eval_instructions([], S, Opts) ->
+    S1 = cache_write_through(S, Opts),
     {ok, S1}.
+
+cache_write_through(S, Opts) ->
+    case proplists:get_bool(cache_write_through, Opts) of
+        true ->
+            aeprimop_state:cache_write_through(S);
+        false ->
+            S
+    end.
 
 eval_one({Op, Args}, S) ->
     case Op of
@@ -582,19 +600,25 @@ oracle_extend({PubKey, DeltaTTL}, S) ->
 
 %%%-------------------------------------------------------------------
 
+oracle_query_op_with_return(OraclePubkey, SenderPubkey, SenderNonce,
+                            Query, QueryFee, QTTL, RTTL) ->
+    oracle_query_op(OraclePubkey, SenderPubkey, SenderNonce, Query, QueryFee,
+                    QTTL, RTTL, true).
+
 oracle_query_op(OraclePubkey, SenderPubkey, SenderNonce, Query, QueryFee,
-                QTTL, RTTL) when ?IS_HASH(OraclePubkey),
-                                 ?IS_HASH(SenderPubkey),
-                                 ?IS_NON_NEG_INTEGER(SenderNonce),
-                                 is_binary(Query),
-                                 ?IS_NON_NEG_INTEGER(QueryFee),
-                                 ?IS_NON_NEG_INTEGER(QTTL),
-                                 ?IS_NON_NEG_INTEGER(RTTL) ->
+                QTTL, RTTL, Return) when ?IS_HASH(OraclePubkey),
+                                         ?IS_HASH(SenderPubkey),
+                                         ?IS_NON_NEG_INTEGER(SenderNonce),
+                                         is_binary(Query),
+                                         ?IS_NON_NEG_INTEGER(QueryFee),
+                                         ?IS_NON_NEG_INTEGER(QTTL),
+                                         ?IS_NON_NEG_INTEGER(RTTL),
+                                         is_boolean(Return) ->
     {oracle_query, {OraclePubkey, SenderPubkey, SenderNonce,
-                    Query, QueryFee, QTTL, RTTL}}.
+                    Query, QueryFee, QTTL, RTTL, Return}}.
 
 oracle_query({OraclePubkey, SenderPubkey, SenderNonce,
-             Query, QueryFee, QTTL, RTTL}, S) ->
+             Query, QueryFee, QTTL, RTTL, Return}, S) ->
     {Oracle, S1} = get_oracle(OraclePubkey, oracle_does_not_exist, S),
     assert_query_fee(Oracle, QueryFee),
     assert_query_ttl(Oracle, QTTL, RTTL, S),
@@ -613,7 +637,13 @@ oracle_query({OraclePubkey, SenderPubkey, SenderNonce,
                         QueryObject0
                 end,
             assert_not_oracle_query(QueryObject, S),
-            put_oracle_query(QueryObject, S1)
+            S2 = put_oracle_query(QueryObject, S1),
+            case Return of
+                true ->
+                    {return, aeo_query:id(QueryObject), S2};
+                false ->
+                    S2
+            end
     catch
         error:{illegal,_Field,_X} = Err ->
             lager:debug("Failed oracle query: ~p", [Err]),
@@ -627,6 +657,12 @@ oracle_respond_op(OraclePubkey, QueryId, Response, RTTL
                         ?IS_HASH(QueryId),
                         ?IS_NON_NEG_INTEGER(RTTL) ->
     {oracle_respond, {OraclePubkey, QueryId, Response, RTTL}}.
+
+oracle_respond_op(OraclePubkey, QueryId, Response
+                 ) when ?IS_HASH(OraclePubkey),
+                        ?IS_HASH(QueryId) ->
+    %% Using the default TTL for the query.  Only used from FATE.
+    {oracle_respond, {OraclePubkey, QueryId, Response, default}}.
 
 oracle_respond({OraclePubkey, QueryId, Response, RTTL}, S) ->
     {QueryObject, S1} = get_oracle_query(OraclePubkey, QueryId, S),
@@ -1405,11 +1441,29 @@ assert_oracle_formats(QFormat, RFormat, ?ABI_AEVM_SOPHIA_1, S) ->
             %% Backwards compatible: no check of this.
             ok;
         true ->
-            assert_typerep_format(QFormat, bad_query_format),
-            assert_typerep_format(RFormat, bad_response_format)
+            assert_aevm_typerep_format(QFormat, bad_query_format),
+            assert_aevm_typerep_format(RFormat, bad_response_format)
+    end;
+assert_oracle_formats(QFormat, RFormat, ?ABI_FATE_SOPHIA_1,_S) ->
+    assert_fate_typerep_format(QFormat, bad_query_format),
+    assert_fate_typerep_format(RFormat, bad_response_format).
+
+assert_fate_typerep_format(Format, Error) ->
+    try aeb_fate_encoding:deserialize_type(Format) of
+        {Type, <<>>} ->
+            case iolist_to_binary(aeb_fate_encoding:serialize_type(Type)) of
+                Format ->
+                    ok;
+                _Other ->
+                    runtime_error(Error)
+            end;
+        _ ->
+            runtime_error(Error)
+    catch _:_ ->
+            runtime_error(Error)
     end.
 
-assert_typerep_format(Format, Error) ->
+assert_aevm_typerep_format(Format, Error) ->
     try aeb_heap:from_binary(typerep, Format) of
         {ok, TypeRep} ->
             case aeb_heap:to_binary(TypeRep) of
@@ -1462,9 +1516,22 @@ assert_oracle_format_match(Oracle, Format, Content) ->
                     runtime_error(bad_format)
             catch _:_ ->
                     runtime_error(bad_format)
+            end;
+        ?ABI_FATE_SOPHIA_1 ->
+            {Type, <<>>} = aeb_fate_encoding:deserialize_type(Format),
+            try aeb_fate_encoding:deserialize(Content) of
+                FateTerm ->
+                    case aefa_fate:check_type(Type, FateTerm) of
+                        #{}   -> ok;
+                        false -> runtime_error(bad_format)
+                    end
+            catch _:_ ->
+                    runtime_error(bad_format)
             end
     end.
 
+assert_oracle_response_ttl(_QueryObject, default) ->
+    ok;
 assert_oracle_response_ttl(QueryObject, RTTL) ->
     {delta, QRTTL} = aeo_query:response_ttl(QueryObject),
     case QRTTL =:= RTTL of

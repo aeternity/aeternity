@@ -34,6 +34,8 @@ encode({contract, S}) when is_list(S)  ->
     aeb_fate_data:make_contract(encode_address(contract_pubkey, S));
 encode({oracle, B}) when is_binary(B)  -> aeb_fate_data:make_oracle(B);
 encode({oracle, I}) when is_integer(I)  -> B = <<I:256>>, aeb_fate_data:make_oracle(B);
+encode({oracle_query, B}) when is_binary(B)  -> aeb_fate_data:make_oracle_query(B);
+encode({oracle_query, I}) when is_integer(I)  -> B = <<I:256>>, aeb_fate_data:make_oracle_query(B);
 encode({oracle, S}) when is_list(S)  ->
    aeb_fate_data:make_oracle(encode_address(oracle_pubkey, S));
 encode({name, B}) when is_binary(B)  -> aeb_fate_data:make_name(B);
@@ -95,6 +97,7 @@ decode(?FATE_HASH(H), word)                  -> {hash, H};
 decode(?FATE_SIGNATURE(S), word)             -> {signature, S};
 decode(?FATE_CONTRACT(<<X:256>>), word)      -> {contract, X};
 decode(?FATE_ORACLE(<<X:256>>), word)        -> {oracle, X};
+decode(?FATE_ORACLE_Q(<<X:256>>), word)      -> {oracle_query, X};
 decode(?FATE_NAME(<<X:256>>), word)          -> {name, X};
 decode(?FATE_CHANNEL(<<X:256>>), word)       -> {channel, X};
 decode(?FATE_BITS(Bits), word)               -> {bits, Bits};

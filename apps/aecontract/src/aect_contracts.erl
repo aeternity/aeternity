@@ -181,6 +181,9 @@ is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_NO_VM}, _ProtocolVer
     true;
 is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_AEVM_SOPHIA_1}, _ProtocolVersion) ->
     true;
+is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_FATE_SOPHIA_1}, ProtocolVersion) ->
+    ProtocolVersion >= ?LIMA_PROTOCOL_VSN
+        andalso ?VM_FATE_SOPHIA_1_enabled;
 is_legal_version_in_protocol(_, _, _) ->
     false.
 
