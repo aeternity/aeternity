@@ -1367,7 +1367,7 @@ make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
     case abi_version() of
         ?ABI_AEVM_SOPHIA_1 ->
             #{type_info := TypeInfo} = aect_sophia:deserialize(Code),
-            case aeb_abi:type_hash_from_function_name(Fun, TypeInfo) of
+            case aeb_aevm_abi:type_hash_from_function_name(Fun, TypeInfo) of
                 {ok, <<FunHashInt:256>>} ->
                     Args1 = format_aevm_args(if is_tuple(Args) -> Args;
                                                 true -> {Args}

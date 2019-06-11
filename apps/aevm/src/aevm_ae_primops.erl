@@ -262,7 +262,7 @@ check_type_hash(Op, ArgTypes, OutType, TypeHash) ->
         true ->
             PrimBin = binary:encode_unsigned(Op),
             ArgType = {tuple, ArgTypes},
-            case aeb_abi:function_type_hash(PrimBin, ArgType, OutType) of
+            case aeb_aevm_abi:function_type_hash(PrimBin, ArgType, OutType) of
                 TypeHash -> ok;
                 _Other -> error
             end

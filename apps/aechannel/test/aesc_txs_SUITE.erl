@@ -3953,7 +3953,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
 get_oracle_fun_hash_int(Function) ->
     {ok, Code} = compile_contract("oracles"),
     TypeInfo = maps:get(type_info, aect_sophia:deserialize(Code)),
-    {ok, <<IntFunHash:256>>} = aeb_abi:type_hash_from_function_name(
+    {ok, <<IntFunHash:256>>} = aeb_aevm_abi:type_hash_from_function_name(
                                Function, TypeInfo),
     IntFunHash.
 

@@ -1622,7 +1622,7 @@ token_supply_ga() ->
      , src      := Src} = CodeMap,
     {ok, InitCallData} = aect_test_utils:encode_call_data(list_to_binary(Src), <<"init">>, [<<"123">>]),
     {ok, MetaCallData} = aect_test_utils:encode_call_data(list_to_binary(Src), <<"authorize">>, [<<"123">>, <<"1">>]),
-    {ok, AuthFunHash}  = aeb_abi:type_hash_from_function_name(<<"authorize">>, TypeInfo),
+    {ok, AuthFunHash}  = aeb_aevm_abi:type_hash_from_function_name(<<"authorize">>, TypeInfo),
     AttachTx = make_ga_attach_tx(PubKey, ByteCode, AuthFunHash, InitCallData, 1,
                                  Fee, Gas, GasPrice),
     SAttachTx = aec_test_utils:sign_tx(AttachTx, [PrivKey]),
