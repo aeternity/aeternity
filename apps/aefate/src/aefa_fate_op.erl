@@ -600,6 +600,14 @@ balance(Arg0, EngineState) ->
     {ok, Balance, API1} = aefa_chain_api:account_balance(Pubkey, API),
     write(Arg0, Balance, aefa_engine_state:set_chain_api(API1, EngineState)).
 
+auth_tx_hash(Arg0, EngineState) ->
+    API   = aefa_engine_state:chain_api(EngineState),
+    TxEnv = aefa_chain_api:tx_env(API),
+    case aetx_env:ga_tx_hash(TxEnv) of
+        undefined -> write(Arg0, aeb_fate_data:make_variant([0, 1], 0, {}), EngineState);
+        TxHash    -> write(Arg0, aeb_fate_data:make_variant([0, 1], 1, {?FATE_HASH(TxHash)}), EngineState)
+    end.
+
 balance_other(Arg0, Arg1, ES) ->
     API = aefa_engine_state:chain_api(ES),
     case get_op_arg(Arg1, ES) of
@@ -991,9 +999,6 @@ exit(_Arg0, _EngineState) ->
 
 nop(EngineState) ->
     EngineState.
-
-auth_tx_hash(_Arg0, _EngineState) ->
-    exit(nyi).
 
 %% ------------------------------------------------------------------------
 %% Helpers

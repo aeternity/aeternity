@@ -129,10 +129,9 @@ is_legal_version_at_height(Operation, Version, Height) ->
 is_legal_serialization_at_height(?ABI_SOLIDITY_1, _, _Height) ->
     true;
 is_legal_serialization_at_height(?ABI_AEVM_SOPHIA_1, Vsn, Height) ->
+    aect_sophia:is_legal_serialization_at_height(Vsn, Height);
+is_legal_serialization_at_height(?ABI_FATE_SOPHIA_1, Vsn, Height) ->
     aect_sophia:is_legal_serialization_at_height(Vsn, Height).
-%% May be needed for state channels:
-%% is_legal_serialization_at_height(?ABI_FATE_SOPHIA_1, Vsn, Height) ->
-%%     aect_sophia:is_legal_serialization_at_height(Vsn, Height).
 
 is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_1, abi := ?ABI_AEVM_SOPHIA_1}, ProtocolVersion) ->
     case ProtocolVersion of

@@ -56,22 +56,22 @@ fail_test_() ->
 make_calls(ListOfCalls) ->
     Cache = setup_contracts(),
     %% Dummy values since they should not come into play in this test
-    Spec = #{ trees => aec_trees:new_without_backend()
-            , caller => <<123:256>>
-            , origin => <<123:256>>
-            , gas_price => 1
-            , tx_env => aetx_env:tx_env(1)
-            },
+    Env = #{ trees => aec_trees:new_without_backend()
+           , caller => <<123:256>>
+           , origin => <<123:256>>
+           , gas_price => 1
+           , tx_env => aetx_env:tx_env(1)
+           },
     [{lists:flatten(io_lib:format("call(~p,~p,~p)->~p~n~p : ~p",
                                   [C,F,A,R,
                                    aefate_test_utils:encode(A),
                                    aeb_fate_encoding:serialize(
                                      aefate_test_utils:encode(A))])),
       fun() ->
-              Call = make_call(C,F,A),
+              Spec = make_call(C,F,A),
               case R of
                   {error, E} ->
-                      case aefa_fate:run_with_cache(Call, Spec, Cache) of
+                      case aefa_fate:run_with_cache(Spec, Env, Cache) of
                           {ok, ES} ->
                               Res = aefa_engine_state:accumulator(ES),
                               Trace = aefa_engine_state:trace(ES),
@@ -82,7 +82,7 @@ make_calls(ListOfCalls) ->
                       end;
                   _ ->
                       FateRes = aefate_test_utils:encode(R),
-                      {ok, ES} = aefa_fate:run_with_cache(Call, Spec, Cache),
+                      {ok, ES} = aefa_fate:run_with_cache(Spec, Env, Cache),
                       Res = aefa_engine_state:accumulator(ES),
                       Trace = aefa_engine_state:trace(ES),
                       ?assertEqual({FateRes, Trace}, {Res, Trace})
@@ -284,6 +284,7 @@ make_call(Contract, Function0, Arguments) ->
     #{ contract  => pad_contract_name(Contract)
      , gas => 100000
      , value => 0
+     , store => aect_contracts_store:new()
      , call => aeb_fate_encoding:serialize(
                  {tuple, {Function, {tuple, list_to_tuple(
                                               [aefate_test_utils:encode(A) || A <- Arguments]

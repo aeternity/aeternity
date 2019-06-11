@@ -11,6 +11,9 @@
         , init_per_group/2
         , end_per_group/2
         , init_per_testcase/2
+        , vm_version/0
+        , abi_version/0
+        , sophia_version/0
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -77,22 +80,36 @@
 
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
+-define(assertMatchABI(AEVM, FATE, Res),
+    case abi_version() of
+        ?ABI_AEVM_SOPHIA_1 -> ?assertMatch(AEVM, Res);
+        ?ABI_FATE_SOPHIA_1 -> ?assertMatch(FATE, Res)
+    end).
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
 
 all() ->
-    [{group, all}].
+    [{group, aevm}, {group, fate}].
 
 groups() ->
-    [ {all, [], [ {group, simple}
-                , {group, basic}
-                , {group, bitcoin}
-                , {group, oracle}
-                , {group, multi_wrap}
-                , {group, channel}
-                , {group, negative}
-                ]}
+    [ {aevm, [], [ {group, simple}
+                 , {group, basic}
+                 , {group, bitcoin}
+                 , {group, oracle}
+                 , {group, channel}
+                 , {group, multi_wrap}
+                 , {group, negative}
+                 ]}
+    , {fate, [], [ {group, simple}
+                 , {group, basic}
+                 , {group, bitcoin}
+                 , {group, oracle}
+                 , {group, channel}
+                 , {group, multi_wrap}
+                 %, {group, negative} %% TODO: cripple FATE VM
+                 ]}
 
     , {simple, [], [ simple_attach
                    , simple_double_attach_fail
@@ -148,16 +165,25 @@ groups() ->
                      ]}
     ].
 
-init_per_group(all, Cfg) ->
+init_per_group(aevm, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
         ?FORTUNA_PROTOCOL_VSN ->
             [{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
-             {protocol, fortuna} | Cfg];
+             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg];
         ?LIMA_PROTOCOL_VSN ->
             [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
-             {protocol, lima} | Cfg]
+             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg]
+    end;
+init_per_group(fate, Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?ROMA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_roma};
+        ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
+        ?FORTUNA_PROTOCOL_VSN -> {skip, fate_not_in_minerva};
+        ?LIMA_PROTOCOL_VSN ->
+            [{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
+             {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg]
     end;
 init_per_group(_Grp, Cfg) ->
     Cfg.
@@ -168,6 +194,7 @@ end_per_group(_Grp, Cfg) ->
 %% Process dict magic in the right process ;-)
 init_per_testcase(_TC, Config) ->
     VmVersion = ?config(vm_version, Config),
+    AbiVersion = ?config(abi_version, Config),
     SophiaVersion = ?config(sophia_version, Config),
     ProtocolVersion = case ?config(protocol, Config) of
                           roma    -> ?ROMA_PROTOCOL_VSN;
@@ -176,6 +203,7 @@ init_per_testcase(_TC, Config) ->
                           lima    -> ?LIMA_PROTOCOL_VSN
                       end,
     put('$vm_version', VmVersion),
+    put('$abi_version', AbiVersion),
     put('$sophia_version', SophiaVersion),
     put('$protocol_version', ProtocolVersion),
     Config.
@@ -281,7 +309,7 @@ simple_contract_call(_Cfg) ->
     AuthOpts2 = #{ prep_fun => fun(_) -> simple_auth(["123", "2"]) end },
     {ok, #{tx_res := ok, call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main", ["42"]),
-    ?assertMatch("42", decode_call_result("identity", "main", ok, Val)),
+    ?assertMatchABI("42", 42, decode_call_result("identity", "main", ok, Val)),
 
     ok.
 
@@ -362,7 +390,7 @@ basic_contract_call(_Cfg) ->
     AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(basic_auth, Acc1, "2", TxHash) end },
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main", ["42"]),
-    ?assertMatch("42", decode_call_result("identity", "main", ok, Val)),
+    ?assertMatchABI("42", 42, decode_call_result("identity", "main", ok, Val)),
 
     ok.
 
@@ -477,7 +505,7 @@ bitcoin_contract_call(_Cfg) ->
     AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(bitcoin_auth, Acc1, "2", TxHash) end },
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main", ["42"]),
-    ?assertMatch("42", decode_call_result("identity", "main", ok, Val)),
+    ?assertMatchABI("42", 42, decode_call_result("identity", "main", ok, Val)),
 
     ok.
 
@@ -881,7 +909,7 @@ cripple_auth(_Cfg) ->
     Acc1 = ?call(new_account, 1000000000 * MinGP),
     Acc2 = ?call(new_account, 1000000000 * MinGP),
     {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
-    {ok, #{ct := Acc2Ct}} = ?call(attach, Acc2, "simple_auth", "do_auth_test", ["0"]),
+    {ok, #{ct := Acc2Ct}} = ?call(attach, Acc2, "simple_auth_fail", "do_auth_test", ["0"]),
 
     %% Create a remote contract and add some tokens to the Acc2's auth contract
     Auth1 = fun(N) -> #{ prep_fun => fun(_) -> simple_auth(["123", N]) end } end,
@@ -893,7 +921,7 @@ cripple_auth(_Cfg) ->
     %% Now try the crazy stuff
     CtLit = binary_to_list(aeser_api_encoder:encode(contract_pubkey, Ct)),
     Acc1Lit = binary_to_list(aeser_api_encoder:encode(account_pubkey, Acc1)),
-    Auth2 = fun(A) -> #{ prep_fun => fun(_) -> aega_test_utils:make_calldata("simple_auth", "do_auth_test", [A]) end } end,
+    Auth2 = fun(A) -> #{ prep_fun => fun(_) -> aega_test_utils:make_calldata("simple_auth_fail", "do_auth_test", [A]) end } end,
     {failed, authentication_failed} =
         ?call(ga_spend, Acc2, Auth2("Spend(" ++ Acc1Lit ++ ", 1000)"), Acc1, 500, 20000 * MinGP, #{fail => true}),
     {failed, authentication_failed} =
@@ -939,7 +967,7 @@ attach(Owner, Contract, AuthFun, Args, Opts, S) ->
             Fail  = maps:get(fail, Opts, false),
             Nonce = aect_test_utils:next_nonce(Owner, S),
             Calldata = aega_test_utils:make_calldata(Src, "init", Args),
-            {ok, AuthFunHash} = aeb_aevm_abi:type_hash_from_function_name(list_to_binary(AuthFun), TI),
+            {ok, AuthFunHash} = aega_test_utils:auth_fun_hash(list_to_binary(AuthFun), TI),
             Options1 = maps:merge(#{nonce => Nonce, code => C,
                                     auth_fun => AuthFunHash, call_data => Calldata},
                                   maps:without([height, return_return_value, return_gas_used, fail], Opts)),
@@ -996,7 +1024,7 @@ ga_attach(Owner, AuthOpts, Contract, AuthFun, InitArgs, S) ->
 ga_attach(Owner, AuthOpts, Contract, AuthFun, InitArgs, Opts, S) ->
     {ok, #{src := Src, bytecode := Code, map := #{type_info := TI}}} = get_contract(Contract),
     Calldata = aega_test_utils:make_calldata(Src, "init", InitArgs),
-    {ok, AuthFunHash} = aeb_aevm_abi:type_hash_from_function_name(list_to_binary(AuthFun), TI),
+    {ok, AuthFunHash} = aega_test_utils:auth_fun_hash(list_to_binary(AuthFun), TI),
     Options1 = maps:merge(#{nonce => 0, code => Code, auth_fun => AuthFunHash,
                             call_data => Calldata}, maps:without([height], Opts)),
     AttachTx = aega_test_utils:ga_attach_tx(Owner, Options1),
@@ -1148,7 +1176,7 @@ ga_channel_force_progress(Acc1, AuthOpts, CId, OffState, CtId, Contract, Fun, Ar
     Payload = aega_test_utils:payload(CId, OffState, S),
     CallData = aega_test_utils:make_calldata(Contract, Fun, Args),
     Update  = aesc_offchain_update:op_call_contract(aeser_id:create(account, Acc1), aeser_id:create(contract, CtId),
-                                                    1, 0, CallData, [], 1 * aec_test_utils:min_gas_price(), 1000),
+                                                    abi_version(), 0, CallData, [], 1 * aec_test_utils:min_gas_price(), 1000),
     OffTrees  = aega_test_utils:offchain_trees(OffState),
     Round = maps:get(round, OffState) + 2,
     {DryRes, _} = dry_run(contract_call, Acc1, {CtId, Contract, Fun, Args}, S#{trees := OffTrees}),
@@ -1204,7 +1232,7 @@ do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S) ->
 
     {Res0, InnerTx1} = peel_onion(Res00, InnerTx, S1),
 
-    DeepFee  = aetx:deep_fee(MetaTx, aect_test_utils:trees(S1)),
+    DeepFee = aetx:deep_fee(MetaTx, aect_test_utils:trees(S1)),
     case aect_call:return_type(Call) of
         ok ->
             %% The total amount of fees should include the fees for
@@ -1315,7 +1343,7 @@ create_tx(Owner, Spec0, State) ->
     aect_test_utils:create_tx(Owner, Spec, State).
 
 create_tx_default() ->
-    #{ abi_version => aect_test_utils:latest_sophia_abi_version()
+    #{ abi_version => abi_version()
      , vm_version  => vm_version()
      , fee         => 100000 * aec_test_utils:min_gas_price()
      , deposit     => 10
@@ -1328,7 +1356,7 @@ call_tx(Caller, Contract, Spec0, State) ->
 
 call_tx_default() ->
     #{ nonce       => 0
-     , abi_version => aect_test_utils:latest_sophia_abi_version()
+     , abi_version => abi_version()
      , fee         => 500000 * aec_test_utils:min_gas_price()
      , amount      => 0
      , gas         => 10000 }.
@@ -1402,62 +1430,6 @@ account_contract(PK, S) ->
     Account = aect_test_utils:get_account(PK, S),
     {aec_accounts:ga_contract(Account), S}.
 
-%% perform_pre_transformations(Height, S) ->
-%%     Trees = aec_trees:perform_pre_transformations(aect_test_utils:trees(S), Height),
-%%     {ok, aect_test_utils:set_trees(Trees, S)}.
-
-%% get_contract_state(Contract) ->
-%%     S = state(),
-%%     {{value, C}, _} = lookup_contract_by_id(Contract, S),
-%%     aect_contracts_store:contents(aect_contracts:state(C)).
-
-%% insert_contract(Account, Code, S) ->
-%%     Contract  = make_contract(Account, Code, S),
-%%     Contracts = aect_state_tree:insert_contract(Contract, aect_test_utils:contracts(S)),
-%%     {Contract, aect_test_utils:set_contracts(Contracts, S)}.
-
-%% insert_call(Sender, Contract, Fun, S) ->
-%%     ContractPubkey = aect_contracts:pubkey(Contract),
-%%     Call           = make_call(Sender, ContractPubkey, Fun, S),
-%%     CallTree       = aect_call_state_tree:insert_call(Call, aect_test_utils:calls(S)),
-%%     {Call, aect_test_utils:set_calls(CallTree, S)}.
-
-%% get_contract(Contract0, S) ->
-%%     ContractPubkey = aect_contracts:pubkey(Contract0),
-%%     Contracts      = aect_test_utils:contracts(S),
-%%     Contract       = aect_state_tree:get_contract(ContractPubkey, Contracts),
-%%     {Contract, S}.
-
-%% lookup_contract_by_id(ContractKey, S) ->
-%%     Contracts = aect_test_utils:contracts(S),
-%%     X         = aect_state_tree:lookup_contract(ContractKey, Contracts),
-%%     {X, S}.
-
-%% get_call(Contract0, Call0, S) ->
-%%     CallId         = aect_call:id(Call0),
-%%     ContractPubkey = aect_contracts:pubkey(Contract0),
-%%     CallTree       = aect_test_utils:calls(S),
-%%     Call           = aect_call_state_tree:get_call(ContractPubkey, CallId, CallTree),
-%%     {Call, S}.
-
-%% state_tree(_Cfg) ->
-%%     state(aect_test_utils:new_state()),
-%%     Acc1  = ?call(new_account, 100),
-%%     Ct1   = ?call(insert_contract, Acc1, <<"Code for C1">>),
-%%     Ct1   = ?call(get_contract, Ct1),
-%%     Acc2  = ?call(new_account, 50),
-%%     Acc3  = ?call(new_account, 30),
-%%     Ct2   = ?call(insert_contract, Acc2, <<"Code for C2">>),
-%%     Ct2   = ?call(get_contract, Ct2),
-%%     Ct1   = ?call(get_contract, Ct1),
-%%     Call1 = ?call(insert_call, Acc3, Ct1, <<"Ct1.foo">>),
-%%     Call2 = ?call(insert_call, Acc2, Ct1, <<"Ct1.bar">>),
-%%     Call1 = ?call(get_call, Ct1, Call1),
-%%     Call2 = ?call(get_call, Ct1, Call2),
-%%     Ct1   = ?call(get_contract, Ct1),
-%%     <<"Code for C1">> = aect_contracts:code(Ct1),
-%%     ok.
-
 %%%===================================================================
 %%% Helper functions
 %%%===================================================================
@@ -1468,15 +1440,15 @@ vm_version() ->
         X         -> X
     end.
 
-%% protocol_version() ->
-%%     case get('$protocol_version') of
-%%         undefined -> aect_test_utils:latest_protocol_version();
-%%         X         -> X
-%%     end.
+abi_version() ->
+    case get('$abi_version') of
+        undefined -> aect_test_utils:latest_sophia_abi_version();
+        X         -> X
+    end.
 
 sophia_version() ->
     case get('$sophia_version') of
-        undefined -> ?SOPHIA_LIMA_AEVM;
+        undefined -> aect_test_utils:latest_sophia_version();
         X         -> X
     end.
 
@@ -1484,13 +1456,18 @@ make_authdata(#{ prep_fun := F }, TxHash) ->
     F(TxHash).
 
 get_contract(Name) ->
-    aega_test_utils:get_contract(sophia_version(), Name).
+    aega_test_utils:get_contract(Name).
 
 decode_call_result(Name0, Fun, Type, Val) ->
-    Name = filename:join("contracts", Name0),
-    {ok, BinSrc} = aect_test_utils:read_contract(Name),
-    {ok, AST} = aeso_compiler:to_sophia_value(binary_to_list(BinSrc), Fun, Type, Val),
-    prettypr:format(aeso_pretty:expr(AST)).
+    case abi_version() of
+        ?ABI_AEVM_SOPHIA_1 ->
+            Name = filename:join("contracts", Name0),
+            {ok, BinSrc} = aect_test_utils:read_contract(Name),
+            {ok, AST} = aeso_compiler:to_sophia_value(binary_to_list(BinSrc), Fun, Type, Val),
+            prettypr:format(aeso_pretty:expr(AST));
+        ?ABI_FATE_SOPHIA_1 ->
+            aeb_fate_encoding:deserialize(Val)
+    end.
 
 simple_auth(Args) ->
     aega_test_utils:make_calldata("simple_auth", "authorize", Args).
@@ -1506,16 +1483,16 @@ basic_auth(GA, Nonce, TxHash, S) ->
     GAPrivKey  = aect_test_utils:priv_key(GA, S),
     %% Sign = enacl:sign_detached(hash_lit_to_bin(Hash), GAPrivKey),
 
-    Sign = basic_auth(list_to_integer(Nonce), TxHash, GAPrivKey),
+    Sign = aega_test_utils:basic_auth_sign(list_to_integer(Nonce), TxHash, GAPrivKey),
 
     {aega_test_utils:make_calldata("basic_auth", "authorize", [Nonce, aega_test_utils:to_hex_lit(64, Sign)]), S}.
 
-basic_auth(Nonce, TxHash, Privkey) ->
-    Val = <<32:256, TxHash/binary, Nonce:256>>,
-    enacl:sign_detached(aec_hash:hash(tx, Val), Privkey).
-
 bitcoin_auth(_GA, Nonce, TxHash, S) ->
-    Val = <<32:256, TxHash/binary, (list_to_integer(Nonce)):256>>,
+    Val = case abi_version() of
+              ?ABI_AEVM_SOPHIA_1 -> <<32:256, TxHash/binary, (list_to_integer(Nonce)):256>>;
+              ?ABI_FATE_SOPHIA_1 -> aeb_fate_encoding:serialize({tuple, {{hash, TxHash}, list_to_integer(Nonce)}})
+          end,
     Sig0 = crypto:sign(ecdsa, sha256, {digest, aec_hash:hash(tx, Val)}, [?SECP256K1_PRIV, secp256k1]),
     Sig  = aega_test_utils:to_hex_lit(64, aeu_crypto:ecdsa_from_der_sig(Sig0)),
     {aega_test_utils:make_calldata("bitcoin_auth", "authorize", [Nonce, Sig]), S}.
+

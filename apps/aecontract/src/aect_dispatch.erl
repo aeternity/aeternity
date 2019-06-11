@@ -78,7 +78,7 @@ run_common(#{vm := ?VM_FATE_SOPHIA_1 = VMVersion, abi := ABIVersion},
             , call_stack  :=_CallStack %% Unused for FATE
             , caller      := <<_:?PUB_SIZE/unit:8>>
             , code        := Code
-            , store       :=_Store  %% TODO: Not used yet
+            , store       := Store
             , contract    := <<_:?PUB_SIZE/unit:8>> = ContractAddress
             , gas         := Gas
             , gas_price   :=_GasPrice
@@ -94,6 +94,7 @@ run_common(#{vm := ?VM_FATE_SOPHIA_1 = VMVersion, abi := ABIVersion},
             Spec = #{ contract => ContractAddress
                     , call     => CallData
                     , code     => Code
+                    , store    => Store
                     , gas      => Gas
                     , value    => Value
                     },

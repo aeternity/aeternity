@@ -184,7 +184,7 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
             Trees4 = add_tokens(ContractPubKey, Deposit, Trees3),
             Call = aect_call:new(OwnerId, Round, ContractId, Round, 0),
             _Trees = aect_channel_contract:run_new(ContractPubKey, Call, CallData, Trees4,
-                                                  OnChainTrees, OnChainEnv);
+                                                   OnChainTrees, OnChainEnv);
         #call_contract{caller_id = CallerId, contract_id = ContractId,
                        abi_version = ABIVersion, amount = Amount,
                        call_data = CallData, call_stack = CallStack,
@@ -193,12 +193,11 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
             ContractPubKey = contract_pubkey(ContractId),
             Trees1 = remove_tokens(Caller, Amount, Trees0, Reserve),
             Trees2 = add_tokens(ContractPubKey, Amount, Trees1),
-            Call = aect_call:new(CallerId, Round, ContractId, Round,
-                                 GasPrice),
+            Call = aect_call:new(CallerId, Round, ContractId, Round, GasPrice),
             _Trees = aect_channel_contract:run(ContractPubKey, ABIVersion, Call,
-                                              CallData, CallStack,
-                                              Trees2, Amount, GasPrice, Gas,
-                                              OnChainTrees, OnChainEnv)
+                                               CallData, CallStack,
+                                               Trees2, Amount, GasPrice, Gas,
+                                               OnChainTrees, OnChainEnv)
     end.
 
 -spec for_client(update()) -> map().

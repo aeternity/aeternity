@@ -39,10 +39,10 @@ dummy_trees(Caller, Cache) ->
     aec_trees:set_accounts(Trees, ATrees).
 
 run(Cache, Contract, Function, Arguments) ->
-    Call = make_call(Contract, Function, Arguments),
-    Spec = dummy_spec(Cache),
+    Spec = make_call_spec(Contract, Function, Arguments),
+    Env = dummy_spec(Cache),
     try
-        aefa_fate:run_with_cache(Call, Spec, Cache)
+        aefa_fate:run_with_cache(Spec, Env, Cache)
     catch _:{error, Err} ->
               {error, Err, []}
     end.
@@ -78,14 +78,15 @@ compile_contract(Code, Options) ->
     end.
 
 
-make_call(Contract, Function0, Arguments) ->
+make_call_spec(Contract, Function0, Arguments) ->
     Function = aeb_fate_code:symbol_identifier(Function0),
     EncArgs  = list_to_tuple([aefate_test_utils:encode(A) || A <- Arguments]),
     Calldata = {tuple, {Function, {tuple, EncArgs}}},
     #{ contract => pad_contract_name(Contract),
        gas      => 1000000,
        value    => 10000,
-       call     => aeb_fate_encoding:serialize(Calldata) }.
+       call     => aeb_fate_encoding:serialize(Calldata),
+       store    => aect_contracts_store:new() }.
 
 pad_contract_name(Name) ->
     PadSize = 32 - byte_size(Name),
