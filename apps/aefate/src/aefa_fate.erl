@@ -67,16 +67,16 @@
 %%%===================================================================
 
 -ifdef(TEST).
-run_with_cache(What, Spec, Cache) ->
-    try execute(setup_engine(What, Spec, Cache)) of
+run_with_cache(Spec, Env, Cache) ->
+    try execute(setup_engine(Spec, Env, Cache)) of
         Res -> {ok, Res}
     catch
         throw:{?MODULE, E, ES} -> {error, E, ES}
     end.
 -endif.
 
-run(What, Env) ->
-    try execute(setup_engine(What, Env)) of
+run(Spec, Env) ->
+    try execute(setup_engine(Spec, Env)) of
         Res -> {ok, Res}
     catch
         throw:{?MODULE, E, ES} -> {error, E, ES}
@@ -208,11 +208,11 @@ step([I|Is], EngineState0) ->
 %% -----------------------------------------------------------
 
 setup_engine(#{ contract := <<_:256>> = ContractPubkey
-              , code := ByteCode} = Spec, State) ->
+              , code := ByteCode} = Spec, Env) ->
     try aeb_fate_code:deserialize(ByteCode) of
         Code ->
             Cache = #{ ContractPubkey => Code },
-            setup_engine(Spec, State, Cache)
+            setup_engine(Spec, Env, Cache)
     catch _:_ ->
             abort(bad_bytecode, no_state)
     end.
@@ -221,18 +221,19 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , call := Call
               , gas := Gas
               , value := Value
-              },
-             Spec, Cache) ->
+              , store := Store
+              }, Env, Cache) ->
     {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
     Contract = aeb_fate_data:make_contract(ContractPubkey),
-    ES1 = aefa_engine_state:new(Gas, Value, Spec, aefa_chain_api:new(Spec), Cache),
+    Stores = aefa_stores:put_contract_store(ContractPubkey, Store, aefa_stores:new()),
+    ES1 = aefa_engine_state:new(Gas, Value, Env, Stores, aefa_chain_api:new(Env), Cache),
     ES2 = set_remote_function(Contract, Function, ES1),
     ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
     ES4 = check_signature_and_bind_args(Signature, ES3),
-    aefa_engine_state:set_caller(aeb_fate_data:make_address(maps:get(caller, Spec)), ES4).
+    aefa_engine_state:set_caller(aeb_fate_data:make_address(maps:get(caller, Env)), ES4).
 
 check_remote(Contract, EngineState) when not ?IS_FATE_CONTRACT(Contract) ->
     abort({value_does_not_match_type, Contract, contract}, EngineState);

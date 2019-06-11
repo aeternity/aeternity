@@ -43,7 +43,7 @@
          gas_price/1,
          call_data/1,
          call_id/1,
-         is_legal_contract_version/1
+         is_legal_version_at_height/2
         ]).
 
 -define(GA_ATTACH_TX_VSN, 1).
@@ -128,11 +128,19 @@ call_data(#ga_attach_tx{call_data = X}) ->
 call_id(#ga_attach_tx{} = Tx) ->
     aect_call:id(owner_pubkey(Tx), nonce(Tx), contract_pubkey(Tx)).
 
--spec is_legal_contract_version(aect_contracts:version()) -> boolean().
-is_legal_contract_version(#{vm := VMVersion, abi := ?ABI_AEVM_SOPHIA_1}) when ?IS_AEVM_SOPHIA(VMVersion) ->
-    VMVersion >= ?VM_AEVM_SOPHIA_3;
-is_legal_contract_version(#{}) ->
-    false.
+-spec is_legal_version_at_height(aect_contracts:version(), non_neg_integer()) -> boolean().
+
+is_legal_version_at_height(#{vm := VMVersion, abi := ABIVersion}, Height) ->
+    case aec_hard_forks:protocol_effective_at_height(Height) of
+        ?FORTUNA_PROTOCOL_VSN when ABIVersion == ?ABI_AEVM_SOPHIA_1 ->
+            VMVersion == ?VM_AEVM_SOPHIA_3;
+        ?LIMA_PROTOCOL_VSN when ABIVersion == ?ABI_AEVM_SOPHIA_1 ->
+            VMVersion == ?VM_AEVM_SOPHIA_3;
+        ?LIMA_PROTOCOL_VSN when ABIVersion == ?ABI_FATE_SOPHIA_1 ->
+            VMVersion == ?VM_FATE_SOPHIA_1;
+        _ ->
+            false
+    end.
 
 %%%===================================================================
 %%% Behavior API

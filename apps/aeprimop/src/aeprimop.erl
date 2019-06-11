@@ -47,7 +47,10 @@
         , spend_fee_op/2
         ]).
 
-
+%% Export some functions to avoid duplicating the logic in state channels, etc.
+-export([ check_auth_data_function/3
+        , decode_auth_call_result/2
+        ]).
 
 -import(aeprimop_state, [ delete_x/3
                         , find_account/2
@@ -1113,7 +1116,7 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
     AuthFunHash = aec_accounts:ga_auth_fun(Account),
 
     assert_contract_call_version(AuthContractPK, ABIVersion, S),
-    assert_auth_data_function(AuthData, AuthFunHash),
+    assert_auth_data_function(ABIVersion, AuthData, AuthFunHash),
     S2 = account_spend(Account, CheckAmount, S1),
     Contract = get_contract_no_cache(AuthContractPK, S2),
     CallerId   = aeser_id:create(account, OwnerPK),
@@ -1121,8 +1124,8 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
                               AuthData, OwnerPK, _Amount = 0, _CallStack = [], _Nonce = 0, S2),
     case aect_call:return_type(Call) of
         ok ->
-            case aeb_heap:from_binary(word, aect_call:return_value(Call)) of
-                {ok, 1} -> %% true!
+            case decode_auth_call_result(ABIVersion, aect_call:return_value(Call)) of
+                {ok, true} ->
                     Refund = (GasLimit - aect_call:gas_used(Call)) * aect_call:gas_price(Call),
                     {CallerAccount, S4} = get_account(OwnerPK, S3),
                     S5 = account_earn(CallerAccount, Refund, S4),
@@ -1131,7 +1134,7 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
                     Call1 = aect_call:set_id(AuthCallId, Call),
                     assert_auth_call_object_not_exist(Call1, S5),
                     put_auth_call(Call1, S5);
-                {ok, 0} -> %% false
+                {ok, false} ->
                     runtime_error(authentication_failed);
                 {error, E} ->
                     lager:info("Unexpected authentication return_value ~p (~p)",
@@ -1140,6 +1143,19 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
             end;
         Fail when (Fail =:= revert orelse Fail =:= error) ->
             runtime_error(authentication_failed)
+    end.
+
+decode_auth_call_result(?ABI_AEVM_SOPHIA_1, Result) ->
+    case aeb_heap:from_binary(word, Result) of
+        {ok, 1}          -> {ok, true};
+        {ok, 0}          -> {ok, false};
+        Err = {error, _} -> Err
+    end;
+decode_auth_call_result(?ABI_FATE_SOPHIA_1, Result) ->
+    case aeb_fate_encoding:deserialize(Result) of
+        true   -> {ok, true};
+        false  -> {ok, false};
+        _Other -> {error, not_a_boolean}
     end.
 
 %%%-------------------------------------------------------------------
@@ -1238,7 +1254,12 @@ contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S
             Store = aect_contracts_store:put(<<1>>, ReturnValue, Store0),
             Contract1 = aect_contracts:set_state(Store, Contract),
             S1 = put_contract(Contract1, S),
-            contract_call_success(InitCall1, GasLimit, S1);
+            case Type of
+                contract ->
+                    contract_call_success(InitCall1, GasLimit, S1);
+                {attach, AuthFun} ->
+                    ga_attach_success(InitCall1, GasLimit, AuthFun, S1)
+            end;
         #{vm := ?VM_AEVM_SOLIDITY_1} ->
             %% Solidity inital call returns the code to store in the contract.
             Contract1 = aect_contracts:set_code(ReturnValue, Contract),
@@ -1350,6 +1371,9 @@ specialize_account(RecipientID) ->
         {contract, Pubkey} -> {account, Pubkey};
         {account, Pubkey}  -> {account, Pubkey}
     end.
+
+assert(ok) -> ok;
+assert({error, Error}) -> runtime_error(Error).
 
 assert(true,_Error) -> ok;
 assert(false, Error) -> runtime_error(Error).
@@ -1587,18 +1611,21 @@ assert_name_claimed(Name) ->
         revoked -> runtime_error(name_revoked)
     end.
 
-assert_ga_attach_byte_code(?ABI_AEVM_SOPHIA_1, SerializedCode, CallData, FunHash, S) ->
+assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData, FunHash, S)
+  when ABIVersion =:= ?ABI_AEVM_SOPHIA_1;
+       ABIVersion =:= ?ABI_FATE_SOPHIA_1 ->
     try aect_sophia:deserialize(SerializedCode) of
-        #{type_info := TypeInfo, contract_vsn := Vsn} ->
+        #{type_info := TypeInfo, contract_vsn := Vsn, byte_code := ByteCode} ->
             case aect_sophia:is_legal_serialization_at_height(Vsn, S#state.height) of
                 true ->
-                    assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo),
-                    assert_auth_function(FunHash, TypeInfo);
+                    assert_contract_init_function(ABIVersion, CallData, TypeInfo),
+                    assert_auth_function(ABIVersion, FunHash, TypeInfo, ByteCode);
                 false ->
                     runtime_error(illegal_contract_compiler_version)
             end
     catch _:_ -> runtime_error(bad_sophia_code)
     end.
+
 
 assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S)
   when ABIVersion =:= ?ABI_AEVM_SOPHIA_1;
@@ -1633,16 +1660,33 @@ assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo) ->
         _Other -> runtime_error(bad_init_function)
     end.
 
-assert_auth_data_function(AuthData, AuthFunHash) ->
+assert_auth_data_function(ABIVersion, AuthData, AuthFunHash) ->
+    assert(check_auth_data_function(ABIVersion, AuthData, AuthFunHash)).
+
+check_auth_data_function(?ABI_AEVM_SOPHIA_1, AuthData, AuthFunHash) ->
     case aeb_aevm_abi:get_function_hash_from_calldata(AuthData) of
         {ok, AuthFunHash} -> ok;
-        {ok, _OtherHash}  -> runtime_error(wrong_auth_function);
-        _Other            -> runtime_error(bad_auth_data)
+        {ok, _OtherHash}  -> {error, wrong_auth_function};
+        _Other            -> {error, bad_auth_data}
+    end;
+check_auth_data_function(?ABI_FATE_SOPHIA_1, AuthData, AuthFunHash0) ->
+    <<AuthFunHash:4/binary, _:28/binary>> = AuthFunHash0,
+    case aeb_fate_abi:get_function_hash_from_calldata(AuthData) of
+        {ok, AuthFunHash} -> ok;
+        {ok, _OtherHash}  -> {error, wrong_auth_function};
+        _Other            -> {error, bad_auth_data}
     end.
 
-assert_auth_function(Hash, TypeInfo) ->
+assert_auth_function(?ABI_AEVM_SOPHIA_1, Hash, TypeInfo, _ByteCode) ->
     case aeb_aevm_abi:typereps_from_type_hash(Hash, TypeInfo) of
         {ok, _ArgType, word}     -> ok;
+        {ok, _ArgType, _OutType} -> runtime_error(bad_auth_function_return_type);
+        {error, _}               -> runtime_error(bad_function_hash)
+    end;
+assert_auth_function(?ABI_FATE_SOPHIA_1, Hash, _TypeInfo, ByteCode) ->
+    FateCode = aeb_fate_code:deserialize(ByteCode),
+    case aeb_fate_abi:get_function_type_from_function_hash(Hash, FateCode) of
+        {ok, _ArgTypes, boolean} -> ok;
         {ok, _ArgType, _OutType} -> runtime_error(bad_auth_function_return_type);
         {error, _}               -> runtime_error(bad_function_hash)
     end.
@@ -1664,9 +1708,10 @@ assert_ga_active(S) ->
             ok
     end.
 
-assert_ga_create_version(ABIVersion, VMVersion, _S) ->
+assert_ga_create_version(ABIVersion, VMVersion, S) ->
     CTVersion = #{abi => ABIVersion, vm => VMVersion},
-    case aega_attach_tx:is_legal_contract_version(CTVersion) of
+    Height = S#state.height,
+    case aega_attach_tx:is_legal_version_at_height(CTVersion, Height) of
         true  -> ok;
         false -> runtime_error(illegal_vm_version)
     end.
