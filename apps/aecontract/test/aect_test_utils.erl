@@ -283,21 +283,9 @@ compile_contract(Compiler, File) ->
 compile(?SOPHIA_LIMA_FATE, File) ->
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
-    try
-        {ok, Ast} = aeso_parser:string(Source),
-        Options   = [{debug, [compile]}],
-        TypedAst  = aeso_ast_infer_types:infer(Ast, Options),
-        FCode     = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
-        FateCode  = aeso_fcode_to_fate:compile(FCode, Options),
-        ByteCode  = aeb_fate_code:serialize(FateCode, []),
-        {ok, aect_sophia:serialize(#{ byte_code => ByteCode
-                                    , contract_source => Source
-                                    , compiler_version => 1     %% TODO: This is wrong.
-                                    , type_info => []           %% TODO: This is wrong.
-                                    })}
-    catch _:{type_errors, Err} ->
-        io:format("~s\n", [Err]),
-        {error, {type_errors, Err}}
+    case aeso_compiler:from_string(Source, [{backend, fate}]) of
+        {ok, Map} -> {ok, aect_sophia:serialize(Map)};
+        {error, E} = Err -> io:format("~s\n", [E]), Err
     end;
 compile(?SOPHIA_LIMA_AEVM, File) ->
     {ok, ContractBin} = file:read_file(File),

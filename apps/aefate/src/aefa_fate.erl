@@ -134,8 +134,8 @@ abort(hd_on_empty_list, ES) ->
     ?t("Head on empty list", [], ES);
 abort(tl_on_empty_list, ES) ->
     ?t("Tail on empty list", [], ES);
-abort({arithmetic_error, bits_sum_on_infinite_set}, ES) ->
-    ?t("Arithmetic error: bits_sum on infinite set", [], ES);
+abort({arithmetic_error, Reason}, ES) ->
+    ?t("Arithmetic error: ~p", [Reason], ES);
 abort(division_by_zero, ES) ->
     ?t("Arithmetic error: division by zero", [], ES);
 abort(mod_by_zero, ES) ->
@@ -433,6 +433,8 @@ terms_are_of_same_type(X, Y) when ?IS_FATE_BOOLEAN(X), ?IS_FATE_BOOLEAN(Y) -> tr
 terms_are_of_same_type(X, Y) when ?IS_FATE_BITS(X), ?IS_FATE_BITS(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_ADDRESS(X), ?IS_FATE_ADDRESS(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_CONTRACT(X), ?IS_FATE_CONTRACT(Y) -> true;
+terms_are_of_same_type(X, Y) when ?IS_FATE_HASH(X), ?IS_FATE_HASH(Y) -> true;
+terms_are_of_same_type(X, Y) when ?IS_FATE_SIGNATURE(X), ?IS_FATE_SIGNATURE(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_ORACLE(X), ?IS_FATE_ORACLE(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_NAME(X), ?IS_FATE_NAME(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_STRING(X), ?IS_FATE_STRING(Y) -> true;

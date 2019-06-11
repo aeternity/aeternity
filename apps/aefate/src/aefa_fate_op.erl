@@ -114,7 +114,9 @@
         , aend_update/1
         , aens_transfer/1
         , aens_revoke/1
-        , ecverify/1
+        , ecverify/5
+        , ecverify_secp256k1/5
+        , contract_to_address/3
         , sha3/3
         , sha256/3
         , blake2b/3
@@ -728,13 +730,23 @@ aens_transfer(_EngineState) -> exit({error, op_not_implemented_yet}).
 
 aens_revoke(_EngineState) -> exit({error, op_not_implemented_yet}).
 
-ecverify(_EngineState) -> exit({error, op_not_implemented_yet}).
+ecverify(Arg0, Arg1, Arg2, Arg3, ES) ->
+    ter_op(ecverify, {Arg0, Arg1, Arg2, Arg3}, ES).
 
-sha3(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
+ecverify_secp256k1(Arg0, Arg1, Arg2, Arg3, ES) ->
+    ter_op(ecverify_secp256k1, {Arg0, Arg1, Arg2, Arg3}, ES).
 
-sha256(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
+contract_to_address(Arg0, Arg1, ES) ->
+    un_op(contract_to_address, {Arg0, Arg1}, ES).
 
-blake2b(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
+sha3(Arg0, Arg1, EngineState) ->
+    un_op(sha3, {Arg0, Arg1}, EngineState).
+
+sha256(Arg0, Arg1, EngineState) ->
+    un_op(sha256, {Arg0, Arg1}, EngineState).
+
+blake2b(Arg0, Arg1, EngineState) ->
+    un_op(blake2b, {Arg0, Arg1}, EngineState).
 
 dummyarg(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _Arg5, _Arg6, _EngineState) ->
  exit({error, op_not_implemented_yet}).
@@ -759,8 +771,6 @@ nop(EngineState) ->
 %% ------------------------------------------------------------------------
 %% Helpers
 %% ------------------------------------------------------------------------
-
-
 
 %% Guarded ops
 gop(Op, Arg, ES) ->
@@ -894,7 +904,26 @@ op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
     ?FATE_BITS(Bits) = A,
     if Bits < 0 -> aefa_fate:abort({arithmetic_error, bits_sum_on_infinite_set});
        true -> bits_sum(Bits, 0)
-    end.
+    end;
+op(sha3, A) ->
+    Bin  = binary_for_hashing(A),
+    Hash = aec_hash:hash(evm, Bin),
+    ?FATE_HASH(Hash);
+op(sha256, A) ->
+    Bin  = binary_for_hashing(A),
+    Hash = aec_hash:sha256_hash(Bin),
+    ?FATE_HASH(Hash);
+op(blake2b, A) ->
+    Bin  = binary_for_hashing(A),
+    Hash = aec_hash:blake2b_256_hash(Bin),
+    ?FATE_HASH(Hash);
+op(contract_to_address, A) when ?IS_FATE_CONTRACT(A) ->
+    ?FATE_ADDRESS(?FATE_CONTRACT_VALUE(A)).
+
+binary_for_hashing(S) when ?IS_FATE_STRING(S) ->
+    ?FATE_STRING_VALUE(S);  %% Makes Crypto.sha3 and String.sha3 coincide.
+binary_for_hashing(X) ->
+    aeb_fate_encoding:serialize(X).
 
 %% Binary operations
 op(add, A, B)  when ?IS_FATE_INTEGER(A)
@@ -911,13 +940,11 @@ op('div', A, B)  when ?IS_FATE_INTEGER(A)
     if B =:= 0 -> aefa_fate:abort(division_by_zero);
        true -> A div B
     end;
-op(pow, A, B)  when ?IS_FATE_INTEGER(A)
-                    , ?IS_FATE_INTEGER(B) ->
-    %% TODO: Implement arbitrary precision pow function.
-    try round(math:pow(A, B)) of
-        I -> I
-    catch error:badarith ->
-            aefa_fate:abort(pow_too_large_exp)
+op(pow, A, B)  when ?IS_FATE_INTEGER(A), ?IS_FATE_INTEGER(B) ->
+    if B < 0 ->
+           aefa_fate:abort({arithmetic_error, negative_exponent});
+       true ->
+           pow(A, B)
     end;
 op(mod, A, B)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
@@ -974,21 +1001,24 @@ op(variant_element, A, B)  when ?IS_FATE_VARIANT(A)
             aefa_fate:abort({type_error, variant_element, B, A})
     end;
 
-op(bits_set, A, B)  when ?IS_FATE_BITS(A)
-                         , ?IS_FATE_INTEGER(B)
-                         , B >= 0 ->
-    ?FATE_BITS(Bits) = A,
-    ?FATE_BITS(Bits bor (1 bsl B));
-op(bits_clear, A, B)  when ?IS_FATE_BITS(A)
-                         , ?IS_FATE_INTEGER(B)
-                         , B >= 0 ->
-    ?FATE_BITS(Bits) = A,
-    ?FATE_BITS(Bits band (bnot (1 bsl B)));
-op(bits_test, A, B)  when ?IS_FATE_BITS(A)
-                         , ?IS_FATE_INTEGER(B)
-                         , B >= 0 ->
-    ?FATE_BITS(Bits) = A,
-    ((Bits band (1 bsl B)) > 0);
+op(bits_set, A, B)  when ?IS_FATE_BITS(A), ?IS_FATE_INTEGER(B) ->
+    if B < 0 -> aefa_fate:abort({arithmetic_error, negative_bit_position});
+       true ->
+            ?FATE_BITS(Bits) = A,
+            ?FATE_BITS(Bits bor (1 bsl B))
+    end;
+op(bits_clear, A, B)  when ?IS_FATE_BITS(A), ?IS_FATE_INTEGER(B) ->
+    if B < 0 -> aefa_fate:abort({arithmetic_error, negative_bit_position});
+       true ->
+            ?FATE_BITS(Bits) = A,
+            ?FATE_BITS(Bits band (bnot (1 bsl B)))
+    end;
+op(bits_test, A, B)  when ?IS_FATE_BITS(A), ?IS_FATE_INTEGER(B) ->
+    if B < 0 -> aefa_fate:abort({arithmetic_error, negative_bit_position});
+       true ->
+            ?FATE_BITS(Bits) = A,
+            ((Bits band (1 bsl B)) > 0)
+    end;
 op(bits_union, A, B)
   when ?IS_FATE_BITS(A), ?IS_FATE_BITS(B) ->
     ?FATE_BITS(BitsA) = A,
@@ -1012,9 +1042,17 @@ op(map_lookup_default, Map, Key, Default) when ?IS_FATE_MAP(Map),
 op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     Res = maps:put(Key, Value, ?FATE_MAP_VALUE(Map)),
-    aeb_fate_data:make_map(Res).
-
-
+    aeb_fate_data:make_map(Res);
+op(ecverify, Msg, PK, Sig) when ?IS_FATE_HASH(Msg)
+                              , ?IS_FATE_ADDRESS(PK)
+                              , ?IS_FATE_SIGNATURE(Sig) ->
+    {?FATE_HASH(Msg1), ?FATE_ADDRESS(PK1), ?FATE_SIGNATURE(Sig1)} = {Msg, PK, Sig},
+    aeu_crypto:ecverify(Msg1, PK1, Sig1);
+op(ecverify_secp256k1, Msg, PK, Sig) when ?IS_FATE_HASH(Msg)
+                                        , ?IS_FATE_SIGNATURE(PK)
+                                        , ?IS_FATE_SIGNATURE(Sig) ->
+    {?FATE_HASH(Msg1), ?FATE_SIGNATURE(PK1), ?FATE_SIGNATURE(Sig1)} = {Msg, PK, Sig},
+    aeu_crypto:ecverify(secp256k1, Msg1, PK1, Sig1).
 
 
 bits_sum(0, Sum) -> Sum;
@@ -1045,3 +1083,13 @@ binary_reverse(Binary) ->
     Size = erlang:size(Binary)*8,
     <<X:Size/integer-little>> = Binary,
     <<X:Size/integer-big>>.
+
+%% TODO: we should check Gas as we go along here...
+pow(A, B) ->
+    pow(A, B, 1).
+
+pow(_, 0, R)                   -> R;
+pow(A, B, R) when B rem 2 == 0 -> pow(A * A, B bsr 1, R);
+pow(A, B, R)                   -> pow(A * A, B bsr 1, R * A).
+
+

@@ -57,7 +57,7 @@
         , sophia_call_origin/1
         , sophia_call_value/1
         , sophia_no_reentrant/1
-        , sophia_exploits/1
+        , sophia_aevm_exploits/1
         , sophia_functions/1
         , sophia_oracles/1
         , sophia_oracles_interact_with_no_vm_oracle/1
@@ -115,8 +115,8 @@
         , sophia_no_callobject_for_remote_calls/1
         , sophia_operators/1
         , sophia_bits/1
-        , sophia_bad_code/1
-        , sophia_bad_init/1
+        , sophia_aevm_bad_code/1
+        , sophia_aevm_bad_init/1
         , sophia_int_to_str/1
         , sophia_events/1
         , sophia_crypto/1
@@ -154,6 +154,8 @@
 %% For test cases that is run both for FATE and AEVM, wrap args in
 %% the constructors below.
 -define(cid(__X__), {'@ct', __X__}).
+-define(hsh(__X__), {'#', __X__}).
+-define(sig(__X__), {'$sg', __X__}).
 
 %%%===================================================================
 %%% Common test framework
@@ -189,27 +191,24 @@ groups() ->
                           , sophia_state
                           , sophia_match_bug
                           , sophia_spend
-                          %% , sophia_typed_calls   %% TODO: Contract to address not implemented
-                          %% , sophia_exploits Not applicable
+                          , sophia_typed_calls
                           , sophia_functions
                           , sophia_map_benchmark
                           , sophia_big_map_benchmark
                           , sophia_variant_types
                           , sophia_chain
-                          %% , sophia_savecoinbase %% TODO: Aevm specific
+                          , sophia_savecoinbase
                           , sophia_fundme
                           %% , sophia_aens         %% TODO: AENS not implemented
                           , sophia_state_handling
                           %% , sophia_state_gas    %% TODO: State gas not implemented
                           , sophia_no_callobject_for_remote_calls
-                          %% , sophia_operators    %% TODO: Missing operators
-                          %% , sophia_bits
-                          %% , sophia_bad_code
-                          %% , sophia_bad_init
-                          %% , sophia_int_to_str
+                          , sophia_operators
+                          , sophia_bits
+                          , sophia_int_to_str
                           %% , sophia_events       %% TODO: Event instructions
-                          %% , sophia_crypto       %% TODO: Crypto instructions
-                          %% , sophia_safe_math    %% TODO: Find what is safe/unsafe
+                          , sophia_crypto
+                          , sophia_safe_math
                           , sophia_heap_to_heap_bug
                           , sophia_namespaces
                           %% , sophia_bytes
@@ -258,7 +257,7 @@ groups() ->
                                  sophia_typed_calls,
                                  sophia_call_origin,
                                  sophia_call_value,
-                                 sophia_exploits,
+                                 sophia_aevm_exploits,
                                  sophia_functions,
                                  sophia_oracles,
                                  {group, sophia_oracles_ttl},
@@ -283,8 +282,8 @@ groups() ->
                                  sophia_no_callobject_for_remote_calls,
                                  sophia_operators,
                                  sophia_bits,
-                                 sophia_bad_code,
-                                 sophia_bad_init,
+                                 sophia_aevm_bad_code,
+                                 sophia_aevm_bad_init,
                                  sophia_int_to_str,
                                  sophia_events,
                                  sophia_crypto,
@@ -503,6 +502,18 @@ end_per_testcase(_TC,_Config) ->
     case ?IS_AEVM_SOPHIA(vm_version()) of
         true  -> ok;
         false -> ?assertMatch(__Exp, __Res)
+    end).
+
+-define(assertMatchVM(AEVM, FATE, Res),
+    case ?IS_AEVM_SOPHIA(vm_version()) of
+        true  -> ?assertMatchAEVM(AEVM, Res);
+        false -> ?assertMatchFATE(FATE, Res)
+    end).
+
+-define(IF_AEVM(AEVM, FATE),
+    case ?IS_AEVM_SOPHIA(vm_version()) of
+        true  -> AEVM;
+        false -> FATE
     end).
 
 -define(skipRest(Res, Reason),
@@ -1384,12 +1395,17 @@ make_calldata_from_id(Id, Fun, Args, State) ->
     make_calldata_from_code(aect_contracts:code(C), Fun, Args).
 
 format_aevm_args(?cid(<<N:256>>)) -> N;
+format_aevm_args(?hsh(<<N:256>>)) -> N;
+format_aevm_args(?sig(<<W1:256, W2:256>>)) -> {W1, W2};
 format_aevm_args(<<N:256>>) -> N;
 format_aevm_args({bytes, Bin}) ->
     case to_words(Bin) of
         [W] -> W;
         Ws  -> list_to_tuple(Ws)
     end;
+format_aevm_args({bits, B}) -> B;
+format_aevm_args(true) -> 1;
+format_aevm_args(false) -> 0;
 format_aevm_args([H|T]) ->
   [format_aevm_args(H) | format_aevm_args(T)];
 format_aevm_args(T) when is_tuple(T) ->
@@ -1406,6 +1422,10 @@ to_words(Bin) ->
 
 format_fate_args(?cid(B)) ->
     {contract, B};
+format_fate_args(?hsh(B)) ->
+    {hash, B};
+format_fate_args(?sig(B)) ->
+    {signature, B};
 format_fate_args(<<_:256>> = B) ->
     {address, B}; %% Assume it is an address
 format_fate_args([H|T]) ->
@@ -1528,7 +1548,7 @@ sophia_vm_interaction(Cfg) ->
                      ]],
     ok.
 
-sophia_exploits(_Cfg) ->
+sophia_aevm_exploits(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc  = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     {ok, Code} = compile_contract(exploits),
@@ -3825,16 +3845,15 @@ sophia_savecoinbase(_Cfg) ->
     <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = ?BENEFICIARY_PUBKEY,
 
     %% Create chain contract and check that address is stored.
-    Ct1 = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
-    #{<<0>> := Val1} = get_contract_state(Ct1),
-    {ok, {LastBf}} = aeb_heap:from_binary({tuple, [word]}, Val1),
-    <<LastBf:?BENEFICIARY_PUB_BYTES/unit:8>> = Ct1,
+    <<Ct1N:256>> = Ct1 = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
+    LastBf = ?call(call_contract, Acc, Ct1, last_bf, word, {}),
+    ?assertMatchVM(Ct1N, {address, Ct1N}, LastBf),
 
     %% Call chain.save_coinbase() and make sure beneficiary is stored.
     ?call(call_contract, Acc, Ct1, save_coinbase, word, {}),
-    #{<<0>> := Val2}  = get_contract_state(Ct1),
-    {ok, {LastBf2}} = aeb_heap:from_binary({tuple, [word]}, Val2),
-    Beneficiary = LastBf2,
+    LastBf2 = ?call(call_contract, Acc, Ct1, last_bf, word, {}),
+    ?assertMatchVM(Beneficiary, {address, Beneficiary}, LastBf2),
+
     ok.
 
 sophia_no_callobject_for_remote_calls(_Cfg) ->
@@ -3875,16 +3894,16 @@ sophia_operators(_Cfg) ->
     ?assertEqual(4,  ?call(call_contract, Acc, IdC, int_op, word, {9, 5, <<"mod">>})),
     ?assertEqual(81,  ?call(call_contract, Acc, IdC, int_op, word, {3, 4, <<"^">>})),
 
-    ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {0, 0, <<"!">>})),
-    ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {1, 1, <<"&&">>})),
-    ?assertEqual(1, ?call(call_contract, Acc, IdC, bool_op, word, {0, 1, <<"||">>})),
+    ?assertEqual(true, ?call(call_contract, Acc, IdC, bool_op, bool, {false, false, <<"!">>})),
+    ?assertEqual(true, ?call(call_contract, Acc, IdC, bool_op, bool, {true, true, <<"&&">>})),
+    ?assertEqual(true, ?call(call_contract, Acc, IdC, bool_op, bool, {false, true, <<"||">>})),
 
-    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {1, 1, <<"==">>})),
-    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {1, 0, <<"!=">>})),
-    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {0, 1, <<"<">>})),
-    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {1, 0, <<">">>})),
-    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {2, 2, <<"=<">>})),
-    ?assertEqual(1, ?call(call_contract, Acc, IdC, cmp_op, word, {2, 0, <<">=">>})),
+    ?assertEqual(true, ?call(call_contract, Acc, IdC, cmp_op, bool, {1, 1, <<"==">>})),
+    ?assertEqual(true, ?call(call_contract, Acc, IdC, cmp_op, bool, {1, 0, <<"!=">>})),
+    ?assertEqual(true, ?call(call_contract, Acc, IdC, cmp_op, bool, {0, 1, <<"<">>})),
+    ?assertEqual(true, ?call(call_contract, Acc, IdC, cmp_op, bool, {1, 0, <<">">>})),
+    ?assertEqual(true, ?call(call_contract, Acc, IdC, cmp_op, bool, {2, 2, <<"=<">>})),
+    ?assertEqual(true, ?call(call_contract, Acc, IdC, cmp_op, bool, {2, 0, <<">=">>})),
 
     ?assertEqual([1, 2], ?call(call_contract, Acc, IdC, cons, {list, word}, {1, [2]})),
 
@@ -3894,7 +3913,8 @@ sophia_operators(_Cfg) ->
     ?assertEqual([1, 2], ?call(call_contract, Acc, IdC, concat, {list, word}, {[1], [2]})),
 
     {Hash1, Hash1} = ?call(call_contract, Acc, IdC, hash, {tuple, [word, word]}, {<<"TestString">>}),
-    ?assertEqual(<<Hash1:256>>, aec_hash:hash(evm, <<"TestString">>)),
+    <<HashXN:256>> = HashX = aec_hash:hash(evm, <<"TestString">>),
+    ?assertMatchVM(HashXN, {hash, HashX}, Hash1),
 
     ok.
 
@@ -3906,31 +3926,36 @@ sophia_bits(_Cfg) ->
 
     C = ?call(create_contract, Acc, bits, {}),
 
-    ToMap = fun(Bits) -> maps:from_list([ {Ix, true} || Ix <- lists:seq(0, 255), 0 /= Bits band (1 bsl Ix) ]) end,
+    IsFate   = ?IF_AEVM(false, true),
+    BitLimit = ?IF_AEVM(256, 300),
+    ToMap = fun(Bits) -> maps:from_list([ {Ix, true} || Ix <- lists:seq(0, BitLimit - 1),
+                                                        0 /= Bits band (1 bsl Ix) ]) end,
     ParseRes =
         fun(sum, R)              -> R;
-           (test, 0)             -> false;
-           (test, 1)             -> true;
            (test, R)             -> R;
            (_, Err = {error, _}) -> Err;
+           (_, {bits, Bits})     -> ToMap(Bits);
            (_, Bits)             -> ToMap(Bits)
         end,
-    Call = fun(Fun, Args) -> ParseRes(Fun, ?call(call_contract, Acc, C, Fun, word, Args)) end,
+    Type = fun(test) -> bool;
+              (_)    -> word
+           end,
+    Call = fun(Fun, Args) -> ParseRes(Fun, ?call(call_contract, Acc, C, Fun, Type(Fun), Args)) end,
 
-    Error = {error, <<"arithmetic_error">>},
+    Error = ?IF_AEVM({error, <<"arithmetic_error">>}, {error, <<"Arithmetic error: negative_bit_position">>}),
 
     All  = ToMap(-1),
     None = #{},
-    Set  = fun(Bits, Ix) when Ix >= 0, Ix < 256 -> Bits#{ Ix => true };
+    Set  = fun(Bits, Ix) when Ix >= 0, Ix < BitLimit -> Bits#{ Ix => true };
               (_, _) -> Error end,
-    Clr  = fun(Bits, Ix) when Ix >= 0, Ix < 256 -> maps:remove(Ix, Bits);
+    Clr  = fun(Bits, Ix) when Ix >= 0, Ix < BitLimit -> maps:remove(Ix, Bits);
               (_, _) -> Error end,
-    Test = fun(Bits, Ix) when Ix >= 0, Ix < 256 -> maps:get(Ix, Bits, false);
+    Test = fun(Bits, Ix) when Ix >= 0, Ix < BitLimit -> maps:get(Ix, Bits, false);
               (_, _) -> Error end,
     Sum  = fun maps:size/1,
     Union = fun maps:merge/2,
     Isect = fun(A, B) -> maps:with(maps:keys(B), A) end,
-    Diff  = fun(A, B) -> maps:with(lists:seq(0, 255) -- maps:keys(B), A) end,
+    Diff  = fun(A, B) -> maps:with(lists:seq(0, BitLimit - 1) -- maps:keys(B), A) end,
 
     Numbers = [ -1, 0,      %% vv some random 256-bit numbers
                 -34381985657915917803217856527549695168998319515423935696320312676799566695522,
@@ -3953,15 +3978,17 @@ sophia_bits(_Cfg) ->
     Run(none, {}, None),
 
     %% set, clear, test
-    [ Run(Fun, {Bits, Ix}, Model(ToMap(Bits), Ix))
+    [ Run(Fun, {{bits, Bits}, Ix}, Model(ToMap(Bits), Ix))
         || {Fun, Model} <- [{set, Set}, {clear, Clr}, {test, Test}],
            Bits <- Numbers, Ix <- Ixs ],
 
     %% sum
-    [ Run(sum, Bits, Sum(ToMap(Bits))) || Bits <- Numbers ],
+    SumModel = fun(Bits) when Bits < 0, IsFate -> {error, <<"Arithmetic error: bits_sum_on_infinite_set">>};
+                  (Bits) -> Sum(ToMap(Bits)) end,
+    [ Run(sum, {{bits, Bits}}, SumModel(Bits)) || Bits <- Numbers ],
 
     %% set operations
-    [ Run(Fun, {A, B}, Model(ToMap(A), ToMap(B)))
+    [ Run(Fun, {{bits, A}, {bits, B}}, Model(ToMap(A), ToMap(B)))
         || {Fun, Model} <- [{union, Union}, {intersection, Isect}, {difference, Diff}],
            A <- Numbers, B <- Numbers ],
 
@@ -3990,7 +4017,8 @@ sophia_int_to_str(_Cfg) ->
     ATests = [Acc, IdC, Static],
     [ begin
         io:format("Address: ~p\n", [Addr]),
-        BAddr = list_to_binary(base58:binary_to_base58(Addr)),
+        BAddr = ?IF_AEVM(list_to_binary(base58:binary_to_base58(Addr)), %% TODO: not really what you want!
+                         aeser_api_encoder:encode(account_pubkey, Addr)),
         ?assertMatch({_, BAddr}, {BAddr, Call(a2s, Addr)})
       end || Addr <- ATests ],
 
@@ -4011,7 +4039,16 @@ sophia_events(_Cfg) ->
 
     ok.
 
--define(assertMatchAEVM1OOG(Exp, Res), ?assertMatchAEVM(Res, {{error, <<"out_of_gas">>}, _}, Exp, Exp)).
+-define(assertMatchAEVM1OOG(Exp, Res),
+        case vm_version() of
+            ?VM_AEVM_SOPHIA_1 -> ?assertMatch({error, <<"out_of_gas">>}, Res);
+            _                 -> ?assertMatchAEVM(Exp, Res)
+        end).
+-define(assertMatchAEVM2OOG(Exp, Res),
+        case vm_version() of
+            X when X < ?VM_AEVM_SOPHIA_3 -> ?assertMatch({error, <<"out_of_gas">>}, Res);
+            _                            -> ?assertMatchAEVM(Exp, Res)
+        end).
 
 set_compiler_version(Vm, Compiler) ->
     [ put('$sophia_version', Compiler) || vm_version() == Vm ].
@@ -4019,7 +4056,8 @@ set_compiler_version(Vm, Compiler) ->
 sophia_crypto(_Cfg) ->
     %% Override compiler version and contract serialization version
     RealCompilerVersion = sophia_version(),
-    set_compiler_version(?VM_AEVM_SOPHIA_1, ?SOPHIA_MINERVA),
+    set_compiler_version(?VM_AEVM_SOPHIA_1, ?SOPHIA_FORTUNA),
+    set_compiler_version(?VM_AEVM_SOPHIA_2, ?SOPHIA_FORTUNA),
 
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
@@ -4032,45 +4070,68 @@ sophia_crypto(_Cfg) ->
                   ?call(create_contract, Acc, crypto, {})
           end,
 
-    Sign = fun(Bin, PrivK) ->
-               <<W1:256, W2:256>> = enacl:sign_detached(Bin, PrivK), {W1, W2}
-           end,
-
     Message = <<"The secret message">>,
     MsgHash = aec_hash:hash(evm, Message),
     PubKey  = Acc,
     PrivKey = aect_test_utils:priv_key(PubKey, state()),
-    Sig1 = Sign(MsgHash, PrivKey),
+    Sig1    = ?sig(enacl:sign_detached(MsgHash, PrivKey)),
 
-    ?assertMatchAEVM1OOG({1, _}, ?call(call_contract, Acc, IdC, test_verify, word,
-                                  {MsgHash, PubKey, Sig1}, #{return_gas_used => true})),
+    [ begin
+          TestRes = ?call(call_contract, Acc, IdC, Fun, bool, {Msg, PubKey, Sig1}),
+          ?assertMatchAEVM1OOG(Exp, TestRes),
+          ?assertMatchFATE(Exp, TestRes)
+      end || {Fun, Msg, Exp} <- [ {test_verify, ?hsh(MsgHash), true}
+                                , {test_verify, ?hsh(PubKey), false}
+                                , {test_string_verify, Message, true}
+                                , {test_string_verify, <<"Not the secret message">>, false}] ],
 
-    ?assertMatchAEVM1OOG({1, _}, ?call(call_contract, Acc, IdC, test_string_verify, word,
-                                  {Message, PubKey, Sig1}, #{return_gas_used => true})),
+    %% SECP256K1
+    {SECP_Pub0, SECP_Priv} = crypto:generate_key(ecdh, secp256k1),
+    SECP_Pub = ?sig(aeu_crypto:ecdsa_from_der_pk(SECP_Pub0)),
+    SECP_Sig = ?sig(aeu_crypto:ecdsa_from_der_sig(
+                      crypto:sign(ecdsa, sha256, {digest, MsgHash}, [SECP_Priv, secp256k1]))),
 
-    ?assertMatchAEVM1OOG({0, _}, ?call(call_contract, Acc, IdC, test_verify, word,
-                                  {PubKey, PubKey, Sig1}, #{return_gas_used => true})),
-
-    ?assertMatchAEVM1OOG({0, _}, ?call(call_contract, Acc, IdC, test_string_verify, word,
-                                  {<<"Not the secret message">>, PubKey, Sig1}, #{return_gas_used => true})),
+    [ begin
+          TestRes = ?call(call_contract, Acc, IdC, Fun, bool, {Msg, SECP_Pub, SECP_Sig}),
+          ?assertMatchAEVM2OOG(Exp, TestRes),
+          ?assertMatchFATE(Exp, TestRes)
+      end || {Fun, Msg, Exp} <- [ {test_verify_secp256k1, ?hsh(MsgHash), true}
+                                , {test_verify_secp256k1, ?hsh(PubKey), false}
+                                , {test_string_verify_secp256k1, Message, true}
+                                , {test_string_verify_secp256k1, <<"Not the secret message">>, false}] ],
 
     %% Test hash functions
     String = <<"12345678901234567890123456789012-andsomemore">>,
     Data   = [{none, <<"foo">>}, {{some, 100432}, String}],
-    Bin    = aeb_heap:to_binary(Data),
-    <<Sha3:256>>      = aec_hash:hash(evm, Bin),
-    <<Sha256:256>>    = aec_hash:sha256_hash(Bin),
-    <<Blake2b:256>>   = aec_hash:blake2b_256_hash(Bin),
-    <<Sha3_S:256>>    = aec_hash:hash(evm, String),
-    <<Sha256_S:256>>  = aec_hash:sha256_hash(String),
-    <<Blake2b_S:256>> = aec_hash:blake2b_256_hash(String),
+    Bin    = ?IF_AEVM(aeb_heap:to_binary(Data),
+                      aeb_fate_encoding:serialize(aefate_test_utils:encode(Data))),
+    <<Sha3_N:256>>      = Sha3      = aec_hash:hash(evm, Bin),
+    <<Sha256_N:256>>    = Sha256    = aec_hash:sha256_hash(Bin),
+    <<Blake2b_N:256>>   = Blake2b   = aec_hash:blake2b_256_hash(Bin),
+    <<Sha3_S_N:256>>    = Sha3_S    = aec_hash:hash(evm, String),
+    <<Sha256_S_N:256>>  = Sha256_S  = aec_hash:sha256_hash(String),
+    <<Blake2b_S_N:256>> = Blake2b_S = aec_hash:blake2b_256_hash(String),
 
-    ?assertMatch({Sha3_S,    _}, ?call(call_contract, Acc, IdC, sha3_str,    word, String, #{return_gas_used => true})),
-    ?assertMatchAEVM1OOG({Sha256_S,  _}, ?call(call_contract, Acc, IdC, sha256_str,  word, String, #{return_gas_used => true})),
-    ?assertMatchAEVM1OOG({Blake2b_S, _}, ?call(call_contract, Acc, IdC, blake2b_str, word, String, #{return_gas_used => true})),
-    ?assertMatchAEVM1OOG({Sha3,      _}, ?call(call_contract, Acc, IdC, sha3,        word, Data,   #{return_gas_used => true})),
-    ?assertMatchAEVM1OOG({Sha256,    _}, ?call(call_contract, Acc, IdC, sha256,      word, Data,   #{return_gas_used => true})),
-    ?assertMatchAEVM1OOG({Blake2b,   _}, ?call(call_contract, Acc, IdC, blake2b,     word, Data,   #{return_gas_used => true})),
+    ResSha3_S    = ?call(call_contract, Acc, IdC, sha3_str,    word, String),
+    ResSha256_S  = ?call(call_contract, Acc, IdC, sha256_str,  word, String),
+    ResBlake2b_S = ?call(call_contract, Acc, IdC, blake2b_str, word, String),
+    ResSha3      = ?call(call_contract, Acc, IdC, sha3,        word, Data  ),
+    ResSha256    = ?call(call_contract, Acc, IdC, sha256,      word, Data  ),
+    ResBlake2b   = ?call(call_contract, Acc, IdC, blake2b,     word, Data  ),
+
+    ?assertMatchAEVM    (Sha3_S_N   , ResSha3_S),
+    ?assertMatchAEVM1OOG(Sha256_S_N , ResSha256_S),
+    ?assertMatchAEVM1OOG(Blake2b_S_N, ResBlake2b_S),
+    ?assertMatchAEVM1OOG(Sha3_N     , ResSha3),
+    ?assertMatchAEVM1OOG(Sha256_N   , ResSha256),
+    ?assertMatchAEVM1OOG(Blake2b_N  , ResBlake2b),
+
+    ?assertMatchFATE({hash, Sha3_S},    ResSha3_S),
+    ?assertMatchFATE({hash, Sha256_S},  ResSha256_S),
+    ?assertMatchFATE({hash, Blake2b_S}, ResBlake2b_S),
+    ?assertMatchFATE({hash, Sha3},      ResSha3),
+    ?assertMatchFATE({hash, Sha256},    ResSha256),
+    ?assertMatchFATE({hash, Blake2b},   ResBlake2b),
 
     ok.
 
@@ -4090,15 +4151,17 @@ sophia_safe_math() ->
     <<_:1, Large:255>>   = list_to_binary(lists:duplicate(32, $o)),
 
     %% Does an arbitrary precision number fit in a signed 256 bit integer?
-    IsSafe = fun(X) -> <<Y:256/signed-integer>> = <<X:256/signed-integer>>, X == Y end,
+    IsFate = ?IF_AEVM(false, true),
+    IsSafe = fun(error_val) -> false;
+                (_) when IsFate -> true;
+                (X) -> <<Y:256/signed-integer>> = <<X:256/signed-integer>>, X == Y end,
+
 
     %% Reference implementation of ^
-    ErrorVal = 1 bsl 260,
-    Mask = fun(X) -> X rem (1 bsl 512 - 1 bsl 263 - 17) end,
-    Pow = fun Pow(_, B, _) when B < 0 -> ErrorVal;
-              Pow(_, 0, R) -> R;                %% mask to not blow up
-              Pow(A, B, R) when B rem 2 == 0 -> Pow(Mask(A * A), B bsr 1, R);
-              Pow(A, B, R)                   -> Pow(Mask(A * A), B bsr 1, R * A)
+    Pow = fun Pow(_, B, _) when B < 0 -> error_val;
+              Pow(_, 0, R) -> R;
+              Pow(A, B, R) when B rem 2 == 0 -> Pow(A * A, B bsr 1, R);
+              Pow(A, B, R)                   -> Pow(A * A, B bsr 1, R * A)
           end,
 
     %% Test vectors
@@ -4114,10 +4177,12 @@ sophia_safe_math() ->
         Res = ?call(call_contract, Acc, C, Fun, signed_word, {X, Y}),
         Exp = case IsSafe(Z) of
                 true  -> Z;                         %% If safe we should get back the right answer
+                false when IsFate -> {error, <<"Arithmetic error: negative_exponent">>};
                 false -> {error, <<"arithmetic_error">>}  %% otherwise out of gas (no wrap-arounds!)
               end,
         ?assertMatch({_, _, _, {A, A}}, {Fun, X, Y, {Exp, Res}})
-      end || {Fun, Op} <- Ops, X <- Values, Y <- Values ],
+      end || {Fun, Op} <- Ops, X <- Values, Y <- Values,
+             (Fun /= pow orelse Y < 1000) ],
 
     ok.
 
@@ -4155,7 +4220,7 @@ sophia_safe_math_old() ->
 
     ok.
 
-sophia_bad_code(_Cfg) ->
+sophia_aevm_bad_code(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc  = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     {ok, Code} = compile_contract(bad_code),
@@ -4179,7 +4244,7 @@ hack_dup(_, _, <<>>) -> <<>>;
 hack_dup(A, B, <<A:8, Rest/binary>>) -> <<B:8, (hack_dup(A, B, Rest))/binary>>;
 hack_dup(A, B, <<X:8, Rest/binary>>) -> <<X:8, (hack_dup(A, B, Rest))/binary>>.
 
-sophia_bad_init(_Cfg) ->
+sophia_aevm_bad_init(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
 

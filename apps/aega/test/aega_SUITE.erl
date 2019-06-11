@@ -1516,13 +1516,6 @@ basic_auth(Nonce, TxHash, Privkey) ->
 
 bitcoin_auth(_GA, Nonce, TxHash, S) ->
     Val = <<32:256, TxHash/binary, (list_to_integer(Nonce)):256>>,
-    Sig = crypto:sign(ecdsa, sha256, {digest, aec_hash:hash(tx, Val)}, [?SECP256K1_PRIV, secp256k1]),
-    {aega_test_utils:make_calldata("bitcoin_auth", "authorize", [Nonce, der_sig_decode(Sig)]), S}.
-
-der_sig_decode(<<16#30, _Len0:8, 16#02, Len1:8, Rest/binary>>) ->
-    <<R:Len1/binary, 16#02, Len2:8, S/binary>> = Rest,
-    aega_test_utils:to_hex_lit(64, <<(der_part_trunc(Len1, R)):32/binary,
-                                     (der_part_trunc(Len2, S)):32/binary>>).
-
-der_part_trunc(33, <<0, Rest/binary>>)   -> Rest;
-der_part_trunc(Len, Part) when Len =< 32 -> <<0:((32-Len)*8), Part/binary>>.
+    Sig0 = crypto:sign(ecdsa, sha256, {digest, aec_hash:hash(tx, Val)}, [?SECP256K1_PRIV, secp256k1]),
+    Sig  = aega_test_utils:to_hex_lit(64, aeu_crypto:ecdsa_from_der_sig(Sig0)),
+    {aega_test_utils:make_calldata("bitcoin_auth", "authorize", [Nonce, Sig]), S}.

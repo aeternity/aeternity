@@ -46,6 +46,8 @@ encode({channel, S}) when is_list(S)  ->
     aeb_fate_data:make_channel(encode_address(channel, S));
 encode({variant, Arities, Tag, Values}) ->
     aeb_fate_data:make_variant(Arities, Tag, list_to_tuple([encode(V) || V <- tuple_to_list(Values)]));
+encode(none)      -> aeb_fate_data:make_variant([0, 1], 0, {});
+encode({some, X}) -> aeb_fate_data:make_variant([0, 1], 1, {encode(X)});
 encode(Term) when is_integer(Term) -> aeb_fate_data:make_integer(Term);
 encode(Term) when is_boolean(Term) -> aeb_fate_data:make_boolean(Term);
 encode(Term) when is_list(Term) -> aeb_fate_data:make_list([encode(E) || E <- Term]);
