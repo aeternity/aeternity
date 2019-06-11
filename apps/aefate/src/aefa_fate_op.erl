@@ -152,8 +152,7 @@ call(Arg0, EngineState) ->
 call_t(Arg0, EngineState) ->
     {Fun, ES1} = get_op_arg(Arg0, EngineState),
     Signature = aefa_fate:get_function_signature(Fun, ES1),
-    ok = aefa_fate:check_signature(Signature, ES1),
-    ES2 = aefa_fate:bind_args_from_signature(Signature, ES1),
+    ES2 = aefa_fate:check_signature_and_bind_args(Signature, ES1),
     {jump, 0, aefa_fate:set_local_function(Fun, ES2)}.
 
 call_r(Arg0, Arg1, Arg2, EngineState) ->
@@ -183,8 +182,7 @@ remote_call_common(Contract, Function, Value, EngineState) ->
     ES1       = aefa_fate:check_remote(Contract, EngineState),
     ES2       = aefa_fate:set_remote_function(Contract, Function, ES1),
     Signature = aefa_fate:get_function_signature(Function, ES2),
-    ok        = aefa_fate:check_signature(Signature, ES2),
-    ES3       = aefa_fate:bind_args_from_signature(Signature, ES2),
+    ES3       = aefa_fate:check_signature_and_bind_args(Signature, ES2),
     transfer_value(Current, Contract, Value, ES3).
 
 transfer_value(_From, ?FATE_CONTRACT(_To), Value, ES) when not ?IS_FATE_INTEGER(Value) ->
@@ -376,8 +374,8 @@ make_tuple(To, Size, ES) ->
 element_op(To, Which, TupleArg, ES) ->
     {Index, ES1} = get_op_arg(Which, ES),
     {FateTuple, ES2} = get_op_arg(TupleArg, ES1),
-    case aefa_fate:check_type(integer, Index)
-        andalso (Index >= 0)
+    case ?IS_FATE_INTEGER(Index)
+        andalso (?FATE_INTEGER_VALUE(Index) >= 0)
         andalso ?IS_FATE_TUPLE(FateTuple) of
         false -> aefa_fate:abort({bad_arguments_to_element, Index, FateTuple}, ES);
         true ->
@@ -395,8 +393,8 @@ setelement(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {Index, ES1} = get_op_arg(Arg1, EngineState),
     {FateTuple, ES2} = get_op_arg(Arg2, ES1),
     {Element, ES3} = get_op_arg(Arg3, ES2),
-    case aefa_fate:check_type(integer, Index)
-        andalso (Index >= 0)
+    case ?IS_FATE_INTEGER(Index)
+        andalso (?FATE_INTEGER_VALUE(Index) >= 0)
         andalso ?IS_FATE_TUPLE(FateTuple) of
         false -> aefa_fate:abort({bad_arguments_to_setelement, Index, FateTuple}, ES3);
         true ->
@@ -744,8 +742,13 @@ dummyarg(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _Arg5, _Arg6, _EngineState) ->
 dummyarg(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _Arg5, _Arg6, _Arg7, _EngineState) ->
  exit({error, op_not_implemented_yet}).
 
-abort(_Arg0, _EngineState) ->
- exit({error, op_not_implemented_yet}).
+-spec abort(_, _) -> no_return().
+abort(Arg0, EngineState) ->
+    {Value, ES1} = get_op_arg(Arg0, EngineState),
+    case ?IS_FATE_STRING(Value) of
+        true  -> aefa_fate:abort({abort, ?FATE_STRING_VALUE(Value)}, ES1);
+        false -> aefa_fate:abort({value_does_not_match_type, Value, string}, ES1)
+    end.
 
 exit(_Arg0, _EngineState) ->
  exit({error, op_not_implemented_yet}).

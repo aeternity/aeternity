@@ -17,11 +17,9 @@
 
 -export([get_trace/1]).
 
--export([ bind_args_from_signature/2
-        , check_remote/2
+-export([ check_remote/2
         , check_return_type/1
-        , check_signature/2
-        , check_type/2
+        , check_signature_and_bind_args/2
         , get_function_signature/2
         , push_gas_cap/2
         , push_return_address/1
@@ -172,6 +170,8 @@ abort(reentrant_call, ES) ->
     ?t("Reentrant call", [], ES);
 abort(out_of_gas, ES) ->
     ?t("Out of gas", [], ES);
+abort({abort, Err}, ES) ->
+    ?t("~ts", [Err], ES);       %% TODO: revert!
 abort(bad_byte_code, ES) ->
     ?t("Bad byte code", [], ES).
 
@@ -230,8 +230,7 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
     ES2 = set_remote_function(Contract, Function, ES1),
     ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
-    ok = check_signature(Signature, ES3),
-    ES4 = bind_args_from_signature(Signature, ES3),
+    ES4 = check_signature_and_bind_args(Signature, ES3),
     aefa_engine_state:set_caller(aeb_fate_data:make_address(maps:get(caller, Spec)), ES4).
 
 check_remote(Contract, EngineState) when not ?IS_FATE_CONTRACT(Contract) ->
@@ -284,19 +283,29 @@ get_function_signature(Name, ES) ->
 
 check_return_type(ES) ->
     Current = aefa_engine_state:current_function(ES),
+    TVars   = aefa_engine_state:current_tvars(ES),
     {_ArgTypes, RetSignature} = get_function_signature(Current, ES),
     Acc = aefa_engine_state:accumulator(ES),
     case check_type(RetSignature, Acc) of
-        true -> ES;
-        false -> abort({bad_return_type, Acc, RetSignature}, ES)
+        false -> abort({bad_return_type, Acc, RetSignature}, ES);
+        Inst  ->
+            case merge_match(Inst, TVars) of
+                false -> abort({bad_return_type, Acc, instantiate_type(TVars, RetSignature)}, ES);
+                #{}   -> ES
+            end
     end.
+
+check_signature_and_bind_args(Signature, ES) ->
+    {ok, Inst} = check_signature(Signature, ES),
+    ES1 = bind_args_from_signature(Signature, ES),
+    aefa_engine_state:set_current_tvars(Inst, ES1).
 
 check_signature({ArgTypes, _RetSignature}, ES) ->
     Stack = aefa_engine_state:accumulator_stack(ES),
     Args = [aefa_engine_state:accumulator(ES) | Stack],
     case check_arg_types(ArgTypes, Args) of
-        ok ->
-            ok;
+        {ok, Inst} ->
+            {ok, Inst};
         {error, T, V}  ->
             abort({value_does_not_match_type, V, T}, ES)
     end.
@@ -306,20 +315,12 @@ bind_args_from_signature({ArgTypes, _RetSignature}, ES) ->
     Args = [aefa_engine_state:accumulator(ES) | Stack],
     bind_args(0, Args, ArgTypes, #{}, ES).
 
-check_arg_types([], _) -> ok;
-check_arg_types([T|Ts], [A|As]) ->
-    case check_type(T,A) of
-        true -> check_arg_types(Ts, As);
-        false -> {error, T, A}
+check_arg_types(Ts, As0) ->
+    As = lists:sublist(As0, length(Ts)),
+    case check_type({tuple, Ts}, {tuple, list_to_tuple(As)}) of
+        false -> {error, Ts, As};
+        Inst  -> {ok, Inst}
     end.
-
-check_all_types([], []) -> true;
-check_all_types([T|Ts], [A|As]) ->
-    check_type(T, A) andalso  check_all_types(Ts, As).
-
-check_same_type(_, []) -> true;
-check_same_type(T, [A|As]) ->
-    check_type(T, A) andalso check_same_type(T, As).
 
 bind_args(N, _, [], Mem, EngineState) ->
     ES1 = drop(N, EngineState),
@@ -327,39 +328,105 @@ bind_args(N, _, [], Mem, EngineState) ->
 bind_args(N, [Arg|Args], [_Type|Types], Mem, EngineState) ->
     bind_args(N+1, Args, Types, Mem#{{arg, N} => {val, Arg}}, EngineState).
 
-%% TODO: Add types (and tests).
-check_type(any, _) -> true;
-check_type(_, any) -> true;
-check_type(integer, I) when ?IS_FATE_INTEGER(I) -> true;
-check_type(boolean, B) when ?IS_FATE_BOOLEAN(B) -> true;
-check_type(string, S) when ?IS_FATE_STRING(S) -> true;
-check_type(address, A) when ?IS_FATE_ADDRESS(A) -> true;
-check_type(contract, A) when ?IS_FATE_CONTRACT(A) -> true;
-check_type(oracle, A) when ?IS_FATE_ORACLE(A) -> true;
-check_type(name, A) when ?IS_FATE_NAME(A) -> true;
-check_type(bits, B) when ?IS_FATE_BITS(B) -> true;
-check_type({list, any}, L) when ?IS_FATE_LIST(L) ->
-    true;
-check_type({list, ET}, L) when ?IS_FATE_LIST(L) ->
-    check_same_type(ET, ?FATE_LIST_VALUE(L));
-check_type({tuple, Elements}, T) when ?IS_FATE_TUPLE(T) ->
-    check_all_types(Elements, ?FATE_TUPLE_ELEMENTS(T));
-check_type({map, Key, Value}, M) when ?IS_FATE_MAP(M) ->
-    {Ks, Vs} = lists:unzip(maps:to_list(?FATE_MAP_VALUE(M))),
-    check_same_type(Key, Ks) andalso
-    check_same_type(Value, Vs);
-check_type({variant, Types}, V) when ?IS_FATE_VARIANT(V) ->
-    ?FATE_VARIANT(Arities, Tag, Value) = V,
-    check_variant_arities(Types, Arities) andalso
-        check_type(lists:nth(Tag + 1, Types), ?FATE_TUPLE(Value));
-check_type(_T, _V) -> false.
+check_type(T, V) ->
+    try
+        match_type(T, infer_type(V))
+    catch throw:_Err ->
+        false
+    end.
 
-check_variant_arities([?FATE_TUPLE(Types)|Left1], [Arity|Left2]) ->
-    Arity =:= length(Types) andalso check_variant_arities(Left1, Left2);
-check_variant_arities([], []) ->
-    true;
-check_variant_arities(_, _) ->
-    false.
+infer_type(X) when ?IS_FATE_INTEGER(X)   -> integer;
+infer_type(X) when ?IS_FATE_BOOLEAN(X)   -> boolean;
+infer_type(X) when ?IS_FATE_STRING(X)    -> string;
+infer_type(X) when ?IS_FATE_ADDRESS(X)   -> address;
+infer_type(X) when ?IS_FATE_HASH(X)      -> hash;
+infer_type(X) when ?IS_FATE_SIGNATURE(X) -> signature;
+infer_type(X) when ?IS_FATE_CONTRACT(X)  -> contract;
+infer_type(X) when ?IS_FATE_ORACLE(X)    -> oracle;
+infer_type(X) when ?IS_FATE_NAME(X)      -> name;
+infer_type(X) when ?IS_FATE_BITS(X)      -> bits;
+infer_type(X) when ?IS_FATE_LIST(X) ->
+    {list, infer_element_type(?FATE_LIST_VALUE(X))};
+infer_type(X) when ?IS_FATE_MAP(X) ->
+    {Ks, Vs} = lists:unzip(maps:to_list(?FATE_MAP_VALUE(X))),
+    KeyT = infer_element_type(Ks),
+    ValT = infer_element_type(Vs),
+    {map, KeyT, ValT};
+infer_type(X) when ?IS_FATE_TUPLE(X) ->
+    {tuple, [infer_type(Y) || Y <- ?FATE_TUPLE_ELEMENTS(X)]};
+infer_type(X) when ?IS_FATE_VARIANT(X) ->
+    ?FATE_VARIANT(Arities, Tag, Value) = X,
+    N    = length(Arities),
+    [ throw({bad_variant_tag, Tag, Arities}) || Tag >= N ],
+    Type = infer_type(?FATE_TUPLE(Value)),
+    %% Partial variant type (only arities for other constructors)
+    {variant, [ if I == Tag -> Type; true -> A end
+                || {A, I} <- lists:zip(Arities, lists:seq(0, N - 1))]};
+infer_type(X) -> throw({not_a_fate_value, X}).
+
+infer_element_type(Xs) ->
+    lists:foldl(fun intersect_types/2, any, [infer_type(X) || X <- Xs]).
+
+instantiate_type(TVars, {tvar, X})          -> maps:get(X, TVars, {tvar, X});
+instantiate_type(_TVars, T) when is_atom(T) -> T;
+instantiate_type(TVars, {list, T})          -> {list, instantiate_type(TVars, T)};
+instantiate_type(TVars, {tuple, Ts})        -> {tuple, [instantiate_type(TVars, T) || T <- Ts]};
+instantiate_type(TVars, {map, K, V})        -> {map, instantiate_type(TVars, K), instantiate_type(TVars, V)};
+instantiate_type(TVars, {variant, Ts})      -> {variant, [instantiate_type(TVars, T) || T <- Ts]}.
+
+intersect_types(T, any) -> T;
+intersect_types(any, T) -> T;
+intersect_types(T, T) -> T;
+intersect_types({list, S}, {list, T}) ->
+    {list, intersect_types(S, T)};
+intersect_types({tuple, Ss}, {tuple, Ts}) when length(Ss) == length(Ts) ->
+    {tuple, lists:zipwith(fun intersect_types/2, Ss, Ts)};
+intersect_types({map, SK, SV}, {map, TK, TV}) ->
+    {map, intersect_types(SK, TK), intersect_types(SV, TV)};
+intersect_types({variant, Ss}, {variant, Ts}) when length(Ss) == length(Ts) ->
+    Isect = fun(N, N) when is_integer(N) -> N;
+               (N, {tuple, Us}) when length(Us) == N -> {tuple, Us};
+               ({tuple, Us}, N) when length(Us) == N -> {tuple, Us};
+               (S, T) when is_tuple(S), is_tuple(T) -> intersect_types(S, T);
+               (_, _) -> throw({not_compatible, {variant, Ss}, {variant, Ts}})
+            end,
+    {variant, lists:zipwith(Isect, Ss, Ts)};
+intersect_types(S, T) -> throw({not_compatible, S, T}).
+
+match_type(T, T) -> yes_match();
+match_type(any, _) -> yes_match();
+match_type(_, any) -> yes_match();
+match_type({tvar, X}, T) -> #{ X => T };
+match_type({list, T}, {list, S}) -> match_type(T, S);
+match_type({tuple, Ts}, {tuple, Ss}) when length(Ts) == length(Ss) ->
+    merge_match(lists:zipwith(fun match_type/2, Ts, Ss));
+match_type({map, TK, TV}, {map, SK, SV}) ->
+    merge_match(match_type(TK, SK), match_type(TV, SV));
+match_type({variant, Ts}, {variant, Ss}) when length(Ts) == length(Ss) ->
+    %% Second argument can be partial variant type
+    Match = fun({tuple, Us}, N) when length(Us) == N -> yes_match();
+               (T = {tuple, _}, S = {tuple, _})      -> match_type(T, S);
+               (_, _)                                -> no_match() end,
+    merge_match(lists:zipwith(Match, Ts, Ss));
+match_type(_, _) -> no_match().
+
+yes_match() -> #{}.
+no_match() -> false.
+
+merge_match(Xs) ->
+    lists:foldl(fun merge_match/2, yes_match(), Xs).
+
+merge_match(false, _) -> false;
+merge_match(_, false) -> false;
+merge_match(Inst1, Inst2) ->
+    Ins = fun(_, false)  -> false;
+             ({X, T}, M) ->
+                case maps:get(X, M, undefined) of
+                    undefined -> M#{ X => T };
+                    S -> try M#{ X => intersect_types(S, T) }
+                         catch throw:_ -> false end
+                end end,
+    lists:foldl(Ins, Inst2, maps:to_list(Inst1)).
 
 terms_are_of_same_type(X, Y) when ?IS_FATE_INTEGER(X), ?IS_FATE_INTEGER(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_BOOLEAN(X), ?IS_FATE_BOOLEAN(Y) -> true;
@@ -437,17 +504,19 @@ pop_call_stack(ES) ->
     case aefa_engine_state:pop_call_stack(ES) of
         empty ->
             {stop, ES};
-        {local, Function, BB, ES1} ->
+        {local, Function, TVars, BB, ES1} ->
             ES2 = set_local_function(Function, ES1),
-            {jump, BB, ES2};
-        {remote, Contract, Function, BB, ES1} ->
+            ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
+            {jump, BB, ES3};
+        {remote, Contract, Function, TVars, BB, ES1} ->
             ES2 = set_remote_function(Contract, Function, ES1),
-            {jump, BB, ES2}
+            ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
+            {jump, BB, ES3}
     end.
 
 collect_gas_stores([{gas_store, Gas}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas + Gas);
-collect_gas_stores([{_, _, _, _, _}|Left], AccGas) ->
+collect_gas_stores([{_, _, _, _, _, _}|Left], AccGas) ->
     collect_gas_stores(Left, AccGas);
 collect_gas_stores([], AccGas) ->
     AccGas.

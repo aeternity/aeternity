@@ -67,7 +67,11 @@ compile_contract(Code, Options) ->
         {ok, Ast} = aeso_parser:string(Code),
         TypedAst  = aeso_ast_infer_types:infer(Ast, Options),
         FCode     = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
-        aeso_fcode_to_fate:compile(FCode, Options)
+        Fate      = aeso_fcode_to_fate:compile(FCode, Options),
+        case aeb_fate_code:deserialize(aeb_fate_code:serialize(Fate)) of
+            Fate  -> Fate;
+            Other -> {error, {Other, '/=', Fate}}
+        end
     catch _:{type_errors, Err} ->
         io:format("~s\n", [Err]),
         {error, {type_errors, Err}}
@@ -322,6 +326,11 @@ variants() ->
      "    switch(a)\n"
      "      Red(A(false, false), y) => y\n"
      "      _ => 0\n"
+     "  function all_red(xs : list(color(int, int))) : bool =\n"
+     "    switch(xs)\n"
+     "      []              => true\n"
+     "      Red(_, _) :: ys => all_red(ys)\n"
+     "      _ :: _          => false\n"
      ""}.
 
 -define(Red(X, Y), {variant, [2, 0, 1], 0, {X, Y}}).
@@ -334,7 +343,7 @@ variant_tests() ->
                   (_) -> ?Red(0, 1) end,
     ScrambleInput = [ ?Red(2, true), ?Red(1001, false), ?Blue(-99), ?Green ],
     Missing1 = fun({variant, [2], 0, {false, false}}) -> 1;
-                  (_) -> {error, op_not_implemented_yet} end,
+                  (_) -> {error, <<"Incomplete patterns">>} end,
     Missing1Input = [{variant, [2], 0, {A, B}} || A <- [false, true], B <- [false, true]],
     Missing2 = fun(?Red({variant, [2], 0, {false, false}}, X)) -> X;
                   (_) -> 0 end,
@@ -345,6 +354,9 @@ variant_tests() ->
        [{"scramble", [Input], Scramble(Input)} || Input <- ScrambleInput],
        [{"missing1", [Input], Missing1(Input)} || Input <- Missing1Input],
        [{"missing2", [Input], Missing2(Input)} || Input <- Missing2Input],
+       [{"all_red", [[?Red(1, 2), ?Red(3, 4)]], true},
+        {"all_red", [[?Red(1, 2), ?Green]], false},
+        {"all_red", [[]], true}],
        []]).
 
 variant_test_() -> mk_test([variants()], variant_tests()).
