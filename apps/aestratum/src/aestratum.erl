@@ -8,6 +8,9 @@
          top_height/0,
          status/0,
          status/1,
+         db_keys/1,
+         tab_keys/0,
+         tab_keys/1,
          sent_payments/0,
          pending_payments/0,
          select_payments/2]).
@@ -22,11 +25,9 @@
 -include_lib("aecore/include/blocks.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
--import(aestratum_fn, [is_ok/1, ok/0, ok/1, ok/2, ok_err/2, ok_val_err/1, ok_val_err/2,
-                       lazy_hd/3, tag_val_err/3, const/1]).
+-import(aestratum_fn, [ok_err/2, ok_val_err/1, ok_val_err/2]).
 
 -define(PAYOUT_CHECK_INTERVAL,            timer:minutes(2)).
--define(CHAIN_TOP_CHECK_INTERVAL,         timer:seconds(1)).
 -define(CHAIN_PAYMENT_TX_CHECK_INTERVAL,  timer:seconds(10)).
 -define(CANDIDATE_CACHE_CLEANUP_INTERVAL, timer:minutes(15)).
 
@@ -46,11 +47,12 @@
          hash      :: binary()}). %% reward block hash
 
 -record(aestratum_state,
-        {chain_keyblock_hash,
+        {height,
          balance,
          tx_push_pid,
          pending_tx_id,
          pending_tx_hash}).
+
 
 %%%===================================================================
 %%% API
@@ -75,6 +77,15 @@ status(Account) when is_binary(Account) ->
         {error, _Rsn} = Err          -> Err
     end.
 
+db_keys(Height) ->
+    ?TXN(aestratum_db:keys(Height)).
+
+tab_keys() ->
+    ?TXN(lists:foldl(fun (T, Acc) -> Acc#{T => mnesia:all_keys(T)} end, #{}, ?TABS)).
+
+tab_keys(Tab) ->
+    ?TXN(mnesia:all_keys(Tab)).
+
 sent_payments() ->
     ?TXN(select_payments(true)).
 
@@ -89,12 +100,12 @@ init([]) ->
     aestratum_env:set(#{pool_relative_shares => PoolRelShares}),
     ?TXN(aestratum_db:is_empty(?ROUNDS_TAB) andalso aestratum_db:store_round()),
     aec_events:subscribe(stratum_new_candidate),
+    aec_events:subscribe(top_changed),
     {ok, _} = timer:send_interval(?PAYOUT_CHECK_INTERVAL, payout_check),
-    {ok, _} = timer:send_interval(?CHAIN_TOP_CHECK_INTERVAL, chain_top_check),
     {ok, _} = timer:send_interval(?CHAIN_PAYMENT_TX_CHECK_INTERVAL, chain_payment_tx_check),
     {ok, _} = timer:send_interval(?CANDIDATE_CACHE_CLEANUP_INTERVAL, candidate_cache_cleanup),
-    State0  = #aestratum_state{chain_keyblock_hash = aec_chain:top_key_block_hash(),
-                               balance             = balance()},
+    State0  = #aestratum_state{height  = top_height(),
+                               balance = balance()},
     State1  = case ?TXN(select_payments(true, 1)) of
                   [#aestratum_payment{id = TxId, tx_hash = TxHash}] ->
                       State0#aestratum_state{pending_tx_id   = TxId,
@@ -104,24 +115,20 @@ init([]) ->
               end,
     {ok, State1}.
 
-handle_info(chain_top_check, #aestratum_state{chain_keyblock_hash = LastKB,
-                                              balance = LastBalance} = S) ->
-    S1 = case aec_chain:top_key_block_hash() of
-             LastKB ->
-                 S;
-             NewKB  ->
-                 %% ?INFO("new top blockhash: ~p", [NewKB]),
-                 self() ! keyblock,
-                 NewBalance = balance(),
-                 log_changed_balance(NewBalance, LastBalance),
-                 S#aestratum_state{chain_keyblock_hash = NewKB,
-                                   balance = NewBalance}
-         end,
-    {noreply, S1};
 
-handle_info(keyblock, #aestratum_state{chain_keyblock_hash = <<_/binary>>} = S) ->
+handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key, height := Height}}},
+            #aestratum_state{balance = LastBalance} = S) ->
+    self() ! keyblock,
+    NewBalance = balance(),
+    log_changed_balance(NewBalance, LastBalance),
+    S1 = S#aestratum_state{height = Height, balance = NewBalance},
+    {noreply, S1};
+handle_info({gproc_ps_event, top_changed, _}, S) ->
+    {noreply, S};
+
+handle_info(keyblock, #aestratum_state{height = Height} = S) when is_integer(Height) ->
     ?TXN(aestratum_db:store_round()),
-    case top_height() - ?REWARD_KEYBLOCK_DELAY of
+    case Height - ?REWARD_KEYBLOCK_DELAY of
         RewardHeight when RewardHeight > 0 ->
             case ?TXN(maybe_compute_reward(RewardHeight)) of
                 {ok, not_our_share} ->
@@ -168,15 +175,15 @@ handle_info(payout_check, #aestratum_state{tx_push_pid = undefined,
 handle_info({'DOWN', _Ref, process, Pid, _Info}, #aestratum_state{tx_push_pid = Pid} = S) ->
     {noreply, S#aestratum_state{tx_push_pid = undefined}};
 
-handle_info(chain_payment_tx_check, #aestratum_state{tx_push_pid = undefined,
+handle_info(chain_payment_tx_check, #aestratum_state{height = TopHeight,
+                                                     tx_push_pid = undefined,
                                                      pending_tx_id = {Height, _} = TxId,
                                                      pending_tx_hash = <<TxHash/binary>>} = S) ->
-    S1 = case payout_tx_persisted(TxHash) of
+    S1 = case payout_tx_persisted(TxHash, TopHeight) of
              true ->
-                 ?TXN(begin
-                          length(aestratum_db:payments(Height)) == 1 andalso
-                              aestratum_db:delete_reward_records(Height),
-                          aestratum_db:delete_payment(TxId)
+                 ?TXN(case length(aestratum_db:payments(Height)) == 1 of
+                          true  -> aestratum_db:delete_records(Height);
+                          false -> aestratum_db:delete_payment(TxId)
                       end),
                  S#aestratum_state{pending_tx_id = undefined,
                                    pending_tx_hash = undefined};
@@ -254,7 +261,7 @@ format_status(_Opt, Status) ->
 %%%===================================================================
 
 push_payment(#aestratum_payment{id = Id} = P, S) ->
-    try ?TXN(send_payment(P)) of
+    try ?TXN(send_payment(P, S#aestratum_state.height)) of
         {Pid, TxHash, PayoutTxArgs, AbsMap} ->
             Date = calendar:now_to_datetime(erlang:timestamp()),
             P1   = ok_val_err(?TXN(aestratum_db:update_payment(P, AbsMap, TxHash, Date))),
@@ -367,15 +374,16 @@ oldest_unpaid_payment() ->
 
 send_payment(#aestratum_payment{tx_hash = undefined,
                                 total = GrossAmount,
-                                relmap = RelativeMap}) ->
+                                relmap = RelativeMap},
+             TopHeight) ->
     Balance       = balance(),
     GrossAmount   < Balance orelse error({caller_insufficient_funds, Balance, GrossAmount}),
     AbsoluteMap0  = absolute_amounts(RelativeMap, GrossAmount),
-    #{fee := Fee, run_fee := RunFee} = payout_call_tx_args(AbsoluteMap0),
+    #{fee := Fee, run_fee := RunFee} = payout_call_tx_args(AbsoluteMap0, TopHeight),
     NetAmount     = GrossAmount - Fee - RunFee, % what is actually distributed
     NetAmount     > 0 orelse error({negative_net_amount, NetAmount, {GrossAmount, Fee, RunFee}}),
     AbsoluteMap   = absolute_amounts(RelativeMap, NetAmount),
-    NetTxArgs     = payout_call_tx_args(AbsoluteMap),
+    NetTxArgs     = payout_call_tx_args(AbsoluteMap, TopHeight),
     CallTx        = ok_val_err(aect_call_tx:new(NetTxArgs)),
     BinaryTx      = aec_governance:add_network_id(aetx:serialize_to_binary(CallTx)),
     SignedTx      = aetx_sign:new(CallTx, [enacl:sign_detached(BinaryTx, ?CALLER_PRIVKEY)]),
@@ -407,9 +415,7 @@ format_payout_call_args(#{} = Transfers) ->
     "[" ++ string:join(Tuples, ",") ++ "]".
 
 
-payout_call_tx_args(Transfers) ->
-    payout_call_tx_args(Transfers, top_height()).
-payout_call_tx_args(Transfers, Height) when is_integer(Height) ->
+payout_call_tx_args(Transfers, TopHeight) when is_integer(TopHeight) ->
     {value, Account} = aec_chain:get_account(?CALLER_PUBKEY),
     GasPrice = min_gas_price(),
     CallArgs = format_payout_call_args(Transfers),
@@ -426,7 +432,7 @@ payout_call_tx_args(Transfers, Height) when is_integer(Height) ->
              gas         => Int256,
              gas_price   => Int256},
     Tx0    = ok_val_err(aect_call_tx:new(Args)),
-    MinGas = aetx:min_gas(Tx0, Height),
+    MinGas = aetx:min_gas(Tx0, TopHeight),
     MinFee = GasPrice * MinGas,
     RunGas = estimate_consumed_gas(maps:size(Transfers)),
     RunFee = GasPrice * RunGas,
@@ -435,13 +441,13 @@ payout_call_tx_args(Transfers, Height) when is_integer(Height) ->
           run_gas => RunGas, run_fee => RunFee}. % estimation for contract code to finish
 
 
-payout_tx_persisted(TxHash) ->
-    payout_tx_persisted(TxHash, ?PAYOUT_KEYBLOCK_DELAY).
-payout_tx_persisted(TxHash, KeyBlocksDelay) ->
+payout_tx_persisted(TxHash, TopHeight) ->
+    payout_tx_persisted(TxHash, TopHeight, ?PAYOUT_KEYBLOCK_DELAY).
+payout_tx_persisted(TxHash, TopHeight, KeyBlocksDelay) ->
     case aec_chain:find_tx_location(TxHash) of
         <<BlockHash/binary>> ->
             {ok, Block} = aec_chain:get_block(BlockHash),
-            (top_height() - aec_blocks:height(Block)) >= KeyBlocksDelay;
+            (TopHeight - aec_blocks:height(Block)) >= KeyBlocksDelay;
         _ ->
             false
     end.
