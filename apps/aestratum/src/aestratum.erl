@@ -490,7 +490,7 @@ relative_miner_rewards(RewardShareKey, BlockTarget) ->
             Selector  = aestratum_db:shares_selector(FirstShareKey, LastRoundShareKey),
             SliceCont = aestratum_db:shares_slices(Selector),
             {SumScores, Groups} = sum_group_shares(SliceCont, BlockTarget),
-            {ok, relative_shares(Groups, SumScores), LastRoundShareKey};
+            {ok, relative_shares(Groups, SumScores), FirstShareKey};
         {error, Reason} ->
             {error, Reason}
     end.
