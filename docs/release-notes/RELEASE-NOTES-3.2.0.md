@@ -47,7 +47,7 @@ The node user API is documented:
 
 The instructions for installing a node using a release binary are in [the dedicated separate document](../../docs/installation.md).
 
-For installation of a node using the Docker image, please refer to the [its documentation online][docker].
+For installation of a node using the Docker image, please refer to the [documentation online][docker].
 
 ## Join the mainnet
 

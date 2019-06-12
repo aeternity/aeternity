@@ -99,8 +99,8 @@ the WebSocket endpoint is not exposed.
 
 ### Network ID
 
-The network that node connects to can be change by setting `fork_management` > `network_id` in the configuration file.
-The default network that node package is preconfigured with is **mainnet** with ID `ae_mainnet`.
+The network that the node connects to can be changed by setting `fork_management` > `network_id` in the configuration file.
+The default network that the node package is preconfigured with is **mainnet** with ID `ae_mainnet`.
 
 The **testnet** (internally called UAT) has the network ID `ae_uat`. To join the testnet set `network_id` to `ae_uat` in the configuration:
 
@@ -108,20 +108,6 @@ The **testnet** (internally called UAT) has the network ID `ae_uat`. To join the
 fork_management:
     network_id: ae_uat
 ```
-
-### Block reward initiative
-
-The BRI beneficiaries configuration can be changed with following configuration parameters in the `chain` section of the config:
-
-```yaml
-    protocol_beneficiaries_enabled: true
-    protocol_beneficiaries: ["ak_2A3PZPfMC2X7ZVy4qGXz2xh2Lbh79Q4UvZ5fdH7QVFocEgcKzU:109"]
-```
-
-This example refers to mainnet configuration.
-Note that this is under consensus and changing it to anything else will prevent your node to participate in mainnet.
-
-Mainnet and testnet values are automatically set based on [Network ID](#network-id) configuration above, so it don't need to be configured explicitly.
 
 ### Peers
 
@@ -135,7 +121,7 @@ To prevent the node to initialize outgoing connections to any peers, set it to e
 peers: []
 ```
 
-Please note that this do not prevent incoming connections, thus the node still might be connected to a network if it's address is already known in that network.
+Please note that this do not prevent incoming connections, thus the node still might be connected to a network if its address is already known in that network.
 
 ## Instructions
 

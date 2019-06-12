@@ -32,8 +32,6 @@ docker run -p 3013:3013 -p 3015:3015 aeternity/aeternity -network_id ae_uat
 
 You should see the console output of the running node and a lot of information related to syncing with the network.
 
-[Verify if your node is connected to mainnet.](operation.md#verify-that-node-is-connected-to-the-testnet)
-
 See [how to persist the blockchain data](#persisting-data) and [how to enable mining](#mining) below.
 
 ## Docker Image
