@@ -414,9 +414,15 @@ set_stratum_mode(State) ->
             {ok, Dir} = aeu_env:user_config_or_env(
                           [<<"stratum">>, <<"reward">>, <<"keys">>, <<"dir">>],
                           aecore, stratum_reward_keys_dir),
-            {PubKey, _PrivKey} = aestratum_config:read_keys(Dir),
-            State#state{stratum_mode = true,
-                        beneficiary  = PubKey};
+            try aestratum_config:read_keys(Dir, create) of
+                {PubKey, _PrivKey} ->
+                    State#state{stratum_mode = true,
+                                beneficiary  = PubKey}
+            catch
+                _:_ ->
+                    %% stratum may be in setup phase which ends with restarting of node
+                    State#state{stratum_mode = false}
+            end;
         _ ->
             State#state{stratum_mode = false}
     end.

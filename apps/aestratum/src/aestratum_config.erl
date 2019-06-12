@@ -1,9 +1,10 @@
 -module(aestratum_config).
 
 -export([setup_env/1,
-         read_keys/1]).
+         read_keys/1,
+         read_keys/2]).
 
--import(aestratum_fn, [ok_val_err/2, is_ok/1, val/3, key_val/2]).
+-import(aestratum_fn, [ok_val_err/2, is_ok/1, ok_err/2, val/3, key_val/2]).
 
 -include("aestratum.hrl").
 -include("aestratum_log.hrl").
@@ -117,7 +118,7 @@ configure(reward, #{reward := #{beneficiaries := PoolShareBins,
     ContractPK   = aestratum_conv:contract_address_to_pubkey(ContractAddr),
     ContractPath = filename:join(code:priv_dir(aestratum), "Payout.aes"),
     ContractSrc  = ok_val_err(file:read_file(ContractPath), contract_file_not_found),
-    {CallerPK, CallerSK} = CallerKeyPair = read_keys(KeysDir),
+    {CallerPK, CallerSK} = CallerKeyPair = read_keys(KeysDir, await),
     CallerAddr   = aestratum_conv:account_pubkey_to_address(CallerPK),
     check_keypair_roundtrips(CallerKeyPair) orelse error(invalid_keypair),
 
@@ -159,8 +160,29 @@ read_keys(Dir) ->
              end,
     PKPath = filename:join(AbsDir, <<"sign_key.pub">>),
     SKPath = filename:join(AbsDir, <<"sign_key">>),
-    {ok_val_err(file:read_file(PKPath), <<"no public key at ", PKPath/binary>>),
-     ok_val_err(file:read_file(SKPath), <<"no privite key at ", SKPath/binary>>)}.
+    {ok_val_err(file:read_file(PKPath), {no_keys, AbsDir}),
+     ok_val_err(file:read_file(SKPath), {no_keys, AbsDir})}.
+
+read_keys(Dir, create) ->
+    try read_keys(Dir) of
+        {PK, SK} -> {PK, SK}
+    catch
+        _:{{no_keys, AbsDir}, _} ->
+            #{public := PK, secret := SK} = enacl:sign_keypair(),
+            ok_err(filelib:ensure_dir(filename:join(AbsDir, "_")),
+                   {cound_not_create_dir_for_stratum_keys, AbsDir}),
+            ok = file:write_file(filename:join(AbsDir, <<"sign_key.pub">>), PK),
+            ok = file:write_file(filename:join(AbsDir, <<"sign_key">>), SK),
+            {PK, SK}
+    end;
+read_keys(Dir, await) ->
+    try read_keys(Dir) of
+        {PK, SK} -> {PK, SK}
+    catch
+        _:{{no_keys, _AbsDir}, _} ->
+            timer:sleep(1000),
+            read_keys(Dir, await)
+    end.
 
 %%%%%%%%%%
 
