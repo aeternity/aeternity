@@ -3,6 +3,8 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
+-include("aestratum.hrl").
+
 -export([all/0,
          groups/0,
          suite/0,
@@ -11,14 +13,14 @@
          init_per_group/2,
          end_per_group/2,
          init_per_testcase/2,
-         end_per_testcase/2
-        ]).
+         end_per_testcase/2]).
 
 -export([session_in_authorized_phase/1,
-         mining_node_mines_new_key_block/1,
+         mining_stratum_block/1,
+         rewarding_participants/1,
          client_target_change/1,
-         client_node_stop/1
-        ]).
+         client_node_stop/1]).
+
 
 -define(STRATUM_SERVER_NODE, dev1).
 -define(MINING_NODE, dev2).
@@ -44,8 +46,9 @@ groups() ->
 
      {single_client, [sequence],
       [session_in_authorized_phase,
-       mining_node_mines_new_key_block,
-       client_target_change,
+       mining_stratum_block,
+       rewarding_participants,
+       %% client_target_change,
        client_node_stop
       ]}
     ].
@@ -125,7 +128,7 @@ init_per_group(single_client, Cfg) ->
            contract_pubkey       => ContractPK,
            contract_address      => aeser_api_encoder:encode(contract_pubkey, ContractPK),
            reward_keyblock_delay => 0,
-           payout_keyblock_delay => 2}]),
+           payout_keyblock_delay => 0}]),
 
     ok = aecore_suite_utils:check_for_logs([?STRATUM_SERVER_NODE], Cfg),
     true = await_top_block(?STRATUM_SERVER_NODE, TopBlock),
@@ -160,7 +163,7 @@ session_in_authorized_phase(_Cfg) ->
     await_client_status(?CLIENT1_NODE, #{session => #{phase => authorized}}),
     ok.
 
-mining_node_mines_new_key_block(Cfg) ->
+mining_stratum_block(Cfg) ->
     Nodes = ?config(nodes, Cfg),
     MNode = proplists:get_value(?MINING_NODE, Nodes),
 
@@ -211,8 +214,108 @@ mining_node_mines_new_key_block(Cfg) ->
     MTopBlock = rpc(?MINING_NODE, aec_chain, top_block, []),
 
     ?assertEqual(STopBlock, MTopBlock),
+
+    %% ensure TX left mempool
+    timer:sleep(1000),
+
+    %% payment for stratum operators was already sent by calling the contract
+    [#aestratum_payment{absmap = #{?POOL_BENEFICIARY1_ACCOUNT := _,
+                                   ?POOL_BENEFICIARY2_ACCOUNT := _},
+                        tx_hash = <<_/binary>>}] =
+        rpc(?STRATUM_SERVER_NODE, aestratum, sent_payments, []),
+
+    %% payment for miners still sits in the queue
+    [#aestratum_payment{relmap = #{?CLIENT1_ACCOUNT := _},
+                        tx_hash = undefined}] =
+        rpc(?STRATUM_SERVER_NODE, aestratum, pending_payments, []),
+
     ok.
 
+
+rewarding_participants(Cfg) ->
+    Nodes = ?config(nodes, Cfg),
+    MNode = proplists:get_value(?MINING_NODE, Nodes),
+
+    aecore_suite_utils:mine_key_blocks(MNode, 1),
+
+    TopBlock1 = rpc(?MINING_NODE, aec_chain, top_block, []),
+    true = await_block(?STRATUM_SERVER_NODE, TopBlock1),
+
+    %% stratum operators transaction was paid, but not removed yet
+    [#aestratum_payment{id = {Height, 0}, tx_hash = TxHash0, absmap = AbsMap0}] =
+        rpc(?STRATUM_SERVER_NODE, aestratum, sent_payments, []),
+
+    #{} = DbKeys = rpc(?STRATUM_SERVER_NODE, aestratum, db_keys, [Height]),
+
+    %% ensure there are necessary objects in DB representing this mining epoch
+    #{?ROUNDS_TAB   := [_ | _]} = DbKeys,
+    #{?SHARES_TAB   := [_]} = DbKeys,
+    #{?HASHES_TAB   := [_]} = DbKeys,
+    #{?REWARDS_TAB  := [_]} = DbKeys,
+    #{?PAYMENTS_TAB := [_, _]} = DbKeys,
+
+    %% we can find the call tx executing the payment in the chain
+    <<_/binary>> = rpc(?STRATUM_SERVER_NODE, aec_chain, find_tx_location, [TxHash0]),
+
+    %% also accounts of the stratum operators exist in the chain, holding a balance
+    [begin
+         {account_pubkey, PK} = aeser_api_encoder:decode(Account),
+         {value, _} = rpc(?STRATUM_SERVER_NODE, aec_chain, get_account, [PK])
+     end || Account <- maps:keys(AbsMap0)],
+
+    %% payment for client/miner didn't get through yet, account for miner isn't in chain yet
+    {account_pubkey, ClientPK} = aeser_api_encoder:decode(?CLIENT1_ACCOUNT),
+    none = rpc(?STRATUM_SERVER_NODE, aec_chain, get_account, [ClientPK]),
+
+    %% to avoid extensive timer:sleep here, we kick in the check of the operators' payout tx,
+    %% so it can be removed from payment queue so the miners payment can get in
+    rpc(?STRATUM_SERVER_NODE, erlang, send, [aestratum, chain_payment_tx_check]),
+
+    %% the same, to avoid timer:sleep we kick in the check which looks if there's no active
+    %% and unconfirmed payment in the queue, and if there isn't it pushes next payment
+    %% to the tx pool (and updates db). (moves pending payment to sent payment)
+    rpc(?STRATUM_SERVER_NODE, erlang, send, [aestratum, payout_check]),
+
+    %% give it some room so that the DB can be updated
+    %% (pending/sent_payments calls don't go via gen_server)
+    timer:sleep(1000),
+
+    %% clients/miners payment was sent
+    [#aestratum_payment{id = {Height, 1}, tx_hash = TxHash1, absmap = #{?CLIENT1_ACCOUNT := _}}] =
+        rpc(?STRATUM_SERVER_NODE, aestratum, sent_payments, []),
+
+    aecore_suite_utils:mine_key_blocks(MNode, 1),
+
+    TopBlock2 = rpc(?MINING_NODE, aec_chain, top_block, []),
+    true = await_block(?STRATUM_SERVER_NODE, TopBlock2),
+
+    %% give it time so that the TX appears in DB
+    timer:sleep(2000),
+
+    %% after blocks were mined, we can find the payout call tx in chain
+    <<_/binary>> = rpc(?STRATUM_SERVER_NODE, aec_chain, find_tx_location, [TxHash1]),
+
+    %% client/miner has account with balance in the chain
+    {value, _} = rpc(?STRATUM_SERVER_NODE, aec_chain, get_account, [ClientPK]),
+
+    %% lets remove the DB records for this payment
+    rpc(?STRATUM_SERVER_NODE, erlang, send, [aestratum, chain_payment_tx_check]),
+
+    %% give it some room so that the DB can be updated
+    timer:sleep(1000),
+
+    %% check the DB record for this epoch are not present in DB anymore
+    maps:fold(
+      fun (Tab, Ks, ok) ->
+              [?assertEqual([], rpc(?STRATUM_SERVER_NODE,
+                                    mnesia, dirty_read, [Tab, K])) || K <- Ks],
+              ok
+      end, ok, DbKeys),
+
+    ok.
+
+%%%% This test is off by default since it mostly fails, the miner can't find solution
+%%%% in the limited time
 client_target_change(Cfg) ->
     %% Make sure the top block height hasn't reached the height where the
     %% target is recalculated.
