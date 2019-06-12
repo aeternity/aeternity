@@ -144,8 +144,11 @@ handle_info(keyblock, #aestratum_state{chain_keyblock_hash = <<_/binary>>} = S) 
 
 handle_info(payout_check, #aestratum_state{tx_push_pid = Pid} = S) when is_pid(Pid) ->
     {noreply, S};
+handle_info(payout_check, #aestratum_state{balance = undefined} = S) ->
+    {noreply, S};
 handle_info(payout_check, #aestratum_state{tx_push_pid = undefined,
-                                           balance = Balance} = S) ->
+                                           balance = Balance} = S)
+  when is_integer(Balance) ->
     S1 = case ?TXN(has_payments(true)) of
              true  ->
                  S;
@@ -446,8 +449,10 @@ payout_tx_persisted(TxHash, KeyBlocksDelay) ->
 %%%%%%%%%%
 
 balance() ->
-    Account = tag_val_err(aec_chain:get_account(?CALLER_PUBKEY), value, no_account),
-    aec_accounts:balance(Account).
+    case aec_chain:get_account(?CALLER_PUBKEY) of
+        {value, Account} -> aec_accounts:balance(Account);
+        none -> undefined
+    end.
 
 
 sum_group_shares(SliceCont, BlockTarget) ->
@@ -539,6 +544,9 @@ log_push_tx(#aestratum_payment{id = {Height, I}, tx_hash = <<TH/binary>>,
           ++ "distributing reward ~p to ~p beneficiaries (tx fee = ~p, ct fee = ~p)",
           [EncTxHash, TH, Nonce, {Height, I}, NetTotal, NumTrans, Fee, RunFee]).
 
+log_changed_balance(NewBalance, undefined) when is_integer(NewBalance) ->
+    ?INFO("balance changed: received ~p tokens (total = ~p), stratum account created",
+          [NewBalance, NewBalance]);
 log_changed_balance(NewBalance, LastBalance) when NewBalance > LastBalance ->
     ?INFO("balance changed: received ~p tokens (total = ~p)",
           [NewBalance - LastBalance, NewBalance]);
