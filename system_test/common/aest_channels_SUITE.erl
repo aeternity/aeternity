@@ -180,7 +180,6 @@ simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, C
 
     wait_for_value({txs_on_chain, [CloseTxHash]}, NodeNames, 5000, Cfg),
 
-    SplitCloseFee = CloseFee div 2,
     ISplitCloseFee = trunc(math:ceil(CloseFee / 2)),
     RSplitCloseFee = trunc(math:floor(CloseFee / 2)),
     ct:log("IAmt = ~p~n"
