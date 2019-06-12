@@ -473,14 +473,20 @@ relative_shares(ScoredShares, SumScores) ->
 
 
 absolute_amounts(NormalizedRelativeShares, Amount) ->
-    {AbsoluteAmounts, _} =
-        maps:fold(fun (Address, RelScore, {Res, TokensLeft}) ->
-                          Tokens = min(round(RelScore * Amount), TokensLeft),
-                          case Tokens of
-                              0 -> {Res, TokensLeft};
-                              _ -> {Res#{Address => Tokens}, TokensLeft - Tokens}
-                          end
-                  end, {#{}, Amount}, NormalizedRelativeShares),
+    MapSize = maps:size(NormalizedRelativeShares),
+    {AbsoluteAmounts, 0, MapSize} =
+        maps:fold(
+          fun (Address, RelScore, {Res, TokensLeft, I}) ->
+                  Tokens = if I + 1 == MapSize -> TokensLeft; % last iter, give all
+                              true -> min(round(RelScore * Amount), TokensLeft)
+                           end,
+                  case Tokens of
+                      0 -> {Res, TokensLeft, I + 1}; % could rounding cause this?
+                      _ -> {Res#{Address => Tokens}, TokensLeft - Tokens, I + 1}
+                  end
+          end,
+          {#{}, Amount, 0},
+          NormalizedRelativeShares),
     AbsoluteAmounts.
 
 
