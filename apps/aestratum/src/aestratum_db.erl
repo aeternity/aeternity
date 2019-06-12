@@ -19,6 +19,8 @@
          store_share/3,
          mark_share_as_solution/2,
          store_round/0,
+         get_reward/1,
+         store_reward/1,
          store_payment/1,
          update_payment/4,
          delete_payment/1,
@@ -115,6 +117,15 @@ store_round() ->
     ok = mnesia:write(Round),
     {ok, Round}.
 
+get_reward(Height) ->
+    case mnesia:read(?REWARDS_TAB, Height) of
+        [Reward] -> {ok, Reward};
+        [] -> {error, not_found}
+    end.
+
+store_reward(#aestratum_reward{} = R) ->
+    ok = mnesia:write(R),
+    {ok, R}.
 
 store_payment(#aestratum_payment{} = P) ->
     ok = mnesia:write(P),

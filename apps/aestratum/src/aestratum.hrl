@@ -20,8 +20,8 @@
 -record(aestratum_reward,
         {height  :: non_neg_integer(),
          hash    :: binary(),
-         pool    :: #{binary() => float()},
-         miners  :: #{binary() => float()},
+         pool    :: transformed | #{binary() => float()},
+         miners  :: transformed | #{binary() => float()},
          amount  :: non_neg_integer(),
          round_key :: non_neg_integer()}).
 

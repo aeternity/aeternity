@@ -127,7 +127,12 @@ handle_info(keyblock, #aestratum_state{chain_keyblock_hash = <<_/binary>>} = S) 
                 {ok, not_our_share} ->
                     ok;
                 {ok, #aestratum_reward{} = R} ->
-                    ?TXN(store_payments(R)),
+                    ?TXN(begin
+                             store_payments(R),
+                             aestratum_db:store_reward(
+                               R#aestratum_reward{pool   = transformed,  % map is in payments now
+                                                  miners = transformed}) % map is in payments now
+                         end),
                     self() ! payout_check;
                 {error, Reason} ->
                     ?ERROR("reward computation failed: ~p", [Reason])
@@ -286,25 +291,31 @@ with_reward_share(RewardHeight, Fun) ->
 
 
 maybe_compute_reward(RewardHeight) ->
-    with_reward_share(
-      RewardHeight,
-      fun (#reward_key_block{share_key = RewardShareKey,
-                             target = BlockTarget,
-                             height = Height,
-                             tokens = Amount,
-                             hash   = Hash}) ->
-              case relative_miner_rewards(RewardShareKey, BlockTarget) of
-                  {ok, MinerRelShares, LastRoundKey} ->
-                      {ok, #aestratum_reward{pool   = ?POOL_RELATIVE_SHARES,
-                                             miners = MinerRelShares,
-                                             amount = Amount,
-                                             hash   = Hash,
-                                             height = Height,
-                                             round_key = LastRoundKey}};
-                  Error ->
-                      Error
-              end
-      end).
+    case aestratum_db:get_reward(RewardHeight) of
+        {error, not_found} ->
+            with_reward_share(
+              RewardHeight,
+              fun (#reward_key_block{share_key = RewardShareKey,
+                                     target = BlockTarget,
+                                     height = Height,
+                                     tokens = Amount,
+                                     hash   = Hash}) ->
+                      case relative_miner_rewards(RewardShareKey, BlockTarget) of
+                          {ok, MinerRelShares, RoundKey} ->
+                              {ok, #aestratum_reward{pool   = ?POOL_RELATIVE_SHARES,
+                                                     miners = MinerRelShares,
+                                                     amount = Amount,
+                                                     hash   = Hash,
+                                                     height = Height,
+                                                     round_key = RoundKey}};
+                          Error ->
+                              Error
+                      end
+              end);
+        {ok, _} ->
+            %% we don't want to compute duplicitious reward
+            {ok, not_our_share}
+    end.
 
 %%%%%%%%%%
 
