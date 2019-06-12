@@ -13,7 +13,8 @@
          delete_tables/0,
          clear_tables/0]).
 
--export([sort_key/0,
+-export([keys/1,
+         sort_key/0,
          is_empty/1,
          get_hash/1,
          store_share/3,
@@ -31,7 +32,8 @@
          shares_selector/2,
          shares_slices/1,
          payments/1,
-         delete_reward_records/1]).
+         delete_records/1]).
+
 
 -include("aestratum.hrl").
 -include("aestratum_log.hrl").
@@ -167,10 +169,6 @@ delete_candidates_older_than(Date) ->
 
 
 get_hash(Hash) ->
-    file:write_file("/tmp/aestratum-hash-lookups.txt",
-                    io_lib:format("get ~p~nin ~p~n~n",
-                                  [Hash, mnesia:dirty_all_keys(?HASHES_TAB)]),
-                    [append]),
     mnesia:dirty_read(?HASHES_TAB, Hash).
 
 
@@ -202,25 +200,38 @@ payments(Height) ->
     Spec = ets:fun2ms(fun (#aestratum_payment{id = {H, _}} = P) when H == Height -> P end),
     mnesia:select(?PAYMENTS_TAB, Spec).
 
-delete_reward_records(Height) ->
+keys(Height) ->
     case mnesia:read(aestratum_reward, Height) of
         [#aestratum_reward{round_key = RoundKey}] ->
-            RoundSpec = ets:fun2ms(fun (#aestratum_round{key = K}) when K > RoundKey -> K end),
-            Rounds    = mnesia:select(?ROUNDS_TAB, RoundSpec),
-            ShareSpec = ets:fun2ms(fun (#aestratum_share{key = K, hash = H}) when K > RoundKey ->
-                                           {K, H}
-                                   end),
-            {Shares, Hashes} = lists:unzip(mnesia:select(?SHARES_TAB, ShareSpec)),
-            [mnesia:delete(?SHARES_TAB, S, write) || S <- Shares],
-            [mnesia:delete(?HASHES_TAB, H, write) || H <- Hashes],
-            [mnesia:delete(?ROUNDS_TAB, R, write) || R <- Rounds],
-            mnesia:delete(?REWARDS_TAB, Height, write),
-            ?INFO("deleted records for height ~p", [Height]),
-            ok;
+            ShareMS = ets:fun2ms(fun (#aestratum_share{key = K, hash = H}) when K >= RoundKey ->
+                                         {K, H}
+                                 end),
+            RoundMS = ets:fun2ms(fun (#aestratum_round{key = K}) when K >= RoundKey -> K end),
+
+            {Shares, Hashes} = lists:unzip(mnesia:select(?SHARES_TAB, ShareMS)),
+            Rounds   = mnesia:select(?ROUNDS_TAB, RoundMS),
+            Payments = [P#aestratum_payment.id ||
+                           P <- mnesia:match_object(#aestratum_payment{id = {Height, '_'}, _ = '_'})],
+
+            #{?HASHES_TAB   => Hashes,
+              ?SHARES_TAB   => Shares,
+              ?ROUNDS_TAB   => Rounds,
+              ?REWARDS_TAB  => [Height],
+              ?PAYMENTS_TAB => Payments};
         [] ->
-            %% this shouldn't happen, since rewards are deleted one by one
-            ok
+            none
     end.
+
+
+delete_records(Height) ->
+    #{} = TabsKeys = keys(Height),
+    maps:map(fun delete_keys/2, TabsKeys),
+    ?INFO("removed keys for reward at height ~p: ~p", [Height, TabsKeys]),
+    ok.
+
+delete_keys(Tab, Keys) ->
+    [mnesia:delete(Tab, K, write) || K <- Keys],
+    ok.
 
 is_empty(Tab) ->
     mnesia:table_info(Tab, size) == 0.
