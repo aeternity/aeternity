@@ -144,10 +144,11 @@ sc_close_mutual(Channel, Closer)
 
     IChange = aesc_close_mutual_tx:initiator_amount_final(MutualTx),
     RChange = aesc_close_mutual_tx:responder_amount_final(MutualTx),
+    Fee     = aesc_close_mutual_tx:fee(MutualTx),
 
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedMutualTx)),
 
-    {ok, TxHash, IChange, RChange}.
+    {ok, TxHash, Fee, IChange, RChange}.
 
 %--- NODE FUNCTIONS ------------------------------------------------------------
 
