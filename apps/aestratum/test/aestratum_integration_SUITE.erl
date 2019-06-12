@@ -24,7 +24,10 @@
 -define(MINING_NODE, dev2).
 -define(CLIENT1_NODE, aestratum_client1).
 
--define(CLIENT1_ACCOUNT, <<"ak_DummyPubKeyDoNotEverUse999999999999999999999999991">>).
+-define(POOL_BENEFICIARY1_ACCOUNT, <<"ak_2hJJGh3eJA2v9yLz73To7P8LvoHdz3arku3WXvgbCfwQyaL4nK">>).
+-define(POOL_BENEFICIARY2_ACCOUNT, <<"ak_241xf1kQiexbSvWKfn5uve7ugGASjME93zDbr6SGQzYSCMTeQS">>).
+
+-define(CLIENT1_ACCOUNT, <<"ak_5c8wGi7E7VjMPoSt7USS3k2FzSC6Nj5gutj2hJ5RATN36aQBA">>).
 
 -define(DEFAULT_GAS_PRICE, aec_test_utils:min_gas_price()).
 
@@ -298,8 +301,8 @@ stratum_server_node_config(StratumEnabled) ->
                 <<"reward">> =>
                     #{<<"reward_last_rounds">> => 2,
                       <<"beneficiaries">> =>
-                          [<<"ak_2hJJGh3eJA2v9yLz73To7P8LvoHdz3arku3WXvgbCfwQyaL4nK:3.3">>,
-                           <<"ak_241xf1kQiexbSvWKfn5uve7ugGASjME93zDbr6SGQzYSCMTeQS:2.2">>],
+                          [<<?POOL_BENEFICIARY1_ACCOUNT/binary, ":3.3">>,
+                           <<?POOL_BENEFICIARY2_ACCOUNT/binary, ":2.2">>],
                       <<"keys">> => #{<<"dir">> => <<"stratum_test_keys">>}}
                }
      }.
@@ -457,9 +460,6 @@ await_new_job_share_(Node, Account, #{id := JobId}) ->
 find_job(Id, Jobs) ->
     [Job] = [J || J <- Jobs, maps:get(id, J) =:= Id],
     Job.
-
-server_status(Node) ->
-    rpc(Node, aestratum, status, []).
 
 server_account_status(Node, Account) ->
     rpc(Node, aestratum, status, [Account]).

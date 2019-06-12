@@ -68,7 +68,7 @@ create_config(Node, CfgSchema, CTCfg, CustomCfg) ->
     MergedCfg = maps_merge(default_config(Node, CTCfg), CustomCfg),
     write_config(ClientCfgPath, CfgSchema, MergedCfg).
 
-default_config(N, Cfg) ->
+default_config(_N, _Cfg) ->
     #{<<"connection">> =>
         #{<<"transport">> => <<"tcp">>,
           <<"host">> => <<"localhost">>,
@@ -123,7 +123,6 @@ setup_node(N, Top, Client, Cfg) ->
     Version = binary_to_list(VerB),
     %%
     CfgD = filename:join([Top, "config/", "test"]),
-    PrivD = filename:join([Top, "priv"]),
     RelD = filename:dirname(filename:join([DDir, "releases", Version, "aestratum_client.rel"])),
     cp_file(filename:join(CfgD, "sys.config"),
             filename:join(RelD, "sys.config")),
@@ -192,15 +191,8 @@ shortcut_dir(Cfg) ->
     SymlinkName = ?config(symlink_name, Cfg),
     filename:join([Top, "_build/test/logs", SymlinkName]).
 
-priv_dir(Cfg) ->
-    SubDir = atom_to_list(?config(test_module, Cfg)),
-    filename:join(?config(priv_dir, Cfg), SubDir).
-
 data_dir(N, Cfg) ->
     filename:join(node_shortcut(N, Cfg), "data").
-
-log_dir(N, Cfg) ->
-    filename:join(node_shortcut(N, Cfg), "log").
 
 cp_dir(From, To) ->
     ToDir = case lists:last(To) of
