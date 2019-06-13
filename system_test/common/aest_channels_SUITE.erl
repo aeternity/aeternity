@@ -176,11 +176,23 @@ simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, C
     wait_for_value({balance, maps:get(pubkey, IAccount), 200000 * aest_nodes:gas_price() - IAmt - OpenFee + 20 * aest_nodes:gas_price() - WFee1}, NodeNames, 10000, Cfg),
     wait_for_value({balance, maps:get(pubkey, RAccount), 200000 * aest_nodes:gas_price() - RAmt + 50 * aest_nodes:gas_price() - WFee2}, NodeNames, 10000, Cfg),
 
-    {ok, CloseTxHash, IChange, RChange} = sc_close_mutual(Chan, initiator),
+    {ok, CloseTxHash, CloseFee, IChange, RChange} = sc_close_mutual(Chan, initiator),
 
-    SplitOpenFee = 10000 * aest_nodes:gas_price(),
-    ?assertEqual(IAmt - 20 * aest_nodes:gas_price() - SplitOpenFee - PushAmount, IChange),
-    ?assertEqual(RAmt - 50 * aest_nodes:gas_price() - SplitOpenFee + PushAmount, RChange),
+    wait_for_value({txs_on_chain, [CloseTxHash]}, NodeNames, 5000, Cfg),
+
+    ISplitCloseFee = trunc(math:ceil(CloseFee / 2)),
+    RSplitCloseFee = trunc(math:floor(CloseFee / 2)),
+    ct:log("IAmt = ~p~n"
+           "RAmt = ~p~n"
+           "Gas price      = ~p~n"
+           "ISplitCloseFee = ~p~n"
+           "RSplitCloseFee = ~p~n"
+           "PushAmount     = ~p~n"
+           "IChange        = ~p~n"
+           "RChange        = ~p~n", [IAmt, RAmt, aest_nodes:gas_price(),
+                                     ISplitCloseFee, RSplitCloseFee, PushAmount, IChange, RChange]),
+    ?assertEqual(IAmt - 20 * aest_nodes:gas_price() - ISplitCloseFee - PushAmount, IChange),
+    ?assertEqual(RAmt - 50 * aest_nodes:gas_price() - RSplitCloseFee + PushAmount, RChange),
 
     wait_for_value({txs_on_chain, [CloseTxHash]}, NodeNames, 5000, Cfg),
     wait_for_value({balance, maps:get(pubkey, IAccount), 200000 - IAmt - OpenFee + 20 - WFee1 + IChange}, NodeNames, 10000, Cfg),

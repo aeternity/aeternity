@@ -78,8 +78,10 @@ sc_open(Params, Cfg) ->
     CrTx = sc_wait_and_sign(RConn, RPrivKey, <<"responder_sign">>),
     {ok, #{ <<"event">> := <<"funding_signed">>} } = sc_wait_for_channel_event(IConn, info),
     %% both of them receive the same co-signed channel_create_tx
-    {ok, #{ <<"tx">> := EncSignedCrTx} } = sc_wait_for_channel_event(IConn, on_chain_tx),
-    {ok, #{ <<"tx">> := EncSignedCrTx} } = sc_wait_for_channel_event(RConn, on_chain_tx),
+    {ok, #{ <<"info">> := <<"funding_signed">>
+          , <<"tx">> := EncSignedCrTx} } = sc_wait_for_channel_event(IConn, on_chain_tx),
+    {ok, #{ <<"info">> := <<"funding_created">>
+          , <<"tx">> := EncSignedCrTx} } = sc_wait_for_channel_event(RConn, on_chain_tx),
 
     {ok, BinSignedCrTx} = aeser_api_encoder:safe_decode(transaction, EncSignedCrTx),
     SignedCrTx = aetx_sign:deserialize_from_binary(BinSignedCrTx),
@@ -91,6 +93,8 @@ sc_open(Params, Cfg) ->
     IPubKey = aesc_create_tx:initiator_pubkey(Tx),
     RPubKey = aesc_create_tx:responder_pubkey(Tx),
     Fee = aesc_create_tx:fee(Tx),
+
+    ok = sc_wait_channel_changed(IConn, RConn, <<"channel_create_tx">>),
 
     ok = sc_wait_funding_locked(IConn, RConn),
 
@@ -140,10 +144,11 @@ sc_close_mutual(Channel, Closer)
 
     IChange = aesc_close_mutual_tx:initiator_amount_final(MutualTx),
     RChange = aesc_close_mutual_tx:responder_amount_final(MutualTx),
+    Fee     = aesc_close_mutual_tx:fee(MutualTx),
 
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedMutualTx)),
 
-    {ok, TxHash, IChange, RChange}.
+    {ok, TxHash, Fee, IChange, RChange}.
 
 %--- NODE FUNCTIONS ------------------------------------------------------------
 
@@ -189,6 +194,8 @@ sc_withdraw(SenderConn, SenderPrivKey, Amount, AckConn, AckPrivKey) ->
     WTx = aetx_sign:tx(SignedWTx),
     Fee = aetx:fee(WTx),
 
+    ok = sc_wait_channel_changed(SenderConn, AckConn, <<"channel_withdraw_tx">>),
+
     ok = sc_wait_withdraw_locked(SenderConn, AckConn),
 
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedWTx)),
@@ -209,6 +216,15 @@ sc_wait_and_sign(Conn, Privkey, Tag) ->
     EncSignedTx = aeser_api_encoder:encode(transaction, BinSignedTx),
     ws_send(Conn, Tag, #{tx => EncSignedTx}),
     Tx.
+
+sc_wait_channel_changed(InitiatorConn, ResponderConn, Type) ->
+    {ok, #{ <<"info">> := <<"channel_changed">>
+          , <<"type">> := Type }}
+        = sc_wait_for_channel_event(InitiatorConn, on_chain_tx),
+    {ok, #{ <<"info">> := <<"channel_changed">>
+          , <<"type">> := Type }}
+        = sc_wait_for_channel_event(ResponderConn, on_chain_tx),
+    ok.
 
 sc_wait_funding_locked(InitiatorConn, ResponderConn) ->
     {ok, #{ <<"event">> := <<"own_funding_locked">> }} = sc_wait_for_channel_event(InitiatorConn, info),
