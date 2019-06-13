@@ -64,7 +64,6 @@ test_data_config_files() ->
     [filename:join([Dir, DataDir, "epoch_full.yaml"]),
      filename:join([Dir, DataDir, "epoch_no_peers.yaml"]),
      filename:join([Dir, DataDir, "epoch_no_newline.yaml"]),
-     filename:join([Dir, DataDir, "epoch_testnet.yaml"]),
      filename:join([Dir, DataDir, "epoch_prebuilt_miner.yaml"]),
      filename:join([Dir, DataDir, "epoch_deprecated_miner.yaml"]),
      filename:join([Dir, DataDir, "epoch_deprecated_debug_api.yaml"]),

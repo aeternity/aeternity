@@ -47,9 +47,13 @@ The node user API is documented:
 
 The instructions for installing a node using a release binary are in [the dedicated separate document](../../docs/installation.md).
 
-For installation of a node using the Docker image, please refer to [its documentation online][docker].
+For installation of a node using the Docker image, please refer to the [documentation online][docker].
 
 ## Join the mainnet
+
+In order to join the mainnet follow the [operation instructions](../../docs/operation.md) to run the node with default configuration as mainnet is the default network.
+
+To join the mainnet by using the Docker image, please refer to [docker documentation][docker].
 
 ### Mainnet seed nodes
 
@@ -76,13 +80,13 @@ Here are example nodes that can be used to inspect current top block and see inf
 
 ## Join the testnet
 
-This section describes how to run a node as part of the testnet - the public test network of nodes - by using the release binary.
+In order to join the testnet change the [Network ID](../../docs/configuration.md#network-id) in node configuration file to `ae_uat`.
 
-For running a node as part of the testnet by using the Docker image, please consult [its documentation][docker] in addition to this section.
+To join the testnet by using the Docker image, please refer to the [docker documentation][docker].
 
 ### Testnet seed nodes
 
-In order to join testnet reconfigure seed nodes in the release package:
+The release package comes preconfigured with testnet seed nodes, this is the list:
 
 * aenode://pp_QU9CvhAQH56a2kA15tCnWPRJ2srMJW8ZmfbbFTAy7eG4o16Bf@52.10.46.160:3015
 * aenode://pp_2vhFb3HtHd1S7ynbpbFnEdph1tnDXFSfu4NGtq46S2eM5HCdbC@18.195.109.60:3015

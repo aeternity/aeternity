@@ -5,7 +5,7 @@
     "properties" : {
         "peers" : {
             "description" :
-            "Pre-configured addresses of nodes to contact. If not set TestNet seed peers will be used.",
+            "Pre-configured addresses of nodes to contact. If not set testnet or mainnet seed peers will be used based on network_id configuration value.",
             "type"  : "array",
             "items" : {
                 "type" : "string",
@@ -382,7 +382,7 @@
                 "protocol_beneficiaries" : {
                     "type" : "array",
                     "items" : {
-                        "description" : "Public keys belonging to protocol maintainers with reward shares (100 is 10%).",
+                        "description" : "Public keys belonging to protocol maintainers with reward shares (100 is 10%). If not set testnet or mainnet beneficiaries and shares will be used based on network_id configuration value.",
                         "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+$"
                     },
                     "minItems": 1,
