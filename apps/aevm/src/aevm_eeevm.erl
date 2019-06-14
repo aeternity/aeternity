@@ -1542,6 +1542,9 @@ spend_op_gas(?CALL, State) ->
 spend_op_gas(?CALLCODE, State) ->
     %% Delay this until the actual operation
     State;
+spend_op_gas(?DELEGATECALL, State) ->
+    %% Delay this until the actual operation
+    State;
 spend_op_gas(Op, State) ->
     spend_gas_common({op, Op}, aevm_gas:op_gas(Op, State), State).
 
