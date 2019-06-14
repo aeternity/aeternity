@@ -94,3 +94,6 @@ contract RemoteOracles =
     q    : oracle_query(string, int),
     qr   : int) =
     r.respond(o, q, qr)
+
+  private function require(b : bool, err : string) =
+    if(!b) abort(err)

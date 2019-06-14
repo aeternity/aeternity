@@ -19,3 +19,6 @@ contract OraclesGas =
     let q = Oracle.query(o, question, qfee, qttl, rttl)
     Oracle.respond(o, q, answer)
     ()
+
+  private function require(b : bool, err : string) =
+    if(!b) abort(err)

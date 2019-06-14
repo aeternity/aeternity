@@ -77,6 +77,9 @@ contract ERC20Token =
     put( state{approval_log = e :: state.approval_log })
     e
 
+  private function require(b : bool, err : string) =
+    if(!b) abort(err)
+
   private function sub(_a : int, _b : int) : int =
     require(_b =< _a, "Error")
     _a - _b

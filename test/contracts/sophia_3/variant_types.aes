@@ -9,6 +9,8 @@ contract VariantTypes =
 
   function init() = Stopped
 
+  function require(b) = if(!b) abort("required")
+
   stateful function start(bal : int) =
     switch(state)
       Stopped => put(Started({owner = Call.caller, balance = bal, color = Grey(0)}))
@@ -16,7 +18,7 @@ contract VariantTypes =
   stateful function stop() =
     switch(state)
       Started(st) =>
-        require(Call.caller == st.owner, "required")
+        require(Call.caller == st.owner)
         put(Stopped)
         st.balance
 
