@@ -227,6 +227,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(WS, aehttp_ws_test_utils).
@@ -6745,7 +6746,7 @@ attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args) ->
 
 
 attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args, Opts) ->
-   case aega_test_utils:get_contract(_SophiaVsn = 3, Contract) of
+   case aega_test_utils:get_contract(?SOPHIA_FORTUNA, Contract) of
        {ok, #{src := Src, bytecode := C, map := #{type_info := TI}}} ->
            attach_({Owner, OwnerPrivkey}, Src, C, TI, AuthFun, Args, Opts);
        _ ->
