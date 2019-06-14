@@ -38,14 +38,13 @@
 run(#{vm := VM} = Version, #{ code := SerializedCode} = CallDef) when ?IS_FATE_SOPHIA(VM) ->
     #{ byte_code := Code
      , type_info :=_TypeInfo} = aect_sophia:deserialize(SerializedCode),
-    %% TODO: Check calldata
     CallDef1 = CallDef#{code => Code},
     run_common(Version, CallDef1);
 run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_AEVM_SOPHIA(VM) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
-    %% TODO: update aeb_abi and pass Version
-    case aeb_abi:check_calldata(maps:get(call_data, CallDef), TypeInfo) of
+    %% TODO: update aeb_aevm_abi and pass Version
+    case aeb_aevm_abi:check_calldata(maps:get(call_data, CallDef), TypeInfo) of
         {ok, CallDataType, OutType} ->
             CallDef1 = CallDef#{code => Code,
                                 call_data_type => CallDataType,

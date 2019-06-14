@@ -1557,9 +1557,9 @@ assert_contract_init_function(?ABI_FATE_SOPHIA_1, CallData,_TypeInfo) ->
     catch _:_ -> runtime_error(bad_init_function)
     end;
 assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo) ->
-    case aeb_abi:get_function_hash_from_calldata(CallData) of
+    case aeb_aevm_abi:get_function_hash_from_calldata(CallData) of
         {ok, Hash} ->
-            case aeb_abi:function_name_from_type_hash(Hash, TypeInfo) of
+            case aeb_aevm_abi:function_name_from_type_hash(Hash, TypeInfo) of
                 {ok, <<"init">>} -> ok;
                 _ -> runtime_error(bad_init_function)
             end;
@@ -1567,14 +1567,14 @@ assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo) ->
     end.
 
 assert_auth_data_function(AuthData, AuthFunHash) ->
-    case aeb_abi:get_function_hash_from_calldata(AuthData) of
+    case aeb_aevm_abi:get_function_hash_from_calldata(AuthData) of
         {ok, AuthFunHash} -> ok;
         {ok, _OtherHash}  -> runtime_error(wrong_auth_function);
         _Other            -> runtime_error(bad_auth_data)
     end.
 
 assert_auth_function(Hash, TypeInfo) ->
-    case aeb_abi:typereps_from_type_hash(Hash, TypeInfo) of
+    case aeb_aevm_abi:typereps_from_type_hash(Hash, TypeInfo) of
         {ok, _ArgType, word}     -> ok;
         {ok, _ArgType, _OutType} -> runtime_error(bad_auth_function_return_type);
         {error, _}               -> runtime_error(bad_function_hash)

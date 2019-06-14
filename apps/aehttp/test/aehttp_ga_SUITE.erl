@@ -454,7 +454,7 @@ make_attach_tx_map(AccPK) ->
 
     CallData = aega_test_utils:make_calldata(Src, "init", []),
 
-    {ok, AuthFun} = aeb_abi:type_hash_from_function_name(<<"authorize">>, TI),
+    {ok, AuthFun} = aeb_aevm_abi:type_hash_from_function_name(<<"authorize">>, TI),
 
     #{ nonce => Nonce, code => Code, auth_fun => AuthFun, call_data => CallData }.
 

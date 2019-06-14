@@ -6741,7 +6741,7 @@ attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args, Opts) ->
 attach_({Owner, OwnerPrivkey}, Src, ByteCode, TypeInfo, AuthFun, Args, Opts) ->
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Owner]),
     Calldata = aega_test_utils:make_calldata(Src, "init", Args),
-    {ok, AuthFunHash} = aeb_abi:type_hash_from_function_name(list_to_binary(AuthFun),
+    {ok, AuthFunHash} = aeb_aevm_abi:type_hash_from_function_name(list_to_binary(AuthFun),
                                                              TypeInfo),
     Options1 = maps:merge(#{nonce => Nonce, code => ByteCode,
                             auth_fun => AuthFunHash, call_data => Calldata},

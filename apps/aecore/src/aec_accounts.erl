@@ -197,7 +197,7 @@ serialize_for_client(#account{id      = Id,
                 {contract, ContractPK} = aeser_id:specialize(Account#account.ga_contract),
                 {ok, Contract} = aec_chain:get_contract(ContractPK),
                 #{type_info := TypeInfo} = aect_sophia:deserialize(aect_contracts:code(Contract)),
-                {ok, AuthFunName} = aeb_abi:function_name_from_type_hash(Account#account.ga_auth_fun, TypeInfo),
+                {ok, AuthFunName} = aeb_aevm_abi:function_name_from_type_hash(Account#account.ga_auth_fun, TypeInfo),
                 #{<<"kind">>        => <<"generalized">>,
                   <<"auth_fun">>    => AuthFunName,
                   <<"contract_id">> => aeser_api_encoder:encode(contract_pubkey, ContractPK)};

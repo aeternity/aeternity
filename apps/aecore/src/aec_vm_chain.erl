@@ -678,7 +678,7 @@ get_contract_fun_types(Target, VMVersion, TypeHash, State) ->
                 true ->
                     SerializedCode = aect_contracts:code(Contract),
                     #{type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
-                    aeb_abi:typereps_from_type_hash(TypeHash, TypeInfo);
+                    aeb_aevm_abi:typereps_from_type_hash(TypeHash, TypeInfo);
                 false ->
                     {error, {wrong_vm_version, ContractVMVersion}}
             end;

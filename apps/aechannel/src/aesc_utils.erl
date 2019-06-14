@@ -447,7 +447,7 @@ verify_signature(Channel, MetaTx, Trees, Env) ->
     SignerId = aega_meta_tx:ga_id(MetaTx),
     case aesc_channels:auth_for_id(SignerId, Channel) of
         {ok, {AuthFunHash, AuthContractId}} ->
-            case aeb_abi:get_function_hash_from_calldata(aega_meta_tx:auth_data(MetaTx)) of
+            case aeb_aevm_abi:get_function_hash_from_calldata(aega_meta_tx:auth_data(MetaTx)) of
                 {ok, AuthFunHash} -> verify_signature_(Channel, SignerId, AuthContractId,
                                                        MetaTx, Trees, Env);
                 {ok, _OtherHash}  -> {error, wrong_auth_function};

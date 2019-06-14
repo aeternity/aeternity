@@ -28,7 +28,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
     {ok, Compiled} = aeso_compiler:from_string(Contract, [pp_icode, pp_assembler]),
     #{ byte_code := Code,
        type_info := TypeInfo} = Compiled,
-    {ok, ArgType} = aeb_abi:arg_typerep_from_function(<<"main">>, TypeInfo),
+    {ok, ArgType} = aeb_aevm_abi:arg_typerep_from_function(<<"main">>, TypeInfo),
     CallDataType = {tuple, [word, ArgType]},
     OutType = word,
 

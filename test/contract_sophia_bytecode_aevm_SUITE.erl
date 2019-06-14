@@ -104,7 +104,7 @@ execute_call(Contract, CallData, ChainState, Options) ->
     #{ byte_code := Code,
        type_info := TypeInfo
      } = aect_sophia:deserialize(SerializedCode),
-    case aeb_abi:check_calldata(CallData, TypeInfo) of
+    case aeb_aevm_abi:check_calldata(CallData, TypeInfo) of
         {ok, CallDataType, OutType} ->
             execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState1, Options);
         {error, _} = Err ->
@@ -609,7 +609,7 @@ get_contract_fun_types(<<Contract:256>>,_VMVersion, TypeHash, S) ->
             {error, {no_such_contract, Contract}};
         #{bytecode := SerializedCode} ->
             #{type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
-            aeb_abi:typereps_from_type_hash(TypeHash, TypeInfo)
+            aeb_aevm_abi:typereps_from_type_hash(TypeHash, TypeInfo)
     end.
 
 
