@@ -332,7 +332,6 @@ fallback_to_stable_state(#state{signed_tx = LastSignedTx}=State)
 
 -spec mutually_signed(aetx_sign:signed_tx()) -> boolean().
 mutually_signed(SignedTx) ->
-    %% This does not really check if authications were valid. TODO: Fix it
     aesc_utils:count_authentications(SignedTx) =:= 2.
 
 
