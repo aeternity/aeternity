@@ -82,7 +82,8 @@
     entrypoint => [string(), ...],
     % Mind that using custom_command cancels usage of mine_rate (default mine_rate is used).
     % Technically mine_rate is passed as a command to Docker, which is overwritten by custom_command (if used).
-    custom_command => [string(), ...]
+    custom_command => [string(), ...],
+    mining => #{autostart => boolean()}
 }.
 
 %% State of a node
