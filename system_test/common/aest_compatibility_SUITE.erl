@@ -71,6 +71,7 @@ test_mining_algorithms_compatibility(Cfg) ->
 
     #{ public := PubKey1 } = enacl:sign_keypair(),
     #{ public := PubKey2 } = enacl:sign_keypair(),
+    ?assertNotEqual(PubKey1, PubKey2),
     Beneficiary1 = aeser_api_encoder:encode(account_pubkey, PubKey1),
     Beneficiary2 = aeser_api_encoder:encode(account_pubkey, PubKey2),
 
