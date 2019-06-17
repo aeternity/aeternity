@@ -24,8 +24,6 @@
         , revision/0
         ]).
 
--export([peer_pubkey/0]).
-
 -export([ connected_peers/1
         , blocked_peers/0
         ]).
@@ -158,12 +156,6 @@ get_top_blocks_time_summary(Count) ->
                     difficulty => Difficulty} | Acc]
           end, [], TimeSummary0),
     {ok, lists:reverse(TimeSummary)}.
-
-peer_pubkey() ->
-    case aec_keys:peer_pubkey() of
-        {ok, _Pubkey} = OK -> OK;
-        {error, key_not_found} = Err -> Err
-    end.
 
 connected_peers(Tag) -> aec_peers:connected_peers(Tag).
 

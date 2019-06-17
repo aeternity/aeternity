@@ -626,14 +626,6 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"top_key_block_hash">>         => aeser_api_encoder:encode(key_block_hash, TopBlockHash),
        <<"top_block_height">>           => TopBlockHeight}};
 
-handle_request_('GetPeerKey', _Req, _Context) ->
-    case aehttp_logic:peer_pubkey() of
-        {ok, PeerKey} ->
-            {200, [], #{pub_key => aeser_api_encoder:encode(peer_pubkey, PeerKey)}};
-        {error, key_not_found} ->
-            {404, [], #{reason => <<"Keys not configured">>}}
-    end;
-
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",
