@@ -2573,6 +2573,10 @@ definitions:
         type: string
       peer_pubkey:
         $ref: '#/definitions/EncodedPubkey'
+      top_key_block_hash:
+        $ref: '#/definitions/EncodedHash'
+      top_block_height:
+        $ref: '#/definitions/UInt64'
     required:
       - genesis_key_block_hash
       - solutions
@@ -2586,6 +2590,8 @@ definitions:
       - pending_transactions_count
       - network_id
       - peer_pubkey
+      - top_key_block_hash
+      - top_block_height
   Protocol:
     type: object
     properties:

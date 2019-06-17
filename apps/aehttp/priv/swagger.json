@@ -3149,7 +3149,7 @@
     },
     "Status" : {
       "type" : "object",
-      "required" : [ "difficulty", "genesis_key_block_hash", "listening", "network_id", "node_revision", "node_version", "peer_count", "peer_pubkey", "pending_transactions_count", "protocols", "solutions", "syncing" ],
+      "required" : [ "difficulty", "genesis_key_block_hash", "listening", "network_id", "node_revision", "node_version", "peer_count", "peer_pubkey", "pending_transactions_count", "protocols", "solutions", "syncing", "top_block_height", "top_key_block_hash" ],
       "properties" : {
         "genesis_key_block_hash" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3195,6 +3195,12 @@
         },
         "peer_pubkey" : {
           "$ref" : "#/definitions/EncodedPubkey"
+        },
+        "top_key_block_hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "top_block_height" : {
+          "$ref" : "#/definitions/UInt64"
         }
       },
       "example" : {
