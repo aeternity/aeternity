@@ -170,15 +170,13 @@ make_calldata(Code, Fun, Args) ->
     {ok, Calldata, _, _} = aeso_compiler:create_calldata(Code, Fun, Args),
     Calldata.
 
-get_contract(SophiaVersion, Name0) ->
-    Name = filename:join("contracts", Name0),
+get_contract(SophiaVersion, Name) ->
     {ok, Serial} = aect_test_utils:compile_contract(SophiaVersion, Name),
     {ok, BinSrc} = aect_test_utils:read_contract(Name),
     {ok, #{ bytecode => Serial, map => aect_sophia:deserialize(Serial),
             src => binary_to_list(BinSrc), bin_src => BinSrc }}.
 
-read_contract(Name0) ->
-    Name = filename:join("contracts", Name0),
+read_contract(Name) ->
     {ok, BinSrc} = aect_test_utils:read_contract(Name),
     {ok, binary_to_list(BinSrc)}.
 

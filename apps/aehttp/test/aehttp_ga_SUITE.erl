@@ -450,7 +450,7 @@ make_attach_tx_map(AccPK) ->
     Nonce = Nonce0 + 1,
 
     {ok, #{bytecode := Code, src := Src, map := #{type_info := TI}}} =
-        aega_test_utils:get_contract(3, "basic_auth"),
+        aega_test_utils:get_contract(4, "basic_auth"),
 
     CallData = aega_test_utils:make_calldata(Src, "init", []),
 

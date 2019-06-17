@@ -352,7 +352,7 @@ to_str(Str)                     -> Str.
 encode_call_data(Code, Fun, Args) ->
     encode_call_data(latest_sophia_version(), Code, Fun, Args).
 
-encode_call_data(Vsn, Code, Fun, Args) when Vsn >= ?SOPHIA_FORTUNA ->
+encode_call_data(Vsn, Code, Fun, Args) when Vsn == ?SOPHIA_LIMA_AEVM ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
                                       lists:map(fun to_str/1, Args)) of
         {error, _} = Err -> Err;
@@ -361,21 +361,21 @@ encode_call_data(Vsn, Code, Fun, Args) when Vsn >= ?SOPHIA_FORTUNA ->
     catch _T:_E ->
         {error, <<"bad argument">>}
     end;
-encode_call_data(_LegacyVsn, Code, Fun, Args0) ->
+encode_call_data(Vsn, Code, Fun, Args0) ->
     SrcFile = tempfile_name("sophia_code", [{ext, ".aes"}]),
-    Args    = legacy_args(Args0),
+    Args    = legacy_args(Vsn, Args0),
     ok = file:write_file(SrcFile, Code),
-    Compiler = compiler_cmd(?SOPHIA_MINERVA),
+    Compiler = compiler_cmd(max(Vsn, ?SOPHIA_MINERVA)),
     Esc = fun(Str) -> lists:flatten(string:replace(string:replace(Str, "\\", "\\\\", all), "\"", "\\\"", all)) end,
-    Cmd = Compiler ++ " --create_calldata " ++ contract_filename(?SOPHIA_LIMA_AEVM, SrcFile) ++
+    Cmd = Compiler ++ " --create_calldata " ++ contract_filename(Vsn, SrcFile) ++
           " --calldata_fun " ++ to_str(Fun) ++ " --calldata_args \"" ++
           string:join(lists:map(Esc, lists:map(fun to_str/1, Args)), ", ") ++ "\"",
     Output = os:cmd(Cmd),
     try
         [_, CalldataStr] = string:lexemes(Output, "\n"),
         aeser_api_encoder:safe_decode(contract_bytearray, list_to_binary(CalldataStr))
-    catch _:_ ->
-        {error, <<"Compiler error">>}
+    catch _:Err ->
+        {error, {<<"Compiler error">>, Err, erlang:get_stacktrace()}}
     after
         cleanup_tempfiles()
     end.
@@ -417,8 +417,9 @@ get_type(Type) ->
     end.
 
 %% Convert to old style hex literals.
-legacy_args(Args) ->
-    lists:map(fun legacy_arg/1, Args).
+legacy_args(Vsn, Args) when Vsn =< ?SOPHIA_MINERVA ->
+    lists:map(fun legacy_arg/1, Args);
+legacy_args(_, Args) -> Args.
 
 legacy_arg(Str) when is_list(Str) -> legacy_arg(list_to_binary(Str));
 legacy_arg(Bin) when is_binary(Bin) ->

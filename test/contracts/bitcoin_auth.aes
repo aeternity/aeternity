@@ -4,8 +4,8 @@ contract BitcoinAuth =
   function init(owner' : bytes(64)) = { nonce = 1, owner = owner' }
 
   stateful function authorize(n : int, s : signature) : bool =
-    require(n >= state.nonce, "Nonce too low")
-    require(n =< state.nonce, "Nonce too high")
+    _require(n >= state.nonce, "Nonce too low")
+    _require(n =< state.nonce, "Nonce too high")
     put(state{ nonce = n + 1 })
     switch(Auth.tx_hash)
       None          => abort("Not in Auth context")
@@ -14,6 +14,8 @@ contract BitcoinAuth =
   function to_sign(h : hash, n : int) : hash =
     Crypto.blake2b((h, n))
 
-  private function require(b : bool, err : string) =
+  // Not using builtin require because Sophia version handling in ga test
+  // suites is a bit broken (TODO).
+  private function _require(b : bool, err : string) =
     if(!b) abort(err)
 

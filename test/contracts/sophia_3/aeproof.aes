@@ -104,10 +104,10 @@ contract AEProof =
                      proofsByOwner : map(address, array(uint)) }
 
     function notarize(document:string, comment:string, ipfsHash:hash) =
-        let _ = require(aetoken.balanceOf(caller()) > 0, "false")
+        let _ = require(aetoken.balanceOf(caller()) > 0)
         let proofHash: uint = calculateHash(document)
         let proof : proof = Map.get_(proofHash, state().proofs)
-        let _ = require(proof.owner == #0, false)
+        let _ = require(proof.owner == #0)
         let proof' : proof = proof { owner = caller()
                                    , timestamp = block().timestamp
                                    , proofBlock = block().height
@@ -124,12 +124,12 @@ contract AEProof =
     function getProof(document) : proof =
         let calcHash = calculateHash(document)
         let proof = Map.get_(calcHash, state().proofs)
-        let _ = require(proof.owner != #0, false)
+        let _ = require(proof.owner != #0)
         proof
 
     function getProofByHash(hash: uint) : proof =
         let proof = Map.get_(hash, state().proofs)
-        let _ = require(proof.owner != #0, false)
+        let _ = require(proof.owner != #0)
         proof
 
 
@@ -140,4 +140,6 @@ contract AEProof =
 
     function getProofsByOwner(owner: address): array(uint) =
         Map.get(owner, state())
+
+    function require(x : bool) : unit = if(x) () else abort("false")
 

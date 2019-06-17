@@ -5,6 +5,9 @@ contract DutchAuction =
                    dec    : int,
                    sold   : bool }
 
+  private function require(b : bool, err : string) =
+    if(!b) abort(err)
+
   public function init(price, decrease) : state =
     require(price > 0 && decrease > 0, "bad args")
     { amount = price,

@@ -15,6 +15,9 @@ contract DutchAuction =
     Chain.spend(to, amount)
     total - amount
 
+  private function require(b : bool, err : string) =
+    if(!b) abort(err)
+
   // TTL set by user on posting contract, typically (start - end ) div dec
   public function init(beneficiary, start, decrease) : state =
     require(start > 0 && decrease > 0, "bad args")

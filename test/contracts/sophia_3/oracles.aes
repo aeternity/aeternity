@@ -107,3 +107,6 @@ contract Oracles =
     let q = Oracle.query(o, question, 0, RelativeTTL(100), RelativeTTL(100))
     Oracle.respond(o, q, Answer(question, "magic", 1337), signature = sig)
     Oracle.get_answer(o, q)
+
+  private function require(b : bool, err : string) =
+    if(!b) abort(err)

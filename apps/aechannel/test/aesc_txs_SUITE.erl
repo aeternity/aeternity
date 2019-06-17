@@ -5288,20 +5288,12 @@ poi_participants_only() ->
    end.
 
 compile_contract(ContractName) ->
-    aect_test_utils:compile_contract(contract_filename(ContractName)).
+    aect_test_utils:compile_contract(ContractName).
 
 compile_contract_vsn(ContractName, SerializationVsn) ->
-    File = contract_filename(ContractName),
-    CodeDir = filename:join(code:lib_dir(aecontract), "../../extras/test/"),
-    FileName = filename:join(CodeDir, filename:rootname(File, ".aes") ++ ".aes"),
-    {ok, ContractBin} = file:read_file(FileName),
+    {ok, ContractBin} = aect_test_utils:read_contract(ContractName),
     {ok, Map} = aeso_compiler:from_string(ContractBin, []),
-    {ok, aect_sophia:serialize(Map,
-                               SerializationVsn)}.
-
-contract_filename(ContractName) ->
-    filename:join(["contracts",
-                  filename:basename(ContractName, ".aes") ++ ".aes"]).
+    {ok, aect_sophia:serialize(Map, SerializationVsn)}.
 
 %% test that a force progress transaction can NOT produce an on-chain
 %% contract with a code with the wrong Sophia serialization
@@ -5384,16 +5376,11 @@ fp_sophia_versions(Cfg) ->
     ok.
 
 encode_call_data(ContractName, Function, Arguments) ->
-    {ok, Contract} = aect_test_utils:read_contract(contract_filename(ContractName)),
+    {ok, Contract} = aect_test_utils:read_contract(ContractName),
     ct:pal("ENCODE:\n----\n~s\n----\nWhat: ~p",
           [Contract, {binary_to_list(Function),
            lists:map(fun binary_to_list/1, Arguments)}]),
-    case protocol_version() of
-        Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN ->
-            aect_test_utils:encode_call_data(?SOPHIA_MINERVA, Contract, Function, Arguments);
-        _ ->
-            aect_test_utils:encode_call_data(?SOPHIA_FORTUNA, Contract, Function, Arguments)
-    end.
+    aect_test_utils:encode_call_data(Contract, Function, Arguments).
 
 address_encode(Type, Binary) ->
     case protocol_version() of

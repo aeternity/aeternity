@@ -90,9 +90,8 @@ protocol_version() ->
     case get('$protocol_version') of Vsn when is_integer(Vsn) -> Vsn end.
 
 compile_contract(Name) ->
-    FileName = filename:join(["contracts", atom_to_list(Name) ++ ".aes"]),
-    {ok, Source} = aect_test_utils:read_contract(FileName),
-    {ok, Serialized} = aect_test_utils:compile_contract(FileName),
+    {ok, Source} = aect_test_utils:read_contract(Name),
+    {ok, Serialized} = aect_test_utils:compile_contract(Name),
     #{source => Source, bytecode => Serialized}.
 
 %% execute_call(Contract, CallData, ChainState) ->
@@ -206,13 +205,7 @@ encode_call_data(Contract, Fun, Args, Env) ->
     #{Contract := #{source := SrcBin}} = Env,
     FunBin  = atom_to_binary(Fun, utf8),
     ArgsBin = [ list_to_binary(A) || A <- Args ],
-    case protocol_version() of
-        Vsn when Vsn < ?FORTUNA_PROTOCOL_VSN ->
-            aect_test_utils:encode_call_data(?SOPHIA_MINERVA, SrcBin, FunBin, ArgsBin);
-        _ ->
-            aect_test_utils:encode_call_data(?SOPHIA_FORTUNA, SrcBin, FunBin, ArgsBin)
-    end.
-
+    aect_test_utils:encode_call_data(SrcBin, FunBin, ArgsBin).
 
 create_contract(Address, Code, Args, Env) ->
     create_contract(Address, Code, Args, Env, #{}).
