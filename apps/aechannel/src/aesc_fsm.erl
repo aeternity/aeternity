@@ -1548,7 +1548,7 @@ handle_call_(open, {upd_create_contract, Opts}, From, #data{} = D) ->
     new_contract_tx_for_signing(Opts#{owner => FromPub}, From, D);
 handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
              #data{state=State, opts = ChannelOpts,
-                   on_chain_id = ChannelId} = D) ->
+                   on_chain_id = ChannelId} = D) when ChannelId =/= undefined ->
     FromPub = my_account(D),
     case maps:find(from, Opts) of
         {ok, FromPub} -> ok;
