@@ -2571,6 +2571,8 @@ definitions:
         $ref: '#/definitions/UInt32'
       network_id:
         type: string
+      peer_pubkey:
+        $ref: '#/definitions/EncodedPubkey'
     required:
       - genesis_key_block_hash
       - solutions
@@ -2583,6 +2585,7 @@ definitions:
       - peer_count
       - pending_transactions_count
       - network_id
+      - peer_pubkey
   Protocol:
     type: object
     properties:

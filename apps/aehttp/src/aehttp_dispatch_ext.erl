@@ -605,6 +605,7 @@ handle_request_('GetStatus', _Params, _Context) ->
     NodeRevision = aeu_info:get_revision(),
     PeerCount = aec_peers:count(peers),
     PendingTxsCount = aec_tx_pool:size(),
+    {ok, PeerPubkey} = aec_keys:peer_pubkey(),
     {200, [],
      #{<<"genesis_key_block_hash">>     => aeser_api_encoder:encode(key_block_hash, GenesisBlockHash),
        <<"solutions">>                  => Solutions,
@@ -617,7 +618,8 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"node_revision">>              => NodeRevision,
        <<"peer_count">>                 => PeerCount,
        <<"pending_transactions_count">> => PendingTxsCount,
-       <<"network_id">>                 => aec_governance:get_network_id()}};
+       <<"network_id">>                 => aec_governance:get_network_id(),
+       <<"peer_pubkey">>                => aeser_api_encoder:encode(peer_pubkey, PeerPubkey)}};
 
 handle_request_('GetPeerKey', _Req, _Context) ->
     case aehttp_logic:peer_pubkey() of
