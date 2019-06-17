@@ -93,7 +93,7 @@ test_mining_algorithms_compatibility(Cfg) ->
 
     % Be sure both nodes created some blocks
     Beneficiaries = lists:foldl(fun(L, M) ->
-        #{ beneficiary := Beneficiary } = get_block(node1, L),
+        Beneficiary = get_block_beneficiary(node1, L),
         M#{ Beneficiary => true }
     end, #{}, lists:seq(Length, 1, -1)),
 
@@ -106,3 +106,7 @@ test_mining_algorithms_compatibility(Cfg) ->
 
 setup(NodeSpecs, Config, Cfg) ->
     setup_nodes([maps:put(config, Config, N) || N <- NodeSpecs], Cfg).
+
+get_block_beneficiary(NodeName, Height) ->
+    #{ beneficiary := Beneficiary } = get_block(NodeName, Height),
+    Beneficiary.
