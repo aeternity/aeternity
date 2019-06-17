@@ -299,6 +299,7 @@ system-test-deps:
 	$(MAKE) system-smoke-test-deps
 	docker pull "aeternity/aeternity:v2.1.0"
 	docker pull "aeternity/aeternity:v2.3.0"
+	docker pull "aeternity/aeternity:v3.0.1"
 	docker pull "aeternity/aeternity:latest"
 
 system-test: KIND=system_test
