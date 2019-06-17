@@ -92,13 +92,10 @@ test_mining_algorithms_compatibility(Cfg) ->
     ?assertEqual(B1, B2),
 
     % Be sure both nodes created some blocks
-    Beneficiaries = lists:foldl(fun(L, M) ->
-        Beneficiary = get_block_beneficiary(node1, L),
-        M#{ Beneficiary => true }
-    end, #{}, lists:seq(Length, 1, -1)),
+    Beneficiaries = get_chain_beneficiaries(node1, Length),
 
     ?assertEqual(lists:sort([Beneficiary1, Beneficiary2]),
-                 lists:sort(maps:keys(Beneficiaries))),
+                 lists:sort(Beneficiaries)),
 
     ok.
 
@@ -110,3 +107,11 @@ setup(NodeSpecs, Config, Cfg) ->
 get_block_beneficiary(NodeName, Height) ->
     #{ beneficiary := Beneficiary } = get_block(NodeName, Height),
     Beneficiary.
+
+get_chain_beneficiaries(NodeName, Height) when is_integer(Height),
+                                               Height >= 1 ->
+    sets:to_list(
+      lists:foldl(
+        fun(H, Bs) ->
+                sets:add_element(get_block_beneficiary(NodeName, H), Bs)
+        end, sets:new(), lists:seq(Height, 1, -1))).
