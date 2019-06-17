@@ -67,7 +67,9 @@ end_per_suite(_Config) -> ok.
 %=== TEST CASES ================================================================
 
 test_mining_algorithms_compatibility(Cfg) ->
-    Length = 20,
+    MinLength = 20,
+    ExtraStep = 5,
+    MaxSteps = 10,
 
     #{ public := PubKey1 } = enacl:sign_keypair(),
     #{ public := PubKey2 } = enacl:sign_keypair(),
@@ -82,21 +84,11 @@ test_mining_algorithms_compatibility(Cfg) ->
     start_node(node2, Cfg),
     wait_for_startup([node1, node2], 0, Cfg),
 
-    wait_for_value({height, Length + 1}, [node1, node2],
-                   (Length + 1) * ?MINING_TIMEOUT, Cfg),
-
-    B1 = get_block(node1, Length),
-    B2 = get_block(node2, Length),
-
-    ?assertNotEqual(undefined, B1),
-    ?assertEqual(B1, B2),
-
-    % Be sure both nodes created some blocks
-    Beneficiaries = get_chain_beneficiaries(node1, Length),
-
-    ?assertEqual(lists:sort([Beneficiary1, Beneficiary2]),
-                 lists:sort(Beneficiaries)),
-
+    wait_for_value({height, MinLength + 1}, [node1, node2],
+                   (MinLength + 1) * ?MINING_TIMEOUT, Cfg),
+    wait_for_beneficiaries(node1, node2, [Beneficiary1, Beneficiary2],
+                           MinLength, ExtraStep, MaxSteps,
+                           Cfg),
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================
@@ -115,3 +107,28 @@ get_chain_beneficiaries(NodeName, Height) when is_integer(Height),
         fun(H, Bs) ->
                 sets:add_element(get_block_beneficiary(NodeName, H), Bs)
         end, sets:new(), lists:seq(Height, 1, -1))).
+
+wait_for_beneficiaries(Node1, Node2, ExpectedBeneficiaries,
+                       CurrentLength, Step, MaxSteps,
+                       Cfg)
+  when is_integer(MaxSteps), MaxSteps > 0 ->
+    B1 = get_block(Node1, CurrentLength),
+    B2 = get_block(Node2, CurrentLength),
+    ?assertNotEqual(undefined, B1),
+    ?assertEqual(B1, B2),
+
+    % Be sure both nodes created some blocks
+    ActualBeneficiaries = get_chain_beneficiaries(Node1, CurrentLength),
+    case { lists:sort(ExpectedBeneficiaries)
+         , lists:sort(ActualBeneficiaries)
+         } of
+        {X, X} -> ok;
+        {_, _} ->
+            NewLength = Step + CurrentLength,
+            wait_for_value({height, NewLength + 1}, [Node1, Node2],
+                           Step * ?MINING_TIMEOUT, Cfg),
+            wait_for_beneficiaries(Node1, Node2, ExpectedBeneficiaries,
+                                   NewLength, Step, MaxSteps - 1,
+                                   Cfg)
+    end.
+
