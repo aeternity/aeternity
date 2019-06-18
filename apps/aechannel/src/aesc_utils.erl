@@ -871,8 +871,7 @@ channel_pubkey(SignedTx) ->
         {aesc_create_tx, Txi} ->
             Initiator = aesc_create_tx:initiator_pubkey(Txi),
             Responder = aesc_create_tx:responder_pubkey(Txi),
-            InitiatorAuthId = get_nonce_or_auth_id(SignedTx,
-                                                   Initiator),
+            InitiatorAuthId = channel_create_nonce_or_auth_id(SignedTx),
             PK = aesc_channels:pubkey(Initiator,
                                       InitiatorAuthId,
                                       Responder),
@@ -885,12 +884,20 @@ channel_pubkey(SignedTx) ->
             end
     end.
 
-get_nonce_or_auth_id(SignedTx, Signer) ->
+channel_create_nonce_or_auth_id(SignedTx) ->
+    {aesc_create_tx, Txi} =
+        aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+    Initiator = aesc_create_tx:initiator_pubkey(Txi),
+    channel_create_nonce_or_auth_id(SignedTx, Initiator).
+
+    
+channel_create_nonce_or_auth_id(SignedTx, Initiator) ->
     case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of
         {aega_meta_tx, MetaTx} ->
-            case aega_meta_tx:ga_pubkey(MetaTx) =:= Signer of
+            case aega_meta_tx:ga_pubkey(MetaTx) =:= Initiator of
                 true -> aega_meta_tx:auth_id(MetaTx);
-                false -> get_nonce_or_auth_id(aega_meta_tx:tx(MetaTx), Signer)
+                false -> channel_create_nonce_or_auth_id(aega_meta_tx:tx(MetaTx),
+                                                         Initiator)
             end;
         {Mod, Tx} -> Mod:nonce(Tx) 
     end.
