@@ -79,7 +79,6 @@
 
 %% REWARD options
 -define(LAST_N,               ?CFG(last_n)).
--define(CONTRACT,             ?CFG(contract)).
 -define(CONTRACT_ADDRESS,     ?CFG(contract_address)).
 -define(CONTRACT_PUBKEY,      ?CFG(contract_pubkey)).
 -define(CALLER_ADDRESS,       ?CFG(caller_address)).

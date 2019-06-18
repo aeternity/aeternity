@@ -116,8 +116,7 @@ configure(reward, #{reward := #{beneficiaries := PoolShareBins,
                        _Other -> ?PAYMENT_CONTRACT_TESTNET_ADDRESS
                    end,
     ContractPK   = aestratum_conv:contract_address_to_pubkey(ContractAddr),
-    ContractPath = filename:join(code:priv_dir(aestratum), "Payout.aes"),
-    ContractSrc  = ok_val_err(file:read_file(ContractPath), contract_file_not_found),
+
     {CallerPK, CallerSK} = CallerKeyPair = read_keys(KeysDir, await),
     CallerAddr   = aestratum_conv:account_pubkey_to_address(CallerPK),
     check_keypair_roundtrips(CallerKeyPair) orelse error(invalid_keypair),
@@ -134,7 +133,6 @@ configure(reward, #{reward := #{beneficiaries := PoolShareBins,
 
     maps:merge(maps:without([reward], Result),
                #{last_n                => LastN,
-                 contract              => #{contract_source => binary_to_list(ContractSrc)},
                  contract_pubkey       => ContractPK,
                  contract_address      => ContractAddr,
                  caller_pubkey         => CallerPK,

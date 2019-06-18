@@ -403,24 +403,19 @@ estimate_consumed_gas(NumTransfers) ->
     ?PAYMENT_CONTRACT_INIT_GAS + NumTransfers * ?PAYMENT_CONTRACT_GAS_PER_TRANSFER.
 
 
-format_payout_call_args(#{} = Transfers) ->
-    Tuples = maps:fold(
-               fun (Addr, Tokens, Acc) ->
-                       ["("
-                        ++ binary_to_list(Addr)
-                        ++ ","
-                        ++ integer_to_list(Tokens)
-                        ++ ")" | Acc]
-               end, [], Transfers),
-    "[" ++ string:join(Tuples, ",") ++ "]".
+create_call_args(#{} = Transfers) ->
+    maps:fold(
+      fun (Addr, Tokens, Acc) ->
+              [{aestratum_conv:account_address_to_integer(Addr), Tokens} | Acc]
+      end, [], Transfers).
 
 
 payout_call_tx_args(Transfers, TopHeight) when is_integer(TopHeight) ->
     {value, Account} = aec_chain:get_account(?CALLER_PUBKEY),
     GasPrice = min_gas_price(),
-    CallArgs = format_payout_call_args(Transfers),
-    SrcCode  = maps:get(contract_source, ?CONTRACT),
-    {ok, CallData, _, _} = aeso_compiler:create_calldata(SrcCode, "payout", [CallArgs]),
+    CallArgs = create_call_args(Transfers),
+    CallType = [{list, {tuple, [word, word]}}],
+    {ok, CallData, _, _} = aeb_aevm_abi:create_calldata("payout", [CallArgs], CallType, word),
     <<Int256:256>> = <<1:256/little-unsigned-integer-unit:1>>,
     Args = #{contract_id => aeser_id:create(contract, ?CONTRACT_PUBKEY),
              caller_id   => aeser_id:create(account, ?CALLER_PUBKEY),

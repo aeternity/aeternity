@@ -8,6 +8,7 @@
          tx_address/1,
          account_pubkey_to_address/1,
          account_address_to_pubkey/1,
+         account_address_to_integer/1,
          contract_address_to_pubkey/1,
          address_to_hex/1,
          hex_encode/1,
@@ -32,6 +33,10 @@ tx_address(PK) ->
 
 account_pubkey_to_address(<<PK:32/binary>>) ->
     aeser_api_encoder:encode(account_pubkey, PK).
+
+account_address_to_integer(<<"ak_", _/binary>> = Addr) ->
+    <<IntAddr:256>> = account_address_to_pubkey(Addr),
+    IntAddr.
 
 account_address_to_pubkey(Addr) ->
     tag_val_err(aeser_api_encoder:decode(Addr), account_pubkey, invalid_account_address).

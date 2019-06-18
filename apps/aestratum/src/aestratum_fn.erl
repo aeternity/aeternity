@@ -15,6 +15,7 @@
 id(X) -> X.
 
 is_ok({ok, _}) -> true;
+is_ok(ok) -> true;
 is_ok(_) -> false.
 
 ok() -> fun (X) -> ok(X) end.
