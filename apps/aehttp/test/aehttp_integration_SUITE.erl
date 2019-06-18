@@ -1836,7 +1836,10 @@ get_status(_Config) ->
        <<"node_revision">>              := _NodeRevision,
        <<"peer_count">>                 := PeerCount,
        <<"pending_transactions_count">> := PendingTxCount,
-       <<"network_id">>                 := NetworkId
+       <<"network_id">>                 := NetworkId,
+       <<"peer_pubkey">>                := PeerPubKey,
+       <<"top_key_block_hash">>         := TopKeyBlockHash,
+       <<"top_block_height">>           := TopBlockHeight
       }} = get_status_sut(),
     ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, GenesisKeyBlocHash)),
     ?assertMatch(X when is_integer(X) andalso X >= 0, Solutions),
@@ -1852,6 +1855,9 @@ get_status(_Config) ->
     ?assertMatch(X when is_integer(X) andalso X >= 0, PendingTxCount),
     ?assertEqual(NetworkId, aec_governance:get_network_id()),
     ?assertEqual(100.0, SyncProgress),
+    ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(peer_pubkey, PeerPubKey)),
+    ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, TopKeyBlockHash)),
+    ?assertMatch(X when is_integer(X) andalso X >= 0, TopBlockHeight),
     ok.
 
 get_status_sut() ->

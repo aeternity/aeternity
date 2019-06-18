@@ -605,6 +605,10 @@ handle_request_('GetStatus', _Params, _Context) ->
     NodeRevision = aeu_info:get_revision(),
     PeerCount = aec_peers:count(peers),
     PendingTxsCount = aec_tx_pool:size(),
+    {ok, PeerPubkey} = aec_keys:peer_pubkey(),
+    TopBlock = aec_chain:top_block(),
+    TopBlockHeight = aec_blocks:height(TopBlock),
+    TopBlockHash = aec_chain:top_key_block_hash(),
     {200, [],
      #{<<"genesis_key_block_hash">>     => aeser_api_encoder:encode(key_block_hash, GenesisBlockHash),
        <<"solutions">>                  => Solutions,
@@ -617,15 +621,10 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"node_revision">>              => NodeRevision,
        <<"peer_count">>                 => PeerCount,
        <<"pending_transactions_count">> => PendingTxsCount,
-       <<"network_id">>                 => aec_governance:get_network_id()}};
-
-handle_request_('GetPeerKey', _Req, _Context) ->
-    case aehttp_logic:peer_pubkey() of
-        {ok, PeerKey} ->
-            {200, [], #{pub_key => aeser_api_encoder:encode(peer_pubkey, PeerKey)}};
-        {error, key_not_found} ->
-            {404, [], #{reason => <<"Keys not configured">>}}
-    end;
+       <<"network_id">>                 => aec_governance:get_network_id(),
+       <<"peer_pubkey">>                => aeser_api_encoder:encode(peer_pubkey, PeerPubkey),
+       <<"top_key_block_hash">>         => aeser_api_encoder:encode(key_block_hash, TopBlockHash),
+       <<"top_block_height">>           => TopBlockHeight}};
 
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
