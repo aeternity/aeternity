@@ -322,7 +322,7 @@ message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
 %%
 -spec signing_response(pid(), sign_tag(), any()) -> ok.
 signing_response(Fsm, Tag, Obj) ->
-    gen_statem:cast(Fsm, {signed, Tag, Obj}).
+    gen_statem:cast(Fsm, {?SIGNED, Tag, Obj}).
 
 minimum_depth_achieved(Fsm, ChanId, Type, TxHash) ->
     gen_statem:cast(Fsm, {?MIN_DEPTH_ACHIEVED, ChanId, Type, TxHash}).
