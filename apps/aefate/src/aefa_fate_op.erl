@@ -126,6 +126,7 @@
         , abort/2
         , exit/2
         , nop/1
+        , auth_tx_hash/2
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
@@ -990,6 +991,9 @@ exit(_Arg0, _EngineState) ->
 
 nop(EngineState) ->
     EngineState.
+
+auth_tx_hash(_Arg0, _EngineState) ->
+    exit(nyi).
 
 %% ------------------------------------------------------------------------
 %% Helpers
