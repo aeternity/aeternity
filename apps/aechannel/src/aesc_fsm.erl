@@ -26,7 +26,9 @@
          get_contract/2,
          get_poi/2]).
 
+-ifdef(TEST).
 -export([strict_checks/2]). %% tests only
+-endif.
 
 %% Inspection and configuration functions
 -export([ get_history/1     %% (fsm()) -> [Event]
@@ -499,6 +501,7 @@ get_contract(Fsm, Pubkey) ->
 get_poi(Fsm, Filter) ->
     gen_statem:call(Fsm, {get_poi, Filter}).
 
+-ifdef(TEST).
 %% This is supposed to be used in tests only. If Alice stops checking
 %% her own signatures, Bob will still check hers and will reject any wrongly
 %% signed txs. There is a risk for Alice corrupting her own state if using
@@ -506,6 +509,7 @@ get_poi(Fsm, Filter) ->
 -spec strict_checks(pid(), boolean()) -> ok.
 strict_checks(Fsm, Strict) when is_boolean(Strict) ->
     gen_statem:call(Fsm, {strict_checks, Strict}).
+-endif.
 
 leave(Fsm) ->
     lager:debug("leave(~p)", [Fsm]),
