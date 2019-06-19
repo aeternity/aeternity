@@ -20,6 +20,7 @@
 -export([ check_remote/2
         , check_return_type/1
         , check_signature_and_bind_args/2
+        , check_type/2
         , get_function_signature/2
         , push_gas_cap/2
         , push_return_address/1
@@ -343,6 +344,7 @@ infer_type(X) when ?IS_FATE_HASH(X)      -> hash;
 infer_type(X) when ?IS_FATE_SIGNATURE(X) -> signature;
 infer_type(X) when ?IS_FATE_CONTRACT(X)  -> contract;
 infer_type(X) when ?IS_FATE_ORACLE(X)    -> oracle;
+infer_type(X) when ?IS_FATE_ORACLE_Q(X)  -> oracle_query;
 infer_type(X) when ?IS_FATE_NAME(X)      -> name;
 infer_type(X) when ?IS_FATE_BITS(X)      -> bits;
 infer_type(X) when ?IS_FATE_LIST(X) ->
@@ -436,6 +438,7 @@ terms_are_of_same_type(X, Y) when ?IS_FATE_CONTRACT(X), ?IS_FATE_CONTRACT(Y) -> 
 terms_are_of_same_type(X, Y) when ?IS_FATE_HASH(X), ?IS_FATE_HASH(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_SIGNATURE(X), ?IS_FATE_SIGNATURE(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_ORACLE(X), ?IS_FATE_ORACLE(Y) -> true;
+terms_are_of_same_type(X, Y) when ?IS_FATE_ORACLE_Q(X), ?IS_FATE_ORACLE_Q(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_NAME(X), ?IS_FATE_NAME(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_STRING(X), ?IS_FATE_STRING(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_TUPLE(X), ?IS_FATE_TUPLE(Y) ->
