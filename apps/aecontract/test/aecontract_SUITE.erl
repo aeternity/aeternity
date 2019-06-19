@@ -143,8 +143,19 @@
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
 
--define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING(X), {variant, 0, [X]}).
--define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(X), {variant, 1, [X]}).
+-define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING_TYPE(X), tuple()).
+-define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING_TYPE(X), tuple()).
+
+-define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING(X),
+        case ?IS_FATE_SOPHIA(vm_version()) of
+          true  -> {variant, [1, 1], 0, {X}};
+          false -> {variant, 0, [X]}
+        end).
+-define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(X),
+        case ?IS_FATE_SOPHIA(vm_version()) of
+          true  -> {variant, [1, 1], 1, {X}};
+          false -> {variant, 1, [X]}
+        end).
 
 -define(CONTRACT_SERIALIZATION_VSN_ROMA,    1).
 -define(CONTRACT_SERIALIZATION_VSN_MINERVA, 2).
@@ -156,6 +167,7 @@
 -define(cid(__X__), {'@ct', __X__}).
 -define(hsh(__X__), {'#', __X__}).
 -define(sig(__X__), {'$sg', __X__}).
+-define(oid(__X__), {'@ok', __X__}).
 
 %%%===================================================================
 %%% Common test framework
@@ -173,7 +185,7 @@ all() ->
 
 groups() ->
     [ {aevm, [sequence], ?ALL_TESTS}
-    , {fate,         [],  [ create_contract
+    , {fate, [sequence],  [ create_contract
                           , sophia_call_origin
                           , sophia_identity
                           , sophia_remote_identity
@@ -184,7 +196,15 @@ groups() ->
                           , sophia_call_out_of_gas
                           , sophia_state_handling
                           , sophia_maps
-
+                          , sophia_oracles
+                          , {group, sophia_oracles_ttl}
+                          , {group, sophia_oracles_type_error}
+                          , {group, sophia_oracles_query_fee_happy_path}
+                          , {group, sophia_oracles_query_fee_happy_path_remote}
+                          , {group, sophia_oracles_query_fee_unhappy_path}
+                          , {group, sophia_oracles_query_fee_unhappy_path_remote}
+                          %%, {group, sophia_oracles_gas_ttl}
+                          , sophia_signatures_oracles
                           , sophia_remote_identity
                           , sophia_call_out_of_gas
                           , sophia_no_reentrant
@@ -1397,6 +1417,7 @@ make_calldata_from_id(Id, Fun, Args, State) ->
 format_aevm_args(?cid(<<N:256>>)) -> N;
 format_aevm_args(?hsh(<<N:256>>)) -> N;
 format_aevm_args(?sig(<<W1:256, W2:256>>)) -> {W1, W2};
+format_aevm_args(?oid(<<N:256>>)) -> N;
 format_aevm_args(<<N:256>>) -> N;
 format_aevm_args({bytes, Bin}) ->
     case to_words(Bin) of
@@ -1426,6 +1447,8 @@ format_fate_args(?hsh(B)) ->
     {hash, B};
 format_fate_args(?sig(B)) ->
     {signature, B};
+format_fate_args(?oid(B)) ->
+    {oracle, B};
 format_fate_args(<<_:256>> = B) ->
     {address, B}; %% Assume it is an address
 format_fate_args([H|T]) ->
@@ -1718,23 +1741,25 @@ sophia_oracles(_Cfg) ->
     BogusOracle       = <<123:256>>,
     QueryFee          = 100,
     TTL               = 15,
-    CtId              = ?call(call_contract, Acc, Ct, registerOracle, word, {CtId, QueryFee, FixedTTL(TTL)}),
+    Oracle            = ?call(call_contract, Acc, Ct, registerOracle, word, {Ct, QueryFee, FixedTTL(TTL)}),
+    ?assertMatchFATE({oracle, CtId}, Oracle),
+    ?assertMatchAEVM(CtId, Oracle),
     Question          = <<"Manchester United vs Brommapojkarna">>,
     NonceBeforeQuery  = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     QId               = ?call(call_contract, Acc, Ct, createQuery, word,
-                                {Ct, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+                                {?oid(Ct), Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
     NonceAfterQuery   = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
-    Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {CtId, QId}),
-    QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Ct),
+    Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {Oracle, QId}),
+    QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, {Oracle}),
     ?assertMatchAEVM(
         ?call(call_contract, Acc, Ct, queryFee, word, BogusOracle),
         32,          %% On ROMA this is broken, returns 32.
         {error, _}, {error, _}), %% Fixed in MINERVA
-    none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
-    {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 4001}),
+    none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Oracle, QId}),
+    {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Oracle, QId, 4001}),
     NonceAfterRespond = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
-    {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
-    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, RelativeTTL(10)}),
+    {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Oracle, QId}),
+    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Oracle, RelativeTTL(10)}),
     NonceAfterExtend  = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
 
     %% In Roma, nonce are bumped for all tx primops, but after Roma only query primops
@@ -1750,7 +1775,10 @@ sophia_oracles(_Cfg) ->
     Ct1 = ?call(create_contract, Acc, oracles, {}, #{amount => 1000000}),
     QuestionType = {variant_t, [{why, [word]}, {how, [string]}]},
     AnswerType   = {variant_t, [{noAnswer, []}, {yesAnswer, [QuestionType, string, word]}]},
-    Question1    = {variant, 1, [<<"birds fly?">>]},
+    Question1    = case ?IS_FATE_SOPHIA(vm_version()) of
+                       true  -> {variant, [1,1], 1, {<<"birds fly?">>}};
+                       false -> {variant, 1, [<<"birds fly?">>]}
+                   end,
     Answer       = {yesAnswer, {how, <<"birds fly?">>}, <<"magic">>, 1337},
     {some, Answer} = ?call(call_contract, Acc, Ct1, complexOracle, {option, AnswerType}, {Question1}),
     ok.
@@ -1763,10 +1791,12 @@ sophia_oracles_type_error_arg(_Cfg) ->
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QueryFee          = 100,
     TTL               = 15,
-    CtId              = ?call(call_contract, Acc, Ct, registerIntIntOracle, word, {CtId, QueryFee, FixedTTL(TTL)}),
+    Oracle            = ?call(call_contract, Acc, Ct, registerIntIntOracle, word, {Ct, QueryFee, FixedTTL(TTL)}),
+    ?assertMatchAEVM(CtId, Oracle),
+    ?assertMatchFATE({oracle, CtId}, Oracle),
     Question          = <<"Manchester United vs Brommapojkarna">>,
     {error, _}        = ?call(call_contract, Acc, Ct, createQuery, word,
-                              {Ct, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+                              {Oracle, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
     ok.
 
 sophia_oracles_type_error_out(_Cfg) ->
@@ -1777,11 +1807,13 @@ sophia_oracles_type_error_out(_Cfg) ->
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QueryFee          = 100,
     TTL               = 15,
-    CtId              = ?call(call_contract, Acc, Ct, registerStringStringOracle, word, {CtId, QueryFee, FixedTTL(TTL)}),
+    Oracle            = ?call(call_contract, Acc, Ct, registerStringStringOracle, word, {Ct, QueryFee, FixedTTL(TTL)}),
+    ?assertMatchAEVM(CtId, Oracle),
+    ?assertMatchFATE({oracle, CtId}, Oracle),
     Question          = <<"Manchester United vs Brommapojkarna">>,
     QId               = ?call(call_contract, Acc, Ct, createQuery, word,
-                              {Ct, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
-    {error, _}        = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 4001}),
+                              {Oracle, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+    {error, _}        = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Oracle, QId, 4001}),
     ok.
 
 sophia_oracles_interact_with_no_vm_oracle(_Cfg) ->
@@ -1793,20 +1825,27 @@ sophia_oracles_interact_with_no_vm_oracle(_Cfg) ->
     Question          = <<"Manchester United vs Brommapojkarna">>,
     QueryFee          = 100,
     QId               = ?call(call_contract, Acc, Ct, createQuery, word,
-                              {Acc, Question, QueryFee, RelativeTTL(5),
+                              {?oid(Acc), Question, QueryFee, RelativeTTL(5),
                                RelativeTTL(5)}, #{amount => QueryFee}),
     %% Check that the plain question and the contract question is the same
     %% (e.g., not ABI encoded)
     {value, Question} = ?call(get_plain_oracle_question, Acc, QId),
-    Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {AId, QId}),
+    Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {?oid(Acc), QId}),
     %% Respond through the contract
     Response          = <<"Brommapojkarna">>,
-    RespSign          = sign(<<QId:256, Ct/binary>>, Acc),
+    QIdInt            = case ?IS_FATE_SOPHIA(vm_version()) of
+                            true ->
+                                {oracle_query, X} = QId,
+                                X;
+                            false ->
+                                QId
+                        end,
+    RespSign          = sign(<<QIdInt:256, Ct/binary>>, Acc),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []},
-                              {Acc, QId, RespSign, Response}),
+                              {?oid(Acc), QId, RespSign, Response}),
     %% Check that the plain response and the contract response is the same
     %% (e.g., not ABI encoded)
-    {some, Response}  = ?call(call_contract, Acc, Ct, getAnswer, {option, string}, {AId, QId}),
+    {some, Response}  = ?call(call_contract, Acc, Ct, getAnswer, {option, string}, {?oid(Acc), QId}),
     {value, Response} = ?call(get_plain_oracle_response, Acc, QId),
     ok.
 
@@ -1828,6 +1867,9 @@ register_no_vm_oracle(PubKey, S) ->
                  aeo_state_tree:lookup_oracle(PubKey, aec_trees:oracles(aect_test_utils:trees(S1)))),
     {ok, S1}.
 
+get_plain_oracle_question(PubKey, {oracle_query, QId}, S) ->
+    %% For fate wrapped queries
+    get_plain_oracle_question(PubKey, QId, S);
 get_plain_oracle_question(PubKey, QId, S) ->
     Trees = aect_test_utils:trees(S),
     case aeo_state_tree:lookup_query(PubKey, <<QId:256>>, aec_trees:oracles(Trees)) of
@@ -1837,6 +1879,9 @@ get_plain_oracle_question(PubKey, QId, S) ->
             {none, S}
     end.
 
+get_plain_oracle_response(PubKey, {oracle_query, QId}, S) ->
+    %% For fate wrapped queries
+    get_plain_oracle_response(PubKey, QId, S);
 get_plain_oracle_response(PubKey, QId, S) ->
     Trees = aect_test_utils:trees(S),
     case aeo_state_tree:lookup_query(PubKey, <<QId:256>>, aec_trees:oracles(Trees)) of
@@ -1870,7 +1915,6 @@ step_ttl(St = #{ account := Acc, contract := Ct }, Height, Cmd) ->
     Enc = fun({delta, D}) -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(D);
              ({block, H}) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(H) end,
     QFee = 10,
-    Error = {error, <<"out_of_gas">>},
     io:format("-- At height ~p --\nState ~p\nTransaction: ~p\n", [Height, St, Cmd]),
     case Cmd of
         {create, TTL} ->
@@ -1883,8 +1927,9 @@ step_ttl(St = #{ account := Acc, contract := Ct }, Height, Cmd) ->
             %% Can't extend if expired, and new expiry must be > old expiry,
             %% and TTL must be relative.
             case TTLo >= Height andalso NewTTLo > TTLo andalso element(1, TTL) == delta of
-                true  -> {} = Res, St#{ oracle_ttl => NewTTLo }; %% Extend relative to previous expiry
-                false -> Error = Res, St
+                true  when Res =:= {} -> St#{ oracle_ttl => NewTTLo }; %% Extend relative to previous expiry
+                false when error =:= element(1, Res) -> St;
+                What -> error({unexpected, What, Res})
             end;
         {query, TTLq, TTLr} ->
             #{ oracle := Oracle, oracle_ttl := TTLo } = St,
@@ -1896,16 +1941,19 @@ step_ttl(St = #{ account := Acc, contract := Ct }, Height, Cmd) ->
             %% response TTL must be relative.
             case TTLo >= AbsTTLr andalso element(1, TTLr) == delta of
                 true ->
-                    true = is_integer(Res),
+                    ?assertMatchAEVM(true, is_integer(Res)),
+                    ?assertMatchFATE({oracle_query, _}, Res),
                     St#{ query => Res, query_ttl => AbsTTLq, reply_ttl => TTLr };
-                _ -> Error = Res, St
+                false when error =:= element(1, Res) -> St;
+                What -> error({unexpected, What, Res})
             end;
         respond ->
             #{ oracle := Oracle, query := Query, query_ttl := TTLq, reply_ttl := TTLr } = St,
             Res = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Oracle, Query, 42}, #{ height => Height }),
             case TTLq >= Height of  %% Query must not have expired
                 true  -> St#{ reply_ttl => ttl_height(Height, TTLr) };
-                false -> Error = Res, St
+                false when error =:= element(1, Res) -> St;
+                What -> error({unexpected, What, Res})
             end;
         getAnswer ->
             #{ oracle := Oracle, query := Query, reply_ttl := TTLr } = St,
@@ -2045,26 +2093,34 @@ oracle_init_from_contract(OperatorAcc, InitialOracleContractBalance, S) ->
     {{OCt, GasUsed}, S1} = create_contract(OperatorAcc, oracles, {},
         #{amount          => InitialOracleContractBalance,
           return_gas_used => true}, S),
-    {{OCt, OCt, GasUsed}, S1}.
+    Ret = {{OCt, OCt, GasUsed}, S1},
+    io:format("oracle_init_from_contract: ~p\n", [element(1, Ret)]),
+    Ret.
 
 oracle_init_from_remote_contract(OperatorAcc, InitialOracleContractBalance, S) ->
     {{OCt, GasUsed}, S1} = create_contract(OperatorAcc, oracles, {}, #{
           amount          => InitialOracleContractBalance,
           return_gas_used => true}, S),
     {RCt, S2} = create_contract(OperatorAcc, remote_oracles, {}, #{amount => 0}, S1),
-    {{OCt, RCt, GasUsed}, S2}.
+    Ret = {{OCt, RCt, GasUsed}, S2},
+    io:format("oracle_init_from_remote_contract: ~p\n", [element(1, Ret)]),
+    Ret.
 
 oracle_register_from_contract(OperatorAcc, OCt, OCt, Opts, TxOpts0, S) ->
     QueryFee = maps:get(qfee, Opts),
     OTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(ottl, Opts, 15)),
     TxOpts = TxOpts0#{return_gas_used => true},
-    call_contract(OperatorAcc, OCt, registerOracle, word, {OCt, QueryFee, OTtl}, TxOpts, S).
+    Ret = call_contract(OperatorAcc, OCt, registerOracle, word, {OCt, QueryFee, OTtl}, TxOpts, S),
+    io:format("oracle_register_from_contract: ~p\n", [element(1, Ret)]),
+    Ret.
 
 oracle_register_from_remote_contract(OperatorAcc, RCt, OCt, Opts, TxOpts0, S) ->
     QueryFee = maps:get(qfee, Opts),
     OTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(ottl, Opts, 15)),
     TxOpts = TxOpts0#{return_gas_used => true},
-    call_contract(OperatorAcc, RCt, callRegisterOracle, word, {OCt, OCt, QueryFee, OTtl}, TxOpts, S).
+    Ret = call_contract(OperatorAcc, RCt, callRegisterOracle, word, {?cid(OCt), OCt, QueryFee, OTtl}, TxOpts, S),
+    io:format("oracle_register_from_remote_contract: ~p\n", [element(1, Ret)]),
+    Ret.
 
 oracle_query_from_contract(UserAcc, OCt, OCt, Opts, TxOpts, S) ->
     oracle_query_from_contract_(createQuery, UserAcc, OCt, OCt, Opts, TxOpts, S).
@@ -2077,7 +2133,10 @@ oracle_query_from_contract_(Fun, UserAcc, OCt, OCt, Opts, TxOpts0, S) ->
     QTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(qttl, Opts, 5)),
     RTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(rttl, Opts, 5)),
     TxOpts = TxOpts0#{return_gas_used => true},
-    call_contract(UserAcc, OCt, Fun, word, {OCt, Question, QueryFee, QTtl, RTtl}, TxOpts, S).
+    Ret = call_contract(UserAcc, OCt, Fun, word, {?oid(OCt), Question, QueryFee, QTtl, RTtl}, TxOpts, S),
+    io:format("oracle_query_from_contract_: ~p\n", [element(1, Ret)]),
+    %%[error(What) || {{{error, What}, _}, _} <- [Ret] ],
+    Ret.
 
 oracle_query_from_remote_contract(UserAcc, RCt, OCt, Opts, TxOpts, S) ->
     oracle_query_from_remote_contract_(callCreateQuery, UserAcc, RCt, OCt, Opts, TxOpts, S).
@@ -2095,24 +2154,36 @@ oracle_query_from_remote_contract_(Fun, UserAcc, RCt, OCt, OAcc, Opts, TxOpts0, 
                 error -> maps:get(amount, TxOpts0)
             end,
     TxOpts = TxOpts0#{return_gas_used => true},
-    call_contract(UserAcc, RCt, Fun, word, {OCt, Value, OAcc, Question, QueryFee, QTtl, RTtl}, TxOpts, S).
+    Ret = call_contract(UserAcc, RCt, Fun, word, {?cid(OCt), Value, ?oid(OAcc), Question, QueryFee, QTtl, RTtl}, TxOpts, S),
+    io:format("oracle_query_from_remote_contract_: ~p\n", [element(1, Ret)]),
+    %%[error({What, RCt, OCt}) || {{{error, What}, _}, _} <- [Ret] ],
+    Ret.
 
-oracle_check_and_respond_from_contract(OperatorAcc, OCt, OCt, QueryId, Opts, TxOpts0, S) ->
-    ?assertMatch({Question, _} when is_binary(Question), call_contract(OperatorAcc, OCt, getQuestion, string, {OCt, QueryId}, S)),
+oracle_check_and_respond_from_contract(OperatorAcc, OCt, OCtArg, QueryId, Opts, TxOpts0, S) ->
+    ?assertMatch({Question, _} when is_binary(Question), call_contract(OperatorAcc, OCt, getQuestion, string, {OCtArg, QueryId}, S)),
     Response = maps:get(response, Opts, 4001),
     ?assertMatch(_ when is_integer(Response), Response),
     TxOpts = TxOpts0#{return_gas_used => true},
-    {{R, GasUsed}, S1} = call_contract(OperatorAcc, OCt, respond, {tuple, []}, {OCt, QueryId, Response}, TxOpts, S),
-    ?assertMatch({{some, Response}, _}, call_contract(OperatorAcc, OCt, getAnswer, {option, word}, {OCt, QueryId}, S1)),
-    {{R, GasUsed}, S1}.
+    {{R, GasUsed}, S1} = call_contract(OperatorAcc, OCt, respond, {tuple, []}, {OCtArg, QueryId, Response}, TxOpts, S),
+    ?assertMatch({{some, Response}, _}, call_contract(OperatorAcc, OCt, getAnswer, {option, word}, {OCtArg, QueryId}, S1)),
+    Ret = {{R, GasUsed}, S1},
+    io:format("oracle_check_and_respond_from_contract: ~p\n", [element(1, Ret)]),
+    Ret.
 
-oracle_check_and_respond_from_remote_contract(OperatorAcc, RCt, OCt, QueryId, Opts, TxOpts0, S) ->
-    ?assertMatch({Question, _} when is_binary(Question), call_contract(OperatorAcc, OCt, getQuestion, string, {OCt, QueryId}, S)),
+
+oracle_check_and_respond_from_remote_contract(OperatorAcc, RCt, OCtArg, QueryId, Opts, TxOpts0, S) ->
+    OCt = case OCtArg of
+              ?oid(X) -> X;
+              X -> X
+          end,
+    ?assertMatch({Question, _} when is_binary(Question), call_contract(OperatorAcc, OCt, getQuestion, string, {?oid(OCt), QueryId}, S)),
     Response = maps:get(response, Opts, 4001),
     TxOpts = TxOpts0#{return_gas_used => true},
-    {{R, GasUsed}, S1} = call_contract(OperatorAcc, RCt, callRespond, {tuple, []}, {OCt, OCt, QueryId, Response}, TxOpts, S),
-    ?assertMatch({{some, Response}, _}, call_contract(OperatorAcc, OCt, getAnswer, {option, word}, {OCt, QueryId}, S1)),
-    {{R, GasUsed}, S1}.
+    {{R, GasUsed}, S1} = call_contract(OperatorAcc, RCt, callRespond, {tuple, []}, {?cid(OCt), ?oid(OCt), QueryId, Response}, TxOpts, S),
+    ?assertMatch({{some, Response}, _}, call_contract(OperatorAcc, OCt, getAnswer, {option, word}, {?oid(OCt), QueryId}, S1)),
+    Ret = {{R, GasUsed}, S1},
+    io:format("oracle_check_and_respond_from_remote_contract: ~p\n", [element(1, Ret)]),
+    Ret.
 
 -record(oracle_cbs, {init, register, query, respond}).
 %%
@@ -2163,10 +2234,13 @@ closed_oracle_cbs(Cbs,
 %%
 sophia_oracles_qfee__init_and_register_and_query_(Init, RegisterOracle, CreateQuery) ->
     {OracleAcc, CallingCt, GasUsedInit} = call(Init, []),
+    <<OracleAccInt:256>> = OracleAcc,
     S0 = state(),
 
     {RegisterRes, GasUsedRegister} = call(RegisterOracle, [CallingCt, OracleAcc]),
-    OracleAcc = <<(RegisterRes):256>>,
+    ?assertMatchAEVM(OracleAccInt, RegisterRes),
+    ?assertMatchFATE({oracle, OracleAccInt}, RegisterRes),
+
     S1 = state(),
 
     {R, GasUsedQuery} = call(CreateQuery, [CallingCt, OracleAcc]),
@@ -2184,7 +2258,7 @@ sophia_oracles_qfee__init_and_register_and_query_and_respond_(Init, RegisterOrac
       S2], %% State after query.
      GasUsed
     } = sophia_oracles_qfee__init_and_register_and_query_(Init, RegisterOracle, CreateQuery),
-    {{}, GasUsedRespond} = call(RespondQuery, [CallingCt, OracleAcc, QId]),
+    {{}, GasUsedRespond} = call(RespondQuery, [CallingCt, ?oid(OracleAcc), QId]),
     {{OracleAcc, CallingCt},
      [S0, S1, S2, state()], GasUsed#gas_used{respond = GasUsedRespond}}.
 
@@ -2258,7 +2332,7 @@ sophia_oracles_qfee__flow_up_to_query_(InitialState,
            CCbs#oracle_cbs.register,
            CCbs#oracle_cbs.query) of
         %% Exporting AccCt, States, GasUsed. Naughty, naughty!
-        {{error, <<"out_of_gas">>},AccCt,States,GasUsed} -> ok;
+        {{error, _},AccCt,States,GasUsed} -> ok;
         {{revert, <<"causing a late error">>},AccCt,States,GasUsed} -> ok;
         {{revert, <<"insufficient value for qfee">>},AccCt,States,GasUsed} -> ok
     end,
@@ -3056,12 +3130,12 @@ sophia_oracles_qfee__outer_error_after_primop__remote(_Cfg) ->
 %% Oracle gas TTL tests
 
 -record(oracles_gas_ttl_scenario,
-        {register_ttl :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(non_neg_integer())
-                       | ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(non_neg_integer()),
-         extend_ttl   :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(non_neg_integer()),
-         query_ttl    :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(non_neg_integer())
-                       | ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(non_neg_integer()),
-         respond_ttl  :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(non_neg_integer())}).
+        {register_ttl :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING_TYPE(non_neg_integer())
+                       | ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING_TYPE(non_neg_integer()),
+         extend_ttl   :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING_TYPE(non_neg_integer()),
+         query_ttl    :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING_TYPE(non_neg_integer())
+                       | ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING_TYPE(non_neg_integer()),
+         respond_ttl  :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING_TYPE(non_neg_integer())}).
 sophia_oracles_gas_ttl__measure_gas_used(Sc, Height, Gas) ->
     state(aect_test_utils:new_state()),
     Caller = call(fun new_account/2, [100000000000 * aec_test_utils:min_gas_price()]),
@@ -3240,30 +3314,40 @@ sophia_signatures_oracles(_Cfg) ->
     <<OrcId:256>>       = Orc,
 
     BadSig              = sign(<<Ct/binary, Orc/binary>>, Orc),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedRegisterOracle, word,
-                                      {Orc, BadSig, QueryFee, FixedTTL(TTL)}, #{amount => 1}),
+    BadSigResp1         = ?call(call_contract, Acc, Ct, signedRegisterOracle, word,
+                                {Orc, BadSig, QueryFee, FixedTTL(TTL)}, #{amount => 1}),
+    ?assertMatchAEVM({error, <<"out_of_gas">>}, BadSigResp1),
+    ?assertMatchFATE({error, <<"Error in oracle_register: bad_signature">>}, BadSigResp1),
 
     RegSig              = sign(<<Orc/binary, Ct/binary>>, Orc),
-    OrcId               = ?call(call_contract, Acc, Ct, signedRegisterOracle, word, {Orc, RegSig, QueryFee, FixedTTL(TTL)},
+    Oracle              = ?call(call_contract, Acc, Ct, signedRegisterOracle, word, {Orc, RegSig, QueryFee, FixedTTL(TTL)},
                                 #{amount => 1}),
+    ?assertMatchAEVM(OrcId, Oracle),
+    ?assertMatchFATE({oracle, OrcId}, Oracle),
 
     NonceBeforeQuery  = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     Question          = <<"Manchester United vs Brommapojkarna">>,
     QId               = ?call(call_contract, Acc, Ct, createQuery, word,
-                                {Orc, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+                                {?oid(Orc), Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+    QIdInt            = case QId of
+                            {oracle_query, X} -> X;
+                            X when is_integer(X) -> QId
+                        end,
     NonceAfterQuery   = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
-    Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {Orc, QId}),
-    QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Orc),
-    none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Orc, QId}),
+    Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {?oid(Orc), QId}),
+    QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, {?oid(Orc)}),
+    none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {?oid(Orc), QId}),
 
     NonceBeforeRespond = aec_accounts:nonce(aect_test_utils:get_account(Orc, state())),
-    RespSign                  = sign(<<QId:256, Ct/binary>>, Orc),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedRespond, {tuple, []}, {Orc, QId, BadSig, 4001}),
-    {}                        = ?call(call_contract, Acc, Ct, signedRespond, {tuple, []}, {Orc, QId, RespSign, 4001}),
+    RespSign                  = sign(<<QIdInt:256, Ct/binary>>, Orc),
+    BadSigResp2               = ?call(call_contract, Acc, Ct, signedRespond, {tuple, []}, {?oid(Orc), QId, BadSig, 4001}),
+    ?assertMatchAEVM({error, <<"out_of_gas">>}, BadSigResp2),
+    ?assertMatchFATE({error, <<"Error in oracle_respond: bad_signature">>}, BadSigResp2),
+    {}                        = ?call(call_contract, Acc, Ct, signedRespond, {tuple, []}, {?oid(Orc), QId, RespSign, 4001}),
     NonceAfterRespond  = aec_accounts:nonce(aect_test_utils:get_account(Orc, state())),
 
-    {some, 4001}              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Orc, QId}),
-    {}                        = ?call(call_contract, Acc, Ct, signedExtendOracle, {tuple, []}, {Orc, RegSig, RelativeTTL(10)}),
+    {some, 4001}              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {?oid(Orc), QId}),
+    {}                        = ?call(call_contract, Acc, Ct, signedExtendOracle, {tuple, []}, {?oid(Orc), RegSig, RelativeTTL(10)}),
 
     %% In Roma, nonce are bumped for the delegated oracle primops, but after Roma only query primops
     %% are bumping the nonce.
@@ -3340,8 +3424,7 @@ sophia_signatures_aens(_Cfg) ->
 sign(Material, KeyHolder) ->
     PrivKey  = aect_test_utils:priv_key(KeyHolder, state()),
     MaterialForNetworkId = aec_governance:add_network_id(Material),
-    <<Word1:256, Word2:256>> = enacl:sign_detached(MaterialForNetworkId, PrivKey),
-    {Word1, Word2}.
+    ?sig(enacl:sign_detached(MaterialForNetworkId, PrivKey)).
 
 %% Testing map functions and primitives
 sophia_maps(_Cfg) ->

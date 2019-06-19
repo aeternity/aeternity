@@ -101,13 +101,13 @@
         , log/7
         , deactivate/1
         , spend/3
-        , oracle_register/7
-        , oracle_query/1
-        , oracle_respond/1
-        , oracle_extend/1
-        , oracle_get_answer/1
-        , oracle_get_question/1
-        , oracle_query_fee/1
+        , oracle_register/8
+        , oracle_query/7
+        , oracle_respond/5
+        , oracle_extend/4
+        , oracle_get_answer/4
+        , oracle_get_question/4
+        , oracle_query_fee/3
         , aens_resolve/1
         , aens_preclaim/1
         , aens_claim/1
@@ -126,9 +126,11 @@
         , abort/2
         , exit/2
         , nop/1
+        , auth_tx_hash/2
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
+-include("../../aecontract/include/aecontract.hrl").
 -include("../../aecore/include/blocks.hrl").
 
 %% ------------------------------------------------------------------------
@@ -704,19 +706,241 @@ spend(Arg0, Arg1, ES0) ->
             aefa_fate:abort({value_does_not_match_type, Other, address}, ES2)
     end.
 
-oracle_register(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _Arg5, _EngineState) -> exit({error, op_not_implemented_yet}).
+-define(FATE_REL_TTL(X), ?FATE_VARIANT([1,1], 0, {X})).
+-define(FATE_ABS_TTL(X), ?FATE_VARIANT([1,1], 1, {X})).
 
-oracle_query(_EngineState) -> exit({error, op_not_implemented_yet}).
+oracle_register(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, EngineState) ->
+    {[Signature, Address, QFee, TTL, QType, RType], ES1} =
+        get_op_args([Arg1, Arg2, Arg3, Arg4, Arg5, Arg6], EngineState),
+    if
+        not ?IS_FATE_ADDRESS(Address) ->
+            aefa_fate:abort({value_does_not_match_type, Address, address}, ES1);
+        not ?IS_FATE_SIGNATURE(Signature) ->
+            aefa_fate:abort({value_does_not_match_type, Signature, signature}, ES1);
+        not ?IS_FATE_INTEGER(QFee) ->
+            aefa_fate:abort({value_does_not_match_type, QFee, integer}, ES1);
+        not ?IS_FATE_VARIANT(TTL) ->
+            aefa_fate:abort({value_does_not_match_type, QFee, ttl}, ES1);
+        not (?IS_FATE_TYPEREP(QType) andalso ?IS_FATE_TYPEREP(RType)) ->
+            aefa_fate:abort({primop_error, oracle_register, bad_types}, ES1);
+        true ->
+            ok
+    end,
+    case TTL of
+        ?FATE_REL_TTL(X) when ?IS_FATE_INTEGER(X) -> ok;
+        ?FATE_ABS_TTL(X) when ?IS_FATE_INTEGER(X) -> ok;
+        _ ->
+            aefa_fate:abort({primop_error, oracle_register, bad_ttl}, ES1)
+    end,
+    oracle_register_(Arg0, Signature, Address, QFee, TTL, QType, RType, ES1).
 
-oracle_respond(_EngineState) -> exit({error, op_not_implemented_yet}).
+oracle_register_(Arg0, ?FATE_SIGNATURE(Signature), ?FATE_ADDRESS(Address),
+                 ?FATE_INTEGER_VALUE(QFee), TTL,
+                 ?FATE_TYPEREP(QType),
+                 ?FATE_TYPEREP(RType),
+                 ES) ->
+    {TTLType, TTLVal} =
+        case TTL of
+            ?FATE_REL_TTL(R) when ?IS_FATE_INTEGER(R) -> {relative, R};
+            ?FATE_ABS_TTL(A) when ?IS_FATE_INTEGER(A) -> {absolute, A};
+             _ ->
+                aefa_fate:abort({primop_error, oracle_query, bad_ttl}, ES)
+        end,
+    QFormat = iolist_to_binary(aeb_fate_encoding:serialize_type(QType)),
+    RFormat = iolist_to_binary(aeb_fate_encoding:serialize_type(RType)),
+    ES1     = check_delegation_signature(oracle_register, Address, Signature, ES),
+    API     = aefa_engine_state:chain_api(ES1),
+    case aefa_chain_api:oracle_register(Address, QFee, TTLType, TTLVal,
+                                        QFormat, RFormat, ?ABI_FATE_SOPHIA_1,
+                                        API) of
+        {ok, API1} ->
+            ES2 = aefa_engine_state:set_chain_api(API1, ES1),
+            write(Arg0, ?FATE_ORACLE(Address), ES2);
+        {error, What} ->
+            aefa_fate:abort({primop_error, oracle_register, What}, ES1)
+    end.
 
-oracle_extend(_EngineState) -> exit({error, op_not_implemented_yet}).
+oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
+    {[Oracle, Question, QFee, QTTL, RTTL], ES1} =
+        get_op_args([Arg1, Arg2, Arg3, Arg4, Arg5], EngineState),
+    if
+        not ?IS_FATE_ORACLE(Oracle) ->
+            aefa_fate:abort({value_does_not_match_type, Oracle, oracle}, ES1);
+        not ?IS_FATE_INTEGER(QFee) ->
+            aefa_fate:abort({value_does_not_match_type, QFee, integer}, ES1);
+        not ?FATE_INTEGER_VALUE(QFee) >= 0 ->
+            aefa_fate:abort({primop_error, oracle_query, too_low_fee}, ES1);
+        true ->
+            ok
+    end,
+    RTTLVal =
+        case RTTL of
+            ?FATE_REL_TTL(X) when ?IS_FATE_INTEGER(X) -> X;
+            _ ->
+                aefa_fate:abort({primop_error, oracle_query, bad_ttl}, ES1)
+        end,
+    {QTTLType, QTTLVal} =
+        case QTTL of
+            ?FATE_REL_TTL(R) when ?IS_FATE_INTEGER(R) -> {relative, R};
+            ?FATE_ABS_TTL(A) when ?IS_FATE_INTEGER(A) -> {absolute, A};
+             _ ->
+                aefa_fate:abort({primop_error, oracle_query, bad_ttl}, ES1)
+        end,
+    ?FATE_ORACLE(OraclePubkey) = Oracle,
+    SenderPubkey = aefa_engine_state:current_contract(ES1),
+    QFeeVal = ?FATE_INTEGER_VALUE(QFee),
+    API = aefa_engine_state:chain_api(ES1),
+    case aefa_chain_api:oracle_query(OraclePubkey, SenderPubkey, Question,
+                                     QFeeVal, QTTLType, QTTLVal, RTTLVal,
+                                     ?ABI_FATE_SOPHIA_1, API) of
+        {ok, QueryId, API1} ->
+            ES2 = aefa_engine_state:set_chain_api(API1, ES1),
+            write(Arg0, aeb_fate_data:make_oracle_query(QueryId), ES2);
+        {error, What} ->
+            aefa_fate:abort({primop_error, oracle_query, What}, ES1)
+    end.
 
-oracle_get_answer(_EngineState) -> exit({error, op_not_implemented_yet}).
+oracle_respond(Arg0, Arg1, Arg2, Arg3, EngineState) ->
+    {[Signature, Oracle, Query, Response], ES1} =
+        get_op_args([Arg0, Arg1, Arg2, Arg3], EngineState),
+    if
+        not ?IS_FATE_ORACLE(Oracle) ->
+            aefa_fate:abort({value_does_not_match_type, Oracle, oracle}, ES1);
+        not ?IS_FATE_SIGNATURE(Signature) ->
+            aefa_fate:abort({value_does_not_match_type, Signature, string}, ES1);
+        not ?IS_FATE_ORACLE_Q(Query) ->
+            aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
+        true ->
+            ok
+    end,
+    ?FATE_ORACLE_Q(QueryId) = Query,
+    ?FATE_ORACLE(OraclePubkey) = Oracle,
+    ?FATE_SIGNATURE(SignBin) = Signature,
+    ES2 = check_delegation_signature(oracle_respond, {OraclePubkey, QueryId}, SignBin, ES1),
+    API = aefa_engine_state:chain_api(ES2),
+    case aefa_chain_api:oracle_respond(OraclePubkey, QueryId, Response, ?ABI_FATE_SOPHIA_1, API) of
+        {ok, API1} ->
+            aefa_engine_state:set_chain_api(API1, ES2);
+        {error, What} ->
+            aefa_fate:abort({primop_error, oracle_respond, What}, ES2)
+    end.
 
-oracle_get_question(_EngineState) -> exit({error, op_not_implemented_yet}).
+oracle_extend(Arg0, Arg1, Arg2, EngineState) ->
+    {[Signature, Oracle, TTL], ES1} =
+        get_op_args([Arg0, Arg1, Arg2], EngineState),
+    if
+        not ?IS_FATE_ORACLE(Oracle) ->
+            aefa_fate:abort({value_does_not_match_type, Oracle, oracle}, ES1);
+        not ?IS_FATE_SIGNATURE(Signature) ->
+            aefa_fate:abort({value_does_not_match_type, Signature, signature}, ES1);
+        true ->
+            ok
+    end,
+    {TTLType, TTLVal} =
+        case TTL of
+            %% TTL Must be relative for extends
+            ?FATE_REL_TTL(R) when ?IS_FATE_INTEGER(R) -> {relative, R};
+             _ ->
+                aefa_fate:abort({primop_error, oracle_query, bad_ttl}, EngineState)
+        end,
+    ?FATE_ORACLE(OraclePubkey) = Oracle,
+    ?FATE_SIGNATURE(SignBin) = Signature,
+    ES2 = check_delegation_signature(oracle_extend, OraclePubkey, SignBin, ES1),
+    API = aefa_engine_state:chain_api(ES2),
+    case aefa_chain_api:oracle_extend(OraclePubkey, TTLType, TTLVal, API) of
+        {ok, API1} ->
+            aefa_engine_state:set_chain_api(API1, ES2);
+        {error, What} ->
+            aefa_fate:abort({primop_error, oracle_extend, What}, ES2)
+    end.
 
-oracle_query_fee(_EngineState) -> exit({error, op_not_implemented_yet}).
+oracle_get_question(Arg0, Arg1, Arg2, EngineState) ->
+    {[Oracle, Query], ES1} =
+        get_op_args([Arg1, Arg2], EngineState),
+    if
+        not ?IS_FATE_ORACLE(Oracle) ->
+            aefa_fate:abort({value_does_not_match_type, Oracle, oracle}, ES1);
+        not ?IS_FATE_ORACLE_Q(Query) ->
+            aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
+        true ->
+            ok
+    end,
+    ?FATE_ORACLE(OraclePubkey) = Oracle,
+    ?FATE_ORACLE_Q(QueryId) = Query,
+    API = aefa_engine_state:chain_api(ES1),
+    case aefa_chain_api:oracle_get_question(OraclePubkey, QueryId, API) of
+        {ok, Question, API1} ->
+            %% TODO: Should we check the type of the query?
+            ES2 = aefa_engine_state:set_chain_api(API1, ES1),
+            write(Arg0, Question, ES2);
+        {error, What} ->
+            aefa_fate:abort({primop_error, oracle_get_question, What}, ES1)
+    end.
+
+oracle_get_answer(Arg0, Arg1, Arg2, EngineState) ->
+    {[Oracle, Query], ES1} =
+        get_op_args([Arg1, Arg2], EngineState),
+    if
+        not ?IS_FATE_ORACLE(Oracle) ->
+            aefa_fate:abort({value_does_not_match_type, Oracle, oracle}, ES1);
+        not ?IS_FATE_ORACLE_Q(Query) ->
+            aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
+        true ->
+            ok
+    end,
+    ?FATE_ORACLE(OraclePubkey) = Oracle,
+    ?FATE_ORACLE_Q(QueryId) = Query,
+    API = aefa_engine_state:chain_api(ES1),
+    case aefa_chain_api:oracle_get_answer(OraclePubkey, QueryId, API) of
+        {ok, Answer, API1} ->
+            %% TODO: Should we check the type of the query?
+            ES2 = aefa_engine_state:set_chain_api(API1, ES1),
+            write(Arg0, Answer, ES2);
+        {error, What} ->
+            aefa_fate:abort({primop_error, oracle_get_question, What}, ES1)
+    end.
+
+
+oracle_query_fee(Arg0, Arg1, EngineState) ->
+    case get_op_arg(Arg1, EngineState) of
+        {?FATE_ORACLE(OraclePubkey), ES1} ->
+            API = aefa_engine_state:chain_api(ES1),
+            case aefa_chain_api:oracle_query_fee(OraclePubkey, API) of
+                {ok, FeeVal, API1} ->
+                    ES2 = aefa_engine_state:set_chain_api(API1, ES1),
+                    write(Arg0, aeb_fate_data:make_integer(FeeVal), ES2);
+                {error, What} ->
+                    aefa_fate:abort({primop_error, oracle_query_fee, What}, ES1)
+            end;
+        {Other, ES1} ->
+            aefa_fate:abort({value_does_not_match_type, Other, oracle}, ES1)
+    end.
+
+check_delegation_signature(Type, Data, Signature, ES) ->
+    Current = aefa_engine_state:current_contract(ES),
+    check_delegation_signature(Type, Data, Signature, Current, ES).
+
+check_delegation_signature(Type, Data, SignBin, Current, ES) ->
+    {Bin, Pubkey} = delegation_signature_data(Type, Data, Current),
+    case Pubkey =:= Current of
+        true ->
+            ES;
+        false ->
+            API = aefa_engine_state:chain_api(ES),
+            case aefa_chain_api:check_delegation_signature(Pubkey, Bin, SignBin, API) of
+                {ok, API1} ->
+                    aefa_engine_state:set_chain_api(API1, ES);
+                error ->
+                    aefa_fate:abort({primop_error, Type, bad_signature}, ES)
+            end
+    end.
+
+delegation_signature_data(oracle_register, Pubkey, Current) ->
+    {<<Pubkey/binary, Current/binary>>, Pubkey};
+delegation_signature_data(oracle_extend, Pubkey, Current) ->
+    {<<Pubkey/binary, Current/binary>>, Pubkey};
+delegation_signature_data(oracle_respond, {Pubkey, QueryId}, Current) ->
+    {<<QueryId/binary, Current/binary>>, Pubkey}.
 
 aens_resolve(_EngineState) -> exit({error, op_not_implemented_yet}).
 
@@ -768,6 +992,9 @@ exit(_Arg0, _EngineState) ->
 nop(EngineState) ->
     EngineState.
 
+auth_tx_hash(_Arg0, _EngineState) ->
+    exit(nyi).
+
 %% ------------------------------------------------------------------------
 %% Helpers
 %% ------------------------------------------------------------------------
@@ -812,6 +1039,13 @@ ter_op(Op, {To, One, Two, Three}, ES) ->
     {ValueThree, ES3} = get_op_arg(Three, ES2),
     Result = gop(Op, ValueOne, ValueTwo, ValueThree, ES3),
     write(To, Result, ES3).
+
+get_op_args([H|T], ES) ->
+    {X, ES1} = get_op_arg(H, ES),
+    {Xs, ES2} = get_op_args(T, ES1),
+    {[X|Xs], ES2};
+get_op_args([], ES) ->
+    {[], ES}.
 
 get_op_arg({stack, 0}, ES) ->
     aefa_engine_state:pop_accumulator(ES);

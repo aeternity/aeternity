@@ -28,6 +28,16 @@
 
 %% Modifiers
 -export([ spend/4
+        , oracle_extend/4
+        , oracle_get_answer/3
+        , oracle_get_question/3
+        , oracle_register/8
+        , oracle_query/9
+        , oracle_respond/5
+        , oracle_query_fee/2
+        ]).
+
+-export([ check_delegation_signature/4
         ]).
 
 -export_type([ state/0
@@ -185,12 +195,188 @@ account_balance(Pubkey, #state{primop_state = PState} = S) ->
             error
     end.
 
+-spec check_delegation_signature(pubkey(), binary(), binary(), state()) ->
+                                        {'ok', state()} | 'error'.
+check_delegation_signature(Pubkey, Binary, Signature,
+                           #state{ primop_state = PState} = State) ->
+    case aeprimop_state:find_account(Pubkey, PState) of
+        {Account, PState1} ->
+            case aec_accounts:type(Account) of
+                generalized ->
+                    error;
+                basic ->
+                    BinaryForNetwork = aec_governance:add_network_id(Binary),
+                    case enacl:sign_verify_detached(Signature, BinaryForNetwork, Pubkey) of
+                        {ok, _}    -> {ok, State#state{primop_state = PState1}};
+                        {error, _} -> error
+                    end
+            end;
+        none ->
+            error
+    end.
+
 %%%-------------------------------------------------------------------
 %%% Operations modifying state
 
 spend(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:spend_op(FromPubkey, ToPubkey, Amount)
                  ], State).
+
+oracle_register(Pubkey, QFee, TTLType, TTLVal,
+                QFormat, RFormat, ABIVersion, State) ->
+    Height = aetx_env:height(tx_env(State)),
+    case to_relative_ttl(TTLType, TTLVal, Height) of
+        {ok, RelTTL} ->
+            eval_primops([ aeprimop:oracle_register_op(Pubkey, QFormat, RFormat,
+                                                       QFee, RelTTL, ABIVersion)
+                         ], State);
+        {error, _} = Err ->
+            Err
+    end.
+
+oracle_extend(Pubkey, TTLType, TTLVal, State) ->
+    Height = aetx_env:height(tx_env(State)),
+    case to_relative_ttl(TTLType, TTLVal, Height) of
+        {ok, RelTTL} ->
+            eval_primops([ aeprimop:oracle_extend_op(Pubkey, RelTTL)
+                         ], State);
+        {error, _} = Err ->
+            Err
+    end.
+
+oracle_query(OraclePubkey, SenderPubkey, Question, QFee, QTTLType, QTTL, RTTL,
+             ABIVersion, #state{primop_state = PState} = State) ->
+    Height = aetx_env:height(tx_env(State)),
+    case to_relative_ttl(QTTLType, QTTL, Height) of
+        {ok, QTTL1} ->
+            case abi_encode_oracle_term(OraclePubkey, ABIVersion, Question, PState) of
+                {ok, Question1, PState1} ->
+                    %% The nonce of the sender is used for creating the query id.
+                    %% So, we need to bump it.
+                    {SAcc, PState2} = aeprimop_state:get_account(SenderPubkey, PState1),
+                    Nonce = aec_accounts:nonce(SAcc) + 1,
+                    Ins   = [ aeprimop:force_inc_account_nonce_op(SenderPubkey, Nonce)
+                            , aeprimop:spend_fee_op(SenderPubkey, QFee)
+                            , aeprimop:oracle_query_op_with_return(
+                                OraclePubkey, SenderPubkey, Nonce,
+                                Question1, QFee, QTTL1, RTTL)
+                            ],
+                    eval_primops(Ins, State#state{ primop_state = PState2});
+                {error, _} = Err ->
+                    Err
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+oracle_respond(OraclePubkey, QueryId, Response, ABIVersion, #state{primop_state = PState} = State) ->
+    case abi_encode_oracle_term(OraclePubkey, ABIVersion, Response, PState) of
+        {ok, Response1, PState1} ->
+            Ins = [ aeprimop:oracle_respond_op(OraclePubkey, QueryId, Response1)
+                  , aeprimop:oracle_earn_query_fee_op(OraclePubkey, QueryId)
+                  ],
+            eval_primops(Ins, State#state{ primop_state = PState1});
+        {error, _} = Err ->
+            Err
+    end.
+
+oracle_query_fee(OraclePubkey, #state{primop_state = PState} = State) ->
+    case aeprimop_state:find_oracle(OraclePubkey, PState) of
+        {Oracle, PState1} ->
+            {ok, aeo_oracles:query_fee(Oracle), State#state{primop_state = PState1}};
+        none ->
+            {error, oracle_does_not_exist}
+    end.
+
+oracle_get_question(OraclePubkey, QueryId, #state{primop_state = PSTate} = State) ->
+    case aeprimop_state:find_oracle_query(OraclePubkey, QueryId, PSTate) of
+        {Query, PState1} ->
+            {Oracle, PState2} = aeprimop_state:find_oracle(OraclePubkey, PState1),
+            RawQuestion = aeo_query:query(Query),
+            State1 = State#state{primop_state = PState2},
+            case aeo_oracles:abi_version(Oracle) of
+                ?ABI_NO_VM ->
+                    {ok, aeb_fate_data:make_string(RawQuestion), State1};
+                ?ABI_FATE_SOPHIA_1 ->
+                    try
+                        {ok, aeb_fate_encoding:deserialize(RawQuestion), State1}
+                    catch _:_ ->
+                            {error, bad_question}
+                    end;
+                _Other ->
+                    io:format("Got ABI: ~p\n", [_Other]),
+                    {error, bad_abi}
+            end;
+        none ->
+            {error, query_not_found}
+    end.
+
+oracle_get_answer(OraclePubkey, QueryId, #state{primop_state = PSTate} = State) ->
+    case aeprimop_state:find_oracle_query(OraclePubkey, QueryId, PSTate) of
+        {Query, PState1} ->
+            case aeo_query:response(Query) of
+                undefined ->
+                    State1 = State#state{primop_state = PState1},
+                    {ok, aeb_fate_data:make_variant([0,1], 0, {}), State1};
+                RawResponse ->
+                    {Oracle, PState2} = aeprimop_state:find_oracle(OraclePubkey, PState1),
+                    State1 = State#state{primop_state = PState2},
+                    case aeo_oracles:abi_version(Oracle) of
+                        ?ABI_NO_VM ->
+                            Answer = aeb_fate_data:make_string(RawResponse),
+                            Resp = aeb_fate_data:make_variant([0,1], 1, {Answer}),
+                            {ok, Resp, State1};
+                        ?ABI_FATE_SOPHIA_1 ->
+                            try aeb_fate_encoding:deserialize(RawResponse) of
+                                Answer ->
+                                    Resp = aeb_fate_data:make_variant([0,1], 1, {Answer}),
+                                    {ok, Resp, State1}
+                            catch _:_ ->
+                                    {error, bad_response}
+                            end
+                    end
+            end;
+        none ->
+            %% TODO: This mimics the aevm behavour,
+            %% but should it really be like this?
+            {ok, aeb_fate_data:make_variant([0,1], 0, {}), State}
+    end.
+
+to_relative_ttl(relative, TTL,_Height) ->
+    case TTL >= 0 of
+        true  -> {ok, TTL};
+        false -> {error, negative_ttl}
+    end;
+to_relative_ttl(absolute, TTL, Height) ->
+    case TTL >= Height of
+        true  -> {ok, TTL - Height};
+        false -> {error, too_low_ttl}
+    end.
+
+abi_encode_oracle_term(Pubkey, ABIVersion, Term, PState) ->
+    case aeprimop_state:find_oracle(Pubkey, PState) of
+        {Oracle, PState1} ->
+            case aeo_oracles:abi_version(Oracle) of
+                ?ABI_NO_VM ->
+                    case ?IS_FATE_STRING(Term) of
+                        true ->
+                            ?FATE_STRING(String) = Term,
+                            {ok, String, PState1};
+                        false ->
+                            {error, no_vm_oracles_needs_strings}
+                    end;
+                ABIVersion ->
+                    {ok, aeb_fate_encoding:serialize(Term), PState1};
+                _ ->
+                    {error, wrong_abi_version}
+            end;
+        none ->
+            {error, oracle_not_found}
+    end.
+
+
+%%%-------------------------------------------------------------------
+%%% Interface to primop evaluation
 
 eval_primops(Ops, #state{primop_state = PState} = S) ->
     case aeprimop:eval_on_primop_state(Ops, PState) of
