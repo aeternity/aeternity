@@ -176,14 +176,13 @@ make_calldata(Name, Fun, Args) when length(Name) < 20 ->
     {ok, Src} = read_contract(Name),
     make_calldata(Src, Fun, Args);
 make_calldata(Code, Fun, Args) ->
-    case aega_SUITE:abi_version() of
-        ?ABI_AEVM_SOPHIA_1 ->
-            {ok, Calldata} = aeso_compiler:create_calldata(Code, Fun, Args, [{backend, aevm}]),
-            Calldata;
-        ?ABI_FATE_SOPHIA_1 ->
-            {ok, Calldata} = aeso_compiler:create_calldata(Code, Fun, Args, [{backend, fate}]),
-            Calldata
-    end.
+    Backend =
+        case aega_SUITE:abi_version() of
+            ?ABI_AEVM_SOPHIA_1 -> aevm;
+            ?ABI_FATE_SOPHIA_1 -> fate
+        end,
+    {ok, Calldata} = aeso_compiler:create_calldata(Code, Fun, Args, [{backend, Backend}]),
+    Calldata.
 
 get_contract(Name) ->
     SophiaVersion = aega_SUITE:sophia_version(),
