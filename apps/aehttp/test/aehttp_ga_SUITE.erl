@@ -36,6 +36,7 @@
         , attach_second/1
         , meta_4_fail/1
         , mempool/1
+        , mempool_rejects_normal_tx/1
         ]).
 
 -define(NODE, dev1).
@@ -74,7 +75,8 @@ groups() ->
 
      {ga_mempool, [sequence],
       [ attach
-      , mempool ]}
+      , mempool
+      , mempool_rejects_normal_tx ]}
     ].
 
 suite() ->
@@ -394,6 +396,16 @@ mempool(Config) ->
 
     %% Test with exactly the lowest possible fee... Note that there isn't any size gas!
     #{tx_hash := _MetaTx} = post_ga_spend_tx(APub, APriv, ["1"], BPub, 10001, MGP * 15000, MetaFee),
+
+    ok.
+
+mempool_rejects_normal_tx(Config) ->
+    #{acc_a := #{pub_key := APub, priv_key := APriv},
+      acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
+    MGP     = aec_test_utils:min_gas_price(),
+    SpendTx = spend_tx(APub, APriv, 2, BPub, 10000, 20000 * MGP),
+    SignTx  = aec_test_utils:sign_tx(SpendTx, [APriv]),
+    ?assertEqual(not_accepted, post_aetx(SignTx)),
 
     ok.
 
