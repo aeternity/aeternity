@@ -179,7 +179,7 @@ make_calldata(Name, Fun, Args) when length(Name) < 20 ->
 make_calldata(Code, Fun, Args) ->
     case aega_SUITE:abi_version() of
         ?ABI_AEVM_SOPHIA_1 ->
-            {ok, Calldata, _, _} = aeso_compiler:create_calldata(Code, Fun, Args, [{backend, aevm}]),
+            {ok, Calldata} = aeso_compiler:create_calldata(Code, Fun, Args, [{backend, aevm}]),
             Calldata;
         ?ABI_FATE_SOPHIA_1 ->
             {ok, Calldata} = aeso_compiler:create_calldata(Code, Fun, Args, [{backend, fate}]),
