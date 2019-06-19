@@ -26,6 +26,8 @@
          get_contract/2,
          get_poi/2]).
 
+-export([attach_responder/2]).   %% (fsm(), map())
+
 -export([strict_checks/2]). %% tests only
 
 %% Inspection and configuration functions
@@ -237,6 +239,8 @@
 %% ==================================================================
 %% Tracing support
 patterns() ->
+    [{?MODULE, F, A, []} || {F,A} <- gen_tcp:module_info(exports),
+                            F =/= module_info] ++
     [{?MODULE, F, A, []} || {F,A} <- ?MODULE:module_info(exports),
                             not lists:member(F, [module_info, patterns])].
 
@@ -499,6 +503,9 @@ get_contract(Fsm, Pubkey) ->
 get_poi(Fsm, Filter) ->
     gen_statem:call(Fsm, {get_poi, Filter}).
 
+attach_responder(Fsm, AttachInfo) when is_map(AttachInfo) ->
+    gen_statem:call(Fsm, {attach_responder, AttachInfo}).
+
 %% This is supposed to be used in tests only. If Alice stops checking
 %% her own signatures, Bob will still check hers and will reject any wrongly
 %% signed txs. There is a risk for Alice corrupting her own state if using
@@ -618,7 +625,7 @@ init(#{opts := Opts0} = Arg) ->
         {error, Err} ->
             {stop, Err};
         ok ->
-            Session = start_session(Arg, Opts#{role => Role}),
+            Session = start_session(Arg, Reestablish, Opts#{role => Role}),
             {ok, State} = aesc_offchain_state:new(maps:merge(Opts#{role => Role}, ReestablishOpts)),
             Data = #data{role   = Role,
                         client  = Client,
@@ -639,7 +646,10 @@ init(#{opts := Opts0} = Arg) ->
                     end;
                 responder ->
                     if Reestablish ->
-                            ok_next(awaiting_reestablish, Data);
+                            ChanId = maps:get(existing_channel_id, ReestablishOpts),
+                            ok_next(awaiting_reestablish,
+                                    Data#data{ channel_id  = ChanId
+                                             , on_chain_id = ChanId });
                       true ->
                             ok_next(awaiting_open, Data)
                     end
@@ -707,10 +717,24 @@ check_log_opt(Opts) ->
 
 %% As per CHANNELS.md, the responder is regarded as the one typically
 %% providing the service, and the initiator connects.
-start_session(#{port := Port}, #{role := responder} = Opts) ->
+start_session(#{ port := Port
+               , opts := Opts0 }, Reestablish, #{ role      := responder
+                                                , responder := Responder
+                                                , initiator := Initiator } = Opts) ->
     NoiseOpts = maps:get(noise, Opts, []),
-    ok(aesc_session_noise:accept(Port, NoiseOpts));
-start_session(#{host := Host, port := Port}, #{role := initiator} = Opts) ->
+    SessionOpts = if Reestablish ->
+                          #{ reestablish => true
+                           , port        => Port
+                           , chain_hash  => aec_chain:genesis_hash()
+                           , channel_id  => maps:get(existing_channel_id, Opts0)
+                           , responder   => Responder };
+                     true ->
+                          #{ initiator => Initiator
+                           , responder => Responder
+                           , port      => Port }
+                  end,
+    ok(aesc_session_noise:accept(SessionOpts, NoiseOpts));
+start_session(#{host := Host, port := Port}, _, #{role := initiator} = Opts) ->
     NoiseOpts = maps:get(noise, Opts, []),
     ok(aesc_session_noise:connect(Host, Port, NoiseOpts)).
 
@@ -750,6 +774,23 @@ awaiting_open(cast, {?CH_OPEN, Msg}, #data{role = responder} = D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
+awaiting_open({call, From}, {attach_responder, Info}, #data{opts = Opts} = D) ->
+    lager:debug("Attach request: ~p", [Info]),
+    #{initiator := I, responder := R} = Opts,
+    case Info of
+        #{ initiator := I1
+         , responder := R
+         , port      := _Port
+         , gproc_key := K } when I1 =:= I; I =:= any ->
+            gproc:unreg(K),
+            Opts1 = Opts#{initiator => I1},
+            {Pid, _} = From,
+            keep_state(D#data{session = Pid, opts = Opts1},
+                       [{reply, From, ok}]);
+        _ ->
+            gen:reply(From, {error, invalid_attach}),
+            keep_state(D, [{reply, From, {error, invalid_attach}}])
+    end;
 awaiting_open(Type, Msg, D) ->
     handle_common_event(Type, Msg, error_all, D).
 
@@ -762,6 +803,26 @@ awaiting_reestablish(cast, {?CH_REESTABL, Msg}, #data{role = responder} = D) ->
             next_state(open, send_reestablish_ack_msg(D1));
         {error, _} = Error ->
             close(Error, D)
+    end;
+awaiting_reestablish({call, From}, {attach_responder, Info},
+                     #data{ opts        = Opts
+                          , on_chain_id = ChannelId
+                          , role        = responder } = D) ->
+    lager:debug("Attach request: ~p", [Info]),
+    #{ responder := R } = Opts,
+    ChainHash = aec_chain:genesis_hash(),
+    case Info of
+        #{ chain_hash := ChainHash
+         , channel_id := ChannelId
+         , responder  := R
+         , port       := _Port
+         , gproc_key  := K } ->
+            gproc:unreg(K),
+            gen:reply(From, ok),
+            {Pid, _} = From,
+            keep_state(D#data{session = Pid}, [{reply, From, ok}]);
+        _ ->
+            keep_state(D, [{reply, From, {error, invalid_attach}}])
     end;
 awaiting_reestablish(Type, Msg, D) ->
     handle_common_event(Type, Msg, error_all, D).

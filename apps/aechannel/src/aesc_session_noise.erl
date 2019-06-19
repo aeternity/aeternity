@@ -45,9 +45,20 @@
 -export([ patterns/0
         , record_fields/1]).
 
--record(st, {parent :: pid()
-           , parent_mon_ref :: reference()
-           , econn }).
+-export([start_link/1]).
+
+-record(st, { init_op        :: op()
+            , parent         :: undefined | pid()
+            , parent_mon_ref :: undefined | reference()
+            , econn }).
+
+-type participants() :: #{ initiator := aec_keys:pubkey() | any
+                         , responder := aec_keys:pubkey() }.
+-type host() :: inet:socket_address() | inet:hostname().
+-type port_number() :: inet:port_number().
+-type opts() :: list().  %% TODO: improve type spec
+-type op() :: {accept, participants(), port(), opts()}
+            | {connect, host(), port_number(), opts()}.
 
 channel_open       (Session, Msg) -> cast(Session, {msg, ?CH_OPEN      , Msg}).
 channel_accept     (Session, Msg) -> cast(Session, {msg, ?CH_ACCEPT    , Msg}).
@@ -94,10 +105,8 @@ close(Session) ->
 %% for tracing
 -define(EXCEPTION_TRACE, {'_', [], [{exception_trace}]}).
 patterns() ->
-    exports(?MODULE).
-        %% ++ exports(gen_tcp)
-        %% ++ exports(enoise)
-        %% ++ exports(enoise_connection).
+    [{?MODULE, '_', '_', [?EXCEPTION_TRACE]}].
+    %% exports(?MODULE).
 
 exports(M) ->
     [{M, F, A, [?EXCEPTION_TRACE]} || {F,A} <- M:module_info(exports)].
@@ -110,38 +119,77 @@ record_fields(_ ) -> no.
 %% Connection establishment
 
 connect(Host, Port, Opts) ->
-    gen_server:start_link(
-      ?MODULE, {self(), {connect, Host, Port, Opts}}, ?GEN_SERVER_OPTS).
+    start_link({self(), {connect, Host, Port, Opts}}).
 
-accept(Port, Opts) ->
-    gen_server:start_link(
-      ?MODULE, {self(), {accept, Port, Opts}}, ?GEN_SERVER_OPTS).
+accept(#{ reestablish := true
+        , chain_hash  := ChainH
+        , channel_id  := ChId
+        , responder   := R
+        , port        := Port }, NoiseOpts) ->
+    gproc:reg({n,l,responder_reestabl_regkey(ChainH, ChId, R, Port)}),
+    {ok, _Pid} = aesc_sessions_sup:start_child(
+                   [{self(), {accept, #{ responder => R
+                                       , port      => Port }, NoiseOpts}}]);
+accept(#{ initiator := I, responder := R, port := Port }, NoiseOpts) ->
+    gproc:reg({n,l,responder_regkey(I, R, Port)}),
+    {ok, _Pid} = aesc_sessions_sup:start_child(
+                   [{self(), {accept, #{ responder => R
+                                       , port      => Port }, NoiseOpts}}]).
 
-init({Parent, Op}) ->
+start_link(Arg) ->
+    gen_server:start_link(?MODULE, Arg, ?GEN_SERVER_OPTS).
+
+timeout_opt(<<"infinity">>)      -> infinity;
+timeout_opt(B) when is_binary(B) -> binary_to_integer(B);
+timeout_opt(infinity)            -> infinity;
+timeout_opt(T) when is_integer(T),
+                    T > 0 ->
+    T.
+
+init({Fsm, Op}) ->
     %% trap exits to avoid ugly crash reports. We rely on the monitor to
     %% ensure that we close when the fsm dies
     %%
     %% TODO: For some reason, trapping exits causes
     %% aehttp_integration_SUITE:sc_ws_open/1 to fail. Investigate why.
     process_flag(trap_exit, true),
+    %%
+    Parent = get_parent(),  % in the acceptor case, this is not the fsm
+    lager:debug("~p", [{Parent, Op}]),
+    lager:debug("~p", [process_info(self(), dictionary)]),
     proc_lib:init_ack(Parent, {ok, self()}),
-    ParentMonRef = monitor(process, Parent),
-    St = establish(Op, #st{parent = Parent,
-                           parent_mon_ref = ParentMonRef}),
+    FsmMonRef = monitor(process, Fsm),
+    St = establish(Op, #st{ init_op = Op
+                          , parent = Fsm
+                          , parent_mon_ref = FsmMonRef }),
     gen_server:enter_loop(?MODULE, ?GEN_SERVER_OPTS, St).
 
-establish({accept, Port, Opts}, St) ->
+get_parent() ->
+    case get('$ancestors') of
+        [Name|_] when is_atom(Name) ->
+            whereis(Name);
+        [Pid|_] when is_pid(Pid) ->
+            Pid
+    end.
+
+establish({accept, #{responder := R, port := Port} = _Participants, Opts}, St) ->
     TcpOpts = tcp_opts(listen, Opts),
     lager:debug("listen: TcpOpts = ~p", [TcpOpts]),
-    {ok, LSock} = gen_tcp:listen(Port, TcpOpts),
+    {ok, LSock} = aesc_listeners:listen(Port, R, TcpOpts),
+    lager:debug("LSock = ~p", [LSock]),
     {ok, TcpSock} = gen_tcp:accept(LSock),
     lager:debug("Accept TcpSock = ~p", [TcpSock]),
     %% TODO: extract/check something from FinalState?
     EnoiseOpts = enoise_opts(accept, Opts),
     lager:debug("EnoiseOpts (accept) = ~p", [EnoiseOpts]),
     {ok, EConn, _FinalSt} = enoise:accept(TcpSock, EnoiseOpts),
-    %% tell_fsm({accept, EConn}, St),
-    St#st{econn = EConn};
+    %% At this point, we should de-couple from the parent fsm and instead
+    %% attach to the fsm we eventually pair with, once the `CH_OPEN`
+    %% (or `CH_REESTABL`) message arrives from the other side.
+    erlang:demonitor(St#st.parent_mon_ref),
+    St#st{econn = EConn,
+          parent = undefined,
+          parent_mon_ref = undefined};
 establish({connect, Host, Port, Opts}, St) ->
     TcpOpts = tcp_opts(connect, Opts),
     lager:debug("connect: TcpOpts = ~p", [TcpOpts]),
@@ -152,7 +200,6 @@ establish({connect, Host, Port, Opts}, St) ->
     EnoiseOpts = enoise_opts(connect, Opts),
     lager:debug("EnoiseOpts (connect) = ~p", [EnoiseOpts]),
     {ok, EConn, _FinalSt} = enoise:connect(TcpSock, EnoiseOpts),
-    %% tell_fsm({accept, EConn}, St),
     St#st{econn = EConn}.
 
 connect_tcp(Host, Port, Ref, Opts) ->
@@ -184,11 +231,9 @@ sleep(T, Ref) ->
             ok
     end.
 
-
 get_reconnect_params() ->
     %% {ConnectTimeout, Retries}
     {3000, 40}.  %% max 4 minutes (up to 40 retries, where each retry is up to 3 seconds TCP connection timeout and 3 seconds sleep time).
-
 
 handle_call(close, _From, #st{econn = EConn} = St) ->
     lager:debug("got close request", []),
@@ -227,11 +272,19 @@ handle_info(Msg, St) ->
             erlang:error(Reason, Trace)
     end.
 
-handle_info_({noise, EConn, Data}, #st{econn = EConn} = St) ->
-    {_Type, _Info} = Msg = aesc_codec:dec(Data),
-    tell_fsm(Msg, St),
+handle_info_({noise, EConn, Data}, #st{econn = EConn, parent = Parent} = St) ->
+    {Type, Info} = Msg = aesc_codec:dec(Data),
+    St1 = case {Type, Parent} of
+              {?CH_OPEN, undefined} ->
+                  locate_fsm(Type, Info, St);
+              {?CH_REESTABL, undefined} ->
+                  locate_fsm(Type, Info, St);
+              _ ->
+                  St
+          end,
+    tell_fsm(Msg, St1),
     enoise:set_active(EConn, once),
-    {noreply, St};
+    {noreply, St1};
 handle_info_({tcp_closed, _Port}, #st{parent = Pid} = St) ->
     aesc_fsm:connection_died(Pid),
     {stop, normal, St};
@@ -245,6 +298,55 @@ terminate(_Reason, #st{econn = EConn}) ->
 
 code_change(_FromVsn, St, _Extra) ->
     {ok, St}.
+
+locate_fsm(Type, MInfo,
+           #st{ init_op = {accept, #{ responder := R } = SnInfo, _Opts} } = St) ->
+    Info = maps:merge(SnInfo, MInfo),  % any duplicates overridden by what was received
+    Cands = get_cands(Type, Info),
+    lager:debug("Cands = ~p", [Cands]),
+    try_cands(Cands, 3, Type, Info, St).
+
+get_cands(?CH_OPEN, #{ initiator := I
+                     , responder := R
+                     , port      := Port }) ->
+    gproc:select({l,n},
+                 [{ {{n,l, responder_regkey(I, R, Port)}, '_', '_'},
+                    [], ['$_'] }])
+        ++ gproc:select(
+             {l,n},
+             [{ {{n,l, responder_regkey(any, R, Port)}, '_', '_'},
+                [], ['$_'] }]);
+get_cands(?CH_REESTABL, #{ chain_hash := Chain
+                         , channel_id := ChId
+                         , responder  := R
+                         , port := Port}) ->
+    gproc:select({l,n},
+                 [{ {{n,l, responder_reestabl_regkey(Chain, ChId, R, Port)}, '_', '_'},
+                    [], ['$_'] }]).
+
+responder_reestabl_regkey(Chain, ChId, R, Port) ->
+    {n, l, {?MODULE, accept_reestabl, Chain, ChId, R, Port}}.
+
+responder_regkey(I, R, Port) ->
+    {n, l, {?MODULE, accept, I, R, Port}}.
+
+try_cands([{K, Pid, _} | Cands], Tries, Type, Info, St) ->
+    case aesc_fsm:attach_responder(Pid, Info#{ gproc_key => K }) of
+        {error, _} = E ->
+            lager:debug("Couldn't attach to ~p: ~p", [Pid, E]),
+            try_cands(Cands, Tries, Type, Info, St);
+        ok ->
+            lager:debug("Attached to ~p", [Pid]),
+            MRef = erlang:monitor(process, Pid),
+            St#st{ parent = Pid
+                 , parent_mon_ref = MRef }
+    end;
+try_cands([], 0, _, _, _) ->
+    erlang:error(cannot_locate_fsm);
+try_cands([], Tries, Type, Info, St) ->
+    lager:debug("Exhausted candidates; retrying ...", []),
+    receive after 100 -> ok end,
+    try_cands(get_cands(Type, Info), Tries-1, Type, Info, St).
 
 close_econn(undefined) ->
     ok;

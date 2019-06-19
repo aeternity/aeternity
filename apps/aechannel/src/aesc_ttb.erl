@@ -27,6 +27,7 @@ on_nodes(Ns, File) ->
 patterns() ->
     sc_ws_api:patterns()
         ++ aesc_fsm:patterns()
+        ++ aesc_listeners:patterns()
         ++ aesc_session_noise:patterns()
         ++ sc_ws_api:patterns()
         ++ tr_ttb:default_patterns().
