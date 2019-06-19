@@ -52,12 +52,23 @@
             , parent_mon_ref :: undefined | reference()
             , econn }).
 
--type participants() :: #{ initiator := aec_keys:pubkey() | any
-                         , responder := aec_keys:pubkey() }.
+-define(ACCEPT_TIMEOUT, 2*60*1000).  %% 2 minutes
+
+-type responder_accept_opts() :: #{ reestablish   => false
+                                  , initiator := aec_keys:pubkey() | any
+                                  , responder := aec_keys:pubkey()
+                                  , port      := port() }.
+-type responder_reestabl_opts() :: #{ reestablish := true
+                                    , chain_hash  := binary()
+                                    , channel_id  := binary()
+                                    , responder   := aec_keys:pubkey()
+                                    , port        := port() }.
+-type session_opts() :: responder_accept_opts()
+                      | responder_reestabl_opts().
 -type host() :: inet:socket_address() | inet:hostname().
 -type port_number() :: inet:port_number().
 -type opts() :: list().  %% TODO: improve type spec
--type op() :: {accept, participants(), port(), opts()}
+-type op() :: {accept, session_opts(), opts()}
             | {connect, host(), port_number(), opts()}.
 
 channel_open       (Session, Msg) -> cast(Session, {msg, ?CH_OPEN      , Msg}).
@@ -108,8 +119,8 @@ patterns() ->
     [{?MODULE, '_', '_', [?EXCEPTION_TRACE]}].
     %% exports(?MODULE).
 
-exports(M) ->
-    [{M, F, A, [?EXCEPTION_TRACE]} || {F,A} <- M:module_info(exports)].
+%% exports(M) ->
+%%     [{M, F, A, [?EXCEPTION_TRACE]} || {F,A} <- M:module_info(exports)].
 
 
 record_fields(st) -> record_info(fields, st);
@@ -125,26 +136,17 @@ accept(#{ reestablish := true
         , chain_hash  := ChainH
         , channel_id  := ChId
         , responder   := R
-        , port        := Port }, NoiseOpts) ->
+        , port        := Port } = Opts, NoiseOpts) ->
     gproc:reg({n,l,responder_reestabl_regkey(ChainH, ChId, R, Port)}),
     {ok, _Pid} = aesc_sessions_sup:start_child(
-                   [{self(), {accept, #{ responder => R
-                                       , port      => Port }, NoiseOpts}}]);
-accept(#{ initiator := I, responder := R, port := Port }, NoiseOpts) ->
+                   [{self(), {accept, Opts, NoiseOpts}}]);
+accept(#{ initiator := I, responder := R, port := Port } = Opts, NoiseOpts) ->
     gproc:reg({n,l,responder_regkey(I, R, Port)}),
     {ok, _Pid} = aesc_sessions_sup:start_child(
-                   [{self(), {accept, #{ responder => R
-                                       , port      => Port }, NoiseOpts}}]).
+                   [{self(), {accept, Opts, NoiseOpts}}]).
 
 start_link(Arg) ->
     gen_server:start_link(?MODULE, Arg, ?GEN_SERVER_OPTS).
-
-timeout_opt(<<"infinity">>)      -> infinity;
-timeout_opt(B) when is_binary(B) -> binary_to_integer(B);
-timeout_opt(infinity)            -> infinity;
-timeout_opt(T) when is_integer(T),
-                    T > 0 ->
-    T.
 
 init({Fsm, Op}) ->
     %% trap exits to avoid ugly crash reports. We rely on the monitor to
@@ -172,15 +174,16 @@ get_parent() ->
             Pid
     end.
 
-establish({accept, #{responder := R, port := Port} = _Participants, Opts}, St) ->
-    TcpOpts = tcp_opts(listen, Opts),
+establish({accept, #{responder := R, port := Port}, NoiseOpts}, St) ->
+    TcpOpts = tcp_opts(listen, NoiseOpts),
     lager:debug("listen: TcpOpts = ~p", [TcpOpts]),
     {ok, LSock} = aesc_listeners:listen(Port, R, TcpOpts),
     lager:debug("LSock = ~p", [LSock]),
-    {ok, TcpSock} = gen_tcp:accept(LSock),
+    AcceptTimeout = proplists:get_value(accept_timeout, NoiseOpts, ?ACCEPT_TIMEOUT),
+    {ok, TcpSock} = gen_tcp:accept(LSock, AcceptTimeout),
     lager:debug("Accept TcpSock = ~p", [TcpSock]),
     %% TODO: extract/check something from FinalState?
-    EnoiseOpts = enoise_opts(accept, Opts),
+    EnoiseOpts = enoise_opts(accept, NoiseOpts),
     lager:debug("EnoiseOpts (accept) = ~p", [EnoiseOpts]),
     {ok, EConn, _FinalSt} = enoise:accept(TcpSock, EnoiseOpts),
     %% At this point, we should de-couple from the parent fsm and instead
@@ -201,6 +204,7 @@ establish({connect, Host, Port, Opts}, St) ->
     lager:debug("EnoiseOpts (connect) = ~p", [EnoiseOpts]),
     {ok, EConn, _FinalSt} = enoise:connect(TcpSock, EnoiseOpts),
     St#st{econn = EConn}.
+
 
 connect_tcp(Host, Port, Ref, Opts) ->
     {Timeout, Retries} = get_reconnect_params(),
@@ -299,8 +303,7 @@ terminate(_Reason, #st{econn = EConn}) ->
 code_change(_FromVsn, St, _Extra) ->
     {ok, St}.
 
-locate_fsm(Type, MInfo,
-           #st{ init_op = {accept, #{ responder := R } = SnInfo, _Opts} } = St) ->
+locate_fsm(Type, MInfo, #st{ init_op = {accept, SnInfo, _Opts} } = St) ->
     Info = maps:merge(SnInfo, MInfo),  % any duplicates overridden by what was received
     Cands = get_cands(Type, Info),
     lager:debug("Cands = ~p", [Cands]),
