@@ -4,8 +4,8 @@
 It:
 * Ensures that synchronous jsonrpc calls to asynchronous methods get an "ok" response instead of timing out.
 * Fine-tunes error handling of slash and settle in the WebSocket channels API.
-* Testnet seed peers and BRI beneficiary accounts are now automatically configured based on network_id configuration
-* Network can be configured in the console by passing `-network_id` argument i.e. `bin/aeternity start -network_id ae_uat`
+* Automatically configures testnet seed peers and BRI beneficiary accounts based on network_id configuration.
+* Enables configuring the network in the console by passing `-network_id` argument i.e. `bin/aeternity start -network_id ae_uat`.
 * Adds public peer key to status API endpoint.
 * Adds top block height and top key block hash to status API endpoint.
 
