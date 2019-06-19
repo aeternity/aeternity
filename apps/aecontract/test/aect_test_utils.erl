@@ -354,10 +354,7 @@ encode_call_data(Code, Fun, Args) ->
 
 encode_call_data(Vsn, Code, Fun, Args) when Vsn == ?SOPHIA_LIMA_AEVM ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
-                                      lists:map(fun to_str/1, Args)) of
-        {error, _} = Err -> Err;
-        {ok, Data,_DataType,_OutType} when is_binary(Data) ->
-            {ok, Data}
+                                      lists:map(fun to_str/1, Args))
     catch _T:_E ->
         {error, <<"bad argument">>}
     end;

@@ -167,7 +167,7 @@ make_calldata(Name, Fun, Args) when length(Name) < 20 ->
     {ok, Src} = read_contract(Name),
     make_calldata(Src, Fun, Args);
 make_calldata(Code, Fun, Args) ->
-    {ok, Calldata, _, _} = aeso_compiler:create_calldata(Code, Fun, Args),
+    {ok, Calldata} = aeso_compiler:create_calldata(Code, Fun, Args),
     Calldata.
 
 get_contract(SophiaVersion, Name) ->
@@ -195,5 +195,3 @@ hash_lit_to_bin("#" ++ Hex) ->
        true ->
         aeu_hex:hexstring_decode(list_to_binary("0x" ++ Hex))
     end.
-
-
