@@ -1,5 +1,5 @@
 -define(PAYMENT_CONTRACT_TESTNET_ADDRESS, <<"ct_jgo43gdpikScyo5munDvsVWBJDugjkMtqPHUfzGJyuWAFFUuB">>).
--define(PAYMENT_CONTRACT_MAINNET_ADDRESS, <<"TODO">>).
+-define(PAYMENT_CONTRACT_MAINNET_ADDRESS, <<"ct_AhMbfHYPBK8Qu1DkqXwQHcMKZoZAUndyYTNZDnyS1AdWh7X9U">>).
 
 -include_lib("aecore/src/aec_conductor.hrl").
 
@@ -53,6 +53,8 @@
 
 -define(TABS, [?HASHES_TAB, ?SHARES_TAB, ?ROUNDS_TAB,
                ?REWARDS_TAB, ?PAYMENTS_TAB, ?CANDIDATES_TAB]).
+
+-define(PAYMENT_CONTRACT_BATCH_SIZE, 1000).
 
 -define(TXN(Body), mnesia:activity(transaction, fun () -> Body end)).
 

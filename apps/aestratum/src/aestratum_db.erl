@@ -22,7 +22,12 @@
          store_round/0,
          get_reward/1,
          store_reward/1,
+         has_payments/1,
+         oldest_unpaid_payment/0,
+         select_payments/1,
+         select_payments/2,
          store_payment/1,
+         store_payments/1,
          update_payment/4,
          delete_payment/1,
          get_candidate/1,
@@ -129,6 +134,13 @@ store_reward(#aestratum_reward{} = R) ->
     ok = mnesia:write(R),
     {ok, R}.
 
+
+store_payments(#aestratum_reward{} = Reward) ->
+    store_payments(aestratum_reward:relative_payments(Reward));
+store_payments(Ps) when is_list(Ps) ->
+    [{ok, _} = store_payment(P) || P <- Ps].
+
+
 store_payment(#aestratum_payment{} = P) ->
     ok = mnesia:write(P),
     {ok, P}.
@@ -196,9 +208,34 @@ shares_selector(FirstKey, LastKey) ->
 shares_slices(Selector) ->
     mnesia:select(?SHARES_TAB, Selector, ?SHARES_BATCH_LENGTH, read).
 
+
 payments(Height) ->
     Spec = ets:fun2ms(fun (#aestratum_payment{id = {H, _}} = P) when H == Height -> P end),
     mnesia:select(?PAYMENTS_TAB, Spec).
+
+
+payment_spec(_WasPaid = true) ->
+    ets:fun2ms(fun (#aestratum_payment{tx_hash = TH} = P) when is_binary(TH) -> P end);
+payment_spec(_WasPaid = false) ->
+    ets:fun2ms(fun (#aestratum_payment{tx_hash = undefined} = P) -> P end).
+
+select_payments(WasPaid) ->
+    mnesia:select(aestratum_payment, payment_spec(WasPaid), read).
+select_payments(WasPaid, N) ->
+    case mnesia:select(aestratum_payment, payment_spec(WasPaid), N, read) of
+        '$end_of_table' -> [];
+        {Res, _} -> Res
+    end.
+
+has_payments(WasPaid) ->
+    length(select_payments(WasPaid, 1)) > 0.
+
+oldest_unpaid_payment() ->
+    case select_payments(false, 1) of
+        [P | _] -> {ok, P};
+        [] -> none
+    end.
+
 
 keys(Height) ->
     case mnesia:read(aestratum_reward, Height) of

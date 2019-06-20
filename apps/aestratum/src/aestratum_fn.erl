@@ -12,6 +12,9 @@
          tag_val_err/3,
          key_val/2, val/2, val/3]).
 
+-export([idxs/2,
+         sum_values/1]).
+
 id(X) -> X.
 
 is_ok({ok, _}) -> true;
@@ -56,3 +59,10 @@ val(K, M) ->
     maps:get(aestratum_conv:bin(K), M).
 val(K, M, Default) ->
     maps:get(aestratum_conv:bin(K), M, Default).
+
+
+idxs(Xs, From) ->
+    lists:zip(lists:seq(From, From + length(Xs) - 1), Xs).
+
+sum_values(M) when is_map(M) ->
+    lists:sum(maps:values(M)).

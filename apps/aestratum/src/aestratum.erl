@@ -12,8 +12,7 @@
          tab_keys/0,
          tab_keys/1,
          sent_payments/0,
-         pending_payments/0,
-         select_payments/2]).
+         pending_payments/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -31,7 +30,6 @@
 -define(CHAIN_PAYMENT_TX_CHECK_INTERVAL,  timer:seconds(10)).
 -define(CANDIDATE_CACHE_CLEANUP_INTERVAL, timer:minutes(15)).
 
--define(PAYMENT_CONTRACT_BATCH_SIZE, 1000).
 -define(PAYMENT_CONTRACT_INIT_GAS, 250).           % measured
 -define(PAYMENT_CONTRACT_GAS_PER_TRANSFER, 22000). % measured
 
@@ -52,7 +50,6 @@
          tx_push_pid,
          pending_tx_id,
          pending_tx_hash}).
-
 
 %%%===================================================================
 %%% API
@@ -87,16 +84,16 @@ tab_keys(Tab) ->
     ?TXN(mnesia:all_keys(Tab)).
 
 sent_payments() ->
-    ?TXN(select_payments(true)).
+    ?TXN(aestratum_db:select_payments(true)).
 
 pending_payments() ->
-    ?TXN(select_payments(false)).
+    ?TXN(aestratum_db:select_payments(false)).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 init([]) ->
-    PoolRelShares = relative_shares(?POOL_PERCENT_SHARES, ?POOL_PERCENT_SUM),
+    PoolRelShares = aestratum_reward:relative_shares(?POOL_PERCENT_SHARES, ?POOL_PERCENT_SUM),
     aestratum_env:set(#{pool_relative_shares => PoolRelShares}),
     ?TXN(aestratum_db:is_empty(?ROUNDS_TAB) andalso aestratum_db:store_round()),
     aec_events:subscribe(stratum_new_candidate),
@@ -106,7 +103,7 @@ init([]) ->
     {ok, _} = timer:send_interval(?CANDIDATE_CACHE_CLEANUP_INTERVAL, candidate_cache_cleanup),
     State0  = #aestratum_state{height  = top_height(),
                                balance = balance()},
-    State1  = case ?TXN(select_payments(true, 1)) of
+    State1  = case ?TXN(aestratum_db:select_payments(true, 1)) of
                   [#aestratum_payment{id = TxId, tx_hash = TxHash}] ->
                       State0#aestratum_state{pending_tx_id   = TxId,
                                              pending_tx_hash = TxHash};
@@ -135,7 +132,7 @@ handle_info(keyblock, #aestratum_state{height = Height} = S) when is_integer(Hei
                     ok;
                 {ok, #aestratum_reward{} = R} ->
                     ?TXN(begin
-                             store_payments(R),
+                             aestratum_db:store_payments(R),
                              aestratum_db:store_reward(
                                R#aestratum_reward{pool   = transformed,  % map is in payments now
                                                   miners = transformed}) % map is in payments now
@@ -156,11 +153,11 @@ handle_info(payout_check, #aestratum_state{balance = undefined} = S) ->
 handle_info(payout_check, #aestratum_state{tx_push_pid = undefined,
                                            balance = Balance} = S)
   when is_integer(Balance) ->
-    S1 = case ?TXN(has_payments(true)) of
+    S1 = case ?TXN(aestratum_db:has_payments(true)) of
              true  ->
                  S;
              false ->
-                 case ?TXN(oldest_unpaid_payment()) of
+                 case ?TXN(aestratum_db:oldest_unpaid_payment()) of
                      {ok, #aestratum_payment{total = Total} = P} when Total =< Balance ->
                          push_payment(P, S);
                      {ok, #aestratum_payment{total = Total} = P} when Total > Balance ->
@@ -276,12 +273,6 @@ push_payment(#aestratum_payment{id = Id} = P, S) ->
     end.
 
 
-top_height() ->
-    case aec_chain:top_key_block() of
-        {ok, KB} -> aec_blocks:height(KB);
-        _ -> 0
-    end.
-
 with_reward_share(RewardHeight, Fun) ->
     RewardKH   = ok_val_err(aec_chain:get_key_header_by_height(RewardHeight)),
     {ok, Hash} = aec_headers:hash_header(RewardKH),
@@ -305,12 +296,12 @@ maybe_compute_reward(RewardHeight) ->
         {error, not_found} ->
             with_reward_share(
               RewardHeight,
-              fun (#reward_key_block{share_key = RewardShareKey,
+              fun (#reward_key_block{share_key = ShareKey,
                                      target = BlockTarget,
                                      height = Height,
                                      tokens = Amount,
                                      hash   = Hash}) ->
-                      case relative_miner_rewards(RewardShareKey, BlockTarget) of
+                      case aestratum_reward:relative_miner_rewards(ShareKey, BlockTarget) of
                           {ok, MinerRelShares, RoundKey} ->
                               {ok, #aestratum_reward{pool   = ?POOL_RELATIVE_SHARES,
                                                      miners = MinerRelShares,
@@ -327,50 +318,8 @@ maybe_compute_reward(RewardHeight) ->
             {ok, not_our_share}
     end.
 
+
 %%%%%%%%%%
-
-relative_payments(#aestratum_reward{} = Reward) ->
-    relative_payments(Reward, ?PAYMENT_CONTRACT_BATCH_SIZE).
-relative_payments(#aestratum_reward{height = Height, amount = TotalAmount,
-                                    pool = PoolRelMap, miners = MinerRelMap},
-                  BatchSize) ->
-    PoolAmount   = round(TotalAmount * ?POOL_PERCENT_SUM / 100),
-    MinersAmount = TotalAmount - PoolAmount,
-    MinerBatches = idxs(aestratum_conv:map_to_chunks(MinerRelMap, BatchSize), 1),
-    if PoolAmount >  0 -> [#aestratum_payment{id = {Height, 0},
-                                              total = PoolAmount,
-                                              relmap = PoolRelMap}];
-       PoolAmount =< 0 -> []
-    end ++ batches_to_payments(MinerBatches, MinersAmount, Height).
-
-store_payments(#aestratum_reward{} = Reward) ->
-    store_payments(relative_payments(Reward));
-store_payments(Ps) when is_list(Ps) ->
-    [ok_val_err(aestratum_db:store_payment(P)) || P <- Ps].
-
-
-payment_spec(_WasPaid = true) ->
-    ets:fun2ms(fun (#aestratum_payment{tx_hash = TH} = P) when is_binary(TH) -> P end);
-payment_spec(_WasPaid = false) ->
-    ets:fun2ms(fun (#aestratum_payment{tx_hash = undefined} = P) -> P end).
-
-select_payments(WasPaid) ->
-    mnesia:select(aestratum_payment, payment_spec(WasPaid), read).
-select_payments(WasPaid, N) ->
-    case mnesia:select(aestratum_payment, payment_spec(WasPaid), N, read) of
-        '$end_of_table' -> [];
-        {Res, _} -> Res
-    end.
-
-has_payments(WasPaid) ->
-    length(select_payments(WasPaid, 1)) > 0.
-
-oldest_unpaid_payment() ->
-    case select_payments(false, 1) of
-        [P | _] -> {ok, P};
-        [] -> none
-    end.
-
 
 send_payment(#aestratum_payment{tx_hash = undefined,
                                 total = GrossAmount,
@@ -378,11 +327,11 @@ send_payment(#aestratum_payment{tx_hash = undefined,
              TopHeight) ->
     Balance       = balance(),
     GrossAmount   < Balance orelse error({caller_insufficient_funds, Balance, GrossAmount}),
-    AbsoluteMap0  = absolute_amounts(RelativeMap, GrossAmount),
+    AbsoluteMap0  = aestratum_reward:absolute_amounts(RelativeMap, GrossAmount),
     #{fee := Fee, run_fee := RunFee} = payout_call_tx_args(AbsoluteMap0, TopHeight),
     NetAmount     = GrossAmount - Fee - RunFee, % what is actually distributed
     NetAmount     > 0 orelse error({negative_net_amount, NetAmount, {GrossAmount, Fee, RunFee}}),
-    AbsoluteMap   = absolute_amounts(RelativeMap, NetAmount),
+    AbsoluteMap   = aestratum_reward:absolute_amounts(RelativeMap, NetAmount),
     NetTxArgs     = payout_call_tx_args(AbsoluteMap, TopHeight),
     CallTx        = ok_val_err(aect_call_tx:new(NetTxArgs)),
     BinaryTx      = aec_governance:add_network_id(aetx:serialize_to_binary(CallTx)),
@@ -422,7 +371,7 @@ payout_call_tx_args(Transfers, TopHeight) when is_integer(TopHeight) ->
              nonce       => aec_accounts:nonce(Account) + 1,
              call_data   => CallData,
              abi_version => ?ABI_AEVM_SOPHIA_1,
-             amount      => sum_values(Transfers),
+             amount      => aestratum_fn:sum_values(Transfers),
              fee         => Int256,
              gas         => Int256,
              gas_price   => Int256},
@@ -449,89 +398,17 @@ payout_tx_persisted(TxHash, TopHeight, KeyBlocksDelay) ->
 
 %%%%%%%%%%
 
+top_height() ->
+    case aec_chain:top_key_block() of
+        {ok, KB} -> aec_blocks:height(KB);
+        _ -> 0
+    end.
+
+
 balance() ->
     case aec_chain:get_account(?CALLER_PUBKEY) of
         {value, Account} -> aec_accounts:balance(Account);
         none -> undefined
-    end.
-
-
-sum_group_shares(SliceCont, BlockTarget) ->
-    sum_group_shares(SliceCont, BlockTarget, 0.0, #{}).
-
-sum_group_shares('$end_of_table', _BlockTarget, SumScores, Groups) ->
-    {SumScores, Groups};
-sum_group_shares({Shares, Cont}, BlockTarget, SumScores, Groups) ->
-    {_, SumScores1, Groups1} = lists:foldl(fun sum_group_share/2,
-                                           {BlockTarget, SumScores, Groups},
-                                           Shares),
-    sum_group_shares(mnesia:select(Cont), BlockTarget, SumScores1, Groups1).
-
-sum_group_share(#aestratum_share{miner = Miner, target = MinerTarget},
-                {BlockTarget, SumScore, Groups}) ->
-    Total = maps:get(Miner, Groups, 0),
-    Score = MinerTarget / BlockTarget,
-    {BlockTarget, SumScore + Score, Groups#{Miner => Total + Score}}.
-
-
-relative_shares(ScoredShares, SumScores) ->
-    maps:map(fun (_, Score) -> Score / SumScores end, ScoredShares).
-
-
-absolute_amounts(NormalizedRelativeShares, Amount) ->
-    MapSize = maps:size(NormalizedRelativeShares),
-    {AbsoluteAmounts, 0, MapSize} =
-        maps:fold(
-          fun (Address, RelScore, {Res, TokensLeft, I}) ->
-                  Tokens = if I + 1 == MapSize -> TokensLeft; % last iter, give all
-                              true -> min(round(RelScore * Amount), TokensLeft)
-                           end,
-                  case Tokens of
-                      0 -> {Res, TokensLeft, I + 1}; % could rounding cause this?
-                      _ -> {Res#{Address => Tokens}, TokensLeft - Tokens, I + 1}
-                  end
-          end,
-          {#{}, Amount, 0},
-          NormalizedRelativeShares),
-    AbsoluteAmounts.
-
-
-relative_miner_rewards(RewardShareKey, BlockTarget) ->
-    case aestratum_db:shares_range(RewardShareKey) of
-        {ok, FirstShareKey, LastRoundShareKey} ->
-            Selector  = aestratum_db:shares_selector(FirstShareKey, LastRoundShareKey),
-            SliceCont = aestratum_db:shares_slices(Selector),
-            {SumScores, Groups} = sum_group_shares(SliceCont, BlockTarget),
-            {ok, relative_shares(Groups, SumScores), FirstShareKey};
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-batches_to_payments(Batches, Amount, Height) ->
-    {_, Payments} = lists:foldr(payment_distributor(Height, Amount),
-                                {Amount, []}, Batches),
-    Payments.
-
-
-payment_distributor(Height, TotalAmount) ->
-    distributor(TotalAmount,
-                fun (I, BatchAmount, BatchRelMap, Acc) ->
-                        [#aestratum_payment{id = {Height, I},
-                                            total = BatchAmount,
-                                            relmap = BatchRelMap} | Acc]
-                end).
-
-distributor(TotalAmount, F) ->
-    fun ({I, BatchShares}, {TokensLeft, Acc}) ->
-            BatchSharesSum = sum_values(BatchShares),
-            case min(round(BatchSharesSum * TotalAmount), TokensLeft) of
-                0 ->
-                    {TokensLeft, Acc};
-                BatchAmount ->
-                    RelMap = relative_shares(BatchShares, BatchSharesSum),
-                    Acc1   = F(I, BatchAmount, RelMap, Acc),
-                    {TokensLeft - BatchAmount, Acc1}
-            end
     end.
 
 
@@ -561,57 +438,3 @@ log_insufficient_balance(Balance, #aestratum_payment{total = Total, id = Id})
   when Balance < Total ->
     ?INFO("insufficient balance (~p) for payment ~p (needs ~p more tokens), delaying...",
           [Balance, Id, Total - Balance]).
-
-
-sum_values(M) when is_map(M) ->
-    lists:sum(maps:values(M)).
-
-idxs(Xs, From) ->
-    lists:zip(lists:seq(From, From + length(Xs) - 1), Xs).
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-%% test_payments() ->
-%%     test_payments(100000000000000000).
-%% test_payments(Amount) ->
-%%     NewAcc = fun () ->
-%%                      #{public := PK} = enacl:crypto_sign_ed25519_keypair(),
-%%                      aeser_api_encoder:encode(account_pubkey, PK)
-%%              end,
-%%     Miners = maps:from_list([{NewAcc(), 0.2} || _ <- lists:seq(1, 5)]),
-%%     Reward = #aestratum_reward{height = top_height(),
-%%                                amount = Amount,
-%%                                pool   = ?POOL_RELATIVE_SHARES,
-%%                                miners = Miners},
-%%     relative_payments(Reward, 1).
-
-%% test() ->
-%%     Payments = test_payments(),
-%%     ?INFO("////////// TEST PAYMENTS = ~p~n", [Payments]),
-%%     ?TXN(store_payments(Payments)),
-%%     ?MODULE ! payout_check.
-
-
-
-%% deploy_payout_contract() ->
-%%     {value, Account} = aec_chain:get_account(?CALLER_PUBKEY),
-%%     #{contract_source := CSrc} = ?CONTRACT,
-%%     CMap = ok_val_err(aeso_compiler:from_string(CSrc, [])),
-%%     Code = aect_sophia:serialize(CMap),
-%%     {ok, CallData, _, _} = aeso_compiler:create_calldata(CSrc, "init", []),
-%%     {ok, CreateTx} =
-%%         aect_create_tx:new(#{owner_id    => aeser_id:create(account, ?CALLER_PUBKEY),
-%%                              nonce       => aec_accounts:nonce(Account) + 1,
-%%                              code        => Code,
-%%                              vm_version  => ?VM_AEVM_SOPHIA_3,
-%%                              abi_version => ?ABI_AEVM_SOPHIA_1,
-%%                              deposit     => 0,
-%%                              amount      => 0,
-%%                              gas         => 100000,
-%%                              gas_price   => min_gas_price(),
-%%                              fee         => 1400000 * min_gas_price(),
-%%                              call_data   => CallData}),
-%%     BinaryTx = aec_governance:add_network_id(aetx:serialize_to_binary(CreateTx)),
-%%     SignedTx = aetx_sign:new(CreateTx, [enacl:sign_detached(BinaryTx, ?CALLER_PRIVKEY)]),
-%%     ok = aec_tx_pool:push(SignedTx),
-%%     {ok, SignedTx, aetx_sign:hash(SignedTx)}.
