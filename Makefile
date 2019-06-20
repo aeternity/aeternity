@@ -422,6 +422,10 @@ license-shortdesc:
 
 .PHONY: license-check
 license-check: | prod-build
+	$(info "Dep jobs 0.9.0 is licensed as Apache 2.0 - see https://github.com/uwiger/jobs/blob/0.9.0/LICENSE")
+	$(info "Dep rocksdb 0.24.0 is licensed as Apache 2.0 - see https://gitlab.com/barrel-db/erlang-rocksdb/blob/0.24.0/LICENSE" )
+	$(info "  The native dependency of dep rocksdb 0.24.0 named rocksdb is licensed as Apache 2.0 - see https://github.com/facebook/rocksdb/blob/v5.15.10/LICENSE.Apache")
+	$(info "Plugin rebar3_elixir appears in a recent version to be licensed as BSD-3 - see https://hex.pm/packages/rebar3_elixir/0.2.4")
 	docker run --rm -v `pwd`:`pwd` -w `pwd` aeternity/builder:ci-build-licenses sh -c 'for X in $$(ls -d _build/prod/lib/* | grep -v "/\($$(printf "%b\\|" $$(ls apps))jobs\|rocksdb\)$$") $$(ls -d _build/prod/plugins/* | grep -v "/\(rebar3_elixir\)$$"); do echo $${X:?}; licensee $${X:?}; done'
 
 kill:
