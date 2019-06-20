@@ -102,11 +102,11 @@
         , deactivate/1
         , spend/3
         , oracle_register/8
-        , oracle_query/7
-        , oracle_respond/5
+        , oracle_query/9
+        , oracle_respond/7
         , oracle_extend/4
-        , oracle_get_answer/4
-        , oracle_get_question/4
+        , oracle_get_answer/6
+        , oracle_get_question/6
         , oracle_query_fee/3
         , aens_resolve/1
         , aens_preclaim/1
@@ -768,9 +768,9 @@ oracle_register_(Arg0, ?FATE_SIGNATURE(Signature), ?FATE_ADDRESS(Address),
             aefa_fate:abort({primop_error, oracle_register, What}, ES1)
     end.
 
-oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
-    {[Oracle, Question, QFee, QTTL, RTTL], ES1} =
-        get_op_args([Arg1, Arg2, Arg3, Arg4, Arg5], EngineState),
+oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, EngineState) ->
+    {[Oracle, Question, QFee, QTTL, RTTL, QType, RType], ES1} =
+        get_op_args([Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7], EngineState),
     if
         not ?IS_FATE_ORACLE(Oracle) ->
             aefa_fate:abort({value_does_not_match_type, Oracle, oracle}, ES1);
@@ -778,6 +778,8 @@ oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
             aefa_fate:abort({value_does_not_match_type, QFee, integer}, ES1);
         not ?FATE_INTEGER_VALUE(QFee) >= 0 ->
             aefa_fate:abort({primop_error, oracle_query, too_low_fee}, ES1);
+        not (?IS_FATE_TYPEREP(QType) orelse ?IS_FATE_TYPEREP(RType)) ->
+            aefa_fate:abort({primop_error, oracle_query, bad_type}, ES1);
         true ->
             ok
     end,
@@ -800,7 +802,7 @@ oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
     API = aefa_engine_state:chain_api(ES1),
     case aefa_chain_api:oracle_query(OraclePubkey, SenderPubkey, Question,
                                      QFeeVal, QTTLType, QTTLVal, RTTLVal,
-                                     ?ABI_FATE_SOPHIA_1, API) of
+                                     ?ABI_FATE_SOPHIA_1, QType, RType, API) of
         {ok, QueryId, API1} ->
             ES2 = aefa_engine_state:set_chain_api(API1, ES1),
             write(Arg0, aeb_fate_data:make_oracle_query(QueryId), ES2);
@@ -808,9 +810,9 @@ oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
             aefa_fate:abort({primop_error, oracle_query, What}, ES1)
     end.
 
-oracle_respond(Arg0, Arg1, Arg2, Arg3, EngineState) ->
-    {[Signature, Oracle, Query, Response], ES1} =
-        get_op_args([Arg0, Arg1, Arg2, Arg3], EngineState),
+oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
+    {[Signature, Oracle, Query, Response, QType, RType], ES1} =
+        get_op_args([Arg0, Arg1, Arg2, Arg3, Arg4, Arg5], EngineState),
     if
         not ?IS_FATE_ORACLE(Oracle) ->
             aefa_fate:abort({value_does_not_match_type, Oracle, oracle}, ES1);
@@ -818,6 +820,8 @@ oracle_respond(Arg0, Arg1, Arg2, Arg3, EngineState) ->
             aefa_fate:abort({value_does_not_match_type, Signature, string}, ES1);
         not ?IS_FATE_ORACLE_Q(Query) ->
             aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
+        not (?IS_FATE_TYPEREP(QType) orelse ?IS_FATE_TYPEREP(RType)) ->
+            aefa_fate:abort({primop_error, oracle_query, bad_type}, ES1);
         true ->
             ok
     end,
@@ -826,7 +830,8 @@ oracle_respond(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     ?FATE_SIGNATURE(SignBin) = Signature,
     ES2 = check_delegation_signature(oracle_respond, {OraclePubkey, QueryId}, SignBin, ES1),
     API = aefa_engine_state:chain_api(ES2),
-    case aefa_chain_api:oracle_respond(OraclePubkey, QueryId, Response, ?ABI_FATE_SOPHIA_1, API) of
+    case aefa_chain_api:oracle_respond(OraclePubkey, QueryId, Response,
+                                       ?ABI_FATE_SOPHIA_1, QType, RType, API) of
         {ok, API1} ->
             aefa_engine_state:set_chain_api(API1, ES2);
         {error, What} ->
@@ -862,50 +867,53 @@ oracle_extend(Arg0, Arg1, Arg2, EngineState) ->
             aefa_fate:abort({primop_error, oracle_extend, What}, ES2)
     end.
 
-oracle_get_question(Arg0, Arg1, Arg2, EngineState) ->
-    {[Oracle, Query], ES1} =
-        get_op_args([Arg1, Arg2], EngineState),
+oracle_get_question(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
+    {[Oracle, Query, QType, RType], ES1} =
+        get_op_args([Arg1, Arg2, Arg3, Arg4], EngineState),
     if
         not ?IS_FATE_ORACLE(Oracle) ->
             aefa_fate:abort({value_does_not_match_type, Oracle, oracle}, ES1);
         not ?IS_FATE_ORACLE_Q(Query) ->
             aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
+        not (?IS_FATE_TYPEREP(QType) orelse ?IS_FATE_TYPEREP(RType)) ->
+            aefa_fate:abort({primop_error, oracle_query, bad_type}, ES1);
         true ->
             ok
     end,
     ?FATE_ORACLE(OraclePubkey) = Oracle,
     ?FATE_ORACLE_Q(QueryId) = Query,
     API = aefa_engine_state:chain_api(ES1),
-    case aefa_chain_api:oracle_get_question(OraclePubkey, QueryId, API) of
+    case aefa_chain_api:oracle_get_question(OraclePubkey, QueryId,
+                                            QType, RType, API) of
         {ok, Question, API1} ->
-            %% TODO: Should we check the type of the query?
             ES2 = aefa_engine_state:set_chain_api(API1, ES1),
             write(Arg0, Question, ES2);
         {error, What} ->
             aefa_fate:abort({primop_error, oracle_get_question, What}, ES1)
     end.
 
-oracle_get_answer(Arg0, Arg1, Arg2, EngineState) ->
-    {[Oracle, Query], ES1} =
-        get_op_args([Arg1, Arg2], EngineState),
+oracle_get_answer(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
+    {[Oracle, Query, QType, RType], ES1} =
+        get_op_args([Arg1, Arg2, Arg3, Arg4], EngineState),
     if
         not ?IS_FATE_ORACLE(Oracle) ->
             aefa_fate:abort({value_does_not_match_type, Oracle, oracle}, ES1);
         not ?IS_FATE_ORACLE_Q(Query) ->
             aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
+        not (?IS_FATE_TYPEREP(QType) orelse ?IS_FATE_TYPEREP(RType)) ->
+            aefa_fate:abort({primop_error, oracle_query, bad_type}, ES1);
         true ->
             ok
     end,
     ?FATE_ORACLE(OraclePubkey) = Oracle,
     ?FATE_ORACLE_Q(QueryId) = Query,
     API = aefa_engine_state:chain_api(ES1),
-    case aefa_chain_api:oracle_get_answer(OraclePubkey, QueryId, API) of
+    case aefa_chain_api:oracle_get_answer(OraclePubkey, QueryId, QType, RType, API) of
         {ok, Answer, API1} ->
-            %% TODO: Should we check the type of the query?
             ES2 = aefa_engine_state:set_chain_api(API1, ES1),
             write(Arg0, Answer, ES2);
         {error, What} ->
-            aefa_fate:abort({primop_error, oracle_get_question, What}, ES1)
+            aefa_fate:abort({primop_error, oracle_get_answer, What}, ES1)
     end.
 
 
