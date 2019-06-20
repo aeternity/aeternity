@@ -68,8 +68,11 @@
         , sophia_oracles_ttl__get_answer_after_rttl/1
         , sophia_oracles_ttl__happy_path/1
         , sophia_oracles_ttl__good_query_bad_extend/1
-        , sophia_oracles_type_error_arg/1
-        , sophia_oracles_type_error_out/1
+        , sophia_oracles_type_error_on_query_1/1
+        , sophia_oracles_type_error_on_query_2/1
+        , sophia_oracles_type_error_on_response_1/1
+        , sophia_oracles_type_error_on_response_2/1
+        , sophia_oracles_type_error_on_get/1
         , sophia_oracles_qfee__basic/1
         , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle/1
         , sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle/1
@@ -324,8 +327,11 @@ groups() ->
         , sophia_oracles_ttl__happy_path
         , sophia_oracles_ttl__good_query_bad_extend ]}
     , {sophia_oracles_type_error, [],
-       [ sophia_oracles_type_error_arg
-       , sophia_oracles_type_error_out
+       [ sophia_oracles_type_error_on_query_1
+       , sophia_oracles_type_error_on_query_2
+       , sophia_oracles_type_error_on_response_1
+       , sophia_oracles_type_error_on_response_2
+       , sophia_oracles_type_error_on_get
        , sophia_oracles_interact_with_no_vm_oracle
        ]}
     , {sophia_oracles_query_fee_happy_path, [],
@@ -1107,11 +1113,6 @@ make_call(PubKey, ContractKey,_Call,_S) ->
 state()  -> get(the_state).
 state(S) -> put(the_state, S).
 
-get_contract_state(Contract) ->
-    S = state(),
-    {{value, C}, _} = lookup_contract_by_id(Contract, S),
-    get_ct_store(C).
-
 call(Name, Fun, Xs) ->
     Fmt = string:join(lists:duplicate(length(Xs), "~p"), ", "),
     Xs1 = [ case X of
@@ -1729,9 +1730,6 @@ sophia_call_origin(_Cfg) ->
 
 %% Oracles tests
 
-%% TODO:
-%%  - signatures (when oracle is different from contract)
-%%  - Failing calls
 sophia_oracles(_Cfg) ->
     state(aect_test_utils:new_state()),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
@@ -1783,7 +1781,8 @@ sophia_oracles(_Cfg) ->
     {some, Answer} = ?call(call_contract, Acc, Ct1, complexOracle, {option, AnswerType}, {Question1}),
     ok.
 
-sophia_oracles_type_error_arg(_Cfg) ->
+sophia_oracles_type_error_on_query_1(_Cfg) ->
+    %% Create a query of the wrong type.
     state(aect_test_utils:new_state()),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
@@ -1799,7 +1798,8 @@ sophia_oracles_type_error_arg(_Cfg) ->
                               {Oracle, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
     ok.
 
-sophia_oracles_type_error_out(_Cfg) ->
+sophia_oracles_type_error_on_query_2(_Cfg) ->
+    %% Create a query of the correct type, but to an oracle with wrong response type.
     state(aect_test_utils:new_state()),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
@@ -1811,15 +1811,93 @@ sophia_oracles_type_error_out(_Cfg) ->
     ?assertMatchAEVM(CtId, Oracle),
     ?assertMatchFATE({oracle, CtId}, Oracle),
     Question          = <<"Manchester United vs Brommapojkarna">>,
+    QueryRes          = ?call(call_contract, Acc, Ct, createQuery, word,
+                              {Oracle, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+    ?assertMatchFATE({error, <<"Error in oracle_query: wrong_oracle_types">>}, QueryRes),
+    %% This is not discovered by AEVM
+    ?assertMatchAEVM(X when is_integer(X), QueryRes),
+    ok.
+
+sophia_oracles_type_error_on_response_1(_Cfg) ->
+    %% Make a query with correct type, but respond with the wrong type.
+    state(aect_test_utils:new_state()),
+    RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
+    FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
+    Acc               = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
+    QueryFee          = 100,
+    TTL               = 15,
+    Oracle            = ?call(call_contract, Acc, Ct, registerStringStringOracle, word, {Ct, QueryFee, FixedTTL(TTL)}),
+    ?assertMatchAEVM(CtId, Oracle),
+    ?assertMatchFATE({oracle, CtId}, Oracle),
+    Question          = <<"Manchester United vs Brommapojkarna">>,
+    QId               = ?call(call_contract, Acc, Ct, createQueryStringStringOracle, word,
+                              {Oracle, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+    RespRes           = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Oracle, QId, 4001}),
+    ?assertMatchFATE({error, <<"Error in oracle_respond: wrong_oracle_types">>}, RespRes),
+    ?assertMatchAEVM({error, <<"out_of_gas">>}, RespRes),
+    ok.
+
+sophia_oracles_type_error_on_response_2(_Cfg) ->
+    %% Make a query with correct type, respond with the correct type
+    %% (for the oracle), but using the wrong type for the oracle
+    state(aect_test_utils:new_state()),
+    RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
+    FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
+    Acc               = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
+    QueryFee          = 100,
+    TTL               = 15,
+    Oracle            = ?call(call_contract, Acc, Ct, registerOracle, word, {Ct, QueryFee, FixedTTL(TTL)}),
+    ?assertMatchAEVM(CtId, Oracle),
+    ?assertMatchFATE({oracle, CtId}, Oracle),
+    Question          = <<"Manchester United vs Brommapojkarna">>,
     QId               = ?call(call_contract, Acc, Ct, createQuery, word,
                               {Oracle, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
-    {error, _}        = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Oracle, QId, 4001}),
+    RespRes           = ?call(call_contract, Acc, Ct, respondIntIntOracle, {tuple, []}, {Oracle, QId, 4001}),
+    ?assertMatchFATE({error, <<"Error in oracle_respond: wrong_oracle_types">>}, RespRes),
+    %% AEVM doesn't discover this.
+    ?assertMatchAEVM({}, RespRes),
+    ok.
+
+sophia_oracles_type_error_on_get(_Cfg) ->
+    %% Create a correct query/response, but try to get the question/answer assuming
+    %% that the oracle has a different type.
+    state(aect_test_utils:new_state()),
+    RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
+    FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
+    Acc               = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
+    QueryFee          = 100,
+    TTL               = 15,
+    Oracle            = ?call(call_contract, Acc, Ct, registerOracle, word, {Ct, QueryFee, FixedTTL(TTL)}),
+    ?assertMatchAEVM(CtId, Oracle),
+    ?assertMatchFATE({oracle, CtId}, Oracle),
+    Question          = <<"Manchester United vs Brommapojkarna">>,
+    QId               = ?call(call_contract, Acc, Ct, createQuery, word,
+                              {Oracle, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+    {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Oracle, QId, 4001}),
+    ?assertMatchFATE({error, <<"Error in oracle_get_answer: wrong_oracle_types">>},
+                     ?call(call_contract, Acc, Ct, getAnswerIntIntOracle, word, {Oracle, QId})),
+    ?assertMatchFATE({error, <<"Error in oracle_get_question: wrong_oracle_types">>},
+                     ?call(call_contract, Acc, Ct, getQuestionStringStringOracle, word, {Oracle, QId})),
+    %% AEVM is not capable of finding this, though.
+    ?assertMatchAEVM({some, 4001},
+                     ?call(call_contract, Acc, Ct, getAnswerIntIntOracle, {option, word}, {Oracle, QId})),
+    ?assertMatchAEVM(Question,
+                     ?call(call_contract, Acc, Ct, getQuestionStringStringOracle, string, {Oracle, QId})),
+    %% But the question/answer should be available through the correct functions
+    ?assertMatch({some, 4001},
+                 ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Oracle, QId})),
+    ?assertMatch(Question,
+                 ?call(call_contract, Acc, Ct, getQuestion, string, {Oracle, QId})),
+
     ok.
 
 sophia_oracles_interact_with_no_vm_oracle(_Cfg) ->
     state(aect_test_utils:new_state()),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
-    Acc = <<AId:256>> = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Acc               = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Ct                = ?call(create_contract, Acc, oracles_no_vm, {}, #{amount => 100000}),
     ok                = ?call(register_no_vm_oracle, Acc),
     Question          = <<"Manchester United vs Brommapojkarna">>,
