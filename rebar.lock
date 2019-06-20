@@ -71,7 +71,7 @@
  {<<"jsx">>,
   {git,"https://github.com/talentdeficit/jsx.git",
       {ref,"3074d4865b3385a050badf7828ad31490d860df5"}},
-  1},
+  0},
  {<<"lager">>,
   {git,"https://github.com/erlang-lager/lager.git",
       {ref,"69b4ada2341b8ab2cf5c8e464ac936e5e4a9f62b"}},
