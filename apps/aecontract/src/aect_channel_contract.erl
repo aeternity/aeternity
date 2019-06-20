@@ -76,9 +76,10 @@ run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
     Store = aect_contracts:state(Contract),
     VmVersion = aect_contracts:vm_version(Contract),
     case aect_contracts:abi_version(Contract) =:= ABIVersion of
-        true when ?IS_AEVM_SOPHIA(VmVersion) -> ok;
-        true                               -> erlang:error(wrong_vm_version);
-        false                              -> erlang:error(wrong_abi_version)
+        true when ?IS_AEVM_SOPHIA(VmVersion);
+                  ?IS_FATE_SOPHIA(VmVersion) -> ok;
+        true                                 -> erlang:error(wrong_vm_version);
+        false                                -> erlang:error(wrong_abi_version)
     end,
     CallDef = make_call_def(OwnerPubKey, ContractPubKey, Gas, GasPrice, Amount,
               CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),

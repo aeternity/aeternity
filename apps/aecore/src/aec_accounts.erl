@@ -29,6 +29,7 @@
          serialize_for_client/1]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
+-include("../../aecontract/include/aecontract.hrl").
 
 -define(ACCOUNT_VSN_1, 1). %% {Nonce, Balance}
 -define(ACCOUNT_VSN_2, 2). %% {Flags, Nonce, Balance, GA_Contract, GA_AuthFun}
@@ -196,8 +197,23 @@ serialize_for_client(#account{id      = Id,
                 %% If not, just crash
                 {contract, ContractPK} = aeser_id:specialize(Account#account.ga_contract),
                 {ok, Contract} = aec_chain:get_contract(ContractPK),
-                #{type_info := TypeInfo} = aect_sophia:deserialize(aect_contracts:code(Contract)),
-                {ok, AuthFunName} = aeb_aevm_abi:function_name_from_type_hash(Account#account.ga_auth_fun, TypeInfo),
+                AuthFunName =
+                    case aect_contracts:abi_version(Contract) of
+                        ?ABI_AEVM_SOPHIA_1 ->
+                            #{type_info := TypeInfo} = aect_sophia:deserialize(
+                                                         aect_contracts:code(Contract)),
+                            {ok, AuthFunName0} =
+                                aeb_aevm_abi:function_name_from_type_hash(
+                                  Account#account.ga_auth_fun, TypeInfo),
+                            AuthFunName0;
+                        ?ABI_FATE_SOPHIA_1 ->
+                            #{byte_code := ByteCode} =
+                                aect_sophia:deserialize(aect_contracts:code(Contract)),
+                            {ok, AuthFunName0} =
+                                aeb_fate_abi:get_function_name_from_function_hash(
+                                    Account#account.ga_auth_fun, aeb_fate_code:deserialize(ByteCode)),
+                            AuthFunName0
+                    end,
                 #{<<"kind">>        => <<"generalized">>,
                   <<"auth_fun">>    => AuthFunName,
                   <<"contract_id">> => aeser_api_encoder:encode(contract_pubkey, ContractPK)};

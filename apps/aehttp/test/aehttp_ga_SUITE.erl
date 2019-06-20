@@ -12,6 +12,7 @@
 %% use include_lib for aecontract to compile under system test
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
 %% common_test exports
 -export([
@@ -45,15 +46,21 @@
 -define(MINE_BLOCKS(N), aecore_suite_utils:mine_key_blocks(?NODENAME, N)).
 -define(MINE_TXS(Txs), aecore_suite_utils:mine_blocks_until_txs_on_chain(?NODENAME, Txs, ?MAX_MINED_BLOCKS)).
 
+-define(assertMatchABI(AEVM, FATE, Res),
+    case abi_version() of
+        ?ABI_AEVM_SOPHIA_1 -> ?assertMatch(AEVM, Res);
+        ?ABI_FATE_SOPHIA_1 -> ?assertMatch(FATE, Res)
+    end).
+
 all() ->
-    [
-     {group, ga_txs},
-     {group, ga_info},
-     {group, ga_mempool}
+    [{group, aevm},
+     {group, fate}
     ].
 
 groups() ->
-    [
+    [{aevm, [sequence], [{group, ga_txs}, {group, ga_info}, {group, ga_mempool}]},
+     {fate, [sequence], [{group, ga_txs}, {group, ga_info}, {group, ga_mempool}]},
+
      {ga_txs, [sequence],
       [ attach_fail
       , attach
@@ -92,14 +99,23 @@ init_per_suite(Config0) ->
 end_per_suite(_Config) ->
     ok.
 
-init_per_group(_, Config) ->
+init_per_group(VMGroup, Config) when VMGroup == aevm; VMGroup == fate ->
     case aect_test_utils:latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
-        Vsn when Vsn >= ?FORTUNA_PROTOCOL_VSN -> init_for_ga(Config)
-    end.
-
-init_for_ga(Config) ->
+        ?FORTUNA_PROTOCOL_VSN when VMGroup == aevm ->
+            [{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
+             {abi_version, ?ABI_AEVM_SOPHIA_1} | Config];
+        ?LIMA_PROTOCOL_VSN when VMGroup == aevm ->
+            [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
+             {abi_version, ?ABI_AEVM_SOPHIA_1} | Config];
+        ?FORTUNA_PROTOCOL_VSN when VMGroup == fate ->
+            {skip, generalized_accounts_with_fate_not_in_fortuna};
+        ?LIMA_PROTOCOL_VSN when VMGroup == fate ->
+            [{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
+             {abi_version, ?ABI_FATE_SOPHIA_1} | Config]
+    end;
+init_per_group(_GAGroup, Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(NodeName),
@@ -118,9 +134,11 @@ init_for_ga(Config) ->
     %% Save account information
     Accounts = #{acc_a => #{pub_key => APK, priv_key => ASK, start_amt => StartAmt},
                  acc_b => #{pub_key => BPK, priv_key => BSK, start_amt => StartAmt}},
-    [{accounts, Accounts},{node_name, NodeName} | Config].
+    [{accounts, Accounts}, {node_name, NodeName} | Config].
 
-end_per_group(_Group, Config) ->
+end_per_group(VMGroup, _Config) when VMGroup == aevm; VMGroup == fate ->
+    ok;
+end_per_group(_GAGroup, Config) ->
     RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
     {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
     aecore_suite_utils:stop_node(?NODE, Config),
@@ -128,6 +146,9 @@ end_per_group(_Group, Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
+    put('$vm_version',     ?config(vm_version,     Config)),
+    put('$abi_version',    ?config(abi_version,    Config)),
+    put('$sophia_version', ?config(sophia_version, Config)),
     [{_, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
     [{tc_start, os:timestamp()}|Config].
@@ -173,7 +194,9 @@ attach_account(Pub, Priv, _Config) ->
 
     ct:pal("Cost: ~p", [Bal0 - Bal1]),
     MGP = aec_test_utils:min_gas_price(),
-    ?assertEqual(Bal1, Bal0 - 1000000 * MGP - 411 * MGP),
+    AEVMBal = Bal0 - 1000000 * MGP - 411 * MGP,
+    FATEBal = Bal0 - 1000000 * MGP - 10 * MGP,
+    ?assertMatchABI(AEVMBal, FATEBal, Bal1),
     ok.
 
 attach_fail(Config) ->
@@ -234,7 +257,9 @@ meta_fail(Config) ->
     {ok, 200, #{<<"ga_info">> := #{<<"return_type">> := <<"error">>}}} = get_contract_call_object(MetaTx),
 
     ct:pal("Cost failing inner: ~p", [ABal0 - ABal1]),
-    ?assertEqual(ABal1, ABal0 - (MetaFee + 4711 * 1000 * MGP)),
+    AEVMBal = ABal0 - (MetaFee + 4711 * 1000 * MGP),
+    FATEBal = ABal0 - (MetaFee + 1421 * 1000 * MGP),
+    ?assertMatchABI(AEVMBal, FATEBal, ABal1),
     ok.
 
 meta_spend(Config) ->
@@ -258,7 +283,9 @@ meta_spend(Config) ->
         get_contract_call_object(MetaTx),
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
-    ?assertEqual(ABal1, ABal0 - (MetaFee + 4711 * 1000 * MGP + 20000 * MGP + 10000)),
+    AEVMBal = ABal0 - (MetaFee + 4711 * 1000 * MGP + 20000 * MGP + 10000),
+    FATEBal = ABal0 - (MetaFee + 1421 * 1000 * MGP + 20000 * MGP + 10000),
+    ?assertMatchABI(AEVMBal, FATEBal, ABal1),
     ok.
 
 meta_meta_fail_auth(Config) ->
@@ -282,7 +309,9 @@ meta_meta_fail_auth(Config) ->
         get_contract_call_object(MetaTx),
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
-    ?assertEqual(ABal1, ABal0 - (MetaFee + 4711 * 1000 * MGP)),
+    AEVMBal = ABal0 - (MetaFee + 4711 * 1000 * MGP),
+    FATEBal = ABal0 - (MetaFee + 1421 * 1000 * MGP),
+    ?assertMatchABI(AEVMBal, FATEBal, ABal1),
     ok.
 
 meta_meta_fail(Config) ->
@@ -312,7 +341,9 @@ meta_meta_fail(Config) ->
                          <<"inner_object">> := #{<<"tx_info">> := <<"spend_tx">>}}} = InnerObj,
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
-    ?assertEqual(ABal1, ABal0 - 2*(MetaFee + 4711 * 1000 * MGP)),
+    AEVMBal = ABal0 - 2 * (MetaFee + 4711 * 1000 * MGP),
+    FATEBal = ABal0 - 2 * (MetaFee + 1421 * 1000 * MGP),
+    ?assertMatchABI(AEVMBal, FATEBal, ABal1),
     ok.
 
 meta_meta_spend(Config) ->
@@ -341,7 +372,9 @@ meta_meta_spend(Config) ->
     #{<<"return_type">> := <<"ok">>} = GAInfo,
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
-    ?assertEqual(ABal1, ABal0 - (2*(MetaFee + 4711 * 1000 * MGP) + 20000 * MGP + 10000)),
+    AEVMBal = ABal0 - (2 * (MetaFee + 4711 * 1000 * MGP) + 20000 * MGP + 10000),
+    FATEBal = ABal0 - (2 * (MetaFee + 1421 * 1000 * MGP) + 20000 * MGP + 10000),
+    ?assertMatchABI(AEVMBal, FATEBal, ABal1),
     ok.
 
 meta_4_fail(Config) ->
@@ -371,7 +404,9 @@ meta_4_fail(Config) ->
         #{<<"ga_info">> := #{<<"return_type">> := <<"error">>}}}} = InnerObj,
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
-    ?assertEqual(ABal1, ABal0 - 3*(MetaFee + 4711 * 1000 * MGP)),
+    AEVMBal = ABal0 - 3 * (MetaFee + 4711 * 1000 * MGP),
+    FATEBal = ABal0 - 3 * (MetaFee + 1421 * 1000 * MGP),
+    ?assertMatchABI(AEVMBal, FATEBal, ABal1),
     ok.
 
 %% Test the minimum gas price check
@@ -450,11 +485,11 @@ make_attach_tx_map(AccPK) ->
     Nonce = Nonce0 + 1,
 
     {ok, #{bytecode := Code, src := Src, map := #{type_info := TI}}} =
-        aega_test_utils:get_contract(4, "basic_auth"),
+        aega_test_utils:get_contract("basic_auth"),
 
     CallData = aega_test_utils:make_calldata(Src, "init", []),
 
-    {ok, AuthFun} = aeb_aevm_abi:type_hash_from_function_name(<<"authorize">>, TI),
+    {ok, AuthFun} = aega_test_utils:auth_fun_hash(<<"authorize">>, TI),
 
     #{ nonce => Nonce, code => Code, auth_fun => AuthFun, call_data => CallData }.
 
@@ -479,19 +514,14 @@ post_ga_spend_tx(AccPK, AccSK, Nonces, Recipient, Amount, Fee, MetaFee, AuthGas)
 ga_spend_tx([], _AccPK, _AccSK, InnerTx, _MetaFee, _AuthGas) ->
     aetx_sign:new(InnerTx, []);
 ga_spend_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee, AuthGas) ->
-    Signature = basic_auth(list_to_integer(Nonce), InnerTx, AccSK),
+    TxHash    = aec_hash:hash(tx, aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx))),
+    Signature = aega_test_utils:basic_auth_sign(list_to_integer(Nonce), TxHash, AccSK),
     AuthData  = aega_test_utils:make_calldata("basic_auth", "authorize",
                     [Nonce, aega_test_utils:to_hex_lit(64, Signature)]),
     MetaTx    = aega_test_utils:ga_meta_tx(AccPK,
                     #{ gas => AuthGas, auth_data => AuthData,
                        tx => aetx_sign:new(InnerTx, []), fee => MetaFee }),
     ga_spend_tx(Nonces, AccPK, AccSK, MetaTx, MetaFee, AuthGas).
-
-basic_auth(Nonce, Tx, Privkey) ->
-    TxBin = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
-    TxHash = aec_hash:hash(tx, TxBin),
-    Val = <<32:256, TxHash/binary, Nonce:256>>,
-    enacl:sign_detached(aec_hash:hash(tx, Val), Privkey).
 
 sign_and_post_aetx(PrivKey, Tx) ->
     SignedTx     = aec_test_utils:sign_tx(Tx, PrivKey),
@@ -665,3 +695,10 @@ new_account(Balance) ->
 generate_key_pair() ->
     #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
     {Pubkey, Privkey}.
+
+abi_version() ->
+    case get('$abi_version') of
+        undefined -> aect_test_utils:latest_sophia_abi_version();
+        X         -> X
+    end.
+

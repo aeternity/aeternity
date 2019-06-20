@@ -41,6 +41,7 @@
         , latest_sophia_abi_version/0
         , latest_sophia_vm_version/0
         , latest_protocol_version/0
+        , latest_sophia_version/0
         ]).
 
 -include("../include/aecontract.hrl").

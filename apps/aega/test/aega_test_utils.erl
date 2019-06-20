@@ -7,6 +7,9 @@
 
 -compile([export_all, nowarn_export_all]).
 
+-include("../../aecontract/test/include/aect_sophia_vsn.hrl").
+-include("../../aecontract/include/aecontract.hrl").
+
 %%%===================================================================
 %%% Transactions
 %%%===================================================================
@@ -29,8 +32,8 @@ ga_attach_tx(PubKey, Spec0) ->
 ga_attach_tx_default(PubKey) ->
     #{ fee         => 1000000 * aec_test_utils:min_gas_price()
      , owner_id    => aeser_id:create(account, PubKey)
-     , vm_version  => aect_test_utils:latest_sophia_vm_version()
-     , abi_version => aect_test_utils:latest_sophia_abi_version()
+     , vm_version  => aega_SUITE:vm_version()
+     , abi_version => aega_SUITE:abi_version()
      , gas         => 10000
      , gas_price   => 1 * aec_test_utils:min_gas_price()
      , ttl         => 0
@@ -44,7 +47,7 @@ ga_meta_tx(PubKey, Spec0) ->
 ga_meta_tx_default(PubKey) ->
     #{ fee         => 1000000 * aec_test_utils:min_gas_price()
      , ga_id       => aeser_id:create(account, PubKey)
-     , abi_version => aect_test_utils:latest_sophia_abi_version()
+     , abi_version => aega_SUITE:abi_version()
      , gas         => 20000
      , gas_price   => 1000 * aec_test_utils:min_gas_price()
      , ttl         => 0
@@ -151,13 +154,20 @@ sign_tx(STx, [Sig | Sigs], S) ->
                 {PK, {basic, Nonce}} ->
                     PrivKey = aect_test_utils:priv_key(PK, S),
                     TxHash = aec_hash:hash(tx, BinForNetwork),
-                    SignVal = <<32:256, TxHash/binary, (list_to_integer(Nonce)):256>>,
-                    SignBin = enacl:sign_detached(aec_hash:hash(tx, SignVal), PrivKey),
+                    SignBin = basic_auth_sign(list_to_integer(Nonce), TxHash, PrivKey),
                     AuthData = make_calldata("basic_auth", "authorize", [Nonce, to_hex_lit(64, SignBin)]),
                     MetaTx = ga_meta_tx(PK, #{auth_data => AuthData, tx => STx}),
                     sign_tx(aetx_sign:new(MetaTx, []), Sigs, S)
             end
     end.
+
+basic_auth_sign(Nonce, TxHash, PrivKey) ->
+    Val = case aega_SUITE:abi_version() of
+              ?ABI_AEVM_SOPHIA_1 -> <<32:256, TxHash/binary, Nonce:256>>;
+              ?ABI_FATE_SOPHIA_1 -> aeb_fate_encoding:serialize({tuple, {{hash, TxHash}, Nonce}})
+          end,
+    io:format("SIGN1: ~p\nSIGN2: ~p\n", [{hash, aec_hash:hash(tx, Val)}, PrivKey]),
+    enacl:sign_detached(aec_hash:hash(tx, Val), PrivKey).
 
 %%%===================================================================
 %%% Helper functions
@@ -167,12 +177,19 @@ make_calldata(Name, Fun, Args) when length(Name) < 20 ->
     {ok, Src} = read_contract(Name),
     make_calldata(Src, Fun, Args);
 make_calldata(Code, Fun, Args) ->
-    {ok, Calldata, _, _} = aeso_compiler:create_calldata(Code, Fun, Args),
-    Calldata.
+    case aega_SUITE:abi_version() of
+        ?ABI_AEVM_SOPHIA_1 ->
+            {ok, Calldata, _, _} = aeso_compiler:create_calldata(Code, Fun, Args, [{backend, aevm}]),
+            Calldata;
+        ?ABI_FATE_SOPHIA_1 ->
+            {ok, Calldata} = aeso_compiler:create_calldata(Code, Fun, Args, [{backend, fate}]),
+            Calldata
+    end.
 
-get_contract(SophiaVersion, Name) ->
-    {ok, Serial} = aect_test_utils:compile_contract(SophiaVersion, Name),
-    {ok, BinSrc} = aect_test_utils:read_contract(Name),
+get_contract(Name) ->
+    SophiaVersion = aega_SUITE:sophia_version(),
+    {ok, Serial}  = aect_test_utils:compile_contract(SophiaVersion, Name),
+    {ok, BinSrc}  = aect_test_utils:read_contract(SophiaVersion, Name),
     {ok, #{ bytecode => Serial, map => aect_sophia:deserialize(Serial),
             src => binary_to_list(BinSrc), bin_src => BinSrc }}.
 
@@ -196,4 +213,8 @@ hash_lit_to_bin("#" ++ Hex) ->
         aeu_hex:hexstring_decode(list_to_binary("0x" ++ Hex))
     end.
 
-
+auth_fun_hash(Name, AEVMTypeInfo) ->
+    case ?IS_AEVM_SOPHIA(aega_SUITE:vm_version()) of
+        true  -> aeb_aevm_abi:type_hash_from_function_name(Name, AEVMTypeInfo);
+        false -> {ok, <<(aeb_fate_code:symbol_identifier(Name)):4/binary, 0:(28*8)>>}
+    end.

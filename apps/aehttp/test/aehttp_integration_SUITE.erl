@@ -2612,8 +2612,8 @@ state_channels_create(MinerPubkey, ResponderPubkey) ->
     TestDelegates([]),
     TestDelegates([<<42:32/unit:8>>]),
     TestDelegates([<<42:32/unit:8>>, <<43:32/unit:8>>]),
-            
-    
+
+
     {ok, Tx}.
 
 state_channels_deposit(ChannelId, MinerPubkey) ->
@@ -6546,7 +6546,7 @@ ws_send_tagged(ConnPid, Method, Payload, Config) ->
 ws_call_async_method(ConnPid, Method, Payload, Config) ->
     ws_call_async_method(ConnPid, Method, Payload, sc_ws_protocol(Config), Config).
 
-ws_call_async_method(ConnPid, Method, Payload, <<"json-rpc">>, Config) ->
+ws_call_async_method(ConnPid, Method, Payload, <<"json-rpc">>, _Config) ->
     <<"ok">> = ?WS:json_rpc_call(
                   ConnPid, #{ <<"method">> => Method
                             , <<"params">> => Payload }),
@@ -6737,7 +6737,7 @@ attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args) ->
 
 
 attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args, Opts) ->
-   case aega_test_utils:get_contract(_SophiaVsn = 3, Contract) of
+   case aega_test_utils:get_contract(Contract) of
        {ok, #{src := Src, bytecode := C, map := #{type_info := TI}}} ->
            attach_({Owner, OwnerPrivkey}, Src, C, TI, AuthFun, Args, Opts);
        _ ->

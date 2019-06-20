@@ -41,6 +41,8 @@
 -define(TEST_LOG(Format, Data), ok).
 -endif.
 
+-include("../../aecontract/include/aecontract.hrl").
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -445,13 +447,15 @@ verify_signatures(Channel, SignedState, Trees, Env, CheckedSigners) ->
 
 verify_signature(Channel, MetaTx, Trees, Env) ->
     SignerId = aega_meta_tx:ga_id(MetaTx),
+    ABIVersion = aega_meta_tx:abi_version(MetaTx),
     case aesc_channels:auth_for_id(SignerId, Channel) of
         {ok, {AuthFunHash, AuthContractId}} ->
-            case aeb_aevm_abi:get_function_hash_from_calldata(aega_meta_tx:auth_data(MetaTx)) of
-                {ok, AuthFunHash} -> verify_signature_(Channel, SignerId, AuthContractId,
-                                                       MetaTx, Trees, Env);
-                {ok, _OtherHash}  -> {error, wrong_auth_function};
-                _Other            -> {error, bad_auth_data}
+            AuthData = aega_meta_tx:auth_data(MetaTx),
+            case aeprimop:check_auth_data_function(ABIVersion, AuthData, AuthFunHash) of
+                ok ->
+                    verify_signature_(Channel, SignerId, AuthContractId, MetaTx, Trees, Env);
+                Err = {error, _} ->
+                    Err
             end;
         {ok, basic} ->
             {error, meta_tx_for_basic_account};
@@ -488,7 +492,7 @@ verify_signature_(Channel, SignerId, AuthContractId, MetaTx, Trees, Env) ->
                        },
             CTVersion = aect_contracts:ct_version(Contract),
             {Call1, _Trees1, _Env1} = aect_dispatch:run(CTVersion, CallDef),
-            case check_auth_result(Call1) of
+            case check_auth_result(CTVersion, Call1) of
                 ok               -> {ok, SignerPK, aega_meta_tx:tx(MetaTx)};
                 Err = {error, _} -> Err
             end;
@@ -498,12 +502,12 @@ verify_signature_(Channel, SignerId, AuthContractId, MetaTx, Trees, Env) ->
             {error, signature_verification_failed_no_state}
     end.
 
-check_auth_result(Call) ->
+check_auth_result(#{ abi := ABIVersion }, Call) ->
     case aect_call:return_type(Call) of
         ok ->
-            case aeb_heap:from_binary(word, aect_call:return_value(Call)) of
-                {ok, 1} -> ok;
-                _       -> {error, signature_verification_failed_authenticate_false}
+            case aeprimop:decode_auth_call_result(ABIVersion, aect_call:return_value(Call)) of
+                {ok, true} -> ok;
+                _          -> {error, signature_verification_failed_authenticate_false}
             end;
         _  ->
             {error, signature_verification_failed_contract_error}

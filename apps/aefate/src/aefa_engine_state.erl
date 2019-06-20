@@ -6,7 +6,7 @@
 %%%-------------------------------------------------------------------
 -module(aefa_engine_state).
 
--export([ new/5
+-export([ new/6
         , finalize/1
         ]).
 
@@ -105,8 +105,8 @@
 -export_type([ state/0
              ]).
 
--spec new(non_neg_integer(), non_neg_integer(), map(), aefa_chain_api:state(), map()) -> state().
-new(Gas, Value, Spec, APIState, CodeCache) ->
+-spec new(non_neg_integer(), non_neg_integer(), map(), aefa_stores:store(), aefa_chain_api:state(), map()) -> state().
+new(Gas, Value, Spec, Stores, APIState, CodeCache) ->
     [error({bad_init_arg, X, Y}) || {X, Y} <- [{gas, Gas}, {value, Value}],
                                     not (is_integer(Y) andalso Y >= 0)],
     #es{ accumulator       = ?FATE_VOID
@@ -126,7 +126,7 @@ new(Gas, Value, Spec, APIState, CodeCache) ->
        , logs              = []
        , memory            = #{}
        , seen_contracts    = []
-       , stores            = aefa_stores:new()
+       , stores            = Stores
        , trace             = []
        }.
 
