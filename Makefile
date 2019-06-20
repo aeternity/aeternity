@@ -416,6 +416,10 @@ rebar-lock-check:
 		"$(CURDIR)/rebar3" \
 		"$(CURDIR)"
 
+.PHONY: license-shortdesc
+license-shortdesc:
+	$(MAKE) license-check | grep '^\(_build/\|License:\)'
+
 .PHONY: license-check
 license-check: | prod-build
 	docker run --rm -v `pwd`:`pwd` -w `pwd` aeternity/builder:ci-build-licenses sh -c 'for X in $$(ls -d _build/prod/lib/* | grep -v "/\($$(printf "%b\\|" $$(ls apps))jobs\|rocksdb\)$$") $$(ls -d _build/prod/plugins/* | grep -v "/\(rebar3_elixir\)$$"); do echo $${X:?}; licensee $${X:?}; done'
