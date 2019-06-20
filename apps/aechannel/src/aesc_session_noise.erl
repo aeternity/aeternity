@@ -148,7 +148,7 @@ accept_(#{ reestablish := true
     {ok, _Pid} = aesc_sessions_sup:start_child(
                    [#{fsm => self(), op => {accept, Opts, NoiseOpts}}]);
 accept_(#{ initiator := I, responder := R, port := Port } = Opts, NoiseOpts) ->
-    gproc:reg({n,l,responder_regkey(I, R, Port)}),
+    gproc:reg({n,l,responder_regkey(R, I, Port)}),
     aesc_sessions_sup:start_child([#{fsm => self(), op => {accept, Opts, NoiseOpts}}]).
 
 start_link(Arg) when is_map(Arg) ->
@@ -328,13 +328,18 @@ locate_fsm(Type, MInfo, #st{ init_op = {accept, SnInfo, _Opts} } = St) ->
 get_cands(?CH_OPEN, #{ initiator := I
                      , responder := R
                      , port      := Port }) ->
-    gproc:select({l,n},
-                 [{ {{n,l, responder_regkey(I, R, Port)}, '_', '_'},
-                    [], ['$_'] }])
-        ++ gproc:select(
-             {l,n},
-             [{ {{n,l, responder_regkey(any, R, Port)}, '_', '_'},
-                [], ['$_'] }]);
+    %% we expect to get at most one R+I pair match, and possibly multiple
+    %% matches on R+any. In the ordered_set gproc table, the 'any' matches
+    %% will come first, but we want the explicit I match to take precedence,
+    %% so we reverse the result. This ought to be faster than performing
+    %% two select operations.
+    lists:reverse(
+      gproc:select(
+        {l,n},
+        [{ {{n,l, responder_regkey(R, '$1', Port)}, '_', '_'},
+           [{'orelse',
+             {'=:=', '$1', I},
+             {'=:=', '$1', any}}], ['$_'] }]));
 get_cands(?CH_REESTABL, #{ chain_hash := Chain
                          , channel_id := ChId
                          , responder  := R
@@ -346,8 +351,8 @@ get_cands(?CH_REESTABL, #{ chain_hash := Chain
 responder_reestabl_regkey(Chain, ChId, R, Port) ->
     {n, l, {?MODULE, accept_reestabl, Chain, ChId, R, Port}}.
 
-responder_regkey(I, R, Port) ->
-    {n, l, {?MODULE, accept, I, R, Port}}.
+responder_regkey(R, I, Port) ->
+    {n, l, {?MODULE, accept, R, I, Port}}.
 
 try_cands([{K, Pid, _} | Cands], Tries, Type, Info, St) ->
     case aesc_fsm:attach_responder(Pid, Info#{ gproc_key => K }) of
