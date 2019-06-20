@@ -459,7 +459,7 @@ check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
     TxTTL = aetx:ttl(Tx1),
     TxGas = aetx:gas_limit(Tx1, Height),
     case Height < TxTTL andalso TxGas > 0
-         andalso ok =:= int_check_nonce(Tx, AccountsTree, check_candidate)
+         andalso ok =:= int_check_account(Tx, AccountsTree, check_candidate)
          andalso MinMinerGasPrice =< aetx:min_gas_price(Tx1, Height) of
         true ->
             case Gas - TxGas of
@@ -705,7 +705,7 @@ check_pool_db_put(Tx, TxHash, Event) ->
         not_found ->
             Checks = [ fun check_valid_at_protocol/4
                      , fun check_signature/4
-                     , fun check_nonce/4
+                     , fun check_account/4
                      , fun check_minimum_fee/4
                      , fun check_minimum_gas_price/4
                      , fun check_minimum_miner_gas_price/4
@@ -774,11 +774,11 @@ check_signature(Tx, Hash, _Height, _Event) ->
             ok
     end.
 
-check_nonce(Tx, _Hash, _Height, Event) ->
-  int_check_nonce(Tx, {block_hash, aec_chain:top_block_hash()}, Event).
+check_account(Tx, _Hash, _Height, Event) ->
+    int_check_account(Tx, {block_hash, aec_chain:top_block_hash()}, Event).
 
 
-int_check_nonce(Tx, Source, Event) ->
+int_check_account(Tx, Source, Event) ->
     CheckNonce = nonce_check_by_event(Event),
 
     %% Check is conservative and only rejects certain cases
@@ -799,13 +799,16 @@ int_check_nonce(Tx, Source, Event) ->
                         {error, no_state_trees} -> nonce_baseline_check(TxNonce, CheckNonce);
                         none -> nonce_baseline_check(TxNonce, CheckNonce);
                         {value, Account} ->
-                            Offset =  nonce_offset(),
-                            AccountNonce = aec_accounts:nonce(Account),
+                            Offset   = nonce_offset(),
+                            AccNonce = aec_accounts:nonce(Account),
+                            AccType  = aec_accounts:type(Account),
                             if
-                                TxNonce =< AccountNonce -> {error, nonce_too_low};
-                                TxNonce =< (AccountNonce + Offset) -> ok;
-                                TxNonce >  (AccountNonce + Offset) andalso not CheckNonce -> ok;
-                                TxNonce >  (AccountNonce + Offset) -> {error, nonce_too_high}
+                                AccType == generalized ->
+                                    {error, generalized_account_cant_sign_non_meta_tx};
+                                TxNonce =< AccNonce -> {error, nonce_too_low};
+                                TxNonce =< (AccNonce + Offset) -> ok;
+                                TxNonce >  (AccNonce + Offset) andalso not CheckNonce -> ok;
+                                TxNonce >  (AccNonce + Offset) -> {error, nonce_too_high}
                             end
                     end
             end

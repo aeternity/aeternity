@@ -47,10 +47,10 @@ sign_txs_test_() ->
       end},
       {"Broken priv key does not produce signatures",
        fun() ->
-               BrokenKey = <<0:32/unit:8>>,
-               {ok, SpendTx} = make_spend_tx(BrokenKey),
-               ?_assertException(error, {invalid_priv_key, [BrokenKey]},
-                                 aec_test_utils:sign_tx(SpendTx, <<0:42/unit:8>>)),
+               BrokenPrivKey = <<0:65/unit:8>>,
+               {ok, SpendTx} = make_spend_tx(<<0:32/unit:8>>),
+               ?assertException(error, {invalid_priv_key, [BrokenPrivKey]},
+                                aec_test_utils:sign_tx(SpendTx, BrokenPrivKey)),
                ok
       end},
       {"Missing channel does not validate",

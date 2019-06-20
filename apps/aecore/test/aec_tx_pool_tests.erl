@@ -76,7 +76,7 @@ tx_pool_test_() ->
 
                %% Add it again and see that it is not added twice
                ?assertEqual(ok, aec_tx_pool:push(STx1, tx_received)),
-               ?assertEqual({ok, [STx1]}, aec_tx_pool:peek(1)),
+               ?assertEqual({ok, [STx1]}, aec_tx_pool:peek(2)),
 
                %% Other tx received from a peer.
                STx2 = a_signed_tx(new_pubkey(), me, 1, 20000),
@@ -89,7 +89,7 @@ tx_pool_test_() ->
       {"ensure nonce limit for sender without account in state",
        fun() ->
             PK0 = new_pubkey(),
-            ?assertEqual(none, aec_chain:get_account(PK0)),
+            ?assertEqual(none,                   aec_chain:get_account(PK0)),
             ?assertEqual(ok,                     aec_tx_pool:push( a_signed_tx(PK0, me, 1, 20000) )),
             ?assertEqual({error,nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK0, me, 2, 20000) )),
 
