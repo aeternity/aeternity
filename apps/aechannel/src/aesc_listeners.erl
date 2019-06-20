@@ -5,6 +5,8 @@
           start_link/0
         , listen/3
         , close/1
+        , lsock_info/1  %% (LSock) -> lsock_info(LSock, all).
+        , lsock_info/2  %% (LSock, Item | list(Item)) -> undefined | map()
         ]).
 
 -export([
@@ -51,6 +53,12 @@ listen(Port, Responder, Opts) ->
 
 close(Port) ->
     call({close, Port}).
+
+lsock_info(LSock) ->
+    lsock_info(LSock, all).
+
+lsock_info(LSock, Item) ->
+    call({lsock_info, LSock, Item}).
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
@@ -114,6 +122,14 @@ handle_call({close, LSock}, {Pid,_Ref}, #st{ socks = Socks
         [] ->
             {reply, {exception, not_found}, St}
     end;
+handle_call({lsock_info, LSock, Item}, _, #st{socks = Socks} = St) ->
+    I = case db_lookup(Socks, LSock) of
+            [#sock{port = Port}] ->
+                get_lsock_info(Item, #{lsock => LSock, port => Port}, St);
+            [] ->
+                undefined
+        end,
+    {reply, I, St};
 handle_call(_Req, _From, St) ->
     {reply, {exception, {unknown_call, _Req}}, St}.
 
@@ -200,3 +216,29 @@ db_next_([_|T], P, K) ->
     db_next_(T, P, K);
 db_next_([], _, _) ->
     '$end_of_table'.
+
+list_pids(Ports, P) ->
+    list_pids_(db_next(Ports, {P, 0}), P, Ports).
+
+list_pids_({P, Pid} = K, P, Ports) ->
+    [Pid | list_pids_(db_next(Ports, K), P, Ports)];
+list_pids_(_, _, _) ->
+    [].
+
+get_lsock_info(pids, #{port := Port} = I, #st{ ports = Ports }) ->
+    I#{pids => list_pids(Ports, Port)};
+get_lsock_info(responder, #{port := Port} = I, #st{ ports = Ports }) ->
+    case db_lookup(Ports, {Port, 0}) of
+        [#port{responder = R}] ->
+            I#{responder => R};
+        [] ->
+            I
+    end;
+get_lsock_info(Items, I, St) when is_list(Items) ->
+    lists:foldl(
+      fun(Item, Acc) ->
+              get_lsock_info(Item, Acc, St)
+      end, I, Items);
+get_lsock_info(all, I, St) ->
+    get_lsock_info([pids, responder], I, St).
+

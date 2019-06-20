@@ -10,7 +10,9 @@
 -define(SUPERVISOR, ?MODULE).
 -define(CHILD_MOD, aesc_session_noise).
 
--define(CHILD(Mod,N,Type), {Mod,{Mod,start_link,[]},permanent,N,Type,[Mod]}).
+%% Noise sessions have restart type 'temporary', since it makes no sense to
+%% restart them.
+-define(CHILD(Mod,N,Type), {Mod,{Mod,start_link,[]},temporary,N,Type,[Mod]}).
 
 start_child(Args) when is_list(Args) ->
     supervisor:start_child(?SUPERVISOR, Args).

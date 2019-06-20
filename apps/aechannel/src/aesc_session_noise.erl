@@ -47,9 +47,9 @@
 
 -export([start_link/1]).
 
--record(st, { init_op        :: op()
-            , parent         :: undefined | pid()
-            , parent_mon_ref :: undefined | reference()
+-record(st, { init_op     :: op()
+            , fsm         :: undefined | pid()
+            , fsm_mon_ref :: undefined | reference()
             , econn }).
 
 -define(ACCEPT_TIMEOUT, 2*60*1000).  %% 2 minutes
@@ -130,25 +130,39 @@ record_fields(_ ) -> no.
 %% Connection establishment
 
 connect(Host, Port, Opts) ->
-    start_link({self(), {connect, Host, Port, Opts}}).
+    start_link(#{fsm => self(), op => {connect, Host, Port, Opts}}).
 
-accept(#{ reestablish := true
-        , chain_hash  := ChainH
-        , channel_id  := ChId
-        , responder   := R
-        , port        := Port } = Opts, NoiseOpts) ->
+accept(#{ port := Port, responder := R } = Opts0, NoiseOpts) ->
+    TcpOpts = tcp_opts(listen, NoiseOpts),
+    lager:debug("listen: TcpOpts = ~p", [TcpOpts]),
+    {ok, LSock} = aesc_listeners:listen(Port, R, TcpOpts),
+    Opts = Opts0#{lsock => LSock},
+    accept_(Opts, NoiseOpts).
+
+accept_(#{ reestablish := true
+         , chain_hash  := ChainH
+         , channel_id  := ChId
+         , responder   := R
+         , port        := Port } = Opts, NoiseOpts) ->
     gproc:reg({n,l,responder_reestabl_regkey(ChainH, ChId, R, Port)}),
     {ok, _Pid} = aesc_sessions_sup:start_child(
-                   [{self(), {accept, Opts, NoiseOpts}}]);
-accept(#{ initiator := I, responder := R, port := Port } = Opts, NoiseOpts) ->
+                   [#{fsm => self(), op => {accept, Opts, NoiseOpts}}]);
+accept_(#{ initiator := I, responder := R, port := Port } = Opts, NoiseOpts) ->
     gproc:reg({n,l,responder_regkey(I, R, Port)}),
-    {ok, _Pid} = aesc_sessions_sup:start_child(
-                   [{self(), {accept, Opts, NoiseOpts}}]).
+    aesc_sessions_sup:start_child([#{fsm => self(), op => {accept, Opts, NoiseOpts}}]).
 
-start_link(Arg) ->
-    gen_server:start_link(?MODULE, Arg, ?GEN_SERVER_OPTS).
+start_link(Arg) when is_map(Arg) ->
+    %% Res = gen_server:start_link(?MODULE, Arg#{parent => self()}, ?GEN_SERVER_OPTS),
+    %% We don't use gen_server:start_link/3, since we want to use gen_server:enter_loop/3
+    %% in the init/1 function, and we want to avoid redundant `init_ack()` messages
+    %% sent by the `gen_server:init_it/6 function (a different kind of support has been
+    %% introduced in later versions of OTP.)
+    Res = proc_lib:start_link(?MODULE, init, [Arg#{parent => self()}]),
+    lager:debug("Res = ~p", [Res]),
+    Res.
 
-init({Fsm, Op}) ->
+init(#{fsm := Fsm, parent := Parent, op := Op} = Arg) ->
+    lager:debug("Arg = ~p", [Arg]),
     %% trap exits to avoid ugly crash reports. We rely on the monitor to
     %% ensure that we close when the fsm dies
     %%
@@ -156,31 +170,18 @@ init({Fsm, Op}) ->
     %% aehttp_integration_SUITE:sc_ws_open/1 to fail. Investigate why.
     process_flag(trap_exit, true),
     %%
-    Parent = get_parent(),  % in the acceptor case, this is not the fsm
-    lager:debug("~p", [{Parent, Op}]),
-    lager:debug("~p", [process_info(self(), dictionary)]),
     proc_lib:init_ack(Parent, {ok, self()}),
     FsmMonRef = monitor(process, Fsm),
     St = establish(Op, #st{ init_op = Op
-                          , parent = Fsm
-                          , parent_mon_ref = FsmMonRef }),
+                          , fsm = Fsm
+                          , fsm_mon_ref = FsmMonRef }),
     gen_server:enter_loop(?MODULE, ?GEN_SERVER_OPTS, St).
 
-get_parent() ->
-    case get('$ancestors') of
-        [Name|_] when is_atom(Name) ->
-            whereis(Name);
-        [Pid|_] when is_pid(Pid) ->
-            Pid
-    end.
-
-establish({accept, #{responder := R, port := Port}, NoiseOpts}, St) ->
-    TcpOpts = tcp_opts(listen, NoiseOpts),
-    lager:debug("listen: TcpOpts = ~p", [TcpOpts]),
-    {ok, LSock} = aesc_listeners:listen(Port, R, TcpOpts),
+establish({accept, #{responder := R, port := Port} = Opts, NoiseOpts}, St) ->
+    LSock = maps:get(lsock, Opts),
     lager:debug("LSock = ~p", [LSock]),
     AcceptTimeout = proplists:get_value(accept_timeout, NoiseOpts, ?ACCEPT_TIMEOUT),
-    {ok, TcpSock} = gen_tcp:accept(LSock, AcceptTimeout),
+    {ok, TcpSock} = accept_tcp(LSock, Port, R, AcceptTimeout),
     lager:debug("Accept TcpSock = ~p", [TcpSock]),
     %% TODO: extract/check something from FinalState?
     EnoiseOpts = enoise_opts(accept, NoiseOpts),
@@ -189,15 +190,15 @@ establish({accept, #{responder := R, port := Port}, NoiseOpts}, St) ->
     %% At this point, we should de-couple from the parent fsm and instead
     %% attach to the fsm we eventually pair with, once the `CH_OPEN`
     %% (or `CH_REESTABL`) message arrives from the other side.
-    erlang:demonitor(St#st.parent_mon_ref),
+    erlang:demonitor(St#st.fsm_mon_ref),
     St#st{econn = EConn,
-          parent = undefined,
-          parent_mon_ref = undefined};
+          fsm = undefined,
+          fsm_mon_ref = undefined};
 establish({connect, Host, Port, Opts}, St) ->
     TcpOpts = tcp_opts(connect, Opts),
     lager:debug("connect: TcpOpts = ~p", [TcpOpts]),
     {ok, TcpSock} =
-        connect_tcp(Host, Port, St#st.parent_mon_ref, TcpOpts),
+        connect_tcp(Host, Port, St#st.fsm_mon_ref, TcpOpts),
     lager:debug("Connect TcpSock = ~p", [TcpSock]),
     %% TODO: extract/check something from FinalState?
     EnoiseOpts = enoise_opts(connect, Opts),
@@ -205,6 +206,21 @@ establish({connect, Host, Port, Opts}, St) ->
     {ok, EConn, _FinalSt} = enoise:connect(TcpSock, EnoiseOpts),
     St#st{econn = EConn}.
 
+accept_tcp(LSock, Port, R, AcceptTimeout) ->
+    case gen_tcp:accept(LSock, AcceptTimeout) of
+        {ok, _} = Ok ->
+            Ok;
+        {error, timeout} ->
+            case aesc_listeners:lsock_info(LSock, [port, responder]) of
+                #{ port := Port, responder := R } ->
+                    lager:debug("Still listeners on this port, loop", []),
+                    accept_tcp(LSock, Port, R, AcceptTimeout);
+                _ ->
+                    exit(normal)
+            end;
+        Error ->
+            error(Error)
+    end.
 
 connect_tcp(Host, Port, Ref, Opts) ->
     {Timeout, Retries} = get_reconnect_params(),
@@ -263,8 +279,8 @@ handle_cast_(_Msg, St) ->
 
 %% FSM had died
 handle_info({'DOWN', Ref, process, Pid, _Reason},
-            #st{parent_mon_ref=Ref, parent=Pid, econn=EConn}=St) ->
-    lager:debug("Got DOWN from parent (~p)", [Pid]),
+            #st{fsm_mon_ref=Ref, fsm=Pid, econn=EConn}=St) ->
+    lager:debug("Got DOWN from FSM (~p)", [Pid]),
     close_econn(EConn),
     {stop, shutdown, St};
 handle_info(Msg, St) ->
@@ -276,9 +292,9 @@ handle_info(Msg, St) ->
             erlang:error(Reason, Trace)
     end.
 
-handle_info_({noise, EConn, Data}, #st{econn = EConn, parent = Parent} = St) ->
+handle_info_({noise, EConn, Data}, #st{econn = EConn, fsm = Fsm} = St) ->
     {Type, Info} = Msg = aesc_codec:dec(Data),
-    St1 = case {Type, Parent} of
+    St1 = case {Type, Fsm} of
               {?CH_OPEN, undefined} ->
                   locate_fsm(Type, Info, St);
               {?CH_REESTABL, undefined} ->
@@ -289,7 +305,7 @@ handle_info_({noise, EConn, Data}, #st{econn = EConn, parent = Parent} = St) ->
     tell_fsm(Msg, St1),
     enoise:set_active(EConn, once),
     {noreply, St1};
-handle_info_({tcp_closed, _Port}, #st{parent = Pid} = St) ->
+handle_info_({tcp_closed, _Port}, #st{fsm = Pid} = St) ->
     aesc_fsm:connection_died(Pid),
     {stop, normal, St};
 handle_info_(_Msg, St) ->
@@ -341,8 +357,8 @@ try_cands([{K, Pid, _} | Cands], Tries, Type, Info, St) ->
         ok ->
             lager:debug("Attached to ~p", [Pid]),
             MRef = erlang:monitor(process, Pid),
-            St#st{ parent = Pid
-                 , parent_mon_ref = MRef }
+            St#st{ fsm = Pid
+                 , fsm_mon_ref = MRef }
     end;
 try_cands([], 0, _, _, _) ->
     erlang:error(cannot_locate_fsm);
@@ -367,8 +383,8 @@ call(P, Msg) ->
     lager:debug("Call to noise session ~p: ~p", [P, Msg]),
     gen_server:call(P, Msg).
 
-tell_fsm({_, _} = Msg, #st{parent = Parent}) ->
-    aesc_fsm:message(Parent, Msg).
+tell_fsm({_, _} = Msg, #st{fsm = Fsm}) ->
+    aesc_fsm:message(Fsm, Msg).
 
 tcp_opts(_Op, Opts) ->
     case lists:keyfind(tcp, 1, Opts) of
