@@ -418,10 +418,10 @@ rebar-lock-check:
 
 .PHONY: license-shortdesc
 license-shortdesc:
-	$(MAKE) license-check | grep '^\(_build/\|License:\)'
+	$(MAKE) license-list | grep '^\(_build/\|License:\)'
 
-.PHONY: license-check
-license-check: | prod-build
+.PHONY: license-list
+license-list: | prod-build
 	$(info "Dep jobs 0.9.0 is licensed as Apache 2.0 - see https://github.com/uwiger/jobs/blob/0.9.0/LICENSE")
 	$(info "Dep rocksdb 0.24.0 is licensed as Apache 2.0 - see https://gitlab.com/barrel-db/erlang-rocksdb/blob/0.24.0/LICENSE" )
 	$(info "  The native dependency of dep rocksdb 0.24.0 named rocksdb is licensed as Apache 2.0 - see https://github.com/facebook/rocksdb/blob/v5.15.10/LICENSE.Apache")
