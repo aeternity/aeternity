@@ -416,6 +416,10 @@ rebar-lock-check:
 		"$(CURDIR)/rebar3" \
 		"$(CURDIR)"
 
+.PHONY: license-check
+license-check: | prod-package
+	docker run -it --rm -v `pwd`:`pwd` -w `pwd` debian:buster-slim sh -c 'apt-get update && apt-get install -y --no-install-recommends ruby-licensee && rm -rf /var/lib/apt/lists/* && for X in $$(ls -d _build/prod/lib/* _build/prod/plugins/*); do echo $${X:?}; licensee $${X:?}; done'
+
 kill:
 	@echo "Kill all beam processes only from this directory tree"
 	$(shell pkill -9 -f ".*/beam.*-boot `pwd`" || true)
