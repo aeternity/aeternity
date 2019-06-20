@@ -96,5 +96,5 @@ Create a directory and unpack the downloaded package (you may need to amend the 
 ```bash
 mkdir -p ~/aeternity/node
 cd ~/aeternity/node
-tar xf ~/Downloads/aeternity-3.2.0-macos-x86_64.tar.gz
+tar xf ~/Downloads/aeternity-3.3.0-macos-x86_64.tar.gz
 ```
