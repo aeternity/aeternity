@@ -1445,9 +1445,9 @@ to_words(Bin) ->
 format_fate_args(?cid(B)) ->
     {contract, B};
 format_fate_args(?hsh(B)) ->
-    {hash, B};
+    {bytes, B};
 format_fate_args(?sig(B)) ->
-    {signature, B};
+    {bytes, B};
 format_fate_args(?oid(B)) ->
     {oracle, B};
 format_fate_args(<<_:256>> = B) ->
@@ -4075,7 +4075,7 @@ sophia_operators(_Cfg) ->
 
     {Hash1, Hash1} = ?call(call_contract, Acc, IdC, hash, {tuple, [word, word]}, {<<"TestString">>}),
     <<HashXN:256>> = HashX = aec_hash:hash(evm, <<"TestString">>),
-    ?assertMatchVM(HashXN, {hash, HashX}, Hash1),
+    ?assertMatchVM(HashXN, {bytes, HashX}, Hash1),
 
     ok.
 
@@ -4287,12 +4287,12 @@ sophia_crypto(_Cfg) ->
     ?assertMatchAEVM1OOG(Sha256_N   , ResSha256),
     ?assertMatchAEVM1OOG(Blake2b_N  , ResBlake2b),
 
-    ?assertMatchFATE({hash, Sha3_S},    ResSha3_S),
-    ?assertMatchFATE({hash, Sha256_S},  ResSha256_S),
-    ?assertMatchFATE({hash, Blake2b_S}, ResBlake2b_S),
-    ?assertMatchFATE({hash, Sha3},      ResSha3),
-    ?assertMatchFATE({hash, Sha256},    ResSha256),
-    ?assertMatchFATE({hash, Blake2b},   ResBlake2b),
+    ?assertMatchFATE({bytes, Sha3_S},    ResSha3_S),
+    ?assertMatchFATE({bytes, Sha256_S},  ResSha256_S),
+    ?assertMatchFATE({bytes, Blake2b_S}, ResBlake2b_S),
+    ?assertMatchFATE({bytes, Sha3},      ResSha3),
+    ?assertMatchFATE({bytes, Sha256},    ResSha256),
+    ?assertMatchFATE({bytes, Blake2b},   ResBlake2b),
 
     ok.
 

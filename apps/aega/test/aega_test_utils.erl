@@ -164,9 +164,8 @@ sign_tx(STx, [Sig | Sigs], S) ->
 basic_auth_sign(Nonce, TxHash, PrivKey) ->
     Val = case aega_SUITE:abi_version() of
               ?ABI_AEVM_SOPHIA_1 -> <<32:256, TxHash/binary, Nonce:256>>;
-              ?ABI_FATE_SOPHIA_1 -> aeb_fate_encoding:serialize({tuple, {{hash, TxHash}, Nonce}})
+              ?ABI_FATE_SOPHIA_1 -> aeb_fate_encoding:serialize({tuple, {{bytes, TxHash}, Nonce}})
           end,
-    io:format("SIGN1: ~p\nSIGN2: ~p\n", [{hash, aec_hash:hash(tx, Val)}, PrivKey]),
     enacl:sign_detached(aec_hash:hash(tx, Val), PrivKey).
 
 %%%===================================================================
