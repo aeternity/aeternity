@@ -29,11 +29,11 @@
 %% Modifiers
 -export([ spend/4
         , oracle_extend/4
-        , oracle_get_answer/3
-        , oracle_get_question/3
+        , oracle_get_answer/5
+        , oracle_get_question/5
         , oracle_register/8
-        , oracle_query/9
-        , oracle_respond/5
+        , oracle_query/11
+        , oracle_respond/7
         , oracle_query_fee/2
         ]).
 
@@ -245,11 +245,11 @@ oracle_extend(Pubkey, TTLType, TTLVal, State) ->
     end.
 
 oracle_query(OraclePubkey, SenderPubkey, Question, QFee, QTTLType, QTTL, RTTL,
-             ABIVersion, #state{primop_state = PState} = State) ->
+             ABIVersion, QType, RType, #state{primop_state = PState} = State) ->
     Height = aetx_env:height(tx_env(State)),
     case to_relative_ttl(QTTLType, QTTL, Height) of
         {ok, QTTL1} ->
-            case abi_encode_oracle_term(OraclePubkey, ABIVersion, Question, PState) of
+            case abi_encode_oracle_term(OraclePubkey, ABIVersion, QType, RType, Question, PState) of
                 {ok, Question1, PState1} ->
                     %% The nonce of the sender is used for creating the query id.
                     %% So, we need to bump it.
@@ -269,8 +269,9 @@ oracle_query(OraclePubkey, SenderPubkey, Question, QFee, QTTLType, QTTL, RTTL,
             Err
     end.
 
-oracle_respond(OraclePubkey, QueryId, Response, ABIVersion, #state{primop_state = PState} = State) ->
-    case abi_encode_oracle_term(OraclePubkey, ABIVersion, Response, PState) of
+oracle_respond(OraclePubkey, QueryId, Response, ABIVersion, QType, RType,
+               #state{primop_state = PState} = State) ->
+    case abi_encode_oracle_term(OraclePubkey, ABIVersion, QType, RType, Response, PState) of
         {ok, Response1, PState1} ->
             Ins = [ aeprimop:oracle_respond_op(OraclePubkey, QueryId, Response1)
                   , aeprimop:oracle_earn_query_fee_op(OraclePubkey, QueryId)
@@ -288,58 +289,64 @@ oracle_query_fee(OraclePubkey, #state{primop_state = PState} = State) ->
             {error, oracle_does_not_exist}
     end.
 
-oracle_get_question(OraclePubkey, QueryId, #state{primop_state = PSTate} = State) ->
-    case aeprimop_state:find_oracle_query(OraclePubkey, QueryId, PSTate) of
-        {Query, PState1} ->
-            {Oracle, PState2} = aeprimop_state:find_oracle(OraclePubkey, PState1),
-            RawQuestion = aeo_query:query(Query),
-            State1 = State#state{primop_state = PState2},
-            case aeo_oracles:abi_version(Oracle) of
-                ?ABI_NO_VM ->
-                    {ok, aeb_fate_data:make_string(RawQuestion), State1};
-                ?ABI_FATE_SOPHIA_1 ->
-                    try
-                        {ok, aeb_fate_encoding:deserialize(RawQuestion), State1}
-                    catch _:_ ->
-                            {error, bad_question}
-                    end;
-                _Other ->
-                    io:format("Got ABI: ~p\n", [_Other]),
-                    {error, bad_abi}
-            end;
-        none ->
-            {error, query_not_found}
-    end.
-
-oracle_get_answer(OraclePubkey, QueryId, #state{primop_state = PSTate} = State) ->
-    case aeprimop_state:find_oracle_query(OraclePubkey, QueryId, PSTate) of
-        {Query, PState1} ->
-            case aeo_query:response(Query) of
-                undefined ->
-                    State1 = State#state{primop_state = PState1},
-                    {ok, aeb_fate_data:make_variant([0,1], 0, {}), State1};
-                RawResponse ->
-                    {Oracle, PState2} = aeprimop_state:find_oracle(OraclePubkey, PState1),
+oracle_get_question(OraclePubkey, QueryId, QType, RType,
+                    #state{primop_state = PState} = State) ->
+    ABIVersion = ?ABI_FATE_SOPHIA_1,
+    case find_oracle_with_type(OraclePubkey, QType, RType, ABIVersion, PState) of
+        {ok, Oracle, PState1} ->
+            case aeprimop_state:find_oracle_query(OraclePubkey, QueryId, PState1) of
+                {Query, PState2} ->
+                    RawQuestion = aeo_query:query(Query),
                     State1 = State#state{primop_state = PState2},
                     case aeo_oracles:abi_version(Oracle) of
                         ?ABI_NO_VM ->
-                            Answer = aeb_fate_data:make_string(RawResponse),
-                            Resp = aeb_fate_data:make_variant([0,1], 1, {Answer}),
-                            {ok, Resp, State1};
+                            {ok, aeb_fate_data:make_string(RawQuestion), State1};
                         ?ABI_FATE_SOPHIA_1 ->
-                            try aeb_fate_encoding:deserialize(RawResponse) of
-                                Answer ->
-                                    Resp = aeb_fate_data:make_variant([0,1], 1, {Answer}),
-                                    {ok, Resp, State1}
+                            try
+                                {ok, aeb_fate_encoding:deserialize(RawQuestion), State1}
                             catch _:_ ->
-                                    {error, bad_response}
+                                    {error, bad_question}
                             end
-                    end
+                    end;
+                none ->
+                    {error, query_not_found}
             end;
-        none ->
-            %% TODO: This mimics the aevm behavour,
-            %% but should it really be like this?
-            {ok, aeb_fate_data:make_variant([0,1], 0, {}), State}
+        {error, _} = Err ->
+            Err
+    end.
+
+oracle_get_answer(OraclePubkey, QueryId, QType, RType,
+                  #state{primop_state = PState} = State) ->
+    ABIVersion = ?ABI_FATE_SOPHIA_1,
+    case find_oracle_with_type(OraclePubkey, QType, RType, ABIVersion, PState) of
+        {ok, Oracle, PState1} ->
+            case aeprimop_state:find_oracle_query(OraclePubkey, QueryId, PState1) of
+                {Query, PState2} ->
+                    State1 = State#state{primop_state = PState2},
+                    case aeo_query:response(Query) of
+                        undefined ->
+                            {ok, aeb_fate_data:make_variant([0,1], 0, {}), State1};
+                        RawResponse ->
+                            case aeo_oracles:abi_version(Oracle) of
+                                ?ABI_NO_VM ->
+                                    Answer = aeb_fate_data:make_string(RawResponse),
+                                    Resp = aeb_fate_data:make_variant([0,1], 1, {Answer}),
+                                    {ok, Resp, State1};
+                                ?ABI_FATE_SOPHIA_1 ->
+                                    try aeb_fate_encoding:deserialize(RawResponse) of
+                                        Answer ->
+                                            Resp = aeb_fate_data:make_variant([0,1], 1, {Answer}),
+                                            {ok, Resp, State1}
+                                    catch _:_ ->
+                                            {error, bad_response}
+                                    end
+                            end
+                    end;
+                none ->
+                    {ok, aeb_fate_data:make_variant([0,1], 0, {}), State}
+            end;
+        {error, _} = Err ->
+            Err
     end.
 
 to_relative_ttl(relative, TTL,_Height) ->
@@ -353,9 +360,9 @@ to_relative_ttl(absolute, TTL, Height) ->
         false -> {error, too_low_ttl}
     end.
 
-abi_encode_oracle_term(Pubkey, ABIVersion, Term, PState) ->
-    case aeprimop_state:find_oracle(Pubkey, PState) of
-        {Oracle, PState1} ->
+abi_encode_oracle_term(Pubkey, ABIVersion, QType, RType, Term, PState) ->
+    case find_oracle_with_type(Pubkey, QType, RType, ABIVersion, PState) of
+        {ok, Oracle, PState1} ->
             case aeo_oracles:abi_version(Oracle) of
                 ?ABI_NO_VM ->
                     case ?IS_FATE_STRING(Term) of
@@ -366,14 +373,35 @@ abi_encode_oracle_term(Pubkey, ABIVersion, Term, PState) ->
                             {error, no_vm_oracles_needs_strings}
                     end;
                 ABIVersion ->
-                    {ok, aeb_fate_encoding:serialize(Term), PState1};
-                _ ->
+                    {ok, aeb_fate_encoding:serialize(Term), PState1}
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+find_oracle_with_type(Pubkey, QType, RType, ABIVersion, PState) ->
+    case aeprimop_state:find_oracle(Pubkey, PState) of
+        {Oracle, PState1} ->
+            case aeo_oracles:abi_version(Oracle) of
+                ?ABI_NO_VM when QType =:= ?FATE_TYPEREP(string),
+                                RType =:= ?FATE_TYPEREP(string) ->
+                    {ok, Oracle, PState1};
+                ABIVersion ->
+                    QFormat = aeb_fate_encoding:serialize(QType),
+                    RFormat = aeb_fate_encoding:serialize(RType),
+                    case (aeo_oracles:query_format(Oracle) =:= QFormat andalso
+                          aeo_oracles:response_format(Oracle) =:= RFormat) of
+                        true ->
+                            {ok, Oracle, PState1};
+                        false ->
+                            {error, wrong_oracle_types}
+                    end;
+                _Other ->
                     {error, wrong_abi_version}
             end;
         none ->
             {error, oracle_not_found}
     end.
-
 
 %%%-------------------------------------------------------------------
 %%% Interface to primop evaluation
