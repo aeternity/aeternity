@@ -821,7 +821,7 @@ oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
         not ?IS_FATE_ORACLE_Q(Query) ->
             aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
         not (?IS_FATE_TYPEREP(QType) orelse ?IS_FATE_TYPEREP(RType)) ->
-            aefa_fate:abort({primop_error, oracle_query, bad_type}, ES1);
+            aefa_fate:abort({primop_error, oracle_respond, bad_type}, ES1);
         true ->
             ok
     end,
@@ -876,7 +876,7 @@ oracle_get_question(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
         not ?IS_FATE_ORACLE_Q(Query) ->
             aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
         not (?IS_FATE_TYPEREP(QType) orelse ?IS_FATE_TYPEREP(RType)) ->
-            aefa_fate:abort({primop_error, oracle_query, bad_type}, ES1);
+            aefa_fate:abort({primop_error, oracle_get_question, bad_type}, ES1);
         true ->
             ok
     end,
@@ -901,7 +901,7 @@ oracle_get_answer(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
         not ?IS_FATE_ORACLE_Q(Query) ->
             aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
         not (?IS_FATE_TYPEREP(QType) orelse ?IS_FATE_TYPEREP(RType)) ->
-            aefa_fate:abort({primop_error, oracle_query, bad_type}, ES1);
+            aefa_fate:abort({primop_error, oracle_get_answer, bad_type}, ES1);
         true ->
             ok
     end,
