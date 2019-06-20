@@ -102,11 +102,7 @@ get_block_beneficiary(NodeName, Height) ->
 
 get_chain_beneficiaries(NodeName, Height) when is_integer(Height),
                                                Height >= 1 ->
-    sets:to_list(
-      lists:foldl(
-        fun(H, Bs) ->
-                sets:add_element(get_block_beneficiary(NodeName, H), Bs)
-        end, sets:new(), lists:seq(Height, 1, -1))).
+    lists:usort([ get_block_beneficiary(NodeName, H) || H <- lists:seq(1, Height) ]).
 
 wait_for_beneficiaries(Node1, Node2, ExpectedBeneficiaries,
                        CurrentLength, Step, MaxSteps,
