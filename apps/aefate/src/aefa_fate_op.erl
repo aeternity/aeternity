@@ -752,7 +752,7 @@ oracle_register_(Arg0, ?FATE_SIGNATURE(Signature), ?FATE_ADDRESS(Address),
             ?FATE_REL_TTL(R) when ?IS_FATE_INTEGER(R) -> {relative, R};
             ?FATE_ABS_TTL(A) when ?IS_FATE_INTEGER(A) -> {absolute, A};
              _ ->
-                aefa_fate:abort({primop_error, oracle_query, bad_ttl}, ES)
+                aefa_fate:abort({primop_error, oracle_register, bad_ttl}, ES)
         end,
     QFormat = iolist_to_binary(aeb_fate_encoding:serialize_type(QType)),
     RFormat = iolist_to_binary(aeb_fate_encoding:serialize_type(RType)),
@@ -821,7 +821,7 @@ oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
         not ?IS_FATE_ORACLE_Q(Query) ->
             aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
         not (?IS_FATE_TYPEREP(QType) orelse ?IS_FATE_TYPEREP(RType)) ->
-            aefa_fate:abort({primop_error, oracle_query, bad_type}, ES1);
+            aefa_fate:abort({primop_error, oracle_respond, bad_type}, ES1);
         true ->
             ok
     end,
@@ -854,7 +854,7 @@ oracle_extend(Arg0, Arg1, Arg2, EngineState) ->
             %% TTL Must be relative for extends
             ?FATE_REL_TTL(R) when ?IS_FATE_INTEGER(R) -> {relative, R};
              _ ->
-                aefa_fate:abort({primop_error, oracle_query, bad_ttl}, EngineState)
+                aefa_fate:abort({primop_error, oracle_extend, bad_ttl}, EngineState)
         end,
     ?FATE_ORACLE(OraclePubkey) = Oracle,
     ?FATE_SIGNATURE(SignBin) = Signature,
@@ -876,7 +876,7 @@ oracle_get_question(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
         not ?IS_FATE_ORACLE_Q(Query) ->
             aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
         not (?IS_FATE_TYPEREP(QType) orelse ?IS_FATE_TYPEREP(RType)) ->
-            aefa_fate:abort({primop_error, oracle_query, bad_type}, ES1);
+            aefa_fate:abort({primop_error, oracle_get_question, bad_type}, ES1);
         true ->
             ok
     end,
@@ -901,7 +901,7 @@ oracle_get_answer(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
         not ?IS_FATE_ORACLE_Q(Query) ->
             aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
         not (?IS_FATE_TYPEREP(QType) orelse ?IS_FATE_TYPEREP(RType)) ->
-            aefa_fate:abort({primop_error, oracle_query, bad_type}, ES1);
+            aefa_fate:abort({primop_error, oracle_get_answer, bad_type}, ES1);
         true ->
             ok
     end,
