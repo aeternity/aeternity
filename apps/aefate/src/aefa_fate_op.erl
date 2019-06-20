@@ -752,7 +752,7 @@ oracle_register_(Arg0, ?FATE_SIGNATURE(Signature), ?FATE_ADDRESS(Address),
             ?FATE_REL_TTL(R) when ?IS_FATE_INTEGER(R) -> {relative, R};
             ?FATE_ABS_TTL(A) when ?IS_FATE_INTEGER(A) -> {absolute, A};
              _ ->
-                aefa_fate:abort({primop_error, oracle_query, bad_ttl}, ES)
+                aefa_fate:abort({primop_error, oracle_register, bad_ttl}, ES)
         end,
     QFormat = iolist_to_binary(aeb_fate_encoding:serialize_type(QType)),
     RFormat = iolist_to_binary(aeb_fate_encoding:serialize_type(RType)),
@@ -854,7 +854,7 @@ oracle_extend(Arg0, Arg1, Arg2, EngineState) ->
             %% TTL Must be relative for extends
             ?FATE_REL_TTL(R) when ?IS_FATE_INTEGER(R) -> {relative, R};
              _ ->
-                aefa_fate:abort({primop_error, oracle_query, bad_ttl}, EngineState)
+                aefa_fate:abort({primop_error, oracle_extend, bad_ttl}, EngineState)
         end,
     ?FATE_ORACLE(OraclePubkey) = Oracle,
     ?FATE_SIGNATURE(SignBin) = Signature,
