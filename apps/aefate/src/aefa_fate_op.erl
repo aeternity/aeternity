@@ -127,6 +127,8 @@
         , exit/2
         , nop/1
         , auth_tx_hash/2
+        , bytes_to_int/3
+        , bytes_to_str/3
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
@@ -607,6 +609,12 @@ auth_tx_hash(Arg0, EngineState) ->
         undefined -> write(Arg0, aeb_fate_data:make_variant([0, 1], 0, {}), EngineState);
         TxHash    -> write(Arg0, aeb_fate_data:make_variant([0, 1], 1, {?FATE_BYTES(TxHash)}), EngineState)
     end.
+
+bytes_to_int(Arg0, Arg1, EngineState) ->
+    un_op(bytes_to_int, {Arg0, Arg1}, EngineState).
+
+bytes_to_str(Arg0, Arg1, EngineState) ->
+    un_op(bytes_to_str, {Arg0, Arg1}, EngineState).
 
 balance_other(Arg0, Arg1, ES) ->
     API = aefa_engine_state:chain_api(ES),
@@ -1152,6 +1160,13 @@ op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
     if Bits < 0 -> aefa_fate:abort({arithmetic_error, bits_sum_on_infinite_set});
        true -> bits_sum(Bits, 0)
     end;
+op(bytes_to_int, ?FATE_BYTES(Bin)) ->
+    N = byte_size(Bin),
+    <<Val:N/unit:8>> = Bin,
+    Val;
+op(bytes_to_str, ?FATE_BYTES(Bin)) ->
+    Str = list_to_binary(aeu_hex:bin_to_hex(Bin)),
+    ?FATE_STRING(Str);
 op(sha3, A) ->
     Bin  = binary_for_hashing(A),
     Hash = aec_hash:hash(evm, Bin),
