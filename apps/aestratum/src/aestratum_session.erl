@@ -664,13 +664,13 @@ check_user_agent(#{user_agent := _UserAgent}, _Session) ->
 check_session_id(#{session_id := _SessionId}, _Session) ->
     continue.
 
-check_host(#{host := Host}, _Session) ->
-    check_host1(Host, aestratum_env:get(host)).
+%% check_host(#{host := Host}, _Session) ->
+%%     check_host1(Host, aestratum_env:get(host)).
 
-check_host1(Host, Host) ->
-    continue;
-check_host1(_Host, _Host1) ->
-    {done, {error, host_mismatch}}.
+%% check_host1(Host, Host) ->
+%%     continue;
+%% check_host1(_Host, _Host1) ->
+%%     {done, {error, host_mismatch}}.
 
 check_port(#{port := Port}, _Session) ->
     check_port1(Port, aestratum_env:get(port)).

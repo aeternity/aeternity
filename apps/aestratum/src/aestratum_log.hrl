@@ -1,5 +1,5 @@
 
--define(LOG(Level, Fmt, Args), lager:log(aestratum_lager_event, Level, [], Fmt, Args)).
+-define(LOG(Level, Fmt, Args), lager:log(aestratum_lager_event, Level, self(), Fmt, Args)).
 
 -define(DEBUG(Fmt, Args),    ?LOG(debug, Fmt, Args)).
 -define(INFO(Fmt, Args),     ?LOG(info, Fmt, Args)).

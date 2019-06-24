@@ -26,22 +26,22 @@
          round_key :: non_neg_integer()}).
 
 -record(aestratum_payment,
-        {id      :: {Height :: non_neg_integer(), Index :: non_neg_integer()},
-         total   :: non_neg_integer(),
-         relmap  :: #{binary() => float()},
-         absmap  :: undefined | #{binary() => non_neg_integer()},
-         tx_hash :: undefined | binary(),
-         nonce   :: undefined | non_neg_integer(),
-         fee     :: undefined | non_neg_integer(),
-         gas     :: undefined | non_neg_integer(), % min gas - for transaction
-         run_gas :: undefined | non_neg_integer(), % contract gas - for computation
-         date    :: undefined | erlang:date()}).
+        {id      :: {Height :: non_neg_integer(), Index :: non_neg_integer() | '_'},
+         total   :: non_neg_integer() | '_',
+         relmap  :: #{binary() => float()} | '_',
+         absmap  :: undefined | #{binary() => non_neg_integer()} | '_',
+         tx_hash :: undefined | binary() | '_',
+         nonce   :: undefined | non_neg_integer() | '_',
+         fee     :: undefined | non_neg_integer() | '_',
+         gas     :: undefined | non_neg_integer() | '_', % min gas - for transaction
+         run_gas :: undefined | non_neg_integer() | '_', % contract gas - for computation
+         date    :: undefined | calendar:datetime() | '_'}).
 
 -record(aestratum_candidate,
         {block_hash :: binary(),
          header     :: binary(),
          record     :: #candidate{},
-         date       :: erlang:date()}).
+         date       :: calendar:datetime()}).
 
 
 -define(HASHES_TAB, aestratum_hash).

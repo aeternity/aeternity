@@ -198,17 +198,23 @@ handle_info(candidate_cache_cleanup, S) ->
     {noreply, S};
 
 handle_info({gproc_ps_event, stratum_new_candidate,
-             #{info := [{HeaderBin, #candidate{block = {key_block, KH}} = C, Target, _} = _Info]}},
+             #{info := [{HeaderBin, #candidate{block = BlockCand} = C, Target, _} = _Info]}},
             #aestratum_state{} = State) ->
-    BlockHash  = aestratum_miner:hash_data(HeaderBin),
-    {ok, _}    = ?TXN(aestratum_db:store_candidate(BlockHash, HeaderBin, C)),
-    TargetInt  = aeminer_pow:scientific_to_integer(Target),
-    ChainEvent = #{event => recv_block,
-                   block => #{block_target  => TargetInt,
-                              block_hash    => aestratum_conv:hex_encode(BlockHash),
-                              block_version => aec_headers:version(KH)}},
-    ?INFO("new candidate with target ~p", [TargetInt]),
-    aestratum_user_register:notify({chain, ChainEvent}),
+    case aec_blocks:is_key_block(BlockCand) of
+        true ->
+            KH = aec_blocks:to_header(BlockCand),
+            BlockHash  = aestratum_miner:hash_data(HeaderBin),
+            {ok, _}    = ?TXN(aestratum_db:store_candidate(BlockHash, HeaderBin, C)),
+            TargetInt  = aeminer_pow:scientific_to_integer(Target),
+            ChainEvent = #{event => recv_block,
+                           block => #{block_target  => TargetInt,
+                                      block_hash    => aestratum_conv:hex_encode(BlockHash),
+                                      block_version => aec_headers:version(KH)}},
+            ?INFO("new candidate with target ~p", [TargetInt]),
+            aestratum_user_register:notify({chain, ChainEvent});
+        false ->
+            ok
+    end,
     {noreply, State};
 
 handle_info(Req, State) ->
@@ -224,8 +230,9 @@ handle_cast({submit_solution, CandidateBlockHash, Nonce, Pow}, State) ->
     case ?TXN(aestratum_db:get_candidate(CandidateBlockHash)) of
         {ok, #aestratum_candidate{header = HeaderBin,
                                   record = #candidate{block = CandidateBlock}}} ->
-            {key_block, KH} = aec_blocks:set_nonce_and_pow(CandidateBlock, Nonce, Pow),
-            {ok, BlockHash} = aec_headers:hash_header(KH),
+            KeyBlock        = aec_blocks:set_nonce_and_pow(CandidateBlock, Nonce, Pow),
+            KeyBlockHeader  = aec_blocks:to_header(KeyBlock),
+            {ok, BlockHash} = aec_headers:hash_header(KeyBlockHeader),
             ok = ?TXN(aestratum_db:mark_share_as_solution(CandidateBlockHash, BlockHash)),
             ?INFO("got solution for blockhash ~p (nonce = ~p)", [BlockHash, Nonce]),
             aec_conductor ! {stratum_reply, {{ok, {Nonce, Pow}}, HeaderBin}};

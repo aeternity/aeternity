@@ -109,7 +109,7 @@ store_share(Miner, MinerTarget, Hash) ->
     ok = mnesia:write(HashR),
     {ok, Share, HashR}.
 
--spec mark_share_as_solution(binary(), pos_integer()) -> ok.
+-spec mark_share_as_solution(binary(), binary()) -> ok.
 mark_share_as_solution(ShareHash, BlockHash) ->
     [#aestratum_hash{key = Key}] = mnesia:read(?HASHES_TAB, ShareHash),
     [#aestratum_share{} = Share] = mnesia:read(?SHARES_TAB, Key),
@@ -248,7 +248,8 @@ keys(Height) ->
             {Shares, Hashes} = lists:unzip(mnesia:select(?SHARES_TAB, ShareMS)),
             Rounds   = mnesia:select(?ROUNDS_TAB, RoundMS),
             Payments = [P#aestratum_payment.id ||
-                           P <- mnesia:match_object(#aestratum_payment{id = {Height, '_'}, _ = '_'})],
+                           P <- mnesia:match_object(
+                                  #aestratum_payment{id = {Height, '_'}, _ = '_'})],
 
             #{?HASHES_TAB   => Hashes,
               ?SHARES_TAB   => Shares,
@@ -256,12 +257,12 @@ keys(Height) ->
               ?REWARDS_TAB  => [Height],
               ?PAYMENTS_TAB => Payments};
         [] ->
-            none
+            #{}
     end.
 
 
 delete_records(Height) ->
-    #{} = TabsKeys = keys(Height),
+    TabsKeys = keys(Height),
     maps:map(fun delete_keys/2, TabsKeys),
     ?INFO("removed keys for reward at height ~p: ~p", [Height, TabsKeys]),
     ok.
