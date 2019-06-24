@@ -341,8 +341,7 @@ infer_type(X) when ?IS_FATE_INTEGER(X)   -> integer;
 infer_type(X) when ?IS_FATE_BOOLEAN(X)   -> boolean;
 infer_type(X) when ?IS_FATE_STRING(X)    -> string;
 infer_type(X) when ?IS_FATE_ADDRESS(X)   -> address;
-infer_type(X) when ?IS_FATE_HASH(X)      -> hash;
-infer_type(X) when ?IS_FATE_SIGNATURE(X) -> signature;
+infer_type(X) when ?IS_FATE_BYTES(X)     -> {bytes, byte_size(?FATE_BYTES_VALUE(X))};
 infer_type(X) when ?IS_FATE_CONTRACT(X)  -> contract;
 infer_type(X) when ?IS_FATE_ORACLE(X)    -> oracle;
 infer_type(X) when ?IS_FATE_ORACLE_Q(X)  -> oracle_query;
@@ -436,12 +435,12 @@ terms_are_of_same_type(X, Y) when ?IS_FATE_BOOLEAN(X), ?IS_FATE_BOOLEAN(Y) -> tr
 terms_are_of_same_type(X, Y) when ?IS_FATE_BITS(X), ?IS_FATE_BITS(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_ADDRESS(X), ?IS_FATE_ADDRESS(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_CONTRACT(X), ?IS_FATE_CONTRACT(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_HASH(X), ?IS_FATE_HASH(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_SIGNATURE(X), ?IS_FATE_SIGNATURE(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_ORACLE(X), ?IS_FATE_ORACLE(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_ORACLE_Q(X), ?IS_FATE_ORACLE_Q(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_NAME(X), ?IS_FATE_NAME(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_STRING(X), ?IS_FATE_STRING(Y) -> true;
+terms_are_of_same_type(X, Y) when ?IS_FATE_BYTES(X), ?IS_FATE_BYTES(Y) ->
+    byte_size(?FATE_BYTES_VALUE(X)) == byte_size(?FATE_BYTES_VALUE(Y));
 terms_are_of_same_type(X, Y) when ?IS_FATE_TUPLE(X), ?IS_FATE_TUPLE(Y) ->
     %% NOTE: This could be more thorough, but it costs too much
     ?FATE_TUPLE(T1) = X,

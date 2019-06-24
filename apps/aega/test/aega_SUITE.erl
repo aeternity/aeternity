@@ -1490,7 +1490,7 @@ basic_auth(GA, Nonce, TxHash, S) ->
 bitcoin_auth(_GA, Nonce, TxHash, S) ->
     Val = case abi_version() of
               ?ABI_AEVM_SOPHIA_1 -> <<32:256, TxHash/binary, (list_to_integer(Nonce)):256>>;
-              ?ABI_FATE_SOPHIA_1 -> aeb_fate_encoding:serialize({tuple, {{hash, TxHash}, list_to_integer(Nonce)}})
+              ?ABI_FATE_SOPHIA_1 -> aeb_fate_encoding:serialize({tuple, {{bytes, TxHash}, list_to_integer(Nonce)}})
           end,
     Sig0 = crypto:sign(ecdsa, sha256, {digest, aec_hash:hash(tx, Val)}, [?SECP256K1_PRIV, secp256k1]),
     Sig  = aega_test_utils:to_hex_lit(64, aeu_crypto:ecdsa_from_der_sig(Sig0)),

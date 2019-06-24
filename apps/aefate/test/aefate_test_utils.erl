@@ -28,6 +28,7 @@ encode({hash, H}) when is_list(H)  -> aeb_fate_data:make_hash(base64:decode(H));
 encode({signature, S}) when is_binary(S)  -> aeb_fate_data:make_signature(S);
 encode({signature, S}) when is_list(S)  ->
     aeb_fate_data:make_signature(encode_address(signature, S));
+encode({bytes, B}) when is_binary(B) -> aeb_fate_data:make_bytes(B);
 encode({contract, B}) when is_binary(B)  -> aeb_fate_data:make_contract(B);
 encode({contract, I}) when is_integer(I)  -> B = <<I:256>>, aeb_fate_data:make_contract(B);
 encode({contract, S}) when is_list(S)  ->
@@ -74,8 +75,7 @@ decode(?FATE_TRUE)                          -> true;
 decode(?FATE_FALSE)                         -> false;
 decode(L) when ?IS_FATE_LIST(L)             -> [decode(E) || E <- L];
 decode(?FATE_ADDRESS(<<Address:256>>))      -> {address, Address};
-decode(?FATE_HASH(H))                       -> {hash, H};
-decode(?FATE_SIGNATURE(S))                  -> {signature, S};
+decode(?FATE_BYTES(B))                      -> {bytes, B};
 decode(?FATE_CONTRACT(<<X:256>>))           -> {contract, X};
 decode(?FATE_ORACLE(<<X:256>>))             -> {oracle, X};
 decode(?FATE_NAME(<<X:256>>))               -> {name, X};
@@ -93,8 +93,7 @@ decode(?FATE_TRUE, bool)                     -> true;
 decode(?FATE_FALSE, bool)                    -> false;
 decode(L, {list, T}) when ?IS_FATE_LIST(L)   -> [decode(E, T) || E <- L];
 decode(?FATE_ADDRESS(<<Address:256>>), word) -> {address, Address};
-decode(?FATE_HASH(H), word)                  -> {hash, H};
-decode(?FATE_SIGNATURE(S), word)             -> {signature, S};
+decode(?FATE_BYTES(B), word)                 -> {bytes, B};
 decode(?FATE_CONTRACT(<<X:256>>), word)      -> {contract, X};
 decode(?FATE_ORACLE(<<X:256>>), word)        -> {oracle, X};
 decode(?FATE_ORACLE_Q(<<X:256>>), word)      -> {oracle_query, X};
