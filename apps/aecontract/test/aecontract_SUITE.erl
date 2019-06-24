@@ -128,6 +128,7 @@
         , sophia_namespaces/1
         , sophia_too_little_gas_for_mem/1
         , sophia_bytes/1
+        , sophia_bytes_to_x/1
         , sophia_address_checks/1
         , create_store/1
         , read_store/1
@@ -234,7 +235,8 @@ groups() ->
                           , sophia_safe_math
                           , sophia_heap_to_heap_bug
                           , sophia_namespaces
-                          %% , sophia_bytes
+                          , sophia_bytes
+                          , sophia_bytes_to_x
                           %% , sophia_address_checks %% TODO: Checks not implemented
                           , sophia_too_little_gas_for_mem
 
@@ -314,6 +316,7 @@ groups() ->
                                  sophia_heap_to_heap_bug,
                                  sophia_namespaces,
                                  sophia_bytes,
+                                 sophia_bytes_to_x,
                                  sophia_address_checks,
                                  sophia_too_little_gas_for_mem
                                ]}
@@ -1452,6 +1455,8 @@ format_fate_args(?oid(B)) ->
     {oracle, B};
 format_fate_args(<<_:256>> = B) ->
     {address, B}; %% Assume it is an address
+format_fate_args({bytes, B}) ->
+    {bytes, B};
 format_fate_args([H|T]) ->
     [format_fate_args(H) | format_fate_args(T)];
 format_fate_args(T) when is_tuple(T) ->
@@ -4477,6 +4482,37 @@ sophia_bytes(_Cfg) ->
                              {Fun, A, B, ?call(call_contract, Acc, C, Fun, bool, {A, B})})
             end,
     [ Test(Op, W, A, B) || W <- [16, 32, 47, 64, 65], Op <- [eq, ne], A <- Bytes(W), B <- Bytes(W) ],
+    ok.
+
+sophia_bytes_to_x(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, bytes_to_x_not_in_fortuna),
+    state(aect_test_utils:new_state()),
+    Acc  = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    C    = ?call(create_contract, Acc, bytes_to_x, {}),
+
+    %% 65 bytes
+    N = 16#4cf47e060c7fa8df33305208c25f5f4fa96bfdcb9288482b8eb176430e2cc09a905c6570cd619cfba4a532af95fe9ef6920bd66fdb0f80e2ef14d5e43961433b40,
+
+    ToInt = fun(W) ->
+                <<Exp:W/unit:8>> = Bytes = <<N:W/unit:8>>,
+                Fun = list_to_atom("to_int" ++ integer_to_list(W)),
+                Res = ?call(call_contract, Acc, C, Fun, word, {{bytes, Bytes}}),
+                <<Trunc:32/unit:8>> = <<Exp:32/unit:8>>,
+                ?assertMatchAEVM({_, _, Trunc}, {Fun, Trunc, Res}),
+                ?assertMatchFATE({_, _, Exp},   {Fun, Exp,   Res})
+            end,
+
+    ToStr = fun(W) ->
+                Bytes = <<N:W/unit:8>>,
+                Exp = list_to_binary(aeu_hex:bin_to_hex(Bytes)),
+                Fun = list_to_atom("to_str" ++ integer_to_list(W)),
+                Res = ?call(call_contract, Acc, C, Fun, string, {{bytes, Bytes}}),
+                ?assertMatch({_, _, Exp}, {Fun, Exp, Res})
+            end,
+
+    _ = [ ToInt(W) || W <- [12, 32, 42, 64, 65] ],
+    _ = [ ToStr(W) || W <- [12, 32, 42, 64, 65] ],
+
     ok.
 
 sophia_address_checks(_Cfg) ->
