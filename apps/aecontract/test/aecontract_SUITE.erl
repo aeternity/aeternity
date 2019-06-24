@@ -234,7 +234,7 @@ groups() ->
                           , sophia_safe_math
                           , sophia_heap_to_heap_bug
                           , sophia_namespaces
-                          %% , sophia_bytes
+                          , sophia_bytes
                           %% , sophia_address_checks %% TODO: Checks not implemented
                           , sophia_too_little_gas_for_mem
 
@@ -1452,6 +1452,8 @@ format_fate_args(?oid(B)) ->
     {oracle, B};
 format_fate_args(<<_:256>> = B) ->
     {address, B}; %% Assume it is an address
+format_fate_args({bytes, B}) ->
+    {bytes, B};
 format_fate_args([H|T]) ->
     [format_fate_args(H) | format_fate_args(T)];
 format_fate_args(T) when is_tuple(T) ->
