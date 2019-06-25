@@ -56,6 +56,7 @@
         , sophia_typed_calls/1
         , sophia_call_origin/1
         , sophia_call_value/1
+        , sophia_contract_creator/1
         , sophia_no_reentrant/1
         , sophia_aevm_exploits/1
         , sophia_functions/1
@@ -172,6 +173,7 @@
 -define(hsh(__X__), {'#', __X__}).
 -define(sig(__X__), {'$sg', __X__}).
 -define(oid(__X__), {'@ok', __X__}).
+-define(qid(__X__), {'@oq', __X__}).
 
 %%%===================================================================
 %%% Common test framework
@@ -191,6 +193,7 @@ groups() ->
     [ {aevm, [sequence], ?ALL_TESTS}
     , {fate, [sequence],  [ create_contract
                           , sophia_call_origin
+                          , sophia_contract_creator
                           , sophia_identity
                           , sophia_remote_identity
                           , sophia_spend
@@ -237,7 +240,7 @@ groups() ->
                           , sophia_namespaces
                           , sophia_bytes
                           , sophia_bytes_to_x
-                          %% , sophia_address_checks %% TODO: Checks not implemented
+                          , sophia_address_checks
                           , sophia_too_little_gas_for_mem
 
                           ]}
@@ -282,6 +285,7 @@ groups() ->
                                  sophia_typed_calls,
                                  sophia_call_origin,
                                  sophia_call_value,
+                                 sophia_contract_creator,
                                  sophia_aevm_exploits,
                                  sophia_functions,
                                  sophia_oracles,
@@ -535,8 +539,14 @@ end_per_testcase(_TC,_Config) ->
 
 -define(assertMatchVM(AEVM, FATE, Res),
     case ?IS_AEVM_SOPHIA(vm_version()) of
-        true  -> ?assertMatchAEVM(AEVM, Res);
-        false -> ?assertMatchFATE(FATE, Res)
+        true  -> ?assertMatch(AEVM, Res);
+        false -> ?assertMatch(FATE, Res)
+    end).
+
+-define(matchVM(AEVM, FATE, Res),
+    case ?IS_AEVM_SOPHIA(vm_version()) of
+        true  -> AEVM = Res;
+        false -> FATE = Res
     end).
 
 -define(IF_AEVM(AEVM, FATE),
@@ -1422,6 +1432,7 @@ format_aevm_args(?cid(<<N:256>>)) -> N;
 format_aevm_args(?hsh(<<N:256>>)) -> N;
 format_aevm_args(?sig(<<W1:256, W2:256>>)) -> {W1, W2};
 format_aevm_args(?oid(<<N:256>>)) -> N;
+format_aevm_args(?qid(<<N:256>>)) -> N;
 format_aevm_args(<<N:256>>) -> N;
 format_aevm_args({bytes, Bin}) ->
     case to_words(Bin) of
@@ -1453,6 +1464,8 @@ format_fate_args(?sig(B)) ->
     {bytes, B};
 format_fate_args(?oid(B)) ->
     {oracle, B};
+format_fate_args(?qid(B)) ->
+    {oracle_query, B};
 format_fate_args(<<_:256>> = B) ->
     {address, B}; %% Assume it is an address
 format_fate_args({bytes, B}) ->
@@ -1731,6 +1744,25 @@ sophia_call_origin(_Cfg) ->
     Caller2 = ?call(call_contract, Acc, RemC, nested_caller, word, {}),
     ?assertMatchAEVM(RemCInt, Caller2),
     ?assertMatchFATE({address, RemCInt}, Caller2),
+    ok.
+
+sophia_contract_creator(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_3, contract_creator_not_in_minerva),
+    state(aect_test_utils:new_state()),
+    Acc1      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    Acc2      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    Acc3      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    EnvC      = ?call(create_contract, Acc1, environment, {?cid(<<0:256>>)}, #{}),
+    [error(EnvC) || not is_binary(EnvC)],
+    RemC      = ?call(create_contract, Acc2, environment, {?cid(EnvC)}, #{}),
+
+    <<AccInt1:256>> = Acc1,
+    <<AccInt2:256>> = Acc2,
+
+    Creator1 = ?call(call_contract, Acc3, RemC, contract_creator, word, {}),
+    ?assertMatchVM(AccInt2, {address, AccInt2}, Creator1),
+    Creator2 = ?call(call_contract, Acc3, RemC, nested_creator, word, {}),
+    ?assertMatchVM(AccInt1, {address, AccInt1}, Creator2),
     ok.
 
 %% Oracles tests
@@ -4540,45 +4572,45 @@ sophia_address_checks(_Cfg) ->
     true  = ?call(call_contract, Acc, C2, is_o, bool, C1),
     true  = ?call(call_contract, Acc, C2, is_o, bool, C2),
 
-    false = ?call(call_contract, Acc, C2, check_o1, bool, Acc),
-    true  = ?call(call_contract, Acc, C2, check_o1, bool, C1),
-    false = ?call(call_contract, Acc, C2, check_o1, bool, C2),
+    false = ?call(call_contract, Acc, C2, check_o1, bool, {?oid(Acc)}),
+    true  = ?call(call_contract, Acc, C2, check_o1, bool, {?oid(C1)}),
+    false = ?call(call_contract, Acc, C2, check_o1, bool, {?oid(C2)}),
 
-    false = ?call(call_contract, Acc, C1, check_o2, bool, Acc),
-    false = ?call(call_contract, Acc, C1, check_o2, bool, C1),
-    true  = ?call(call_contract, Acc, C1, check_o2, bool, C2),
+    false = ?call(call_contract, Acc, C1, check_o2, bool, {?oid(Acc)}),
+    false = ?call(call_contract, Acc, C1, check_o2, bool, {?oid(C1)}),
+    true  = ?call(call_contract, Acc, C1, check_o2, bool, {?oid(C2)}),
 
-    OQ11 = ?call(call_contract, Acc, C1, query1, word, {C1, <<"foo">>}),
-    OQ12 = ?call(call_contract, Acc, C2, query1, word, {C1, <<"bar">>}),
+    ?matchVM(OQ11, {oracle_query, OQ11}, ?call(call_contract, Acc, C1, query1, word, {?oid(C1), <<"foo">>})),
+    ?matchVM(OQ12, {oracle_query, OQ12}, ?call(call_contract, Acc, C2, query1, word, {?oid(C1), <<"bar">>})),
 
-    OQ21 = ?call(call_contract, Acc, C1, query2, word, {C2, {12, 13}}),
-    OQ22 = ?call(call_contract, Acc, C2, query2, word, {C2, {13, 14}}),
+    ?matchVM(OQ21, {oracle_query, OQ21}, ?call(call_contract, Acc, C1, query2, word, {?oid(C2), {12, 13}})),
+    ?matchVM(OQ22, {oracle_query, OQ22}, ?call(call_contract, Acc, C2, query2, word, {?oid(C2), {13, 14}})),
 
     %% Check that neither accounts nor contracts pass as queries
-    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, Fun, bool, {X, X}))
+    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, Fun, bool, {?oid(X), ?qid(X)}))
       || Cx <- [C1, C2], Fun <- [check_oq1, check_oq2], X <- [Acc, C1, C2] ],
 
     %% Check that queries from oracle 1 does not pass as query 2
-    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, check_oq2, bool, {C1, X}))
+    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, check_oq2, bool, {?oid(C1), ?qid(X)}))
       || Cx <- [C1, C2], X <- [<<OQ11:256>>, <<OQ12:256>>] ],
 
     %% Check that queries from oracle 2 does not pass as query 1
-    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, check_oq1, bool, {C2, X}))
+    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, check_oq1, bool, {?oid(C2), ?qid(X)}))
       || Cx <- [C1, C2], X <- [<<OQ21:256>>, <<OQ22:256>>] ],
 
     %% Check that queries from oracle 1 does pass as query 1
-    [ ?assertEqual(true, ?call(call_contract, Acc, Cx, check_oq1, bool, {C1, X}))
+    [ ?assertEqual(true, ?call(call_contract, Acc, Cx, check_oq1, bool, {?oid(C1), ?qid(X)}))
       || Cx <- [C1, C2], X <- [<<OQ11:256>>, <<OQ12:256>>] ],
 
     %% Check that queries from oracle 2 does pass as query 2
-    [ ?assertEqual(true, ?call(call_contract, Acc, Cx, check_oq2, bool, {C2, X}))
+    [ ?assertEqual(true, ?call(call_contract, Acc, Cx, check_oq2, bool, {?oid(C2), ?qid(X)}))
       || Cx <- [C1, C2], X <- [<<OQ21:256>>, <<OQ22:256>>] ],
 
     C3 = ?call(create_contract, Acc, address_checks, {}),
     ?call(call_contract, Acc, C3, register1, word, {}),
-    OQ31 = ?call(call_contract, Acc, C1, query1, word, {C3, <<"baz">>}),
-    ?assertEqual(false, ?call(call_contract, Acc, C1, check_oq1, bool, {C1, <<OQ31:256>>})),
-    ?assertEqual(true, ?call(call_contract, Acc, C1, check_oq1, bool, {C3, <<OQ31:256>>})),
+    ?matchVM(OQ31, {oracle_query, OQ31}, ?call(call_contract, Acc, C1, query1, word, {?oid(C3), <<"baz">>})),
+    ?assertEqual(false, ?call(call_contract, Acc, C1, check_oq1, bool, {?oid(C1), ?qid(<<OQ31:256>>)})),
+    ?assertEqual(true, ?call(call_contract, Acc, C1, check_oq1, bool, {?oid(C3), ?qid(<<OQ31:256>>)})),
 
     ok.
 

@@ -2,7 +2,6 @@
 // Testing primitives for accessing the block chain environment
 contract Interface =
   function contract_address : () => address
-  function contract_creator : () => address
   function call_origin      : () => address
   function call_caller      : () => address
   function call_value       : () => int
@@ -24,10 +23,6 @@ contract Environment =
 
   // Balance
   function contract_balance() : int = Contract.balance
-
-  function contract_creator() : address = Contract.creator
-  function nested_creator()   : address =
-    state.remote.contract_creator()
 
   // -- Information about the current call ---
 
