@@ -1,0 +1,15 @@
+
+contract BytesToX =
+
+  function to_int12(b : bytes(12)) : int = Bytes.to_int(b)
+  function to_int32(b : bytes(32)) : int = Bytes.to_int(b)
+  function to_int42(b : bytes(42)) : int = Bytes.to_int(b)
+  function to_int64(b : bytes(64)) : int = Bytes.to_int(b)
+  function to_int65(b : bytes(65)) : int = Bytes.to_int(b)
+
+  function to_str12(b : bytes(12)) : string = Bytes.to_str(b)
+  function to_str32(b : bytes(32)) : string = Bytes.to_str(b)
+  function to_str42(b : bytes(42)) : string = Bytes.to_str(b)
+  function to_str64(b : bytes(64)) : string = Bytes.to_str(b)
+  function to_str65(b : bytes(65)) : string = Bytes.to_str(b)
+

@@ -127,6 +127,8 @@
         , exit/2
         , nop/1
         , auth_tx_hash/2
+        , bytes_to_int/3
+        , bytes_to_str/3
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
@@ -605,8 +607,14 @@ auth_tx_hash(Arg0, EngineState) ->
     TxEnv = aefa_chain_api:tx_env(API),
     case aetx_env:ga_tx_hash(TxEnv) of
         undefined -> write(Arg0, aeb_fate_data:make_variant([0, 1], 0, {}), EngineState);
-        TxHash    -> write(Arg0, aeb_fate_data:make_variant([0, 1], 1, {?FATE_HASH(TxHash)}), EngineState)
+        TxHash    -> write(Arg0, aeb_fate_data:make_variant([0, 1], 1, {?FATE_BYTES(TxHash)}), EngineState)
     end.
+
+bytes_to_int(Arg0, Arg1, EngineState) ->
+    un_op(bytes_to_int, {Arg0, Arg1}, EngineState).
+
+bytes_to_str(Arg0, Arg1, EngineState) ->
+    un_op(bytes_to_str, {Arg0, Arg1}, EngineState).
 
 balance_other(Arg0, Arg1, ES) ->
     API = aefa_engine_state:chain_api(ES),
@@ -723,7 +731,7 @@ oracle_register(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, EngineState) ->
     if
         not ?IS_FATE_ADDRESS(Address) ->
             aefa_fate:abort({value_does_not_match_type, Address, address}, ES1);
-        not ?IS_FATE_SIGNATURE(Signature) ->
+        not ?IS_FATE_BYTES(64, Signature) ->
             aefa_fate:abort({value_does_not_match_type, Signature, signature}, ES1);
         not ?IS_FATE_INTEGER(QFee) ->
             aefa_fate:abort({value_does_not_match_type, QFee, integer}, ES1);
@@ -742,7 +750,7 @@ oracle_register(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, EngineState) ->
     end,
     oracle_register_(Arg0, Signature, Address, QFee, TTL, QType, RType, ES1).
 
-oracle_register_(Arg0, ?FATE_SIGNATURE(Signature), ?FATE_ADDRESS(Address),
+oracle_register_(Arg0, ?FATE_BYTES(Signature), ?FATE_ADDRESS(Address),
                  ?FATE_INTEGER_VALUE(QFee), TTL,
                  ?FATE_TYPEREP(QType),
                  ?FATE_TYPEREP(RType),
@@ -816,7 +824,7 @@ oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
     if
         not ?IS_FATE_ORACLE(Oracle) ->
             aefa_fate:abort({value_does_not_match_type, Oracle, oracle}, ES1);
-        not ?IS_FATE_SIGNATURE(Signature) ->
+        not ?IS_FATE_BYTES(64, Signature) ->
             aefa_fate:abort({value_does_not_match_type, Signature, string}, ES1);
         not ?IS_FATE_ORACLE_Q(Query) ->
             aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
@@ -827,7 +835,7 @@ oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
     end,
     ?FATE_ORACLE_Q(QueryId) = Query,
     ?FATE_ORACLE(OraclePubkey) = Oracle,
-    ?FATE_SIGNATURE(SignBin) = Signature,
+    ?FATE_BYTES(SignBin) = Signature,
     ES2 = check_delegation_signature(oracle_respond, {OraclePubkey, QueryId}, SignBin, ES1),
     API = aefa_engine_state:chain_api(ES2),
     case aefa_chain_api:oracle_respond(OraclePubkey, QueryId, Response,
@@ -844,7 +852,7 @@ oracle_extend(Arg0, Arg1, Arg2, EngineState) ->
     if
         not ?IS_FATE_ORACLE(Oracle) ->
             aefa_fate:abort({value_does_not_match_type, Oracle, oracle}, ES1);
-        not ?IS_FATE_SIGNATURE(Signature) ->
+        not ?IS_FATE_BYTES(64, Signature) ->
             aefa_fate:abort({value_does_not_match_type, Signature, signature}, ES1);
         true ->
             ok
@@ -857,7 +865,7 @@ oracle_extend(Arg0, Arg1, Arg2, EngineState) ->
                 aefa_fate:abort({primop_error, oracle_extend, bad_ttl}, EngineState)
         end,
     ?FATE_ORACLE(OraclePubkey) = Oracle,
-    ?FATE_SIGNATURE(SignBin) = Signature,
+    ?FATE_BYTES(SignBin) = Signature,
     ES2 = check_delegation_signature(oracle_extend, OraclePubkey, SignBin, ES1),
     API = aefa_engine_state:chain_api(ES2),
     case aefa_chain_api:oracle_extend(OraclePubkey, TTLType, TTLVal, API) of
@@ -1152,18 +1160,25 @@ op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
     if Bits < 0 -> aefa_fate:abort({arithmetic_error, bits_sum_on_infinite_set});
        true -> bits_sum(Bits, 0)
     end;
+op(bytes_to_int, ?FATE_BYTES(Bin)) ->
+    N = byte_size(Bin),
+    <<Val:N/unit:8>> = Bin,
+    Val;
+op(bytes_to_str, ?FATE_BYTES(Bin)) ->
+    Str = list_to_binary(aeu_hex:bin_to_hex(Bin)),
+    ?FATE_STRING(Str);
 op(sha3, A) ->
     Bin  = binary_for_hashing(A),
     Hash = aec_hash:hash(evm, Bin),
-    ?FATE_HASH(Hash);
+    ?FATE_BYTES(Hash);
 op(sha256, A) ->
     Bin  = binary_for_hashing(A),
     Hash = aec_hash:sha256_hash(Bin),
-    ?FATE_HASH(Hash);
+    ?FATE_BYTES(Hash);
 op(blake2b, A) ->
     Bin  = binary_for_hashing(A),
     Hash = aec_hash:blake2b_256_hash(Bin),
-    ?FATE_HASH(Hash);
+    ?FATE_BYTES(Hash);
 op(contract_to_address, A) when ?IS_FATE_CONTRACT(A) ->
     ?FATE_ADDRESS(?FATE_CONTRACT_VALUE(A)).
 
@@ -1290,15 +1305,15 @@ op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     Res = maps:put(Key, Value, ?FATE_MAP_VALUE(Map)),
     aeb_fate_data:make_map(Res);
-op(ecverify, Msg, PK, Sig) when ?IS_FATE_HASH(Msg)
+op(ecverify, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
                               , ?IS_FATE_ADDRESS(PK)
-                              , ?IS_FATE_SIGNATURE(Sig) ->
-    {?FATE_HASH(Msg1), ?FATE_ADDRESS(PK1), ?FATE_SIGNATURE(Sig1)} = {Msg, PK, Sig},
+                              , ?IS_FATE_BYTES(64, Sig) ->
+    {?FATE_BYTES(Msg1), ?FATE_ADDRESS(PK1), ?FATE_BYTES(Sig1)} = {Msg, PK, Sig},
     aeu_crypto:ecverify(Msg1, PK1, Sig1);
-op(ecverify_secp256k1, Msg, PK, Sig) when ?IS_FATE_HASH(Msg)
-                                        , ?IS_FATE_SIGNATURE(PK)
-                                        , ?IS_FATE_SIGNATURE(Sig) ->
-    {?FATE_HASH(Msg1), ?FATE_SIGNATURE(PK1), ?FATE_SIGNATURE(Sig1)} = {Msg, PK, Sig},
+op(ecverify_secp256k1, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
+                                        , ?IS_FATE_BYTES(64, PK)
+                                        , ?IS_FATE_BYTES(64, Sig) ->
+    {?FATE_BYTES(Msg1), ?FATE_BYTES(PK1), ?FATE_BYTES(Sig1)} = {Msg, PK, Sig},
     aeu_crypto:ecverify(secp256k1, Msg1, PK1, Sig1).
 
 
