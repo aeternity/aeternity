@@ -87,28 +87,11 @@ default_config(_N, _Cfg) ->
            <<"edge_bits">> => 29}]
      }.
 
-write_config(F, CfgSchema, Cfg) ->
+write_config(F, _CfgSchema, Cfg) ->
     JSON = jsx:prettify(jsx:encode(Cfg)),
     ok = file:write_file(F, JSON),
     ct:log("Writing config (~p)~n~s", [F, JSON]),
-
-    ok = file:write_file(F, JSON),
-
-    %% {ok, Fd} = file:open(F, [write]),
-    %% ct:log("Writing config (~p)~n~s", [F, JSON]),
-    %% try io:fwrite(Fd, "~s~n", [JSON])
-    %% after
-    %%     file:close(Fd)
-    %% end,
-    ct:log("Client config schema: ~p", [CfgSchema]),
-
-    {ok, Schema} = file:read_file(CfgSchema),
-
-    ct:log("Schema: ~p", [Schema]),
-
-    VRes = aeu_env:check_config(F, CfgSchema),
-    ct:log("Cfg (~p) check: ~p", [F, VRes]),
-    {ok,_} = VRes.
+    ok = file:write_file(F, JSON).
 
 make_multi(Cfg, NodesList) ->
     make_multi(Cfg, NodesList, "test").
