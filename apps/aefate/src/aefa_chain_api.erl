@@ -21,6 +21,7 @@
         , gas_price/1
         , generation/1
         , origin/1
+        , creator/2
         , set_contract_store/3
         , timestamp_in_msecs/1
         , tx_env/1
@@ -35,6 +36,10 @@
         , oracle_query/11
         , oracle_respond/7
         , oracle_query_fee/2
+        , oracle_check/4
+        , oracle_check_query/5
+        , is_oracle/2
+        , is_contract/2
         ]).
 
 -export([ check_delegation_signature/4
@@ -125,6 +130,10 @@ set_contract_store(Pubkey, Store, #state{primop_state = PState} = S) ->
     C1         = aect_contracts:set_state(Store, C),
     PState1    = aeprimop_state:put_contract(C1, PState),
     S#state{primop_state = PState1}.
+
+creator(Pubkey, #state{primop_state = PState}) ->
+    {value, C} = aeprimop_state:find_contract_without_store(Pubkey, PState),
+    aect_contracts:owner_pubkey(C).
 
 %%%-------------------------------------------------------------------
 %%% Slightly more involved getters with caching
@@ -347,6 +356,42 @@ oracle_get_answer(OraclePubkey, QueryId, QType, RType,
             end;
         {error, _} = Err ->
             Err
+    end.
+
+oracle_check(Pubkey, QType, RType, #state{primop_state = PState} = State) ->
+    ABIVersion = ?ABI_FATE_SOPHIA_1,
+    case find_oracle_with_type(Pubkey, QType, RType, ABIVersion, PState) of
+        {ok, _Oracle, PState1} -> {ok, ?FATE_TRUE,  State#state{primop_state = PState1}};
+        {error, _}             -> {ok, ?FATE_FALSE, State}
+    end.
+
+oracle_check_query(Pubkey, Query, QType, RType, #state{primop_state = PState} = State) ->
+    ABIVersion = ?ABI_FATE_SOPHIA_1,
+    case find_oracle_with_type(Pubkey, QType, RType, ABIVersion, PState) of
+        {ok, _, PState1} ->
+            case aeprimop_state:find_oracle_query(Pubkey, Query, PState1) of
+                {_, PState2} ->
+                    {ok, ?FATE_TRUE, State#state{primop_state = PState2}};
+                none ->
+                    {ok, ?FATE_FALSE, State#state{primop_state = PState1}}
+            end;
+        {error, _} -> {ok, ?FATE_FALSE, State}
+    end.
+
+is_oracle(Pubkey, #state{primop_state = PState} = State) ->
+    case aeprimop_state:find_oracle(Pubkey, PState) of
+        {_Oracle, PState1} ->
+            {ok, ?FATE_TRUE, State#state{primop_state = PState1}};
+        none ->
+            {ok, ?FATE_FALSE, State}
+    end.
+
+is_contract(Pubkey, #state{primop_state = PState} = State) ->
+    case aeprimop_state:find_contract_without_store(Pubkey, PState) of
+        {value, _Contract} ->
+            {ok, ?FATE_TRUE, State};
+        none ->
+            {ok, ?FATE_FALSE, State}
     end.
 
 to_relative_ttl(relative, TTL,_Height) ->
