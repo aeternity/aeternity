@@ -233,7 +233,7 @@ groups() ->
                           , sophia_operators
                           , sophia_bits
                           , sophia_int_to_str
-                          %% , sophia_events       %% TODO: Event instructions
+                          , sophia_events
                           , sophia_crypto
                           , sophia_safe_math
                           , sophia_heap_to_heap_bug
