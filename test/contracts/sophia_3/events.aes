@@ -1,0 +1,20 @@
+contract Events =
+  type alias_int = int
+  type alias_address = address
+  type alias_string = string
+
+  datatype event =
+      Event1(indexed alias_int, indexed int, string)
+    | Event2(alias_string, indexed alias_address)
+    // | BadEvent1(indexed string, string)
+    // | BadEvent2(indexed int, int)
+
+  function f1(x : int, y : string) =
+    Chain.event(Event1(x, x+1, y))
+
+  function f2(s : string) =
+    Chain.event(Event2(s, Call.caller))
+
+  function f3(x : int) =
+    Chain.event(Event1(x, x + 2, Int.to_str(x + 7)))
+

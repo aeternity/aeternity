@@ -4222,7 +4222,13 @@ sophia_int_to_str(_Cfg) ->
 
     ok.
 
-sophia_events(_Cfg) ->
+sophia_events(Cfg) ->
+    case sophia_version() =< ?SOPHIA_FORTUNA of
+        true  -> sophia_events_old(Cfg);
+        false -> sophia_events_new(Cfg)
+    end.
+
+sophia_events_old(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, events, {}),
@@ -4234,6 +4240,68 @@ sophia_events(_Cfg) ->
     ?assertMatch({{},[{_, _, <<"8">>}]}, ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1}, #{ return_logs => true })),
     ?assertMatch({{},[{_, _, <<"1234567890123456789012345678901234567897">>}]},
                  ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1234567890123456789012345678901234567890}, #{ return_logs => true })),
+    ok.
+
+sophia_events_new(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, events, {}),
+
+    ToWord = fun(N) when is_integer(N)                    -> [<<N:256>>];
+                ({bits, N})                               -> [<<N:256>>];
+                (?hsh(B))                                 -> [B];
+                (?cid(B))                                 -> [B];
+                (?oid(B))                                 -> [B];
+                (?qid(B))                                 -> [B];
+                (false)                                   -> [<<0:256>>];
+                (true)                                    -> [<<1:256>>];
+                ({bytes, B}) when byte_size(B) =< 32      ->
+                     Pad = <<0:(32 - byte_size(B))/unit:8, B/binary>>,
+                     [Pad];
+                (B) when is_binary(B), byte_size(B) == 32 -> [B];
+                (_)                                       -> [] end,
+    ToBin  = fun({bytes, B}) when byte_size(B) > 32       -> [B];
+                (?sig(B))                                 -> [B];
+                (B) when is_binary(B), byte_size(B) /= 32 -> [B];
+                (_)                                       -> [] end,
+    Call = fun(Fun, Args) ->
+                [C | Rest] = atom_to_list(Fun),
+                Hash = aec_hash:hash(evm, list_to_binary(string:to_upper([C]) ++ Rest)),
+                {Res, Log} = ?call(call_contract, Acc, Ct, Fun, {tuple, []}, list_to_tuple(Args), #{ return_logs => true }),
+                Payload =
+                    case lists:flatmap(ToBin, Args) of
+                        [] -> <<>>;
+                        [Bin] -> Bin
+                    end,
+                Expect = [{Ct, [Hash | lists:flatmap(ToWord, Args)], Payload}],
+                io:format("Expect: ~p\n", [Expect]),
+                ?assertMatch({Fun, {},  {expect, X},      {got, X}},
+                             {Fun, Res, {expect, Expect}, {got, Log}})
+           end,
+
+    Int1 = 16#252abcc710adc90f9e98aeb7fd4d488c656175206c457229db8412665f2a208d,
+    Int2 = 16#6808d3c730c0b08d75a9d85aca7fa961d3a73b4899c8ea46e28aa7f215a1c3d2,
+    Bin1 = <<Int1:256>>,
+    Bin2 = <<Int2:256>>,
+
+    Call(nodata0, []),
+    Call(nodata1, [1171]),
+    Call(nodata2, [true, {bits, Int1}]),
+    Call(nodata3, [{bytes, <<Int1:12/unit:8>>}, ?hsh(Bin1), Acc]),
+    Call(data0, [<<"a random string">>]),
+    Call(data1, [?sig(<<Bin1/binary, Bin2/binary>>), ?cid(Ct)]),
+    Call(data2, [?oid(Bin1), {bytes, <<Bin1/binary, 77, Bin2/binary>>}, ?qid(Bin2)]),
+    Call(data3, [1 bsl 255, false, {bytes, Bin2}, <<"another string">>]),
+
+    %% ?assertMatch({{}, [{
+
+    %% ?assertMatch({{},[{_, _, <<"bar">>}]},
+    %%              ?call(call_contract, Acc, IdC, f1, {tuple, []}, {1, <<"bar">>},  #{ return_logs => true })),
+    %% ?assertMatch({{},[{_, _, <<"foo">>}]},
+    %%              ?call(call_contract, Acc, IdC, f2, {tuple, []}, {<<"foo">>}, #{ return_logs => true })),
+    %% ?assertMatch({{},[{_, _, <<"8">>}]}, ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1}, #{ return_logs => true })),
+    %% ?assertMatch({{},[{_, _, <<"1234567890123456789012345678901234567897">>}]},
+    %%              ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1234567890123456789012345678901234567890}, #{ return_logs => true })),
 
     ok.
 
