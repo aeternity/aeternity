@@ -10,6 +10,8 @@
 -export([delete_resource/2]).
 -export([forbidden/2]).
 -export([handle_request_json/2]).
+-export([generate_etag/2]).
+-export([expires/2]).
 
 -record(state, {
     operation_id :: atom(),
@@ -50,6 +52,12 @@ content_types_provided(Req, State) ->
 
 delete_resource(Req, State) ->
     handle_request_json(Req, State).
+
+generate_etag(Req, State = #state{operation_id = OperationId}) ->
+    aehttp_cache_etag:generate(OperationId, Req, State).
+
+expires(Req, State = #state{operation_id = OperationId}) ->
+    aehttp_cache_expires:expires(OperationId, Req, State).
 
 handle_request_json(Req0, State = #state{
         operation_id = OperationId,
