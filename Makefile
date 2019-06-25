@@ -506,7 +506,7 @@ internal-clean:
 internal-distclean:
 	@rm -rf ./_build/$(KIND)
 
-internal-ct: internal-build
+internal-ct: internal-build stratum-client-internal-build
 	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
 	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
 		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
