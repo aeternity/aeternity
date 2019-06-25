@@ -704,17 +704,46 @@ call_value(Arg0, EngineState) ->
     Value = aefa_engine_state:call_value(EngineState),
     write(Arg0, aeb_fate_data:make_integer(Value), EngineState).
 
-log(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+log(Arg0, EngineState) ->
+    log_([Arg0], EngineState).
 
-log(_Arg0, _Arg1, _EngineState) -> exit({error, op_not_implemented_yet}).
+log(Arg0, Arg1, EngineState) ->
+    log_([Arg0, Arg1], EngineState).
 
-log(_Arg0, _Arg1, _Arg2, _EngineState) -> exit({error, op_not_implemented_yet}).
+log(Arg0, Arg1, Arg2, EngineState) ->
+    log_([Arg0, Arg1, Arg2], EngineState).
 
-log(_Arg0, _Arg1, _Arg2, _Arg3, _EngineState) -> exit({error, op_not_implemented_yet}).
+log(Arg0, Arg1, Arg2, Arg3, EngineState) ->
+    log_([Arg0, Arg1, Arg2, Arg3], EngineState).
 
-log(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _EngineState) -> exit({error, op_not_implemented_yet}).
+log(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
+    log_([Arg0, Arg1, Arg2, Arg3, Arg4], EngineState).
 
-log(_Arg0, _Arg1, _Arg2, _Arg3, _Arg4, _Arg5, _EngineState) -> exit({error, op_not_implemented_yet}).
+log(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
+    log_([Arg0, Arg1, Arg2, Arg3, Arg4, Arg5], EngineState).
+
+log_(Args, EngineState) ->
+    Pubkey = aefa_engine_state:current_contract(EngineState),
+    {[Payload | Indices], ES1} = get_op_args(Args, EngineState),
+    ToBin = fun(?FATE_STRING(Bin)) when ?IS_FATE_STRING(Bin) -> Bin;
+               (?FATE_BYTES(Bin))  -> Bin;
+               (Other)             -> aefa_fate:abort({value_does_not_match_type, Other, string})
+            end,
+    ToWord = fun(N) when is_integer(N) -> <<N:256>>;
+                (?FATE_FALSE)          -> <<0:256>>;
+                (?FATE_TRUE)           -> <<1:256>>;
+                (?FATE_BITS(N))        -> <<N:256>>;
+                (?FATE_ADDRESS(Addr))  -> Addr;
+                (?FATE_CONTRACT(Addr)) -> Addr;
+                (?FATE_ORACLE(Addr))   -> Addr;
+                (?FATE_ORACLE_Q(Addr)) -> Addr;
+                (?FATE_BYTES(Bin)) when byte_size(Bin) =< 32 ->
+                     W = byte_size(Bin),
+                     <<0:(32 - W)/unit:8, Bin/binary>>;
+                (Other) -> aefa_fate:abort({value_does_not_match_type, Other, word})
+             end,
+    LogEntry = {Pubkey, lists:map(ToWord, Indices), ToBin(Payload)},
+    aefa_engine_state:add_log(LogEntry, ES1).
 
 deactivate(_EngineState) -> exit({error, op_not_implemented_yet}).
 
