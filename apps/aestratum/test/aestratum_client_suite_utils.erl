@@ -89,12 +89,23 @@ default_config(_N, _Cfg) ->
 
 write_config(F, CfgSchema, Cfg) ->
     JSON = jsx:prettify(jsx:encode(Cfg)),
-    {ok, Fd} = file:open(F, [write]),
+    ok = file:write_file(F, JSON),
     ct:log("Writing config (~p)~n~s", [F, JSON]),
-    try io:fwrite(Fd, "~s~n", [JSON])
-    after
-        file:close(Fd)
-    end,
+
+    ok = file:write_file(F, JSON),
+
+    %% {ok, Fd} = file:open(F, [write]),
+    %% ct:log("Writing config (~p)~n~s", [F, JSON]),
+    %% try io:fwrite(Fd, "~s~n", [JSON])
+    %% after
+    %%     file:close(Fd)
+    %% end,
+    ct:log("Client config schema: ~p", [CfgSchema]),
+
+    {ok, Schema} = file:read_file(CfgSchema),
+
+    ct:log("Schema: ~p", [Schema]),
+
     VRes = aeu_env:check_config(F, CfgSchema),
     ct:log("Cfg (~p) check: ~p", [F, VRes]),
     {ok,_} = VRes.
@@ -268,4 +279,3 @@ maps_merge(Map1, Map2) ->
                         true  -> Map#{K => maps_merge(V, maps:get(K, Map))}
                     end
                 end, Map2, maps:to_list(Map1)).
-
