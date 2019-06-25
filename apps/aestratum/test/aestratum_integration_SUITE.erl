@@ -623,7 +623,7 @@ retry_(_, S) ->
 
 deploy_payout_contract(#{pubkey := PubKey, privkey := PrivKey}) ->
     {value, Account}  = rpc(?MINING_NODE, aec_chain, get_account, [PubKey]),
-    {ok, CData, _, _} = rpc(?MINING_NODE, aeb_aevm_abi, create_calldata,
+    {ok, CData}       = rpc(?MINING_NODE, aeb_aevm_abi, create_calldata,
                             ["init", [], [], {tuple, [typerep, {tuple, []}]}]),
     {ok, WrappedTx}   =
         aect_create_tx:new(#{owner_id    => aeser_id:create(account, PubKey),

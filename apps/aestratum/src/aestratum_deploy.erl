@@ -8,12 +8,12 @@
 
 %% TX creating the contract for mainnet: th_2raHdPQ8xtbE6oKh3z1pFmUpyFC5H7ZTBkNB8TuVydJjwedduL
 deploy_payout_contract(#{public := PubKey, secret := PrivKey}) ->
-    DefaultGasPrice   = max(aec_governance:minimum_gas_price(1), % latest prototocol on height 1
-                            aec_tx_pool:minimum_miner_gas_price()),
-    {value, Account}  = aec_chain:get_account(PubKey),
-    {ok, CData, _, _} = aeb_aevm_abi:create_calldata(
-                          "init", [], [], {tuple, [typerep, {tuple, []}]}),
-    {ok, WrappedTx}   =
+    DefaultGasPrice  = max(aec_governance:minimum_gas_price(1), % latest prototocol on height 1
+                           aec_tx_pool:minimum_miner_gas_price()),
+    {value, Account} = aec_chain:get_account(PubKey),
+    {ok, CData}      = aeb_aevm_abi:create_calldata(
+                         "init", [], [], {tuple, [typerep, {tuple, []}]}),
+    {ok, WrappedTx}  =
         aect_create_tx:new(#{owner_id    => aeser_id:create(account, PubKey),
                              nonce       => aec_accounts:nonce(Account) + 1,
                              code        => aect_sophia:serialize(compiled_contract()),

@@ -371,7 +371,7 @@ payout_call_tx_args(Transfers, TopHeight) when is_integer(TopHeight) ->
     GasPrice = min_gas_price(),
     CallArgs = create_call_args(Transfers),
     CallType = [{list, {tuple, [word, word]}}],
-    {ok, CallData, _, _} = aeb_aevm_abi:create_calldata("payout", [CallArgs], CallType, word),
+    {ok, CallData} = aeb_aevm_abi:create_calldata("payout", [CallArgs], CallType, word),
     <<Int256:256>> = <<1:256/little-unsigned-integer-unit:1>>,
     Args = #{contract_id => aeser_id:create(contract, ?CONTRACT_PUBKEY),
              caller_id   => aeser_id:create(account, ?CALLER_PUBKEY),
