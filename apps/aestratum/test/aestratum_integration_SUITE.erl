@@ -20,8 +20,7 @@
 -export([session_in_authorized_phase/1,
          mining_stratum_block/1,
          rewarding_participants/1,
-         client_target_change/1,
-         client_node_stop/1]).
+         client_target_change/1]).
 
 
 -define(STRATUM_SERVER_NODE, dev1).
@@ -48,8 +47,7 @@ groups() ->
      {single_client, [sequence],
       [session_in_authorized_phase,
        mining_stratum_block,
-       rewarding_participants,
-       client_node_stop]}].
+       rewarding_participants]}].
 
 suite() ->
     [].
@@ -347,13 +345,13 @@ client_target_change(Cfg) ->
 
     ok.
 
-client_node_stop(_Cfg) ->
-    %% The client's connection handler is stopped and so the client is
-    %% disconnected from the server.
-    %% TODO
-    %rpc(?CLIENT1_NODE, aestratum_client, stop, []),
-    %?assertEqual([], rpc(?STRATUM_SERVER_NODE, aestratum, status, [])),
-    ok.
+%% client_node_stop(_Cfg) ->
+%%     %% The client's connection handler is stopped and so the client is
+%%     %% disconnected from the server.
+%%     %% TODO
+%%     %rpc(?CLIENT1_NODE, aestratum_client, stop, []),
+%%     %?assertEqual([], rpc(?STRATUM_SERVER_NODE, aestratum, status, [])),
+%%     ok.
 
 %%
 
