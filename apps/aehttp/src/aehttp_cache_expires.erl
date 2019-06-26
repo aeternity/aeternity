@@ -27,8 +27,8 @@
 
 -export([expires/3]).
 
--define(AGED_BLOCKS_TIME, 24*60*60). % Time to consider a block as aged (1d)
--define(AGED_BLOCKS_CACHE_TIME, 24*60*60). % Cache aged key blocks for a day
+-define(DEFAULT_AGED_BLOCKS_TIME, 24*60*60). % Time to consider a block as aged (1d)
+-define(DEFAULT_AGED_BLOCKS_CACHE_TIME, 24*60*60). % Cache aged key blocks for a day by default
 
 -type cowboy_expires_res() :: {calendar:datetime() | undefined, cowboy_req:req(), any()}.
 
@@ -86,6 +86,16 @@ expires(_OperationId, Req, State) ->
 
 %%%===================================================================
 %%% Private functions
+
+-spec aged_blocks_time() -> non_neg_integer().
+aged_blocks_time() ->
+    aeu_env:user_config_or_env([<<"http">>, <<"cache">>, <<"aged_blocks_time">>],
+                               aehttp, [cache, aged_blocks_time], ?DEFAULT_AGED_BLOCKS_TIME).
+
+-spec aged_blocks_cache_time() -> non_neg_integer().
+aged_blocks_cache_time() ->
+    aeu_env:user_config_or_env([<<"http">>, <<"cache">>, <<"aged_blocks_cache_time">>],
+                               aehttp, [cache, aged_blocks_cache_time], ?DEFAULT_AGED_BLOCKS_CACHE_TIME).
 
 -spec handle_key_block_hash(cowboy_req:req(), any()) -> cowboy_expires_res().
 handle_key_block_hash(Req, State) ->
@@ -161,9 +171,10 @@ block_header_cache_time(Header) ->
     Now = aeu_time:now_in_secs(),
     BlockTimestamp = aec_headers:time_in_secs(Header),
     Diff = Now - BlockTimestamp,
-    if Diff > ?AGED_BLOCKS_TIME ->
-            Now + ?AGED_BLOCKS_CACHE_TIME;
-       true ->
+    case Diff > aged_blocks_time() of
+        true ->
+            Now + aged_blocks_cache_time();
+        false ->
             expected_next_key_block_time()
     end.
 

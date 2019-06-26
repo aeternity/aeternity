@@ -276,7 +276,7 @@
                         "type" : "boolean"
                     },
                     "dev" : {
-                        "description" : "Development only API - for validation of client implementations. Should not be used in real life scenrios",
+                        "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
                         "type" : "boolean"
                     },
                     "debug" : {
@@ -291,6 +291,27 @@
                 "debug" : {
                     "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
                     "type" : "boolean"
+                },
+                "cache": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "description": "Enable HTTP cache headers (ETag and Expire)",
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "aged_blocks_time" : {
+                            "description" : "Time (in seconds) after a block is considered aged. That is an Expire header is generated for such blocks API endpoints.",
+                            "type" : "integer",
+                            "default" : 86400
+                        },
+                        "aged_blocks_cache_time" : {
+                            "description" : "Time (in seconds) to cache aged blocks, the Expire header time relative to block creation time.",
+                            "type" : "integer",
+                            "default" : 86400
+                        }
+                    }
                 }
             }
         },

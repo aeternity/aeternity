@@ -54,10 +54,16 @@ delete_resource(Req, State) ->
     handle_request_json(Req, State).
 
 generate_etag(Req, State = #state{operation_id = OperationId}) ->
-    aehttp_cache_etag:generate(OperationId, Req, State).
+    case cache_enabled() of
+        true -> aehttp_cache_etag:generate(OperationId, Req, State);
+        false -> {undefined, Req, State}
+    end.
 
 expires(Req, State = #state{operation_id = OperationId}) ->
-    aehttp_cache_expires:expires(OperationId, Req, State).
+    case cache_enabled() of
+        true -> aehttp_cache_expires:expires(OperationId, Req, State);
+        false -> {undefined, Req, State}
+    end.
 
 handle_request_json(Req0, State = #state{
         operation_id = OperationId,
@@ -95,3 +101,8 @@ to_error({Reason, Name, Info}) ->
     #{ reason => Reason,
        parameter => Name,
        info => Info }.
+
+-spec cache_enabled() -> non_neg_integer().
+cache_enabled() ->
+    aeu_env:user_config_or_env([<<"http">>, <<"cache">>, <<"enabled">>],
+                               aehttp, [cache, enabled], false).
