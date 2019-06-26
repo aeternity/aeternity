@@ -74,15 +74,21 @@ handle_block_height(Req, State) ->
     Height0 = cowboy_req:binding(height, Req),
     case to_int(Height0) of
         {ok, Height} ->
-            ETag = etag_block_height(Height),
-            {{strong, ETag}, Req, State};
+            case etag_block_height(Height) of
+                {ok, ETag} ->
+                    {{strong, ETag}, Req, State};
+                undefined ->
+                    {undefined, Req, State}
+            end;
         _ ->
             {undefined, Req, State}
     end.
 
 etag_block_height(Height) ->
     case aehttp_logic:get_key_header_by_height(Height) of
-        {ok, Header} -> etag_block_header(Header);
+        {ok, Header} ->
+            ETag = etag_block_header(Header),
+            {ok, ETag};
         _ -> undefined
     end.
 
