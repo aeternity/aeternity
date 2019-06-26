@@ -1243,7 +1243,10 @@ events_contract(Config) ->
     force_fun_calls(Node),
 
     F1Check = fun([#{<<"address">> := Addr, <<"topics">> := Ts, <<"data">> := Data}]) ->
-                <<E1:256>> = aec_hash:hash(evm, <<"Event1">>),
+                <<E1:256>> = case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+                                true -> aec_hash:blake2b_256_hash(<<"Event1">>);
+                                false -> aec_hash:hash(evm, <<"Event1">>)
+                             end,
                 ?assertEqual(Addr, EncCPub),
                 ?assertEqual(Data, aeser_api_encoder:encode(contract_bytearray, <<"bar">>)),
                 ?assertMatch([E1, 1, 2], Ts)
@@ -1251,7 +1254,10 @@ events_contract(Config) ->
     call_func(APub, APriv, EncCPub, Contract, "f1", ["1", "\"bar\""], {log, F1Check}),
 
     F2Check = fun([#{<<"address">> := Addr, <<"topics">> := Ts, <<"data">> := Data}]) ->
-                <<E2:256>> = aec_hash:hash(evm, <<"Event2">>),
+                <<E2:256>> = case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+                                true -> aec_hash:blake2b_256_hash(<<"Event2">>);
+                                false -> aec_hash:hash(evm, <<"Event2">>)
+                             end,
                 <<A:256>>  = APub,
                 ?assertEqual(Addr, EncCPub),
                 ?assertEqual(Data, aeser_api_encoder:encode(contract_bytearray, <<"foo">>)),
