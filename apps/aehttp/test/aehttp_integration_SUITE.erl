@@ -5216,7 +5216,7 @@ contract_byte_code(ContractName) ->
 
 get_contract_bytecode(Source) ->
     case aeso_compiler:from_string(binary_to_list(Source), []) of
-        {ok, Map}        -> {ok, aeser_api_encoder:encode(contract_bytearray, aect_sophia:serialize(Map))};
+        {ok, Map}        -> {ok, aeser_api_encoder:encode(contract_bytearray, aect_sophia:serialize(Map, aect_test_utils:latest_sophia_contract_version()))};
         {error, _} = Err -> Err
     end.
 

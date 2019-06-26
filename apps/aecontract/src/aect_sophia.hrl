@@ -1,0 +1,2 @@
+-define(SOPHIA_CONTRACT_VSN_1, 1).
+-define(SOPHIA_CONTRACT_VSN_2, 2).
