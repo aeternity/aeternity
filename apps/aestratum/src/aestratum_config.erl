@@ -129,7 +129,7 @@ configure(reward, #{reward := #{beneficiaries := PoolShareBins,
                             Acc#{AccountAddr => maps:get(AccountAddr, Acc, 0) + PctShare}
                     end, #{}, PoolShareBins),
     PoolPercentSum = lists:sum(maps:values(PoolPercentShares)),
-    PoolPercentSum < 100.0 orelse error(beneficiaries_reward_too_high),
+    PoolPercentSum =< 100.0 orelse error(beneficiaries_reward_too_high),
 
     maps:merge(maps:without([reward], Result),
                #{last_n                => LastN,
