@@ -20,6 +20,12 @@
     validator :: jesse_state:state()
 }).
 
+-ifdef(TEST).
+-define(DEFAULT_HTTP_CACHE_ENABLED, true).
+-else.
+-define(DEFAULT_HTTP_CACHE_ENABLED, false).
+-endif.
+
 init(Req, {OperationId, AllowedMethod, LogicHandler}) ->
     %% TODO: make this validator a proper service.
     JsonSpec = aehttp_api_validate:json_spec(),
@@ -105,4 +111,4 @@ to_error({Reason, Name, Info}) ->
 -spec cache_enabled() -> non_neg_integer().
 cache_enabled() ->
     aeu_env:user_config_or_env([<<"http">>, <<"cache">>, <<"enabled">>],
-                               aehttp, [cache, enabled], false).
+                               aehttp, [cache, enabled], ?DEFAULT_HTTP_CACHE_ENABLED).

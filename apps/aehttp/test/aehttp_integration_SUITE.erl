@@ -167,6 +167,9 @@
     cors_returned_on_preflight_request/1,
     cors_returned_on_get_request/1]).
 
+%% test case exports for HTTP cache headers
+-export([cache_headers/1]).
+
 %% test case exports
 %% for Cowboy handler tests
 -export([
@@ -511,6 +514,9 @@ groups() ->
       [cors_not_returned_when_origin_not_sent,
        cors_returned_on_preflight_request,
        cors_returned_on_get_request]},
+
+     {http_cache, [],
+      [cache_headers]},
 
      {cowboy_handler, [],
       [charset_param_in_content_type]},
@@ -6038,6 +6044,19 @@ cors_returned_on_get_request(_Config) ->
         httpc_request(get, {Host ++ "/v2/blocks/top", [{"origin", "example.com"}]}, [], []),
 
     "example.com" = proplists:get_value("access-control-allow-origin", Headers),
+    ok.
+
+%% ============================================================
+%% Test HTTP cache headers
+%% ============================================================
+
+cache_headers(_Config) ->
+    Host = external_address(),
+    {ok, {{_, 200, _}, Headers, _Body}} =
+        httpc_request(get, {Host ++ "/v2/blocks/top", []}, [], []),
+
+    true = proplists:is_defined("expires", Headers),
+    true = proplists:is_defined("etag", Headers),
     ok.
 
 %% ============================================================
