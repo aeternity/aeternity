@@ -414,15 +414,9 @@ set_stratum_mode(State) ->
             {ok, Dir} = aeu_env:user_config_or_env(
                           [<<"stratum">>, <<"reward">>, <<"keys">>, <<"dir">>],
                           aecore, stratum_reward_keys_dir),
-            try aestratum_config:read_keys(Dir, create) of
-                {PubKey, _PrivKey} ->
-                    State#state{stratum_mode = true,
-                                beneficiary  = PubKey}
-            catch
-                _:_ ->
-                    %% stratum may be in setup phase which ends with restarting of node
-                    State#state{stratum_mode = false}
-            end;
+            {PubKey, _PrivKey} =  aestratum_config:read_keys(Dir, create),
+            State#state{stratum_mode = true,
+                        beneficiary  = PubKey};
         _ ->
             State#state{stratum_mode = false}
     end.
@@ -846,7 +840,7 @@ start_mining_(#state{stratum_mode = true,
     Target            = aec_blocks:target(Candidate#candidate.block),
     Info              = [{top_block_hash, State#state.top_block_hash}],
     Server            = self(),
-    aec_events:publish(start_mining, Info), %% TODO: check if need to swap for stratum specific
+    aec_events:publish(start_mining, Info),
     aec_events:publish(stratum_new_candidate, [{HeaderBin, Candidate, Target, Server}]),
     Candidate1 = register_stratum(Candidate),
     State1 = State#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]},
