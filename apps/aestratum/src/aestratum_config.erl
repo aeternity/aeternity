@@ -9,7 +9,7 @@
 -include("aestratum.hrl").
 -include("aestratum_log.hrl").
 
--define(DEFAULT_HOST, <<"pool.aeternity.com">>).
+-define(DEFAULT_HOST, <<"localhost">>).
 -define(DEFAULT_PORT, 9999).
 -define(DEFAULT_TRANSPORT, <<"tcp">>).
 -define(DEFAULT_MAX_CONNECTIONS, 1024).
