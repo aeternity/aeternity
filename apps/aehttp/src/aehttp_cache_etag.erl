@@ -5,9 +5,12 @@
 
 -export([generate/3]).
 
+-type cowboy_etag_res() :: {undefined | {strong, binary()}, cowboy_req:req(), any()}.
+
 %%%===================================================================
 %%% External API
 
+-spec generate(atom(), cowboy_req:req(), any()) -> cowboy_etag_res().
 generate('GetTopBlock', Req, State) ->
     case aec_chain:top_block() of
         undefined ->
@@ -70,6 +73,7 @@ generate(_OperationId, Req, State) ->
 %%%===================================================================
 %%% Private functions
 
+-spec handle_block_height(cowboy_req:req(), any()) -> cowboy_etag_res().
 handle_block_height(Req, State) ->
     Height0 = cowboy_req:binding(height, Req),
     case to_int(Height0) of
@@ -84,6 +88,7 @@ handle_block_height(Req, State) ->
             {undefined, Req, State}
     end.
 
+-spec etag_block_height(integer()) -> {ok, aec_headers:header()} | undefined.
 etag_block_height(Height) ->
     case aehttp_logic:get_key_header_by_height(Height) of
         {ok, Header} ->
@@ -92,15 +97,18 @@ etag_block_height(Height) ->
         _ -> undefined
     end.
 
+-spec etag_block(aec_blocks:block()) -> binary().
 etag_block(Block) ->
     Header = aec_blocks:to_header(Block),
     etag_block_header(Header).
 
+-spec etag_block_header(aec_headers:header()) -> binary().
 etag_block_header(Header) ->
     {ok, Hash} = aec_headers:hash_header(Header),
     Hex = aeu_hex:bin_to_hex(Hash),
     list_to_binary(Hex).
 
+-spec to_int(binary()) -> {ok, integer()} | error.
 to_int(Data) ->
     try {ok, binary_to_integer(Data)}
     catch

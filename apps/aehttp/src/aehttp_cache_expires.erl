@@ -30,9 +30,12 @@
 -define(AGED_BLOCKS_TIME, 24*60*60). % Time to consider a block as aged (1d)
 -define(AGED_BLOCKS_CACHE_TIME, 24*60*60). % Cache aged key blocks for a day
 
+-type cowboy_expires_res() :: {calendar:datetime() | undefined, cowboy_req:req(), any()}.
+
 %%%===================================================================
 %%% External API
 
+-spec expires(atom(), cowboy_req:req(), any()) -> cowboy_expires_res().
 expires('GetTopBlock', Req, State) ->
     CacheTime = expected_next_micro_block_time(),
     Exp = unixtime_to_datetime(CacheTime),
@@ -84,6 +87,7 @@ expires(_OperationId, Req, State) ->
 %%%===================================================================
 %%% Private functions
 
+-spec handle_key_block_hash(cowboy_req:req(), any()) -> cowboy_expires_res().
 handle_key_block_hash(Req, State) ->
     Hash0 = cowboy_req:binding(hash, Req),
     case aeser_api_encoder:safe_decode(key_block_hash, Hash0) of
@@ -93,6 +97,7 @@ handle_key_block_hash(Req, State) ->
         _ -> {undefined, Req, State}
     end.
 
+-spec handle_key_block_height(cowboy_req:req(), any()) -> cowboy_expires_res().
 handle_key_block_height(Req, State) ->
     Height0 = cowboy_req:binding(height, Req),
     case to_int(Height0) of
@@ -103,6 +108,7 @@ handle_key_block_height(Req, State) ->
             {undefined, Req, State}
     end.
 
+-spec handle_micro_block_hash(cowboy_req:req(), any()) -> cowboy_expires_res().
 handle_micro_block_hash(Req, State) ->
     Hash0 = cowboy_req:binding(hash, Req),
     case aeser_api_encoder:safe_decode(micro_block_hash, Hash0) of
@@ -112,6 +118,7 @@ handle_micro_block_hash(Req, State) ->
         _ -> {undefined, Req, State}
     end.
 
+-spec handle_transaction_hash(cowboy_req:req(), any()) -> cowboy_expires_res().
 handle_transaction_hash(Req, State) ->
     Hash0 = cowboy_req:binding(hash, Req),
     case aeser_api_encoder:safe_decode(tx_hash, Hash0) of
@@ -127,18 +134,21 @@ handle_transaction_hash(Req, State) ->
             {undefined, Req, State}
     end.
 
+-spec expires_block_height(non_neg_integer()) -> {ok, aec_headers:header()} | undefined.
 expires_block_height(Height) ->
     case aehttp_logic:get_key_header_by_height(Height) of
         {ok, Header} -> expires_block_header(Header);
         _ -> undefined
     end.
 
+-spec expires_block_hash(binary()) -> {ok, aec_headers:header()} | undefined.
 expires_block_hash(Hash) ->
     case aehttp_logic:get_header_by_hash(Hash) of
         {ok, Header} -> expires_block_header(Header);
         _ -> undefined
     end.
 
+-spec expires_block_header(aec_headers:header()) -> non_neg_integer() | error.
 expires_block_header(Header) ->
     case block_header_cache_time(Header) of
         CacheTime when is_integer(CacheTime) ->
@@ -146,6 +156,7 @@ expires_block_header(Header) ->
         _ -> error
     end.
 
+-spec block_header_cache_time(aec_headers:header()) -> non_neg_integer() | error.
 block_header_cache_time(Header) ->
     Now = aeu_time:now_in_secs(),
     BlockTimestamp = aec_headers:time_in_secs(Header),
@@ -156,6 +167,7 @@ block_header_cache_time(Header) ->
             expected_next_key_block_time()
     end.
 
+-spec expected_next_key_block_time() -> non_neg_integer() | error.
 expected_next_key_block_time() ->
     case top_key_block_header() of
         {ok, Header} ->
@@ -165,6 +177,7 @@ expected_next_key_block_time() ->
         _ -> error
     end.
 
+-spec top_key_block_header() -> {ok, aec_headers:header()} | error.
 top_key_block_header() ->
     case aec_chain:top_key_block() of
         {ok, Block} ->
@@ -173,6 +186,7 @@ top_key_block_header() ->
             error
     end.
 
+-spec expected_next_micro_block_time() -> non_neg_integer().
 expected_next_micro_block_time() ->
     TopHeader = aec_chain:top_header(),
     BlockTimestamp = aec_headers:time_in_secs(TopHeader),
@@ -186,6 +200,7 @@ to_int(Data) ->
             error
     end.
 
+-spec unixtime_to_datetime(non_neg_integer()) -> calendar:datetime().
 unixtime_to_datetime(Unixtime) ->
     BaseDate = calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}}),
     Seconds  = BaseDate + Unixtime,
