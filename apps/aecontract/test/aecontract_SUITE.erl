@@ -4274,7 +4274,7 @@ sophia_events_new(_Cfg) ->
                 (_)                                       -> [] end,
     Call = fun(Fun, Args) ->
                 [C | Rest] = atom_to_list(Fun),
-                Hash = aec_hash:hash(evm, list_to_binary(string:to_upper([C]) ++ Rest)),
+                Hash = aec_hash:blake2b_256_hash(list_to_binary(string:to_upper([C]) ++ Rest)),
                 {Res, Log} = ?call(call_contract, Acc, Ct, Fun, {tuple, []}, list_to_tuple(Args), #{ return_logs => true }),
                 Payload =
                     case lists:flatmap(ToBin, Args) of
