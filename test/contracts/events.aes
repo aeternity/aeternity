@@ -1,20 +1,44 @@
+contract Remote =
+  function dummy : () => ()
+
 contract Events =
-  type alias_int = int
-  type alias_address = address
-  type alias_string = string
 
-  datatype event =
-      Event1(indexed alias_int, indexed int, string)
-    | Event2(alias_string, indexed alias_address)
-    // | BadEvent1(indexed string, string)
-    // | BadEvent2(indexed int, int)
+  // Valid index types
+  type ix1 = int
+  type ix2 = bool
+  type ix3 = bits
+  type ix4 = bytes(12)
+  type ix5 = hash // bytes(32)
+  type ix6 = address
+  type ix7 = Remote
+  type ix8 = oracle(int, int)
+  type ix9 = oracle_query(int, int)
 
-  function f1(x : int, y : string) =
-    Chain.event(Event1(x, x+1, y))
+  // Valid payload types
+  type data1 = string
+  type data2 = signature  // bytes(64)
+  type data3 = bytes(65)
 
-  function f2(s : string) =
-    Chain.event(Event2(s, Call.caller))
+  datatype event
+    = Nodata0
+    | Nodata1(ix1)
+    | Nodata2(ix2, ix3)
+    | Nodata3(ix4, ix5, ix6)
+    | Data0(data1)
+    | Data1(data2, ix7)
+    | Data2(ix8, data3, ix9)
+    | Data3(ix1, ix2, ix5, data1)
+    | Event1(int, int, string)
+    | Event2(string, address)
 
-  function f3(x : int) =
-    Chain.event(Event1(x, x + 2, Int.to_str(x + 7)))
+  function nodata0()                   = Chain.event(Nodata0)
+  function nodata1(ix1)                = Chain.event(Nodata1(ix1))
+  function nodata2(ix2, ix3)           = Chain.event(Nodata2(ix2, ix3))
+  function nodata3(ix4, ix5, ix6)      = Chain.event(Nodata3(ix4, ix5, ix6))
+  function data0(data1)                = Chain.event(Data0(data1))
+  function data1(data2, ix7)           = Chain.event(Data1(data2, ix7))
+  function data2(ix8, data3, ix9)      = Chain.event(Data2(ix8, data3, ix9))
+  function data3(ix1, ix2, ix5, data1) = Chain.event(Data3(ix1, ix2, ix5, data1))
 
+  function f1(x : int, y : string) = Chain.event(Event1(x, x+1, y))
+  function f2(s : string)          = Chain.event(Event2(s, Call.caller))

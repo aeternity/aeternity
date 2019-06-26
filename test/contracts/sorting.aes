@@ -1,0 +1,22 @@
+contract Sorting =
+
+  // Allow sorting the state
+  type state = list(int)
+
+  function init(l : list(int)) = l
+
+  stateful function state_sort() =
+    put(sort(state))
+
+  function sort(l : list(int)) =
+    switch(l)
+        [] => []
+        x :: xs => insert(x, sort(xs))
+
+  function insert(x : int, l : list(int)) =
+    switch(l)
+        [] => [x]
+        y :: ys =>
+            switch(y =< x)
+                true => y :: insert(x, ys)
+                false => x :: l

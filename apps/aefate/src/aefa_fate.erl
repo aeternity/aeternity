@@ -161,6 +161,8 @@ abort({trying_to_call_function, Name}, ES) ->
     ?t("Trying to call undefined function: ~p", [Name], ES);
 abort({trying_to_call_contract, Pubkey}, ES) ->
     ?t("Trying to call invalid contract: ~p", [Pubkey], ES);
+abort({not_allowed_in_auth_context, Op}, ES) ->
+    ?t("Operation ~p not allowed in GA Authentication context", [Op], ES);
 abort(negative_value_in_call, ES) ->
     ?t("Trying to transfer negative value in call", [], ES);
 abort({call_error, What}, ES) ->
@@ -345,7 +347,6 @@ infer_type(X) when ?IS_FATE_BYTES(X)     -> {bytes, byte_size(?FATE_BYTES_VALUE(
 infer_type(X) when ?IS_FATE_CONTRACT(X)  -> contract;
 infer_type(X) when ?IS_FATE_ORACLE(X)    -> oracle;
 infer_type(X) when ?IS_FATE_ORACLE_Q(X)  -> oracle_query;
-infer_type(X) when ?IS_FATE_NAME(X)      -> name;
 infer_type(X) when ?IS_FATE_BITS(X)      -> bits;
 infer_type(X) when ?IS_FATE_LIST(X) ->
     {list, infer_element_type(?FATE_LIST_VALUE(X))};
@@ -437,7 +438,6 @@ terms_are_of_same_type(X, Y) when ?IS_FATE_ADDRESS(X), ?IS_FATE_ADDRESS(Y) -> tr
 terms_are_of_same_type(X, Y) when ?IS_FATE_CONTRACT(X), ?IS_FATE_CONTRACT(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_ORACLE(X), ?IS_FATE_ORACLE(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_ORACLE_Q(X), ?IS_FATE_ORACLE_Q(Y) -> true;
-terms_are_of_same_type(X, Y) when ?IS_FATE_NAME(X), ?IS_FATE_NAME(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_STRING(X), ?IS_FATE_STRING(Y) -> true;
 terms_are_of_same_type(X, Y) when ?IS_FATE_BYTES(X), ?IS_FATE_BYTES(Y) ->
     byte_size(?FATE_BYTES_VALUE(X)) == byte_size(?FATE_BYTES_VALUE(Y));

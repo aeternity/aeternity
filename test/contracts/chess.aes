@@ -39,13 +39,12 @@ contract Chess =
 
   function piece(r, c) = get_piece(r, c, state)
 
-  function move_piece(r, c, r1, c1) =
+  stateful function move_piece(r, c, r1, c1) =
     switch(piece(r, c))
       Some(p) => put(set_piece(r1, c1, p, state))
 
-  function destroy_piece(r, c) =
+  stateful function destroy_piece(r, c) =
     put(state{ [r] = Map.delete(c, get_row(r, state)) })
 
-  function delete_row(r) =
+  stateful function delete_row(r) =
     put(Map.delete(r, state))
-

@@ -56,6 +56,7 @@
         , sophia_typed_calls/1
         , sophia_call_origin/1
         , sophia_call_value/1
+        , sophia_contract_creator/1
         , sophia_no_reentrant/1
         , sophia_aevm_exploits/1
         , sophia_functions/1
@@ -112,7 +113,8 @@
         , sophia_chain/1
         , sophia_savecoinbase/1
         , sophia_fundme/1
-        , sophia_aens/1
+        , sophia_aens_resolve/1
+        , sophia_aens_transactions/1
         , sophia_state_handling/1
         , sophia_state_gas/1
         , sophia_no_callobject_for_remote_calls/1
@@ -172,6 +174,7 @@
 -define(hsh(__X__), {'#', __X__}).
 -define(sig(__X__), {'$sg', __X__}).
 -define(oid(__X__), {'@ok', __X__}).
+-define(qid(__X__), {'@oq', __X__}).
 
 %%%===================================================================
 %%% Common test framework
@@ -191,6 +194,7 @@ groups() ->
     [ {aevm, [sequence], ?ALL_TESTS}
     , {fate, [sequence],  [ create_contract
                           , sophia_call_origin
+                          , sophia_contract_creator
                           , sophia_identity
                           , sophia_remote_identity
                           , sophia_spend
@@ -209,6 +213,7 @@ groups() ->
                           , {group, sophia_oracles_query_fee_unhappy_path_remote}
                           %%, {group, sophia_oracles_gas_ttl}
                           , sophia_signatures_oracles
+                          , sophia_signatures_aens
                           , sophia_remote_identity
                           , sophia_call_out_of_gas
                           , sophia_no_reentrant
@@ -223,21 +228,22 @@ groups() ->
                           , sophia_chain
                           , sophia_savecoinbase
                           , sophia_fundme
-                          %% , sophia_aens         %% TODO: AENS not implemented
+                          , sophia_aens_resolve
+                          , sophia_aens_transactions
                           , sophia_state_handling
                           %% , sophia_state_gas    %% TODO: State gas not implemented
                           , sophia_no_callobject_for_remote_calls
                           , sophia_operators
                           , sophia_bits
                           , sophia_int_to_str
-                          %% , sophia_events       %% TODO: Event instructions
+                          , sophia_events
                           , sophia_crypto
                           , sophia_safe_math
                           , sophia_heap_to_heap_bug
                           , sophia_namespaces
                           , sophia_bytes
                           , sophia_bytes_to_x
-                          %% , sophia_address_checks %% TODO: Checks not implemented
+                          , sophia_address_checks
                           , sophia_too_little_gas_for_mem
 
                           ]}
@@ -282,6 +288,7 @@ groups() ->
                                  sophia_typed_calls,
                                  sophia_call_origin,
                                  sophia_call_value,
+                                 sophia_contract_creator,
                                  sophia_aevm_exploits,
                                  sophia_functions,
                                  sophia_oracles,
@@ -301,7 +308,8 @@ groups() ->
                                  sophia_chain,
                                  sophia_savecoinbase,
                                  sophia_fundme,
-                                 sophia_aens,
+                                 sophia_aens_resolve,
+                                 sophia_aens_transactions,
                                  sophia_state_handling,
                                  sophia_state_gas,
                                  sophia_no_callobject_for_remote_calls,
@@ -535,8 +543,14 @@ end_per_testcase(_TC,_Config) ->
 
 -define(assertMatchVM(AEVM, FATE, Res),
     case ?IS_AEVM_SOPHIA(vm_version()) of
-        true  -> ?assertMatchAEVM(AEVM, Res);
-        false -> ?assertMatchFATE(FATE, Res)
+        true  -> ?assertMatch(AEVM, Res);
+        false -> ?assertMatch(FATE, Res)
+    end).
+
+-define(matchVM(AEVM, FATE, Res),
+    case ?IS_AEVM_SOPHIA(vm_version()) of
+        true  -> AEVM = Res;
+        false -> FATE = Res
     end).
 
 -define(IF_AEVM(AEVM, FATE),
@@ -1422,6 +1436,7 @@ format_aevm_args(?cid(<<N:256>>)) -> N;
 format_aevm_args(?hsh(<<N:256>>)) -> N;
 format_aevm_args(?sig(<<W1:256, W2:256>>)) -> {W1, W2};
 format_aevm_args(?oid(<<N:256>>)) -> N;
+format_aevm_args(?qid(<<N:256>>)) -> N;
 format_aevm_args(<<N:256>>) -> N;
 format_aevm_args({bytes, Bin}) ->
     case to_words(Bin) of
@@ -1453,6 +1468,8 @@ format_fate_args(?sig(B)) ->
     {bytes, B};
 format_fate_args(?oid(B)) ->
     {oracle, B};
+format_fate_args(?qid(B)) ->
+    {oracle_query, B};
 format_fate_args(<<_:256>> = B) ->
     {address, B}; %% Assume it is an address
 format_fate_args({bytes, B}) ->
@@ -1731,6 +1748,25 @@ sophia_call_origin(_Cfg) ->
     Caller2 = ?call(call_contract, Acc, RemC, nested_caller, word, {}),
     ?assertMatchAEVM(RemCInt, Caller2),
     ?assertMatchFATE({address, RemCInt}, Caller2),
+    ok.
+
+sophia_contract_creator(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_3, contract_creator_not_in_minerva),
+    state(aect_test_utils:new_state()),
+    Acc1      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    Acc2      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    Acc3      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    EnvC      = ?call(create_contract, Acc1, environment, {?cid(<<0:256>>)}, #{}),
+    [error(EnvC) || not is_binary(EnvC)],
+    RemC      = ?call(create_contract, Acc2, environment, {?cid(EnvC)}, #{}),
+
+    <<AccInt1:256>> = Acc1,
+    <<AccInt2:256>> = Acc2,
+
+    Creator1 = ?call(call_contract, Acc3, RemC, contract_creator, word, {}),
+    ?assertMatchVM(AccInt2, {address, AccInt2}, Creator1),
+    Creator2 = ?call(call_contract, Acc3, RemC, nested_creator, word, {}),
+    ?assertMatchVM(AccInt1, {address, AccInt1}, Creator2),
     ok.
 
 %% Oracles tests
@@ -3443,54 +3479,58 @@ sophia_signatures_oracles(_Cfg) ->
 
 sophia_signatures_aens(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
-    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
-    Name     = <<"foo.test">>,
-    APubkey  = 1,
-    OPubkey  = <<2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2>>,
-    %% TODO: Improve checks in aens_unpdate_tx
-    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
-                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, OPubkey))],
-
-    Salt  = ?call(aens_preclaim, Acc, Name),
-    Hash  = ?call(aens_claim, Acc, Name, Salt),
-    ok    = ?call(aens_update, Acc, Hash, Pointers),
-
-    {some, APubkey} = ?call(call_contract, Acc, Ct, resolve_word,   {option, word},   {Name, <<"account_pubkey">>}),
-    {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"oracle_pubkey">>}),
-    none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
-    ok              = ?call(aens_revoke, Acc, Hash),
-    none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
-
     %% AENS transactions from contract - using 3rd party account
+    Acc             = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     NameAcc         = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
+    Ct              = ?call(create_contract, NameAcc, aens, {}, #{ amount => 100000 }),
     Name1           = <<"bla.test">>,
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
-    CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
+    CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
     NHash           = aens_hash:name_hash(NameAscii),
     NameAccSig      = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
     {ok, NameHash} = aens:get_name_hash(<<"bla.test">>),
     NameSig         = sign(<<NameAcc/binary, NameHash/binary, Ct/binary>>, NameAcc),
     AccSig          = sign(<<Acc/binary, NameHash/binary, Ct/binary>>, Acc),
+    APubkey  = 1,
+    OPubkey  = 2,
+    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
+                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>))
+               ],
 
     NonceBeforePreclaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, AccSig}, #{ height => 10 }),
+    BadPreclaim = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, AccSig}, #{ height => 10 }),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error,<<"Error in aens_preclaim: bad_signature">>},
+                   BadPreclaim),
     {} = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, NameAccSig},        #{ height => 10 }),
     NonceAfterPreclaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, AccSig}, #{ height => 11 }),
+    BadClaim = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, AccSig}, #{ height => 11 }),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error,<<"Error in aens_claim: bad_signature">>},
+                   BadClaim),
     {} = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, NameSig}, #{ height => 11 }),
     NonceAfterClaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, NHash, AccSig},   #{ height => 12 }),
-    {} = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, NHash, NameSig},   #{ height => 12 }),
+    BadTransfer = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, ?hsh(NHash), AccSig},   #{ height => 12 }),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error,<<"Error in aens_transfer: bad_signature">>},
+                   BadTransfer),
+    {} = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, ?hsh(NHash), NameSig},   #{ height => 12 }),
     NonceAfterTransfer = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
     ok = ?call(aens_update, Acc, NHash, Pointers),
 
-    {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"oracle_pubkey">>}),
-
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc, NHash, NameSig}, #{ height => 13 }),
+    {some, Oracle} = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word}, {Name1, <<"oracle_pubkey">>}),
+    ?assertMatchVM(OPubkey, {oracle, OPubkey}, Oracle),
+    BadRevoke1 = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc, ?hsh(NHash), NameSig}, #{ height => 13 }),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error,<<"Error in aens_revoke: name_not_owned">>},
+                   BadRevoke1),
+    BadRevoke2 = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {Acc, ?hsh(NHash), NameSig}, #{ height => 13 }),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error,<<"Error in aens_revoke: bad_signature">>},
+                   BadRevoke2),
     NonceBeforeRevoke =  aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
-    {} = ?call(call_contract, NameAcc, Ct, signedRevoke, {tuple, []}, {Acc, NHash, AccSig}, #{ height => 13 }),
+    {} = ?call(call_contract, NameAcc, Ct, signedRevoke, {tuple, []}, {Acc, ?hsh(NHash), AccSig}, #{ height => 13 }),
     NonceAfterRevoke =  aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
 
     %% In Roma, nonce are bumped for the delegated name service primops, but after Roma it isn't
@@ -4190,7 +4230,13 @@ sophia_int_to_str(_Cfg) ->
 
     ok.
 
-sophia_events(_Cfg) ->
+sophia_events(Cfg) ->
+    case sophia_version() =< ?SOPHIA_FORTUNA of
+        true  -> sophia_events_old(Cfg);
+        false -> sophia_events_new(Cfg)
+    end.
+
+sophia_events_old(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, events, {}),
@@ -4202,6 +4248,68 @@ sophia_events(_Cfg) ->
     ?assertMatch({{},[{_, _, <<"8">>}]}, ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1}, #{ return_logs => true })),
     ?assertMatch({{},[{_, _, <<"1234567890123456789012345678901234567897">>}]},
                  ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1234567890123456789012345678901234567890}, #{ return_logs => true })),
+    ok.
+
+sophia_events_new(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, events, {}),
+
+    ToWord = fun(N) when is_integer(N)                    -> [<<N:256>>];
+                ({bits, N})                               -> [<<N:256>>];
+                (?hsh(B))                                 -> [B];
+                (?cid(B))                                 -> [B];
+                (?oid(B))                                 -> [B];
+                (?qid(B))                                 -> [B];
+                (false)                                   -> [<<0:256>>];
+                (true)                                    -> [<<1:256>>];
+                ({bytes, B}) when byte_size(B) =< 32      ->
+                     Pad = <<0:(32 - byte_size(B))/unit:8, B/binary>>,
+                     [Pad];
+                (B) when is_binary(B), byte_size(B) == 32 -> [B];
+                (_)                                       -> [] end,
+    ToBin  = fun({bytes, B}) when byte_size(B) > 32       -> [B];
+                (?sig(B))                                 -> [B];
+                (B) when is_binary(B), byte_size(B) /= 32 -> [B];
+                (_)                                       -> [] end,
+    Call = fun(Fun, Args) ->
+                [C | Rest] = atom_to_list(Fun),
+                Hash = aec_hash:blake2b_256_hash(list_to_binary(string:to_upper([C]) ++ Rest)),
+                {Res, Log} = ?call(call_contract, Acc, Ct, Fun, {tuple, []}, list_to_tuple(Args), #{ return_logs => true }),
+                Payload =
+                    case lists:flatmap(ToBin, Args) of
+                        [] -> <<>>;
+                        [Bin] -> Bin
+                    end,
+                Expect = [{Ct, [Hash | lists:flatmap(ToWord, Args)], Payload}],
+                io:format("Expect: ~p\n", [Expect]),
+                ?assertMatch({Fun, {},  {expect, X},      {got, X}},
+                             {Fun, Res, {expect, Expect}, {got, Log}})
+           end,
+
+    Int1 = 16#252abcc710adc90f9e98aeb7fd4d488c656175206c457229db8412665f2a208d,
+    Int2 = 16#6808d3c730c0b08d75a9d85aca7fa961d3a73b4899c8ea46e28aa7f215a1c3d2,
+    Bin1 = <<Int1:256>>,
+    Bin2 = <<Int2:256>>,
+
+    Call(nodata0, []),
+    Call(nodata1, [1171]),
+    Call(nodata2, [true, {bits, Int1}]),
+    Call(nodata3, [{bytes, <<Int1:12/unit:8>>}, ?hsh(Bin1), Acc]),
+    Call(data0, [<<"a random string">>]),
+    Call(data1, [?sig(<<Bin1/binary, Bin2/binary>>), ?cid(Ct)]),
+    Call(data2, [?oid(Bin1), {bytes, <<Bin1/binary, 77, Bin2/binary>>}, ?qid(Bin2)]),
+    Call(data3, [1 bsl 255, false, {bytes, Bin2}, <<"another string">>]),
+
+    %% ?assertMatch({{}, [{
+
+    %% ?assertMatch({{},[{_, _, <<"bar">>}]},
+    %%              ?call(call_contract, Acc, IdC, f1, {tuple, []}, {1, <<"bar">>},  #{ return_logs => true })),
+    %% ?assertMatch({{},[{_, _, <<"foo">>}]},
+    %%              ?call(call_contract, Acc, IdC, f2, {tuple, []}, {<<"foo">>}, #{ return_logs => true })),
+    %% ?assertMatch({{},[{_, _, <<"8">>}]}, ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1}, #{ return_logs => true })),
+    %% ?assertMatch({{},[{_, _, <<"1234567890123456789012345678901234567897">>}]},
+    %%              ?call(call_contract, Acc, IdC, f3, {tuple, []}, {1234567890123456789012345678901234567890}, #{ return_logs => true })),
 
     ok.
 
@@ -4540,45 +4648,45 @@ sophia_address_checks(_Cfg) ->
     true  = ?call(call_contract, Acc, C2, is_o, bool, C1),
     true  = ?call(call_contract, Acc, C2, is_o, bool, C2),
 
-    false = ?call(call_contract, Acc, C2, check_o1, bool, Acc),
-    true  = ?call(call_contract, Acc, C2, check_o1, bool, C1),
-    false = ?call(call_contract, Acc, C2, check_o1, bool, C2),
+    false = ?call(call_contract, Acc, C2, check_o1, bool, {?oid(Acc)}),
+    true  = ?call(call_contract, Acc, C2, check_o1, bool, {?oid(C1)}),
+    false = ?call(call_contract, Acc, C2, check_o1, bool, {?oid(C2)}),
 
-    false = ?call(call_contract, Acc, C1, check_o2, bool, Acc),
-    false = ?call(call_contract, Acc, C1, check_o2, bool, C1),
-    true  = ?call(call_contract, Acc, C1, check_o2, bool, C2),
+    false = ?call(call_contract, Acc, C1, check_o2, bool, {?oid(Acc)}),
+    false = ?call(call_contract, Acc, C1, check_o2, bool, {?oid(C1)}),
+    true  = ?call(call_contract, Acc, C1, check_o2, bool, {?oid(C2)}),
 
-    OQ11 = ?call(call_contract, Acc, C1, query1, word, {C1, <<"foo">>}),
-    OQ12 = ?call(call_contract, Acc, C2, query1, word, {C1, <<"bar">>}),
+    ?matchVM(OQ11, {oracle_query, OQ11}, ?call(call_contract, Acc, C1, query1, word, {?oid(C1), <<"foo">>})),
+    ?matchVM(OQ12, {oracle_query, OQ12}, ?call(call_contract, Acc, C2, query1, word, {?oid(C1), <<"bar">>})),
 
-    OQ21 = ?call(call_contract, Acc, C1, query2, word, {C2, {12, 13}}),
-    OQ22 = ?call(call_contract, Acc, C2, query2, word, {C2, {13, 14}}),
+    ?matchVM(OQ21, {oracle_query, OQ21}, ?call(call_contract, Acc, C1, query2, word, {?oid(C2), {12, 13}})),
+    ?matchVM(OQ22, {oracle_query, OQ22}, ?call(call_contract, Acc, C2, query2, word, {?oid(C2), {13, 14}})),
 
     %% Check that neither accounts nor contracts pass as queries
-    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, Fun, bool, {X, X}))
+    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, Fun, bool, {?oid(X), ?qid(X)}))
       || Cx <- [C1, C2], Fun <- [check_oq1, check_oq2], X <- [Acc, C1, C2] ],
 
     %% Check that queries from oracle 1 does not pass as query 2
-    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, check_oq2, bool, {C1, X}))
+    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, check_oq2, bool, {?oid(C1), ?qid(X)}))
       || Cx <- [C1, C2], X <- [<<OQ11:256>>, <<OQ12:256>>] ],
 
     %% Check that queries from oracle 2 does not pass as query 1
-    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, check_oq1, bool, {C2, X}))
+    [ ?assertEqual(false, ?call(call_contract, Acc, Cx, check_oq1, bool, {?oid(C2), ?qid(X)}))
       || Cx <- [C1, C2], X <- [<<OQ21:256>>, <<OQ22:256>>] ],
 
     %% Check that queries from oracle 1 does pass as query 1
-    [ ?assertEqual(true, ?call(call_contract, Acc, Cx, check_oq1, bool, {C1, X}))
+    [ ?assertEqual(true, ?call(call_contract, Acc, Cx, check_oq1, bool, {?oid(C1), ?qid(X)}))
       || Cx <- [C1, C2], X <- [<<OQ11:256>>, <<OQ12:256>>] ],
 
     %% Check that queries from oracle 2 does pass as query 2
-    [ ?assertEqual(true, ?call(call_contract, Acc, Cx, check_oq2, bool, {C2, X}))
+    [ ?assertEqual(true, ?call(call_contract, Acc, Cx, check_oq2, bool, {?oid(C2), ?qid(X)}))
       || Cx <- [C1, C2], X <- [<<OQ21:256>>, <<OQ22:256>>] ],
 
     C3 = ?call(create_contract, Acc, address_checks, {}),
     ?call(call_contract, Acc, C3, register1, word, {}),
-    OQ31 = ?call(call_contract, Acc, C1, query1, word, {C3, <<"baz">>}),
-    ?assertEqual(false, ?call(call_contract, Acc, C1, check_oq1, bool, {C1, <<OQ31:256>>})),
-    ?assertEqual(true, ?call(call_contract, Acc, C1, check_oq1, bool, {C3, <<OQ31:256>>})),
+    ?matchVM(OQ31, {oracle_query, OQ31}, ?call(call_contract, Acc, C1, query1, word, {?oid(C3), <<"baz">>})),
+    ?assertEqual(false, ?call(call_contract, Acc, C1, check_oq1, bool, {?oid(C1), ?qid(<<OQ31:256>>)})),
+    ?assertEqual(true, ?call(call_contract, Acc, C1, check_oq1, bool, {?oid(C3), ?qid(<<OQ31:256>>)})),
 
     ok.
 
@@ -4811,49 +4919,97 @@ aens_update(PubKey, NameHash, Pointers, Options, S) ->
     {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
     {ok, S1}.
 
-sophia_aens(_Cfg) ->
+sophia_aens_resolve(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
     Name     = <<"foo.test">>,
     APubkey  = 1,
-    OPubkey  = <<2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2>>,
+    OPubkey  = 2,
+    CPubkey  = 3,
     %% TODO: Improve checks in aens_unpdate_tx
     Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
-                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, OPubkey))],
+                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>)),
+                aens_pointer:new(<<"contract_pubkey">>, aeser_id:create(contract, <<CPubkey:256>>))
+               ],
 
     Salt  = ?call(aens_preclaim, Acc, Name),
     Hash  = ?call(aens_claim, Acc, Name, Salt),
     ok    = ?call(aens_update, Acc, Hash, Pointers),
 
-    {some, APubkey} = ?call(call_contract, Acc, Ct, resolve_word,   {option, word},   {Name, <<"account_pubkey">>}),
-    {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"oracle_pubkey">>}),
+    {some, Account} = ?call(call_contract, Acc, Ct, resolve_account, {option, word},   {Name, <<"account_pubkey">>}),
+    {some, Oracle}  = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word},   {Name, <<"oracle_pubkey">>}),
+    {some, Contract}= ?call(call_contract, Acc, Ct, resolve_contract, {option, word},   {Name, <<"contract_pubkey">>}),
+    {some, OString} = ?call(call_contract, Acc, Ct, resolve_string, {option, string},   {Name, <<"oracle_pubkey">>}),
+    {some, AString} = ?call(call_contract, Acc, Ct, resolve_string, {option, string},   {Name, <<"account_pubkey">>}),
+    {some, CString} = ?call(call_contract, Acc, Ct, resolve_string, {option, string},   {Name, <<"contract_pubkey">>}),
+    ?assertMatchVM(APubkey, {address, APubkey}, Account),
+    ?assertMatchVM(OPubkey, {oracle, OPubkey}, Oracle),
+    ?assertMatchVM(CPubkey, {contract, CPubkey}, Contract),
+    ?assertMatch(<<APubkey:256>>, AString),
+    ?assertMatch(<<OPubkey:256>>, OString),
+    ?assertMatch(<<CPubkey:256>>, CString),
+
+    %% Test that resolving to the wrong type will give 'none' in FATE.
+    BadContract1 = ?call(call_contract, Acc, Ct, resolve_account, {option, word},   {Name, <<"contract_pubkey">>}),
+    BadContract2 = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word},   {Name, <<"contract_pubkey">>}),
+    BadAccount1  = ?call(call_contract, Acc, Ct, resolve_contract, {option, word},   {Name, <<"account_pubkey">>}),
+    BadAccount2  = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word},   {Name, <<"account_pubkey">>}),
+    BadOracle1   = ?call(call_contract, Acc, Ct, resolve_contract, {option, word},   {Name, <<"oracle_pubkey">>}),
+    BadOracle2   = ?call(call_contract, Acc, Ct, resolve_account, {option, word},   {Name, <<"oracle_pubkey">>}),
+    ?assertMatchVM({some, CPubkey}, none, BadContract1),
+    ?assertMatchVM({some, CPubkey}, none, BadContract2),
+    ?assertMatchVM({some, APubkey}, none, BadAccount1),
+    ?assertMatchVM({some, APubkey}, none, BadAccount2),
+    ?assertMatchVM({some, OPubkey}, none, BadOracle1),
+    ?assertMatchVM({some, OPubkey}, none, BadOracle2),
+
     none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
     ok              = ?call(aens_revoke, Acc, Hash),
     none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
+    none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"account_pubkey">>}),
 
+    ok.
+
+sophia_aens_transactions(_Cfg) ->
     %% AENS transactions from contract
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
+    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
 
+    APubkey  = 1,
+    OPubkey  = 2,
+    CPubkey  = 3,
+    %% TODO: Improve checks in aens_unpdate_tx
+    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
+                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>)),
+                aens_pointer:new(<<"contract_pubkey">>, aeser_id:create(contract, <<CPubkey:256>>))
+               ],
     Name1           = <<"bla.test">>,
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
     NHash           = aens_hash:name_hash(NameAscii),
     NonceBeforePreclaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
-    {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, CHash},        #{ height => 10 }),
+    {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, ?hsh(CHash)},        #{ height => 10 }),
     NonceBeforeClaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1}, #{ height => 11 }),
     NonceBeforeTransfer = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     StateBeforeTransfer = state(),
-    {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, NHash},   #{ height => 12 }),
+    {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, ?hsh(NHash)},   #{ height => 12 }),
     NonceAfterTransfer = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     ok = ?call(aens_update, Acc, NHash, Pointers),
-    {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"oracle_pubkey">>}),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash}, #{ height => 13 }),
+
+    {some, Oracle} = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word}, {Name1, <<"oracle_pubkey">>}),
+    ?assertMatchVM(OPubkey, {oracle, OPubkey}, Oracle),
+    BadRevoke = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, ?hsh(NHash)}, #{ height => 13 }),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error,<<"Error in aens_revoke: name_not_owned">>}, BadRevoke),
+
     %% Roll back the transfer and check that revoke can be called
     state(StateBeforeTransfer),
     NonceBeforeRevoke = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
-    {} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash}, #{ height => 13 }),
+    {} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, ?hsh(NHash)}, #{ height => 13 }),
     NonceAfterRevoke = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
 
     %% In Roma, nonce are bumped for all aens primops, but after Roma it isn't.

@@ -46,7 +46,7 @@
         , set_current_tvars/2
         , set_functions/2
         , set_gas/2
-        , set_logs/2
+        , add_log/2
         , set_memory/2
         , set_stores/2
         , set_trace/2
@@ -93,7 +93,7 @@
             , current_tvars     :: map()    %% Instantiations for type variables in the current call (needed when type checking return value)
             , functions         :: map()    %% Cache for current contract.
             , gas               :: integer()
-            , logs              :: [term()] %% TODO: Not used properly yet
+            , logs              :: [term()]
             , memory            :: map()    %% Environment #{name => val}
             , seen_contracts    :: [pubkey()]
                                    %% Call stack of contracts (including tail calls)
@@ -438,9 +438,9 @@ set_gas(X, ES) ->
 logs(#es{logs = X}) ->
     X.
 
--spec set_logs(list(), state()) -> state().
-set_logs(X, ES) ->
-    ES#es{logs = X}.
+-spec add_log(term(), state()) -> state().
+add_log(X, ES) ->
+    ES#es{logs = [X | ES#es.logs]}.
 
 %%%------------------
 

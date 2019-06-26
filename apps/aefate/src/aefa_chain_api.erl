@@ -21,6 +21,7 @@
         , gas_price/1
         , generation/1
         , origin/1
+        , creator/2
         , set_contract_store/3
         , timestamp_in_msecs/1
         , tx_env/1
@@ -35,6 +36,15 @@
         , oracle_query/11
         , oracle_respond/7
         , oracle_query_fee/2
+        , oracle_check/4
+        , oracle_check_query/5
+        , is_oracle/2
+        , is_contract/2
+        , aens_claim/4
+        , aens_preclaim/3
+        , aens_resolve/3
+        , aens_revoke/3
+        , aens_transfer/4
         ]).
 
 -export([ check_delegation_signature/4
@@ -125,6 +135,10 @@ set_contract_store(Pubkey, Store, #state{primop_state = PState} = S) ->
     C1         = aect_contracts:set_state(Store, C),
     PState1    = aeprimop_state:put_contract(C1, PState),
     S#state{primop_state = PState1}.
+
+creator(Pubkey, #state{primop_state = PState}) ->
+    {value, C} = aeprimop_state:find_contract_without_store(Pubkey, PState),
+    aect_contracts:owner_pubkey(C).
 
 %%%-------------------------------------------------------------------
 %%% Slightly more involved getters with caching
@@ -221,6 +235,9 @@ check_delegation_signature(Pubkey, Binary, Signature,
 spend(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:spend_op(FromPubkey, ToPubkey, Amount)
                  ], State).
+
+%%%-------------------------------------------------------------------
+%%% Oracles
 
 oracle_register(Pubkey, QFee, TTLType, TTLVal,
                 QFormat, RFormat, ABIVersion, State) ->
@@ -349,6 +366,42 @@ oracle_get_answer(OraclePubkey, QueryId, QType, RType,
             Err
     end.
 
+oracle_check(Pubkey, QType, RType, #state{primop_state = PState} = State) ->
+    ABIVersion = ?ABI_FATE_SOPHIA_1,
+    case find_oracle_with_type(Pubkey, QType, RType, ABIVersion, PState) of
+        {ok, _Oracle, PState1} -> {ok, ?FATE_TRUE,  State#state{primop_state = PState1}};
+        {error, _}             -> {ok, ?FATE_FALSE, State}
+    end.
+
+oracle_check_query(Pubkey, Query, QType, RType, #state{primop_state = PState} = State) ->
+    ABIVersion = ?ABI_FATE_SOPHIA_1,
+    case find_oracle_with_type(Pubkey, QType, RType, ABIVersion, PState) of
+        {ok, _, PState1} ->
+            case aeprimop_state:find_oracle_query(Pubkey, Query, PState1) of
+                {_, PState2} ->
+                    {ok, ?FATE_TRUE, State#state{primop_state = PState2}};
+                none ->
+                    {ok, ?FATE_FALSE, State#state{primop_state = PState1}}
+            end;
+        {error, _} -> {ok, ?FATE_FALSE, State}
+    end.
+
+is_oracle(Pubkey, #state{primop_state = PState} = State) ->
+    case aeprimop_state:find_oracle(Pubkey, PState) of
+        {_Oracle, PState1} ->
+            {ok, ?FATE_TRUE, State#state{primop_state = PState1}};
+        none ->
+            {ok, ?FATE_FALSE, State}
+    end.
+
+is_contract(Pubkey, #state{primop_state = PState} = State) ->
+    case aeprimop_state:find_contract_without_store(Pubkey, PState) of
+        {value, _Contract} ->
+            {ok, ?FATE_TRUE, State};
+        none ->
+            {ok, ?FATE_FALSE, State}
+    end.
+
 to_relative_ttl(relative, TTL,_Height) ->
     case TTL >= 0 of
         true  -> {ok, TTL};
@@ -402,6 +455,55 @@ find_oracle_with_type(Pubkey, QType, RType, ABIVersion, PState) ->
         none ->
             {error, oracle_not_found}
     end.
+
+%%%-------------------------------------------------------------------
+%%% Naming service
+
+aens_resolve(NameString, Key, #state{primop_state = PState} = S) ->
+    case aens_utils:to_ascii(NameString) of
+        {ok, NameAscii} ->
+            NameHash = aens_hash:name_hash(NameAscii),
+            case aeprimop_state:find_name(NameHash, PState) of
+                {Name, PState1} ->
+                    case aens:resolve_from_name_object(Key, Name) of
+                        {ok, Id} ->
+                            {Tag, Pubkey} = aeser_id:specialize(Id),
+                            {ok, Tag, Pubkey, S#state{primop_state = PState1}};
+                        {error, name_revoked} ->
+                            none;
+                        {error, pointer_id_not_found} ->
+                            none
+                    end;
+                none ->
+                    none
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+aens_preclaim(Pubkey, Hash, #state{} = S) ->
+    eval_primops([aeprimop:name_preclaim_op(Pubkey, Hash, 0)], S).
+
+aens_claim(Pubkey, NameBin, SaltInt, #state{} = S) ->
+    PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
+    DeltaTTL = aec_governance:name_claim_max_expiration(),
+    LockedFee = aec_governance:name_claim_locked_fee(),
+    Instructions = [ aeprimop:lock_amount_op(Pubkey, LockedFee)
+                   , aeprimop:name_claim_op(Pubkey, NameBin, SaltInt,
+                                            DeltaTTL, PreclaimDelta)
+                   ],
+    eval_primops(Instructions, S).
+
+aens_transfer(FromPubkey, HashBin, ToPubkey, #state{} = S) ->
+    Instructions = [aeprimop:name_transfer_op(FromPubkey, account, ToPubkey, HashBin)
+                   ],
+    eval_primops(Instructions, S).
+
+aens_revoke(Pubkey, HashBin, #state{} = S) ->
+    ProtectedDeltaTTL = aec_governance:name_protection_period(),
+    Instructions = [aeprimop:name_revoke_op(Pubkey, HashBin, ProtectedDeltaTTL)
+                   ],
+    eval_primops(Instructions, S).
 
 %%%-------------------------------------------------------------------
 %%% Interface to primop evaluation
