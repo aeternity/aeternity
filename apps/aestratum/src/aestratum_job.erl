@@ -144,7 +144,7 @@ solve_time(#job{created = Created, shares = Shares}) when Shares =/= [] ->
 solve_time(#job{max_solve_time = MaxSolveTime, shares = []}) ->
     MaxSolveTime.
 
--spec make_id(block_hash(), block_version(), block_target()) -> term(). %% TODO
+-spec make_id(block_hash(), block_version(), block_target()) -> binary().
 make_id(BlockHash, BlockVersion, BlockTarget) ->
     make_id1(BlockHash, BlockVersion, BlockTarget).
 
