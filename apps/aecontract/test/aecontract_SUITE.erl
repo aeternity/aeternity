@@ -113,7 +113,8 @@
         , sophia_chain/1
         , sophia_savecoinbase/1
         , sophia_fundme/1
-        , sophia_aens/1
+        , sophia_aens_resolve/1
+        , sophia_aens_transactions/1
         , sophia_state_handling/1
         , sophia_state_gas/1
         , sophia_no_callobject_for_remote_calls/1
@@ -212,6 +213,7 @@ groups() ->
                           , {group, sophia_oracles_query_fee_unhappy_path_remote}
                           %%, {group, sophia_oracles_gas_ttl}
                           , sophia_signatures_oracles
+                          , sophia_signatures_aens
                           , sophia_remote_identity
                           , sophia_call_out_of_gas
                           , sophia_no_reentrant
@@ -226,7 +228,8 @@ groups() ->
                           , sophia_chain
                           , sophia_savecoinbase
                           , sophia_fundme
-                          %% , sophia_aens         %% TODO: AENS not implemented
+                          , sophia_aens_resolve
+                          , sophia_aens_transactions
                           , sophia_state_handling
                           %% , sophia_state_gas    %% TODO: State gas not implemented
                           , sophia_no_callobject_for_remote_calls
@@ -305,7 +308,8 @@ groups() ->
                                  sophia_chain,
                                  sophia_savecoinbase,
                                  sophia_fundme,
-                                 sophia_aens,
+                                 sophia_aens_resolve,
+                                 sophia_aens_transactions,
                                  sophia_state_handling,
                                  sophia_state_gas,
                                  sophia_no_callobject_for_remote_calls,
@@ -3475,54 +3479,58 @@ sophia_signatures_oracles(_Cfg) ->
 
 sophia_signatures_aens(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
-    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
-    Name     = <<"foo.test">>,
-    APubkey  = 1,
-    OPubkey  = <<2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2>>,
-    %% TODO: Improve checks in aens_unpdate_tx
-    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
-                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, OPubkey))],
-
-    Salt  = ?call(aens_preclaim, Acc, Name),
-    Hash  = ?call(aens_claim, Acc, Name, Salt),
-    ok    = ?call(aens_update, Acc, Hash, Pointers),
-
-    {some, APubkey} = ?call(call_contract, Acc, Ct, resolve_word,   {option, word},   {Name, <<"account_pubkey">>}),
-    {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"oracle_pubkey">>}),
-    none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
-    ok              = ?call(aens_revoke, Acc, Hash),
-    none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
-
     %% AENS transactions from contract - using 3rd party account
+    Acc             = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     NameAcc         = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
+    Ct              = ?call(create_contract, NameAcc, aens, {}, #{ amount => 100000 }),
     Name1           = <<"bla.test">>,
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
-    CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
+    CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
     NHash           = aens_hash:name_hash(NameAscii),
     NameAccSig      = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
     {ok, NameHash} = aens:get_name_hash(<<"bla.test">>),
     NameSig         = sign(<<NameAcc/binary, NameHash/binary, Ct/binary>>, NameAcc),
     AccSig          = sign(<<Acc/binary, NameHash/binary, Ct/binary>>, Acc),
+    APubkey  = 1,
+    OPubkey  = 2,
+    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
+                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>))
+               ],
 
     NonceBeforePreclaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, AccSig}, #{ height => 10 }),
+    BadPreclaim = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, AccSig}, #{ height => 10 }),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error,<<"Error in aens_preclaim: bad_signature">>},
+                   BadPreclaim),
     {} = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, NameAccSig},        #{ height => 10 }),
     NonceAfterPreclaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, AccSig}, #{ height => 11 }),
+    BadClaim = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, AccSig}, #{ height => 11 }),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error,<<"Error in aens_claim: bad_signature">>},
+                   BadClaim),
     {} = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, NameSig}, #{ height => 11 }),
     NonceAfterClaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, NHash, AccSig},   #{ height => 12 }),
-    {} = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, NHash, NameSig},   #{ height => 12 }),
+    BadTransfer = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, ?hsh(NHash), AccSig},   #{ height => 12 }),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error,<<"Error in aens_transfer: bad_signature">>},
+                   BadTransfer),
+    {} = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, ?hsh(NHash), NameSig},   #{ height => 12 }),
     NonceAfterTransfer = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
     ok = ?call(aens_update, Acc, NHash, Pointers),
 
-    {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"oracle_pubkey">>}),
-
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc, NHash, NameSig}, #{ height => 13 }),
+    {some, Oracle} = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word}, {Name1, <<"oracle_pubkey">>}),
+    ?assertMatchVM(OPubkey, {oracle, OPubkey}, Oracle),
+    BadRevoke1 = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc, ?hsh(NHash), NameSig}, #{ height => 13 }),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error,<<"Error in aens_revoke: name_not_owned">>},
+                   BadRevoke1),
+    BadRevoke2 = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {Acc, ?hsh(NHash), NameSig}, #{ height => 13 }),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error,<<"Error in aens_revoke: bad_signature">>},
+                   BadRevoke2),
     NonceBeforeRevoke =  aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
-    {} = ?call(call_contract, NameAcc, Ct, signedRevoke, {tuple, []}, {Acc, NHash, AccSig}, #{ height => 13 }),
+    {} = ?call(call_contract, NameAcc, Ct, signedRevoke, {tuple, []}, {Acc, ?hsh(NHash), AccSig}, #{ height => 13 }),
     NonceAfterRevoke =  aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
 
     %% In Roma, nonce are bumped for the delegated name service primops, but after Roma it isn't
@@ -4911,49 +4919,97 @@ aens_update(PubKey, NameHash, Pointers, Options, S) ->
     {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
     {ok, S1}.
 
-sophia_aens(_Cfg) ->
+sophia_aens_resolve(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
     Name     = <<"foo.test">>,
     APubkey  = 1,
-    OPubkey  = <<2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2>>,
+    OPubkey  = 2,
+    CPubkey  = 3,
     %% TODO: Improve checks in aens_unpdate_tx
     Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
-                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, OPubkey))],
+                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>)),
+                aens_pointer:new(<<"contract_pubkey">>, aeser_id:create(contract, <<CPubkey:256>>))
+               ],
 
     Salt  = ?call(aens_preclaim, Acc, Name),
     Hash  = ?call(aens_claim, Acc, Name, Salt),
     ok    = ?call(aens_update, Acc, Hash, Pointers),
 
-    {some, APubkey} = ?call(call_contract, Acc, Ct, resolve_word,   {option, word},   {Name, <<"account_pubkey">>}),
-    {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"oracle_pubkey">>}),
+    {some, Account} = ?call(call_contract, Acc, Ct, resolve_account, {option, word},   {Name, <<"account_pubkey">>}),
+    {some, Oracle}  = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word},   {Name, <<"oracle_pubkey">>}),
+    {some, Contract}= ?call(call_contract, Acc, Ct, resolve_contract, {option, word},   {Name, <<"contract_pubkey">>}),
+    {some, OString} = ?call(call_contract, Acc, Ct, resolve_string, {option, string},   {Name, <<"oracle_pubkey">>}),
+    {some, AString} = ?call(call_contract, Acc, Ct, resolve_string, {option, string},   {Name, <<"account_pubkey">>}),
+    {some, CString} = ?call(call_contract, Acc, Ct, resolve_string, {option, string},   {Name, <<"contract_pubkey">>}),
+    ?assertMatchVM(APubkey, {address, APubkey}, Account),
+    ?assertMatchVM(OPubkey, {oracle, OPubkey}, Oracle),
+    ?assertMatchVM(CPubkey, {contract, CPubkey}, Contract),
+    ?assertMatch(<<APubkey:256>>, AString),
+    ?assertMatch(<<OPubkey:256>>, OString),
+    ?assertMatch(<<CPubkey:256>>, CString),
+
+    %% Test that resolving to the wrong type will give 'none' in FATE.
+    BadContract1 = ?call(call_contract, Acc, Ct, resolve_account, {option, word},   {Name, <<"contract_pubkey">>}),
+    BadContract2 = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word},   {Name, <<"contract_pubkey">>}),
+    BadAccount1  = ?call(call_contract, Acc, Ct, resolve_contract, {option, word},   {Name, <<"account_pubkey">>}),
+    BadAccount2  = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word},   {Name, <<"account_pubkey">>}),
+    BadOracle1   = ?call(call_contract, Acc, Ct, resolve_contract, {option, word},   {Name, <<"oracle_pubkey">>}),
+    BadOracle2   = ?call(call_contract, Acc, Ct, resolve_account, {option, word},   {Name, <<"oracle_pubkey">>}),
+    ?assertMatchVM({some, CPubkey}, none, BadContract1),
+    ?assertMatchVM({some, CPubkey}, none, BadContract2),
+    ?assertMatchVM({some, APubkey}, none, BadAccount1),
+    ?assertMatchVM({some, APubkey}, none, BadAccount2),
+    ?assertMatchVM({some, OPubkey}, none, BadOracle1),
+    ?assertMatchVM({some, OPubkey}, none, BadOracle2),
+
     none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
     ok              = ?call(aens_revoke, Acc, Hash),
     none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
+    none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"account_pubkey">>}),
 
+    ok.
+
+sophia_aens_transactions(_Cfg) ->
     %% AENS transactions from contract
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
+    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
 
+    APubkey  = 1,
+    OPubkey  = 2,
+    CPubkey  = 3,
+    %% TODO: Improve checks in aens_unpdate_tx
+    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
+                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>)),
+                aens_pointer:new(<<"contract_pubkey">>, aeser_id:create(contract, <<CPubkey:256>>))
+               ],
     Name1           = <<"bla.test">>,
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
     NHash           = aens_hash:name_hash(NameAscii),
     NonceBeforePreclaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
-    {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, CHash},        #{ height => 10 }),
+    {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, ?hsh(CHash)},        #{ height => 10 }),
     NonceBeforeClaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1}, #{ height => 11 }),
     NonceBeforeTransfer = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     StateBeforeTransfer = state(),
-    {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, NHash},   #{ height => 12 }),
+    {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, ?hsh(NHash)},   #{ height => 12 }),
     NonceAfterTransfer = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     ok = ?call(aens_update, Acc, NHash, Pointers),
-    {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"oracle_pubkey">>}),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash}, #{ height => 13 }),
+
+    {some, Oracle} = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word}, {Name1, <<"oracle_pubkey">>}),
+    ?assertMatchVM(OPubkey, {oracle, OPubkey}, Oracle),
+    BadRevoke = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, ?hsh(NHash)}, #{ height => 13 }),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error,<<"Error in aens_revoke: name_not_owned">>}, BadRevoke),
+
     %% Roll back the transfer and check that revoke can be called
     state(StateBeforeTransfer),
     NonceBeforeRevoke = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
-    {} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash}, #{ height => 13 }),
+    {} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, ?hsh(NHash)}, #{ height => 13 }),
     NonceAfterRevoke = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
 
     %% In Roma, nonce are bumped for all aens primops, but after Roma it isn't.

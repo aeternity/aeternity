@@ -40,6 +40,11 @@
         , oracle_check_query/5
         , is_oracle/2
         , is_contract/2
+        , aens_claim/4
+        , aens_preclaim/3
+        , aens_resolve/3
+        , aens_revoke/3
+        , aens_transfer/4
         ]).
 
 -export([ check_delegation_signature/4
@@ -230,6 +235,9 @@ check_delegation_signature(Pubkey, Binary, Signature,
 spend(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:spend_op(FromPubkey, ToPubkey, Amount)
                  ], State).
+
+%%%-------------------------------------------------------------------
+%%% Oracles
 
 oracle_register(Pubkey, QFee, TTLType, TTLVal,
                 QFormat, RFormat, ABIVersion, State) ->
@@ -447,6 +455,55 @@ find_oracle_with_type(Pubkey, QType, RType, ABIVersion, PState) ->
         none ->
             {error, oracle_not_found}
     end.
+
+%%%-------------------------------------------------------------------
+%%% Naming service
+
+aens_resolve(NameString, Key, #state{primop_state = PState} = S) ->
+    case aens_utils:to_ascii(NameString) of
+        {ok, NameAscii} ->
+            NameHash = aens_hash:name_hash(NameAscii),
+            case aeprimop_state:find_name(NameHash, PState) of
+                {Name, PState1} ->
+                    case aens:resolve_from_name_object(Key, Name) of
+                        {ok, Id} ->
+                            {Tag, Pubkey} = aeser_id:specialize(Id),
+                            {ok, Tag, Pubkey, S#state{primop_state = PState1}};
+                        {error, name_revoked} ->
+                            none;
+                        {error, pointer_id_not_found} ->
+                            none
+                    end;
+                none ->
+                    none
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
+aens_preclaim(Pubkey, Hash, #state{} = S) ->
+    eval_primops([aeprimop:name_preclaim_op(Pubkey, Hash, 0)], S).
+
+aens_claim(Pubkey, NameBin, SaltInt, #state{} = S) ->
+    PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
+    DeltaTTL = aec_governance:name_claim_max_expiration(),
+    LockedFee = aec_governance:name_claim_locked_fee(),
+    Instructions = [ aeprimop:lock_amount_op(Pubkey, LockedFee)
+                   , aeprimop:name_claim_op(Pubkey, NameBin, SaltInt,
+                                            DeltaTTL, PreclaimDelta)
+                   ],
+    eval_primops(Instructions, S).
+
+aens_transfer(FromPubkey, HashBin, ToPubkey, #state{} = S) ->
+    Instructions = [aeprimop:name_transfer_op(FromPubkey, account, ToPubkey, HashBin)
+                   ],
+    eval_primops(Instructions, S).
+
+aens_revoke(Pubkey, HashBin, #state{} = S) ->
+    ProtectedDeltaTTL = aec_governance:name_protection_period(),
+    Instructions = [aeprimop:name_revoke_op(Pubkey, HashBin, ProtectedDeltaTTL)
+                   ],
+    eval_primops(Instructions, S).
 
 %%%-------------------------------------------------------------------
 %%% Interface to primop evaluation

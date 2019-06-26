@@ -1,12 +1,22 @@
 // AENS tests
+
+contract Remote =
+  function foo : () => int
+
 contract AENSTest =
 
   // Name resolution
 
-  function resolve_word(name : string, key : string) : option(address) =
+  function resolve_account(name : string, key : string) : option(address) =
     AENS.resolve(name, key)
 
   function resolve_string(name : string, key : string) : option(string) =
+    AENS.resolve(name, key)
+
+  function resolve_oracle(name : string, key : string) : option(oracle(string, string)) =
+    AENS.resolve(name, key)
+
+  function resolve_contract(name : string, key : string) : option(Remote) =
     AENS.resolve(name, key)
 
   // Transactions

@@ -37,14 +37,19 @@
         ]).
 
 %% Direct op API (mainly for FATE).
--export([ spend_op/3
-        , force_inc_account_nonce_op/2
+-export([ force_inc_account_nonce_op/2
+        , lock_amount_op/2
+        , name_claim_op/5
+        , name_preclaim_op/3
+        , name_revoke_op/3
+        , name_transfer_op/4
         , oracle_earn_query_fee_op/2
         , oracle_extend_op/2
         , oracle_query_op_with_return/7
         , oracle_register_op/6
         , oracle_respond_op/3
         , spend_fee_op/2
+        , spend_op/3
         ]).
 
 %% Export some functions to avoid duplicating the logic in state channels, etc.

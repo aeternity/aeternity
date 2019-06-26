@@ -39,10 +39,6 @@ encode({oracle_query, B}) when is_binary(B)  -> aeb_fate_data:make_oracle_query(
 encode({oracle_query, I}) when is_integer(I)  -> B = <<I:256>>, aeb_fate_data:make_oracle_query(B);
 encode({oracle, S}) when is_list(S)  ->
    aeb_fate_data:make_oracle(encode_address(oracle_pubkey, S));
-encode({name, B}) when is_binary(B)  -> aeb_fate_data:make_name(B);
-encode({name, I}) when is_integer(I)  -> B = <<I:256>>, aeb_fate_data:make_name(B);
-encode({name, S}) when is_list(S)  ->
-    aeb_fate_data:make_name(encode_address(name, S));
 encode({channel, B}) when is_binary(B)  -> aeb_fate_data:make_channel(B);
 encode({channel, I}) when is_integer(I)  -> B = <<I:256>>, aeb_fate_data:make_channel(B);
 encode({channel, S}) when is_list(S)  ->
@@ -78,7 +74,6 @@ decode(?FATE_ADDRESS(<<Address:256>>))      -> {address, Address};
 decode(?FATE_BYTES(B))                      -> {bytes, B};
 decode(?FATE_CONTRACT(<<X:256>>))           -> {contract, X};
 decode(?FATE_ORACLE(<<X:256>>))             -> {oracle, X};
-decode(?FATE_NAME(<<X:256>>))               -> {name, X};
 decode(?FATE_CHANNEL(<<X:256>>))            -> {channel, X};
 decode(?FATE_BITS(Bits))                    -> {bits, Bits};
 decode(?FATE_TUPLE(T))                      -> list_to_tuple([decode(E) || E <- tuple_to_list(T)]);
@@ -97,7 +92,6 @@ decode(?FATE_BYTES(B), word)                 -> {bytes, B};
 decode(?FATE_CONTRACT(<<X:256>>), word)      -> {contract, X};
 decode(?FATE_ORACLE(<<X:256>>), word)        -> {oracle, X};
 decode(?FATE_ORACLE_Q(<<X:256>>), word)      -> {oracle_query, X};
-decode(?FATE_NAME(<<X:256>>), word)          -> {name, X};
 decode(?FATE_CHANNEL(<<X:256>>), word)       -> {channel, X};
 decode(?FATE_BITS(Bits), word)               -> {bits, Bits};
 decode(?FATE_TUPLE({}), word)                -> {tuple, []};

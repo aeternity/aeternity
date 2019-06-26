@@ -113,12 +113,12 @@
         , oracle_check_query/6
         , is_oracle/3
         , is_contract/3
-        , aens_resolve/1
-        , aens_preclaim/1
-        , aens_claim/1
-        , aend_update/1
-        , aens_transfer/1
-        , aens_revoke/1
+        , aens_resolve/5
+        , aens_preclaim/4
+        , aens_claim/5
+        , aens_update/1
+        , aens_transfer/5
+        , aens_revoke/4
         , ecverify/5
         , ecverify_secp256k1/5
         , contract_to_address/3
@@ -775,7 +775,7 @@ oracle_register(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, EngineState) ->
         not ?IS_FATE_ADDRESS(Address) ->
             aefa_fate:abort({value_does_not_match_type, Address, address}, ES1);
         not ?IS_FATE_BYTES(64, Signature) ->
-            aefa_fate:abort({value_does_not_match_type, Signature, signature}, ES1);
+            aefa_fate:abort({value_does_not_match_type, Signature, bytes64}, ES1);
         not ?IS_FATE_INTEGER(QFee) ->
             aefa_fate:abort({value_does_not_match_type, QFee, integer}, ES1);
         not ?IS_FATE_VARIANT(TTL) ->
@@ -868,7 +868,7 @@ oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
         not ?IS_FATE_ORACLE(Oracle) ->
             aefa_fate:abort({value_does_not_match_type, Oracle, oracle}, ES1);
         not ?IS_FATE_BYTES(64, Signature) ->
-            aefa_fate:abort({value_does_not_match_type, Signature, string}, ES1);
+            aefa_fate:abort({value_does_not_match_type, Signature, bytes64}, ES1);
         not ?IS_FATE_ORACLE_Q(Query) ->
             aefa_fate:abort({value_does_not_match_type, Query, oracle_query}, ES1);
         not (?IS_FATE_TYPEREP(QType) orelse ?IS_FATE_TYPEREP(RType)) ->
@@ -896,7 +896,7 @@ oracle_extend(Arg0, Arg1, Arg2, EngineState) ->
         not ?IS_FATE_ORACLE(Oracle) ->
             aefa_fate:abort({value_does_not_match_type, Oracle, oracle}, ES1);
         not ?IS_FATE_BYTES(64, Signature) ->
-            aefa_fate:abort({value_does_not_match_type, Signature, signature}, ES1);
+            aefa_fate:abort({value_does_not_match_type, Signature, bytes64}, ES1);
         true ->
             ok
     end,
@@ -1046,6 +1046,178 @@ is_contract(Arg0, Arg1, EngineState) ->
     ES2 = aefa_engine_state:set_chain_api(API1, ES1),
     write(Arg0, Answer, ES2).
 
+aens_resolve(Arg0, Arg1, Arg2, Arg3, EngineState) ->
+    {[NameString, Key, Type], ES1} =
+         get_op_args([Arg1, Arg2, Arg3], EngineState),
+    if
+        not ?IS_FATE_STRING(NameString) ->
+            aefa_fate:abort({value_does_not_match_type, NameString, string}, ES1);
+        not ?IS_FATE_STRING(Key) ->
+            aefa_fate:abort({value_does_not_match_type, Key, string}, ES1);
+        not ?IS_FATE_TYPEREP(Type) ->
+            aefa_fate:abort({value_does_not_match_type, Type, typerep}, ES1);
+        true ->
+            ok
+    end,
+    aens_resolve_(Arg0, NameString, Key, Type, ES1).
+
+aens_resolve_(Arg0, ?FATE_STRING(NameString), ?FATE_STRING(Key), ?FATE_TYPEREP(Type),
+              ES) ->
+    API = aefa_engine_state:chain_api(ES),
+    None = aeb_fate_data:make_variant([0,1], 0, {}),
+    case aefa_chain_api:aens_resolve(NameString, Key, API) of
+        none ->
+            write(Arg0, None, ES);
+        {ok, Tag, Pubkey, API1} ->
+            ES1 = aefa_engine_state:set_chain_api(API1, ES),
+            case aens_tag_to_val(Type, Tag, Pubkey) of
+                none ->
+                    write(Arg0, None, ES1);
+                {error, What} ->
+                    aefa_fate:abort({primop_error, aens_resolve, What}, ES1);
+                {ok, InnerVal} ->
+                    Val = aeb_fate_data:make_variant([0,1], 1, {InnerVal}),
+                    case aefa_fate:check_type(Type, Val) of
+                        #{} ->
+                            write(Arg0, Val, ES1);
+                        false ->
+                            write(Arg0, None, ES1)
+                    end
+            end
+    end.
+
+aens_tag_to_val({variant, [{tuple, []}, {tuple, [Type]}]}, Tag, Pubkey) ->
+    case Type =:= string of
+        true  -> {ok, ?FATE_STRING(Pubkey)};
+        false ->
+            case Tag of
+                account  -> {ok, ?FATE_ADDRESS(Pubkey)};
+                oracle   -> {ok, ?FATE_ORACLE(Pubkey)};
+                contract -> {ok, ?FATE_CONTRACT(Pubkey)};
+                _        -> none
+            end
+    end;
+aens_tag_to_val(_Other,_Tag,_PubKey) ->
+    {error, bad_type}.
+
+aens_preclaim(Arg0, Arg1, Arg2, EngineState) ->
+    {[Signature, Account, Hash], ES1} =
+        get_op_args([Arg0, Arg1, Arg2], EngineState),
+    if
+        not ?IS_FATE_BYTES(64, Signature) ->
+            aefa_fate:abort({value_does_not_match_type, Signature, bytes64}, ES1);
+        not ?IS_FATE_BYTES(32, Hash) ->
+            aefa_fate:abort({value_does_not_match_type, Hash, bytes32}, ES1);
+        not ?IS_FATE_ADDRESS(Account) ->
+            aefa_fate:abort({value_does_not_match_type, Account, address}, ES1);
+        true ->
+            ok
+    end,
+    ?FATE_BYTES(SignBin) = Signature,
+    ?FATE_ADDRESS(Pubkey) = Account,
+    ?FATE_BYTES(HashBin) = Hash,
+    ES2 = check_delegation_signature(aens_preclaim, Pubkey, SignBin, ES1),
+    API = aefa_engine_state:chain_api(ES2),
+    case aefa_chain_api:aens_preclaim(Pubkey, HashBin, API) of
+        {ok, API1} ->
+            aefa_engine_state:set_chain_api(API1, ES2);
+        {error, What} ->
+            aefa_fate:abort({primop_error, aens_preclaim, What}, ES2)
+    end.
+
+
+aens_claim(Arg0, Arg1, Arg2, Arg3, EngineState) ->
+    {[Signature, Account, NameString, Salt], ES1} =
+        get_op_args([Arg0, Arg1, Arg2, Arg3], EngineState),
+    if
+        not ?IS_FATE_BYTES(64, Signature) ->
+            aefa_fate:abort({value_does_not_match_type, Signature, bytes64}, ES1);
+        not ?IS_FATE_ADDRESS(Account) ->
+            aefa_fate:abort({value_does_not_match_type, Account, address}, ES1);
+        not ?IS_FATE_STRING(NameString) ->
+            aefa_fate:abort({value_does_not_match_type, NameString, string}, ES1);
+        not ?IS_FATE_INTEGER(Salt) ->
+            aefa_fate:abort({value_does_not_match_type, Salt, integer}, ES1);
+        not ?FATE_INTEGER_VALUE(Salt) >= 0 ->
+            aefa_fate:abort({primop_error, aens_claim, negative_salt}, ES1);
+        true ->
+            ok
+    end,
+    ?FATE_BYTES(SignBin) = Signature,
+    ?FATE_ADDRESS(Pubkey) = Account,
+    NameBin = ?FATE_STRING_VALUE(NameString),
+    case aens:get_name_hash(NameBin) of
+        {error, What} ->
+            aefa_fate:abort({primop_error, aens_claim, What}, ES1);
+        {ok, HashBin} ->
+            ES2 = check_delegation_signature(aens_claim, {Pubkey, HashBin}, SignBin, ES1),
+            SaltInt = ?FATE_INTEGER_VALUE(Salt),
+            API = aefa_engine_state:chain_api(ES2),
+            case aefa_chain_api:aens_claim(Pubkey, NameBin, SaltInt, API) of
+                {ok, API1} ->
+                    aefa_engine_state:set_chain_api(API1, ES2);
+                {error, What} ->
+                    aefa_fate:abort({primop_error, aens_claim, What}, ES2)
+            end
+    end.
+
+aens_update(_EngineState) ->
+    exit({error, op_not_implemented_yet}).
+
+aens_transfer(Arg0, Arg1, Arg2, Arg3, EngineState) ->
+    %% TODO: This should be changed to work on the string instead.
+    {[Signature, From, To, NameHash], ES1} =
+        get_op_args([Arg0, Arg1, Arg2, Arg3], EngineState),
+    if
+        not ?IS_FATE_BYTES(64, Signature) ->
+            aefa_fate:abort({value_does_not_match_type, Signature, bytes64}, ES1);
+        not ?IS_FATE_ADDRESS(From) ->
+            aefa_fate:abort({value_does_not_match_type, From, address}, ES1);
+        not ?IS_FATE_ADDRESS(To) ->
+            aefa_fate:abort({value_does_not_match_type, To, address}, ES1);
+        not ?IS_FATE_BYTES(32, NameHash) ->
+            aefa_fate:abort({value_does_not_match_type, NameHash, bytes32}, ES1);
+        true ->
+            ok
+    end,
+    ?FATE_BYTES(SignBin) = Signature,
+    ?FATE_BYTES(HashBin) = NameHash,
+    ?FATE_ADDRESS(FromPubkey) = From,
+    ?FATE_ADDRESS(ToPubkey) = To,
+    ES2 = check_delegation_signature(aens_transfer, {FromPubkey, HashBin}, SignBin, ES1),
+    API = aefa_engine_state:chain_api(ES2),
+    case aefa_chain_api:aens_transfer(FromPubkey, HashBin, ToPubkey, API) of
+        {ok, API1} ->
+            aefa_engine_state:set_chain_api(API1, ES2);
+        {error, What} ->
+            aefa_fate:abort({primop_error, aens_transfer, What}, ES2)
+    end.
+
+aens_revoke(Arg0, Arg1, Arg2, EngineState) ->
+    {[Signature, Account, NameHash], ES1} =
+        get_op_args([Arg0, Arg1, Arg2], EngineState),
+    if
+        not ?IS_FATE_BYTES(64, Signature) ->
+            aefa_fate:abort({value_does_not_match_type, Signature, bytes64}, ES1);
+        not ?IS_FATE_ADDRESS(Account) ->
+            aefa_fate:abort({value_does_not_match_type, Account, address}, ES1);
+        not ?IS_FATE_BYTES(32, NameHash) ->
+            aefa_fate:abort({value_does_not_match_type, NameHash, name}, ES1);
+        true ->
+            ok
+    end,
+    ?FATE_BYTES(SignBin) = Signature,
+    ?FATE_BYTES(HashBin) = NameHash,
+    ?FATE_ADDRESS(Pubkey) = Account,
+    ES2 = check_delegation_signature(aens_revoke, {Pubkey, HashBin}, SignBin, ES1),
+    API = aefa_engine_state:chain_api(ES2),
+    case aefa_chain_api:aens_revoke(Pubkey, HashBin, API) of
+        {ok, API1} ->
+            aefa_engine_state:set_chain_api(API1, ES2);
+        {error, What} ->
+            aefa_fate:abort({primop_error, aens_revoke, What}, ES2)
+    end.
+
 check_delegation_signature(Type, Data, Signature, ES) ->
     Current = aefa_engine_state:current_contract(ES),
     check_delegation_signature(Type, Data, Signature, Current, ES).
@@ -1065,24 +1237,16 @@ check_delegation_signature(Type, Data, SignBin, Current, ES) ->
             end
     end.
 
-delegation_signature_data(oracle_register, Pubkey, Current) ->
-    {<<Pubkey/binary, Current/binary>>, Pubkey};
-delegation_signature_data(oracle_extend, Pubkey, Current) ->
+delegation_signature_data(Type, Pubkey, Current) when Type =:= aens_preclaim;
+                                                      Type =:= oracle_register;
+                                                      Type =:= oracle_extend ->
     {<<Pubkey/binary, Current/binary>>, Pubkey};
 delegation_signature_data(oracle_respond, {Pubkey, QueryId}, Current) ->
-    {<<QueryId/binary, Current/binary>>, Pubkey}.
-
-aens_resolve(_EngineState) -> exit({error, op_not_implemented_yet}).
-
-aens_preclaim(_EngineState) -> exit({error, op_not_implemented_yet}).
-
-aens_claim(_EngineState) -> exit({error, op_not_implemented_yet}).
-
-aend_update(_EngineState) -> exit({error, op_not_implemented_yet}).
-
-aens_transfer(_EngineState) -> exit({error, op_not_implemented_yet}).
-
-aens_revoke(_EngineState) -> exit({error, op_not_implemented_yet}).
+    {<<QueryId/binary, Current/binary>>, Pubkey};
+delegation_signature_data(Type, {Pubkey, Hash}, Current) when Type =:= aens_claim;
+                                                              Type =:= aens_transfer;
+                                                              Type =:= aens_revoke ->
+    {<<Pubkey/binary, Hash/binary, Current/binary>>, Pubkey}.
 
 ecverify(Arg0, Arg1, Arg2, Arg3, ES) ->
     ter_op(ecverify, {Arg0, Arg1, Arg2, Arg3}, ES).
