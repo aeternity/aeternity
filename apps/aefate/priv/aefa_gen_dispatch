@@ -43,65 +43,31 @@ do_main(Filename) ->
     io:format(File, "\n", []),
     file:close(File).
 
-gen_eval(#{ opname            := Name
-          , end_bb            := true
-          , format            := []
-          , gas               := Gas
-          , constructor       := Constructor
-          }) ->
-    io_lib:format(
-      "eval(~w, EngineState) ->\n"
-      "    aefa_fate_op:~w(aefa_engine_state:spend_gas(~w, EngineState));\n",
-      [Name, Constructor, Gas]);
-gen_eval(#{ opname            := Name
-          , format            := []
-          , gas               := Gas
-          , constructor       := Constructor
-          }) ->
-    io_lib:format(
-      "eval(~w, EngineState) ->\n"
-      "    {next, aefa_fate_op:~w(aefa_engine_state:spend_gas(~w, EngineState))};\n",
-      [Name, Constructor, Gas]);
-gen_eval(#{ opname            := Name
-          , opcode            :=_OpCode
-          , arity             := Arity
-          , end_bb            := true
-          , format            := FateFormat
-          , macro             :=_Macro
-          , type_name         :=_TypeName
-          , doc               :=_Doc
-          , gas               := Gas
-          , type              :=_Type
-          , constructor       := Constructor
-          , constructor_type  :=_ConstructorType
-          }) ->
-    Args  = gen_arg_matches(FateFormat, 0),
-    CArgs = [io_lib:format("Arg~w, ", [N]) || N <- lists:seq(0, Arity-1)],
-    io_lib:format(
-      "eval({~w~s}, EngineState) ->\n"
-      "    aefa_fate_op:~w(~saefa_engine_state:spend_gas(~w, EngineState));\n",
-      [Name, Args, Constructor, CArgs, Gas]);
-gen_eval(#{ opname            := Name
-          , opcode            :=_OpCode
-          , arity             := Arity
-          , end_bb            := false
-          , format            := FateFormat
-          , macro             :=_Macro
-          , type_name         :=_TypeName
-          , doc               :=_Doc
-          , gas               := Gas
-          , type              :=_Type
-          , constructor       := Constructor
-          , constructor_type  :=_ConstructorType
-          }) ->
-    Args  = gen_arg_matches(FateFormat, 0),
-    CArgs = [io_lib:format("Arg~w, ", [N]) || N <- lists:seq(0, Arity-1)],
-    io_lib:format(
-      "eval({~w~s}, EngineState) ->\n"
-      "    {next, aefa_fate_op:~w(~saefa_engine_state:spend_gas(~w, EngineState))};\n",
-      [Name, Args, Constructor, CArgs, Gas]).
+gen_eval(#{ constructor := Constructor, gas := Gas } = Op) ->
+    Cmd = io_lib:format("aefa_fate_op:~w(~saefa_engine_state:spend_gas(~w, EngineState))",
+                        [Constructor, gen_cargs(Op), Gas]),
+    io_lib:format("eval(~s, EngineState) ->\n    ~s;\n",
+                  [gen_op_w_args(Op), gen_in_auth(Op, gen_next_cmd(Op, Cmd))]).
 
+gen_next_cmd(#{ end_bb := true },  Cmd) -> Cmd;
+gen_next_cmd(#{ end_bb := false }, Cmd) -> io_lib:format("{next, ~s}", [Cmd]).
 
+gen_in_auth(#{ in_auth := false, opname := Name }, Cmd) ->
+    io_lib:format(
+      "case aefa_fate_op:in_auth_context(EngineState) of\n"
+      "        false -> ~s;\n"
+      "        true  -> aefa_fate:abort({not_allowed_in_auth_context, ~w}, EngineState)\n"
+      "    end", [Cmd, Name]);
+gen_in_auth(_Op, Cmd) ->
+    Cmd.
+
+gen_op_w_args(#{ opname := Name, format := [] }) ->
+    io_lib:format("~w", [Name]);
+gen_op_w_args(#{ opname := Name, format := Fmt }) ->
+    io_lib:format("{~w~s}", [Name, gen_arg_matches(Fmt, 0)]).
+
+gen_cargs(#{ arity := Arity }) ->
+    [ io_lib:format("Arg~w, ", [N]) || N <- lists:seq(0, Arity-1) ].
 
 gen_arg_matches([], _) ->
     "";
