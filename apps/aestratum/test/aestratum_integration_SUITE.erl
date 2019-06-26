@@ -279,6 +279,7 @@ rewarding_participants(Cfg) ->
     %% clients/miners payment was sent
     [#aestratum_payment{id = {Height, 1}, tx_hash = TxHash1, absmap = #{?CLIENT1_ACCOUNT := _}}] =
         rpc(?STRATUM_SERVER_NODE, aestratum, sent_payments, []),
+    <<_/binary>> = TxHash1,
 
     aecore_suite_utils:mine_key_blocks(MNode, 1),
 
