@@ -938,7 +938,7 @@
                     "properties" : {
                         "host" : {
                             "type" : "string",
-                            "default" : "pool.aeternity.com"
+                            "default" : "localhost"
                         },
                         "port" : {
                             "description" : "Port number of Stratum server.",
@@ -1040,7 +1040,7 @@
                             "additionalProperties": false,
                             "properties" : {
                                 "dir": {
-                                    "description" : "Location (directory) of the public/private key pair used for signing of the payout contract call (relative to aestratum priv directory)",
+                                    "description" : "Directory of the public/private key pair used for signing of the payout contract call (either relative to aestratum priv directory or absolute). This account holds mining rewards which are scheduled for redistribution to miners. It is unexpected that this account should hold any substantial amount of tokens (in fiat value) - it would mean redistributions aren't working. The pool operator should ensure the node operates in trusted environment.",
                                     "type" : "string"
                                 }
                             }
