@@ -31,9 +31,7 @@
 -define(SOPHIA_CONTRACT_VSN_2, 2).
 
 %% After hard fork Minerva, we accept ?SOPHIA_CONTRACT_VSN_2 in serialization
-%% Therefore, switch the present version to ?SOPHIA_CONTRACT_VSN_2 when release
-%% after hard fork.
--define(SOPHIA_CONTRACT_VSN, ?SOPHIA_CONTRACT_VSN_1).
+-define(SOPHIA_CONTRACT_VSN, ?SOPHIA_CONTRACT_VSN_2).
 
 is_legal_serialization_at_height(?SOPHIA_CONTRACT_VSN_1, _Height) ->
     true;
