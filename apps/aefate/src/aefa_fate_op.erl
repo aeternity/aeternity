@@ -136,6 +136,8 @@
         , bytes_to_str/3
         ]).
 
+-export([in_auth_context/1]).
+
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include("../../aecontract/include/aecontract.hrl").
 -include("../../aecore/include/blocks.hrl").
@@ -1458,4 +1460,9 @@ pow(_, 0, R)                   -> R;
 pow(A, B, R) when B rem 2 == 0 -> pow(A * A, B bsr 1, R);
 pow(A, B, R)                   -> pow(A * A, B bsr 1, R * A).
 
+%% Check for authentication context
+in_auth_context(EngineState) ->
+    API   = aefa_engine_state:chain_api(EngineState),
+    TxEnv = aefa_chain_api:tx_env(API),
+    undefined =/= aetx_env:ga_tx_hash(TxEnv).
 

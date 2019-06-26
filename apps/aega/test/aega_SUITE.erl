@@ -108,7 +108,7 @@ groups() ->
                  , {group, oracle}
                  , {group, channel}
                  , {group, multi_wrap}
-                 %, {group, negative} %% TODO: cripple FATE VM
+                 , {group, negative}
                  ]}
 
     , {simple, [], [ simple_attach

@@ -18,7 +18,7 @@ contract Auth1 =
       Spend(to, tokens) =>
         Chain.spend(to, tokens)
       OracleReg         =>
-        Oracle.register(Contract.address, 12345, RelativeTTL(1000))
+        Oracle.register(Contract.address, 12345, RelativeTTL(1000)) : oracle(int, int)
         ()
       RemoteCall(r)     =>
         r.main(42)

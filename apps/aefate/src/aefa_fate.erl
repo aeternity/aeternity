@@ -161,6 +161,8 @@ abort({trying_to_call_function, Name}, ES) ->
     ?t("Trying to call undefined function: ~p", [Name], ES);
 abort({trying_to_call_contract, Pubkey}, ES) ->
     ?t("Trying to call invalid contract: ~p", [Pubkey], ES);
+abort({not_allowed_in_auth_context, Op}, ES) ->
+    ?t("Operation ~p not allowed in GA Authentication context", [Op], ES);
 abort(negative_value_in_call, ES) ->
     ?t("Trying to transfer negative value in call", [], ES);
 abort({call_error, What}, ES) ->
