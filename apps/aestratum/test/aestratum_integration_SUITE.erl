@@ -63,7 +63,6 @@ init_per_suite(Cfg) ->
     Client1NodeCfg = client_node_config(?CLIENT1_ACCOUNT),
 
     application:set_env(aecore, network_id, <<"local_lima_testnet">>),
-    application:set_env(setup, data_dir, "data"),
     Cfg3 = aecore_suite_utils:init_per_suite([?STRATUM_SERVER_NODE], StratumServerNodeCfg, Cfg2),
     Cfg4 = aecore_suite_utils:init_per_suite([?MINING_NODE], MiningNodeCfg, Cfg3),
     Cfg5 = aestratum_client_suite_utils:init_per_suite([?CLIENT1_NODE], Client1NodeCfg, Cfg4),
