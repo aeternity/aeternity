@@ -10,6 +10,7 @@
 -include("../include/aecontract.hrl").
 -include("../../aecore/include/blocks.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
+-include("../../aecontract/src/aect_sophia.hrl").
 
 -export([ serialize/1
         , serialize/2
@@ -26,9 +27,6 @@
                          }.
 
 -export_type([ wrapped_code/0 ]).
-
--define(SOPHIA_CONTRACT_VSN_1, 1).
--define(SOPHIA_CONTRACT_VSN_2, 2).
 
 %% After hard fork Minerva, we accept ?SOPHIA_CONTRACT_VSN_2 in serialization
 -define(SOPHIA_CONTRACT_VSN, ?SOPHIA_CONTRACT_VSN_2).
