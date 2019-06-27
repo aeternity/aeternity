@@ -308,7 +308,7 @@ compile(?SOPHIA_LIMA_FATE, File) ->
         {ok, Map} -> {ok, aect_sophia:serialize(Map)};
         {error, E} = Err -> io:format("~s\n", [E]), Err
     end;
-compile(?SOPHIA_LIMA_AEVM, File) ->
+compile(SophiaVsn, File) when SophiaVsn == ?SOPHIA_LIMA_AEVM; SophiaVsn == ?SOPHIA_FORTUNA ->
     {ok, ContractBin} = file:read_file(File),
     case aeso_compiler:from_string(binary_to_list(ContractBin), []) of
         {ok, Map}        -> {ok, aect_sophia:serialize(Map)};
@@ -373,7 +373,7 @@ to_str(Str)                     -> Str.
 encode_call_data(Code, Fun, Args) ->
     encode_call_data(latest_sophia_version(), Code, Fun, Args).
 
-encode_call_data(Vsn, Code, Fun, Args) when Vsn == ?SOPHIA_LIMA_AEVM ->
+encode_call_data(Vsn, Code, Fun, Args) when Vsn == ?SOPHIA_LIMA_AEVM; Vsn == ?SOPHIA_FORTUNA ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
                                       lists:map(fun to_str/1, Args),
                                       [{backend, backend()}])

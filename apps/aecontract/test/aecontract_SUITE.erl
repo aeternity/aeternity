@@ -4219,7 +4219,7 @@ sophia_int_to_str(_Cfg) ->
     ok.
 
 sophia_events(Cfg) ->
-    case sophia_version() =< ?SOPHIA_FORTUNA of
+    case sophia_version() =< ?SOPHIA_MINERVA of
         true  -> sophia_events_old(Cfg);
         false -> sophia_events_new(Cfg)
     end.
@@ -4581,7 +4581,7 @@ sophia_bytes(_Cfg) ->
     ok.
 
 sophia_bytes_to_x(_Cfg) ->
-    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, bytes_to_x_not_in_fortuna),
+    ?skipRest(sophia_version() =< ?SOPHIA_MINERVA, bytes_to_x_not_in_minerva),
     state(aect_test_utils:new_state()),
     Acc  = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     C    = ?call(create_contract, Acc, bytes_to_x, {}),

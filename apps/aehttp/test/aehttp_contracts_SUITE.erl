@@ -1100,7 +1100,7 @@ events_contract(Config) ->
     force_fun_calls(Node),
 
     F1Check = fun([#{<<"address">> := Addr, <<"topics">> := Ts, <<"data">> := Data}]) ->
-                <<E1:256>> = case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+                <<E1:256>> = case aect_test_utils:latest_protocol_version() >= ?FORTUNA_PROTOCOL_VSN of
                                 true -> aec_hash:blake2b_256_hash(<<"Event1">>);
                                 false -> aec_hash:hash(evm, <<"Event1">>)
                              end,
@@ -1111,7 +1111,7 @@ events_contract(Config) ->
     call_func(APub, APriv, EncCPub, Contract, "f1", ["1", "\"bar\""], {log, F1Check}),
 
     F2Check = fun([#{<<"address">> := Addr, <<"topics">> := Ts, <<"data">> := Data}]) ->
-                <<E2:256>> = case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+                <<E2:256>> = case aect_test_utils:latest_protocol_version() >= ?FORTUNA_PROTOCOL_VSN of
                                 true -> aec_hash:blake2b_256_hash(<<"Event2">>);
                                 false -> aec_hash:hash(evm, <<"Event2">>)
                              end,
