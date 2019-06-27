@@ -26,7 +26,7 @@ init_per_suite(NodesList, CustomNodeCfg, CTCfg) ->
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
     create_configs(NodesList, CTCfg1, CustomNodeCfg),
-    make_multi(CTCfg1, NodesList),
+    make_stratum_clients(CTCfg1, NodesList),
     CTCfg1.
 
 start_node(N, Cfg) ->
@@ -90,7 +90,7 @@ write_config(F, _CfgSchema, Cfg) ->
     ct:log("Writing config (~p)~n~s", [F, JSON]),
     ok = file:write_file(F, JSON).
 
-make_multi(Cfg, NodesList) ->
+make_stratum_clients(Cfg, NodesList) ->
     TopClientDir = ?config(top_client_dir, Cfg),
     ct:log("Top client dir = ~p", [TopClientDir]),
     Client =
