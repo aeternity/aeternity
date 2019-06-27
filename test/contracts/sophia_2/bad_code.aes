@@ -1,0 +1,2 @@
+contract BadCode =
+  function main(x : int) = x mod x

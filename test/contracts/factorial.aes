@@ -1,17 +1,17 @@
-// An implementation of the factorial function where each recursive
+// An implementation of the factorial entrypoint where each recursive
 // call is to another contract. Not the cheapest way to compute factorial.
 contract FactorialServer =
-  function fac : (int) => int
+  entrypoint fac : (int) => int
 
 contract Factorial =
 
   record state = {worker : FactorialServer}
 
-  function init(worker) = {worker = worker}
+  entrypoint init(worker) = {worker = worker}
 
-  stateful function set_worker(worker) = put(state{worker = worker})
+  stateful entrypoint set_worker(worker) = put(state{worker = worker})
 
-  function fac(x : int) : int =
+  entrypoint fac(x : int) : int =
     if(x == 0) 1
     else x * state.worker.fac(x - 1)
 

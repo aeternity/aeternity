@@ -5,8 +5,8 @@ contract BuiltinBug =
 
   record state = {proofs : map(address, list(string))}
 
-  public function init() = {proofs = {}}
+  entrypoint init() = {proofs = {}}
 
-  public stateful function createProof(hash : string) =
+  stateful entrypoint createProof(hash : string) =
     put( state{ proofs[Call.caller] = hash :: state.proofs[Call.caller] } )
 

@@ -1,0 +1,21 @@
+// Contract replicating "normal" Aeternity authentication
+contract BasicAuth =
+  record state = { nonce : int, owner : address }
+
+  function init() = { nonce = 1, owner = Call.caller }
+
+  stateful function authorize(n : int, s : signature) : bool =
+    _require(n >= state.nonce, "Nonce too low")
+    _require(n =< state.nonce, "Nonce too high")
+    put(state{ nonce = n + 1 })
+    switch(Auth.tx_hash)
+      None          => abort("Not in Auth context")
+      Some(tx_hash) => Crypto.ecverify(to_sign(tx_hash, n), state.owner, s)
+
+  function to_sign(h : hash, n : int) =
+    Crypto.blake2b((h, n))
+
+  // Not using builtin require because Sophia version handling in ga test
+  // suites is a bit broken (TODO).
+  private function _require(b : bool, err : string) =
+    if(!b) abort(err)

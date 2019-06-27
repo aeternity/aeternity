@@ -2,5 +2,5 @@ contract MinimalInit =
 
   record state = {foo : int}
 
-  function init() =
+  entrypoint init() =
     { foo = 0 }

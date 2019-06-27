@@ -1,22 +1,22 @@
 contract Remote =
-  function id : ('a) => 'a
-  function missing : ('a) => 'a
-  function wrong_type : (string) => string
+  entrypoint id : ('a) => 'a
+  entrypoint missing : ('a) => 'a
+  entrypoint wrong_type : (string) => string
 
 contract Main =
 
-  function id(x : int) =
+  entrypoint id(x : int) =
     x
 
-  function wrong_type(x : int) =
+  entrypoint wrong_type(x : int) =
     x
 
-  function remote_id(r : Remote, x) =
+  entrypoint remote_id(r : Remote, x) =
     r.id(x)
 
-  function remote_missing(r : Remote, x) =
+  entrypoint remote_missing(r : Remote, x) =
     r.missing(x)
 
-  function remote_wrong_type(r : Remote, x) =
+  entrypoint remote_wrong_type(r : Remote, x) =
     r.wrong_type(x)
 

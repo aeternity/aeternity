@@ -1,21 +1,21 @@
 contract ValueOnErr =
-  function err : () => int
-  function ok  : () => int
+  entrypoint err : () => int
+  entrypoint ok  : () => int
 
 contract RemoteValueOnErr =
 
-  public stateful function callErr(
+  stateful entrypoint callErr(
     r : ValueOnErr,
     value : int) : int =
     r.err(value = value)
 
-  public stateful function callErrLimitGas(
+  stateful entrypoint callErrLimitGas(
     r : ValueOnErr,
     value : int,
     gas : int) : int =
     r.err(value = value, gas = gas)
 
-  public stateful function callOk(
+  stateful entrypoint callOk(
     r : ValueOnErr,
     value : int) : int =
     r.ok(value = value)

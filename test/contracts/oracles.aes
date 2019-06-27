@@ -9,27 +9,27 @@ contract Oracles =
   type oracle_id = oracle(query_t, answer_t)
   type query_id  = oracle_query(query_t, answer_t)
 
-  stateful function registerOracle(acct : address,
+  stateful entrypoint registerOracle(acct : address,
                           qfee : fee,
                           ttl  : ttl) : oracle_id =
      Oracle.register(acct, qfee, ttl)
 
-  stateful function registerIntIntOracle(acct : address,
+  stateful entrypoint registerIntIntOracle(acct : address,
                                 qfee : fee,
                                 ttl  : ttl) : oracle(int, int) =
      Oracle.register(acct, qfee, ttl)
 
-  stateful function respondIntIntOracle(o    : oracle(int, int),
+  stateful entrypoint respondIntIntOracle(o    : oracle(int, int),
                                         q    : oracle_query(int, int),
                                         r    : int) : () =
     Oracle.respond(o, q, r)
 
-  stateful function registerStringStringOracle(acct : address,
+  stateful entrypoint registerStringStringOracle(acct : address,
                                       qfee : fee,
                                       ttl  : ttl) : oracle(string, string) =
      Oracle.register(acct, qfee, ttl)
 
-  stateful function createQueryStringStringOracle(o    : oracle(string, string),
+  stateful entrypoint createQueryStringStringOracle(o    : oracle(string, string),
                                                   q    : string,
                                                   qfee : fee,
                                                   qttl : ttl,
@@ -37,24 +37,24 @@ contract Oracles =
     require(qfee =< Call.value, "insufficient value for qfee")
     Oracle.query(o, q, qfee, qttl, rttl)
 
-  function getAnswerIntIntOracle(o : oracle(int, int),
+  entrypoint getAnswerIntIntOracle(o : oracle(int, int),
                                q : oracle_query(int, int)) : option(int) =
     Oracle.get_answer(o, q)
 
-  function getQuestionStringStringOracle(o : oracle(string, string),
+  entrypoint getQuestionStringStringOracle(o : oracle(string, string),
                                        q : oracle_query(string, string)) : string =
     Oracle.get_question(o, q)
 
-  stateful function signedRegisterOracle(acct : address,
+  stateful entrypoint signedRegisterOracle(acct : address,
                                 sign : signature,
                                 qfee : fee,
                                 ttl  : ttl) : oracle_id =
      Oracle.register(acct, qfee, ttl, signature = sign)
 
-  function queryFee(o : oracle_id) : fee =
+  entrypoint queryFee(o : oracle_id) : fee =
     Oracle.query_fee(o)
 
-  stateful function createQuery(o    : oracle_id,
+  stateful entrypoint createQuery(o    : oracle_id,
                        q    : query_t,
                        qfee : fee,
                        qttl : ttl,
@@ -63,7 +63,7 @@ contract Oracles =
     Oracle.query(o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  stateful function unsafeCreateQuery(o    : oracle_id,
+  stateful entrypoint unsafeCreateQuery(o    : oracle_id,
                        q    : query_t,
                        qfee : fee,
                        qttl : ttl,
@@ -71,7 +71,7 @@ contract Oracles =
     Oracle.query(o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  stateful function unsafeCreateQueryThenErr(o    : oracle_id,
+  stateful entrypoint unsafeCreateQueryThenErr(o    : oracle_id,
                        q    : query_t,
                        qfee : fee,
                        qttl : ttl,
@@ -80,50 +80,50 @@ contract Oracles =
     require(qfee >= 100000000000000000, "causing a late error")
     res
 
-  stateful function extendOracle(o    : oracle_id,
+  stateful entrypoint extendOracle(o    : oracle_id,
                         ttl  : ttl) : () =
     Oracle.extend(o, ttl)
 
-  stateful function signedExtendOracle(o    : oracle_id,
+  stateful entrypoint signedExtendOracle(o    : oracle_id,
                               sign : signature,   // Signed oracle address
                               ttl  : ttl) : () =
     Oracle.extend(o, signature = sign, ttl)
 
-  stateful function respond(o    : oracle_id,
+  stateful entrypoint respond(o    : oracle_id,
                    q    : query_id,
                    r    : answer_t) : () =
     Oracle.respond(o, q, r)
 
-  stateful function signedRespond(o    : oracle_id,
+  stateful entrypoint signedRespond(o    : oracle_id,
                          q    : query_id,
                          sign : signature,
                          r    : answer_t) : () =
     Oracle.respond(o, q, signature = sign, r)
 
-  function getQuestion(o : oracle_id,
+  entrypoint getQuestion(o : oracle_id,
                        q : query_id) : query_t =
     Oracle.get_question(o, q)
 
-  function hasAnswer(o : oracle_id,
+  entrypoint hasAnswer(o : oracle_id,
                      q : query_id) =
     switch(Oracle.get_answer(o, q))
       None    => false
       Some(_) => true
 
-  function getAnswer(o : oracle_id,
+  entrypoint getAnswer(o : oracle_id,
                      q : query_id) : option(answer_t) =
     Oracle.get_answer(o, q)
 
   datatype complexQuestion = Why(int) | How(string)
   datatype complexAnswer   = NoAnswer | Answer(complexQuestion, string, int)
 
-  stateful function complexOracle(question) =
+  stateful entrypoint complexOracle(question) =
     let o = Oracle.register(Contract.address, 0, FixedTTL(1000)) : oracle(complexQuestion, complexAnswer)
     let q = Oracle.query(o, question, 0, RelativeTTL(100), RelativeTTL(100))
     Oracle.respond(o, q, Answer(question, "magic", 1337))
     Oracle.get_answer(o, q)
 
-  stateful function signedComplexOracle(question, sig) =
+  stateful entrypoint signedComplexOracle(question, sig) =
     let o = Oracle.register(signature = sig, Contract.address, 0, FixedTTL(1000)) : oracle(complexQuestion, complexAnswer)
     let q = Oracle.query(o, question, 0, RelativeTTL(100), RelativeTTL(100))
     Oracle.respond(o, q, Answer(question, "magic", 1337), signature = sig)

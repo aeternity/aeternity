@@ -1,0 +1,14 @@
+contract Remote =
+  function main : (int) => int
+
+contract Auth1 =
+  record state = { secret : int }
+
+  datatype auth_test = Spend(address, int)
+                     | OracleReg
+                     | RemoteCall(Remote)
+
+  function init(s : int) = { secret = s }
+
+  function authorize(s : int, x : int) : bool =
+    state.secret == s

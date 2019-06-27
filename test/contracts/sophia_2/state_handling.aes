@@ -1,0 +1,70 @@
+contract Remote =
+  record rstate = { i : int, s : string, m : map(int, int) }
+
+  function look_at : (rstate) => ()
+  function return_s : (bool) => string
+  function return_m : (bool) => map(int, int)
+  function get : (rstate) => rstate
+  function get_i : (rstate) => int
+  function get_s : (rstate) => string
+  function get_m : (rstate) => map(int, int)
+
+  function fun_update_i  : (rstate, int)           => rstate
+  function fun_update_s  : (rstate, string)        => rstate
+  function fun_update_m  : (rstate, map(int, int)) => rstate
+  function fun_update_mk : (rstate, int, int)      => rstate
+
+contract StateHandling =
+
+  type state = Remote.rstate
+
+  function init(r : Remote, i : int) =
+    let state0 = { i = 0, s = "undefined", m = {} }
+    r.fun_update_i(state0, i)
+
+  function read() = state
+  function read_i() = state.i
+  function read_s() = state.s
+  function read_m() = state.m
+
+  stateful function update(new_state : state) = put(new_state)
+  stateful function update_i(new_i) = put(state{ i = new_i })
+  stateful function update_s(new_s) = put(state{ s = new_s })
+  stateful function update_m(new_m) = put(state{ m = new_m })
+
+  function pass_it(r : Remote) = r.look_at(state)
+  stateful function nop(r : Remote) = put(state{ i = state.i })
+  function return_it_s(r : Remote, big : bool) =
+    let x = r.return_s(big)
+    String.length(x)
+  function return_it_m(r : Remote, big : bool) =
+    let x = r.return_m(big)
+    Map.size(x)
+
+  function pass(r : Remote) = r.get(state)
+  function pass_i(r : Remote) = r.get_i(state)
+  function pass_s(r : Remote) = r.get_s(state)
+  function pass_m(r : Remote) = r.get_m(state)
+
+  function pass_update_i(r : Remote, i) = r.fun_update_i(state, i)
+  function pass_update_s(r : Remote, s) = r.fun_update_s(state, s)
+  function pass_update_m(r : Remote, m) = r.fun_update_m(state, m)
+
+  stateful function remote_update_i (r : Remote, i)    = put(r.fun_update_i(state, i))
+  stateful function remote_update_s (r : Remote, s)    = put(r.fun_update_s(state, s))
+  stateful function remote_update_m (r : Remote, m)    = put(r.fun_update_m(state, m))
+  stateful function remote_update_mk(r : Remote, k, v) = put(r.fun_update_mk(state, k, v))
+
+  // remote called
+  function look_at(s : state) = ()
+
+  function get(s : state) = s
+  function get_i(s : state) = s.i
+  function get_s(s : state) = s.s
+  function get_m(s : state) = s.m
+
+  function fun_update_i(st, ni) = st{ i = ni }
+  function fun_update_s(st, ns) = st{ s = ns }
+  function fun_update_m(st, nm) = st{ m = nm }
+  function fun_update_mk(st, k, v) = st{ m = st.m{[k] = v} }
+

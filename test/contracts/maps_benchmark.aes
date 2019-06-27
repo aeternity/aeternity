@@ -1,28 +1,28 @@
 
 contract MapUpdater =
-  function update_map : (int, string, map(int, string)) => map(int, string)
+  entrypoint update_map : (int, string, map(int, string)) => map(int, string)
 
 contract Benchmark =
 
   record state = { updater : MapUpdater,
                    map     : map(int, string) }
 
-  function init(u, m) = { updater = u, map = m }
+  entrypoint init(u, m) = { updater = u, map = m }
 
-  stateful function set_updater(u) = put(state{ updater = u })
+  stateful entrypoint set_updater(u) = put(state{ updater = u })
 
-  function update_map(k : int, v : string, m) = m{ [k] = v }
+  entrypoint update_map(k : int, v : string, m) = m{ [k] = v }
 
-  stateful function update(a : int, b : int, v : string) =
+  stateful entrypoint update(a : int, b : int, v : string) =
     if (a > b) ()
     else
       put(state{ map[a] = v })
       update(a + 1, b, v)
 
-  function get(k) = state.map[k]
-  function noop() = ()
+  entrypoint get(k) = state.map[k]
+  entrypoint noop() = ()
 
-  stateful function benchmark(k, v) =
+  stateful entrypoint benchmark(k, v) =
     let m = state.updater.update_map(k, v, state.map)
     put(state{ map = m })
     m

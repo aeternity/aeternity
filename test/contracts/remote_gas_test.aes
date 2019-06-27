@@ -1,20 +1,20 @@
 contract Remote1 =
-  function set : (int) => int
+  entrypoint set : (int) => int
 
 contract RemoteCall =
     record state = { i : int }
 
-    function init(x) = { i = x }
+    entrypoint init(x) = { i = x }
 
-    stateful function set( x : int) : int =
+    stateful entrypoint set( x : int) : int =
         let old = state.i
         put(state{ i = x })
         old
 
-    stateful function call(r : Remote1, x : int, g : int) : int =
+    stateful entrypoint call(r : Remote1, x : int, g : int) : int =
         r.set(gas = g, value = 10, x)
 
-    function get() = state.i
+    entrypoint get() = state.i
 
 
 

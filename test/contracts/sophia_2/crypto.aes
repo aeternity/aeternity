@@ -1,0 +1,23 @@
+contract CryptoTest =
+  function test_verify(msg : hash, pk : address, sig : signature) =
+    Crypto.ecverify(msg, pk, sig)
+
+  function test_string_verify(x : string, pk : address, sig : signature) =
+    Crypto.ecverify(String.sha3(x), pk, sig)
+
+  function sha3_str    (s : string) : hash = String.sha3(s)
+  function sha256_str  (s : string) : hash = String.sha256(s)
+  function blake2b_str (s : string) : hash = String.blake2b(s)
+
+  type complex = list((option(int), string))
+
+  function sha3    (x : complex) : hash = Crypto.sha3(x)
+  function sha256  (x : complex) : hash = Crypto.sha256(x)
+  function blake2b (x : complex) : hash = Crypto.blake2b(x)
+
+  function test_verify_secp256k1(msg : hash, pk : bytes(64), sig : signature) =
+    Crypto.ecverify_secp256k1(msg, pk, sig)
+
+  function test_string_verify_secp256k1(x : string, pk : bytes(64), sig : signature) =
+    Crypto.ecverify_secp256k1(String.sha3(x), pk, sig)
+

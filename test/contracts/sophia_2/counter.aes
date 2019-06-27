@@ -1,0 +1,9 @@
+
+contract Counter =
+
+  record state = { value : int }
+
+  function init(val) = { value = val }
+  function get()     = state.value
+  stateful function tick()    = put(state{ value = state.value + 1 })
+

@@ -1,32 +1,32 @@
 contract Oracles =
 
-  function registerOracle :
+  entrypoint registerOracle :
     (address,
      int,
      Chain.ttl) => oracle(string, int)
 
-  function createQuery :
+  entrypoint createQuery :
     (oracle(string, int),
      string,
      int,
      Chain.ttl,
      Chain.ttl) => oracle_query(string, int)
 
-  function unsafeCreateQuery :
+  entrypoint unsafeCreateQuery :
     (oracle(string, int),
      string,
      int,
      Chain.ttl,
      Chain.ttl) => oracle_query(string, int)
 
-  function respond :
+  entrypoint respond :
     (oracle(string, int),
      oracle_query(string, int),
      int) => ()
 
 contract OraclesErr =
 
-  function unsafeCreateQueryThenErr :
+  entrypoint unsafeCreateQueryThenErr :
     (oracle(string, int),
      string,
      int,
@@ -35,14 +35,14 @@ contract OraclesErr =
 
 contract RemoteOracles =
 
-  public function callRegisterOracle(
+  entrypoint callRegisterOracle(
       r    : Oracles,
       acct : address,
       qfee : int,
       ttl  : Chain.ttl) : oracle(string, int) =
     r.registerOracle(acct, qfee, ttl)
 
-  public stateful function callCreateQuery(
+  stateful entrypoint callCreateQuery(
     r     : Oracles,
     value : int,
     o     : oracle(string, int),
@@ -54,7 +54,7 @@ contract RemoteOracles =
     r.createQuery(value = value, o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  public stateful function callUnsafeCreateQuery(
+  stateful entrypoint callUnsafeCreateQuery(
     r     : Oracles,
     value : int,
     o     : oracle(string, int),
@@ -65,7 +65,7 @@ contract RemoteOracles =
     r.unsafeCreateQuery(value = value, o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  public stateful function callUnsafeCreateQueryThenErr(
+  stateful entrypoint callUnsafeCreateQueryThenErr(
     r     : OraclesErr,
     value : int,
     o     : oracle(string, int),
@@ -76,7 +76,7 @@ contract RemoteOracles =
     r.unsafeCreateQueryThenErr(value = value, o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  public stateful function callUnsafeCreateQueryAndThenErr(
+  stateful entrypoint callUnsafeCreateQueryAndThenErr(
     r     : Oracles,
     value : int,
     o     : oracle(string, int),
@@ -88,7 +88,7 @@ contract RemoteOracles =
     switch(0) 1 => ()
     x // Never reached.
 
-  public function callRespond(
+  entrypoint callRespond(
     r    : Oracles,
     o    : oracle(string, int),
     q    : oracle_query(string, int),

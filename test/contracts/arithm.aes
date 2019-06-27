@@ -3,13 +3,13 @@ contract Arithmatic =
 
   type state = int
 
-  function init(i : int) =
+  entrypoint init(i : int) =
     i
 
-  function read() =
+  entrypoint read() =
     state
 
-  function pow(i : int) =
+  entrypoint pow(i : int) =
     switch(i)
         0 => 1
         n => state * pow(n - 1)

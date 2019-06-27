@@ -16,6 +16,6 @@ namespace Lib =
 
 contract TestNamespaces =
 
-  function palindrome(xs : list(int)) : bool =
+  entrypoint palindrome(xs : list(int)) : bool =
     Lib.eqlist(xs, Lib.reverse(xs))
 

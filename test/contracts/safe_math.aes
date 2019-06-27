@@ -1,10 +1,10 @@
 
 contract SafeMath =
 
-  function add(x, y) = x + y
-  function sub(x, y) = x - y
-  function mul(x, y) = x * y
-  function div(x, y) = x / y
-  function rem(x, y) = x mod y
-  function pow(x, y) = x ^ y
+  entrypoint add(x, y) = x + y
+  entrypoint sub(x, y) = x - y
+  entrypoint mul(x, y) = x * y
+  entrypoint div(x, y) = x / y
+  entrypoint rem(x, y) = x mod y
+  entrypoint pow(x, y) = x ^ y
 

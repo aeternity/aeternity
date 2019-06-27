@@ -40,7 +40,7 @@ contract WithdrawalContract =
                    mostSent : uint,
                    pendingWithdrawals : map(address, uint) }
 
-  function becomeRichest() : result(bool) =
+  entrypoint becomeRichest() : result(bool) =
       if (call().value > state.mostSent)
         let totalAmount : uint = Map.get_(state.richest, pendingWithdrawals) + call().value
         {state = state{ pendingWithdrawals = Map.insert(state.richest, call().value, state.pendingWithdrawals),
@@ -50,7 +50,7 @@ contract WithdrawalContract =
       else
         {result = false}
 
-  function withdraw() =
+  entrypoint withdraw() =
       let amount : uint = Map.get_(call().sender, state.pendingWithdrawals)
       { state.pendingWithdrawals = Map.insert(call().sender, 0, state.pendingWithdrawals),
         transactions = spend_tx(amount, call().sender) }
