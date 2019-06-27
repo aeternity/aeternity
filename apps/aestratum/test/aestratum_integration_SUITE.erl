@@ -567,6 +567,7 @@ await_new_job_(Node, Account, OldJobs) ->
 
 await_new_job_share(Node, Account, Job) ->
     retry(fun() -> await_new_job_share_(Node, Account, Job) end,
+          1000,
           {?LINE, await_new_job_share, Node, Account, Job}).
 
 await_new_job_share_(Node, Account, #{id := JobId}) ->
