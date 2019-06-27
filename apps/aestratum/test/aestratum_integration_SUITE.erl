@@ -64,23 +64,25 @@ init_per_suite(Cfg) ->
     end.
 
 init_per_suite_(Cfg) ->
-    Cfg1 = [{symlink_name, "latest.aestratum"}, {test_module, ?MODULE}] ++ Cfg,
-
     #{pubkey := PubKey, privkey := _PrivKey} = StratumKeyPair = new_keypair(),
-    Cfg2 = [{stratum_keypair, StratumKeyPair} | Cfg1],
 
-    StratumServerNodeCfg = stratum_server_node_config(false),
-    MiningNodeCfg = mining_node_config(PubKey),
+    %% Setup aeternity nodes.
+    Cfg1 = make_shortcut([{symlink_name, "latest.aestratum"}, {test_module, ?MODULE}] ++ Cfg),
+    ct:log("Environment = ~p", [[{args, init:get_arguments()},
+                                 {node, node()},
+                                 {cookie, erlang:get_cookie()}]]),
+    aecore_suite_utils:create_config(?STRATUM_SERVER_NODE, Cfg1, stratum_server_node_config(false), []),
+    aecore_suite_utils:create_config(?MINING_NODE, Cfg1, mining_node_config(PubKey), []),
+    aecore_suite_utils:make_multi(Cfg1, [?STRATUM_SERVER_NODE, ?MINING_NODE]),
+    Cfg2 = write_stratum_keys("stratum_test_keys", [{stratum_keypair, StratumKeyPair} | Cfg1]),
+
+    %% Setup stratum client node.
     Client1NodeCfg = client_node_config(?CLIENT1_ACCOUNT),
-
-    Cfg3 = aecore_suite_utils:init_per_suite([?STRATUM_SERVER_NODE], StratumServerNodeCfg, Cfg2),
-    Cfg4 = aecore_suite_utils:init_per_suite([?MINING_NODE], MiningNodeCfg, Cfg3),
-    Cfg5 = aestratum_client_suite_utils:setup_nodes([?CLIENT1_NODE], Client1NodeCfg, Cfg4),
-    Cfg6 = write_stratum_keys("stratum_test_keys", Cfg5),
+    Cfg3 = aestratum_client_suite_utils:setup_nodes([?CLIENT1_NODE], Client1NodeCfg, Cfg2),
 
     [{nodes, [aecore_suite_utils:node_tuple(?STRATUM_SERVER_NODE),
               aecore_suite_utils:node_tuple(?MINING_NODE),
-              aestratum_client_suite_utils:node_tuple(?CLIENT1_NODE)]} | Cfg6].
+              aestratum_client_suite_utils:node_tuple(?CLIENT1_NODE)]} | Cfg3].
 
 end_per_suite(Cfg) ->
     del_stratum_keys(Cfg),
@@ -438,6 +440,11 @@ client_node_config(Account) ->
             <<"repeats">> => 100,
             <<"edge_bits">> => 15}]
      }.
+
+make_shortcut(Cfg) ->
+    Cfg1 = [{top_dir, aecore_suite_utils:top_dir(?config(data_dir, Cfg))} | Cfg],
+    aecore_suite_utils:make_shortcut(Cfg1),
+    Cfg1.
 
 write_stratum_keys(Dir, Cfg) ->
     #{pubkey := PubKey, privkey := PrivKey} = ?config(stratum_keypair, Cfg),
