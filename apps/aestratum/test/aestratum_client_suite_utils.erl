@@ -1,7 +1,6 @@
 -module(aestratum_client_suite_utils).
 
--export([init_per_suite/2,
-         init_per_suite/3,
+-export([setup_nodes/3,
          start_node/2,
          stop_node/2,
          connect/1
@@ -17,19 +16,17 @@
 -define(OPS_BIN, "aestratum_client").
 -define(CONFIG_FILE, "aestratum_client.json").
 
-init_per_suite(NodesList, CTCfg) ->
-    init_per_suite(NodesList, #{}, CTCfg).
-
-init_per_suite(NodesList, CustomNodeCfg, CTCfg) ->
+setup_nodes(NodesList, CustomNodeCfg, CTCfg) ->
     DataDir = ?config(data_dir, CTCfg),
     TopDir = top_dir(DataDir),
+    {top_dir, TopDir} = lists:keyfind(top_dir, 1, CTCfg), %% Hardcoded expectation.
     TopClientDir = top_client_dir(TopDir),
-    CTCfg1 = [{top_dir, TopDir}, {top_client_dir, TopClientDir} | CTCfg],
+    CTCfg1 = [{top_client_dir, TopClientDir} | CTCfg],
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
     create_configs(NodesList, CTCfg1, CustomNodeCfg),
-    make_multi(CTCfg1, NodesList),
+    make_stratum_clients(CTCfg1, NodesList),
     CTCfg1.
 
 start_node(N, Cfg) ->
@@ -93,16 +90,12 @@ write_config(F, _CfgSchema, Cfg) ->
     ct:log("Writing config (~p)~n~s", [F, JSON]),
     ok = file:write_file(F, JSON).
 
-make_multi(Cfg, NodesList) ->
-    make_multi(Cfg, NodesList, "test").
-
-make_multi(Cfg, NodesList, RefRebarProfile) ->
-    ct:log("RefRebarProfile = ~p", [RefRebarProfile]),
+make_stratum_clients(Cfg, NodesList) ->
     TopClientDir = ?config(top_client_dir, Cfg),
     ct:log("Top client dir = ~p", [TopClientDir]),
     Client =
         filename:join(TopClientDir,
-                      "_build/" ++ RefRebarProfile ++ "/rel/aestratum_client"),
+                      "_build/test/rel/aestratum_client"),
     [setup_node(N, TopClientDir, Client, Cfg) || N <- NodesList].
 
 setup_node(N, Top, Client, Cfg) ->
