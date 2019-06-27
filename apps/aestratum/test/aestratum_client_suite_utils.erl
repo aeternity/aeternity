@@ -91,15 +91,11 @@ write_config(F, _CfgSchema, Cfg) ->
     ok = file:write_file(F, JSON).
 
 make_multi(Cfg, NodesList) ->
-    make_multi(Cfg, NodesList, "test").
-
-make_multi(Cfg, NodesList, RefRebarProfile) ->
-    ct:log("RefRebarProfile = ~p", [RefRebarProfile]),
     TopClientDir = ?config(top_client_dir, Cfg),
     ct:log("Top client dir = ~p", [TopClientDir]),
     Client =
         filename:join(TopClientDir,
-                      "_build/" ++ RefRebarProfile ++ "/rel/aestratum_client"),
+                      "_build/test/rel/aestratum_client"),
     [setup_node(N, TopClientDir, Client, Cfg) || N <- NodesList].
 
 setup_node(N, Top, Client, Cfg) ->
