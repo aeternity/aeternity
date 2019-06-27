@@ -309,7 +309,7 @@ inc(Arg0, EngineState) ->
     un_op(inc, {Arg0, Arg0}, EngineState).
 
 dec(EngineState) ->
-    un_op(inc, {{stack, 0}, {stack, 0}}, EngineState).
+    un_op(dec, {{stack, 0}, {stack, 0}}, EngineState).
 
 dec(Arg0, EngineState) ->
     un_op(dec, {Arg0, Arg0}, EngineState).
