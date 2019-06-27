@@ -108,7 +108,7 @@ to_error({Reason, Name, Info}) ->
        parameter => Name,
        info => Info }.
 
--spec cache_enabled() -> non_neg_integer().
+-spec cache_enabled() -> boolean().
 cache_enabled() ->
     aeu_env:user_config_or_env([<<"http">>, <<"cache">>, <<"enabled">>],
                                aehttp, [cache, enabled], ?DEFAULT_HTTP_CACHE_ENABLED).
