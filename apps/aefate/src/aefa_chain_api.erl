@@ -143,24 +143,24 @@ creator(Pubkey, #state{primop_state = PState}) ->
 %%%-------------------------------------------------------------------
 %%% Slightly more involved getters with caching
 
--spec blockhash(non_neg_integer(), #state{}) -> aeb_fate_data:fate_integer().
+-spec blockhash(non_neg_integer(), #state{}) -> aeb_fate_data:fate_hash().
 blockhash(Height, #state{} = S) ->
     TxEnv = tx_env(S),
     case aetx_env:key_hash(TxEnv) of
-        <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> ->
+        <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> = Hash ->
             %% For channels
-            aeb_fate_data:make_integer(0);
+            aeb_fate_data:make_hash(Hash);
         KeyHash ->
             {ok, Header} = aec_chain:get_key_header_by_height(Height),
             {ok, Hash} = aec_headers:hash_header(Header),
             %% Make sure that this is an ancestor
             case aec_chain:find_common_ancestor(Hash, KeyHash) of
-                {ok, <<N:?BLOCK_HEADER_HASH_BYTES/unit:8 >> = Hash} ->
-                    aeb_fate_data:make_integer(N);
+                {ok, <<_:?BLOCK_HEADER_HASH_BYTES/unit:8 >> = Hash} ->
+                    aeb_fate_data:make_hash(Hash);
                 {ok, _Other} ->
-                    <<N:?BLOCK_HEADER_HASH_BYTES/unit:8 >> =
+                    <<_:?BLOCK_HEADER_HASH_BYTES/unit:8 >> = Hash =
                         traverse_to_key_hash(Height, KeyHash),
-                    aeb_fate_data:make_integer(N)
+                    aeb_fate_data:make_hash(Hash)
             end
     end.
 

@@ -668,9 +668,10 @@ blockhash(Arg0, Arg1, ES) ->
                   N >= CurrentHeight orelse
                   N =< CurrentHeight - 256) of
                 true ->
-                    write(Arg0, aeb_fate_data:make_integer(0), ES1);
+                    write(Arg0, aeb_fate_data:make_variant([0, 1], 0, {}), ES1);
                 false ->
-                    write(Arg0, aefa_chain_api:blockhash(N, API), ES1)
+                    FateHash = aefa_chain_api:blockhash(N, API),
+                    write(Arg0, aeb_fate_data:make_variant([0, 1], 1, {FateHash}), ES1)
             end;
         {Value, ES1} ->
             aefa_fate:abort({value_does_not_match_type, Value, integer}, ES1)
