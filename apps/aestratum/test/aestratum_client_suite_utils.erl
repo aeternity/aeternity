@@ -1,6 +1,6 @@
 -module(aestratum_client_suite_utils).
 
--export([init_per_suite/3,
+-export([setup_nodes/3,
          start_node/2,
          stop_node/2,
          connect/1
@@ -16,7 +16,7 @@
 -define(OPS_BIN, "aestratum_client").
 -define(CONFIG_FILE, "aestratum_client.json").
 
-init_per_suite(NodesList, CustomNodeCfg, CTCfg) ->
+setup_nodes(NodesList, CustomNodeCfg, CTCfg) ->
     DataDir = ?config(data_dir, CTCfg),
     TopDir = top_dir(DataDir),
     {top_dir, TopDir} = lists:keyfind(top_dir, 1, CTCfg), %% Hardcoded expectation.

@@ -71,7 +71,7 @@ init_per_suite(Cfg) ->
 
             Cfg3 = aecore_suite_utils:init_per_suite([?STRATUM_SERVER_NODE], StratumServerNodeCfg, Cfg2),
             Cfg4 = aecore_suite_utils:init_per_suite([?MINING_NODE], MiningNodeCfg, Cfg3),
-            Cfg5 = aestratum_client_suite_utils:init_per_suite([?CLIENT1_NODE], Client1NodeCfg, Cfg4),
+            Cfg5 = aestratum_client_suite_utils:setup_nodes([?CLIENT1_NODE], Client1NodeCfg, Cfg4),
             Cfg6 = write_stratum_keys("stratum_test_keys", Cfg5),
 
             [{nodes, [aecore_suite_utils:node_tuple(?STRATUM_SERVER_NODE),
