@@ -413,34 +413,24 @@ init_per_group(aevm, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN ->
             ct:pal("Running tests under Roma protocol"),
-            meck:expect(aec_hard_forks, protocol_effective_at_height,
-                        fun(_) -> ?ROMA_PROTOCOL_VSN end),
             [{sophia_version, ?SOPHIA_ROMA}, {vm_version, ?VM_AEVM_SOPHIA_1},
              {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, roma} | Cfg];
         ?MINERVA_PROTOCOL_VSN ->
             ct:pal("Running tests under Minerva protocol"),
-            meck:expect(aec_hard_forks, protocol_effective_at_height,
-                        fun(_) -> ?MINERVA_PROTOCOL_VSN end),
             [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
              {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, minerva} | Cfg];
         ?FORTUNA_PROTOCOL_VSN ->
             ct:pal("Running tests under Fortuna protocol"),
-            meck:expect(aec_hard_forks, protocol_effective_at_height,
-                        fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
             [{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
              {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg];
         ?LIMA_PROTOCOL_VSN ->
             ct:pal("Running tests under Lima protocol"),
-            meck:expect(aec_hard_forks, protocol_effective_at_height,
-                        fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
             [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
              {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg]
     end;
 init_per_group(fate, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
         ?LIMA_PROTOCOL_VSN ->
-            meck:expect(aec_hard_forks, protocol_effective_at_height,
-                        fun(_) -> ?LIMA_PROTOCOL_VSN end),
             [{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
              {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg];
         _ ->
@@ -470,9 +460,7 @@ init_per_group(protocol_interaction, Cfg) ->
 init_per_group(_Grp, Cfg) ->
     Cfg.
 
-end_per_group(Grp, Cfg) when Grp =:= aevm;
-                             Grp =:= fate;
-                             Grp =:= protocol_interaction ->
+end_per_group(protocol_interaction, Cfg) ->
     meck:unload(aec_hard_forks),
     Cfg;
 end_per_group(_Grp, Cfg) ->
@@ -485,7 +473,7 @@ init_per_testcase(fate_environment, Config) ->
                 fun(N, S) when is_integer(N) ->
                         %% Just to ensure the arg format
                         _ = aefa_chain_api:generation(S),
-                        aeb_fate_data:make_integer(N)
+                        aeb_fate_data:make_hash(<<N:256>>)
                 end),
     init_per_testcase_common(Config);
 init_per_testcase(_TC, Config) ->
@@ -5304,16 +5292,16 @@ fate_environment(_Cfg) ->
     %% Block hash is mocked to return the height if it gets a valid height
     %% since we don't have a chain.
     BHHeight = 1000,
-    ?assertEqual(0, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight},
+    ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight},
                           #{height => BHHeight})),
-    ?assertEqual(0, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight + 1},
+    ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight + 1},
                           #{height => BHHeight})),
-    ?assertEqual(0, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight - 256},
+    ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight - 256},
                           #{height => BHHeight})),
-    ?assertEqual(BHHeight - 1, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight - 1},
-                                     #{height => BHHeight})),
-    ?assertEqual(BHHeight - 255, ?call(call_contract, Acc, Contract, block_hash, word, {BHHeight - 255},
-                                       #{height => BHHeight})),
+    ?assertEqual({some, {bytes, <<(BHHeight - 1):256>>}},
+                 ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight - 1}, #{height => BHHeight})),
+    ?assertEqual({some, {bytes, <<(BHHeight - 255):256>>}},
+                 ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight - 255}, #{height => BHHeight})),
     ok.
 
 sophia_call_value(_Cfg) ->

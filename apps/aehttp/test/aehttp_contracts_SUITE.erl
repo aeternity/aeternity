@@ -35,7 +35,7 @@
          dutch_auction_contract/1,
          acm_dutch_auction_contract/1,
          environment_contract/1,
-         environment_contract_fate/1,
+         %% environment_contract_fate/1,
          erc20_token_contract/1,
          factorial_contract/1,
          fundme_contract/1,
@@ -46,8 +46,7 @@
          spend_test_contract/1,
          stack_contract/1,
          remote_gas_test_contract/1,
-         events_contract/1,
-         null/1
+         events_contract/1
         ]).
 
 -define(NODE, dev1).
@@ -57,36 +56,39 @@
 -define(MAX_MINED_BLOCKS, 20).
 
 all() ->
-    [
-     {group, contracts},
-     {group, fate}
+    [ {group, aevm}
+    , {group, fate}
     ].
 
+-define(ALL_TESTS,
+        [ identity_contract
+        , abort_test_contract
+        , simple_storage_contract
+        , counter_contract
+        , stack_contract
+        , polymorphism_test_contract
+        , factorial_contract
+        , maps_contract
+        , environment_contract
+        , spend_test_contract
+        , dutch_auction_contract
+        , acm_dutch_auction_contract
+        , fundme_contract
+        , erc20_token_contract
+        , remote_gas_test_contract
+        , events_contract
+        ]).
+
+-define(FATE_OPT_OUT, [ abort_test_contract        %% TODO: abort
+                      , dutch_auction_contract     %% TODO: abort
+                      , acm_dutch_auction_contract %% TODO: abort
+                      , fundme_contract            %% TODO: abort
+                      , erc20_token_contract       %% TODO: abort
+                      ]).
+
 groups() ->
-    [
-     {fate, [
-             environment_contract_fate
-             ]},
-     {contracts, [],
-      [
-       identity_contract,
-       abort_test_contract,
-       simple_storage_contract,
-       counter_contract,
-       stack_contract,
-       polymorphism_test_contract,
-       factorial_contract,
-       maps_contract,
-       environment_contract,
-       spend_test_contract,
-       dutch_auction_contract,
-       acm_dutch_auction_contract,
-       fundme_contract,
-       erc20_token_contract,
-       remote_gas_test_contract,
-       events_contract,
-       null                                     %This allows to end with ,
-      ]}
+    [ {aevm, [], ?ALL_TESTS}
+    , {fate, [], ?ALL_TESTS -- ?FATE_OPT_OUT}
     ].
 
 suite() ->
@@ -103,9 +105,10 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
+init_per_group(VM, Config) when VM == aevm; VM == fate ->
+    aect_test_utils:init_per_group(VM, Config, fun(Cfg) -> init_per_vm(Cfg) end).
 
-
-init_for_contracts(Config) ->
+init_per_vm(Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(NodeName),
@@ -140,12 +143,6 @@ init_for_contracts(Config) ->
                             start_amt => StartAmt}},
     [{accounts,Accounts},{node_name,NodeName}|Config].
 
-init_per_group(contracts, Config) -> init_for_contracts(Config);
-init_per_group(fate, Config) ->
-    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
-        true  -> init_for_contracts(Config);
-        false -> {skip, fate_not_available}
-    end.
 
 end_per_group(_Group, Config) ->
     RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
@@ -155,6 +152,7 @@ end_per_group(_Group, Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
+    aect_test_utils:setup_testcase(Config),
     [{_, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
     [{tc_start, os:timestamp()}|Config].
@@ -170,23 +168,6 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 %% Test cases
 %% ============================================================
-
-%% null(Config)
-%%  Does nothing, prints the balances and always succeeds.
-
-null(Config) ->
-    %% Get account information.
-    #{acc_a := #{pub_key := APub},
-      acc_b := #{pub_key := BPub},
-      acc_c := #{pub_key := CPub},
-      acc_d := #{pub_key := DPub}} = proplists:get_value(accounts, Config),
-    ABal = get_balance(APub),
-    BBal = get_balance(BPub),
-    CBal = get_balance(CPub),
-    DBal = get_balance(DPub),
-    ct:pal("ABal ~p, BBal ~p, CBal ~p, DBal ~p\n", [ABal,BBal,CBal,DBal]),
-
-    ok.
 
 %% identity_contract(Config)
 %%  Create the Identity contract by account acc_c and call by accounts
@@ -209,10 +190,10 @@ identity_contract(Config) ->
     {EncCPub,_,_} = create_contract(Node, CPub, CPriv, Contract, []),
 
     %% Call contract main function by Carl.
-    call_func(CPub, CPriv, EncCPub, Contract, "main", ["42"], {"int", 42}),
+    call_func(CPub, CPriv, EncCPub, Contract, "main", ["42"], {"identity", "main", 42}),
 
     %% Call contract main function by Diana.
-    call_func(DPub, DPriv, EncCPub, Contract, "main", ["42"], {"int", 42}),
+    call_func(DPub, DPriv, EncCPub, Contract, "main", ["42"], {"identity", "main", 42}),
 
     force_fun_calls(Node),
 
@@ -231,6 +212,7 @@ abort_test_contract(Config) ->
     TCode = compile_test_contract("abort_test"),
     ICode = compile_test_contract("abort_test_int"),
 
+
     %% Create chain of int contracts to test contract.
     {EncodedTestPub,DecodedTestPub,_} =
         create_contract(Node, APub, APriv, TCode, ["42"]),
@@ -246,8 +228,7 @@ abort_test_contract(Config) ->
 
     %% This should set state values to 17, 1017, 2017, 3017.
     call_compute_func(Node, APub, APriv, EncodedInt3Pub, ICode, "put_values", ["17"]),
-    BeforeList = call_func_decode(Node, APub, APriv, EncodedInt3Pub, ICode,
-                                  "get_values", [], "list(int)"),
+    BeforeList = call_func_decode(Node, APub, APriv, EncodedInt3Pub, ICode, "get_values", []),
     ct:pal("Before Values ~p\n", [BeforeList]),
 
     ABal0 = get_balance(APub),
@@ -262,7 +243,7 @@ abort_test_contract(Config) ->
     {RevertValue1, Return1} =
         revert_call_compute_func(Node, APub, APriv, EncodedInt3Pub, ICode,
                                  "do_abort", ["42", AbortString], #{gas => GivenGas}),
-    #{<<"value">> := AbortBin} = decode_data(<<"string">>, RevertValue1),
+    #{<<"abort">> := [AbortBin]} = decode_call_result(ICode, "do_abort", revert, RevertValue1),
     #{<<"gas_used">> := GasUsed1} = Return1,
     ?assert(GasUsed1 < GivenGas), %% Make sure we actually saved some gas
 
@@ -271,7 +252,7 @@ abort_test_contract(Config) ->
     {RevertValue2, Return2} =
         revert_call_compute_func(Node, APub, APriv, EncodedTestPub, TCode,
                                  "do_abort", ["42", AbortString], #{gas => GivenGas}),
-    #{<<"value">> := AbortBin} = decode_data("string", RevertValue2),
+    #{<<"abort">> := [AbortBin]} = decode_call_result(TCode, "do_abort", revert, RevertValue2),
     #{<<"gas_used">> := GasUsed2} = Return2,
     ?assert(GasUsed2 < GivenGas), %% Make sure we actually saved some gas
 
@@ -279,7 +260,7 @@ abort_test_contract(Config) ->
 
     %% The contract values should be the same, 17, 1017, 2017, 3017.
     AfterList = call_func_decode(Node, APub, APriv, EncodedInt3Pub, ICode,
-                                 "get_values", [], "list(int)"),
+                                 "get_values", []),
     ct:pal("After Values ~p\n", [AfterList]),
     AfterList = BeforeList,
 
@@ -335,7 +316,7 @@ simple_storage_contract(Config) ->
     ok.
 
 call_get(Pub, Priv, EncCPub, Contract, ExpValue) ->
-    call_func(Pub, Priv, EncCPub, Contract, "get", [], {"int", ExpValue}).
+    call_func(Pub, Priv, EncCPub, Contract, "get", [], {maps:get(name, Contract), "get", ExpValue}).
 
 call_set(Pub, Priv, EncCPub, Contract, SetArg) ->
     call_func(Pub, Priv, EncCPub, Contract, "set", [SetArg]).
@@ -403,31 +384,29 @@ stack_contract(Config) ->
     {EncCPub,_,_} = create_contract(Node, APub, APriv, Contract, ["[\"two\", \"one\"]"]),
 
     init_fun_calls(), % setup call handling
-    String = fun(Val) -> #{<<"type">> => <<"string">>, <<"value">> => Val} end,
 
     %% Test the size.
-    call_func(BPub, BPriv, EncCPub, Contract, "size", [], {"int", 2}),
+    call_func(BPub, BPriv, EncCPub, Contract, "size", [], {"stack", "size", 2}),
 
     %% Push 2 more elements.
     call_func(BPub, BPriv, EncCPub, Contract, "push", ["\"three\""]),
     call_func(BPub, BPriv, EncCPub, Contract, "push", ["\"four\""]),
 
     %% Test the size.
-    call_func(BPub, BPriv, EncCPub, Contract, "size", [], {"int", 4}),
+    call_func(BPub, BPriv, EncCPub, Contract, "size", [], {"stack", "size", 4}),
 
     %% Check the stack.
     call_func(BPub, BPriv, EncCPub, Contract, "all", [],
-              {"list(string)", [String(<<"four">>), String(<<"three">>),
-                                String(<<"two">>), String(<<"one">>)]}),
+              {"stack", "all", [<<"four">>, <<"three">>, <<"two">>, <<"one">>]}),
 
     %% Pop the values and check we get them in the right order.\
-    call_func(BPub, BPriv, EncCPub, Contract, "pop", [], {"string", <<"four">>}),
-    call_func(BPub, BPriv, EncCPub, Contract, "pop", [], {"string", <<"three">>}),
-    call_func(BPub, BPriv, EncCPub, Contract, "pop", [], {"string", <<"two">>}),
-    call_func(BPub, BPriv, EncCPub, Contract, "pop", [], {"string", <<"one">>}),
+    call_func(BPub, BPriv, EncCPub, Contract, "pop", [], {"stack", "pop", <<"four">>}),
+    call_func(BPub, BPriv, EncCPub, Contract, "pop", [], {"stack", "pop", <<"three">>}),
+    call_func(BPub, BPriv, EncCPub, Contract, "pop", [], {"stack", "pop", <<"two">>}),
+    call_func(BPub, BPriv, EncCPub, Contract, "pop", [], {"stack", "pop", <<"one">>}),
 
     %% The resulting stack is empty.
-    call_func(BPub, BPriv, EncCPub, Contract, "size", [], {"int", 0}),
+    call_func(BPub, BPriv, EncCPub, Contract, "size", [], {"stack", "size", 0}),
 
     force_fun_calls(Node),
 
@@ -451,10 +430,8 @@ polymorphism_test_contract(Config) ->
     %% Test the polymorphism.
     init_fun_calls(), % setup call handling
 
-    call_func(APub, APriv, EncCPub, Contract, "foo", [],
-              {"list(int)", [word(5), word(7), word(9)]}),
-    call_func(APub, APriv, EncCPub, Contract, "bar", [],
-              {"list(int)", [word(1), word(0), word(3)]}),
+    call_func(APub, APriv, EncCPub, Contract, "foo", [], {"polymorphism_test", "foo", [5, 7, 9]}),
+    call_func(APub, APriv, EncCPub, Contract, "bar", [], {"polymorphism_test", "foo", [1, 0, 3]}),
 
     force_fun_calls(Node),
 
@@ -523,12 +500,15 @@ maps_contract(Config) ->
     %% Print current state
     ct:pal("State ~p\n", [call_get_state(Node, APub, APriv, EncMapsPub, Contract)]),
 
+    Pt   = fun(X, Y) -> #{<<"x">> => X, <<"y">> => Y} end,
+    Some = fun(V) -> #{<<"Some">> => [V]} end,
+    None = <<"None">>,
     %% m[k]
     call_func(BPub, BPriv, EncMapsPub, Contract, "get_state_i",  ["2"],
-              {"(int, int)", [word(3), word(4)]}),
+              {"maps", "get_state_i", Pt(3, 4)}),
 
     call_func(BPub, BPriv, EncMapsPub, Contract, "get_state_s",  ["\"three\""],
-              {"(int, int)", [word(5), word(6)]}),
+              {"maps", "get_state_i", Pt(5, 6)}),
 
     %% m{[k] = v}
     %% State now {map_i = {[1]=>{x=11,y=22},[2]=>{x=3,y=4},[3]=>{x=5,y=6}},
@@ -538,100 +518,93 @@ maps_contract(Config) ->
     call_func(BPub, BPriv, EncMapsPub, Contract, "set_state_s", ["\"one\"", "{x = 11, y = 22}"]),
 
     call_func(BPub, BPriv, EncMapsPub, Contract, "get_state_i", ["1"],
-              {"(int, int)", [word(11), word(22)]}),
+              {"maps", "get_state_i", Pt(11, 22)}),
     call_func(BPub, BPriv, EncMapsPub, Contract, "get_state_s",  ["\"one\""],
-              {"(int, int)", [word(11), word(22)]}),
+              {"maps", "get_state_s", Pt(11, 22)}),
 
     %% m{f[k].x = v}
     call_func(BPub, BPriv, EncMapsPub, Contract, "setx_state_i", ["2, 33"]),
     call_func(BPub, BPriv, EncMapsPub, Contract, "setx_state_s", ["\"two\", 33"]),
 
     call_func(BPub, BPriv, EncMapsPub, Contract, "get_state_i",  ["2"],
-              {<<"(int, int)">>, [word(33), word(4)]}),
+              {"maps", "get_state_i", Pt(33, 4)}),
 
     call_func(BPub, BPriv, EncMapsPub, Contract, "get_state_s",  ["\"two\""],
-              {<<"(int, int)">>, [word(33), word(4)]}),
+              {"maps", "get_state_s", Pt(33, 4)}),
 
     %% Map.member
     %% Check keys 1 and "one" which exist and 10 and "ten" which don't.
-    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_i", ["1"], {"bool", 1}),
-    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_i", ["10"], {"bool", 0}),
+    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_i", ["1"], {"maps", "member_state_i", true}),
+    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_i", ["10"], {"maps", "member_state_i", false}),
 
-    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_s", ["\"one\""], {"bool", 1}),
-    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_s", ["\"ten\""], {"bool", 0}),
+    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_s", ["\"one\""], {"maps", "member_state_s", true}),
+    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_s", ["\"ten\""], {"maps", "member_state_s", false}),
 
     %% Map.lookup
     %% The values of map keys 3 and "three" are unchanged, keys 10 and
     %% "ten" don't exist.
-    Pair = fun (X, Y) -> tuple([word(X), word(Y)]) end,
-    SomePair = fun ({some,{X, Y}}) -> [1, Pair(X, Y)];
-                   (none) -> [0]
-               end,
-
     call_func(BPub, BPriv, EncMapsPub, Contract,  "lookup_state_i", ["3"],
-              {"option((int, int))", SomePair({some,{5, 6}})}),
+              {"maps", "lookup_state_i", Some(Pt(5, 6))}),
 
     call_func(BPub, BPriv, EncMapsPub, Contract,  "lookup_state_i", ["10"],
-              {"option((int, int))", SomePair(none)}),
+              {"maps", "lookup_state_i", None}),
 
     call_func(BPub, BPriv, EncMapsPub, Contract,  "lookup_state_s", ["\"three\""],
-              {"option((int, int))", SomePair({some,{5, 6}})}),
+              {"maps", "lookup_state_s", Some(Pt(5, 6))}),
 
     call_func(BPub, BPriv, EncMapsPub, Contract,  "lookup_state_s", ["\"ten\""],
-              {"option((int, int))", SomePair(none)}),
+              {"maps", "lookup_state_s", None}),
 
     %% Map.lookup_default
     %% The values of map keys 3 and "three" are unchanged, keys 10 and
     %% "ten" don't exist.
 
     call_func(BPub, BPriv, EncMapsPub, Contract,  "lookup_def_state_i",
-              ["3", "{x = 47, y = 11}"], {"(int, int)", [word(5), word(6)]}),
+              ["3", "{x = 47, y = 11}"], {"maps", "lookup_def_state_i", Pt(5, 6)}),
 
     call_func(BPub, BPriv, EncMapsPub, Contract,  "lookup_def_state_i",
-              ["10", "{x = 47, y = 11}"], {"(int, int)", [word(47), word(11)]}),
+              ["10", "{x = 47, y = 11}"], {"maps", "lookup_def_state_i", Pt(47, 11)}),
 
     call_func(BPub, BPriv, EncMapsPub, Contract,  "lookup_def_state_s",
-              ["\"three\"", "{x = 47, y = 11}"], {"(int, int)", [word(5), word(6)]}),
+              ["\"three\"", "{x = 47, y = 11}"], {"maps", "lookup_def_state_s", Pt(5, 6)}),
 
     call_func(BPub, BPriv, EncMapsPub, Contract,  "lookup_def_state_s",
-              ["\"ten\"", "{x = 47, y = 11}"], {"(int, int)", [word(47), word(11)]}),
+              ["\"ten\"", "{x = 47, y = 11}"], {"maps", "lookup_def_state_s", Pt(47, 11)}),
 
     %% Map.delete
     %% Check map keys 3 and "three" exist, delete them and check that
     %% they have gone, then put them back for future use.
-    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_i", ["3"], {"bool", 1}),
-    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_s", ["\"three\""], {"bool", 1}),
+    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_i", ["3"], {"maps", "member_state_i", true}),
+    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_s", ["\"three\""], {"maps", "member_state_s", true}),
 
     call_func(BPub, BPriv, EncMapsPub, Contract, "delete_state_i", ["3"]),
     call_func(BPub, BPriv, EncMapsPub, Contract, "delete_state_s", ["\"three\""]),
 
-    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_i", ["3"], {"bool", 0}),
-    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_s", ["\"three\""], {"bool", 0}),
+    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_i", ["3"], {"maps", "member_state_i", false}),
+    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_s", ["\"three\""], {"maps", "member_state_s", false}),
 
     call_func(BPub, BPriv, EncMapsPub, Contract, "set_state_i", ["3", "{x = 5, y = 6}"]),
     call_func(BPub, BPriv, EncMapsPub, Contract, "set_state_s", ["\"three\"", "{x = 5, y = 6}"]),
 
     %% Map.size
     %% Both of these still contain 3 elements.
-    call_func(BPub, BPriv, EncMapsPub, Contract,  "size_state_i", [], {"int", 3}),
+    call_func(BPub, BPriv, EncMapsPub, Contract,  "size_state_i", [], {"maps", "size_state_i", 3}),
 
-    call_func(BPub, BPriv, EncMapsPub, Contract,  "size_state_s", [], {"int", 3}),
+    call_func(BPub, BPriv, EncMapsPub, Contract,  "size_state_s", [], {"maps", "size_state_s", 3}),
 
     %% Map.to_list, Map.from_list then test if element is there.
     call_func(BPub, BPriv, EncMapsPub, Contract, "fromlist_state_i", ["[(242424, {x = 43, y = 44})]"]),
-    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_i", ["242424"], {"bool", 1}),
+    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_i", ["242424"], {"maps", "member_state_i", true}),
     call_func(BPub, BPriv, EncMapsPub, Contract, "fromlist_state_s", ["[(\"xxx\", {x = 43, y = 44})]"]),
-    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_s", ["\"xxx\""], {"bool", 1}),
+    call_func(BPub, BPriv, EncMapsPub, Contract, "member_state_s", ["\"xxx\""], {"maps", "member_state_s", true}),
 
     force_fun_calls(Node, 10 * ?MAX_MINED_BLOCKS), %% Many txs, so wait for longer.
 
     ok.
 
 call_get_state(Node, Pub, Priv, EncMapsPub, Contract) ->
-    StateType = <<"( map(int, (int, int)), map(string, (int, int)) )">>,
     {Return,_} = call_compute_func(Node, Pub, Priv, EncMapsPub, Contract, "get_state", []),
-    #{<<"value">> := GetState} = decode_data(StateType, Return),
-    GetState.
+    decode_call_result(Contract, "get_state", ok, Return).
 
 %% enironment_contract(Config)
 %%  Check the Environment contract. We don't always check values and
@@ -665,6 +638,8 @@ environment_contract(Config) ->
 
     init_fun_calls(),
 
+    CallF = fun(Pub, Priv, EC, C, F, As, Exp) -> call_func(Pub, Priv, EC, C, F, As, {"environment", F, Exp}) end,
+
     call_func(BPub, BPriv, EncCPub, Contract, "set_remote", [EncRPub]),
 
     %% Address.
@@ -675,7 +650,7 @@ environment_contract(Config) ->
 
     %% Balance.
     ct:pal("Calling contract_balance\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "contract_balance", [], {"int", ContractBalance}),
+    CallF(BPub, BPriv, EncCPub, Contract, "contract_balance", [], ContractBalance),
 
     %% Origin.
     ct:pal("Calling call_origin\n"),
@@ -701,7 +676,7 @@ environment_contract(Config) ->
     ct:pal("Calling call_gas_price\n"),
     ExpectedGasPrice = 2 * ?DEFAULT_GAS_PRICE,
     call_func(BPub, BPriv, EncCPub, Contract, "call_gas_price", [],
-              #{gas_price => ExpectedGasPrice}, {"int", ExpectedGasPrice}),
+              #{gas_price => ExpectedGasPrice}, {"environment", "call_gas_price", ExpectedGasPrice}),
 
     %% Account balances.
     ct:pal("Calling get_balance\n"),
@@ -711,13 +686,27 @@ environment_contract(Config) ->
     %% Block hash.
     ct:pal("Calling block_hash\n"),
     {ok, 200, #{<<"hash">> := ExpectedBlockHash}} = get_key_block_at_height(2),
-    {_, <<BHInt:256/integer-unsigned>>} = aeser_api_encoder:decode(ExpectedBlockHash),
+    {_, Hash} = aeser_api_encoder:decode(ExpectedBlockHash),
+    HexHash = string:to_lower(aeu_hex:bin_to_hex(Hash)),
 
-    call_func(BPub, BPriv, EncCPub, Contract, "block_hash", ["2"], {"int", BHInt}),
+    case aect_test_utils:sophia_version() of
+        VM1 when VM1 == ?SOPHIA_ROMA; VM1 == ?SOPHIA_MINERVA; VM1 == ?SOPHIA_FORTUNA ->
+            %% It returns an int here, but we can't decode that... So just check for ok
+            call_func(BPub, BPriv, EncCPub, Contract, "block_hash", ["2"]);
+        _ ->
+            CallF(BPub, BPriv, EncCPub, Contract, "block_hash", ["2"],
+                  #{<<"Some">> => [list_to_binary([$# | HexHash])]})
+    end,
 
     %% Block hash. With value out of bounds
     ct:pal("Calling block_hash out of bounds\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "block_hash", ["10000000"], {"int", 0}),
+    case aect_test_utils:sophia_version() of
+        VM2 when VM2 == ?SOPHIA_ROMA; VM2 == ?SOPHIA_MINERVA; VM2 == ?SOPHIA_FORTUNA ->
+            %% It returns an int here, but we can't decode that... So just check for ok
+            call_func(BPub, BPriv, EncCPub, Contract, "block_hash", ["10000000"]);
+        _ ->
+            CallF(BPub, BPriv, EncCPub, Contract, "block_hash", ["10000000"], <<"None">>)
+    end,
 
     %% Coinbase.
     ct:pal("Calling coinbase\n"),
@@ -725,21 +714,20 @@ environment_contract(Config) ->
     Beneficiary = fun(Hdr) ->
                     #{<<"prev_key_hash">> := KeyHash} = Hdr,
                     {ok, 200, #{<<"beneficiary">> := B}} = get_key_block(KeyHash),
-                    {_, <<BInt:256/integer-unsigned>>} = aeser_api_encoder:decode(B),
-                    BInt
+                    B
                   end,
-    call_func(BPub, BPriv, EncCPub, Contract, "coinbase", [], {"address", Beneficiary}),
+    CallF(BPub, BPriv, EncCPub, Contract, "coinbase", [], Beneficiary),
 
     %% Block timestamp.
     ct:pal("Calling timestamp\n"),
 
     Timestamp = fun(Hdr) -> maps:get(<<"time">>, Hdr) end,
-    call_func(BPub, BPriv, EncCPub, Contract, "timestamp", [], {"int", Timestamp}),
+    CallF(BPub, BPriv, EncCPub, Contract, "timestamp", [], Timestamp),
 
     %% Block height.
     ct:pal("Calling block_height\n"),
     BlockHeight = fun(Hdr) -> maps:get(<<"height">>, Hdr) end,
-    call_func(BPub, BPriv, EncCPub, Contract, "block_height", [], {"int", BlockHeight}),
+    CallF(BPub, BPriv, EncCPub, Contract, "block_height", [], BlockHeight),
 
     %% Difficulty.
     ct:pal("Calling difficulty\n"),
@@ -748,142 +736,11 @@ environment_contract(Config) ->
                     {ok, 200, #{<<"target">> := T}} = get_key_block(KeyHash),
                     aeminer_pow:target_to_difficulty(T)
                  end,
-    call_func(BPub, BPriv, EncCPub, Contract, "difficulty", [], {"int", Difficulty}),
+    CallF(BPub, BPriv, EncCPub, Contract, "difficulty", [], Difficulty),
 
     %% Gas limit.
     ct:pal("Calling gas_limit\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "gas_limit", [],
-              {"int", aec_governance:block_gas_limit()}),
-
-    force_fun_calls(Node),
-
-    ct:pal("B Balances ~p, ~p, ~p\n", [BBal0, BBal1, get_balance(BPub)]),
-
-    ok.
-
-environment_contract_fate(Config) ->
-    Node = proplists:get_value(node_name, Config),
-    %% Get account information.
-    #{acc_a := #{pub_key := APub,
-                 priv_key := APriv},
-      acc_b := #{pub_key := BPub,
-                 priv_key := BPriv}} = proplists:get_value(accounts, Config),
-
-    BBal0 = get_balance(BPub),
-
-    %% Compile test contract "environment.aes"
-    Contract = compile_test_contract(fate, "environment_no_state"),
-
-    ContractBalance = 10000,
-
-    %% Initialise contract owned by Alice setting balance to 10000.
-    {EncCPub, DecCPub, _} =
-        create_contract(Node, APub, APriv, Contract, [], #{amount => ContractBalance}),
-
-    {EncRemoteCPub, _, _} =
-        create_contract(Node, APub, APriv, Contract, [], #{amount => ContractBalance}),
-
-    %% Get the initial balance.
-    BBal1 = get_balance(BPub),
-
-    init_fun_calls(),
-
-    %% Address.
-    ct:pal("Calling contract_address\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "contract_address", [],
-              {fate, {address, binary:decode_unsigned(DecCPub)}}),
-
-    %% Balance.
-    ct:pal("Calling contract_balance\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "contract_balance", [],
-              {fate, ContractBalance}),
-
-    %% Origin.
-    ct:pal("Calling call_origin\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "call_origin", [],
-              {fate, {address, binary:decode_unsigned(BPub)}}),
-    ct:pal("Calling remote_call_origin\n"),
-    RemoteFate = binary_to_list(<<"@", EncRemoteCPub/binary>>),
-    call_func(BPub, BPriv, EncCPub, Contract, "remote_call_origin",
-              [RemoteFate], {fate, {address, binary:decode_unsigned(BPub)}}),
-
-    %% Caller.
-    ct:pal("Calling call_caller\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "call_caller", [RemoteFate]),
-    ct:pal("Calling remote_call_caller\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "remote_call_caller",
-              [RemoteFate], {fate, {address, binary:decode_unsigned(DecCPub)}}),
-
-    %% Gas price.
-    ct:pal("Calling call_gas_price\n"),
-    ExpectedGasPrice = 2 * ?DEFAULT_GAS_PRICE,
-    call_func(BPub, BPriv, EncCPub, Contract, "call_gas_price", [],
-              #{gas_price => ExpectedGasPrice}, {fate, ExpectedGasPrice}),
-
-    %% Account balances.
-    ct:pal("Calling get_balance\n"),
-    ABal = get_balance(APub),
-    EncAPub = aeser_api_encoder:encode(account_pubkey, APub),
-    AAddress = "@" ++ binary_to_list(EncAPub),
-    call_func(BPub, BPriv, EncCPub, Contract, "get_balance", [AAddress],
-              {fate, ABal}),
-    call_func(BPub, BPriv, EncCPub, Contract, "contract_balance", [],
-              {fate, ContractBalance}),
-
-    %% Value.
-    ct:pal("Calling call_value\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "call_value", [],
-              #{amount => 5}, {fate, 5}),
-    ct:pal("Calling remote_call_value\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "remote_call_value", [RemoteFate, "42"],
-              #{amount => 50}, {fate, 21}),
-
-    %% Block hash.
-    ct:pal("Calling block_hash\n"),
-    {ok, 200, #{<<"hash">> := ExpectedBlockHash}} = get_key_block_at_height(2),
-    {_, <<BHInt:256/integer-unsigned>>} = aeser_api_encoder:decode(ExpectedBlockHash),
-
-    call_func(BPub, BPriv, EncCPub, Contract, "block_hash", ["2"], {fate, BHInt}),
-
-    %% Block hash. With value out of bounds
-    ct:pal("Calling block_hash out of bounds\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "block_hash", ["10000000"], {fate, 0}),
-
-    %% Beneficiary.
-    ct:pal("Calling beneficiary\n"),
-
-    Beneficiary = fun(Hdr) ->
-                    #{<<"prev_key_hash">> := KeyHash} = Hdr,
-                    {ok, 200, #{<<"beneficiary">> := B}} = get_key_block(KeyHash),
-                    {_, <<BInt:256/integer-unsigned>>} = aeser_api_encoder:decode(B),
-                    {address, BInt}
-                  end,
-    call_func(BPub, BPriv, EncCPub, Contract, "beneficiary", [], {fate, Beneficiary}),
-
-    %% Block timestamp.
-    ct:pal("Calling timestamp\n"),
-
-    Timestamp = fun(Hdr) -> maps:get(<<"time">>, Hdr) end,
-    call_func(BPub, BPriv, EncCPub, Contract, "timestamp", [], {fate, Timestamp}),
-
-    %% Block height.
-    ct:pal("Calling block_height\n"),
-    BlockHeight = fun(Hdr) -> maps:get(<<"height">>, Hdr) end,
-    call_func(BPub, BPriv, EncCPub, Contract, "generation", [], {fate, BlockHeight}),
-
-    %% Difficulty.
-    ct:pal("Calling difficulty\n"),
-    Difficulty = fun(Hdr) ->
-                    #{<<"prev_key_hash">> := KeyHash} = Hdr,
-                    {ok, 200, #{<<"target">> := T}} = get_key_block(KeyHash),
-                    aeminer_pow:target_to_difficulty(T)
-                 end,
-    call_func(BPub, BPriv, EncCPub, Contract, "difficulty", [], {fate, Difficulty}),
-
-    %% Gas limit.
-    ct:pal("Calling gas_limit\n"),
-    call_func(BPub, BPriv, EncCPub, Contract, "gas_limit", [],
-              {fate, aec_governance:block_gas_limit()}),
+    CallF(BPub, BPriv, EncCPub, Contract, "gas_limit", [], aec_governance:block_gas_limit()),
 
     force_fun_calls(Node),
 
@@ -988,7 +845,7 @@ dutch_auction_contract(Config) ->
     %% Call the contract bid function by Bert.
     {_,#{return := BidReturn}} =
         call_compute_func(Node, BPub, BPriv, EncCPub, Contract,
-                          "bid", [], #{amount => 100000,fee => Fee}),
+                          "bid", [], #{amount => 100000, fee => Fee}),
     #{<<"gas_used">> := GasUsed,<<"height">> := Height1} = BidReturn,
 
     %% Set the cost from the amount, decrease and diff in height.
@@ -1003,7 +860,7 @@ dutch_auction_contract(Config) ->
 
     %% Now make a bid which should fail as auction has closed.
     revert_call_compute_func(Node, DPub, DPriv, EncCPub, Contract,
-                             "bid", [], #{amount => 100000,fee => Fee}),
+                             "bid", [], #{amount => 100000, fee => Fee}),
     ok.
 
 %% acm_dutch_auction_contract(Config)
@@ -1167,19 +1024,22 @@ erc20_token_contract(Config) ->
     [EAPub, EBPub, ECPub, EDPub] =
         [ aeser_api_encoder:encode(account_pubkey, Pub) || Pub <- [APub, BPub, CPub, DPub] ],
 
+    CallF = fun(Pub, Priv, EC, C, F, As, Exp) ->
+                call_func(Pub, Priv, EC, C, F, As, {"erc20_token", F, Exp}) end,
+
     %% Test state record fields.
-    call_func(APub, APriv, EncCPub, Contract, "totalSupply", [], {"int", Total}),
-    call_func(APub, APriv, EncCPub, Contract, "decimals", [],    {"int", Decimals}),
-    call_func(APub, APriv, EncCPub, Contract, "name", [],        {"string", Name}),
-    call_func(APub, APriv, EncCPub, Contract, "symbol", [],      {"string", Symbol}),
+    CallF(APub, APriv, EncCPub, Contract, "totalSupply", [],  Total),
+    CallF(APub, APriv, EncCPub, Contract, "decimals", [],     Decimals),
+    CallF(APub, APriv, EncCPub, Contract, "name", [],         Name),
+    CallF(APub, APriv, EncCPub, Contract, "symbol", [],       Symbol),
 
     %% Setup balances for Bert to 20000 and Carl to 25000 and check balances.
     call_func(APub, APriv, EncCPub, Contract, "transfer",  [EBPub, "20000"]),
     call_func(APub, APriv, EncCPub, Contract, "transfer",  [ECPub, "25000"]),
-    call_func(APub, APriv, EncCPub, Contract, "balanceOf", [EAPub], {"int", 55000}),
-    call_func(APub, APriv, EncCPub, Contract, "balanceOf", [EBPub], {"int", 20000}),
-    call_func(APub, APriv, EncCPub, Contract, "balanceOf", [ECPub], {"int", 25000}),
-    call_func(APub, APriv, EncCPub, Contract, "balanceOf", [EDPub], {"int", 0}),
+    CallF(APub, APriv, EncCPub, Contract, "balanceOf", [EAPub],  55000),
+    CallF(APub, APriv, EncCPub, Contract, "balanceOf", [EBPub],  20000),
+    CallF(APub, APriv, EncCPub, Contract, "balanceOf", [ECPub],  25000),
+    CallF(APub, APriv, EncCPub, Contract, "balanceOf", [EDPub],  0),
 
     %% Bert and Carl approve transfering 15000 to Alice.
     call_func(BPub, BPriv, EncCPub, Contract, "approve", [EAPub,"15000"]),
@@ -1192,22 +1052,21 @@ erc20_token_contract(Config) ->
     call_func(APub, APriv, EncCPub, Contract, "transferFrom", [ECPub, EDPub, "15000"]),
 
     %% Check the balances.
-    call_func(APub, APriv, EncCPub, Contract, "balanceOf", [EBPub], {"int", 10000}),
-    call_func(APub, APriv, EncCPub, Contract, "balanceOf", [ECPub], {"int", 10000}),
-    call_func(APub, APriv, EncCPub, Contract, "balanceOf", [EDPub], {"int", 25000}),
+    CallF(APub, APriv, EncCPub, Contract, "balanceOf", [EBPub],  10000),
+    CallF(APub, APriv, EncCPub, Contract, "balanceOf", [ECPub],  10000),
+    CallF(APub, APriv, EncCPub, Contract, "balanceOf", [EDPub],  25000),
 
     %% Check transfer and approval logs.
-    TrfLog = [tuple([addr(CPub), addr(DPub), word(15000)]),
-              tuple([addr(BPub), addr(DPub), word(10000)]),
-              tuple([addr(APub), addr(CPub), word(25000)]),
-              tuple([addr(APub), addr(BPub), word(20000)])],
-    call_func(APub, APriv, EncCPub, Contract, "getTransferLog", [],
-              {"list((address,address,int))", TrfLog}),
+    Addr = fun(A) -> aeser_api_encoder:encode(account_pubkey, A) end,
+    TrfLog = [[Addr(CPub), Addr(DPub), 15000],
+              [Addr(BPub), Addr(DPub), 10000],
+              [Addr(APub), Addr(CPub), 25000],
+              [Addr(APub), Addr(BPub), 20000]],
+    CallF(APub, APriv, EncCPub, Contract, "getTransferLog", [], TrfLog),
 
-    AppLog = [tuple([addr(CPub), addr(APub), word(15000)]),
-              tuple([addr(BPub), addr(APub), word(15000)])],
-    call_func(APub, APriv, EncCPub, Contract, "getApprovalLog", [],
-              {"list((address,address,int))", AppLog}),
+    AppLog = [[Addr(CPub), Addr(APub), 15000],
+              [Addr(BPub), Addr(APub), 15000]],
+    CallF(APub, APriv, EncCPub, Contract, "getApprovalLog", [], AppLog),
 
     force_fun_calls(Node),
 
@@ -1215,14 +1074,12 @@ erc20_token_contract(Config) ->
     revert_call_compute_func(Node, APub, APriv, EncCPub, Contract,
                              "transferFrom", [EBPub, EDPub, "100000"]),    %% new-style calldata creation
 
-    call_func(APub, APriv, EncCPub, Contract, "balanceOf", [EBPub], {"int", 10000}),
-    call_func(APub, APriv, EncCPub, Contract, "balanceOf", [ECPub], {"int", 10000}),
-    call_func(APub, APriv, EncCPub, Contract, "balanceOf", [EDPub], {"int", 25000}),
+    CallF(APub, APriv, EncCPub, Contract, "balanceOf", [EBPub],  10000),
+    CallF(APub, APriv, EncCPub, Contract, "balanceOf", [ECPub],  10000),
+    CallF(APub, APriv, EncCPub, Contract, "balanceOf", [EDPub],  25000),
 
-    call_func(APub, APriv, EncCPub, Contract, "getTransferLog", [],
-              {"list((address,address,int))", TrfLog}),
-    call_func(APub, APriv, EncCPub, Contract, "getApprovalLog", [],
-              {"list((address,address,int))", AppLog}),
+    CallF(APub, APriv, EncCPub, Contract, "getTransferLog", [], TrfLog),
+    CallF(APub, APriv, EncCPub, Contract, "getApprovalLog", [], AppLog),
 
     force_fun_calls(Node),
 
@@ -1267,6 +1124,11 @@ events_contract(Config) ->
 
     force_fun_calls(Node).
 
+-define(assertMatchVM(AEVM, FATE, Res),
+    case ?IS_AEVM_SOPHIA(aect_test_utils:vm_version()) of
+        true  -> ?assertMatch(AEVM, Res);
+        false -> ?assertMatch(FATE, Res)
+    end).
 
 remote_gas_test_contract(Config) ->
     %% Set an account.
@@ -1285,14 +1147,13 @@ remote_gas_test_contract(Config) ->
 
     {EncC2Pub, _DecC2Pub, _} = create_contract(Node, APub, APriv, Contract, ["100"]),
 
-
     force_fun_calls(Node),
     Balance0 = get_balance(APub),
     call_get(APub, APriv, EncC1Pub, Contract, 0),
     call_get(APub, APriv, EncC2Pub, Contract, 100),
     force_fun_calls(Node),
     Balance1 = get_balance(APub),
-    ?assertEqual(1600476 * ?DEFAULT_GAS_PRICE, Balance0 - Balance1),
+    ?assertMatchVM(1600476, 1600010, (Balance0 - Balance1) div ?DEFAULT_GAS_PRICE),
 
     %% Test remote call with limited gas
     %% Call contract remote set function with limited gas
@@ -1300,13 +1161,13 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub, Contract, 1),
     force_fun_calls(Node),
     Balance2 = get_balance(APub),
-    ?assertEqual(1610687 * ?DEFAULT_GAS_PRICE, Balance1 - Balance2),
+    ?assertMatchVM(1610687, 1620018, (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE),
 
     %% Test remote call with limited gas (3) that fails (out of gas).
     [] = call_func(APub, APriv, EncC1Pub, Contract, "call", [EncC2Pub, "2", "3"], error),
     force_fun_calls(Node),
     Balance3 = get_balance(APub),
-    ?assertEqual(809933 * ?DEFAULT_GAS_PRICE, Balance2 - Balance3),
+    ?assertMatchVM(809933, 800019, (Balance2 - Balance3) div ?DEFAULT_GAS_PRICE),
 
     %% Check that store/state not changed (we tried to write 2).
     call_get(APub, APriv, EncC2Pub, Contract, 1),
@@ -1322,13 +1183,6 @@ remote_gas_test_contract(Config) ->
 
     ok.
 
-%% Data structure functions.
-word(Val) -> #{<<"type">> => <<"word">>, <<"value">> => Val}.
-
-tuple(Vals) -> #{<<"type">> => <<"tuple">>, <<"value">> => Vals}. %Sneaky
-
-addr(Addr) -> <<Int:256>> = Addr, word(Int).
-
 %% Internal access functions.
 
 get_balance(Pubkey) ->
@@ -1337,52 +1191,36 @@ get_balance(Pubkey) ->
     Balance.
 
 decode_data(Type, EncodedData) ->
-    {ok, DecodedData} = aect_test_utils:decode_data(Type, EncodedData),
-    DecodedData.
+    case aect_test_utils:decode_data(Type, EncodedData) of
+        {ok, #{ <<"value">> := Val }} -> Val;
+        {ok, Val}                     -> Val
+    end.
 
 call_func_decode(NodeName, Pubkey, Privkey, EncCPubkey,
-                 Contract, Function, Arg, Type) ->
+                 Contract, Function, Arg) ->
     call_func_decode(NodeName, Pubkey, Privkey, EncCPubkey,
-                     Contract, Function, Arg, #{}, Type).
+                     Contract, Function, Arg, #{}).
 
 call_func_decode(NodeName, Pubkey, Privkey, EncCPubkey,
-                 Contract, Function, Arg, CallerSet, Type) ->
+                 Contract, Function, Arg, CallerSet) ->
     {Return,_} = call_compute_func(NodeName, Pubkey, Privkey, EncCPubkey,
                                    Contract, Function, Arg, CallerSet),
-    #{<<"value">> := Value} = decode_data(Type, Return),
-    Value.
+    decode_call_result(Contract, Function, ok, Return).
 
 %% Contract interface functions.
 compile_test_contract(Name) ->
-    compile_test_contract(aevm, Name).
-
-compile_test_contract(aevm, Name) ->
-    {ok, BinSrc} = aect_test_utils:read_contract(Name),
-    {ok, Code}   = aect_test_utils:compile_contract(Name),
+    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), Name),
+    {ok, Code}   = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), Name),
     #{ bytecode => aeser_api_encoder:encode(contract_bytearray, Code),
-       vm       => aect_test_utils:latest_sophia_vm_version(),
-       abi      => aect_test_utils:latest_sophia_abi_version(),
+       vm       => aect_test_utils:vm_version(),
+       abi      => aect_test_utils:abi_version(),
        code     => Code,
-       src      => binary_to_list(BinSrc) };
-compile_test_contract(fate, Name) ->
-    {ok, Code} = aect_test_utils:compile_contract(?SOPHIA_LIMA_FATE, Name),
-    #{ bytecode => aeser_api_encoder:encode(contract_bytearray, Code),
-       vm       => ?VM_FATE_SOPHIA_1,
-       abi      => ?ABI_FATE_SOPHIA_1,
-       code     => Code
-     }.
+       name     => Name,
+       src      => binary_to_list(BinSrc) }.
 
 encode_calldata(Contract, Fun, Args) ->
-    case maps:get(abi, Contract) of
-        ?ABI_AEVM_SOPHIA_1 ->
-            {ok, CData} = aect_test_utils:encode_call_data(maps:get(src, Contract), Fun, Args),
-            {ok, aeser_api_encoder:encode(contract_bytearray, CData)};
-        ?ABI_FATE_SOPHIA_1 ->
-            Call = [Fun, $(, lists:join($,, Args), $)],
-            String = binary_to_list(iolist_to_binary(Call)),
-            CData = aeb_fate_asm:function_call(String),
-            {ok, aeser_api_encoder:encode(contract_bytearray, CData)}
-    end.
+    {ok, Calldata} = aect_test_utils:encode_call_data(maps:get(src, Contract), Fun, Args),
+    {ok, aeser_api_encoder:encode(contract_bytearray, Calldata)}.
 
 create_contract(NodeName, Pubkey, Privkey, Contract, InitArgs) ->
     create_contract(NodeName, Pubkey, Privkey, Contract, InitArgs, #{}).
@@ -1480,21 +1318,44 @@ check_call_(Check, CallObject, TxHash) ->
                 Other ->
                     error({unexpected, Other, aeser_api_encoder:safe_decode(contract_bytearray, Value)})
             end;
+        {Contract, Fun, BFun} when is_function(BFun) ->
+            ?assertEqual(<<"ok">>, RetType),
+            case TxHash of
+                undefined ->
+                    ok;
+                _ ->
+                    {ok, 200, #{<<"block_hash">> := BlockHash}} = get_tx(TxHash),
+                    {ok, 200, BlockHeader} = get_micro_block_header(BlockHash),
+                    check_value(Contract, Fun, ok, Value, BFun(BlockHeader))
+            end;
+        {Contract, Fun, Exp} ->
+            case RetType of
+                <<"ok">> ->
+                    check_value(Contract, Fun, ok, Value, Exp);
+                Other ->
+                    error({unexpected, Other, aeser_api_encoder:safe_decode(contract_bytearray, Value)})
+            end;
         error ->
             ?assertEqual(<<"error">>, RetType);
         revert ->
             ?assertEqual(<<"revert">>, RetType)
     end.
 
-check_value(Val0, {fate, ExpVal}) ->
-    Val = decode_data(fate, Val0),
-    ct:log("~p decoded\nas ~p\ninto ~p =??= ~p", [Val0, fate, Val, ExpVal]),
-    ?assertEqual(ExpVal, Val);
 check_value(Val0, {Type, ExpVal}) ->
-    #{<<"value">> := Val} = decode_data(Type, Val0),
+    Val = decode_data(Type, Val0),
     ct:log("~p decoded\nas ~p\ninto ~p =??= ~p", [Val0, Type, Val, ExpVal]),
     ?assertEqual(ExpVal, Val).
 
+check_value(Contract, Fun, ResType, ResValue, ExpVal) ->
+    Val = decode_call_result(Contract, Fun, ResType, ResValue),
+    ct:log("~p decoded\ninto ~p =??= ~p", [ResValue, Val, ExpVal]),
+    ?assertEqual(ExpVal, Val).
+
+decode_call_result(Contract = #{}, Fun, ResType, ResValue) ->
+    aect_test_utils:decode_call_result(maps:get(src, Contract), Fun, ResType, ResValue);
+decode_call_result(ContractName, Fun, ResType, ResValue) ->
+    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_LIMA_AEVM, ContractName),
+    aect_test_utils:decode_call_result(binary_to_list(BinCode), Fun, ResType, ResValue).
 
 call_func(Pub, Priv, EncCPub, Contract, Fun, Args) ->
     call_func(Pub, Priv, EncCPub, Contract, Fun, Args, #{}, none).
@@ -1532,7 +1393,7 @@ call_compute_func(NodeName, Pubkey, Privkey, EncCPubkey,
 
 call_compute_func(NodeName, Pubkey, Privkey, EncCPubkey,
                   Contract, Function, Argument, CallerSet) ->
-    {CallReturn,ContractCallTxHash} =
+    {CallReturn, ContractCallTxHash} =
         basic_call_compute_func(NodeName, Pubkey, Privkey, EncCPubkey,
                                 Contract, Function, Argument, CallerSet),
 
