@@ -227,7 +227,7 @@ mining_stratum_block(Cfg) ->
     %% payment for miners still sits in the queue
     [#aestratum_payment{relmap = #{?CLIENT1_ACCOUNT := _},
                         tx_hash = undefined}] =
-        rpc(?STRATUM_SERVER_NODE, aestratum, pending_payments, []),
+            rpc(?STRATUM_SERVER_NODE, aestratum, pending_payments, []),
 
     ok.
 
@@ -285,16 +285,24 @@ rewarding_participants(Cfg) ->
         rpc(?STRATUM_SERVER_NODE, aestratum, sent_payments, []),
     <<_/binary>> = TxHash1,
 
-    aecore_suite_utils:mine_key_blocks(MNode, 1),
+    retry(fun() ->
+                  aecore_suite_utils:mine_key_blocks(MNode, 1),
 
-    TopBlock2 = rpc(?MINING_NODE, aec_chain, top_block, []),
-    true = await_block(?STRATUM_SERVER_NODE, TopBlock2),
+                  TopBlock2 = rpc(?MINING_NODE, aec_chain, top_block, []),
+                  true = await_block(?STRATUM_SERVER_NODE, TopBlock2),
 
-    %% give it time so that the TX appears in DB
-    timer:sleep(2000),
+                  %% give it time so that the TX appears in DB
+                  timer:sleep(2000),
 
-    %% after blocks were mined, we can find the payout call tx in chain
-    <<_/binary>> = rpc(?STRATUM_SERVER_NODE, aec_chain, find_tx_location, [TxHash1]),
+                  %% after blocks were mined, we can find the payout call tx in chain
+                  case rpc(?STRATUM_SERVER_NODE, aec_chain, find_tx_location, [TxHash1]) of
+                      <<_/binary>> ->
+                          true;
+                      X ->
+                          {false, X}
+                  end
+          end,
+          {?LINE, await_payout, TxHash1}),
 
     %% client/miner has account with balance in the chain
     {value, _} = rpc(?STRATUM_SERVER_NODE, aec_chain, get_account, [ClientPK]),
