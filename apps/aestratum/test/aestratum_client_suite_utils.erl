@@ -1,7 +1,6 @@
 -module(aestratum_client_suite_utils).
 
--export([init_per_suite/2,
-         init_per_suite/3,
+-export([init_per_suite/3,
          start_node/2,
          stop_node/2,
          connect/1
@@ -16,9 +15,6 @@
 
 -define(OPS_BIN, "aestratum_client").
 -define(CONFIG_FILE, "aestratum_client.json").
-
-init_per_suite(NodesList, CTCfg) ->
-    init_per_suite(NodesList, #{}, CTCfg).
 
 init_per_suite(NodesList, CustomNodeCfg, CTCfg) ->
     DataDir = ?config(data_dir, CTCfg),
