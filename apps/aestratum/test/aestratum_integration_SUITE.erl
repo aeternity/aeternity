@@ -129,7 +129,6 @@ init_per_group(single_client, Cfg) ->
 
     rpc(?STRATUM_SERVER_NODE, aestratum_env, set,
         [#{contract_pubkey       => ContractPK,
-           contract_address      => aeser_api_encoder:encode(contract_pubkey, ContractPK),
            reward_keyblock_delay => 0,
            payout_keyblock_delay => 0}]),
 
