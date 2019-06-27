@@ -60,24 +60,27 @@ init_per_suite(Cfg) ->
         ?MINERVA_PROTOCOL_VSN -> {skip, stratum_payout_account_unsupported_in_minerva};
         LatestProtocolVersion when LatestProtocolVersion =:= ?FORTUNA_PROTOCOL_VSN;
                                    LatestProtocolVersion =:= ?LIMA_PROTOCOL_VSN ->
-            Cfg1 = [{symlink_name, "latest.aestratum"}, {test_module, ?MODULE}] ++ Cfg,
-
-            #{pubkey := PubKey, privkey := _PrivKey} = StratumKeyPair = new_keypair(),
-            Cfg2 = [{stratum_keypair, StratumKeyPair} | Cfg1],
-
-            StratumServerNodeCfg = stratum_server_node_config(false),
-            MiningNodeCfg = mining_node_config(PubKey),
-            Client1NodeCfg = client_node_config(?CLIENT1_ACCOUNT),
-
-            Cfg3 = aecore_suite_utils:init_per_suite([?STRATUM_SERVER_NODE], StratumServerNodeCfg, Cfg2),
-            Cfg4 = aecore_suite_utils:init_per_suite([?MINING_NODE], MiningNodeCfg, Cfg3),
-            Cfg5 = aestratum_client_suite_utils:setup_nodes([?CLIENT1_NODE], Client1NodeCfg, Cfg4),
-            Cfg6 = write_stratum_keys("stratum_test_keys", Cfg5),
-
-            [{nodes, [aecore_suite_utils:node_tuple(?STRATUM_SERVER_NODE),
-                      aecore_suite_utils:node_tuple(?MINING_NODE),
-                      aestratum_client_suite_utils:node_tuple(?CLIENT1_NODE)]} | Cfg6]
+            init_per_suite_(Cfg)
     end.
+
+init_per_suite_(Cfg) ->
+    Cfg1 = [{symlink_name, "latest.aestratum"}, {test_module, ?MODULE}] ++ Cfg,
+
+    #{pubkey := PubKey, privkey := _PrivKey} = StratumKeyPair = new_keypair(),
+    Cfg2 = [{stratum_keypair, StratumKeyPair} | Cfg1],
+
+    StratumServerNodeCfg = stratum_server_node_config(false),
+    MiningNodeCfg = mining_node_config(PubKey),
+    Client1NodeCfg = client_node_config(?CLIENT1_ACCOUNT),
+
+    Cfg3 = aecore_suite_utils:init_per_suite([?STRATUM_SERVER_NODE], StratumServerNodeCfg, Cfg2),
+    Cfg4 = aecore_suite_utils:init_per_suite([?MINING_NODE], MiningNodeCfg, Cfg3),
+    Cfg5 = aestratum_client_suite_utils:setup_nodes([?CLIENT1_NODE], Client1NodeCfg, Cfg4),
+    Cfg6 = write_stratum_keys("stratum_test_keys", Cfg5),
+
+    [{nodes, [aecore_suite_utils:node_tuple(?STRATUM_SERVER_NODE),
+              aecore_suite_utils:node_tuple(?MINING_NODE),
+              aestratum_client_suite_utils:node_tuple(?CLIENT1_NODE)]} | Cfg6].
 
 end_per_suite(Cfg) ->
     del_stratum_keys(Cfg),
