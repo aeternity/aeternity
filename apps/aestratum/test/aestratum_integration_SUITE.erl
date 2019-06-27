@@ -64,17 +64,15 @@ init_per_suite(Cfg) ->
     end.
 
 init_per_suite_(Cfg) ->
-    #{pubkey := PubKey, privkey := _PrivKey} = StratumKeyPair = new_keypair(),
-
     %% Setup aeternity nodes.
     Cfg1 = make_shortcut([{symlink_name, "latest.aestratum"}, {test_module, ?MODULE}] ++ Cfg),
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
     aecore_suite_utils:create_config(?STRATUM_SERVER_NODE, Cfg1, stratum_server_node_config(false), []),
-    aecore_suite_utils:create_config(?MINING_NODE, Cfg1, mining_node_config(PubKey), []),
+    aecore_suite_utils:create_config(?MINING_NODE, Cfg1, mining_node_config(maps:get(pubkey, new_keypair())), []),
     aecore_suite_utils:make_multi(Cfg1, [?STRATUM_SERVER_NODE, ?MINING_NODE]),
-    Cfg2 = write_stratum_keys("stratum_test_keys", [{stratum_keypair, StratumKeyPair} | Cfg1]),
+    Cfg2 = write_stratum_keys("stratum_test_keys", [{stratum_keypair, new_keypair()} | Cfg1]),
 
     %% Setup stratum client node.
     Client1NodeCfg = client_node_config(?CLIENT1_ACCOUNT),
@@ -103,7 +101,7 @@ init_per_group(single_client, Cfg) ->
     %% Send some tokens to the Stratum account so the account exists when the
     %% Stratum server starts.
     Fee = 20000 * aec_test_utils:min_gas_price(),
-    {ok, Tx} = add_spend_tx(?MINING_NODE, 1000000, Fee, 1, 10, aecore_suite_utils:patron(), StratumPubKey),
+    {ok, Tx} = add_spend_tx(?MINING_NODE, 1000000000000 * aec_test_utils:min_gas_price(), Fee, 1, 10, aecore_suite_utils:patron(), StratumPubKey),
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(MNode, [Tx], ?MAX_MINED_BLOCKS),
 
     {ok, ContractTx, ContractPK} = deploy_payout_contract(StratumKeyPair),
@@ -413,10 +411,10 @@ stratum_server_node_config(StratumEnabled) ->
                }
      }.
 
-mining_node_config(StratumPubKey) ->
+mining_node_config(BeneficiaryPubKey) ->
     #{<<"mining">> =>
         #{<<"autostart">> => false,
-          <<"beneficiary">> => aeser_api_encoder:encode(account_pubkey, StratumPubKey)},
+          <<"beneficiary">> => aeser_api_encoder:encode(account_pubkey, BeneficiaryPubKey)},
       <<"stratum">> =>
         #{<<"enabled">> => false}
      }.
