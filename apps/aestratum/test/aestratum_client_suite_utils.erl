@@ -19,8 +19,9 @@
 init_per_suite(NodesList, CustomNodeCfg, CTCfg) ->
     DataDir = ?config(data_dir, CTCfg),
     TopDir = top_dir(DataDir),
+    {top_dir, TopDir} = lists:keyfind(top_dir, 1, CTCfg), %% Hardcoded expectation.
     TopClientDir = top_client_dir(TopDir),
-    CTCfg1 = [{top_dir, TopDir}, {top_client_dir, TopClientDir} | CTCfg],
+    CTCfg1 = [{top_client_dir, TopClientDir} | CTCfg],
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
