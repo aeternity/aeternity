@@ -295,9 +295,8 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Sender, Recipient) ->
 create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     OwnerKey = maps:get(pubkey, patron()),
     Owner    = aeser_id:create(account, OwnerKey),
-    File     = lists:concat(["contracts/", Name]),
-    {ok, Contract} = aect_test_utils:read_contract(File),
-    {ok, Code} = aect_test_utils:compile_contract(File),
+    {ok, Contract} = aect_test_utils:read_contract(Name),
+    {ok, Code} = aect_test_utils:compile_contract(Name),
     {ok, CallData} = aect_test_utils:encode_call_data(Contract, <<"init">>, Args),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     VM  = aect_test_utils:latest_sophia_vm_version(),
