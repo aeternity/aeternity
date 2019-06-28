@@ -12,20 +12,20 @@ contract FundMe =
                    deadline      : int,
                    goal          : int }
 
-  private stateful function spend(args : spend_args) =
+  stateful function spend(args : spend_args) =
     Chain.spend(args.recipient, args.amount)
 
-  public function init(beneficiary, deadline, goal) : state =
+  entrypoint init(beneficiary, deadline, goal) : state =
     { contributions = {},
       beneficiary   = beneficiary,
       deadline      = deadline,
       total         = 0,
       goal          = goal }
 
-  private function is_contributor(addr) =
+  function is_contributor(addr) =
     Map.member(addr, state.contributions)
 
-  public stateful function contribute() =
+  stateful entrypoint contribute() =
     if(Chain.block_height >= state.deadline)
       spend({ recipient = Call.caller, amount = Call.value }) // Refund money
       false
@@ -36,7 +36,7 @@ contract FundMe =
                  total @ tot = tot + Call.value })
       true
 
-  public stateful function withdraw() =
+  stateful entrypoint withdraw() =
     if(Chain.block_height < state.deadline)
       abort("Cannot withdraw before deadline")
     if(Call.caller == state.beneficiary)
@@ -46,13 +46,13 @@ contract FundMe =
     else
       abort("Not a contributor or beneficiary")
 
-  private stateful function withdraw_beneficiary() =
+  stateful function withdraw_beneficiary() =
     require(state.total >= state.goal, "Project was not funded")
     spend({recipient = state.beneficiary,
            amount    = Contract.balance })
     put(state{ beneficiary = ak_1111111111111111111111111111113AFEFpt5 })
 
-  private stateful function withdraw_contributor() =
+  stateful function withdraw_contributor() =
     if(state.total >= state.goal)
       abort("Project was funded")
     let to = Call.caller

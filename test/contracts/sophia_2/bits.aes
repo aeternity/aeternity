@@ -1,0 +1,13 @@
+// Tests of builtin bit fields
+contract BitsTest =
+
+  function none()                           : bits = Bits.none
+  function all()                            : bits = Bits.all
+  function set(b : bits, i : int)           : bits = Bits.set(b, i)
+  function clear(b : bits, i : int)         : bits = Bits.clear(b, i)
+  function test(b : bits, i : int)          : bool = Bits.test(b, i)
+  function sum(b : bits)                    : int  = Bits.sum(b)
+  function union(a : bits, b : bits)        : bits = Bits.union(a, b)
+  function intersection(a : bits, b : bits) : bits = Bits.intersection(a, b)
+  function difference(a : bits, b : bits)   : bits = Bits.difference(a, b)
+

@@ -4,12 +4,12 @@ contract ChainTest =
 
   record state = { last_bf : address }
 
-  function init() : state =
+  entrypoint init() : state =
     {last_bf = Contract.address}
 
-  function miner() = Chain.coinbase
+  entrypoint miner() = Chain.coinbase
 
-  stateful function save_coinbase() =
+  stateful entrypoint save_coinbase() =
     put(state{last_bf = Chain.coinbase})
 
-  function last_bf() = state.last_bf
+  entrypoint last_bf() = state.last_bf

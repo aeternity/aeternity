@@ -1,0 +1,4 @@
+contract Strings =
+    function str_len(s) = String.length(s)
+    function str_concat(s1, s2) = String.concat(s1, s2)
+

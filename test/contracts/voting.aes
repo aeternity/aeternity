@@ -2,13 +2,13 @@
 /* Contract type */
 contract VotingType =
   type state
-  function init            : list(string) => state
+  entrypoint init            : list(string) => state
 
-  function giveRightToVote : address => unit
-  function delegate        : address => unit
-  function vote            : int => unit
-  function winnerName      : unit => string
-  function currentTally    : unit => list((string, int))
+  entrypoint giveRightToVote : address => unit
+  entrypoint delegate        : address => unit
+  entrypoint vote            : int => unit
+  entrypoint winnerName      : unit => string
+  entrypoint currentTally    : unit => list((string, int))
 
 /* Contract implementation */
 contract Voting =
@@ -33,37 +33,37 @@ contract Voting =
     }
 
   // Initialization
-  function init(proposalNames: list(string)): state =
+  entrypoint init(proposalNames: list(string)): state =
     { chairPerson = caller(),
       voters      = Map.empty,
       proposals   = List.map((name) => {name = name, voteCount = 0}, proposalNames) }
 
-  function initVoter() = { weight = 1, vote = NotVoted}
+  entrypoint initVoter() = { weight = 1, vote = NotVoted}
 
-  function giveRightToVote(voter: address) =
+  entrypoint giveRightToVote(voter: address) =
     require(caller() == state.chairPerson)
     require(!Map.mem(voter, state.voters))
     put(state{ voters = Map.add(voter, initVoter(), state.voters) })
 
-  function delegateChain(delegate: address) =
+  entrypoint delegateChain(delegate: address) =
     require(delegate != caller()) /* Delegation loop! */
     let voter = Map.find(delegate, state.voters)
     switch(voter.vote)
       Delegated(d) => delegateChain(d)
       _            => delegate
 
-  function addVote(candidate, weight) =
+  entrypoint addVote(candidate, weight) =
     let proposal = List.nth(state.proposals, candidate)
     proposal{ voteCount = proposal.voteCount + weight }
 
-  function delegateVote(delegateTo: address, weight: uint) =
+  entrypoint delegateVote(delegateTo: address, weight: uint) =
     let voter = Map.find(delegateTo, state.voters)
     switch(voter.vote)
       Voted(vote)  => addVote(vote, weight)
       Delegated(_) => abort("impossible")   // impossible
       NotVoted     => voter{ weight = voter.weight + weight }
 
-  function delegate(delegateTo: address) =
+  entrypoint delegate(delegateTo: address) =
     require(delegateTo != caller())
     let voter = Map.find(caller(), state.voters)
     require(voter.vote == NotVoted)
@@ -71,27 +71,27 @@ contract Voting =
     let voter' = voter{ vote = Delegated(finalDelegate) }
     delegateVote(finalDelegate, voter.weight)
 
-  function vote(candidate: uint) =
+  entrypoint vote(candidate: uint) =
     let voter = Map.find(caller(), state.voters)
     require(voter.vote == NotVoted)
     let voter' = voter{ vote = Voted(candidate) }
     addVote(candidate, voter.weight)
 
-  function winningProposal'(current, rest) =
+  entrypoint winningProposal'(current, rest) =
     switch(rest)
       []      => current
       p :: ps => winningProposal'(if (p.voteCount > current.voteCount) p else current, ps)
 
   // const
-  function winningProposal() : proposal =
+  entrypoint winningProposal() : proposal =
     switch(state.proposals)
       []      => abort("none")
       p :: ps => winningProposal'(p, ps)
 
   // const
-  function winnerName() = winningProposal().name
+  entrypoint winnerName() = winningProposal().name
 
   // const
-  function currentTally() =
+  entrypoint currentTally() =
     List.map((p) => (p.name, p.voteCount), state.proposals)
 

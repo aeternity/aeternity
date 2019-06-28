@@ -1,0 +1,65 @@
+// AENS tests
+
+contract Remote =
+  function foo : () => int
+
+contract AENSTest =
+
+  // Name resolution
+
+  function resolve_account(name : string, key : string) : option(address) =
+    AENS.resolve(name, key)
+
+  function resolve_string(name : string, key : string) : option(string) =
+    AENS.resolve(name, key)
+
+  function resolve_oracle(name : string, key : string) : option(oracle(string, string)) =
+    AENS.resolve(name, key)
+
+  function resolve_contract(name : string, key : string) : option(Remote) =
+    AENS.resolve(name, key)
+
+  // Transactions
+
+  stateful function preclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
+                             chash : hash) : () =      // Commitment hash
+    AENS.preclaim(addr, chash)
+
+  stateful function signedPreclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
+                                   chash : hash,             // Commitment hash
+                                   sign  : signature) : () = // Signed by addr (if not Contract.address)
+    AENS.preclaim(addr, chash, signature = sign)
+
+  stateful function claim(addr : address,
+                          name : string,
+                          salt : int) : () =
+    AENS.claim(addr, name, salt)
+
+  stateful function signedClaim(addr : address,
+                                name : string,
+                                salt : int,
+                                sign : signature) : () =
+    AENS.claim(addr, name, salt, signature = sign)
+
+  // TODO: update() -- how to handle pointers?
+
+  stateful function transfer(owner     : address,
+                             new_owner : address,
+                             name_hash : hash) : () =
+    AENS.transfer(owner, new_owner, name_hash)
+
+  stateful function signedTransfer(owner     : address,
+                                   new_owner : address,
+                                   name_hash : hash,
+                                   sign      : signature) : () =
+    AENS.transfer(owner, new_owner, name_hash, signature = sign)
+
+  stateful function revoke(owner     : address,
+                           name_hash : hash) : () =
+    AENS.revoke(owner, name_hash)
+
+  stateful function signedRevoke(owner     : address,
+                                 name_hash : hash,
+                                 sign      : signature) : () =
+    AENS.revoke(owner, name_hash, signature = sign)
+

@@ -5,14 +5,14 @@ contract DutchAuction =
                    dec    : int,
                    sold   : bool }
 
-  public function init(price, decrease) : state =
+  entrypoint init(price, decrease) : state =
     require(price > 0 && decrease > 0, "bad args")
     { amount = price,
       height = Chain.block_height,
       dec    = decrease,
       sold   = false }
 
-  public stateful function bid() =
+  stateful entrypoint bid() =
     require( !(state.sold), "sold")
     let price =
       state.amount - (Chain.block_height - state.height) * state.dec

@@ -1,5 +1,5 @@
 contract Remote =
-  function dummy : () => ()
+  entrypoint dummy : () => ()
 
 contract Events =
 
@@ -31,14 +31,14 @@ contract Events =
     | Event1(int, int, string)
     | Event2(string, address)
 
-  function nodata0()                   = Chain.event(Nodata0)
-  function nodata1(ix1)                = Chain.event(Nodata1(ix1))
-  function nodata2(ix2, ix3)           = Chain.event(Nodata2(ix2, ix3))
-  function nodata3(ix4, ix5, ix6)      = Chain.event(Nodata3(ix4, ix5, ix6))
-  function data0(data1)                = Chain.event(Data0(data1))
-  function data1(data2, ix7)           = Chain.event(Data1(data2, ix7))
-  function data2(ix8, data3, ix9)      = Chain.event(Data2(ix8, data3, ix9))
-  function data3(ix1, ix2, ix5, data1) = Chain.event(Data3(ix1, ix2, ix5, data1))
+  entrypoint nodata0()                   = Chain.event(Nodata0)
+  entrypoint nodata1(ix1)                = Chain.event(Nodata1(ix1))
+  entrypoint nodata2(ix2, ix3)           = Chain.event(Nodata2(ix2, ix3))
+  entrypoint nodata3(ix4, ix5, ix6)      = Chain.event(Nodata3(ix4, ix5, ix6))
+  entrypoint data0(data1)                = Chain.event(Data0(data1))
+  entrypoint data1(data2, ix7)           = Chain.event(Data1(data2, ix7))
+  entrypoint data2(ix8, data3, ix9)      = Chain.event(Data2(ix8, data3, ix9))
+  entrypoint data3(ix1, ix2, ix5, data1) = Chain.event(Data3(ix1, ix2, ix5, data1))
 
-  function f1(x : int, y : string) = Chain.event(Event1(x, x+1, y))
-  function f2(s : string)          = Chain.event(Event2(s, Call.caller))
+  entrypoint f1(x : int, y : string) = Chain.event(Event1(x, x+1, y))
+  entrypoint f2(s : string)          = Chain.event(Event2(s, Call.caller))

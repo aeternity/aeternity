@@ -2732,7 +2732,7 @@ fp_use_remote_call(Cfg) ->
                 create_trees_if_not_present(),
                 set_from(Owner, owner, owner_privkey),
                 create_contract_in_trees(_Round    = ContractCreateRound,
-                                         _Contract = "identity",
+                                         _Contract = identity,
                                          _InitArgs = [],
                                          _Deposit  = 2),
                 SaveContract(remote_contract),
@@ -2741,7 +2741,7 @@ fp_use_remote_call(Cfg) ->
                 end,
                 % create the second contract
                 create_contract_in_trees(_Round1    = ContractCreateRound + 10,
-                                         _Contract2 = "remote_call",
+                                         _Contract2 = remote_call,
                                          _InitArgs2 = [],
                                          _Deposit2  = 2),
                 SaveContract(second_contract),
@@ -2822,7 +2822,7 @@ fp_use_onchain_contract(Cfg) ->
                 create_trees_if_not_present(),
                 set_from(Owner, owner, owner_privkey),
                 create_contract_in_trees(_Round    = ContractCreateRound,
-                                         _Contract = "counter",
+                                         _Contract = counter,
                                          _InitArgs = [<<"42">>],
                                          _Deposit  = 2),
                 PushContractId(remote_contract),
@@ -2831,11 +2831,11 @@ fp_use_onchain_contract(Cfg) ->
                 end,
                 % create the second contract
                 create_contract_in_trees(_Round1    = ContractCreateRound + 10,
-                                         _Contract2 = "remote_call",
+                                         _Contract2 = remote_call,
                                          _InitArgs2 = [],
                                          _Deposit2  = 2),
                 PushContractId(second_contract),
-                create_contract_in_onchain_trees(_OnchainContract = "counter",
+                create_contract_in_onchain_trees(_OnchainContract = counter,
                                                  _OnchainCInitArgs = [<<"42">>],
                                                  _OnchainDeposit  = 2),
                 PushContractId(onchain_contract),
@@ -2968,7 +2968,7 @@ fp_payload_from_another_channel(Cfg) ->
                 create_trees_if_not_present(),
                 set_from(Owner, owner, owner_privkey),
                 create_contract_in_trees(_Round    = 6,
-                                         _Contract = "identity",
+                                         _Contract = identity,
                                          _InitArgs = [],
                                          _Deposit  = 2),
                 % use the payload of channelA in a force progress in channelB
@@ -4149,7 +4149,7 @@ create_contract_poi_and_payload(Round, ContractRound, Owner, Opts) ->
 
     fun(Props0) ->
         {Contract, ContractInitProps} =
-            maps:get(contract_name, Props0, {"identity", []}),
+            maps:get(contract_name, Props0, {identity, []}),
         ContractCreateDeposit =
             maps:get(contract_create_deposit, Props0, 2),
         run(Props0,
@@ -5292,8 +5292,12 @@ compile_contract(ContractName) ->
 
 compile_contract_vsn(ContractName, SerializationVsn) ->
     {ok, ContractBin} = aect_test_utils:read_contract(ContractName),
-    {ok, Map} = aeso_compiler:from_string(ContractBin, []),
-    {ok, aect_sophia:serialize(Map, SerializationVsn)}.
+    {ok, Bytecode}    = aect_test_utils:compile_contract(ContractName),
+    Map               = aect_sophia:deserialize(Bytecode),
+    ContractSrc       = binary_to_list(ContractBin),
+    {ok, aect_sophia:serialize(Map#{ contract_source => ContractSrc,
+                                     compiler_version => maps:get(compiler_version, Map, <<"1.0">>)},
+                               SerializationVsn)}.
 
 %% test that a force progress transaction can NOT produce an on-chain
 %% contract with a code with the wrong Sophia serialization

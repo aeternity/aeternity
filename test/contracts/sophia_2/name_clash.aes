@@ -1,0 +1,16 @@
+
+contract NameClash =
+
+  function double_proto : () => int
+  function double_proto : () => int
+
+  function proto_and_def : int => int
+  function proto_and_def(n) = n + 1
+
+  function double_def(x) = x
+  function double_def(y) = 0
+
+  // abort, put and state are builtin
+  function abort() : int = 0
+  function put(x) = x
+  function state(x, y) = x + y

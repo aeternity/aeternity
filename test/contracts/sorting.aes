@@ -3,17 +3,17 @@ contract Sorting =
   // Allow sorting the state
   type state = list(int)
 
-  function init(l : list(int)) = l
+  entrypoint init(l : list(int)) = l
 
-  stateful function state_sort() =
+  stateful entrypoint state_sort() =
     put(sort(state))
 
-  function sort(l : list(int)) =
+  entrypoint sort(l : list(int)) =
     switch(l)
         [] => []
         x :: xs => insert(x, sort(xs))
 
-  function insert(x : int, l : list(int)) =
+  entrypoint insert(x : int, l : list(int)) =
     switch(l)
         [] => [x]
         y :: ys =>

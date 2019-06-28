@@ -1,0 +1,41 @@
+contract AddrCheck =
+  type q_type1 = string
+  type q_type2 = (int, int)
+  type r_type1 = int
+  type r_type2 = map(int, string)
+
+  type o_type1 = oracle(q_type1, r_type1)
+  type o_type2 = oracle(q_type2, r_type2)
+  type oq_type1 = oracle_query(q_type1, r_type1)
+  type oq_type2 = oracle_query(q_type2, r_type2)
+
+  stateful function register1() : o_type1 =
+    Oracle.register(Contract.address, 12, RelativeTTL(100))
+
+  stateful function register2() : o_type2 =
+    Oracle.register(Contract.address, 12, RelativeTTL(100))
+
+  stateful function query1(o, q) : oq_type1 =
+    Oracle.query(o, q, 12, RelativeTTL(20), RelativeTTL(30))
+
+  stateful function query2(o, q) : oq_type2 =
+    Oracle.query(o, q, 12, RelativeTTL(20), RelativeTTL(30))
+
+  function is_o(a : address) : bool =
+    Address.is_oracle(a)
+
+  function is_c(a : address) : bool =
+    Address.is_contract(a)
+
+  function check_o1(o : o_type1) : bool =
+    Oracle.check(o)
+
+  function check_o2(o : o_type2) : bool =
+    Oracle.check(o)
+
+  function check_oq1(o, oq : oq_type1) : bool =
+    Oracle.check_query(o, oq)
+
+  function check_oq2(o, oq : oq_type2) : bool =
+    Oracle.check_query(o, oq)
+

@@ -7,21 +7,21 @@ contract VariantTypes =
 
   datatype color = Red | Green | Blue | Grey(int)
 
-  function init() = Stopped
+  entrypoint init() = Stopped
 
-  stateful function start(bal : int) =
+  stateful entrypoint start(bal : int) =
     switch(state)
       Stopped => put(Started({owner = Call.caller, balance = bal, color = Grey(0)}))
 
-  stateful function stop() =
+  stateful entrypoint stop() =
     switch(state)
       Started(st) =>
         require(Call.caller == st.owner, "required")
         put(Stopped)
         st.balance
 
-  function get_color()  = switch(state) Started(st) => st.color
-  stateful function set_color(c) = switch(state) Started(st) => put(Started(st{color = c}))
+  entrypoint get_color()  = switch(state) Started(st) => st.color
+  stateful entrypoint set_color(c) = switch(state) Started(st) => put(Started(st{color = c}))
 
-  function get_state() = state
+  entrypoint get_state() = state
 

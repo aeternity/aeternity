@@ -4219,7 +4219,7 @@ sophia_int_to_str(_Cfg) ->
     ok.
 
 sophia_events(Cfg) ->
-    case sophia_version() =< ?SOPHIA_FORTUNA of
+    case sophia_version() =< ?SOPHIA_MINERVA of
         true  -> sophia_events_old(Cfg);
         false -> sophia_events_new(Cfg)
     end.
@@ -4581,7 +4581,7 @@ sophia_bytes(_Cfg) ->
     ok.
 
 sophia_bytes_to_x(_Cfg) ->
-    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, bytes_to_x_not_in_fortuna),
+    ?skipRest(sophia_version() =< ?SOPHIA_MINERVA, bytes_to_x_not_in_minerva),
     state(aect_test_utils:new_state()),
     Acc  = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     C    = ?call(create_contract, Acc, bytes_to_x, {}),
@@ -5016,15 +5016,10 @@ sophia_aens_transactions(_Cfg) ->
 sophia_state_handling(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 50000000 * aec_test_utils:min_gas_price()),
-    ContractName =
-        case vm_version() of
-            ?VM_AEVM_SOPHIA_1 -> state_handling_v1;
-            _                 -> state_handling
-        end,
     Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
     %% Test an init function that calls a remote contract to compute the state
-    Ct1      = ?call(create_contract, Acc, ContractName, {?cid(Ct0), 1}, #{ amount => 100000 }),
-    Ct2      = ?call(create_contract, Acc, ContractName, {?cid(Ct0), 2}, #{ amount => 100000 }),
+    Ct1      = ?call(create_contract, Acc, state_handling, {?cid(Ct0), 1}, #{ amount => 100000 }),
+    Ct2      = ?call(create_contract, Acc, state_handling, {?cid(Ct0), 2}, #{ amount => 100000 }),
     MapT     = {map, word, word},
     StateT   = {tuple, [word, string, MapT]},
     UnitT    = {tuple, []},

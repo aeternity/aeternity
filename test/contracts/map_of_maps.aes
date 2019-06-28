@@ -9,13 +9,13 @@ contract MapOfMaps =
                    small1 : map(string, string),
                    small2 : map(string, string)  }
 
-  private function empty_state() =
+  function empty_state() =
     { big1   = {}, big2   = {},
       small1 = {}, small2 = {} }
 
-  function init() = empty_state()
+  entrypoint init() = empty_state()
 
-  function setup_state() =
+  entrypoint setup_state() =
     let small = {["key"] = "val"}
     put({ big1 = {["one"] = small},
           big2 = {["two"] = small},
@@ -23,14 +23,14 @@ contract MapOfMaps =
           small2 = small })
 
   // -- Garbage collection of inner map when outer map is garbage collected
-  function test1_setup() =
+  entrypoint test1_setup() =
     let inner = {["key"] = "val"}
     put(empty_state() { big1 = {["one"] = inner} })
 
-  function test1_execute() =
+  entrypoint test1_execute() =
     put(state{ big1 = {} })
 
-  function test1_check() =
+  entrypoint test1_check() =
     state.big1
 
 

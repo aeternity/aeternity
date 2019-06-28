@@ -9,7 +9,7 @@ contract Oracles =
   type oracle_id = oracle(query_t, answer_t)
   type query_id  = oracle_query(query_t, answer_t)
 
-  stateful function createQuery(o    : oracle_id,
+  stateful entrypoint createQuery(o    : oracle_id,
                        q    : query_t,
                        qfee : fee,
                        qttl : ttl,
@@ -18,17 +18,17 @@ contract Oracles =
     Oracle.query(o, q, qfee, qttl, rttl)
 
 
-  stateful function respond(o    : oracle_id,
+  stateful entrypoint respond(o    : oracle_id,
                    q    : query_id,
                    sign : signature,
                    r    : answer_t) : () =
     Oracle.respond(o, q, signature = sign, r)
 
 
-  function getQuestion(o : oracle_id,
+  entrypoint getQuestion(o : oracle_id,
                        q : query_id) : query_t =
     Oracle.get_question(o, q)
 
-  function getAnswer(o : oracle_id,
+  entrypoint getAnswer(o : oracle_id,
                      q : query_id) : option(answer_t) =
     Oracle.get_answer(o, q)

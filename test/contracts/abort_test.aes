@@ -4,26 +4,26 @@ contract AbortTest =
 
   record state = { value : int }
 
-  public function init(v : int) =
+  entrypoint init(v : int) =
     { value = v }
 
   // Aborting
-  public stateful function do_abort(v : int, s : string) : () =
+  stateful entrypoint do_abort(v : int, s : string) : () =
     put_value(v)
     revert_abort(s)
 
   // Accessing the value
-  public function get_value() = state.value
-  public stateful function put_value(v : int) = put(state{value = v})
-  public function get_values() : list(int) = [state.value]
-  public stateful function put_values(v : int) = put(state{value = v})
+  entrypoint get_value() = state.value
+  stateful entrypoint put_value(v : int) = put(state{value = v})
+  entrypoint get_values() : list(int) = [state.value]
+  stateful entrypoint put_values(v : int) = put(state{value = v})
 
   // Some basic statistics
-  public function get_stats(acct : address) =
+  entrypoint get_stats(acct : address) =
     ( Contract.balance, Chain.balance(acct) )
 
   // Abort functions.
-  private function revert_abort(s : string) =
+  function revert_abort(s : string) =
     abort(s)
 
   // This is still legal but will be stripped out.

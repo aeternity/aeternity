@@ -1,8 +1,8 @@
 contract ChannelEnv =
-  public function coinbase() : address = Chain.coinbase
+  entrypoint coinbase() : address = Chain.coinbase
 
-  public function timestamp() : int = Chain.timestamp
+  entrypoint timestamp() : int = Chain.timestamp
 
-  public function block_height() : int = Chain.block_height
+  entrypoint block_height() : int = Chain.block_height
 
-  public function difficulty() : int = Chain.difficulty
+  entrypoint difficulty() : int = Chain.difficulty

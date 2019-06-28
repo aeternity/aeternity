@@ -405,7 +405,7 @@ environment(_Cfg) ->
     GasPrice = Call(call_gas_price),
 
     CallerBalance = Call1(get_balance, encode_address(account_pubkey, Caller)),
-    case aect_test_utils:latest_sophia_version() < ?SOPHIA_LIMA_AEVM of
+    case aect_test_utils:latest_sophia_version() < ?SOPHIA_FORTUNA of
         true ->
             0             = Call1(block_hash, integer_to_list(BlockHeight)),
             0             = Call1(block_hash, integer_to_list(BlockHeight + 1)),
