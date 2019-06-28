@@ -402,7 +402,7 @@ init_tests(Release, VMName) ->
                 {lima,    {IfAEVM(?FORTUNA_PROTOCOL_VSN, ?LIMA_PROTOCOL_VSN),
                            IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_LIMA_FATE),
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
-                           IfAEVM(?VM_AEVM_SOPHIA_3, ?VM_FATE_SOPHIA_1)}}],
+                           IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_1)}}],
     {Proto, Sophia, ABI, VM} = proplists:get_value(Release, Versions),
     meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> Proto end),
     Cfg = [{sophia_version, Sophia}, {vm_version, VM},
@@ -410,32 +410,9 @@ init_tests(Release, VMName) ->
     init_per_testcase_common(Cfg).
 
 init_per_group(aevm, Cfg) ->
-    case aect_test_utils:latest_protocol_version() of
-        ?ROMA_PROTOCOL_VSN ->
-            ct:pal("Running tests under Roma protocol"),
-            [{sophia_version, ?SOPHIA_ROMA}, {vm_version, ?VM_AEVM_SOPHIA_1},
-             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, roma} | Cfg];
-        ?MINERVA_PROTOCOL_VSN ->
-            ct:pal("Running tests under Minerva protocol"),
-            [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
-             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, minerva} | Cfg];
-        ?FORTUNA_PROTOCOL_VSN ->
-            ct:pal("Running tests under Fortuna protocol"),
-            [{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
-             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg];
-        ?LIMA_PROTOCOL_VSN ->
-            ct:pal("Running tests under Lima protocol"),
-            [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
-             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg]
-    end;
+    aect_test_utils:init_per_group(aevm, Cfg);
 init_per_group(fate, Cfg) ->
-    case aect_test_utils:latest_protocol_version() of
-        ?LIMA_PROTOCOL_VSN ->
-            [{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
-             {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg];
-        _ ->
-            {skip, fate_not_available}
-    end;
+    aect_test_utils:init_per_group(fate, Cfg);
 init_per_group(protocol_interaction, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
         ?LIMA_PROTOCOL_VSN ->
@@ -506,6 +483,7 @@ end_per_testcase(_TC,_Config) ->
         ?VM_AEVM_SOPHIA_1 -> ?assertMatch(ExpVm1, Res);
         ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res);
         ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res);
+        ?VM_AEVM_SOPHIA_4 -> ?assertMatch(ExpVm3, Res); %% So far no difference
         ?VM_FATE_SOPHIA_1 -> ok
     end).
 
@@ -1511,7 +1489,7 @@ sophia_vm_interaction(Cfg) ->
                       amount => 100,
                       gas_price => MinGasPrice,
                       fee => 1000000 * MinGasPrice},
-    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_AEVM_SOPHIA_3,
+    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_AEVM_SOPHIA_4,
                       amount => 100,
                       gas_price => MinGasPrice,
                       fee => 1000000 * MinGasPrice},
@@ -1578,8 +1556,8 @@ sophia_vm_interaction(Cfg) ->
                      , {RemCRoma, IdCLima}
                      , {RemCMinerva, IdCFortuna}
                      , {RemCMinerva, IdCLima}
-%%                   , {RemCFortuna, IdCLima} TODO: Uncomment when/if this stops working
-                     ]],
+                     , {RemCFortuna, IdCLima}
+                    ]],
     ok.
 
 sophia_aevm_exploits(_Cfg) ->

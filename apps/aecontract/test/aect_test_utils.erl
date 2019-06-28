@@ -497,7 +497,7 @@ init_per_group(aevm, Cfg, Cont) ->
                   {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg]);
         ?LIMA_PROTOCOL_VSN ->
             ct:pal("Running tests under Lima protocol"),
-            Cont([{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
+            Cont([{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
                   {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg])
     end;
 init_per_group(fate, Cfg, Cont) ->
