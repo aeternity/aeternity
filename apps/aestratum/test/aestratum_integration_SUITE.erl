@@ -37,8 +37,6 @@
 -define(STRATUM_PUBKEY_FILE, "sign_key.pub").
 -define(STRATUM_PRIVKEY_FILE, "sign_key").
 
--define(MAX_MINED_BLOCKS, 5).
-
 all() ->
     [{group, all}].
 
@@ -102,10 +100,8 @@ init_per_group(single_client, Cfg) ->
     %% Stratum server starts.
     Fee = 20000 * aec_test_utils:min_gas_price(),
     {ok, Tx} = add_spend_tx(?MINING_NODE, 1000000000000 * aec_test_utils:min_gas_price(), Fee, 1, 10, aecore_suite_utils:patron(), StratumPubKey),
-    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(MNode, [Tx], ?MAX_MINED_BLOCKS),
-
-    {ok, ContractTx, ContractPK} = deploy_payout_contract(StratumKeyPair),
-    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(MNode, [ContractTx], ?MAX_MINED_BLOCKS),
+    {ok, ContractTx, ContractPK} = deploy_payout_contract(StratumKeyPair, 1),
+    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(MNode, [Tx, ContractTx], aec_governance:key_blocks_to_check_difficulty_count() - 2),
 
     %% The stratum app requires the account to exist otherwise it won't start.
     %% So the node is started with stratum disabled, chain is synced, node
@@ -644,13 +640,12 @@ retry_(_, S) ->
     ct:fail({retry_exhausted, S}).
 
 
-deploy_payout_contract(#{pubkey := PubKey, privkey := PrivKey}) ->
-    {value, Account}  = rpc(?MINING_NODE, aec_chain, get_account, [PubKey]),
+deploy_payout_contract(#{pubkey := PubKey, privkey := PrivKey}, Nonce) ->
     {ok, CData}       = rpc(?MINING_NODE, aeb_aevm_abi, create_calldata,
                             ["init", [], [], {tuple, [typerep, {tuple, []}]}]),
     {ok, WrappedTx}   =
         aect_create_tx:new(#{owner_id    => aeser_id:create(account, PubKey),
-                             nonce       => aec_accounts:nonce(Account) + 1,
+                             nonce       => Nonce,
                              code        => aect_sophia:serialize(compiled_contract()),
                              vm_version  => aect_test_utils:latest_sophia_vm_version(),
                              abi_version => aect_test_utils:latest_sophia_abi_version(),
