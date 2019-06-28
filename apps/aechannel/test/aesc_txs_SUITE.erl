@@ -5295,7 +5295,8 @@ compile_contract_vsn(ContractName, SerializationVsn) ->
     {ok, Bytecode}    = aect_test_utils:compile_contract(ContractName),
     Map               = aect_sophia:deserialize(Bytecode),
     ContractSrc       = binary_to_list(ContractBin),
-    {ok, aect_sophia:serialize(Map#{ contract_source => ContractSrc},
+    {ok, aect_sophia:serialize(Map#{ contract_source => ContractSrc,
+                                     compiler_version => maps:get(compiler_version, Map, <<"1.0">>)},
                                SerializationVsn)}.
 
 %% test that a force progress transaction can NOT produce an on-chain
