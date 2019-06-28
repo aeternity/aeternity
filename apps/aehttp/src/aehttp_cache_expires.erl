@@ -31,7 +31,7 @@
 -define(DEFAULT_AGED_BLOCKS_CACHE_TIME, 24*60*60). % Cache aged key blocks for a day by default
 
 -type cowboy_expires_res() :: {calendar:datetime() | undefined, cowboy_req:req(), any()}.
--type expire_type() :: key | micro.
+-type cache_type() :: key | micro.
 -type hash_param() :: key_block_hash | micro_block_hash.
 
 %%%===================================================================
@@ -94,7 +94,7 @@ aged_blocks_cache_time() ->
     aeu_env:user_config_or_env([<<"http">>, <<"cache">>, <<"aged_blocks_cache_time">>],
                                aehttp, [cache, aged_blocks_cache_time], ?DEFAULT_AGED_BLOCKS_CACHE_TIME).
 
--spec handle_block_hash(hash_param(), expire_type(), cowboy_req:req(), any()) -> cowboy_expires_res().
+-spec handle_block_hash(hash_param(), cache_type(), cowboy_req:req(), any()) -> cowboy_expires_res().
 handle_block_hash(Param, CacheType, Req, State) ->
     Hash0 = cowboy_req:binding(hash, Req),
     case aeser_api_encoder:safe_decode(Param, Hash0) of
@@ -104,7 +104,7 @@ handle_block_hash(Param, CacheType, Req, State) ->
         _ -> {undefined, Req, State}
     end.
 
--spec handle_block_height(expire_type(), cowboy_req:req(), any()) -> cowboy_expires_res().
+-spec handle_block_height(cache_type(), cowboy_req:req(), any()) -> cowboy_expires_res().
 handle_block_height(CacheType, Req, State) ->
     Height0 = cowboy_req:binding(height, Req),
     case to_int(Height0) of
@@ -131,23 +131,23 @@ handle_transaction_hash(Req, State) ->
             {undefined, Req, State}
     end.
 
--spec expires_block_height(non_neg_integer(), expire_type()) -> calendar:datetime() | undefined.
-expires_block_height(Height, Type) ->
+-spec expires_block_height(non_neg_integer(), cache_type()) -> calendar:datetime() | undefined.
+expires_block_height(Height, CacheType) ->
     case aehttp_logic:get_key_header_by_height(Height) of
-        {ok, Header} -> expires_datetime(Header, Type);
+        {ok, Header} -> expires_datetime(Header, CacheType);
         _ -> undefined
     end.
 
--spec expires_block_hash(binary(), expire_type()) -> calendar:datetime() | undefined.
-expires_block_hash(Hash, Type) ->
+-spec expires_block_hash(binary(), cache_type()) -> calendar:datetime() | undefined.
+expires_block_hash(Hash, CacheType) ->
     case aehttp_logic:get_header_by_hash(Hash) of
-        {ok, Header} -> expires_datetime(Header, Type);
+        {ok, Header} -> expires_datetime(Header, CacheType);
         _ -> undefined
     end.
 
--spec expires_datetime(aec_headers:header(), expire_type()) -> calendar:datetime().
-expires_datetime(Header, Type) ->
-    unixtime_to_datetime(cache_time(Header, Type)).
+-spec expires_datetime(aec_headers:header(), cache_type()) -> calendar:datetime().
+expires_datetime(Header, CacheType) ->
+    unixtime_to_datetime(cache_time(Header, CacheType)).
 
 -spec cache_time(aec_headers:header(), key | micro ) -> non_neg_integer().
 cache_time(Header, key) ->
@@ -193,10 +193,10 @@ top_key_block_header() ->
     aec_blocks:to_key_header(Block).
 
 -spec expected_next_block_time(key | micro) -> non_neg_integer().
-expected_next_block_time(Type) ->
+expected_next_block_time(CacheType) ->
     TopHeader = aec_chain:top_header(),
     BlockTimestamp = aec_headers:time_in_secs(TopHeader),
-    Rate = aeu_time:msecs_to_secs(block_rate(Type)),
+    Rate = aeu_time:msecs_to_secs(block_rate(CacheType)),
     BlockTimestamp + Rate.
 
 -spec block_rate(key|micro) -> non_neg_integer().
