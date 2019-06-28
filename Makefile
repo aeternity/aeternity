@@ -242,7 +242,7 @@ ct-mnesia-rocksdb: internal-ct
 stratum-client-internal-build:
 	@(cd ./_build/$(KIND)/ && \
 	  if [ ! -d aestratum_client ]; then \
-	      git clone --branch v0.1 --depth 1 https://github.com/aeternity/aestratum_client; \
+	      git clone --branch v0.1.1 --depth 1 https://github.com/aeternity/aestratum_client; \
 	  fi && \
 	  cd aestratum_client && \
 	  $(REBAR) as $(KIND) compile -d && \
