@@ -205,12 +205,11 @@ block_rate(key) ->
 block_rate(micro) ->
     aec_governance:micro_block_cycle().
 
--spec to_int(binary()) -> integer() | error.
+-spec to_int(binary()) -> {ok, integer()} | error.
 to_int(Data) ->
     try {ok, binary_to_integer(Data)}
     catch
-        error:badarg ->
-            error
+        error:badarg -> error
     end.
 
 -spec unixtime_to_datetime(non_neg_integer()) -> calendar:datetime().

@@ -156,6 +156,7 @@ etag_generation_hash(Hash) ->
         _ ->
             undefined
     end.
+
 -spec etag_generation(aec_blocks:key_block(), [aec_blocks:micro_block()]) -> binary().
 etag_generation(KeyBlock, []) ->
     etag_block(KeyBlock);
