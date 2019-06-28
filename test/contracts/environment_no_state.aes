@@ -42,7 +42,7 @@ contract Environment =
   function get_balance(acct : address) : int = Chain.balance(acct)
 
   // Block hash
-  function block_hash(height : int) : int = Chain.block_hash(height)
+  function block_hash(height : int) = Chain.block_hash(height)
 
   // Coinbase
   function beneficiary() : address = Chain.coinbase
