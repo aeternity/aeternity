@@ -21,13 +21,10 @@ all() ->
       execute_identity_fun_from_sophia_file ].
 
 execute_identity_fun_from_sophia_file(_Cfg) ->
-    CodeDir = filename:join(code:lib_dir(aevm), "../../extras/test/contracts"),
-    FileName = filename:join(CodeDir, "identity.aes"),
-    {ok, ContractBin} = file:read_file(FileName),
-    Contract = binary_to_list(ContractBin),
-    {ok, Compiled} = aeso_compiler:from_string(Contract, [pp_icode, pp_assembler]),
+    {ok, ContractBin} = aect_test_utils:read_contract(identity),
+    {ok, Compiled}    = aect_test_utils:compile_contract(identity),
     #{ byte_code := Code,
-       type_info := TypeInfo} = Compiled,
+       type_info := TypeInfo} = aect_sophia:deserialize(Compiled),
     {ok, ArgType} = aeb_aevm_abi:arg_typerep_from_function(<<"main">>, TypeInfo),
     CallDataType = {tuple, [word, ArgType]},
     OutType = word,
