@@ -27,8 +27,10 @@
             %% Enable setting up node with "test" rebar profile.
             error:undef -> ok
         end).
+-define(ST, erlang:get_stacktrace()).
 -else.
 -define(TEST_LOG(Format, Data), ok).
+-define(ST, ok).
 -endif.
 
 -spec call(Gas::non_neg_integer(), Value :: non_neg_integer(), Data::binary(), StateIn) ->
@@ -98,9 +100,9 @@ call_(Gas, Value, Data, StateIn) ->
         {error, _} = OuterErr ->
             OuterErr
     catch _T:_Err ->
+            _ST = ?ST,
             ?TEST_LOG("Primop illegal call ~p:~p:~p~n~p:~p(~p, ~p, State)",
-                      [_T, _Err,
-                       erlang:get_stacktrace(), %% Absent from non-test bytecode.
+                      [_T, _Err,_ST,
                        ?MODULE, ?FUNCTION_NAME, Value, Data]),
             %% TODO: Better error for illegal call.
             {error, illegal_primop_call}
@@ -140,10 +142,20 @@ types(?PRIM_CALL_AENS_RESOLVE, HeapValue, Store,_State) ->
     {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
     {ok, {_Prim, _, _, OutType}} = aeb_heap:from_binary(T, Bin),
     {[string, string, typerep], option_t(OutType)};
-types(?PRIM_CALL_AENS_REVOKE,_HeapValue,_Store,_State) ->
-    {[word, word, sign_t()], tuple0_t()};
-types(?PRIM_CALL_AENS_TRANSFER,_HeapValue,_Store,_State) ->
-    {[word, word, word, sign_t()], tuple0_t()};
+types(?PRIM_CALL_AENS_REVOKE,_HeapValue,_Store, State) ->
+    case aevm_eeevm_state:vm_version(State) < ?VM_AEVM_SOPHIA_4 of
+        true ->
+            {[word, word, sign_t()], tuple0_t()};
+        false ->
+            {[word, string, sign_t()], tuple0_t()}
+    end;
+types(?PRIM_CALL_AENS_TRANSFER,_HeapValue,_Store, State) ->
+    case aevm_eeevm_state:vm_version(State) < ?VM_AEVM_SOPHIA_4 of
+        true ->
+            {[word, word, word, sign_t()], tuple0_t()};
+        false ->
+            {[word, word, string, sign_t()], tuple0_t()}
+    end;
 %%types(?PRIM_CALL_AENS_UPDATE,_HeapValue,_Store,_State) ->
 %%TODO: Not implemented
 types(?PRIM_CALL_MAP_DELETE,_HeapValue,_Store,_State) ->
@@ -532,24 +544,44 @@ aens_call_claim(Data, #chain{api = API, state = State} = Chain) ->
         {error, _} = Err -> Err
     end.
 
-aens_call_transfer(Data, #chain{api = API, state = State} = Chain) ->
-    [From, To, Hash, Sign0] = get_args([word, word, word, sign_t()], Data),
-    case API:aens_transfer_tx(<<From:256>>, <<To:256>>, <<Hash:256>>, State) of
+aens_call_transfer(Data, #chain{vm_version = VMVersion} = Chain) when VMVersion < ?VM_AEVM_SOPHIA_4 ->
+    [From, To, Hash, Sign] = get_args([word, word, word, sign_t()], Data),
+    aens_call_transfer_common(<<From:256>>, <<To:256>>, <<Hash:256>>, to_sign(Sign), Chain);
+aens_call_transfer(Data, #chain{} = Chain) ->
+    [From, To, Name, Sign] = get_args([word, word, string, sign_t()], Data),
+    case aens:get_name_hash(Name) of
+        {ok, Hash} ->
+            aens_call_transfer_common(<<From:256>>, <<To:256>>, Hash, to_sign(Sign), Chain);
+        {error, _} = Err ->
+            Err
+    end.
+
+aens_call_transfer_common(From, To, Hash, Sign, #chain{api = API, state = State} = Chain) ->
+    case API:aens_transfer_tx(From, To, Hash, State) of
         {ok, Tx} ->
-            Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_transfer(Tx, to_sign(Sign0), ChainState) end,
+            Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_transfer(Tx, Sign, ChainState) end,
             no_dynamic_gas(fun() -> cast_chain(Callback, Chain) end);
         {error, _} = Err -> Err
     end.
 
-aens_call_revoke(Data, #chain{api = API, state = State} = Chain) ->
-    [Addr, Hash, Sign0] = get_args([word, word, sign_t()], Data),
-    case API:aens_revoke_tx(<<Addr:256>>, <<Hash:256>>, State) of
-        {ok, Tx} ->
-            Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_revoke(Tx, to_sign(Sign0), ChainState) end,
-            no_dynamic_gas(fun() -> cast_chain(Callback, Chain) end);
+aens_call_revoke(Data, #chain{vm_version = VMVersion} = Chain) when VMVersion < ?VM_AEVM_SOPHIA_4 ->
+    [Addr, Hash, Sign] = get_args([word, word, sign_t()], Data),
+    aens_call_revoke_common(<<Addr:256>>, <<Hash:256>>, to_sign(Sign), Chain);
+aens_call_revoke(Data, #chain{} = Chain) ->
+    [Addr, Name, Sign] = get_args([word, string, sign_t()], Data),
+    case aens:get_name_hash(Name) of
+        {ok, Hash} ->
+            aens_call_revoke_common(<<Addr:256>>, Hash, to_sign(Sign), Chain);
         {error, _} = Err -> Err
     end.
 
+aens_call_revoke_common(Addr, Hash, Sign, #chain{api = API, state = State} = Chain) ->
+    case API:aens_revoke_tx(Addr, Hash, State) of
+        {ok, Tx} ->
+            Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_revoke(Tx, Sign, ChainState) end,
+            no_dynamic_gas(fun() -> cast_chain(Callback, Chain) end);
+        {error, _} = Err -> Err
+    end.
 
 
 %% ------------------------------------------------------------------
