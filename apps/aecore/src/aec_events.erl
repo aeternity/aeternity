@@ -26,6 +26,7 @@
                | tx_created
                | tx_received
                | candidate_block
+               | stratum_new_candidate
                | peers
                | metric
                | chain_sync
