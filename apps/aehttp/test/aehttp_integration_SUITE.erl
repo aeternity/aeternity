@@ -6057,6 +6057,13 @@ cache_headers(_Config) ->
 
     true = proplists:is_defined("expires", Headers),
     true = proplists:is_defined("etag", Headers),
+    Blocktime = case get_top_sut() of
+        {ok, 200, #{<<"key_block">> := Block}} -> maps:get(<<"time">>, Block);
+        {ok, 200, #{<<"micro_block">> := MicroBlock}} -> maps:get(<<"time">>, MicroBlock)
+    end,
+    ExpiresStr = proplists:get_value("expires", Headers),
+    Expires = http_datetime_to_unixtime(ExpiresStr) * 1000, % to msecs
+    true = Expires - Blocktime =< aec_governance:micro_block_cycle(),
     ok.
 
 %% ============================================================
@@ -6796,3 +6803,8 @@ to_binary(I) when is_integer(I) ->
     integer_to_binary(I);
 to_binary([_|_] = L) ->
     iolist_to_binary([to_binary(X) || X <- L]).
+
+http_datetime_to_unixtime(S) ->
+    BaseSecs = calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}}),
+    ExpiresDt = httpd_util:convert_request_date(S),
+    calendar:datetime_to_gregorian_seconds(ExpiresDt) - BaseSecs.
