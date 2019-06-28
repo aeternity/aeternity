@@ -442,7 +442,7 @@ client_node_config(Account) ->
             <<"exec_group">> => <<"aecuckoo">>,
             <<"extra_args">> => <<"">>,
             <<"hex_enc_hdr">> => false,
-            <<"repeats">> => 100,
+            <<"repeats">> => 1000,
             <<"edge_bits">> => 15}]
      }.
 
