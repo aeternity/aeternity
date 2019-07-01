@@ -1167,7 +1167,7 @@ aens_update(_EngineState) ->
 
 aens_transfer(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     %% TODO: This should be changed to work on the string instead.
-    {[Signature, From, To, NameHash], ES1} =
+    {[Signature, From, To, NameString], ES1} =
         get_op_args([Arg0, Arg1, Arg2, Arg3], EngineState),
     if
         not ?IS_FATE_BYTES(64, Signature) ->
@@ -1176,13 +1176,13 @@ aens_transfer(Arg0, Arg1, Arg2, Arg3, EngineState) ->
             aefa_fate:abort({value_does_not_match_type, From, address}, ES1);
         not ?IS_FATE_ADDRESS(To) ->
             aefa_fate:abort({value_does_not_match_type, To, address}, ES1);
-        not ?IS_FATE_BYTES(32, NameHash) ->
-            aefa_fate:abort({value_does_not_match_type, NameHash, bytes32}, ES1);
+        not ?IS_FATE_STRING(NameString) ->
+            aefa_fate:abort({value_does_not_match_type, NameString, string}, ES1);
         true ->
             ok
     end,
+    HashBin = hash_name(aens_transfer, NameString, ES1),
     ?FATE_BYTES(SignBin) = Signature,
-    ?FATE_BYTES(HashBin) = NameHash,
     ?FATE_ADDRESS(FromPubkey) = From,
     ?FATE_ADDRESS(ToPubkey) = To,
     ES2 = check_delegation_signature(aens_transfer, {FromPubkey, HashBin}, SignBin, ES1),
@@ -1195,20 +1195,20 @@ aens_transfer(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     end.
 
 aens_revoke(Arg0, Arg1, Arg2, EngineState) ->
-    {[Signature, Account, NameHash], ES1} =
+    {[Signature, Account, NameString], ES1} =
         get_op_args([Arg0, Arg1, Arg2], EngineState),
     if
         not ?IS_FATE_BYTES(64, Signature) ->
             aefa_fate:abort({value_does_not_match_type, Signature, bytes64}, ES1);
         not ?IS_FATE_ADDRESS(Account) ->
             aefa_fate:abort({value_does_not_match_type, Account, address}, ES1);
-        not ?IS_FATE_BYTES(32, NameHash) ->
-            aefa_fate:abort({value_does_not_match_type, NameHash, name}, ES1);
+        not ?IS_FATE_STRING(NameString) ->
+            aefa_fate:abort({value_does_not_match_type, NameString, name}, ES1);
         true ->
             ok
     end,
+    HashBin = hash_name(aens_revoke, NameString, ES1),
     ?FATE_BYTES(SignBin) = Signature,
-    ?FATE_BYTES(HashBin) = NameHash,
     ?FATE_ADDRESS(Pubkey) = Account,
     ES2 = check_delegation_signature(aens_revoke, {Pubkey, HashBin}, SignBin, ES1),
     API = aefa_engine_state:chain_api(ES2),
@@ -1217,6 +1217,14 @@ aens_revoke(Arg0, Arg1, Arg2, EngineState) ->
             aefa_engine_state:set_chain_api(API1, ES2);
         {error, What} ->
             aefa_fate:abort({primop_error, aens_revoke, What}, ES2)
+    end.
+
+hash_name(Primop, NameString, ES) ->
+    case aens_utils:to_ascii(NameString) of
+        {ok, NameAscii} ->
+            aens_hash:name_hash(NameAscii);
+        {error, What} ->
+            aefa_fate:abort({primop_error, Primop, What}, ES)
     end.
 
 check_delegation_signature(Type, Data, Signature, ES) ->

@@ -402,7 +402,7 @@ init_tests(Release, VMName) ->
                 {lima,    {IfAEVM(?FORTUNA_PROTOCOL_VSN, ?LIMA_PROTOCOL_VSN),
                            IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_LIMA_FATE),
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
-                           IfAEVM(?VM_AEVM_SOPHIA_3, ?VM_FATE_SOPHIA_1)}}],
+                           IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_1)}}],
     {Proto, Sophia, ABI, VM} = proplists:get_value(Release, Versions),
     meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> Proto end),
     Cfg = [{sophia_version, Sophia}, {vm_version, VM},
@@ -410,32 +410,9 @@ init_tests(Release, VMName) ->
     init_per_testcase_common(Cfg).
 
 init_per_group(aevm, Cfg) ->
-    case aect_test_utils:latest_protocol_version() of
-        ?ROMA_PROTOCOL_VSN ->
-            ct:pal("Running tests under Roma protocol"),
-            [{sophia_version, ?SOPHIA_ROMA}, {vm_version, ?VM_AEVM_SOPHIA_1},
-             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, roma} | Cfg];
-        ?MINERVA_PROTOCOL_VSN ->
-            ct:pal("Running tests under Minerva protocol"),
-            [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
-             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, minerva} | Cfg];
-        ?FORTUNA_PROTOCOL_VSN ->
-            ct:pal("Running tests under Fortuna protocol"),
-            [{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
-             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg];
-        ?LIMA_PROTOCOL_VSN ->
-            ct:pal("Running tests under Lima protocol"),
-            [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
-             {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg]
-    end;
+    aect_test_utils:init_per_group(aevm, Cfg, fun(X) -> X end);
 init_per_group(fate, Cfg) ->
-    case aect_test_utils:latest_protocol_version() of
-        ?LIMA_PROTOCOL_VSN ->
-            [{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
-             {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg];
-        _ ->
-            {skip, fate_not_available}
-    end;
+    aect_test_utils:init_per_group(fate, Cfg, fun(X) -> X end);
 init_per_group(protocol_interaction, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
         ?LIMA_PROTOCOL_VSN ->
@@ -506,6 +483,7 @@ end_per_testcase(_TC,_Config) ->
         ?VM_AEVM_SOPHIA_1 -> ?assertMatch(ExpVm1, Res);
         ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res);
         ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res);
+        ?VM_AEVM_SOPHIA_4 -> ?assertMatch(ExpVm3, Res); %% So far no difference
         ?VM_FATE_SOPHIA_1 -> ok
     end).
 
@@ -1511,7 +1489,7 @@ sophia_vm_interaction(Cfg) ->
                       amount => 100,
                       gas_price => MinGasPrice,
                       fee => 1000000 * MinGasPrice},
-    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_AEVM_SOPHIA_3,
+    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_AEVM_SOPHIA_4,
                       amount => 100,
                       gas_price => MinGasPrice,
                       fee => 1000000 * MinGasPrice},
@@ -1578,8 +1556,8 @@ sophia_vm_interaction(Cfg) ->
                      , {RemCRoma, IdCLima}
                      , {RemCMinerva, IdCFortuna}
                      , {RemCMinerva, IdCLima}
-%%                   , {RemCFortuna, IdCLima} TODO: Uncomment when/if this stops working
-                     ]],
+                     , {RemCFortuna, IdCLima}
+                    ]],
     ok.
 
 sophia_aevm_exploits(_Cfg) ->
@@ -3465,7 +3443,7 @@ sophia_signatures_oracles(_Cfg) ->
 
     ok.
 
-sophia_signatures_aens(_Cfg) ->
+sophia_signatures_aens(Cfg) ->
     state(aect_test_utils:new_state()),
     %% AENS transactions from contract - using 3rd party account
     Acc             = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
@@ -3476,8 +3454,13 @@ sophia_signatures_aens(_Cfg) ->
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
     NHash           = aens_hash:name_hash(NameAscii),
+    NameArg = case ?config(vm_version, Cfg) of
+                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_4 -> Name1;
+                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ?hsh(NHash);
+                  VMVersion when ?IS_FATE_SOPHIA(VMVersion) -> Name1
+              end,
     NameAccSig      = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
-    {ok, NameHash} = aens:get_name_hash(<<"bla.test">>),
+    {ok, NameHash}  = aens:get_name_hash(<<"bla.test">>),
     NameSig         = sign(<<NameAcc/binary, NameHash/binary, Ct/binary>>, NameAcc),
     AccSig          = sign(<<Acc/binary, NameHash/binary, Ct/binary>>, Acc),
     APubkey  = 1,
@@ -3499,26 +3482,26 @@ sophia_signatures_aens(_Cfg) ->
                    BadClaim),
     {} = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, NameSig}, #{ height => 11 }),
     NonceAfterClaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
-    BadTransfer = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, ?hsh(NHash), AccSig},   #{ height => 12 }),
+    BadTransfer = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, NameArg, AccSig},   #{ height => 12 }),
     ?assertMatchVM({error, <<"out_of_gas">>},
                    {error,<<"Error in aens_transfer: bad_signature">>},
                    BadTransfer),
-    {} = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, ?hsh(NHash), NameSig},   #{ height => 12 }),
+    {} = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, NameArg, NameSig},   #{ height => 12 }),
     NonceAfterTransfer = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
     ok = ?call(aens_update, Acc, NHash, Pointers),
 
     {some, Oracle} = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word}, {Name1, <<"oracle_pubkey">>}),
     ?assertMatchVM(OPubkey, {oracle, OPubkey}, Oracle),
-    BadRevoke1 = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc, ?hsh(NHash), NameSig}, #{ height => 13 }),
+    BadRevoke1 = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc, NameArg, NameSig}, #{ height => 13 }),
     ?assertMatchVM({error, <<"out_of_gas">>},
                    {error,<<"Error in aens_revoke: name_not_owned">>},
                    BadRevoke1),
-    BadRevoke2 = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {Acc, ?hsh(NHash), NameSig}, #{ height => 13 }),
+    BadRevoke2 = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {Acc, NameArg, NameSig}, #{ height => 13 }),
     ?assertMatchVM({error, <<"out_of_gas">>},
                    {error,<<"Error in aens_revoke: bad_signature">>},
                    BadRevoke2),
     NonceBeforeRevoke =  aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
-    {} = ?call(call_contract, NameAcc, Ct, signedRevoke, {tuple, []}, {Acc, ?hsh(NHash), AccSig}, #{ height => 13 }),
+    {} = ?call(call_contract, NameAcc, Ct, signedRevoke, {tuple, []}, {Acc, NameArg, AccSig}, #{ height => 13 }),
     NonceAfterRevoke =  aec_accounts:nonce(aect_test_utils:get_account(Acc, state())),
 
     %% In Roma, nonce are bumped for the delegated name service primops, but after Roma it isn't
@@ -4959,7 +4942,7 @@ sophia_aens_resolve(_Cfg) ->
 
     ok.
 
-sophia_aens_transactions(_Cfg) ->
+sophia_aens_transactions(Cfg) ->
     %% AENS transactions from contract
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
@@ -4978,26 +4961,31 @@ sophia_aens_transactions(_Cfg) ->
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
     NHash           = aens_hash:name_hash(NameAscii),
+    NameArg = case ?config(vm_version, Cfg) of
+                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_4 -> Name1;
+                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ?hsh(NHash);
+                  VMVersion when ?IS_FATE_SOPHIA(VMVersion) -> Name1
+              end,
     NonceBeforePreclaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, ?hsh(CHash)},        #{ height => 10 }),
     NonceBeforeClaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1}, #{ height => 11 }),
     NonceBeforeTransfer = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     StateBeforeTransfer = state(),
-    {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, ?hsh(NHash)},   #{ height => 12 }),
+    {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, NameArg},   #{ height => 12 }),
     NonceAfterTransfer = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     ok = ?call(aens_update, Acc, NHash, Pointers),
 
     {some, Oracle} = ?call(call_contract, Acc, Ct, resolve_oracle, {option, word}, {Name1, <<"oracle_pubkey">>}),
     ?assertMatchVM(OPubkey, {oracle, OPubkey}, Oracle),
-    BadRevoke = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, ?hsh(NHash)}, #{ height => 13 }),
+    BadRevoke = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NameArg}, #{ height => 13 }),
     ?assertMatchVM({error, <<"out_of_gas">>},
                    {error,<<"Error in aens_revoke: name_not_owned">>}, BadRevoke),
 
     %% Roll back the transfer and check that revoke can be called
     state(StateBeforeTransfer),
     NonceBeforeRevoke = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
-    {} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, ?hsh(NHash)}, #{ height => 13 }),
+    {} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NameArg}, #{ height => 13 }),
     NonceAfterRevoke = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
 
     %% In Roma, nonce are bumped for all aens primops, but after Roma it isn't.

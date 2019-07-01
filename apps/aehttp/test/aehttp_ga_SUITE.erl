@@ -109,7 +109,7 @@ init_per_group(VMGroup, Config) when VMGroup == aevm; VMGroup == fate ->
             [{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
              {abi_version, ?ABI_AEVM_SOPHIA_1} | Config];
         ?LIMA_PROTOCOL_VSN when VMGroup == aevm ->
-            [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
+            [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
              {abi_version, ?ABI_AEVM_SOPHIA_1} | Config];
         ?FORTUNA_PROTOCOL_VSN when VMGroup == fate ->
             {skip, generalized_accounts_with_fate_not_in_fortuna};

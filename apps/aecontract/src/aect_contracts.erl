@@ -112,13 +112,16 @@
 -spec is_legal_call(FromVersion :: version(), ToVersion :: version()) ->
                           boolean().
 %% NOTE: Keep this up to date if the different sophia vms gets incompatible.
-is_legal_call(X, X) -> true;
-is_legal_call(#{vm := ?VM_AEVM_SOPHIA_2, abi := X},
-              #{vm := ?VM_AEVM_SOPHIA_1, abi := X}) -> true;
-is_legal_call(#{vm := ?VM_AEVM_SOPHIA_3, abi := X},
-              #{vm := ?VM_AEVM_SOPHIA_2, abi := X}) -> true;
-is_legal_call(#{vm := ?VM_AEVM_SOPHIA_3, abi := X},
-              #{vm := ?VM_AEVM_SOPHIA_1, abi := X}) -> true;
+is_legal_call(#{vm := SophiaVM1, abi := X},
+              #{vm := SophiaVM2, abi := X}) when ?IS_AEVM_SOPHIA(SophiaVM1),
+                                                 ?IS_AEVM_SOPHIA(SophiaVM2),
+                                                 SophiaVM1 >= SophiaVM2 ->
+    true;
+is_legal_call(#{vm := SophiaVM1, abi := X},
+              #{vm := SophiaVM2, abi := X}) when ?IS_FATE_SOPHIA(SophiaVM1),
+                                                 ?IS_FATE_SOPHIA(SophiaVM2),
+                                                 SophiaVM1 >= SophiaVM2 ->
+    true;
 is_legal_call(_, _) -> false.
 
 -spec is_legal_version_at_height(vm_usage_type(), version(), height()) -> boolean().
@@ -145,14 +148,21 @@ is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_2, abi := ?ABI_AEVM
         ?ROMA_PROTOCOL_VSN    -> false;
         ?MINERVA_PROTOCOL_VSN -> true;
         ?FORTUNA_PROTOCOL_VSN -> true;
-        ?LIMA_PROTOCOL_VSN    -> false %% TODO: Revise this before release
+        ?LIMA_PROTOCOL_VSN    -> false
     end;
 is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_3, abi := ?ABI_AEVM_SOPHIA_1}, ProtocolVersion) ->
     case ProtocolVersion of
         ?ROMA_PROTOCOL_VSN    -> false;
         ?MINERVA_PROTOCOL_VSN -> false;
         ?FORTUNA_PROTOCOL_VSN -> true;
-        ?LIMA_PROTOCOL_VSN    -> true %% TODO: If you bump to VM_AEVM_SOPHIA_3 please turn this off!
+        ?LIMA_PROTOCOL_VSN    -> false
+    end;
+is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_4, abi := ?ABI_AEVM_SOPHIA_1}, ProtocolVersion) ->
+    case ProtocolVersion of
+        ?ROMA_PROTOCOL_VSN    -> false;
+        ?MINERVA_PROTOCOL_VSN -> false;
+        ?FORTUNA_PROTOCOL_VSN -> false;
+        ?LIMA_PROTOCOL_VSN    -> true %% TODO: If you bump to VM_AEVM_SOPHIA_4 please turn this off!
     end;
 is_legal_version_in_protocol(create, #{vm := ?VM_FATE_SOPHIA_1, abi := ?ABI_FATE_SOPHIA_1}, ProtocolVersion) ->
     case ProtocolVersion of
@@ -163,18 +173,26 @@ is_legal_version_in_protocol(create, #{vm := ?VM_FATE_SOPHIA_1, abi := ?ABI_FATE
     end;
 is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
     case ProtocolVersion of
-        ?ROMA_PROTOCOL_VSN    when VMVersion =:= ?VM_AEVM_SOPHIA_1 -> true;
+        ?ROMA_PROTOCOL_VSN    when VMVersion =:= ?VM_AEVM_SOPHIA_1 ->
+            true;
         ?MINERVA_PROTOCOL_VSN when VMVersion =:= ?VM_AEVM_SOPHIA_1;
-                                   VMVersion =:= ?VM_AEVM_SOPHIA_2 -> true;
+                                   VMVersion =:= ?VM_AEVM_SOPHIA_2 ->
+            true;
         ?FORTUNA_PROTOCOL_VSN when VMVersion =:= ?VM_AEVM_SOPHIA_1;
                                    VMVersion =:= ?VM_AEVM_SOPHIA_2;
-                                   VMVersion =:= ?VM_AEVM_SOPHIA_3 -> true;
+                                   VMVersion =:= ?VM_AEVM_SOPHIA_3 ->
+            true;
         ?LIMA_PROTOCOL_VSN    when VMVersion =:= ?VM_AEVM_SOPHIA_1;
                                    VMVersion =:= ?VM_AEVM_SOPHIA_2;
-                                   VMVersion =:= ?VM_AEVM_SOPHIA_3 -> true;
-        ?LIMA_PROTOCOL_VSN    when VMVersion =:= ?VM_FATE_SOPHIA_1 -> ?VM_FATE_SOPHIA_1_enabled; %% TODO: Revise this before release
-        _                     when VMVersion =:= ?VM_AEVM_SOLIDITY_1 -> ?VM_AEVM_SOLIDITY_1_enabled;
-        _ -> false
+                                   VMVersion =:= ?VM_AEVM_SOPHIA_3;
+                                   VMVersion =:= ?VM_AEVM_SOPHIA_4 ->
+            true;
+        ?LIMA_PROTOCOL_VSN    when VMVersion =:= ?VM_FATE_SOPHIA_1 ->
+            ?VM_FATE_SOPHIA_1_enabled;
+        _                     when VMVersion =:= ?VM_AEVM_SOLIDITY_1 ->
+            ?VM_AEVM_SOLIDITY_1_enabled;
+        _ ->
+            false
     end;
 is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_NO_VM}, _ProtocolVersion) ->
     true;
@@ -497,6 +515,7 @@ is_legal_version(#{vm := VM, abi := ABI}) ->
         {?VM_AEVM_SOPHIA_1,   ?ABI_AEVM_SOPHIA_1} -> true;
         {?VM_AEVM_SOPHIA_2,   ?ABI_AEVM_SOPHIA_1} -> true;
         {?VM_AEVM_SOPHIA_3,   ?ABI_AEVM_SOPHIA_1} -> true;
+        {?VM_AEVM_SOPHIA_4,   ?ABI_AEVM_SOPHIA_1} -> true;
         {?VM_FATE_SOPHIA_1,   ?ABI_FATE_SOPHIA_1} -> ?VM_FATE_SOPHIA_1_enabled;
         {?VM_AEVM_SOLIDITY_1, ?ABI_SOLIDITY_1}    -> ?VM_AEVM_SOLIDITY_1_enabled;
         _                                         -> false
