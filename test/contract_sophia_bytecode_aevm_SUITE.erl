@@ -405,13 +405,26 @@ environment(_Cfg) ->
     GasPrice = Call(call_gas_price),
 
     CallerBalance = Call1(get_balance, encode_address(account_pubkey, Caller)),
-    0             = Call1(block_hash, integer_to_list(BlockHeight)),
-    0             = Call1(block_hash, integer_to_list(BlockHeight + 1)),
-    0             = Call1(block_hash, integer_to_list(BlockHeight - 257)),
-    BlockHashHeight1 = BlockHeight - 1,
-    BlockHashHeight1 = Call1(block_hash, integer_to_list(BlockHashHeight1)),
-    BlockHashHeight2 = BlockHeight - 256,
-    BlockHashHeight2 = Call1(block_hash, integer_to_list(BlockHashHeight2)),
+    case aect_test_utils:latest_sophia_version() < ?SOPHIA_FORTUNA of
+        true ->
+            0             = Call1(block_hash, integer_to_list(BlockHeight)),
+            0             = Call1(block_hash, integer_to_list(BlockHeight + 1)),
+            0             = Call1(block_hash, integer_to_list(BlockHeight - 257)),
+            BlockHashHeight1 = BlockHeight - 1,
+            BlockHashHeight1 = Call1(block_hash, integer_to_list(BlockHashHeight1)),
+            BlockHashHeight2 = BlockHeight - 256,
+            BlockHashHeight2 = Call1(block_hash, integer_to_list(BlockHashHeight2));
+        false ->
+            CallX = fun(Fun, Arg) -> successful_call_(Address, {option, word}, Fun, [Arg], State, Options) end,
+            none             = CallX(block_hash, integer_to_list(BlockHeight)),
+            none             = CallX(block_hash, integer_to_list(BlockHeight + 1)),
+            none             = CallX(block_hash, integer_to_list(BlockHeight - 257)),
+            BlockHashHeight1 = BlockHeight - 1,
+            {some, BlockHashHeight1} = CallX(block_hash, integer_to_list(BlockHashHeight1)),
+            BlockHashHeight2 = BlockHeight - 256,
+            {some, BlockHashHeight2} = CallX(block_hash, integer_to_list(BlockHashHeight2))
+    end,
+
     Coinbase      = Call(coinbase),
     Timestamp     = Call(timestamp),
     BlockHeight   = Call(block_height),

@@ -35,6 +35,7 @@
         , encode_call_data/3
         , encode_call_data/4
         , decode_data/2
+        , decode_call_result/4
         , assert_state_equal/2
         , get_oracle_queries/2
         , dummy_bytecode/0
@@ -45,6 +46,15 @@
         , latest_sophia_contract_version/0
         ]).
 
+-export([ abi_version/0
+        , backend/0
+        , init_per_group/3
+        , setup_testcase/1
+        , sophia_version/0
+        , vm_version/0
+        ]).
+
+-include_lib("common_test/include/ct.hrl").
 -include("../include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("include/aect_sophia_vsn.hrl").
@@ -100,7 +110,7 @@ latest_sophia_vm_version() ->
         ?ROMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_1;
         ?MINERVA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_2;
         ?FORTUNA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_3;
-        ?LIMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_3
+        ?LIMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_4
     end.
 
 latest_sophia_abi_version() ->
@@ -298,7 +308,7 @@ compile(?SOPHIA_LIMA_FATE, File) ->
         {ok, Map} -> {ok, aect_sophia:serialize(Map)};
         {error, E} = Err -> io:format("~s\n", [E]), Err
     end;
-compile(?SOPHIA_LIMA_AEVM, File) ->
+compile(SophiaVsn, File) when SophiaVsn == ?SOPHIA_LIMA_AEVM ->
     {ok, ContractBin} = file:read_file(File),
     case aeso_compiler:from_string(binary_to_list(ContractBin), []) of
         {ok, Map}        -> {ok, aect_sophia:serialize(Map)};
@@ -333,7 +343,7 @@ compiler_cmd(Vsn) ->
     case Vsn of
         ?SOPHIA_ROMA    -> filename:join([BaseDir, "v1.4.0", "aesophia_cli"]);
         ?SOPHIA_MINERVA -> filename:join([BaseDir, "v2.1.0", "aesophia_cli"]);
-        ?SOPHIA_FORTUNA -> filename:join([BaseDir, "v3.0.0", "aesophia_cli"])
+        ?SOPHIA_FORTUNA -> filename:join([BaseDir, "v3.2.0", "aesophia_cli"])
     end.
 
 tempfile_name(Prefix, Opts) ->
@@ -365,7 +375,8 @@ encode_call_data(Code, Fun, Args) ->
 
 encode_call_data(Vsn, Code, Fun, Args) when Vsn == ?SOPHIA_LIMA_AEVM ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
-                                      lists:map(fun to_str/1, Args))
+                                      lists:map(fun to_str/1, Args),
+                                      [{backend, backend()}])
     catch _T:_E ->
         {error, <<"bad argument">>}
     end;
@@ -388,6 +399,20 @@ encode_call_data(Vsn, Code, Fun, Args0) ->
         cleanup_tempfiles()
     end.
 
+decode_call_result(Code, Fun, Res, Value) ->
+    decode_call_result(backend(), Code, Fun, Res, Value).
+
+decode_call_result(Backend, Code, Fun, Res, EValue = <<"cb_", _/binary>>) ->
+    case aeser_api_encoder:safe_decode(contract_bytearray, EValue) of
+        {ok, Value} ->
+            decode_call_result(Backend, Code, Fun, Res, Value);
+        Err = {error, _} ->
+            Err
+    end;
+decode_call_result(Backend, Code, Fun, Res, Value) ->
+    {ok, ValExpr} = aeso_compiler:to_sophia_value(Code, Fun, Res, Value, [{backend, Backend}]),
+    aeso_aci:json_encode_expr(ValExpr).
+
 decode_data(Type, <<"cb_", _/binary>> = EncData) ->
     case aeser_api_encoder:safe_decode(contract_bytearray, EncData) of
         {ok, Data} ->
@@ -398,11 +423,14 @@ decode_data(Type, <<"cb_", _/binary>> = EncData) ->
 decode_data(Type, Data) ->
     decode_data_(Type, Data).
 
-decode_data_(fate, Data) ->
+decode_data_(Type, Data) ->
+    decode_data_(backend(), Type, Data).
+
+decode_data_(fate, _Type, Data) ->
     try {ok, aefate_test_utils:decode(aeb_fate_encoding:deserialize(Data))}
     catch _:_ -> {error, <<"bad fate data">>}
     end;
-decode_data_(Type, Data) ->
+decode_data_(aevm, Type, Data) ->
     case get_type(Type) of
         {ok, SophiaType} ->
             try aeb_heap:from_binary(SophiaType, Data) of
@@ -448,3 +476,74 @@ get_oracle_queries(OracleId, State) ->
 
 get_oracle_queries(OracleId, Max, State) ->
     aeo_state_tree:get_oracle_queries(OracleId, '$first', all, Max, aec_trees:oracles(trees(State))).
+
+%%%===================================================================
+%%% Common test common stuff
+%%%===================================================================
+
+init_per_group(aevm, Cfg, Cont) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?ROMA_PROTOCOL_VSN ->
+            ct:pal("Running tests under Roma protocol"),
+            Cont([{sophia_version, ?SOPHIA_ROMA}, {vm_version, ?VM_AEVM_SOPHIA_1},
+                  {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, roma} | Cfg]);
+        ?MINERVA_PROTOCOL_VSN ->
+            ct:pal("Running tests under Minerva protocol"),
+            Cont([{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2},
+                  {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, minerva} | Cfg]);
+        ?FORTUNA_PROTOCOL_VSN ->
+            ct:pal("Running tests under Fortuna protocol"),
+            Cont([{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
+                  {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg]);
+        ?LIMA_PROTOCOL_VSN ->
+            ct:pal("Running tests under Lima protocol"),
+            Cont([{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
+                  {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg])
+    end;
+init_per_group(fate, Cfg, Cont) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?LIMA_PROTOCOL_VSN ->
+            Cont([{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
+                  {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg]);
+        _ ->
+            {skip, fate_not_available}
+    end.
+
+setup_testcase(Config) ->
+    VmVersion = ?config(vm_version, Config),
+    ABIVersion = ?config(abi_version, Config),
+    SophiaVersion = ?config(sophia_version, Config),
+    ProtocolVersion = case ?config(protocol, Config) of
+                          roma    -> ?ROMA_PROTOCOL_VSN;
+                          minerva -> ?MINERVA_PROTOCOL_VSN;
+                          fortuna -> ?FORTUNA_PROTOCOL_VSN;
+                          lima    -> ?LIMA_PROTOCOL_VSN
+                      end,
+    put('$vm_version', VmVersion),
+    put('$abi_version', ABIVersion),
+    put('$sophia_version', SophiaVersion),
+    put('$protocol_version', ProtocolVersion).
+
+vm_version() ->
+    case get('$vm_version') of
+        undefined -> latest_sophia_vm_version();
+        X         -> X
+    end.
+
+abi_version() ->
+    case get('$abi_version') of
+        undefined -> latest_sophia_abi_version();
+        X         -> X
+    end.
+
+sophia_version() ->
+    case get('$sophia_version') of
+        undefined -> error(could_not_find_sophia_version);
+        X         -> X
+    end.
+
+backend() ->
+    case abi_version() of
+        ?ABI_AEVM_SOPHIA_1 -> aevm;
+        ?ABI_FATE_SOPHIA_1 -> fate
+    end.

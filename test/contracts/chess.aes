@@ -4,21 +4,21 @@ contract Chess =
   type board = map(int, map(int, string))
   type state = board
 
-  private function get_row(r, m : board) =
+  function get_row(r, m : board) =
     Map.lookup_default(r, m, {})
 
-  private function set_piece(r, c, p, m : board) =
+  function set_piece(r, c, p, m : board) =
     m { [r] = get_row(r, m) { [c] = p } }
 
-  private function get_piece(r, c, m : board) =
+  function get_piece(r, c, m : board) =
     Map.lookup(c, get_row(r, m))
 
-  private function from_list(xs, m : board) =
+  function from_list(xs, m : board) =
     switch(xs)
       []              => m
       (r, c, p) :: xs => from_list(xs, set_piece(r, c, p, m))
 
-  function init() =
+  entrypoint init() =
     from_list([ (2, 1, "white pawn"),   (7, 1, "black pawn")
               , (2, 2, "white pawn"),   (7, 2, "black pawn")
               , (2, 3, "white pawn"),   (7, 3, "black pawn")
@@ -37,14 +37,14 @@ contract Chess =
               , (1, 8, "white rook"),   (8, 8, "black rook")
               ], {})
 
-  function piece(r, c) = get_piece(r, c, state)
+  entrypoint piece(r, c) = get_piece(r, c, state)
 
-  stateful function move_piece(r, c, r1, c1) =
+  stateful entrypoint move_piece(r, c, r1, c1) =
     switch(piece(r, c))
       Some(p) => put(set_piece(r1, c1, p, state))
 
-  stateful function destroy_piece(r, c) =
+  stateful entrypoint destroy_piece(r, c) =
     put(state{ [r] = Map.delete(c, get_row(r, state)) })
 
-  stateful function delete_row(r) =
+  stateful entrypoint delete_row(r) =
     put(Map.delete(r, state))

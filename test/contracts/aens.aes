@@ -1,41 +1,41 @@
 // AENS tests
 
 contract Remote =
-  function foo : () => int
+  entrypoint foo : () => int
 
 contract AENSTest =
 
   // Name resolution
 
-  function resolve_account(name : string, key : string) : option(address) =
+  entrypoint resolve_account(name : string, key : string) : option(address) =
     AENS.resolve(name, key)
 
-  function resolve_string(name : string, key : string) : option(string) =
+  entrypoint resolve_string(name : string, key : string) : option(string) =
     AENS.resolve(name, key)
 
-  function resolve_oracle(name : string, key : string) : option(oracle(string, string)) =
+  entrypoint resolve_oracle(name : string, key : string) : option(oracle(string, string)) =
     AENS.resolve(name, key)
 
-  function resolve_contract(name : string, key : string) : option(Remote) =
+  entrypoint resolve_contract(name : string, key : string) : option(Remote) =
     AENS.resolve(name, key)
 
   // Transactions
 
-  stateful function preclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
+  stateful entrypoint preclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
                              chash : hash) : () =      // Commitment hash
     AENS.preclaim(addr, chash)
 
-  stateful function signedPreclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
+  stateful entrypoint signedPreclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
                                    chash : hash,             // Commitment hash
                                    sign  : signature) : () = // Signed by addr (if not Contract.address)
     AENS.preclaim(addr, chash, signature = sign)
 
-  stateful function claim(addr : address,
+  stateful entrypoint claim(addr : address,
                           name : string,
                           salt : int) : () =
     AENS.claim(addr, name, salt)
 
-  stateful function signedClaim(addr : address,
+  stateful entrypoint signedClaim(addr : address,
                                 name : string,
                                 salt : int,
                                 sign : signature) : () =
@@ -43,23 +43,23 @@ contract AENSTest =
 
   // TODO: update() -- how to handle pointers?
 
-  stateful function transfer(owner     : address,
+  stateful entrypoint transfer(owner     : address,
                              new_owner : address,
-                             name_hash : hash) : () =
-    AENS.transfer(owner, new_owner, name_hash)
+                             name      : string) : () =
+    AENS.transfer(owner, new_owner, name)
 
-  stateful function signedTransfer(owner     : address,
+  stateful entrypoint signedTransfer(owner     : address,
                                    new_owner : address,
-                                   name_hash : hash,
+                                   name      : string,
                                    sign      : signature) : () =
-    AENS.transfer(owner, new_owner, name_hash, signature = sign)
+    AENS.transfer(owner, new_owner, name, signature = sign)
 
-  stateful function revoke(owner     : address,
-                           name_hash : hash) : () =
-    AENS.revoke(owner, name_hash)
+  stateful entrypoint revoke(owner     : address,
+                           name      : string) : () =
+    AENS.revoke(owner, name)
 
-  stateful function signedRevoke(owner     : address,
-                                 name_hash : hash,
-                                 sign      : signature) : () =
-    AENS.revoke(owner, name_hash, signature = sign)
+  stateful entrypoint signedRevoke(owner     : address,
+                                   name      : string,
+                                   sign      : signature) : () =
+    AENS.revoke(owner, name, signature = sign)
 

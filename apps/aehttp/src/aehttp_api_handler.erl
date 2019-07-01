@@ -10,6 +10,8 @@
 -export([delete_resource/2]).
 -export([forbidden/2]).
 -export([handle_request_json/2]).
+-export([generate_etag/2]).
+-export([expires/2]).
 
 -record(state, {
     operation_id :: atom(),
@@ -17,6 +19,8 @@
     logic_handler :: atom(),
     validator :: jesse_state:state()
 }).
+
+-define(DEFAULT_HTTP_CACHE_ENABLED, false).
 
 init(Req, {OperationId, AllowedMethod, LogicHandler}) ->
     %% TODO: make this validator a proper service.
@@ -50,6 +54,18 @@ content_types_provided(Req, State) ->
 
 delete_resource(Req, State) ->
     handle_request_json(Req, State).
+
+generate_etag(Req, State = #state{operation_id = OperationId}) ->
+    case cache_enabled() of
+        true -> aehttp_cache_etag:generate(OperationId, Req, State);
+        false -> {undefined, Req, State}
+    end.
+
+expires(Req, State = #state{operation_id = OperationId}) ->
+    case cache_enabled() of
+        true -> aehttp_cache_expires:expires(OperationId, Req, State);
+        false -> {undefined, Req, State}
+    end.
 
 handle_request_json(Req0, State = #state{
         operation_id = OperationId,
@@ -87,3 +103,8 @@ to_error({Reason, Name, Info}) ->
     #{ reason => Reason,
        parameter => Name,
        info => Info }.
+
+-spec cache_enabled() -> boolean().
+cache_enabled() ->
+    aeu_env:user_config_or_env([<<"http">>, <<"cache">>, <<"enabled">>],
+                               aehttp, [cache, enabled], ?DEFAULT_HTTP_CACHE_ENABLED).

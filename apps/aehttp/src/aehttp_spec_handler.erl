@@ -9,6 +9,7 @@
 -export([init/2]).
 -export([content_types_accepted/2]).
 -export([content_types_provided/2]).
+-export([generate_etag/2]).
 -export([handle_request_json/2]).
 
 -record(state, {
@@ -35,10 +36,13 @@ content_types_accepted(Req, State) ->
 content_types_provided(Req, State) ->
     {[{<<"application/json">>, handle_request_json}], Req, State}.
 
+generate_etag(Req, State = #state{spec = Spec}) ->
+    Etag = aeu_hex:bin_to_hex(crypto:hash(sha, Spec)),
+    {{strong, list_to_binary(Etag)}, Req, State}.
+
 handle_request_json(Req, State = #state{
         operation_id = 'Api',
         spec = Spec
     }) ->
     Repl = cowboy_req:reply(200, #{}, Spec, Req),
     {stop, Repl, State}.
-

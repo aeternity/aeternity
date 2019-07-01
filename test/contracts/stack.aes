@@ -6,24 +6,24 @@ contract Stack =
   record state = { stack : stack(string),
                    size  : int }
 
-  function init(ss : list(string)) = { stack = ss, size = length(ss) }
+  entrypoint init(ss : list(string)) = { stack = ss, size = length(ss) }
 
-  private function length(xs) =
+  function length(xs) =
     switch(xs)
       [] => 0
       _ :: xs => length(xs) + 1
 
-  stateful function pop() : string =
+  stateful entrypoint pop() : string =
     switch(state.stack)
       s :: ss =>
         put(state{ stack = ss, size = state.size - 1 })
         s
 
-  stateful function push(s) =
+  stateful entrypoint push(s) =
     put(state{ stack = s :: state.stack, size = state.size + 1 })
     state.size
 
-  function all() = state.stack
+  entrypoint all() = state.stack
 
-  function size() = state.size
+  entrypoint size() = state.size
 

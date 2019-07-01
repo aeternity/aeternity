@@ -1,74 +1,74 @@
 
 // Testing primitives for accessing the block chain environment
 contract Interface =
-  function contract_address : () => address
-  function contract_creator : () => address
-  function call_origin      : () => address
-  function call_caller      : () => address
-  function call_value       : () => int
+  entrypoint contract_address : () => address
+  entrypoint contract_creator : () => address
+  entrypoint call_origin      : () => address
+  entrypoint call_caller      : () => address
+  entrypoint call_value       : () => int
 
 contract Environment =
 
   record state = {remote : Interface}
 
-  function init(remote) = {remote = remote}
+  entrypoint init(remote) = {remote = remote}
 
-  stateful function set_remote(remote) = put({remote = remote})
+  stateful entrypoint set_remote(remote) = put({remote = remote})
 
   // -- Information about the this contract ---
 
   // Address
-  function contract_address() : address = Contract.address
-  function nested_address(who) : address =
+  entrypoint contract_address() : address = Contract.address
+  entrypoint nested_address(who) : address =
     who.contract_address(gas = 1000)
 
   // Balance
-  function contract_balance() : int = Contract.balance
+  entrypoint contract_balance() : int = Contract.balance
 
-  function contract_creator() : address = Contract.creator
-  function nested_creator()   : address =
+  entrypoint contract_creator() : address = Contract.creator
+  entrypoint nested_creator()   : address =
     state.remote.contract_creator()
 
   // -- Information about the current call ---
 
   // Origin
-  function call_origin()   : address = Call.origin
-  function nested_origin() : address =
+  entrypoint call_origin()   : address = Call.origin
+  entrypoint nested_origin() : address =
     state.remote.call_origin()
 
   // Caller
-  function call_caller() : address = Call.caller
-  function nested_caller() : address =
+  entrypoint call_caller() : address = Call.caller
+  entrypoint nested_caller() : address =
     state.remote.call_caller()
 
   // Value
-  function call_value() : int = Call.value
-  stateful function nested_value(value : int) : int =
+  entrypoint call_value() : int = Call.value
+  stateful entrypoint nested_value(value : int) : int =
     state.remote.call_value(value = value / 2)
 
   // Gas price
-  function call_gas_price() : int = Call.gas_price
+  entrypoint call_gas_price() : int = Call.gas_price
 
   // -- Information about the chain ---
 
   // Account balances
-  function get_balance(acct : address) : int = Chain.balance(acct)
+  entrypoint get_balance(acct : address) : int = Chain.balance(acct)
 
   // Block hash
-  function block_hash(height : int) : int = Chain.block_hash(height)
+  entrypoint block_hash(height : int) = Chain.block_hash(height)
 
   // Coinbase
-  function coinbase() : address = Chain.coinbase
+  entrypoint coinbase() : address = Chain.coinbase
 
   // Block timestamp
-  function timestamp() : int = Chain.timestamp
+  entrypoint timestamp() : int = Chain.timestamp
 
   // Block height
-  function block_height() : int = Chain.block_height
+  entrypoint block_height() : int = Chain.block_height
 
   // Difficulty
-  function difficulty() : int = Chain.difficulty
+  entrypoint difficulty() : int = Chain.difficulty
 
   // Gas limit
-  function gas_limit() : int = Chain.gas_limit
+  entrypoint gas_limit() : int = Chain.gas_limit
 

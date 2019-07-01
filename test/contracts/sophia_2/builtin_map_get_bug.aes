@@ -1,0 +1,12 @@
+contract TestContract =
+  record state = { 
+    _allowed          : map(address, map(address, int))}
+
+  public stateful function init() = {
+    _allowed = {}}
+
+  public stateful function approve(spender: address, value: int) : bool = 
+
+    put(state{_allowed[Call.caller][spender] = value})
+
+    true

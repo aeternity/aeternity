@@ -126,15 +126,10 @@ identity_contract(Config) ->
     #{acc_a := #{pub_key := APub}} = proplists:get_value(accounts, Config),
     TopHash = proplists:get_value(top_hash, Config),
 
-    {ok, Code}   = aect_test_utils:compile_contract("contracts/identity.aes"),
+    {ok, Code}   = aect_test_utils:compile_contract(identity),
 
-    InitCallData = make_call_data(list_to_binary(
-                        [ "contract Temp = \n"
-                        , "  function init : () => ()\n"]), <<"init">>, []),
-
-    CallCallData = make_call_data(list_to_binary(
-                        [ "contract Temp = \n"
-                        , "  function main : int => int\n"]), <<"main">>, [<<"42">>]),
+    InitCallData = make_call_data(identity, <<"init">>, []),
+    CallCallData = make_call_data(identity, <<"main">>, [<<"42">>]),
 
     CreateTx  = create_contract_tx(APub, 1, Code, InitCallData),
     CPub      = contract_id(CreateTx),
@@ -179,7 +174,8 @@ accounts(Config) ->
 
 %% --- Internal functions ---
 
-make_call_data(Code, FunName, Args) ->
+make_call_data(Contract, FunName, Args) ->
+    {ok, Code}     = aect_test_utils:read_contract(Contract),
     {ok, CallData} = aect_test_utils:encode_call_data(Code, FunName, Args),
     CallData.
 

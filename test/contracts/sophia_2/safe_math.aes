@@ -1,0 +1,10 @@
+
+contract SafeMath =
+
+  function add(x, y) = x + y
+  function sub(x, y) = x - y
+  function mul(x, y) = x * y
+  function div(x, y) = x / y
+  function rem(x, y) = x mod y
+  function pow(x, y) = x ^ y
+

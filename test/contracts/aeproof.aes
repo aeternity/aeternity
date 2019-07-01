@@ -103,7 +103,7 @@ contract AEProof =
                      proofs  : map(uint, proof),
                      proofsByOwner : map(address, array(uint)) }
 
-    function notarize(document:string, comment:string, ipfsHash:hash) =
+    entrypoint notarize(document:string, comment:string, ipfsHash:hash) =
         let _ = require(aetoken.balanceOf(caller()) > 0, "false")
         let proofHash: uint = calculateHash(document)
         let proof : proof = Map.get_(proofHash, state().proofs)
@@ -119,25 +119,25 @@ contract AEProof =
                proofs = Map.insert(proofHash, proof', state.proofs) }
 
 
-    function calculateHash(document: string) : uint = sha256(document)
+    entrypoint calculateHash(document: string) : uint = sha256(document)
 
-    function getProof(document) : proof =
+    entrypoint getProof(document) : proof =
         let calcHash = calculateHash(document)
         let proof = Map.get_(calcHash, state().proofs)
         let _ = require(proof.owner != #0, false)
         proof
 
-    function getProofByHash(hash: uint) : proof =
+    entrypoint getProofByHash(hash: uint) : proof =
         let proof = Map.get_(hash, state().proofs)
         let _ = require(proof.owner != #0, false)
         proof
 
 
-    function hasProof(document: string) : bool =
+    entrypoint hasProof(document: string) : bool =
         let calcHash = calculateHash(document)
         let storedProof = Map.get_(calcHash, state().proofs)
         storedProof.owner != #0
 
-    function getProofsByOwner(owner: address): array(uint) =
+    entrypoint getProofsByOwner(owner: address): array(uint) =
         Map.get(owner, state())
 

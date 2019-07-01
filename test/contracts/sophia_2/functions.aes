@@ -1,0 +1,15 @@
+contract Functions =
+  private function curry(f : ('a, 'b) => 'c) =
+    (x) => (y) => f(x, y)
+  private function map(f : 'a => 'b, xs : list('a)) =
+    switch(xs)
+      [] => []
+      x :: xs => f(x) :: map(f, xs)
+  private function map'() = map
+  private function plus(x, y) = x + y
+  function test1(xs : list(int)) = map(curry(plus)(5), xs)
+  function test2(xs : list(int)) = map'()(((x) => (y) => ((x, y) => x + y)(x, y))(100), xs)
+  function test3(xs : list(int)) =
+    let m(f, xs) = map(f, xs)
+    m((x) => x + 1, xs)
+

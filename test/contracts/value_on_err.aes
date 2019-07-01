@@ -1,7 +1,7 @@
 contract ValueOnErr =
 
-  public function err() : int =
+  entrypoint err() : int =
     switch(0) 1 => 5
 
-  public function ok() : int =
+  entrypoint ok() : int =
     11

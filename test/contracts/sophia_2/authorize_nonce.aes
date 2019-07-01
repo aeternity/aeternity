@@ -1,0 +1,9 @@
+contract GA =
+  record state = { secret : int }
+
+  function init() = { secret = 0 }
+
+  stateful function nonce_correct(s : int) : bool =
+    let ok = state.secret == s
+    put(state{secret = s + 1})
+    ok

@@ -1,0 +1,15 @@
+// Test more advanced chain interactions
+
+contract ChainTest =
+
+  record state = { last_bf : address }
+
+  function init() : state =
+    {last_bf = Contract.address}
+
+  function miner() = Chain.coinbase
+
+  stateful function save_coinbase() =
+    put(state{last_bf = Chain.coinbase})
+
+  function last_bf() = state.last_bf

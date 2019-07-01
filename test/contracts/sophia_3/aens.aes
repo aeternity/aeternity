@@ -1,0 +1,65 @@
+// AENS tests
+
+contract Remote =
+  entrypoint foo : () => int
+
+contract AENSTest =
+
+  // Name resolution
+
+  entrypoint resolve_account(name : string, key : string) : option(address) =
+    AENS.resolve(name, key)
+
+  entrypoint resolve_string(name : string, key : string) : option(string) =
+    AENS.resolve(name, key)
+
+  entrypoint resolve_oracle(name : string, key : string) : option(oracle(string, string)) =
+    AENS.resolve(name, key)
+
+  entrypoint resolve_contract(name : string, key : string) : option(Remote) =
+    AENS.resolve(name, key)
+
+  // Transactions
+
+  stateful entrypoint preclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
+                               chash : hash) : () =      // Commitment hash
+    AENS.preclaim(addr, chash)
+
+  stateful entrypoint signedPreclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
+                                     chash : hash,             // Commitment hash
+                                     sign  : signature) : () = // Signed by addr (if not Contract.address)
+    AENS.preclaim(addr, chash, signature = sign)
+
+  stateful entrypoint claim(addr : address,
+                            name : string,
+                            salt : int) : () =
+    AENS.claim(addr, name, salt)
+
+  stateful entrypoint signedClaim(addr : address,
+                                  name : string,
+                                  salt : int,
+                                  sign : signature) : () =
+    AENS.claim(addr, name, salt, signature = sign)
+
+  // TODO: update() -- how to handle pointers?
+
+  stateful entrypoint transfer(owner     : address,
+                               new_owner : address,
+                               name_hash : hash) : () =
+    AENS.transfer(owner, new_owner, name_hash)
+
+  stateful entrypoint signedTransfer(owner     : address,
+                                     new_owner : address,
+                                     name_hash : hash,
+                                     sign      : signature) : () =
+    AENS.transfer(owner, new_owner, name_hash, signature = sign)
+
+  stateful entrypoint revoke(owner     : address,
+                             name_hash : hash) : () =
+    AENS.revoke(owner, name_hash)
+
+  stateful entrypoint signedRevoke(owner     : address,
+                                   name_hash : hash,
+                                   sign      : signature) : () =
+    AENS.revoke(owner, name_hash, signature = sign)
+
