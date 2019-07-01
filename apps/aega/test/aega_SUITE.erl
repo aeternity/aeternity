@@ -173,7 +173,7 @@ init_per_group(aevm, Cfg) ->
             [{sophia_version, ?SOPHIA_FORTUNA}, {vm_version, ?VM_AEVM_SOPHIA_3},
              {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, fortuna} | Cfg];
         ?LIMA_PROTOCOL_VSN ->
-            [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_3},
+            [{sophia_version, ?SOPHIA_LIMA_AEVM}, {vm_version, ?VM_AEVM_SOPHIA_4},
              {abi_version, ?ABI_AEVM_SOPHIA_1}, {protocol, lima} | Cfg]
     end;
 init_per_group(fate, Cfg) ->
