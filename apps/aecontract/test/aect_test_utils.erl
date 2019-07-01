@@ -48,6 +48,7 @@
 
 -export([ abi_version/0
         , backend/0
+        , init_per_group/2
         , init_per_group/3
         , setup_testcase/1
         , sophia_version/0
@@ -480,6 +481,8 @@ get_oracle_queries(OracleId, Max, State) ->
 %%%===================================================================
 %%% Common test common stuff
 %%%===================================================================
+init_per_group(Vm, Cfg) ->
+    init_per_group(Vm, Cfg, fun(X) -> X end).
 
 init_per_group(aevm, Cfg, Cont) ->
     case aect_test_utils:latest_protocol_version() of

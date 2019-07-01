@@ -62,7 +62,10 @@
          start_proxy/0,
          call_proxy/2,
          await_aehttp/1,
-         await_sync_complete/2
+         await_sync_complete/2,
+         http_request/4,
+         httpc_request/4,
+         process_http_return/1
         ]).
 
 -export([restart_jobs_server/1]).
@@ -1021,3 +1024,74 @@ await_new_jobs_pid_recurse(N, OldP, TRef) ->
     after 100 ->
             await_new_jobs_pid(N, OldP, TRef)
     end.
+
+http_request(Host, get, Path, Params) ->
+    URL = binary_to_list(
+            iolist_to_binary([Host, "/v2/", Path, encode_get_params(Params)])),
+    ct:log("GET ~p", [URL]),
+    R = httpc_request(get, {URL, []}, [], []),
+    process_http_return(R);
+http_request(Host, post, Path, Params) ->
+    URL = binary_to_list(iolist_to_binary([Host, "/v2/", Path])),
+    {Type, Body} = case Params of
+                       Map when is_map(Map) ->
+                           %% JSON-encoded
+                           {"application/json", jsx:encode(Params)};
+                       [] ->
+                           {"application/x-www-form-urlencoded",
+                            http_uri:encode(Path)}
+                   end,
+    %% lager:debug("Type = ~p; Body = ~p", [Type, Body]),
+    ct:log("POST ~p, type ~p, Body ~p", [URL, Type, Body]),
+    R = httpc_request(post, {URL, [], Type, Body}, [], []),
+    process_http_return(R).
+
+httpc_request(Method, Request, HTTPOptions, Options) ->
+    httpc_request(Method, Request, HTTPOptions, Options, test_browser).
+
+httpc_request(Method, Request, HTTPOptions, Options, Profile) ->
+    {ok, Pid} = inets:start(httpc, [{profile, Profile}], stand_alone),
+    Response = httpc:request(Method, Request, HTTPOptions, Options, Pid),
+    ok = gen_server:stop(Pid, normal, infinity),
+    Response.
+
+encode_get_params(#{} = Ps) ->
+    encode_get_params(maps:to_list(Ps));
+encode_get_params([{K,V}|T]) ->
+    ["?", [str(K),"=",uenc(V)
+           | [["&", str(K1), "=", uenc(V1)]
+              || {K1, V1} <- T]]];
+encode_get_params([]) ->
+    [].
+
+str(A) when is_atom(A) ->
+    str(atom_to_binary(A, utf8));
+str(S) when is_list(S); is_binary(S) ->
+    S.
+
+uenc(I) when is_integer(I) ->
+    uenc(integer_to_list(I));
+uenc(V) ->
+    http_uri:encode(V).
+
+process_http_return(R) ->
+    case R of
+        {ok, {{_, ReturnCode, _State}, _Head, Body}} ->
+            try
+                ct:log("Return code ~p, Body ~p", [ReturnCode, Body]),
+                Result =
+                    case iolist_to_binary(Body) of
+                        <<>> ->
+                            #{};
+                        BodyB ->
+                            jsx:decode(BodyB, [return_maps])
+                    end,
+                {ok, ReturnCode, Result}
+            catch
+                error:E ->
+                    {error, {parse_error, [E, erlang:get_stacktrace()]}}
+            end;
+        {error, _} = Error ->
+            Error
+    end.
+
