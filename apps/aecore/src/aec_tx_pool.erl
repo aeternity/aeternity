@@ -26,6 +26,7 @@
          ?KEY(NegFee, NegGasPrice, Origin, Nonce, TxHash)
         }).
 -define(KEY_NONCE_PATTERN(Sender), {?KEY('_', '_', Sender, '$1', '_'), '_'}).
+-define(DEFAULT_PUSH_TIMEOUT, 5000).
 
 %% API
 -export([ start_link/0
@@ -42,6 +43,7 @@
         , peek/2
         , push/1
         , push/2
+        , push/3
         , size/0
         , top_change/3
         , dbs/0
@@ -118,6 +120,8 @@
 
 -type event() :: tx_created | tx_received.
 
+-type push_timeout() :: non_neg_integer() | infinity.
+
 -ifndef(TEST).
 -define(DEFAULT_TX_TTL, 256).
 -define(DEFAULT_INVALID_TX_TTL, 5).
@@ -151,15 +155,19 @@ push(Tx) ->
     push(Tx, tx_created).
 
 -spec push(aetx_sign:signed_tx(), event()) -> ok | {error, atom()}.
-push(Tx, Event = tx_received) ->
+push(Tx, Event) ->
+    push(Tx, Event, ?DEFAULT_PUSH_TIMEOUT).
+
+-spec push(aetx_sign:signed_tx(), event(), push_timeout()) -> ok | {error, atom()}.
+push(Tx, Event = tx_received, Timeout) ->
     TxHash = safe_tx_hash(Tx),
     case aec_tx_gossip_cache:in_cache(TxHash) of
         true -> ok;
         false ->
-            aec_jobs_queues:run(tx_pool_push, fun() -> push_(Tx, TxHash, Event) end)
+            aec_jobs_queues:run(tx_pool_push, fun() -> push_(Tx, TxHash, Event, Timeout) end)
     end;
-push(Tx, Event = tx_created) ->
-    push_(Tx, safe_tx_hash(Tx), Event).
+push(Tx, Event = tx_created, Timeout) ->
+    push_(Tx, safe_tx_hash(Tx), Event, Timeout).
 
 safe_tx_hash(Tx) ->
     try aetx_sign:hash(Tx)
@@ -168,7 +176,7 @@ safe_tx_hash(Tx) ->
             error({illegal_transaction, Tx})
     end.
 
-push_(Tx, TxHash, Event) ->
+push_(Tx, TxHash, Event, Timeout) ->
     case check_pool_db_put(Tx, TxHash, Event) of
         ignore ->
             incr([push, ignore]),
@@ -178,7 +186,7 @@ push_(Tx, TxHash, Event) ->
             E;
         ok ->
             incr([push]),
-            gen_server:call(?SERVER, {push, Tx, TxHash, Event})
+            gen_server:call(?SERVER, {push, Tx, TxHash, Event}, Timeout)
     end.
 
 incr(Metric) ->

@@ -188,14 +188,15 @@ init(Options) ->
     State2 = set_option(autostart, Options, State1),
     {ok, State3} = set_beneficiary(State2),
     State4 = init_miner_instances(State3),
+    State5 = set_stratum_mode(State4), %% May overwrite beneficiary.
 
     aec_metrics:try_update([ae,epoch,aecore,chain,height],
                            aec_blocks:height(aec_chain:top_block())),
-    epoch_mining:info("Miner process initilized ~p", [State4]),
+    epoch_mining:info("Miner process initilized ~p", [State5]),
     aec_events:subscribe(candidate_block),
     %% NOTE: The init continues at handle_info(init_continue, State).
     self() ! init_continue,
-    {ok, State4}.
+    {ok, State5}.
 
 init_chain_state() ->
     case aec_chain:genesis_hash() of
@@ -312,6 +313,9 @@ handle_info(init_continue, State) ->
 handle_info({worker_reply, Pid, Res}, State) ->
     State1 = handle_worker_reply(Pid, Res, State),
     {noreply, State1};
+handle_info({stratum_reply, Res}, State) ->
+    State1 = handle_stratum_reply(Res, State),
+    {noreply, State1};
 handle_info({'DOWN', Ref, process, Pid, Why}, State) when Why =/= normal->
     State1 = handle_monitor_message(Ref, Pid, Why, State),
     {noreply, State1};
@@ -402,6 +406,19 @@ get_beneficiary() ->
             end;
         undefined ->
             {error, beneficiary_not_configured}
+    end.
+
+set_stratum_mode(State) ->
+    case aeu_env:user_config_or_env([<<"stratum">>, <<"enabled">>], aecore, stratum_enabled) of
+        {ok, true} ->
+            {ok, Dir} = aeu_env:user_config_or_env(
+                          [<<"stratum">>, <<"reward">>, <<"keys">>, <<"dir">>],
+                          aecore, stratum_reward_keys_dir),
+            {PubKey, _PrivKey} =  aestratum_config:read_keys(Dir, create),
+            State#state{stratum_mode = true,
+                        beneficiary  = PubKey};
+        _ ->
+            State#state{stratum_mode = false}
     end.
 
 %%%===================================================================
@@ -525,6 +542,9 @@ wrap_worker_fun(Fun) ->
     fun() ->
             Server ! {worker_reply, self(), Fun()}
     end.
+
+handle_stratum_reply(Reply, State) ->
+    worker_reply(mining, Reply, State).
 
 handle_worker_reply(Pid, Reply, State) ->
     Workers = State#state.workers,
@@ -783,7 +803,7 @@ start_mining_(#state{key_block_candidates = undefined,
     %% The candidate can be retrieved via the API and other nodes can mine it.
     State1 = kill_all_workers_with_tag(create_key_block_candidate, State),
     create_key_block_candidate(State1);
-start_mining_(#state{mining_state = stopped} = State) ->
+start_mining_(#state{stratum_mode = false, mining_state = stopped} = State) ->
     State;
 start_mining_(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}} | _],
                     top_block_hash = TopHash } = State) when OldHash =/= TopHash ->
@@ -791,7 +811,7 @@ start_mining_(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}}
     %% Regenerate the candidate.
     epoch_mining:info("Key block candidate for old top hash; regenerating"),
     create_key_block_candidate(State);
-start_mining_(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates]} = State) ->
+start_mining_(#state{stratum_mode = false, key_block_candidates = [{HeaderBin, Candidate} | Candidates]} = State) ->
     case available_miner_instance(State) of
         none -> State;
         Instance ->
@@ -812,15 +832,31 @@ start_mining_(#state{key_block_candidates = [{HeaderBin, Candidate} | Candidates
             State3 = register_miner_instance(Instance, Pid, State2),
             epoch_mining:info("Miner ~p started", [Pid]),
             start_mining_(State3)
-    end.
+    end;
+start_mining_(#state{stratum_mode = true,
+                     key_block_candidates = [{HeaderBin, #candidate{refs = StratumRefs} = Candidate} | Candidates]} = State)
+  when StratumRefs =:= 0  ->
+    epoch_mining:info("Stratum dispatch ~p", [HeaderBin]),
+    Target            = aec_blocks:target(Candidate#candidate.block),
+    Info              = [{top_block_hash, State#state.top_block_hash}],
+    Server            = self(),
+    aec_events:publish(start_mining, Info),
+    aec_events:publish(stratum_new_candidate, [{HeaderBin, Candidate, Target, Server}]),
+    Candidate1 = register_stratum(Candidate),
+    State1 = State#state{key_block_candidates = [{HeaderBin, Candidate1} | Candidates]},
+    State1.
+
+register_stratum(Candidate = #candidate{refs  = Refs}) ->
+    Candidate#candidate{refs  = Refs + 1}.
 
 register_miner(Candidate = #candidate{refs  = Refs}, Nonce, MinerConfig) ->
     NextNonce = aeminer_pow:next_nonce(Nonce, MinerConfig),
     Candidate#candidate{refs  = Refs + 1,
                         nonce = NextNonce}.
 
-handle_mining_reply(_Reply, #state{key_block_candidates = undefined} = State) ->
+handle_mining_reply(Reply, #state{key_block_candidates = undefined} = State) ->
     %% Something invalidated the block candidates already.
+    epoch_mining:debug("Candidate invalidated in conductor ~p", [Reply]),
     start_mining_(State);
 handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
     Candidates = State#state.key_block_candidates,
@@ -1007,6 +1043,7 @@ handle_signed_block(Block, State) ->
 
 ok({ok, Value}) ->
     Value.
+
 
 handle_add_block(Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(Block),

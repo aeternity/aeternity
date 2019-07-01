@@ -6,8 +6,10 @@
          init_per_suite/4]).
 
 -export([top_dir/1,
+         make_shortcut/1,
          epoch_config/2,
          create_config/4,
+         make_multi/2,
          node_shortcut/2,
          shortcut_dir/1]).
 
@@ -25,6 +27,7 @@
          mine_blocks/2,
          mine_blocks/3,
          mine_blocks/4,
+         mine_blocks/5,
          mine_all_txs/2,
          mine_blocks_until_txs_on_chain/3,
          mine_blocks_until_txs_on_chain/4,

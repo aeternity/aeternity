@@ -944,7 +944,129 @@
                     "default" : "ae_mainnet"
                 }
             }
+        },
+        "stratum": {
+            "type"    : "object",
+            "additionalProperties": false,
+            "properties" : {
+                "enabled" : {
+                    "type" : "boolean",
+                    "default" : false
+                },
+                "connection": {
+                    "type"    : "object",
+                    "additionalProperties": false,
+                    "properties" : {
+                        "host" : {
+                            "type" : "string",
+                            "default" : "localhost"
+                        },
+                        "port" : {
+                            "description" : "Port number of Stratum server.",
+                            "type" : "integer",
+                            "minimum" : 0,
+                            "maximum" : 65535,
+                            "default" : 9999
+                        },
+                        "max_connections" : {
+                            "type" : "integer",
+                            "default" : 1024
+                        },
+                        "num_acceptors" : {
+                            "type" : "integer",
+                            "default" : 100
+                        },
+                        "transport" : {
+                            "type" : "string",
+                            "enum" : ["tcp", "ssl"],
+                            "default" : "tcp"
+                        }
+                    }
+                },
+                "session": {
+                    "type"    : "object",
+                    "additionalProperties": false,
+                    "properties" : {
+                        "extra_nonce_bytes" : {
+                            "type" : "integer",
+                            "default" : 4
+                        },
+                        "skip_num_blocks" : {
+                            "type" : "integer",
+                            "default" : 10
+                        },
+                        "initial_share_target" : {
+                            "type" : "integer"
+                        },
+                        "max_share_target" : {
+                            "type" : "integer",
+                            "minimum" : 1,
+                            "maximum" : 115790322390251417039241401711187164934754157181743688420499462401711837020160
+                        },
+                        "desired_solve_time" : {
+                            "type" : "integer",
+                            "minimum" : 1,
+                            "maximum" : 180,
+                            "default" : 30
+                        },
+                        "max_solve_time" : {
+                            "type" : "integer",
+                            "minimum" : 1,
+                            "maximum" : 360,
+                            "default" : 60
+                        },
+                        "share_target_diff_threshold" : {
+                            "type" : "number",
+                            "default" : 5.0
+                        },
+                        "edge_bits" : {
+                            "type" : "number",
+                            "default" : 29
+                        },
+                        "max_jobs" : {
+                            "type" : "integer",
+                            "default" : 20
+                        },
+                        "max_workers" : {
+                            "type" : "integer",
+                            "default" : 20
+                        },
+                        "msg_timeout" : {
+                            "type" : "integer",
+                            "default" : 15
+                        }
+                    }
+                },
+                "reward": {
+                    "type"    : "object",
+                    "additionalProperties": false,
+                    "properties" : {
+                        "reward_last_rounds" : {
+                            "type" : "integer",
+                            "default" : 2
+                        },
+                        "beneficiaries" : {
+                            "type" : "array",
+                            "items" : {
+                                "description" : "Public key receiving pool reward to percent share map.",
+                                "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(\.[0-9]*)?$"
+                            }
+                        },
+                        "keys" : {
+                            "type"    : "object",
+                            "additionalProperties": false,
+                            "properties" : {
+                                "dir": {
+                                    "description" : "Directory of the public/private key pair used for signing of the payout contract call (either relative to aestratum priv directory or absolute). This account holds mining rewards which are scheduled for redistribution to miners. It is unexpected that this account should hold any substantial amount of tokens (in fiat value) - it would mean redistributions aren't working. The pool operator should ensure the node operates in trusted environment.",
+                                    "type" : "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
+
     },
     "definitions" : {
         "key_value_pattern": {

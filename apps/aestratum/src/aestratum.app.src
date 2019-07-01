@@ -1,0 +1,20 @@
+{application, aestratum,
+ [{description, "AE Stratum"},
+  {vsn, {cmd, "cat ../../VERSION"}},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib,
+    crypto,
+    lager,
+    ranch,
+    aestratum_lib,
+    aecore
+   ]},
+  {mod,{aestratum_appsup,[]}},
+  {env, []},
+  {modules, []},
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

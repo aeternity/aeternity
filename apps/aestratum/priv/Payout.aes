@@ -1,0 +1,11 @@
+contract Payout =
+
+  public function payout(xs : list((address, int))) : int =
+    payout'(xs, 0)
+
+  function payout'(xs : list((address, int)), total : int) : int =
+    switch(xs)
+      [] => total
+      (address, tokens) :: xs' =>
+        Chain.spend(address, tokens)
+        payout'(xs', total + tokens)

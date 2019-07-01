@@ -239,6 +239,15 @@ ct-mnesia-rocksdb: SYSCONFIG=config/test-lima.config
 ct-mnesia-rocksdb: AETERNITY_TESTCONFIG_DB_BACKEND=rocksdb
 ct-mnesia-rocksdb: internal-ct
 
+stratum-client-internal-build:
+	@(cd ./_build/$(KIND)/ && \
+	  if [ ! -d aestratum_client ]; then \
+	      git clone --branch v0.1.1 --depth 1 https://github.com/aeternity/aestratum_client; \
+	  fi && \
+	  cd aestratum_client && \
+	  $(REBAR) as $(KIND) compile -d && \
+	  $(REBAR) as $(KIND) release)
+
 REVISION:
 	@git rev-parse HEAD > $@
 
@@ -485,7 +494,7 @@ internal-clean:
 internal-distclean:
 	@rm -rf ./_build/$(KIND)
 
-internal-ct: internal-build
+internal-ct: internal-build stratum-client-internal-build
 	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
 	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
 		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
@@ -505,6 +514,7 @@ prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
 
 .PHONY: \
 	all console \
+	stratum-client-internal-build \
 	local-build local-start local-stop local-attach \
 	prod-build prod-start prod-stop prod-attach prod-package prod-compile-deps \
 	multi-build multi-start multi-stop multi-clean multi-distclean \
