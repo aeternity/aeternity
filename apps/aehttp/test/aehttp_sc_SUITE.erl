@@ -210,6 +210,10 @@ end_per_group(_Grp, _Config) ->
                    sc_ws_remote_call_contract_refering_onchain_data, sc_ws_wrong_call_data ]).
 
 init_per_testcase(Case, Config) ->
+    case proplists:is_defined(sophia_version, Config) of
+        true  -> aect_test_utils:setup_testcase(Config);
+        false -> ok
+    end,
     case lists:member(Case, ?DOC_LOG) of
         true ->
             LogFile = docs_log_file(Config),
