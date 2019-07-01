@@ -110,7 +110,7 @@ latest_sophia_vm_version() ->
         ?ROMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_1;
         ?MINERVA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_2;
         ?FORTUNA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_3;
-        ?LIMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_3
+        ?LIMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_4
     end.
 
 latest_sophia_abi_version() ->
