@@ -20,11 +20,7 @@
     validator :: jesse_state:state()
 }).
 
--ifdef(TEST).
--define(DEFAULT_HTTP_CACHE_ENABLED, true).
--else.
 -define(DEFAULT_HTTP_CACHE_ENABLED, false).
--endif.
 
 init(Req, {OperationId, AllowedMethod, LogicHandler}) ->
     %% TODO: make this validator a proper service.
