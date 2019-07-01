@@ -212,7 +212,10 @@ contract_create(Trees, Sender, CompiledContract, Init, Args, Backend) ->
     {ok, CallData} = encode_call_data(Contract, Init, Args, Backend),
     Tx =
         #{owner_id => aeser_id:create(account, Sender),
-          vm_version  => case Backend of aevm -> 4; fate -> 5 end,
+          vm_version  => case Backend of
+                           aevm -> aect_test_utils:latest_sophia_vm_version();
+                           fate -> ?VM_FATE_SOPHIA_1
+                         end,
           abi_version => case Backend of aevm -> 1; fate -> 3 end,
           fee => 100000 * 1500000 * 20,
           gas_price => 1000000,
@@ -232,7 +235,7 @@ contract_call(Trees, Sender, ContractId, CompiledContract, Fun, Args, Backend) -
     Tx =
         #{caller_id => aeser_id:create(account, Sender),
           contract_id => aeser_id:create(contract, ContractId),
-          abi_version => case Backend of aevm -> 1; fate -> 3 end,
+          abi_version => case Backend of aevm -> ?ABI_AEVM_SOPHIA_1; fate -> ?ABI_FATE_SOPHIA_1 end,
           fee =>  500000 * 1000000 * 20,
           gas_price => 1000000,
           gas => 20000000,
