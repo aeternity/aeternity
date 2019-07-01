@@ -90,6 +90,13 @@ http:
         acceptors: 10
         # Enable (true) debug api. Disabled (false) by default
         debug_endpoints: false
+    cache:
+        # Enable HTTP cache headers (ETag and Expire)
+        enabled: false
+        # Time (in seconds) after a block is considered aged. That is an Expire header is generated for such blocks API endpoints.
+        aged_blocks_time: 86400
+        # Time (in seconds) to cache aged blocks, the Expire header time relative to block creation time.
+        aged_blocks_cache_time: 86400
 
 websocket:
     channel:
