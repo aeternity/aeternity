@@ -34,7 +34,8 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
                     %% when creating a contract in a contract.
     VmVersion = aect_contracts:vm_version(Contract),
     %% Assert VmVersion before running!
-    [error({illegal_vm_version, VmVersion}) || not ?IS_AEVM_SOPHIA(VmVersion)],
+    [error({illegal_vm_version, VmVersion}) || not ?IS_AEVM_SOPHIA(VmVersion) andalso
+                                               not ?IS_FATE_SOPHIA(VmVersion)],
 
     CallDef = make_call_def(OwnerPubKey, ContractPubKey,
                             _Gas = 1000000, _GasPrice = 1,
@@ -46,17 +47,28 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
         ok ->
             Trees1 = aect_utils:insert_call_in_trees(CallRes, Trees),
             %% Save the initial state (returned by `init`) in the store.
-            InitState  = aect_call:return_value(CallRes),
-            %% TODO: move to/from_sophia_state to make nicer dependencies?
-            case aevm_eeevm_store:from_sophia_state(CTVersion, InitState) of
-                {ok, Store1} ->
+            InitState = aect_call:return_value(CallRes),
+            case CTVersion of
+                #{vm := V} when ?IS_AEVM_SOPHIA(V) ->
+                    %% TODO: move to/from_sophia_state to make nicer dependencies?
+                    case aevm_eeevm_store:from_sophia_state(CTVersion, InitState) of
+                        {ok, Store1} ->
+                            Contract1 = aect_contracts:set_state(Store1, Contract),
+                            ContractsTree0 = aec_trees:contracts(Trees1),
+                            ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),
+                            aec_trees:set_contracts(Trees1, ContractsTree1);
+                        E = {error, _} ->
+                            lager:debug("Init error ~w ~w",[E, CallRes]),
+                            erlang:error(contract_init_failed)
+                    end;
+                #{vm := V} when ?IS_FATE_SOPHIA(V) ->
+                    %% TODO: For now assume that the full state is in key 1
+                    Store0 = aect_contracts_store:new(),
+                    Store1 = aect_contracts_store:put(<<1>>, InitState, Store0),
                     Contract1 = aect_contracts:set_state(Store1, Contract),
                     ContractsTree0 = aec_trees:contracts(Trees1),
                     ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),
-                    aec_trees:set_contracts(Trees1, ContractsTree1);
-                E = {error, _} ->
-                    lager:debug("Init error ~w ~w",[E, CallRes]),
-                    erlang:error(contract_init_failed)
+                    aec_trees:set_contracts(Trees1, ContractsTree1)
             end;
         E ->
             lager:debug("Init call error ~w ~w",[E, CallRes]),
