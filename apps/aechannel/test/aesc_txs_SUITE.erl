@@ -237,11 +237,15 @@ groups() ->
        {group, settle_negative},
        snapshot_solo,
        {group, snapshot_solo_negative},
-       {group, force_progress},
-       {group, force_progress_negative},
+       {group, aevm},
+       {group, fate},
        {group, fork_awareness}
       ]
      },
+
+     {aevm, [], [{group, force_progress}, {group, force_progress_negative}]},
+     {fate, [], [{group, force_progress}, {group, force_progress_negative}]},
+
      {create_negative, [sequence],
       [create_missing_account,
        create_same_account,
@@ -403,6 +407,8 @@ init_per_group(fork_awareness, Config) ->
                    (_)                               -> ?FORTUNA_PROTOCOL_VSN
                 end),
     Config;
+init_per_group(VM, Config) when VM == aevm; VM == fate ->
+    aect_test_utils:init_per_group(VM, Config);
 init_per_group(_Group, Config) ->
     Config.
 
@@ -413,7 +419,10 @@ end_per_group(_Group, _Config) ->
     ok.
 
 init_per_testcase(_, Config) ->
-    put('$protocol_version', aect_test_utils:latest_protocol_version()),
+    case proplists:is_defined(sophia_version, Config) of
+        true  -> aect_test_utils:setup_testcase(Config);
+        false -> put('$protocol_version', aect_test_utils:latest_protocol_version())
+    end,
     Config.
 
 end_per_testcase(_Case, _Config) ->
