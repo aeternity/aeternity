@@ -8,6 +8,8 @@
 
 -include_lib("stdlib/include/assert.hrl").
 -import(aecore_suite_utils, [http_request/4, httpc_request/4, process_http_return/1]).
+-import(aecore_suite_utils, [internal_address/0, external_address/0, rpc/3, rpc/4]).
+
 %% common_test exports
 -export(
    [
@@ -3705,24 +3707,6 @@ wrong_http_method_peers(_Config) ->
 %% ============================================================
 %% private functions
 %% ============================================================
-rpc(Mod, Fun, Args) ->
-    rpc(?NODE, Mod, Fun, Args).
-
-rpc(Node, Mod, Fun, Args) ->
-    rpc:call(aecore_suite_utils:node_name(Node), Mod, Fun, Args, 5000).
-
-external_address() ->
-    Port = rpc(aeu_env, user_config_or_env,
-              [ [<<"http">>, <<"external">>, <<"port">>],
-                aehttp, [external, port], 8043]),
-    "http://127.0.0.1:" ++ integer_to_list(Port).     % good enough for requests
-
-internal_address() ->
-    Port = rpc(?NODE, aeu_env, user_config_or_env,
-              [ [<<"http">>, <<"internal">>, <<"port">>],
-                aehttp, [internal, port], 8143]),
-    "http://127.0.0.1:" ++ integer_to_list(Port).
-
 random_hash() ->
     HList =
         lists:map(

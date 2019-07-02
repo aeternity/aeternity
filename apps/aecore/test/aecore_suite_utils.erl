@@ -63,9 +63,13 @@
          call_proxy/2,
          await_aehttp/1,
          await_sync_complete/2,
+         rpc/3,
+         rpc/4,
          http_request/4,
          httpc_request/4,
-         process_http_return/1
+         process_http_return/1,
+         internal_address/0,
+         external_address/0
         ]).
 
 -export([restart_jobs_server/1]).
@@ -79,6 +83,7 @@
 
 -define(OPS_BIN, "aeternity").
 -define(DEFAULT_CUSTOM_EXPECTED_MINE_RATE, 100).
+-define(DEFAULT_NODE, dev1).
 
 %% Keys for P2P communication
 peer_keys() ->
@@ -1095,3 +1100,20 @@ process_http_return(R) ->
             Error
     end.
 
+internal_address() ->
+    Port = rpc(aeu_env, user_config_or_env,
+              [ [<<"http">>, <<"internal">>, <<"port">>],
+                aehttp, [internal, port], 8143]),
+    "http://127.0.0.1:" ++ integer_to_list(Port).
+
+external_address() ->
+    Port = rpc(aeu_env, user_config_or_env,
+              [ [<<"http">>, <<"external">>, <<"port">>],
+                aehttp, [external, port], 8043]),
+    "http://127.0.0.1:" ++ integer_to_list(Port).     % good enough for requests
+
+rpc(Mod, Fun, Args) ->
+    rpc(?DEFAULT_NODE, Mod, Fun, Args).
+
+rpc(Node, Mod, Fun, Args) ->
+    rpc:call(node_name(Node), Mod, Fun, Args, 5000).
