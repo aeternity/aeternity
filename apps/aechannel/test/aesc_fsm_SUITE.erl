@@ -235,6 +235,9 @@ stop_node(N, Config) ->
 %%%===================================================================
 
 create_channel(Cfg) ->
+    with_trace(fun t_create_channel_/1, Cfg, "create_channel").
+
+t_create_channel_(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{fsm := FsmI, channel_id := ChannelId} = I
      , r := #{} = R} = create_channel_([?SLOGAN|Cfg]),
@@ -691,6 +694,9 @@ close_solo_tx(#{ fsm        := Fsm
     {ok, _Tx} = aesc_close_solo_tx:new(TxSpec).
 
 leave_reestablish(Cfg) ->
+    with_trace(fun t_leave_reestablish_/1, Cfg, "leave_reestablish").
+
+t_leave_reestablish_(Cfg) ->
     #{i := I, r := R} = leave_reestablish_([?SLOGAN|Cfg]),
     shutdown_(I, R),
     ok.
@@ -1851,3 +1857,50 @@ mine_key_blocks(Node, KeyBlocks) ->
       aecore_suite_utils:node_name(Node),
       KeyBlocks,
       #{strictly_follow_top => true}).
+
+with_trace(F, Config, File) ->
+    with_trace(F, Config, File, on_error).
+
+with_trace(F, Config, File, When) ->
+    ct:log("with_trace ...", []),
+    TTBRes = aesc_ttb:on_nodes([node()|get_nodes()], File),
+    ct:log("Trace set up: ~p", [TTBRes]),
+    try F(Config)
+    catch
+	error:R ->
+	    Stack = erlang:get_stacktrace(),
+	    ct:pal("Error ~p~nStack = ~p", [R, Stack]),
+	    ttb_stop(),
+	    erlang:error(R);
+	exit:R ->
+	    Stack = erlang:get_stacktrace(),
+	    ct:pal("Exit ~p~nStack = ~p", [R, Stack]),
+	    ttb_stop(),
+	    exit(R);
+        throw:Res ->
+            ct:pal("Caught throw:~p", [Res]),
+            throw(Res)
+    end,
+    case When of
+        on_error ->
+            ct:log("Discarding trace", []),
+            aesc_ttb:stop_nofetch();
+        always ->
+            ttb_stop()
+    end,
+    ok.
+
+ttb_stop() ->
+    Dir = aesc_ttb:stop(),
+    Out = filename:join(filename:dirname(Dir),
+			filename:basename(Dir) ++ ".txt"),
+    case aesc_ttb:format(Dir, Out, #{limit => 30000}) of
+        {error, Reason} ->
+            ct:pal("TTB formatting error: ~p", [Reason]);
+        _ ->
+            ok
+    end,
+    ct:pal("Formatted trace log in ~s~n", [Out]).
+
+get_nodes() ->
+    [aecore_suite_utils:node_name(dev1)].

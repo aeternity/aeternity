@@ -14,4 +14,7 @@ start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, [?CHILD(aesc_state_cache, 5000, worker)]}}.
+    {ok, {{one_for_one, 5, 10}, [ ?CHILD(aesc_state_cache, 5000, worker)
+                                , ?CHILD(aesc_sessions_sup, 5000, supervisor)
+                                , ?CHILD(aesc_listeners, 5000, worker)
+                                ]}}.
