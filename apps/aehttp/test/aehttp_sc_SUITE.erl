@@ -33,7 +33,7 @@
     sc_ws_contracts/1,
     sc_ws_oracle_contract/1,
     sc_ws_nameservice_contract/1,
-    sc_ws_enviroment_contract/1,
+    sc_ws_environment_contract/1,
     sc_ws_remote_call_contract/1,
     sc_ws_remote_call_contract_refering_onchain_data/1,
     sc_ws_wrong_call_data/1
@@ -42,6 +42,7 @@
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
@@ -123,7 +124,7 @@ groups() ->
         %% both can refer on-chain objects - name service
         sc_ws_nameservice_contract,
         %% both can refer on-chain objects - chain environment
-        sc_ws_enviroment_contract,
+        sc_ws_environment_contract,
         %% both can call a remote contract
         sc_ws_remote_call_contract,
         %% both can call a remote contract refering on-chain data
@@ -185,29 +186,26 @@ init_per_group(sc_ga, Config) ->
     end;
 init_per_group(with_open_channel, Config) ->
     sc_ws_open_(Config);
-init_per_group(Grp, Config) when Grp == sc_contracts; Grp == ga_both;
-                                 Grp == ga_initiator; Grp == ga_responder ->
-    sc_ws_open_(start_node(Config));
+init_per_group(Grp, Config) when Grp == ga_both; Grp == ga_initiator; Grp == ga_responder ->
+    reset_participants(Config);
+init_per_group(sc_contracts, Config) ->
+    sc_ws_open_(reset_participants(Config));
 init_per_group(plain, Config) ->
-    start_node(Config);
+    reset_participants(Config);
 init_per_group(_Grp, Config) ->
     Config.
 
-end_per_group(Grp, Config) when Grp == sc_contracts; Grp == ga_both;
-                                Grp == ga_initiator; Grp == ga_responder ->
-    sc_ws_close_(Config),
-    stop_node(Config);
+end_per_group(sc_contracts, Config) ->
+    sc_ws_close_(Config);
 end_per_group(with_open_channel, Config) ->
     sc_ws_close_(Config);
-end_per_group(plain, Config) ->
-    stop_node(Config);
 end_per_group(_Grp, _Config) ->
     ok.
 
 -define(DOC_LOG, [ sc_ws_ping_pong, sc_ws_deposit, sc_ws_withdraw,
                    sc_ws_failed_update, sc_ws_generic_messages, sc_ws_update_conflict,
                    sc_ws_contracts, sc_ws_oracle_contract, sc_ws_nameservice_contract,
-                   sc_ws_enviroment_contract, sc_ws_remote_call_contract,
+                   sc_ws_environment_contract, sc_ws_remote_call_contract,
                    sc_ws_remote_call_contract_refering_onchain_data, sc_ws_wrong_call_data ]).
 
 init_per_testcase(Case, Config) ->
@@ -244,22 +242,32 @@ start_node(Config) ->
     aecore_suite_utils:connect(Node),
 
     {ok, 404, _} = get_balance_at_top(),
-    IStartAmt = 5000000 * aec_test_utils:min_gas_price(),
-    RStartAmt = 5000000 * aec_test_utils:min_gas_price(),
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
-    {IPubkey, IPrivkey} = initialize_account(IStartAmt, ?ALICE),
-    {RPubkey, RPrivkey} = initialize_account(RStartAmt, ?BOB),
+    aecore_suite_utils:mine_key_blocks(Node, 3),
 
     Config1 = lists:keystore(sc_ws_protocol, 1, Config, {sc_ws_protocol, <<"json-rpc">>}),
 
-    Participants = #{initiator => #{pub_key => IPubkey,
-                                    priv_key => IPrivkey,
-                                    start_amt => IStartAmt},
-                     responder => #{pub_key => RPubkey,
-                                    priv_key => RPrivkey,
-                                    start_amt => RStartAmt}},
+    [{node, Node} | Config1].
 
-    [{node, Node}, {participants, Participants} | Config1].
+reset_participants(Config) ->
+    Node = ?config(node, Config),
+
+    StartAmt = 5000000 * aec_test_utils:min_gas_price(),
+
+    Initiator = {IPub, IPriv} = aecore_suite_utils:generate_key_pair(),
+    Responder = {RPub, RPriv} = aecore_suite_utils:generate_key_pair(),
+
+    ITx = initialize_account(StartAmt, Initiator, false),
+    RTx = initialize_account(StartAmt, Responder, false),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ITx, RTx], ?MAX_MINED_BLOCKS),
+
+    Participants = #{initiator => #{pub_key => IPub,
+                                    priv_key => IPriv,
+                                    start_amt => StartAmt},
+                     responder => #{pub_key => RPub,
+                                    priv_key => RPriv,
+                                    start_amt => StartAmt}},
+
+    [{participants, Participants} | proplists:delete(participants, Config)].
 
 stop_node(Config) ->
     RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
@@ -753,7 +761,7 @@ sc_ws_get_contract(ConnPid, Pubkey, Config) ->
     #{ <<"id">>          := IdE
     , <<"owner_id">>     := OwnerIdE
     , <<"vm_version">>   := VMVersion
-    , <<"abi_version">>  := CTVersion
+    , <<"abi_version">>  := ABIVersion
     , <<"active">>       := Active
     , <<"referrer_ids">> := ReferrerIdsE
     , <<"deposit">>      := Deposit
@@ -769,7 +777,7 @@ sc_ws_get_contract(ConnPid, Pubkey, Config) ->
     #{ id => Id
      , owner_id => OwnerId
      , vm_version => VMVersion
-     , ct_version => CTVersion
+     , abi_version => ABIVersion
      , active => Active
      , referrer_ids => ReferrerIds
      , deposit => Deposit
@@ -1121,7 +1129,7 @@ sc_ws_nameservice_contract(Config) ->
         || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
     ok.
 
-sc_ws_enviroment_contract(Config) ->
+sc_ws_environment_contract(Config) ->
     [sc_ws_contract_generic_(Role, ContractSource, fun sc_ws_enviroment_contract_/9, Config,
                             [])
         || Role <- [initiator, responder], ContractSource <- [onchain, offchain]],
@@ -1200,8 +1208,8 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
                 fun(Owner, EncodedCode, EncodedInitData, Deposit) ->
                     {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
                     NewContractOpts =
-                        #{vm_version  => latest_sophia_vm(),
-                          abi_version => latest_sophia_abi(),
+                        #{vm_version  => aect_test_utils:vm_version(),
+                          abi_version => aect_test_utils:abi_version(),
                           deposit     => Deposit,
                           code        => EncodedCode,
                           call_data   => EncodedInitData},
@@ -1273,8 +1281,8 @@ post_contract_onchain(EncodedCode, EncodedInitCallData) ->
 
     ValidEncoded = #{ owner_id    => Pubkey,
                       code        => EncodedCode,
-                      vm_version  => latest_sophia_vm(),
-                      abi_version => latest_sophia_abi(),
+                      vm_version  => aect_test_utils:vm_version(),
+                      abi_version => aect_test_utils:abi_version(),
                       deposit     => 0,
                       amount      => 0,
                       gas         => 600,
@@ -1309,10 +1317,22 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
                        OwnerPubkey, OtherPubkey, _Opts, Config) ->
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
-    {OraclePubkey, OraclePrivkey} =
-        initialize_account(2000000 * aec_test_utils:min_gas_price(),
-                           ?CAROL),
-    SophiaStringType = aeb_heap:to_binary(string, 0),
+    {OraclePubkey, OraclePrivkey} = ?CAROL,
+    ok = initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
+
+    SophiaStringType =
+        case aect_test_utils:backend() of
+            aevm -> aeb_heap:to_binary(string, 0);
+            fate -> iolist_to_binary(aeb_fate_encoding:serialize_type(string))
+        end,
+    SophiaString =
+        fun(S0) ->
+            S = list_to_binary(tl(lists:droplast(S0))),
+            case aect_test_utils:backend() of
+                aevm -> aeb_heap:to_binary(S, 0);
+                fate -> aeb_fate_encoding:serialize(S)
+            end
+        end,
     QueryFee = 3,
     OracleTTL = 20,
     QueryTTL = 5,
@@ -1323,20 +1343,20 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
                       response_format => SophiaStringType,
                       query_fee       => QueryFee,
                       query_ttl       => QueryTTL,
-                      abi_version     => latest_sophia_abi(),
+                      abi_version     => aect_test_utils:abi_version(),
                       oracle_ttl      => {delta, OracleTTL}
                      }),
     OracleQuerySequence =
         fun(Q0, R0) ->
-            Q = aeb_heap:to_binary(list_to_binary(tl(lists:droplast(Q0))), 0),
-            R = aeb_heap:to_binary(list_to_binary(tl(lists:droplast(R0))), 0),
+            Q = SophiaString(Q0),
+            R = SophiaString(R0),
             QueryId = query_oracle(OraclePubkey, OraclePrivkey, %oracle asks oracle
-                                  OraclePubkey,
-                                  #{query        => Q,
-                                    query_ttl    => {delta, QueryTTL - 1},
-                                    response_ttl => {delta, ResponseTTL}}),
+                                   OraclePubkey,
+                                   #{query        => Q,
+                                     query_ttl    => {delta, QueryTTL - 1},
+                                     response_ttl => {delta, ResponseTTL}}),
             respond_oracle(OraclePubkey, OraclePrivkey, QueryId,
-                          R, #{response_ttl => {delta, ResponseTTL}}),
+                           R, #{response_ttl => {delta, ResponseTTL}}),
             QueryId
         end,
 
@@ -1348,32 +1368,26 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
 
     ContractId = aeser_id:create(contract, ContractPubKey),
     OwnerId = aeser_id:create(account, OwnerPubkey),
+    ExpectedABIVersion = aect_test_utils:abi_version(),
     #{ active := true
-     , ct_version := 1
+     , abi_version := ExpectedABIVersion
      , deposit := 10
      , id := ContractId
      , owner_id := OwnerId
      , referrer_ids := []
-     , state := State1
      } = sc_ws_get_contract_assert_equal(ConnPid1, ConnPid2, ContractPubKey, Config),
-    <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>> = maps:get(<<2>>, State1),
+
     CallContract =
         fun(Who, Fun, Args, ReturnType, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
-            {ok, #{<<"value">> := R0}} =
-                dry_call_a_contract(Fun, Args, ContractPubKey,
-                                    contract_code("channel_on_chain_contract_oracle"), UpdaterConnPid,
-                                    Config, ReturnType),
-                #{tx := Tx, updates := Updates} =
-                    call_a_contract(
-                      Fun, Args,
-                      ContractPubKey, contract_code("channel_on_chain_contract_oracle"),
-                      UpdaterConnPid, UpdateVolley, Config),
-            {ok, #{<<"value">> := R}} =
-                ws_get_decoded_result(ConnPid1, ConnPid2,
-                                      ReturnType,
-                                      Updates, Tx,
-                                      Config),
+            R0 = dry_call_a_contract(Fun, Args, ContractPubKey,
+                                     channel_on_chain_contract_oracle, UpdaterConnPid, Config),
+            #{tx := Tx, updates := Updates} =
+                call_a_contract(Fun, Args, ContractPubKey, channel_on_chain_contract_oracle,
+                                UpdaterConnPid, UpdateVolley, Config),
+            R =
+                ws_get_decoded_result(ConnPid1, ConnPid2, channel_on_chain_contract_oracle,
+                                      Fun, Updates, Tx, Config),
             {R, R} = {R0, R},
             {R, R} = {Result, R}
 
@@ -1382,16 +1396,14 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
                   <<"string">>, <<"ok">>)
         || {Who, Bet} <- [{initiator, "\"I win\""},
                           {responder, "\"no, I win\""}]],
-
     #{ active := true
-     , ct_version := 1
+     , abi_version := ExpectedABIVersion
      , deposit := 10
      , id := ContractId
      , owner_id := OwnerId
      , referrer_ids := []
      , state := State2
      } = sc_ws_get_contract_assert_equal(ConnPid1, ConnPid2, ContractPubKey, Config),
-    <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2>> = maps:get(<<2>>, State2),
     %% initiator places a bet and then nobody can overwrite it
     ParkedAnswer = "\"I claim this\"",
     CallContract(initiator, "place_bet", [ParkedAnswer],
@@ -1406,14 +1418,13 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
                   <<"string">>, <<"different question">>)
         || Who <- [initiator, responder]],
     #{ active := true
-     , ct_version := 1
+     , abi_version := ExpectedABIVersion
      , deposit := 10
      , id := ContractId
      , owner_id := OwnerId
      , referrer_ids := []
      , state := State3
      } = sc_ws_get_contract_assert_equal(ConnPid1, ConnPid2, ContractPubKey, Config),
-    <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3>> = maps:get(<<2>>, State3),
     Answer = "\"other reasonable thingy\"",
     CorrectQueryId = OracleQuerySequence(Question, Answer),
     EncodedQueryId = aeser_api_encoder:encode(oracle_query_id, CorrectQueryId),
@@ -1434,14 +1445,13 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
     % owner posts the correct
     CallContract(Owner, "place_bet", [Answer], <<"string">>, <<"ok">>),
     #{ active := true
-     , ct_version := 1
+     , abi_version := ExpectedABIVersion
      , deposit := 10
      , id := ContractId
      , owner_id := OwnerId
      , referrer_ids := []
      , state := State4
     } = sc_ws_get_contract_assert_equal(ConnPid1, ConnPid2, ContractPubKey, Config),
-    <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4>> = maps:get(<<2>>, State4),
 
     {ok, {OwnerBal, OtherBal0}} = sc_ws_get_both_balances(ConnPid1,
                                                           OwnerPubkey,
@@ -1472,8 +1482,8 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
     Name = random_unused_name(),
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
-    {NamePubkey, NamePrivkey} =
-        initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
+    {NamePubkey, NamePrivkey} = ?CAROL,
+    ok = initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
 
     EncodedCode = contract_byte_code("channel_on_chain_contract_name_resolution"),
     {ok, EncodedInitData} = encode_call_data(channel_on_chain_contract_name_resolution,
@@ -1489,26 +1499,18 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
             QKey = AddQuotes(Key0),
             Args = [QName, QKey],
             FunctionName = "can_resolve",
-            {ok, #{<<"value">> := R0}} =
-                dry_call_a_contract(FunctionName, Args, ContractPubKey,
-                                    contract_code("channel_on_chain_contract_name_resolution"),
-                                    UpdaterConnPid, Config, <<"bool">>),
+            R0 = dry_call_a_contract(FunctionName, Args, ContractPubKey,
+                                     channel_on_chain_contract_name_resolution,
+                                     UpdaterConnPid, Config),
 
-                #{tx := Tx, updates := Updates} =
-                    call_a_contract(
-                      FunctionName, Args, ContractPubKey,
-                      contract_code("channel_on_chain_contract_name_resolution"),
-                      UpdaterConnPid, UpdateVolley, Config),
-            {ok, #{<<"value">> := RInt}} =
-                ws_get_decoded_result(ConnPid1, ConnPid2,
-                                      <<"bool">>,
-                                      Updates, Tx, Config),
-            R =
-                case RInt of
-                    0 -> false;
-                    1 -> true
-                end,
-            {RInt, RInt} = {R0, RInt},
+            #{tx := Tx, updates := Updates} =
+                call_a_contract(FunctionName, Args, ContractPubKey,
+                                channel_on_chain_contract_name_resolution,
+                                UpdaterConnPid, UpdateVolley, Config),
+            R = ws_get_decoded_result(ConnPid1, ConnPid2,
+                                      channel_on_chain_contract_name_resolution,
+                                      FunctionName, Updates, Tx, Config),
+            {R, R} = {R0, R},
             {R, R} = {Result, R}
 
         end,
@@ -1537,22 +1539,16 @@ sc_ws_enviroment_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
     ContractPubKey = CreateContract(Owner, EncodedCode, EncodedInitData, 10),
 
     ContractCall =
-        fun(Who, Fun, ResultType, Result) ->
+        fun(Who, Fun, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             Args = [],
-            {ok, #{<<"value">> := R0}} =
-                dry_call_a_contract(Fun, Args, ContractPubKey,
-                                    contract_code("channel_env"), UpdaterConnPid,
-                                    Config, ResultType),
-                #{tx := Tx, updates := Updates} =
-                    call_a_contract(
-                      Fun, Args, ContractPubKey,
-                      contract_code("channel_env"), UpdaterConnPid,
-                      UpdateVolley, Config),
-            {ok, #{<<"value">> := R}} =
-                ws_get_decoded_result(ConnPid1, ConnPid2,
-                                      ResultType,
-                                      Updates, Tx, Config),
+            R0 = dry_call_a_contract(Fun, Args, ContractPubKey,
+                                     channel_env, UpdaterConnPid, Config),
+            #{tx := Tx, updates := Updates} =
+                call_a_contract(Fun, Args, ContractPubKey, channel_env,
+                                UpdaterConnPid, UpdateVolley, Config),
+            R = ws_get_decoded_result(ConnPid1, ConnPid2, channel_env,
+                                      Fun, Updates, Tx, Config),
             {R, R} = {R0, R},
             case is_function(Result) of
                 true -> true = Result(R);
@@ -1561,8 +1557,8 @@ sc_ws_enviroment_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
             end
         end,
     Test =
-        fun(Fun, ResultType, Result) ->
-            [ContractCall(Who, Fun, ResultType, Result)
+        fun(Fun, Result) ->
+            [ContractCall(Who, Fun, Result)
                 || Who <- [initiator, responder]]
         end,
     {ok, 200, Block} = get_key_blocks_current_sut(),
@@ -1570,13 +1566,11 @@ sc_ws_enviroment_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
       <<"beneficiary">> := EncBeneficiary,
       <<"time">> := Time
      } = Block,
-    {ok, Beneficiary} = aeser_api_encoder:safe_decode(account_pubkey,
-                                                EncBeneficiary),
-    Test(<<"block_height">>, <<"int">>, BlockHeight),
-    Test(<<"coinbase">>, <<"int">>, fun(I) -> <<I:32/unit:8>> =:= Beneficiary end),
-    Test(<<"timestamp">>, <<"int">>, fun(T) -> T > Time end),
-    ok.
 
+    Test(<<"block_height">>, BlockHeight),
+    Test(<<"coinbase">>, EncBeneficiary),
+    Test(<<"timestamp">>, fun(T) -> T > Time end),
+    ok.
 
 sc_ws_remote_call_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
                             _OwnerPubkey, _OtherPubkey, _Opts, Config) ->
@@ -1585,40 +1579,35 @@ sc_ws_remote_call_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
         fun(Name) ->
             EncodedCode = contract_byte_code(Name),
             {ok, EncodedInitData} = encode_call_data(Name, "init", []),
-            ContractPubKey = CreateContract(Owner, EncodedCode, EncodedInitData, 10),
-
-            {ContractPubKey, contract_code(Name)}
-          end,
-    {IdentityCPubKey, IdentityCode} = CreateIdentityContract(identity),
-    {RemoteCallCPubKey, RemoteCallCode} = CreateIdentityContract(remote_call),
+            CreateContract(Owner, EncodedCode, EncodedInitData, 10)
+        end,
+    IdentityCPubKey   = CreateIdentityContract(identity),
+    RemoteCallCPubKey = CreateIdentityContract(remote_call),
 
     ContractCall =
-        fun(Who, ContractPubKey, Code, Fun, Args, Result, Amount) ->
+        fun(Who, ContractPubKey, Contract, Fun, Args, Result, Amount) ->
                 {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
-                {ok, #{<<"value">> := R0}} =
-                    dry_call_a_contract(Fun, Args, ContractPubKey,
-                                        Code, UpdaterConnPid,
-                                        Amount, Config, <<"int">>),
+                R0 = dry_call_a_contract(Fun, Args, ContractPubKey, Contract,
+                                         UpdaterConnPid, Amount, Config),
                 #{tx := Tx, updates := Updates} =
-                    call_a_contract(Fun, Args, ContractPubKey, Code,
+                    call_a_contract(Fun, Args, ContractPubKey, Contract,
                                     UpdaterConnPid, UpdateVolley, Amount, Config),
-                {ok, #{<<"value">> := R}} =
-                    ws_get_decoded_result(ConnPid1, ConnPid2, <<"int">>,
-                                          Updates, Tx, Config),
+                R = ws_get_decoded_result(ConnPid1, ConnPid2, Contract,
+                                          Fun, Updates, Tx, Config),
                 {R, R} = {R0, R},
                 {R, R} = {Result, R}
         end,
     CallIdentity =
         fun(Who, Val) ->
             ValB = integer_to_list(Val),
-            ContractCall(Who, IdentityCPubKey, IdentityCode, <<"main">>,
+            ContractCall(Who, IdentityCPubKey, identity, <<"main">>,
                          [ValB], Val, _Amount = 0)
         end,
     EncIdPubkey = aeser_api_encoder:encode(contract_pubkey, IdentityCPubKey),
     CallRemoteContract =
         fun(Who, Val) ->
             ValB = integer_to_list(Val),
-            ContractCall(Who, RemoteCallCPubKey, RemoteCallCode, <<"call">>,
+            ContractCall(Who, RemoteCallCPubKey, remote_call, <<"call">>,
                          [EncIdPubkey, ValB], Val,
                          % beacuse of hardcoded value=10 in the
                          % remote_call.aes -> amount in the call must be > 10
@@ -1646,34 +1635,22 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContra
         fun(Name) ->
             EncodedCode = contract_byte_code(Name),
             {ok, EncodedInitData} = encode_call_data(Name, "init", []),
-            ContractPubKey = CreateContract(Owner, EncodedCode, EncodedInitData, 10),
-
-            {ContractPubKey, contract_code(Name)}
+            CreateContract(Owner, EncodedCode, EncodedInitData, 10)
           end,
-    {ResolverCPubKey, ResolverCode} = CreateIdentityContract(channel_on_chain_contract_name_resolution),
-    {RemoteCallCPubKey, RemoteCallCode} = CreateIdentityContract(channel_remote_on_chain_contract_name_resolution),
+    ResolverCPubKey   = CreateIdentityContract(channel_on_chain_contract_name_resolution),
+    RemoteCallCPubKey = CreateIdentityContract(channel_remote_on_chain_contract_name_resolution),
 
     ContractCall =
-        fun(Who, ContractPubKey, Code, Fun, Args, Result, Amount) ->
+        fun(Who, ContractPubKey, Contract, Fun, Args, Result, Amount) ->
                 {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
-                {ok, #{<<"value">> := R0}} =
-                    dry_call_a_contract(Fun, Args, ContractPubKey,
-                                        Code, UpdaterConnPid,
-                                        Amount, Config, <<"int">>),
+                R0 = dry_call_a_contract(Fun, Args, ContractPubKey, Contract,
+                                         UpdaterConnPid, Amount, Config),
                 #{tx := Tx, updates := Updates} =
-                    call_a_contract(Fun,
-                                    Args,
-                                    ContractPubKey, Code,
+                    call_a_contract(Fun, Args, ContractPubKey, Contract,
                                     UpdaterConnPid, UpdateVolley, Amount, Config),
-                {ok, #{<<"value">> := RInt}} =
-                    ws_get_decoded_result(ConnPid1, ConnPid2, <<"int">>,
+                R = ws_get_decoded_result(ConnPid1, ConnPid2, Contract, Fun,
                                           Updates, Tx, Config),
-                R =
-                    case RInt of
-                        0 -> false;
-                        1 -> true
-                    end,
-                {RInt, RInt} = {R0, RInt},
+                {R, R} = {R0, R},
                 {R, R} = {Result, R}
         end,
     CallResolve =
@@ -1682,8 +1659,8 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContra
             QName = AddQuotes(Name),
             QKey = AddQuotes(Key),
             Args = [QName, QKey],
-            ContractCall(Who, ResolverCPubKey, ResolverCode, <<"can_resolve">>,
-                         Args, IsResolvable, _Amount = 0)
+            ContractCall(Who, ResolverCPubKey, channel_on_chain_contract_name_resolution,
+                         <<"can_resolve">>, Args, IsResolvable, _Amount = 0)
         end,
     EncResPubkey = aeser_api_encoder:encode(contract_pubkey, ResolverCPubKey),
     CallRemoteContract =
@@ -1692,8 +1669,9 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContra
             QName = AddQuotes(Name),
             QKey = AddQuotes(Key),
             Args = [EncResPubkey, QName, QKey],
-            ContractCall(Who, RemoteCallCPubKey, RemoteCallCode, <<"remote_resolve">>,
-                         Args, IsResolvable,
+            ContractCall(Who, RemoteCallCPubKey,
+                         channel_remote_on_chain_contract_name_resolution,
+                         <<"remote_resolve">>, Args, IsResolvable,
                          % beacuse of hardcoded value=10 in the
                          % remote_call.aes -> amount in the call must be > 10
                          _Amount = 20)
@@ -1719,8 +1697,8 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContra
     Test(CallRemoteContract, Name, <<"account_pubkey">>, false),
 
     % registering the name on-chain
-    {NamePubkey, NamePrivkey} =
-        initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
+    {NamePubkey, NamePrivkey} = ?CAROL,
+    ok = initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
     register_name(NamePubkey, NamePrivkey, Name,
                   [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)}]),
 
@@ -1817,20 +1795,23 @@ update_pointers(Owner, OwnerPrivKey, Name, Pointers0) ->
     sign_post_mine(Tx, OwnerPrivKey),
     ok.
 
-initialize_account(Amount, {Pubkey, Privkey}) ->
+initialize_account(Amount, KeyPair) ->
+    initialize_account(Amount, KeyPair, true).
+
+initialize_account(Amount, {Pubkey, _Privkey}, Check) ->
     Fee = ?SPEND_FEE,
-    BlocksToMine = 3,
-
     Node = aecore_suite_utils:node_name(?NODE),
-
-    aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
 
     {ok, 200, #{<<"tx">> := SpendTx}} =
         post_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Amount, Fee),
     TxHash = sign_and_post_tx(SpendTx),
-    ok = wait_for_tx_hash_on_chain(TxHash),
-    assert_balance_at_least(Pubkey, Amount),
-    {Pubkey, Privkey}.
+    if Check ->
+        aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [TxHash], ?MAX_MINED_BLOCKS),
+        assert_balance_at_least(Pubkey, Amount),
+        ok;
+       true ->
+        TxHash
+    end.
 
 update_volley_(FirstConnPid, FirstPrivkey, SecondConnPid, SecondPrivkey, Config) ->
     #{tx := UnsignedStateTx,
@@ -1894,20 +1875,17 @@ sc_ws_contract_(Config, TestName, Owner) ->
 
     % trigger call contract
     % owner can call a contract
-    {SomeUnsignedStateTx, Updates} =
-        contract_calls_(TestName, ContractPubKey, Code, SenderConnPid, UpdateVolley,
-                    AckConnPid, SenderPubkey, AckPubkey, Config),
-    _ = contract_result_parse(TestName,
-                              ws_get_decoded_result(SenderConnPid, AckConnPid,
-                                                    contract_return_type(TestName),
-                                                    Updates, SomeUnsignedStateTx,
-                                                    Config)),
+    {Fun, SomeUnsignedStateTx, Updates} =
+        contract_calls_(TestName, ContractPubKey, SenderConnPid, UpdateVolley,
+                        AckConnPid, SenderPubkey, AckPubkey, Config),
+    _ = ws_get_decoded_result(SenderConnPid, AckConnPid, TestName, Fun,
+                              Updates, SomeUnsignedStateTx, Config),
     ok = PruneCalls(SenderConnPid),
     ok = CallMissingCall(SomeUnsignedStateTx, Updates, SenderConnPid),
     % state is still usable
 
     % acknowledger can call a contract
-    contract_calls_(TestName, ContractPubKey, Code, AckConnPid, UpdateVolleyReverse,
+    contract_calls_(TestName, ContractPubKey, AckConnPid, UpdateVolleyReverse,
                     SenderConnPid, AckPubkey, SenderPubkey, Config),
 
     GetPoI =
@@ -1981,69 +1959,61 @@ create_contract_(TestName, SenderConnPid, UpdateVolley, Config) ->
     {ok, EncodedInitData} = encode_call_data(TestName, "init", InitArgument),
 
     ws_send_tagged(SenderConnPid, <<"channels.update.new_contract">>,
-                   #{vm_version  => latest_sophia_vm(),
-                     abi_version => latest_sophia_abi(),
+                   #{vm_version  => aect_test_utils:vm_version(),
+                     abi_version => aect_test_utils:abi_version(),
                      deposit     => 10,
                      code        => EncodedCode,
                      call_data   => EncodedInitData}, Config),
     #{tx := UnsignedStateTx, updates := Updates} = UpdateVolley(),
     {UnsignedStateTx, Updates, contract_code(TestName)}.
 
-contract_calls_(identity = TestName, ContractPubKey, Code, SenderConnPid, UpdateVolley,
+contract_calls_(identity = TestName, ContractPubKey, SenderConnPid, UpdateVolley,
                 AckConnPid, _ , _, Config) ->
     FunctionName = "main",
     Args = ["42"],
     ExpectedResult = 42,
     #{tx := UnsignedStateTx, updates := Updates} =
-        call_a_contract(FunctionName, Args, ContractPubKey, Code, SenderConnPid,
+        call_a_contract(FunctionName, Args, ContractPubKey, TestName, SenderConnPid,
                     UpdateVolley, Config),
-    {ok, #{<<"value">> := ExpectedResult}} =
-        dry_call_a_contract(FunctionName, Args, ContractPubKey,
-                            Code, SenderConnPid,
-                            Config, <<"int">>),
-    DecodedCallResult =
-        contract_result_parse(TestName,
-                              ws_get_decoded_result(SenderConnPid, AckConnPid,
-                                                    contract_return_type(TestName),
-                                                    Updates, UnsignedStateTx, Config)),
+    ExpectedResult = dry_call_a_contract(FunctionName, Args, ContractPubKey,
+                                         TestName, SenderConnPid, Config),
+    DecodedCallResult = ws_get_decoded_result(SenderConnPid, AckConnPid,
+                                              TestName, FunctionName,
+                                              Updates, UnsignedStateTx, Config),
     {ExpectedResult, _} = {DecodedCallResult, ExpectedResult},
-    {UnsignedStateTx, Updates};
-contract_calls_(counter = TestName, ContractPubKey, Code, SenderConnPid, UpdateVolley,
+    {FunctionName, UnsignedStateTx, Updates};
+contract_calls_(counter = TestName, ContractPubKey, SenderConnPid, UpdateVolley,
                 AckConnPid, _ , _, Config) ->
     #{tx := UnsignedStateTx0, updates := Updates0} =
-        call_a_contract("get", [], ContractPubKey, Code, SenderConnPid,
-                    UpdateVolley, Config),
+        call_a_contract("get", [], ContractPubKey, TestName, SenderConnPid,
+                        UpdateVolley, Config),
     GetDecodedResult =
         fun(Tx, U) ->
-            contract_result_parse(TestName,
-                                  ws_get_decoded_result(SenderConnPid, AckConnPid,
-                                                        contract_return_type(TestName),
-                                                        U, Tx, Config))
+            ws_get_decoded_result(SenderConnPid, AckConnPid, TestName,
+                                  "get", U, Tx, Config)
         end,
 
-    {ok, #{<<"value">> := ExpectedInitResult}} =
-        dry_call_a_contract("get", [], ContractPubKey,
-                            Code, SenderConnPid,
-                            Config, <<"int">>),
+    ExpectedInitResult = dry_call_a_contract("get", [], ContractPubKey,
+                                             TestName, SenderConnPid, Config),
     InitResult = GetDecodedResult(UnsignedStateTx0, Updates0),
     {InitResult, InitResult} = {ExpectedInitResult, InitResult},
-    call_a_contract("tick", [], ContractPubKey, Code, SenderConnPid,
-                    UpdateVolley, Config),
+    call_a_contract("tick", [], ContractPubKey, TestName,
+                    SenderConnPid, UpdateVolley, Config),
 
     #{tx := UnsignedStateTx1, updates := Updates1} =
-        call_a_contract("get", [], ContractPubKey, Code, SenderConnPid,
-                    UpdateVolley, Config),
+        call_a_contract("get", [], ContractPubKey, TestName,
+                        SenderConnPid, UpdateVolley, Config),
 
     #{tx := UnsignedStateTx2, updates := Updates2} =
-        call_a_contract("get", [], ContractPubKey, Code, SenderConnPid,
-                    UpdateVolley, Config),
+        call_a_contract("get", [], ContractPubKey, TestName,
+                        SenderConnPid, UpdateVolley, Config),
 
     ExpectedResult = InitResult + 1,
     DecodedCallResult = GetDecodedResult(UnsignedStateTx1, Updates1),
     DecodedCallResult = GetDecodedResult(UnsignedStateTx2, Updates2),
     {ExpectedResult, _} = {DecodedCallResult, ExpectedResult},
-    {UnsignedStateTx0, Updates0};
-contract_calls_(spend_test = TestName, ContractPubKey, Code, SenderConnPid, UpdateVolley,
+    {"get", UnsignedStateTx0, Updates0};
+contract_calls_(spend_test = TestName, ContractPubKey, SenderConnPid, UpdateVolley,
                 AckConnPid, SenderPubkey, AckPubkey, Config) ->
     GetBalance =
         fun(Args) ->
@@ -2053,14 +2023,10 @@ contract_calls_(spend_test = TestName, ContractPubKey, Code, SenderConnPid, Upda
                     _ -> <<"get_balance_of">>
                 end,
                 #{tx := UsStateTx, updates := Updates} =
-                call_a_contract(FunName, Args, ContractPubKey, Code, SenderConnPid,
-                            UpdateVolley, Config),
-            _DecodedCallResult =
-                contract_result_parse(TestName,
-                                      ws_get_decoded_result(SenderConnPid, AckConnPid,
-                                                            contract_return_type(TestName),
-                                                            Updates, UsStateTx,
-                                                            Config))
+                call_a_contract(FunName, Args, ContractPubKey, TestName,
+                                SenderConnPid, UpdateVolley, Config),
+            ws_get_decoded_result(SenderConnPid, AckConnPid, TestName, FunName,
+                                  Updates, UsStateTx, Config)
         end,
     ContractBalance0 = GetBalance([]),
 
@@ -2070,9 +2036,9 @@ contract_calls_(spend_test = TestName, ContractPubKey, Code, SenderConnPid, Upda
     SpendFun =
         fun(To, Amt) ->
             SpendArgs = format_args([To, Amt]),
-                #{tx := _SpendStateTx, updates := _Updates2} =
-                call_a_contract("spend", SpendArgs, ContractPubKey, Code, SenderConnPid,
-                                  UpdateVolley, Config)
+            #{tx := _SpendStateTx, updates := _Updates2} =
+                call_a_contract("spend", SpendArgs, ContractPubKey, TestName,
+                                SenderConnPid, UpdateVolley, Config)
         end,
 
     SpendAmt = 3,
@@ -2090,17 +2056,18 @@ contract_calls_(spend_test = TestName, ContractPubKey, Code, SenderConnPid, Upda
     SenderB = GetBalance(format_args(SenderPubkey)),
     AckB = GetBalance(format_args(AckPubkey)),
     AckB = AckB0 + SpendAmt2,
-    {UnsignedStateTx, Updates}.
+    {"spend", UnsignedStateTx, Updates}.
 
-call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid, UpdateVolley, Config) ->
-    call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
-                    UpdateVolley, 0, Config).
-call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
+call_a_contract(Function, Argument, ContractPubKey, Contract,
+                SenderConnPid, UpdateVolley, Config) ->
+    call_a_contract(Function, Argument, ContractPubKey, Contract,
+                    SenderConnPid, UpdateVolley, 0, Config).
+call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
                 UpdateVolley, Amount, Config) ->
-    {ok, EncodedMainData} = encode_call_data(Code, Function, Argument),
+    {ok, EncodedMainData} = encode_call_data(Contract, Function, Argument),
     CallOpts =
         #{contract    => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
-          abi_version => latest_sophia_abi(),
+          abi_version => aect_test_utils:abi_version(),
           amount      => Amount,
           call_data   => EncodedMainData},
     % invalid call
@@ -2125,19 +2092,17 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
                    CallOpts, Config),
     #{tx := _UnsignedStateTx, updates := _Updates} = UpdateVolley().
 
-dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
-                    Config, Type) ->
-    dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
-                    0, Config, Type).
-dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
-                    Amount, Config, Type) ->
-    {ok, EncodedMainData} = encode_call_data(Code, Function, Argument),
+dry_call_a_contract(Function, Argument, CPubKey, Contract, SenderConnPid, Config) ->
+    dry_call_a_contract(Function, Argument, CPubKey, Contract, SenderConnPid, 0, Config).
+
+dry_call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid, Amount, Config) ->
+    {ok, EncodedMainData} = encode_call_data(Contract, Function, Argument),
     ok = ?WS:register_test_for_channel_event(SenderConnPid, dry_run),
     CallOpts =
-        #{contract   => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
-          abi_version => latest_sophia_abi(),
-          amount     => Amount,
-          call_data  => EncodedMainData},
+        #{contract    => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
+          abi_version => aect_test_utils:abi_version(),
+          amount      => Amount,
+          call_data   => EncodedMainData},
     % invalid call
     ws_send_tagged(SenderConnPid, <<"channels.dry_run.call_contract">>,
                    CallOpts#{amount => <<"1">>}, Config),
@@ -2167,20 +2132,20 @@ dry_call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
       <<"height">>            := CallRound,
       <<"return_type">>       := <<"ok">>,
       <<"return_value">>      := ReturnValue} = CallRes,
-    aect_test_utils:decode_data(Type, ReturnValue).
+    decode_call_result(Contract, Function, ok, ReturnValue).
 
 encode_call_data(Name, Fun, Args) when is_atom(Name) ->
     encode_call_data(contract_code(Name), Fun, Args);
 encode_call_data(Src, Fun, Args) ->
-    {ok, CallData} = aect_test_utils:encode_call_data(Src, Fun, Args),
+    {ok, CallData} = aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), Src, Fun, Args),
     {ok, aeser_api_encoder:encode(contract_bytearray, CallData)}.
 
 contract_code(ContractName) ->
-    {ok, BinSrc} = aect_test_utils:read_contract(ContractName),
+    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
     BinSrc.
 
 contract_byte_code(ContractName) ->
-    {ok, BinCode} = aect_test_utils:compile_contract(ContractName),
+    {ok, BinCode} = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), ContractName),
     aeser_api_encoder:encode(contract_bytearray, BinCode).
 
 get_contract_bytecode(ContractName) ->
@@ -2773,7 +2738,7 @@ tx_in_chain(TxHash) ->
         {ok, 404, _} -> false
     end.
 
-ws_get_decoded_result(ConnPid1, ConnPid2, Type, [Update], UnsignedTx, Config) ->
+ws_get_decoded_result(ConnPid1, ConnPid2, Contract, Function, [Update], UnsignedTx, Config) ->
     %% helper lambda for decoded result
     GetCallResult =
         fun(ConnPid) ->
@@ -2805,7 +2770,12 @@ ws_get_decoded_result(ConnPid1, ConnPid2, Type, [Update], UnsignedTx, Config) ->
       <<"height">>            := CallRound,
       <<"return_type">>       := <<"ok">>,
       <<"return_value">>      := ReturnValue} = CallRes,
-    aect_test_utils:decode_data(Type, ReturnValue).
+    decode_call_result(Contract, Function, ok, ReturnValue).
+
+decode_call_result(ContractName, Fun, ResType, ResValue) ->
+    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_LIMA_AEVM, ContractName),
+    aect_test_utils:decode_call_result(binary_to_list(BinCode), Fun, ResType, ResValue).
+
 
 ws_get_call_params(Update, UnsignedTx) ->
     {CB1, Tx1} = aetx:specialize_callback(UnsignedTx),
@@ -2958,12 +2928,6 @@ sc_ws_protocol(Config) ->
     {_, Protocol} = lists:keyfind(sc_ws_protocol, 1, Config),
     Protocol.
 
-latest_sophia_abi() ->
-    aect_test_utils:latest_sophia_abi_version().
-
-latest_sophia_vm() ->
-    aect_test_utils:latest_sophia_vm_version().
-
 sc_ws_wrong_call_data(Config) ->
     [sc_ws_contract_generic_(Role, offchain, fun sc_ws_broken_init_code_/9, Config, [])
         || Role <- [initiator, responder]],
@@ -2979,8 +2943,8 @@ sc_ws_broken_init_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
     {ok, EncodedInitData} = encode_call_data(identity, "main", ["1"]),
     {_CreateVolley, OwnerConnPid, _OwnerPubKey} = GetVolley(Owner),
     ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
-                   #{vm_version  => latest_sophia_vm(),
-                     abi_version => latest_sophia_abi(),
+                   #{vm_version  => aect_test_utils:vm_version(),
+                     abi_version => aect_test_utils:abi_version(),
                      deposit     => 10,
                      code        => EncodedCode,
                      call_data   => EncodedInitData}, Config),
@@ -2998,8 +2962,8 @@ sc_ws_broken_call_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
 
     {SignVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
     ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract">>,
-                   #{vm_version  => latest_sophia_vm(),
-                     abi_version => latest_sophia_abi(),
+                   #{vm_version  => aect_test_utils:vm_version(),
+                     abi_version => aect_test_utils:abi_version(),
                      deposit     => 10,
                      code        => EncodedCode,
                      call_data   => EncodedInitData}, Config),
@@ -3013,7 +2977,7 @@ sc_ws_broken_call_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
     % call the existing contract with the other contract's call data
     ws_send_tagged(OwnerConnPid, <<"channels.update.call_contract">>,
                    #{contract    => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
-                     abi_version => latest_sophia_abi(),
+                     abi_version => aect_test_utils:abi_version(),
                      amount      => 1,
                      call_data   => EncodedCalcCallData}, Config),
     % contract call succeeds executing
@@ -3102,8 +3066,12 @@ attach({Owner, OwnerPrivkey}, Contract, AuthFun, Args, Opts) ->
 attach_({Owner, OwnerPrivkey}, Src, ByteCode, TypeInfo, AuthFun, Args, Opts) ->
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Owner]),
     Calldata = aega_test_utils:make_calldata(Src, "init", Args),
-    {ok, AuthFunHash} = aeb_aevm_abi:type_hash_from_function_name(list_to_binary(AuthFun),
-                                                             TypeInfo),
+    FunName = list_to_binary(AuthFun),
+    {ok, AuthFunHash} =
+        case aect_test_utils:backend() of
+            aevm -> aeb_aevm_abi:type_hash_from_function_name(FunName, TypeInfo);
+            fate ->{ok, <<(aeb_fate_code:symbol_identifier(FunName)):4/binary, 0:(28*8)>>}
+        end,
     Options1 = maps:merge(#{nonce => Nonce, code => ByteCode,
                             auth_fun => AuthFunHash, call_data => Calldata},
                             Opts),

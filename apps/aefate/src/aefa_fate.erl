@@ -175,7 +175,7 @@ abort(out_of_gas, ES) ->
     ?t("Out of gas", [], ES);
 abort({abort, Err}, ES) ->
     ?t("~ts", [Err], ES);       %% TODO: revert!
-abort(bad_byte_code, ES) ->
+abort(bad_bytecode, ES) ->
     ?t("Bad byte code", [], ES).
 
 
