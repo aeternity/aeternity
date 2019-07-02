@@ -1560,7 +1560,7 @@ sign_tx(Tx) ->
 %% private functions
 %% ============================================================
 new_account(Balance) ->
-    {Pubkey,Privkey} = generate_key_pair(),
+    {Pubkey,Privkey} = aecore_suite_utils:generate_key_pair(),
     Fee = 20000 * ?DEFAULT_GAS_PRICE,
     {ok, 200, #{<<"tx">> := SpendTx}} =
         create_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Balance, Fee),
@@ -1611,6 +1611,3 @@ wait_for_tx_hash_on_chain(Node, TxHash) ->
             end
     end.
 
-generate_key_pair() ->
-    #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
-    {Pubkey, Privkey}.

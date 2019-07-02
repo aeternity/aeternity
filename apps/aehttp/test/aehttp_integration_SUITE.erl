@@ -3174,7 +3174,7 @@ assert_balance_at_least(Pubkey, MinExpectedBalance) ->
     true = MinExpectedBalance =< Balance.
 
 initialize_account(Amount) ->
-    KeyPair = {_Pubkey, _Privkey} = generate_key_pair(),
+    KeyPair = aecore_suite_utils:generate_key_pair(),
     initialize_account(Amount, KeyPair).
 
 initialize_account(Amount, {Pubkey, Privkey}) ->
@@ -3828,10 +3828,6 @@ tx_in_chain(TxHash) ->
         {ok, 200, #{<<"block_hash">> := _}} -> true;
         {ok, 404, _} -> false
     end.
-
-generate_key_pair() ->
-    #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
-    {Pubkey, Privkey}.
 
 latest_sophia_abi() ->
     aect_test_utils:latest_sophia_abi_version().

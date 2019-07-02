@@ -72,6 +72,8 @@
          external_address/0
         ]).
 
+-export([generate_key_pair/0]).
+
 -export([restart_jobs_server/1]).
 
 -export([patron/0,
@@ -1117,3 +1119,7 @@ rpc(Mod, Fun, Args) ->
 
 rpc(Node, Mod, Fun, Args) ->
     rpc:call(node_name(Node), Mod, Fun, Args, 5000).
+
+generate_key_pair() ->
+    #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
+    {Pubkey, Privkey}.
