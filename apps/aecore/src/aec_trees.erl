@@ -570,7 +570,8 @@ apply_txs_on_state_trees([], ValidTxs, InvalidTxs, Trees,Env,Opts) ->
 apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Opts) ->
     Strict     = proplists:get_value(strict, Opts, false),
     DontVerify = proplists:get_value(dont_verify_signature, Opts, false),
-    case verify_signature(SignedTx, Trees, DontVerify) of
+    Height     = aetx_env:height(Env),
+    case verify_signature(SignedTx, Trees, Height, DontVerify) of
         ok ->
             Env1 = aetx_env:set_signed_tx(Env, {value, SignedTx}),
             Tx = aetx_sign:tx(SignedTx),
@@ -606,8 +607,8 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
             apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)
     end.
 
-verify_signature(_, _, true)             -> ok;
-verify_signature(SignedTx, Trees, false) -> aetx_sign:verify(SignedTx, Trees).
+verify_signature(_, _, _, true)             -> ok;
+verify_signature(STx, Trees, Height, false) -> aetx_sign:verify(STx, Trees, Height).
 
 -spec grant_fee(aec_keys:pubkey(), trees(), non_neg_integer()) -> trees().
 grant_fee(BeneficiaryPubKey, Trees0, Fee) ->

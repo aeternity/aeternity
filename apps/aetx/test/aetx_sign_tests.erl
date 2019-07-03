@@ -9,6 +9,7 @@
 -include("../../aecore/include/blocks.hrl").
 
 -define(TEST_MODULE, aetx_sign).
+-define(TEST_HEIGHT, 42).
 
 sign_txs_test_() ->
     {setup,
@@ -23,7 +24,7 @@ sign_txs_test_() ->
                #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
                {ok, SpendTx} = make_spend_tx(Pubkey),
                Signed = aec_test_utils:sign_tx(SpendTx, Privkey),
-               ?assertEqual(ok, ?TEST_MODULE:verify(Signed, aec_trees:new())),
+               ?assertEqual(ok, ?TEST_MODULE:verify(Signed, aec_trees:new(), ?TEST_HEIGHT)),
                ok
       end},
       {"Mismatched keys do produce invalid signatures",
@@ -33,7 +34,7 @@ sign_txs_test_() ->
                {ok, SpendTx} = make_spend_tx(PubkeyA),
                Signed = aec_test_utils:sign_tx(SpendTx, PrivkeyB),
                ?assertEqual({error, signature_check_failed},
-                            ?TEST_MODULE:verify(Signed, aec_trees:new())),
+                            ?TEST_MODULE:verify(Signed, aec_trees:new(), ?TEST_HEIGHT)),
                ok
       end},
       {"Broken pub key does not validate signatures",
@@ -42,7 +43,7 @@ sign_txs_test_() ->
                {ok, SpendTx} = make_spend_tx(<<0:32/unit:8>>),
                Signed = aec_test_utils:sign_tx(SpendTx, Privkey),
                ?assertEqual({error, signature_check_failed},
-                            ?TEST_MODULE:verify(Signed, aec_trees:new())),
+                            ?TEST_MODULE:verify(Signed, aec_trees:new(), ?TEST_HEIGHT)),
                ok
       end},
       {"Broken priv key does not produce signatures",
@@ -57,7 +58,7 @@ sign_txs_test_() ->
        fun() ->
                SignedCloseMTx = make_signed_mutual_close(),
                ?assertEqual({error, signature_check_failed},
-                            ?TEST_MODULE:verify(SignedCloseMTx, aec_trees:new())),
+                            ?TEST_MODULE:verify(SignedCloseMTx, aec_trees:new(), ?TEST_HEIGHT)),
                ok
       end}
      ]}.
