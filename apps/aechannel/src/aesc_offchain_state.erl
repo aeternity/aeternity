@@ -20,7 +20,7 @@
         , check_update_tx/7           %%  (SignedTx, Updates, State, Protocol, OnChainTrees, OnChainEnv, Opts)
         , check_reestablish_tx/2      %%  (SignedTx, State) -> {ok,NewSt} | error()
         , is_latest_signed_tx/2       %%  (SignedTx, State) -> boolean()
-        , verify_signatures/2         %%  (SignedTx, State)
+        , verify_signatures/3         %%  (SignedTx, State, Height) -> ok | error
         , make_update_tx/6            %%  (Updates, State, Protocol, OnChainTrees, OnChainEnv, Opts) -> Tx
         , set_signed_tx/6             %%  (SignedTx, Updates, State0, OnChainTrees, OnCHainEnv, Opts) -> State
         , set_signed_tx/7             %%  (SignedTx, Updates, State0, OnChainTrees, OnCHainEnv, Opts, CheckSigs) -> State
@@ -195,9 +195,9 @@ check_update_tx_(Mod, RefTx, Updates, #state{} = State,
             {error, Reason}
     end.
 
--spec verify_signatures(aetx_sign:signed_tx(), state()) -> ok | error.
-verify_signatures(SignedTx, #state{trees = Trees}) ->
-    aetx_sign:verify(SignedTx, Trees).
+-spec verify_signatures(aetx_sign:signed_tx(), state(), aec_block:height()) -> ok | error.
+verify_signatures(SignedTx, #state{trees = Trees}, Height) ->
+    aetx_sign:verify(SignedTx, Trees, Height).
 
 -spec get_contract_call(aect_contracts:pubkey(), aec_keys:pubkey(),
                         non_neg_integer(), state()) -> {error, call_not_found}

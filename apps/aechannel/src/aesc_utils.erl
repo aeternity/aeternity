@@ -434,7 +434,8 @@ verify_signatures(Channel, SignedState, Trees, Env, CheckedSigners) ->
         {channel_offchain_tx, _} ->
             {ok, Signers} = aetx:signers(Tx, Trees),
             BasicSigners  = Signers -- CheckedSigners,
-            aetx_sign:verify_half_signed(BasicSigners, SignedState);
+            Height        = aetx_env:height(Env),
+            aetx_sign:verify_half_signed(BasicSigners, SignedState, Height);
         {ga_meta_tx, GAMetaTx} ->
             case verify_signature(Channel, GAMetaTx, Trees, Env) of
                 {ok, Signer, InnerTx} ->

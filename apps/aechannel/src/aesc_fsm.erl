@@ -2055,7 +2055,7 @@ chk_channel_id(#{ channel_id := ChId }, _, #data{ on_chain_id = OCId }) ->
 
 chk_dual_sigs(_, SignedTx, #data{ state = State }) ->
     [_,_] = aetx_sign:signatures(SignedTx),
-    {ok == aesc_offchain_state:verify_signatures(SignedTx, State),
+    {ok == aesc_offchain_state:verify_signatures(SignedTx, State, 0), %% TODO: proper height
      signatures_invalid}.
 
 chk_same_tx(_, SignedTx, #data{ state = State }) ->
@@ -2647,7 +2647,7 @@ send_withdraw_created_msg(SignedTx, Updates,
 
 check_withdraw_created_msg(#{ channel_id := ChanId
                             , block_hash := ?NOT_SET_BLOCK_HASH
-                            , data       := #{tx      := TxBin, 
+                            , data       := #{tx      := TxBin,
                                               updates := UpdatesBin}} = Msg,
                   #data{ on_chain_id = ChanId } = Data) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
@@ -3321,7 +3321,7 @@ verify_signatures_channel_create(SignedTx, Who) ->
 verify_signatures(Pubkeys, SignedTx) ->
     %%  aetx_sign:verify/2 actually needs aec_trees:trees() so we use
     %%  aetx_sign:verify_half_signed/2 instead
-    case aetx_sign:verify_half_signed(Pubkeys, SignedTx) of
+    case aetx_sign:verify_half_signed(Pubkeys, SignedTx, 0) of %% TODO: proper height
         ok ->
             ok;
         _ -> {error, bad_signature}
