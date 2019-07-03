@@ -20,16 +20,22 @@
 -export([hash/1,
          owner_pubkey/1,
          ttl/1,
-         created/1]).
+         created/1,
+         auction/1]).
 
 -behavior(aens_cache).
 %%%===================================================================
 %%% Types
 %%%===================================================================
+-type(auction_state() :: 'preclaim' | 'claim_attempt').
+
 -record(commitment,
         {id       :: aeser_id:id(),
          owner_id :: aeser_id:id(),
          created  :: aec_blocks:height(),
+         updated  :: aec_blocks:height(),
+         auction  :: auction_state(),
+         fee      :: fee(),
          ttl      :: aec_blocks:height()
          }).
 
@@ -58,6 +64,8 @@ new(Id, OwnerId, DeltaTTL, BlockHeight) ->
     #commitment{id       = Id,
                 owner_id = OwnerId,
                 created  = BlockHeight,
+                updated  = BlockHeight,
+                auction  = preclaim,
                 ttl      = BlockHeight + DeltaTTL}.
 
 -spec serialize(commitment()) -> binary().
@@ -117,3 +125,6 @@ ttl(#commitment{ttl = TTL}) ->
 created(#commitment{created = Created}) ->
     Created.
 
+-spec auction(commitment()) -> auction_state().
+auction(#commitment{auction = AuctionState}) ->
+    AuctionState.

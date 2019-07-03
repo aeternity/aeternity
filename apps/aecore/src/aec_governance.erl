@@ -12,11 +12,13 @@
          locked_coins_holder_account/0,
          minimum_gas_price/1,
          name_preclaim_expiration/0,
-         name_claim_locked_fee/0,
+         name_claim_locked_fee/1,
          name_claim_max_expiration/0,
          name_protection_period/0,
-         name_claim_preclaim_delta/0,
+         name_claim_preclaim_timeout/0,
+         name_claim_bid_timeout/1,
          name_registrars/0,
+         name_reserved_list/0,
          micro_block_cycle/0,
          accepted_future_block_time_shift/0,
          fraud_report_reward/1,
@@ -201,8 +203,16 @@ primop_base_gas(?PRIM_CALL_ADDR_IS_ORACLE            ) -> 5000.
 name_preclaim_expiration() ->
     300.
 
-name_claim_locked_fee() ->
-    3.
+name_claim_locked_fee(Length) when Length > 32 ->
+    %% NSXXX: implement function, move to separate module like coinbase
+    3;
+name_claim_locked_fee(Length) when Length > 8 ->
+    3*256;
+name_claim_locked_fee(Length) when Length > 4 ->
+    3*256*256;
+name_claim_locked_fee(_) ->
+    3*256*256*256.
+
 
 name_claim_max_expiration() ->
     50000.
@@ -210,12 +220,27 @@ name_claim_max_expiration() ->
 name_protection_period() ->
     2016.
 
-name_claim_preclaim_delta() ->
+name_claim_preclaim_timeout() ->
     1.
+
+name_claim_bid_timeout(Length) when Length > 32 ->
+    %% NSXXX: implement function, move to separate module like coinbase
+    0;
+name_claim_bid_timeout(Length) when Length > 8 ->
+    3*24*20;
+name_claim_bid_timeout(Length) when Length > 4 ->
+    7*24*20;
+name_claim_bid_timeout(Length) ->
+    14*24*20.
+
 
 -spec name_registrars() -> list(binary()).
 name_registrars() ->
     [<<"test">>].
+
+name_reserved_list() ->
+    %% Consider reserving corporate domains form e.g. top 2000 global list
+    [<<"apple">>, <<"ibm">>].
 
 fraud_report_reward(Height) ->
     Coinbase = block_mine_reward(Height),

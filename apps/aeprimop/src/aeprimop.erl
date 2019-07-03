@@ -242,13 +242,20 @@ name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
 -spec name_claim_tx_instructions(pubkey(), binary(), non_neg_integer(),
                                  fee(), nonce()) -> [op()].
 name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, Fee, Nonce) ->
-    PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
-    DeltaTTL = aec_governance:name_claim_max_expiration(),
-    LockedFee = aec_governance:name_claim_locked_fee(),
+    PreclaimDelta = aec_governance:name_claim_preclaim_timout(),
+    BidDelta = aec_governance:name_claim_bid_timeout(),
+    NameLockTime = aec_governance:name_claim_max_expiration(),
+
+    DomainLength = size(PlainName), %% NSXXX is it with registrar?
+    LockedFee = aec_governance:name_claim_locked_fee(DomainLength),
+
+    %% claim attempt timeout for bid?
+    %% claim fee computation - compare with previous one
+
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, Fee)
     , lock_amount_op(AccountPubkey, LockedFee)
-    , name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta)
+    , name_claim_op(AccountPubkey, PlainName, NameSalt, NameLockTime, PreclaimDelta, BidDelta, Fee)
     ].
 
 -spec name_revoke_tx_instructions(pubkey(), hash(), fee(), nonce()) -> [op()].
@@ -712,23 +719,27 @@ name_preclaim({AccountPubkey, CommitmentHash, DeltaTTL}, S) ->
 
 %%%-------------------------------------------------------------------
 
-name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta
+name_claim_op(AccountPubkey, PlainName, NameSalt, NameLockTime, PreclaimDelta, BidDelta, Fee
              ) when ?IS_HASH(AccountPubkey),
                     is_binary(PlainName),
                     ?IS_NON_NEG_INTEGER(NameSalt),
-                    ?IS_NON_NEG_INTEGER(DeltaTTL),
-                    ?IS_NON_NEG_INTEGER(PreclaimDelta) ->
-    {name_claim, {AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta}}.
+                    ?IS_NON_NEG_INTEGER(NameLockTime),
+                    ?IS_NON_NEG_INTEGER(PreclaimDelta),
+                    ?IS_NON_NEG_INTEGER(BidDelta),
+                    ?IS_NON_NEG_INTEGER(Fee) ->
+    {name_claim, {AccountPubkey, PlainName, NameSalt, NameLockTime, PreclaimDelta, BidDelta, Fee}}.
 
-name_claim({AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta}, S) ->
+name_claim({AccountPubkey, PlainName, NameSalt, NameLockTime, PreclaimDelta, BidDelta, Fee}, S) ->
     NameAscii = name_to_ascii(PlainName),
     CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
     {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
+    %%AuctionState = get_name_auction_state(Commitment),
+    assert_name_auction_fee(Commitment, Fee),
     assert_commitment_owner(Commitment, AccountPubkey),
-    assert_preclaim_delta(Commitment, PreclaimDelta, S1#state.height),
+    assert_auction_delta(Commitment, PreclaimDelta, BidDelta, S1#state.height),
     NameHash = aens_hash:name_hash(NameAscii),
     assert_not_name(NameHash, S1),
-    Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
+    Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + NameLockTime),
     S2 = delete_x(commitment, CommitmentHash, S1),
     put_name(Name, S2).
 
@@ -1592,10 +1603,19 @@ assert_commitment_owner(Commitment, Pubkey) ->
         false -> runtime_error(commitment_not_owned)
     end.
 
-assert_preclaim_delta(Commitment, PreclaimDelta, Height) ->
-    case aens_commitments:created(Commitment) + PreclaimDelta =< Height of
-        true  -> ok;
-        false -> runtime_error(commitment_delta_too_small)
+assert_auction_delta(Commitment, PreclaimDelta, BidDelta, Height) ->
+    AuctionState = aens_commitments:auction(Commitment),
+    case AuctionState of
+        preclaim ->
+            case aens_commitments:created(Commitment) + PreclaimDelta =< Height of
+                true -> ok;
+                false -> runtime_error(commitment_delta_too_small)
+            end;
+        claim_attempt ->
+            case aens_commitments:updated(Commitment) + BidDelta =< Height of
+                true -> ok;
+                false -> runtime_error(commitment_delta_too_small)
+            end
     end.
 
 assert_not_name(NameHash, S) ->
@@ -1800,6 +1820,9 @@ assert_channel_withdraw_amount(Channel, Amount) ->
     ChannelAmount = aesc_channels:channel_amount(Channel),
     Reserve = aesc_channels:channel_reserve(Channel),
     assert(ChannelAmount >= 2*Reserve + Amount, not_enough_channel_funds).
+
+get_name_auction_state(Commitment) ->
+    aens_commitments:auction(Commitment)
 
 %%%===================================================================
 %%% Error handling
