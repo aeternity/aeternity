@@ -405,7 +405,7 @@ stratum_server_node_config(StratumEnabled) ->
                       <<"edge_bits">> => 15,
                       <<"max_jobs">> => 20,
                       <<"max_workers">> => 10,
-                      <<"msg_timeout">> => 15},
+                      <<"msg_timeout">> => 500},
                 <<"reward">> =>
                     #{<<"reward_last_rounds">> => 2,
                       <<"beneficiaries">> =>
