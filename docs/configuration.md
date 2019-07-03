@@ -241,6 +241,11 @@ In order to configure who receives fees from mining on a node, you must configur
 If you don't have your public key yet, you can generate a public/private key pair by using any one of the following tools:
 * [AirGap wallet](https://airgap.it/).
 
+If stratum is enabled, a beneficiary accounts from the stratum configuration are used instead, as stratum disables local mining.
+
+For configuring stratum, please consult [stratum operator user guide](stratum.md).
+
+
 #### Generating a beneficiary account for testing purposes only
 
 An alternative tool `keys_gen` for generating a public-private key pair **for testing purposes only** is included in the package.
