@@ -209,7 +209,7 @@
                       | channel_closed.
 
 -record(data, { role                   :: role()
-              , channel_status         :: undefined | open | closing
+              , channel_status         :: undefined | attached | open | closing
               , cur_statem_state       :: undefined | atom()
               , state                  :: aesc_offchain_state:state()
               , session                :: pid()
@@ -504,7 +504,21 @@ get_poi(Fsm, Filter) ->
     gen_statem:call(Fsm, {get_poi, Filter}).
 
 attach_responder(Fsm, AttachInfo) when is_map(AttachInfo) ->
-    gen_statem:call(Fsm, {attach_responder, AttachInfo}).
+    case has_gproc_key(Fsm, AttachInfo) of
+        true ->
+            gen_statem:call(Fsm, {attach_responder, AttachInfo});
+        false ->
+            lager:debug("responder ~p has unregistered - taken", [Fsm]),
+            {error, taken}
+    end.
+
+has_gproc_key(Fsm, #{gproc_key := K}) ->
+    try _ = gproc:get_value(K, Fsm),
+          true
+    catch
+        error:badarg ->
+            false
+    end.
 
 %% This is supposed to be used in tests only. If Alice stops checking
 %% her own signatures, Bob will still check hers and will reject any wrongly
@@ -768,12 +782,14 @@ awaiting_open(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_open(cast, {?CH_OPEN, Msg}, #data{role = responder} = D) ->
     case check_open_msg(Msg, D) of
         {ok, D1} ->
-            report(info, channel_open, D1),
+            report(info, channel_open, Msg, D1),
             gproc_register(D1),
             next_state(accepted, send_channel_accept(D1));
         {error, _} = Error ->
             close(Error, D)
     end;
+awaiting_open({call, From}, {attach_responder, Info}, #data{channel_status = attached} = D) ->
+    keep_state(D, [{reply, From, {error, taken}}]);
 awaiting_open({call, From}, {attach_responder, Info}, #data{opts = Opts} = D) ->
     lager:debug("Attach request: ~p", [Info]),
     #{initiator := I, responder := R} = Opts,
@@ -785,7 +801,7 @@ awaiting_open({call, From}, {attach_responder, Info}, #data{opts = Opts} = D) ->
             gproc:unreg(K),
             Opts1 = Opts#{initiator => I1},
             {Pid, _} = From,
-            keep_state(D#data{session = Pid, opts = Opts1},
+            keep_state(D#data{session = Pid, opts = Opts1, channel_status = attached},
                        [{reply, From, ok}]);
         _ ->
             gen:reply(From, {error, invalid_attach}),
@@ -831,8 +847,9 @@ initialized(enter, _OldSt, _D) -> keep_state_and_data;
 initialized(cast, {?CH_ACCEPT, Msg}, #data{role = initiator} = D) ->
     case check_accept_msg(Msg, D) of
         {ok, D1} ->
+            lager:debug("Valid channel_accept: ~p", [Msg]),
             gproc_register(D1),
-            report(info, channel_accept, D1),
+            report(info, channel_accept, Msg, D1),
             {ok, CTx, Updates} = create_tx_for_signing(D1),
             D2 = request_signing(create_tx, CTx, Updates, D1),
             next_state(awaiting_signature, D2);
@@ -3056,7 +3073,9 @@ request_signing(Tag, Aetx, Updates, #data{} = D) ->
 request_signing(Tag, Aetx, SignedTx, Updates, #data{client = Client} = D) ->
     Info = #{tx => Aetx,
              updates => Updates},
-    Msg = rpt_message(sign, Tag, Info, D),
+    Msg = rpt_message(#{ type => sign
+                       , tag  => Tag
+                       , info => Info }, D),
     Client ! {?MODULE, self(), Msg},
     lager:debug("signing(~p) requested", [Tag]),
     D#data{ latest = {sign, Tag, SignedTx, Updates}
@@ -3195,32 +3214,36 @@ default_report_flags() ->
 
 report_on_chain_tx(Info, SignedTx, D) ->
     {Type,_} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
-    report(on_chain_tx, #{ tx => SignedTx
+    report(on_chain_tx, #{ tx   => SignedTx
                          , type => Type
                          , info => Info}, D).
 
-report(Tag, St, D) -> report_info(do_rpt(Tag, D), Tag, St, D).
+report(Tag, Info, D) ->
+    report_info(do_rpt(Tag, D), #{ type => report
+                                 , tag  => Tag
+                                 , info => Info }, D).
 
-report_info(DoRpt, Tag, Info, #data{client = Client} = D) ->
+report(Tag, St, Msg, D) ->
+    report_info(do_rpt(Tag, D), #{ type => report
+                                 , tag  => Tag
+                                 , info => St
+                                 , data => Msg }, D).
+
+report_info(DoRpt, Msg0, #data{client = Client} = D) ->
     if DoRpt ->
-            Msg = rpt_message(report, Tag, Info, D),
-            lager:debug("report_info(true, ~p)", [Msg]),
+            Msg = rpt_message(Msg0, D),
+            lager:debug("report_info(true, Client = ~p, Msg = ~p)", [Client, Msg]),
             Client ! {?MODULE, self(), Msg};
        true  ->
-            lager:debug("report_info(~p, ~p, ~p)", [DoRpt, Tag, Info]),
+            lager:debug("report_info(~p, ~p)", [DoRpt, Msg0]),
             ok
     end,
     ok.
 
-rpt_message(Type, Tag, Info, #data{on_chain_id = undefined}) ->
-    #{ type            => Type
-     , tag             => Tag
-     , info            => Info };
-rpt_message(Type, Tag, Info, #data{on_chain_id = OnChainId}) ->
-    #{ channel_id      => OnChainId
-     , type            => Type
-     , tag             => Tag
-     , info            => Info }.
+rpt_message(Msg, #data{ on_chain_id = undefined }) ->
+    Msg;
+rpt_message(Msg, #data{on_chain_id = OnChainId}) ->
+    Msg#{ channel_id => OnChainId }.
 
 do_rpt(Tag, #data{opts = #{report := Rpt}}) ->
     try maps:get(Tag, Rpt, false)
