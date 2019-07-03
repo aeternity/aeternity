@@ -2,9 +2,14 @@
 
 [This][this-release] is a maintenance release.
 It:
-* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
-
-TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+* Fix incorrectly typed fields in JSON responses for `/transactions/{hash}/info` endpoint. `abi_version` and
+  `vm_version` should be integer values, but for some transactions they were (hex-)strings.
+* Adds an extra check to reject normal TX signed by GA in mempool. The check is
+  cheap so let's avoid cluttering the mempool with bad transactions.
+* Deliver alpha version of AESTRATUM application implementing Stratum protocol for Aeternity node
+* Add support for HTTP API cache headers (Expires and ETag). It can be enabled by setting 
+    `http` -> `cache` -> `enabled` to `true`. Refer to the configuration schema for more options.
+* State Channels responders can use the same listen port for different channels (only one responder Id per listen port).
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v3.3.0
 
