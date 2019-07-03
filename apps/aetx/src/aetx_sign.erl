@@ -104,7 +104,7 @@ verify_w_env(#signed_tx{tx = Tx, signatures = Sigs}, Trees, TxEnv) ->
             {error, signature_verification_failed}
     end.
 
--spec verify(signed_tx(), aec_trees:trees(), aec_block:height()) ->
+-spec verify(signed_tx(), aec_trees:trees(), aec_blocks:height()) ->
     ok | {error, signature_check_failed}.
 verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees, Height) ->
     Bin = aetx:serialize_to_binary(Tx),
@@ -116,7 +116,7 @@ verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees, Height) ->
     end.
 
 -spec verify_half_signed(aec_keys:pubkey() | [aec_keys:pubkey()],
-                         signed_tx(), aec_block:height()) ->
+                         signed_tx(), aec_blocks:height()) ->
     ok | {error, signature_check_failed}.
 verify_half_signed(Signer, SignedTx, Height) when is_binary(Signer) ->
     verify_half_signed([Signer], SignedTx, Height);

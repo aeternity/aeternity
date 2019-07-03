@@ -195,7 +195,7 @@ check_update_tx_(Mod, RefTx, Updates, #state{} = State,
             {error, Reason}
     end.
 
--spec verify_signatures(aetx_sign:signed_tx(), state(), aec_block:height()) -> ok | error.
+-spec verify_signatures(aetx_sign:signed_tx(), state(), aec_blocks:height()) -> ok | error.
 verify_signatures(SignedTx, #state{trees = Trees}, Height) ->
     aetx_sign:verify(SignedTx, Trees, Height).
 

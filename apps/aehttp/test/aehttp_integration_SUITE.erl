@@ -3647,7 +3647,8 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
 
     %% validate it is co-signed
     {ok, Trees} = rpc(aec_chain, get_top_state, []),
-    ok = rpc(aetx_sign, verify, [SignedStateTx, Trees]), % RPC because of DB
+    TopHeader = rpc(aec_chain, top_header, []),
+    ok = rpc(aetx_sign, verify, [SignedStateTx, Trees, aec_headers:height(TopHeader)]), % RPC because of DB
     {UnsignedStateTx, _} = % same transaction that was signed
         {aetx_sign:tx(SignedStateTx), UnsignedStateTx},
 
