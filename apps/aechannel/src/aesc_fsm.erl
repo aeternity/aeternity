@@ -806,7 +806,7 @@ awaiting_open(cast, {?CH_OPEN, Msg}, #data{role = responder} = D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
-awaiting_open({call, From}, {attach_responder, _Info}, #data{channel_status = attached} = D) ->
+awaiting_open({call, From}, {attach_responder, Info}, #data{channel_status = attached} = D) ->
     keep_state(D, [{reply, From, {error, taken}}]);
 awaiting_open({call, From}, {attach_responder, Info}, #data{opts = Opts} = D) ->
     lager:debug("Attach request: ~p", [Info]),
@@ -819,8 +819,7 @@ awaiting_open({call, From}, {attach_responder, Info}, #data{opts = Opts} = D) ->
             gproc:unreg(K),
             Opts1 = Opts#{initiator => I1},
             {Pid, _} = From,
-            keep_state(maybe_initialize_offchain_state(
-                         I, I1, D#data{session = Pid, opts = Opts1, channel_status = attached}),
+            keep_state(D#data{session = Pid, opts = Opts1, channel_status = attached},
                        [{reply, From, ok}]);
         {error, Err} ->
             lager:debug("Bad attach info: ~p", [Err]),

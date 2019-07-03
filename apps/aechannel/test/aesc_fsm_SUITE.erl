@@ -1417,7 +1417,13 @@ slogan(Cfg) ->
     ?config(slogan, Cfg).
 
 create_channel_from_spec(I, R, Spec, Port, Debug) ->
-    create_channel_from_spec(I, R, Spec, Port, false, Debug).
+    RProxy = spawn_responder(Port, Spec, R, Debug),
+    IProxy = spawn_initiator(Port, Spec, I, Debug),
+    log("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
+    #{ i := #{ fsm := FsmI } = I1
+     , r := #{ fsm := FsmR } = R1 } = Info
+        = match_responder_and_initiator(RProxy, Debug),
+    log(Debug, "channel paired: ~p", [Info]),
 
 create_channel_from_spec(I, R, Spec, Port, Multi, Debug) ->
     RProxy = spawn_responder(Port, Spec, R, Multi, Debug),
@@ -1427,8 +1433,6 @@ create_channel_from_spec(I, R, Spec, Port, Multi, Debug) ->
      , r := #{ fsm := FsmR } = R1 } = Info
         = match_responder_and_initiator(RProxy, Debug),
     log(Debug, "channel paired: ~p", [Info]),
-
-    log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
 
     {I2, R2} = try await_create_tx_i(I1, R1, Debug)
                catch
@@ -1463,20 +1467,14 @@ create_channel_from_spec(I, R, Spec, Port, Multi, Debug) ->
     check_info(500, Debug),
     #{i => I5, r => R5, spec => Spec}.
 
-spawn_responder(Port, Spec, R, Multi, Debug) ->
+spawn_responder(Port, Spec, R, Debug) ->
     Me = self(),
     spawn_link(fun() ->
                        log("responder spawned: ~p", [Spec]),
-                       Spec1 = maybe_multi(Multi, Spec#{ client => self()
-                                                       , initiator => any }),
+                       Spec1 = Spec#{ client => self() },
                        {ok, Fsm} = rpc(dev1, aesc_fsm, respond, [Port, Spec1], Debug),
                        responder_instance_(Fsm, Spec1, R, Me, Debug)
                end).
-
-maybe_multi(true, Spec) ->
-    Spec#{initiator => any};
-maybe_multi(false, Spec) ->
-    Spec.
 
 spawn_initiator(Port, Spec, I, Debug) ->
     Me = self(),
