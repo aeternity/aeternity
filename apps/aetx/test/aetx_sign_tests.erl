@@ -7,6 +7,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -include("../../aecore/include/blocks.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 -define(TEST_MODULE, aetx_sign).
 -define(TEST_HEIGHT, 42).
@@ -26,7 +27,7 @@ sign_txs_test_() ->
                Signed = aec_test_utils:sign_tx(SpendTx, Privkey),
                ?assertEqual(ok, ?TEST_MODULE:verify(Signed, aec_trees:new(), ?TEST_HEIGHT)),
                ok
-      end},
+       end},
       {"Mismatched keys do produce invalid signatures",
        fun() ->
                #{ public :=  PubkeyA, secret := _PrivkeyA } = enacl:sign_keypair(),
@@ -36,7 +37,7 @@ sign_txs_test_() ->
                ?assertEqual({error, signature_check_failed},
                             ?TEST_MODULE:verify(Signed, aec_trees:new(), ?TEST_HEIGHT)),
                ok
-      end},
+       end},
       {"Broken pub key does not validate signatures",
        fun() ->
                #{ public := _Pubkey, secret := Privkey } = enacl:sign_keypair(),
@@ -45,7 +46,7 @@ sign_txs_test_() ->
                ?assertEqual({error, signature_check_failed},
                             ?TEST_MODULE:verify(Signed, aec_trees:new(), ?TEST_HEIGHT)),
                ok
-      end},
+       end},
       {"Broken priv key does not produce signatures",
        fun() ->
                BrokenPrivKey = <<0:65/unit:8>>,
@@ -53,14 +54,28 @@ sign_txs_test_() ->
                ?assertException(error, {invalid_priv_key, [BrokenPrivKey]},
                                 aec_test_utils:sign_tx(SpendTx, BrokenPrivKey)),
                ok
-      end},
+       end},
       {"Missing channel does not validate",
        fun() ->
                SignedCloseMTx = make_signed_mutual_close(),
                ?assertEqual({error, signature_check_failed},
                             ?TEST_MODULE:verify(SignedCloseMTx, aec_trees:new(), ?TEST_HEIGHT)),
                ok
-      end}
+       end},
+      {"Test tx hash signing",
+       fun() ->
+               #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
+               {ok, SpendTx} = make_spend_tx(Pubkey),
+               SignedTx = aec_test_utils:sign_tx_hash(SpendTx, Privkey),
+               case lists:last(aec_hard_forks:sorted_protocol_versions()) of
+                   Vsn when Vsn < ?LIMA_PROTOCOL_VSN ->
+                       ?assertEqual({error, signature_check_failed},
+                                    ?TEST_MODULE:verify(SignedTx, aec_trees:new(), ?TEST_HEIGHT));
+                   _Vsn ->
+                       ?assertEqual(ok,
+                                    ?TEST_MODULE:verify(SignedTx, aec_trees:new(), ?TEST_HEIGHT))
+               end
+       end}
      ]}.
 
 make_spend_tx(Sender) ->

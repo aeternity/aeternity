@@ -730,7 +730,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
 
     %% validate it is co-signed
     {ok, Trees} = rpc(aec_chain, get_top_state, []),
-    ok = rpc(aetx_sign, verify, [SignedStateTx, Trees]), % RPC because of DB
+    ok = rpc(aetx_sign, verify, [SignedStateTx, Trees, 1]), % RPC because of DB
     {UnsignedStateTx, _} = % same transaction that was signed
         {aetx_sign:innermost_tx(SignedStateTx), UnsignedStateTx},
 
@@ -3105,7 +3105,7 @@ wait_for_json_rpc_action_event(ConnPid, Action, Event) ->
                                                                  Action,
                                                                  Event)
                               end).
-    
+
 wait_for_json_rpc_action(ConnPid, Action) ->
     wait_for_json_rpc_action_(Action,
                               fun() ->
@@ -3384,7 +3384,7 @@ sc_ws_broken_open_params(Config) ->
             ok = ?WS:register_test_for_channel_events(IConnPid, [closed, error]),
             {ok, #{<<"reason">> := Error}}
                 = wait_for_channel_event(IConnPid, error, Config),
-            try ok = ?WS:wait_for_event(IConnPid, websocket, closed) 
+            try ok = ?WS:wait_for_event(IConnPid, websocket, closed)
             catch error:{connection_died, _Reason} -> ok
             end
         end,
@@ -3392,7 +3392,7 @@ sc_ws_broken_open_params(Config) ->
     %% test initiator pubkey missing
     ChannelOpts1 = channel_options(BogusPubkey, RPubkey, IAmt, RAmt, #{}, Config),
     Test(ChannelOpts1, <<"Participant not found">>),
-    
+
     %% test responder pubkey missing
     ChannelOpts2 = channel_options(IPubkey, BogusPubkey, IAmt, RAmt, #{}, Config),
     Test(ChannelOpts2, <<"Participant not found">>),

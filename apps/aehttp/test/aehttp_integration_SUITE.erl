@@ -62,6 +62,7 @@
     get_transaction_by_hash/1,
     get_transaction_info_by_hash/1,
     post_spend_tx/1,
+    post_spend_tx_w_hash_sig/1,
     post_contract_and_call_tx/1,
     nonce_limit/1
    ]).
@@ -340,6 +341,7 @@ groups() ->
      {post_tx_to_mempool, [],
       [
        post_spend_tx,
+       post_spend_tx_w_hash_sig,
        nonce_limit
       ]},
      {tx_info, [sequence],
@@ -1326,14 +1328,26 @@ get_transaction_info_by_hash(_Config) ->
     {skip, not_implemented}.
 
 post_spend_tx(Config) ->
+    post_spend_tx_(Config, false).
+
+post_spend_tx_w_hash_sig(Config) ->
+    post_spend_tx_(Config, true).
+
+post_spend_tx_(Config, SignHash) ->
     TxArgs =
         #{sender_id    => ?config(sender_id, Config),
           recipient_id => ?config(recipient_id, Config),
           amount       => ?config(amount, Config),
           fee          => ?config(fee, Config),
           payload      => ?config(payload, Config)},
-    {TxHash, Tx} = prepare_tx(spend_tx, TxArgs),
-    ok = post_tx(TxHash, Tx),
+    {TxHash, Tx} = prepare_tx(spend_tx, TxArgs, SignHash),
+    case lists:last(aec_hard_forks:sorted_protocol_versions()) of
+        Vsn when Vsn < ?LIMA_PROTOCOL_VSN andalso SignHash ->
+            ?assertMatch({ok, 400, #{<<"reason">> := <<"Invalid tx">>}},
+                         post_transactions_sut(Tx));
+        _ ->
+            ?assertEqual(ok, post_tx(TxHash, Tx))
+    end,
     ok.
 
 nonce_limit(Config) ->
@@ -1708,6 +1722,10 @@ get_status_sut() ->
     http_request(Host, get, "status", []).
 
 prepare_tx(TxType, Args) ->
+    SignHash = lists:last(aec_hard_forks:sorted_protocol_versions()) >= ?LIMA_PROTOCOL_VSN,
+    prepare_tx(TxType, Args, SignHash).
+
+prepare_tx(TxType, Args, SignHash) ->
     %assert_required_tx_fields(TxType, Args),
     {Host, Path} = tx_object_http_path(TxType),
     {ok, 200, #{<<"tx">> := EncodedSerializedUnsignedTx}} = http_request(Host, post, Path, Args),
@@ -1715,7 +1733,7 @@ prepare_tx(TxType, Args) ->
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
 
     NodeT = aecore_suite_utils:node_tuple(?NODE),
-    {ok, SignedTx} = aecore_suite_utils:sign_on_node(NodeT, UnsignedTx),
+    {ok, SignedTx} = aecore_suite_utils:sign_on_node(NodeT, UnsignedTx, SignHash),
 
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     EncodedSerializedSignedTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
