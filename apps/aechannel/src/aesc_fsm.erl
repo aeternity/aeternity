@@ -844,7 +844,9 @@ initialized(Type, Msg, D) ->
 
 reestablish_init(enter, _OldSt, _D) -> keep_state_and_data;
 reestablish_init(cast, {?CH_REEST_ACK, Msg}, D) ->
-    case check_reestablish_ack_msg(Msg, D) of
+    TopHeight = top_height(),
+    case check_reestablish_ack_msg(Msg#{top_height => TopHeight},
+                                   D) of
         {ok, D1} ->
             report(info, channel_reestablished, D1),
             next_state(open, D1);
@@ -2053,9 +2055,9 @@ chk_chain_hash(#{ chain_hash := CH }, _, _) ->
 chk_channel_id(#{ channel_id := ChId }, _, #data{ on_chain_id = OCId }) ->
     {ChId == OCId, channel_id_mismatch}.
 
-chk_dual_sigs(_, SignedTx, #data{ state = State }) ->
+chk_dual_sigs(#{top_height := TopHeight}, SignedTx, #data{ state = State }) ->
     [_,_] = aetx_sign:signatures(SignedTx),
-    {ok == aesc_offchain_state:verify_signatures(SignedTx, State, 0), %% TODO: proper height
+    {ok == aesc_offchain_state:verify_signatures(SignedTx, State, TopHeight),
      signatures_invalid}.
 
 chk_same_tx(_, SignedTx, #data{ state = State }) ->
@@ -3321,7 +3323,7 @@ verify_signatures_channel_create(SignedTx, Who) ->
 verify_signatures(Pubkeys, SignedTx) ->
     %%  aetx_sign:verify/2 actually needs aec_trees:trees() so we use
     %%  aetx_sign:verify_half_signed/2 instead
-    case aetx_sign:verify_half_signed(Pubkeys, SignedTx, 0) of %% TODO: proper height
+    case aetx_sign:verify_half_signed(Pubkeys, SignedTx, top_height()) of
         ok ->
             ok;
         _ -> {error, bad_signature}
@@ -3434,3 +3436,7 @@ check_accounts(Initiator, Responder) ->
         {_, {ok, generalized}}      -> {error, generalized_account};
         _                           -> {error, not_found}
     end.
+
+top_height() ->
+    TopHeader = aec_chain:top_header(), 
+    aec_headers:height(TopHeader).
