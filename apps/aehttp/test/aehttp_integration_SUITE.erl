@@ -211,6 +211,7 @@
     sc_ws_min_depth_not_reached_timeout/1,
     sc_ws_min_depth_is_modifiable/1,
     sc_ws_basic_open_close/1,
+    sc_ws_basic_open_close_server/1,
     sc_ws_failed_update/1,
     sc_ws_generic_messages/1,
     sc_ws_update_conflict/1,
@@ -580,6 +581,7 @@ channel_websocket_sequence() ->
       sc_ws_min_depth_not_reached_timeout,
       sc_ws_min_depth_is_modifiable,
       sc_ws_basic_open_close,
+      sc_ws_basic_open_close_server,
       %% both can start close mutual
       sc_ws_close_mutual,
       %% both can solo-close
@@ -3393,7 +3395,12 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
                                            maps:put(host, <<"localhost">>, ChannelOpts), Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
 
-    {ok, RConnPid} = channel_ws_start(responder, ChannelOpts, Config),
+    ChannelOptsR = case proplists:get_bool(server_mode, Config) of
+                       true  -> ChannelOpts#{initiator_id => <<"any">>};
+                       false -> ChannelOpts
+                   end,
+
+    {ok, RConnPid} = channel_ws_start(responder, ChannelOptsR, Config),
 
     ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign, on_chain_tx]),
 
@@ -5369,6 +5376,11 @@ sc_ws_min_depth_is_modifiable(Config0) ->
 
 sc_ws_basic_open_close(Config0) ->
     Config = sc_ws_open_(Config0),
+    ok = sc_ws_update_(Config),
+    ok = sc_ws_close_(Config).
+
+sc_ws_basic_open_close_server(Config0) ->
+    Config = sc_ws_open_([server_mode|Config0]),
     ok = sc_ws_update_(Config),
     ok = sc_ws_close_(Config).
 

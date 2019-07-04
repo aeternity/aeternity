@@ -142,22 +142,27 @@ read_param(ParamName, RecordField, Options) ->
                 {error, {RecordField, missing}};
             undefined when not Mandatory ->
                 not_set;
-            Val0 ->
-                Type = maps:get(type, Options, binary),
-                case parse_by_type(Type, Val0, RecordField) of
-                    {error, _} = Err -> Err;
-                    {ok, Val} ->
-                        case maps:get(enum, Options, undefined) of
-                            undefined ->  {ok, Val};
-                            AllowedVals when is_list(AllowedVals) ->
-                                case lists:member(Val, AllowedVals) of
-                                    true -> {ok, Val};
-                                    false ->
-                                        {error, {RecordField, invalid}}
-                                end
-                        end
-                end
+            Val ->
+                check_type(Options, Val, RecordField)
         end
+    end.
+
+check_type(Options, Val0, RecordField) ->
+    Type = maps:get(type, Options, binary),
+    try parse_by_type(Type, Val0, RecordField) of
+        {error, _} = Err -> Err;
+        {ok, Val} ->
+            case maps:get(enum, Options, undefined) of
+                undefined ->  {ok, Val};
+                AllowedVals when is_list(AllowedVals) ->
+                    case lists:member(Val, AllowedVals) of
+                        true -> {ok, Val};
+                        false ->
+                            {error, {RecordField, invalid}}
+                    end
+            end
+    catch
+        error:_ -> {error, {RecordField, invalid}}
     end.
 
 parse_by_type(binary, V, _) when is_binary(V) ->
@@ -182,6 +187,15 @@ parse_by_type({hash, Type}, V, RecordField) when is_binary(V) ->
             {error, {RecordField, broken_encoding}};
         {ok, _} = OK -> OK
     end;
+parse_by_type({alt, L}, V, RecordField) when is_list(L) ->
+    lists:foldl(
+      fun(_, {ok,_} = Ok) -> Ok;
+         (Alt, Acc) when is_map(Alt) ->
+              case check_type(Alt, V, RecordField) of
+                  {ok, _} = Ok -> Ok;
+                  {error,_} -> Acc
+              end
+      end, {error, {RecordField, invalid}}, L);
 parse_by_type(serialized_tx, V, RecordField) when is_binary(V) ->
     case aeser_api_encoder:safe_decode(transaction, V) of
         {ok, TxBin} ->
@@ -254,6 +268,16 @@ read_channel_options(Params) ->
                 Err
             end
         end,
+    ReadInitiator =
+        fun(M) ->
+                IType = #{type => {hash, account_pubkey}},
+                Type = case maps:get(role, M) of
+                           responder -> #{type => {alt, [#{type => atom, enum => [any]},
+                                                         IType]}};
+                           initiator -> IType
+                       end,
+                (Read(<<"initiator_id">>, initiator, Type))(M)
+        end,
     ReadMap =
         fun(MapName, Prefix, Opts) ->
             fun(Name) ->
@@ -277,8 +301,10 @@ read_channel_options(Params) ->
         case (read_param(<<"existing_channel_id">>, existing_channel_id,
                          #{type => {hash, channel}, mandatory => false}))(Params) of
             not_set ->  %Channel open scenario
-                [Read(<<"push_amount">>, push_amount, #{type => integer}),
-                 Read(<<"initiator_id">>, initiator, #{type => {hash, account_pubkey}}),
+                [Read(<<"role">>, role, #{type => atom, enum => [responder, initiator]}),
+                 Read(<<"push_amount">>, push_amount, #{type => integer}),
+                 %% Read(<<"initiator_id">>, initiator, #{type => {hash, account_pubkey}}),
+                 ReadInitiator,
                  Read(<<"responder_id">>, responder, #{type => {hash, account_pubkey}}),
                  Read(<<"lock_period">>, lock_period, #{type => integer}),
                  Read(<<"channel_reserve">>, channel_reserve, #{type => integer}),
