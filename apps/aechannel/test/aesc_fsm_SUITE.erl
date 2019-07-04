@@ -1341,7 +1341,7 @@ create_multi_channel(Cfg, Debug) ->
                end).
 
 create_multi_channel_(Cfg, Debug) ->
-    #{i := I, r := R} = create_channel_(Cfg, Debug),
+    #{i := I, r := R} = create_channel_([multi | Cfg], Debug),
     Parent = ?config(ack_to, Cfg),
     Parent ! {self(), channel_ack},
     ch_loop(I, R, Parent).
@@ -1374,7 +1374,7 @@ create_channel_(Cfg, Debug) ->
     {I, R, Spec} = channel_spec(Cfg),
     log(Debug, "channel_spec: ~p", [{I, R, Spec}]),
     Port = proplists:get_value(port, Cfg, 9325),
-    create_channel_from_spec(I, R, Spec, Port, Debug).
+    create_channel_from_spec(I, R, Spec, Port, proplists:get_bool(multi, Cfg), Debug).
 
 channel_spec(Cfg) ->
     channel_spec(Cfg, 300000, 200000).
@@ -1417,7 +1417,10 @@ slogan(Cfg) ->
     ?config(slogan, Cfg).
 
 create_channel_from_spec(I, R, Spec, Port, Debug) ->
-    RProxy = spawn_responder(Port, Spec, R, Debug),
+    create_channel_from_spec(I, R, Spec, Port, false, Debug).
+
+create_channel_from_spec(I, R, Spec, Port, Multi, Debug) ->
+    RProxy = spawn_responder(Port, Spec, R, Multi, Debug),
     IProxy = spawn_initiator(Port, Spec, I, Debug),
     log("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
     #{ i := #{ fsm := FsmI } = I1
@@ -1460,14 +1463,20 @@ create_channel_from_spec(I, R, Spec, Port, Debug) ->
     check_info(500, Debug),
     #{i => I5, r => R5, spec => Spec}.
 
-spawn_responder(Port, Spec, R, Debug) ->
+spawn_responder(Port, Spec, R, Multi, Debug) ->
     Me = self(),
     spawn_link(fun() ->
                        log("responder spawned: ~p", [Spec]),
-                       Spec1 = Spec#{ client => self() },
+                       Spec1 = maybe_multi(Multi, Spec#{ client => self()
+                                                       , initiator => any }),
                        {ok, Fsm} = rpc(dev1, aesc_fsm, respond, [Port, Spec1], Debug),
                        responder_instance_(Fsm, Spec1, R, Me, Debug)
                end).
+
+maybe_multi(true, Spec) ->
+    Spec#{initiator => any};
+maybe_multi(false, Spec) ->
+    Spec.
 
 spawn_initiator(Port, Spec, I, Debug) ->
     Me = self(),
