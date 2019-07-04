@@ -12,7 +12,8 @@
 
 -export([protocol/1,
          process_from_client/4,
-         process_from_fsm/3
+         process_from_fsm/3,
+         error_response/2
         ]).
 
 -export([patterns/0]).
@@ -80,6 +81,11 @@ process_from_fsm(Protocol, Msg, ChannelId) ->
     try_seq([ fun process_fsm/1], #{protocol   => Protocol,
                                     msg        => Msg,
                                     channel_id => non_undefined_channel_id(ChannelId)}).
+
+-spec error_response(protocol(), atom()) -> {reply, #{}}.
+error_response(Protocol, ErrMsg) ->
+    Mod = protocol_to_impl(Protocol),
+    Mod:error_response(ErrMsg, #{}, null).
 
 protocol_to_impl(Protocol) ->
     case Protocol of

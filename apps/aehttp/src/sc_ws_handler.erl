@@ -20,6 +20,9 @@
 -opaque handler() :: #handler{}.
 -export_type([handler/0]).
 
+-define(ERROR_TO_CLIENT(Err), {?MODULE, send_to_client, {error, Err}}).
+
+
 init(Req, _Opts) ->
     lager:debug("init(~p, ~p)", [Req, _Opts]),
     process_flag(trap_exit, true),
@@ -44,13 +47,37 @@ websocket_init(Params) ->
                     MRef = erlang:monitor(process, FsmPid),
                     {ok, Handler#handler{fsm_pid = FsmPid, fsm_mref = MRef}};
                 {error, Err} ->
-                    lager:info("Channel WS failed to start because of ~p; params ~p",
-                       [Err, Params]),
-                    {stop, undefined}
+                    HandledErrors =[{not_found, participant_not_found},
+                                    {insufficient_initiator_amount, value_too_low},
+                                    {insufficient_responder_amount, value_too_low},
+                                    {insufficient_amounts, value_too_low},
+                                    {channel_reserve_too_low, value_too_low},
+                                    {push_amount_too_low, value_too_low},
+                                    {lock_period_too_low, value_too_low}
+                                   ],
+                    case proplists:get_value(Err, HandledErrors, not_handled_error) of
+                        not_handled_error ->
+                            lager:info("Failed to start because of unhandled error ~p", [Err]),
+                            {stop, undefined};
+                        ErrKey ->
+                            %% because of tests' subscription mechanism, we
+                            %% might have to give some time tolerance in order
+                            %% to avoid race conditions
+                            After = 0,
+                            timer:send_after(After, ?ERROR_TO_CLIENT(ErrKey)),
+                            timer:send_after(After + 1, stop),
+                            {ok, Handler#handler{fsm_pid  = undefined,
+                                                 fsm_mref = undefined}}
+                    end
             end
     end.
 
 -spec websocket_handle(term(), handler()) -> {ok, handler()}.
+websocket_handle({text, MsgBin}, #handler{fsm_pid = undefined} = H) ->
+    %% the FSM has not been started, the connection is to die any moment now
+    %% do not respond
+    lager:debug("Not processing message ~p", [MsgBin]),
+    {ok, H};
 websocket_handle({text, MsgBin}, #handler{protocol = Protocol,
                                           enc_channel_id = ChannelId,
                                           fsm_pid  = FsmPid} = H) ->
@@ -62,6 +89,12 @@ websocket_handle({text, MsgBin}, #handler{protocol = Protocol,
 websocket_handle(_Data, H) ->
     {ok, H}.
 
+websocket_info(?ERROR_TO_CLIENT(Err), #handler{protocol = Protocol} = H) ->
+    {reply, Resp} = sc_ws_api:error_response(Protocol, Err),
+    timer:sleep(1000),
+    {reply, {text, jsx:encode(Resp)}, H};
+websocket_info(stop, #handler{} = H) ->
+    {stop, H};
 websocket_info({aesc_fsm, FsmPid, Msg}, #handler{fsm_pid = FsmPid,
                                                  enc_channel_id = ChannelId,
                                                  protocol = Protocol} = H) ->
