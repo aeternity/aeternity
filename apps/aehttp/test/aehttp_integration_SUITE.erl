@@ -653,7 +653,8 @@ init_per_group(Group, Config) when
       %%Group =:= channel_endpoints;
       Group =:= peer_endpoints;
       Group =:= status_endpoints ->
-    start_node(Group, Config);
+    {ok, StartedApps} = application:ensure_all_started(gproc),
+    start_node(Group, [{started_apps, StartedApps}|Config]);
 %% block_endpoints
 init_per_group(on_genesis_block = Group, Config) ->
     Config1 = start_node(Group, Config),
@@ -832,19 +833,26 @@ init_per_group(Group, Config) ->
     aecore_suite_utils:mine_blocks(Node, BlocksToMine),
     Config1.
 
-end_per_group(Group, _Config) when
+end_per_group(Group, Config) ->
+    end_per_group_(Group, Config),
+    [application:stop(A) ||
+        A <- lists:reverse(
+               proplists:get_value(started_apps, Config, []))],
+    ok.
+
+end_per_group_(Group, _Config) when
       Group =:= all;
       Group =:= block_info;
       Group =:= account_info;
       Group =:= tx_info ->
     ok;
-end_per_group(continuous_sc_ws, Config) ->
+end_per_group_(continuous_sc_ws, Config) ->
     sc_ws_close_(Config);
-end_per_group(account_with_pending_tx, _Config) ->
+end_per_group_(account_with_pending_tx, _Config) ->
     ok;
-end_per_group(oracle_txs, _Config) ->
+end_per_group_(oracle_txs, _Config) ->
     ok;
-end_per_group(Group, Config) ->
+end_per_group_(Group, Config) ->
     ok = stop_node(Group, Config).
 
 init_per_testcase(post_oracle_register, Config) ->
