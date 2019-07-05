@@ -38,8 +38,17 @@
 run(#{vm := VM} = Version, #{ code := SerializedCode} = CallDef) when ?IS_FATE_SOPHIA(VM) ->
     #{ byte_code := Code
      , type_info :=_TypeInfo} = aect_sophia:deserialize(SerializedCode),
-    CallDef1 = CallDef#{code => Code},
-    run_common(Version, CallDef1);
+    case aefa_fate:is_valid_calldata(maps:get(call_data, CallDef)) of
+        true ->
+            CallDef1 = CallDef#{code => Code},
+            run_common(Version, CallDef1);
+        false ->
+            Gas = maps:get(gas, CallDef),
+            Call = maps:get(call, CallDef),
+            Trees = maps:get(trees, CallDef),
+            Env = maps:get(tx_env, CallDef),
+            {create_call(Gas, error, <<"bad_call_data">>, [], Call, VM), Trees, Env}
+    end;
 run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_AEVM_SOPHIA(VM) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),

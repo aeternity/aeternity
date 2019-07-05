@@ -1650,10 +1650,11 @@ assert_contract_byte_code(?ABI_SOLIDITY_1, _SerializedCode, _CallData, _S) ->
     ok.
 
 assert_contract_init_function(?ABI_FATE_SOPHIA_1, CallData,_TypeInfo) ->
-    try aeb_fate_encoding:deserialize(CallData) of
-        %% TODO: Proper call data abstraction
-        _ -> ok
-    catch _:_ -> runtime_error(bad_init_function)
+    case aefa_fate:is_init_calldata(CallData) of
+        true  ->
+            ok;
+        false ->
+            runtime_error(bad_init_function)
     end;
 assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo) ->
     case aeb_aevm_abi:get_function_hash_from_calldata(CallData) of

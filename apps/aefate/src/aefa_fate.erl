@@ -13,6 +13,8 @@
         , final_trees/1
         , return_value/1
         , tx_env/1
+        , is_init_calldata/1
+        , is_valid_calldata/1
         ]).
 
 -export([get_trace/1]).
@@ -100,6 +102,33 @@ logs(EngineState) ->
 final_trees(EngineState) ->
     aefa_chain_api:final_trees(aefa_engine_state:chain_api(EngineState)).
 
+is_init_calldata(CallData) ->
+    is_valid_calldata(CallData, <<"init">>).
+
+is_valid_calldata(CallData) ->
+    is_valid_calldata(CallData, any).
+
+is_valid_calldata(CallData, Name) ->
+    try aeb_fate_encoding:deserialize(CallData) of
+        Decoded when ?IS_FATE_TUPLE(Decoded) ->
+            case ?FATE_TUPLE_ELEMENTS(Decoded) of
+                [FHash, Args] when ?IS_FATE_TUPLE(Args),
+                                   ?IS_FATE_STRING(FHash) ->
+                    case Name =:= any of
+                        true ->
+                            true;
+                        false ->
+                            String = ?FATE_STRING_VALUE(FHash),
+                            ID = aeb_fate_code:symbol_identifier(Name),
+                            String =:= ID
+                    end;
+                _ ->
+                    false
+            end;
+        _ ->
+            false
+    catch _:_ -> false
+    end.
 
 %%%===================================================================
 %%% Internal functions

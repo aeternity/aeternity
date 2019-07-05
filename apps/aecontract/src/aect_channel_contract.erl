@@ -36,7 +36,7 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
     %% Assert VmVersion before running!
     [error({illegal_vm_version, VmVersion}) || not ?IS_AEVM_SOPHIA(VmVersion) andalso
                                                not ?IS_FATE_SOPHIA(VmVersion)],
-
+    assert_init_function(CallData, VmVersion, Code),
     CallDef = make_call_def(OwnerPubKey, ContractPubKey,
                             _Gas = 1000000, _GasPrice = 1,
                             _Amount = 0, %TODO: make this configurable
@@ -73,6 +73,28 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
         E ->
             lager:debug("Init call error ~w ~w",[E, CallRes]),
             erlang:error(contract_init_failed)
+    end.
+
+assert_init_function(CallData, VMVersion,_SerializedCode) when ?IS_FATE_SOPHIA(VMVersion) ->
+    case aefa_fate:is_init_calldata(CallData) of
+        true ->
+            ok;
+        false ->
+            error(contract_init_failed)
+    end;
+assert_init_function(CallData, VMVersion, SerializedCode) when ?IS_AEVM_SOPHIA(VMVersion) ->
+    try aect_sophia:deserialize(SerializedCode) of
+        #{type_info := TypeInfo} ->
+            case aeb_aevm_abi:get_function_hash_from_calldata(CallData) of
+                {ok, Hash} ->
+                    case aeb_aevm_abi:function_name_from_type_hash(Hash, TypeInfo) of
+                        {ok, <<"init">>} -> ok;
+                        _ -> error(contract_init_failed)
+                    end;
+                _Other -> error(contract_init_failed)
+            end
+    catch _:_ ->
+            error(contract_init_failed)
     end.
 
 -spec run(aect_contracts:pubkey(), aect_contracts:abi_version(), aect_call:call(),
