@@ -770,6 +770,7 @@ spend(Arg0, Arg1, ES0) ->
 -define(FATE_ABS_TTL(X), ?FATE_VARIANT([1,1], 1, {X})).
 
 oracle_register(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, EngineState) ->
+    assert_onchain(oracle_register, EngineState),
     {[Signature, Address, QFee, TTL, QType, RType], ES1} =
         get_op_args([Arg1, Arg2, Arg3, Arg4, Arg5, Arg6], EngineState),
     if
@@ -821,6 +822,7 @@ oracle_register_(Arg0, ?FATE_BYTES(Signature), ?FATE_ADDRESS(Address),
     end.
 
 oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, EngineState) ->
+    assert_onchain(oracle_query, EngineState),
     {[Oracle, Question, QFee, QTTL, RTTL, QType, RType], ES1} =
         get_op_args([Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7], EngineState),
     if
@@ -863,6 +865,7 @@ oracle_query(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, Arg6, Arg7, EngineState) ->
     end.
 
 oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
+    assert_onchain(oracle_respond, EngineState),
     {[Signature, Oracle, Query, Response, QType, RType], ES1} =
         get_op_args([Arg0, Arg1, Arg2, Arg3, Arg4, Arg5], EngineState),
     if
@@ -891,6 +894,7 @@ oracle_respond(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
     end.
 
 oracle_extend(Arg0, Arg1, Arg2, EngineState) ->
+    assert_onchain(oracle_extend, EngineState),
     {[Signature, Oracle, TTL], ES1} =
         get_op_args([Arg0, Arg1, Arg2], EngineState),
     if
@@ -1102,6 +1106,7 @@ aens_tag_to_val(_Other,_Tag,_PubKey) ->
     {error, bad_type}.
 
 aens_preclaim(Arg0, Arg1, Arg2, EngineState) ->
+    assert_onchain(aens_preclaim, EngineState),
     {[Signature, Account, Hash], ES1} =
         get_op_args([Arg0, Arg1, Arg2], EngineState),
     if
@@ -1128,6 +1133,7 @@ aens_preclaim(Arg0, Arg1, Arg2, EngineState) ->
 
 
 aens_claim(Arg0, Arg1, Arg2, Arg3, EngineState) ->
+    assert_onchain(aens_claim, EngineState),
     {[Signature, Account, NameString, Salt], ES1} =
         get_op_args([Arg0, Arg1, Arg2, Arg3], EngineState),
     if
@@ -1166,7 +1172,7 @@ aens_update(_EngineState) ->
     exit({error, op_not_implemented_yet}).
 
 aens_transfer(Arg0, Arg1, Arg2, Arg3, EngineState) ->
-    %% TODO: This should be changed to work on the string instead.
+    assert_onchain(aens_transfer, EngineState),
     {[Signature, From, To, NameString], ES1} =
         get_op_args([Arg0, Arg1, Arg2, Arg3], EngineState),
     if
@@ -1195,6 +1201,7 @@ aens_transfer(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     end.
 
 aens_revoke(Arg0, Arg1, Arg2, EngineState) ->
+    assert_onchain(aens_revoke, EngineState),
     {[Signature, Account, NameString], ES1} =
         get_op_args([Arg0, Arg1, Arg2], EngineState),
     if
@@ -1256,6 +1263,14 @@ delegation_signature_data(Type, {Pubkey, Hash}, Current) when Type =:= aens_clai
                                                               Type =:= aens_transfer;
                                                               Type =:= aens_revoke ->
     {<<Pubkey/binary, Hash/binary, Current/binary>>, Pubkey}.
+
+assert_onchain(Primop, ES) ->
+    case aefa_chain_api:is_onchain(aefa_engine_state:chain_api(ES)) of
+        true ->
+            ok;
+        false ->
+            aefa_fate:abort({primop_error, Primop, not_allowed_off_chain}, ES)
+    end.
 
 ecverify(Arg0, Arg1, Arg2, Arg3, ES) ->
     ter_op(ecverify, {Arg0, Arg1, Arg2, Arg3}, ES).

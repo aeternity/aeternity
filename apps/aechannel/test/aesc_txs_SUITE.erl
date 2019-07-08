@@ -206,6 +206,19 @@
 -define(TEST_LOG(Format, Data), ct:log(Format, Data)).
 -define(MINERVA_FORK_HEIGHT, 1000).
 -define(FORTUNA_FORK_HEIGHT, 10000).
+
+-define(IF_AEVM(AEVM, FATE),
+    case ?IS_AEVM_SOPHIA(aect_test_utils:vm_version()) of
+        true  -> AEVM;
+        false -> FATE
+    end).
+
+-define(assertMatchVM(AEVM, FATE, Res),
+    case ?IS_AEVM_SOPHIA(aect_test_utils:vm_version()) of
+        true  -> ?assertMatch(AEVM, Res);
+        false -> ?assertMatch(FATE, Res)
+    end).
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -2655,6 +2668,8 @@ fp_use_onchain_enviroment(Cfg) ->
     Timestamp1 = 654321,
     BeneficiaryInt = 42,
     Beneficiary = <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>>,
+    ExpBeneficiary = ?IF_AEVM(BeneficiaryInt,
+                              aeb_fate_data:make_address(Beneficiary)),
 
     Height2 = Height1 + LockPeriod + 1,
     Height3 = Height2 + LockPeriod + 1,
@@ -2683,11 +2698,11 @@ fp_use_onchain_enviroment(Cfg) ->
                     (assert_last_channel_result(H, word))(Props)
                 end,
                 set_tx_env(Height1, Timestamp1, Beneficiary),
-                ForceCall(Forcer, <<"coinbase">>, word, BeneficiaryInt),
+                ForceCall(Forcer, <<"coinbase">>, word, ExpBeneficiary),
                 set_tx_env(Height2, Timestamp1, Beneficiary),
                 ForceCall(Forcer, <<"block_height">>, word, Height2),
                 set_tx_env(Height3, Timestamp1, Beneficiary),
-                ForceCall(Forcer, <<"coinbase">>, word, BeneficiaryInt),
+                ForceCall(Forcer, <<"coinbase">>, word, ExpBeneficiary),
                 set_tx_env(Height4, Timestamp1, Beneficiary),
                 ForceCall(Forcer, <<"timestamp">>, word, Timestamp1)
                ])
@@ -3309,7 +3324,7 @@ fp_solo_payload_broken_call(Cfg) ->
     StateHashSize = aeser_api_encoder:byte_size_for_type(state),
     FakeStateHash = <<42:StateHashSize/unit:8>>,
     Test =
-        fun(Owner, Forcer, CallData, Error) ->
+        fun(Owner, Forcer, CallData, AEVMError, FATEError) ->
             run(#{cfg => Cfg, initiator_amount => 30,
                               responder_amount => 30,
                  channel_reserve => 1},
@@ -3355,21 +3370,23 @@ fp_solo_payload_broken_call(Cfg) ->
                     %% assert all gas was consumed
                     GasLimit = aect_call:gas_used(Call),
                     GasPrice = aect_call:gas_price(Call),
-                    ?assertEqual(Error, aect_call:return_value(Call)),
+                    Ret = aect_call:return_value(Call),
+                    ?assertMatchVM(AEVMError, FATEError, Ret),
                     Props
                 end])
         end,
     TestWithCallData =
-        fun(CallData, ErrorMsg) ->
-            [Test(Owner, Forcer, CallData, ErrorMsg) || Owner  <- ?ROLES,
-                                                        Forcer <- ?ROLES]
+        fun(CallData, ErrorAEVM, ErrorFATE) ->
+            [Test(Owner, Forcer, CallData, ErrorAEVM, ErrorFATE)
+             || Owner  <- ?ROLES,
+                Forcer <- ?ROLES]
         end,
     %% empty call data
-    TestWithCallData(<<>>, <<"bad_call_data">>),
+    TestWithCallData(<<>>, <<"bad_call_data">>, <<"bad_call_data">>),
     %% Too small call data
-    TestWithCallData(<<"0xABCD">>, <<"bad_call_data">>),
-    %% Just plain wrong call data, but that can be interpreted
-    TestWithCallData(<<42:42/unit:8>>, <<"unknown_function">>),
+    TestWithCallData(<<"0xABCD">>, <<"bad_call_data">>, <<"bad_call_data">>),
+    %% Just plain wrong call data, but that can be interpreted by the aevm
+    TestWithCallData(<<42:42/unit:8>>, <<"unknown_function">>, <<"bad_call_data">>),
     ok.
 
 fp_insufficent_tokens(Cfg) ->
@@ -3601,8 +3618,10 @@ fp_register_name(Cfg) ->
                       %% assert all gas was consumed
                       GasLimit = aect_call:gas_used(Call),
                       GasPrice = aect_call:gas_price(Call),
-                      %% the default catch all reason for error
-                      <<"not_allowed_off_chain">> = aect_call:return_value(Call),
+                      ErrorRes = aect_call:return_value(Call),
+                      ?assertMatchVM(<<"not_allowed_off_chain">>,
+                                     <<"Error in aens_preclaim: not_allowed_off_chain">>,
+                                     ErrorRes),
                       error = aect_call:return_type(Call),
 
                       %% expected channel states
@@ -3921,8 +3940,9 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       %% assert all gas was consumed
                       GasLimit = aect_call:gas_used(Call),
                       GasPrice = aect_call:gas_price(Call),
-                      %% the default catch all reason for error
-                      <<"not_allowed_off_chain">> = aect_call:return_value(Call),
+                      ErrorRes = aect_call:return_value(Call),
+                      MatchRes = re:run(ErrorRes, <<"not_allowed_off_chain">>),
+                      ?assertMatch({ErrorRes, {match, _}}, {ErrorRes, MatchRes}),
                       error = aect_call:return_type(Call),
 
                       %% expected channel states
@@ -4102,8 +4122,10 @@ fp_register_oracle(Cfg) ->
                       %% assert all gas was consumed
                       GasLimit = aect_call:gas_used(Call),
                       GasPrice = aect_call:gas_price(Call),
-                      %% the default catch all reason for error
-                      <<"not_allowed_off_chain">> = aect_call:return_value(Call),
+                      ErrorRes = aect_call:return_value(Call),
+                      ?assertMatchVM(<<"not_allowed_off_chain">>,
+                                     <<"Error in oracle_register: not_allowed_off_chain">>,
+                                     ErrorRes),
                       error = aect_call:return_type(Call),
 
                       %% expected channel states
@@ -5243,7 +5265,8 @@ assert_last_channel_result(Result, Type) ->
         Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
                                         S),
         EncRValue = aect_call:return_value(Call),
-        ?assertMatch({X, X}, {{ok, Result}, aeb_heap:from_binary(Type, EncRValue)}),
+        ?assertMatch({ok, Result}, ?IF_AEVM(aeb_heap:from_binary(Type, EncRValue),
+                                            {ok, aeb_fate_encoding:deserialize(EncRValue)})),
         Props
     end.
 
@@ -5377,8 +5400,8 @@ create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->
             aect_create_tx:new(#{owner_id    => aeser_id:create(account, Owner),
                                  nonce       => Nonce,
                                  code        => BinCode,
-                                 vm_version  => aect_test_utils:latest_sophia_vm_version(),
-                                 abi_version => aect_test_utils:latest_sophia_abi_version(),
+                                 vm_version  => aect_test_utils:vm_version(),
+                                 abi_version => aect_test_utils:abi_version(),
                                  deposit     => Deposit,
                                  amount      => 0,
                                  gas         => 123467,

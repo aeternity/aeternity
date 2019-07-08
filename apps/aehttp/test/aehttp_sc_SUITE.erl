@@ -1704,9 +1704,13 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContra
 
     % now the name is on-chain, both must return true:
     Test(CallResolve, Name, <<"account_pubkey">>, true),
-    Test(CallRemoteContract, Name, <<"account_pubkey">>, false), % BUG
+    case aect_test_utils:backend() of
+        aevm ->
+            Test(CallRemoteContract, Name, <<"account_pubkey">>, false); % BUG
+        fate ->
+            Test(CallRemoteContract, Name, <<"account_pubkey">>, true)
+    end,
     ok.
-
 
 register_oracle(OraclePubkey, OraclePrivkey, Opts) ->
     case rpc(aec_chain, get_oracle, [OraclePubkey]) of
