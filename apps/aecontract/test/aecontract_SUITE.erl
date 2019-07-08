@@ -245,70 +245,25 @@ all() ->
 -define(ALL_TESTS, [{group, transactions}, {group, state_tree}, {group, sophia},
                     {group, store}, {group, remote_call_type_errors}]).
 
+-define(AEVM_SPECIFIC, [ {group, aevm_illegal_instructions}
+                       , {group, sophia_aevm_specific}]).
+
+-define(FATE_SPECIFIC, [ fate_environment
+                       ]).
+
+-define(FATE_TODO, [ {group, sophia_oracles_gas_ttl}
+                   , sophia_state_gas
+                   ]).
+
 groups() ->
-    [ {aevm, [sequence], ?ALL_TESTS}
-    , {fate, [sequence],  [ create_contract
-                          , {group, transactions}
-                          , sophia_call_origin
-                          , sophia_contract_creator
-                          , sophia_identity
-                          , sophia_remote_identity
-                          , sophia_spend
-                          , sophia_no_reentrant
-                          , sophia_call_value
-                          , fate_environment
-                          , sophia_call_out_of_gas
-                          , sophia_state_handling
-                          , sophia_maps
-                          , sophia_oracles
-                          , {group, sophia_oracles_ttl}
-                          , {group, sophia_oracles_type_error}
-                          , {group, sophia_oracles_query_fee_happy_path}
-                          , {group, sophia_oracles_query_fee_happy_path_remote}
-                          , {group, sophia_oracles_query_fee_unhappy_path}
-                          , {group, sophia_oracles_query_fee_unhappy_path_remote}
-                          %%, {group, sophia_oracles_gas_ttl}
-                          , sophia_signatures_oracles
-                          , sophia_signatures_aens
-                          , sophia_remote_identity
-                          , sophia_call_out_of_gas
-                          , sophia_no_reentrant
-                          , sophia_state
-                          , sophia_match_bug
-                          , sophia_spend
-                          , sophia_typed_calls
-                          , sophia_functions
-                          , sophia_map_benchmark
-                          , sophia_big_map_benchmark
-                          , sophia_variant_types
-                          , sophia_chain
-                          , sophia_savecoinbase
-                          , sophia_fundme
-                          , sophia_aens_resolve
-                          , sophia_aens_transactions
-                          , sophia_state_handling
-                          %% , sophia_state_gas    %% TODO: State gas not implemented
-                          , sophia_no_callobject_for_remote_calls
-                          , sophia_operators
-                          , sophia_bits
-                          , sophia_int_to_str
-                          , sophia_events
-                          , sophia_crypto
-                          , sophia_safe_math
-                          , sophia_heap_to_heap_bug
-                          , sophia_namespaces
-                          , sophia_bytes
-                          , sophia_bytes_to_x
-                          , sophia_address_checks
-                          , sophia_too_little_gas_for_mem
-                          ]}
+    [ {aevm, [], ?ALL_TESTS ++ ?AEVM_SPECIFIC}
+    , {fate, [], ?ALL_TESTS ++ ?FATE_SPECIFIC}
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account
                                  ]}
     , {transactions, [], [ create_contract
                          , create_contract_init_error
                          , create_contract_init_error_call_wrong_function
-                         , {group, aevm_illegal_instructions}
                          , create_contract_negative_gas_price_zero
                          , create_contract_negative
                          , create_version_too_high
@@ -325,6 +280,10 @@ groups() ->
                                       , create_contract_init_error_illegal_instruction_two_hex_digits
                                       , create_contract_init_error_illegal_instructions_in_sophia]}
 
+    , {sophia_aevm_specific, [], [ sophia_aevm_exploits
+                                 , sophia_aevm_bad_code
+                                 , sophia_aevm_bad_init
+                                 ]}
     , {create_contract_upfront_charges, [], [ create_contract_upfront_fee
                                             , create_contract_upfront_gas
                                             , create_contract_upfront_amount
@@ -347,7 +306,6 @@ groups() ->
                                  sophia_call_origin,
                                  sophia_call_value,
                                  sophia_contract_creator,
-                                 sophia_aevm_exploits,
                                  sophia_functions,
                                  sophia_oracles,
                                  {group, sophia_oracles_ttl},
@@ -373,8 +331,6 @@ groups() ->
                                  sophia_no_callobject_for_remote_calls,
                                  sophia_operators,
                                  sophia_bits,
-                                 sophia_aevm_bad_code,
-                                 sophia_aevm_bad_init,
                                  sophia_int_to_str,
                                  sophia_events,
                                  sophia_crypto,
@@ -465,7 +421,7 @@ init_tests(Release, VMName) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> Proto end),
     Cfg = [{sophia_version, Sophia}, {vm_version, VM},
            {abi_version, ABI}, {protocol, Release}],
-    init_per_testcase_common(Cfg).
+    init_per_testcase_common(interactive, Cfg).
 
 init_per_group(aevm, Cfg) ->
     aect_test_utils:init_per_group(aevm, Cfg, fun(X) -> X end);
@@ -492,13 +448,17 @@ init_per_group(protocol_interaction, Cfg) ->
         _ ->
             {skip, only_test_protocol_interaction_on_latest_protocol}
     end;
-init_per_group(aevm_illegal_instructions, Cfg) ->
+init_per_group(Group, Cfg) ->
     case ?IS_FATE_SOPHIA(?config(vm_version, Cfg)) of
-        true -> {skip, not_applicable_for_fate};
+        true ->
+            case lists:member({group, Group}, ?FATE_TODO) of
+                true ->
+                    {skip, not_working_yet_for_fate};
+                false ->
+                    Cfg
+            end;
         false -> Cfg
-    end;
-init_per_group(_Grp, Cfg) ->
-    Cfg.
+    end.
 
 end_per_group(protocol_interaction, Cfg) ->
     meck:unload(aec_hard_forks),
@@ -515,11 +475,11 @@ init_per_testcase(fate_environment, Config) ->
                         _ = aefa_chain_api:generation(S),
                         aeb_fate_data:make_hash(<<N:256>>)
                 end),
-    init_per_testcase_common(Config);
-init_per_testcase(_TC, Config) ->
-    init_per_testcase_common(Config).
+    init_per_testcase_common(fate_environment, Config);
+init_per_testcase(TC, Config) ->
+    init_per_testcase_common(TC, Config).
 
-init_per_testcase_common(Config) ->
+init_per_testcase_common(TC, Config) ->
     VmVersion = ?config(vm_version, Config),
     ABIVersion = ?config(abi_version, Config),
     SophiaVersion = ?config(sophia_version, Config),
@@ -533,7 +493,17 @@ init_per_testcase_common(Config) ->
     put('$abi_version', ABIVersion),
     put('$sophia_version', SophiaVersion),
     put('$protocol_version', ProtocolVersion),
-    Config.
+    case ?IS_AEVM_SOPHIA(VmVersion) of
+        true ->
+            Config;
+        false ->
+            case lists:member(TC, ?FATE_TODO) of
+                true ->
+                    {skip, not_working_yet_for_fate};
+                false ->
+                    Config
+            end
+    end.
 
 end_per_testcase(fate_environment, _Config) ->
     meck:unload(aefa_chain_api),
@@ -5226,9 +5196,9 @@ call_missing(_Cfg) ->
     Acc1      = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
     Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
-    42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {Contract2, 42}),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract1, remote_missing, word, {Contract2, 42}),
-
+    42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {?cid(Contract2), 42}),
+    {error, Error} = ?call(call_contract, Acc1, Contract1, remote_missing, word, {?cid(Contract2), 42}),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Trying to call undefined function:", _/binary>>, Error),
     ok.
 
 call_wrong_type(_Cfg) ->
@@ -5236,9 +5206,10 @@ call_wrong_type(_Cfg) ->
     Acc1     = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
     Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
-    42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {Contract2, 42}),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract1, remote_wrong_type, word,
-                                      {Contract2, <<"hello">>}),
+    42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {?cid(Contract2), 42}),
+    {error, Error} = ?call(call_contract, Acc1, Contract1, remote_wrong_type, word,
+                           {?cid(Contract2), <<"hello">>}),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on call:", _/binary>>, Error),
     ok.
 
 %%%===================================================================
