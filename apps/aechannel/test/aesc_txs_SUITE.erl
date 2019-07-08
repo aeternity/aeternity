@@ -417,7 +417,8 @@ init_per_group(fork_awareness, Config) ->
                    (V) when V < ?FORTUNA_FORK_HEIGHT -> ?MINERVA_PROTOCOL_VSN;
                    (_)                               -> ?FORTUNA_PROTOCOL_VSN
                 end),
-    Config;
+    %% This is orthogonal to vm version, but we need to set one up.
+    aect_test_utils:init_per_group(aevm, Config);
 init_per_group(VM, Config) when VM == aevm; VM == fate ->
     aect_test_utils:init_per_group(VM, Config);
 init_per_group(_Group, Config) ->
