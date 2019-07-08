@@ -38,6 +38,7 @@ obe_otp_64_gcc_vsn_map="
 C_DRV="/c"
 WIN_C_DRV="C:\\"
 IN_CYGWIN=false
+CPPFLAGS='-D _WIN32'
 
 MSYS2_ROOT=${MSYS2_ROOT:-"${C_DRV}/msys64"}
 WIN_MSYS2_ROOT=${WIN_MSYS2_ROOT:-"${WIN_C_DRV}\\msys64"}
@@ -66,3 +67,4 @@ INCLUDE="${INCLUDE};${WIN_MSYS2_ROOT}\\mingw64\\include;${WIN_MSYS2_ROOT}\\usr\\
 LIB="${LIB};${WIN_MSYS2_ROOT}\\mingw64\\lib;${WIN_MSYS2_ROOT}\\mingw64\\bin;${WIN_ERL_TOP}\\usr\\lib;"
 
 export INCLUDE LIB PATH ERL_TOP WIN_ERL_TOP COMSPEC
+export INCLUDE LIB PATH ERL_TOP WIN_ERL_TOP COMSPEC CPPFLAGS
