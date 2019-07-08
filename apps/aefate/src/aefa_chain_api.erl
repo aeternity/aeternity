@@ -436,7 +436,7 @@ oracle_check(Pubkey, QType, RType, #state{primop_state = PState} = State) when ?
     {ok, Res, State#state{primop_state = PState1}};
 oracle_check(Pubkey, QType, RType, #state{onchain_primop_state = {onchain, PState}} = State) ->
     {ok, Res, PState1} = oracle_check_from_pstate(Pubkey, QType, RType, PState),
-    {ok, Res, State#state{onchain_primop_state = PState1}}.
+    {ok, Res, State#state{onchain_primop_state = {onchain, PState1}}}.
 
 oracle_check_from_pstate(Pubkey, QType, RType, PState) ->
     ABIVersion = ?ABI_FATE_SOPHIA_1,
