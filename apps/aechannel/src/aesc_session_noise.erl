@@ -144,11 +144,11 @@ accept_(#{ reestablish := true
          , channel_id  := ChId
          , responder   := R
          , port        := Port } = Opts, NoiseOpts) ->
-    gproc:reg({n,l,responder_reestabl_regkey(ChainH, ChId, R, Port)}),
+    gproc:reg(responder_reestabl_regkey(ChainH, ChId, R, Port)),
     {ok, _Pid} = aesc_sessions_sup:start_child(
                    [#{fsm => self(), op => {accept, Opts, NoiseOpts}}]);
 accept_(#{ initiator := I, responder := R, port := Port } = Opts, NoiseOpts) ->
-    gproc:reg({n,l,responder_regkey(R, I, Port)}),
+    gproc:reg(responder_regkey(R, I, Port)),
     aesc_sessions_sup:start_child([#{fsm => self(), op => {accept, Opts, NoiseOpts}}]).
 
 start_link(Arg) when is_map(Arg) ->
@@ -323,7 +323,7 @@ locate_fsm(Type, MInfo, #st{ init_op = {accept, SnInfo, _Opts} } = St) ->
     Info = maps:merge(SnInfo, MInfo),  % any duplicates overridden by what was received
     Cands = get_cands(Type, Info),
     lager:debug("Cands = ~p", [Cands]),
-    try_cands(Cands, 3, Type, Info, St).
+    try_cands(Cands, 3, 0, Type, Info, St).
 
 get_cands(?CH_OPEN, #{ initiator := I
                      , responder := R
@@ -335,8 +335,8 @@ get_cands(?CH_OPEN, #{ initiator := I
     %% two select operations.
     lists:reverse(
       gproc:select(
-        {l,n},
-        [{ {{n,l, responder_regkey(R, '$1', Port)}, '_', '_'},
+        {l,p},
+        [{ {responder_regkey(R, '$1', Port), '_', '_'},
            [{'orelse',
              {'=:=', '$1', I},
              {'=:=', '$1', any}}], ['$_'] }]));
@@ -344,33 +344,40 @@ get_cands(?CH_REESTABL, #{ chain_hash := Chain
                          , channel_id := ChId
                          , responder  := R
                          , port := Port}) ->
-    gproc:select({l,n},
-                 [{ {{n,l, responder_reestabl_regkey(Chain, ChId, R, Port)}, '_', '_'},
+    gproc:select({l,p},
+                 [{ {responder_reestabl_regkey(Chain, ChId, R, Port), '_', '_'},
                     [], ['$_'] }]).
 
 responder_reestabl_regkey(Chain, ChId, R, Port) ->
-    {n, l, {?MODULE, accept_reestabl, Chain, ChId, R, Port}}.
+    {p, l, {?MODULE, accept_reestabl, Chain, ChId, R, Port}}.
 
 responder_regkey(R, I, Port) ->
-    {n, l, {?MODULE, accept, R, I, Port}}.
+    {p, l, {?MODULE, accept, R, I, Port}}.
 
-try_cands([{K, Pid, _} | Cands], Tries, Type, Info, St) ->
+try_cands([{K, Pid, _} | Cands], Tries, Races, Type, Info, St) ->
     case aesc_fsm:attach_responder(Pid, Info#{ gproc_key => K }) of
+        {error, taken} ->
+            lager:debug("Couldn't attach to ~p: taken", [Pid]),
+            try_cands(Cands, Tries, Races+1, Type, Info, St);
         {error, _} = E ->
             lager:debug("Couldn't attach to ~p: ~p", [Pid, E]),
-            try_cands(Cands, Tries, Type, Info, St);
+            try_cands(Cands, Tries, Races, Type, Info, St);
         ok ->
             lager:debug("Attached to ~p", [Pid]),
             MRef = erlang:monitor(process, Pid),
             St#st{ fsm = Pid
                  , fsm_mon_ref = MRef }
     end;
-try_cands([], 0, _, _, _) ->
+try_cands([], 0, 0, _, _, _) ->
     erlang:error(cannot_locate_fsm);
-try_cands([], Tries, Type, Info, St) ->
-    lager:debug("Exhausted candidates; retrying ...", []),
+try_cands([], Tries, 0, Type, Info, St) ->
+    lager:debug("Exhausted candidates (no races); retrying ...", []),
     receive after 100 -> ok end,
-    try_cands(get_cands(Type, Info), Tries-1, Type, Info, St).
+    try_cands(get_cands(Type, Info), Tries-1, 0, Type, Info, St);
+try_cands([], Tries, Races, Type, Info, St) ->
+    lager:debug("Exhausted candidates (Races = ~p); retrying at once", [Races]),
+    try_cands(get_cands(Type, Info), Tries, 0, Type, Info, St).
+
 
 close_econn(undefined) ->
     ok;

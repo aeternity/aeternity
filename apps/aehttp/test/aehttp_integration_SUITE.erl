@@ -626,10 +626,15 @@ init_per_suite(Config) ->
                      <<"hard_forks">> => Forks},
                <<"mining">> =>
                    #{<<"micro_block_cycle">> => 1}},
+    {ok, StartedApps} = application:ensure_all_started(gproc),
     Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_endpoints"}, {test_module, ?MODULE}] ++ Config),
-    [{nodes, [aecore_suite_utils:node_tuple(?NODE)]}]  ++ Config1.
+    [ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
+    , {started_apps, StartedApps} ]  ++ Config1.
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
+    [application:stop(A) ||
+        A <- lists:reverse(
+               proplists:get_value(started_apps, Config, []))],
     ok.
 
 init_per_group(channel_ga, Config) ->

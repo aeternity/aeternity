@@ -73,6 +73,7 @@
 
 -define(MAX_MINED_BLOCKS, 20).
 
+
 all() ->
     [{group, all_tests}].
 
@@ -138,13 +139,17 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
+    {ok, StartedApps} = application:ensure_all_started(gproc),
     DefCfg = #{<<"chain">> => #{<<"persist">> => false},
                <<"mining">> => #{<<"micro_block_cycle">> => 1}},
     Config1 = aecore_suite_utils:init_per_suite([dev1], DefCfg, [{symlink_name, "latest.aesc_fsm"}, {test_module, ?MODULE}] ++ Config),
-    [{nodes, [aecore_suite_utils:node_tuple(N)
-              || N <- [dev1]]} | Config1].
+    [ {nodes, [aecore_suite_utils:node_tuple(N)
+               || N <- [dev1]]}
+    , {started_apps, StartedApps} | Config1].
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
+    StartedApps = proplists:get_value(started_apps, Config),
+    [ok = application:stop(A) || A <- lists:reverse(StartedApps)],
     ok.
 
 init_per_group(signatures, Config0) ->
@@ -839,7 +844,8 @@ multiple_channels(Cfg) ->
 many_chs_msg_loop(Cfg) ->
     multiple_channels_t(10, 9400, {msgs, 100}, ?SLOGAN, Cfg).
 
-multiple_channels_t(NumCs, FromPort, Msg, Slogan, Cfg) ->
+multiple_channels_t(NumCs, FromPort, Msg, {slogan, Slogan}, Cfg) ->
+    Debug = get_debug(Cfg),
     ct:log("spawning ~p channels", [NumCs]),
     Initiator = maps:get(pub, ?config(initiator, Cfg)),
     ct:log("Initiator: ~p", [Initiator]),
@@ -847,12 +853,12 @@ multiple_channels_t(NumCs, FromPort, Msg, Slogan, Cfg) ->
     Node = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, NumCs),
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
-    Cs = [create_multi_channel([{port, FromPort + N},
+    Cs = [create_multi_channel([{port, FromPort},
                                 {ack_to, Me},
                                 {nonce, Nonce + N - 1},
                                 {minimum_depth, 0},
-                                Slogan | Cfg], #{mine_blocks => {ask, Me},
-                                                 debug => false})
+                                {slogan, {Slogan,N}} | Cfg], #{mine_blocks => {ask, Me},
+                                                 debug => Debug})
           || N <- lists:seq(1, NumCs)],
     ct:log("channels spawned", []),
     CsAcks = collect_acks_w_payload(Cs, mine_blocks, NumCs),
@@ -1303,9 +1309,11 @@ on_disk(St) ->  proplists:get_value(on_disk, St).
 
 
 collect_acks([Pid | Pids], Tag, N) ->
+    ct:log("collect_acks, Tag = ~p, N = ~p", [Tag, N]),
     Timeout = 60000 + (N div 10)*5000,  % wild guess
     receive
         {Pid, Tag} ->
+            ct:log("Ack from ~p (~p)", [Pid, Tag]),
             [Pid | collect_acks(Pids, Tag, N)]
     after Timeout ->
             error(timeout)
@@ -1314,9 +1322,11 @@ collect_acks([], _Tag, _) ->
     [].
 
 collect_acks_w_payload([Pid | Pids], Tag, N) ->
+    ct:log("collect_acks_w_payload, Tag = ~p, N = ~p", [Tag, N]),
     Timeout = 30000 + (N div 10)*5000,  % wild guess
     receive
         {Pid, Tag, Payload} ->
+            ct:log("Ack from ~p (~p)", [Pid, Tag]),
             [{Pid, Payload} | collect_acks_w_payload(Pids, Tag, N)]
     after Timeout ->
             error(timeout)
@@ -1331,7 +1341,7 @@ create_multi_channel(Cfg, Debug) ->
                end).
 
 create_multi_channel_(Cfg, Debug) ->
-    #{i := I, r := R} = create_channel_(Cfg, Debug),
+    #{i := I, r := R} = create_channel_([multi | Cfg], Debug),
     Parent = ?config(ack_to, Cfg),
     Parent ! {self(), channel_ack},
     ch_loop(I, R, Parent).
@@ -1362,8 +1372,9 @@ create_channel_(Cfg) ->
 
 create_channel_(Cfg, Debug) ->
     {I, R, Spec} = channel_spec(Cfg),
+    log(Debug, "channel_spec: ~p", [{I, R, Spec}]),
     Port = proplists:get_value(port, Cfg, 9325),
-    create_channel_from_spec(I, R, Spec, Port, Debug).
+    create_channel_from_spec(I, R, Spec, Port, proplists:get_bool(multi, Cfg), Debug).
 
 channel_spec(Cfg) ->
     channel_spec(Cfg, 300000, 200000).
@@ -1405,27 +1416,25 @@ config(K, Cfg, Def) ->
 slogan(Cfg) ->
     ?config(slogan, Cfg).
 
-create_channel_from_spec(
-  I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
-          push_amount := PushAmount} = Spec, Port, Debug) ->
-    IAmt = IAmt0 - PushAmount,
-    RAmt = RAmt0 + PushAmount,
-    {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
-    {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec], Debug),
+create_channel_from_spec(I, R, Spec, Port, Debug) ->
+    create_channel_from_spec(I, R, Spec, Port, false, Debug).
+
+create_channel_from_spec(I, R, Spec, Port, Multi, Debug) ->
+    RProxy = spawn_responder(Port, Spec, R, Multi, Debug),
+    IProxy = spawn_initiator(Port, Spec, I, Debug),
+    log("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
+    #{ i := #{ fsm := FsmI } = I1
+     , r := #{ fsm := FsmR } = R1 } = Info
+        = match_responder_and_initiator(RProxy, Debug),
+    log(Debug, "channel paired: ~p", [Info]),
 
     log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
-
-    I1 = I#{fsm => FsmI, initiator_amount => IAmt, responder_amount => RAmt},
-    R1 = R#{fsm => FsmR, initiator_amount => IAmt, responder_amount => RAmt},
-
-    {ok, _} = receive_from_fsm(info, R1, channel_open, ?TIMEOUT, Debug),
-    {ok, _} = receive_from_fsm(info, I1, channel_accept, ?TIMEOUT, Debug),
 
     {I2, R2} = try await_create_tx_i(I1, R1, Debug)
                catch
                    error:Err ->
-                       ct:log("Caught Err = ~p~nMessages = ~p",
-                              [Err, element(2, process_info(self(), messages))]),
+                       log("Caught Err = ~p~nMessages = ~p",
+                           [Err, element(2, process_info(self(), messages))]),
                        error(Err, erlang:get_stacktrace())
                end,
     log(Debug, "mining blocks on dev1 for minimum depth", []),
@@ -1453,6 +1462,91 @@ create_channel_from_spec(
     R5 = await_open_report(R4, ?TIMEOUT, Debug),
     check_info(500, Debug),
     #{i => I5, r => R5, spec => Spec}.
+
+spawn_responder(Port, Spec, R, Multi, Debug) ->
+    Me = self(),
+    spawn_link(fun() ->
+                       log("responder spawned: ~p", [Spec]),
+                       Spec1 = maybe_multi(Multi, Spec#{ client => self()
+                                                       , initiator => any }),
+                       {ok, Fsm} = rpc(dev1, aesc_fsm, respond, [Port, Spec1], Debug),
+                       responder_instance_(Fsm, Spec1, R, Me, Debug)
+               end).
+
+maybe_multi(true, Spec) ->
+    Spec#{initiator => any};
+maybe_multi(false, Spec) ->
+    Spec.
+
+spawn_initiator(Port, Spec, I, Debug) ->
+    Me = self(),
+    spawn_link(fun() ->
+                       log("initiator spawned: ~p", [Spec]),
+                       Spec1 = Spec#{ client => self() },
+                       {ok, Fsm} = rpc(dev1, aesc_fsm, initiate,
+                                       ["localhost", Port, Spec1], Debug),
+                       initiator_instance_(Fsm, Spec1, I, Me, Debug)
+               end).
+
+match_responder_and_initiator(RProxy, Debug) ->
+    receive
+        {channel_up, RProxy, Info} ->
+            log(Debug, "Matched initiator/responder pair: ~p", [Info]),
+            Info
+    after ?TIMEOUT ->
+            log(Debug, "Timed out waiting for matched pair", []),
+            error(timeout)
+    end.
+
+responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
+    R = fsm_map(Fsm, Spec, R0),
+    {ok, ChOpen} = receive_from_fsm(info, R, channel_open, ?TIMEOUT, Debug),
+    #{data := #{temporary_channel_id := TmpChanId}} = ChOpen,
+    gproc:reg({n,l,{?MODULE,TmpChanId,responder}}, #{ r => R#{ proxy => self()
+                                                             , parent => Parent }}),
+    {_IPid, #{ i := I1
+            , channel_accept := ChAccept }}
+        = gproc:await({n,l,{?MODULE,TmpChanId,initiator}}, ?TIMEOUT),
+    Parent ! {channel_up, self(), #{ i => I1#{parent => Parent}
+                                   , r => R#{ proxy => self() }
+                                   , channel_accept => ChAccept
+                                   , channel_open   => ChOpen }},
+    fsm_relay(R, Parent, Debug).
+
+initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
+    I = fsm_map(Fsm, Spec, I0),
+    {ok, ChAccept} = receive_from_fsm(info, I, channel_accept, ?TIMEOUT, Debug),
+    #{data := #{temporary_channel_id := TmpChanId}} = ChAccept,
+    gproc:reg({n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I#{ proxy => self() }
+                                                    , channel_accept => ChAccept}),
+    {_RPid, #{ r := #{parent := NewParent}}}
+        = gproc:await({n,l,{?MODULE,TmpChanId,responder}}, ?TIMEOUT),
+    unlink(Parent),
+    link(NewParent),
+    fsm_relay(I#{parent => NewParent}, NewParent, Debug).
+
+fsm_relay(Map, Parent, Debug) ->
+    log(Debug, "fsm_relay(~p, ~p, Debug)", [Map, Parent]),
+    fsm_relay_(Map, Parent, Debug).
+
+fsm_relay_(#{ fsm := Fsm } = Map, Parent, Debug) ->
+    receive
+        {aesc_fsm, Fsm, _} = Msg ->
+            log(Debug, "Relaying(~p) ~p", [Parent, Msg]),
+            Parent ! Msg;
+        Other ->
+            log(Debug, "Relay got Other: ~p", [Other])
+    end,
+    fsm_relay_(Map, Parent, Debug).
+
+fsm_map(Fsm, #{ initiator_amount := IAmt
+              , responder_amount := RAmt
+              , push_amount      := PushAmt
+              , slogan           := Slogan }, Map) ->
+    Map#{ fsm    => Fsm
+        , slogan => Slogan
+        , initiator_amount => IAmt - PushAmt
+        , responder_amount => RAmt + PushAmt }.
 
 reestablish(ChId, I0, R0, SignedTx, Spec0, Port, Debug) ->
     {IAmt, RAmt} = tx_amounts(SignedTx),
@@ -1541,6 +1635,7 @@ await_signing_request(Tag, R, Timeout, Debug) ->
 
 await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R,
                       Action, Timeout, Debug) ->
+    log("await_signing_request, Fsm = ~p", [Fsm]),
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
                               info := #{tx := Tx, updates := Updates}} = Msg} ->
             log(Debug, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
@@ -1775,11 +1870,13 @@ current_height(Node) ->
         Header -> aec_headers:height(Header)
     end.
 
+log(Fmt, Args) ->
+    log(true, Fmt, Args).
 
 log(true, Fmt, Args) ->
-    ct:log(Fmt, Args);
+    ct:log("~p: " ++ Fmt, [self()|Args]);
 log(#{debug := true}, Fmt, Args) ->
-    ct:log(Fmt, Args);
+    ct:log("~p: " ++ Fmt, [self()|Args]);
 log(_, _, _) ->
     ok.
 
