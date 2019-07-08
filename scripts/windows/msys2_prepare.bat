@@ -35,6 +35,7 @@ SET PACMAN_PACKAGES=base-devel ^
 cmake ^
 curl ^
 gcc ^
+isl ^
 git ^
 libcurl ^
 libopenssl ^
