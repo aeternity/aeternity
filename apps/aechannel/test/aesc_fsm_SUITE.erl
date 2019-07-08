@@ -1428,14 +1428,7 @@ create_channel_from_spec(I, R, Spec, Port, Multi, Debug) ->
         = match_responder_and_initiator(RProxy, Debug),
     log(Debug, "channel paired: ~p", [Info]),
 
-create_channel_from_spec(I, R, Spec, Port, Multi, Debug) ->
-    RProxy = spawn_responder(Port, Spec, R, Multi, Debug),
-    IProxy = spawn_initiator(Port, Spec, I, Debug),
-    log("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
-    #{ i := #{ fsm := FsmI } = I1
-     , r := #{ fsm := FsmR } = R1 } = Info
-        = match_responder_and_initiator(RProxy, Debug),
-    log(Debug, "channel paired: ~p", [Info]),
+    log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
 
     {I2, R2} = try await_create_tx_i(I1, R1, Debug)
                catch
