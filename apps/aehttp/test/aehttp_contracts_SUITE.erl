@@ -79,16 +79,9 @@ all() ->
         , events_contract
         ]).
 
--define(FATE_OPT_OUT, [ abort_test_contract        %% TODO: abort
-                      , dutch_auction_contract     %% TODO: abort
-                      , acm_dutch_auction_contract %% TODO: abort
-                      , fundme_contract            %% TODO: abort
-                      , erc20_token_contract       %% TODO: abort
-                      ]).
-
 groups() ->
     [ {aevm, [], ?ALL_TESTS}
-    , {fate, [], ?ALL_TESTS -- ?FATE_OPT_OUT}
+    , {fate, [], ?ALL_TESTS}
     ].
 
 suite() ->
