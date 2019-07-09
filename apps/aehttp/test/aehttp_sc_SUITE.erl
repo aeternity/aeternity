@@ -168,7 +168,8 @@ init_per_suite(Config) ->
     {ok, StartedApps} = application:ensure_all_started(gproc),
     Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_sc"}, {test_module, ?MODULE}] ++ Config),
     start_node([ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
-               , {started_apps, StartedApps}] ++ Config1).
+               , {started_apps, StartedApps}
+               , {ws_port, 12340}] ++ Config1).
 
 end_per_suite(Config) ->
     [application:stop(A) ||
@@ -177,7 +178,7 @@ end_per_suite(Config) ->
     stop_node(Config).
 
 init_per_group(VM, Config) when VM == aevm; VM == fate ->
-    aect_test_utils:init_per_group(VM, Config);
+    inc_group_port(VM, aect_test_utils:init_per_group(VM, Config));
 init_per_group(sc_ga, Config) ->
     case aect_test_utils:latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
@@ -187,11 +188,11 @@ init_per_group(sc_ga, Config) ->
 init_per_group(with_open_channel, Config) ->
     sc_ws_open_(Config);
 init_per_group(Grp, Config) when Grp == ga_both; Grp == ga_initiator; Grp == ga_responder ->
-    reset_participants(Config);
+    reset_participants(Grp, Config);
 init_per_group(sc_contracts, Config) ->
-    sc_ws_open_(reset_participants(Config));
+    sc_ws_open_(reset_participants(sc_contracts, Config));
 init_per_group(plain, Config) ->
-    reset_participants(Config);
+    reset_participants(plain, Config);
 init_per_group(_Grp, Config) ->
     Config.
 
@@ -248,7 +249,7 @@ start_node(Config) ->
 
     [{node, Node} | Config1].
 
-reset_participants(Config) ->
+reset_participants(Grp, Config) ->
     Node = ?config(node, Config),
 
     StartAmt = 5000000 * aec_test_utils:min_gas_price(),
@@ -266,8 +267,16 @@ reset_participants(Config) ->
                      responder => #{pub_key => RPub,
                                     priv_key => RPriv,
                                     start_amt => StartAmt}},
+    %% New participants need to bump the port to not risk colliding.
+    Config1 = [{participants, Participants} | proplists:delete(participants, Config)],
+    inc_group_port(Grp, Config1).
 
-    [{participants, Participants} | proplists:delete(participants, Config)].
+inc_group_port(Grp, Config) ->
+    %% Note that we are dealing with a group hierarchy that will add different
+    %% offsets for each level.
+    Offset = erlang:phash2(Grp, 999) + 1,
+    [{ws_port, ?config(ws_port, Config) + Offset}|Config].
+
 
 stop_node(Config) ->
     RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
@@ -2608,7 +2617,7 @@ sc_ws_withdraw(Config) ->
 %%     channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}).
 
 channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
-    maps:merge(#{ port => 12340,
+    maps:merge(#{ port => ?config(ws_port, Config),
                   initiator_id => aeser_api_encoder:encode(account_pubkey, IPubkey),
                   responder_id => aeser_api_encoder:encode(account_pubkey, RPubkey),
                   lock_period => 10,
