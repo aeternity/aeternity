@@ -1296,6 +1296,7 @@ abort(Arg0, EngineState) ->
         false -> aefa_fate:abort({value_does_not_match_type, Value, string}, ES1)
     end.
 
+-spec exit(_, _) -> no_return().
 exit(Arg0, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
     case ?IS_FATE_STRING(Value) of

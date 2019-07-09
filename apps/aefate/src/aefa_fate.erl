@@ -148,11 +148,13 @@ runtime_error(S, A, ES) ->
     ES1 = aefa_engine_state:set_gas(Gas, ES),
     throw({?MODULE, iolist_to_binary(io_lib:format(S, A)), ES1}).
 
+-spec runtime_exit(string(), aefa_engine_state:state()) -> no_return().
 runtime_exit(Value, ES) ->
     Gas = collect_gas_stores(aefa_engine_state:call_stack(ES), 0),
     ES1 = aefa_engine_state:set_gas(Gas, ES),
     throw({?MODULE, Value, ES1}).
 
+-spec runtime_revert(aeb_fate_data:fate_string(), aefa_engine_state:state()) -> no_return().
 runtime_revert(Value, ES) when ?IS_FATE_STRING(Value) ->
     GasIn = aefa_engine_state:gas(ES),
     Gas = collect_gas_stores(aefa_engine_state:call_stack(ES), GasIn),
