@@ -141,7 +141,8 @@ identity_contract(Config) ->
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
                                       <<"type">> := <<"contract_create">> },
                                    #{ <<"result">> := <<"ok">>,
-                                      <<"type">> := <<"contract_call">> }
+                                      <<"type">> := <<"contract_call">>,
+                                      <<"call_obj">> := #{ <<"gas_used">> := _ } }
                                   ] }} =
         dry_run(TopHash, [CreateTx, CallTx]),
 
