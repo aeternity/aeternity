@@ -36,16 +36,14 @@ dry_run_res(STx, Trees, ok) ->
     Tx = aetx_sign:tx(STx),
     {Type, _} = aetx:specialize_type(Tx),
     case Type of
-        contract_call_tx ->
+        _ when Type =:= contract_call_tx;
+               Type =:= contract_create_tx ->
             {CB, CTx} = aetx:specialize_callback(Tx),
             Contract  = CB:contract_pubkey(CTx),
             CallId    = CB:call_id(CTx),
             CallTree = aec_trees:calls(Trees),
             {value, CallObj} = aect_call_state_tree:lookup_call(Contract, CallId, CallTree),
             {Type, {ok, CallObj}};
-        contract_create_tx ->
-            %% TODO: Maybe return the state?
-            {Type, ok};
         spend_tx ->
             {Type, ok}
     end;

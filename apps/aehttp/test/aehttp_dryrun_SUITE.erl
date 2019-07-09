@@ -139,7 +139,8 @@ identity_contract(Config) ->
     BadCallTx = call_contract_tx(APub, CPub, 1, CallCallData),
 
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
-                                      <<"type">> := <<"contract_create">> },
+                                      <<"type">> := <<"contract_create">>,
+                                      <<"call_obj">> := #{ <<"gas_used">> := _ } },
                                    #{ <<"result">> := <<"ok">>,
                                       <<"type">> := <<"contract_call">>,
                                       <<"call_obj">> := #{ <<"gas_used">> := _ } }

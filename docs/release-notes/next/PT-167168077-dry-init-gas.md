@@ -1,0 +1,1 @@
+* Enhances the response of the dry-run API (path `/debug/transactions/dry-run`) for contract create transaction by adding the information for the call of the initialization function e.g. the gas used.
