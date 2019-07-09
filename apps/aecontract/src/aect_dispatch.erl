@@ -38,8 +38,17 @@
 run(#{vm := VM} = Version, #{ code := SerializedCode} = CallDef) when ?IS_FATE_SOPHIA(VM) ->
     #{ byte_code := Code
      , type_info :=_TypeInfo} = aect_sophia:deserialize(SerializedCode),
-    CallDef1 = CallDef#{code => Code},
-    run_common(Version, CallDef1);
+    case aefa_fate:is_valid_calldata(maps:get(call_data, CallDef)) of
+        true ->
+            CallDef1 = CallDef#{code => Code},
+            run_common(Version, CallDef1);
+        false ->
+            Gas = maps:get(gas, CallDef),
+            Call = maps:get(call, CallDef),
+            Trees = maps:get(trees, CallDef),
+            Env = maps:get(tx_env, CallDef),
+            {create_call(Gas, error, <<"bad_call_data">>, [], Call, VM), Trees, Env}
+    end;
 run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_AEVM_SOPHIA(VM) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
@@ -99,12 +108,14 @@ run_common(#{vm := ?VM_FATE_SOPHIA_1 = VMVersion, abi := ABIVersion},
                     , value    => Value
                     },
             Env0 = maps:with(?FATE_VM_SPEC_FIELDS, CallDef),
-            %% TODO: This should be replaced once the fate
-            %% chain connection is implemented
-            Env  = Env0#{ tx_env   => aetx_env:set_context(TxEnv0, aetx_contract)
+            Env1  = Env0#{ tx_env   => aetx_env:set_context(TxEnv0, aetx_contract)
                         },
+            Env2 = case maps:is_key(on_chain_trees, CallDef) of
+                       true  -> Env1#{on_chain_trees => maps:get(on_chain_trees, CallDef)};
+                       false -> Env1
+                   end,
 
-            case aefa_fate:run(Spec, Env) of
+            case aefa_fate:run(Spec, Env2) of
                 {ok, ResultState} ->
                     ReturnValue = aefa_fate:return_value(ResultState),
                     Out         = aeb_fate_encoding:serialize(ReturnValue),

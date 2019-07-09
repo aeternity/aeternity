@@ -203,11 +203,22 @@
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BOGUS_CHANNEL, <<1:?MINER_PUB_BYTES/unit:8>>).
 -define(ROLES, [initiator, responder]).
--define(VM_VERSION, aect_test_utils:latest_sophia_vm_version()).
--define(ABI_VERSION, aect_test_utils:latest_sophia_abi_version()).
 -define(TEST_LOG(Format, Data), ct:log(Format, Data)).
 -define(MINERVA_FORK_HEIGHT, 1000).
 -define(FORTUNA_FORK_HEIGHT, 10000).
+
+-define(IF_AEVM(AEVM, FATE),
+    case ?IS_AEVM_SOPHIA(aect_test_utils:vm_version()) of
+        true  -> AEVM;
+        false -> FATE
+    end).
+
+-define(assertMatchVM(AEVM, FATE, Res),
+    case ?IS_AEVM_SOPHIA(aect_test_utils:vm_version()) of
+        true  -> ?assertMatch(AEVM, Res);
+        false -> ?assertMatch(FATE, Res)
+    end).
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -237,11 +248,15 @@ groups() ->
        {group, settle_negative},
        snapshot_solo,
        {group, snapshot_solo_negative},
-       {group, force_progress},
-       {group, force_progress_negative},
+       {group, aevm},
+       {group, fate},
        {group, fork_awareness}
       ]
      },
+
+     {aevm, [], [{group, force_progress}, {group, force_progress_negative}]},
+     {fate, [], [{group, force_progress}, {group, force_progress_negative}]},
+
      {create_negative, [sequence],
       [create_missing_account,
        create_same_account,
@@ -402,7 +417,10 @@ init_per_group(fork_awareness, Config) ->
                    (V) when V < ?FORTUNA_FORK_HEIGHT -> ?MINERVA_PROTOCOL_VSN;
                    (_)                               -> ?FORTUNA_PROTOCOL_VSN
                 end),
-    Config;
+    %% This is orthogonal to vm version, but we need to set one up.
+    aect_test_utils:init_per_group(aevm, Config);
+init_per_group(VM, Config) when VM == aevm; VM == fate ->
+    aect_test_utils:init_per_group(VM, Config);
 init_per_group(_Group, Config) ->
     Config.
 
@@ -413,7 +431,10 @@ end_per_group(_Group, _Config) ->
     ok.
 
 init_per_testcase(_, Config) ->
-    put('$protocol_version', aect_test_utils:latest_protocol_version()),
+    case proplists:is_defined(sophia_version, Config) of
+        true  -> aect_test_utils:setup_testcase(Config);
+        false -> put('$protocol_version', aect_test_utils:latest_protocol_version())
+    end,
     Config.
 
 end_per_testcase(_Case, _Config) ->
@@ -2492,9 +2513,9 @@ fp_use_onchain_oracle(Cfg) ->
     LockPeriod = 10,
     FPHeight0 = 20,
     Question = <<"To be, or not to be?">>,
-    OQuestion = aeb_heap:to_binary(Question, 0),
+    OQuestion = sophia_value(Question),
     Answer = <<"oh, yes">>,
-    OResponse = aeb_heap:to_binary(Answer, 0),
+    OResponse = sophia_value(Answer),
     QueryFee = 50000,
     CallOnChain =
         fun(Owner, Forcer) ->
@@ -2509,9 +2530,7 @@ fp_use_onchain_oracle(Cfg) ->
                 set_prop(height, FPHeight0),
 
                 % create oracle
-                register_new_oracle(aeb_heap:to_binary(string, 0),
-                                    aeb_heap:to_binary(string, 0),
-                                    QueryFee),
+                register_new_oracle(sophia_typerep(string), sophia_typerep(string), QueryFee),
 
                 % create off-chain contract
                 create_trees_if_not_present(),
@@ -2650,6 +2669,8 @@ fp_use_onchain_enviroment(Cfg) ->
     Timestamp1 = 654321,
     BeneficiaryInt = 42,
     Beneficiary = <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>>,
+    ExpBeneficiary = ?IF_AEVM(BeneficiaryInt,
+                              aeb_fate_data:make_address(Beneficiary)),
 
     Height2 = Height1 + LockPeriod + 1,
     Height3 = Height2 + LockPeriod + 1,
@@ -2678,11 +2699,11 @@ fp_use_onchain_enviroment(Cfg) ->
                     (assert_last_channel_result(H, word))(Props)
                 end,
                 set_tx_env(Height1, Timestamp1, Beneficiary),
-                ForceCall(Forcer, <<"coinbase">>, word, BeneficiaryInt),
+                ForceCall(Forcer, <<"coinbase">>, word, ExpBeneficiary),
                 set_tx_env(Height2, Timestamp1, Beneficiary),
                 ForceCall(Forcer, <<"block_height">>, word, Height2),
                 set_tx_env(Height3, Timestamp1, Beneficiary),
-                ForceCall(Forcer, <<"coinbase">>, word, BeneficiaryInt),
+                ForceCall(Forcer, <<"coinbase">>, word, ExpBeneficiary),
                 set_tx_env(Height4, Timestamp1, Beneficiary),
                 ForceCall(Forcer, <<"timestamp">>, word, Timestamp1)
                ])
@@ -3304,7 +3325,7 @@ fp_solo_payload_broken_call(Cfg) ->
     StateHashSize = aeser_api_encoder:byte_size_for_type(state),
     FakeStateHash = <<42:StateHashSize/unit:8>>,
     Test =
-        fun(Owner, Forcer, CallData, Error) ->
+        fun(Owner, Forcer, CallData, AEVMError, FATEError) ->
             run(#{cfg => Cfg, initiator_amount => 30,
                               responder_amount => 30,
                  channel_reserve => 1},
@@ -3319,7 +3340,7 @@ fp_solo_payload_broken_call(Cfg) ->
                     Update = aesc_offchain_update:op_call_contract(
                                 aeser_id:create(account, From),
                                 aeser_id:create(contract, ContractId),
-                                ?ABI_VERSION, 1,
+                                aect_test_utils:abi_version(), 1,
                                 CallData,
                                 [],
                                 _GasPrice = aec_test_utils:min_gas_price(),
@@ -3350,21 +3371,23 @@ fp_solo_payload_broken_call(Cfg) ->
                     %% assert all gas was consumed
                     GasLimit = aect_call:gas_used(Call),
                     GasPrice = aect_call:gas_price(Call),
-                    ?assertEqual(Error, aect_call:return_value(Call)),
+                    Ret = aect_call:return_value(Call),
+                    ?assertMatchVM(AEVMError, FATEError, Ret),
                     Props
                 end])
         end,
     TestWithCallData =
-        fun(CallData, ErrorMsg) ->
-            [Test(Owner, Forcer, CallData, ErrorMsg) || Owner  <- ?ROLES,
-                                                        Forcer <- ?ROLES]
+        fun(CallData, ErrorAEVM, ErrorFATE) ->
+            [Test(Owner, Forcer, CallData, ErrorAEVM, ErrorFATE)
+             || Owner  <- ?ROLES,
+                Forcer <- ?ROLES]
         end,
     %% empty call data
-    TestWithCallData(<<>>, <<"bad_call_data">>),
+    TestWithCallData(<<>>, <<"bad_call_data">>, <<"bad_call_data">>),
     %% Too small call data
-    TestWithCallData(<<"0xABCD">>, <<"bad_call_data">>),
-    %% Just plain wrong call data, but that can be interpreted
-    TestWithCallData(<<42:42/unit:8>>, <<"unknown_function">>),
+    TestWithCallData(<<"0xABCD">>, <<"bad_call_data">>, <<"bad_call_data">>),
+    %% Just plain wrong call data, but that can be interpreted by the aevm
+    TestWithCallData(<<42:42/unit:8>>, <<"unknown_function">>, <<"bad_call_data">>),
     ok.
 
 fp_insufficent_tokens(Cfg) ->
@@ -3470,8 +3493,8 @@ fp_register_name(Cfg) ->
                     #{owner_id    => aeser_id:create(account, PubKey),
                       nonce       => Nonce,
                       code        => BinCode,
-                      vm_version  => ?VM_VERSION,
-                      abi_version => ?ABI_VERSION,
+                      vm_version  => aect_test_utils:vm_version(),
+                      abi_version => aect_test_utils:abi_version(),
                       deposit     => 1,
                       amount      => 1,
                       gas         => 123456,
@@ -3512,7 +3535,7 @@ fp_register_name(Cfg) ->
                       nonce       => Nonce,
                       contract_id => aeser_id:create(contract,
                                                     ContractId),
-                      abi_version => ?ABI_VERSION,
+                      abi_version => aect_test_utils:abi_version(),
                       amount      => 1,
                       gas         => 123456,
                       gas_price   => aec_test_utils:min_gas_price(),
@@ -3596,8 +3619,10 @@ fp_register_name(Cfg) ->
                       %% assert all gas was consumed
                       GasLimit = aect_call:gas_used(Call),
                       GasPrice = aect_call:gas_price(Call),
-                      %% the default catch all reason for error
-                      <<"not_allowed_off_chain">> = aect_call:return_value(Call),
+                      ErrorRes = aect_call:return_value(Call),
+                      ?assertMatchVM(<<"not_allowed_off_chain">>,
+                                     <<"Error in aens_preclaim: not_allowed_off_chain">>,
+                                     ErrorRes),
                       error = aect_call:return_type(Call),
 
                       %% expected channel states
@@ -3707,57 +3732,46 @@ fp_settle_too_soon(Cfg) ->
 %% test that a force progress transaction can NOT produce an on-chain oracle
 %% query via a contract
 fp_oracle_query(Cfg) ->
-    FunHashInt = get_oracle_fun_hash_int(<<"createQuery">>),
     ProduceCallData =
         fun(_Pubkey, _Privkey, Oracle, _OraclePrivkey, _QueryId, _ContractId, QueryFee) ->
-            <<IntOracleId:256>> = Oracle,
-            RelativeTTL = {variant, 0, [10]},
-            Args = {IntOracleId, <<"Very much of a question">>, QueryFee, RelativeTTL, RelativeTTL},
+            Args = [binary_to_list(aeser_api_encoder:encode(oracle_pubkey, Oracle)),
+                    "\"Very much of a question\"", integer_to_list(QueryFee),
+                    "RelativeTTL(10)", "RelativeTTL(10)"],
             ?TEST_LOG("Oracle createQuery function arguments ~p", [Args]),
-            aeb_heap:to_binary({FunHashInt, Args})
+            encode_call_data(oracles, "createQuery", Args)
         end,
     fp_oracle_action(Cfg, ProduceCallData).
 
 %% test that a force progress transaction can NOT respond an oracle
 %% query via a contract
 fp_oracle_respond(Cfg) ->
-    FunHashInt = get_oracle_fun_hash_int(<<"signedRespond">>),
     ProduceCallData =
         fun(_Pubkey, _Privkey, Oracle, OraclePrivkey, QueryId, ContractId, _QueryFee) ->
             ?TEST_LOG("Oracle ~p", [Oracle]),
             ?TEST_LOG("QueryId ~p", [QueryId]),
-            <<IntOracleId:256>> = Oracle,
-            <<IntQueryId:256>> = QueryId,
             BinToSign = <<QueryId/binary, ContractId/binary>>,
-            SigBin = <<Word1:256, Word2:256>> =
-                enacl:sign_detached(aec_governance:add_network_id(BinToSign),
-                                    OraclePrivkey),
+            SigBin = enacl:sign_detached(aec_governance:add_network_id(BinToSign), OraclePrivkey),
             ?TEST_LOG("Signature binary ~p", [SigBin]),
-            Sig = {Word1, Word2},
-            Args = {IntOracleId, IntQueryId, Sig,
-                    aeb_heap:to_binary(42, 0)},
+            Args = [binary_to_list(aeser_api_encoder:encode(oracle_pubkey, Oracle)),
+                    binary_to_list(aeser_api_encoder:encode(oracle_query_id, QueryId)),
+                    encode_sig(SigBin), "42"],
             ?TEST_LOG("Oracle respond function arguments ~p", [Args]),
-            aeb_heap:to_binary({FunHashInt, Args})
+            encode_call_data(oracles, "signedRespond", Args)
         end,
     fp_oracle_action(Cfg, ProduceCallData).
 
 %% test that a force progress transaction can NOT extend an oracle
 %% via a contract
 fp_oracle_extend(Cfg) ->
-    FunHashInt = get_oracle_fun_hash_int(<<"signedExtendOracle">>),
     ProduceCallData =
         fun(_Pubkey, _Privkey, Oracle, OraclePrivkey, _QueryId, ContractId, _QueryFee) ->
-            <<IntOracleId:256>> = Oracle,
             BinToSign = <<Oracle/binary, ContractId/binary>>,
-            RelativeTTL = {variant, 0, [10]},
-            SigBin = <<Word1:256, Word2:256>> =
-                enacl:sign_detached(aec_governance:add_network_id(BinToSign),
-                                    OraclePrivkey),
+            SigBin = enacl:sign_detached(aec_governance:add_network_id(BinToSign), OraclePrivkey),
             ?TEST_LOG("Signature binary ~p", [SigBin]),
-            Sig = {Word1, Word2},
-            Args = {IntOracleId, Sig, RelativeTTL},
+            Args = [binary_to_list(aeser_api_encoder:encode(oracle_pubkey, Oracle)),
+                    encode_sig(SigBin), "RelativeTTL(10)"],
             ?TEST_LOG("Oracle respond function arguments ~p", [Args]),
-            aeb_heap:to_binary({FunHashInt, Args})
+            encode_call_data(oracles, "signedExtendOracle", Args)
         end,
     fp_oracle_action(Cfg, ProduceCallData).
 
@@ -3796,8 +3810,8 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                     #{owner_id    => aeser_id:create(account, PubKey),
                       nonce       => Nonce,
                       code        => BinCode,
-                      vm_version  => ?VM_VERSION,
-                      abi_version => ?ABI_VERSION,
+                      vm_version  => aect_test_utils:vm_version(),
+                      abi_version => aect_test_utils:abi_version(),
                       deposit     => 1,
                       amount      => 1,
                       gas         => 123456,
@@ -3818,10 +3832,8 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                     code => BinCode}
           end,
           % create oracle
-          register_new_oracle(aeb_heap:to_binary(string, 0),
-                              aeb_heap:to_binary(word, 0),
-                              QueryFee),
-          oracle_query(aeb_heap:to_binary(<<"Some question">>, 0), 10),
+          register_new_oracle(sophia_typerep(string), sophia_typerep(integer), QueryFee),
+          oracle_query(sophia_value(<<"Some question">>), 10),
           % call contract on-chain
           fun(#{onchain_contract_owner_pubkey := OPubKey,
                 onchain_contract_owner_privkey := OPrivKey,
@@ -3831,8 +3843,8 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                 query_id := QueryID} = Props) ->
             Nonce = 2,
             OraclePrivkey = aesc_test_utils:priv_key(Oracle, S0),
-            CallData = ProduceCallData(OPubKey, OPrivKey, Oracle,
-                                       OraclePrivkey, QueryID, ContractId, QueryFee),
+            {ok, CallData} = ProduceCallData(OPubKey, OPrivKey, Oracle,
+                                             OraclePrivkey, QueryID, ContractId, QueryFee),
             ?TEST_LOG("CallData ~p", [CallData]),
             true = is_binary(CallData),
             {ok, CallTx} =
@@ -3841,7 +3853,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       nonce       => Nonce,
                       contract_id => aeser_id:create(contract,
                                                     ContractId),
-                      abi_version => ?ABI_VERSION,
+                      abi_version => aect_test_utils:abi_version(),
                       amount      => 1,
                       gas         => 123456,
                       gas_price   => aec_test_utils:min_gas_price(),
@@ -3874,9 +3886,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                 [ % test contract on-chain:
                   % create account for being contract owner
                   positive(fun create_channel_/2),
-                  register_new_oracle(aeb_heap:to_binary(string, 0),
-                                      aeb_heap:to_binary(word, 0),
-                                      QueryFee),
+                  register_new_oracle(sophia_typerep(string), sophia_typerep(integer), QueryFee),
                   % store state on-chain via snapshot
                   set_from(initiator),
                   set_prop(round, 42),
@@ -3897,7 +3907,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                                           _Contract = ContractName,
                                           _InitArgs = [],
                                           _Deposit  = 2),
-                  oracle_query(aeb_heap:to_binary(<<"Some question">>, 0), 10),
+                  oracle_query(sophia_value(<<"Some question">>), 10),
                   % force progress contract on-chain
                   fun(#{contract_id   := ContractId,
                         oracle        := Oracle,
@@ -3906,10 +3916,8 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                         state         := S,
                         query_id      := QueryID} = Props) ->
                       OraclePrivkey = aesc_test_utils:priv_key(Oracle, S),
-                      CallData = ProduceCallData(Pubkey, Privkey, Oracle,
-                                                 OraclePrivkey,
-                                                 QueryID,
-                                                 ContractId, QueryFee),
+                      {ok, CallData} = ProduceCallData(Pubkey, Privkey, Oracle, OraclePrivkey,
+                                                       QueryID, ContractId, QueryFee),
                       (force_call_contract_first_with_calldata(Forcer,
                                             CallData, FPRound))(Props)
                   end,
@@ -3933,8 +3941,9 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       %% assert all gas was consumed
                       GasLimit = aect_call:gas_used(Call),
                       GasPrice = aect_call:gas_price(Call),
-                      %% the default catch all reason for error
-                      <<"not_allowed_off_chain">> = aect_call:return_value(Call),
+                      ErrorRes = aect_call:return_value(Call),
+                      MatchRes = re:run(ErrorRes, <<"not_allowed_off_chain">>),
+                      ?assertMatch({ErrorRes, {match, _}}, {ErrorRes, MatchRes}),
                       error = aect_call:return_type(Call),
 
                       %% expected channel states
@@ -3949,14 +3958,6 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                             Forcer <- ?ROLES],
     ok.
 
-
-get_oracle_fun_hash_int(Function) ->
-    {ok, Code} = compile_contract("oracles"),
-    TypeInfo = maps:get(type_info, aect_sophia:deserialize(Code)),
-    {ok, <<IntFunHash:256>>} = aeb_aevm_abi:type_hash_from_function_name(
-                               Function, TypeInfo),
-    IntFunHash.
-
 fp_register_oracle(Cfg) ->
     StateHashSize = aeser_api_encoder:byte_size_for_type(state),
     StateHash = <<42:StateHashSize/unit:8>>,
@@ -3965,20 +3966,16 @@ fp_register_oracle(Cfg) ->
     SignAddress =
         fun(Oracle, PrivK, ContractId) ->
             BinToSign = <<Oracle/binary, ContractId/binary>>,
-            SigBin = <<Word1:256, Word2:256>> =
-                enacl:sign_detached(aec_governance:add_network_id(BinToSign), PrivK),
+            SigBin = enacl:sign_detached(aec_governance:add_network_id(BinToSign), PrivK),
             ?TEST_LOG("Signature binary ~p", [SigBin]),
-            {Word1, Word2}
+            encode_sig(SigBin)
         end,
 
-    IntFunHash = get_oracle_fun_hash_int(<<"signedRegisterOracle">>),
     RegisterCallData =
         fun(OPubKey, Sig) ->
-            <<IntPubKey:256>> = OPubKey,
-            RelativeTTL = {variant, 0, [10]},
-            RegisterArgs = {IntPubKey, Sig, 2, RelativeTTL},
-            ?TEST_LOG("Oracle register function arguments ~p", [RegisterArgs]),
-            aeb_heap:to_binary({IntFunHash, RegisterArgs})
+            encode_call_data(oracles, "signedRegisterOracle",
+                             [binary_to_list(aeser_api_encoder:encode(account_pubkey, OPubKey)),
+                              Sig, "2", "RelativeTTL(10)"])
         end,
     ContractName = "oracles",
 
@@ -4008,8 +4005,8 @@ fp_register_oracle(Cfg) ->
                     #{owner_id    => aeser_id:create(account, PubKey),
                       nonce       => Nonce,
                       code        => BinCode,
-                      vm_version  => ?VM_VERSION,
-                      abi_version => ?ABI_VERSION,
+                      vm_version  => aect_test_utils:vm_version(),
+                      abi_version => aect_test_utils:abi_version(),
                       deposit     => 1,
                       amount      => 1,
                       gas         => 123456,
@@ -4036,7 +4033,7 @@ fp_register_oracle(Cfg) ->
                 state := S0} = Props) ->
             Nonce = 2,
             Sig = SignAddress(OPubKey, OPrivKey, ContractId),
-            CallData = RegisterCallData(OPubKey, Sig),
+            {ok, CallData} = RegisterCallData(OPubKey, Sig),
             ?TEST_LOG("CallData ~p", [CallData]),
             true = is_binary(CallData),
             {ok, CallTx} =
@@ -4045,7 +4042,7 @@ fp_register_oracle(Cfg) ->
                       nonce       => Nonce,
                       contract_id => aeser_id:create(contract,
                                                     ContractId),
-                      abi_version => ?ABI_VERSION,
+                      abi_version => aect_test_utils:abi_version(),
                       amount      => 1,
                       gas         => 123456,
                       gas_price   => aec_test_utils:min_gas_price(),
@@ -4102,7 +4099,7 @@ fp_register_oracle(Cfg) ->
                         from_pubkey := Pubkey,
                         from_privkey := Privkey} = Props) ->
                       Sig = SignAddress(Pubkey, Privkey, ContractId),
-                      CallData = RegisterCallData(Pubkey, Sig),
+                      {ok, CallData} = RegisterCallData(Pubkey, Sig),
                       (force_call_contract_first_with_calldata(Forcer,
                                             CallData, FPRound))(Props)
                   end,
@@ -4126,8 +4123,10 @@ fp_register_oracle(Cfg) ->
                       %% assert all gas was consumed
                       GasLimit = aect_call:gas_used(Call),
                       GasPrice = aect_call:gas_price(Call),
-                      %% the default catch all reason for error
-                      <<"not_allowed_off_chain">> = aect_call:return_value(Call),
+                      ErrorRes = aect_call:return_value(Call),
+                      ?assertMatchVM(<<"not_allowed_off_chain">>,
+                                     <<"Error in oracle_register: not_allowed_off_chain">>,
+                                     ErrorRes),
                       error = aect_call:return_type(Call),
 
                       %% expected channel states
@@ -4424,7 +4423,7 @@ create_contract_call_payload_with_calldata(Key, ContractId, CallData, Amount) ->
                 aesc_offchain_update:op_call_contract(
                     aeser_id:create(account, From),
                     aeser_id:create(contract, ContractId),
-                    ?ABI_VERSION, Amount, CallData,
+                    aect_test_utils:abi_version(), Amount, CallData,
                     [],
                     _GasPrice = maps:get(gas_price, Props, aec_test_utils:min_gas_price()),
                     _GasLimit = maps:get(gas_limit, Props, 10000000))),
@@ -4432,11 +4431,8 @@ create_contract_call_payload_with_calldata(Key, ContractId, CallData, Amount) ->
             case maps:get(fake_solo_state_hash, Props, none) of
                 none ->
                     Trees1 = aesc_offchain_update:apply_on_trees(Update,
-                                                                aect_call_state_tree:prune_without_backend(Trees0),
-                                                                OnChainTrees,
-                                                                Env,
-                                                                Round,
-                                                                Reserve),
+                                                                 aect_call_state_tree:prune_without_backend(Trees0),
+                                                                 OnChainTrees, Env, Round, Reserve),
                     StateHash1 = aec_trees:hash(Trees1),
                     {Trees1, StateHash1};
                 SH ->
@@ -4496,19 +4492,16 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
                 Compiler when is_function(Compiler)-> Compiler(ContractName)
             end,
         {ok, CallData} = encode_call_data(ContractName, <<"init">>, InitArg),
-        VmVersion = maps:get(vm_version, Props, ?VM_VERSION),
-        ABIVersion = maps:get(abi_version, Props, ?ABI_VERSION),
+        VmVersion  = maps:get(vm_version, Props, aect_test_utils:vm_version()),
+        ABIVersion = maps:get(abi_version, Props, aect_test_utils:abi_version()),
         Update = aesc_offchain_update:op_new_contract(aeser_id:create(account, Owner),
-                                                      VmVersion, ABIVersion,
-                                                      BinCode,
-                                                      Deposit,
-                                                      CallData),
+                                                      VmVersion, ABIVersion, BinCode,
+                                                      Deposit, CallData),
         Reserve = maps:get(channel_reserve, Props, 0),
         OnChainTrees = aesc_test_utils:trees(State),
         Env = tx_env(Props),
         Trees = aesc_offchain_update:apply_on_trees(Update, Trees0, OnChainTrees,
-                                                    Env,
-                                                    CreationRound, Reserve),
+                                                    Env, CreationRound, Reserve),
         ContractId = aect_contracts:compute_contract_pubkey(Owner, CreationRound),
         ContractIds = maps:get(contract_ids, Props, []),
         case lists:member(ContractId, ContractIds) of
@@ -5110,7 +5103,7 @@ register_new_oracle(QFormat, RFormat, QueryFee) ->
                                                    #{query_format => QFormat,
                                                      query_fee => QueryFee,
                                                      response_format => RFormat,
-                                                     abi_version => ?ABI_VERSION
+                                                     abi_version => aect_test_utils:abi_version()
                                                     },
                                                    S),
                 PrivKey = aesc_test_utils:priv_key(Oracle, S),
@@ -5273,7 +5266,8 @@ assert_last_channel_result(Result, Type) ->
         Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
                                         S),
         EncRValue = aect_call:return_value(Call),
-        ?assertMatch({X, X}, {{ok, Result}, aeb_heap:from_binary(Type, EncRValue)}),
+        ?assertMatch({ok, Result}, ?IF_AEVM(aeb_heap:from_binary(Type, EncRValue),
+                                            {ok, aeb_fate_encoding:deserialize(EncRValue)})),
         Props
     end.
 
@@ -5288,11 +5282,11 @@ poi_participants_only() ->
    end.
 
 compile_contract(ContractName) ->
-    aect_test_utils:compile_contract(ContractName).
+    aect_test_utils:compile_contract(aect_test_utils:sophia_version(), ContractName).
 
 compile_contract_vsn(ContractName, SerializationVsn) ->
-    {ok, ContractBin} = aect_test_utils:read_contract(ContractName),
-    {ok, Bytecode}    = aect_test_utils:compile_contract(ContractName),
+    {ok, ContractBin} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
+    {ok, Bytecode}    = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), ContractName),
     Map               = aect_sophia:deserialize(Bytecode),
     ContractSrc       = binary_to_list(ContractBin),
     {ok, aect_sophia:serialize(Map#{ contract_source => ContractSrc,
@@ -5380,11 +5374,10 @@ fp_sophia_versions(Cfg) ->
     ok.
 
 encode_call_data(ContractName, Function, Arguments) ->
-    {ok, Contract} = aect_test_utils:read_contract(ContractName),
+    {ok, Contract} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
     ct:pal("ENCODE:\n----\n~s\n----\nWhat: ~p",
-          [Contract, {binary_to_list(Function),
-           lists:map(fun binary_to_list/1, Arguments)}]),
-    aect_test_utils:encode_call_data(Contract, Function, Arguments).
+          [Contract, {Function, Arguments}]),
+    aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), Contract, Function, Arguments).
 
 address_encode(Type, Binary) ->
     case protocol_version() of
@@ -5408,8 +5401,8 @@ create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->
             aect_create_tx:new(#{owner_id    => aeser_id:create(account, Owner),
                                  nonce       => Nonce,
                                  code        => BinCode,
-                                 vm_version  => aect_test_utils:latest_sophia_vm_version(),
-                                 abi_version => aect_test_utils:latest_sophia_abi_version(),
+                                 vm_version  => aect_test_utils:vm_version(),
+                                 abi_version => aect_test_utils:abi_version(),
                                  deposit     => Deposit,
                                  amount      => 0,
                                  gas         => 123467,
@@ -5424,3 +5417,23 @@ create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->
         State = aesc_test_utils:set_trees(Trees, State0),
         Props#{state => State, contract_file => ContractName, contract_id => ContractId}
     end.
+
+sophia_typerep(Type) ->
+    case aect_test_utils:backend() of
+        aevm -> aeb_heap:to_binary(aevm_type(Type), 0);
+        fate -> iolist_to_binary(aeb_fate_encoding:serialize_type(Type))
+    end.
+
+sophia_value(Value) ->
+    case aect_test_utils:backend() of
+        aevm -> aeb_heap:to_binary(Value, 0);
+        fate -> aeb_fate_encoding:serialize(Value)
+    end.
+
+aevm_type(integer) -> word;
+aevm_type(Type) -> Type.
+
+encode_sig(Sig) ->
+    <<"0x", Hex/binary>> = aeu_hex:hexstring_encode(Sig),
+    binary_to_list(<<"#", Hex/binary>>).
+

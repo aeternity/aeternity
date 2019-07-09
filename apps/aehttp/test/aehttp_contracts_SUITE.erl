@@ -24,8 +24,8 @@
          init_per_testcase/2, end_per_testcase/2
         ]).
 
-%% Endpoint calls
--export([http_request/4, internal_address/0, external_address/0, new_account/1, rpc/4]).
+-import(aecore_suite_utils, [http_request/4, internal_address/0, external_address/0, rpc/4]).
+-export([new_account/1]).
 
 %% test case exports
 %% external endpoints
@@ -1559,94 +1559,8 @@ sign_tx(Tx) ->
 %% ============================================================
 %% private functions
 %% ============================================================
-rpc(Mod, Fun, Args) ->
-    rpc(?NODE, Mod, Fun, Args).
-
-rpc(Node, Mod, Fun, Args) ->
-    rpc:call(aecore_suite_utils:node_name(Node), Mod, Fun, Args, 5000).
-
-external_address() ->
-    Port = rpc(aeu_env, user_config_or_env,
-              [ [<<"http">>, <<"external">>, <<"port">>],
-                aehttp, [external, port], 8043]),
-    "http://127.0.0.1:" ++ integer_to_list(Port).     % good enough for requests
-
-internal_address() ->
-    Port = rpc(aeu_env, user_config_or_env,
-              [ [<<"http">>, <<"internal">>, <<"port">>],
-                aehttp, [internal, port], 8143]),
-    "http://127.0.0.1:" ++ integer_to_list(Port).
-
-http_request(Host, get, Path, Params) ->
-    URL = binary_to_list(
-            iolist_to_binary([Host, "/v2/", Path, encode_get_params(Params)])),
-    ct:log("GET ~p", [URL]),
-    R = httpc_request(get, {URL, []}, [], []),
-    process_http_return(R);
-http_request(Host, post, Path, Params) ->
-    URL = binary_to_list(iolist_to_binary([Host, "/v2/", Path])),
-    {Type, Body} = case Params of
-                       Map when is_map(Map) ->
-                           %% JSON-encoded
-                           {"application/json", jsx:encode(Params)};
-                       [] ->
-                           {"application/x-www-form-urlencoded",
-                            http_uri:encode(Path)}
-                   end,
-    %% lager:debug("Type = ~p; Body = ~p", [Type, Body]),
-    ct:log("POST ~p, type ~p, Body ~p", [URL, Type, Body]),
-    R = httpc_request(post, {URL, [], Type, Body}, [], []),
-    process_http_return(R).
-
-httpc_request(Method, Request, HTTPOptions, Options) ->
-    httpc_request(Method, Request, HTTPOptions, Options, test_browser).
-
-httpc_request(Method, Request, HTTPOptions, Options, Profile) ->
-    {ok, Pid} = inets:start(httpc, [{profile, Profile}], stand_alone),
-    Response = httpc:request(Method, Request, HTTPOptions, Options, Pid),
-    ok = gen_server:stop(Pid, normal, infinity),
-    Response.
-
-encode_get_params(#{} = Ps) ->
-    encode_get_params(maps:to_list(Ps));
-encode_get_params([{K,V}|T]) ->
-    ["?", [str(K),"=",uenc(V)
-           | [["&", str(K1), "=", uenc(V1)]
-              || {K1, V1} <- T]]];
-encode_get_params([]) ->
-    [].
-
-str(A) when is_atom(A) ->
-    str(atom_to_binary(A, utf8));
-str(S) when is_list(S); is_binary(S) ->
-    S.
-
-uenc(I) when is_integer(I) ->
-    uenc(integer_to_list(I));
-uenc(V) ->
-    http_uri:encode(V).
-
-process_http_return(R) ->
-    case R of
-        {ok, {{_, ReturnCode, _State}, _Head, Body}} ->
-            try
-                ct:log("Return code ~p, Body ~p", [ReturnCode, Body]),
-                Result = case iolist_to_binary(Body) of
-                             <<>> -> #{};
-                             BodyB ->
-                                 jsx:decode(BodyB, [return_maps])
-                         end,
-                {ok, ReturnCode, Result}
-            catch
-                error:E ->
-                    {error, {parse_error, [E, erlang:get_stacktrace()]}}
-            end;
-        {error, _} = Error ->
-            Error
-    end.
-
 new_account(Balance) ->
-    {Pubkey,Privkey} = generate_key_pair(),
+    {Pubkey,Privkey} = aecore_suite_utils:generate_key_pair(),
     Fee = 20000 * ?DEFAULT_GAS_PRICE,
     {ok, 200, #{<<"tx">> := SpendTx}} =
         create_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Balance, Fee),
@@ -1697,6 +1611,3 @@ wait_for_tx_hash_on_chain(Node, TxHash) ->
             end
     end.
 
-generate_key_pair() ->
-    #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
-    {Pubkey, Privkey}.

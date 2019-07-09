@@ -48,6 +48,7 @@
 
 -export([ abi_version/0
         , backend/0
+        , init_per_group/2
         , init_per_group/3
         , setup_testcase/1
         , sophia_version/0
@@ -373,7 +374,7 @@ to_str(Str)                     -> Str.
 encode_call_data(Code, Fun, Args) ->
     encode_call_data(latest_sophia_version(), Code, Fun, Args).
 
-encode_call_data(Vsn, Code, Fun, Args) when Vsn == ?SOPHIA_LIMA_AEVM ->
+encode_call_data(Vsn, Code, Fun, Args) when Vsn == ?SOPHIA_LIMA_AEVM; Vsn == ?SOPHIA_LIMA_FATE ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
                                       lists:map(fun to_str/1, Args),
                                       [{backend, backend()}])
@@ -410,7 +411,8 @@ decode_call_result(Backend, Code, Fun, Res, EValue = <<"cb_", _/binary>>) ->
             Err
     end;
 decode_call_result(Backend, Code, Fun, Res, Value) ->
-    {ok, ValExpr} = aeso_compiler:to_sophia_value(Code, Fun, Res, Value, [{backend, Backend}]),
+    {ok, ValExpr} = aeso_compiler:to_sophia_value(to_str(Code), to_str(Fun),
+                                                  Res, Value, [{backend, Backend}]),
     aeso_aci:json_encode_expr(ValExpr).
 
 decode_data(Type, <<"cb_", _/binary>> = EncData) ->
@@ -480,6 +482,8 @@ get_oracle_queries(OracleId, Max, State) ->
 %%%===================================================================
 %%% Common test common stuff
 %%%===================================================================
+init_per_group(Vm, Cfg) ->
+    init_per_group(Vm, Cfg, fun(X) -> X end).
 
 init_per_group(aevm, Cfg, Cont) ->
     case aect_test_utils:latest_protocol_version() of

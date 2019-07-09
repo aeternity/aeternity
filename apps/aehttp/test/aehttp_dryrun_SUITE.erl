@@ -16,8 +16,8 @@
         , accounts/1
         ]).
 
--import(aehttp_contracts_SUITE,
-        [http_request/4, internal_address/0, external_address/0, new_account/1, rpc/4]).
+-import(aecore_suite_utils, [http_request/4, internal_address/0, external_address/0, rpc/4]).
+-import(aehttp_contracts_SUITE, [new_account/1]).
 
 -define(NODE, dev1).
 

@@ -48,6 +48,7 @@
         ]).
 
 -export([ check_delegation_signature/4
+        , is_onchain/1
         ]).
 
 -export_type([ state/0
@@ -65,11 +66,15 @@
 
 -record(state, { primop_state :: aeprimop_state:state()
                , gas_price    :: non_neg_integer()
+               , onchain_primop_state :: {onchain, aeprimop_state:state()} | none
                , origin       :: binary()
                }).
 
 -type state() :: #state{}.
 -type pubkey() :: <<_:256>>.
+
+-define(IS_ONCHAIN(S), (S#state.onchain_primop_state =:= none)).
+
 %%===================================================================
 %%% API
 %%% ===================================================================
@@ -82,11 +87,19 @@ new(#{ gas_price := GasPrice
      , origin := Origin
      , trees  := Trees
      , tx_env := TxEnv
-     }) ->
-    #state{ primop_state = aeprimop_state:new(Trees, TxEnv)
-          , gas_price    = GasPrice
-          , origin       = Origin
-          }.
+     } = Env) ->
+    State = #state{ primop_state         = aeprimop_state:new(Trees, TxEnv)
+                  , gas_price            = GasPrice
+                  , origin               = Origin
+                  , onchain_primop_state = none
+                  },
+    %% If we are running in a state channel, we need the onchain trees as well.
+    case maps:get(on_chain_trees, Env, none) of
+        none ->
+            State;
+        OnchainTrees ->
+            State#state{onchain_primop_state = {onchain, aeprimop_state:new(OnchainTrees, TxEnv)}}
+    end.
 
 -spec tx_env(state()) -> aetx_env:env().
 tx_env(#state{primop_state = PState}) ->
@@ -95,6 +108,10 @@ tx_env(#state{primop_state = PState}) ->
 -spec final_trees(state()) -> aec_trees:trees().
 final_trees(#state{primop_state = PState}) ->
     aeprimop_state:final_trees(PState).
+
+-spec is_onchain(state()) -> boolean().
+is_onchain(#state{} = S) ->
+    ?IS_ONCHAIN(S).
 
 %%%-------------------------------------------------------------------
 %%% Basic getters
@@ -200,13 +217,24 @@ contract_store(Pubkey, #state{primop_state = PState} = S) ->
 
 -spec account_balance(pubkey(), state()) -> 'error' |
                                             {'ok', aeb_fate_data:fate_integer(), state()}.
-account_balance(Pubkey, #state{primop_state = PState} = S) ->
+account_balance(Pubkey, #state{primop_state = PState,
+                               onchain_primop_state = Onchain} = S) ->
     case aeprimop_state:find_account(Pubkey, PState) of
         {Account, PState1} ->
             Balance = aeb_fate_data:make_integer(aec_accounts:balance(Account)),
             {ok, Balance, S#state{primop_state = PState1}};
+        none when Onchain =:= none ->
+            error;
         none ->
-            error
+            %% Try to find this onchain as well.
+            {onchain, OPState} = Onchain,
+            case aeprimop_state:find_account(Pubkey, OPState) of
+                {Account, OPState1} ->
+                    Balance = aeb_fate_data:make_integer(aec_accounts:balance(Account)),
+                    {ok, Balance, S#state{onchain_primop_state = {onchain, OPState1}}};
+                none ->
+                    error
+            end
     end.
 
 -spec check_delegation_signature(pubkey(), binary(), binary(), state()) ->
@@ -251,7 +279,7 @@ oracle_register(Pubkey, QFee, TTLType, TTLVal,
             Err
     end.
 
-oracle_extend(Pubkey, TTLType, TTLVal, State) ->
+oracle_extend(Pubkey, TTLType, TTLVal, State) when ?IS_ONCHAIN(State) ->
     Height = aetx_env:height(tx_env(State)),
     case to_relative_ttl(TTLType, TTLVal, Height) of
         {ok, RelTTL} ->
@@ -262,7 +290,7 @@ oracle_extend(Pubkey, TTLType, TTLVal, State) ->
     end.
 
 oracle_query(OraclePubkey, SenderPubkey, Question, QFee, QTTLType, QTTL, RTTL,
-             ABIVersion, QType, RType, #state{primop_state = PState} = State) ->
+             ABIVersion, QType, RType, #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
     Height = aetx_env:height(tx_env(State)),
     case to_relative_ttl(QTTLType, QTTL, Height) of
         {ok, QTTL1} ->
@@ -287,7 +315,7 @@ oracle_query(OraclePubkey, SenderPubkey, Question, QFee, QTTLType, QTTL, RTTL,
     end.
 
 oracle_respond(OraclePubkey, QueryId, Response, ABIVersion, QType, RType,
-               #state{primop_state = PState} = State) ->
+               #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
     case abi_encode_oracle_term(OraclePubkey, ABIVersion, QType, RType, Response, PState) of
         {ok, Response1, PState1} ->
             Ins = [ aeprimop:oracle_respond_op(OraclePubkey, QueryId, Response1)
@@ -298,29 +326,51 @@ oracle_respond(OraclePubkey, QueryId, Response, ABIVersion, QType, RType,
             Err
     end.
 
-oracle_query_fee(OraclePubkey, #state{primop_state = PState} = State) ->
+oracle_query_fee(OraclePubkey, #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
     case aeprimop_state:find_oracle(OraclePubkey, PState) of
         {Oracle, PState1} ->
             {ok, aeo_oracles:query_fee(Oracle), State#state{primop_state = PState1}};
         none ->
             {error, oracle_does_not_exist}
+    end;
+oracle_query_fee(OraclePubkey, #state{onchain_primop_state = {onchain, PState}} = State) ->
+    case aeprimop_state:find_oracle(OraclePubkey, PState) of
+        {Oracle, PState1} ->
+            {ok, aeo_oracles:query_fee(Oracle), State#state{onchain_primop_state = {onchain, PState1}}};
+        none ->
+            {error, oracle_does_not_exist}
     end.
 
 oracle_get_question(OraclePubkey, QueryId, QType, RType,
-                    #state{primop_state = PState} = State) ->
+                    #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
+    case oracle_get_question_from_pstate(OraclePubkey, QueryId, QType, RType, PState) of
+        {ok, Resp, PState1} ->
+            {ok, Resp, State#state{primop_state = PState1}};
+        {error, _} = Err ->
+            Err
+    end;
+oracle_get_question(OraclePubkey, QueryId, QType, RType,
+                    #state{onchain_primop_state = {onchain, PState}} = State) ->
+    case oracle_get_question_from_pstate(OraclePubkey, QueryId, QType, RType, PState) of
+        {ok, Resp, PState1} ->
+            {ok, Resp, State#state{onchain_primop_state = {onchain, PState1}}};
+        {error, _} = Err ->
+            Err
+    end.
+
+oracle_get_question_from_pstate(OraclePubkey, QueryId, QType, RType, PState) ->
     ABIVersion = ?ABI_FATE_SOPHIA_1,
     case find_oracle_with_type(OraclePubkey, QType, RType, ABIVersion, PState) of
         {ok, Oracle, PState1} ->
             case aeprimop_state:find_oracle_query(OraclePubkey, QueryId, PState1) of
                 {Query, PState2} ->
                     RawQuestion = aeo_query:query(Query),
-                    State1 = State#state{primop_state = PState2},
                     case aeo_oracles:abi_version(Oracle) of
                         ?ABI_NO_VM ->
-                            {ok, aeb_fate_data:make_string(RawQuestion), State1};
+                            {ok, aeb_fate_data:make_string(RawQuestion), PState2};
                         ?ABI_FATE_SOPHIA_1 ->
                             try
-                                {ok, aeb_fate_encoding:deserialize(RawQuestion), State1}
+                                {ok, aeb_fate_encoding:deserialize(RawQuestion), PState2}
                             catch _:_ ->
                                     {error, bad_question}
                             end
@@ -333,68 +383,111 @@ oracle_get_question(OraclePubkey, QueryId, QType, RType,
     end.
 
 oracle_get_answer(OraclePubkey, QueryId, QType, RType,
-                  #state{primop_state = PState} = State) ->
+                  #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
+    case oracle_get_answer_from_pstate(OraclePubkey, QueryId, QType, RType, PState) of
+        {ok, Resp, PState1} ->
+            {ok, Resp, State#state{primop_state = PState1}};
+        {error, _} = Err ->
+            Err
+    end;
+oracle_get_answer(OraclePubkey, QueryId, QType, RType,
+                  #state{onchain_primop_state = {onchain, PState}} = State) ->
+    case oracle_get_answer_from_pstate(OraclePubkey, QueryId, QType, RType, PState) of
+        {ok, Resp, PState1} ->
+            {ok, Resp, State#state{onchain_primop_state = {onchain, PState1}}};
+        {error, _} = Err ->
+            Err
+    end.
+
+oracle_get_answer_from_pstate(OraclePubkey, QueryId, QType, RType, PState) ->
     ABIVersion = ?ABI_FATE_SOPHIA_1,
     case find_oracle_with_type(OraclePubkey, QType, RType, ABIVersion, PState) of
         {ok, Oracle, PState1} ->
             case aeprimop_state:find_oracle_query(OraclePubkey, QueryId, PState1) of
                 {Query, PState2} ->
-                    State1 = State#state{primop_state = PState2},
                     case aeo_query:response(Query) of
                         undefined ->
-                            {ok, aeb_fate_data:make_variant([0,1], 0, {}), State1};
+                            {ok, aeb_fate_data:make_variant([0,1], 0, {}), PState2};
                         RawResponse ->
                             case aeo_oracles:abi_version(Oracle) of
                                 ?ABI_NO_VM ->
                                     Answer = aeb_fate_data:make_string(RawResponse),
                                     Resp = aeb_fate_data:make_variant([0,1], 1, {Answer}),
-                                    {ok, Resp, State1};
+                                    {ok, Resp, PState2};
                                 ?ABI_FATE_SOPHIA_1 ->
                                     try aeb_fate_encoding:deserialize(RawResponse) of
                                         Answer ->
                                             Resp = aeb_fate_data:make_variant([0,1], 1, {Answer}),
-                                            {ok, Resp, State1}
+                                            {ok, Resp, PState2}
                                     catch _:_ ->
                                             {error, bad_response}
                                     end
                             end
                     end;
                 none ->
-                    {ok, aeb_fate_data:make_variant([0,1], 0, {}), State}
+                    {ok, aeb_fate_data:make_variant([0,1], 0, {}), PState}
             end;
         {error, _} = Err ->
             Err
     end.
 
-oracle_check(Pubkey, QType, RType, #state{primop_state = PState} = State) ->
+oracle_check(Pubkey, QType, RType, #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
+    {ok, Res, PState1} = oracle_check_from_pstate(Pubkey, QType, RType, PState),
+    {ok, Res, State#state{primop_state = PState1}};
+oracle_check(Pubkey, QType, RType, #state{onchain_primop_state = {onchain, PState}} = State) ->
+    {ok, Res, PState1} = oracle_check_from_pstate(Pubkey, QType, RType, PState),
+    {ok, Res, State#state{onchain_primop_state = {onchain, PState1}}}.
+
+oracle_check_from_pstate(Pubkey, QType, RType, PState) ->
     ABIVersion = ?ABI_FATE_SOPHIA_1,
     case find_oracle_with_type(Pubkey, QType, RType, ABIVersion, PState) of
-        {ok, _Oracle, PState1} -> {ok, ?FATE_TRUE,  State#state{primop_state = PState1}};
-        {error, _}             -> {ok, ?FATE_FALSE, State}
+        {ok, _Oracle, PState1} -> {ok, ?FATE_TRUE,  PState1};
+        {error, _}             -> {ok, ?FATE_FALSE, PState}
     end.
 
-oracle_check_query(Pubkey, Query, QType, RType, #state{primop_state = PState} = State) ->
+oracle_check_query(Pubkey, Query, QType, RType, #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
+    {ok, Res, PState1} = oracle_check_query_from_pstate(Pubkey, Query, QType, RType, PState),
+    {ok, Res, State#state{primop_state = PState1}};
+oracle_check_query(Pubkey, Query, QType, RType, #state{onchain_primop_state = {onchain, PState}} = State) ->
+    {ok, Res, PState1} = oracle_check_query_from_pstate(Pubkey, Query, QType, RType, PState),
+    {ok, Res, State#state{onchain_primop_state = {onchain, PState1}}}.
+
+oracle_check_query_from_pstate(Pubkey, Query, QType, RType, PState) ->
     ABIVersion = ?ABI_FATE_SOPHIA_1,
     case find_oracle_with_type(Pubkey, QType, RType, ABIVersion, PState) of
         {ok, _, PState1} ->
             case aeprimop_state:find_oracle_query(Pubkey, Query, PState1) of
                 {_, PState2} ->
-                    {ok, ?FATE_TRUE, State#state{primop_state = PState2}};
+                    {ok, ?FATE_TRUE, PState2};
                 none ->
-                    {ok, ?FATE_FALSE, State#state{primop_state = PState1}}
+                    {ok, ?FATE_FALSE, PState1}
             end;
-        {error, _} -> {ok, ?FATE_FALSE, State}
+        {error, _} -> {ok, ?FATE_FALSE, PState}
     end.
 
-is_oracle(Pubkey, #state{primop_state = PState} = State) ->
+is_oracle(Pubkey, #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
     case aeprimop_state:find_oracle(Pubkey, PState) of
         {_Oracle, PState1} ->
             {ok, ?FATE_TRUE, State#state{primop_state = PState1}};
         none ->
             {ok, ?FATE_FALSE, State}
+    end;
+is_oracle(Pubkey, #state{onchain_primop_state = {onchain, PState}} = State) ->
+    case aeprimop_state:find_oracle(Pubkey, PState) of
+        {_Oracle, PState1} ->
+            {ok, ?FATE_TRUE, State#state{onchain_primop_state = {onchain, PState1}}};
+        none ->
+            {ok, ?FATE_FALSE, State}
     end.
 
-is_contract(Pubkey, #state{primop_state = PState} = State) ->
+is_contract(Pubkey, #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
+    case aeprimop_state:find_contract_without_store(Pubkey, PState) of
+        {value, _Contract} ->
+            {ok, ?FATE_TRUE, State};
+        none ->
+            {ok, ?FATE_FALSE, State}
+    end;
+is_contract(Pubkey, #state{onchain_primop_state = {onchain, PState}} = State) ->
     case aeprimop_state:find_contract_without_store(Pubkey, PState) of
         {value, _Contract} ->
             {ok, ?FATE_TRUE, State};
@@ -459,7 +552,26 @@ find_oracle_with_type(Pubkey, QType, RType, ABIVersion, PState) ->
 %%%-------------------------------------------------------------------
 %%% Naming service
 
-aens_resolve(NameString, Key, #state{primop_state = PState} = S) ->
+aens_resolve(NameString, Key, #state{primop_state = PState} = S) when ?IS_ONCHAIN(S) ->
+    case aens_resolve_from_pstate(NameString, Key, PState) of
+        {ok, Tag, Pubkey, PState1} ->
+            {ok, Tag, Pubkey, S#state{primop_state = PState1}};
+        none ->
+            none;
+        {error, _} = Err ->
+            Err
+    end;
+aens_resolve(NameString, Key, #state{onchain_primop_state = {onchain, PState}} = S) ->
+    case aens_resolve_from_pstate(NameString, Key, PState) of
+        {ok, Tag, Pubkey, PState1} ->
+            {ok, Tag, Pubkey, S#state{onchain_primop_state = {onchain, PState1}}};
+        none ->
+            none;
+        {error, _} = Err ->
+            Err
+    end.
+
+aens_resolve_from_pstate(NameString, Key, PState) ->
     case aens_utils:to_ascii(NameString) of
         {ok, NameAscii} ->
             NameHash = aens_hash:name_hash(NameAscii),
@@ -468,7 +580,7 @@ aens_resolve(NameString, Key, #state{primop_state = PState} = S) ->
                     case aens:resolve_from_name_object(Key, Name) of
                         {ok, Id} ->
                             {Tag, Pubkey} = aeser_id:specialize(Id),
-                            {ok, Tag, Pubkey, S#state{primop_state = PState1}};
+                            {ok, Tag, Pubkey, PState1};
                         {error, name_revoked} ->
                             none;
                         {error, pointer_id_not_found} ->
@@ -481,10 +593,10 @@ aens_resolve(NameString, Key, #state{primop_state = PState} = S) ->
             Err
     end.
 
-aens_preclaim(Pubkey, Hash, #state{} = S) ->
+aens_preclaim(Pubkey, Hash, #state{} = S) when ?IS_ONCHAIN(S) ->
     eval_primops([aeprimop:name_preclaim_op(Pubkey, Hash, 0)], S).
 
-aens_claim(Pubkey, NameBin, SaltInt, #state{} = S) ->
+aens_claim(Pubkey, NameBin, SaltInt, #state{} = S) when ?IS_ONCHAIN(S) ->
     PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
     DeltaTTL = aec_governance:name_claim_max_expiration(),
     LockedFee = aec_governance:name_claim_locked_fee(),
@@ -494,12 +606,12 @@ aens_claim(Pubkey, NameBin, SaltInt, #state{} = S) ->
                    ],
     eval_primops(Instructions, S).
 
-aens_transfer(FromPubkey, HashBin, ToPubkey, #state{} = S) ->
+aens_transfer(FromPubkey, HashBin, ToPubkey, #state{} = S) when ?IS_ONCHAIN(S) ->
     Instructions = [aeprimop:name_transfer_op(FromPubkey, account, ToPubkey, HashBin)
                    ],
     eval_primops(Instructions, S).
 
-aens_revoke(Pubkey, HashBin, #state{} = S) ->
+aens_revoke(Pubkey, HashBin, #state{} = S) when ?IS_ONCHAIN(S) ->
     ProtectedDeltaTTL = aec_governance:name_protection_period(),
     Instructions = [aeprimop:name_revoke_op(Pubkey, HashBin, ProtectedDeltaTTL)
                    ],

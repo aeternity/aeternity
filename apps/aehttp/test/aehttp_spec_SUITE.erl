@@ -54,7 +54,7 @@ get_api(Config) ->
     SpecFile = filename:join([proplists:get_value(top_dir, Config),
                               "apps/aehttp/priv/swagger.json"]),
 
-    Host = external_address(),
+    Host = aecore_suite_utils:external_address(),
     URL = binary_to_list(iolist_to_binary([Host, "/api"])),
     Repl1 = httpc:request(URL),
 
@@ -68,15 +68,6 @@ get_api(Config) ->
     Type = "application/json",
     Body = <<"{broken_json">>,
 
-    {ok,{{"HTTP/1.1",405,"Method Not Allowed"},_,_}} = 
+    {ok,{{"HTTP/1.1",405,"Method Not Allowed"},_,_}} =
          httpc:request(post, {URL, [], Type, Body}, [], []),
     ok.
-
-
-external_address() ->
-    Port = 
-        rpc:call(aecore_suite_utils:node_name(?NODE), 
-                 aeu_env, user_config_or_env,
-                 [ [<<"http">>, <<"external">>, <<"port">>],
-                   aehttp, [external, port], 8043]),
-    "http://127.0.0.1:" ++ integer_to_list(Port).     % good enough for requests
