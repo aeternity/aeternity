@@ -114,7 +114,9 @@ spend_txs(Config) ->
     Tx1 = create_spend_tx(APub, EPub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100),
     Tx2 = create_spend_tx(EPub, APub, 100, 20000 * aec_test_utils:min_gas_price(), 1, 100),
 
-    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
+                                      <<"type">> := <<"spend">> },
+                                   #{ <<"result">> := <<"ok">> }] }} =
         dry_run(TopHash, [Tx1, Tx2]),
 
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"ok">> }] }} =
@@ -136,7 +138,11 @@ identity_contract(Config) ->
     CallTx    = call_contract_tx(APub, CPub, 2, CallCallData),
     BadCallTx = call_contract_tx(APub, CPub, 1, CallCallData),
 
-    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
+                                      <<"type">> := <<"contract_create">> },
+                                   #{ <<"result">> := <<"ok">>,
+                                      <<"type">> := <<"contract_call">> }
+                                  ] }} =
         dry_run(TopHash, [CreateTx, CallTx]),
 
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"ok">> }] }} =
