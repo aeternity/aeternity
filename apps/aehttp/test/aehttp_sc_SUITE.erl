@@ -178,7 +178,7 @@ end_per_suite(Config) ->
     stop_node(Config).
 
 init_per_group(VM, Config) when VM == aevm; VM == fate ->
-    inc_group_port(VM, aect_test_utils:init_per_group(VM, Config));
+    aect_test_utils:init_per_group(VM, inc_group_port(VM, Config));
 init_per_group(sc_ga, Config) ->
     case aect_test_utils:latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
