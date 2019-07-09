@@ -27,7 +27,6 @@ IF "%WIN_JDK_PATH%"=="" SET "WIN_JDK_PATH=C:\Program Files\Java\jdk-%JAVA_VERSIO
 IF "%WIN_MSYS2_ROOT%"=="" FOR /F %%F IN ('where msys2') DO SET "WIN_MSYS2_ROOT=%%~dpF"
 IF "%WIN_OTP_PATH%"=="" SET "WIN_OTP_PATH=C:\Program Files\erl%ERTS_VERSION%"
 
-SET "BASH_BIN=%WIN_MSYS2_ROOT%\usr\bin\bash"
 SET "PACMAN=pacman --noconfirm --needed -S"
 SET "PACMAN_RM=pacman --noconfirm -Rsc"
 SET "PIP=/mingw64/bin/pip3"

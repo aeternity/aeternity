@@ -18,13 +18,18 @@ IF "%BUILD_STEP%"=="" SET "BUILD_STEP=build"
 IF "%BUILD_PATH%"=="" GOTO :BUILDABORT_MISSINGBUILDPATH
 
 @echo Current time: %time%
-rem Set the paths appropriately
 
+rem SET the appropriate MSVC_VERSION
+IF NOT "%MSVC_VERSION%"=="" GOTO MSVC_VERSION_SET
 @FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "C:\Program Files (x86)\Microsoft Visual Studio" Microsoft.VCToolsVersion.default.txt`) DO SET "ToolsVerFile=%%F"
 @FOR /F "tokens=* USEBACKQ delims=" %%F IN (`type "%ToolsVerFile%"`) DO SET MSVC_VERSION=%%F
+:MSVC_VERSION_SET
+
+rem Find and execute the VS env preparation script
 @FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "C:\Program Files (x86)\Microsoft Visual Studio" vcvarsall`) DO SET vcvarsall="%%F"
 call %vcvarsall% %PLATFORM%
 
+rem Set the paths appropriately
 SET PATH=%WIN_MSYS2_ROOT%\mingw64\bin;%WIN_MSYS2_ROOT%\usr\bin;%PATH%
 
 :BUILDSTART
