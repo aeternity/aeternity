@@ -4730,21 +4730,14 @@ run_scenario(#fundme_scenario
 
     io:format("TotalFunds = ~p\n", [TotalFunds]),
 
-    %% FATE doesn't have revert yet
-    Revert =
-        case ?IS_AEVM_SOPHIA(vm_version()) of
-            true  -> revert;
-            false -> error
-        end,
-
     %% Check results
     ExpectedResult =
         fun({withdraw, _, _, ok})       -> {};
            ({withdraw, _, _, error})    -> {error, <<"out_of_gas">>};
-           ({withdraw, beneficiary, 2100, revert}) -> {Revert, <<"Project was not funded">>};
-           ({withdraw, beneficiary, 2200, revert}) -> {Revert, <<"Not a contributor or beneficiary">>};
-           ({withdraw, {investor, 5}, _, revert}) -> {Revert, <<"Project was funded">>};
-           ({withdraw, {investor, 3}, _, revert}) -> {Revert, <<"Not a contributor or beneficiary">>};
+           ({withdraw, beneficiary, 2100, revert}) -> {revert, <<"Project was not funded">>};
+           ({withdraw, beneficiary, 2200, revert}) -> {revert, <<"Not a contributor or beneficiary">>};
+           ({withdraw, {investor, 5}, _, revert}) -> {revert, <<"Project was funded">>};
+           ({withdraw, {investor, 3}, _, revert}) -> {revert, <<"Not a contributor or beneficiary">>};
            ({contribute, _, _, Height}) -> Height < Deadline end,
     lists:foreach(fun({E, Res}) ->
         Expect = ExpectedResult(E),

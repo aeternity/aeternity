@@ -26,6 +26,8 @@
         , get_function_signature/2
         , push_gas_cap/2
         , push_return_address/1
+        , runtime_exit/2
+        , runtime_revert/2
         , set_local_function/2
         , set_remote_function/3
         , terms_are_of_same_type/2
@@ -73,6 +75,7 @@ run_with_cache(Spec, Env, Cache) ->
     try execute(setup_engine(Spec, Env, Cache)) of
         Res -> {ok, Res}
     catch
+        throw:{?MODULE, revert, S, ES} -> {revert, S, ES};
         throw:{?MODULE, E, ES} -> {error, E, ES}
     end.
 -endif.
@@ -81,6 +84,7 @@ run(Spec, Env) ->
     try execute(setup_engine(Spec, Env)) of
         Res -> {ok, Res}
     catch
+        throw:{?MODULE, revert, S, ES} -> {revert, S, ES};
         throw:{?MODULE, E, ES} -> {error, E, ES}
     end.
 
@@ -144,6 +148,17 @@ runtime_error(S, A, ES) ->
     ES1 = aefa_engine_state:set_gas(Gas, ES),
     throw({?MODULE, iolist_to_binary(io_lib:format(S, A)), ES1}).
 
+runtime_exit(Value, ES) ->
+    Gas = collect_gas_stores(aefa_engine_state:call_stack(ES), 0),
+    ES1 = aefa_engine_state:set_gas(Gas, ES),
+    throw({?MODULE, Value, ES1}).
+
+runtime_revert(Value, ES) when ?IS_FATE_STRING(Value) ->
+    GasIn = aefa_engine_state:gas(ES),
+    Gas = collect_gas_stores(aefa_engine_state:call_stack(ES), GasIn),
+    ES1 = aefa_engine_state:set_gas(Gas, ES),
+    throw({?MODULE, revert, Value, ES1}).
+
 %% Runtime error messages for dry run and debugging.
 %% Should result on one tyhpe of runtime error and use all gas when
 %% executed on chain.
@@ -202,8 +217,6 @@ abort(reentrant_call, ES) ->
     ?t("Reentrant call", [], ES);
 abort(out_of_gas, ES) ->
     ?t("Out of gas", [], ES);
-abort({abort, Err}, ES) ->
-    ?t("~ts", [Err], ES);       %% TODO: revert!
 abort(bad_bytecode, ES) ->
     ?t("Bad byte code", [], ES).
 

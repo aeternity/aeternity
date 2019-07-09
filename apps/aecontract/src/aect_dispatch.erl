@@ -128,6 +128,13 @@ run_common(#{vm := ?VM_FATE_SOPHIA_1 = VMVersion, abi := ABIVersion},
                     , TreesOut
                     , TxEnvOut
                     };
+                {revert, ReturnValue, ResultState} ->
+                    Out     = aeb_fate_encoding:serialize(ReturnValue),
+                    GasUsed = Gas - aefa_fate:gas(ResultState),
+                    { create_call(GasUsed, revert, Out, [], Call, VMVersion)
+                    , Trees
+                    , TxEnv0
+                    };
                 {error, Out, ResultState} ->
                     GasUsed = Gas - aefa_fate:gas(ResultState),
                     { create_call(GasUsed, error, Out, [], Call, VMVersion)
