@@ -38,6 +38,7 @@
 
 -ifdef(TEST).
 -export([tx/1]).
+-export([type_to_swagger_name/1]).
 -endif.
 
 -define(IS_CONTRACT_TX(T), ((T =:= contract_create_tx) or (T =:= contract_call_tx)
