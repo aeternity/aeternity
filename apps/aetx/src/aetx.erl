@@ -516,7 +516,7 @@ type_to_swagger_name(spend_tx)                  -> <<"SpendTx">>;
 type_to_swagger_name(oracle_register_tx)        -> <<"OracleRegisterTx">>;
 type_to_swagger_name(oracle_extend_tx)          -> <<"OracleExtendTx">>;
 type_to_swagger_name(oracle_query_tx)           -> <<"OracleQueryTx">>;
-type_to_swagger_name(oracle_response_tx)        -> <<"OracleResponseTx">>;
+type_to_swagger_name(oracle_response_tx)        -> <<"OracleRespondTx">>;
 type_to_swagger_name(name_preclaim_tx)          -> <<"NamePreclaimTx">>;
 type_to_swagger_name(name_claim_tx)             -> <<"NameClaimTx">>;
 type_to_swagger_name(name_transfer_tx)          -> <<"NameTransferTx">>;
