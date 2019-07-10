@@ -58,6 +58,8 @@
         , dup_accumulator/1
         , dup_accumulator/2
         , drop_accumulator/2
+        , in_auth_context/1
+        , is_onchain/1
         , pop_accumulator/1
         , pop_call_stack/1
         , push_accumulator/2
@@ -161,6 +163,15 @@ check_reentrant_remote(?FATE_CONTRACT(Pubkey), #es{seen_contracts = Seen} = ES) 
         false ->
             {ok, ES#es{seen_contracts = [current_contract(ES)|Seen]}}
     end.
+
+-spec is_onchain(state()) -> boolean().
+is_onchain(#es{chain_api = APIState}) ->
+    aefa_chain_api:is_onchain(APIState).
+
+-spec in_auth_context(state()) -> boolean().
+in_auth_context(#es{chain_api = APIState}) ->
+    undefined =/= aetx_env:ga_tx_hash(aefa_chain_api:tx_env(APIState)).
+
 
 %%%------------------
 %%% Accumulator stack
