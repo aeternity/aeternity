@@ -46,20 +46,32 @@ do_main(Filename) ->
 gen_eval(#{ constructor := Constructor, gas := Gas } = Op) ->
     Cmd = io_lib:format("aefa_fate_op:~w(~saefa_engine_state:spend_gas(~w, EngineState))",
                         [Constructor, gen_cargs(Op), Gas]),
-    io_lib:format("eval(~s, EngineState) ->\n    ~s;\n",
-                  [gen_op_w_args(Op), gen_in_auth(Op, gen_next_cmd(Op, Cmd))]).
+    Body = [gen_allowed_offchain(Op),
+            gen_in_auth(Op, gen_next_cmd(Op, Cmd))
+           ],
+    io_lib:format("eval(~s, EngineState) ->\n~s;\n",
+                  [gen_op_w_args(Op), Body]).
 
 gen_next_cmd(#{ end_bb := true },  Cmd) -> Cmd;
 gen_next_cmd(#{ end_bb := false }, Cmd) -> io_lib:format("{next, ~s}", [Cmd]).
 
 gen_in_auth(#{ in_auth := false, opname := Name }, Cmd) ->
     io_lib:format(
-      "case aefa_fate_op:in_auth_context(EngineState) of\n"
+      "    case aefa_engine_state:in_auth_context(EngineState) of\n"
       "        false -> ~s;\n"
       "        true  -> aefa_fate:abort({not_allowed_in_auth_context, ~w}, EngineState)\n"
       "    end", [Cmd, Name]);
 gen_in_auth(_Op, Cmd) ->
-    Cmd.
+    ["    ", Cmd].
+
+gen_allowed_offchain(#{ offchain := false, opname := Name }) ->
+    io_lib:format(
+      "    case aefa_engine_state:is_onchain(EngineState) of\n"
+      "        true  -> ok;\n"
+      "        false -> aefa_fate:abort({not_allowed_offchain, ~w}, EngineState)\n"
+      "    end,\n", [Name]);
+gen_allowed_offchain(#{ offchain := true}) ->
+    "".
 
 gen_op_w_args(#{ opname := Name, format := [] }) ->
     io_lib:format("~w", [Name]);

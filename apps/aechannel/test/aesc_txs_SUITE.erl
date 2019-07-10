@@ -3620,9 +3620,8 @@ fp_register_name(Cfg) ->
                       GasLimit = aect_call:gas_used(Call),
                       GasPrice = aect_call:gas_price(Call),
                       ErrorRes = aect_call:return_value(Call),
-                      ?assertMatchVM(<<"not_allowed_off_chain">>,
-                                     <<"Error in aens_preclaim: not_allowed_off_chain">>,
-                                     ErrorRes),
+                      MatchRes = re:run(ErrorRes, <<"not.allowed.off.chain">>),
+                      ?assertMatch({ErrorRes, {match, _}}, {ErrorRes, MatchRes}),
                       error = aect_call:return_type(Call),
 
                       %% expected channel states
@@ -3942,7 +3941,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       GasLimit = aect_call:gas_used(Call),
                       GasPrice = aect_call:gas_price(Call),
                       ErrorRes = aect_call:return_value(Call),
-                      MatchRes = re:run(ErrorRes, <<"not_allowed_off_chain">>),
+                      MatchRes = re:run(ErrorRes, <<"not.allowed.off.chain">>),
                       ?assertMatch({ErrorRes, {match, _}}, {ErrorRes, MatchRes}),
                       error = aect_call:return_type(Call),
 
@@ -4124,9 +4123,8 @@ fp_register_oracle(Cfg) ->
                       GasLimit = aect_call:gas_used(Call),
                       GasPrice = aect_call:gas_price(Call),
                       ErrorRes = aect_call:return_value(Call),
-                      ?assertMatchVM(<<"not_allowed_off_chain">>,
-                                     <<"Error in oracle_register: not_allowed_off_chain">>,
-                                     ErrorRes),
+                      MatchRes = re:run(ErrorRes, <<"not.allowed.off.chain">>),
+                      ?assertMatch({ErrorRes, {match, _}}, {ErrorRes, MatchRes}),
                       error = aect_call:return_type(Call),
 
                       %% expected channel states
