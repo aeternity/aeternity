@@ -18,6 +18,7 @@ environment:
     WIN_MSYS2_ROOT: C:\msys64
     WIN_MSYS2_CACHE: C:\msys64\var\cache\pacman\pkg
     WIN_OTP_PATH: C:\Program Files\erl
+    WIN_JDK_PATH: C:\Program Files\Java\jdk11
     BUILD_PATH: /c/projects/aeternity
     ERL_EPMD_ADDRESS: 127.0.0.1
   matrix:

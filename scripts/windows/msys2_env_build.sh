@@ -43,21 +43,20 @@ CPPFLAGS='-D _WIN32'
 MSYS2_ROOT=${MSYS2_ROOT:-"${C_DRV}/msys64"}
 WIN_MSYS2_ROOT=${WIN_MSYS2_ROOT:-"${WIN_C_DRV}\\msys64"}
 
-PRG_FLS64="${C_DRV}/Program Files"
-PRG_FLS32="${C_DRV}/Program Files (x86)"
-WIN_PRG_FLS64="${WIN_C_DRV}\\Program Files"
-WIN_PRG_FLS32="${WIN_C_DRV}\\Program Files (x86)"
+PRG_FLS64="$(make_upath "${PROGRAMFILES}")"
+WIN_PRG_FLS64="${PROGRAMFILES}"
 ERL_TOP="${PRG_FLS64}/erl${ERTS_VERSION}"
 WIN_ERL_TOP="${WIN_PRG_FLS64}\\erl${ERTS_VERSION}"
-JAVA_TOP="${JAVA_TOP:-${PRG_FLS64}/Java/jdk${JAVA_VERSION}}"
+JAVA_TOP="${JAVA_TOP:-${PRG_FLS64}/Java/jdk-${JAVA_VERSION}}"
 
-VISUAL_STUDIO_ROOT=${PRG_FLS32}/Microsoft\ Visual\ Studio/2017/Community
-WIN_VISUAL_STUDIO_ROOT="${WIN_PRG_FLS32}\\Microsoft Visual Studio\\2017\\Community"
+WIN_VISUAL_STUDIO_ROOT="${VSINSTALLDIR}"
+VISUAL_STUDIO_ROOT="$(make_upath "${WIN_VISUAL_STUDIO_ROOT}")"
 
-MSVC_ROOT=${VISUAL_STUDIO_ROOT}/VC/Tools/MSVC/${MSVC_VERSION}
-MSVC=${MSVC_ROOT}/bin/Hostx64/x64
-WIN_MSVC_ROOT=${WIN_VISUAL_STUDIO_ROOT}\\VC\\Tools\\MSVC\\${MSVC_VERSION}
-WIN_MSVC=${WIN_MSVC_ROOT}/bin\\Hostx64\\x64
+WIN_MSVC_ROOT=${VCToolsInstallDir}
+WIN_MSVC=${WIN_MSVC_ROOT}bin\\Hostx64\\x64
+
+MSVC_ROOT="$(make_upath "${WIN_MSVC_ROOT}")"
+MSVC="$(make_upath "${WIN_MSVC}")"
 
 PATH="/usr/local/bin:/usr/bin:/bin:/c/Windows/system32:/c/Windows:/c/Windows/System32/Wbem:${PATH}"
 PATH="${HOME}/.local/bin:${MSVC}:${ERL_TOP}/bin:${PATH}:${ERL_TOP}/erts-${ERTS_VERSION}/bin:${MSYS2_ROOT}/mingw64/bin"
@@ -66,5 +65,4 @@ PATH="${JAVA_TOP}/bin:${PATH}"
 INCLUDE="${INCLUDE};${WIN_MSYS2_ROOT}\\mingw64\\include;${WIN_MSYS2_ROOT}\\usr\\include"
 LIB="${LIB};${WIN_MSYS2_ROOT}\\mingw64\\lib;${WIN_MSYS2_ROOT}\\mingw64\\bin;${WIN_ERL_TOP}\\usr\\lib;"
 
-export INCLUDE LIB PATH ERL_TOP WIN_ERL_TOP COMSPEC
 export INCLUDE LIB PATH ERL_TOP WIN_ERL_TOP COMSPEC CPPFLAGS

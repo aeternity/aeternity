@@ -12,28 +12,35 @@ cd %APPVEYOR_BUILD_FOLDER%
 
 rem Set required vars defaults
 IF "%ERTS_VERSION%"=="" SET "ERTS_VERSION=9.3"
-IF "%WIN_MSYS2_ROOT%"=="" SET "WIN_MSYS2_ROOT=C:\msys64"
+IF "%WIN_MSYS2_ROOT%"=="" FOR /F %%F IN ('where msys2') DO SET "WIN_MSYS2_ROOT=%%~dpF"
 IF "%PLATFORM%"=="" SET "PLATFORM=x64"
 IF "%BUILD_STEP%"=="" SET "BUILD_STEP=build"
 IF "%BUILD_PATH%"=="" GOTO :BUILDABORT_MISSINGBUILDPATH
-SET BASH_BIN="%WIN_MSYS2_ROOT%\usr\bin\bash"
 
 @echo Current time: %time%
-rem Set the paths appropriately
 
-call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat" %PLATFORM%
-@echo on
+rem SET the appropriate MSVC_VERSION
+IF NOT "%MSVC_VERSION%"=="" GOTO MSVC_VERSION_SET
+@FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "C:\Program Files (x86)\Microsoft Visual Studio" Microsoft.VCToolsVersion.default.txt`) DO SET "ToolsVerFile=%%F"
+@FOR /F "tokens=* USEBACKQ delims=" %%F IN (`type "%ToolsVerFile%"`) DO SET MSVC_VERSION=%%F
+:MSVC_VERSION_SET
+
+rem Find and execute the VS env preparation script
+@FOR /F "tokens=* USEBACKQ delims=" %%F IN (`where /r "C:\Program Files (x86)\Microsoft Visual Studio" vcvarsall`) DO SET vcvarsall="%%F"
+call %vcvarsall% %PLATFORM%
+
+rem Set the paths appropriately
 SET PATH=%WIN_MSYS2_ROOT%\mingw64\bin;%WIN_MSYS2_ROOT%\usr\bin;%PATH%
 
 :BUILDSTART
-GOTO BUILD_%BUILD_STEP%
+@GOTO BUILD_%BUILD_STEP%
 
 :BUILD_build
 @echo Current time: %time%
 rem Run build: build
-%BASH_BIN% -lc "cd %BUILD_PATH% && make KIND=test local-build"
+bash -lc "cd %BUILD_PATH% && make KIND=test local-build"
 
-GOTO BUILD_DONE
+@GOTO BUILD_DONE
 
 :BUILD_
 :BUILD_DONE
