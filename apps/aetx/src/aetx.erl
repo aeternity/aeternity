@@ -38,6 +38,7 @@
 
 -ifdef(TEST).
 -export([tx/1]).
+-export([type_to_swagger_name/1]).
 -endif.
 
 -define(IS_CONTRACT_TX(T), ((T =:= contract_create_tx) or (T =:= contract_call_tx)
@@ -497,7 +498,6 @@ type_to_cb(name_claim_tx)             -> aens_claim_tx;
 type_to_cb(name_transfer_tx)          -> aens_transfer_tx;
 type_to_cb(name_update_tx)            -> aens_update_tx;
 type_to_cb(name_revoke_tx)            -> aens_revoke_tx;
-type_to_cb(name_create_tx)            -> aens_create_tx;
 type_to_cb(contract_call_tx)          -> aect_call_tx;
 type_to_cb(contract_create_tx)        -> aect_create_tx;
 type_to_cb(ga_attach_tx)              -> aega_attach_tx;
@@ -517,13 +517,12 @@ type_to_swagger_name(spend_tx)                  -> <<"SpendTx">>;
 type_to_swagger_name(oracle_register_tx)        -> <<"OracleRegisterTx">>;
 type_to_swagger_name(oracle_extend_tx)          -> <<"OracleExtendTx">>;
 type_to_swagger_name(oracle_query_tx)           -> <<"OracleQueryTx">>;
-type_to_swagger_name(oracle_response_tx)        -> <<"OracleResponseTx">>;
+type_to_swagger_name(oracle_response_tx)        -> <<"OracleRespondTx">>;
 type_to_swagger_name(name_preclaim_tx)          -> <<"NamePreclaimTx">>;
 type_to_swagger_name(name_claim_tx)             -> <<"NameClaimTx">>;
 type_to_swagger_name(name_transfer_tx)          -> <<"NameTransferTx">>;
 type_to_swagger_name(name_update_tx)            -> <<"NameUpdateTx">>;
 type_to_swagger_name(name_revoke_tx)            -> <<"NameRevokeTx">>;
-type_to_swagger_name(name_create_tx)            -> <<"NameCreateTx">>;
 type_to_swagger_name(contract_call_tx)          -> <<"ContractCallTx">>;
 type_to_swagger_name(contract_create_tx)        -> <<"ContractCreateTx">>;
 type_to_swagger_name(ga_attach_tx)              -> <<"GAAttachTx">>;

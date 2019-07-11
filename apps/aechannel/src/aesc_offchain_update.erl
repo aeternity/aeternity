@@ -73,6 +73,10 @@
 -export([from_db_format/1
         ]).
 
+-ifdef(TEST).
+-export([type2swagger_name/1]).
+-endif.
+
 -spec from_db_format(update() | tuple()) -> update().
 from_db_format(#transfer{} = U) ->
     U;
@@ -202,22 +206,22 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
 
 -spec for_client(update()) -> map().
 for_client(#transfer{from_id = FromId, to_id = ToId, amount = Amount}) ->
-    #{<<"op">>      => <<"OffChainTransfer">>, % swagger name
+    #{<<"op">>      => type2swagger_name(transfer),
       <<"from">>    => aeser_api_encoder:encode(id_hash, FromId),
       <<"to">>      => aeser_api_encoder:encode(id_hash, ToId),
       <<"amount">>  => Amount};
 for_client(#withdraw{to_id = ToId, amount = Amount}) ->
-    #{<<"op">>      => <<"OffChainWithdrawal">>, % swagger name
+    #{<<"op">>      => type2swagger_name(withdraw),
       <<"to">>      => aeser_api_encoder:encode(id_hash, ToId),
       <<"amount">>  => Amount};
 for_client(#deposit{from_id = FromId, amount = Amount}) ->
-    #{<<"op">>      => <<"OffChainDeposit">>, % swagger name
+    #{<<"op">>      => type2swagger_name(deposit),
       <<"from">>    => aeser_api_encoder:encode(id_hash, FromId),
       <<"amount">>  => Amount};
 for_client(#create_contract{owner_id = OwnerId, vm_version  = VmVersion,
                          abi_version = ABIVersion, code = Code,
                          deposit = Deposit, call_data   = CallData}) ->
-    #{<<"op">>          => <<"OffChainNewContract">>, % swagger name
+    #{<<"op">>          => type2swagger_name(create_contract),
       <<"owner">>       => aeser_api_encoder:encode(id_hash, OwnerId),
       <<"vm_version">>  => VmVersion,
       <<"abi_version">> => ABIVersion,
@@ -228,7 +232,7 @@ for_client(#call_contract{caller_id = CallerId, contract_id = ContractId,
                           abi_version = ABIVersion, amount = Amount,
                           call_data = CallData, call_stack = CallStack,
                           gas_price = GasPrice, gas = Gas}) ->
-    #{<<"op">>          => <<"OffChainCallContract">>, % swagger name
+    #{<<"op">>          => type2swagger_name(call_contract),
       <<"caller">>      => aeser_api_encoder:encode(id_hash, CallerId),
       <<"contract">>    => aeser_api_encoder:encode(id_hash, ContractId),
       <<"abi_version">> => ABIVersion,
@@ -331,6 +335,13 @@ type2ut(channel_offchain_update_deposit)          -> deposit;
 type2ut(channel_offchain_update_withdraw)         -> withdraw;
 type2ut(channel_offchain_update_create_contract)  -> create_contract;
 type2ut(channel_offchain_update_call_contract)    -> call_contract.
+
+-spec type2swagger_name(update_type()) -> binary().
+type2swagger_name(transfer)        -> <<"OffChainTransfer">>;
+type2swagger_name(deposit)         -> <<"OffChainDeposit">>;
+type2swagger_name(withdraw)        -> <<"OffChainWithdrawal">>;
+type2swagger_name(create_contract) -> <<"OffChainNewContract">>;
+type2swagger_name(call_contract)   -> <<"OffChainCallContract">>.
 
 -spec update_serialization_template(non_neg_integer(), update_type()) -> list().
 update_serialization_template(?UPDATE_VSN, transfer) ->
