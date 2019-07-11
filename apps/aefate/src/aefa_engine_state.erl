@@ -54,6 +54,9 @@
 
 %% More complex stuff
 -export([ check_reentrant_remote/2
+        , collect_gas_stores_on_error/1
+        , collect_gas_stores_on_exit/1
+        , collect_gas_stores_on_revert/1
         , current_bb_instructions/1
         , dup_accumulator/1
         , dup_accumulator/2
@@ -229,6 +232,27 @@ pop_call_stack(#es{call_stack = Stack,
                   , seen_contracts = Seen
                   }}
     end.
+
+-spec collect_gas_stores_on_error(state()) -> integer().
+collect_gas_stores_on_error(#es{call_stack = Stack}) ->
+    collect_gas_stores(Stack, 0).
+
+-spec collect_gas_stores_on_exit(state()) -> integer().
+collect_gas_stores_on_exit(#es{call_stack = Stack}) ->
+    collect_gas_stores(Stack, 0).
+
+-spec collect_gas_stores_on_revert(state()) -> integer().
+collect_gas_stores_on_revert(#es{call_stack = Stack, gas = Gas}) ->
+    collect_gas_stores(Stack, Gas).
+
+collect_gas_stores([{gas_store, Gas}|Left], AccGas) ->
+    collect_gas_stores(Left, AccGas + Gas);
+collect_gas_stores([{return_check, _, _}|Left], AccGas) ->
+    collect_gas_stores(Left, AccGas);
+collect_gas_stores([{_, _, _, _, _, _}|Left], AccGas) ->
+    collect_gas_stores(Left, AccGas);
+collect_gas_stores([], AccGas) ->
+    AccGas.
 
 pop_seen_contracts(Pubkey, #es{seen_contracts = Seen}) ->
     %% NOTE: We might have remote tailcalls leaving entries here,
