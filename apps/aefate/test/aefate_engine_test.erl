@@ -273,9 +273,7 @@ fail() ->
       || {F, A, R} <-
             [ {<<"bad_poly_return">>,       [1, <<"string">>], {error, <<"Type error on return: <<\"string\">> is not of type integer">>}}
             , {<<"bad_return_after_call">>, [false], {error, <<"Type error on return: 3 is not of type boolean">>}}
-            , {<<"bad_tail_call_return">>,  [false], 1}
-                %% TODO: currently type checks on tail calls are not working (no check that inner return type and outer return type match)
-                %% {error, <<"Type error on return: 1 is not of type boolean">>}}
+            , {<<"bad_tail_call_return">>,  [false], {error, <<"Type error on return: 1 is not of type boolean">>}}
             ]
     ].
 
