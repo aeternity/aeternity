@@ -200,6 +200,7 @@ push_call_stack(#es{ current_bb = BB
 %% TODO: Make better types for all these things
 -spec pop_call_stack(state()) ->
                             'empty' |
+                            {'return_check', map(), aeb_fate_data:fate_type_type(), state()} |
                             {'local', _, map(), non_neg_integer(), state()} |
                             {'remote', aeb_fate_data:fate_contract(), _, map(), non_neg_integer(), state()}.
 pop_call_stack(#es{call_stack = Stack,
