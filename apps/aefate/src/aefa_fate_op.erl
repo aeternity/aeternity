@@ -156,35 +156,58 @@ returnr(Arg0, EngineState) ->
 
 call(Arg0, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
-    call_t(Arg0, ES1).
+    {Fun, ES2} = get_op_arg(Arg0, ES1),
+    Signature = aefa_fate:get_function_signature(Fun, ES2),
+    ES3 = aefa_fate:check_signature_and_bind_args(Signature, ES2),
+    {jump, 0, aefa_fate:set_local_function(Fun, ES3)}.
 
 call_t(Arg0, EngineState) ->
     {Fun, ES1} = get_op_arg(Arg0, EngineState),
     Signature = aefa_fate:get_function_signature(Fun, ES1),
     ES2 = aefa_fate:check_signature_and_bind_args(Signature, ES1),
-    {jump, 0, aefa_fate:set_local_function(Fun, ES2)}.
+    Caller = aefa_engine_state:current_function(EngineState),
+    CallerSignature = aefa_fate:get_function_signature(Caller, EngineState),
+    CallerTvars = aefa_engine_state:current_tvars(EngineState),
+    ES3 = aefa_fate:push_return_type_check(Signature, CallerSignature, CallerTvars, ES2),
+    {jump, 0, aefa_fate:set_local_function(Fun, ES3)}.
 
 call_r(Arg0, Arg1, Arg2, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
-    call_tr(Arg0, Arg1, Arg2, ES1).
+    {Contract, ES2} = get_op_arg(Arg0, ES1),
+    {Value, ES3} = get_op_arg(Arg2, ES2),
+    {_Signature, ES4} = remote_call_common(Contract, Arg1, Value, ES3),
+    {jump, 0, ES4}.
 
 call_tr(Arg0, Arg1, Arg2, EngineState) ->
     {Contract, ES1} = get_op_arg(Arg0, EngineState),
     {Value, ES2} = get_op_arg(Arg2, ES1),
-    ES3 = remote_call_common(Contract, Arg1, Value, ES2),
-    {jump, 0, ES3}.
+    {Signature, ES3} = remote_call_common(Contract, Arg1, Value, ES2),
+    Caller = aefa_engine_state:current_function(EngineState),
+    CallerSignature = aefa_fate:get_function_signature(Caller, EngineState),
+    CallerTvars = aefa_engine_state:current_tvars(EngineState),
+    ES4 = aefa_fate:push_return_type_check(Signature, CallerSignature, CallerTvars, ES3),
+    {jump, 0, ES4}.
 
 call_gr(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
-    call_gtr(Arg0, Arg1, Arg2, Arg3, ES1).
+    {Contract, ES2} = get_op_arg(Arg0, ES1),
+    {Value, ES3}   = get_op_arg(Arg2, ES2),
+    {GasCap, ES4}  = get_op_arg(Arg3, ES3),
+    {_Signature, ES5} = remote_call_common(Contract, Arg1, Value, ES4),
+    ES6 = aefa_fate:push_gas_cap(GasCap, ES5),
+    {jump, 0, ES6}.
 
 call_gtr(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {Contract, ES1} = get_op_arg(Arg0, EngineState),
     {Value, ES2}   = get_op_arg(Arg2, ES1),
     {GasCap, ES3}  = get_op_arg(Arg3, ES2),
-    ES4 = remote_call_common(Contract, Arg1, Value, ES3),
-    ES5 = aefa_fate:push_gas_cap(GasCap, ES4),
-    {jump, 0, ES5}.
+    {Signature, ES4} = remote_call_common(Contract, Arg1, Value, ES3),
+    Caller = aefa_engine_state:current_function(EngineState),
+    CallerSignature = aefa_fate:get_function_signature(Caller, EngineState),
+    CallerTvars = aefa_engine_state:current_tvars(EngineState),
+    ES5 = aefa_fate:push_return_type_check(Signature, CallerSignature, CallerTvars, ES4),
+    ES6 = aefa_fate:push_gas_cap(GasCap, ES5),
+    {jump, 0, ES6}.
 
 remote_call_common(Contract, Function, Value, EngineState) ->
     Current   = aefa_engine_state:current_contract(EngineState),
@@ -192,7 +215,7 @@ remote_call_common(Contract, Function, Value, EngineState) ->
     ES2       = aefa_fate:set_remote_function(Contract, Function, ES1),
     Signature = aefa_fate:get_function_signature(Function, ES2),
     ES3       = aefa_fate:check_signature_and_bind_args(Signature, ES2),
-    transfer_value(Current, Contract, Value, ES3).
+    {Signature, transfer_value(Current, Contract, Value, ES3)}.
 
 transfer_value(_From, ?FATE_CONTRACT(_To), Value, ES) when not ?IS_FATE_INTEGER(Value) ->
     aefa_fate:abort({value_does_not_match_type, Value, integer}, ES);

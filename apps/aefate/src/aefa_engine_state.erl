@@ -66,6 +66,7 @@
         , push_arguments/2
         , push_call_stack/1
         , push_gas_cap/2
+        , push_return_type_check/3
         , spend_gas/2
         , update_for_remote_call/3
         ]).
@@ -205,6 +206,8 @@ pop_call_stack(#es{call_stack = Stack,
                    current_contract = Current} = ES) ->
     case Stack of
         [] -> empty;
+        [{return_check, TVars, ReturnType}| Rest] ->
+            {return_check, TVars, ReturnType, ES#es{ call_stack = Rest}};
         [{gas_store, StoredGas}| Rest] ->
             ES1 = ES#es{ gas = StoredGas + gas(ES)
                        , call_stack = Rest
@@ -242,6 +245,13 @@ push_gas_cap(GasCap, #es{ gas = AvailableGas
     ES#es{ call_stack = [{gas_store, AvailableGas - GasCap}|Stack]
          , gas        = GasCap
          }.
+
+-spec push_return_type_check(aeb_fate_data:fate_type_type(), #{}, state()) -> state().
+push_return_type_check(RetType, TVars, #es{ call_stack = Stack} = ES) ->
+    %% Note that the TVars must correspond to the bindings for the
+    %% return type.  Typically, the current_tvars corresponds to the
+    %% next function in the call stack.
+    ES#es{ call_stack = [{return_check, TVars, RetType}|Stack]}.
 
 -spec push_accumulator(aeb_fate_data:fate_type(), state()) -> state().
 push_accumulator(V, #es{ accumulator = ?FATE_VOID

@@ -1,15 +1,23 @@
 contract Remote =
   entrypoint id : ('a) => 'a
   entrypoint missing : ('a) => 'a
-  entrypoint wrong_type : (string) => string
+  entrypoint bogus_string_string_arg : (string) => string
+  entrypoint bogus_string_string_ret : (string) => string
+  entrypoint bogus_id : ('a) => ('a)
 
 contract Main =
 
   entrypoint id(x : int) =
     x
 
-  entrypoint wrong_type(x : int) =
-    x
+  entrypoint bogus_id(x) =
+    (x, x)
+
+  entrypoint bogus_string_string_arg(x : int) =
+    "hello"
+
+  entrypoint bogus_string_string_ret(x : string) =
+    42
 
   entrypoint remote_id(r : Remote, x) =
     r.id(x)
@@ -17,6 +25,14 @@ contract Main =
   entrypoint remote_missing(r : Remote, x) =
     r.missing(x)
 
-  entrypoint remote_wrong_type(r : Remote, x) =
-    r.wrong_type(x)
+  entrypoint remote_wrong_arg(r : Remote, x) =
+    r.bogus_string_string_arg(x)
 
+  entrypoint remote_wrong_ret(r : Remote, x) =
+    (r.bogus_string_string_ret(x), r.bogus_string_string_ret(x))
+
+  entrypoint remote_wrong_ret_tailcall(r : Remote, x) : string =
+    r.bogus_string_string_ret(x)
+
+  entrypoint remote_wrong_ret_tailcall_type_vars(r : Remote, x) =
+    r.bogus_id(x)

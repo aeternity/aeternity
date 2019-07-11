@@ -26,6 +26,7 @@
         , get_function_signature/2
         , push_gas_cap/2
         , push_return_address/1
+        , push_return_type_check/4
         , runtime_exit/2
         , runtime_revert/2
         , set_local_function/2
@@ -334,13 +335,16 @@ get_function_signature(Name, ES) ->
 check_return_type(ES) ->
     Current = aefa_engine_state:current_function(ES),
     TVars   = aefa_engine_state:current_tvars(ES),
-    {_ArgTypes, RetSignature} = get_function_signature(Current, ES),
+    {_ArgTypes, RetType} = get_function_signature(Current, ES),
+    check_return_type(RetType, TVars, ES).
+
+check_return_type(RetType, TVars, ES) ->
     Acc = aefa_engine_state:accumulator(ES),
-    case check_type(RetSignature, Acc) of
-        false -> abort({bad_return_type, Acc, RetSignature}, ES);
+    case check_type(RetType, Acc) of
+        false -> abort({bad_return_type, Acc, RetType}, ES);
         Inst  ->
             case merge_match(Inst, TVars) of
-                false -> abort({bad_return_type, Acc, instantiate_type(TVars, RetSignature)}, ES);
+                false -> abort({bad_return_type, Acc, instantiate_type(TVars, RetType)}, ES);
                 #{}   -> ES
             end
     end.
@@ -538,6 +542,14 @@ push(V, ES) ->
 push_return_address(ES) ->
     aefa_engine_state:push_call_stack(ES).
 
+push_return_type_check({_,_CalleeRetType}, {_,CallerRetType}, CallerTVars, ES) ->
+    %% TODO: Figure out under what exact conditions the type test can be avoided.
+    %%       Obviously, with no type variables and with exactly the same type,
+    %%       the test is superfluous.
+    %% TODO: At this point we can also find out that the tail call will never
+    %%       succeed because the return types cannot match.
+    aefa_engine_state:push_return_type_check(CallerRetType, CallerTVars, ES).
+
 %% Push a gas cap on the call stack to limit the available gas, but keep the
 %% remaining gas around.
 push_gas_cap(Gas, ES) when not ?IS_FATE_INTEGER(Gas) ->
@@ -555,6 +567,9 @@ pop_call_stack(ES) ->
     case aefa_engine_state:pop_call_stack(ES) of
         empty ->
             {stop, ES};
+        {return_check, TVars, RetType, ES1} ->
+            ES2 = check_return_type(RetType, TVars, ES1),
+            pop_call_stack(ES2);
         {local, Function, TVars, BB, ES1} ->
             ES2 = set_local_function(Function, ES1),
             ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),

@@ -5200,9 +5200,18 @@ call_wrong_type(_Cfg) ->
     Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
     Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
     42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {?cid(Contract2), 42}),
-    {error, Error} = ?call(call_contract, Acc1, Contract1, remote_wrong_type, word,
-                           {?cid(Contract2), <<"hello">>}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on call:", _/binary>>, Error),
+    {error, Error1} = ?call(call_contract, Acc1, Contract1, remote_wrong_arg, string,
+                            {?cid(Contract2), <<"hello">>}),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on call:", _/binary>>, Error1),
+    {error, Error2} = ?call(call_contract, Acc1, Contract1, remote_wrong_ret, {tuple, [string]},
+                            {?cid(Contract2), <<"hello">>}),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error2),
+    {error, Error3} = ?call(call_contract, Acc1, Contract1, remote_wrong_ret_tailcall, word,
+                            {?cid(Contract2), <<"hello">>}),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error3),
+    {error, Error4} = ?call(call_contract, Acc1, Contract1, remote_wrong_ret_tailcall_type_vars, word,
+                            {?cid(Contract2), <<"hello">>}),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error4),
     ok.
 
 %%%===================================================================
