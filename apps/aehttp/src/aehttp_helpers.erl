@@ -585,7 +585,8 @@ dry_run_result({Type, Res}) ->
 
 dry_run_result(_Type, {error, Reason}, Res) ->
     Res#{ reason => list_to_binary(lists:concat(["Error: ", Reason])) };
-dry_run_result(contract_call_tx, {ok, CallObj}, Res) ->
+dry_run_result(Type, {ok, CallObj}, Res) when Type =:= contract_call_tx;
+                                              Type =:= contract_create_tx ->
     Res#{ call_obj => aect_call:serialize_for_client(CallObj) };
 dry_run_result(_Type, ok, Res) ->
     Res.
