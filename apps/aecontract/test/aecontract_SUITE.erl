@@ -133,6 +133,7 @@
         , sophia_bytes/1
         , sophia_bytes_to_x/1
         , sophia_address_checks/1
+        , sophia_remote_gas/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -257,7 +258,7 @@ all() ->
 
 groups() ->
     [ {aevm, [], ?ALL_TESTS ++ ?AEVM_SPECIFIC}
-    , {fate, [], ?ALL_TESTS ++ ?FATE_SPECIFIC}
+    , {fate, [], [{group, sophia}]}%%?ALL_TESTS ++ ?FATE_SPECIFIC}
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account
                                  ]}
@@ -297,6 +298,7 @@ groups() ->
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
                                  sophia_remote_identity,
+                                 sophia_remote_gas,
                                  sophia_call_out_of_gas,
                                  sophia_no_reentrant,
                                  sophia_state,
@@ -1455,6 +1457,39 @@ sophia_remote_identity(_Cfg) ->
     RemC2 = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
     77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {?cid(IdC), ?cid(RemC), 77}),
     ok.
+
+sophia_remote_gas(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc  = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    Ctr1 = ?call(create_contract, Acc, remote_gas_test, {0}),
+    Ctr2 = ?call(create_contract, Acc, remote_gas_test, {0}),
+    GivenGas = 1000000,
+    Opts = #{return_gas_used => true, gas => GivenGas},
+    %% Check that we get the same results if we include different gas caps that
+    %% are all enough.
+    {0, Gas1} = ?call(call_contract, Acc, Ctr2, call, word, {?cid(Ctr1), 2, 600000}, Opts),
+    {2, Gas1} = ?call(call_contract, Acc, Ctr2, call, word, {?cid(Ctr1), 3, 500000}, Opts),
+    {3, Gas1} = ?call(call_contract, Acc, Ctr2, call, word, {?cid(Ctr1), 5, 400000}, Opts),
+
+    %% Check that we can limit gas and retain the correct value.
+    {{error, _}, Gas2} = ?call(call_contract, Acc, Ctr2, call, word, {?cid(Ctr1), 471, 6}, Opts),
+    ?assert(Gas2 < Gas1),
+    {{error, _}, Gas3} = ?call(call_contract, Acc, Ctr2, call, word, {?cid(Ctr1), 872, 3}, Opts),
+    ?assertMatch(3, Gas2-Gas3),
+
+    %% Check that the stored state was not affected by the error cases.
+    {5, Gas1} = ?call(call_contract, Acc, Ctr2, call, word, {?cid(Ctr1), 6, 600000}, Opts),
+
+    %% Check that the gas limit is effective also when doing a tail
+    %% call that ends up having the wrong type.
+    %% This only works for FATE. AEVM will treat this as an unknown call and burn all the gas.
+    {{error, _}, Gas4} = ?call(call_contract, Acc, Ctr2, bogus_remote, word, {?cid(Ctr1), 872, 1000}, Opts),
+    ?assertMatchVM({GivenGas, Gas4, false, true},
+                   {GivenGas, Gas4, true, false},
+                   {GivenGas, Gas4, Gas4 < GivenGas, Gas4 =:= GivenGas}),
+
+    ok.
+
 
 sophia_vm_interaction(Cfg) ->
     state(aect_test_utils:new_state()),
