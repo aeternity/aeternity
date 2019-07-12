@@ -205,8 +205,8 @@ call_gtr(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     Caller = aefa_engine_state:current_function(EngineState),
     CallerSignature = aefa_fate:get_function_signature(Caller, EngineState),
     CallerTvars = aefa_engine_state:current_tvars(EngineState),
-    ES5 = aefa_fate:push_return_type_check(Signature, CallerSignature, CallerTvars, ES4),
-    ES6 = aefa_fate:push_gas_cap(GasCap, ES5),
+    ES5 = aefa_fate:push_gas_cap(GasCap, ES4),
+    ES6 = aefa_fate:push_return_type_check(Signature, CallerSignature, CallerTvars, ES5),
     {jump, 0, ES6}.
 
 remote_call_common(Contract, Function, Value, EngineState) ->
