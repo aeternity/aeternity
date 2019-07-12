@@ -1,15 +1,23 @@
 contract Remote =
   function id : ('a) => 'a
   function missing : ('a) => 'a
-  function wrong_type : (string) => string
+  function bogus_string_string_arg : (string) => string
+  function bogus_string_string_ret : (string) => string
+  function bogus_id : ('a) => ('a)
 
 contract Main =
 
   function id(x : int) =
     x
 
-  function wrong_type(x : int) =
-    x
+  function bogus_id(x) =
+    (x, x)
+
+  function bogus_string_string_arg(x : int) =
+    "hello"
+
+  function bogus_string_string_ret(x : string) =
+    42
 
   function remote_id(r : Remote, x) =
     r.id(x)
@@ -17,6 +25,14 @@ contract Main =
   function remote_missing(r : Remote, x) =
     r.missing(x)
 
-  function remote_wrong_type(r : Remote, x) =
-    r.wrong_type(x)
+  function remote_wrong_arg(r : Remote, x) =
+    r.bogus_string_string_arg(x)
 
+  function remote_wrong_ret(r : Remote, x) =
+    (r.bogus_string_string_ret(x), r.bogus_string_string_ret(x))
+
+  function remote_wrong_ret_tailcall(r : Remote, x) : string =
+    r.bogus_string_string_ret(x)
+
+  function remote_wrong_ret_tailcall_type_vars(r : Remote, x) =
+    r.bogus_id(x)

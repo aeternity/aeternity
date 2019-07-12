@@ -54,6 +54,9 @@
 
 %% More complex stuff
 -export([ check_reentrant_remote/2
+        , collect_gas_stores_on_error/1
+        , collect_gas_stores_on_exit/1
+        , collect_gas_stores_on_revert/1
         , current_bb_instructions/1
         , dup_accumulator/1
         , dup_accumulator/2
@@ -66,6 +69,7 @@
         , push_arguments/2
         , push_call_stack/1
         , push_gas_cap/2
+        , push_return_type_check/3
         , spend_gas/2
         , update_for_remote_call/3
         ]).
@@ -198,13 +202,16 @@ push_call_stack(#es{ current_bb = BB
 
 %% TODO: Make better types for all these things
 -spec pop_call_stack(state()) ->
-                            'empty' |
+                            {'empty', state()} |
+                            {'return_check', map(), aeb_fate_data:fate_type_type(), state()} |
                             {'local', _, map(), non_neg_integer(), state()} |
                             {'remote', aeb_fate_data:fate_contract(), _, map(), non_neg_integer(), state()}.
 pop_call_stack(#es{call_stack = Stack,
                    current_contract = Current} = ES) ->
     case Stack of
-        [] -> empty;
+        [] -> {empty, ES};
+        [{return_check, TVars, ReturnType}| Rest] ->
+            {return_check, TVars, ReturnType, ES#es{ call_stack = Rest}};
         [{gas_store, StoredGas}| Rest] ->
             ES1 = ES#es{ gas = StoredGas + gas(ES)
                        , call_stack = Rest
@@ -226,6 +233,27 @@ pop_call_stack(#es{call_stack = Stack,
                   }}
     end.
 
+-spec collect_gas_stores_on_error(state()) -> integer().
+collect_gas_stores_on_error(#es{call_stack = Stack}) ->
+    collect_gas_stores(Stack, 0).
+
+-spec collect_gas_stores_on_exit(state()) -> integer().
+collect_gas_stores_on_exit(#es{call_stack = Stack}) ->
+    collect_gas_stores(Stack, 0).
+
+-spec collect_gas_stores_on_revert(state()) -> integer().
+collect_gas_stores_on_revert(#es{call_stack = Stack, gas = Gas}) ->
+    collect_gas_stores(Stack, Gas).
+
+collect_gas_stores([{gas_store, Gas}|Left], AccGas) ->
+    collect_gas_stores(Left, AccGas + Gas);
+collect_gas_stores([{return_check, _, _}|Left], AccGas) ->
+    collect_gas_stores(Left, AccGas);
+collect_gas_stores([{_, _, _, _, _, _}|Left], AccGas) ->
+    collect_gas_stores(Left, AccGas);
+collect_gas_stores([], AccGas) ->
+    AccGas.
+
 pop_seen_contracts(Pubkey, #es{seen_contracts = Seen}) ->
     %% NOTE: We might have remote tailcalls leaving entries here,
     %% but not in the actual call stack. Drop until we reach the
@@ -242,6 +270,13 @@ push_gas_cap(GasCap, #es{ gas = AvailableGas
     ES#es{ call_stack = [{gas_store, AvailableGas - GasCap}|Stack]
          , gas        = GasCap
          }.
+
+-spec push_return_type_check(aeb_fate_data:fate_type_type(), #{}, state()) -> state().
+push_return_type_check(RetType, TVars, #es{ call_stack = Stack} = ES) ->
+    %% Note that the TVars must correspond to the bindings for the
+    %% return type.  Typically, the current_tvars corresponds to the
+    %% next function in the call stack.
+    ES#es{ call_stack = [{return_check, TVars, RetType}|Stack]}.
 
 -spec push_accumulator(aeb_fate_data:fate_type(), state()) -> state().
 push_accumulator(V, #es{ accumulator = ?FATE_VOID

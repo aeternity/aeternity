@@ -1,10 +1,16 @@
 contract Remote1 =
   function set : (int) => int
+  function bogus_return : (int) => string
 
 contract RemoteCall =
     record state = { i : int }
 
     function init(x) = { i = x }
+
+    function bogus_return(x) = x
+
+    function bogus_remote(r : Remote1, x : int, g : int) =
+       r.bogus_return(gas = g, x)
 
     stateful function set( x : int) : int =
         let old = state.i

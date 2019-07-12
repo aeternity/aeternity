@@ -26,6 +26,7 @@
         , get_function_signature/2
         , push_gas_cap/2
         , push_return_address/1
+        , push_return_type_check/4
         , runtime_exit/2
         , runtime_revert/2
         , set_local_function/2
@@ -144,20 +145,19 @@ is_valid_calldata(CallData, Name) ->
 -spec runtime_error(Format :: string(), [term()],
                     aefa_engine_state:state()) -> no_return().
 runtime_error(S, A, ES) ->
-    Gas = collect_gas_stores(aefa_engine_state:call_stack(ES), 0),
+    Gas = aefa_engine_state:collect_gas_stores_on_error(ES),
     ES1 = aefa_engine_state:set_gas(Gas, ES),
     throw({?MODULE, iolist_to_binary(io_lib:format(S, A)), ES1}).
 
 -spec runtime_exit(string(), aefa_engine_state:state()) -> no_return().
 runtime_exit(Value, ES) ->
-    Gas = collect_gas_stores(aefa_engine_state:call_stack(ES), 0),
+    Gas = aefa_engine_state:collect_gas_stores_on_exit(ES),
     ES1 = aefa_engine_state:set_gas(Gas, ES),
     throw({?MODULE, Value, ES1}).
 
 -spec runtime_revert(aeb_fate_data:fate_string(), aefa_engine_state:state()) -> no_return().
 runtime_revert(Value, ES) when ?IS_FATE_STRING(Value) ->
-    GasIn = aefa_engine_state:gas(ES),
-    Gas = collect_gas_stores(aefa_engine_state:call_stack(ES), GasIn),
+    Gas = aefa_engine_state:collect_gas_stores_on_revert(ES),
     ES1 = aefa_engine_state:set_gas(Gas, ES),
     throw({?MODULE, revert, Value, ES1}).
 
@@ -334,13 +334,16 @@ get_function_signature(Name, ES) ->
 check_return_type(ES) ->
     Current = aefa_engine_state:current_function(ES),
     TVars   = aefa_engine_state:current_tvars(ES),
-    {_ArgTypes, RetSignature} = get_function_signature(Current, ES),
+    {_ArgTypes, RetType} = get_function_signature(Current, ES),
+    check_return_type(RetType, TVars, ES).
+
+check_return_type(RetType, TVars, ES) ->
     Acc = aefa_engine_state:accumulator(ES),
-    case check_type(RetSignature, Acc) of
-        false -> abort({bad_return_type, Acc, RetSignature}, ES);
+    case check_type(RetType, Acc) of
+        false -> abort({bad_return_type, Acc, RetType}, ES);
         Inst  ->
             case merge_match(Inst, TVars) of
-                false -> abort({bad_return_type, Acc, instantiate_type(TVars, RetSignature)}, ES);
+                false -> abort({bad_return_type, Acc, instantiate_type(TVars, RetType)}, ES);
                 #{}   -> ES
             end
     end.
@@ -538,6 +541,14 @@ push(V, ES) ->
 push_return_address(ES) ->
     aefa_engine_state:push_call_stack(ES).
 
+push_return_type_check({_,_CalleeRetType}, {_,CallerRetType}, CallerTVars, ES) ->
+    %% TODO: Figure out under what exact conditions the type test can be avoided.
+    %%       Obviously, with no type variables and with exactly the same type,
+    %%       the test is superfluous.
+    %% TODO: At this point we can also find out that the tail call will never
+    %%       succeed because the return types cannot match.
+    aefa_engine_state:push_return_type_check(CallerRetType, CallerTVars, ES).
+
 %% Push a gas cap on the call stack to limit the available gas, but keep the
 %% remaining gas around.
 push_gas_cap(Gas, ES) when not ?IS_FATE_INTEGER(Gas) ->
@@ -553,8 +564,11 @@ push_gas_cap(Gas, ES) when ?IS_FATE_INTEGER(Gas) ->
 
 pop_call_stack(ES) ->
     case aefa_engine_state:pop_call_stack(ES) of
-        empty ->
-            {stop, ES};
+        {empty, ES1} ->
+            {stop, ES1};
+        {return_check, TVars, RetType, ES1} ->
+            ES2 = check_return_type(RetType, TVars, ES1),
+            pop_call_stack(ES2);
         {local, Function, TVars, BB, ES1} ->
             ES2 = set_local_function(Function, ES1),
             ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
@@ -564,14 +578,6 @@ pop_call_stack(ES) ->
             ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
             {jump, BB, ES3}
     end.
-
-collect_gas_stores([{gas_store, Gas}|Left], AccGas) ->
-    collect_gas_stores(Left, AccGas + Gas);
-collect_gas_stores([{_, _, _, _, _, _}|Left], AccGas) ->
-    collect_gas_stores(Left, AccGas);
-collect_gas_stores([], AccGas) ->
-    AccGas.
-
 
 %% ------------------------------------------------------
 %% Memory
