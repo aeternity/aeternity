@@ -209,7 +209,7 @@ push_call_stack(#es{ current_bb = BB
 pop_call_stack(#es{call_stack = Stack,
                    current_contract = Current} = ES) ->
     case Stack of
-        [] -> empty;
+        [] -> {empty, ES};
         [{return_check, TVars, ReturnType}| Rest] ->
             {return_check, TVars, ReturnType, ES#es{ call_stack = Rest}};
         [{gas_store, StoredGas}| Rest] ->

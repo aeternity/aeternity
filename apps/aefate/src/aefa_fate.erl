@@ -564,8 +564,8 @@ push_gas_cap(Gas, ES) when ?IS_FATE_INTEGER(Gas) ->
 
 pop_call_stack(ES) ->
     case aefa_engine_state:pop_call_stack(ES) of
-        empty ->
-            {stop, ES};
+        {empty, ES1} ->
+            {stop, ES1};
         {return_check, TVars, RetType, ES1} ->
             ES2 = check_return_type(RetType, TVars, ES1),
             pop_call_stack(ES2);
