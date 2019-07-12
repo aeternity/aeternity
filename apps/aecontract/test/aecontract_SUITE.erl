@@ -258,7 +258,7 @@ all() ->
 
 groups() ->
     [ {aevm, [], ?ALL_TESTS ++ ?AEVM_SPECIFIC}
-    , {fate, [], [{group, sophia}]}%%?ALL_TESTS ++ ?FATE_SPECIFIC}
+    , {fate, [], ?ALL_TESTS ++ ?FATE_SPECIFIC}
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account
                                  ]}
