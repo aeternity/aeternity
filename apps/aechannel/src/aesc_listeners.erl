@@ -22,13 +22,15 @@
         , record_fields/1]).
 
 -record(st, {
-              ports = new_tab(aesc_listeners_ports)
+              responders = new_tab(aesc_listeners_responders)
+            , ports = new_tab(aesc_listeners_ports)
             , socks = new_tab(aesc_listener_socks)
             , refs  = new_tab(aesc_listeners_refs)
             }).
--record(port, {key, responder, mref, lsock}).
+-record(resp, {key}).
+-record(port, {key, mref, lsock}).
 -record(sock, {key, port}).
--record(ref , {mref, port, lsock, pid}).
+-record(ref , {mref, port, lsock, responder, pid}).
 
 -define(SERVER, ?MODULE).
 
@@ -67,33 +69,37 @@ init([]) ->
     {ok, #st{}}.
 
 
-handle_call({listen, Port, Responder, Opts}, {Pid,_Ref}, #st{ ports = Ports
+handle_call({listen, Port, Responder, Opts}, {Pid,_Ref}, #st{ responders = Resps
+                                                            , ports = Ports
                                                             , socks = Socks
                                                             , refs = Refs} = St) ->
     case db_lookup(Ports, {Port,0}) of
-        [#port{responder = Responder, lsock = LSock}] ->
+        [#port{lsock = LSock}] ->
             MRef = erlang:monitor(process, Pid),
-            Ports1 = db_insert(Ports, #port{key = {Port, Pid},
-                                            responder = Responder, mref = MRef}),
+            Ports1 = db_insert(Ports, #port{key = {Port, Pid}, mref = MRef}),
             Refs1 = db_insert(Refs, #ref{mref = MRef, port = Port,
+                                         responder = Responder,
                                          lsock = LSock, pid = Pid}),
-            {reply, {ok, LSock}, St#st{ ports = Ports1
+            Resps1 = db_insert(Resps, #resp{key = {Port, Responder, Pid}}),
+            {reply, {ok, LSock}, St#st{ responders = Resps1
+                                      , ports = Ports1
                                       , refs  = Refs1 }};
-        [#port{responder = OtherResponder}] ->
-            {reply, {error, {listen_port_busy, OtherResponder}}, St};
         [] ->
             try gen_tcp:listen(Port, Opts) of
                 {ok, LSock} ->
                     MRef = erlang:monitor(process, Pid),
                     Ports1 = db_insert(
-                               Ports, [#port{key = {Port,0},
-                                             responder = Responder, lsock = LSock},
-                                       #port{key = {Port,Pid}, responder = Responder,
-                                             lsock = LSock, mref = MRef}]),
+                               Ports, [#port{key = {Port,0}, lsock = LSock},
+                                       #port{key = {Port,Pid},
+                                             lsock = LSock,
+                                             mref = MRef}]),
                     Socks1 = db_insert(Socks, #sock{key = LSock, port = Port}),
                     Refs1 = db_insert(Refs, #ref{mref = MRef, port = Port,
+                                                 responder = Responder,
                                                  lsock = LSock, pid = Pid}),
-                    {reply, {ok, LSock}, St#st{ ports = Ports1
+                    Resps1 = db_insert(Resps, #resp{key = {Port, Responder, Pid}}),
+                    {reply, {ok, LSock}, St#st{ responders = Resps1
+                                              , ports = Ports1
                                               , socks = Socks1
                                               , refs  = Refs1 }};
                 {error, _} = Error ->
@@ -103,18 +109,23 @@ handle_call({listen, Port, Responder, Opts}, {Pid,_Ref}, #st{ ports = Ports
                     {reply, {exception, Reason}, St}
             end
     end;
-handle_call({close, LSock}, {Pid,_Ref}, #st{ socks = Socks
+handle_call({close, LSock}, {Pid,_Ref}, #st{ responders = Resps
+                                           , socks = Socks
                                            , ports = Ports
                                            , refs  = Refs} = St) ->
     case db_lookup(Socks, LSock) of
         [#sock{port = Port}] ->
             case db_lookup(Ports, {Port, Pid}) of
                 [#port{mref = MRef}] ->
+                    [#ref{ responder = Responder }]
+                        = db_lookup(Refs, MRef),
                     erlang:demonitor(MRef),
                     Refs1 = db_delete(Refs, MRef),
                     Ports1 = db_delete(Ports, {Port, Pid}),
+                    Resps1 = db_delete(Resps, {Port, Responder, Pid}),
                     {reply, ok, maybe_close_lsock(
-                                  Port, LSock, St#st{ refs  = Refs1
+                                  Port, LSock, St#st{ responders = Resps1
+                                                    , refs  = Refs1
                                                     , ports = Ports1 })};
                 [] ->
                     {reply, {exception, not_found}, St}
@@ -136,13 +147,16 @@ handle_call(_Req, _From, St) ->
 handle_cast(_Msg, St) ->
     {noreply, St}.
 
-handle_info({'DOWN', MRef, process, Pid, _Reason}, #st{ refs = Refs
+handle_info({'DOWN', MRef, process, Pid, _Reason}, #st{ responders = Resps
+                                                      , refs = Refs
                                                       , ports = Ports} = St) ->
     case db_lookup(Refs, MRef) of
-        [#ref{port = Port, lsock = LSock, pid = Pid}] ->
+        [#ref{port = Port, lsock = LSock, responder = Responder, pid = Pid}] ->
             Refs1  = db_delete(Refs, MRef),
             Ports1 = db_delete(Ports, {Port,Pid}),
-            {noreply, maybe_close_lsock(Port, LSock, St#st{ refs  = Refs1
+            Resps1 = db_delete(Resps, {Port, Responder, Pid}),
+            {noreply, maybe_close_lsock(Port, LSock, St#st{ responders = Resps1
+                                                          , refs  = Refs1
                                                           , ports = Ports1 })};
         [] ->
             {noreply, St}
@@ -177,63 +191,41 @@ maybe_close_lsock(Port, LSock, #st{ ports = Ports, socks = Socks } = St) ->
                  , socks = Socks1 }
     end.
 
-
 new_tab(Name) ->
     db_new(Name, [{keypos, 2}, ordered_set, public, named_table]).
 
 db_new(Name, Opts) ->
     {_, P} = lists:keyfind(keypos, 1, Opts),
-    #{name => Name, keypos => P, db => []}.
+    #{name => Name, keypos => P, db => ets:new(Name, Opts)}.
 
-db_lookup(#{db := L, keypos := P}, Key) ->
-    case lists:keyfind(Key, P, L) of
-        false ->
-            [];
-        Other ->
-            [Other]
-    end.
+db_lookup(#{db := Tab, keypos := _P}, Key) ->
+    ets:lookup(Tab, Key).
 
-db_delete(#{db := L, keypos := P} = Db, Key) ->
-    Db#{db => lists:keydelete(Key, P, L)}.
+db_delete(#{db := Tab, keypos := P} = Db, Key) ->
+    ets:delete(Tab, Key),
+    Db.
 
-db_insert(#{keypos := P, db := L} = Db, Objs) when is_list(Objs) ->
-    Db#{db => lists:foldl(fun(O, Lx) ->
-                                  lists:keystore(element(P, O), P, Lx, O)
-                          end, L, Objs)};
-db_insert(#{db := L, keypos := P} = Db, Obj) ->
-    K = element(P, Obj),
-    Db#{db => lists:keystore(K, P, L, Obj)}.
+db_insert(#{keypos := _P, db := Tab} = Db, Objs) when is_list(Objs) ->
+    ets:insert(Tab, Objs),
+    Db;
+db_insert(#{db := Tab, keypos := _P} = Db, Obj) ->
+    ets:insert(Tab, Obj),
+    Db.
 
-db_next(#{db := L, keypos := P}, Key) ->
-    db_next_(L, P, Key).
+db_next(#{db := Tab, keypos := P}, Key) ->
+    ets:next(Tab, Key).
 
-db_next_([H|T], P, K) when element(P, H) =:= K ->
-    case T of
-        [] -> '$end_of_table';
-        [Next|_] -> element(P, Next)
-    end;
-db_next_([_|T], P, K) ->
-    db_next_(T, P, K);
-db_next_([], _, _) ->
-    '$end_of_table'.
+db_select(#{db := Tab}, Pat) ->
+    ets:select(Tab, Pat).
 
-list_pids(Ports, P) ->
-    list_pids_(db_next(Ports, {P, 0}), P, Ports).
-
-list_pids_({P, Pid} = K, P, Ports) ->
-    [Pid | list_pids_(db_next(Ports, K), P, Ports)];
-list_pids_(_, _, _) ->
-    [].
+list_pids(#{db := PortsTab}, P) ->
+    ets:select(PortsTab, [{ #port{ key = {P,'$1'}, _ = '_'}, [], ['$1'] }]).
 
 get_lsock_info(pids, #{port := Port} = I, #st{ ports = Ports }) ->
     I#{pids => list_pids(Ports, Port)};
-get_lsock_info(responder, #{port := Port} = I, #st{ ports = Ports }) ->
-    case db_lookup(Ports, {Port, 0}) of
-        [#port{responder = R}] ->
-            I#{responder => R};
-        [] ->
-            I
-    end;
+get_lsock_info(responders, #{port := Port} = I, #st{ responders = Resps }) ->
+    lists:usort(
+      db_select(Resps, [{ #resp{ key = { Port, '$1', '_'}, _ = '_' }, [], ['$1'] }]));
 get_lsock_info(Items, I, St) when is_list(Items) ->
     lists:foldl(
       fun(Item, Acc) ->
