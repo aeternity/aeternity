@@ -1277,7 +1277,7 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
                     {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
                     NewContractOpts =
                         #{deposit     => Deposit,
-                          contract    => EncodedOnChainPubkey,
+                          contract_id => EncodedOnChainPubkey,
                           call_data   => EncodedInitData},
                     % incorrect call
                     ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
@@ -1285,7 +1285,7 @@ sc_ws_contract_generic_(Origin, ContractSource, Fun, Config, Opts) ->
                     {ok, #{<<"reason">> := <<"not_a_number">>}} =
                         wait_for_channel_event(OwnerConnPid, error, Config),
                     ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
-                        NewContractOpts#{contract => <<"ABCDEF">>}, Config),
+                        NewContractOpts#{contract_id => <<"ABCDEF">>}, Config),
                     {ok, #{<<"reason">> := <<"broken_encoding: contracts">>}} =
                         wait_for_channel_event(OwnerConnPid, error, Config),
                     ws_send_tagged(OwnerConnPid, <<"channels.update.new_contract_from_onchain">>,
@@ -2107,7 +2107,7 @@ call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
                 UpdateVolley, Amount, Config) ->
     {ok, EncodedMainData} = encode_call_data(Contract, Function, Argument),
     CallOpts =
-        #{contract    => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
+        #{contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
           abi_version => aect_test_utils:abi_version(),
           amount      => Amount,
           call_data   => EncodedMainData},
@@ -2125,7 +2125,7 @@ call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
     {ok, #{<<"reason">> := <<"broken_encoding: bytearray">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
-        CallOpts#{contract => <<"ABCDEFG">>}, Config),
+        CallOpts#{contract_id => <<"ABCDEFG">>}, Config),
     {ok, #{<<"reason">> := <<"broken_encoding: contracts">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     % correct call
@@ -2140,7 +2140,7 @@ dry_call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
     {ok, EncodedMainData} = encode_call_data(Contract, Function, Argument),
     ok = ?WS:register_test_for_channel_event(SenderConnPid, dry_run),
     CallOpts =
-        #{contract    => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
+        #{contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
           abi_version => aect_test_utils:abi_version(),
           amount      => Amount,
           call_data   => EncodedMainData},
@@ -2160,7 +2160,7 @@ dry_call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
     {ok, #{<<"reason">> := <<"broken_encoding: bytearray">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     ws_send_tagged(SenderConnPid, <<"channels.dry_run.call_contract">>,
-                   CallOpts#{contract => <<"ABCDEFG">>}, Config),
+                   CallOpts#{contract_id => <<"ABCDEFG">>}, Config),
     {ok, #{<<"reason">> := <<"broken_encoding: contracts">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     {ok, <<"call_contract">>, CallRes} = wait_for_channel_event(SenderConnPid, dry_run, Config),
@@ -2778,11 +2778,11 @@ ws_get_decoded_result(ConnPid1, ConnPid2, Contract, Function, [Update], Unsigned
             {ok, #{<<"reason">> := <<"not_a_number">>}} =
                 wait_for_channel_event(ConnPid, error, Config),
             ws_send_tagged(ConnPid, <<"channels.get.contract_call">>,
-                GetParams#{caller => <<"ABCEDFG">>}, Config),
+                GetParams#{caller_id => <<"ABCEDFG">>}, Config),
             {ok, #{<<"reason">> := <<"broken_encoding: accounts">>}} =
                 wait_for_channel_event(ConnPid, error, Config),
             ws_send_tagged(ConnPid, <<"channels.get.contract_call">>,
-                GetParams#{contract => <<"ABCDEFG">>}, Config),
+                GetParams#{contract_id => <<"ABCDEFG">>}, Config),
             {ok, #{<<"reason">> := <<"broken_encoding: contracts">>}} =
                 wait_for_channel_event(ConnPid, error, Config),
             ws_send_tagged(ConnPid, <<"channels.get.contract_call">>,
@@ -2814,9 +2814,9 @@ ws_get_call_params(Update, UnsignedTx) ->
     ContractPubKey = extract_contract_pubkey(Update),
     CallerId = aeser_api_encoder:encode(account_pubkey, CallerPubKey),
     ContractId = aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
-    #{contract   => ContractId,
-      caller     => CallerId,
-      round      => CallRound}.
+    #{contract_id => ContractId,
+      caller_id   => CallerId,
+      round       => CallRound}.
 
 %% wait_for_channel_msg(ConnPid, Action, Config) ->
 %%     wait_for_channel_msg_(ConnPid, Action, sc_ws_protocol(Config)).
@@ -3006,7 +3006,7 @@ sc_ws_broken_call_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
     {ok, EncodedCalcCallData} = encode_call_data(safe_math, "add", ["1", "2"]),
     % call the existing contract with the other contract's call data
     ws_send_tagged(OwnerConnPid, <<"channels.update.call_contract">>,
-                   #{contract    => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
+                   #{contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
                      abi_version => aect_test_utils:abi_version(),
                      amount      => 1,
                      call_data   => EncodedCalcCallData}, Config),
@@ -3025,12 +3025,12 @@ extract_caller(#{<<"op">> := <<"OffChainNewContract">>,
     {ok, Owner} = aeser_api_encoder:safe_decode(account_pubkey, EncOwnerId),
     Owner;
 extract_caller(#{<<"op">> := <<"OffChainCallContract">>,
-                 <<"caller">> := EncCallerId}) ->
+                 <<"caller_id">> := EncCallerId}) ->
     {ok, Caller} = aeser_api_encoder:safe_decode(account_pubkey, EncCallerId),
     Caller.
 
 extract_contract_pubkey(#{<<"op">> := <<"OffChainCallContract">>,
-                          <<"contract">> := EncContractId}) ->
+                          <<"contract_id">> := EncContractId}) ->
     {ok, ContractPubKey} = aeser_api_encoder:safe_decode(contract_pubkey, EncContractId),
     ContractPubKey.
 
