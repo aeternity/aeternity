@@ -373,6 +373,7 @@ channel_sign_tx(Pubkey, ConnPid, Privkey, Method, Config) ->
             generalized ->
                 MetaTx = simple_auth_meta(Pubkey, ?SIMPLE_AUTH_GA_SECRET,
                                           "1", % make this incremental
+                                          Tx,
                                           SignedTx0),
                 MetaTx
         end,
@@ -3130,11 +3131,16 @@ to_binary(I) when is_integer(I) ->
 to_binary([_|_] = L) ->
     iolist_to_binary([to_binary(X) || X <- L]).
 
-simple_auth_meta(Owner, Secret, GANonce, InnerTx) ->
-    AuthData = simple_auth(Secret, GANonce),
+simple_auth_meta(Owner, Secret, GANonce, InnerMostTx, InnerTx) ->
+    AuthTx =
+        case aetx:specialize_type(InnerMostTx) of
+            {channel_offchain_tx, _} -> InnerMostTx;
+            _ -> InnerTx
+        end,
+    AuthData = simple_auth(Secret, GANonce, AuthTx),
     meta(Owner, AuthData, InnerTx).
 
-simple_auth(Secret, Nonce) ->
+simple_auth(Secret, Nonce, _Tx) ->
     aega_test_utils:make_calldata("simple_auth", "authorize", [Secret, Nonce]).
 
 meta(Owner, AuthData, InnerTx) ->

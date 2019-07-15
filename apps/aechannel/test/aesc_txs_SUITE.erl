@@ -4714,6 +4714,7 @@ close_solo_(#{channel_pubkey    := ChannelPubKey,
     TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelPubKey, FromPubKey, Payload,
                                                 PoI, Spec, S),
     {ok, Tx} = aesc_close_solo_tx:new(TxSpec),
+    ?TEST_LOG("Close solo transaction ~p", [Tx]),
     SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
     apply_on_trees_(Props, SignedTx, S, Expected).
 
@@ -4754,6 +4755,7 @@ slash_(#{channel_pubkey    := ChannelPubKey,
     TxSpec = aesc_test_utils:slash_tx_spec(ChannelPubKey, FromPubKey, Payload,
                                             PoI, Spec, S),
     {ok, Tx} = aesc_slash_tx:new(TxSpec),
+    ?TEST_LOG("Slash transaction ~p", [Tx]),
     SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
     apply_on_trees_(Props, SignedTx, S, Expected).
 

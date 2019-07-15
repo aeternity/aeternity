@@ -515,13 +515,24 @@ verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
 
 verify_signature_onchain(MetaTx, Trees, Env) ->
     SignerPubkey = aega_meta_tx:ga_pubkey(MetaTx),
+    AbiVersion = aega_meta_tx:abi_version(MetaTx),
     AccountsTrees = aec_trees:accounts(Trees),
     Account = aec_accounts_trees:get(SignerPubkey, AccountsTrees),
     case aec_accounts:type(Account) of
         generalized ->
-            AuthFunHash = aec_accounts:ga_auth_fun(Account),
+            AuthFunHash0 = aec_accounts:ga_auth_fun(Account),
+            {AuthFunHash, GetFunHashFun} =
+                case AbiVersion of
+                    ?ABI_FATE_SOPHIA_1 ->
+                        <<AuthFunHash1:4/binary, _:28/binary>> = AuthFunHash0,
+                        {AuthFunHash1,
+                         fun aeb_fate_abi:get_function_hash_from_calldata/1};
+                    ?ABI_AEVM_SOPHIA_1 ->
+                        {AuthFunHash0,
+                         fun aeb_aevm_abi:get_function_hash_from_calldata/1}
+                end,
             AuthContractId = aec_accounts:ga_contract(Account),
-            case aeb_aevm_abi:get_function_hash_from_calldata(aega_meta_tx:auth_data(MetaTx)) of
+            case GetFunHashFun(aega_meta_tx:auth_data(MetaTx)) of
                 {ok, AuthFunHash} ->
                     verify_signature_onchain_(aeser_id:create(account,
                                                               SignerPubkey),
