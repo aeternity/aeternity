@@ -214,7 +214,7 @@ sc_wait_and_sign(Conn, Privkey, Tag) ->
     SignedTx = aec_test_utils:co_sign_tx(SignedTx0, Privkey),
     BinSignedTx = aetx_sign:serialize_to_binary(SignedTx),
     EncSignedTx = aeser_api_encoder:encode(transaction, BinSignedTx),
-    ws_send(Conn, Tag, #{tx => EncSignedTx}),
+    ws_send(Conn, Tag, #{signed_tx => EncSignedTx}),
     aetx_sign:tx(SignedTx).
 
 sc_wait_channel_changed(InitiatorConn, ResponderConn, Type) ->
