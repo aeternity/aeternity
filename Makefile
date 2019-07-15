@@ -294,7 +294,7 @@ smoke-test: docker smoke-test-run
 
 smoke-test-run: KIND=system_test
 smoke-test-run: internal-build
-	@$(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_channels_SUITE
+	@$(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
 
 system-smoke-test-deps:
 	$(MAKE) docker

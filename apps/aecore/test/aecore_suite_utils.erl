@@ -1132,8 +1132,7 @@ meta_tx(Owner, AuthOpts, AuthData, InnerTx0) ->
         catch _:_ ->
             aetx_sign:new(InnerTx0, [])
         end,
-    Options1 = maps:merge(#{%fee => 50000 * aec_test_utils:min_gas_price(),
-                            auth_data => AuthData, tx => InnerSTx}, AuthOpts),
+    Options1 = maps:merge(#{auth_data => AuthData, tx => InnerSTx}, AuthOpts),
     MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),
     aetx_sign:new(MetaTx, []).
 

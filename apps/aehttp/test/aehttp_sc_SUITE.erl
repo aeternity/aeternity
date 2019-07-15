@@ -3135,7 +3135,7 @@ simple_auth_meta(Owner, Secret, GANonce, InnerMostTx, InnerTx) ->
     AuthTx =
         case aetx:specialize_type(InnerMostTx) of
             {channel_offchain_tx, _} -> InnerMostTx;
-            _ -> InnerTx
+            {_, _} -> InnerTx
         end,
     AuthData = simple_auth(Secret, GANonce, AuthTx),
     meta(Owner, AuthData, InnerTx).

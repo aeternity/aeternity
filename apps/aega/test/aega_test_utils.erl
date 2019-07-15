@@ -184,9 +184,9 @@ make_calldata(Code, Fun, Args) ->
     {ok, Calldata} = aeso_compiler:create_calldata(Code, Fun, Args, [{backend, Backend}]),
     Calldata.
 
-get_contract(Name0) ->
+get_contract(Name) ->
     SophiaVersion = aega_SUITE:sophia_version(),
-    get_contract(SophiaVersion, Name0).
+    get_contract(SophiaVersion, Name).
 
 get_contract(SophiaVersion, Name0) ->
     Name = filename:join("contracts", Name0),
