@@ -1702,13 +1702,13 @@ responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
     {ok, ChOpen} = receive_from_fsm(info, R, channel_open, ?TIMEOUT, Debug),
     ct:log("Got ChOpen: ~p~nSpec = ~p", [ChOpen, Spec]),
     #{data := #{temporary_channel_id := TmpChanId}} = ChOpen,
-    gproc:reg({n,l,{?MODULE,TmpChanId,responder}}, #{ r => R#{ proxy => self()
-                                                             , parent => Parent }}),
+    R1 = R#{ proxy => self(), parent => Parent },
+    gproc:reg({n,l,{?MODULE,TmpChanId,responder}}, #{ r => R1 }),
     {_IPid, #{ i := I1
             , channel_accept := ChAccept }}
         = gproc:await({n,l,{?MODULE,TmpChanId,initiator}}, ?TIMEOUT),
     Parent ! {channel_up, self(), #{ i => I1#{parent => Parent}
-                                   , r => R#{ proxy => self() }
+                                   , r => R1
                                    , channel_accept => ChAccept
                                    , channel_open   => ChOpen }},
     fsm_relay(R, Parent, Debug).
@@ -1718,13 +1718,14 @@ initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
     {ok, ChAccept} = receive_from_fsm(info, I, channel_accept, ?TIMEOUT, Debug),
     ct:log("Got ChAccept: ~p~nSpec = ~p", [ChAccept, Spec]),
     #{data := #{temporary_channel_id := TmpChanId}} = ChAccept,
-    gproc:reg({n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I#{ proxy => self() }
+    I1 = I#{ proxy => self() },
+    gproc:reg({n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I1
                                                     , channel_accept => ChAccept}),
     {_RPid, #{ r := #{parent := NewParent}}}
         = gproc:await({n,l,{?MODULE,TmpChanId,responder}}, ?TIMEOUT),
     unlink(Parent),
     link(NewParent),
-    fsm_relay(I#{parent => NewParent}, NewParent, Debug).
+    fsm_relay(I1#{parent => NewParent}, NewParent, Debug).
 
 fsm_relay(Map, Parent, Debug) ->
     log(Debug, "fsm_relay(~p, ~p, Debug)", [Map, Parent]),
@@ -1851,7 +1852,7 @@ await_signing_request(Tag, #{fsm := Fsm, pub := Pub} = Signer,
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
                               info := #{signed_tx := SignedTx0,
                                         updates   := Updates}} = Msg} ->
-            log(Debug, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
+            log(Debug, "await_signing(~p, ~p, ~p) <- ~p", [Tag, Pub, Fsm, Msg]),
             {SignedTx, Signer1} =
                 case SignatureType of
                     according_account -> co_sign_tx(Signer, SignedTx0, Cfg);
