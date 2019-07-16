@@ -1857,7 +1857,7 @@ handle_common_event_(cast, {?INBAND_MSG, Msg}, _St, _, D) ->
                    report(message, Msg, D1),
                    D1;
                {error, _} = Err ->
-                   lager:error("Error in inband_msg: ~p", [Err]),
+                   lager:warning("Error in inband_msg: ~p", [Err]),
                    D
            end,
     keep_state(NewD);
@@ -1917,7 +1917,7 @@ handle_common_event_(info, Msg, _St, _P, D) ->
 handle_common_event_(_Type, _Msg, _St, P, D) when P == postpone ->
     postpone(D);
 handle_common_event_(Type, Msg, St, discard, D) ->
-    lager:error("Discarding ~p in '~p' state: ~p", [Type, St, Msg]),
+    lager:warning("Discarding ~p in '~p' state: ~p", [Type, St, Msg]),
     keep_state(log(drop, msg_type(Msg), Msg, D));
 handle_common_event_(Type, Msg, St, Err, D) when Err==error;
                                                  Err==error_all ->
