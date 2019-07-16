@@ -22,6 +22,7 @@
 %% test case exports
 -export([
           create_channel/1
+        , multiple_responder_keys_per_port/1
         , channel_insufficent_tokens/1
         , inband_msgs/1
         , upd_transfer/1
@@ -121,6 +122,7 @@ groups() ->
      {transactions, [sequence],
       [
         create_channel
+      , multiple_responder_keys_per_port
       , channel_insufficent_tokens
       , inband_msgs
       , upd_transfer
@@ -300,8 +302,10 @@ init_per_group_(Config) ->
             try begin
                     Initiator = prep_initiator(dev1),
                     Responder = prep_responder(Initiator, dev1),
+                    Responder2 = prep_responder(Initiator, dev1),
                     [{initiator, Initiator},
                     {responder, Responder},
+                    {responder2, Responder2},
                     {port, ?PORT},
                     {initiator_amount, 10000000 * aec_test_utils:min_gas_price()},
                     {responder_amount, 10000000 * aec_test_utils:min_gas_price()}
@@ -355,6 +359,29 @@ stop_node(N, Config) ->
 
 create_channel(Cfg) ->
     with_trace(fun t_create_channel_/1, Cfg, "create_channel").
+
+multiple_responder_keys_per_port(Cfg) ->
+    Slogan = ?SLOGAN,
+    Debug = get_debug(Cfg),
+    {_, Responder2} = lists:keyfind(responder2, 1, Cfg),
+    Cfg2 = lists:keyreplace(responder, 1, Cfg, {responder, Responder2}),
+    Me = self(),
+    Initiator = maps:get(pub, ?config(initiator, Cfg)),
+    {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
+    Cs = [create_multi_channel([{port, ?PORT},
+                                {ack_to, Me},
+                                {nonce, Nonce + N - 1},
+                                {minimum_depth, 0},
+                                {slogan, {Slogan, N}} | CfgX], #{mine_blocks => {ask, Me},
+                                                                 debug => Debug})
+          || {N, CfgX} <- [{1, Cfg}, {2, Cfg2}]],
+    ct:log("channels spawned", []),
+    CsAcks = collect_acks_w_payload(Cs, mine_blocks, 2),
+    ct:log("mining requests collected: ~p", [CsAcks]),
+    Cs = [C || {C, _} <- CsAcks],
+    %% At this point, we know the pairing worked
+    [P ! die || P <- Cs],
+    ok.
 
 t_create_channel_(Cfg) ->
     Debug = get_debug(Cfg),
