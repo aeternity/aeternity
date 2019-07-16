@@ -456,8 +456,8 @@ init_checks(Opts) ->
               end
               ],
     case aeu_validation:run(Checks) of
-        {error, Err} ->
-            {error, Err};
+        {error, _Reason} = Err ->
+            Err;
         ok ->
             ok
     end.

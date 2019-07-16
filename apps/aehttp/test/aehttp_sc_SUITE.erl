@@ -15,7 +15,7 @@
    [sc_ws_timeout_open/1,
     sc_ws_attach_initiator/1,
     sc_ws_attach_responder/1,
-		sc_ws_broken_open_params/1,
+    sc_ws_broken_open_params/1,
     sc_ws_min_depth_not_reached_timeout/1,
     sc_ws_min_depth_is_modifiable/1,
     sc_ws_basic_open_close/1,
