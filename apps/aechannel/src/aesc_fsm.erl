@@ -420,23 +420,46 @@ set_ongoing(D) ->
 
 initiate(Host, Port, #{} = Opts0) ->
     lager:debug("initiate(~p, ~p, ~p)", [Host, Port, Opts0]),
-    Opts = maps:merge(#{client => self()}, Opts0),
-    case check_amounts(Opts) of
+    Opts = maps:merge(#{client => self(),
+                        role   => initiator}, Opts0),
+    case init_checks(Opts) of
         ok ->
             start_link(#{ host => Host
                         , port => Port
-                        , opts => Opts#{role => initiator} });
+                        , opts => Opts });
         {error, _Reason} = Err -> Err
     end.
 
 respond(Port, #{} = Opts0) ->
     lager:debug("respond(~p, ~p)", [Port, Opts0]),
-    Opts = maps:merge(#{client => self()}, Opts0),
-    case check_amounts(Opts) of
+    Opts = maps:merge(#{client => self(),
+                        role   => responder}, Opts0),
+    case init_checks(Opts) of
         ok ->
             start_link(#{ port => Port
-                        , opts => Opts#{role => responder} });
+                        , opts => Opts });
         {error, _Reason} = Err -> Err
+    end.
+
+init_checks(Opts) ->
+    #{initiator   := Initiator,
+      responder   := Responder,
+      role        := Role,
+      lock_period := LockPeriod} = Opts,
+    Checks = [fun() -> check_amounts(Opts) end,
+              fun() -> check_accounts(Initiator, Responder, Role) end,
+              fun() ->
+                  case LockPeriod < 0 of
+                      true -> {error, lock_period_too_low};
+                      false -> ok
+                  end
+              end
+              ],
+    case aeu_validation:run(Checks) of
+        {error, _Reason} = Err ->
+            Err;
+        ok ->
+            ok
     end.
 
 upd_transfer(_Fsm, _From, _To, Amount) when Amount < 0 ->
@@ -641,49 +664,42 @@ init(#{opts := Opts0} = Arg) ->
               fun check_rpt_opt/1,
               fun check_log_opt/1
              ], Opts2),
-    #{initiator := Initiator,
-      responder := Responder} = Opts,
-    Checks = [fun() -> check_accounts(Initiator, Responder, Role) end],
-    case aeu_validation:run(Checks) of
-        {error, Err} ->
-            {stop, Err};
-        ok ->
-            Session = start_session(Arg, Reestablish, Opts#{role => Role}),
-            StateInitF = fun(NewI) ->
-                                 CheckedOpts = maps:merge(Opts#{role => Role}, ReestablishOpts),
-                                 {ok, State} = aesc_offchain_state:new(CheckedOpts#{initiator => NewI}),
-                                 State
-                         end,
-            State = case Initiator of
-                        any -> StateInitF;
-                        _   -> StateInitF(Initiator)
-                    end,
-            Data = #data{role   = Role,
-                        client  = Client,
-                        session = Session,
-                        opts    = Opts,
-                        state   = State,
-                        log     = aesc_window:new(maps:get(log_keep, Opts))},
-            lager:debug("Session started, Data = ~p", [Data]),
-            %% TODO: Amend the fsm above to include this step. We have transport-level
-            %% connectivity, but not yet agreement on the channel parameters. We will next send
-            %% a channel_open() message and await a channel_accept().
-            case Role of
-                initiator ->
-                    if Reestablish ->
-                            ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
-                      true ->
-                            ok_next(initialized, send_open_msg(Data))
-                    end;
-                responder ->
-                    if Reestablish ->
-                            ChanId = maps:get(existing_channel_id, ReestablishOpts),
-                            ok_next(awaiting_reestablish,
-                                    Data#data{ channel_id  = ChanId
-                                             , on_chain_id = ChanId });
-                      true ->
-                            ok_next(awaiting_open, Data)
-                    end
+    #{initiator := Initiator} = Opts,
+    Session = start_session(Arg, Reestablish, Opts#{role => Role}),
+    StateInitF = fun(NewI) ->
+                          CheckedOpts = maps:merge(Opts#{role => Role}, ReestablishOpts),
+                          {ok, State} = aesc_offchain_state:new(CheckedOpts#{initiator => NewI}),
+                          State
+                  end,
+    State = case Initiator of
+                any -> StateInitF;
+                _   -> StateInitF(Initiator)
+            end,
+    Data = #data{role   = Role,
+                client  = Client,
+                session = Session,
+                opts    = Opts,
+                state   = State,
+                log     = aesc_window:new(maps:get(log_keep, Opts))},
+    lager:debug("Session started, Data = ~p", [Data]),
+    %% TODO: Amend the fsm above to include this step. We have transport-level
+    %% connectivity, but not yet agreement on the channel parameters. We will next send
+    %% a channel_open() message and await a channel_accept().
+    case Role of
+        initiator ->
+            if Reestablish ->
+                    ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
+              true ->
+                    ok_next(initialized, send_open_msg(Data))
+            end;
+        responder ->
+            if Reestablish ->
+                    ChanId = maps:get(existing_channel_id, ReestablishOpts),
+                    ok_next(awaiting_reestablish,
+                            Data#data{ channel_id  = ChanId
+                                      , on_chain_id = ChanId });
+              true ->
+                    ok_next(awaiting_open, Data)
             end
     end.
 
@@ -3327,6 +3343,12 @@ log_msg(Op, Type, M, Log) ->
 win_to_list(Log) ->
     aesc_window:to_list(Log).
 
+check_amounts(#{ channel_reserve := ChannelReserve})
+    when ChannelReserve < 0 ->
+    {error, channel_reserve_too_low};
+check_amounts(#{ push_amount := PushAmount})
+    when PushAmount < 0 ->
+    {error, push_amount_too_low};
 check_amounts(#{ initiator_amount   := InitiatorAmount0
                , responder_amount   := ResponderAmount0
                , push_amount        := PushAmount

@@ -359,10 +359,13 @@ init(WaitingPid) ->
     Register = put_registration(WaitingPid, waiting_connected, #register{}),
     {once, #state{regs = Register}}.
 
-onconnect(_WSReq, State) ->
+onconnect(_WSReq, #state{regs=Register}=State) ->
     ct:log("Ws connected"),
+    [WaitingPid] = get_registered_pids(waiting_connected, Register),
+    inform_registered(WaitingPid, websocket, connected),
+    Reg = delete_registered(WaitingPid, waiting_connected, Register),
     self() ! ping,
-    {ok, State}.
+    {ok, State#state{regs=Reg}}.
 
 
 ondisconnect({error, {400, <<"Bad Request">>}}, State) ->
@@ -375,10 +378,7 @@ websocket_handle({pong, Nonce}, _ConnState, #state{regs=Register}=State) ->
     case get_registered_pids(waiting_nonce, Register) of
         [Nonce] ->
             Reg1 = delete_registered(Nonce, waiting_nonce, Register),
-            [WaitingPid] = get_registered_pids(waiting_connected, Reg1),
-            inform_registered(WaitingPid, websocket, connected),
-            Reg2 = delete_registered(WaitingPid, waiting_connected, Reg1),
-            {ok, State#state{regs=Reg2}};
+            {ok, State#state{regs=Reg1}};
         [] ->
             {ok, State}
     end;

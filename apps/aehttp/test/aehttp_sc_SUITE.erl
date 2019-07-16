@@ -15,6 +15,7 @@
    [sc_ws_timeout_open/1,
     sc_ws_attach_initiator/1,
     sc_ws_attach_responder/1,
+    sc_ws_broken_open_params/1,
     sc_ws_min_depth_not_reached_timeout/1,
     sc_ws_min_depth_is_modifiable/1,
     sc_ws_basic_open_close/1,
@@ -88,7 +89,8 @@ all() -> [{group, plain}, {group, aevm}, {group, fate}].
 
 groups() ->
     [{plain, [],
-      [ sc_ws_timeout_open,
+      [ sc_ws_broken_open_params,
+        sc_ws_timeout_open,
         sc_ws_min_depth_not_reached_timeout,
         sc_ws_min_depth_is_modifiable,
         sc_ws_basic_open_close,
@@ -3149,4 +3151,62 @@ meta(Owner, AuthData, InnerTx) ->
 account_type(Pubkey) ->
     {value, Account} = rpc(aec_chain, get_account, [Pubkey]),
     aec_accounts:type(Account).
+
+sc_ws_broken_open_params(Config) ->
+    #{initiator := #{pub_key := IPubkey},
+      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
+
+    IAmt = 8,
+    RAmt = 4,
+
+    BogusPubkey = <<42:32/unit:8>>,
+
+    Test =
+        fun(Opts, Error) ->
+            {ok, IConnPid} = channel_ws_start(initiator,
+                                               maps:put(host, <<"localhost">>,
+                                                        Opts), Config),
+            ok = ?WS:register_test_for_channel_events(IConnPid, [closed, error]),
+            {ok, #{<<"reason">> := Error}}
+                = wait_for_channel_event(IConnPid, error, Config),
+            try ok = ?WS:wait_for_event(IConnPid, websocket, closed) 
+            catch error:{connection_died, _Reason} -> ok
+            end
+        end,
+
+    %% test initiator pubkey missing
+    ChannelOpts1 = channel_options(BogusPubkey, RPubkey, IAmt, RAmt, #{}, Config),
+    Test(ChannelOpts1, <<"Participant not found">>),
+    
+    %% test responder pubkey missing
+    ChannelOpts2 = channel_options(IPubkey, BogusPubkey, IAmt, RAmt, #{}, Config),
+    Test(ChannelOpts2, <<"Participant not found">>),
+
+    % test initiator having a negative amount
+    ChannelOpts3 = channel_options(IPubkey, RPubkey, -1, RAmt, #{}, Config),
+    Test(ChannelOpts3, <<"Value too low">>),
+
+    % test initiator having a negative amount
+    ChannelOpts4 = channel_options(IPubkey, RPubkey, IAmt, -1, #{}, Config),
+    Test(ChannelOpts4, <<"Value too low">>),
+
+    % test both having a negative amount
+    ChannelOpts5 = channel_options(IPubkey, RPubkey, -1, -1, #{}, Config),
+    Test(ChannelOpts5, <<"Value too low">>),
+
+    % test channel_reserve having a negative amount
+    ChannelOpts6 = channel_options(IPubkey, RPubkey, IAmt, RAmt,
+                                   #{channel_reserve => -1}, Config),
+    Test(ChannelOpts6, <<"Value too low">>),
+
+    % test push_amount having a negative amount
+    ChannelOpts7 = channel_options(IPubkey, RPubkey, IAmt, RAmt,
+                                   #{push_amount => -1}, Config),
+    Test(ChannelOpts7, <<"Value too low">>),
+
+    % test lock_period having a negative value
+    ChannelOpts8 = channel_options(IPubkey, RPubkey, IAmt, RAmt,
+                                   #{lock_period => -1}, Config),
+    Test(ChannelOpts8, <<"Value too low">>),
+    ok.
 
