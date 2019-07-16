@@ -6,3 +6,5 @@
 * Changes channel reestablish checks: for on-chain transactions authentication
   can not always be checked at current chain top. Check is done, if the last
   transaction is an on-chain one, it must be present in on-chain.
+* Changes the off-chain protocol to accommodate Generalized Account
+  authentication methods. This is off-chain noise protocol breaking change.
