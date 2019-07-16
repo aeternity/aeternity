@@ -232,5 +232,5 @@ get_lsock_info(Items, I, St) when is_list(Items) ->
               get_lsock_info(Item, Acc, St)
       end, I, Items);
 get_lsock_info(all, I, St) ->
-    get_lsock_info([pids, responder], I, St).
+    get_lsock_info([pids, responders], I, St).
 
