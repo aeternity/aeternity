@@ -108,7 +108,8 @@ enc_ch_open(#{chain_hash := ChainHash
             , initiator_amount     := InitiatorAmt
             , responder_amount     := ResponderAmt
             , channel_reserve      := ChanReserve
-            , initiator            := InitiatorPubkey}) ->
+            , initiator            := InitiatorPubkey
+            , responder            := ResponderPubkey}) ->
     << ?ID_CH_OPEN    :1 /unit:8
      , ChainHash      :32/binary
      , ChanId         :32/binary
@@ -117,7 +118,8 @@ enc_ch_open(#{chain_hash := ChainHash
      , InitiatorAmt   :8 /unit:8
      , ResponderAmt   :8 /unit:8
      , ChanReserve    :8 /unit:8
-     , InitiatorPubkey:32/binary >>.
+     , InitiatorPubkey:32/binary
+     , ResponderPubkey:32/binary >>.
 
 -spec dec_ch_open(binary()) -> ch_open_msg().
 dec_ch_open(<< ChainHash      :32/binary
@@ -127,7 +129,8 @@ dec_ch_open(<< ChainHash      :32/binary
              , InitiatorAmt   :8 /unit:8
              , ResponderAmt   :8 /unit:8
              , ChanReserve    :8 /unit:8
-             , InitiatorPubkey:32/binary >>) ->
+             , InitiatorPubkey:32/binary
+             , ResponderPubkey:32/binary>>) ->
     #{ chain_hash           => ChainHash
      , temporary_channel_id => ChanId
      , lock_period          => LockPeriod
@@ -135,7 +138,8 @@ dec_ch_open(<< ChainHash      :32/binary
      , initiator_amount     => InitiatorAmt
      , responder_amount     => ResponderAmt
      , channel_reserve      => ChanReserve
-     , initiator            => InitiatorPubkey}.
+     , initiator            => InitiatorPubkey
+     , responder            => ResponderPubkey }.
 
 
 -type ch_accept_msg() :: #{ chain_hash           := hash()
@@ -144,6 +148,7 @@ dec_ch_open(<< ChainHash      :32/binary
                           , initiator_amount     := amount()
                           , responder_amount     := amount()
                           , channel_reserve      := amount()
+                          , initiator            := pubkey()
                           , responder            := pubkey()}.
 
 -spec enc_ch_accept(ch_accept_msg()) -> binary().
@@ -153,6 +158,7 @@ enc_ch_accept(#{ chain_hash           := ChainHash
                , initiator_amount     := InitiatorAmt
                , responder_amount     := ResponderAmt
                , channel_reserve      := ChanReserve
+               , initiator            := Initiator
                , responder            := Responder}) ->
     << ?ID_CH_ACCEPT  :1 /unit:8
      , ChainHash      :32/binary
@@ -161,6 +167,7 @@ enc_ch_accept(#{ chain_hash           := ChainHash
      , InitiatorAmt   :8 /unit:8
      , ResponderAmt   :8 /unit:8
      , ChanReserve    :8 /unit:8
+     , Initiator      :32/binary
      , Responder      :32/binary >>.
 
 -spec dec_ch_accept(binary()) -> ch_accept_msg().
@@ -170,6 +177,7 @@ dec_ch_accept(<< ChainHash      :32/binary
                , InitiatorAmt   :8 /unit:8
                , ResponderAmt   :8 /unit:8
                , ChanReserve    :8 /unit:8
+               , Initiator      :32/binary
                , Responder      :32/binary >>) ->
     #{ chain_hash           => ChainHash
      , temporary_channel_id => ChanId
@@ -177,6 +185,7 @@ dec_ch_accept(<< ChainHash      :32/binary
      , initiator_amount     => InitiatorAmt
      , responder_amount     => ResponderAmt
      , channel_reserve      => ChanReserve
+     , initiator            => Initiator
      , responder            => Responder}.
 
 
