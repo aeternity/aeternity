@@ -407,15 +407,22 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, ChannelOpts0, Config),
     {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, ChannelOpts), Config),
-    ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
+
+    ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign,
+                                                         on_chain_tx]),
 
     {ok, RConnPid} = channel_ws_start(responder, ChannelOpts, Config),
 
-    ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign, on_chain_tx]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign,
+                                                         on_chain_tx]),
 
     channel_send_conn_open_infos(RConnPid, IConnPid, Config),
 
     ChannelCreateFee = channel_create(Config, IConnPid, RConnPid),
+
+    make_two_gen_messages_volleys(IConnPid, IPubkey, RConnPid,
+                                  RPubkey, Config),
+
     {ok, {IBal, RBal}} = sc_ws_get_both_balances(IConnPid,
                                                  IPubkey,
                                                  RPubkey,
@@ -439,11 +446,36 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
 
     ChannelClients = #{initiator => IConnPid,
                        responder => RConnPid},
-    ok = ?WS:unregister_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
-    ok = ?WS:unregister_test_for_channel_events(RConnPid, [info, get, sign, on_chain_tx]),
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, [info, get, sign,
+                                                           on_chain_tx]),
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, [info, get, sign,
+                                                           on_chain_tx]),
     [{channel_clients, ChannelClients},
      {channel_options, ChannelOpts} | Config].
 
+make_two_gen_messages_volleys(IConnPid, IPubkey, RConnPid,
+                                  RPubkey, Config) ->
+    make_msg_round(IConnPid, IPubkey, RConnPid, RPubkey,
+                   <<"Hello">>, Config),
+    make_msg_round(RConnPid, RPubkey, IConnPid, IPubkey,
+                   <<"Hello back">>, Config),
+    ok.
+
+make_msg_round(SenderPid, SenderPubkey, ReceiverPid, ReceiverPubkey, Msg, Config) ->
+    ok = ?WS:register_test_for_channel_events(SenderPid, [message]),
+    ok = ?WS:register_test_for_channel_events(ReceiverPid, [message]),
+    SenderEncodedK = aeser_api_encoder:encode(account_pubkey, SenderPubkey),
+    ReceiverEncodedK = aeser_api_encoder:encode(account_pubkey, ReceiverPubkey),
+    ws_send_tagged(SenderPid, <<"channels.message">>,
+            #{<<"to">> => ReceiverEncodedK,
+              <<"info">> => Msg}, Config),
+      {ok, #{<<"message">> := #{<<"from">> := SenderEncodedK,
+                                <<"to">> := ReceiverEncodedK,
+                                <<"info">> := Msg}}}
+          = wait_for_channel_event(ReceiverPid, message, Config),
+    ok = ?WS:unregister_test_for_channel_events(SenderPid, [message]),
+    ok = ?WS:unregister_test_for_channel_events(ReceiverPid, [message]),
+    ok.
 
 channel_send_conn_open_infos(RConnPid, IConnPid, Config) ->
     {ok, #{<<"event">> := <<"channel_open">>}} = wait_for_channel_event(RConnPid, info, Config),
@@ -1025,9 +1057,13 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
                                                               error]),
     ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
                                                            error]),
+    make_two_gen_messages_volleys(SenderConnPid, SenderPubkey, AckConnPid,
+                                  AckPubkey, Config),
     ws_send_tagged(SenderConnPid, <<"channels.deposit">>, #{amount => <<"2">>}, Config),
     {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
+    make_two_gen_messages_volleys(SenderConnPid, SenderPubkey, AckConnPid,
+                                  AckPubkey, Config),
     ws_send_tagged(SenderConnPid, <<"channels.deposit">>, #{amount => 2}, Config),
     #{tx := UnsignedStateTx,
       updates := Updates} = channel_sign_tx(SenderPubkey, SenderConnPid, SenderPrivkey, <<"channels.deposit_tx">>, Config),
@@ -1036,6 +1072,8 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
       updates := Updates} = channel_sign_tx(AckPubkey, AckConnPid, AckPrivkey, <<"channels.deposit_ack">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
     {ok, #{<<"tx">> := EncodedSignedDepositTx} = E1} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
+    make_two_gen_messages_volleys(SenderConnPid, SenderPubkey, AckConnPid,
+                                  AckPubkey, Config),
     ok = match_info(E1, #{<<"info">> => <<"deposit_signed">>}),
     {ok, #{<<"tx">> := EncodedSignedDepositTx} = E2} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
     ok = match_info(E2, #{<<"info">> => <<"deposit_created">>}),
@@ -1090,9 +1128,13 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
                                                               error]),
     ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx,
                                                            error]),
+    make_two_gen_messages_volleys(SenderConnPid, SenderPubkey, AckConnPid,
+                                  AckPubkey, Config),
     ws_send_tagged(SenderConnPid, <<"channels.withdraw">>, #{amount => <<"2">>}, Config),
     {ok, #{<<"reason">> := <<"not_a_number">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
+    make_two_gen_messages_volleys(SenderConnPid, SenderPubkey, AckConnPid,
+                                  AckPubkey, Config),
     ws_send_tagged(SenderConnPid, <<"channels.withdraw">>, #{amount => 2}, Config),
     #{tx := UnsignedStateTx,
       updates := Updates} = channel_sign_tx(SenderPubkey, SenderConnPid, SenderPrivkey, <<"channels.withdraw_tx">>, Config),
@@ -1101,6 +1143,8 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
       updates := Updates} = channel_sign_tx(AckPubkey, AckConnPid, AckPrivkey, <<"channels.withdraw_ack">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
     {ok, #{<<"tx">> := EncodedSignedWTx} = E1} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
+    make_two_gen_messages_volleys(SenderConnPid, SenderPubkey, AckConnPid,
+                                  AckPubkey, Config),
     ok = match_info(E1, #{<<"info">> => <<"withdraw_signed">>}),
     {ok, #{<<"tx">> := EncodedSignedWTx} = E2} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
     ok = match_info(E2, #{<<"info">> => <<"withdraw_created">>}),

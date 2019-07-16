@@ -1459,16 +1459,6 @@ open(cast, {?WDRAW_CREATED, Msg}, D) ->
         {error, _Error} ->
             handle_update_conflict(?WDRAW_CREATED, D)
     end;
-open(cast, {?INBAND_MSG, Msg}, D) ->
-    NewD = case check_inband_msg(Msg, D) of
-               {ok, D1} ->
-                   report(message, Msg, D1),
-                   D1;
-               {error, _} = Err ->
-                   lager:error("Error in inband_msg: ~p", [Err]),
-                   D
-           end,
-    keep_state(NewD);
 open(cast, {?SIGNED, _, _} = Msg, D) ->
     lager:debug("Received signing reply in 'open' - ignore: ~p", [Msg]),
     keep_state(log(ignore, ?SIGNED, Msg, D));
@@ -1602,6 +1592,13 @@ handle_call(St, Req, From, #data{} = D) ->
             keep_state(D, [{reply, From, {error, Error}}])
     end.
 
+handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
+    case {ToPub, other_account(D)} of
+        {X, X} ->
+            keep_state(send_inband_msg(ToPub, Msg, D), [{reply, From, ok}]);
+        _ ->
+            keep_state(D, [{reply, From, {error, unknown_recipient}}])
+    end;
 handle_call_(open, {upd_transfer, FromPub, ToPub, Amount}, From,
             #data{opts = #{initiator := I,
                            responder := R}} = D) ->
@@ -1717,13 +1714,6 @@ handle_call_(open, shutdown, From, D) ->
     D1 = request_signing(?SHUTDOWN, CloseTx, Updates, D),
     gen_statem:reply(From, ok),
     next_state(awaiting_signature, set_ongoing(D1));
-handle_call_(open, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
-    case {ToPub, other_account(D)} of
-        {X, X} ->
-            keep_state(send_inband_msg(ToPub, Msg, D), [{reply, From, ok}]);
-        _ ->
-            keep_state(D, [{reply, From, {error, unknown_recipient}}])
-    end;
 handle_call_(_, get_state, From, #data{ on_chain_id = ChanId
                                       , opts        = Opts
                                       , state       = State} = D) ->
@@ -1862,6 +1852,16 @@ handle_common_event_(cast, {?DISCONNECT, _} = Msg, _St, _, D) ->
         _ ->
             close(disconnect, D1)
     end;
+handle_common_event_(cast, {?INBAND_MSG, Msg}, _St, _, D) ->
+    NewD = case check_inband_msg(Msg, D) of
+               {ok, D1} ->
+                   report(message, Msg, D1),
+                   D1;
+               {error, _} = Err ->
+                   lager:warning("Error in inband_msg: ~p", [Err]),
+                   D
+           end,
+    keep_state(NewD);
 handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
     lager:debug("got ~p", [Msg]),
     D1 = log(rcv, ?CHANNEL_CLOSING, Msg, D),
@@ -1918,7 +1918,7 @@ handle_common_event_(info, Msg, _St, _P, D) ->
 handle_common_event_(_Type, _Msg, _St, P, D) when P == postpone ->
     postpone(D);
 handle_common_event_(Type, Msg, St, discard, D) ->
-    lager:error("Discarding ~p in '~p' state: ~p", [Type, St, Msg]),
+    lager:warning("Discarding ~p in '~p' state: ~p", [Type, St, Msg]),
     keep_state(log(drop, msg_type(Msg), Msg, D));
 handle_common_event_(Type, Msg, St, Err, D) when Err==error;
                                                  Err==error_all ->
@@ -3050,8 +3050,8 @@ check_shutdown_msg_(SignedTx, MySignedTx, Msg, D) ->
             {error, shutdown_tx_mismatch}
     end.
 
-send_inband_msg(To, Info, #data{on_chain_id = ChanId,
-                                session     = Session} = D) ->
+send_inband_msg(To, Info, #data{session     = Session} = D) ->
+    ChanId = cur_channel_id(D),
     From = my_account(D),
     M = #{ channel_id => ChanId
          , from       => From
