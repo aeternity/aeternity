@@ -362,8 +362,10 @@ create_channel(Cfg) ->
 
 multiple_responder_keys_per_port(Cfg) ->
     Slogan = ?SLOGAN,
-    Debug = get_debug(Cfg),
+    %% Debug = get_debug(Cfg),
+    Debug = true,
     {_, Responder2} = lists:keyfind(responder2, 1, Cfg),
+    ct:log("Responder2 = ~p", [Responder2]),
     Cfg2 = lists:keyreplace(responder, 1, Cfg, {responder, Responder2}),
     Me = self(),
     Initiator = maps:get(pub, ?config(initiator, Cfg)),
@@ -373,7 +375,7 @@ multiple_responder_keys_per_port(Cfg) ->
                                 {nonce, Nonce + N - 1},
                                 {minimum_depth, 0},
                                 {slogan, {Slogan, N}} | CfgX], #{mine_blocks => {ask, Me},
-                                                                 debug => Debug})
+                                                                 debug => Debug}, false)
           || {N, CfgX} <- [{1, Cfg}, {2, Cfg2}]],
     ct:log("channels spawned", []),
     CsAcks = collect_acks_w_payload(Cs, mine_blocks, 2),
@@ -1520,12 +1522,18 @@ collect_acks_w_payload([], _Tag, _) ->
 
 
 create_multi_channel(Cfg, Debug) ->
+    create_multi_channel(Cfg, Debug, true).
+
+create_multi_channel(Cfg, Debug, UseAny) ->
     spawn_link(fun() ->
-                       create_multi_channel_(Cfg, Debug)
+                       create_multi_channel_(Cfg, Debug, UseAny)
                end).
 
-create_multi_channel_(Cfg, Debug) ->
-    #{i := I, r := R} = create_channel_([multi | Cfg], Debug),
+create_multi_channel_(Cfg0, Debug, UseAny) when is_boolean(UseAny) ->
+    Cfg = if UseAny -> [ use_any | Cfg0 ];
+             true   -> Cfg0
+          end,
+    #{i := I, r := R} = create_channel_(Cfg, Debug),
     Parent = ?config(ack_to, Cfg),
     Parent ! {self(), channel_ack},
     ch_loop(I, R, Parent, Cfg).
@@ -1558,7 +1566,7 @@ create_channel_(Cfg, Debug) ->
     {I, R, Spec} = channel_spec(Cfg),
     log(Debug, "channel_spec: ~p", [{I, R, Spec}]),
     Port = proplists:get_value(port, Cfg, 9325),
-    create_channel_from_spec(I, R, Spec, Port, proplists:get_bool(multi, Cfg),
+    create_channel_from_spec(I, R, Spec, Port, proplists:get_bool(use_any, Cfg),
                              Debug, Cfg).
 
 channel_spec(Cfg) ->
@@ -1606,8 +1614,8 @@ slogan(Cfg) ->
 create_channel_from_spec(I, R, Spec, Port, Debug, Cfg) ->
     create_channel_from_spec(I, R, Spec, Port, false, Debug, Cfg).
 
-create_channel_from_spec(I, R, Spec, Port, Multi, Debug, Cfg) ->
-    RProxy = spawn_responder(Port, Spec, R, Multi, Debug),
+create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
+    RProxy = spawn_responder(Port, Spec, R, UseAny, Debug),
     IProxy = spawn_initiator(Port, Spec, I, Debug),
     log("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
     #{ i := #{ fsm := FsmI } = I1
@@ -1655,19 +1663,18 @@ create_channel_from_spec(I, R, Spec, Port, Multi, Debug, Cfg) ->
     check_info(500, Debug),
     #{i => I5, r => R5, spec => Spec}.
 
-spawn_responder(Port, Spec, R, Multi, Debug) ->
+spawn_responder(Port, Spec, R, UseAny, Debug) ->
     Me = self(),
     spawn_link(fun() ->
                        log("responder spawned: ~p", [Spec]),
-                       Spec1 = maybe_multi(Multi, Spec#{ client => self()
-                                                       , initiator => any }),
+                       Spec1 = maybe_use_any(UseAny, Spec#{ client => self() }),
                        {ok, Fsm} = rpc(dev1, aesc_fsm, respond, [Port, Spec1], Debug),
                        responder_instance_(Fsm, Spec1, R, Me, Debug)
                end).
 
-maybe_multi(true, Spec) ->
+maybe_use_any(true, Spec) ->
     Spec#{initiator => any};
-maybe_multi(false, Spec) ->
+maybe_use_any(false, Spec) ->
     Spec.
 
 spawn_initiator(Port, Spec, I, Debug) ->
@@ -1693,6 +1700,7 @@ match_responder_and_initiator(RProxy, Debug) ->
 responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
     R = fsm_map(Fsm, Spec, R0),
     {ok, ChOpen} = receive_from_fsm(info, R, channel_open, ?TIMEOUT, Debug),
+    ct:log("Got ChOpen: ~p~nSpec = ~p", [ChOpen, Spec]),
     #{data := #{temporary_channel_id := TmpChanId}} = ChOpen,
     gproc:reg({n,l,{?MODULE,TmpChanId,responder}}, #{ r => R#{ proxy => self()
                                                              , parent => Parent }}),
@@ -1708,6 +1716,7 @@ responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
 initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
     I = fsm_map(Fsm, Spec, I0),
     {ok, ChAccept} = receive_from_fsm(info, I, channel_accept, ?TIMEOUT, Debug),
+    ct:log("Got ChAccept: ~p~nSpec = ~p", [ChAccept, Spec]),
     #{data := #{temporary_channel_id := TmpChanId}} = ChAccept,
     gproc:reg({n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I#{ proxy => self() }
                                                     , channel_accept => ChAccept}),
@@ -1836,8 +1845,9 @@ await_signing_request(Tag, #{fsm := Fsm} = Signer,
     await_signing_request(Tag, #{fsm := Fsm} = Signer,
                           Action, Timeout, Debug, Cfg, according_account).
 
-await_signing_request(Tag, #{fsm := Fsm} = Signer,
+await_signing_request(Tag, #{fsm := Fsm, pub := Pub} = Signer,
                       Action, Timeout, Debug, Cfg, SignatureType) ->
+    log("await_signing_request, Fsm = ~p (Pub = ~p)", [Fsm, Pub]),
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
                               info := #{signed_tx := SignedTx0,
                                         updates   := Updates}} = Msg} ->
