@@ -518,7 +518,7 @@ process_request(#{<<"method">> := <<"channels.withdraw">>,
         {error, _Reason} = Err -> Err
     end;
 process_request(#{<<"method">> := Method,
-                  <<"params">> := #{<<"tx">> := EncodedTx}}, FsmPid)
+                  <<"params">> := #{<<"signed_tx">> := EncodedTx}}, FsmPid)
     when ?METHOD_SIGNED(Method) ->
     Tag = ?METHOD_TAG(Method),
     case aeser_api_encoder:safe_decode(transaction, EncodedTx) of

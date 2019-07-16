@@ -92,10 +92,10 @@
 all() -> [
     test_simple_same_node_channel,
     test_simple_different_nodes_channel,
-    test_compat_with_initiator_node_using_fortuna_early_channel_version,
-    test_compat_with_responder_node_using_fortuna_early_channel_version,
-    test_compat_with_initiator_node_using_latest_stable_version,
-    test_compat_with_responder_node_using_latest_stable_version,
+%    test_compat_with_initiator_node_using_fortuna_early_channel_version,
+%    test_compat_with_responder_node_using_fortuna_early_channel_version,
+%    test_compat_with_initiator_node_using_latest_stable_version,
+%    test_compat_with_responder_node_using_latest_stable_version,
     on_chain_channel
 ].
 

@@ -208,14 +208,14 @@ sc_wait_channel_open(IConn, RConn) ->
     ok.
 
 sc_wait_and_sign(Conn, Privkey, Tag) ->
-    {ok, Tag, #{ <<"tx">> := EncTx }} = sc_wait_for_channel_event(Conn, sign),
+    {ok, Tag, #{ <<"signed_tx">> := EncTx }} = sc_wait_for_channel_event(Conn, sign),
     {ok, BinTx} = aeser_api_encoder:safe_decode(transaction, EncTx),
-    Tx = aetx:deserialize_from_binary(BinTx),
-    SignedTx = aec_test_utils:sign_tx(Tx, Privkey),
+    SignedTx0 = aetx_sign:deserialize_from_binary(BinTx),
+    SignedTx = aec_test_utils:co_sign_tx(SignedTx0, Privkey),
     BinSignedTx = aetx_sign:serialize_to_binary(SignedTx),
     EncSignedTx = aeser_api_encoder:encode(transaction, BinSignedTx),
-    ws_send(Conn, Tag, #{tx => EncSignedTx}),
-    Tx.
+    ws_send(Conn, Tag, #{signed_tx => EncSignedTx}),
+    aetx_sign:tx(SignedTx).
 
 sc_wait_channel_changed(InitiatorConn, ResponderConn, Type) ->
     {ok, #{ <<"info">> := <<"channel_changed">>

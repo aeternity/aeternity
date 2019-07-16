@@ -186,8 +186,12 @@ make_calldata(Code, Fun, Args) ->
 
 get_contract(Name) ->
     SophiaVersion = aega_SUITE:sophia_version(),
-    {ok, Serial}  = aect_test_utils:compile_contract(SophiaVersion, Name),
-    {ok, BinSrc}  = aect_test_utils:read_contract(SophiaVersion, Name),
+    get_contract(SophiaVersion, Name).
+
+get_contract(SophiaVersion, Name0) ->
+    Name = filename:join("contracts", Name0),
+    {ok, Serial} = aect_test_utils:compile_contract(SophiaVersion, Name),
+    {ok, BinSrc} = aect_test_utils:read_contract(SophiaVersion, Name),
     {ok, #{ bytecode => Serial, map => aect_sophia:deserialize(Serial),
             src => binary_to_list(BinSrc), bin_src => BinSrc }}.
 

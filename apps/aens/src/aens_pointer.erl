@@ -40,7 +40,7 @@ serialize_for_client(#pointer{key = Key, id = Id}) ->
     #{<<"key">> => Key,
       <<"id">>  => aeser_api_encoder:encode(id_hash, Id)}.
 
-%% TODO: check max lenght of key?
+%% TODO: check max length of key?
 assert_key(Key) when is_binary(Key) -> ok.
 
 assert_id(Id) ->

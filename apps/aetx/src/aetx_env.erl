@@ -244,7 +244,7 @@ tx_event(Name, #env{events = Events} = Env) ->
         none -> Env;
         {value, SignedTx} ->
             TxHash = aetx_sign:hash(SignedTx),
-            {Type, _} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+            {Type, _} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
             Env#env{events = Events#{Name => #{ type => Type
                                               , tx_hash => TxHash }}}
     end.

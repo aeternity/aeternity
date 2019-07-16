@@ -140,7 +140,7 @@ process_fsm(#{msg := Msg,
 -spec process_fsm_(term(), binary(), protocol()) -> no_reply | {reply, map()} | {error, atom()}.
 process_fsm_(#{type := sign,
                tag  := Tag,
-               info := #{tx := Tx, 
+               info := #{signed_tx := STx, 
                          updates := Updates}},
                 ChannelId, Protocol) when Tag =:= create_tx
                                    orelse Tag =:= deposit_tx
@@ -155,7 +155,8 @@ process_fsm_(#{type := sign,
                                    orelse Tag =:= slash_tx
                                    orelse Tag =:= close_solo_tx
                                    orelse Tag =:= settle_tx ->
-    EncTx = aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx)),
+    EncTx = aeser_api_encoder:encode(transaction,
+                                     aetx_sign:serialize_to_binary(STx)),
     SerializedUpdates = [aesc_offchain_update:for_client(U) || U <- Updates],
     Tag1 =
         case Tag of
@@ -172,7 +173,7 @@ process_fsm_(#{type := sign,
     notify(Protocol,
            #{action  => <<"sign">>,
              tag => Tag1,
-             payload => #{tx => EncTx,
+             payload => #{signed_tx => EncTx,
                           updates => SerializedUpdates}},
            ChannelId);
 process_fsm_(#{type := report,

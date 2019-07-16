@@ -23,7 +23,13 @@
          process_slash/9,
          process_force_progress/6,
          process_solo_snapshot/7,
-         is_offchain_tx_type/1
+         is_offchain_tx/1,
+         verify_signatures_offchain/4,
+         verify_signatures_offchain/5,
+         verify_signatures_onchain/3,
+         verify_signatures_onchain/4,
+         count_authentications/1,
+         channel_pubkey/1
         ]).
 
 -ifdef(TEST).
@@ -154,10 +160,12 @@ unpack_payload(Tx) ->
         {_, _}                            -> {error, bad_offchain_state_type}
     end.
 
-is_offchain_tx_type(channel_offchain_tx) -> true;
-is_offchain_tx_type(ga_meta_tx         ) -> true; %% TODO: inspect the most inner transaction for being off-chain type
-is_offchain_tx_type(_) ->
-    false.
+-spec is_offchain_tx(aetx_sign:signed_tx()) -> boolean().
+is_offchain_tx(SignedTx) ->
+    case aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)) of
+        {aesc_offchain_tx, _} -> true;
+        _ -> false
+    end.
 
 -spec is_payload_valid_at_protocol(aec_hard_forks:protocol_vsn(), binary()) -> boolean().
 is_payload_valid_at_protocol(Protocol, Payload) ->
@@ -365,7 +373,7 @@ check_payload(Channel, PayloadTx, FromPubKey, SignedState, Trees, Env, Type) ->
         [ fun() -> check_channel_id_in_payload(Channel, PayloadTx) end,
           fun() -> check_round_in_payload(Channel, PayloadTx, Type) end,
           fun() -> is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type) end,
-          fun() -> verify_signatures(Channel, SignedState, Trees, Env) end
+          fun() -> verify_signatures_offchain(Channel, SignedState, Trees, Env) end
         ],
     aeu_validation:run(Checks).
 
@@ -425,27 +433,14 @@ signers(Tx, Trees) ->
             signers(aetx_sign:tx(aega_meta_tx:tx(MetaTx)), Trees)
     end.
 
-verify_signatures(Channel, SignedState, Trees, Env) ->
-    verify_signatures(Channel, SignedState, Trees, Env, []).
+verify_signatures_offchain(Channel, SignedTx, Trees, Env) ->
+    verify_signatures_offchain(Channel, SignedTx, Trees, Env, []).
 
-verify_signatures(Channel, SignedState, Trees, Env, CheckedSigners) ->
-    Tx = aetx_sign:tx(SignedState),
-    case aetx:specialize_type(Tx) of
-        {channel_offchain_tx, _} ->
-            {ok, Signers} = aetx:signers(Tx, Trees),
-            BasicSigners  = Signers -- CheckedSigners,
-            aetx_sign:verify_half_signed(BasicSigners, SignedState);
-        {ga_meta_tx, GAMetaTx} ->
-            case verify_signature(Channel, GAMetaTx, Trees, Env) of
-                {ok, Signer, InnerTx} ->
-                    verify_signatures(Channel, InnerTx, Trees, Env,
-                                      [Signer | CheckedSigners]);
-                Err = {error, _} ->
-                    Err
-            end
-    end.
+verify_signatures_offchain(Channel, SignedTx, Trees, Env, CheckedSigners) ->
+    verify_signatures(SignedTx, Trees, Env, CheckedSigners,
+                      fun verify_signature_offchain/4, [Channel]).
 
-verify_signature(Channel, MetaTx, Trees, Env) ->
+verify_signature_offchain(Channel, MetaTx, Trees, Env) ->
     SignerId = aega_meta_tx:ga_id(MetaTx),
     ABIVersion = aega_meta_tx:abi_version(MetaTx),
     case aesc_channels:auth_for_id(SignerId, Channel) of
@@ -453,7 +448,8 @@ verify_signature(Channel, MetaTx, Trees, Env) ->
             AuthData = aega_meta_tx:auth_data(MetaTx),
             case aeprimop:check_auth_data_function(ABIVersion, AuthData, AuthFunHash) of
                 ok ->
-                    verify_signature_(Channel, SignerId, AuthContractId, MetaTx, Trees, Env);
+                    verify_signature_offchain_(Channel, SignerId, AuthContractId,
+                                               MetaTx, Trees, Env);
                 Err = {error, _} ->
                     Err
             end;
@@ -463,14 +459,29 @@ verify_signature(Channel, MetaTx, Trees, Env) ->
             Err
     end.
 
-verify_signature_(Channel, SignerId, AuthContractId, MetaTx, Trees, Env) ->
+verify_signature_offchain_(Channel, SignerId, AuthContractId, MetaTx, Trees, Env) ->
+    StoreKey = aesc_channels:auth_store_key(SignerId, Channel),
+    verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env,
+                   offchain).
+
+verify_signature_onchain_(SignerId, AuthContractId, MetaTx, Trees, Env)
+    when AuthContractId =/= undefined ->
+    StoreKey = aeser_id:specialize(AuthContractId, contract),
+    verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env,
+                   onchain).
+
+-spec verify_meta_tx(aeser_id:id(), binary(), aeser_id:id(),
+                     aega_meta_tx:tx(), aec_trees:trees(), any(),
+                     onchain | offchain) ->
+  {ok, binary(), aetx_sign:signed_tx()} | {error, atom()}.
+verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
+    when StoreKey =/= undefined, AuthContractId =/= undefined ->
     Height = aetx_env:height(Env),
     {_, SignerPK} = aeser_id:specialize(SignerId),
     {_, AuthContractPK} = aeser_id:specialize(AuthContractId),
     Call = aect_call:new(SignerId, 0, AuthContractId, Height,
                          aega_meta_tx:gas_price(MetaTx)),
     CTree = aec_trees:contracts(Trees),
-    StoreKey = aesc_channels:auth_store_key(SignerId, Channel),
     case {aect_state_tree:lookup_contract(AuthContractPK, CTree, [no_store]),
           aect_state_tree:read_contract_store(StoreKey, CTree)} of
         {{value, Contract}, {ok, Store}} ->
@@ -485,7 +496,7 @@ verify_signature_(Channel, SignerId, AuthContractId, MetaTx, Trees, Env) ->
                        , store       => Store
                        , call        => Call
                        , trees       => Trees
-                       , tx_env      => set_auth_tx_hash(aega_meta_tx:tx(MetaTx), Env)
+                       , tx_env      => set_auth_tx_hash(aega_meta_tx:tx(MetaTx), Env, TxType)
                        , off_chain   => false
                        , origin      => SignerPK
                        , creator     => aect_contracts:owner_pubkey(Contract)
@@ -502,6 +513,39 @@ verify_signature_(Channel, SignerId, AuthContractId, MetaTx, Trees, Env) ->
             {error, signature_verification_failed_no_state}
     end.
 
+verify_signature_onchain(MetaTx, Trees, Env) ->
+    SignerPubkey = aega_meta_tx:ga_pubkey(MetaTx),
+    AbiVersion = aega_meta_tx:abi_version(MetaTx),
+    AccountsTrees = aec_trees:accounts(Trees),
+    Account = aec_accounts_trees:get(SignerPubkey, AccountsTrees),
+    case aec_accounts:type(Account) of
+        generalized ->
+            AuthFunHash0 = aec_accounts:ga_auth_fun(Account),
+            {AuthFunHash, GetFunHashFun} =
+                case AbiVersion of
+                    ?ABI_FATE_SOPHIA_1 ->
+                        <<AuthFunHash1:4/binary, _:28/binary>> = AuthFunHash0,
+                        {AuthFunHash1,
+                         fun aeb_fate_abi:get_function_hash_from_calldata/1};
+                    ?ABI_AEVM_SOPHIA_1 ->
+                        {AuthFunHash0,
+                         fun aeb_aevm_abi:get_function_hash_from_calldata/1}
+                end,
+            AuthContractId = aec_accounts:ga_contract(Account),
+            case GetFunHashFun(aega_meta_tx:auth_data(MetaTx)) of
+                {ok, AuthFunHash} ->
+                    verify_signature_onchain_(aeser_id:create(account,
+                                                              SignerPubkey),
+                                              AuthContractId,
+                                              MetaTx, Trees, Env);
+                {ok, _OtherHash}  -> {error, wrong_auth_function};
+                _Other            -> {error, bad_auth_data}
+            end;
+        basic ->
+            {error, meta_tx_for_basic_account}
+    end.
+
+
 check_auth_result(#{ abi := ABIVersion }, Call) ->
     case aect_call:return_type(Call) of
         ok ->
@@ -513,20 +557,50 @@ check_auth_result(#{ abi := ABIVersion }, Call) ->
             {error, signature_verification_failed_contract_error}
     end.
 
-set_auth_tx_hash(STx, Env) ->
-    Tx = aetx_sign:tx(STx),
-    case aetx:specialize_type(Tx) of
-        {ga_meta_tx, MetaTx} -> set_auth_tx_hash(aega_meta_tx:tx(MetaTx), Env);
-        {channel_offchain_tx, _} ->
-            BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
-            aetx_env:set_ga_tx_hash(Env, aec_hash:hash(tx, BinForNetwork))
-    end.
+set_auth_tx_hash(STx, Env, TxType) ->
+    Tx =
+        case TxType of
+            onchain -> aetx_sign:tx(STx);
+            offchain -> aetx_sign:innermost_tx(STx)
+        end,
+    BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
+    aetx_env:set_ga_tx_hash(Env, aec_hash:hash(tx, BinForNetwork)).
 
 is_delegatable_tx_type(Type) ->
     lists:member(Type, delegatable_tx_types()).
 
 delegatable_tx_types() ->
     [slash].
+
+-spec verify_signatures_onchain(aetx_sign:signed_tx(), aec_trees:trees(),
+                                aetx_env:env()) -> ok | {error, atom()}.
+verify_signatures_onchain(SignedTx, Trees, Env) ->
+    verify_signatures_onchain(SignedTx, Trees, Env, []).
+
+verify_signatures_onchain(SignedTx, Trees, Env, CheckedSigners) ->
+    verify_signatures(SignedTx, Trees, Env, CheckedSigners,
+                      fun verify_signature_onchain/3, []).
+
+-spec verify_signatures(aetx_sign:signed_tx(), aec_trees:trees(),
+                        aetx_env:env(), list(), fun(), list()) -> ok | {error, atom()}.
+verify_signatures(SignedTx, Trees, Env, CheckedSigners,
+                  VerifyFun, Params) ->
+    Tx = aetx_sign:tx(SignedTx),
+    case aetx:specialize_type(Tx) of
+        {ga_meta_tx, GAMetaTx} ->
+            case apply(VerifyFun, Params ++ [GAMetaTx, Trees, Env]) of
+                {ok, Signer, InnerTx} ->
+                    verify_signatures(InnerTx, Trees, Env,
+                                      [Signer | CheckedSigners],
+                                      VerifyFun, Params);
+                Err = {error, _} ->
+                    Err
+            end;
+        {_, _} -> % most inner tx
+            {ok, Signers} = aetx:signers(Tx, Trees),
+            BasicSigners  = Signers -- CheckedSigners,
+            aetx_sign:verify_half_signed(BasicSigners, SignedTx)
+    end.
 
 -spec is_delegate(aesc_channels:id(), aec_keys:pubkey(),
                   aec_trees:trees())
@@ -795,3 +869,68 @@ add_call(Call0, TxHash, Trees, Env) ->
                        {ok, aec_trees:trees(), aetx_env:env()}.
 add_event(Trees, ChannelPubKey, Env) ->
     {ok, Trees, aetx_env:tx_event({channel, ChannelPubKey}, Env)}.
+
+count_authentications(SignedTx) ->
+    count_authentications(SignedTx, 0).
+
+count_authentications(SignedTx, Cnt) ->
+    case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of
+        {aega_meta_tx, InnerSignedTx} -> 
+            count_authentications(aega_meta_tx:tx(InnerSignedTx), Cnt + 1);
+        {_, _} -> % most inner tx
+            Cnt + length(aetx_sign:signatures(SignedTx))
+    end.
+
+-spec channel_pubkey(aetx_sign:signed_tx()) -> {ok, aec_keys:pubkey()} |
+                                               {error, not_channel_tx}.
+channel_pubkey(SignedTx) ->
+    case aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)) of
+        %% initial channel id depends on the auth
+        {aesc_create_tx, Txi} ->
+            Initiator = aesc_create_tx:initiator_pubkey(Txi),
+            Responder = aesc_create_tx:responder_pubkey(Txi),
+            {ok, InitiatorAuthId} = channel_create_nonce_or_auth_id(SignedTx),
+            PK = aesc_channels:pubkey(Initiator,
+                                      InitiatorAuthId,
+                                      Responder),
+            {ok, PK};
+        %% Likely only channel txs have a channel_id/1 callback, so prepare for
+        %% 'undef' exceptions.
+        {Mod, Txi} ->
+            try {ok, Mod:channel_pubkey(Txi)}
+            catch error:_ -> {error, not_channel_tx}
+            end
+    end.
+
+channel_create_nonce_or_auth_id(SignedTx) ->
+    {aesc_create_tx, Txi} =
+        aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+    Initiator = aesc_create_tx:initiator_pubkey(Txi),
+    channel_create_nonce_or_auth_id(SignedTx, Initiator).
+
+    
+%% since there might be a couple of nested meta transactions by the same
+%% signer - we need the innermost one as it is is required for channel_id
+%% computation
+channel_create_nonce_or_auth_id(SignedTx, Initiator) ->
+    case channel_create_nonce_or_auth_id(SignedTx, Initiator, not_found) of
+        not_found -> {error, missing_authentication};
+        V -> {ok, V}
+    end.
+        
+channel_create_nonce_or_auth_id(SignedTx, Initiator, OldValueFound) ->
+    case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of
+        {aega_meta_tx, MetaTx} ->
+            NewValueFound =
+            case aega_meta_tx:ga_pubkey(MetaTx) =:= Initiator of
+                true -> aega_meta_tx:auth_id(MetaTx);
+                false -> OldValueFound
+            end,
+            channel_create_nonce_or_auth_id(aega_meta_tx:tx(MetaTx),
+                                            Initiator, NewValueFound);
+        {Mod, Tx} -> % most inner tx
+            case Mod:nonce(Tx) of
+                0 -> OldValueFound; % GA
+                V when OldValueFound =:= not_found -> V
+            end
+    end.

@@ -17,7 +17,8 @@
          set_account_balance/3,
          set_account_nonce/3,
          next_nonce/2,
-         setup_new_account/1]).
+         setup_new_account/1,
+         new_key_pair/0]).
 
 -export([close_solo/1,
          close_solo/2,
@@ -215,7 +216,7 @@ create_tx_default_spec(InitiatorPubKey, State) ->
       lock_period        => 100,
       ttl                => 0,
       fee                => 50000 * aec_test_utils:min_gas_price(),
-      nonce              => try next_nonce(InitiatorPubKey, State) catch _:_ -> 0 end}.
+      nonce              => try next_nonce(InitiatorPubKey, State) catch _:_ -> 1 end}.
 
 %%%===================================================================
 %%% Close mutual tx
@@ -236,7 +237,7 @@ close_mutual_tx_default_spec(Initiator, State) ->
     #{initiator_amount_final => 10,
       responder_amount_final => 10,
       fee                    => 50000 * aec_test_utils:min_gas_price(),
-      nonce                  => try next_nonce(Initiator, State) catch _:_ -> 0 end}.
+      nonce                  => try next_nonce(Initiator, State) catch _:_ -> 1 end}.
 
 %%%===================================================================
 %%% Close solo tx
@@ -257,7 +258,7 @@ close_solo_tx_spec(ChannelPubKey, FromPubKey, Payload, PoI, Spec0, State) ->
 
 close_solo_tx_default_spec(FromPubKey, State) ->
     #{fee         => 50000 * aec_test_utils:min_gas_price(),
-      nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+      nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 1 end}.
 
 %%%===================================================================
 %%% Deposit tx
@@ -282,7 +283,7 @@ deposit_tx_default_spec(FromPubKey, State) ->
       fee         => 50000 * aec_test_utils:min_gas_price(),
       state_hash  => ?BOGUS_STATE_HASH,
       round       => 42,
-      nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+      nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 1 end}.
 
 %%%===================================================================
 %%% Withdraw tx
@@ -307,7 +308,7 @@ withdraw_tx_spec(ToPubKey, State) ->
       fee         => 50000 * aec_test_utils:min_gas_price(),
       state_hash  => ?BOGUS_STATE_HASH,
       round       => 42,
-      nonce       => try next_nonce(ToPubKey, State) catch _:_ -> 0 end}.
+      nonce       => try next_nonce(ToPubKey, State) catch _:_ -> 1 end}.
 
 %%%===================================================================
 %%% Slash tx
@@ -328,7 +329,7 @@ slash_tx_spec(ChannelId, FromPubKey, Payload, PoI, Spec0, State) ->
 
 slash_tx_default_spec(FromPubKey, State) ->
     #{fee         => 50000 * aec_test_utils:min_gas_price(),
-      nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+      nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 1 end}.
 
 %%%===================================================================
 %%% Settle tx
@@ -351,7 +352,7 @@ settle_tx_default_spec(FromPubKey, State) ->
     #{initiator_amount => 10,
       responder_amount => 10,
       fee              => 50000 * aec_test_utils:min_gas_price(),
-      nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+      nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 1 end}.
 
 %%%===================================================================
 %%% Snapshot solo tx
@@ -371,7 +372,7 @@ snapshot_solo_tx_default_spec(FromPubKey, State) ->
     #{initiator_amount => 10,
       responder_amount => 10,
       fee              => 50000 * aec_test_utils:min_gas_price(),
-      nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+      nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 1 end}.
 
 state_tx(ChannelPubKey, Initiator, Responder, Spec0) ->
     Spec = maps:merge(state_tx_spec(), Spec0),
@@ -453,6 +454,6 @@ force_progress_tx_spec(ChannelId, FromPubKey, Payload, Update, StateHash,
 
 force_progress_default_spec(FromPubKey, State) ->
     #{fee              => 50000 * aec_test_utils:min_gas_price(),
-      nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+      nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 1 end}.
 
 

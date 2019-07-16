@@ -78,7 +78,8 @@
 
 -export([patron/0,
          sign_keys/0,
-         sign_keys/1]).
+         sign_keys/1,
+         meta_tx/4]).
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -739,7 +740,7 @@ cmd_run(Cmd, Dir, BinDir, Args, Env, FindLocalBin) ->
             {args, Args},
             {cd, Dir}
            ],
-    ct:log("Running command ~p in ~p with ~p", [Cmd, Dir, Args]),
+    ct:log("Running command ~p in ~p with ~p, opts ~p", [Cmd, Dir, Args, Opts]),
     Bin = case FindLocalBin of
 	       true ->
                     os:find_executable(Cmd, filename:join(Dir, BinDir));
@@ -1123,3 +1124,15 @@ rpc(Node, Mod, Fun, Args) ->
 generate_key_pair() ->
     #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
     {Pubkey, Privkey}.
+
+meta_tx(Owner, AuthOpts, AuthData, InnerTx0) ->
+    InnerSTx =
+        try aetx_sign:tx(InnerTx0) of
+            _Tx -> InnerTx0
+        catch _:_ ->
+            aetx_sign:new(InnerTx0, [])
+        end,
+    Options1 = maps:merge(#{auth_data => AuthData, tx => InnerSTx}, AuthOpts),
+    MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),
+    aetx_sign:new(MetaTx, []).
+
