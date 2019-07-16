@@ -312,7 +312,7 @@ process_request(#{<<"method">> := <<"channels.update.new_contract">>,
     end;
 process_request(#{<<"method">> := <<"channels.update.new_contract_from_onchain">>,
                   <<"params">> := #{<<"deposit">>     := Deposit,
-                                    <<"contract">>    := OnChainContractE,
+                                    <<"contract_id">> := OnChainContractE,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
     assert_integer(Deposit),
     case {aeser_api_encoder:safe_decode(contract_pubkey, OnChainContractE),
@@ -336,7 +336,7 @@ process_request(#{<<"method">> := <<"channels.update.new_contract_from_onchain">
         {{error, _}, {error, _}} -> {error, {broken_encoding, [contract, bytearray]}}
     end;
 process_request(#{<<"method">> := <<"channels.update.call_contract">>,
-                  <<"params">> := #{<<"contract">>    := ContractE,
+                  <<"params">> := #{<<"contract_id">> := ContractE,
                                     <<"abi_version">> := ABIVersion,
                                     <<"amount">>      := Amount,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
@@ -358,8 +358,8 @@ process_request(#{<<"method">> := <<"channels.update.call_contract">>,
         {{error, _}, {error, _}} -> {error, {broken_encoding, [contract, bytearray]}}
     end;
 process_request(#{<<"method">> := <<"channels.get.contract_call">>,
-                  <<"params">> := #{<<"contract">>   := ContractE,
-                                    <<"caller">>     := CallerE,
+                  <<"params">> := #{<<"contract_id">>   := ContractE,
+                                    <<"caller_id">>     := CallerE,
                                     <<"round">>      := Round}}, FsmPid) ->
     assert_integer(Round),
     case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
@@ -379,7 +379,7 @@ process_request(#{<<"method">> := <<"channels.get.contract_call">>,
         {{error, _}, {error, _}} -> {error, {broken_encoding, [contract, account]}}
     end;
 process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
-                  <<"params">> := #{<<"contract">>    := ContractE,
+                  <<"params">> := #{<<"contract_id">> := ContractE,
                                     <<"abi_version">> := ABIVersion,
                                     <<"amount">>      := Amount,
                                     <<"call_data">>   := CallDataE}}, FsmPid) ->
