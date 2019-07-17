@@ -2,7 +2,34 @@
 
 [This][this-release] is a major Fortuna release, mainly aimed at easing development of applications using state channels in the presence of generic accounts.
 It:
-* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
+* The State Channels WebSocket API now supports starting a responder with `"initiator_id": "any"`.
+  The responder instance will get the proper initiator Id from the `channel_open` message once a
+  connection is established.
+* Fixes the value of the discriminator field (`type`) for the oracle response transaction in the user API paths returning transactions (e.g. path `/transactions/{hash}`).
+* Enhances the response of the dry-run API (path `/debug/transactions/dry-run`) for contract create transaction by adding the information for the call of the initialization function e.g. the gas used.  This makes the response of the dry-run for the contract create transaction analogous to the one for the contract call transaction.
+* Introduces State Channel FSM Generalized Accounts awareness. It now fully
+  supports creation of meta transactions and verifies them.
+* Changes WebSocket API regarding signing transactions: now sign requests
+  provide a signed transaction to be signed. Old approach was sending unsigned
+  transactions.
+* Changes channel reestablish checks: for on-chain transactions authentication
+  can not always be checked at current chain top. Check is done, if the last
+  transaction is an on-chain one, it must be present in on-chain.
+* Changes the off-chain protocol to accommodate Generalized Account
+  authentication methods. This is off-chain noise protocol breaking change.
+* Enhances State Channel's WebSocket API with providing more meaningful
+  messages when failing to open a channel because of invalid opening arguments
+* Make State Channel WebSocket API more consistent regarding the usage of
+  `caller` and `contract` vs `caller_id` and `contract_id`. This is an API
+  breaking change.
+* Allows sending and receiving generic messages in State Channels in any FSM
+  state. Until this - generic messages were allowed only in `open` state.
+  `channel_id` is part of the message body and if it is unknown - the
+  temporary one is used instead. This is not backwards compatible for the
+  `noise` protocol. This enhances the WebSocket API accordingly.
+* Multiple different State Channel responder pubkeys can now share the same listen port
+* The `channel_open` and `channel_accept` messages now contain both the initiator and
+  responder public keys. This is not backwards compatible for the `noise` protocol.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v4.0.0
 
