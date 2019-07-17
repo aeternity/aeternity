@@ -404,11 +404,11 @@ multiple_responder_keys_per_port(Cfg) ->
     %% At this point, we know the pairing worked
     [begin
          MRef = erlang:monitor(process, P),
-         ct:pal("P (~p) info: ~p", [P, process_info(P)]),
+         ct:log("P (~p) info: ~p", [P, process_info(P)]),
          P ! die,
          receive {'DOWN', MRef, _, _, _} -> ok
          after 5000 ->
-                 ct:pal("timed out: ~p", [process_info(self(), messages)]),
+                 ct:log("timed out: ~p", [process_info(self(), messages)]),
                  erlang:error({channel_not_dying, P})
          end
      end || P <- Cs],
@@ -1578,14 +1578,14 @@ ch_loop(I, R, Parent, Cfg) ->
             Parent ! {self(), loop_ack},
             ch_loop(I1, R1, Parent, Cfg);
         die ->
-            ct:pal("~p got die request", [self()]),
+            ct:log("~p got die request", [self()]),
             #{ proxy := ProxyI } = I,
             #{ proxy := ProxyR } = R,
             ProxyI ! {self(), die},
             ProxyR ! {self(), die},
             exit(normal);
         Other ->
-            ct:pal("Got Other = ~p, I = ~p~nR = ~p", [Other, I, R]),
+            ct:log("Got Other = ~p, I = ~p~nR = ~p", [Other, I, R]),
             ch_loop(I, R, Parent, Cfg)
     end.
 
@@ -1775,9 +1775,9 @@ fsm_relay_(#{ fsm := Fsm } = Map, Parent, Debug) ->
             log(Debug, "Relaying(~p) ~p", [Parent, Msg]),
             Parent ! Msg;
         {Parent, die} ->
-            ct:pal("Got 'die' from parent", []),
+            ct:log("Got 'die' from parent", []),
             exit(Fsm, die),
-            ct:pal("relay stopping (die)", []),
+            ct:log("relay stopping (die)", []),
             exit(normal);
         Other ->
             log(Debug, "Relay got Other: ~p", [Other])
@@ -1933,10 +1933,10 @@ await_on_chain_report(R, Timeout) ->
     await_on_chain_report(R, #{}, Timeout).
 
 await_on_chain_report(#{fsm := Fsm}, Match, Timeout) ->
-    ct:pal("~p awaiting on-chain from ~p", [self(), Fsm]),
+    ct:log("~p awaiting on-chain from ~p", [self(), Fsm]),
     receive
         {aesc_fsm, Fsm, #{info := {died, _}}} = Died ->
-            ct:pal("Fsm died while waiting for on-chain report:~n"
+            ct:log("Fsm died while waiting for on-chain report:~n"
                    "~p", [Died]),
             error(fsm_died);
         {aesc_fsm, Fsm, #{type := report, tag := on_chain_tx,
