@@ -1,1 +1,0 @@
-* Fixes the value of the discriminator field (`type`) for the oracle response transaction in the user API paths returning transactions (e.g. path `/transactions/{hash}`).
