@@ -372,17 +372,38 @@ multiple_responder_keys_per_port(Cfg) ->
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
     Cs = [create_multi_channel([{port, ?PORT},
                                 {ack_to, Me},
-                                {nonce, Nonce + N - 1},
                                 {minimum_depth, 0},
                                 {slogan, {Slogan, N}} | CfgX], #{mine_blocks => {ask, Me},
                                                                  debug => Debug}, false)
           || {N, CfgX} <- [{1, Cfg}, {2, Cfg2}]],
+    NumCs = length(Cs),
     ct:log("channels spawned", []),
     CsAcks = collect_acks_w_payload(Cs, mine_blocks, 2),
     ct:log("mining requests collected: ~p", [CsAcks]),
     Cs = [C || {C, _} <- CsAcks],
+    Txs = [Tx || {_, Tx} <- CsAcks],
+
+    TxHashes =
+        lists:map(
+            fun(Tx) ->
+                aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx))
+            end,
+            Txs),
+    mine_blocks_until_txs_on_chain(dev1, TxHashes),
+    mine_blocks(dev1, ?MINIMUM_DEPTH),
+    Cs = collect_acks(Cs, channel_ack, NumCs),
+    ct:log("channel pids collected: ~p", [Cs]),
     %% At this point, we know the pairing worked
-    [P ! die || P <- Cs],
+    [begin
+         MRef = erlang:monitor(process, P),
+         ct:pal("P (~p) info: ~p", [P, process_info(P)]),
+         P ! die,
+         receive {'DOWN', MRef, _, _, _} -> ok
+         after 5000 ->
+                 ct:pal("timed out: ~p", [process_info(self(), messages)]),
+                 erlang:error({channel_not_dying, P})
+         end
+     end || P <- Cs],
     ok.
 
 t_create_channel_(Cfg) ->
@@ -1548,7 +1569,16 @@ ch_loop(I, R, Parent, Cfg) ->
             {_, I1, R1} = do_n(N, fun msg_volley/3, I, R, Cfg),
             Parent ! {self(), loop_ack},
             ch_loop(I1, R1, Parent, Cfg);
-        die -> ok
+        die ->
+            ct:pal("~p got die request", [self()]),
+            #{ proxy := ProxyI } = I,
+            #{ proxy := ProxyR } = R,
+            ProxyI ! {self(), die},
+            ProxyR ! {self(), die},
+            exit(normal);
+        Other ->
+            ct:pal("Got Other = ~p, I = ~p~nR = ~p", [Other, I, R]),
+            ch_loop(I, R, Parent, Cfg)
     end.
 
 create_channel_on_port(Port) ->
@@ -1736,6 +1766,11 @@ fsm_relay_(#{ fsm := Fsm } = Map, Parent, Debug) ->
         {aesc_fsm, Fsm, _} = Msg ->
             log(Debug, "Relaying(~p) ~p", [Parent, Msg]),
             Parent ! Msg;
+        {Parent, die} ->
+            ct:pal("Got 'die' from parent", []),
+            exit(Fsm, die),
+            ct:pal("relay stopping (die)", []),
+            exit(normal);
         Other ->
             log(Debug, "Relay got Other: ~p", [Other])
     end,
@@ -1890,7 +1925,12 @@ await_on_chain_report(R, Timeout) ->
     await_on_chain_report(R, #{}, Timeout).
 
 await_on_chain_report(#{fsm := Fsm}, Match, Timeout) ->
+    ct:pal("~p awaiting on-chain from ~p", [self(), Fsm]),
     receive
+        {aesc_fsm, Fsm, #{info := {died, _}}} = Died ->
+            ct:pal("Fsm died while waiting for on-chain report:~n"
+                   "~p", [Died]),
+            error(fsm_died);
         {aesc_fsm, Fsm, #{type := report, tag := on_chain_tx,
                           info := #{tx := SignedTx} = I}} = M ->
             ct:log("OnChainRpt = ~p", [M]),
