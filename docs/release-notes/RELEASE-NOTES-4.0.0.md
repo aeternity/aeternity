@@ -1,13 +1,13 @@
 # About this release
 
-[This][this-release] is a maintenance release.
+[This][this-release] is a major Fortuna release, mainly aimed at easing development of applications using state channels in the presence of generic accounts.
 It:
 * Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
 
-
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v4.0.0
 
-Compatibility summary - TODO
+This release introduces backward incompatibilities in the channels user WebSocket API and in the channels external Noise endpoint protocol.
+For the rest, this release is backward compatible with previous `v3.*` releases.
 
 Please join the mainnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/aeternity/wiki/Troubleshooting).
