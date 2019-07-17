@@ -19,7 +19,7 @@ It:
 * Changes the `channel_open` and `channel_accept` messages to contain both the initiator and
   responder public keys. This is not backwards compatible for the `noise` protocol.
 * Enhances State Channel's WebSocket API with providing more meaningful
-  messages when failing to open a channel because of invalid opening arguments
+  messages when failing to open a channel because of invalid opening arguments.
 * Makes State Channel WebSocket API more consistent regarding the usage of
   `caller` and `contract` vs `caller_id` and `contract_id`. This is an API
   breaking change.
