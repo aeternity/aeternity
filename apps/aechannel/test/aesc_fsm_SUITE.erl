@@ -172,6 +172,8 @@ groups() ->
     ].
 
 ga_sequence() ->
+      %[ multiple_responder_keys_per_port].
+
     [ {group, transactions}
     , {group, errors}
     , {group, signatures}
@@ -369,29 +371,35 @@ multiple_responder_keys_per_port(Cfg) ->
     Cfg2 = lists:keyreplace(responder, 1, Cfg, {responder, Responder2}),
     Me = self(),
     Initiator = maps:get(pub, ?config(initiator, Cfg)),
+    InitiatorAccountType = account_type(Initiator),
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
-    Cs = [create_multi_channel([{port, ?PORT},
-                                {ack_to, Me},
-                                {minimum_depth, 0},
-                                {slogan, {Slogan, N}} | CfgX], #{mine_blocks => {ask, Me},
-                                                                 debug => Debug}, false)
-          || {N, CfgX} <- [{1, Cfg}, {2, Cfg2}]],
-    NumCs = length(Cs),
-    ct:log("channels spawned", []),
-    CsAcks = collect_acks_w_payload(Cs, mine_blocks, 2),
-    ct:log("mining requests collected: ~p", [CsAcks]),
-    Cs = [C || {C, _} <- CsAcks],
-    Txs = [Tx || {_, Tx} <- CsAcks],
-
-    TxHashes =
-        lists:map(
-            fun(Tx) ->
-                aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx))
-            end,
-            Txs),
-    mine_blocks_until_txs_on_chain(dev1, TxHashes),
+    CreateMultiChannel =
+        fun(N, CustomCfg) ->
+            ChannelCfg0 =
+                [ {port, ?PORT},
+                  {ack_to, Me},
+                  {minimum_depth, 0},
+                  {slogan, {Slogan, N}} | CustomCfg],
+            ChannelCfg =
+                case InitiatorAccountType of
+                    basic -> % give away nonces in advance to avoid race conditions
+                        [{nonce, Nonce + N - 1} | ChannelCfg0];
+                    generalized -> % nonce is 0
+                        ChannelCfg0
+                end,
+            C = create_multi_channel(ChannelCfg, #{mine_blocks => {ask, Me},
+                                                               debug => Debug}, false),
+            [{C, Tx}] = collect_acks_w_payload([C], mine_blocks, 1),
+            TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)),
+            mine_blocks_until_txs_on_chain(dev1, [TxHash]),
+            C
+        end,
+    %Cs = [CreateMultiChannel(N, CfgX) || {N, CfgX} <- [{1, Cfg}, {2, Cfg2}]],
+    C1 = CreateMultiChannel(1, Cfg),
+    C2 = CreateMultiChannel(2, Cfg2),
+    Cs = [C1, C2],
     mine_blocks(dev1, ?MINIMUM_DEPTH),
-    Cs = collect_acks(Cs, channel_ack, NumCs),
+    Cs = collect_acks(Cs, channel_ack, 2),
     ct:log("channel pids collected: ~p", [Cs]),
     %% At this point, we know the pairing worked
     [begin
