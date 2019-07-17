@@ -22,6 +22,7 @@
 %% test case exports
 -export([
           create_channel/1
+        , multiple_responder_keys_per_port/1
         , channel_insufficent_tokens/1
         , inband_msgs/1
         , upd_transfer/1
@@ -121,6 +122,7 @@ groups() ->
      {transactions, [sequence],
       [
         create_channel
+      , multiple_responder_keys_per_port
       , channel_insufficent_tokens
       , inband_msgs
       , upd_transfer
@@ -170,6 +172,8 @@ groups() ->
     ].
 
 ga_sequence() ->
+      %[ multiple_responder_keys_per_port].
+
     [ {group, transactions}
     , {group, errors}
     , {group, signatures}
@@ -300,8 +304,10 @@ init_per_group_(Config) ->
             try begin
                     Initiator = prep_initiator(dev1),
                     Responder = prep_responder(Initiator, dev1),
+                    Responder2 = prep_responder(Initiator, dev1),
                     [{initiator, Initiator},
                     {responder, Responder},
+                    {responder2, Responder2},
                     {port, ?PORT},
                     {initiator_amount, 10000000 * aec_test_utils:min_gas_price()},
                     {responder_amount, 10000000 * aec_test_utils:min_gas_price()}
@@ -355,6 +361,58 @@ stop_node(N, Config) ->
 
 create_channel(Cfg) ->
     with_trace(fun t_create_channel_/1, Cfg, "create_channel").
+
+multiple_responder_keys_per_port(Cfg) ->
+    Slogan = ?SLOGAN,
+    %% Debug = get_debug(Cfg),
+    Debug = true,
+    {_, Responder2} = lists:keyfind(responder2, 1, Cfg),
+    ct:log("Responder2 = ~p", [Responder2]),
+    Cfg2 = lists:keyreplace(responder, 1, Cfg, {responder, Responder2}),
+    Me = self(),
+    Initiator = maps:get(pub, ?config(initiator, Cfg)),
+    InitiatorAccountType = account_type(Initiator),
+    {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
+    CreateMultiChannel =
+        fun(N, CustomCfg) ->
+            ChannelCfg0 =
+                [ {port, ?PORT},
+                  {ack_to, Me},
+                  {minimum_depth, 0},
+                  {slogan, {Slogan, N}} | CustomCfg],
+            ChannelCfg =
+                case InitiatorAccountType of
+                    basic -> % give away nonces in advance to avoid race conditions
+                        [{nonce, Nonce + N - 1} | ChannelCfg0];
+                    generalized -> % nonce is 0
+                        ChannelCfg0
+                end,
+            C = create_multi_channel(ChannelCfg, #{mine_blocks => {ask, Me},
+                                                               debug => Debug}, false),
+            [{C, Tx}] = collect_acks_w_payload([C], mine_blocks, 1),
+            TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)),
+            mine_blocks_until_txs_on_chain(dev1, [TxHash]),
+            C
+        end,
+    %Cs = [CreateMultiChannel(N, CfgX) || {N, CfgX} <- [{1, Cfg}, {2, Cfg2}]],
+    C1 = CreateMultiChannel(1, Cfg),
+    C2 = CreateMultiChannel(2, Cfg2),
+    Cs = [C1, C2],
+    mine_blocks(dev1, ?MINIMUM_DEPTH),
+    Cs = collect_acks(Cs, channel_ack, 2),
+    ct:log("channel pids collected: ~p", [Cs]),
+    %% At this point, we know the pairing worked
+    [begin
+         MRef = erlang:monitor(process, P),
+         ct:log("P (~p) info: ~p", [P, process_info(P)]),
+         P ! die,
+         receive {'DOWN', MRef, _, _, _} -> ok
+         after 5000 ->
+                 ct:log("timed out: ~p", [process_info(self(), messages)]),
+                 erlang:error({channel_not_dying, P})
+         end
+     end || P <- Cs],
+    ok.
 
 t_create_channel_(Cfg) ->
     Debug = get_debug(Cfg),
@@ -1493,12 +1551,18 @@ collect_acks_w_payload([], _Tag, _) ->
 
 
 create_multi_channel(Cfg, Debug) ->
+    create_multi_channel(Cfg, Debug, true).
+
+create_multi_channel(Cfg, Debug, UseAny) ->
     spawn_link(fun() ->
-                       create_multi_channel_(Cfg, Debug)
+                       create_multi_channel_(Cfg, Debug, UseAny)
                end).
 
-create_multi_channel_(Cfg, Debug) ->
-    #{i := I, r := R} = create_channel_([multi | Cfg], Debug),
+create_multi_channel_(Cfg0, Debug, UseAny) when is_boolean(UseAny) ->
+    Cfg = if UseAny -> [ use_any | Cfg0 ];
+             true   -> Cfg0
+          end,
+    #{i := I, r := R} = create_channel_(Cfg, Debug),
     Parent = ?config(ack_to, Cfg),
     Parent ! {self(), channel_ack},
     ch_loop(I, R, Parent, Cfg).
@@ -1513,7 +1577,16 @@ ch_loop(I, R, Parent, Cfg) ->
             {_, I1, R1} = do_n(N, fun msg_volley/3, I, R, Cfg),
             Parent ! {self(), loop_ack},
             ch_loop(I1, R1, Parent, Cfg);
-        die -> ok
+        die ->
+            ct:log("~p got die request", [self()]),
+            #{ proxy := ProxyI } = I,
+            #{ proxy := ProxyR } = R,
+            ProxyI ! {self(), die},
+            ProxyR ! {self(), die},
+            exit(normal);
+        Other ->
+            ct:log("Got Other = ~p, I = ~p~nR = ~p", [Other, I, R]),
+            ch_loop(I, R, Parent, Cfg)
     end.
 
 create_channel_on_port(Port) ->
@@ -1531,7 +1604,7 @@ create_channel_(Cfg, Debug) ->
     {I, R, Spec} = channel_spec(Cfg),
     log(Debug, "channel_spec: ~p", [{I, R, Spec}]),
     Port = proplists:get_value(port, Cfg, 9325),
-    create_channel_from_spec(I, R, Spec, Port, proplists:get_bool(multi, Cfg),
+    create_channel_from_spec(I, R, Spec, Port, proplists:get_bool(use_any, Cfg),
                              Debug, Cfg).
 
 channel_spec(Cfg) ->
@@ -1579,8 +1652,8 @@ slogan(Cfg) ->
 create_channel_from_spec(I, R, Spec, Port, Debug, Cfg) ->
     create_channel_from_spec(I, R, Spec, Port, false, Debug, Cfg).
 
-create_channel_from_spec(I, R, Spec, Port, Multi, Debug, Cfg) ->
-    RProxy = spawn_responder(Port, Spec, R, Multi, Debug),
+create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
+    RProxy = spawn_responder(Port, Spec, R, UseAny, Debug),
     IProxy = spawn_initiator(Port, Spec, I, Debug),
     log("RProxy = ~p, IProxy = ~p", [RProxy, IProxy]),
     #{ i := #{ fsm := FsmI } = I1
@@ -1628,19 +1701,18 @@ create_channel_from_spec(I, R, Spec, Port, Multi, Debug, Cfg) ->
     check_info(500, Debug),
     #{i => I5, r => R5, spec => Spec}.
 
-spawn_responder(Port, Spec, R, Multi, Debug) ->
+spawn_responder(Port, Spec, R, UseAny, Debug) ->
     Me = self(),
     spawn_link(fun() ->
                        log("responder spawned: ~p", [Spec]),
-                       Spec1 = maybe_multi(Multi, Spec#{ client => self()
-                                                       , initiator => any }),
+                       Spec1 = maybe_use_any(UseAny, Spec#{ client => self() }),
                        {ok, Fsm} = rpc(dev1, aesc_fsm, respond, [Port, Spec1], Debug),
                        responder_instance_(Fsm, Spec1, R, Me, Debug)
                end).
 
-maybe_multi(true, Spec) ->
+maybe_use_any(true, Spec) ->
     Spec#{initiator => any};
-maybe_multi(false, Spec) ->
+maybe_use_any(false, Spec) ->
     Spec.
 
 spawn_initiator(Port, Spec, I, Debug) ->
@@ -1666,14 +1738,15 @@ match_responder_and_initiator(RProxy, Debug) ->
 responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
     R = fsm_map(Fsm, Spec, R0),
     {ok, ChOpen} = receive_from_fsm(info, R, channel_open, ?TIMEOUT, Debug),
+    ct:log("Got ChOpen: ~p~nSpec = ~p", [ChOpen, Spec]),
     #{data := #{temporary_channel_id := TmpChanId}} = ChOpen,
-    gproc:reg({n,l,{?MODULE,TmpChanId,responder}}, #{ r => R#{ proxy => self()
-                                                             , parent => Parent }}),
+    R1 = R#{ proxy => self(), parent => Parent },
+    gproc:reg({n,l,{?MODULE,TmpChanId,responder}}, #{ r => R1 }),
     {_IPid, #{ i := I1
             , channel_accept := ChAccept }}
         = gproc:await({n,l,{?MODULE,TmpChanId,initiator}}, ?TIMEOUT),
     Parent ! {channel_up, self(), #{ i => I1#{parent => Parent}
-                                   , r => R#{ proxy => self() }
+                                   , r => R1
                                    , channel_accept => ChAccept
                                    , channel_open   => ChOpen }},
     fsm_relay(R, Parent, Debug).
@@ -1681,14 +1754,16 @@ responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
 initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
     I = fsm_map(Fsm, Spec, I0),
     {ok, ChAccept} = receive_from_fsm(info, I, channel_accept, ?TIMEOUT, Debug),
+    ct:log("Got ChAccept: ~p~nSpec = ~p", [ChAccept, Spec]),
     #{data := #{temporary_channel_id := TmpChanId}} = ChAccept,
-    gproc:reg({n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I#{ proxy => self() }
+    I1 = I#{ proxy => self() },
+    gproc:reg({n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I1
                                                     , channel_accept => ChAccept}),
     {_RPid, #{ r := #{parent := NewParent}}}
         = gproc:await({n,l,{?MODULE,TmpChanId,responder}}, ?TIMEOUT),
     unlink(Parent),
     link(NewParent),
-    fsm_relay(I#{parent => NewParent}, NewParent, Debug).
+    fsm_relay(I1#{parent => NewParent}, NewParent, Debug).
 
 fsm_relay(Map, Parent, Debug) ->
     log(Debug, "fsm_relay(~p, ~p, Debug)", [Map, Parent]),
@@ -1699,6 +1774,11 @@ fsm_relay_(#{ fsm := Fsm } = Map, Parent, Debug) ->
         {aesc_fsm, Fsm, _} = Msg ->
             log(Debug, "Relaying(~p) ~p", [Parent, Msg]),
             Parent ! Msg;
+        {Parent, die} ->
+            ct:log("Got 'die' from parent", []),
+            exit(Fsm, die),
+            ct:log("relay stopping (die)", []),
+            exit(normal);
         Other ->
             log(Debug, "Relay got Other: ~p", [Other])
     end,
@@ -1809,12 +1889,13 @@ await_signing_request(Tag, #{fsm := Fsm} = Signer,
     await_signing_request(Tag, #{fsm := Fsm} = Signer,
                           Action, Timeout, Debug, Cfg, according_account).
 
-await_signing_request(Tag, #{fsm := Fsm} = Signer,
+await_signing_request(Tag, #{fsm := Fsm, pub := Pub} = Signer,
                       Action, Timeout, Debug, Cfg, SignatureType) ->
+    log("await_signing_request, Fsm = ~p (Pub = ~p)", [Fsm, Pub]),
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
                               info := #{signed_tx := SignedTx0,
                                         updates   := Updates}} = Msg} ->
-            log(Debug, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
+            log(Debug, "await_signing(~p, ~p, ~p) <- ~p", [Tag, Pub, Fsm, Msg]),
             {SignedTx, Signer1} =
                 case SignatureType of
                     according_account -> co_sign_tx(Signer, SignedTx0, Cfg);
@@ -1852,7 +1933,12 @@ await_on_chain_report(R, Timeout) ->
     await_on_chain_report(R, #{}, Timeout).
 
 await_on_chain_report(#{fsm := Fsm}, Match, Timeout) ->
+    ct:log("~p awaiting on-chain from ~p", [self(), Fsm]),
     receive
+        {aesc_fsm, Fsm, #{info := {died, _}}} = Died ->
+            ct:log("Fsm died while waiting for on-chain report:~n"
+                   "~p", [Died]),
+            error(fsm_died);
         {aesc_fsm, Fsm, #{type := report, tag := on_chain_tx,
                           info := #{tx := SignedTx} = I}} = M ->
             ct:log("OnChainRpt = ~p", [M]),

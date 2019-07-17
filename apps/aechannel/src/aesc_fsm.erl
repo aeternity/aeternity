@@ -1983,6 +1983,7 @@ send_open_msg(#data{opts       = Opts,
            , responder_amount     => ResponderAmount
            , channel_reserve      => ChannelReserve
            , initiator            => Initiator
+           , responder            => Responder
            },
     aesc_session_noise:channel_open(Sn, Msg),
     Data#data{ channel_id = ChannelPubKey
@@ -1995,7 +1996,8 @@ check_open_msg(#{ chain_hash           := ChainHash
                 , initiator_amount     := InitiatorAmt
                 , responder_amount     := ResponderAmt
                 , channel_reserve      := ChanReserve
-                , initiator            := InitiatorPubkey} = Msg,
+                , initiator            := InitiatorPubkey
+                , responder            := ResponderPubkey } = Msg,
                #data{opts = Opts} = Data) ->
     %% TODO: Implement more checks
     case aec_chain:genesis_hash() of
@@ -2003,6 +2005,7 @@ check_open_msg(#{ chain_hash           := ChainHash
             Opts1 =
                 Opts#{ lock_period        => LockPeriod
                      , initiator          => InitiatorPubkey
+                     , responder          => ResponderPubkey
                      , push_amount        => PushAmt
                      , initiator_amount   => InitiatorAmt
                      , responder_amount   => ResponderAmt
@@ -2147,9 +2150,10 @@ send_channel_accept(#data{opts          = Opts,
                           session       = Sn,
                           channel_id    = ChanId} = Data) ->
     #{ minimum_depth      := MinDepth
-     , responder        := Responder
+     , initiator          := Initiator
+     , responder          := Responder
      , initiator_amount   := InitiatorAmt
-     , responder_amount := ResponderAmt
+     , responder_amount   := ResponderAmt
      , channel_reserve    := ChanReserve } = Opts,
     ChainHash = aec_chain:genesis_hash(),
     Msg = #{ chain_hash           => ChainHash
@@ -2158,6 +2162,7 @@ send_channel_accept(#data{opts          = Opts,
            , initiator_amount     => InitiatorAmt
            , responder_amount     => ResponderAmt
            , channel_reserve      => ChanReserve
+           , initiator            => Initiator
            , responder            => Responder
            },
     aesc_session_noise:channel_accept(Sn, Msg),
@@ -2169,6 +2174,7 @@ check_accept_msg(#{ chain_hash           := ChainHash
                   , initiator_amount     := _InitiatorAmt
                   , responder_amount     := _ResponderAmt
                   , channel_reserve      := _ChanReserve
+                  , initiator            := Initiator
                   , responder            := Responder} = Msg,
                  #data{channel_id = ChanId,
                        opts = Opts} = Data) ->
@@ -2177,6 +2183,7 @@ check_accept_msg(#{ chain_hash           := ChainHash
         ChainHash ->
             Log1 = log_msg(rcv, ?CH_ACCEPT, Msg, Data#data.log),
             {ok, Data#data{ opts = Opts#{ minimum_depth => MinDepth
+                                        , initiator     => Initiator
                                         , responder     => Responder}
                           , log = Log1 }};
         _ ->
