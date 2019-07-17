@@ -98,7 +98,8 @@ dec(<<?c(?ID_INBAND_MSG)   , B/bytes>>) -> {?INBAND_MSG  , dec_inband_msg(B)}.
                        , initiator_amount     := amount()
                        , responder_amount     := amount()
                        , channel_reserve      := amount()
-                       , initiator            := pubkey()}.
+                       , initiator            := pubkey()
+                       , responder            := pubkey()}.
 
 -spec enc_ch_open(ch_open_msg()) -> binary().
 enc_ch_open(#{chain_hash := ChainHash
