@@ -101,7 +101,7 @@ references:
           && ./configure && make -j$(nproc) && sudo make install && sudo ldconfig
 
   tag_regex: &tag_regex /^v.*$/
-  stable_tag_regex: &stable_tag_regex /^v3\..*$/
+  stable_tag_regex: &stable_tag_regex /^v4\..*$/
 
   rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
   restore_rebar_cache: &restore_rebar_cache
