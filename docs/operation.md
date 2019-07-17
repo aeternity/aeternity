@@ -9,6 +9,7 @@ The instructions below assume that:
 * beneficiary account is set under `mining` > `beneficiary` in the config (see [configuration documentation](configuration.md));
 * No custom peers are specified under the `peers:` key in the config. If the `peers:` key is undefined, the *testnet* or *mainnet* seed peers (built-in in the package source) are used.
 * The external HTTP endpoint of the user API of the node can be contacted at 127.0.0.1 port 3013.
+* The location of the keys is set under `keys` > `dir` in the config (see [configuration documentation](configuration.md)).
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
