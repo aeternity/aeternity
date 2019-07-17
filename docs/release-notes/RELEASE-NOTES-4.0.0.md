@@ -2,7 +2,7 @@
 
 [This][this-release] is a major Fortuna release, mainly aimed at easing development of applications using state channels in the presence of generic accounts.
 It:
-* The State Channels WebSocket API now supports starting a responder with `"initiator_id": "any"`.
+* Enhances the state Channels WebSocket API, that now supports starting a responder with `"initiator_id": "any"`.
   The responder instance will get the proper initiator Id from the `channel_open` message once a
   connection is established.
 * Fixes the value of the discriminator field (`type`) for the oracle response transaction in the user API paths returning transactions (e.g. path `/transactions/{hash}`).
@@ -19,7 +19,7 @@ It:
   authentication methods. This is off-chain noise protocol breaking change.
 * Enhances State Channel's WebSocket API with providing more meaningful
   messages when failing to open a channel because of invalid opening arguments
-* Make State Channel WebSocket API more consistent regarding the usage of
+* Makes State Channel WebSocket API more consistent regarding the usage of
   `caller` and `contract` vs `caller_id` and `contract_id`. This is an API
   breaking change.
 * Allows sending and receiving generic messages in State Channels in any FSM
@@ -27,8 +27,8 @@ It:
   `channel_id` is part of the message body and if it is unknown - the
   temporary one is used instead. This is not backwards compatible for the
   `noise` protocol. This enhances the WebSocket API accordingly.
-* Multiple different State Channel responder pubkeys can now share the same listen port
-* The `channel_open` and `channel_accept` messages now contain both the initiator and
+* Enables multiple different State Channel responder pubkeys to share the same listen port.
+* Changes the `channel_open` and `channel_accept` messages to contain both the initiator and
   responder public keys. This is not backwards compatible for the `noise` protocol.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v4.0.0
