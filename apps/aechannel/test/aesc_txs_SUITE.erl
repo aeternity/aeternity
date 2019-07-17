@@ -62,8 +62,7 @@
 % signature test will fail
 -export([close_mutual_wrong_amounts/1,
          close_mutual_wrong_nonce/1,
-         close_mutual_missing_channel/1,
-         close_mutual_already_closing/1
+         close_mutual_missing_channel/1
         ]).
 
 % negative slash
@@ -190,7 +189,8 @@
         ]).
 
 % fork related tests
--export([ fp_sophia_versions/1
+-export([ fp_sophia_versions/1,
+          close_mutual_already_closing/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -206,6 +206,7 @@
 -define(TEST_LOG(Format, Data), ct:log(Format, Data)).
 -define(MINERVA_FORK_HEIGHT, 1000).
 -define(FORTUNA_FORK_HEIGHT, 10000).
+-define(LIMA_FORK_HEIGHT,    100000).
 
 -define(IF_AEVM(AEVM, FATE),
     case ?IS_AEVM_SOPHIA(aect_test_utils:vm_version()) of
@@ -282,8 +283,7 @@ groups() ->
      {close_mutual_negative, [sequence],
       [close_mutual_wrong_amounts,
        close_mutual_wrong_nonce,
-       close_mutual_missing_channel,
-       close_mutual_already_closing
+       close_mutual_missing_channel
       ]},
      {slash_negative, [sequence],
       [slash_not_closing,
@@ -398,7 +398,8 @@ groups() ->
        fp_oracle_respond
       ]},
      {fork_awareness, [sequence],
-      [ fp_sophia_versions
+      [ fp_sophia_versions,
+        close_mutual_already_closing
       ]}
     ].
 
@@ -415,7 +416,8 @@ init_per_group(fork_awareness, Config) ->
     meck:expect(aec_hard_forks, protocol_effective_at_height,
                 fun(V) when V < ?MINERVA_FORK_HEIGHT -> ?ROMA_PROTOCOL_VSN;
                    (V) when V < ?FORTUNA_FORK_HEIGHT -> ?MINERVA_PROTOCOL_VSN;
-                   (_)                               -> ?FORTUNA_PROTOCOL_VSN
+                   (V) when V < ?LIMA_FORK_HEIGHT    -> ?FORTUNA_PROTOCOL_VSN;
+                   (_)                               -> ?LIMA_PROTOCOL_VSN
                 end),
     %% This is orthogonal to vm version, but we need to set one up.
     aect_test_utils:init_per_group(aevm, Config);
@@ -899,6 +901,12 @@ close_mutual_missing_channel(Cfg) ->
 close_mutual_already_closing(Cfg) ->
     StartIAmt = 100000 * aec_test_utils:min_gas_price(),
     StartRAmt = 100000 * aec_test_utils:min_gas_price(),
+    FortunaHeight = 12345,
+    LimaHeight = 123456,
+
+    true = LimaHeight > FortunaHeight,
+    true = FortunaHeight >= ?FORTUNA_FORK_HEIGHT,
+    true = LimaHeight >= ?LIMA_FORK_HEIGHT,
 
     Test =
         fun(Closer) ->
@@ -914,7 +922,12 @@ close_mutual_already_closing(Cfg) ->
                 end,
                 %% prepare balances and a fee..
                 prepare_balances_for_mutual_close(),
-                negative(fun close_mutual_/2, {error, channel_not_active})])
+                % Before Lima fork this should fail
+                set_prop(height, FortunaHeight),
+                negative(fun close_mutual_/2, {error, channel_not_active}),
+                % After Lima fork this should succeed
+                set_prop(height, LimaHeight),
+                positive(fun close_mutual_/2)])
         end,
     [Test(Role) || Role <- ?ROLES],
     ok.
