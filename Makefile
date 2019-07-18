@@ -55,6 +55,13 @@ comma := ,
 comma-separate = $(subst ${space},${comma},$(strip $1))
 space-separate = $(subst ${comma},${space},$(strip $1))
 
+PLANTUML_V = 1.2019.8
+PLANTUML_JAR= docs/.tools/plantuml-$(PLANTUML_V).jar
+PLANTUML = java -jar $(PLANTUML_JAR)
+
+uml-files := $(shell find docs -type f -name "*.puml")
+uml-svg-files := $(uml-files:.puml=.svg)
+
 ifdef SUITE
 CT_TEST_FLAGS += --suite=$(call comma-separate,$(foreach suite,$(call space-separate,${SUITE}),${suite}_SUITE))
 unexport SUITE
@@ -444,6 +451,7 @@ clean:
 	@rm -rf _build/system_test+test _build/system_test _build/test _build/prod _build/local
 	@rm -rf _build/default/plugins
 	@rm -rf $$(ls -d _build/default/lib/* | grep -v '[^_]rocksdb') ## Dependency `rocksdb` takes long to build.
+	@rm -rf ${uml-svg-files}
 
 .PHONY: eqc-clean
 eqc-clean:
@@ -512,6 +520,14 @@ $(DEB_PKG_CHANGELOG_FILE):
 prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
 	debuild --preserve-envvar DEB_SKIP_DH_AUTO_CLEAN -b -uc -us
 
+$(PLANTUML_JAR):
+	curl -fsS --create-dirs -o $@ https://netcologne.dl.sourceforge.net/project/plantuml/${PLANTUML_V}/plantuml.${PLANTUML_V}.jar
+
+build-uml: ${PLANTUML_JAR} ${uml-svg-files}
+
+%.svg: %.puml
+	${PLANTUML} -tsvg $<
+
 .PHONY: \
 	all console \
 	stratum-client-internal-build \
@@ -531,6 +547,7 @@ prod-deb-package: $(DEB_PKG_CHANGELOG_FILE)
 	kill killall \
 	clean distclean \
 	swagger swagger-docs swagger-check swagger-version-check \
+	build-uml \
 	rebar-lock-check \
 	python-env python-ws-test python-uats python-single-uat python-release-test python-package-win32-test \
 	REVISION \
