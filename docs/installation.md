@@ -88,7 +88,7 @@ ln -s "$(brew --prefix libsodium)"/lib/libsodium.23.dylib /usr/local/opt/libsodi
 ## Deploy node
 
 In the instructions below, the node is deployed in directory `~/aeternity/node`: you may prefer to deploy the node in an alternative location by amending the instructions accordingly.
-It is recommended that the partition where the node directory is has at least 10 GB free: this is needed for the chain and the log files.
+It is recommended that the partition where the node directory is has at least 40 GB free: this is needed for the chain and the log files.
 
 Open a Terminal window or get to the command line.
 
