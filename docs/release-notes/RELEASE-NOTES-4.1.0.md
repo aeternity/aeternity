@@ -1,6 +1,6 @@
 # About this release
 
-[This][this-release] is a major Fortuna release, mainly aimed at easing development of applications using state channels in the presence of generic accounts.
+[This][this-release] is a maintenance release.
 It:
 * Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
 
