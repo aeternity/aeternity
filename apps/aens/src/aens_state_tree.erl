@@ -40,7 +40,7 @@
 %%% Types
 %%%===================================================================
 
--type mkey() :: aens_commitments:id() | aens_names:id().
+-type mkey() :: aens_hash:commitment_hash() | aens_hash:name_hash().
 -type mvalue() :: aens_commitments:serialized() | aens_names:serialized().
 -type nstree() :: aeu_mtrees:mtree(mkey(), mvalue()).
 -type commitment() :: aens_commitments:commitment().
