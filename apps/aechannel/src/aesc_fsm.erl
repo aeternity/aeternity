@@ -1062,7 +1062,7 @@ awaiting_signature(cast, {?SIGNED, settle_tx, SignedTx} = Msg,
                 settle_signed(SignedTx, Updates, D1)
         end, D);
 
-% Timeouts
+%% Timeouts
 awaiting_signature(timeout, _Msg,
                    #data{channel_status = closing, latest = {sign, Tag, _, _}} = D) when
                     Tag =:= ?SHUTDOWN;
@@ -2536,9 +2536,8 @@ cur_height() ->
     aec_headers:height(aec_chain:top_header()).
 
 is_fork_active(ProtocolVSN) ->
-    CurHeight = max(cur_height(), ?MINIMUM_DEPTH),
     %% Enable a new fork only after MINIMUM_DEPTH generations in order to avoid fork changes
-    ProtocolVSN == aec_hard_forks:protocol_effective_at_height(CurHeight - ?MINIMUM_DEPTH).
+    ProtocolVSN == aec_hard_forks:protocol_effective_at_height(max(cur_height() - ?MINIMUM_DEPTH, aec_block_genesis:height())).
 
 
 new_contract_tx_for_signing(Opts, From, #data{state = State,
