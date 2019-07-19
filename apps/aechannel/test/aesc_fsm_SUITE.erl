@@ -1284,22 +1284,27 @@ check_mutual_close_after_close_solo(Cfg) ->
             ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
             ok = rpc(dev1, aesc_fsm, shutdown, [FsmR]),
             timer:sleep(1100),
-            {ok, channel_closing} = rpc(dev1, aesc_fsm, gen_statem_state, [FsmI]),
-            {ok, channel_closing} = rpc(dev1, aesc_fsm, gen_statem_state, [FsmR]),
+            channel_closing = fsm_state(FsmI, Debug),
+            channel_closing = fsm_state(FsmR, Debug),
 
             % Test that after sending the SHUTDOWN message and timing out we
             % are still alive
             ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
             {_, _} = await_signing_request(shutdown, I, Cfg),
             timer:sleep(1100),
-            {ok, channel_closing} = rpc(dev1, aesc_fsm, gen_statem_state, [FsmI]),
-            {ok, channel_closing} = rpc(dev1, aesc_fsm, gen_statem_state, [FsmR]),
+            channel_closing = fsm_state(FsmI, Debug),
+            channel_closing = fsm_state(FsmR, Debug),
 
             % Test that closing works
             check_info(500),
             shutdown_(I, R, Cfg)
     end,
     ok.
+
+fsm_state(Pid, Debug) ->
+    {State, _Data} = rpc(dev1, sys, get_state, [Pid, 1000], _RpcDebug = false),
+    log(Debug, "fsm_state(~p) -> ~p", [Pid, State]),
+    State.
 
 wrong_sig_action(ChannelStuff, Poster, Malicious,
                  FsmStuff) ->

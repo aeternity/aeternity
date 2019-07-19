@@ -29,8 +29,7 @@
 -export([attach_responder/2]).   %% (fsm(), map())
 
 -ifdef(TEST).
--export([strict_checks/2,
-         gen_statem_state/1]). %% tests only
+-export([strict_checks/2]). %% tests only
 -endif.
 
 %% Inspection and configuration functions
@@ -560,10 +559,6 @@ has_gproc_key(Fsm, #{gproc_key := K}) ->
 -spec strict_checks(pid(), boolean()) -> ok.
 strict_checks(Fsm, Strict) when is_boolean(Strict) ->
     gen_statem:call(Fsm, {strict_checks, Strict}).
-
--spec gen_statem_state(pid()) -> {ok, state_name()}.
-gen_statem_state(Fsm) ->
-    gen_statem:call(Fsm, gen_statem_state).
 -endif.
 
 leave(Fsm) ->
@@ -1546,6 +1541,9 @@ channel_closing(cast, {?SHUTDOWN, Msg}, D) ->
             D2 = request_signing_(?SHUTDOWN_ACK, SignedTx, Updates, D1),
             next_state(awaiting_signature, D2);
         {error, E} ->
+            %% TODO: send an ?UPDATE_ERR (which isn't yet defined)
+            %% For now, log and ignore
+            lager:debug("Bad shutdown_msg in channel_closing: ~p", [E]),
             keep_state(D)
     end;
 channel_closing(Type, Msg, D) ->
@@ -1859,8 +1857,6 @@ handle_call_(St, settle, From, D) ->
 handle_call_(_, {strict_checks, Strict}, From, #data{} = D) when
         is_boolean(Strict) ->
     keep_state(D#data{strict_checks = Strict}, [{reply, From, ok}]);
-handle_call_(_, gen_statem_state, From, #data{ cur_statem_state = State } = D) ->
-    keep_state(D, [{reply, From, {ok, State}}]);
 handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
     postpone(D);
 handle_call_(_St, _Req, From, D) ->
