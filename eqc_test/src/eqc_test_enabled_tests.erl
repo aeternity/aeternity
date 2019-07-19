@@ -3,7 +3,6 @@
 
 -define(DISABLED_PROPS_MODS,
         [ aec_sync_eqc
-        , aeu_mp_trees_eqc
         , fate_compiler_eqc
         , txs_eqc
         , txs_ga_eqc
