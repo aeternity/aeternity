@@ -97,6 +97,7 @@
 
 -include("aesc_codec.hrl").
 %% -include_lib("trace_runner/include/trace_runner.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -type role() :: initiator | responder.
 -type sign_tag() :: create_tx
@@ -1061,6 +1062,14 @@ awaiting_signature(cast, {?SIGNED, settle_tx, SignedTx} = Msg,
                 settle_signed(SignedTx, Updates, D1)
         end, D);
 
+% Timeouts
+awaiting_signature(timeout, _Msg,
+                   #data{channel_status = closing, latest = {sign, Tag, _, _}} = D) when
+                    Tag =:= ?SHUTDOWN;
+                    Tag =:= ?SHUTDOWN_ACK ->
+    lager:debug("Timeout while waiting for signature on mutual close"),
+    next_state(channel_closing, D#data{latest = undefined});
+
 %% Other
 awaiting_signature(Type, Msg, D) ->
     handle_common_event(Type, Msg, postpone, D).
@@ -1498,6 +1507,9 @@ mutual_closing(cast, {?SHUTDOWN_ACK, Msg}, D) ->
     end;
 mutual_closing(cast, {closing_signed, _Msg}, D) ->  %% TODO: not using this, right?
     close(closing_signed, D);
+mutual_closing(timeout, _Msg, #data{channel_status = closing} = D) ->
+    lager:debug("Timeout while waiting for peer signature on mutual close"),
+    next_state(channel_closing, D);
 mutual_closing(Type, Msg, D) ->
     handle_common_event(Type, Msg, error, D).
 
@@ -1523,6 +1535,21 @@ channel_closing(cast, {?CHANNEL_UNLOCKED, #{chan_id := ChId}} = Msg,
             ok
     end,
     keep_state(D1);
+channel_closing(cast, {?SHUTDOWN, Msg}, D) ->
+    case {is_fork_active(?LIMA_PROTOCOL_VSN), check_shutdown_msg(Msg, D)} of
+        {false, _} ->
+            %% TODO: send an ?UPDATE_ERR (which isn't yet defined)
+            lager:debug("Shutdown while channel_closing not allowed before the Lima fork"),
+            keep_state(D);
+        {true, {ok, SignedTx, Updates, D1}} ->
+            D2 = request_signing_(?SHUTDOWN_ACK, SignedTx, Updates, D1),
+            next_state(awaiting_signature, D2);
+        {true, {error, E}} ->
+            %% TODO: send an ?UPDATE_ERR (which isn't yet defined)
+            %% For now, log and ignore
+            lager:debug("Bad shutdown_msg in channel_closing: ~p", [E]),
+            keep_state(D)
+    end;
 channel_closing(Type, Msg, D) ->
     handle_common_event(Type, Msg, discard, D).
 
@@ -1714,6 +1741,18 @@ handle_call_(open, shutdown, From, D) ->
     D1 = request_signing(?SHUTDOWN, CloseTx, Updates, D),
     gen_statem:reply(From, ok),
     next_state(awaiting_signature, set_ongoing(D1));
+handle_call_(channel_closing, shutdown, From, #data{strict_checks = Strict} = D) ->
+    case (not Strict) or is_fork_active(?LIMA_PROTOCOL_VSN) of
+        true ->
+            %% Initiate mutual close
+            {ok, CloseTx, Updates} = close_mutual_tx_for_signing(D),
+            D1 = request_signing(?SHUTDOWN, CloseTx, Updates, D),
+            gen_statem:reply(From, ok),
+            next_state(awaiting_signature, set_ongoing(D1));
+        false ->
+            %% Backwards compatibility
+            keep_state(D, [{reply, From, {error, unknown_request}}])
+    end;
 handle_call_(_, get_state, From, #data{ on_chain_id = ChanId
                                       , opts        = Opts
                                       , state       = State} = D) ->
@@ -2495,6 +2534,11 @@ adjust_ttl(TTL) when is_integer(TTL), TTL >= 0 ->
 
 cur_height() ->
     aec_headers:height(aec_chain:top_header()).
+
+is_fork_active(ProtocolVSN) ->
+    CurHeight = max(cur_height(), ?MINIMUM_DEPTH),
+    %% Enable a new fork only after MINIMUM_DEPTH generations in order to avoid fork changes
+    ProtocolVSN == aec_hard_forks:protocol_effective_at_height(CurHeight - ?MINIMUM_DEPTH).
 
 
 new_contract_tx_for_signing(Opts, From, #data{state = State,
