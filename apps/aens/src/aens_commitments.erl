@@ -60,7 +60,7 @@ new(Id, OwnerId, DeltaTTL, BlockHeight) ->
                 created  = BlockHeight,
                 ttl      = BlockHeight + DeltaTTL}.
 
--spec serialize(commitment()) -> binary().
+-spec serialize(commitment()) -> serialized().
 serialize(#commitment{owner_id = OwnerId,
                       created  = Created,
                       ttl      = TTL}) ->
