@@ -29,7 +29,8 @@
 -export([attach_responder/2]).   %% (fsm(), map())
 
 -ifdef(TEST).
--export([strict_checks/2]). %% tests only
+-export([strict_checks/2,
+         gen_statem_state/1]). %% tests only
 -endif.
 
 %% Inspection and configuration functions
@@ -97,6 +98,7 @@
 
 -include("aesc_codec.hrl").
 %% -include_lib("trace_runner/include/trace_runner.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -type role() :: initiator | responder.
 -type sign_tag() :: create_tx
@@ -558,6 +560,10 @@ has_gproc_key(Fsm, #{gproc_key := K}) ->
 -spec strict_checks(pid(), boolean()) -> ok.
 strict_checks(Fsm, Strict) when is_boolean(Strict) ->
     gen_statem:call(Fsm, {strict_checks, Strict}).
+
+-spec gen_statem_state(pid()) -> {ok, state_name()}.
+gen_statem_state(Fsm) ->
+    gen_statem:call(Fsm, gen_statem_state).
 -endif.
 
 leave(Fsm) ->
@@ -1061,6 +1067,14 @@ awaiting_signature(cast, {?SIGNED, settle_tx, SignedTx} = Msg,
                 settle_signed(SignedTx, Updates, D1)
         end, D);
 
+% Timeouts
+awaiting_signature(timeout, _Msg,
+                   #data{channel_status = closing, latest = {sign, Tag, _, _}} = D) when
+                    Tag =:= ?SHUTDOWN;
+                    Tag =:= ?SHUTDOWN_ACK ->
+    lager:debug("Timeout while waiting for signature on mutual close"),
+    next_state(channel_closing, D#data{latest = undefined});
+
 %% Other
 awaiting_signature(Type, Msg, D) ->
     handle_common_event(Type, Msg, postpone, D).
@@ -1498,6 +1512,9 @@ mutual_closing(cast, {?SHUTDOWN_ACK, Msg}, D) ->
     end;
 mutual_closing(cast, {closing_signed, _Msg}, D) ->  %% TODO: not using this, right?
     close(closing_signed, D);
+mutual_closing(timeout, _Msg, #data{channel_status = closing} = D) ->
+    lager:debug("Timeout while waiting for peer signature on mutual close"),
+    next_state(channel_closing, D);
 mutual_closing(Type, Msg, D) ->
     handle_common_event(Type, Msg, error, D).
 
@@ -1523,6 +1540,14 @@ channel_closing(cast, {?CHANNEL_UNLOCKED, #{chan_id := ChId}} = Msg,
             ok
     end,
     keep_state(D1);
+channel_closing(cast, {?SHUTDOWN, Msg}, D) ->
+    case check_shutdown_msg(Msg, D) of
+        {ok, SignedTx, Updates, D1} ->
+            D2 = request_signing_(?SHUTDOWN_ACK, SignedTx, Updates, D1),
+            next_state(awaiting_signature, D2);
+        {error, E} ->
+            keep_state(D)
+    end;
 channel_closing(Type, Msg, D) ->
     handle_common_event(Type, Msg, discard, D).
 
@@ -1714,6 +1739,20 @@ handle_call_(open, shutdown, From, D) ->
     D1 = request_signing(?SHUTDOWN, CloseTx, Updates, D),
     gen_statem:reply(From, ok),
     next_state(awaiting_signature, set_ongoing(D1));
+handle_call_(channel_closing, shutdown, From, D) ->
+    CurHeight = cur_height(),
+    %% Enable the new behaviour only after MINIMUM_DEPTH generations in order to avoid fork changes
+    case (CurHeight < ?MINIMUM_DEPTH) or (aec_hard_forks:protocol_effective_at_height(CurHeight - ?MINIMUM_DEPTH) < ?LIMA_PROTOCOL_VSN) of
+        true ->
+            %% Backwards compatibility
+            keep_state(D, [{reply, From, {error, unknown_request}}]);
+        false ->
+            %% Initiate mutual close
+            {ok, CloseTx, Updates} = close_mutual_tx_for_signing(D),
+            D1 = request_signing(?SHUTDOWN, CloseTx, Updates, D),
+            gen_statem:reply(From, ok),
+            next_state(awaiting_signature, set_ongoing(D1))
+    end;
 handle_call_(_, get_state, From, #data{ on_chain_id = ChanId
                                       , opts        = Opts
                                       , state       = State} = D) ->
@@ -1820,6 +1859,8 @@ handle_call_(St, settle, From, D) ->
 handle_call_(_, {strict_checks, Strict}, From, #data{} = D) when
         is_boolean(Strict) ->
     keep_state(D#data{strict_checks = Strict}, [{reply, From, ok}]);
+handle_call_(_, gen_statem_state, From, #data{ cur_statem_state = State } = D) ->
+    keep_state(D, [{reply, From, {ok, State}}]);
 handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
     postpone(D);
 handle_call_(_St, _Req, From, D) ->

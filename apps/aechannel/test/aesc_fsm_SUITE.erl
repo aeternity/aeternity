@@ -49,6 +49,7 @@
         , check_incorrect_update/1
         , check_incorrect_mutual_close/1
         , check_mutual_close_with_wrong_amounts/1
+        , check_mutual_close_after_close_solo/1
         , attach_initiator/1
         , attach_responder/1
         , initiator_spend/1
@@ -149,7 +150,8 @@ groups() ->
       ]},
      {errors, [sequence],
       [
-       check_mutual_close_with_wrong_amounts
+        check_mutual_close_with_wrong_amounts
+      , check_mutual_close_after_close_solo
       ]},
      {signatures, [sequence], [check_incorrect_create | update_sequence()]
                                ++ [check_incorrect_mutual_close]},
@@ -1250,6 +1252,53 @@ check_mutual_close_with_wrong_amounts(Cfg) ->
     {ok, I1, R1} = deposit_(I, R, 30000 * aec_test_utils:min_gas_price(),
                               Debug, Cfg),
     shutdown_(I1, R1, Cfg),
+    ok.
+
+check_mutual_close_after_close_solo(Cfg) ->
+    Debug = get_debug(Cfg),
+    {Si, Sr, Spec} = channel_spec([?SLOGAN | Cfg],
+                                  5000, 0),
+    Spec1 = Spec#{
+        timeouts => #{
+            idle => 20000,
+            sign => 1000,
+            accept => 1000
+        }
+    },
+    Port = proplists:get_value(port, Cfg, 9325),
+    #{ i := #{fsm := FsmI} = I
+     , r := #{fsm := FsmR} = R } =
+        create_channel_from_spec(Si, Sr, Spec1, Port, Debug, Cfg),
+    %% One of the parties solo closes the channel
+    ok = rpc(dev1, aesc_fsm, close_solo, [FsmI]),
+    {_, SignedCloseSoloTx} = await_signing_request(close_solo_tx, I, Cfg),
+    wait_for_signed_transaction_in_block(dev1, SignedCloseSoloTx),
+    %% Before the lima fork the FSM should make sure that we
+    %% cannot shutdown the channel after it was closed but before the TTL runs out
+    case aect_test_utils:latest_protocol_version() < ?LIMA_PROTOCOL_VSN of
+        true ->
+            {error, unknown_request} = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+            {error, unknown_request} = rpc(dev1, aesc_fsm, shutdown, [FsmR]);
+        false ->
+            % Test that timeouts do not kill the FSM
+            ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+            ok = rpc(dev1, aesc_fsm, shutdown, [FsmR]),
+            timer:sleep(1100),
+            {ok, channel_closing} = rpc(dev1, aesc_fsm, gen_statem_state, [FsmI]),
+            {ok, channel_closing} = rpc(dev1, aesc_fsm, gen_statem_state, [FsmR]),
+
+            % Test that after sending the SHUTDOWN message and timing out we
+            % are still alive
+            ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+            {_, _} = await_signing_request(shutdown, I, Cfg),
+            timer:sleep(1100),
+            {ok, channel_closing} = rpc(dev1, aesc_fsm, gen_statem_state, [FsmI]),
+            {ok, channel_closing} = rpc(dev1, aesc_fsm, gen_statem_state, [FsmR]),
+
+            % Test that closing works
+            check_info(500),
+            shutdown_(I, R, Cfg)
+    end,
     ok.
 
 wrong_sig_action(ChannelStuff, Poster, Malicious,
