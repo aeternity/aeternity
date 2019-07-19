@@ -1283,37 +1283,36 @@ new_onchain_tx_for_signing(Type, Opts, D) ->
     end.
 
 new_onchain_tx_for_signing_(Type, Opts, D) ->
-    FeeSpecified = maps:is_key(fee, Opts),
     Defaults = tx_defaults(Type, Opts, D),
     Opts1 = maps:merge(Defaults, Opts),
-    {ok, Tx, Updates} = new_onchain_tx(Type, Opts1, D),
-    CurHeight = cur_height(),
-    case {aetx:min_fee(Tx, CurHeight), aetx:fee(Tx)} of
+    CurrHeight = cur_height(),
+    {ok, Tx, Updates} = new_onchain_tx(Type, Opts1, D, CurrHeight),
+    case {aetx:min_fee(Tx, CurrHeight), aetx:fee(Tx)} of
         {MinFee, Fee} when MinFee =< Fee ->
             {ok, Tx, Updates};
-        {MinFee, Fee} when FeeSpecified ->
-            lager:debug("Specified fee (~p) is too low for ~p (Min: ~p)",
-                        [Fee, Type, MinFee]),
-            error(too_low_fee);
         {MinFee, Fee} ->
-            lager:debug("Must adjust fee (Fee: ~p, Min: ~p)", [Fee, MinFee]),
-            %% adjust fee to be at least the minimum for this tx
-            new_onchain_tx(Type, Opts1#{fee => trunc(MinFee * 1.1)}, D)
+            lager:debug("Fee (~p) is too low for ~p (Min: ~p)",
+                        [Fee, Type, MinFee]),
+            error(too_low_fee)
     end.
 
 -spec new_onchain_tx(channel_create_tx
                    | channel_close_mutual_tx
                    | channel_deposit_tx
-                   | channel_withdraw_tx, map(), #data{}) ->
+                   | channel_withdraw_tx
+                   | channel_close_solo_tx
+                   | channel_slash_tx
+                   | channel_settle_tx, map(), #data{}, aec_blocks:height()) ->
     {ok, aetx:tx(), [aesc_offchain_update:update()]}.
 new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
-               #data{opts = DOpts, on_chain_id = Chan, state = State}) ->
+               #data{opts = DOpts, on_chain_id = Chan, state = State}, _) ->
     #{initiator := Initiator,
       responder := Responder} = DOpts,
     ChanId = aeser_id:create(channel, Chan),
     FromId = aeser_id:create(account, From),
     {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
     {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
+    % fee is preset. This is important for participant's amounts calculation
     Fee = maps:get(fee, Opts),
     Nonce = maps:get(nonce, Opts),
     TTL = maps:get(ttl, Opts, 0), %% 0 means no TTL limit
@@ -1329,7 +1328,7 @@ new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
     {ok, CloseMutualTx, []};
 new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                                      amount := Amount} = Opts,
-               #data{on_chain_id = ChanId, state=State}) ->
+               #data{on_chain_id = ChanId, state=State}, CurrHeight) ->
     Updates = [aesc_offchain_update:op_deposit(aeser_id:create(account, FromId), Amount)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
@@ -1350,12 +1349,11 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                                from_id    => aeser_id:create(account, FromId)
                                }),
     lager:debug("deposit_tx Opts = ~p", [Opts1]),
-    {ok, DepositTx} = aesc_deposit_tx:new(Opts1),
+    {ok, DepositTx} = new_onchain_tx_(aesc_deposit_tx, Opts1, CurrHeight),
     {ok, DepositTx, Updates};
-
 new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                                       amount := Amount} = Opts,
-               #data{on_chain_id = ChanId, state=State}) ->
+               #data{on_chain_id = ChanId, state=State}, CurrHeight) ->
     Updates = [aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)],
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
@@ -1376,23 +1374,113 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                                to_id      => aeser_id:create(account, ToId)
                               }),
     lager:debug("withdraw_tx Opts = ~p", [Opts1]),
-    {ok, WithdrawTx} = aesc_withdraw_tx:new(Opts1),
+    {ok, WithdrawTx} = new_onchain_tx_(aesc_withdraw_tx, Opts1, CurrHeight),
     {ok, WithdrawTx, Updates};
-
 new_onchain_tx(channel_create_tx, Opts,
                #data{opts = #{initiator := Initiator,
                               responder := Responder},
-                     state=State}) ->
+                     state=State}, CurrHeight) ->
     StateHash = aesc_offchain_state:hash(State),
-    Opts1 = maps:merge(Opts, #{initiator => Initiator,
-                               responder => Responder}),
+    Opts1 = Opts#{ state_hash    => StateHash
+                 , initiator_id  => aeser_id:create(account, Initiator)
+                 , responder_id  => aeser_id:create(account, Responder)
+                 },
     lager:debug("create_tx Opts = ~p", [Opts1]),
-    Opts2 = Opts1#{ state_hash    => StateHash
-                  , initiator_id  => aeser_id:create(account, Initiator)
-                  , responder_id  => aeser_id:create(account, Responder)
-                  },
-    {ok, CreateTx} = aesc_create_tx:new(Opts2),
-    {ok, CreateTx, []}. % no updates
+    {ok, CreateTx} = new_onchain_tx_(aesc_create_tx, Opts1, CurrHeight),
+    {ok, CreateTx, []}; % no updates
+new_onchain_tx(channel_settle_tx, Opts,
+               #data{ opts  = #{initiator := I,
+                                responder := R}
+                    , state = State } = D, CurrHeight) ->
+    Account = my_account(D),
+    Def = tx_defaults(channel_settle_tx, #{acct => Account}, D),
+    Opts1 = maps:merge(Def, Opts),
+    ChanId = maps:get(channel_id, Opts1),
+    {ok, IAmt} = aesc_offchain_state:balance(I, State),
+    {ok, RAmt} = aesc_offchain_state:balance(R, State),
+    TTL = adjust_ttl(maps:get(ttl, Opts1, 0)),
+    SlashOpts = Opts1#{ channel_id => aeser_id:create(channel, ChanId)
+                      , from_id    => aeser_id:create(account, Account)
+                      , initiator_amount_final => IAmt
+                      , responder_amount_final => RAmt
+                      , ttl        => TTL},
+    {ok, Tx} = new_onchain_tx_(aesc_settle_tx, SlashOpts, CurrHeight),
+    {ok, Tx, []};
+new_onchain_tx(channel_close_solo_tx, Opts,
+               #data{ on_chain_id = ChanId
+                    , opts = #{initiator := Initiator,
+                               responder := Responder}
+                    , state       = State } = D, CurrHeight) ->
+    Account = my_account(D),
+    TTL = adjust_ttl(maps:get(ttl, Opts, 0)),
+    {_Round, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
+    Payload = case aesc_utils:is_offchain_tx(SignedTx) of
+                  true ->
+                      aetx_sign:serialize_to_binary(SignedTx);
+                  false ->
+                      %% on-chain tx, we assume included in the chain
+                      <<>>
+              end,
+    {ok, Poi} = aesc_offchain_state:poi([{account, Initiator},
+                                         {account, Responder}], State),
+    Opts1 =
+          Opts#{ channel_id => aeser_id:create(channel, ChanId)
+               , from_id    => aeser_id:create(account, Account)
+               , payload    => Payload
+               , poi        => Poi
+               , ttl        => TTL},
+    {ok, Tx} = new_onchain_tx_(aesc_close_solo_tx, Opts1, CurrHeight),
+    {ok, Tx, []};
+new_onchain_tx(channel_slash_tx, Opts,
+               #data{ on_chain_id = ChanId
+                    , opts = #{initiator := Initiator,
+                               responder := Responder}
+                    , state       = State} = D, CurrHeight) ->
+    Account = my_account(D),
+    Def = tx_defaults(channel_slash_tx, #{acct => Account}, D),
+    Opts1 = maps:merge(Def, Opts),
+    TTL = adjust_ttl(maps:get(ttl, Opts1, 0)),
+    {ok, Poi} = aesc_offchain_state:poi([{account, Initiator},
+                                         {account, Responder}], State),
+    Opts2 =
+        Opts1#{ channel_id => aeser_id:create(channel, ChanId)
+              , from_id    => aeser_id:create(account, Account)
+              , poi        => Poi
+              , ttl        => TTL},
+    {ok, Tx} = new_onchain_tx_(aesc_slash_tx, Opts2, CurrHeight),
+    {ok, Tx, []}.
+
+
+
+
+new_onchain_tx_(Mod, Opts, CurrHeight) ->
+    case maps:is_key(fee, Opts) of
+        true -> % use preset fee
+            apply(Mod, new, [Opts]);
+        false ->
+            create_with_minuimum_fee(Mod, Opts#{fee => 0}, CurrHeight)
+    end.
+
+create_with_minuimum_fee(Mod, Opts, CurrHeight) ->
+    create_with_minuimum_fee(Mod, Opts, CurrHeight, 5).
+
+create_with_minuimum_fee(_, _, _, Attempts) when Attempts < 1 ->
+    erlang:error(could_not_compute_fee);
+create_with_minuimum_fee(Mod, Opts, CurrHeight, Attempts) ->
+    {ok, Tx} = apply(Mod, new, [Opts]),
+    MinTxFee = aetx:min_fee(Tx, CurrHeight),
+    MinGas = aetx:min_gas(Tx, CurrHeight),
+    MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
+    MinGasRequirements = MinGas * MinMinerGasPrice,
+    MinFee = max(MinTxFee, MinGasRequirements),
+    TxFee = aetx:fee(Tx),
+    case MinFee =< TxFee of
+        true ->
+            {ok, Tx};
+        false ->
+            create_with_minuimum_fee(Mod, Opts#{fee => MinFee}, CurrHeight,
+                                     Attempts - 1)
+    end.
 
 create_tx_for_signing(#data{opts = #{ initiator := Initiator
                                     , initiator_amount := IAmt
@@ -1437,93 +1525,24 @@ slash_tx_for_signing(#data{ state = St } = D) ->
     {Round, SignedTx} = aesc_offchain_state:get_latest_signed_tx(St),
     slash_tx_for_signing(Round, SignedTx, D).
 
-slash_tx_for_signing(Round, SignedTx, D) ->
+slash_tx_for_signing(_Round, SignedTx, D) ->
     Account = my_account(D),
-    Nonce = get_nonce(Account),
-    slash_tx(Account, Nonce, Round, SignedTx, D).
+    new_onchain_tx_for_signing(channel_slash_tx,
+                               #{acct => Account
+                               , payload    => aetx_sign:serialize_to_binary(SignedTx)
+                               }, D).
 
-slash_tx(Account, Nonce, _Round, SignedTx, #data{ on_chain_id = ChanId
-                                                , opts        = Opts
-                                                , state       = State} = D) ->
-    Def = tx_defaults(channel_slash_tx, #{acct => Account}, D),
-    Opts1 = maps:merge(Def, Opts),
-    #{initiator := Initiator,
-      responder := Responder} = Opts1,
-    Fee = maps:get(fee, Opts1),
-    TTL = adjust_ttl(maps:get(ttl, Opts1, 0)),
-    {ok, Poi} = aesc_offchain_state:poi([{account, Initiator},
-                                         {account, Responder}], State),
-    {ok, Tx} = aesc_slash_tx:new(#{ channel_id => aeser_id:create(channel, ChanId)
-                                  , from_id    => aeser_id:create(account, Account)
-                                  , payload    => aetx_sign:serialize_to_binary(SignedTx)
-                                  , poi        => Poi
-                                  , ttl        => TTL
-                                  , fee        => Fee
-                                  , nonce      => Nonce }),
-    {ok, Tx, []}.
-
-settle_tx_for_signing(#data{} = D) ->
+settle_tx_for_signing(D) ->
     Account = my_account(D),
-    Nonce = get_nonce(Account),
-    settle_tx(Account, Nonce, D).
-
-settle_tx(Account, Nonce, #data{ opts  = #{initiator := I,
-                                           responder := R} = Opts
-                               , state = State } = D) ->
-    Def = tx_defaults(channel_settle_tx, #{acct => Account}, D),
-    Opts1 = maps:merge(Def, Opts),
-    ChanId = maps:get(channel_id, Opts1),
-    {ok, IAmt} = aesc_offchain_state:balance(I, State),
-    {ok, RAmt} = aesc_offchain_state:balance(R, State),
-    Fee = maps:get(fee, Opts1),
-    TTL = adjust_ttl(maps:get(ttl, Opts1, 0)),
-    {ok, Tx} = aesc_settle_tx:new(#{ channel_id => aeser_id:create(channel, ChanId)
-                                   , from_id    => aeser_id:create(account, Account)
-                                   , initiator_amount_final => IAmt
-                                   , responder_amount_final => RAmt
-                                   , ttl        => TTL
-                                   , fee        => Fee
-                                   , nonce      => Nonce }),
-    {ok, Tx, []}.
+    new_onchain_tx_for_signing(channel_settle_tx, #{acct => Account}, D).
 
 close_solo_tx_for_signing(D) ->
     Account = my_account(D),
-    Nonce = get_nonce(Account),
-    close_solo_tx(Account, Nonce, D).
-
-close_solo_tx(Account, Nonce, #data{ on_chain_id = ChanId
-                                   , opts        = Opts
-                                   , state       = State } = D) ->
-    Def = tx_defaults(channel_close_solo_tx, #{acct => Account}, D),
-    Opts1 = maps:merge(Def, Opts),
-    #{initiator := Initiator,
-      responder := Responder} = Opts1,
-    Fee = maps:get(fee, Opts1),
-    TTL = adjust_ttl(maps:get(ttl, Opts1, 0)),
-    {_Round, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
-    Payload = case aesc_utils:is_offchain_tx(SignedTx) of
-                  true ->
-                      aetx_sign:serialize_to_binary(SignedTx);
-                  false ->
-                      %% on-chain tx, we assume included in the chain
-                      <<>>
-              end,
-    {ok, Poi} = aesc_offchain_state:poi([{account, Initiator},
-                                         {account, Responder}], State),
-    {ok, Tx} = aesc_close_solo_tx:new(
-                 #{ channel_id => aeser_id:create(channel, ChanId)
-                  , from_id    => aeser_id:create(account, Account)
-                  , payload    => Payload
-                  , poi        => Poi
-                  , ttl        => TTL
-                  , fee        => Fee
-                  , nonce      => Nonce }),
-    {ok, Tx, []}.
+    new_onchain_tx_for_signing(channel_close_solo_tx, #{acct => Account}, D).
 
 tx_defaults(Type, Opts, #data{ on_chain_id = ChanId } = D) ->
     Default = tx_defaults_(Type, Opts, D),
     Default#{ channel_id => ChanId
-            , fee => default_fee(Type)
             , nonce => default_nonce(Opts, D) }.
 
 tx_defaults_(channel_create_tx, _Opts, _D) ->
@@ -1540,7 +1559,7 @@ tx_defaults_(channel_close_solo_tx = Tx, Opts, D) ->
 tx_defaults_(channel_settle_tx = Tx, Opts, D) ->
     default_ttl(Tx, Opts, D);
 tx_defaults_(channel_close_mutual_tx, _Opts, _D) ->
-    #{}.
+    #{fee => default_fee(channel_close_mutual_tx)}.
 
 default_nonce(Opts, #data{opts = DOpts}) ->
     try maps:get(nonce, Opts, maps:get(nonce, DOpts))
@@ -1564,7 +1583,7 @@ default_fee(_Tx) ->
     CurHeight = aec_headers:height(aec_chain:top_header()),
     %% this could be fragile on hard fork height if one participant's node had
     %% already forked and the other had not yet
-    30000 * max(aec_governance:minimum_gas_price(CurHeight),
+    20000 * max(aec_governance:minimum_gas_price(CurHeight),
                 aec_tx_pool:minimum_miner_gas_price()).
 
 default_ttl(_Type, Opts, #data{opts = DOpts}) ->
