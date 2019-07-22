@@ -1,44 +1,54 @@
+%% @doc This modules implements the State Channel FSM and its external API. The
+%% FSM is used for both state channel roles, `responder` and `initiator`,
+%% because most logic is shared with the initialization being specific to the
+%% role.
+%% @reference See the design of
+%% <a href="https://github.com/aeternity/protocol/tree/master/channels">State Channels</a>
+%% for further information.
+%% @reference See the
+%% <a href="https://github.com/aeternity/aeternity/wiki/State-Channels#fsm">state
+%% diagrams</a> for a conceptual representation of this implementation.
 -module(aesc_fsm).
+
 -behaviour(gen_statem).
 
--export([start_link/1]).
-
 %% API
-
--export([initiate/3,              %% (host(), port(), Opts :: #{}
-         respond/2,               %% (port(), Opts :: #{})
-         upd_transfer/4,          %% (fsm() , from(), to(), amount())
-         upd_deposit/2,           %% (fsm() , map())
-         upd_withdraw/2,          %% (fsm() , map())
-         upd_create_contract/2,   %%
-         upd_call_contract/2,     %%
-         get_contract_call/4,     %% (fsm(), contract_id(), caller(), round())
-         leave/1,
-         close_solo/1,
-         slash/1,
-         settle/1,
-         shutdown/1,              %% (fsm())
-         client_died/1,           %% (fsm())
-         connection_died/1,       %% (fsm())
-         inband_msg/3,
-         get_state/1,
-         get_offchain_state/1,
-         get_contract/2,
-         get_poi/2]).
-
--export([attach_responder/2]).   %% (fsm(), map())
-
--ifdef(TEST).
--export([strict_checks/2]). %% tests only
--endif.
+-export([ start_link/1
+        , attach_responder/2      %% (fsm(), map())
+        , client_died/1           %% (fsm())
+        , close_solo/1
+        , connection_died/1       %% (fsm())
+        , get_contract/2
+        , get_contract_call/4     %% (fsm(), contract_id(), caller(), round())
+        , get_offchain_state/1
+        , get_poi/2
+        , get_state/1
+        , inband_msg/3
+        , initiate/3              %% (host(), port(), Opts :: #{}
+        , leave/1
+        , respond/2               %% (port(), Opts :: #{})
+        , settle/1
+        , shutdown/1              %% (fsm())
+        , slash/1
+        , upd_call_contract/2     %%
+        , upd_create_contract/2   %%
+        , upd_deposit/2           %% (fsm() , map())
+        , upd_transfer/4          %% (fsm() , from(), to(), amount())
+        , upd_withdraw/2          %% (fsm() , map())
+        , where/2
+        ]).
 
 %% Inspection and configuration functions
--export([ get_history/1     %% (fsm()) -> [Event]
-        , change_config/3   %% (fsm(), key(), value()) -> ok | {error,_}
+-export([ change_config/3   %% (fsm(), key(), value()) -> ok | {error,_}
+        , dry_run_contract/2 %% (fsm(), map()) -> {ok, call()} | {error, _}
         , get_balances/2    %% (fsm(), {ok, [key()]) -> [{key(), amount()}]} | {error, _}
+        , get_history/1     %% (fsm()) -> [Event]
         , get_round/1       %% (fsm()) -> {ok, round()} | {error, _}
+        , patterns/0
         , prune_local_calls/1  %% (fsm()) -> {ok, round()} | {error, _}
-        , dry_run_contract/2%% (fsm(), map()) -> {ok, call()} | {error, _}
+        , record_fields/1
+        , report_tags/0
+        , timeouts/0
         ]).
 
 %% Used by noise session
@@ -48,460 +58,103 @@
 -export([signing_response/3]).    %% (Fsm, Tag, Obj)
 
 %% Used by min-depth watcher
--export([minimum_depth_achieved/4,     %% (Fsm, OnChainId, Type, TxHash)
-         channel_changed_on_chain/2,   %% (Fsm, Info)
-         channel_closing_on_chain/2,
-         channel_closed_on_chain/2,    %% (Fsm, Info)
-         channel_unlocked/2]). %% (Fsm, Info)
+-export([ minimum_depth_achieved/4      %% (Fsm, OnChainId, Type, TxHash)
+        , channel_changed_on_chain/2    %% (Fsm, Info)
+        , channel_closing_on_chain/2
+        , channel_closed_on_chain/2     %% (Fsm, Info)
+        , channel_unlocked/2
+        ]). %% (Fsm, Info)
 
-%% gem_statem callbacks
--export([init/1,
-         callback_mode/0,
-         code_change/4,
-         terminate/3]).
-
--export([where/2]).
+%% gen_statem callbacks
+-export([ init/1
+        , callback_mode/0
+        , code_change/4
+        , terminate/3
+        ]).
 
 %% FSM states (as per gen_statem callback callback_mode/0)
--export([initialized/3,
-         reestablish_init/3,
-         accepted/3,
-         awaiting_open/3,
-         awaiting_reestablish/3,
-         awaiting_signature/3,
-         awaiting_locked/3,
-         awaiting_initial_state/3,
-         awaiting_update_ack/3,
-         awaiting_leave_ack/3,
-         half_signed/3,
-         signed/3,
-         dep_half_signed/3,
-         wdraw_half_signed/3,
-         dep_signed/3,
-         wdraw_signed/3,
-         open/3,
-         channel_closing/3,   % on-chain closing has been detected
-         mutual_closing/3,
-         channel_closed/3]).
+-export([ initialized/3
+        , accepted/3
+        , awaiting_initial_state/3
+        , awaiting_leave_ack/3
+        , awaiting_locked/3
+        , awaiting_open/3
+        , awaiting_reestablish/3
+        , awaiting_signature/3
+        , awaiting_update_ack/3
+        , channel_closed/3
+        , channel_closing/3   % on-chain closing has been detected
+        , dep_half_signed/3
+        , dep_signed/3
+        , half_signed/3
+        , mutual_closing/3
+        , open/3
+        , reestablish_init/3
+        , signed/3
+        , wdraw_half_signed/3
+        , wdraw_signed/3
+        ]).
 
--export([timeouts/0,
-         report_tags/0]).
-
--export([patterns/0,
-         record_fields/1]).
+-include_lib("aecontract/include/hard_forks.hrl").
+-include("aesc_codec.hrl").
+-include("aesc_fsm.hrl").
 
 %% mainly to avoid warnings during build
--export_type([opts/0,
-              state_name/0,
-              data/0]).
+-export_type([ opts/0
+             , state_name/0
+             , data/0
+             ]).
 
--include("aesc_codec.hrl").
 %% -include_lib("trace_runner/include/trace_runner.hrl").
--include_lib("aecontract/include/hard_forks.hrl").
-
--type role() :: initiator | responder.
--type sign_tag() :: create_tx
-                  | funding_created
-                  | slash_tx
-                  | deposit_tx
-                  | withdraw_tx
-                  | close_solo_tx
-                  | settle_tx
-                  | ?FND_CREATED
-                  | ?DEP_CREATED
-                  | ?WDRAW_CREATED
-                  | ?UPDATE
-                  | ?UPDATE_ACK
-                  | ?SHUTDOWN
-                  | ?SHUTDOWN_ACK.
-
--define(NOT_SET_BLOCK_HASH, <<0:32/unit:8>>).
-
--define(MINIMUM_DEPTH, 4). % number of blocks until an opening tx
-                           % should be considered final
-
--define(GEN_STATEM_OPTS, []).  % Use e.g. [{debug, [trace]}] for debugging
-
--define(WATCH_FND, funding).
--define(WATCH_DEP, deposit).
--define(WATCH_WDRAW, withdraw).
--define(WATCH_CLOSED, closed).
--define(MIN_DEPTH, min_depth).
-
--define(UPDATE_CAST(R), R==?UPDATE; R==?DEP_CREATED; R==?WDRAW_CREATED).
--define(UPDATE_REQ(R),
-          R==upd_transfer
-        ; R==upd_deposit
-        ; R==upd_withdraw
-        ; R==upd_create_contract
-        ; R==upd_call_contract).
-
--define(KNOWN_MSG_TYPE(T), T =:= ?CH_OPEN
-                         ; T =:= ?CH_ACCEPT
-                         ; T =:= ?FND_CREATED
-                         ; T =:= ?FND_SIGNED
-                         ; T =:= ?FND_LOCKED
-                         ; T =:= ?UPDATE
-                         ; T =:= ?UPDATE_ACK
-                         ; T =:= ?UPDATE_ERR
-                         ; T =:= ?DEP_CREATED
-                         ; T =:= ?DEP_SIGNED
-                         ; T =:= ?DEP_LOCKED
-                         ; T =:= ?DEP_ERR
-                         ; T =:= ?WDRAW_CREATED
-                         ; T =:= ?WDRAW_SIGNED
-                         ; T =:= ?WDRAW_LOCKED
-                         ; T =:= ?WDRAW_ERR
-                         ; T =:= ?INBAND_MSG
-                         ; T =:= disconnect
-                         ; T =:= ?LEAVE
-                         ; T =:= ?LEAVE_ACK
-                         ; T =:= ?SHUTDOWN
-                         ; T =:= ?SHUTDOWN_ACK
-                         ; T =:= ?CH_REESTABL
-                         ; T =:= ?CH_REEST_ACK).
-
--define(WATCHER_EVENT(T), T =:= ?CHANNEL_CHANGED
-                        ; T =:= ?CHANNEL_UNLOCKED
-                        ; T =:= ?MIN_DEPTH_ACHIEVED
-                        ; T =:= ?CHANNEL_CLOSING
-                        ; T =:= ?CHANNEL_CLOSED).
-
--define(KEEP, 10).
-
--opaque opts() :: #{ minimum_depth => non_neg_integer() %% Defaulted for responder, not for initiator.
-                   , timeouts := #{state_name() := pos_integer()
-                   , report := map()
-                   , log_keep := non_neg_integer()
-                   , initiator := aec_keys:pubkey()
-                   , responder := aec_keys:pubkey()
-                   }}.
-
--type latest_op() :: undefined % no pending op
-                   | {sign | ack, sign_tag(), aetx_sign:signed_tx(), [aesc_offchain_update:update()]}
-                   | {create | shutdown | deposit | withdraw, aetx_sign:signed_tx(),
-                      [aesc_offchain_update:update()]}
-                   | {?MIN_DEPTH, ?WATCH_FND
-                                | ?WATCH_DEP
-                                | ?WATCH_WDRAW
-                                | ?WATCH_CLOSED,
-                      TxHash :: binary(), aetx_sign:signed_tx(),
-                      [aesc_offchain_update:update()]}
-                   | {watch, unlock
-                           | close,
-                      TxHash :: binary(), aetx_sign:signed_tx(),
-                      [aesc_offchain_update:update()]}
-                   | {reestablish, OffChainTx :: aetx_sign:signed_tx()}.
-
--type log() :: aesc_window:window({Op :: atom(), Type :: atom(), erlang:timestamp(), Msg :: term()}).
-
--opaque state_name() :: awaiting_open
-                      | awaiting_reestablish
-                      | initialized
-                      | reestablish_init
-                      | awaiting_signature
-                      | accepted
-                      | half_signed
-                      | dep_half_signed
-                      | dep_signed
-                      | wdraw_half_signed
-                      | wdraw_signed
-                      | awaiting_locked
-                      | awaiting_initial_state
-                      | awaiting_update_ack
-                      | awaiting_leave_ack
-                      | signed
-                      | open
-                      | mutual_closing
-                      | channel_closing
-                      | channel_closed.
-
--record(data, { role                   :: role()
-              , channel_status         :: undefined | attached | open | closing
-              , cur_statem_state       :: undefined | atom()
-              , state                  :: aesc_offchain_state:state() | function()
-              , session                :: pid()
-              , client                 :: pid()
-              , opts                   :: map()
-              , channel_id             :: undefined | binary()
-              , on_chain_id            :: undefined | binary()
-              , create_tx              :: undefined | any()
-              , watcher                :: undefined | pid()
-              , latest = undefined     :: latest_op()
-              , ongoing_update = false :: boolean()
-              , last_reported_update   :: undefined | non_neg_integer()
-              , log                    :: log()
-              , strict_checks = true   :: boolean()
-              }).
-
--opaque data() :: #data{ opts :: opts()
-                       }.
-
--define(TRANSITION_STATE(S),  S=:=awaiting_signature
-                            ; S=:=awaiting_open
-                            ; S=:=awaiting_locked
-                            ; S=:=awaiting_update_ack
-                            ; S=:=awaiting_leave_ack
-                            ; S=:=mutual_closing ).
 
 %% ==================================================================
-%% Tracing support
-patterns() ->
-    [{?MODULE, F, A, []} || {F,A} <- gen_tcp:module_info(exports),
-                            F =/= module_info] ++
-    [{?MODULE, F, A, []} || {F,A} <- ?MODULE:module_info(exports),
-                            not lists:member(F, [module_info, patterns])].
+%% API
 
-record_fields(data ) -> record_info(fields, data);
-record_fields(w    ) -> aesc_window:record_fields(w);
-record_fields(Other) -> aesc_offchain_state:record_fields(Other).
-%% ==================================================================
+start_link(#{} = Arg) ->
+    gen_statem:start_link(?MODULE, Arg, ?GEN_STATEM_OPTS).
 
--ifdef(TEST).
--define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p / ~p", [Err, erlang:get_stacktrace()])).
--else.
--define(LOG_CAUGHT(Err), lager:debug("CAUGHT ~p", [Err])).
--endif.
-
-callback_mode() ->
-    [ state_functions %% "... Module:StateName/3, is used."
-    , state_enter     %% "... at every **state change**, call the state callback
-                      %% with arguments `(enter, OldState, Data)`. ... a state
-                      %% enter call will be done right before entering the initial
-                      %% state ..."
-    ].
-
-%% State machine
-%% +---+ channel_open                                                         +---+
-%% |   | -------------> +-------------+                 error                 |   |
-%% |   |                | initialized | ------------------------------------> |   |
-%% |   | <------------- +-------------+                                       |   |
-%% |   |   [timeout]/          | channel_accept                               |   |
-%% |   |   [disconnect]        v                                              |   |
-%% |   |                +-------------+                 error                 |   |
-%% |   | <------------- |  accepted   | ------------------------------------> |   |
-%% | c |   [timeout]/   +-------------+                                       | e |
-%% | l |   [disconnect]        | funding_created                              | r |
-%% | o |                       v                                              | r |
-%% | s |                +-------------+                 error                 | o |
-%% | e | <------------- | half_signed | ------------------------------------> | r |
-%% | d |   [timeout]/   +-------------+                                       |   |
-%% |   |   [disconnect]        | funding_signed                               |   |
-%% |   |                       v                                              |   |
-%% |   |                +-------------+  [disconnect]                         |   |
-%% |   | <------------- |   signed    | -------------+  error                 |   |
-%% |   |   [timeout]    +-------------+ -------------|----------------------> |   |
-%% |   |                       |    |  shutdown      |                        |   |
-%% |   |                       |    +------------+   |                        |   |
-%% |   |                       | funding_locked  |   |                        |   |
-%% |   |                       |                 |   v                        |   |
-%% |   |                       v        [disconnect] +--------------+  error  |   |
-%% |   |                +-------------+ ---------|-> | disconnected | ------> |   |
-%% |   | <------------- |    open     |          |   +--------------+         |   |
-%% |   |   [timeout]    +-------------+ <--------|------------+               |   |
-%% |   |                 ^ |  ^ | |       channel_reestablish                 |   |
-%% |   |        update_* | |  | | |              |                            |   |
-%% |   |                 +-+  +-+ | shutdown     v                            |   |
-%% |   |                          |    +------------------+   [disconnect]    |   |
-%% |   |                          +--> | mutual_closing   | ------+           |   |
-%% |   |                               +------------------+       |           |   |
-%% |   |                                |  ^                      |           |   |
-%% |   |                                |  | channel_reestablish  |           |   |
-%% |   | <------------------------------+  |                      v           |   |
-%% |   |       closing_signed              |         +--------------+  error  |   |
-%% |   |                                   +-------- | disconnected | ------> |   |
-%% +---+                                             +--------------+         +---+
-%%   ^                                                                          |
-%%   |                                                                          |
-%%   +--------------------------------------------------------------------------+
-
-message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
-    lager:debug("message(~p, ~p)", [Fsm, Msg]),
-    gen_statem:cast(Fsm, Msg).
-
-%% Signing requests are sent as plain messages to the Client (normally, the
-%% process starting the fsm.) Messages are on the form
-%%
-%% {aesc_fsm, Fsm :: pid(), ChanId :: binary(), Msg}
-%%   where Msg :: {sign, Tag :: sign_tag(), Obj :: any()}}.
-%%
-%% Perform the appropriate signing
-%% ( corresponding to aetx_sign:sign(Obj, [PrivKey]), but likely involving a
-%%   remote client. )
-%% and reply by calling aesc_fsm:signing_response(Fsm, Tag, SignedObj)
-%%
--spec signing_response(pid(), sign_tag(), any()) -> ok.
-signing_response(Fsm, Tag, Obj) ->
-    gen_statem:cast(Fsm, {?SIGNED, Tag, Obj}).
-
-minimum_depth_achieved(Fsm, ChanId, Type, TxHash) ->
-    gen_statem:cast(Fsm, {?MIN_DEPTH_ACHIEVED, ChanId, Type, TxHash}).
-
-channel_changed_on_chain(Fsm, Info) ->
-    gen_statem:cast(Fsm, {?CHANNEL_CHANGED, Info}).
-
-channel_closing_on_chain(Fsm, Info) ->
-    gen_statem:cast(Fsm, {?CHANNEL_CLOSING, Info}).
-
-channel_closed_on_chain(Fsm, Info) ->
-    gen_statem:cast(Fsm, {?CHANNEL_CLOSED, Info}).
-
-channel_unlocked(Fsm, Info) ->
-    lager:debug("sending unlocked", []),
-    gen_statem:cast(Fsm, {?CHANNEL_UNLOCKED, Info}).
-
-where(ChanId, Role) when Role == initiator; Role == responder ->
-    gproc:where(gproc_name_by_role(ChanId, Role));
-where(ChanId, Pubkey) when is_binary(Pubkey) ->
-    gproc:where(gproc_name_by_pubkey(ChanId, Pubkey)).
-
-%% ======================================================================
-%% Default timer values
-
-timer(Name, Msg, #data{opts = #{timeouts := TOs}}) ->
-    timeout_(maps:get(Name, TOs), Msg).
-
-timeout_(Timeout, Msg) when is_integer(Timeout); Timeout == infinity ->
-    {timeout, Timeout, Msg}.
-
-timer_for_state(#data{cur_statem_state = St} = D) when St =/= undefined ->
-    timer_for_state(St, D).
-
-timer_for_state(St, #data{opts = #{timeouts := TOs}} = D) ->
-    case maps:find(St, TOs) of
-        {ok, T} -> timeout_(T, St);
-        error ->
-            Alias = timer_subst(St),
-            timer(Alias, St, D)
+attach_responder(Fsm, AttachInfo) when is_map(AttachInfo) ->
+    case has_gproc_key(Fsm, AttachInfo) of
+        true ->
+            gen_statem:call(Fsm, {attach_responder, AttachInfo});
+        false ->
+            lager:debug("responder ~p has unregistered - taken", [Fsm]),
+            {error, taken}
     end.
 
-timer_subst(open                    ) -> idle;
-timer_subst(awaiting_open           ) -> idle;
-timer_subst(awaiting_reestablish    ) -> idle;
-timer_subst(reestablish_init        ) -> accept;
-timer_subst(awaiting_signature      ) -> sign;
-timer_subst(awaiting_locked         ) -> funding_lock;
-timer_subst(awaiting_initial_state  ) -> accept;
-timer_subst(awaiting_update_ack     ) -> accept;
-timer_subst(awaiting_leave_ack      ) -> accept;
-timer_subst(accepted                ) -> funding_create;
-timer_subst(half_signed             ) -> funding_sign;
-timer_subst(signed                  ) -> funding_lock;
-timer_subst(dep_half_signed         ) -> funding_sign;
-timer_subst(wdraw_half_signed       ) -> funding_sign;
-timer_subst(dep_signed              ) -> funding_lock;
-timer_subst(wdraw_signed            ) -> funding_lock;
-timer_subst(initialized             ) -> accept;
-timer_subst(mutual_closing          ) -> accept;
-timer_subst(channel_closing         ) -> idle;
-timer_subst(channel_closed          ) -> idle.
+client_died(Fsm) ->
+    %TODO: possibility for reconnect
+    lager:debug("client died(~p)", [Fsm]),
+    stop_ok(catch gen_statem:stop(Fsm)).
 
-default_timeouts() ->
-    #{ accept         => 120000
-     , funding_create => 120000
-     , funding_sign   => 120000
-     , funding_lock   => 360000
-     , idle           => 600000
-     , sign           => 500000
-     }.
+close_solo(Fsm) ->
+    lager:debug("close_solo(~p)", [Fsm]),
+    gen_statem:call(Fsm, close_solo).
 
-timeouts() ->
-    maps:keys(default_timeouts()).
+connection_died(Fsm) ->
+    %TODO: possibility for reconnect
+    lager:debug("connection to participant died(~p)", [Fsm]),
+    gen_statem:cast(Fsm, ?DISCONNECT).
 
-set_ongoing(D) ->
-    D#data{ongoing_update = true}.
-%%
-%% ======================================================================
-
-%% NOTE: we currently double-book Role in both the #data{} record and
-%% the Opts map. This is a bit annoying, but simplifies the pattern-matching
-%% in this module (the #data{} part); also, the aesc_offchain_state module
-%% needs Role for the cache interaction. Future refactoring can resolve this
-%% slight code smell.
-
-initiate(Host, Port, #{} = Opts0) ->
-    lager:debug("initiate(~p, ~p, ~p)", [Host, Port, Opts0]),
-    Opts = maps:merge(#{client => self(),
-                        role   => initiator}, Opts0),
-    case init_checks(Opts) of
-        ok ->
-            start_link(#{ host => Host
-                        , port => Port
-                        , opts => Opts });
-        {error, _Reason} = Err -> Err
-    end.
-
-respond(Port, #{} = Opts0) ->
-    lager:debug("respond(~p, ~p)", [Port, Opts0]),
-    Opts = maps:merge(#{client => self(),
-                        role   => responder}, Opts0),
-    case init_checks(Opts) of
-        ok ->
-            start_link(#{ port => Port
-                        , opts => Opts });
-        {error, _Reason} = Err -> Err
-    end.
-
-init_checks(Opts) ->
-    #{initiator   := Initiator,
-      responder   := Responder,
-      role        := Role,
-      lock_period := LockPeriod} = Opts,
-    Checks = [fun() -> check_amounts(Opts) end,
-              fun() -> check_accounts(Initiator, Responder, Role) end,
-              fun() ->
-                  case LockPeriod < 0 of
-                      true -> {error, lock_period_too_low};
-                      false -> ok
-                  end
-              end
-              ],
-    case aeu_validation:run(Checks) of
-        {error, _Reason} = Err ->
-            Err;
-        ok ->
-            ok
-    end.
-
-upd_transfer(_Fsm, _From, _To, Amount) when Amount < 0 ->
-    {error, negative_amount};
-upd_transfer(Fsm, From, To, Amount) when is_integer(Amount) ->
-    lager:debug("upd_transfer(~p, ~p, ~p, ~p)", [Fsm, From, To, Amount]),
-    gen_statem:call(Fsm, {upd_transfer, From, To, Amount}).
-
-upd_deposit(_Fsm, #{amount := Amt}) when Amt < 0 ->
-    {error, negative_amount};
-upd_deposit(Fsm, #{amount := Amt} = Opts) when is_integer(Amt) ->
-    lager:debug("upd_deposit(~p)", [Opts]),
-    gen_statem:call(Fsm, {upd_deposit, Opts}).
-
-upd_withdraw(_Fsm, #{amount := Amt}) when Amt < 0 ->
-    {error, negative_amount};
-upd_withdraw(Fsm, #{amount := Amt} = Opts) when is_integer(Amt) ->
-    lager:debug("upd_withdraw(~p)", [Opts]),
-    gen_statem:call(Fsm, {upd_withdraw, Opts}).
-
-upd_create_contract(Fsm, #{vm_version  := _,
-                           abi_version := _,
-                           deposit     := Amt,
-                           code        := _,
-                           call_data   := _} = Opts) when is_integer(Amt), Amt >= 0 ->
-    lager:debug("upd_create_contract(~p)", [Opts]),
-    gen_statem:call(Fsm, {upd_create_contract, Opts}).
-
-
-upd_call_contract(Fsm, #{contract    := _,
-                         abi_version := _,
-                         amount      := Amt,
-                         call_data  := _} = Opts) when is_integer(Amt), Amt >= 0 ->
-    lager:debug("upd_call_contract(~p)", [Opts]),
-    CallStack = maps:get(call_stack, Opts, []),
-    gen_statem:call(Fsm, {upd_call_contract, Opts#{call_stack => CallStack},
-                          execute}).
+-spec get_contract(pid(), aect_contracts:pubkey()) -> {ok, aect_contracts:contract()} | {error, not_found}.
+get_contract(Fsm, Pubkey) ->
+    gen_statem:call(Fsm, {get_contract, Pubkey}).
 
 get_contract_call(Fsm, Contract, Caller, Round) when is_integer(Round), Round > 0 ->
     lager:debug("get_contract_call(~p, ~p, ~p)", [Contract, Caller, Round]),
     gen_statem:call(Fsm, {get_contract_call, Contract, Caller, Round}).
+
+-spec get_offchain_state(pid()) -> {ok, aesc_offchain_state:state()}.
+get_offchain_state(Fsm) ->
+    gen_statem:call(Fsm, get_offchain_state).
+
+-spec get_poi(pid(), list()) -> {ok, aec_trees:poi()} | {error, not_found}.
+get_poi(Fsm, Filter) ->
+    gen_statem:call(Fsm, {get_poi, Filter}).
+
+-spec get_state(pid()) -> {ok, #{}}.
+get_state(Fsm) ->
+    gen_statem:call(Fsm, get_state).
 
 inband_msg(Fsm, To, Msg) ->
     MaxSz = aesc_codec:max_inband_msg_size(),
@@ -517,92 +170,103 @@ inband_msg(Fsm, To, Msg) ->
             {error, invalid_request}
     end.
 
-
--spec get_state(pid()) -> {ok, #{}}.
-get_state(Fsm) ->
-    gen_statem:call(Fsm, get_state).
-
--spec get_offchain_state(pid()) -> {ok, aesc_offchain_state:state()}.
-get_offchain_state(Fsm) ->
-    gen_statem:call(Fsm, get_offchain_state).
-
--spec get_contract(pid(), aect_contracts:pubkey()) -> {ok, aect_contracts:contract()} | {error, not_found}.
-get_contract(Fsm, Pubkey) ->
-    gen_statem:call(Fsm, {get_contract, Pubkey}).
-
--spec get_poi(pid(), list()) -> {ok, aec_trees:poi()} | {error, not_found}.
-get_poi(Fsm, Filter) ->
-    gen_statem:call(Fsm, {get_poi, Filter}).
-
-attach_responder(Fsm, AttachInfo) when is_map(AttachInfo) ->
-    case has_gproc_key(Fsm, AttachInfo) of
-        true ->
-            gen_statem:call(Fsm, {attach_responder, AttachInfo});
-        false ->
-            lager:debug("responder ~p has unregistered - taken", [Fsm]),
-            {error, taken}
+initiate(Host, Port, #{} = Opts0) ->
+    lager:debug("initiate(~p, ~p, ~p)", [Host, Port, Opts0]),
+    Opts = maps:merge(#{client => self(),
+                        role   => initiator}, Opts0),
+    case init_checks(Opts) of
+        ok ->
+            start_link(#{ host => Host
+                        , port => Port
+                        , opts => Opts });
+        {error, _Reason} = Err -> Err
     end.
-
-has_gproc_key(Fsm, #{gproc_key := K}) ->
-    try _ = gproc:get_value(K, Fsm),
-          true
-    catch
-        error:badarg ->
-            false
-    end.
-
--ifdef(TEST).
-%% This is supposed to be used in tests only. If Alice stops checking
-%% her own signatures, Bob will still check hers and will reject any wrongly
-%% signed txs. There is a risk for Alice corrupting her own state if using
-%% this function
--spec strict_checks(pid(), boolean()) -> ok.
-strict_checks(Fsm, Strict) when is_boolean(Strict) ->
-    gen_statem:call(Fsm, {strict_checks, Strict}).
--endif.
 
 leave(Fsm) ->
     lager:debug("leave(~p)", [Fsm]),
     gen_statem:call(Fsm, leave).
 
-close_solo(Fsm) ->
-    lager:debug("close_solo(~p)", [Fsm]),
-    gen_statem:call(Fsm, close_solo).
+respond(Port, #{} = Opts0) ->
+    lager:debug("respond(~p, ~p)", [Port, Opts0]),
+    Opts = maps:merge(#{client => self(),
+                        role   => responder}, Opts0),
+    case init_checks(Opts) of
+        ok ->
+            start_link(#{ port => Port
+                        , opts => Opts });
+        {error, _Reason} = Err -> Err
+    end.
 
 settle(Fsm) ->
     lager:debug("settle(~p)", [Fsm]),
     gen_statem:call(Fsm, settle).
 
-slash(Fsm) ->
-    lager:debug("slash(~p)", [Fsm]),
-    gen_statem:call(Fsm, slash).
-
 shutdown(Fsm) ->
     lager:debug("shutdown(~p)", [Fsm]),
     gen_statem:call(Fsm, shutdown).
 
-client_died(Fsm) ->
-    %TODO: possibility for reconnect
-    lager:debug("client died(~p)", [Fsm]),
-    stop_ok(catch gen_statem:stop(Fsm)).
+slash(Fsm) ->
+    lager:debug("slash(~p)", [Fsm]),
+    gen_statem:call(Fsm, slash).
 
-connection_died(Fsm) ->
-    %TODO: possibility for reconnect
-    lager:debug("connection to participant died(~p)", [Fsm]),
-    gen_statem:cast(Fsm, ?DISCONNECT).
+upd_call_contract(Fsm, #{contract    := _,
+                         abi_version := _,
+                         amount      := Amt,
+                         call_data  := _} = Opts) when is_integer(Amt), Amt >= 0 ->
+    lager:debug("upd_call_contract(~p)", [Opts]),
+    CallStack = maps:get(call_stack, Opts, []),
+    gen_statem:call(Fsm, {upd_call_contract, Opts#{call_stack => CallStack},
+                          execute}).
 
+upd_create_contract(Fsm, #{vm_version  := _,
+                           abi_version := _,
+                           deposit     := Amt,
+                           code        := _,
+                           call_data   := _} = Opts) when is_integer(Amt), Amt >= 0 ->
+    lager:debug("upd_create_contract(~p)", [Opts]),
+    gen_statem:call(Fsm, {upd_create_contract, Opts}).
 
-stop_ok(ok) ->
-    ok;
-stop_ok({'EXIT', noproc}) ->
-    ok;
-stop_ok({'EXIT', {normal,{sys,terminate,_}}}) ->
-    ok.
+upd_deposit(_Fsm, #{amount := Amt}) when Amt < 0 ->
+    {error, negative_amount};
+upd_deposit(Fsm, #{amount := Amt} = Opts) when is_integer(Amt) ->
+    lager:debug("upd_deposit(~p)", [Opts]),
+    gen_statem:call(Fsm, {upd_deposit, Opts}).
 
-start_link(#{} = Arg) ->
-    gen_statem:start_link(?MODULE, Arg, ?GEN_STATEM_OPTS).
+upd_transfer(_Fsm, _From, _To, Amount) when Amount < 0 ->
+    {error, negative_amount};
+upd_transfer(Fsm, From, To, Amount) when is_integer(Amount) ->
+    lager:debug("upd_transfer(~p, ~p, ~p, ~p)", [Fsm, From, To, Amount]),
+    gen_statem:call(Fsm, {upd_transfer, From, To, Amount}).
 
-%% ======================================================================
+upd_withdraw(_Fsm, #{amount := Amt}) when Amt < 0 ->
+    {error, negative_amount};
+upd_withdraw(Fsm, #{amount := Amt} = Opts) when is_integer(Amt) ->
+    lager:debug("upd_withdraw(~p)", [Opts]),
+    gen_statem:call(Fsm, {upd_withdraw, Opts}).
+
+where(ChanId, Role) when Role == initiator; Role == responder ->
+    gproc:where(gproc_name_by_role(ChanId, Role));
+where(ChanId, Pubkey) when is_binary(Pubkey) ->
+    gproc:where(gproc_name_by_pubkey(ChanId, Pubkey)).
+
+%% ==================================================================
+%% Inspection and configuration functions
+
+patterns() ->
+    [{?MODULE, F, A, []} || {F,A} <- gen_tcp:module_info(exports),
+                            F =/= module_info] ++
+    [{?MODULE, F, A, []} || {F,A} <- ?MODULE:module_info(exports),
+                            not lists:member(F, [module_info, patterns])].
+
+record_fields(data ) -> record_info(fields, data);
+record_fields(w    ) -> aesc_window:record_fields(w);
+record_fields(Other) -> aesc_offchain_state:record_fields(Other).
+
+report_tags() ->
+    maps:keys(?DEFAULT_REPORT_FLAGS).
+
+timeouts() ->
+    maps:keys(?DEFAULT_TIMEOUTS).
 
 %% Fetch the list of recent fsm events (sliding window)
 get_history(Fsm) ->
@@ -616,11 +280,6 @@ change_config(Fsm, Key, Value) ->
         {error, _} = Error ->
             Error
     end.
-
-check_change_config(log_keep, Keep) when is_integer(Keep), Keep >= 0 ->
-    {ok, log_keep, Keep};
-check_change_config(_, _) ->
-    {error, invalid_config}.
 
 %% Returns a list of [{Pubkey, Balance}], where keys are ordered the same
 %% way as in Accounts. If a key doesn't correspond to an existing account,
@@ -642,180 +301,180 @@ dry_run_contract(Fsm, #{contract    := _,
                         call_data   := _} = Opts) when is_integer(Amt), Amt >= 0 ->
     gen_statem:call(Fsm, {upd_call_contract, Opts, dry_run}).
 
-%% ======================================================================
-%% FSM initialization
+%% ==================================================================
+%% Used by noise session
 
--spec init(term()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(),
-                                                   InitialState}, ...]}
-                          when InitialState :: state_name().
-init(#{opts := Opts0} = Arg) ->
-    {Role, Opts1} = maps:take(role, Opts0),
-    Client = maps:get(client, Opts1),
-    ReestablishOptKeys = [existing_channel_id, offchain_tx],
-    {Reestablish, ReestablishOpts, Opts2} =
-        { maps:is_key(existing_channel_id, Opts1)
-        , maps:with(ReestablishOptKeys, Opts1)
-        , maps:without(ReestablishOptKeys, Opts1)
-        },
-    DefMinDepth = default_minimum_depth(Role),
-    Opts = check_opts(
-             [
-              fun(O) -> check_minimum_depth_opt(DefMinDepth, Role, O) end,
-              fun check_timeout_opt/1,
-              fun check_rpt_opt/1,
-              fun check_log_opt/1
-             ], Opts2),
-    #{initiator := Initiator} = Opts,
-    Session = start_session(Arg, Reestablish, Opts#{role => Role}),
-    StateInitF = fun(NewI) ->
-                          CheckedOpts = maps:merge(Opts#{role => Role}, ReestablishOpts),
-                          {ok, State} = aesc_offchain_state:new(CheckedOpts#{initiator => NewI}),
-                          State
-                  end,
-    State = case Initiator of
-                any -> StateInitF;
-                _   -> StateInitF(Initiator)
-            end,
-    Data = #data{role   = Role,
-                client  = Client,
-                session = Session,
-                opts    = Opts,
-                state   = State,
-                log     = aesc_window:new(maps:get(log_keep, Opts))},
-    lager:debug("Session started, Data = ~p", [Data]),
-    %% TODO: Amend the fsm above to include this step. We have transport-level
-    %% connectivity, but not yet agreement on the channel parameters. We will next send
-    %% a channel_open() message and await a channel_accept().
-    case Role of
-        initiator ->
-            if Reestablish ->
-                    ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
-              true ->
-                    ok_next(initialized, send_open_msg(Data))
-            end;
-        responder ->
-            if Reestablish ->
-                    ChanId = maps:get(existing_channel_id, ReestablishOpts),
-                    ok_next(awaiting_reestablish,
-                            Data#data{ channel_id  = ChanId
-                                      , on_chain_id = ChanId });
-              true ->
-                    ok_next(awaiting_open, Data)
-            end
-    end.
+message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
+    lager:debug("message(~p, ~p)", [Fsm, Msg]),
+    gen_statem:cast(Fsm, Msg).
 
-maybe_initialize_offchain_state(any, NewI, #data{state = F} = D) when is_function(F, 1) ->
-    D#data{state = F(NewI)};
-maybe_initialize_offchain_state(_, _, D) ->
-    D.
+%% ==================================================================
+%% Used by client
 
-ok_next(Next, Data) ->
-    {ok, Next, cur_st(Next, Data), [timer_for_state(Next, Data)]}.
-
-check_opts([H|T], Opts) ->
-    check_opts(T, H(Opts));
-check_opts([], Opts) ->
-    Opts.
-
-check_minimum_depth_opt(DefMinDepth, Role, Opts) ->
-    case {maps:find(minimum_depth, Opts), Role} of
-        {error, responder} -> Opts#{minimum_depth => DefMinDepth};
-        _                    -> Opts
-    end.
-
-check_timeout_opt(Opts) ->
-    Res = case maps:find(timeouts, Opts) of
-              {ok, TOs} ->
-                  TOs1 = maps:merge(default_timeouts(), TOs),
-                  Opts#{timeouts => TOs1};
-              error ->
-                  Opts#{timeouts => default_timeouts()}
-          end,
-    lager:debug("Timeouts: ~p", [Res]),
-    Res.
-
-check_rpt_opt(Opts) ->
-    ROpts = case maps:find(report, Opts) of
-                {ok, R} when is_map(R) ->
-                    L = [{K,V} || {K,V} <- maps:to_list(R),
-                                  lists:member(K, report_tags())
-                                      andalso
-                                      is_boolean(V)],
-                    maps:from_list(L);
-                error ->
-                    case maps:find(report_info, Opts) of  %% bw compatibility
-                        {ok, V} when is_boolean(V) ->
-                            #{info => V};
-                        _ ->
-                            #{}
-                    end;
-                Other ->
-                    lager:error("Unknown report opts: ~p", [Other]),
-                    #{}
-          end,
-    lager:debug("Report opts = ~p", [ROpts]),
-    Opts#{report => maps:merge(default_report_flags(), ROpts)}.
-
-check_log_opt(Opts) ->
-    case maps:find(log_keep, Opts) of
-        {ok, Keep} when is_integer(Keep), Keep >= 0 ->
-            Opts;
-        {ok, Invalid} ->
-            lager:error("Invalid 'log_keep' option: ~p", [Invalid]),
-            Opts#{log_keep => ?KEEP};
-        error ->
-            Opts#{log_keep => ?KEEP}
-    end.
-
-
-%% As per CHANNELS.md, the responder is regarded as the one typically
-%% providing the service, and the initiator connects.
-start_session(#{ port := Port
-               , opts := Opts0 }, Reestablish, #{ role      := responder
-                                                , responder := Responder
-                                                , initiator := Initiator } = Opts) ->
-    NoiseOpts = maps:get(noise, Opts, []),
-    SessionOpts = if Reestablish ->
-                          #{ reestablish => true
-                           , port        => Port
-                           , chain_hash  => aec_chain:genesis_hash()
-                           , channel_id  => maps:get(existing_channel_id, Opts0)
-                           , responder   => Responder };
-                     true ->
-                          #{ initiator => Initiator
-                           , responder => Responder
-                           , port      => Port }
-                  end,
-    ok(aesc_session_noise:accept(SessionOpts, NoiseOpts));
-start_session(#{host := Host, port := Port}, _, #{role := initiator} = Opts) ->
-    NoiseOpts = maps:get(noise, Opts, []),
-    ok(aesc_session_noise:connect(Host, Port, NoiseOpts)).
-
-ok({ok, X}) -> X.
-
-
-%% ======================================================================
-%% FSM transitions
-
-%% We set timers here to ensure that they are always set.
-%% gen_statem cancels event timers each time an event arrives
+%% Signing requests are sent as plain messages to the Client (normally, the
+%% process starting the fsm.) Messages are on the form
 %%
-next_state(St, D) -> next_state(St, D, []).
-next_state(St, D, Opts) ->
-    {next_state, St, cur_st(St, D), [timer_for_state(St, D)|Opts]}.
+%% {aesc_fsm, Fsm :: pid(), ChanId :: binary(), Msg}
+%%   where Msg :: {sign, Tag :: sign_tag(), Obj :: any()}}.
+%%
+%% Perform the appropriate signing
+%% ( corresponding to aetx_sign:sign(Obj, [PrivKey]), but likely involving a
+%%   remote client. )
+%% and reply by calling aesc_fsm:signing_response(Fsm, Tag, SignedObj)
+%%
+-spec signing_response(pid(), sign_tag(), any()) -> ok.
+signing_response(Fsm, Tag, Obj) ->
+    gen_statem:cast(Fsm, {?SIGNED, Tag, Obj}).
 
-keep_state(D) -> keep_state(D, []).
-keep_state(D, Opts) ->
-    {keep_state, D, [timer_for_state(D)|Opts]}.
+%% ==================================================================
+%% Used by min-depth watcher
 
-postpone(D) ->
-    keep_state(D, [postpone]).
+minimum_depth_achieved(Fsm, ChanId, Type, TxHash) ->
+    gen_statem:cast(Fsm, {?MIN_DEPTH_ACHIEVED, ChanId, Type, TxHash}).
 
-cur_st(St, D) ->
-    D#data{cur_statem_state = St}.
+channel_changed_on_chain(Fsm, Info) ->
+    gen_statem:cast(Fsm, {?CHANNEL_CHANGED, Info}).
+
+channel_closing_on_chain(Fsm, Info) ->
+    gen_statem:cast(Fsm, {?CHANNEL_CLOSING, Info}).
+
+channel_closed_on_chain(Fsm, Info) ->
+    gen_statem:cast(Fsm, {?CHANNEL_CLOSED, Info}).
+
+channel_unlocked(Fsm, Info) ->
+    lager:debug("sending unlocked", []),
+    gen_statem:cast(Fsm, {?CHANNEL_UNLOCKED, Info}).
+
+%% NOTE: we currently double-book Role in both the #data{} record and
+%% the Opts map. This is a bit annoying, but simplifies the pattern-matching
+%% in this module (the #data{} part); also, the aesc_offchain_state module
+%% needs Role for the cache interaction. Future refactoring can resolve this
+%% slight code smell.
+
+-ifdef(TEST).
+-export([strict_checks/2]).
+
+%% This is supposed to be used in tests only. If Alice stops checking
+%% her own signatures, Bob will still check hers and will reject any wrongly
+%% signed txs. There is a risk for Alice corrupting her own state if using
+%% this function
+-spec strict_checks(pid(), boolean()) -> ok.
+strict_checks(Fsm, Strict) when is_boolean(Strict) ->
+    gen_statem:call(Fsm, {strict_checks, Strict}).
+-endif.
 
 %% ======================================================================
 %% FSM states
+
+initialized(enter, _OldSt, _D) -> keep_state_and_data;
+initialized(cast, {?CH_ACCEPT, Msg}, #data{role = initiator} = D) ->
+    case check_accept_msg(Msg, D) of
+        {ok, D1} ->
+            lager:debug("Valid channel_accept: ~p", [Msg]),
+            gproc_register(D1),
+            report(info, channel_accept, Msg, D1),
+            {ok, CTx, Updates} = create_tx_for_signing(D1),
+            D2 = request_signing(create_tx, CTx, Updates, D1),
+            next_state(awaiting_signature, D2);
+        {error, _} = Error ->
+            close(Error, D)
+    end;
+initialized(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error_all, D).
+
+accepted(enter, _OldSt, _D) -> keep_state_and_data;
+accepted(cast, {?FND_CREATED, Msg}, #data{role = responder} = D) ->
+    case check_funding_created_msg(Msg, D) of
+        {ok, SignedTx, Updates, D1} ->
+            report(info, funding_created, D1),
+            lager:debug("funding_created: ~p", [SignedTx]),
+            D2 = request_signing_(?FND_CREATED, SignedTx, Updates, D1),
+            next_state(awaiting_signature, D2);
+        {error, Error} ->
+             close(Error, D)
+    end;
+accepted(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error_all, D).
+
+awaiting_initial_state(enter, _OldSt, _D) -> keep_state_and_data;
+awaiting_initial_state(cast, {?UPDATE, Msg}, #data{role = responder} = D) ->
+    lager:debug("got {update, ~p}", [Msg]),
+    case check_update_msg(initial, Msg, D) of
+        {ok, SignedTx, Updates, D1} ->
+            lager:debug("update_msg checks out", []),
+            report(info, update, D1),
+            D2 = request_signing_(?UPDATE_ACK, SignedTx, Updates, D1),
+            next_state(awaiting_signature, D2);
+        {error,_} = Error ->
+            %% TODO: do we do a dispute challenge here?
+            close(Error, D)
+    end;
+awaiting_initial_state(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error, D).
+
+awaiting_leave_ack(enter, _OldSt, _D) -> keep_state_and_data;
+awaiting_leave_ack(cast, {?LEAVE_ACK, Msg}, D) ->
+    lager:debug("received leave_ack", []),
+    case check_leave_ack_msg(Msg, D) of
+        {ok, D1} ->
+            report_leave(D1),
+            close(leave, D1);
+        {error, _} = Err ->
+            close(Err, D)
+    end;
+awaiting_leave_ack(timeout, awaiting_leave_ack = T, D) ->
+    close({timeout, T}, D);
+awaiting_leave_ack(cast, {?LEAVE, Msg}, D) ->
+    case check_leave_msg(Msg, D) of
+        {ok, D1} ->
+            D2 = send_leave_ack_msg(D1),
+            report_leave(D2),
+            close(leave, D2);
+        {error, _} = Err ->
+            close(Err, D)
+    end;
+awaiting_leave_ack(Type, Msg, D) ->
+    handle_common_event(Type, Msg, postpone, D).
+
+awaiting_locked(enter, _OldSt, _D) -> keep_state_and_data;
+awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_FND, TxHash},
+                #data{latest = {?MIN_DEPTH, ?WATCH_FND, TxHash, CTx, Updates}} = D) ->
+    report(info, own_funding_locked, D),
+    next_state(
+      signed, send_funding_locked_msg(D#data{on_chain_id = ChainId,
+                                             latest = {create, CTx,
+                                                       Updates}}));
+awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_DEP, TxHash},
+                #data{on_chain_id = ChainId,
+                      latest = {?MIN_DEPTH, ?WATCH_DEP, TxHash, SignedTx, Updates}} = D) ->
+    report(info, own_deposit_locked, D),
+    next_state(
+      dep_signed, send_deposit_locked_msg(
+                    TxHash,
+                    D#data{latest = {deposit, SignedTx, Updates}}));
+awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_WDRAW, TxHash},
+                #data{on_chain_id = ChainId,
+                      latest = {?MIN_DEPTH, ?WATCH_WDRAW, TxHash, SignedTx, Updates}} = D) ->
+    report(info, own_withdraw_locked, D),
+    next_state(
+      wdraw_signed, send_withdraw_locked_msg(
+                      TxHash,
+                      D#data{latest = {withdraw, SignedTx, Updates}}));
+awaiting_locked(cast, {?FND_LOCKED, _Msg}, D) ->
+    postpone(D);
+awaiting_locked(cast, {?DEP_LOCKED, _Msg}, D) ->
+    postpone(D);
+awaiting_locked(cast, {?WDRAW_LOCKED, _Msg}, D) ->
+    postpone(D);
+awaiting_locked(cast, {?DEP_ERR, _Msg}, D) ->
+    %% TODO: Stop min depth watcher!
+    handle_update_conflict(?DEP_SIGNED, D);
+awaiting_locked(cast, {?WDRAW_ERR, _Msg}, D) ->
+    %% TODO: Stop min depth watcher!
+    handle_update_conflict(?WDRAW_SIGNED, D);
+awaiting_locked(Type, Msg, D) ->
+    lager:debug("Unexpected ~p: Msg = ~p, Latest = ~p", [Type, Msg, D#data.latest]),
+    handle_common_event(Type, Msg, error, D).
 
 awaiting_open(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_open(cast, {?CH_OPEN, Msg}, #data{role = responder} = D) ->
@@ -882,34 +541,6 @@ awaiting_reestablish({call, From}, {attach_responder, Info},
             keep_state(D, [{reply, From, {error, invalid_attach}}])
     end;
 awaiting_reestablish(Type, Msg, D) ->
-    handle_common_event(Type, Msg, error_all, D).
-
-initialized(enter, _OldSt, _D) -> keep_state_and_data;
-initialized(cast, {?CH_ACCEPT, Msg}, #data{role = initiator} = D) ->
-    case check_accept_msg(Msg, D) of
-        {ok, D1} ->
-            lager:debug("Valid channel_accept: ~p", [Msg]),
-            gproc_register(D1),
-            report(info, channel_accept, Msg, D1),
-            {ok, CTx, Updates} = create_tx_for_signing(D1),
-            D2 = request_signing(create_tx, CTx, Updates, D1),
-            next_state(awaiting_signature, D2);
-        {error, _} = Error ->
-            close(Error, D)
-    end;
-initialized(Type, Msg, D) ->
-    handle_common_event(Type, Msg, error_all, D).
-
-reestablish_init(enter, _OldSt, _D) -> keep_state_and_data;
-reestablish_init(cast, {?CH_REEST_ACK, Msg}, D) ->
-    case check_reestablish_ack_msg(Msg, D) of
-        {ok, D1} ->
-            report(info, channel_reestablished, D1),
-            next_state(open, D1);
-        {error, _} = Err ->
-            close(Err, D)
-    end;
-reestablish_init(Type, Msg, D) ->
     handle_common_event(Type, Msg, error_all, D).
 
 awaiting_signature(enter, _OldSt, _D) -> keep_state_and_data;
@@ -1074,38 +705,99 @@ awaiting_signature(timeout, _Msg,
 awaiting_signature(Type, Msg, D) ->
     handle_common_event(Type, Msg, postpone, D).
 
-accepted(enter, _OldSt, _D) -> keep_state_and_data;
-accepted(cast, {?FND_CREATED, Msg}, #data{role = responder} = D) ->
-    case check_funding_created_msg(Msg, D) of
-        {ok, SignedTx, Updates, D1} ->
-            report(info, funding_created, D1),
-            lager:debug("funding_created: ~p", [SignedTx]),
-            D2 = request_signing_(?FND_CREATED, SignedTx, Updates, D1),
-            next_state(awaiting_signature, D2);
-        {error, Error} ->
-             close(Error, D)
+awaiting_update_ack(enter, _OldSt, _D) -> keep_state_and_data;
+awaiting_update_ack(cast, {Req,_} = Msg, #data{} = D) when ?UPDATE_CAST(Req) ->
+    %% This might happen if a request is sent before our signed ?UPDATE msg
+    %% arrived.
+    lager:debug("race detected: ~p", [Msg]),
+    handle_update_conflict(Req, D);
+awaiting_update_ack(cast, {?UPDATE_ACK, Msg}, #data{} = D) ->
+    case check_update_ack_msg(Msg, D) of
+        {ok, D1} ->
+            next_state(open, D1);
+        {error, _Error} ->
+            handle_update_conflict(?UPDATE_ACK, D)
     end;
-accepted(Type, Msg, D) ->
-    handle_common_event(Type, Msg, error_all, D).
-
-half_signed(enter, _OldSt, _D) -> keep_state_and_data;
-half_signed(cast, {?FND_SIGNED, Msg}, #data{role = initiator,
-                                            latest = Latest} = D) ->
-    case check_funding_signed_msg(Msg, D) of
-        {ok, SignedTx, D1} ->
-            lager:debug("funding_signed ok", []),
-            report(info, funding_signed, D1),
-            report_on_chain_tx(?FND_SIGNED, SignedTx, D1),
-            ok = aec_tx_pool:push(SignedTx),
-            D2 = D1#data{create_tx = SignedTx},
-            {ack, create_tx, _, Updates} = Latest,
-            {ok, D3} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_FND}, SignedTx, Updates, D2),
-            next_state(awaiting_locked, D3);
-        {error, Error} ->
+awaiting_update_ack(cast, {?UPDATE, _} = Msg, D) ->
+    lager:debug("race detected: ~p", [Msg]),
+    handle_update_conflict(?UPDATE, D);
+awaiting_update_ack(cast, {?UPDATE_ERR, Msg}, D) ->
+    lager:debug("received update_err: ~p", [Msg]),
+    case check_update_err_msg(Msg, D) of
+        {ok, ?ERR_CONFLICT, D1} ->
+            report(conflict, Msg, D1),
+            next_state(open, D1);
+        {ok, _ErrorCode, D1} ->
+            %% TODO: send a different kind of report (e.g. validation error)
+            report(conflict, Msg, D1),
+            next_state(open, D1);
+        {error, fallback_state_mismatch} = Error ->
+            % falling back to an inconsistent state
+            % this is possible if we are a malicious actor only
+            report(conflict, Msg, D),
+            close(Error, D);
+        {error, _} = Error ->
             close(Error, D)
     end;
-half_signed(Type, Msg, D) ->
-    handle_common_event(Type, Msg, error_all, D).
+awaiting_update_ack({call, _}, _Req, D) ->
+    postpone(D);
+awaiting_update_ack(Type, Msg, D) ->
+    handle_common_event(Type, Msg, postpone, D).
+
+channel_closed(enter, _OldSt, D) ->
+    keep_state(D#data{ongoing_update = false});
+channel_closed(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_CLOSED, TxHash},
+               #data{ latest = {?MIN_DEPTH, ?WATCH_CLOSED, TxHash, _, _}
+                    , on_chain_id = ChainId } = D) ->
+    close(closed_confirmed, D);
+channel_closed(cast, {?CHANNEL_CHANGED, _Info} = Msg, D) ->
+    %% This is a weird case. The channel was closed, but now isn't.
+    %% This would indicate a fork switch. TODO: detect channel status
+    %% and respond accordingly. For now. Panic and terminate
+    report(info, zombie_channel, D),
+    close(zombie_channel, log(rcv, msg_type(Msg), Msg, D));
+channel_closed(Type, Msg, D) ->
+    handle_common_event(Type, Msg, discard, D).
+
+channel_closing(enter, _OldSt, D) ->
+    D1 = if D#data.channel_status =/= closing ->
+                 report(info, closing, D),
+                 report_update(D#data{channel_status = closing});
+            true ->
+                 report_update(D)
+         end,
+    keep_state(D1#data{ongoing_update = false});
+channel_closing(cast, {?CHANNEL_UNLOCKED, #{chan_id := ChId}} = Msg,
+                #data{on_chain_id = ChId, latest = {watch, unlock, _TxHash, SignedTx, _}} = D) ->
+    lager:debug("channel unlocked", []),
+    D1 = log(rcv, ?CHANNEL_UNLOCKED, Msg, D),
+    {Type, _Tx} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
+    case Type of
+        channel_settle_tx ->
+            lager:debug("pushing settle tx", []),
+            ok = aec_tx_pool:push(SignedTx);
+        _ ->
+            lager:debug("SignedTx of Type ~p - ignoring", [Type]),
+            ok
+    end,
+    keep_state(D1);
+channel_closing(cast, {?SHUTDOWN, Msg}, D) ->
+    case {is_fork_active(?LIMA_PROTOCOL_VSN), check_shutdown_msg(Msg, D)} of
+        {false, _} ->
+            %% TODO: send an ?UPDATE_ERR (which isn't yet defined)
+            lager:debug("Shutdown while channel_closing not allowed before the Lima fork"),
+            keep_state(D);
+        {true, {ok, SignedTx, Updates, D1}} ->
+            D2 = request_signing_(?SHUTDOWN_ACK, SignedTx, Updates, D1),
+            next_state(awaiting_signature, D2);
+        {true, {error, E}} ->
+            %% TODO: send an ?UPDATE_ERR (which isn't yet defined)
+            %% For now, log and ignore
+            lager:debug("Bad shutdown_msg in channel_closing: ~p", [E]),
+            keep_state(D)
+    end;
+channel_closing(Type, Msg, D) ->
+    handle_common_event(Type, Msg, discard, D).
 
 dep_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
 dep_half_signed(cast, {Req, _} = Msg, D) when ?UPDATE_CAST(Req) ->
@@ -1157,274 +849,43 @@ dep_signed(cast, {?SHUTDOWN, _Msg}, D) ->
 dep_signed(Type, Msg, D) ->
     handle_common_event(Type, Msg, error, D).
 
-deposit_locked_complete(SignedTx,
-                        Updates,
-                        #data{state = State,
-                              opts = Opts} = D) ->
-    {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    lager:debug("Applying updates: ~p", [Updates]),
-    D1   = D#data{state = aesc_offchain_state:set_signed_tx(SignedTx, Updates,
-                                                            State,
-                                                            OnChainTrees,
-                                                            OnChainEnv, Opts)},
-    next_state(open, D1).
-
-wdraw_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
-wdraw_half_signed(cast, {Req,_} = Msg, D) when ?UPDATE_CAST(Req) ->
-    %% This might happen if a request is sent before our ?WDRAW_CREATED msg
-    %% arrived.
-    lager:debug("race detected: ~p", [Msg]),
-    handle_update_conflict(Req, D);
-wdraw_half_signed(cast, {?WDRAW_SIGNED, Msg}, #data{latest = Latest} = D) ->
-    case check_withdraw_signed_msg(Msg, D) of
+half_signed(enter, _OldSt, _D) -> keep_state_and_data;
+half_signed(cast, {?FND_SIGNED, Msg}, #data{role = initiator,
+                                            latest = Latest} = D) ->
+    case check_funding_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
-            report_on_chain_tx(?WDRAW_SIGNED, SignedTx, D1),
+            lager:debug("funding_signed ok", []),
+            report(info, funding_signed, D1),
+            report_on_chain_tx(?FND_SIGNED, SignedTx, D1),
             ok = aec_tx_pool:push(SignedTx),
-            {ack, withdraw_tx, _, Updates} = Latest,
-            {ok, D2} = start_min_depth_watcher(
-                         {?MIN_DEPTH, ?WATCH_WDRAW}, SignedTx, Updates, D1),
-            next_state(awaiting_locked, D2);
-        {error, _Error} ->
-            handle_update_conflict(?WDRAW_SIGNED, D)
-    end;
-wdraw_half_signed(cast, {?WDRAW_ERR, Msg}, D) ->
-    lager:debug("received withdraw_error: ~p", [Msg]),
-    case check_withdraw_error_msg(Msg, D) of
-        {ok, ?ERR_CONFLICT, D1} ->
-            report(conflict, Msg, D1),
-            next_state(open, D1);
-        {ok, _ErrorCode, D1} ->
-            %% TODO: send a different kind of report (e.g. validation error)
-            report(conflict, Msg, D1),
-            next_state(open, D1);
-        {error, _} = Error ->
+            D2 = D1#data{create_tx = SignedTx},
+            {ack, create_tx, _, Updates} = Latest,
+            {ok, D3} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_FND}, SignedTx, Updates, D2),
+            next_state(awaiting_locked, D3);
+        {error, Error} ->
             close(Error, D)
     end;
-wdraw_half_signed(Type, Msg, D) ->
-    handle_common_event(Type, Msg, error, D).
-
-%% Don't flag for update conflicts once we've pushed to the chain, and
-%% wait for confirmation; postpone instead.
-%%
-wdraw_signed(enter, _OldSt, _D) -> keep_state_and_data;
-wdraw_signed(cast, {?WDRAW_LOCKED, Msg}, #data{latest = {withdraw, SignedTx,
-                                                         Updates}} = D) ->
-    case check_withdraw_locked_msg(Msg, SignedTx, D) of
-        {ok, D1} ->
-            report(info, withdraw_locked, D1),
-            withdraw_locked_complete(SignedTx, Updates, D1#data{latest = undefined});
-        {error, _} = Error ->
-            close(Error, D)
-    end;
-wdraw_signed(cast, {?SHUTDOWN, _Msg}, D) ->
-    next_state(mutual_closing, D);
-wdraw_signed(Type, Msg, D) ->
-    handle_common_event(Type, Msg, error, D).
-
-withdraw_locked_complete(SignedTx, Updates, #data{state = State, opts = Opts} = D) ->
-    {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    D1   = D#data{state = aesc_offchain_state:set_signed_tx(SignedTx, Updates,
-                                                            State,
-                                                            OnChainTrees,
-                                                            OnChainEnv, Opts)},
-    next_state(open, D1).
-
-settle_signed(SignedTx, Updates, #data{ on_chain_id = ChId} = D) ->
-    lager:debug("SignedTx = ~p", [SignedTx]),
-    case aec_chain:get_channel(ChId) of
-        {ok, Ch} ->
-            LockedUntil = aesc_channels:locked_until(Ch),
-            {ok, D1} =
-                case is_channel_locked(LockedUntil) of
-                    true ->
-                        lager:debug("channel is locked", []),
-                        start_min_depth_watcher(unlock, SignedTx, Updates, D);
-                    false ->
-                        lager:debug("channel not locked, pushing settle", []),
-                        ok = aec_tx_pool:push(SignedTx),
-                        start_min_depth_watcher(close, SignedTx, Updates, D)
-                end,
-            next_state(channel_closing, D1);
-        {error,_} = Error ->
-            close(Error, D)
-    end.
-
-close_solo_signed(SignedTx, _Updates, #data{ on_chain_id = ChId } = D) ->
-    lager:debug("SignedTx = ~p", [SignedTx]),
-    case aec_chain:get_channel(ChId) of
-        {ok, Ch} ->
-            LockedUntil = aesc_channels:locked_until(Ch),
-            case is_channel_locked(LockedUntil) of
-                false ->
-                    lager:debug("channel not locked: solo-closing", []),
-                    case aec_tx_pool:push(SignedTx) of
-                        ok ->
-                            ok;
-                        {error, Reason} ->
-                            lager:debug("Close_solo tx failed: ~p", [Reason]),
-                            ok
-                    end;
-                true ->
-                    lager:debug("channel is locked: cannot solo-close", []),
-                    ok
-            end,
-            %% Let the watcher pick up the tx once it makes it onto the chain
-            next_state(open, D);
-        {error,_} = Error ->
-            close(Error, D)
-    end.
-
-is_channel_locked(0) -> false;
-is_channel_locked(LockedUntil) ->
-    LockedUntil >= cur_height().
-
-awaiting_locked(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_FND, TxHash},
-                #data{latest = {?MIN_DEPTH, ?WATCH_FND, TxHash, CTx, Updates}} = D) ->
-    report(info, own_funding_locked, D),
-    next_state(
-      signed, send_funding_locked_msg(D#data{on_chain_id = ChainId,
-                                             latest = {create, CTx,
-                                                       Updates}}));
-awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_DEP, TxHash},
-                #data{on_chain_id = ChainId,
-                      latest = {?MIN_DEPTH, ?WATCH_DEP, TxHash, SignedTx, Updates}} = D) ->
-    report(info, own_deposit_locked, D),
-    next_state(
-      dep_signed, send_deposit_locked_msg(
-                    TxHash,
-                    D#data{latest = {deposit, SignedTx, Updates}}));
-awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_WDRAW, TxHash},
-                #data{on_chain_id = ChainId,
-                      latest = {?MIN_DEPTH, ?WATCH_WDRAW, TxHash, SignedTx, Updates}} = D) ->
-    report(info, own_withdraw_locked, D),
-    next_state(
-      wdraw_signed, send_withdraw_locked_msg(
-                      TxHash,
-                      D#data{latest = {withdraw, SignedTx, Updates}}));
-awaiting_locked(cast, {?FND_LOCKED, _Msg}, D) ->
-    postpone(D);
-awaiting_locked(cast, {?DEP_LOCKED, _Msg}, D) ->
-    postpone(D);
-awaiting_locked(cast, {?WDRAW_LOCKED, _Msg}, D) ->
-    postpone(D);
-awaiting_locked(cast, {?DEP_ERR, _Msg}, D) ->
-    %% TODO: Stop min depth watcher!
-    handle_update_conflict(?DEP_SIGNED, D);
-awaiting_locked(cast, {?WDRAW_ERR, _Msg}, D) ->
-    %% TODO: Stop min depth watcher!
-    handle_update_conflict(?WDRAW_SIGNED, D);
-awaiting_locked(Type, Msg, D) ->
-    lager:debug("Unexpected ~p: Msg = ~p, Latest = ~p", [Type, Msg, D#data.latest]),
-    handle_common_event(Type, Msg, error, D).
-
-awaiting_initial_state(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_initial_state(cast, {?UPDATE, Msg}, #data{role = responder} = D) ->
-    lager:debug("got {update, ~p}", [Msg]),
-    case check_update_msg(initial, Msg, D) of
-        {ok, SignedTx, Updates, D1} ->
-            lager:debug("update_msg checks out", []),
-            report(info, update, D1),
-            D2 = request_signing_(?UPDATE_ACK, SignedTx, Updates, D1),
-            next_state(awaiting_signature, D2);
-        {error,_} = Error ->
-            %% TODO: do we do a dispute challenge here?
-            close(Error, D)
-    end;
-awaiting_initial_state(Type, Msg, D) ->
-    handle_common_event(Type, Msg, error, D).
-
-awaiting_update_ack(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_update_ack(cast, {Req,_} = Msg, #data{} = D) when ?UPDATE_CAST(Req) ->
-    %% This might happen if a request is sent before our signed ?UPDATE msg
-    %% arrived.
-    lager:debug("race detected: ~p", [Msg]),
-    handle_update_conflict(Req, D);
-awaiting_update_ack(cast, {?UPDATE_ACK, Msg}, #data{} = D) ->
-    case check_update_ack_msg(Msg, D) of
-        {ok, D1} ->
-            next_state(open, D1);
-        {error, _Error} ->
-            handle_update_conflict(?UPDATE_ACK, D)
-    end;
-awaiting_update_ack(cast, {?UPDATE, _} = Msg, D) ->
-    lager:debug("race detected: ~p", [Msg]),
-    handle_update_conflict(?UPDATE, D);
-awaiting_update_ack(cast, {?UPDATE_ERR, Msg}, D) ->
-    lager:debug("received update_err: ~p", [Msg]),
-    case check_update_err_msg(Msg, D) of
-        {ok, ?ERR_CONFLICT, D1} ->
-            report(conflict, Msg, D1),
-            next_state(open, D1);
-        {ok, _ErrorCode, D1} ->
-            %% TODO: send a different kind of report (e.g. validation error)
-            report(conflict, Msg, D1),
-            next_state(open, D1);
-        {error, fallback_state_mismatch} = Error ->
-            % falling back to an inconsistent state
-            % this is possible if we are a malicious actor only
-            report(conflict, Msg, D),
-            close(Error, D);
-        {error, _} = Error ->
-            close(Error, D)
-    end;
-awaiting_update_ack({call, _}, _Req, D) ->
-    postpone(D);
-awaiting_update_ack(Type, Msg, D) ->
-    handle_common_event(Type, Msg, postpone, D).
-
-awaiting_leave_ack(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_leave_ack(cast, {?LEAVE_ACK, Msg}, D) ->
-    lager:debug("received leave_ack", []),
-    case check_leave_ack_msg(Msg, D) of
-        {ok, D1} ->
-            report_leave(D1),
-            close(leave, D1);
-        {error, _} = Err ->
-            close(Err, D)
-    end;
-awaiting_leave_ack(timeout, awaiting_leave_ack = T, D) ->
-    close({timeout, T}, D);
-awaiting_leave_ack(cast, {?LEAVE, Msg}, D) ->
-    case check_leave_msg(Msg, D) of
-        {ok, D1} ->
-            D2 = send_leave_ack_msg(D1),
-            report_leave(D2),
-            close(leave, D2);
-        {error, _} = Err ->
-            close(Err, D)
-    end;
-awaiting_leave_ack(Type, Msg, D) ->
-    handle_common_event(Type, Msg, postpone, D).
-
-signed(enter, _OldSt, _D) -> keep_state_and_data;
-signed(cast, {?FND_LOCKED, Msg}, D) ->
-    case check_funding_locked_msg(Msg, D) of
-        {ok, D1} ->
-            report(info, funding_locked, D1),
-            funding_locked_complete(D1);
-        {error, _} = Error ->
-            close(Error, D)
-    end;
-signed(cast, {?SHUTDOWN, _Msg}, D) ->
-    next_state(mutual_closing, D);
-signed(Type, Msg, D) ->
+half_signed(Type, Msg, D) ->
     handle_common_event(Type, Msg, error_all, D).
 
-funding_locked_complete(#data{latest = Latest} = D) ->
-    {create, _, Updates} = Latest,
-    {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    D1   = D#data{state = aesc_offchain_state:set_signed_tx(D#data.create_tx,
-                                                            Updates,
-                                                            D#data.state,
-                                                            OnChainTrees,
-                                                            OnChainEnv,
-                                                            D#data.opts)},
-    initialize_cache(D1),
-    next_state(open, D1).
+mutual_closing(enter, _OldSt, _D) -> keep_state_and_data;
+mutual_closing(cast, {?SHUTDOWN_ACK, Msg}, D) ->
+    case check_shutdown_ack_msg(Msg, D) of
+        {ok, SignedTx, D1} ->
+            lager:debug("shutdown_ack ok", []),
+            ok = aec_tx_pool:push(SignedTx),
+            report_on_chain_tx(close_mutual, SignedTx, D1),
+            close(close_mutual, D1);
+        {error, _} = Error ->
+            close(Error, D)
+    end;
+mutual_closing(cast, {closing_signed, _Msg}, D) ->  %% TODO: not using this, right?
+    close(closing_signed, D);
+mutual_closing(timeout, _Msg, #data{channel_status = closing} = D) ->
+    lager:debug("Timeout while waiting for peer signature on mutual close"),
+    next_state(channel_closing, D);
+mutual_closing(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error, D).
 
 open(enter, _OldSt, D) ->
     D1 = if D#data.channel_status =/= open ->
@@ -1494,510 +955,100 @@ open(cast, {?SHUTDOWN, Msg}, D) ->
 open(Type, Msg, D) ->
     handle_common_event(Type, Msg, discard, D).
 
-mutual_closing(enter, _OldSt, _D) -> keep_state_and_data;
-mutual_closing(cast, {?SHUTDOWN_ACK, Msg}, D) ->
-    case check_shutdown_ack_msg(Msg, D) of
-        {ok, SignedTx, D1} ->
-            lager:debug("shutdown_ack ok", []),
-            ok = aec_tx_pool:push(SignedTx),
-            report_on_chain_tx(close_mutual, SignedTx, D1),
-            close(close_mutual, D1);
+
+deposit_locked_complete(SignedTx,
+                        Updates,
+                        #data{state = State,
+                              opts = Opts} = D) ->
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    lager:debug("Applying updates: ~p", [Updates]),
+    D1   = D#data{state = aesc_offchain_state:set_signed_tx(SignedTx, Updates,
+                                                            State,
+                                                            OnChainTrees,
+                                                            OnChainEnv, Opts)},
+    next_state(open, D1).
+
+reestablish_init(enter, _OldSt, _D) -> keep_state_and_data;
+reestablish_init(cast, {?CH_REEST_ACK, Msg}, D) ->
+    case check_reestablish_ack_msg(Msg, D) of
+        {ok, D1} ->
+            report(info, channel_reestablished, D1),
+            next_state(open, D1);
+        {error, _} = Err ->
+            close(Err, D)
+    end;
+reestablish_init(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error_all, D).
+
+signed(enter, _OldSt, _D) -> keep_state_and_data;
+signed(cast, {?FND_LOCKED, Msg}, D) ->
+    case check_funding_locked_msg(Msg, D) of
+        {ok, D1} ->
+            report(info, funding_locked, D1),
+            funding_locked_complete(D1);
         {error, _} = Error ->
             close(Error, D)
     end;
-mutual_closing(cast, {closing_signed, _Msg}, D) ->  %% TODO: not using this, right?
-    close(closing_signed, D);
-mutual_closing(timeout, _Msg, #data{channel_status = closing} = D) ->
-    lager:debug("Timeout while waiting for peer signature on mutual close"),
-    next_state(channel_closing, D);
-mutual_closing(Type, Msg, D) ->
+signed(cast, {?SHUTDOWN, _Msg}, D) ->
+    next_state(mutual_closing, D);
+signed(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error_all, D).
+
+wdraw_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
+wdraw_half_signed(cast, {Req,_} = Msg, D) when ?UPDATE_CAST(Req) ->
+    %% This might happen if a request is sent before our ?WDRAW_CREATED msg
+    %% arrived.
+    lager:debug("race detected: ~p", [Msg]),
+    handle_update_conflict(Req, D);
+wdraw_half_signed(cast, {?WDRAW_SIGNED, Msg}, #data{latest = Latest} = D) ->
+    case check_withdraw_signed_msg(Msg, D) of
+        {ok, SignedTx, D1} ->
+            report_on_chain_tx(?WDRAW_SIGNED, SignedTx, D1),
+            ok = aec_tx_pool:push(SignedTx),
+            {ack, withdraw_tx, _, Updates} = Latest,
+            {ok, D2} = start_min_depth_watcher(
+                         {?MIN_DEPTH, ?WATCH_WDRAW}, SignedTx, Updates, D1),
+            next_state(awaiting_locked, D2);
+        {error, _Error} ->
+            handle_update_conflict(?WDRAW_SIGNED, D)
+    end;
+wdraw_half_signed(cast, {?WDRAW_ERR, Msg}, D) ->
+    lager:debug("received withdraw_error: ~p", [Msg]),
+    case check_withdraw_error_msg(Msg, D) of
+        {ok, ?ERR_CONFLICT, D1} ->
+            report(conflict, Msg, D1),
+            next_state(open, D1);
+        {ok, _ErrorCode, D1} ->
+            %% TODO: send a different kind of report (e.g. validation error)
+            report(conflict, Msg, D1),
+            next_state(open, D1);
+        {error, _} = Error ->
+            close(Error, D)
+    end;
+wdraw_half_signed(Type, Msg, D) ->
     handle_common_event(Type, Msg, error, D).
 
-channel_closing(enter, _OldSt, D) ->
-    D1 = if D#data.channel_status =/= closing ->
-                 report(info, closing, D),
-                 report_update(D#data{channel_status = closing});
-            true ->
-                 report_update(D)
-         end,
-    keep_state(D1#data{ongoing_update = false});
-channel_closing(cast, {?CHANNEL_UNLOCKED, #{chan_id := ChId}} = Msg,
-                #data{on_chain_id = ChId, latest = {watch, unlock, _TxHash, SignedTx, _}} = D) ->
-    lager:debug("channel unlocked", []),
-    D1 = log(rcv, ?CHANNEL_UNLOCKED, Msg, D),
-    {Type, _Tx} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
-    case Type of
-        channel_settle_tx ->
-            lager:debug("pushing settle tx", []),
-            ok = aec_tx_pool:push(SignedTx);
-        _ ->
-            lager:debug("SignedTx of Type ~p - ignoring", [Type]),
-            ok
-    end,
-    keep_state(D1);
-channel_closing(cast, {?SHUTDOWN, Msg}, D) ->
-    case {is_fork_active(?LIMA_PROTOCOL_VSN), check_shutdown_msg(Msg, D)} of
-        {false, _} ->
-            %% TODO: send an ?UPDATE_ERR (which isn't yet defined)
-            lager:debug("Shutdown while channel_closing not allowed before the Lima fork"),
-            keep_state(D);
-        {true, {ok, SignedTx, Updates, D1}} ->
-            D2 = request_signing_(?SHUTDOWN_ACK, SignedTx, Updates, D1),
-            next_state(awaiting_signature, D2);
-        {true, {error, E}} ->
-            %% TODO: send an ?UPDATE_ERR (which isn't yet defined)
-            %% For now, log and ignore
-            lager:debug("Bad shutdown_msg in channel_closing: ~p", [E]),
-            keep_state(D)
-    end;
-channel_closing(Type, Msg, D) ->
-    handle_common_event(Type, Msg, discard, D).
-
-channel_closed(enter, _OldSt, D) ->
-    keep_state(D#data{ongoing_update = false});
-channel_closed(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_CLOSED, TxHash},
-               #data{ latest = {?MIN_DEPTH, ?WATCH_CLOSED, TxHash, _, _}
-                    , on_chain_id = ChainId } = D) ->
-    close(closed_confirmed, D);
-channel_closed(cast, {?CHANNEL_CHANGED, _Info} = Msg, D) ->
-    %% This is a weird case. The channel was closed, but now isn't.
-    %% This would indicate a fork switch. TODO: detect channel status
-    %% and respond accordingly. For now. Panic and terminate
-    report(info, zombie_channel, D),
-    close(zombie_channel, log(rcv, msg_type(Msg), Msg, D));
-channel_closed(Type, Msg, D) ->
-    handle_common_event(Type, Msg, discard, D).
-
-close(Reason, D) ->
-    close_(Reason, log(evt, close, Reason, D)).
-
-close_(close_mutual, D) ->
-    report(info, close_mutual, D),
-    {stop, normal, D};
-close_(closed_confirmed, D) ->
-    report(info, closed_confirmed, D),
-    {stop, normal, D};
-close_(leave, D) ->
-    {stop, normal, D};
-close_(bad_signature, D) ->
-    report(info, bad_signature, D),
-    {stop, normal, D};
-close_(bad_state_hash, D) ->
-    report(info, bad_state_hash, D),
-    {stop, normal, D};
-close_(not_create_tx, D) ->
-    report(info, not_create_tx, D),
-    {stop, normal, D};
-close_(Reason, D) ->
-    try send_error_msg(Reason, D)
-    catch error:_ -> ignore
-    end,
-    {stop, Reason, D}.
-
-send_error_msg(Reason, #data{session = Sn} = D) ->
-    case cur_channel_id(D) of
-        undefined -> no_msg;
-        ChId ->
-            case Reason of
-                {error, E} ->
-                    Eb = error_binary(E),
-                    Msg = #{ channel_id => ChId
-                           , data       => Eb },
-                    report(error, Eb, D),
-                    aesc_session_noise:error(Sn, Msg);
-                _ ->
-                    no_msg
-            end
-    end.
-
-handle_call(St, Req, From, #data{} = D) ->
-    lager:debug("handle_call(~p, ~p, ~p, ~p)", [St, Req, From, D]),
-    try handle_call_(St, Req, From, D)
-    catch
-        error:Error ->
-            ?LOG_CAUGHT(Error),
-            keep_state(D, [{reply, From, {error, Error}}])
-    end.
-
-handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
-    case {ToPub, other_account(D)} of
-        {X, X} ->
-            keep_state(send_inband_msg(ToPub, Msg, D), [{reply, From, ok}]);
-        _ ->
-            keep_state(D, [{reply, From, {error, unknown_recipient}}])
-    end;
-handle_call_(open, {upd_transfer, FromPub, ToPub, Amount}, From,
-            #data{opts = #{initiator := I,
-                           responder := R}} = D) ->
-    case FromPub =/= ToPub andalso ([] == [FromPub, ToPub] -- [I, R]) of
-        true ->
-            handle_upd_transfer(FromPub, ToPub, Amount, From, set_ongoing(D));
-        false ->
-            keep_state(set_ongoing(D), [{reply, From, {error, invalid_pubkeys}}])
-    end;
-handle_call_(open, {upd_deposit, #{amount := Amt} = Opts}, From,
-             #data{} = D) when is_integer(Amt), Amt > 0 ->
-    FromPub = my_account(D),
-    case maps:find(from, Opts) of
-        {ok, FromPub} -> ok;
-        {ok, _Other}  -> error(conflicting_accounts);
-        error         -> ok
-    end,
-    {ok, DepTx, Updates} = dep_tx_for_signing(Opts#{acct => FromPub}, D),
-    D1 = request_signing(deposit_tx, DepTx, Updates, D),
-    gen_statem:reply(From, ok),
-    next_state(awaiting_signature, set_ongoing(D1));
-handle_call_(open, {upd_withdraw, #{amount := Amt} = Opts}, From,
-             #data{} = D) when is_integer(Amt), Amt > 0 ->
-    ToPub = my_account(D),
-    case maps:find(to, Opts) of
-        {ok, ToPub} -> ok;
-        {ok, _Other}  -> error(conflicting_accounts);
-        error         -> ok
-    end,
-    {ok, DepTx, Updates} = wdraw_tx_for_signing(Opts#{acct => ToPub}, D),
-    D1 = request_signing(withdraw_tx, DepTx, Updates, D),
-    gen_statem:reply(From, ok),
-    next_state(awaiting_signature, set_ongoing(D1));
-handle_call_(open, leave, From, #data{} = D) ->
-    D1 = send_leave_msg(D),
-    gen_statem:reply(From, ok),
-    next_state(awaiting_leave_ack, D1);
-handle_call_(open, {upd_create_contract, Opts}, From, #data{} = D) ->
-    FromPub = my_account(D),
-    case maps:find(from, Opts) of
-        {ok, FromPub} -> ok;
-        {ok, _Other}  -> error(conflicting_accounts);
-        error         -> ok
-    end,
-    new_contract_tx_for_signing(Opts#{owner => FromPub}, From, D);
-handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
-             #data{state=State, opts = ChannelOpts,
-                   on_chain_id = ChannelId} = D) when ChannelId =/= undefined ->
-    FromPub = my_account(D),
-    case maps:find(from, Opts) of
-        {ok, FromPub} -> ok;
-        {ok, _Other}  -> error(conflicting_accounts);
-        error         -> ok
-    end,
-    CallStack = maps:get(call_stack, Opts, []),
-    #{contract    := ContractPubKey,
-      abi_version := ABIVersion,
-      amount      := Amount,
-      call_data   := CallData} = Opts,
-    Update = aesc_offchain_update:op_call_contract(aeser_id:create(account, FromPub),
-                                                   aeser_id:create(contract, ContractPubKey),
-                                                   ABIVersion, Amount,
-                                                   CallData, CallStack),
-    Updates = [Update],
-    {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    Height = aetx_env:height(OnChainEnv),
-    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
-    try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
-                                                  ChannelId,
-                                                  ActiveProtocol,
-                                                  OnChainTrees, OnChainEnv, ChannelOpts),
-         case ExecType of
-            dry_run ->
-                UpdState = aesc_offchain_state:set_signed_tx(
-                             aetx_sign:new(Tx1, []), %% fake signed tx, no signatures will be checked
-                             Updates,
-                             State, OnChainTrees, OnChainEnv, ChannelOpts,
-                             _CheckSigs = false),
-                {Round, _} = aesc_offchain_state:get_latest_signed_tx(UpdState),
-                {ok, Call} = aesc_offchain_state:get_contract_call(ContractPubKey,
-                                                                   FromPub, Round,
-                                                                   UpdState),
-                keep_state(D, [{reply, From, {ok, Call}}]);
-            execute ->
-                D1 = request_signing(?UPDATE, Tx1, Updates, D),
-                gen_statem:reply(From, ok),
-                next_state(awaiting_signature, set_ongoing(D1))
-          end
-    catch
-        error:Reason ->
-            process_update_error(Reason, From, D)
-    end;
-handle_call_(awaiting_signature, Msg, From,
-             #data{ongoing_update = true} = D)
-  when ?UPDATE_REQ(element(1,Msg)) ->
-    %% Race detection!
-    lager:debug("race detected: ~p", [Msg]),
-    {sign, OngoingOp, _, _} = D#data.latest,
-    gen_statem:reply(From, {error, conflict}),
-    lager:debug("calling handle_update_conflict", []),
-    handle_update_conflict(OngoingOp, D#data{latest = undefined});
-handle_call_(open, {get_contract_call, Contract, Caller, Round}, From,
-             #data{state = State} = D) ->
-    Response =
-        case aesc_offchain_state:get_contract_call(Contract, Caller, Round, State) of
-            {error, call_not_found} -> {error, call_not_found};
-            {ok, Call} -> {ok, Call}
-        end,
-    keep_state(D, [{reply, From, Response}]);
-handle_call_(open, shutdown, From, D) ->
-    {ok, CloseTx, Updates} = close_mutual_tx_for_signing(D),
-    D1 = request_signing(?SHUTDOWN, CloseTx, Updates, D),
-    gen_statem:reply(From, ok),
-    next_state(awaiting_signature, set_ongoing(D1));
-handle_call_(channel_closing, shutdown, From, #data{strict_checks = Strict} = D) ->
-    case (not Strict) or is_fork_active(?LIMA_PROTOCOL_VSN) of
-        true ->
-            %% Initiate mutual close
-            {ok, CloseTx, Updates} = close_mutual_tx_for_signing(D),
-            D1 = request_signing(?SHUTDOWN, CloseTx, Updates, D),
-            gen_statem:reply(From, ok),
-            next_state(awaiting_signature, set_ongoing(D1));
-        false ->
-            %% Backwards compatibility
-            keep_state(D, [{reply, From, {error, unknown_request}}])
-    end;
-handle_call_(_, get_state, From, #data{ on_chain_id = ChanId
-                                      , opts        = Opts
-                                      , state       = State} = D) ->
-    #{initiator := Initiator,
-      responder := Responder} = Opts,
-    {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
-    {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
-    StateHash = aesc_offchain_state:hash(State),
-    {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
-    Result =
-        #{channel_id=> ChanId,
-          initiator => Initiator,
-          responder => Responder,
-          init_amt  => IAmt,
-          resp_amt  => RAmt,
-          state_hash=> StateHash,
-          round     => Round},
-    keep_state(D, [{reply, From, {ok, Result}}]);
-handle_call_(_, get_offchain_state, From, #data{state = State} = D) ->
-    keep_state(D, [{reply, From, {ok, State}}]);
-handle_call_(_, {get_contract, Pubkey}, From, #data{state = State} = D) ->
-    Contracts = aec_trees:contracts(aesc_offchain_state:get_latest_trees(State)),
-    Response =
-        case aect_state_tree:lookup_contract(Pubkey, Contracts) of
-            {value, Contract} -> {ok, Contract};
-            none -> {error, not_found}
-        end,
-    keep_state(D, [{reply, From, Response}]);
-handle_call_(_, {get_poi, Filter}, From, #data{state = State} = D) ->
-    Response =
-        case aesc_offchain_state:poi(Filter, State) of
-            {ok, PoI} -> {ok, PoI};
-            {error, _} -> {error, not_found}
-        end,
-    keep_state(D, [{reply, From, Response}]);
-handle_call_(_St, get_history, From, #data{log = Log} = D) ->
-    keep_state(D, [{reply, From, win_to_list(Log)}]);
-handle_call_(_St, {change_config, Key, Value}, From, D) ->
-    case handle_change_config(Key, Value, D) of
-        {ok, Reply, D1} ->
-            keep_state(D1, [{reply, From, Reply}]);
+%% Don't flag for update conflicts once we've pushed to the chain, and
+%% wait for confirmation; postpone instead.
+%%
+wdraw_signed(enter, _OldSt, _D) -> keep_state_and_data;
+wdraw_signed(cast, {?WDRAW_LOCKED, Msg}, #data{latest = {withdraw, SignedTx,
+                                                         Updates}} = D) ->
+    case check_withdraw_locked_msg(Msg, SignedTx, D) of
+        {ok, D1} ->
+            report(info, withdraw_locked, D1),
+            withdraw_locked_complete(SignedTx, Updates, D1#data{latest = undefined});
         {error, _} = Error ->
-            keep_state(D, [{reply, From, Error}])
+            close(Error, D)
     end;
-handle_call_(_, {get_balances, Accounts}, From, #data{ state = State } = D) ->
-    Result =
-        try {ok, lists:foldr(
-                   fun(Acct, Acc) ->
-                           case aesc_offchain_state:balance(Acct, State) of
-                               {ok, Amt} ->
-                                   [{Acct, Amt}|Acc];
-                               {error, not_found} ->
-                                   Acc
-                           end
-                   end, [], Accounts)}
-        catch
-            error:_ ->
-                {error, invalid_arguments}
-        end,
-    lager:debug("get_balances(~p) -> ~p", [Accounts, Result]),
-    keep_state(D, [{reply, From, Result}]);
-handle_call_(_, get_round, From, #data{ state = State } = D) ->
-    Res = try  {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
-               {ok, Round}
-          catch
-              error:_ ->
-                  {error, no_state}
-          end,
-    keep_state(D, [{reply, From, Res}]);
-handle_call_(_, prune_local_calls, From, #data{ state = State0 } = D) ->
-    State = aesc_offchain_state:prune_calls(State0),
-    keep_state(D#data{state = State}, [{reply, From, ok}]);
-handle_call_(St, close_solo, From, D) ->
-    case St of
-        channel_closing ->
-            keep_state(D, [{reply, From, {error, channel_closing}}]);
-        _ ->
-            {ok, CloseSoloTx, Updates} = close_solo_tx_for_signing(D),
-            gen_statem:reply(From, ok),
-            D1 = set_ongoing(request_signing(
-                               close_solo_tx, CloseSoloTx, Updates, D)),
-            next_state(awaiting_signature, D1)
-    end;
-handle_call_(St, slash, From, D) ->
-    case St of
-        channel_closing ->
-            {ok, SlashTx, Updates} = slash_tx_for_signing(D),
-            gen_statem:reply(From, ok),
-            D1 = set_ongoing(request_signing(slash_tx, SlashTx, Updates, D)),
-            next_state(awaiting_signature, D1);
-        _ ->
-            keep_state(D, [{reply, From, {error, channel_not_closing}}])
-    end;
-handle_call_(St, settle, From, D) ->
-    case St of
-        channel_closing ->
-            {ok, SettleTx, Updates} = settle_tx_for_signing(D),
-            gen_statem:reply(From, ok),
-            D1 = set_ongoing(request_signing(settle_tx, SettleTx, Updates, D)),
-            next_state(awaiting_signature, D1);
-        _ ->
-            keep_state(D, [{reply, From, {error, channel_not_closed}}])
-    end;
-handle_call_(_, {strict_checks, Strict}, From, #data{} = D) when
-        is_boolean(Strict) ->
-    keep_state(D#data{strict_checks = Strict}, [{reply, From, ok}]);
-handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
-    postpone(D);
-handle_call_(_St, _Req, From, D) ->
-    keep_state(D, [{reply, From, {error, unknown_request}}]).
-
-handle_info(Msg, #data{cur_statem_state = St} = D) ->
-    lager:debug("Discarding info in ~p state: ~p", [St, Msg]),
-    keep_state(log(drop, msg_type(Msg), Msg, D)).
-
-%% A few different modes are specified here:
-%% * error_all - all calls and casts not explicitly handled lead to protocol
-%%               error. Used mainly for the open/reestablish handshake.
-%% * error     - try to handle calls, but unknown casts cause protocol error.
-%%               Used during deposit/withdraw, since calls can be used to
-%%               inject a competing operation (thereby rejecting the other).
-%% * postpone  - postpone casts (and info), but try to handle calls.
-%% * discard   - handle calls, but drop unknown casts (could be e.g. a stray
-%%               signing reply in the open state).
-handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
-    lager:debug("handle_common_event(~p, ~p, ~p, ~p, D)", [E, Msg, St, M]),
-    handle_common_event_(E, Msg, St, M, D).
-
-handle_common_event_(timeout, St = T, St, _, D) ->
-    close({timeout, T}, D);
-handle_common_event_(cast, {?DISCONNECT, _} = Msg, _St, _, D) ->
-    D1 = log(rcv, ?DISCONNECT, Msg, D),
-    case D1#data.channel_status of
-        closing ->
-            keep_state(D1);
-        _ ->
-            close(disconnect, D1)
-    end;
-handle_common_event_(cast, {?INBAND_MSG, Msg}, _St, _, D) ->
-    NewD = case check_inband_msg(Msg, D) of
-               {ok, D1} ->
-                   report(message, Msg, D1),
-                   D1;
-               {error, _} = Err ->
-                   lager:warning("Error in inband_msg: ~p", [Err]),
-                   D
-           end,
-    keep_state(NewD);
-handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
-    lager:debug("got ~p", [Msg]),
-    D1 = log(rcv, ?CHANNEL_CLOSING, Msg, D),
-    case check_closing_event(Info, D1) of
-        {can_slash, _Round, SignedTx} ->
-            %% report_on_chain_tx(can_slash, SignedTx, D1),
-            %% D2 = set_ongoing(request_signing(slash_tx, SlashTx, Updates, D1)),
-            %% next_state(awaiting_signature, D2);
-            report_on_chain_tx(can_slash, SignedTx, D1),
-            next_state(channel_closing, D1);
-        {ok, proper_solo_closing, SignedTx} ->
-            lager:debug("Channel solo-closing", []),
-            report_on_chain_tx(solo_closing, SignedTx, D1),
-            next_state(channel_closing, D1);
-        {ok, solo_closed, SignedTx} ->
-            lager:debug("Channel solo-closed", []),
-            report_on_chain_tx(solo_closed, SignedTx, D1),
-            close(channel_no_longer_active, D1);
-        {error, channel_active} ->
-            %% Weird, but possible e.g. due to forking (TODO: what might happen next?)
-            keep_state(log(drop, msg_type(Msg), Msg, D));
-        {error, _} = Error ->
-            %% Couldn't find the channel object on-chain, or something weird happened
-            lager:debug("Channel not found, or other: ~p", [Error]),
-            close(channel_no_longer_active, D)
-    end;
-handle_common_event_(cast, {?CHANNEL_CHANGED, #{tx_hash := TxHash} = Info} = Msg,
-                     _St, _, D) ->
-    D1 = log(rcv, msg_type(Msg), Msg, D),
-    case D1#data.latest of
-        {?MIN_DEPTH, _, LatestTxHash, _, _} when TxHash =/= LatestTxHash ->
-            %% This is a problem: channel changed while waiting to confirm
-            %% other tx hash
-            close({error, unexpected_tx_on_chain}, D);
-        _ ->
-            lager:debug("Fsm notes channel change ~p", [Info]),
-            report_on_chain_tx(channel_changed, maps:get(tx, Info), D1),
-            keep_state(D1)
-    end;
-handle_common_event_(cast, {?CHANNEL_CLOSED, #{tx := SignedTx} = _Info} = Msg, _St, _, D) ->
-    %% Start a minimum-depth watch, then (if confirmed) terminate
-    report_on_chain_tx(channel_closed, SignedTx, D),
-    {ok, D1} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_CLOSED}, SignedTx, [], D),
-    next_state(channel_closed, log(rcv, msg_type(Msg), Msg, D1));
-handle_common_event_({call, From}, Req, St, Mode, D) ->
-    case Mode of
-        error_all ->
-            keep_state(D, [{reply, From, {error, not_ready}}]);
-        _ ->
-            handle_call(St, Req, From, D)
-    end;
-handle_common_event_(info, Msg, _St, _P, D) ->
-    handle_info(Msg, D);
-handle_common_event_(_Type, _Msg, _St, P, D) when P == postpone ->
-    postpone(D);
-handle_common_event_(Type, Msg, St, discard, D) ->
-    lager:warning("Discarding ~p in '~p' state: ~p", [Type, St, Msg]),
-    keep_state(log(drop, msg_type(Msg), Msg, D));
-handle_common_event_(Type, Msg, St, Err, D) when Err==error;
-                                                 Err==error_all ->
-    lager:debug("Wrong ~p in ~p: ~p", [Type, St, Msg]),
-    %% should send an error msg
-    close(protocol_error, D).
-
-msg_type(Msg) when is_tuple(Msg) ->
-    T = element(1, Msg),
-    if ?KNOWN_MSG_TYPE(T) -> T;
-       ?WATCHER_EVENT(T) -> T;
-       true -> unknown
-    end;
-msg_type(T) -> T.
-
-
-cur_channel_id(#data{channel_id = TChId,
-                     on_chain_id = PChId}) ->
-    case PChId == undefined of
-        true  -> TChId;
-        false -> PChId
-    end.
-
-error_binary(E) when is_atom(E) ->
-    atom_to_binary(E, latin1).
-
-
-terminate(Reason, _State, #data{session = Sn} = Data) ->
-    lager:debug("terminate(~p, ~p, _)", [Reason, _State]),
-    report(info, {died, Reason}, Data),
-    report(debug, {log, win_to_list(Data#data.log)}, Data),
-    try aesc_session_noise:close(Sn) catch error:_ -> ok end,
-    ok.
-
-code_change(_OldVsn, OldState, OldData, _Extra) ->
-    {ok, OldState, OldData}.
+wdraw_signed(cast, {?SHUTDOWN, _Msg}, D) ->
+    next_state(mutual_closing, D);
+wdraw_signed(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error, D).
 
 %% ======================================================================
 %% Action logic
-%% ======================================================================
 
 send_open_msg(#data{opts       = Opts,
                     session    = Sn} = Data) ->
@@ -2176,14 +1227,6 @@ chk_same_tx(_, SignedTx, #data{ state = State }) ->
 
 log_reestabl_ack_msg(Msg, _, #data{log = L} = D) ->
     {data, D#data{log = log_msg(rcv, ?CH_REEST_ACK, Msg, L)}}.
-
-get_channel(ChainHash, ChId) ->
-    case aec_chain:genesis_hash() of
-        ChainHash ->
-            aec_chain:get_channel(ChId);
-        _ ->
-            {error, chain_hash_mismatch}
-    end.
 
 send_channel_accept(#data{opts          = Opts,
                           session       = Sn,
@@ -2534,10 +1577,6 @@ adjust_ttl(TTL) when is_integer(TTL), TTL >= 0 ->
 
 cur_height() ->
     aec_headers:height(aec_chain:top_header()).
-
-is_fork_active(ProtocolVSN) ->
-    %% Enable a new fork only after MINIMUM_DEPTH generations in order to avoid fork changes
-    ProtocolVSN == aec_hard_forks:protocol_effective_at_height(max(cur_height() - ?MINIMUM_DEPTH, aec_block_genesis:height())).
 
 
 new_contract_tx_for_signing(Opts, From, #data{state = State,
@@ -2895,7 +1934,6 @@ check_signed_update_tx(Type, SignedTx, Updates,
                         check_update_tx_initial(SignedTx, Updates, State,
                                                 Opts)
                 end,
-            
             case Res of
                 ok -> ok;
                 {error, _} = Error ->
@@ -3214,9 +2252,6 @@ request_signing_(Tag, SignedTx, Updates, #data{client = Client} = D) ->
     D#data{ latest = {sign, Tag, SignedTx, Updates}
           , log    = log_msg(req, sign, Msg, D#data.log)}.
 
-default_minimum_depth(initiator  ) -> undefined;
-default_minimum_depth(responder) -> ?MINIMUM_DEPTH.
-
 start_min_depth_watcher(Type, SignedTx, Updates,
                         #data{watcher = Watcher0,
                               opts = #{minimum_depth := MinDepth}} = D) ->
@@ -3258,44 +2293,6 @@ on_chain_id(D, SignedTx) ->
     {ok, PubKey} = aesc_utils:channel_pubkey(SignedTx),
     {PubKey, D#data{on_chain_id = PubKey}}.
 
-gproc_register(#data{role = Role, channel_id = ChanId} = D) ->
-    gproc_register_(ChanId, Role, D).
-
-gproc_register_on_chain_id(#data{role = Role, on_chain_id = Id} = D)
-  when Id =/= undefined ->
-    gproc_register_(Id, Role, D).
-
-gproc_register_(ChanId, Role, D) ->
-    Pubkey = my_account(D),
-    Nbr = gproc_name_by_role(ChanId, Role),
-    Nbp = gproc_name_by_pubkey(ChanId, Pubkey),
-    lager:debug("gproc:reg() Nbr = ~p; Nbp = ~p; prev = ~p",
-                [Nbr, Nbp, gproc:info(self(), gproc)]),
-    try_gproc_reg(Nbr, Pubkey),
-    try_gproc_reg(Nbp).
-
-try_gproc_reg(Key) ->
-    try_gproc_reg(Key, undefined).
-
-try_gproc_reg(Key, Value) ->
-    try gproc:reg(Key, Value)
-    catch
-        error:badarg ->
-            Prev = gproc:where(Key),
-            lager:error("Couldn't register channel, K=~p, V=~p, Prev=~p",
-                        [Key, Value, Prev]),
-            error(badarg)
-    end.
-
-gproc_name_by_role(Id, Role) ->
-    {n, l, {aesc_channel, {Id, role, Role}}}.
-
-gproc_name_by_pubkey(Id, Pubkey) ->
-    {n, l, {aesc_channel, {Id, key, Pubkey}}}.
-
-evt(_Msg) ->
-    ok.
-
 initialize_cache(#data{ on_chain_id = ChId
                       , state       = State } = D) ->
     aesc_state_cache:new(ChId, my_account(D), State).
@@ -3329,20 +2326,6 @@ report_leave(#data{state = State} = D) ->
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
     report(leave, SignedTx, D),
     cache_state(D).
-
-report_tags() ->
-    maps:keys(default_report_flags()).
-
-%% See `report_tags()` above: This map needs to contain all recognized tags.
-default_report_flags() ->
-    #{ info         => true
-     , update       => true
-     , leave        => true
-     , conflict     => true
-     , message      => true
-     , error        => true
-     , debug        => false
-     , on_chain_tx  => true}.
 
 report_on_chain_tx(Info, SignedTx, D) ->
     {Type,_} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
@@ -3655,3 +2638,788 @@ check_attach_info(#{ initiator := I1
 check_attach_info(_, _I, _R) ->
     {error, unrecognized_attach_info}.
 
+%% ==================================================================
+%% gen_statem callbacks
+
+callback_mode() ->
+    [ state_functions %% "... Module:StateName/3, is used."
+    , state_enter     %% "... at every **state change**, call the state callback
+                      %% with arguments `(enter, OldState, Data)`. ... a state
+                      %% enter call will be done right before entering the initial
+                      %% state ..."
+    ].
+
+-spec init(term()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(),
+                                                   InitialState}, ...]}
+                          when InitialState :: state_name().
+init(#{opts := Opts0} = Arg) ->
+    {Role, Opts1} = maps:take(role, Opts0),
+    Client = maps:get(client, Opts1),
+    {Reestablish, ReestablishOpts, Opts2} =
+        { maps:is_key(existing_channel_id, Opts1)
+        , maps:with(?REESTABLISH_OPTS_KEYS, Opts1)
+        , maps:without(?REESTABLISH_OPTS_KEYS, Opts1)
+        },
+    DefMinDepth = default_minimum_depth(Role),
+    Opts = check_opts(
+             [
+              fun(O) -> check_minimum_depth_opt(DefMinDepth, Role, O) end,
+              fun check_timeout_opt/1,
+              fun check_rpt_opt/1,
+              fun check_log_opt/1
+             ], Opts2),
+    #{initiator := Initiator} = Opts,
+    Session = start_session(Arg, Reestablish, Opts#{role => Role}),
+    StateInitF = fun(NewI) ->
+                          CheckedOpts = maps:merge(Opts#{role => Role}, ReestablishOpts),
+                          {ok, State} = aesc_offchain_state:new(CheckedOpts#{initiator => NewI}),
+                          State
+                  end,
+    State = case Initiator of
+                any -> StateInitF;
+                _   -> StateInitF(Initiator)
+            end,
+    Data = #data{role   = Role,
+                client  = Client,
+                session = Session,
+                opts    = Opts,
+                state   = State,
+                log     = aesc_window:new(maps:get(log_keep, Opts))},
+    lager:debug("Session started, Data = ~p", [Data]),
+    %% TODO: Amend the fsm above to include this step. We have transport-level
+    %% connectivity, but not yet agreement on the channel parameters. We will next send
+    %% a channel_open() message and await a channel_accept().
+    case Role of
+        initiator ->
+            if Reestablish ->
+                    ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
+              true ->
+                    ok_next(initialized, send_open_msg(Data))
+            end;
+        responder ->
+            if Reestablish ->
+                    ChanId = maps:get(existing_channel_id, ReestablishOpts),
+                    ok_next(awaiting_reestablish,
+                            Data#data{ channel_id  = ChanId
+                                      , on_chain_id = ChanId });
+              true ->
+                    ok_next(awaiting_open, Data)
+            end
+    end.
+
+terminate(Reason, _State, #data{session = Sn} = Data) ->
+    lager:debug("terminate(~p, ~p, _)", [Reason, _State]),
+    report(info, {died, Reason}, Data),
+    report(debug, {log, win_to_list(Data#data.log)}, Data),
+    try aesc_session_noise:close(Sn) catch error:_ -> ok end,
+    ok.
+
+code_change(_OldVsn, OldState, OldData, _Extra) ->
+    {ok, OldState, OldData}.
+
+%% ======================================================================
+%% FSM transitions
+
+%% We set timers here to ensure that they are always set.
+%% gen_statem cancels event timers each time an event arrives
+%%
+next_state(St, D) -> next_state(St, D, []).
+next_state(St, D, Opts) ->
+    {next_state, St, cur_st(St, D), [timer_for_state(St, D)|Opts]}.
+
+keep_state(D) -> keep_state(D, []).
+keep_state(D, Opts) ->
+    {keep_state, D, [timer_for_state(D)|Opts]}.
+
+postpone(D) ->
+    keep_state(D, [postpone]).
+
+cur_st(St, D) ->
+    D#data{cur_statem_state = St}.
+
+%% ==================================================================
+%% Internal functions
+
+check_change_config(log_keep, Keep) when is_integer(Keep), Keep >= 0 ->
+    {ok, log_keep, Keep};
+check_change_config(_, _) ->
+    {error, invalid_config}.
+
+default_minimum_depth(initiator  ) -> undefined;
+default_minimum_depth(responder) -> ?MINIMUM_DEPTH.
+
+check_minimum_depth_opt(DefMinDepth, Role, Opts) ->
+    case {maps:find(minimum_depth, Opts), Role} of
+        {error, responder} -> Opts#{minimum_depth => DefMinDepth};
+        _                    -> Opts
+    end.
+
+check_timeout_opt(Opts) ->
+    Res = case maps:find(timeouts, Opts) of
+              {ok, TOs} ->
+                  TOs1 = maps:merge(?DEFAULT_TIMEOUTS, TOs),
+                  Opts#{timeouts => TOs1};
+              error ->
+                  Opts#{timeouts => ?DEFAULT_TIMEOUTS}
+          end,
+    lager:debug("Timeouts: ~p", [Res]),
+    Res.
+
+check_rpt_opt(Opts) ->
+    ROpts = case maps:find(report, Opts) of
+                {ok, R} when is_map(R) ->
+                    L = [{K,V} || {K,V} <- maps:to_list(R),
+                                  lists:member(K, report_tags())
+                                      andalso
+                                      is_boolean(V)],
+                    maps:from_list(L);
+                error ->
+                    case maps:find(report_info, Opts) of  %% bw compatibility
+                        {ok, V} when is_boolean(V) ->
+                            #{info => V};
+                        _ ->
+                            #{}
+                    end;
+                Other ->
+                    lager:error("Unknown report opts: ~p", [Other]),
+                    #{}
+          end,
+    lager:debug("Report opts = ~p", [ROpts]),
+    Opts#{report => maps:merge(?DEFAULT_REPORT_FLAGS, ROpts)}.
+
+check_log_opt(Opts) ->
+    case maps:find(log_keep, Opts) of
+        {ok, Keep} when is_integer(Keep), Keep >= 0 ->
+            Opts;
+        {ok, Invalid} ->
+            lager:error("Invalid 'log_keep' option: ~p", [Invalid]),
+            Opts#{log_keep => ?KEEP};
+        error ->
+            Opts#{log_keep => ?KEEP}
+    end.
+
+check_opts([H|T], Opts) ->
+    check_opts(T, H(Opts));
+check_opts([], Opts) ->
+    Opts.
+
+%% As per CHANNELS.md, the responder is regarded as the one typically
+%% providing the service, and the initiator connects.
+start_session(#{ port := Port
+               , opts := Opts0 }, Reestablish, #{ role      := responder
+                                                , responder := Responder
+                                                , initiator := Initiator } = Opts) ->
+    NoiseOpts = maps:get(noise, Opts, []),
+    SessionOpts = if Reestablish ->
+                          #{ reestablish => true
+                           , port        => Port
+                           , chain_hash  => aec_chain:genesis_hash()
+                           , channel_id  => maps:get(existing_channel_id, Opts0)
+                           , responder   => Responder };
+                     true ->
+                          #{ initiator => Initiator
+                           , responder => Responder
+                           , port      => Port }
+                  end,
+    ok(aesc_session_noise:accept(SessionOpts, NoiseOpts));
+start_session(#{host := Host, port := Port}, _, #{role := initiator} = Opts) ->
+    NoiseOpts = maps:get(noise, Opts, []),
+    ok(aesc_session_noise:connect(Host, Port, NoiseOpts)).
+
+ok({ok, X}) -> X.
+
+maybe_initialize_offchain_state(any, NewI, #data{state = F} = D) when is_function(F, 1) ->
+    D#data{state = F(NewI)};
+maybe_initialize_offchain_state(_, _, D) ->
+    D.
+
+ok_next(Next, Data) ->
+    {ok, Next, cur_st(Next, Data), [timer_for_state(Next, Data)]}.
+
+stop_ok(ok) ->
+    ok;
+stop_ok({'EXIT', noproc}) ->
+    ok;
+stop_ok({'EXIT', {normal,{sys,terminate,_}}}) ->
+    ok.
+
+timer(Name, Msg, #data{opts = #{timeouts := TOs}}) ->
+    timeout_(maps:get(Name, TOs), Msg).
+
+timeout_(Timeout, Msg) when is_integer(Timeout); Timeout == infinity ->
+    {timeout, Timeout, Msg}.
+
+timer_for_state(#data{cur_statem_state = St} = D) when St =/= undefined ->
+    timer_for_state(St, D).
+
+timer_for_state(St, #data{opts = #{timeouts := TOs}} = D) ->
+    case maps:find(St, TOs) of
+        {ok, T} -> timeout_(T, St);
+        error ->
+            Alias = ?TIMER_SUBST(St),
+            timer(Alias, St, D)
+    end.
+
+set_ongoing(D) ->
+    D#data{ongoing_update = true}.
+
+error_binary(E) when is_atom(E) ->
+    atom_to_binary(E, latin1).
+
+send_error_msg(Reason, #data{session = Sn} = D) ->
+    case cur_channel_id(D) of
+        undefined -> no_msg;
+        ChId ->
+            case Reason of
+                {error, E} ->
+                    Eb = error_binary(E),
+                    Msg = #{ channel_id => ChId
+                           , data       => Eb },
+                    report(error, Eb, D),
+                    aesc_session_noise:error(Sn, Msg);
+                _ ->
+                    no_msg
+            end
+    end.
+
+msg_type(Msg) when is_tuple(Msg) ->
+    T = element(1, Msg),
+    if ?KNOWN_MSG_TYPE(T) -> T;
+       ?WATCHER_EVENT(T) -> T;
+       true -> unknown
+    end;
+msg_type(T) -> T.
+
+cur_channel_id(#data{on_chain_id = undefined, channel_id = ChId}) -> ChId;
+cur_channel_id(#data{on_chain_id = ChId}) -> ChId.
+
+gproc_register(#data{role = Role, channel_id = ChanId} = D) ->
+    gproc_register_(ChanId, Role, D).
+
+gproc_register_on_chain_id(#data{role = Role, on_chain_id = Id} = D)
+  when Id =/= undefined ->
+    gproc_register_(Id, Role, D).
+
+gproc_register_(ChanId, Role, D) ->
+    Pubkey = my_account(D),
+    Nbr = gproc_name_by_role(ChanId, Role),
+    Nbp = gproc_name_by_pubkey(ChanId, Pubkey),
+    lager:debug("gproc:reg() Nbr = ~p; Nbp = ~p; prev = ~p",
+                [Nbr, Nbp, gproc:info(self(), gproc)]),
+    try_gproc_reg(Nbr, Pubkey),
+    try_gproc_reg(Nbp).
+
+try_gproc_reg(Key) ->
+    try_gproc_reg(Key, undefined).
+
+try_gproc_reg(Key, Value) ->
+    try gproc:reg(Key, Value)
+    catch
+        error:badarg ->
+            Prev = gproc:where(Key),
+            lager:error("Couldn't register channel, K=~p, V=~p, Prev=~p",
+                        [Key, Value, Prev]),
+            error(badarg)
+    end.
+
+gproc_name_by_role(Id, Role) ->
+    {n, l, {aesc_channel, {Id, role, Role}}}.
+
+gproc_name_by_pubkey(Id, Pubkey) ->
+    {n, l, {aesc_channel, {Id, key, Pubkey}}}.
+
+evt(_Msg) ->
+    ok.
+
+has_gproc_key(Fsm, #{gproc_key := K}) ->
+    try _ = gproc:get_value(K, Fsm),
+          true
+    catch
+        error:badarg ->
+            false
+    end.
+
+is_channel_locked(0) -> false;
+is_channel_locked(LockedUntil) ->
+    LockedUntil >= cur_height().
+
+withdraw_locked_complete(SignedTx, Updates, #data{state = State, opts = Opts} = D) ->
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    D1   = D#data{state = aesc_offchain_state:set_signed_tx(SignedTx, Updates,
+                                                            State,
+                                                            OnChainTrees,
+                                                            OnChainEnv, Opts)},
+    next_state(open, D1).
+
+settle_signed(SignedTx, Updates, #data{ on_chain_id = ChId} = D) ->
+    ?LOG_DEBUG(settle_signed, 3, [SignedTx]),
+    case aec_chain:get_channel(ChId) of
+        {ok, Ch} ->
+            LockedUntil = aesc_channels:locked_until(Ch),
+            {ok, D1} =
+                case is_channel_locked(LockedUntil) of
+                    true ->
+                        lager:debug("channel is locked", []),
+                        start_min_depth_watcher(unlock, SignedTx, Updates, D);
+                    false ->
+                        lager:debug("channel not locked, pushing settle", []),
+                        ok = aec_tx_pool:push(SignedTx),
+                        start_min_depth_watcher(close, SignedTx, Updates, D)
+                end,
+            next_state(channel_closing, D1);
+        {error,_} = Error ->
+            close(Error, D)
+    end.
+
+close_solo_signed(SignedTx, _Updates, #data{ on_chain_id = ChId } = D) ->
+    lager:debug("SignedTx = ~p", [SignedTx]),
+    case aec_chain:get_channel(ChId) of
+        {ok, Ch} ->
+            LockedUntil = aesc_channels:locked_until(Ch),
+            case is_channel_locked(LockedUntil) of
+                false ->
+                    lager:debug("channel not locked: solo-closing", []),
+                    case aec_tx_pool:push(SignedTx) of
+                        ok ->
+                            ok;
+                        {error, Reason} ->
+                            lager:debug("Close_solo tx failed: ~p", [Reason]),
+                            ok
+                    end;
+                true ->
+                    lager:debug("channel is locked: cannot solo-close", []),
+                    ok
+            end,
+            %% Let the watcher pick up the tx once it makes it onto the chain
+            next_state(open, D);
+        {error,_} = Error ->
+            close(Error, D)
+    end.
+
+funding_locked_complete(#data{latest = Latest} = D) ->
+    {create, _, Updates} = Latest,
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    D1   = D#data{state = aesc_offchain_state:set_signed_tx(D#data.create_tx,
+                                                            Updates,
+                                                            D#data.state,
+                                                            OnChainTrees,
+                                                            OnChainEnv,
+                                                            D#data.opts)},
+    initialize_cache(D1),
+    next_state(open, D1).
+
+close(Reason, D) ->
+    close_(Reason, log(evt, close, Reason, D)).
+
+close_(close_mutual, D) ->
+    report(info, close_mutual, D),
+    {stop, normal, D};
+close_(closed_confirmed, D) ->
+    report(info, closed_confirmed, D),
+    {stop, normal, D};
+close_(leave, D) ->
+    {stop, normal, D};
+close_(bad_signature, D) ->
+    report(info, bad_signature, D),
+    {stop, normal, D};
+close_(bad_state_hash, D) ->
+    report(info, bad_state_hash, D),
+    {stop, normal, D};
+close_(not_create_tx, D) ->
+    report(info, not_create_tx, D),
+    {stop, normal, D};
+close_(Reason, D) ->
+    try send_error_msg(Reason, D)
+    catch error:_ -> ignore
+    end,
+    {stop, Reason, D}.
+
+handle_call(St, Req, From, #data{} = D) ->
+    lager:debug("handle_call(~p, ~p, ~p, ~p)", [St, Req, From, D]),
+    try handle_call_(St, Req, From, D)
+    catch
+        error:Error ->
+            ?LOG_CAUGHT(Error),
+            keep_state(D, [{reply, From, {error, Error}}])
+    end.
+
+handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
+    case {ToPub, other_account(D)} of
+        {X, X} ->
+            keep_state(send_inband_msg(ToPub, Msg, D), [{reply, From, ok}]);
+        _ ->
+            keep_state(D, [{reply, From, {error, unknown_recipient}}])
+    end;
+handle_call_(open, {upd_transfer, FromPub, ToPub, Amount}, From,
+            #data{opts = #{initiator := I,
+                           responder := R}} = D) ->
+    case FromPub =/= ToPub andalso ([] == [FromPub, ToPub] -- [I, R]) of
+        true ->
+            handle_upd_transfer(FromPub, ToPub, Amount, From, set_ongoing(D));
+        false ->
+            keep_state(set_ongoing(D), [{reply, From, {error, invalid_pubkeys}}])
+    end;
+handle_call_(open, {upd_deposit, #{amount := Amt} = Opts}, From,
+             #data{} = D) when is_integer(Amt), Amt > 0 ->
+    FromPub = my_account(D),
+    case maps:find(from, Opts) of
+        {ok, FromPub} -> ok;
+        {ok, _Other}  -> error(conflicting_accounts);
+        error         -> ok
+    end,
+    {ok, DepTx, Updates} = dep_tx_for_signing(Opts#{acct => FromPub}, D),
+    D1 = request_signing(deposit_tx, DepTx, Updates, D),
+    gen_statem:reply(From, ok),
+    next_state(awaiting_signature, set_ongoing(D1));
+handle_call_(open, {upd_withdraw, #{amount := Amt} = Opts}, From,
+             #data{} = D) when is_integer(Amt), Amt > 0 ->
+    ToPub = my_account(D),
+    case maps:find(to, Opts) of
+        {ok, ToPub} -> ok;
+        {ok, _Other}  -> error(conflicting_accounts);
+        error         -> ok
+    end,
+    {ok, DepTx, Updates} = wdraw_tx_for_signing(Opts#{acct => ToPub}, D),
+    D1 = request_signing(withdraw_tx, DepTx, Updates, D),
+    gen_statem:reply(From, ok),
+    next_state(awaiting_signature, set_ongoing(D1));
+handle_call_(open, leave, From, #data{} = D) ->
+    D1 = send_leave_msg(D),
+    gen_statem:reply(From, ok),
+    next_state(awaiting_leave_ack, D1);
+handle_call_(open, {upd_create_contract, Opts}, From, #data{} = D) ->
+    FromPub = my_account(D),
+    case maps:find(from, Opts) of
+        {ok, FromPub} -> ok;
+        {ok, _Other}  -> error(conflicting_accounts);
+        error         -> ok
+    end,
+    new_contract_tx_for_signing(Opts#{owner => FromPub}, From, D);
+handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
+             #data{state=State, opts = ChannelOpts,
+                   on_chain_id = ChannelId} = D) when ChannelId =/= undefined ->
+    FromPub = my_account(D),
+    case maps:find(from, Opts) of
+        {ok, FromPub} -> ok;
+        {ok, _Other}  -> error(conflicting_accounts);
+        error         -> ok
+    end,
+    CallStack = maps:get(call_stack, Opts, []),
+    #{contract    := ContractPubKey,
+      abi_version := ABIVersion,
+      amount      := Amount,
+      call_data   := CallData} = Opts,
+    Update = aesc_offchain_update:op_call_contract(aeser_id:create(account, FromPub),
+                                                   aeser_id:create(contract, ContractPubKey),
+                                                   ABIVersion, Amount,
+                                                   CallData, CallStack),
+    Updates = [Update],
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    Height = aetx_env:height(OnChainEnv),
+    ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
+    try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
+                                                  ChannelId,
+                                                  ActiveProtocol,
+                                                  OnChainTrees, OnChainEnv, ChannelOpts),
+         case ExecType of
+            dry_run ->
+                UpdState = aesc_offchain_state:set_signed_tx(
+                             aetx_sign:new(Tx1, []), %% fake signed tx, no signatures will be checked
+                             Updates,
+                             State, OnChainTrees, OnChainEnv, ChannelOpts,
+                             _CheckSigs = false),
+                {Round, _} = aesc_offchain_state:get_latest_signed_tx(UpdState),
+                {ok, Call} = aesc_offchain_state:get_contract_call(ContractPubKey,
+                                                                   FromPub, Round,
+                                                                   UpdState),
+                keep_state(D, [{reply, From, {ok, Call}}]);
+            execute ->
+                D1 = request_signing(?UPDATE, Tx1, Updates, D),
+                gen_statem:reply(From, ok),
+                next_state(awaiting_signature, set_ongoing(D1))
+          end
+    catch
+        error:Reason ->
+            process_update_error(Reason, From, D)
+    end;
+handle_call_(awaiting_signature, Msg, From,
+             #data{ongoing_update = true} = D)
+  when ?UPDATE_REQ(element(1,Msg)) ->
+    %% Race detection!
+    lager:debug("race detected: ~p", [Msg]),
+    {sign, OngoingOp, _, _} = D#data.latest,
+    gen_statem:reply(From, {error, conflict}),
+    lager:debug("calling handle_update_conflict", []),
+    handle_update_conflict(OngoingOp, D#data{latest = undefined});
+handle_call_(open, {get_contract_call, Contract, Caller, Round}, From,
+             #data{state = State} = D) ->
+    Response =
+        case aesc_offchain_state:get_contract_call(Contract, Caller, Round, State) of
+            {error, call_not_found} -> {error, call_not_found};
+            {ok, Call} -> {ok, Call}
+        end,
+    keep_state(D, [{reply, From, Response}]);
+handle_call_(open, shutdown, From, D) ->
+    {ok, CloseTx, Updates} = close_mutual_tx_for_signing(D),
+    D1 = request_signing(?SHUTDOWN, CloseTx, Updates, D),
+    gen_statem:reply(From, ok),
+    next_state(awaiting_signature, set_ongoing(D1));
+handle_call_(channel_closing, shutdown, From, #data{strict_checks = Strict} = D) ->
+    case (not Strict) or is_fork_active(?LIMA_PROTOCOL_VSN) of
+        true ->
+            %% Initiate mutual close
+            {ok, CloseTx, Updates} = close_mutual_tx_for_signing(D),
+            D1 = request_signing(?SHUTDOWN, CloseTx, Updates, D),
+            gen_statem:reply(From, ok),
+            next_state(awaiting_signature, set_ongoing(D1));
+        false ->
+            %% Backwards compatibility
+            keep_state(D, [{reply, From, {error, unknown_request}}])
+    end;
+handle_call_(_, get_state, From, #data{ on_chain_id = ChanId
+                                      , opts        = Opts
+                                      , state       = State} = D) ->
+    #{initiator := Initiator,
+      responder := Responder} = Opts,
+    {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
+    {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
+    StateHash = aesc_offchain_state:hash(State),
+    {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
+    Result =
+        #{channel_id=> ChanId,
+          initiator => Initiator,
+          responder => Responder,
+          init_amt  => IAmt,
+          resp_amt  => RAmt,
+          state_hash=> StateHash,
+          round     => Round},
+    keep_state(D, [{reply, From, {ok, Result}}]);
+handle_call_(_, get_offchain_state, From, #data{state = State} = D) ->
+    keep_state(D, [{reply, From, {ok, State}}]);
+handle_call_(_, {get_contract, Pubkey}, From, #data{state = State} = D) ->
+    Contracts = aec_trees:contracts(aesc_offchain_state:get_latest_trees(State)),
+    Response =
+        case aect_state_tree:lookup_contract(Pubkey, Contracts) of
+            {value, Contract} -> {ok, Contract};
+            none -> {error, not_found}
+        end,
+    keep_state(D, [{reply, From, Response}]);
+handle_call_(_, {get_poi, Filter}, From, #data{state = State} = D) ->
+    Response =
+        case aesc_offchain_state:poi(Filter, State) of
+            {ok, PoI} -> {ok, PoI};
+            {error, _} -> {error, not_found}
+        end,
+    keep_state(D, [{reply, From, Response}]);
+handle_call_(_St, get_history, From, #data{log = Log} = D) ->
+    keep_state(D, [{reply, From, win_to_list(Log)}]);
+handle_call_(_St, {change_config, Key, Value}, From, D) ->
+    case handle_change_config(Key, Value, D) of
+        {ok, Reply, D1} ->
+            keep_state(D1, [{reply, From, Reply}]);
+        {error, _} = Error ->
+            keep_state(D, [{reply, From, Error}])
+    end;
+handle_call_(_, {get_balances, Accounts}, From, #data{ state = State } = D) ->
+    Result =
+        try {ok, lists:foldr(
+                   fun(Acct, Acc) ->
+                           case aesc_offchain_state:balance(Acct, State) of
+                               {ok, Amt} ->
+                                   [{Acct, Amt}|Acc];
+                               {error, not_found} ->
+                                   Acc
+                           end
+                   end, [], Accounts)}
+        catch
+            error:_ ->
+                {error, invalid_arguments}
+        end,
+    lager:debug("get_balances(~p) -> ~p", [Accounts, Result]),
+    keep_state(D, [{reply, From, Result}]);
+handle_call_(_, get_round, From, #data{ state = State } = D) ->
+    Res = try  {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
+               {ok, Round}
+          catch
+              error:_ ->
+                  {error, no_state}
+          end,
+    keep_state(D, [{reply, From, Res}]);
+handle_call_(_, prune_local_calls, From, #data{ state = State0 } = D) ->
+    State = aesc_offchain_state:prune_calls(State0),
+    keep_state(D#data{state = State}, [{reply, From, ok}]);
+handle_call_(St, close_solo, From, D) ->
+    case St of
+        channel_closing ->
+            keep_state(D, [{reply, From, {error, channel_closing}}]);
+        _ ->
+            {ok, CloseSoloTx, Updates} = close_solo_tx_for_signing(D),
+            gen_statem:reply(From, ok),
+            D1 = set_ongoing(request_signing(
+                               close_solo_tx, CloseSoloTx, Updates, D)),
+            next_state(awaiting_signature, D1)
+    end;
+handle_call_(St, slash, From, D) ->
+    case St of
+        channel_closing ->
+            {ok, SlashTx, Updates} = slash_tx_for_signing(D),
+            gen_statem:reply(From, ok),
+            D1 = set_ongoing(request_signing(slash_tx, SlashTx, Updates, D)),
+            next_state(awaiting_signature, D1);
+        _ ->
+            keep_state(D, [{reply, From, {error, channel_not_closing}}])
+    end;
+handle_call_(St, settle, From, D) ->
+    case St of
+        channel_closing ->
+            {ok, SettleTx, Updates} = settle_tx_for_signing(D),
+            gen_statem:reply(From, ok),
+            D1 = set_ongoing(request_signing(settle_tx, SettleTx, Updates, D)),
+            next_state(awaiting_signature, D1);
+        _ ->
+            keep_state(D, [{reply, From, {error, channel_not_closed}}])
+    end;
+handle_call_(_, {strict_checks, Strict}, From, #data{} = D) when
+        is_boolean(Strict) ->
+    keep_state(D#data{strict_checks = Strict}, [{reply, From, ok}]);
+handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
+    postpone(D);
+handle_call_(_St, _Req, From, D) ->
+    keep_state(D, [{reply, From, {error, unknown_request}}]).
+
+handle_info(Msg, #data{cur_statem_state = St} = D) ->
+    lager:debug("Discarding info in ~p state: ~p", [St, Msg]),
+    keep_state(log(drop, msg_type(Msg), Msg, D)).
+
+%% A few different modes are specified here:
+%% * error_all - all calls and casts not explicitly handled lead to protocol
+%%               error. Used mainly for the open/reestablish handshake.
+%% * error     - try to handle calls, but unknown casts cause protocol error.
+%%               Used during deposit/withdraw, since calls can be used to
+%%               inject a competing operation (thereby rejecting the other).
+%% * postpone  - postpone casts (and info), but try to handle calls.
+%% * discard   - handle calls, but drop unknown casts (could be e.g. a stray
+%%               signing reply in the open state).
+handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
+    lager:debug("handle_common_event(~p, ~p, ~p, ~p, D)", [E, Msg, St, M]),
+    handle_common_event_(E, Msg, St, M, D).
+
+handle_common_event_(timeout, St = T, St, _, D) ->
+    close({timeout, T}, D);
+handle_common_event_(cast, {?DISCONNECT, _} = Msg, _St, _, D) ->
+    D1 = log(rcv, ?DISCONNECT, Msg, D),
+    case D1#data.channel_status of
+        closing ->
+            keep_state(D1);
+        _ ->
+            close(disconnect, D1)
+    end;
+handle_common_event_(cast, {?INBAND_MSG, Msg}, _St, _, D) ->
+    NewD = case check_inband_msg(Msg, D) of
+               {ok, D1} ->
+                   report(message, Msg, D1),
+                   D1;
+               {error, _} = Err ->
+                   lager:warning("Error in inband_msg: ~p", [Err]),
+                   D
+           end,
+    keep_state(NewD);
+handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
+    lager:debug("got ~p", [Msg]),
+    D1 = log(rcv, ?CHANNEL_CLOSING, Msg, D),
+    case check_closing_event(Info, D1) of
+        {can_slash, _Round, SignedTx} ->
+            %% report_on_chain_tx(can_slash, SignedTx, D1),
+            %% D2 = set_ongoing(request_signing(slash_tx, SlashTx, Updates, D1)),
+            %% next_state(awaiting_signature, D2);
+            report_on_chain_tx(can_slash, SignedTx, D1),
+            next_state(channel_closing, D1);
+        {ok, proper_solo_closing, SignedTx} ->
+            lager:debug("Channel solo-closing", []),
+            report_on_chain_tx(solo_closing, SignedTx, D1),
+            next_state(channel_closing, D1);
+        {ok, solo_closed, SignedTx} ->
+            lager:debug("Channel solo-closed", []),
+            report_on_chain_tx(solo_closed, SignedTx, D1),
+            close(channel_no_longer_active, D1);
+        {error, channel_active} ->
+            %% Weird, but possible e.g. due to forking (TODO: what might happen next?)
+            keep_state(log(drop, msg_type(Msg), Msg, D));
+        {error, _} = Error ->
+            %% Couldn't find the channel object on-chain, or something weird happened
+            lager:debug("Channel not found, or other: ~p", [Error]),
+            close(channel_no_longer_active, D)
+    end;
+handle_common_event_(cast, {?CHANNEL_CHANGED, #{tx_hash := TxHash} = Info} = Msg,
+                     _St, _, D) ->
+    D1 = log(rcv, msg_type(Msg), Msg, D),
+    case D1#data.latest of
+        {?MIN_DEPTH, _, LatestTxHash, _, _} when TxHash =/= LatestTxHash ->
+            %% This is a problem: channel changed while waiting to confirm
+            %% other tx hash
+            close({error, unexpected_tx_on_chain}, D);
+        _ ->
+            lager:debug("Fsm notes channel change ~p", [Info]),
+            report_on_chain_tx(channel_changed, maps:get(tx, Info), D1),
+            keep_state(D1)
+    end;
+handle_common_event_(cast, {?CHANNEL_CLOSED, #{tx := SignedTx} = _Info} = Msg, _St, _, D) ->
+    %% Start a minimum-depth watch, then (if confirmed) terminate
+    report_on_chain_tx(channel_closed, SignedTx, D),
+    {ok, D1} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_CLOSED}, SignedTx, [], D),
+    next_state(channel_closed, log(rcv, msg_type(Msg), Msg, D1));
+handle_common_event_({call, From}, Req, St, Mode, D) ->
+    case Mode of
+        error_all ->
+            keep_state(D, [{reply, From, {error, not_ready}}]);
+        _ ->
+            handle_call(St, Req, From, D)
+    end;
+handle_common_event_(info, Msg, _St, _P, D) ->
+    handle_info(Msg, D);
+handle_common_event_(_Type, _Msg, _St, P, D) when P == postpone ->
+    postpone(D);
+handle_common_event_(Type, Msg, St, discard, D) ->
+    lager:warning("Discarding ~p in '~p' state: ~p", [Type, St, Msg]),
+    keep_state(log(drop, msg_type(Msg), Msg, D));
+handle_common_event_(Type, Msg, St, Err, D) when Err==error;
+                                                 Err==error_all ->
+    lager:debug("Wrong ~p in ~p: ~p", [Type, St, Msg]),
+    %% should send an error msg
+    close(protocol_error, D).
+
+get_channel(ChainHash, ChId) ->
+    case aec_chain:genesis_hash() of
+        ChainHash ->
+            aec_chain:get_channel(ChId);
+        _ ->
+            {error, chain_hash_mismatch}
+    end.
+
+init_checks(Opts) ->
+    #{initiator   := Initiator,
+      responder   := Responder,
+      role        := Role,
+      lock_period := LockPeriod} = Opts,
+    Checks = [fun() -> check_amounts(Opts) end,
+              fun() -> check_accounts(Initiator, Responder, Role) end,
+              fun() ->
+                  case LockPeriod < 0 of
+                      true -> {error, lock_period_too_low};
+                      false -> ok
+                  end
+              end
+              ],
+    case aeu_validation:run(Checks) of
+        {error, _Reason} = Err ->
+            Err;
+        ok ->
+            ok
+    end.
+
+is_fork_active(ProtocolVSN) ->
+    %% Enable a new fork only after MINIMUM_DEPTH generations in order to avoid fork changes
+    ProtocolVSN == aec_hard_forks:protocol_effective_at_height(max(cur_height() - ?MINIMUM_DEPTH, aec_block_genesis:height())).
