@@ -85,7 +85,7 @@ revoke(Name, Expiration, BlockHeight) ->
 transfer_to(Pubkey, Name) ->
     Name#name{owner_id = aeser_id:create(account, Pubkey)}.
 
--spec serialize(name()) -> binary().
+-spec serialize(name()) -> serialized().
 serialize(#name{owner_id   = OwnerId,
                 expires_by = ExpiresBy,
                 status     = Status,
