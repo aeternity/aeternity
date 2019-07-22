@@ -14,7 +14,7 @@
 
 %% Simple access tx instructions API
 -export([ channel_create_tx_instructions/12
-        , channel_close_mutual_tx_instructions/6
+        , channel_close_mutual_tx_instructions/7
         , channel_deposit_tx_instructions/7
         , channel_settle_tx_instructions/6
         , channel_withdraw_tx_instructions/7
@@ -373,13 +373,13 @@ channel_deposit_tx_instructions(FromPubkey, ChannelPubkey, Amount, StateHash,
     ].
 
 -spec channel_close_mutual_tx_instructions(pubkey(), pubkey(), amount(),
-                                           amount(), nonce(), fee()) -> [op()].
+                                           amount(), nonce(), fee(), non_neg_integer()) -> [op()].
 channel_close_mutual_tx_instructions(FromPubkey, ChannelPubkey,
                                      InitiatorAmount, ResponderAmount,
-                                     Nonce, Fee) ->
+                                     Nonce, Fee, ConsensusVersion) ->
     [ inc_account_nonce_op(FromPubkey, Nonce)
     , channel_close_mutual_op(FromPubkey, ChannelPubkey,
-                              InitiatorAmount, ResponderAmount, Fee)
+                              InitiatorAmount, ResponderAmount, Fee, ConsensusVersion)
     , tx_event_op({channel, ChannelPubkey})
     ].
 
@@ -895,20 +895,21 @@ channel_withdraw({ToPubkey, ChannelPubkey, Amount, StateHash, Round}, S) ->
 %%%-------------------------------------------------------------------
 
 channel_close_mutual_op(FromPubkey, ChannelPubkey,
-                        InitiatorAmount, ResponderAmount, Fee
+                        InitiatorAmount, ResponderAmount, Fee, ConsensusVersion
                        ) when ?IS_HASH(FromPubkey),
                               ?IS_HASH(ChannelPubkey),
                               ?IS_NON_NEG_INTEGER(InitiatorAmount),
                               ?IS_NON_NEG_INTEGER(ResponderAmount),
-                              ?IS_NON_NEG_INTEGER(Fee) ->
+                              ?IS_NON_NEG_INTEGER(Fee),
+                              ?IS_NON_NEG_INTEGER(ConsensusVersion) ->
     {channel_close_mutual, {FromPubkey, ChannelPubkey,
-                            InitiatorAmount, ResponderAmount, Fee}}.
+                            InitiatorAmount, ResponderAmount, Fee, ConsensusVersion}}.
 
 channel_close_mutual({FromPubkey, ChannelPubkey,
-                      InitiatorAmount, ResponderAmount, Fee}, S) ->
+                      InitiatorAmount, ResponderAmount, Fee, ConsensusVersion}, S) ->
     {Channel, S1} = get_channel(ChannelPubkey, S),
     assert_channel_origin(Channel, FromPubkey),
-    assert_channel_active(Channel),
+    assert_channel_active_before_fork(Channel, ConsensusVersion, ?LIMA_PROTOCOL_VSN),
     TotalAmount = InitiatorAmount + ResponderAmount + Fee,
     ChannelAmount = aesc_channels:channel_amount(Channel),
     LockAmount = ChannelAmount - TotalAmount,
@@ -1777,6 +1778,11 @@ assert_channel_active(Channel) ->
         false -> runtime_error(channel_not_active)
     end.
 
+assert_channel_active_before_fork(Channel, Version, EffectiveAt) ->
+    case Version >= EffectiveAt of
+        true  -> ok;
+        false -> assert_channel_active(Channel)
+    end.
 
 assert_channel_is_solo_closed(Channel, S) ->
     case aesc_channels:is_solo_closed(Channel, S#state.height) of

@@ -128,7 +128,8 @@ process(#channel_close_mutual_tx{from_id = FromId} = Tx, Trees, Env) ->
           initiator_amount_final(Tx),
           responder_amount_final(Tx),
           nonce(Tx),
-          fee(Tx)),
+          fee(Tx),
+          aetx_env:consensus_version(Env)),
     aeprimop:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}
