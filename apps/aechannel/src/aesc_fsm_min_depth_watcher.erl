@@ -575,25 +575,25 @@ watch_for_channel_change(R, St, #{ scenario := Scenario } = C)
             lager:debug("Will not check channel", []),
             {R, C};
         _ ->
-            {CurHeight, C1} = top_height(C),
+            {CurrHeight, C1} = top_height(C),
             lager:debug("Will check channel on chain (~p)", [Scenario]),
-            watch_for_channel_change(CurHeight, R, St, C1)
+            watch_for_channel_change(CurrHeight, R, St, C1)
     end.
 
-watch_for_channel_change(CurHeight, R, #st{chan_id = ChanId} = St, C) ->
+watch_for_channel_change(CurrHeight, R, #st{chan_id = ChanId} = St, C) ->
     lager:debug("Will check channel status (V=~p)", [St#st.chan_vsn]),
     {Status, C1} = channel_status(ChanId, C),
     lager:debug("Status = ~p", [Status]),
-    watch_for_change_in_ch_status(Status, CurHeight, R, St, C1).
+    watch_for_change_in_ch_status(Status, CurrHeight, R, St, C1).
 
-watch_for_change_in_ch_status(undefined, _CurHeight, R, _St, C) ->
+watch_for_change_in_ch_status(undefined, _CurrHeight, R, _St, C) ->
     lager:debug("No channel object yet", []),
     {R, C};
-watch_for_change_in_ch_status(Status, _CurHeight, R, St, C) ->
+watch_for_change_in_ch_status(Status, _CurrHeight, R, St, C) ->
     case Status of
         #{changed := true} ->
             lager:debug("Channel has changed: ~p", [Status]),
-            %% NextHeight = calc_next_height(Status, CurHeight, St),
+            %% NextHeight = calc_next_height(Status, CurrHeight, St),
             #{callback_mod := Mod, parent := Parent} = maps:get(info, R),
             C1 = report_status_change(Status, Mod, Parent, St, C),
             {R, C1};

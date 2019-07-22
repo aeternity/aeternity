@@ -1285,7 +1285,7 @@ new_onchain_tx_for_signing(Type, Opts, D) ->
 new_onchain_tx_for_signing_(Type, Opts, D) ->
     Defaults = tx_defaults(Type, Opts, D),
     Opts1 = maps:merge(Defaults, Opts),
-    CurrHeight = cur_height(),
+    CurrHeight = curr_height(),
     {ok, Tx, Updates} = new_onchain_tx(Type, Opts1, D, CurrHeight),
     case {aetx:min_fee(Tx, CurrHeight), aetx:fee(Tx)} of
         {MinFee, Fee} when MinFee =< Fee ->
@@ -1580,10 +1580,10 @@ get_nonce(Pubkey) ->
 %% we have an actual transaction record (required by aetx:min_fee/2).
 %% The default should err on the side of being too low.
 default_fee(_Tx) ->
-    CurHeight = aec_headers:height(aec_chain:top_header()),
+    CurrHeight = aec_headers:height(aec_chain:top_header()),
     %% this could be fragile on hard fork height if one participant's node had
     %% already forked and the other had not yet
-    20000 * max(aec_governance:minimum_gas_price(CurHeight),
+    20000 * max(aec_governance:minimum_gas_price(CurrHeight),
                 aec_tx_pool:minimum_miner_gas_price()).
 
 default_ttl(_Type, Opts, #data{opts = DOpts}) ->
@@ -1591,12 +1591,12 @@ default_ttl(_Type, Opts, #data{opts = DOpts}) ->
     Opts#{ttl => adjust_ttl(TTL)}.
 
 adjust_ttl(undefined) ->
-    CurHeight = aec_headers:height(aec_chain:top_header()),
-    CurHeight + 100;
+    CurrHeight = aec_headers:height(aec_chain:top_header()),
+    CurrHeight + 100;
 adjust_ttl(TTL) when is_integer(TTL), TTL >= 0 ->
     TTL.
 
-cur_height() ->
+curr_height() ->
     aec_headers:height(aec_chain:top_header()).
 
 
@@ -2962,7 +2962,7 @@ has_gproc_key(Fsm, #{gproc_key := K}) ->
 
 is_channel_locked(0) -> false;
 is_channel_locked(LockedUntil) ->
-    LockedUntil >= cur_height().
+    LockedUntil >= curr_height().
 
 withdraw_locked_complete(SignedTx, Updates, #data{state = State, opts = Opts} = D) ->
     {OnChainEnv, OnChainTrees} =
@@ -3443,4 +3443,4 @@ init_checks(Opts) ->
 
 is_fork_active(ProtocolVSN) ->
     %% Enable a new fork only after MINIMUM_DEPTH generations in order to avoid fork changes
-    ProtocolVSN == aec_hard_forks:protocol_effective_at_height(max(cur_height() - ?MINIMUM_DEPTH, aec_block_genesis:height())).
+    ProtocolVSN == aec_hard_forks:protocol_effective_at_height(max(curr_height() - ?MINIMUM_DEPTH, aec_block_genesis:height())).
