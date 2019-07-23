@@ -1,0 +1,1 @@
+- If one of the peers refuses signing the closing transaction while the channel is not active then the request may timeout without killing the FSM.
