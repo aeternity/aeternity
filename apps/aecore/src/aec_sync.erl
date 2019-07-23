@@ -111,7 +111,7 @@ handle_worker(Task, Action) ->
 
 -record(sync_task, {id, chain, pool = [], agreed,
                     adding = [], pending = [],
-                    workers = [] :: [{PeerId::binary(), pid()}]}).
+                    workers = [] :: [{aec_peers:peer_id(), pid()}]}).
 -record(state, { sync_tasks = []                 :: [#sync_task{}]
                , last_generation_in_sync = false :: boolean()
                , top_target = 0                  :: aec_blocks:height()
