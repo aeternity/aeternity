@@ -1,5 +1,5 @@
 %% @doc This modules implements the State Channel FSM and its external API. The
-%% FSM is used for both state channel roles, `responder` and `initiator`,
+%% FSM is used for both state channel roles, 'responder' and 'initiator',
 %% because most logic is shared with the initialization being specific to the
 %% role.
 %% @reference See the design of
