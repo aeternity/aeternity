@@ -21,8 +21,7 @@
 
 -export([ start_sync/3
         , get_generation/2
-        , has_generation/1
-        , set_last_generation_in_sync/0 ]).
+        , has_generation/1 ]).
 
 -export([is_syncing/0,
          sync_progress/0]).
@@ -47,9 +46,6 @@ start_sync(PeerId, RemoteHash, RemoteDifficulty) ->
 
 get_generation(PeerId, Hash) ->
     gen_server:cast(?MODULE, {get_generation, PeerId, Hash}).
-
-set_last_generation_in_sync() ->
-    gen_server:cast(?MODULE, set_last_generation_in_sync).
 
 schedule_ping(PeerId) ->
     gen_server:cast(?MODULE, {schedule_ping, PeerId}).
@@ -113,7 +109,6 @@ handle_worker(Task, Action) ->
                     adding = [], pending = [],
                     workers = [] :: [{PeerId::binary(), pid()}]}).
 -record(state, { sync_tasks = []                 :: [#sync_task{}]
-               , last_generation_in_sync = false :: boolean()
                , top_target = 0                  :: aec_blocks:height()
                , gossip_txs = true               :: boolean()
                }).
@@ -184,20 +179,15 @@ handle_cast({start_sync, PeerId, RemoteHash, _RemoteDifficulty}, State) ->
     %% opens up for an attack in which someone fakes to have higher difficulty
     run_job(sync_tasks, fun() -> do_start_sync(PeerId, RemoteHash) end),
     {noreply, State};
-handle_cast({get_generation, PeerId, Hash},
-            State = #state{ last_generation_in_sync = false }) ->
+handle_cast({get_generation, PeerId, Hash}, State) ->
     run_job(sync_tasks,
             fun() ->
                 case do_get_generation(PeerId, Hash) of
-                    ok         -> set_last_generation_in_sync();
+                    ok         -> ok;
                     {error, _} -> ok
                 end
             end),
     {noreply, State};
-handle_cast({get_generation, _PeerId, _Hash}, State) ->
-    {noreply, State};
-handle_cast(set_last_generation_in_sync, State) ->
-    {noreply, State#state{ last_generation_in_sync = true }};
 handle_cast({schedule_ping, PeerId}, State) ->
     case peer_in_sync(State, PeerId) of
         true ->

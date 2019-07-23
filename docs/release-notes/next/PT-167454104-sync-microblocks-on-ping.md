@@ -1,0 +1,2 @@
+* Attempts more thoroughly to sync microblocks in the current generation.
+  When receiving a ping message from another peer, if the top key block hash declared by the peer is the same as the local one then the node attempts to retrieve any microblock in the generation started by such key block.
