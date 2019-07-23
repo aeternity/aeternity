@@ -947,7 +947,7 @@ jobs:
 
   build_uml_diagrams:
     docker:
-      - image: circleci/buildpack-deps:buster
+      - image: circleci/openjdk:latest
     steps:
       - checkout
       - run:
