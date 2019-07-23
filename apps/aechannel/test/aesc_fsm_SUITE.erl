@@ -1149,8 +1149,8 @@ leave_reestablish_(Cfg) ->
         fun(Idx, #{i := ILocal, r := RLocal}) ->
             ct:log("starting attempt ~p", [Idx]),
             Cache1 = cache_status(ChId),
-            [_,_] = in_ram(Cache1),
-            false = on_disk(Cache1),
+            [_, _] = in_ram(Cache1),
+            [] = on_disk(Cache1),
             #{fsm := FsmI} = ILocal,
             ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
             {ok,Li} = await_leave(ILocal, ?TIMEOUT, Debug),
@@ -1163,7 +1163,7 @@ leave_reestablish_(Cfg) ->
                   fun() ->
                           Cache2 = cache_status(ChId),
                           [] = in_ram(Cache2),
-                          true = on_disk(Cache2)
+                          [_, _] = on_disk(Cache2)
                   end),
             %%
             %% reestablish
@@ -1187,19 +1187,19 @@ leave_reestablish_close(Cfg) ->
     {I1, R1} = do_update(PubI, PubR, 1, I, R, Debug, Cfg),
     ChId = maps:get(channel_id, I1),
     Cache1 = cache_status(ChId),
-    [_,_] = in_ram(Cache1),
-    false = on_disk(Cache1),
+    [_, _] = in_ram(Cache1),
+    [] = on_disk(Cache1),
     shutdown_(I1, R1, Cfg),
     retry(3, 100,
           fun() ->
                   Cache2 = cache_status(ChId),
-                  []   = in_ram(Cache2),
-                  true = on_disk(Cache2)
+                  [] = in_ram(Cache2),
+                  [_, _] = on_disk(Cache2)
           end),
     mine_blocks(dev1, 5),
     Cache3 = cache_status(ChId),
-    []    = in_ram(Cache3),
-    false = on_disk(Cache3).
+    [] = in_ram(Cache3),
+    [] = on_disk(Cache3).
 
 
 change_config_get_history(Cfg) ->

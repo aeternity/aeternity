@@ -4,7 +4,9 @@
 -export([
           start_link/0
         , new/3
+        , new/4
         , reestablish/2
+        , reestablish/3
         , update/3
         , fetch/2
         , delete/1
@@ -36,18 +38,37 @@
              mons_ref  = ets:new(mons_ref, [set]),
              watchers  = ets:new(watchers, [set]),
              min_depth = ?MIN_DEPTH}).
--record(ch, {id, state}).
--record(pch, {id, pubkeys = [], state}).
+-type ch_cache_id() :: { aeser_id:val()
+                     , aeser_id:val()}.
+-record(ch_cache, { cache_id    :: ch_cache_id()
+                  , state       :: aesc_offchain_state:state()
+                  , salt        :: binary()
+                  , session_key :: binary()
+                  }).
+-record(pch_cache, { cache_id        :: ch_cache_id()
+                   , salt            :: binary()
+                   , nonce           :: binary()
+                   , encrypted_state :: binary()
+                   }).
 
 -define(SERVER, ?MODULE).
 -define(TAB, aesc_state_cache_ch).
 -define(PTAB, aesc_state_cache).
+-define(CACHE_DEFAULT_PASSWORD, "correct horse battery staple").
 
-new(ChId, PubKey, State) ->
-    gen_server:call(?SERVER, {new, ChId, PubKey, self(), State}).
+new(ChId, Pubkey, State) ->
+    new(ChId, Pubkey, State, ?CACHE_DEFAULT_PASSWORD).
 
-reestablish(ChId, PubKey) ->
-    gen_server:call(?SERVER, {reestablish, ChId, PubKey, self()}).
+new(ChId, PubKey, State, Password) ->
+    gen_server:call(?SERVER, {new, ChId, PubKey, self(), State, Password}).
+
+-spec reestablish(aeser_id:val(), aeser_id:val()) -> {ok, aesc_offchain_state:state()} | {error, atom()}.
+reestablish(ChId, Pubkey) ->
+    reestablish(ChId, Pubkey, ?CACHE_DEFAULT_PASSWORD).
+
+-spec reestablish(aeser_id:val(), aeser_id:val(), binary()) -> {ok, aesc_offchain_state:state()} | {error, atom()}.
+reestablish(ChId, PubKey, Password) ->
+    gen_server:call(?SERVER, {reestablish, ChId, PubKey, self(), Password}).
 
 update(ChId, PubKey, State) ->
     gen_server:cast(?SERVER, {update, ChId, PubKey, State}).
@@ -69,9 +90,9 @@ table_specs(Mode) ->
      {?PTAB, [
                  aec_db:tab_copies(Mode)
                , {type, ordered_set}
-               , {record_name, pch}
-               , {attributes, record_info(fields, pch)}
-               , {user_properties, [{vsn, table_vsn(pch)}]}
+               , {record_name, pch_cache}
+               , {attributes, record_info(fields, pch_cache)}
+               , {user_properties, [{vsn, table_vsn(pch_cache)}]}
                ]}
     ].
 
@@ -87,7 +108,7 @@ start_link() ->
     case ets:info(?TAB, name) of
         undefined ->
             ets:new(?TAB, [ordered_set, public, named_table,
-                              {keypos, #ch.id}]);
+                              {keypos, #ch_cache.cache_id}]);
         _ ->
             ok
     end,
@@ -96,16 +117,33 @@ start_link() ->
 init([]) ->
     {ok, #st{}}.
 
-handle_call({new, ChId, PubKey, Pid, State}, _From, St) ->
-    case ets:insert_new(?TAB, #ch{id = key(ChId, PubKey), state = State}) of
-        true ->
-            St1 = monitor_fsm(Pid, ChId, PubKey, St),
-            {reply, ok, St1};
-        false ->
-            {reply, {error, exists}, St}
+generate_session_key(Password, Salt) ->
+    enacl:pwhash(Password, Salt).
+
+setup_keys(Password) ->
+    Salt = crypto:strong_rand_bytes(16),
+    case generate_session_key(Password, Salt) of
+        {ok, SessionKey} ->
+            {ok, #ch_cache{salt = Salt, session_key = SessionKey}};
+        {error, _} = Err ->
+            Err
+    end.
+
+handle_call({new, ChId, PubKey, Pid, State, Password}, _From, St) ->
+    case setup_keys(Password) of
+        {ok, Result} ->
+            case ets:insert_new(?TAB, Result#ch_cache{cache_id = key(ChId, PubKey), state = State}) of
+                true ->
+                    St1 = monitor_fsm(Pid, ChId, PubKey, St),
+                    {reply, ok, St1};
+                false ->
+                    {reply, {error, exists}, St}
+            end;
+        {error, _} = Err ->
+            {reply, Err, St}
     end;
-handle_call({reestablish, ChId, PubKey, Pid}, _From, St) ->
-    case try_reestablish_cached(ChId, PubKey) of
+handle_call({reestablish, ChId, PubKey, Pid, Password}, _From, St) ->
+    case try_reestablish_cached(ChId, PubKey, Password) of
         {ok, Result} ->
             St1 = monitor_fsm(Pid, ChId, PubKey,
                               remove_watcher(ChId, St)),
@@ -115,7 +153,7 @@ handle_call({reestablish, ChId, PubKey, Pid}, _From, St) ->
     end;
 handle_call({fetch, ChId, PubKey}, _From, St) ->
     case ets:lookup(?TAB, key(ChId, PubKey)) of
-        [#ch{state = State}] ->
+        [#ch_cache{state = State}] ->
             {reply, {ok, State}, St};
         [] ->
             {reply, error, St}
@@ -129,7 +167,7 @@ handle_call(_Req, _From, St) ->
     {reply, {error, unknown_request}, St}.
 
 handle_cast({update, ChId, PubKey, State}, St) ->
-    ets:update_element(?TAB, key(ChId, PubKey), {#ch.state, State}),
+    ets:update_element(?TAB, key(ChId, PubKey), {#ch_cache.state, State}),
     {noreply, St};
 handle_cast({delete, ChId}, St) ->
     {noreply, delete_for_chid(ChId, St)};
@@ -138,8 +176,8 @@ handle_cast(_Msg, St) ->
 
 handle_info({'DOWN', MRef, process, _Pid, _}, St) ->
     case lookup_by_mref(MRef, St) of
-        {ChId, PubKey} ->
-            move_state_to_persistent(ChId),
+        {ChId, PubKey} = CacheId ->
+            move_state_to_persistent(CacheId),
             lager:debug("state moved (~p). Cache status: ~p",
                         [ChId, cache_status_(ChId)]),
             St1 = remove_monitor(MRef, ChId, PubKey, St),
@@ -161,75 +199,94 @@ terminate(_Reason, _St) ->
 code_change(_FromVsn, St, _Extra) ->
     {ok, St}.
 
+-spec key(aeser_id:val(), aeser_id:val()) -> ch_cache_id().
 key(ChId, PubKey) ->
     {ChId, PubKey}.
 
 cache_status_(ChId) ->
     InRam = ets:select(
-              ?TAB, [{ #ch{id = key(ChId, '$1'), _ = '_'}, [], ['$1']}]),
-    OnDisk = ([] =/= mnesia:dirty_read(?PTAB, ChId)),
+        ?TAB, [{ #ch_cache{cache_id = key(ChId, '$1'), _ = '_'}, [], ['$1']}]),
+    OnDisk = mnesia:dirty_select(
+        ?PTAB, [{#pch_cache{cache_id = key(ChId, '$1'), _ = '_'}, [], ['$1']}]),
     [ {in_ram, InRam}
     , {on_disk, OnDisk}].
 
-
-try_reestablish_cached(ChId, PubKey) ->
-    case ets:lookup(?TAB, key(ChId, PubKey)) of
-        [#ch{state = State}] ->
+try_reestablish_cached(ChId, PubKey, Password) ->
+    CacheId = key(ChId, PubKey),
+    case ets:lookup(?TAB, CacheId) of
+        [#ch_cache{state = State}] ->
             {ok, State};
         [] ->
-            case read_persistent(ChId) of
-                {ok, Pubkeys, State} ->
-                    ets:insert(
-                      ?TAB, [#ch{id = key(ChId, PK), state = State}
-                             || PK <- Pubkeys]),
-                    delete_persistent(ChId),
-                    {ok, State};
+            case read_persistent(CacheId) of
+                {ok, Encrypted} ->
+                    decrypt_state_and_move_to_ram(Encrypted, Password);
                 error ->
                     {error, not_found}
             end
     end.
 
-move_state_to_persistent(ChId) ->
-    Found = ets:select(
-              ?TAB, [{ #ch{id = key(ChId, '_'), _ = '_'}, [], ['$_'] }]),
+decrypt_with_key_and_move_to_ram(#pch_cache{ cache_id = CacheId
+                                           , nonce = Nonce
+                                           , encrypted_state = EncryptedState
+                                           }, SessionKey) ->
+    case enacl:secretbox_open(EncryptedState, Nonce, SessionKey) of
+        {ok, SerializedState} ->
+            State = aesc_offchain_state:deserialize_from_binary(SerializedState),
+            ets:insert(
+                    ?TAB, [#ch_cache{cache_id = CacheId, state = State}]),
+                    delete_persistent(CacheId),
+                    {ok, State};
+        {error, _} = Err ->
+            Err
+    end.
+
+decrypt_state_and_move_to_ram(#pch_cache{salt = Salt} = Cache, Password) ->
+    case generate_session_key(Password, Salt) of
+        {ok, SessionKey} ->
+            decrypt_with_key_and_move_to_ram(Cache, SessionKey);
+        {error, _} = Err ->
+            Err
+    end.
+
+move_state_to_persistent(CacheId) ->
+    Found = ets:lookup(?TAB, CacheId),
     case Found of
         [] -> ok;
-        [#ch{id = {_,PKa}, state = A}, #ch{id = {_,PKb}, state = A}] ->
-            Pch = #pch{id = ChId, pubkeys = [PKa, PKb], state = A},
-            write_persistent(Pch);
-        [#ch{id = {_,PKa}, state = A}, #ch{id = {_,PKb}, state = B}] ->
-            Pch0 = #pch{id = ChId, pubkeys = [PKa, PKb]},
-            ToSave = case {aesc_offchain_state:get_latest_signed_tx(A),
-                           aesc_offchain_state:get_latest_signed_tx(B)} of
-                         {{Ra,_}, {Rb,_}} when Ra > Rb ->
-                             Pch0#pch{state = A};
-                         {{Ra,_}, {Rb,_}} when Ra =< Rb ->
-                             %% TODO: when (if at all) could this be == ?
-                             Pch0#pch{state = B}
-                     end,
-            write_persistent(ToSave);
-        [#ch{id = {_, PK}, state = State}] ->
-            Pch = #pch{id = ChId, pubkeys = [PK], state = State},
-            write_persistent(Pch)
+        [#ch_cache{cache_id = CacheId} = ChCache] ->
+            encrypt_and_persist(ChCache)
     end,
-    ets:select_delete(?TAB, [{ #ch{id = key(ChId,'_'), _ = '_'}, [], [true] }]),
+    ets:delete(?TAB, CacheId),
     ok.
+
+encrypt_and_persist(#ch_cache{ cache_id = CacheId
+                             , salt =  Salt
+                             , state =  State
+                             , session_key = SessionKey}) ->
+    Nonce = crypto:strong_rand_bytes(enacl:secretbox_nonce_size()),
+    SerializedState = aesc_offchain_state:serialize_to_binary(State),
+    Encrypted = #pch_cache{
+        cache_id = CacheId,
+        salt = Salt,
+        nonce = Nonce,
+        encrypted_state = enacl:secretbox(SerializedState, Nonce, SessionKey)
+    },
+    write_persistent(Encrypted).
 
 write_persistent(Pch) ->
     activity(fun() -> mnesia:write(?PTAB, Pch, write) end).
 
-read_persistent(ChId) ->
+read_persistent(CacheId) ->
     activity(fun() ->
-                     case mnesia:read(?PTAB, ChId) of
-                         [#pch{pubkeys = PKs, state = State}] ->
-                             {ok, PKs, State};
+                     case mnesia:read(?PTAB, CacheId) of
+                         [#pch_cache{} = Encrypted] ->
+                             {ok, Encrypted};
                          [] ->
                              error
                      end
              end).
 
-delete_persistent(ChId) ->
-    activity(fun() -> mnesia:delete(?PTAB, ChId, write) end).
+delete_persistent(CacheId) ->
+    activity(fun() -> mnesia:delete(?PTAB, CacheId, write) end).
 
 activity(F) ->
     aec_db:ensure_transaction(F).
@@ -308,5 +365,5 @@ delete_for_chid(ChId, St) ->
 
 delete_state(ChId, St) ->
     ets:select_delete(
-      ?TAB, [{ #ch{id = key(ChId, '_'), _ = '_'}, [], [true] }]),
+      ?TAB, [{ #ch_cache{cache_id = key(ChId, '_'), _ = '_'}, [], [true] }]),
     St.
