@@ -950,7 +950,10 @@ jobs:
     <<: *container_config
     steps:
       - checkout
-      - run: sudo apt-get update && sudo apt-get install graphviz librsvg2-bin
+      - run:
+          name: Install PlantUML dependencies
+          command: |
+            sudo apt-get -qq -y update && sudo apt-get -qq -y install graphviz librsvg2-bin
       - run: make build-uml
       - store_artifacts:
           path: docs/state-channels
