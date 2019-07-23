@@ -109,7 +109,18 @@ handle_worker(Task, Action) ->
 %% We sync with several nodes at the same time and use as strategy
 %% to pick a random hash from the hashes in the pool.
 
--record(sync_task, {id, chain, pool = [], agreed,
+-type chain_id() :: reference().
+-type chain_block() :: #{ hash := aec_blocks:block_header_hash()
+                        , height := aec_blocks:height()
+                        }.
+-type chain() :: #{ chain_id := chain_id()
+                  , peers := [aec_peers:peer_id()]
+                  , chain := [chain_block(), ...]
+                  }.
+-record(sync_task, {id :: chain_id(),
+                    chain :: chain(),
+                    pool = [],
+                    agreed :: undefined | chain_block(),
                     adding = [], pending = [],
                     workers = [] :: [{aec_peers:peer_id(), pid()}]}).
 -record(state, { sync_tasks = []                 :: [#sync_task{}]
