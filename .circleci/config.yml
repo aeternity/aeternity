@@ -936,7 +936,6 @@ jobs:
       PKG_TARGET_OS: ubuntu
     steps: *upload_latest_artifacts
 
-
   verify_release_artifacts:
     executor: infrastructure_container_stable
     <<: *infrastructure_config
@@ -945,6 +944,20 @@ jobs:
           name: Verify release artifacts
           command: |
             /infrastructure/scripts/check_release_artifacts.sh ${CIRCLE_TAG}
+
+  build_uml_diagrams:
+    docker:
+      - image: circleci/openjdk:11-jdk-stretch
+    steps:
+      - checkout
+      - run:
+          name: Install PlantUML dependencies
+          command: |
+            sudo apt-get -qq -y update && sudo apt-get -qq -y install graphviz librsvg2-bin
+      - run: make build-uml
+      - store_artifacts:
+          path: docs/state-channels
+      - *fail_notification
 
 # CircleCI skips a job for a tag by default.
 # A job must have a filters tags section to run as a part of a tag push
@@ -1217,6 +1230,7 @@ workflows:
             - static_analysis
             - rebar_lock_check
             - linux_package
+            - build_uml_diagrams
           filters:
             branches:
               only: master
@@ -1442,6 +1456,18 @@ workflows:
               ignore: /.*/
             tags:
               only: *stable_tag_regex
+
+      - build_uml_diagrams:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - system-tests
+            tags:
+              only: *tag_regex
 
   system_tests:
     triggers:
