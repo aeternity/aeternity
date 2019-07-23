@@ -947,7 +947,7 @@ jobs:
 
   build_uml_diagrams:
     docker:
-      - image: circleci/openjdk:13-ea-10-jdk
+      - image: circleci/openjdk:11-jdk-stretch
     steps:
       - checkout
       - run:
