@@ -950,6 +950,7 @@ jobs:
     <<: *container_config
     steps:
       - checkout
+      - run: sudo apt-get update && sudo apt-get install graphviz librsvg2-bin
       - run: make build-uml
       - store_artifacts:
           path: docs/state-channels
