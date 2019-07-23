@@ -185,6 +185,7 @@ handle_cast({start_sync, PeerId, RemoteHash, _RemoteDifficulty}, State) ->
     run_job(sync_tasks, fun() -> do_start_sync(PeerId, RemoteHash) end),
     {noreply, State};
 handle_cast({get_generation, PeerId, Hash},
+            %% Usually initial sync. Trust gossip afterwards.
             State = #state{ last_generation_in_sync = false }) ->
     run_job(sync_tasks,
             fun() ->
