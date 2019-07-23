@@ -107,6 +107,10 @@
 
 %% -include_lib("trace_runner/include/trace_runner.hrl").
 
+-ifdef(TEST).
+-export([strict_checks/2]).
+-endif.
+
 %% ==================================================================
 %% API
 
@@ -352,8 +356,6 @@ channel_unlocked(Fsm, Info) ->
 %% slight code smell.
 
 -ifdef(TEST).
--export([strict_checks/2]).
-
 %% This is supposed to be used in tests only. If Alice stops checking
 %% her own signatures, Bob will still check hers and will reject any wrongly
 %% signed txs. There is a risk for Alice corrupting her own state if using
