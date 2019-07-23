@@ -722,7 +722,7 @@ post_blocks(From, To, [{Height, _Hash, {PeerId, Block}} | Blocks]) ->
     end.
 
 %% In order not to timeout the conductor, large generations are added in
-%% smaller chuncks, a few micro blocks at the time.
+%% smaller chuncks, one micro block at the time.
 %% Each micro block has a fixed maximum gas, by limiting the number of micro
 %% blocks we limit the total amount of work the conductor has to perform in
 %% each synchronous call.
