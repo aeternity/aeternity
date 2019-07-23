@@ -946,8 +946,8 @@ jobs:
             /infrastructure/scripts/check_release_artifacts.sh ${CIRCLE_TAG}
 
   build_uml_diagrams:
-    executor: builder_container_stable
-    <<: *container_config
+    docker:
+      - image: circleci/buildpack-deps:buster
     steps:
       - checkout
       - run:
