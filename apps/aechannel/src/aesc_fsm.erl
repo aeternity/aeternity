@@ -83,7 +83,7 @@
         , awaiting_signature/3
         , awaiting_update_ack/3
         , channel_closed/3
-        , channel_closing/3   % on-chain closing has been detected
+        , channel_closing/3   %% on-chain closing has been detected
         , dep_half_signed/3
         , dep_signed/3
         , half_signed/3
@@ -734,8 +734,8 @@ awaiting_update_ack(cast, {?UPDATE_ERR, Msg}, D) ->
             report(conflict, Msg, D1),
             next_state(open, D1);
         {error, fallback_state_mismatch} = Error ->
-            % falling back to an inconsistent state
-            % this is possible if we are a malicious actor only
+            %% falling back to an inconsistent state
+            %% this is possible if we are a malicious actor only
             report(conflict, Msg, D),
             close(Error, D);
         {error, _} = Error ->
@@ -1312,7 +1312,7 @@ new_onchain_tx(channel_close_mutual_tx, #{ acct := From } = Opts,
     FromId = aeser_id:create(account, From),
     {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
     {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
-    % fee is preset. This is important for participant's amounts calculation
+    %% fee is preset. This is important for participant's amounts calculation
     Fee = maps:get(fee, Opts),
     Nonce = maps:get(nonce, Opts),
     TTL = maps:get(ttl, Opts, 0), %% 0 means no TTL limit
@@ -1387,7 +1387,7 @@ new_onchain_tx(channel_create_tx, Opts,
                  },
     lager:debug("create_tx Opts = ~p", [Opts1]),
     {ok, CreateTx} = new_onchain_tx_(aesc_create_tx, Opts1, CurrHeight),
-    {ok, CreateTx, []}; % no updates
+    {ok, CreateTx, []}; %% no updates
 new_onchain_tx(channel_settle_tx, Opts,
                #data{ opts  = #{initiator := I,
                                 responder := R}
@@ -1450,17 +1450,31 @@ new_onchain_tx(channel_slash_tx, Opts,
     {ok, Tx} = new_onchain_tx_(aesc_slash_tx, Opts2, CurrHeight),
     {ok, Tx, []}.
 
-
-
-
-new_onchain_tx_(Mod, Opts, CurrHeight) ->
+new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
+                                            Mod =:= aesc_withdraw_tx; 
+                                            Mod =:= aesc_deposit_tx;
+                                            Mod =:= aesc_close_solo_tx;
+                                            Mod =:= aesc_slash_tx;
+                                            Mod =:= aesc_settle_tx ->
     case maps:is_key(fee, Opts) of
-        true -> % use preset fee
+        true -> %% use preset fee
             apply(Mod, new, [Opts]);
         false ->
             create_with_minimum_fee(Mod, Opts#{fee => 0}, CurrHeight)
     end.
 
+%% A valid transaction fee is a function on gas required and gas price used
+%% the following function uses the gas price the node would be using if it
+%% were mining
+%% gas required is a funcion of:
+%% * transaction type (base_gas)
+%% * transaction size (size_gas)
+%% * gas needed for contract execution in a channel_force_progress
+%% Since the fee is part of the serialization of the transaction,
+%% modifying the fee, might change the serialized transaction size and thus
+%% changing the size_gas required for the transaction. Increasing the number
+%% for the fee might result in the transaction requiring even more fee.
+%% That's why we make 5 attempts for computing the minimal fee
 create_with_minimum_fee(Mod, Opts, CurrHeight) ->
     create_with_minimum_fee(Mod, Opts, CurrHeight, 5).
 
@@ -1551,7 +1565,7 @@ tx_defaults_(channel_deposit_tx = Tx, Opts, D) ->
     Opts1 = tx_defaults_(channel_create_tx, Opts, D),
     default_ttl(Tx, Opts1, D);
 tx_defaults_(channel_withdraw_tx, Opts, D) ->
-    tx_defaults_(channel_deposit_tx, Opts, D); % same as deposit defaults
+    tx_defaults_(channel_deposit_tx, Opts, D); %% same as deposit defaults
 tx_defaults_(channel_slash_tx = Tx, Opts, D) ->
     default_ttl(Tx, Opts, D);
 tx_defaults_(channel_close_solo_tx = Tx, Opts, D) ->
@@ -1583,8 +1597,8 @@ default_fee(_Tx) ->
     CurrHeight = aec_headers:height(aec_chain:top_header()),
     %% this could be fragile on hard fork height if one participant's node had
     %% already forked and the other had not yet
-    20000 * max(aec_governance:minimum_gas_price(CurrHeight),
-                aec_tx_pool:minimum_miner_gas_price()).
+    ?DEFAULT_FSM_TX_GAS * max(aec_governance:minimum_gas_price(CurrHeight),
+                              aec_tx_pool:minimum_miner_gas_price()).
 
 default_ttl(_Type, Opts, #data{opts = DOpts}) ->
     TTL = maps:get(ttl, Opts, maps:get(ttl, DOpts, 0)),
@@ -1592,7 +1606,7 @@ default_ttl(_Type, Opts, #data{opts = DOpts}) ->
 
 adjust_ttl(undefined) ->
     CurrHeight = aec_headers:height(aec_chain:top_header()),
-    CurrHeight + 100;
+    CurrHeight + ?DEFAULT_FSM_TX_TTL_DELTA;
 adjust_ttl(TTL) when is_integer(TTL), TTL >= 0 ->
     TTL.
 
@@ -1810,7 +1824,7 @@ check_op_error_msg(Op, #{ channel_id := ChanId
     case ChanId == ChanId0 of
         true ->
             case aesc_offchain_state:get_fallback_state(State) of
-                {LastRound, State1} -> % same round
+                {LastRound, State1} -> %% same round
                     {ok, ErrCode,
                      D#data{state = State1,
                             log = log_msg(
@@ -2299,7 +2313,7 @@ start_min_depth_watcher(Type, SignedTx, Updates,
         {close, Pid} when Pid =/= undefined ->
             ok = aesc_fsm_min_depth_watcher:watch_for_channel_close(Pid, MinDepth, ?MODULE),
             {ok, D1#data{latest = {watch, close, TxHash, SignedTx, Updates}}};
-        {_, Pid} when Pid =/= undefined ->  % assertion
+        {_, Pid} when Pid =/= undefined ->  %% assertion
             lager:debug("Unknown Type = ~p, Pid = ~p", [Type, Pid]),
             ok = aesc_fsm_min_depth_watcher:watch(
                    Pid, Type, TxHash, MinDepth, ?MODULE),
@@ -2525,12 +2539,12 @@ check_tx_and_verify_signatures(SignedTx, Updates, Mod, Data, Pubkeys, ErrTypeMsg
         {aesc_settle_tx, _Tx} ->
             %% TODO: conduct more relevant checks
             verify_signatures_onchain_check(Pubkeys, SignedTx);
-        {Mod, Tx} -> % same callback module
+        {Mod, Tx} -> %% same callback module
             case Mod:channel_pubkey(Tx) of
-                ChannelPubkey -> % expected pubkey
+                ChannelPubkey -> %% expected pubkey
                     CorrectRound =
                         case Mod of
-                            aesc_close_mutual_tx -> true; % no round here
+                            aesc_close_mutual_tx -> true; %% no round here
                             _ -> Mod:round(Tx) =:= ExpectedRound
                         end,
                     case CorrectRound of
@@ -2649,7 +2663,7 @@ check_attach_info(#{ initiator := I1
             check_account(I1);
        I1 =:= I, R1 =:= R ->
             ok;
-       R1 =/= R ->   % shouldn't happen
+       R1 =/= R ->   %% shouldn't happen
             {error, responder_key_mismatch};
        I1 =/= I ->
             {error, initiator_key_mismatch};
