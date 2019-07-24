@@ -204,3 +204,8 @@
                       TxHash :: binary(), aetx_sign:signed_tx(),
                       [aesc_offchain_update:update()]}
                    | {reestablish, OffChainTx :: aetx_sign:signed_tx()}.
+
+-define(DEFAULT_FSM_TX_GAS, 20000).
+
+-define(DEFAULT_FSM_TX_TTL_DELTA, 100).
+
