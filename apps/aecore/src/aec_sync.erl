@@ -373,7 +373,7 @@ get_next_work_item(ST = #sync_task{ pool = [], agreed = #chain_block{ hash = Las
     TargetHash = next_known_hash(Chain#chain.chain, H + ?MAX_HEADERS_PER_CHUNK),
     {{fill_pool, LastHash, TargetHash}, ST};
 get_next_work_item(ST = #sync_task{ pool = [{_, _, {_, _}} | _] = Pool, adding = Add, pending = Pend }) ->
-    {ToBeAdded, NewPool} = split_pool(Pool),
+    {ToBeAdded = [_|_], NewPool} = split_pool(Pool),
     case Add of
         [] ->
             {{post_blocks, ToBeAdded}, ST#sync_task{ pool = NewPool, adding = ToBeAdded }};
