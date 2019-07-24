@@ -342,14 +342,8 @@ handle_last_result(ST = #sync_task{ adding = Add, pending = Pends, pool = Pool, 
     ST1#sync_task{ chain = Chain#chain{ peers = Chain#chain.peers -- [BlockFromPeerId] }}.
 
 
-split_pool(Pool) -> split_pool(Pool, []).
-
-split_pool([{_, _, false} | _] = Pool, Acc) ->
-    {lists:reverse(Acc), Pool};
-split_pool([], Acc) ->
-    {lists:reverse(Acc), []};
-split_pool([X | Pool], Acc) ->
-    split_pool(Pool, [X | Acc]).
+split_pool(Pool) ->
+    lists:splitwith(fun({_, _, X}) -> X =/= false end, Pool).
 
 get_next_work_item(State, STId, PeerId) ->
     case get_sync_task(STId, State) of
