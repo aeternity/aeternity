@@ -117,24 +117,25 @@ handle_worker(Task, Action) ->
                , peers :: [aec_peers:peer_id()]
                , chain :: [#chain_block{}, ...]
                }).
--type pool_item() :: { aec_blocks:height()
-                     , aec_blocks:block_header_hash()
-                     , false | { aec_peers:peer_id()
-                               , local | #{ key_block := aec_blocks:key_block()
-                                          , micro_blocks := [aec_blocks:micro_block()]
-                                          , dir := backward
-                                          }
-                               }
-                     }.
+-record(pool_item, { height :: aec_blocks:height()
+                   , hash :: aec_blocks:block_header_hash()
+                   , got :: false
+                          | { aec_peers:peer_id()
+                            , local | #{ key_block := aec_blocks:key_block()
+                                       , micro_blocks := [aec_blocks:micro_block()]
+                                       , dir := backward
+                                       }
+                            }
+                   }).
 -record(worker, { peer_id :: aec_peers:peer_id()
                 , pid :: pid()
                 }).
 -record(sync_task, {id :: chain_id(),
                     chain :: #chain{},
-                    pool = [] :: [pool_item()],
+                    pool = [] :: [#pool_item{}],
                     agreed :: undefined | #chain_block{},
-                    adding = [] :: [pool_item()],
-                    pending = [] :: [[pool_item()]],
+                    adding = [] :: [#pool_item{}],
+                    pending = [] :: [[#pool_item{}]],
                     workers = [] :: [#worker{}]}).
 -record(state, { sync_tasks = []                 :: [#sync_task{}]
                , last_generation_in_sync = false :: boolean()
@@ -321,12 +322,12 @@ handle_last_result(ST = #sync_task{ agreed = undefined }, {agreed_height, Agreed
 handle_last_result(ST, {agreed_height, _Agreed}) ->
     ST;
 handle_last_result(ST = #sync_task{ pool = [] }, {hash_pool, HashPool}) ->
-    {Height, Hash, false} = lists:last(HashPool),
+    #pool_item{ height = Height, hash = Hash, got = false } = lists:last(HashPool),
     ST#sync_task{ pool = HashPool, agreed = #chain_block{ height = Height, hash = Hash } };
 handle_last_result(ST, {hash_pool, _HashPool}) ->
     ST;
 handle_last_result(ST = #sync_task{ pool = Pool }, {get_generation, Height, Hash, PeerId, {ok, Block}}) ->
-    Pool1 = lists:keyreplace(Height, 1, Pool, {Height, Hash, {PeerId, Block}}),
+    Pool1 = lists:keyreplace(Height, #pool_item.height, Pool, #pool_item{ height = Height, hash = Hash, got = {PeerId, Block} }),
     ST#sync_task{ pool = Pool1 };
 handle_last_result(ST, {post_blocks, ok}) ->
     ST#sync_task{ adding = [] };
@@ -334,16 +335,16 @@ handle_last_result(ST = #sync_task{ adding = Add, pending = Pends, pool = Pool, 
                   {post_blocks, {error, BlockFromPeerId, Height}}) ->
     %% Put back the blocks we did not manage to post, and schedule failing block
     %% for another retreival.
-    [{Height, Hash, _} | PutBack] =
-        lists:dropwhile(fun({H, _, _}) -> H < Height end, Add) ++ lists:append(Pends),
-    NewPool = [{Height, Hash, false} | PutBack] ++ Pool,
+    [#pool_item{ height = Height, hash = Hash } | PutBack] =
+        lists:dropwhile(fun(#pool_item{ height = H }) -> H < Height end, Add) ++ lists:append(Pends),
+    NewPool = [#pool_item{ height = Height, hash = Hash, got = false } | PutBack] ++ Pool,
     ST1 = ST#sync_task{ adding = [], pending = [], pool = NewPool },
 
     ST1#sync_task{ chain = Chain#chain{ peers = Chain#chain.peers -- [BlockFromPeerId] }}.
 
 
 split_pool(Pool) ->
-    lists:splitwith(fun({_, _, X}) -> X =/= false end, Pool).
+    lists:splitwith(fun(#pool_item{ got = X }) -> X =/= false end, Pool).
 
 get_next_work_item(State, STId, PeerId) ->
     case get_sync_task(STId, State) of
@@ -366,7 +367,7 @@ get_next_work_item(ST = #sync_task{ chain = Chain, agreed = undefined }) ->
 get_next_work_item(ST = #sync_task{ pool = [], agreed = #chain_block{ hash = LastHash, height = H }, chain = Chain }) ->
     TargetHash = next_known_hash(Chain#chain.chain, H + ?MAX_HEADERS_PER_CHUNK),
     {{fill_pool, LastHash, TargetHash}, ST};
-get_next_work_item(ST = #sync_task{ pool = [{_, _, {_, _}} | _] = Pool, adding = Add, pending = Pend }) ->
+get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = {_, _} } | _] = Pool, adding = Add, pending = Pend }) ->
     {ToBeAdded = [_|_], NewPool} = split_pool(Pool),
     case Add of
         [] ->
@@ -376,10 +377,10 @@ get_next_work_item(ST = #sync_task{ pool = [{_, _, {_, _}} | _] = Pool, adding =
         _ ->
             {take_a_break, ST}
     end;
-get_next_work_item(ST = #sync_task{ pool = [{_, _, false} | _] = Pool }) ->
-    PickFrom = [ P || P = {_, _, false} <- Pool ],
+get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = false } | _] = Pool }) ->
+    PickFrom = [ P || P = #pool_item{ got = false } <- Pool ],
     Random = rand:uniform(length(PickFrom)),
-    {PickH, PickHash, false} = lists:nth(Random, PickFrom),
+    #pool_item{ height = PickH, hash = PickHash, got = false} = lists:nth(Random, PickFrom),
     epoch_sync:debug("Get block at height ~p", [PickH]),
     {{get_generation, PickH, PickHash}, ST};
 get_next_work_item(ST) ->
@@ -721,15 +722,15 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
     end.
 
 post_blocks([]) -> ok;
-post_blocks([{StartHeight, _, _} | _] = Blocks) ->
+post_blocks([#pool_item{ height = StartHeight } | _] = Blocks) ->
     post_blocks(StartHeight, StartHeight, Blocks).
 
 post_blocks(From, To, []) ->
     epoch_sync:info("Synced blocks ~p - ~p", [From, To]),
     ok;
-post_blocks(From, _To, [{Height, _Hash, {_PeerId, local}} | Blocks]) ->
+post_blocks(From, _To, [#pool_item{ height = Height, got = {_PeerId, local} } | Blocks]) ->
     post_blocks(From, Height, Blocks);
-post_blocks(From, To, [{Height, _Hash, {PeerId, Block}} | Blocks]) ->
+post_blocks(From, To, [#pool_item{ height = Height, got = {PeerId, Block} } | Blocks]) ->
     case add_generation(Block) of
         ok ->
             post_blocks(From, Height, Blocks);
@@ -809,7 +810,7 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
             epoch_sync:info("Sync done (according to ~p)", [ppp(PeerId)]),
             aec_events:publish(chain_sync, {chain_sync_done, PeerId});
         {ok, Hashes} ->
-            HashPool = [ {Height, Hash, false} || {Height, Hash} <- Hashes ],
+            HashPool = [ #pool_item{ height = Height, hash = Hash, got = false } || {Height, Hash} <- Hashes ],
             do_work_on_sync_task(PeerId, ST, {hash_pool, HashPool});
         {error, _} = Error ->
             epoch_sync:info("Abort sync with ~p (~p) ", [ppp(PeerId), Error]),
@@ -944,18 +945,28 @@ pretty_print_chain(C = #chain{}) ->
      , chain => lists:map(fun pretty_print_chain_block/1, C#chain.chain)
      }.
 
+pretty_print_pool_item(X = #pool_item{}) ->
+    #{ height => X#pool_item.height
+     , hash => X#pool_item.hash
+     , got => X#pool_item.got
+     }.
+
 pretty_print_worker(W = #worker{}) ->
     #{ peer_id => W#worker.peer_id
      , pid => W#worker.pid
      }.
 
 pretty_print_sync_task(ST = #sync_task{}) ->
+    PPPoolF = fun(P) -> lists:map(fun pretty_print_pool_item/1, P) end,
     PPAgreedF = fun (undefined) -> undefined
                   ; (#chain_block{} = B) -> pretty_print_chain_block(B)
                 end,
     lists:foldl(fun({I, F}, Acc) -> setelement(I, Acc, F(element(I, Acc))) end,
                 ST,
                 [ {#sync_task.chain, fun pretty_print_chain/1}
+                , {#sync_task.pool, PPPoolF}
                 , {#sync_task.agreed, PPAgreedF}
+                , {#sync_task.adding, PPPoolF}
+                , {#sync_task.pending, fun(X) -> lists:map(PPPoolF, X) end}
                 , {#sync_task.workers, fun pretty_print_worker/1}
                 ]).
