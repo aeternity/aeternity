@@ -180,6 +180,8 @@ init(#{fsm := Fsm, parent := Parent, op := Op} = Arg) ->
     St = establish(Op, #st{ init_op = Op
                           , fsm = Fsm
                           , fsm_mon_ref = FsmMonRef }),
+    %% As the monitor was created and the session established we don't need the link anymore
+    unlink(Fsm),
     gen_server:enter_loop(?MODULE, ?GEN_SERVER_OPTS, St).
 
 establish({accept, #{responder := R, port := Port} = Opts, NoiseOpts}, St) ->

@@ -39,7 +39,7 @@
              watchers  = ets:new(watchers, [set]),
              min_depth = ?MIN_DEPTH}).
 -type ch_cache_id() :: { aeser_id:val()
-                     , aeser_id:val()}.
+                       , aeser_id:val()}.
 -record(ch_cache, { cache_id    :: ch_cache_id()
                   , state       :: aesc_offchain_state:state()
                   , salt        :: binary()
@@ -160,7 +160,7 @@ handle_call({fetch, ChId, PubKey}, _From, St) ->
     end;
 handle_call({min_depth_achieved, ChId, _Watcher}, _From, St) ->
     lager:debug("min_depth_achieved - ~p gone", [ChId]),
-    {reply, ok, delete_for_chid(ChId, St)};
+    {reply, ok, delete_all_for_child(ChId, St)};
 handle_call({cache_status, ChId}, _From, St) ->
     {reply, cache_status_(ChId), St};
 handle_call(_Req, _From, St) ->
@@ -170,11 +170,11 @@ handle_cast({update, ChId, PubKey, State}, St) ->
     ets:update_element(?TAB, key(ChId, PubKey), {#ch_cache.state, State}),
     {noreply, St};
 handle_cast({delete, ChId}, St) ->
-    {noreply, delete_for_chid(ChId, St)};
+    {noreply, delete_all_for_child(ChId, St)};
 handle_cast(_Msg, St) ->
     {noreply, St}.
 
-handle_info({'DOWN', MRef, process, _Pid, _}, St) ->
+handle_info({'DOWN', MRef, process, _Pid, _Reason}, St) ->
     case lookup_by_mref(MRef, St) of
         {ChId, PubKey} = CacheId ->
             move_state_to_persistent(CacheId),
@@ -190,7 +190,8 @@ handle_info({'DOWN', MRef, process, _Pid, _}, St) ->
         error ->
             {noreply, St}
     end;
-handle_info(_Msg, St) ->
+handle_info(Msg, St) ->
+    lager:debug("Got ~p", [Msg]),
     {noreply, St}.
 
 terminate(_Reason, _St) ->
@@ -221,30 +222,33 @@ try_reestablish_cached(ChId, PubKey, Password) ->
                 {ok, Encrypted} ->
                     decrypt_state_and_move_to_ram(Encrypted, Password);
                 error ->
-                    {error, not_found}
+                    {error, missing_state_trees}
             end
     end.
 
 decrypt_with_key_and_move_to_ram(#pch_cache{ cache_id = CacheId
                                            , nonce = Nonce
                                            , encrypted_state = EncryptedState
-                                           }, SessionKey) ->
+                                           }, Cache, SessionKey) ->
     case enacl:secretbox_open(EncryptedState, Nonce, SessionKey) of
         {ok, SerializedState} ->
             State = aesc_offchain_state:deserialize_from_binary(SerializedState),
             ets:insert(
-                    ?TAB, [#ch_cache{cache_id = CacheId, state = State}]),
+                    ?TAB, [Cache#ch_cache{cache_id = CacheId, state = State}]),
                     delete_persistent(CacheId),
                     {ok, State};
         {error, _} = Err ->
             Err
     end.
 
-decrypt_state_and_move_to_ram(#pch_cache{salt = Salt} = Cache, Password) ->
-    case generate_session_key(Password, Salt) of
-        {ok, SessionKey} ->
-            decrypt_with_key_and_move_to_ram(Cache, SessionKey);
-        {error, _} = Err ->
+decrypt_state_and_move_to_ram(#pch_cache{salt = Salt} = PersistedCache, Password) ->
+    case { generate_session_key(Password, Salt)
+         , setup_keys(Password)} of
+        {{ok, SessionKey}, {ok, Cache}} ->
+            decrypt_with_key_and_move_to_ram(PersistedCache, Cache, SessionKey);
+        {{error, _} = Err, _} ->
+            Err;
+        {_, {error, _} = Err} ->
             Err
     end.
 
@@ -290,7 +294,6 @@ delete_persistent(CacheId) ->
 
 activity(F) ->
     aec_db:ensure_transaction(F).
-
 
 monitor_fsm(Pid, ChId, PubKey, #st{mons_ref = MR, mons_chid = MC} = St) ->
     MRef = erlang:monitor(process, Pid),
@@ -353,17 +356,22 @@ remove_watcher(ChId, #st{watchers = Ws} = St) ->
     end,
     St.
 
-delete_for_chid(ChId, St) ->
-    Res = delete_state(
+delete_all_for_child(ChId, St) ->
+    Res = delete_all_state_for(
             ChId, remove_watcher(
                     ChId, remove_monitor_by_chid(
                             ChId, St))),
-    delete_persistent(ChId),
     lager:debug("delete_for_chid ~p; cache_status: ~p",
                 [ChId, cache_status_(ChId)]),
     Res.
 
-delete_state(ChId, St) ->
+delete_all_state_for(ChId, St) ->
     ets:select_delete(
       ?TAB, [{ #ch_cache{cache_id = key(ChId, '_'), _ = '_'}, [], [true] }]),
+
+    activity(fun() ->
+        Records = mnesia:select(
+          ?PTAB, [{ #pch_cache{cache_id = key(ChId, '$1'), _ = '_'}, [], ['$1'] }]),
+        [mnesia:delete(?PTAB, key(ChId, Pubkey), write) || Pubkey <- Records]
+    end),
     St.

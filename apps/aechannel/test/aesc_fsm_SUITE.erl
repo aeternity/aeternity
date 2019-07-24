@@ -54,6 +54,7 @@
         , check_incorrect_mutual_close/1
         , check_mutual_close_with_wrong_amounts/1
         , check_mutual_close_after_close_solo/1
+        , check_fsm_crash_reestablish/1
         , attach_initiator/1
         , attach_responder/1
         , initiator_spend/1
@@ -170,6 +171,7 @@ groups() ->
       [
         check_mutual_close_with_wrong_amounts
       , check_mutual_close_after_close_solo
+      , check_fsm_crash_reestablish
       ]},
      {signing_abort, [sequence],
       [
@@ -1579,6 +1581,78 @@ check_mutual_close_after_close_solo(Cfg) ->
     end,
     ok.
 
+check_fsm_crash_reestablish(Cfg) ->
+    Debug = get_debug(Cfg),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    #{ i := I, r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
+    ct:log("I = ~p", [I]),
+    ct:log("R = ~p", [R]),
+    {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
+    Actions = [
+        fun fsm_crash_action_during_transfer/3,
+        fun fsm_crash_action_during_withdraw/3,
+        fun fsm_crash_action_during_deposit/3,
+        fun fsm_crash_action_during_shutdown/3
+    ],
+    lists:foldl(fun (Action, {IA, RA}) ->
+        {IA1, RA1} = fsm_crash_reestablish(IA, RA, Spec0, Cfg, Action),
+        {_, IA2, RA2} = do_n(4, fun update_volley/3, IA1, RA1, Cfg),
+        {IA2, RA2}
+    end, {I1, R1}, Actions).
+
+fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R, Spec, Cfg, Action) ->
+    Debug = get_debug(Cfg),
+    {ok, State} = rpc(dev1, aesc_fsm, get_offchain_state, [FsmI]),
+    {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
+    ct:log("Simulating random crash"),
+    ok = Action(I, R, Cfg),
+    erlang:exit(FsmI, test_fsm_random_crash),
+    erlang:exit(FsmR, test_fsm_random_crash),
+
+    Cache = cache_status(ChId),
+    [] = in_ram(Cache),
+    [_, _] = on_disk(Cache),
+    check_info(500),
+    ct:log("reestablishing ...", []),
+    #{i := I1, r := R1} = reestablish(ChId, I, R, SignedTx, Spec, ?PORT, Debug),
+    {I1, R1}.
+
+fsm_crash_action_during_transfer( #{fsm := FsmI, pub := PubI} = I
+                                , #{pub := PubR} = R
+                                , Cfg) ->
+    Debug = get_debug(Cfg),
+    rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1], Debug),
+    {_, _} = await_signing_request(update, I, Debug, Cfg),
+    {ok, _} = receive_from_fsm(update_ack, R, signing_req(), ?TIMEOUT, Debug),
+    ok.
+
+fsm_crash_action_during_withdraw( #{fsm := FsmI} = I
+                                , R
+                                , Cfg) ->
+    Debug = get_debug(Cfg),
+    rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => 1}], Debug),
+    {_, _} = await_signing_request(withdraw_tx, I, Debug, Cfg),
+    {ok, _} = receive_from_fsm(withdraw_created, R, signing_req(), ?TIMEOUT, Debug),
+    ok.
+
+fsm_crash_action_during_deposit( #{fsm := FsmI} = I
+                               , R
+                               , Cfg) ->
+    Debug = get_debug(Cfg),
+    rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => 1}], Debug),
+    {_, _} = await_signing_request(deposit_tx, I, Debug, Cfg),
+    {ok, _} = receive_from_fsm(deposit_created, R, signing_req(), ?TIMEOUT, Debug),
+    ok.
+
+fsm_crash_action_during_shutdown( #{fsm := FsmI} = I
+                                , R
+                                , Cfg) ->
+    Debug = get_debug(Cfg),
+    rpc(dev1, aesc_fsm, shutdown, [FsmI], Debug),
+    {_, _} = await_signing_request(shutdown, I, Debug, Cfg),
+    {ok, _} = receive_from_fsm(shutdown_ack, R, signing_req(), ?TIMEOUT, Debug),
+    ok.
+
 fsm_state(Pid, Debug) ->
     {State, _Data} = rpc(dev1, sys, get_state, [Pid, 1000], _RpcDebug = false),
     log(Debug, "fsm_state(~p) -> ~p", [Pid, State]),
@@ -2294,10 +2368,10 @@ fsm_map(Fsm, #{ initiator_amount := IAmt
         , initiator_amount => IAmt - PushAmt
         , responder_amount => RAmt + PushAmt }.
 
-reestablish(ChId, I0, R0, SignedTx, Spec0, Port, Debug) ->
-    {IAmt, RAmt} = tx_amounts(SignedTx),
-    I = set_amounts(IAmt, RAmt, I0),
-    R = set_amounts(IAmt, RAmt, R0),
+reestablish( ChId
+            , #{initiator_amount := IAmt, responder_amount := RAmt} = I
+            , #{initiator_amount := IAmt, responder_amount := RAmt} = R
+            , SignedTx, Spec0, Port, Debug) ->
     Spec = Spec0#{existing_channel_id => ChId, offchain_tx => SignedTx,
                   initiator_amount => IAmt, responder_amount => RAmt},
     {ok, FsmR} = rpc(dev1, aesc_fsm, respond,
@@ -2309,10 +2383,10 @@ reestablish(ChId, I0, R0, SignedTx, Spec0, Port, Debug) ->
     check_info(20),
     #{i => I1, r => R1, spec => Spec}.
 
-tx_amounts(SignedTx) ->
-    {Mod, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
-    {Mod:initiator_amount(TxI),
-     Mod:responder_amount(TxI)}.
+create_tx_amounts(SignedTx) ->
+    {aesc_create_tx, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+    {aesc_create_tx:initiator_amount(TxI),
+     aesc_create_tx:responder_amount(TxI)}.
 
 update_tx(Tx0, F, Args) ->
     {Mod, TxI} = aetx:specialize_callback(Tx0),
