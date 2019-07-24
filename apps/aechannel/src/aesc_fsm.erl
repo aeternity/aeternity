@@ -425,7 +425,7 @@ awaiting_leave_ack(cast, {?LEAVE_ACK, Msg}, D) ->
             close(Err, D)
     end;
 awaiting_leave_ack(timeout, awaiting_leave_ack = T, D) ->
-    close({timeout, T}, D);
+    close({normal, T}, D);
 awaiting_leave_ack(cast, {?LEAVE, Msg}, D) ->
     case check_leave_msg(Msg, D) of
         {ok, D1} ->
@@ -845,7 +845,7 @@ dep_signed(cast, {?DEP_LOCKED, Msg}, #data{latest = {deposit, SignedTx,
             close(Error, D)
     end;
 dep_signed(timeout, dep_signed = T, D) ->
-    close({timeout, T}, D);
+    close({normal, T}, D);
 dep_signed(cast, {?SHUTDOWN, _Msg}, D) ->
     next_state(mutual_closing, D);
 dep_signed(Type, Msg, D) ->
@@ -3343,7 +3343,7 @@ handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
     handle_common_event_(E, Msg, St, M, D).
 
 handle_common_event_(timeout, St = T, St, _, D) ->
-    close({timeout, T}, D);
+    close({normal, T}, D);
 handle_common_event_(cast, {?DISCONNECT, _} = Msg, _St, _, D) ->
     D1 = log(rcv, ?DISCONNECT, Msg, D),
     case D1#data.channel_status of
