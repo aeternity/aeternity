@@ -117,14 +117,24 @@ handle_worker(Task, Action) ->
                , peers :: [aec_peers:peer_id()]
                , chain :: [#chain_block{}, ...]
                }).
+-type pool_item() :: { aec_blocks:height()
+                     , aec_blocks:block_header_hash()
+                     , false | { aec_peers:peer_id()
+                               , local | #{ key_block := aec_blocks:key_block()
+                                          , micro_blocks := [aec_blocks:micro_block()]
+                                          , dir := backward
+                                          }
+                               }
+                     }.
 -record(worker, { peer_id :: aec_peers:peer_id()
                 , pid :: pid()
                 }).
 -record(sync_task, {id :: chain_id(),
                     chain :: #chain{},
-                    pool = [],
+                    pool = [] :: [pool_item()],
                     agreed :: undefined | #chain_block{},
-                    adding = [], pending = [],
+                    adding = [] :: [pool_item()],
+                    pending = [] :: [[pool_item()]],
                     workers = [] :: [#worker{}]}).
 -record(state, { sync_tasks = []                 :: [#sync_task{}]
                , last_generation_in_sync = false :: boolean()
