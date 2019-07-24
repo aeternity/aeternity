@@ -1458,15 +1458,15 @@ new_onchain_tx_(Mod, Opts, CurrHeight) ->
         true -> % use preset fee
             apply(Mod, new, [Opts]);
         false ->
-            create_with_minuimum_fee(Mod, Opts#{fee => 0}, CurrHeight)
+            create_with_minimum_fee(Mod, Opts#{fee => 0}, CurrHeight)
     end.
 
-create_with_minuimum_fee(Mod, Opts, CurrHeight) ->
-    create_with_minuimum_fee(Mod, Opts, CurrHeight, 5).
+create_with_minimum_fee(Mod, Opts, CurrHeight) ->
+    create_with_minimum_fee(Mod, Opts, CurrHeight, 5).
 
-create_with_minuimum_fee(_, _, _, Attempts) when Attempts < 1 ->
+create_with_minimum_fee(_, _, _, Attempts) when Attempts < 1 ->
     erlang:error(could_not_compute_fee);
-create_with_minuimum_fee(Mod, Opts, CurrHeight, Attempts) ->
+create_with_minimum_fee(Mod, Opts, CurrHeight, Attempts) ->
     {ok, Tx} = apply(Mod, new, [Opts]),
     MinTxFee = aetx:min_fee(Tx, CurrHeight),
     MinGas = aetx:min_gas(Tx, CurrHeight),
@@ -1478,7 +1478,7 @@ create_with_minuimum_fee(Mod, Opts, CurrHeight, Attempts) ->
         true ->
             {ok, Tx};
         false ->
-            create_with_minuimum_fee(Mod, Opts#{fee => MinFee}, CurrHeight,
+            create_with_minimum_fee(Mod, Opts#{fee => MinFee}, CurrHeight,
                                      Attempts - 1)
     end.
 
