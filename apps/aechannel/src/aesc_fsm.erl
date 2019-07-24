@@ -108,7 +108,8 @@
 %% -include_lib("trace_runner/include/trace_runner.hrl").
 
 -ifdef(TEST).
--export([strict_checks/2]).
+-export([strict_checks/2,
+         stop/1]).
 -endif.
 
 %% ==================================================================
@@ -363,6 +364,11 @@ channel_unlocked(Fsm, Info) ->
 -spec strict_checks(pid(), boolean()) -> ok.
 strict_checks(Fsm, Strict) when is_boolean(Strict) ->
     gen_statem:call(Fsm, {strict_checks, Strict}).
+
+-spec stop(pid()) -> ok.
+stop(Fsm) ->
+    lager:debug("Gracefully stopping the FSM", [Fsm]),
+    stop_ok(catch gen_statem:stop(Fsm)).
 -endif.
 
 %% ======================================================================
