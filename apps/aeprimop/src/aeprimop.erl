@@ -1407,7 +1407,6 @@ assert_relevant_signature(AccountPK, STx, State) ->
         {_, _} ->
             case aetx:signers(Tx, State#state.trees) of
                 {ok, Signers} ->
-                    aetx:signers(Tx, State#state.trees),
                     case lists:member(AccountPK, Signers) of
                         true  -> ok;
                         false -> runtime_error(non_relevant_signature)
