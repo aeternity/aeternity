@@ -2454,9 +2454,13 @@ check_closing_event(Info, D) ->
                          end
                  end).
 
+-spec check_closing_event_(map(), #data{}) ->
+    {can_slash, LastRound :: non_neg_integer(), LatestCoSignedTx :: aetx_sign:signed_tx()} |
+    {ok, proper_solo_closing, LatestCoSignedTx :: aetx_sign:signed_tx()} |
+    {error, not_solo_closing}.
 check_closing_event_(#{ tx := SignedTx
                       , channel := Ch
-                      , block_hash := BlockHash}, #data{state = St}) ->
+                      , block_hash := _BlockHash}, #data{state = St}) ->
     %% Get the latest channel object from the chain
     case aesc_channels:is_solo_closing(Ch) of
         true ->
@@ -2474,14 +2478,7 @@ check_closing_event_(#{ tx := SignedTx
                     {ok, proper_solo_closing, SignedTx}
             end;
         false ->
-            {ok, Hdr} = aec_chain:get_header(BlockHash),
-            Height = aec_headers:height(Hdr),
-            case aesc_channels:is_solo_closed(Ch, Height) of
-                true ->
-                    {ok, solo_closed, SignedTx};
-                false ->
-                    {error, not_solo_closing}
-            end
+            {error, not_solo_closing}
     end.
 
 -spec verify_signatures_channel_create(aetx_sign:signed_tx(),
@@ -3382,17 +3379,12 @@ handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
             lager:debug("Channel solo-closing", []),
             report_on_chain_tx(solo_closing, SignedTx, D1),
             next_state(channel_closing, D1);
-        {ok, solo_closed, SignedTx} ->
-            lager:debug("Channel solo-closed", []),
-            report_on_chain_tx(solo_closed, SignedTx, D1),
-            close(channel_no_longer_active, D1);
-        {error, channel_active} ->
-            %% Weird, but possible e.g. due to forking (TODO: what might happen next?)
-            keep_state(log(drop, msg_type(Msg), Msg, D));
-        {error, _} = Error ->
-            %% Couldn't find the channel object on-chain, or something weird happened
-            lager:debug("Channel not found, or other: ~p", [Error]),
-            close(channel_no_longer_active, D)
+        {error, not_solo_closing} ->
+            %% the min depth watcher reported a channel object that is not
+            %% closing, this could be due to a (micro) fork that rejected the
+            %% channel_close_solo_tx that had been initally detected
+            lager:debug("Received a channel closing event for not closing channel", []),
+            keep_state(D1)
     end;
 handle_common_event_(cast, {?CHANNEL_CHANGED, #{tx_hash := TxHash} = Info} = Msg,
                      _St, _, D) ->
