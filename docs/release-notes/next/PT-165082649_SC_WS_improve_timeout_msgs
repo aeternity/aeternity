@@ -1,0 +1,3 @@
+* Sends a more descriptive message to the client if the FSM dies because of a
+  timeout. Old message used to have an info "died" while the new ones have
+  "timeout" instead

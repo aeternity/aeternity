@@ -2316,6 +2316,7 @@ sc_ws_timeout_open_(Config) ->
                                   #{timeout_accept => 500}, Config),
     {ok, IConnPid} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts), Config),
     ok = ?WS:register_test_for_channel_event(IConnPid, info),
+    ok = wait_for_channel_event(<<"timeout">>, IConnPid, info, Config),
     ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
     ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
     ok.
@@ -2367,7 +2368,9 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                        ?DEFAULT_MIN_DEPTH - 2),
 
+    ok = wait_for_channel_event(<<"timeout">>, IConnPid, info, Config),
     ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
+    ok = wait_for_channel_event(<<"timeout">>, RConnPid, info, Config),
     ok = wait_for_channel_event(<<"died">>, RConnPid, info, Config),
     ok.
 
