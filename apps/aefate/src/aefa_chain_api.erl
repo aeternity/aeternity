@@ -40,7 +40,7 @@
         , oracle_check_query/5
         , is_oracle/2
         , is_contract/2
-        , aens_claim/4
+        , aens_claim/5
         , aens_preclaim/3
         , aens_resolve/3
         , aens_revoke/3
@@ -596,13 +596,8 @@ aens_resolve_from_pstate(NameString, Key, PState) ->
 aens_preclaim(Pubkey, Hash, #state{} = S) when ?IS_ONCHAIN(S) ->
     eval_primops([aeprimop:name_preclaim_op(Pubkey, Hash, 0)], S).
 
-aens_claim(Pubkey, NameBin, SaltInt, #state{} = S) when ?IS_ONCHAIN(S) ->
-    PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
-    DeltaTTL = aec_governance:name_claim_max_expiration(),
-    LockedFee = aec_governance:name_claim_locked_fee(),
-    Instructions = [ aeprimop:lock_amount_op(Pubkey, LockedFee)
-                   , aeprimop:name_claim_op(Pubkey, NameBin, SaltInt,
-                                            DeltaTTL, PreclaimDelta)
+aens_claim(Pubkey, NameBin, SaltInt, NameFee, #state{} = S) when ?IS_ONCHAIN(S) ->
+    Instructions = [aeprimop:name_claim_op(Pubkey, NameBin, SaltInt, NameFee)
                    ],
     eval_primops(Instructions, S).
 

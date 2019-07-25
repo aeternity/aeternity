@@ -48,7 +48,8 @@ init_state(N) ->
     Trees0 = aec_trees:new_without_backend(),
     ATrees = lists:foldl(fun(#{public := Pubkey}, AccTrees) ->
                                  Account = aec_accounts:new(Pubkey,
-                                                            100000 * aec_test_utils:min_gas_price()),
+                                                            100000 * aec_test_utils:min_gas_price()
+                                                            + aec_aens_governance:get_base_fee()),
                                  aec_accounts_trees:enter(Account, AccTrees)
                          end,
                          aec_trees:accounts(Trees0),
@@ -108,7 +109,8 @@ name_owner_pubkey(NameID, #{trees := Trees}) ->
 %%% Register a name
 
 register_name(Pubkey, S) ->
-    register_name(Pubkey, <<"hello.test"/utf8>>, S).
+    LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    register_name(Pubkey, <<LongPrefix/binary, "hello.test"/utf8>>, S).
 
 register_name(Pubkey, Name, S) ->
     {ok, Ascii} = aens_utils:to_ascii(Name),
@@ -125,6 +127,7 @@ register_name(Pubkey, Name, S) ->
                   , name => Name
                   , name_salt => Salt
                   , fee  => 20000 * aec_test_utils:min_gas_price()
+                  , name_fee => aec_aens_governance:get_base_fee()
                   , nonce => 2
                   },
     {ok, Claim} = aens_claim_tx:new(ClaimSpec),
@@ -217,12 +220,14 @@ transfer_name_to_named_account_when_multiple_pointer_entries(_Cfg) ->
 transfer_name_to_named_account_(PointersFun) ->
     {[Pubkey1, Pubkey2, Pubkey3], S1} = init_state(3),
 
+    LongPrefix = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+
     %% Pubkey1 holds the reference to the recipient account (Pubkey3)
-    {S2, NameId1} = register_name(Pubkey1, <<"foo.test"/utf8>>, S1),
+    {S2, NameId1} = register_name(Pubkey1, <<LongPrefix/binary, "foo.test"/utf8>>, S1),
     S3 = update_and_check_pointers(PointersFun(account_pubkey, Pubkey3), Pubkey1, NameId1, 3, S2),
 
     %% Pubkey2 is the owner of the name
-    {S4, NameId2} = register_name(Pubkey2, <<"bar.test"/utf8>>, S3),
+    {S4, NameId2} = register_name(Pubkey2, <<LongPrefix/binary, "bar.test"/utf8>>, S3),
 
     %% Pubkey2 now transfers the name to Pubkey3 by referencing its name
     TransferSpec = #{ account_id => account_id(Pubkey2)

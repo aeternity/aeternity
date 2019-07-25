@@ -3472,7 +3472,9 @@ sophia_signatures_aens(Cfg) ->
     Acc             = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     NameAcc         = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct              = ?call(create_contract, NameAcc, aens, {}, #{ amount => 100000 }),
-    Name1           = <<"bla.test">>,
+    LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name1           = <<LongPrefix/binary, "bla.test">>,
+    NameFee         = aec_governance:name_claim_fee(aens_commitments:name_length(Name1)),
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
@@ -3483,7 +3485,7 @@ sophia_signatures_aens(Cfg) ->
                   VMVersion when ?IS_FATE_SOPHIA(VMVersion) -> Name1
               end,
     NameAccSig      = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
-    {ok, NameHash}  = aens:get_name_hash(<<"bla.test">>),
+    {ok, NameHash}  = aens:get_name_hash(<<LongPrefix/binary, "bla.test">>),
     NameSig         = sign(<<NameAcc/binary, NameHash/binary, Ct/binary>>, NameAcc),
     AccSig          = sign(<<Acc/binary, NameHash/binary, Ct/binary>>, Acc),
     APubkey  = 1,
@@ -3499,11 +3501,13 @@ sophia_signatures_aens(Cfg) ->
                    BadPreclaim),
     {} = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, NameAccSig},        #{ height => 10 }),
     NonceAfterPreclaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
-    BadClaim = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, AccSig}, #{ height => 11 }),
+
+
+    BadClaim = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, NameFee, AccSig}, #{ height => 11 }),
     ?assertMatchVM({error, <<"out_of_gas">>},
                    {error,<<"Error in aens_claim: bad_signature">>},
                    BadClaim),
-    {} = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, NameSig}, #{ height => 11 }),
+    {} = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, NameFee, NameSig}, #{ height => 11 }),
     NonceAfterClaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
     BadTransfer = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, NameArg, AccSig},   #{ height => 12 }),
     ?assertMatchVM({error, <<"out_of_gas">>},
@@ -4847,10 +4851,10 @@ aens_preclaim(PubKey, Name, Options, S) ->
     {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
     {Salt, S1}.
 
-aens_claim(PubKey, Name, Salt, S) ->
-    aens_claim(PubKey, Name, Salt, #{}, S).
+aens_claim(PubKey, Name, Salt, NameFee, S) ->
+    aens_claim(PubKey, Name, Salt, NameFee, #{}, S).
 
-aens_claim(PubKey, Name, Salt, Options, S) ->
+aens_claim(PubKey, Name, Salt, NameFee, Options, S) ->
     Nonce  = aect_test_utils:next_nonce(PubKey, S),
     Height = maps:get(height, Options, 2),
     Fee    = maps:get(fee, Options, 50000 * aec_test_utils:min_gas_price()),
@@ -4861,6 +4865,7 @@ aens_claim(PubKey, Name, Salt, Options, S) ->
                                     nonce      => Nonce,
                                     name       => Name,
                                     name_salt  => Salt,
+                                    name_fee   => NameFee,
                                     fee        => Fee,
                                     ttl        => TTL }),
     PrivKey  = aect_test_utils:priv_key(PubKey, S),
@@ -4910,7 +4915,9 @@ sophia_aens_resolve(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
-    Name     = <<"foo.test">>,
+    LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name     = <<LongPrefix/binary, "foo.test">>,
+    NameFee         = aec_governance:name_claim_fee(aens_commitments:name_length(Name)),
     APubkey  = 1,
     OPubkey  = 2,
     CPubkey  = 3,
@@ -4921,7 +4928,7 @@ sophia_aens_resolve(_Cfg) ->
                ],
 
     Salt  = ?call(aens_preclaim, Acc, Name),
-    Hash  = ?call(aens_claim, Acc, Name, Salt),
+    Hash  = ?call(aens_claim, Acc, Name, Salt, NameFee),
     ok    = ?call(aens_update, Acc, Hash, Pointers),
 
     {some, Account} = ?call(call_contract, Acc, Ct, resolve_account, {option, word},   {Name, <<"account_pubkey">>}),
@@ -4962,7 +4969,7 @@ sophia_aens_transactions(Cfg) ->
     %% AENS transactions from contract
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
-    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
+    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 + aec_governance:name_claim_fee_base() }),
 
     APubkey  = 1,
     OPubkey  = 2,
@@ -4972,7 +4979,9 @@ sophia_aens_transactions(Cfg) ->
                 aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>)),
                 aens_pointer:new(<<"contract_pubkey">>, aeser_id:create(contract, <<CPubkey:256>>))
                ],
-    Name1           = <<"bla.test">>,
+    LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name1           = <<LongPrefix/binary, "bla.test">>,
+    NameFee         = aec_governance:name_claim_fee(aens_commitments:name_length(Name1)),
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
@@ -4985,7 +4994,7 @@ sophia_aens_transactions(Cfg) ->
     NonceBeforePreclaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, ?hsh(CHash)},        #{ height => 10 }),
     NonceBeforeClaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
-    {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1}, #{ height => 11 }),
+    {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1, NameFee}, #{ height => 11 }),
     NonceBeforeTransfer = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     StateBeforeTransfer = state(),
     {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, NameArg},   #{ height => 12 }),

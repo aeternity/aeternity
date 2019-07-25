@@ -63,3 +63,4 @@ eqc-lib
 eqc
 /docs/.tools/
 /docs/state-channels/*.svg
+*.iml

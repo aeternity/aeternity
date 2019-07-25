@@ -9,7 +9,9 @@
 
 %% common_test exports
 -export([all/0,
-         groups/0
+         groups/0,
+         init_per_group/2,
+         end_per_group/2
         ]).
 
 %% test case exports
@@ -20,16 +22,21 @@
          claim_locked_coins_holder_gets_locked_fee/1,
          claim_negative/1,
          claim_race_negative/1,
+         claim_with_auction/1,
+         claim_with_auction_negative/1,
          update/1,
          update_negative/1,
+         update_after_auction/1,
          transfer/1,
          transfer_negative/1,
+         transfer_after_auction/1,
          revoke/1,
          revoke_negative/1,
+         revoke_after_auction/1,
          prune_preclaim/1]).
 
 -include_lib("common_test/include/ct.hrl").
-
+-include_lib("stdlib/include/assert.hrl").
 -include("../../aecore/include/blocks.hrl").
 
 %%%===================================================================
@@ -37,12 +44,11 @@
 %%%===================================================================
 
 all() ->
-    [{group, all_tests}].
+    [{group, no_auction}, {group, auction}].
 
 groups() ->
     [
-     {all_tests, [sequence], [{group, transactions}]},
-     {transactions, [sequence],
+     {no_auction, [sequence],
       [prune_preclaim,
        prune_claim,
        preclaim,
@@ -56,11 +62,36 @@ groups() ->
        transfer,
        transfer_negative,
        revoke,
-       revoke_negative]}
+       revoke_negative]},
+      {auction, [sequence],
+       [preclaim,
+        claim_with_auction,
+        claim_with_auction_negative,
+        update_after_auction,
+        transfer_after_auction,
+        revoke_after_auction]}
     ].
 
--define(NAME, <<"詹姆斯詹姆斯.test"/utf8>>).
+%% NAME_1 len originally was 53 and ascii len is 61
+%% Adding xxxx to make it more visible
+-define(NAME_1, <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx詹姆斯詹姆斯.test"/utf8>>).
+-define(NAME_1_LEN, size(?NAME_1)).
+-define(NAME_2, <<"super.test"/utf8>>).
+-define(NAME_2_LEN, size(<<"super">>)).
 -define(PRE_CLAIM_HEIGHT, 1).
+
+
+%% Test both flows:
+%%  - when name is too long for auction
+%%  - when it trggers auction
+
+init_per_group(auction, Config) ->
+    [{name, ?NAME_2}| Config];
+init_per_group(no_auction, Config) ->
+    [{name, ?NAME_1}| Config].
+
+end_per_group(_Group, _Config) ->
+    ok.
 
 %%%===================================================================
 %%% Preclaim
@@ -75,7 +106,7 @@ preclaim(Cfg) ->
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT,
-    Name = ?NAME,
+    Name = proplists:get_value(name, Cfg),
     NameSalt = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
@@ -103,7 +134,7 @@ preclaim_negative(Cfg) ->
     Height = 1,
     Env = aetx_env:tx_env(Height),
 
-    {ok, NameAscii} = aens_utils:to_ascii(<<"詹姆斯詹姆斯.test"/utf8>>),
+    {ok, NameAscii} = aens_utils:to_ascii(?NAME_1),
     CHash = aens_hash:commitment_hash(NameAscii, 123),
 
     %% Test bad account key
@@ -171,6 +202,245 @@ claim(Cfg) ->
     claimed = aens_names:status(N),
     {PubKey, NHash, S2}.
 
+commitment_check({_PubKey1, Name, NameSalt, S1}) ->
+    %% Check commitment present
+    Trees1 = aens_test_utils:trees(S1),
+    {ok, NameAscii} = aens_utils:to_ascii(Name),
+    CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+    NHash = aens_hash:name_hash(NameAscii),
+    {value, C0} = aens_state_tree:lookup_commitment(CHash, aec_trees:ns(Trees1)),
+    auction_ready = aens_commitments:get_name_auction_state(C0, Name),
+    CHash      = aens_commitments:hash(C0),
+    {CHash, NHash}.
+
+claim_with_auction_negative(Cfg) ->
+    PrevOut = {PubKey1, Name, NameSalt, S1} = preclaim(Cfg),
+    {CHash, NHash} = commitment_check(PrevOut),
+
+    Trees1 = aens_test_utils:trees(S1),
+
+    %% Name example for auction test has 5 characters
+    ?assertEqual(?NAME_2_LEN, aens_commitments:name_length(Name)),
+    MinFeeForLength = aec_governance:name_claim_fee(?NAME_2_LEN),
+
+    Height = ?PRE_CLAIM_HEIGHT + 1,
+    PrivKey1 = aens_test_utils:priv_key(PubKey1, S1),
+
+    %% ========================================================================
+    %% Proceed with 1st Bid when account doesn't have enough funds
+
+    TxSpec0 = aens_test_utils:claim_tx_spec(PubKey1, Name, MinFeeForLength, NameSalt, S1),
+    {ok, Tx0} = aens_claim_tx:new(TxSpec0),
+    Env      = aetx_env:tx_env(Height),
+    {error, insufficient_funds} = aetx:process(Tx0, Trees1, Env),
+
+    %% ========================================================================
+    %% Proceed with 1st Bid when NameFee is explicitely bellow gov bid value
+
+    TxSpec00 = aens_test_utils:claim_tx_spec(PubKey1, Name, MinFeeForLength-1, NameSalt, S1),
+    {ok, Tx00} = aens_claim_tx:new(TxSpec00),
+    {error, too_small_bid} = aetx:process(Tx00, Trees1, Env),
+
+    %% Fix the PubKey1 account and re-run the 1st Bid
+    S2 = aens_test_utils:set_account_balance(PubKey1, MinFeeForLength*10, S1),
+    Bid1 = aec_test_utils:sign_tx(Tx0, PrivKey1),
+
+    Trees2 = aens_test_utils:trees(S2),
+    {ok, [Bid1], Trees3, _} =
+        aec_block_micro_candidate:apply_block_txs([Bid1], Trees2, Env),
+    S3 = aens_test_utils:set_trees(Trees3, S2),
+
+    %% ========================================================================
+    %% Proceed with 2nd Bid which is too late
+
+    {PubKey2, S4} = aens_test_utils:setup_new_account(S3),
+    PrivKey2 = aens_test_utils:priv_key(PubKey2, S4),
+    S5 = aens_test_utils:set_account_balance(PubKey2, MinFeeForLength*10, S4),
+
+    ProgressionGov = aec_governance:name_claim_bid_increment(),
+    ChangeGov1 = MinFeeForLength * ProgressionGov div 100,
+    MinNextBid1 = MinFeeForLength + ChangeGov1,
+
+    TxSpec1 = aens_test_utils:claim_tx_spec(PubKey2, Name, MinNextBid1, NameSalt, S5),
+    {ok, Tx1} = aens_claim_tx:new(TxSpec1),
+    Bid2 = aec_test_utils:sign_tx(Tx1, PrivKey2),
+
+    WrongHeight = ?PRE_CLAIM_HEIGHT + 1 + aec_governance:name_claim_bid_timeout(?NAME_2_LEN) + 1,
+    Env2      = aetx_env:tx_env(WrongHeight),
+    {error, too_late_for_bid} = aetx:process(Tx1, aens_test_utils:trees(S5), Env2),
+
+    GoodHeight = ?PRE_CLAIM_HEIGHT + 1 + aec_governance:name_claim_bid_timeout(?NAME_2_LEN),
+    Env3      = aetx_env:tx_env(GoodHeight),
+
+    Trees4 = aens_test_utils:trees(S5),
+    {ok, [Bid2], Trees5, _} =
+        aec_block_micro_candidate:apply_block_txs([Bid2], Trees4, Env3),
+    S6 = aens_test_utils:set_trees(Trees5, S5),
+
+    %% ========================================================================
+    %% Proceed with 3rd Bid which is too cheap (gov bid min increment not met)
+
+    ChangeGov2 = MinNextBid1 * ProgressionGov div 100,
+    MinNextBid2 = MinNextBid1 + ChangeGov2 - 1,
+
+    TxSpec2 = aens_test_utils:claim_tx_spec(PubKey1, Name, MinNextBid2, NameSalt, S6),
+    {ok, Tx2} = aens_claim_tx:new(TxSpec2),
+    Env4      = aetx_env:tx_env(GoodHeight),
+    {error, bid_below_progression} = aetx:process(Tx2, aens_test_utils:trees(S6), Env4),
+
+    %% ========================================================================
+    %% Proceed with 3rd Bid which is from currently owning user
+
+    TxSpec3 = aens_test_utils:claim_tx_spec(PubKey2, Name, MinNextBid2+1, NameSalt, S6),
+    {ok, Tx3} = aens_claim_tx:new(TxSpec3),
+    {error, commitment_already_owned} = aetx:process(Tx3, aens_test_utils:trees(S6), Env4),
+    ok.
+
+claim_with_auction(Cfg) ->
+    PrevOut = {PubKey1, Name, NameSalt, S1} = preclaim(Cfg),
+    {CHash, NHash} = commitment_check(PrevOut),
+
+    %% Name example for auction test has 5 characters
+    ?assertEqual(?NAME_2_LEN, aens_commitments:name_length(Name)),
+    MinFeeForLength = aec_governance:name_claim_fee(?NAME_2_LEN),
+
+    Height = ?PRE_CLAIM_HEIGHT + 1,
+    PrivKey = aens_test_utils:priv_key(PubKey1, S1),
+
+    %% ========================================================================
+    %% Proceed with 1st Bid
+    TxSpec0 = aens_test_utils:claim_tx_spec(PubKey1, Name, MinFeeForLength, NameSalt, S1),
+    {ok, Tx} = aens_claim_tx:new(TxSpec0),
+    Bid1 = aec_test_utils:sign_tx(Tx, PrivKey),
+    Env      = aetx_env:tx_env(Height),
+    S2 = aens_test_utils:set_account_balance(PubKey1, MinFeeForLength*10, S1),
+    Account1Bal1 = aens_test_utils:get_balance(PubKey1, S2),
+
+    LockedAmount1 = aens_test_utils:locked_coins_balance(S2),
+    ?assertEqual(0, LockedAmount1),
+
+    Trees2 = aens_test_utils:trees(S2),
+    {ok, [Bid1], Trees3, _} =
+        aec_block_micro_candidate:apply_block_txs([Bid1], Trees2, Env),
+    S3 = aens_test_utils:set_trees(Trees3, S2),
+
+    %% Post bid checks:
+    NTrees1 = aec_trees:ns(Trees3),
+    {value, C1}       = aens_state_tree:lookup_commitment(CHash, NTrees1),
+    auction_ongoing = aens_commitments:get_name_auction_state(C1, Name),
+    none = aens_state_tree:lookup_name(NHash, NTrees1),
+
+    Account1Bal2 = aens_test_utils:get_balance(PubKey1, S3),
+    LockedAmount2 = aens_test_utils:locked_coins_balance(S3),
+
+    TxFee = aens_test_utils:claim_tx_defaul_fee(),
+    ?assertEqual(Account1Bal1-MinFeeForLength-TxFee, Account1Bal2),
+    ?assertEqual(MinFeeForLength, LockedAmount2), %% INFO: No TxFee handling here
+
+    %% ========================================================================
+    %% Proceed with 2nd Bid
+    {PubKey2, S4} = aens_test_utils:setup_new_account(S3),
+    PrivKey2 = aens_test_utils:priv_key(PubKey2, S4),
+    S5 = aens_test_utils:set_account_balance(PubKey2, MinFeeForLength*10, S4),
+
+    Account2Bal1 = aens_test_utils:get_balance(PubKey2, S5),
+
+    %% Price progression (maybe hardcode values?)
+    ProgressionGov = aec_governance:name_claim_bid_increment(),
+    ChangeGov = MinFeeForLength * ProgressionGov div 100,
+    MinNextBid1 = MinFeeForLength + ChangeGov,
+
+    TxSpec1 = aens_test_utils:claim_tx_spec(PubKey2, Name, MinNextBid1, NameSalt, S5),
+    {ok, Tx1} = aens_claim_tx:new(TxSpec1),
+    Bid2 = aec_test_utils:sign_tx(Tx1, PrivKey2),
+    Env2      = aetx_env:tx_env(Height+1),
+    Trees4 = aens_test_utils:trees(S5),
+    {ok, [Bid2], Trees5, _} =
+        aec_block_micro_candidate:apply_block_txs([Bid2], Trees4, Env2),
+    S6 = aens_test_utils:set_trees(Trees5, S5),
+
+    Account1Bal3 = aens_test_utils:get_balance(PubKey1, S6),
+    Account2Bal2 = aens_test_utils:get_balance(PubKey2, S6),
+    LockedAmount3 = aens_test_utils:locked_coins_balance(S6),
+
+    ?assertEqual(Account1Bal3, Account1Bal2+MinFeeForLength),
+    ?assertEqual(Account2Bal1-MinNextBid1-TxFee, Account2Bal2),
+    ?assertEqual(LockedAmount2-MinFeeForLength+MinNextBid1, LockedAmount3),
+
+    %% Post bid checks
+    NTrees2 = aec_trees:ns(Trees5),
+    {value, C2}       = aens_state_tree:lookup_commitment(CHash, NTrees2),
+    PubKey2 = aens_commitments:owner_pubkey(C2),
+    auction_ongoing = aens_commitments:get_name_auction_state(C2, Name),
+    none = aens_state_tree:lookup_name(NHash, NTrees2),
+
+    %% ========================================================================
+    %% Proceed with 3rd Bid, larger bid + longer wait
+    {PubKey3, S7} = aens_test_utils:setup_new_account(S6),
+    PrivKey3 = aens_test_utils:priv_key(PubKey3, S7),
+    S8 = aens_test_utils:set_account_balance(PubKey3, MinFeeForLength*10, S7),
+
+    Account3Bal1 = aens_test_utils:get_balance(PubKey3, S8),
+
+    ThirdBid = MinNextBid1*2,
+    TxSpec2 = aens_test_utils:claim_tx_spec(PubKey3, Name, ThirdBid, NameSalt, S8),
+    {ok, Tx2} = aens_claim_tx:new(TxSpec2),
+    Bid3 = aec_test_utils:sign_tx(Tx2, PrivKey3),
+    Env3      = aetx_env:tx_env(Height+960),  %% two days bid delta
+    Trees6 = aens_test_utils:trees(S8),
+    {ok, [Bid3], Trees7, _} =
+        aec_block_micro_candidate:apply_block_txs([Bid3], Trees6, Env3),
+    S9 = aens_test_utils:set_trees(Trees7, S8),
+
+    Account3Bal2 = aens_test_utils:get_balance(PubKey3, S9),
+    Account2Bal3 = aens_test_utils:get_balance(PubKey2, S9),
+    LockedAmount4 = aens_test_utils:locked_coins_balance(S9),
+
+    ?assertEqual(Account3Bal1-ThirdBid-TxFee, Account3Bal2),
+    ?assertEqual(Account2Bal3, Account2Bal2+MinNextBid1),
+    ?assertEqual(LockedAmount3-MinNextBid1+ThirdBid, LockedAmount4),
+
+    %% Post bid checks
+    NTrees3 = aec_trees:ns(Trees7),
+    {value, C3}       = aens_state_tree:lookup_commitment(CHash, NTrees3),
+    PubKey3 = aens_commitments:owner_pubkey(C3),
+    auction_ongoing = aens_commitments:get_name_auction_state(C3, Name),
+    none = aens_state_tree:lookup_name(NHash, NTrees3),
+
+
+    %% ========================================================================
+    %% Run prune
+    BidExpiration = aens_commitments:ttl(C3),
+    GenesisHeight = aec_block_genesis:height(),
+    Trees8 = do_prune_until(GenesisHeight, BidExpiration + 1, Trees7),
+
+    %% The first prune run to check if name is instatiated
+    none = aens_state_tree:lookup_commitment(CHash, aec_trees:ns(Trees8)),
+    {value, N} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees8)),
+    NHash   = aens_names:hash(N),
+    PubKey3  = aens_names:owner_pubkey(N),
+    claimed = aens_names:status(N),
+
+    %% State with name for further testing
+    S10 = aens_test_utils:set_trees(Trees8, S9),
+
+    %% The second prune run to check if name is garbage collected
+    NameRentTime = aec_governance:name_claim_max_expiration(),
+    Trees9 = do_prune_until(GenesisHeight, BidExpiration + NameRentTime + 1, Trees8),
+    none = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees9)),
+    S11 = aens_test_utils:set_trees(Trees9, S10),
+
+    %% Nothing should change from the last interaction
+    Account1Final = aens_test_utils:get_balance(PubKey1, S11),
+    Account2Final = aens_test_utils:get_balance(PubKey2, S11),
+    Account3Final = aens_test_utils:get_balance(PubKey3, S11),
+    ?assertEqual(Account1Bal3, Account1Final),
+    ?assertEqual(Account2Bal3, Account2Final),
+    ?assertEqual(Account3Bal2, Account3Final),
+
+    {PubKey3, NHash, S10}.
+
+
 claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
     Trees = aens_test_utils:trees(S1),
@@ -184,7 +454,7 @@ claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     Env      = aetx_env:tx_env(Height),
 
     LockedCoinsHolderPubKey = aec_governance:locked_coins_holder_account(),
-    LockedCoinsFee          = aec_governance:name_claim_locked_fee(),
+    LockedCoinsFee          = aec_governance:name_claim_fee(?NAME_1_LEN),
 
     %% Locked coins holder is not present in state tree
     none = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees)),
@@ -232,7 +502,8 @@ claim_negative(Cfg) ->
     {error, insufficient_funds} = aetx:process(Tx2, Trees2, Env),
 
     %% Test too high account nonce
-    TxSpec3 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, #{nonce => 0}, S1),
+    NameFee = aec_governance:name_claim_fee_base(),
+    TxSpec3 = aens_test_utils:claim_tx_spec(PubKey, Name, NameFee, NameSalt, #{nonce => 0}, S1),
     {ok, Tx3} = aens_claim_tx:new(TxSpec3),
     {error, account_nonce_too_high} = aetx:process(Tx3, Trees, Env),
 
@@ -254,12 +525,13 @@ claim_negative(Cfg) ->
     {error, no_registrar} = aetx:process(Tx6, Trees, Env),
     ok.
 
-claim_race_negative(_Cfg) ->
+claim_race_negative(Cfg) ->
     %% The first claim
-    {_PubKey, _NHash, S1} = claim([]),
+    {_PubKey, _NHash, S1} = claim([{name, proplists:get_value(name, Cfg)}]),
 
     %% The second claim of the same name (hardcoded in preclaim) decomposed
-    {PubKey2, Name2, NameSalt2, S2} = preclaim([{state, S1}]),
+    {PubKey2, Name2, NameSalt2, S2} = preclaim([{name, proplists:get_value(name, Cfg)},
+                                                {state, S1}]),
     Trees = aens_test_utils:trees(S2),
     Height = ?PRE_CLAIM_HEIGHT + 1,
 
@@ -275,6 +547,13 @@ claim_race_negative(_Cfg) ->
 
 update(Cfg) ->
     {PubKey, NHash, S1} = claim(Cfg),
+    do_update({PubKey, NHash, S1}).
+
+update_after_auction(Cfg) ->
+    {PubKey, NHash, S1} = claim_with_auction(Cfg),
+    do_update({PubKey, NHash, S1}).
+
+do_update({PubKey, NHash, S1}) ->
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT+1,
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
@@ -366,6 +645,13 @@ update_negative(Cfg) ->
 
 transfer(Cfg) ->
     {PubKey, NHash, S1} = claim(Cfg),
+    do_transfer({PubKey, NHash, S1}).
+
+transfer_after_auction(Cfg) ->
+    {PubKey, NHash, S1} = claim_with_auction(Cfg),
+    do_transfer({PubKey, NHash, S1}).
+
+do_transfer({PubKey, NHash, S1}) ->
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT+1,
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
@@ -443,6 +729,13 @@ transfer_negative(Cfg) ->
 
 revoke(Cfg) ->
     {PubKey, NHash, S1} = claim(Cfg),
+    do_revoke({PubKey, NHash, S1}).
+
+revoke_after_auction(Cfg) ->
+    {PubKey, NHash, S1} = claim_with_auction(Cfg),
+    do_revoke({PubKey, NHash, S1}).
+
+do_revoke({PubKey, NHash, S1}) ->
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT+1,
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
@@ -526,8 +819,8 @@ prune_preclaim(Cfg) ->
 
     TTL = aens_commitments:ttl(C),
     GenesisHeight = aec_block_genesis:height(),
-    NSTree = do_prune_until(GenesisHeight, TTL + 1, aec_trees:ns(Trees2)),
-    none = aens_state_tree:lookup_commitment(CHash, NSTree),
+    Trees3 = do_prune_until(GenesisHeight, TTL + 1, Trees2),
+    none = aens_state_tree:lookup_commitment(CHash, aec_trees:ns(Trees3)),
     ok.
 
 prune_claim(Cfg) ->
@@ -544,14 +837,16 @@ prune_claim(Cfg) ->
     TTL1     = aens_names:ttl(N),
 
 
-    NTree2 = aens_state_tree:prune(TTL1+1, NTrees),
+    Trees3 = aens_state_tree:prune(TTL1+1, Trees2),
+    NTree2 = aec_trees:ns(Trees3),
     {value, N2} = aens_state_tree:lookup_name(NHash, NTree2),
     NHash    = aens_names:hash(N2),
     PubKey   = aens_names:owner_pubkey(N2),
     revoked  = aens_names:status(N2),
     TTL2     = aens_names:ttl(N2),
 
-    NTree3 = aens_state_tree:prune(TTL2+1, NTree2),
+    Trees4 = aens_state_tree:prune(TTL2+1, Trees3),
+    NTree3 = aec_trees:ns(Trees4),
     none = aens_state_tree:lookup_name(NHash, NTree3),
 
     {PubKey, NHash, S2}.

@@ -1260,9 +1260,10 @@ random_unused_name() ->
 random_unused_name(Attempts) when Attempts < 1->
     {error, exhausted};
 random_unused_name(Attempts) ->
-    Size = 10,
+    Size = 32,
     RandStr = base58:binary_to_base58(crypto:strong_rand_bytes(Size)),
-    NameL = RandStr ++ ".test",
+    Namespace = hd(aec_governance:name_registrars()),
+    NameL = RandStr ++ <<".", Namespace/binary>>,
     Name = list_to_binary(NameL),
     case get_names_entry_by_name_sut(Name) of
         {ok, 404, _Error} -> Name; % name not used yet
@@ -1880,7 +1881,7 @@ preclaim_name(Owner, OwnerPrivKey, Name, Salt) ->
     ok.
 
 claim_name(Owner, OwnerPrivKey, Name, Salt) ->
-    Delta = aec_governance:name_claim_preclaim_delta(),
+    Delta = aec_governance:name_claim_preclaim_timeout(),
     Node = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:mine_key_blocks(Node, Delta),
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [Owner]),

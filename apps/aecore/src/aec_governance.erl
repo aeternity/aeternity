@@ -12,10 +12,13 @@
          locked_coins_holder_account/0,
          minimum_gas_price/1,
          name_preclaim_expiration/0,
-         name_claim_locked_fee/0,
+         name_claim_bid_increment/0,
+         name_claim_fee/1,
+         name_claim_fee_base/0,
          name_claim_max_expiration/0,
          name_protection_period/0,
-         name_claim_preclaim_delta/0,
+         name_claim_preclaim_timeout/0,
+         name_claim_bid_timeout/1,
          name_registrars/0,
          micro_block_cycle/0,
          accepted_future_block_time_shift/0,
@@ -201,8 +204,11 @@ primop_base_gas(?PRIM_CALL_ADDR_IS_ORACLE            ) -> 5000.
 name_preclaim_expiration() ->
     300.
 
-name_claim_locked_fee() ->
-    3.
+name_claim_fee_base() ->
+    aec_aens_governance:get_base_fee().
+
+name_claim_fee(Length) ->
+    aec_aens_governance:init_fee_at_length(Length).
 
 name_claim_max_expiration() ->
     50000.
@@ -210,8 +216,14 @@ name_claim_max_expiration() ->
 name_protection_period() ->
     2016.
 
-name_claim_preclaim_delta() ->
+name_claim_preclaim_timeout() ->
     1.
+
+name_claim_bid_timeout(Length) ->
+    aec_aens_governance:bid_timeout_at_length(Length).
+
+name_claim_bid_increment() ->
+    5. %% 5%
 
 -spec name_registrars() -> list(binary()).
 name_registrars() ->

@@ -137,6 +137,7 @@
 
     %% requested Endpoints
     naming_system_manage_name/1,
+    naming_system_auction/1,
     naming_system_broken_txs/1,
 
     peers/1,
@@ -487,7 +488,8 @@ groups() ->
         wrong_http_method_peers
      ]},
      {naming, [sequence],
-      [naming_system_manage_name
+      [naming_system_manage_name,
+       naming_system_auction
       ]}
     ].
 
@@ -2280,7 +2282,8 @@ test_missing_address(Key, Encoded, APIFun) ->
     ok.
 
 nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
-    Name = <<"name.test">>,
+    LongPrefix = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name = <<LongPrefix/binary, "name.test">>,
     Salt = 1234,
 
     {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, Salt),
@@ -2302,6 +2305,7 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     Encoded = #{account_id => MinerAddress,
                 name => aeser_api_encoder:encode(name, Name),
                 name_salt => Salt,
+                name_fee => aec_governance:name_claim_fee_base(),
                 fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{account_id => aeser_id:create(account, MinerPubkey),
@@ -2999,13 +3003,114 @@ peer_pub_key(_Config) ->
     {ok, PeerPubKey} = aeser_api_encoder:safe_decode(peer_pubkey, EncodedPubKey),
     ok.
 
+naming_system_auction(_Config) ->
+    {PubKey1, PrivKey1} = initialize_account(6*1000000 * aec_test_utils:min_gas_price()),
+    {PubKey2, PrivKey2} = initialize_account(6*1000000 * aec_test_utils:min_gas_price()),
+
+    PubKey1Enc = aeser_api_encoder:encode(account_pubkey, PubKey1),
+    PubKey2Enc = aeser_api_encoder:encode(account_pubkey, PubKey2),
+
+    %% picked name with 30 characters - it has lowest NON base AND auction required length
+    Name        = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.test">>,
+    NameLength = size(<<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>),
+    NameSalt    = 12345,
+    {ok, NHash} = aens:get_name_hash(Name),
+    Fee         = 100000 * aec_test_utils:min_gas_price(),
+
+    %% Check mempool empty
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    {ok, 200, #{<<"balance">> := Balance}} = get_accounts_by_pubkey_sut(PubKey1Enc),
+
+    %% Get commitment hash to preclaim a name
+    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, NameSalt),
+    {ok, _CHash} = aeser_api_encoder:safe_decode(commitment, EncodedCHash),
+
+    %% Submit name preclaim tx and check it is in mempool
+    PreclaimData = #{commitment_id => EncodedCHash,
+                     fee           => Fee,
+                     account_id    => PubKey1Enc},
+    {ok, 200, #{<<"tx">> := PreclaimTxEnc}} = get_name_preclaim(PreclaimData),
+    PreclaimTxHash = sign_and_post_tx(PreclaimTxEnc, PrivKey1),
+    {ok, 200, #{<<"tx">> := PreclaimTx}} = get_transactions_by_hash_sut(PreclaimTxHash),
+    ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
+
+    %% Mine a block and check mempool empty again
+    ok = wait_for_tx_hash_on_chain(PreclaimTxHash),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Check fee taken from account
+    {ok, 200, #{<<"balance">> := PubKey1BalPreClaim}} = get_accounts_by_pubkey_sut(PubKey1Enc),
+    ?assertEqual(PubKey1BalPreClaim, Balance - Fee),
+
+    FirstNameFee = aec_governance:name_claim_fee(NameLength),
+
+    ct:log("Balance PubKey1 before init bid: ~p", [PubKey1BalPreClaim]),
+    ct:log("Price for the init bid and tx fee: ~p ~p", [FirstNameFee, Fee]),
+
+    %% Submit name claim tx and check it is in mempool
+    ClaimData1 = #{account_id => PubKey1Enc,
+                   name       => aeser_api_encoder:encode(name, Name),
+                   name_salt  => NameSalt,
+                   name_fee   => FirstNameFee,
+                   fee        => Fee},
+    {ok, 200, #{<<"tx">> := ClaimTxEnc1}} = get_name_claim(ClaimData1),
+    ClaimTxHash1 = sign_and_post_tx(ClaimTxEnc1, PrivKey1),
+
+    %% Mine a block and check mempool empty again
+    ok = wait_for_tx_hash_on_chain(ClaimTxHash1),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Check tx fee taken from account, claim fee locked,
+    %% then mine reward and fee added to account
+    {ok, 200, #{<<"balance">> := PubKey1BalPreAuction}} = get_accounts_by_pubkey_sut(PubKey1Enc),
+    {ok, 200, #{<<"height">> := Height3}} = get_key_blocks_current_sut(),
+
+    ct:log("Balance PubKey1 after init bid: ~p", [PubKey1BalPreAuction]),
+    ?assertEqual(PubKey1BalPreAuction, PubKey1BalPreClaim - Fee - FirstNameFee),
+
+    %% Check that name entry is absent as there is auction ongoing
+    {ok, 404, #{<<"reason">> := <<"Name not found">>}} = get_names_entry_by_name_sut(Name),
+
+    {ok, 200, #{<<"balance">> := PubKey2BalPreAuction}} = get_accounts_by_pubkey_sut(PubKey2Enc),
+    ct:log("Balance PubKey2 before counter bid: ~p", [PubKey2BalPreAuction]),
+
+    %% Figure out minimal couter bid price
+    NextMinPrice = FirstNameFee + FirstNameFee *
+        aec_governance:name_claim_bid_increment() div 100,
+
+    %% Submit couter bid with name claim tx and check it is in mempool
+    ClaimData2 = #{account_id => PubKey2Enc,
+                   name       => aeser_api_encoder:encode(name, Name),
+                   name_salt  => NameSalt,
+                   name_fee   => NextMinPrice,
+                   fee        => Fee},
+    {ok, 200, #{<<"tx">> := ClaimTxEnc2}} = get_name_claim(ClaimData2),
+    ClaimTxHash2 = sign_and_post_tx(ClaimTxEnc2, PrivKey2),
+
+    %% Mine a block and check mempool empty again
+    ok = wait_for_tx_hash_on_chain(ClaimTxHash2),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Check balances
+    {ok, 200, #{<<"balance">> := PubKey1BalPostAuction}} = get_accounts_by_pubkey_sut(PubKey1Enc),
+    {ok, 200, #{<<"balance">> := PubKey2BalPostAuction}} = get_accounts_by_pubkey_sut(PubKey2Enc),
+
+    ct:log("Balance PubKey1 post counter bid: ~p", [PubKey1BalPostAuction]),
+    ct:log("Balance PubKey2 post counter bid: ~p", [PubKey2BalPostAuction]),
+
+    %% Return first bid to PubKey1
+    ?assertEqual(PubKey1BalPostAuction, PubKey1BalPreAuction + FirstNameFee),
+    %% The second bidder, PubKey2, is now charged
+    ?assertEqual(PubKey2BalPostAuction, PubKey2BalPreAuction - Fee - NextMinPrice).
+
 naming_system_manage_name(_Config) ->
     {PubKey, PrivKey} = initialize_account(1000000000 *
                                            aec_test_utils:min_gas_price()),
     PubKeyEnc   = aeser_api_encoder:encode(account_pubkey, PubKey),
     %% TODO: find out how to craete HTTP path with unicode chars
     %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
-    Name        = <<"without-unicode.test">>,
+    LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name        = <<LongPrefix/binary, "without-unicode.test">>,
     NameSalt    = 12345,
     NameTTL     = 20000,
     Pointers    = [#{<<"key">> => <<"account_pubkey">>, <<"id">> => PubKeyEnc}],
@@ -3042,6 +3147,7 @@ naming_system_manage_name(_Config) ->
     ClaimData = #{account_id => PubKeyEnc,
                   name       => aeser_api_encoder:encode(name, Name),
                   name_salt  => NameSalt,
+                  name_fee   => aec_governance:name_claim_fee_base(),
                   fee        => Fee},
     {ok, 200, #{<<"tx">> := ClaimTxEnc}} = get_name_claim(ClaimData),
     ClaimTxHash = sign_and_post_tx(ClaimTxEnc, PrivKey),
@@ -3052,7 +3158,7 @@ naming_system_manage_name(_Config) ->
 
     %% Check tx fee taken from account, claim fee locked,
     %% then mine reward and fee added to account
-    ClaimLockedFee = rpc(aec_governance, name_claim_locked_fee, []),
+    ClaimLockedFee = rpc(aec_governance, name_claim_fee, [size(Name)]),
     {ok, 200, #{<<"balance">> := Balance2}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     {ok, 200, #{<<"height">> := Height3}} = get_key_blocks_current_sut(),
     ?assertEqual(Balance2, Balance1 - Fee - ClaimLockedFee),
@@ -3136,7 +3242,8 @@ naming_system_manage_name(_Config) ->
     ok.
 
 naming_system_broken_txs(_Config) ->
-    Name        = <<"fooo.test">>,
+    LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name        = <<LongPrefix/binary, "fooo.test">>,
     NameSalt    = 12345,
     {ok, NHash} = aens:get_name_hash(Name),
     CHash       = aens_hash:commitment_hash(Name, NameSalt),
@@ -3159,6 +3266,7 @@ naming_system_broken_txs(_Config) ->
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
         get_name_claim(#{name => aeser_api_encoder:encode(name, Name),
                          name_salt => NameSalt,
+                         name_fee => aec_governance:name_claim_fee_base(),
                          account_id => aeser_api_encoder:encode(account_pubkey, random_hash()),
                          fee => Fee}),
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =

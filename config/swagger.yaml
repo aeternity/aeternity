@@ -2127,6 +2127,8 @@ definitions:
         type: string
       name_salt:
         $ref: '#/definitions/UInt'
+      name_fee:
+        $ref: '#/definitions/UInt'
       fee:
         $ref: '#/definitions/UInt'
       ttl:

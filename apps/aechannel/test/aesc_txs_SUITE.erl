@@ -2647,7 +2647,8 @@ fp_use_onchain_name_resolution(Cfg) ->
     FPRound = 20,
     LockPeriod = 10,
     FPHeight0 = 20,
-    Name = <<"lorem.test">>,
+    LongPrefix = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name = <<LongPrefix/binary, "lorem.test">>,
     ForceCallCheckName =
         fun(Forcer, K, Found) when is_binary(K) andalso is_boolean(Found) ->
             fun(Props) ->
@@ -5208,7 +5209,7 @@ register_name(Name, Pointers0) ->
             % claim
             fun(#{state := S, name_owner := NameOwner, height := Height0} = Props) ->
                 PrivKey = aesc_test_utils:priv_key(NameOwner, S),
-                Delta = aec_governance:name_claim_preclaim_delta(),
+                Delta = aec_governance:name_claim_preclaim_timeout(),
                 TxSpec = aens_test_utils:claim_tx_spec(NameOwner, Name, NameSalt, S),
                 {ok, Tx} = aens_claim_tx:new(TxSpec),
                 SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),

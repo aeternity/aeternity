@@ -113,7 +113,10 @@ def test_send_by_name():
     print("Bob balance is " + str(bob_balance0))
     print("Bob address is " + bob_address)
 
-    bob_name = test_settings["name_register"]["name"]
+    # escape auctions with long prefix
+    bob_name_long = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    bob_name = bob_name_long + test_settings["name_register"]["name"]
+
     fee = test_settings["name_register"]["fee"]
     register_name(bob_name, bob_address, ext_api, int_api, bob_private_key,
                   fee)
@@ -159,11 +162,15 @@ def register_name(name, address, external_api, internal_api, private_key, fee):
     signed_preclaim = keys.sign_encode_tx(unsigned_preclaim, private_key)
     common.ensure_transaction_posted(external_api, signed_preclaim)
 
+    # hardcoded name fee for non-auction name, minimum one
+    name_fee = 300000000000000
+
     # claim
     encoded_name = common.encode_name(name)
     unsigned_claim = common.api_decode(\
         internal_api.post_name_claim(\
-            NameClaimTx(name=encoded_name, name_salt=salt, fee=fee, ttl=100, account_id=address)).tx)
+            NameClaimTx(name=encoded_name, name_salt=salt, fee=fee,
+                        name_fee=name_fee, ttl=100, account_id=address)).tx)
     signed_claim = keys.sign_encode_tx(unsigned_claim, private_key)
     common.ensure_transaction_posted(external_api, signed_claim)
     name_entry0 = external_api.get_name_entry_by_name(name)

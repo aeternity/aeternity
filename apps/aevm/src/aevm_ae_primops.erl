@@ -133,7 +133,7 @@ is_local_primop(Data) ->
 %% the argument was built.
 
 types(?PRIM_CALL_AENS_CLAIM,_HeapValue,_Store,_State) ->
-    {[word, string, word, sign_t()], tuple0_t()};
+    {[word, string, word, word, sign_t()], tuple0_t()};
 types(?PRIM_CALL_AENS_PRECLAIM,_HeapValue,_Store,_State) ->
     {[word, word, sign_t()], tuple0_t()};
 types(?PRIM_CALL_AENS_RESOLVE, HeapValue, Store,_State) ->
@@ -535,8 +535,8 @@ aens_call_preclaim(Data, #chain{api = API, state = State} = Chain) ->
     end.
 
 aens_call_claim(Data, #chain{api = API, state = State} = Chain) ->
-    [Addr, Name, Salt, Sign0] = get_args([word, string, word, sign_t()], Data),
-    case API:aens_claim_tx(<<Addr:256>>, Name, Salt, State) of
+    [Addr, Name, Salt, NameFee, Sign0] = get_args([word, string, word, word, sign_t()], Data),
+    case API:aens_claim_tx(<<Addr:256>>, Name, Salt, NameFee, State) of
         {ok, Tx} ->
             SizeGas = size_gas(Tx),
             Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_claim(Tx, to_sign(Sign0), ChainState) end,

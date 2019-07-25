@@ -176,6 +176,7 @@
 -callback aens_claim_tx(Addr :: pubkey(),
                         Name :: binary(),
                         Salt :: integer(),
+                        NameFee :: integer(),
                         ChainState :: chain_state()) ->
     {ok, aetx:tx()} | {error, term()}.
 

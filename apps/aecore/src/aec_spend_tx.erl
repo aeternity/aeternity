@@ -142,10 +142,10 @@ signers(#spend_tx{} = Tx, _) -> {ok, [sender_pubkey(Tx)]}.
 process(#spend_tx{} = SpendTx, Trees, Env) ->
     Instructions =
         aeprimop:spend_tx_instructions(sender_pubkey(SpendTx),
-                                               recipient_id(SpendTx),
-                                               amount(SpendTx),
-                                               fee(SpendTx),
-                                               nonce(SpendTx)),
+                                       recipient_id(SpendTx),
+                                       amount(SpendTx),
+                                       fee(SpendTx),
+                                       nonce(SpendTx)),
     aeprimop:eval(Instructions, Trees, Env).
 
 serialize(#spend_tx{sender_id    = SenderId,
