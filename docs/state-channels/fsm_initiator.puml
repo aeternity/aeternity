@@ -1,57 +1,115 @@
 @startuml
+hide empty description
 title aesc_fsm.erl's FSM logic for role initiator
 
-[*] --> Reestablish_Init     : [if re-established]
-[*] --> Initialized          : [if not re-established]
+note as info
+  This diagram omits transitions for the following events which are applicable
+  to almost all states:
 
-Initialized --> [*]                    : [error chain_hash_mismatch]
-Initialized --> [*]                    : (timeout)
-Initialized --> [*]                    : disconnect
-Initialized --> Initialized            : [call not_ready]
-Initialized --> Awaiting_Signature     : channel_accept
+    - (timeout)
+    - disconnect
+    - [error protocol_error]
 
-state Awaiting_Signature {
-  [*] --> Ongoing_Update
-  [*] --> Half_Signed  : {signed, create_tx}
-  [*] --> [*] :  {signed, create_tx} [if strict_checks and checks_failed]
+  Each of these events leads to the termination of the whole FSM.
+
+  LEGEND:
+
+  [if some_check]  - internal logic switch or generated error
+  (timeout)        - an internal event, e.g. timeout
+  disconnect       - an external event, e.g. disconnect
+
+  TODO:
+
+  - handle_common_event channel_closing
+end note
+
+state "Re-establish Init" as re_in
+[*] --> re_in : [if re-established]
+[*] --> in : [if not re-established]
+
+state "Initialized" as in
+in --> te                     : [error chain_hash_mismatch]
+in --> in                     : [call not_ready]
+in --> aw_si_createtx         : channel_accept
+
+state "Terminating" as te
+te --> [*]
+
+state "Half Signed" as ha_si
+ha_si --> te                 : [error not_create_tx] | [error bad_signature]
+ha_si --> aw_lo_watchfunding : funding_signed [if verify_signatures]
+
+state "Awaiting Signature" as aw_si {
+  state "CreateTx" as aw_si_createtx
+  aw_si_createtx --> ha_si                          : {signed, create_tx} [if checks_ok]
+  aw_si_createtx --> aw_si_createtx                 : {signed, create_tx} [if not checks_ok]
+
+  state "ShutdownAck" as aw_si_shutdownack
+  aw_si_shutdownack --> te                          : {signed, shutdown_ack} [if checks_ok]
+  aw_si_shutdownack --> aw_si_shutdownack           : {signed, shutdown_ack} [if not checks_ok]
+
+  state "UpdateAck" as aw_si_updateack
+  aw_si_updateack --> aw_updateack                  : {signed, update} [if checks_ok]
+  aw_si_updateack --> aw_si_updateack               : {signed, update} [if not checks_ok]
+
+  state "WithdrawCreated" as aw_si_withdrawcreated
+  aw_si_withdrawcreated --> aw_lo_watchwithdraw     : {signed, withdraw_created} [if checks_ok]
+  aw_si_withdrawcreated --> aw_si_withdrawcreated   : {signed, withdraw_created} [if not checks_ok]
+
+  state "DepositCreated" as aw_si_depositcreated
+  aw_si_depositcreated --> aw_lo_watchdeposit       :  {signed, deposit_created} [if checks_ok]
+  aw_si_depositcreated --> aw_si_depositcreated     :  {signed, deposit_created} [if not checks_ok]
 }
 
-Closed --> Initialized : channel_open
+state "Awaiting Locked" as aw_lo {
+  state "WatchFunding" as aw_lo_watchfunding
+  aw_lo_watchfunding --> si : minimum_depth_achieved
 
-Error --> Closed : [automatic]
+  state "WatchDeposit" as aw_lo_watchdeposit
+  aw_lo_watchdeposit --> de_si : minimum_depth_achieved
 
-Initialized --> Closed             : timeout
-Initialized --> Closed             : disconnect
-Initialized --> Accepted           : channel_accept
+  state "WatchWithdraw" as aw_lo_watchwithdraw
+  aw_lo_watchwithdraw --> wi_si : minimum_depth_achieved
+}
 
-Accepted --> Error                 : error
-Accepted --> Closed                : timeout
-Accepted --> Closed                : disconnect
-Accepted --> Half_Signed           : funding_created
+state ha_up_co <<fork>>
+note left of ha_up_co : test
+ha_up_co --> op
 
-Half_Signed --> Error              : error
-Half_Signed --> Closed             : timeout
-Half_Signed --> Closed             : disconnect
-Half_Signed --> Signed             : funding_signed
+state "Awaiting UpdateAck" as aw_updateack
+aw_updateack --> ha_up_co      : update | deposit_created | withdraw_created
+aw_updateack --> op            : update_ack [if checks_ok]
+aw_updateack --> ha_up_co      : update_ack [if not checks_ok]
+aw_updateack --> op            : update_error [if checks_ok]
+aw_updateack --> te            : update_error [if not checks_ok]
 
-Signed --> Error                   : error
-Signed --> Closed                  : timeout
-Signed --> Disconnected            : disconnect
-Signed --> Open                    : funding_locked
-Signed --> Mutual_Closing          : shutdown
+state "Signed" as si
+si --> te                      : [error channel_id_mismatch] | [error temporary_channel_id_mismatch]
+si --> op : funding_locked
+si --> mu_cl : shutdown
 
-Open --> Error                     : error
-Open --> Disconnected              : disconnect
-Open --> Open                      : update_*
-Open --> Mutual_Closing            : shutdown
+state "Deposit Signed" as de_si
 
-Disconnected --> Error             : error
-Disconnected --> Open              : channel_reestablish
+state "Withdraw Signed" as wi_si
 
-Mutual_Closing --> Disconnected_2  : disconnect
-Mutual_Closing --> Closed          : closing_signed
+state "Open" as op
+op --> aw_si_updateack            : update [if checks_ok]
+op --> op                         : update [if not checks_ok]
+op --> aw_si_shutdownack          : shutdown [if checks_ok]
+op --> te                         : shutdown [if not checks_ok]
+op --> te                         : leave
+op --> aw_si_withdrawcreated      : withdraw_created [if checks_ok]
+op --> op                         : withdraw_created [if not checks_ok]
+op --> aw_si_deposit_created      : deposit_created [if checks_ok]
+op --> op                         : deposit_created [if not checks_ok]
 
-Disconnected_2 --> Error           : error
-Disconnected_2 --> Mutual_Closing  : channel_reestablish
+state "Mutual Closing" as mu_cl
+mu_cl --> te              : shutdown_ack
+mu_cl --> ch_cl : (timeout) [if channel_status=closing]
+mu_cl --> mu_cl : disconnect [if channel_status=closing]
+
+state "Channel Closing" as ch_cl
+ch_cl --> aw_si_shutdownack : shutdown [if verify_signatures]
+ch_cl --> ch_cl : shutdown [if not verify_signatures]
 
 @enduml
