@@ -367,7 +367,7 @@ strict_checks(Fsm, Strict) when is_boolean(Strict) ->
 
 -spec stop(pid()) -> ok.
 stop(Fsm) ->
-    lager:debug("Gracefully stopping the FSM", [Fsm]),
+    lager:debug("Gracefully stopping the FSM ~p", [Fsm]),
     stop_ok(catch gen_statem:stop(Fsm)).
 -endif.
 
