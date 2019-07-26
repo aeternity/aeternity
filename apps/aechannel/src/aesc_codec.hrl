@@ -52,6 +52,7 @@
 
 %% Non-encoded cast types
 -define(DISCONNECT, disconnect).
+-define(CONNECT_CLIENT, connect_client).
 -define(SIGNED, signed).
 -define(SETTLE, settle).
 -define(MIN_DEPTH_ACHIEVED, minimum_depth_achieved).
