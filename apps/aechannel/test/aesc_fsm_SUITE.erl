@@ -174,8 +174,6 @@ groups() ->
     ].
 
 ga_sequence() ->
-      %[ multiple_responder_keys_per_port].
-
     [ {group, transactions}
     , {group, errors}
     , {group, signatures}
@@ -396,7 +394,6 @@ multiple_responder_keys_per_port(Cfg) ->
             mine_blocks_until_txs_on_chain(dev1, [TxHash]),
             C
         end,
-    %Cs = [CreateMultiChannel(N, CfgX) || {N, CfgX} <- [{1, Cfg}, {2, Cfg2}]],
     C1 = CreateMultiChannel(1, Cfg),
     C2 = CreateMultiChannel(2, Cfg2),
     Cs = [C1, C2],
@@ -704,18 +701,6 @@ signing_req() ->
 
 any_msg() ->
     fun(_) -> true end.
-
-%% update_with_conflict(PKi, PKr,
-%%                      #fsm{fsm := FsmI} = I,
-%%                      #fsm{fsm := FsmR} = R, Debug) ->
-%%     #{ i := #{fsm := FsmI, channel_id := ChannelId} = I
-%%      , r := #{} = R
-%%      , spec := #{ initiator := PubI
-%%                 , responder := PubR }} = create_channel_(
-%%                                            [{port,9326},?SLOGAN|Cfg]),
-%%     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
-%%     rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PKi, PKr, 1], Debug),
-%%     foo.
 
 update_bench(I, R, C) ->
     Rounds = proplists:get_value(bench_rounds, C, 1000),
@@ -1025,10 +1010,7 @@ check_log([], _) ->
 
 died_normal(#{info := {died,normal}}) -> ok.
 
-%% died_subverted(#{info := {died,channel_closing_on_chain}}) -> ok.
 died_subverted(#{info := {died,_}}) -> ok.
-
-%% solo_closing(#{info := solo_closing}) -> ok.
 
 closing(#{info := closing} = Msg) ->
     ct:log("matches #{info := closing} - ~p", [Msg]),
