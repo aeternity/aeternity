@@ -2916,7 +2916,7 @@ wait_for_channel_event(Event, ConnPid, Type, Config) ->
 
 wait_for_channel_event_(Event, ConnPid, Action, <<"json-rpc">>) ->
     {ok, #{ <<"data">> := #{ <<"event">> := Event } }} =
-        wait_for_json_rpc_action(ConnPid, Action),
+        wait_for_json_rpc_action_event(ConnPid, Action, Event),
     ok.
 
 match_info(Info, Match) ->
@@ -2943,13 +2943,26 @@ wait_for_channel_leave_msg_(ConnPid, <<"json-rpc">>) ->
         wait_for_json_rpc_action(ConnPid, leave),
     {ok, #{id => ChId, state => St}}.
 
+wait_for_json_rpc_action_event(ConnPid, Action, Event) ->
+    wait_for_json_rpc_action_(Action,
+                              fun() ->
+                                  ?WS:wait_for_channel_msg_event(ConnPid,
+                                                                 Action,
+                                                                 Event)
+                              end).
+    
 wait_for_json_rpc_action(ConnPid, Action) ->
+    wait_for_json_rpc_action_(Action,
+                              fun() ->
+                                  ?WS:wait_for_channel_msg(ConnPid, Action)
+                              end).
+
+wait_for_json_rpc_action_(Action, WaitFun) ->
     Method0 = method_pfx(Action),
     Sz = byte_size(Method0),
     {ok, #{ <<"jsonrpc">> := <<"2.0">>
           , <<"method">>  := <<Method0:Sz/binary, _/binary>>
-          , <<"params">>  := #{<<"channel_id">> := _} = Params }} =
-        ?WS:wait_for_channel_msg(ConnPid, Action),
+          , <<"params">>  := #{<<"channel_id">> := _} = Params }} = WaitFun(),
     {ok, Params}.
 
 lift_reason(#{ <<"message">> := <<"Rejected">>

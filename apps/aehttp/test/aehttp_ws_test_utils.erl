@@ -24,7 +24,7 @@
          wait_for_channel_event/2,
          wait_for_msg/4,
          wait_for_channel_msg/2,
-         wait_for_channel_msg/3,
+         wait_for_channel_msg_event/3,
          wait_for_connect/1,
          wait_for_connect_any/0,
          json_rpc_notify/2,
@@ -220,13 +220,19 @@ register_test_for_events(ConnPid, Origin, Actions) ->
 unregister_test_for_event(ConnPid, Origin, Action) ->
     Event = {Origin, [Action]},
     ConnPid ! {unregister_test, self(), Event},
-    ok = wait_for_event( ConnPid, unregistered_test, Event, ?DEFAULT_SUB_TIMEOUT),
+    try ok = wait_for_event( ConnPid, unregistered_test, Event,
+                             ?DEFAULT_SUB_TIMEOUT)
+    catch error:{connection_died, _} -> pass
+    end,
     ok.
 
 unregister_test_for_events(ConnPid, Origin, Actions) ->
     Event = {Origin, Actions},
     ConnPid ! {unregister_test, self(), Event},
-    ok = wait_for_event( ConnPid, unregistered_test, Event, ?DEFAULT_SUB_TIMEOUT),
+    try ok = wait_for_event( ConnPid, unregistered_test, Event,
+                             ?DEFAULT_SUB_TIMEOUT)
+    catch error:{connection_died, _} -> pass
+    end,
     ok.
 
 register_test_for_channel_event(ConnPid, Action) ->
@@ -285,7 +291,8 @@ wait_for_msg(ConnPid, Origin, Action, Timeout) ->
 %% {Sender::pid(), websocket_event, Origin::atom(), Action::atom()}
 %% {Sender::pid(), websocket_event, Origin::atom(), Action::atom(), Payload::map()}
 %% {Sender::pid(), websocket_event, Origin::atom(), Action::atom(), Tag::term(), Payload::map()}
--spec wait_for_msg(msg | payload, pid(), atom(), atom(), integer()) -> ok | {ok, map()} | {ok, Tag::term(), map()}.
+-spec wait_for_msg(msg | payload, pid(), atom(), atom(), integer()) ->
+    ok | {ok, map()} | {ok, Tag::term(), map()}.
 wait_for_msg(Type, ConnPid, Origin, Action, Timeout) ->
     MRef = erlang:monitor(process, ConnPid),
     try receive
@@ -304,11 +311,32 @@ wait_for_msg(Type, ConnPid, Origin, Action, Timeout) ->
         erlang:demonitor(MRef)
     end.
 
-wait_for_channel_msg(ConnPid, Action) ->
-    wait_for_channel_msg(ConnPid, Action, ?DEFAULT_EVENT_TIMEOUT).
+-spec wait_for_msg_event(msg | payload, pid(), atom(), atom(), binary(), integer()) ->
+    ok | {ok, map()} | {ok, Tag::term(), map()}.
+wait_for_msg_event(Type, ConnPid, Origin, Action, Event, Timeout) ->
+    MRef = erlang:monitor(process, ConnPid),
+    try receive
+            {ConnPid, websocket_event, Origin, Action, Tag,
+             #{<<"params">> := #{ <<"data">> := #{ <<"event">> := Event }}} = Msg} ->
+                {ok, Tag, msg_data(Type, Msg)};
+            {ConnPid, websocket_event, Origin, Action,
+             #{<<"params">> := #{ <<"data">> := #{ <<"event">> := Event }}} = Msg} ->
+                {ok, msg_data(Type, Msg)};
+            {'DOWN', MRef, _, _, Reason} ->
+                error({connection_died, Reason})
+        after Timeout ->
+                erlang:error({timeout, process_info(self(), messages)})
+        end
+    after
+        erlang:demonitor(MRef)
+    end.
 
-wait_for_channel_msg(ConnPid, Action, Timeout) ->
-    wait_for_msg(ConnPid, ?CHANNEL, Action, Timeout).
+
+wait_for_channel_msg(ConnPid, Action) ->
+    wait_for_msg(ConnPid, ?CHANNEL, Action, ?DEFAULT_EVENT_TIMEOUT).
+
+wait_for_channel_msg_event(ConnPid, Action, Event) ->
+    wait_for_msg_event(msg, ConnPid, ?CHANNEL, Action, Event, ?DEFAULT_EVENT_TIMEOUT).
 
 msg_data(payload, #{<<"payload">> := P}) -> P;
 msg_data(payload, Msg) -> Msg;
