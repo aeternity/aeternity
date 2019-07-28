@@ -2368,10 +2368,21 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                        ?DEFAULT_MIN_DEPTH - 2),
 
-    ok = wait_for_channel_event(<<"timeout">>, IConnPid, info, Config),
-    ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
-    ok = wait_for_channel_event(<<"timeout">>, RConnPid, info, Config),
-    ok = wait_for_channel_event(<<"died">>, RConnPid, info, Config),
+    ConnDied =
+        fun(Pid) ->
+            %% there is a race condition between participant's FSMs: if
+            %% responder timeouts before the initiator, it could close the
+            %% noise connection, dragging the initator FSM with it, resulting
+            %% in a timeout message not being sent
+            try
+                ok = wait_for_channel_event(<<"timeout">>, Pid, info, Config),
+                ok = wait_for_channel_event(<<"died">>, Pid, info, Config)
+            catch error:{connection_died, _} -> ok
+            end
+        end,
+
+    ConnDied(IConnPid),
+    ConnDied(RConnPid),
     ok.
 
 
