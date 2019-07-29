@@ -830,12 +830,33 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
             update_sync_task({done, PeerId}, ST),
             epoch_sync:info("Sync done (according to ~p)", [ppp(PeerId)]),
             aec_events:publish(chain_sync, {chain_sync_done, PeerId});
-        {ok, Hashes = [_|_]} ->
-            HashPool = [ #pool_item{ height = Height
-                                   , hash = Hash
-                                   , got = false
-                                   } || {Height, Hash} <- Hashes ],
-            do_work_on_sync_task(PeerId, ST, {hash_pool, HashPool});
+        {ok, Hashes = [{FirstHeight, _} | _]} when
+              %% Guaranteed by deserialization.
+              is_integer(FirstHeight), FirstHeight >= 0 ->
+            case
+                lists:foldl(fun ({H, _}, {ok, AccH}) when is_integer(H) ->
+                                    if H =:= (1 + AccH) -> {ok, H};
+                                       true -> {error, {AccH, H}}
+                                    end;
+                                (_, {error, _} = Err) ->
+                                    Err
+                            end,
+                            {ok, FirstHeight},
+                            tl(Hashes))
+            of
+                {ok, _} ->
+                    HashPool = [ #pool_item{ height = Height
+                                           , hash = Hash
+                                           , got = false
+                                           } || {Height, Hash} <- Hashes ],
+                    do_work_on_sync_task(PeerId, ST, {hash_pool, HashPool});
+                {error, {LastGoodHeight, FirstBadHeight}} ->
+                    epoch_sync:info(
+                      "Abort sync with ~p (bad successor height ~p after ~p)",
+                      [ppp(PeerId), FirstBadHeight, LastGoodHeight]),
+                    update_sync_task({error, PeerId}, ST),
+                    {error, sync_abort}
+            end;
         {error, _} = Error ->
             epoch_sync:info("Abort sync with ~p (~p) ", [ppp(PeerId), Error]),
             update_sync_task({error, PeerId}, ST),
