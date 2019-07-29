@@ -326,18 +326,22 @@ handle_last_result(ST = #sync_task{ pool = [] }, {hash_pool, HashPool}) ->
     ST#sync_task{ pool = HashPool, agreed = #chain_block{ height = Height, hash = Hash } };
 handle_last_result(ST, {hash_pool, _HashPool}) ->
     ST;
-handle_last_result(ST = #sync_task{ pool = Pool }, {get_generation, Height, Hash, PeerId, {ok, Block}}) ->
+handle_last_result(ST, {get_generation, Height, Hash, PeerId, {ok, Block}}) ->
+    Pool = ST#sync_task.pool,
     NewItem = #pool_item{ height = Height, hash = Hash, got = {PeerId, Block} },
     Pool1 = lists:keyreplace(Height, #pool_item.height, Pool, NewItem),
     ST#sync_task{ pool = Pool1 };
 handle_last_result(ST, {post_blocks, ok}) ->
     ST#sync_task{ adding = [] };
-handle_last_result(ST = #sync_task{ adding = Add, pending = Pends, pool = Pool, chain = Chain },
-                  {post_blocks, {error, BlockFromPeerId, Height}}) ->
+handle_last_result(ST, {post_blocks, {error, BlockFromPeerId, Height}}) ->
+    #sync_task{ adding = Add, pending = Pends, pool = Pool
+              , chain = Chain
+              } = ST,
     %% Put back the blocks we did not manage to post, and schedule failing block
     %% for another retreival.
     [#pool_item{ height = Height, hash = Hash } | PutBack] =
-        lists:dropwhile(fun(#pool_item{ height = H }) -> H < Height end, Add) ++ lists:append(Pends),
+        lists:dropwhile(fun(#pool_item{ height = H }) -> H < Height end,
+                        Add) ++ lists:append(Pends),
     NewPool = [#pool_item{ height = Height, hash = Hash, got = false } | PutBack] ++ Pool,
     ST1 = ST#sync_task{ adding = [], pending = [], pool = NewPool },
 
