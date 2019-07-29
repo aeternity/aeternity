@@ -384,14 +384,14 @@ get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = false } | _] = Poo
     epoch_sync:debug("Get block at height ~p", [PickH]),
     {{get_generation, PickH, PickHash}, ST};
 get_next_work_item(ST) ->
-    epoch_sync:info("Nothing to do: ~p", [pretty_print_sync_task(ST)]),
+    epoch_sync:info("Nothing to do: ~p", [pp_sync_task(ST)]),
     {take_a_break, ST}.
 
 maybe_end_sync_task(State, ST) ->
     case ST#sync_task.chain of
         #chain{ peers = [], chain = [Target | _] } ->
             epoch_sync:info("Removing/ending sync task ~p target was ~p",
-                            [ST#sync_task.id, pretty_print_chain_block(Target)]),
+                            [ST#sync_task.id, pp_chain_block(Target)]),
             State1 = delete_sync_task(ST, State),
             maybe_update_top_target(State1);
         _ ->
@@ -642,7 +642,7 @@ identify_chain({existing, _Chain, Task}) ->
     epoch_sync:debug("Already syncing chain ~p", [Task]),
     {ok, Task};
 identify_chain({new, #chain{ chain = [Target | _]}, Task}) ->
-    epoch_sync:info("Starting new sync task ~p target is ~p", [Task, pretty_print_chain_block(Target)]),
+    epoch_sync:info("Starting new sync task ~p target is ~p", [Task, pp_chain_block(Target)]),
     {ok, Task};
 identify_chain({inconclusive, Chain, {get_header, CId, Peers, N}}) ->
     %% We need another hash for this chain, make sure whoever we ask is
@@ -934,39 +934,39 @@ sync_progress(#state{sync_tasks = SyncTasks} = State) ->
             end
     end.
 
-pretty_print_chain_block(#chain_block{hash = Hash, height = Height}) ->
+pp_chain_block(#chain_block{hash = Hash, height = Height}) ->
     #{ hash => Hash
      , height => Height
      }.
 
-pretty_print_chain(C = #chain{}) ->
+pp_chain(C = #chain{}) ->
     #{ chain_id => C#chain.id
      , peers => C#chain.peers
-     , chain => lists:map(fun pretty_print_chain_block/1, C#chain.chain)
+     , chain => lists:map(fun pp_chain_block/1, C#chain.chain)
      }.
 
-pretty_print_pool_item(X = #pool_item{}) ->
+pp_pool_item(X = #pool_item{}) ->
     #{ height => X#pool_item.height
      , hash => X#pool_item.hash
      , got => X#pool_item.got
      }.
 
-pretty_print_worker(W = #worker{}) ->
+pp_worker(W = #worker{}) ->
     #{ peer_id => W#worker.peer_id
      , pid => W#worker.pid
      }.
 
-pretty_print_sync_task(ST = #sync_task{}) ->
-    PPPoolF = fun(P) -> lists:map(fun pretty_print_pool_item/1, P) end,
+pp_sync_task(ST = #sync_task{}) ->
+    PPPoolF = fun(P) -> lists:map(fun pp_pool_item/1, P) end,
     PPAgreedF = fun (undefined) -> undefined
-                  ; (#chain_block{} = B) -> pretty_print_chain_block(B)
+                  ; (#chain_block{} = B) -> pp_chain_block(B)
                 end,
     lists:foldl(fun({I, F}, Acc) -> setelement(I, Acc, F(element(I, Acc))) end,
                 ST,
-                [ {#sync_task.chain, fun pretty_print_chain/1}
+                [ {#sync_task.chain, fun pp_chain/1}
                 , {#sync_task.pool, PPPoolF}
                 , {#sync_task.agreed, PPAgreedF}
                 , {#sync_task.adding, PPPoolF}
                 , {#sync_task.pending, fun(X) -> lists:map(PPPoolF, X) end}
-                , {#sync_task.workers, fun pretty_print_worker/1}
+                , {#sync_task.workers, fun pp_worker/1}
                 ]).
