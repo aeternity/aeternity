@@ -830,7 +830,7 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
             update_sync_task({done, PeerId}, ST),
             epoch_sync:info("Sync done (according to ~p)", [ppp(PeerId)]),
             aec_events:publish(chain_sync, {chain_sync_done, PeerId});
-        {ok, Hashes} ->
+        {ok, Hashes = [_|_]} ->
             HashPool = [ #pool_item{ height = Height
                                    , hash = Hash
                                    , got = false
