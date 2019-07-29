@@ -411,16 +411,18 @@ maybe_end_sync_task(State, ST) ->
             set_sync_task(ST, State)
     end.
 
-maybe_new_top_target(#chain{ chain = [#chain_block{ height = ChainTopTarget } | _] }, State) ->
+maybe_new_top_target(#chain{ chain = [B | _] }, State) ->
+    ChainTopTarget = B#chain_block.height,
     case State#state.top_target < ChainTopTarget of
         true  -> update_top_target(ChainTopTarget, State);
         false -> State
     end.
 
-maybe_update_top_target(State = #state{ top_target = TopTarget, sync_tasks = STs }) ->
+maybe_update_top_target(State = #state{}) ->
+    #state{ top_target = TopTarget, sync_tasks = STs } = State,
     NewTop = lists:foldl(fun(#sync_task{ chain = Chain }, PrevMax) ->
-                             case Chain of
-                                 #chain{ chain = [#chain_block{ height = H } | _] } when H > PrevMax -> H;
+                             case Chain#chain.chain of
+                                 [#chain_block{ height = H } | _] when H > PrevMax -> H;
                                  _ -> PrevMax
                              end
                          end, 0, STs),
@@ -498,7 +500,8 @@ match_tasks(Chain1, [ST = #sync_task{ chain = Chain2 } | STs], Acc) ->
         {snd, N}  -> match_tasks(Chain1, STs, [{N, Chain2} | Acc])
     end.
 
-match_chains([#chain_block{ height = N1 } | C1], [#chain_block{ height = N2, hash = H } | _]) when N1 > N2 ->
+match_chains([#chain_block{ height = N1 } | C1],
+             [#chain_block{ height = N2, hash = H } | _]) when N1 > N2 ->
     case find_hash_at_height(N2, C1) of
         {ok, H}   -> equal;
         {ok, _}   -> different;
@@ -647,7 +650,9 @@ init_chain(PeerId, Header) ->
 init_chain(ChainId, Peers, Header) ->
     {ok, Hash} = aec_headers:hash_header(Header),
     Height     = aec_headers:height(Header),
-    PrevHash   = [ #chain_block{ height = Height - 1, hash = aec_headers:prev_hash(Header)} || Height > 1 ],
+    PrevHash   = [ #chain_block{ height = Height - 1
+                               , hash = aec_headers:prev_hash(Header)
+                               } || Height > 1 ],
     #chain{ id = ChainId, peers = Peers,
             chain = [#chain_block{ hash = Hash, height = Height }] ++ PrevHash }.
 
@@ -826,7 +831,10 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
             epoch_sync:info("Sync done (according to ~p)", [ppp(PeerId)]),
             aec_events:publish(chain_sync, {chain_sync_done, PeerId});
         {ok, Hashes} ->
-            HashPool = [ #pool_item{ height = Height, hash = Hash, got = false } || {Height, Hash} <- Hashes ],
+            HashPool = [ #pool_item{ height = Height
+                                   , hash = Hash
+                                   , got = false
+                                   } || {Height, Hash} <- Hashes ],
             do_work_on_sync_task(PeerId, ST, {hash_pool, HashPool});
         {error, _} = Error ->
             epoch_sync:info("Abort sync with ~p (~p) ", [ppp(PeerId), Error]),
@@ -911,7 +919,8 @@ parse_peer(P) ->
     end.
 
 peer_in_sync(#state{ sync_tasks = STs }, PeerId) ->
-    lists:member(PeerId, lists:append([ Ps || #sync_task{ chain = #chain{ peers = Ps } } <- STs ])).
+    L = lists:flatmap(fun(ST) -> ST#sync_task.chain#chain.peers end, STs),
+    lists:member(PeerId, L).
 
 get_worker_for_peer(#state{ sync_tasks = STs }, PeerId) ->
     case [ Pid || #sync_task{ workers = Ws } <- STs,
