@@ -523,11 +523,13 @@ find_hash_at_height(N, [_ | Cs]) ->
 do_handle_worker({new_worker, PeerId, Pid}, ST = #sync_task{ workers = Ws }) ->
     case lists:keyfind(PeerId, #worker.peer_id, Ws) of
         false -> ok;
-        #worker{ pid = Old } -> epoch_sync:info("Peer ~p already has a worker (~p)", [ppp(PeerId), Old])
+        #worker{ pid = Old } ->
+            epoch_sync:info("Peer ~p already has a worker (~p)", [ppp(PeerId), Old])
     end,
     erlang:link(Pid),
     epoch_sync:debug("New worker ~p for peer ~p", [Pid, ppp(PeerId)]),
-    ST#sync_task{ workers = lists:keystore(PeerId, #worker.peer_id, Ws, #worker{ peer_id = PeerId, pid = Pid }) };
+    NewW = #worker{ peer_id = PeerId, pid = Pid },
+    ST#sync_task{ workers = lists:keystore(PeerId, #worker.peer_id, Ws, NewW) };
 do_handle_worker({change_worker, PeerId, OldPid, NewPid}, ST = #sync_task{ workers = Ws }) ->
     case lists:keyfind(PeerId, #worker.peer_id, Ws) of
         false ->
@@ -542,7 +544,8 @@ do_handle_worker({change_worker, PeerId, OldPid, NewPid}, ST = #sync_task{ worke
     %% unlink it.
     erlang:unlink(OldPid),
     epoch_sync:debug("Update worker ~p (was ~p) for peer ~p", [NewPid, OldPid, ppp(PeerId)]),
-    ST#sync_task{ workers = lists:keystore(PeerId, #worker.peer_id, Ws, #worker{ peer_id = PeerId, pid = NewPid }) }.
+    NewW = #worker{ peer_id = PeerId, pid = NewPid },
+    ST#sync_task{ workers = lists:keystore(PeerId, #worker.peer_id, Ws, NewW) }.
 
 do_terminate_worker(Pid, S = #state{ sync_tasks = STs }, Reason) ->
     case [ ST || ST <- STs, lists:keyfind(Pid, #worker.pid, ST#sync_task.workers) /= false ] of
