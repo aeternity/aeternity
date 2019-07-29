@@ -384,7 +384,7 @@ get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = false } | _] = Poo
     epoch_sync:debug("Get block at height ~p", [PickH]),
     {{get_generation, PickH, PickHash}, ST};
 get_next_work_item(ST) ->
-    epoch_sync:info("Nothing to do: ~p", [pp_sync_task(ST)]),
+    epoch_sync:info("Nothing to do: ~1000p", [pp_sync_task(ST)]),
     {take_a_break, ST}.
 
 maybe_end_sync_task(State, ST) ->
@@ -642,7 +642,7 @@ identify_chain({existing, _Chain, Task}) ->
     epoch_sync:debug("Already syncing chain ~p", [Task]),
     {ok, Task};
 identify_chain({new, #chain{ chain = [Target | _]}, Task}) ->
-    epoch_sync:info("Starting new sync task ~p target is ~p", [Task, pp_chain_block(Target)]),
+    epoch_sync:info("Starting new sync task ~p target is ~1000p", [Task, pp_chain_block(Target)]),
     {ok, Task};
 identify_chain({inconclusive, Chain, {get_header, CId, Peers, N}}) ->
     %% We need another hash for this chain, make sure whoever we ask is
