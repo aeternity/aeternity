@@ -2395,7 +2395,7 @@ responder_spend(Cfg) ->
     ok.
 
 ga_spend(From, To, Amt, Cfg) ->
-    #{pub := SendPub, auth_idx := N} = ?config(From, Cfg),
+    #{pub := SendPub, auth_idx := _N} = ?config(From, Cfg),
     #{pub := ReceivePub} = ?config(To, Cfg),
     #{auth_params := BothAuths} = ?config(ga, Cfg),
     Auth = maps:get(From, BothAuths),

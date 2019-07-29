@@ -299,10 +299,10 @@ get_round(Fsm) ->
 prune_local_calls(Fsm) ->
     gen_statem:call(Fsm, prune_local_calls).
 
-dry_run_contract(Fsm, #{contract    := _,
-                        abi_version := _,
-                        amount      := Amt,
-                        call_data   := _} = Opts) when is_integer(Amt), Amt >= 0 ->
+dry_run_contract(Fsm, #{ contract    := _
+                       , abi_version := _
+                       , amount      := Amt
+                       , call_data   := _ } = Opts) when is_integer(Amt), Amt >= 0 ->
     gen_statem:call(Fsm, {upd_call_contract, Opts, dry_run}).
 
 %% ==================================================================
@@ -1428,12 +1428,12 @@ new_onchain_tx(channel_slash_tx, Opts,
         Opts1#{ channel_id => aeser_id:create(channel, ChanId)
               , from_id    => aeser_id:create(account, Account)
               , poi        => Poi
-              , ttl        => TTL},
+              , ttl        => TTL },
     {ok, Tx} = new_onchain_tx_(aesc_slash_tx, Opts2, CurrHeight),
     {ok, Tx, []}.
 
 new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
-                                            Mod =:= aesc_withdraw_tx; 
+                                            Mod =:= aesc_withdraw_tx;
                                             Mod =:= aesc_deposit_tx;
                                             Mod =:= aesc_close_solo_tx;
                                             Mod =:= aesc_slash_tx;
@@ -1831,25 +1831,26 @@ send_withdraw_created_msg(SignedTx, Updates,
 
 check_withdraw_created_msg(#{ channel_id := ChanId
                             , block_hash := ?NOT_SET_BLOCK_HASH
-                            , data       := #{tx      := TxBin, 
-                                              updates := UpdatesBin}} = Msg,
-                  #data{ on_chain_id = ChanId } = Data) ->
+                            , data       := #{ tx      := TxBin
+                                             , updates := UpdatesBin }} = Msg,
+                  #data{on_chain_id = ChanId} = Data) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-    case check_tx_and_verify_signatures(SignedTx, Updates, aesc_withdraw_tx,
-                                        Data,
-                                        pubkeys(other_participant, Data),
-                                        not_withdraw_tx) of
+    Check = check_tx_and_verify_signatures(SignedTx, Updates, aesc_withdraw_tx, Data,
+                                           pubkeys(other_participant, Data), not_withdraw_tx),
+    case Check of
         ok ->
             {ok, SignedTx, Updates, log(rcv, ?WDRAW_CREATED, Msg, Data)};
-        {error, _} = Err -> Err
-    end.
+        {error, _} = Err ->
+            Err
+    end;
+check_withdraw_created_msg(_, _) ->
+    {error, channel_id_mismatch}.
 
-send_withdraw_signed_msg(SignedTx, #data{on_chain_id = Ch,
-                                         session     = Sn} = Data) ->
+send_withdraw_signed_msg(SignedTx, #data{on_chain_id = Ch, session = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ channel_id  => Ch
-           , block_hash => ?NOT_SET_BLOCK_HASH
+           , block_hash  => ?NOT_SET_BLOCK_HASH
            , data        => #{tx => TxBin}},
     aesc_session_noise:wdraw_signed(Sn, Msg),
     log(snd, ?WDRAW_SIGNED, Msg, Data).
@@ -1857,21 +1858,22 @@ send_withdraw_signed_msg(SignedTx, #data{on_chain_id = Ch,
 check_withdraw_signed_msg(#{ channel_id := ChanId
                            , block_hash := ?NOT_SET_BLOCK_HASH
                            , data       := #{tx := TxBin}} = Msg,
-                          #data{on_chain_id = ChanId,
-                                latest = Latest} = Data) ->
+                          #data{ on_chain_id = ChanId
+                               , latest = Latest } = Data) ->
     {ack, withdraw_tx, _, Updates} = Latest,
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-    case check_tx_and_verify_signatures(SignedTx, Updates, aesc_withdraw_tx,
-                                        Data,
-                                        pubkeys(both, Data),
-                                        not_withdraw_tx) of
+    Check = check_tx_and_verify_signatures(SignedTx, Updates, aesc_withdraw_tx, Data,
+                                           pubkeys(both, Data), not_withdraw_tx),
+    case Check of
         ok ->
             {ok, SignedTx, log(rcv, ?WDRAW_SIGNED, Msg, Data)};
-        {error, _} = Err -> Err
-    end.
+        {error, _} = Err ->
+            Err
+    end;
+check_withdraw_signed_msg(_, _) ->
+    {error, channel_id_mismatch}.
 
-send_withdraw_locked_msg(TxHash, #data{on_chain_id = ChanId,
-                                       session     = Sn} = Data) ->
+send_withdraw_locked_msg(TxHash, #data{on_chain_id = ChanId, session = Sn} = Data) ->
     Msg = #{ channel_id => ChanId
            , data       => #{tx_hash => TxHash} },
     aesc_session_noise:wdraw_locked(Sn, Msg),
