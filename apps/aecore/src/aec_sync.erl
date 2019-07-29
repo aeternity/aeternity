@@ -327,7 +327,8 @@ handle_last_result(ST = #sync_task{ pool = [] }, {hash_pool, HashPool}) ->
 handle_last_result(ST, {hash_pool, _HashPool}) ->
     ST;
 handle_last_result(ST = #sync_task{ pool = Pool }, {get_generation, Height, Hash, PeerId, {ok, Block}}) ->
-    Pool1 = lists:keyreplace(Height, #pool_item.height, Pool, #pool_item{ height = Height, hash = Hash, got = {PeerId, Block} }),
+    NewItem = #pool_item{ height = Height, hash = Hash, got = {PeerId, Block} },
+    Pool1 = lists:keyreplace(Height, #pool_item.height, Pool, NewItem),
     ST#sync_task{ pool = Pool1 };
 handle_last_result(ST, {post_blocks, ok}) ->
     ST#sync_task{ adding = [] };
@@ -898,7 +899,10 @@ peer_in_sync(#state{ sync_tasks = STs }, PeerId) ->
     lists:member(PeerId, lists:append([ Ps || #sync_task{ chain = #chain{ peers = Ps } } <- STs ])).
 
 get_worker_for_peer(#state{ sync_tasks = STs }, PeerId) ->
-    case [ Pid || #sync_task{ workers = Ws } <- STs, #worker{ peer_id = PeerId0, pid = Pid } <- Ws, PeerId0 == PeerId ] of
+    case [ Pid || #sync_task{ workers = Ws } <- STs,
+                  #worker{ peer_id = PeerId0, pid = Pid } <- Ws,
+                  PeerId0 == PeerId
+         ] of
         [] -> false;
         [Pid | _] -> {ok, Pid}
     end.
