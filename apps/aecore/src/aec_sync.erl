@@ -897,13 +897,23 @@ do_fetch_generation_ext(Hash, PeerId) ->
     epoch_sync:debug("we don't have the block -fetching (~p)", [pp(Hash)]),
     case aec_peer_connection:get_generation(PeerId, Hash, backward) of
         {ok, KeyBlock, MicroBlocks, backward} ->
+            %% Types of blocks (key vs. macro) guaranteed by deserialization.
             case header_hash(KeyBlock) =:= Hash of
                 true ->
-                    epoch_sync:debug("block fetched from ~p (~p); ~p",
-                                     [ppp(PeerId), pp(Hash), pp(KeyBlock)]),
-                    {ok, #{ key_block    => KeyBlock,
-                            micro_blocks => MicroBlocks,
-                            dir          => backward }};
+                    case gen_is_consecutive(backward, KeyBlock, MicroBlocks) of
+                        {error, {B1, B2}} ->
+                            epoch_sync:debug(
+                              "bad generation fetched from ~p (~p); ~p, ~p",
+                              [ppp(PeerId), pp(Hash), pp(B1), pp(B2)]),
+                            {error, non_consecutive_generation};
+                        ok ->
+                            epoch_sync:debug(
+                              "block fetched from ~p (~p); ~p",
+                              [ppp(PeerId), pp(Hash), pp(KeyBlock)]),
+                            {ok, #{ key_block    => KeyBlock,
+                                    micro_blocks => MicroBlocks,
+                                    dir          => backward }}
+                    end;
                 false ->
                     epoch_sync:debug(
                       "bad hash of key block fetched from ~p (~p); ~p",
@@ -914,6 +924,25 @@ do_fetch_generation_ext(Hash, PeerId) ->
             epoch_sync:debug("failed to fetch block from ~p; Hash = ~p; Error = ~p",
                              [ppp(PeerId), pp(Hash), Error]),
             Error
+    end.
+
+gen_is_consecutive(backward, _KB, []) ->
+    ok;
+gen_is_consecutive(backward, KB, [MB]) ->
+    case
+        (aec_blocks:height(KB) =:= (1 + aec_blocks:height(MB)))
+        andalso (aec_blocks:prev_hash(KB) =:= header_hash(MB))
+    of
+        false -> {error, {MB, KB}};
+        true -> ok
+    end;
+gen_is_consecutive(backward, KB, MBs = [MB1, MB2 | _]) ->
+    case
+        ((aec_blocks:height(MB2) =:= aec_blocks:height(MB1))
+         andalso (aec_blocks:prev_hash(MB2) =:= header_hash(MB1)))
+    of
+        false -> {error, {MB1, MB2}};
+        true -> gen_is_consecutive(backward, KB, tl(MBs))
     end.
 
 %%%=============================================================================
