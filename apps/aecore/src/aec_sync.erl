@@ -367,25 +367,33 @@ get_next_work_item(State, STId, PeerId) ->
 
 get_next_work_item(ST = #sync_task{ adding = [], pending = [ToAdd | NewPending] }) ->
     {{post_blocks, ToAdd}, ST#sync_task{ adding = ToAdd, pending = NewPending }};
-get_next_work_item(ST = #sync_task{ chain = Chain, agreed = undefined }) ->
-    {{agree_on_height, Chain}, ST};
-get_next_work_item(ST = #sync_task{ pool = [], agreed = #chain_block{ hash = LastHash, height = H }, chain = Chain }) ->
+get_next_work_item(ST = #sync_task{ agreed = undefined }) ->
+    {{agree_on_height, ST#sync_task.chain}, ST};
+get_next_work_item(ST = #sync_task{ pool = [], agreed = #chain_block{} }) ->
+    #chain_block{ hash = LastHash, height = H } = ST#sync_task.agreed,
+    Chain = ST#sync_task.chain,
     TargetHash = next_known_hash(Chain#chain.chain, H + ?MAX_HEADERS_PER_CHUNK),
     {{fill_pool, LastHash, TargetHash}, ST};
-get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = {_, _} } | _] = Pool, adding = Add, pending = Pend }) ->
+get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = {_, _} } | _] }) ->
+    #sync_task{ pool = Pool, adding = Add, pending = Pend } = ST,
     {ToBeAdded = [_|_], NewPool} = split_pool(Pool),
     case Add of
         [] ->
-            {{post_blocks, ToBeAdded}, ST#sync_task{ pool = NewPool, adding = ToBeAdded }};
+            ST1 = ST#sync_task{ pool = NewPool, adding = ToBeAdded },
+            {{post_blocks, ToBeAdded}, ST1};
         _ when length(Pend) < 10 orelse NewPool /= [] ->
-            get_next_work_item(ST#sync_task{ pool = NewPool, pending = Pend ++ [ToBeAdded] });
+            ST1 = ST#sync_task{ pool = NewPool, pending = Pend ++ [ToBeAdded] },
+            get_next_work_item(ST1);
         _ ->
             {take_a_break, ST}
     end;
-get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = false } | _] = Pool }) ->
+get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = false } | _] }) ->
+    Pool = ST#sync_task.pool,
     PickFrom = [ P || P = #pool_item{ got = false } <- Pool ],
     Random = rand:uniform(length(PickFrom)),
-    #pool_item{ height = PickH, hash = PickHash, got = false} = lists:nth(Random, PickFrom),
+    #pool_item{ height = PickH
+              , hash = PickHash
+              , got = false} = lists:nth(Random, PickFrom),
     epoch_sync:debug("Get block at height ~p", [PickH]),
     {{get_generation, PickH, PickHash}, ST};
 get_next_work_item(ST) ->
