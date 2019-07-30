@@ -103,6 +103,9 @@ close(Session) ->
     try call(Session, close)
     catch
         error:_ -> ok;
+        exit:{noproc,_} ->
+            unlink(Session),
+            ok;
         exit:R ->
             lager:error("CAUGHT exit:~p, ~p", [R, erlang:get_stacktrace()]),
             unlink(Session),
@@ -166,10 +169,7 @@ init(#{fsm := Fsm, parent := Parent, op := Op} = Arg) ->
     %% trap exits to avoid ugly crash reports. We rely on the monitor to
     %% ensure that we close when the fsm dies
     %%
-    %% TODO: For some reason, trapping exits causes
-    %% aehttp_integration_SUITE:sc_ws_open/1 to fail. Investigate why.
     process_flag(trap_exit, true),
-    %%
     proc_lib:init_ack(Parent, {ok, self()}),
     FsmMonRef = monitor(process, Fsm),
     St = establish(Op, #st{ init_op = Op

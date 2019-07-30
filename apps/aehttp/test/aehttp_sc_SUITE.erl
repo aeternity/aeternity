@@ -2316,6 +2316,7 @@ sc_ws_timeout_open_(Config) ->
                                   #{timeout_accept => 500}, Config),
     {ok, IConnPid} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts), Config),
     ok = ?WS:register_test_for_channel_event(IConnPid, info),
+    ok = wait_for_channel_event(<<"timeout">>, IConnPid, info, Config),
     ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
     ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
     ok.
@@ -2367,8 +2368,21 @@ sc_ws_min_depth_not_reached_timeout_(Config) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                        ?DEFAULT_MIN_DEPTH - 2),
 
-    ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
-    ok = wait_for_channel_event(<<"died">>, RConnPid, info, Config),
+    ConnDied =
+        fun(Pid) ->
+            %% there is a race condition between participant's FSMs: if
+            %% responder timeouts before the initiator, it could close the
+            %% noise connection, dragging the initator FSM with it, resulting
+            %% in a timeout message not being sent
+            try
+                ok = wait_for_channel_event(<<"timeout">>, Pid, info, Config),
+                ok = wait_for_channel_event(<<"died">>, Pid, info, Config)
+            catch error:{connection_died, _} -> ok
+            end
+        end,
+
+    ConnDied(IConnPid),
+    ConnDied(RConnPid),
     ok.
 
 
@@ -2913,7 +2927,7 @@ wait_for_channel_event(Event, ConnPid, Type, Config) ->
 
 wait_for_channel_event_(Event, ConnPid, Action, <<"json-rpc">>) ->
     {ok, #{ <<"data">> := #{ <<"event">> := Event } }} =
-        wait_for_json_rpc_action(ConnPid, Action),
+        wait_for_json_rpc_action_event(ConnPid, Action, Event),
     ok.
 
 match_info(Info, Match) ->
@@ -2940,13 +2954,26 @@ wait_for_channel_leave_msg_(ConnPid, <<"json-rpc">>) ->
         wait_for_json_rpc_action(ConnPid, leave),
     {ok, #{id => ChId, state => St}}.
 
+wait_for_json_rpc_action_event(ConnPid, Action, Event) ->
+    wait_for_json_rpc_action_(Action,
+                              fun() ->
+                                  ?WS:wait_for_channel_msg_event(ConnPid,
+                                                                 Action,
+                                                                 Event)
+                              end).
+    
 wait_for_json_rpc_action(ConnPid, Action) ->
+    wait_for_json_rpc_action_(Action,
+                              fun() ->
+                                  ?WS:wait_for_channel_msg(ConnPid, Action)
+                              end).
+
+wait_for_json_rpc_action_(Action, WaitFun) ->
     Method0 = method_pfx(Action),
     Sz = byte_size(Method0),
     {ok, #{ <<"jsonrpc">> := <<"2.0">>
           , <<"method">>  := <<Method0:Sz/binary, _/binary>>
-          , <<"params">>  := #{<<"channel_id">> := _} = Params }} =
-        ?WS:wait_for_channel_msg(ConnPid, Action),
+          , <<"params">>  := #{<<"channel_id">> := _} = Params }} = WaitFun(),
     {ok, Params}.
 
 lift_reason(#{ <<"message">> := <<"Rejected">>

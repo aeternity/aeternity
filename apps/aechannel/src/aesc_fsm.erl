@@ -108,7 +108,8 @@
 %% -include_lib("trace_runner/include/trace_runner.hrl").
 
 -ifdef(TEST).
--export([strict_checks/2]).
+-export([strict_checks/2,
+         stop/1]).
 -endif.
 
 %% ==================================================================
@@ -363,6 +364,11 @@ channel_unlocked(Fsm, Info) ->
 -spec strict_checks(pid(), boolean()) -> ok.
 strict_checks(Fsm, Strict) when is_boolean(Strict) ->
     gen_statem:call(Fsm, {strict_checks, Strict}).
+
+-spec stop(pid()) -> ok.
+stop(Fsm) ->
+    lager:debug("Gracefully stopping the FSM ~p", [Fsm]),
+    stop_ok(catch gen_statem:stop(Fsm)).
 -endif.
 
 %% ======================================================================
@@ -424,8 +430,6 @@ awaiting_leave_ack(cast, {?LEAVE_ACK, Msg}, D) ->
         {error, _} = Err ->
             close(Err, D)
     end;
-awaiting_leave_ack(timeout, awaiting_leave_ack = T, D) ->
-    close({timeout, T}, D);
 awaiting_leave_ack(cast, {?LEAVE, Msg}, D) ->
     case check_leave_msg(Msg, D) of
         {ok, D1} ->
@@ -844,8 +848,6 @@ dep_signed(cast, {?DEP_LOCKED, Msg}, #data{latest = {deposit, SignedTx,
         {error, _} = Error ->
             close(Error, D)
     end;
-dep_signed(timeout, dep_signed = T, D) ->
-    close({timeout, T}, D);
 dep_signed(cast, {?SHUTDOWN, _Msg}, D) ->
     next_state(mutual_closing, D);
 dep_signed(Type, Msg, D) ->
@@ -2448,9 +2450,13 @@ check_closing_event(Info, D) ->
                          end
                  end).
 
+-spec check_closing_event_(map(), #data{}) ->
+    {can_slash, LastRound :: non_neg_integer(), LatestCoSignedTx :: aetx_sign:signed_tx()} |
+    {ok, proper_solo_closing, LatestCoSignedTx :: aetx_sign:signed_tx()} |
+    {error, not_solo_closing}.
 check_closing_event_(#{ tx := SignedTx
                       , channel := Ch
-                      , block_hash := BlockHash}, #data{state = St}) ->
+                      , block_hash := _BlockHash}, #data{state = St}) ->
     %% Get the latest channel object from the chain
     case aesc_channels:is_solo_closing(Ch) of
         true ->
@@ -2468,14 +2474,7 @@ check_closing_event_(#{ tx := SignedTx
                     {ok, proper_solo_closing, SignedTx}
             end;
         false ->
-            {ok, Hdr} = aec_chain:get_header(BlockHash),
-            Height = aec_headers:height(Hdr),
-            case aesc_channels:is_solo_closed(Ch, Height) of
-                true ->
-                    {ok, solo_closed, SignedTx};
-                false ->
-                    {error, not_solo_closing}
-            end
+            {error, not_solo_closing}
     end.
 
 -spec verify_signatures_channel_create(aetx_sign:signed_tx(),
@@ -3065,6 +3064,9 @@ close_(bad_state_hash, D) ->
 close_(not_create_tx, D) ->
     report(info, not_create_tx, D),
     {stop, normal, D};
+close_({timeout, _}, D) ->
+    report(info, timeout, D),
+    {stop, normal, D};
 close_(Reason, D) ->
     try send_error_msg(Reason, D)
     catch error:_ -> ignore
@@ -3376,17 +3378,12 @@ handle_common_event_(cast, {?CHANNEL_CLOSING, Info} = Msg, _St, _, D) ->
             lager:debug("Channel solo-closing", []),
             report_on_chain_tx(solo_closing, SignedTx, D1),
             next_state(channel_closing, D1);
-        {ok, solo_closed, SignedTx} ->
-            lager:debug("Channel solo-closed", []),
-            report_on_chain_tx(solo_closed, SignedTx, D1),
-            close(channel_no_longer_active, D1);
-        {error, channel_active} ->
-            %% Weird, but possible e.g. due to forking (TODO: what might happen next?)
-            keep_state(log(drop, msg_type(Msg), Msg, D));
-        {error, _} = Error ->
-            %% Couldn't find the channel object on-chain, or something weird happened
-            lager:debug("Channel not found, or other: ~p", [Error]),
-            close(channel_no_longer_active, D)
+        {error, not_solo_closing} ->
+            %% the min depth watcher reported a channel object that is not
+            %% closing, this could be due to a (micro) fork that rejected the
+            %% channel_close_solo_tx that had been initally detected
+            lager:debug("Received a channel closing event for not closing channel", []),
+            keep_state(D1)
     end;
 handle_common_event_(cast, {?CHANNEL_CHANGED, #{tx_hash := TxHash} = Info} = Msg,
                      _St, _, D) ->

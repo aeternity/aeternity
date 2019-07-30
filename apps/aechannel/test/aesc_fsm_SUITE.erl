@@ -1822,7 +1822,7 @@ fsm_relay_(#{ fsm := Fsm } = Map, Parent, Debug) ->
             Parent ! Msg;
         {Parent, die} ->
             ct:log("Got 'die' from parent", []),
-            exit(Fsm, die),
+            aesc_fsm:stop(Fsm),
             ct:log("relay stopping (die)", []),
             exit(normal);
         Other ->
