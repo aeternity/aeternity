@@ -1551,31 +1551,27 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
     ok.
 
 client_reconnect_initiator(Cfg) ->
-    Debug = get_debug(Cfg),
-    #{ i := #{ fsm        := Fsm
-             , proxy      := Proxy } = I
-     , r := #{} = R } = Ch = create_channel_([?SLOGAN | Cfg]),
-    ct:log("Ch = ~p", [Ch]),
-    ct:log("My PI = ~p", [process_info(self())]),
-    unlink(Proxy),
-    exit(Proxy, kill),
-    ok = things_that_should_fail_if_no_client(initiator, I, R, Debug),
-    Res = reconnect(Fsm, initiator, I, Debug),
-    ct:log("Reconnect req -> ~p", [Res]),
-    %% run tests here
-    shutdown_(I, R, Cfg).
+    client_reconnect_(initiator, Cfg).
 
 client_reconnect_responder(Cfg) ->
+    client_reconnect_(responder, Cfg).
+
+client_reconnect_(Role, Cfg) ->
     Debug = get_debug(Cfg),
-    #{ r := #{ fsm        := Fsm
-             , proxy      := Proxy } = R
-     , i := #{} = I } = Ch = create_channel_([?SLOGAN | Cfg]),
+
+    #{ i := I, r := R } = Ch = create_channel_([?SLOGAN | Cfg]),
+    MapKey = case Role of
+                 initiator -> i;
+                 responder -> r
+             end,
+    #{ fsm := Fsm, proxy := Proxy } = RoleI = maps:get(MapKey, Ch),
     ct:log("Ch = ~p", [Ch]),
-    ct:log("My PI = ~p", [process_info(self())]),
+    {error, _} = Err = try_reconnect(Fsm, Role, RoleI, Debug),
+    log(Debug, "Reconnecting before disconnecting failed: ~p", [Err]),
     unlink(Proxy),
     exit(Proxy, kill),
-    ok = things_that_should_fail_if_no_client(responder, I, R, Debug),
-    Res = reconnect(Fsm, responder, R, Debug),
+    ok = things_that_should_fail_if_no_client(Role, I, R, Debug),
+    Res = reconnect(Fsm, Role, RoleI, Debug),
     ct:log("Reconnect req -> ~p", [Res]),
     %% run tests here
     shutdown_(I, R, Cfg).
@@ -1602,20 +1598,11 @@ update_req_conflict(Role, I, R, Debug) ->
 roles_for_update(initiator, I, R) -> {I, R};
 roles_for_update(responder, I, R) -> {R, I}.
 
-reconnect(Fsm, Role, #{ channel_id := ChId
-                      , fsm  := Fsm
-                      , pub  := Pub
-                      , priv := Priv} = R, Debug) ->
-    ChIdId = aeser_id:create(channel, ChId),
-    PubId = aeser_id:create(account, Pub),
-    {ok, Tx} = aesc_client_reconnect_tx:new(#{ channel_id => ChIdId
-                                             , role       => Role
-                                             , pub_key    => PubId }),
-    SignedTx = aec_test_utils:sign_tx(Tx, Priv),
+reconnect(Fsm, Role, #{} = R, Debug) ->
     Me = self(),
     NewProxy = spawn(fun() ->
                              erlang:monitor(process, Me),
-                             ok = rpc(dev1, aesc_fsm, connect_client, [Fsm, self(), SignedTx]),
+                             ok = try_reconnect(Fsm, Role, R, Debug),
                              log(Debug, "Reconnect successful; Fsm = ~p", [Fsm]),
                              Me ! {self(), reconnected},
                              fsm_relay(R, Me, Debug)
@@ -1626,6 +1613,20 @@ reconnect(Fsm, Role, #{ channel_id := ChId
             error(timeout)
     end,
     R#{ proxy => NewProxy }.
+
+try_reconnect(Fsm, Role, #{ channel_id := ChId
+                          , fsm  := Fsm
+                          , pub  := Pub
+                          , priv := Priv}, Debug) ->
+    ChIdId = aeser_id:create(channel, ChId),
+    PubId = aeser_id:create(account, Pub),
+    {ok, Tx} = aesc_client_reconnect_tx:new(#{ channel_id => ChIdId
+                                             , role       => Role
+                                             , pub_key    => PubId }),
+    log(Debug, "Reconnect Tx = ~p", [Tx]),
+    SignedTx = aec_test_utils:sign_tx(Tx, Priv),
+    rpc(dev1, aesc_fsm, reconnect_client, [Fsm, self(), SignedTx]).
+
 
 %% Retry N times, T ms apart, if F() raises an exception.
 %% Used in places where there could be a race.

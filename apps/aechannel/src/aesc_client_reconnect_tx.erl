@@ -1,3 +1,11 @@
+%%% @copyright 2019, Aeternity Anstalt
+%%% @doc
+%%%    Module defining an offchain tx for reconnecting a client to the SC FSM.
+%%%    The tx contains the information needed to locate the right FSM, including
+%%%    the client's public key. It must be signed by the client, proving that it
+%%%    possesses the private key (or other signing capability) for the account.
+%%% @end
+%%%=============================================================================
 -module(aesc_client_reconnect_tx).
 
 -behavior(aetx).
@@ -94,7 +102,7 @@ check(#channel_client_reconnect_tx{
       , pub_key    = _Pubkey }, Trees, _Env) ->
     {ok, Trees}.
 
--spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_client_reconnect_tx{}, _Trees, #{}) ->
     error(off_chain_tx).
 

@@ -74,7 +74,7 @@ websocket_init_reconnect(#{ <<"reconnect_tx">> := ReconnectTx } = Params) ->
                     %% At this point, we haven't verified the signature.
                     %% This is done by the fsm.
                     lager:debug("Found FSM = ~p", [Fsm]),
-                    case aesc_fsm:connect_client(Fsm, self(), SignedTx) of
+                    case aesc_fsm:reconnect_client(Fsm, self(), SignedTx) of
                         ok ->
                             MRef = erlang:monitor(process, Fsm),
                             { ok, Handler#handler{ fsm_pid  = Fsm

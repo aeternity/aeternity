@@ -16,8 +16,8 @@
 -export([ start_link/1
         , attach_responder/2      %% (fsm(), map())
         , close_solo/1
-        , connect_client/2        %% (fsm(), signed_tx())
-        , connect_client/3        %% (fsm(), Client :: pid(), signed_tx())
+        , reconnect_client/2        %% (fsm(), signed_tx())
+        , reconnect_client/3        %% (fsm(), Client :: pid(), signed_tx())
         , connection_died/1       %% (fsm())
         , get_contract/2
         , get_contract_call/4     %% (fsm(), contract_id(), caller(), round())
@@ -131,13 +131,13 @@ close_solo(Fsm) ->
     lager:debug("close_solo(~p)", [Fsm]),
     gen_statem:call(Fsm, close_solo).
 
--spec connect_client(pid(), aetx_sign:signed_tx()) -> ok | {error, any()}.
-connect_client(Fsm, Tx) ->
-    connect_client(Fsm, self(), Tx).
+-spec reconnect_client(pid(), aetx_sign:signed_tx()) -> ok | {error, any()}.
+reconnect_client(Fsm, Tx) ->
+    reconnect_client(Fsm, self(), Tx).
 
--spec connect_client(pid(), pid(), aetx_sign:signed_tx()) -> ok | {error, any()}.
-connect_client(Fsm, Pid, Tx) when is_pid(Pid) ->
-    gen_statem:call(Fsm, {?CONNECT_CLIENT, Pid, Tx}).
+-spec reconnect_client(pid(), pid(), aetx_sign:signed_tx()) -> ok | {error, any()}.
+reconnect_client(Fsm, Pid, Tx) when is_pid(Pid) ->
+    gen_statem:call(Fsm, {?RECONNECT_CLIENT, Pid, Tx}).
 
 connection_died(Fsm) ->
     %TODO: possibility for reconnect
@@ -2219,21 +2219,18 @@ check_inband_msg(#{ channel_id := ChanId
 check_inband_msg(_, _) ->
     {error, chain_id_mismatch}.
 
-check_client_reconnect_tx(Tx, #data{} = D) ->
+check_client_reconnect_tx(Tx, #data{ strict_checks = true } = D) ->
     lager:debug("Check reconnect tx", []),
-    case D#data.strict_checks of
-        true ->
-            case check_tx_and_verify_signatures(
-                   Tx, [], aesc_client_reconnect_tx, D, [my_account(D)],
-                   not_reconnect_tx) of
-                ok ->
-                    ok;
-                {error, _} = Error ->
-                    Error
-            end;
-        false ->
-            ok
-    end.
+    case check_tx_and_verify_signatures(
+           Tx, [], aesc_client_reconnect_tx, D, [my_account(D)],
+           not_reconnect_tx) of
+        ok ->
+            ok;
+        {error, _} = Error ->
+            Error
+    end;
+check_client_reconnect_tx(_, _) ->
+    ok.
 
 fallback_to_stable_state(#data{state = State} = D) ->
     D#data{state = aesc_offchain_state:fallback_to_stable_state(State)}.
@@ -2574,16 +2571,15 @@ verify_signatures_offchain(ChannelPubkey, Pubkeys, SignedTx) ->
 
 check_tx_and_verify_signatures(SignedTx, Updates, Mod, Data, Pubkeys, ErrTypeMsg) ->
     ChannelPubkey = cur_channel_id(Data),
+    MyPubkey = my_account(Data),
+    MyRole = Data#data.role,
     ExpectedRound = next_round(Data),
     #data{state = State, opts = Opts, on_chain_id = ChannelPubkey} = Data,
-    Aetx = aetx_sign:tx(SignedTx),
     case aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)) of
         {aesc_settle_tx, _Tx} ->
             %% TODO: conduct more relevant checks
             verify_signatures_onchain_check(Pubkeys, SignedTx);
         {aesc_client_reconnect_tx = Mod, Tx} ->
-            MyPubkey = my_account(Data),
-            MyRole = Data#data.role,
             try {Mod:channel_pubkey(Tx), Mod:role(Tx), Mod:origin(Tx)} of
                 {ChannelPubkey, MyRole, MyPubkey} ->
                     verify_signatures_offchain(
@@ -2928,13 +2924,6 @@ maybe_initialize_offchain_state(_, _, D) ->
 ok_next(Next, Data) ->
     {ok, Next, cur_st(Next, Data), [timer_for_state(Next, Data)]}.
 
-stop_ok(ok) ->
-    ok;
-stop_ok({'EXIT', noproc}) ->
-    ok;
-stop_ok({'EXIT', {normal,{sys,terminate,_}}}) ->
-    ok.
-
 timer(Name, Msg, #data{opts = #{timeouts := TOs}}) ->
     timeout_(maps:get(Name, TOs), Msg).
 
@@ -3128,7 +3117,7 @@ close_(Reason, D) ->
     end,
     {stop, Reason, D}.
 
-handle_call(_, {?CONNECT_CLIENT, Pid, Tx} = Msg, From,
+handle_call(_, {?RECONNECT_CLIENT, Pid, Tx} = Msg, From,
             #data{ client_connected = false
                  , client_mref      = undefined
                  , client           = undefined } = D0) ->
@@ -3425,17 +3414,17 @@ handle_call_(_St, _Req, From, D) ->
     keep_state(D, [{reply, From, {error, unknown_request}}]).
 
 handle_info({'DOWN', MRef, process, Client, _} = M,
-            #data{ client = Client, client_mref = MRef } = D) ->
+            #data{ client = Client
+                 , client_mref = MRef } = D) when D#data.client_may_disconnect ->
     lager:debug("Client disconnected ~p", [Client]),
-    case D#data.client_may_disconnect of
-        false ->
-            close(client_disconnected, D);
-        true ->
-            keep_state(log(disconnect, error, M,
-                           D#data{ client_mref      = undefined
-                                 , client           = undefined
-                                 , client_connected = false }))
-    end;
+    keep_state(log(disconnect, error, M,
+                   D#data{ client_mref      = undefined
+                         , client           = undefined
+                         , client_connected = false }));
+handle_info({'DOWN', MRef, process, Client, _} = M,
+            #data{ client = Client
+                 , client_mref = MRef } = D) ->
+    close(client_disconnected, log(disconnect, error, M, D));
 handle_info(Msg, #data{cur_statem_state = St} = D) ->
     lager:debug("Discarding info in ~p state: ~p", [St, Msg]),
     keep_state(log(drop, msg_type(Msg), Msg, D)).
