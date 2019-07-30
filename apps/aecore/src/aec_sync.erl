@@ -830,20 +830,28 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
             update_sync_task({done, PeerId}, ST),
             epoch_sync:info("Sync done (according to ~p)", [ppp(PeerId)]),
             aec_events:publish(chain_sync, {chain_sync_done, PeerId});
-        {ok, Hashes = [{FirstHeight, _} | _]} when
+        {ok, Hashes = [{FirstHeight, FirstHash} | _]} when
               %% Guaranteed by deserialization.
               is_integer(FirstHeight), FirstHeight >= 0 ->
-            case heights_are_consecutive(Hashes) of
-                {ok, _} ->
-                    HashPool = [ #pool_item{ height = Height
-                                           , hash = Hash
-                                           , got = false
-                                           } || {Height, Hash} <- Hashes ],
-                    do_work_on_sync_task(PeerId, ST, {hash_pool, HashPool});
-                {error, {LastGoodHeight, FirstBadHeight}} ->
-                    epoch_sync:info(
-                      "Abort sync with ~p (bad successor height ~p after ~p)",
-                      [ppp(PeerId), FirstBadHeight, LastGoodHeight]),
+            case FirstHash =/= StartHash of
+                true ->
+                    case heights_are_consecutive(Hashes) of
+                        {ok, _} ->
+                            HashPool = [ #pool_item{ height = Height
+                                                   , hash = Hash
+                                                   , got = false
+                                                   } || {Height, Hash} <- Hashes ],
+                            do_work_on_sync_task(PeerId, ST, {hash_pool, HashPool});
+                        {error, {LastGoodHeight, FirstBadHeight}} ->
+                            epoch_sync:info(
+                              "Abort sync with ~p (bad successor height ~p after ~p)",
+                              [ppp(PeerId), FirstBadHeight, LastGoodHeight]),
+                            update_sync_task({error, PeerId}, ST),
+                            {error, sync_abort}
+                    end;
+                false ->
+                    epoch_sync:info("Abort sync with ~p (bad first hash ~p)",
+                                    [ppp(PeerId), FirstHash]),
                     update_sync_task({error, PeerId}, ST),
                     {error, sync_abort}
             end;
