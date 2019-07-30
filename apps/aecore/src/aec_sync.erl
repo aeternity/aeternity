@@ -905,6 +905,9 @@ do_fetch_generation_ext(Hash, PeerId) ->
                             micro_blocks => MicroBlocks,
                             dir          => backward }};
                 false ->
+                    epoch_sync:debug(
+                      "bad hash of key block fetched from ~p (~p); ~p",
+                      [ppp(PeerId), pp(Hash), pp(KeyBlock)]),
                     {error, hash_mismatch}
             end;
         {error, _} = Error ->
