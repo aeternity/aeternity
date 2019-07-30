@@ -65,6 +65,8 @@
 -define(WATCH_CLOSED, closed).
 -define(MIN_DEPTH, min_depth).
 
+-define(NO_OP, no_op).
+
 -define(UPDATE_CAST(R), R==?UPDATE; R==?DEP_CREATED; R==?WDRAW_CREATED).
 -define(UPDATE_REQ(R),
           R==upd_transfer
@@ -137,7 +139,9 @@
               , on_chain_id                   :: undefined | binary()
               , create_tx                     :: undefined | any()
               , watcher                       :: undefined | pid()
-              , latest = undefined            :: latest_op()
+              %% we keep the latest operation so we can perform according
+              %% checks
+              , op = ?NO_OP                   :: latest_op()
               , ongoing_update = false        :: boolean()
               , last_reported_update          :: undefined | non_neg_integer()
               , log                           :: log()
@@ -171,7 +175,6 @@
 
 -type role() :: initiator | responder.
 -type sign_tag() :: create_tx
-                  | funding_created
                   | slash_tx
                   | deposit_tx
                   | withdraw_tx
@@ -193,21 +196,46 @@
                    , responder := aec_keys:pubkey()
                    }}.
 
--type latest_op() :: undefined % no pending op
-                   | {sign | ack, sign_tag(), aetx_sign:signed_tx(), [aesc_offchain_update:update()]}
-                   | {create | shutdown | deposit | withdraw, aetx_sign:signed_tx(),
-                      [aesc_offchain_update:update()]}
-                   | {?MIN_DEPTH, ?WATCH_FND
-                                | ?WATCH_DEP
-                                | ?WATCH_WDRAW
-                                | ?WATCH_CLOSED,
-                      TxHash :: binary(), aetx_sign:signed_tx(),
-                      [aesc_offchain_update:update()]}
-                   | {watch, unlock
-                           | close,
-                      TxHash :: binary(), aetx_sign:signed_tx(),
-                      [aesc_offchain_update:update()]}
-                   | {reestablish, OffChainTx :: aetx_sign:signed_tx()}.
+-record(op_data, {signed_tx  :: aetx_sign:signed_tx(),
+                  updates    :: [aesc_offchain_update:update()],
+                  block_hash :: aec_blocks:block_header_hash()
+                  }).
+
+-record(op_sign, { tag :: sign_tag()
+                 , data :: #op_data{}
+                 }).
+
+-record(op_ack, { tag :: sign_tag()
+                , data :: #op_data{}
+                }).
+
+-record(op_lock, { tag :: create | deposit | withdraw
+                 , data :: #op_data{}
+                 }).
+
+-record(op_min_depth, { tag :: ?WATCH_FND
+                             | ?WATCH_DEP
+                             | ?WATCH_WDRAW
+                             | ?WATCH_CLOSED
+                      , tx_hash :: binary()
+                      , data :: #op_data{}
+                      }).
+
+-record(op_watch, { type :: unlock | close 
+                  , tx_hash :: binary()
+                  , data :: #op_data{}
+                  }).
+
+-record(op_reestablish, {offchain_tx :: aetx_sign:signed_tx()
+                        }).
+
+-type latest_op() :: ?NO_OP % no pending op
+                   | #op_sign{}
+                   | #op_ack{}
+                   | #op_lock{}
+                   | #op_min_depth{}
+                   | #op_watch{}
+                   | #op_reestablish{}.
 
 -define(DEFAULT_FSM_TX_GAS, 20000).
 
