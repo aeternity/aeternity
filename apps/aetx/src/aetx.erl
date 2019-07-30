@@ -67,6 +67,7 @@
                  | name_transfer_tx
                  | name_update_tx
                  | name_revoke_tx
+                 | subname_tx
                  | contract_create_tx
                  | contract_call_tx
                  | ga_attach_tx
@@ -93,6 +94,7 @@
                      | aens_transfer_tx:tx()
                      | aens_update_tx:tx()
                      | aens_revoke_tx:tx()
+                     | aens_subname_tx:tx()
                      | aect_create_tx:tx()
                      | aect_call_tx:tx()
                      | aega_attach_tx:tx()
@@ -509,6 +511,7 @@ type_to_cb(name_claim_tx)               -> aens_claim_tx;
 type_to_cb(name_transfer_tx)            -> aens_transfer_tx;
 type_to_cb(name_update_tx)              -> aens_update_tx;
 type_to_cb(name_revoke_tx)              -> aens_revoke_tx;
+type_to_cb(subname_tx)                  -> aens_subname_tx;
 type_to_cb(contract_call_tx)            -> aect_call_tx;
 type_to_cb(contract_create_tx)          -> aect_create_tx;
 type_to_cb(ga_attach_tx)                -> aega_attach_tx;
@@ -535,6 +538,7 @@ type_to_swagger_name(name_claim_tx)               -> <<"NameClaimTx">>;
 type_to_swagger_name(name_transfer_tx)            -> <<"NameTransferTx">>;
 type_to_swagger_name(name_update_tx)              -> <<"NameUpdateTx">>;
 type_to_swagger_name(name_revoke_tx)              -> <<"NameRevokeTx">>;
+type_to_swagger_name(subname_tx)                  -> <<"SubnameTx">>;
 type_to_swagger_name(contract_call_tx)            -> <<"ContractCallTx">>;
 type_to_swagger_name(contract_create_tx)          -> <<"ContractCreateTx">>;
 type_to_swagger_name(ga_attach_tx)                -> <<"GAAttachTx">>;

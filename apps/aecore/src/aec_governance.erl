@@ -141,6 +141,7 @@ tx_base_gas(name_revoke_tx, _)            -> ?TX_BASE_GAS;
 tx_base_gas(name_transfer_tx, _)          -> ?TX_BASE_GAS;
 tx_base_gas(name_claim_tx, _)             -> ?TX_BASE_GAS;
 tx_base_gas(name_update_tx, _)            -> ?TX_BASE_GAS;
+tx_base_gas(subname_tx, _)                -> ?TX_BASE_GAS;
 tx_base_gas(oracle_extend_tx, _)          -> ?TX_BASE_GAS;
 tx_base_gas(oracle_query_tx, _)           -> ?TX_BASE_GAS;
 tx_base_gas(oracle_register_tx, _)        -> ?TX_BASE_GAS;

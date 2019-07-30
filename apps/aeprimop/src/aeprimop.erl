@@ -29,6 +29,7 @@
         , name_revoke_tx_instructions/4
         , name_transfer_tx_instructions/5
         , name_update_tx_instructions/7
+        , subname_tx_instructions/5
         , oracle_extend_tx_instructions/4
         , oracle_query_tx_instructions/8
         , oracle_register_tx_instructions/8
@@ -43,6 +44,7 @@
         , name_preclaim_op/3
         , name_revoke_op/3
         , name_transfer_op/4
+        , subname_op/3
         , oracle_earn_query_fee_op/2
         , oracle_extend_op/2
         , oracle_query_op_with_return/7
@@ -56,6 +58,7 @@
 %% Export some functions to avoid duplicating the logic in state channels, etc.
 -export([ check_auth_data_function/3
         , decode_auth_call_result/2
+        , find_name_status_from_hash/2
         ]).
 
 -import(aeprimop_state, [ delete_x/3
@@ -281,6 +284,13 @@ name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
                      ClientTTL, Pointers)
     ].
 
+-spec subname_tx_instructions(pubkey(), binary(), aens_subname_tx:definition(),
+                              fee(), nonce()) -> [op()].
+subname_tx_instructions(OwnerPubkey, Name, Definition, Fee, Nonce) ->
+    [inc_account_nonce_op(OwnerPubkey, Nonce)
+    , spend_fee_op(OwnerPubkey, Fee)
+    , subname_op(OwnerPubkey, Name, Definition)].
+
 -spec ga_attach_tx_instructions(pubkey(), amount(), amount(),
                                 abi_version(), vm_version(),
                                 binary(), binary(), binary(), fee(), nonce()) -> [op()].
@@ -465,6 +475,7 @@ eval_one({Op, Args}, S) ->
         name_revoke               -> name_revoke(Args, S);
         name_transfer             -> name_transfer(Args, S);
         name_update               -> name_update(Args, S);
+        subname                   -> subname(Args, S);
         oracle_earn_query_fee     -> oracle_earn_query_fee(Args, S);
         oracle_extend             -> oracle_extend(Args, S);
         oracle_query              -> oracle_query(Args, S);
@@ -811,6 +822,36 @@ name_update({OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers}, S) -
     AbsoluteTTL = S#state.height + DeltaTTL,
     Name1 = aens_names:update(Name, AbsoluteTTL, ClientTTL, Pointers),
     put_name(Name1, S1).
+
+%%%-------------------------------------------------------------------
+
+subname_op(OwnerPubkey, Name, Definition)
+  when ?IS_HASH(OwnerPubkey),
+       is_binary(Name),
+       is_list(Definition) ->
+    {subname, {OwnerPubkey, Name, Definition}}.
+
+subname({OwnerPubkey, PlainName, Definition}, S) ->
+    case aens_utils:to_ascii(PlainName) of
+        {ok, NameAscii} ->
+            NameHash = aens_hash:name_hash(NameAscii),
+            {Name, S1} = get_name(NameHash, S),
+            assert_name_owner(Name, OwnerPubkey),
+            assert_name_claimed(Name),
+            NSTree = aec_trees:ns(S1#state.trees),
+            NSTree1 = aens_state_tree:prune_subnames([NameHash], NSTree),
+            lists:foldl(
+              fun ({SNameAscii, SPointers}, St) ->
+                      SNameHash = aens_hash:name_hash(SNameAscii),
+                      Pointers = [aens_pointer:new(K, Id) || {K, Id} <- SPointers],
+                      Subname = aens_subnames:new(SNameHash, Pointers),
+                      put_name(Subname, St)
+              end,
+              S#state{trees = aec_trees:set_ns(S1#state.trees, NSTree1)},
+              Definition);
+        {error, _Reason} ->
+            runtime_error(invalid_name)
+    end.
 
 %%%-------------------------------------------------------------------
 
@@ -1372,17 +1413,37 @@ int_lock_amount(Amount, S) when ?IS_NON_NEG_INTEGER(Amount) ->
 
 int_resolve_name(NameHash, S) ->
     Key = <<"account_pubkey">>,
-    {Name, S1} = get_name(NameHash, S),
-    case aens:resolve_from_name_object(Key, Name) of
-        {ok, Id} ->
+    case find_name_status_from_hash(NameHash, S) of
+        {none, _} ->
+            runtime_error(name_does_not_exist);
+        {_Obj, revoked, _S1} ->
+            runtime_error(name_revoked);
+        {Obj, claimed, S1} ->
+            {ok, Id} = aens:resolve_from_name_object(Key, Obj),
             %% Intentionally admissive to allow for all kinds of IDs for
             %% backwards compatibility.
             {_Tag, Pubkey} = aeser_id:specialize(Id),
-            {Pubkey, S1};
-        {error, What} ->
-            runtime_error(What)
+            {Pubkey, S1}
     end.
 
+find_name_status_from_hash(NameHash, S) ->
+    case aens_hash:top_parent(NameHash) of
+        none ->
+            case find_name(NameHash, S) of
+                none -> {none, S};
+                {Name, S1} -> {Name, aens_names:status(Name), S1}
+            end;
+        TopParentHash ->
+            case find_name(TopParentHash, S) of
+                none -> {none, S};
+                {Name, S1} ->
+                    case find_name(NameHash, S1) of
+                        none -> {none, S1};
+                        {Subname, S2} ->
+                            {Subname, aens_names:status(Name), S2}
+                    end
+            end
+    end.
 
 account_earn(Account, Amount, S) ->
     {ok, Account1} = aec_accounts:earn(Account, Amount),

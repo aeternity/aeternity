@@ -169,7 +169,7 @@ get_name(Key, S) ->
     get_x(name, Key, name_does_not_exist, S).
 
 put_name(Object, S) ->
-    cache_put(name, Object, S).
+    cache_put(element(1, Object), Object, S).
 
 %%----------
 
@@ -280,6 +280,7 @@ trees_find(oracle_query, Key, #state{trees = Trees} = S) ->
                     orelse (X =:= oracle_query)
                     orelse (X =:= commitment)
                     orelse (X =:= name)
+                    orelse (X =:= subname)
                    )
        ).
 
@@ -316,6 +317,9 @@ cache_put(commitment, Val, #state{cache = C} = S) ->
 cache_put(name, Val, #state{cache = C} = S) ->
     Hash = aens_names:hash(Val),
     S#state{cache = dict:store({name, Hash}, Val, C)};
+cache_put(subname, Val, #state{cache = C} = S) ->
+    Hash = aens_subnames:hash(Val),
+    S#state{cache = dict:store({subname, Hash}, Val, C)};
 cache_put(oracle, Val, #state{cache = C} = S) ->
     Pubkey = aeo_oracles:pubkey(Val),
     S#state{cache = dict:store({oracle, Pubkey}, Val, C)};
@@ -364,6 +368,10 @@ cache_write_through_fun({commitment,_Hash}, Commitment, Trees) ->
 cache_write_through_fun({name,_Hash}, Name, Trees) ->
     NTree  = aec_trees:ns(Trees),
     NTree1 = aens_state_tree:enter_name(Name, NTree),
+    aec_trees:set_ns(Trees, NTree1);
+cache_write_through_fun({subname,_Hash}, Subname, Trees) ->
+    NTree  = aec_trees:ns(Trees),
+    NTree1 = aens_state_tree:enter_subname(Subname, NTree),
     aec_trees:set_ns(Trees, NTree1);
 cache_write_through_fun({oracle,_Pubkey}, Oracle, Trees) ->
     OTrees  = aec_trees:oracles(Trees),

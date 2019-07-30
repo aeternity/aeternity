@@ -24,7 +24,8 @@
          transfer_tx_spec/4,
          transfer_tx_spec/5,
          revoke_tx_spec/3,
-         revoke_tx_spec/4]).
+         revoke_tx_spec/4,
+         subname_tx_spec/4]).
 
 %%%===================================================================
 %%% Test state
@@ -211,3 +212,18 @@ revoke_tx_default_spec(PubKey, State) ->
     #{nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end,
       fee   => 50000 * aec_test_utils:min_gas_price()}.
 
+%%%===================================================================
+%%% Subname tx
+%%%===================================================================
+
+subname_tx_spec(PubKey, Name, Definition, State) ->
+    Spec = subname_tx_default_spec(PubKey, State),
+    #{account_id => aeser_id:create(account, PubKey),
+      nonce      => maps:get(nonce, Spec),
+      name       => Name,
+      definition => Definition,
+      fee        => maps:get(fee, Spec)}.
+
+subname_tx_default_spec(PubKey, State) ->
+    #{nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end,
+      fee   => 50000 * aec_test_utils:min_gas_price()}.
