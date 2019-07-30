@@ -7,18 +7,15 @@
 
 -module(aens).
 
+-include("aens.hrl").
+
 %% API
 -export([resolve/3,
          resolve_from_name_object/2,
          get_commitment_hash/2,
          get_name_entry/2,
-         get_name_hash/1]).
-
-%%%===================================================================
-%%% Types
-%%%===================================================================
-
--define(LABEL_SEPARATOR, <<".">>).
+         get_name_hash/1,
+         name_hash_to_name_entry/2]).
 
 %%%===================================================================
 %%% API
@@ -43,7 +40,7 @@ resolve(Key, Name, NSTree) when is_binary(Key), is_binary(Name) ->
     end.
 
 
--spec resolve_from_name_object(binary(), aens_names:name()) ->
+-spec resolve_from_name_object(binary(), aens_names:name() | aens_subnames:subname()) ->
     {ok, aeser_id:id()} | {error, atom()}.
 resolve_from_name_object(Key, Name) when is_binary(Key) ->
     case name_entry(Name) of
@@ -81,20 +78,33 @@ is_name(Bin) ->
 
 name_to_name_hash(Name) ->
     case aens_utils:to_ascii(Name) of
-        {ok, NameAscii} ->
-            NameHash = aens_hash:name_hash(NameAscii),
-            {ok, NameHash};
-        {error, _Rsn} = Error ->
-            Error
+        {ok, NameAscii} -> {ok, aens_hash:name_hash(NameAscii)};
+        {error, _} = Err -> Err
     end.
 
-name_hash_to_name_entry(NameHash, NSTree) ->
+name_hash_to_name_entry(<<NameHash:?NAME_HASH_BYTES/binary>>, NSTree) ->
     case aens_state_tree:lookup_name(NameHash, NSTree) of
         {value, NameRecord} -> name_entry(NameRecord);
         none -> {error, name_not_found}
+    end;
+name_hash_to_name_entry(<<NameHash:?SUBNAME_HASH_BYTES/binary>>, NSTree) ->
+    TopParentHash = aens_hash:top_parent(NameHash),
+    case name_hash_to_name_entry(TopParentHash, NSTree) of
+        {ok, #{ttl := TTL}} ->
+            case aens_state_tree:lookup_name(NameHash, NSTree) of
+                {value, SubnameRecord} ->
+                    {ok, #{id       => aens_subnames:id(SubnameRecord),
+                           ttl      => TTL,
+                           pointers => aens_subnames:pointers(SubnameRecord)}};
+                none ->
+                    {error, name_not_found}
+            end;
+        Error ->
+            Error
     end.
 
-name_entry(NameRecord) ->
+
+name_entry(NameRecord) when element(1, NameRecord) == name ->
     case aens_names:status(NameRecord) of
         claimed ->
             {ok, #{id       => aens_names:id(NameRecord),
@@ -102,7 +112,12 @@ name_entry(NameRecord) ->
                    pointers => aens_names:pointers(NameRecord)}};
         revoked ->
             {error, name_revoked}
-    end.
+    end;
+%%% NO check if parent is claimed - must be done by caller
+name_entry(SubnameRecord) when element(1, SubnameRecord) == subname ->
+    {ok, #{id       => aens_subnames:id(SubnameRecord),
+           pointers => aens_subnames:pointers(SubnameRecord)}}.
+
 
 find_pointer_id(Key, [Pointer | Rest]) ->
     case Key =:= aens_pointer:key(Pointer) of
@@ -111,4 +126,3 @@ find_pointer_id(Key, [Pointer | Rest]) ->
     end;
 find_pointer_id(_Key, []) ->
     {error, pointer_id_not_found}.
-

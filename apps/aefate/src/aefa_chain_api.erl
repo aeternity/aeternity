@@ -598,19 +598,19 @@ aens_resolve_from_pstate(NameString, Key, PState) ->
     case aens_utils:to_ascii(NameString) of
         {ok, NameAscii} ->
             NameHash = aens_hash:name_hash(NameAscii),
-            case aeprimop_state:find_name(NameHash, PState) of
-                {Name, PState1} ->
-                    case aens:resolve_from_name_object(Key, Name) of
+            case aeprimop:find_name_status_from_hash(NameHash, PState) of
+                {none, _} ->
+                    none;
+                {_, revoked, _} ->
+                    none;
+                {Obj, claimed, PState1} ->
+                    case aens:resolve_from_name_object(Key, Obj) of
                         {ok, Id} ->
                             {Tag, Pubkey} = aeser_id:specialize(Id),
                             {ok, Tag, Pubkey, PState1};
-                        {error, name_revoked} ->
-                            none;
                         {error, pointer_id_not_found} ->
                             none
-                    end;
-                none ->
-                    none
+                    end
             end;
         {error, _} = Err ->
             Err
@@ -652,4 +652,3 @@ eval_primops(Ops, #state{primop_state = PState} = S) ->
         {error, Atom} = Err when is_atom(Atom) ->
             Err
     end.
-
