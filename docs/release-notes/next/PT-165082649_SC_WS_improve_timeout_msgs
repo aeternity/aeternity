@@ -1,3 +1,6 @@
-* Sends a more descriptive message to the client if the FSM dies because of a
-  timeout. Old message used to have an info "died" while the new ones have
-  "timeout" instead
+* The process that handles the state for the State Channel client in the node
+  has a list of different timeouts. They define different time frames for
+  certain events to be completed. Running out of time is a violation of the
+  off-chain protocol so if it happens - the connection is closed and it is up
+  to the State Channel client how to proceed next. This enhances user
+  experience adding a new info message for the timeouts.
