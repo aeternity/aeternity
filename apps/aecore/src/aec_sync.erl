@@ -115,7 +115,7 @@ handle_worker(Task, Action) ->
                      }).
 -record(chain, { id :: chain_id()
                , peers :: [aec_peers:peer_id()]
-               , chain :: [#chain_block{}, ...]
+               , blocks :: [#chain_block{}, ...]
                }).
 -record(pool_item, { height :: aec_blocks:height()
                    , hash :: aec_blocks:block_header_hash()
@@ -372,7 +372,7 @@ get_next_work_item(ST = #sync_task{ agreed = undefined }) ->
 get_next_work_item(ST = #sync_task{ pool = [], agreed = #chain_block{} }) ->
     #chain_block{ hash = LastHash, height = H } = ST#sync_task.agreed,
     Chain = ST#sync_task.chain,
-    TargetHash = next_known_hash(Chain#chain.chain, H + ?MAX_HEADERS_PER_CHUNK),
+    TargetHash = next_known_hash(Chain#chain.blocks, H + ?MAX_HEADERS_PER_CHUNK),
     {{fill_pool, LastHash, TargetHash}, ST};
 get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = {_, _} } | _] }) ->
     #sync_task{ pool = Pool, adding = Add, pending = Pend } = ST,
@@ -402,7 +402,7 @@ get_next_work_item(ST) ->
 
 maybe_end_sync_task(State, ST) ->
     case ST#sync_task.chain of
-        #chain{ peers = [], chain = [Target | _] } ->
+        #chain{ peers = [], blocks = [Target | _] } ->
             epoch_sync:info("Removing/ending sync task ~p target was ~p",
                             [ST#sync_task.id, pp_chain_block(Target)]),
             State1 = delete_sync_task(ST, State),
@@ -411,7 +411,7 @@ maybe_end_sync_task(State, ST) ->
             set_sync_task(ST, State)
     end.
 
-maybe_new_top_target(#chain{ chain = [B | _] }, State) ->
+maybe_new_top_target(#chain{ blocks = [B | _] }, State) ->
     ChainTopTarget = B#chain_block.height,
     case State#state.top_target < ChainTopTarget of
         true  -> update_top_target(ChainTopTarget, State);
@@ -421,7 +421,7 @@ maybe_new_top_target(#chain{ chain = [B | _] }, State) ->
 maybe_update_top_target(State = #state{}) ->
     #state{ top_target = TopTarget, sync_tasks = STs } = State,
     NewTop = lists:foldl(fun(#sync_task{ chain = Chain }, PrevMax) ->
-                             case Chain#chain.chain of
+                             case Chain#chain.blocks of
                                  [#chain_block{ height = H } | _] when H > PrevMax -> H;
                                  _ -> PrevMax
                              end
@@ -480,12 +480,12 @@ add_chain_info(Chain = #chain{ id = CId }, S) ->
 init_sync_task(Chain) ->
     #sync_task{ id = Chain#chain.id, chain = Chain }.
 
-merge_chains(#chain{ id = CId, peers = Ps1, chain = C1 },
-             #chain{ id = CId, peers = Ps2, chain = C2 }) ->
+merge_chains(#chain{ id = CId, peers = Ps1, blocks = C1 },
+             #chain{ id = CId, peers = Ps2, blocks = C2 }) ->
     %% We sort descending...
     Cmp = fun(#chain_block{ height = H1 }, #chain_block{ height = H2 }) -> H1 >= H2 end,
     #chain{ id = CId, peers = lists:usort(Ps1 ++ Ps2),
-            chain = lists:umerge(Cmp, C1, C2) }.
+            blocks = lists:umerge(Cmp, C1, C2) }.
 
 match_tasks(_Chain, [], []) ->
     no_match;
@@ -493,7 +493,7 @@ match_tasks(Chain, [], Acc) ->
     {N, #chain{ id = CId, peers = Peers }} = hd(lists:reverse(Acc)),
     {inconclusive, Chain, {get_header, CId, Peers, N}};
 match_tasks(Chain1, [ST = #sync_task{ chain = Chain2 } | STs], Acc) ->
-    case match_chains(Chain1#chain.chain, Chain2#chain.chain) of
+    case match_chains(Chain1#chain.blocks, Chain2#chain.blocks) of
         equal     -> {match, ST};
         different -> match_tasks(Chain1, STs, Acc);
         {fst, N}  -> match_tasks(Chain1, STs, [{N, Chain1} | Acc]);
@@ -654,7 +654,7 @@ init_chain(ChainId, Peers, Header) ->
                                , hash = aec_headers:prev_hash(Header)
                                } || Height > 1 ],
     #chain{ id = ChainId, peers = Peers,
-            chain = [#chain_block{ hash = Hash, height = Height }] ++ PrevHash }.
+            blocks = [#chain_block{ hash = Hash, height = Height }] ++ PrevHash }.
 
 known_chain(Chain) ->
     identify_chain(known_chain(Chain, none)).
@@ -662,13 +662,13 @@ known_chain(Chain) ->
 identify_chain({existing, _Chain, Task}) ->
     epoch_sync:debug("Already syncing chain ~p", [Task]),
     {ok, Task};
-identify_chain({new, #chain{ chain = [Target | _]}, Task}) ->
+identify_chain({new, #chain{ blocks = [Target | _]}, Task}) ->
     epoch_sync:info("Starting new sync task ~p target is ~1000p", [Task, pp_chain_block(Target)]),
     {ok, Task};
 identify_chain({inconclusive, Chain, {get_header, CId, Peers, N}}) ->
     %% We need another hash for this chain, make sure whoever we ask is
     %% still on this particular chain by including a known (at higher height) hash
-    KnownHash = next_known_hash(Chain#chain.chain, N),
+    KnownHash = next_known_hash(Chain#chain.blocks, N),
     case do_get_header_by_height(Peers, N, KnownHash) of
         {ok, Header} ->
             identify_chain(known_chain(Chain, init_chain(CId, Peers, Header)));
@@ -710,7 +710,7 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
             delayed_run_job(PeerId, Task, sync_tasks,
                             fun() -> do_work_on_sync_task(PeerId, Task) end, 5000);
         {agree_on_height, Chain} ->
-            #chain{ chain = [#chain_block{ hash = TopHash, height = TopHeight } | _] } = Chain,
+            #chain{ blocks = [#chain_block{ hash = TopHash, height = TopHeight } | _] } = Chain,
             LocalHeader = aec_chain:top_header(),
             LocalHeight = aec_headers:height(LocalHeader),
             MinAgreedHash = aec_chain:genesis_hash(),
@@ -946,7 +946,7 @@ sync_progress(#state{sync_tasks = SyncTasks} = State) ->
             TargetHeight =
                 lists:foldl(
                   fun(SyncTask, MaxHeight) ->
-                          #chain{chain = Chain} = SyncTask#sync_task.chain,
+                          #chain{blocks = Chain} = SyncTask#sync_task.chain,
                           [#chain_block{height = Height} | _] = Chain,
                           max(Height, MaxHeight)
                   end, 0, SyncTasks),
@@ -970,7 +970,7 @@ pp_chain_block(#chain_block{hash = Hash, height = Height}) ->
 pp_chain(C = #chain{}) ->
     #{ chain_id => C#chain.id
      , peers => C#chain.peers
-     , chain => lists:map(fun pp_chain_block/1, C#chain.chain)
+     , chain => lists:map(fun pp_chain_block/1, C#chain.blocks)
      }.
 
 pp_pool_item(X = #pool_item{}) ->
