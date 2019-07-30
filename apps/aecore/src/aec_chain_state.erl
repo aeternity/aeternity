@@ -943,7 +943,7 @@ find_fork_point(Hash1, {ok, FHash}, Hash2, {ok, FHash}) ->
     if
         Height1  >  Height2 -> {ok, Hash2};
         Height1  <  Height2 -> {ok, Hash1};
-        Height1 =:= Height2 -> find_micro_fork_point(Hash1, Hash2)
+        Height1 =:= Height2 -> find_micro_fork_point(Hash1, Hash2) %% Microblock keeps height.
     end;
 find_fork_point(Hash1, {ok, FHash1}, Hash2, {ok, FHash2}) ->
     Height1 = node_height(db_get_node(FHash1)),

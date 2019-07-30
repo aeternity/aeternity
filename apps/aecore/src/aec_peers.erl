@@ -147,7 +147,8 @@
 -type conn() :: #conn{}.
 -type state() :: #state{}.
 
--export_type([peer_info/0]).
+-export_type([peer_id/0,
+              peer_info/0]).
 
 %=== API FUNCTIONS =============================================================
 
