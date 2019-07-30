@@ -21,7 +21,6 @@
 
 -export([ start_sync/3
         , get_generation/2
-        , has_generation/1
         , set_last_generation_in_sync/0 ]).
 
 -export([is_syncing/0,
