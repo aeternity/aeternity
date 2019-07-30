@@ -15,7 +15,6 @@
 %% API
 -export([ start_link/1
         , attach_responder/2      %% (fsm(), map())
-        , client_died/1           %% (fsm())
         , close_solo/1
         , connect_client/2        %% (fsm(), signed_tx())
         , connect_client/3        %% (fsm(), Client :: pid(), signed_tx())
@@ -127,11 +126,6 @@ attach_responder(Fsm, AttachInfo) when is_map(AttachInfo) ->
             lager:debug("responder ~p has unregistered - taken", [Fsm]),
             {error, taken}
     end.
-
-client_died(Fsm) ->
-    %TODO: possibility for reconnect
-    lager:debug("client died(~p)", [Fsm]),
-    stop_ok(catch gen_statem:stop(Fsm)).
 
 close_solo(Fsm) ->
     lager:debug("close_solo(~p)", [Fsm]),
@@ -259,9 +253,14 @@ upd_withdraw(Fsm, #{amount := Amt} = Opts) when is_integer(Amt) ->
     gen_statem:call(Fsm, {upd_withdraw, Opts}).
 
 where(ChanId, Role) when Role == initiator; Role == responder ->
-    gproc:where(gproc_name_by_role(ChanId, Role));
-where(ChanId, Pubkey) when is_binary(Pubkey) ->
-    gproc:where(gproc_name_by_pubkey(ChanId, Pubkey)).
+    GprocKey = gproc_name_by_role(ChanId, Role),
+    case gproc:where(GprocKey) of
+        Pid when is_pid(Pid) ->
+            Pubkey = gproc:lookup_value(GprocKey),
+            #{ fsm_pid => Pid, role => Role, pub_key => Pubkey };
+        undefined ->
+            undefined
+    end.
 
 %% ==================================================================
 %% Inspection and configuration functions
@@ -875,6 +874,7 @@ half_signed(cast, {?FND_SIGNED, Msg}, #data{role = initiator,
             D2 = D1#data{create_tx = SignedTx},
             {ack, create_tx, _, Updates} = Latest,
             {ok, D3} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_FND}, SignedTx, Updates, D2),
+            gproc_register_on_chain_id(D3),
             next_state(awaiting_locked, D3);
         {error, Error} ->
             close(Error, D)
