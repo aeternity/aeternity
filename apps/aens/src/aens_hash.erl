@@ -7,22 +7,24 @@
 
 -module(aens_hash).
 
+-include("aens.hrl").
+
 %% API
 -export([name_hash/1,
-         commitment_hash/2]).
+         commitment_hash/2,
+         top_parent/1]).
 
 %%%===================================================================
 %%% Types
 %%%===================================================================
 
--type name_hash() :: binary().
--type commitment_hash() :: binary().
+-type name_hash() :: <<_:?NAME_HASH_BYTES>>.
+-type subname_hash() :: <<_:?SUBNAME_HASH_BYTES>>.
+-type commitment_hash() :: <<_:?COMMITMENT_HASH_BYTES>>.
 
 -export_type([name_hash/0,
+              subname_hash/0,
               commitment_hash/0]).
-
--define(NAME_HASH_BYTES, 32).
--define(COMMITMENT_HASH_BYTES, 32).
 
 %%%===================================================================
 %%% API
@@ -34,10 +36,23 @@ commitment_hash(NameAscii, Salt) ->
     SaltBin = int_to_bin(Salt),
     hash(<<NameHash/binary, SaltBin/binary>>).
 
--spec name_hash(binary()) -> name_hash().
-name_hash(NameAscii) ->
-    Labels = binary:split(NameAscii, <<".">>, [global]),
-    hash_labels(lists:reverse(Labels)).
+-spec name_hash(binary() | [AsciiPart :: binary()]) -> name_hash() | subname_hash().
+name_hash(<<NameAscii/binary>>) ->
+    name_hash(binary:split(NameAscii, <<".">>, [global, trim]));
+name_hash([_, _] = NameParts) ->
+    hash_labels(NameParts);
+name_hash([_, _ | _] = SubnameParts) ->
+    TopName = lists:nthtail(length(SubnameParts) - 2, SubnameParts),
+    DomainHash = hash_labels(TopName),
+    SubdomainHash = hash_labels(SubnameParts),
+    <<DomainHash/binary, SubdomainHash/binary>>.
+
+-spec top_parent(binary()) -> binary() | none.
+top_parent(<<_:?NAME_HASH_BYTES/binary>>) ->
+    none;
+top_parent(<<Hash:?SUBNAME_HASH_BYTES/binary>>) ->
+    <<TopParent:?NAME_HASH_BYTES/binary, _/binary>> = Hash,
+    TopParent.
 
 %%%===================================================================
 %%% Internal functions
