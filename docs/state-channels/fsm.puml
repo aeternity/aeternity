@@ -1,7 +1,7 @@
 @startuml
 left to right direction
 hide empty description
-title aesc_fsm.erl's FSM logic for role initiator
+title aesc_fsm.erl's FSM logic
 
 note as info
   This diagram omits transitions for the following events which are applicable
@@ -26,10 +26,20 @@ note as info
 end note
 
 state "Re-establish Init" as re_in
-[*] --> re_in                                             : [if re-established]
-[*] --> in                                                : [if not re-established]
+[*] --> re_in                                             : [if role == initiator and re-established]
+[*] --> in                                                : [if role == initiator and  not re-established]
+[*] --> aw_re                                             : [if role == responder and re-established]
+[*] --> aw_op                                             : [if role == responder and  not re-established]
 re_in --> op                                              : channel_reest_ack [if checks_ok]
 re_in --> te                                              : channel_reest_ack [if not checks_ok]
+
+state "Awaiting Open" as aw_op
+aw_op --> ac                                              : channel_open [if checks_ok]
+aw_op --> te                                              : channel_open [if not checks_ok]
+
+state "Awaiting Re-establish" as aw_re
+aw_re --> op                                              : channel_reestablish [if checks_ok]
+aw_re --> te                                              : channel_reestablish [if not checks_ok]
 
 state "Terminating" as te
 te --> [*]
@@ -80,6 +90,10 @@ state "Awaiting Signature" as aw_si {
   state "DepositCreated" as aw_si_depositcreated
   aw_si_depositcreated --> aw_lo_watchdeposit             : {signed, deposit_created} [if checks_ok]
   aw_si_depositcreated --> aw_si_depositcreated           : {signed, deposit_created} [if not checks_ok]
+
+  state "FundingCreated" as aw_si_fundingcreated
+  aw_si_fundingcreated --> aw_lo_watchfunding             : {signed, funding_created} [if checks_ok]
+  aw_si_fundingcreated --> aw_si_fundingcreated           : {signed, funding_created} [if not checks_ok]
 }
 
 state "Initialized" as in
@@ -101,6 +115,10 @@ state "Withdraw Signed" as wi_si
 wi_si --> mu_cl                                           : shutdown
 wi_si --> op                                              : withdraw_locked [if checks_ok]
 wi_si --> te                                              : withdraw_locked [if not checks_ok]
+
+state "Accepted" as ac
+ac --> aw_si_fundingcreated                               : funding_created [if checks_ok]
+ac --> te                                                 : funding_created [if not checks_ok]
 
 state "Open" as op
 op --> aw_si_updateack                                    : update [if checks_ok]

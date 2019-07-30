@@ -1656,10 +1656,11 @@ send_funding_created_msg(SignedTx, #data{channel_id = Ch,
 
 check_funding_created_msg(#{ temporary_channel_id := ChanId
                            , block_hash           := ?NOT_SET_BLOCK_HASH
-                           , data                 := #{tx      := TxBin,
-                                                       updates := UpdatesBin}} = Msg,
-                          #data{ state = State, opts = Opts,
-                                 channel_id = ChanId } = Data) ->
+                           , data                 := #{ tx      := TxBin
+                                                      , updates := UpdatesBin }} = Msg,
+                          #data{ state = State
+                               , opts = Opts
+                               , channel_id = ChanId } = Data) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case verify_signatures_channel_create(SignedTx, initiator) of
@@ -2467,7 +2468,8 @@ verify_signatures_channel_create(SignedTx, Who) ->
             end,
             SkipKeys = Both -- PubkeysToCheck,
             verify_signatures_onchain_skip(SkipKeys, SignedTx);
-        _ -> {error, not_create_tx}
+        _ ->
+            {error, not_create_tx}
     end.
 
 verify_signatures_onchain_check(Pubkeys, SignedTx) ->
@@ -2743,63 +2745,53 @@ check_change_config(log_keep, Keep) when is_integer(Keep), Keep >= 0 ->
 check_change_config(_, _) ->
     {error, invalid_config}.
 
-default_minimum_depth(initiator  ) -> undefined;
+default_minimum_depth(initiator) -> undefined;
 default_minimum_depth(responder) -> ?MINIMUM_DEPTH.
 
 check_minimum_depth_opt(DefMinDepth, Role, Opts) ->
     case {maps:find(minimum_depth, Opts), Role} of
-        {error, responder} -> Opts#{minimum_depth => DefMinDepth};
-        _                    -> Opts
+        {error, responder} ->
+            Opts#{minimum_depth => DefMinDepth};
+        _  ->
+            Opts
     end.
 
+check_timeout_opt(#{timeouts := TOs} = Opts) ->
+    TOs1 = maps:merge(?DEFAULT_TIMEOUTS, TOs),
+    Opts1 = Opts#{timeouts => TOs1},
+    lager:debug("Timeouts: ~p", [Opts1]),
+    Opts1;
 check_timeout_opt(Opts) ->
-    Res = case maps:find(timeouts, Opts) of
-              {ok, TOs} ->
-                  TOs1 = maps:merge(?DEFAULT_TIMEOUTS, TOs),
-                  Opts#{timeouts => TOs1};
-              error ->
-                  Opts#{timeouts => ?DEFAULT_TIMEOUTS}
-          end,
-    lager:debug("Timeouts: ~p", [Res]),
-    Res.
+    check_timeout_opt(Opts#{timeouts => #{}}).
 
-check_rpt_opt(Opts) ->
-    ROpts = case maps:find(report, Opts) of
-                {ok, R} when is_map(R) ->
-                    L = [{K,V} || {K,V} <- maps:to_list(R),
-                                  lists:member(K, report_tags())
-                                      andalso
-                                      is_boolean(V)],
-                    maps:from_list(L);
-                error ->
-                    case maps:find(report_info, Opts) of  %% bw compatibility
-                        {ok, V} when is_boolean(V) ->
-                            #{info => V};
-                        _ ->
-                            #{}
-                    end;
-                Other ->
-                    lager:error("Unknown report opts: ~p", [Other]),
-                    #{}
-          end,
+check_rpt_opt(#{report := R} = Opts) when is_map(R) ->
+    L = [{K,V} || {K,V} <- maps:to_list(R),
+                  lists:member(K, report_tags()) andalso is_boolean(V)],
+    ROpts = maps:from_list(L),
     lager:debug("Report opts = ~p", [ROpts]),
-    Opts#{report => maps:merge(?DEFAULT_REPORT_FLAGS, ROpts)}.
+    Opts#{report => maps:merge(?DEFAULT_REPORT_FLAGS, ROpts)};
+check_rpt_opt(#{report := R} = Opts) ->
+    lager:error("Unknown report opts: ~p", [R]),
+    Opts#{report => ?DEFAULT_REPORT_FLAGS};
+check_rpt_opt(#{report_info := Rinfo} = Opts) when is_boolean(Rinfo)->
+    ROpts = #{info => Rinfo},
+    lager:debug("Report opts = ~p", [ROpts]),
+    Opts#{report => maps:merge(?DEFAULT_REPORT_FLAGS, ROpts)};
+check_rpt_opt(Opts) ->
+    Opts#{report => ?DEFAULT_REPORT_FLAGS}.
 
+check_log_opt(#{log_keep := Keep} = Opts) when is_integer(Keep), Keep >= 0 ->
+    Opts;
+check_log_opt(#{log_keep := Keep} = Opts) ->
+    lager:error("Invalid 'log_keep' option: ~p", [Keep]),
+    Opts#{log_keep => ?KEEP};
 check_log_opt(Opts) ->
-    case maps:find(log_keep, Opts) of
-        {ok, Keep} when is_integer(Keep), Keep >= 0 ->
-            Opts;
-        {ok, Invalid} ->
-            lager:error("Invalid 'log_keep' option: ~p", [Invalid]),
-            Opts#{log_keep => ?KEEP};
-        error ->
-            Opts#{log_keep => ?KEEP}
-    end.
+    Opts#{log_keep => ?KEEP}.
 
-check_opts([H|T], Opts) ->
-    check_opts(T, H(Opts));
 check_opts([], Opts) ->
-    Opts.
+    Opts;
+check_opts([H|T], Opts) ->
+    check_opts(T, H(Opts)).
 
 %% As per CHANNELS.md, the responder is regarded as the one typically
 %% providing the service, and the initiator connects.
@@ -3055,8 +3047,7 @@ handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
             keep_state(D, [{reply, From, {error, unknown_recipient}}])
     end;
 handle_call_(open, {upd_transfer, FromPub, ToPub, Amount}, From,
-            #data{opts = #{initiator := I,
-                           responder := R}} = D) ->
+            #data{opts = #{initiator := I, responder := R}} = D) ->
     case FromPub =/= ToPub andalso ([] == [FromPub, ToPub] -- [I, R]) of
         true ->
             handle_upd_transfer(FromPub, ToPub, Amount, From, set_ongoing(D));
@@ -3184,20 +3175,19 @@ handle_call_(channel_closing, shutdown, From, #data{strict_checks = Strict} = D)
 handle_call_(_, get_state, From, #data{ on_chain_id = ChanId
                                       , opts        = Opts
                                       , state       = State} = D) ->
-    #{initiator := Initiator,
-      responder := Responder} = Opts,
+    #{initiator := Initiator, responder := Responder} = Opts,
     {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
     {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
     StateHash = aesc_offchain_state:hash(State),
     {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
     Result =
-        #{channel_id=> ChanId,
-          initiator => Initiator,
-          responder => Responder,
-          init_amt  => IAmt,
-          resp_amt  => RAmt,
-          state_hash=> StateHash,
-          round     => Round},
+        #{ channel_id => ChanId
+         , initiator  => Initiator
+         , responder  => Responder
+         , init_amt   => IAmt
+         , resp_amt   => RAmt
+         , state_hash => StateHash
+         , round      => Round },
     keep_state(D, [{reply, From, {ok, Result}}]);
 handle_call_(_, get_offchain_state, From, #data{state = State} = D) ->
     keep_state(D, [{reply, From, {ok, State}}]);
@@ -3402,10 +3392,10 @@ get_channel(ChainHash, ChId) ->
     end.
 
 init_checks(Opts) ->
-    #{initiator   := Initiator,
-      responder   := Responder,
-      role        := Role,
-      lock_period := LockPeriod} = Opts,
+    #{ initiator   := Initiator
+     , responder   := Responder
+     , role        := Role
+     , lock_period := LockPeriod } = Opts,
     Checks = [fun() -> check_amounts(Opts) end,
               fun() -> check_accounts(Initiator, Responder, Role) end,
               fun() ->
