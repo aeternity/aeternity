@@ -833,17 +833,7 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
         {ok, Hashes = [{FirstHeight, _} | _]} when
               %% Guaranteed by deserialization.
               is_integer(FirstHeight), FirstHeight >= 0 ->
-            case
-                lists:foldl(fun ({H, _}, {ok, AccH}) when is_integer(H) ->
-                                    if H =:= (1 + AccH) -> {ok, H};
-                                       true -> {error, {AccH, H}}
-                                    end;
-                                (_, {error, _} = Err) ->
-                                    Err
-                            end,
-                            {ok, FirstHeight},
-                            tl(Hashes))
-            of
+            case heights_are_consecutive(Hashes) of
                 {ok, _} ->
                     HashPool = [ #pool_item{ height = Height
                                            , hash = Hash
@@ -862,6 +852,18 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
             update_sync_task({error, PeerId}, ST),
             {error, sync_abort}
     end.
+
+heights_are_consecutive([{FirstHeight, _} | _] = Hashes) when
+      is_integer(FirstHeight), FirstHeight >= 0 ->
+    lists:foldl(fun ({H, _}, {ok, AccH}) when is_integer(H) ->
+                        if H =:= (1 + AccH) -> {ok, H};
+                           true -> {error, {AccH, H}}
+                        end;
+                    (_, {error, _} = Err) ->
+                        Err
+                end,
+                {ok, FirstHeight},
+                tl(Hashes)).
 
 do_get_generation(PeerId, LastHash) ->
     case aec_peer_connection:get_generation(PeerId, LastHash, forward) of
