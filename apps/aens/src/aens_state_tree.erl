@@ -7,6 +7,8 @@
 
 -module(aens_state_tree).
 
+-include("aens.hrl").
+
 %% API
 -export([commit_to_db/1,
          cache_root_hash/1,
@@ -16,8 +18,11 @@
          empty_with_backend/0,
          enter_commitment/2,
          enter_name/2,
+         enter_subname/2,
          get_name/2,
+         get_subname/2,
          prune/2,
+         prune_subnames/2,
          lookup_commitment/2,
          lookup_name/2,
          new_with_backend/2,
@@ -32,7 +37,9 @@
 %% Export for test
 -ifdef(TEST).
 -export([ name_list/1
+        , subname_list/1
         , commitment_list/1
+        , subnames_hashes/3
         ]).
 -endif.
 
@@ -45,6 +52,7 @@
 -type nstree() :: aeu_mtrees:mtree(mkey(), mvalue()).
 -type commitment() :: aens_commitments:commitment().
 -type name() :: aens_names:name().
+-type subname() :: aens_subnames:subname().
 -type cache() :: aeu_mtrees:mtree(cache_key(), cache_value()).
 -type cache_key() :: binary(). %% Sext encoded
 -type cache_value() :: binary(). %% ?DUMMY_VAL
@@ -100,18 +108,21 @@ new_with_backend(RootHash, CacheRootHash) ->
 -spec prune(block_height(), tree()) -> tree().
 prune(NextBlockHeight, #ns_tree{} = Tree) ->
     {Tree1, ExpiredActions} = int_prune(NextBlockHeight - 1, Tree),
-    run_elapsed(ExpiredActions, Tree1, NextBlockHeight).
+    {Tree2, DeletedNames} = run_elapsed(ExpiredActions, Tree1, NextBlockHeight, []),
+    prune_subnames(DeletedNames, Tree2).
 
-run_elapsed([], Tree, _) ->
-    Tree;
-run_elapsed([{aens_names, Id, Serialized}|Expired], Tree, Height) ->
+
+run_elapsed([], Tree, _, Acc) ->
+    {Tree, Acc};
+run_elapsed([{aens_names, Id, Serialized}|Expired], Tree, Height, Acc) ->
     Name = aens_names:deserialize(Id, Serialized),
-    {ok, Tree1} = run_elapsed_name(Name, Tree, Height),
-    run_elapsed(Expired, Tree1, Height);
-run_elapsed([{aens_commitments, Id, Serialized}|Expired], Tree, Height) ->
+    {Action, Tree1} = run_elapsed_name(Name, Tree, Height),
+    Acc1 = if Action == deleted -> [aens_names:hash(Name) | Acc]; true -> Acc end,
+    run_elapsed(Expired, Tree1, Height, Acc1);
+run_elapsed([{aens_commitments, Id, Serialized}|Expired], Tree, Height, Acc) ->
     Commitment = aens_commitments:deserialize(Id, Serialized),
-    {ok, Tree1} = run_elapsed_commitment(Commitment, Tree),
-    run_elapsed(Expired, Tree1, Height).
+    {deleted, Tree1} = run_elapsed_commitment(Commitment, Tree),
+    run_elapsed(Expired, Tree1, Height, Acc).
 
 -spec enter_commitment(commitment(), tree()) -> tree().
 enter_commitment(Commitment, Tree) ->
@@ -132,9 +143,20 @@ enter_name(Name, Tree) ->
     MTree1 = aeu_mtrees:enter(NameHash, Serialized, Tree#ns_tree.mtree),
     Tree#ns_tree{cache = Cache1, mtree = MTree1}.
 
+-spec enter_subname(subname(), tree()) -> tree().
+enter_subname(Subname, Tree) ->
+    NameHash = aens_subnames:hash(Subname),
+    Serialized = aens_subnames:serialize(Subname),
+    MTree1 = aeu_mtrees:enter(NameHash, Serialized, Tree#ns_tree.mtree),
+    Tree#ns_tree{mtree = MTree1}.
+
 -spec get_name(binary(), tree()) -> name().
 get_name(Id, Tree) ->
     aens_names:deserialize(Id, aeu_mtrees:get(Id, Tree#ns_tree.mtree)).
+
+-spec get_subname(binary(), tree()) -> subname().
+get_subname(Id, Tree) ->
+    aens_subnames:deserialize(Id, aeu_mtrees:get(Id, Tree#ns_tree.mtree)).
 
 -spec lookup_commitment(binary(), tree()) -> {value, commitment()} | none.
 lookup_commitment(Id, Tree) ->
@@ -143,11 +165,12 @@ lookup_commitment(Id, Tree) ->
         none -> none
     end.
 
--spec lookup_name(binary(), tree()) -> {value, name()} | none.
+-spec lookup_name(binary(), tree()) -> {value, name() | subname()} | none.
 lookup_name(Id, Tree) ->
-    case aeu_mtrees:lookup(Id, Tree#ns_tree.mtree) of
-        {value, Val} -> {value, aens_names:deserialize(Id, Val)};
-        none -> none
+    case {aeu_mtrees:lookup(Id, Tree#ns_tree.mtree), size(Id)} of
+        {{value, Val}, ?NAME_HASH_BYTES} -> {value, aens_names:deserialize(Id, Val)};
+        {{value, Val}, ?SUBNAME_HASH_BYTES} -> {value, aens_subnames:deserialize(Id, Val)};
+        {none, _} -> none
     end.
 
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
@@ -178,6 +201,15 @@ commitment_list(#ns_tree{mtree = Tree}) ->
 name_list(#ns_tree{mtree = Tree}) ->
     IsName = fun(Id, MaybeC) ->
                  try [aens_names:deserialize(Id, MaybeC)]
+                 catch _:_ -> [] end
+             end,
+    [ C || {Id, Val} <- aeu_mtrees:to_list(Tree),
+           C <- IsName(Id, Val) ].
+
+-spec subname_list(tree()) -> list(subname()).
+subname_list(#ns_tree{mtree = Tree}) ->
+    IsName = fun(Id, MaybeC) ->
+                 try [aens_subnames:deserialize(Id, MaybeC)]
                  catch _:_ -> [] end
              end,
     [ C || {Id, Val} <- aeu_mtrees:to_list(Tree),
@@ -252,16 +284,16 @@ run_elapsed_name(Name, NamesTree0, NextBlockHeight) ->
         false ->
             %% INFO: Do nothing.
             %%       Name was updated and we triggered old cache event.
-            {ok, NamesTree0};
+            {nop, NamesTree0};
         true when Status =:= claimed ->
             NameHash = aens_names:hash(Name),
             Name0    = aens_state_tree:get_name(NameHash, NamesTree0),
             TTL      = aec_governance:name_protection_period(),
             Name1    = aens_names:revoke(Name0, TTL, ExpirationBlockHeight),
-            {ok, aens_state_tree:enter_name(Name1, NamesTree0)};
+            {revoked, aens_state_tree:enter_name(Name1, NamesTree0)};
         true when Status =:= revoked ->
             NameHash = aens_names:hash(Name),
-            {ok, aens_state_tree:delete_name(NameHash, NamesTree0)}
+            {deleted, aens_state_tree:delete_name(NameHash, NamesTree0)}
     end.
 
 run_elapsed_commitment(Commitment, NamesTree0) ->
@@ -269,7 +301,37 @@ run_elapsed_commitment(Commitment, NamesTree0) ->
     %%       when it expires
     CommitmentHash = aens_commitments:hash(Commitment),
     NamesTree1 = aens_state_tree:delete_commitment(CommitmentHash, NamesTree0),
-    {ok, NamesTree1}.
+    {deleted, NamesTree1}.
+
+
+-define(SUBNAMES_PRUNE_BATCH_SIZE, 2).
+
+prune_subnames([], #ns_tree{} = Tree) ->
+    Tree;
+prune_subnames([NameHash | NameHashes], #ns_tree{} = Tree) ->
+    {SubnamesHashes, HasNext} =
+        subnames_hashes(NameHash, Tree, ?SUBNAMES_PRUNE_BATCH_SIZE),
+    Tree1 = lists:foldl(fun delete_name/2, Tree, SubnamesHashes),
+    prune_subnames(if HasNext == true  -> [NameHash | NameHashes];
+                      HasNext == false -> NameHashes
+                   end,
+                   Tree1).
+
+
+subnames_hashes(NameHash, #ns_tree{mtree = MTree}, BatchSize)
+  when (is_integer(BatchSize) andalso BatchSize > 1) orelse BatchSize == all ->
+    Iter = aeu_mtrees:iterator_from(NameHash, MTree, [{with_prefix, NameHash}]),
+    iter_subnames_hashes(Iter, 0, BatchSize, []).
+
+iter_subnames_hashes(_Iter, Max, Max, Acc) ->
+    {Acc, true};
+iter_subnames_hashes(Iter, Count, Max, Acc) ->
+    case aeu_mtrees:iterator_next(Iter) of
+        '$end_of_table' ->
+            {Acc, false};
+        {Key, _Val, Next} ->
+            iter_subnames_hashes(Next, Count + 1, Max, [Key | Acc])
+    end.
 
 %%%===================================================================
 %%% TTL Cache
@@ -299,22 +361,19 @@ create_cache_from_mtree(MTree, EmptyCache) ->
 
 create_cache_from_mtree_('$end_of_table', Cache) -> Cache;
 create_cache_from_mtree_({Key, Val, Iter}, Cache0) ->
-    {Module, Obj} = deserialize_name_or_commitment(Key, Val),
-    TTL = Module:ttl(Obj),
-    Cache = cache_push(TTL, Key, Module, Cache0),
-    create_cache_from_mtree_(aeu_mtrees:iterator_next(Iter), Cache).
-
-deserialize_name_or_commitment(Hash, Bin) ->
-    {Type, Vsn, RawFields} =
-        aeser_chain_objects:deserialize_type_and_vsn(Bin),
-    Name = aens_names:serialization_type(),
-    Commitment = aens_commitments:serialization_type(),
-    Module =
-        case Type of
-            Name       -> aens_names;
-            Commitment -> aens_commitments
-        end,
-    Template = Module:serialization_template(Vsn),
-    Fields = aeserialization:decode_fields(Template, RawFields),
-    Obj = Module:deserialize_from_fields(Vsn, Hash, Fields),
-    {Module, Obj}.
+    {Type, Vsn, RawFields} = aeser_chain_objects:deserialize_type_and_vsn(Val),
+    [SubType, NameType, CommType] =
+        [M:serialization_type() || M <- [aens_subnames, aens_names, aens_commitments]],
+    if Type == SubType ->
+            Cache0;
+       true ->
+            Mod = if Type == NameType -> aens_names;
+                     Type == CommType -> aens_commitments
+                  end,
+            Template = Mod:serialization_template(Vsn),
+            Fields = aeserialization:decode_fields(Template, RawFields),
+            Obj = Mod:deserialize_from_fields(Vsn, Key, Fields),
+            TTL = Mod:ttl(Obj),
+            Cache = cache_push(TTL, Key, Mod, Cache0),
+            create_cache_from_mtree_(aeu_mtrees:iterator_next(Iter), Cache)
+    end.
