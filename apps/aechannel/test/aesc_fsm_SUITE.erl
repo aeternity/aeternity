@@ -1571,6 +1571,7 @@ client_reconnect_(Role, Cfg) ->
     log(Debug, "Reconnecting before disconnecting failed: ~p", [Err]),
     unlink(Proxy),
     exit(Proxy, kill),
+    timer:sleep(100),  % give the above exit time to propagate
     ok = things_that_should_fail_if_no_client(Role, I, R, Debug),
     Res = reconnect(Fsm, Role, RoleI, Debug),
     ct:log("Reconnect req -> ~p", [Res]),
