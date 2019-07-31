@@ -2562,7 +2562,9 @@ check_tx_and_verify_signatures(SignedTx, Updates, Mod, Data, Pubkeys, ErrTypeMsg
                 {ChannelPubkey, MyRole, MyPubkey, Round}
                   when Round > Data#data.client_reconnect_nonce ->
                     verify_signatures_offchain(
-                      ChannelPubkey, Pubkeys, SignedTx)
+                      ChannelPubkey, Pubkeys, SignedTx);
+                _ ->
+                    {error, invalid}
             catch
                 error:_ ->
                     {error, invalid}
