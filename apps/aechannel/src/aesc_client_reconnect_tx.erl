@@ -189,5 +189,5 @@ version(_) ->
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(_Protocol, _Tx) ->
-    true.
+    false.
 
