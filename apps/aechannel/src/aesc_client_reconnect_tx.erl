@@ -51,6 +51,7 @@
 -record(channel_client_reconnect_tx,
         {
           channel_id   :: aeser_id:id()
+        , round        :: non_neg_integer()
         , role         :: initiator | responder
         , pub_key      :: aeser_id:id()
         }).
@@ -62,13 +63,16 @@
 
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{ channel_id := ChannelId
+     , round      := Round
      , role       := Role
      , pub_key    := Pubkey }) ->
     channel = aeser_id:specialize_type(ChannelId),
     account = aeser_id:specialize_type(Pubkey),
+    true = is_integer(Round) andalso Round > 0,
     true = (Role == initiator) orelse (Role == responder),
     Tx = #channel_client_reconnect_tx{
             channel_id = ChannelId
+          , round      = Round
           , role       = Role
           , pub_key    = Pubkey },
     {ok, aetx:new(?MODULE, Tx)}.
@@ -124,40 +128,48 @@ signers(#channel_client_reconnect_tx{role = Role} = Tx, Trees) ->
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_client_reconnect_tx{
              channel_id = ChannelId
+           , round      = Round
            , role       = Role
            , pub_key    = Pubkey }) ->
     {?INITIAL_VSN,
      [ {channel_id, ChannelId}
+     , {round     , Round}
      , {role      , atom_to_binary(Role, utf8)}
      , {pub_key   , Pubkey}
      ]}.
 
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?INITIAL_VSN, [ {channel_id, ChannelId}
+                          , {round     , Round}
                           , {role      , Role0}
                           , {pub_key   , Pubkey} ]) ->
     channel = aeser_id:specialize_type(ChannelId),
     account = aeser_id:specialize_type(Pubkey),
+    true = is_integer(Round) andalso Round > 0,
     Role = case binary_to_existing_atom(Role0, utf8) of
                initiator = R -> R;
                responder = R -> R
            end,
     #channel_client_reconnect_tx{
        channel_id = ChannelId
+     , round      = Round
      , role       = Role
      , pub_key    = Pubkey }.
 
 -spec for_client(tx()) -> map().
 for_client(#channel_client_reconnect_tx{
               channel_id = ChannelId
+            , round      = Round
             , role       = Role
             , pub_key    = Pubkey }) ->
     #{ <<"channel_id">> => aeser_api_encoder:encode(id_hash, ChannelId)
+     , <<"round">>      => Round
      , <<"role">>       => atom_to_binary(Role, utf8)
      , <<"pub_key">>    => aeser_api_encoder:encode(account, Pubkey) }.
 
 serialization_template(?INITIAL_VSN) ->
     [ {channel_id, id}
+    , {round     , int}
     , {role      , binary}
     , {pub_key   , id} ].
 
@@ -178,8 +190,8 @@ role(#channel_client_reconnect_tx{ role = Role }) ->
     Role.
 
 -spec round(tx()) -> aesc_channels:round().
-round(#channel_client_reconnect_tx{}) ->
-    error(invalid).
+round(#channel_client_reconnect_tx{ round = Round }) ->
+    Round.
 
 -spec state_hash(tx()) -> binary().
 state_hash(#channel_client_reconnect_tx{}) ->

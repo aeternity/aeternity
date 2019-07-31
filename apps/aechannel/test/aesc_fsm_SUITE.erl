@@ -1571,6 +1571,7 @@ client_reconnect_(Role, Cfg) ->
     log(Debug, "Reconnecting before disconnecting failed: ~p", [Err]),
     unlink(Proxy),
     exit(Proxy, kill),
+    timer:sleep(100),  % give the above exit time to propagate
     ok = things_that_should_fail_if_no_client(Role, I, R, Debug),
     Res = reconnect(Fsm, Role, RoleI, Debug),
     ct:log("Reconnect req -> ~p", [Res]),
@@ -1615,13 +1616,17 @@ reconnect(Fsm, Role, #{} = R, Debug) ->
     end,
     R#{ proxy => NewProxy }.
 
-try_reconnect(Fsm, Role, #{ channel_id := ChId
-                          , fsm  := Fsm
-                          , pub  := Pub
-                          , priv := Priv}, Debug) ->
+try_reconnect(Fsm, Role, R, Debug) ->
+    try_reconnect(Fsm, 1, Role, R, Debug).
+
+try_reconnect(Fsm, Round, Role, #{ channel_id := ChId
+                                 , fsm  := Fsm
+                                 , pub  := Pub
+                                 , priv := Priv}, Debug) ->
     ChIdId = aeser_id:create(channel, ChId),
     PubId = aeser_id:create(account, Pub),
     {ok, Tx} = aesc_client_reconnect_tx:new(#{ channel_id => ChIdId
+                                             , round      => Round
                                              , role       => Role
                                              , pub_key    => PubId }),
     log(Debug, "Reconnect Tx = ~p", [Tx]),

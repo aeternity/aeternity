@@ -2488,11 +2488,15 @@ other_role(responder) -> initiator;
 other_role(initiator) -> responder.
 
 reconnect_client_(ChId, Role, Pub, Priv, Config) ->
+    reconnect_client_(ChId, 1, Role, Pub, Priv, Config).
+
+reconnect_client_(ChId, Round, Role, Pub, Priv, Config) ->
     ct:log("reconnecting ChId = ~p, Role = ~p, Pub = ~p", [ChId, Role, Pub]),
     {channel, ChIdDec} = aeser_api_encoder:decode(ChId),
     ChIdId = aeser_id:create(channel, ChIdDec),
     PubId = aeser_id:create(account, Pub),
     {ok, Tx} = aesc_client_reconnect_tx:new(#{ channel_id => ChIdId
+                                             , round      => Round
                                              , role       => Role
                                              , pub_key    => PubId }),
     SignedTx = aec_test_utils:sign_tx(Tx, Priv),
