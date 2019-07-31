@@ -13,6 +13,7 @@ It:
   off-chain protocol so if it happens - the connection is closed and it is up
   to the State Channel client how to proceed next. This enhances user
   experience adding a new info message for the timeouts.
+* State Channels Websocket clients can now reconnect and re-attach to the FSM, using a special signed offchain transaction. While the client is disconnected, the corresponding FSM will reject requests that require signatures.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v4.1.0
 

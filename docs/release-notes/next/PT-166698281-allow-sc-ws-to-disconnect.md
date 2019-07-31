@@ -1,1 +1,0 @@
-* State Channels Websocket clients can now reconnect and re-attach to the FSM, using a special signed offchain transaction. While the client is disconnected, the corresponding FSM will reject requests that require signatures.
