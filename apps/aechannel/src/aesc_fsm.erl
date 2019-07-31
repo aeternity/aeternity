@@ -2206,12 +2206,14 @@ check_client_reconnect_tx(Tx, #data{ strict_checks = true } = D) ->
            Tx, [], aesc_client_reconnect_tx, D, [my_account(D)],
            not_reconnect_tx) of
         ok ->
-            ok;
+            Round = call_cb(aetx_sign:innermost_tx(Tx), round, []),
+            {ok, D#data{ client_reconnect_nonce = Round }};
         {error, _} = Error ->
             Error
     end;
-check_client_reconnect_tx(_, _) ->
-    ok.
+check_client_reconnect_tx(Tx, D) ->
+    Round = call_cb(aetx_sign:innermost_tx(Tx), round, []),
+    {ok, D#data{ client_reconnect_nonce = Round }}.
 
 fallback_to_stable_state(#data{state = State} = D) ->
     D#data{state = aesc_offchain_state:fallback_to_stable_state(State)}.
@@ -2556,8 +2558,9 @@ check_tx_and_verify_signatures(SignedTx, Updates, Mod, Data, Pubkeys, ErrTypeMsg
             %% TODO: conduct more relevant checks
             verify_signatures_onchain_check(Pubkeys, SignedTx);
         {aesc_client_reconnect_tx = Mod, Tx} ->
-            try {Mod:channel_pubkey(Tx), Mod:role(Tx), Mod:origin(Tx)} of
-                {ChannelPubkey, MyRole, MyPubkey} ->
+            try {Mod:channel_pubkey(Tx), Mod:role(Tx), Mod:origin(Tx), Mod:round(Tx)} of
+                {ChannelPubkey, MyRole, MyPubkey, Round}
+                  when Round > Data#data.client_reconnect_nonce ->
                     verify_signatures_offchain(
                       ChannelPubkey, Pubkeys, SignedTx)
             catch
@@ -3093,13 +3096,13 @@ handle_call(_, {?RECONNECT_CLIENT, Pid, Tx} = Msg, From,
     lager:debug("Client reconnect request", []),
     D = log(rcv, msg_type(Msg), Msg, D0),
     try check_client_reconnect_tx(Tx, D) of
-        ok ->
+        {ok, D1} ->
             lager:debug("Client reconnect successful; Client = ~p", [Pid]),
             MRef = erlang:monitor(process, Pid),
-            D1 = D#data{ client           = Pid
-                       , client_mref      = MRef
-                       , client_connected = true },
-            keep_state(D1, [{reply, From, ok}]);
+            D2 = D1#data{ client           = Pid
+                        , client_mref      = MRef
+                        , client_connected = true },
+            keep_state(D2, [{reply, From, ok}]);
         {error, _} = Err ->
             lager:debug("Request failed: ~p", [Err]),
             keep_state(D, [{reply, From, Err}])

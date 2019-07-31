@@ -1615,13 +1615,17 @@ reconnect(Fsm, Role, #{} = R, Debug) ->
     end,
     R#{ proxy => NewProxy }.
 
-try_reconnect(Fsm, Role, #{ channel_id := ChId
-                          , fsm  := Fsm
-                          , pub  := Pub
-                          , priv := Priv}, Debug) ->
+try_reconnect(Fsm, Role, R, Debug) ->
+    try_reconnect(Fsm, 1, Role, R, Debug).
+
+try_reconnect(Fsm, Round, Role, #{ channel_id := ChId
+                                 , fsm  := Fsm
+                                 , pub  := Pub
+                                 , priv := Priv}, Debug) ->
     ChIdId = aeser_id:create(channel, ChId),
     PubId = aeser_id:create(account, Pub),
     {ok, Tx} = aesc_client_reconnect_tx:new(#{ channel_id => ChIdId
+                                             , round      => Round
                                              , role       => Role
                                              , pub_key    => PubId }),
     log(Debug, "Reconnect Tx = ~p", [Tx]),

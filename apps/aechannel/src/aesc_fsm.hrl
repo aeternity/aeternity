@@ -131,6 +131,7 @@
               , client_mref                   :: reference() | undefined
               , client_connected = true       :: boolean()
               , client_may_disconnect = false :: boolean()
+              , client_reconnect_nonce = 0    :: non_neg_integer()
               , opts                          :: map()
               , channel_id                    :: undefined | binary()
               , on_chain_id                   :: undefined | binary()
