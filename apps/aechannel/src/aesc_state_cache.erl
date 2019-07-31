@@ -1,3 +1,13 @@
+%%%=============================================================================
+%%% @copyright 2018, Aeternity Anstalt
+%%% @doc
+%%%    Module monitoring the FSM's used for SC. After each state update in a given FSM/SC
+%%%    the offchain state is saved in ETS in order for the user to be able to leave and then reestablish
+%%%    the channel. In case of an unexpected FSM crash the state is encrypted with an user provided password
+%%%    and saved in persistent storage. Please note that it is impossible to reestablish a channel without the state.
+%%%    TODO: Protect the state in case of an unexpected power failure.
+%%% @end
+%%%=============================================================================
 -module(aesc_state_cache).
 -behaviour(gen_server).
 
@@ -39,16 +49,16 @@
              watchers  = ets:new(watchers, [set]),
              min_depth = ?MIN_DEPTH}).
 -type ch_cache_id() :: { aeser_id:val()
-                       , aeser_id:val()}.
--record(ch_cache, { cache_id    :: ch_cache_id()
-                  , state       :: aesc_offchain_state:state()
-                  , salt        :: binary()
-                  , session_key :: binary()
+                       , aeser_id:val() | atom()}.
+-record(ch_cache, { cache_id    :: ch_cache_id() | undefined
+                  , state       :: aesc_offchain_state:state() | atom() | undefined
+                  , salt        :: binary() | atom()
+                  , session_key :: binary() | atom()
                   }).
 -record(pch_cache, { cache_id        :: ch_cache_id()
-                   , salt            :: binary()
-                   , nonce           :: binary()
-                   , encrypted_state :: binary()
+                   , salt            :: binary() | atom()
+                   , nonce           :: binary() | atom()
+                   , encrypted_state :: binary() | atom()
                    }).
 
 -define(SERVER, ?MODULE).
@@ -66,7 +76,7 @@ new(ChId, PubKey, State, Password) ->
 reestablish(ChId, Pubkey) ->
     reestablish(ChId, Pubkey, ?CACHE_DEFAULT_PASSWORD).
 
--spec reestablish(aeser_id:val(), aeser_id:val(), binary()) -> {ok, aesc_offchain_state:state()} | {error, atom()}.
+-spec reestablish(aeser_id:val(), aeser_id:val(), string()) -> {ok, aesc_offchain_state:state()} | {error, atom()}.
 reestablish(ChId, PubKey, Password) ->
     gen_server:call(?SERVER, {reestablish, ChId, PubKey, self(), Password}).
 
@@ -120,7 +130,7 @@ init([]) ->
 generate_session_key(Password, Salt) ->
     enacl:pwhash(Password, Salt).
 
-setup_keys(Password) ->
+setup_keys_in_cache(Password) ->
     Salt = crypto:strong_rand_bytes(16),
     case generate_session_key(Password, Salt) of
         {ok, SessionKey} ->
@@ -130,7 +140,7 @@ setup_keys(Password) ->
     end.
 
 handle_call({new, ChId, PubKey, Pid, State, Password}, _From, St) ->
-    case setup_keys(Password) of
+    case setup_keys_in_cache(Password) of
         {ok, Result} ->
             case ets:insert_new(?TAB, Result#ch_cache{cache_id = key(ChId, PubKey), state = State}) of
                 true ->
@@ -160,7 +170,7 @@ handle_call({fetch, ChId, PubKey}, _From, St) ->
     end;
 handle_call({min_depth_achieved, ChId, _Watcher}, _From, St) ->
     lager:debug("min_depth_achieved - ~p gone", [ChId]),
-    {reply, ok, delete_all_for_child(ChId, St)};
+    {reply, ok, delete_all_state_for_channel(ChId, St)};
 handle_call({cache_status, ChId}, _From, St) ->
     {reply, cache_status_(ChId), St};
 handle_call(_Req, _From, St) ->
@@ -170,7 +180,7 @@ handle_cast({update, ChId, PubKey, State}, St) ->
     ets:update_element(?TAB, key(ChId, PubKey), {#ch_cache.state, State}),
     {noreply, St};
 handle_cast({delete, ChId}, St) ->
-    {noreply, delete_all_for_child(ChId, St)};
+    {noreply, delete_all_state_for_channel(ChId, St)};
 handle_cast(_Msg, St) ->
     {noreply, St}.
 
@@ -200,7 +210,7 @@ terminate(_Reason, _St) ->
 code_change(_FromVsn, St, _Extra) ->
     {ok, St}.
 
--spec key(aeser_id:val(), aeser_id:val()) -> ch_cache_id().
+-spec key(aeser_id:val(), aeser_id:val() | atom()) -> ch_cache_id().
 key(ChId, PubKey) ->
     {ChId, PubKey}.
 
@@ -242,8 +252,9 @@ decrypt_with_key_and_move_to_ram(#pch_cache{ cache_id = CacheId
     end.
 
 decrypt_state_and_move_to_ram(#pch_cache{salt = Salt} = PersistedCache, Password) ->
+    %% For security reasons we use a new salt
     case { generate_session_key(Password, Salt)
-         , setup_keys(Password)} of
+         , setup_keys_in_cache(Password)} of
         {{ok, SessionKey}, {ok, Cache}} ->
             decrypt_with_key_and_move_to_ram(PersistedCache, Cache, SessionKey);
         {{error, _} = Err, _} ->
@@ -356,8 +367,8 @@ remove_watcher(ChId, #st{watchers = Ws} = St) ->
     end,
     St.
 
-delete_all_for_child(ChId, St) ->
-    Res = delete_all_state_for(
+delete_all_state_for_channel(ChId, St) ->
+    Res = delete_offchain_state_for_channel(
             ChId, remove_watcher(
                     ChId, remove_monitor_by_chid(
                             ChId, St))),
@@ -365,7 +376,7 @@ delete_all_for_child(ChId, St) ->
                 [ChId, cache_status_(ChId)]),
     Res.
 
-delete_all_state_for(ChId, St) ->
+delete_offchain_state_for_channel(ChId, St) ->
     ets:select_delete(
       ?TAB, [{ #ch_cache{cache_id = key(ChId, '_'), _ = '_'}, [], [true] }]),
 
