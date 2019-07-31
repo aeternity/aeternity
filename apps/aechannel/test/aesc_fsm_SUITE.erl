@@ -54,6 +54,8 @@
         , attach_responder/1
         , initiator_spend/1
         , responder_spend/1
+        , client_reconnect_initiator/1
+        , client_reconnect_responder/1
         ]).
 
 %% exports for aehttp_integration_SUITE
@@ -170,7 +172,10 @@ groups() ->
       ]},
      {initiator_is_ga, [sequence], ga_sequence()},
      {responder_is_ga, [sequence], ga_sequence()},
-     {both_are_ga, [sequence], ga_sequence()}
+     {both_are_ga, [sequence], ga_sequence()},
+     {client_reconnect, [sequence],
+      [ client_reconnect_initiator
+      , client_reconnect_responder ]}
     ].
 
 ga_sequence() ->
@@ -1544,6 +1549,84 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
     {ok,_} = receive_from_fsm(info, R, fun died_normal/1, ?TIMEOUT, Debug),
     ct:log("died_normal detected from both", []),
     ok.
+
+client_reconnect_initiator(Cfg) ->
+    client_reconnect_(initiator, Cfg).
+
+client_reconnect_responder(Cfg) ->
+    client_reconnect_(responder, Cfg).
+
+client_reconnect_(Role, Cfg) ->
+    Debug = get_debug(Cfg),
+
+    #{ i := I, r := R } = Ch = create_channel_([?SLOGAN | Cfg]),
+    MapKey = case Role of
+                 initiator -> i;
+                 responder -> r
+             end,
+    #{ fsm := Fsm, proxy := Proxy } = RoleI = maps:get(MapKey, Ch),
+    ct:log("Ch = ~p", [Ch]),
+    {error, _} = Err = try_reconnect(Fsm, Role, RoleI, Debug),
+    log(Debug, "Reconnecting before disconnecting failed: ~p", [Err]),
+    unlink(Proxy),
+    exit(Proxy, kill),
+    ok = things_that_should_fail_if_no_client(Role, I, R, Debug),
+    Res = reconnect(Fsm, Role, RoleI, Debug),
+    ct:log("Reconnect req -> ~p", [Res]),
+    %% run tests here
+    shutdown_(I, R, Cfg).
+
+things_that_should_fail_if_no_client(ClientRole, I, R, Debug) ->
+    update_req_conflict(ClientRole, I, R, Debug).
+
+update_req_conflict(Role, I, R, Debug) ->
+    %% Note that the A and B represent I and R, possibly switched, to
+    %% indicate who should initiate the update request. Here, A will be
+    %% the side that currently has no client.
+    {#{ pub := PubA, fsm := FsmA } = _A,
+     #{ pub := PubB, fsm := FsmB } = B}
+        = roles_for_update(Role, I, R),
+    %% cannot request an update from the side with client disconnected
+    {error, client_disconnected}
+        = rpc(dev1, aesc_fsm, upd_transfer, [FsmA, PubA, PubB, 1]),
+    rpc(dev1, aesc_fsm, upd_transfer, [FsmB, PubB, PubA, 2]),
+    {_B1, _} = await_signing_request(update, B, Debug),
+    %% FsmR should now detect a conflict
+    {ok, _} = receive_from_fsm(conflict, B, any_msg(), ?TIMEOUT, Debug),
+    ok.
+
+roles_for_update(initiator, I, R) -> {I, R};
+roles_for_update(responder, I, R) -> {R, I}.
+
+reconnect(Fsm, Role, #{} = R, Debug) ->
+    Me = self(),
+    NewProxy = spawn(fun() ->
+                             erlang:monitor(process, Me),
+                             ok = try_reconnect(Fsm, Role, R, Debug),
+                             log(Debug, "Reconnect successful; Fsm = ~p", [Fsm]),
+                             Me ! {self(), reconnected},
+                             fsm_relay(R, Me, Debug)
+                     end),
+    receive
+        {NewProxy, reconnected} -> ok
+    after 1000 ->
+            error(timeout)
+    end,
+    R#{ proxy => NewProxy }.
+
+try_reconnect(Fsm, Role, #{ channel_id := ChId
+                          , fsm  := Fsm
+                          , pub  := Pub
+                          , priv := Priv}, Debug) ->
+    ChIdId = aeser_id:create(channel, ChId),
+    PubId = aeser_id:create(account, Pub),
+    {ok, Tx} = aesc_client_reconnect_tx:new(#{ channel_id => ChIdId
+                                             , role       => Role
+                                             , pub_key    => PubId }),
+    log(Debug, "Reconnect Tx = ~p", [Tx]),
+    SignedTx = aec_test_utils:sign_tx(Tx, Priv),
+    rpc(dev1, aesc_fsm, reconnect_client, [Fsm, self(), SignedTx]).
+
 
 %% Retry N times, T ms apart, if F() raises an exception.
 %% Used in places where there could be a race.

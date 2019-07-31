@@ -30,6 +30,13 @@ init(Req, _Opts) ->
      maps:from_list(cowboy_req:parse_qs(Req))}.
 
 -spec websocket_init(map()) -> {ok, handler()} | {stop, undefined}.
+websocket_init(#{ <<"reconnect_tx">> := _ } = Params) ->
+    case jobs_ask() of
+        {ok, JobId} ->
+            websocket_init_reconnect(Params#{ job_id => JobId });
+        {error, _} ->
+            {error, too_many_ws_sockets}
+    end;
 websocket_init(Params) ->
     case {prepare_handler(Params), read_channel_options(Params)} of
         {{error, Err}, _} ->
@@ -47,30 +54,64 @@ websocket_init(Params) ->
                     MRef = erlang:monitor(process, FsmPid),
                     {ok, Handler#handler{fsm_pid = FsmPid, fsm_mref = MRef}};
                 {error, Err} ->
-                    HandledErrors =[{not_found, participant_not_found},
-                                    {insufficient_initiator_amount, value_too_low},
-                                    {insufficient_responder_amount, value_too_low},
-                                    {insufficient_amounts, value_too_low},
-                                    {channel_reserve_too_low, value_too_low},
-                                    {push_amount_too_low, value_too_low},
-                                    {lock_period_too_low, value_too_low}
-                                   ],
-                    case proplists:get_value(Err, HandledErrors, not_handled_error) of
-                        not_handled_error ->
-                            lager:info("Failed to start because of unhandled error ~p", [Err]),
-                            {stop, undefined};
-                        ErrKey ->
-                            %% because of tests' subscription mechanism, we
-                            %% might have to give some time tolerance in order
-                            %% to avoid race conditions
-                            After = 0,
-                            timer:send_after(After, ?ERROR_TO_CLIENT(ErrKey)),
-                            timer:send_after(After + 1, stop),
-                            {ok, Handler#handler{fsm_pid  = undefined,
-                                                 fsm_mref = undefined}}
-                    end
+                    handler_init_error(Err, Handler)
             end
     end.
+
+websocket_init_reconnect(#{ <<"reconnect_tx">> := ReconnectTx } = Params) ->
+    lager:debug("ReconnectTx = ~p", [ReconnectTx]),
+    case check_reconnect_tx(ReconnectTx) of
+        {ok, #{ channel_id := ChanId
+              , role       := Role
+              , pub_key    := Pubkey
+              , signed_tx  := SignedTx } = Opts} ->
+            Handler = reconnect_opts_to_handler(maps:merge(Params, Opts)),
+            case aesc_fsm:where(ChanId, Role) of
+                undefined ->
+                    lager:debug("where(~p, ~p) -> undefined", [ChanId, Role]),
+                    handler_init_error(not_found, Handler);
+                #{ fsm_pid := Fsm, pub_key := Pubkey } ->
+                    %% At this point, we haven't verified the signature.
+                    %% This is done by the fsm.
+                    lager:debug("Found FSM = ~p", [Fsm]),
+                    case aesc_fsm:reconnect_client(Fsm, self(), SignedTx) of
+                        ok ->
+                            MRef = erlang:monitor(process, Fsm),
+                            { ok, Handler#handler{ fsm_pid  = Fsm
+                                                 , fsm_mref = MRef } };
+                        {error, Err} ->
+                            handler_init_error(Err, Handler)
+                    end
+            end;
+        {error, CheckError} ->
+            lager:debug("CheckError = ~p", [CheckError]),
+            {stop, undefined}
+    end.
+
+handler_init_error(Err, Handler) ->
+    HandledErrors =[{not_found, participant_not_found},
+                    {insufficient_initiator_amount, value_too_low},
+                    {insufficient_responder_amount, value_too_low},
+                    {insufficient_amounts, value_too_low},
+                    {channel_reserve_too_low, value_too_low},
+                    {push_amount_too_low, value_too_low},
+                    {lock_period_too_low, value_too_low}
+                   ],
+    case proplists:get_value(Err, HandledErrors, not_handled_error) of
+        not_handled_error ->
+            lager:info("Failed to start because of unhandled error ~p", [Err]),
+            {stop, undefined};
+        ErrKey ->
+            %% because of tests' subscription mechanism, we
+            %% might have to give some time tolerance in order
+            %% to avoid race conditions
+            After = 0,
+            timer:send_after(After, ?ERROR_TO_CLIENT(ErrKey)),
+            timer:send_after(After + 1, stop),
+            {ok, Handler#handler{fsm_pid  = undefined,
+                                 fsm_mref = undefined}}
+    end.
+
 
 -spec websocket_handle(term(), handler()) -> {ok, handler()}.
 websocket_handle({text, MsgBin}, #handler{fsm_pid = undefined} = H) ->
@@ -136,8 +177,7 @@ terminate(Reason, _PartialReq, State) ->
     case fsm_pid(State) of
         undefined -> pass;
         FsmPid ->
-            true = unlink(FsmPid),
-            ok = aesc_fsm:client_died(FsmPid)
+            true = unlink(FsmPid)
     end,
     case job_id(State) of
         undefined -> pass;
@@ -160,6 +200,31 @@ start_link_fsm(#handler{role = initiator, host=Host, port=Port}, Opts) ->
     aesc_fsm:initiate(Host, Port, Opts);
 start_link_fsm(#handler{role = responder, port=Port}, Opts) ->
     aesc_fsm:respond(Port, Opts).
+
+check_reconnect_tx(Tx0) ->
+    case aeser_api_encoder:safe_decode(transaction, Tx0) of
+        {ok, SignedTxBin} ->
+            lager:debug("Decoded (bin): ~p", [SignedTxBin]),
+            SignedTx = aetx_sign:deserialize_from_binary(SignedTxBin),
+            case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of
+                {aesc_client_reconnect_tx = Mod, Tx} ->
+                    %% Successful deserialization implies proper tx structure
+                    lager:debug("Is reconnect tx", []),
+                    {ok, lists:foldl(
+                           fun({Key, Method}, Acc) ->
+                                   Acc#{Key => Mod:Method(Tx)}
+                           end, #{ signed_tx => SignedTx },
+                           [ {channel_id, channel_pubkey}
+                           , {role      , role}
+                           , {pub_key   , origin} ])};
+                _Other ->
+                    lager:debug("Wrong type tx: ~p", [_Other]),
+                    {error, invalid_tx}
+            end;
+        _DecErr ->
+            lager:debug("Decode error: ~p", [_DecErr]),
+            {error, invalid_tx}
+    end.
 
 set_field(H, host, Val)         -> H#handler{host = Val};
 set_field(H, role, Val)         -> H#handler{role = Val};
@@ -242,6 +307,17 @@ parse_by_type(serialized_tx, V, RecordField) when is_binary(V) ->
             {error, {RecordField, broken_encoding}}
     end.
 
+reconnect_opts_to_handler(#{ <<"protocol">> := Protocol
+                           , channel_id     := ChId
+                           , job_id         := JobId } = Params) ->
+    lager:debug("Params = ~p", [Params]),
+    %% We don't fill in values like host, port, etc. since we don't
+    %% have them, and they aren't needed afaict.
+    #handler{ protocol       = sc_ws_api:protocol(Protocol)
+            , channel_id     = ChId
+            , enc_channel_id = aeser_api_encoder:encode(channel, ChId)
+            , job_id         = JobId }.
+
 prepare_handler(#{<<"protocol">> := Protocol} = Params) ->
     lager:debug("prepare_handler() Params = ~p", [Params]),
     Read =
@@ -256,7 +332,7 @@ prepare_handler(#{<<"protocol">> := Protocol} = Params) ->
         end,
     Validators =
         [fun(H) ->
-            case jobs:ask(ws_handlers) of
+            case jobs_ask() of
                 {ok, JobId} ->
                     H#handler{job_id = JobId};
                 {error, _} ->
@@ -379,4 +455,5 @@ read_channel_options(Params) ->
           ++ lists:map(ReadReport, aesc_fsm:report_tags())
      ).
 
-
+jobs_ask() ->
+    jobs:ask(ws_handlers).

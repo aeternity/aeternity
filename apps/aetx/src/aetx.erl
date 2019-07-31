@@ -79,7 +79,8 @@
                  | channel_slash_tx
                  | channel_settle_tx
                  | channel_snapshot_solo_tx
-                 | channel_offchain_tx.
+                 | channel_offchain_tx
+                 | channel_client_reconnect_tx.
 
 -type tx_instance() :: aec_spend_tx:tx()
                      | aeo_register_tx:tx()
@@ -104,7 +105,8 @@
                      | aesc_slash_tx:tx()
                      | aesc_settle_tx:tx()
                      | aesc_snapshot_solo_tx:tx()
-                     | aesc_offchain_tx:tx().
+                     | aesc_offchain_tx:tx()
+                     | aesc_client_reconnect_tx:tx().
 
 -type tx_ttl() :: 0 | aec_blocks:height().
 %% A transaction TTL is either an absolute block height, or the transaction
@@ -258,9 +260,12 @@ gas_limit(#aetx{type = oracle_response_tx, size = Size, tx = Tx }, Height) ->
     end;
 gas_limit(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height) ->
     base_gas(ga_meta_tx, Height) + size_gas(Size) + CB:gas_limit(Tx, Height);
-gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, Height) when Type =/= channel_offchain_tx ->
+gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, Height) when Type =/= channel_offchain_tx,
+                                                                            Type =/= channel_client_reconnect_tx ->
     base_gas(Type, Height) + size_gas(Size) + CB:gas(Tx);
 gas_limit(#aetx{ type = channel_offchain_tx }, _Height) ->
+    0;
+gas_limit(#aetx{ type = channel_client_reconnect_tx }, _Height) ->
     0.
 
 -spec inner_gas_limit(Tx :: tx(), Height :: aec_blocks:height()) -> Gas :: non_neg_integer().
@@ -489,56 +494,58 @@ deserialize_from_binary(Bin) ->
     Fields = aeserialization:decode_fields(Template, RawFields),
     #aetx{cb = CB, type = Type, size = byte_size(Bin), tx = CB:deserialize(Vsn, Fields)}.
 
-type_to_cb(spend_tx)                  -> aec_spend_tx;
-type_to_cb(oracle_register_tx)        -> aeo_register_tx;
-type_to_cb(oracle_extend_tx)          -> aeo_extend_tx;
-type_to_cb(oracle_query_tx)           -> aeo_query_tx;
-type_to_cb(oracle_response_tx)        -> aeo_response_tx;
-type_to_cb(name_preclaim_tx)          -> aens_preclaim_tx;
-type_to_cb(name_claim_tx)             -> aens_claim_tx;
-type_to_cb(name_transfer_tx)          -> aens_transfer_tx;
-type_to_cb(name_update_tx)            -> aens_update_tx;
-type_to_cb(name_revoke_tx)            -> aens_revoke_tx;
-type_to_cb(contract_call_tx)          -> aect_call_tx;
-type_to_cb(contract_create_tx)        -> aect_create_tx;
-type_to_cb(ga_attach_tx)              -> aega_attach_tx;
-type_to_cb(ga_meta_tx)                -> aega_meta_tx;
-type_to_cb(channel_create_tx)         -> aesc_create_tx;
-type_to_cb(channel_deposit_tx)        -> aesc_deposit_tx;
-type_to_cb(channel_withdraw_tx)       -> aesc_withdraw_tx;
-type_to_cb(channel_force_progress_tx) -> aesc_force_progress_tx;
-type_to_cb(channel_close_solo_tx)     -> aesc_close_solo_tx;
-type_to_cb(channel_close_mutual_tx)   -> aesc_close_mutual_tx;
-type_to_cb(channel_slash_tx)          -> aesc_slash_tx;
-type_to_cb(channel_settle_tx)         -> aesc_settle_tx;
-type_to_cb(channel_snapshot_solo_tx)  -> aesc_snapshot_solo_tx;
-type_to_cb(channel_offchain_tx)       -> aesc_offchain_tx.
+type_to_cb(spend_tx)                    -> aec_spend_tx;
+type_to_cb(oracle_register_tx)          -> aeo_register_tx;
+type_to_cb(oracle_extend_tx)            -> aeo_extend_tx;
+type_to_cb(oracle_query_tx)             -> aeo_query_tx;
+type_to_cb(oracle_response_tx)          -> aeo_response_tx;
+type_to_cb(name_preclaim_tx)            -> aens_preclaim_tx;
+type_to_cb(name_claim_tx)               -> aens_claim_tx;
+type_to_cb(name_transfer_tx)            -> aens_transfer_tx;
+type_to_cb(name_update_tx)              -> aens_update_tx;
+type_to_cb(name_revoke_tx)              -> aens_revoke_tx;
+type_to_cb(contract_call_tx)            -> aect_call_tx;
+type_to_cb(contract_create_tx)          -> aect_create_tx;
+type_to_cb(ga_attach_tx)                -> aega_attach_tx;
+type_to_cb(ga_meta_tx)                  -> aega_meta_tx;
+type_to_cb(channel_create_tx)           -> aesc_create_tx;
+type_to_cb(channel_deposit_tx)          -> aesc_deposit_tx;
+type_to_cb(channel_withdraw_tx)         -> aesc_withdraw_tx;
+type_to_cb(channel_force_progress_tx)   -> aesc_force_progress_tx;
+type_to_cb(channel_close_solo_tx)       -> aesc_close_solo_tx;
+type_to_cb(channel_close_mutual_tx)     -> aesc_close_mutual_tx;
+type_to_cb(channel_slash_tx)            -> aesc_slash_tx;
+type_to_cb(channel_settle_tx)           -> aesc_settle_tx;
+type_to_cb(channel_snapshot_solo_tx)    -> aesc_snapshot_solo_tx;
+type_to_cb(channel_offchain_tx)         -> aesc_offchain_tx;
+type_to_cb(channel_client_reconnect_tx) -> aesc_client_reconnect_tx.
 
-type_to_swagger_name(spend_tx)                  -> <<"SpendTx">>;
-type_to_swagger_name(oracle_register_tx)        -> <<"OracleRegisterTx">>;
-type_to_swagger_name(oracle_extend_tx)          -> <<"OracleExtendTx">>;
-type_to_swagger_name(oracle_query_tx)           -> <<"OracleQueryTx">>;
-type_to_swagger_name(oracle_response_tx)        -> <<"OracleRespondTx">>;
-type_to_swagger_name(name_preclaim_tx)          -> <<"NamePreclaimTx">>;
-type_to_swagger_name(name_claim_tx)             -> <<"NameClaimTx">>;
-type_to_swagger_name(name_transfer_tx)          -> <<"NameTransferTx">>;
-type_to_swagger_name(name_update_tx)            -> <<"NameUpdateTx">>;
-type_to_swagger_name(name_revoke_tx)            -> <<"NameRevokeTx">>;
-type_to_swagger_name(contract_call_tx)          -> <<"ContractCallTx">>;
-type_to_swagger_name(contract_create_tx)        -> <<"ContractCreateTx">>;
-type_to_swagger_name(ga_attach_tx)              -> <<"GAAttachTx">>;
-type_to_swagger_name(ga_meta_tx)                -> <<"GAMetaTx">>;
-type_to_swagger_name(channel_create_tx)         -> <<"ChannelCreateTx">>;
-type_to_swagger_name(channel_deposit_tx)        -> <<"ChannelDepositTx">>;
-type_to_swagger_name(channel_withdraw_tx)       -> <<"ChannelWithdrawTx">>;
-type_to_swagger_name(channel_force_progress_tx) -> <<"ChannelForceProgressTx">>;
-type_to_swagger_name(channel_close_solo_tx)     -> <<"ChannelCloseSoloTx">>;
-type_to_swagger_name(channel_close_mutual_tx)   -> <<"ChannelCloseMutualTx">>;
-type_to_swagger_name(channel_slash_tx)          -> <<"ChannelSlashTx">>;
-type_to_swagger_name(channel_settle_tx)         -> <<"ChannelSettleTx">>;
-type_to_swagger_name(channel_snapshot_solo_tx)  -> <<"ChannelSnapshotSoloTx">>;
+type_to_swagger_name(spend_tx)                    -> <<"SpendTx">>;
+type_to_swagger_name(oracle_register_tx)          -> <<"OracleRegisterTx">>;
+type_to_swagger_name(oracle_extend_tx)            -> <<"OracleExtendTx">>;
+type_to_swagger_name(oracle_query_tx)             -> <<"OracleQueryTx">>;
+type_to_swagger_name(oracle_response_tx)          -> <<"OracleRespondTx">>;
+type_to_swagger_name(name_preclaim_tx)            -> <<"NamePreclaimTx">>;
+type_to_swagger_name(name_claim_tx)               -> <<"NameClaimTx">>;
+type_to_swagger_name(name_transfer_tx)            -> <<"NameTransferTx">>;
+type_to_swagger_name(name_update_tx)              -> <<"NameUpdateTx">>;
+type_to_swagger_name(name_revoke_tx)              -> <<"NameRevokeTx">>;
+type_to_swagger_name(contract_call_tx)            -> <<"ContractCallTx">>;
+type_to_swagger_name(contract_create_tx)          -> <<"ContractCreateTx">>;
+type_to_swagger_name(ga_attach_tx)                -> <<"GAAttachTx">>;
+type_to_swagger_name(ga_meta_tx)                  -> <<"GAMetaTx">>;
+type_to_swagger_name(channel_create_tx)           -> <<"ChannelCreateTx">>;
+type_to_swagger_name(channel_deposit_tx)          -> <<"ChannelDepositTx">>;
+type_to_swagger_name(channel_withdraw_tx)         -> <<"ChannelWithdrawTx">>;
+type_to_swagger_name(channel_force_progress_tx)   -> <<"ChannelForceProgressTx">>;
+type_to_swagger_name(channel_close_solo_tx)       -> <<"ChannelCloseSoloTx">>;
+type_to_swagger_name(channel_close_mutual_tx)     -> <<"ChannelCloseMutualTx">>;
+type_to_swagger_name(channel_slash_tx)            -> <<"ChannelSlashTx">>;
+type_to_swagger_name(channel_settle_tx)           -> <<"ChannelSettleTx">>;
+type_to_swagger_name(channel_snapshot_solo_tx)    -> <<"ChannelSnapshotSoloTx">>;
 %% not exposed in HTTP API:
-type_to_swagger_name(channel_offchain_tx)       -> <<"ChannelOffchainTx">>.
+type_to_swagger_name(channel_offchain_tx)         -> <<"ChannelOffchainTx">>;
+type_to_swagger_name(channel_client_reconnect_tx) -> <<"ChannelClientReconnectTx">>.
 
 -spec specialize_type(Tx :: tx()) -> {tx_type(), tx_instance()}.
 specialize_type(#aetx{ type = Type, tx = Tx }) -> {Type, Tx}.
