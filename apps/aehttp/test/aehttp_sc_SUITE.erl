@@ -2475,7 +2475,6 @@ update_error_with_client_disconnected(Role, Clients, Participants, Config) ->
                      amount => 1}, Config),
 
     %% starter signs the new state
-
     SignUpdate(ConnPid, FromPrivkey),
 
     {ok, _} = wait_for_channel_event(ConnPid, conflict, Config),

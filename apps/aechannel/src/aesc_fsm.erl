@@ -16,8 +16,8 @@
 -export([ start_link/1
         , attach_responder/2      %% (fsm(), map())
         , close_solo/1
-        , reconnect_client/2        %% (fsm(), signed_tx())
-        , reconnect_client/3        %% (fsm(), Client :: pid(), signed_tx())
+        , reconnect_client/2      %% (fsm(), signed_tx())
+        , reconnect_client/3      %% (fsm(), Client :: pid(), signed_tx())
         , connection_died/1       %% (fsm())
         , get_contract/2
         , get_contract_call/4     %% (fsm(), contract_id(), caller(), round())
@@ -40,11 +40,11 @@
         ]).
 
 %% Inspection and configuration functions
--export([ change_config/3   %% (fsm(), key(), value()) -> ok | {error,_}
-        , dry_run_contract/2 %% (fsm(), map()) -> {ok, call()} | {error, _}
-        , get_balances/2    %% (fsm(), {ok, [key()]) -> [{key(), amount()}]} | {error, _}
-        , get_history/1     %% (fsm()) -> [Event]
-        , get_round/1       %% (fsm()) -> {ok, round()} | {error, _}
+-export([ change_config/3      %% (fsm(), key(), value()) -> ok | {error,_}
+        , dry_run_contract/2   %% (fsm(), map()) -> {ok, call()} | {error, _}
+        , get_balances/2       %% (fsm(), {ok, [key()]) -> [{key(), amount()}]} | {error, _}
+        , get_history/1        %% (fsm()) -> [Event]
+        , get_round/1          %% (fsm()) -> {ok, round()} | {error, _}
         , patterns/0
         , prune_local_calls/1  %% (fsm()) -> {ok, round()} | {error, _}
         , record_fields/1
@@ -56,7 +56,7 @@
 -export([message/2]).
 
 %% Used by client
--export([signing_response/3]).    %% (Fsm, Tag, Obj)
+-export([signing_response/3]).          %% (Fsm, Tag, Obj)
 
 %% Used by min-depth watcher
 -export([ minimum_depth_achieved/4      %% (Fsm, OnChainId, Type, TxHash)
