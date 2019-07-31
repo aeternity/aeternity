@@ -4,6 +4,8 @@
 %%%    The tx contains the information needed to locate the right FSM, including
 %%%    the client's public key. It must be signed by the client, proving that it
 %%%    possesses the private key (or other signing capability) for the account.
+%%%
+%%%    This is a transaction so to ease signing for the clients of the SC FSM.
 %%% @end
 %%%=============================================================================
 -module(aesc_client_reconnect_tx).
