@@ -300,10 +300,10 @@ get_round(Fsm) ->
 prune_local_calls(Fsm) ->
     gen_statem:call(Fsm, prune_local_calls).
 
-dry_run_contract(Fsm, #{contract    := _,
-                        abi_version := _,
-                        amount      := Amt,
-                        call_data   := _} = Opts) when is_integer(Amt), Amt >= 0 ->
+dry_run_contract(Fsm, #{ contract    := _
+                       , abi_version := _
+                       , amount      := Amt
+                       , call_data   := _ } = Opts) when is_integer(Amt), Amt >= 0 ->
     gen_statem:call(Fsm, {upd_call_contract, Opts, dry_run}).
 
 %% ==================================================================
@@ -527,11 +527,10 @@ awaiting_reestablish(cast, {?CH_REESTABL, Msg}, #data{role = responder} = D) ->
             close(Error, D)
     end;
 awaiting_reestablish({call, From}, {attach_responder, Info},
-                     #data{ opts        = Opts
+                     #data{ opts        = #{responder := R}
                           , on_chain_id = ChannelId
                           , role        = responder } = D) ->
     lager:debug("Attach request: ~p", [Info]),
-    #{ responder := R } = Opts,
     ChainHash = aec_chain:genesis_hash(),
     case Info of
         #{ chain_hash := ChainHash
@@ -712,7 +711,7 @@ awaiting_signature(Type, Msg, D) ->
     handle_common_event(Type, Msg, postpone, D).
 
 awaiting_update_ack(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_update_ack(cast, {Req,_} = Msg, #data{} = D) when ?UPDATE_CAST(Req) ->
+awaiting_update_ack(cast, {Req, _} = Msg, #data{} = D) when ?UPDATE_CAST(Req) ->
     %% This might happen if a request is sent before our signed ?UPDATE msg
     %% arrived.
     lager:debug("race detected: ~p", [Msg]),
@@ -724,9 +723,6 @@ awaiting_update_ack(cast, {?UPDATE_ACK, Msg}, #data{} = D) ->
         {error, _Error} ->
             handle_update_conflict(?UPDATE_ACK, D)
     end;
-awaiting_update_ack(cast, {?UPDATE, _} = Msg, D) ->
-    lager:debug("race detected: ~p", [Msg]),
-    handle_update_conflict(?UPDATE, D);
 awaiting_update_ack(cast, {?UPDATE_ERR, Msg}, D) ->
     lager:debug("received update_err: ~p", [Msg]),
     case check_update_err_msg(Msg, D) of
@@ -959,20 +955,6 @@ open(cast, {?SHUTDOWN, Msg}, D) ->
 open(Type, Msg, D) ->
     handle_common_event(Type, Msg, discard, D).
 
-
-deposit_locked_complete(SignedTx,
-                        Updates,
-                        #data{state = State,
-                              opts = Opts} = D) ->
-    {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    lager:debug("Applying updates: ~p", [Updates]),
-    D1   = D#data{state = aesc_offchain_state:set_signed_tx(SignedTx, Updates,
-                                                            State,
-                                                            OnChainTrees,
-                                                            OnChainEnv, Opts)},
-    next_state(open, D1).
-
 reestablish_init(enter, _OldSt, _D) -> keep_state_and_data;
 reestablish_init(cast, {?CH_REEST_ACK, Msg}, D) ->
     case check_reestablish_ack_msg(Msg, D) of
@@ -1054,8 +1036,9 @@ wdraw_signed(Type, Msg, D) ->
 %% ======================================================================
 %% Action logic
 
-send_open_msg(#data{opts       = Opts,
-                    session    = Sn} = Data) ->
+send_open_msg(#data{ opts    = Opts
+                   , session = Sn
+                   , log     = Log } = Data) ->
     #{ lock_period        := LockPeriod
      , initiator          := Initiator
      , responder          := Responder
@@ -1064,11 +1047,8 @@ send_open_msg(#data{opts       = Opts,
      , responder_amount   := ResponderAmount
      , channel_reserve    := ChannelReserve } = Opts,
     ChainHash = aec_chain:genesis_hash(),
-    %%
     %% Generate a temporary channel id
-    ChannelPubKey = aesc_channels:pubkey(Initiator,
-                                         erlang:unique_integer(),
-                                         Responder),
+    ChannelPubKey = aesc_channels:pubkey(Initiator, erlang:unique_integer(), Responder),
     Msg = #{ chain_hash           => ChainHash
            , temporary_channel_id => ChannelPubKey
            , lock_period          => LockPeriod
@@ -1081,7 +1061,7 @@ send_open_msg(#data{opts       = Opts,
            },
     aesc_session_noise:channel_open(Sn, Msg),
     Data#data{ channel_id = ChannelPubKey
-             , log = log_msg(snd, ?CH_OPEN, Msg, Data#data.log) }.
+             , log = log_msg(snd, ?CH_OPEN, Msg, Log) }.
 
 check_open_msg(#{ chain_hash           := ChainHash
                 , temporary_channel_id := ChanId
@@ -1092,7 +1072,7 @@ check_open_msg(#{ chain_hash           := ChainHash
                 , channel_reserve      := ChanReserve
                 , initiator            := InitiatorPubkey
                 , responder            := ResponderPubkey } = Msg,
-               #data{opts = Opts} = Data) ->
+               #data{opts = Opts, log = Log} = Data) ->
     %% TODO: Implement more checks
     case aec_chain:genesis_hash() of
         ChainHash ->
@@ -1104,42 +1084,43 @@ check_open_msg(#{ chain_hash           := ChainHash
                      , initiator_amount   => InitiatorAmt
                      , responder_amount   => ResponderAmt
                      , channel_reserve    => ChanReserve},
-            {ok, Data#data{
-                   channel_id = ChanId,
-                   opts       = Opts1,
-                   log        = log_msg(rcv, ?CH_OPEN, Msg, Data#data.log) }};
+            {ok, Data#data{ channel_id = ChanId
+                          , opts       = Opts1
+                          , log        = log_msg(rcv, ?CH_OPEN, Msg, Log) }};
         _ ->
             {error, chain_hash_mismatch}
     end.
 
 send_reestablish_msg(#{ existing_channel_id := ChId
                       , offchain_tx := OffChainTx },
-                     #data{ session = Sn } = Data) ->
+                     #data{session = Sn, log = Log} = Data) ->
     ChainHash = aec_chain:genesis_hash(),
     TxBin = aetx_sign:serialize_to_binary(OffChainTx),
     Msg = #{ chain_hash => ChainHash
            , channel_id => ChId
            , data       => #{tx => TxBin} },
     aesc_session_noise:channel_reestablish(Sn, Msg),
-    Data#data{channel_id  = ChId,
-              on_chain_id = ChId,
-              latest      = {reestablish, OffChainTx},
-              log         = log_msg(snd, ?CH_REESTABL, Msg, Data#data.log)}.
+    Data#data{ channel_id  = ChId
+             , on_chain_id = ChId
+             , latest      = {reestablish, OffChainTx}
+             , log         = log_msg(snd, ?CH_REESTABL, Msg, Log)}.
 
 check_reestablish_msg(#{ chain_hash := ChainHash
                        , channel_id := ChId
                        , data       := #{tx := TxBin} } = Msg,
-                      #data{state = State} = Data) ->
-    case get_channel(ChainHash, ChId) of
+                      #data{state = State, log = Log} = Data) ->
+    ChannelRes = get_channel(ChainHash, ChId),
+    case ChannelRes of
         {ok, _Channel} ->
             SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-            case aesc_offchain_state:check_reestablish_tx(SignedTx, State) of
+            Check = aesc_offchain_state:check_reestablish_tx(SignedTx, State),
+            case Check of
                 {ok, NewState} ->
-                    Log1 = log_msg(rcv, ?CH_REESTABL, Msg, Data#data.log),
+                    Log1 = log_msg(rcv, ?CH_REESTABL, Msg, Log),
                     {ok, Data#data{ channel_id  = ChId
                                   , on_chain_id = ChId
                                   , state       = NewState
-                                  , log         = Log1}};
+                                  , log         = Log1 }};
                 {error, _} = TxErr ->
                     TxErr
             end;
@@ -1160,16 +1141,18 @@ send_reestablish_ack_msg(#data{ state       = State
     Data#data{ latest = undefined
              , log = log_msg(snd, ?CH_REEST_ACK, Msg, Data#data.log) }.
 
-check_reestablish_ack_msg(#{ data := #{tx := TxBin} } = Msg, Data) ->
+check_reestablish_ack_msg(#{data := #{tx := TxBin}} = Msg, Data) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-    run_checks(
-      [ fun chk_chain_hash/3
-      , fun chk_channel_id/3
-      , fun chk_dual_sigs/3
-      , fun chk_same_tx/3
-      , fun log_reestabl_ack_msg/3
-      ], Msg, SignedTx, Data).
+    Funs = [ fun chk_chain_hash/3
+           , fun chk_channel_id/3
+           , fun chk_dual_sigs/3
+           , fun chk_same_tx/3
+           , fun log_reestabl_ack_msg/3
+           ],
+    run_checks(Funs, Msg, SignedTx, Data).
 
+run_checks([], _, _, Data) ->
+    {ok, Data};
 run_checks([F|Funs], Msg, SignedTx, Data) ->
     case F(Msg, SignedTx, Data) of
         {true, _} ->
@@ -1178,9 +1161,7 @@ run_checks([F|Funs], Msg, SignedTx, Data) ->
             {error, Err};
         {data, Data1} ->
             run_checks(Funs, Msg, SignedTx, Data1)
-    end;
-run_checks([], _, _, Data) ->
-    {ok, Data}.
+    end.
 
 chk_chain_hash(#{ chain_hash := CH }, _, _) ->
     {CH == aec_chain:genesis_hash(), chain_hash_mismatch}.
@@ -1196,18 +1177,17 @@ chk_dual_sigs(_, SignedTx, #data{on_chain_id = ChannelPubkey}) ->
     Pubkeys = [InitiatorPubkey, ResponderPubkey],
     case Mod of
         aesc_offchain_tx ->
-            Res =
-                verify_signatures_offchain(ChannelPubkey,
-                                            Pubkeys,
-                                            SignedTx),
+            Res = verify_signatures_offchain(ChannelPubkey, Pubkeys, SignedTx),
             {ok == Res, signatures_invalid};
         _ ->
-            case aec_chain:find_tx_location(aetx_sign:hash(SignedTx)) of
+            TxLoc = aec_chain:find_tx_location(aetx_sign:hash(SignedTx)),
+            case TxLoc of
                 %% The last state we are aware of is on-chain so it could be
                 %% used in disputes
                 %% TODO: check for Forced Progress while the FSM had been
                 %% offline
-                BH when is_binary(BH) -> {true, this_not_used}; 
+                BH when is_binary(BH) ->
+                    {true, this_not_used};
                 NotIncluded when NotIncluded =:= not_found;
                                  NotIncluded =:= none ->
                     {false, on_chain_transaction_rejected};
@@ -1224,17 +1204,18 @@ chk_dual_sigs(_, SignedTx, #data{on_chain_id = ChannelPubkey}) ->
             end
     end.
 
-chk_same_tx(_, SignedTx, #data{ state = State }) ->
+chk_same_tx(_, SignedTx, #data{state = State}) ->
     {_, MySignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
-    {aetx_sign:serialize_to_binary(SignedTx)
-     == aetx_sign:serialize_to_binary(MySignedTx), offchain_state_mismatch}.
+    SignedTxBin = aetx_sign:serialize_to_binary(SignedTx),
+    MySignedTxBin = aetx_sign:serialize_to_binary(MySignedTx),
+    {SignedTxBin == MySignedTxBin, offchain_state_mismatch}.
 
 log_reestabl_ack_msg(Msg, _, #data{log = L} = D) ->
     {data, D#data{log = log_msg(rcv, ?CH_REEST_ACK, Msg, L)}}.
 
-send_channel_accept(#data{opts          = Opts,
-                          session       = Sn,
-                          channel_id    = ChanId} = Data) ->
+send_channel_accept(#data{ opts = Opts
+                         , session = Sn
+                         , channel_id = ChanId } = Data) ->
     #{ minimum_depth      := MinDepth
      , initiator          := Initiator
      , responder          := Responder
@@ -1261,16 +1242,17 @@ check_accept_msg(#{ chain_hash           := ChainHash
                   , responder_amount     := _ResponderAmt
                   , channel_reserve      := _ChanReserve
                   , initiator            := Initiator
-                  , responder            := Responder} = Msg,
-                 #data{channel_id = ChanId,
-                       opts = Opts} = Data) ->
+                  , responder            := Responder } = Msg,
+                 #data{ channel_id = ChanId
+                      , opts = Opts
+                      , log = Log } = Data) ->
     %% TODO: implement more checks
     case aec_chain:genesis_hash() of
         ChainHash ->
-            Log1 = log_msg(rcv, ?CH_ACCEPT, Msg, Data#data.log),
+            Log1 = log_msg(rcv, ?CH_ACCEPT, Msg, Log),
             {ok, Data#data{ opts = Opts#{ minimum_depth => MinDepth
                                         , initiator     => Initiator
-                                        , responder     => Responder}
+                                        , responder     => Responder }
                           , log = Log1 }};
         _ ->
             {error, chain_hash_mismatch}
@@ -1448,12 +1430,12 @@ new_onchain_tx(channel_slash_tx, Opts,
         Opts1#{ channel_id => aeser_id:create(channel, ChanId)
               , from_id    => aeser_id:create(account, Account)
               , poi        => Poi
-              , ttl        => TTL},
+              , ttl        => TTL },
     {ok, Tx} = new_onchain_tx_(aesc_slash_tx, Opts2, CurrHeight),
     {ok, Tx, []}.
 
 new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
-                                            Mod =:= aesc_withdraw_tx; 
+                                            Mod =:= aesc_withdraw_tx;
                                             Mod =:= aesc_deposit_tx;
                                             Mod =:= aesc_close_solo_tx;
                                             Mod =:= aesc_slash_tx;
@@ -1616,28 +1598,29 @@ curr_height() ->
     aec_headers:height(aec_chain:top_header()).
 
 
-new_contract_tx_for_signing(Opts, From, #data{state = State,
-                                              opts = ChannelOpts,
-                                              on_chain_id = ChannelId
-                                             } = D) ->
-    #{owner       := Owner,
-      vm_version  := VmVersion,
-      abi_version := ABIVersion,
-      code        := Code,
-      deposit     := Deposit,
-      call_data   := CallData} = Opts,
-    Updates = [aesc_offchain_update:op_new_contract(aeser_id:create(account, Owner),
-                                                    VmVersion, ABIVersion, Code, Deposit, CallData)],
-    {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+new_contract_tx_for_signing(Opts, From, #data{ state = State
+                                             , opts = ChannelOpts
+                                             , on_chain_id = ChannelId } = D) ->
+    #{ owner       := Owner
+     , vm_version  := VmVersion
+     , abi_version := ABIVersion
+     , code        := Code
+     , deposit     := Deposit
+     , call_data   := CallData
+     } = Opts,
+    Id = aeser_id:create(account, Owner),
+    Updates = [aesc_offchain_update:op_new_contract(Id, VmVersion, ABIVersion, Code,
+                                                    Deposit, CallData)],
+    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
-    try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelId,
-                                                  ActiveProtocol,
-                                                  OnChainTrees, OnChainEnv, ChannelOpts),
-         D1 = request_signing(?UPDATE, Tx1, Updates, D),
-         gen_statem:reply(From, ok),
-         next_state(awaiting_signature, set_ongoing(D1))
+    try
+        Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelId,
+                                                 ActiveProtocol,
+                                                 OnChainTrees, OnChainEnv, ChannelOpts),
+        D1 = request_signing(?UPDATE, Tx1, Updates, D),
+        gen_statem:reply(From, ok),
+        next_state(awaiting_signature, set_ongoing(D1))
     catch
         error:Reason ->
             process_update_error(Reason, From, D)
@@ -1675,10 +1658,11 @@ send_funding_created_msg(SignedTx, #data{channel_id = Ch,
 
 check_funding_created_msg(#{ temporary_channel_id := ChanId
                            , block_hash           := ?NOT_SET_BLOCK_HASH
-                           , data                 := #{tx      := TxBin,
-                                                       updates := UpdatesBin}} = Msg,
-                          #data{ state = State, opts = Opts,
-                                 channel_id = ChanId } = Data) ->
+                           , data                 := #{ tx      := TxBin
+                                                      , updates := UpdatesBin }} = Msg,
+                          #data{ state = State
+                               , opts = Opts
+                               , channel_id = ChanId } = Data) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     case verify_signatures_channel_create(SignedTx, initiator) of
@@ -1777,16 +1761,17 @@ send_deposit_signed_msg(SignedTx, #data{on_chain_id = Ch,
 check_deposit_signed_msg(#{ channel_id := ChanId
                           , block_hash := ?NOT_SET_BLOCK_HASH
                           , data       := #{tx := TxBin}} = Msg,
-                          #data{on_chain_id = ChanId,
-                                latest = {ack, deposit_tx, _, Updates}} = Data) ->
+                          #data{ on_chain_id = ChanId
+                               , latest = {ack, deposit_tx, _, Updates} } = Data) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-    case check_tx_and_verify_signatures(SignedTx, Updates, aesc_deposit_tx,
-                                        Data,
-                                        both_accounts(Data),
-                                        not_deposit_tx) of
+    Check = check_tx_and_verify_signatures(SignedTx, Updates, aesc_deposit_tx,
+                                           Data, both_accounts(Data),
+                                           not_deposit_tx),
+    case Check of
         ok ->
             {ok, SignedTx, log(rcv, ?DEP_SIGNED, Msg, Data)};
-        {error, _} = Err -> Err
+        {error, _} = Err ->
+            Err
     end.
 
 send_deposit_locked_msg(TxHash, #data{on_chain_id = ChanId,
@@ -1799,18 +1784,15 @@ send_deposit_locked_msg(TxHash, #data{on_chain_id = ChanId,
 check_deposit_locked_msg(#{ channel_id := ChanId
                           , data       := #{tx_hash := TxHash} } = Msg,
                          SignedTx,
-                         #data{on_chain_id = MyChanId} = Data) ->
-    case ChanId == MyChanId of
-        true ->
-            case aetx_sign:hash(SignedTx) of
-                TxHash ->
-                    {ok, log(rcv, ?DEP_LOCKED, Msg, Data)};
-                _ ->
-                    {error, deposit_tx_hash_mismatch}
-            end;
-        false ->
-            {error, channel_id_mismatch}
-    end.
+                         #data{on_chain_id = ChanId} = Data) ->
+    case aetx_sign:hash(SignedTx) of
+        TxHash ->
+            {ok, log(rcv, ?DEP_LOCKED, Msg, Data)};
+        _ ->
+            {error, deposit_tx_hash_mismatch}
+    end;
+check_deposit_locked_msg(_, _, _) ->
+    {error, channel_id_mismatch}.
 
 check_deposit_error_msg(Msg, D) ->
     check_op_error_msg(?DEP_ERR, Msg, D).
@@ -1818,27 +1800,26 @@ check_deposit_error_msg(Msg, D) ->
 check_withdraw_error_msg(Msg, D) ->
     check_op_error_msg(?WDRAW_ERR, Msg, D).
 
+check_update_err_msg(Msg, D) ->
+    check_op_error_msg(?UPDATE_ERR, Msg, D).
+
 check_op_error_msg(Op, #{ channel_id := ChanId
                         , error_code := ErrCode } = Msg,
-                        #data{on_chain_id = ChanId0,
-                              state = State} = D) ->
+                   #data{ on_chain_id = ChanId
+                        , state = State
+                        , log = Log } = D) ->
     {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
-    case ChanId == ChanId0 of
-        true ->
-            case aesc_offchain_state:get_fallback_state(State) of
-                {LastRound, State1} -> %% same round
-                    {ok, ErrCode,
-                     D#data{state = State1,
-                            log = log_msg(
-                                    rcv, Op, Msg, D#data.log)}};
-                _Other ->
-                    lager:debug("Fallback state mismatch: ~p/~p",
-                                [LastRound, _Other]),
-                    {error, fallback_state_mismatch}
-            end;
-        false ->
-            {error, chain_id_mismatch}
-    end.
+    case aesc_offchain_state:get_fallback_state(State) of
+        {LastRound, State1} -> %% same round
+            Log1 = log_msg(rcv, Op, Msg, Log),
+            {ok, ErrCode, D#data{state = State1, log = Log1}};
+        _Other ->
+            lager:debug("Fallback state mismatch: ~p/~p",
+                        [LastRound, _Other]),
+            {error, fallback_state_mismatch}
+    end;
+check_op_error_msg(_, _, _) ->
+    {error, chain_id_mismatch}.
 
 send_withdraw_created_msg(SignedTx, Updates,
                           #data{on_chain_id = Ch, session = Sn} = Data) ->
@@ -1853,25 +1834,26 @@ send_withdraw_created_msg(SignedTx, Updates,
 
 check_withdraw_created_msg(#{ channel_id := ChanId
                             , block_hash := ?NOT_SET_BLOCK_HASH
-                            , data       := #{tx      := TxBin, 
-                                              updates := UpdatesBin}} = Msg,
-                  #data{ on_chain_id = ChanId } = Data) ->
+                            , data       := #{ tx      := TxBin
+                                             , updates := UpdatesBin }} = Msg,
+                  #data{on_chain_id = ChanId} = Data) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-    case check_tx_and_verify_signatures(SignedTx, Updates, aesc_withdraw_tx,
-                                        Data,
-                                        pubkeys(other_participant, Data),
-                                        not_withdraw_tx) of
+    Check = check_tx_and_verify_signatures(SignedTx, Updates, aesc_withdraw_tx, Data,
+                                           pubkeys(other_participant, Data), not_withdraw_tx),
+    case Check of
         ok ->
             {ok, SignedTx, Updates, log(rcv, ?WDRAW_CREATED, Msg, Data)};
-        {error, _} = Err -> Err
-    end.
+        {error, _} = Err ->
+            Err
+    end;
+check_withdraw_created_msg(_, _) ->
+    {error, channel_id_mismatch}.
 
-send_withdraw_signed_msg(SignedTx, #data{on_chain_id = Ch,
-                                         session     = Sn} = Data) ->
+send_withdraw_signed_msg(SignedTx, #data{on_chain_id = Ch, session = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ channel_id  => Ch
-           , block_hash => ?NOT_SET_BLOCK_HASH
+           , block_hash  => ?NOT_SET_BLOCK_HASH
            , data        => #{tx => TxBin}},
     aesc_session_noise:wdraw_signed(Sn, Msg),
     log(snd, ?WDRAW_SIGNED, Msg, Data).
@@ -1879,21 +1861,22 @@ send_withdraw_signed_msg(SignedTx, #data{on_chain_id = Ch,
 check_withdraw_signed_msg(#{ channel_id := ChanId
                            , block_hash := ?NOT_SET_BLOCK_HASH
                            , data       := #{tx := TxBin}} = Msg,
-                          #data{on_chain_id = ChanId,
-                                latest = Latest} = Data) ->
+                          #data{ on_chain_id = ChanId
+                               , latest = Latest } = Data) ->
     {ack, withdraw_tx, _, Updates} = Latest,
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-    case check_tx_and_verify_signatures(SignedTx, Updates, aesc_withdraw_tx,
-                                        Data,
-                                        pubkeys(both, Data),
-                                        not_withdraw_tx) of
+    Check = check_tx_and_verify_signatures(SignedTx, Updates, aesc_withdraw_tx, Data,
+                                           pubkeys(both, Data), not_withdraw_tx),
+    case Check of
         ok ->
             {ok, SignedTx, log(rcv, ?WDRAW_SIGNED, Msg, Data)};
-        {error, _} = Err -> Err
-    end.
+        {error, _} = Err ->
+            Err
+    end;
+check_withdraw_signed_msg(_, _) ->
+    {error, channel_id_mismatch}.
 
-send_withdraw_locked_msg(TxHash, #data{on_chain_id = ChanId,
-                                       session     = Sn} = Data) ->
+send_withdraw_locked_msg(TxHash, #data{on_chain_id = ChanId, session = Sn} = Data) ->
     Msg = #{ channel_id => ChanId
            , data       => #{tx_hash => TxHash} },
     aesc_session_noise:wdraw_locked(Sn, Msg),
@@ -1902,18 +1885,15 @@ send_withdraw_locked_msg(TxHash, #data{on_chain_id = ChanId,
 check_withdraw_locked_msg(#{ channel_id := ChanId
                            , data       := #{tx_hash := TxHash} } = Msg,
                           SignedTx,
-                          #data{on_chain_id = MyChanId} = Data) ->
-    case ChanId == MyChanId of
-        true ->
-            case aetx_sign:hash(SignedTx) of
-                TxHash ->
-                    {ok, log(rcv, ?WDRAW_LOCKED, Msg, Data)};
-                _ ->
-                    {error, withdraw_tx_hash_mismatch}
-            end;
-        false ->
-            {error, channel_id_mismatch}
-    end.
+                          #data{on_chain_id = ChanId} = Data) ->
+    case aetx_sign:hash(SignedTx) of
+        TxHash ->
+            {ok, log(rcv, ?WDRAW_LOCKED, Msg, Data)};
+        _ ->
+            {error, withdraw_tx_hash_mismatch}
+    end;
+check_withdraw_locked_msg(_, _, _) ->
+    {error, channel_id_mismatch}.
 
 send_update_msg(SignedTx, Updates,
                 #data{ on_chain_id = OnChainId, session = Sn} = Data) ->
@@ -1921,8 +1901,8 @@ send_update_msg(SignedTx, Updates,
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ channel_id => OnChainId
            , block_hash => ?NOT_SET_BLOCK_HASH
-           , data       => #{tx      => TxBin,
-                             updates => UBins}},
+           , data       => #{ tx      => TxBin
+                            , updates => UBins }},
     aesc_session_noise:update(Sn, Msg),
     log(snd, ?UPDATE, Msg, Data).
 
@@ -1937,8 +1917,8 @@ check_update_msg(Type, Msg, D) ->
 
 check_update_msg_(Type, #{ channel_id := ChanId
                          , block_hash := ?NOT_SET_BLOCK_HASH
-                         , data       := #{tx      := TxBin,
-                                           updates := UpdatesBin}} = Msg,
+                         , data       := #{ tx      := TxBin
+                                          , updates := UpdatesBin }} = Msg,
                   #data{ on_chain_id = ChanId } = D) ->
     Updates = [aesc_offchain_update:deserialize(U) || U <- UpdatesBin],
     try aetx_sign:deserialize_from_binary(TxBin) of
@@ -1946,7 +1926,8 @@ check_update_msg_(Type, #{ channel_id := ChanId
             case check_signed_update_tx(Type, SignedTx, Updates, D) of
                 ok ->
                     {ok, SignedTx, Updates, log(rcv, ?UPDATE, Msg, D)};
-                {error, _} = Err -> Err
+                {error, _} = Err ->
+                    Err
             end
     catch
         error:E ->
@@ -2058,17 +2039,15 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
                                                        } = D) ->
     Updates = [aesc_offchain_update:op_transfer(aeser_id:create(account, FromPub),
                                                 aeser_id:create(account, ToPub), Amount)],
-    {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
-    try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
-                                                  ChannelId,
-                                                  ActiveProtocol,
-                                                  OnChainTrees, OnChainEnv, Opts),
-         D1 = request_signing(?UPDATE, Tx1, Updates, D),
-         gen_statem:reply(From, ok),
-         next_state(awaiting_signature, D1)
+    try
+        Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelId, ActiveProtocol,
+                                                 OnChainTrees, OnChainEnv, Opts),
+        D1 = request_signing(?UPDATE, Tx1, Updates, D),
+        gen_statem:reply(From, ok),
+        next_state(awaiting_signature, D1)
     catch
         error:Reason ->
             process_update_error(Reason, From, D)
@@ -2266,10 +2245,6 @@ send_conflict_msg(?DEP_ERR, Sn, Msg) ->
 send_conflict_msg(?WDRAW_ERR, Sn, Msg) ->
     lager:debug("send withdraw_error: ~p", [Msg]),
     aesc_session_noise:wdraw_error(Sn,Msg).
-
-
-check_update_err_msg(Msg, D) ->
-    check_op_error_msg(?UPDATE_ERR, Msg, D).
 
 request_signing(Tag, Aetx, Updates, #data{} = D) ->
     request_signing_(Tag, aetx_sign:new(Aetx, []), Updates, D).
@@ -2492,7 +2467,8 @@ verify_signatures_channel_create(SignedTx, Who) ->
             end,
             SkipKeys = Both -- PubkeysToCheck,
             verify_signatures_onchain_skip(SkipKeys, SignedTx);
-        _ -> {error, not_create_tx}
+        _ ->
+            {error, not_create_tx}
     end.
 
 verify_signatures_onchain_check(Pubkeys, SignedTx) ->
@@ -2524,8 +2500,9 @@ verify_signatures_offchain(ChannelPubkey, Pubkeys, SignedTx) ->
     ResponderPubkey = aesc_channels:responder_pubkey(Channel),
     Participants = [InitiatorPubkey, ResponderPubkey],
     SkipKeys = Participants -- Pubkeys,
-    case aesc_utils:verify_signatures_offchain(Channel, SignedTx, OnChainTrees, OnChainEnv,
-                                              SkipKeys) of
+    Check = aesc_utils:verify_signatures_offchain(Channel, SignedTx, OnChainTrees,
+                                                  OnChainEnv, SkipKeys),
+    case Check of
         ok -> ok;
         _ -> {error, bad_signature}
     end.
@@ -2572,48 +2549,39 @@ check_tx_and_verify_signatures(SignedTx, Updates, Mod, Data, Pubkeys, ErrTypeMsg
             {error, ErrTypeMsg}
     end.
 
-maybe_check_sigs_create(Tx, Updates, Who, NextState,
-                       #data{state = State, opts = Opts} = D) ->
+maybe_check_sigs_create(_, _, _, NextState, #data{strict_checks = false}) ->
+    NextState();
+maybe_check_sigs_create(Tx, Updates, Who, NextState, #data{state = State, opts = Opts} = D) ->
     CheckSigs =
-        case D#data.strict_checks of
-            true ->
-                case verify_signatures_channel_create(Tx, Who) of
-                    ok ->
-                        case check_update_tx_initial(Tx, Updates, State, Opts) of
-                            ok -> true;
-                            {error, E} -> {false, E}
-                        end;
+        case verify_signatures_channel_create(Tx, Who) of
+            ok ->
+                case check_update_tx_initial(Tx, Updates, State, Opts) of
+                    ok -> true;
                     {error, E} -> {false, E}
                 end;
-            false -> true
+            {error, E1} ->
+                {false, E1}
         end,
     case CheckSigs of
-        true -> NextState();
-        {false, Err} ->
-            report(error, Err, D),
+        true ->
+            NextState();
+        {false, E2} ->
+            report(error, E2, D),
             keep_state(D)
     end.
 
+maybe_check_sigs(_, _, _, _, _, NextState, #data{strict_checks = false}) ->
+    NextState();
 maybe_check_sigs(Tx, Updates, TxType, WrongTxTypeMsg, Who, NextState, D)
         when Who =:= me
       orelse Who =:= other_participant
       orelse Who =:= both ->
     Pubkeys = pubkeys(Who, D),
-    CheckSigs =
-        case D#data.strict_checks of
-            true ->
-                case check_tx_and_verify_signatures(Tx, Updates, TxType,
-                                                    D,
-                                                    Pubkeys, WrongTxTypeMsg) of
-                    ok -> true;
-                    {error, _E} -> {false, _E}
-                end;
-            false -> true
-        end,
-    case CheckSigs of
-        true -> NextState();
-        {false, Err} ->
-            report(error, Err, D),
+    case check_tx_and_verify_signatures(Tx, Updates, TxType, D, Pubkeys, WrongTxTypeMsg) of
+        ok ->
+            NextState();
+        {error, E} ->
+            report(error, E, D),
             keep_state(D)
     end.
 
@@ -2713,32 +2681,29 @@ init(#{opts := Opts0} = Arg) ->
                 any -> StateInitF;
                 _   -> StateInitF(Initiator)
             end,
-    Data = #data{role   = Role,
-                client  = Client,
-                session = Session,
-                opts    = Opts,
-                state   = State,
-                log     = aesc_window:new(maps:get(log_keep, Opts))},
+    Data = #data{ role    = Role
+                , client  = Client
+                , session = Session
+                , opts    = Opts
+                , state   = State
+                , log     = aesc_window:new(maps:get(log_keep, Opts))
+                },
     lager:debug("Session started, Data = ~p", [Data]),
     %% TODO: Amend the fsm above to include this step. We have transport-level
     %% connectivity, but not yet agreement on the channel parameters. We will next send
     %% a channel_open() message and await a channel_accept().
-    case Role of
-        initiator ->
-            if Reestablish ->
-                    ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
-              true ->
-                    ok_next(initialized, send_open_msg(Data))
-            end;
-        responder ->
-            if Reestablish ->
-                    ChanId = maps:get(existing_channel_id, ReestablishOpts),
-                    ok_next(awaiting_reestablish,
-                            Data#data{ channel_id  = ChanId
-                                      , on_chain_id = ChanId });
-              true ->
-                    ok_next(awaiting_open, Data)
-            end
+    case {Role, Reestablish} of
+        {initiator, true} ->
+            ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
+        {initiator, false} ->
+            ok_next(initialized, send_open_msg(Data));
+        {responder, true} ->
+            ChanId = maps:get(existing_channel_id, ReestablishOpts),
+            ok_next(awaiting_reestablish,
+                    Data#data{ channel_id  = ChanId
+                             , on_chain_id = ChanId });
+        {responder, false} ->
+            ok_next(awaiting_open, Data)
     end.
 
 terminate(Reason, _State, #data{session = Sn} = Data) ->
@@ -2779,63 +2744,53 @@ check_change_config(log_keep, Keep) when is_integer(Keep), Keep >= 0 ->
 check_change_config(_, _) ->
     {error, invalid_config}.
 
-default_minimum_depth(initiator  ) -> undefined;
+default_minimum_depth(initiator) -> undefined;
 default_minimum_depth(responder) -> ?MINIMUM_DEPTH.
 
 check_minimum_depth_opt(DefMinDepth, Role, Opts) ->
     case {maps:find(minimum_depth, Opts), Role} of
-        {error, responder} -> Opts#{minimum_depth => DefMinDepth};
-        _                    -> Opts
+        {error, responder} ->
+            Opts#{minimum_depth => DefMinDepth};
+        _  ->
+            Opts
     end.
 
+check_timeout_opt(#{timeouts := TOs} = Opts) ->
+    TOs1 = maps:merge(?DEFAULT_TIMEOUTS, TOs),
+    Opts1 = Opts#{timeouts => TOs1},
+    lager:debug("Timeouts: ~p", [Opts1]),
+    Opts1;
 check_timeout_opt(Opts) ->
-    Res = case maps:find(timeouts, Opts) of
-              {ok, TOs} ->
-                  TOs1 = maps:merge(?DEFAULT_TIMEOUTS, TOs),
-                  Opts#{timeouts => TOs1};
-              error ->
-                  Opts#{timeouts => ?DEFAULT_TIMEOUTS}
-          end,
-    lager:debug("Timeouts: ~p", [Res]),
-    Res.
+    check_timeout_opt(Opts#{timeouts => #{}}).
 
-check_rpt_opt(Opts) ->
-    ROpts = case maps:find(report, Opts) of
-                {ok, R} when is_map(R) ->
-                    L = [{K,V} || {K,V} <- maps:to_list(R),
-                                  lists:member(K, report_tags())
-                                      andalso
-                                      is_boolean(V)],
-                    maps:from_list(L);
-                error ->
-                    case maps:find(report_info, Opts) of  %% bw compatibility
-                        {ok, V} when is_boolean(V) ->
-                            #{info => V};
-                        _ ->
-                            #{}
-                    end;
-                Other ->
-                    lager:error("Unknown report opts: ~p", [Other]),
-                    #{}
-          end,
+check_rpt_opt(#{report := R} = Opts) when is_map(R) ->
+    L = [{K,V} || {K,V} <- maps:to_list(R),
+                  lists:member(K, report_tags()) andalso is_boolean(V)],
+    ROpts = maps:from_list(L),
     lager:debug("Report opts = ~p", [ROpts]),
-    Opts#{report => maps:merge(?DEFAULT_REPORT_FLAGS, ROpts)}.
+    Opts#{report => maps:merge(?DEFAULT_REPORT_FLAGS, ROpts)};
+check_rpt_opt(#{report := R} = Opts) ->
+    lager:error("Unknown report opts: ~p", [R]),
+    Opts#{report => ?DEFAULT_REPORT_FLAGS};
+check_rpt_opt(#{report_info := Rinfo} = Opts) when is_boolean(Rinfo)->
+    ROpts = #{info => Rinfo},
+    lager:debug("Report opts = ~p", [ROpts]),
+    Opts#{report => maps:merge(?DEFAULT_REPORT_FLAGS, ROpts)};
+check_rpt_opt(Opts) ->
+    Opts#{report => ?DEFAULT_REPORT_FLAGS}.
 
+check_log_opt(#{log_keep := Keep} = Opts) when is_integer(Keep), Keep >= 0 ->
+    Opts;
+check_log_opt(#{log_keep := Keep} = Opts) ->
+    lager:error("Invalid 'log_keep' option: ~p", [Keep]),
+    Opts#{log_keep => ?KEEP};
 check_log_opt(Opts) ->
-    case maps:find(log_keep, Opts) of
-        {ok, Keep} when is_integer(Keep), Keep >= 0 ->
-            Opts;
-        {ok, Invalid} ->
-            lager:error("Invalid 'log_keep' option: ~p", [Invalid]),
-            Opts#{log_keep => ?KEEP};
-        error ->
-            Opts#{log_keep => ?KEEP}
-    end.
+    Opts#{log_keep => ?KEEP}.
 
-check_opts([H|T], Opts) ->
-    check_opts(T, H(Opts));
 check_opts([], Opts) ->
-    Opts.
+    Opts;
+check_opts([H|T], Opts) ->
+    check_opts(T, H(Opts)).
 
 %% As per CHANNELS.md, the responder is regarded as the one typically
 %% providing the service, and the initiator connects.
@@ -2978,12 +2933,18 @@ is_channel_locked(LockedUntil) ->
     LockedUntil >= curr_height().
 
 withdraw_locked_complete(SignedTx, Updates, #data{state = State, opts = Opts} = D) ->
-    {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    D1   = D#data{state = aesc_offchain_state:set_signed_tx(SignedTx, Updates,
-                                                            State,
-                                                            OnChainTrees,
-                                                            OnChainEnv, Opts)},
+    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    State1 = aesc_offchain_state:set_signed_tx(SignedTx, Updates, State,
+                                               OnChainTrees, OnChainEnv, Opts),
+    D1 = D#data{state = State1},
+    next_state(open, D1).
+
+deposit_locked_complete(SignedTx, Updates, #data{state = State , opts = Opts} = D) ->
+    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    lager:debug("Applying updates: ~p", [Updates]),
+    State1 = aesc_offchain_state:set_signed_tx(SignedTx, Updates, State,
+                                               OnChainTrees, OnChainEnv, Opts),
+    D1 = D#data{state = State1},
     next_state(open, D1).
 
 settle_signed(SignedTx, Updates, #data{ on_chain_id = ChId} = D) ->
@@ -3031,16 +2992,14 @@ close_solo_signed(SignedTx, _Updates, #data{ on_chain_id = ChId } = D) ->
             close(Error, D)
     end.
 
-funding_locked_complete(#data{latest = Latest} = D) ->
-    {create, _, Updates} = Latest,
-    {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    D1   = D#data{state = aesc_offchain_state:set_signed_tx(D#data.create_tx,
-                                                            Updates,
-                                                            D#data.state,
-                                                            OnChainTrees,
-                                                            OnChainEnv,
-                                                            D#data.opts)},
+funding_locked_complete(#data{ latest = {create, _, Updates}
+                             , create_tx = CreateTx
+                             , state = State
+                             , opts = Opts} = D) ->
+    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    State1 = aesc_offchain_state:set_signed_tx(CreateTx, Updates, State, OnChainTrees,
+                                               OnChainEnv, Opts),
+    D1 = D#data{state = State1},
     initialize_cache(D1),
     next_state(open, D1).
 
@@ -3090,8 +3049,7 @@ handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
             keep_state(D, [{reply, From, {error, unknown_recipient}}])
     end;
 handle_call_(open, {upd_transfer, FromPub, ToPub, Amount}, From,
-            #data{opts = #{initiator := I,
-                           responder := R}} = D) ->
+            #data{opts = #{initiator := I, responder := R}} = D) ->
     case FromPub =/= ToPub andalso ([] == [FromPub, ToPub] -- [I, R]) of
         true ->
             handle_upd_transfer(FromPub, ToPub, Amount, From, set_ongoing(D));
@@ -3219,20 +3177,19 @@ handle_call_(channel_closing, shutdown, From, #data{strict_checks = Strict} = D)
 handle_call_(_, get_state, From, #data{ on_chain_id = ChanId
                                       , opts        = Opts
                                       , state       = State} = D) ->
-    #{initiator := Initiator,
-      responder := Responder} = Opts,
+    #{initiator := Initiator, responder := Responder} = Opts,
     {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
     {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
     StateHash = aesc_offchain_state:hash(State),
     {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
     Result =
-        #{channel_id=> ChanId,
-          initiator => Initiator,
-          responder => Responder,
-          init_amt  => IAmt,
-          resp_amt  => RAmt,
-          state_hash=> StateHash,
-          round     => Round},
+        #{ channel_id => ChanId
+         , initiator  => Initiator
+         , responder  => Responder
+         , init_amt   => IAmt
+         , resp_amt   => RAmt
+         , state_hash => StateHash
+         , round      => Round },
     keep_state(D, [{reply, From, {ok, Result}}]);
 handle_call_(_, get_offchain_state, From, #data{state = State} = D) ->
     keep_state(D, [{reply, From, {ok, State}}]);
@@ -3432,10 +3389,10 @@ get_channel(ChainHash, ChId) ->
     end.
 
 init_checks(Opts) ->
-    #{initiator   := Initiator,
-      responder   := Responder,
-      role        := Role,
-      lock_period := LockPeriod} = Opts,
+    #{ initiator   := Initiator
+     , responder   := Responder
+     , role        := Role
+     , lock_period := LockPeriod } = Opts,
     Checks = [fun() -> check_amounts(Opts) end,
               fun() -> check_accounts(Initiator, Responder, Role) end,
               fun() ->
