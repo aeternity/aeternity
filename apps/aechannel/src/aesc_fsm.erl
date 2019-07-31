@@ -15,8 +15,9 @@
 %% API
 -export([ start_link/1
         , attach_responder/2      %% (fsm(), map())
-        , client_died/1           %% (fsm())
         , close_solo/1
+        , reconnect_client/2      %% (fsm(), signed_tx())
+        , reconnect_client/3      %% (fsm(), Client :: pid(), signed_tx())
         , connection_died/1       %% (fsm())
         , get_contract/2
         , get_contract_call/4     %% (fsm(), contract_id(), caller(), round())
@@ -39,11 +40,11 @@
         ]).
 
 %% Inspection and configuration functions
--export([ change_config/3   %% (fsm(), key(), value()) -> ok | {error,_}
-        , dry_run_contract/2 %% (fsm(), map()) -> {ok, call()} | {error, _}
-        , get_balances/2    %% (fsm(), {ok, [key()]) -> [{key(), amount()}]} | {error, _}
-        , get_history/1     %% (fsm()) -> [Event]
-        , get_round/1       %% (fsm()) -> {ok, round()} | {error, _}
+-export([ change_config/3      %% (fsm(), key(), value()) -> ok | {error,_}
+        , dry_run_contract/2   %% (fsm(), map()) -> {ok, call()} | {error, _}
+        , get_balances/2       %% (fsm(), {ok, [key()]) -> [{key(), amount()}]} | {error, _}
+        , get_history/1        %% (fsm()) -> [Event]
+        , get_round/1          %% (fsm()) -> {ok, round()} | {error, _}
         , patterns/0
         , prune_local_calls/1  %% (fsm()) -> {ok, round()} | {error, _}
         , record_fields/1
@@ -55,7 +56,7 @@
 -export([message/2]).
 
 %% Used by client
--export([signing_response/3]).    %% (Fsm, Tag, Obj)
+-export([signing_response/3]).          %% (Fsm, Tag, Obj)
 
 %% Used by min-depth watcher
 -export([ minimum_depth_achieved/4      %% (Fsm, OnChainId, Type, TxHash)
@@ -127,14 +128,17 @@ attach_responder(Fsm, AttachInfo) when is_map(AttachInfo) ->
             {error, taken}
     end.
 
-client_died(Fsm) ->
-    %TODO: possibility for reconnect
-    lager:debug("client died(~p)", [Fsm]),
-    stop_ok(catch gen_statem:stop(Fsm)).
-
 close_solo(Fsm) ->
     lager:debug("close_solo(~p)", [Fsm]),
     gen_statem:call(Fsm, close_solo).
+
+-spec reconnect_client(pid(), aetx_sign:signed_tx()) -> ok | {error, any()}.
+reconnect_client(Fsm, Tx) ->
+    reconnect_client(Fsm, self(), Tx).
+
+-spec reconnect_client(pid(), pid(), aetx_sign:signed_tx()) -> ok | {error, any()}.
+reconnect_client(Fsm, Pid, Tx) when is_pid(Pid) ->
+    gen_statem:call(Fsm, {?RECONNECT_CLIENT, Pid, Tx}).
 
 connection_died(Fsm) ->
     %TODO: possibility for reconnect
@@ -181,9 +185,9 @@ initiate(Host, Port, #{} = Opts0) ->
                         role   => initiator}, Opts0),
     case init_checks(Opts) of
         ok ->
-            start_link(#{ host => Host
-                        , port => Port
-                        , opts => Opts });
+            aesc_fsm_sup:start_child([#{ host => Host
+                                       , port => Port
+                                       , opts => Opts }]);
         {error, _Reason} = Err -> Err
     end.
 
@@ -197,8 +201,8 @@ respond(Port, #{} = Opts0) ->
                         role   => responder}, Opts0),
     case init_checks(Opts) of
         ok ->
-            start_link(#{ port => Port
-                        , opts => Opts });
+            aesc_fsm_sup:start_child([#{ port => Port
+                                       , opts => Opts }]);
         {error, _Reason} = Err -> Err
     end.
 
@@ -250,9 +254,14 @@ upd_withdraw(Fsm, #{amount := Amt} = Opts) when is_integer(Amt) ->
     gen_statem:call(Fsm, {upd_withdraw, Opts}).
 
 where(ChanId, Role) when Role == initiator; Role == responder ->
-    gproc:where(gproc_name_by_role(ChanId, Role));
-where(ChanId, Pubkey) when is_binary(Pubkey) ->
-    gproc:where(gproc_name_by_pubkey(ChanId, Pubkey)).
+    GprocKey = gproc_name_by_role(ChanId, Role),
+    case gproc:where(GprocKey) of
+        Pid when is_pid(Pid) ->
+            Pubkey = gproc:lookup_value(GprocKey),
+            #{ fsm_pid => Pid, role => Role, pub_key => Pubkey };
+        undefined ->
+            undefined
+    end.
 
 %% ==================================================================
 %% Inspection and configuration functions
@@ -567,8 +576,9 @@ awaiting_signature(cast, {?SIGNED, create_tx, Tx} = Msg,
                             fun() ->
                                 next_state(half_signed, send_funding_created_msg(
                                     Tx, log(rcv, ?SIGNED, Msg,
-                                            D#data{latest = {ack, create_tx,
-                                                             CTx, Updates}})))
+                                            D#data{ latest = {ack, create_tx,
+                                                              CTx, Updates}
+                                                  , client_may_disconnect = true })))
                             end, D);
 awaiting_signature(cast, {?SIGNED, deposit_tx, Tx} = Msg,
                    #data{latest = {sign, deposit_tx, DTx, Updates}} = D) ->
@@ -597,9 +607,10 @@ awaiting_signature(cast, {?SIGNED, ?FND_CREATED, SignedTx} = Msg,
         fun() ->
             D1 = send_funding_signed_msg(
                   SignedTx,
-                  log(rcv, ?SIGNED, Msg, D#data{create_tx = SignedTx,
-                                                latest = {ack, ?FND_CREATED,
-                                                          HSCTx, Updates}})),
+                  log(rcv, ?SIGNED, Msg, D#data{ create_tx = SignedTx
+                                               , latest = {ack, ?FND_CREATED,
+                                                           HSCTx, Updates}
+                                               , client_may_disconnect = true })),
             report_on_chain_tx(?FND_CREATED, SignedTx, D1),
             {ok, D2} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_FND}, SignedTx,
                                                Updates, D1),
@@ -691,7 +702,7 @@ awaiting_signature(cast, {?SIGNED, close_solo_tx, SignedTx} = Msg,
     end;
 awaiting_signature(cast, {?SIGNED, settle_tx, SignedTx} = Msg,
                    #data{latest = {sign, settle_tx, _STx, Updates}} = D) ->
-    maybe_check_sigs(SignedTx, Updates, channel_settle_tx, not_settle_tx, me,
+    maybe_check_sigs(SignedTx, Updates, aesc_settle_tx, not_settle_tx, me,
         fun() ->
                 D1 = D#data{log = log_msg(rcv, ?SIGNED, Msg, D#data.log),
                             latest = undefined},
@@ -861,6 +872,7 @@ half_signed(cast, {?FND_SIGNED, Msg}, #data{role = initiator,
             D2 = D1#data{create_tx = SignedTx},
             {ack, create_tx, _, Updates} = Latest,
             {ok, D3} = start_min_depth_watcher({?MIN_DEPTH, ?WATCH_FND}, SignedTx, Updates, D2),
+            gproc_register_on_chain_id(D3),
             next_state(awaiting_locked, D3);
         {error, Error} ->
             close(Error, D)
@@ -1733,6 +1745,8 @@ send_deposit_created_msg(SignedTx, Updates,
     aesc_session_noise:deposit_created(Sn, Msg),
     log(snd, ?DEP_CREATED, Msg, Data).
 
+check_deposit_created_msg(_Msg, #data{ client_connected = false }) ->
+    {error, client_disconnected};
 check_deposit_created_msg(#{ channel_id := ChanId
                            , block_hash := ?NOT_SET_BLOCK_HASH
                            , data       := #{tx      := TxBin,
@@ -1832,6 +1846,8 @@ send_withdraw_created_msg(SignedTx, Updates,
     aesc_session_noise:wdraw_created(Sn, Msg),
     log(snd, ?WDRAW_CREATED, Msg, Data).
 
+check_withdraw_created_msg(_Msg, #data{ client_connected = false }) ->
+    {error, client_disconnected};
 check_withdraw_created_msg(#{ channel_id := ChanId
                             , block_hash := ?NOT_SET_BLOCK_HASH
                             , data       := #{ tx      := TxBin
@@ -1906,6 +1922,8 @@ send_update_msg(SignedTx, Updates,
     aesc_session_noise:update(Sn, Msg),
     log(snd, ?UPDATE, Msg, Data).
 
+check_update_msg(_Type, _Msg, #data{ client_connected = false }) ->
+    {error, client_disconnected};
 check_update_msg(Type, Msg, D) ->
     lager:debug("check_update_msg(~p)", [Msg]),
     try check_update_msg_(Type, Msg, D)
@@ -2099,6 +2117,8 @@ shutdown_msg(SignedTx, #data{ on_chain_id = OnChainId }) ->
      , block_hash => ?NOT_SET_BLOCK_HASH
      , data       => #{tx => TxBin} }.
 
+check_shutdown_msg(_Msg, #data{ client_connected = false }) ->
+    {error, client_disconnected};
 check_shutdown_msg(#{channel_id := ChanId,
                      block_hash := ?NOT_SET_BLOCK_HASH,
                      data := #{tx := TxBin}} = Msg,
@@ -2164,6 +2184,8 @@ send_inband_msg(To, Info, #data{session     = Session} = D) ->
     aesc_session_noise:inband_msg(Session, M),
     log(snd, ?INBAND_MSG, M, D).
 
+check_inband_msg(_, #data{ client_connected = false }) ->
+    {error, client_disconnected};
 check_inband_msg(#{ channel_id := ChanId
                   , from       := From
                   , to         := To } = Msg,
@@ -2177,6 +2199,21 @@ check_inband_msg(#{ channel_id := ChanId
     end;
 check_inband_msg(_, _) ->
     {error, chain_id_mismatch}.
+
+check_client_reconnect_tx(Tx, #data{ strict_checks = true } = D) ->
+    lager:debug("Check reconnect tx", []),
+    case check_tx_and_verify_signatures(
+           Tx, [], aesc_client_reconnect_tx, D, [my_account(D)],
+           not_reconnect_tx) of
+        ok ->
+            Round = call_cb(aetx_sign:innermost_tx(Tx), round, []),
+            {ok, D#data{ client_reconnect_nonce = Round }};
+        {error, _} = Error ->
+            Error
+    end;
+check_client_reconnect_tx(Tx, D) ->
+    Round = call_cb(aetx_sign:innermost_tx(Tx), round, []),
+    {ok, D#data{ client_reconnect_nonce = Round }}.
 
 fallback_to_stable_state(#data{state = State} = D) ->
     D#data{state = aesc_offchain_state:fallback_to_stable_state(State)}.
@@ -2356,6 +2393,9 @@ report(Tag, St, Msg, D) ->
                                  , info => St
                                  , data => Msg }, D).
 
+report_info(DoRpt, Msg, #data{client_connected = false}) ->
+    lager:debug("No client. DoRpt = ~p, Msg = ~p", [DoRpt, Msg]),
+    ok;
 report_info(DoRpt, Msg0, #data{client = Client} = D) ->
     if DoRpt ->
             Msg = rpt_message(Msg0, D),
@@ -2509,12 +2549,26 @@ verify_signatures_offchain(ChannelPubkey, Pubkeys, SignedTx) ->
 
 check_tx_and_verify_signatures(SignedTx, Updates, Mod, Data, Pubkeys, ErrTypeMsg) ->
     ChannelPubkey = cur_channel_id(Data),
+    MyPubkey = my_account(Data),
+    MyRole = Data#data.role,
     ExpectedRound = next_round(Data),
     #data{state = State, opts = Opts, on_chain_id = ChannelPubkey} = Data,
     case aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)) of
         {aesc_settle_tx, _Tx} ->
             %% TODO: conduct more relevant checks
             verify_signatures_onchain_check(Pubkeys, SignedTx);
+        {aesc_client_reconnect_tx = Mod, Tx} ->
+            try {Mod:channel_pubkey(Tx), Mod:role(Tx), Mod:origin(Tx), Mod:round(Tx)} of
+                {ChannelPubkey, MyRole, MyPubkey, Round}
+                  when Round > Data#data.client_reconnect_nonce ->
+                    verify_signatures_offchain(
+                      ChannelPubkey, Pubkeys, SignedTx);
+                _ ->
+                    {error, invalid}
+            catch
+                error:_ ->
+                    {error, invalid}
+            end;
         {Mod, Tx} -> %% same callback module
             case Mod:channel_pubkey(Tx) of
                 ChannelPubkey -> %% expected pubkey
@@ -2545,7 +2599,8 @@ check_tx_and_verify_signatures(SignedTx, Updates, Mod, Data, Pubkeys, ErrTypeMsg
                 _ ->
                     {error, different_channel_id}
             end;
-        _E ->
+        E ->
+            lager:debug("_E = ~p", [E]),
             {error, ErrTypeMsg}
     end.
 
@@ -2681,13 +2736,15 @@ init(#{opts := Opts0} = Arg) ->
                 any -> StateInitF;
                 _   -> StateInitF(Initiator)
             end,
-    Data = #data{ role    = Role
-                , client  = Client
+    ClientMRef = erlang:monitor(process, Client),
+    Data = #data{ role             = Role
+                , client           = Client
+                , client_mref      = ClientMRef
+                , client_connected = true
                 , session = Session
                 , opts    = Opts
                 , state   = State
-                , log     = aesc_window:new(maps:get(log_keep, Opts))
-                },
+                , log     = aesc_window:new(maps:get(log_keep, Opts)) },
     lager:debug("Session started, Data = ~p", [Data]),
     %% TODO: Amend the fsm above to include this step. We have transport-level
     %% connectivity, but not yet agreement on the channel parameters. We will next send
@@ -2825,12 +2882,14 @@ maybe_initialize_offchain_state(_, _, D) ->
 ok_next(Next, Data) ->
     {ok, Next, cur_st(Next, Data), [timer_for_state(Next, Data)]}.
 
+-ifdef(TEST).
 stop_ok(ok) ->
     ok;
 stop_ok({'EXIT', noproc}) ->
     ok;
 stop_ok({'EXIT', {normal,{sys,terminate,_}}}) ->
     ok.
+-endif.
 
 timer(Name, Msg, #data{opts = #{timeouts := TOs}}) ->
     timeout_(maps:get(Name, TOs), Msg).
@@ -3032,14 +3091,56 @@ close_(Reason, D) ->
     end,
     {stop, Reason, D}.
 
-handle_call(St, Req, From, #data{} = D) ->
+handle_call(_, {?RECONNECT_CLIENT, Pid, Tx} = Msg, From,
+            #data{ client_connected = false
+                 , client_mref      = undefined
+                 , client           = undefined } = D0) ->
+    lager:debug("Client reconnect request", []),
+    D = log(rcv, msg_type(Msg), Msg, D0),
+    try check_client_reconnect_tx(Tx, D) of
+        {ok, D1} ->
+            lager:debug("Client reconnect successful; Client = ~p", [Pid]),
+            MRef = erlang:monitor(process, Pid),
+            D2 = D1#data{ client           = Pid
+                        , client_mref      = MRef
+                        , client_connected = true },
+            keep_state(D2, [{reply, From, ok}]);
+        {error, _} = Err ->
+            lager:debug("Request failed: ~p", [Err]),
+            keep_state(D, [{reply, From, Err}])
+    catch
+        error:E ->
+            lager:debug("CAUGHT ~p / ~p", [E, erlang:get_stacktrace()]),
+            keep_state(D, [{reply, From, E}])
+    end;
+handle_call(St, Req, From, #data{ client = Client } = D) when is_pid(Client) ->
+    %% One could imagine accepting only calls from the connected Client,
+    %% but for the time being, this is systematically violated in the aesc_fsm_SUITE.
     lager:debug("handle_call(~p, ~p, ~p, ~p)", [St, Req, From, D]),
     try handle_call_(St, Req, From, D)
     catch
         error:Error ->
             ?LOG_CAUGHT(Error),
             keep_state(D, [{reply, From, {error, Error}}])
-    end.
+    end;
+handle_call(St, Req, From, #data{client_connected = false} = D) ->
+    lager:debug("Client is disconnected", []),
+    case call_allowed_if_no_client(Req) of
+        false ->
+            keep_state(D, [{reply, From, {error, client_disconnected}}]);
+        true ->
+            handle_call_(St, Req, From, D)
+    end;
+handle_call(_St, _Req, From, D) ->
+    keep_state(D, [{reply, From, {error, unknown_request}}]).
+
+call_allowed_if_no_client(Req) when ?UPDATE_REQ(element(1, Req)) ->
+    false;
+call_allowed_if_no_client(shutdown) -> false;
+call_allowed_if_no_client(slash   ) -> false;
+call_allowed_if_no_client(settle  ) -> false;
+call_allowed_if_no_client(_) ->
+    true.
 
 handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
     case {ToPub, other_account(D)} of
@@ -3284,6 +3385,18 @@ handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
 handle_call_(_St, _Req, From, D) ->
     keep_state(D, [{reply, From, {error, unknown_request}}]).
 
+handle_info({'DOWN', MRef, process, Client, _} = M,
+            #data{ client = Client
+                 , client_mref = MRef } = D) when D#data.client_may_disconnect ->
+    lager:debug("Client disconnected ~p", [Client]),
+    keep_state(log(disconnect, error, M,
+                   D#data{ client_mref      = undefined
+                         , client           = undefined
+                         , client_connected = false }));
+handle_info({'DOWN', MRef, process, Client, _} = M,
+            #data{ client = Client
+                 , client_mref = MRef } = D) ->
+    close(client_disconnected, log(disconnect, error, M, D));
 handle_info(Msg, #data{cur_statem_state = St} = D) ->
     lager:debug("Discarding info in ~p state: ~p", [St, Msg]),
     keep_state(log(drop, msg_type(Msg), Msg, D)).

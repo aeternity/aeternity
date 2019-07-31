@@ -122,22 +122,26 @@
 %% ==================================================================
 %% Records and Types
 
--record(data, { role                   :: role()
-              , channel_status         :: undefined | attached | open | closing
-              , cur_statem_state       :: undefined | atom()
-              , state                  :: aesc_offchain_state:state() | function()
-              , session                :: pid()
-              , client                 :: pid()
-              , opts                   :: map()
-              , channel_id             :: undefined | binary()
-              , on_chain_id            :: undefined | binary()
-              , create_tx              :: undefined | any()
-              , watcher                :: undefined | pid()
-              , latest = undefined     :: latest_op()
-              , ongoing_update = false :: boolean()
-              , last_reported_update   :: undefined | non_neg_integer()
-              , log                    :: log()
-              , strict_checks = true   :: boolean()
+-record(data, { role                          :: role()
+              , channel_status                :: undefined | attached | open | closing
+              , cur_statem_state              :: undefined | atom()
+              , state                         :: aesc_offchain_state:state() | function()
+              , session                       :: pid()
+              , client                        :: pid() | undefined
+              , client_mref                   :: reference() | undefined
+              , client_connected = true       :: boolean()
+              , client_may_disconnect = false :: boolean()
+              , client_reconnect_nonce = 0    :: non_neg_integer()
+              , opts                          :: map()
+              , channel_id                    :: undefined | binary()
+              , on_chain_id                   :: undefined | binary()
+              , create_tx                     :: undefined | any()
+              , watcher                       :: undefined | pid()
+              , latest = undefined            :: latest_op()
+              , ongoing_update = false        :: boolean()
+              , last_reported_update          :: undefined | non_neg_integer()
+              , log                           :: log()
+              , strict_checks = true          :: boolean()
               }).
 
 -opaque data() :: #data{ opts :: opts() }.

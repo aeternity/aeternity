@@ -36,7 +36,9 @@
     sc_ws_environment_contract/1,
     sc_ws_remote_call_contract/1,
     sc_ws_remote_call_contract_refering_onchain_data/1,
-    sc_ws_wrong_call_data/1
+    sc_ws_wrong_call_data/1,
+    sc_ws_basic_client_reconnect_i/1,
+    sc_ws_basic_client_reconnect_r/1
    ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -103,7 +105,8 @@ groups() ->
         sc_ws_slash,
         %% possible to leave and reestablish channel
         sc_ws_leave_reestablish,
-        {group, with_open_channel}
+        {group, with_open_channel},
+        {group, client_reconnect}
       ]},
 
      {with_open_channel, [sequence],
@@ -155,6 +158,11 @@ groups() ->
       [ sc_ws_attach_initiator,
         sc_ws_attach_responder,
         sc_ws_basic_open_close
+      ]},
+
+     {client_reconnect, [sequence],
+      [ sc_ws_basic_client_reconnect_i,
+        sc_ws_basic_client_reconnect_r
       ]}
 
     ].
@@ -196,6 +204,8 @@ init_per_group(sc_contracts, Config) ->
     sc_ws_open_(reset_participants(sc_contracts, Config));
 init_per_group(plain, Config) ->
     reset_participants(plain, Config);
+init_per_group(client_reconnect, Config) ->
+    reset_participants(client_reconnect, Config);
 init_per_group(_Grp, Config) ->
     Config.
 
@@ -440,12 +450,14 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
                                        MinBlocksToMine),
 
-    channel_send_locking_infos(IConnPid, RConnPid, Config),
+    {ok, ChId} = channel_send_locking_infos(IConnPid, RConnPid, Config),
 
     channel_send_chan_open_infos(RConnPid, IConnPid, Config),
 
-    ChannelClients = #{initiator => IConnPid,
-                       responder => RConnPid},
+    %% We stuff the channel id into the Clients map out of convenience
+    ChannelClients = #{channel_id => ChId,
+                       initiator  => IConnPid,
+                       responder  => RConnPid},
     ok = ?WS:unregister_test_for_channel_events(IConnPid, [info, get, sign,
                                                            on_chain_tx]),
     ok = ?WS:unregister_test_for_channel_events(RConnPid, [info, get, sign,
@@ -479,15 +491,20 @@ make_msg_round(SenderPid, SenderPubkey, ReceiverPid, ReceiverPubkey, Msg, Config
 
 channel_send_conn_open_infos(RConnPid, IConnPid, Config) ->
     {ok, #{<<"event">> := <<"channel_open">>}} = wait_for_channel_event(RConnPid, info, Config),
-    {ok, #{<<"event">> := <<"channel_accept">>}} = wait_for_channel_event(IConnPid, info, Config).
+    {ok, #{<<"event">> := <<"channel_accept">>}} = wait_for_channel_event(IConnPid, info, Config),
+    ok.
 
 channel_send_locking_infos(IConnPid, RConnPid, Config) ->
-    {ok, #{<<"event">> := <<"own_funding_locked">>}} = wait_for_channel_event(IConnPid, info, Config),
-    {ok, #{<<"event">> := <<"own_funding_locked">>}} = wait_for_channel_event(RConnPid, info, Config),
+    {ok, #{channel_id := ChId,
+           data := #{<<"event">> := <<"own_funding_locked">>}}}
+        = wait_for_channel_event_full(IConnPid, info, Config),
+    {ok, #{channel_id := ChId,
+           data := #{<<"event">> := <<"own_funding_locked">>}}}
+        = wait_for_channel_event_full(RConnPid, info, Config),
 
     {ok, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(IConnPid, info, Config),
     {ok, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(RConnPid, info, Config),
-    ok.
+    {ok, ChId}.
 
 channel_send_chan_open_infos(RConnPid, IConnPid, Config) ->
     {ok, #{<<"event">> := <<"open">>}} = wait_for_channel_event(IConnPid, info, Config),
@@ -2402,6 +2419,94 @@ sc_ws_basic_open_close_server(Config0) ->
     ok = sc_ws_update_(Config),
     ok = sc_ws_close_(Config).
 
+sc_ws_basic_client_reconnect_i(Config) ->
+    sc_ws_basic_client_reconnect_(initiator, Config).
+
+sc_ws_basic_client_reconnect_r(Config) ->
+    sc_ws_basic_client_reconnect_(responder, Config).
+
+sc_ws_basic_client_reconnect_(Role, Config0) ->
+    Config = sc_ws_open_(Config0),
+    #{ Role := #{ pub_key  := Pubkey
+                , priv_key := Privkey } } = Participants
+        = proplists:get_value(participants, Config),
+    #{ channel_id := ChId
+     , Role := ConnPid } = Clients = ?config(channel_clients, Config),
+    unlink(ConnPid),
+    exit(ConnPid, kill),
+    ct:log("ConnPid killed", []),
+    timer:sleep(100),
+    update_error_with_client_disconnected(
+      other_role(Role), Clients#{Role => undefined}, Participants, Config),
+    Config1 = reconnect_client_(ChId, Role, Pubkey, Privkey, Config),
+    sc_ws_close_mutual_(Config1, Role).
+
+responder_gets_conflict(Clients, Participants, Config) ->
+    update_error_with_client_disconnected(
+      responder, Clients, Participants, Config).
+
+update_error_with_client_disconnected(Role, Clients, Participants, Config) ->
+    OtherRole = other_role(Role),
+    ConnPid = maps:get(Role, Clients),
+    #{ pub_key  := FromPubkey
+     , priv_key := FromPrivkey } = maps:get(Role, Participants),
+    #{ pub_key  := ToPubkey } = maps:get(OtherRole, Participants),
+    ok = ?WS:register_test_for_channel_events(ConnPid, [sign, conflict]),
+
+    SignUpdate =
+        fun TrySignUpdate(Pid, Privkey) ->
+            case wait_for_channel_event(Pid, sign, Config) of
+                {ok, <<"update">>, #{<<"signed_tx">> := EncSignedTx0}} ->
+                    {ok, SignedBinTx} =
+                        aeser_api_encoder:safe_decode(transaction, EncSignedTx0),
+                    STx = aetx_sign:deserialize_from_binary(SignedBinTx),
+                    SignedTx = aec_test_utils:co_sign_tx(STx, Privkey),
+                    EncSignedTx = aeser_api_encoder:encode(
+                                    transaction,
+                                    aetx_sign:serialize_to_binary(SignedTx)),
+                    ws_send_tagged(Pid, <<"channels.update">>,
+                                   #{signed_tx => EncSignedTx}, Config)
+            end
+        end,
+    %% sender initiates an update
+    ws_send_tagged(ConnPid, <<"channels.update.new">>,
+                   #{from => aeser_api_encoder:encode(account_pubkey, FromPubkey),
+                     to => aeser_api_encoder:encode(account_pubkey, ToPubkey),
+                     amount => 1}, Config),
+
+    %% starter signs the new state
+    SignUpdate(ConnPid, FromPrivkey),
+
+    {ok, _} = wait_for_channel_event(ConnPid, conflict, Config),
+
+    ok = ?WS:unregister_test_for_channel_events(ConnPid, [sign, conflict]),
+
+    ok.
+
+other_role(responder) -> initiator;
+other_role(initiator) -> responder.
+
+reconnect_client_(ChId, Role, Pub, Priv, Config) ->
+    reconnect_client_(ChId, 1, Role, Pub, Priv, Config).
+
+reconnect_client_(ChId, Round, Role, Pub, Priv, Config) ->
+    ct:log("reconnecting ChId = ~p, Role = ~p, Pub = ~p", [ChId, Role, Pub]),
+    {channel, ChIdDec} = aeser_api_encoder:decode(ChId),
+    ChIdId = aeser_id:create(channel, ChIdDec),
+    PubId = aeser_id:create(account, Pub),
+    {ok, Tx} = aesc_client_reconnect_tx:new(#{ channel_id => ChIdId
+                                             , round      => Round
+                                             , role       => Role
+                                             , pub_key    => PubId }),
+    SignedTx = aec_test_utils:sign_tx(Tx, Priv),
+    SignedTxBin = aeser_api_encoder:encode(
+                    transaction, aetx_sign:serialize_to_binary(SignedTx)),
+    ChannelOpts = reconnect_channel_options(SignedTxBin, Config),
+    {ok, ConnPid} = channel_ws_start(Role, ChannelOpts, Config),
+    {_, ChannelClients} = lists:keyfind(channel_clients, 1, Config),
+    lists:keyreplace(channel_clients, 1, Config,
+                     {channel_clients, ChannelClients#{ Role => ConnPid }}).
+
 sc_ws_failed_update(Config) ->
     ChannelClients = proplists:get_value(channel_clients, Config),
     Participants = proplists:get_value(participants, Config),
@@ -2704,6 +2809,11 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
                   channel_reserve => 2,
                   protocol => sc_ws_protocol(Config)
                 }, Other).
+
+reconnect_channel_options(SignedTx, Config) ->
+    #{ port => ?config(ws_port, Config)
+     , reconnect_tx => SignedTx
+     , protocol => sc_ws_protocol(Config) }.
 
 current_height() ->
     case rpc(aec_chain, top_header, []) of
