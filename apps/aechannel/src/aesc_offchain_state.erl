@@ -84,7 +84,15 @@ new_(#{ initiator          := InitiatorPubKey
 
 recover_from_offchain_tx(#{ existing_channel_id := ChId
                           , offchain_tx         := SignedTx } = Opts) ->
-    case aesc_state_cache:reestablish(ChId, my_pubkey(Opts)) of
+    MyPubkey = my_pubkey(Opts),
+    ReestablishResult =
+        case maps:get(state_password, Opts, not_found) of
+            not_found ->
+                aesc_state_cache:reestablish(ChId, MyPubkey);
+            StatePassword ->
+                aesc_state_cache:reestablish(ChId, MyPubkey, StatePassword)
+        end,
+    case ReestablishResult of
         {ok, #state{} = State} ->
             case is_latest_signed_tx(SignedTx, State) of
                 true ->

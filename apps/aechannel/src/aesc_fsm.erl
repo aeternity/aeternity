@@ -2936,8 +2936,11 @@ on_chain_id(D, SignedTx) ->
     {PubKey, D#data{on_chain_id = PubKey}}.
 
 initialize_cache(#data{ on_chain_id = ChId
-                      , state       = State } = D) ->
-    aesc_state_cache:new(ChId, my_account(D), State).
+                      , state       = State } = D, not_found) ->
+    aesc_state_cache:new(ChId, my_account(D), State);
+initialize_cache(#data{ on_chain_id = ChId
+                      , state       = State } = D, StatePassword) ->
+    aesc_state_cache:new(ChId, my_account(D), State, StatePassword).
 
 cache_state(#data{ on_chain_id = ChId
                  , state       = State } = D) ->
@@ -3388,7 +3391,7 @@ callback_mode() ->
                       %% state ..."
     ].
 
--spec init(term()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(),
+-spec init(map()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(),
                                                    InitialState}, ...]}
                           when InitialState :: state_name().
 init(#{opts := Opts0} = Arg) ->
@@ -3811,8 +3814,11 @@ funding_locked_complete(#data{ op = #op_lock{ tag = create
     {OnChainEnv, OnChainTrees} = load_pinned_env(BlockHash),
     State1 = aesc_offchain_state:set_signed_tx(CreateTx, Updates, State, OnChainTrees,
                                                OnChainEnv, Opts),
-    D1 = D#data{state = State1},
-    initialize_cache(D1),
+    StatePassword = maps:get(state_password, Opts, not_found),
+    Opts1 = maps:remove(state_password, Opts),
+    D1 = D#data{state = State1, opts = Opts1},
+
+    initialize_cache(D1, StatePassword),
     next_state(open, D1).
 
 close(Reason, D) ->
@@ -4021,7 +4027,7 @@ handle_call_(open, shutdown, From, D) ->
             keep_state(D)
     end;
 handle_call_(channel_closing, shutdown, From, #data{strict_checks = Strict} = D) ->
-    case (not Strict) or was_fork_activated(?LIMA_PROTOCOL_VSN) of
+    case (not Strict) or is_fork_active(?LIMA_PROTOCOL_VSN) of
         true ->
             %% Initiate mutual close
             {ok, CloseTx, Updates, BlockHash} = close_mutual_tx_for_signing(D),
@@ -4332,7 +4338,8 @@ init_checks(Opts) ->
                       true -> {error, lock_period_too_low};
                       false -> ok
                   end
-              end
+              end,
+              fun() -> check_state_password(Opts) end
               ],
     case aeu_validation:run(Checks) of
         {error, _Reason} = Err ->
@@ -4340,6 +4347,23 @@ init_checks(Opts) ->
         ok ->
             ok
     end.
+
+-spec check_state_password(map()) -> ok | {error, required_since_lima | weak_password}.
+check_state_password(#{state_password := StatePassword}) ->
+    check_weak_password(StatePassword);
+check_state_password(_Opts) ->
+    case is_fork_active(?LIMA_PROTOCOL_VSN) of
+        true ->
+            {error, required_since_lima};
+        false ->
+            ok
+    end.
+
+-spec check_weak_password(string()) -> ok | {error, weak_password}.
+check_weak_password(StatePassword) when is_list(StatePassword), length(StatePassword) < 5 ->
+    {error, weak_password};
+check_weak_password(StatePassword) when is_list(StatePassword) ->
+    ok.
 
 was_fork_activated(ProtocolVSN) ->
     %% Enable a new fork only after MINIMUM_DEPTH generations in order to avoid fork changes
