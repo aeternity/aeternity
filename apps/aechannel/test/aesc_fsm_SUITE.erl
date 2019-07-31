@@ -115,6 +115,7 @@ groups() ->
     [
      {all_tests, [sequence], [ {group, transactions}
                              , {group, errors}
+                             , {group, client_reconnect}
                              , {group, throughput}
                              , {group, signatures}
                              , {group, channel_ids}

@@ -105,7 +105,8 @@ groups() ->
         sc_ws_slash,
         %% possible to leave and reestablish channel
         sc_ws_leave_reestablish,
-        {group, with_open_channel}
+        {group, with_open_channel},
+        {group, client_reconnect}
       ]},
 
      {with_open_channel, [sequence],
