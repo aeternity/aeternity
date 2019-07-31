@@ -2,10 +2,12 @@
 
 [This][this-release] is a maintenance release.
 It:
-- If one of the peers refuses signing the closing transaction while the channel is not active then the request may timeout without killing the FSM.
+* Makes State Channel FSM more robust to timeouts.
+  If one of the peers refuses signing the closing transaction while the channel is not active then the request may timeout without killing the FSM.
 * Improves State Channel FSM to compute transaction fees in a dynamic manner.
   This will usually result in smaller fees being paid by participants.
-* The process that handles the state for the State Channel client in the node
+* Enhances the State Channel user experience adding info regarding timeouts.
+  The process that handles the state for the State Channel client in the node
   has a list of different timeouts. They define different time frames for
   certain events to be completed. Running out of time is a violation of the
   off-chain protocol so if it happens - the connection is closed and it is up
