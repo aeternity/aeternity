@@ -196,7 +196,9 @@ is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
                                    ) ->
             ?VM_FATE_SOPHIA_1_enabled;
         _                     when VMVersion =:= ?VM_AEVM_SOLIDITY_1 ->
-            ?VM_AEVM_SOLIDITY_1_enabled
+            ?VM_AEVM_SOLIDITY_1_enabled;
+        _ ->
+            false
     end;
 is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_NO_VM}, _ProtocolVersion) ->
     true;
