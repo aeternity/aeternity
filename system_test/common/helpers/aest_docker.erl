@@ -223,12 +223,17 @@ setup_node(Spec, BackendState) ->
         end,
     HardForkVars =
         case maps:find(hard_forks, Spec) of
-            error -> #{};
             {ok, HardForks} ->
-                #{hard_forks_present => [#{}],
-                  hard_forks =>
-                      lists:map(fun({V, H}) -> #{version => V, height => H} end,
-                                maps:to_list(HardForks))}
+                #{hard_forks =>
+                      #{present => true,
+                        hard_fork_info =>
+                            lists:map(
+                              fun({V, H}) -> #{version => V, height => H} end,
+                              maps:to_list(HardForks))}};
+            error ->
+                #{hard_forks =>
+                      #{present => false,
+                        hard_fork_info => []}}
         end,
     RootVars = (maps:merge(CuckooMinerVars, HardForkVars))#{
         hostname => Name,
