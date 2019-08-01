@@ -24,6 +24,7 @@
           create_channel/1
         , multiple_responder_keys_per_port/1
         , channel_insufficent_tokens/1
+        , channel_invalid_state_password/1
         , inband_msgs/1
         , upd_transfer/1
         , update_with_conflict/1
@@ -55,6 +56,7 @@
         , check_mutual_close_with_wrong_amounts/1
         , check_mutual_close_after_close_solo/1
         , check_fsm_crash_reestablish/1
+        , check_invalid_reestablish_password/1
         , attach_initiator/1
         , attach_responder/1
         , initiator_spend/1
@@ -138,12 +140,14 @@ groups() ->
                              , {group, round_too_high}
                              , {group, pinned_env}
                              , {group, generalized_accounts}
+                             , {group, no_mock}
                              ]},
      {transactions, [sequence],
       [
         create_channel
       , multiple_responder_keys_per_port
       , channel_insufficent_tokens
+      , channel_invalid_state_password
       , inband_msgs
       , upd_transfer
       , update_with_conflict
@@ -172,6 +176,7 @@ groups() ->
         check_mutual_close_with_wrong_amounts
       , check_mutual_close_after_close_solo
       , check_fsm_crash_reestablish
+      , check_invalid_reestablish_password
       ]},
      {signing_abort, [sequence],
       [
@@ -207,7 +212,8 @@ groups() ->
       , request_too_new_bh
       , request_too_old_bh
       , positive_bh
-      ]}
+      ]},
+     {no_mock, [sequence], [create_channel]}
     ].
 
 ga_sequence() ->
@@ -329,6 +335,10 @@ init_per_group(Group, Config) when Group =:= initiator_is_ga;
     end;
 init_per_group(generalized_accounts, Config) ->
     Config;
+init_per_group(no_mock, Config) ->
+    Cfg = init_per_group_(Config),
+    end_mocks(dev1),
+    Cfg;
 init_per_group(_Group, Config) ->
     init_per_group_(Config).
 
@@ -339,6 +349,7 @@ init_per_group_(Config) ->
             aecore_suite_utils:start_node(dev1, Config),
             aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow]),
             ct:log("dev1 connected", []),
+            start_mocks(dev1),
             try begin
                     Initiator = prep_initiator(dev1),
                     Responder = prep_responder(Initiator, dev1),
@@ -390,6 +401,28 @@ stop_node(N, Config) ->
     aecore_suite_utils:stop_node(N, Config),
     Config.
 
+start_mocks(N) ->
+    %% TODO: For some reason the node sometimes is being started multiple times without stopping it first
+    %% Here is a small workaround for that
+    case get(mocks_initiated) of
+        undefined ->
+            ct:log("Starting mocks"),
+            %% TODO: Mock block mining as this is the main contributor to the FSM suite runtime
+            _ = rpc(N, aesc_state_cache, mock_kdf_init, []),
+            put(mocks_initiated, true);
+        _ ->
+            pass
+    end.
+
+end_mocks(N) ->
+    case get(mocks_initiated) of
+        true ->
+            ct:log("Stopping mocks"),
+            erase(mocks_initiated),
+            _ = rpc(N, aesc_state_cache, mock_kdf_end, []);
+        _ ->
+            pass
+    end.
 
 %%%===================================================================
 %%% Test state
@@ -583,23 +616,46 @@ t_create_channel_(Cfg) ->
 
 channel_insufficent_tokens(Cfg) ->
     Debug = get_debug(Cfg),
-    Port = 9325,
     Test =
         fun(IAmt, RAmt, ChannelReserve, PushAmount, Error) ->
-            {_, _, Spec} =
+            Params =
                 channel_spec([{initiator_amount, IAmt},
                               {responder_amount, RAmt},
                               ?SLOGAN|Cfg],
                               ChannelReserve, PushAmount),
-            {error, Error} =
-                rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
-            {error, Error} =
-                rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec], Debug)
+            channel_create_invalid_spec(Params, Error, Debug)
         end,
     Test(10, 10, 5, 6, insufficient_initiator_amount),
     Test(10, 1, 5, 3, insufficient_responder_amount),
     Test(1, 1, 5, 3, insufficient_amounts),
     ok.
+
+channel_invalid_state_password(Cfg) ->
+    Debug = get_debug(Cfg),
+    Test =
+        fun(Password, Error) ->
+            Params = channel_spec([{initiator_password, Password},
+                                         {responder_password, Password},
+                                         ?SLOGAN|Cfg]),
+            channel_create_invalid_spec(Params, Error, Debug)
+        end,
+    Test("A", weak_password),
+    Test("12345", weak_password),
+    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+        true ->
+            Test(ignore, password_required_since_lima);
+        _ ->
+            ok
+    end.
+
+channel_create_invalid_spec({I, R, Spec}, Error, Debug) ->
+    Port = 9325,
+    SpecR = move_password_to_spec(R, Spec),
+    {error, Error} =
+        rpc(dev1, aesc_fsm, respond, [Port, SpecR], Debug),
+    SpecI = move_password_to_spec(I, Spec),
+    {error, Error} =
+        rpc(dev1, aesc_fsm, initiate, ["localhost", Port, SpecI], Debug).
 
 inband_msgs(Cfg) ->
     #{ i := #{fsm := FsmI} = I
@@ -1653,6 +1709,40 @@ fsm_crash_action_during_shutdown( #{fsm := FsmI} = I
     {ok, _} = receive_from_fsm(shutdown_ack, R, signing_req(), ?TIMEOUT, Debug),
     ok.
 
+check_invalid_reestablish_password(Cfg) ->
+    Debug = get_debug(Cfg),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    #{ i := #{ fsm := FsmI } = I
+     , r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
+    ct:log("I = ~p", [I]),
+    ct:log("R = ~p", [R]),
+    {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
+    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+    {ok,Li} = await_leave(I1, ?TIMEOUT, Debug),
+    {ok,Lr} = await_leave(R1, ?TIMEOUT, Debug),
+    SignedTx = maps:get(info, Li),
+    SignedTx = maps:get(info, Lr),
+    {ok,_} = receive_from_fsm(info, I1, fun died_normal/1, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(info, R1, fun died_normal/1, ?TIMEOUT, Debug),
+    %% Reestablish with wrong passwords
+    #{ initiator_amount := IAmt
+     , responder_amount := RAmt
+     , channel_id := ChId
+     , state_password := StatePasswordI} = I1,
+    #{ initiator_amount := IAmt
+     , responder_amount := RAmt
+     , channel_id := ChId
+     , state_password := StatePasswordR} = R1,
+    Spec = Spec0#{existing_channel_id => ChId, offchain_tx => SignedTx,
+                  initiator_amount => IAmt, responder_amount => RAmt},
+    {error, invalid_password} = rpc(dev1, aesc_fsm, respond,
+                     [?PORT, Spec#{state_password => StatePasswordR ++ "_bogus"}]),
+    {error, invalid_password} = rpc(dev1, aesc_fsm, initiate,
+                     ["localhost", ?PORT, Spec#{state_password => StatePasswordI ++ "_bogus"}], Debug),
+    %% Check that after an invalid password has been provided we can still reestablish the channel
+    _ = reestablish(ChId, I1, R1, SignedTx, Spec, ?PORT, Debug),
+    ok.
+
 fsm_state(Pid, Debug) ->
     {State, _Data} = rpc(dev1, sys, get_state, [Pid, 1000], _RpcDebug = false),
     log(Debug, "fsm_state(~p) -> ~p", [Pid, State]),
@@ -1738,8 +1828,8 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
         end,
     IAmt = IAmt0 - PushAmount,
     RAmt = RAmt0 + PushAmount,
-    {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
-    {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec], Debug),
+    {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, move_password_to_spec(R, Spec)], Debug),
+    {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, move_password_to_spec(I, Spec)], Debug),
 
     log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
 
@@ -2185,7 +2275,25 @@ channel_spec(Cfg, ChannelReserve, PushAmount, XOpts) ->
             end,
             Spec,
             [nonce, block_hash_delta]),
-    {I, R, Spec1}.
+
+    I1 = prime_password(I, initiator_password, Cfg),
+    R1 = prime_password(R, responder_password, Cfg),
+
+    {I1, R1, Spec1}.
+
+prime_password(#{} = P, Key, #{} = Cfg) when is_atom(Key) ->
+    case ?config(Key, Cfg) of
+        undefined ->
+            P#{state_password => generate_password()};
+        ignore ->
+            maps:remove(state_password, P);
+        Password ->
+            P#{state_password => Password}
+     end.
+
+-spec generate_password() -> string().
+generate_password() ->
+    base64:encode(crypto:strong_rand_bytes(6)).
 
 config(K, Cfg, Def) ->
     case ?config(K, Cfg) of
@@ -2262,8 +2370,9 @@ spawn_responder(Port, Spec, R, UseAny, Debug) ->
     spawn_link(fun() ->
                        log("responder spawned: ~p", [Spec]),
                        Spec1 = maybe_use_any(UseAny, Spec#{ client => self() }),
-                       {ok, Fsm} = rpc(dev1, aesc_fsm, respond, [Port, Spec1], Debug),
-                       responder_instance_(Fsm, Spec1, R, Me, Debug)
+                       Spec2 = move_password_to_spec(R, Spec1),
+                       {ok, Fsm} = rpc(dev1, aesc_fsm, respond, [Port, Spec2], Debug),
+                       responder_instance_(Fsm, Spec2, R, Me, Debug)
                end).
 
 maybe_use_any(true, Spec) ->
@@ -2276,10 +2385,16 @@ spawn_initiator(Port, Spec, I, Debug) ->
     spawn_link(fun() ->
                        log("initiator spawned: ~p", [Spec]),
                        Spec1 = Spec#{ client => self() },
+                       Spec2 = move_password_to_spec(I, Spec1),
                        {ok, Fsm} = rpc(dev1, aesc_fsm, initiate,
-                                       ["localhost", Port, Spec1], Debug),
-                       initiator_instance_(Fsm, Spec1, I, Me, Debug)
+                                       ["localhost", Port, Spec2], Debug),
+                       initiator_instance_(Fsm, Spec2, I, Me, Debug)
                end).
+
+move_password_to_spec(#{state_password := StatePassword}, Spec) ->
+    Spec#{state_password => StatePassword};
+move_password_to_spec(_, Spec) ->
+    Spec.
 
 match_responder_and_initiator(RProxy, Debug) ->
     receive
@@ -2375,26 +2490,18 @@ reestablish( ChId
     Spec = Spec0#{existing_channel_id => ChId, offchain_tx => SignedTx,
                   initiator_amount => IAmt, responder_amount => RAmt},
     {ok, FsmR} = rpc(dev1, aesc_fsm, respond,
-                     [Port, Spec]),
+                     [Port, move_password_to_spec(R, Spec)]),
     {ok, FsmI} = rpc(dev1, aesc_fsm, initiate,
-                     ["localhost", Port, Spec], Debug),
+                     ["localhost", Port, move_password_to_spec(I, Spec)], Debug),
     I1 = await_open_report(I#{fsm => FsmI}, ?TIMEOUT, Debug),
     R1 = await_open_report(R#{fsm => FsmR}, ?TIMEOUT, Debug),
     check_info(20),
     #{i => I1, r => R1, spec => Spec}.
 
-create_tx_amounts(SignedTx) ->
-    {aesc_create_tx, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
-    {aesc_create_tx:initiator_amount(TxI),
-     aesc_create_tx:responder_amount(TxI)}.
-
 update_tx(Tx0, F, Args) ->
     {Mod, TxI} = aetx:specialize_callback(Tx0),
     TxI1 = apply(Mod, F, [TxI|Args]),
     aetx:new(Mod, TxI1).
-
-set_amounts(IAmt, RAmt, Map) ->
-    Map#{initiator_amount => IAmt, responder_amount => RAmt}.
 
 verify_close_mutual_tx(SignedTx, ChannelId) ->
     {aesc_close_mutual_tx, Tx} =
@@ -3158,152 +3265,3 @@ peek_message_queue(L, Debug) ->
                "==================================================~n", [L, Msgs])
     end,
     ok.
-
-request_unknown_bh(Cfg) ->
-    NOT = 10,
-    NNT = 0,
-    #{ i := I
-     , r := R
-     , spec := Spec} = create_channel_([{block_hash_delta, #{ not_older_than => NOT
-                                                            , not_newer_than => NNT
-                                                            , pick           => 1}},
-                                        ?SLOGAN|Cfg]),
-    #{ initiator := PubI
-     , responder := PubR } = Spec,
-    TryUnknown =
-        fun(#{fsm := Fsm}, Function, Args0) ->
-            Args =
-                case is_list(Args0) of
-                    true -> [Fsm] ++ Args0 ++ [#{block_hash => ?BOGUS_BLOCKHASH}]; %% transfer
-                    false -> [Fsm, Args0#{block_hash => ?BOGUS_BLOCKHASH}]
-                end,
-            {error, unknown_block_hash} = rpc(dev1, aesc_fsm, Function, Args)
-        end,
-    Funs = [ {upd_deposit, #{amount => 1}}
-           , {upd_withdraw, #{amount => 1}}
-           , {upd_transfer, [PubI, PubR, 1]}
-           ],
-    [TryUnknown(Who, Fun, Args) || Who <- [I, R],
-                                   {Fun, Args} <- Funs],
-    shutdown_(I, R, Cfg),
-    ok.
-
-request_too_new_bh(Cfg) ->
-    NOT = 10,
-    NNT = 1, % top not allowed
-    Debug = true,
-    #{ i := I
-     , r := R
-     , spec := Spec} = create_channel_([{block_hash_delta, #{ not_older_than => NOT
-                                                            , not_newer_than => NNT
-                                                            , pick           => 1}},
-                                        ?SLOGAN|Cfg]),
-    #{ initiator := PubI
-     , responder := PubR } = Spec,
-    TopHash = aecore_suite_utils:get_key_hash_by_delta(dev1, NNT - 1), %% actually uses Top Hash
-    TryTooNew =
-        fun({#{fsm := Fsm} = Participant, OtherP}, Function, Args0, TxType) ->
-            Args =
-                case is_list(Args0) of
-                    true -> [Fsm] ++ Args0 ++ [#{block_hash => TopHash}]; %% transfer
-                    false -> [Fsm, Args0#{block_hash => TopHash}]
-                end,
-            ok = rpc(dev1, aesc_fsm, Function, Args),
-            {Participant1, _} = await_signing_request(TxType, Participant, Cfg),
-            %% rejected by other party
-            {ok, _} = receive_from_fsm(conflict, OtherP, any_msg(),
-                                       ?TIMEOUT, Debug),
-            {ok, _} = receive_from_fsm(conflict, Participant1, any_msg(),
-                                       ?TIMEOUT, Debug),
-            Participant1
-        end,
-    Funs = [ {upd_deposit, #{amount => 1}, deposit_tx}
-           , {upd_withdraw, #{amount => 1}, withdraw_tx}
-           , {upd_transfer, [PubI, PubR, 1], update}
-           ],
-    [TryTooNew(Who, Fun, Args, TxType) || Who <- [{I, R}, {R, I}],
-                                          {Fun, Args, TxType} <- Funs],
-    shutdown_(I, R, Cfg),
-    ok.
-
-request_too_old_bh(Cfg) ->
-    NOT = 10, % top not allowed
-    NNT = 1,
-    Debug = true,
-    #{ i := I
-     , r := R
-     , spec := Spec} = create_channel_([{block_hash_delta, #{ not_older_than => NOT
-                                                            , not_newer_than => NNT
-                                                            , pick           => 1}},
-                                        ?SLOGAN|Cfg]),
-    mine_key_blocks(dev1, NOT + 2), % do not rely on min depth
-    #{ initiator := PubI
-     , responder := PubR } = Spec,
-    OldHash = aecore_suite_utils:get_key_hash_by_delta(dev1, NOT + 1),
-    TryTooOld =
-        fun({#{fsm := Fsm} = Participant, OtherP}, Function, Args0, TxType) ->
-            Args =
-                case is_list(Args0) of
-                    true -> [Fsm] ++ Args0 ++ [#{block_hash => OldHash}]; %% transfer
-                    false -> [Fsm, Args0#{block_hash => OldHash}]
-                end,
-            ok = rpc(dev1, aesc_fsm, Function, Args),
-            {Participant1, _} = await_signing_request(TxType, Participant, Cfg),
-            %% rejected by other party
-            {ok, _} = receive_from_fsm(conflict, OtherP, any_msg(),
-                                       ?TIMEOUT, Debug),
-            {ok, _} = receive_from_fsm(conflict, Participant1, any_msg(),
-                                       ?TIMEOUT, Debug),
-            Participant1
-        end,
-    Funs = [ {upd_deposit, #{amount => 1}, deposit_tx}
-           , {upd_withdraw, #{amount => 1}, withdraw_tx}
-           , {upd_transfer, [PubI, PubR, 1], update}
-           ],
-    [TryTooOld(Who, Fun, Args, TxType) || Who <- [{I, R}, {R, I}],
-                                          {Fun, Args, TxType} <- Funs],
-    shutdown_(I, R, Cfg),
-    ok.
-
-
-positive_bh(Cfg) ->
-    NOT = 10,
-    NNT = 1,
-    Debug = true,
-    #{ i := #{fsm := FsmI} = I
-     , r := R
-     , spec := _Spec} = create_channel_([{block_hash_delta, #{ not_older_than => NOT
-                                                             , not_newer_than => NNT
-                                                             , pick           => 1}},
-                                        ?SLOGAN|Cfg]),
-    mine_key_blocks(dev1, NOT + 2), % do not rely on min depth
-    TestByDelta =
-        fun(Delta, {_I, _R} = Participants) ->
-            lists:foldl(
-                fun(Fun, {I0, R0}) ->
-                    {_IAmt0, _RAmt0, _, Round} = check_fsm_state(FsmI),
-                    BlockHash = aecore_suite_utils:get_key_hash_by_delta(dev1,
-                                                                        Delta),
-                    {ok, I1, R1} = Fun(I0, R0, #{block_hash => BlockHash}, Round),
-                    {I1, R1}
-                end,
-                {_I, _R} = Participants,
-                [ fun(Il, Rl, Opts, Round) ->
-                      deposit_(Il, Rl, 1, Opts, Round, Debug, Cfg)
-                  end,
-                  fun(Il, Rl, Opts, Round) ->
-                      withdraw_(Il, Rl, 1, Opts, Round, Debug, Cfg)
-                  end
-                ])
-        end,
-    {IFinal, RFinal} =
-        lists:foldl(
-            TestByDelta,
-            {I, R},
-            [ NOT,      %% border condition
-              NNT,      %% border condition
-              NOT - 1,  %% in the range
-              NNT + 1]),%% in the range
-    shutdown_(IFinal, RFinal, Cfg),
-    ok.
-

@@ -43,6 +43,15 @@
          cache_status/1
         ]).
 
+%% for mocking
+-ifdef(TEST).
+-export([
+         mock_kdf_init/0,
+         mock_kdf_end/0,
+         generate_session_key/2
+        ]).
+-endif.
+
 -define(MIN_DEPTH, 4).
 -record(st, {mons_chid = ets:new(mons_chid, [ordered_set]),
              mons_ref  = ets:new(mons_ref, [set]),
@@ -66,11 +75,13 @@
 -define(PTAB, aesc_state_cache).
 -define(CACHE_DEFAULT_PASSWORD, "correct horse battery staple").
 
+-spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state()) -> ok | {error, any()}.
 new(ChId, Pubkey, State) ->
     new(ChId, Pubkey, State, ?CACHE_DEFAULT_PASSWORD).
 
+-spec new(aeser_id:val(), aeser_id:val(), aesc_offchain_state:state(), string()) -> ok | {error, any()}.
 new(ChId, PubKey, State, Password) ->
-    gen_server:call(?SERVER, {new, ChId, PubKey, self(), State, Password}).
+    gen_server:call(?SERVER, {new, ChId, PubKey, self(), State, unicode:characters_to_binary(Password)}).
 
 -spec reestablish(aeser_id:val(), aeser_id:val()) -> {ok, aesc_offchain_state:state()} | {error, atom()}.
 reestablish(ChId, Pubkey) ->
@@ -78,7 +89,7 @@ reestablish(ChId, Pubkey) ->
 
 -spec reestablish(aeser_id:val(), aeser_id:val(), string()) -> {ok, aesc_offchain_state:state()} | {error, atom()}.
 reestablish(ChId, PubKey, Password) ->
-    gen_server:call(?SERVER, {reestablish, ChId, PubKey, self(), Password}).
+    gen_server:call(?SERVER, {reestablish, ChId, PubKey, self(), unicode:characters_to_binary(Password)}).
 
 update(ChId, PubKey, State) ->
     gen_server:cast(?SERVER, {update, ChId, PubKey, State}).
@@ -128,6 +139,7 @@ init([]) ->
     {ok, #st{}}.
 
 generate_session_key(Password, Salt) ->
+    %% Argon2
     enacl:pwhash(Password, Salt).
 
 setup_keys_in_cache(Password) ->
@@ -248,7 +260,7 @@ decrypt_with_key_and_move_to_ram(#pch_cache{ cache_id = CacheId
                     delete_persistent(CacheId),
                     {ok, State};
         {error, _} = Err ->
-            Err
+            {error, invalid_password}
     end.
 
 decrypt_state_and_move_to_ram(#pch_cache{salt = Salt} = PersistedCache, Password) ->
@@ -386,3 +398,21 @@ delete_offchain_state_for_channel(ChId, St) ->
         [mnesia:delete(?PTAB, key(ChId, Pubkey), write) || Pubkey <- Records]
     end),
     St.
+
+-ifdef(TEST).
+enacl_pwhash_mock(Password, Salt) ->
+    {ok, crypto:hash(sha256, erlang:iolist_to_binary([Password, Salt]))}.
+
+mock_kdf_init() ->
+    %% In production we are using Argon2 for KDF - evaluating Argon2 takes > 100ms and is expensive
+    %% Mock the KDF to use sha256 in order to speed up tests
+    lager:debug("Mocking KDF in state cache"),
+    ok = meck:new(enacl, [no_link, no_history, passthrough]),
+    ok = meck:expect(enacl, pwhash, fun enacl_pwhash_mock/2),
+    ok.
+
+mock_kdf_end() ->
+    lager:debug("Unloading KDF mock"),
+    ok = meck:unload(enacl),
+    ok.
+-endif.

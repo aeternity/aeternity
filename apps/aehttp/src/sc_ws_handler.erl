@@ -96,7 +96,10 @@ handler_init_error(Err, Handler) ->
                     {insufficient_amounts, value_too_low},
                     {channel_reserve_too_low, value_too_low},
                     {push_amount_too_low, value_too_low},
-                    {lock_period_too_low, value_too_low}
+                    {lock_period_too_low, value_too_low},
+                    {invalid_password, invalid_password},
+                    {weak_password, weak_password},
+                    {password_required_since_lima, password_required_since_lima}
                    ],
     case proplists:get_value(Err, HandledErrors, not_handled_error) of
         not_handled_error ->
@@ -345,6 +348,8 @@ read_channel_options(Params) ->
     sc_ws_utils:check_params(
       [Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false}),
        Read(<<"ttl">>, ttl, #{type => integer, mandatory => false}),
+       %% Fork checks are done by the FSM
+       Read(<<"state_password">>, state_password, #{type => string, mandatory => false}),
        Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}])
       ] ++ OnChainOpts
       ++ lists:map(ReadTimeout, aesc_fsm:timeouts() ++ [awaiting_open,
