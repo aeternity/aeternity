@@ -260,6 +260,8 @@ perform_pre_transformations(Trees, Height) ->
                     aec_block_fork:apply_fortuna(Trees2);
                 {true, ?LIMA_PROTOCOL_VSN} -> % hard fork time
                     aec_block_fork:apply_lima(Trees2);
+                {true, P} when P > ?LIMA_PROTOCOL_VSN ->
+                    Trees2;
                 false -> Trees2
             end
     end.
