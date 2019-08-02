@@ -160,14 +160,16 @@ is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_4, abi := ?ABI_AEVM
         ?ROMA_PROTOCOL_VSN    -> false;
         ?MINERVA_PROTOCOL_VSN -> false;
         ?FORTUNA_PROTOCOL_VSN -> false;
-        P when P >= ?LIMA_PROTOCOL_VSN -> true %% TODO: If you bump to VM_AEVM_SOPHIA_5 please turn VM_AEVM_SOPHIA_4 off for the new consensus protocol!
+        ?LIMA_PROTOCOL_VSN    -> true;
+        P when P > ?LIMA_PROTOCOL_VSN -> true %% TODO: If you bump to VM_AEVM_SOPHIA_5 please turn VM_AEVM_SOPHIA_4 off for the new consensus protocol!
     end;
 is_legal_version_in_protocol(create, #{vm := ?VM_FATE_SOPHIA_1, abi := ?ABI_FATE_SOPHIA_1}, ProtocolVersion) ->
     case ProtocolVersion of
         ?ROMA_PROTOCOL_VSN    -> false;
         ?MINERVA_PROTOCOL_VSN -> false;
         ?FORTUNA_PROTOCOL_VSN -> false;
-        P when P >= ?LIMA_PROTOCOL_VSN -> ?VM_FATE_SOPHIA_1_enabled %% TODO: Revise this before release
+        ?LIMA_PROTOCOL_VSN    -> ?VM_FATE_SOPHIA_1_enabled; %% TODO: Revise this before release
+        P when P > ?LIMA_PROTOCOL_VSN -> ?VM_FATE_SOPHIA_1_enabled %% TODO: Revise this before release
     end;
 is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
     case ProtocolVersion of
