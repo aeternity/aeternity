@@ -795,7 +795,7 @@ channel_closing(cast, {?CHANNEL_UNLOCKED, #{chan_id := ChId}} = Msg,
     end,
     keep_state(D1);
 channel_closing(cast, {?SHUTDOWN, Msg}, D) ->
-    case {is_fork_active(?LIMA_PROTOCOL_VSN), check_shutdown_msg(Msg, D)} of
+    case {was_fork_activated(?LIMA_PROTOCOL_VSN), check_shutdown_msg(Msg, D)} of
         {false, _} ->
             %% TODO: send an ?UPDATE_ERR (which isn't yet defined)
             lager:debug("Shutdown while channel_closing not allowed before the Lima fork"),
@@ -3264,7 +3264,7 @@ handle_call_(open, shutdown, From, D) ->
     gen_statem:reply(From, ok),
     next_state(awaiting_signature, set_ongoing(D1));
 handle_call_(channel_closing, shutdown, From, #data{strict_checks = Strict} = D) ->
-    case (not Strict) or is_fork_active(?LIMA_PROTOCOL_VSN) of
+    case (not Strict) or was_fork_activated(?LIMA_PROTOCOL_VSN) of
         true ->
             %% Initiate mutual close
             {ok, CloseTx, Updates} = close_mutual_tx_for_signing(D),
@@ -3522,6 +3522,6 @@ init_checks(Opts) ->
             ok
     end.
 
-is_fork_active(ProtocolVSN) ->
+was_fork_activated(ProtocolVSN) ->
     %% Enable a new fork only after MINIMUM_DEPTH generations in order to avoid fork changes
-    ProtocolVSN == aec_hard_forks:protocol_effective_at_height(max(curr_height() - ?MINIMUM_DEPTH, aec_block_genesis:height())).
+    ProtocolVSN =< aec_hard_forks:protocol_effective_at_height(max(curr_height() - ?MINIMUM_DEPTH, aec_block_genesis:height())).
