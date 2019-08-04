@@ -220,7 +220,7 @@ subname_tx_spec(PubKey, Name, Definition, State) ->
     Spec = subname_tx_default_spec(PubKey, State),
     #{account_id => aeser_id:create(account, PubKey),
       nonce      => maps:get(nonce, Spec),
-      name       => Name,
+      name_id    => aeser_id:create(name, Name),
       definition => Definition,
       fee        => maps:get(fee, Spec)}.
 

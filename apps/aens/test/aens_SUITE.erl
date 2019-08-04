@@ -634,19 +634,17 @@ subdomain_claim(_Cfg) ->
 
     SomePK = <<120,245,0,157,97,46,5,228,60,175,19,76,43,124,69,10,211,
                83,150,252,193,30,36,223,45,221,175,102,48,84,118,31>>,
-    SomeId = aeser_id:create(account, SomePK),
+    SomeEncId = aeser_api_encoder:encode(account_pubkey, SomePK),
 
     SubnamesDef =
-        #{?SNAME1 => #{<<"sub1_acc">> => SomeId},
+        #{?SNAME1 => #{<<"sub1_acc">> => SomeEncId},
           ?SNAME2 => #{},
           ?SNAME21 => #{},
-          ?SNAME54321 => #{<<"sub54321_acc">> => SomeId}},
+          ?SNAME54321 => #{<<"sub54321_acc">> => SomeEncId}},
 
     SubnameTxSpec = aens_test_utils:subname_tx_spec(PubKey, Name, SubnamesDef, S1),
     {ok, SubnameTx} = aens_subname_tx:new(SubnameTxSpec),
-
     SignedSubnameTx = aec_test_utils:sign_tx(SubnameTx, PrivKey),
-
     Env = aetx_env:tx_env(2),
 
     {ok, [SignedSubnameTx], Trees1, _} =
@@ -661,7 +659,7 @@ subdomain_claim(_Cfg) ->
     {value, SName1} = aens_state_tree:lookup_name(SNameHash1, NTrees1),
     [Ptr1] = aens_subnames:pointers(SName1),
     <<"sub1_acc">> = aens_pointer:key(Ptr1),
-    SomeId = aens_pointer:id(Ptr1),
+    {id, account, SomePK} = aens_pointer:id(Ptr1),
 
     {ok, SNameAscii2} = aens_utils:name_to_ascii(?SNAME2),
     SNameHash2 = aens_hash:name_hash(SNameAscii2),
@@ -678,7 +676,7 @@ subdomain_claim(_Cfg) ->
     {value, SName54321} = aens_state_tree:lookup_name(SNameHash54321, NTrees1),
     [Ptr54321] = aens_subnames:pointers(SName54321),
     <<"sub54321_acc">> = aens_pointer:key(Ptr54321),
-    SomeId = aens_pointer:id(Ptr54321),
+    {id, account, SomePK} = aens_pointer:id(Ptr54321),
 
     %% these were added to subname tree:
     {ok, SNameAscii321} = aens_utils:name_to_ascii(?SNAME321),
@@ -695,16 +693,12 @@ subdomain_claim(_Cfg) ->
 
     [] = SNameHashes -- [SNameHash1, SNameHash2, SNameHash21, SNameHash54321, SNameHash321, SNameHash4321],
 
-
-    %%%%%%%%%% empty Subnames TX
-
+    %% empty Subnames TX removes all subnames for a given name
     EmptyDef = #{},
 
     SubnameTxSpec1 = aens_test_utils:subname_tx_spec(PubKey, Name, EmptyDef, S2),
     {ok, SubnameTx1} = aens_subname_tx:new(SubnameTxSpec1),
-
     SignedSubnameTx1 = aec_test_utils:sign_tx(SubnameTx1, PrivKey),
-
     Env1 = aetx_env:tx_env(3),
 
     {ok, [SignedSubnameTx1], Trees2, _} =
@@ -716,295 +710,3 @@ subdomain_claim(_Cfg) ->
     {[], false} = aens_state_tree:subnames_hashes(NHash, NTrees2, all),
 
     ok.
-
-
-
-
-%% subdomain_claim(_Cfg) ->
-%%     Name = <<"name.test">>,
-%%     {PubKey, NHash, S1} = claim([{name, Name}]),
-%%     Trees = aens_test_utils:trees(S1),
-%%     PrivKey = aens_test_utils:priv_key(PubKey, S1),
-
-%%     %% Check name present, but neither pointers nor name TTL set
-%%     {value, _N} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees)),
-
-%%     SomePK = <<120,245,0,157,97,46,5,228,60,175,19,76,43,124,69,10,211,
-%%                83,150,252,193,30,36,223,45,221,175,102,48,84,118,31>>,
-%%     SomeId = aeser_id:create(account, SomePK),
-
-%%     SubnamesDef =
-%%         #{<<"sub1.name.test">> => #{<<"sub1_acc">> => SomeId},
-%%           <<"sub2.name.test">> => #{},
-%%           <<"sub2.sub1.name.test">> => #{},
-%%           <<"sub5.sub4.sub3.sub2.sub1.name.test">> => #{<<"sub54321_acc">> => SomeId}},
-
-%%     SubnameTxSpec = aens_test_utils:subname_tx_spec(PubKey, Name, SubnamesDef, S1),
-%%     {ok, SubnameTx} = aens_subname_tx:new(SubnameTxSpec),
-
-%%     SignedSubnameTx = aec_test_utils:sign_tx(SubnameTx, PrivKey),
-
-%%     Env = aetx_env:tx_env(2),
-
-%%     {ok, [SignedSubnameTx], Trees1, _} =
-%%         aec_block_micro_candidate:apply_block_txs([SignedSubnameTx], Trees, Env),
-%%     _S2 = aens_test_utils:set_trees(Trees1, S1),
-
-%%     NTrees1 = aec_trees:ns(Trees1),
-
-%%     %% these were defined:
-%%     {ok, SNameAscii1} = aens_utils:name_to_ascii(<<"sub1.name.test">>),
-%%     SNameHash1 = aens_hash:name_hash(SNameAscii1),
-%%     {value, SName1} = aens_state_tree:lookup_name(SNameHash1, NTrees1),
-%%     [Ptr1] = aens_subnames:pointers(SName1),
-%%     <<"sub1_acc">> = aens_pointer:key(Ptr1),
-%%     SomeId = aens_pointer:id(Ptr1),
-
-%%     {ok, SNameAscii2} = aens_utils:name_to_ascii(<<"sub2.name.test">>),
-%%     SNameHash2 = aens_hash:name_hash(SNameAscii2),
-%%     {value, SName2} = aens_state_tree:lookup_name(SNameHash2, NTrees1),
-%%     [] = aens_subnames:pointers(SName2),
-
-%%     {ok, SNameAscii21} = aens_utils:name_to_ascii(<<"sub2.sub1.name.test">>),
-%%     SNameHash21 = aens_hash:name_hash(SNameAscii21),
-%%     {value, SName21} = aens_state_tree:lookup_name(SNameHash21, NTrees1),
-%%     [] = aens_subnames:pointers(SName21),
-
-%%     {ok, SNameAscii54321} = aens_utils:name_to_ascii(<<"sub5.sub4.sub3.sub2.sub1.name.test">>),
-%%     SNameHash54321 = aens_hash:name_hash(SNameAscii54321),
-%%     {value, SName54321} = aens_state_tree:lookup_name(SNameHash54321, NTrees1),
-%%     [Ptr54321] = aens_subnames:pointers(SName54321),
-%%     <<"sub54321_acc">> = aens_pointer:key(Ptr54321),
-%%     SomeId = aens_pointer:id(Ptr54321),
-
-%%     %% these were added to subname tree:
-%%     {ok, SNameAscii321} = aens_utils:name_to_ascii(<<"sub3.sub2.sub1.name.test">>),
-%%     SNameHash321 = aens_hash:name_hash(SNameAscii321),
-%%     {value, SName321} = aens_state_tree:lookup_name(SNameHash321, NTrees1),
-%%     [] = aens_subnames:pointers(SName321),
-
-%%     {ok, SNameAscii4321} = aens_utils:name_to_ascii(<<"sub4.sub3.sub2.sub1.name.test">>),
-%%     SNameHash4321 = aens_hash:name_hash(SNameAscii4321),
-%%     {value, SName4321} = aens_state_tree:lookup_name(SNameHash4321, NTrees1),
-%%     [] = aens_subnames:pointers(SName4321),
-
-%%     {SNameHashes, false} = aens_state_tree:subnames_hashes(NHash, NTrees1, all),
-
-%%     [] = SNameHashes -- [SNameHash1, SNameHash2, SNameHash21, SNameHash54321, SNameHash321, SNameHash4321],
-
-%%     ok.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-%% subdomain_claim_with_preclaim(_Cfg) ->
-%%     {PubKey, NHash, S1} = claim([{name, ?NAME2}]),
-%%     Trees = aens_test_utils:trees(S1),
-%%     PrivKey = aens_test_utils:priv_key(PubKey, S1),
-
-%%     %% Check name present, but neither pointers nor name TTL set
-%%     {value, N} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees)),
-%%     [] = aens_names:pointers(N),
-%%     0  = aens_names:client_ttl(N),
-
-%%     %% Preclaim Subdomain
-%%     SName = ?SUBNAME2,
-%%     SNameSalt = rand:uniform(10000),
-%%     {ok, SNameAscii} = aens_utils:to_ascii(SName),
-%%     SubCHash = aens_hash:commitment_hash(SNameAscii, SNameSalt),
-
-%%     PreclaimTxSpec = aens_test_utils:preclaim_tx_spec(PubKey, SubCHash, S1),
-%%     {ok, PreclaimTx} = aens_preclaim_tx:new(PreclaimTxSpec),
-%%     PreclaimSignedTx = aec_test_utils:sign_tx(PreclaimTx, PrivKey),
-%%     Env2 = aetx_env:tx_env(?PRE_CLAIM_HEIGHT + 1),
-%%     {ok, [PreclaimSignedTx], Trees1, _} =
-%%         aec_block_micro_candidate:apply_block_txs([PreclaimSignedTx], Trees, Env2),
-%%     S2 = aens_test_utils:set_trees(Trees1, S1),
-
-%%     %% Check commitment created
-%%     Trees2 = aens_test_utils:trees(S2),
-%%     {value, SC} = aens_state_tree:lookup_commitment(SubCHash, aec_trees:ns(Trees2)),
-%%     SubCHash   = aens_commitments:hash(SC),
-%%     PubKey     = aens_commitments:owner_pubkey(SC),
-
-%%     %% Claim Subdomain
-%%     ClaimTxSpec = aens_test_utils:claim_tx_spec(PubKey, SName, SNameSalt, S2),
-%%     {ok, ClaimTx} = aens_claim_tx:new(ClaimTxSpec),
-%%     ClaimSignedTx = aec_test_utils:sign_tx(ClaimTx, PrivKey),
-%%     Env3      = aetx_env:tx_env(?PRE_CLAIM_HEIGHT + 2),
-
-%%     {ok, [ClaimSignedTx], Trees3, _} =
-%%         aec_block_micro_candidate:apply_block_txs([ClaimSignedTx], Trees2, Env3),
-%%     S3 = aens_test_utils:set_trees(Trees3, S2),
-
-%%     %% Check commitment removed and name entry added
-%%     Trees3 = aens_test_utils:trees(S3),
-%%     NTrees3 = aec_trees:ns(Trees3),
-%%     none      = aens_state_tree:lookup_commitment(SubCHash, NTrees3),
-%%     SNameHash = aens_hash:name_hash(SNameAscii),
-%%     {value, _NameRec} = aens_state_tree:lookup_name(SNameHash, NTrees3),
-%%     [_] = aens_state_tree:subname_list(NTrees3),
-%%     {PubKey, NHash, SNameHash, S3}.
-
-%% prune_subdomain_claim_with_preclaim(Cfg) ->
-%%     {_PubKey, NHash, SHash, S} = subdomain_claim_with_preclaim(Cfg),
-%%     Trees = aens_test_utils:trees(S),
-%%     NTrees = aec_trees:ns(Trees),
-%%     {value, N} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees)),
-%%     DomainTTL = aens_names:ttl(N),
-
-%%     NTrees1 = aens_state_tree:prune(DomainTTL + 1, NTrees),
-
-%%     {value, N1} = aens_state_tree:lookup_name(NHash, NTrees1),
-
-%%     revoked = aens_names:status(N1),
-%%     RevokeTTL = aens_names:ttl(N1),
-
-%%     NTrees2 = aens_state_tree:prune(RevokeTTL + 1, NTrees1),
-
-%%     none = aens_state_tree:lookup_name(NHash, NTrees2),
-%%     none = aens_state_tree:lookup_name(SHash, NTrees2).
-
-%% revoke_domain_with_subdomains(Cfg) ->
-%%     {PubKey, NHash, SHash, S} = subdomain_claim_with_preclaim(Cfg),
-%%     Height = ?PRE_CLAIM_HEIGHT + 1,
-%%     PrivKey = aens_test_utils:priv_key(PubKey, S),
-%%     Trees = aens_test_utils:trees(S),
-%%     NTrees = aec_trees:ns(Trees),
-
-%%     %% Check name present
-%%     {value, N} = aens_state_tree:lookup_name(NHash, NTrees),
-%%     claimed = aens_names:status(N),
-
-%%     %% Create Revoke tx and apply it on trees
-%%     TxSpec = aens_test_utils:revoke_tx_spec(PubKey, NHash, S),
-%%     {ok, Tx} = aens_revoke_tx:new(TxSpec),
-%%     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
-%%     Env      = aetx_env:tx_env(Height),
-%%     {ok, [SignedTx], Trees1, _} =
-%%         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
-
-%%     %% Check name revoked
-%%     NTrees1 = aec_trees:ns(Trees1),
-%%     {value, N1} = aens_state_tree:lookup_name(NHash, NTrees1),
-%%     revoked = aens_names:status(N1),
-
-%%     {error, name_revoked} = aens:name_hash_to_name_entry(SHash, NTrees1),
-
-%%     RevokeTTL = aens_names:ttl(N1),
-%%     NTrees2 = aens_state_tree:prune(RevokeTTL + 1, NTrees1),
-%%     none = aens_state_tree:lookup_name(NHash, NTrees2),
-%%     none = aens_state_tree:lookup_name(SHash, NTrees2).
-
-
-%% subdomains_claim_without_preclaim(_Cfg) ->
-%%     {PubKey, NHash, S} = claim([{name, ?NAME3}]),
-%%     Trees = aens_test_utils:trees(S),
-%%     PrivKey = aens_test_utils:priv_key(PubKey, S),
-
-%%     %% Check name present, but neither pointers nor name TTL set
-%%     {value, N} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees)),
-%%     [] = aens_names:pointers(N),
-%%     0  = aens_names:client_ttl(N),
-
-%%     SNameA = ?SUBNAME3A,
-%%     {ok, SNameAsciiA} = aens_utils:to_ascii(SNameA),
-
-%%     %% Claim Subdomain SUBNAME3A
-%%     ClaimTxSpecA = aens_test_utils:claim_tx_spec(PubKey, SNameA, 0, S),
-%%     {ok, ClaimTxA} = aens_claim_tx:new(ClaimTxSpecA),
-%%     ClaimSignedTxA = aec_test_utils:sign_tx(ClaimTxA, PrivKey),
-%%     Env1 = aetx_env:tx_env(1),
-
-%%     {ok, [ClaimSignedTxA], Trees1, _} =
-%%         aec_block_micro_candidate:apply_block_txs([ClaimSignedTxA], Trees, Env1),
-%%     S1 = aens_test_utils:set_trees(Trees1, S),
-
-%%     %% Check entry added for SUBNAME3A
-%%     Trees1 = aens_test_utils:trees(S1),
-%%     NTrees1 = aec_trees:ns(Trees1),
-%%     SNameHashA = aens_hash:name_hash(SNameAsciiA),
-%%     {value, _} = aens_state_tree:lookup_name(SNameHashA, NTrees1),
-%%     [_] = aens_state_tree:subname_list(NTrees1),
-
-
-%%     SNameA2 = ?SUBNAME3A2,
-%%     {ok, SNameAsciiA2} = aens_utils:to_ascii(SNameA2),
-
-%%     %% Claim Nested Subdomain SUBNAME3A2
-%%     ClaimTxSpecA2 = aens_test_utils:claim_tx_spec(PubKey, SNameA2, 0, S1),
-%%     {ok, ClaimTxA2} = aens_claim_tx:new(ClaimTxSpecA2),
-%%     ClaimSignedTxA2 = aec_test_utils:sign_tx(ClaimTxA2, PrivKey),
-%%     Env2 = aetx_env:tx_env(2),
-
-%%     {ok, [ClaimSignedTxA2], Trees2, _} =
-%%         aec_block_micro_candidate:apply_block_txs([ClaimSignedTxA2], Trees1, Env2),
-%%     S2 = aens_test_utils:set_trees(Trees2, S1),
-
-%%     %% Check entry added for SUBNAME3A2
-%%     Trees2 = aens_test_utils:trees(S2),
-%%     NTrees2 = aec_trees:ns(Trees2),
-%%     SNameHashA2 = aens_hash:name_hash(SNameAsciiA2),
-%%     {value, _} = aens_state_tree:lookup_name(SNameHashA2, NTrees2),
-%%     [_, _] = aens_state_tree:subname_list(NTrees2),
-
-
-%%     SNameB = ?SUBNAME3B,
-%%     {ok, SNameAsciiB} = aens_utils:to_ascii(SNameB),
-
-%%     %% Claim Subdomain SUBNAME3B
-%%     ClaimTxSpecB = aens_test_utils:claim_tx_spec(PubKey, SNameB, 0, S2),
-%%     {ok, ClaimTxB} = aens_claim_tx:new(ClaimTxSpecB),
-%%     ClaimSignedTxB = aec_test_utils:sign_tx(ClaimTxB, PrivKey),
-%%     Env3 = aetx_env:tx_env(3),
-
-%%     {ok, [ClaimSignedTxB], Trees3, _} =
-%%         aec_block_micro_candidate:apply_block_txs([ClaimSignedTxB], Trees2, Env3),
-%%     S3 = aens_test_utils:set_trees(Trees3, S2),
-
-%%     %% Check entry added for SUBNAME3B
-%%     Trees3 = aens_test_utils:trees(S3),
-%%     NTrees3 = aec_trees:ns(Trees3),
-%%     SNameHashB = aens_hash:name_hash(SNameAsciiB),
-%%     {value, _} = aens_state_tree:lookup_name(SNameHashB, NTrees3),
-%%     [_, _, _] = aens_state_tree:subname_list(NTrees3),
-
-%%     {PubKey, NHash, SNameHashA, SNameHashA2, SNameHashB, S3}.
-
-%% prune_subdomains_claim_without_preclaim(Cfg) ->
-%%     {_PubKey, NHash, SHashA, SHashA2, SHashB, S} = subdomains_claim_without_preclaim(Cfg),
-
-%%     Trees = aens_test_utils:trees(S),
-%%     NTrees = aec_trees:ns(Trees),
-%%     {value, N} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees)),
-%%     DomainTTL = aens_names:ttl(N),
-
-%%     NTrees1 = aens_state_tree:prune(DomainTTL + 1, NTrees),
-
-%%     {value, N1} = aens_state_tree:lookup_name(NHash, NTrees1),
-
-%%     revoked = aens_names:status(N1),
-%%     RevokeTTL = aens_names:ttl(N1),
-
-%%     NTrees2 = aens_state_tree:prune(RevokeTTL + 1, NTrees1),
-
-%%     none = aens_state_tree:lookup_name(NHash, NTrees2),
-%%     none = aens_state_tree:lookup_name(SHashA, NTrees2),
-%%     none = aens_state_tree:lookup_name(SHashA2, NTrees2),
-%%     none = aens_state_tree:lookup_name(SHashB, NTrees2).

@@ -2241,6 +2241,7 @@ nameservice_transactions(_Config) ->
     nameservice_transaction_update(MinerAddress, MinerPubkey),
     nameservice_transaction_transfer(MinerAddress, MinerPubkey),
     nameservice_transaction_revoke(MinerAddress, MinerPubkey),
+    nameservice_transaction_subname(MinerAddress, MinerPubkey),
     ok.
 
 nameservice_transaction_preclaim(MinerAddress, MinerPubkey) ->
@@ -2396,6 +2397,54 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
     test_invalid_hash({account_pubkey, MinerPubkey}, account_id, Encoded, fun get_name_revoke/1),
     test_invalid_hash({account_pubkey, MinerPubkey}, name_id, Encoded, fun get_name_revoke/1),
     test_missing_address(account_id, Encoded, fun get_name_revoke/1),
+    ok.
+
+nameservice_transaction_subname(MinerAddress, MinerPubkey) ->
+    Name = <<"topname.test">>,
+
+    Salt = 1234,
+
+    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, Salt),
+    {ok, _CHash} = aeser_api_encoder:safe_decode(commitment, EncodedCHash),
+
+    %% Submit name preclaim tx and check it is in mempool
+    PreclaimData = #{commitment_id => EncodedCHash,
+                     fee           => 100000 * aec_test_utils:min_gas_price(),
+                     account_id    => MinerAddress},
+    {ok, 200, #{<<"tx">> := PreclaimTxEnc}} = get_name_preclaim(PreclaimData),
+    PreclaimTxHash = sign_and_post_tx(PreclaimTxEnc),
+    {ok, 200, #{<<"tx">> := PreclaimTx}} = get_transactions_by_hash_sut(PreclaimTxHash),
+    ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
+    ok = wait_for_tx_hash_on_chain(PreclaimTxHash),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Submit name claim tx and check it is in mempool
+    ClaimData = #{name       =>  aeser_api_encoder:encode(name, Name),
+                  name_salt  => Salt,
+                  fee        => 100000 * aec_test_utils:min_gas_price(),
+                  account_id => MinerAddress},
+    {ok, 200, #{<<"tx">> := ClaimTxEnc}} = get_name_claim(ClaimData),
+    ClaimTxHash = sign_and_post_tx(ClaimTxEnc),
+    ok = wait_for_tx_hash_on_chain(ClaimTxHash),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Submit subname tx and check it is in mempool
+    Definition =
+        [#{<<"name_id">> => aeser_api_encoder:encode(subname, <<"subname.", Name/binary>>),
+           <<"pointers">> =>
+               [#{<<"key">> => <<"k2">>,
+                  <<"id">> => aeser_api_encoder:encode(account_pubkey, MinerPubkey)}]}],
+
+    SubnameData =
+        #{account_id => MinerAddress,
+          name_id    => aeser_api_encoder:encode(name, Name),
+          definition => Definition,
+          fee        => 100000 * aec_test_utils:min_gas_price()
+         },
+    {ok, 200, #{<<"tx">> := SubnameTxEnc}} = get_subname(SubnameData),
+    SubnameTxHash = sign_and_post_tx(SubnameTxEnc),
+    ok = wait_for_tx_hash_on_chain(SubnameTxHash),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
     ok.
 
 %% tests the following
@@ -3385,6 +3434,10 @@ get_name_transfer(Data) ->
 get_name_revoke(Data) ->
     Host = internal_address(),
     http_request(Host, post, "debug/names/revoke", Data).
+
+get_subname(Data) ->
+    Host = internal_address(),
+    http_request(Host, post, "debug/names/subname", Data).
 
 get_channel_create(Data) ->
     Host = internal_address(),
