@@ -65,10 +65,11 @@
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{account_id := AccountId,
       nonce      := Nonce,
-      name       := Name,
+      name_id    := NameId,
       definition := Definition,
       fee        := Fee} = Args) ->
     account = aeser_id:specialize_type(AccountId),
+    {name, Name} = aeser_id:specialize(NameId),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     case aens_subnames:toposort(Name, Definition) of
         {error, [{ErrType, [ErrName | _]} | _]} ->
@@ -78,17 +79,7 @@ new(#{account_id := AccountId,
         {ok, [{1, [{OtherNameAscii, _}]} | _]} when NameAscii /= OtherNameAscii ->
             error(subname_top_name_mismatch_tx);
         {ok, AllNodes} ->
-            SubnameDefs =
-                case AllNodes of
-                    [{1, [{NameAscii, _}]} | ChildNodes] ->
-                        lists:flatten(
-                          [lists:foldl(
-                             fun ({SNameAscii, SPointers}, Acc) ->
-                                     [{SNameAscii, maps:to_list(SPointers)} | Acc]
-                             end, [], Child) || {_, Child} <- ChildNodes]);
-                    _ ->
-                        []
-                end,
+            SubnameDefs = flatten_definition(AllNodes),
             Tx = #ns_subname_tx{account_id = AccountId,
                                 nonce      = Nonce,
                                 name       = Name,
@@ -179,7 +170,7 @@ serialization_template(?SUBNAME_TX_VSN) ->
     [ {account_id, id}
     , {nonce, int}
     , {name, binary}
-    , {definition, [{binary, [{binary, id}]}]}
+    , {definition, [{binary, [{binary, binary}]}]}
     , {fee, int}
     , {ttl, int}
     ].
@@ -224,3 +215,18 @@ version(_) ->
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(_, _) ->
     true.
+
+
+flatten_definition([{1, [{_NameAscii, _}]} | ChildNodes]) ->
+    lists:flatten(
+      [lists:foldl(
+         fun ({SNameAscii, SPointers}, Acc) ->
+                 SPointers1 = maps:to_list(SPointers),
+                 [case aens_pointer:decode_id(IdEnc) of
+                      {ok, _} -> ok;
+                      {error, Reason} -> error({illegal_pointer_id, IdEnc, Reason})
+                  end || {_Key, IdEnc} <- SPointers1],
+                 [{SNameAscii, SPointers1} | Acc]
+         end, [], Child) || {_, Child} <- ChildNodes]);
+flatten_definition(_) ->
+    [].

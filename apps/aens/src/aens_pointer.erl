@@ -3,7 +3,8 @@
 -export([new/2,
          key/1,
          id/1,
-         serialize_for_client/1
+         serialize_for_client/1,
+         decode_id/1
         ]).
 
 -type key() :: binary().
@@ -21,7 +22,10 @@
               pointer/0
              ]).
 
--spec new(key(), id()) -> pointer().
+-spec new(key(), id() | binary()) -> pointer().
+new(Key, IdEnc) when is_binary(IdEnc) ->
+    {ok, Id} = aens_pointer:decode_id(IdEnc),
+    new(Key, Id);
 new(Key, Id) ->
     ok = assert_key(Key),
     ok = assert_id(Id),
@@ -52,3 +56,6 @@ assert_id_type(channel)  -> ok;
 assert_id_type(contract) -> ok;
 assert_id_type(oracle)   -> ok.
 
+decode_id(IdEnc) ->
+    AllowedTypes = [account_pubkey, channel, contract_pubkey, oracle_pubkey],
+    aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, IdEnc).
