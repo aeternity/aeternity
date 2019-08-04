@@ -12,6 +12,7 @@
         , poi_decode/1
         , relative_ttl_decode/1
         , nameservice_pointers_decode/1
+        , nameservice_subnames_decode/1
         , get_nonce/1
         , get_nonce_from_account_id/1
         , print_state/0
@@ -32,6 +33,7 @@
 -export([ get_transaction/2
         , encode_transaction/2
         , decode_pointers/1
+        , decode_subnames/1
         ]).
 
 -export([ ok_response/1
@@ -385,6 +387,35 @@ nameservice_pointers_decode(PointersKey) ->
         end
     end.
 
+nameservice_subnames_decode(DefinitionKey) ->
+    fun(_Req, State) ->
+            Defintion = maps:get(DefinitionKey, State),
+            try
+                {ok, Decoded} = decode_subnames(Defintion),
+                {ok, maps:put(DefinitionKey, Decoded, State)}
+            catch
+                _:_ -> {error, {400, [], #{<<"reason">> => <<"Invalid subnames">>}}}
+            end
+    end.
+
+
+decode_subnames(Definition) ->
+    decode_subnames(Definition, #{}).
+decode_subnames([#{<<"name_id">> := SubnameEnc,
+                   <<"pointers">> := Pointers} | Rest], Acc) ->
+    case aeser_api_encoder:safe_decode(subname, SubnameEnc) of
+        {ok, Subname} ->
+            Pointers1 = lists:foldl(
+                          fun (#{<<"key">> := K, <<"id">> := Id}, Ptrs) -> Ptrs#{K => Id} end,
+                          #{}, Pointers),
+            Pointers2 = maps:merge(maps:get(Subname, Acc, #{}), Pointers1),
+            decode_subnames(Rest, Acc#{Subname => Pointers2});
+        {error, _} = Error ->
+            Error
+    end;
+decode_subnames([], Acc) -> {ok, Acc}.
+
+
 decode_pointers(Pointers) ->
     %% TODO: some request decodes keys to atoms, the other to
     %% binaries. Refactoring needed.
@@ -396,16 +427,12 @@ decode_pointers(Pointers) ->
     decode_pointers(Pointers1, []).
 
 decode_pointers([#{<<"key">> := Key, <<"id">> := IdEnc} | Rest], Acc) ->
-    case decode_pointer_id(IdEnc) of
+    case aens_pointer:decode_id(IdEnc) of
         {ok, Id} -> decode_pointers(Rest, [aens_pointer:new(Key, Id) | Acc]);
         {error, _Rsn} = Error -> Error
     end;
 decode_pointers([], Acc) ->
     {ok, Acc}.
-
-decode_pointer_id(IdEnc) ->
-    AllowedTypes = [account_pubkey, channel, contract_pubkey, oracle_pubkey],
-    aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, IdEnc).
 
 parse_map_to_atom_keys() ->
     fun(Req, State) ->

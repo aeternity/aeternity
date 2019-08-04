@@ -1278,6 +1278,35 @@ paths:
           description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
+  /debug/names/subname:
+    post:
+      tags:
+        - internal
+        - name_service
+        - debug
+      operationId: PostSubname
+      description: 'Get a subname transaction object'
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/SubnameTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/UnsignedTx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Account or oracle not found
+          schema:
+            $ref: '#/definitions/Error'
   /debug/transactions/spend:
     post:
       tags:
@@ -2208,6 +2237,26 @@ definitions:
       - name_id
       - fee
       - account_id
+  SubnameTx:
+    type: object
+    properties:
+      name_id:
+        $ref: '#/definitions/EncodedValue'
+      definition:
+        type: array
+        items:
+          $ref: '#/definitions/SubnameNamePointers'
+      fee:
+        $ref: '#/definitions/UInt'
+      account_id:
+        $ref: '#/definitions/EncodedPubkey'
+      nonce:
+        $ref: '#/definitions/UInt64'
+    required:
+      - name_id
+      # - definition
+      # - fee
+      # - account_id
   CommitmentId:
     type: object
     properties:
@@ -2232,6 +2281,15 @@ definitions:
     required:
       - key
       - id
+  SubnameNamePointers:
+    type: object
+    properties:
+      name_id:
+        type: string
+      pointers:
+        type: array
+        items:
+          $ref: '#/definitions/NamePointer'
   Channel:
     type: object
     properties:
@@ -2714,6 +2772,10 @@ definitions:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameRevokeTx'
+  SubnameTxJSON:
+    allOf:
+      - $ref: '#/definitions/GenericTx'
+      - $ref: '#/definitions/SubnameTx'
   ContractCreateTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
@@ -3281,4 +3343,3 @@ definitions:
 externalDocs:
   description: Find out more about Aeternity
   url: 'http://www.aeternity.com'
-

@@ -1544,6 +1544,42 @@
         }
       }
     },
+    "/debug/names/subname" : {
+      "post" : {
+        "tags" : [ "internal", "name_service", "debug" ],
+        "description" : "Get a subname transaction object",
+        "operationId" : "PostSubname",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/SubnameTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UnsignedTx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account or oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/debug/transactions/spend" : {
       "post" : {
         "tags" : [ "internal", "transaction", "debug" ],
@@ -2752,6 +2788,30 @@
         }
       }
     },
+    "SubnameTx" : {
+      "type" : "object",
+      "required" : [ "name_id" ],
+      "properties" : {
+        "name_id" : {
+          "$ref" : "#/definitions/EncodedValue"
+        },
+        "definition" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/SubnameNamePointers"
+          }
+        },
+        "fee" : {
+          "$ref" : "#/definitions/UInt"
+        },
+        "account_id" : {
+          "$ref" : "#/definitions/EncodedPubkey"
+        },
+        "nonce" : {
+          "$ref" : "#/definitions/UInt64"
+        }
+      }
+    },
     "CommitmentId" : {
       "type" : "object",
       "required" : [ "commitment_id" ],
@@ -2787,6 +2847,20 @@
       "example" : {
         "id" : { },
         "key" : "key"
+      }
+    },
+    "SubnameNamePointers" : {
+      "type" : "object",
+      "properties" : {
+        "name_id" : {
+          "type" : "string"
+        },
+        "pointers" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/NamePointer"
+          }
+        }
       }
     },
     "Channel" : {
@@ -3423,6 +3497,13 @@
         "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/NameRevokeTx"
+      } ]
+    },
+    "SubnameTxJSON" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTx"
+      }, {
+        "$ref" : "#/definitions/SubnameTx"
       } ]
     },
     "ContractCreateTxJSON" : {

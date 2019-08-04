@@ -14,6 +14,7 @@
                         , get_contract_code/2
                         , verify_name/1
                         , nameservice_pointers_decode/1
+                        , nameservice_subnames_decode/1
                         , ttl_decode/1
                         , relative_ttl_decode/1
                         , verify_oracle_existence/1
@@ -179,6 +180,17 @@ handle_request_('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
                                 {name_id, name_id, {id_hash, [name]}}]),
                  get_nonce_from_account_id(account_id),
                  unsigned_tx_response(fun aens_revoke_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostSubname', #{'SubnameTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account_id, name_id, fee, definition]),
+                 api_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
+                             {name_id, name_id, {id_hash, [name]}}]),
+                 nameservice_subnames_decode(definition),
+                 get_nonce_from_account_id(account_id),
+                 unsigned_tx_response(fun aens_subname_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
 
@@ -407,4 +419,3 @@ handle_request_(OperationID, Req, Context) ->
       [{OperationID, Req, Context}]
      ),
     {501, [], #{}}.
-
