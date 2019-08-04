@@ -171,7 +171,7 @@ serialization_template(?SUBNAME_TX_VSN) ->
     [ {account_id, id}
     , {nonce, int}
     , {name, binary}
-    , {definition, [{binary, [{binary, id}]}]}
+    , {definition, [{binary, [{binary, binary}]}]}
     , {fee, int}
     , {ttl, int}
     ].
