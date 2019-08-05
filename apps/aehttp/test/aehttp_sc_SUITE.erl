@@ -1476,7 +1476,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
      } = sc_ws_get_contract_assert_equal(ConnPid1, ConnPid2, ContractPubKey, Config),
 
     CallContract =
-        fun(Who, Fun, Args, ReturnType, Result) ->
+        fun(Who, Fun, Args, _ReturnType, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             R0 = dry_call_a_contract(Fun, Args, ContractPubKey,
                                      channel_on_chain_contract_oracle, UpdaterConnPid, Config),
@@ -1500,7 +1500,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
      , id := ContractId
      , owner_id := OwnerId
      , referrer_ids := []
-     , state := State2
+     , state := _State2
      } = sc_ws_get_contract_assert_equal(ConnPid1, ConnPid2, ContractPubKey, Config),
     %% initiator places a bet and then nobody can overwrite it
     ParkedAnswer = "\"I claim this\"",
@@ -1521,7 +1521,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
      , id := ContractId
      , owner_id := OwnerId
      , referrer_ids := []
-     , state := State3
+     , state := _State3
      } = sc_ws_get_contract_assert_equal(ConnPid1, ConnPid2, ContractPubKey, Config),
     Answer = "\"other reasonable thingy\"",
     CorrectQueryId = OracleQuerySequence(Question, Answer),
@@ -1548,7 +1548,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
      , id := ContractId
      , owner_id := OwnerId
      , referrer_ids := []
-     , state := State4
+     , state := _State4
     } = sc_ws_get_contract_assert_equal(ConnPid1, ConnPid2, ContractPubKey, Config),
 
     {ok, {OwnerBal, OtherBal0}} = sc_ws_get_both_balances(ConnPid1,
@@ -1956,7 +1956,7 @@ sc_ws_contract_(Config, TestName, Owner) ->
         end,
 
     % trigger new contract
-    {UnsignedStateTx, _Updates, Code} = create_contract_(TestName, SenderConnPid, UpdateVolley, Config),
+    {UnsignedStateTx, _Updates, _Code} = create_contract_(TestName, SenderConnPid, UpdateVolley, Config),
 
     ContractPubKey = contract_id_from_create_update(SenderPubkey,
                                                     UnsignedStateTx),
@@ -2255,21 +2255,12 @@ contract_byte_code(ContractName) ->
 get_contract_bytecode(ContractName) ->
     {ok, contract_byte_code(ContractName)}.
 
-contract_return_type(_) ->
-    <<"int">>.
-
 contract_create_init_arg(identity) ->
     [];
 contract_create_init_arg(counter) ->
     ["21"];
 contract_create_init_arg(spend_test) ->
     [].
-
-contract_result_parse(TestName, {ok, Data}) ->
-    contract_result_parse(TestName, Data);
-contract_result_parse(_TestName, Data) ->
-    #{<<"type">> := <<"word">>, <<"value">> := DecodedCallResult} = Data,
-    DecodedCallResult.
 
 wait_for_signed_transaction_in_pool(SignedTx) ->
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
@@ -2441,10 +2432,6 @@ sc_ws_basic_client_reconnect_(Role, Config0) ->
     Config1 = reconnect_client_(ChId, Role, Pubkey, Privkey, Config),
     sc_ws_close_mutual_(Config1, Role).
 
-responder_gets_conflict(Clients, Participants, Config) ->
-    update_error_with_client_disconnected(
-      responder, Clients, Participants, Config).
-
 update_error_with_client_disconnected(Role, Clients, Participants, Config) ->
     OtherRole = other_role(Role),
     ConnPid = maps:get(Role, Clients),
@@ -2454,7 +2441,7 @@ update_error_with_client_disconnected(Role, Clients, Participants, Config) ->
     ok = ?WS:register_test_for_channel_events(ConnPid, [sign, conflict]),
 
     SignUpdate =
-        fun TrySignUpdate(Pid, Privkey) ->
+        fun (Pid, Privkey) ->
             case wait_for_channel_event(Pid, sign, Config) of
                 {ok, <<"update">>, #{<<"signed_tx">> := EncSignedTx0}} ->
                     {ok, SignedBinTx} =
@@ -2890,9 +2877,20 @@ log_basename(Config) ->
     GOpts = ?config(tc_group_properties, Config),
     GName = ?config(name, GOpts),
     SubDir =
-        case GName =:= continuous_sc_ws of
-            true -> filename:join(Protocol, "continuous");
-            false -> Protocol
+        case GName of %% an assertive and explicit check. If a new group is added - this will crash
+            with_open_channel ->
+                filename:join(Protocol, "continuous");
+            client_reconnect ->
+                filename:join(Protocol, "reconnect");
+            sc_contracts ->
+                filename:join(Protocol, "contracts");
+            ga_initiator ->
+                filename:join([Protocol, "generalized_accounts", "initiator"]);
+            ga_responder ->
+                filename:join([Protocol, "generalized_accounts", "responder"]);
+            ga_both ->
+                filename:join([Protocol, "generalized_accounts", "both"]);
+            plain -> Protocol
         end,
     filename:join("channel_docs", SubDir).
 
