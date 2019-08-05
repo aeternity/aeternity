@@ -934,7 +934,7 @@
             }
         },
         "fork_management" : {
-            "type"    : "object",
+            "type" : "object",
             "additionalProperties" : false,
             "properties" : {
                 "network_id" : {
@@ -942,6 +942,36 @@
                     "Identification of the network in case of hard forks.",
                     "type" : "string",
                     "default" : "ae_mainnet"
+                },
+                "fork" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "signalling_start_height" : {
+                            "description" : "Height at which signalling period starts.",
+                            "type" : "integer"
+                        },
+                        "signalling_end_height" : {
+                            "description" : "Height at which signalling period ends.",
+                            "type" : "integer"
+                        },
+                        "signalling_block_count" : {
+                            "description" : "Count of the key blocks in signalling period necessary for the fork to take effect.",
+                            "type" : "integer"
+                        },
+                        "fork_height" : {
+                            "description" : "Height at which the fork should occur.",
+                            "type" : "integer"
+                        },
+                        "info_field" : {
+                            "description" : "Pseudorandom number (part of key block) used by the miners indicating which fork they support.",
+                            "type" : "integer"
+                        },
+                        "version" : {
+                            "description" : "Version of the chain in case of a successful fork.",
+                            "type" : "integer"
+                        }
+                    }
                 }
             }
         },
