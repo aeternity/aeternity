@@ -2254,9 +2254,9 @@ definitions:
         $ref: '#/definitions/UInt64'
     required:
       - name_id
-      # - definition
-      # - fee
-      # - account_id
+      - definition
+      - fee
+      - account_id
   CommitmentId:
     type: object
     properties:

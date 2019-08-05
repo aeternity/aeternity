@@ -2790,7 +2790,7 @@
     },
     "SubnameTx" : {
       "type" : "object",
-      "required" : [ "name_id" ],
+      "required" : [ "account_id", "definition", "fee", "name_id" ],
       "properties" : {
         "name_id" : {
           "$ref" : "#/definitions/EncodedValue"
