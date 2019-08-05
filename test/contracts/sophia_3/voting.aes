@@ -7,8 +7,8 @@ contract VotingType =
   entrypoint giveRightToVote : address => unit
   entrypoint delegate        : address => unit
   entrypoint vote            : int => unit
-  entrypoint winnerName      : () => string
-  entrypoint currentTally    : () => list((string, int))
+  entrypoint winnerName      : unit => string
+  entrypoint currentTally    : unit => list((string, int))
 
 /* Contract implementation */
 contract Voting =

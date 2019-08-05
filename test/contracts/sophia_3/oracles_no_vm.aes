@@ -21,7 +21,7 @@ contract Oracles =
   stateful entrypoint respond(o    : oracle_id,
                    q    : query_id,
                    sign : signature,
-                   r    : answer_t) : unit =
+                   r    : answer_t) : () =
     Oracle.respond(o, q, signature = sign, r)
 
 

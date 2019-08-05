@@ -1,6 +1,6 @@
 contract AddrCheck =
   type q_type1 = string
-  type q_type2 = int * int
+  type q_type2 = (int, int)
   type r_type1 = int
   type r_type2 = map(int, string)
 

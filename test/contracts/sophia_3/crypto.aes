@@ -9,7 +9,7 @@ contract CryptoTest =
   entrypoint sha256_str  (s : string) : hash = String.sha256(s)
   entrypoint blake2b_str (s : string) : hash = String.blake2b(s)
 
-  type complex = list(option(int) * string)
+  type complex = list((option(int), string))
 
   entrypoint sha3    (x : complex) : hash = Crypto.sha3(x)
   entrypoint sha256  (x : complex) : hash = Crypto.sha256(x)

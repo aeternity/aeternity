@@ -7,7 +7,7 @@ contract Remote2 =
 
 contract Remote3 =
   entrypoint get : () => int
-  entrypoint tick : () => unit
+  entrypoint tick : () => ()
 
 contract RemoteCall =
 

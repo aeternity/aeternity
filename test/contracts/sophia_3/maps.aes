@@ -93,8 +93,8 @@ contract Maps =
   entrypoint tolist_state_s() = tolist_s(state.map_s)
 
   // Map.from_list
-  entrypoint fromlist_i(xs : list(int    * pt)) = Map.from_list(xs)
-  entrypoint fromlist_s(xs : list(string * pt)) = Map.from_list(xs)
+  entrypoint fromlist_i(xs : list((int,    pt))) = Map.from_list(xs)
+  entrypoint fromlist_s(xs : list((string, pt))) = Map.from_list(xs)
   stateful entrypoint fromlist_state_i(xs) = put(state{ map_i = fromlist_i(xs) })
   stateful entrypoint fromlist_state_s(xs) = put(state{ map_s = fromlist_s(xs) })
 

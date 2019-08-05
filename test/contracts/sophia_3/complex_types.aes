@@ -3,8 +3,8 @@ contract Remote =
   entrypoint up_to       : (int)               => list(int)
   entrypoint sum         : (list(int))         => int
   entrypoint some_string : ()                  => string
-  entrypoint pair        : (int, string)       => int * string
-  entrypoint squares     : (int)               => list(int * int)
+  entrypoint pair        : (int, string)       => (int, string)
+  entrypoint squares     : (int)               => list((int, int))
   entrypoint filter_some : (list(option(int))) => list(int)
   entrypoint all_some    : (list(option(int))) => option(list(int))
 
@@ -47,7 +47,7 @@ contract ComplexTypes =
 
   entrypoint pair(x : int, y : string) = (x, y)
 
-  entrypoint remote_pair(n : int, s : string) : int * string =
+  entrypoint remote_pair(n : int, s : string) : (int, string) =
     state.worker.pair(gas = 10000, n, s)
 
   entrypoint map(f, xs) =
@@ -58,7 +58,7 @@ contract ComplexTypes =
   entrypoint squares(n) =
     map((i) => (i, i * i), up_to(n))
 
-  entrypoint remote_squares(n) : list(int * int) =
+  entrypoint remote_squares(n) : list((int, int)) =
     state.worker.squares(n)
 
   // option types

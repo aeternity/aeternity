@@ -8,7 +8,7 @@ contract AbortTest =
     { value = v }
 
   // Aborting
-  stateful entrypoint do_abort(v : int, s : string) : unit =
+  stateful entrypoint do_abort(v : int, s : string) : () =
     put_value(v)
     revert_abort(s)
 
