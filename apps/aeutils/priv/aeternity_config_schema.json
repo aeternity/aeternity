@@ -917,14 +917,53 @@
             }
         },
         "fork_management" : {
-            "type"    : "object",
+            "type" : "object",
             "additionalProperties" : false,
             "properties" : {
                 "network_id" : {
-                    "description" :
-                    "Identification of the network in case of hard forks.",
+                    "description" : "Identification of the network in case of hard forks.",
                     "type" : "string",
                     "default" : "ae_mainnet"
+                },
+                "fork" : {
+                    "type" : "object",
+                    "additionalproperties" : false,
+                    "required" : [
+                        "enabled"
+                    ],
+                    "properties" : {
+                        "enabled" : {
+                            "description" : "Indicates whether the node should follow the signalling result or stay with the current protocol.",
+                            "type" : "boolean",
+                            "default" : true
+                        },
+                        "signalling_start_height" : {
+                            "description" : "Height at which signalling period starts.",
+                            "type" : "integer",
+                            "minimum" : 0
+                        },
+                        "signalling_end_height" : {
+                            "description" : "Height at which signalling period ends.",
+                            "type" : "integer",
+                            "minimum" : 0
+                        },
+                        "signalling_block_count" : {
+                            "description" : "Count of the key blocks in signalling period necessary for the fork to take effect.",
+                            "type" : "integer",
+                            "minimum" : 1
+                        },
+                        "info_field" : {
+                            "description" : "Pseudorandom number (part of key block) used by the miners indicating which fork they support.",
+                            "type" : "integer",
+                            "minimum" : 0,
+                            "maximum" : 4294967295
+                        },
+                        "version" : {
+                            "description" : "Version of the chain in case of a successful fork.",
+                            "type" : "integer",
+                            "minimum" : 0
+                        }
+                    }
                 }
             }
         },

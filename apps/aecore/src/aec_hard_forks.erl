@@ -1,6 +1,6 @@
 -module(aec_hard_forks).
 
--export([check_env/0]).
+-export([ensure_env/0]).
 -export([protocols/0,
          protocol_effective_at_height/1
         ]).
@@ -27,8 +27,15 @@
                       | ?ROMA_PROTOCOL_VSN.
 -type protocols() :: #{protocol_vsn() => aec_blocks:height()}.
 
+-type fork() :: #{signalling_start_height := aec_blocks:height(),
+                  signalling_end_height   := aec_blocks:height(),
+                  signalling_block_count  := pos_integer(),
+                  info_field              := non_neg_integer(),
+                  version                 := version()}.
+
 -export_type([ protocols/0
              , protocol_vsn/0
+             , fork/0
              ]).
 %%%===================================================================
 %%% API
@@ -39,9 +46,19 @@ protocols() ->
     NetworkId = aec_governance:get_network_id(),
     protocols_from_network_id(NetworkId).
 
--spec check_env() -> ok.
-check_env() ->
-    assert_protocols(protocols()).
+-spec ensure_env() -> ok.
+ensure_env() ->
+    NetworkId = aec_governance:get_network_id(),
+    Protocols = protocols(),
+    ForkConfig = fork_config(),
+    assert_protocols(Protocols),
+    assert_fork(NetworkId, ForkConfig, Protocols),
+    case fork_from_network_id(NetworkId) of
+        Fork when Fork =/= undefined ->
+            application:set_env(aecore, fork, Fork);
+        undefined ->
+            ok
+    end.
 
 %% This function is supposed to be used only when:
 %% - a new block is being added to the database (in aec_conductor);
@@ -98,6 +115,41 @@ protocols_from_network_id(_ID) ->
                       end, #{}, M)
     end.
 
+fork_from_network_id(<<"ae_mainnet">>) ->
+    case fork_config() of
+        #{enabled := true}  -> mainnet_fork_config();
+        #{enabled := false} -> undefined;
+        %% If no config in config file, signalling is enabled by default.
+        undefined           -> mainnet_fork_config()
+    end;
+fork_from_network_id(<<"ae_uat">>) ->
+    case fork_config() of
+        #{enabled := true}  -> testnet_fork_config();
+        #{enabled := false} -> undefined;
+        undefined           -> testnet_fork_config()
+    end;
+fork_from_network_id(_Id) ->
+    case fork_config() of
+        #{enabled := true} = Config ->
+            maps:without([enabled], Config);
+        _Other ->
+            undefined
+    end.
+
+mainnet_fork_config() ->
+    #{signalling_start_height => undefined,
+      signalling_end_height => undefined,
+      signalling_block_count => undefined,
+      info_field => undefined,
+      version => undefined}.
+
+testnet_fork_config() ->
+    #{signalling_start_height => undefined,
+      signalling_end_height => undefined,
+      signalling_block_count => undefined,
+      info_field => undefined,
+      version => undefined}.
+
 %% Exported for tests
 sorted_protocol_versions() ->
     lists:sort(maps:keys(protocols())).
@@ -117,6 +169,22 @@ protocol_effective_at_height(H, Protocols) ->
     {V, _} = lists:last(ProtocolsEffectiveSinceBeforeOrAtHeight),
     V.
 
+fork_config() ->
+    case aeu_env:user_map([<<"fork_management">>, <<"fork">>]) of
+        {ok, Config} ->
+            maps:fold(fun(K, V, Acc) -> maps:put(conv_fork_config_key(K), V, Acc) end,
+                      maps:new(), Config);
+        undefined ->
+            undefined
+    end.
+
+conv_fork_config_key(<<"enabled">>)                 -> enabled;
+conv_fork_config_key(<<"signalling_start_height">>) -> signalling_start_height;
+conv_fork_config_key(<<"signalling_end_height">>)   -> signalling_end_height;
+conv_fork_config_key(<<"signalling_block_count">>)  -> signalling_block_count;
+conv_fork_config_key(<<"info_field">>)              -> info_field;
+conv_fork_config_key(<<"version">>)                 -> version.
+
 assert_protocols(M) ->
     GenesisVersion = aec_block_genesis:version(),
     Vs = [GenesisVersion | _] = sorted_protocol_versions(),
@@ -128,7 +196,6 @@ assert_protocols(M) ->
     {[], _} = {Vs -- maps:keys(M), check_no_missing_protocol_versions},
     assert_heights_strictly_increasing(M),
     ok.
-
 
 assert_height(H) ->
     case is_integer(H) andalso H >= aec_block_genesis:height() of
@@ -156,3 +223,51 @@ is_valid_next_protocol({CurV, CurH}, {PrevV, PrevH}) when CurV > PrevV,
     true;
 is_valid_next_protocol(_, _) ->
     false.
+
+assert_fork(<<"ae_mainnet">>, Config, _Protocols) ->
+    assert_only_enabled_key(Config);
+assert_fork(<<"ae_uat">>, Config, _Protocols) ->
+    assert_only_enabled_key(Config);
+assert_fork(_Id, #{enabled := _Enabled,
+                   signalling_start_height := SignallingStartHeight,
+                   signalling_end_height := SignallingEndHeight,
+                   signalling_block_count := SignallingBlockCount,
+                   info_field := _InfoField,
+                   version := Version}, Protocols) ->
+    SortedProtocols = protocols_sorted_by_version(Protocols),
+    {PrevVersion, PrevForkHeight} = lists:last(SortedProtocols),
+    assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight, PrevForkHeight),
+    SignallingInterval = SignallingEndHeight - SignallingStartHeight,
+    assert_fork_signalling_block_count(SignallingInterval, SignallingBlockCount),
+    assert_fork_version(Version, PrevVersion);
+assert_fork(_Id, undefined, _Protocols) ->
+    ok.
+
+assert_only_enabled_key(Config) when Config =/= undefined ->
+    %% ae_mainnet and ae_uat are allowed to have just 'enabled' key in the config.
+    case maps:size(maps:without([enabled], Config)) of
+        0      -> ok;
+        _Other -> error(illegal_fork_signalling_config)
+    end;
+assert_only_enabled_key(undefined) ->
+    ok.
+
+assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight, PrevForkHeight)
+  when (PrevForkHeight < SignallingStartHeight) andalso
+       (SignallingStartHeight < SignallingEndHeight) ->
+    ok;
+assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight, _PrevForkHeight) ->
+    error({illegal_fork_signalling_interval, SignallingStartHeight, SignallingEndHeight}).
+
+assert_fork_signalling_block_count(SignallingInterval, SignallingBlockCount)
+  when SignallingBlockCount =< SignallingInterval ->
+    ok;
+assert_fork_signalling_block_count(_SignallingInterval, SignallingBlockCount) ->
+    error({illegal_fork_signalling_block_count, SignallingBlockCount}).
+
+assert_fork_version(Version, PrevVersion)
+  when (Version > ?MINERVA_PROTOCOL_VSN) andalso
+       (Version > PrevVersion) ->
+    ok;
+assert_fork_version(Version, _PrevVersion) ->
+    error({illegal_fork_version, Version}).
