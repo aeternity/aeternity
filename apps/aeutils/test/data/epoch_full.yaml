@@ -174,3 +174,11 @@ metrics:
 
 fork_management:
     network_id: "ae_mainnet"
+    # Community fork
+    fork:
+        signalling_start_height: 50000
+        signalling_end_height: 55000
+        signalling_block_count: 4800
+        fork_height: 55040
+        info_field: 1234
+        version: 5
