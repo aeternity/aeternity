@@ -24,7 +24,8 @@
 %% Maps consensus protocol version to minimum height at which such
 %% version is effective.  The height must be strictly increasing with
 %% the version.
--type protocol_vsn() :: ?LIMA_PROTOCOL_VSN
+-type protocol_vsn() :: pos_integer()
+                      | ?LIMA_PROTOCOL_VSN
                       | ?FORTUNA_PROTOCOL_VSN
                       | ?MINERVA_PROTOCOL_VSN
                       | ?ROMA_PROTOCOL_VSN.
