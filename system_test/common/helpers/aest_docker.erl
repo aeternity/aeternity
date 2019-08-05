@@ -235,12 +235,34 @@ setup_node(Spec, BackendState) ->
                       #{present => false,
                         hard_fork_info => []}}
         end,
-    RootVars = (maps:merge(CuckooMinerVars, HardForkVars))#{
+    ForkManagementVars =
+        case maps:find(fork_management, Spec) of
+            {ok, ForkManagement} ->
+                Fork = maps:get(fork, ForkManagement),
+                SigStartHeight = maps:get(signalling_start_height, Fork),
+                SigEndHeight = maps:get(signalling_end_height, Fork),
+                SigBlockCount = maps:get(signalling_block_count, Fork),
+                ForkHeight = maps:get(fork_height, Fork),
+                InfoField = maps:get(info_field, Fork),
+                Version = maps:get(version, Fork),
+                #{fork_management =>
+                      #{fork =>
+                            #{signalling_start_height => SigStartHeight,
+                              signalling_end_height => SigEndHeight,
+                              signalling_block_count => SigBlockCount,
+                              fork_height => ForkHeight,
+                              info_field => InfoField,
+                              version => Version}}};
+            error ->
+                #{fork_management => false}
+        end,
+    RootVars = maps:merge(CuckooMinerVars, HardForkVars),
+    RootVars1 = maps:merge(RootVars, ForkManagementVars),
+    RootVars2 = RootVars1#{
         hostname => Name,
         ext_addr => format("http://~s:~w/", [Hostname, ?EXT_HTTP_PORT]),
         peers => PeerVars,
         key_password => ?PEER_KEYS_PASSWORD,
-        config => ExtraConfig,
         services => #{
             sync => #{port => ?EXT_SYNC_PORT},
             ext_http => #{port => ?EXT_HTTP_PORT},
@@ -249,7 +271,7 @@ setup_node(Spec, BackendState) ->
         },
         mining => maps:merge(#{autostart => true}, maps:get(mining, Spec, #{}))
     },
-    Context = #{aeternity_config => RootVars},
+    Context = #{aeternity_config => RootVars2},
     {ok, ConfigString} = write_template(TemplateFile, ConfigFileHostPath, Context),
     Command =
         case maps:find(custom_command, Spec) of
