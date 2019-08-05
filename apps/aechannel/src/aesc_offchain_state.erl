@@ -157,7 +157,7 @@ check_update_tx(SignedTx, Updates, #state{signed_tx = OldSignedTx}=State,
     {Mod, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     lager:debug("Tx = ~p", [TxI]),
     case Mod:valid_at_protocol(Protocol, TxI) of
-        false -> {error, invalid_at_height};
+        false -> {error, invalid_at_protocol};
         true ->
             case Mod of
                 aesc_close_mutual_tx -> ok; % no particular check for a close mutual
