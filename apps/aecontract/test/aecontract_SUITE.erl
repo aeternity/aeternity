@@ -151,6 +151,8 @@
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
 
+-define(GENESIS_HEIGHT, 0).
+
 -define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING_TYPE(X), tuple()).
 -define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING_TYPE(X), tuple()).
 
@@ -1117,7 +1119,7 @@ call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
 -define(call(Fun, X, Y, Z, U, V),    call(Fun, fun Fun/6, [X, Y, Z, U, V])).
 -define(call(Fun, X, Y, Z, U, V, W), call(Fun, fun Fun/7, [X, Y, Z, U, V, W])).
 
-perform_pre_transformations(Height, S) ->
+perform_pre_transformations(Height, S) when Height > ?GENESIS_HEIGHT ->
     Trees = aec_trees:perform_pre_transformations(aect_test_utils:trees(S), Height),
     {ok, aect_test_utils:set_trees(Trees, S)}.
 
@@ -2004,14 +2006,14 @@ get_plain_oracle_response(PubKey, QId, S) ->
 %% Tests are checked by a little state machine keeping track of a single oracle
 %% and query.
 interpret_ttl(St, Cmds) ->
-    interpret_ttl(St, 0, Cmds).
+    interpret_ttl(St, ?GENESIS_HEIGHT, Cmds).
 
 interpret_ttl(St, _, []) -> St;
 interpret_ttl(St, H, [{H, Cmd} | Rest]) ->
     ?call(perform_pre_transformations, H),
     St1 = step_ttl(St, H, Cmd),
-    interpret_ttl(St1, H + 1, Rest);
-interpret_ttl(St, H, Cmds) ->
+    interpret_ttl(St1, H + 1, Rest); %% Hence no two commands at same height.
+interpret_ttl(St, H, [{_, _} | _] = Cmds) ->
     ?call(perform_pre_transformations, H),
     interpret_ttl(St, H + 1, Cmds).
 
@@ -2162,6 +2164,7 @@ ttl_scenario_good_query_bad_extend() ->
        Ans   <- [35, 40, 45] ].
 
 combine_ttl_scenarios(Cmds1, Cmds2) ->
+    %% No two (additional - if any) commands at same height introduced here.
     lists:keymerge(1, Cmds1, Cmds2).
 
 run_ttl_scenario(Scenario) ->
