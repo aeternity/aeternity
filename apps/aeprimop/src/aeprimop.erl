@@ -1057,18 +1057,8 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
     ContractPubkey  = aect_contracts:pubkey(Contract),
     {_CAccount, S3} = ensure_account(ContractPubkey, S2),
     OwnerId         = aect_contracts:owner_id(Contract),
-    {InitCall, S4}  = run_contract(OwnerId, Contract, GasLimit, GasPrice,
-                                   CallData, OwnerPubkey, _InitAmount = 0,
-                                   _CallStack = [], Nonce, S3),
-    case aect_call:return_type(InitCall) of
-        error ->
-            contract_call_fail(InitCall, Fee, RollbackS);
-        revert ->
-            contract_call_fail(InitCall, Fee, RollbackS);
-        ok ->
-            contract_init_call_success({attach, AuthFun}, InitCall, Contract,
-                                       GasLimit, Fee, RollbackS, S4)
-    end.
+    init_contract({attach, AuthFun}, OwnerId, Contract, GasLimit, GasPrice,
+                  CallData, OwnerPubkey, Fee, Nonce, RollbackS, S3).
 
 ga_set_meta_res_op(OwnerPubkey, AuthData, Res) ->
     {ga_set_meta_res, {OwnerPubkey, AuthData, Res}}.
@@ -1209,17 +1199,22 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
     {CAccount, S3} = ensure_account(ContractPubkey, S2),
     S4             = account_earn(CAccount, Amount, S3),
     OwnerId        = aect_contracts:owner_id(Contract),
-    {InitCall, S5} = run_contract(OwnerId, Contract, GasLimit, GasPrice,
+    init_contract(contract, OwnerId, Contract, GasLimit, GasPrice,
+                  CallData, OwnerPubkey, Fee, Nonce0, RollbackS, S4).
+
+init_contract(Context, OwnerId, Contract, GasLimit, GasPrice, CallData,
+              OwnerPubkey, Fee, Nonce, RollbackS, S) ->
+    {InitCall, S1} = run_contract(OwnerId, Contract, GasLimit, GasPrice,
                                   CallData, OwnerPubkey, _InitAmount = 0,
-                                  _CallStack = [], Nonce0, S4),
+                                  _CallStack = [], Nonce, S),
     case aect_call:return_type(InitCall) of
         error ->
             contract_call_fail(InitCall, Fee, RollbackS);
         revert ->
             contract_call_fail(InitCall, Fee, RollbackS);
         ok ->
-            contract_init_call_success(contract, InitCall, Contract,
-                                       GasLimit, Fee, RollbackS, S5)
+            contract_init_call_success(Context, InitCall, Contract,
+                                       GasLimit, Fee, RollbackS, S1)
     end.
 
 %%%-------------------------------------------------------------------
