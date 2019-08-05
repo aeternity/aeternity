@@ -252,6 +252,8 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
 
 hash(#node{hash = Hash}) -> Hash.
 
+version(#node{header = H}) -> aec_headers:version(H).
+
 prev_hash(#node{header = H}) -> aec_headers:prev_hash(H).
 
 prev_key_hash(#node{header = H}) -> aec_headers:prev_key_hash(H).
@@ -812,11 +814,20 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
         true ->
             #fork_info{fees = FeesIn} = ForkInfo,
             apply_micro_block_transactions(Node, FeesIn, Trees);
-        false ->
+        false -> %% Key block
             #fork_info{fees = FeesIn, fraud = FraudStatus} = ForkInfo,
             GasFees = calculate_gas_fee(aec_trees:calls(Trees)),
             TotalFees = GasFees + FeesIn,
-            Trees1 = aec_trees:perform_pre_transformations(Trees, node_height(Node)),
+            PrevVsn =
+                case node_height(Node) =:= aec_block_genesis:height() of
+                    true -> undefined; % genesis block has no previous block
+                    false -> version(db_get_node(prev_hash(Node)))
+                end,
+            Trees1 =
+                aec_trees:perform_pre_transformations(Trees,
+                                                      PrevVsn,
+                                                      version(Node),
+                                                      node_height(Node)),
             Delay  = aec_governance:beneficiary_reward_delay(),
             case node_height(Node) > aec_block_genesis:height() + Delay of
                 true  -> {grant_fees(Node, Trees1, Delay, FraudStatus, State), TotalFees, #{}};

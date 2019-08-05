@@ -45,7 +45,7 @@
          apply_txs_on_state_trees/4,
          apply_txs_on_state_trees_strict/3,
          grant_fee/3,
-         perform_pre_transformations/2
+         perform_pre_transformations/4
         ]).
 
 %% Proof of inclusion
@@ -245,26 +245,35 @@ gc_cache(Trees, TreesToGC) ->
         Trees,
         TreesToGC).
 
--spec perform_pre_transformations(trees(), aec_blocks:height()) -> trees().
-perform_pre_transformations(Trees, Height) ->
+-spec perform_pre_transformations(
+        trees(),
+        PrevVsn :: undefined | aec_hard_forks:protocol_vsn(),
+        aec_hard_forks:protocol_vsn(),
+        aec_blocks:height()
+       ) -> trees().
+perform_pre_transformations(Trees, PrevVsn, Vsn, Height) ->
     Trees0 = aect_call_state_tree:prune(Height, Trees),
     Trees1 = aeo_state_tree:prune(Height, Trees0),
     Trees2 = set_ns(Trees1, aens_state_tree:prune(Height, ns(Trees1))),
-    case Height =:= aec_block_genesis:height() of
-        true -> Trees2; % genesis block
-        false ->
-            case aec_hard_forks:is_fork_height(Height) of
-                {true, ?MINERVA_PROTOCOL_VSN} -> % hard fork time
-                    aec_block_fork:apply_minerva(Trees2);
-                {true, ?FORTUNA_PROTOCOL_VSN} -> % hard fork time
-                    aec_block_fork:apply_fortuna(Trees2);
-                {true, ?LIMA_PROTOCOL_VSN} -> % hard fork time
-                    aec_block_fork:apply_lima(Trees2);
-                {true, P} when P > ?LIMA_PROTOCOL_VSN ->
-                    Trees2;
-                false -> Trees2
-            end
-    end.
+    perform_pre_transformations_(Trees2, PrevVsn, Vsn).
+
+perform_pre_transformations_(Trees, undefined, _) -> % genesis block
+    Trees;
+perform_pre_transformations_(Trees, PrevVsn, Vsn) when PrevVsn < Vsn -> % hard fork time
+    case Vsn of
+        ?MINERVA_PROTOCOL_VSN ->
+            aec_block_fork:apply_minerva(Trees);
+        ?FORTUNA_PROTOCOL_VSN ->
+            aec_block_fork:apply_fortuna(Trees);
+        ?LIMA_PROTOCOL_VSN ->
+            aec_block_fork:apply_lima(Trees);
+        _ when Vsn > ?LIMA_PROTOCOL_VSN ->
+            Trees
+    end;
+perform_pre_transformations_(Trees, Vsn, Vsn) ->
+    Trees;
+perform_pre_transformations_(Trees, PrevVsn, Vsn) when PrevVsn > Vsn -> % shall not happen
+    Trees.
 
 
 -spec calls(trees()) -> aect_call_state_tree:tree().
