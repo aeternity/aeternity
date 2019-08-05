@@ -29,7 +29,8 @@
          revoke_negative/1,
          prune_preclaim/1,
          registrar_change/1,
-         subdomain_claim/1]).
+         subname/1,
+         subname_claim_as_name_negative/1]).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -62,7 +63,8 @@ groups() ->
        revoke,
        revoke_negative,
        registrar_change,
-       subdomain_claim
+       subname,
+       subname_claim_as_name_negative
       ]}
     ].
 
@@ -624,7 +626,7 @@ registrar_change(_Cfg) ->
 -define(SNAME321, <<"詹3.姆2.斯1.姆.test"/utf8>>).
 -define(SNAME4321, <<"斯4.詹3.姆2.斯1.姆.test"/utf8>>).
 
-subdomain_claim(_Cfg) ->
+subname(_Cfg) ->
     Name = ?TOPNAME,
     {PubKey, NHash, S1} = claim([{name, Name}]),
     Trees = aens_test_utils:trees(S1),
@@ -693,6 +695,28 @@ subdomain_claim(_Cfg) ->
 
     [] = SNameHashes -- [SNameHash1, SNameHash2, SNameHash21, SNameHash54321, SNameHash321, SNameHash4321],
 
+    %% attempt to revoke existing subname
+    RevokeTxSpec = aens_test_utils:revoke_tx_spec(PubKey, SNameHash4321, S2),
+    {'EXIT', {{illegal_field,name_id,id,
+               {id,name, _}, id,
+               {id,name, _}},
+              [_|_]}} = (catch aens_revoke_tx:new(RevokeTxSpec)),
+
+    %% attempt to transfer existing subname
+    #{public := OtherPK} = enacl:sign_keypair(),
+    TransferTxSpec = aens_test_utils:transfer_tx_spec(PubKey, SNameHash4321, OtherPK, S2),
+    {'EXIT', {{illegal_field,name_id,id,
+               {id,name, _}, id,
+               {id,name, _}},
+              [_|_]}} = (catch aens_transfer_tx:new(TransferTxSpec)),
+
+    %% attempt to update existing subname
+    UpdateTxSpec = aens_test_utils:update_tx_spec(PubKey, SNameHash4321, S2),
+    {'EXIT', {{illegal_field,name_id,id,
+               {id,name, _}, id,
+               {id,name, _}},
+              [_|_]}} = (catch aens_update_tx:new(UpdateTxSpec)),
+
     %% empty Subnames TX removes all subnames for a given name
     EmptyDef = #{},
 
@@ -709,4 +733,12 @@ subdomain_claim(_Cfg) ->
 
     {[], false} = aens_state_tree:subnames_hashes(NHash, NTrees2, all),
 
+    ok.
+
+subname_claim_as_name_negative(_Cfg) ->
+    SubnameAsName = <<"subname.name.test"/utf8>>,
+    {'EXIT', {{illegal_field,pointers,
+               [{binary,id}], _,
+               [{binary,id}], _},
+              [_|_]}} = (catch claim([{name, SubnameAsName}])),
     ok.
