@@ -137,70 +137,30 @@ is_legal_serialization_at_height(?ABI_FATE_SOPHIA_1, Vsn, Height) ->
     aect_sophia:is_legal_serialization_at_height(Vsn, Height).
 
 is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_1, abi := ?ABI_AEVM_SOPHIA_1}, ProtocolVersion) ->
-    case ProtocolVersion of
-        ?ROMA_PROTOCOL_VSN -> true;
-        P when P >= ?MINERVA_PROTOCOL_VSN -> false
-    end;
+    version_valid_at(ProtocolVersion, ?ROMA_PROTOCOL_VSN);
 is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_2, abi := ?ABI_AEVM_SOPHIA_1}, ProtocolVersion) ->
-    case ProtocolVersion of
-        ?ROMA_PROTOCOL_VSN    -> false;
-        ?MINERVA_PROTOCOL_VSN -> true;
-        ?FORTUNA_PROTOCOL_VSN -> true;
-        P when P >= ?LIMA_PROTOCOL_VSN -> false
-    end;
+    version_valid_between(ProtocolVersion, ?MINERVA_PROTOCOL_VSN, ?FORTUNA_PROTOCOL_VSN);
 is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_3, abi := ?ABI_AEVM_SOPHIA_1}, ProtocolVersion) ->
-    case ProtocolVersion of
-        ?ROMA_PROTOCOL_VSN    -> false;
-        ?MINERVA_PROTOCOL_VSN -> false;
-        ?FORTUNA_PROTOCOL_VSN -> true;
-        P when P >= ?LIMA_PROTOCOL_VSN -> false
-    end;
+    version_valid_at(ProtocolVersion, ?FORTUNA_PROTOCOL_VSN);
 is_legal_version_in_protocol(create, #{vm := ?VM_AEVM_SOPHIA_4, abi := ?ABI_AEVM_SOPHIA_1}, ProtocolVersion) ->
-    case ProtocolVersion of
-        ?ROMA_PROTOCOL_VSN    -> false;
-        ?MINERVA_PROTOCOL_VSN -> false;
-        ?FORTUNA_PROTOCOL_VSN -> false;
-        ?LIMA_PROTOCOL_VSN    -> true;
-        P when P > ?LIMA_PROTOCOL_VSN -> true %% TODO: If you bump to VM_AEVM_SOPHIA_5 please turn VM_AEVM_SOPHIA_4 off for the new consensus protocol!
-    end;
+    version_valid_after(ProtocolVersion, ?LIMA_PROTOCOL_VSN); %% TODO: If you bump to VM_AEVM_SOPHIA_5 please turn VM_AEVM_SOPHIA_4 off for the new consensus protocol!
+    %%version_valid_between(ProtocolVersion, ?LIMA_PROTOCOL_VSN, ?FORK_INTRODUCING_VM_AEVM_SOPHIA_5);
 is_legal_version_in_protocol(create, #{vm := ?VM_FATE_SOPHIA_1, abi := ?ABI_FATE_SOPHIA_1}, ProtocolVersion) ->
-    case ProtocolVersion of
-        ?ROMA_PROTOCOL_VSN    -> false;
-        ?MINERVA_PROTOCOL_VSN -> false;
-        ?FORTUNA_PROTOCOL_VSN -> false;
-        ?LIMA_PROTOCOL_VSN    -> ?VM_FATE_SOPHIA_1_enabled; %% TODO: Revise this before release
-        P when P > ?LIMA_PROTOCOL_VSN -> ?VM_FATE_SOPHIA_1_enabled %% TODO: Revise this before release
-    end;
+    ?VM_FATE_SOPHIA_1_enabled and version_valid_after(ProtocolVersion, ?LIMA_PROTOCOL_VSN);
+is_legal_version_in_protocol(call, #{vm := ?VM_AEVM_SOLIDITY_1}, _ProtocolVersion) ->
+    ?VM_AEVM_SOLIDITY_1_enabled;
+is_legal_version_in_protocol(call, #{vm := ?VM_FATE_SOPHIA_1}, ProtocolVersion) ->
+    ?VM_FATE_SOPHIA_1_enabled and version_valid_at(ProtocolVersion, ?LIMA_PROTOCOL_VSN);
 is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
     case ProtocolVersion of
-        ?ROMA_PROTOCOL_VSN    when VMVersion =:= ?VM_AEVM_SOPHIA_1 ->
-            true;
-        ?MINERVA_PROTOCOL_VSN when (VMVersion =:= ?VM_AEVM_SOPHIA_1) or
-                                   (VMVersion =:= ?VM_AEVM_SOPHIA_2) ->
-            true;
-        ?FORTUNA_PROTOCOL_VSN when (VMVersion =:= ?VM_AEVM_SOPHIA_1) or
-                                   (VMVersion =:= ?VM_AEVM_SOPHIA_2) or
-                                   (VMVersion =:= ?VM_AEVM_SOPHIA_3) ->
-            true;
-        P                     when (P >= ?LIMA_PROTOCOL_VSN)
-                                   and
-                                   (
-                                   (VMVersion =:= ?VM_AEVM_SOPHIA_1) or
-                                   (VMVersion =:= ?VM_AEVM_SOPHIA_2) or
-                                   (VMVersion =:= ?VM_AEVM_SOPHIA_3) or
-                                   (VMVersion =:= ?VM_AEVM_SOPHIA_4)
-                                   ) ->
-            true;
-        P                     when (P >= ?LIMA_PROTOCOL_VSN)
-                                   and
-                                   (
-                                   (VMVersion =:= ?VM_FATE_SOPHIA_1)
-                                   ) ->
-            ?VM_FATE_SOPHIA_1_enabled;
-        _                     when VMVersion =:= ?VM_AEVM_SOLIDITY_1 ->
-            ?VM_AEVM_SOLIDITY_1_enabled;
+        ?ROMA_PROTOCOL_VSN ->
+            version_valid_at(VMVersion, ?VM_AEVM_SOPHIA_1);
+        ?MINERVA_PROTOCOL_VSN ->
+            version_valid_between(VMVersion, ?VM_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_2);
+        ?FORTUNA_PROTOCOL_VSN ->
+            version_valid_between(VMVersion, ?VM_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_3);
         _ ->
-            false
+            version_valid_between(VMVersion, ?VM_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_4)
     end;
 is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_NO_VM}, _ProtocolVersion) ->
     true;
@@ -544,3 +504,14 @@ pack_vm_abi(#{vm := VM, abi := ABI}) ->
     <<VMABI:32>> = <<VM:16, ABI:16>>,
     VMABI.
 
+-spec version_valid_at(non_neg_integer(), non_neg_integer()) -> boolean().
+version_valid_at(Version, At) ->
+    Version =:= At.
+
+-spec version_valid_after(non_neg_integer(), non_neg_integer()) -> boolean().
+version_valid_after(Version, After) ->
+    Version >= After.
+
+-spec version_valid_between(non_neg_integer(), non_neg_integer(), non_neg_integer()) -> boolean().
+version_valid_between(Version, From, To) ->
+    (Version >= From) and (Version =< To).
