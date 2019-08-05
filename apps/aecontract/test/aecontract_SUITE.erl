@@ -1120,7 +1120,16 @@ call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
 -define(call(Fun, X, Y, Z, U, V, W), call(Fun, fun Fun/7, [X, Y, Z, U, V, W])).
 
 perform_pre_transformations(Height, S) when Height > ?GENESIS_HEIGHT ->
-    Trees = aec_trees:perform_pre_transformations(aect_test_utils:trees(S), Height),
+    Vsn = aec_hard_forks:protocol_effective_at_height(Height),
+    %% Exploit assumption that no two commands at same height.
+    PrevVsn =
+        case Height - 1 of
+            ?GENESIS_HEIGHT ->
+                undefined;
+            PrevHeight ->
+                aec_hard_forks:protocol_effective_at_height(PrevHeight)
+        end,
+    Trees = aec_trees:perform_pre_transformations(aect_test_utils:trees(S), PrevVsn, Vsn, Height),
     {ok, aect_test_utils:set_trees(Trees, S)}.
 
 new_account(Balance, S) ->
