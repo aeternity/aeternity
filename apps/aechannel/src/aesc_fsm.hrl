@@ -201,29 +201,29 @@
                   block_hash :: aec_blocks:block_header_hash()
                   }).
 
--record(op_sign, { tag :: sign_tag()
+-record(op_sign, { tag  :: sign_tag()
                  , data :: #op_data{}
                  }).
 
--record(op_ack, { tag :: sign_tag()
+-record(op_ack, { tag  :: sign_tag()
                 , data :: #op_data{}
                 }).
 
--record(op_lock, { tag :: create | deposit | withdraw
+-record(op_lock, { tag  :: create | deposit | withdraw
                  , data :: #op_data{}
                  }).
 
--record(op_min_depth, { tag :: ?WATCH_FND
-                             | ?WATCH_DEP
-                             | ?WATCH_WDRAW
-                             | ?WATCH_CLOSED
+-record(op_min_depth, { tag     :: ?WATCH_FND
+                                 | ?WATCH_DEP
+                                 | ?WATCH_WDRAW
+                                 | ?WATCH_CLOSED
                       , tx_hash :: binary()
-                      , data :: #op_data{}
+                      , data    :: #op_data{}
                       }).
 
--record(op_watch, { type :: unlock | close 
+-record(op_watch, { type    :: unlock | close 
                   , tx_hash :: binary()
-                  , data :: #op_data{}
+                  , data    :: #op_data{}
                   }).
 
 -record(op_reestablish, {offchain_tx :: aetx_sign:signed_tx()
