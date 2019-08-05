@@ -103,7 +103,13 @@ mk_test(Contracts, Tests) ->
 run_call(Code, Fun, Args) ->
     Cache = compile_contracts([{<<"test">>, Code}]),
     case run(Cache, <<"test">>, list_to_binary(Fun), Args) of
-        {ok, ES} -> aefa_engine_state:accumulator(ES);
+        {ok, ES} ->
+            Trace = aefa_engine_state:trace(ES),
+            Red   = fun({_, {reductions, R}}) -> R end,
+            Reductions = Red(hd(Trace)) - Red(lists:last(Trace)),
+            Steps      = length(Trace),
+            io:format("~p steps (~p reductions)\n", [Steps, Reductions]),
+            aefa_engine_state:accumulator(ES);
         {error, Err, ES} ->
             io:format("~s\n", [Err]),
             {error, Err, [I || {I, _} <- aefa_engine_state:trace(ES)]}
