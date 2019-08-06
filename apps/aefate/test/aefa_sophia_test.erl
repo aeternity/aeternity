@@ -103,7 +103,13 @@ mk_test(Contracts, Tests) ->
 run_call(Code, Fun, Args) ->
     Cache = compile_contracts([{<<"test">>, Code}]),
     case run(Cache, <<"test">>, list_to_binary(Fun), Args) of
-        {ok, ES} -> aefa_engine_state:accumulator(ES);
+        {ok, ES} ->
+            Trace = aefa_engine_state:trace(ES),
+            Red   = fun({_, {reductions, R}}) -> R end,
+            Reductions = Red(hd(Trace)) - Red(lists:last(Trace)),
+            Steps      = length(Trace),
+            io:format("~p steps (~p reductions)\n", [Steps, Reductions]),
+            aefa_engine_state:accumulator(ES);
         {error, Err, ES} ->
             io:format("~s\n", [Err]),
             {error, Err, [I || {I, _} <- aefa_engine_state:trace(ES)]}
@@ -162,34 +168,34 @@ arith_test_() -> mk_test([arithmetic()], arith_tests()).
 tuples() ->
     {<<"tuples">>,
      "contract Tuples =\n"
-     "  entrypoint fst(p : (int, string)) =\n"
+     "  entrypoint fst(p : int * string) =\n"
      "    switch(p)\n"
      "      (x, y) => x\n"
-     "  entrypoint fst'(p : (int, string)) =\n"
+     "  entrypoint fst'(p : int * string) =\n"
      "    switch(p)\n"
      "      (x, _) => x\n"
-     "  entrypoint snd(p : (int, string)) =\n"
+     "  entrypoint snd(p : int * string) =\n"
      "    switch(p)\n"
      "      (x, y) => y\n"
-     "  entrypoint snd'(p : (int, string)) =\n"
+     "  entrypoint snd'(p : int * string) =\n"
      "    switch(p)\n"
      "      (_, y) => y\n"
      "  entrypoint sum(p) =\n"
      "    switch(p)\n"
      "      (x, y) => x + y\n"
-     "  entrypoint swap(p : (int, string)) =\n"
+     "  entrypoint swap(p : int * string) =\n"
      "    switch(p)\n"
      "      (x, y) => (y, x)\n"
-     "  entrypoint id(p : (int, int, string)) =\n"
+     "  entrypoint id(p : int * int * string) =\n"
      "    switch(p)\n"
      "      (x, y, z) => (x, y, z)\n"
-     "  entrypoint nest(p : ((int, int), string)) =\n"
+     "  entrypoint nest(p : (int * int) * string) =\n"
      "    switch(p)\n"
      "      (xy, z) => switch(xy) (x, y) => (x, y, z)\n"
-    "  entrypoint deep(p : ((int, int), (int, int))) =\n"
+    "  entrypoint deep(p : (int * int) * (int * int)) =\n"
     "    switch(p)\n"
     "      ((x, y), (z, w)) => (x, y, z, w)\n"
-    "  entrypoint deep_sum(p : ((int, int), (int, int))) =\n"
+    "  entrypoint deep_sum(p : (int * int) * (int * int)) =\n"
     "    switch(p)\n"
     "      ((x, y), (z, w)) => x + y + z + w\n"
     }.
@@ -215,25 +221,25 @@ tuple_test_() -> mk_test([tuples()], tuple_tests()).
 patterns() ->
     {<<"patterns">>,
      "contract PatternMatching =\n"
-     "  entrypoint or(p : (bool, bool)) =\n"
+     "  entrypoint or(p : bool * bool) =\n"
      "    switch(p)\n"
      "      (false, y) => y\n"
      "      (true,  _) => true\n"
-     "  entrypoint and'(p : (bool, bool)) =\n"
+     "  entrypoint and'(p : bool * bool) =\n"
      "    switch(p)\n"
      "      (x, false) => false\n"
      "      (x, true)  => x\n"
-    "  entrypoint tuple_catchall(p : (bool, bool)) =\n"
+    "  entrypoint tuple_catchall(p : bool * bool) =\n"
     "    switch(p)\n"
     "      (true, y) => y\n"
     "      _         => false\n"
-    "  entrypoint complex_match(p : (bool, bool, bool)) =\n"
+    "  entrypoint complex_match(p : bool * bool * bool) =\n"
     "    switch(p)\n"
     "      (x1,    false, z1)   => (1, x1,    false, z1)\n"
     "      (false, y2,    true) => (2, false, y2,    true)\n"
     "      (true,  true,  z3)   => (3, true,  true,  z3)\n"
     "      (x4,    y4,    z4)   => (4, x4,    y4,    z4)\n"
-    "  entrypoint lit_match(p : (int, bool)) =\n"
+    "  entrypoint lit_match(p : int * bool) =\n"
     "    switch(p)\n"
     "      (7, y) => y\n"
     "      _         => false\n"
@@ -283,7 +289,7 @@ records() ->
      "  type number = int\n"
      "  record r1 = {x : bool, z : bool, w : int}\n"
      "  record r2 = {x : number, y : r1}\n"
-     "  entrypoint rec_match(a : r2) : (int, r1) =\n"
+     "  entrypoint rec_match(a : r2) : int * r1 =\n"
      "    switch(a)\n"
      "      {x = 4}          => (1, a.y)\n"
      "      {y = {x = true}} => (2, {x = false, z = true, w = 0})\n"
@@ -367,7 +373,7 @@ operators() ->
      "contract Operators =\n"
      "  entrypoint arith(x, y) = [x + y, x - y, x * y, x / y, x mod y, x ^ y]\n"
      "  entrypoint list(xs, ys : list(int)) = [0 :: xs, xs ++ ys]\n"
-     "  entrypoint compare(x, y : (int, int)) = [x == y, x != y, x < y, x > y, x =< y, x >= y]\n"
+     "  entrypoint compare(x, y : int * int) = [x == y, x != y, x < y, x > y, x =< y, x >= y]\n"
      "  entrypoint bool(x, y, z : int) = x == y && x > z || y >= z\n"}.
 
 operator_tests() ->

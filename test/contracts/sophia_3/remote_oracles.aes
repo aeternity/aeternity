@@ -22,7 +22,7 @@ contract Oracles =
   entrypoint respond :
     (oracle(string, int),
      oracle_query(string, int),
-     int) => unit
+     int) => ()
 
 contract OraclesErr =
 

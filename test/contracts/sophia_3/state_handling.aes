@@ -1,7 +1,7 @@
 contract Remote =
   record rstate = { i : int, s : string, m : map(int, int) }
 
-  entrypoint look_at : (rstate) => unit
+  entrypoint look_at : (rstate) => ()
   entrypoint return_s : (bool) => string
   entrypoint return_m : (bool) => map(int, int)
   entrypoint get : (rstate) => rstate

@@ -5,10 +5,10 @@ contract ERC20Token =
     name : string,
     symbol : string,
     balances : map(address, int),
-    allowed : map(address, map(address, int)),
+    allowed : map(address, map(address,int)),
     // Logs, remove when native Events are there
-    transfer_log : list(address * address * int),
-    approval_log : list(address * address * int)}
+    transfer_log : list((address,address,int)),
+    approval_log : list((address,address,int))}
 
   // init(100000000, 10, "Token Name", "TKN")
   entrypoint init(_totalSupply : int, _decimals : int, _name : string, _symbol : string ) = {
@@ -53,9 +53,9 @@ contract ERC20Token =
   entrypoint allowance(_owner : address, _spender : address) : int =
     state.allowed[_owner][_spender]
 
-  stateful entrypoint getTransferLog() : list(address * address * int) =
+  stateful entrypoint getTransferLog() : list((address,address,int)) =
     state.transfer_log
-  stateful entrypoint getApprovalLog() : list(address * address * int) =
+  stateful entrypoint getApprovalLog() : list((address,address,int)) =
     state.approval_log
 
   //

@@ -1,9 +1,9 @@
 contract Interface =
-  entrypoint do_abort : (int, string) => unit
+  entrypoint do_abort : (int, string) => ()
   entrypoint get_value : () => int
-  entrypoint put_value : (int) => unit
+  entrypoint put_value : (int) => ()
   entrypoint get_values : () => list(int)
-  entrypoint put_values : (int) => unit
+  entrypoint put_values : (int) => ()
 
 contract AbortTestInt =
 

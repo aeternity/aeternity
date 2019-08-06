@@ -50,7 +50,7 @@ contract Greeter =
 
      /* The creator of the contract will automatically
        be set in creator() by the transaction creating the contract. */
-    entrypoint blockheight : () => uint
+    entrypoint blockheight : unit => uint
     record transaction = { tx : string }
     record state = { greeting: string }
     record retval = { state: state,

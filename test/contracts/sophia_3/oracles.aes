@@ -21,7 +21,7 @@ contract Oracles =
 
   stateful entrypoint respondIntIntOracle(o    : oracle(int, int),
                                         q    : oracle_query(int, int),
-                                        r    : int) : unit =
+                                        r    : int) : () =
     Oracle.respond(o, q, r)
 
   stateful entrypoint registerStringStringOracle(acct : address,
@@ -81,23 +81,23 @@ contract Oracles =
     res
 
   stateful entrypoint extendOracle(o    : oracle_id,
-                        ttl  : ttl) : unit =
+                        ttl  : ttl) : () =
     Oracle.extend(o, ttl)
 
   stateful entrypoint signedExtendOracle(o    : oracle_id,
                               sign : signature,   // Signed oracle address
-                              ttl  : ttl) : unit =
+                              ttl  : ttl) : () =
     Oracle.extend(o, signature = sign, ttl)
 
   stateful entrypoint respond(o    : oracle_id,
                    q    : query_id,
-                   r    : answer_t) : unit =
+                   r    : answer_t) : () =
     Oracle.respond(o, q, r)
 
   stateful entrypoint signedRespond(o    : oracle_id,
                          q    : query_id,
                          sign : signature,
-                         r    : answer_t) : unit =
+                         r    : answer_t) : () =
     Oracle.respond(o, q, signature = sign, r)
 
   entrypoint getQuestion(o : oracle_id,

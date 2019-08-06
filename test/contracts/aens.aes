@@ -22,44 +22,44 @@ contract AENSTest =
   // Transactions
 
   stateful entrypoint preclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
-                             chash : hash) : () =      // Commitment hash
+                             chash : hash) : unit =      // Commitment hash
     AENS.preclaim(addr, chash)
 
   stateful entrypoint signedPreclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
                                    chash : hash,             // Commitment hash
-                                   sign  : signature) : () = // Signed by addr (if not Contract.address)
+                                   sign  : signature) : unit = // Signed by addr (if not Contract.address)
     AENS.preclaim(addr, chash, signature = sign)
 
   stateful entrypoint claim(addr : address,
                           name : string,
-                          salt : int) : () =
+                          salt : int) : unit =
     AENS.claim(addr, name, salt)
 
   stateful entrypoint signedClaim(addr : address,
                                 name : string,
                                 salt : int,
-                                sign : signature) : () =
+                                sign : signature) : unit =
     AENS.claim(addr, name, salt, signature = sign)
 
   // TODO: update() -- how to handle pointers?
 
   stateful entrypoint transfer(owner     : address,
                              new_owner : address,
-                             name      : string) : () =
+                             name      : string) : unit =
     AENS.transfer(owner, new_owner, name)
 
   stateful entrypoint signedTransfer(owner     : address,
                                    new_owner : address,
                                    name      : string,
-                                   sign      : signature) : () =
+                                   sign      : signature) : unit =
     AENS.transfer(owner, new_owner, name, signature = sign)
 
   stateful entrypoint revoke(owner     : address,
-                           name      : string) : () =
+                           name      : string) : unit =
     AENS.revoke(owner, name)
 
   stateful entrypoint signedRevoke(owner     : address,
                                    name      : string,
-                                   sign      : signature) : () =
+                                   sign      : signature) : unit =
     AENS.revoke(owner, name, signature = sign)
 
