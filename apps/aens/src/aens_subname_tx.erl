@@ -145,7 +145,7 @@ serialize(#ns_subname_tx{account_id = AccountId,
      [ {account_id, AccountId}
      , {nonce, Nonce}
      , {name, Name}
-     , {definition, Definition}
+     , {definition, map_pointers(fun aens_pointer:to_tuple/1, Definition)}
      , {fee, Fee}
      , {ttl, TTL}
      ]}.
@@ -162,7 +162,7 @@ deserialize(?SUBNAME_TX_VSN,
     #ns_subname_tx{account_id = AccountId,
                    nonce      = Nonce,
                    name       = Name,
-                   definition = Definition,
+                   definition = map_pointers(fun aens_pointer:new/1, Definition),
                    fee        = Fee,
                    ttl        = TTL}.
 
@@ -170,7 +170,7 @@ serialization_template(?SUBNAME_TX_VSN) ->
     [ {account_id, id}
     , {nonce, int}
     , {name, binary}
-    , {definition, [{binary, [{binary, binary}]}]}
+    , {definition, [{binary, [{binary, id}]}]}
     , {fee, int}
     , {ttl, int}
     ].
@@ -185,7 +185,7 @@ for_client(#ns_subname_tx{account_id = AccountId,
     #{<<"account_id">> => aeser_api_encoder:encode(id_hash, AccountId),
       <<"nonce">>      => Nonce,
       <<"name">>       => Name,
-      <<"definition">> => Definition,
+      <<"definition">> => map_pointers(fun aens_pointer:serialize_for_client/1, Definition),
       <<"fee">>        => Fee,
       <<"ttl">>        => TTL}.
 
@@ -221,12 +221,15 @@ flatten_definition([{1, [{_NameAscii, _}]} | ChildNodes]) ->
     lists:flatten(
       [lists:foldl(
          fun ({SNameAscii, SPointers}, Acc) ->
-                 SPointers1 = maps:to_list(SPointers),
-                 [case aens_pointer:decode_id(IdEnc) of
-                      {ok, _} -> ok;
-                      {error, Reason} -> error({illegal_pointer_id, IdEnc, Reason})
-                  end || {_Key, IdEnc} <- SPointers1],
-                 [{SNameAscii, SPointers1} | Acc]
+                 [{SNameAscii, pointers_list(SPointers)} | Acc]
          end, [], Child) || {_, Child} <- ChildNodes]);
 flatten_definition(_) ->
     [].
+
+pointers_list(Pointers) when is_map(Pointers) ->
+    maps:fold(fun (Key, Id, Acc) ->
+                      [aens_pointer:new(Key, Id) | Acc]
+              end, [], Pointers).
+
+map_pointers(Fun, Definition) ->
+    [{Subname, lists:map(Fun, Pointers)} || {Subname, Pointers} <- Definition].

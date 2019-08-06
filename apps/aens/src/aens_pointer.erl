@@ -1,10 +1,12 @@
 -module(aens_pointer).
 
--export([new/2,
+-export([new/1,
+         new/2,
          key/1,
          id/1,
          serialize_for_client/1,
-         decode_id/1
+         decode_id/1,
+         to_tuple/1
         ]).
 
 -type key() :: binary().
@@ -21,6 +23,9 @@
               id/0,
               pointer/0
              ]).
+
+-spec new({key(), id() | binary()}) -> pointer().
+new({Key, Id}) -> new(Key, Id).
 
 -spec new(key(), id() | binary()) -> pointer().
 new(Key, IdEnc) when is_binary(IdEnc) ->
@@ -59,3 +64,5 @@ assert_id_type(oracle)   -> ok.
 decode_id(IdEnc) ->
     AllowedTypes = [account_pubkey, channel, contract_pubkey, oracle_pubkey],
     aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, IdEnc).
+
+to_tuple(P) -> {aens_pointer:key(P), aens_pointer:id(P)}.

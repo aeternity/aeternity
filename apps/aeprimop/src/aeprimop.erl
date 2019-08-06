@@ -843,8 +843,7 @@ subname({OwnerPubkey, PlainName, Definition}, S) ->
             lists:foldl(
               fun ({SNameAscii, SPointers}, St) ->
                       SNameHash = aens_hash:name_hash(SNameAscii),
-                      Pointers = [aens_pointer:new(K, Id) || {K, Id} <- SPointers],
-                      Subname = aens_subnames:new(SNameHash, Pointers),
+                      Subname = aens_subnames:new(SNameHash, SPointers),
                       put_name(Subname, St)
               end,
               S#state{trees = aec_trees:set_ns(S1#state.trees, NSTree1)},
