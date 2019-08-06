@@ -1552,7 +1552,7 @@ settle_(TTL, MinDepth, #{fsm := FsmI, channel_id := ChannelId} = I, R, Debug,
     ok.
 
 client_reconnect_initiator(Cfg) ->
-    client_reconnect_(initiator, Cfg).
+    with_trace(fun(Cfg1) -> client_reconnect_(initiator, Cfg1) end, Cfg, "client_reconnect_i").
 
 client_reconnect_responder(Cfg) ->
     client_reconnect_(responder, Cfg).
@@ -1572,29 +1572,34 @@ client_reconnect_(Role, Cfg) ->
     unlink(Proxy),
     exit(Proxy, kill),
     timer:sleep(100),  % give the above exit time to propagate
-    ok = things_that_should_fail_if_no_client(Role, I, R, Debug),
+    ok = things_that_should_fail_if_no_client(Role, I, R, Debug, Cfg),
     Res = reconnect(Fsm, Role, RoleI, Debug),
     ct:log("Reconnect req -> ~p", [Res]),
     %% run tests here
     shutdown_(I, R, Cfg).
 
-things_that_should_fail_if_no_client(ClientRole, I, R, Debug) ->
-    update_req_conflict(ClientRole, I, R, Debug).
+things_that_should_fail_if_no_client(ClientRole, I, R, Debug, Cfg) ->
+    update_req_conflict(ClientRole, I, R, Debug, Cfg).
 
-update_req_conflict(Role, I, R, Debug) ->
+update_req_conflict(Role, I, R, Debug, Cfg) ->
     %% Note that the A and B represent I and R, possibly switched, to
     %% indicate who should initiate the update request. Here, A will be
     %% the side that currently has no client.
-    {#{ pub := PubA, fsm := FsmA } = _A,
+    {#{ pub := PubA, fsm := FsmA } = A,
      #{ pub := PubB, fsm := FsmB } = B}
         = roles_for_update(Role, I, R),
     %% cannot request an update from the side with client disconnected
     {error, client_disconnected}
         = rpc(dev1, aesc_fsm, upd_transfer, [FsmA, PubA, PubB, 1]),
     rpc(dev1, aesc_fsm, upd_transfer, [FsmB, PubB, PubA, 2]),
-    {_B1, _} = await_signing_request(update, B, Debug),
+    {B1, _} = await_signing_request(update, B, Debug, Cfg),
     %% FsmR should now detect a conflict
-    {ok, _} = receive_from_fsm(conflict, B, any_msg(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, B1, any_msg(), ?TIMEOUT, Debug),
+    %% Try now with a co-signed update request
+    %% This should work
+    rpc(dev1, aesc_fsm, upd_transfer, [FsmB, PubB, PubA, 3]),
+    {B3, _} = await_signing_request_multisig(update, B, [A], Debug, Cfg),
+    {ok, _} = receive_from_fsm(update, B3, any_msg(), ?TIMEOUT, Debug),
     ok.
 
 roles_for_update(initiator, I, R) -> {I, R};
@@ -2010,34 +2015,46 @@ await_signing_request(Tag, R, Cfg) ->
 await_signing_request(Tag, R, Debug, Cfg) ->
     await_signing_request(Tag, R, ?TIMEOUT, Debug, Cfg).
 
+await_signing_request_multisig(Tag, R, Sigs, Debug, Cfg) ->
+    Action = fun sign_signing_request/4,
+    await_signing_request(Tag, R, Sigs, Action, ?TIMEOUT, Debug, Cfg, according_account).
+
 await_signing_request_basic(Tag, Signer, Debug, Cfg) ->
     Action = fun sign_signing_request/4,
     await_signing_request(Tag, Signer,
-                          Action, ?TIMEOUT, Debug, Cfg, basic).
+                           Action, ?TIMEOUT, Debug, Cfg, basic).
 
 await_signing_request(Tag, R, Timeout, Debug, Cfg) ->
     Action = fun sign_signing_request/4,
     await_signing_request(Tag, R, Action, Timeout, Debug, Cfg).
 
-await_signing_request(Tag, #{fsm := Fsm} = Signer,
-                      Action, Timeout, Debug, Cfg) ->
-    await_signing_request(Tag, #{fsm := Fsm} = Signer,
-                          Action, Timeout, Debug, Cfg, according_account).
+await_signing_request(Tag, Signer, Action, Timeout, Debug, Cfg) ->
+    await_signing_request(Tag, Signer, Action, Timeout, Debug, Cfg, according_account).
 
-await_signing_request(Tag, #{fsm := Fsm, pub := Pub} = Signer,
+await_signing_request(Tag, Signer, Action, Timeout, Debug, Cfg, SignatureType) ->
+    await_signing_request(Tag, Signer, [], Action, Timeout, Debug, Cfg, SignatureType).
+
+await_signing_request(Tag, #{fsm := Fsm, pub := Pub} = Signer, OtherSigs,
                       Action, Timeout, Debug, Cfg, SignatureType) ->
-    log("await_signing_request, Fsm = ~p (Pub = ~p)", [Fsm, Pub]),
+    log("await_signing_request, Fsm = ~p (Pub = ~p, Other = ~p)",
+        [Fsm, Pub, [P || #{pub := P} <- OtherSigs]]),
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
                               info := #{signed_tx := SignedTx0,
                                         updates   := Updates}} = Msg} ->
-            log(Debug, "await_signing(~p, ~p, ~p) <- ~p", [Tag, Pub, Fsm, Msg]),
-            {SignedTx, Signer1} =
-                case SignatureType of
-                    according_account -> co_sign_tx(Signer, SignedTx0, Cfg);
-                    basic ->
-                        #{priv := Priv} = Signer,
-                        {aec_test_utils:co_sign_tx(SignedTx0, Priv), Signer}
-                end,
+            log(Debug, "await_signing(~p, ~p, ~p, ~p) <- ~p",
+                [Tag, Pub, [P || #{pub := P} <- OtherSigs], Fsm, Msg]),
+            {[Signer1|_], SignedTx} =
+                lists:mapfoldl(
+                  fun(S, STx) ->
+                          {STx1, S1} =
+                              case SignatureType of
+                                  according_account -> co_sign_tx(S, STx, Cfg);
+                                  basic ->
+                                      #{priv := Priv} = S,
+                                      {aec_test_utils:co_sign_tx(STx, Priv), S}
+                              end,
+                          {S1, STx1}
+                  end, SignedTx0, [Signer|OtherSigs]),
             log(Debug,"SIGNED TX ~p", [SignedTx]),
             Action(Tag, Signer1, SignedTx, Updates)
     after Timeout ->
@@ -2420,7 +2437,7 @@ ttb_stop() ->
     Dir = aesc_ttb:stop(),
     Out = filename:join(filename:dirname(Dir),
 			filename:basename(Dir) ++ ".txt"),
-    case aesc_ttb:format(Dir, Out, #{limit => 30000}) of
+    case aesc_ttb:format(Dir, Out, #{limit => 50000}) of
         {error, Reason} ->
             ct:pal("TTB formatting error: ~p", [Reason]);
         _ ->
