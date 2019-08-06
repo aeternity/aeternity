@@ -2424,30 +2424,47 @@ sc_ws_basic_client_reconnect_(Role, Config0) ->
     #{ channel_id := ChId
      , Role := ConnPid } = Clients = ?config(channel_clients, Config),
     unlink(ConnPid),
-    exit(ConnPid, kill),
+    ?WS:stop(ConnPid),
     ct:log("ConnPid killed", []),
     timer:sleep(100),
-    update_error_with_client_disconnected(
-      other_role(Role), Clients#{Role => undefined}, Participants, Config),
+    OtherRole = other_role(Role),
+    {error, conflict}
+        = update_with_client_disconnected(
+            OtherRole, OtherRole, Clients#{Role => undefined},
+            Participants, Config),
+    ok = update_with_client_disconnected(
+           both, OtherRole, Clients#{Role => undefined},
+           Participants, Config),
     Config1 = reconnect_client_(ChId, Role, Pubkey, Privkey, Config),
     sc_ws_close_mutual_(Config1, Role).
 
-update_error_with_client_disconnected(Role, Clients, Participants, Config) ->
+update_with_client_disconnected(SignAs, Role, Clients, Participants, Config) ->
     OtherRole = other_role(Role),
     ConnPid = maps:get(Role, Clients),
     #{ pub_key  := FromPubkey
      , priv_key := FromPrivkey } = maps:get(Role, Participants),
-    #{ pub_key  := ToPubkey } = maps:get(OtherRole, Participants),
-    ok = ?WS:register_test_for_channel_events(ConnPid, [sign, conflict]),
+    #{ pub_key  := ToPubkey
+     , priv_key := ToPrivkey } = maps:get(OtherRole, Participants),
+    Privkeys = case SignAs of
+                   both ->
+                       [FromPrivkey, ToPrivkey];
+                   Role ->
+                       [FromPrivkey]
+               end,
+    ok = ?WS:register_test_for_channel_events(ConnPid, [sign, update, conflict]),
 
     SignUpdate =
-        fun (Pid, Privkey) ->
+        fun (Pid, Pkeys) ->
             case wait_for_channel_event(Pid, sign, Config) of
                 {ok, <<"update">>, #{<<"signed_tx">> := EncSignedTx0}} ->
                     {ok, SignedBinTx} =
                         aeser_api_encoder:safe_decode(transaction, EncSignedTx0),
                     STx = aetx_sign:deserialize_from_binary(SignedBinTx),
-                    SignedTx = aec_test_utils:co_sign_tx(STx, Privkey),
+                    SignedTx = lists:foldl(
+                                 fun(PK, STx1) ->
+                                         aec_test_utils:co_sign_tx(
+                                           STx1, PK)
+                                 end, STx, Pkeys),
                     EncSignedTx = aeser_api_encoder:encode(
                                     transaction,
                                     aetx_sign:serialize_to_binary(SignedTx)),
@@ -2462,13 +2479,21 @@ update_error_with_client_disconnected(Role, Clients, Participants, Config) ->
                      amount => 1}, Config),
 
     %% starter signs the new state
-    SignUpdate(ConnPid, FromPrivkey),
+    SignUpdate(ConnPid, Privkeys),
 
-    {ok, _} = wait_for_channel_event(ConnPid, conflict, Config),
+    Res = case SignAs of
+              both ->
+                  {ok, #{ <<"state">> := _NewState }}
+                      = wait_for_channel_event(ConnPid, update, Config),
+                  ok;
+              Role ->
+                  {ok, _} = wait_for_channel_event(ConnPid, conflict, Config),
+                  {error, conflict}
+          end,
 
-    ok = ?WS:unregister_test_for_channel_events(ConnPid, [sign, conflict]),
+    ok = ?WS:unregister_test_for_channel_events(ConnPid, [sign, update, conflict]),
 
-    ok.
+    Res.
 
 other_role(responder) -> initiator;
 other_role(initiator) -> responder.
