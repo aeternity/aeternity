@@ -192,8 +192,8 @@ compile(File) ->
     {ok, Cwd} = file:get_cwd(),
     {ok, Aevm} = aeso_compiler:file(FileName, [{backend, aevm}, {include, {file_system, [Cwd, CodeDir]}}]),
     {ok, Fate} =  aeso_compiler:file(FileName, [{backend, fate}, {include, {file_system, [Cwd, CodeDir]}}]),
-    ct:pal("Size aevm: ~p\n     fate: ~p\n", [byte_size(aect_sophia:serialize(Aevm)),
-                                              byte_size(aect_sophia:serialize(Fate))]),
+    ct:pal("Size aevm: ~p\n     fate: ~p\n", [byte_size(aect_sophia:serialize(Aevm, aect_test_utils:latest_sophia_contract_version())),
+                                              byte_size(aect_sophia:serialize(Fate, aect_test_utils:latest_sophia_contract_version()))]),
     {Aevm, Fate}.
 
 init() ->
@@ -223,7 +223,7 @@ contract_create(Trees, Sender, CompiledContract, Init, Args, Backend) ->
           nonce => nonce(Trees, Sender),
           deposit => 0,
           amount => 0,
-          code => aect_sophia:serialize(CompiledContract),
+          code => aect_sophia:serialize(CompiledContract, aect_test_utils:latest_sophia_contract_version()),
           call_data => CallData   %% Check this for Fate!
          },
     {ok, AeTx} = aect_create_tx:new(Tx),
