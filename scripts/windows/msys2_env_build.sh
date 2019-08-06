@@ -59,7 +59,7 @@ MSVC_ROOT="$(make_upath "${WIN_MSVC_ROOT}")"
 MSVC="$(make_upath "${WIN_MSVC}")"
 
 PATH="/usr/local/bin:/usr/bin:/bin:/c/Windows/system32:/c/Windows:/c/Windows/System32/Wbem:${PATH}"
-PATH="${HOME}/.local/bin:${MSVC}:${ERL_TOP}/bin:${PATH}:${ERL_TOP}/erts-${ERTS_VERSION}/bin:${MSYS2_ROOT}/mingw64/bin"
+PATH="${HOME}/.local/bin:${MSVC}:${ERL_TOP}/bin:${ERL_TOP}/erts-${ERTS_VERSION}/bin:${MSYS2_ROOT}/mingw64/bin:${PATH}"
 PATH="${JAVA_TOP}/bin:${PATH}"
 
 INCLUDE="${INCLUDE};${WIN_MSYS2_ROOT}\\mingw64\\include;${WIN_MSYS2_ROOT}\\usr\\include"
