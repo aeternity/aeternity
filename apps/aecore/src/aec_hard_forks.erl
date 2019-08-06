@@ -2,6 +2,7 @@
 
 -export([check_env/0]).
 -export([protocols/0,
+         fork/1,
          check_protocol_version_validity/2,
          protocol_effective_at_height/1,
          is_fork_height/1
@@ -30,8 +31,16 @@
                       | ?ROMA_PROTOCOL_VSN.
 -type protocols() :: #{protocol_vsn() => aec_blocks:height()}.
 
+-type fork() :: #{signalling_start_height => aec_blocks:height(),
+                  signalling_end_height   => aec_blocks:height(),
+                  signalling_block_count  => pos_integer(),
+                  fork_height             => aec_blocks:height(),
+                  info_field              => non_neg_integer(),
+                  version                 => version()}.
+
 -export_type([ protocols/0
              , protocol_vsn/0
+             , fork/0
              ]).
 %%%===================================================================
 %%% API
@@ -42,9 +51,17 @@ protocols() ->
     NetworkId = aec_governance:get_network_id(),
     protocols_from_network_id(NetworkId).
 
+%% If there is a fork specified in the config (fork_management > fork) and the
+%% Height parameter is less than or equal the fork height, the info about
+%% the fork is returned.
+-spec fork(aec_block:height()) -> fork() | undefined.
+fork(Height) ->
+    fork_from_height(Height).
+
 -spec check_env() -> ok.
 check_env() ->
-    assert_protocols(protocols()).
+    assert_protocols(protocols()),
+    assert_fork(fork_config()).
 
 -spec check_protocol_version_validity(version(), aec_blocks:height()) ->
                                          ok | {error, Reason} when
@@ -107,10 +124,20 @@ protocols_from_network_id(_ID) ->
              };
         M when is_map(M) ->
             maps:fold(fun(K, V, Acc) ->
-                              Acc#{binary_to_integer(K) => V} 
+                              Acc#{binary_to_integer(K) => V}
                       end, #{}, M)
     end.
 
+fork_from_height(Height) ->
+    case fork_config() of
+        #{fork_height := ForkHeight} = Fork ->
+            case Height =< ForkHeight of
+                true  -> Fork;
+                false -> undefined
+            end;
+        undefined ->
+            undefined
+    end.
 
 %% Exported for tests
 check_protocol_version_validity(Version, Height, Protocols) ->
@@ -143,6 +170,25 @@ protocol_effective_at_height(H, Protocols) ->
     {V, _} = lists:last(ProtocolsEffectiveSinceBeforeOrAtHeight),
     V.
 
+fork_config() ->
+    case aeu_env:user_map([<<"fork_management">>, <<"fork">>]) of
+        {ok, #{<<"signalling_start_height">> := SignallingStartHeight,
+               <<"signalling_end_height">> := SignallingEndHeight,
+               <<"signalling_block_count">> := SignallingBlockCount,
+               <<"fork_height">> := ForkHeight,
+               <<"info_field">> := InfoField,
+               <<"version">> := Version}} ->
+            #{signalling_start_height => SignallingStartHeight,
+              signalling_end_height => SignallingEndHeight,
+              signalling_block_count => SignallingBlockCount,
+              fork_height => ForkHeight,
+              info_field => InfoField,
+              %% TODO: encoded info_field?
+              version => Version};
+        undefined ->
+            undefined
+    end.
+
 assert_protocols(M) ->
     GenesisVersion = aec_block_genesis:version(),
     Vs = [GenesisVersion | _] = sorted_protocol_versions(),
@@ -154,7 +200,6 @@ assert_protocols(M) ->
     {[], _} = {Vs -- maps:keys(M), check_no_missing_protocol_versions},
     assert_heights_strictly_increasing(M),
     ok.
-
 
 assert_height(H) ->
     case is_integer(H) andalso H >= aec_block_genesis:height() of
@@ -182,3 +227,39 @@ is_valid_next_protocol({CurV, CurH}, {PrevV, PrevH}) when CurV > PrevV,
     true;
 is_valid_next_protocol(_, _) ->
     false.
+
+assert_fork(#{signalling_start_height := SignallingStartHeight,
+              signalling_end_height := SignallingEndHeight,
+              signalling_block_count := SignallingBlockCount,
+              fork_height := ForkHeight, info_field := _InfoField,
+              version := Version}) ->
+    assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight),
+    SignallingInterval = SignallingEndHeight - SignallingStartHeight,
+    assert_fork_signalling_block_count(SignallingInterval, SignallingBlockCount),
+    assert_fork_height(SignallingEndHeight, ForkHeight),
+    assert_fork_version(Version);
+assert_fork(undefined) ->
+    ok.
+
+assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight)
+  when SignallingStartHeight < SignallingEndHeight ->
+    ok;
+assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight) ->
+    error({illegal_fork_signalling_interval, SignallingStartHeight, SignallingEndHeight}).
+
+assert_fork_signalling_block_count(SignallingInterval, SignallingBlockCount)
+  when SignallingBlockCount =< SignallingInterval ->
+    ok;
+assert_fork_signalling_block_count(_SignallingInterval, SignallingBlockCount) ->
+    error({illegal_fork_signalling_block_count, SignallingBlockCount}).
+
+assert_fork_height(SignallingEndHeight, ForkHeight)
+  when ForkHeight > SignallingEndHeight ->
+    ok;
+assert_fork_height(_SignallingEndHeight, ForkHeight) ->
+    error({illegal_fork_height, ForkHeight}).
+
+assert_fork_version(Version) when Version > ?LIMA_PROTOCOL_VSN ->
+    ok;
+assert_fork_version(Version) ->
+    error({illegal_fork_version, Version}).

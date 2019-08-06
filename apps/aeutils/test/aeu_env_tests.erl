@@ -28,7 +28,15 @@ extra_checks_test_() ->
      [{"User configuration cannot contain both 'mining > cuckoo > edge_bits' and deprecated 'mining > cuckoo > miner'",
        fun deprecated_miner_section_conflicting_with_edge_bits/0},
       {"User configuration cannot contain both 'mining > cuckoo > miners' and deprecated 'mining > cuckoo > miner'",
-       fun deprecated_miner_section_conflicting_with_miners/0}]
+       fun deprecated_miner_section_conflicting_with_miners/0},
+      {"User configuration cannot contain 'fork_management > fork > signalling_start_height' greater or equal to 'fork_management > fork > signalling_end_height'",
+       fun invalid_fork_signalling_interval/0},
+      {"User configuration cannot contain 'fork_management > fork > signalling_block_count' greater than signalling interval",
+       fun invalid_fork_signalling_block_count/0},
+      {"User configuration cannot contain 'fork_management > fork > fork_height' lower or equal to 'fork_management > fork > signalling_end_height'",
+       fun invalid_fork_height/0},
+      {"User configuration cannot contain 'fork_management > fork > version' lower or equal to Lima protocol version (4)",
+       fun invalid_fork_version/0}]
      ++ positive_extra_checks_tests()}.
 
 positive_extra_checks_tests() ->
@@ -54,6 +62,34 @@ deprecated_miner_section_conflicting_with_miners() ->
     {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
     ok = mock_user_config(UserMap, UserConfig),
     ?assertExit(cuckoo_config_validation_failed, aec_mining:check_env()).
+
+invalid_fork_signalling_interval() ->
+    {Dir, DataDir} = get_test_config_base(),
+    Config = filename:join([Dir, DataDir, "epoch_invalid_fork_signalling_interval.yaml"]),
+    {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
+    ok = mock_user_config(UserMap, UserConfig),
+    ?assertError({illegal_fork_signalling_interval, _, _}, aec_hard_forks:check_env()).
+
+invalid_fork_signalling_block_count() ->
+    {Dir, DataDir} = get_test_config_base(),
+    Config = filename:join([Dir, DataDir, "epoch_invalid_fork_signalling_block_count.yaml"]),
+    {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
+    ok = mock_user_config(UserMap, UserConfig),
+    ?assertError({illegal_fork_signalling_block_count, _}, aec_hard_forks:check_env()).
+
+invalid_fork_height() ->
+    {Dir, DataDir} = get_test_config_base(),
+    Config = filename:join([Dir, DataDir, "epoch_invalid_fork_height.yaml"]),
+    {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
+    ok = mock_user_config(UserMap, UserConfig),
+    ?assertError({illegal_fork_height, _}, aec_hard_forks:check_env()).
+
+invalid_fork_version() ->
+    {Dir, DataDir} = get_test_config_base(),
+    Config = filename:join([Dir, DataDir, "epoch_invalid_fork_version.yaml"]),
+    {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
+    ok = mock_user_config(UserMap, UserConfig),
+    ?assertError({illegal_fork_version, _}, aec_hard_forks:check_env()).
 
 %%%===================================================================
 %%% Internal functions
