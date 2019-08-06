@@ -49,16 +49,16 @@
 -define(MINER_NODE1,
         #{name            => miner_node1,
           peers           => [miner_node2, miner_node3],
+          mining          => #{autostart => true},
           fork_management => ?FORK,
-          mine_rate       => 1000,
           backend         => aest_docker,
           source          => {pull, "aeternity/aeternity:local"}}).
 
 -define(MINER_NODE2,
         #{name            => miner_node2,
           peers           => [miner_node1, miner_node3],
+          mining          => #{autostart => true},
           fork_management => ?FORK,
-          mine_rate       => 1000,
           backend         => aest_docker,
           source          => {pull, "aeternity/aeternity:local"}}).
 
@@ -66,7 +66,7 @@
 -define(MINER_NODE3,
         #{name            => miner_node3,
           peers           => [miner_node1, miner_node2],
-          mine_rate       => 1000000, %% The node shouldn't mine so it doesn't produce blocks with wrong info field.
+          mining          => #{autostart => false},
           backend         => aest_docker,
           source          => {pull, "aeternity/aeternity:local"}}).
 
