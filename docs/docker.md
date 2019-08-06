@@ -123,11 +123,8 @@ All local network nodes are configured with the same beneficiary account (for mo
 - private key secret: `secret`
 - key-pair binaries can be found [here](/docker/keys/beneficiary)
 
-Both external and internal API are exposed to the docker host, the URL pattern is as follows:
-- external API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/
-- internal API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/internal
-
-Websocket API is exposed to the docker host with following URL pattern:
+All APIs (external, internal and state channels websocket) are exposed to the docker host, the URL pattern is as follows:
+- external/internal API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/
 - channels API - ws://$DOCKER_HOST_ADDRESS:$NODE_PORT/channel
 
 Node ports:
