@@ -1039,7 +1039,7 @@ ga_attach_op(OwnerPubkey, GasLimit, GasPrice, ABIVersion, VMVersion,
       SerializedCode, AuthFun, CallData, Fee, Nonce}}.
 
 ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
-           VMVersion, SerializedCode, AuthFun, CallData, Fee, Nonce}, S) ->
+           VMVersion, SerializedCode, AuthFun, CallData0, Fee, Nonce}, S) ->
     assert_ga_active(S),
     RollbackS = S,
     TotalAmount    = Fee + GasLimit * GasPrice,
@@ -1047,7 +1047,7 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
     assert_basic_account(Account), %% No re-attach
     assert_account_balance(Account, TotalAmount),
     assert_ga_create_version(ABIVersion, VMVersion, S),
-    assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData, AuthFun, S),
+    CallData = assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData0, AuthFun, S),
     %% Charge the fee, the gas (the unused portion will be refunded)
     %% and the deposit (stored in the contract) to the contract owner (caller),
     CTVersion      = #{vm => VMVersion, abi => ABIVersion},
@@ -1176,14 +1176,14 @@ contract_create_op(OwnerPubkey, Amount, Deposit, GasLimit,
       CallData, Fee, Nonce}}.
 
 contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
-                 ABIVersion, VMVersion, SerializedCode, CallData, Fee, Nonce0},
+                 ABIVersion, VMVersion, SerializedCode, CallData0, Fee, Nonce0},
                 S) ->
     RollbackS = S,
     TotalAmount    = Amount + Deposit + Fee + GasLimit * GasPrice,
     {Account, S1}  = get_account(OwnerPubkey, S),
     assert_account_balance(Account, TotalAmount),
     assert_contract_create_version(ABIVersion, VMVersion, S),
-    assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S),
+    CallData = assert_contract_byte_code(ABIVersion, SerializedCode, CallData0, S),
     %% Charge the fee, the gas (the unused portion will be refunded)
     %% and the deposit (stored in the contract) to the contract owner (caller),
     %% and transfer the funds (amount) to the contract account.
@@ -1202,21 +1202,6 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
     init_contract(contract, OwnerId, Contract, GasLimit, GasPrice,
                   CallData, OwnerPubkey, Fee, Nonce0, RollbackS, S4).
 
-init_contract(Context, OwnerId, Contract, GasLimit, GasPrice, CallData,
-              OwnerPubkey, Fee, Nonce, RollbackS, S) ->
-    {InitCall, S1} = run_contract(OwnerId, Contract, GasLimit, GasPrice,
-                                  CallData, OwnerPubkey, _InitAmount = 0,
-                                  _CallStack = [], Nonce, S),
-    case aect_call:return_type(InitCall) of
-        error ->
-            contract_call_fail(InitCall, Fee, RollbackS);
-        revert ->
-            contract_call_fail(InitCall, Fee, RollbackS);
-        ok ->
-            contract_init_call_success(Context, InitCall, Contract,
-                                       GasLimit, Fee, RollbackS, S1)
-    end.
-
 %%%-------------------------------------------------------------------
 
 tx_event_op(Name) ->
@@ -1226,6 +1211,35 @@ tx_event(Name, #state{tx_env = Env} = S) ->
     S#state{tx_env = aetx_env:tx_event(Name, Env)}.
 
 %%%-------------------------------------------------------------------
+
+init_contract(Context, OwnerId, Contract, GasLimit, GasPrice, CallData,
+              OwnerPubkey, Fee, Nonce, RollbackS, S) ->
+    S1 = prepare_init_call(Contract, S),
+    {InitCall, S2} = run_contract(OwnerId, Contract, GasLimit, GasPrice,
+                                  CallData, OwnerPubkey, _InitAmount = 0,
+                                  _CallStack = [], Nonce, S1),
+    case aect_call:return_type(InitCall) of
+        error ->
+            contract_call_fail(InitCall, Fee, RollbackS);
+        revert ->
+            contract_call_fail(InitCall, Fee, RollbackS);
+        ok ->
+            contract_init_call_success(Context, InitCall, Contract,
+                                       GasLimit, Fee, RollbackS, S2)
+    end.
+
+prepare_init_call(Contract, S) ->
+    case aect_contracts:ct_version(Contract) of
+        #{vm := V} when ?IS_FATE_SOPHIA(V) ->
+            %% In FATE we need to set up the store before the init call. This
+            %% is because the FATE init function writes to the store explicitly
+            %% instead of returning the initial state like the AEVM. This allows
+            %% the compiler to decide the store layout.
+            Store     = aect_contracts_store:new(),
+            Contract1 = aect_contracts:set_state(Store, Contract),
+            put_contract(Contract1, S);
+        _ -> S
+    end.
 
 contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
     ReturnValue = aect_call:return_value(InitCall),
@@ -1250,16 +1264,12 @@ contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S
                     contract_call_fail(FailCall, Fee, RollbackS)
             end;
         #{vm := V} when ?IS_FATE_SOPHIA(V) ->
-            %% TODO: For now assume that the full state is in key 1
-            Store0 = aect_contracts_store:new(),
-            Store = aect_contracts_store:put(<<1>>, ReturnValue, Store0),
-            Contract1 = aect_contracts:set_state(Store, Contract),
-            S1 = put_contract(Contract1, S),
+            %% The store has already been written by the INIT function.
             case Type of
                 contract ->
-                    contract_call_success(InitCall1, GasLimit, S1);
+                    contract_call_success(InitCall1, GasLimit, S);
                 {attach, AuthFun} ->
-                    ga_attach_success(InitCall1, GasLimit, AuthFun, S1)
+                    ga_attach_success(InitCall1, GasLimit, AuthFun, S)
             end;
         #{vm := ?VM_AEVM_SOLIDITY_1} ->
             %% Solidity inital call returns the code to store in the contract.
@@ -1611,6 +1621,7 @@ assert_name_claimed(Name) ->
         revoked -> runtime_error(name_revoked)
     end.
 
+%% Note: returns updated calldata for FATE
 assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData, FunHash, S)
   when ABIVersion =:= ?ABI_AEVM_SOPHIA_1;
        ABIVersion =:= ?ABI_FATE_SOPHIA_1 ->
@@ -1618,15 +1629,15 @@ assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData, FunHash, S)
         #{type_info := TypeInfo, contract_vsn := Vsn, byte_code := ByteCode} ->
             case aect_sophia:is_legal_serialization_at_height(Vsn, S#state.height) of
                 true ->
-                    assert_contract_init_function(ABIVersion, CallData, TypeInfo),
-                    assert_auth_function(ABIVersion, FunHash, TypeInfo, ByteCode);
+                    assert_auth_function(ABIVersion, FunHash, TypeInfo, ByteCode),
+                    assert_contract_init_function(ABIVersion, CallData, TypeInfo);
                 false ->
                     runtime_error(illegal_contract_compiler_version)
             end
     catch _:_ -> runtime_error(bad_sophia_code)
     end.
 
-
+%% Note: returns updated calldata for FATE
 assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S)
   when ABIVersion =:= ?ABI_AEVM_SOPHIA_1;
        ABIVersion =:= ?ABI_FATE_SOPHIA_1 ->
@@ -1641,21 +1652,21 @@ assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S)
             end
     catch _:_ -> runtime_error(bad_sophia_code)
     end;
-assert_contract_byte_code(?ABI_SOLIDITY_1, _SerializedCode, _CallData, _S) ->
-    ok.
+assert_contract_byte_code(?ABI_SOLIDITY_1, _SerializedCode, CallData, _S) ->
+    CallData.
 
 assert_contract_init_function(?ABI_FATE_SOPHIA_1, CallData,_TypeInfo) ->
-    case aefa_fate:is_init_calldata(CallData) of
-        true  ->
-            ok;
-        false ->
+    case aefa_fate:verify_init_calldata(CallData) of
+        {ok, CallData1} ->
+            CallData1;
+        error ->
             runtime_error(bad_init_function)
     end;
 assert_contract_init_function(?ABI_AEVM_SOPHIA_1, CallData, TypeInfo) ->
     case aeb_aevm_abi:get_function_hash_from_calldata(CallData) of
         {ok, Hash} ->
             case aeb_aevm_abi:function_name_from_type_hash(Hash, TypeInfo) of
-                {ok, <<"init">>} -> ok;
+                {ok, <<"init">>} -> CallData;
                 _ -> runtime_error(bad_init_function)
             end;
         _Other -> runtime_error(bad_init_function)

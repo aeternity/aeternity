@@ -13,7 +13,7 @@
         , final_trees/1
         , return_value/1
         , tx_env/1
-        , is_init_calldata/1
+        , verify_init_calldata/1
         , is_valid_calldata/1
         ]).
 
@@ -107,26 +107,30 @@ logs(EngineState) ->
 final_trees(EngineState) ->
     aefa_chain_api:final_trees(aefa_engine_state:chain_api(EngineState)).
 
-is_init_calldata(CallData) ->
-    is_valid_calldata(CallData, <<"init">>).
+verify_init_calldata(CallData) ->
+    Init = aeb_fate_code:symbol_identifier(<<"init">>),
+    INIT = aeb_fate_code:symbol_identifier(<<"INIT">>),
+    case decode_calldata(CallData) of
+        {Init, Args} -> {ok, encode_calldata(INIT, Args)};
+        _            -> error
+    end.
 
 is_valid_calldata(CallData) ->
-    is_valid_calldata(CallData, any).
+    case decode_calldata(CallData) of
+        {_FHash, _Args} -> true;
+        false           -> false
+    end.
 
-is_valid_calldata(CallData, Name) ->
+encode_calldata(FHash, Args) ->
+    aeb_fate_encoding:serialize(?FATE_TUPLE({FHash, Args})).
+
+decode_calldata(CallData) ->
     try aeb_fate_encoding:deserialize(CallData) of
         Decoded when ?IS_FATE_TUPLE(Decoded) ->
             case ?FATE_TUPLE_ELEMENTS(Decoded) of
                 [FHash, Args] when ?IS_FATE_TUPLE(Args),
                                    ?IS_FATE_STRING(FHash) ->
-                    case Name =:= any of
-                        true ->
-                            true;
-                        false ->
-                            String = ?FATE_STRING_VALUE(FHash),
-                            ID = aeb_fate_code:symbol_identifier(Name),
-                            String =:= ID
-                    end;
+                    {FHash, Args};
                 _ ->
                     false
             end;

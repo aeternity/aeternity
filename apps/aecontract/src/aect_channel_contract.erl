@@ -23,29 +23,30 @@ new(Owner, Round, CTVersion, Code, Deposit, Trees0) ->
 -spec run_new(aect_contracts:pubkey(), aect_call:call(), binary(),
               aec_trees:trees(), aec_trees:trees(),
               aetx_env:env()) -> aec_trees:trees().
-run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
+run_new(ContractPubKey, Call, CallData0, Trees0, OnChainTrees,
         OnChainEnv) ->
     ContractsTree  = aec_trees:contracts(Trees0),
-    Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
-    OwnerPubKey = aect_contracts:owner_pubkey(Contract),
-    Code = aect_contracts:code(Contract),
-    Store = aect_contracts:state(Contract),
+    Contract0 = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
+    OwnerPubKey = aect_contracts:owner_pubkey(Contract0),
+    Code = aect_contracts:code(Contract0),
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
-    VmVersion = aect_contracts:vm_version(Contract),
+    VmVersion = aect_contracts:vm_version(Contract0),
     %% Assert VmVersion before running!
     [error({illegal_vm_version, VmVersion}) || not ?IS_AEVM_SOPHIA(VmVersion) andalso
                                                not ?IS_FATE_SOPHIA(VmVersion)],
-    assert_init_function(CallData, VmVersion, Code),
+    CallData = assert_init_function(CallData0, VmVersion, Code),
+    {Contract, Trees1} = prepare_init_call(VmVersion, Contract0, Trees0),
+    Store = aect_contracts:state(Contract),
     CallDef = make_call_def(OwnerPubKey, ContractPubKey,
                             _Gas = 1000000, _GasPrice = 1,
                             _Amount = 0, %TODO: make this configurable
-                            CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
+                            CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees1),
     CTVersion = aect_contracts:ct_version(Contract),
     {CallRes, Trees, _} = aect_dispatch:run(CTVersion, CallDef),
     case aect_call:return_type(CallRes) of
         ok ->
-            Trees1 = aect_utils:insert_call_in_trees(CallRes, Trees),
+            Trees2 = aect_utils:insert_call_in_trees(CallRes, Trees),
             %% Save the initial state (returned by `init`) in the store.
             InitState = aect_call:return_value(CallRes),
             case CTVersion of
@@ -54,32 +55,36 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
                     case aevm_eeevm_store:from_sophia_state(CTVersion, InitState) of
                         {ok, Store1} ->
                             Contract1 = aect_contracts:set_state(Store1, Contract),
-                            ContractsTree0 = aec_trees:contracts(Trees1),
+                            ContractsTree0 = aec_trees:contracts(Trees2),
                             ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),
-                            aec_trees:set_contracts(Trees1, ContractsTree1);
+                            aec_trees:set_contracts(Trees2, ContractsTree1);
                         E = {error, _} ->
                             lager:debug("Init error ~w ~w",[E, CallRes]),
                             erlang:error(contract_init_failed)
                     end;
                 #{vm := V} when ?IS_FATE_SOPHIA(V) ->
-                    %% TODO: For now assume that the full state is in key 1
-                    Store0 = aect_contracts_store:new(),
-                    Store1 = aect_contracts_store:put(<<1>>, InitState, Store0),
-                    Contract1 = aect_contracts:set_state(Store1, Contract),
-                    ContractsTree0 = aec_trees:contracts(Trees1),
-                    ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),
-                    aec_trees:set_contracts(Trees1, ContractsTree1)
+                    %% The store is written by the INIT function
+                    Trees2
             end;
         E ->
             lager:debug("Init call error ~w ~w",[E, CallRes]),
             erlang:error(contract_init_failed)
     end.
 
+prepare_init_call(VmVersion, Contract, Trees0) when ?IS_FATE_SOPHIA(VmVersion) ->
+    %% Initialize the store before calling INIT
+    Store = aect_contracts_store:new(),
+    Contract1 = aect_contracts:set_state(Store, Contract),
+    ContractsTree0 = aec_trees:contracts(Trees0),
+    ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),
+    {Contract1, aec_trees:set_contracts(Trees0, ContractsTree1)};
+prepare_init_call(_, Contract, Trees0) -> {Contract, Trees0}.
+
 assert_init_function(CallData, VMVersion,_SerializedCode) when ?IS_FATE_SOPHIA(VMVersion) ->
-    case aefa_fate:is_init_calldata(CallData) of
-        true ->
-            ok;
-        false ->
+    case aefa_fate:verify_init_calldata(CallData) of
+        {ok, CallData1} ->
+            CallData1;
+        error ->
             error(contract_init_failed)
     end;
 assert_init_function(CallData, VMVersion, SerializedCode) when ?IS_AEVM_SOPHIA(VMVersion) ->
@@ -88,7 +93,7 @@ assert_init_function(CallData, VMVersion, SerializedCode) when ?IS_AEVM_SOPHIA(V
             case aeb_aevm_abi:get_function_hash_from_calldata(CallData) of
                 {ok, Hash} ->
                     case aeb_aevm_abi:function_name_from_type_hash(Hash, TypeInfo) of
-                        {ok, <<"init">>} -> ok;
+                        {ok, <<"init">>} -> CallData;
                         _ -> error(contract_init_failed)
                     end;
                 _Other -> error(contract_init_failed)
