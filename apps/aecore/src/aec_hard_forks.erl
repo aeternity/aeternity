@@ -31,12 +31,12 @@
                       | ?ROMA_PROTOCOL_VSN.
 -type protocols() :: #{protocol_vsn() => aec_blocks:height()}.
 
--type fork() :: #{signalling_start_height => aec_blocks:height(),
-                  signalling_end_height   => aec_blocks:height(),
-                  signalling_block_count  => pos_integer(),
-                  fork_height             => aec_blocks:height(),
-                  info_field              => non_neg_integer(),
-                  version                 => version()}.
+-type fork() :: #{signalling_start_height := aec_blocks:height(),
+                  signalling_end_height   := aec_blocks:height(),
+                  signalling_block_count  := pos_integer(),
+                  fork_height             := aec_blocks:height(),
+                  info_field              := non_neg_integer(),
+                  version                 := version()}.
 
 -export_type([ protocols/0
              , protocol_vsn/0
