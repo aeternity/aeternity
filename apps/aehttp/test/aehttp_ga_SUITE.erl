@@ -199,7 +199,7 @@ attach_account(Pub, Priv, _Config) ->
     ct:pal("Cost: ~p", [Bal0 - Bal1]),
     MGP = aec_test_utils:min_gas_price(),
     AEVMBal = Bal0 - 1000000 * MGP - 411 * MGP,
-    FATEBal = Bal0 - 1000000 * MGP - 10 * MGP,
+    FATEBal = Bal0 - 1000000 * MGP - 19 * MGP,
     ?assertMatchABI(AEVMBal, FATEBal, Bal1),
     ok.
 
