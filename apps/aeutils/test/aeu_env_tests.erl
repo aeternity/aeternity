@@ -35,7 +35,7 @@ extra_checks_test_() ->
        fun invalid_fork_signalling_block_count/0},
       {"User configuration cannot contain 'fork_management > fork > fork_height' lower or equal to 'fork_management > fork > signalling_end_height'",
        fun invalid_fork_height/0},
-      {"User configuration cannot contain 'fork_management > fork > version' lower or equal to Lima protocol version (4)",
+      {"User configuration cannot contain 'fork_management > fork > version' lower or equal to Minerva protocol version (2)",
        fun invalid_fork_version/0}]
      ++ positive_extra_checks_tests()}.
 

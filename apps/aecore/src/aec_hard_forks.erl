@@ -259,7 +259,7 @@ assert_fork_height(SignallingEndHeight, ForkHeight)
 assert_fork_height(_SignallingEndHeight, ForkHeight) ->
     error({illegal_fork_height, ForkHeight}).
 
-assert_fork_version(Version) when Version > ?LIMA_PROTOCOL_VSN ->
+assert_fork_version(Version) when Version > ?MINERVA_PROTOCOL_VSN ->
     ok;
 assert_fork_version(Version) ->
     error({illegal_fork_version, Version}).

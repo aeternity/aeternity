@@ -5,4 +5,4 @@ fork_management:
         signalling_block_count: 99
         fork_height: 1150
         info_field: 987654321
-        version: 4
+        version: 2
