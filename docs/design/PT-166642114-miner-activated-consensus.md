@@ -29,6 +29,7 @@ By exploiting such current design, the expected consensus protocol version of a 
   These blocks are not validated.
   This includes the cases of:
   - Locally mined or signed block.
+  - Mined block submitted by Stratum mining pool server (if node configured as Stratum server).
 - A block candidate (eventually leading to a trusted block) is prepared.
   This includes the cases of key block and micro block.
 
@@ -51,7 +52,7 @@ Specifically, the contexts in which the consensus version must be checked before
 - The peer connection / gossip process.
 - The HTTP user API worker.
 
-For blocks mined or signed locally, the conductor must instruct the generation of the block candidate with the correct consensus protocol version.
+For trusted blocks, the conductor must instruct the generation of the block candidate with the correct consensus protocol version.
 
 ###### Asynchronous computation of expected consensus protocol version
 
