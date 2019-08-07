@@ -788,10 +788,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     {UpdatesR, UpdatesS} = {UpdatesS, UpdatesR},   % verify that they are identical
 
     {ok, #{<<"state">> := NewState}} = wait_for_channel_event(IConnPid, update, Config),
-    ct:log("NewState: ~p", [NewState]),
-    Wtf = wait_for_channel_event(RConnPid, update, Config),
-    ct:log("NewState2: ~p", [Wtf]),
-    {ok, #{<<"state">> := NewState}} = Wtf,
+    {ok, #{<<"state">> := NewState}} = wait_for_channel_event(RConnPid, update, Config),
     {ok, SignedStateTxBin} = aeser_api_encoder:safe_decode(transaction, NewState),
     SignedStateTx = aetx_sign:deserialize_from_binary(SignedStateTxBin),
 
@@ -2277,14 +2274,11 @@ call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
         CallOpts#{call_data => <<"ABCDEFG">>}, Config),
     {ok, #{<<"reason">> := <<"broken_encoding: bytearray">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
-    ct:log("BROKEN CONTRACT ID"),
     ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
         CallOpts#{contract_id => <<"ABCDEFG">>}, Config),
-    ct:log("WAIT"),
     {ok, #{<<"reason">> := <<"broken_encoding: contracts">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
     % correct call
-    ct:log("CORRECT"),
     ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
                    CallOpts, Config),
     #{tx := _UnsignedStateTx, updates := _Updates} = UpdateVolley().
@@ -2320,14 +2314,11 @@ dry_call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
                    CallOpts#{call_data => <<"ABCDEFG">>}, Config),
     {ok, #{<<"reason">> := <<"broken_encoding: bytearray">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
-    ct:log("[1] BROKEN contract id"),
     ws_send_tagged(SenderConnPid, <<"channels.dry_run.call_contract">>,
                    CallOpts#{contract_id => <<"ABCDEFG">>}, Config),
     {ok, #{<<"reason">> := <<"broken_encoding: contracts">>}} =
         wait_for_channel_event(SenderConnPid, error, Config),
-    ct:log("[1] CLEAN"),
     {ok, <<"call_contract">>, CallRes} = wait_for_channel_event(SenderConnPid, dry_run, Config),
-    ct:log("WTF: ~p", [CallRes]),
     ok = ?WS:unregister_test_for_channel_event(SenderConnPid, dry_run),
     #{<<"caller_id">>         := _CallerId,
       <<"caller_nonce">>      := CallRound,
@@ -3067,6 +3058,12 @@ sc_ws_cheating_close_solo_(Config, ChId, Poi, WhoCloses) ->
 sc_ws_leave_reestablish(Config0) ->
     Config = sc_ws_open_(Config0),
     ReestablishOptions = sc_ws_leave_(Config),
+
+    %% Test invalid password
+    ReestablishOptionsBroken = ReestablishOptions#{state_password => ?CACHE_DEFAULT_PASSWORD "_bogus"},
+    Roles = [initiator, responder],
+    [sc_ws_test_broken_params(Role, Config, ReestablishOptionsBroken, <<"Invalid password">>, Config) || Role <- Roles],
+
     Config1 = sc_ws_reestablish_(ReestablishOptions, Config),
     ok = sc_ws_update_(Config1),
     ok = sc_ws_close_(Config1).
@@ -3654,6 +3651,17 @@ account_type(Pubkey) ->
     {value, Account} = rpc(aec_chain, get_account, [Pubkey]),
     aec_accounts:type(Account).
 
+sc_ws_test_broken_params(Role, Config, Opts, Error, Config) ->
+    {ok, Pid} = channel_ws_start(Role,
+                                       maps:put(host, <<"localhost">>,
+                                                Opts), Config),
+    ok = ?WS:register_test_for_channel_events(Pid, [closed, error]),
+    {ok, #{<<"reason">> := Error}}
+        = wait_for_channel_event(Pid, error, Config),
+    try ok = ?WS:wait_for_event(Pid, websocket, closed)
+    catch error:{connection_died, _Reason} -> ok
+    end.
+
 sc_ws_broken_open_params(Config) ->
     #{initiator := #{pub_key := IPubkey},
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
@@ -3663,17 +3671,10 @@ sc_ws_broken_open_params(Config) ->
 
     BogusPubkey = <<42:32/unit:8>>,
 
+    Roles = [initiator, responder],
     Test =
         fun(Opts, Error) ->
-            {ok, IConnPid} = channel_ws_start(initiator,
-                                               maps:put(host, <<"localhost">>,
-                                                        Opts), Config),
-            ok = ?WS:register_test_for_channel_events(IConnPid, [closed, error]),
-            {ok, #{<<"reason">> := Error}}
-                = wait_for_channel_event(IConnPid, error, Config),
-            try ok = ?WS:wait_for_event(IConnPid, websocket, closed)
-            catch error:{connection_died, _Reason} -> ok
-            end
+            [sc_ws_test_broken_params(Role, Config, Opts, Error, Config) || Role <- Roles]
         end,
 
     %% test initiator pubkey missing
@@ -3710,6 +3711,20 @@ sc_ws_broken_open_params(Config) ->
     ChannelOpts8 = channel_options(IPubkey, RPubkey, IAmt, RAmt,
                                    #{lock_period => -1}, Config),
     Test(ChannelOpts8, <<"Value too low">>),
+
+    % test weak state passwords
+    ChannelOpts9 = channel_options(IPubkey, RPubkey, IAmt, RAmt,
+                                   #{state_password => "1234"}, Config),
+    Test(ChannelOpts9, <<"Invalid password">>),
+
+    % test that after the lima fork the password is required
+    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+        true ->
+            ChannelOpts10 = maps:remove(state_password, ChannelOpts9),
+            Test(ChannelOpts10, <<"password required since lima fork">>);
+        false ->
+            ok
+    end,
     ok.
 
 sc_ws_pinned_update(Cfg) ->

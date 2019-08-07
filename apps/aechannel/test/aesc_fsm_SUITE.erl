@@ -1092,6 +1092,8 @@ deposit_(#{fsm := FsmI} = I, R, Deposit, Opts, Round1, Debug, Cfg) ->
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
     Expected = {IAmt2, RAmt2},
     {Expected, Expected} = {{IAmt0 + Deposit, RAmt0}, Expected},
+    SignedTx = await_on_chain_report(I1, #{info => channel_changed}, ?TIMEOUT), % same tx
+    SignedTx = await_on_chain_report(R1, #{info => channel_changed}, ?TIMEOUT), % same tx
     {ok, I1, R1}.
 
 withdraw(Cfg) ->

@@ -47,8 +47,7 @@
 -ifdef(TEST).
 -export([
          mock_kdf_init/0,
-         mock_kdf_end/0,
-         generate_session_key/2
+         mock_kdf_end/0
         ]).
 -endif.
 

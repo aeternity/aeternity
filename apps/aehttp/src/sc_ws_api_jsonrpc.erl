@@ -173,11 +173,12 @@ json_rpc_error_object(not_a_number        , R) -> error_obj(3     , [1008], R);
 json_rpc_error_object(participant_not_found, R)-> error_obj(3     , [1011], R);
 json_rpc_error_object(not_offchain_tx     , R) -> error_obj(2     , [1012], R);
 json_rpc_error_object(already_onchain     , R) -> error_obj(3     , [1013], R);
+json_rpc_error_object({meta, invalid}     , R) -> error_obj(3     , [1014], R);
+json_rpc_error_object(error_code          , R) -> error_obj(3     , [1015], R);
+json_rpc_error_object(invalid_password    , R) -> error_obj(3     , [1016], R);
 json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
-json_rpc_error_object({meta, invalid}     , R) -> error_obj(3     , [1014], R);
 json_rpc_error_object(not_found           , R) -> error_obj(3     , [100] , R);
-json_rpc_error_object(error_code          , R) -> error_obj(3     , [1015], R);
 json_rpc_error_object(Other               , R) ->
     lager:debug("Unrecognized error reason: ~p", [Other]),
     error_obj(-32603        , R).
@@ -250,6 +251,7 @@ error_data_msgs() ->
      , 1013 => <<"Tx already on-chain">>
      , 1014 => <<"Invalid meta object">>
      , 1015 => <<"Invalid error code (expect 1...65535)">>
+     , 1016 => <<"Invalid password">>
      }.
 
 broken_encoding_code(account    ) -> 1005;

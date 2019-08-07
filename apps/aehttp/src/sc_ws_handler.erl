@@ -90,16 +90,16 @@ websocket_init_reconnect(#{ <<"reconnect_tx">> := ReconnectTx } = Params) ->
     end.
 
 handler_init_error(Err, Handler) ->
-    HandledErrors =[{not_found, participant_not_found},
+    HandledErrors =[{not_found                    , participant_not_found},
                     {insufficient_initiator_amount, value_too_low},
                     {insufficient_responder_amount, value_too_low},
-                    {insufficient_amounts, value_too_low},
-                    {channel_reserve_too_low, value_too_low},
-                    {push_amount_too_low, value_too_low},
-                    {lock_period_too_low, value_too_low},
-                    {invalid_password, invalid_password},
-                    {weak_password, weak_password},
-                    {password_required_since_lima, password_required_since_lima}
+                    {insufficient_amounts         , value_too_low},
+                    {channel_reserve_too_low      , value_too_low},
+                    {push_amount_too_low          , value_too_low},
+                    {lock_period_too_low          , value_too_low},
+                    {invalid_password             , invalid_password},
+                    {weak_password                , invalid_password},
+                    {password_required_since_lima , password_required_since_lima}
                    ],
     case proplists:get_value(Err, HandledErrors, not_handled_error) of
         not_handled_error ->
