@@ -71,8 +71,17 @@ immediately after the synchronous write call finishes from the point of view of 
 
 Callers requiring the signalling outcome for a certain block
 shall enquiry the chain storage and, if no outcome yet,
-ensure that there is a worker alive for that
-then yield (e.g. for sync worker process, for locally mined key blocks) or terminate (e.g. for block from user API or gossip).
+ensure that there is a worker alive for that then:
+- For sync worker process,
+  yield (`take_a_break`).
+- For user API worker process,
+  terminate returning 503 with reason "Computing miner signalling outcome".
+- For peer connection (gossip),
+  ignore logging info message.
+- For locally mined block (hence context of `aec_conductor` process),
+  ignore logging error message (as it should not have happened).
+- For mined block submitted by Stratum server (hence context of `aec_conductor` process),
+  ignore logging error message (as it should not have happened).
 
 ##### Blocks not necessarily connected to genesis
 
