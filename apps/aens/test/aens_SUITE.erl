@@ -655,7 +655,6 @@ subname(_Cfg) ->
 
     NTrees1 = aec_trees:ns(Trees1),
 
-    %% these were defined:
     {ok, SNameAscii1} = aens_utils:name_to_ascii(?SNAME1),
     SNameHash1 = aens_hash:name_hash(SNameAscii1),
     {value, SName1} = aens_state_tree:lookup_name(SNameHash1, NTrees1),
@@ -680,23 +679,12 @@ subname(_Cfg) ->
     <<"sub54321_acc">> = aens_pointer:key(Ptr54321),
     {id, account, SomePK} = aens_pointer:id(Ptr54321),
 
-    %% these were added to subname tree:
-    {ok, SNameAscii321} = aens_utils:name_to_ascii(?SNAME321),
-    SNameHash321 = aens_hash:name_hash(SNameAscii321),
-    {value, SName321} = aens_state_tree:lookup_name(SNameHash321, NTrees1),
-    [] = aens_subnames:pointers(SName321),
-
-    {ok, SNameAscii4321} = aens_utils:name_to_ascii(?SNAME4321),
-    SNameHash4321 = aens_hash:name_hash(SNameAscii4321),
-    {value, SName4321} = aens_state_tree:lookup_name(SNameHash4321, NTrees1),
-    [] = aens_subnames:pointers(SName4321),
-
     {SNameHashes, false} = aens_state_tree:subnames_hashes(NHash, NTrees1, all),
 
-    [] = SNameHashes -- [SNameHash1, SNameHash2, SNameHash21, SNameHash54321, SNameHash321, SNameHash4321],
+    [] = SNameHashes -- [SNameHash1, SNameHash2, SNameHash21, SNameHash54321],
 
     %% attempt to revoke existing subname
-    RevokeTxSpec = aens_test_utils:revoke_tx_spec(PubKey, SNameHash4321, S2),
+    RevokeTxSpec = aens_test_utils:revoke_tx_spec(PubKey, SNameHash21, S2),
     {'EXIT', {{illegal_field,name_id,id,
                {id,name, _}, id,
                {id,name, _}},
@@ -704,14 +692,14 @@ subname(_Cfg) ->
 
     %% attempt to transfer existing subname
     #{public := OtherPK} = enacl:sign_keypair(),
-    TransferTxSpec = aens_test_utils:transfer_tx_spec(PubKey, SNameHash4321, OtherPK, S2),
+    TransferTxSpec = aens_test_utils:transfer_tx_spec(PubKey, SNameHash21, OtherPK, S2),
     {'EXIT', {{illegal_field,name_id,id,
                {id,name, _}, id,
                {id,name, _}},
               [_|_]}} = (catch aens_transfer_tx:new(TransferTxSpec)),
 
     %% attempt to update existing subname
-    UpdateTxSpec = aens_test_utils:update_tx_spec(PubKey, SNameHash4321, S2),
+    UpdateTxSpec = aens_test_utils:update_tx_spec(PubKey, SNameHash21, S2),
     {'EXIT', {{illegal_field,name_id,id,
                {id,name, _}, id,
                {id,name, _}},

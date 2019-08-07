@@ -70,24 +70,25 @@ new(#{account_id := AccountId,
       fee        := Fee} = Args) ->
     account = aeser_id:specialize_type(AccountId),
     {name, Name} = aeser_id:specialize(NameId),
-    {ok, NameAscii} = aens_utils:to_ascii(Name),
-    case aens_subnames:toposort(Name, Definition) of
-        {error, [{ErrType, [ErrName | _]} | _]} ->
-            error({ErrType, ErrName});
-        {ok, [{1, [{_, NamePointers}]} | _]} when map_size(NamePointers) > 0 ->
-            error(cant_set_name_pointers_via_subname_tx);
-        {ok, [{1, [{OtherNameAscii, _}]} | _]} when NameAscii /= OtherNameAscii ->
-            error(subname_top_name_mismatch_tx);
-        {ok, AllNodes} ->
-            SubnameDefs = flatten_definition(AllNodes),
-            Tx = #ns_subname_tx{account_id = AccountId,
-                                nonce      = Nonce,
-                                name       = Name,
-                                definition = SubnameDefs,
-                                fee        = Fee,
-                                ttl        = maps:get(ttl, Args, 0)},
-            {ok, aetx:new(?MODULE, Tx)}
-    end.
+    SubnameDefs =
+        maps:fold(
+          fun (SName, SPointers, Acc) ->
+                  case aens_utils:top_name(SName) of
+                      {ok, subname, Name} ->
+                          {ok, SNameAscii} = aens_utils:ascii_encode(SName),
+                          [{list_to_binary(SNameAscii),
+                            pointers_list(SPointers)} | Acc];
+                      _ ->
+                          error({invalid_subname, SName})
+                  end
+          end, [], Definition),
+    Tx = #ns_subname_tx{account_id = AccountId,
+                        nonce      = Nonce,
+                        name       = Name,
+                        definition = SubnameDefs,
+                        fee        = Fee,
+                        ttl        = maps:get(ttl, Args, 0)},
+    {ok, aetx:new(?MODULE, Tx)}.
 
 
 -spec type() -> atom().
@@ -217,19 +218,10 @@ valid_at_protocol(_, _) ->
     true.
 
 
-flatten_definition([{1, [{_NameAscii, _}]} | ChildNodes]) ->
-    lists:flatten(
-      [lists:foldl(
-         fun ({SNameAscii, SPointers}, Acc) ->
-                 [{SNameAscii, pointers_list(SPointers)} | Acc]
-         end, [], Child) || {_, Child} <- ChildNodes]);
-flatten_definition(_) ->
-    [].
+map_pointers(Fun, Definition) ->
+    [{Subname, lists:map(Fun, Pointers)} || {Subname, Pointers} <- Definition].
 
 pointers_list(Pointers) when is_map(Pointers) ->
     maps:fold(fun (Key, Id, Acc) ->
                       [aens_pointer:new(Key, Id) | Acc]
               end, [], Pointers).
-
-map_pointers(Fun, Definition) ->
-    [{Subname, lists:map(Fun, Pointers)} || {Subname, Pointers} <- Definition].
