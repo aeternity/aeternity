@@ -655,13 +655,15 @@ get_logfile(Opts) ->
 
 open_log(_, undefined, _) ->
     undefined;
-open_log(#{name := Name, role := R} = L, F, R) ->
+open_log(#{name := Name, role := R, pid := LogPid} = L, F, R) ->
     case filename:basename(F) of
         Name ->
             L;
-        Other ->
-            %% ???
-            error({log_filename_change, [Name, Other]})
+        _Other ->
+            %% This can happen e.g. if a channel is set up during
+            %% init_per_group()
+            LogPid ! {self(), close},
+            open_log(undefined, F, R)
     end;
 open_log(undefined, F, Role) ->
     filelib:ensure_dir(F),
@@ -691,6 +693,8 @@ logger_loop(Parent, #{ log    := Log
     case receive Msg -> Msg end of
         {Parent, log, LogMsg} ->
             disk_log:blog(Log, LogMsg);
+        {Parent, close} ->
+            disk_log:close(Log);
         {'EXIT', Parent, Reason} ->
             logger_parent_died('EXIT', Reason, St);
         {'DOWN', MRef, process, _, Reason} ->
