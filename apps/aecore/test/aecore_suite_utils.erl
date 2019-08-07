@@ -36,6 +36,7 @@
          mine_key_blocks/3,
          mine_micro_blocks/2,
          mine_micro_blocks/3,
+         get_key_hash_by_delta/2,
          wait_for_height/2,
          flush_new_blocks/0,
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
@@ -1193,3 +1194,9 @@ meta_tx(Owner, AuthOpts, AuthData, InnerTx0) ->
     MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),
     aetx_sign:new(MetaTx, []).
 
+get_key_hash_by_delta(Node, Delta) ->
+    TopHeader = rpc(Node, aec_chain, top_header, []),
+    TopHeight = aec_headers:height(TopHeader),
+    {ok, Header} = rpc(Node, aec_chain, get_key_header_by_height, [TopHeight - Delta]),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    Hash.

@@ -127,24 +127,32 @@
 -define(LOG_CAUGHT(Err, _), lager:debug("CAUGHT ~p", [Err])).
 -endif.
 
+
+
+-record(bh_delta, { not_older_than  :: integer()
+                  , not_newer_than  :: integer()
+                  , pick            :: integer()
+                  }).
+
 %% ==================================================================
 %% Records and Types
 
--record(data, { role                          :: role()
-              , channel_status                :: undefined | attached | open | closing
-              , cur_statem_state              :: undefined | atom()
-              , state                         :: aesc_offchain_state:state() | function()
-              , session                       :: pid()
-              , client                        :: pid() | undefined
-              , client_mref                   :: reference() | undefined
-              , client_connected = true       :: boolean()
-              , client_may_disconnect = false :: boolean()
-              , client_reconnect_nonce = 0    :: non_neg_integer()
-              , opts                          :: map()
-              , channel_id                    :: undefined | binary()
-              , on_chain_id                   :: undefined | binary()
-              , create_tx                     :: undefined | any()
-              , watcher                       :: undefined | pid()
+-record(data, { role                            :: role()
+              , channel_status                  :: undefined | attached | open | closing
+              , cur_statem_state                :: undefined | atom()
+              , state                           :: aesc_offchain_state:state() | function()
+              , session                         :: pid()
+              , client                          :: pid() | undefined
+              , client_mref                     :: reference() | undefined
+              , client_connected = true         :: boolean()
+              , client_may_disconnect = false   :: boolean()
+              , client_reconnect_nonce = 0      :: non_neg_integer()
+              , opts                            :: map()
+              , channel_id                      :: undefined | binary()
+              , on_chain_id                     :: undefined | binary()
+              , create_tx                       :: undefined | any()
+              , watcher                         :: undefined | pid()
+              , block_hash_delta = #bh_delta{}  :: #bh_delta{} 
               %% we keep the latest operation so we can perform according
               %% checks
               , op = ?NO_OP                   :: latest_op()
@@ -257,3 +265,7 @@
 
 -define(DEFAULT_FSM_TX_TTL_DELTA, 100).
 
+-type next_fsm_state() :: {next_state, atom(), #data{}, list()}.
+
+-define(IS_BH_ERROR(_X_), (is_atom(_X_)
+                           andalso (_X_ =:= unknown_block_hash))).
