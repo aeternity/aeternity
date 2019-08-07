@@ -61,9 +61,10 @@
         , post_block/1
         ]).
 
-%% for tests
+-ifdef(TEST).
 -export([reinit_chain/0
         ]).
+-endif.
 
 %% gen_server API
 -export([ start_link/0
@@ -167,9 +168,11 @@ add_synced_block(Block) ->
 get_key_block_candidate() ->
     gen_server:call(?SERVER, get_key_block_candidate).
 
+-ifdef(TEST).
 -spec reinit_chain() -> aec_headers:header().
 reinit_chain() ->
     gen_server:call(?SERVER, reinit_chain).
+-endif.
 
 %%%===================================================================
 %%% gen_server callbacks
