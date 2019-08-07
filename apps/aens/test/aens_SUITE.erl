@@ -706,7 +706,7 @@ subname(_Cfg) ->
               [_|_]}} = (catch aens_update_tx:new(UpdateTxSpec)),
 
     %% attempt to revoke existing subname
-    RevokeTxSpec = aens_test_utils:revoke_tx_spec(PubKey, SNameHash4321, S2),
+    RevokeTxSpec = aens_test_utils:revoke_tx_spec(PubKey, SNameHash21, S2),
     {'EXIT', {{illegal_field,name_id,id,
                {id,name, _}, id,
                {id,name, _}},
@@ -714,14 +714,14 @@ subname(_Cfg) ->
 
     %% attempt to transfer existing subname
     #{public := OtherPK} = enacl:sign_keypair(),
-    TransferTxSpec = aens_test_utils:transfer_tx_spec(PubKey, SNameHash4321, OtherPK, S2),
+    TransferTxSpec = aens_test_utils:transfer_tx_spec(PubKey, SNameHash21, OtherPK, S2),
     {'EXIT', {{illegal_field,name_id,id,
                {id,name, _}, id,
                {id,name, _}},
               [_|_]}} = (catch aens_transfer_tx:new(TransferTxSpec)),
 
     %% attempt to update existing subname
-    UpdateTxSpec = aens_test_utils:update_tx_spec(PubKey, SNameHash4321, S2),
+    UpdateTxSpec = aens_test_utils:update_tx_spec(PubKey, SNameHash21, S2),
     {'EXIT', {{illegal_field,name_id,id,
                {id,name, _}, id,
                {id,name, _}},
