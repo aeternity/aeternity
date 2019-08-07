@@ -57,6 +57,7 @@
         , check_mutual_close_after_close_solo/1
         , check_fsm_crash_reestablish/1
         , check_invalid_reestablish_password/1
+        , check_password_is_changeable/1
         , attach_initiator/1
         , attach_responder/1
         , initiator_spend/1
@@ -164,6 +165,7 @@ groups() ->
       , channel_detects_close_solo
       , leave_reestablish
       , leave_reestablish_close
+      , check_password_is_changeable
       , change_config_get_history
       ]},
      {throughput, [sequence],
@@ -1231,7 +1233,7 @@ leave_reestablish_(Cfg) ->
             ChId = maps:get(channel_id, RLocal),
             mine_key_blocks(dev1, 6), % min depth at 4, so more than 4
             ct:log("reestablishing ...", []),
-            Res = reestablish(ChId, ILocal, RLocal, SignedTx,
+            Res = reestablish(ILocal, RLocal, SignedTx,
                                            Spec0, ?PORT, Debug),
             ct:log("ending attempt ~p", [Idx]),
             Res
@@ -1672,7 +1674,7 @@ fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R
     [_, _] = on_disk(Cache),
     check_info(500),
     ct:log("reestablishing ...", []),
-    #{i := I1, r := R1} = reestablish(ChId, I, R, SignedTx, Spec, ?PORT, Debug),
+    #{i := I1, r := R1} = reestablish(I, R, SignedTx, Spec, ?PORT, Debug),
     {I1, R1}.
 
 fsm_crash_action_during_transfer( #{fsm := FsmI, pub := PubI} = I
@@ -1719,31 +1721,53 @@ check_invalid_reestablish_password(Cfg) ->
     ct:log("I = ~p", [I]),
     ct:log("R = ~p", [R]),
     {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
+    {ok, SignedTx} = leave_channel(I1, R1, Debug),
+
+    %% Reestablish with wrong passwords
+    #{state_password := PwI} = I1,
+    #{state_password := PwR} = R1,
+    reestablish_wrong_password( I1#{state_password => PwI ++ "_bogus"}
+                              , R1#{state_password => PwR ++ "_bogus"}
+                              , SignedTx, Spec0, Debug),
+
+    %% Check that after an invalid password has been provided we can still reestablish the channel
+    _ = reestablish(I1, R1, SignedTx, Spec0, ?PORT, Debug),
+    ok.
+
+check_password_is_changeable(Cfg) ->
+    Debug = get_debug(Cfg),
+    {I0, R0, Spec0} = channel_spec(Cfg),
+    #{ i := #{ fsm := FsmI } = I
+     , r := R } = create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
+    ct:log("I = ~p", [I]),
+    ct:log("R = ~p", [R]),
+    {_, I1, R1} = do_n(4, fun update_volley/3, I, R, Cfg),
+
+    I2 = change_password(I1),
+    R2 = change_password(R1),
+    {ok, SignedTx} = leave_channel(I2, R2, Debug),
+
+    %% Reestablish with old password should fail
+    reestablish_wrong_password(I1, R1, SignedTx, Spec0, Debug),
+    %% Reestablish with new password should succeed
+    _ = reestablish(I2, R2, SignedTx, Spec0, ?PORT, Debug),
+
+    ok.
+
+change_password(#{fsm := Fsm, state_password := StatePassword} = P) ->
+    StatePassword1 = StatePassword ++ "_changed",
+    ok = rpc(dev1, aesc_fsm, change_state_password, [Fsm, StatePassword1]),
+    P#{state_password => StatePassword1}.
+
+leave_channel(#{fsm := FsmI} = I, R, Debug) ->
     ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
-    {ok,Li} = await_leave(I1, ?TIMEOUT, Debug),
-    {ok,Lr} = await_leave(R1, ?TIMEOUT, Debug),
+    {ok,Li} = await_leave(I, ?TIMEOUT, Debug),
+    {ok,Lr} = await_leave(R, ?TIMEOUT, Debug),
     SignedTx = maps:get(info, Li),
     SignedTx = maps:get(info, Lr),
-    {ok,_} = receive_from_fsm(info, I1, fun died_normal/1, ?TIMEOUT, Debug),
-    {ok,_} = receive_from_fsm(info, R1, fun died_normal/1, ?TIMEOUT, Debug),
-    %% Reestablish with wrong passwords
-    #{ initiator_amount := IAmt
-     , responder_amount := RAmt
-     , channel_id := ChId
-     , state_password := StatePasswordI} = I1,
-    #{ initiator_amount := IAmt
-     , responder_amount := RAmt
-     , channel_id := ChId
-     , state_password := StatePasswordR} = R1,
-    Spec = Spec0#{existing_channel_id => ChId, offchain_tx => SignedTx,
-                  initiator_amount => IAmt, responder_amount => RAmt},
-    {error, invalid_password} = rpc(dev1, aesc_fsm, respond,
-                     [?PORT, Spec#{state_password => StatePasswordR ++ "_bogus"}]),
-    {error, invalid_password} = rpc(dev1, aesc_fsm, initiate,
-                     ["localhost", ?PORT, Spec#{state_password => StatePasswordI ++ "_bogus"}], Debug),
-    %% Check that after an invalid password has been provided we can still reestablish the channel
-    _ = reestablish(ChId, I1, R1, SignedTx, Spec, ?PORT, Debug),
-    ok.
+    {ok,_} = receive_from_fsm(info, I, fun died_normal/1, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(info, R, fun died_normal/1, ?TIMEOUT, Debug),
+    {ok, SignedTx}.
 
 fsm_state(Pid, Debug) ->
     {State, _Data} = rpc(dev1, sys, get_state, [Pid, 1000], _RpcDebug = false),
@@ -2485,10 +2509,9 @@ fsm_map(Fsm, #{ initiator_amount := IAmt
         , initiator_amount => IAmt - PushAmt
         , responder_amount => RAmt + PushAmt }.
 
-reestablish( ChId
-            , #{initiator_amount := IAmt, responder_amount := RAmt} = I
-            , #{initiator_amount := IAmt, responder_amount := RAmt} = R
-            , SignedTx, Spec0, Port, Debug) ->
+reestablish( #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = I
+           , #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = R
+           , SignedTx, Spec0, Port, Debug) ->
     Spec = Spec0#{existing_channel_id => ChId, offchain_tx => SignedTx,
                   initiator_amount => IAmt, responder_amount => RAmt},
     {ok, FsmR} = rpc(dev1, aesc_fsm, respond,
@@ -2499,6 +2522,16 @@ reestablish( ChId
     R1 = await_open_report(R#{fsm => FsmR}, ?TIMEOUT, Debug),
     check_info(20),
     #{i => I1, r => R1, spec => Spec}.
+
+reestablish_wrong_password( #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = I
+                          , #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = R
+                          , SignedTx, Spec, Debug) ->
+    Spec1 = Spec#{existing_channel_id => ChId, offchain_tx => SignedTx,
+                  initiator_amount => IAmt, responder_amount => RAmt},
+    {error, invalid_password} = rpc(dev1, aesc_fsm, respond,
+                     [?PORT, move_password_to_spec(R, Spec1)]),
+    {error, invalid_password} = rpc(dev1, aesc_fsm, initiate,
+                     ["localhost", ?PORT, move_password_to_spec(I, Spec1)], Debug).
 
 update_tx(Tx0, F, Args) ->
     {Mod, TxI} = aetx:specialize_callback(Tx0),

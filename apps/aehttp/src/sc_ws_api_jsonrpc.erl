@@ -582,6 +582,12 @@ process_request(#{<<"method">> := <<"channels.settle">>}, FsmPid) ->
         ok -> no_reply;
         {error, _Reason} = Err -> Err
     end;
+process_request(#{<<"method">> := <<"channels.change_state_password">>,
+                  <<"params">> := #{<<"state_password">> := StatePassword}}, FsmPid) ->
+    case aesc_fsm:change_state_password(FsmPid, StatePassword) of
+        ok -> {reply, ok_response(password_changed)};
+        {error, weak_password} -> {error, invalid_password}
+    end;
 process_request(#{<<"method">> := _} = Unhandled, _FsmPid) ->
     lager:warning("Channel WS: unhandled action received ~p", [Unhandled]),
     {error, unhandled};

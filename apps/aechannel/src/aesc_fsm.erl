@@ -52,6 +52,7 @@
         , upd_transfer/5          %% (fsm() , from(), to(), amount(), #{})
         , upd_withdraw/2          %% (fsm() , map())
         , where/2
+        , change_state_password/2
         ]).
 
 %% Inspection and configuration functions
@@ -287,6 +288,9 @@ where(ChanId, Role) when Role == initiator; Role == responder ->
         undefined ->
             undefined
     end.
+
+change_state_password(Fsm, StatePassword) ->
+    gen_statem:call(Fsm, {change_state_password, StatePassword}).
 
 %% ==================================================================
 %% Inspection and configuration functions
@@ -4206,6 +4210,18 @@ handle_call_(St, settle, From, D) ->
 handle_call_(_, {strict_checks, Strict}, From, #data{} = D) when
         is_boolean(Strict) ->
     keep_state(D#data{strict_checks = Strict}, [{reply, From, ok}]);
+handle_call_(_, {change_state_password, StatePassword} ,From, #data{channel_status = open, on_chain_id = ChId} = D) ->
+    case check_weak_password(StatePassword) of
+        ok ->
+            case aesc_state_cache:change_state_password(ChId, my_account(D), StatePassword) of
+                ok ->
+                    keep_state(D, [{reply, From, ok}]);
+                {error, _} = Err ->
+                    keep_state(D, [{reply, From, Err}])
+            end;
+        {error, _} = Err ->
+            keep_state(D, [{reply, From, Err}])
+       end;
 handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
     postpone(D);
 handle_call_(_St, _Req, From, D) ->

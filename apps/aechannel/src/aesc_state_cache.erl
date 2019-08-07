@@ -5,7 +5,7 @@
 %%%    the offchain state is saved in ETS in order for the user to be able to leave and then reestablish
 %%%    the channel. In case of an unexpected FSM crash the state is encrypted with an user provided password
 %%%    and saved in persistent storage. Please note that it is impossible to reestablish a channel without the state.
-%%%    TODO: Protect the state in case of an unexpected power failure.
+%%%    TODO: Protect the state in case of an unexpected power failure - for instance allow the user or a delegate to provide the missing state
 %%% @end
 %%%=============================================================================
 -module(aesc_state_cache).
@@ -17,6 +17,7 @@
         , new/4
         , reestablish/2
         , reestablish/3
+        , change_state_password/3
         , update/3
         , fetch/2
         , delete/1
@@ -89,6 +90,9 @@ reestablish(ChId, Pubkey) ->
 -spec reestablish(aeser_id:val(), aeser_id:val(), string()) -> {ok, aesc_offchain_state:state()} | {error, atom()}.
 reestablish(ChId, PubKey, Password) ->
     gen_server:call(?SERVER, {reestablish, ChId, PubKey, self(), unicode:characters_to_binary(Password)}).
+
+change_state_password(ChId, Pubkey, Password) ->
+    gen_server:call(?SERVER, {change_state_password, ChId, Pubkey, unicode:characters_to_binary(Password)}).
 
 update(ChId, PubKey, State) ->
     gen_server:cast(?SERVER, {update, ChId, PubKey, State}).
@@ -178,6 +182,21 @@ handle_call({fetch, ChId, PubKey}, _From, St) ->
             {reply, {ok, State}, St};
         [] ->
             {reply, error, St}
+    end;
+handle_call({change_state_password, ChId, Pubkey, Password}, _From, St) ->
+    lager:debug("Changing state password"),
+    case setup_keys_in_cache(Password) of
+        {ok, #ch_cache{salt = Salt, session_key = SessionKey}} ->
+            case ets:update_element(?TAB, key(ChId, Pubkey),
+                [ {#ch_cache.salt, Salt}
+                , {#ch_cache.session_key, SessionKey}]) of
+                true ->
+                    {reply, ok, St};
+                false ->
+                    {reply, {error, missing_state_trees}, St}
+            end;
+        {error, _} = Err ->
+            {reply, Err, St}
     end;
 handle_call({min_depth_achieved, ChId, _Watcher}, _From, St) ->
     lager:debug("min_depth_achieved - ~p gone", [ChId]),

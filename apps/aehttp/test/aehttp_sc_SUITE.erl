@@ -30,6 +30,7 @@
     sc_ws_close_solo/1,
     sc_ws_slash/1,
     sc_ws_leave_reestablish/1,
+    sc_ws_password_changeable/1,
     sc_ws_ping_pong/1,
     sc_ws_deposit/1,
     sc_ws_withdraw/1,
@@ -120,6 +121,7 @@ groups() ->
         sc_ws_slash,
         %% possible to leave and reestablish channel
         sc_ws_leave_reestablish,
+        sc_ws_password_changeable,
         {group, with_open_channel},
         {group, client_reconnect}
       ]},
@@ -1122,11 +1124,11 @@ sc_ws_leave_(Config) ->
     Options = proplists:get_value(channel_options, Config),
     Port = maps:get(port, Options),
     RPort = Port+1,
-    ReestablishOptions = #{existing_channel_id => IDi,
-                        offchain_tx => StI,
-                        port => RPort,
-                        protocol => maps:get(protocol, Options),
-                        state_password => ?CACHE_DEFAULT_PASSWORD},
+    ReestablishOptions = #{ existing_channel_id => IDi
+                          , offchain_tx => StI
+                          , port => RPort
+                          , protocol => maps:get(protocol, Options)
+                          , state_password => maps:get(state_password, Options)},
     ReestablishOptions.
 
 
@@ -3067,6 +3069,43 @@ sc_ws_leave_reestablish(Config0) ->
     Config1 = sc_ws_reestablish_(ReestablishOptions, Config),
     ok = sc_ws_update_(Config1),
     ok = sc_ws_close_(Config1).
+
+sc_ws_password_changeable(Config0) ->
+    Config = sc_ws_open_(Config0),
+    Options = proplists:get_value(channel_options, Config),
+    StatePasswordOld = maps:get(state_password, Options),
+    Config1 = sc_ws_change_password_(Config),
+    ReestablishOptions = sc_ws_leave_(Config1),
+    ReestablishOptionsOld = ReestablishOptions#{state_password => StatePasswordOld},
+
+    %% Reestablish with old password should fail
+    Roles = [initiator, responder],
+    [sc_ws_test_broken_params(Role, Config, ReestablishOptionsOld, <<"Invalid password">>, Config) || Role <- Roles],
+
+    Config2 = sc_ws_reestablish_(ReestablishOptions, Config1),
+    ok = sc_ws_update_(Config2),
+    ok = sc_ws_close_(Config2).
+
+sc_ws_change_password_(Config) ->
+    ct:log("Changing password"),
+    #{ initiator := IConnPid
+     , responder := RConnPid } = proplists:get_value(channel_clients, Config),
+    Options = proplists:get_value(channel_options, Config),
+    StatePassword = maps:get(state_password, Options),
+    StatePassword1 = StatePassword ++ "_changed",
+    Fun = fun (Pid) ->
+        ok = ?WS:register_test_for_channel_events(Pid, [password_changed, error]),
+        %% Test weak password
+        ok = ws_send_tagged(Pid, <<"channels.change_state_password">>, #{ <<"state_password">> => "1234" }, Config),
+        {ok, #{<<"reason">> := <<"Invalid password">>}} = wait_for_channel_event(Pid, error, Config),
+
+        %% Change password
+        ok = ws_send_tagged(Pid, <<"channels.change_state_password">>, #{ <<"state_password">> => StatePassword1 }, Config),
+        {ok, #{<<"action">> := <<"password_changed">>}} = wait_for_channel_event(Pid, password_changed, Config),
+        ok = ?WS:unregister_test_for_channel_events(Pid, [password_changed, error])
+    end,
+    [Fun(Pid) || Pid <- [IConnPid, RConnPid]],
+    [{channel_options, Options#{state_password => StatePassword1}} | Config].
 
 sc_ws_ping_pong(Config) ->
     #{initiator := IConnPid, responder :=RConnPid} =
