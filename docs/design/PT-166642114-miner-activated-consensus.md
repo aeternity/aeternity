@@ -154,3 +154,12 @@ In order to prevent irrelevant tables to build up following multiple node restar
 shall node at startup, if a miner signalling is configured, delete all auxiliaty tables with name associated with different miner signalling parameter?
 Doing so would prevent irrelevant tables (and - potentially - content) to build up though would open the door for inconsistent chain storage,
 requiring the node to re-trigger the asynchronous computation of the miner signalling outcome.
+
+As the confirmations from the signalling block interval end to the proposed new consensus protocol height (i.e. H2 - HE) is
+intended as a *mitigation* for the potential slow computation of the outcome of the signalling
+and recommended to be ["approximately two hours"][fspecs],
+it is unclear whether it makes sense to complicate the design for catering
+for performance in the case the node restarts while still receiving such confirmations.
+An example on what such catering would look like is that
+insertion of any blocks in the range from signalling end (HE, included) to fork height (H2, included)
+checks that there is a result for the signalling outcome or a worker spawned, otherwise spawns a worker.
