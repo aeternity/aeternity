@@ -66,6 +66,9 @@
         ]).
 -endif.
 
+%% Stratum mining pool API
+-export([stratum_reply/2]).
+
 %% gen_server API
 -export([ start_link/0
         , start_link/1
@@ -173,6 +176,13 @@ get_key_block_candidate() ->
 reinit_chain() ->
     gen_server:call(?SERVER, reinit_chain).
 -endif.
+
+%%%===================================================================
+%%% Stratum mining pool API
+
+-spec stratum_reply({aeminer_pow:nonce(), aeminer_pow_cuckoo:solution()}, candidate_hash()) -> term().
+stratum_reply({Nonce, Evd}, HeaderBin) ->
+    ?SERVER ! {stratum_reply, {{ok, {Nonce, Evd}}, HeaderBin}}.
 
 %%%===================================================================
 %%% gen_server callbacks

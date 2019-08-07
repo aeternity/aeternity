@@ -235,7 +235,7 @@ handle_cast({submit_solution, CandidateBlockHash, Nonce, Pow}, State) ->
             {ok, BlockHash} = aec_headers:hash_header(KeyBlockHeader),
             ok = ?TXN(aestratum_db:mark_share_as_solution(CandidateBlockHash, BlockHash)),
             ?INFO("got solution for blockhash ~p (nonce = ~p)", [BlockHash, Nonce]),
-            aec_conductor ! {stratum_reply, {{ok, {Nonce, Pow}}, HeaderBin}};
+            aec_conductor:stratum_reply({Nonce, Pow}, HeaderBin);
         {error, not_found} ->
             ?ERROR("candidate for blockhash ~p lost", [CandidateBlockHash])
     end,
