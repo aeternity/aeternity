@@ -18,6 +18,7 @@
 -define(WDRAW_SIGNED , withdraw_signed).
 -define(WDRAW_LOCKED , withdraw_locked).
 -define(WDRAW_ERR    , withdraw_error).
+-define(BH_ERR       , unknown_block_hash).
 -define(ERROR        , error).
 -define(LEAVE        , leave).
 -define(LEAVE_ACK    , leave_ack).
@@ -43,6 +44,7 @@
 -define(ID_WDRAW_SIGNED , 16).
 -define(ID_WDRAW_LOCKED , 17).
 -define(ID_WDRAW_ERR    , 18).
+-define(ID_BH_ERR       , 80).
 -define(ID_LEAVE        , 94).
 -define(ID_LEAVE_ACK    , 95).
 -define(ID_INBAND_MSG   , 96).
