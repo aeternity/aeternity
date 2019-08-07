@@ -419,12 +419,12 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
                                            maps:put(host, <<"localhost">>, ChannelOpts), Config),
 
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign,
-                                                         on_chain_tx]),
+                                                         on_chain_tx, update]),
 
     {ok, RConnPid} = channel_ws_start(responder, ChannelOpts, Config),
 
     ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign,
-                                                         on_chain_tx]),
+                                                         on_chain_tx, update]),
 
     channel_send_conn_open_infos(RConnPid, IConnPid, Config),
 
@@ -459,9 +459,9 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
                        initiator  => IConnPid,
                        responder  => RConnPid},
     ok = ?WS:unregister_test_for_channel_events(IConnPid, [info, get, sign,
-                                                           on_chain_tx]),
+                                                           on_chain_tx, update]),
     ok = ?WS:unregister_test_for_channel_events(RConnPid, [info, get, sign,
-                                                           on_chain_tx]),
+                                                           on_chain_tx, update]),
     [{channel_clients, ChannelClients},
      {channel_options, ChannelOpts} | Config].
 
@@ -509,6 +509,17 @@ channel_send_locking_infos(IConnPid, RConnPid, Config) ->
 channel_send_chan_open_infos(RConnPid, IConnPid, Config) ->
     {ok, #{<<"event">> := <<"open">>}} = wait_for_channel_event(IConnPid, info, Config),
     {ok, #{<<"event">> := <<"open">>}} = wait_for_channel_event(RConnPid, info, Config),
+
+    %% Assert we receive an update
+    {ok, #{<<"state">> := InitialState}} = wait_for_channel_event(IConnPid, update, Config),
+    {ok, #{<<"state">> := InitialState}} = wait_for_channel_event(RConnPid, update, Config),
+
+    %% Assert we received a channel_create_tx
+    {ok, InitialStateTxBin} = aeser_api_encoder:safe_decode(transaction, InitialState),
+    InitialStateTx = aetx_sign:deserialize_from_binary(InitialStateTxBin),
+    Tx = aetx_sign:innermost_tx(InitialStateTx),
+    {aesc_create_tx, _} = aetx:specialize_callback(Tx),
+
     ok.
 
 channel_participants_balances(IPubkey, RPubkey) ->
