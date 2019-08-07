@@ -12,8 +12,7 @@
 -include("../../aecontract/include/hard_forks.hrl").
 -include("../../aecontract/src/aect_sophia.hrl").
 
--export([ serialize/1
-        , serialize/2
+-export([ serialize/2
         , deserialize/1
         , is_legal_serialization_at_height/2
         , prepare_for_json/2
@@ -22,22 +21,16 @@
 -type wrapped_code() :: #{ source_hash := aec_hash:hash()
                          , type_info   := [{binary(), binary(), binary(), binary()}]
                          , byte_code   := binary()
-                         , compiler_version := binary()
+                         , compiler_version => binary()
                          , contract_vsn := integer()
                          }.
 
 -export_type([ wrapped_code/0 ]).
 
-%% After hard fork Minerva, we accept ?SOPHIA_CONTRACT_VSN_2 in serialization
--define(SOPHIA_CONTRACT_VSN, ?SOPHIA_CONTRACT_VSN_2).
-
 is_legal_serialization_at_height(?SOPHIA_CONTRACT_VSN_1, _Height) ->
     true;
 is_legal_serialization_at_height(?SOPHIA_CONTRACT_VSN_2, Height) ->
     aec_hard_forks:protocol_effective_at_height(Height) >= ?MINERVA_PROTOCOL_VSN.
-
-serialize(Map) ->
-    serialize(Map, ?SOPHIA_CONTRACT_VSN).
 
 serialize(#{byte_code := ByteCode, type_info := TypeInfo,
             contract_source := ContractString, compiler_version := Version}, SophiaContractVersion) ->
@@ -49,7 +42,6 @@ serialize(#{byte_code := ByteCode, type_info := TypeInfo,
              , {type_info, TypeInfo}
              , {byte_code, ByteCode} ] ++
              [ {compiler_version, BinVersion} || SophiaContractVersion > ?SOPHIA_CONTRACT_VSN_1 ],
-             %% Add version here in release when Minerva height has been reached
     aeser_chain_objects:serialize(compiler_sophia,
                                        SophiaContractVersion,
                                        serialization_template(SophiaContractVersion),
@@ -90,10 +82,10 @@ deserialize(Binary) ->
 serialization_template(?SOPHIA_CONTRACT_VSN_1) ->
     [ {source_hash, binary}
     , {type_info, [{binary, binary, binary, binary}]} %% {type hash, name, arg type, out type}
-    , {byte_code, binary}];
+    , {byte_code, binary} ];
 serialization_template(?SOPHIA_CONTRACT_VSN_2) ->
     serialization_template(?SOPHIA_CONTRACT_VSN_1) ++
-        [ {compiler_version, binary}].
+        [ {compiler_version, binary} ].
 
 prepare_for_json(word, Integer) when is_integer(Integer) ->
     #{ <<"type">> => <<"word">>,
@@ -136,4 +128,3 @@ prepare_for_json(T, R) ->
     String = io_lib:format("Type: ~p Res:~p", [T,R]),
     Error = << <<B>> || B <- "Invalid Sophia type: " ++ lists:flatten(String) >>,
     throw({error, Error}).
-

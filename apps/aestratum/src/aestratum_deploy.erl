@@ -16,7 +16,7 @@ deploy_payout_contract(#{public := PubKey, secret := PrivKey}) ->
     {ok, WrappedTx}  =
         aect_create_tx:new(#{owner_id    => aeser_id:create(account, PubKey),
                              nonce       => aec_accounts:nonce(Account) + 1,
-                             code        => aect_sophia:serialize(compiled_contract()),
+                             code        => aect_sophia:serialize(compiled_contract(), 2),
                              vm_version  => ?VM_AEVM_SOPHIA_3,
                              abi_version => ?ABI_AEVM_SOPHIA_1,
                              deposit     => 0,
