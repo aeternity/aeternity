@@ -59,7 +59,7 @@ For trusted blocks, the conductor must instruct the generation of the block cand
 In order to prevent long and potentially duplicated computational efforts - requiring multiple lookups into the chain storage -
 the computation of the outcome of the miner signalling should be asynchronous and lazy.
 
-Whenever a block at height preceding the signalling block interval end is inserted in the chain storage,
+Whenever a block at the height preceding the signalling block interval end (i.e. [HE][fspecs] minus 1) is inserted in the chain storage,
 the `aec_conductor` spawns - and keeps track of - a worker responsible for
 computing the outcome of the miner signalling - using non-transactional chain storage access -
 and storing such outcome (true / false) in an auxiliary table.
