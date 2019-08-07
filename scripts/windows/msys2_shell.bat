@@ -40,4 +40,4 @@ SET "PATH=%WIN_MSYS2_ROOT%\mingw64\bin;%WIN_MSYS2_ROOT%\usr\bin;%PATH%"
 echo Current time: %time%
 rem Open shell
 
-mingw64.exe
+%WIN_MSYS2_ROOT%\mingw64.exe
