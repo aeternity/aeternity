@@ -2,8 +2,12 @@
 
 -define(NOT_SET_BLOCK_HASH, <<0:32/unit:8>>).
 
-% Number of blocks until an opening tx should be considered final
--define(MINIMUM_DEPTH, 4).
+-define(DEFAULT_MINIMUM_DEPTH_BASE, 4).
+% This value is internally divided by 100 and as such interpreted as a float later.
+-define(DEFAULT_MINIMUM_DEPTH_FACTOR, 0).
+
+% Number of blocks until a fork will be considered active
+-define(FORK_MINIMUM_DEPTH, 4).
 
 -define(REESTABLISH_OPTS_KEYS,
     [ existing_channel_id
@@ -218,13 +222,14 @@
                         | ?DEP_ERR
                         | ?WDRAW_ERR.
 
--opaque opts() :: #{ minimum_depth => non_neg_integer() %% Defaulted for responder, not for initiator.
-                   , timeouts := #{state_name() := pos_integer()
-                   , report := map()
-                   , log_keep := non_neg_integer()
-                   , initiator := aec_keys:pubkey()
-                   , responder := aec_keys:pubkey()
-                   }}.
+-opaque opts() :: #{ minimum_depth        => non_neg_integer() %% Defaulted for responder, not for initiator.
+                   , minimum_depth_factor => non_neg_integer()
+                   , timeouts             := #{state_name() := pos_integer()}
+                   , report               := map()
+                   , log_keep             := non_neg_integer()
+                   , initiator            := aec_keys:pubkey()
+                   , responder            := aec_keys:pubkey()
+                   }.
 
 -record(op_data, {signed_tx  :: aetx_sign:signed_tx(),
                   updates    :: [aesc_offchain_update:update()],

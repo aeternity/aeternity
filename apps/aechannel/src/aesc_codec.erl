@@ -148,6 +148,7 @@ dec_ch_open(<< ChainHash      :32/binary
 -type ch_accept_msg() :: #{ chain_hash           := hash()
                           , temporary_channel_id := chan_id()
                           , minimum_depth        := depth()
+                          , minimum_depth_factor := depth()
                           , initiator_amount     := amount()
                           , responder_amount     := amount()
                           , channel_reserve      := amount()
@@ -158,6 +159,7 @@ dec_ch_open(<< ChainHash      :32/binary
 enc_ch_accept(#{ chain_hash           := ChainHash
                , temporary_channel_id := ChanId
                , minimum_depth        := MinDepth
+               , minimum_depth_factor := MinDepthFactor
                , initiator_amount     := InitiatorAmt
                , responder_amount     := ResponderAmt
                , channel_reserve      := ChanReserve
@@ -167,6 +169,7 @@ enc_ch_accept(#{ chain_hash           := ChainHash
      , ChainHash      :32/binary
      , ChanId         :32/binary
      , MinDepth       :4 /unit:8
+     , MinDepthFactor :4 /unit:8
      , InitiatorAmt   :8 /unit:8
      , ResponderAmt   :8 /unit:8
      , ChanReserve    :8 /unit:8
@@ -176,7 +179,8 @@ enc_ch_accept(#{ chain_hash           := ChainHash
 -spec dec_ch_accept(binary()) -> ch_accept_msg().
 dec_ch_accept(<< ChainHash      :32/binary
                , ChanId         :32/binary
-               , MinDepth       :4/unit:8
+               , MinDepth       :4 /unit:8
+               , MinDepthFactor :4 /unit:8
                , InitiatorAmt   :8 /unit:8
                , ResponderAmt   :8 /unit:8
                , ChanReserve    :8 /unit:8
@@ -185,12 +189,12 @@ dec_ch_accept(<< ChainHash      :32/binary
     #{ chain_hash           => ChainHash
      , temporary_channel_id => ChanId
      , minimum_depth        => MinDepth
+     , minimum_depth_factor => MinDepthFactor
      , initiator_amount     => InitiatorAmt
      , responder_amount     => ResponderAmt
      , channel_reserve      => ChanReserve
      , initiator            => Initiator
-     , responder            => Responder}.
-
+     , responder            => Responder }.
 
 -type ch_reestabl_msg() :: #{ chain_hash := hash()
                             , channel_id := chan_id()

@@ -77,10 +77,13 @@
 -type close_req() :: #{ mode      := close
                       , min_depth := aec_blocks:height()
                       , info      := req_info() }.
+
 -type unlock_req() :: #{ mode := unlock
                        , info := req_info() }.
+
 -type watch_req() :: #{ mode := watch
                       , info := req_info() }.
+
 -type tx_req() :: #{ mode      := tx_hash
                    , tx_hash   := tx_hash()
                    , min_depth := aec_blocks:height()
@@ -92,15 +95,18 @@
 -type tx_hash()     :: binary().
 -type tx_location() :: {block_hash(), aetx:tx_type(), aetx_sign:signed_tx()}.
 -type info_of_scenario_has_tx() :: {tx_log_entry_key(), tx_log_entry_value()}.
+
 -type scenario()   :: top
                     | next_block
                     | fork_switch
                     | {has_tx, info_of_scenario_has_tx()}.
+
 -type chan_vsn()   :: undefined | { aesc_channels:round()
                                   , aesc_channels:solo_round()
                                   , aesc_channels:is_active()
                                   , aesc_channels:locked_until()
                                   , aesc_channels:state_hash() }.
+
 -type ch_status() :: undefined
                    | closed
                    | #{ is_active    := aesc_channels:is_active()
@@ -116,10 +122,12 @@
                        , height     := aec_blocks:height() }.
 
 -type tx_log_entry_key() :: {tx_hash(), block_hash()}.
+
 -type tx_log_entry_value() :: #{ tx           => aetx_sign:signed_tx()
                                , block_hash   := block_hash()
                                , block_origin := chain
-                               , type := aetx:tx_type() }.
+                               , type         := aetx:tx_type() }.
+
 -type tx_log() :: aesc_window:window(#tx_log_entry{}).
 
 -type rpt_log() :: aesc_window:window(#rpt_log_entry{}).
