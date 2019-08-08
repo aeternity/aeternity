@@ -415,7 +415,7 @@ init_tests(Release, VMName) ->
     Versions = [{roma,    {?ROMA_PROTOCOL_VSN,    ?SOPHIA_ROMA,    ?ABI_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_1}},
                 {minerva, {?MINERVA_PROTOCOL_VSN, ?SOPHIA_MINERVA, ?ABI_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_2}},
                 {fortuna, {?FORTUNA_PROTOCOL_VSN, ?SOPHIA_FORTUNA, ?ABI_AEVM_SOPHIA_1, ?VM_AEVM_SOPHIA_3}},
-                {lima,    {IfAEVM(?FORTUNA_PROTOCOL_VSN, ?LIMA_PROTOCOL_VSN),
+                {lima,    {?LIMA_PROTOCOL_VSN,
                            IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_LIMA_FATE),
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
                            IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_1)}}],
