@@ -2464,7 +2464,7 @@ request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D, 
     %% Note that has_my_signature/3 is a bit costly, so we don't
     %% check unless the client really is disconnected
     IsOk = is_pid(Client) orelse
-        has_my_signature(Tag, SignedTx, D1),
+        has_my_signature(my_account(D), SignedTx),
     case IsOk of
         true ->
             if is_pid(Client) ->
@@ -2497,30 +2497,18 @@ sig_request_f(Client, Tag, Msg) when is_pid(Client) ->
             lager:debug("signing(~p) requested", [Tag])
     end.
 
-has_my_signature(Tag, SignedTx, #data{ on_chain_id = ChannelPubkey } = D) ->
-    Pubkeys = pubkeys(me, D, SignedTx),
-    Res = case verification_strategy(Tag) of
-              offchain ->
-                  verify_signatures_offchain(ChannelPubkey, Pubkeys, SignedTx);
-              onchain ->
-                  verify_signatures_onchain_check(Pubkeys, SignedTx)
-          end,
-    lager:debug("Verification Res = ~p", [Res]),
-    ok == Res.
-
-verification_strategy(create_tx     ) -> onchain;
-verification_strategy(?FND_CREATED  ) -> onchain;
-verification_strategy(?DEP_CREATED  ) -> onchain;
-verification_strategy(deposit_tx    ) -> onchain;
-verification_strategy(?WDRAW_CREATED) -> onchain;
-verification_strategy(withdraw_tx   ) -> onchain;
-verification_strategy(?UPDATE       ) -> offchain;
-verification_strategy(?UPDATE_ACK   ) -> offchain;
-verification_strategy(?SHUTDOWN     ) -> onchain;
-verification_strategy(?SHUTDOWN_ACK ) -> onchain;
-verification_strategy(close_solo_tx ) -> onchain;
-verification_strategy(slash_tx      ) -> onchain;
-verification_strategy(settle_tx     ) -> onchain.
+%% Checks if a user had provided authentication but doesn't check the
+%% authentication itself 
+has_my_signature(Me, SignedTx) ->
+    case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of
+        {aega_meta_tx, Tx} ->
+            case aega_meta_tx:ga_pubkey(Tx) of
+                Me -> true;
+                _Other -> has_my_signature(Me, aega_meta_tx:tx(Tx)) %% go deeper 
+            end;
+        {_NotGA, _} -> %% innermost transaction
+            ok =:= aetx_sign:verify_one_pubkey(Me, SignedTx)
+    end.
 
 start_min_depth_watcher(Type, SignedTx, Updates,
                         #data{ watcher = Watcher0
