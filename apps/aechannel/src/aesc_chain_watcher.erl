@@ -1,4 +1,4 @@
--module(aesc_fsm_min_depth_watcher).
+-module(aesc_chain_watcher).
 -behaviour(gen_server).
 
 -export([start_link/5,       %% (TxHash, ChanId, MinimumDepth, Mod) -> {ok, Pid}

@@ -279,7 +279,7 @@ channel_watcher(ChId, #st{watchers = Ws}) ->
     end.
 
 start_watcher(ChId, #st{watchers = Ws, min_depth = Min} = St) ->
-    {ok, Pid} = aesc_fsm_min_depth_watcher:watch_for_channel_close(
+    {ok, Pid} = aesc_chain_watcher:watch_for_channel_close(
                   ChId, Min, ?MODULE),
     lager:debug("watcher started for ~p: ~p", [ChId, Pid]),
     ets:insert(Ws, {ChId, Pid}),
