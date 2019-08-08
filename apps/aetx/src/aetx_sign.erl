@@ -26,6 +26,7 @@
          verify/2,
          verify/3,
          verify_half_signed/2,
+         verify_one_pubkey/2,
          from_db_format/1,
          signatures/1]).
 
@@ -125,6 +126,8 @@ verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees) ->
             {error, signature_check_failed}
     end.
 
+%% this function is strict and does not allow having more signatures that the
+%% one being checked
 -spec verify_half_signed(aec_keys:pubkey() | [aec_keys:pubkey()],
                          signed_tx()) -> ok | {error, signature_check_failed}.
 verify_half_signed(Signer, SignedTx) when is_binary(Signer) ->
@@ -132,6 +135,16 @@ verify_half_signed(Signer, SignedTx) when is_binary(Signer) ->
 verify_half_signed(Signers, #signed_tx{tx = Tx, signatures = Sigs}) ->
     Bin     = aetx:serialize_to_binary(Tx),
     verify_signatures(Signers, Bin, Sigs).
+
+%% this function allows having more signatures that the one being checked
+-spec verify_one_pubkey(aec_keys:pubkey(), signed_tx())
+    -> ok | {error, signature_check_failed}.
+verify_one_pubkey(Signer, #signed_tx{tx = Tx, signatures = Sigs}) ->
+    Bin = aetx:serialize_to_binary(Tx),
+    case verify_one_pubkey(Sigs, Signer, Bin) of
+        {ok, _} -> ok;
+        error -> {error, signature_check_failed}
+    end.
 
 verify_signatures([PubKey|Left], Bin, Sigs) ->
     case verify_one_pubkey(Sigs, PubKey, Bin) of
