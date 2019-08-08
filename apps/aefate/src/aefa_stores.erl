@@ -20,12 +20,16 @@
 
 -module(aefa_stores).
 
+-include_lib("aebytecode/include/aeb_fate_data.hrl").
+
 -export([ finalize/2
         , find_value/3
         , has_contract/2
         , new/0
         , put_contract_store/3
         , put_value/4
+        %% Map functions
+        , store_map_lookup/4
         ]).
 
 -record(store, { cache = #{} :: contract_cache()
@@ -100,14 +104,14 @@ finalize_stores([], API) ->
 
 finalize_entry(_Pubkey, #cache_entry{dirty = false}, Acc) ->
     Acc;
-finalize_entry(Pubkey, #cache_entry{terms = Terms, store = Store}, Acc) ->
-    [{Pubkey, maps:fold(fun push_term/3, Store, Terms)} | Acc].
+finalize_entry(Pubkey, #cache_entry{terms = Cache, store = Store}, Acc) ->
+    UsedIds       = aeb_fate_maps:no_used_ids(),    %% TODO
+    {Terms, Maps} = allocate_store_maps(UsedIds, Cache),
+    [{Pubkey, push_maps(Maps, lists:foldl(fun push_term/2, Store, Terms))} | Acc].
 
-push_term(StorePos, {FateVal, Dirty}, Store) when Dirty ->
+push_term({StorePos, FateVal}, Store) ->
     Val = aeb_fate_encoding:serialize(FateVal),
-    aect_contracts_store:put(store_key(StorePos), Val, Store);
-push_term(_StorePos, {_FateVal, Dirty}, Store) when not Dirty ->
-    Store.
+    aect_contracts_store:put(store_key(StorePos), Val, Store).
 
 %%%===================================================================
 %%% Entry for one contract
@@ -123,17 +127,104 @@ find_term(StorePos, #cache_entry{terms = Terms} = E) ->
         {ok, {FateVal,_Dirty}} ->
             {ok, FateVal};
         error ->
-            case aect_contracts_store:get(store_key(StorePos), E#cache_entry.store) of
-                <<>> ->
+            case find_in_store(store_key(StorePos), E#cache_entry.store) of
+                error ->
                     error;
-                Value ->
-                    FateVal = aeb_fate_encoding:deserialize(Value),
+                {ok, FateVal} ->
                     {ok, FateVal, E#cache_entry{terms = Terms#{StorePos => {FateVal, false}}}}
             end
     end.
 
+find_in_store(Key, Store) ->
+    case aect_contracts_store:get(Key, Store) of
+        <<>> ->
+            error;
+        Value ->
+            FateVal = aeb_fate_encoding:deserialize(Value),
+            {ok, FateVal}
+    end.
+
+
 -define(MAX_STORE_POS,
         16#ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff).
 
+-define(STORE_KEY_PREFIX, 0).
+-define(STORE_MAP_PREFIX, 1).
+-define(STORE_MAP_META_PREFIX, 0).
+-define(STORE_MAP_DATA_PREFIX, 1).
+
 store_key(Int) when Int =< ?MAX_STORE_POS, Int > 0 ->
-    binary:encode_unsigned(Int).
+    <<?STORE_KEY_PREFIX, (binary:encode_unsigned(Int))/binary>>.
+
+
+%%%===================================================================
+%%% Store maps
+%%%
+%%% Maps are saved in the store under the ?STORE_MAP_PREFIX as follows
+%%%
+%%%     /
+%%%     /?STORE_MAP_META_PREFIX/MapId         Meta data for MapId: ?META_DATA(RawId, RefCount, Size)
+%%%     /?STORE_MAP_DATA_PREFIX/{RawId, Key}  Value for Key in map RawId
+
+-define(META_DATA(RawId, RefCount, Size), ?FATE_TUPLE({RawId, RefCount, Size})).
+
+store_map_key(MapId) ->
+    <<?STORE_MAP_PREFIX, ?STORE_MAP_META_PREFIX,
+      (binary:encode_unsigned(MapId))/binary>>.
+
+store_map_entry_key(RawId, Key) ->
+    <<?STORE_MAP_PREFIX, ?STORE_MAP_DATA_PREFIX,
+      (aeb_fate_encoding:serialize({tuple, {RawId, Key}}))/binary>>.
+
+%% Also discards clean entries.
+-spec allocate_store_maps(aeb_fate_maps:used_ids(), fate_terms()) -> {[{integer(), fate_val()}], aeb_fate_maps:maps()}.
+allocate_store_maps(UsedIds, Cache) ->
+    {Regs, Terms} = lists:unzip([{Reg, Term} || {Reg, {Term, Dirty}} <- maps:to_list(Cache), Dirty]),
+    {_UsedIds1, Terms1, Maps} = aeb_fate_maps:allocate_store_maps(UsedIds, Terms),
+    {lists:zip(Regs, Terms1), Maps}.
+    %% {lists:zip(Regs, Terms), #{}}.
+
+-spec push_maps(aeb_fate_maps:maps(), aect_contracts_store:store()) -> aect_contracts_store:store().
+push_maps(Maps, Store) ->
+    maps:fold(fun push_map/3, Store, Maps).
+
+push_map(MapId, Map, Store) when ?IS_FATE_MAP(Map) ->
+    RawId    = MapId, %% TODO
+    RefCount = 0,     %% TODO
+    Size     = maps:size(Map),
+    Store1   = push_map_meta_data(MapId, ?META_DATA(RawId, RefCount, Size), Store),
+    maps:fold(fun(K, V, S) -> push_map_entry(RawId, K, V, S) end, Store1, Map);
+push_map(MapId, ?FATE_STORE_MAP(Cache, OldId), Store) ->
+    %% io:format("Updating ~p with ~p\n", [OldId, Cache]),
+    ?META_DATA(OldRawId, _RefCount, OldSize) = map_meta_data(OldId, Store),
+    RawId    = OldRawId, %% TODO
+    Size     = OldSize,  %% TODO
+    RefCount = 0,        %% TODO
+    Store1  = push_map_meta_data(MapId, ?META_DATA(RawId, RefCount, Size), Store),
+    maps:fold(fun(K, V, S) -> push_map_entry(RawId, K, V, S) end, Store1, Cache).
+
+push_map_meta_data(MapId, MetaData, Store) ->
+    aect_contracts_store:put(store_map_key(MapId), aeb_fate_encoding:serialize(MetaData), Store).
+
+push_map_entry(RawId, Key, ?FATE_MAP_TOMBSTONE, Store) ->
+    aect_contracts_store:remove(store_map_entry_key(RawId, Key), Store);
+push_map_entry(RawId, Key, Val, Store) ->
+    aect_contracts_store:put(store_map_entry_key(RawId, Key),
+                             aeb_fate_encoding:serialize(Val), Store).
+
+map_meta_data(MapId, Store) ->
+    case find_in_store(store_map_key(MapId), Store) of
+        error      -> aefa_fate:abort(bad_store_map_id);
+        {ok, Meta} -> Meta
+    end.
+
+-spec store_map_lookup(pubkey(), non_neg_integer(), fate_val(), store()) -> {ok, fate_val()} | error.
+store_map_lookup(Pubkey, MapId, Key, #store{cache = Cache}) ->
+    %% No caching of map entries (yet)
+    #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
+    ?META_DATA(RawId, _RefCount, _Size) = map_meta_data(MapId, Store),
+    case find_in_store(store_map_entry_key(RawId, Key), Store) of
+        error     -> error;
+        {ok, Val} -> {ok, Val}
+    end.
+

@@ -194,7 +194,9 @@ abort(mod_by_zero, ES) ->
 abort(pow_too_large_exp, ES) ->
     ?t("Arithmetic error: pow with too large exponent", [], ES);
 abort(missing_map_key, ES) ->
-    ?t("Maps: Key does not exists", [], ES);
+    ?t("Maps: Key does not exist", [], ES);
+abort(bad_store_map_id, ES) ->
+    ?t("Maps: Map does not exist", [], ES);
 abort({type_error, cons}, ES) ->
     ?t("Type error in cons: creating polymorphic list", [], ES);
 abort({cannot_write_to_arg, N}, ES) ->
