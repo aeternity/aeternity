@@ -20,6 +20,19 @@ FilterDepsRocksDb = fun(Deps) ->
                         end
                     end,
 
+%% In order to avoid ugly dynamic module loading over rpc - inject meck into the common test release
+%% This does not inject any applications into the system tests, smoke tests and production releases
+Args = init:get_plain_arguments(),
+IsCommonTestRelease = lists:member("test", Args) and lists:member("release", Args),
+AddMeckInCommonTests = fun(Apps) ->
+                          case IsCommonTestRelease of
+                              false ->
+                                  Apps;
+                              true ->
+                                  [meck] ++ Apps
+                          end
+                       end,
+
 % We check all overlay entries' destinations against these regular expressions,
 % and replacement found matches with the corresponding .cmd entry.
 OverlayReplacements = [
@@ -60,7 +73,9 @@ RelxT1 = lists:keyreplace(overlay, 1, RelxT0, {overlay, AdaptOverlayBin(RelxOver
 {ok, VersionBin} = file:read_file(<<"VERSION">>),
 Version = string:trim(binary_to_list(VersionBin)),
 %% the release should be in front
-Relx = {relx, [{release, {aeternity, Version}, FilterRelxRocksDb(RelxApps0)}] ++ RelxT1},
+RelxApps1 = FilterRelxRocksDb(RelxApps0),
+RelxApps2 = AddMeckInCommonTests(RelxApps1),
+Relx = {relx, [{release, {aeternity, Version}, RelxApps2}] ++ RelxT1},
 CONFIG1 = lists:keyreplace(relx, 1, CONFIG, Relx),
 
 %% Update rebar deps
