@@ -1,0 +1,7 @@
+// Contract replicating "normal" Aeternity authentication by always returning true
+contract AuthTrue =
+
+  entrypoint init() = ()
+
+  entrypoint authorize() : bool =
+    true

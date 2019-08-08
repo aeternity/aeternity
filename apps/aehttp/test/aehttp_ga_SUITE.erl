@@ -28,11 +28,14 @@
 %% external endpoints
 -export([ attach/1
         , attach_fail/1
+        , attach_true/1
         , get_account_by_pubkey/1
         , get_account_by_pubkey_and_height/1
         , meta_fail/1
         , meta_fail_auth/1
         , meta_spend/1
+        , meta_true_spend/1
+        , meta_true_fail_spend/1
         , meta_meta_fail_auth/1
         , meta_meta_fail/1
         , meta_meta_spend/1
@@ -61,8 +64,8 @@ all() ->
     ].
 
 groups() ->
-    [{aevm, [sequence], [{group, ga_txs}, {group, ga_info}, {group, ga_mempool}]},
-     {fate, [sequence], [{group, ga_txs}, {group, ga_info}, {group, ga_mempool}]},
+    [{aevm, [sequence], [{group, ga_txs}, {group, ga_info}, {group, ga_mempool}, {group, ga_auth_true}]},
+     {fate, [sequence], [{group, ga_txs}, {group, ga_info}, {group, ga_mempool}, {group, ga_auth_true}]},
 
      {ga_txs, [sequence],
       [ attach_fail
@@ -81,6 +84,11 @@ groups() ->
       , get_account_by_pubkey
       , get_account_by_pubkey_and_height
       ]},
+
+     {ga_auth_true, [sequence],
+      [ attach_true
+      , meta_true_spend
+      , meta_true_fail_spend ]},
 
      {ga_mempool, [sequence],
       [ attach
@@ -175,6 +183,31 @@ attach(Config) ->
     #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
     attach_account(APub, APriv, Config).
 
+attach_true(Config) ->
+    %% Get account information.
+    #{acc_a := #{pub_key := Pub, priv_key := Priv}} = proplists:get_value(accounts, Config),
+    Addr = aeser_api_encoder:encode(account_pubkey, Pub),
+    {ok, 200, Account0} = account_by_pubkey(Addr),
+    Bal0 = maps:get(<<"balance">>, Account0),
+    ?assertEqual(<<"basic">>, maps:get(<<"kind">>, Account0)),
+
+    #{tx_hash := AttachTx} = post_attach_tx(Pub, Priv, "auth_true"),
+
+    ?MINE_TXS([AttachTx]),
+
+    {ok, 200, Account1} = account_by_pubkey(Addr),
+    Bal1 = maps:get(<<"balance">>, Account1),
+
+    %% test that we can return GAAttachTx via http interface
+    {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAAttachTx">>}}} = get_tx(AttachTx),
+
+    ct:pal("Cost: ~p", [Bal0 - Bal1]),
+    MGP = aec_test_utils:min_gas_price(),
+    AEVMBal = Bal0 - 1000000 * MGP - 206 * MGP,
+    FATEBal = Bal0 - 1000000 * MGP - 11 * MGP,
+    ?assertMatchABI(AEVMBal, FATEBal, Bal1),
+    ok.
+
 attach_second(Config) ->
     %% Get account information.
     #{acc_b := #{pub_key := BPub, priv_key := BPriv}} = proplists:get_value(accounts, Config),
@@ -186,7 +219,7 @@ attach_account(Pub, Priv, _Config) ->
     Bal0 = maps:get(<<"balance">>, Account0),
     ?assertEqual(<<"basic">>, maps:get(<<"kind">>, Account0)),
 
-    #{tx_hash := AttachTx} = post_attach_tx(Pub, Priv),
+    #{tx_hash := AttachTx} = post_attach_tx(Pub, Priv, "basic_auth"),
 
     ?MINE_TXS([AttachTx]),
 
@@ -206,7 +239,7 @@ attach_account(Pub, Priv, _Config) ->
 attach_fail(Config) ->
     #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
 
-    AttachTxMap = make_attach_tx_map(APub),
+    AttachTxMap = make_attach_tx_map(APub, "basic_auth"),
 
     Fail = fun(ATMap) ->
                 Tx     = aega_test_utils:ga_attach_tx(APub, ATMap),
@@ -290,6 +323,44 @@ meta_spend(Config) ->
     AEVMBal = ABal0 - (MetaFee + 4711 * 1000 * MGP + 20000 * MGP + 10000),
     FATEBal = ABal0 - (MetaFee + 1421 * 1000 * MGP + 20000 * MGP + 10000),
     ?assertMatchABI(AEVMBal, FATEBal, ABal1),
+    ok.
+
+meta_true_spend(Config) ->
+    %% Get account information.
+    #{acc_a := #{pub_key := APub, priv_key := APriv},
+      acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
+    ABal0 = get_balance(APub),
+    MGP = aec_test_utils:min_gas_price(),
+    MetaFee = (5 * 15000 + 30000) * MGP,
+
+    #{tx_hash := MetaTx} = post_ga_true_spend_tx(APub, APriv, BPub, 10000, 20000 * MGP, MetaFee),
+
+    ?MINE_TXS([MetaTx]),
+
+    ABal1 = get_balance(APub),
+
+    %% test that we can return GAMetaTx via http interface
+    {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>}}} = get_tx(MetaTx),
+
+    {ok, 200, #{<<"ga_info">> := #{<<"return_type">> := <<"ok">>}}} =
+        get_contract_call_object(MetaTx),
+
+    ct:pal("Cost1: ~p", [ABal0 - ABal1]),
+    AEVMBal = ABal0 - (MetaFee + 156 * 1000 * MGP + 20000 * MGP + 10000),
+    FATEBal = ABal0 - (MetaFee + 2 * 1000 * MGP + 20000 * MGP + 10000),
+    ?assertMatchABI(AEVMBal, FATEBal, ABal1),
+    ok.
+
+%% Exactly the same spend transaction is not accepted the second time
+meta_true_fail_spend(Config) ->
+    %% Get account information.
+    #{acc_a := #{pub_key := APub, priv_key := APriv},
+      acc_b := #{pub_key := BPub}} = proplists:get_value(accounts, Config),
+    ABal0 = get_balance(APub),
+    MGP = aec_test_utils:min_gas_price(),
+    MetaFee = (5 * 15000 + 30000) * MGP,
+
+    ?assertEqual(not_accepted, post_ga_true_spend_tx(APub, APriv, BPub, 10000, 20000 * MGP, MetaFee)),
     ok.
 
 meta_meta_fail_auth(Config) ->
@@ -488,18 +559,18 @@ get_balance(Pubkey) ->
     Balance.
 
 %% Attach
-post_attach_tx(AccPK, AccSK) ->
-    AttachTxMap = make_attach_tx_map(AccPK),
+post_attach_tx(AccPK, AccSK, Contract) ->
+    AttachTxMap = make_attach_tx_map(AccPK, Contract),
     AttachTx    = aega_test_utils:ga_attach_tx(AccPK, AttachTxMap),
     sign_and_post_aetx(AccSK, AttachTx).
 
-make_attach_tx_map(AccPK) ->
+make_attach_tx_map(AccPK, Contract) ->
     AccId = aeser_api_encoder:encode(account_pubkey, AccPK),
     {ok, 200, #{<<"nonce">> := Nonce0}} = account_by_pubkey(AccId),
     Nonce = Nonce0 + 1,
 
     {ok, #{bytecode := Code, src := Src, map := #{type_info := TI}}} =
-        aega_test_utils:get_contract("basic_auth"),
+        aega_test_utils:get_contract(Contract),
 
     CallData = aega_test_utils:make_calldata(Src, "init", []),
 
@@ -536,6 +607,14 @@ ga_spend_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee, AuthGas) ->
                     #{ gas => AuthGas, auth_data => AuthData,
                        tx => aetx_sign:new(InnerTx, []), fee => MetaFee }),
     ga_spend_tx(Nonces, AccPK, AccSK, MetaTx, MetaFee, AuthGas).
+
+post_ga_true_spend_tx(AccPK, AccSK, Recipient, Amount, Fee, MetaFee) ->
+    InnerTx = spend_tx(AccPK, AccSK, 0, Recipient, Amount, Fee),
+    AuthData  = aega_test_utils:make_calldata("auth_true", "authorize", []),
+    MetaTx    = aega_test_utils:ga_meta_tx(AccPK,
+                    #{ gas => 2000, auth_data => AuthData,
+                       tx => aetx_sign:new(InnerTx, []), fee => MetaFee }),
+    post_aetx(aetx_sign:new(MetaTx, [])).
 
 sign_and_post_aetx(PrivKey, Tx) ->
     SignedTx     = aec_test_utils:sign_tx(Tx, PrivKey),
@@ -625,4 +704,3 @@ abi_version() ->
         undefined -> aect_test_utils:latest_sophia_abi_version();
         X         -> X
     end.
-
