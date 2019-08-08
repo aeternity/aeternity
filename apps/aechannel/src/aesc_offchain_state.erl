@@ -90,7 +90,7 @@ recover_from_offchain_tx(#{ existing_channel_id := ChId
                 false ->
                     {error, latest_state_mismatch}
             end;
-        error ->
+        {error, _} ->
             {error, state_tree_missing}
     end.
 
