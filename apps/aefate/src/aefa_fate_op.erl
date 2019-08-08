@@ -1318,21 +1318,21 @@ nop(EngineState) ->
 
 %% Guarded ops
 gop(Op, Arg, ES) ->
-    try op(Op, Arg) of
+    try op(Op, Arg, ES) of
         Res -> Res
     catch
         {add_engine_state, E} -> aefa_fate:abort(E, ES)
     end.
 
 gop(Op, Arg1, Arg2, ES) ->
-    try op(Op, Arg1, Arg2) of
+    try op(Op, Arg1, Arg2, ES) of
         Res -> Res
     catch
         {add_engine_state, E} -> aefa_fate:abort(E, ES)
     end.
 
 gop(Op, Arg1, Arg2, Arg3, ES) ->
-    try op(Op, Arg1, Arg2, Arg3) of
+    try op(Op, Arg1, Arg2, Arg3, ES) of
         Res -> Res
     catch
         {add_engine_state, E} -> aefa_fate:abort(E, ES)
@@ -1407,75 +1407,75 @@ make_variant(Arities, Tag, NoElements, ES) ->
 
 
 %% Unary operations
-op(get, A) ->
+op(get, A, _ES) ->
     A;
-op(inc, A) ->
+op(inc, A, _ES) ->
     A + 1;
-op(dec, A) ->
+op(dec, A, _ES) ->
     A - 1;
-op('not', A) ->
+op('not', A, _ES) ->
     not A;
-op(map_from_list, A) when ?IS_FATE_LIST(A) ->
+op(map_from_list, A, _ES) when ?IS_FATE_LIST(A) ->
     KeyValues = [T || ?FATE_TUPLE(T) <- ?FATE_LIST_VALUE(A)],
     aeb_fate_data:make_map(maps:from_list(KeyValues));
-op(map_to_list, A) when ?IS_FATE_MAP(A) ->
+op(map_to_list, A, _ES) when ?IS_FATE_MAP(A) ->
     Tuples = [aeb_fate_data:make_tuple({K, V})
               || {K, V} <- maps:to_list(?FATE_MAP_VALUE(A))],
     aeb_fate_data:make_list(Tuples);
-op(map_size, A) when ?IS_FATE_MAP(A) ->
+op(map_size, A, _ES) when ?IS_FATE_MAP(A) ->
     aeb_fate_data:make_integer(map_size(?FATE_MAP_VALUE(A)));
-op(hd, A) when ?IS_FATE_LIST(A) ->
+op(hd, A, _ES) when ?IS_FATE_LIST(A) ->
     case ?FATE_LIST_VALUE(A) of
         [] -> aefa_fate:abort(hd_on_empty_list);
         [Hd|_] -> Hd
     end;
-op(is_nil, A) when ?IS_FATE_LIST(A) ->
+op(is_nil, A, _ES) when ?IS_FATE_LIST(A) ->
     aeb_fate_data:make_boolean(?FATE_LIST_VALUE(A) =:= []);
-op(tl, A) when ?IS_FATE_LIST(A) ->
+op(tl, A, _ES) when ?IS_FATE_LIST(A) ->
     case ?FATE_LIST_VALUE(A) of
         [] -> aefa_fate:abort(tl_on_empty_list);
         [_|Tl] -> Tl
     end;
-op(length, A) when ?IS_FATE_LIST(A) ->
+op(length, A, _ES) when ?IS_FATE_LIST(A) ->
     aeb_fate_data:make_integer(length(?FATE_LIST_VALUE(A)));
-op(int_to_str, A) when ?IS_FATE_INTEGER(A) ->
+op(int_to_str, A, _ES) when ?IS_FATE_INTEGER(A) ->
     aeb_fate_data:make_string(integer_to_binary(?FATE_INTEGER_VALUE(A)));
-op(int_to_addr, A) when ?IS_FATE_INTEGER(A) ->
+op(int_to_addr, A, _ES) when ?IS_FATE_INTEGER(A) ->
     aeb_fate_data:make_address(<<A:256>>);
-op(addr_to_str, A) when ?IS_FATE_ADDRESS(A) ->
+op(addr_to_str, A, _ES) when ?IS_FATE_ADDRESS(A) ->
     Val = ?FATE_ADDRESS_VALUE(A),
     aeser_api_encoder:encode(account_pubkey, Val);
-op(str_reverse, A) when ?IS_FATE_STRING(A) ->
+op(str_reverse, A, _ES) when ?IS_FATE_STRING(A) ->
     aeb_fate_data:make_string(binary_reverse(?FATE_STRING_VALUE(A)));
-op(str_length, A) when ?IS_FATE_STRING(A) ->
+op(str_length, A, _ES) when ?IS_FATE_STRING(A) ->
     aeb_fate_data:make_integer(byte_size(?FATE_STRING_VALUE(A)));
-op(bits_all, N)  when ?IS_FATE_INTEGER(N) ->
+op(bits_all, N, _ES)  when ?IS_FATE_INTEGER(N) ->
     ?FATE_BITS((1 bsl (N)) - 1);
-op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
+op(bits_sum, A, _ES)  when ?IS_FATE_BITS(A) ->
     ?FATE_BITS(Bits) = A,
     if Bits < 0 -> aefa_fate:abort({arithmetic_error, bits_sum_on_infinite_set});
        true -> bits_sum(Bits, 0)
     end;
-op(bytes_to_int, ?FATE_BYTES(Bin)) ->
+op(bytes_to_int, ?FATE_BYTES(Bin), _ES) ->
     N = byte_size(Bin),
     <<Val:N/unit:8>> = Bin,
     Val;
-op(bytes_to_str, ?FATE_BYTES(Bin)) ->
+op(bytes_to_str, ?FATE_BYTES(Bin), _ES) ->
     Str = list_to_binary(aeu_hex:bin_to_hex(Bin)),
     ?FATE_STRING(Str);
-op(sha3, A) ->
+op(sha3, A, _ES) ->
     Bin  = binary_for_hashing(A),
     Hash = aec_hash:hash(evm, Bin),
     ?FATE_BYTES(Hash);
-op(sha256, A) ->
+op(sha256, A, _ES) ->
     Bin  = binary_for_hashing(A),
     Hash = aec_hash:sha256_hash(Bin),
     ?FATE_BYTES(Hash);
-op(blake2b, A) ->
+op(blake2b, A, _ES) ->
     Bin  = binary_for_hashing(A),
     Hash = aec_hash:blake2b_256_hash(Bin),
     ?FATE_BYTES(Hash);
-op(contract_to_address, A) when ?IS_FATE_CONTRACT(A) ->
+op(contract_to_address, A, _ES) when ?IS_FATE_CONTRACT(A) ->
     ?FATE_ADDRESS(?FATE_CONTRACT_VALUE(A)).
 
 binary_for_hashing(S) when ?IS_FATE_STRING(S) ->
@@ -1484,50 +1484,55 @@ binary_for_hashing(X) ->
     aeb_fate_encoding:serialize(X).
 
 %% Binary operations
-op(add, A, B)  when ?IS_FATE_INTEGER(A)
+op(add, A, B, _ES)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
     A + B;
-op(sub, A, B)  when ?IS_FATE_INTEGER(A)
+op(sub, A, B, _ES)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
     A - B;
-op(mul, A, B)  when ?IS_FATE_INTEGER(A)
+op(mul, A, B, _ES)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
     A * B;
-op('div', A, B)  when ?IS_FATE_INTEGER(A)
+op('div', A, B, _ES)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
     if B =:= 0 -> aefa_fate:abort(division_by_zero);
        true -> A div B
     end;
-op(pow, A, B)  when ?IS_FATE_INTEGER(A), ?IS_FATE_INTEGER(B) ->
+op(pow, A, B, _ES)  when ?IS_FATE_INTEGER(A), ?IS_FATE_INTEGER(B) ->
     if B < 0 ->
            aefa_fate:abort({arithmetic_error, negative_exponent});
        true ->
            pow(A, B)
     end;
-op(mod, A, B)  when ?IS_FATE_INTEGER(A)
+op(mod, A, B, _ES)  when ?IS_FATE_INTEGER(A)
                     , ?IS_FATE_INTEGER(B) ->
     if B =:= 0 -> aefa_fate:abort(mod_by_zero);
        true -> A rem B
     end;
-op('and', A, B)  when ?IS_FATE_BOOLEAN(A)
+op('and', A, B, _ES)  when ?IS_FATE_BOOLEAN(A)
                     , ?IS_FATE_BOOLEAN(B) ->
     A and B;
-op('or', A, B)  when ?IS_FATE_BOOLEAN(A)
+op('or', A, B, _ES)  when ?IS_FATE_BOOLEAN(A)
                     , ?IS_FATE_BOOLEAN(B) ->
     A or B;
-op(map_delete, Map, Key) when ?IS_FATE_MAP(Map),
+op(map_delete, Map, Key, _ES) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     maps:remove(Key, ?FATE_MAP_VALUE(Map));
-op(map_lookup, Map, Key) when ?IS_FATE_MAP(Map),
+op(map_lookup, Map, Key, _ES) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     case maps:get(Key, ?FATE_MAP_VALUE(Map), void) of
         void -> aefa_fate:abort(missing_map_key);
         Res -> Res
     end;
-op(map_member, Map, Key) when ?IS_FATE_MAP(Map),
+op(map_lookup, ?FATE_STORE_MAP(Cache, MapId), Key, ES) ->
+    case store_map_lookup(Cache, MapId, Key, ES) of
+        error     -> aefa_fate:abort(missing_map_key);
+        {ok, Val} -> Val
+    end;
+op(map_member, Map, Key, _ES) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     aeb_fate_data:make_boolean(maps:is_key(Key, ?FATE_MAP_VALUE(Map)));
-op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
+op(cons, Hd, Tail, _ES) when ?IS_FATE_LIST(Tail) ->
     case ?FATE_LIST_VALUE(Tail) of
         [] -> aeb_fate_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
         [OldHd|_] = Tail ->
@@ -1538,18 +1543,18 @@ op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
                     aefa_fate:abort({type_error, cons})
             end
     end;
-op(append, A, B) when ?IS_FATE_LIST(A), ?IS_FATE_LIST(B) ->
+op(append, A, B, _ES) when ?IS_FATE_LIST(A), ?IS_FATE_LIST(B) ->
     aeb_fate_data:make_list(?FATE_LIST_VALUE(A) ++ ?FATE_LIST_VALUE(B));
-op(str_join, A, B) when ?IS_FATE_STRING(A)
+op(str_join, A, B, _ES) when ?IS_FATE_STRING(A)
                          , ?IS_FATE_STRING(B) ->
     aeb_fate_data:make_string(<<?FATE_STRING_VALUE(A)/binary,
                             ?FATE_STRING_VALUE(B)/binary>>);
-op(variant_test, A, B)  when ?IS_FATE_VARIANT(A)
+op(variant_test, A, B, _ES)  when ?IS_FATE_VARIANT(A)
                          , ?IS_FATE_INTEGER(B)
                          , B >= 0 ->
     ?FATE_VARIANT(_S, T,_Values) = A,
     aeb_fate_data:make_boolean(T =:= B);
-op(variant_element, A, B)  when ?IS_FATE_VARIANT(A)
+op(variant_element, A, B, _ES)  when ?IS_FATE_VARIANT(A)
                                 , ?IS_FATE_INTEGER(B)
                                 , B >= 0 ->
     ?FATE_VARIANT(_S, _T, Values) = A,
@@ -1559,54 +1564,56 @@ op(variant_element, A, B)  when ?IS_FATE_VARIANT(A)
             aefa_fate:abort({type_error, variant_element, B, A})
     end;
 
-op(bits_set, A, B)  when ?IS_FATE_BITS(A), ?IS_FATE_INTEGER(B) ->
+op(bits_set, A, B, _ES)  when ?IS_FATE_BITS(A), ?IS_FATE_INTEGER(B) ->
     if B < 0 -> aefa_fate:abort({arithmetic_error, negative_bit_position});
        true ->
             ?FATE_BITS(Bits) = A,
             ?FATE_BITS(Bits bor (1 bsl B))
     end;
-op(bits_clear, A, B)  when ?IS_FATE_BITS(A), ?IS_FATE_INTEGER(B) ->
+op(bits_clear, A, B, _ES)  when ?IS_FATE_BITS(A), ?IS_FATE_INTEGER(B) ->
     if B < 0 -> aefa_fate:abort({arithmetic_error, negative_bit_position});
        true ->
             ?FATE_BITS(Bits) = A,
             ?FATE_BITS(Bits band (bnot (1 bsl B)))
     end;
-op(bits_test, A, B)  when ?IS_FATE_BITS(A), ?IS_FATE_INTEGER(B) ->
+op(bits_test, A, B, _ES)  when ?IS_FATE_BITS(A), ?IS_FATE_INTEGER(B) ->
     if B < 0 -> aefa_fate:abort({arithmetic_error, negative_bit_position});
        true ->
             ?FATE_BITS(Bits) = A,
             ((Bits band (1 bsl B)) > 0)
     end;
-op(bits_union, A, B)
+op(bits_union, A, B, _ES)
   when ?IS_FATE_BITS(A), ?IS_FATE_BITS(B) ->
     ?FATE_BITS(BitsA) = A,
     ?FATE_BITS(BitsB) = B,
     ?FATE_BITS(BitsA bor BitsB);
-op(bits_intersection, A, B)
+op(bits_intersection, A, B, _ES)
   when ?IS_FATE_BITS(A), ?IS_FATE_BITS(B) ->
     ?FATE_BITS(BitsA) = A,
     ?FATE_BITS(BitsB) = B,
     ?FATE_BITS(BitsA band BitsB);
-op(bits_difference, A, B)
+op(bits_difference, A, B, _ES)
   when ?IS_FATE_BITS(A), ?IS_FATE_BITS(B) ->
     ?FATE_BITS(BitsA) = A,
     ?FATE_BITS(BitsB) = B,
     ?FATE_BITS((BitsA band BitsB) bxor BitsA).
 
 %% Terinay operations
-op(map_lookup_default, Map, Key, Default) when ?IS_FATE_MAP(Map),
+op(map_lookup_default, Map, Key, Default, _ES) when ?IS_FATE_MAP(Map),
                                                not ?IS_FATE_MAP(Key) ->
     maps:get(Key, ?FATE_MAP_VALUE(Map), Default);
-op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
+op(map_update, Map, Key, Value, _ES) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     Res = maps:put(Key, Value, ?FATE_MAP_VALUE(Map)),
     aeb_fate_data:make_map(Res);
-op(ecverify, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
+op(map_update, ?FATE_STORE_MAP(Cache, Id), Key, Value, _ES) ->
+    ?FATE_STORE_MAP(Cache#{ Key => Value }, Id);
+op(ecverify, Msg, PK, Sig, _ES) when ?IS_FATE_BYTES(32, Msg)
                               , ?IS_FATE_ADDRESS(PK)
                               , ?IS_FATE_BYTES(64, Sig) ->
     {?FATE_BYTES(Msg1), ?FATE_ADDRESS(PK1), ?FATE_BYTES(Sig1)} = {Msg, PK, Sig},
     aeu_crypto:ecverify(Msg1, PK1, Sig1);
-op(ecverify_secp256k1, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
+op(ecverify_secp256k1, Msg, PK, Sig, _ES) when ?IS_FATE_BYTES(32, Msg)
                                         , ?IS_FATE_BYTES(64, PK)
                                         , ?IS_FATE_BYTES(64, Sig) ->
     {?FATE_BYTES(Msg1), ?FATE_BYTES(PK1), ?FATE_BYTES(Sig1)} = {Msg, PK, Sig},
@@ -1616,7 +1623,15 @@ op(ecverify_secp256k1, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
 bits_sum(0, Sum) -> Sum;
 bits_sum(N, Sum) -> bits_sum(N bsr 1, Sum + (N band 2#1)).
 
-
+store_map_lookup(Cache, MapId, Key, ES) ->
+    case maps:get(Key, Cache, void) of
+        ?FATE_MAP_TOMBSTONE -> error;
+        void ->
+            Pubkey = aefa_engine_state:current_contract(ES),
+            Store  = aefa_engine_state:stores(ES),
+            aefa_stores:store_map_lookup(Pubkey, MapId, Key, Store);
+        Val -> {ok, Val}
+    end.
 
 %% ------------------------------------------------------
 %% Comparison instructions
