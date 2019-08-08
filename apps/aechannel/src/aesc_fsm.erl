@@ -2,6 +2,19 @@
 %% FSM is used for both state channel roles, 'responder' and 'initiator',
 %% because most logic is shared with the initialization being specific to the
 %% role.
+%%
+%% The presumption of the fsm is that only the client possesses the signing
+%% capability. Therefore, anytime a request needs co-signing, a request is
+%% sent to the client. This complicates the state machine significantly, but
+%% the hope is that the client SDK can be greatly simplified in turn.
+%%
+%% If the client (presumably Websocket client) disconnects, the fsm will keep
+%% running, but will not be able to request co-signing. If, however, the peer
+%% presents requests that are already co-signed, the fsm will fake the signing
+%% reply and proceed as normal. How the 'out-of-band' co-signing is achieved is
+%% beyond the scope of this description, but it could e.g. happen similar to
+%% air-gapped signing. The checks for this happen in the request_signing() function.
+%%
 %% @reference See the design of
 %% <a href="https://github.com/aeternity/protocol/tree/master/channels">State Channels</a>
 %% for further information.
@@ -1859,8 +1872,6 @@ send_deposit_created_msg(SignedTx, Updates,
     aesc_session_noise:deposit_created(Sn, Msg),
     log(snd, ?DEP_CREATED, Msg, Data).
 
-%% check_deposit_created_msg(_Msg, #data{ client_connected = false }) ->
-%%     {error, client_disconnected};
 check_deposit_created_msg(#{ channel_id := ChanId
                            , block_hash := BlockHash
                            , data       := #{tx      := TxBin,
@@ -1965,8 +1976,6 @@ send_withdraw_created_msg(SignedTx, Updates,
     aesc_session_noise:wdraw_created(Sn, Msg),
     log(snd, ?WDRAW_CREATED, Msg, Data).
 
-check_withdraw_created_msg(_Msg, #data{ client_connected = false }) ->
-    {error, client_disconnected};
 check_withdraw_created_msg(#{ channel_id := ChanId
                             , block_hash := BlockHash
                             , data       := #{ tx      := TxBin
@@ -2046,8 +2055,6 @@ send_update_msg(SignedTx, Updates,
     aesc_session_noise:update(Sn, Msg),
     log(snd, ?UPDATE, Msg, Data).
 
-%% check_update_msg(_Type, _Msg, #data{ client_connected = false }) ->
-%%     {error, client_disconnected};
 check_update_msg(Type, Msg, D) ->
     lager:debug("check_update_msg(~p)", [Msg]),
     try check_update_msg_(Type, Msg, D)
@@ -2321,8 +2328,10 @@ send_inband_msg(To, Info, #data{session     = Session} = D) ->
     aesc_session_noise:inband_msg(Session, M),
     log(snd, ?INBAND_MSG, M, D).
 
-%% check_inband_msg(_, #data{ client_connected = false }) ->
-%%     {error, client_disconnected};
+check_inband_msg(_, #data{ client_connected = false }) ->
+    %% Inband messages don't require co-signing, but there is no
+    %% client to forward to.
+    {error, client_disconnected};
 check_inband_msg(#{ channel_id := ChanId
                   , from       := From
                   , to         := To } = Msg,
