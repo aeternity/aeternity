@@ -3923,18 +3923,23 @@ sophia_big_map_benchmark(Cfg) ->
     N     = proplists:get_value(n, Cfg, 1000),
     Batch = proplists:get_value(batch, Cfg, N),
     Key   = proplists:get_value(key, Cfg, 0),
-    Val   = integer_to_binary(Key div Batch),
+    Val   = integer_to_binary((Key div Batch) * Batch),
     Ct  = ?call(create_contract, Acc, maps_benchmark, {?cid(<<777:256>>), #{}}),
+    Ms  = fun(T) -> io_lib:format("~.2fms", [T / 1000]) end,
     _   = [ begin
-                ?call(call_contract, Acc, Ct, update, {tuple, []}, {I, I + Batch - 1, integer_to_binary(I)}, #{ gas => 1000000000 }),
-                io:format(".")
+                erlang:garbage_collect(),
+                {T, {_, G}} = timer:tc(fun() ->
+                            ?call(call_contract, Acc, Ct, update, {tuple, []}, {I, I + Batch - 1, integer_to_binary(I)},
+                                  #{ gas => 1000000000, return_gas_used => true })
+                            end),
+                io:format("~s (~p gas)\n", [Ms(T), G])
             end || I <- lists:seq(0, N - 1, Batch) ],
     io:format("\n"),
     io:format("-- Timed call --\n"),
-    {Time, Val} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, get, string, Key) end),
-    {Time1, {}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, noop, {tuple, []}, {}) end),
-    io:format("Get: ~.2fms\nNop: ~.2fms\n", [Time / 1000, Time1 / 1000]),
-    ok.
+    {Time, {Val, GasGet}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, get, string, Key, #{ return_gas_used => true }) end),
+    {Time1, {{}, GasNop}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, noop, {tuple, []}, {}, #{ return_gas_used => true }) end),
+    io:format("Get: ~s (~p gas)\nNop: ~s (~p gas)\n", [Ms(Time), GasGet, Ms(Time1), GasNop]),
+    aect_contracts:state(aect_test_utils:get_contract(Ct, state())).
 
 sophia_pmaps(_Cfg) ->
     state(aect_test_utils:new_state()),
