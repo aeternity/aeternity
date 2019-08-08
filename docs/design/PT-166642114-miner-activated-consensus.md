@@ -2,7 +2,7 @@
 
 This document describes the technical specifications for the miner signalled consensus upgrade whose [functional specifications are available][fspecs].
 
-[fspecs]: https://github.com/aeternity/protocol/blob/1ccb7fb099f7da9ba682b0039d37790050499ed1/consensus/miner_signalled_consensus.md
+[fspecs]: https://github.com/aeternity/protocol/blob/7f31f4f1ccb7fb099f7da9ba682b0039d37790050499ed1/consensus/miner_signalled_consensus.md
 
 ## Technical specifications
 
@@ -141,8 +141,6 @@ Key is hash of key block at height preceding that at which signalling block inte
 Value is boolean (true / false), expressing whether the proposed new consensus protocol is meant to be enabled at the proposed height.
 
 ## Pending clarifications
-
-Review/confirm/refine/revise the value in the key block header field info being part of the validation rules of the new consensus protocol on the "signalling" block interval.
 
 Change across the node the assumption that consensus protocol version can be inferred simply from the height, and rather:
 - If block expected to be connected to genesis, perform non-transactional reads to the chain storage.
