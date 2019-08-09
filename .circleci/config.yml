@@ -1227,25 +1227,12 @@ workflows:
 
       - docker_test_push_branch:
           context: ae-node-builds
-          requires:
-            - test_roma
-            - test_minerva
-            - test_fortuna
-            - test_lima
-            - test_mnesia_leveled
-            - test_mnesia_rocksdb
-            - eunit_roma
-            - eunit_minerva
-            - eunit_fortuna
-            - eunit_lima
-            - aevm_tests
-            - uat_tests
-            - static_analysis
-            - rebar_lock_check
+          requires: []
           filters:
             branches:
               only:
                 - master
+                - 165181713_external_localnet
 
       - deploy_next:
           context: ae-node-builds
