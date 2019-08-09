@@ -771,7 +771,7 @@ jobs:
       - run:
           name: Health check
           command: |
-            sleep 30 # give it some time to boot the tcp listeners
+            sleep 60 # give it some so that docker health checks kicks in
             STATUS=$(docker inspect --format='{{.State.Health.Status}}' ae_${CIRCLE_SHA1:?})
             echo $STATUS
             [ $STATUS == 'healthy' ]
