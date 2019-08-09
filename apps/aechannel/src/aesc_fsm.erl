@@ -2396,7 +2396,7 @@ start_min_depth_watcher(Type, SignedTx, Updates,
     {OnChainId, D1} = on_chain_id(D, SignedTx),
     case {Type, Watcher0} of
         {{?MIN_DEPTH, ?WATCH_FND = Sub}, undefined} ->
-            {ok, Watcher1} = aesc_fsm_min_depth_watcher:start_link(
+            {ok, Watcher1} = aesc_chain_watcher:start_link(
                                Sub, TxHash, OnChainId, MinDepth, ?MODULE),
             evt({watcher, Watcher1}),
             {ok, D1#data{ watcher = Watcher1
@@ -2406,7 +2406,7 @@ start_min_depth_watcher(Type, SignedTx, Updates,
                                                              , block_hash = BlockHash 
                                                              , updates = Updates}}}};
         {{?MIN_DEPTH, Sub}, Pid} when is_pid(Pid) ->
-            ok = aesc_fsm_min_depth_watcher:watch_for_min_depth(
+            ok = aesc_chain_watcher:watch_for_min_depth(
                    Pid, TxHash, MinDepth, ?MODULE, Sub),
             {ok, D1#data{op = #op_min_depth{ tag = Sub
                                            , tx_hash = TxHash
@@ -2414,14 +2414,14 @@ start_min_depth_watcher(Type, SignedTx, Updates,
                                                             , block_hash = BlockHash 
                                                             , updates = Updates}}}};
         {unlock, Pid} when Pid =/= undefined ->
-            ok = aesc_fsm_min_depth_watcher:watch_for_unlock(Pid, ?MODULE),
+            ok = aesc_chain_watcher:watch_for_unlock(Pid, ?MODULE),
             {ok, D1#data{op = #op_watch{ type = unlock
                                        , tx_hash = TxHash
                                        , data = #op_data{ signed_tx = SignedTx
                                                         , block_hash = BlockHash 
                                                         , updates = Updates}}}};
         {close, Pid} when Pid =/= undefined ->
-            ok = aesc_fsm_min_depth_watcher:watch_for_channel_close(Pid, MinDepth, ?MODULE),
+            ok = aesc_chain_watcher:watch_for_channel_close(Pid, MinDepth, ?MODULE),
             {ok, D1#data{op = #op_watch{ type = close
                                        , tx_hash = TxHash
                                        , data = #op_data{ signed_tx = SignedTx
@@ -2429,7 +2429,7 @@ start_min_depth_watcher(Type, SignedTx, Updates,
                                                         , updates = Updates}}}};
         {_, Pid} when Pid =/= undefined ->  %% assertion
             lager:debug("Unknown Type = ~p, Pid = ~p", [Type, Pid]),
-            ok = aesc_fsm_min_depth_watcher:watch(
+            ok = aesc_chain_watcher:watch(
                    Pid, Type, TxHash, MinDepth, ?MODULE),
             {ok, D1#data{op = #op_watch{ type = Type
                                        , tx_hash = TxHash
