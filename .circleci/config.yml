@@ -17,6 +17,8 @@ executors:
   buildpack:
     docker:
       - image: circleci/buildpack-deps:xenial
+    environment:
+      DOCKERHUB_REPO: aeternity/aeternity
 
 references:
   container_config: &container_config
