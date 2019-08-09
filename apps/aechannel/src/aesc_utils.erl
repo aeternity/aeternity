@@ -886,7 +886,8 @@ count_authentications(SignedTx, GAs) ->
         {aega_meta_tx, InnerSignedTx} -> 
             count_authentications(aega_meta_tx:tx(InnerSignedTx),
                                   ordsets:add_element(
-                                    aega_meta_tx:ga_pubkey(InnerSignedTx)));
+                                    aega_meta_tx:ga_pubkey(InnerSignedTx),
+                                    GAs));
         {_, _} -> % most inner tx
             ordsets:size(GAs) + length(aetx_sign:signatures(SignedTx))
     end.
