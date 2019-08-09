@@ -37,6 +37,7 @@
         , put_commitment/2
         , put_contract/2
         , put_name/2
+        , put_subname/2
         , put_oracle/2
         , put_oracle_query/2
         ]).
@@ -169,7 +170,10 @@ get_name(Key, S) ->
     get_x(name, Key, name_does_not_exist, S).
 
 put_name(Object, S) ->
-    cache_put(element(1, Object), Object, S).
+    cache_put(name, Object, S).
+
+put_subname(Object, S) ->
+    cache_put(subname, Object, S).
 
 %%----------
 

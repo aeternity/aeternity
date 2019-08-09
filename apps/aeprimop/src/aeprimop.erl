@@ -88,6 +88,7 @@
                         , put_commitment/2
                         , put_contract/2
                         , put_name/2
+                        , put_subname/2
                         , put_oracle/2
                         , put_oracle_query/2
                         ]).
@@ -844,7 +845,7 @@ subname({OwnerPubkey, PlainName, Definition}, S) ->
               fun ({SNameAscii, SPointers}, St) ->
                       SNameHash = aens_hash:name_hash(SNameAscii),
                       Subname = aens_subnames:new(SNameHash, SPointers),
-                      put_name(Subname, St)
+                      put_subname(Subname, St)
               end,
               S#state{trees = aec_trees:set_ns(S1#state.trees, NSTree1)},
               Definition);
