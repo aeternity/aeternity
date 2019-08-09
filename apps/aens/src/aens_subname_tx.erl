@@ -8,6 +8,7 @@
 -module(aens_subname_tx).
 
 -include("aens.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -behavior(aetx).
 
@@ -216,9 +217,7 @@ version(_) ->
     ?SUBNAME_TX_VSN.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
-valid_at_protocol(_, _) ->
-    true.
-
+valid_at_protocol(Vsn, _) -> Vsn >= ?LIMA_PROTOCOL_VSN.
 
 map_pointers(Fun, Definition) ->
     [{Subname, lists:map(Fun, Pointers)} || {Subname, Pointers} <- Definition].
