@@ -2886,13 +2886,13 @@ pubkeys(both, D, _) ->
     both_accounts(D);
 pubkeys(Who, D, SignedTx) ->
     case aesc_utils:count_authentications(SignedTx) of
-        2 ->
-            both_accounts(D);
-        1 ->
+        N when N < 2 ->
             case Who of
                 me -> [my_account(D)];
                 other_participant -> [other_account(D)]
-            end
+            end;
+        _ ->
+            both_accounts(D)
     end.
 
 next_round(#data{state = State}) ->
