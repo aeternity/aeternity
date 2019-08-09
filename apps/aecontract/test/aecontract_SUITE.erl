@@ -3574,7 +3574,7 @@ sophia_maps(_Cfg) ->
     MkOption = fun(undefined) -> none; (X) -> {some, X} end,
 
     OogErr = case ?IS_FATE_SOPHIA(vm_version()) of
-                 true  -> {error, <<"Maps: Key does not exists">>};
+                 true  -> {error, <<"Maps: Key does not exist">>};
                  false -> {error, <<"out_of_gas">>}
              end,
     Calls = lists:append(

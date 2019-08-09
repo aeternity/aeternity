@@ -1214,8 +1214,8 @@ tx_event(Name, #state{tx_env = Env} = S) ->
 
 init_contract(Context, OwnerId, Contract, GasLimit, GasPrice, CallData,
               OwnerPubkey, Fee, Nonce, RollbackS, S) ->
-    S1 = prepare_init_call(Contract, S),
-    {InitCall, S2} = run_contract(OwnerId, Contract, GasLimit, GasPrice,
+    {Contract1, S1} = prepare_init_call(Contract, S),
+    {InitCall, S2} = run_contract(OwnerId, Contract1, GasLimit, GasPrice,
                                   CallData, OwnerPubkey, _InitAmount = 0,
                                   _CallStack = [], Nonce, S1),
     case aect_call:return_type(InitCall) of
@@ -1224,7 +1224,7 @@ init_contract(Context, OwnerId, Contract, GasLimit, GasPrice, CallData,
         revert ->
             contract_call_fail(InitCall, Fee, RollbackS);
         ok ->
-            contract_init_call_success(Context, InitCall, Contract,
+            contract_init_call_success(Context, InitCall, Contract1,
                                        GasLimit, Fee, RollbackS, S2)
     end.
 
@@ -1235,10 +1235,11 @@ prepare_init_call(Contract, S) ->
             %% is because the FATE init function writes to the store explicitly
             %% instead of returning the initial state like the AEVM. This allows
             %% the compiler to decide the store layout.
-            Store     = aect_contracts_store:new(),
+            Store     = aefa_stores:initial_contract_store(),
             Contract1 = aect_contracts:set_state(Store, Contract),
-            put_contract(Contract1, S);
-        _ -> S
+            S1 = put_contract(Contract1, S),
+            {Contract1, S1};
+        _ -> {Contract, S}
     end.
 
 contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S) ->
