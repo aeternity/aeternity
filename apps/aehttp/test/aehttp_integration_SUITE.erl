@@ -110,6 +110,7 @@
     contract_create_transaction_init_error/1,
     oracle_transactions/1,
     nameservice_transactions/1,
+    nameservice_transaction_subname/1,
     spend_transaction/1,
     state_channels_onchain_transactions/1,
     unknown_atom_in_spend_tx/1,
@@ -416,6 +417,7 @@ groups() ->
         contract_create_transaction_init_error,
         oracle_transactions,
         nameservice_transactions,
+        nameservice_transaction_subname,
         spend_transaction,
         state_channels_onchain_transactions,
         unknown_atom_in_spend_tx,
@@ -737,6 +739,11 @@ init_per_testcase(post_oracle_response, Config) ->
      {response_ttl_type, <<"delta">>},
      {response_ttl_value, 20},
      {response, <<"Hejsan">>} | init_per_testcase_all(Config)];
+init_per_testcase(nameservice_transaction_subname, Config) ->
+    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+        true -> Config;
+        false -> {skip, subname_transaction_is_from_lima_or_never}
+    end;
 init_per_testcase(Case, Config) when
         Case =:= disabled_debug_endpoints; Case =:= enabled_debug_endpoints ->
     {ok, HttpInternal} = rpc(?NODE, application, get_env, [aehttp, internal]),
@@ -2241,7 +2248,6 @@ nameservice_transactions(_Config) ->
     nameservice_transaction_update(MinerAddress, MinerPubkey),
     nameservice_transaction_transfer(MinerAddress, MinerPubkey),
     nameservice_transaction_revoke(MinerAddress, MinerPubkey),
-    nameservice_transaction_subname(MinerAddress, MinerPubkey),
     ok.
 
 nameservice_transaction_preclaim(MinerAddress, MinerPubkey) ->
@@ -2399,7 +2405,13 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
     test_missing_address(account_id, Encoded, fun get_name_revoke/1),
     ok.
 
-nameservice_transaction_subname(MinerAddress, MinerPubkey) ->
+
+%% GET subname_tx unsigned transaction
+nameservice_transaction_subname(_Config) ->
+    {ok, 200, _} = get_balance_at_top(),
+    MinerAddress = get_pubkey(),
+    {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
+
     Name = <<"topname.test">>,
 
     Salt = 1234,

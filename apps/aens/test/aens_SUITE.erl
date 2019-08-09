@@ -11,7 +11,9 @@
 -export([all/0,
          groups/0,
          init_per_suite/1,
-         end_per_suite/1]).
+         end_per_suite/1,
+         init_per_testcase/2,
+         end_per_testcase/2]).
 
 %% test case exports
 -export([preclaim/1,
@@ -35,6 +37,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 -include("../../aecore/include/blocks.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 %%%===================================================================
 %%% Common test framework
@@ -80,6 +83,16 @@ init_per_suite(Cfg) ->
 
 end_per_suite(_) ->
     [].
+
+init_per_testcase(subname, Cfg) ->
+    testcase_subname_ensure_lima(Cfg);
+init_per_testcase(subname_claim_as_name_negative, Cfg) ->
+    testcase_subname_ensure_lima(Cfg);
+init_per_testcase(_, Cfg) ->
+    Cfg.
+
+end_per_testcase(_, _) ->
+    ok.
 
 %%%===================================================================
 %%% Preclaim
@@ -752,3 +765,10 @@ subname_claim_as_name_negative(_Cfg) ->
                [{binary,id}], _},
               [_|_]}} = (catch claim([{name, SubnameAsName}])),
     ok.
+
+
+testcase_subname_ensure_lima(Cfg) ->
+    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+        true -> Cfg;
+        false -> {skip, subname_transaction_is_from_lima_or_never}
+    end.

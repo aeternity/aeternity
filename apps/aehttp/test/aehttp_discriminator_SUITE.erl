@@ -48,6 +48,7 @@ groups() ->
         , name_transfer_tx
         , name_update_tx
         , name_revoke_tx
+        , subname_tx
         , contract_call_tx
         , contract_create_tx
         %% TODO , ga_attach_tx
