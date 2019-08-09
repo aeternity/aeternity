@@ -1422,8 +1422,12 @@ op(map_to_list, A, _ES) when ?IS_FATE_MAP(A) ->
     Tuples = [aeb_fate_data:make_tuple({K, V})
               || {K, V} <- maps:to_list(?FATE_MAP_VALUE(A))],
     aeb_fate_data:make_list(Tuples);
+op(map_to_list, ?FATE_STORE_MAP(Cache, MapId), ES) ->
+    store_map_to_list(Cache, MapId, ES);
 op(map_size, A, _ES) when ?IS_FATE_MAP(A) ->
     aeb_fate_data:make_integer(map_size(?FATE_MAP_VALUE(A)));
+op(map_size, ?FATE_STORE_MAP(Cache, MapId), ES) ->
+    store_map_size(Cache, MapId, ES);
 op(hd, A, _ES) when ?IS_FATE_LIST(A) ->
     case ?FATE_LIST_VALUE(A) of
         [] -> aefa_fate:abort(hd_on_empty_list);
@@ -1518,6 +1522,8 @@ op('or', A, B, _ES)  when ?IS_FATE_BOOLEAN(A)
 op(map_delete, Map, Key, _ES) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     maps:remove(Key, ?FATE_MAP_VALUE(Map));
+op(map_delete, ?FATE_STORE_MAP(Cache, Id), Key, _ES) ->
+    ?FATE_STORE_MAP(Cache#{ Key => ?FATE_MAP_TOMBSTONE }, Id);
 op(map_lookup, Map, Key, _ES) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     case maps:get(Key, ?FATE_MAP_VALUE(Map), void) of
@@ -1532,6 +1538,11 @@ op(map_lookup, ?FATE_STORE_MAP(Cache, MapId), Key, ES) ->
 op(map_member, Map, Key, _ES) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     aeb_fate_data:make_boolean(maps:is_key(Key, ?FATE_MAP_VALUE(Map)));
+op(map_member, ?FATE_STORE_MAP(Cache, MapId), Key, ES) ->
+    case store_map_lookup(Cache, MapId, Key, ES) of
+        error   -> ?FATE_FALSE;
+        {ok, _} -> ?FATE_TRUE
+    end;
 op(cons, Hd, Tail, _ES) when ?IS_FATE_LIST(Tail) ->
     case ?FATE_LIST_VALUE(Tail) of
         [] -> aeb_fate_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
@@ -1602,6 +1613,11 @@ op(bits_difference, A, B, _ES)
 op(map_lookup_default, Map, Key, Default, _ES) when ?IS_FATE_MAP(Map),
                                                not ?IS_FATE_MAP(Key) ->
     maps:get(Key, ?FATE_MAP_VALUE(Map), Default);
+op(map_lookup_default, ?FATE_STORE_MAP(Cache, MapId), Key, Default, ES) ->
+    case store_map_lookup(Cache, MapId, Key, ES) of
+        error     -> Default;
+        {ok, Val} -> Val
+    end;
 op(map_update, Map, Key, Value, _ES) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     Res = maps:put(Key, Value, ?FATE_MAP_VALUE(Map)),
@@ -1632,6 +1648,32 @@ store_map_lookup(Cache, MapId, Key, ES) ->
             aefa_stores:store_map_lookup(Pubkey, MapId, Key, Store);
         Val -> {ok, Val}
     end.
+
+store_map_size(Cache, MapId, ES) ->
+    Pubkey = aefa_engine_state:current_contract(ES),
+    Store  = aefa_engine_state:stores(ES),
+    Size   = aefa_stores:store_map_size(Pubkey, MapId, Store),
+    Delta  = fun(Key, ?FATE_MAP_TOMBSTONE, N) ->
+                     case aefa_stores:store_map_lookup(Pubkey, MapId, Key, Store) of
+                         error   -> N;
+                         {ok, _} -> N - 1
+                     end;
+                (Key, _, N) ->
+                     case aefa_stores:store_map_lookup(Pubkey, MapId, Key, Store) of
+                         error   -> N + 1;
+                         {ok, _} -> N
+                     end
+             end,
+    maps:fold(Delta, Size, Cache).
+
+store_map_to_list(Cache, MapId, ES) ->
+    Pubkey = aefa_engine_state:current_contract(ES),
+    Store  = aefa_engine_state:stores(ES),
+    StoreMap = maps:from_list(aefa_stores:store_map_to_list(Pubkey, MapId, Store)),
+    Upd = fun(Key, ?FATE_MAP_TOMBSTONE, M) -> maps:remove(Key, M);
+             (Key, Val, M)                 -> maps:put(Key, Val, M) end,
+    Map = maps:fold(Upd, StoreMap, Cache),
+    aeb_fate_data:make_list([ ?FATE_TUPLE(KV) || KV <- maps:to_list(Map) ]).
 
 %% ------------------------------------------------------
 %% Comparison instructions

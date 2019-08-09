@@ -344,13 +344,13 @@ check_return_type(ES) ->
     check_return_type(RetType, TVars, ES).
 
 check_return_type(RetType, TVars, ES) ->
-    Acc = aefa_engine_state:accumulator(ES),
+    Acc = unfold_store_maps(aefa_engine_state:accumulator(ES), ES),
     case check_type(RetType, Acc) of
         false -> abort({bad_return_type, Acc, RetType}, ES);
         Inst  ->
             case merge_match(Inst, TVars) of
                 false -> abort({bad_return_type, Acc, instantiate_type(TVars, RetType)}, ES);
-                #{}   -> ES
+                #{}   -> aefa_engine_state:set_accumulator(Acc, ES)
             end
     end.
 
@@ -410,6 +410,8 @@ infer_type(X) when ?IS_FATE_MAP(X) ->
     KeyT = infer_element_type(Ks),
     ValT = infer_element_type(Vs),
     {map, KeyT, ValT};
+infer_type(?FATE_STORE_MAP(_, _)) ->
+    {map, any, any};    %% Should only happen for local calls
 infer_type(X) when ?IS_FATE_TUPLE(X) ->
     {tuple, [infer_type(Y) || Y <- ?FATE_TUPLE_ELEMENTS(X)]};
 infer_type(X) when ?IS_FATE_VARIANT(X) ->
@@ -584,6 +586,12 @@ pop_call_stack(ES) ->
             ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
             {jump, BB, ES3}
     end.
+
+unfold_store_maps(Val, ES) ->
+    Pubkey = aefa_engine_state:current_contract(ES),
+    Store  = aefa_engine_state:stores(ES),
+    aeb_fate_maps:unfold_store_maps(fun(Id) -> maps:from_list(aefa_stores:store_map_to_list(Pubkey, Id, Store)) end,
+                                    Val).
 
 %% ------------------------------------------------------
 %% Memory
