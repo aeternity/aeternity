@@ -766,14 +766,15 @@ jobs:
       - run:
           name: Start branch docker image
           command: |
-            docker run --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_}
+            docker run --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} -network_id ae_test
           background: true
       - run:
           name: Health check
           command: |
             sleep 30 # give it some time to boot the tcp listeners
             STATUS=$(docker inspect --format='{{.State.Health.Status}}' ae_${CIRCLE_SHA1:?})
-            [ $STATUS == 'healthy' ] || echo $STATUS
+            echo $STATUS
+            [ $STATUS == 'healthy' ]
 
   docker_smoke_tests_old:
     <<: *machine_config
