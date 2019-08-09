@@ -306,13 +306,13 @@ compile_contract(Compiler, File) ->
 compile(?SOPHIA_LIMA_FATE, File) ->
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
-    case aeso_compiler:from_string(Source, [{backend, fate}]) of
+    case aeso_compiler:from_string(Source, [{backend, fate}, no_implicit_stdlib]) of
         {ok, Map} -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
         {error, E} = Err -> io:format("~s\n", [E]), Err
     end;
 compile(SophiaVsn, File) when SophiaVsn == ?SOPHIA_LIMA_AEVM ->
     {ok, ContractBin} = file:read_file(File),
-    case aeso_compiler:from_string(binary_to_list(ContractBin), []) of
+    case aeso_compiler:from_string(binary_to_list(ContractBin), [no_implicit_stdlib]) of
         {ok, Map}        -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
         {error, _} = Err -> Err
     end;
