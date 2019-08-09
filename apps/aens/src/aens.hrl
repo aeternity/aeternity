@@ -3,3 +3,5 @@
 -define(NAME_HASH_BYTES, 32).
 -define(SUBNAME_HASH_BYTES, 64).
 -define(COMMITMENT_HASH_BYTES, 32).
+
+-define(MAX_NAME_LENGTH, 253).

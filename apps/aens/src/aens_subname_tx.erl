@@ -70,9 +70,11 @@ new(#{account_id := AccountId,
       fee        := Fee} = Args) ->
     account = aeser_id:specialize_type(AccountId),
     {name, Name} = aeser_id:specialize(NameId),
+    aens_utils:ensure_name_length(Name, invalid_name),
     SubnameDefs =
         maps:fold(
           fun (SName, SPointers, Acc) ->
+                  aens_utils:ensure_name_length(SName, invalid_subname),
                   case aens_utils:top_name(SName) of
                       {ok, subname, Name} ->
                           {ok, SNameAscii} = aens_utils:ascii_encode(SName),

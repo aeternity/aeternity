@@ -64,6 +64,7 @@ new(#{account_id := AccountId,
       name_salt  := NameSalt,
       fee        := Fee} = Args) ->
     account = aeser_id:specialize_type(AccountId),
+    aens_utils:ensure_name_length(Name, invalid_name),
     Tx = #ns_claim_tx{account_id = AccountId,
                       nonce      = Nonce,
                       name       = Name,
@@ -201,4 +202,3 @@ version(_) ->
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(_, _) ->
     true.
-
