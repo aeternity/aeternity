@@ -11,6 +11,7 @@
         , ecdsa_to_der_pk/1
         , ecdsa_to_der_sig/1
 
+	, ecrecover/4
         , ecverify/3
         , ecverify/4
         ]).
@@ -31,6 +32,12 @@ ecdsa_to_der_sig(<<R0:32/binary, S0:32/binary>>) ->
     {R1, S1} = {der_sig_part(R0), der_sig_part(S0)},
     {LR, LS} = {byte_size(R1), byte_size(S1)},
     <<16#30, (4 + LR + LS), 16#02, LR, R1/binary, 16#02, LS, S1/binary>>.
+
+%% ECRECOVER
+ecrecover(Hash, V, R, S) ->
+    Concatenated = <<Hash/binary, V/binary, R/binary, S/binary>>,
+    ecrecover:ecrecover(Concatenated).
+
 
 %% ECVERIFY
 ecverify(Msg, PK, Sig) -> ecverify(curve25519, Msg, PK, Sig).
@@ -54,4 +61,3 @@ der_part_trunc(Len, Part) when Len =< 32 -> <<0:((32-Len)*8), Part/binary>>.
 der_sig_part(P = <<1:1, _/bitstring>>) -> <<0:8, P/binary>>;
 der_sig_part(<<0, Rest/binary>>)       -> der_sig_part(Rest);
 der_sig_part(P)                        -> P.
-
