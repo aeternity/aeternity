@@ -14,6 +14,9 @@ executors:
     docker:
       - image: aeternity/builder:1804
         user: builder
+  buildpack:
+    docker:
+      - image: circleci/buildpack-deps:xenial
 
 references:
   container_config: &container_config
@@ -750,6 +753,27 @@ jobs:
       - *fail_notification
 
   docker_smoke_tests:
+    executor: buildpack
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Build branch docker image
+          command: |
+            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} .
+      - run:
+          name: Start branch docker image
+          command: |
+            docker run --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_}
+          background: true
+      - run:
+          name: Health check
+          command: |
+            sleep 30 # give it some time to boot the tcp listeners
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' ae_${CIRCLE_SHA1:?})
+            [ $STATUS == 'healthy' ] || echo $STATUS
+
+  docker_smoke_tests_old:
     <<: *machine_config
     steps:
       - checkout
