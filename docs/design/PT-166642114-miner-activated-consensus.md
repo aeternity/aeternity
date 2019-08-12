@@ -56,22 +56,16 @@ For trusted blocks, the conductor must instruct the generation of the block cand
 
 ###### Asynchronous computation of expected consensus protocol version
 
-In order to prevent long and potentially duplicated computational efforts - requiring multiple lookups into the chain storage -
-the computation of the outcome of the miner signalling should be asynchronous and lazy.
+In order to prevent long blocking computational efforts - requiring multiple lookups into the chain storage -
+the computation of the outcome of the miner signalling should be asynchronous.
 
 Whenever a block at the height preceding the signalling block interval end (i.e. [HE][fspecs] minus 1) is inserted in the chain storage,
 the `aec_conductor` spawns - and keeps track of - a worker responsible for
-computing the outcome of the miner signalling - using non-transactional chain storage access -
+computing the outcome of the miner signalling
 and storing such outcome (true / false) in an auxiliary table.
 
-In order to play well with non-transactional chain storage read operations,
-the outcome should be written (shortly before the worker terminates)
-with a storage access that enables non-transactional readers to see the outcome of the write
-immediately after the synchronous write call finishes from the point of view of the worker.
-
 Callers requiring the signalling outcome for a certain block
-shall enquiry the chain storage and, if no outcome yet,
-ensure that there is a worker alive for that then:
+shall enquire such auxiliary table and, if no outcome yet:
 - For sync worker process,
   yield (`take_a_break`).
 - For user API worker process,
@@ -82,6 +76,12 @@ ensure that there is a worker alive for that then:
   ignore logging error message (as it should not have happened).
 - For mined block submitted by Stratum server (hence context of `aec_conductor` process),
   ignore logging error message (as it should not have happened).
+
+In order not to require the auxiliary table to be persisted,
+and in order to increase resilience of the implementation to minor software failures,
+the presence of the worker for the desired miner signalling outcome shall be checked:
+- By the caller requiring the signalling outcome for a certain block.
+- By the insertion of any key block confirming the signalling block interval before the height at which the new consensus protocol may be active (i.e. from HE to HS-1).
 
 ##### Blocks not necessarily connected to genesis
 
@@ -136,9 +136,16 @@ User configuration for accommodating the [defined parameters][fspecs].
 
 #### Auxiliary table for asynchronous computation of outcome of signalling
 
-Table whose name is computed based on the set of [user configured parameters][fspecs] - including current consensus protocol version C1, and excluding the height H1 at which it was first effective.
+In-memory table.
+
 Key is hash of key block at height preceding that at which signalling block interval ends (so [HE][fspecs] minus 1).
 Value is boolean (true / false), expressing whether the proposed new consensus protocol is meant to be enabled at the proposed height.
+
+The number of key blocks at a specific height is practically bound by the PoW.
+
+In order to protect the implementation from slowing down for potentially (not recommended) configured large number of confirmations on the signalling block interval,
+the implementation may trade further space for time,
+still keeping the practical boundary on the in-memory space used.
 
 ## Pending clarifications
 
@@ -146,18 +153,3 @@ Change across the node the assumption that consensus protocol version can be inf
 - If block expected to be connected to genesis, perform non-transactional reads to the chain storage.
 - Otherwise, relax check at that stage though ensuring check performed at a later stage.
   This involves checking that no denial-of-service attack vector is opened.
-
-Cleanup of auxiliary table re signalling outcome.
-In order to prevent irrelevant tables to build up following multiple node restart with multiple distinct miner signalling configurations,
-shall node at startup, if a miner signalling is configured, delete all auxiliaty tables with name associated with different miner signalling parameter?
-Doing so would prevent irrelevant tables (and - potentially - content) to build up though would open the door for inconsistent chain storage,
-requiring the node to re-trigger the asynchronous computation of the miner signalling outcome.
-
-As the confirmations from the signalling block interval end to the proposed new consensus protocol height (i.e. H2 - HE) is
-intended as a *mitigation* for the potential slow computation of the outcome of the signalling
-and recommended to be ["approximately two hours"][fspecs],
-it is unclear whether it makes sense to complicate the design for catering
-for performance in the case the node restarts while still receiving such confirmations.
-An example on what such catering would look like is that
-insertion of any blocks in the range from signalling end (HE, included) to fork height (H2, included)
-checks that there is a result for the signalling outcome or a worker spawned, otherwise spawns a worker.
