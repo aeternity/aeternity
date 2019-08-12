@@ -125,26 +125,27 @@ groups() ->
                              ]},
      {transactions, [sequence],
       [
-        create_channel
-      , multiple_responder_keys_per_port
-      , channel_insufficent_tokens
-      , inband_msgs
-      , upd_transfer
-      , update_with_conflict
-      , update_with_soft_reject
-      , deposit_with_conflict
-      , deposit_with_soft_reject
-      , withdraw_with_conflict
-      , withdraw_with_soft_reject
-      , upd_dep_with_conflict
-      , upd_wdraw_with_conflict
-      , dep_wdraw_with_conflict
-      , deposit
-      , withdraw
-      , channel_detects_close_solo
-      , leave_reestablish
-      , leave_reestablish_close
-      , change_config_get_history
+     %   create_channel
+     % , multiple_responder_keys_per_port
+     % , channel_insufficent_tokens
+     % , inband_msgs
+     % , upd_transfer
+     % , update_with_conflict
+     % , update_with_soft_reject
+     % , deposit_with_conflict
+     % , deposit_with_soft_reject
+     % , withdraw_with_conflict
+     % , withdraw_with_soft_reject
+     % , upd_dep_with_conflict
+     % , upd_wdraw_with_conflict
+     % , dep_wdraw_with_conflict
+     % , deposit
+     % , withdraw
+     % , channel_detects_close_solo
+     % , leave_reestablish
+      leave_reestablish
+     % , leave_reestablish_close
+     % , change_config_get_history
       ]},
      {throughput, [sequence],
       [
@@ -896,36 +897,48 @@ t_leave_reestablish_(Cfg) ->
 leave_reestablish_(Cfg) ->
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
-    #{ i := #{fsm := FsmI} = I
+    #{ i := #{} = I
      , r := #{} = R
      , spec := #{ initiator := _PubI
                 , responder := _PubR }} =
         create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
     ct:log("I = ~p", [I]),
     ChId = maps:get(channel_id, I),
-    Cache1 = cache_status(ChId),
-    [_,_] = in_ram(Cache1),
-    false = on_disk(Cache1),
-    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
-    {ok,Li} = await_leave(I, ?TIMEOUT, Debug),
-    {ok,Lr} = await_leave(R, ?TIMEOUT, Debug),
-    SignedTx = maps:get(info, Li),
-    SignedTx = maps:get(info, Lr),
-    {ok,_} = receive_from_fsm(info, I, fun died_normal/1, ?TIMEOUT, Debug),
-    {ok,_} = receive_from_fsm(info, R, fun died_normal/1, ?TIMEOUT, Debug),
-    retry(3, 100,
-          fun() ->
-                  Cache2 = cache_status(ChId),
-                  [] = in_ram(Cache2),
-                  true = on_disk(Cache2)
-          end),
-    %%
-    %% reestablish
-    %%
-    ChId = maps:get(channel_id, R),
-    check_info(500),
-    ct:log("reestablishing ...", []),
-    reestablish(ChId, I0, R0, SignedTx, Spec0, ?PORT, Debug).
+    LeaveAndReestablish =
+        fun(Idx, {ILocal, RLocal}) ->
+            ct:log("starting attempt ~p", [Idx]),
+            Cache1 = cache_status(ChId),
+            [_,_] = in_ram(Cache1),
+            false = on_disk(Cache1),
+            #{fsm := FsmI} = ILocal,
+            ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+            {ok,Li} = await_leave(ILocal, ?TIMEOUT, Debug),
+            {ok,Lr} = await_leave(RLocal, ?TIMEOUT, Debug),
+            SignedTx = maps:get(info, Li),
+            SignedTx = maps:get(info, Lr),
+            {ok,_} = receive_from_fsm(info, ILocal, fun died_normal/1, ?TIMEOUT, Debug),
+            {ok,_} = receive_from_fsm(info, RLocal, fun died_normal/1, ?TIMEOUT, Debug),
+            retry(3, 100,
+                  fun() ->
+                          Cache2 = cache_status(ChId),
+                          [] = in_ram(Cache2),
+                          true = on_disk(Cache2)
+                  end),
+            %%
+            %% reestablish
+            %%
+            ChId = maps:get(channel_id, RLocal),
+            mine_key_blocks(dev1, 6), % min depth at 4, so more than 4
+            ct:log("reestablishing ...", []),
+            #{ i := ILocal1
+             , r := RLocal1} = reestablish(ChId, ILocal, RLocal, SignedTx,
+                                           Spec0, ?PORT, Debug),
+            ct:log("ending attempt ~p", [Idx]),
+            {ILocal1, RLocal1}
+        end,
+    {ClosingI, ClosingR} =
+        lists:foldl(LeaveAndReestablish, {I, R}, lists:seq(1, 10)),
+    #{i => ClosingI, r => ClosingR}.
 
 leave_reestablish_close(Cfg) ->
     Debug = get_debug(Cfg),
