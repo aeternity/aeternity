@@ -122,7 +122,7 @@ ac --> te                                                 : funding_created [if 
 
 state "Open" as op
 op --> aw_si_updateack                                    : update [if checks_ok]
-ok --> aw_updateack                                       : update [if signed_disconnected and checks_ok]
+op --> aw_updateack                                       : update [if signed_disconnected and checks_ok]
 op --> op                                                 : update [if not checks_ok]
 op --> aw_si_shutdownack                                  : shutdown [if checks_ok]
 op --> te                                                 : shutdown [if client_disconnected and already_signed and checks_ok]
