@@ -19,6 +19,7 @@
          name_claim_preclaim_delta/0,
          name_registrars/1,
          possible_name_registrars/0,
+         name_max_length/0,
          micro_block_cycle/0,
          accepted_future_block_time_shift/0,
          fraud_report_reward/1,
@@ -254,6 +255,9 @@ name_registrars(_Protocol) ->
 %% union of all name_registrars above disregarding the height
 possible_name_registrars() ->
     [<<"aet">>, <<"test">>].
+
+name_max_length() ->
+    253.
 
 fraud_report_reward(Height) ->
     Coinbase = block_mine_reward(Height),

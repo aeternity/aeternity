@@ -16,7 +16,8 @@
          name_to_ascii/1,
          to_ascii/1,
          ascii_encode/1,
-         ensure_name_length/2]).
+         name_length_valid/1,
+         is_name/1]).
 
 %%%===================================================================
 %%% API
@@ -102,6 +103,11 @@ ascii_encode(Name) ->
             {error, {invalid_codepoint, Cp}}
     end.
 
-ensure_name_length(Name, ErrorTag) ->
-    length(unicode:characters_to_list(Name)) =< ?MAX_NAME_LENGTH
-        orelse error({ErrorTag, Name}).
+name_length_valid(Name) ->
+    length(unicode:characters_to_list(Name)) =< aec_governance:name_max_length().
+
+is_name(Name) ->
+    case aens_utils:check_split_name(Name) of
+        {ok, name, _} -> true;
+        _ -> false
+    end.

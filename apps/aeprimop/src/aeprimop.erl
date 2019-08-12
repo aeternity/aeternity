@@ -747,9 +747,10 @@ name_claim({AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta}, S) ->
     {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
     assert_commitment_owner(Commitment, AccountPubkey),
     assert_preclaim_delta(Commitment, PreclaimDelta, S1#state.height),
+    assert_name(PlainName, S1#state.height),
     NameHash = aens_hash:name_hash(NameAscii),
-    assert_not_name(NameHash, S1),
     assert_name_registrar(NameRegistrar, S1#state.height),
+    assert_name_not_taken(NameHash, S1),
     Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
     S2 = delete_x(commitment, CommitmentHash, S1),
     put_name(Name, S2).
@@ -1692,7 +1693,16 @@ assert_preclaim_delta(Commitment, PreclaimDelta, Height) ->
         false -> runtime_error(commitment_delta_too_small)
     end.
 
-assert_not_name(NameHash, S) ->
+assert_name(Name, Height) ->
+    case aec_hard_forks:protocol_effective_at_height(Height) of
+        Vsn when Vsn >= ?LIMA_PROTOCOL_VSN ->
+            aens_utils:is_name(Name) orelse runtime_error(name_is_invalid),
+            aens_utils:name_length_valid(Name) orelse runtime_error(name_too_long);
+        _ ->
+            ok
+    end.
+
+assert_name_not_taken(NameHash, S) ->
     case find_name(NameHash, S) of
         {_, _} -> runtime_error(name_already_taken);
         none   -> ok
