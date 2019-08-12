@@ -15,7 +15,7 @@ contract MapOfMaps =
 
   entrypoint init() = empty_state()
 
-  entrypoint setup_state() =
+  stateful entrypoint setup_state() =
     let small = {["key"] = "val"}
     put({ big1 = {["one"] = small},
           big2 = {["two"] = small},
@@ -23,14 +23,26 @@ contract MapOfMaps =
           small2 = small })
 
   // -- Garbage collection of inner map when outer map is garbage collected
-  entrypoint test1_setup() =
+  stateful entrypoint test1_setup() =
     let inner = {["key"] = "val"}
     put(empty_state() { big1 = {["one"] = inner} })
 
-  entrypoint test1_execute() =
+  stateful entrypoint test1_execute() =
     put(state{ big1 = {} })
 
   entrypoint test1_check() =
     state.big1
 
+  // -- Temporary test
 
+  function small1() = state.small1
+
+  stateful entrypoint test2_setup() =
+    put(empty_state() { small1 = {["key"] = "val"} })
+
+  stateful entrypoint test2_execute() =
+    // put(state{ small1 = small1() })
+    put(state{ small1["key2"] = "val2" })
+
+  entrypoint test2_check() =
+    state.small1

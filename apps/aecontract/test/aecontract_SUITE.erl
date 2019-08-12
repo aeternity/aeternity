@@ -4002,13 +4002,21 @@ sophia_map_of_maps(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     {Ct, _Gas} = ?call(create_contract, Acc, map_of_maps, {}, #{gas => 1000000, return_gas_used => true}),
-    {}         = ?call(call_contract, Acc, Ct, setup_state, {tuple, []}, {}),
+    %% {}         = ?call(call_contract, Acc, Ct, setup_state, {tuple, []}, {}),
+
+    RunTest = fun(I, Type, Expect) ->
+                Fun = fun(Tag) -> list_to_atom(lists:concat([test, I, "_", Tag])) end,
+                {} = ?call(call_contract, Acc, Ct, Fun(setup),   {tuple, []}, {}),
+                {} = ?call(call_contract, Acc, Ct, Fun(execute), {tuple, []}, {}),
+                Actual = ?call(call_contract, Acc, Ct, Fun(check), Type, {}),
+                ?assertMatch({I, X, X}, {I, Actual, Expect})
+              end,
 
     %% Test 1 - garbage collection of inner map when outer map is garbage collected
-    Empty = #{},
-    {}    = ?call(call_contract, Acc, Ct, test1_setup, {tuple, []}, {}),
-    {}    = ?call(call_contract, Acc, Ct, test1_execute, {tuple, []}, {}),
-    Empty = ?call(call_contract, Acc, Ct, test1_check, {map, string, string}, {}),
+    RunTest(1, {map, string, string}, #{}),
+
+    %% Test 2 - ...
+    RunTest(2, {map, string, string}, #{<<"key">> => <<"val">>, <<"key2">> => <<"val2">>}),
     ok.
 
 sophia_variant_types(_Cfg) ->
