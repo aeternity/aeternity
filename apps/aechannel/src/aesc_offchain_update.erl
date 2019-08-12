@@ -1,6 +1,6 @@
 -module(aesc_offchain_update).
 
--define(UPDATE_VSN, 1).
+-define(UPDATE_VSN, 2).
 
 -record(transfer, {
           from_id      :: aeser_id:id(),
@@ -38,14 +38,17 @@
           gas          :: non_neg_integer()
          }).
 
+-record(meta, { data :: binary() }).
+
 -opaque update() :: #transfer{}
                   | #withdraw{}
                   | #deposit{}
                   | #create_contract{}
-                  | #call_contract{}.
+                  | #call_contract{}
+                  | #meta{}.
 
 -type update_type() :: transfer | withdraw | deposit | create_contract |
-                       call_contract.
+                       call_contract | meta.
 
 -export_type([update/0]).
 
@@ -55,6 +58,7 @@
         , op_new_contract/6
         , op_call_contract/6
         , op_call_contract/8
+        , op_meta/1
         ]).
 
 -export([serialize/1,
@@ -88,6 +92,8 @@ from_db_format(#create_contract{} = U) ->
     U;
 from_db_format(#call_contract{} = U) ->
     U;
+from_db_format(#meta{} = U) ->
+    U;
 from_db_format(Tuple) ->
     OldType = element(1, Tuple),
     NewType = maps:get(OldType, #{0 => transfer,
@@ -102,6 +108,7 @@ from_db_format(Tuple) ->
         #deposit{} -> Updated;
         #create_contract{} -> Updated;
         #call_contract{} -> Updated;
+        #meta{} -> Updated;
         _ ->
             error(illegal_db_format)
     end.
@@ -159,6 +166,9 @@ op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData, CallStack,
                    gas_price = GasPrice,
                    gas = Gas}.
 
+op_meta(Data) ->
+    #meta{ data = Data }.
+
 -spec apply_on_trees(aesc_offchain_update:update(), aec_trees:trees(),
                      aec_trees:trees(), aetx_env:env(),
                      non_neg_integer(), non_neg_integer()) -> aec_trees:trees().
@@ -201,7 +211,9 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
             _Trees = aect_channel_contract:run(ContractPubKey, ABIVersion, Call,
                                                CallData, CallStack,
                                                Trees2, Amount, GasPrice, Gas,
-                                               OnChainTrees, OnChainEnv)
+                                               OnChainTrees, OnChainEnv);
+        #meta{} ->
+            Trees0
     end.
 
 -spec for_client(update()) -> map().
@@ -240,7 +252,11 @@ for_client(#call_contract{caller_id = CallerId, contract_id = ContractId,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,
       <<"call_data">>   => aeser_api_encoder:encode(contract_bytearray, CallData),
-      <<"call_stack">>  => CallStack}.
+      <<"call_stack">>  => CallStack};
+for_client(#meta{data = Data}) ->
+    #{<<"op">>   => type2swagger_name(meta),
+      <<"data">> => Data}.
+
 
 -spec serialize(update()) -> binary().
 serialize(Update) ->
@@ -291,7 +307,9 @@ update2fields(#call_contract{caller_id = CallerId, contract_id = ContractId,
       {gas, Gas},
       {gas_price, GasPrice},
       {call_data, CallData},
-      {call_stack, CallStack}].
+      {call_stack, CallStack}];
+update2fields(#meta{data = Data}) ->
+    [ {data, Data} ].
 
 -spec fields2update(update_type(), list()) -> update().
 fields2update(transfer, [{from,   From},
@@ -320,28 +338,33 @@ fields2update(call_contract, [ {caller, CallerId},
                                {call_data, CallData},
                                {call_stack, CallStack}]) ->
     op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData,
-                     CallStack, GasPrice, Gas).
+                     CallStack, GasPrice, Gas);
+fields2update(meta, [{data, Data}]) ->
+    op_meta(Data).
 
 -spec ut2type(update_type())  -> atom().
 ut2type(transfer)             -> channel_offchain_update_transfer;
 ut2type(deposit)              -> channel_offchain_update_deposit;
 ut2type(withdraw)             -> channel_offchain_update_withdraw;
 ut2type(create_contract)      -> channel_offchain_update_create_contract;
-ut2type(call_contract)        -> channel_offchain_update_call_contract.
+ut2type(call_contract)        -> channel_offchain_update_call_contract;
+ut2type(meta)                 -> channel_offchain_update_meta.
 
 -spec type2ut(atom()) -> update_type().
 type2ut(channel_offchain_update_transfer)         -> transfer;
 type2ut(channel_offchain_update_deposit)          -> deposit;
 type2ut(channel_offchain_update_withdraw)         -> withdraw;
 type2ut(channel_offchain_update_create_contract)  -> create_contract;
-type2ut(channel_offchain_update_call_contract)    -> call_contract.
+type2ut(channel_offchain_update_call_contract)    -> call_contract;
+type2ut(channel_offchain_update_meta)             -> meta.
 
 -spec type2swagger_name(update_type()) -> binary().
 type2swagger_name(transfer)        -> <<"OffChainTransfer">>;
 type2swagger_name(deposit)         -> <<"OffChainDeposit">>;
 type2swagger_name(withdraw)        -> <<"OffChainWithdrawal">>;
 type2swagger_name(create_contract) -> <<"OffChainNewContract">>;
-type2swagger_name(call_contract)   -> <<"OffChainCallContract">>.
+type2swagger_name(call_contract)   -> <<"OffChainCallContract">>;
+type2swagger_name(meta)            -> <<"OffChainMeta">>.
 
 -spec update_serialization_template(non_neg_integer(), update_type()) -> list().
 update_serialization_template(?UPDATE_VSN, transfer) ->
@@ -368,14 +391,17 @@ update_serialization_template(?UPDATE_VSN, call_contract) ->
       {gas,         int},
       {gas_price,   int},
       {call_data,   binary},
-      {call_stack,  [int]}].
+      {call_stack,  [int]}];
+update_serialization_template(?UPDATE_VSN, meta) ->
+    [ {data, binary} ].
 
 -spec record_to_update_type(update()) -> update_type().
 record_to_update_type(#transfer{})        -> transfer;
 record_to_update_type(#deposit{})         -> deposit;
 record_to_update_type(#withdraw{})        -> withdraw;
 record_to_update_type(#create_contract{}) -> create_contract;
-record_to_update_type(#call_contract{})   -> call_contract.
+record_to_update_type(#call_contract{})   -> call_contract;
+record_to_update_type(#meta{})            -> meta.
 
 check_min_amt(Amt, Reserve) ->
     if Amt < Reserve ->
