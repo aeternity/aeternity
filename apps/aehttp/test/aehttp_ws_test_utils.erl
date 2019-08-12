@@ -493,16 +493,19 @@ websocket_info({unregister_test, RegisteredPid, Events}, _ConnState,
 websocket_info({set_options, #{ role := Role
                               , logfile := LogFile
                               , ws_address := WsAddress
-                              , opts := Opts }}, _ConnState, #state{role=undefined, protocol = Proto0}=State) ->
-    Log = open_log(LogFile),
+                              , opts := Opts }}, _ConnState, #state{ log  = Log0
+                                                                   , role = undefined
+                                                                   , protocol = Proto0 }=State) ->
+    Log1 = open_log(Log0, LogFile, Role),
     State1 = State#state{role     = Role,
-                         log      = Log,
+                         log      = Log1,
                          protocol = get_protocol(Opts, Proto0)},
     do_log(init, WsAddress, State1),
     {ok, State1};
-websocket_info({set_logfile, LogFile}, _ConnState, State) ->
-    Log = open_log(LogFile),
-    State1 = State#state{log = Log},
+websocket_info({set_logfile, LogFile}, _ConnState, #state{ role = Role
+                                                         , log  = Log0 } = State) ->
+    Log1 = open_log(Log0, LogFile, Role),
+    State1 = State#state{log = Log1},
     {ok, State1};
 websocket_info({log, Type, Msg}, _ConnState, State) ->
     do_log(Type, Msg, State),
@@ -650,34 +653,88 @@ get_logfile(Opts) ->
             {F, Opts1}
     end.
 
-open_log(undefined) ->
+open_log(_, undefined, _) ->
     undefined;
-open_log(F) ->
+open_log(#{name := Name, role := R, pid := LogPid} = L, F, R) ->
+    case filename:basename(F) of
+        Name ->
+            L;
+        _Other ->
+            %% This can happen e.g. if a channel is set up during
+            %% init_per_group()
+            LogPid ! {self(), close},
+            open_log(undefined, F, R)
+    end;
+open_log(undefined, F, Role) ->
     filelib:ensure_dir(F),
     Name = filename:basename(F),
-    {ok, _} = disk_log:open([{name, Name},
-                             {file, F},
-                             {format, external}]),
-    Name.
+    Parent = self(),
+    Pid = spawn_link(
+            fun() ->
+                    MRef = erlang:monitor(process, Parent),
+                    process_flag(trap_exit, true),
+                    {ok, _} = disk_log:open([{name, Name},
+                                             {file, F},
+                                             {format, external}]),
+                    Parent ! {self(), ok},
+                    logger_loop(Parent, #{ log    => Name
+                                         , role   => Role
+                                         , parent => Parent
+                                         , mref   => MRef })
+            end),
+    receive
+        {Pid, ok} ->
+            #{name => Name, pid => Pid, role => Role}
+    end.
+
+logger_loop(Parent, #{ log    := Log
+                     , parent := Parent
+                     , mref   := MRef } = St) ->
+    case receive Msg -> Msg end of
+        {Parent, log, LogMsg} ->
+            disk_log:blog(Log, LogMsg);
+        {Parent, close} ->
+            disk_log:close(Log);
+        {'EXIT', Parent, Reason} ->
+            logger_parent_died('EXIT', Reason, St);
+        {'DOWN', MRef, process, _, Reason} ->
+            logger_parent_died('DOWN', Reason, St)
+    end,
+    logger_loop(Parent, St).
+
+logger_parent_died(Cat, Reason, #{ log    := Log
+                                 , parent := Parent
+                                 , role   := Role }) ->
+    ct:log("Logger's parent (~p) died (~p): ~p", [Parent, Cat, Reason]),
+    LogMsg = log_msg(disc, [], Role),
+    disk_log:blog(Log, LogMsg),
+    disk_log:close(Log),
+    exit(normal).
 
 do_log(_Dir, _Msg, #state{log = undefined}) ->
     ok;
 do_log(info, Msg, #state{log = Log, role = Role}) ->
-    LogMsg = io_lib:format("~n"
-                           "#### ~w info~n"
-                           "> ~s~n", [Role, Msg]),
-    disk_log:blog(Log, LogMsg);
+    log_pid(Log) ! {self(), log, log_msg(info, Msg, Role)};
 do_log(Dir, Msg, #state{log = Log, role = Role}) ->
+    log_pid(Log) ! {self(), log, log_msg(Dir, Msg, Role)}.
+
+log_pid(#{pid := Pid}) ->
+    Pid.
+
+log_msg(info, Msg, Role) ->
+    io_lib:format("~n"
+                  "#### ~w info~n"
+                  "> ~s~n", [Role, Msg]);
+log_msg(Dir, Msg, Role) ->
     {Lang, MsgStr} = try {"javascript", jsx:prettify(Msg)}
                      catch error:_ -> {"", Msg}
                      end,
-    LogMsg = io_lib:format(
-               "~n"
-               "#### ~s~n"
-               "```~s~n"
-               "~s~n"
-               "```~n", [log_header_str(Dir, Role), Lang, MsgStr]),
-    disk_log:blog(Log, LogMsg).
+    io_lib:format(
+      "~n"
+      "#### ~s~n"
+      "```~s~n"
+      "~s~n"
+      "```~n", [log_header_str(Dir, Role), Lang, MsgStr]).
 
 log_header_str(Dir, Role) ->
     {Fmt, Args} =
@@ -685,6 +742,7 @@ log_header_str(Dir, Role) ->
             send -> {"~w ---> node", [Role]};
             recv -> {"~w <--- node", [Role]};
             init -> {"~w opens a WebSocket connection", [Role]};
+            disc -> {"~w closes WebSocket connection", [Role]};
             info -> {"~w info (~s)", [Role]}
         end,
     io_lib:format(Fmt, Args).

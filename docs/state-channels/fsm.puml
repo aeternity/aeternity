@@ -122,13 +122,17 @@ ac --> te                                                 : funding_created [if 
 
 state "Open" as op
 op --> aw_si_updateack                                    : update [if checks_ok]
+op --> aw_updateack                                       : update [if signed_disconnected and checks_ok]
 op --> op                                                 : update [if not checks_ok]
 op --> aw_si_shutdownack                                  : shutdown [if checks_ok]
+op --> te                                                 : shutdown [if client_disconnected and already_signed and checks_ok]
 op --> te                                                 : shutdown [if not checks_ok]
 op --> te                                                 : leave
 op --> aw_si_withdrawcreated                              : withdraw_created [if checks_ok]
+op --> aw_lo_watchwithdraw                                : withdraw_created [if client_disconnected and already_signed and checks_ok]
 op --> op                                                 : withdraw_created [if not checks_ok]
 op --> aw_si_depositcreated                               : deposit_created [if checks_ok]
+op --> aw_lo_watchdeposit                                 : deposit_created [if client_disconnected and already_signed and checks_ok]
 op --> op                                                 : deposit_created [if not checks_ok]
 
 state "Mutual Closing" as mu_cl

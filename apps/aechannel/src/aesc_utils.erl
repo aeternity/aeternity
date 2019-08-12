@@ -870,15 +870,26 @@ add_call(Call0, TxHash, Trees, Env) ->
 add_event(Trees, ChannelPubKey, Env) ->
     {ok, Trees, aetx_env:tx_event({channel, ChannelPubKey}, Env)}.
 
+%% This is meant to be a faster way of detecting how many signatures have been
+%% added to the Tx. Plain signatures are 'usorted' (no duplicates), so we can
+%% simply check the length. With GAs, it's trickier, and the same account
+%% can sign multiple times. We maintain an ordset of GA pubkeys, and assume
+%% that (GA sigs) and (plain sigs) are disjunct sets. They should be, but
+%% a client could violate the rules and sign both plainly and with GA. This
+%% will fail validation anyway, but we don't detect that here -- too costly
+%%.
 count_authentications(SignedTx) ->
-    count_authentications(SignedTx, 0).
+    count_authentications(SignedTx, ordsets:new()).
 
-count_authentications(SignedTx, Cnt) ->
+count_authentications(SignedTx, GAs) ->
     case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of
         {aega_meta_tx, InnerSignedTx} -> 
-            count_authentications(aega_meta_tx:tx(InnerSignedTx), Cnt + 1);
+            count_authentications(aega_meta_tx:tx(InnerSignedTx),
+                                  ordsets:add_element(
+                                    aega_meta_tx:ga_pubkey(InnerSignedTx),
+                                    GAs));
         {_, _} -> % most inner tx
-            Cnt + length(aetx_sign:signatures(SignedTx))
+            ordsets:size(GAs) + length(aetx_sign:signatures(SignedTx))
     end.
 
 -spec channel_pubkey(aetx_sign:signed_tx()) -> {ok, aec_keys:pubkey()} |
