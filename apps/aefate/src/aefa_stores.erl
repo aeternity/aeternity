@@ -30,7 +30,9 @@
         , put_contract_store/3
         , put_value/4
         %% Map functions
+        , cache_map_metadata/2
         , store_map_lookup/4
+        , store_map_member/4
         , store_map_to_list/3
         , store_map_size/3
         ]).
@@ -55,6 +57,12 @@
 
 -export_type([ store/0
              ]).
+
+-define(MAX_STORE_POS, 16#ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff).
+-define(META_STORE_POS, 0).
+-define(VALID_STORE_POS(Pos), Pos > ?META_STORE_POS andalso Pos < ?MAX_STORE_POS).
+-define(STORE_KEY_PREFIX, 0).
+-define(STORE_MAP_PREFIX, 1).
 
 %%%===================================================================
 %%% API
@@ -82,7 +90,27 @@ has_contract(Pubkey, #store{cache = Cache}) ->
                     {'ok', fate_val(), store()}
                   | {'ok', fate_val()}
                   | 'error'.
-find_value(Pubkey, StorePos, #store{cache = Cache} = S) ->
+find_value(Pubkey, StorePos, S) when ?VALID_STORE_POS(StorePos) ->
+    find_value_(Pubkey, StorePos, S).
+
+-spec cache_map_metadata(pubkey(), store()) -> store().
+cache_map_metadata(Pubkey, S) ->
+    case find_meta_data(Pubkey, S) of
+        {ok, _}     -> S;
+        {ok, _, S1} -> S1;
+        error       -> S
+    end.
+
+-spec find_meta_data(pubkey(), store()) -> {ok, map_meta(), store()} | error.
+find_meta_data(Pubkey, S) ->
+    case find_value_(Pubkey, ?META_STORE_POS, S) of
+        {ok, Meta}     -> {ok, Meta, S};
+        {ok, Meta, S1} -> {ok, Meta, S1};
+        error          -> error
+    end.
+
+
+find_value_(Pubkey, StorePos, #store{cache = Cache} = S) ->
     case find_term(StorePos, maps:get(Pubkey, Cache)) of
         {ok, Term} ->
             {ok, Term};
@@ -104,7 +132,7 @@ put_value(Pubkey, StorePos, FateVal, #store{cache = Cache} = S) ->
 
 -spec finalize(aefa_chain_api:state(), store()) -> aefa_chain_api:state().
 finalize(API, #store{cache = Cache} = S) ->
-    %% debug_stores(S),
+    debug_stores(S),
     Stores = maps:fold(fun finalize_entry/3, [], Cache),
     finalize_stores(Stores, API).
 
@@ -117,9 +145,9 @@ finalize_stores([], API) ->
 finalize_entry(_Pubkey, #cache_entry{dirty = false}, Acc) ->
     Acc;
 finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, Acc) ->
-    {ok, Metadata} = find_meta_data(Cache),
+    {ok, Metadata} = find_meta_data_no_cache(Cache), %% Last access so no need to cache here
     {Metadata1, Updates} = compute_store_updates(Metadata, Cache),
-    %% io:format("Updates\n  ~p\n", [Updates]),
+    io:format("Updates\n  ~p\n", [Updates]),
     [{Pubkey, perform_store_updates(Updates, Metadata1, Store)} | Acc].
 
 push_term(Pos, FateVal, Store) ->
@@ -129,22 +157,13 @@ push_term(Pos, FateVal, Store) ->
 %%%===================================================================
 %%% Entry for one contract
 
--define(MAX_STORE_POS, 16#ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff).
--define(META_STORE_POS, 0).
-
--define(STORE_KEY_PREFIX, 0).
--define(STORE_MAP_PREFIX, 1).
-
 new_contract_cache_entry(Store) ->
     #cache_entry{ store = Store
                 , terms = #{}
                 , dirty = false
                 }.
 
-find_term(StorePos, E) when StorePos > ?META_STORE_POS, StorePos < ?MAX_STORE_POS ->
-    find_term_(StorePos, E).
-
-find_term_(StorePos, #cache_entry{terms = Terms} = E) ->
+find_term(StorePos, #cache_entry{terms = Terms} = E) ->
     case maps:find(StorePos, Terms) of
         {ok, {FateVal,_Dirty}} ->
             {ok, FateVal};
@@ -230,19 +249,16 @@ put_map_meta(MapId, MapMeta, Metadata) ->
 remove_map_meta(MapId, Metadata) ->
     maps:remove(MapId, Metadata).
 
--spec get_map_meta(map_id(), store_meta() | #cache_entry{}) -> map_meta().
-get_map_meta(MapId, #cache_entry{} = Cache) ->
-    {ok, Meta} = find_meta_data(Cache),
-    get_map_meta(MapId, Meta);
+-spec get_map_meta(map_id(), store_meta()) -> map_meta().
 get_map_meta(MapId, Meta) ->
     maps:get(MapId, Meta).
 
--spec find_meta_data(#cache_entry{}) -> {ok, store_meta()} | error.
-find_meta_data(CacheEntry) ->
-    case find_term_(?META_STORE_POS, CacheEntry) of
-        {ok, Meta} -> {ok, Meta};
-        {ok, Meta, _Cache} -> {ok, Meta}; %% TODO: caching
-        error -> error
+-spec find_meta_data_no_cache(#cache_entry{}) -> {ok, store_meta()} | error.
+find_meta_data_no_cache(CacheEntry) ->
+    case find_term(?META_STORE_POS, CacheEntry) of
+        {ok, Meta}    -> {ok, Meta};
+        {ok, Meta, _} -> {ok, Meta};
+        error         -> error
     end.
 
 map_data_key(RawId) ->
@@ -439,28 +455,40 @@ push_map_entry(RawId, Key, Val, Store) ->
     aect_contracts_store:put(map_data_key(RawId, Key),
                              aeb_fate_encoding:serialize(Val), Store).
 
--spec store_map_lookup(pubkey(), non_neg_integer(), fate_val(), store()) -> {ok, fate_val()} | error.
-store_map_lookup(Pubkey, MapId, Key, #store{cache = Cache}) ->
-    %% No caching of map entries (worth it? doesn't seem like a common
-    %% usecase). TODO: Need to cache the meta though!
-    CacheEntry = #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
-    ?METADATA(RawId, _RefCount, _Size) = get_map_meta(MapId, CacheEntry),
+-spec store_map_lookup(pubkey(), non_neg_integer(), fate_val(), store()) -> {{ok, fate_val()} | error, store()}.
+store_map_lookup(Pubkey, MapId, Key, #store{cache = Cache} = S) ->
+    #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
+    {ok, Meta, S1} = find_meta_data(Pubkey, S),
+    ?METADATA(RawId, _RefCount, _Size) = get_map_meta(MapId, Meta),
     case find_in_store(map_data_key(RawId, Key), Store) of
-        error     -> error;
-        {ok, Val} -> {ok, Val}
+        error     -> {error, S1};
+        {ok, Val} -> {{ok, Val}, S1}
     end.
 
-store_map_to_list(Pubkey, MapId, #store{cache = Cache}) ->
-    CacheEntry = #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
-    ?METADATA(RawId, _, _) = get_map_meta(MapId, CacheEntry),
-    Subtree = aect_contracts_store:subtree(map_data_key(RawId), Store),
-    [ {aeb_fate_encoding:deserialize(K), aeb_fate_encoding:deserialize(V)}
-      || {K, V} <- maps:to_list(Subtree) ].
+-spec store_map_member(pubkey(), non_neg_integer(), fate_val(), store()) -> {boolean(), store()}.
+store_map_member(Pubkey, MapId, Key, #store{cache = Cache} = S) ->
+    #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
+    {ok, Meta, S1} = find_meta_data(Pubkey, S),
+    ?METADATA(RawId, _RefCount, _Size) = get_map_meta(MapId, Meta),
+    case aect_contracts_store:get(map_data_key(RawId, Key), Store) of
+        <<>> -> {false, S1};
+        _Val -> {true,  S1}
+    end.
 
-store_map_size(Pubkey, MapId, #store{cache = Cache}) ->
-    CacheEntry = maps:get(Pubkey, Cache),
-    ?METADATA(_, _, Size) = get_map_meta(MapId, CacheEntry),
-    Size.
+-spec store_map_to_list(pubkey(), non_neg_integer(), store()) -> {[{fate_val(), fate_val()}], store()}.
+store_map_to_list(Pubkey, MapId, #store{cache = Cache} = S) ->
+    #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
+    {ok, Meta, S1} = find_meta_data(Pubkey, S),
+    ?METADATA(RawId, _, _) = get_map_meta(MapId, Meta),
+    Subtree = aect_contracts_store:subtree(map_data_key(RawId), Store),
+    {[ {aeb_fate_encoding:deserialize(K), aeb_fate_encoding:deserialize(V)}
+      || {K, V} <- maps:to_list(Subtree) ], S1}.
+
+-spec store_map_size(pubkey(), non_neg_integer(), store()) -> {non_neg_integer(), store()}.
+store_map_size(Pubkey, MapId, S) ->
+    {ok, Meta, S1} = find_meta_data(Pubkey, S),
+    ?METADATA(_, _, Size) = get_map_meta(MapId, Meta),
+    {Size, S1}.
 
 debug_stores(#store{cache = Cache}) ->
     [ begin
