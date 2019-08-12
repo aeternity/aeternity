@@ -2442,7 +2442,7 @@ nameservice_transaction_subname(_Config) ->
 
     %% Submit subname tx and check it is in mempool
     Definition =
-        [#{<<"name_id">> => aeser_api_encoder:encode(subname, <<"subname.", Name/binary>>),
+        [#{<<"name_id">> => aeser_api_encoder:encode(subname, <<"subname">>),
            <<"pointers">> =>
                [#{<<"key">> => <<"k2">>,
                   <<"id">> => aeser_api_encoder:encode(account_pubkey, MinerPubkey)}]}],

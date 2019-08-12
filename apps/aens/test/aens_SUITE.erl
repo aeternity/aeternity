@@ -13,7 +13,8 @@
          init_per_suite/1,
          end_per_suite/1,
          init_per_testcase/2,
-         end_per_testcase/2]).
+         end_per_testcase/2
+        ]).
 
 %% test case exports
 -export([preclaim/1,
@@ -632,12 +633,13 @@ registrar_change(_Cfg) ->
 
 -define(TOPNAME, <<"姆.test"/utf8>>).
 -define(SNAME1, <<"斯1.姆.test"/utf8>>).
+-define(SNAME1_PREFIX, <<"斯1"/utf8>>).
 -define(SNAME2, <<"姆2.姆.test"/utf8>>).
+-define(SNAME2_PREFIX, <<"姆2"/utf8>>).
 -define(SNAME21, <<"姆2.斯1.姆.test"/utf8>>).
+-define(SNAME21_PREFIX, <<"姆2.斯1"/utf8>>).
 -define(SNAME54321, <<"詹5.斯4.詹3.姆2.斯1.姆.test"/utf8>>).
-
--define(SNAME321, <<"詹3.姆2.斯1.姆.test"/utf8>>).
--define(SNAME4321, <<"斯4.詹3.姆2.斯1.姆.test"/utf8>>).
+-define(SNAME54321_PREFIX, <<"詹5.斯4.詹3.姆2.斯1"/utf8>>).
 
 subname(_Cfg) ->
     Name = ?TOPNAME,
@@ -652,10 +654,10 @@ subname(_Cfg) ->
     SomeEncId = aeser_api_encoder:encode(account_pubkey, SomePK),
 
     SubnamesDef =
-        #{?SNAME1 => #{<<"sub1_acc">> => SomeEncId},
-          ?SNAME2 => #{},
-          ?SNAME21 => #{},
-          ?SNAME54321 => #{<<"sub54321_acc">> => SomeEncId}},
+        #{?SNAME1_PREFIX => #{<<"sub1_acc">> => SomeEncId},
+          ?SNAME2_PREFIX => #{},
+          ?SNAME21_PREFIX => #{},
+          ?SNAME54321_PREFIX => #{<<"sub54321_acc">> => SomeEncId}},
 
     SubnameTxSpec = aens_test_utils:subname_tx_spec(PubKey, Name, SubnamesDef, S1),
     {ok, SubnameTx} = aens_subname_tx:new(SubnameTxSpec),

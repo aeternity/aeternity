@@ -32,7 +32,8 @@
         ]).
 
 %% Getters
--export([name/1]).
+-export([name/1,
+         definition_list/2]).
 
 %%%===================================================================
 %%% Types
@@ -71,24 +72,11 @@ new(#{account_id := AccountId,
       fee        := Fee} = Args) ->
     account = aeser_id:specialize_type(AccountId),
     {name, Name} = aeser_id:specialize(NameId),
-    aens_utils:ensure_name_length(Name, invalid_name),
-    SubnameDefs =
-        maps:fold(
-          fun (SName, SPointers, Acc) ->
-                  aens_utils:ensure_name_length(SName, invalid_subname),
-                  case aens_utils:top_name(SName) of
-                      {ok, subname, Name} ->
-                          {ok, SNameAscii} = aens_utils:ascii_encode(SName),
-                          [{list_to_binary(SNameAscii),
-                            pointers_list(SPointers)} | Acc];
-                      _ ->
-                          error({invalid_subname, SName})
-                  end
-          end, [], Definition),
+    aens_utils:name_length_valid(Name) orelse error({invalid_name, Name}),
     Tx = #ns_subname_tx{account_id = AccountId,
                         nonce      = Nonce,
                         name       = Name,
-                        definition = SubnameDefs,
+                        definition = definition_list(Name, Definition),
                         fee        = Fee,
                         ttl        = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -226,3 +214,13 @@ pointers_list(Pointers) when is_map(Pointers) ->
     maps:fold(fun (Key, Id, Acc) ->
                       [aens_pointer:new(Key, Id) | Acc]
               end, [], Pointers).
+
+definition_list(Name, Definition) when is_map(Definition) ->
+    maps:fold(
+      fun (SNamePrefix, SPointers, Acc) ->
+              SName = <<SNamePrefix/binary, ".", Name/binary>>,
+              aens_utils:name_length_valid(SName) orelse
+                  error({invalid_subname, SName}),
+              {ok, SNameAscii} = aens_utils:ascii_encode(SName),
+              [{list_to_binary(SNameAscii), pointers_list(SPointers)} | Acc]
+      end, [], Definition).
