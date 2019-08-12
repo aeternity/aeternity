@@ -20,6 +20,12 @@
     on_chain_channel/1
 ]).
 
+%% Helpers
+-export([
+    create_state_channel_perform_operations_leave/2,
+    reestablish_state_channel_perform_operations/3
+]).
+
 -import(aest_nodes, [
     spec/3,
     setup_nodes/2,
@@ -114,20 +120,7 @@ init_per_suite(Config) ->
     | Config],
 
     %% Precompile a simple contract for testing
-    Config2 = aect_test_utils:init_per_group(aevm, Config1),
-    aect_test_utils:setup_testcase(Config2),
-    SimpleContractName = "identity",
-    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), SimpleContractName),
-    {ok, Code}   = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), SimpleContractName),
-
-    [{simple_contract,
-        #{ bytecode => aeser_api_encoder:encode(contract_bytearray, Code),
-           vm       => aect_test_utils:vm_version(),
-           abi      => aect_test_utils:abi_version(),
-           code     => Code,
-           src      => binary_to_list(BinSrc)
-        }
-     } | Config2].
+    precompile_identity_contract(Config1).
 
 init_per_testcase(_TC, Config) ->
     aest_nodes:ct_setup(Config).
@@ -196,38 +189,19 @@ simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, C
     MikePubkey = aeser_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
     NodeConfig = #{ beneficiary => MikePubkey },
     setup([spec(node1, [], InitiatorNodeBaseSpec), spec(node2, [node1], ResponderNodeBaseSpec)], NodeConfig, Cfg),
-    NodeNames = [node1, node2],
+    NodeNames = [INodeName, RNodeName],
     start_node(node1, Cfg),
     start_node(node2, Cfg),
     wait_for_startup([node1, node2], 4, Cfg),  %% make sure there is some money in accounts
     wait_for_value({balance, maps:get(pubkey, ?MIKE), 1000000}, [node1], 10000, Cfg),
 
-    post_spend_tx(node1, ?MIKE, IAccount, 1, #{amount => 200000 * aest_nodes:gas_price()}),
-    wait_for_value({balance, maps:get(pubkey, IAccount), 200000 * aest_nodes:gas_price()}, NodeNames, 10000, Cfg),
-
-    post_spend_tx(node1, ?MIKE, RAccount, 2, #{amount => 200000 * aest_nodes:gas_price()}),
-    wait_for_value({balance, maps:get(pubkey, RAccount), 200000 * aest_nodes:gas_price()}, NodeNames, 10000, Cfg),
-
-    ct:log("Opening channel"),
-    {ok, Chan, TxHash, OpenFee} = sc_open(ChannelOpts, Cfg),
-    wait_for_value({txs_on_chain, [TxHash]}, NodeNames, 5000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, IAccount), 200000 * aest_nodes:gas_price() - IAmt - OpenFee}, NodeNames, 10000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, RAccount), 200000 * aest_nodes:gas_price() - RAmt}, NodeNames, 10000, Cfg),
-
-    ct:log("Testing withdraws"),
-    {ok, TxHash1, WFee1} = sc_withdraw(Chan, initiator, 20 * aest_nodes:gas_price()),
-    wait_for_value({txs_on_chain, [TxHash1]}, NodeNames, 5000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, IAccount), 200000 * aest_nodes:gas_price() - IAmt - OpenFee + 20 - WFee1}, NodeNames, 10000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, RAccount), 200000 * aest_nodes:gas_price() - RAmt}, NodeNames, 10000, Cfg),
-
-    {ok, TxHash2, WFee2} = sc_withdraw(Chan, responder, 50 * aest_nodes:gas_price()),
-    wait_for_value({txs_on_chain, [TxHash2]}, NodeNames, 5000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, IAccount), 200000 * aest_nodes:gas_price() - IAmt - OpenFee + 20 * aest_nodes:gas_price() - WFee1}, NodeNames, 10000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, RAccount), 200000 * aest_nodes:gas_price() - RAmt + 50 * aest_nodes:gas_price() - WFee2}, NodeNames, 10000, Cfg),
-
+    populate_accounts_with_funds([IAccount, RAccount], NodeNames, Cfg),
+    {ok, Chan, OpenFee, WFee1, WFee2} = test_open_and_onchain_operations(ChannelOpts, Cfg),
     test_offchain_operations(Chan, Cfg),
+
     {ok, LatestState} = sc_leave(Chan),
     {ok, Chan1} = sc_reestablish(Chan, INodeName, RNodeName, LatestState, Cfg),
+
     test_offchain_operations(Chan1, Cfg),
 
     ct:log("Testing mutual close"),
@@ -251,6 +225,64 @@ simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, C
     wait_for_value({txs_on_chain, [CloseTxHash]}, NodeNames, 5000, Cfg),
     wait_for_value({balance, maps:get(pubkey, IAccount), 200000 - IAmt - OpenFee + 20 - WFee1 + IChange}, NodeNames, 10000, Cfg),
     wait_for_value({balance, maps:get(pubkey, RAccount), 200000 - RAmt + 50 - WFee2 + RChange}, NodeNames, 10000, Cfg),
+    ok.
+
+
+%=== HELPERS ===================================================================
+
+precompile_identity_contract(Config1) ->
+    %% Precompile a simple contract for testing
+    Config2 = aect_test_utils:init_per_group(aevm, Config1),
+    aect_test_utils:setup_testcase(Config2),
+    SimpleContractName = "identity",
+    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), SimpleContractName),
+    {ok, Code}   = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), SimpleContractName),
+
+    [{simple_contract,
+        #{ bytecode => aeser_api_encoder:encode(contract_bytearray, Code),
+           vm       => aect_test_utils:vm_version(),
+           abi      => aect_test_utils:abi_version(),
+           code     => Code,
+           src      => binary_to_list(BinSrc)
+        }
+     } | Config2].
+
+create_state_channel_perform_operations_leave({INodeName, RNodeName}, Config) ->
+    Config1 = precompile_identity_contract(Config),
+    ChannelOpts = #{
+        initiator_node => INodeName,
+        initiator_id   => ?ALICE,
+        initiator_amount => 50000 * aest_nodes:gas_price(),
+        responder_node => RNodeName,
+        responder_id => ?BOB,
+        responder_amount => 50000 * aest_nodes:gas_price(),
+        push_amount => 2
+    },
+    IAccount = maps:get(initiator_id, ChannelOpts),
+    RAccount = maps:get(responder_id, ChannelOpts),
+    NodeNames = [INodeName, RNodeName],
+
+    populate_accounts_with_funds([IAccount, RAccount], NodeNames, Config1),
+    {ok, Chan, _OpenFee, _WFee1, _WFee2} = test_open_and_onchain_operations(ChannelOpts, Config1),
+    test_offchain_operations(Chan, Config1),
+
+    {ok, LatestState} = sc_leave(Chan),
+
+    #{config => Config1, latest_state => LatestState, channel => Chan}.
+
+reestablish_state_channel_perform_operations({INodeName, RNodeName},
+    #{ config := Config
+     , latest_state := LatestState
+     , channel := Chan
+    }, _Config) ->
+    NodeNames = [INodeName, RNodeName],
+
+    {ok, Chan1} = sc_reestablish(Chan, INodeName, RNodeName, LatestState, Config),
+    test_offchain_operations(Chan1, Config),
+
+    ct:log("Testing mutual close"),
+    {ok, CloseTxHash, _CloseFee, _IChange, _RChange} = sc_close_mutual(Chan1, initiator),
+    wait_for_value({txs_on_chain, [CloseTxHash]}, NodeNames, 5000, Config),
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================
@@ -311,6 +343,34 @@ encode_calldata(Contract, Fun, Args) ->
     {ok, Calldata} = aect_test_utils:encode_call_data(maps:get(src, Contract), Fun, Args),
     {ok, aeser_api_encoder:encode(contract_bytearray, Calldata)}.
 
+test_open_and_onchain_operations(#{
+        initiator_node   := INodeName,
+        initiator_id     := IAccount,
+        initiator_amount := IAmt,
+        responder_node   := RNodeName,
+        responder_id     := RAccount,
+        responder_amount := RAmt
+    } = ChannelOpts,  Cfg) ->
+    NodeNames = [INodeName, RNodeName],
+
+    ct:log("Opening channel"),
+    {ok, Chan, TxHash, OpenFee} = sc_open(ChannelOpts, Cfg),
+    wait_for_value({txs_on_chain, [TxHash]}, NodeNames, 5000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, IAccount), 200000 * aest_nodes:gas_price() - IAmt - OpenFee}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, RAccount), 200000 * aest_nodes:gas_price() - RAmt}, NodeNames, 10000, Cfg),
+
+    ct:log("Testing withdraws"),
+    {ok, TxHash1, WFee1} = sc_withdraw(Chan, initiator, 20 * aest_nodes:gas_price()),
+    wait_for_value({txs_on_chain, [TxHash1]}, NodeNames, 5000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, IAccount), 200000 * aest_nodes:gas_price() - IAmt - OpenFee + 20 - WFee1}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, RAccount), 200000 * aest_nodes:gas_price() - RAmt}, NodeNames, 10000, Cfg),
+
+    {ok, TxHash2, WFee2} = sc_withdraw(Chan, responder, 50 * aest_nodes:gas_price()),
+    wait_for_value({txs_on_chain, [TxHash2]}, NodeNames, 5000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, IAccount), 200000 * aest_nodes:gas_price() - IAmt - OpenFee + 20 * aest_nodes:gas_price() - WFee1}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, RAccount), 200000 * aest_nodes:gas_price() - RAmt + 50 * aest_nodes:gas_price() - WFee2}, NodeNames, 10000, Cfg),
+    {ok, Chan, OpenFee, WFee1, WFee2}.
+
 test_offchain_operations(Chan, Cfg) ->
     ct:log("Testing offchain transfers"),
     TransferVolleyF = fun() ->
@@ -330,3 +390,10 @@ test_offchain_operations(Chan, Cfg) ->
          , <<"return_value">>      := _} = CallRes %% TODO: check if return value matches
     end,
     [ SimpleContractTestF(Role) || Role <- [initiator, responder]].
+
+populate_accounts_with_funds(Accounts, [Node | _] = NodeNames, Cfg) ->
+    lists:foldl(fun(Account, Nonce) ->
+        post_spend_tx(Node, ?MIKE, Account, Nonce, #{amount => 200000 * aest_nodes:gas_price()}),
+        wait_for_value({balance, maps:get(pubkey, Account), 200000 * aest_nodes:gas_price()}, NodeNames, 10000, Cfg),
+        Nonce + 1
+    end, 1, Accounts).

@@ -18,7 +18,11 @@
          node_can_reuse_db_of_minerva_node_with_epoch_db/1,
          minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node/1,
          minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node_with_force_progress_tx/1,
-         node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx/1
+         node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx/1,
+         %% TODO: Shouldn't the names be longer ;)
+         node_can_reuse_state_channel_db_of_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish/1,
+         node_and_fortuna_major_release_can_reuse_state_channel_db_of_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish/1,
+         node_can_reuse_state_channel_db_of_node_and_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish/1
         ]).
 
 %=== INCLUDES ==================================================================
@@ -54,6 +58,10 @@ all() -> [
           minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node,
           minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node_with_force_progress_tx,
           node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx
+          %% TODO: The state channel state does not currently survive restarts :( - when this is fixed uncomment and adjust the version in tests
+          %%node_can_reuse_state_channel_db_of_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish,
+          %%node_and_fortuna_major_release_can_reuse_state_channel_db_of_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish,
+          %%node_can_reuse_state_channel_db_of_node_and_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish
          ].
 
 init_per_suite(Config) ->
@@ -123,6 +131,30 @@ node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progr
               assert = fun assert_db_with_tx_reused/3},
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
+node_can_reuse_state_channel_db_of_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish(Cfg) ->
+    Test = #db_reuse_test_spec{
+              create = fun fortuna_major_release_mining_spec/2,
+              populate = fun aest_channels_SUITE:create_state_channel_perform_operations_leave/2,
+              reuse = fun node_mining_spec/2,
+              assert = fun aest_channels_SUITE:reestablish_state_channel_perform_operations/3},
+    node_can_reuse_state_channel_db_of_other_node_(Test, Cfg).
+
+node_and_fortuna_major_release_can_reuse_state_channel_db_of_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish(Cfg) ->
+    Test = #db_reuse_test_spec{
+              create = fun fortuna_major_release_mining_spec/2,
+              populate = fun aest_channels_SUITE:create_state_channel_perform_operations_leave/2,
+              reuse = fun alice_latest_bob_fortuna_mining_spec/2,
+              assert = fun aest_channels_SUITE:reestablish_state_channel_perform_operations/3},
+    node_can_reuse_state_channel_db_of_other_node_(Test, Cfg).
+
+node_can_reuse_state_channel_db_of_node_and_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish(Cfg) ->
+    Test = #db_reuse_test_spec{
+              create = fun alice_latest_bob_fortuna_mining_spec/2,
+              populate = fun aest_channels_SUITE:create_state_channel_perform_operations_leave/2,
+              reuse = fun node_mining_spec/2,
+              assert = fun aest_channels_SUITE:reestablish_state_channel_perform_operations/3},
+    node_can_reuse_state_channel_db_of_other_node_(Test, Cfg).
+
 %=== INTERNAL FUNCTIONS ========================================================
 
 node_can_reuse_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg)
@@ -146,6 +178,30 @@ node_can_reuse_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg)
     ok = (T#db_reuse_test_spec.assert)(node2, DbFingerprint, Cfg),
     ok.
 
+node_can_reuse_state_channel_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg)
+  when is_function(T#db_reuse_test_spec.create, 2),
+       is_function(T#db_reuse_test_spec.populate, 2),
+       is_function(T#db_reuse_test_spec.reuse, 2),
+       is_function(T#db_reuse_test_spec.assert, 3) ->
+    AliceDbHostPath = node_db_host_path(alice1, Cfg),
+    BobDbHostPath = node_db_host_path(bob1, Cfg),
+    A1 = (T#db_reuse_test_spec.create)(alice1, AliceDbHostPath),
+    B1 = (T#db_reuse_test_spec.create)(bob1, BobDbHostPath),
+    aest_nodes:setup_nodes([A1#{peers => [bob1]}, B1#{peers => [alice1]}], Cfg),
+    start_and_wait_nodes([alice1, bob1], ?STARTUP_TIMEOUT, Cfg),
+    DbFingerprint = (T#db_reuse_test_spec.populate)({alice1, bob1}, Cfg),
+    aest_nodes:stop_node(alice1, ?GRACEFUL_STOP_TIMEOUT, Cfg),
+    aest_nodes:stop_node(bob1, ?GRACEFUL_STOP_TIMEOUT, Cfg),
+
+    %% pre_reuse not used here
+
+    A2 = (T#db_reuse_test_spec.reuse)(alice2, AliceDbHostPath),
+    B2 = (T#db_reuse_test_spec.reuse)(bob2, BobDbHostPath),
+    aest_nodes:setup_nodes([A2#{peers => [bob2]}, B2#{peers => [alice2]}], Cfg),
+    start_and_wait_nodes([alice2, bob2], ?STARTUP_TIMEOUT, Cfg),
+    ok = (T#db_reuse_test_spec.assert)({alice2, bob2}, DbFingerprint, Cfg),
+    ok.
+
 populate_db(NodeName, Cfg) ->
     TargetHeight = 3,
     aest_nodes:wait_for_value({height, TargetHeight}, [NodeName], TargetHeight * ?MINING_TIMEOUT, Cfg),
@@ -165,6 +221,14 @@ start_and_wait_node(NodeName, Timeout, Cfg) ->
     aest_nodes:wait_for_value({height, 0}, [NodeName], Timeout, Cfg),
     %% Hardcode expectation that node picks user config
     #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(NodeName),
+    ok.
+
+start_and_wait_nodes(NodeNames, Timeout, Cfg) ->
+    [aest_nodes:start_node(NodeName, Cfg) || NodeName <- NodeNames],
+    %% Mine some blocks so the peers may sync with each other
+    aest_nodes:wait_for_value({height, 4}, NodeNames, Timeout, Cfg),
+    %% Hardcode expectation that node picks user config
+    [#{network_id := <<"ae_system_test">>} = aest_nodes:get_status(NodeName) || NodeName <- NodeNames],
     ok.
 
 node_db_host_path(NodeName, Config) ->
@@ -246,6 +310,18 @@ minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath, Mining) ->
                                 mining => #{autostart => Mining},
                                 genesis_accounts => genesis_accounts()}).
 
+fortuna_major_release_mining_spec(Name, DbHostPath) ->
+    DbGuestPath = "/home/aeternity/node/data/mnesia",
+    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v4.0.0"},
+                                db_path => {DbHostPath, DbGuestPath},
+                                mining => #{autostart => true},
+                                genesis_accounts => genesis_accounts()}).
+
+alice_latest_bob_fortuna_mining_spec(Name, DbHostPath) when Name =:= alice1; Name =:= alice2 ->
+    node_mining_spec(Name, DbHostPath);
+alice_latest_bob_fortuna_mining_spec(Name, DbHostPath) when Name =:= bob1; Name =:= bob2 ->
+    fortuna_major_release_mining_spec(Name, DbHostPath).
+
 genesis_accounts() ->
     %% have all nodes share the same accounts_test.json
     PatronPubkey = maps:get(pubkey, patron()),
@@ -253,8 +329,9 @@ genesis_accounts() ->
     [{PatronAddress, 123400000000000000000000000000}].
 
 patron() ->
-    #{ pubkey => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
-       privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>
+    %% This is the same account as in aest_channels_SUITE.erl
+    #{ pubkey => <<200,171,93,11,3,93,177,65,197,27,123,127,177,165,190,211,20,112,79,108,85,78,88,181,26,207,191,211,40,225,138,154>>
+     , privkey => <<237,12,20,128,115,166,32,106,220,142,111,97,141,104,201,130,56,100,64,142,139,163,87,166,185,94,4,159,217,243,160,169,200,171,93,11,3,93,177,65,197,27,123,127,177,165,190,211,20,112,79,108,85,78,88,181,26,207,191,211,40,225,138,154>>
      }.
 
 populate_db_with_channels_force_progress_tx(NodeName, _Cfg) ->

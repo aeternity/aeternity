@@ -1,6 +1,24 @@
 {{#aeternity_config}}
 ---
-peers: []
+peers: {{^peers}}[]{{/peers}}
+{{#peers}}
+    - {{peer}}
+{{/peers}}
+
+{{#peers}}
+sync:
+    port: {{services.sync.port}}
+    single_outbound_per_group: false
+
+websocket:
+    channel:
+        listen_address: 0.0.0.0
+        port: {{services.ext_ws.port}}
+
+keys:
+    peer_password: {{key_password}}
+    dir: ./keys
+{{/peers}}
 
 http:
     external:
