@@ -1688,10 +1688,12 @@ store_map_to_list(Cache, MapId, ES) ->
 %% ------------------------------------------------------
 
 bin_comp(Comp, {To, Left, Right}, ES) ->
-    {LeftValue, ES1} = get_op_arg(Left, ES),
-    {RightValue, ES2} = get_op_arg(Right, ES1),
-    Result = comp(Comp, LeftValue, RightValue),
-    write(To, Result, ES2).
+    {LeftValue,   ES1} = get_op_arg(Left, ES),
+    {LeftValue1,  ES2} = aefa_fate:unfold_store_maps(LeftValue, ES1),
+    {RightValue,  ES3} = get_op_arg(Right, ES2),
+    {RightValue1, ES4} = aefa_fate:unfold_store_maps(RightValue, ES3),
+    Result = comp(Comp, LeftValue1, RightValue1),
+    write(To, Result, ES4).
 
 comp( lt, A, B) -> A < B;
 comp( gt, A, B) -> A > B;
