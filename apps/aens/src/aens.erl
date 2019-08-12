@@ -51,9 +51,16 @@ resolve_from_name_object(Key, Name) when is_binary(Key) ->
 -spec get_commitment_hash(binary(), integer()) ->
     {ok, aens_hash:commitment_hash()} | {error, atom()}.
 get_commitment_hash(Name, Salt) when is_binary(Name) andalso is_integer(Salt) ->
-    case aens_utils:to_ascii(Name) of
-        {ok, NameAscii} -> {ok, aens_hash:commitment_hash(NameAscii, Salt)};
-        {error, _} = E  -> E
+    case aens_utils:check_split_name(Name) of
+        {ok, name, _} ->
+            case aens_utils:name_to_ascii(Name) of
+                {ok, NameAscii} -> {ok, aens_hash:commitment_hash(NameAscii, Salt)};
+                {error, _} = Error -> Error
+            end;
+        {ok, subname, _} ->
+            {error, multiple_namespaces};
+        {error, _} = Error ->
+            Error
     end.
 
 -spec get_name_entry(binary(), aens_state_tree:tree()) ->
