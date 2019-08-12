@@ -132,7 +132,7 @@ op --> aw_si_withdrawcreated                              : withdraw_created [if
 op --> aw_lo_watchwithdraw                                : withdraw_created [if client_disconnected and already_signed and checks_ok]
 op --> op                                                 : withdraw_created [if not checks_ok]
 op --> aw_si_depositcreated                               : deposit_created [if checks_ok]
-ok --> aw_lo_watchdeposit                                 : deposit_created [if client_disconnected and already_signed and checks_ok]
+op --> aw_lo_watchdeposit                                 : deposit_created [if client_disconnected and already_signed and checks_ok]
 op --> op                                                 : deposit_created [if not checks_ok]
 
 state "Mutual Closing" as mu_cl
