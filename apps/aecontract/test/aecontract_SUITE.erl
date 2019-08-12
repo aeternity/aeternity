@@ -109,6 +109,7 @@
         , sophia_big_map_benchmark/1
         , sophia_pmaps/1
         , sophia_map_of_maps/1
+        , sophia_arity_check/1
         , sophia_chess/1
         , sophia_variant_types/1
         , sophia_chain/1
@@ -323,6 +324,7 @@ groups() ->
                                  sophia_map_benchmark,
                                  sophia_big_map_benchmark,
                                  sophia_variant_types,
+                                 sophia_arity_check,
                                  sophia_chain,
                                  sophia_savecoinbase,
                                  sophia_fundme,
@@ -4039,6 +4041,17 @@ sophia_variant_types(_Cfg) ->
     {started, {ExpectAccId, 123, green}} = Call(get_state, State, {}),
     ?assertMatchFATE({address, AccId}, ExpectAccId),
     ?assertMatchAEVM(AccId, ExpectAccId),
+    ok.
+
+sophia_arity_check(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Id = ?call(create_contract, Acc, identity,    {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
+    Ct = ?call(create_contract, Acc, remote_fail, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
+    Res = ?call(call_contract, Acc, Ct, fail, word, {?cid(Id)}),
+    ?assertMatchVM({error, <<"out_of_gas">>},
+                   {error, <<"Expected 1 arguments, got 2">>}, Res),
+
     ok.
 
 

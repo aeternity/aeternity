@@ -21,7 +21,8 @@
 
 -export([ check_remote/2
         , check_return_type/1
-        , check_signature_and_bind_args/2
+        , check_signature_and_bind_args/3
+        , unfold_store_maps_in_args/2
         , check_type/2
         , get_function_signature/2
         , push_gas_cap/2
@@ -205,6 +206,8 @@ abort({undefined_var, Var}, ES) ->
     ?t("Undefined var: ~p", [Var], ES);
 abort({bad_return_type, Val, Type}, ES) ->
     ?t("Type error on return: ~p is not of type ~p", [Val, Type], ES);
+abort({function_arity_mismatch, Got, Expected}, ES) ->
+    ?t("Expected ~p arguments, got ~p", [Expected, Got], ES);
 abort({value_does_not_match_type, Val, Type}, ES) ->
     ?t("Type error on call: ~p is not of type ~p", [Val, Type], ES);
 abort({trying_to_reach_bb, BB}, ES) ->
@@ -286,7 +289,7 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
     ES2 = set_remote_function(Contract, Function, ES1),
     ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
-    ES4 = check_signature_and_bind_args(Signature, ES3),
+    ES4 = check_signature_and_bind_args(length(Arguments), Signature, ES3),
     aefa_engine_state:set_caller(aeb_fate_data:make_address(maps:get(caller, Env)), ES4).
 
 check_remote(Contract, EngineState) when not ?IS_FATE_CONTRACT(Contract) ->
@@ -344,22 +347,24 @@ check_return_type(ES) ->
     check_return_type(RetType, TVars, ES).
 
 check_return_type(RetType, TVars, ES) ->
-    Acc = unfold_store_maps(aefa_engine_state:accumulator(ES), ES),
+    Acc = aefa_engine_state:accumulator(ES),
     case check_type(RetType, Acc) of
         false -> abort({bad_return_type, Acc, RetType}, ES);
         Inst  ->
             case merge_match(Inst, TVars) of
                 false -> abort({bad_return_type, Acc, instantiate_type(TVars, RetType)}, ES);
-                #{}   -> aefa_engine_state:set_accumulator(Acc, ES)
+                #{}   -> ES
             end
     end.
 
-check_signature_and_bind_args(Signature, ES) ->
-    {ok, Inst} = check_signature(Signature, ES),
+check_signature_and_bind_args(Arity, Signature, ES) ->
+    {ok, Inst} = check_signature(Arity, Signature, ES),
     ES1 = bind_args_from_signature(Signature, ES),
     aefa_engine_state:set_current_tvars(Inst, ES1).
 
-check_signature({ArgTypes, _RetSignature}, ES) ->
+check_signature(Arity, {ArgTypes, _RetSignature}, ES) when is_integer(Arity), length(ArgTypes) /= Arity ->
+    abort({function_arity_mismatch, Arity, length(ArgTypes)}, ES);
+check_signature(_Arity, {ArgTypes, _RetSignature}, ES) ->
     Stack = aefa_engine_state:accumulator_stack(ES),
     Args = [aefa_engine_state:accumulator(ES) | Stack],
     case check_arg_types(ArgTypes, Args) of
