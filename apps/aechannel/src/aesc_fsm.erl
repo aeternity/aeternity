@@ -35,6 +35,7 @@
         , upd_create_contract/2   %%
         , upd_deposit/2           %% (fsm() , map())
         , upd_transfer/4          %% (fsm() , from(), to(), amount())
+        , upd_transfer/5          %% (fsm() , from(), to(), amount(), #{})
         , upd_withdraw/2          %% (fsm() , map())
         , where/2
         ]).
@@ -241,11 +242,14 @@ upd_deposit(Fsm, #{amount := Amt} = Opts) when is_integer(Amt) ->
     lager:debug("upd_deposit(~p)", [Opts]),
     gen_statem:call(Fsm, {upd_deposit, Opts}).
 
-upd_transfer(_Fsm, _From, _To, Amount) when Amount < 0 ->
+upd_transfer(Fsm, From, To, Amount) ->
+    upd_transfer(Fsm, From, To, Amount, #{}).
+
+upd_transfer(_Fsm, _From, _To, Amount, Opts) when Amount < 0 ->
     {error, negative_amount};
-upd_transfer(Fsm, From, To, Amount) when is_integer(Amount) ->
-    lager:debug("upd_transfer(~p, ~p, ~p, ~p)", [Fsm, From, To, Amount]),
-    gen_statem:call(Fsm, {upd_transfer, From, To, Amount}).
+upd_transfer(Fsm, From, To, Amount, Opts) when is_integer(Amount), is_map(Opts) ->
+    lager:debug("upd_transfer(~p, ~p, ~p, ~p, ~p)", [Fsm, From, To, Amount, Opts]),
+    gen_statem:call(Fsm, {upd_transfer, From, To, Amount, Opts}).
 
 upd_withdraw(_Fsm, #{amount := Amt}) when Amt < 0 ->
     {error, negative_amount};
@@ -2124,12 +2128,13 @@ check_update_ack_(SignedTx, HalfSignedTx) ->
     lager:debug("Txes are the same", []),
     ok.
 
-handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
-                                                       , opts = Opts
-                                                       , on_chain_id = ChannelId
-                                                       } = D) ->
+handle_upd_transfer(FromPub, ToPub, Amount, From, UOpts, #data{ state = State
+                                                              , opts = Opts
+                                                              , on_chain_id = ChannelId
+                                                              } = D) ->
     Updates = [aesc_offchain_update:op_transfer(aeser_id:create(account, FromPub),
-                                                aeser_id:create(account, ToPub), Amount)],
+                                                aeser_id:create(account, ToPub), Amount)
+              | meta_updates(UOpts)],
     {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     %% TODO PT-165214367: maybe set block_hash
@@ -2145,6 +2150,11 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
         error:Reason ->
             process_update_error(Reason, From, D)
     end.
+
+meta_updates(Opts) when is_map(Opts) ->
+    L = maps:get(meta, Opts, []),
+    [aesc_offchain_update:op_meta(D) || D <- L,
+                                        is_binary(D)].
 
 send_leave_msg(#data{ on_chain_id = ChId
                     , session     = Session} = Data) ->
@@ -3254,11 +3264,11 @@ handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
         _ ->
             keep_state(D, [{reply, From, {error, unknown_recipient}}])
     end;
-handle_call_(open, {upd_transfer, FromPub, ToPub, Amount}, From,
+handle_call_(open, {upd_transfer, FromPub, ToPub, Amount, Opts}, From,
             #data{opts = #{initiator := I, responder := R}} = D) ->
     case FromPub =/= ToPub andalso ([] == [FromPub, ToPub] -- [I, R]) of
         true ->
-            handle_upd_transfer(FromPub, ToPub, Amount, From, set_ongoing(D));
+            handle_upd_transfer(FromPub, ToPub, Amount, From, Opts, set_ongoing(D));
         false ->
             keep_state(set_ongoing(D), [{reply, From, {error, invalid_pubkeys}}])
     end;

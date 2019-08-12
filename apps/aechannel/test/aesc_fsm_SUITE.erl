@@ -734,7 +734,8 @@ update_volley(#{pub := PubI} = I, #{pub := PubR} = R, Cfg) ->
     do_update(PubI, PubR, 1, I1, R1, false, Cfg).
 
 do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
-    rpc(dev1, aesc_fsm, upd_transfer, [FsmI, From, To, Amount], Debug),
+    Opts = #{meta => [<<"meta1">>, <<"meta2">>]},
+    rpc(dev1, aesc_fsm, upd_transfer, [FsmI, From, To, Amount, Opts], Debug),
     {I1, _} = await_signing_request(update, I, Debug, Cfg),
     {R1, _} = await_signing_request(update_ack, R, Debug, Cfg),
     check_info(if_debug(Debug, 100, 0), Debug),
@@ -2308,6 +2309,8 @@ if_debug(_, _, Y) -> Y.
 
 apply_updates([], R) ->
     R;
+apply_updates([{meta, _} | T], R) ->
+    apply_updates(T, R);
 apply_updates([{transfer, FromId, ToId, Amount} | T], R) -> %TODO:FIX THIS
     From = aeser_id:specialize(FromId, account),
     To = aeser_id:specialize(ToId, account),
