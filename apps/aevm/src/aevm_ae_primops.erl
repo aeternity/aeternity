@@ -660,6 +660,11 @@ crypto_call(_Gas, ?PRIM_CALL_CRYPTO_BLAKE2B_STRING, Data, State) ->
 crypto_call(_, _, _, _) ->
     {error, out_of_gas}.
 
+crypto_call_ecrecover_secp256k1(_Gas, Data, State) ->
+    [Hash, V, R, S] = get_args([bytes_t(32), bytes_t(32),
+				bytes_t(32), bytes_t(32)], Data),
+    aeu_crypto:ecrecover(sec256k1, Hash, V, R, S).
+
 crypto_call_ecverify(_Gas, Data, State) ->
     [MsgHash, PK, Sig] = get_args([hash_t(), word, sign_t()], Data),
     Res =

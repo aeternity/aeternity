@@ -11,7 +11,7 @@
         , ecdsa_to_der_pk/1
         , ecdsa_to_der_sig/1
 
-	, ecrecover/4
+	, ecrecover/5
         , ecverify/3
         , ecverify/4
         ]).
@@ -34,7 +34,7 @@ ecdsa_to_der_sig(<<R0:32/binary, S0:32/binary>>) ->
     <<16#30, (4 + LR + LS), 16#02, LR, R1/binary, 16#02, LS, S1/binary>>.
 
 %% ECRECOVER
-ecrecover(Hash, V, R, S) ->
+ecrecover(sec256k1, Hash, V, R, S) ->
     Concatenated = <<Hash/binary, V/binary, R/binary, S/binary>>,
     ecrecover:ecrecover(Concatenated).
 
