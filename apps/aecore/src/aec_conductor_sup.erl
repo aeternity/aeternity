@@ -8,9 +8,9 @@
 %%%```
 %%%   aec_conductor_sup (rest_for_one)
 %%%         |
-%%%         ---------------------
-%%%         |                   |
-%%%   aec_block_generator  aec_conductor
+%%%         ---------------------------------------------
+%%%         |                   |                       |
+%%%   aec_block_generator  aec_fork_signalling   aec_conductor
 %%%'''
 %%%
 %%% @end
@@ -42,5 +42,5 @@ start_link() ->
 
 init([]) ->
     {ok, {{rest_for_one, 5, 10}, [?CHILD(aec_block_generator, 5000, worker),
+                                  ?CHILD(aec_fork_signalling, 5000, worker),
                                   ?CHILD(aec_conductor, 5000, worker)]}}.
-

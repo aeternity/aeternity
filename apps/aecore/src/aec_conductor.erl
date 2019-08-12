@@ -197,6 +197,7 @@ init(Options) ->
     ok     = init_chain_state(),
     TopBlockHash = aec_chain:top_block_hash(),
     TopKeyBlockHash = aec_chain:top_key_block_hash(),
+    TopKeyBlockHeight = block_height(TopKeyBlockHash),
     Consensus = #consensus{micro_block_cycle = aec_governance:micro_block_cycle(),
                            leader = false},
     State1 = #state{ top_block_hash     = TopBlockHash,
@@ -206,14 +207,15 @@ init(Options) ->
     {ok, State3} = set_beneficiary(State2),
     State4 = init_miner_instances(State3),
     State5 = set_stratum_mode(State4), %% May overwrite beneficiary.
+    State6 = set_fork(TopKeyBlockHeight, State5),
 
     aec_metrics:try_update([ae,epoch,aecore,chain,height],
                            aec_blocks:height(aec_chain:top_block())),
-    epoch_mining:info("Miner process initilized ~p", [State5]),
+    epoch_mining:info("Miner process initilized ~p", [State6]),
     aec_events:subscribe(candidate_block),
     %% NOTE: The init continues at handle_info(init_continue, State).
     self() ! init_continue,
-    {ok, State5}.
+    {ok, State6}.
 
 init_chain_state() ->
     case aec_chain:genesis_hash() of
@@ -381,6 +383,14 @@ make_micro_candidate(Block) ->
     #candidate{ block    = Block,
                 top_hash = aec_blocks:prev_hash(Block) }.
 
+block_height(BlockHash) when BlockHash =/= undefined ->
+    case aec_chain:get_block(BlockHash) of
+        {ok, Block} -> aec_blocks:height(Block);
+        error       -> undefined
+    end;
+block_height(undefined) ->
+    undefined.
+
 %%%===================================================================
 %%% Handle init options
 
@@ -438,6 +448,9 @@ set_stratum_mode(State) ->
         _ ->
             State#state{stratum_mode = false}
     end.
+
+set_fork(TopKeyBlockHeight, State) ->
+    State#state{fork = aec_hard_forks:fork(TopKeyBlockHeight)}.
 
 %%%===================================================================
 %%% Handle monitor messages
@@ -1109,6 +1122,7 @@ handle_add_block(Block, Hash, Prev, State, Origin) ->
 handle_successfully_added_block(Block, Hash, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
+    maybe_compute_fork_signalling_result(Block, Hash, State),
     case preempt_if_new_top(State, Origin) of
         no_change ->
             {ok, State};
@@ -1121,6 +1135,13 @@ handle_successfully_added_block(Block, Hash, Events, State, Origin) ->
             {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.
 
+maybe_compute_fork_signalling_result(Block, Hash, #state{fork = Fork}) when Fork =/= undefined ->
+    case aec_blocks:type(Block) of
+        key   -> aec_fork_signalling:compute_fork_result(Block, Hash, Fork);
+        micro -> ok
+    end;
+maybe_compute_fork_signalling_result(_Block, _Hash, _State) ->
+    ok.
 
 %% NG-TODO: This is pretty inefficient and can be helped with some info
 %%          in the state.

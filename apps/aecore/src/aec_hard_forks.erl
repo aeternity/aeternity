@@ -51,7 +51,7 @@ protocols() ->
 %% If there is a fork specified in the config (fork_management > fork) and the
 %% Height parameter is less than or equal the fork height, the info about
 %% the fork is returned.
--spec fork(aec_block:height()) -> fork() | undefined.
+-spec fork(aec_blocks:height()) -> fork() | undefined.
 fork(Height) ->
     fork_from_height(Height).
 
