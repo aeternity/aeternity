@@ -762,12 +762,13 @@ subname(_Cfg) ->
 
 subname_claim_as_name_negative(_Cfg) ->
     SubnameAsName = <<"subname.name.test"/utf8>>,
-    {'EXIT', {{illegal_field,pointers,
-               [{binary,id}], _,
-               [{binary,id}], _},
-              [_|_]}} = (catch claim([{name, SubnameAsName}])),
+    {PubKey, _Name, NameSalt, S1} = preclaim([{name, SubnameAsName}]),
+    Trees = aens_test_utils:trees(S1),
+    TxSpec = aens_test_utils:claim_tx_spec(PubKey, SubnameAsName, NameSalt, S1),
+    {ok, Tx} = aens_claim_tx:new(TxSpec),
+    Env      = aetx_env:tx_env(?PRE_CLAIM_HEIGHT + 1),
+    {error, name_is_invalid} = aetx:process(Tx, Trees, Env),
     ok.
-
 
 testcase_subname_ensure_lima(Cfg) ->
     case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
