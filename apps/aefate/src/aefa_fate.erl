@@ -578,7 +578,8 @@ push_gas_cap(Gas, ES) when ?IS_FATE_INTEGER(Gas) ->
 pop_call_stack(ES) ->
     case aefa_engine_state:pop_call_stack(ES) of
         {empty, ES1} ->
-            {stop, ES1};
+            ES2 = unfold_store_maps(ES1),
+            {stop, ES2};
         {return_check, TVars, RetType, ES1} ->
             ES2 = check_return_type(RetType, TVars, ES1),
             pop_call_stack(ES2);
@@ -587,16 +588,41 @@ pop_call_stack(ES) ->
             ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
             {jump, BB, ES3};
         {remote, Contract, Function, TVars, BB, ES1} ->
-            ES2 = set_remote_function(Contract, Function, ES1),
-            ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
-            {jump, BB, ES3}
+            ES2 = unfold_store_maps(ES1),
+            ES3 = set_remote_function(Contract, Function, ES2),
+            ES4 = aefa_engine_state:set_current_tvars(TVars, ES3),
+            {jump, BB, ES4}
     end.
 
+unfold_store_maps(ES) ->
+    {Acc, ES1} = unfold_store_maps(aefa_engine_state:accumulator(ES), ES),
+    aefa_engine_state:set_accumulator(Acc, ES1).
+
+unfold_store_maps_in_args(0, ES)     -> ES;
+unfold_store_maps_in_args(Arity, ES) ->
+    Acc   = aefa_engine_state:accumulator(ES),
+    Stack = aefa_engine_state:accumulator_stack(ES),
+    {Args, Rest} = lists:split(min(Arity, length(Stack) + 1), [Acc | Stack]),
+    {Args1, ES1} = unfold_store_maps(?MAKE_FATE_LIST(Args), ES),
+    [Acc1 | Stack1] = ?FATE_LIST_VALUE(Args1),
+    aefa_engine_state:set_accumulator(Acc1,
+        aefa_engine_state:set_accumulator_stack(Stack1 ++ Rest, ES1)).
+
 unfold_store_maps(Val, ES) ->
-    Pubkey = aefa_engine_state:current_contract(ES),
-    Store  = aefa_engine_state:stores(ES),
-    aeb_fate_maps:unfold_store_maps(fun(Id) -> maps:from_list(aefa_stores:store_map_to_list(Pubkey, Id, Store)) end,
-                                    Val).
+    case aeb_fate_maps:has_store_maps(Val) of
+        true ->
+            Pubkey = aefa_engine_state:current_contract(ES),
+            Store  = aefa_engine_state:stores(ES),
+            Store1 = aefa_stores:cache_map_metadata(Pubkey, Store),
+            ES1    = aefa_engine_state:set_stores(Store1, ES),
+            Unfold = fun(Id) ->
+                        {List, _Store2} = aefa_stores:store_map_to_list(Pubkey, Id, Store1),
+                        maps:from_list(List)
+                     end,
+            {aeb_fate_maps:unfold_store_maps(Unfold, Val), ES1};
+        false ->
+            {Val, ES}
+    end.
 
 %% ------------------------------------------------------
 %% Memory
