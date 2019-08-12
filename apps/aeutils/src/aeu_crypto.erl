@@ -11,7 +11,7 @@
         , ecdsa_to_der_pk/1
         , ecdsa_to_der_sig/1
 
-	, ecrecover/5
+        , ecrecover/5
         , ecverify/3
         , ecverify/4
         ]).
