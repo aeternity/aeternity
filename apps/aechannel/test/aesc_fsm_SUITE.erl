@@ -125,27 +125,26 @@ groups() ->
                              ]},
      {transactions, [sequence],
       [
-     %   create_channel
-     % , multiple_responder_keys_per_port
-     % , channel_insufficent_tokens
-     % , inband_msgs
-     % , upd_transfer
-     % , update_with_conflict
-     % , update_with_soft_reject
-     % , deposit_with_conflict
-     % , deposit_with_soft_reject
-     % , withdraw_with_conflict
-     % , withdraw_with_soft_reject
-     % , upd_dep_with_conflict
-     % , upd_wdraw_with_conflict
-     % , dep_wdraw_with_conflict
-     % , deposit
-     % , withdraw
-     % , channel_detects_close_solo
-     % , leave_reestablish
-      leave_reestablish
-     % , leave_reestablish_close
-     % , change_config_get_history
+        create_channel
+      , multiple_responder_keys_per_port
+      , channel_insufficent_tokens
+      , inband_msgs
+      , upd_transfer
+      , update_with_conflict
+      , update_with_soft_reject
+      , deposit_with_conflict
+      , deposit_with_soft_reject
+      , withdraw_with_conflict
+      , withdraw_with_soft_reject
+      , upd_dep_with_conflict
+      , upd_wdraw_with_conflict
+      , dep_wdraw_with_conflict
+      , deposit
+      , withdraw
+      , channel_detects_close_solo
+      , leave_reestablish
+      , leave_reestablish_close
+      , change_config_get_history
       ]},
      {throughput, [sequence],
       [
@@ -905,7 +904,7 @@ leave_reestablish_(Cfg) ->
     ct:log("I = ~p", [I]),
     ChId = maps:get(channel_id, I),
     LeaveAndReestablish =
-        fun(Idx, {ILocal, RLocal}) ->
+        fun(Idx, #{i := ILocal, r := RLocal}) ->
             ct:log("starting attempt ~p", [Idx]),
             Cache1 = cache_status(ChId),
             [_,_] = in_ram(Cache1),
@@ -930,15 +929,14 @@ leave_reestablish_(Cfg) ->
             ChId = maps:get(channel_id, RLocal),
             mine_key_blocks(dev1, 6), % min depth at 4, so more than 4
             ct:log("reestablishing ...", []),
-            #{ i := ILocal1
-             , r := RLocal1} = reestablish(ChId, ILocal, RLocal, SignedTx,
+            Res = reestablish(ChId, ILocal, RLocal, SignedTx,
                                            Spec0, ?PORT, Debug),
             ct:log("ending attempt ~p", [Idx]),
-            {ILocal1, RLocal1}
+            Res
         end,
-    {ClosingI, ClosingR} =
-        lists:foldl(LeaveAndReestablish, {I, R}, lists:seq(1, 10)),
-    #{i => ClosingI, r => ClosingR}.
+    lists:foldl(LeaveAndReestablish,
+                #{i => I, r => R},
+                lists:seq(1, 10)). % 10 iterations
 
 leave_reestablish_close(Cfg) ->
     Debug = get_debug(Cfg),
