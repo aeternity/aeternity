@@ -186,7 +186,7 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
             %% Successful authentication - we have a call object in Trees1
             Env11 = set_ga_context(Env1, Tx),
             {InnerRes, Trees2, Env2} =
-                case aetx_sign:verify(tx(Tx), Trees1, Env11) of
+                case aetx_sign:verify_w_env(tx(Tx), Trees1, Env11) of
                     ok ->
                         case aetx:process(aetx_sign:tx(tx(Tx)), Trees1, Env11) of
                             {ok, Trees21, Env21}    -> {ok, Trees21, Env21};

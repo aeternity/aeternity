@@ -494,7 +494,7 @@ awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_DEP, TxHash},
     report(info, own_deposit_locked, D),
     next_state(dep_signed,
         send_deposit_locked_msg(TxHash, D#data{op = #op_lock{ tag = deposit
-                                                            , data = OpData}})); 
+                                                            , data = OpData}}));
 awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_WDRAW, TxHash},
                 #data{ on_chain_id = ChainId
                      , op = #op_min_depth{ tag = ?WATCH_WDRAW
@@ -1723,7 +1723,6 @@ adjust_ttl(TTL) when is_integer(TTL), TTL >= 0 ->
 curr_height() ->
     aec_headers:height(aec_chain:top_header()).
 
-
 new_contract_tx_for_signing(Opts, From, #data{ state = State
                                              , opts = ChannelOpts
                                              , on_chain_id = ChannelId } = D) ->
@@ -2464,7 +2463,7 @@ request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D, 
                        , info => Info }, D),
     D1 = D#data{ op = #op_sign{ tag = Tag
                               , data = #op_data{ signed_tx = SignedTx
-                                               , block_hash = BlockHash 
+                                               , block_hash = BlockHash
                                                , updates = Updates}}
                , log    = log_msg(req, sign, Msg, D#data.log)},
     SendF = sig_request_f(Client, Tag, Msg),
@@ -2507,21 +2506,22 @@ sig_request_f(Client, Tag, Msg) when is_pid(Client) ->
     end.
 
 %% Checks if a user had provided authentication but doesn't check the
-%% authentication itself 
+%% authentication itself
 has_my_signature(Me, SignedTx) ->
     case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of
         {aega_meta_tx, Tx} ->
             case aega_meta_tx:ga_pubkey(Tx) of
                 Me -> true;
-                _Other -> has_my_signature(Me, aega_meta_tx:tx(Tx)) %% go deeper 
+                _Other -> has_my_signature(Me, aega_meta_tx:tx(Tx)) %% go deeper
             end;
         {_NotGA, _} -> %% innermost transaction
-            ok =:= aetx_sign:verify_one_pubkey(Me, SignedTx)
+            CurrHeight = curr_height(),
+            ok =:= aetx_sign:verify_one_pubkey(Me, SignedTx, CurrHeight)
     end.
 
 start_min_depth_watcher(Type, SignedTx, Updates,
                         #data{ watcher = Watcher0
-                             , op = Op 
+                             , op = Op
                              , opts = #{minimum_depth := MinDepth}} = D) ->
     BlockHash = block_hash_from_op(Op),
     {Mod, Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
@@ -2539,7 +2539,7 @@ start_min_depth_watcher(Type, SignedTx, Updates,
                         , op = #op_min_depth{ tag = Sub
                                             , tx_hash = TxHash
                                             , data = #op_data{ signed_tx = SignedTx
-                                                             , block_hash = BlockHash 
+                                                             , block_hash = BlockHash
                                                              , updates = Updates}}}};
         {{?MIN_DEPTH, Sub}, Pid} when is_pid(Pid) ->
             ok = aesc_chain_watcher:watch_for_min_depth(
@@ -2547,21 +2547,21 @@ start_min_depth_watcher(Type, SignedTx, Updates,
             {ok, D1#data{op = #op_min_depth{ tag = Sub
                                            , tx_hash = TxHash
                                            , data = #op_data{ signed_tx = SignedTx
-                                                            , block_hash = BlockHash 
+                                                            , block_hash = BlockHash
                                                             , updates = Updates}}}};
         {unlock, Pid} when Pid =/= undefined ->
             ok = aesc_chain_watcher:watch_for_unlock(Pid, ?MODULE),
             {ok, D1#data{op = #op_watch{ type = unlock
                                        , tx_hash = TxHash
                                        , data = #op_data{ signed_tx = SignedTx
-                                                        , block_hash = BlockHash 
+                                                        , block_hash = BlockHash
                                                         , updates = Updates}}}};
         {close, Pid} when Pid =/= undefined ->
             ok = aesc_chain_watcher:watch_for_channel_close(Pid, MinDepth, ?MODULE),
             {ok, D1#data{op = #op_watch{ type = close
                                        , tx_hash = TxHash
                                        , data = #op_data{ signed_tx = SignedTx
-                                                        , block_hash = BlockHash 
+                                                        , block_hash = BlockHash
                                                         , updates = Updates}}}};
         {_, Pid} when Pid =/= undefined ->  %% assertion
             lager:debug("Unknown Type = ~p, Pid = ~p", [Type, Pid]),
@@ -2570,7 +2570,7 @@ start_min_depth_watcher(Type, SignedTx, Updates,
             {ok, D1#data{op = #op_watch{ type = Type
                                        , tx_hash = TxHash
                                        , data = #op_data{ signed_tx = SignedTx
-                                                        , block_hash = BlockHash 
+                                                        , block_hash = BlockHash
                                                         , updates = Updates}}}}
     end.
 

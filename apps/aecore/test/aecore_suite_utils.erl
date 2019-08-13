@@ -40,6 +40,7 @@
          flush_new_blocks/0,
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
          sign_on_node/2,
+         sign_on_node/3,
          forks/0,
          latest_fork_height/0]).
 
@@ -439,11 +440,14 @@ spend(Node, FromPub, ToPub, Amount, Fee) ->
     ok = rpc:call(Node, aec_tx_pool, push, [SignedTx]),
     {ok, SignedTx}.
 
-sign_on_node({Id, _Node}, Tx) ->
-    {_, {SignPrivKey, _}} = lists:keyfind(Id, 1, sign_keys()),
-    {ok, aec_test_utils:sign_tx(Tx, SignPrivKey)};
 sign_on_node(Id, Tx) ->
-    sign_on_node(node_tuple(Id), Tx).
+    sign_on_node(Id, Tx, false).
+
+sign_on_node({Id, _Node}, Tx, SignHash) ->
+    {_, {SignPrivKey, _}} = lists:keyfind(Id, 1, sign_keys()),
+    {ok, aec_test_utils:sign_tx(Tx, SignPrivKey, SignHash)};
+sign_on_node(Id, Tx, SignHash) ->
+    sign_on_node(node_tuple(Id), Tx, SignHash).
 
 forks() ->
     Vs = aec_hard_forks:sorted_protocol_versions(),

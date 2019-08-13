@@ -774,7 +774,7 @@ check_valid_at_protocol(STx, _Hash, Height, _Event) ->
 
 check_signature(Tx, Hash, _Height, _Event) ->
     {ok, Trees} = aec_chain:get_top_state(),
-    case aetx_sign:verify(Tx, Trees) of
+    case aetx_sign:verify(Tx, Trees, top_height()) of
         {error, _} = E ->
             lager:info("Failed signature check on tx: ~p, ~p\n", [E, Hash]),
             E;

@@ -23,10 +23,10 @@
          add_signatures/2,
          tx/1,
          innermost_tx/1,
-         verify/2,
          verify/3,
-         verify_half_signed/2,
-         verify_one_pubkey/2,
+         verify_w_env/3,
+         verify_half_signed/3,
+         verify_one_pubkey/3,
          from_db_format/1,
          signatures/1]).
 
@@ -46,10 +46,11 @@
               binary_signed_tx/0]).
 
 -include("../../aecore/include/blocks.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
--record(signed_tx, {
-          tx                         :: aetx:tx(),
-          signatures = ordsets:new() :: ordsets:ordset(binary())}).
+-record(signed_tx,
+        { tx                         :: aetx:tx(),
+          signatures = ordsets:new() :: ordsets:ordset(binary()) }).
 
 -opaque signed_tx() :: #signed_tx{}.
 -type binary_signed_tx() :: binary().
@@ -104,71 +105,85 @@ from_db_format(#signed_tx{tx = Tx} = STx) ->
 signatures(#signed_tx{signatures = Sigs}) ->
     Sigs.
 
--spec verify(signed_tx(), aec_trees:trees(), aetx_env:env()) ->
+-spec verify_w_env(signed_tx(), aec_trees:trees(), aetx_env:env()) ->
     ok | {error, signature_verification_failed}.
-verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees, TxEnv) ->
-    Bin = aetx:serialize_to_binary(Tx),
+verify_w_env(#signed_tx{tx = Tx, signatures = Sigs}, Trees, TxEnv) ->
+    Bin    = aetx:serialize_to_binary(Tx),
+    Height = aetx_env:height(TxEnv),
     case aetx:signers(Tx, Trees) of
         {ok, Signers} ->
             RemainingSigners = Signers -- aetx_env:ga_auth_ids(TxEnv),
-            verify_signatures(RemainingSigners, Bin, Sigs);
+            verify_signatures(RemainingSigners, Bin, Sigs, Height);
         {error, _Reason} ->
             {error, signature_verification_failed}
     end.
 
--spec verify(signed_tx(), aec_trees:trees()) -> ok | {error, signature_check_failed}.
-verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees) ->
-    Bin     = aetx:serialize_to_binary(Tx),
+-spec verify(signed_tx(), aec_trees:trees(), aec_blocks:height()) ->
+    ok | {error, signature_check_failed}.
+verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees, Height) ->
+    Bin = aetx:serialize_to_binary(Tx),
     case aetx:signers(Tx, Trees) of
         {ok, Signers} ->
-            verify_signatures(Signers, Bin, Sigs);
+            verify_signatures(Signers, Bin, Sigs, Height);
         {error, _Reason} ->
             {error, signature_check_failed}
     end.
 
 %% this function is strict and does not allow having more signatures that the
 %% one being checked
--spec verify_half_signed(aec_keys:pubkey() | [aec_keys:pubkey()],
-                         signed_tx()) -> ok | {error, signature_check_failed}.
-verify_half_signed(Signer, SignedTx) when is_binary(Signer) ->
-    verify_half_signed([Signer], SignedTx);
-verify_half_signed(Signers, #signed_tx{tx = Tx, signatures = Sigs}) ->
-    Bin     = aetx:serialize_to_binary(Tx),
-    verify_signatures(Signers, Bin, Sigs).
 
 %% this function allows having more signatures that the one being checked
--spec verify_one_pubkey(aec_keys:pubkey(), signed_tx())
-    -> ok | {error, signature_check_failed}.
-verify_one_pubkey(Signer, #signed_tx{tx = Tx, signatures = Sigs}) ->
+-spec verify_one_pubkey(aec_keys:pubkey(), signed_tx(), aec_blocks:height()) ->
+    ok | {error, signature_check_failed}.
+verify_one_pubkey(Signer, #signed_tx{tx = Tx, signatures = Sigs}, Height) ->
     Bin = aetx:serialize_to_binary(Tx),
-    case verify_one_pubkey(Sigs, Signer, Bin) of
+    case verify_one_pubkey(Sigs, Signer, Bin, Height) of
         {ok, _} -> ok;
         error -> {error, signature_check_failed}
     end.
 
-verify_signatures([PubKey|Left], Bin, Sigs) ->
-    case verify_one_pubkey(Sigs, PubKey, Bin) of
-        {ok, SigsLeft} -> verify_signatures(Left, Bin, SigsLeft);
-        error -> {error, signature_check_failed}
-    end;
-verify_signatures([],_Bin, []) ->
+-spec verify_half_signed(aec_keys:pubkey() | [aec_keys:pubkey()],
+                         signed_tx(), aec_blocks:height()) ->
+    ok | {error, signature_check_failed}.
+verify_half_signed(Signer, SignedTx, Height) when is_binary(Signer) ->
+    verify_half_signed([Signer], SignedTx, Height);
+verify_half_signed(Signers, #signed_tx{tx = Tx, signatures = Sigs}, Height) ->
+    verify_signatures(Signers, aetx:serialize_to_binary(Tx), Sigs, Height).
+
+verify_signatures([], _Bin, [], _Height) ->
     ok;
-verify_signatures(PubKeys,_Bin, Sigs) ->
+verify_signatures([PubKey|Left], Bin, Sigs, Height) ->
+    case verify_one_pubkey(Sigs, PubKey, Bin, Height) of
+        {ok, SigsLeft} -> verify_signatures(Left, Bin, SigsLeft, Height);
+        error          -> {error, signature_check_failed}
+    end;
+verify_signatures(PubKeys,_Bin, Sigs, _Height) ->
     lager:debug("Signature check failed: ~p ~p", [PubKeys, Sigs]),
     {error, signature_check_failed}.
 
-verify_one_pubkey(Sigs, PubKey, Bin) ->
-    verify_one_pubkey(Sigs, PubKey, Bin, []).
+verify_one_pubkey(Sigs, PubKey, Bin, Height) when ?VALID_PUBK(PubKey) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    HashSign = Protocol >= ?LIMA_PROTOCOL_VSN,
+    verify_one_pubkey(Sigs, PubKey, Bin, HashSign, []);
+verify_one_pubkey(_Sigs, _PubKey, _Bin, _Height) ->
+    error. %% invalid pubkey
 
-verify_one_pubkey([Sig|Left], PubKey, Bin, Acc) when ?VALID_PUBK(PubKey) ->
+verify_one_pubkey([Sig|Left], PubKey, Bin, HashSign, Acc)  ->
     BinForNetwork = aec_governance:add_network_id(Bin),
     case enacl:sign_verify_detached(Sig, BinForNetwork, PubKey) of
-        {ok, _}    -> {ok, Acc ++ Left};
-        {error, _} -> verify_one_pubkey(Left, PubKey, Bin, [Sig|Acc])
+        {ok, _} ->
+            {ok, Acc ++ Left};
+        {error, _} when HashSign ->
+            TxHash = aec_hash:hash(signed_tx, Bin),
+            BinForNetwork2 = aec_governance:add_network_id(TxHash),
+            case enacl:sign_verify_detached(Sig, BinForNetwork2, PubKey) of
+                {ok, _}    -> {ok, Acc ++ Left};
+                {error, _} -> verify_one_pubkey(Left, PubKey, Bin, HashSign, [Sig | Acc])
+            end;
+        {error, _} ->
+            verify_one_pubkey(Left, PubKey, Bin, HashSign, [Sig|Acc])
     end;
-verify_one_pubkey([], _PubKey,_Bin,_Acc) -> % no more signatures
-    error;
-verify_one_pubkey(_, _PubKey,_Bin,_Acc) -> % invalid pubkey
+verify_one_pubkey([], _PubKey, _Bin, _HashSign, _Acc) -> % no more signatures
     error.
 
 -define(SIG_TX_TYPE, signed_tx).

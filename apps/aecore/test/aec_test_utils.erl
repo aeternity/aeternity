@@ -58,6 +58,8 @@
         , sign_tx/2
         , co_sign_tx/2
         , substitute_innermost_tx/2
+        , sign_tx/3
+        , sign_tx_hash/2
         , signed_spend_tx/1
         , wait_for_pubkey/0
         , min_gas_price/0
@@ -483,15 +485,24 @@ create_micro_blocks([{PB, PBS} | _] = Chain, PrevKeyBlock, PrivKey, [Tx | Rest],
     Chain1 = [create_micro_block(PB, PrevKeyBlock, PrivKey, [Tx], PBS, Offset) | Chain],
     create_micro_blocks(Chain1, PrevKeyBlock, PrivKey, Rest, Offset + aec_governance:micro_block_cycle()).
 
-%% @doc Given a transaction Tx, a private key or list of keys,
-%% return the cryptographically signed transaction using the default crypto
-%% parameters.
+
+sign_tx(Tx, PrivKey) ->
+    sign_tx(Tx, PrivKey, false).
+
+sign_tx_hash(Tx, PrivKey) ->
+    sign_tx(Tx, PrivKey, true).
+
 -define(VALID_PRIVK(K), byte_size(K) =:= 64).
--spec sign_tx(aetx:tx(), list(binary()) | binary()) -> aetx_sign:signed_tx() | tuple().
-sign_tx(Tx, PrivKey) when is_binary(PrivKey) ->
-    sign_tx(Tx, [PrivKey]);
-sign_tx(Tx, PrivKeys) when is_list(PrivKeys) ->
-    Bin = aetx:serialize_to_binary(Tx),
+
+sign_tx(Tx, PrivKey, SignHash) when is_binary(PrivKey) ->
+    sign_tx(Tx, [PrivKey], SignHash);
+sign_tx(Tx, PrivKeys, SignHash) when is_list(PrivKeys) ->
+    Bin0 = aetx:serialize_to_binary(Tx),
+    Bin =
+        case SignHash of
+            true  -> aec_hash:hash(signed_tx, Bin0);
+            false -> Bin0
+        end,
     BinForNetwork = aec_governance:add_network_id(Bin),
     case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
         [_|_]=BrokenKeys -> erlang:error({invalid_priv_key, BrokenKeys});
@@ -501,7 +512,7 @@ sign_tx(Tx, PrivKeys) when is_list(PrivKeys) ->
     aetx_sign:new(Tx, Signatures).
 
 co_sign_tx(SignedTx, Priv) ->
-    Tx = aetx_sign:innermost_tx(SignedTx), 
+    Tx = aetx_sign:innermost_tx(SignedTx),
     [NewSignature] = aetx_sign:signatures(aec_test_utils:sign_tx(Tx, [Priv])),
     add_signature_to_innermost_signed_tx(SignedTx, NewSignature).
 
