@@ -64,6 +64,14 @@
 -define(STORE_KEY_PREFIX, 0).
 -define(STORE_MAP_PREFIX, 1).
 
+-ifdef(DEBUG).
+-define(DEBUG_STORE(S), debug_stores(S)).
+-define(DEBUG_PRINT(Fmt, Args), io:format(Fmt, Args)).
+-else.
+-define(DEBUG_STORE(S), ok).
+-define(DEBUG_PRINT(Fmt, Args), ok).
+-endif.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -93,22 +101,14 @@ has_contract(Pubkey, #store{cache = Cache}) ->
 find_value(Pubkey, StorePos, S) when ?VALID_STORE_POS(StorePos) ->
     find_value_(Pubkey, StorePos, S).
 
--spec cache_map_metadata(pubkey(), store()) -> store().
-cache_map_metadata(Pubkey, S) ->
-    case find_meta_data(Pubkey, S) of
-        {ok, _}     -> S;
-        {ok, _, S1} -> S1;
-        error       -> S
-    end.
+-spec put_value(pubkey(), non_neg_integer(), fate_val(), store()) -> store().
+put_value(Pubkey, StorePos, FateVal, #store{cache = Cache} = S) ->
+    Entry = maps:get(Pubkey, Cache),
+    Terms = maps:put(StorePos, {FateVal, true}, Entry#cache_entry.terms),
+    Entry1 = Entry#cache_entry{terms = Terms, dirty = true},
+    S#store{cache = Cache#{Pubkey => Entry1}}.
 
--spec find_meta_data(pubkey(), store()) -> {ok, map_meta(), store()} | error.
-find_meta_data(Pubkey, S) ->
-    case find_value_(Pubkey, ?META_STORE_POS, S) of
-        {ok, Meta}     -> {ok, Meta, S};
-        {ok, Meta, S1} -> {ok, Meta, S1};
-        error          -> error
-    end.
-
+%% -- Local functions --------------------------------------------------------
 
 find_value_(Pubkey, StorePos, #store{cache = Cache} = S) ->
     case find_term(StorePos, maps:get(Pubkey, Cache)) of
@@ -120,39 +120,114 @@ find_value_(Pubkey, StorePos, #store{cache = Cache} = S) ->
             error
     end.
 
--spec put_value(pubkey(), non_neg_integer(), fate_val(), store()) -> store().
-put_value(Pubkey, StorePos, FateVal, #store{cache = Cache} = S) ->
-    Entry = maps:get(Pubkey, Cache),
-    Terms = maps:put(StorePos, {FateVal, true}, Entry#cache_entry.terms),
-    Entry1 = Entry#cache_entry{terms = Terms, dirty = true},
-    S#store{cache = Cache#{Pubkey => Entry1}}.
-
 %%%===================================================================
-%%% Write through cache to stores
+%%% Store maps
+%%%
+%%% Maps are saved in the store as follows
+%%%
+%%%     /store_meta_key()               (store register 0) Map meta data: #{ MapId => ?METADATA(RawId, RefCount, Size) }
+%%%     /?STORE_MAP_PREFIX/RawId:32      <<0>> - subtree node
+%%%     /?STORE_MAP_PREFIX/RawId:32/Key  Value for Key in map RawId
+%%%
+%%% Storing the metadata in register 0 means we get caching for it, so each
+%%% call will only have to deserialize the metadata at most once.
+%%%
+%%% Disinguishing the MapId from the RawId allows maps to be updated inplace,
+%%% when the old copy of the map is not saved.
 
--spec finalize(aefa_chain_api:state(), store()) -> aefa_chain_api:state().
-finalize(API, #store{cache = Cache} = S) ->
-    debug_stores(S),
-    Stores = maps:fold(fun finalize_entry/3, [], Cache),
-    finalize_stores(Stores, API).
+-define(METADATA(RawId, RefCount, Size), ?FATE_TUPLE({RawId, RefCount, Size})).
+-define(RAWID_BITS, 32).
 
-finalize_stores([{Pubkey, Store}|Left], API) ->
-    API1 = aefa_chain_api:set_contract_store(Pubkey, Store, API),
-    finalize_stores(Left, API1);
-finalize_stores([], API) ->
-    API.
+-type map_id()     :: non_neg_integer().
+-type raw_id()     :: non_neg_integer().
+-type ref_count()  :: non_neg_integer().
+-type map_meta()   :: ?METADATA(raw_id(), ref_count(), non_neg_integer()).
+-type store_meta() :: #{ map_id() => map_meta() }.
 
-finalize_entry(_Pubkey, #cache_entry{dirty = false}, Acc) ->
-    Acc;
-finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, Acc) ->
-    {ok, Metadata} = find_meta_data_no_cache(Cache), %% Last access so no need to cache here
-    {Metadata1, Updates} = compute_store_updates(Metadata, Cache),
-    io:format("Updates\n  ~p\n", [Updates]),
-    [{Pubkey, perform_store_updates(Updates, Metadata1, Store)} | Acc].
+%% -- Store map API ----------------------------------------------------------
 
-push_term(Pos, FateVal, Store) ->
-    Val = aeb_fate_encoding:serialize(FateVal),
-    aect_contracts_store:put(store_key(Pos), Val, Store).
+-spec cache_map_metadata(pubkey(), store()) -> store().
+cache_map_metadata(Pubkey, S) ->
+    case find_meta_data(Pubkey, S) of
+        {ok, _}     -> S;
+        {ok, _, S1} -> S1;
+        error       -> S
+    end.
+
+-spec store_map_lookup(pubkey(), non_neg_integer(), fate_val(), store()) -> {{ok, fate_val()} | error, store()}.
+store_map_lookup(Pubkey, MapId, Key, #store{cache = Cache} = S) ->
+    #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
+    {ok, Meta, S1} = find_meta_data(Pubkey, S),
+    ?METADATA(RawId, _RefCount, _Size) = get_map_meta(MapId, Meta),
+    case find_in_store(map_data_key(RawId, Key), Store) of
+        error     -> {error, S1};
+        {ok, Val} -> {{ok, Val}, S1}
+    end.
+
+-spec store_map_member(pubkey(), non_neg_integer(), fate_val(), store()) -> {boolean(), store()}.
+store_map_member(Pubkey, MapId, Key, #store{cache = Cache} = S) ->
+    #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
+    {ok, Meta, S1} = find_meta_data(Pubkey, S),
+    ?METADATA(RawId, _RefCount, _Size) = get_map_meta(MapId, Meta),
+    case aect_contracts_store:get(map_data_key(RawId, Key), Store) of
+        <<>> -> {false, S1};
+        _Val -> {true,  S1}
+    end.
+
+-spec store_map_to_list(pubkey(), non_neg_integer(), store()) -> {[{fate_val(), fate_val()}], store()}.
+store_map_to_list(Pubkey, MapId, #store{cache = Cache} = S) ->
+    #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
+    {ok, Meta, S1} = find_meta_data(Pubkey, S),
+    ?METADATA(RawId, _, _) = get_map_meta(MapId, Meta),
+    Subtree = aect_contracts_store:subtree(map_data_key(RawId), Store),
+    {[ {aeb_fate_encoding:deserialize(K), aeb_fate_encoding:deserialize(V)}
+      || {K, V} <- maps:to_list(Subtree) ], S1}.
+
+-spec store_map_size(pubkey(), non_neg_integer(), store()) -> {non_neg_integer(), store()}.
+store_map_size(Pubkey, MapId, S) ->
+    {ok, Meta, S1} = find_meta_data(Pubkey, S),
+    ?METADATA(_, _, Size) = get_map_meta(MapId, Meta),
+    {Size, S1}.
+
+%% -- Map metadata -----------------------------------------------------------
+
+-spec find_meta_data(pubkey(), store()) -> {ok, map_meta(), store()} | error.
+find_meta_data(Pubkey, S) ->
+    case find_value_(Pubkey, ?META_STORE_POS, S) of
+        {ok, Meta}     -> {ok, Meta, S};
+        {ok, Meta, S1} -> {ok, Meta, S1};
+        error          -> error
+    end.
+
+empty_store_meta_data() -> #{}.
+
+%% We need to know which map ids are in use when allocating fresh ones. We
+%% include RawIds to ensure that we can set MapId == RawId for newly allocated
+%% maps.
+-spec used_map_ids(store_meta()) -> [map_id()].
+used_map_ids(Metadata) ->
+    lists:usort(lists:append(
+        [ [Id, RawId] || {Id, ?METADATA(RawId, _, _)} <- maps:to_list(Metadata) ])).
+
+-spec put_map_meta(map_id(), map_meta(), store_meta()) -> store_meta().
+put_map_meta(MapId, MapMeta, Metadata) ->
+    Metadata#{ MapId => MapMeta }.
+
+-spec remove_map_meta(map_id(), store_meta()) -> store_meta().
+remove_map_meta(MapId, Metadata) ->
+    maps:remove(MapId, Metadata).
+
+-spec get_map_meta(map_id(), store_meta()) -> map_meta().
+get_map_meta(MapId, Meta) ->
+    maps:get(MapId, Meta).
+
+-spec find_meta_data_no_cache(#cache_entry{}) -> {ok, store_meta()} | error.
+find_meta_data_no_cache(CacheEntry) ->
+    case find_term(?META_STORE_POS, CacheEntry) of
+        {ok, Meta}    -> {ok, Meta};
+        {ok, Meta, _} -> {ok, Meta};
+        error         -> error
+    end.
 
 %%%===================================================================
 %%% Entry for one contract
@@ -191,78 +266,8 @@ store_key(Int) ->
 store_meta_key() ->
     store_key(?META_STORE_POS).
 
-%% -- Store updates ----------------------------------------------------------
-
--type store_update() :: {push_term,  pos_integer(), fate_val()}
-                      | {copy_map,   map_id(), fate_map()}
-                      | {update_map, map_id(), fate_map()}
-                      | {gc_map,     map_id()}.
-
-perform_store_updates(Updates, Meta, Store) ->
-    {Meta1, Store1} = lists:foldl(fun perform_store_update/2, {Meta, Store}, Updates),
-    push_term(?META_STORE_POS, Meta1, Store1).
-
--spec perform_store_update(store_update(), {store_meta(), aect_contracts_store:store()}) ->
-        {store_meta(), aect_contracts_store:store()}.
-perform_store_update({push_term, StorePos, FateVal}, {Meta, Store}) ->
-    {Meta, push_term(StorePos, FateVal, Store)};
-perform_store_update({copy_map, MapId, Map}, S) ->
-    copy_map(MapId, Map, S);
-perform_store_update({update_map, MapId, Map}, S) ->
-    update_map(MapId, Map, S);
-perform_store_update({gc_map, MapId}, S) ->
-    gc_map(MapId, S).
-
-%%%===================================================================
-%%% Store maps
-%%%
-%%% Maps are saved in the store as follows
-%%%
-%%%     /store_meta_key()               (store register 0) Map meta data: #{ MapId => ?METADATA(RawId, RefCount, Size) }
-%%%     /?STORE_MAP_PREFIX/RawId:32      <<0>> - subtree node
-%%%     /?STORE_MAP_PREFIX/RawId:32/Key  Value for Key in map RawId
-
--define(METADATA(RawId, RefCount, Size), ?FATE_TUPLE({RawId, RefCount, Size})).
-
--type map_id()     :: non_neg_integer().
--type raw_id()     :: non_neg_integer().
--type ref_count()  :: non_neg_integer().
--type map_meta()   :: ?METADATA(raw_id(), ref_count(), non_neg_integer()).
--type store_meta() :: #{ map_id() => map_meta() }.
-
-empty_store_meta_data() -> #{}.
-
--spec used_map_ids(store_meta()) -> [map_id()].
-used_map_ids(Metadata) ->
-    lists:usort(lists:append(
-        [ begin
-            ?METADATA(RawId, _, _) = Meta,
-            [Id, RawId] %% Include RawId to make sure we don't pick a MapId
-                        %% clashing with a RawId in use.
-          end || {Id, Meta} <- maps:to_list(Metadata) ])).
-
--spec put_map_meta(map_id(), map_meta(), store_meta()) -> store_meta().
-put_map_meta(MapId, MapMeta, Metadata) ->
-    Metadata#{ MapId => MapMeta }.
-
--spec remove_map_meta(map_id(), store_meta()) -> store_meta().
-remove_map_meta(MapId, Metadata) ->
-    maps:remove(MapId, Metadata).
-
--spec get_map_meta(map_id(), store_meta()) -> map_meta().
-get_map_meta(MapId, Meta) ->
-    maps:get(MapId, Meta).
-
--spec find_meta_data_no_cache(#cache_entry{}) -> {ok, store_meta()} | error.
-find_meta_data_no_cache(CacheEntry) ->
-    case find_term(?META_STORE_POS, CacheEntry) of
-        {ok, Meta}    -> {ok, Meta};
-        {ok, Meta, _} -> {ok, Meta};
-        error         -> error
-    end.
-
 map_data_key(RawId) ->
-    <<?STORE_MAP_PREFIX, RawId:32>>.
+    <<?STORE_MAP_PREFIX, RawId:?RAWID_BITS>>.
 
 map_data_key(RawId, Key) ->
     map_raw_key(RawId, aeb_fate_encoding:serialize(Key)).
@@ -270,28 +275,63 @@ map_data_key(RawId, Key) ->
 map_raw_key(RawId, KeyBin) ->
     <<(map_data_key(RawId))/binary, KeyBin/binary>>.
 
+%%%===================================================================
+%%% Write through cache to stores
+
+-spec finalize(aefa_chain_api:state(), store()) -> aefa_chain_api:state().
+finalize(API, #store{cache = Cache} = _S) ->
+    ?DEBUG_STORE(_S),
+    Stores = maps:fold(fun finalize_entry/3, [], Cache),
+    finalize_stores(Stores, API).
+
+finalize_stores([{Pubkey, Store}|Left], API) ->
+    API1 = aefa_chain_api:set_contract_store(Pubkey, Store, API),
+    finalize_stores(Left, API1);
+finalize_stores([], API) ->
+    API.
+
+finalize_entry(_Pubkey, #cache_entry{dirty = false}, Acc) ->
+    Acc;
+finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, Acc) ->
+    {ok, Metadata} = find_meta_data_no_cache(Cache), %% Last access so no need to cache here
+    %% Compute which updates need to be performed (see store_update() type
+    %% below). This also takes care of updating the metadata with new reference
+    %% counts and removing entries for maps to be garbage collected. New maps
+    %% get a dummy entry with only the reference count set.
+    {Metadata1, Updates} = compute_store_updates(Metadata, Cache),
+    ?DEBUG_PRINT("Updates\n  ~p\n", [Updates]),
+
+    %% Performing the updates writes the necessary changes to the MP trees.
+    [{Pubkey, perform_store_updates(Updates, Metadata1, Store)} | Acc].
+
+%%%===================================================================
+%%% Store updates
+
+-type store_update() :: {push_term,  pos_integer(), fate_val()}                %% Write to store register
+                      | {copy_map,   map_id(), fate_map()}                     %% Create a new map (no inplace update)
+                      | {update_map, map_id(), aeb_fate_data:fate_store_map()} %% Update an existing map inplace
+                      | {gc_map,     map_id()}.                                %% Garbage collect a map removing all entries
+
 -spec compute_store_updates(store_meta(), aect_contracts_store:store()) -> {store_meta(), [store_update()]}.
 compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) ->
     UsedIds = used_map_ids(Metadata),
     {Regs, Terms} = lists:unzip([{Reg, Term} || {Reg, {Term, Dirty}} <- maps:to_list(TermCache),
                                                 Reg > ?META_STORE_POS, Dirty]),
-    {_UsedIds1, Terms1, Maps} = aeb_fate_maps:allocate_store_maps(UsedIds, Terms),
+
+    %% Go through the store register and find all maps that we want to put in
+    %% the store. Terms1 is the updated store registry values (containing only
+    %% store maps with empty caches), and Maps contains the new store maps that
+    %% we should create.
+    {Terms1, Maps} = aeb_fate_maps:allocate_store_maps(UsedIds, Terms),
     NewRegs = lists:zip(Regs, Terms1),
 
-    %% Reference counting
-    TermRefCount = register_refcounts(NewRegs, Store),
-    MapRefCount  = maps_refcounts(Metadata, Maps, Store),
-    RefCounts    = aeb_fate_maps:refcount_union(TermRefCount, MapRefCount),
-
-    %% Update refcounts
+    %% Reference counting and garbage collection. Compute which maps can be
+    %% updated inplace (Reuse) and which maps can be garbage collected (Garbage).
+    RefCounts = compute_refcounts(NewRegs, Maps, Metadata, Store),
     Metadata1 = update_refcounts(RefCounts, Metadata),
-    Unused = unused_maps(Metadata1),
-    Reuse  = compute_inplace_updates(Unused, Maps),
+    Unused    = unused_maps(Metadata1),
+    Reuse     = compute_inplace_updates(Unused, Maps),
     {Garbage, Metadata2} = compute_garbage(Unused, Reuse, Metadata1, Store),
-
-    %% io:format("Refcount delta: ~p\n", [RefCounts]),
-    %% io:format("Inplace updates: ~p\n", [Reuse]),
-    %% io:format("Garbage: ~p\n", [Garbage]),
 
     CopyOrInplace = fun(MapId, ?FATE_STORE_MAP(_, Id) = Map) ->
                             case maps:get(Id, Reuse, no_reuse) of
@@ -306,10 +346,170 @@ compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) 
 
     {Metadata2, Updates}.
 
-unused_maps(Metadata) ->
-    maps:fold(fun(Id, ?METADATA(_, 0, _), Acc) -> Acc#{ Id => true };
-                 (_, _, Acc) -> Acc end, #{}, Metadata).
+perform_store_updates(Updates, Meta, Store) ->
+    {Meta1, Store1} = lists:foldl(fun perform_store_update/2, {Meta, Store}, Updates),
+    %% Save the updated metadata at the end
+    push_term(?META_STORE_POS, Meta1, Store1).
 
+-spec perform_store_update(store_update(), {store_meta(), aect_contracts_store:store()}) ->
+        {store_meta(), aect_contracts_store:store()}.
+perform_store_update({push_term, StorePos, FateVal}, {Meta, Store}) ->
+    {Meta, push_term(StorePos, FateVal, Store)};
+perform_store_update({copy_map, MapId, Map}, S) ->
+    copy_map(MapId, Map, S);
+perform_store_update({update_map, MapId, Map}, S) ->
+    update_map(MapId, Map, S);
+perform_store_update({gc_map, MapId}, S) ->
+    gc_map(MapId, S).
+
+%% Write to a store register
+push_term(Pos, FateVal, Store) ->
+    Val = aeb_fate_encoding:serialize(FateVal),
+    aect_contracts_store:put(store_key(Pos), Val, Store).
+
+%% Allocate a new map.
+copy_map(MapId, Map, {Meta, Store}) when ?IS_FATE_MAP(Map) ->
+    %% The RefCount was set in compute_store_updates
+    ?METADATA(_, RefCount, _) = get_map_meta(MapId, Meta),
+    RawId    = MapId,           %% RawId == MapId for fresh maps
+    Size     = maps:size(Map),
+    %% Update the metadata with RawId and Size
+    Meta1    = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size), Meta),
+    %% Write the data
+    BinData  = cache_to_bin_data(?FATE_MAP_VALUE(Map)),  %% A map value is a special case of a cache (no tombstones)
+    Store1   = write_bin_data(RawId, BinData, Store),
+    %% and the subtree node that allows us to call aect_contracts_store:subtree
+    Store2   = aect_contracts_store:put(map_data_key(RawId), <<0>>, Store1),
+    {Meta1, Store2};
+copy_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
+    %% In case of a modified store map we need to copy all the entries for the
+    %% old map and then update with the new data (Cache).
+    ?METADATA(_, RefCount, _) = get_map_meta(MapId, Meta),
+    ?METADATA(OldRawId, _RefCount, OldSize) = get_map_meta(OldId, Meta),
+    RawId    = MapId,
+    OldMap   = aect_contracts_store:subtree(map_data_key(OldRawId), Store),
+    NewData  = cache_to_bin_data(Cache),
+    Size    = OldSize + size_delta(OldMap, NewData),
+    Meta1   = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size), Meta),
+    %% First copy the old data, then update with the new
+    Store1   = write_bin_data(RawId, maps:to_list(OldMap) ++ NewData, Store),
+    Store2   = aect_contracts_store:put(map_data_key(RawId), <<0>>, Store1),
+    {Meta1, Store2}.
+
+%% In-place update of an existing store map. This happens, for instance, when
+%% you update a map in the state throwing away the old copy of the it.
+update_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
+    ?METADATA(_, RefCount, _) = get_map_meta(MapId, Meta), %% Precomputed
+    ?METADATA(RawId, _RefCount, OldSize) = get_map_meta(OldId, Meta),
+    NewData = cache_to_bin_data(Cache),
+    Size    = OldSize + size_delta(RawId, Store, NewData),
+    Store1  = write_bin_data(RawId, NewData, Store),
+    Meta1   = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size),
+                           remove_map_meta(OldId, Meta)),
+    {Meta1, Store1}.
+
+gc_map(RawId, {Meta, Store}) ->
+    %% Only the RawId here, we already removed the MapId from the metadata.
+    Data   = aect_contracts_store:subtree(map_data_key(RawId), Store),
+    Store1 = maps:fold(fun(Key, _, S) -> aect_contracts_store:remove(map_raw_key(RawId, Key), S) end,
+                       aect_contracts_store:remove(map_data_key(RawId), Store), Data),
+
+    {Meta, Store1}.
+
+-type bin_data()  :: [{binary(), binary() | ?FATE_MAP_TOMBSTONE}].
+-type map_cache() :: #{fate_val() => fate_val() | ?FATE_MAP_TOMBSTONE}.
+
+-spec cache_to_bin_data(map_cache()) -> bin_data().
+cache_to_bin_data(Cache) ->
+    [ begin
+        KeyBin = aeb_fate_encoding:serialize(K),
+        ValBin = case V of ?FATE_MAP_TOMBSTONE -> ?FATE_MAP_TOMBSTONE;
+                           _                   -> aeb_fate_encoding:serialize(V)
+                end,
+        {KeyBin, ValBin}
+      end || {K, V} <- maps:to_list(Cache) ].
+
+-spec write_bin_data(raw_id(), bin_data(), aect_contracts_store:store()) -> aect_contracts_store:store().
+write_bin_data(RawId, BinData, Store) ->
+    lists:foldl(
+        fun({K, ?FATE_MAP_TOMBSTONE}, S) -> aect_contracts_store:remove(map_raw_key(RawId, K), S);
+           ({K, V}, S)                   -> aect_contracts_store:put(map_raw_key(RawId, K), V, S)
+        end, Store, BinData).
+
+%% Compute the change in size updating an old map with new entries.
+-spec size_delta(#{binary() => binary()}, bin_data()) -> integer().
+size_delta(OldMap, NewData) ->
+    size_delta_(fun(K) -> maps:is_key(K, OldMap) end, NewData).
+
+%% Same as size_delta/2 but instead of a binary map we get a raw_id() and the
+%% store.
+-spec size_delta(raw_id(), aect_contracts_store:store(), bin_data()) -> integer().
+size_delta(RawId, Store, NewData) ->
+    size_delta_(fun(K) -> <<>> /= aect_contracts_store:get(map_raw_key(RawId, K), Store) end,
+                NewData).
+
+size_delta_(IsKey, NewData) ->
+    Delta = fun({K, ?FATE_MAP_TOMBSTONE}, N) ->
+                 case IsKey(K) of
+                     true  -> N - 1;
+                     false -> N
+                 end;
+               ({K, _}, N) ->
+                 case IsKey(K) of
+                     true  -> N;
+                     false -> N + 1
+                 end end,
+    lists:foldl(Delta, 0, NewData).
+
+%% -- Reference counting -----------------------------------------------------
+
+%% Compute refcount deltas from updated store registers and updates to store
+%% maps.
+compute_refcounts(Regs, Maps, Metadata, Store) ->
+    TermRefCount = register_refcounts(Regs, Store),
+    MapRefCount  = maps_refcounts(Metadata, Maps, Store),
+    aeb_fate_maps:refcount_union(TermRefCount, MapRefCount).
+
+%% Refcount delta from updating the store registers.
+register_refcounts(Regs, Store) ->
+    aeb_fate_maps:refcount_union(
+        [ refcount_delta(store_key(Reg), NewVal, Store)
+          || {Reg, NewVal} <- Regs ]).
+
+%% Refcount delta from store map updates.
+maps_refcounts(Metadata, Maps, Store) ->
+    aeb_fate_maps:refcount_union(
+        [ map_refcounts(Metadata, Map, Store)
+          || {_, Map} <- maps:to_list(Maps) ]).
+
+map_refcounts(_Meta, Map, _Store) when ?IS_FATE_MAP(Map) ->
+    %% Fresh map, only adds new references.
+    aeb_fate_maps:refcount(Map);
+map_refcounts(Metadata, ?FATE_STORE_MAP(Cache, Id), Store) ->
+    %% Note that this does not count as a reference to Id
+    maps:fold(fun(Key, Val, Count) ->
+                %% We need to compute the refcount delta from the updates to
+                %% the store map.
+                ?METADATA(RawId, _, _) = get_map_meta(Id, Metadata),
+                New = refcount_delta(map_data_key(RawId, Key), Val, Store),
+                aeb_fate_maps:refcount_union(New, Count)
+              end, #{}, Cache).
+
+%% Compute the difference in reference counts caused by performing a store
+%% update: refcount(Val) - refcount(OldVal).
+-spec refcount_delta(binary(), fate_val() | ?FATE_MAP_TOMBSTONE, aect_contracts_store:store()) ->
+        aeb_fate_maps:refcount().
+refcount_delta(StoreKey, Val, Store) ->
+    New = aeb_fate_maps:refcount(Val),
+    Old =
+        case aect_contracts_store:get(StoreKey, Store) of
+            <<>> -> #{};
+            Bin  -> aeb_fate_maps:refcount(aeb_fate_encoding:deserialize(Bin))
+        end,
+    aeb_fate_maps:refcount_diff(New, Old).
+
+%% Write new refcounts to the metadata
+-spec update_refcounts(aeb_fate_maps:refcount(), store_meta()) -> store_meta().
 update_refcounts(Deltas, Meta) ->
     maps:fold(fun(Id, Delta, M) ->
           maps:update_with(Id,
@@ -318,6 +518,14 @@ update_refcounts(Deltas, Meta) ->
               end, ?METADATA(undefined, Delta, undefined), M)
         end, Meta, Deltas).
 
+%% Maps with refcount 0 are no longer needed and can be garbage collected or
+%% updated in place.
+unused_maps(Metadata) ->
+    maps:fold(fun(Id, ?METADATA(_, 0, _), Acc) -> Acc#{ Id => true };
+                 (_, _, Acc) -> Acc end, #{}, Metadata).
+
+%% Each map can only be reused once (obviously) so we return a map with the old
+%% maps (to be reused) as keys.
 compute_inplace_updates(Unused, Maps) ->
     maps:fold(fun(MapId, ?FATE_STORE_MAP(_, OldId), Acc) ->
                       case maps:is_key(OldId, Unused) of
@@ -326,6 +534,10 @@ compute_inplace_updates(Unused, Maps) ->
                       end;
                  (_, _, Acc) -> Acc end, #{}, Maps).
 
+%% Maps to be garbage collected are the unused maps except those that are being
+%% updated in place. Marking a map for garbage collection requires updating the
+%% reference counts for maps referenced by it. This may trigger more garbage
+%% collection.
 compute_garbage(Unused, Reuse, Metadata, Store) ->
     Garbage   = maps:keys(Unused) -- maps:keys(Reuse),
     case Garbage of
@@ -340,156 +552,24 @@ compute_garbage(Unused, Reuse, Metadata, Store) ->
             {lists:map(GetRawId, Garbage) ++ Garbage1, Metadata3}
     end.
 
+%% Refcount delta arising from garbage collecting a map.
 gc_refcounts(Ids, Metadata, Store) ->
     Count = fun(Id) ->
                 ?METADATA(RawId, _, _) = get_map_meta(Id, Metadata),
+                %% Here we need to go over the entire map to update the
+                %% reference counts, so grab the subtree.
                 Data = aect_contracts_store:subtree(map_data_key(RawId), Store),
+                %% -sum([ refcount(Val) || Val <- Data ])
+                aeb_fate_maps:refcount_diff(aeb_fate_maps:refcount_zero(),
                 aeb_fate_maps:refcount_union(
-                  [ aeb_fate_maps:refcount_diff(
-                      aeb_fate_maps:refcount_zero(),
-                      aeb_fate_maps:refcount(aeb_fate_encoding:deserialize(Val)))
-                    || Val <- maps:values(Data) ])
+                  [ aeb_fate_maps:refcount(aeb_fate_encoding:deserialize(Val))
+                    || Val <- maps:values(Data) ]))
             end,
     aeb_fate_maps:refcount_union(lists:map(Count, Ids)).
 
-refcount_delta(Val, StoreKey, Store) ->
-    New = aeb_fate_maps:refcount(Val),
-    Old =
-        case aect_contracts_store:get(StoreKey, Store) of
-            <<>> -> #{};
-            Bin  -> aeb_fate_maps:refcount(aeb_fate_encoding:deserialize(Bin))
-        end,
-    aeb_fate_maps:refcount_diff(New, Old).
+%% -- Debug ------------------------------------------------------------------
 
-register_refcounts(Regs, Store) ->
-    aeb_fate_maps:refcount_union(
-        [ refcount_delta(NewVal, store_key(Reg), Store)
-          || {Reg, NewVal} <- Regs ]).
-
-maps_refcounts(Metadata, Maps, Store) ->
-    aeb_fate_maps:refcount_union(
-        [ map_refcounts(Metadata, Map, Store)
-          || {_, Map} <- maps:to_list(Maps) ]).
-
-map_refcounts(_Meta, Map, _Store) when ?IS_FATE_MAP(Map) ->
-    aeb_fate_maps:refcount(Map);
-map_refcounts(Metadata, ?FATE_STORE_MAP(Cache, Id), Store) ->
-    %% Note that this does not count as a reference to Id
-    maps:fold(fun(Key, Val, Count) ->
-                ?METADATA(RawId, _, _) = get_map_meta(Id, Metadata),
-                New = refcount_delta(Val, map_data_key(RawId, Key), Store),
-                aeb_fate_maps:refcount_union(New, Count)
-              end, #{}, Cache).
-
-size_delta(OldMap, NewData) ->
-    Delta    = fun({K, ?FATE_MAP_TOMBSTONE}, N) ->
-                    case maps:is_key(K, OldMap) of
-                        true  -> N - 1;
-                        false -> N
-                    end;
-                  ({K, _}, N) ->
-                    case maps:is_key(K, OldMap) of
-                        true -> N;
-                        false -> N + 1
-                    end end,
-    lists:foldl(Delta, 0, NewData).
-
-cache_to_bin_data(Cache) ->
-    [ begin
-        KeyBin = aeb_fate_encoding:serialize(K),
-        ValBin = case V of ?FATE_MAP_TOMBSTONE -> ?FATE_MAP_TOMBSTONE;
-                           _                   -> aeb_fate_encoding:serialize(V)
-                end,
-        {KeyBin, ValBin}
-      end || {K, V} <- maps:to_list(Cache) ].
-
-write_bin_data(RawId, BinData, Store) ->
-    lists:foldl(
-        fun({K, ?FATE_MAP_TOMBSTONE}, S) -> aect_contracts_store:remove(map_raw_key(RawId, K), S);
-           ({K, V}, S)                   -> aect_contracts_store:put(map_raw_key(RawId, K), V, S)
-        end, Store, BinData).
-
-copy_map(MapId, Map, {Meta, Store}) when ?IS_FATE_MAP(Map) ->
-    ?METADATA(_, RefCount, _) = get_map_meta(MapId, Meta),
-    RawId    = MapId,
-    Size     = maps:size(Map),
-    Meta1    = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size), Meta),
-    Store1   = maps:fold(fun(K, V, S) -> push_map_entry(RawId, K, V, S) end, Store, Map),
-    Store2   = aect_contracts_store:put(map_data_key(RawId), <<0>>, Store1),
-    {Meta1, Store2};
-copy_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
-    ?METADATA(_, RefCount, _) = get_map_meta(MapId, Meta),
-    ?METADATA(OldRawId, _RefCount, OldSize) = get_map_meta(OldId, Meta),
-    RawId    = MapId,
-    OldMap   = aect_contracts_store:subtree(map_data_key(OldRawId), Store),
-    NewData  = cache_to_bin_data(Cache),
-    Size    = OldSize + size_delta(OldMap, NewData),
-    Meta1   = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size), Meta),
-    %% First copy the old data, then update with the new
-    Store1   = write_bin_data(RawId, maps:to_list(OldMap) ++ NewData, Store),
-    Store2   = aect_contracts_store:put(map_data_key(RawId), <<0>>, Store1),
-    {Meta1, Store2}.
-
-update_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
-    ?METADATA(_, RefCount, _) = get_map_meta(MapId, Meta), %% Precomputed
-    ?METADATA(RawId, _RefCount, OldSize) = get_map_meta(OldId, Meta),
-    OldMap  = aect_contracts_store:subtree(map_data_key(RawId), Store),
-    NewData = cache_to_bin_data(Cache),
-    Size    = OldSize + size_delta(OldMap, NewData),
-    Store1  = write_bin_data(RawId, NewData, Store),
-    Meta1   = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size),
-                           remove_map_meta(OldId, Meta)),
-    {Meta1, Store1}.
-
-gc_map(RawId, {Meta, Store}) ->
-    %% Only the RawId here, we already removed the MapId from the metadata.
-    Data   = aect_contracts_store:subtree(map_data_key(RawId), Store),
-    Store1 = maps:fold(fun(Key, _, S) -> aect_contracts_store:remove(map_raw_key(RawId, Key), S) end,
-                       aect_contracts_store:remove(map_data_key(RawId), Store), Data),
-
-    {Meta, Store1}.
-
-push_map_entry(RawId, Key, ?FATE_MAP_TOMBSTONE, Store) ->
-    aect_contracts_store:remove(map_data_key(RawId, Key), Store);
-push_map_entry(RawId, Key, Val, Store) ->
-    aect_contracts_store:put(map_data_key(RawId, Key),
-                             aeb_fate_encoding:serialize(Val), Store).
-
--spec store_map_lookup(pubkey(), non_neg_integer(), fate_val(), store()) -> {{ok, fate_val()} | error, store()}.
-store_map_lookup(Pubkey, MapId, Key, #store{cache = Cache} = S) ->
-    #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
-    {ok, Meta, S1} = find_meta_data(Pubkey, S),
-    ?METADATA(RawId, _RefCount, _Size) = get_map_meta(MapId, Meta),
-    case find_in_store(map_data_key(RawId, Key), Store) of
-        error     -> {error, S1};
-        {ok, Val} -> {{ok, Val}, S1}
-    end.
-
--spec store_map_member(pubkey(), non_neg_integer(), fate_val(), store()) -> {boolean(), store()}.
-store_map_member(Pubkey, MapId, Key, #store{cache = Cache} = S) ->
-    #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
-    {ok, Meta, S1} = find_meta_data(Pubkey, S),
-    ?METADATA(RawId, _RefCount, _Size) = get_map_meta(MapId, Meta),
-    case aect_contracts_store:get(map_data_key(RawId, Key), Store) of
-        <<>> -> {false, S1};
-        _Val -> {true,  S1}
-    end.
-
--spec store_map_to_list(pubkey(), non_neg_integer(), store()) -> {[{fate_val(), fate_val()}], store()}.
-store_map_to_list(Pubkey, MapId, #store{cache = Cache} = S) ->
-    #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
-    {ok, Meta, S1} = find_meta_data(Pubkey, S),
-    ?METADATA(RawId, _, _) = get_map_meta(MapId, Meta),
-    Subtree = aect_contracts_store:subtree(map_data_key(RawId), Store),
-    {[ {aeb_fate_encoding:deserialize(K), aeb_fate_encoding:deserialize(V)}
-      || {K, V} <- maps:to_list(Subtree) ], S1}.
-
--spec store_map_size(pubkey(), non_neg_integer(), store()) -> {non_neg_integer(), store()}.
-store_map_size(Pubkey, MapId, S) ->
-    {ok, Meta, S1} = find_meta_data(Pubkey, S),
-    ?METADATA(_, _, Size) = get_map_meta(MapId, Meta),
-    {Size, S1}.
-
+-ifdef(DEBUG).
 debug_stores(#store{cache = Cache}) ->
     [ begin
           io:format("Contract: ~p\n- Store\n~s", [Pubkey, debug_store(Store)])
@@ -508,4 +588,5 @@ debug_store(Store) ->
                              aeb_fate_encoding:deserialize(Val)}
                end || {<<?STORE_MAP_PREFIX, RawId:4/binary, Key/binary>>, Val} <- maps:to_list(Map) ]),
     io_lib:format("  Regs: ~p\n  Maps: ~p\n", [Regs, Maps]).
+-endif.
 
