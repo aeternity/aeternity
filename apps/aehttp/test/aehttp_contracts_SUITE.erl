@@ -1172,7 +1172,7 @@ remote_gas_test_contract(Config) ->
     [] = call_func(APub, APriv, EncC1Pub, Contract, "call", [ZeroContract, "2", "1"], error),
     force_fun_calls(Node),
     Balance5 = get_balance(APub),
-    ?assertEqual(900000 * ?DEFAULT_GAS_PRICE, Balance4 - Balance5),
+    ?assertMatchVM(900000, 800017, (Balance4 - Balance5) div ?DEFAULT_GAS_PRICE),
 
     ok.
 
