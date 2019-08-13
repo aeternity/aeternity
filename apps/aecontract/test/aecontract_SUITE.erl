@@ -4496,9 +4496,9 @@ sophia_safe_math() ->
           end,
 
     %% Test vectors
-    Values = [ Z || X <- [1, 2, 5, 173, 255, 256, 1 bsl 128 - 1, 1 bsl 128, Medium, 1 bsl 255 - 2,
-                          1 bsl 255 - 1, 1 bsl 255, Large],
-                    Z <- [X, -X], Z < 1 bsl 255 ],
+    Values = [ Z || Z <- [1, -1, 2, -2, 255, 256, -256, 1 bsl 128 - 1, 1 bsl 128, - (1 bsl 128),
+                          Medium, -Medium, 1 bsl 255 - 1, 1 bsl 255, Large, -Large],
+                    Z < 1 bsl 255 ],
     Ops    = [{add, fun erlang:'+'/2}, {sub,   fun erlang:'-'/2},
               {mul, fun erlang:'*'/2}, {'div', fun erlang:'div'/2},
               {pow, fun(X, Y) -> Pow(X, Y, 1) end}],
