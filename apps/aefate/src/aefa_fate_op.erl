@@ -7,9 +7,7 @@
         , call/2
         , call_r/5
         , call_t/2
-        , call_tr/4
         , call_gr/6
-        , call_gtr/5
         , call_value/2
         , jump/2
         , jumpif/3
@@ -178,9 +176,6 @@ call_r(Arg0, Arg1, Arg2, Arg3, EngineState) when ?IS_FATE_INTEGER(Arg2) ->
     {_Signature, ES4} = remote_call_common(Contract, Arg1, Arg2, Value, ES3),
     {jump, 0, ES4}.
 
-call_tr(_Arg0, _Arg1, _Arg2, EngineState) ->
-    aefa_fate:abort(remote_tail_call, EngineState).
-
 call_gr(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) when ?IS_FATE_INTEGER(Arg2) ->
     ES1 = aefa_fate:push_return_address(EngineState),
     {Contract, ES2} = get_op_arg(Arg0, ES1),
@@ -189,9 +184,6 @@ call_gr(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) when ?IS_FATE_INTEGER(Arg2) -
     {_Signature, ES5} = remote_call_common(Contract, Arg1, Arg2, Value, ES4),
     ES6 = aefa_fate:push_gas_cap(GasCap, ES5),
     {jump, 0, ES6}.
-
-call_gtr(_Arg0, _Arg1, _Arg2, _Arg3, EngineState) ->
-    aefa_fate:abort(remote_tail_call, EngineState).
 
 remote_call_common(Contract, Function, Arity, Value, EngineState) ->
     Current   = aefa_engine_state:current_contract(EngineState),
