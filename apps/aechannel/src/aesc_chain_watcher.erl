@@ -143,7 +143,8 @@ watch_for_channel_close(Pid, MinDepth, Mod) when is_pid(Pid) ->
 watch_for_channel_close(ChanId, MinDepth, Mod) ->
     gen_server:start_link(?MODULE, #{parent  => self(),
                                      chan_id => ChanId,
-                                     requests => [close_req(MinDepth, Mod)]},
+                                     requests => [close_req(MinDepth, Mod)],
+                                     load_state => true},
                           ?GEN_SERVER_OPTS).
 
 watch_for_unlock(Pid, Mod) when is_pid(Pid) ->
@@ -151,7 +152,8 @@ watch_for_unlock(Pid, Mod) when is_pid(Pid) ->
 watch_for_unlock(ChanId, Mod) ->
     gen_server:start_link(?MODULE, #{parent => self(),
                                      chan_id => ChanId,
-                                     requests => [unlock_req(Mod)]},
+                                     requests => [unlock_req(Mod)],
+                                     load_state => true},
                           ?GEN_SERVER_OPTS).
 
 watch_for_min_depth(Pid, TxHash, MinDepth, Mod, Info) when is_pid(Pid) ->
@@ -211,14 +213,30 @@ watch(Watcher, Type, TxHash, MinDepth, Mod) ->
                                min_depth    => MinDepth,
                                info         => I }).
 
-init(#{parent := Parent, chan_id := ChanId, requests := Reqs}) ->
+init(#{parent := Parent, chan_id := ChanId, requests := Reqs} = Opts) ->
     lager:debug("started min_depth watcher for ~p", [Parent]),
     erlang:monitor(process, Parent),
     true = aec_events:subscribe(top_changed),
     true = aec_events:subscribe({tx_event, {channel, ChanId}}),
     lager:debug("subscribed to top_changed", []),
     self() ! check_status,
-    {ok, #st{parent = Parent, chan_id = ChanId, requests = Reqs}}.
+    ChanVsn =
+        case maps:get(load_state, Opts, false) of
+            false ->
+                undefined;
+            true ->
+                TopHash = aec_chain:top_block_hash(),
+                case get_channel_(ChanId, TopHash) of
+                    undefined -> % channel not found on-chain
+                        undefined;
+                    Ch ->
+                        _Vsn = channel_vsn(Ch)
+                end
+        end,
+    {ok, #st{ parent   = Parent
+            , chan_id  = ChanId
+            , requests = Reqs
+            , chan_vsn = ChanVsn}}.
 
 
 %% Strategy for monitoring the chain.

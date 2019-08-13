@@ -896,36 +896,47 @@ t_leave_reestablish_(Cfg) ->
 leave_reestablish_(Cfg) ->
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
-    #{ i := #{fsm := FsmI} = I
+    #{ i := #{} = I
      , r := #{} = R
      , spec := #{ initiator := _PubI
                 , responder := _PubR }} =
         create_channel_from_spec(I0, R0, Spec0, ?PORT, Debug, Cfg),
     ct:log("I = ~p", [I]),
     ChId = maps:get(channel_id, I),
-    Cache1 = cache_status(ChId),
-    [_,_] = in_ram(Cache1),
-    false = on_disk(Cache1),
-    ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
-    {ok,Li} = await_leave(I, ?TIMEOUT, Debug),
-    {ok,Lr} = await_leave(R, ?TIMEOUT, Debug),
-    SignedTx = maps:get(info, Li),
-    SignedTx = maps:get(info, Lr),
-    {ok,_} = receive_from_fsm(info, I, fun died_normal/1, ?TIMEOUT, Debug),
-    {ok,_} = receive_from_fsm(info, R, fun died_normal/1, ?TIMEOUT, Debug),
-    retry(3, 100,
-          fun() ->
-                  Cache2 = cache_status(ChId),
-                  [] = in_ram(Cache2),
-                  true = on_disk(Cache2)
-          end),
-    %%
-    %% reestablish
-    %%
-    ChId = maps:get(channel_id, R),
-    check_info(500),
-    ct:log("reestablishing ...", []),
-    reestablish(ChId, I0, R0, SignedTx, Spec0, ?PORT, Debug).
+    LeaveAndReestablish =
+        fun(Idx, #{i := ILocal, r := RLocal}) ->
+            ct:log("starting attempt ~p", [Idx]),
+            Cache1 = cache_status(ChId),
+            [_,_] = in_ram(Cache1),
+            false = on_disk(Cache1),
+            #{fsm := FsmI} = ILocal,
+            ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
+            {ok,Li} = await_leave(ILocal, ?TIMEOUT, Debug),
+            {ok,Lr} = await_leave(RLocal, ?TIMEOUT, Debug),
+            SignedTx = maps:get(info, Li),
+            SignedTx = maps:get(info, Lr),
+            {ok,_} = receive_from_fsm(info, ILocal, fun died_normal/1, ?TIMEOUT, Debug),
+            {ok,_} = receive_from_fsm(info, RLocal, fun died_normal/1, ?TIMEOUT, Debug),
+            retry(3, 100,
+                  fun() ->
+                          Cache2 = cache_status(ChId),
+                          [] = in_ram(Cache2),
+                          true = on_disk(Cache2)
+                  end),
+            %%
+            %% reestablish
+            %%
+            ChId = maps:get(channel_id, RLocal),
+            mine_key_blocks(dev1, 6), % min depth at 4, so more than 4
+            ct:log("reestablishing ...", []),
+            Res = reestablish(ChId, ILocal, RLocal, SignedTx,
+                                           Spec0, ?PORT, Debug),
+            ct:log("ending attempt ~p", [Idx]),
+            Res
+        end,
+    lists:foldl(LeaveAndReestablish,
+                #{i => I, r => R},
+                lists:seq(1, 10)). % 10 iterations
 
 leave_reestablish_close(Cfg) ->
     Debug = get_debug(Cfg),
