@@ -33,7 +33,7 @@ contract MapOfMaps =
   entrypoint test1_check() =
     state.big1
 
-  // -- Temporary test
+  // -- Inplace update
 
   function small1() = state.small1
 
@@ -41,8 +41,20 @@ contract MapOfMaps =
     put(empty_state() { small1 = {["key"] = "val"} })
 
   stateful entrypoint test2_execute() =
-    // put(state{ small1 = small1() })
+    put(state{ small1 = small1() })
     put(state{ small1["key2"] = "val2" })
 
   entrypoint test2_check() =
     state.small1
+
+  // -- Map equality
+
+  stateful entrypoint test3_setup() =
+    put(empty_state() { small2 = {["a"] = "b"} })
+
+  entrypoint test3_execute() =
+    ()
+
+  entrypoint test3_check() =
+    state.small2 == {["a"] = "b"}
+

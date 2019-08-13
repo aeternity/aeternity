@@ -4019,6 +4019,10 @@ sophia_map_of_maps(_Cfg) ->
 
     %% Test 2 - ...
     RunTest(2, {map, string, string}, #{<<"key">> => <<"val">>, <<"key2">> => <<"val2">>}),
+
+    %% Test 3
+    RunTest(3, bool, true),
+
     ok.
 
 sophia_variant_types(_Cfg) ->
