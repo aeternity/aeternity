@@ -118,6 +118,8 @@ verify_w_env(#signed_tx{tx = Tx, signatures = Sigs}, Trees, TxEnv) ->
             {error, signature_verification_failed}
     end.
 
+%% this function is strict and does not allow having more signatures that the
+%% one being checked
 -spec verify(signed_tx(), aec_trees:trees(), aec_blocks:height()) ->
     ok | {error, signature_check_failed}.
 verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees, Height) ->
@@ -129,8 +131,6 @@ verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees, Height) ->
             {error, signature_check_failed}
     end.
 
-%% this function is strict and does not allow having more signatures that the
-%% one being checked
 
 %% this function allows having more signatures that the one being checked
 -spec verify_one_pubkey(aec_keys:pubkey(), signed_tx(), aec_blocks:height()) ->
