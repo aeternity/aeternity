@@ -761,7 +761,7 @@ awaiting_signature(cast, {?SIGNED, snapshot_solo_tx, SignedTx} = Msg,
     #op_data{updates = Updates} = OpData,
     D1 = D#data{ log = log_msg(rcv, ?SIGNED, Msg, D#data.log)
                , op  = ?NO_OP },
-    case verify_signatures_onchain_check(pubkeys(me, D), SignedTx) of
+    case verify_signatures_onchain_check(pubkeys(me, D, SignedTx), SignedTx) of
         ok ->
             snapshot_solo_signed(SignedTx, Updates, D1);
         {error,_} = Error ->
@@ -3750,10 +3750,16 @@ handle_call_(St, snapshot_solo = Req, From, D) ->
             D1 = log(rcv, Req, Req, D),
             case snapshot_solo_tx_for_signing(D1) of
                 {ok, SnapshotSoloTx, Updates, BlockHash} ->
-                    gen_statem:reply(From, ok),
-                    D2 = set_ongoing(request_signing(
-                                       snapshot_solo_tx, SnapshotSoloTx, Updates, BlockHash, D1)),
-                    next_state(awaiting_signature, D2);
+                    case request_signing(
+                           snapshot_solo_tx, SnapshotSoloTx, Updates, BlockHash, D1, defer) of
+                        {ok, Send, D2, Actions} ->
+                            %% reply before sending sig request
+                            gen_statem:reply(From, ok),
+                            Send(),
+                            next_state(awaiting_signature, set_ongoing(D2), Actions);
+                        {error, _} = Error ->
+                            keep_state(D1, [{reply, From, Error}])
+                    end;
                 {error, _} = Error ->
                     keep_state(D1, [{reply, From, Error}])
             end
