@@ -2,9 +2,15 @@
 
 -define(NOT_SET_BLOCK_HASH, <<0:32/unit:8>>).
 
--define(DEFAULT_MINIMUM_DEPTH_BASE, 4).
-% This value is internally divided by 100 and as such interpreted as a float later.
--define(DEFAULT_MINIMUM_DEPTH_FACTOR, 0).
+-define(DEFAULT_MINIMUM_DEPTH_STRATEGY, txfee).
+-define(DEFAULT_MINIMUM_DEPTH(Strategy),
+        case Strategy of
+            txfee ->
+                10;
+            _ ->
+                erlang:error({unknown_minimum_depth_strategy, Strategy})
+        end
+       ).
 
 % Number of blocks until a fork will be considered active
 -define(FORK_MINIMUM_DEPTH, 4).
@@ -222,13 +228,13 @@
                         | ?DEP_ERR
                         | ?WDRAW_ERR.
 
--opaque opts() :: #{ minimum_depth        => non_neg_integer() %% Defaulted for responder, not for initiator.
-                   , minimum_depth_factor => non_neg_integer()
-                   , timeouts             := #{state_name() := pos_integer()}
-                   , report               := map()
-                   , log_keep             := non_neg_integer()
-                   , initiator            := aec_keys:pubkey()
-                   , responder            := aec_keys:pubkey()
+-opaque opts() :: #{ minimum_depth          => non_neg_integer() %% Defaulted for responder, not for initiator.
+                   , minimum_depth_strategy => txfee | undefined
+                   , timeouts               := #{state_name() := pos_integer()}
+                   , report                 := map()
+                   , log_keep               := non_neg_integer()
+                   , initiator              := aec_keys:pubkey()
+                   , responder              := aec_keys:pubkey()
                    }.
 
 -record(op_data, {signed_tx  :: aetx_sign:signed_tx(),

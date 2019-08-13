@@ -382,7 +382,8 @@ read_channel_options(Params) ->
         end,
     sc_ws_utils:check_params(
       [ Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false})
-      , Read(<<"minimum_depth_factor">>, minimum_depth_factor, #{type => integer, mandatory => false})
+      , Read(<<"minimum_depth_strategy">>, minimum_depth_strategy,
+             #{type => mindepth_strategy, mandatory => false})
         %% The state_password is mandatory AFTER the lima fork - this is checked by CheckStatePasswordF
       , Read(<<"state_password">>, state_password, #{type => string, mandatory => false})
       , CheckStatePasswordF

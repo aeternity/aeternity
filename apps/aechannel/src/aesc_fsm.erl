@@ -933,13 +933,12 @@ dep_half_signed(cast, {Req, _} = Msg, D) when ?UPDATE_CAST(Req) ->
     lager:debug("race detected: ~p", [Msg]),
     handle_update_conflict(Req, D);
 dep_half_signed(cast, {?DEP_SIGNED, Msg},
-                #data{op = #op_ack{tag = deposit_tx} = Op} = D) ->
+                #data{op = #op_ack{tag = deposit_tx, data = OpData}} = D) ->
     case check_deposit_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
             report_on_chain_tx(?DEP_SIGNED, SignedTx, D1),
             ok = aec_tx_pool:push(SignedTx),
-            #op_ack{ tag = deposit_tx
-                   , data = #op_data{updates = Updates}} = Op,
+            #op_data{updates = Updates} = OpData,
             {ok, D2} = start_chain_watcher({?MIN_DEPTH, ?WATCH_DEP}, SignedTx, Updates, D1),
             next_state(awaiting_locked, D2);
         {error, _Error} ->
@@ -1157,13 +1156,12 @@ wdraw_half_signed(cast, {Req,_} = Msg, D) when ?UPDATE_CAST(Req) ->
     lager:debug("race detected: ~p", [Msg]),
     handle_update_conflict(Req, D);
 wdraw_half_signed(cast, {?WDRAW_SIGNED, Msg},
-                  #data{op = #op_ack{tag = withdraw_tx} = Op} = D) ->
+                  #data{op = #op_ack{tag = withdraw_tx, data = OpData}} = D) ->
     case check_withdraw_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
             report_on_chain_tx(?WDRAW_SIGNED, SignedTx, D1),
             ok = aec_tx_pool:push(SignedTx),
-            #op_ack{ tag = withdraw_tx
-                   , data = #op_data{updates = Updates} } = Op,
+            #op_data{updates = Updates} = OpData,
             {ok, D2} = start_chain_watcher({?MIN_DEPTH, ?WATCH_WDRAW}, SignedTx, Updates, D1),
             next_state(awaiting_locked, D2);
         {error, _Error} ->
@@ -1391,36 +1389,36 @@ log_reestabl_ack_msg(Msg, _, #data{log = L} = D) ->
 send_channel_accept(#data{ opts = Opts
                          , session = Sn
                          , channel_id = ChanId } = Data) ->
-    #{ minimum_depth        := MinDepth
-     , minimum_depth_factor := MinDepthFactor
-     , initiator            := Initiator
-     , responder            := Responder
-     , initiator_amount     := InitiatorAmt
-     , responder_amount     := ResponderAmt
-     , channel_reserve      := ChanReserve } = Opts,
+    #{ minimum_depth          := MinDepth
+     , minimum_depth_strategy := MinDepthStrategy
+     , initiator              := Initiator
+     , responder              := Responder
+     , initiator_amount       := InitiatorAmt
+     , responder_amount       := ResponderAmt
+     , channel_reserve        := ChanReserve } = Opts,
     ChainHash = aec_chain:genesis_hash(),
-    Msg = #{ chain_hash           => ChainHash
-           , temporary_channel_id => ChanId
-           , minimum_depth        => MinDepth
-           , minimum_depth_factor => MinDepthFactor
-           , initiator_amount     => InitiatorAmt
-           , responder_amount     => ResponderAmt
-           , channel_reserve      => ChanReserve
-           , initiator            => Initiator
-           , responder            => Responder
+    Msg = #{ chain_hash             => ChainHash
+           , temporary_channel_id   => ChanId
+           , minimum_depth          => MinDepth
+           , minimum_depth_strategy => MinDepthStrategy
+           , initiator_amount       => InitiatorAmt
+           , responder_amount       => ResponderAmt
+           , channel_reserve        => ChanReserve
+           , initiator              => Initiator
+           , responder              => Responder
            },
     aesc_session_noise:channel_accept(Sn, Msg),
     Data#data{log = log_msg(snd, ?CH_ACCEPT, Msg, Data#data.log)}.
 
-check_accept_msg(#{ chain_hash           := ChainHash
-                  , temporary_channel_id := ChanId
-                  , minimum_depth        := MinDepth
-                  , minimum_depth_factor := MinDepthFactor
-                  , initiator_amount     := _InitiatorAmt
-                  , responder_amount     := _ResponderAmt
-                  , channel_reserve      := _ChanReserve
-                  , initiator            := Initiator
-                  , responder            := Responder } = Msg,
+check_accept_msg(#{ chain_hash             := ChainHash
+                  , temporary_channel_id   := ChanId
+                  , minimum_depth          := MinDepth
+                  , minimum_depth_strategy := MinDepthStrategy
+                  , initiator_amount       := _InitiatorAmt
+                  , responder_amount       := _ResponderAmt
+                  , channel_reserve        := _ChanReserve
+                  , initiator              := Initiator
+                  , responder              := Responder } = Msg,
                  #data{ channel_id = ChanId
                       , opts = Opts
                       , log = Log } = Data) ->
@@ -1428,10 +1426,10 @@ check_accept_msg(#{ chain_hash           := ChainHash
     case aec_chain:genesis_hash() of
         ChainHash ->
             Log1 = log_msg(rcv, ?CH_ACCEPT, Msg, Log),
-            Opts1 = Opts#{ minimum_depth        => MinDepth
-                         , minimum_depth_factor => MinDepthFactor
-                         , initiator            => Initiator
-                         , responder            => Responder },
+            Opts1 = Opts#{ minimum_depth          => MinDepth
+                         , minimum_depth_strategy => MinDepthStrategy
+                         , initiator              => Initiator
+                         , responder              => Responder },
             Data1 = Data#data{opts = Opts1, log = Log1},
             {ok, Data1};
         _ ->
@@ -3420,17 +3418,17 @@ init(#{opts := Opts0} = Arg) ->
         , maps:with(?REESTABLISH_OPTS_KEYS, Opts2)
         , maps:without(?REESTABLISH_OPTS_KEYS, Opts2)
         },
-    Opts = check_opts(
-             [
-              fun(O) -> check_minimum_depth_opt(Role, O) end,
-              fun(O) -> check_minimum_depth_factor_opt(Role, O) end,
-              fun check_timeout_opt/1,
-              fun check_rpt_opt/1,
-              fun check_log_opt/1,
-              fun check_block_hash_deltas/1
-             ], Opts3),
-    #{initiator := Initiator} = Opts,
-    Session = start_session(Arg, Reestablish, Opts#{role => Role}),
+    Opts4 = check_opts(
+              [
+               fun(O) -> check_minimum_depth_opt(Role, O) end,
+               fun check_timeout_opt/1,
+               fun check_rpt_opt/1,
+               fun check_log_opt/1,
+               fun check_block_hash_deltas/1
+              ], Opts3),
+    #{initiator := Initiator} = Opts4,
+    Opts = Opts4#{role => Role},
+    Session = start_session(Arg, Reestablish, Opts),
     StateInitF = fun(NewI) ->
                           CheckedOpts = maps:merge(Opts#{ role => Role
                                                         , state_password_wrapper => StatePasswordWrapper
@@ -3555,38 +3553,32 @@ check_change_config(_, _) ->
 %% The given minimum_depth_factor is divided by 100 to provide an increased level
 %% of precision.
 -spec min_depth(map(), aetx_sign:signed_tx()) -> non_neg_integer().
-min_depth(#{ minimum_depth := MinDepthBase
-           , minimum_depth_factor := MinDepthFactor }, SignedTx) when
-      MinDepthBase =/= undefined, MinDepthFactor =/= undefined ->
+min_depth(#{ minimum_depth := MinDepthFactor
+           , minimum_depth_strategy := txfee }, SignedTx) when
+      MinDepthFactor =/= undefined ->
     CurrHeight = curr_height(),
     Tx = aetx_sign:tx(SignedTx),
     MinFee = aetx:min_fee(Tx, CurrHeight),
     TxFee = aetx:fee(Tx),
     FeeCoefficient = TxFee / MinFee,
-    if
+    MinDepth = if
         MinDepthFactor > 0  ->
-            ceil(MinDepthBase * FeeCoefficient * MinDepthFactor / 100);
+            ceil(math:pow(FeeCoefficient, 1 / MinDepthFactor));
         true ->
-            ceil(MinDepthBase)
-    end.
+            1
+    end,
+    lager:debug("Calculated txfee-based MinDepth = ~p with FeeCoefficient = ~p, MinDepthFactor = ~p",
+                [MinDepth, FeeCoefficient, MinDepthFactor]),
+    MinDepth.
 
 -spec check_minimum_depth_opt(role(), opts()) -> opts().
-check_minimum_depth_opt(Role, Opts) ->
-    case {maps:find(minimum_depth, Opts), Role} of
-        {error, responder} ->
-            Opts#{minimum_depth => ?DEFAULT_MINIMUM_DEPTH_BASE};
-        _  ->
-            Opts
-    end.
-
--spec check_minimum_depth_factor_opt(role(), opts()) -> opts().
-check_minimum_depth_factor_opt(Role, Opts) ->
-    case {maps:find(minimum_depth_factor, Opts), Role} of
-        {error, responder} ->
-            Opts#{minimum_depth_factor => ?DEFAULT_MINIMUM_DEPTH_FACTOR};
-        _  ->
-            Opts
-    end.
+check_minimum_depth_opt(initiator, Opts) ->
+    Opts;
+check_minimum_depth_opt(responder, Opts) ->
+    MinDepthStrategy = maps:get(minimum_depth_strategy, Opts, ?DEFAULT_MINIMUM_DEPTH_STRATEGY),
+    MinDepthFactor = maps:get(minimum_depth, Opts, ?DEFAULT_MINIMUM_DEPTH(MinDepthStrategy)),
+    Opts#{ minimum_depth          => MinDepthFactor
+         , minimum_depth_strategy => MinDepthStrategy }.
 
 check_timeout_opt(#{timeouts := TOs} = Opts) ->
     TOs1 = maps:merge(?DEFAULT_TIMEOUTS, TOs),

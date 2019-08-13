@@ -42,6 +42,10 @@
         , shutdown_with_signing_abort/1
         , deposit/1
         , withdraw/1
+        , withdraw_high_amount_static_confirmation_time/1
+        , withdraw_high_amount_short_confirmation_time/1
+        , withdraw_low_amount_long_confirmation_time/1
+        , withdraw_low_amount_long_confirmation_time_negative_test/1
         , channel_detects_close_solo/1
         , leave_reestablish/1
         , leave_reestablish_close/1
@@ -71,8 +75,7 @@
         ]).
 
 %% exports for aehttp_integration_SUITE
--export([
-          create_channel_on_port/1
+-export([ create_channel_on_port/1
         ]).
 
 -export([with_trace/3]).  % mostly to avoid warning if not used
@@ -94,7 +97,8 @@
 
 -define(PEEK_MSGQ, peek_message_queue(?LINE, Debug)).
 
--define(MINIMUM_DEPTH, 3).
+-define(MINIMUM_DEPTH, 2).
+-define(MINIMUM_DEPTH_FACTOR, 0).
 
 -define(SLOGAN, {slogan, {?FUNCTION_NAME, ?LINE}}).
 -define(SLOGAN(I), {slogan, {?FUNCTION_NAME, ?LINE, I}}).
@@ -161,6 +165,10 @@ groups() ->
       , dep_wdraw_with_conflict
       , deposit
       , withdraw
+      , withdraw_high_amount_static_confirmation_time
+      , withdraw_high_amount_short_confirmation_time
+      , withdraw_low_amount_long_confirmation_time
+      , withdraw_low_amount_long_confirmation_time_negative_test
       , channel_detects_close_solo
       , leave_reestablish
       , leave_reestablish_close
@@ -433,8 +441,8 @@ multiple_responder_keys_per_port(Cfg) ->
                     generalized -> % nonce is 0
                         ChannelCfg0
                 end,
-            C = create_multi_channel(ChannelCfg, #{mine_blocks => {ask, MinerHelper},
-                                                   debug => Debug}, false),
+            C = create_multi_channel(ChannelCfg, #{ mine_blocks => {ask, MinerHelper},
+                                                  , debug => Debug }, false),
             %% [{C, Tx}] = collect_acks_w_payload([C], mine_blocks, 1),
             %% TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)),
             %% mine_blocks_until_txs_on_chain(dev1, [TxHash]),
@@ -975,7 +983,6 @@ do_n_(N, F, I, R, C) when N > 0 ->
     {I1, R1} = F(I, R, C),
     do_n_(N-1, F, I1, R1, C).
 
-
 update_volley(#{pub := PubI} = I, #{pub := PubR} = R, Cfg) ->
     {I1, R1} = do_update(PubR, PubI, 1, I, R, false, Cfg),
     do_update(PubI, PubR, 1, I1, R1, false, Cfg).
@@ -1079,47 +1086,61 @@ deposit_(#{fsm := FsmI} = I, R, Deposit, Opts, Round1, Debug, Cfg) ->
     {ok, I2, R2}.
 
 withdraw(Cfg) ->
-    Debug = get_debug(Cfg),
-    Withdrawal = 2,
-    #{ i := #{fsm := FsmI} = I
-     , r := #{} = R
-     , spec := #{ initiator := _PubI
-                , responder := _PubR }} = create_channel_(
-                                            [?SLOGAN|Cfg]),
-    log(Debug, "I = ~p", [I]),
-    {_IAmt0, _RAmt0, _, Round = 1} = check_fsm_state(FsmI),
-    {ok, _I, _R} = withdraw_(I, R, Withdrawal, #{}, Round,
-                             Debug, Cfg),
-    shutdown_(I, R, Cfg),
+    Cfg1 = [?SLOGAN | Cfg],
+    Amount = 2,
+    MinDepth = 2,
+    Round = 1,
+    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, Round, Cfg1),
     ok.
 
-withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, Round, Debug, Cfg) ->
-    #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
-    {IAmt0, RAmt0, _, Round} = check_fsm_state(FsmI),
-    check_info(0),
-    ok = rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, Opts#{amount => Amount}]),
-    {I1, _} = await_signing_request(withdraw_tx, I, Cfg),
-    {R1, _} = await_signing_request(withdraw_created, R, Cfg),
-    SignedTx = await_on_chain_report(I1, ?TIMEOUT),
-    SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
-    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
-    {IAmt0, RAmt0, _, Round} = check_fsm_state(FsmI), %% still same state
-    mine_blocks(dev1, ?MINIMUM_DEPTH),
-    {IAmt, RAmt0, StateHash, Round2} = check_fsm_state(FsmI),
-    Round2 = Round + 1, %% assert round
-    {IAmt, _} = {IAmt0 - Amount, IAmt}, %% assert correct amounts
-    {channel_withdraw_tx, WithdrawalTx} =
-        aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
-    Round2 = aesc_withdraw_tx:round(WithdrawalTx), %% assert correct round
-    StateHash = aesc_withdraw_tx:state_hash(WithdrawalTx), %% assert correct state hash
-    #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
-    Expected = {IAmt2, RAmt2},
-    {Expected, Expected} = {{IAmt0 - Amount, RAmt0}, Expected},
-    SignedTx = await_on_chain_report(I1, #{info => channel_changed}, ?TIMEOUT), % same tx
-    SignedTx = await_on_chain_report(R1, #{info => channel_changed}, ?TIMEOUT), % same tx
-    check_info(20),
-    {ok, I1, R1}.
+withdraw_high_amount_static_confirmation_time(Cfg) ->
+    Cfg1 = [ ?SLOGAN
+           % Factor of 0 sets min depths to 1 for all amounts
+           , {minimum_depth, 0}
+           ] ++ Cfg,
+    Amount = 200000,
+    MinDepth = 1,
+    Round = 1,
+    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, Round, Cfg1),
+    ok.
 
+withdraw_high_amount_short_confirmation_time(Cfg) ->
+    Cfg1 = [ ?SLOGAN
+           % High base and very low factor should lead to single block required
+           , {minimum_depth, 4}
+           , {minimum_depth_factor, 1}
+           ] ++ Cfg,
+    Amount = 2000,
+    MinDepth = 0,
+    Round = 1,
+    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, Round, Cfg1),
+    ok.
+
+withdraw_low_amount_long_confirmation_time(Cfg) ->
+    Cfg1 = [ ?SLOGAN
+           % low base and high factor and low fee should lead to factor-based
+           % increased confirmation times
+           , {minimum_depth, 1}
+           , {minimum_depth_factor, 4000}
+           ] ++ Cfg,
+    Amount = 1,
+    MinDepth = 5,
+    Round = 1,
+    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, Round, Cfg1),
+    ok.
+
+withdraw_low_amount_long_confirmation_time_negative_test(Cfg) ->
+    Cfg1 = [ ?SLOGAN
+           % low base and high factor and low fee should lead to factor-based
+           % increased confirmation times
+           , {minimum_depth, 1}
+           , {minimum_depth_factor, 4000}
+           ] ++ Cfg,
+    Amount = 1,
+    MinDepth = 5,
+    Round = 1,
+    {ok, _I, _R} = withdraw_full_cycle_(Amount, #{}, MinDepth, Round, Cfg1),
+    ok.
 
 channel_detects_close_solo(Cfg) ->
     Debug = get_debug(Cfg),
@@ -2087,10 +2108,10 @@ update_req_conflict(Role, I, R, Debug, Cfg) ->
     %% the side that currently has no client.
     {#{ pub := PubA, fsm := FsmA } = A,
      #{ pub := PubB, fsm := FsmB } = B}
-        = roles_for_update(Role, I, R),
+    = roles_for_update(Role, I, R),
     %% cannot request an update from the side with client disconnected
     {error, client_disconnected}
-        = rpc(dev1, aesc_fsm, upd_transfer, [FsmA, PubA, PubB, 1]),
+    = rpc(dev1, aesc_fsm, upd_transfer, [FsmA, PubA, PubB, 1]),
     rpc(dev1, aesc_fsm, upd_transfer, [FsmB, PubB, PubA, 2]),
     {B1, _} = await_signing_request(update, B, Debug, Cfg),
     %% FsmR should now detect a conflict
@@ -2117,7 +2138,7 @@ reconnect(Fsm, Role, #{} = R, Debug) ->
     receive
         {NewProxy, reconnected} -> ok
     after 1000 ->
-            error(timeout)
+              error(timeout)
     end,
     R#{ proxy => NewProxy }.
 
@@ -2125,15 +2146,15 @@ try_reconnect(Fsm, Role, R, Debug) ->
     try_reconnect(Fsm, 1, Role, R, Debug).
 
 try_reconnect(Fsm, Round, Role, #{ channel_id := ChId
-                                 , fsm  := Fsm
-                                 , pub  := Pub
-                                 , priv := Priv}, Debug) ->
+                                   , fsm  := Fsm
+                                   , pub  := Pub
+                                   , priv := Priv}, Debug) ->
     ChIdId = aeser_id:create(channel, ChId),
     PubId = aeser_id:create(account, Pub),
     {ok, Tx} = aesc_client_reconnect_tx:new(#{ channel_id => ChIdId
-                                             , round      => Round
-                                             , role       => Role
-                                             , pub_key    => PubId }),
+                                               , round      => Round
+                                               , role       => Role
+                                               , pub_key    => PubId }),
     log(Debug, "Reconnect Tx = ~p", [Tx]),
     SignedTx = aec_test_utils:sign_tx(Tx, Priv),
     rpc(dev1, aesc_fsm, reconnect_client, [Fsm, self(), SignedTx]).
@@ -2149,7 +2170,7 @@ retry(0, _, _, E, T) ->
     error(E, T);
 retry(N, T, F, _, _) when N > 0 ->
     try F()
-    ?_catch_(error, E, ST)
+        ?_catch_(error, E, ST)
         timer:sleep(T),
         retry(N-1, T, F, E, ST)
     end.
@@ -2170,7 +2191,7 @@ collect_acks([Pid | Pids], Tag, N) ->
             log("Ack from ~p (~p)", [Pid, Tag]),
             [Pid | collect_acks(Pids, Tag, N)]
     after Timeout ->
-            error(timeout)
+              error(timeout)
     end;
 collect_acks([], _Tag, _) ->
     [].
@@ -2226,97 +2247,13 @@ create_channel_on_port(Port) ->
            {initiator_amount, 500000}, {responder_amount, 500000}, ?SLOGAN],
     create_channel_(Cfg, get_debug(Cfg)).
 
-create_channel_(Cfg) ->
-    create_channel_(Cfg, get_debug(Cfg)).
-
-create_channel_(Cfg, Debug) ->
-    create_channel_(Cfg, #{}, Debug).
-
-create_channel_(Cfg, XOpts, Debug) ->
-    {I, R, Spec} = channel_spec(Cfg, XOpts),
-    log(Debug, "channel_spec: ~p", [{I, R, Spec}]),
-    Port = proplists:get_value(port, Cfg, 9325),
-    create_channel_from_spec(I, R, Spec, Port, proplists:get_bool(use_any, Cfg),
-                             Debug, Cfg).
-
-channel_spec(Cfg) ->
-    channel_spec(Cfg, #{}).
-
-channel_spec(Cfg, XOpts) ->
-    PushAmount = proplists:get_value(push_amount, Cfg, 200000),
-    ChannelReserve = proplists:get_value(channel_reserve, Cfg, 300000),
-    channel_spec(Cfg, ChannelReserve, PushAmount, XOpts).
-
-channel_spec(Cfg, ChannelReserve, PushAmount) ->
-    channel_spec(Cfg, ChannelReserve, PushAmount, #{}).
-
-channel_spec(Cfg, ChannelReserve, PushAmount, XOpts) ->
-    I = ?config(initiator, Cfg),
-    R = ?config(responder, Cfg),
-
-    %% dynamic key negotiation
-    Proto = <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>,
-
-    IAmt = ?config(initiator_amount, Cfg),
-    RAmt = ?config(responder_amount, Cfg),
-    Spec = maps:merge(#{initiator        => maps:get(pub, I),
-                        responder        => maps:get(pub, R),
-                        initiator_amount => IAmt,
-                        responder_amount => RAmt,
-                        push_amount      => PushAmount,
-                        lock_period      => 10,
-                        channel_reserve  => ChannelReserve,
-                        minimum_depth    => config(minimum_depth, Cfg, ?MINIMUM_DEPTH),
-                        client           => self(),
-                        noise            => [{noise, Proto}],
-                        timeouts         => #{idle => 20000},
-                        slogan           => slogan(Cfg),
-                        report           => #{debug => true} }, XOpts),
-    Spec1 =
-        lists:foldl(
-            fun(K, AccumSpec) ->
-                case ?config(K, Cfg) of
-                    undefined -> AccumSpec;
-                    Val       -> maps:put(K, Val, AccumSpec)
-                end
-            end,
-            Spec,
-            [nonce, block_hash_delta]),
-
-    I1 = prime_password(I, initiator_password, Cfg),
-    R1 = prime_password(R, responder_password, Cfg),
-
-    {I1, R1, Spec1}.
-
-prime_password(#{} = P, Key, Cfg) when Key =:= initiator_password; Key =:= responder_password ->
-    case ?config(Key, Cfg) of
-        undefined ->
-            P#{state_password => generate_password()};
-        ignore ->
-            ct:log("Ignoring password"),
-            maps:remove(state_password, P);
-        Password ->
-            ct:log("Using predefined password"),
-            P#{state_password => Password}
-     end.
-
--spec generate_password() -> string().
-generate_password() ->
-    binary:bin_to_list(crypto:strong_rand_bytes(6)).
-
-config(K, Cfg, Def) ->
-    case ?config(K, Cfg) of
-        undefined -> Def;
-        Other     -> Other
-    end.
-
-slogan(Cfg) ->
-    ?config(slogan, Cfg).
-
 create_channel_from_spec(I, R, Spec, Port, Debug, Cfg) ->
     create_channel_from_spec(I, R, Spec, Port, false, Debug, Cfg).
 
 create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
+    create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, ?MINIMUM_DEPTH).
+
+create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth) ->
     %% TODO: Somehow there is a CI only race condition which rarely occurs in
     %% round_too_high.check_incorrect_* and round_too_low.check_incorrect_* tests
     %% For now just wrap this operation in a retry loop and come back to it later
@@ -2331,11 +2268,9 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
             log(Debug, "channel paired: ~p", [Info]),
             {WFsmI, WFsmR, WI1, WR1}
         end),
-
     log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
-
     {I2, R2} = try await_create_tx_i(I1, R1, Debug, Cfg)
-               ?_catch_(error, Err, ST)
+                   ?_catch_(error, Err, ST)
                    log("Caught Err = ~p~nMessages = ~p",
                        [Err, element(2, process_info(self(), messages))]),
                    error(Err, ST)
@@ -2349,14 +2284,14 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     SignedTx = await_channel_changed_report(I2, ?TIMEOUT),
     SignedTx = await_channel_changed_report(R2, ?TIMEOUT),
     CurrentHeight = current_height(dev1),
-    mine_blocks(dev1, ?MINIMUM_DEPTH, opt_add_to_debug(#{ signed_tx => SignedTx
-                                                        , current_height => CurrentHeight }, Debug)),
+    mine_blocks(dev1, MinDepth, opt_add_to_debug(#{ signed_tx => SignedTx
+                                                  , current_height => CurrentHeight }, Debug)),
     %% in case of multiple channels starting in parallel - the mining above
     %% has no effect (the blocks are mined in another process)
     %% The following line makes sure this process is blocked until the proper
     %% height is reached
     aecore_suite_utils:wait_for_height(aecore_suite_utils:node_name(dev1),
-                                       CurrentHeight + ?MINIMUM_DEPTH),
+                                       CurrentHeight + MinDepth),
     log(Debug, "=== Min-depth height achieved", []),
     %% we've seen 10-15 second block times in CI, so wait a while longer
 
@@ -2418,8 +2353,8 @@ match_responder_and_initiator(RProxy, Debug) ->
             log(Debug, "Matched initiator/responder pair: ~p", [Info]),
             Info
     after ?TIMEOUT ->
-            log(Debug, "Timed out waiting for matched pair", []),
-            error(timeout)
+              log(Debug, "Timed out waiting for matched pair", []),
+              error(timeout)
     end.
 
 responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
@@ -2430,12 +2365,12 @@ responder_instance_(Fsm, Spec, R0, Parent, Debug) ->
     R1 = R#{ proxy => self(), parent => Parent },
     gproc:reg({n,l,{?MODULE,TmpChanId,responder}}, #{ r => R1 }),
     {_IPid, #{ i := I1
-            , channel_accept := ChAccept }}
-        = gproc:await({n,l,{?MODULE,TmpChanId,initiator}}, ?TIMEOUT),
+               , channel_accept := ChAccept }}
+    = gproc:await({n,l,{?MODULE,TmpChanId,initiator}}, ?TIMEOUT),
     Parent ! {channel_up, self(), #{ i => I1#{parent => Parent}
-                                   , r => R1
-                                   , channel_accept => ChAccept
-                                   , channel_open   => ChOpen }},
+                                     , r => R1
+                                     , channel_accept => ChAccept
+                                     , channel_open   => ChOpen }},
     fsm_relay(R, Parent, Debug).
 
 initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
@@ -2445,9 +2380,9 @@ initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
     #{data := #{temporary_channel_id := TmpChanId}} = ChAccept,
     I1 = I#{ proxy => self() },
     gproc:reg({n,l,{?MODULE,TmpChanId,initiator}}, #{ i => I1
-                                                    , channel_accept => ChAccept}),
+                                                      , channel_accept => ChAccept}),
     {_RPid, #{ r := #{parent := NewParent}}}
-        = gproc:await({n,l,{?MODULE,TmpChanId,responder}}, ?TIMEOUT),
+    = gproc:await({n,l,{?MODULE,TmpChanId,responder}}, ?TIMEOUT),
     unlink(Parent),
     link(NewParent),
     fsm_relay(I1#{parent => NewParent}, NewParent, Debug).
@@ -2458,7 +2393,7 @@ set_proxy_debug(Bool, #{proxy := P}) when is_boolean(Bool) ->
         {P, debug_ack, Prev} ->
             Prev
     after ?TIMEOUT ->
-            error(timeout)
+              error(timeout)
     end.
 
 -record(relay_st, {parent, debug}).
@@ -2466,10 +2401,10 @@ set_proxy_debug(Bool, #{proxy := P}) when is_boolean(Bool) ->
 fsm_relay(Map, Parent, Debug) ->
     log(Debug, "fsm_relay(~p, ~p, Debug)", [Map, Parent]),
     fsm_relay_(Map, #relay_st{ parent = Parent
-                             , debug  = Debug }).
+                               , debug  = Debug }).
 
 fsm_relay_(#{ fsm := Fsm } = Map, #relay_st{ parent = Parent
-                                           , debug  = Debug } = St) ->
+                                             , debug  = Debug } = St) ->
     St1 = receive
               {aesc_fsm, Fsm, _} = Msg ->
                   log(Debug, "Relaying(~p) ~p", [Parent, Msg]),
@@ -2491,13 +2426,13 @@ fsm_relay_(#{ fsm := Fsm } = Map, #relay_st{ parent = Parent
     fsm_relay_(Map, St1).
 
 fsm_map(Fsm, #{ initiator_amount := IAmt
-              , responder_amount := RAmt
-              , push_amount      := PushAmt
-              , slogan           := Slogan }, Map) ->
+                , responder_amount := RAmt
+                , push_amount      := PushAmt
+                , slogan           := Slogan }, Map) ->
     Map#{ fsm    => Fsm
-        , slogan => Slogan
-        , initiator_amount => IAmt - PushAmt
-        , responder_amount => RAmt + PushAmt }.
+          , slogan => Slogan
+          , initiator_amount => IAmt - PushAmt
+          , responder_amount => RAmt + PushAmt }.
 
 reestablish( #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = I
            , #{channel_id := ChId, initiator_amount := IAmt, responder_amount := RAmt} = R
@@ -2530,20 +2465,20 @@ update_tx(Tx0, F, Args) ->
 
 verify_close_mutual_tx(SignedTx, ChannelId) ->
     {aesc_close_mutual_tx, Tx} =
-        aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
+    aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     {_, ChInfo} = aesc_close_mutual_tx:serialize(Tx),
     true = lists:member(ChannelId,
-        [ aeser_id:specialize(ChId, channel)||
-             {channel_id, ChId} <- ChInfo
-        ]).
+                        [ aeser_id:specialize(ChId, channel)||
+                          {channel_id, ChId} <- ChInfo
+                        ]).
 
 verify_settle_tx(SignedTx, ChannelId) ->
     {channel_settle_tx, Tx} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
     {_, ChInfo} = aesc_settle_tx:serialize(Tx),
     true = lists:member(ChannelId,
-        [ aeser_id:specialize(ChId, channel) ||
-            {channel_id, ChId} <- ChInfo
-        ]).
+                        [ aeser_id:specialize(ChId, channel) ||
+                          {channel_id, ChId} <- ChInfo
+                        ]).
 
 await_create_tx_i(I, R, Debug, Cfg) ->
     {I1, _} = await_signing_request(create_tx, I, Debug, Cfg),
@@ -2577,9 +2512,9 @@ await_update_report(#{channel_id := ChId} = R, Timeout, Debug) ->
                   fun(#{ channel_id := ChId1
                          , info := SignedTx }) ->
                           true =
-                              ChId1 == ChId
-                              andalso
-                              element(1, SignedTx) == signed_tx
+                          ChId1 == ChId
+                          andalso
+                          element(1, SignedTx) == signed_tx
                   end, Timeout, Debug),
     #{info := SignedTx} = Msg,
     R#{signed_tx => SignedTx}.
@@ -2597,7 +2532,7 @@ await_signing_request_multisig(Tag, R, Sigs, Debug, Cfg) ->
 await_signing_request_basic(Tag, Signer, Debug, Cfg) ->
     Action = fun sign_signing_request/4,
     await_signing_request(Tag, Signer,
-                           Action, ?TIMEOUT, Debug, Cfg, basic).
+                          Action, ?TIMEOUT, Debug, Cfg, basic).
 
 await_signing_request(Tag, R, Timeout, Debug, Cfg) ->
     Action = fun sign_signing_request/4,
@@ -2616,24 +2551,24 @@ await_signing_request(Tag, #{fsm := Fsm, pub := Pub} = Signer, OtherSigs,
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
                               info := #{signed_tx := SignedTx0,
                                         updates   := Updates}} = Msg} ->
-            log(Debug, "await_signing(~p, ~p, ~p, ~p) <- ~p",
-                [Tag, Pub, [P || #{pub := P} <- OtherSigs], Fsm, Msg]),
-            {[Signer1|_], SignedTx} =
+                log(Debug, "await_signing(~p, ~p, ~p, ~p) <- ~p",
+                    [Tag, Pub, [P || #{pub := P} <- OtherSigs], Fsm, Msg]),
+                {[Signer1|_], SignedTx} =
                 lists:mapfoldl(
                   fun(S, STx) ->
                           {STx1, S1} =
-                              case SignatureType of
-                                  according_account -> co_sign_tx(S, STx, Cfg);
-                                  basic ->
-                                      #{priv := Priv} = S,
-                                      {aec_test_utils:co_sign_tx(STx, Priv), S}
-                              end,
+                          case SignatureType of
+                              according_account -> co_sign_tx(S, STx, Cfg);
+                              basic ->
+                                  #{priv := Priv} = S,
+                                  {aec_test_utils:co_sign_tx(STx, Priv), S}
+                          end,
                           {S1, STx1}
                   end, SignedTx0, [Signer|OtherSigs]),
-            log(Debug,"SIGNED TX ~p", [SignedTx]),
-            Action(Tag, Signer1, SignedTx, Updates)
+                log(Debug,"SIGNED TX ~p", [SignedTx]),
+                Action(Tag, Signer1, SignedTx, Updates)
     after Timeout ->
-            error(timeout)
+              error(timeout)
     end.
 
 abort_signing_request(Tag, #{fsm := Fsm}, Code, Timeout, Debug) ->
@@ -2642,11 +2577,11 @@ abort_signing_request(Tag, #{fsm := Fsm}, Code, Timeout, Debug) ->
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
                               info := #{signed_tx := SignedTx,
                                         updates   := _}} = Msg} ->
-            log(Debug, "abort_signing(~p, ~p, ~p) <- ~p", [Tag, Code, Fsm, Msg]),
-            aesc_fsm:signing_response(Fsm, Tag, {error, Code}),
-            {ok, SignedTx}
+                log(Debug, "abort_signing(~p, ~p, ~p) <- ~p", [Tag, Code, Fsm, Msg]),
+                aesc_fsm:signing_response(Fsm, Tag, {error, Code}),
+                {ok, SignedTx}
     after Timeout ->
-            error(timeout)
+              error(timeout)
     end.
 
 sign_tx(Signer, Tx, Cfg) ->
@@ -2691,12 +2626,12 @@ await_on_chain_report(#{fsm := Fsm}, Match, Timeout) ->
 await_channel_changed_report(#{fsm := Fsm}, Timeout) ->
     receive
         {aesc_fsm, Fsm, #{ type := report
-                         , tag := on_chain_tx
-                         , info := #{ info := channel_changed
-                                    , tx := SignedTx } }} ->
+                           , tag := on_chain_tx
+                           , info := #{ info := channel_changed
+                                        , tx := SignedTx } }} ->
             SignedTx
     after Timeout ->
-            error(timeout)
+              error(timeout)
     end.
 
 await_own_funding_locked(Role, Timeout, Debug) ->
@@ -2711,12 +2646,12 @@ await_own_locked_rpt(Type, #{role := Role, fsm := Fsm}, Timeout, Debug)
        Type==own_withdraw_locked ->
     receive
         {aesc_fsm, Fsm, #{ type := report
-                         , tag  := info
-                         , info := Type } = Msg} ->
+                           , tag  := info
+                           , info := Type } = Msg} ->
             log(Debug, "~p got ~p: ~p", [Role, Type, Msg]),
             ok
     after Timeout ->
-            error(timeout)
+              error(timeout)
     end.
 
 match_info(Info, Match) ->
@@ -2774,8 +2709,8 @@ receive_from_fsm(Tag, #{role := Role, fsm := Fsm} = R, Info, Timeout, Debug, _Co
             log(Debug, "~p: received ~p:~p", [Role, Tag, Msg]),
             {ok, Msg}
     after Timeout ->
-            flush(),
-            error(timeout)
+              flush(),
+              error(timeout)
     end;
 receive_from_fsm(Tag, R, Msg, Timeout, Debug, Cont) ->
     TRef = erlang:start_timer(Timeout, self(), receive_from_fsm),
@@ -2801,7 +2736,8 @@ receive_from_fsm_(Tag, #{role := Role, fsm := Fsm} = R, Msg, TRef, Debug, Cont) 
     end.
 
 flush() ->
-    receive M ->
+    receive
+        M ->
             log("<== ~p", [M]),
             flush()
     after 0 ->
@@ -2950,22 +2886,6 @@ current_height(Node) ->
         Header -> aec_headers:height(Header)
     end.
 
-log(Fmt, Args) ->
-    Debug = case config() of
-                undefined ->
-                    false;
-                Cfg ->
-                    config(debug, Cfg, false)
-            end,
-    log(Debug, Fmt, Args).
-
-log(true, Fmt, Args) ->
-    ct:log("~p: " ++ Fmt, [self()|Args]);
-log(#{debug := true}, Fmt, Args) ->
-    ct:log("~p: " ++ Fmt, [self()|Args]);
-log(_, _, _) ->
-    ok.
-
 if_debug(true, X, _) -> X;
 if_debug(#{debug := true}, X, _) -> X;
 if_debug(_, _, Y) -> Y.
@@ -3046,12 +2966,6 @@ check_fsm_state(Fsm) ->
     StateHash = Hash, %% assert same root hash
     {IAmt, RAmt, StateHash, Round}.
 
-get_debug(Config) ->
-    proplists:get_bool(debug, Config).
-
-set_debug(Bool, Config) when is_boolean(Bool) ->
-    lists:keystore(debug, 1, Config -- [debug], {debug, Bool}).
-
 mine_blocks_until_txs_on_chain(Node, TxHashes) ->
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
       aecore_suite_utils:node_name(Node),
@@ -3079,7 +2993,7 @@ with_trace(F, Config, File, When) ->
             {error, R} ->
                 ct:pal("Error ~p~nStack = ~p", [R, Stack]),
                 ttb_stop(),
-                erlang:error(R);
+                error(R);
             {exit, R} ->
                 ct:pal("Exit ~p~nStack = ~p", [R, Stack]),
                 ttb_stop(),
@@ -3100,8 +3014,7 @@ with_trace(F, Config, File, When) ->
 
 ttb_stop() ->
     Dir = aesc_ttb:stop(),
-    Out = filename:join(filename:dirname(Dir),
-			filename:basename(Dir) ++ ".txt"),
+    Out = filename:join(filename:dirname(Dir), filename:basename(Dir) ++ ".txt"),
     case aesc_ttb:format(Dir, Out, #{limit => 10000}) of
         {error, Reason} ->
             ct:pal("TTB formatting error: ~p", [Reason]);
@@ -3262,9 +3175,6 @@ bump_idx() ->
 bump_last_idx(Role, Bump) ->
     ets:update_counter(fsm_suite, Role, Bump).
 
-config() -> get(config).
-config(Cfg) -> put(config, Cfg).
-
 get_btc_auth_nonce(PubKey) ->
     {value, Account} = rpc(dev1, aec_chain, get_account, [PubKey]),
     ContractPubkey = aeser_id:specialize(aec_accounts:ga_contract(Account),
@@ -3286,29 +3196,6 @@ get_btc_offchain_nonce(ChannelPubKey, Owner) ->
             extract_nonce_from_btc_auth_store(Store);
         {error, not_found} -> 42 %% negative tests
     end.
-
-
-%% this function inspects the bitcoin_auth contract's store and extracts the
-%% nonce out of it. It heavily relies on the state of the contract being
-%% { nonce : int, owner : bytes(64) }
-extract_nonce_from_btc_auth_store(Store) ->
-    #{<<0>> := Encoded0} = rpc(dev1, aect_contracts_store, contents, [Store], false),
-    {ok, {Nonce, _}} = aeb_heap:from_binary({tuple, [word, {tuple, [word, word]}]},
-                                Encoded0),
-    Nonce.
-
-
-peek_message_queue(L, Debug) ->
-    {messages, Msgs} = process_info(self(), messages),
-    case Msgs of
-        [] -> ok;
-        _ ->
-            log(Debug,
-                "==================================================~n"
-                "~p: message Q: ~p~n"
-               "==================================================~n", [L, Msgs])
-    end,
-    ok.
 
 request_unknown_bh(Cfg) ->
     NOT = 10,
@@ -3443,7 +3330,7 @@ positive_bh(Cfg) ->
                       deposit_(Il, Rl, 1, Opts, Round, Debug, Cfg)
                   end,
                   fun(Il, Rl, Opts, Round) ->
-                      withdraw_(Il, Rl, 1, Opts, Round, Debug, Cfg)
+                      withdraw_(Il, Rl, 1, Opts, 1, Round, Debug, Cfg)
                   end
                 ])
         end,
@@ -3457,3 +3344,192 @@ positive_bh(Cfg) ->
               NNT + 1]),%% in the range
     shutdown_(IFinal, RFinal, Cfg),
     ok.
+
+%% ==================================================================
+%% Shared test cases
+
+withdraw_full_cycle_(Amount, Opts, MinDepth, Round, Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := #{ fsm := FsmI
+             , initiator_amount := IAmt0
+             , responder_amount := RAmt0 } = I
+     , r := #{} = R
+     , spec := #{ initiator := _PubI
+                , responder := _PubR }} = create_channel_(Cfg, Debug, MinDepth),
+    ct:log("I = ~p", [I]),
+    {ok, _, _} = withdraw_(I, R, Amount, Opts, MinDepth, Round, Debug, Cfg),
+    shutdown_(I, R, Cfg),
+    ok.
+
+withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, MinDepth, Round0, Debug, Cfg) ->
+   #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
+    {IAmt0, RAmt0, _, Round0} = check_fsm_state(FsmI),
+    ct:log("Round0 = ~p, IAmt0 = ~p, RAmt0 = ~p", [Round0, IAmt0, RAmt0]),
+    check_info(0),
+    ok = rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, Opts#{amount => Amount}]),
+    {I1, _} = await_signing_request(withdraw_tx, I, Cfg),
+    {R1, _} = await_signing_request(withdraw_created, R, Cfg),
+    SignedTx = await_on_chain_report(I1, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
+    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
+    {IAmt0, RAmt0, _, Round0} = check_fsm_state(FsmI),
+    mine_blocks(dev1, MinDepth),
+    {IAmt1, RAmt0, StateHash, Round1} = check_fsm_state(FsmI),
+    Round1 = Round0 + 1, %% assert round
+    {IAmt1, _} = {IAmt0 - Amount, IAmt1}, %% assert correct amounts
+    {channel_withdraw_tx, WithdrawalTx} =
+        aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
+    Round1 = aesc_withdraw_tx:round(WithdrawalTx), %% assert correct round
+    StateHash = aesc_withdraw_tx:state_hash(WithdrawalTx), %% assert correct state hash
+    #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
+    Expected = {IAmt2, RAmt2},
+    {Expected, Expected} = {{IAmt0 - Amount, RAmt0}, Expected},
+    SignedTx = await_on_chain_report(I1, #{info => channel_changed}, ?TIMEOUT), % same tx
+    SignedTx = await_on_chain_report(R1, #{info => channel_changed}, ?TIMEOUT), % same tx
+    check_info(20),
+    {ok, I1, R1}.
+
+%% ==================================================================
+%% Internal functions
+
+create_channel_(Cfg) ->
+    create_channel_(Cfg, ?MINIMUM_DEPTH, get_debug(Cfg)).
+
+create_channel_(Cfg, Debug) ->
+    create_channel_(Cfg, ?MINIMUM_DEPTH, Debug).
+
+create_channel_(Cfg, MinDepth, Debug) ->
+    create_channel_(Cfg, MinDepth, #{}, Debug).
+
+create_channel_(Cfg, MinDepth, XOpts, Debug) ->
+    {I, R, Spec} = channel_spec(Cfg, XOpts),
+    log(Debug, "channel_spec: ~p", [{I, R, Spec}]),
+    Port = proplists:get_value(port, Cfg, 9325),
+    UseAny = proplists:get_bool(use_any, Cfg),
+    create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg, MinDepth).
+
+channel_spec(Cfg) ->
+    channel_spec(Cfg, #{}).
+
+channel_spec(Cfg, XOpts) ->
+    PushAmount = proplists:get_value(push_amount, Cfg, 200000),
+    ChannelReserve = proplists:get_value(channel_reserve, Cfg, 300000),
+    channel_spec(Cfg, ChannelReserve, PushAmount, XOpts).
+
+channel_spec(Cfg, ChannelReserve, PushAmount) ->
+    channel_spec(Cfg, ChannelReserve, PushAmount, #{}).
+
+channel_spec(Cfg, ChannelReserve, PushAmount, XOpts) ->
+    I = ?config(initiator, Cfg),
+    R = ?config(responder, Cfg),
+
+    %% dynamic key negotiation
+    Proto = <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>,
+
+    IAmt = ?config(initiator_amount, Cfg),
+    RAmt = ?config(responder_amount, Cfg),
+    Spec0 = #{ initiator            => maps:get(pub, I)
+             , responder            => maps:get(pub, R)
+             , initiator_amount     => IAmt
+             , responder_amount     => RAmt
+             , push_amount          => PushAmount
+             , lock_period          => 10
+             , channel_reserve      => ChannelReserve
+             , minimum_depth        => config(minimum_depth, Cfg, ?MINIMUM_DEPTH)
+             , minimum_depth_factor => config(minimum_depth_factor, Cfg, ?MINIMUM_DEPTH_FACTOR)
+             , client               => self()
+             , noise                => [{noise, Proto}]
+             , timeouts             => #{idle => 20000}
+             , slogan               => slogan(Cfg)
+             , report               => #{debug => true}
+             },
+    Spec1 = maps:merge(Spec0, XOpts),
+    Spec2 =
+        lists:foldl(
+          fun(K, AccumSpec) ->
+                  case ?config(K, Cfg) of
+                      undefined -> AccumSpec;
+                      Val       -> maps:put(K, Val, AccumSpec)
+                  end
+          end,
+          Spec,
+          [nonce, block_hash_delta]),
+
+    I1 = prime_password(I, initiator_password, Cfg),
+    R1 = prime_password(R, responder_password, Cfg),
+
+    {I1, R1, Spec2}.
+
+log(Fmt, Args) ->
+    Debug = case config() of
+                undefined ->
+                    false;
+                Cfg ->
+                    config(debug, Cfg, false)
+            end,
+    log(Debug, Fmt, Args).
+
+log(true, Fmt, Args) ->
+    ct:log("~p: " ++ Fmt, [self()|Args]);
+log(#{debug := true}, Fmt, Args) ->
+    ct:log("~p: " ++ Fmt, [self()|Args]);
+log(_, _, _) ->
+    ok.
+
+config() -> get(config).
+
+config(Cfg) -> put(config, Cfg).
+
+config(K, Cfg, Def) ->
+    case ?config(K, Cfg) of
+        undefined -> Def;
+        Other     -> Other
+    end.
+
+get_debug(Config) ->
+    proplists:get_bool(debug, Config).
+get_debug(Config) ->
+    proplists:get_bool(debug, Config).
+
+set_debug(Bool, Config) when is_boolean(Bool) ->
+    lists:keystore(debug, 1, Config -- [debug], {debug, Bool}).
+
+%% @doc This function inspects the bitcoin_auth contract's store and extracts the
+%% nonce out of it. It heavily relies on the state of the contract being
+%% { nonce : int, owner : bytes(64) }
+extract_nonce_from_btc_auth_store(Store) ->
+    #{<<0>> := Encoded0} = rpc(dev1, aect_contracts_store, contents, [Store]),
+    {ok, {Nonce, _}} = aeb_heap:from_binary({tuple, [word, {tuple, [word, word]}]},
+                                Encoded0),
+    Nonce.
+
+peek_message_queue(L, Debug) ->
+    {messages, Msgs} = process_info(self(), messages),
+    case Msgs of
+        [] -> ok;
+        _ ->
+            log(Debug,
+                "==================================================~n"
+                "~p: message Q: ~p~n"
+               "==================================================~n", [L, Msgs])
+    end,
+    ok.
+
+slogan(Cfg) ->
+    ?config(slogan, Cfg).
+
+prime_password(#{} = P, Key, Cfg) when Key =:= initiator_password; Key =:= responder_password ->
+    case ?config(Key, Cfg) of
+        undefined ->
+            P#{state_password => generate_password()};
+        ignore ->
+            ct:log("Ignoring password"),
+            maps:remove(state_password, P);
+        Password ->
+            ct:log("Using predefined password"),
+            P#{state_password => Password}
+     end.
+
+-spec generate_password() -> string().
+generate_password() ->
+    binary:bin_to_list(crypto:strong_rand_bytes(6)).
