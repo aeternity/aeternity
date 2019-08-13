@@ -18,9 +18,9 @@
 %%% Types
 %%%===================================================================
 
--type name_hash() :: <<_:?NAME_HASH_BYTES>>.
--type subname_hash() :: <<_:?SUBNAME_HASH_BYTES>>.
--type commitment_hash() :: <<_:?COMMITMENT_HASH_BYTES>>.
+-type name_hash() :: binary().
+-type subname_hash() :: binary().
+-type commitment_hash() :: binary().
 
 -export_type([name_hash/0,
               subname_hash/0,

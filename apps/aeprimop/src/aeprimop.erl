@@ -285,7 +285,7 @@ name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
                      ClientTTL, Pointers)
     ].
 
--spec subname_tx_instructions(pubkey(), binary(), aens_subname_tx:definition(),
+-spec subname_tx_instructions(pubkey(), binary(), aens_subname_tx:subnames(),
                               fee(), nonce()) -> [op()].
 subname_tx_instructions(OwnerPubkey, Name, Definition, Fee, Nonce) ->
     [inc_account_nonce_op(OwnerPubkey, Nonce)

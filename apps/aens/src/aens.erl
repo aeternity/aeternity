@@ -28,10 +28,10 @@ resolve(Key, Name, NSTree) when is_binary(Key), is_binary(Name) ->
         true ->
             case name_to_name_hash(Name) of
                 {ok, NameHash} ->
-                        case name_hash_to_name_entry(NameHash, NSTree) of
-                            {ok, #{pointers := Pointers}} -> find_pointer_id(Key, Pointers);
-                            {error, _Rsn} = Error -> Error
-                        end;
+                    case name_hash_to_name_entry(NameHash, NSTree) of
+                        {ok, #{pointers := Pointers}} -> find_pointer_id(Key, Pointers);
+                        {error, _Rsn} = Error -> Error
+                    end;
                 {error, _Rsn} = Error -> Error
             end;
         false ->
