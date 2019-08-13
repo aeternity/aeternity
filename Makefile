@@ -528,6 +528,11 @@ build-uml: ${PLANTUML_JAR} ${uml-svg-files}
 %.svg: %.puml
 	${PLANTUML} -tsvg $<
 
+# Convenience target to test/force re-generation of the Fate op module
+regen-fate:
+	make -C apps/aefate clean
+	${REBAR} compile
+
 .PHONY: \
 	all console \
 	stratum-client-internal-build \
@@ -551,4 +556,5 @@ build-uml: ${PLANTUML_JAR} ${uml-svg-files}
 	rebar-lock-check \
 	python-env python-ws-test python-uats python-single-uat python-release-test python-package-win32-test \
 	REVISION \
-	prod-deb-package
+	prod-deb-package \
+	regen-fate
