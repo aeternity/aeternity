@@ -1154,7 +1154,7 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub, Contract, 1),
     force_fun_calls(Node),
     Balance2 = get_balance(APub),
-    ?assertMatchVM(1610855, 1600034, (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE),
+    ?assertMatchVM(1610855, 1600036, (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE),
 
     %% Test remote call with limited gas (3) that fails (out of gas).
     [] = call_func(APub, APriv, EncC1Pub, Contract, "call", [EncC2Pub, "2", "3"], error),
