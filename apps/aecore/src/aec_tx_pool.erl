@@ -772,9 +772,9 @@ check_tx_ttl(STx, _Hash, Height, _Event) ->
 check_valid_at_protocol(STx, _Hash, Height, _Event) ->
     aetx:check_protocol_at_height(aetx_sign:tx(STx), Height).
 
-check_signature(Tx, Hash, _Height, _Event) ->
+check_signature(Tx, Hash, Height, _Event) ->
     {ok, Trees} = aec_chain:get_top_state(),
-    case aetx_sign:verify(Tx, Trees, top_height()) of
+    case aetx_sign:verify(Tx, Trees, Height) of
         {error, _} = E ->
             lager:info("Failed signature check on tx: ~p, ~p\n", [E, Hash]),
             E;
@@ -784,7 +784,6 @@ check_signature(Tx, Hash, _Height, _Event) ->
 
 check_account(Tx, _Hash, _Height, Event) ->
     int_check_account(Tx, {block_hash, aec_chain:top_block_hash()}, Event).
-
 
 int_check_account(Tx, Source, Event) ->
     CheckNonce = nonce_check_by_event(Event),
