@@ -90,7 +90,12 @@ At that stage, no validation is performed on those blocks depending on the conse
 
 ##### Blocks persisted in the database with a now-invalid consensus protocol
 
-**TODO Handling of blocks read from database after user configuration makes consensus upgrade unconditional.**
+After having run the node with miner-signalling consensus protocol upgrade configured,
+a user restarting afterwards the node with unconditional consensus protocol upgrade configured
+is not supported:
+such user is recommended to delete the storage
+and start the node with the new configuration - syncing the chain from scratch.
+Failure to do so may lead to unexpected results.
 
 #### Transactions
 
