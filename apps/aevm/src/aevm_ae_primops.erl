@@ -671,25 +671,28 @@ crypto_call(_, _, _, _) ->
     {error, out_of_gas}.
 
 crypto_call_ecrecover_secp256k1(_Gas, Data, State) ->
+    ?TEST_LOG("ecrecover data = ~p", [Data]),
     [MsgHash0, Sig0] = get_args([hash_t(), sign_t()], Data),
+    ?TEST_LOG("ecrecover Hash0 = ~p, Sig0 = ~p", [MsgHash0, Sig0]),
     MsgHash = <<MsgHash0:32/unit:8>>,
+    ?TEST_LOG("ecrecover Hash = ~p", [MsgHash]),
     Sig     = words_to_bin(64, Sig0),
+    ?TEST_LOG("ecrecover Sig = ~p", [Sig]),
     Res = aeu_crypto:ecrecover(secp256k1, MsgHash, Sig),
+    ?TEST_LOG("ecrecover Res = ~p", [Res]),
     {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1), State}.
 
 crypto_call_ecverify(_Gas, Data, State) ->
-    [MsgHash0, Pubkey0, Sig0] = get_args([hash_t(), word, sign_t()], Data),
-    MsgHash = <<MsgHash0:32/unit:8>>,
-    Pubkey  = words_to_bin(64, Pubkey0),
-    Sig     = words_to_bin(64, Sig0),
-    Res = case aeu_crypto:ecverify(MsgHash, Pubkey, Sig) of
-              true  -> {ok, <<1:256>>};
-              false -> {ok, <<0:256>>}
-          end,
+    [MsgHash, PK, Sig] = get_args([hash_t(), word, sign_t()], Data),
+    Res =
+        case enacl:sign_verify_detached(to_sign(Sig), <<MsgHash:256>>, <<PK:256>>) of
+            {ok, _}    -> {ok, <<1:256>>};
+            {error, _} -> {ok, <<0:256>>}
+        end,
     {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY), State}.
 
 crypto_call_ecverify_secp256k1(_Gas, Data, State) ->
-    [MsgHash0, Pubkey0, Sig0] = get_args([hash_t(), word, sign_t()], Data),
+    [MsgHash0, Pubkey0, Sig0] = get_args([hash_t(), bytes_t(64), bytes_t(64)], Data),
     MsgHash = <<MsgHash0:32/unit:8>>,
     Pubkey  = words_to_bin(64, Pubkey0),
     Sig     = words_to_bin(64, Sig0),
