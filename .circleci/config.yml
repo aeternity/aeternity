@@ -14,6 +14,11 @@ executors:
     docker:
       - image: aeternity/builder:1804
         user: builder
+  buildpack:
+    docker:
+      - image: circleci/buildpack-deps:xenial
+    environment:
+      DOCKERHUB_REPO: aeternity/aeternity
 
 references:
   container_config: &container_config
@@ -296,34 +301,6 @@ references:
         fi
       when: on_fail
 
-  docker_compose_build: &docker_compose_build
-    run:
-      name: Build latest docker image
-      command: |
-        IMAGE_TAG=${CIRCLE_BRANCH/\//_} docker-compose build node1
-
-  docker_compose_start: &docker_compose_start
-    run:
-      name: Create localnet with docker-compose
-      command: |
-        sudo -u ubuntu -E -H IMAGE_TAG=${CIRCLE_BRANCH/\//_} docker-compose up -d
-
-  docker_compose_healthcheck: &docker_compose_healthcheck
-    run:
-      name: Healthcheck
-      command: |
-        sleep 30 # give it some time to boot the tcp listeners
-        EXTERNAL_ADDRESS=localhost:3001 INTERNAL_ADDRESS=localhost:3001/internal ./docker/healthcheck.sh
-        EXTERNAL_ADDRESS=localhost:3002 INTERNAL_ADDRESS=localhost:3002/internal ./docker/healthcheck.sh
-        EXTERNAL_ADDRESS=localhost:3003 INTERNAL_ADDRESS=localhost:3003/internal ./docker/healthcheck.sh
-
-  docker_compose_logs: &docker_compose_logs
-    run:
-      name: Dump docker-compose logs
-      command: |
-        docker-compose logs
-      when: always
-
   install_system_test_deps: &install_system_test_deps
     run:
       name: Install deps for system tests
@@ -427,6 +404,25 @@ commands:
           name: Login to Docker Hub
           command: |
             docker login -u $(</secrets/DOCKER_USER) -p $(</secrets/DOCKER_PASS)
+
+  docker_build_branch:
+    steps:
+      - run:
+          name: Build branch docker image
+          command: |
+            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} .
+      - run:
+          name: Start branch docker image
+          command: |
+            docker run --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} -network_id ae_test
+          background: true
+      - run:
+          name: Health check
+          command: |
+            sleep 60 # give it some so that docker health checks kicks in
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' ae_${CIRCLE_SHA1:?})
+            echo $STATUS
+            [ $STATUS == 'healthy' ]
 
 jobs:
   build:
@@ -750,24 +746,18 @@ jobs:
       - *fail_notification
 
   docker_smoke_tests:
-    <<: *machine_config
+    executor: buildpack
     steps:
       - checkout
-      - *prepare_ubuntu_user
-      - *docker_compose_build
-      - *docker_compose_start
-      - *docker_compose_healthcheck
-      - *docker_compose_logs
+      - *setup_remote_docker
+      - docker_build_branch
 
   docker_test_push_branch:
-    <<: *machine_config
+    executor: buildpack
     steps:
       - checkout
-      - *prepare_ubuntu_user
-      - *docker_compose_build
-      - *docker_compose_start
-      - *docker_compose_healthcheck
-      - *docker_compose_logs
+      - *setup_remote_docker
+      - docker_build_branch
       - run:
           name: Push Docker image to DockerHub
           command: |
