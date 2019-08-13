@@ -22,6 +22,7 @@
 -export([ check_remote/2
         , check_return_type/1
         , check_signature_and_bind_args/3
+        , bind_args_from_signature/2
         , unfold_store_maps/2
         , unfold_store_maps_in_args/2
         , check_type/2
