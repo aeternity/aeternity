@@ -50,9 +50,6 @@ variant_test_() ->
 bits_test_() ->
     make_calls(bits()).
 
-fail_test_() ->
-    make_calls(fail()).
-
 make_calls(ListOfCalls) ->
     Cache = setup_contracts(),
     %% Dummy values since they should not come into play in this test
@@ -267,15 +264,6 @@ bits() ->
             ]
     ].
 
-fail() ->
-    [ {<<"fail">>, F, A, R}
-      || {F, A, R} <-
-            [ {<<"bad_poly_return">>,       [1, <<"string">>], {error, <<"Type error on return: <<\"string\">> is not of type integer">>}}
-            , {<<"bad_return_after_call">>, [false], {error, <<"Type error on return: 3 is not of type boolean">>}}
-            , {<<"bad_tail_call_return">>,  [false], {error, <<"Type error on return: 1 is not of type boolean">>}}
-            ]
-    ].
-
 make_call(Contract, Function0, Arguments) ->
     Function = aeb_fate_code:symbol_identifier(Function0),
     #{ contract  => pad_contract_name(Contract)
@@ -349,7 +337,8 @@ contracts() ->
                        {'CALL_R',
                         {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"remote">>))},
                         {immediate, aeb_fate_code:symbol_identifier(<<"add_five">>)},
-                        {immediate, 1},
+                        {immediate, {typerep, {tuple, [integer]}}},
+                        {immediate, {typerep, integer}},
                         {immediate, 0}
                        } ]}
                , {1, [ {'INC', {stack, 0}},
@@ -742,30 +731,4 @@ contracts() ->
                       , 'RETURN']}]}
 
            ]
-     , <<"fail">> =>
-           [ {<<"bad_poly_return">>
-             , {[{tvar, 0}, {tvar, 1}], {tvar, 0}}
-             , [ {0, [ {'RETURNR', {arg, 1}} ]} ]
-             }
-           , {<<"id">>
-             , {[{tvar, 0}], {tvar, 0}}
-             , [ {0, [{'RETURNR', {arg, 0}}] } ]
-             }
-           , {<<"bad_return_after_call">>
-             , {[{tvar, 0}], {tvar, 0}}
-             , [ {0, [ {'PUSH', {immediate, 1}}
-                     , {'CALL', {immediate, aeb_fate_code:symbol_identifier(<<"id">>)}}
-                     ]}
-               , {1, [ {'PUSH', {immediate, 2}}
-                     , {'ADD', {stack, 0}, {stack, 0}, {stack, 0}}
-                     , 'RETURN' ]}
-               ]
-             }
-           , {<<"bad_tail_call_return">>
-             , {[{tvar, 0}], {tvar, 0}}
-             , [ {0, [ {'PUSH', {immediate, 1}}
-                     , {'CALL_T', {immediate, aeb_fate_code:symbol_identifier(<<"id">>)}}
-                     ]}
-               ]
-             } ]
      }.
