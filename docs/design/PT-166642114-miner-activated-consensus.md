@@ -103,8 +103,8 @@ Failure to do so may lead to unexpected results.
 
 ###### Insertion
 
-When configured for miner signalling, then node relaxes checks on transactions
-so to accept both transactions valid under the current consensus protocol or under the proposed new consensus protocol.
+The `aec_tx_pool` module enables inserting in the mempool only transactions valid at the consensus protocol of the top of the best valid chain.
+This requires no changes.
 
 ###### Deletion
 
