@@ -2457,6 +2457,33 @@ nameservice_transaction_subname(_Config) ->
     SubnameTxHash = sign_and_post_tx(SubnameTxEnc),
     ok = wait_for_tx_hash_on_chain(SubnameTxHash),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% %% Finding the limit - we can do 68 subdomains of 6 chars length.
+    %% SubnamePtrs = [#{<<"key">> => <<"k2">>,
+    %%                  <<"id">> => aeser_api_encoder:encode(account_pubkey, MinerPubkey)}],
+    %% SubdomainNameLen = 6,
+    %% NumSubdomains = 68,
+    %% SubdomainFmt = fun (X) ->
+    %%                        Fmt = "~" ++ integer_to_list(SubdomainNameLen) ++ "..0B",
+    %%                        iolist_to_binary(io_lib:format(Fmt, [X]))
+    %%                end,
+    %% Definition2 =
+    %%     [#{<<"name_id">> => aeser_api_encoder:encode(subname, SubdomainFmt(X)),
+    %%        <<"pointers">> => SubnamePtrs} || X <- lists:seq(1, NumSubdomains)],
+
+    %% file:write_file("/tmp/def2.txt", io_lib:format("~p~n", [Definition2])),
+
+    %% SubnameData2 =
+    %%     #{account_id => MinerAddress,
+    %%       name_id    => aeser_api_encoder:encode(name, Name),
+    %%       definition => Definition2,
+    %%       fee        => 100000 * aec_test_utils:min_gas_price()
+    %%      },
+    %% {ok, 200, #{<<"tx">> := SubnameTxEnc2}} = get_subname(SubnameData2),
+    %% SubnameTxHash2 = sign_and_post_tx(SubnameTxEnc2),
+    %% ok = wait_for_tx_hash_on_chain(SubnameTxHash2),
+    %% {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
     ok.
 
 %% tests the following
