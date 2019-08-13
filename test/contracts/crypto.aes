@@ -21,3 +21,5 @@ contract CryptoTest =
   entrypoint test_string_verify_secp256k1(x : string, pk : bytes(64), sig : signature) =
     Crypto.ecverify_secp256k1(String.sha3(x), pk, sig)
 
+  entrypoint test_recover_secp256k1(msg : hash, sig : signature) =
+    Crypto.ecrecover_secp256k1(msg, sig)

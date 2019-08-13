@@ -1112,7 +1112,7 @@ call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
     S = state(),
     {R, S1} = try apply(Fun, Xs ++ [S])
               catch
-                _:{fail, Error} -> error(Error);
+                _:{fail, Error} -> ct:fail(Error);
                 _:Reason -> {{'EXIT', Reason, erlang:get_stacktrace()}, S}
               end,
     state(S1),
@@ -4433,6 +4433,15 @@ sophia_crypto(_Cfg) ->
                                 , {test_verify_secp256k1, ?hsh(PubKey), false}
                                 , {test_string_verify_secp256k1, Message, true}
                                 , {test_string_verify_secp256k1, <<"Not the secret message">>, false}] ],
+
+    %% Test ecrecover
+    [ begin
+          TestRes = ?call(call_contract, Acc, IdC, Fun, word, {Msg, SECP_Sig}),
+          ?assertMatchAEVM2OOG(Exp, TestRes),
+          ?assertMatchFATE(Exp, TestRes)
+      end || {Fun, Msg, Exp} <- [ {test_recover_secp256k1, ?hsh(MsgHash), false}
+                                , {test_recover_secp256k1, ?hsh(PubKey), false}
+                                ] ],
 
     %% Test hash functions
     String = <<"12345678901234567890123456789012-andsomemore">>,

@@ -218,6 +218,8 @@ types(?PRIM_CALL_ORACLE_CHECK_QUERY,_HeapValue,_Store,_State) ->
     {[word, word, typerep, typerep], word};
 types(?PRIM_CALL_SPEND,_HeapValue,_Store,_State) ->
     {[word], tuple0_t()};
+types(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1, _HeapValue, _Store, _State) ->
+    {[hash_t(), sign_t()], word};
 types(?PRIM_CALL_CRYPTO_ECVERIFY, _HeapValue, _Store, _State) ->
     {[word, word, sign_t()], word};
 types(?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1, _HeapValue, _Store, _State) ->
@@ -649,6 +651,8 @@ crypto_call(Gas, Op, _Value, Data, State) ->
             crypto_call(Gas, Op, Data, State)
     end.
 
+crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1, Data, State) ->
+    crypto_call_ecrecover_secp256k1(Gas, Data, State);
 crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECVERIFY, Data, State) ->
     crypto_call_ecverify(Gas, Data, State);
 crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1, Data, State) ->
@@ -667,27 +671,31 @@ crypto_call(_, _, _, _) ->
     {error, out_of_gas}.
 
 crypto_call_ecrecover_secp256k1(_Gas, Data, State) ->
-    [Hash, V, R, S] = get_args([bytes_t(32), bytes_t(32),
-				bytes_t(32), bytes_t(32)], Data),
-    aeu_crypto:ecrecover(sec256k1, Hash, V, R, S).
+    [MsgHash0, Sig0] = get_args([hash_t(), sign_t()], Data),
+    MsgHash = <<MsgHash0:32/unit:8>>,
+    Sig     = words_to_bin(64, Sig0),
+    Res = aeu_crypto:ecrecover(secp256k1, MsgHash, Sig),
+    {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1), State}.
 
 crypto_call_ecverify(_Gas, Data, State) ->
-    [MsgHash, PK, Sig] = get_args([hash_t(), word, sign_t()], Data),
-    Res =
-        case enacl:sign_verify_detached(to_sign(Sig), <<MsgHash:256>>, <<PK:256>>) of
-            {ok, _}    -> {ok, <<1:256>>};
-            {error, _} -> {ok, <<0:256>>}
-        end,
+    [MsgHash0, Pubkey0, Sig0] = get_args([hash_t(), word, sign_t()], Data),
+    MsgHash = <<MsgHash0:32/unit:8>>,
+    Pubkey  = words_to_bin(64, Pubkey0),
+    Sig     = words_to_bin(64, Sig0),
+    Res = case aeu_crypto:ecverify(MsgHash, Pubkey, Sig) of
+              true  -> {ok, <<1:256>>};
+              false -> {ok, <<0:256>>}
+          end,
     {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY), State}.
 
 crypto_call_ecverify_secp256k1(_Gas, Data, State) ->
-    [MsgHash0, Pubkey0, Sig0] = get_args([hash_t(), bytes_t(64), bytes_t(64)], Data),
+    [MsgHash0, Pubkey0, Sig0] = get_args([hash_t(), word, sign_t()], Data),
     MsgHash = <<MsgHash0:32/unit:8>>,
     Pubkey  = words_to_bin(64, Pubkey0),
     Sig     = words_to_bin(64, Sig0),
     Res = case aeu_crypto:ecverify(secp256k1, MsgHash, Pubkey, Sig) of
-            true  -> {ok, <<1:256>>};
-            false -> {ok, <<0:256>>}
+              true  -> {ok, <<1:256>>};
+              false -> {ok, <<0:256>>}
           end,
     {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1), State}.
 
