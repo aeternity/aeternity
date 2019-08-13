@@ -306,6 +306,7 @@ run_elapsed_commitment(Commitment, NamesTree0) ->
 
 -define(SUBNAMES_PRUNE_BATCH_SIZE, 2).
 
+-spec prune_subnames([binary()], tree()) -> tree().
 prune_subnames([], #ns_tree{} = Tree) ->
     Tree;
 prune_subnames([NameHash | NameHashes], #ns_tree{} = Tree) ->

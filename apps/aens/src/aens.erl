@@ -111,7 +111,7 @@ name_hash_to_name_entry(<<NameHash:?SUBNAME_HASH_BYTES/binary>>, NSTree) ->
     end.
 
 
-name_entry(NameRecord) when element(1, NameRecord) == name ->
+name_entry(NameRecord) ->
     case aens_names:status(NameRecord) of
         claimed ->
             {ok, #{id       => aens_names:id(NameRecord),
@@ -119,11 +119,7 @@ name_entry(NameRecord) when element(1, NameRecord) == name ->
                    pointers => aens_names:pointers(NameRecord)}};
         revoked ->
             {error, name_revoked}
-    end;
-%%% NO check if parent is claimed - must be done by caller
-name_entry(SubnameRecord) when element(1, SubnameRecord) == subname ->
-    {ok, #{id       => aens_subnames:id(SubnameRecord),
-           pointers => aens_subnames:pointers(SubnameRecord)}}.
+    end.
 
 
 find_pointer_id(Key, [Pointer | Rest]) ->
