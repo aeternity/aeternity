@@ -26,6 +26,8 @@
                                Method =:= <<"channels.withdraw_tx">>;
                                Method =:= <<"channels.withdraw_ack">>;
                                Method =:= <<"channels.responder_sign">>;
+                               Method =:= <<"channels.snapshot_solo_tx">>;
+                               Method =:= <<"channels.snapshot_solo_sign">>;
                                Method =:= <<"channels.shutdown_sign">>;
                                Method =:= <<"channels.shutdown_sign_ack">>;
                                Method =:= <<"channels.update">>;
@@ -37,23 +39,25 @@
                                Method =:= <<"channels.settle_tx">>;
                                Method =:= <<"channels.settle_sign">>).
 -define(METHOD_TAG(Method), case Method of
-                                <<"channels.initiator_sign">>    -> create_tx;
-                                <<"channels.deposit_tx">>        -> deposit_tx;
-                                <<"channels.deposit_ack">>       -> deposit_created;
-                                <<"channels.withdraw_tx">>       -> withdraw_tx;
-                                <<"channels.withdraw_ack">>      -> withdraw_created;
-                                <<"channels.responder_sign">>    -> funding_created;
-                                <<"channels.update">>            -> update;
-                                <<"channels.update_ack">>        -> update_ack;
-                                <<"channels.shutdown_sign">>     -> shutdown;
-                                <<"channels.shutdown_sign_ack">> -> shutdown_ack;
-                                <<"channels.leave">>             -> leave;
-                                <<"channels.close_solo_tx">>     -> close_solo_tx;
-                                <<"channels.close_solo_sign">>   -> close_solo_tx;
-                                <<"channels.slash_tx">>          -> slash_tx;
-                                <<"channels.slash_sign">>        -> slash_tx;
-                                <<"channels.settle_tx">>         -> settle_tx;
-                                <<"channels.settle_sign">>       -> settle_tx
+                                <<"channels.initiator_sign">>     -> create_tx;
+                                <<"channels.deposit_tx">>         -> deposit_tx;
+                                <<"channels.deposit_ack">>        -> deposit_created;
+                                <<"channels.withdraw_tx">>        -> withdraw_tx;
+                                <<"channels.withdraw_ack">>       -> withdraw_created;
+                                <<"channels.responder_sign">>     -> funding_created;
+                                <<"channels.update">>             -> update;
+                                <<"channels.update_ack">>         -> update_ack;
+                                <<"channels.snapshot_solo_tx">>   -> snapshot_tx;
+                                <<"channels.snapshot_solo_sign">> -> snapshot_solo_tx;
+                                <<"channels.shutdown_sign">>      -> shutdown;
+                                <<"channels.shutdown_sign_ack">>  -> shutdown_ack;
+                                <<"channels.leave">>              -> leave;
+                                <<"channels.close_solo_tx">>      -> close_solo_tx;
+                                <<"channels.close_solo_sign">>    -> close_solo_tx;
+                                <<"channels.slash_tx">>           -> slash_tx;
+                                <<"channels.slash_sign">>         -> slash_tx;
+                                <<"channels.settle_tx">>          -> settle_tx;
+                                <<"channels.settle_sign">>        -> settle_tx
                             end).
 
 
@@ -162,6 +166,7 @@ json_rpc_error_object(call_not_found      , R) -> error_obj(3     , [1004], R);
 json_rpc_error_object(contract_init_failed, R) -> error_obj(3     , [1007], R);
 json_rpc_error_object(not_a_number        , R) -> error_obj(3     , [1008], R);
 json_rpc_error_object(participant_not_found, R)-> error_obj(3     , [1011], R);
+json_rpc_error_object(not_offchain_tx     , R) -> error_obj(2     , [1012], R);
 json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
 json_rpc_error_object(not_found           , R) -> error_obj(3     , [100] , R);
@@ -233,6 +238,7 @@ error_data_msgs() ->
      , 1009 => <<"Broken encoding: contract bytearray">>
      , 1010 => <<"Broken encoding: transaction">>
      , 1011 => <<"Participant not found">>
+     , 1012 => <<"Offchain tx expected">>
      }.
 
 broken_encoding_code(account    ) -> 1005;
@@ -545,6 +551,12 @@ process_request(#{<<"method">> := <<"channels.close_solo">>}, FsmPid) ->
     lager:debug("Channel WS: close_solo message received"),
     aesc_fsm:close_solo(FsmPid),
     no_reply;
+process_request(#{<<"method">> := <<"channels.snapshot_solo">>}, FsmPid) ->
+    lager:debug("Channel WS: snapshot_solo message received"),
+    case aesc_fsm:snapshot_solo(FsmPid) of
+        ok -> no_reply;
+        {error, _Reason} = Err -> Err
+    end;
 process_request(#{<<"method">> := <<"channels.slash">>}, FsmPid) ->
     lager:debug("Channel WS: slash message received"),
     case aesc_fsm:slash(FsmPid) of

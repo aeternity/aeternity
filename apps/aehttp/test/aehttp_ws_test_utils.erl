@@ -10,6 +10,7 @@
          log/3,
          send/3, send/4, send/5,
          send_tagged/4,
+         get_registered_events/1,
          register_test_for_event/3,
          register_test_for_events/3,
          unregister_test_for_event/3,
@@ -235,7 +236,7 @@ unregister_test_for_events(ConnPid, Origin, Actions) ->
     end,
     ok.
 
-register_test_for_channel_event(ConnPid, Action) ->
+register_test_for_channel_event(ConnPid, Action) when is_atom(Action) ->
     register_test_for_events(ConnPid, ?CHANNEL, [Action]).
 
 register_test_for_channel_events(ConnPid, Actions) when is_list(Actions)->
@@ -252,6 +253,10 @@ unregister_test_for_channel_event(ConnPid, Action) ->
 unregister_test_for_channel_events(ConnPid, Actions) ->
     unregister_test_for_events(ConnPid, ?CHANNEL, Actions).
 
+get_registered_events(ConnPid) ->
+    Me = self(),
+    ConnPid ! {get_registered_events, Me},
+    wait_for_msg(msg, ConnPid, registered_events, Me, ?DEFAULT_EVENT_TIMEOUT).
 
 %% consumes messages from the mailbox:
 %% {Sender::pid(), websocket_event, Origin::atom(), Action::atom()}
@@ -464,6 +469,10 @@ websocket_info(ping, _ConnState, #state{regs=Register}=State) ->
     {reply, {ping, Nonce}, State#state{regs=Register1}};
 websocket_info(stop, _ConnState, _State) ->
     {close, <<>>, "stopped"};
+websocket_info({get_registered_events, Pid}, _ConnState, #state{regs=Regs}=State) ->
+    Events = get_events_for_pid(Pid, Regs),
+    inform_registered(Pid, registered_events, Pid, undefined, Events),
+    {ok, State};
 websocket_info({register_test, RegisteredPid, Events}, _ConnState,
                 #state{regs=Register0}=State) ->
     {Origin, Actions} = Events,
@@ -515,6 +524,7 @@ websocket_info({'DOWN', _Ref, process, Pid, _}, _ConnState,
     {ok, State#state{regs= delete_pid(Pid, Register0)}};
 websocket_info({json_rpc, Pid, Id, Req}, _ConnState, #state{calls = Calls}=State) ->
     do_log(send, Req, State),
+    ct:log("Sending JSON-RPC req: ~p", [Req]),
     {reply, {text, Req}, State#state{calls = [{Id, Pid}|Calls]}};
 websocket_info({send_to_client, Msg}, _ConnState, #state{role=Role}=State) ->
     do_log(send, Msg, State),
@@ -555,6 +565,10 @@ to_atom(B) when is_binary(B)-> binary_to_atom(B, utf8).
 to_binary(A) when is_atom(A)   -> atom_to_binary(A, utf8);
 to_binary(B) when is_binary(B) -> B.
 
+get_events_for_pid(Pid, #register{events = Events}) ->
+    maps:filter(fun(_Event, Pids) ->
+                        lists:member(Pid, Pids)
+                end, Events).
 
 get_registered_pids(Event, #register{events=Events}) ->
     maps:get(Event, Events, []).

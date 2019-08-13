@@ -153,6 +153,7 @@ process_fsm_(#{type := sign,
                                    orelse Tag =:= deposit_created
                                    orelse Tag =:= withdraw_tx
                                    orelse Tag =:= withdraw_created
+                                   orelse Tag =:= snapshot_solo_tx
                                    orelse Tag =:= shutdown
                                    orelse Tag =:= shutdown_ack
                                    orelse Tag =:= funding_created
@@ -196,6 +197,8 @@ process_fsm_(#{type := report,
         case {Tag, Event} of
             {info, {died, _}} -> #{event => <<"died">>};
             {info, _} when is_atom(Event) -> #{event => atom_to_binary(Event, utf8)};
+            {info, #{event := _} = Info} ->
+                Info;
             {on_chain_tx, #{tx := Tx} = Info} ->
                 EncodedTx = aeser_api_encoder:encode(
                               transaction,

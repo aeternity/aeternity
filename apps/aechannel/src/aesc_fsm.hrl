@@ -29,6 +29,7 @@
      , error        => true
      , debug        => false
      , on_chain_tx  => true
+     , min_depth    => true
      }).
 
 -define(TIMER_SUBST(State),
@@ -63,6 +64,7 @@
 -define(WATCH_DEP, deposit).
 -define(WATCH_WDRAW, withdraw).
 -define(WATCH_CLOSED, closed).
+-define(WATCH_SNAPSHOT_SOLO, snapshot_solo).
 -define(MIN_DEPTH, min_depth).
 
 -define(NO_OP, no_op).
@@ -178,6 +180,7 @@
                   | slash_tx
                   | deposit_tx
                   | withdraw_tx
+                  | snapshot_solo_tx
                   | close_solo_tx
                   | settle_tx
                   | ?FND_CREATED

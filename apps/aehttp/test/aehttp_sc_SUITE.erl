@@ -23,6 +23,7 @@
     sc_ws_failed_update/1,
     sc_ws_generic_messages/1,
     sc_ws_update_conflict/1,
+    sc_ws_snapshot_solo/1,
     sc_ws_close_mutual/1,
     sc_ws_close_solo/1,
     sc_ws_slash/1,
@@ -97,6 +98,7 @@ groups() ->
         sc_ws_min_depth_is_modifiable,
         sc_ws_basic_open_close,
         sc_ws_basic_open_close_server,
+        sc_ws_snapshot_solo,
         %% both can start close mutual
         sc_ws_close_mutual,
         %% both can solo-close
@@ -2420,6 +2422,62 @@ sc_ws_basic_open_close_server(Config0) ->
     Config = sc_ws_open_([server_mode|Config0]),
     ok = sc_ws_update_(Config),
     ok = sc_ws_close_(Config).
+
+sc_ws_snapshot_solo(Config0) ->
+    Config = sc_ws_open_(Config0),
+    %% snapshots can only be taken when the latest state is
+    %% an offchain_tx
+    Ps = proplists:get_value(participants, Config),
+    Cs = proplists:get_value(channel_clients, Config),
+    {error, _} = perform_snapshot_solo(initiator, Ps, Cs, Config), % no offchain tx
+    assert_no_registered_events(?LINE, Config),
+    ok = sc_ws_update_(Config),
+    ok = perform_snapshot_solo(initiator, Ps, Cs, Config),
+    {error, _} = perform_snapshot_solo(responder, Ps, Cs, Config), % same round
+    ok = sc_ws_update_(Config),
+    ok = perform_snapshot_solo(responder, Ps, Cs, Config),
+    ok = sc_ws_close_(Config).
+
+assert_no_registered_events(L, Config) ->
+    #{ initiator := ConnPidI, responder := ConnPidR }
+        = proplists:get_value(channel_clients, Config),
+    {L, ok} = {L, ?WS:get_registered_events(ConnPidI)},
+    {L, ok} = {L, ?WS:get_registered_events(ConnPidR)},
+    ok.
+
+perform_snapshot_solo(Role, Participants, Conns, Config) ->
+    #{ priv_key := Privkey } = maps:get(Role, Participants),
+    ConnPid = maps:get(Role, Conns),
+    OtherPid = maps:get(other_role(Role), Conns),
+    Events = [sign, update, on_chain_tx, info],
+    ok = ?WS:register_test_for_channel_events(ConnPid, Events),
+    ok = ?WS:register_test_for_channel_events(OtherPid, [on_chain_tx]),
+    try ?WS:json_rpc_call(
+           ConnPid, #{ <<"method">> => <<"channels.snapshot_solo">>
+                     , <<"params">> => #{} }) of
+        <<"ok">> ->
+            sign_tx(ConnPid, <<"snapshot_solo_tx">>, <<"channels.snapshot_solo_sign">>,
+                    Privkey, Config),
+            MinBlocksToMine = ?DEFAULT_MIN_DEPTH,
+            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                               MinBlocksToMine +1),
+            {ok, #{ <<"type">> := <<"channel_snapshot_solo_tx">> }}
+                = wait_for_channel_event(ConnPid, on_chain_tx, Config),
+            {ok, #{ <<"type">> := <<"channel_snapshot_solo_tx">> }}
+                = wait_for_channel_event(OtherPid, on_chain_tx, Config),
+            {ok, #{ <<"event">> := <<"min_depth_achieved">>
+                  , <<"type">>  := <<"channel_snapshot_solo_tx">> }}
+                = wait_for_channel_event(ConnPid, info, Config),
+            ok
+    catch
+        error:Other ->
+            ct:log("Got Other = ~p", [Other]),
+            {error, Other}
+    after
+        ok = ?WS:unregister_test_for_channel_events(ConnPid, Events),
+        ok = ?WS:unregister_test_for_channel_events(OtherPid, [on_chain_tx])
+    end.
+
 
 sc_ws_basic_client_reconnect_i(Config) ->
     sc_ws_basic_client_reconnect_(initiator, Config).
