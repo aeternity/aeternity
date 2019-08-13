@@ -680,7 +680,7 @@ crypto_call_ecrecover_secp256k1(_Gas, Data, State) ->
     ?TEST_LOG("ecrecover Sig = ~p", [Sig]),
     Res = aeu_crypto:ecrecover(secp256k1, MsgHash, Sig),
     ?TEST_LOG("ecrecover Res = ~p", [Res]),
-    {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1), State}.
+    {ok, {ok, Res}, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1), State}.
 
 crypto_call_ecverify(_Gas, Data, State) ->
     [MsgHash, PK, Sig] = get_args([hash_t(), word, sign_t()], Data),

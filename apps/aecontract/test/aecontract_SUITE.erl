@@ -4439,8 +4439,8 @@ sophia_crypto(_Cfg) ->
           TestRes = ?call(call_contract, Acc, IdC, Fun, word, {Msg, SECP_Sig}),
           ?assertMatchAEVM2OOG(Exp, TestRes),
           ?assertMatchFATE(Exp, TestRes)
-      end || {Fun, Msg, Exp} <- [ {test_recover_secp256k1, ?hsh(MsgHash), false}
-                                , {test_recover_secp256k1, ?hsh(PubKey), false}
+      end || {Fun, Msg, Exp} <- [ {test_recover_secp256k1, ?hsh(MsgHash), Acc}
+                                , {test_recover_secp256k1, ?hsh(PubKey), []}
                                 ] ],
 
     %% Test hash functions

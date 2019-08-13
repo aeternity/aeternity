@@ -36,7 +36,8 @@ ecdsa_to_der_sig(<<R0:32/binary, S0:32/binary>>) ->
 %% ECRECOVER
 ecrecover(secp256k1, Hash, Sig) ->
     Input = <<Hash/binary, Sig/binary>>,
-    ecrecover:ecrecover(Input).
+    Res = ecrecover:ecrecover(Input),
+    erlang:list_to_binary(Res).
 
 %% ECVERIFY
 ecverify(Msg, PK, Sig) -> ecverify(curve25519, Msg, PK, Sig).
