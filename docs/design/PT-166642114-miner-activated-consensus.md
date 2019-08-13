@@ -34,7 +34,7 @@ By exploiting such current design, the expected consensus protocol version of a 
   This includes the cases of key block and micro block.
 
 The check on such expected consensus protocol version
-whenever an untrusted block is meant to be able to be inserted in the storage - and any further deferred validation that that entails -
+whenever an untrusted block is meant to be able to be inserted in the storage
 can be performed outside of the context of the `aec_conductor` process.
 This follows the current design of the `aec_conductor` process,
 that relies on [most block validation having been performed in the caller's context](https://github.com/aeternity/aeternity/blob/d877a856648bd69cb1b473efa9c6149725d8d74c/apps/aecore/src/aec_conductor.erl#L1072-L1074):
@@ -86,9 +86,7 @@ the presence of the worker for the desired miner signalling outcome shall be che
 ##### Blocks not necessarily connected to genesis
 
 The current design of syncing receives blocks out of order.
-Therefore the validation of the consensus protocol version in each block at that stage needs to be relaxed.
-Any deferred validation must be performed on each single block when meant be inserted in the chain storage,
-as at that stage such block is meant to be connected to genesis.
+At that stage, no validation is performed on those blocks depending on the consensus protocol version.
 
 ##### Blocks persisted in the database with a now-invalid consensus protocol
 
