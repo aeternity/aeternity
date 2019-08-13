@@ -127,6 +127,8 @@
         , abort/2
         , exit/2
         , nop/1
+        , unused_1/1
+        , unused_2/1
         , auth_tx_hash/2
         , bytes_to_int/3
         , bytes_to_str/3
@@ -139,6 +141,14 @@
 %% ------------------------------------------------------------------------
 %% Operations
 %% ------------------------------------------------------------------------
+
+-spec unused_1(_) -> no_return().
+unused_1(ES) ->
+    aefa_fate:abort(bad_bytecode, ES).
+
+-spec unused_2(_) -> no_return().
+unused_2(ES) ->
+    aefa_fate:abort(bad_bytecode, ES).
 
 %% ------------------------------------------------------
 %% Call/return instructions
@@ -1651,14 +1661,14 @@ store_map_size(Cache, MapId, ES) ->
     Store          = aefa_engine_state:stores(ES),
     {Size, Store1} = aefa_stores:store_map_size(Pubkey, MapId, Store),
     Delta  = fun(Key, ?FATE_MAP_TOMBSTONE, N) ->
-                     case aefa_stores:store_map_lookup(Pubkey, MapId, Key, Store) of
-                         error   -> N;
-                         {ok, _} -> N - 1
+                     case aefa_stores:store_map_member(Pubkey, MapId, Key, Store1) of
+                         {false, _Store} -> N;
+                         {true,  _Store} -> N - 1
                      end;
                 (Key, _, N) ->
-                     case aefa_stores:store_map_lookup(Pubkey, MapId, Key, Store) of
-                         error   -> N + 1;
-                         {ok, _} -> N
+                     case aefa_stores:store_map_member(Pubkey, MapId, Key, Store) of
+                         {false, _Store} -> N + 1;
+                         {true,  _Store} -> N
                      end
              end,
     ES1 = aefa_engine_state:set_stores(Store1, ES),

@@ -149,7 +149,6 @@ find_value_(Pubkey, StorePos, #store{cache = Cache} = S) ->
 -spec cache_map_metadata(pubkey(), store()) -> store().
 cache_map_metadata(Pubkey, S) ->
     case find_meta_data(Pubkey, S) of
-        {ok, _}     -> S;
         {ok, _, S1} -> S1;
         error       -> S
     end.
@@ -191,7 +190,7 @@ store_map_size(Pubkey, MapId, S) ->
 
 %% -- Map metadata -----------------------------------------------------------
 
--spec find_meta_data(pubkey(), store()) -> {ok, map_meta(), store()} | error.
+-spec find_meta_data(pubkey(), store()) -> {ok, store_meta(), store()} | error.
 find_meta_data(Pubkey, S) ->
     case find_value_(Pubkey, ?META_STORE_POS, S) of
         {ok, Meta}     -> {ok, Meta, S};
@@ -312,7 +311,7 @@ finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, Acc) ->
                       | {update_map, map_id(), aeb_fate_data:fate_store_map()} %% Update an existing map inplace
                       | {gc_map,     map_id()}.                                %% Garbage collect a map removing all entries
 
--spec compute_store_updates(store_meta(), aect_contracts_store:store()) -> {store_meta(), [store_update()]}.
+-spec compute_store_updates(store_meta(), #cache_entry{}) -> {store_meta(), [store_update()]}.
 compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) ->
     UsedIds = used_map_ids(Metadata),
     {Regs, Terms} = lists:unzip([{Reg, Term} || {Reg, {Term, Dirty}} <- maps:to_list(TermCache),
