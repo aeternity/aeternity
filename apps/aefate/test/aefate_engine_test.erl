@@ -100,7 +100,6 @@ control_flow() ->
     , {<<"test">>, <<"tailcall">>, [0], 3}
     , {<<"remote">>, <<"add_five">>, [1], 6}
     , {<<"test">>, <<"remote_call">>, [4],10}
-    , {<<"test">>, <<"remote_tailcall">>, [4],9}
     ].
 
 booleans() ->
@@ -350,20 +349,11 @@ contracts() ->
                        {'CALL_R',
                         {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"remote">>))},
                         {immediate, aeb_fate_code:symbol_identifier(<<"add_five">>)},
+                        {immediate, 1},
                         {immediate, 0}
                        } ]}
                , {1, [ {'INC', {stack, 0}},
                        'RETURN']}
-               ]
-             }
-           , { <<"remote_tailcall">>
-             , {[integer],integer}
-             , [ {0, [ {'PUSH', {arg,0}},
-                       {'CALL_TR',
-                        {immediate, aeb_fate_data:make_contract(pad_contract_name(<<"remote">>))},
-                        {immediate, aeb_fate_code:symbol_identifier(<<"add_five">>)},
-                        {immediate, 0}
-                       } ]}
                ]
              }
            ]
