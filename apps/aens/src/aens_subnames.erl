@@ -25,10 +25,6 @@
          pointers/1,
          ttl/1]).
 
-%% Utils
--export([parent_name/1,
-         lookup_parent/2]).
-
 -behavior(aens_cache).
 %%%===================================================================
 %%% Types
@@ -110,33 +106,3 @@ pointers(#subname{pointers = Pointers}) ->
 -spec ttl(subname()) -> aec_blocks:height().
 ttl(#subname{}) ->
     erlang:error(badarg).
-
-%%%===================================================================
-%%% Utils
-%%%===================================================================
-
--spec parent_name(binary()) -> {ok, binary()} | error.
-parent_name(SubDomainName) when is_binary(SubDomainName) ->
-    case binary:split(SubDomainName, ?LABEL_SEPARATOR) of
-        [_, Rest] ->
-            case aens_utils:is_name_registrar(Rest) of
-                true  -> {error, top_name};
-                false -> {ok, Rest}
-            end;
-        [_] ->
-            {error, no_registrar}
-    end.
-
-lookup_parent(Name, Trees) ->
-    case parent_name(Name) of
-        {ok, ParentName} ->
-            {ok, ParentAscii} = aens_utils:to_ascii(ParentName),
-            ParentHash = aens_hash:name_hash(ParentAscii),
-            NameTrees = aec_trees:ns(Trees),
-            case aens_state_tree:lookup_name(ParentHash, NameTrees) of
-                {value, N} -> {ok, N};
-                none       -> {error, not_found}
-            end;
-        Error ->
-            Error
-    end.
