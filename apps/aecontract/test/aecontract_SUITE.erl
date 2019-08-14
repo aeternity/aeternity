@@ -3929,19 +3929,15 @@ sophia_big_map_benchmark(Cfg) ->
     Ct  = ?call(create_contract, Acc, maps_benchmark, {?cid(<<777:256>>), #{}}),
     Ms  = fun(T) -> io_lib:format("~.2fms", [T / 1000]) end,
     _   = [ begin
-                erlang:garbage_collect(),
-                {T, {_, G}} = timer:tc(fun() ->
-                            ?call(call_contract, Acc, Ct, update, {tuple, []}, {I, I + Batch - 1, integer_to_binary(I)},
-                                  #{ gas => 1000000000, return_gas_used => true })
-                            end),
-                io:format("~s (~p gas)\n", [Ms(T), G])
+                ?call(call_contract, Acc, Ct, update, {tuple, []}, {I, I + Batch - 1, integer_to_binary(I)}, #{ gas => 1000000000 }),
+                io:format(".")
             end || I <- lists:seq(0, N - 1, Batch) ],
     io:format("\n"),
     io:format("-- Timed call --\n"),
     {Time, {Val, GasGet}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, get, string, Key, #{ return_gas_used => true }) end),
     {Time1, {{}, GasNop}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, noop, {tuple, []}, {}, #{ return_gas_used => true }) end),
     io:format("Get: ~s (~p gas)\nNop: ~s (~p gas)\n", [Ms(Time), GasGet, Ms(Time1), GasNop]),
-    aect_contracts:state(aect_test_utils:get_contract(Ct, state())).
+    ok.
 
 sophia_pmaps(_Cfg) ->
     state(aect_test_utils:new_state()),
