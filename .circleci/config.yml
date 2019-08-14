@@ -106,6 +106,7 @@ references:
           && ./configure && make -j$(nproc) && sudo make install && sudo ldconfig
 
   tag_regex: &tag_regex /^v.*$/
+  master_branch: &master_branch master
 
   rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
   restore_rebar_cache: &restore_rebar_cache
@@ -254,7 +255,7 @@ references:
     run:
       name: Send failure notification
       environment:
-        NOTIFY_BRANCH: master
+        NOTIFY_BRANCH: *master_branch
         HOOK_TEMPLATE: |
           {
             "text": "CircleCI job **%s** failed on branch **%s** by @%s",
@@ -279,7 +280,7 @@ references:
     run:
       name: Send failure notification on system test
       environment:
-        NOTIFY_BRANCH: master
+        NOTIFY_BRANCH: *master_branch
         HOOK_TEMPLATE: |
           {
             "text": "CircleCI job **%s** failed on branch **%s** by @%s",
@@ -663,9 +664,11 @@ jobs:
           at: *packages_workspace
       - run:
           name: Upload build artifacts to central repository (AWS)
+          environment:
+            MASTER_BRANCH: *master_branch
           command: |
             envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
-            if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "master" ]; then
+            if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "${MASTER_BRANCH:?}" ]; then
               envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
             fi
       - *fail_notification
@@ -981,7 +984,7 @@ workflows:
                 - env/dev1
                 - env/dev2
                 - system-tests
-                - master
+                - *master_branch
 
       - docker_system_smoke_tests:
           requires:
@@ -1176,7 +1179,7 @@ workflows:
           filters:
             branches:
               only:
-                - master
+                - *master_branch
             tags:
               only: *tag_regex
 
@@ -1197,7 +1200,7 @@ workflows:
           filters:
             branches:
               only:
-                - master
+                - *master_branch
             tags:
               only: *tag_regex
 
@@ -1222,7 +1225,7 @@ workflows:
             - build_uml_diagrams
           filters:
             branches:
-              only: master
+              only: *master_branch
 
       - docker_test_push_branch:
           context: ae-node-builds
@@ -1244,7 +1247,7 @@ workflows:
           filters:
             branches:
               only:
-                - master
+                - *master_branch
 
       - deploy_next:
           context: ae-node-builds
@@ -1261,7 +1264,7 @@ workflows:
             - linux_package
           filters:
             branches:
-              only: master
+              only: *master_branch
 
       - deploy_dev1:
           context: ae-node-builds
@@ -1466,6 +1469,6 @@ workflows:
           filters:
             branches:
               only:
-                - master
+                - *master_branch
     jobs:
       - docker_system_tests
