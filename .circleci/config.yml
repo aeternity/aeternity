@@ -664,11 +664,9 @@ jobs:
           at: *packages_workspace
       - run:
           name: Upload build artifacts to central repository (AWS)
-          environment:
-            MASTER_BRANCH: *master_branch
           command: |
             envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
-            if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "${MASTER_BRANCH:?}" ]; then
+            if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "master" ]; then
               envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}.tar.gz
             fi
       - *fail_notification
@@ -1225,7 +1223,7 @@ workflows:
             - build_uml_diagrams
           filters:
             branches:
-              only: *master_branch
+              only: master
 
       - docker_test_push_branch:
           context: ae-node-builds
