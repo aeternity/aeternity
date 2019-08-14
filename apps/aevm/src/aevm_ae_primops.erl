@@ -672,7 +672,7 @@ crypto_call(_, _, _, _) ->
 
 crypto_call_ecrecover_secp256k1(_Gas, Data, State) ->
     ?TEST_LOG("ecrecover data = ~p", [Data]),
-    [MsgHash0, Sig0] = get_args([hash_t(), sign_t()], Data),
+    [MsgHash0, Sig0] = get_args([hash_t(), bytes_t(65)], Data),
     ?TEST_LOG("ecrecover Hash0 = ~p, Sig0 = ~p", [MsgHash0, Sig0]),
     MsgHash = <<MsgHash0:32/unit:8>>,
     ?TEST_LOG("ecrecover Hash = ~p", [MsgHash]),

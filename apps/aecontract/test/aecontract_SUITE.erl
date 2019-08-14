@@ -1404,6 +1404,7 @@ make_calldata_from_id(Id, Fun, Args, State) ->
 format_aevm_args(?cid(<<N:256>>)) -> N;
 format_aevm_args(?hsh(<<N:256>>)) -> N;
 format_aevm_args(?sig(<<W1:256, W2:256>>)) -> {W1, W2};
+format_aevm_args(?sig(<<W0:8, W1:256, W2:256>>)) -> {W0, W1, W2};
 format_aevm_args(?oid(<<N:256>>)) -> N;
 format_aevm_args(?qid(<<N:256>>)) -> N;
 format_aevm_args(<<N:256>>) -> N;
@@ -4435,15 +4436,25 @@ sophia_crypto(_Cfg) ->
                                 , {test_string_verify_secp256k1, <<"Not the secret message">>, false}] ],
 
     %% Test ecrecover
-    SECP_Sig_v = ?sig(aeu_crypto:ecdsa_add_v(aeu_crypto:ecdsa_from_der_sig(SECP_Der_Sig))),
+    %%   These static examples are taken from
+    %%   https://github.com/aeternity/parity-ethereum/blob/master/ethcore/builtin/src/lib.rs#L656
+
+    GoodHexSig = "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001b650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03",
+    GoodHexAcc = "000000000000000000000000c08b5542d177ac6686946920409741463a15dddb",
+    BadHexSig = "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001a650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03",
+    BadHexAcc = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+
+    <<GoodMsg:32/binary, _:31/binary, GoodSig:65/binary>> = aeu_hex:hex_to_bin(GoodHexSig),
+    <<BadMsg:32/binary, _:31/binary, BadSig:65/binary>> = aeu_hex:hex_to_bin(BadHexSig),
 
     [ begin
-          TestRes = ?call(call_contract, Acc, IdC, Fun, word, {Msg, SECP_Sig_v}),
+          TestRes = ?call(call_contract, Acc, IdC, Fun, word, {Msg, Sig}),
           ?assertMatchAEVM2OOG(Exp, TestRes),
           ?assertMatchFATE(Exp, TestRes)
-      end || {Fun, Msg, Exp} <- [ {test_recover_secp256k1, ?hsh(MsgHash), Acc}
-                                , {test_recover_secp256k1, ?hsh(PubKey), []}
-                                ] ],
+      end || {Fun, Msg, Sig, Exp} <-
+             [ {test_recover_secp256k1, ?hsh(GoodMsg), ?sig(GoodSig), aeu_hex:hex_to_bin(GoodHexAcc)}
+             , {test_recover_secp256k1, ?hsh(BadMsg), ?sig(BadSig), aeu_hex:hex_to_bin(BadHexAcc)}
+             ] ],
 
     %% Test hash functions
     String = <<"12345678901234567890123456789012-andsomemore">>,

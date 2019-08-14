@@ -43,8 +43,11 @@ ecrecover(secp256k1, Hash, Sig) ->
     % ecrecover expects the signature to be 96 bytes long
     Input = <<Hash/binary, 0:(8*31), Sig/binary>>,
     case ecrecover:ecrecover(Input) of
+        {ok, []} ->
+            {ok, <<>>};
         {ok, Res} ->
-            {ok, erlang:list_to_binary(Res)};
+            R = erlang:list_to_binary(Res),
+            {ok, R};
         Err ->
             Err
     end.
