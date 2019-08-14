@@ -181,7 +181,7 @@ make_calldata(Code, Fun, Args) ->
             ?ABI_AEVM_SOPHIA_1 -> aevm;
             ?ABI_FATE_SOPHIA_1 -> fate
         end,
-    {ok, Calldata} = aeso_compiler:create_calldata(Code, Fun, Args, [{backend, Backend}]),
+    {ok, Calldata} = aeso_compiler:create_calldata(Code, Fun, Args, [no_implicit_stdlib, {backend, Backend}]),
     Calldata.
 
 get_contract(Name) ->
