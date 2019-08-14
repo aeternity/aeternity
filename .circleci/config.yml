@@ -810,6 +810,11 @@ jobs:
       - *install_otp
       - *install_libsodium
       - *restore_machine_build_cache
+      # make sure deps are up to date - this is faster than invalidating the old cache
+      - run:
+          name: Check deps
+          command: |
+            ./rebar3 as system_test upgrade
       # keep user preparation step after cache restore because of perms
       - *prepare_ubuntu_user
       - *install_system_test_deps
