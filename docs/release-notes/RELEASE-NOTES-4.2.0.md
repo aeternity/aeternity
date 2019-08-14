@@ -4,7 +4,7 @@
 It includes the following changes:
 * Localnet setup (docker-compose) has been improved by adding node API compatibility of the internal endpoints,
   e.g. `/v2/debug` is now available without prefix. The `/internal` prefix is now deprecated.
-* Off-chain updates can now still be completed even if one of the Websocket clients is off-line
+* Off-chain updates can now still be completed even if one of the Websocket clients is off-line.
   If the originator manages to get the initial update request co-signed 'out-of-band', the
   responding FSM will proceed as if it received a successful signing response from the client.
 
