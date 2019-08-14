@@ -2,18 +2,6 @@
 
 [This][this-release] is a maintenance release.
 It:
-* Makes State Channel FSM more robust to timeouts.
-  If one of the peers refuses signing the closing transaction while the channel is not active then the request may timeout without killing the FSM.
-* Improves State Channel FSM to compute transaction fees in a dynamic manner.
-  This will usually result in smaller fees being paid by participants.
-* Enhances the State Channel user experience adding info regarding timeouts.
-  The process that handles the state for the State Channel client in the node
-  has a list of different timeouts. They define different time frames for
-  certain events to be completed. Running out of time is a violation of the
-  off-chain protocol so if it happens - the connection is closed and it is up
-  to the State Channel client how to proceed next. This enhances user
-  experience adding a new info message for the timeouts.
-* Enables State Channels Websocket clients to reconnect and to re-attach to the FSM, using a special signed offchain transaction. While the client is disconnected, the corresponding FSM will reject requests that require signatures.
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v4.1.0
 
