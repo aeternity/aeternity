@@ -3,7 +3,7 @@
 [This][this-release] is a maintenance release.
 It:
 
-[this-release]: https://github.com/aeternity/aeternity/releases/tag/v4.1.0
+[this-release]: https://github.com/aeternity/aeternity/releases/tag/v4.2.0
 
 This release is backward compatible with previous `v4.*` releases.
 
@@ -23,8 +23,8 @@ You can run a node by either:
 * Running the published [Docker image `aeternity/aeternity`][docker]; or
 * [Building a release binary from source][build].
 
-[docker]: https://github.com/aeternity/aeternity/blob/v4.1.0/docs/docker.md
-[build]: https://github.com/aeternity/aeternity/blob/v4.1.0/docs/build.md
+[docker]: https://github.com/aeternity/aeternity/blob/v4.2.0/docs/docker.md
+[build]: https://github.com/aeternity/aeternity/blob/v4.2.0/docs/build.md
 
 The instructions for configuring the node using the Docker image are in [the dedicated separate document][docker].
 
@@ -36,9 +36,9 @@ The node user API is documented:
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
 
-[swagger-yaml]: https://github.com/aeternity/aeternity/blob/v4.1.0/config/swagger.yaml
-[swagger-ui]: https://aeternity.github.io/api-docs/?config=https://raw.githubusercontent.com/aeternity/aeternity/v4.1.0/apps/aehttp/priv/swagger.json
-[api-doc]: https://github.com/aeternity/protocol/blob/aeternity-node-v4.1.0/node/api/README.md
+[swagger-yaml]: https://github.com/aeternity/aeternity/blob/v4.2.0/config/swagger.yaml
+[swagger-ui]: https://aeternity.github.io/api-docs/?config=https://raw.githubusercontent.com/aeternity/aeternity/v4.2.0/apps/aehttp/priv/swagger.json
+[api-doc]: https://github.com/aeternity/protocol/blob/aeternity-node-v4.2.0/node/api/README.md
 
 ## Install node
 
