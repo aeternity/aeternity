@@ -592,6 +592,16 @@ sc_ws_update_(Config) ->
          responder]),
     ok.
 
+sc_ws_update_basic_round_(Round0, Config) ->
+    Participants = proplists:get_value(participants, Config),
+    Conns = proplists:get_value(channel_clients, Config),
+    lists:foldl(
+      fun(Role, Round) ->
+              channel_update(Conns, Role, Participants, 1,
+                             Round, _TestErrors = false, Config),
+              Round + 1
+      end, Round0, [initiator, responder]).
+
 channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
                StarterRole,
                #{initiator := #{pub_key := IPubkey,
@@ -957,15 +967,18 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
                                                                       Config),
     {_IStartB, _RStartB} = channel_participants_balances(IPubKey, RPubKey),
     #{initiator := IConnPid,
-      responder := RConnPid} = proplists:get_value(channel_clients, Config),
-    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, on_chain_tx]),
-    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, on_chain_tx]),
+      responder := RConnPid} = Conns
+        = proplists:get_value(channel_clients, Config),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [info]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [info]),
 
     CloseSolo =
         fun(CloserPubkey, CloserConn, CloserPrivKey) ->
-                ws_send_tagged(CloserConn, <<"channels.close_solo">>, #{}, Config),
-                #{signed_tx := CSTx} = channel_sign_tx(CloserPubkey, CloserConn, CloserPrivKey,
-                                                       <<"channels.close_solo_sign">>, Config),
+                ws_send_tagged(CloserConn, <<"channels.close_solo">>,
+                               #{}, Config),
+                {ok, CSTx} = sign_tx(CloserConn, <<"close_solo_sign">>,
+                                     <<"channels.close_solo_sign">>,
+                                     CloserPrivKey, Config),
                 CSTx
         end,
     CloseSoloTx = case Closer of
@@ -973,12 +986,14 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
                       responder -> CloseSolo(RPubKey, RConnPid, RPrivKey)
                   end,
 
-    ok = wait_for_signed_transaction_in_block(CloseSoloTx),
+    {ok, [ #{<<"tx">> := EncodedSignedSoloTx}
+         , #{<<"tx">> := EncodedSignedSoloTx} ]} =
+        wait_for_onchain_tx_events(
+          Conns, #{},
+          fun() ->
+                  ok = wait_for_signed_transaction_in_block(CloseSoloTx)
+          end, Config),
 
-    {ok, #{<<"tx">> := EncodedSignedSoloTx}} = wait_for_channel_event(
-                                                 IConnPid, on_chain_tx, Config),
-    {ok, #{<<"tx">> := EncodedSignedSoloTx}} = wait_for_channel_event(
-                                                 RConnPid, on_chain_tx, Config),
     {ok, SSignedSoloTx} = aeser_api_encoder:safe_decode(transaction, EncodedSignedSoloTx),
     SignedSoloTx = aetx_sign:deserialize_from_binary(SSignedSoloTx),
     SoloTx = aetx_sign:tx(SignedSoloTx),
@@ -1005,8 +1020,8 @@ settle_(Config, Closer) when Closer =:= initiator;
                          end,
     ws_send_tagged(ConnPid, <<"channels.settle">>, #{}, Config),
 
-    #{signed_tx := SettleTx} = channel_sign_tx(PubKey, ConnPid, PrivKey,
-                                               <<"channels.settle_sign">>, Config),
+    {ok, SettleTx} = sign_tx(ConnPid, <<"settle_sign">>,
+                             <<"channels.settle_sign">>, PrivKey, Config),
 
     ok = wait_for_signed_transaction_in_block(SettleTx),
 
@@ -2057,12 +2072,16 @@ sc_ws_contract_(Config, TestName, Owner) ->
     ok.
 
 sc_ws_get_poi_(ConnPid, Scope, Config) ->
-    ws_send_tagged(ConnPid, <<"channels.get.poi">>, Scope, Config),
-    {ok, <<"poi">>, #{ channel_id := ChId
-                     , data := #{<<"poi">> := Poi}}} =
-        wait_for_channel_event_full(ConnPid, get, Config),
-    {ok, #{ channel_id => ChId
-          , poi => Poi}}.
+    with_registered_events(
+      [get], [ConnPid],
+      fun() ->
+              ws_send_tagged(ConnPid, <<"channels.get.poi">>, Scope, Config),
+              {ok, <<"poi">>, #{ channel_id := ChId
+                               , data := #{<<"poi">> := Poi}}} =
+                  wait_for_channel_event_full(ConnPid, get, Config),
+              {ok, #{ channel_id => ChId
+                    , poi => Poi}}
+      end).
 
 contract_id_from_create_update(Owner, OffchainTx) ->
     {CB, Tx} = aetx:specialize_callback(OffchainTx),
@@ -2429,13 +2448,34 @@ sc_ws_snapshot_solo(Config0) ->
     %% an offchain_tx
     Ps = proplists:get_value(participants, Config),
     Cs = proplists:get_value(channel_clients, Config),
-    {error, _} = perform_snapshot_solo(initiator, Ps, Cs, Config), % no offchain tx
+    Round0 = 2,
+    ct:log("*** Initiator tries snapshot before there's an offchain_tx"
+           " - should fail ***", []),
+    {error, _} = perform_snapshot_solo(initiator, Round0,
+                                       Ps, Cs, Config), % no offchain tx
     assert_no_registered_events(?LINE, Config),
-    ok = sc_ws_update_(Config),
-    ok = perform_snapshot_solo(initiator, Ps, Cs, Config),
-    {error, _} = perform_snapshot_solo(responder, Ps, Cs, Config), % same round
-    ok = sc_ws_update_(Config),
-    ok = perform_snapshot_solo(responder, Ps, Cs, Config),
+    ct:log("*** Perform updates to create an offchain_tx"
+           " - should succeed ***", []),
+    Round1 = sc_ws_update_basic_round_(Round0, Config),
+    ct:log("*** Initiator tries snapshot - should succeed ***", []),
+    {ok, Round2} = perform_snapshot_solo(initiator, Round1,
+                                         Ps, Cs, Config),
+    ct:log("*** Responder tries snapshot (no interleaved updates)"
+           " - should succeed ***", []),
+    {ok, no_update} = perform_snapshot_solo(responder, no_update,
+                                            Ps, Cs, Config),
+    ct:log("*** Responder tries another snapshot"
+           " - should fail (same round) ***", []),
+    {error, _} = perform_snapshot_solo(responder, Round2,
+                                       Ps, Cs, Config), % same round
+    ct:log("*** Perform another round of updates"
+           " - should succeed ***", []),
+    Round3 = sc_ws_update_basic_round_(Round2 + 1, Config),
+    ct:log("*** Responder tries another snapshot"
+           " - should succeed ***", []),
+    {ok, _Round4} = perform_snapshot_solo(responder, Round3,
+                                          Ps, Cs, Config),
+    ct:log("*** Closing ***", []),
     ok = sc_ws_close_(Config).
 
 assert_no_registered_events(L, Config) ->
@@ -2445,39 +2485,87 @@ assert_no_registered_events(L, Config) ->
     {L, ok} = {L, ?WS:get_registered_events(ConnPidR)},
     ok.
 
-perform_snapshot_solo(Role, Participants, Conns, Config) ->
+perform_snapshot_solo(Role, Round, Participants, Conns, Config) ->
     #{ priv_key := Privkey } = maps:get(Role, Participants),
     ConnPid = maps:get(Role, Conns),
-    OtherPid = maps:get(other_role(Role), Conns),
-    Events = [sign, update, on_chain_tx, info],
-    ok = ?WS:register_test_for_channel_events(ConnPid, Events),
-    ok = ?WS:register_test_for_channel_events(OtherPid, [on_chain_tx]),
     try ?WS:json_rpc_call(
            ConnPid, #{ <<"method">> => <<"channels.snapshot_solo">>
                      , <<"params">> => #{} }) of
         <<"ok">> ->
-            sign_tx(ConnPid, <<"snapshot_solo_tx">>, <<"channels.snapshot_solo_sign">>,
-                    Privkey, Config),
+            {ok, SignedTx}
+                = sign_tx(ConnPid, <<"snapshot_solo_tx">>,
+                          <<"channels.snapshot_solo_sign">>, Privkey, Config),
+            TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+            Round1 = case Round of
+                         no_update ->
+                             Round;
+                         _ when is_integer(Round) ->
+                             ct:pal("*** Verify that updates can be performed"
+                                    " while waiting for snapshot confirmation ***", []),
+                             sc_ws_update_basic_round_(Round+1, Config)
+                     end,
+            wait_for_onchain_tx_events(
+              Conns, #{ <<"type">> => <<"channel_snapshot_solo_tx">> },
+              fun() ->
+                      wait_for_tx_hash_on_chain(TxHash)
+              end, Config),
             MinBlocksToMine = ?DEFAULT_MIN_DEPTH,
-            aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
-                                               MinBlocksToMine +1),
-            {ok, #{ <<"type">> := <<"channel_snapshot_solo_tx">> }}
-                = wait_for_channel_event(ConnPid, on_chain_tx, Config),
-            {ok, #{ <<"type">> := <<"channel_snapshot_solo_tx">> }}
-                = wait_for_channel_event(OtherPid, on_chain_tx, Config),
-            {ok, #{ <<"event">> := <<"min_depth_achieved">>
-                  , <<"type">>  := <<"channel_snapshot_solo_tx">> }}
-                = wait_for_channel_event(ConnPid, info, Config),
-            ok
+            wait_for_info_msg(
+              ConnPid, #{ <<"event">> => <<"min_depth_achieved">>
+                        , <<"type">>  => <<"channel_snapshot_solo_tx">> },
+              fun() ->
+                      aecore_suite_utils:mine_key_blocks(
+                        aecore_suite_utils:node_name(?NODE),
+                        MinBlocksToMine +1)
+              end, Config),
+            {ok, Round1}
     catch
         error:Other ->
             ct:log("Got Other = ~p", [Other]),
             {error, Other}
-    after
-        ok = ?WS:unregister_test_for_channel_events(ConnPid, Events),
-        ok = ?WS:unregister_test_for_channel_events(OtherPid, [on_chain_tx])
     end.
 
+wait_for_onchain_tx_events(#{ initiator := PidI
+                            , responder := PidR }, Pat, F, Config) ->
+    wait_for_onchain_tx_events([PidI, PidR], Pat, F, Config);
+wait_for_onchain_tx_events(Pids, Pat, F, Config) when is_list(Pids)
+                                                    , is_map(Pat)
+                                                    , is_function(F, 0) ->
+    with_registered_events(
+      [on_chain_tx], Pids,
+      fun() ->
+              F(),
+              Msgs =
+                  lists:map(
+                    fun(Pid1) ->
+                            {ok, M1} = wait_for_channel_event_match(
+                                         Pid1, on_chain_tx, Pat, Config),
+                            M1
+                    end, Pids),
+              {ok, Msgs}
+      end).
+
+wait_for_info_msg(Pid, Pat, F, Config) ->
+    wait_for_info_msgs([Pid], Pat, F, Config).
+
+wait_for_info_msgs(#{ initiator := PidI
+                    , responder := PidR }, Pat, F, Config) ->
+    wait_for_info_msgs([PidI, PidR], Pat, F, Config);
+wait_for_info_msgs(Pids, Pat, F, Config) when is_list(Pids)
+                                            , is_map(Pat)
+                                            , is_function(F, 0) ->
+    with_registered_events(
+      [info], Pids,
+      fun() ->
+              F(),
+              Msgs =
+                  lists:map(
+                    fun(Pid1) ->
+                            {ok, Msg} = wait_for_channel_event_match(Pid1, info, Pat, Config),
+                            Msg
+                    end, Pids),
+              {ok, Msgs}
+      end).
 
 sc_ws_basic_client_reconnect_i(Config) ->
     sc_ws_basic_client_reconnect_(initiator, Config).
@@ -2698,6 +2786,7 @@ sc_ws_slash_(Config0) ->
       fun({WhoCloses, WhoSlashes, WhoSettles}) ->
               S = ?SLOGAN([WhoCloses, ",", WhoSlashes]),
               Config = sc_ws_open_(Config0, #{slogan => S}),
+              ct:pal("Channel opened, Slogan = ~p", [S]),
               sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles)
       end, [{A,B, C} || A <- [initiator],
                         B <- [initiator, responder],
@@ -2716,9 +2805,7 @@ sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
     #{initiator := IConnPid,
       responder := RConnPid} = Conns =
         proplists:get_value(channel_clients, Config),
-    MyEvents = [sign, info, get, on_chain_tx],
-    Pids = [IConnPid, RConnPid],
-    ok = register_channel_events(MyEvents, Pids),
+    %%
     %% Fetch ChId and POI for initial state
     PoiScope = #{accounts => [aeser_api_encoder:encode(account_pubkey, Acc)
                               || Acc <- [IPubKey, RPubKey]]},
@@ -2729,46 +2816,37 @@ sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
     Poi = aec_trees:deserialize_poi(PoiSer),
     %% create a new offchain state
 
-    avoid_double_reg(
-      MyEvents, Pids,
+    channel_update(Conns, initiator, Participants, 1, 2,
+                   _TestErrors = false, Config),
+    wait_for_info_msgs(
+      Conns, #{ <<"event">> => <<"closing">> },
       fun() ->
-              channel_update(Conns, initiator, Participants, 1, 2,
-                             _TestErrors = false, Config)
-      end),
-    sc_ws_cheating_close_solo_(Config, ChId, Poi, WhoCloses),
-    %%
-    %% Both sides detect slash potential
-    %%
-    SlasherPid = maps:get(WhoSlashes, Conns),
-    SlasherOtherPid = maps:get(other(WhoSlashes), Conns),
-    {ok, #{ <<"info">> := <<"can_slash">>
-          , <<"type">> := <<"channel_offchain_tx">> }}
-        = wait_for_channel_event(SlasherPid, on_chain_tx, Config),
-    {ok, #{ <<"info">> := <<"can_slash">>
-          , <<"type">> := <<"channel_offchain_tx">> }}
-        = wait_for_channel_event(SlasherOtherPid, on_chain_tx, Config),
-    {ok, #{<<"event">> := <<"closing">>}}
-        = wait_for_channel_event(SlasherPid, info, Config),
-    {ok, #{<<"event">> := <<"closing">>}}
-        = wait_for_channel_event(SlasherOtherPid, info, Config),
+              %%
+              %% Both sides detect slash potential
+              %%
+              wait_for_onchain_tx_events(
+                Conns, #{ <<"info">> => <<"can_slash">>
+                        , <<"type">> => <<"channel_offchain_tx">> },
+                fun() ->
+                        sc_ws_cheating_close_solo_(Config, ChId, Poi, WhoCloses)
+                end, Config)
+      end, Config),
     %%
     %% WhoSlashes initiates a slash
     %%
+    SlasherPid = maps:get(WhoSlashes, Conns),
+    SlasherOtherPid = maps:get(other(WhoSlashes), Conns),
     {ok, <<"ok">>} = request_slash(SlasherPid),
     {ok, SignedSlashTx} = sign_slash_tx(SlasherPid, WhoSlashes, Config),
     ct:log("SignedSlashTx = ~p", [SignedSlashTx]),
     SlashTxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedSlashTx)),
     ct:log("SlashTxHash = ~p", [SlashTxHash]),
-    ok = wait_for_tx_hash_on_chain(SlashTxHash),
-    %%
-    %% Both sides detect slash tx
-    %%
-    {ok, #{ <<"info">> := <<"solo_closing">>
-          , <<"type">> := <<"channel_slash_tx">> }}
-        = wait_for_channel_event(SlasherPid, on_chain_tx, Config),
-    {ok, #{ <<"info">> := <<"solo_closing">>
-          , <<"type">> := <<"channel_slash_tx">> }}
-        = wait_for_channel_event(SlasherOtherPid, on_chain_tx, Config),
+    wait_for_onchain_tx_events(
+      Conns, #{ <<"info">> => <<"solo_closing">>
+              , <<"type">> => <<"channel_slash_tx">> },
+      fun() ->
+              ok = wait_for_tx_hash_on_chain(SlashTxHash)
+      end, Config),
 
     settle_(Config, WhoSettles),
     ok.
@@ -2782,16 +2860,20 @@ sign_slash_tx(ConnPid, Who, Config) ->
     sign_tx(ConnPid, <<"slash_tx">>, <<"channels.slash_sign">>, PrivKey, Config).
 
 sign_tx(ConnPid, Tag, ReplyMethod, PrivKey, Config) ->
-    {ok, Tag, #{<<"signed_tx">> := EncSTx}} =
-        wait_for_channel_event(ConnPid, sign, Config),
-    {ok, BinSTx} = aeser_api_encoder:safe_decode(transaction, EncSTx),
-    STx = aetx_sign:deserialize_from_binary(BinSTx),
-    SignedTx = aec_test_utils:co_sign_tx(STx, PrivKey),
-    EncSignedTx = aeser_api_encoder:encode(
-                    transaction,
-                    aetx_sign:serialize_to_binary(SignedTx)),
-    ws_send_tagged(ConnPid, ReplyMethod, #{signed_tx => EncSignedTx}, Config),
-    {ok, SignedTx}.
+    with_registered_events(
+      [sign], [ConnPid],
+      fun() ->
+              {ok, Tag, #{<<"signed_tx">> := EncSTx}} =
+                  wait_for_channel_event(ConnPid, sign, Config),
+              {ok, BinSTx} = aeser_api_encoder:safe_decode(transaction, EncSTx),
+              STx = aetx_sign:deserialize_from_binary(BinSTx),
+              SignedTx = aec_test_utils:co_sign_tx(STx, PrivKey),
+              EncSignedTx = aeser_api_encoder:encode(
+                              transaction,
+                              aetx_sign:serialize_to_binary(SignedTx)),
+              ws_send_tagged(ConnPid, ReplyMethod, #{signed_tx => EncSignedTx}, Config),
+              {ok, SignedTx}
+      end).
 
 register_channel_events(Events, Pids) ->
     [ok = ?WS:register_test_for_channel_events(Pid, Events)
@@ -2802,6 +2884,12 @@ unregister_channel_events(Events, Pids) ->
     [ok = ?WS:unregister_test_for_channel_events(Pid, Events)
      || Pid <- Pids],
     ok.
+
+with_registered_events(Events, Pids, F) ->
+    ok = register_channel_events(Events, Pids),
+    Res = F(),
+    ok = unregister_channel_events(Events, Pids),
+    Res.
 
 avoid_double_reg(Events, Pids, F) ->
     ok = unregister_channel_events(Events, Pids),
@@ -3087,14 +3175,28 @@ ws_get_call_params(Update, UnsignedTx) ->
 %%     wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>).
 
 wait_for_channel_event(ConnPid, Action, Config) ->
+    wait_for_channel_event_match(ConnPid, Action, #{}, Config).
+
+wait_for_channel_event_match(ConnPid, Action, Pat, Config) ->
     case wait_for_channel_event_(ConnPid, Action, sc_ws_protocol(Config)) of
         {ok, #{error := Error}} ->
             {ok, Error};
         {ok, #{data := Data}} ->
+            match_msg(Pat, Data),
             {ok, Data};
         {ok, Tag, #{data := Data}} ->
+            match_msg(Pat, Data),
             {ok, Tag, Data}
     end.
+
+match_msg(Pat, Msg) ->
+    maps:fold(
+      fun(Key, Val, ok) when is_map(Val) ->
+              match_msg(Val, maps:get(Key, Msg));
+         (Key, Val, ok) ->
+              Val = maps:get(Key, Msg),
+              ok
+      end, ok, Pat).
 
 wait_for_channel_event_full(ConnPid, Action, Config) ->
     wait_for_channel_event_(ConnPid, Action, sc_ws_protocol(Config)).
