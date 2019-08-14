@@ -4442,15 +4442,15 @@ sophia_crypto(_Cfg) ->
     GoodHexSig = "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001b650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03",
     GoodHexAcc = "000000000000000000000000c08b5542d177ac6686946920409741463a15dddb",
     BadHexSig = "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001a650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03",
-    BadHexAcc = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    BadHexAcc = "0000000000000000000000000000000000000000000000000000000000000000",
 
     <<GoodMsg:32/binary, _:31/binary, GoodSig:65/binary>> = aeu_hex:hex_to_bin(GoodHexSig),
     <<BadMsg:32/binary, _:31/binary, BadSig:65/binary>> = aeu_hex:hex_to_bin(BadHexSig),
 
     [ begin
           TestRes = ?call(call_contract, Acc, IdC, Fun, word, {Msg, Sig}),
-          ?assertMatchAEVM2OOG(Exp, TestRes),
-          ?assertMatchFATE(Exp, TestRes)
+          ?assertMatchAEVM2OOG(Exp, <<TestRes:256>>),
+          ?assertMatchFATE({bytes, Exp}, TestRes)
       end || {Fun, Msg, Sig, Exp} <-
              [ {test_recover_secp256k1, ?hsh(GoodMsg), ?sig(GoodSig), aeu_hex:hex_to_bin(GoodHexAcc)}
              , {test_recover_secp256k1, ?hsh(BadMsg), ?sig(BadSig), aeu_hex:hex_to_bin(BadHexAcc)}

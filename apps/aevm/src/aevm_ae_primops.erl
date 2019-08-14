@@ -671,16 +671,11 @@ crypto_call(_, _, _, _) ->
     {error, out_of_gas}.
 
 crypto_call_ecrecover_secp256k1(_Gas, Data, State) ->
-    ?TEST_LOG("ecrecover data = ~p", [Data]),
     [MsgHash0, Sig0] = get_args([hash_t(), bytes_t(65)], Data),
-    ?TEST_LOG("ecrecover Hash0 = ~p, Sig0 = ~p", [MsgHash0, Sig0]),
     MsgHash = <<MsgHash0:32/unit:8>>,
-    ?TEST_LOG("ecrecover Hash = ~p", [MsgHash]),
-    Sig     = words_to_bin(64, Sig0),
-    ?TEST_LOG("ecrecover Sig = ~p", [Sig]),
+    <<_:31/binary, Sig:65/binary>> = words_to_bin(96, Sig0),
     Res = aeu_crypto:ecrecover(secp256k1, MsgHash, Sig),
-    ?TEST_LOG("ecrecover Res = ~p", [Res]),
-    {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1), State}.
+    {ok, {ok, Res}, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1), State}.
 
 crypto_call_ecverify(_Gas, Data, State) ->
     [MsgHash, PK, Sig] = get_args([hash_t(), word, sign_t()], Data),

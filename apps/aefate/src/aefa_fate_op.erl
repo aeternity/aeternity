@@ -1606,7 +1606,7 @@ op(bits_difference, A, B)
 op(ecrecover_secp256k1, Msg, Sig) when ?IS_FATE_BYTES(32, Msg)
                                      , ?IS_FATE_BYTES(65, Sig) ->
     {?FATE_BYTES(Msg1), ?FATE_BYTES(Sig1)} = {Msg, Sig},
-    aeu_crypto:ecrecover(secp256k1, Msg1, Sig1).
+    ?FATE_BYTES(aeu_crypto:ecrecover(secp256k1, Msg1, Sig1)).
 
 %% Terinay operations
 op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
