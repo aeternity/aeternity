@@ -10,6 +10,13 @@
          verify/4
         ]).
 
+%% Mocks
+-ifdef(TEST).
+-export([mock_block_mining_init/0,
+         mock_block_mining_end/0
+        ]).
+-endif.
+
 -define(DEFAULT_EXECUTABLE_GROUP   , <<"aecuckoo">>).
 -define(DEFAULT_EXTRA_ARGS         , <<>>).
 -define(DEFAULT_HEX_ENCODED_HEADER , false).
@@ -150,3 +157,26 @@ get_edge_bits() ->
             end
     end.
 
+%% Mocks
+-ifdef(TEST).
+aeminer_pow_cuckoo_verify_mock(_Data, _Nonce, _Soln, _Target, _EdgeBits) ->
+    true.
+
+aeminer_pow_cuckoo_generate_mock(_Data, _Target, _Nonce, _Config, _MinerInstance) ->
+    %% Simulate doing a lot of work :)
+    timer:sleep(50),
+    {ok, {1337, [1337]}}.
+
+mock_block_mining_init() ->
+    %% This should avoid spawning a separate process and consuming CPU resources which could be used to parallelize tests
+    lager:debug("Mocking block mining"),
+    ok = meck:new(aeminer_pow_cuckoo, [no_link, no_history, passthrough]),
+    ok = meck:expect(aeminer_pow_cuckoo, verify, fun aeminer_pow_cuckoo_verify_mock/5),
+    ok = meck:expect(aeminer_pow_cuckoo, generate, fun aeminer_pow_cuckoo_generate_mock/5),
+    ok.
+
+mock_block_mining_end() ->
+    lager:debug("Unloading block mining mock"),
+    ok = meck:unload(aeminer_pow_cuckoo),
+    ok.
+-endif.
