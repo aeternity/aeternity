@@ -6,6 +6,8 @@
 %%%=============================================================================
 -module(aens_revoke_tx).
 
+-include("aens.hrl").
+
 -behavior(aetx).
 
 %% Behavior API
@@ -60,7 +62,7 @@ new(#{account_id := AccountId,
       name_id    := NameId,
       fee        := Fee} = Args) ->
     account = aeser_id:specialize_type(AccountId),
-    name    = aeser_id:specialize_type(NameId),
+    {name, <<_:?NAME_HASH_BYTES/binary>>} = aeser_id:specialize(NameId),
     Tx = #ns_revoke_tx{account_id = AccountId,
                        nonce      = Nonce,
                        name_id    = NameId,
@@ -182,4 +184,3 @@ version(_) ->
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(_, _) ->
     true.
-

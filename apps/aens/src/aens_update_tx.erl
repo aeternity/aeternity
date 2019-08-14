@@ -7,6 +7,8 @@
 
 -module(aens_update_tx).
 
+-include("aens.hrl").
+
 -behavior(aetx).
 
 %% Behavior API
@@ -68,7 +70,7 @@ new(#{account_id := AccountId,
       client_ttl := ClientTTL,
       fee        := Fee} = Args) ->
     account = aeser_id:specialize_type(AccountId),
-    name    = aeser_id:specialize_type(NameId),
+    {name, <<_:?NAME_HASH_BYTES/binary>>} = aeser_id:specialize(NameId),
     %% TODO: check pointers: length, unique keys? unique ids?
     Tx = #ns_update_tx{account_id = AccountId,
                        nonce      = Nonce,
@@ -229,4 +231,3 @@ version(_) ->
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(_, _) ->
     true.
-

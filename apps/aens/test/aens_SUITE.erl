@@ -32,8 +32,7 @@
          revoke_negative/1,
          prune_preclaim/1,
          registrar_change/1,
-         subname/1,
-         subname_claim_as_name_negative/1]).
+         subname/1]).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -67,8 +66,7 @@ groups() ->
        revoke,
        revoke_negative,
        registrar_change,
-       subname,
-       subname_claim_as_name_negative
+       subname
       ]}
     ].
 
@@ -86,9 +84,10 @@ end_per_suite(_) ->
     [].
 
 init_per_testcase(subname, Cfg) ->
-    testcase_subname_ensure_lima(Cfg);
-init_per_testcase(subname_claim_as_name_negative, Cfg) ->
-    testcase_subname_ensure_lima(Cfg);
+    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+        true -> Cfg;
+        false -> {skip, subname_transaction_is_from_lima_or_never}
+    end;
 init_per_testcase(_, Cfg) ->
     Cfg.
 
@@ -286,6 +285,16 @@ claim_negative(Cfg) ->
     TxSpec6 = aens_test_utils:claim_tx_spec(PubKey, <<"abcdefghi">>, NameSalt, S1),
     {ok, Tx6} = aens_claim_tx:new(TxSpec6),
     {error, no_registrar} = aetx:process(Tx6, Trees, Env),
+
+    %% Test name contains several dots
+    SubnameAsName = <<"subname.name.test"/utf8>>,
+    {PubKey7, _Name, NameSalt7, S7} = preclaim([{name, SubnameAsName}]),
+    Trees7 = aens_test_utils:trees(S7),
+    TxSpec7 = aens_test_utils:claim_tx_spec(PubKey7, SubnameAsName, NameSalt7, S7),
+    {ok, Tx7} = aens_claim_tx:new(TxSpec7),
+    Env7      = aetx_env:tx_env(?PRE_CLAIM_HEIGHT + 1),
+    {error, name_is_invalid} = aetx:process(Tx7, Trees7, Env7),
+
     ok.
 
 claim_race_negative(_Cfg) ->
@@ -392,6 +401,12 @@ update_negative(Cfg) ->
     {ok, Tx7} = aens_update_tx:new(TxSpec7),
     {error, name_revoked} =
         aetx:process(Tx7, aens_test_utils:trees(S4), Env),
+
+    %% Test name contains several dots
+    SNameHash = aens_hash:name_hash(<<"sub.name.test">>),
+    TxSpec8 = aens_test_utils:update_tx_spec(PubKey, SNameHash, S4),
+    {'EXIT', {{badmatch, {name,_}}, [_|_]}} = (catch aens_update_tx:new(TxSpec8)),
+
     ok.
 
 %%%===================================================================
@@ -469,6 +484,12 @@ transfer_negative(Cfg) ->
     {ok, Tx6} = aens_transfer_tx:new(TxSpec6),
     {error, name_revoked} =
         aetx:process(Tx6, aens_test_utils:trees(S4), Env),
+
+    %% Test name contains several dots
+    {ok, NHash3} = aens:get_name_hash(<<"foo.bar.test">>),
+    TxSpec7 = aens_test_utils:transfer_tx_spec(PubKey, NHash3, PubKey, S1),
+    {'EXIT', {{badmatch, {name,_}}, [_|_]}} = (catch aens_transfer_tx:new(TxSpec7)),
+
     ok.
 
 %%%===================================================================
@@ -543,6 +564,12 @@ revoke_negative(Cfg) ->
     {ok, Tx6} = aens_revoke_tx:new(TxSpec6),
     {error, name_revoked} =
         aetx:process(Tx6, aens_test_utils:trees(S4), Env),
+
+    %% Test name contains several dots
+    SNameHash = aens_hash:name_hash(<<"sub.name.test">>),
+    TxSpec7 = aens_test_utils:revoke_tx_spec(PubKey, SNameHash, S4),
+    {'EXIT', {{badmatch, {name,_}}, [_|_]}} = (catch aens_revoke_tx:new(TxSpec7)),
+
     ok.
 
 %%%===================================================================
@@ -698,35 +725,6 @@ subname(_Cfg) ->
 
     [] = SNameHashes -- [SNameHash1, SNameHash2, SNameHash21, SNameHash54321],
 
-    %% attempt to revoke existing subname
-    RevokeTxSpec = aens_test_utils:revoke_tx_spec(PubKey, SNameHash21, S2),
-    {'EXIT', {{illegal_field,name_id,id,
-               {id,name, _}, id,
-               {id,name, _}},
-              [_|_]}} = (catch aens_revoke_tx:new(RevokeTxSpec)),
-
-    %% attempt to transfer existing subname
-    #{public := OtherPK} = enacl:sign_keypair(),
-    TransferTxSpec = aens_test_utils:transfer_tx_spec(PubKey, SNameHash21, OtherPK, S2),
-    {'EXIT', {{illegal_field,name_id,id,
-               {id,name, _}, id,
-               {id,name, _}},
-              [_|_]}} = (catch aens_transfer_tx:new(TransferTxSpec)),
-
-    %% attempt to update existing subname
-    UpdateTxSpec = aens_test_utils:update_tx_spec(PubKey, SNameHash21, S2),
-    {'EXIT', {{illegal_field,name_id,id,
-               {id,name, _}, id,
-               {id,name, _}},
-              [_|_]}} = (catch aens_update_tx:new(UpdateTxSpec)),
-
-    %% attempt to revoke existing subname
-    RevokeTxSpec = aens_test_utils:revoke_tx_spec(PubKey, SNameHash21, S2),
-    {'EXIT', {{illegal_field,name_id,id,
-               {id,name, _}, id,
-               {id,name, _}},
-              [_|_]}} = (catch aens_revoke_tx:new(RevokeTxSpec)),
-
     %% empty Subnames TX removes all subnames for a given name
     EmptyDef = #{},
 
@@ -744,19 +742,3 @@ subname(_Cfg) ->
     {[], false} = aens_state_tree:subnames_hashes(NHash, NTrees2, all),
 
     ok.
-
-subname_claim_as_name_negative(_Cfg) ->
-    SubnameAsName = <<"subname.name.test"/utf8>>,
-    {PubKey, _Name, NameSalt, S1} = preclaim([{name, SubnameAsName}]),
-    Trees = aens_test_utils:trees(S1),
-    TxSpec = aens_test_utils:claim_tx_spec(PubKey, SubnameAsName, NameSalt, S1),
-    {ok, Tx} = aens_claim_tx:new(TxSpec),
-    Env      = aetx_env:tx_env(?PRE_CLAIM_HEIGHT + 1),
-    {error, name_is_invalid} = aetx:process(Tx, Trees, Env),
-    ok.
-
-testcase_subname_ensure_lima(Cfg) ->
-    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
-        true -> Cfg;
-        false -> {skip, subname_transaction_is_from_lima_or_never}
-    end.

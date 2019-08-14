@@ -7,6 +7,8 @@
 
 -module(aens_transfer_tx).
 
+-include("aens.hrl").
+
 -behavior(aetx).
 
 %% Behavior API
@@ -68,7 +70,7 @@ new(#{account_id   := AccountId,
       recipient_id := RecipientId,
       fee          := Fee} = Args) ->
     account = aeser_id:specialize_type(AccountId),
-    name    = aeser_id:specialize_type(NameId),
+    {name, <<_:?NAME_HASH_BYTES/binary>>} = aeser_id:specialize(NameId),
     case aeser_id:specialize_type(RecipientId) of
         account -> ok;
         name    -> ok
@@ -222,4 +224,3 @@ version(_) ->
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(_, _) ->
     true.
-
