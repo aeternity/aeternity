@@ -217,10 +217,15 @@ pointers_list(Pointers) when is_map(Pointers) ->
 
 definition_list(Name, Definition) when is_map(Definition) ->
     maps:fold(
-      fun (SNamePrefix, SPointers, Acc) ->
+      fun (SNamePrefix, SPointers, Acc)
+            when is_binary(SNamePrefix), is_map(SPointers) ->
               SName = <<SNamePrefix/binary, ".", Name/binary>>,
               aens_utils:name_length_valid(SName) orelse
                   error({invalid_subname, SName}),
               {ok, SNameAscii} = aens_utils:ascii_encode(SName),
-              [{list_to_binary(SNameAscii), pointers_list(SPointers)} | Acc]
-      end, [], Definition).
+              [{list_to_binary(SNameAscii), pointers_list(SPointers)} | Acc];
+          (_, _, _) ->
+              error(invalid_subname_definition)
+      end, [], Definition);
+definition_list(_, _) ->
+    error(invalid_subname_definition).
