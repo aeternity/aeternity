@@ -219,7 +219,7 @@ types(?PRIM_CALL_ORACLE_CHECK_QUERY,_HeapValue,_Store,_State) ->
 types(?PRIM_CALL_SPEND,_HeapValue,_Store,_State) ->
     {[word], tuple0_t()};
 types(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1, _HeapValue, _Store, _State) ->
-    {[hash_t(), sign_t()], word};
+    {[hash_t(), bytes_t(65)], word};
 types(?PRIM_CALL_CRYPTO_ECVERIFY, _HeapValue, _Store, _State) ->
     {[word, word, sign_t()], word};
 types(?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1, _HeapValue, _Store, _State) ->
@@ -680,7 +680,7 @@ crypto_call_ecrecover_secp256k1(_Gas, Data, State) ->
     ?TEST_LOG("ecrecover Sig = ~p", [Sig]),
     Res = aeu_crypto:ecrecover(secp256k1, MsgHash, Sig),
     ?TEST_LOG("ecrecover Res = ~p", [Res]),
-    {ok, {ok, Res}, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1), State}.
+    {ok, Res, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1), State}.
 
 crypto_call_ecverify(_Gas, Data, State) ->
     [MsgHash, PK, Sig] = get_args([hash_t(), word, sign_t()], Data),

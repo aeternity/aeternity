@@ -4422,8 +4422,8 @@ sophia_crypto(_Cfg) ->
     %% SECP256K1
     {SECP_Pub0, SECP_Priv} = crypto:generate_key(ecdh, secp256k1),
     SECP_Pub = ?sig(aeu_crypto:ecdsa_from_der_pk(SECP_Pub0)),
-    SECP_Sig = ?sig(aeu_crypto:ecdsa_from_der_sig(
-                      crypto:sign(ecdsa, sha256, {digest, MsgHash}, [SECP_Priv, secp256k1]))),
+    SECP_Der_Sig = crypto:sign(ecdsa, sha256, {digest, MsgHash}, [SECP_Priv, secp256k1]),
+    SECP_Sig = ?sig(aeu_crypto:ecdsa_from_der_sig(SECP_Der_Sig)),
 
     [ begin
           TestRes = ?call(call_contract, Acc, IdC, Fun, bool, {Msg, SECP_Pub, SECP_Sig}),
@@ -4435,8 +4435,10 @@ sophia_crypto(_Cfg) ->
                                 , {test_string_verify_secp256k1, <<"Not the secret message">>, false}] ],
 
     %% Test ecrecover
+    SECP_Sig_v = ?sig(aeu_crypto:ecdsa_add_v(aeu_crypto:ecdsa_from_der_sig(SECP_Der_Sig))),
+
     [ begin
-          TestRes = ?call(call_contract, Acc, IdC, Fun, word, {Msg, SECP_Sig}),
+          TestRes = ?call(call_contract, Acc, IdC, Fun, word, {Msg, SECP_Sig_v}),
           ?assertMatchAEVM2OOG(Exp, TestRes),
           ?assertMatchFATE(Exp, TestRes)
       end || {Fun, Msg, Exp} <- [ {test_recover_secp256k1, ?hsh(MsgHash), Acc}

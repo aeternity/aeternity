@@ -1604,7 +1604,7 @@ op(bits_difference, A, B)
     ?FATE_BITS(BitsB) = B,
     ?FATE_BITS((BitsA band BitsB) bxor BitsA);
 op(ecrecover_secp256k1, Msg, Sig) when ?IS_FATE_BYTES(32, Msg)
-                                     , ?IS_FATE_BYTES(64, Sig) ->
+                                     , ?IS_FATE_BYTES(65, Sig) ->
     {?FATE_BYTES(Msg1), ?FATE_BYTES(Sig1)} = {Msg, Sig},
     aeu_crypto:ecrecover(secp256k1, Msg1, Sig1).
 

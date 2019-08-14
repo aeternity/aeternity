@@ -10,6 +10,7 @@
         , ecdsa_from_der_sig/1
         , ecdsa_to_der_pk/1
         , ecdsa_to_der_sig/1
+        , ecdsa_add_v/1
 
         , ecrecover/3
         , ecverify/3
@@ -33,11 +34,20 @@ ecdsa_to_der_sig(<<R0:32/binary, S0:32/binary>>) ->
     {LR, LS} = {byte_size(R1), byte_size(S1)},
     <<16#30, (4 + LR + LS), 16#02, LR, R1/binary, 16#02, LS, S1/binary>>.
 
+ecdsa_add_v(<<R:32/binary, S:32/binary>>) ->
+    % TODO: calculate V
+    <<27, R:32/binary, S:32/binary>>.
+
 %% ECRECOVER
 ecrecover(secp256k1, Hash, Sig) ->
-    Input = <<Hash/binary, Sig/binary>>,
-    Res = ecrecover:ecrecover(Input),
-    erlang:list_to_binary(Res).
+    % ecrecover expects the signature to be 96 bytes long
+    Input = <<Hash/binary, 0:(8*31), Sig/binary>>,
+    case ecrecover:ecrecover(Input) of
+        {ok, Res} ->
+            {ok, erlang:list_to_binary(Res)};
+        Err ->
+            Err
+    end.
 
 %% ECVERIFY
 ecverify(Msg, PK, Sig) -> ecverify(curve25519, Msg, PK, Sig).
