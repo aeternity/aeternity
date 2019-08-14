@@ -973,7 +973,7 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
     ok = ?WS:register_test_for_channel_events(RConnPid, [info]),
 
     CloseSolo =
-        fun(CloserPubkey, CloserConn, CloserPrivKey) ->
+        fun(CloserConn, CloserPrivKey) ->
                 ws_send_tagged(CloserConn, <<"channels.close_solo">>,
                                #{}, Config),
                 {ok, CSTx} = sign_tx(CloserConn, <<"close_solo_sign">>,
@@ -982,8 +982,8 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
                 CSTx
         end,
     CloseSoloTx = case Closer of
-                      initiator -> CloseSolo(IPubKey, IConnPid, IPrivKey);
-                      responder -> CloseSolo(RPubKey, RConnPid, RPrivKey)
+                      initiator -> CloseSolo(IConnPid, IPrivKey);
+                      responder -> CloseSolo(RConnPid, RPrivKey)
                   end,
 
     {ok, [ #{<<"tx">> := EncodedSignedSoloTx}
@@ -1009,14 +1009,14 @@ sc_ws_close_solo_(Config, Closer) when Closer =:= initiator;
 
 settle_(Config, Closer) when Closer =:= initiator;
                              Closer =:= responder ->
-    #{initiator := #{priv_key := IPrivKey, pub_key := IPubKey},
-      responder := #{priv_key := RPrivKey, pub_key := RPubKey}} =
+    #{initiator := #{priv_key := IPrivKey},
+      responder := #{priv_key := RPrivKey}} =
           proplists:get_value(participants, Config),
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, Config),
-    {PubKey, ConnPid, PrivKey} = case Closer of
-                             initiator -> {RPubKey, RConnPid, RPrivKey};
-                             responder -> {IPubKey, IConnPid, IPrivKey}
+    {ConnPid, PrivKey} = case Closer of
+                             initiator -> {RConnPid, RPrivKey};
+                             responder -> {IConnPid, IPrivKey}
                          end,
     ws_send_tagged(ConnPid, <<"channels.settle">>, #{}, Config),
 
@@ -2500,7 +2500,7 @@ perform_snapshot_solo(Role, Round, Participants, Conns, Config) ->
                          no_update ->
                              Round;
                          _ when is_integer(Round) ->
-                             ct:pal("*** Verify that updates can be performed"
+                             ct:log("*** Verify that updates can be performed"
                                     " while waiting for snapshot confirmation ***", []),
                              sc_ws_update_basic_round_(Round+1, Config)
                      end,
@@ -2786,7 +2786,7 @@ sc_ws_slash_(Config0) ->
       fun({WhoCloses, WhoSlashes, WhoSettles}) ->
               S = ?SLOGAN([WhoCloses, ",", WhoSlashes]),
               Config = sc_ws_open_(Config0, #{slogan => S}),
-              ct:pal("Channel opened, Slogan = ~p", [S]),
+              ct:log("Channel opened, Slogan = ~p", [S]),
               sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles)
       end, [{A,B, C} || A <- [initiator],
                         B <- [initiator, responder],
@@ -2802,8 +2802,7 @@ sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
     #{initiator := #{pub_key  := IPubKey},
       responder := #{pub_key  := RPubKey}} = Participants =
         proplists:get_value(participants, Config),
-    #{initiator := IConnPid,
-      responder := RConnPid} = Conns =
+    #{initiator := IConnPid} = Conns =
         proplists:get_value(channel_clients, Config),
     %%
     %% Fetch ChId and POI for initial state
@@ -2835,7 +2834,6 @@ sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
     %% WhoSlashes initiates a slash
     %%
     SlasherPid = maps:get(WhoSlashes, Conns),
-    SlasherOtherPid = maps:get(other(WhoSlashes), Conns),
     {ok, <<"ok">>} = request_slash(SlasherPid),
     {ok, SignedSlashTx} = sign_slash_tx(SlasherPid, WhoSlashes, Config),
     ct:log("SignedSlashTx = ~p", [SignedSlashTx]),
@@ -2851,8 +2849,8 @@ sc_ws_slash_(Config, WhoCloses, WhoSlashes, WhoSettles) ->
     settle_(Config, WhoSettles),
     ok.
 
-other(initiator) -> responder;
-other(responder) -> initiator.
+%% other(initiator) -> responder;
+%% other(responder) -> initiator.
 
 sign_slash_tx(ConnPid, Who, Config) ->
     Participants = proplists:get_value(participants, Config),
@@ -2891,11 +2889,11 @@ with_registered_events(Events, Pids, F) ->
     ok = unregister_channel_events(Events, Pids),
     Res.
 
-avoid_double_reg(Events, Pids, F) ->
-    ok = unregister_channel_events(Events, Pids),
-    Res = F(),
-    ok = register_channel_events(Events, Pids),
-    Res.
+%% avoid_double_reg(Events, Pids, F) ->
+%%     ok = unregister_channel_events(Events, Pids),
+%%     Res = F(),
+%%     ok = register_channel_events(Events, Pids),
+%%     Res.
 
 sc_ws_cheating_close_solo_(Config, ChId, Poi, WhoCloses) ->
     %% Create a close_solo based on the create_tx
