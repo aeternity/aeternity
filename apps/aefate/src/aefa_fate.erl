@@ -33,7 +33,7 @@
         , runtime_exit/2
         , runtime_revert/2
         , set_local_function/2
-        , set_remote_function/3
+        , set_remote_function/4
         , terms_are_of_same_type/2
         ]
        ).
@@ -226,6 +226,8 @@ abort(negative_value_in_call, ES) ->
     ?t("Trying to transfer negative value in call", [], ES);
 abort({call_error, What}, ES) ->
     ?t("Error in call: ~w", [What], ES);
+abort({function_is_not_payable, Fun}, ES) ->
+    ?t("Function with hash '~p' is not payable", [Fun], ES);
 abort({primop_error, Which, What}, ES) ->
     ?t("Error in ~w: ~w", [Which, What], ES);
 abort(reentrant_call, ES) ->
@@ -288,7 +290,7 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
     Contract = aeb_fate_data:make_contract(ContractPubkey),
     Stores = aefa_stores:put_contract_store(ContractPubkey, Store, aefa_stores:new()),
     ES1 = aefa_engine_state:new(Gas, Value, Env, Stores, aefa_chain_api:new(Env), Cache),
-    ES2 = set_remote_function(Contract, Function, ES1),
+    ES2 = set_remote_function(Contract, Function, Value > 0, ES1),
     ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
     ES4 = check_signature_and_bind_args(length(Arguments), Signature, ES3),
@@ -304,7 +306,7 @@ check_remote(Contract, EngineState) ->
             abort(reentrant_call, EngineState)
     end.
 
-set_remote_function(?FATE_CONTRACT(Pubkey), Function, ES) ->
+set_remote_function(?FATE_CONTRACT(Pubkey), Function, CheckPayable, ES) ->
     CodeCache = aefa_engine_state:code_cache(ES),
     case maps:get(Pubkey, CodeCache, void) of
         void ->
@@ -315,13 +317,21 @@ set_remote_function(?FATE_CONTRACT(Pubkey), Function, ES) ->
                     ES1 = aefa_engine_state:set_code_cache(CodeCache1, ES),
                     ES2 = aefa_engine_state:set_chain_api(APIState1, ES1),
                     ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, ES2),
-                    set_local_function(Function, ES3);
+                    check_payable_and_set_local_function(CheckPayable, Function, ES3);
                 error ->
                     abort({trying_to_call_contract, Pubkey}, ES)
             end;
         ContractCode ->
             ES1 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, ES),
-            set_local_function(Function, ES1)
+            check_payable_and_set_local_function(CheckPayable, Function, ES1)
+    end.
+
+check_payable_and_set_local_function(false, Function, ES) ->
+    set_local_function(Function, ES);
+check_payable_and_set_local_function(true, Function, ES) ->
+    case is_function_payable(Function, ES) of
+        true  -> set_local_function(Function, ES);
+        false -> abort({function_is_not_payable, Function}, ES)
     end.
 
 set_local_function(Function, ES) ->
@@ -333,14 +343,21 @@ set_local_function(Function, ES) ->
 get_function_code(Name, ES) ->
     case maps:get(Name, aefa_engine_state:functions(ES), void) of
         void -> abort({trying_to_call_function, Name}, ES);
-        {_Signature, Code} -> Code
+        {_Attrs, _Signature, Code} -> Code
     end.
 
 get_function_signature(Name, ES) ->
     case maps:get(Name, aefa_engine_state:functions(ES), void) of
         void -> abort({trying_to_call_function, Name}, ES);
-        {Signature, _Code} -> Signature
+        {_Attrs, Signature, _Code} -> Signature
     end.
+
+is_function_payable(Name, ES) ->
+    case maps:get(Name, aefa_engine_state:functions(ES), void) of
+        void -> abort({trying_to_call_function, Name}, ES);
+        {Attrs, _Signature, _Code} -> lists:member(payable, Attrs)
+    end.
+
 
 check_return_type(ES) ->
     Current = aefa_engine_state:current_function(ES),
@@ -591,7 +608,7 @@ pop_call_stack(ES) ->
             {jump, BB, ES3};
         {remote, Contract, Function, TVars, BB, ES1} ->
             ES2 = unfold_store_maps(ES1),
-            ES3 = set_remote_function(Contract, Function, ES2),
+            ES3 = set_remote_function(Contract, Function, false, ES2),
             ES4 = aefa_engine_state:set_current_tvars(TVars, ES3),
             {jump, BB, ES4}
     end.
