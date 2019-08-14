@@ -42,7 +42,7 @@ contract Environment =
     state.remote.call_caller()
 
   // Value
-  payable entrypoint call_value() : int = Call.value
+  entrypoint call_value() : int = Call.value
   stateful entrypoint nested_value(value : int) : int =
     state.remote.call_value(value = value / 2)
 

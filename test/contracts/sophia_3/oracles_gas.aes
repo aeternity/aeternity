@@ -4,7 +4,7 @@ contract OraclesGas =
   type question_t = string
   type answer_t = int
 
-  stateful payable entrypoint happyPathWithAllBuiltinsAtSameHeight(
+  stateful entrypoint happyPathWithAllBuiltinsAtSameHeight(
     qfee : fee,
     ottl : Chain.ttl,
     ettl : Chain.ttl,

@@ -1,0 +1,15 @@
+contract Remote =
+  payable entrypoint foo : (int) => bool
+  entrypoint bar : (int) => bool
+
+contract Test =
+  record state = { remote : Remote }
+
+  entrypoint init(r : Remote) = { remote = r }
+
+  stateful entrypoint r_foo(x : int) =
+    state.remote.foo(value = x, x)
+
+  stateful entrypoint r_bar(x : int) =
+    state.remote.bar(value = x, x)
+

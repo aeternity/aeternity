@@ -22,8 +22,8 @@ contract SpendTest =
     Chain.spend(to, amount)
     Chain.balance(to)
 
-  payable entrypoint get_balance() = Contract.balance
+  entrypoint get_balance() = Contract.balance
   entrypoint get_balance_of(a) = Chain.balance(a)
 
-  stateful payable entrypoint spend_as_call(remote : SpendContract, amount : int) =
+  stateful entrypoint spend_as_call(remote : SpendContract, amount : int) =
     remote.get_balance(value = amount)

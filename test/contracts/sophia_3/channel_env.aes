@@ -1,0 +1,8 @@
+contract ChannelEnv =
+  entrypoint coinbase() : address = Chain.coinbase
+
+  entrypoint timestamp() : int = Chain.timestamp
+
+  entrypoint block_height() : int = Chain.block_height
+
+  entrypoint difficulty() : int = Chain.difficulty

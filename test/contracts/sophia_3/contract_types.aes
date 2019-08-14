@@ -15,6 +15,6 @@ contract ThisContract =
 
   entrypoint get_n() = state.n
 
-  stateful payable entrypoint tip_server() =
+  stateful entrypoint tip_server() =
     Chain.spend(state.server.address, Call.value)
 

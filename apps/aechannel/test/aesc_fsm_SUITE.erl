@@ -728,7 +728,7 @@ do_n_(N, F, I, R, C) when N > 0 ->
     {I1, R1} = F(I, R, C),
     do_n_(N-1, F, I1, R1, C).
 
-     
+
 update_volley(#{pub := PubI} = I, #{pub := PubR} = R, Cfg) ->
     {I1, R1} = do_update(PubR, PubI, 1, I, R, false, Cfg),
     do_update(PubI, PubR, 1, I1, R1, false, Cfg).
@@ -2531,7 +2531,7 @@ ga_spend(From, To, Amt, Cfg) ->
     ok.
 
 get_contract(Name) ->
-    aega_test_utils:get_contract(?VM_AEVM_SOPHIA_3, Name).
+    aega_test_utils:get_contract(aect_test_utils:latest_sophia_version(), Name).
 
 account_type(Pubkey) ->
     {value, Account} = rpc(dev1, aec_chain, get_account, [Pubkey]),

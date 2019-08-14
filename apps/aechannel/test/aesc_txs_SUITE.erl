@@ -5323,14 +5323,25 @@ poi_participants_only() ->
 compile_contract(ContractName) ->
     aect_test_utils:compile_contract(aect_test_utils:sophia_version(), ContractName).
 
-compile_contract_vsn(ContractName, SerializationVsn) ->
-    {ok, ContractBin} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
-    {ok, Bytecode}    = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), ContractName),
-    Map               = aect_sophia:deserialize(Bytecode),
-    ContractSrc       = binary_to_list(ContractBin),
-    {ok, aect_sophia:serialize(Map#{ contract_source => ContractSrc,
-                                     compiler_version => maps:get(compiler_version, Map, <<"1.0">>)},
-                               SerializationVsn)}.
+compile_contract_vsn(Name, Vsn) ->
+    case aect_test_utils:compile_contract(aect_test_utils:sophia_version(), Name) of
+        {ok, SerCode} ->
+            CodeMap = #{ type_info := TIs } = aect_sophia:deserialize(SerCode),
+            case maps:get(contract_vsn, CodeMap) of
+                Vsn -> {ok, SerCode};
+                _   ->
+                    TIs1 = [ patch_type_info(TI, Vsn) || TI <- TIs ],
+                    Compiler = maps:get(compiler_version, CodeMap, <<"1.4.0">>),
+                    CodeMap1 = CodeMap#{ type_info := TIs1, compiler_version => Compiler },
+                    {ok, aect_sophia:serialize(CodeMap1, Vsn)}
+            end;
+        Err -> Err
+    end.
+
+patch_type_info({H, F, As, R}, 3) -> {H, F, true, As, R};
+patch_type_info({H, F, _, As, R}, N) when N < 3 -> {H, F, As, R};
+patch_type_info(TI, _) -> TI.
+
 
 %% test that a force progress transaction can NOT produce an on-chain
 %% contract with a code with the wrong Sophia serialization
