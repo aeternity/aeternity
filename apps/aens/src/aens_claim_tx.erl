@@ -177,6 +177,14 @@ serialization_template(?NAME_CLAIM_TX_VSN_1) ->
     , {nonce, int}
     , {name, binary}
     , {name_salt, int}
+    , {fee, int}
+    , {ttl, int}
+    ];
+serialization_template(?NAME_CLAIM_TX_VSN_2) ->
+    [ {account_id, id}
+    , {nonce, int}
+    , {name, binary}
+    , {name_salt, int}
     , {name_fee, int}
     , {fee, int}
     , {ttl, int}
@@ -226,7 +234,7 @@ account_pubkey(#ns_claim_tx{account_id = AccountId}) ->
 
 -spec version(tx()) -> non_neg_integer().
 version(_) ->
-    ?NAME_CLAIM_TX_VSN_1.
+    ?NAME_CLAIM_TX_VSN_2.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(_, _) ->

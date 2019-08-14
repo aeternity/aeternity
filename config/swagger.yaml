@@ -2140,6 +2140,7 @@ definitions:
     required:
       - name
       - name_salt
+      - name_fee
       - fee
       - account_id
   NameUpdateTx:

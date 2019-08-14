@@ -2647,7 +2647,7 @@
     },
     "NameClaimTx" : {
       "type" : "object",
-      "required" : [ "account_id", "fee", "name", "name_salt" ],
+      "required" : [ "account_id", "fee", "name", "name_fee", "name_salt" ],
       "properties" : {
         "name" : {
           "type" : "string"
