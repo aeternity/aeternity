@@ -257,9 +257,15 @@ sleep(T, Ref) ->
             ok
     end.
 
+-ifdef(TEST).
+get_reconnect_params() ->
+    %% The increased granuality decreases the runtime of some tests by half :)
+    {50, 20}. %% Up to a second in the test environment
+-else.
 get_reconnect_params() ->
     %% {ConnectTimeout, Retries}
     {3000, 40}.  %% max 4 minutes (up to 40 retries, where each retry is up to 3 seconds TCP connection timeout and 3 seconds sleep time).
+-endif.
 
 handle_call(close, _From, #st{econn = EConn} = St) ->
     lager:debug("got close request", []),
