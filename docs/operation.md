@@ -79,7 +79,7 @@ If the node successfully mines a block, you shall read log entries like the foll
 After the node is successfully connected to the mainnet, you could verify that it is mining on the same chain as the rest of the network.
 You can validate it observing the `hash` of the `/blocks/top` of the remote nodes:
 ```bash
-$ curl http://13.53.161.215:3013/v2/blocks/top
+$ curl https://mainnet.aeternity.io/v2/blocks/top
 {"key_block":{"hash":"kh_2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy","height":...}}
 ```
 
