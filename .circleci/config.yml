@@ -810,11 +810,15 @@ jobs:
       - *install_otp
       - *install_libsodium
       - *restore_machine_build_cache
-      # make sure deps are up to date - this is faster than invalidating the old cache
+      # Git based deps are problematic for rebar3 - even running "./rebar3 as system_test upgrade" doesn't do the job of ensuring these deps are up to date
+      # Just delete the problematic deps from the cache as rebuilding those deps is faster than invalidating the entire outdated cache
       - run:
-          name: Check deps
+          name: Get rid of problematic cached deps
           command: |
-            ./rebar3 as system_test upgrade
+            rm -rf _build/system_test/lib/aesophia;
+            rm -rf _build/system_test/lib/aesophia_cli;
+            rm -rf _build/system_test+test/lib/aesophia;
+            rm -rf _build/system_test+test/lib/aesophia_cli;
       # keep user preparation step after cache restore because of perms
       - *prepare_ubuntu_user
       - *install_system_test_deps
