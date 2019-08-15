@@ -541,20 +541,20 @@ aens_call_preclaim(Data, #chain{api = API, state = State} = Chain) ->
 
 aens_call_claim(Data, #chain{api = API, state = State, vm_version = VM} = Chain) ->
     case aens_call_claim_tx(VM, Data, API, State) of
-        {ok, Tx} ->
+        {{ok, Tx}, Sign0} ->
             SizeGas = size_gas(Tx),
             Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_claim(Tx, to_sign(Sign0), ChainState) end,
             {ok, SizeGas, fun() -> cast_chain(Callback, Chain) end};
-        {error, _} = Err -> Err
+        {{error, _}, _} = Err -> Err
     end.
 
 %% From VM_AEVM_SOPHIA_4 claims have an extra argument.
 aens_call_claim_tx(VM, Data, API, State) when VM < ?VM_AEVM_SOPHIA_4 ->
     [Addr, Name, Salt, Sign0] = get_args([word, string, word, sign_t()], Data),
-    API:aens_claim_tx(<<Addr:256>>, Name, Salt, State);
+    {API:aens_claim_tx(<<Addr:256>>, Name, Salt, State), Sign0};
 aens_call_claim_tx(VM, Data, API, State) ->
     [Addr, Name, Salt, NameFee, Sign0] = get_args([word, string, word, word, sign_t()], Data),
-    API:aens_claim_tx(<<Addr:256>>, Name, Salt, NameFee, State).
+    {API:aens_claim_tx(<<Addr:256>>, Name, Salt, NameFee, State), Sign0}.
 
 aens_call_transfer(Data, #chain{vm_version = VMVersion} = Chain) when VMVersion < ?VM_AEVM_SOPHIA_4 ->
     [From, To, Hash, Sign] = get_args([word, word, word, sign_t()], Data),

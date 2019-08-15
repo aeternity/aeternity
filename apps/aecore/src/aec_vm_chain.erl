@@ -38,6 +38,7 @@
           aens_resolve/4,
           aens_preclaim_tx/3,
           aens_preclaim/3,
+          aens_claim_tx/4,
           aens_claim_tx/5,
           aens_claim/3,
           aens_transfer_tx/4,
@@ -574,6 +575,13 @@ aens_preclaim_(Tx, Signature, State) ->
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
+
+
+-spec aens_claim_tx(aec_keys:pubkey(), binary(), integer(), chain_state()) ->
+    {ok, aetx:tx()} | {error, term()}.
+aens_claim_tx(Addr, Name, Salt, State) ->
+    NameFee = aec_governance:name_claim_fee_base(),
+    on_chain_only(State, fun() -> aens_claim_tx_(Addr, Name, Salt, NameFee, State) end).
 
 -spec aens_claim_tx(aec_keys:pubkey(), binary(), integer(), integer(), chain_state()) ->
     {ok, aetx:tx()} | {error, term()}.
