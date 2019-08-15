@@ -42,8 +42,9 @@
 -endif.
 
 -define(IS_CONTRACT_TX(T), ((T =:= contract_create_tx) or (T =:= contract_call_tx)
-                            or (T =:= channel_force_progress_tx)
                             or (T =:= ga_meta_tx) or (T =:= ga_attach_tx))).
+-define(HAS_GAS_TX(T), (?IS_CONTRACT_TX(T) or (T =:= channel_force_progress_tx))).
+
 
 %%%===================================================================
 %%% Types
@@ -259,7 +260,9 @@ gas_limit(#aetx{type = oracle_response_tx, size = Size, tx = Tx }, Height) ->
             0
     end;
 gas_limit(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height) ->
-    base_gas(ga_meta_tx, Height) + size_gas(Size) + CB:gas_limit(Tx, Height);
+    base_gas(ga_meta_tx, Height, CB:abi_version(Tx)) + size_gas(Size) + CB:gas_limit(Tx, Height);
+gas_limit(#aetx{type = Type, size = Size, cb = CB, tx = Tx}, Height) when ?IS_CONTRACT_TX(Type) ->
+    base_gas(Type, Height, CB:abi_version(Tx)) + size_gas(Size) + CB:gas(Tx);
 gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, Height) when Type =/= channel_offchain_tx,
                                                                             Type =/= channel_client_reconnect_tx ->
     base_gas(Type, Height) + size_gas(Size) + CB:gas(Tx);
@@ -273,7 +276,7 @@ inner_gas_limit(AETx = #aetx{ size = Size }, Height) ->
     max(0, gas_limit(AETx, Height) - size_gas(Size)).
 
 -spec gas_price(Tx :: tx()) -> GasPrice :: non_neg_integer() | undefined.
-gas_price(#aetx{ type = Type, cb = CB, tx = Tx }) when ?IS_CONTRACT_TX(Type) ->
+gas_price(#aetx{ type = Type, cb = CB, tx = Tx }) when ?HAS_GAS_TX(Type) ->
     CB:gas_price(Tx);
 gas_price(#aetx{}) ->
     undefined.
@@ -294,7 +297,7 @@ min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height
             %% not to count the size twice!
             InnerMinGasPrice = min_gas_price(aetx_sign:tx(CB:tx(Tx)), Height, inner),
             lists:min([CB:gas_price(Tx), FeeGasPrice, InnerMinGasPrice]);
-        _ when ?IS_CONTRACT_TX(Type) ->
+        _ when ?HAS_GAS_TX(Type) ->
             min(CB:gas_price(Tx), FeeGasPrice);
         _ ->
             FeeGasPrice
@@ -305,7 +308,9 @@ min_fee(#aetx{} = AeTx, Height) ->
     min_gas(AeTx, Height) * aec_governance:minimum_gas_price(Height).
 
 -spec min_gas(Tx :: tx(), Height :: aec_blocks:height()) -> Gas :: non_neg_integer().
-min_gas(#aetx{ type = Type, size = Size }, Height) when ?IS_CONTRACT_TX(Type) ->
+min_gas(#aetx{ type = Type, size = Size, cb = CB, tx = Tx }, Height) when ?IS_CONTRACT_TX(Type) ->
+    base_gas(Type, Height, CB:abi_version(Tx)) + size_gas(Size);
+min_gas(#aetx{ type = Type, size = Size, cb = CB, tx = Tx }, Height) when ?HAS_GAS_TX(Type) ->
     base_gas(Type, Height) + size_gas(Size);
 min_gas(#aetx{} = Tx, Height) ->
     gas_limit(Tx, Height).
@@ -556,6 +561,10 @@ specialize_callback(#aetx{ cb = CB, tx = Tx }) -> {CB, Tx}.
 -spec update_tx(tx(), tx_instance()) -> tx().
 update_tx(#aetx{} = Tx, NewTxI) ->
     Tx#aetx{tx = NewTxI}.
+
+base_gas(Type, Height, ABI) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    aec_governance:tx_base_gas(Type, Protocol, ABI).
 
 base_gas(Type, Height) ->
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),

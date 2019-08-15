@@ -7,6 +7,7 @@
          block_mine_reward/1,
          block_gas_limit/0,
          tx_base_gas/2,
+         tx_base_gas/3, %% VM depending operations
          byte_gas/0,
          beneficiary_reward_delay/0,
          locked_coins_holder_account/0,
@@ -32,6 +33,8 @@
 -include("blocks.hrl").
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+
 
 -ifdef(TEST).
 -define(NETWORK_ID, <<"local_testnet">>).
@@ -87,16 +90,42 @@ block_gas_limit() ->
 
 min_tx_gas() -> ?TX_BASE_GAS.
 
+-spec tx_base_gas(aetx:tx_type(), aec_hard_forks:protocol_vsn(), aect_contracts:abi_version()) ->
+    non_neg_integer().
+%% Make sure we fail when we get unknown tx type
+tx_base_gas(contract_create_tx, Protocol, ABI) ->
+    case {ABI, Protocol} of
+        {?ABI_FATE_SOPHIA_1, ?LIMA_PROTOCOL_VSN} -> 5 *?TX_BASE_GAS;
+        _                                        -> 5 *?TX_BASE_GAS
+    end;
+tx_base_gas(contract_call_tx, Protocol, ABI) ->
+    case {ABI, Protocol} of
+        {?ABI_FATE_SOPHIA_1, ?LIMA_PROTOCOL_VSN} -> 30 *?TX_BASE_GAS;
+        _                                        -> 30 *?TX_BASE_GAS
+    end;
+tx_base_gas(ga_attach_tx, Protocol, ABI) ->
+    case {ABI, Protocol} of
+        {?ABI_FATE_SOPHIA_1, ?LIMA_PROTOCOL_VSN} -> 5 *?TX_BASE_GAS;
+        _                                        -> 5 *?TX_BASE_GAS
+    end;
+tx_base_gas(ga_meta_tx, Protocol, ABI) ->
+    case {ABI, Protocol} of
+        {?ABI_FATE_SOPHIA_1, ?LIMA_PROTOCOL_VSN} -> 5 *?TX_BASE_GAS;
+        _                                        -> 5 *?TX_BASE_GAS
+    end.
+
+
+
 -spec tx_base_gas(aetx:tx_type(), aec_hard_forks:protocol_vsn()) ->
     non_neg_integer().
-tx_base_gas(contract_call_tx, _)          -> 30 * ?TX_BASE_GAS;
-tx_base_gas(contract_create_tx, _)        -> 5 * ?TX_BASE_GAS;
 tx_base_gas(spend_tx, _)                  -> ?TX_BASE_GAS;
 tx_base_gas(channel_deposit_tx, _)        -> ?TX_BASE_GAS;
 tx_base_gas(channel_close_mutual_tx, _)   -> ?TX_BASE_GAS;
 tx_base_gas(channel_close_solo_tx, _)     -> ?TX_BASE_GAS;
 tx_base_gas(channel_create_tx, _)         -> ?TX_BASE_GAS;
 tx_base_gas(channel_force_progress_tx, Protocol) ->
+    %% Since we don't know the ABI and update upfront, we make
+    %% this as expensive as most expensive contract operation
     case Protocol of
         ?ROMA_PROTOCOL_VSN                -> ?TX_BASE_GAS;
         ?MINERVA_PROTOCOL_VSN             -> ?TX_BASE_GAS;
@@ -106,8 +135,6 @@ tx_base_gas(channel_slash_tx, _)          -> ?TX_BASE_GAS;
 tx_base_gas(channel_settle_tx, _)         -> ?TX_BASE_GAS;
 tx_base_gas(channel_snapshot_solo_tx, _)  -> ?TX_BASE_GAS;
 tx_base_gas(channel_withdraw_tx, _)       -> ?TX_BASE_GAS;
-tx_base_gas(ga_attach_tx, _)              -> 5 * ?TX_BASE_GAS;
-tx_base_gas(ga_meta_tx, _)                -> 5 * ?TX_BASE_GAS;
 tx_base_gas(name_preclaim_tx, _)          -> ?TX_BASE_GAS;
 tx_base_gas(name_revoke_tx, _)            -> ?TX_BASE_GAS;
 tx_base_gas(name_transfer_tx, _)          -> ?TX_BASE_GAS;
