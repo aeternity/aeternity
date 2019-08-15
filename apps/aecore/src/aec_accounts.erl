@@ -7,6 +7,7 @@
 
 %% API
 -export([new/2,
+         new/3,
 
          id/1,
          pubkey/1,
@@ -24,6 +25,8 @@
          set_nonce/2,
          type/1,
 
+         is_payable/1,
+
          deserialize/2,
          serialize/1,
          serialize_for_client/1]).
@@ -33,15 +36,18 @@
 
 -define(ACCOUNT_VSN_1, 1). %% {Nonce, Balance}
 -define(ACCOUNT_VSN_2, 2). %% {Flags, Nonce, Balance, GA_Contract, GA_AuthFun}
+-define(ACCOUNT_VSN_3, 3). %% {Flags, Nonce, Balance}
 -define(ACCOUNT_TYPE, account).
 
 -type fun_hash() :: <<_:256>>.
+-type flag()  :: non_payable.
+-type flags() :: [flag()].
 
 -record(account, {
           id          :: aeser_id:id(),
           balance = 0 :: non_neg_integer(),
           nonce = 0   :: non_neg_integer(),
-          flags = 0   :: non_neg_integer(),  %% NOTE: not yet in use
+          flags = 0   :: non_neg_integer(),  %% non_payable | ...
           ga_contract :: undefined | aeser_id:id(),
           ga_auth_fun :: undefined | fun_hash() }).
 
@@ -52,8 +58,15 @@
 
 -spec new(aec_keys:pubkey(), non_neg_integer()) -> account().
 new(Pubkey, Balance) ->
+    new(Pubkey, Balance, []).
+
+-spec new(aec_keys:pubkey(), non_neg_integer(), flags()) -> account().
+new(Pubkey, Balance, []) ->
     Id = aeser_id:create(account, Pubkey),
-    #account{id = Id, balance = Balance}.
+    #account{id = Id, balance = Balance};
+new(Pubkey, Balance, Flags) ->
+    Id = aeser_id:create(account, Pubkey),
+    #account{id = Id, balance = Balance, flags = set_flags(Flags)}.
 
 -spec id(account()) -> aeser_id:id().
 id(#account{id = Id}) ->
@@ -113,36 +126,44 @@ spend_without_nonce_bump(#account{balance = Balance0} = Account0, Amount) ->
 type(#account{ ga_contract = undefined }) -> basic;
 type(#account{ ga_contract = C })         -> contract = aeser_id:specialize_type(C), generalized.
 
-is_legal_at_height(Account, Height) ->
-    case type(Account) of
-        basic       -> true;
-        generalized -> aec_hard_forks:protocol_effective_at_height(Height) >= ?FORTUNA_PROTOCOL_VSN
-    end.
+-spec is_payable(account()) -> boolean().
+is_payable(#account{ flags = 0 }) -> true;
+is_payable(#account{ flags = N }) -> not get_flag(non_payable, N).
+
+-spec is_legal_at_height(account(), aec_blocks:height()) -> boolean().
+is_legal_at_height(#account{ flags = 0, ga_contract = undefined }, _Height) ->
+    true;
+is_legal_at_height(#account{ flags = 0 }, Height) ->
+    aec_hard_forks:protocol_effective_at_height(Height) >= ?FORTUNA_PROTOCOL_VSN;
+is_legal_at_height(_Account, Height) ->
+    aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN.
 
 -spec serialize(account()) -> deterministic_account_binary_with_pubkey().
+serialize(#account{ flags = 0, ga_contract = undefined } = Account) ->
+    serialize(?ACCOUNT_VSN_1, Account);
+serialize(#account{ ga_contract = GA } = Account) when GA /= undefined ->
+    serialize(?ACCOUNT_VSN_2, Account);
 serialize(Account) ->
-    case type(Account) of
-        basic -> serialize_basic(Account);
-        generalized -> serialize_generalized(Account)
-    end.
+    serialize(?ACCOUNT_VSN_3, Account).
 
-serialize_basic(Account) ->
-    aeser_chain_objects:serialize(
-      ?ACCOUNT_TYPE, ?ACCOUNT_VSN_1,
-      serialization_template(?ACCOUNT_VSN_1),
+serialize(Vsn = ?ACCOUNT_VSN_1, Account) ->
+    aeser_chain_objects:serialize(?ACCOUNT_TYPE, Vsn, serialization_template(Vsn),
       [ {nonce, nonce(Account)}
       , {balance, balance(Account)}
-      ]).
-
-serialize_generalized(Account) ->
-    aeser_chain_objects:serialize(
-      ?ACCOUNT_TYPE, ?ACCOUNT_VSN_2,
-      serialization_template(?ACCOUNT_VSN_2),
+      ]);
+serialize(Vsn = ?ACCOUNT_VSN_2, Account) ->
+    aeser_chain_objects:serialize(?ACCOUNT_TYPE, Vsn, serialization_template(Vsn),
       [ {flags, flags(Account)}
       , {nonce, nonce(Account)}
       , {balance, balance(Account)}
       , {ga_contract, ga_contract(Account)}
       , {ga_auth_fun, ga_auth_fun(Account)}
+      ]);
+serialize(Vsn = ?ACCOUNT_VSN_3, Account) ->
+    aeser_chain_objects:serialize(?ACCOUNT_TYPE, Vsn, serialization_template(Vsn),
+      [ {flags, flags(Account)}
+      , {nonce, nonce(Account)}
+      , {balance, balance(Account)}
       ]).
 
 -spec deserialize(aec_keys:pubkey(), binary()) -> account().
@@ -171,6 +192,17 @@ deserialize(Pubkey, SerializedAccount) ->
                     , flags = Flags
                     , ga_contract = GAContract
                     , ga_auth_fun = GAAuthFun
+                    };
+        {?ACCOUNT_TYPE = Type, ?ACCOUNT_VSN_3 = Vsn, _Rest} ->
+            [ {flags, Flags}
+            , {nonce, Nonce}
+            , {balance, Balance}
+            ] = aeser_chain_objects:deserialize(
+                    Type, Vsn, serialization_template(Vsn), SerializedAccount),
+            #account{ id = aeser_id:create(account, Pubkey)
+                    , nonce = Nonce
+                    , balance = Balance
+                    , flags = Flags
                     }
     end.
 
@@ -184,6 +216,11 @@ serialization_template(?ACCOUNT_VSN_2) ->
     , {balance, int}
     , {ga_contract, id}
     , {ga_auth_fun, binary}
+    ];
+serialization_template(?ACCOUNT_VSN_3) ->
+    [ {flags, int}
+    , {nonce, int}
+    , {balance, int}
     ].
 
 -spec serialize_for_client(account()) -> map().
@@ -222,4 +259,17 @@ serialize_for_client(#account{id      = Id,
         end,
     maps:merge(ExtraInfo, #{<<"id">>      => aeser_api_encoder:encode(id_hash, Id),
                             <<"balance">> => Balance,
+                            <<"payable">> => is_payable(Account),
                             <<"nonce">>   => Nonce}).
+
+%% Flags
+-define(FLAG_NON_PAYABLE_VALUE, 1).
+
+get_flag(non_payable, N) -> ((N div ?FLAG_NON_PAYABLE_VALUE) rem 2) == 1;
+get_flag(_Flag, _N)      -> false.
+
+set_flags([]) -> 0;
+set_flags([Flag | Flags]) -> flag_to_val(Flag) + set_flags(Flags).
+
+flag_to_val(non_payable) -> ?FLAG_NON_PAYABLE_VALUE;
+flag_to_val(_)           -> 0.

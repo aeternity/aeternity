@@ -3,13 +3,12 @@ contract Remote =
   entrypoint bar : (int) => bool
 
 contract Test =
-  record state = { remote : Remote }
+  stateful entrypoint r_foo(r : Remote, x : int) =
+    r.foo(value = x, x)
 
-  entrypoint init(r : Remote) = { remote = r }
+  stateful entrypoint r_bar(r : Remote, x : int) =
+    r.bar(value = x, x)
 
-  stateful entrypoint r_foo(x : int) =
-    state.remote.foo(value = x, x)
-
-  stateful entrypoint r_bar(x : int) =
-    state.remote.bar(value = x, x)
-
+  stateful entrypoint r_spend(r : Remote, x : int) =
+    Chain.spend(r.address, x)
+    true

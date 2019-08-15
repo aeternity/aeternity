@@ -50,6 +50,7 @@
         , oracle_respond_op/3
         , spend_fee_op/2
         , spend_op/3
+        , transfer_value_op/3
         ]).
 
 %% Export some functions to avoid duplicating the logic in state channels, etc.
@@ -517,14 +518,21 @@ inc_account_nonce({Pubkey, Nonce, Force}, #state{} = S) ->
 spend_op(From, To, Amount) when ?IS_HASH(From),
                                 ?IS_VAR_OR_HASH(To),
                                 ?IS_NON_NEG_INTEGER(Amount) ->
-    {spend, {From, To, Amount}}.
+    {spend, {From, To, Amount, spend}}.
 
-spend({From, To, Amount}, #state{} = S) when is_integer(Amount), Amount >= 0 ->
+-spec transfer_value_op(pubkey(), var_or_hash(), non_neg_integer()) -> op().
+transfer_value_op(From, To, Amount) when ?IS_HASH(From),
+                                         ?IS_VAR_OR_HASH(To),
+                                         ?IS_NON_NEG_INTEGER(Amount) ->
+    {spend, {From, To, Amount, transfer_value}}.
+
+spend({From, To, Amount, Mode}, #state{} = S) when is_integer(Amount), Amount >= 0 ->
     {Sender1, S1}   = get_account(From, S),
     assert_account_balance(Sender1, Amount),
     {ok, Sender2}   = aec_accounts:spend_without_nonce_bump(Sender1, Amount),
     S2              = put_account(Sender2, S1),
     {Receiver1, S3} = ensure_account(To, S2),
+    assert_payable_account(Receiver1, Mode),
     {ok, Receiver2} = aec_accounts:earn(Receiver1, Amount),
     put_account(Receiver2, S3).
 
@@ -1055,7 +1063,8 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
     Contract       = aect_contracts:new(OwnerPubkey, Nonce, CTVersion,
                                         SerializedCode, 0),
     ContractPubkey  = aect_contracts:pubkey(Contract),
-    {_CAccount, S3} = ensure_account(ContractPubkey, S2),
+    Payable         = is_payable_contract(SerializedCode),
+    {_CAccount, S3} = ensure_account(ContractPubkey, [non_payable || not Payable], S2),
     OwnerId         = aect_contracts:owner_id(Contract),
     init_contract({attach, AuthFun}, OwnerId, Contract, GasLimit, GasPrice,
                   CallData, OwnerPubkey, Fee, Nonce, RollbackS, S3).
@@ -1196,7 +1205,8 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
     Contract       = aect_contracts:new(OwnerPubkey, Nonce, CTVersion,
                                         SerializedCode, Deposit),
     ContractPubkey = aect_contracts:pubkey(Contract),
-    {CAccount, S3} = ensure_account(ContractPubkey, S2),
+    Payable        = is_payable_contract(SerializedCode),
+    {CAccount, S3} = ensure_account(ContractPubkey, [non_payable || not Payable], S2),
     S4             = account_earn(CAccount, Amount, S3),
     OwnerId        = aect_contracts:owner_id(Contract),
     init_contract(contract, OwnerId, Contract, GasLimit, GasPrice,
@@ -1443,11 +1453,22 @@ assert_account_balance(Account, Balance) ->
         B when B <  Balance -> runtime_error(insufficient_funds)
     end.
 
-ensure_account(Key, #state{} = S) ->
+assert_payable_account(_Account, transfer_value) ->
+    ok;
+assert_payable_account(Account, spend) ->
+    case aec_accounts:is_payable(Account) of
+        true  -> ok;
+        false -> runtime_error(account_is_not_payable)
+    end.
+
+ensure_account(Key, S) ->
+    ensure_account(Key, [], S).
+
+ensure_account(Key, Flags, #state{} = S) ->
     case find_account(Key, S) of
         none ->
             Pubkey = get_var(Key, account, S),
-            Account = aec_accounts:new(Pubkey, 0),
+            Account = aec_accounts:new(Pubkey, 0, Flags),
             {Account, put_account(Account, S)};
         {Account, S1} ->
             {Account, S1}
@@ -1813,6 +1834,13 @@ assert_channel_withdraw_amount(Channel, Amount) ->
     ChannelAmount = aesc_channels:channel_amount(Channel),
     Reserve = aesc_channels:channel_reserve(Channel),
     assert(ChannelAmount >= 2*Reserve + Amount, not_enough_channel_funds).
+
+is_payable_contract(SerializedCode) ->
+    try aect_sophia:deserialize(SerializedCode) of
+        #{ payable := Payable } -> Payable
+    catch error:{illegal_code_object, _} ->
+        runtime_error(bad_bytecode)
+    end.
 
 %%%===================================================================
 %%% Error handling

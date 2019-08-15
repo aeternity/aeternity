@@ -1,7 +1,7 @@
 contract Remote =
   entrypoint main : (int) => int
 
-payable contract Auth1 =
+contract Auth1 =
   record state = { secret : int }
 
   datatype auth_test = Spend(address, int)

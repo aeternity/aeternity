@@ -29,6 +29,7 @@
 
 %% Modifiers
 -export([ spend/4
+        , transfer_value/4
         , oracle_extend/4
         , oracle_get_answer/5
         , oracle_get_question/5
@@ -263,6 +264,11 @@ check_delegation_signature(Pubkey, Binary, Signature,
 spend(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:spend_op(FromPubkey, ToPubkey, Amount)
                  ], State).
+
+transfer_value(FromPubkey, ToPubkey, Amount, State) ->
+    eval_primops([ aeprimop:transfer_value_op(FromPubkey, ToPubkey, Amount)
+                 ], State).
+
 
 %%%-------------------------------------------------------------------
 %%% Oracles

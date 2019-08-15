@@ -1855,6 +1855,9 @@ definitions:
       nonce:
         description: 'Nonce'
         $ref: '#/definitions/UInt64'
+      payable:
+        description: 'Payable'
+        type: boolean
       kind:
         type: string
         enum: [basic, generalized]

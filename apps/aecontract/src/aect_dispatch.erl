@@ -249,6 +249,7 @@ error_to_binary(unknown_error) -> <<"unknown_error">>;
 error_to_binary(unknown_contract) -> <<"unknown_contract">>;
 error_to_binary(unknown_function) -> <<"unknown_function">>;
 error_to_binary(function_is_not_payable) -> <<"function_is_not_payable">>;
+error_to_binary(account_is_not_payable) -> <<"account_is_not_payable">>;
 error_to_binary(reentrant_call) -> <<"reentrant_call">>;
 error_to_binary(arithmetic_error) -> <<"arithmetic_error">>;
 error_to_binary({illegal_instruction, OP}) when is_integer(OP), 0 =< OP, OP =< 255 ->

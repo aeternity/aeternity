@@ -859,6 +859,7 @@ binary_to_error(<<"unknown_function">>) -> unknown_function;
 binary_to_error(<<"unknown_contract">>) -> unknown_contract;
 binary_to_error(<<"unknown_error">>) -> unknown_error;
 binary_to_error(<<"function_is_not_payable">>) -> function_is_not_payable;
+binary_to_error(<<"account_is_not_payable">>) -> account_is_not_payable;
 binary_to_error(E) ->
     ?DEBUG_LOG("**** Unknown error: ~p\n", [E]),
     unknown_error.

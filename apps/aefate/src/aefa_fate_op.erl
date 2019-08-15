@@ -210,7 +210,7 @@ transfer_value(From, ?FATE_CONTRACT(To), Value, ES) ->
         IntValue ->
             ES1 = aefa_engine_state:set_call_value(IntValue, ES),
             API = aefa_engine_state:chain_api(ES1),
-            case aefa_chain_api:spend(From, To, IntValue, API) of
+            case aefa_chain_api:transfer_value(From, To, IntValue, API) of
                 {ok, API1} ->
                     aefa_engine_state:set_chain_api(API1, ES1);
                 {error, What} ->

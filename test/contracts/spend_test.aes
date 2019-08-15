@@ -3,7 +3,7 @@ contract SpendContract =
   entrypoint withdraw : (int) => int
   entrypoint get_balance : () => int
 
-contract SpendTest =
+payable contract SpendTest =
 
   stateful entrypoint spend(to, amount) =
     let total = Contract.balance

@@ -5405,10 +5405,25 @@ sophia_call_value(_Cfg) ->
     ok.
 
 sophia_payable_contract(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, payable_not_pre_lima),
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     C1  = ?call(create_contract, Acc, payable, {}, #{}),
     C2  = ?call(create_contract, Acc, non_payable, {}, #{}),
+
+    Cx  = ?call(create_contract, Acc, remote_payable, {}, #{amount => 50000}),
+
+    Gas    = 50000,
+    Params = #{gas => Gas, return_gas_used => true},
+    {Ok1, Gas1} = ?call(call_contract, Acc, Cx, r_spend, bool, {?cid(C1), 100}, Params),
+    ?assertEqual(true, Ok1), ?assert(Gas1 < Gas),
+
+
+    {Err1, Gas2} = ?call(call_contract, Acc, Cx, r_spend, bool, {?cid(C2), 100}, Params),
+    ?assertMatchVM({error,<<"account_is_not_payable">>},
+                   {error,<<"Error in spend: account_is_not_payable">>}, Err1),
+    ?assertEqual(Gas, Gas2),
+
     ok.
 
 sophia_payable_entrypoint(_Cfg) ->
@@ -5428,12 +5443,12 @@ sophia_payable_entrypoint(_Cfg) ->
                    {error,<<"Function with hash '", _/binary>>}, Err1),
     ?assertEqual(Gas, Gas2),
 
-    C2 = ?call(create_contract, Acc, remote_payable, {?cid(C1)}, #{amount => 1000}),
+    C2 = ?call(create_contract, Acc, remote_payable, {}, #{amount => 1000}),
 
-    {Ok2, Gas3} = ?call(call_contract, Acc, C2, r_foo, bool, {42}, Params),
+    {Ok2, Gas3} = ?call(call_contract, Acc, C2, r_foo, bool, {?cid(C1), 42}, Params),
     ?assertEqual(false, Ok2), ?assert(Gas3 < Gas),
 
-    {Err2, Gas4} = ?call(call_contract, Acc, C2, r_bar, bool, {42}, Params),
+    {Err2, Gas4} = ?call(call_contract, Acc, C2, r_bar, bool, {?cid(C1), 42}, Params),
     ?assertMatchVM({error,<<"function_is_not_payable">>},
                    {error,<<"Function with hash '", _/binary>>}, Err2),
     ?assertEqual(Gas, Gas4),

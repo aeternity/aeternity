@@ -2227,6 +2227,10 @@
           "description" : "Nonce",
           "$ref" : "#/definitions/UInt64"
         },
+        "payable" : {
+          "type" : "boolean",
+          "description" : "Payable"
+        },
         "kind" : {
           "type" : "string",
           "enum" : [ "basic", "generalized" ]
@@ -2242,6 +2246,7 @@
       },
       "example" : {
         "balance" : { },
+        "payable" : true,
         "kind" : "basic",
         "id" : { },
         "auth_fun" : "auth_fun",
