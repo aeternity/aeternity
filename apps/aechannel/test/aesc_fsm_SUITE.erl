@@ -82,7 +82,7 @@
 -define(SLOGAN, {slogan, {?FUNCTION_NAME, ?LINE}}).
 -define(SLOGAN(I), {slogan, {?FUNCTION_NAME, ?LINE, I}}).
 
--define(MAX_MINED_BLOCKS, 100).
+-define(MAX_MINED_BLOCKS, 2000).
 
 -define(I_SECP256K1_PRIV, <<61,194,116,40,192,100,75,189,11,148,242,211,52,100,55,
                             188,165,162,142,65,19,181,89,25,9,228,120,175,152,249,

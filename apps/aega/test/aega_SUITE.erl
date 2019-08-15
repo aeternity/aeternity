@@ -1463,6 +1463,7 @@ decode_call_result(Name0, Fun, Type, Val) ->
         ?ABI_AEVM_SOPHIA_1 ->
             Name = filename:join("contracts", Name0),
             {ok, BinSrc} = aect_test_utils:read_contract(Name),
+            %% TODO: Use a memoized version
             {ok, AST} = aeso_compiler:to_sophia_value(binary_to_list(BinSrc), Fun, Type, Val),
             prettypr:format(aeso_pretty:expr(AST));
         ?ABI_FATE_SOPHIA_1 ->

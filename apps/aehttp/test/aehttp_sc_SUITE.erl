@@ -253,7 +253,7 @@ end_per_testcase(_Case, Config) ->
 start_node(Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     Node = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:connect(Node),
+    aecore_suite_utils:connect(Node, [block_pow]),
 
     {ok, 404, _} = get_balance_at_top(),
     aecore_suite_utils:mine_key_blocks(Node, 10),

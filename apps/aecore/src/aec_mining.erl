@@ -162,10 +162,41 @@ get_edge_bits() ->
 aeminer_pow_cuckoo_verify_mock(_Data, _Nonce, _Soln, _Target, _EdgeBits) ->
     true.
 
-aeminer_pow_cuckoo_generate_mock(_Data, _Target, _Nonce, _Config, _MinerInstance) ->
+aeminer_pow_cuckoo_generate_mock(KeyHeaderBin, _Target, Nonce, _Config, _MinerInstance) ->
     %% Simulate doing a lot of work :)
     timer:sleep(50),
-    {ok, {1337, [1337]}}.
+    %% Check if a microblock was published/might be created - if so then discard the keyblock
+    %% Otherwise we may discard the latest microblock almost all the time because of a new key block being mined
+    %% This results in up to 10 seconds of performance degradation for some tests, sometimes these tests might fail with {error, max_reached}
+    %% Querying aec_chain:top_block_hash() won't always work as sometimes the microblock generation might take more time than the 50ms sleep interval
+    PrevHash = aec_headers:prev_hash(aec_headers:deserialize_from_binary(KeyHeaderBin)),
+    TopBlockHash = aec_chain:top_block_hash(),
+    case PrevHash == TopBlockHash of
+        true ->
+            %% Make sure there is no microblock candidate with transactions
+            case aec_block_generator:get_candidate() of
+                {error, no_candidate} ->
+                    case aec_block_generator:get_generation_state() of
+                        running ->
+                            {error, no_solution}; %% Wait some more time for an possibly empty candidate to show up
+                        stopped ->
+                            {ok, {Nonce, [1337]}} %% Safe to publish
+                    end;
+                {ok, Candidate} ->
+                    case {aec_blocks:txs(Candidate), aec_headers:hash_header(aec_blocks:to_micro_header(Candidate)) == TopBlockHash} of
+                        {_, true} -> %% Candidate is current top - safe to publish
+                            {ok, {Nonce, [1337]}};
+                        {[_|_], false} -> %% Candidate contains at least one tx and wasn't published
+                            lager:debug("Discarding key block to allow microblock candidate to be published"),
+                            {error, no_solution};
+                        _ ->
+                            {ok, {Nonce, [1337]}}
+                    end
+            end;
+        false -> %% Discard obvious forks
+            lager:debug("Discarding key block to avoid fork, Top: ~p, Prev: ~p", [TopBlockHash, PrevHash]),
+            {error, no_solution}
+    end.
 
 mock_block_mining_init() ->
     %% This should avoid spawning a separate process and consuming CPU resources which could be used to parallelize tests

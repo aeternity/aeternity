@@ -54,7 +54,7 @@
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(DEFAULT_GAS_PRICE, aec_test_utils:min_gas_price()).
 
--define(MAX_MINED_BLOCKS, 20).
+-define(MAX_MINED_BLOCKS, 100).
 
 -define(skipRest(Res, Reason),
     case Res of
@@ -113,7 +113,7 @@ init_per_group(VM, Config) when VM == aevm; VM == fate ->
 init_per_vm(Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:start_node(?NODE, Config),
-    aecore_suite_utils:connect(NodeName),
+    aecore_suite_utils:connect(NodeName, [block_pow]),
 
     ToMine = max(0, aecore_suite_utils:latest_fork_height()),
     ct:pal("ToMine ~p\n", [ToMine]),
