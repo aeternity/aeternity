@@ -74,10 +74,13 @@ subtree(Prefix, #store{ cache = Cache, mtree = Tree }) ->
     FromCache = maps:from_list(
         [ {Key, Val} || {<<Pre:N/binary, Key/binary>>, Val} <- maps:to_list(Cache),
           Pre == Prefix, Key /= <<>> ]),
-    {ok, Subtree} = aeu_mtrees:read_only_subtree(Prefix, Tree),
-    Iterator = aeu_mtrees:iterator(Subtree),
-    Next = aeu_mtrees:iterator_next(Iterator),
-    FromTree = find_keys(Next, #{}),
+    FromTree = case aeu_mtrees:read_only_subtree(Prefix, Tree) of
+        {error, no_such_subtree} -> #{};    %% subtree is only in cache
+        {ok, Subtree} ->
+            Iterator = aeu_mtrees:iterator(Subtree),
+            Next = aeu_mtrees:iterator_next(Iterator),
+            find_keys(Next, #{})
+    end,
     maps:merge(FromTree, FromCache).
 
 find_keys('$end_of_table', Map) ->

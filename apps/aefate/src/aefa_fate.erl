@@ -21,7 +21,9 @@
 
 -export([ check_remote/2
         , check_return_type/1
-        , check_signature_and_bind_args/2
+        , check_signature_and_bind_args/3
+        , unfold_store_maps/2
+        , unfold_store_maps_in_args/2
         , check_type/2
         , get_function_signature/2
         , push_gas_cap/2
@@ -194,7 +196,9 @@ abort(mod_by_zero, ES) ->
 abort(pow_too_large_exp, ES) ->
     ?t("Arithmetic error: pow with too large exponent", [], ES);
 abort(missing_map_key, ES) ->
-    ?t("Maps: Key does not exists", [], ES);
+    ?t("Maps: Key does not exist", [], ES);
+abort(bad_store_map_id, ES) ->
+    ?t("Maps: Map does not exist", [], ES);
 abort({type_error, cons}, ES) ->
     ?t("Type error in cons: creating polymorphic list", [], ES);
 abort({cannot_write_to_arg, N}, ES) ->
@@ -203,6 +207,8 @@ abort({undefined_var, Var}, ES) ->
     ?t("Undefined var: ~p", [Var], ES);
 abort({bad_return_type, Val, Type}, ES) ->
     ?t("Type error on return: ~p is not of type ~p", [Val, Type], ES);
+abort({function_arity_mismatch, Got, Expected}, ES) ->
+    ?t("Expected ~p arguments, got ~p", [Expected, Got], ES);
 abort({value_does_not_match_type, Val, Type}, ES) ->
     ?t("Type error on call: ~p is not of type ~p", [Val, Type], ES);
 abort({trying_to_reach_bb, BB}, ES) ->
@@ -284,7 +290,7 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
     ES2 = set_remote_function(Contract, Function, ES1),
     ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
-    ES4 = check_signature_and_bind_args(Signature, ES3),
+    ES4 = check_signature_and_bind_args(length(Arguments), Signature, ES3),
     aefa_engine_state:set_caller(aeb_fate_data:make_address(maps:get(caller, Env)), ES4).
 
 check_remote(Contract, EngineState) when not ?IS_FATE_CONTRACT(Contract) ->
@@ -352,12 +358,14 @@ check_return_type(RetType, TVars, ES) ->
             end
     end.
 
-check_signature_and_bind_args(Signature, ES) ->
-    {ok, Inst} = check_signature(Signature, ES),
+check_signature_and_bind_args(Arity, Signature, ES) ->
+    {ok, Inst} = check_signature(Arity, Signature, ES),
     ES1 = bind_args_from_signature(Signature, ES),
     aefa_engine_state:set_current_tvars(Inst, ES1).
 
-check_signature({ArgTypes, _RetSignature}, ES) ->
+check_signature(Arity, {ArgTypes, _RetSignature}, ES) when is_integer(Arity), length(ArgTypes) /= Arity ->
+    abort({function_arity_mismatch, Arity, length(ArgTypes)}, ES);
+check_signature(_Arity, {ArgTypes, _RetSignature}, ES) ->
     Stack = aefa_engine_state:accumulator_stack(ES),
     Args = [aefa_engine_state:accumulator(ES) | Stack],
     case check_arg_types(ArgTypes, Args) of
@@ -408,6 +416,8 @@ infer_type(X) when ?IS_FATE_MAP(X) ->
     KeyT = infer_element_type(Ks),
     ValT = infer_element_type(Vs),
     {map, KeyT, ValT};
+infer_type(?FATE_STORE_MAP(_, _)) ->
+    {map, any, any};    %% Should only happen for local calls
 infer_type(X) when ?IS_FATE_TUPLE(X) ->
     {tuple, [infer_type(Y) || Y <- ?FATE_TUPLE_ELEMENTS(X)]};
 infer_type(X) when ?IS_FATE_VARIANT(X) ->
@@ -569,7 +579,8 @@ push_gas_cap(Gas, ES) when ?IS_FATE_INTEGER(Gas) ->
 pop_call_stack(ES) ->
     case aefa_engine_state:pop_call_stack(ES) of
         {empty, ES1} ->
-            {stop, ES1};
+            ES2 = unfold_store_maps(ES1),
+            {stop, ES2};
         {return_check, TVars, RetType, ES1} ->
             ES2 = check_return_type(RetType, TVars, ES1),
             pop_call_stack(ES2);
@@ -578,9 +589,40 @@ pop_call_stack(ES) ->
             ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
             {jump, BB, ES3};
         {remote, Contract, Function, TVars, BB, ES1} ->
-            ES2 = set_remote_function(Contract, Function, ES1),
-            ES3 = aefa_engine_state:set_current_tvars(TVars, ES2),
-            {jump, BB, ES3}
+            ES2 = unfold_store_maps(ES1),
+            ES3 = set_remote_function(Contract, Function, ES2),
+            ES4 = aefa_engine_state:set_current_tvars(TVars, ES3),
+            {jump, BB, ES4}
+    end.
+
+unfold_store_maps(ES) ->
+    {Acc, ES1} = unfold_store_maps(aefa_engine_state:accumulator(ES), ES),
+    aefa_engine_state:set_accumulator(Acc, ES1).
+
+unfold_store_maps_in_args(0, ES)     -> ES;
+unfold_store_maps_in_args(Arity, ES) ->
+    Acc   = aefa_engine_state:accumulator(ES),
+    Stack = aefa_engine_state:accumulator_stack(ES),
+    {Args, Rest} = lists:split(min(Arity, length(Stack) + 1), [Acc | Stack]),
+    {Args1, ES1} = unfold_store_maps(?MAKE_FATE_LIST(Args), ES),
+    [Acc1 | Stack1] = ?FATE_LIST_VALUE(Args1),
+    aefa_engine_state:set_accumulator(Acc1,
+        aefa_engine_state:set_accumulator_stack(Stack1 ++ Rest, ES1)).
+
+unfold_store_maps(Val, ES) ->
+    case aeb_fate_maps:has_store_maps(Val) of
+        true ->
+            Pubkey = aefa_engine_state:current_contract(ES),
+            Store  = aefa_engine_state:stores(ES),
+            Store1 = aefa_stores:cache_map_metadata(Pubkey, Store),
+            ES1    = aefa_engine_state:set_stores(Store1, ES),
+            Unfold = fun(Id) ->
+                        {List, _Store2} = aefa_stores:store_map_to_list(Pubkey, Id, Store1),
+                        maps:from_list(List)
+                     end,
+            {aeb_fate_maps:unfold_store_maps(Unfold, Val), ES1};
+        false ->
+            {Val, ES}
     end.
 
 %% ------------------------------------------------------

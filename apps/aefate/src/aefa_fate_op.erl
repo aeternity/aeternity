@@ -5,11 +5,9 @@
 -export([ return/1
         , returnr/2
         , call/2
-        , call_r/4
+        , call_r/5
         , call_t/2
-        , call_tr/4
-        , call_gr/5
-        , call_gtr/5
+        , call_gr/6
         , call_value/2
         , jump/2
         , jumpif/3
@@ -129,6 +127,8 @@
         , abort/2
         , exit/2
         , nop/1
+        , unused_1/1
+        , unused_2/1
         , auth_tx_hash/2
         , bytes_to_int/3
         , bytes_to_str/3
@@ -141,6 +141,14 @@
 %% ------------------------------------------------------------------------
 %% Operations
 %% ------------------------------------------------------------------------
+
+-spec unused_1(_) -> no_return().
+unused_1(ES) ->
+    aefa_fate:abort(bad_bytecode, ES).
+
+-spec unused_2(_) -> no_return().
+unused_2(ES) ->
+    aefa_fate:abort(bad_bytecode, ES).
 
 %% ------------------------------------------------------
 %% Call/return instructions
@@ -158,64 +166,43 @@ call(Arg0, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
     {Fun, ES2} = get_op_arg(Arg0, ES1),
     Signature = aefa_fate:get_function_signature(Fun, ES2),
-    ES3 = aefa_fate:check_signature_and_bind_args(Signature, ES2),
+    ES3 = aefa_fate:check_signature_and_bind_args(any, Signature, ES2),
     {jump, 0, aefa_fate:set_local_function(Fun, ES3)}.
 
 call_t(Arg0, EngineState) ->
     {Fun, ES1} = get_op_arg(Arg0, EngineState),
     Signature = aefa_fate:get_function_signature(Fun, ES1),
-    ES2 = aefa_fate:check_signature_and_bind_args(Signature, ES1),
+    ES2 = aefa_fate:check_signature_and_bind_args(any, Signature, ES1),
     Caller = aefa_engine_state:current_function(EngineState),
     CallerSignature = aefa_fate:get_function_signature(Caller, EngineState),
     CallerTvars = aefa_engine_state:current_tvars(EngineState),
     ES3 = aefa_fate:push_return_type_check(Signature, CallerSignature, CallerTvars, ES2),
     {jump, 0, aefa_fate:set_local_function(Fun, ES3)}.
 
-call_r(Arg0, Arg1, Arg2, EngineState) ->
+call_r(Arg0, Arg1, Arg2, Arg3, EngineState) when ?IS_FATE_INTEGER(Arg2) ->
     ES1 = aefa_fate:push_return_address(EngineState),
     {Contract, ES2} = get_op_arg(Arg0, ES1),
-    {Value, ES3} = get_op_arg(Arg2, ES2),
-    {_Signature, ES4} = remote_call_common(Contract, Arg1, Value, ES3),
+    {Value, ES3} = get_op_arg(Arg3, ES2),
+    {_Signature, ES4} = remote_call_common(Contract, Arg1, Arg2, Value, ES3),
     {jump, 0, ES4}.
 
-call_tr(Arg0, Arg1, Arg2, EngineState) ->
-    {Contract, ES1} = get_op_arg(Arg0, EngineState),
-    {Value, ES2} = get_op_arg(Arg2, ES1),
-    {Signature, ES3} = remote_call_common(Contract, Arg1, Value, ES2),
-    Caller = aefa_engine_state:current_function(EngineState),
-    CallerSignature = aefa_fate:get_function_signature(Caller, EngineState),
-    CallerTvars = aefa_engine_state:current_tvars(EngineState),
-    ES4 = aefa_fate:push_return_type_check(Signature, CallerSignature, CallerTvars, ES3),
-    {jump, 0, ES4}.
-
-call_gr(Arg0, Arg1, Arg2, Arg3, EngineState) ->
+call_gr(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) when ?IS_FATE_INTEGER(Arg2) ->
     ES1 = aefa_fate:push_return_address(EngineState),
     {Contract, ES2} = get_op_arg(Arg0, ES1),
-    {Value, ES3}   = get_op_arg(Arg2, ES2),
-    {GasCap, ES4}  = get_op_arg(Arg3, ES3),
-    {_Signature, ES5} = remote_call_common(Contract, Arg1, Value, ES4),
+    {Value, ES3}   = get_op_arg(Arg3, ES2),
+    {GasCap, ES4}  = get_op_arg(Arg4, ES3),
+    {_Signature, ES5} = remote_call_common(Contract, Arg1, Arg2, Value, ES4),
     ES6 = aefa_fate:push_gas_cap(GasCap, ES5),
     {jump, 0, ES6}.
 
-call_gtr(Arg0, Arg1, Arg2, Arg3, EngineState) ->
-    {Contract, ES1} = get_op_arg(Arg0, EngineState),
-    {Value, ES2}   = get_op_arg(Arg2, ES1),
-    {GasCap, ES3}  = get_op_arg(Arg3, ES2),
-    {Signature, ES4} = remote_call_common(Contract, Arg1, Value, ES3),
-    Caller = aefa_engine_state:current_function(EngineState),
-    CallerSignature = aefa_fate:get_function_signature(Caller, EngineState),
-    CallerTvars = aefa_engine_state:current_tvars(EngineState),
-    ES5 = aefa_fate:push_gas_cap(GasCap, ES4),
-    ES6 = aefa_fate:push_return_type_check(Signature, CallerSignature, CallerTvars, ES5),
-    {jump, 0, ES6}.
-
-remote_call_common(Contract, Function, Value, EngineState) ->
+remote_call_common(Contract, Function, Arity, Value, EngineState) ->
     Current   = aefa_engine_state:current_contract(EngineState),
-    ES1       = aefa_fate:check_remote(Contract, EngineState),
-    ES2       = aefa_fate:set_remote_function(Contract, Function, ES1),
-    Signature = aefa_fate:get_function_signature(Function, ES2),
-    ES3       = aefa_fate:check_signature_and_bind_args(Signature, ES2),
-    {Signature, transfer_value(Current, Contract, Value, ES3)}.
+    ES1       = aefa_fate:unfold_store_maps_in_args(Arity, EngineState),
+    ES2       = aefa_fate:check_remote(Contract, ES1),
+    ES3       = aefa_fate:set_remote_function(Contract, Function, ES2),
+    Signature = aefa_fate:get_function_signature(Function, ES3),
+    ES4       = aefa_fate:check_signature_and_bind_args(Arity, Signature, ES3),
+    {Signature, transfer_value(Current, Contract, Value, ES4)}.
 
 transfer_value(_From, ?FATE_CONTRACT(_To), Value, ES) when not ?IS_FATE_INTEGER(Value) ->
     aefa_fate:abort({value_does_not_match_type, Value, integer}, ES);
@@ -445,15 +432,44 @@ setelement(Arg0, Arg1, Arg2, Arg3, EngineState) ->
 %% Map instructions
 %% ------------------------------------------------------
 map_empty(Arg0, EngineState) ->
-    un_op(get, {Arg0,
-                {immediate, aeb_fate_data:make_map(#{})}},
+    un_op(get, {Arg0, {immediate, aeb_fate_data:make_map(#{})}},
           EngineState).
 
 map_lookup(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(map_lookup, {Arg0, Arg1, Arg2}, EngineState).
+    {[Map, Key], ES1} = get_op_args([Arg1, Arg2], EngineState),
+    {Result, ES2} = map_lookup1(Key, Map, ES1),
+    case Result of
+        error     -> aefa_fate:abort(missing_map_key, ES2);
+        {ok, Val} -> write(Arg0, Val, ES2)
+    end.
 
 map_lookup(Arg0, Arg1, Arg2, Arg3, EngineState) ->
-    ter_op(map_lookup_default, {Arg0, Arg1, Arg2, Arg3}, EngineState).
+    {[Map, Key, Default], ES1} = get_op_args([Arg1, Arg2, Arg3], EngineState),
+    {Result, ES2} = map_lookup1(Key, Map, ES1),
+    case Result of
+        error     -> write(Arg0, Default, ES2);
+        {ok, Val} -> write(Arg0, Val, ES2)
+    end.
+
+map_member(Arg0, Arg1, Arg2, EngineState) ->
+    {[Map, Key], ES1} = get_op_args([Arg1, Arg2], EngineState),
+    case Map of
+        _ when ?IS_FATE_MAP(Map) ->
+            write(Arg0, aeb_fate_data:make_boolean(maps:is_key(Key, ?FATE_MAP_VALUE(Map))), ES1);
+        ?FATE_STORE_MAP(Cache, MapId) ->
+            {Member, ES2} = store_map_member(Cache, MapId, Key, ES1),
+            write(Arg0, Member, ES2)
+    end.
+
+map_lookup1(Key, Map, ES) when ?IS_FATE_MAP(Map) ->
+    case maps:get(Key, ?FATE_MAP_VALUE(Map), void) of
+        void -> {error, ES};
+        Res  -> {{ok, Res}, ES}
+    end;
+map_lookup1(Key, ?FATE_STORE_MAP(Cache, MapId), ES) ->
+    store_map_lookup(Cache, MapId, Key, ES);
+map_lookup1(Key, Map, _ES) ->
+    error({map_lookup1, Key, Map}).
 
 map_update(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     ter_op(map_update, {Arg0, Arg1, Arg2, Arg3}, EngineState).
@@ -461,17 +477,31 @@ map_update(Arg0, Arg1, Arg2, Arg3, EngineState) ->
 map_delete(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(map_delete, {Arg0, Arg1, Arg2}, EngineState).
 
-map_member(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(map_member, {Arg0, Arg1, Arg2}, EngineState).
-
 map_from_list(Arg0, Arg1, EngineState) ->
     un_op(map_from_list, {Arg0, Arg1}, EngineState).
 
 map_to_list(Arg0, Arg1, EngineState) ->
-    un_op(map_to_list, {Arg0, Arg1}, EngineState).
+    {Map, ES1} = get_op_arg(Arg1, EngineState),
+    case Map of
+        _ when ?IS_FATE_MAP(Map) ->
+            Tuples = [aeb_fate_data:make_tuple({K, V})
+                      || {K, V} <- maps:to_list(?FATE_MAP_VALUE(Map))],
+            write(Arg0, aeb_fate_data:make_list(Tuples), ES1);
+        ?FATE_STORE_MAP(Cache, MapId) ->
+            {List, ES2} = store_map_to_list(Cache, MapId, ES1),
+            write(Arg0, List, ES2)
+    end.
 
 map_size_(Arg0, Arg1, EngineState) ->
-    un_op(map_size, {Arg0, Arg1}, EngineState).
+    {Map, ES1} = get_op_arg(Arg1, EngineState),
+    case Map of
+        _ when ?IS_FATE_MAP(Map) ->
+            Size = aeb_fate_data:make_integer(map_size(?FATE_MAP_VALUE(Map))),
+            write(Arg0, Size, ES1);
+        ?FATE_STORE_MAP(Cache, MapId) ->
+            {Size, ES2} = store_map_size(Cache, MapId, ES1),
+            write(Arg0, Size, ES2)
+    end.
 
 %% ------------------------------------------------------
 %% List instructions
@@ -1418,12 +1448,6 @@ op('not', A) ->
 op(map_from_list, A) when ?IS_FATE_LIST(A) ->
     KeyValues = [T || ?FATE_TUPLE(T) <- ?FATE_LIST_VALUE(A)],
     aeb_fate_data:make_map(maps:from_list(KeyValues));
-op(map_to_list, A) when ?IS_FATE_MAP(A) ->
-    Tuples = [aeb_fate_data:make_tuple({K, V})
-              || {K, V} <- maps:to_list(?FATE_MAP_VALUE(A))],
-    aeb_fate_data:make_list(Tuples);
-op(map_size, A) when ?IS_FATE_MAP(A) ->
-    aeb_fate_data:make_integer(map_size(?FATE_MAP_VALUE(A)));
 op(hd, A) when ?IS_FATE_LIST(A) ->
     case ?FATE_LIST_VALUE(A) of
         [] -> aefa_fate:abort(hd_on_empty_list);
@@ -1518,15 +1542,8 @@ op('or', A, B)  when ?IS_FATE_BOOLEAN(A)
 op(map_delete, Map, Key) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     maps:remove(Key, ?FATE_MAP_VALUE(Map));
-op(map_lookup, Map, Key) when ?IS_FATE_MAP(Map),
-                              not ?IS_FATE_MAP(Key) ->
-    case maps:get(Key, ?FATE_MAP_VALUE(Map), void) of
-        void -> aefa_fate:abort(missing_map_key);
-        Res -> Res
-    end;
-op(map_member, Map, Key) when ?IS_FATE_MAP(Map),
-                              not ?IS_FATE_MAP(Key) ->
-    aeb_fate_data:make_boolean(maps:is_key(Key, ?FATE_MAP_VALUE(Map)));
+op(map_delete, ?FATE_STORE_MAP(Cache, Id), Key) ->
+    ?FATE_STORE_MAP(Cache#{ Key => ?FATE_MAP_TOMBSTONE }, Id);
 op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
     case ?FATE_LIST_VALUE(Tail) of
         [] -> aeb_fate_data:make_list([Hd|?FATE_LIST_VALUE(Tail)]);
@@ -1594,13 +1611,12 @@ op(bits_difference, A, B)
     ?FATE_BITS((BitsA band BitsB) bxor BitsA).
 
 %% Terinay operations
-op(map_lookup_default, Map, Key, Default) when ?IS_FATE_MAP(Map),
-                                               not ?IS_FATE_MAP(Key) ->
-    maps:get(Key, ?FATE_MAP_VALUE(Map), Default);
 op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
                               not ?IS_FATE_MAP(Key) ->
     Res = maps:put(Key, Value, ?FATE_MAP_VALUE(Map)),
     aeb_fate_data:make_map(Res);
+op(map_update, ?FATE_STORE_MAP(Cache, Id), Key, Value) ->
+    ?FATE_STORE_MAP(Cache#{ Key => Value }, Id);
 op(ecverify, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
                               , ?IS_FATE_ADDRESS(PK)
                               , ?IS_FATE_BYTES(64, Sig) ->
@@ -1616,17 +1632,70 @@ op(ecverify_secp256k1, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
 bits_sum(0, Sum) -> Sum;
 bits_sum(N, Sum) -> bits_sum(N bsr 1, Sum + (N band 2#1)).
 
+store_map_lookup(Cache, MapId, Key, ES) ->
+    case maps:get(Key, Cache, void) of
+        ?FATE_MAP_TOMBSTONE -> {error, ES};
+        void ->
+            Pubkey        = aefa_engine_state:current_contract(ES),
+            Store         = aefa_engine_state:stores(ES),
+            {Res, Store1} = aefa_stores:store_map_lookup(Pubkey, MapId, Key, Store),
+            ES1           = aefa_engine_state:set_stores(Store1, ES),
+            {Res, ES1};
+        Val -> {{ok, Val}, ES}
+    end.
 
+store_map_member(Cache, MapId, Key, ES) ->
+    case maps:get(Key, Cache, void) of
+        ?FATE_MAP_TOMBSTONE -> {?FATE_FALSE, ES};
+        void ->
+            Pubkey        = aefa_engine_state:current_contract(ES),
+            Store         = aefa_engine_state:stores(ES),
+            {Res, Store1} = aefa_stores:store_map_member(Pubkey, MapId, Key, Store),
+            ES1           = aefa_engine_state:set_stores(Store1, ES),
+            {aeb_fate_data:make_boolean(Res), ES1};
+        _Val -> {?FATE_TRUE, ES}
+    end.
+
+store_map_size(Cache, MapId, ES) ->
+    Pubkey         = aefa_engine_state:current_contract(ES),
+    Store          = aefa_engine_state:stores(ES),
+    {Size, Store1} = aefa_stores:store_map_size(Pubkey, MapId, Store),
+    Delta  = fun(Key, ?FATE_MAP_TOMBSTONE, N) ->
+                     case aefa_stores:store_map_member(Pubkey, MapId, Key, Store1) of
+                         {false, _Store} -> N;
+                         {true,  _Store} -> N - 1
+                     end;
+                (Key, _, N) ->
+                     case aefa_stores:store_map_member(Pubkey, MapId, Key, Store) of
+                         {false, _Store} -> N + 1;
+                         {true,  _Store} -> N
+                     end
+             end,
+    ES1 = aefa_engine_state:set_stores(Store1, ES),
+    {maps:fold(Delta, Size, Cache), ES1}.
+
+store_map_to_list(Cache, MapId, ES) ->
+    Pubkey              = aefa_engine_state:current_contract(ES),
+    Store               = aefa_engine_state:stores(ES),
+    {StoreList, Store1} = aefa_stores:store_map_to_list(Pubkey, MapId, Store),
+    StoreMap            = maps:from_list(StoreList),
+    Upd = fun(Key, ?FATE_MAP_TOMBSTONE, M) -> maps:remove(Key, M);
+             (Key, Val, M)                 -> maps:put(Key, Val, M) end,
+    Map = maps:fold(Upd, StoreMap, Cache),
+    ES1 = aefa_engine_state:set_stores(Store1, ES),
+    {aeb_fate_data:make_list([ ?FATE_TUPLE(KV) || KV <- maps:to_list(Map) ]), ES1}.
 
 %% ------------------------------------------------------
 %% Comparison instructions
 %% ------------------------------------------------------
 
 bin_comp(Comp, {To, Left, Right}, ES) ->
-    {LeftValue, ES1} = get_op_arg(Left, ES),
-    {RightValue, ES2} = get_op_arg(Right, ES1),
-    Result = comp(Comp, LeftValue, RightValue),
-    write(To, Result, ES2).
+    {LeftValue,   ES1} = get_op_arg(Left, ES),
+    {LeftValue1,  ES2} = aefa_fate:unfold_store_maps(LeftValue, ES1),
+    {RightValue,  ES3} = get_op_arg(Right, ES2),
+    {RightValue1, ES4} = aefa_fate:unfold_store_maps(RightValue, ES3),
+    Result = comp(Comp, LeftValue1, RightValue1),
+    write(To, Result, ES4).
 
 comp( lt, A, B) -> A < B;
 comp( gt, A, B) -> A > B;
