@@ -79,13 +79,13 @@ groups() ->
 %%%===================================================================
 
 init_per_suite(Cfg) ->
-    [{name, ?NAME} | Cfg].
+    Cfg.
 
 end_per_suite(_) ->
     [].
 
 init_per_testcase(TC, Cfg) when TC == subname; TC == subname_negative ->
-    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+    case aect_test_utils:is_post_lima() of
         true -> Cfg;
         false -> {skip, subname_transaction_is_from_lima_or_never}
     end;
@@ -100,7 +100,7 @@ end_per_testcase(_, _) ->
 %%%===================================================================
 
 preclaim(Cfg) ->
-    <<Name/binary>> = proplists:get_value(name, Cfg),
+    <<Name/binary>> = proplists:get_value(name, Cfg, aect_test_utils:fullname(?NAME)),
     State = case proplists:get_value(state, Cfg) of
                 undefined -> aens_test_utils:new_state();
                 State0 -> State0
@@ -173,7 +173,8 @@ preclaim_negative(Cfg) ->
 %%%===================================================================
 
 claim(Cfg) ->
-    {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
+    Name0 = proplists:get_value(name, Cfg, aect_test_utils:fullname(?NAME)),
+    {PubKey, Name, NameSalt, S1} = preclaim([{name, Name0} | Cfg]),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT + 1,
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
@@ -206,7 +207,7 @@ claim(Cfg) ->
     {PubKey, NHash, S2}.
 
 claim_locked_coins_holder_gets_locked_fee(Cfg) ->
-    {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
+    {PubKey, Name, NameSalt, S1} = preclaim([{name, aect_test_utils:fullname(?NAME)} | Cfg]),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT + 1,
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
@@ -242,7 +243,7 @@ claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     ok.
 
 claim_negative(Cfg) ->
-    {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
+    {PubKey, Name, NameSalt, S1} = preclaim([{name, aect_test_utils:fullname(?NAME)} | Cfg]),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT,
     Env = aetx_env:tx_env(Height),
@@ -288,8 +289,8 @@ claim_negative(Cfg) ->
     {error, no_registrar} = aetx:process(Tx6, Trees, Env),
 
     %% Test name contains several dots
-    SubnameAsName = <<"subname.name.test"/utf8>>,
-    {PubKey7, _Name, NameSalt7, S7} = preclaim([{name, SubnameAsName}]),
+    SubnameAsName = aect_test_utils:fullname(<<"subname.name"/utf8>>),
+    {PubKey7, _Name, NameSalt7, S7} = preclaim([{name, SubnameAsName} | Cfg]),
     Trees7 = aens_test_utils:trees(S7),
     TxSpec7 = aens_test_utils:claim_tx_spec(PubKey7, SubnameAsName, NameSalt7, S7),
     {ok, Tx7} = aens_claim_tx:new(TxSpec7),
@@ -298,12 +299,12 @@ claim_negative(Cfg) ->
 
     ok.
 
-claim_race_negative(_Cfg) ->
+claim_race_negative(Cfg) ->
     %% The first claim
-    {_PubKey, _NHash, S1} = claim([{name, ?NAME}]),
+    {_PubKey, _NHash, S1} = claim([{name, aect_test_utils:fullname(?NAME)} | Cfg]),
 
     %% The second claim of the same name (hardcoded in preclaim) decomposed
-    {PubKey2, Name2, NameSalt2, S2} = preclaim([{name, ?NAME}, {state, S1}]),
+    {PubKey2, Name2, NameSalt2, S2} = preclaim([{name, aect_test_utils:fullname(?NAME)}, {state, S1} | Cfg]),
     Trees = aens_test_utils:trees(S2),
     Height = ?PRE_CLAIM_HEIGHT + 1,
 
@@ -404,7 +405,7 @@ update_negative(Cfg) ->
         aetx:process(Tx7, aens_test_utils:trees(S4), Env),
 
     %% Test name contains several dots
-    SNameHash = aens_hash:name_hash(<<"sub.name.test">>),
+    SNameHash = aens_hash:name_hash(aect_test_utils:fullname(<<"sub.name">>)),
     TxSpec8 = aens_test_utils:update_tx_spec(PubKey, SNameHash, S4),
     {'EXIT', {{badmatch, {name,_}}, [_|_]}} = (catch aens_update_tx:new(TxSpec8)),
 
@@ -487,7 +488,7 @@ transfer_negative(Cfg) ->
         aetx:process(Tx6, aens_test_utils:trees(S4), Env),
 
     %% Test name contains several dots
-    {ok, NHash3} = aens:get_name_hash(<<"foo.bar.test">>),
+    {ok, NHash3} = aens:get_name_hash(aect_test_utils:fullname(<<"foo.bar">>)),
     TxSpec7 = aens_test_utils:transfer_tx_spec(PubKey, NHash3, PubKey, S1),
     {'EXIT', {{badmatch, {name,_}}, [_|_]}} = (catch aens_transfer_tx:new(TxSpec7)),
 
@@ -567,7 +568,7 @@ revoke_negative(Cfg) ->
         aetx:process(Tx6, aens_test_utils:trees(S4), Env),
 
     %% Test name contains several dots
-    SNameHash = aens_hash:name_hash(<<"sub.name.test">>),
+    SNameHash = aens_hash:name_hash(aect_test_utils:fullname(<<"sub.name">>)),
     TxSpec7 = aens_test_utils:revoke_tx_spec(PubKey, SNameHash, S4),
     {'EXIT', {{badmatch, {name,_}}, [_|_]}} = (catch aens_revoke_tx:new(TxSpec7)),
 
@@ -578,7 +579,7 @@ revoke_negative(Cfg) ->
 %%%===================================================================
 
 prune_preclaim(Cfg) ->
-    {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
+    {PubKey, Name, NameSalt, S1} = preclaim([{name, aect_test_utils:fullname(?NAME)} | Cfg]),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
     Trees2 = aens_test_utils:trees(S1),
@@ -659,19 +660,19 @@ registrar_change(_Cfg) ->
 %%% Subdomain
 %%%===================================================================
 
--define(TOPNAME, <<"姆.test"/utf8>>).
--define(SNAME1, <<"斯1.姆.test"/utf8>>).
+-define(TOPNAME, <<"姆"/utf8>>).
+-define(SNAME1, <<"斯1.姆"/utf8>>).
 -define(SNAME1_PREFIX, <<"斯1"/utf8>>).
--define(SNAME2, <<"姆2.姆.test"/utf8>>).
+-define(SNAME2, <<"姆2.姆"/utf8>>).
 -define(SNAME2_PREFIX, <<"姆2"/utf8>>).
--define(SNAME21, <<"姆2.斯1.姆.test"/utf8>>).
+-define(SNAME21, <<"姆2.斯1.姆"/utf8>>).
 -define(SNAME21_PREFIX, <<"姆2.斯1"/utf8>>).
--define(SNAME54321, <<"詹5.斯4.詹3.姆2.斯1.姆.test"/utf8>>).
+-define(SNAME54321, <<"詹5.斯4.詹3.姆2.斯1.姆"/utf8>>).
 -define(SNAME54321_PREFIX, <<"詹5.斯4.詹3.姆2.斯1"/utf8>>).
 
-subname(_Cfg) ->
-    Name = ?TOPNAME,
-    {PubKey, NHash, S1} = claim([{name, Name}]),
+subname(Cfg) ->
+    Name = aect_test_utils:fullname(?TOPNAME),
+    {PubKey, NHash, S1} = claim([{name, Name} | Cfg]),
     Trees = aens_test_utils:trees(S1),
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
 
@@ -698,24 +699,24 @@ subname(_Cfg) ->
 
     NTrees1 = aec_trees:ns(Trees1),
 
-    {ok, SNameAscii1} = aens_utils:name_to_ascii(?SNAME1),
+    {ok, SNameAscii1} = aens_utils:name_to_ascii(aect_test_utils:fullname(?SNAME1)),
     SNameHash1 = aens_hash:name_hash(SNameAscii1),
     {value, SName1} = aens_state_tree:lookup_name(SNameHash1, NTrees1),
     [Ptr1] = aens_subnames:pointers(SName1),
     <<"sub1_acc">> = aens_pointer:key(Ptr1),
     {id, account, SomePK} = aens_pointer:id(Ptr1),
 
-    {ok, SNameAscii2} = aens_utils:name_to_ascii(?SNAME2),
+    {ok, SNameAscii2} = aens_utils:name_to_ascii(aect_test_utils:fullname(?SNAME2)),
     SNameHash2 = aens_hash:name_hash(SNameAscii2),
     {value, SName2} = aens_state_tree:lookup_name(SNameHash2, NTrees1),
     [] = aens_subnames:pointers(SName2),
 
-    {ok, SNameAscii21} = aens_utils:name_to_ascii(?SNAME21),
+    {ok, SNameAscii21} = aens_utils:name_to_ascii(aect_test_utils:fullname(?SNAME21)),
     SNameHash21 = aens_hash:name_hash(SNameAscii21),
     {value, SName21} = aens_state_tree:lookup_name(SNameHash21, NTrees1),
     [] = aens_subnames:pointers(SName21),
 
-    {ok, SNameAscii54321} = aens_utils:name_to_ascii(?SNAME54321),
+    {ok, SNameAscii54321} = aens_utils:name_to_ascii(aect_test_utils:fullname(?SNAME54321)),
     SNameHash54321 = aens_hash:name_hash(SNameAscii54321),
     {value, SName54321} = aens_state_tree:lookup_name(SNameHash54321, NTrees1),
     [Ptr54321] = aens_subnames:pointers(SName54321),
@@ -745,14 +746,14 @@ subname(_Cfg) ->
     ok.
 
 subname_negative(Cfg) ->
-    Name = fullname(<<"topname">>, Cfg),
+    Name = aect_test_utils:fullname(<<"topname">>),
     {PubKey, NHash, S1} = claim([{name, Name} | Cfg]),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT + 1,
     Env = aetx_env:tx_env(Height),
 
     %% Test subname for non existent name
-    TxSpec1 = aens_test_utils:subname_tx_spec(PubKey, fullname(<<"notthere">>, Cfg), #{}, S1),
+    TxSpec1 = aens_test_utils:subname_tx_spec(PubKey, aect_test_utils:fullname(<<"notthere">>), #{}, S1),
     {ok, Tx1} = aens_subname_tx:new(TxSpec1),
     {error, name_does_not_exist} = aetx:process(Tx1, Trees, Env),
 

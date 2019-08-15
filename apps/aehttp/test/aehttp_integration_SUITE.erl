@@ -740,7 +740,7 @@ init_per_testcase(post_oracle_response, Config) ->
      {response_ttl_value, 20},
      {response, <<"Hejsan">>} | init_per_testcase_all(Config)];
 init_per_testcase(nameservice_transaction_subname, Config) ->
-    case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+    case aect_test_utils:is_post_lima() of
         true -> Config;
         false -> {skip, subname_transaction_is_from_lima_or_never}
     end;
@@ -2412,7 +2412,7 @@ nameservice_transaction_subname(_Config) ->
     MinerAddress = get_pubkey(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
 
-    Name = <<"topname.test">>,
+    Name = aect_test_utils:fullname(<<"topname">>),
 
     Salt = 1234,
 
@@ -3104,7 +3104,7 @@ naming_system_manage_name(_Config) ->
                                            aec_test_utils:min_gas_price()),
     PubKeyEnc   = aeser_api_encoder:encode(account_pubkey, PubKey),
     %% TODO: find out how to craete HTTP path with unicode chars
-    %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
+    %%Name        = aect_test_utils:fullname(<<"詹姆斯詹姆斯"/utf8>>),
     Name        = aect_test_utils:fullname(<<"without-unicode">>),
     NameSalt    = 12345,
     NameTTL     = 20000,
