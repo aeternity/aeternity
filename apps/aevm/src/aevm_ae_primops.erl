@@ -132,8 +132,13 @@ is_local_primop(Data) ->
 %% find the types, and for some we need to know what types for which
 %% the argument was built.
 
-types(?PRIM_CALL_AENS_CLAIM,_HeapValue,_Store,_State) ->
-    {[word, string, word, word, sign_t()], tuple0_t()};
+types(?PRIM_CALL_AENS_CLAIM,_HeapValue,_Store, State) ->
+    case aevm_eeevm_state:vm_version(State) < ?VM_AEVM_SOPHIA_4 of
+        true ->
+            {[word, string, word, sign_t()], tuple0_t()};
+        false ->
+            {[word, string, word, word, sign_t()], tuple0_t()}
+    end;
 types(?PRIM_CALL_AENS_PRECLAIM,_HeapValue,_Store,_State) ->
     {[word, word, sign_t()], tuple0_t()};
 types(?PRIM_CALL_AENS_RESOLVE, HeapValue, Store,_State) ->
@@ -534,15 +539,22 @@ aens_call_preclaim(Data, #chain{api = API, state = State} = Chain) ->
         {error, _} = Err -> Err
     end.
 
-aens_call_claim(Data, #chain{api = API, state = State} = Chain) ->
-    [Addr, Name, Salt, NameFee, Sign0] = get_args([word, string, word, word, sign_t()], Data),
-    case API:aens_claim_tx(<<Addr:256>>, Name, Salt, NameFee, State) of
+aens_call_claim(Data, #chain{api = API, state = State, vm_version = VM} = Chain) ->
+    case aens_call_claim_tx(VM, Data, API, State) of
         {ok, Tx} ->
             SizeGas = size_gas(Tx),
             Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_claim(Tx, to_sign(Sign0), ChainState) end,
             {ok, SizeGas, fun() -> cast_chain(Callback, Chain) end};
         {error, _} = Err -> Err
     end.
+
+%% From VM_AEVM_SOPHIA_4 claims have an extra argument.
+aens_call_claim_tx(VM, Data, API, State) when VM < ?VM_AEVM_SOPHIA_4 ->
+    [Addr, Name, Salt, Sign0] = get_args([word, string, word, sign_t()], Data),
+    API:aens_claim_tx(<<Addr:256>>, Name, Salt, State);
+aens_call_claim_tx(VM, Data, API, State) ->
+    [Addr, Name, Salt, NameFee, Sign0] = get_args([word, string, word, word, sign_t()], Data),
+    API:aens_claim_tx(<<Addr:256>>, Name, Salt, NameFee, State).
 
 aens_call_transfer(Data, #chain{vm_version = VMVersion} = Chain) when VMVersion < ?VM_AEVM_SOPHIA_4 ->
     [From, To, Hash, Sign] = get_args([word, word, word, sign_t()], Data),
