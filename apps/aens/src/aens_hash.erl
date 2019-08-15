@@ -40,10 +40,10 @@ commitment_hash(NameAscii, Salt) ->
 name_hash(<<NameAscii/binary>>) ->
     name_hash(binary:split(NameAscii, <<".">>, [global, trim]));
 name_hash([_, _] = NameParts) ->
-    hash_labels(NameParts);
+    hash_labels(lists:reverse(NameParts));
 name_hash([_, _ | _] = SubnameParts) ->
     TopName = lists:nthtail(length(SubnameParts) - 2, SubnameParts),
-    DomainHash = hash_labels(TopName),
+    DomainHash = hash_labels(lists:reverse(TopName)),
     SubdomainHash = hash_labels(SubnameParts),
     <<DomainHash/binary, SubdomainHash/binary>>.
 
