@@ -12,6 +12,7 @@
          locked_coins_holder_account/0,
          minimum_gas_price/1,
          name_preclaim_expiration/0,
+         name_claim_locked_fee/0,
          name_claim_bid_increment/0,
          name_claim_fee/1,
          name_claim_fee_base/0,
@@ -200,6 +201,9 @@ primop_base_gas(?PRIM_CALL_ADDR_IS_ORACLE            ) -> 5000.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Naming system variables
+
+name_claim_locked_fee() ->
+    3.
 
 name_preclaim_expiration() ->
     300.

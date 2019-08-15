@@ -12,9 +12,12 @@
 
 -define(MULTIPLIER_14, 100000000000000).
 -define(MULTIPLIER_DAY, 480).
--define(BASE_FEE, 3).
 
-get_base_fee() -> ?BASE_FEE * ?MULTIPLIER_14.
+
+get_base_fee() ->
+    %% INFO: calling old governance, to make sure non-auction
+    %%       is compatible with pre-lima fees
+    aec_governance:name_claim_locked_fee() * ?MULTIPLIER_14.
 
 -spec init_fee_at_length(non_neg_integer()) -> non_neg_integer().
 init_fee_at_length(Length) when not is_integer(Length) orelse Length < 1 ->
