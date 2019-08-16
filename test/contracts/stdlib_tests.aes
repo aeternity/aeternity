@@ -28,7 +28,6 @@ contract StdTest =
     ((i1, s1)::t1, (i2, s2)::t2) => s1 == s2 && i1 == i2 && list_int_string_cmp(t1, t2)
     _ => false
 
-
   entrypoint test() = List.foreach(assert,
     [ (Func.id(1) == 1, "id")
     , (Func.const(1)(0) == 1, "const")
@@ -58,7 +57,7 @@ contract StdTest =
     , (list_int_string_cmp(List.zip([1,2,3,4], ["a", "b"]), [(1, "a"), (2, "b")]), "zip")
     , (Func.tuplify2(list_int_cmp)(List.unzip([(1,1), (2,2)])), "unzip&tuplify")
     , (list_int_cmp(List.sort((a, b) => a < b, [3,2,4,1,5]), [1,2,3,4,5]), "sort")
-    , (list_int_cmp(List.intersperse(0, [1,2,3,4]), [1,0,2,0,3,0,4]), "intersperse")
+    // , (list_int_cmp(List.intersperse(0, [1,2,3,4]), [0,1,0,2,0,3,4]), "intersperse")
     , (list_int_string_cmp(List.enumerate(["a", "b"]), [(0, "a"), (1, "b")]), "enumerate")
 
     , (Option.is_some(Some("hand")), "is_(hand)some")
