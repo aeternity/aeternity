@@ -7,6 +7,12 @@ contract Remote =
 
 contract Main =
 
+  type state = int
+
+  function init() = 0
+
+  function next_state() = state + 1
+
   function id(x : int) =
     x
 
@@ -36,3 +42,12 @@ contract Main =
 
   function remote_wrong_ret_tailcall_type_vars(r : Remote, x) =
     r.bogus_id(x)
+
+  function remote_wrong_put(r : Remote, x) =
+    put(r.bogus_id(x))
+
+  function call_bogus_id(r : Remote, x : 'a) : 'a = r.bogus_id(x)
+
+  function remote_wrong_put_polymorphic(r : Remote, x) =
+    put(call_bogus_id(r, x))
+

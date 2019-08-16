@@ -5,9 +5,9 @@
 -export([ return/1
         , returnr/2
         , call/2
-        , call_r/5
+        , call_r/6
         , call_t/2
-        , call_gr/6
+        , call_gr/7
         , call_value/2
         , jump/2
         , jumpif/3
@@ -119,6 +119,7 @@
         , aens_revoke/4
         , ecverify/5
         , ecverify_secp256k1/5
+        , ecrecover_secp256k1/4
         , contract_to_address/3
         , sha3/3
         , sha256/3
@@ -154,55 +155,49 @@ unused_2(ES) ->
 %% Call/return instructions
 %% ------------------------------------------------------
 return(EngineState) ->
-    ES = aefa_fate:check_return_type(EngineState),
-    aefa_fate:pop_call_stack(ES).
+    aefa_fate:pop_call_stack(EngineState).
 
 returnr(Arg0, EngineState) ->
     ES1 = un_op(get, {{stack, 0}, Arg0}, EngineState),
-    ES2 = aefa_fate:check_return_type(ES1),
-    aefa_fate:pop_call_stack(ES2).
+    aefa_fate:pop_call_stack(ES1).
 
 call(Arg0, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
     {Fun, ES2} = get_op_arg(Arg0, ES1),
     Signature = aefa_fate:get_function_signature(Fun, ES2),
-    ES3 = aefa_fate:check_signature_and_bind_args(any, Signature, ES2),
+    ES3 = aefa_fate:bind_args_from_signature(Signature, ES2),
     {jump, 0, aefa_fate:set_local_function(Fun, ES3)}.
 
 call_t(Arg0, EngineState) ->
     {Fun, ES1} = get_op_arg(Arg0, EngineState),
     Signature = aefa_fate:get_function_signature(Fun, ES1),
-    ES2 = aefa_fate:check_signature_and_bind_args(any, Signature, ES1),
-    Caller = aefa_engine_state:current_function(EngineState),
-    CallerSignature = aefa_fate:get_function_signature(Caller, EngineState),
-    CallerTvars = aefa_engine_state:current_tvars(EngineState),
-    ES3 = aefa_fate:push_return_type_check(Signature, CallerSignature, CallerTvars, ES2),
-    {jump, 0, aefa_fate:set_local_function(Fun, ES3)}.
+    ES2 = aefa_fate:bind_args_from_signature(Signature, ES1),
+    {jump, 0, aefa_fate:set_local_function(Fun, ES2)}.
 
-call_r(Arg0, Arg1, Arg2, Arg3, EngineState) when ?IS_FATE_INTEGER(Arg2) ->
+call_r(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
     ES1 = aefa_fate:push_return_address(EngineState),
-    {Contract, ES2} = get_op_arg(Arg0, ES1),
-    {Value, ES3} = get_op_arg(Arg3, ES2),
-    {_Signature, ES4} = remote_call_common(Contract, Arg1, Arg2, Value, ES3),
+    {[Contract, ArgType, RetType, Value], ES2} = get_op_args([Arg0, Arg2, Arg3, Arg4], ES1),
+    ES3 = remote_call_common(Contract, Arg1, ArgType, RetType, Value, ES2),
+    {jump, 0, ES3}.
+
+call_gr(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
+    ES1 = aefa_fate:push_return_address(EngineState),
+    {[Contract, ArgType, RetType, Value, GasCap], ES2} = get_op_args([Arg0, Arg2, Arg3, Arg4, Arg5], ES1),
+    ES3 = aefa_fate:push_gas_cap(GasCap, ES2),
+    ES4 = remote_call_common(Contract, Arg1, ArgType, RetType, Value, ES3),
     {jump, 0, ES4}.
 
-call_gr(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) when ?IS_FATE_INTEGER(Arg2) ->
-    ES1 = aefa_fate:push_return_address(EngineState),
-    {Contract, ES2} = get_op_arg(Arg0, ES1),
-    {Value, ES3}   = get_op_arg(Arg3, ES2),
-    {GasCap, ES4}  = get_op_arg(Arg4, ES3),
-    {_Signature, ES5} = remote_call_common(Contract, Arg1, Arg2, Value, ES4),
-    ES6 = aefa_fate:push_gas_cap(GasCap, ES5),
-    {jump, 0, ES6}.
-
-remote_call_common(Contract, Function, Arity, Value, EngineState) ->
+remote_call_common(Contract, Function, ?FATE_TYPEREP({tuple, ArgTypes}), ?FATE_TYPEREP(RetType), Value, EngineState) ->
     Current   = aefa_engine_state:current_contract(EngineState),
+    Arity     = length(ArgTypes),
     ES1       = aefa_fate:unfold_store_maps_in_args(Arity, EngineState),
     ES2       = aefa_fate:check_remote(Contract, ES1),
     ES3       = aefa_fate:set_remote_function(Contract, Function, ES2),
     Signature = aefa_fate:get_function_signature(Function, ES3),
     ES4       = aefa_fate:check_signature_and_bind_args(Arity, Signature, ES3),
-    {Signature, transfer_value(Current, Contract, Value, ES4)}.
+    TVars     = aefa_engine_state:current_tvars(ES4),
+    ES5       = aefa_fate:push_return_type_check(Signature, {ArgTypes, RetType}, TVars, ES4),
+    transfer_value(Current, Contract, Value, ES5).
 
 transfer_value(_From, ?FATE_CONTRACT(_To), Value, ES) when not ?IS_FATE_INTEGER(Value) ->
     aefa_fate:abort({value_does_not_match_type, Value, integer}, ES);
@@ -1311,6 +1306,9 @@ ecverify(Arg0, Arg1, Arg2, Arg3, ES) ->
 ecverify_secp256k1(Arg0, Arg1, Arg2, Arg3, ES) ->
     ter_op(ecverify_secp256k1, {Arg0, Arg1, Arg2, Arg3}, ES).
 
+ecrecover_secp256k1(Arg0, Arg1, Arg2, ES) ->
+    bin_op(ecrecover_secp256k1, {Arg0, Arg1, Arg2}, ES).
+
 contract_to_address(Arg0, Arg1, ES) ->
     un_op(contract_to_address, {Arg0, Arg1}, ES).
 
@@ -1608,7 +1606,9 @@ op(bits_difference, A, B)
   when ?IS_FATE_BITS(A), ?IS_FATE_BITS(B) ->
     ?FATE_BITS(BitsA) = A,
     ?FATE_BITS(BitsB) = B,
-    ?FATE_BITS((BitsA band BitsB) bxor BitsA).
+    ?FATE_BITS((BitsA band BitsB) bxor BitsA);
+op(ecrecover_secp256k1, _Hash, _Sig) ->
+    aefa_fate:abort(bad_bytecode).
 
 %% Terinay operations
 op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),

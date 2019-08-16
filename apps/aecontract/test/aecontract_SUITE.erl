@@ -19,6 +19,13 @@
 %% for testing from a shell
 -export([ init_tests/2 ]).
 
+%% Running contracts
+-export([ state/0, state/1
+        , new_account/2
+        , create_contract/5
+        , call_contract/7
+        ]).
+
 %% test case exports
 -export([ call_contract/1
         , call_contract_error_value/1
@@ -1524,7 +1531,7 @@ sophia_remote_gas(_Cfg) ->
     %% This only works for FATE. AEVM will treat this as an unknown call and burn all the gas.
     {{error, _}, Gas4} = ?call(call_contract, Acc, Ctr2, bogus_remote, word, {?cid(Ctr1), 872, 1000}, Opts),
     ?assertMatchVM({GivenGas, Gas4, false, true},
-                   {GivenGas, Gas4, false, true}, %% true, false}, TODO: also doesn't work in FATE
+                   {GivenGas, Gas4, true, false},
                    {GivenGas, Gas4, Gas4 < GivenGas, Gas4 =:= GivenGas}),
 
     ok.
@@ -4496,9 +4503,9 @@ sophia_safe_math() ->
           end,
 
     %% Test vectors
-    Values = [ Z || X <- [1, 2, 5, 173, 255, 256, 1 bsl 128 - 1, 1 bsl 128, Medium, 1 bsl 255 - 2,
-                          1 bsl 255 - 1, 1 bsl 255, Large],
-                    Z <- [X, -X], Z < 1 bsl 255 ],
+    Values = [ Z || Z <- [1, -1, 2, -2, 255, 256, -256, 1 bsl 128 - 1, 1 bsl 128, - (1 bsl 128),
+                          Medium, -Medium, 1 bsl 255 - 1, 1 bsl 255, Large, -Large],
+                    Z < 1 bsl 255 ],
     Ops    = [{add, fun erlang:'+'/2}, {sub,   fun erlang:'-'/2},
               {mul, fun erlang:'*'/2}, {'div', fun erlang:'div'/2},
               {pow, fun(X, Y) -> Pow(X, Y, 1) end}],
@@ -5294,7 +5301,7 @@ call_missing(_Cfg) ->
 
 call_wrong_type(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1     = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Acc1     = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
     Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
     42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {?cid(Contract2), 42}),
@@ -5310,6 +5317,14 @@ call_wrong_type(_Cfg) ->
     {error, Error4} = ?call(call_contract, Acc1, Contract1, remote_wrong_ret_tailcall_type_vars, word,
                             {?cid(Contract2), <<"hello">>}),
     ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error4),
+
+    {error, Error5} = ?call(call_contract, Acc1, Contract1, remote_wrong_put, {tuple, []}, {?cid(Contract2), 42}),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error5),
+    1 = ?call(call_contract, Acc1, Contract1, next_state, word, {}),
+
+    {error, Error6} = ?call(call_contract, Acc1, Contract1, remote_wrong_put_polymorphic, {tuple, []}, {?cid(Contract2), 43}),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error6),
+    1 = ?call(call_contract, Acc1, Contract1, next_state, word, {}),
     ok.
 
 %%%===================================================================
