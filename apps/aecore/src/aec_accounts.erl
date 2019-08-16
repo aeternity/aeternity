@@ -265,8 +265,7 @@ serialize_for_client(#account{id      = Id,
 %% Flags
 -define(FLAG_NON_PAYABLE_VALUE, 1).
 
-get_flag(non_payable, N) -> ((N div ?FLAG_NON_PAYABLE_VALUE) rem 2) == 1;
-get_flag(_Flag, _N)      -> false.
+get_flag(non_payable, N) -> ((N div ?FLAG_NON_PAYABLE_VALUE) rem 2) == 1.
 
 set_flags([]) -> 0;
 set_flags([Flag | Flags]) -> flag_to_val(Flag) + set_flags(Flags).

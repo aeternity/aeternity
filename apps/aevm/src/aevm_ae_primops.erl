@@ -605,7 +605,7 @@ address_call_(VM, ?PRIM_CALL_ADDR_IS_CONTRACT, Data, State) when VM >= ?VM_AEVM_
     no_dynamic_gas(fun() -> query_chain(Callback, State) end);
 address_call_(VM, ?PRIM_CALL_ADDR_IS_PAYABLE, Data, State) when VM >= ?VM_AEVM_SOPHIA_4 ->
     [Addr] = get_args([word], Data),
-    Callback = fun(API, ChainState) -> ct:pal("API: ~p", [API]), API:addr_is_payable(<<Addr:256>>, ChainState) end,
+    Callback = fun(API, ChainState) -> API:addr_is_payable(<<Addr:256>>, ChainState) end,
     no_dynamic_gas(fun() -> query_chain(Callback, State) end);
 address_call_(_, _, _, _) ->
     {error, out_of_gas}.

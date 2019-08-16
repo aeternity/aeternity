@@ -84,7 +84,7 @@ make_call_spec(Contract, Function0, Arguments) ->
     Calldata = {tuple, {Function, {tuple, EncArgs}}},
     #{ contract => pad_contract_name(Contract),
        gas      => 1000000,
-       value    => 10000,
+       value    => 0,
        call     => aeb_fate_encoding:serialize(Calldata),
        store    => aect_contracts_store:new() }.
 
@@ -468,7 +468,7 @@ remote() ->
       "      + bla(r)(value = 11, gas = 88, 99)\n"},
      {<<"remote">>,
       "contract Remote =\n"
-      "  entrypoint remote(x : int) = x * (2 + Call.value)\n"}].
+      "  payable entrypoint remote(x : int) = x * (2 + Call.value)\n"}].
 
 remote_tests() ->
     lists:flatten(

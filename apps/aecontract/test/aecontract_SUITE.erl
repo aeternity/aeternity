@@ -5425,7 +5425,6 @@ sophia_payable_contract(_Cfg) ->
     ?assertEqual(Gas, Gas2),
 
     {Ok2, Gas3} = ?call(call_contract, Acc, Cx, r_cond_spend, bool, {?cid(C1), 100}, Params),
-    ct:pal("Res: ~p", [{Ok2, Gas3}]),
     ?assertEqual(true, Ok2), ?assert(Gas3 < Gas),
 
 
