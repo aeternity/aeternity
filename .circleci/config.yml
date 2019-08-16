@@ -106,7 +106,7 @@ references:
           && ./configure && make -j$(nproc) && sudo make install && sudo ldconfig
 
   tag_regex: &tag_regex /^v.*$/
-  master_branch: &master_branch lima
+  master_branch: &master_branch master
 
   rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
   restore_rebar_cache: &restore_rebar_cache
