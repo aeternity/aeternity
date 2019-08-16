@@ -190,8 +190,8 @@ compile(File) ->
     CodeDir = filename:join(code:lib_dir(aecore), "../../extras/test/contracts"),
     FileName = filename:join(CodeDir, File),
     {ok, Cwd} = file:get_cwd(),
-    {ok, Aevm} = aeso_compiler:file(FileName, [{backend, aevm}, {include, {file_system, [Cwd, CodeDir]}}]),
-    {ok, Fate} =  aeso_compiler:file(FileName, [{backend, fate}, {include, {file_system, [Cwd, CodeDir]}}]),
+    {ok, Aevm} = aeso_compiler:file(FileName, [no_implicit_stdlib, {backend, aevm}, {include, {file_system, [Cwd, CodeDir]}}]),
+    {ok, Fate} =  aeso_compiler:file(FileName, [no_implicit_stdlib, {backend, fate}, {include, {file_system, [Cwd, CodeDir]}}]),
     ct:pal("Size aevm: ~p\n     fate: ~p\n", [byte_size(aect_sophia:serialize(Aevm, aect_test_utils:latest_sophia_contract_version())),
                                               byte_size(aect_sophia:serialize(Fate, aect_test_utils:latest_sophia_contract_version()))]),
     {Aevm, Fate}.
@@ -248,7 +248,7 @@ contract_call(Trees, Sender, ContractId, CompiledContract, Fun, Args, Backend) -
 
 
 encode_call_data(Code, Fun, Args, Backend) ->
-    aeso_compiler:create_calldata(Code, Fun, Args, [{backend, Backend}]).
+    aeso_compiler:create_calldata(Code, Fun, Args, [no_implicit_stdlib, {backend, Backend}]).
 
 tx_timer(N, Backend, Trees, Env, F) ->
     {NewTrees, NewEnv, AllTimes} =

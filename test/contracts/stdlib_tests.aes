@@ -1,0 +1,72 @@
+// Collection of non-exhaustive tests. Feel free to add stuff here.
+
+include "Func.aes"
+include "Option.aes"
+include "List.aes"
+include "Pair.aes"
+include "Triple.aes"
+
+contract StdTest =
+  function assert(p) = switch(p)
+    (t, msg) => if(t) () else abort(msg)
+
+
+  // dear programmer from the future – this was written when `==` operator
+  // was not working on any ADT. If you are capable of doing it better – do it.
+  function list_int_cmp(l1 : list(int), l2 : list(int)) = switch((l1, l2))
+    ([], []) => true
+    (h1::t1, h2::t2) => h1 == h2 && list_int_cmp(t1, t2)
+    _ => false
+
+  function option_int_cmp(a : option(int), b) = switch((a, b))
+    (None, None) => true
+    (Some(x), Some(y)) => x == y
+    _ => false
+
+  function list_int_string_cmp(l1 : list(int * string), l2 : list(int * string)) = switch((l1, l2))
+    ([], []) => true
+    ((i1, s1)::t1, (i2, s2)::t2) => s1 == s2 && i1 == i2 && list_int_string_cmp(t1, t2)
+    _ => false
+
+  entrypoint test() = List.foreach(assert,
+    [ (Func.id(1) == 1, "id")
+    , (Func.const(1)(0) == 1, "const")
+    , (Func.uncurry2(Func.const)(1,0) == 1, "uncurry2")
+    , (Func.flip(Func.uncurry2(Func.const))(0,1) == 1, "flip")
+    , (Func.curry2((x, y) => x + y)(0)(1) == 1, "curry")
+    , (Func.recur((r, n) => if (n < 2) 1 else n * r(n-1))(5) == 120, "recursor")
+    , (Func.iter(5, (x) => x + 1)(0) == 5, "iter")
+    , (Func.tuplify2((a, b) => a + b)((2, 3)) == 5, "tuplify")
+
+    , (List.is_empty([]), "empty")
+    , (option_int_cmp(List.first([1,2,3,4]), Some(1)), "list first")
+    , (option_int_cmp(List.find((x) => x > 0, [-1, -2, 3, -1]), Some(3)), "find")
+    , (list_int_cmp(List.replace_at(2, 0, [1,1,1,1,1]), [1,1,0,1,1]), "replace at")
+    // following test seems to break the FATE runtime. It definitely SHOULD work.
+    // , (list_int_cmp(List.foldr((e, cont) => (x) => cont(e::x), (x) => x, [1,2,3])([]), [3,2,1]), "foldr")
+    , (List.foldl((a, x) => a - x, 0, [1,2,3]) == -6, "foldl")
+    , (list_int_cmp(List.reverse([1,2,3]), [3,2,1]), "reverse")
+    , (list_int_cmp(List.filter((x) => x > 0, [-1,1,0,-2,2]), [1,2]), "filter")
+    , (list_int_cmp(List.take(2, List.drop(2, [1,2,3,4,5,6])), [3,4]), "drop&take")
+    , (list_int_cmp(List.take_while(
+         (x) => x > 0,
+         List.drop_while(
+           (x) => x < 0,
+           [-1,2,-3,4,-5,6]
+       )), [2]), "drop&take while")
+    , (list_int_string_cmp(List.zip([1,2,3,4], ["a", "b"]), [(1, "a"), (2, "b")]), "zip")
+    , (Func.tuplify2(list_int_cmp)(List.unzip([(1,1), (2,2)])), "unzip&tuplify")
+    , (list_int_cmp(List.sort((a, b) => a < b, [3,2,4,1,5]), [1,2,3,4,5]), "sort")
+    // , (list_int_cmp(List.intersperse(0, [1,2,3,4]), [0,1,0,2,0,3,4]), "intersperse")
+    , (list_int_string_cmp(List.enumerate(["a", "b"]), [(0, "a"), (1, "b")]), "enumerate")
+
+    , (Option.is_some(Some("hand")), "is_(hand)some")
+    , (Option.default(1, Some(2)) == 2, "default some")
+    , (Option.default(1, None) == 1, "default none")
+    , (option_int_cmp(Option.map2((a, b) => a + b, Some(1), Some(2)), Some(3)), "map2")
+    , (option_int_cmp(Option.app_over(
+        Option.map((x) => (y) => x + y, Some(1)),
+        Some(2)), Some(3)), "(+) <$> Just 1 <*> Just 2")
+    , (list_int_cmp(Option.filter_options([Some(1), None, Some(2)]), [1,2]), "filter options")
+    , (option_int_cmp(Option.choose_first([None, Some(1), None, Some(2)]), Some(1)), "choose fst")
+    ])

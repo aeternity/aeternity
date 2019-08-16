@@ -49,6 +49,8 @@
         , fate_environment/1
         , state_tree/1
         , sophia_identity/1
+        , sophia_list_comp/1
+        , sophia_stdlib_tests/1
         , sophia_remote_identity/1
         , sophia_vm_interaction/1
         , sophia_state/1
@@ -298,6 +300,8 @@ groups() ->
                                     ]}
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
+                                 sophia_list_comp,
+                                 sophia_stdlib_tests,
                                  sophia_remote_identity,
                                  sophia_remote_gas,
                                  sophia_call_out_of_gas,
@@ -1440,6 +1444,39 @@ format_fate_args(M) when is_map(M) ->
     maps:from_list(format_fate_args(maps:to_list(M)));
 format_fate_args(X) ->
     X.
+
+sophia_list_comp(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, no_list_comprehensions_in_fortuna),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 100000000000 * aec_test_utils:min_gas_price()),
+    C   = ?call(create_contract, Acc, list_comp, {}),
+
+    R1  = ?call(call_contract, Acc, C, l1,      {list, word}, {}),
+    R1T = ?call(call_contract, Acc, C, l1_true, {list, word}, {}),
+    ?assertEqual(R1T, R1),
+
+    R2  = ?call(call_contract, Acc, C, l2,      {list, word}, {}),
+    R2T = ?call(call_contract, Acc, C, l2_true, {list, word}, {}),
+    ?assertEqual(R2T, R2),
+
+    R3  = ?call(call_contract, Acc, C, l3,      {list, {list, string}}, {}),
+    R3T = ?call(call_contract, Acc, C, l3_true, {list, {list, string}}, {}),
+    ?assertEqual(R3T, R3),
+
+    R4  = ?call(call_contract, Acc, C, l4,      {list, {tuple, [word, word, word]}}, {}),
+    R4T = ?call(call_contract, Acc, C, l4_true, {list, {tuple, [word, word, word]}}, {}),
+    ?assertEqual(R4T, R4),
+
+    ok.
+
+sophia_stdlib_tests(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, no_stdlib_in_fortuna),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 100000000000 * aec_test_utils:min_gas_price()),
+    C   = ?call(create_contract, Acc, stdlib_tests, {}),
+    {} = ?call(call_contract, Acc, C, test, {tuple, []}, {}),
+    ok.
+
 
 sophia_identity(_Cfg) ->
     state(aect_test_utils:new_state()),
