@@ -3827,4 +3827,4 @@ block_hash_from_op(?NO_OP) -> %% in case of unexpected close
     ?NOT_SET_BLOCK_HASH.
 
 tx_env_and_trees_from_top(Type) ->
-    aesc_state_cache:tx_env_and_trees_from_top(Type).
+    aesc_tx_env_cache:tx_env_and_trees_from_top(Type).
