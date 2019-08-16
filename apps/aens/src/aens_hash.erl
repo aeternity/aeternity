@@ -38,7 +38,9 @@ commitment_hash(NameAscii, Salt) ->
 
 -spec name_hash(binary() | [AsciiPart :: binary()]) -> name_hash() | subname_hash().
 name_hash(<<NameAscii/binary>>) ->
-    name_hash(binary:split(NameAscii, <<".">>, [global, trim]));
+    name_hash(binary:split(NameAscii, <<".">>, [global]));
+name_hash([_] = NameParts) ->
+    hash_labels(NameParts);
 name_hash([_, _] = NameParts) ->
     hash_labels(lists:reverse(NameParts));
 name_hash([_, _ | _] = SubnameParts) ->
