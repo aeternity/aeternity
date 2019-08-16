@@ -23,6 +23,7 @@
 -export([ state/0, state/1
         , new_account/2
         , create_contract/5
+        , create_contract_with_code/5
         , call_contract/7
         ]).
 
