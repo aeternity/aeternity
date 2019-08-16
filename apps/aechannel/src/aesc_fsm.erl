@@ -716,7 +716,7 @@ awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK, SignedTx} = Msg,
         fun() ->
             D1 = send_update_ack_msg(SignedTx, D),
             {OnChainEnv, OnChainTrees} =
-                aetx_env:tx_env_and_trees_from_top(aetx_contract),
+                tx_env_and_trees_from_top(aetx_contract),
             State = aesc_offchain_state:set_signed_tx(SignedTx, Updates, D1#data.state,
                                                       OnChainTrees, OnChainEnv, Opts),
             D2 = D1#data{ log   = log_msg(rcv, ?SIGNED, Msg, D1#data.log)
@@ -1441,7 +1441,7 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
                #data{on_chain_id = ChanId, state=State}, CurrHeight) ->
     Updates = [aesc_offchain_update:op_deposit(aeser_id:create(account, FromId), Amount)],
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
@@ -1466,7 +1466,7 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                #data{on_chain_id = ChanId, state=State}, CurrHeight) ->
     Updates = [aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)],
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
@@ -1736,7 +1736,7 @@ new_contract_tx_for_signing(Opts, From, #data{ state = State
     Id = aeser_id:create(account, Owner),
     Updates = [aesc_offchain_update:op_new_contract(Id, VmVersion, ABIVersion, Code,
                                                     Deposit, CallData)],
-    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    {OnChainEnv, OnChainTrees} = tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     %% TODO PT-165214367: maybe set block_hash
     BlockHash = ?NOT_SET_BLOCK_HASH,
@@ -2111,14 +2111,14 @@ check_signed_update_tx(Type, SignedTx, Updates,
 
 check_update_tx_initial(SignedTx, Updates, State, Opts) ->
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     aesc_offchain_state:check_initial_update_tx(SignedTx, Updates, State,
                                                 OnChainTrees, OnChainEnv,
                                                 Opts).
 
 check_update_tx(SignedTx, Updates, State, Opts, ChannelPubkey) ->
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     aesc_offchain_state:check_update_tx(SignedTx, Updates, State,
@@ -2160,7 +2160,7 @@ check_signed_update_ack_tx(SignedTx, Msg,
                                              not_offchain_tx) of
               ok ->
                   {OnChainEnv, OnChainTrees} =
-                      aetx_env:tx_env_and_trees_from_top(aetx_contract),
+                      tx_env_and_trees_from_top(aetx_contract),
                   {ok, D#data{state = aesc_offchain_state:set_signed_tx(
                                         SignedTx, Updates, State, OnChainTrees, OnChainEnv, Opts),
                               log = log_msg(rcv, ?UPDATE_ACK, Msg, D#data.log)}};
@@ -2190,7 +2190,7 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
                                                        } = D) ->
     Updates = [aesc_offchain_update:op_transfer(aeser_id:create(account, FromPub),
                                                 aeser_id:create(account, ToPub), Amount)],
-    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    {OnChainEnv, OnChainTrees} = tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     %% TODO PT-165214367: maybe set block_hash
     BlockHash = ?NOT_SET_BLOCK_HASH,
@@ -2754,7 +2754,7 @@ verify_signatures_channel_create(SignedTx, Who) ->
 verify_signatures_onchain_check(Pubkeys, SignedTx) ->
     {Mod, Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     {ok, Participants} = Mod:signers(Tx, OnChainTrees),
     SkipKeys = Participants -- Pubkeys,
     case aesc_utils:verify_signatures_onchain(SignedTx, OnChainTrees, OnChainEnv,
@@ -2765,7 +2765,7 @@ verify_signatures_onchain_check(Pubkeys, SignedTx) ->
 
 verify_signatures_onchain_skip(SkipKeys, SignedTx) ->
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     case aesc_utils:verify_signatures_onchain(SignedTx, OnChainTrees, OnChainEnv,
                                               SkipKeys) of
         ok -> ok;
@@ -2774,7 +2774,7 @@ verify_signatures_onchain_skip(SkipKeys, SignedTx) ->
 
 verify_signatures_offchain(ChannelPubkey, Pubkeys, SignedTx) ->
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     {ok, Channel} = aec_chain:get_channel(ChannelPubkey),
     InitiatorPubkey = aesc_channels:initiator_pubkey(Channel),
     ResponderPubkey = aesc_channels:responder_pubkey(Channel),
@@ -3240,14 +3240,14 @@ is_channel_locked(LockedUntil) ->
     LockedUntil >= curr_height().
 
 withdraw_locked_complete(SignedTx, Updates, #data{state = State, opts = Opts} = D) ->
-    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    {OnChainEnv, OnChainTrees} = tx_env_and_trees_from_top(aetx_contract),
     State1 = aesc_offchain_state:set_signed_tx(SignedTx, Updates, State,
                                                OnChainTrees, OnChainEnv, Opts),
     D1 = D#data{state = State1},
     next_state(open, D1).
 
 deposit_locked_complete(SignedTx, Updates, #data{state = State , opts = Opts} = D) ->
-    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    {OnChainEnv, OnChainTrees} = tx_env_and_trees_from_top(aetx_contract),
     lager:debug("Applying updates: ~p", [Updates]),
     State1 = aesc_offchain_state:set_signed_tx(SignedTx, Updates, State,
                                                OnChainTrees, OnChainEnv, Opts),
@@ -3304,7 +3304,7 @@ funding_locked_complete(#data{ op = #op_lock{ tag = create
                              , create_tx = CreateTx
                              , state = State
                              , opts = Opts} = D) ->
-    {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+    {OnChainEnv, OnChainTrees} = tx_env_and_trees_from_top(aetx_contract),
     State1 = aesc_offchain_state:set_signed_tx(CreateTx, Updates, State, OnChainTrees,
                                                OnChainEnv, Opts),
     D1 = D#data{state = State1},
@@ -3458,7 +3458,7 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
                                                    CallData, CallStack),
     Updates = [Update],
     {OnChainEnv, OnChainTrees} =
-        aetx_env:tx_env_and_trees_from_top(aetx_contract),
+        tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
@@ -3826,3 +3826,5 @@ block_hash_from_op(#op_watch{data = #op_data{block_hash = BlockHash}}) ->
 block_hash_from_op(?NO_OP) -> %% in case of unexpected close
     ?NOT_SET_BLOCK_HASH.
 
+tx_env_and_trees_from_top(Type) ->
+    aesc_state_cache:tx_env_and_trees_from_top(Type).

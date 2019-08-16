@@ -21,6 +21,8 @@
         , code_change/3
         ]).
 
+-export([tx_env_and_trees_from_top/1]).
+
 -export([
           table_specs/1
         , check_tables/1
@@ -41,6 +43,7 @@
 
 -define(SERVER, ?MODULE).
 -define(TAB, aesc_state_cache_ch).
+-define(ETAB, aesc_env_cache).
 -define(PTAB, aesc_state_cache).
 
 new(ChId, PubKey, State) ->
@@ -87,13 +90,15 @@ start_link() ->
     case ets:info(?TAB, name) of
         undefined ->
             ets:new(?TAB, [ordered_set, public, named_table,
-                              {keypos, #ch.id}]);
+                              {keypos, #ch.id}]),
+            ets:new(?ETAB, [set, public, named_table]);
         _ ->
             ok
     end,
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
+    true = aec_events:subscribe(top_changed),
     {ok, #st{}}.
 
 handle_call({new, ChId, PubKey, Pid, State}, _From, St) ->
@@ -136,6 +141,9 @@ handle_cast({delete, ChId}, St) ->
 handle_cast(_Msg, St) ->
     {noreply, St}.
 
+handle_info({gproc_ps_event, top_changed, #{info := Info}}, St) ->
+    St1 = refresh_env_cache(Info, St),
+    {noreply, St1};
 handle_info({'DOWN', MRef, process, _Pid, _}, St) ->
     case lookup_by_mref(MRef, St) of
         {ChId, PubKey} ->
@@ -310,3 +318,32 @@ delete_state(ChId, St) ->
     ets:select_delete(
       ?TAB, [{ #ch{id = key(ChId, '_'), _ = '_'}, [], [true] }]),
     St.
+
+refresh_env_cache(#{ block_hash := TopBlockHash }, St) ->
+    case ets:info(?TAB, size) of
+        0 ->
+            %% No running fsms - don't bother updating the cache
+            St;
+        _ ->
+            %% Fetching the tx_env from top takes roughly 5 ms, but is immutable, so
+            %% caching it in ets makes a lot of sense.
+            CEnv = aetx_env:tx_env_and_trees_from_hash(aetx_contract, TopBlockHash),
+            ets:insert(?ETAB, {top_env_ckey(), CEnv}),
+            St
+    end.
+
+top_env_ckey() ->
+    {top_env_and_trees, aetx_contract}.
+
+tx_env_and_trees_from_top(aetx_contract) ->
+    Key = top_env_ckey(),
+    case ets:lookup(?ETAB, Key) of
+        [] ->
+            Res = aetx_env:tx_env_and_trees_from_top(aetx_contract),
+            ets:insert(?ETAB, {Key, Res}),
+            Res;
+        [{_, Res}] ->
+            Res
+    end;
+tx_env_and_trees_from_top(Type) ->
+    aetx_env:tx_env_and_trees_from_top(Type).
