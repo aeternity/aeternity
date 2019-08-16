@@ -46,6 +46,7 @@
           aens_revoke/3,
           spend_tx/3,
           spend/2,
+          addr_is_payable/2,
           addr_is_contract/2,
           addr_is_oracle/2,
           get_contract_fun_types/4
@@ -499,6 +500,13 @@ oracle_typerep(?ABI_AEVM_SOPHIA_1, BinaryFormat) ->
     end.
 
 %%    Address
+addr_is_payable(Addr, #state{ trees = CTrees }) ->
+    Trees = get_on_chain_trees(CTrees),
+    case aec_accounts_trees:lookup(Addr, aec_trees:accounts(Trees)) of
+        none             -> {ok, bool2word(false)};
+        {value, Account} ->  {ok, bool2word(aec_accounts:is_payable(Account))}
+    end.
+
 addr_is_contract(Addr, #state{ trees = CTrees }) ->
     Trees = get_on_chain_trees(CTrees),
     {ok, bool2word(aect_state_tree:is_contract(Addr, aec_trees:contracts(Trees)))}.

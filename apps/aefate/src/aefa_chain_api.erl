@@ -41,6 +41,7 @@
         , oracle_check_query/5
         , is_oracle/2
         , is_contract/2
+        , is_payable/2
         , aens_claim/4
         , aens_preclaim/3
         , aens_resolve/3
@@ -497,6 +498,22 @@ is_contract(Pubkey, #state{onchain_primop_state = {onchain, PState}} = State) ->
     case aeprimop_state:find_contract_without_store(Pubkey, PState) of
         {value, _Contract} ->
             {ok, ?FATE_TRUE, State};
+        none ->
+            {ok, ?FATE_FALSE, State}
+    end.
+
+is_payable(Pubkey, #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
+    is_payable_(Pubkey, PState, State);
+is_payable(Pubkey, #state{onchain_primop_state = {onchain, PState}} = State) ->
+    is_payable_(Pubkey, PState, State).
+
+is_payable_(Pubkey, PState, State) ->
+    case aeprimop_state:find_account(Pubkey, PState) of
+        {Account, _} ->
+            case aec_accounts:is_payable(Account) of
+                true  -> {ok, ?FATE_TRUE, State};
+                false -> {ok, ?FATE_FALSE, State}
+            end;
         none ->
             {ok, ?FATE_FALSE, State}
     end.

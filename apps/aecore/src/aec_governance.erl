@@ -218,6 +218,7 @@ primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B            ) -> 30;
 primop_base_gas(?PRIM_CALL_CRYPTO_SHA256_STRING      ) -> 30;
 primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B_STRING     ) -> 30;
 primop_base_gas(?PRIM_CALL_AUTH_TX_HASH              ) -> 0;
+primop_base_gas(?PRIM_CALL_ADDR_IS_PAYABLE           ) -> 3000;
 primop_base_gas(?PRIM_CALL_ADDR_IS_CONTRACT          ) -> 5000;
 primop_base_gas(?PRIM_CALL_ADDR_IS_ORACLE            ) -> 5000.
 

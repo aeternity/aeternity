@@ -12,3 +12,10 @@ contract Test =
   stateful entrypoint r_spend(r : Remote, x : int) =
     Chain.spend(r.address, x)
     true
+
+  stateful entrypoint r_cond_spend(r : Remote, x : int) =
+    if(Address.is_payable(r.address))
+      r_spend(r, x)
+    else
+      false
+
