@@ -120,15 +120,9 @@ the node will not re-check transactions for the now-invalid protocol.
 
 No structural changes needed.
 
-**TODO Handling of transactions read from database after user configuration makes consensus upgrade unconditional.**
-
 ##### User API
 
 **TODO The user API returns transactions to the user. Mark those APIs as deprecated and remove those? Let user specify consensus protocol?**
-
-##### Other reads
-
-**TODO Handling of transactions read from database after user configuration makes consensus upgrade unconditional.**
 
 ### Data structures
 
