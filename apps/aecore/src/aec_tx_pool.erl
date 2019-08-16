@@ -62,6 +62,8 @@
         , raw_delete/2
         ]).
 
+-export([await_tx_pool/0]).
+
 -include("aec_tx_pool.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
@@ -225,6 +227,12 @@ peek_nonces() ->
     [N || {N} <- ets:tab2list(NDb)].
 -endif.
 
+await_tx_pool() ->
+    gproc:await({n,l,?MODULE}, 5000).
+
+gproc_reg() ->
+    gproc:reg({n,l,?MODULE}).
+
 %% The specified maximum number of transactions avoids requiring
 %% building in memory the complete list of all transactions in the
 %% pool.
@@ -308,6 +316,7 @@ init([]) ->
     ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
     ets:delete(Handled),
     lager:debug("init: GCHeight = ~p", [GCHeight]),
+    gproc_reg(),
     {ok, #state{gc_height = GCHeight}}.
 
 handle_call(Req, From, St) ->
