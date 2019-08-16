@@ -1696,14 +1696,14 @@ assert_preclaim_delta(Commitment, PreclaimDelta, Height) ->
 assert_name(Name, Height) ->
     case aens_utils:check_split_name(Name) of
         {ok, name, NameParts} ->
-            case aec_hard_forks:protocol_effective_at_height(Height) of
-                Vsn when Vsn >= ?LIMA_PROTOCOL_VSN ->
-                    Registrar = lists:last(NameParts),
-                    lists:member(Registrar, aec_governance:name_registrars(Vsn))
-                        orelse runtime_error(invalid_registrar),
+            ProtoVsn = aec_hard_forks:protocol_effective_at_height(Height),
+            Registrar = lists:last(NameParts),
+            lists:member(Registrar, aec_governance:name_registrars(ProtoVsn))
+                orelse runtime_error(invalid_registrar),
+            if ProtoVsn >= ?LIMA_PROTOCOL_VSN ->
                     aens_utils:name_length_valid(Name)
                         orelse runtime_error(name_too_long);
-                _ ->
+               true ->
                     ok
             end;
         _ ->
