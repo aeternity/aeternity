@@ -19,7 +19,6 @@
          revoke_name/2,
          preclaim_tx_spec/3,
          preclaim_tx_spec/4,
-         claim_tx_spec/4,
          claim_tx_spec/5,
          claim_tx_spec/6,
          claim_tx_defaul_fee/0,
@@ -143,10 +142,6 @@ preclaim_tx_default_spec(PubKey, State) ->
 %%%===================================================================
 %%% Claim tx
 %%%===================================================================
-
-claim_tx_spec(PubKey, Name, NameSalt, State) ->
-    NameFee = aec_governance:name_claim_fee_base(),
-    claim_tx_spec(PubKey, Name, NameFee, NameSalt, #{}, State).
 
 claim_tx_spec(PubKey, Name, NameFee, NameSalt, State) ->
     claim_tx_spec(PubKey, Name, NameFee, NameSalt, #{}, State).

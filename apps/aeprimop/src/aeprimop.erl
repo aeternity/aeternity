@@ -716,14 +716,17 @@ name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee)
                     ?IS_NON_NEG_INTEGER(NameFee) ->
     {name_claim, {AccountPubkey, PlainName, NameSalt, NameFee}}.
 
-name_claim({AccountPubkey, PlainName, NameSalt, NameFee}, S) ->
+name_claim({AccountPubkey, PlainName, NameSalt, NameFee},
+           #state{height = Height0} = S) ->
+
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height0),
 
     NameRentTime = aec_governance:name_claim_max_expiration(),
-    %% Add parsing to establish size if we have multiple registrars in the future
     NameLength = aens_commitments:name_length(PlainName),
     PreclaimDelta = aec_governance:name_claim_preclaim_timeout(),
     BidDelta = aec_governance:name_claim_bid_timeout(NameLength),
-    MinNameFee = aec_governance:name_claim_fee(NameLength),
+    MinNameFee = aec_governance:name_claim_fee(Protocol, NameLength),
+
 
     NameAscii = name_to_ascii(PlainName),
     NameHash = aens_hash:name_hash(NameAscii),
@@ -731,9 +734,8 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee}, S) ->
     {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
     assert_commitment_owner(Commitment, AccountPubkey),
     assert_height_delta(Commitment, PreclaimDelta, S1#state.height),
-
     {Account, S2} = get_account(AccountPubkey, S1),
-    assert_bid_fee(Account, NameFee, MinNameFee),
+    assert_bid_fee(Account, NameFee, MinNameFee, Protocol),
     case aens_commitments:get_name_auction_state(Commitment, PlainName) of
         no_auction ->
             assert_not_name(NameHash, S2),
@@ -756,7 +758,6 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee}, S) ->
             put_commitment(Commitment1, S4)
     end.
 
-%% XXX can we change it into a higher level _op list?
 unlock_and_lock_bid_fee({Commitment, Account, NameFee}, S) ->
     PrevBidderId= aens_commitments:owner_pubkey(Commitment),
     PrevBid = aens_commitments:name_fee(Commitment),
@@ -1638,11 +1639,11 @@ assert_not_commitment(CommitmentHash, S) ->
         {_, _} -> runtime_error(commitment_already_present)
     end.
 
-assert_bid_fee(AccountPubkey, NameFee, MinLockedFee)
-               when NameFee >= MinLockedFee ->
-    assert_account_balance(AccountPubkey, NameFee);
-assert_bid_fee(_, _, _) ->
-    runtime_error(too_small_bid).
+assert_bid_fee(AccountPubkey, NameFee, MinLockedFee, Protocol) ->
+    case aens_claim_tx:assert_min_bid_fee(NameFee, MinLockedFee, Protocol) of
+        true -> assert_account_balance(AccountPubkey, NameFee);
+        false -> runtime_error(too_small_bid)
+    end.
 
 assert_commitment_owner(Commitment, Pubkey) ->
     case aens_commitments:assert_commitment_owner(Commitment, Pubkey) of

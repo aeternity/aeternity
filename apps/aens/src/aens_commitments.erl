@@ -7,6 +7,8 @@
 
 -module(aens_commitments).
 
+-include_lib("aecontract/include/hard_forks.hrl").
+
 %% API
 -export([new/4,
          update/6,
@@ -77,9 +79,13 @@
 new(Id, OwnerId, DeltaTTL, BlockHeight) ->
     commitment = aeser_id:specialize_type(Id),
     account    = aeser_id:specialize_type(OwnerId),
+    Auction = case aec_hard_forks:protocol_effective_at_height(BlockHeight) >= ?LIMA_PROTOCOL_VSN of
+                    true -> ?PRECLAIM;
+                    false -> ?LEGACY
+              end,
     #commitment{id       = Id,
                 owner_id = OwnerId,
-                auction = ?PRECLAIM,
+                auction = Auction,
                 created  = BlockHeight,
                 name_fee = 0,
                 ttl      = BlockHeight + DeltaTTL}.
@@ -128,9 +134,9 @@ serialize(#commitment{owner_id = OwnerId,
       , {name_hash, NameHash}
       , {ttl, TTL}]);
 serialize(#commitment{owner_id = OwnerId,
-    created  = Created,
-    ttl      = TTL}) ->
-    aeser_chain_objects:serialize(
+                      created  = Created,
+                      ttl      = TTL}) ->
+                      aeser_chain_objects:serialize(
         ?COMMITMENT_TYPE,
         ?COMMITMENT_ROMA,
         serialization_template(?COMMITMENT_ROMA),
@@ -152,7 +158,7 @@ deserialize_from_fields(?COMMITMENT_ROMA, CommitmentHash,
                 owner_id = OwnerId,
                 created  = Created,
                 auction  = ?LEGACY,
-                name_fee = aec_governance:name_claim_fee_base(), %% base fee is equal to pre-lima fee
+                name_fee = aec_governance:name_claim_locked_fee(), %% base fee is equal to pre-lima fee
                 ttl      = TTL};
 deserialize_from_fields(?COMMITMENT_LIMA_PRECLAIM, CommitmentHash,
                         [ {owner_id, OwnerId}

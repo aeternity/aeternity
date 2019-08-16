@@ -2305,7 +2305,8 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     Encoded = #{account_id => MinerAddress,
                 name => aeser_api_encoder:encode(name, Name),
                 name_salt => Salt,
-                name_fee => aec_governance:name_claim_fee_base(),
+                name_fee => rpc(aec_governance, name_claim_fee,
+                               [?LIMA_PROTOCOL_VSN, size(Name)]),
                 fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{account_id => aeser_id:create(account, MinerPubkey),
@@ -3042,7 +3043,8 @@ naming_system_auction(_Config) ->
     {ok, 200, #{<<"balance">> := PubKey1BalPreClaim}} = get_accounts_by_pubkey_sut(PubKey1Enc),
     ?assertEqual(PubKey1BalPreClaim, Balance - Fee),
 
-    FirstNameFee = aec_governance:name_claim_fee(NameLength),
+    FirstNameFee = rpc(aec_governance, name_claim_fee, [?LIMA_PROTOCOL_VSN, NameLength]),
+    %FirstNameFee = aec_governance:name_claim_fee(?LIMA_PROTOCOL_VSN, NameLength),
 
     ct:log("Balance PubKey1 before init bid: ~p", [PubKey1BalPreClaim]),
     ct:log("Price for the init bid and tx fee: ~p ~p", [FirstNameFee, Fee]),
@@ -3147,7 +3149,8 @@ naming_system_manage_name(_Config) ->
     ClaimData = #{account_id => PubKeyEnc,
                   name       => aeser_api_encoder:encode(name, Name),
                   name_salt  => NameSalt,
-                  name_fee   => aec_governance:name_claim_fee_base(),
+                  name_fee   => rpc(aec_governance, name_claim_fee,
+                                    [?LIMA_PROTOCOL_VSN, size(Name)]),
                   fee        => Fee},
     {ok, 200, #{<<"tx">> := ClaimTxEnc}} = get_name_claim(ClaimData),
     ClaimTxHash = sign_and_post_tx(ClaimTxEnc, PrivKey),
@@ -3158,7 +3161,8 @@ naming_system_manage_name(_Config) ->
 
     %% Check tx fee taken from account, claim fee locked,
     %% then mine reward and fee added to account
-    ClaimLockedFee = rpc(aec_governance, name_claim_fee, [size(Name)]),
+    ClaimLockedFee = rpc(aec_governance, name_claim_fee,
+                         [?LIMA_PROTOCOL_VSN, size(Name)]),
     {ok, 200, #{<<"balance">> := Balance2}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     {ok, 200, #{<<"height">> := Height3}} = get_key_blocks_current_sut(),
     ?assertEqual(Balance2, Balance1 - Fee - ClaimLockedFee),
@@ -3266,7 +3270,8 @@ naming_system_broken_txs(_Config) ->
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
         get_name_claim(#{name => aeser_api_encoder:encode(name, Name),
                          name_salt => NameSalt,
-                         name_fee => aec_governance:name_claim_fee_base(),
+                         name_fee => rpc(aec_governance, name_claim_fee,
+                                        [?LIMA_PROTOCOL_VSN, size(Name)]),
                          account_id => aeser_api_encoder:encode(account_pubkey, random_hash()),
                          fee => Fee}),
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =

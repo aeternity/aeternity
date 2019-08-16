@@ -433,6 +433,7 @@ check_ttl(AeTx, Env) ->
 
 check_protocol_at_height(AeTx, Height) ->
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    io:format("check proto ~p ~p ~p", [Protocol, Height, AeTx]),
     case valid_at_protocol(Protocol, AeTx) of
         true  -> ok;
         false -> {error, invalid_at_height}

@@ -14,7 +14,7 @@
          name_preclaim_expiration/0,
          name_claim_locked_fee/0,
          name_claim_bid_increment/0,
-         name_claim_fee/1,
+         name_claim_fee/2,
          name_claim_fee_base/0,
          name_claim_max_expiration/0,
          name_protection_period/0,
@@ -211,8 +211,10 @@ name_preclaim_expiration() ->
 name_claim_fee_base() ->
     aec_aens_governance:get_base_fee().
 
-name_claim_fee(Length) ->
-    aec_aens_governance:init_fee_at_length(Length).
+name_claim_fee(?LIMA_PROTOCOL_VSN, Length) ->
+    aec_aens_governance:init_fee_at_length(Length);
+name_claim_fee(_, _Length) ->
+    name_claim_locked_fee().
 
 name_claim_max_expiration() ->
     50000.

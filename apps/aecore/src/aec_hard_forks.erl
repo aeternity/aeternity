@@ -4,12 +4,14 @@
 -export([protocols/0,
          check_protocol_version_validity/2,
          protocol_effective_at_height/1,
-         is_fork_height/1
+         is_fork_height/1,
+         is_valid_at_protocol/2
         ]).
 
 -ifdef(TEST).
 -export([check_protocol_version_validity/3,
-         sorted_protocol_versions/0
+         sorted_protocol_versions/0,
+         protocol_start_height/1
         ]).
 -endif.
 
@@ -66,15 +68,24 @@ is_fork_height(Height) ->
         1 -> {true, hd(maps:keys(Protocols))}
     end.
 
+is_valid_at_protocol(CurrentVer, MinimalVer) ->
+    CurrentVer >= MinimalVer.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+protocol_start_height(VSN) ->
+    case maps:is_key(VSN, protocols()) of
+        true -> maps:get(VSN, protocols());
+        false -> undefined
+    end.
 
 protocols_from_network_id(<<"ae_mainnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
      , ?MINERVA_PROTOCOL_VSN  => 47800
      , ?FORTUNA_PROTOCOL_VSN => 90800
-%%%  , ?LIMA_PROTOCOL_VSN =>  Not yet decided
+     , ?LIMA_PROTOCOL_VSN =>  144000  %% not validated, from the hat, need it for Claim ver.
      };
 protocols_from_network_id(<<"ae_uat">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0

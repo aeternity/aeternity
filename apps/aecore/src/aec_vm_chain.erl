@@ -580,8 +580,7 @@ aens_preclaim_(Tx, Signature, State) ->
 -spec aens_claim_tx(aec_keys:pubkey(), binary(), integer(), chain_state()) ->
     {ok, aetx:tx()} | {error, term()}.
 aens_claim_tx(Addr, Name, Salt, State) ->
-    NameFee = aec_governance:name_claim_fee_base(),
-    on_chain_only(State, fun() -> aens_claim_tx_(Addr, Name, Salt, NameFee, State) end).
+    on_chain_only(State, fun() -> aens_claim_tx_(Addr, Name, Salt, undefined, State) end).
 
 -spec aens_claim_tx(aec_keys:pubkey(), binary(), integer(), integer(), chain_state()) ->
     {ok, aetx:tx()} | {error, term()}.

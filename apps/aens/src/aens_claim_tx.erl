@@ -9,10 +9,13 @@
 
 -behavior(aetx).
 
+-include_lib("aecontract/include/hard_forks.hrl").
+
 %% Behavior API
 -export([new/1,
          type/0,
          fee/1,
+         name_fee/1,
          gas/1,
          ttl/1,
          nonce/1,
@@ -25,7 +28,8 @@
          serialize/1,
          deserialize/2,
          for_client/1,
-         valid_at_protocol/2
+         valid_at_protocol/2,
+         assert_min_bid_fee/3
         ]).
 
 %% Getters
@@ -36,9 +40,9 @@
 %%%===================================================================
 %%% Types
 %%%===================================================================
-
 -define(NAME_CLAIM_TX_VSN_1, 1).
 -define(NAME_CLAIM_TX_VSN_2, 2).
+
 -define(NAME_CLAIM_TX_TYPE, name_claim_tx).
 
 -record(ns_claim_tx, {
@@ -48,7 +52,8 @@
           name_salt  :: integer(),
           name_fee   :: integer(),
           fee        :: integer(),
-          ttl        :: aetx:tx_ttl()
+          ttl        :: aetx:tx_ttl(),
+          version    :: ?NAME_CLAIM_TX_VSN_1 | ?NAME_CLAIM_TX_VSN_2
          }).
 
 -opaque tx() :: #ns_claim_tx{}.
@@ -63,16 +68,24 @@
 new(#{account_id := AccountId,
       nonce      := Nonce,
       name       := Name,
-      name_fee   := NameFee,
       name_salt  := NameSalt,
       fee        := Fee} = Args) ->
     account = aeser_id:specialize_type(AccountId),
+    {NameFee1, Ver} = case maps:get(name_fee, Args, undefined) of
+                          undefined ->
+                              {aec_governance:name_claim_locked_fee(),
+                               ?NAME_CLAIM_TX_VSN_1};
+                          NameFee0 ->
+                              {NameFee0,
+                               ?NAME_CLAIM_TX_VSN_2}
+                      end,
     Tx = #ns_claim_tx{account_id = AccountId,
                       nonce      = Nonce,
                       name       = Name,
                       name_salt  = NameSalt,
-                      name_fee   = NameFee,
+                      name_fee   = NameFee1,
                       fee        = Fee,
+                      version    = Ver,
                       ttl        = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
@@ -126,10 +139,27 @@ serialize(#ns_claim_tx{account_id = AccountId,
                        nonce      = None,
                        name       = Name,
                        name_salt  = NameSalt,
+                       fee        = Fee,
+                       version    = ?NAME_CLAIM_TX_VSN_1,
+                       ttl        = TTL} = _Tx) ->
+    %% Version = version(Tx), %% TODO: not really handy callback, consider abstracting up
+    {?NAME_CLAIM_TX_VSN_1,
+     [ {account_id, AccountId}
+     , {nonce, None}
+     , {name, Name}
+     , {name_salt, NameSalt}
+     , {fee, Fee}
+     , {ttl, TTL}
+     ]};
+serialize(#ns_claim_tx{account_id = AccountId,
+                       nonce      = None,
+                       name       = Name,
+                       name_salt  = NameSalt,
                        name_fee   = NameFee,
                        fee        = Fee,
-                       ttl        = TTL} = Tx) ->
-    {version(Tx),
+                       version    = ?NAME_CLAIM_TX_VSN_2,
+                       ttl        = TTL} = _Tx) ->
+    {?NAME_CLAIM_TX_VSN_2,
      [ {account_id, AccountId}
      , {nonce, None}
      , {name, Name}
@@ -141,19 +171,20 @@ serialize(#ns_claim_tx{account_id = AccountId,
 
 -spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
 deserialize(?NAME_CLAIM_TX_VSN_1,
-    [ {account_id, AccountId}
-      , {nonce, Nonce}
-      , {name, Name}
-      , {name_salt, NameSalt}
-      , {fee, Fee}
-      , {ttl, TTL}]) ->
+            [ {account_id, AccountId}
+            , {nonce, Nonce}
+            , {name, Name}
+            , {name_salt, NameSalt}
+            , {fee, Fee}
+            , {ttl, TTL}]) ->
     account = aeser_id:specialize_type(AccountId),
     #ns_claim_tx{account_id = AccountId,
                  nonce      = Nonce,
                  name       = Name,
                  name_salt  = NameSalt,
-                 name_fee   = aec_governance:name_claim_fee_base(), %% equals to pre-lima fee. Add at height API.
+                 name_fee   = aec_governance:name_claim_locked_fee(), %% equals to pre-lima fee. Add at height API.
                  fee        = Fee,
+                 version    = ?NAME_CLAIM_TX_VSN_1,
                  ttl        = TTL};
 deserialize(?NAME_CLAIM_TX_VSN_2,
             [ {account_id, AccountId}
@@ -170,6 +201,7 @@ deserialize(?NAME_CLAIM_TX_VSN_2,
                  name_salt  = NameSalt,
                  name_fee   = NameFee,
                  fee        = Fee,
+                 version    = ?NAME_CLAIM_TX_VSN_2,
                  ttl        = TTL}.
 
 serialization_template(?NAME_CLAIM_TX_VSN_1) ->
@@ -196,8 +228,22 @@ for_client(#ns_claim_tx{account_id = AccountId,
                         nonce      = Nonce,
                         name       = Name,
                         name_salt  = NameSalt,
+                        fee        = Fee,
+                        version    = ?NAME_CLAIM_TX_VSN_1,
+                        ttl        = TTL}) ->
+    #{<<"account_id">> => aeser_api_encoder:encode(id_hash, AccountId),
+      <<"nonce">>      => Nonce,
+      <<"name">>       => Name,
+      <<"name_salt">>  => NameSalt,
+      <<"fee">>        => Fee,
+      <<"ttl">>        => TTL};
+for_client(#ns_claim_tx{account_id = AccountId,
+                        nonce      = Nonce,
+                        name       = Name,
+                        name_salt  = NameSalt,
                         name_fee   = NameFee,
                         fee        = Fee,
+                        version    = ?NAME_CLAIM_TX_VSN_2,
                         ttl        = TTL}) ->
     #{<<"account_id">> => aeser_api_encoder:encode(id_hash, AccountId),
       <<"nonce">>      => Nonce,
@@ -226,6 +272,15 @@ name_fee(#ns_claim_tx{name_fee = NameFee}) ->
     NameFee.
 
 %%%===================================================================
+%%% Assertions
+%%%===================================================================
+assert_min_bid_fee(NameFee, MinLockedFee, ProtocolVer)
+  when ProtocolVer >= ?LIMA_PROTOCOL_VSN ->
+    NameFee >= MinLockedFee;
+assert_min_bid_fee(_NameFee, _MinLockedFee, _) ->
+    true.
+
+%%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
@@ -233,10 +288,12 @@ account_pubkey(#ns_claim_tx{account_id = AccountId}) ->
     aeser_id:specialize(AccountId, account).
 
 -spec version(tx()) -> non_neg_integer().
-version(_) ->
-    ?NAME_CLAIM_TX_VSN_2.
+version(#ns_claim_tx{version = Ver}) ->
+    Ver.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
-valid_at_protocol(_, _) ->
-    true.
+valid_at_protocol(ProtocolVersion, #ns_claim_tx{version = ?NAME_CLAIM_TX_VSN_2}) ->
+    aec_hard_forks:is_valid_at_protocol(ProtocolVersion, ?LIMA_PROTOCOL_VSN);
+valid_at_protocol(ProtocolVersion, #ns_claim_tx{version = ?NAME_CLAIM_TX_VSN_1}) ->
+    aec_hard_forks:is_valid_at_protocol(ProtocolVersion, ?ROMA_PROTOCOL_VSN).
 

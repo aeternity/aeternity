@@ -15,8 +15,6 @@
 
 
 get_base_fee() ->
-    %% INFO: calling old governance, to make sure non-auction
-    %%       is compatible with pre-lima fees
     aec_governance:name_claim_locked_fee() * ?MULTIPLIER_14.
 
 -spec init_fee_at_length(non_neg_integer()) -> non_neg_integer().

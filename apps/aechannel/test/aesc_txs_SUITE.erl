@@ -3488,7 +3488,10 @@ fp_insufficent_gas_price(Cfg) ->
     ok.
 
 fp_register_name(Cfg) ->
-    Name = <<"bla.test">>,
+    %% Using long prefix to fall back to old non-auction
+    %% Don't want to skip latest tests from non-naming suites
+    LongPrefix = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name = <<LongPrefix/binary, "bla.test">>,
     Salt = 42,
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash           = address_encode(hash, aens_hash:commitment_hash(NameAscii, Salt)),
@@ -5210,7 +5213,11 @@ register_name(Name, Pointers0) ->
             fun(#{state := S, name_owner := NameOwner, height := Height0} = Props) ->
                 PrivKey = aesc_test_utils:priv_key(NameOwner, S),
                 Delta = aec_governance:name_claim_preclaim_timeout(),
-                TxSpec = aens_test_utils:claim_tx_spec(NameOwner, Name, NameSalt, S),
+                %% INFO: aeprimop checks what protocol we run
+                %%       checking the fee at Lima then
+                NameFee = aec_governance:name_claim_fee(?LIMA_PROTOCOL_VSN,
+                                                        aens_commitments:name_length(Name)),
+                TxSpec = aens_test_utils:claim_tx_spec(NameOwner, Name, NameFee, NameSalt, S),
                 {ok, Tx} = aens_claim_tx:new(TxSpec),
                 SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
                 apply_on_trees_(Props#{height := Height0 + Delta}, SignedTx, S, positive)
