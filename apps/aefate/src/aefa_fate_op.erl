@@ -119,6 +119,7 @@
         , aens_revoke/4
         , ecverify/5
         , ecverify_secp256k1/5
+        , ecrecover_secp256k1/4
         , contract_to_address/3
         , sha3/3
         , sha256/3
@@ -1305,6 +1306,9 @@ ecverify(Arg0, Arg1, Arg2, Arg3, ES) ->
 ecverify_secp256k1(Arg0, Arg1, Arg2, Arg3, ES) ->
     ter_op(ecverify_secp256k1, {Arg0, Arg1, Arg2, Arg3}, ES).
 
+ecrecover_secp256k1(Arg0, Arg1, Arg2, ES) ->
+    bin_op(ecrecover_secp256k1, {Arg0, Arg1, Arg2}, ES).
+
 contract_to_address(Arg0, Arg1, ES) ->
     un_op(contract_to_address, {Arg0, Arg1}, ES).
 
@@ -1602,7 +1606,9 @@ op(bits_difference, A, B)
   when ?IS_FATE_BITS(A), ?IS_FATE_BITS(B) ->
     ?FATE_BITS(BitsA) = A,
     ?FATE_BITS(BitsB) = B,
-    ?FATE_BITS((BitsA band BitsB) bxor BitsA).
+    ?FATE_BITS((BitsA band BitsB) bxor BitsA);
+op(ecrecover_secp256k1, _Hash, _Sig) ->
+    aefa_fate:abort(bad_bytecode).
 
 %% Terinay operations
 op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
