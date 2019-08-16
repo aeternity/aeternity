@@ -2,7 +2,7 @@
 
 This document describes the technical specifications for the miner signalled consensus upgrade whose [functional specifications are available][fspecs].
 
-[fspecs]: https://github.com/aeternity/protocol/blob/7f31f4f1ccb7fb099f7da9ba682b0039d37790050499ed1/consensus/miner_signalled_consensus.md
+[fspecs]: https://github.com/aeternity/protocol/blob/ae27b2a2b4b024590455e6d913501ac0cf1ed861/consensus/miner_signalled_consensus.md
 
 ## Technical specifications
 
@@ -118,7 +118,7 @@ the node will not re-check transactions for the now-invalid protocol.
 
 ##### State channel client finite state machine
 
-**TODO (The state channel client finite state machine handles transactions assuming consensus protocol version.)**
+No structural changes needed.
 
 **TODO Handling of transactions read from database after user configuration makes consensus upgrade unconditional.**
 
