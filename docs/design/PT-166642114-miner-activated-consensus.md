@@ -122,7 +122,16 @@ No structural changes needed.
 
 ##### User API
 
-**TODO The user API returns transactions to the user. Mark those APIs as deprecated and remove those? Let user specify consensus protocol?**
+If the serialization of a transaction requested by the user on the
+HTTP API (e.g. `/debug/contracts/create`) depends on the consensus
+protocol, then the API shall be enhanced with a new optional field so
+that the user can control the consensus protocol version.
+
+In the HTTP API for running transactions on the node for development
+(`/debug/transactions/dry-run`), the user controls which block the
+processing is meant to happen on so he/she can control the consensus
+protocol on which to apply the transactions.  So no changes needed for
+this.
 
 ### Data structures
 
