@@ -4436,19 +4436,26 @@ sophia_crypto(_Cfg) ->
                                 , {test_string_verify_secp256k1, <<"Not the secret message">>, false}] ],
 
     %% Test ecrecover
-    %%   The static examples are taken from
+
+    %%   Static examples are taken from
     %%   https://github.com/aeternity/parity-ethereum/blob/master/ethcore/builtin/src/lib.rs#L656
 
-    GoodHexSig = "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001b650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03",
-    GoodHexAcc = "000000000000000000000000c08b5542d177ac6686946920409741463a15dddb",
+    GoodHexSig1 = "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001b650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03",
+    GoodHexAcc1 = "000000000000000000000000c08b5542d177ac6686946920409741463a15dddb",
     BadHexSig = "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001a650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03",
     BadHexAcc = "0000000000000000000000000000000000000000000000000000000000000000",
-
-    <<GoodMsg:32/binary, _:31/binary, GoodSig_v:65/binary>> = aeu_hex:hex_to_bin(GoodHexSig),
+    <<GoodMsg1:32/binary, _:31/binary, GoodSig1_v:65/binary>> = aeu_hex:hex_to_bin(GoodHexSig1),
     <<BadMsg:32/binary, _:31/binary, BadSig:65/binary>> = aeu_hex:hex_to_bin(BadHexSig),
-    <<_:1/binary, GoodSig:64/binary>> = GoodSig_v,
-    GoodPubHash = aeu_crypto:ecrecover(secp256k1, GoodMsg, GoodSig_v),
-    GoodSig_v2 = aeu_crypto:ecdsa_recoverable_from_ecdsa(GoodMsg, GoodSig, GoodPubHash),
+    <<_:1/binary, GoodSig:64/binary>> = GoodSig1_v,
+    GoodPubHash = aeu_crypto:ecrecover(secp256k1, GoodMsg1, GoodSig1_v),
+    GoodSig1_v2 = aeu_crypto:ecdsa_recoverable_from_ecdsa(GoodMsg1, GoodSig, GoodPubHash),
+
+    %%    Static example pre-generated via JS
+    GoodSig2_v = aeu_hex:hex_to_bin("1cfab9762e816133bae486b7396dced722a7315a42e90f17d31e191d5e36bbf46210a7b86c915beea013660252366808a88cfdb58b3ef7e13f64e99588628229cc"),
+    GoodHexAcc2 = "0000000000000000000000000dED50440139Bb2a3C4240286A85df3baC17EBfc",
+    GoodMsg2 = aeu_hex:hex_to_bin("38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e"),
+
+    %%    Dynamic example
 
     SECP_Pub_Hash0 = sha3:hash(256, SECP_Pub),
     SECP_Pub_Hash0_Tail = binary:part(SECP_Pub_Hash0, byte_size(SECP_Pub_Hash0), -20),
@@ -4461,10 +4468,11 @@ sophia_crypto(_Cfg) ->
           ?assertMatchAEVM2OOG(Exp, <<TestRes:256>>),
           ?assertMatchFATE({bytes, Exp}, TestRes)
       end || {Fun, Msg, Sig, Exp} <-
-             [ {test_recover_secp256k1, ?hsh(GoodMsg), ?sig(GoodSig_v), aeu_hex:hex_to_bin(GoodHexAcc)}
+             [ {test_recover_secp256k1, ?hsh(GoodMsg1), ?sig(GoodSig1_v), aeu_hex:hex_to_bin(GoodHexAcc1)}
              , {test_recover_secp256k1, ?hsh(BadMsg), ?sig(BadSig), aeu_hex:hex_to_bin(BadHexAcc)}
-             , {test_recover_secp256k1, ?hsh(GoodMsg), ?sig(GoodSig_v2), aeu_hex:hex_to_bin(GoodHexAcc)}
+             , {test_recover_secp256k1, ?hsh(GoodMsg1), ?sig(GoodSig1_v2), aeu_hex:hex_to_bin(GoodHexAcc1)}
              , {test_recover_secp256k1, ?hsh(MsgHash), ?sig(SECP_Sig_v), SECP_Pub_Hash}
+             , {test_recover_secp256k1, ?hsh(GoodMsg2), ?sig(GoodSig2_v), aeu_hex:hex_to_bin(GoodHexAcc2)}
              ] ],
 
     %% Test hash functions
