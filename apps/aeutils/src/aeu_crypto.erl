@@ -10,6 +10,7 @@
         , ecdsa_from_der_sig/1
         , ecdsa_to_der_pk/1
         , ecdsa_to_der_sig/1
+        , ecdsa_recoverable_from_ecdsa/3
 
         , ecrecover/3
         , ecverify/3
@@ -33,18 +34,38 @@ ecdsa_to_der_sig(<<R0:32/binary, S0:32/binary>>) ->
     {LR, LS} = {byte_size(R1), byte_size(S1)},
     <<16#30, (4 + LR + LS), 16#02, LR, R1/binary, 16#02, LS, S1/binary>>.
 
-%% ECRECOVER
-ecrecover(secp256k1, Hash, Sig) ->
-    % ecrecover expects the signature to be 96 bytes long
-    Input = <<Hash/binary, 0:(8*31), Sig/binary>>,
-    case ecrecover:ecrecover(Input) of
-        {ok, []} ->
-            <<0:256>>;
-        {ok, Res} ->
-            erlang:list_to_binary(Res);
-        _Err ->
-            <<0:256>>
+%% @doc Find the recovery id v for the given ECDSA signature and return the
+%% extended signature.
+%% Excerpt from the Etherum yellow paper:
+%% It is assumed that v is the ‘recovery identifier’. The recovery identifier is a
+%% 1 byte value specifying the parity and finiteness of the coordinates of the
+%% curve point for which r is the x-value; this value is in the range of [27,30],
+%% however we declare the upper two possibilities, representing infinite values,
+%% invalid. The value 27 represents an even y value and 28 represents an
+%% odd y value.
+%% @reference https://github.com/ethereum/yellowpaper
+ecdsa_recoverable_from_ecdsa(Hash, <<Sig:64/binary>>, Pub) ->
+    % Because we can't re-generate the recovery id we try both and compare the
+    % result with the given pubkey.
+    SigInvalid = <<26:8/integer, Sig/binary>>,
+    SigEven = <<27:8/integer, Sig/binary>>,
+    SigUneven = <<28:8/integer, Sig/binary>>,
+    ResEven = ecrecover(secp256k1, Hash, SigEven),
+    ResUneven = ecrecover(secp256k1, Hash, SigUneven),
+    if
+        ResEven == ResUneven -> % Both values are 0 or the same address, both cases would be false.
+            SigInvalid;
+        ResEven == Pub ->
+            SigEven;
+        ResUneven == Pub ->
+            SigUneven;
+        true ->
+            SigInvalid
     end.
+
+%% ECRECOVER
+ecrecover(secp256k1, Hash, <<Sig:65/binary>>) ->
+    ecrecover:recover(Hash, Sig).
 
 %% ECVERIFY
 ecverify(Msg, PK, Sig) -> ecverify(curve25519, Msg, PK, Sig).
