@@ -19,6 +19,13 @@
 %% for testing from a shell
 -export([ init_tests/2 ]).
 
+%% Running contracts
+-export([ state/0, state/1
+        , new_account/2
+        , create_contract/5
+        , call_contract/7
+        ]).
+
 %% test case exports
 -export([ call_contract/1
         , call_contract_error_value/1
