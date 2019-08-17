@@ -65,7 +65,8 @@
 -export([serialize/1,
          deserialize/1,
          for_client/1,
-         apply_on_trees/6]).
+         apply_on_trees/6,
+         valid_at_protocol/2]).
 
 -export([is_call/1,
          is_contract_create/1,
@@ -81,6 +82,8 @@
 -ifdef(TEST).
 -export([type2swagger_name/1]).
 -endif.
+
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -spec from_db_format(update() | tuple()) -> update().
 from_db_format(#transfer{} = U) ->
@@ -216,6 +219,14 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
         #meta{} ->
             Trees0
     end.
+
+-spec valid_at_protocol(aec_hard_forks:protocol_vsn(), update()) -> boolean().
+valid_at_protocol(Protocol, #meta{}) when Protocol >= ?LIMA_PROTOCOL_VSN ->
+    true;
+valid_at_protocol(_PreLimaProtocol, #meta{}) ->
+    false;
+valid_at_protocol(_Protocol, _) ->
+    true.
 
 -spec for_client(update()) -> map().
 for_client(#transfer{from_id = FromId, to_id = ToId, amount = Amount}) ->

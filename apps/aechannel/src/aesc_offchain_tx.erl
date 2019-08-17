@@ -242,7 +242,12 @@ version(#channel_offchain_tx{updates = Updates}) ->
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(Protocol, Tx) ->
     case version(Tx) of
-        ?INITIAL_VSN -> true;
+        ?INITIAL_VSN ->
+            lists:all(
+                fun(Update) ->
+                    aesc_offchain_update:valid_at_protocol(Protocol, Update)
+                end,
+                Tx#channel_offchain_tx.updates);
         ?NO_UPDATES_VSN when Protocol >= ?FORTUNA_PROTOCOL_VSN -> true;
         _ -> false
     end.
