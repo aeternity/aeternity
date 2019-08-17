@@ -1,6 +1,7 @@
 -module(aesc_offchain_update).
 
 -define(UPDATE_VSN, 2).
+-define(UPDATE_VSN_1_OR_2(V), V =:= 1; V =:= 2).
 
 -record(transfer, {
           from_id      :: aeser_id:id(),
@@ -367,23 +368,23 @@ type2swagger_name(call_contract)   -> <<"OffChainCallContract">>;
 type2swagger_name(meta)            -> <<"OffChainMeta">>.
 
 -spec update_serialization_template(non_neg_integer(), update_type()) -> list().
-update_serialization_template(?UPDATE_VSN, transfer) ->
+update_serialization_template(V, transfer) when ?UPDATE_VSN_1_OR_2(V) ->
     [ {from,    id},
       {to,      id},
       {amount,  int}];
-update_serialization_template(?UPDATE_VSN, deposit) ->
+update_serialization_template(V, deposit) when ?UPDATE_VSN_1_OR_2(V) ->
     [ {from,    id},
       {amount,  int}];
-update_serialization_template(?UPDATE_VSN, withdraw) ->
+update_serialization_template(V, withdraw) when ?UPDATE_VSN_1_OR_2(V) ->
     [ {to,      id},
       {amount,  int}];
-update_serialization_template(?UPDATE_VSN, create_contract) ->
+update_serialization_template(V, create_contract) when ?UPDATE_VSN_1_OR_2(V) ->
     [ {owner,       id},
       {ct_version,  int},
       {code,        binary},
       {deposit,     int},
       {call_data,   binary}];
-update_serialization_template(?UPDATE_VSN, call_contract) ->
+update_serialization_template(V, call_contract) when ?UPDATE_VSN_1_OR_2(V) ->
     [ {caller,      id},
       {contract,    id},
       {abi_version, int},

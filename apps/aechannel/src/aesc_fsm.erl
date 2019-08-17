@@ -263,7 +263,7 @@ upd_deposit(Fsm, #{amount := Amt} = Opts) when is_integer(Amt) ->
 upd_transfer(Fsm, From, To, Amount) ->
     upd_transfer(Fsm, From, To, Amount, #{}).
 
-upd_transfer(_Fsm, _From, _To, Amount, Opts) when Amount < 0 ->
+upd_transfer(_Fsm, _From, _To, Amount, _Opts) when Amount < 0 ->
     {error, negative_amount};
 upd_transfer(Fsm, From, To, Amount, Opts) when is_integer(Amount), is_map(Opts) ->
     lager:debug("upd_transfer(~p, ~p, ~p, ~p, ~p)", [Fsm, From, To, Amount, Opts]),

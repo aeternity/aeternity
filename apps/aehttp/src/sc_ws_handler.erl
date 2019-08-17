@@ -230,83 +230,6 @@ set_field(H, host, Val)         -> H#handler{host = Val};
 set_field(H, role, Val)         -> H#handler{role = Val};
 set_field(H, port, Val)         -> H#handler{port = Val}.
 
--spec read_param(binary(), atom(), map()) -> fun((map()) -> {ok, term()} |
-                                                            not_set |
-                                                            {error, {atom(), atom()}}).
-read_param(ParamName, RecordField, Options) ->
-    fun(Params) ->
-        Mandatory = maps:get(mandatory, Options, true),
-        case maps:get(ParamName, Params, undefined) of
-            undefined when Mandatory ->
-                {error, {RecordField, missing}};
-            undefined when not Mandatory ->
-                not_set;
-            Val ->
-                check_type(Options, Val, RecordField)
-        end
-    end.
-
-check_type(Options, Val0, RecordField) ->
-    Type = maps:get(type, Options, binary),
-    try parse_by_type(Type, Val0, RecordField) of
-        {error, _} = Err -> Err;
-        {ok, Val} ->
-            case maps:get(enum, Options, undefined) of
-                undefined ->  {ok, Val};
-                AllowedVals when is_list(AllowedVals) ->
-                    case lists:member(Val, AllowedVals) of
-                        true -> {ok, Val};
-                        false ->
-                            {error, {RecordField, invalid}}
-                    end
-            end
-    catch
-        error:_ -> {error, {RecordField, invalid}}
-    end.
-
-parse_by_type(binary, V, _) when is_binary(V) ->
-    {ok, V};
-parse_by_type(boolean, V, _) when is_binary(V) ->
-    case V of
-        <<"true">>  -> {ok, true};
-        <<"false">> -> {ok, false};
-        _           -> {error, not_bool}
-    end;
-parse_by_type(string, V, _) when is_binary(V) ->
-    {ok, binary_to_list(V)};
-parse_by_type(atom, V, _) when is_binary(V) ->
-    {ok, binary_to_existing_atom(V, utf8)};
-parse_by_type(integer, V, _) when is_binary(V) ->
-    {ok, list_to_integer(binary_to_list(V))};
-parse_by_type(integer, V, _) when is_integer(V) ->
-    {ok, V};
-parse_by_type({hash, Type}, V, RecordField) when is_binary(V) ->
-    case aeser_api_encoder:safe_decode(Type, V) of
-        {error, _} ->
-            {error, {RecordField, broken_encoding}};
-        {ok, _} = OK -> OK
-    end;
-parse_by_type({alt, L}, V, RecordField) when is_list(L) ->
-    lists:foldl(
-      fun(_, {ok,_} = Ok) -> Ok;
-         (Alt, Acc) when is_map(Alt) ->
-              case check_type(Alt, V, RecordField) of
-                  {ok, _} = Ok -> Ok;
-                  {error,_} -> Acc
-              end
-      end, {error, {RecordField, invalid}}, L);
-parse_by_type(serialized_tx, V, RecordField) when is_binary(V) ->
-    case aeser_api_encoder:safe_decode(transaction, V) of
-        {ok, TxBin} ->
-            try {ok, aetx_sign:deserialize_from_binary(TxBin)}
-            catch
-                error:_ ->
-                    {error, {RecordField, invalid_tx_serialization}}
-            end;
-        {error, _} ->
-            {error, {RecordField, broken_encoding}}
-    end.
-
 reconnect_opts_to_handler(#{ <<"protocol">> := Protocol
                            , channel_id     := ChId
                            , job_id         := JobId } = Params) ->
@@ -323,7 +246,7 @@ prepare_handler(#{<<"protocol">> := Protocol} = Params) ->
     Read =
         fun(Key, RecordField, Opts) ->
             fun(H) ->
-                case (read_param(Key, RecordField, Opts))(Params) of
+                case (sc_ws_utils:read_param(Key, RecordField, Opts))(Params) of
                     not_set -> H;
                     {ok, Val} -> set_field(H, RecordField, Val);
                     {error, _} = Err -> Err
@@ -358,20 +281,8 @@ prepare_handler(#{<<"protocol">> := Protocol} = Params) ->
         #handler{protocol    = sc_ws_api:protocol(Protocol)}, Validators).
 
 read_channel_options(Params) ->
-    Read =
-        fun(KeyBin, Key, Opts) ->
-            fun(M) ->
-                case (read_param(KeyBin, Key, Opts))(Params) of
-                    not_set -> M;
-                    {ok, Val} -> maps:put(Key, Val, M);
-                    {error, _} = Err -> Err
-                end
-            end
-        end,
-    Put =
-        fun(K, V) ->
-            fun(M) -> maps:put(K, V, M) end
-        end,
+    Read = sc_ws_utils:read_f(Params),
+    Put = sc_ws_utils:put_f(),
     Error =
         fun({error, _} = Err) ->
             fun(_M) ->
@@ -388,28 +299,15 @@ read_channel_options(Params) ->
                        end,
                 (Read(<<"initiator_id">>, initiator, Type))(M)
         end,
-    ReadMap =
-        fun(MapName, Prefix, Opts) ->
-            fun(Name) ->
-                NameBin = atom_to_binary(Name, utf8),
-                Key = <<Prefix/binary, "_", NameBin/binary>>,
-                fun(M) ->
-                    OldVal = maps:get(MapName, M, #{}),
-                    case (read_param(Key, Name, Opts))(Params) of
-                        not_set -> M;
-                        {ok, Val} -> maps:put(MapName, maps:put(Name, Val, OldVal), M);
-                        {error, _} = Err -> Err
-                    end
-                end
-            end
-        end,
+    ReadMap = sc_ws_utils:readmap_f(Params),
     ReadTimeout = ReadMap(timeouts, <<"timeout">>, #{type => integer,
                                                      mandatory => false}),
     ReadReport = ReadMap(report, <<"report">>, #{type => boolean,
                                                      mandatory => false}),
     OnChainOpts =
-        case (read_param(<<"existing_channel_id">>, existing_channel_id,
-                         #{type => {hash, channel}, mandatory => false}))(Params) of
+        case (sc_ws_utils:read_param(
+                <<"existing_channel_id">>, existing_channel_id,
+                #{type => {hash, channel}, mandatory => false}))(Params) of
             not_set ->  %Channel open scenario
                 [Read(<<"role">>, role, #{type => atom, enum => [responder, initiator]}),
                  Read(<<"push_amount">>, push_amount, #{type => integer}),
@@ -441,18 +339,14 @@ read_channel_options(Params) ->
             {error, _} = Err ->
                 [Error(Err)]
         end,
-    lists:foldl(
-        fun(_, {error, _} = Err) -> Err;
-            (Fun, Accum) -> Fun(Accum)
-        end,
-        #{},
-        [Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false}),
-         Read(<<"ttl">>, ttl, #{type => integer, mandatory => false}),
-         Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}])
-        ] ++ OnChainOpts
-          ++ lists:map(ReadTimeout, aesc_fsm:timeouts() ++ [awaiting_open,
-                                                            initialized])
-          ++ lists:map(ReadReport, aesc_fsm:report_tags())
+    sc_ws_utils:check_params(
+      [Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false}),
+       Read(<<"ttl">>, ttl, #{type => integer, mandatory => false}),
+       Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}])
+      ] ++ OnChainOpts
+      ++ lists:map(ReadTimeout, aesc_fsm:timeouts() ++ [awaiting_open,
+                                                        initialized])
+      ++ lists:map(ReadReport, aesc_fsm:report_tags())
      ).
 
 jobs_ask() ->
