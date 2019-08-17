@@ -71,8 +71,9 @@
 -export([peek_db/0]).
 -export([peek_visited/0]).
 -export([peek_nonces/0]).
--export([gproc_name/0]).
 -endif.
+
+-export([gproc_name/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -921,8 +922,10 @@ maximum_auth_fun_gas() ->
     aeu_env:user_config_or_env([<<"mining">>, <<"max_auth_fun_gas">>],
                                aecore, mining_max_auth_fun_gas,
                                ?DEFAULT_MAX_AUTH_FUN_GAS).
--ifdef(TEST).
+
 gproc_name() -> {n, l, ?SERVER}.
+
+-ifdef(TEST).
 gproc_reg_if_test() -> gproc:reg(gproc_name()).
 -else.
 gproc_reg_if_test() -> ok.

@@ -228,7 +228,8 @@ reinit_chain_state() ->
                                init_chain_state()
                        end),
     exit(whereis(aec_tx_pool), kill),
-    gproc:await(aec_tx_pool:gproc_name(), 1000),
+    %% this will crash if used in non-test environment
+    gproc_wait_for_tx_pool(),
     ok.
 
 handle_call({add_synced_block, Block},_From, State) ->
@@ -1177,3 +1178,13 @@ get_pending_key_block(TopHash, #state{beneficiary = Beneficiary} = State) ->
         {ok, Block} -> {{ok, Block}, State#state{ pending_key_block = Block }};
         {error, _}  -> {{error, not_found}, State}
     end.
+
+
+-ifdef(TEST).
+gproc_wait_for_tx_pool() ->
+    gproc:await(aec_tx_pool:gproc_name(), 1000).
+-else.
+gproc_wait_for_tx_pool() ->
+    ok.
+-endif.
+
