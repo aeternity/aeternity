@@ -71,6 +71,7 @@
 -export([peek_db/0]).
 -export([peek_visited/0]).
 -export([peek_nonces/0]).
+-export([gproc_name/0]).
 -endif.
 
 %% gen_server callbacks
@@ -223,6 +224,7 @@ peek_visited() ->
 peek_nonces() ->
     #dbs{nonce_db = NDb} = dbs(),
     [N || {N} <- ets:tab2list(NDb)].
+
 -endif.
 
 %% The specified maximum number of transactions avoids requiring
@@ -308,6 +310,7 @@ init([]) ->
     ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
     ets:delete(Handled),
     lager:debug("init: GCHeight = ~p", [GCHeight]),
+    gproc_reg_if_test(),
     {ok, #state{gc_height = GCHeight}}.
 
 handle_call(Req, From, St) ->
@@ -916,4 +919,11 @@ minimum_miner_gas_price() ->
 
 maximum_auth_fun_gas() ->
     aeu_env:user_config_or_env([<<"mining">>, <<"max_auth_fun_gas">>],
-                               aecore, mining_max_auth_fun_gas, ?DEFAULT_MAX_AUTH_FUN_GAS).
+                               aecore, mining_max_auth_fun_gas,
+                               ?DEFAULT_MAX_AUTH_FUN_GAS).
+-ifdef(TEST).
+gproc_name() -> {n, l, ?SERVER}.
+gproc_reg_if_test() -> gproc:reg(gproc_name()).
+-else.
+gproc_reg_if_test() -> ok.
+-endif.

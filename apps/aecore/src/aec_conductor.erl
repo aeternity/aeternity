@@ -228,6 +228,7 @@ reinit_chain_state() ->
                                init_chain_state()
                        end),
     exit(whereis(aec_tx_pool), kill),
+    gproc:await(aec_tx_pool:gproc_name(), 1000),
     ok.
 
 handle_call({add_synced_block, Block},_From, State) ->
