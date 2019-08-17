@@ -164,6 +164,7 @@ json_rpc_error_object(not_a_number        , R) -> error_obj(3     , [1008], R);
 json_rpc_error_object(participant_not_found, R)-> error_obj(3     , [1011], R);
 json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
+json_rpc_error_object({meta, invalid}     , R) -> error_obj(3     , [1012], R);
 json_rpc_error_object(not_found           , R) -> error_obj(3     , [100] , R);
 json_rpc_error_object(Other               , R) ->
     lager:debug("Unrecognized error reason: ~p", [Other]),
@@ -233,6 +234,7 @@ error_data_msgs() ->
      , 1009 => <<"Broken encoding: contract bytearray">>
      , 1010 => <<"Broken encoding: transaction">>
      , 1011 => <<"Participant not found">>
+     , 1012 => <<"Invalid meta object">>
      }.
 
 broken_encoding_code(account    ) -> 1005;
@@ -274,17 +276,23 @@ process_incoming(Msg, FsmPid) ->
 process_request(#{<<"method">> := <<"channels.system">>,
                   <<"params">> := #{<<"action">> := <<"ping">>}}, _FsmPid) ->
     {reply, #{action => system, tag => pong}};
-process_request(#{<<"method">> := <<"channels.update.new">>,
+process_request(#{<<"method">> := <<"channels.update.new">> = M,
                    <<"params">> := #{<<"from">>    := FromB,
                                      <<"to">>      := ToB,
-                                     <<"amount">>  := Amount}}, FsmPid) ->
+                                     <<"amount">>  := Amount} = Params}, FsmPid) ->
     assert_integer(Amount),
     case {aeser_api_encoder:safe_decode(account_pubkey, FromB),
           aeser_api_encoder:safe_decode(account_pubkey, ToB)} of
         {{ok, From}, {ok, To}} ->
-            case aesc_fsm:upd_transfer(FsmPid, From, To, Amount) of
-                ok -> no_reply;
-                {error, _Reason} = Err -> Err
+            case check_params(M, maps:without([ <<"from">>
+                                              , <<"to">>
+                                              , <<"amount">>], Params)) of
+                XParams when is_map(XParams) ->
+                    case aesc_fsm:upd_transfer(FsmPid, From, To, Amount, XParams) of
+                        ok -> no_reply;
+                        {error, _Reason} = Err -> Err
+                    end;
+                {error, _} = Err2 -> Err2
             end;
         _ -> {error, {broken_encoding, [account]}}
     end;
@@ -600,3 +608,10 @@ bin(B) when is_binary(B) -> B.
 assert_integer(Value) when is_integer(Value) -> ok;
 assert_integer(_Value) -> error({validation_error, not_a_number}).
 
+check_params(<<"channels.update.new">>, Params) when is_map(Params) ->
+    Read = sc_ws_utils:read_f(Params),
+    sc_ws_utils:check_params(
+      [Read(<<"meta">>, meta, #{ type => {list, #{type => binary}}
+                               , mandatory => false})]);
+check_params(Method, Params) ->
+    {error, {unknown, Method, Params}}.

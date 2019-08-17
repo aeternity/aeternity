@@ -22,6 +22,7 @@
     sc_ws_basic_open_close_server/1,
     sc_ws_failed_update/1,
     sc_ws_generic_messages/1,
+    sc_ws_update_with_meta/1,
     sc_ws_update_conflict/1,
     sc_ws_close_mutual/1,
     sc_ws_close_solo/1,
@@ -97,6 +98,7 @@ groups() ->
         sc_ws_min_depth_is_modifiable,
         sc_ws_basic_open_close,
         sc_ws_basic_open_close_server,
+        sc_ws_update_with_meta,
         %% both can start close mutual
         sc_ws_close_mutual,
         %% both can solo-close
@@ -672,6 +674,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                 {RConnPid, IConnPid, RPubkey, RPrivkey,
                                     IPubkey, IPrivkey}
         end,
+    IncludeMeta = proplists:get_bool(include_meta, Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, update,
                                                          get, error]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, update,
@@ -684,9 +687,15 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                       end,
     {ok, {Ba0, Bb0} = Bal0} = GetBothBalances(IConnPid),
     ct:log("Balances before: ~p", [Bal0]),
-    UpdateOpts = #{from => aeser_api_encoder:encode(account_pubkey, StarterPubkey),
+    UpdateOpts0 = #{from => aeser_api_encoder:encode(account_pubkey, StarterPubkey),
                    to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
                    amount => Amount},
+    MetaStr = <<"meta 1">>,
+    UpdateOpts = if IncludeMeta ->
+                         UpdateOpts0#{ meta => [MetaStr] };
+                    true ->
+                         UpdateOpts0
+                 end,
     if TestErrors ->
             ws_send_tagged(StarterPid, <<"channels.update.new">>,
                            UpdateOpts#{amount => <<"1">>}, Config),
@@ -699,6 +708,10 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
             ws_send_tagged(StarterPid, <<"channels.update.new">>,
                            UpdateOpts#{to => <<"ABCDEF">>}, Config),
             {ok, #{<<"reason">> := <<"broken_encoding: accounts">>}} =
+                wait_for_channel_event(StarterPid, error, Config),
+            ws_send_tagged(StarterPid, <<"channels.update.new">>,
+                           UpdateOpts#{meta => 17}, Config),
+            {ok, #{<<"reason">> := <<"Invalid meta object">>}} =
                 wait_for_channel_event(StarterPid, error, Config);
        true -> ok
     end,
@@ -707,21 +720,17 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
 
     %% starter signs the new state
     #{tx := UnsignedStateTx,
-      updates := Updates} = channel_sign_tx(StarterPubkey, StarterPid, StarterPrivkey, <<"channels.update">>, Config),
+      updates := UpdatesS} = channel_sign_tx(StarterPubkey, StarterPid, StarterPrivkey, <<"channels.update">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
     %% verify contents
     {channel_offchain_tx, _OffchainTx} = aetx:specialize_type(UnsignedStateTx),
-    [Update] = Updates,
-    Expected = aesc_offchain_update:op_transfer(aeser_id:create(account, StarterPubkey),
-                                                aeser_id:create(account, AcknowledgerPubkey), Amount),
-    ExpectedForClient = aesc_offchain_update:for_client(Expected),
-    {ExpectedForClient, _} = {Update, ExpectedForClient},
-
+    ok = verify_updates(UpdatesS, StarterPubkey, AcknowledgerPubkey, Amount, IncludeMeta, MetaStr),
 
     %% acknowledger signs the new state
     {ok, #{<<"event">> := <<"update">>}} = wait_for_channel_event(AcknowledgerPid, info, Config),
     #{tx := UnsignedStateTx,
-      updates := Updates} = channel_sign_tx(AcknowledgerPubkey, AcknowledgerPid, AcknowledgerPrivkey, <<"channels.update_ack">>, Config),
+      updates := UpdatesR} = channel_sign_tx(AcknowledgerPubkey, AcknowledgerPid, AcknowledgerPrivkey, <<"channels.update_ack">>, Config),
+    {UpdatesR, UpdatesS} = {UpdatesS, UpdatesR},   % verify that they are identical
 
     {ok, #{<<"state">> := NewState}} = wait_for_channel_event(IConnPid, update, Config),
     {ok, #{<<"state">> := NewState}} = wait_for_channel_event(RConnPid, update, Config),
@@ -752,6 +761,25 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
 
     ok.
 
+verify_updates(Updates, StarterPubkey, AcknowledgerPubkey, Amount, false, _) ->
+    [Update] = Updates,
+    Expected = aesc_offchain_update:op_transfer(
+                 aeser_id:create(account, StarterPubkey),
+                 aeser_id:create(account, AcknowledgerPubkey), Amount),
+    ExpectedForClient = aesc_offchain_update:for_client(Expected),
+    {ExpectedForClient, _} = {Update, ExpectedForClient},
+    ok;
+verify_updates(Updates, StarterPubkey, AcknowledgerPubkey, Amount, true, MetaStr) ->
+    [Update, Meta] = Updates,
+    ExpUpd = aesc_offchain_update:op_transfer(
+               aeser_id:create(account, StarterPubkey),
+               aeser_id:create(account, AcknowledgerPubkey), Amount),
+    ExpMeta = aesc_offchain_update:op_meta(MetaStr),
+    ExpUpdForClient = aesc_offchain_update:for_client(ExpUpd),
+    ExpMetaForClient = aesc_offchain_update:for_client(ExpMeta),
+    {ExpUpdForClient, _} = {Update, ExpUpdForClient},
+    {ExpMetaForClient, _} = {Meta, ExpMetaForClient},
+    ok.
 
 channel_update_fail(#{initiator := IConnPid, responder :=RConnPid},
                StarterRole,
@@ -2419,6 +2447,11 @@ sc_ws_basic_open_close(Config0) ->
 sc_ws_basic_open_close_server(Config0) ->
     Config = sc_ws_open_([server_mode|Config0]),
     ok = sc_ws_update_(Config),
+    ok = sc_ws_close_(Config).
+
+sc_ws_update_with_meta(Config0) ->
+    Config = sc_ws_open_(Config0),
+    ok = sc_ws_update_([include_meta|Config]),
     ok = sc_ws_close_(Config).
 
 sc_ws_basic_client_reconnect_i(Config) ->
