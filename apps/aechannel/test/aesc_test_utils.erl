@@ -395,23 +395,23 @@ state_tx(ChannelPubKey, Initiator, Responder, Spec0) ->
                 aec_trees:hash(Trees);
             V -> V
         end,
-    OffChainSpec0
-        = #{channel_id         => aeser_id:create(channel, ChannelPubKey),
-            updates            => maps:get(updates, Spec, []),
-            state_hash         => StateHash,
-            round              => maps:get(round, Spec)},
     OffChainSpec =
-        case maps:get(block_hash, Spec0, none) of
-            none -> OffChainSpec0;
-            Val -> OffChainSpec0#{block_hash => Val}
-        end,
+        lists:foldl(
+            fun(Key, AccumSpec) ->
+                case maps:get(Key, Spec0, none) of
+                    none -> AccumSpec;
+                    Val -> maps:put(Key, Val, AccumSpec)
+                end
+            end,
+            #{channel_id         => aeser_id:create(channel, ChannelPubKey),
+              state_hash         => StateHash,
+              round              => maps:get(round, Spec)},
+            [block_hash, updates]),
     {ok, StateTx} = aesc_offchain_tx:new(OffChainSpec),
     StateTx.
 
 state_tx_spec() ->
-    #{initiator_amount   => 3,
-      responder_amount   => 4,
-      state              => <<"state..">>,
+    #{state              => <<"state..">>,
       round              => 11}.
 
 payload(ChannelId, Initiator, Responder, SignersPrivKeys, Spec) ->

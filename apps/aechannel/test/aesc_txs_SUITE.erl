@@ -190,7 +190,8 @@
 
 % fork related tests
 -export([ fp_sophia_versions/1,
-          close_mutual_already_closing/1
+          close_mutual_already_closing/1,
+          reject_old_offchain_tx_vsn/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -399,7 +400,8 @@ groups() ->
       ]},
      {fork_awareness, [sequence],
       [ fp_sophia_versions,
-        close_mutual_already_closing
+        close_mutual_already_closing,
+        reject_old_offchain_tx_vsn
       ]}
     ].
 
@@ -913,6 +915,7 @@ close_mutual_already_closing(Cfg) ->
             run(#{cfg => Cfg, initiator_amount => StartIAmt, responder_amount => StartRAmt},
                [positive(fun create_channel_/2),
                 set_from(Closer),
+                set_prop(height, FortunaHeight),
                 positive(fun close_solo_/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
@@ -923,11 +926,40 @@ close_mutual_already_closing(Cfg) ->
                 %% prepare balances and a fee..
                 prepare_balances_for_mutual_close(),
                 % Before Lima fork this should fail
-                set_prop(height, FortunaHeight),
                 negative(fun close_mutual_/2, {error, channel_not_active}),
                 % After Lima fork this should succeed
                 set_prop(height, LimaHeight),
                 positive(fun close_mutual_/2)])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
+reject_old_offchain_tx_vsn(Cfg) ->
+    StartIAmt = 100000 * aec_test_utils:min_gas_price(),
+    StartRAmt = 100000 * aec_test_utils:min_gas_price(),
+
+    RomaHeight = 123,
+    FortunaHeight = 12345,
+    LimaHeight = 123456,
+
+    % ensure assumptions regarding heights
+    true = RomaHeight < ?MINERVA_FORK_HEIGHT,
+    true = LimaHeight > FortunaHeight,
+    true = FortunaHeight >= ?FORTUNA_FORK_HEIGHT,
+    true = LimaHeight >= ?LIMA_FORK_HEIGHT,
+
+    Test =
+        fun(Closer) ->
+            run(#{cfg => Cfg, initiator_amount => StartIAmt, responder_amount => StartRAmt},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                %% produce an off-chain transaction with the old structure
+                set_prop(height, RomaHeight),
+                create_payload(),
+                set_prop(height, LimaHeight),
+                %% it fails after Lima 
+                negative(fun close_solo_/2, {error, invalid_at_height})
+                ])
         end,
     [Test(Role) || Role <- ?ROLES],
     ok.
@@ -4420,6 +4452,17 @@ create_payload(Key) ->
         PayloadSpec0 = #{initiator_amount => IAmt,
                         responder_amount  => RAmt,
                         round => maps:get(round, Props, 11)},
+        PayloadSpec01 =
+            case maps:get(height, Props, use_no_updates_vsn) of
+                use_no_updates_vsn -> PayloadSpec0;
+                ChainHeight ->
+                    case aec_hard_forks:protocol_effective_at_height(ChainHeight) of
+                        _P when _P >= ?FORTUNA_PROTOCOL_VSN -> %% no updates
+                            PayloadSpec0;
+                        _ ->
+                            PayloadSpec0#{updates => []} %% this is some updates
+                    end
+            end,
         PayloadSpec =
             lists:foldl(
                 fun({PropsKey, OffChainKey}, Accum) ->
@@ -4428,7 +4471,7 @@ create_payload(Key) ->
                         V -> maps:put(OffChainKey, V, Accum)
                     end
                 end,
-                PayloadSpec0,
+                PayloadSpec01,
                 [{state_hash, state_hash}]),
         Payload = aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
                                         [IPrivkey, RPrivkey], PayloadSpec),
@@ -4719,6 +4762,7 @@ close_solo_(#{channel_pubkey    := ChannelPubKey,
     Payload = maps:get(payload, Props,
                        aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
                                                [IPrivkey, RPrivkey], PayloadSpec)),
+    ct:log("Close is based on payload: ~p", [aesc_utils:deserialize_payload(Payload)]),
     Spec =
         case Props of
             #{nonce := Nonce} -> #{fee => Fee, nonce => Nonce};
@@ -5413,6 +5457,7 @@ fp_sophia_versions(Cfg) ->
                                                 _ContractCreateRound = 10,
                                                 _ContractOwner = Forcer),
                 set_from(Forcer),
+                set_prop(height, RomaHeight),
                 set_prop(round, Round),
                 fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
                     (create_contract_call_payload(ContractId, CName, <<"main">>,
@@ -5430,6 +5475,12 @@ fp_sophia_versions(Cfg) ->
                 TestAtHeight(RomaHeight, RomaRes),
                 TestAtHeight(MinervaHeight, MinervaRes),
                 TestAtHeight(FortunaHeight, FortunaRes),
+                %% recreate the payload to be the new vsn
+                set_prop(height, LimaHeight),
+                set_prop(round, Round - 1),
+                delete_prop(payload), % new off-chain vsn with correct round
+                create_payload(),
+                set_prop(round, Round),
                 TestAtHeight(LimaHeight, LimaRes)
                ])
         end,
