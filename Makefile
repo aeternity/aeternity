@@ -534,7 +534,7 @@ regen-fate:
 	${REBAR} compile
 
 test-arch-os-dependencies: KIND=test
-test-arch-os-dependencies: internal-build
+test-arch-os-dependencies:
 	make ct-latest SUITE=apps/aecontract/test/aecontract GROUP=sophia TEST=sophia_crypto
 
 .PHONY: \
