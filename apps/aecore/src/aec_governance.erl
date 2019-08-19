@@ -254,7 +254,6 @@ name_registrars(_Protocol) ->
 possible_name_registrars() ->
     [<<"aet">>, <<"test">>].
 
-
 fraud_report_reward(Height) ->
     Coinbase = block_mine_reward(Height),
     %% Assert that the coinbase is always even dividable.
