@@ -5349,21 +5349,55 @@ fp_sophia_versions(Cfg) ->
     RomaHeight = 123,
     MinervaHeight = 1234,
     FortunaHeight = 12345,
+    LimaHeight = 123456,
 
     SophiaVsn1 = 1,
     SophiaVsn2 = 2,
+    SophiaVsn3 = 3,
     % ensure assumptions regarding heights
     true = RomaHeight < ?MINERVA_FORK_HEIGHT,
     true = aect_sophia:is_legal_serialization_at_height(SophiaVsn1, RomaHeight),
     false = aect_sophia:is_legal_serialization_at_height(SophiaVsn2, RomaHeight),
+    false = aect_sophia:is_legal_serialization_at_height(SophiaVsn3, RomaHeight),
     true = MinervaHeight >= ?MINERVA_FORK_HEIGHT,
     true = MinervaHeight < ?FORTUNA_FORK_HEIGHT,
     true = aect_sophia:is_legal_serialization_at_height(SophiaVsn2, MinervaHeight),
+    false = aect_sophia:is_legal_serialization_at_height(SophiaVsn3, MinervaHeight),
     true = FortunaHeight >= ?FORTUNA_FORK_HEIGHT,
+    true = FortunaHeight < ?LIMA_FORK_HEIGHT,
     true = aect_sophia:is_legal_serialization_at_height(SophiaVsn2, FortunaHeight),
+    false = aect_sophia:is_legal_serialization_at_height(SophiaVsn3, FortunaHeight),
+    true = LimaHeight >= ?LIMA_FORK_HEIGHT,
 
+    TestAtHeight =
+        fun(Height, Res) ->
+            fun(Props0) ->
+                ct:log("Testing at height ~p, expecting ~p", [Height, Res]),
+                run(Props0,
+                    [ set_prop(height, Height),
+                      set_prop(fee, 500000 * aec_governance:minimum_gas_price(Height)),
+                      set_prop(gas_price, aec_governance:minimum_gas_price(Height)),
+                      %% recompute the update with the new gas price
+                      fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
+                          (create_contract_call_payload(ContractId, CName, <<"main">>,
+                                                        [<<"42">>], 1))(Props)
+                      end,
+                      fun(Props) ->
+                          Exec =
+                              case Res of
+                                  {error, Err} ->
+                                      negative(fun force_progress_/2, {error, Err});
+                                  ok ->
+                                      positive(fun force_progress_/2)
+                              end,
+                          Exec(Props),
+                          Props0 %% so we don't have round issues
+                      end
+                    ])
+            end
+        end,
     FP =
-        fun(Forcer, Vm, CodeSVsn, PreForkErrMsg) ->
+        fun(Forcer, Vm, CodeSVsn, RomaRes, MinervaRes, FortunaRes, LimaRes) ->
             Round = 42,
             run(#{cfg => Cfg, initiator_amount => 10000000,
                               responder_amount => 10000000,
@@ -5384,9 +5418,6 @@ fp_sophia_versions(Cfg) ->
                     (create_contract_call_payload(ContractId, CName, <<"main">>,
                                                   [<<"42">>], 1))(Props)
                 end,
-                set_prop(height, RomaHeight),
-                set_prop(fee, 500000 * aec_governance:minimum_gas_price(RomaHeight)),
-                set_prop(gas_price, aec_governance:minimum_gas_price(RomaHeight)),
                 fun(#{contract_id := ContractId,
                       trees := Trees0} = Props) ->
                     Contract = aect_test_utils:get_contract(ContractId, #{trees => Trees0}),
@@ -5396,31 +5427,100 @@ fp_sophia_versions(Cfg) ->
                     CodeSVsn = maps:get(contract_vsn, Deserialized),
                     Props
                 end,
-                % rejected before the fork
-                negative(fun force_progress_/2, {error, PreForkErrMsg}),
-                % accepted after the fork
-                set_prop(height, MinervaHeight),
-                set_prop(fee, 500000 * aec_governance:minimum_gas_price(MinervaHeight)),
-                set_prop(gas_price, aec_governance:minimum_gas_price(MinervaHeight)),
-                %% recompute the update with the new gas price
-                fun(#{contract_id := ContractId, contract_file := CName} = Props) ->
-                    (create_contract_call_payload(ContractId, CName, <<"main">>,
-                                                  [<<"42">>], 1))(Props)
-                end,
-                positive(fun force_progress_/2)
+                TestAtHeight(RomaHeight, RomaRes),
+                TestAtHeight(MinervaHeight, MinervaRes),
+                TestAtHeight(FortunaHeight, FortunaRes),
+                TestAtHeight(LimaHeight, LimaRes)
                ])
         end,
+    %% return values
+    OK = ok,
+    ErrIllegal = {error, illegal_contract_compiler_version},
+    ErrUnknown = {error, unknown_vm_version},
+    %% actual checks
     ForkChecks =
         [
-         %% old vm, new code serialization
-         {?VM_AEVM_SOPHIA_1, 2, illegal_contract_compiler_version},
-         %% new vm, old code serialization
-         {?VM_AEVM_SOPHIA_2, 1, unknown_vm_version},
-         %% new vm, new code serialization
-         {?VM_AEVM_SOPHIA_2, 2, unknown_vm_version}],
+         %% AEVM 1
+         {?VM_AEVM_SOPHIA_1, SophiaVsn1,
+            OK,         %% Roma
+            OK,         %% Minerva
+            OK,         %% Fortuna
+            ErrIllegal  %% Lima
+         },
+         {?VM_AEVM_SOPHIA_1, SophiaVsn2,
+            ErrIllegal, %% Roma
+            OK,         %% Minerva
+            OK,         %% Fortuna
+            ErrIllegal  %% Lima
+         },
+         {?VM_AEVM_SOPHIA_1, SophiaVsn3,
+            ErrIllegal, %% Roma
+            ErrIllegal, %% Minerva
+            ErrIllegal, %% Fortuna
+            OK          %% Lima
+         },
+         %% AEVM 2
+         {?VM_AEVM_SOPHIA_2, SophiaVsn1, 
+            ErrUnknown, %% Roma
+            OK,         %% Minerva
+            OK,         %% Fortuna
+            ErrIllegal  %% Lima
+         },
+         {?VM_AEVM_SOPHIA_2, SophiaVsn2,
+            ErrUnknown, %% Roma
+            OK,         %% Minerva
+            OK,         %% Fortuna
+            ErrIllegal  %% Lima
+         },
+         {?VM_AEVM_SOPHIA_2, SophiaVsn3,
+            ErrUnknown, %% Roma
+            ErrIllegal, %% Minerva
+            ErrIllegal, %% Fortuna
+            OK          %% Lima
+         },
+         %% AEVM 3
+         {?VM_AEVM_SOPHIA_3, SophiaVsn1,
+            ErrUnknown, %% Roma
+            ErrUnknown, %% Minerva
+            OK,         %% Fortuna
+            ErrIllegal  %% Lima
+         },
+         {?VM_AEVM_SOPHIA_3, SophiaVsn2,
+            ErrUnknown, %% Roma
+            ErrUnknown, %% Minerva
+            OK,         %% Fortuna
+            ErrIllegal  %% Lima
+         },
+         {?VM_AEVM_SOPHIA_3, SophiaVsn3,
+            ErrUnknown, %% Roma
+            ErrUnknown, %% Minerva
+            ErrIllegal, %% Fortuna
+            OK          %% Lima
+         },
+         %% AEVM 4
+         {?VM_AEVM_SOPHIA_4, SophiaVsn1,
+            ErrUnknown, %% Roma
+            ErrUnknown, %% Minerva
+            ErrUnknown, %% Fortuna
+            ErrIllegal  %% Lima
+         },
+         {?VM_AEVM_SOPHIA_4, SophiaVsn2,
+            ErrUnknown, %% Roma
+            ErrUnknown, %% Minerva
+            ErrUnknown, %% Fortuna
+            ErrIllegal  %% Lima
+         },
+         {?VM_AEVM_SOPHIA_4, SophiaVsn3,
+            ErrUnknown, %% Roma
+            ErrUnknown, %% Minerva
+            ErrUnknown, %% Fortuna
+            OK          %% Lima
+         }
+        ],
 
-    [FP(Forcer, Vm, CodeSVsn, Error) || Forcer <- ?ROLES,
-                              {Vm, CodeSVsn, Error} <- ForkChecks],
+    [FP(Forcer, Vm, CodeSVsn, RRes, MRes, FRes, LRes)
+        || Forcer <- ?ROLES,
+           {Vm, CodeSVsn, RRes, MRes, FRes, LRes} <- ForkChecks],
     ok.
 
 encode_call_data(ContractName, Function, Arguments) ->
