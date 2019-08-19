@@ -124,11 +124,12 @@ add_poi([{account, PK} | What], Trees, PoI) ->
 
 
 payload(CId, S = #{round := Rnd, sign := Sigs}, S0) ->
+    %% use only aesc_offchain_tx without updates since GAs are introduced in
+    %% Fortuna
     {ok, OffTx} = aesc_offchain_tx:new(
                       #{ channel_id => aeser_id:create(channel, CId)
                        , state_hash => state_hash(S)
-                       , round      => Rnd + 1
-                       , updates    => [] }),
+                       , round      => Rnd + 1}),
     SOffTx = sign_tx(aetx_sign:new(OffTx, []), Sigs, S0),
     aetx_sign:serialize_to_binary(SOffTx).
 
