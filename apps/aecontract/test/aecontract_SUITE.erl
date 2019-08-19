@@ -4435,6 +4435,8 @@ sophia_crypto(_Cfg) ->
                                 , {test_string_verify_secp256k1, Message, true}
                                 , {test_string_verify_secp256k1, <<"Not the secret message">>, false}] ],
 
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, ecrecover_not_in_fortuna),
+
     %% Test ecrecover
 
     %%   Static examples are taken from
@@ -4468,11 +4470,11 @@ sophia_crypto(_Cfg) ->
           ?assertMatchAEVM2OOG(Exp, <<TestRes:256>>),
           ?assertMatchFATE({bytes, Exp}, TestRes)
       end || {Fun, Msg, Sig, Exp} <-
-             [ {test_recover_secp256k1, ?hsh(GoodMsg1), ?sig(GoodSig1_v), aeu_hex:hex_to_bin(GoodHexAcc1)}
-             , {test_recover_secp256k1, ?hsh(BadMsg), ?sig(BadSig), aeu_hex:hex_to_bin(BadHexAcc)}
+             [ {test_recover_secp256k1, ?hsh(GoodMsg1), ?sig(GoodSig1_v),  aeu_hex:hex_to_bin(GoodHexAcc1)}
+             , {test_recover_secp256k1, ?hsh(BadMsg),   ?sig(BadSig),      aeu_hex:hex_to_bin(BadHexAcc)}
              , {test_recover_secp256k1, ?hsh(GoodMsg1), ?sig(GoodSig1_v2), aeu_hex:hex_to_bin(GoodHexAcc1)}
-             , {test_recover_secp256k1, ?hsh(MsgHash), ?sig(SECP_Sig_v), SECP_Pub_Hash}
-             , {test_recover_secp256k1, ?hsh(GoodMsg2), ?sig(GoodSig2_v), aeu_hex:hex_to_bin(GoodHexAcc2)}
+             , {test_recover_secp256k1, ?hsh(MsgHash),  ?sig(SECP_Sig_v),  SECP_Pub_Hash}
+             , {test_recover_secp256k1, ?hsh(GoodMsg2), ?sig(GoodSig2_v),  aeu_hex:hex_to_bin(GoodHexAcc2)}
              ] ],
 
     %% Test hash functions
