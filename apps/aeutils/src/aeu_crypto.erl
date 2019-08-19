@@ -43,7 +43,8 @@ ecdsa_to_der_sig(<<R0:32/binary, S0:32/binary>>) ->
 %% however we declare the upper two possibilities, representing infinite values,
 %% invalid. The value 27 represents an even y value and 28 represents an
 %% odd y value.
-%% @reference https://github.com/ethereum/yellowpaper
+%%
+%% Reference: https://github.com/ethereum/yellowpaper
 ecdsa_recoverable_from_ecdsa(Hash, <<Sig:64/binary>>, Pub) ->
     % Because we can't re-generate the recovery id we try both and compare the
     % result with the given pubkey.
