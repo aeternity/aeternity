@@ -82,7 +82,7 @@
 -define(SLOGAN, {slogan, {?FUNCTION_NAME, ?LINE}}).
 -define(SLOGAN(I), {slogan, {?FUNCTION_NAME, ?LINE, I}}).
 
--define(MAX_MINED_BLOCKS, 2000).
+-define(MAX_MINED_BLOCKS, 20).
 
 -define(I_SECP256K1_PRIV, <<61,194,116,40,192,100,75,189,11,148,242,211,52,100,55,
                             188,165,162,142,65,19,181,89,25,9,228,120,175,152,249,
@@ -432,7 +432,7 @@ t_create_channel_(Cfg) ->
     SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     verify_close_mutual_tx(SignedTx, ChannelId),
-    check_info(50),
+    check_info(20),
     ok.
 
 channel_insufficent_tokens(Cfg) ->
@@ -468,7 +468,7 @@ inband_msgs(Cfg) ->
               fun(#{info := #{info := <<"i2r hello">>}}) -> ok end, 1000, true),
 
     shutdown_(I, R, Cfg),
-    check_info(50).
+    check_info(20).
 
 upd_transfer(Cfg) ->
     Debug = get_debug(Cfg),
@@ -490,7 +490,7 @@ upd_transfer(Cfg) ->
     SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     verify_close_mutual_tx(SignedTx, ChannelId),
-    check_info(50),
+    check_info(20),
     ok.
 
 update_with_conflict(Cfg) ->
@@ -511,7 +511,7 @@ update_with_conflict(Cfg) ->
     {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
-    check_info(50),
+    check_info(20),
     shutdown_(I, R, Cfg),
     ok.
 
@@ -536,7 +536,7 @@ update_with_soft_reject(Cfg) ->
     {ok, _} = receive_from_fsm(conflict, R1, any_msg(), ?TIMEOUT, Debug),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
-    check_info(50),
+    check_info(20),
     shutdown_(I, R, Cfg),
     ok.
 
@@ -558,7 +558,7 @@ deposit_with_conflict(Cfg) ->
     {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
-    check_info(50),
+    check_info(20),
     shutdown_(I, R, Cfg),
     ok.
 
@@ -583,7 +583,7 @@ deposit_with_soft_reject(Cfg) ->
     {ok,_} = receive_from_fsm(conflict, R1, any_msg(), ?TIMEOUT, Debug),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
-    check_info(50),
+    check_info(20),
     shutdown_(I, R, Cfg),
     ok.
 
@@ -605,7 +605,7 @@ withdraw_with_conflict(Cfg) ->
     {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
-    check_info(50),
+    check_info(20),
     shutdown_(I, R, Cfg),
     ok.
 
@@ -630,7 +630,7 @@ withdraw_with_soft_reject(Cfg) ->
     {ok,_} = receive_from_fsm(conflict, R1, any_msg(), ?TIMEOUT, Debug),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
-    check_info(50),
+    check_info(20),
     shutdown_(I, R, Cfg),
     ok.
 
@@ -652,7 +652,7 @@ upd_dep_with_conflict(Cfg) ->
     {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
-    check_info(50),
+    check_info(20),
     shutdown_(I, R, Cfg),
     ok.
 
@@ -674,7 +674,7 @@ upd_wdraw_with_conflict(Cfg) ->
     {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
-    check_info(50),
+    check_info(20),
     shutdown_(I, R, Cfg),
     ok.
 
@@ -696,7 +696,7 @@ dep_wdraw_with_conflict(Cfg) ->
     {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
-    check_info(50),
+    check_info(20),
     shutdown_(I, R, Cfg),
     ok.
 
@@ -743,7 +743,7 @@ do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
     rpc(dev1, aesc_fsm, upd_transfer, [FsmI, From, To, Amount], Debug),
     {I1, _} = await_signing_request(update, I, Debug, Cfg),
     {R1, _} = await_signing_request(update_ack, R, Debug, Cfg),
-    check_info(if_debug(Debug, 100, 0), Debug),
+    check_info(if_debug(Debug, 20, 0), Debug),
     {I1, R1}.
 
 msg_volley(#{fsm := FsmI, pub := PubI} = I, #{fsm := FsmR, pub := PubR} = R, _) ->
@@ -771,7 +771,7 @@ deposit(Cfg) ->
     {IAmt0, RAmt0, _, Round0 = 1} = check_fsm_state(FsmI),
     check_info(0),
     {ok, I1, R1} = deposit_(I, R, Deposit, Round0, Debug, Cfg),
-    check_info(50),
+    check_info(20),
     shutdown_(I1, R1, Cfg),
     ok.
 
@@ -840,7 +840,7 @@ withdraw(Cfg) ->
     {Expected, Expected} = {{IAmt0 - Withdrawal, RAmt0}, Expected},
     SignedTx = await_on_chain_report(I1, #{info => channel_changed}, ?TIMEOUT), % same tx
     SignedTx = await_on_chain_report(R1, #{info => channel_changed}, ?TIMEOUT), % same tx
-    check_info(50),
+    check_info(20),
     shutdown_(I, R, Cfg),
     ok.
 
@@ -859,9 +859,9 @@ channel_detects_close_solo(Cfg) ->
     SignedTx = await_on_chain_report(R, #{info => solo_closing}, ?TIMEOUT),
     {ok,_} = receive_from_fsm(info, I1, fun closing/1, ?TIMEOUT, Debug),
     {ok,_} = receive_from_fsm(info, R, fun closing/1, ?TIMEOUT, Debug),
-    check_info(50),
+    check_info(20),
     settle_(LockPeriod, maps:get(minimum_depth, Spec), I1, R, Debug, Cfg),
-    check_info(50),
+    check_info(20),
     ok.
 
 close_solo_tx(#{ fsm        := Fsm
@@ -979,7 +979,7 @@ change_config_get_history(Cfg) ->
     {error, invalid_config} =
         rpc(dev1, aesc_fsm, change_config, [FsmI, invalid, config]),
     shutdown_(I, R, Cfg),
-    check_info(50).
+    check_info(20).
 
 check_history(Log) ->
     %% Expected events for initiator so far, in reverse cronological order
@@ -1227,7 +1227,7 @@ check_incorrect_mutual_close(Cfg) ->
                 {shutdown, [], shutdown,
                  shutdown_ack},
                 fun(#{fsm := FsmPid}, _Debug) ->
-                    timer:sleep(100),
+                    timer:sleep(20),
                     true = rpc(dev1, erlang, process_info, [FsmPid]) =:= undefined
                 end),
             bump_idx(),
@@ -1249,7 +1249,7 @@ check_mutual_close_with_wrong_amounts(Cfg) ->
         create_channel_from_spec(Si, Sr, Spec, Port, Debug, Cfg),
     %% We don't have enough funds to cover the closing fee
     {error, insufficient_funds} = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
-    timer:sleep(100),
+    timer:sleep(20),
     %% Fsms should be unaffected
     true = (rpc(dev1, erlang, process_info, [FsmI]) =/= undefined),
     true = (rpc(dev1, erlang, process_info, [FsmR]) =/= undefined),
@@ -1311,7 +1311,7 @@ check_mutual_close_after_close_solo(Cfg) ->
             channel_closing = fsm_state(FsmR, Debug),
 
             % Test that closing works
-            check_info(50),
+            check_info(20),
             shutdown_(I, R, Cfg)
     end,
     ok.
@@ -1518,7 +1518,7 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
             DetectConflictFun(A, Debug),
             rpc(dev1, aesc_fsm, strict_checks, [FsmA, true], Debug)
     end,
-    check_info(50),
+    check_info(20),
     ok.
 
 shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
@@ -1588,7 +1588,7 @@ client_reconnect_(Role, Cfg) ->
     log(Debug, "Reconnecting before disconnecting failed: ~p", [Err]),
     unlink(Proxy),
     exit(Proxy, kill),
-    timer:sleep(100),  % give the above exit time to propagate
+    timer:sleep(20),  % give the above exit time to propagate
     ok = things_that_should_fail_if_no_client(Role, I, R, Debug, Cfg),
     Res = reconnect(Fsm, Role, RoleI, Debug),
     ct:log("Reconnect req -> ~p", [Res]),
@@ -1859,7 +1859,7 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     R4 = await_update(R3, ?TIMEOUT, Debug),
     I5 = await_open_report(I4, ?TIMEOUT, Debug),
     R5 = await_open_report(R4, ?TIMEOUT, Debug),
-    check_info(50, Debug),
+    check_info(20, Debug),
     #{i => I5, r => R5, spec => Spec}.
 
 spawn_responder(Port, Spec, R, UseAny, Debug) ->
@@ -1985,7 +1985,7 @@ reestablish(ChId, I0, R0, SignedTx, Spec0, Port, Debug) ->
                      ["localhost", Port, Spec], Debug),
     I1 = await_open_report(I#{fsm => FsmI}, ?TIMEOUT, Debug),
     R1 = await_open_report(R#{fsm => FsmR}, ?TIMEOUT, Debug),
-    check_info(50),
+    check_info(20),
     #{i => I1, r => R1, spec => Spec}.
 
 tx_amounts(SignedTx) ->

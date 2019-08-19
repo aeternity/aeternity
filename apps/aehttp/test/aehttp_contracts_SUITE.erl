@@ -54,7 +54,7 @@
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(DEFAULT_GAS_PRICE, aec_test_utils:min_gas_price()).
 
--define(MAX_MINED_BLOCKS, 100).
+-define(MAX_MINED_BLOCKS, 20).
 
 -define(skipRest(Res, Reason),
     case Res of

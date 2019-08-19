@@ -231,7 +231,6 @@ start_node(N, Config) ->
         ]).
 
 stop_node(N, Config) ->
-    %%end_all_mocks(N), % Just to be sure that mocked modules don't survive a restart
     cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["stop"]).
 
 get_node_db_config(Rpc) when is_function(Rpc, 3) ->
@@ -391,11 +390,10 @@ wait_for_new_block() ->
 wait_for_new_block(T) when is_integer(T), T >= 0 ->
     receive
         {gproc_ps_event, block_created, Info} ->
-            %%ct:log("key block created, Info=~p", [Info]),
             #{info := Block} = Info,
             {ok, Block};
         {gproc_ps_event, micro_block_created, Info} ->
-            %%ct:log("micro block created, Info=~p", [Info]),
+            ct:log("micro block created, Info=~p", [Info]),
             #{info := Block} = Info,
             {ok, Block}
     after T ->

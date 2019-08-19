@@ -13,7 +13,7 @@
 
 -include("include/aect_contract_cache.hrl").
 
--record(state, {cache_dir :: string(), deps_hash :: binary()}).
+-record(state, {cache_dir :: string() | undefined, deps_hash :: binary() | undefined}).
 
 %% Return a unique id for this CTH.
 id(_Opts) ->
@@ -21,30 +21,32 @@ id(_Opts) ->
 
 init(_Id, _Opts) ->
     {ok, Cwd} = file:get_cwd(),
-    [RootDir, _] = string:split(Cwd, "_build"),
-    CacheDir = cache_dir(RootDir),
-    ensure_cache_dir_exists(CacheDir),
+    case string:split(Cwd, "_build") of
+        [RootDir, _] ->
+            CacheDir = cache_dir(RootDir),
+            ensure_cache_dir_exists(CacheDir),
 
-    RebarLockPath = filename:absname_join(RootDir, "rebar.lock"),
-    ct:log("RebarPath: ~p Cache: ~p", [RebarLockPath, CacheDir]),
-    {ok, RebarLock} = file:read_file(RebarLockPath),
-    DepsHash = base58:binary_to_base58(crypto:hash(sha256, RebarLock)),
+            RebarLockPath = filename:absname_join(RootDir, "rebar.lock"),
+            ct:log("RebarPath: ~p Cache: ~p", [RebarLockPath, CacheDir]),
+            {ok, RebarLock} = file:read_file(RebarLockPath),
+            DepsHash = base58:binary_to_base58(crypto:hash(sha256, RebarLock)),
 
-    code:ensure_loaded(aect_test_utils), %% This should initialize the tables
-    [try_load_cache(CacheDir, DepsHash, ETSTable) || {ETSTable, _} <- cached_tables()],
+            code:ensure_loaded(aect_test_utils), %% This should initialize the tables
+            [try_load_cache(CacheDir, DepsHash, ETSTable) || {ETSTable, _} <- cached_tables()],
 
-    {ok, #state{cache_dir = CacheDir, deps_hash = DepsHash}}.
+            {ok, #state{cache_dir = CacheDir, deps_hash = DepsHash}};
+        _ ->
+            ct:log("Ignoring persisted contract cache in system/smoke tests"),
+            {ok, #state{}}
+    end.
 
+terminate(#state{cache_dir = undefined, deps_hash = undefined}) ->
+    ok;
 terminate(#state{cache_dir = CacheDir, deps_hash = DepsHash}) ->
     [save_cache(CacheDir, DepsHash, ETSTable, Keypos) || {ETSTable, Keypos} <- cached_tables()],
     ok.
 
 %%% ------------------------ INTERNAL --------------------
-
-cached_tables() ->
-    [ {?COMPILE_TAB, #compilation_cache_entry.compilation_id}
-    , {?ENCODE_CALL_TAB, #encode_call_cache_entry.call_id}
-    , {?DECODE_CALL_TAB, #decode_call_cache_entry.decode_call_id}].
 
 cache_dir(RootDir) ->
     filename:absname_join(RootDir, ".contracts_test_cache").

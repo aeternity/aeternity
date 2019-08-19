@@ -473,9 +473,7 @@ decode_data(Type, Data) ->
     decode_data_(Type, Data).
 
 decode_data_(Type, Data) ->
-    ct:log("decode_data_/2 start"),
     Return = decode_data_(backend(), Type, Data),
-    ct:log("decode_data_/2 end"),
     Return.
 
 decode_data_(fate, _Type, Data) ->
@@ -604,10 +602,8 @@ backend() ->
 
 %% setup a global memoization cache for contracts
 setup_contract_cache() ->
-    %% TODO: Maybe dump the ETS tables to a file after each test run and then restore the tables on load?
-    ok = try_setup_cache(?COMPILE_TAB, #compilation_cache_entry.compilation_id),
-    ok = try_setup_cache(?ENCODE_CALL_TAB, #encode_call_cache_entry.call_id),
-    ok = try_setup_cache(?DECODE_CALL_TAB, #decode_call_cache_entry.decode_call_id).
+    [ok = try_setup_cache(ETSTable, Keypos) || {ETSTable, Keypos} <- cached_tables()],
+    ok.
 
 try_setup_cache(Tab, Keypos) ->
     Self = self(),

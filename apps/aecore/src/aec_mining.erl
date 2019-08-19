@@ -163,40 +163,64 @@ aeminer_pow_cuckoo_verify_mock(_Data, _Nonce, _Soln, _Target, _EdgeBits) ->
     true.
 
 aeminer_pow_cuckoo_generate_mock(KeyHeaderBin, _Target, Nonce, _Config, _MinerInstance) ->
-    %% Simulate doing a lot of work :)
-    timer:sleep(50),
+    PendingTxs = aec_tx_pool:size(),
+    case PendingTxs of
+        0 ->
+            aeminer_pow_cuckoo_generate_mock_fast(KeyHeaderBin, _Target, Nonce, _Config, _MinerInstance);
+        _ ->
+            aeminer_pow_cuckoo_generate_mock_slow(KeyHeaderBin, _Target, Nonce, _Config, _MinerInstance)
+    end.
+
+aeminer_pow_cuckoo_generate_mock_fast(_KeyHeaderBin, _Target, Nonce, _Config, _MinerInstance) ->
+    %% If the tx pool is empty and we are mining blocks then this means we are waiting for N-confirmations - to reduce the waiting time
+    %% use a really high mining rate
+    timer:sleep(10),
+    aeminer_pow_cuckoo_generate_mock_ok(Nonce).
+
+aeminer_pow_cuckoo_generate_mock_slow(KeyHeaderBin, _Target, Nonce, _Config, _MinerInstance) ->
     %% Check if a microblock was published/might be created - if so then discard the keyblock
     %% Otherwise we may discard the latest microblock almost all the time because of a new key block being mined
     %% This results in up to 10 seconds of performance degradation for some tests, sometimes these tests might fail with {error, max_reached}
-    %% Querying aec_chain:top_block_hash() won't always work as sometimes the microblock generation might take more time than the 50ms sleep interval
-    PrevHash = aec_headers:prev_hash(aec_headers:deserialize_from_binary(KeyHeaderBin)),
     TopBlockHash = aec_chain:top_block_hash(),
+    PrevHash = aec_headers:prev_hash(aec_headers:deserialize_from_binary(KeyHeaderBin)),
     case PrevHash == TopBlockHash of
         true ->
-            %% Make sure there is no microblock candidate with transactions
+            %% Now check for microblock candidates
             case aec_block_generator:get_candidate() of
                 {error, no_candidate} ->
                     case aec_block_generator:get_generation_state() of
                         running ->
-                            {error, no_solution}; %% Wait some more time for an possibly empty candidate to show up
+                            %% Wait some more time for an possibly empty candidate to show up
+                            timer:sleep(50),
+                            aeminer_pow_cuckoo_generate_mock_fail();
                         stopped ->
-                            {ok, {Nonce, [1337]}} %% Safe to publish
+                            %% Safe to publish
+                            timer:sleep(10),
+                            aeminer_pow_cuckoo_generate_mock_ok(Nonce)
                     end;
                 {ok, Candidate} ->
+                    %% A possibly empty microblock candidate was generated
                     case {aec_blocks:txs(Candidate), aec_headers:hash_header(aec_blocks:to_micro_header(Candidate)) == TopBlockHash} of
-                        {_, true} -> %% Candidate is current top - safe to publish
-                            {ok, {Nonce, [1337]}};
-                        {[_|_], false} -> %% Candidate contains at least one tx and wasn't published
-                            lager:debug("Discarding key block to allow microblock candidate to be published"),
-                            {error, no_solution};
+                        {_, true} -> %% Candidate is current top - safe to publish without time delay - this implies that the candidate contains at least one valid TX
+                            aeminer_pow_cuckoo_generate_mock_ok(Nonce);
+                        {[_|_], false} -> %% Candidate contains at least one tx and wasn't published yet
+                            timer:sleep(50), %% Wait some time for the microblock to be published
+                            aeminer_pow_cuckoo_generate_mock_fail();
                         _ ->
-                            {ok, {Nonce, [1337]}}
+                            %% We got an empty microblock candidate - we needed to sleep before so no need to sleep here
+                            aeminer_pow_cuckoo_generate_mock_ok(Nonce)
                     end
             end;
-        false -> %% Discard obvious forks
-            lager:debug("Discarding key block to avoid fork, Top: ~p, Prev: ~p", [TopBlockHash, PrevHash]),
-            {error, no_solution}
+        false ->
+            %% Discard with no time delay to flush the old candidates in the mining conductor
+            aeminer_pow_cuckoo_generate_mock_fail()
     end.
+
+aeminer_pow_cuckoo_generate_mock_ok(Nonce) ->
+    {ok, {Nonce, [1337]}}.
+
+aeminer_pow_cuckoo_generate_mock_fail() ->
+    {error, no_solution}.
 
 mock_block_mining_init() ->
     %% This should avoid spawning a separate process and consuming CPU resources which could be used to parallelize tests
