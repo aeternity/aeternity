@@ -515,7 +515,7 @@ is_payable_(Pubkey, PState, State) ->
                 false -> {ok, ?FATE_FALSE, State}
             end;
         none ->
-            {ok, ?FATE_FALSE, State}
+            {ok, ?FATE_TRUE, State}
     end.
 
 to_relative_ttl(relative, TTL,_Height) ->

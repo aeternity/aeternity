@@ -738,7 +738,7 @@ create_version_too_high(Cfg) ->
     case proplists:get_value(protocol, Cfg) of
         P when P =:= roma; P =:= lima ->
             {error, illegal_contract_compiler_version, _} = Res;
-        P when P =:= minerva; P =:= fortuna; P =:= lima ->
+        P when P =:= minerva; P =:= fortuna ->
             {ok, _} = Res
     end.
 

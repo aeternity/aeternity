@@ -503,7 +503,7 @@ oracle_typerep(?ABI_AEVM_SOPHIA_1, BinaryFormat) ->
 addr_is_payable(Addr, #state{ trees = CTrees }) ->
     Trees = get_on_chain_trees(CTrees),
     case aec_accounts_trees:lookup(Addr, aec_trees:accounts(Trees)) of
-        none             -> {ok, bool2word(false)};
+        none             -> {ok, bool2word(true)};
         {value, Account} ->  {ok, bool2word(aec_accounts:is_payable(Account))}
     end.
 
