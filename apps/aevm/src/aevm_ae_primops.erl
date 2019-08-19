@@ -652,7 +652,12 @@ crypto_call(Gas, Op, _Value, Data, State) ->
     end.
 
 crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1, Data, State) ->
-    crypto_call_ecrecover_secp256k1(Gas, Data, State);
+    case aevm_eeevm_state:vm_version(State) < ?VM_AEVM_SOPHIA_4 of
+        true ->
+            {error, out_of_gas};
+        false ->
+            crypto_call_ecrecover_secp256k1(Gas, Data, State)
+    end;
 crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECVERIFY, Data, State) ->
     crypto_call_ecverify(Gas, Data, State);
 crypto_call(Gas, ?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1, Data, State) ->
