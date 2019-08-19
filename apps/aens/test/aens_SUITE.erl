@@ -26,7 +26,8 @@
          transfer_negative/1,
          revoke/1,
          revoke_negative/1,
-         prune_preclaim/1]).
+         prune_preclaim/1,
+         registrar_change/1]).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -56,7 +57,8 @@ groups() ->
        transfer,
        transfer_negative,
        revoke,
-       revoke_negative]}
+       revoke_negative,
+       registrar_change]}
     ].
 
 -define(NAME, <<"詹姆斯詹姆斯"/utf8>>).
@@ -560,3 +562,35 @@ do_prune_until(N1, N1, OTree) ->
     aens_state_tree:prune(N1, OTree);
 do_prune_until(N1, N2, OTree) ->
     do_prune_until(N1 + 1, N2, aens_state_tree:prune(N1, OTree)).
+
+%%%===================================================================
+%%% Change of registrar
+%%%===================================================================
+
+registrar_change(_Cfg) ->
+    State = aens_test_utils:new_state(),
+    {PubKey, S1} = aens_test_utils:setup_new_account(State),
+    PrivKey = aens_test_utils:priv_key(PubKey, S1),
+    NameSalt = rand:uniform(10000),
+    %% invalid name for protocol
+    Name = case aect_test_utils:is_post_lima() of
+               false -> <<"asdf.aet">>; %% we can't claim ".aet" name yet
+               true -> <<"asdf.test">> %% we no longer can claim ".test" name
+           end,
+
+    %% preclaim
+    Trees1 = aens_test_utils:trees(S1),
+    {ok, NameAscii} = aens_utils:to_ascii(Name),
+    CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+    TxSpec1 = aens_test_utils:preclaim_tx_spec(PubKey, CHash, S1),
+    {ok, Tx1} = aens_preclaim_tx:new(TxSpec1),
+    SignedTx1 = aec_test_utils:sign_tx(Tx1, PrivKey),
+    {ok, [_SignedTx1], Trees2, _} =
+        aec_block_micro_candidate:apply_block_txs(
+          [SignedTx1], Trees1, aetx_env:tx_env(1)),
+
+    %% claim
+    S2 = aens_test_utils:set_trees(Trees2, S1),
+    TxSpec2 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S2),
+    {ok, Tx2} = aens_claim_tx:new(TxSpec2),
+    {error, invalid_registrar} = aetx:process(Tx2, Trees2, aetx_env:tx_env(2)).
