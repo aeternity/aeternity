@@ -1637,10 +1637,10 @@ store_map_lookup(Cache, MapId, Key, ES) ->
         ?FATE_MAP_TOMBSTONE -> {error, ES};
         void ->
             Pubkey        = aefa_engine_state:current_contract(ES),
-            Store         = aefa_engine_state:stores(ES),
+            {Store, ES1}  = aefa_fate:ensure_contract_store(Pubkey, ES),
             {Res, Store1} = aefa_stores:store_map_lookup(Pubkey, MapId, Key, Store),
-            ES1           = aefa_engine_state:set_stores(Store1, ES),
-            {Res, ES1};
+            ES2           = aefa_engine_state:set_stores(Store1, ES1),
+            {Res, ES2};
         Val -> {{ok, Val}, ES}
     end.
 
@@ -1649,16 +1649,16 @@ store_map_member(Cache, MapId, Key, ES) ->
         ?FATE_MAP_TOMBSTONE -> {?FATE_FALSE, ES};
         void ->
             Pubkey        = aefa_engine_state:current_contract(ES),
-            Store         = aefa_engine_state:stores(ES),
+            {Store, ES1}  = aefa_fate:ensure_contract_store(Pubkey, ES),
             {Res, Store1} = aefa_stores:store_map_member(Pubkey, MapId, Key, Store),
-            ES1           = aefa_engine_state:set_stores(Store1, ES),
-            {aeb_fate_data:make_boolean(Res), ES1};
+            ES2           = aefa_engine_state:set_stores(Store1, ES1),
+            {aeb_fate_data:make_boolean(Res), ES2};
         _Val -> {?FATE_TRUE, ES}
     end.
 
 store_map_size(Cache, MapId, ES) ->
     Pubkey         = aefa_engine_state:current_contract(ES),
-    Store          = aefa_engine_state:stores(ES),
+    {Store, ES1}   = aefa_fate:ensure_contract_store(Pubkey, ES),
     {Size, Store1} = aefa_stores:store_map_size(Pubkey, MapId, Store),
     Delta  = fun(Key, ?FATE_MAP_TOMBSTONE, N) ->
                      case aefa_stores:store_map_member(Pubkey, MapId, Key, Store1) of
@@ -1671,19 +1671,19 @@ store_map_size(Cache, MapId, ES) ->
                          {true,  _Store} -> N
                      end
              end,
-    ES1 = aefa_engine_state:set_stores(Store1, ES),
-    {maps:fold(Delta, Size, Cache), ES1}.
+    ES2 = aefa_engine_state:set_stores(Store1, ES1),
+    {maps:fold(Delta, Size, Cache), ES2}.
 
 store_map_to_list(Cache, MapId, ES) ->
     Pubkey              = aefa_engine_state:current_contract(ES),
-    Store               = aefa_engine_state:stores(ES),
+    {Store, ES1}        = aefa_fate:ensure_contract_store(Pubkey, ES),
     {StoreList, Store1} = aefa_stores:store_map_to_list(Pubkey, MapId, Store),
     StoreMap            = maps:from_list(StoreList),
     Upd = fun(Key, ?FATE_MAP_TOMBSTONE, M) -> maps:remove(Key, M);
              (Key, Val, M)                 -> maps:put(Key, Val, M) end,
     Map = maps:fold(Upd, StoreMap, Cache),
-    ES1 = aefa_engine_state:set_stores(Store1, ES),
-    {aeb_fate_data:make_list([ ?FATE_TUPLE(KV) || KV <- maps:to_list(Map) ]), ES1}.
+    ES2 = aefa_engine_state:set_stores(Store1, ES1),
+    {aeb_fate_data:make_list([ ?FATE_TUPLE(KV) || KV <- maps:to_list(Map) ]), ES2}.
 
 %% ------------------------------------------------------
 %% Comparison instructions

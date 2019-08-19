@@ -23,6 +23,7 @@
         , check_return_type/1
         , check_signature_and_bind_args/3
         , bind_args_from_signature/2
+        , ensure_contract_store/2
         , unfold_store_maps/2
         , unfold_store_maps_in_args/2
         , check_type/2
@@ -614,14 +615,14 @@ unfold_store_maps(Val, ES) ->
     case aeb_fate_maps:has_store_maps(Val) of
         true ->
             Pubkey = aefa_engine_state:current_contract(ES),
-            Store  = aefa_engine_state:stores(ES),
+            {Store, ES1} = ensure_contract_store(Pubkey, ES),
             Store1 = aefa_stores:cache_map_metadata(Pubkey, Store),
-            ES1    = aefa_engine_state:set_stores(Store1, ES),
+            ES2    = aefa_engine_state:set_stores(Store1, ES1),
             Unfold = fun(Id) ->
                         {List, _Store2} = aefa_stores:store_map_to_list(Pubkey, Id, Store1),
                         maps:from_list(List)
                      end,
-            {aeb_fate_maps:unfold_store_maps(Unfold, Val), ES1};
+            {aeb_fate_maps:unfold_store_maps(Unfold, Val), ES2};
         false ->
             {Val, ES}
     end.
