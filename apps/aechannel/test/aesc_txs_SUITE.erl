@@ -2678,7 +2678,10 @@ fp_use_onchain_name_resolution(Cfg) ->
     FPRound = 20,
     LockPeriod = 10,
     FPHeight0 = 20,
-    Name = <<"lorem.test">>,
+    Name = case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
+               true  -> <<"lorem.aet">>;
+               false -> <<"lorem.test">>
+           end,
     ForceCallCheckName =
         fun(Forcer, K, Found) when is_binary(K) andalso is_boolean(Found) ->
             fun(Props) ->
@@ -3518,7 +3521,7 @@ fp_insufficent_gas_price(Cfg) ->
     ok.
 
 fp_register_name(Cfg) ->
-    Name = <<"bla.test">>,
+    Name = aect_test_utils:fullname(<<"bla">>),
     Salt = 42,
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash           = address_encode(hash, aens_hash:commitment_hash(NameAscii, Salt)),
@@ -5618,4 +5621,3 @@ aevm_type(Type) -> Type.
 encode_sig(Sig) ->
     <<"0x", Hex/binary>> = aeu_hex:hexstring_encode(Sig),
     binary_to_list(<<"#", Hex/binary>>).
-

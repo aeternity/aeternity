@@ -59,7 +59,7 @@ groups() ->
        revoke_negative]}
     ].
 
--define(NAME, <<"詹姆斯詹姆斯.test"/utf8>>).
+-define(NAME, <<"詹姆斯詹姆斯"/utf8>>).
 -define(PRE_CLAIM_HEIGHT, 1).
 
 %%%===================================================================
@@ -75,7 +75,7 @@ preclaim(Cfg) ->
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT,
-    Name = ?NAME,
+    Name = aect_test_utils:fullname(?NAME),
     NameSalt = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
@@ -103,7 +103,7 @@ preclaim_negative(Cfg) ->
     Height = 1,
     Env = aetx_env:tx_env(Height),
 
-    {ok, NameAscii} = aens_utils:to_ascii(<<"詹姆斯詹姆斯.test"/utf8>>),
+    {ok, NameAscii} = aens_utils:to_ascii(aect_test_utils:fullname(<<"詹姆斯詹姆斯"/utf8>>)),
     CHash = aens_hash:commitment_hash(NameAscii, 123),
 
     %% Test bad account key
@@ -338,7 +338,7 @@ update_negative(Cfg) ->
     {error, account_nonce_too_high} = aetx:process(Tx4, Trees, Env),
 
     %% Test name not present
-    {ok, NHash2} = aens:get_name_hash(<<"othername.test">>),
+    {ok, NHash2} = aens:get_name_hash(aect_test_utils:fullname(<<"othername">>)),
     TxSpec5 = aens_test_utils:update_tx_spec(PubKey, NHash2, S1),
     {ok, Tx5} = aens_update_tx:new(TxSpec5),
     {error, name_does_not_exist} = aetx:process(Tx5, Trees, Env),
@@ -415,7 +415,7 @@ transfer_negative(Cfg) ->
     {error, account_nonce_too_high} = aetx:process(Tx3, Trees, Env),
 
     %% Test name not present
-    {ok, NHash2} = aens:get_name_hash(<<"othername.test">>),
+    {ok, NHash2} = aens:get_name_hash(aect_test_utils:fullname(<<"othername">>)),
     TxSpec4 = aens_test_utils:transfer_tx_spec(PubKey, NHash2, PubKey, S1),
     {ok, Tx4} = aens_transfer_tx:new(TxSpec4),
     {error, name_does_not_exist} = aetx:process(Tx4, Trees, Env),
@@ -489,7 +489,7 @@ revoke_negative(Cfg) ->
     {error, account_nonce_too_high} = aetx:process(Tx3, Trees, Env),
 
     %% Test name not present
-    {ok, NHash2} = aens:get_name_hash(<<"othername.test">>),
+    {ok, NHash2} = aens:get_name_hash(aect_test_utils:fullname(<<"othername">>)),
     TxSpec4 = aens_test_utils:revoke_tx_spec(PubKey, NHash2, S1),
     {ok, Tx4} = aens_revoke_tx:new(TxSpec4),
     {error, name_does_not_exist} = aetx:process(Tx4, Trees, Env),

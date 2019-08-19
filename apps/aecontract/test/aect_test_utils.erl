@@ -45,6 +45,8 @@
         , latest_protocol_version/0
         , latest_sophia_version/0
         , latest_sophia_contract_version/0
+        , is_post_lima/0
+        , fullname/1
         ]).
 
 -export([ abi_version/0
@@ -58,7 +60,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include("../include/aecontract.hrl").
--include_lib("aecontract/include/hard_forks.hrl").
+-include("../include/hard_forks.hrl").
 -include("include/aect_sophia_vsn.hrl").
 -include("../src/aect_sophia.hrl").
 -include("include/aect_contract_cache.hrl").
@@ -626,3 +628,13 @@ try_setup_cache(Tab, Keypos) ->
         _ ->
             ok
     end.
+
+is_post_lima() ->
+    latest_protocol_version() >= ?LIMA_PROTOCOL_VSN.
+
+fullname(RootName) ->
+    Reg = case is_post_lima() of
+              true -> <<"aet">>;
+              false -> <<"test">>
+          end,
+    <<RootName/binary, ".", Reg/binary>>.
