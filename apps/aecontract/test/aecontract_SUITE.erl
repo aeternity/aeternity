@@ -128,6 +128,7 @@
         , sophia_aens_resolve/1
         , sophia_aens_transactions/1
         , sophia_state_handling/1
+        , sophia_remote_state/1
         , sophia_state_gas/1
         , sophia_no_callobject_for_remote_calls/1
         , sophia_operators/1
@@ -343,6 +344,7 @@ groups() ->
                                  sophia_aens_resolve,
                                  sophia_aens_transactions,
                                  sophia_state_handling,
+                                 sophia_remote_state,
                                  sophia_state_gas,
                                  sophia_no_callobject_for_remote_calls,
                                  sophia_operators,
@@ -1700,6 +1702,14 @@ sophia_state(_Cfg) ->
     PopFail      = ?call(call_contract, Acc1, Stack, pop, string, {}),
     ?assertMatchAEVM({error, <<"out_of_gas">>}, PopFail),
     ?assertMatchFATE({error, <<"Incomplete patterns">>}, PopFail),
+    ok.
+
+sophia_remote_state(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Ct1 = ?call(create_contract, Acc, remote_state2, {<<"ct1-initial">>}),
+    Ct2 = ?call(create_contract, Acc, remote_state2, {<<"ct2-initial">>}),
+    <<"ct2-updated">> = ?call(call_contract, Acc, Ct1, test, string, {?cid(Ct2), <<"ct2-updated">>}),
     ok.
 
 %% There was a bug matching on _::_.

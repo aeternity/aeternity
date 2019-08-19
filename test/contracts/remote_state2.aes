@@ -1,0 +1,19 @@
+
+contract Remote =
+  type state = string
+  entrypoint set_state : state => unit
+  entrypoint get_state : () => state
+
+contract Main =
+
+  type state = string
+
+  entrypoint init(s) = s
+
+  stateful entrypoint set_state(s) = put(s)
+  entrypoint get_state() = state
+
+  entrypoint test(r : Remote, s) =
+    r.set_state(s)
+    let _ = get_state() // Caused update to be lost in FATE
+    r.get_state()

@@ -1,0 +1,19 @@
+
+contract Remote =
+  type state = string
+  function set_state : state => ()
+  function get_state : () => state
+
+contract Main =
+
+  type state = string
+
+  function init(s) = s
+
+  stateful function set_state(s) = put(s)
+  function get_state() = state
+
+  function test(r : Remote, s) =
+    r.set_state(s)
+    let _ = get_state() // Caused update to be lost in FATE
+    r.get_state()
