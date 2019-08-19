@@ -2295,7 +2295,7 @@ test_missing_address(Key, Encoded, APIFun) ->
     ok.
 
 nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
-    Name = <<"name.test">>,
+    Name = aect_test_utils:fullname(<<"name">>),
     Salt = 1234,
 
     {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, Salt),
@@ -2332,9 +2332,6 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     Missing = aeser_api_encoder:encode(name, <<"missing">>),
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: no_registrar">>}} =
         get_name_claim(maps:put(name, Missing, Encoded)),
-    MissingReg = aeser_api_encoder:encode(name, <<"missing.reg">>),
-    {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
-        get_name_claim(maps:put(name, MissingReg, Encoded)),
     ok.
 
 nameservice_transaction_update(MinerAddress, MinerPubkey) ->
@@ -3020,7 +3017,7 @@ naming_system_manage_name(_Config) ->
     PubKeyEnc   = aeser_api_encoder:encode(account_pubkey, PubKey),
     %% TODO: find out how to craete HTTP path with unicode chars
     %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
-    Name        = <<"without-unicode.test">>,
+    Name        = aect_test_utils:fullname(<<"without-unicode">>),
     NameSalt    = 12345,
     NameTTL     = 20000,
     Pointers    = [#{<<"key">> => <<"account_pubkey">>, <<"id">> => PubKeyEnc}],
@@ -3151,7 +3148,7 @@ naming_system_manage_name(_Config) ->
     ok.
 
 naming_system_broken_txs(_Config) ->
-    Name        = <<"fooo.test">>,
+    Name        = aect_test_utils:fullname(<<"fooo">>),
     NameSalt    = 12345,
     {ok, NHash} = aens:get_name_hash(Name),
     CHash       = aens_hash:commitment_hash(Name, NameSalt),
@@ -3163,10 +3160,6 @@ naming_system_broken_txs(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Try to submit txs with empty account
-    {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
-        get_commitment_id(<<"abcd.badregistrar">>, 123),
-    {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
-        get_names_entry_by_name_sut(<<"abcd.badregistrar">>),
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
         get_name_preclaim(#{commitment_id => aeser_api_encoder:encode(commitment, CHash),
                             fee => Fee,
@@ -3900,3 +3893,16 @@ http_datetime_to_unixtime(S) ->
     ExpiresDt = httpd_util:convert_request_date(S),
     calendar:datetime_to_gregorian_seconds(ExpiresDt) - BaseSecs.
 
+simple_auth_meta(Owner, Secret, GANonce, InnerTx) ->
+    AuthData = simple_auth(Secret, GANonce),
+    meta(Owner, AuthData, InnerTx).
+
+simple_auth(Secret, Nonce) ->
+    aega_test_utils:make_calldata("simple_auth", "authorize", [Secret, Nonce]).
+
+meta(Owner, AuthData, InnerTx) ->
+    aecore_suite_utils:meta_tx(Owner, #{}, AuthData, InnerTx).
+
+account_type(Pubkey) ->
+    {value, Account} = rpc(aec_chain, get_account, [Pubkey]),
+    aec_accounts:type(Account).

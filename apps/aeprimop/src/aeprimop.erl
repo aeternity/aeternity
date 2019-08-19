@@ -730,12 +730,14 @@ name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta
 
 name_claim({AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta}, S) ->
     NameAscii = name_to_ascii(PlainName),
+    NameRegistrar = name_registrar(PlainName),
     CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
     {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
     assert_commitment_owner(Commitment, AccountPubkey),
     assert_preclaim_delta(Commitment, PreclaimDelta, S1#state.height),
     NameHash = aens_hash:name_hash(NameAscii),
     assert_not_name(NameHash, S1),
+    assert_name_registrar(NameRegistrar, S1#state.height),
     Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
     S2 = delete_x(commitment, CommitmentHash, S1),
     put_name(Name, S2).
@@ -747,6 +749,10 @@ name_to_ascii(PlainName) ->
         {ok, NameAscii} ->
             NameAscii
     end.
+
+name_registrar(PlainName) ->
+    lists:last(aens_utils:name_parts(PlainName)).
+
 
 %%%-------------------------------------------------------------------
 
@@ -1629,6 +1635,13 @@ assert_not_name(NameHash, S) ->
     case find_name(NameHash, S) of
         {_, _} -> runtime_error(name_already_taken);
         none   -> ok
+    end.
+
+assert_name_registrar(Registrar, Height) ->
+    ProtoVsn = aec_hard_forks:protocol_effective_at_height(Height),
+    case lists:member(Registrar, aec_governance:name_registrars(ProtoVsn)) of
+        true  -> ok;
+        false -> runtime_error(invalid_registrar)
     end.
 
 assert_name_owner(Name, AccountPubKey) ->

@@ -108,7 +108,7 @@ name_owner_pubkey(NameID, #{trees := Trees}) ->
 %%% Register a name
 
 register_name(Pubkey, S) ->
-    register_name(Pubkey, <<"hello.test"/utf8>>, S).
+    register_name(Pubkey, aect_test_utils:fullname(<<"hello"/utf8>>), S).
 
 register_name(Pubkey, Name, S) ->
     {ok, Ascii} = aens_utils:to_ascii(Name),
@@ -218,11 +218,11 @@ transfer_name_to_named_account_(PointersFun) ->
     {[Pubkey1, Pubkey2, Pubkey3], S1} = init_state(3),
 
     %% Pubkey1 holds the reference to the recipient account (Pubkey3)
-    {S2, NameId1} = register_name(Pubkey1, <<"foo.test"/utf8>>, S1),
+    {S2, NameId1} = register_name(Pubkey1, aect_test_utils:fullname(<<"foo"/utf8>>), S1),
     S3 = update_and_check_pointers(PointersFun(account_pubkey, Pubkey3), Pubkey1, NameId1, 3, S2),
 
     %% Pubkey2 is the owner of the name
-    {S4, NameId2} = register_name(Pubkey2, <<"bar.test"/utf8>>, S3),
+    {S4, NameId2} = register_name(Pubkey2, aect_test_utils:fullname(<<"bar"/utf8>>), S3),
 
     %% Pubkey2 now transfers the name to Pubkey3 by referencing its name
     TransferSpec = #{ account_id => account_id(Pubkey2)

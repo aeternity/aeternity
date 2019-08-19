@@ -105,7 +105,7 @@ test_name_registration(Cfg) ->
     EncMPubKey = aeser_api_encoder:encode(account_pubkey, MPubKey),
     EncRPubKey = aeser_api_encoder:encode(account_pubkey, RPubKey),
 
-    Name = <<"richard.test">>,
+    Name = aect_test_utils:fullname(<<"richard">>),
     NameSalt = 36346245,
     EncNameId = aeser_api_encoder:encode(name, aens_hash:name_hash(Name)),
 
@@ -194,7 +194,7 @@ test_name_transfer(Cfg) ->
     RPubKey2 = maps:get(pubkey, ?ROBERT),
     EncMPubKey = aeser_api_encoder:encode(account_pubkey, MPubKey),
 
-    Name = <<"richard.test">>,
+    Name = aect_test_utils:fullname(<<"richard">>),
     NameSalt = 36346245,
 
     %% Setup nodes
