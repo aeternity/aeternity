@@ -212,6 +212,12 @@ references:
         mkdir ${PACKAGE_TESTS_DIR:?}
         make python-package-win32-test python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} PACKAGE=${PACKAGE_TARBALL:?}
 
+  test_arch_os_dependencies: &test_arch_os_dependencies
+    run:
+      name: Test architecture or OS specific functions
+      command: |
+        make test-arch-os-dependencies
+
   store_package_artifacts: &store_package_artifacts
     store_artifacts:
       path: *packages_workspace
@@ -627,6 +633,7 @@ jobs:
     steps:
       - checkout
       - *set_package_path
+      - *test_arch_os_dependencies
       - *build_package
       - *test_package
       - store_artifacts:
@@ -701,6 +708,7 @@ jobs:
             for erlang_dep in $(brew deps file://`pwd`/deployment/homebrew/erlang.rb); do brew link $erlang_dep; done
       - *save_macos_package_cache
       - *set_package_path
+      - *test_arch_os_dependencies
       - *build_package
       - *test_package
       - store_artifacts:

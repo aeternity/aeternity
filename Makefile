@@ -533,6 +533,10 @@ regen-fate:
 	make -C apps/aefate clean
 	${REBAR} compile
 
+test-arch-os-dependencies: KIND=test
+test-arch-os-dependencies: internal-build
+	make ct-latest SUITE=apps/aecontract/test/aecontract GROUP=sophia TEST=sophia_crypto
+
 .PHONY: \
 	all console \
 	stratum-client-internal-build \
@@ -549,6 +553,7 @@ regen-fate:
 	ct-latest ct-roma ct-minerva ct-fortuna ct-lima ct-mnesia-leveled ct-mnesia-rocksdb \
 	eunit-latest eunit-roma eunit-minerva eunit-fortuna eunit-lima\
 	system-smoke-test-deps system-test-deps \
+	test-arch-os-dependencies \
 	kill killall \
 	clean distclean \
 	swagger swagger-docs swagger-check swagger-version-check \
