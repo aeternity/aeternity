@@ -1198,11 +1198,10 @@ slash_payload_not_co_signed(Cfg) ->
                       responder_amount  := RAmt,
                       from_pubkey       := FromPubKey,
                       state             := S,
-                      height            := Height}) ->
+                      height            := Height} = Props) ->
                     lists:foreach(
                         fun(PrivKeys) ->
-                            PayloadSpec = #{initiator_amount => IAmt,
-                                            responder_amount => RAmt},
+                            PayloadSpec = create_payload_spec(Props),
                             PayloadMissingS = aesc_test_utils:payload(ChannelPubKey, I, R,
                                                           PrivKeys, PayloadSpec),
                             PoI = aesc_test_utils:proof_of_inclusion([{I, IAmt},
@@ -4440,43 +4439,56 @@ get_onchain_balance(Pubkey, Key) ->
 create_payload() ->
     create_payload(payload).
 
+reuse_or_create_payload(Key, Props) ->
+    case maps:get(Key, Props, not_specified) of
+        not_specified -> 
+            CreateFun = create_payload(Key),
+            Props1 = CreateFun(Props),
+            maps:get(Key, Props1);
+        Payload -> Payload
+    end.
+
 create_payload(Key) ->
     fun(#{channel_pubkey    := ChannelPubKey,
-          initiator_amount  := IAmt,
-          responder_amount  := RAmt,
           initiator_pubkey  := IPubkey,
           responder_pubkey  := RPubkey,
           initiator_privkey := IPrivkey,
           responder_privkey := RPrivkey} = Props) ->
 
-        PayloadSpec0 = #{initiator_amount => IAmt,
-                        responder_amount  => RAmt,
-                        round => maps:get(round, Props, 11)},
-        PayloadSpec01 =
-            case maps:get(height, Props, use_no_updates_vsn) of
-                use_no_updates_vsn -> PayloadSpec0;
-                ChainHeight ->
-                    case aec_hard_forks:protocol_effective_at_height(ChainHeight) of
-                        _P when _P >= ?FORTUNA_PROTOCOL_VSN -> %% no updates
-                            PayloadSpec0;
-                        _ ->
-                            PayloadSpec0#{updates => []} %% this is some updates
-                    end
-            end,
-        PayloadSpec =
-            lists:foldl(
-                fun({PropsKey, OffChainKey}, Accum) ->
-                    case maps:get(PropsKey, Props, none) of
-                        none -> Accum;
-                        V -> maps:put(OffChainKey, V, Accum)
-                    end
-                end,
-                PayloadSpec01,
-                [{state_hash, state_hash}]),
+        PayloadSpec = create_payload_spec(Props),
         Payload = aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
                                         [IPrivkey, RPrivkey], PayloadSpec),
         Props#{Key => Payload}
     end.
+
+create_payload_spec(#{initiator_amount  := IAmt,
+                      responder_amount  := RAmt} = Props) ->
+        PayloadSpec0 = #{initiator_amount => IAmt,
+                        responder_amount  => RAmt,
+                        round => maps:get(round, Props, 11)},
+        Protocol =
+            case maps:get(height, Props, use_no_updates_vsn) of
+                use_no_updates_vsn ->
+                    aect_test_utils:latest_protocol_version();
+                ChainHeight ->
+                    aec_hard_forks:protocol_effective_at_height(ChainHeight)
+            end,
+        PayloadSpec01 =
+            case Protocol of
+                _P when _P >= ?FORTUNA_PROTOCOL_VSN -> %% no updates
+                    PayloadSpec0;
+                _ ->
+                    PayloadSpec0#{updates => []} %% this is some updates
+            end,
+        lists:foldl(
+            fun({PropsKey, OffChainKey}, Accum) ->
+                case maps:get(PropsKey, Props, none) of
+                    none -> Accum;
+                    V -> maps:put(OffChainKey, V, Accum)
+                end
+            end,
+            PayloadSpec01,
+            [{state_hash, state_hash}]).
 
 create_contract_call_payload(ContractId, ContractName, Fun, Args, Amount) ->
     create_contract_call_payload(solo_payload, ContractId, ContractName, Fun, Args, Amount).
@@ -4740,16 +4752,10 @@ close_solo_(#{channel_pubkey    := ChannelPubKey,
               responder_amount  := RAmt,
               initiator_pubkey  := IPubkey,
               responder_pubkey  := RPubkey,
-              state             := S,
-              initiator_privkey := IPrivkey,
-              responder_privkey := RPrivkey} = Props, Expected) ->
+              state             := S} = Props, Expected) ->
 
     Fee = maps:get(fee, Props, 50000 * aec_test_utils:min_gas_price()),
     %% Create close_solo tx and apply it on state trees
-    Round = maps:get(round, Props, 10),
-    PayloadSpec0 = #{initiator_amount => IAmt,
-                     responder_amount => RAmt,
-                     round => Round},
     PoI =  maps:get(poi, Props,
                     aesc_test_utils:proof_of_inclusion([{IPubkey, IAmt},
                                                         {RPubkey, RAmt}])),
@@ -4758,10 +4764,7 @@ close_solo_(#{channel_pubkey    := ChannelPubKey,
             not_passed -> aec_trees:poi_hash(PoI);
             Hash -> Hash
         end,
-    PayloadSpec = PayloadSpec0#{state_hash => StateHash},
-    Payload = maps:get(payload, Props,
-                       aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
-                                               [IPrivkey, RPrivkey], PayloadSpec)),
+    Payload = reuse_or_create_payload(payload, Props#{state_hash => StateHash}),
     ct:log("Close is based on payload: ~p", [aesc_utils:deserialize_payload(Payload)]),
     Spec =
         case Props of
@@ -4783,27 +4786,19 @@ slash_(#{channel_pubkey    := ChannelPubKey,
          initiator_pubkey  := IPubkey,
          responder_pubkey  := RPubkey,
          fee               := Fee,
-         state             := S,
-         initiator_privkey := IPrivkey,
-         responder_privkey := RPrivkey} = Props, Expected) ->
+         state             := S} = Props, Expected) ->
 
     %% Create slash tx and apply it on state trees
-    Round = maps:get(round, Props, 10),
-    PayloadSpec0 = #{initiator_amount => IAmt,
-                     responder_amount => RAmt,
-                     round => Round},
-    PayloadSpec =
-        case maps:get(state_hash, Props, not_passed) of
-            not_passed -> PayloadSpec0;
-            Hash -> PayloadSpec0#{state_hash => Hash}
-        end,
-    Payload = maps:get(payload, Props,
-                        aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
-                                    [IPrivkey, RPrivkey], PayloadSpec)),
     PoI = maps:get(poi, Props, aesc_test_utils:proof_of_inclusion([{IPubkey,
                                                                     IAmt},
                                                                    {RPubkey,
                                                                     RAmt}])),
+    StateHash =
+        case maps:get(state_hash, Props, not_passed) of
+            not_passed -> aec_trees:poi_hash(PoI);
+            Hash -> Hash
+        end,
+    Payload = reuse_or_create_payload(payload, Props#{state_hash => StateHash}),
     Spec =
         case Props of
             #{nonce := Nonce} -> #{fee => Fee, nonce => Nonce};
@@ -4842,24 +4837,11 @@ close_mutual_(#{channel_pubkey          := ChannelPubKey,
 snapshot_solo_(#{ channel_pubkey    := ChannelPubKey,
                   from_pubkey       := FromPubKey,
                   from_privkey      := FromPrivkey,
-                  initiator_amount  := IAmt,
-                  responder_amount  := RAmt,
-                  initiator_pubkey  := IPubkey,
-                  responder_pubkey  := RPubkey,
                   fee               := Fee,
-                  state             := S,
-                  initiator_privkey := IPrivkey,
-                  responder_privkey := RPrivkey} = Props, Expected) ->
-    Round = maps:get(round, Props, 42),
+                  state             := S} = Props, Expected) ->
     StateHashSize = aeser_api_encoder:byte_size_for_type(state),
     StateHash = maps:get(state_hash, Props, <<42:StateHashSize/unit:8>>),
-    PayloadSpec = #{initiator_amount => IAmt,
-                    responder_amount => RAmt,
-                    state_hash       => StateHash,
-                    round            => Round},
-    Payload = maps:get(payload, Props,
-                       aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
-                                      [IPrivkey, RPrivkey], PayloadSpec)),
+    Payload = reuse_or_create_payload(payload, Props#{state_hash => StateHash}),
 
     SnapshotTxSpec = aesc_test_utils:snapshot_solo_tx_spec(ChannelPubKey, FromPubKey,
                            Payload, #{fee => Fee},S),
@@ -5056,11 +5038,10 @@ test_payload_not_both_signed(Cfg, SpecFun, CreateTxFun) ->
                       responder_amount  := RAmt,
                       from_pubkey       := FromPubKey,
                       state             := S,
-                      height            := Height}) ->
+                      height            := Height} = Props) ->
                     lists:foreach(
                         fun(PrivKeys) ->
-                            PayloadSpec = #{initiator_amount => IAmt,
-                                            responder_amount => RAmt},
+                            PayloadSpec = create_payload_spec(Props),
                             PayloadMissingS = aesc_test_utils:payload(ChannelPubKey, I, R,
                                                           PrivKeys, PayloadSpec),
                             PoI = aesc_test_utils:proof_of_inclusion([{I, IAmt},
