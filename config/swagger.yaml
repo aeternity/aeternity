@@ -2724,6 +2724,10 @@ definitions:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/GAAttachTx'
+  GAMetaTxJSON:
+    allOf:
+      - $ref: '#/definitions/GenericTx'
+      - $ref: '#/definitions/GAMetaTx'
   TxInfoObject:
      type: object
      properties:
@@ -3240,6 +3244,37 @@ definitions:
       - fee
       - call_data
       - auth_fun
+  GAMetaTx:
+    type: object
+    properties:
+      ga_id:
+        $ref: '#/definitions/EncodedPubkey'
+        description: Account owner pub_key
+      abi_version:
+        description: 'ABI version'
+        $ref: '#/definitions/UInt16'
+      gas:
+        $ref: '#/definitions/UInt64'
+      gas_price:
+        $ref: '#/definitions/UInt'
+      fee:
+        $ref: '#/definitions/UInt'
+      ttl:
+        $ref: '#/definitions/UInt64'
+      auth_data:
+        description: Contract authorization function call data
+        $ref: '#/definitions/EncodedByteArray'
+      tx:
+        description: Enclosed signed transaction
+        $ref: '#/definitions/GenericSignedTx'
+    required:
+      - ga_id
+      - abi_version
+      - gas
+      - gas_price
+      - fee
+      - auth_data
+      - tx
     
 externalDocs:
   description: Find out more about Aeternity
