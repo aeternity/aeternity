@@ -115,7 +115,7 @@ find_value_(Pubkey, StorePos, #store{cache = Cache} = S) ->
         {ok, Term} ->
             {ok, Term};
         {ok, Term, Entry} ->
-            {ok, Term, S#store{cache = #{Pubkey => Entry}}};
+            {ok, Term, S#store{cache = Cache#{Pubkey => Entry}}};
         error ->
             error
     end.
