@@ -2615,9 +2615,8 @@ definitions:
       hash:
         $ref: '#/definitions/EncodedHash'
       signatures:
-        description: 'signatures required unless for Generalized Account Meta transactions'
+        description: 'At least one signature is required unless for Generalized Account Meta transactions'
         type: array
-        minItems: 1
         items:
           $ref: '#/definitions/EncodedValue'
     required:
