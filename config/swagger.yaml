@@ -2720,6 +2720,10 @@ definitions:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ContractCallTx'
+  GAAttachTxJSON:
+    allOf:
+      - $ref: '#/definitions/GenericTx'
+      - $ref: '#/definitions/GAAttachTx'
   TxInfoObject:
      type: object
      properties:
@@ -3193,7 +3197,50 @@ definitions:
       total:
         description: Sum of all tokens from other fields
         $ref: '#/definitions/UInt'
-
+  GAAttachTx:
+    type: object
+    properties:
+      owner_id:
+        $ref: '#/definitions/EncodedPubkey'
+        description: Contract owner pub_key
+      nonce:
+        description: 'Owner''s nonce'
+        $ref: '#/definitions/UInt64'
+      code:
+        description: 'Contract''s code'
+        $ref: '#/definitions/EncodedByteArray'
+      vm_version:
+        description: 'Virtual machine''s version'
+        $ref: '#/definitions/UInt16'
+      abi_version:
+        description: 'ABI version'
+        $ref: '#/definitions/UInt16'
+      gas:
+        $ref: '#/definitions/UInt64'
+      gas_price:
+        $ref: '#/definitions/UInt'
+      fee:
+        $ref: '#/definitions/UInt'
+      ttl:
+        $ref: '#/definitions/UInt64'
+      call_data:
+        description: Contract call data
+        $ref: '#/definitions/EncodedByteArray'
+      auth_fun:
+        description: Contract authorization function hash (hex encoded)
+        type: string
+        pattern: ^(0x|0X)?[a-fA-F0-9]+$'
+    required:
+      - owner_id
+      - code
+      - vm_version
+      - abi_version
+      - gas
+      - gas_price
+      - fee
+      - call_data
+      - auth_fun
+    
 externalDocs:
   description: Find out more about Aeternity
   url: 'http://www.aeternity.com'
