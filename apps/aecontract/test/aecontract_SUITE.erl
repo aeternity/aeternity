@@ -5340,20 +5340,20 @@ call_wrong_type(_Cfg) ->
     ?assertMatchVM(<<"out_of_gas">>, <<"Type error on call:", _/binary>>, Error1),
     {error, Error2} = ?call(call_contract, Acc1, Contract1, remote_wrong_ret, {tuple, [string]},
                             {?cid(Contract2), <<"hello">>}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error2),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error2),
     {error, Error3} = ?call(call_contract, Acc1, Contract1, remote_wrong_ret_tailcall, word,
                             {?cid(Contract2), <<"hello">>}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error3),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error3),
     {error, Error4} = ?call(call_contract, Acc1, Contract1, remote_wrong_ret_tailcall_type_vars, word,
                             {?cid(Contract2), <<"hello">>}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error4),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error4),
 
     {error, Error5} = ?call(call_contract, Acc1, Contract1, remote_wrong_put, {tuple, []}, {?cid(Contract2), 42}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error5),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error5),
     1 = ?call(call_contract, Acc1, Contract1, next_state, word, {}),
 
     {error, Error6} = ?call(call_contract, Acc1, Contract1, remote_wrong_put_polymorphic, {tuple, []}, {?cid(Contract2), 43}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error6),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error6),
     1 = ?call(call_contract, Acc1, Contract1, next_state, word, {}),
     ok.
 
