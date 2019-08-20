@@ -1,9 +1,9 @@
-# Build from source
+# Introduction
 
 This document describes how to build an Aeternity node from source on current Ubuntu 16.04.4 LTS, Ubuntu 18.04 LTS and MacOS (latest).
 The commands below assume you are logged in with `sudo` user.
 
-## Dependencies installation
+## Dependencies
 
 ### Ubuntu
 #### Common tools and libraries
@@ -86,7 +86,7 @@ brew install autoconf
 
 For more details read the [dedicated Libsodium documentation](https://download.libsodium.org/doc/installation/).
 
-## Builds
+## Building
 
 The source code of the Aeternity node can be obtained by cloning the public [GitHub repository](https://github.com/aeternity/aeternity):
 
