@@ -137,6 +137,7 @@ references:
       key: *machine_build_cache_key
       paths:
         - "_build"
+        - ".contracts_test_cache"
 
   macos_package_cache_key: &macos_package_cache_key macos-package-cache-v1
   restore_macos_package_cache: &restore_macos_package_cache

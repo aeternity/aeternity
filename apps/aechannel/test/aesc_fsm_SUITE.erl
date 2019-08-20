@@ -1227,7 +1227,7 @@ check_incorrect_mutual_close(Cfg) ->
                 {shutdown, [], shutdown,
                  shutdown_ack},
                 fun(#{fsm := FsmPid}, _Debug) ->
-                    timer:sleep(20),
+                    timer:sleep(50),
                     true = rpc(dev1, erlang, process_info, [FsmPid]) =:= undefined
                 end),
             bump_idx(),
@@ -1249,7 +1249,7 @@ check_mutual_close_with_wrong_amounts(Cfg) ->
         create_channel_from_spec(Si, Sr, Spec, Port, Debug, Cfg),
     %% We don't have enough funds to cover the closing fee
     {error, insufficient_funds} = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
-    timer:sleep(20),
+    timer:sleep(50),
     %% Fsms should be unaffected
     true = (rpc(dev1, erlang, process_info, [FsmI]) =/= undefined),
     true = (rpc(dev1, erlang, process_info, [FsmR]) =/= undefined),
@@ -1588,7 +1588,7 @@ client_reconnect_(Role, Cfg) ->
     log(Debug, "Reconnecting before disconnecting failed: ~p", [Err]),
     unlink(Proxy),
     exit(Proxy, kill),
-    timer:sleep(20),  % give the above exit time to propagate
+    timer:sleep(50),  % give the above exit time to propagate
     ok = things_that_should_fail_if_no_client(Role, I, R, Debug, Cfg),
     Res = reconnect(Fsm, Role, RoleI, Debug),
     ct:log("Reconnect req -> ~p", [Res]),
