@@ -26,12 +26,12 @@ init(_Id, _Opts) ->
             CacheDir = cache_dir(RootDir),
             ensure_cache_dir_exists(CacheDir),
 
-            RebarLockPath = filename:absname_join(RootDir, "rebar.lock"),
-            ct:log("RebarPath: ~p Cache: ~p", [RebarLockPath, CacheDir]),
-            {ok, RebarLock} = file:read_file(RebarLockPath),
-            DepsHash = base58:binary_to_base58(crypto:hash(sha256, RebarLock)),
+            Deps = ["aesophia", "aesophia_cli", "aeserialization", "aebytecode"],
+            DepsHashes = [calculate_git_revision(RootDir, Dep) || Dep <- Deps],
+            DepsHash = base58:binary_to_base58(crypto:hash(sha256, string:join(DepsHashes, ""))),
 
-            code:ensure_loaded(aect_test_utils), %% This should initialize the tables
+            ct:log("Cache: ~p, DepsHash: ~p", [CacheDir, DepsHash]),
+
             [try_load_cache(CacheDir, DepsHash, ETSTable) || {ETSTable, _} <- cached_tables()],
 
             {ok, #state{cache_dir = CacheDir, deps_hash = DepsHash}};
@@ -43,10 +43,16 @@ init(_Id, _Opts) ->
 terminate(#state{cache_dir = undefined, deps_hash = undefined}) ->
     ok;
 terminate(#state{cache_dir = CacheDir, deps_hash = DepsHash}) ->
-    [save_cache(CacheDir, DepsHash, ETSTable, Keypos) || {ETSTable, Keypos} <- cached_tables()],
+    [save_cache(CacheDir, DepsHash, ETSTable) || {ETSTable, _} <- cached_tables()],
     ok.
 
 %%% ------------------------ INTERNAL --------------------
+
+calculate_git_revision(RootDir, GitDep) ->
+    PathComponents = [RootDir, "_build", "test", "lib", GitDep],
+    Path = filename:join(PathComponents),
+    Cmd = io_lib:format("cd ~p; git rev-parse HEAD", [Path]),
+    os:cmd(Cmd).
 
 cache_dir(RootDir) ->
     filename:absname_join(RootDir, ".contracts_test_cache").
@@ -59,32 +65,31 @@ ensure_cache_dir_exists(CacheDir) ->
             ok
     end.
 
-dets_cache_filename(DepsHash, ETSTable) ->
+ets_cache_filename(DepsHash, ETSTable) ->
     atom_to_list(ETSTable) ++ "_" ++ DepsHash.
 
-dets_cache_path(CacheDir, DepsHash, ETSTable) ->
-    filename:absname_join(CacheDir, dets_cache_filename(DepsHash, ETSTable)).
+ets_cache_path(CacheDir, DepsHash, ETSTable) ->
+    filename:absname_join(CacheDir, ets_cache_filename(DepsHash, ETSTable)).
 
 try_load_cache(CacheDir, DepsHash, ETSTable) ->
-    Path = dets_cache_path(CacheDir, DepsHash, ETSTable),
-    case dets:open_file(Path) of
-        {ok, Handle} ->
-            try
-                ETSTable = dets:to_ets(Handle, ETSTable)
-            after
-                dets:close(Handle)
+    Path = ets_cache_path(CacheDir, DepsHash, ETSTable),
+    case filelib:is_file(Path) of
+        true ->
+            ct:log("Restoring persisted cache for: ~p", [ETSTable]),
+            case ets:info(ETSTable, name) of
+                undefined ->
+                    ok;
+                _ ->
+                    true = ets:delete(ETSTable)
             end,
+            {ok, ETSTable} = ets:file2tab(Path, [{verify, true}]),
             ok;
-        _ ->
+        false ->
+            ct:log("Persisted cache for: ~p not available", [ETSTable]),
             ok
     end.
 
-save_cache(CacheDir, DepsHash, ETSTable, Keypos) ->
-    Path = dets_cache_path(CacheDir, DepsHash, ETSTable),
-    {ok, ETSTable} = dets:open_file(ETSTable, [{file, Path}, {keypos, Keypos}, {type, set}]),
-    try
-        ok = dets:from_ets(ETSTable, ETSTable)
-    after
-        dets:close(ETSTable)
-    end,
+save_cache(CacheDir, DepsHash, ETSTable) ->
+    Path = ets_cache_path(CacheDir, DepsHash, ETSTable),
+    _ = ets:tab2file(ETSTable, Path, [{sync, true}, {extended_info, [md5sum, object_count]}]),
     ok.
