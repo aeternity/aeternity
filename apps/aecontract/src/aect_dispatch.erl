@@ -49,21 +49,24 @@ run(#{vm := VM} = Version, #{ code := SerializedCode} = CallDef) when ?IS_FATE_S
             Env = maps:get(tx_env, CallDef),
             {create_call(Gas, error, <<"bad_call_data">>, [], Call, VM), Trees, Env}
     end;
-run(#{vm := VM} = Version, #{code := SerializedCode} = CallDef) when ?IS_AEVM_SOPHIA(VM) ->
+run(#{vm := VM} = Version, CallDef) when ?IS_AEVM_SOPHIA(VM) ->
+    #{ code      := SerializedCode
+     , call_data := CallData
+     , amount    := Amount } = CallDef,
     #{ byte_code := Code
      , type_info := TypeInfo} = aect_sophia:deserialize(SerializedCode),
     %% TODO: update aeb_aevm_abi and pass Version
-    case aeb_aevm_abi:check_calldata(maps:get(call_data, CallDef), TypeInfo) of
+    case aeb_aevm_abi:check_calldata(CallData, TypeInfo, Amount > 0) of
         {ok, CallDataType, OutType} ->
             CallDef1 = CallDef#{code => Code,
                                 call_data_type => CallDataType,
                                 out_type => OutType},
             run_common(Version, CallDef1);
         {error, What} ->
-            Gas = maps:get(gas, CallDef),
-            Call = maps:get(call, CallDef),
+            Gas   = maps:get(gas, CallDef),
+            Call  = maps:get(call, CallDef),
             Trees = maps:get(trees, CallDef),
-            Env = maps:get(tx_env, CallDef),
+            Env   = maps:get(tx_env, CallDef),
             {create_call(Gas, error, What, [], Call, VM), Trees, Env}
     end;
 run(#{vm := ?VM_AEVM_SOLIDITY_1, abi := ?ABI_SOLIDITY_1} = Version, CallDef) ->
@@ -245,6 +248,8 @@ error_to_binary(bad_call_data) -> <<"bad_call_data">>;
 error_to_binary(unknown_error) -> <<"unknown_error">>;
 error_to_binary(unknown_contract) -> <<"unknown_contract">>;
 error_to_binary(unknown_function) -> <<"unknown_function">>;
+error_to_binary(function_is_not_payable) -> <<"function_is_not_payable">>;
+error_to_binary(account_is_not_payable) -> <<"account_is_not_payable">>;
 error_to_binary(reentrant_call) -> <<"reentrant_call">>;
 error_to_binary(arithmetic_error) -> <<"arithmetic_error">>;
 error_to_binary({illegal_instruction, OP}) when is_integer(OP), 0 =< OP, OP =< 255 ->

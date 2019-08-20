@@ -25,7 +25,7 @@ contract FundMe =
   function is_contributor(addr) =
     Map.member(addr, state.contributions)
 
-  stateful entrypoint contribute() =
+  stateful payable entrypoint contribute() =
     if(Chain.block_height >= state.deadline)
       spend({ recipient = Call.caller, amount = Call.value }) // Refund money
       false

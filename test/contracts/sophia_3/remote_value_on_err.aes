@@ -1,0 +1,21 @@
+contract ValueOnErr =
+  entrypoint err : () => int
+  entrypoint ok  : () => int
+
+contract RemoteValueOnErr =
+
+  stateful entrypoint callErr(
+    r : ValueOnErr,
+    value : int) : int =
+    r.err(value = value)
+
+  stateful entrypoint callErrLimitGas(
+    r : ValueOnErr,
+    value : int,
+    gas : int) : int =
+    r.err(value = value, gas = gas)
+
+  stateful entrypoint callOk(
+    r : ValueOnErr,
+    value : int) : int =
+    r.ok(value = value)

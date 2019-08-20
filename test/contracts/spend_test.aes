@@ -3,7 +3,7 @@ contract SpendContract =
   entrypoint withdraw : (int) => int
   entrypoint get_balance : () => int
 
-contract SpendTest =
+payable contract SpendTest =
 
   stateful entrypoint spend(to, amount) =
     let total = Contract.balance
@@ -22,8 +22,8 @@ contract SpendTest =
     Chain.spend(to, amount)
     Chain.balance(to)
 
-  entrypoint get_balance() = Contract.balance
+  payable entrypoint get_balance() = Contract.balance
   entrypoint get_balance_of(a) = Chain.balance(a)
 
-  stateful entrypoint spend_as_call(remote : SpendContract, amount : int) =
+  stateful payable entrypoint spend_as_call(remote : SpendContract, amount : int) =
     remote.get_balance(value = amount)

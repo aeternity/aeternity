@@ -29,6 +29,7 @@
 
 %% Modifiers
 -export([ spend/4
+        , transfer_value/4
         , oracle_extend/4
         , oracle_get_answer/5
         , oracle_get_question/5
@@ -40,6 +41,7 @@
         , oracle_check_query/5
         , is_oracle/2
         , is_contract/2
+        , is_payable/2
         , aens_claim/4
         , aens_preclaim/3
         , aens_resolve/3
@@ -263,6 +265,11 @@ check_delegation_signature(Pubkey, Binary, Signature,
 spend(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:spend_op(FromPubkey, ToPubkey, Amount)
                  ], State).
+
+transfer_value(FromPubkey, ToPubkey, Amount, State) ->
+    eval_primops([ aeprimop:transfer_value_op(FromPubkey, ToPubkey, Amount)
+                 ], State).
+
 
 %%%-------------------------------------------------------------------
 %%% Oracles
@@ -493,6 +500,22 @@ is_contract(Pubkey, #state{onchain_primop_state = {onchain, PState}} = State) ->
             {ok, ?FATE_TRUE, State};
         none ->
             {ok, ?FATE_FALSE, State}
+    end.
+
+is_payable(Pubkey, #state{primop_state = PState} = State) when ?IS_ONCHAIN(State) ->
+    is_payable_(Pubkey, PState, State);
+is_payable(Pubkey, #state{onchain_primop_state = {onchain, PState}} = State) ->
+    is_payable_(Pubkey, PState, State).
+
+is_payable_(Pubkey, PState, State) ->
+    case aeprimop_state:find_account(Pubkey, PState) of
+        {Account, _} ->
+            case aec_accounts:is_payable(Account) of
+                true  -> {ok, ?FATE_TRUE, State};
+                false -> {ok, ?FATE_FALSE, State}
+            end;
+        none ->
+            {ok, ?FATE_TRUE, State}
     end.
 
 to_relative_ttl(relative, TTL,_Height) ->

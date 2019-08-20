@@ -111,6 +111,7 @@
         , oracle_check_query/6
         , is_oracle/3
         , is_contract/3
+        , is_payable/3
         , aens_resolve/5
         , aens_preclaim/4
         , aens_claim/5
@@ -192,7 +193,7 @@ remote_call_common(Contract, Function, ?FATE_TYPEREP({tuple, ArgTypes}), ?FATE_T
     Arity     = length(ArgTypes),
     ES1       = aefa_fate:unfold_store_maps_in_args(Arity, EngineState),
     ES2       = aefa_fate:check_remote(Contract, ES1),
-    ES3       = aefa_fate:set_remote_function(Contract, Function, ES2),
+    ES3       = aefa_fate:set_remote_function(Contract, Function, Value > 0, ES2),
     Signature = aefa_fate:get_function_signature(Function, ES3),
     ES4       = aefa_fate:check_signature_and_bind_args(Arity, Signature, ES3),
     TVars     = aefa_engine_state:current_tvars(ES4),
@@ -210,7 +211,7 @@ transfer_value(From, ?FATE_CONTRACT(To), Value, ES) ->
         IntValue ->
             ES1 = aefa_engine_state:set_call_value(IntValue, ES),
             API = aefa_engine_state:chain_api(ES1),
-            case aefa_chain_api:spend(From, To, IntValue, API) of
+            case aefa_chain_api:transfer_value(From, To, IntValue, API) of
                 {ok, API1} ->
                     aefa_engine_state:set_chain_api(API1, ES1);
                 {error, What} ->
@@ -1064,20 +1065,15 @@ oracle_check_query(Arg0, Arg1, Arg2, Arg3, Arg4, EngineState) ->
     write(Arg0, Answer, ES2).
 
 is_oracle(Arg0, Arg1, EngineState) ->
-    {Addr, ES1} = get_op_arg(Arg1, EngineState),
-    if
-        not ?IS_FATE_ADDRESS(Addr) ->
-            aefa_fate:abort({value_does_not_match_type, Addr, address}, ES1);
-        true ->
-            ok
-    end,
-    ?FATE_ADDRESS(Pubkey) = Addr,
-    API = aefa_engine_state:chain_api(ES1),
-    {ok, Answer, API1} = aefa_chain_api:is_oracle(Pubkey, API),
-    ES2 = aefa_engine_state:set_chain_api(API1, ES1),
-    write(Arg0, Answer, ES2).
+    address_is_x(is_oracle, Arg0, Arg1, EngineState).
 
 is_contract(Arg0, Arg1, EngineState) ->
+    address_is_x(is_contract, Arg0, Arg1, EngineState).
+
+is_payable(Arg0, Arg1, EngineState) ->
+    address_is_x(is_payable, Arg0, Arg1, EngineState).
+
+address_is_x(What, Arg0, Arg1, EngineState) ->
     {Addr, ES1} = get_op_arg(Arg1, EngineState),
     if
         not ?IS_FATE_ADDRESS(Addr) ->
@@ -1087,7 +1083,7 @@ is_contract(Arg0, Arg1, EngineState) ->
     end,
     ?FATE_ADDRESS(Pubkey) = Addr,
     API = aefa_engine_state:chain_api(ES1),
-    {ok, Answer, API1} = aefa_chain_api:is_contract(Pubkey, API),
+    {ok, Answer, API1} = aefa_chain_api:What(Pubkey, API),
     ES2 = aefa_engine_state:set_chain_api(API1, ES1),
     write(Arg0, Answer, ES2).
 

@@ -103,7 +103,7 @@ execute_call(Contract, CallData, ChainState, Options) ->
     #{ byte_code := Code,
        type_info := TypeInfo
      } = aect_sophia:deserialize(SerializedCode),
-    case aeb_aevm_abi:check_calldata(CallData, TypeInfo) of
+    case aeb_aevm_abi:check_calldata(CallData, TypeInfo, false) of
         {ok, CallDataType, OutType} ->
             execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState1, Options);
         {error, _} = Err ->

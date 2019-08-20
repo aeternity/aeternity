@@ -25,9 +25,9 @@ contract AENSTest =
                              chash : hash) : unit =      // Commitment hash
     AENS.preclaim(addr, chash)
 
-  stateful entrypoint signedPreclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
-                                   chash : hash,             // Commitment hash
-                                   sign  : signature) : unit = // Signed by addr (if not Contract.address)
+  stateful payable entrypoint signedPreclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
+                                             chash : hash,             // Commitment hash
+                                             sign  : signature) : unit = // Signed by addr (if not Contract.address)
     AENS.preclaim(addr, chash, signature = sign)
 
   stateful entrypoint claim(addr : address,

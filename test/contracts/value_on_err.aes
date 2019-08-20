@@ -1,7 +1,7 @@
 contract ValueOnErr =
 
-  entrypoint err() : int =
+  payable entrypoint err() : int =
     switch(0) 1 => 5
 
-  entrypoint ok() : int =
+  payable entrypoint ok() : int =
     11

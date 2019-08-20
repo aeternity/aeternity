@@ -46,6 +46,7 @@
           aens_revoke/3,
           spend_tx/3,
           spend/2,
+          addr_is_payable/2,
           addr_is_contract/2,
           addr_is_oracle/2,
           get_contract_fun_types/4
@@ -499,6 +500,13 @@ oracle_typerep(?ABI_AEVM_SOPHIA_1, BinaryFormat) ->
     end.
 
 %%    Address
+addr_is_payable(Addr, #state{ trees = CTrees }) ->
+    Trees = get_on_chain_trees(CTrees),
+    case aec_accounts_trees:lookup(Addr, aec_trees:accounts(Trees)) of
+        none             -> {ok, bool2word(true)};
+        {value, Account} ->  {ok, bool2word(aec_accounts:is_payable(Account))}
+    end.
+
 addr_is_contract(Addr, #state{ trees = CTrees }) ->
     Trees = get_on_chain_trees(CTrees),
     {ok, bool2word(aect_state_tree:is_contract(Addr, aec_trees:contracts(Trees)))}.
@@ -858,6 +866,8 @@ binary_to_error(<<"reentrant_call">>) -> reentrant_call;
 binary_to_error(<<"unknown_function">>) -> unknown_function;
 binary_to_error(<<"unknown_contract">>) -> unknown_contract;
 binary_to_error(<<"unknown_error">>) -> unknown_error;
+binary_to_error(<<"function_is_not_payable">>) -> function_is_not_payable;
+binary_to_error(<<"account_is_not_payable">>) -> account_is_not_payable;
 binary_to_error(E) ->
     ?DEBUG_LOG("**** Unknown error: ~p\n", [E]),
     unknown_error.

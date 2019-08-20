@@ -17,7 +17,7 @@ contract ChannelOnChainContractOracle =
       bets     = {}
       }
 
-  stateful entrypoint place_bet(answer: string) = 
+  stateful payable entrypoint place_bet(answer: string) =
     switch(Map.lookup(answer, state.bets))
       None =>
         put(state{ bets = state.bets{[answer] = Call.caller}})
@@ -25,17 +25,17 @@ contract ChannelOnChainContractOracle =
       Some(_value) =>
         "bet_already_taken"
 
-  entrypoint query_fee() =
+  payable entrypoint query_fee() =
     Oracle.query_fee(state.oracle)
 
-  entrypoint get_question(q: query_id) =
+  payable entrypoint get_question(q: query_id) =
     Oracle.get_question(state.oracle, q)
 
-  stateful entrypoint resolve(q: query_id) =
+  stateful payable entrypoint resolve(q: query_id) =
     switch(Oracle.get_answer(state.oracle, q))
       None         =>
         "no response"
-      Some(result) => 
+      Some(result) =>
         if(state.question == Oracle.get_question(state.oracle, q))
             switch(Map.lookup(result, state.bets))
               None         =>

@@ -1724,6 +1724,9 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend,
                 {primop_error, Reason} when Reason =:= not_allowed_off_chain ->
                     ?TEST_LOG("Primop error ~p", [Reason]),
                     eval_error(Reason);
+                {primop_error, Reason} when Reason =:= account_is_not_payable ->
+                    ?TEST_LOG("Primop error ~p", [Reason]),
+                    eval_error(Reason);
                 {primop_error,_What} ->
                     ?TEST_LOG("Primop error ~p", [_What]),
                     eval_error(out_of_gas)

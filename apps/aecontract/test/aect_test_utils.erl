@@ -135,7 +135,7 @@ latest_sophia_contract_version() ->
         ?ROMA_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_1;
         ?MINERVA_PROTOCOL_VSN -> ?SOPHIA_CONTRACT_VSN_2;
         ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_CONTRACT_VSN_2;
-        ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_2
+        ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3
     end.
 
 latest_protocol_version() ->
@@ -197,7 +197,8 @@ dummy_bytecode() ->
     aect_sophia:serialize(#{byte_code => <<"NOT PROPER BYTE CODE">>,
                             type_info => [],  %% No type info
                             contract_source => "NOT PROPER SOURCE STRING",
-                            compiler_version => Version},
+                            compiler_version => Version,
+                            payable => false},
                           latest_sophia_contract_version()
                          ).
 

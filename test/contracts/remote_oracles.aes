@@ -42,7 +42,7 @@ contract RemoteOracles =
       ttl  : Chain.ttl) : oracle(string, int) =
     r.registerOracle(acct, qfee, ttl)
 
-  stateful entrypoint callCreateQuery(
+  stateful payable entrypoint callCreateQuery(
     r     : Oracles,
     value : int,
     o     : oracle(string, int),
@@ -54,7 +54,7 @@ contract RemoteOracles =
     r.createQuery(value = value, o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  stateful entrypoint callUnsafeCreateQuery(
+  stateful payable entrypoint callUnsafeCreateQuery(
     r     : Oracles,
     value : int,
     o     : oracle(string, int),

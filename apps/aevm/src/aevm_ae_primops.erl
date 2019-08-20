@@ -234,6 +234,8 @@ types(?PRIM_CALL_CRYPTO_BLAKE2B_STRING, _HeapValue, _Store, _State) ->
     {[string], word};
 types(?PRIM_CALL_AUTH_TX_HASH, _HeapValue, _Store, _State) ->
     {[], option_t(word)};
+types(?PRIM_CALL_ADDR_IS_PAYABLE, _HeapValue, _Store, _State) ->
+    {[word], word};
 types(?PRIM_CALL_ADDR_IS_CONTRACT, _HeapValue, _Store, _State) ->
     {[word], word};
 types(?PRIM_CALL_ADDR_IS_ORACLE, _HeapValue, _Store, _State) ->
@@ -588,20 +590,24 @@ aens_call_revoke_common(Addr, Hash, Sign, #chain{api = API, state = State} = Cha
 %% Address operations.
 %% ------------------------------------------------------------------
 address_call(Op, _Value, Data, State = #chain{ vm_version = VMVersion })
-        when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_3 ->
-    address_call(Op, Data, State);
+        when ?IS_AEVM_SOPHIA(VMVersion) ->
+    address_call_(VMVersion, Op, Data, State);
 address_call(_, _, _, _) ->
     {error, out_of_gas}.
 
-address_call(?PRIM_CALL_ADDR_IS_ORACLE, Data, State) ->
+address_call_(VM, ?PRIM_CALL_ADDR_IS_ORACLE, Data, State) when VM >= ?VM_AEVM_SOPHIA_3 ->
     [Addr] = get_args([word], Data),
     Callback = fun(API, ChainState) -> API:addr_is_oracle(<<Addr:256>>, ChainState) end,
     no_dynamic_gas(fun() -> query_chain(Callback, State) end);
-address_call(?PRIM_CALL_ADDR_IS_CONTRACT, Data, State) ->
+address_call_(VM, ?PRIM_CALL_ADDR_IS_CONTRACT, Data, State) when VM >= ?VM_AEVM_SOPHIA_3 ->
     [Addr] = get_args([word], Data),
     Callback = fun(API, ChainState) -> API:addr_is_contract(<<Addr:256>>, ChainState) end,
     no_dynamic_gas(fun() -> query_chain(Callback, State) end);
-address_call(_, _, _) ->
+address_call_(VM, ?PRIM_CALL_ADDR_IS_PAYABLE, Data, State) when VM >= ?VM_AEVM_SOPHIA_4 ->
+    [Addr] = get_args([word], Data),
+    Callback = fun(API, ChainState) -> API:addr_is_payable(<<Addr:256>>, ChainState) end,
+    no_dynamic_gas(fun() -> query_chain(Callback, State) end);
+address_call_(_, _, _, _) ->
     {error, out_of_gas}.
 
 %% ------------------------------------------------------------------

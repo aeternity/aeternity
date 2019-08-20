@@ -1,7 +1,7 @@
 
-contract MultiplicationServer =
+payable contract MultiplicationServer =
 
-  entrypoint multiply(x : int, y : int) =
+  payable entrypoint multiply(x : int, y : int) =
     switch(Call.value >= 100)
       true => x * y
 

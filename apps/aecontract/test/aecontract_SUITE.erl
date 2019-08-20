@@ -66,6 +66,8 @@
         , sophia_typed_calls/1
         , sophia_call_origin/1
         , sophia_call_value/1
+        , sophia_payable_contract/1
+        , sophia_payable_entrypoint/1
         , sophia_contract_creator/1
         , sophia_no_reentrant/1
         , sophia_aevm_exploits/1
@@ -177,6 +179,7 @@
 
 -define(CONTRACT_SERIALIZATION_VSN_ROMA,    1).
 -define(CONTRACT_SERIALIZATION_VSN_MINERVA, 2).
+-define(CONTRACT_SERIALIZATION_VSN_LIMA,    3).
 
 %% Arguments like <<_:256>> are encoded as addresses.
 %% For FATE we need to distinguish between the type of object.
@@ -319,6 +322,8 @@ groups() ->
                                  sophia_typed_calls,
                                  sophia_call_origin,
                                  sophia_call_value,
+                                 sophia_payable_contract,
+                                 sophia_payable_entrypoint,
                                  sophia_contract_creator,
                                  sophia_functions,
                                  sophia_oracles,
@@ -731,27 +736,17 @@ create_version_too_high(Cfg) ->
     Res = sign_and_apply_transaction(Tx, PrivKey, S1),
     %% Test that the create transaction is accepted/rejected accordingly
     case proplists:get_value(protocol, Cfg) of
-        roma ->
+        P when P =:= roma; P =:= lima ->
             {error, illegal_contract_compiler_version, _} = Res;
-        P when P =:= minerva; P =:= fortuna; P =:= lima ->
+        P when P =:= minerva; P =:= fortuna ->
             {ok, _} = Res
     end.
 
-hack_bytecode(Code, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
-    #{ source_hash := Hash,
-       type_info := TypeInfo,
-       byte_code := ByteCode } = aect_sophia:deserialize(Code),
-    Version = 1,
+hack_bytecode(SerCode, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
+    Code = #{ byte_code := ByteCode } = aect_sophia:deserialize(SerCode),
     HackedByteCode = <<OP:1/integer-unsigned-unit:8, ByteCode/binary>>,
-    Fields = [ {source_hash, Hash}
-             , {type_info, TypeInfo}
-             , {byte_code, HackedByteCode}
-             ],
-    Template =
-        [ {source_hash, binary}
-        , {type_info, [{binary, binary, binary, binary}]}
-        , {byte_code, binary}],
-    aeser_chain_objects:serialize(compiler_sophia, Version, Template, Fields).
+    aect_sophia:serialize(Code#{ byte_code := HackedByteCode, compiler_version => <<"Hacked">> },
+                          maps:get(contract_vsn, Code)).
 
 create_contract(_Cfg) -> create_contract_(aec_test_utils:min_gas_price()).
 
@@ -1229,17 +1224,22 @@ compile_contract(Name) ->
 
 compile_contract_vsn(Name, Vsn) ->
     case compile_contract(Name) of
-        {ok, ByteCode} ->
-            Map = aect_sophia:deserialize(ByteCode),
-            case maps:get(contract_vsn, Map) of
-                Vsn -> {ok, ByteCode};
+        {ok, SerCode} ->
+            CodeMap = #{ type_info := TIs } = aect_sophia:deserialize(SerCode),
+            case maps:get(contract_vsn, CodeMap) of
+                Vsn -> {ok, SerCode};
                 _   ->
-                    {ok, BinSrc} = aect_test_utils:read_contract(sophia_version(), Name),
-                    {ok, aect_sophia:serialize(Map#{contract_source => maps:get(contract_source, Map, binary_to_list(BinSrc)),
-                                                    compiler_version => maps:get(compiler_version, Map, <<"1.4.0">>)}, Vsn)}
+                    TIs1 = [ patch_type_info(TI, Vsn) || TI <- TIs ],
+                    Compiler = maps:get(compiler_version, CodeMap, <<"1.4.0">>),
+                    CodeMap1 = CodeMap#{ type_info := TIs1, compiler_version => Compiler },
+                    {ok, aect_sophia:serialize(CodeMap1, Vsn)}
             end;
         Err -> Err
     end.
+
+patch_type_info({H, F, As, R}, 3) -> {H, F, true, As, R};
+patch_type_info({H, F, _, As, R}, N) when N < 3 -> {H, F, As, R};
+patch_type_info(TI, _) -> TI.
 
 create_contract(Owner, Name, Args, S) ->
     create_contract(Owner, Name, Args, #{}, S).
@@ -1564,6 +1564,8 @@ sophia_vm_interaction(Cfg) ->
                       fee => 1000000 * MinGasPrice},
     {ok, IdCode}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_ROMA),
     {ok, RemCode} = compile_contract_vsn(remote_call, ?CONTRACT_SERIALIZATION_VSN_ROMA),
+    {ok, IdCode2}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_LIMA),
+    {ok, RemCode2} = compile_contract_vsn(remote_call, ?CONTRACT_SERIALIZATION_VSN_LIMA),
 
     %% Create contracts on all sides of the fork
     IdCRoma     = ?call(create_contract_with_code, Acc, IdCode, {}, RomaSpec),
@@ -1572,8 +1574,8 @@ sophia_vm_interaction(Cfg) ->
     RemCMinerva = ?call(create_contract_with_code, Acc, RemCode, {}, MinervaSpec),
     IdCFortuna  = ?call(create_contract_with_code, Acc, IdCode, {}, FortunaSpec),
     RemCFortuna = ?call(create_contract_with_code, Acc, RemCode, {}, FortunaSpec),
-    IdCLima     = ?call(create_contract_with_code, Acc, IdCode, {}, LimaSpec),
-    RemCLima    = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
+    IdCLima     = ?call(create_contract_with_code, Acc, IdCode2, {}, LimaSpec),
+    RemCLima    = ?call(create_contract_with_code, Acc, RemCode2, {}, LimaSpec),
 
     %% Check that we cannot create contracts with old vms after the forks
     BadSpec1   = RomaSpec#{height => MinervaHeight},
@@ -1641,27 +1643,21 @@ sophia_aevm_exploits(_Cfg) ->
     Err = ?call(call_contract, Acc, C, pair, string, 1000000000),
     ok.
 
-hack_type(HackFun, NewType, Code) ->
-    #{ source_hash := Hash,
-       type_info := TypeInfo,
-       byte_code := ByteCode } = aect_sophia:deserialize(Code),
-    Version     = 1,
-    Hack = fun(Info = {_, Fun, _, _}) when Fun == HackFun ->
-                case NewType of
-                    {return, T} -> setelement(4, Info, T);
-                    {arg, T} -> setelement(3, Info, T)
-                end;
-              (Info) -> Info end,
+hack_type(HackFun, NewType, SerCode) ->
+    CodeMap = #{ type_info := TypeInfo } = aect_sophia:deserialize(SerCode),
+    Hack = fun(TI) ->
+               Set = case TI of
+                         {_, HackFun, _, _} -> fun(Ix, I, T) -> setelement(Ix, I, T) end;
+                         {_, HackFun, _, _, _} -> fun(Ix, I, T) -> setelement(Ix+1, I, T) end;
+                         _ -> fun(_, I, _) -> I end
+                     end,
+               case NewType of
+                   {arg, T}    -> Set(3, TI, T);
+                   {return, T} -> Set(4, TI, T)
+               end end,
     HackedTypeInfo = lists:map(Hack, TypeInfo),
-    Fields = [ {source_hash, Hash}
-             , {type_info, HackedTypeInfo}
-             , {byte_code, ByteCode}
-             ],
-    Template =
-        [ {source_hash, binary}
-        , {type_info, [{binary, binary, binary, binary}]}
-        , {byte_code, binary}],
-    aeser_chain_objects:serialize(compiler_sophia, Version, Template, Fields).
+    aect_sophia:serialize(CodeMap#{ type_info := HackedTypeInfo, compiler_version => <<"Hacked">> },
+                          maps:get(contract_vsn, CodeMap)).
 
 sophia_functions(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_MINERVA, letfun_broken_pre_sophia_3),
@@ -4583,6 +4579,7 @@ hack_dup(A, B, <<A:8, Rest/binary>>) -> <<B:8, (hack_dup(A, B, Rest))/binary>>;
 hack_dup(A, B, <<X:8, Rest/binary>>) -> <<X:8, (hack_dup(A, B, Rest))/binary>>.
 
 sophia_aevm_bad_init(_Cfg) ->
+    ?skipRest(vm_version() >= ?VM_AEVM_SOPHIA_4, old_bytecode_format_not_allowed_in_lima),
     state(aect_test_utils:new_state()),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
 
@@ -5405,6 +5402,64 @@ sophia_call_value(_Cfg) ->
     ?assertEqual(Amount + Bal2, Bal3),
     Bal4     = ?call(call_contract, Acc, C1, get_balance, word, {}, #{}),
     ?assertEqual(Bal3, Bal4),
+    ok.
+
+sophia_payable_contract(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, payable_not_pre_lima),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    C1  = ?call(create_contract, Acc, payable, {}, #{}),
+    C2  = ?call(create_contract, Acc, non_payable, {}, #{}),
+
+    Cx  = ?call(create_contract, Acc, remote_payable, {}, #{amount => 50000}),
+
+    Gas    = 50000,
+    Params = #{gas => Gas, return_gas_used => true},
+    {Ok1, Gas1} = ?call(call_contract, Acc, Cx, r_spend, bool, {?cid(C1), 100}, Params),
+    ?assertEqual(true, Ok1), ?assert(Gas1 < Gas),
+
+
+    {Err1, Gas2} = ?call(call_contract, Acc, Cx, r_spend, bool, {?cid(C2), 100}, Params),
+    ?assertMatchVM({error,<<"account_is_not_payable">>},
+                   {error,<<"Error in spend: account_is_not_payable">>}, Err1),
+    ?assertEqual(Gas, Gas2),
+
+    {Ok2, Gas3} = ?call(call_contract, Acc, Cx, r_cond_spend, bool, {?cid(C1), 100}, Params),
+    ?assertEqual(true, Ok2), ?assert(Gas3 < Gas),
+
+
+    {Ok3, Gas4} = ?call(call_contract, Acc, Cx, r_cond_spend, bool, {?cid(C2), 100}, Params),
+    ?assertEqual(false, Ok3), ?assert(Gas4 < Gas3),
+
+    ok.
+
+sophia_payable_entrypoint(_Cfg) ->
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, payable_not_pre_lima),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    C1  = ?call(create_contract, Acc, payable, {}, #{}),
+
+    Gas    = 20000,
+    Params = #{gas => Gas, return_gas_used => true},
+
+    {Ok1, Gas1} = ?call(call_contract, Acc, C1, foo, bool, {100}, Params#{amount => 50}),
+    ?assertEqual(true, Ok1), ?assert(Gas1 < Gas),
+
+    {Err1, Gas2} = ?call(call_contract, Acc, C1, bar, bool, {42}, Params#{amount => 50}),
+    ?assertMatchVM({error,<<"function_is_not_payable">>},
+                   {error,<<"Function with hash '", _/binary>>}, Err1),
+    ?assertEqual(Gas, Gas2),
+
+    C2 = ?call(create_contract, Acc, remote_payable, {}, #{amount => 1000}),
+
+    {Ok2, Gas3} = ?call(call_contract, Acc, C2, r_foo, bool, {?cid(C1), 42}, Params),
+    ?assertEqual(false, Ok2), ?assert(Gas3 < Gas),
+
+    {Err2, Gas4} = ?call(call_contract, Acc, C2, r_bar, bool, {?cid(C1), 42}, Params),
+    ?assertMatchVM({error,<<"function_is_not_payable">>},
+                   {error,<<"Function with hash '", _/binary>>}, Err2),
+    ?assertEqual(Gas, Gas4),
+
     ok.
 
 sophia_call_out_of_gas(_Cfg) ->

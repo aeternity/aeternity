@@ -1,0 +1,6 @@
+contract UpfrontCharges =
+  record state = { b : int } // For enabling retrieval of sender balance observed inside init.
+  entrypoint init() : state = { b = b() }
+  entrypoint initialSenderBalance() : int = state.b
+  entrypoint senderBalance() : int = b()
+  function b() = Chain.balance(Call.origin)

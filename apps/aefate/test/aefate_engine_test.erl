@@ -298,7 +298,7 @@ setup_contract(Functions) ->
       Functions).
 
 set_function_code(Name, Signature, BBs, FateCode) ->
-    aeb_fate_code:insert_fun(Name, Signature, maps:from_list(BBs), FateCode).
+    aeb_fate_code:insert_fun(Name, [], Signature, maps:from_list(BBs), FateCode).
 
 contracts() ->
     #{ <<"test">> =>

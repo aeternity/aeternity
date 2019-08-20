@@ -3885,17 +3885,3 @@ http_datetime_to_unixtime(S) ->
     ExpiresDt = httpd_util:convert_request_date(S),
     calendar:datetime_to_gregorian_seconds(ExpiresDt) - BaseSecs.
 
-simple_auth_meta(Owner, Secret, GANonce, InnerTx) ->
-    AuthData = simple_auth(Secret, GANonce),
-    meta(Owner, AuthData, InnerTx).
-
-simple_auth(Secret, Nonce) ->
-    aega_test_utils:make_calldata("simple_auth", "authorize", [Secret, Nonce]).
-
-meta(Owner, AuthData, InnerTx) ->
-    aecore_suite_utils:meta_tx(Owner, #{}, AuthData, InnerTx).
-
-account_type(Pubkey) ->
-    {value, Account} = rpc(aec_chain, get_account, [Pubkey]),
-    aec_accounts:type(Account).
-
