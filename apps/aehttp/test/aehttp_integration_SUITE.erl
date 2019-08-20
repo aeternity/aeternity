@@ -2332,6 +2332,9 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     Missing = aeser_api_encoder:encode(name, <<"missing">>),
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: no_registrar">>}} =
         get_name_claim(maps:put(name, Missing, Encoded)),
+    MissingReg = aeser_api_encoder:encode(name, <<"missing.reg">>),
+    {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
+        get_name_claim(maps:put(name, MissingReg, Encoded)),
     ok.
 
 nameservice_transaction_update(MinerAddress, MinerPubkey) ->
@@ -3160,6 +3163,10 @@ naming_system_broken_txs(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Try to submit txs with empty account
+    {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
+        get_commitment_id(<<"abcd.badregistrar">>, 123),
+    {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
+        get_names_entry_by_name_sut(<<"abcd.badregistrar">>),
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
         get_name_preclaim(#{commitment_id => aeser_api_encoder:encode(commitment, CHash),
                             fee => Fee,
