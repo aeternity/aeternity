@@ -14,6 +14,8 @@ to_ascii_test() ->
                  aens_utils:to_ascii(<<"abcdefg">>)),
     ?assertEqual({error, multiple_namespaces},
                  aens_utils:to_ascii(<<"abcd.efgh.aet">>)),
+    ?assertEqual({error, registrar_unknown},
+                 aens_utils:to_ascii(<<"abcd.aettt">>)),
     LongName = list_to_binary(string:lowercase(base58:binary_to_base58(crypto:strong_rand_bytes(1000)))),
     ?assertEqual({error, no_label_in_registrar},
                  aens_utils:to_ascii(<<".aet">>)),
