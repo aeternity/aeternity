@@ -32,7 +32,7 @@
          revoke_negative/1,
          prune_preclaim/1,
          registrar_change/1,
-         subname/1
+         subname/1,
          subname_negative/1]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -109,7 +109,6 @@ preclaim(Cfg) ->
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT,
-    Name = aect_test_utils:fullname(?NAME),
     NameSalt = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
