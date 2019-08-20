@@ -18,6 +18,7 @@
          name_protection_period/0,
          name_claim_preclaim_delta/0,
          name_registrars/1,
+         possible_name_registrars/0,
          micro_block_cycle/0,
          accepted_future_block_time_shift/0,
          fraud_report_reward/1,
@@ -248,6 +249,10 @@ name_registrars(Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
     [<<"aet">>];
 name_registrars(_Protocol) ->
     [<<"test">>].
+
+%% union of all name_registrars above disregarding the height
+possible_name_registrars() ->
+    [<<"aet">>, <<"test">>].
 
 
 fraud_report_reward(Height) ->
