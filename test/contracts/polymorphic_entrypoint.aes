@@ -1,0 +1,20 @@
+
+contract Remote =
+  entrypoint upd     : ('k, 'v, map('k, 'v)) => map('k, 'v)
+  entrypoint upd_bad : ('k, 'v, map('k, 'v)) => map('k, 'v)
+
+contract Test =
+  entrypoint upd(k, v, m) = m{[k] = v}
+
+  entrypoint upd_bad(k : 'a, v : 'a, m : map('a, 'a)) : map('a, map('a, 'a)) =
+    {[k] = m}
+
+  entrypoint test(r : Remote, v, m) =
+    r.upd("", v, m)
+
+  entrypoint test_bad(r : Remote, v : 'a, m : map(string, 'a)) : 'a =
+    let m' : map(string, 'a) = r.upd_bad("", v, m)
+    m'[""]
+
+  entrypoint test_bad_mono(r : Remote, v : string, m : map(string, string)) : string =
+    String.concat("RESULT: ", test_bad(r, v, m))

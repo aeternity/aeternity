@@ -119,6 +119,7 @@
         , sophia_big_map_benchmark/1
         , sophia_pmaps/1
         , sophia_map_of_maps/1
+        , sophia_polymorphic_entrypoint/1
         , sophia_arity_check/1
         , sophia_chess/1
         , sophia_variant_types/1
@@ -262,6 +263,7 @@ all() ->
                        , {group, sophia_aevm_specific}]).
 
 -define(FATE_SPECIFIC, [ fate_environment
+                       , sophia_polymorphic_entrypoint
                        ]).
 
 -define(FATE_TODO, [ {group, sophia_oracles_gas_ttl}
@@ -4073,6 +4075,23 @@ sophia_map_of_maps(_Cfg) ->
 
     %% Test 3
     RunTest(3, bool, true),
+
+    ok.
+
+sophia_polymorphic_entrypoint(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Ct1 = ?call(create_contract, Acc, polymorphic_entrypoint, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
+    Ct2 = ?call(create_contract, Acc, polymorphic_entrypoint, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
+
+    Res = ?call(call_contract, Acc, Ct1, test, {map, string, {map, string, string}}, {?cid(Ct2), #{}, #{}}),
+    ?assertEqual(#{<<"">> => #{}}, Res),
+
+    ?assertMatch({error, <<"Type of remote function does not match expected type">>},
+        ?call(call_contract, Acc, Ct1, test_bad, string, {?cid(Ct2), <<>>, #{}})),
+
+    ?assertMatch({error, <<"Type of remote function does not match expected type">>},
+        ?call(call_contract, Acc, Ct1, test_bad_mono, string, {?cid(Ct2), <<>>, #{}})),
 
     ok.
 
