@@ -65,8 +65,11 @@ name_parts(Name) ->
 
 validate_name(Name) ->
     case name_parts(Name) of
-        [_Label, _RegistrarNS] ->
-            ok;
+        [_Label, RegistrarNS] ->
+            case lists:member(RegistrarNS, aec_governance:possible_name_registrars()) of
+                true  -> ok;
+                false -> {error, registrar_unknown}
+            end;
         [_Name] ->
             {error, no_registrar};
         [_Label | _Namespaces] ->
