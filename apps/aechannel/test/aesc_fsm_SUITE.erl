@@ -708,11 +708,17 @@ signing_req() ->
 any_msg() ->
     fun(_) -> true end.
 
-update_bench(I, R, C) ->
+update_bench(I, R, C0) ->
+    set_proxy_debug(false, I),
+    set_proxy_debug(false, R),
+    C = set_debug(false, C0),
     Rounds = proplists:get_value(bench_rounds, C, 1000),
-    {Time, I1, R1} = do_n(Rounds, fun update_volley/3, I, R, C),
+    ct:log("*** Starting benchmark ***", []),
+    {Time, I1, R1} = do_n(Rounds, fun update_volley/3,
+                          cache_account_type(I),
+                          cache_account_type(R), C),
     Fmt = "Time (1*2*" ++ integer_to_list(Rounds) ++ "): ~.1f s; ~.1f mspt; ~.1f tps",
-    Args = [Time/1000, Time/2000, 2000*Rounds/Time],
+    Args = [Time/1000, Time/(2*Rounds), 2000*Rounds/Time],
     ct:log(Fmt, Args),
     ct:comment(Fmt, Args),
     {I1, R1}.
@@ -1715,8 +1721,12 @@ create_multi_channel_(Cfg0, Debug, UseAny) when is_boolean(UseAny) ->
           end,
     #{i := I, r := R} = create_channel_(Cfg, Debug),
     Parent = ?config(ack_to, Cfg),
+    set_proxy_debug(false, I),
+    set_proxy_debug(false, R),
+    I1 = cache_account_type(I),
+    R1 = cache_account_type(R),
     Parent ! {self(), channel_ack},
-    ch_loop(I, R, Parent, Cfg).
+    ch_loop(I1, R1, Parent, set_debug(false, Cfg)).
 
 ch_loop(I, R, Parent, Cfg) ->
     receive
@@ -1736,7 +1746,7 @@ ch_loop(I, R, Parent, Cfg) ->
             ProxyR ! {self(), die},
             exit(normal);
         Other ->
-            ct:log("Got Other = ~p, I = ~p~nR = ~p", [Other, I, R]),
+            log(get_debug(Cfg), "Got Other = ~p, I = ~p~nR = ~p", [Other, I, R]),
             ch_loop(I, R, Parent, Cfg)
     end.
 
@@ -1916,24 +1926,43 @@ initiator_instance_(Fsm, Spec, I0, Parent, Debug) ->
     link(NewParent),
     fsm_relay(I1#{parent => NewParent}, NewParent, Debug).
 
+set_proxy_debug(Bool, #{proxy := P}) when is_boolean(Bool) ->
+    P ! {self(), debug, Bool},
+    receive
+        {P, debug_ack, Prev} ->
+            Prev
+    after ?TIMEOUT ->
+            error(timeout)
+    end.
+
+-record(relay_st, {parent, debug}).
+
 fsm_relay(Map, Parent, Debug) ->
     log(Debug, "fsm_relay(~p, ~p, Debug)", [Map, Parent]),
-    fsm_relay_(Map, Parent, Debug).
+    fsm_relay_(Map, #relay_st{ parent = Parent
+                             , debug  = Debug }).
 
-fsm_relay_(#{ fsm := Fsm } = Map, Parent, Debug) ->
-    receive
-        {aesc_fsm, Fsm, _} = Msg ->
-            log(Debug, "Relaying(~p) ~p", [Parent, Msg]),
-            Parent ! Msg;
-        {Parent, die} ->
-            ct:log("Got 'die' from parent", []),
-            aesc_fsm:stop(Fsm),
-            ct:log("relay stopping (die)", []),
-            exit(normal);
-        Other ->
-            log(Debug, "Relay got Other: ~p", [Other])
-    end,
-    fsm_relay_(Map, Parent, Debug).
+fsm_relay_(#{ fsm := Fsm } = Map, #relay_st{ parent = Parent
+                                           , debug  = Debug } = St) ->
+    St1 = receive
+              {aesc_fsm, Fsm, _} = Msg ->
+                  log(Debug, "Relaying(~p) ~p", [Parent, Msg]),
+                  Parent ! Msg,
+                  St;
+              {Parent, debug, NewDebug} when is_boolean(NewDebug) ->
+                  log(NewDebug, "Applying new debug mode: ~p", [NewDebug]),
+                  Parent ! {self(), debug_ack, Debug},
+                  St#relay_st{ debug = NewDebug };
+              {Parent, die} ->
+                  ct:log("Got 'die' from parent", []),
+                  aesc_fsm:stop(Fsm),
+                  ct:log("relay stopping (die)", []),
+                  exit(normal);
+              Other ->
+                  log(Debug, "Relay got Other: ~p", [Other]),
+                  St
+          end,
+    fsm_relay_(Map, St1).
 
 fsm_map(Fsm, #{ initiator_amount := IAmt
               , responder_amount := RAmt
@@ -2047,7 +2076,7 @@ await_signing_request(Tag, Signer, Action, Timeout, Debug, Cfg, SignatureType) -
 
 await_signing_request(Tag, #{fsm := Fsm, pub := Pub} = Signer, OtherSigs,
                       Action, Timeout, Debug, Cfg, SignatureType) ->
-    log("await_signing_request, Fsm = ~p (Pub = ~p, Other = ~p)",
+    log(Debug, "await_signing_request, Fsm = ~p (Pub = ~p, Other = ~p)",
         [Fsm, Pub, [P || #{pub := P} <- OtherSigs]]),
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag,
                               info := #{signed_tx := SignedTx0,
@@ -2077,7 +2106,7 @@ sign_tx(Signer, Tx, Cfg) ->
 
 co_sign_tx(Signer, SignedTx, Cfg) ->
     #{role := Role, pub := Pubkey, priv := Priv} = Signer,
-    case account_type(Pubkey) of
+    case account_type(Signer) of
         basic ->
             {aec_test_utils:co_sign_tx(SignedTx, Priv), Signer};
         generalized ->
@@ -2398,6 +2427,9 @@ check_fsm_state(Fsm) ->
 get_debug(Config) ->
     proplists:get_bool(debug, Config).
 
+set_debug(Bool, Config) when is_boolean(Bool) ->
+    lists:keystore(debug, 1, Config -- [debug], {debug, Bool}).
+
 mine_blocks_until_txs_on_chain(Node, TxHashes) ->
     aecore_suite_utils:mine_blocks_until_txs_on_chain(
       aecore_suite_utils:node_name(Node),
@@ -2533,7 +2565,18 @@ ga_spend(From, To, Amt, Cfg) ->
 get_contract(Name) ->
     aega_test_utils:get_contract(?VM_AEVM_SOPHIA_3, Name).
 
-account_type(Pubkey) ->
+cache_account_type(R) ->
+    Type = account_type(R),
+    R#{account_type => Type}.
+
+account_type(#{ account_type := Type }) ->
+    Type;
+account_type(#{ pub := Pubkey }) ->
+    account_type_(Pubkey);
+account_type(Pubkey) when is_binary(Pubkey) ->
+    account_type_(Pubkey).
+
+account_type_(Pubkey) ->
     {value, Account} = rpc(dev1, aec_chain, get_account, [Pubkey]),
     aec_accounts:type(Account).
 
