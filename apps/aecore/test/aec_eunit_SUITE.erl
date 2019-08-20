@@ -10,9 +10,26 @@
 -include_lib("common_test/include/ct.hrl").
 -compile({parse_transform, ct_eunit_xform}).
 
--define(STARTED_APPS_WHITELIST, [runtime_tools, parse_trans, folsom, bear, setup, hut, hex2bin,
-                                 inet_cidr, inet_ext, lhttpc, rand_compat, xmerl, aecuckoo,
-                                 aecuckooprebuilt, getopt, eblake2]).
+-define(STARTED_APPS_WHITELIST,
+        [ runtime_tools
+        , parse_trans
+        , folsom
+        , bear
+        , setup
+        , hut
+        , hex2bin
+        , inet_cidr
+        , inet_ext
+        , lhttpc
+        , rand_compat
+        , xmerl
+        , aecuckoo
+        , aecuckooprebuilt
+        , getopt
+        , eblake2
+        , ecrecover
+        , ecrecoverprebuilt
+        ]).
 -define(TO_BE_STOPPED_APPS_BLACKLIST, []).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server, %% by test framework
