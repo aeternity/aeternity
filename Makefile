@@ -43,7 +43,7 @@ AE_DEB_MAINT_EMAIL="info@aeternity.com"
 AE_DEB_MAINT_NAME="Aeternity Team"
 DEB_PKG_CHANGELOG_FILE=debian/changelog
 
-all:	local-build
+all: local-build
 
 $(SWAGGER_ENDPOINTS_SPEC):
 	$(REBAR) swagger_endpoints
@@ -250,20 +250,24 @@ REVISION:
 	@git rev-parse HEAD > $@
 
 eunit-roma: KIND=test
-eunit-roma: internal-build
-	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_roma_testnet" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
+eunit-roma:
+	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_roma_testnet" \
+		$(REBAR) do release, eunit $(EUNIT_TEST_FLAGS)
 
 eunit-minerva: KIND=test
-eunit-minerva: internal-build
-	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_minerva_testnet" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
+eunit-minerva:
+	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_minerva_testnet" \
+		$(REBAR) do release, eunit $(EUNIT_TEST_FLAGS)
 
 eunit-fortuna: KIND=test
-eunit-fortuna: internal-build
-	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_fortuna_testnet" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
+eunit-fortuna:
+	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_fortuna_testnet" \
+		$(REBAR) do release, eunit $(EUNIT_TEST_FLAGS)
 
 eunit-lima: KIND=test
-eunit-lima: internal-build
-	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_lima_testnet" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
+eunit-lima:
+	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_lima_testnet" \
+		$(REBAR) release, eunit $(EUNIT_TEST_FLAGS)
 
 eunit-latest: eunit-lima
 
@@ -291,7 +295,7 @@ docker-clean:
 smoke-test: docker smoke-test-run
 
 smoke-test-run: KIND=system_test
-smoke-test-run: internal-build
+smoke-test-run:
 	@$(REBAR) as $(KIND),test do upgrade, ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
 
 system-smoke-test-deps:
@@ -299,7 +303,7 @@ system-smoke-test-deps:
 	docker pull "aeternity/aeternity:v1.4.0"
 
 local-system-test: KIND=system_test
-local-system-test: internal-build
+local-system-test:
 	@$(REBAR) as $(KIND) do ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
 
 system-test-deps:
@@ -311,8 +315,8 @@ system-test-deps:
 	docker pull "aeternity/aeternity:latest"
 
 system-test: KIND=system_test
-system-test: internal-build
-	@$(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
+system-test:
+	@$(REBAR) as $(KIND) ct $(ST_CT_DIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
 
 aevm-test: aevm-test-deps
 	@$(REBAR) eunit --application=aevm
@@ -472,10 +476,10 @@ multi-build: dev1-build
 internal-compile-deps:
 	@$(REBAR) as $(KIND) compile -d
 
-internal-package: REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
+internal-package:
 	@$(REBAR) as $(KIND) tar
 
-internal-build: REVISION internal-compile-deps $(SWAGGER_ENDPOINTS_SPEC)
+internal-build:
 	@$(REBAR) as $(KIND) release
 
 internal-start:
@@ -494,7 +498,7 @@ internal-clean:
 internal-distclean:
 	@rm -rf ./_build/$(KIND)
 
-internal-ct: internal-build
+internal-ct:
 	cd _build/$(KIND)/lib/aestratum_client && ../../../../$(REBAR) as test release
 	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
 	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
@@ -548,7 +552,7 @@ test-arch-os-dependencies:
 	test-arch-os-dependencies \
 	kill killall \
 	clean distclean \
-	swagger swagger-docs swagger-check swagger-version-check \
+	swagger swagger-docs swagger-check swagger-version-check $(SWAGGER_ENDPOINTS_SPEC) \
 	build-uml \
 	rebar-lock-check \
 	python-env python-ws-test python-uats python-single-uat python-release-test python-package-win32-test \
