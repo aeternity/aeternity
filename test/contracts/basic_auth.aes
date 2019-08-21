@@ -10,7 +10,7 @@ contract BasicAuth =
     put(state{ nonce = n + 1 })
     switch(Auth.tx_hash)
       None          => abort("Not in Auth context")
-      Some(tx_hash) => Crypto.ecverify(to_sign(tx_hash, n), state.owner, s)
+      Some(tx_hash) => Crypto.verify_sig(to_sign(tx_hash, n), state.owner, s)
 
   entrypoint to_sign(h : hash, n : int) =
     Crypto.blake2b((h, n))
