@@ -195,12 +195,12 @@
 -define(qid(__X__), {'@oq', __X__}).
 
 
--define(assertMatchAEVM(Res, ExpVm1, ExpVm2, ExpVm3),
+-define(assertMatchAEVM(Res, ExpVm1, ExpVm2, ExpVm3, ExpVm4),
     case vm_version() of
         ?VM_AEVM_SOPHIA_1 -> ?assertMatch(ExpVm1, Res);
         ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res);
         ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res);
-        ?VM_AEVM_SOPHIA_4 -> ?assertMatch(ExpVm3, Res); %% So far no difference
+        ?VM_AEVM_SOPHIA_4 -> ?assertMatch(ExpVm4, Res);
         ?VM_FATE_SOPHIA_1 -> ok
     end).
 
@@ -343,6 +343,7 @@ groups() ->
                                  sophia_maps,
                                  sophia_map_benchmark,
                                  sophia_big_map_benchmark,
+                                 sophia_map_of_maps,
                                  sophia_variant_types,
                                  sophia_arity_check,
                                  sophia_chain,
@@ -1787,6 +1788,7 @@ sophia_call_origin(_Cfg) ->
         RemCInt,
         %% After Roma, the Call.caller and Call.origin is NOT the same.
         AccInt,
+        AccInt,
         AccInt),
     ?assertMatchFATE({address, AccInt}, Origin2),
     Caller2 = ?call(call_contract, Acc, RemC, nested_caller, word, {}),
@@ -1837,7 +1839,7 @@ sophia_oracles(_Cfg) ->
     ?assertMatchAEVM(
         ?call(call_contract, Acc, Ct, queryFee, word, BogusOracle),
         32,          %% On ROMA this is broken, returns 32.
-        {error, _}, {error, _}), %% Fixed in MINERVA
+        {error, _}, {error, _}, {error, _}), %% Fixed in MINERVA
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Oracle, QId}),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Oracle, QId, 4001}),
     NonceAfterRespond = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
@@ -3709,7 +3711,7 @@ sophia_maps(_Cfg) ->
             Actual  = {Call(size_state_i, word, {}),
                        Call(size_state_s, word, {})},
             %% Maps.size was broken i ROMA, fixed in Minerva
-            ?assertMatchAEVM(Actual, Expect1, Expect2, Expect2)
+            ?assertMatchAEVM(Actual, Expect1, Expect2, Expect2, Expect2)
         end,
 
     %% Reset the state
@@ -4055,22 +4057,35 @@ sophia_map_of_maps(_Cfg) ->
     {Ct, _Gas} = ?call(create_contract, Acc, map_of_maps, {}, #{gas => 1000000, return_gas_used => true}),
     %% {}         = ?call(call_contract, Acc, Ct, setup_state, {tuple, []}, {}),
 
-    RunTest = fun(I, Type, Expect) ->
+    RunTest = fun(I, Type) ->
                 Fun = fun(Tag) -> list_to_atom(lists:concat([test, I, "_", Tag])) end,
                 {} = ?call(call_contract, Acc, Ct, Fun(setup),   {tuple, []}, {}),
                 {} = ?call(call_contract, Acc, Ct, Fun(execute), {tuple, []}, {}),
-                Actual = ?call(call_contract, Acc, Ct, Fun(check), Type, {}),
-                ?assertMatch({I, X, X}, {I, Actual, Expect})
+                ?call(call_contract, Acc, Ct, Fun(check), Type, {})
               end,
+    Test = fun(I, Type, Expect) ->
+                Actual = RunTest(I, Type),
+                ?assertMatch({I, X, X}, {I, Actual, Expect})
+           end,
 
     %% Test 1 - garbage collection of inner map when outer map is garbage collected
-    RunTest(1, {map, string, string}, #{}),
+    Test(1, {map, string, string}, #{}),
 
     %% Test 2 - ...
-    RunTest(2, {map, string, string}, #{<<"key">> => <<"val">>, <<"key2">> => <<"val2">>}),
+    Test(2, {map, string, string}, #{<<"key">> => <<"val">>, <<"key2">> => <<"val2">>}),
 
     %% Test 3
-    RunTest(3, bool, true),
+    Test(3, bool, true),
+
+    %% Test 4 -- Broken pre VM_AEVM_SOPHIA_4
+
+    Res4 = RunTest(4, {map, string, {map, string, string}}),
+    Good = #{<<"a">> => #{<<"b">> => <<"c">>}},
+    ?assertMatchAEVM(Res4, {'EXIT', {badmatch, _}, _},
+                           {'EXIT', {badmatch, _}, _},
+                           {'EXIT', {badmatch, _}, _},
+                           Good),
+    ?assertMatchFATE(Res4, Good),
 
     ok.
 
@@ -4693,7 +4708,7 @@ sophia_heap_to_heap_bug(_Cfg) ->
     ?assertMatchAEVM(
         ?call(call_contract, Acc, IdC, f, word, {100}, #{return_gas_used => true}),
         {{error,<<"out_of_gas">>}, _Gas}, %% Bad size check kicks in
-        {1, _Gas}, {1, _Gas}),            %% But works on new VM.
+        {1, _Gas}, {1, _Gas}, {1, _Gas}), %% But works on new VM.
 
     ok.
 
@@ -4834,7 +4849,7 @@ sophia_too_little_gas_for_mem(_Cfg) ->
     Res = ?call(call_contract, Acc, IdC, tick, word, {}, #{gas => GasUsed - 1}),
     ?assertMatchAEVM(Res, {error,{throw,{aevm_eval_error,out_of_gas,0}}},
                         {error,{throw,{aevm_eval_error,out_of_gas,0}}},
-                        {error,<<"out_of_gas">>}).
+                        {error,<<"out_of_gas">>}, {error, <<"out_of_gas">>}).
 
 
 %% The crowd funding example.

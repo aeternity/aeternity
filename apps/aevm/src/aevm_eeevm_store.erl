@@ -169,7 +169,8 @@ next_map_id(#{?SOPHIA_STATE_MAPS_KEY := MapKeys}) ->
     1 + lists:max([-1 | [ Id || <<Id:256>> <= MapKeys ]]);
 next_map_id(_) -> 0.
 
-%% show_store(Store) ->
+%% show_store(Store0) ->
+%%     Store = aect_contracts_store:subtree(<<>>, Store0),
 %%     Show = fun(?SOPHIA_STATE_KEY)      -> "?SOPHIA_STATE_KEY";
 %%               (?SOPHIA_STATE_TYPE_KEY) -> "?SOPHIA_STATE_TYPE_KEY";
 %%               (?SOPHIA_STATE_MAPS_KEY) -> "?SOPHIA_STATE_MAPS_KEY";
