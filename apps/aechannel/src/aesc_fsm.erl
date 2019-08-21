@@ -4389,9 +4389,11 @@ check_state_password(_Opts) ->
             ok
     end.
 
--spec check_weak_password(string()) -> ok | {error, weak_password}.
+-spec check_weak_password(string()) -> ok | {error, invalid_password}.
 check_weak_password(StatePassword) when is_list(StatePassword), length(StatePassword) < 6 ->
-    {error, weak_password};
+    %% No need for a stronger password policy
+    %% This check is only here to ensure that someone doesn't enter a 1-2 character password
+    {error, invalid_password};
 check_weak_password(StatePassword) when is_list(StatePassword) ->
     ok.
 

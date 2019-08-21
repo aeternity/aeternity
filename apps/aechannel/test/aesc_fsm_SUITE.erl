@@ -141,7 +141,7 @@ groups() ->
                              , {group, round_too_high}
                              , {group, pinned_env}
                              , {group, generalized_accounts}
-                             , {group, no_mock}
+                             , {group, no_kdf_mock}
                              ]},
      {transactions, [sequence],
       [
@@ -215,7 +215,7 @@ groups() ->
       , request_too_old_bh
       , positive_bh
       ]},
-     {no_mock, [sequence], [create_channel]}
+     {no_kdf_mock, [sequence], [create_channel]}
     ].
 
 ga_sequence() ->
@@ -337,9 +337,9 @@ init_per_group(Group, Config) when Group =:= initiator_is_ga;
     end;
 init_per_group(generalized_accounts, Config) ->
     Config;
-init_per_group(no_mock, Config) ->
+init_per_group(no_kdf_mock, Config) ->
     Cfg = init_per_group_(Config),
-    end_mocks(dev1),
+    aecore_suite_utils:end_mock(aecore_suite_utils:node_name(dev1), sc_cache_kdf),
     Cfg;
 init_per_group(_Group, Config) ->
     init_per_group_(Config).
@@ -349,9 +349,8 @@ init_per_group_(Config) ->
         true -> Config;
         false ->
             aecore_suite_utils:start_node(dev1, Config),
-            aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow]),
+            aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1), [block_pow, sc_cache_kdf]),
             ct:log("dev1 connected", []),
-            start_mocks(dev1),
             try begin
                     Initiator = prep_initiator(dev1),
                     Responder = prep_responder(Initiator, dev1),
@@ -398,33 +397,9 @@ end_per_testcase(_Case, _Config) ->
     bump_idx(),
     ok.
 
-
 stop_node(N, Config) ->
     aecore_suite_utils:stop_node(N, Config),
     Config.
-
-start_mocks(N) ->
-    %% TODO: For some reason the node sometimes is being started multiple times without stopping it first
-    %% Here is a small workaround for that
-    case get(mocks_initiated) of
-        undefined ->
-            ct:log("Starting mocks"),
-            %% TODO: Mock block mining as this is the main contributor to the FSM suite runtime
-            _ = rpc(N, aesc_state_cache, mock_kdf_init, []),
-            put(mocks_initiated, true);
-        _ ->
-            pass
-    end.
-
-end_mocks(N) ->
-    case get(mocks_initiated) of
-        true ->
-            ct:log("Stopping mocks"),
-            erase(mocks_initiated),
-            _ = rpc(N, aesc_state_cache, mock_kdf_end, []);
-        _ ->
-            pass
-    end.
 
 %%%===================================================================
 %%% Test state
@@ -1664,15 +1639,17 @@ fsm_crash_reestablish(#{channel_id := ChId, fsm := FsmI} = I, #{fsm := FsmR} = R
     Debug = get_debug(Cfg),
     {ok, State} = rpc(dev1, aesc_fsm, get_offchain_state, [FsmI]),
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
-    ct:log("Simulating random crash"),
+    ct:log("Performing action before crashing the FSM"),
     ok = Action(I, R, Cfg),
+    ct:log("Simulating random crash"),
     erlang:exit(FsmI, test_fsm_random_crash),
     erlang:exit(FsmR, test_fsm_random_crash),
+    timer:sleep(20), %% Give some time for the cache to persist the state
 
     Cache = cache_status(ChId),
     [] = in_ram(Cache),
     [_, _] = on_disk(Cache),
-    check_info(500),
+    check_info(20),
     ct:log("reestablishing ...", []),
     #{i := I1, r := R1} = reestablish(I, R, SignedTx, Spec, ?PORT, Debug),
     {I1, R1}.
@@ -2307,19 +2284,21 @@ channel_spec(Cfg, ChannelReserve, PushAmount, XOpts) ->
 
     {I1, R1, Spec1}.
 
-prime_password(#{} = P, Key, #{} = Cfg) when is_atom(Key) ->
+prime_password(#{} = P, Key, Cfg) when Key =:= initiator_password; Key =:= responder_password ->
     case ?config(Key, Cfg) of
         undefined ->
             P#{state_password => generate_password()};
         ignore ->
+            ct:log("Ignoring password"),
             maps:remove(state_password, P);
         Password ->
+            ct:log("Using predefined password"),
             P#{state_password => Password}
      end.
 
 -spec generate_password() -> string().
 generate_password() ->
-    base64:encode(crypto:strong_rand_bytes(6)).
+    binary:bin_to_list(crypto:strong_rand_bytes(6)).
 
 config(K, Cfg, Def) ->
     case ?config(K, Cfg) of

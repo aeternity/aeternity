@@ -4,15 +4,20 @@
         ]).
 
 create_tables(Mode) ->
-    % Pre-checking tables to ensure we are not re-creating ETS tables
     Specs = lists:flatten([M:table_specs(Mode) || {missing_table, M} <- check_tables([])]),
     [{atomic, ok} = mnesia:create_table(Tab, Spec) || {Tab, Spec} <- Specs].
 
 check_tables(Acc) ->
-    lists:foldl(
+    Errors = lists:foldl(
       fun(M, Acc1) ->
               M:check_tables(Acc1)
-      end, Acc, modules()).
+      end, Acc, modules()),
+
+    [ok = M:migrate(From, To) || {vsn_fail, M, [{expected, From}, {got, To}]} = Error <- Errors, filter_migrations(Error)],
+    [Error || Error <- Errors, not filter_migrations(Error)].
 
 modules() ->
     [aesc_state_cache].
+
+filter_migrations({vsn_fail, _, _}) -> true;
+filter_migrations(_) -> false.

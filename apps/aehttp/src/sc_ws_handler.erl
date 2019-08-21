@@ -7,6 +7,8 @@
 -export([websocket_info/2]).
 -export([terminate/3]).
 
+-include_lib("aecontract/include/hard_forks.hrl").
+
 -record(handler, {fsm_pid            :: pid() | undefined,
                   fsm_mref           :: reference() | undefined,
                   channel_id         :: aesc_channels:id() | undefined,
@@ -98,8 +100,7 @@ handler_init_error(Err, Handler) ->
                     {push_amount_too_low          , value_too_low},
                     {lock_period_too_low          , value_too_low},
                     {invalid_password             , invalid_password},
-                    {weak_password                , invalid_password},
-                    {password_required_since_lima , password_required_since_lima}
+                    {password_required_since_lima , invalid_password}
                    ],
     case proplists:get_value(Err, HandledErrors, not_handled_error) of
         not_handled_error ->
@@ -349,6 +350,7 @@ read_channel_options(Params) ->
       [Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false}),
        Read(<<"ttl">>, ttl, #{type => integer, mandatory => false}),
        %% Fork checks are done by the FSM
+       %% We can't make the password mandatory here because otherwise we will just crash without informing the client
        Read(<<"state_password">>, state_password, #{type => string, mandatory => false}),
        Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}])
       ] ++ OnChainOpts

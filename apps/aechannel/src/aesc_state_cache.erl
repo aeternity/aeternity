@@ -37,6 +37,7 @@
 -export([
           table_specs/1
         , check_tables/1
+        , migrate/2
         ]).
 
 %% for diagnostics
@@ -64,11 +65,15 @@
                   , salt        :: binary() | atom()
                   , session_key :: binary() | atom()
                   }).
--record(pch_cache, { cache_id        :: ch_cache_id()
-                   , salt            :: binary() | atom()
-                   , nonce           :: binary() | atom()
-                   , encrypted_state :: binary() | atom()
-                   }).
+
+-define(VSN_pch, 1).
+-record(pch, {id, pubkeys = [], state}).
+-define(VSN_pch_encrypted_cache, 2).
+-record(pch_encrypted_cache, { cache_id        :: ch_cache_id()
+                             , salt            :: binary() | atom()
+                             , nonce           :: binary() | atom()
+                             , encrypted_state :: binary() | atom()
+                             }).
 
 -define(SERVER, ?MODULE).
 -define(TAB, aesc_state_cache_ch).
@@ -114,9 +119,9 @@ table_specs(Mode) ->
      {?PTAB, [
                  aec_db:tab_copies(Mode)
                , {type, ordered_set}
-               , {record_name, pch_cache}
-               , {attributes, record_info(fields, pch_cache)}
-               , {user_properties, [{vsn, table_vsn(pch_cache)}]}
+               , {record_name, pch_encrypted_cache}
+               , {attributes, record_info(fields, pch_encrypted_cache)}
+               , {user_properties, [{vsn, table_vsn(pch_encrypted_cache)}]}
                ]}
     ].
 
@@ -126,7 +131,53 @@ check_tables(Acc) ->
               aec_db:check_table(Tab, Spec, Acc1)
       end, Acc, table_specs(disc)).
 
-table_vsn(_) -> 1.
+table_vsn(pch) -> ?VSN_pch;
+table_vsn(pch_encrypted_cache) -> ?VSN_pch_encrypted_cache.
+
+migrate(?VSN_pch, ?VSN_pch_encrypted_cache) ->
+    ?VSN_pch = table_vsn(pch),
+    ?VSN_pch_encrypted_cache = table_vsn(pch_encrypted_cache),
+    lager:debug("Waiting for state cache table to be accesible", []),
+    case mnesia:wait_for_tables([?PTAB], 10000) of
+        ok ->
+            lager:debug("State cache table is loaded", []);
+        _ ->
+            lager:debug("Timeout while waiting for state cache table to be loaded", []),
+            erlang:exit(load_timeout)
+    end,
+    %% http://erlang.org/pipermail/erlang-questions/2009-May/044106.html
+    %% I need to use mnesia_schema because the typespec for mnesia:transform_table/4 is broken
+    {atomic, ok} = mnesia_schema:transform_table(?PTAB,
+                                          ignore,
+                                          record_info(fields, pch_encrypted_cache),
+                                          pch_encrypted_cache),
+    activity(fun do_migrate/0),
+    {atomic, ok} = mnesia:write_table_property(?PTAB, {vsn, table_vsn(pch_encrypted_cache)}),
+    ok.
+
+do_migrate() ->
+    FirstKey = mnesia:first(?PTAB),
+    do_migrate_(FirstKey).
+
+do_migrate_('$end_of_table') -> ok;
+do_migrate_(Key) ->
+    case mnesia:read(?PTAB, Key) of
+        [#pch{} = OldRecord] ->
+            ToWrite = transform_record_to_encrypted_form_with_default_password(OldRecord),
+            [ok = mnesia:write(?PTAB, NewRecord, write) || NewRecord <- ToWrite],
+            ok = mnesia:delete(?PTAB, Key, write);
+        _ ->
+            ok
+    end,
+    do_migrate_(mnesia:next(?PTAB, Key)).
+
+transform_record_to_encrypted_form_with_default_password(#pch{id = ChId, pubkeys = [PubKey], state = State}) ->
+    {ok, Cache0} = setup_keys_in_cache(?CACHE_DEFAULT_PASSWORD),
+    Cache1 = Cache0#ch_cache{cache_id = key(ChId, PubKey), state = State},
+    [encrypt_cache(Cache1)];
+transform_record_to_encrypted_form_with_default_password(#pch{pubkeys = [Pub1, Pub2]} = Record) ->
+    Records = [Record#pch{pubkeys = [Pub1]}, Record#pch{pubkeys = [Pub2]}],
+    lists:flatten([transform_record_to_encrypted_form_with_default_password(Record) || Record <- Records]).
 
 start_link() ->
     case ets:info(?TAB, name) of
@@ -248,7 +299,7 @@ cache_status_(ChId) ->
     InRam = ets:select(
         ?TAB, [{ #ch_cache{cache_id = key(ChId, '$1'), _ = '_'}, [], ['$1']}]),
     OnDisk = mnesia:dirty_select(
-        ?PTAB, [{#pch_cache{cache_id = key(ChId, '$1'), _ = '_'}, [], ['$1']}]),
+        ?PTAB, [{#pch_encrypted_cache{cache_id = key(ChId, '$1'), _ = '_'}, [], ['$1']}]),
     [ {in_ram, InRam}
     , {on_disk, OnDisk}].
 
@@ -266,7 +317,7 @@ try_reestablish_cached(ChId, PubKey, Password) ->
             end
     end.
 
-decrypt_with_key_and_move_to_ram(#pch_cache{ cache_id = CacheId
+decrypt_with_key_and_move_to_ram(#pch_encrypted_cache{ cache_id = CacheId
                                            , nonce = Nonce
                                            , encrypted_state = EncryptedState
                                            }, Cache, SessionKey) ->
@@ -277,11 +328,11 @@ decrypt_with_key_and_move_to_ram(#pch_cache{ cache_id = CacheId
                     ?TAB, [Cache#ch_cache{cache_id = CacheId, state = State}]),
                     delete_persistent(CacheId),
                     {ok, State};
-        {error, _} = Err ->
+        {error, _} ->
             {error, invalid_password}
     end.
 
-decrypt_state_and_move_to_ram(#pch_cache{salt = Salt} = PersistedCache, Password) ->
+decrypt_state_and_move_to_ram(#pch_encrypted_cache{salt = Salt} = PersistedCache, Password) ->
     %% For security reasons we use a new salt
     case { generate_session_key(Password, Salt)
          , setup_keys_in_cache(Password)} of
@@ -303,19 +354,22 @@ move_state_to_persistent(CacheId) ->
     ets:delete(?TAB, CacheId),
     ok.
 
-encrypt_and_persist(#ch_cache{ cache_id = CacheId
-                             , salt =  Salt
-                             , state =  State
-                             , session_key = SessionKey}) ->
+encrypt_and_persist(Cache) ->
+    Encrypted = encrypt_cache(Cache),
+    write_persistent(Encrypted).
+
+encrypt_cache(#ch_cache{ cache_id = CacheId
+                       , salt =  Salt
+                       , state =  State
+                       , session_key = SessionKey}) ->
     Nonce = crypto:strong_rand_bytes(enacl:secretbox_nonce_size()),
     SerializedState = aesc_offchain_state:serialize_to_binary(State),
-    Encrypted = #pch_cache{
+    #pch_encrypted_cache{
         cache_id = CacheId,
         salt = Salt,
         nonce = Nonce,
         encrypted_state = enacl:secretbox(SerializedState, Nonce, SessionKey)
-    },
-    write_persistent(Encrypted).
+    }.
 
 write_persistent(Pch) ->
     activity(fun() -> mnesia:write(?PTAB, Pch, write) end).
@@ -323,7 +377,7 @@ write_persistent(Pch) ->
 read_persistent(CacheId) ->
     activity(fun() ->
                      case mnesia:read(?PTAB, CacheId) of
-                         [#pch_cache{} = Encrypted] ->
+                         [#pch_encrypted_cache{} = Encrypted] ->
                              {ok, Encrypted};
                          [] ->
                              error
@@ -412,7 +466,7 @@ delete_offchain_state_for_channel(ChId, St) ->
 
     activity(fun() ->
         Records = mnesia:select(
-          ?PTAB, [{ #pch_cache{cache_id = key(ChId, '$1'), _ = '_'}, [], ['$1'] }]),
+          ?PTAB, [{ #pch_encrypted_cache{cache_id = key(ChId, '$1'), _ = '_'}, [], ['$1'] }]),
         [mnesia:delete(?PTAB, key(ChId, Pubkey), write) || Pubkey <- Records]
     end),
     St.

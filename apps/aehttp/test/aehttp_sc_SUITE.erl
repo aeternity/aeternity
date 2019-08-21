@@ -286,7 +286,7 @@ end_per_testcase(_Case, Config) ->
 start_node(Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     Node = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:connect(Node, [block_pow]),
+    aecore_suite_utils:connect(Node, [block_pow, sc_cache_kdf]),
 
     {ok, 404, _} = get_balance_at_top(),
     aecore_suite_utils:mine_key_blocks(Node, 10),
@@ -3760,7 +3760,7 @@ sc_ws_broken_open_params(Config) ->
     case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
         true ->
             ChannelOpts10 = maps:remove(state_password, ChannelOpts9),
-            Test(ChannelOpts10, <<"password required since lima fork">>);
+            Test(ChannelOpts10, <<"Invalid password">>);
         false ->
             ok
     end,

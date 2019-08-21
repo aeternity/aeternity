@@ -690,6 +690,8 @@ wait_for_tables(Tabs, Sofar, _, _) ->
 
 check_db() ->
     try
+        %% We need to start lager here in case something goes wrong - otherwise instead of nice debugging logs we will get an near useless erl_crash.dump with a truncated stack trace -.-
+        lager:start(),
         Mode = backend_mode(),
         Storage = ensure_schema_storage_mode(Mode),
         ok = application:ensure_started(mnesia),
