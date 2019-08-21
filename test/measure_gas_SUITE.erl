@@ -219,8 +219,11 @@ init(Accounts) ->
 
 %% Mine at height Height
 mine(Height, Trees) ->
-    Trees1 = aec_trees:perform_pre_transformations(Trees, aetx_env:tx_env(Height + 1)),
-    {Trees1, aetx_env:tx_env(Height + 1)}.
+    NextHeight = Height + 1,
+    TxEnv = aetx_env:tx_env(NextHeight),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    Trees1 = aec_trees:perform_pre_transformations(Trees, TxEnv, Protocol),
+    {Trees1, TxEnv}.
 
 contract_create(Trees, Sender, CompiledContract, Init, Args, Backend) ->
     #{contract_source := Contract} = CompiledContract,
