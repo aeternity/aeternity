@@ -174,9 +174,12 @@ accounts(Config) ->
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
         dry_run(TopHash, [Tx1, Tx2], [#{ pub_key => APub, amount => 100000000}]),
 
-
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"ok">> }] }} =
         dry_run(TopHash, [Tx2, Tx1]),
+
+    %% Should work on GenHash if we create and top up EPub
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
+        dry_run(TopHash, [Tx2, Tx1], [#{ pub_key => EPub, amount => 1000000000000000}]),
 
     ok.
 
