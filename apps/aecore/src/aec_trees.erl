@@ -45,7 +45,7 @@
          apply_txs_on_state_trees/4,
          apply_txs_on_state_trees_strict/3,
          grant_fee/3,
-         perform_pre_transformations/2
+         perform_pre_transformations/4
         ]).
 
 %% Proof of inclusion
@@ -245,27 +245,39 @@ gc_cache(Trees, TreesToGC) ->
         Trees,
         TreesToGC).
 
--spec perform_pre_transformations(trees(), aec_blocks:height()) -> trees().
-perform_pre_transformations(Trees, Height) ->
+-spec perform_pre_transformations(
+        trees(),
+        aec_blocks:height(),
+        aec_hard_forks:protocol_vsn(),
+        aec_hard_forks:protocol_vsn() | undefined
+       ) -> trees().
+perform_pre_transformations(Trees, Height, Version, PrevVersion) ->
     Trees0 = aect_call_state_tree:prune(Height, Trees),
     Trees1 = aeo_state_tree:prune(Height, Trees0),
     Trees2 = aens_state_tree:prune(Height, Trees1),
-    case Height =:= aec_block_genesis:height() of
-        true -> Trees2; % genesis block
-        false ->
-            case aec_hard_forks:is_fork_height(Height) of
-                {true, ?MINERVA_PROTOCOL_VSN} -> % hard fork time
-                    aec_block_fork:apply_minerva(Trees2);
-                {true, ?FORTUNA_PROTOCOL_VSN} -> % hard fork time
-                    aec_block_fork:apply_fortuna(Trees2);
-                {true, ?LIMA_PROTOCOL_VSN} -> % hard fork time
-                    aec_block_fork:apply_lima(Trees2);
-                {true, P} when P > ?LIMA_PROTOCOL_VSN ->
-                    Trees2;
-                false -> Trees2
-            end
-    end.
+    perform_pre_transformations_(Trees2, Version, PrevVersion).
 
+perform_pre_transformations_(Trees, _Version, undefined) ->
+    %% Genesis block.
+    Trees;
+perform_pre_transformations_(Trees, Version, Version) ->
+    %% No version change in block.
+    Trees;
+perform_pre_transformations_(Trees, Version, PrevVersion) when Version > PrevVersion ->
+    %% Fork.
+    perform_pre_transformations_(Version, Trees);
+perform_pre_transformations_(Trees, Version, PrevVersion) when PrevVersion > Version ->
+    %% Should not happen.
+    Trees.
+
+perform_pre_transformations_(?MINERVA_PROTOCOL_VSN, Trees) ->
+    aec_block_fork:apply_minerva(Trees);
+perform_pre_transformations_(?FORTUNA_PROTOCOL_VSN, Trees) ->
+    aec_block_fork:apply_fortuna(Trees);
+perform_pre_transformations_(?LIMA_PROTOCOL_VSN, Trees) ->
+    aec_block_fork:apply_lima(Trees);
+perform_pre_transformations_(Version, Trees) when Version > ?LIMA_PROTOCOL_VSN ->
+    Trees.
 
 -spec calls(trees()) -> aect_call_state_tree:tree().
 calls(Trees) ->

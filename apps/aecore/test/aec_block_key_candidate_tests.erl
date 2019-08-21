@@ -12,36 +12,40 @@
 
 -import(aec_headers, [raw_key_header/0]).
 -import(aec_blocks, [raw_key_block/0]).
+-import(aec_test_utils, [running_apps/0, loaded_apps/0, restore_stopped_and_unloaded_apps/2]).
 
 -define(PREV_MINER_PUBKEY, <<85:?MINER_PUB_BYTES/unit:8>>).
 -define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
 -define(BENEFICIARY_PUBKEY, <<123:?MINER_PUB_BYTES/unit:8>>).
 
 new_key_block_test_() ->
-    {"Create new key-block",
-     fun() ->
-             %% Previous block is a key block, so it
-             %% has miner and height.
-             RawBlock  = raw_key_block(),
-             PrevBlock1 = aec_blocks:set_height(RawBlock, 11),
-             PrevBlock2 = aec_blocks:set_target(PrevBlock1, 17),
-             PrevBlock = aec_blocks:set_miner(PrevBlock2, ?MINER_PUBKEY),
-             BlockHeader = aec_blocks:to_header(PrevBlock),
+    {setup,
+     fun setup/0,
+     fun teardown/1,
+     [{"Create new key-block",
+       fun() ->
+               %% Previous block is a key block, so it
+               %% has miner and height.
+               RawBlock  = raw_key_block(),
+               PrevBlock1 = aec_blocks:set_height(RawBlock, 11),
+               PrevBlock2 = aec_blocks:set_target(PrevBlock1, 17),
+               PrevBlock = aec_blocks:set_miner(PrevBlock2, ?MINER_PUBKEY),
+               BlockHeader = aec_blocks:to_header(PrevBlock),
 
-             {NewBlock, _} = aec_test_utils:create_keyblock_with_state(
-                               [{PrevBlock, aec_trees:new()}], ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
+               {NewBlock, _} = aec_test_utils:create_keyblock_with_state(
+                                 [{PrevBlock, aec_trees:new()}], ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
 
-             ?assertEqual(12, aec_blocks:height(NewBlock)),
-             SerializedBlockHeader = aec_headers:serialize_to_binary(BlockHeader),
-             ?assertEqual(aec_hash:hash(header, SerializedBlockHeader),
-                          aec_blocks:prev_hash(NewBlock)),
-             ?assertError(_, aec_blocks:txs(NewBlock)),
-             ?assertEqual(17, aec_blocks:target(NewBlock)),
-             ?assertEqual(aec_hard_forks:protocol_effective_at_height(12),
-                          aec_blocks:version(NewBlock)),
-             ?assertEqual(?MINER_PUBKEY, aec_blocks:miner(NewBlock)),
-             ?assertEqual(?BENEFICIARY_PUBKEY, aec_blocks:beneficiary(NewBlock))
-     end}.
+               ?assertEqual(12, aec_blocks:height(NewBlock)),
+               SerializedBlockHeader = aec_headers:serialize_to_binary(BlockHeader),
+               ?assertEqual(aec_hash:hash(header, SerializedBlockHeader),
+                            aec_blocks:prev_hash(NewBlock)),
+               ?assertError(_, aec_blocks:txs(NewBlock)),
+               ?assertEqual(17, aec_blocks:target(NewBlock)),
+               ?assertEqual(aec_hard_forks:protocol_effective_at_height(12),
+                            aec_blocks:version(NewBlock)),
+               ?assertEqual(?MINER_PUBKEY, aec_blocks:miner(NewBlock)),
+               ?assertEqual(?BENEFICIARY_PUBKEY, aec_blocks:beneficiary(NewBlock))
+       end}]}.
 
 difficulty_recalculation_test_() ->
       [ {"For good mining speed mine block with almost the same difficulty",
@@ -121,5 +125,13 @@ compute_chain(Now, Height, Target, MiningOffset) ->
                     H2 = aec_headers:set_target(H1, Target),
                     [aec_headers:set_time_in_msecs(H2, Now - ((Height - H) * MineTime)) | Bs]
                 end, [], lists:seq(Height - (N + 1), Height - 1)).
+
+setup() ->
+    InitialApps = {running_apps(), loaded_apps()},
+    {ok, _} = application:ensure_all_started(setup), %% For data_dir.
+    InitialApps.
+
+teardown({OldRunningApps, OldLoadedApps}) ->
+    ok = restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps).
 
 -endif.
