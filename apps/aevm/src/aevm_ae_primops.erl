@@ -136,7 +136,7 @@ types(?PRIM_CALL_AENS_CLAIM,_HeapValue,_Store,_State) ->
     {[word, string, word, sign_t()], tuple0_t()};
 types(?PRIM_CALL_AENS_PRECLAIM,_HeapValue,_Store,_State) ->
     {[word, word, sign_t()], tuple0_t()};
-types(?PRIM_CALL_AENS_RESOLVE, HeapValue, Store, State) ->
+types(?PRIM_CALL_AENS_RESOLVE, HeapValue, _Store, State) ->
     %% The out type is given in the third argument
     T = {tuple, [word, word, word, typerep]},
     {ok, Bin} = aevm_eeevm_state:heap_value_to_binary(T, HeapValue, State),
