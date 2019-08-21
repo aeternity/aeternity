@@ -2451,8 +2451,14 @@ sc_ws_snapshot_solo(Config0) ->
     Round0 = 2,
     ct:log("*** Initiator tries snapshot before there's an offchain_tx"
            " - should fail ***", []),
-    {error, _} = perform_snapshot_solo(initiator, Round0,
-                                       Ps, Cs, Config), % no offchain tx
+    {error, OffchainExpected}
+        = perform_snapshot_solo(initiator, Round0,
+                                Ps, Cs, Config),
+    {json_rpc_error,
+     #{ <<"message">> := <<"Action not allowed">>
+      , <<"data">> := [#{ <<"code">> := 1012
+                        , <<"message">> := <<"Offchain tx expected">> }] }}
+        = OffchainExpected,
     assert_no_registered_events(?LINE, Config),
     ct:log("*** Perform updates to create an offchain_tx"
            " - should succeed ***", []),
@@ -2465,9 +2471,15 @@ sc_ws_snapshot_solo(Config0) ->
     {ok, no_update} = perform_snapshot_solo(responder, no_update,
                                             Ps, Cs, Config),
     ct:log("*** Responder tries another snapshot"
-           " - should fail (same round) ***", []),
-    {error, _} = perform_snapshot_solo(responder, Round2,
-                                       Ps, Cs, Config), % same round
+           " - should fail (already on chain) ***", []),
+    {error, AlreadyOnchain}
+        = perform_snapshot_solo(responder, Round2,
+                                Ps, Cs, Config),
+    {json_rpc_error, #{ <<"message">> := <<"Rejected">>
+                      , <<"data">> := [#{ <<"code">> := 1013
+                                        , <<"message">> :=
+                                              <<"Tx already on-chain">> }] }}
+        = AlreadyOnchain,
     ct:log("*** Perform another round of updates"
            " - should succeed ***", []),
     Round3 = sc_ws_update_basic_round_(Round2 + 1, Config),

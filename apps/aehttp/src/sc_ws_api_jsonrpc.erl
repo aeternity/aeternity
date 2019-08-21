@@ -167,6 +167,7 @@ json_rpc_error_object(contract_init_failed, R) -> error_obj(3     , [1007], R);
 json_rpc_error_object(not_a_number        , R) -> error_obj(3     , [1008], R);
 json_rpc_error_object(participant_not_found, R)-> error_obj(3     , [1011], R);
 json_rpc_error_object(not_offchain_tx     , R) -> error_obj(2     , [1012], R);
+json_rpc_error_object(already_onchain     , R) -> error_obj(3     , [1013], R);
 json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
 json_rpc_error_object(not_found           , R) -> error_obj(3     , [100] , R);
@@ -239,6 +240,7 @@ error_data_msgs() ->
      , 1010 => <<"Broken encoding: transaction">>
      , 1011 => <<"Participant not found">>
      , 1012 => <<"Offchain tx expected">>
+     , 1013 => <<"Tx already on-chain">>
      }.
 
 broken_encoding_code(account    ) -> 1005;
