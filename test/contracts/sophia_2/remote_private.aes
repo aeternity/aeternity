@@ -1,0 +1,19 @@
+
+contract Remote =
+  function exported_endpoint : (int) => int
+  function private_endpoint : (int) => int
+
+contract RemotePrivate =
+
+  function call_exported(r : Remote, x : int) =
+    r.exported_endpoint(x)
+
+  function call_private(r : Remote, x : int) =
+    r.private_endpoint(x)
+
+  private function private_endpoint(x : int) =
+    x
+
+  function exported_endpoint(x : int) =
+    private_endpoint(x)
+
