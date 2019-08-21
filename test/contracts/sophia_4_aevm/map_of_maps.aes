@@ -56,7 +56,7 @@ contract MapOfMaps =
     ()
 
   entrypoint test3_check() =
-    state.small2 == {["a"] = "b"}
+    state.small2["a"] == "b"  // Can't compare maps in AEVM
 
   // -- Returning nested maps
 

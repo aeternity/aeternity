@@ -33,4 +33,38 @@ contract MapOfMaps =
   function test1_check() =
     state.big1
 
+  // -- Inplace update
+
+  function small1() = state.small1
+
+  stateful function test2_setup() =
+    put(empty_state() { small1 = {["key"] = "val"} })
+
+  stateful function test2_execute() =
+    put(state{ small1 = small1() })
+    put(state{ small1["key2"] = "val2" })
+
+  function test2_check() =
+    state.small1
+
+  // -- Map equality
+
+  stateful function test3_setup() =
+    put(empty_state() { small2 = {["a"] = "b"} })
+
+  function test3_execute() =
+    ()
+
+  function test3_check() =
+    state.small2["a"] == "b"  // Can't compare maps in AEVM
+
+  // -- Returning nested maps
+
+  stateful function test4_setup() =
+    put(empty_state())
+
+  stateful function test4_execute() =
+    put(state{ big1 = {["a"] = {["b"] = "c"}} })
+
+  function test4_check() = state.big1
 
