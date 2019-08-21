@@ -23,6 +23,7 @@
 -export([ state/0, state/1
         , new_account/2
         , create_contract/5
+        , create_contract_with_code/5
         , call_contract/7
         ]).
 
@@ -120,6 +121,7 @@
         , sophia_big_map_benchmark/1
         , sophia_pmaps/1
         , sophia_map_of_maps/1
+        , sophia_polymorphic_entrypoint/1
         , sophia_arity_check/1
         , sophia_chess/1
         , sophia_variant_types/1
@@ -129,6 +131,7 @@
         , sophia_aens_resolve/1
         , sophia_aens_transactions/1
         , sophia_state_handling/1
+        , sophia_remote_state/1
         , sophia_state_gas/1
         , sophia_no_callobject_for_remote_calls/1
         , sophia_operators/1
@@ -263,6 +266,7 @@ all() ->
                        , {group, sophia_aevm_specific}]).
 
 -define(FATE_SPECIFIC, [ fate_environment
+                       , sophia_polymorphic_entrypoint
                        ]).
 
 -define(FATE_TODO, [ {group, sophia_oracles_gas_ttl}
@@ -347,6 +351,7 @@ groups() ->
                                  sophia_aens_resolve,
                                  sophia_aens_transactions,
                                  sophia_state_handling,
+                                 sophia_remote_state,
                                  sophia_state_gas,
                                  sophia_no_callobject_for_remote_calls,
                                  sophia_operators,
@@ -1695,6 +1700,14 @@ sophia_state(_Cfg) ->
     PopFail      = ?call(call_contract, Acc1, Stack, pop, string, {}),
     ?assertMatchAEVM({error, <<"out_of_gas">>}, PopFail),
     ?assertMatchFATE({error, <<"Incomplete patterns">>}, PopFail),
+    ok.
+
+sophia_remote_state(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Ct1 = ?call(create_contract, Acc, remote_state2, {<<"ct1-initial">>}),
+    Ct2 = ?call(create_contract, Acc, remote_state2, {<<"ct2-initial">>}),
+    <<"ct2-updated">> = ?call(call_contract, Acc, Ct1, test, string, {?cid(Ct2), <<"ct2-updated">>}),
     ok.
 
 %% There was a bug matching on _::_.
@@ -4061,6 +4074,23 @@ sophia_map_of_maps(_Cfg) ->
 
     ok.
 
+sophia_polymorphic_entrypoint(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Ct1 = ?call(create_contract, Acc, polymorphic_entrypoint, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
+    Ct2 = ?call(create_contract, Acc, polymorphic_entrypoint, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
+
+    Res = ?call(call_contract, Acc, Ct1, test, {map, string, {map, string, string}}, {?cid(Ct2), #{}, #{}}),
+    ?assertEqual(#{<<"">> => #{}}, Res),
+
+    ?assertMatch({error, <<"Type of remote function does not match expected type">>},
+        ?call(call_contract, Acc, Ct1, test_bad, string, {?cid(Ct2), <<>>, #{}})),
+
+    ?assertMatch({error, <<"Type of remote function does not match expected type">>},
+        ?call(call_contract, Acc, Ct1, test_bad_mono, string, {?cid(Ct2), <<>>, #{}})),
+
+    ok.
+
 sophia_variant_types(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc = <<AccId:256>> = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
@@ -5307,20 +5337,20 @@ call_wrong_type(_Cfg) ->
     ?assertMatchVM(<<"out_of_gas">>, <<"Type error on call:", _/binary>>, Error1),
     {error, Error2} = ?call(call_contract, Acc1, Contract1, remote_wrong_ret, {tuple, [string]},
                             {?cid(Contract2), <<"hello">>}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error2),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error2),
     {error, Error3} = ?call(call_contract, Acc1, Contract1, remote_wrong_ret_tailcall, word,
                             {?cid(Contract2), <<"hello">>}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error3),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error3),
     {error, Error4} = ?call(call_contract, Acc1, Contract1, remote_wrong_ret_tailcall_type_vars, word,
                             {?cid(Contract2), <<"hello">>}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error4),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error4),
 
     {error, Error5} = ?call(call_contract, Acc1, Contract1, remote_wrong_put, {tuple, []}, {?cid(Contract2), 42}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error5),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error5),
     1 = ?call(call_contract, Acc1, Contract1, next_state, word, {}),
 
     {error, Error6} = ?call(call_contract, Acc1, Contract1, remote_wrong_put_polymorphic, {tuple, []}, {?cid(Contract2), 43}),
-    ?assertMatchVM(<<"out_of_gas">>, <<"Type error on return:", _/binary>>, Error6),
+    ?assertMatchVM(<<"out_of_gas">>, <<"Type of remote function does not match expected type">>, Error6),
     1 = ?call(call_contract, Acc1, Contract1, next_state, word, {}),
     ok.
 

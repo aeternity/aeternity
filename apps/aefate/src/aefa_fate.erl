@@ -23,6 +23,7 @@
         , check_return_type/1
         , check_signature_and_bind_args/3
         , bind_args_from_signature/2
+        , ensure_contract_store/2
         , unfold_store_maps/2
         , unfold_store_maps_in_args/2
         , check_type/2
@@ -208,6 +209,8 @@ abort({undefined_var, Var}, ES) ->
     ?t("Undefined var: ~p", [Var], ES);
 abort({bad_return_type, Val, Type}, ES) ->
     ?t("Type error on return: ~p is not of type ~p", [Val, Type], ES);
+abort(remote_type_mismatch, ES) ->
+    ?t("Type of remote function does not match expected type", [], ES);
 abort({function_arity_mismatch, Got, Expected}, ES) ->
     ?t("Expected ~p arguments, got ~p", [Expected, Got], ES);
 abort({value_does_not_match_type, Val, Type}, ES) ->
@@ -451,7 +454,7 @@ infer_type(X) -> throw({not_a_fate_value, X}).
 infer_element_type(Xs) ->
     lists:foldl(fun intersect_types/2, any, [infer_type(X) || X <- Xs]).
 
-instantiate_type(TVars, {tvar, X})          -> maps:get(X, TVars, {tvar, X});
+instantiate_type(TVars, {tvar, X})          -> maps:get(X, TVars, any);
 instantiate_type(_TVars, T) when is_atom(T) -> T;
 instantiate_type(TVars, {list, T})          -> {list, instantiate_type(TVars, T)};
 instantiate_type(TVars, {tuple, Ts})        -> {tuple, [instantiate_type(TVars, T) || T <- Ts]};
@@ -573,13 +576,18 @@ push(V, ES) ->
 push_return_address(ES) ->
     aefa_engine_state:push_call_stack(ES).
 
-push_return_type_check({_,_CalleeRetType}, {_,CallerRetType}, CallerTVars, ES) ->
-    %% TODO: Figure out under what exact conditions the type test can be avoided.
-    %%       Obviously, with no type variables and with exactly the same type,
-    %%       the test is superfluous.
-    %% TODO: At this point we can also find out that the tail call will never
-    %%       succeed because the return types cannot match.
-    aefa_engine_state:push_return_type_check(CallerRetType, CallerTVars, ES).
+push_return_type_check({CalleeArgs, CalleeRet}, {CallerArgs, CallerRet}, CalleeTVars, ES) ->
+    CalleeSig = {tuple, [CalleeRet | CalleeArgs]},
+    CallerSig = {tuple, [CallerRet | CallerArgs]},
+
+    %% CallerTVars instantiates the type vars in CalleeSig, so we have to
+    %% unify CalleeSig and CallerSig to get the instantiation for the Caller
+    %% tvars.
+    InstCalleeSig = instantiate_type(CalleeTVars, CalleeSig),
+    case match_type(CallerSig, InstCalleeSig) of
+        false       -> abort(remote_type_mismatch, ES);
+        CallerTVars -> aefa_engine_state:push_return_type_check(CallerRet, CallerTVars, ES)
+    end.
 
 %% Push a gas cap on the call stack to limit the available gas, but keep the
 %% remaining gas around.
@@ -631,14 +639,14 @@ unfold_store_maps(Val, ES) ->
     case aeb_fate_maps:has_store_maps(Val) of
         true ->
             Pubkey = aefa_engine_state:current_contract(ES),
-            Store  = aefa_engine_state:stores(ES),
+            {Store, ES1} = ensure_contract_store(Pubkey, ES),
             Store1 = aefa_stores:cache_map_metadata(Pubkey, Store),
-            ES1    = aefa_engine_state:set_stores(Store1, ES),
+            ES2    = aefa_engine_state:set_stores(Store1, ES1),
             Unfold = fun(Id) ->
                         {List, _Store2} = aefa_stores:store_map_to_list(Pubkey, Id, Store1),
                         maps:from_list(List)
                      end,
-            {aeb_fate_maps:unfold_store_maps(Unfold, Val), ES1};
+            {aeb_fate_maps:unfold_store_maps(Unfold, Val), ES2};
         false ->
             {Val, ES}
     end.

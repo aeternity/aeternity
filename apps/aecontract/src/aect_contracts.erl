@@ -513,7 +513,6 @@ assert_field_store(store_k = Field, X, #{vm := VM} = Version) when is_binary(X),
     catch _:_ -> error({illegal, Field, X}) end;
 assert_field_store(store_k, X, #{vm := VM}) when is_binary(X),
                                                  byte_size(X) > 0,
-                                                 byte_size(X) =< 32,
                                                  ?IS_FATE_SOPHIA(VM) ->
     X;
 assert_field_store(store_v, X,_Version) when is_binary(X) -> X.
