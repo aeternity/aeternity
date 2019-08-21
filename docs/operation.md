@@ -44,7 +44,7 @@ To verify that node is connected to the mainnet, your node should see the same l
 
 Inspect the current top of the blockchain as seen by the mainnet:
 ```bash
-curl http://13.53.161.215:3013/v2/blocks/top
+curl https://mainnet.aeternity.io/v2/blocks/top
 ```
 
 Inspect the current top of the blockchain as seen by your node:

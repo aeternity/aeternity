@@ -53,26 +53,13 @@ For installation of a node using the Docker image, please refer to [its document
 
 ### Mainnet seed nodes
 
-The release package comes preconfigured with seed nodes. Here is example subset of the seed nodes:
-
-* aenode://pp_2L8A5vSjnkLtfFNpJNgP9HbmGLD7ZAGFxoof47N8L4yyLAyyMi@18.136.37.63:3015
-* aenode://pp_2gPZjuPnJnTVEbrB9Qgv7f4MdhM4Jh6PD22mB2iBA1g7FRvHTk@52.220.198.72:3015
-* aenode://pp_tVdaaX4bX54rkaVEwqE81hCgv6dRGPPwEVsiZk41GXG1A4gBN@3.16.242.93:3015
-* aenode://pp_2mwr9ikcyUDUWTeTQqdu8WJeQs845nYPPqjafjcGcRWUx4p85P@3.17.30.101:3015
-* aenode://pp_2CAJwwmM2ZVBHYFB6na1M17roQNuRi98k6WPFcoBMfUXvsezVU@13.58.177.66:3015
-* aenode://pp_7N7dkCbg39MYzQv3vCrmjVNfy6QkoVmJe3VtiZ3HRncvTWAAX@13.53.114.199:3015
-* aenode://pp_22FndjTkMMXZ5gunCTUyeMPbgoL53smqpM4m1Jz5fVuJmPXm24@13.53.149.181:3015
-* aenode://pp_Xgsqi4hYAjXn9BmrU4DXWT7jURy2GoBPmrHfiCoDVd3UPQYcU@13.53.164.121:3015
-* aenode://pp_vTDXS3HJrwJecqnPqX3iRxKG5RBRz9MdicWGy8p9hSdyhAY4S@13.53.77.98:3015
+The release package comes preconfigured with seed nodes if the `network_id` configuration parameter is set to `ae_mainnet` - which is the default.
 
 ### Inspect the mainnet
 
-Here are example nodes that can be used to inspect current top block and see information about e.g. height or target:
+[Mainnet API gateway](https://mainnet.aeternity.io/v2/status) can be used to inspect current top block and see information about e.g. height or target:
 
-* http://18.136.37.63:3013/v2/blocks/top
-* http://52.220.198.72:3013/v2/blocks/top
-* http://13.53.114.199:3013/v2/blocks/top
-* http://13.53.149.181:3013/v2/blocks/top
+https://mainnet.aeternity.io/v2/blocks/top
 
 ## Join the testnet
 
@@ -82,22 +69,13 @@ For running a node as part of the testnet by using the Docker image, please cons
 
 ### Testnet seed nodes
 
-In order to join testnet reconfigure seed nodes in the release package:
-
-* aenode://pp_QU9CvhAQH56a2kA15tCnWPRJ2srMJW8ZmfbbFTAy7eG4o16Bf@52.10.46.160:3015
-* aenode://pp_2vhFb3HtHd1S7ynbpbFnEdph1tnDXFSfu4NGtq46S2eM5HCdbC@18.195.109.60:3015
-* aenode://pp_27xmgQ4N1E3QwHyoutLtZsHW5DSW4zneQJ3CxT5JbUejxtFuAu@13.250.162.250:3015
-* aenode://pp_DMLqy7Zuhoxe2FzpydyQTgwCJ52wouzxtHWsPGo51XDcxc5c8@13.53.161.215:3015
+In order to join testnet set the node configuration parameter `network_id` to `ae_uat`
 
 ### Inspect the testnet
 
-The core nodes of the public test network are accessible from the Internet.
+[Testnet API gateway](https://testnet.aeternity.io/v2/status) can be used to inspect current top block and see information about e.g. height or target:
 
-Information, e.g. height, of the top block of the longest chain as seen by these core nodes of the testnet can be obtained by opening in the browser any of the following URLs:
-* http://52.10.46.160:3013/v2/blocks/top
-* http://18.195.109.60:3013/v2/blocks/top
-* http://13.250.162.250:3013/v2/blocks/top
-* http://13.53.161.215:3013/v2/blocks/top
+https://mainnet.aeternity.io/v2/blocks/top
 
 ### Setup your node
 
