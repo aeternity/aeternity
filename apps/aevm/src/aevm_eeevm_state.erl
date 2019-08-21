@@ -41,6 +41,7 @@
         , gastable/1
         , get_contract_call_input/4
         , heap_to_binary/3
+        , heap_value_to_binary/3
         , heap_to_heap/3
         , init/2
         , jumpdests/1
@@ -271,14 +272,24 @@ do_revert(Us0, Us1, State0) ->
             set_out(Out, State1)
     end.
 
-%% TODO: Pass ABI version?
+%% heap_to_binary broken for nested store maps pre VM_AEVM_SOPHIA_4.
+heap_to_binary_check_vm(Type, Store, HeapValue, MaxSize, State) ->
+    case vm_version(State) < ?VM_AEVM_SOPHIA_4 of
+        true  -> aevm_data_v1:heap_to_binary(Type, Store, HeapValue, MaxSize);
+        false -> aevm_data:heap_to_binary(Type, Store, HeapValue, MaxSize)
+    end.
+
+heap_value_to_binary(Type, HeapValue, State) ->
+    Store = storage(State),
+    heap_to_binary_check_vm(Type, Store, HeapValue, infinity, State).
+
 heap_to_binary(Type, Ptr, State) ->
     Store = storage(State),
     Heap  = mem(State),
     Maps  = maps(State),
     Value = aeb_heap:heap_value(Maps, Ptr, Heap),
     MaxWords = aevm_gas:mem_limit_for_gas(gas(State), State),
-    case aevm_data:heap_to_binary(Type, Store, Value, MaxWords * 32) of
+    case heap_to_binary_check_vm(Type, Store, Value, MaxWords * 32, State) of
         {ok, Bin} ->
             GasUsed = aevm_gas:mem_gas(byte_size(Bin) div 32, State),
             {ok, Bin, GasUsed};
@@ -417,7 +428,7 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
             HeapValue  = aeb_heap:heap_value(maps(State), ArgPtr, Heap),
             GetFstWord =
                 fun() ->
-                    case aevm_data:heap_to_binary({tuple, [word]}, Store, HeapValue) of
+                    case heap_value_to_binary({tuple, [word]}, HeapValue, State) of
                         {ok, Bin} ->
                             case aeb_heap:from_binary({tuple, [word]}, Bin) of
                                 {ok, {Val}}   -> {ok, Val};

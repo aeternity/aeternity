@@ -136,10 +136,10 @@ types(?PRIM_CALL_AENS_CLAIM,_HeapValue,_Store,_State) ->
     {[word, string, word, sign_t()], tuple0_t()};
 types(?PRIM_CALL_AENS_PRECLAIM,_HeapValue,_Store,_State) ->
     {[word, word, sign_t()], tuple0_t()};
-types(?PRIM_CALL_AENS_RESOLVE, HeapValue, Store,_State) ->
+types(?PRIM_CALL_AENS_RESOLVE, HeapValue, Store, State) ->
     %% The out type is given in the third argument
     T = {tuple, [word, word, word, typerep]},
-    {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
+    {ok, Bin} = aevm_eeevm_state:heap_value_to_binary(T, HeapValue, State),
     {ok, {_Prim, _, _, OutType}} = aeb_heap:from_binary(T, Bin),
     {[string, string, typerep], option_t(OutType)};
 types(?PRIM_CALL_AENS_REVOKE,_HeapValue,_Store, State) ->
@@ -162,9 +162,9 @@ types(?PRIM_CALL_MAP_DELETE,_HeapValue,_Store,_State) ->
     {[word, word], word};
 types(?PRIM_CALL_MAP_EMPTY,_HeapValue,_Store,_State) ->
     {[typerep, typerep], word};
-types(?PRIM_CALL_MAP_GET, HeapValue, Store, State) ->
+types(?PRIM_CALL_MAP_GET, HeapValue, _Store, State) ->
     T = {tuple, [word, word]},
-    {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
+    {ok, Bin} = aevm_eeevm_state:heap_value_to_binary(T, HeapValue, State),
     {ok, {_Prim, Id}} = aeb_heap:from_binary(T, Bin),
     {_KeyType, ValType} = aevm_eeevm_maps:map_type(Id, State),
     {[word, word], option_t(ValType)};
@@ -172,9 +172,9 @@ types(?PRIM_CALL_MAP_PUT,_HeapValue,_Store,_State) ->
     {[word, word, word], word};
 types(?PRIM_CALL_MAP_SIZE,_HeapValue,_Store,_State) ->
     {[word], word};
-types(?PRIM_CALL_MAP_TOLIST, HeapValue, Store, State) ->
+types(?PRIM_CALL_MAP_TOLIST, HeapValue, _Store, State) ->
     T = {tuple, [word, word]},
-    {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
+    {ok, Bin} = aevm_eeevm_state:heap_value_to_binary(T, HeapValue, State),
     {ok, {_Prim, Id}} = aeb_heap:from_binary(T, Bin),
     {KeyType, ValType} = aevm_eeevm_maps:map_type(Id, State),
     {[word], {list, {tuple, [KeyType, ValType]}}};
@@ -260,9 +260,9 @@ oracle_response_type_from_chain(HeapValue, Store, State) ->
 oracle_query_type_from_chain(HeapValue, Store, State) ->
     oracle_type_from_chain(HeapValue, Store, State, query).
 
-oracle_type_from_chain(HeapValue, Store, State, Which) ->
+oracle_type_from_chain(HeapValue, _Store, State, Which) ->
     T = {tuple, [word, word]},
-    {ok, Bin} = aevm_data:heap_to_binary(T, Store, HeapValue),
+    {ok, Bin} = aevm_eeevm_state:heap_value_to_binary(T, HeapValue, State),
     {ok, {_Prim, OracleID}} = aeb_heap:from_binary(T, Bin),
     API        = aevm_eeevm_state:chain_api(State),
     ChainState = aevm_eeevm_state:chain_state(State),
