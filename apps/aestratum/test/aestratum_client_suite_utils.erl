@@ -31,7 +31,7 @@ setup_nodes(NodesList, CustomNodeCfg, CTCfg) ->
 
 start_node(N, Cfg) ->
     TopClientDir = ?config(top_client_dir, Cfg),
-    Flags = ["-pa ", TopClientDir ++ "aestratum_client/_build/test/lib/aestratum_client"],
+    Flags = ["-pa ", TopClientDir ++ "_build/test/lib/aestratum_client"],
     aecore_suite_utils:cmd(?OPS_BIN, node_shortcut(N, Cfg), "bin", ["start"],
         [
          {"ERL_FLAGS", Flags},
@@ -162,7 +162,7 @@ top_dir(DataDir) ->
     Top.
 
 top_client_dir(Top) ->
-    Top ++ "_build/test/aestratum_client/".
+    Top ++ "_build/test/lib/aestratum_client/".
 
 make_vm_args_file(F, N) ->
     {ok, S} = file:open(F, [write]),

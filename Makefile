@@ -246,15 +246,6 @@ ct-mnesia-rocksdb: SYSCONFIG=config/test-lima.config
 ct-mnesia-rocksdb: AETERNITY_TESTCONFIG_DB_BACKEND=rocksdb
 ct-mnesia-rocksdb: internal-ct
 
-stratum-client-internal-build:
-	@(cd ./_build/$(KIND)/ && \
-	  if [ ! -d aestratum_client ]; then \
-	      git clone --branch v0.1.1 --depth 1 https://github.com/aeternity/aestratum_client; \
-	  fi && \
-	  cd aestratum_client && \
-	  $(REBAR) as $(KIND) compile -d && \
-	  $(REBAR) as $(KIND) release)
-
 REVISION:
 	@git rev-parse HEAD > $@
 
@@ -502,7 +493,8 @@ internal-clean:
 internal-distclean:
 	@rm -rf ./_build/$(KIND)
 
-internal-ct: internal-build stratum-client-internal-build
+internal-ct: internal-build
+	cd _build/$(KIND)/lib/aestratum_client && ../../../../$(REBAR) as test release
 	@NODE_PROCESSES="$$(ps -fea | grep bin/aeternity | grep -v grep)"; \
 	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
 		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
@@ -528,9 +520,17 @@ build-uml: ${PLANTUML_JAR} ${uml-svg-files}
 %.svg: %.puml
 	${PLANTUML} -tsvg $<
 
+# Convenience target to test/force re-generation of the Fate op module
+regen-fate:
+	make -C apps/aefate clean
+	${REBAR} compile
+
+test-arch-os-dependencies: KIND=test
+test-arch-os-dependencies:
+	make ct-latest SUITE=apps/aecontract/test/aecontract GROUP=sophia TEST=sophia_crypto
+
 .PHONY: \
 	all console \
-	stratum-client-internal-build \
 	local-build local-start local-stop local-attach \
 	prod-build prod-start prod-stop prod-attach prod-package prod-compile-deps \
 	multi-build multi-start multi-stop multi-clean multi-distclean \
@@ -544,6 +544,7 @@ build-uml: ${PLANTUML_JAR} ${uml-svg-files}
 	ct-latest ct-roma ct-minerva ct-fortuna ct-lima ct-mnesia-leveled ct-mnesia-rocksdb \
 	eunit-latest eunit-roma eunit-minerva eunit-fortuna eunit-lima\
 	system-smoke-test-deps system-test-deps \
+	test-arch-os-dependencies \
 	kill killall \
 	clean distclean \
 	swagger swagger-docs swagger-check swagger-version-check \
@@ -551,4 +552,5 @@ build-uml: ${PLANTUML_JAR} ${uml-svg-files}
 	rebar-lock-check \
 	python-env python-ws-test python-uats python-single-uat python-release-test python-package-win32-test \
 	REVISION \
-	prod-deb-package
+	prod-deb-package \
+	regen-fate
