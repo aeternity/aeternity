@@ -252,22 +252,22 @@ REVISION:
 eunit-roma: KIND=test
 eunit-roma:
 	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_roma_testnet" \
-		$(REBAR) do release, eunit $(EUNIT_TEST_FLAGS)
+		$(REBAR) eunit $(EUNIT_TEST_FLAGS)
 
 eunit-minerva: KIND=test
 eunit-minerva:
 	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_minerva_testnet" \
-		$(REBAR) do release, eunit $(EUNIT_TEST_FLAGS)
+		$(REBAR) eunit $(EUNIT_TEST_FLAGS)
 
 eunit-fortuna: KIND=test
 eunit-fortuna:
 	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_fortuna_testnet" \
-		$(REBAR) do release, eunit $(EUNIT_TEST_FLAGS)
+		$(REBAR) eunit $(EUNIT_TEST_FLAGS)
 
 eunit-lima: KIND=test
 eunit-lima:
 	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_lima_testnet" \
-		$(REBAR) release, eunit $(EUNIT_TEST_FLAGS)
+		$(REBAR) eunit $(EUNIT_TEST_FLAGS)
 
 eunit-latest: eunit-lima
 
@@ -304,7 +304,7 @@ system-smoke-test-deps:
 
 local-system-test: KIND=system_test
 local-system-test:
-	@$(REBAR) as $(KIND) do ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
+	@$(REBAR) as $(KIND) ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
 
 system-test-deps:
 	$(MAKE) system-smoke-test-deps
