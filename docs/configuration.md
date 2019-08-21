@@ -63,7 +63,7 @@ In order to start UPnP/NAT-PMP service:
 * make sure UPnP/NAT-PMP is enabled on your router;
 * in your user configuration file, set `sync` > `upnp_enabled` parameter to `true`.
 
-Then, the node will automatically create appropriate port mapping based on the configuration params.
+Then, the node will automatically create appropriate port mapping based on the configuration parameters.
 
 #### Port Check
 
@@ -75,14 +75,14 @@ nc -zv $(curl -s https://api.ipify.org) 3015
 
 Example output:
 ```
-Connection to 13.53.161.215 3015 port [tcp/*] succeeded!
+Connection to 203.0.113.27 3015 port [tcp/*] succeeded!
 ```
 
-Where the IP address should be the external IP address of the node under test (it's one of the seed nodes in this example).
+Where the IP address shown in the output is the external IP address of the node under test.
 
 ### Channels
 
-The node provides an infrastructure for using state channes. There are two
+The node provides an infrastructure for using state channels. There are two
 distinct protocols involved:
 
 * WebSocket client one
