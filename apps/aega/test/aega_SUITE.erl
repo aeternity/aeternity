@@ -40,6 +40,11 @@
         , bitcoin_contract_create/1
         , bitcoin_contract_call/1
 
+        , ethereum_attach/1
+        , ethereum_spend_from/1
+        , ethereum_contract_create/1
+        , ethereum_contract_call/1
+
         , oracle_register/1
         , oracle_query/1
         , oracle_query_x2/1
@@ -97,6 +102,7 @@ groups() ->
     [ {aevm, [], [ {group, simple}
                  , {group, basic}
                  , {group, bitcoin}
+                 , {group, ethereum}
                  , {group, oracle}
                  , {group, channel}
                  , {group, multi_wrap}
@@ -105,6 +111,7 @@ groups() ->
     , {fate, [], [ {group, simple}
                  , {group, basic}
                  , {group, bitcoin}
+                 , {group, ethereum}
                  , {group, oracle}
                  , {group, channel}
                  , {group, multi_wrap}
@@ -134,6 +141,12 @@ groups() ->
                     , bitcoin_contract_create
                     , bitcoin_contract_call
                     ]}
+
+    , {ethereum, [], [ ethereum_attach
+                     , ethereum_spend_from
+                     , ethereum_contract_create
+                     , ethereum_contract_call
+                     ]}
 
     , {oracle, [], [ oracle_register
                    , oracle_query
@@ -503,6 +516,62 @@ bitcoin_contract_call(_Cfg) ->
         ?call(ga_create, Acc1, AuthOpts, "identity", []),
 
     AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(bitcoin_auth, Acc1, "2", TxHash) end },
+    {ok, #{call_res := ok, call_val := Val}} =
+        ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main", ["42"]),
+    ?assertMatchABI("42", 42, decode_call_result("identity", "main", ok, Val)),
+
+    ok.
+
+%%%===================================================================
+%%% Ethereum GA tests
+%%%===================================================================
+-define(SECP256K1_ADDR, binary:part(sha3:hash(256, ?SECP256K1_PUB), 32, -20)).
+-define(E_OWNER, aega_test_utils:to_hex_lit(20, ?SECP256K1_ADDR)).
+
+ethereum_attach(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    {ok, _} = ?call(attach, Acc1, "ethereum_auth", "authorize", [?E_OWNER]),
+    ok.
+
+ethereum_spend_from(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "ethereum_auth", "authorize", [?E_OWNER]),
+
+    AuthOpts    = #{ prep_fun => fun(TxHash) -> ?call(ethereum_auth, Acc1, "1", TxHash) end },
+    PreBalance  = ?call(account_balance, Acc2),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000 * MinGP),
+    PostBalance = ?call(account_balance, Acc2),
+    ?assertMatch({X, Y} when X + 500 == Y, {PreBalance, PostBalance}),
+
+    ok.
+
+ethereum_contract_create(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "ethereum_auth", "authorize", [?E_OWNER]),
+
+    AuthOpts = #{ prep_fun => fun(TxHash) -> ?call(ethereum_auth, Acc1, "1", TxHash) end },
+    {ok, #{init_res := ok}} = ?call(ga_create, Acc1, AuthOpts, "identity", []),
+
+    ok.
+
+ethereum_contract_call(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "ethereum_auth", "authorize", [?E_OWNER]),
+
+    AuthOpts = #{ prep_fun => fun(TxHash) -> ?call(ethereum_auth, Acc1, "1", TxHash) end },
+    {ok, #{init_res := ok, ct_pubkey := Ct}} =
+        ?call(ga_create, Acc1, AuthOpts, "identity", []),
+
+    AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(ethereum_auth, Acc1, "2", TxHash) end },
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main", ["42"]),
     ?assertMatchABI("42", 42, decode_call_result("identity", "main", ok, Val)),
@@ -1497,3 +1566,14 @@ bitcoin_auth(_GA, Nonce, TxHash, S) ->
     Sig  = aega_test_utils:to_hex_lit(64, aeu_crypto:ecdsa_from_der_sig(Sig0)),
     {aega_test_utils:make_calldata("bitcoin_auth", "authorize", [Nonce, Sig]), S}.
 
+ethereum_auth(_GA, Nonce, TxHash, S) ->
+    Val = case abi_version() of
+              ?ABI_AEVM_SOPHIA_1 -> <<32:256, TxHash/binary, (list_to_integer(Nonce)):256>>;
+              ?ABI_FATE_SOPHIA_1 -> aeb_fate_encoding:serialize({tuple, {{bytes, TxHash}, list_to_integer(Nonce)}})
+          end,
+    Msg  = aec_hash:hash(tx, Val),
+    Sig0 = crypto:sign(ecdsa, sha256, {digest, Msg}, [?SECP256K1_PRIV, secp256k1]),
+    Sig1 = aeu_crypto:ecdsa_from_der_sig(Sig0),
+    Sig2 = aeu_crypto:ecdsa_recoverable_from_ecdsa(Msg, Sig1, ?SECP256K1_ADDR),
+    Sig  = aega_test_utils:to_hex_lit(65, Sig2),
+    {aega_test_utils:make_calldata("ethereum_auth", "authorize", [Nonce, Sig]), S}.
