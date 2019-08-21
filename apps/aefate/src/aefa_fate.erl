@@ -34,7 +34,7 @@
         , runtime_exit/2
         , runtime_revert/2
         , set_local_function/2
-        , set_remote_function/4
+        , set_remote_function/5
         , terms_are_of_same_type/2
         ]
        ).
@@ -231,6 +231,8 @@ abort({call_error, What}, ES) ->
     ?t("Error in call: ~w", [What], ES);
 abort({function_is_not_payable, Fun}, ES) ->
     ?t("Function with hash '~p' is not payable", [Fun], ES);
+abort({function_is_private, Fun}, ES) ->
+    ?t("Function with hash ~w is private", [Fun], ES);
 abort({primop_error, Which, What}, ES) ->
     ?t("Error in ~w: ~w", [Which, What], ES);
 abort(reentrant_call, ES) ->
@@ -293,7 +295,7 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
     Contract = aeb_fate_data:make_contract(ContractPubkey),
     Stores = aefa_stores:put_contract_store(ContractPubkey, Store, aefa_stores:new()),
     ES1 = aefa_engine_state:new(Gas, Value, Env, Stores, aefa_chain_api:new(Env), Cache),
-    ES2 = set_remote_function(Contract, Function, Value > 0, ES1),
+    ES2 = set_remote_function(Contract, Function, Value > 0, true, ES1),
     ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
     ES4 = check_signature_and_bind_args(length(Arguments), Signature, ES3),
@@ -309,7 +311,7 @@ check_remote(Contract, EngineState) ->
             abort(reentrant_call, EngineState)
     end.
 
-set_remote_function(?FATE_CONTRACT(Pubkey), Function, CheckPayable, ES) ->
+set_remote_function(?FATE_CONTRACT(Pubkey), Function, CheckPayable, CheckPrivate, ES) ->
     CodeCache = aefa_engine_state:code_cache(ES),
     case maps:get(Pubkey, CodeCache, void) of
         void ->
@@ -320,20 +322,24 @@ set_remote_function(?FATE_CONTRACT(Pubkey), Function, CheckPayable, ES) ->
                     ES1 = aefa_engine_state:set_code_cache(CodeCache1, ES),
                     ES2 = aefa_engine_state:set_chain_api(APIState1, ES1),
                     ES3 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, ES2),
-                    check_payable_and_set_local_function(CheckPayable, Function, ES3);
+                    check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES3);
                 error ->
                     abort({trying_to_call_contract, Pubkey}, ES)
             end;
         ContractCode ->
             ES1 = aefa_engine_state:update_for_remote_call(Pubkey, ContractCode, ES),
-            check_payable_and_set_local_function(CheckPayable, Function, ES1)
+            check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES1)
     end.
 
-check_payable_and_set_local_function(false, Function, ES) ->
+check_flags_and_set_local_function(false, false, Function, ES) ->
     set_local_function(Function, ES);
-check_payable_and_set_local_function(true, Function, ES) ->
-    case is_function_payable(Function, ES) of
-        true  -> set_local_function(Function, ES);
+check_flags_and_set_local_function(CheckPayable, CheckPrivate, Function, ES) ->
+    case (not CheckPayable) orelse is_function_payable(Function, ES) of
+        true  ->
+            case CheckPrivate andalso is_function_private(Function, ES) of
+                false -> set_local_function(Function, ES);
+                true  -> abort({function_is_private, Function}, ES)
+            end;
         false -> abort({function_is_not_payable, Function}, ES)
     end.
 
@@ -361,6 +367,11 @@ is_function_payable(Name, ES) ->
         {Attrs, _Signature, _Code} -> lists:member(payable, Attrs)
     end.
 
+is_function_private(Name, ES) ->
+    case maps:get(Name, aefa_engine_state:functions(ES), void) of
+        void -> abort({trying_to_call_function, Name}, ES);
+        {Attrs, _Signature, _Code} -> lists:member(private, Attrs)
+    end.
 
 check_return_type(ES) ->
     Current = aefa_engine_state:current_function(ES),
@@ -616,7 +627,7 @@ pop_call_stack(ES) ->
             {jump, BB, ES3};
         {remote, Contract, Function, TVars, BB, ES1} ->
             ES2 = unfold_store_maps(ES1),
-            ES3 = set_remote_function(Contract, Function, false, ES2),
+            ES3 = set_remote_function(Contract, Function, false, false, ES2),
             ES4 = aefa_engine_state:set_current_tvars(TVars, ES3),
             {jump, BB, ES4}
     end.
