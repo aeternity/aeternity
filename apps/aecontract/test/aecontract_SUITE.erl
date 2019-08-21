@@ -1404,7 +1404,6 @@ make_calldata_from_id(Id, Fun, Args, State) ->
 format_aevm_args(?cid(<<N:256>>)) -> N;
 format_aevm_args(?hsh(<<N:256>>)) -> N;
 format_aevm_args(?sig(<<W1:256, W2:256>>)) -> {W1, W2};
-format_aevm_args(?sig(<<W0:8, W1:256, W2:256>>)) -> {W0, W1, W2};
 format_aevm_args(?oid(<<N:256>>)) -> N;
 format_aevm_args(?qid(<<N:256>>)) -> N;
 format_aevm_args(<<N:256>>) -> N;
@@ -4470,11 +4469,11 @@ sophia_crypto(_Cfg) ->
           ?assertMatchAEVM2OOG(Exp, <<TestRes:256>>),
           ?assertMatchFATE({bytes, Exp}, TestRes)
       end || {Fun, Msg, Sig, Exp} <-
-             [ {test_recover_secp256k1, ?hsh(GoodMsg1), ?sig(GoodSig1_v),  aeu_hex:hex_to_bin(GoodHexAcc1)}
-             , {test_recover_secp256k1, ?hsh(BadMsg),   ?sig(BadSig),      aeu_hex:hex_to_bin(BadHexAcc)}
-             , {test_recover_secp256k1, ?hsh(GoodMsg1), ?sig(GoodSig1_v2), aeu_hex:hex_to_bin(GoodHexAcc1)}
-             , {test_recover_secp256k1, ?hsh(MsgHash),  ?sig(SECP_Sig_v),  SECP_Pub_Hash}
-             , {test_recover_secp256k1, ?hsh(GoodMsg2), ?sig(GoodSig2_v),  aeu_hex:hex_to_bin(GoodHexAcc2)}
+             [ {test_recover_secp256k1, ?hsh(GoodMsg1), {bytes, GoodSig1_v},  aeu_hex:hex_to_bin(GoodHexAcc1)}
+             , {test_recover_secp256k1, ?hsh(BadMsg),   {bytes, BadSig},      aeu_hex:hex_to_bin(BadHexAcc)}
+             , {test_recover_secp256k1, ?hsh(GoodMsg1), {bytes, GoodSig1_v2}, aeu_hex:hex_to_bin(GoodHexAcc1)}
+             , {test_recover_secp256k1, ?hsh(MsgHash),  {bytes, SECP_Sig_v},  SECP_Pub_Hash}
+             , {test_recover_secp256k1, ?hsh(GoodMsg2), {bytes, GoodSig2_v},  aeu_hex:hex_to_bin(GoodHexAcc2)}
              ] ],
 
     %% Test hash functions

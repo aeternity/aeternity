@@ -678,7 +678,7 @@ crypto_call(_, _, _, _) ->
 crypto_call_ecrecover_secp256k1(_Gas, Data, State) ->
     [MsgHash0, Sig0] = get_args([hash_t(), bytes_t(65)], Data),
     MsgHash = <<MsgHash0:32/unit:8>>,
-    <<_:31/binary, Sig:65/binary>> = words_to_bin(96, Sig0),
+    Sig = words_to_bin(65, Sig0),
     Res = aeu_crypto:ecrecover(secp256k1, MsgHash, Sig),
     {ok, {ok, Res}, aec_governance:primop_base_gas(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1), State}.
 
