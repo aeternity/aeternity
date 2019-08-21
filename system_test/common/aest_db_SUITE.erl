@@ -20,9 +20,9 @@
          minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node_with_force_progress_tx/1,
          node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx/1,
          %% TODO: Shouldn't the names be longer ;)
-         node_can_reuse_state_channel_db_of_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish/1,
-         node_and_fortuna_major_release_can_reuse_state_channel_db_of_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish/1,
-         node_can_reuse_state_channel_db_of_node_and_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish/1
+         node_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish/1,
+         node_and_fortuna_release_with_sc_persistance_fix_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish/1,
+         node_can_reuse_state_channel_db_of_node_and_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish/1
         ]).
 
 %=== INCLUDES ==================================================================
@@ -57,11 +57,10 @@ all() -> [
           node_can_reuse_db_of_minerva_node_with_epoch_db,
           minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node,
           minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node_with_force_progress_tx,
-          node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx
-          %% TODO: The state channel state does not currently survive restarts :( - when this is fixed uncomment and adjust the version in tests
-          %%node_can_reuse_state_channel_db_of_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish,
-          %%node_and_fortuna_major_release_can_reuse_state_channel_db_of_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish,
-          %%node_can_reuse_state_channel_db_of_node_and_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish
+          node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx,
+          node_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish,
+          node_and_fortuna_release_with_sc_persistance_fix_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish,
+          node_can_reuse_state_channel_db_of_node_and_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish
          ].
 
 init_per_suite(Config) ->
@@ -131,25 +130,25 @@ node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progr
               assert = fun assert_db_with_tx_reused/3},
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
-node_can_reuse_state_channel_db_of_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish(Cfg) ->
+node_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish(Cfg) ->
     Test = #db_reuse_test_spec{
-              create = fun fortuna_major_release_mining_spec/2,
+              create = fun fortuna_release_with_sc_persistance_fix_mining_spec/2,
               populate = fun aest_channels_SUITE:create_state_channel_perform_operations_leave/2,
               reuse = fun node_mining_spec/2,
               assert = fun aest_channels_SUITE:reestablish_state_channel_perform_operations/3},
     node_can_reuse_state_channel_db_of_other_node_(Test, Cfg).
 
-node_and_fortuna_major_release_can_reuse_state_channel_db_of_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish(Cfg) ->
+node_and_fortuna_release_with_sc_persistance_fix_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish(Cfg) ->
     Test = #db_reuse_test_spec{
-              create = fun fortuna_major_release_mining_spec/2,
+              create = fun fortuna_release_with_sc_persistance_fix_mining_spec/2,
               populate = fun aest_channels_SUITE:create_state_channel_perform_operations_leave/2,
-              reuse = fun alice_latest_bob_fortuna_mining_spec/2,
+              reuse = fun alice_latest_bob_fortuna_release_with_sc_persistance_fix_mining_spec/2,
               assert = fun aest_channels_SUITE:reestablish_state_channel_perform_operations/3},
     node_can_reuse_state_channel_db_of_other_node_(Test, Cfg).
 
-node_can_reuse_state_channel_db_of_node_and_fortuna_major_release_with_offchain_and_onchain_updates_using_leave_reestablish(Cfg) ->
+node_can_reuse_state_channel_db_of_node_and_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish(Cfg) ->
     Test = #db_reuse_test_spec{
-              create = fun alice_latest_bob_fortuna_mining_spec/2,
+              create = fun alice_latest_bob_fortuna_release_with_sc_persistance_fix_mining_spec/2,
               populate = fun aest_channels_SUITE:create_state_channel_perform_operations_leave/2,
               reuse = fun node_mining_spec/2,
               assert = fun aest_channels_SUITE:reestablish_state_channel_perform_operations/3},
@@ -310,17 +309,17 @@ minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath, Mining) ->
                                 mining => #{autostart => Mining},
                                 genesis_accounts => genesis_accounts()}).
 
-fortuna_major_release_mining_spec(Name, DbHostPath) ->
+fortuna_release_with_sc_persistance_fix_mining_spec(Name, DbHostPath) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
-    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v4.0.0"},
+    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v4.2.0"},
                                 db_path => {DbHostPath, DbGuestPath},
                                 mining => #{autostart => true},
                                 genesis_accounts => genesis_accounts()}).
 
-alice_latest_bob_fortuna_mining_spec(Name, DbHostPath) when Name =:= alice1; Name =:= alice2 ->
+alice_latest_bob_fortuna_release_with_sc_persistance_fix_mining_spec(Name, DbHostPath) when Name =:= alice1; Name =:= alice2 ->
     node_mining_spec(Name, DbHostPath);
-alice_latest_bob_fortuna_mining_spec(Name, DbHostPath) when Name =:= bob1; Name =:= bob2 ->
-    fortuna_major_release_mining_spec(Name, DbHostPath).
+alice_latest_bob_fortuna_release_with_sc_persistance_fix_mining_spec(Name, DbHostPath) when Name =:= bob1; Name =:= bob2 ->
+    fortuna_release_with_sc_persistance_fix_mining_spec(Name, DbHostPath).
 
 genesis_accounts() ->
     %% have all nodes share the same accounts_test.json
