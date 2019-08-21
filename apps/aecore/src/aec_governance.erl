@@ -210,9 +210,10 @@ primop_base_gas(?PRIM_CALL_MAP_PUT                   ) -> 0;
 primop_base_gas(?PRIM_CALL_MAP_DELETE                ) -> 0;
 primop_base_gas(?PRIM_CALL_MAP_SIZE                  ) -> 0;
 primop_base_gas(?PRIM_CALL_MAP_TOLIST                ) -> 0;
-primop_base_gas(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1) -> 1300;    %% 700 for call + 1300 = 2000
-primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY           ) -> 1300;    %% 700 for call + 1300 = 2000
+primop_base_gas(?PRIM_CALL_CRYPTO_VERIFY_SIG         ) -> 1300;    %% 700 for call + 1300 = 2000
+primop_base_gas(?PRIM_CALL_CRYPTO_VERIFY_SIG_SECP256K1 ) -> 1300;    %% 700 for call + 1300 = 2000
 primop_base_gas(?PRIM_CALL_CRYPTO_ECVERIFY_SECP256K1 ) -> 1300;    %% 700 for call + 1300 = 2000
+primop_base_gas(?PRIM_CALL_CRYPTO_ECRECOVER_SECP256K1) -> 1300;    %% 700 for call + 1300 = 2000
 primop_base_gas(?PRIM_CALL_CRYPTO_SHA3               ) -> 30;   %% Same as gas cost for SHA3 instruction
 primop_base_gas(?PRIM_CALL_CRYPTO_SHA256             ) -> 30;
 primop_base_gas(?PRIM_CALL_CRYPTO_BLAKE2B            ) -> 30;

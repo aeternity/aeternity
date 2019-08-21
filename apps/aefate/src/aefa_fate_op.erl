@@ -118,7 +118,8 @@
         , aens_update/1
         , aens_transfer/5
         , aens_revoke/4
-        , ecverify/5
+        , verify_sig/5
+        , verify_sig_secp256k1/5
         , ecverify_secp256k1/5
         , ecrecover_secp256k1/4
         , contract_to_address/3
@@ -1296,8 +1297,11 @@ delegation_signature_data(Type, {Pubkey, Hash}, Current) when Type =:= aens_clai
                                                               Type =:= aens_revoke ->
     {<<Pubkey/binary, Hash/binary, Current/binary>>, Pubkey}.
 
-ecverify(Arg0, Arg1, Arg2, Arg3, ES) ->
-    ter_op(ecverify, {Arg0, Arg1, Arg2, Arg3}, ES).
+verify_sig(Arg0, Arg1, Arg2, Arg3, ES) ->
+    ter_op(verify_sig, {Arg0, Arg1, Arg2, Arg3}, ES).
+
+verify_sig_secp256k1(Arg0, Arg1, Arg2, Arg3, ES) ->
+    ter_op(verify_sig_secp256k1, {Arg0, Arg1, Arg2, Arg3}, ES).
 
 ecverify_secp256k1(Arg0, Arg1, Arg2, Arg3, ES) ->
     ter_op(ecverify_secp256k1, {Arg0, Arg1, Arg2, Arg3}, ES).
@@ -1606,7 +1610,10 @@ op(bits_difference, A, B)
 op(ecrecover_secp256k1, Msg, Sig) when ?IS_FATE_BYTES(32, Msg)
                                      , ?IS_FATE_BYTES(65, Sig) ->
     {?FATE_BYTES(Msg1), ?FATE_BYTES(Sig1)} = {Msg, Sig},
-    ?FATE_BYTES(aeu_crypto:ecrecover(secp256k1, Msg1, Sig1)).
+    case aeu_crypto:ecrecover(secp256k1, Msg1, Sig1) of
+        false      -> aeb_fate_data:make_variant([0, 1], 0, {});
+        {ok, Addr} -> aeb_fate_data:make_variant([0, 1], 1, {?FATE_BYTES(Addr)})
+    end.
 
 %% Terinay operations
 op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
@@ -1615,14 +1622,19 @@ op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
     aeb_fate_data:make_map(Res);
 op(map_update, ?FATE_STORE_MAP(Cache, Id), Key, Value) ->
     ?FATE_STORE_MAP(Cache#{ Key => Value }, Id);
-op(ecverify, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
-                              , ?IS_FATE_ADDRESS(PK)
-                              , ?IS_FATE_BYTES(64, Sig) ->
+op(verify_sig, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
+                                , ?IS_FATE_ADDRESS(PK)
+                                , ?IS_FATE_BYTES(64, Sig) ->
     {?FATE_BYTES(Msg1), ?FATE_ADDRESS(PK1), ?FATE_BYTES(Sig1)} = {Msg, PK, Sig},
-    aeu_crypto:ecverify(Msg1, PK1, Sig1);
+    aeu_crypto:verify_sig(Msg1, PK1, Sig1);
+op(verify_sig_secp256k1, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
+                                          , ?IS_FATE_BYTES(64, PK)
+                                          , ?IS_FATE_BYTES(64, Sig) ->
+    {?FATE_BYTES(Msg1), ?FATE_BYTES(PK1), ?FATE_BYTES(Sig1)} = {Msg, PK, Sig},
+    aeu_crypto:verify_sig(secp256k1, Msg1, PK1, Sig1);
 op(ecverify_secp256k1, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
-                                        , ?IS_FATE_BYTES(64, PK)
-                                        , ?IS_FATE_BYTES(64, Sig) ->
+                                        , ?IS_FATE_BYTES(20, PK)
+                                        , ?IS_FATE_BYTES(65, Sig) ->
     {?FATE_BYTES(Msg1), ?FATE_BYTES(PK1), ?FATE_BYTES(Sig1)} = {Msg, PK, Sig},
     aeu_crypto:ecverify(secp256k1, Msg1, PK1, Sig1).
 
