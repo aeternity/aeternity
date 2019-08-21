@@ -2500,37 +2500,42 @@ assert_no_registered_events(L, Config) ->
 perform_snapshot_solo(Role, Round, Participants, Conns, Config) ->
     #{ priv_key := Privkey } = maps:get(Role, Participants),
     ConnPid = maps:get(Role, Conns),
-    try ?WS:json_rpc_call(
-           ConnPid, #{ <<"method">> => <<"channels.snapshot_solo">>
-                     , <<"params">> => #{} }) of
-        <<"ok">> ->
-            {ok, SignedTx}
-                = sign_tx(ConnPid, <<"snapshot_solo_tx">>,
-                          <<"channels.snapshot_solo_sign">>, Privkey, Config),
-            TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
-            Round1 = case Round of
-                         no_update ->
-                             Round;
-                         _ when is_integer(Round) ->
-                             ct:log("*** Verify that updates can be performed"
-                                    " while waiting for snapshot confirmation ***", []),
-                             sc_ws_update_basic_round_(Round+1, Config)
-                     end,
-            wait_for_onchain_tx_events(
-              Conns, #{ <<"type">> => <<"channel_snapshot_solo_tx">> },
-              fun() ->
-                      wait_for_tx_hash_on_chain(TxHash)
-              end, Config),
-            MinBlocksToMine = ?DEFAULT_MIN_DEPTH,
-            wait_for_info_msg(
-              ConnPid, #{ <<"event">> => <<"min_depth_achieved">>
-                        , <<"type">>  => <<"channel_snapshot_solo_tx">> },
-              fun() ->
-                      aecore_suite_utils:mine_key_blocks(
-                        aecore_suite_utils:node_name(?NODE),
-                        MinBlocksToMine +1)
-              end, Config),
-            {ok, Round1}
+    try {ok, SignedTx}
+             = request_and_sign(
+                 ConnPid, <<"snapshot_solo_tx">>, <<"channels.snapshot_solo_sign">>,
+                 Privkey, Config,
+                 fun() ->
+                         case ?WS:json_rpc_call(
+                                 ConnPid, #{ <<"method">> => <<"channels.snapshot_solo">>
+                                           , <<"params">> => #{} }) of
+                             <<"ok">> -> ok;
+                             Other    -> {error, Other}
+                         end
+                 end),
+         TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+         Round1 = case Round of
+                      no_update ->
+                          Round;
+                      _ when is_integer(Round) ->
+                          ct:log("*** Verify that updates can be performed"
+                                 " while waiting for snapshot confirmation ***", []),
+                          sc_ws_update_basic_round_(Round+1, Config)
+                  end,
+         wait_for_onchain_tx_events(
+           Conns, #{ <<"type">> => <<"channel_snapshot_solo_tx">> },
+           fun() ->
+                   wait_for_tx_hash_on_chain(TxHash)
+           end, Config),
+         MinBlocksToMine = ?DEFAULT_MIN_DEPTH,
+         wait_for_info_msg(
+           ConnPid, #{ <<"event">> => <<"min_depth_achieved">>
+                     , <<"type">>  => <<"channel_snapshot_solo_tx">> },
+           fun() ->
+                   aecore_suite_utils:mine_key_blocks(
+                     aecore_suite_utils:node_name(?NODE),
+                     MinBlocksToMine +1)
+           end, Config),
+         {ok, Round1}
     catch
         error:Other ->
             ct:log("Got Other = ~p", [Other]),
@@ -2869,21 +2874,38 @@ sign_slash_tx(ConnPid, Who, Config) ->
     #{priv_key := PrivKey} = maps:get(Who, Participants),
     sign_tx(ConnPid, <<"slash_tx">>, <<"channels.slash_sign">>, PrivKey, Config).
 
-sign_tx(ConnPid, Tag, ReplyMethod, PrivKey, Config) ->
+%% This wrapper is used to ensure that event registration for signing is
+%% done before e.g. performing an rpc which triggers the signing.
+request_and_sign(ConnPid, Tag, ReplyMethod, PrivKey, Config, ReqF) ->
     with_registered_events(
       [sign], [ConnPid],
       fun() ->
-              {ok, Tag, #{<<"signed_tx">> := EncSTx}} =
-                  wait_for_channel_event(ConnPid, sign, Config),
-              {ok, BinSTx} = aeser_api_encoder:safe_decode(transaction, EncSTx),
-              STx = aetx_sign:deserialize_from_binary(BinSTx),
-              SignedTx = aec_test_utils:co_sign_tx(STx, PrivKey),
-              EncSignedTx = aeser_api_encoder:encode(
-                              transaction,
-                              aetx_sign:serialize_to_binary(SignedTx)),
-              ws_send_tagged(ConnPid, ReplyMethod, #{signed_tx => EncSignedTx}, Config),
-              {ok, SignedTx}
+              case ReqF() of
+                  ok ->
+                      sign_tx_(ConnPid, Tag, ReplyMethod, PrivKey, Config);
+                  {error, _} = Error ->
+                      Error
+              end
       end).
+
+sign_tx(ConnPid, Tag, ReplyMethod, Privkey, Config) ->
+    with_registered_events(
+      [sign], [ConnPid],
+      fun() ->
+              sign_tx_(ConnPid, Tag, ReplyMethod, Privkey, Config)
+      end).
+
+sign_tx_(ConnPid, Tag, ReplyMethod, Privkey, Config) ->
+    {ok, Tag, #{<<"signed_tx">> := EncSTx}} =
+        wait_for_channel_event(ConnPid, sign, Config),
+    {ok, BinSTx} = aeser_api_encoder:safe_decode(transaction, EncSTx),
+    STx = aetx_sign:deserialize_from_binary(BinSTx),
+    SignedTx = aec_test_utils:co_sign_tx(STx, Privkey),
+    EncSignedTx = aeser_api_encoder:encode(
+                    transaction,
+                    aetx_sign:serialize_to_binary(SignedTx)),
+    ws_send_tagged(ConnPid, ReplyMethod, #{signed_tx => EncSignedTx}, Config),
+    {ok, SignedTx}.
 
 register_channel_events(Events, Pids) ->
     [ok = ?WS:register_test_for_channel_events(Pid, Events)
@@ -2897,9 +2919,11 @@ unregister_channel_events(Events, Pids) ->
 
 with_registered_events(Events, Pids, F) ->
     ok = register_channel_events(Events, Pids),
-    Res = F(),
-    ok = unregister_channel_events(Events, Pids),
-    Res.
+    try
+        F()
+    after
+        ok = unregister_channel_events(Events, Pids)
+    end.
 
 %% avoid_double_reg(Events, Pids, F) ->
 %%     ok = unregister_channel_events(Events, Pids),
