@@ -42,7 +42,7 @@
 
 %% Memory handling.
 -export([ lookup_var/2
-        , store_var/3]).
+        , store_var/3 ]).
 
 %% Stack handling.
 -export([ dup/1
@@ -203,8 +203,6 @@ abort(bad_store_map_id, ES) ->
     ?t("Maps: Map does not exist", [], ES);
 abort({type_error, cons}, ES) ->
     ?t("Type error in cons: creating polymorphic list", [], ES);
-abort({cannot_write_to_arg, N}, ES) ->
-    ?t("Arguments are read only: ~p", [N], ES);
 abort({undefined_var, Var}, ES) ->
     ?t("Undefined var: ~p", [Var], ES);
 abort({bad_return_type, Val, Type}, ES) ->
