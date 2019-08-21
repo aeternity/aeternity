@@ -1,6 +1,7 @@
-# Running an aeternity node on Docker
+# Introduction
 
 This document describes:
+
 * [How to join the mainnet using Docker](#mainnet);
 * [How to use the Docker image](#docker-image);
 * [How to join the testnet using Docker](#testnet);
@@ -34,11 +35,16 @@ You should see the console output of the running node and a lot of information r
 
 See [how to persist the blockchain data](#persisting-data) and [how to enable mining](#mining) below.
 
+## Localnet
+
+To run small local network for development and testing purposes, please refer to the [localnet repository](https://github.com/aeternity/localnet)
+
 ## Docker Image
 
 Docker image is automatically build and published on [DockerHub](https://hub.docker.com/r/aeternity/aeternity/).
 
 Please note that all the **examples** below:
+
 - use the Docker `-P` which [publish all exposed ports to the host interfaces](https://docs.docker.com/engine/reference/run/#expose-incoming-ports), for good network connectivity refer to [networking documentation](configuration.md#peer-to-peer-network) how to setup firewall and/or port mapping to the host machine
 - run the container in [foreground mode](https://docs.docker.com/engine/reference/run/#detached-vs-foreground) for easier debugging (console output).
 
@@ -110,9 +116,3 @@ The example above uses the less memory intensive lean miner, if you want to use 
 You also need to provide beneficiary account in the configuration, please refer to [the beneficiary section in the configuration documentation](configuration.md#beneficiary-account) how to create one if you don't have yet.
 
 For more information see [miner configuration documentation](configuration#miner-configuration).
-
-
-## Localnet
-
-To run small local network for development and testing purposes, please refer to the [localnet repository](https://github.com/aeternity/localnet)
-

@@ -1,10 +1,9 @@
-# Operating an Aeternity node installed using a release binary
+# Introduction
 
 This document describes how to start your Aeternity node installed using a release binary, verify that it mines and verify that it joined the configured public network of nodes (e.g. testnet).
 
-## Assumptions
-
 The instructions below assume that:
+
 * The node is deployed in directory `~/aeternity/node`;
 * beneficiary account is set under `mining` > `beneficiary` in the config (see [configuration documentation](configuration.md));
 * No custom peers are specified under the `peers:` key in the config. If the `peers:` key is undefined, the *testnet* or *mainnet* seed peers (built-in in the package source) are used.
@@ -13,9 +12,7 @@ The instructions below assume that:
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
-## Instructions
-
-### Start node
+## Start the node
 
 It is recommended that the node has at least 4 GB of memory available.
 
@@ -41,9 +38,25 @@ Back up the peer key pair:
 cp -pr ~/aeternity/node/keys ~/my_aeternity_keys
 ```
 
-### Verify that node mines
+## Mainnet connection
 
-Inspect the mining log file of the node:
+To verify that node is connected to the mainnet, your node should see the same longest blockchain as the mainnet.
+
+Inspect the current top of the blockchain as seen by the mainnet:
+```bash
+curl http://13.53.161.215:3013/v2/blocks/top
+```
+
+Inspect the current top of the blockchain as seen by your node:
+```bash
+curl http://127.0.0.1:3013/v2/blocks/top
+```
+
+Verify that the height is the same; it may take a few minutes for your node to catch up with the mainnet blockchain.
+
+## Mining
+
+To verify that node mines, inspect the mining log file of the node:
 ```bash
 less ~/aeternity/node/log/aeternity_mining.log
 ```
@@ -61,24 +74,7 @@ If the node successfully mines a block, you shall read log entries like the foll
 ... Block mined: Height = 1; Hash = ...
 ```
 
-
-### Verify that node is connected to the mainnet
-
-Verify that your node sees the same longest blockchain as the mainnet.
-
-Inspect the current top of the blockchain as seen by the mainnet:
-```bash
-curl http://13.53.161.215:3013/v2/blocks/top
-```
-
-Inspect the current top of the blockchain as seen by your node:
-```bash
-curl http://127.0.0.1:3013/v2/blocks/top
-```
-
-Verify that the height is the same; it may take a few minutes for your node to catch up with the mainnet blockchain.
-
-### Verify that node mines on same chain as the mainnet
+## Mainnet mining
 
 After the node is successfully connected to the mainnet, you could verify that it is mining on the same chain as the rest of the network.
 You can validate it observing the `hash` of the `/blocks/top` of the remote nodes:
