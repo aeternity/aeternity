@@ -396,17 +396,10 @@ state_tx(ChannelPubKey, Initiator, Responder, Spec0) ->
             V -> V
         end,
     OffChainSpec =
-        lists:foldl(
-            fun(Key, AccumSpec) ->
-                case maps:get(Key, Spec0, none) of
-                    none -> AccumSpec;
-                    Val -> maps:put(Key, Val, AccumSpec)
-                end
-            end,
-            #{channel_id         => aeser_id:create(channel, ChannelPubKey),
-              state_hash         => StateHash,
-              round              => maps:get(round, Spec)},
-            [block_hash, updates]),
+        maps:merge(#{ channel_id   => aeser_id:create(channel, ChannelPubKey)
+                    , state_hash   => StateHash
+                    , round        => maps:get(round, Spec)},
+                   maps:with([block_hash, updates], Spec0)),
     {ok, StateTx} = aesc_offchain_tx:new(OffChainSpec),
     StateTx.
 
