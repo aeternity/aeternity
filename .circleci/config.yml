@@ -52,6 +52,7 @@ references:
   machine_config: &machine_config
     resource_class: large
     machine:
+      image: ubuntu-1604:201903-01
       docker_layer_caching: true
     working_directory: ~/aeternity
     environment:
@@ -84,11 +85,13 @@ references:
         OTP_VERSION: "20.1"
       command: |
         # Install OTP package deps
-        sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev
+        sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev libsctp1
         # Install OTP binary package
-        PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~trusty_amd64.deb
+        PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~xenial_amd64.deb
         OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/debian/pool/${PACKAGE_NAME}
-        curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
+        # TODO temporary disable SSL checks on erlang-solutions.com until they fix their certificate
+        # FIXME ^^ (multi-editor support :))
+        curl -fsSL --insecure -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
         sudo dpkg -i ${PACKAGE_NAME}
 
   install_libsodium: &install_libsodium
