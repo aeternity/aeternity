@@ -310,7 +310,7 @@ min_fee(#aetx{} = AeTx, Height) ->
 -spec min_gas(Tx :: tx(), Height :: aec_blocks:height()) -> Gas :: non_neg_integer().
 min_gas(#aetx{ type = Type, size = Size, cb = CB, tx = Tx }, Height) when ?IS_CONTRACT_TX(Type) ->
     base_gas(Type, Height, CB:abi_version(Tx)) + size_gas(Size);
-min_gas(#aetx{ type = Type, size = Size, cb = CB, tx = Tx }, Height) when ?HAS_GAS_TX(Type) ->
+min_gas(#aetx{ type = Type, size = Size }, Height) when ?HAS_GAS_TX(Type) ->
     base_gas(Type, Height) + size_gas(Size);
 min_gas(#aetx{} = Tx, Height) ->
     gas_limit(Tx, Height).

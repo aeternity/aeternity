@@ -13,8 +13,9 @@
         , ecdsa_recoverable_from_ecdsa/3
 
         , ecrecover/3
-        , ecverify/3
         , ecverify/4
+        , verify_sig/3
+        , verify_sig/4
         ]).
 
 %% Convert from OpenSSL/Erlang crypto formats...
@@ -49,10 +50,10 @@ ecdsa_recoverable_from_ecdsa(Hash, <<Sig:64/binary>>, Pub) ->
     % Because we can't re-generate the recovery id we try both and compare the
     % result with the given pubkey.
     SigInvalid = <<26:8/integer, Sig/binary>>,
-    SigEven = <<27:8/integer, Sig/binary>>,
-    SigUneven = <<28:8/integer, Sig/binary>>,
-    ResEven = ecrecover(secp256k1, Hash, SigEven),
-    ResUneven = ecrecover(secp256k1, Hash, SigUneven),
+    SigEven    = <<27:8/integer, Sig/binary>>,
+    SigUneven  = <<28:8/integer, Sig/binary>>,
+    <<0:12/unit:8, ResEven:20/binary>>   = ecrecover:recover(Hash, SigEven),
+    <<0:12/unit:8, ResUneven:20/binary>> = ecrecover:recover(Hash, SigUneven),
     if
         ResEven == ResUneven -> % Both values are 0 or the same address, both cases would be false.
             SigInvalid;
@@ -65,18 +66,29 @@ ecdsa_recoverable_from_ecdsa(Hash, <<Sig:64/binary>>, Pub) ->
     end.
 
 %% ECRECOVER
-ecrecover(secp256k1, Hash, <<Sig:65/binary>>) ->
-    ecrecover:recover(Hash, Sig).
+ecrecover(secp256k1, <<Hash:32/binary>>, <<Sig:65/binary>>) ->
+    case ecrecover:recover(Hash, Sig) of
+        <<0:32/unit:8>>                      -> false;
+        <<0:12/unit:8, ShortAddr:20/binary>> -> {ok, ShortAddr}
+    end.
 
 %% ECVERIFY
-ecverify(Msg, PK, Sig) -> ecverify(curve25519, Msg, PK, Sig).
+ecverify(secp256k1, <<Hash:32/binary>>, <<Addr:20/binary>>, <<Sig:65/binary>>) ->
+    case ecrecover(secp256k1, Hash, Sig) of
+        {ok, Addr} -> true;
+        {ok, _}    -> false;
+        false      -> false
+    end.
 
-ecverify(curve25519, Msg, PK, Sig) ->
+%% VERIFY_SIG
+verify_sig(Msg, PK, Sig) -> verify_sig(curve25519, Msg, PK, Sig).
+
+verify_sig(curve25519, Msg, PK, Sig) ->
     case enacl:sign_verify_detached(Sig, Msg, PK) of
         {ok, _}    -> true;
         {error, _} -> false
     end;
-ecverify(secp256k1, Msg, PK0, Sig0) ->
+verify_sig(secp256k1, Msg, PK0, Sig0) ->
     PK  = ecdsa_to_der_pk(PK0),
     Sig = ecdsa_to_der_sig(Sig0),
     %% Note that `sha256` is just there to indicate the length (32 bytes) of

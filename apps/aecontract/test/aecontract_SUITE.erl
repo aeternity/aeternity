@@ -4449,78 +4449,6 @@ sophia_crypto(_Cfg) ->
                   ?call(create_contract, Acc, crypto, {})
           end,
 
-    Message = <<"The secret message">>,
-    MsgHash = aec_hash:hash(evm, Message),
-    PubKey  = Acc,
-    PrivKey = aect_test_utils:priv_key(PubKey, state()),
-    Sig1    = ?sig(enacl:sign_detached(MsgHash, PrivKey)),
-
-    [ begin
-          TestRes = ?call(call_contract, Acc, IdC, Fun, bool, {Msg, PubKey, Sig1}),
-          ?assertMatchAEVM1OOG(Exp, TestRes),
-          ?assertMatchFATE(Exp, TestRes)
-      end || {Fun, Msg, Exp} <- [ {test_verify, ?hsh(MsgHash), true}
-                                , {test_verify, ?hsh(PubKey), false}
-                                , {test_string_verify, Message, true}
-                                , {test_string_verify, <<"Not the secret message">>, false}] ],
-
-    %% SECP256K1
-    {SECP_Pub0, SECP_Priv} = crypto:generate_key(ecdh, secp256k1),
-    SECP_Pub = aeu_crypto:ecdsa_from_der_pk(SECP_Pub0),
-    SECP_Der_Sig = crypto:sign(ecdsa, sha256, {digest, MsgHash}, [SECP_Priv, secp256k1]),
-    SECP_Sig = ?sig(aeu_crypto:ecdsa_from_der_sig(SECP_Der_Sig)),
-
-    [ begin
-          TestRes = ?call(call_contract, Acc, IdC, Fun, bool, {Msg, ?sig(SECP_Pub), SECP_Sig}),
-          ?assertMatchAEVM2OOG(Exp, TestRes),
-          ?assertMatchFATE(Exp, TestRes)
-      end || {Fun, Msg, Exp} <- [ {test_verify_secp256k1, ?hsh(MsgHash), true}
-                                , {test_verify_secp256k1, ?hsh(PubKey), false}
-                                , {test_string_verify_secp256k1, Message, true}
-                                , {test_string_verify_secp256k1, <<"Not the secret message">>, false}] ],
-
-    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, ecrecover_not_in_fortuna),
-
-    %% Test ecrecover
-
-    %%   Static examples are taken from
-    %%   https://github.com/aeternity/parity-ethereum/blob/master/ethcore/builtin/src/lib.rs#L656
-
-    GoodHexSig1 = "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001b650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03",
-    GoodHexAcc1 = "000000000000000000000000c08b5542d177ac6686946920409741463a15dddb",
-    BadHexSig = "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001a650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03",
-    BadHexAcc = "0000000000000000000000000000000000000000000000000000000000000000",
-    <<GoodMsg1:32/binary, _:31/binary, GoodSig1_v:65/binary>> = aeu_hex:hex_to_bin(GoodHexSig1),
-    <<BadMsg:32/binary, _:31/binary, BadSig:65/binary>> = aeu_hex:hex_to_bin(BadHexSig),
-    <<_:1/binary, GoodSig:64/binary>> = GoodSig1_v,
-    GoodPubHash = aeu_crypto:ecrecover(secp256k1, GoodMsg1, GoodSig1_v),
-    GoodSig1_v2 = aeu_crypto:ecdsa_recoverable_from_ecdsa(GoodMsg1, GoodSig, GoodPubHash),
-
-    %%    Static example pre-generated via JS
-    GoodSig2_v = aeu_hex:hex_to_bin("1cfab9762e816133bae486b7396dced722a7315a42e90f17d31e191d5e36bbf46210a7b86c915beea013660252366808a88cfdb58b3ef7e13f64e99588628229cc"),
-    GoodHexAcc2 = "0000000000000000000000000dED50440139Bb2a3C4240286A85df3baC17EBfc",
-    GoodMsg2 = aeu_hex:hex_to_bin("38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e"),
-
-    %%    Dynamic example
-
-    SECP_Pub_Hash0 = sha3:hash(256, SECP_Pub),
-    SECP_Pub_Hash0_Tail = binary:part(SECP_Pub_Hash0, byte_size(SECP_Pub_Hash0), -20),
-    SECP_Pub_Hash = << 0:(8*12), SECP_Pub_Hash0_Tail/binary >>,
-    SECP_Sig_v = aeu_crypto:ecdsa_recoverable_from_ecdsa(MsgHash, aeu_crypto:ecdsa_from_der_sig(SECP_Der_Sig),
-                                                         SECP_Pub_Hash),
-
-    [ begin
-          TestRes = ?call(call_contract, Acc, IdC, Fun, word, {Msg, Sig}),
-          ?assertMatchAEVM2OOG(Exp, <<TestRes:256>>),
-          ?assertMatchFATE({bytes, Exp}, TestRes)
-      end || {Fun, Msg, Sig, Exp} <-
-             [ {test_recover_secp256k1, ?hsh(GoodMsg1), {bytes, GoodSig1_v},  aeu_hex:hex_to_bin(GoodHexAcc1)}
-             , {test_recover_secp256k1, ?hsh(BadMsg),   {bytes, BadSig},      aeu_hex:hex_to_bin(BadHexAcc)}
-             , {test_recover_secp256k1, ?hsh(GoodMsg1), {bytes, GoodSig1_v2}, aeu_hex:hex_to_bin(GoodHexAcc1)}
-             , {test_recover_secp256k1, ?hsh(MsgHash),  {bytes, SECP_Sig_v},  SECP_Pub_Hash}
-             , {test_recover_secp256k1, ?hsh(GoodMsg2), {bytes, GoodSig2_v},  aeu_hex:hex_to_bin(GoodHexAcc2)}
-             ] ],
-
     %% Test hash functions
     String = <<"12345678901234567890123456789012-andsomemore">>,
     Data   = [{none, <<"foo">>}, {{some, 100432}, String}],
@@ -4553,6 +4481,90 @@ sophia_crypto(_Cfg) ->
     ?assertMatchFATE({bytes, Sha3},      ResSha3),
     ?assertMatchFATE({bytes, Sha256},    ResSha256),
     ?assertMatchFATE({bytes, Blake2b},   ResBlake2b),
+
+    %% Test plain signature verification.
+    Message = <<"The secret message">>,
+    MsgHash = aec_hash:hash(evm, Message),
+    PubKey  = Acc,
+    PrivKey = aect_test_utils:priv_key(PubKey, state()),
+    Sig1    = ?sig(enacl:sign_detached(MsgHash, PrivKey)),
+
+    [ begin
+          TestRes = ?call(call_contract, Acc, IdC, Fun, bool, {Msg, PubKey, Sig1}),
+          ?assertMatchAEVM1OOG(Exp, TestRes),
+          ?assertMatchFATE(Exp, TestRes)
+      end || {Fun, Msg, Exp} <- [ {test_verify, ?hsh(MsgHash), true}
+                                , {test_verify, ?hsh(PubKey), false}
+                                , {test_string_verify, Message, true}
+                                , {test_string_verify, <<"Not the secret message">>, false}] ],
+
+    %% SECP256K1 signature verification
+    {SECP_Pub0, SECP_Priv} = crypto:generate_key(ecdh, secp256k1),
+    SECP_Pub = aeu_crypto:ecdsa_from_der_pk(SECP_Pub0),
+    SECP_Der_Sig = crypto:sign(ecdsa, sha256, {digest, MsgHash}, [SECP_Priv, secp256k1]),
+    SECP_Sig = ?sig(aeu_crypto:ecdsa_from_der_sig(SECP_Der_Sig)),
+
+    [ begin
+          TestRes = ?call(call_contract, Acc, IdC, Fun, bool, {Msg, ?sig(SECP_Pub), SECP_Sig}),
+          ?assertMatchAEVM2OOG(Exp, TestRes),
+          ?assertMatchFATE(Exp, TestRes)
+      end || {Fun, Msg, Exp} <- [ {test_verify_secp256k1, ?hsh(MsgHash), true}
+                                , {test_verify_secp256k1, ?hsh(PubKey), false}
+                                , {test_string_verify_secp256k1, Message, true}
+                                , {test_string_verify_secp256k1, <<"Not the secret message">>, false}] ],
+
+    ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, ecrecover_not_pre_lima),
+
+    %% Test ecrecover
+
+    %%   Static examples are taken from
+    %%   https://github.com/aeternity/parity-ethereum/blob/master/ethcore/builtin/src/lib.rs#L656
+
+    GoodHexSig1 = "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001b650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03",
+    GoodHexAcc1 = "c08b5542d177ac6686946920409741463a15dddb",
+    BadHexSig   = "47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad000000000000000000000000000000000000000000000000000000000000001a650acf9d3f5f0a2c799776a1254355d5f4061762a237396a99a0e0e3fc2bcd6729514a0dacb2e623ac4abd157cb18163ff942280db4d5caad66ddf941ba12e03",
+    <<GoodMsg1:32/binary, _:31/binary, GoodSig1_v:65/binary>> = aeu_hex:hex_to_bin(GoodHexSig1),
+    <<BadMsg:32/binary, _:31/binary, BadSig:65/binary>> = aeu_hex:hex_to_bin(BadHexSig),
+    <<_:1/binary, GoodSig:64/binary>> = GoodSig1_v,
+    {ok, GoodPubHash} = aeu_crypto:ecrecover(secp256k1, GoodMsg1, GoodSig1_v),
+    GoodSig1_v2 = aeu_crypto:ecdsa_recoverable_from_ecdsa(GoodMsg1, GoodSig, GoodPubHash),
+
+    %%    Static example pre-generated via JS
+    GoodSig2_v = aeu_hex:hex_to_bin("1cfab9762e816133bae486b7396dced722a7315a42e90f17d31e191d5e36bbf46210a7b86c915beea013660252366808a88cfdb58b3ef7e13f64e99588628229cc"),
+    GoodHexAcc2 = "0dED50440139Bb2a3C4240286A85df3baC17EBfc",
+    GoodMsg2 = aeu_hex:hex_to_bin("38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e"),
+
+    %%    Dynamic example
+
+    SECP_Pub_Hash0 = sha3:hash(256, SECP_Pub),
+    SECP_Pub_Hash = binary:part(SECP_Pub_Hash0, byte_size(SECP_Pub_Hash0), -20),
+    SECP_Sig_v = aeu_crypto:ecdsa_recoverable_from_ecdsa(MsgHash, aeu_crypto:ecdsa_from_der_sig(SECP_Der_Sig),
+                                                         SECP_Pub_Hash),
+
+    FixRes = fun({some, Word}) when is_integer(Word) ->
+                    <<Bytes:20/binary, _/binary>> = <<Word:32/unit:8>>,
+                    {some, {bytes, Bytes}};
+                (Res) -> Res end,
+    [ begin
+          TestRes = FixRes(?call(call_contract, Acc, IdC, Fun, {option, word}, {Msg, Sig})),
+          ?assertMatchAEVM(Exp, TestRes),
+          ?assertMatchFATE(Exp, TestRes)
+      end || {Fun, Msg, Sig, Exp} <-
+             [ {test_recover_secp256k1, ?hsh(GoodMsg1), {bytes, GoodSig1_v},  {some, {bytes, aeu_hex:hex_to_bin(GoodHexAcc1)}}}
+             , {test_recover_secp256k1, ?hsh(BadMsg),   {bytes, BadSig},      none}
+             , {test_recover_secp256k1, ?hsh(GoodMsg1), {bytes, GoodSig1_v2}, {some, {bytes, aeu_hex:hex_to_bin(GoodHexAcc1)}}}
+             , {test_recover_secp256k1, ?hsh(MsgHash),  {bytes, SECP_Sig_v},  {some, {bytes, SECP_Pub_Hash}}}
+             , {test_recover_secp256k1, ?hsh(GoodMsg2), {bytes, GoodSig2_v},  {some, {bytes, aeu_hex:hex_to_bin(GoodHexAcc2)}}}
+             ] ],
+
+    %% Test ecverify
+    [ begin
+          TestRes = ?call(call_contract, Acc, IdC, test_ecverify_secp256k1, bool, {Msg, Addr, Sig}),
+          ?assertEqual(Exp, TestRes)
+      end || {Msg, Addr, Sig, Exp} <-
+             [ {?hsh(GoodMsg1), {bytes, GoodPubHash},   {bytes, GoodSig1_v}, true}
+             , {?hsh(GoodMsg1), {bytes, SECP_Pub_Hash}, {bytes, GoodSig1_v}, false}
+             , {?hsh(MsgHash),  {bytes, SECP_Pub_Hash}, {bytes, SECP_Sig_v}, true} ] ],
 
     ok.
 
