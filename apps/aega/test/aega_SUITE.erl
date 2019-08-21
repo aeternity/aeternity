@@ -198,6 +198,11 @@ init_per_group(fate, Cfg) ->
             [{sophia_version, ?SOPHIA_LIMA_FATE}, {vm_version, ?VM_FATE_SOPHIA_1},
              {abi_version, ?ABI_FATE_SOPHIA_1}, {protocol, lima} | Cfg]
     end;
+init_per_group(ethereum, Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        Vsn when Vsn < ?LIMA_PROTOCOL_VSN -> {skip, ethereum_style_ecverify_not_pre_lima};
+        _Vsn -> Cfg
+    end;
 init_per_group(_Grp, Cfg) ->
     Cfg.
 
