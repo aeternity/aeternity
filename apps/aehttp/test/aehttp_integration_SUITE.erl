@@ -528,7 +528,7 @@ init_per_group(Group, Config) when
     start_node(Group, Config);
 %% block_endpoints
 init_per_group(on_genesis_block = Group, Config) ->
-    Config1 = start_node(Group, Config),
+    Config1 = start_node_no_mock(Group, Config),
     GenesisBlock = rpc(aec_chain, genesis_block, []),
     {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
     [{current_block, GenesisBlock},
@@ -538,7 +538,7 @@ init_per_group(on_genesis_block = Group, Config) ->
      {current_block_type, genesis_block},
      {pending_key_block, PendingKeyBlock} | Config1];
 init_per_group(on_key_block = Group, Config) ->
-    Config1 = start_node(Group, Config),
+    Config1 = start_node_no_mock(Group, Config),
     Node = ?config(node, Config1),
     %% Mine at least 2 key blocks (fork height may be 0).
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
@@ -553,7 +553,7 @@ init_per_group(on_key_block = Group, Config) ->
      {current_block_type, key_block},
      {pending_key_block, PendingKeyBlock} | Config1];
 init_per_group(on_micro_block = Group, Config) ->
-    Config1 = start_node(Group, Config),
+    Config1 = start_node_no_mock(Group, Config),
     [ {NodeId, Node} | _ ] = ?config(nodes, Config1),
     %% Mine at least 2 key blocks (fork height may be 0).
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
@@ -769,12 +769,27 @@ end_per_testcase_all(Config) ->
 start_node(Group, Config) ->
     start_node(proplists:is_defined(node, Config), Group, Config).
 
-start_node(true, _Group, Config) -> Config;
+start_node(true, _Group, Config) ->
+    aecore_suite_utils:start_mock(aecore_suite_utils:node_name(?NODE), block_pow),
+    Config;
 start_node(false, Group, Config) ->
     %% TODO: consider reinint_chain to speed up tests
     aecore_suite_utils:start_node(?NODE, Config),
     Node = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:connect(Node),
+    aecore_suite_utils:connect(Node, [block_pow]),
+    [{node, Node}, {node_start_group, Group} | Config].
+
+start_node_no_mock(Group, Config) ->
+    start_node_no_mock(proplists:is_defined(node, Config), Group, Config).
+
+start_node_no_mock(true, _Group, Config) ->
+    aecore_suite_utils:end_mock(aecore_suite_utils:node_name(?NODE), block_pow),
+    Config;
+start_node_no_mock(false, Group, Config) ->
+    %% TODO: consider reinint_chain to speed up tests
+    aecore_suite_utils:start_node(?NODE, Config),
+    Node = aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:connect(Node, [block_pow]),
     [{node, Node}, {node_start_group, Group} | Config].
 
 stop_node(Group, Config) ->

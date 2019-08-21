@@ -176,13 +176,9 @@ make_calldata(Name, Fun, Args) when length(Name) < 20 ->
     {ok, Src} = read_contract(Name),
     make_calldata(Src, Fun, Args);
 make_calldata(Code, Fun, Args) ->
-    Backend =
-        case aega_SUITE:abi_version() of
-            ?ABI_AEVM_SOPHIA_1 -> aevm;
-            ?ABI_FATE_SOPHIA_1 -> fate
-        end,
-    {ok, Calldata} = aeso_compiler:create_calldata(Code, Fun, Args, [no_implicit_stdlib, {backend, Backend}]),
-    Calldata.
+    %% Use the memoized version to not waste 500 ms each time we make a meta tx with the same nonce -.-
+    {ok, CallData} = aect_test_utils:encode_call_data(aega_SUITE:sophia_version(), Code, Fun, Args),
+    CallData.
 
 get_contract(Name) ->
     SophiaVersion = aega_SUITE:sophia_version(),

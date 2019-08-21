@@ -4,6 +4,7 @@
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aect_test_utils).
+-on_load(setup_contract_cache/0).
 
 -export([ new_state/0
         , calls/1
@@ -60,6 +61,7 @@
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("include/aect_sophia_vsn.hrl").
 -include("../src/aect_sophia.hrl").
+-include("include/aect_contract_cache.hrl").
 %%%===================================================================
 %%% Test state
 %%%===================================================================
@@ -304,20 +306,35 @@ compile_contract(File) ->
 compile_contract(Compiler, File) ->
     compile_filename(Compiler, contract_filename(Compiler, File)).
 
-compile(?SOPHIA_LIMA_FATE, File) ->
+compile(Vsn, File) ->
+    %% Lookup the res in the cache - if not present just calculate the result
+    CompilationId = #compilation_id{vsn = Vsn, filename = File},
+    case ets:lookup(?COMPILE_TAB, CompilationId) of
+        [#compilation_cache_entry{result = Result}] ->
+            %% This should save 200ms - 2000ms per invocation
+            ct:log("Compilation cache HIT  :)"),
+            Result;
+        [] ->
+            ct:log("Compilation cache MISS :("),
+            Result = compile_(Vsn, File),
+            ets:insert_new(?COMPILE_TAB, #compilation_cache_entry{compilation_id = CompilationId, result = Result}),
+            Result
+    end.
+
+compile_(?SOPHIA_LIMA_FATE, File) ->
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
     case aeso_compiler:from_string(Source, [{backend, fate}, no_implicit_stdlib]) of
         {ok, Map} -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
         {error, E} = Err -> io:format("~s\n", [E]), Err
     end;
-compile(SophiaVsn, File) when SophiaVsn == ?SOPHIA_LIMA_AEVM ->
+compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_LIMA_AEVM ->
     {ok, ContractBin} = file:read_file(File),
     case aeso_compiler:from_string(binary_to_list(ContractBin), [no_implicit_stdlib]) of
         {ok, Map}        -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
         {error, _} = Err -> Err
     end;
-compile(LegacyVersion, File) ->
+compile_(LegacyVersion, File) ->
     case legacy_compile(LegacyVersion, File) of
         {ok, Code}      -> {ok, Code};
         {error, Reason} -> {error, {compiler_error, File, Reason}}
@@ -376,14 +393,30 @@ to_str(Str)                     -> Str.
 encode_call_data(Code, Fun, Args) ->
     encode_call_data(latest_sophia_version(), Code, Fun, Args).
 
-encode_call_data(Vsn, Code, Fun, Args) when Vsn == ?SOPHIA_LIMA_AEVM; Vsn == ?SOPHIA_LIMA_FATE ->
+encode_call_data(Vsn, Code, Fun, Args) ->
+    %% Lookup the res in the cache - if not present just calculate the result
+    Backend = backend(),
+    CallId = #encode_call_id{vsn = Vsn, code_hash = crypto:hash(md5, Code), fun_name = Fun, args = Args, backend = Backend},
+    case ets:lookup(?ENCODE_CALL_TAB, CallId) of
+        [#encode_call_cache_entry{result = Result}] ->
+            %% This should save 100ms - 300ms per invocation
+            ct:log("Encode call cache HIT  :)"),
+            Result;
+        [] ->
+            ct:log("Encode call cache MISS :("),
+            Result = encode_call_data_(Vsn, Code, Fun, Args, Backend),
+            ets:insert_new(?ENCODE_CALL_TAB, #encode_call_cache_entry{call_id = CallId, result = Result}),
+            Result
+    end.
+
+encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_LIMA_AEVM; Vsn == ?SOPHIA_LIMA_FATE ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
                                       lists:map(fun to_str/1, Args),
-                                      [{backend, backend()}, no_implicit_stdlib])
+                                      [{backend, Backend}, no_implicit_stdlib])
     catch _T:_E ->
         {error, <<"bad argument">>}
     end;
-encode_call_data(Vsn, Code, Fun, Args0) ->
+encode_call_data_(Vsn, Code, Fun, Args0, _Backend) ->
     SrcFile = tempfile_name("sophia_code", [{ext, ".aes"}]),
     Args    = legacy_args(Vsn, Args0),
     ok = file:write_file(SrcFile, Code),
@@ -403,7 +436,19 @@ encode_call_data(Vsn, Code, Fun, Args0) ->
     end.
 
 decode_call_result(Code, Fun, Res, Value) ->
-    decode_call_result(backend(), Code, Fun, Res, Value).
+    %% Lookup the res in the cache - if not present just calculate the result
+    DecodeCallId = #decode_call_id{code_hash = crypto:hash(md5, Code), fun_name = Fun, res = Res, val = Value},
+    case ets:lookup(?DECODE_CALL_TAB, DecodeCallId) of
+        [#decode_call_cache_entry{result = Result}] ->
+            %% This should save 10-30ms per invocation - this still saves time as some tests call this function >200 times mostly with the same args
+            ct:log("Decode call cache HIT  :)"),
+            Result;
+        [] ->
+            ct:log("Decode call cache MISS :("),
+            Result = decode_call_result(backend(), Code, Fun, Res, Value),
+            ets:insert_new(?DECODE_CALL_TAB, #decode_call_cache_entry{decode_call_id = DecodeCallId, result = Result}),
+            Result
+    end.
 
 decode_call_result(Backend, Code, Fun, Res, EValue = <<"cb_", _/binary>>) ->
     case aeser_api_encoder:safe_decode(contract_bytearray, EValue) of
@@ -428,7 +473,8 @@ decode_data(Type, Data) ->
     decode_data_(Type, Data).
 
 decode_data_(Type, Data) ->
-    decode_data_(backend(), Type, Data).
+    Return = decode_data_(backend(), Type, Data),
+    Return.
 
 decode_data_(fate, _Type, Data) ->
     try {ok, aefate_test_utils:decode(aeb_fate_encoding:deserialize(Data))}
@@ -552,4 +598,31 @@ backend() ->
     case abi_version() of
         ?ABI_AEVM_SOPHIA_1 -> aevm;
         ?ABI_FATE_SOPHIA_1 -> fate
+    end.
+
+%% setup a global memoization cache for contracts
+setup_contract_cache() ->
+    [ok = try_setup_cache(ETSTable, Keypos) || {ETSTable, Keypos} <- cached_tables()],
+    ok.
+
+try_setup_cache(Tab, Keypos) ->
+    Self = self(),
+    case ets:info(Tab, name) of
+        undefined ->
+            spawn(fun() ->
+                ets:new(Tab, [set, public, named_table, {keypos, Keypos}]),
+                Self ! cache_ready,
+                timer:sleep(infinity)
+            end),
+            receive
+                cache_ready ->
+                    ct:log("Cache ~p initialized", [Tab]),
+                    ok
+            after
+                3000 ->
+                    ct:log("Failed to init cache ~p", [Tab]),
+                    exit(timeout)
+            end;
+        _ ->
+            ok
     end.
