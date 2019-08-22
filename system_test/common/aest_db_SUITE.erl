@@ -97,14 +97,12 @@ minerva_node_with_epoch_db_can_reuse_db_of_roma_node(Cfg) ->
 node_can_reuse_db_of_roma_node(Cfg) ->
     Test = #db_reuse_test_spec{
               create = fun roma_node_mining_spec/2,
-              pre_reuse = fun run_rename_db_script/3,
               reuse = fun node_spec/2},
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
 node_can_reuse_db_of_minerva_node_with_epoch_db(Cfg) ->
     Test = #db_reuse_test_spec{
               create = fun minerva_with_epoch_name_in_db_mining_spec/2,
-              pre_reuse = fun run_rename_db_script/3,
               reuse = fun node_spec/2},
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
@@ -237,22 +235,6 @@ node_db_host_path(NodeName, Config) ->
 format(Fmt, Args) ->
     iolist_to_binary(io_lib:format(Fmt, Args)).
 
-run_rename_db_script(UnusedNodeName, DbHostPath, Cfg) when is_atom(UnusedNodeName) ->
-    {ok, DbSchema} = file:read_file(filename:join(DbHostPath, "schema.DAT")),
-    {error, _} = file:read_file(filename:join(DbHostPath, "schema.DAT.backup")),
-    N3 = node_spec_custom_entrypoint(UnusedNodeName, DbHostPath),
-    aest_nodes:setup_nodes([N3], Cfg),
-    aest_nodes:start_node(UnusedNodeName, Cfg),
-
-    {0, _} = aest_nodes:run_cmd_in_node_dir(UnusedNodeName, ["bin/aeternity", "rename_db", "data"], #{timeout => 5000}, Cfg),
-
-    aest_nodes:stop_container(UnusedNodeName, ?GRACEFUL_STOP_TIMEOUT, Cfg),
-    {ok, DbSchemaRenamed} = file:read_file(filename:join(DbHostPath, "schema.DAT")),
-    {ok, DbSchemaBackup} = file:read_file(filename:join(DbHostPath, "schema.DAT.backup")),
-    ?assertNotEqual(DbSchema, DbSchemaRenamed),
-    ?assertEqual(DbSchema, DbSchemaBackup),
-    ok.
-
 node_mining_spec(Name, DbHostPath) ->
     node_spec(Name, DbHostPath, true).
 node_spec(Name, DbHostPath) ->
@@ -263,14 +245,6 @@ node_spec(Name, DbHostPath, Mining) ->
                                 db_path => {DbHostPath, DbGuestPath},
                                 mining => #{autostart => Mining},
                                 genesis_accounts => genesis_accounts()}).
-
-node_spec_custom_entrypoint(Name, DbHostPath) ->
-    DbGuestPath = "/home/aeternity/node/data/mnesia",
-    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:local"},
-                                db_path => {DbHostPath, DbGuestPath},
-                                mining => #{autostart => false},
-                                entrypoint => [<<"sleep">>],
-                                custom_command => [<<"98127308917209371890273">>]}).
 
 roma_node_mining_spec(Name, DbHostPath) ->
     roma_node_spec(Name, DbHostPath, true).
