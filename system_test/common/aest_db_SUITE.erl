@@ -12,12 +12,6 @@
 % Test cases
 -export([
          node_can_reuse_db_of_other_node/1,
-         roma_node_can_reuse_db_of_other_roma_node/1,
-         minerva_node_with_epoch_db_can_reuse_db_of_roma_node/1,
-         node_can_reuse_db_of_roma_node/1,
-         node_can_reuse_db_of_minerva_node_with_epoch_db/1,
-         minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node/1,
-         minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node_with_force_progress_tx/1,
          node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx/1,
          %% TODO: Shouldn't the names be longer ;)
          node_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish/1,
@@ -51,12 +45,6 @@
 
 all() -> [
           node_can_reuse_db_of_other_node,
-          roma_node_can_reuse_db_of_other_roma_node,
-          minerva_node_with_epoch_db_can_reuse_db_of_roma_node,
-          node_can_reuse_db_of_roma_node,
-          node_can_reuse_db_of_minerva_node_with_epoch_db,
-          minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node,
-          minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node_with_force_progress_tx,
           node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx,
           node_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish,
           node_and_fortuna_release_with_sc_persistance_fix_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish,
@@ -80,44 +68,6 @@ node_can_reuse_db_of_other_node(Cfg) ->
     Test = #db_reuse_test_spec{
               create = fun node_mining_spec/2,
               reuse = fun node_spec/2},
-    node_can_reuse_db_of_other_node_(Test, Cfg).
-
-roma_node_can_reuse_db_of_other_roma_node(Cfg) ->
-    Test = #db_reuse_test_spec{
-              create = fun roma_node_mining_spec/2,
-              reuse = fun roma_node_spec/2},
-    node_can_reuse_db_of_other_node_(Test, Cfg).
-
-minerva_node_with_epoch_db_can_reuse_db_of_roma_node(Cfg) ->
-    Test = #db_reuse_test_spec{
-              create = fun roma_node_mining_spec/2,
-              reuse = fun minerva_with_epoch_name_in_db_spec/2},
-    node_can_reuse_db_of_other_node_(Test, Cfg).
-
-node_can_reuse_db_of_roma_node(Cfg) ->
-    Test = #db_reuse_test_spec{
-              create = fun roma_node_mining_spec/2,
-              reuse = fun node_spec/2},
-    node_can_reuse_db_of_other_node_(Test, Cfg).
-
-node_can_reuse_db_of_minerva_node_with_epoch_db(Cfg) ->
-    Test = #db_reuse_test_spec{
-              create = fun minerva_with_epoch_name_in_db_mining_spec/2,
-              reuse = fun node_spec/2},
-    node_can_reuse_db_of_other_node_(Test, Cfg).
-
-minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node(Cfg) ->
-    Test = #db_reuse_test_spec{
-              create = fun minerva_node_with_channels_update_as_tuple_mining_spec/2,
-              reuse = fun minerva_node_with_channels_update_as_tuple_spec/2},
-    node_can_reuse_db_of_other_node_(Test, Cfg).
-
-minerva_node_with_channels_update_as_tuple_can_reuse_db_of_analogous_node_with_force_progress_tx(Cfg) ->
-    Test = #db_reuse_test_spec{
-              create = fun minerva_node_with_channels_update_as_tuple_spec/2,
-              populate = fun populate_db_with_channels_force_progress_tx/2,
-              reuse = fun minerva_node_with_channels_update_as_tuple_spec/2,
-              assert = fun assert_db_with_tx_reused/3},
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
 node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx(Cfg) ->
@@ -246,33 +196,6 @@ node_spec(Name, DbHostPath, Mining) ->
                                 mining => #{autostart => Mining},
                                 genesis_accounts => genesis_accounts()}).
 
-roma_node_mining_spec(Name, DbHostPath) ->
-    roma_node_spec(Name, DbHostPath, true).
-roma_node_spec(Name, DbHostPath) ->
-    roma_node_spec(Name, DbHostPath, false).
-%% Last Roma release.
-roma_node_spec(Name, DbHostPath, Mining) ->
-    DbGuestPath = "/home/aeternity/node/data/mnesia",
-    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v1.4.0"},
-                                db_path => {DbHostPath, DbGuestPath},
-                                config_guest_path => "/home/aeternity/.epoch/epoch/epoch.yaml",
-                                mining => #{autostart => Mining},
-                                genesis_accounts => genesis_accounts()}).
-
-minerva_with_epoch_name_in_db_mining_spec(Name, DbHostPath) ->
-    minerva_with_epoch_name_in_db_spec(Name, DbHostPath, true).
-minerva_with_epoch_name_in_db_spec(Name, DbHostPath) ->
-    minerva_with_epoch_name_in_db_spec(Name, DbHostPath, false).
-%% Minerva release using old epoch@localhost node name in the db.
-minerva_with_epoch_name_in_db_spec(Name, DbHostPath, Mining) ->
-    DbGuestPath = "/home/aeternity/node/data/mnesia",
-    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v2.1.0"},
-                                db_path => {DbHostPath, DbGuestPath},
-                                mining => #{autostart => Mining},
-                                genesis_accounts => genesis_accounts()}).
-
-minerva_node_with_channels_update_as_tuple_mining_spec(Name, DbHostPath) ->
-    minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath, true).
 minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath) ->
     minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath, false).
 %% https://github.com/aeternity/aeternity/blob/v2.3.0/apps/aechannel/src/aesc_offchain_update.erl#L15-L17
