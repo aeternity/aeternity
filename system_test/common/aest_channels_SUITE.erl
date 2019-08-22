@@ -171,7 +171,8 @@ test_different_nodes_channel_(InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg)
         responder_node => node2,
         responder_id => ?ALICE,
         responder_amount => 50000 * aest_nodes:gas_price(),
-        push_amount => 2
+        push_amount => 2,
+        version_offchain_update => 1
     },
     simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg).
 

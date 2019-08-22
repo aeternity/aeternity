@@ -26,6 +26,7 @@
         , channel_insufficent_tokens/1
         , inband_msgs/1
         , upd_transfer/1
+        , upd_transfer_meta_fails_on_old_vsn/1
         , update_with_conflict/1
         , update_with_soft_reject/1
         , deposit_with_conflict/1
@@ -130,6 +131,7 @@ groups() ->
       , channel_insufficent_tokens
       , inband_msgs
       , upd_transfer
+      , upd_transfer_meta_fails_on_old_vsn
       , update_with_conflict
       , update_with_soft_reject
       , deposit_with_conflict
@@ -493,6 +495,36 @@ upd_transfer(Cfg) ->
     check_info(20),
     ok.
 
+upd_transfer_meta_fails_on_old_vsn(Cfg) ->
+    Debug = get_debug(Cfg),
+    XOpts = #{versions => #{offchain_update => 1}},
+    #{ i := #{fsm := FsmI, channel_id := ChannelId} = I
+     , r := #{} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = create_channel_(
+                                           [?SLOGAN|Cfg], XOpts, Debug),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    try  do_update(PubI, PubR, 2, I, R, true, Cfg),
+         error(expected_to_fail)
+    catch
+        throw:{error, _} = Error->
+            log(Debug, "Got expected error: ~p", [Error]),
+            ok
+    end,
+    {I1, R1} = do_update(PubI, PubR, 2, I, R, true, [{use_meta,false}|Cfg]),
+    {BalI1, BalR1} = get_both_balances(FsmI, PubI, PubR),
+    BalI1 = BalI - 2,
+    BalR1 = BalR + 2,
+    ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+    {_I2, _} = await_signing_request(shutdown, I1, Cfg),
+    {_R2, _} = await_signing_request(shutdown_ack, R1, Cfg),
+    SignedTx = await_on_chain_report(I, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
+    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
+    verify_close_mutual_tx(SignedTx, ChannelId),
+    check_info(20),
+    ok.
+
 update_with_conflict(Cfg) ->
     Debug = true,
     #{ i := #{fsm := FsmI} = I
@@ -740,11 +772,19 @@ update_volley(#{pub := PubI} = I, #{pub := PubR} = R, Cfg) ->
     do_update(PubI, PubR, 1, I1, R1, false, Cfg).
 
 do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
-    rpc(dev1, aesc_fsm, upd_transfer, [FsmI, From, To, Amount], Debug),
-    {I1, _} = await_signing_request(update, I, Debug, Cfg),
-    {R1, _} = await_signing_request(update_ack, R, Debug, Cfg),
-    check_info(if_debug(Debug, 20, 0), Debug),
-    {I1, R1}.
+    Opts = case proplists:get_value(use_meta, Cfg, true) of
+               true  -> #{meta => [<<"meta1">>, <<"meta2">>]};
+               false -> #{}
+           end,
+    case rpc(dev1, aesc_fsm, upd_transfer, [FsmI, From, To, Amount, Opts], Debug) of
+        {error, _} = Error ->
+            throw(Error);
+        ok ->
+            {I1, _} = await_signing_request(update, I, Debug, Cfg),
+            {R1, _} = await_signing_request(update_ack, R, Debug, Cfg),
+            check_info(if_debug(Debug, 20, 0), Debug),
+            {I1, R1}
+    end.
 
 msg_volley(#{fsm := FsmI, pub := PubI} = I, #{fsm := FsmR, pub := PubR} = R, _) ->
     rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"ping">>], false),
@@ -1762,18 +1802,27 @@ create_channel_(Cfg) ->
     create_channel_(Cfg, get_debug(Cfg)).
 
 create_channel_(Cfg, Debug) ->
-    {I, R, Spec} = channel_spec(Cfg),
+    create_channel_(Cfg, #{}, Debug).
+
+create_channel_(Cfg, XOpts, Debug) ->
+    {I, R, Spec} = channel_spec(Cfg, XOpts),
     log(Debug, "channel_spec: ~p", [{I, R, Spec}]),
     Port = proplists:get_value(port, Cfg, 9325),
     create_channel_from_spec(I, R, Spec, Port, proplists:get_bool(use_any, Cfg),
                              Debug, Cfg).
 
 channel_spec(Cfg) ->
+    channel_spec(Cfg, #{}).
+
+channel_spec(Cfg, XOpts) ->
     PushAmount = proplists:get_value(push_amount, Cfg, 200000),
     ChannelReserve = proplists:get_value(channel_reserve, Cfg, 300000),
-    channel_spec(Cfg, ChannelReserve, PushAmount).
+    channel_spec(Cfg, ChannelReserve, PushAmount, XOpts).
 
 channel_spec(Cfg, ChannelReserve, PushAmount) ->
+    channel_spec(Cfg, ChannelReserve, PushAmount, #{}).
+
+channel_spec(Cfg, ChannelReserve, PushAmount, XOpts) ->
     I = ?config(initiator, Cfg),
     R = ?config(responder, Cfg),
 
@@ -1782,19 +1831,19 @@ channel_spec(Cfg, ChannelReserve, PushAmount) ->
 
     IAmt = ?config(initiator_amount, Cfg),
     RAmt = ?config(responder_amount, Cfg),
-    Spec = #{initiator        => maps:get(pub, I),
-             responder        => maps:get(pub, R),
-             initiator_amount => IAmt,
-             responder_amount => RAmt,
-             push_amount      => PushAmount,
-             lock_period      => 10,
-             channel_reserve  => ChannelReserve,
-             minimum_depth    => config(minimum_depth, Cfg, ?MINIMUM_DEPTH),
-             client           => self(),
-             noise            => [{noise, Proto}],
-             timeouts         => #{idle => 20000},
-             slogan           => slogan(Cfg),
-             report           => #{debug => true} },
+    Spec = maps:merge(#{initiator        => maps:get(pub, I),
+                        responder        => maps:get(pub, R),
+                        initiator_amount => IAmt,
+                        responder_amount => RAmt,
+                        push_amount      => PushAmount,
+                        lock_period      => 10,
+                        channel_reserve  => ChannelReserve,
+                        minimum_depth    => config(minimum_depth, Cfg, ?MINIMUM_DEPTH),
+                        client           => self(),
+                        noise            => [{noise, Proto}],
+                        timeouts         => #{idle => 20000},
+                        slogan           => slogan(Cfg),
+                        report           => #{debug => true} }, XOpts),
     Spec1 = case ?config(nonce, Cfg) of
                 undefined -> Spec;
                 Nonce     -> Spec#{nonce => Nonce}
@@ -2365,6 +2414,8 @@ if_debug(_, _, Y) -> Y.
 
 apply_updates([], R) ->
     R;
+apply_updates([{meta, _} | T], R) ->
+    apply_updates(T, R);
 apply_updates([{transfer, FromId, ToId, Amount} | T], R) -> %TODO:FIX THIS
     From = aeser_id:specialize(FromId, account),
     To = aeser_id:specialize(ToId, account),

@@ -49,6 +49,7 @@
         , upd_create_contract/2   %%
         , upd_deposit/2           %% (fsm() , map())
         , upd_transfer/4          %% (fsm() , from(), to(), amount())
+        , upd_transfer/5          %% (fsm() , from(), to(), amount(), #{})
         , upd_withdraw/2          %% (fsm() , map())
         , where/2
         ]).
@@ -64,6 +65,7 @@
         , record_fields/1
         , report_tags/0
         , timeouts/0
+        , version_tags/0
         ]).
 
 %% Used by noise session
@@ -259,11 +261,14 @@ upd_deposit(Fsm, #{amount := Amt} = Opts) when is_integer(Amt) ->
     lager:debug("upd_deposit(~p)", [Opts]),
     gen_statem:call(Fsm, {upd_deposit, Opts}).
 
-upd_transfer(_Fsm, _From, _To, Amount) when Amount < 0 ->
+upd_transfer(Fsm, From, To, Amount) ->
+    upd_transfer(Fsm, From, To, Amount, #{}).
+
+upd_transfer(_Fsm, _From, _To, Amount, _Opts) when Amount < 0 ->
     {error, negative_amount};
-upd_transfer(Fsm, From, To, Amount) when is_integer(Amount) ->
-    lager:debug("upd_transfer(~p, ~p, ~p, ~p)", [Fsm, From, To, Amount]),
-    gen_statem:call(Fsm, {upd_transfer, From, To, Amount}).
+upd_transfer(Fsm, From, To, Amount, Opts) when is_integer(Amount), is_map(Opts) ->
+    lager:debug("upd_transfer(~p, ~p, ~p, ~p, ~p)", [Fsm, From, To, Amount, Opts]),
+    gen_statem:call(Fsm, {upd_transfer, From, To, Amount, Opts}).
 
 upd_withdraw(_Fsm, #{amount := Amt}) when Amt < 0 ->
     {error, negative_amount};
@@ -296,6 +301,9 @@ record_fields(Other) -> aesc_offchain_state:record_fields(Other).
 
 report_tags() ->
     maps:keys(?DEFAULT_REPORT_FLAGS).
+
+version_tags() ->
+    [offchain_update].
 
 timeouts() ->
     maps:keys(?DEFAULT_TIMEOUTS).
@@ -2246,18 +2254,19 @@ check_update_ack_(SignedTx, HalfSignedTx) ->
     lager:debug("Txes are the same", []),
     ok.
 
-handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
-                                                       , opts = Opts
-                                                       , on_chain_id = ChannelId
-                                                       } = D) ->
-    Updates = [aesc_offchain_update:op_transfer(aeser_id:create(account, FromPub),
-                                                aeser_id:create(account, ToPub), Amount)],
+handle_upd_transfer(FromPub, ToPub, Amount, From, UOpts, #data{ state = State
+                                                              , opts = Opts
+                                                              , on_chain_id = ChannelId
+                                                              } = D) ->
     {OnChainEnv, OnChainTrees} = tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     %% TODO PT-165214367: maybe set block_hash
     BlockHash = ?NOT_SET_BLOCK_HASH,
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     try
+        Updates = [aesc_offchain_update:op_transfer(aeser_id:create(account, FromPub),
+                                                    aeser_id:create(account, ToPub), Amount)
+                   | meta_updates(UOpts)],
         Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelId, ActiveProtocol,
                                                  OnChainTrees, OnChainEnv, Opts),
         case request_signing(?UPDATE, Tx1, Updates, BlockHash, D, defer) of
@@ -2274,6 +2283,11 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
         error:Reason ->
             process_update_error(Reason, From, D)
     end.
+
+meta_updates(Opts) when is_map(Opts) ->
+    L = maps:get(meta, Opts, []),
+    [aesc_offchain_update:op_meta(D) || D <- L,
+                                        is_binary(D)].
 
 send_leave_msg(#data{ on_chain_id = ChId
                     , session     = Session} = Data) ->
@@ -3060,7 +3074,8 @@ init(#{opts := Opts0} = Arg) ->
               fun(O) -> check_minimum_depth_opt(DefMinDepth, Role, O) end,
               fun check_timeout_opt/1,
               fun check_rpt_opt/1,
-              fun check_log_opt/1
+              fun check_log_opt/1,
+              fun check_version_opts/1
              ], Opts2),
     #{initiator := Initiator} = Opts,
     Session = start_session(Arg, Reestablish, Opts#{role => Role}),
@@ -3156,6 +3171,29 @@ check_timeout_opt(#{timeouts := TOs} = Opts) ->
     Opts1;
 check_timeout_opt(Opts) ->
     check_timeout_opt(Opts#{timeouts => #{}}).
+
+check_version_opts(#{versions := S} = Opts) ->
+    case maps:fold(
+           fun(_, _, {error,_} = E) ->
+                   E;
+              (offchain_update = Cat, V, ok) ->
+                   try aesc_offchain_update:set_vsn(V)
+                   catch
+                       error:_ ->
+                           {error, {invalid_vsn, Cat}}
+                   end;
+              (Cat, _V, ok) ->
+                   lager:debug("Unsupported version option ~p - ignoring", [Cat]),
+                   ok
+           end, ok, S) of
+        ok ->
+            Opts;
+        {error, _} = Error ->
+            lager:error("Invalid serialization: ~p", [Error]),
+            maps:remove(versions, Opts)
+    end;
+check_version_opts(Opts) ->
+    Opts.
 
 check_rpt_opt(#{report := R} = Opts) when is_map(R) ->
     L = [{K,V} || {K,V} <- maps:to_list(R),
@@ -3491,11 +3529,11 @@ handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
         _ ->
             keep_state(D, [{reply, From, {error, unknown_recipient}}])
     end;
-handle_call_(open, {upd_transfer, FromPub, ToPub, Amount}, From,
+handle_call_(open, {upd_transfer, FromPub, ToPub, Amount, Opts}, From,
             #data{opts = #{initiator := I, responder := R}} = D) ->
     case FromPub =/= ToPub andalso ([] == [FromPub, ToPub] -- [I, R]) of
         true ->
-            handle_upd_transfer(FromPub, ToPub, Amount, From, set_ongoing(D));
+            handle_upd_transfer(FromPub, ToPub, Amount, From, Opts, set_ongoing(D));
         false ->
             keep_state(set_ongoing(D), [{reply, From, {error, invalid_pubkeys}}])
     end;
