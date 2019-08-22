@@ -1,0 +1,23 @@
+#!/usr/bin/env sh
+#
+# This script executes a given COMMAND until it succeeds or MAX_RETRIES have
+# been reached. In between retries the script waits for
+# (INITIAL_TIMEOUT)^RETRIES , such that the time between retries increases.
+
+MAX_RETRIES=${MAX_RETRIES:-5}
+COMMAND="$*"
+
+timeout=${INITIAL_TIMEOUT:-2}
+retry=0
+
+if [ "${COMMAND}" = "" ]; then
+  echo "ERROR: no command to execute given"
+  exit 1
+fi
+
+until [ ${retry} -ge ${MAX_RETRIES} ]; do
+  ${COMMAND} && break
+  retry=$[${retry}+1]
+  sleep ${timeout}
+  timeout=$[${timeout}*2]
+done
