@@ -294,16 +294,14 @@ smoke-test-run: KIND=system_test
 smoke-test-run: internal-build
 	@$(REBAR) as $(KIND),test do upgrade, ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
 
-system-smoke-test-deps:
-	$(MAKE) docker
+system-smoke-test-deps: docker
 	docker pull "aeternity/aeternity:v1.4.0"
 
 local-system-test: KIND=system_test
 local-system-test: internal-build
 	@$(REBAR) as $(KIND) do ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
 
-system-test-deps:
-	$(MAKE) system-smoke-test-deps
+system-test-deps: system-smoke-test-deps
 	docker pull "aeternity/aeternity:v2.3.0"
 	docker pull "aeternity/aeternity:v4.0.0"
 	docker pull "aeternity/aeternity:v4.2.0"
