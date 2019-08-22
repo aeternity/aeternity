@@ -15,3 +15,4 @@ There is also additional documentation on mining with CUDA and build and/or join
 - [CUDA Miner](cuda-miner.md)
 - [Stratum](stratum.md)
 - [Network Monitoring](monitoring.md)
+- [Node API](api.md)

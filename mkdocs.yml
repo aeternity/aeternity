@@ -18,3 +18,4 @@ nav:
 - CUDA Miner: 'cuda-miner.md'
 - Stratum: 'stratum.md'
 - Network Monitoring: 'monitoring.md'
+- Node API: 'api.md'
