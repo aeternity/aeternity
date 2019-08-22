@@ -69,6 +69,7 @@
         , sophia_call_value/1
         , sophia_payable_contract/1
         , sophia_payable_entrypoint/1
+        , sophia_private_entrypoint/1
         , sophia_contract_creator/1
         , sophia_no_reentrant/1
         , sophia_aevm_exploits/1
@@ -328,6 +329,7 @@ groups() ->
                                  sophia_call_value,
                                  sophia_payable_contract,
                                  sophia_payable_entrypoint,
+                                 sophia_private_entrypoint,
                                  sophia_contract_creator,
                                  sophia_functions,
                                  sophia_oracles,
@@ -5560,6 +5562,47 @@ sophia_payable_entrypoint(_Cfg) ->
     ?assertEqual(Gas, Gas4),
 
     ok.
+
+sophia_private_entrypoint(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    C1  = ?call(create_contract, Acc, remote_private, {}, #{}),
+    C2  = ?call(create_contract, Acc, remote_private, {}, #{}),
+
+    Gas    = 20000,
+    Params = #{gas => Gas},
+    IntArg = 42,
+    RemoteArgs = {?cid(C2), IntArg},
+
+    %% Check that we can make a remote call to the private endpoint if
+    %% we go through the exported endpoint.
+    Ok1 = ?call(call_contract, Acc, C1, call_exported, word, RemoteArgs, Params),
+    ?assertEqual(IntArg, Ok1),
+
+    %% Check that we cannot make a remote call to the private endpoint directly.
+    %% In AEVM this private endpoint has no clause in the dispatch entrypoint,
+    %% so it is not reachable.
+    %% In FATE this private endpoint has a different name, so it will not
+    %% find the function.
+    Err1 = ?call(call_contract, Acc, C1, call_private, word, RemoteArgs, Params),
+    ?assertMatchVM({error,<<"out_of_gas">>},
+                   {error,<<"Trying to call undefined function: ", _/binary>>}, Err1),
+    ct:log("Err1: ~p", [Err1]),
+
+    %% However, in FATE we can mock up the internal name and try to call it directly.
+    %% We will get a different error message for this.
+    case ?IS_FATE_SOPHIA(vm_version()) of
+        true ->
+            InternalName = '.RemotePrivate.private_endpoint',
+            Identifier = aeb_fate_code:symbol_identifier(atom_to_binary(InternalName, utf8)),
+            Err2 = ?call(call_contract, Acc, C1, InternalName, word, {42}, Params),
+            ExpErr = iolist_to_binary(
+                       io_lib:format("Function with hash ~w is private",
+                                     [Identifier])),
+            ?assertMatch({error, ExpErr}, Err2);
+        false ->
+            ok
+    end.
 
 sophia_call_out_of_gas(_Cfg) ->
     state(aect_test_utils:new_state()),
