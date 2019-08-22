@@ -168,8 +168,8 @@ is_legal_version_in_protocol(create, #{vm := ?VM_FATE_SOPHIA_1, abi := ?ABI_FATE
         ?ROMA_PROTOCOL_VSN    -> false;
         ?MINERVA_PROTOCOL_VSN -> false;
         ?FORTUNA_PROTOCOL_VSN -> false;
-        ?LIMA_PROTOCOL_VSN    -> ?VM_FATE_SOPHIA_1_enabled; %% TODO: Revise this before release
-        P when P > ?LIMA_PROTOCOL_VSN -> ?VM_FATE_SOPHIA_1_enabled %% TODO: Revise this before release
+        ?LIMA_PROTOCOL_VSN    -> true;
+        P when P > ?LIMA_PROTOCOL_VSN -> true
     end;
 is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
     case ProtocolVersion of
@@ -196,7 +196,7 @@ is_legal_version_in_protocol(call, #{vm := VMVersion}, ProtocolVersion) ->
                                    (
                                    (VMVersion =:= ?VM_FATE_SOPHIA_1)
                                    ) ->
-            ?VM_FATE_SOPHIA_1_enabled;
+            true;
         _                     when VMVersion =:= ?VM_AEVM_SOLIDITY_1 ->
             ?VM_AEVM_SOLIDITY_1_enabled;
         _ ->
@@ -207,8 +207,7 @@ is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_NO_VM}, _ProtocolVer
 is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_AEVM_SOPHIA_1}, _ProtocolVersion) ->
     true;
 is_legal_version_in_protocol(oracle_register, #{abi := ?ABI_FATE_SOPHIA_1}, ProtocolVersion) ->
-    ProtocolVersion >= ?LIMA_PROTOCOL_VSN
-        andalso ?VM_FATE_SOPHIA_1_enabled;
+    ProtocolVersion >= ?LIMA_PROTOCOL_VSN;
 is_legal_version_in_protocol(_, _, _) ->
     false.
 
@@ -523,7 +522,7 @@ is_legal_version(#{vm := VM, abi := ABI}) ->
         {?VM_AEVM_SOPHIA_2,   ?ABI_AEVM_SOPHIA_1} -> true;
         {?VM_AEVM_SOPHIA_3,   ?ABI_AEVM_SOPHIA_1} -> true;
         {?VM_AEVM_SOPHIA_4,   ?ABI_AEVM_SOPHIA_1} -> true;
-        {?VM_FATE_SOPHIA_1,   ?ABI_FATE_SOPHIA_1} -> ?VM_FATE_SOPHIA_1_enabled;
+        {?VM_FATE_SOPHIA_1,   ?ABI_FATE_SOPHIA_1} -> true;
         {?VM_AEVM_SOLIDITY_1, ?ABI_SOLIDITY_1}    -> ?VM_AEVM_SOLIDITY_1_enabled;
         _                                         -> false
     end.
