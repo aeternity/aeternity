@@ -57,7 +57,7 @@ mine_block_test_() ->
 
                  ?assertEqual(1, aec_blocks:height(Block)),
                  ?assertEqual(ok, aec_headers:validate_key_block_header(
-                                    aec_blocks:to_header(Block)))
+                                    aec_blocks:to_header(Block), aec_blocks:version(Block)))
          end}},
        {timeout, 60,
         {"Proof of work fails with no_solution",
@@ -121,4 +121,3 @@ generate_valid_test_data(TopBlock, Tries) ->
         {error, no_solution} ->
             generate_valid_test_data(TopBlock, Tries -1)
     end.
-

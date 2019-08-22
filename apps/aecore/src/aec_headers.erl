@@ -52,8 +52,8 @@
          txs_hash/1,
          type/1,
          update_micro_candidate/3,
-         validate_key_block_header/1,
-         validate_micro_block_header/1,
+         validate_key_block_header/2,
+         validate_micro_block_header/2,
          version/1
         ]).
 
@@ -676,30 +676,36 @@ deserialize_pow_evidence(_) ->
 %%% Validation
 %%%===================================================================
 
-validate_key_block_header(Header) ->
-    Validators = [fun validate_version/1,
-                  fun validate_pow/1,
-                  fun validate_max_time/1
-                  ],
-    aeu_validation:run(Validators, [Header]).
+validate_key_block_header(Header, Version) ->
+    case validate_version(Header, Version) of
+        ok ->
+            Validators = [fun validate_pow/1,
+                          fun validate_max_time/1],
+            aeu_validation:run(Validators, [Header]);
+        {error, _Rsn} = Err ->
+            Err
+    end.
 
-validate_micro_block_header(Header) ->
-    %% NOTE: The signature is not validated since we don't know the leader key
-    %%       This check is performed when adding the header to the chain.
-    Validators = [fun validate_version/1,
-                  fun validate_micro_block_cycle_time/1,
-                  fun validate_max_time/1
-    ],
-    aeu_validation:run(Validators, [Header]).
+validate_micro_block_header(Header, Version) ->
+    case validate_version(Header, Version) of
+        ok ->
+            %% NOTE: The signature is not validated since we don't know the leader key
+            %%       This check is performed when adding the header to the chain.
+            Validators = [fun validate_micro_block_cycle_time/1,
+                          fun validate_max_time/1],
+            aeu_validation:run(Validators, [Header]);
+        {error, _Rsn} = Err ->
+            Err
+    end.
 
--spec validate_version(header()) ->
+-spec validate_version(header(), aec_hard_forks:protocol_vsn()) ->
                               ok | {error, Reason} when
-      Reason :: unknown_protocol_version
-              | {protocol_version_mismatch, ExpectedVersion::non_neg_integer()}.
-validate_version(Header) ->
-    V = version(Header),
-    H = height(Header),
-    aec_hard_forks:check_protocol_version_validity(V, H).
+      Reason :: {protocol_version_mismatch, ExpectedVersion::non_neg_integer()}.
+validate_version(Header, Version) ->
+    case version(Header) =:= Version of
+        true  -> ok;
+        false -> {error, {protocol_version_mismatch, Version}}
+    end.
 
 -spec validate_pow(header()) ->
                           ok | {error, incorrect_pow}.

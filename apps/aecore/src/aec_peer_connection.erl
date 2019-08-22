@@ -973,10 +973,10 @@ handle_new_micro_block(S, Msg) ->
                         {ok, HH} = aec_headers:hash_header(Header),
                         epoch_sync:info("Got invalid light micro_block (~s): ~p", [pp(HH), E]),
                         case aec_chain:get_header(aec_headers:prev_key_hash(Header)) of
-                            {ok, PrevHeader} -> 
+                            {ok, PrevHeader} ->
                                 epoch_sync:debug("miner beneficiary: ~p", [aec_headers:beneficiary(PrevHeader)]),
                                 ok;
-                            _ -> 
+                            _ ->
                                 ok
                         end;
 
@@ -1285,6 +1285,15 @@ pre_assembly_check(MicroHeader) ->
             aeu_validation:run(Validators, [MicroHeader])
     end.
 
+validate_micro(MicroHeader) ->
+    case aec_db:find_header(aec_headers:prev_key_hash(MicroHeader)) of
+        none ->
+            {error, prev_key_block_not_found}; %% This is virtually impossible!
+        {value, KeyHeader} ->
+            ExpectedVersion = aec_headers:version(KeyHeader),
+            aec_headers:validate_micro_block_header(MicroHeader, ExpectedVersion)
+    end.
+
 validate_connected_to_chain(MicroHeader) ->
     case aec_chain_state:hash_is_connected_to_genesis(
             aec_headers:prev_hash(MicroHeader)) of
@@ -1329,9 +1338,6 @@ validate_prev_key_block(MicroHeader) ->
             {error, orphan_blocks_not_allowed}
     end.
 
-validate_micro(MicroHeader) ->
-    aec_headers:validate_micro_block_header(MicroHeader).
-
 validate_micro_signature(MicroHeader) ->
     case aec_db:find_header(aec_headers:prev_key_hash(MicroHeader)) of
         none -> {error, signer_not_found}; %% This is virtually impossible!
@@ -1344,4 +1350,3 @@ validate_micro_signature(MicroHeader) ->
                 {error, _} -> {error, signature_verification_failed}
             end
     end.
-
