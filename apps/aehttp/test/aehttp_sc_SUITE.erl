@@ -1632,11 +1632,9 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
     Test(Name, <<"oracle">>, false),
     register_name(NamePubkey, NamePrivkey, Name,
                   [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)},
-                   {<<"oracle">>, aeser_id:create(oracle, <<2:256>>)},
-                   {<<"unexpected_key">>, aeser_id:create(account, <<3:256>>)}]),
+                   {<<"oracle">>, aeser_id:create(oracle, <<2:256>>)}]),
     Test(Name, <<"account_pubkey">>, true),
     Test(Name, <<"oracle">>, true),
-    Test(Name, <<"unexpected_key">>, true),
     Test(Name, <<"missing_key">>, false),
     ok.
 
@@ -3424,4 +3422,3 @@ sc_ws_broken_open_params(Config) ->
                                    #{lock_period => -1}, Config),
     Test(ChannelOpts8, <<"Value too low">>),
     ok.
-

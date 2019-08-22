@@ -802,6 +802,7 @@ name_update({OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers}, S) -
     {Name, S1} = get_name(NameHash, S),
     assert_name_owner(Name, OwnerPubkey),
     assert_name_claimed(Name),
+    assert_name_pointers(Pointers, S#state.height),
     AbsoluteTTL = S#state.height + DeltaTTL,
     Name1 = aens_names:update(Name, AbsoluteTTL, ClientTTL, Pointers),
     put_name(Name1, S1).
@@ -1641,6 +1642,28 @@ assert_name_claimed(Name) ->
     case aens_names:status(Name) of
         claimed -> ok;
         revoked -> runtime_error(name_revoked)
+    end.
+
+assert_name_pointers(Pointers, Height) ->
+    case aec_hard_forks:protocol_effective_at_height(Height) of
+        Vsn when Vsn >= ?LIMA_PROTOCOL_VSN ->
+            lists:foldl(
+              fun (Pointer, SeenKeys) ->
+                      Key = aens_pointer:key(Pointer),
+                      Id = aens_pointer:id(Pointer),
+                      lists:member(Key, SeenKeys) andalso
+                          runtime_error(duplicate_pointer),
+                      case {Key, aeser_id:specialize_type(Id)} of
+                          {<<"account_pubkey">>, account} -> ok;
+                          {<<"oracle_pubkey">>, oracle} -> ok;
+                          {<<"contract_pubkey">>, contract} -> ok;
+                          _ -> runtime_error(invalid_pointer)
+                      end,
+                      [Key | SeenKeys]
+              end, [], Pointers),
+            ok;
+        _ ->
+            ok
     end.
 
 %% Note: returns updated calldata for FATE
