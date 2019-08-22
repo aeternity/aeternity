@@ -5,7 +5,6 @@ peers: {{^peers}}[]{{/peers}}
     - {{peer}}
 {{/peers}}
 
-{{#peers}}
 sync:
     port: {{services.sync.port}}
     single_outbound_per_group: false
@@ -18,7 +17,6 @@ websocket:
 keys:
     peer_password: {{key_password}}
     dir: ./keys
-{{/peers}}
 
 http:
     external:
