@@ -51,14 +51,18 @@ dry_run_res(STx, _Trees, Err) ->
     {Type, _} = aetx:specialize_type(aetx_sign:tx(STx)),
     {Type, Err}.
 
-add_accounts(Trees, []) ->
-    Trees;
-add_accounts(Trees, [#{pub_key := PK, amount := A} | Accounts]) ->
-    AccountsTree     = aec_trees:accounts(Trees),
-    {value, Account} = aec_accounts_trees:lookup(PK, AccountsTree),
-    {ok, Account1}   = aec_accounts:earn(Account, A),
-    AccountsTree1    = aec_accounts_trees:enter(Account1, AccountsTree),
-    add_accounts(aec_trees:set_accounts(Trees, AccountsTree1), Accounts).
+
+add_accounts(Trees, Accounts) ->
+    AccountsTree = lists:foldl(fun add_account/2, aec_trees:accounts(Trees), Accounts),
+    aec_trees:set_accounts(Trees, AccountsTree).
+
+add_account(#{pub_key := PK, amount := A}, AccountsTree) ->
+    {ok, Account} =
+        case aec_accounts_trees:lookup(PK, AccountsTree) of
+            none              -> {ok, aec_accounts:new(PK, A)};
+            {value, Account0} -> aec_accounts:earn(Account0, A)
+        end,
+    aec_accounts_trees:enter(Account, AccountsTree).
 
 dummy_sign_txs(Txs) ->
     [ aetx_sign:new(Tx, [dummy_sign()]) || Tx <- Txs ].
