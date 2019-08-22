@@ -142,4 +142,3 @@ parse_by_type({list, Opts}, V, RecordField) when is_list(V) ->
         throw:{ThrowTag, Err} ->
             Err
     end.
-                                               
