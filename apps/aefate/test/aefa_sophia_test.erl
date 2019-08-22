@@ -77,13 +77,14 @@ compile_contract(Code, Options) ->
         {error, {type_errors, Err}}
     end.
 
+-define(CALL_GAS, 1000000).
 
 make_call_spec(Contract, Function0, Arguments) ->
     Function = aeb_fate_code:symbol_identifier(Function0),
     EncArgs  = list_to_tuple([aefate_test_utils:encode(A) || A <- Arguments]),
     Calldata = {tuple, {Function, {tuple, EncArgs}}},
     #{ contract => pad_contract_name(Contract),
-       gas      => 1000000,
+       gas      => ?CALL_GAS,
        value    => 0,
        call     => aeb_fate_encoding:serialize(Calldata),
        store    => aect_contracts_store:new() }.
@@ -104,11 +105,12 @@ run_call(Code, Fun, Args) ->
     Cache = compile_contracts([{<<"test">>, Code}]),
     case run(Cache, <<"test">>, list_to_binary(Fun), Args) of
         {ok, ES} ->
-            Trace = aefa_engine_state:trace(ES),
-            Red   = fun({_, {reductions, R}}) -> R end,
+            GasUsed    = ?CALL_GAS - aefa_engine_state:gas(ES),
+            Trace      = aefa_engine_state:trace(ES),
+            Red        = fun({_, {reductions, R}}) -> R end,
             Reductions = Red(hd(Trace)) - Red(lists:last(Trace)),
             Steps      = length(Trace),
-            io:format("~p steps (~p reductions)\n", [Steps, Reductions]),
+            io:format("~p steps / ~p gas / ~p reductions\n", [Steps, GasUsed, Reductions]),
             aefa_engine_state:accumulator(ES);
         {error, Err, ES} ->
             io:format("~s\n", [Err]),

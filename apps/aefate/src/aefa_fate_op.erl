@@ -1405,8 +1405,8 @@ write({stack, 0}, Val, ES) ->
     aefa_engine_state:push_accumulator(Val, ES);
 write({var, _} = Name,  Val, ES) ->
     aefa_fate:store_var(Name, Val, ES);
-write({arg, N}, _, ES) ->
-    aefa_fate:abort({cannot_write_to_arg, N}, ES).
+write({arg, _} = Arg, Val, ES) ->
+    aefa_fate:store_var(Arg, Val, ES).
 
 
 %% ------------------------------------------------------
