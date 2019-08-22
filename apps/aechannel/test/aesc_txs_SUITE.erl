@@ -2680,10 +2680,8 @@ fp_use_onchain_name_resolution(Cfg) ->
                 assert_last_channel_result(false, bool),
                 register_name(Name,
                               [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)},
-                               {<<"oracle">>, aeser_id:create(oracle, <<2:256>>)},
-                               {<<"unexpected_key">>, aeser_id:create(account, <<3:256>>)}]),
-                ForceCallCheckName(Forcer, <<"oracle">>, true),
-                ForceCallCheckName(Forcer, <<"unexpected_key">>, true),
+                               {<<"oracle_pubkey">>, aeser_id:create(oracle, <<2:256>>)}]),
+                ForceCallCheckName(Forcer, <<"oracle_pubkey">>, true),
                 ForceCallCheckName(Forcer, <<"no_such_pointer">>, false)
                ])
         end,
@@ -5460,7 +5458,7 @@ fp_sophia_versions(Cfg) ->
             OK          %% Lima
          },
          %% AEVM 2
-         {?VM_AEVM_SOPHIA_2, SophiaVsn1, 
+         {?VM_AEVM_SOPHIA_2, SophiaVsn1,
             ErrUnknown, %% Roma
             OK,         %% Minerva
             OK,         %% Fortuna
@@ -5586,4 +5584,3 @@ aevm_type(Type) -> Type.
 encode_sig(Sig) ->
     <<"0x", Hex/binary>> = aeu_hex:hexstring_encode(Sig),
     binary_to_list(<<"#", Hex/binary>>).
-

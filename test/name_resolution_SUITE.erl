@@ -11,11 +11,9 @@
 
 %% test case exports
 -export([ spend_to_name/1
-        , spend_to_name_when_multiple_pointer_entries/1
         %% , query_oracle/1
         %% , query_named_oracle/1
         , transfer_name_to_named_account/1
-        , transfer_name_to_named_account_when_multiple_pointer_entries/1
         ]).
 
 -import(aec_block_micro_candidate, [apply_block_txs_strict/3
@@ -31,9 +29,7 @@
 
 all() ->
     [ spend_to_name
-    , spend_to_name_when_multiple_pointer_entries
     , transfer_name_to_named_account
-    , transfer_name_to_named_account_when_multiple_pointer_entries
     ].
 
 
@@ -134,17 +130,6 @@ pointers(Tag, ToPubkey) ->
     IdType = type2id(Tag),
     [aens_pointer:new(atom_to_binary(Tag, utf8), aeser_id:create(IdType, ToPubkey))].
 
-pointers_with_duplicated_key_at_end(Tag, ToPubkey) ->
-    [P] = pointers(Tag, ToPubkey),
-    %% Extract pointer value i.e. identifier, create distinct identifier.
-    PId = aens_pointer:id(P),
-    {PTag, PVal} = aeser_id:specialize(PId),
-    <<PValInt:32/unit:8>> = PVal,
-    ShadowedId = aeser_id:create(PTag, <<(1+PValInt):32/unit:8>>),
-    ?assertNotEqual(PId, ShadowedId), %% Hardcoded expectation on generated identifier being distinct.
-    ShadowedP = aens_pointer:new(aens_pointer:key(P), ShadowedId),
-    [P, ShadowedP].
-
 update_pointers(Pointers, Pubkey, NameID, Nonce, S) ->
     UpdateSpec  = #{ account_id => account_id(Pubkey)
                    , nonce => Nonce
@@ -180,9 +165,6 @@ type2id(oracle_pubkey)   -> oracle.
 spend_to_name(_Cfg) ->
     spend_to_name_(fun pointers/2).
 
-spend_to_name_when_multiple_pointer_entries(_Cfg) ->
-    spend_to_name_(fun pointers_with_duplicated_key_at_end/2).
-
 spend_to_name_(PointersFun) ->
     {[Pubkey1, Pubkey2], S1} = init_state(2),
     Amount = 100,
@@ -210,9 +192,6 @@ spend_to_name_(PointersFun) ->
 
 transfer_name_to_named_account(_Cfg) ->
     transfer_name_to_named_account_(fun pointers/2).
-
-transfer_name_to_named_account_when_multiple_pointer_entries(_Cfg) ->
-    transfer_name_to_named_account_(fun pointers_with_duplicated_key_at_end/2).
 
 transfer_name_to_named_account_(PointersFun) ->
     {[Pubkey1, Pubkey2, Pubkey3], S1} = init_state(3),

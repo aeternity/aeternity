@@ -9,7 +9,9 @@
 
 %% common_test exports
 -export([all/0,
-         groups/0
+         groups/0,
+         init_per_testcase/2,
+         end_per_testcase/2
         ]).
 
 %% test case exports
@@ -22,6 +24,7 @@
          claim_race_negative/1,
          update/1,
          update_negative/1,
+         update_pointers_negative/1,
          transfer/1,
          transfer_negative/1,
          revoke/1,
@@ -31,6 +34,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 -include("../../aecore/include/blocks.hrl").
+-include("../../aecontract/include/hard_forks.hrl").
 
 %%%===================================================================
 %%% Common test framework
@@ -53,11 +57,26 @@ groups() ->
        claim_race_negative,
        update,
        update_negative,
+       update_pointers_negative,
        transfer,
        transfer_negative,
        revoke,
        revoke_negative]}
     ].
+
+
+init_per_testcase(update_pointers_negative, Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        Vsn when Vsn >= ?LIMA_PROTOCOL_VSN -> Cfg;
+        _ -> {skip, no_pointer_restriction_before_lima}
+    end;
+
+init_per_testcase(_, Cfg) ->
+    Cfg.
+
+end_per_testcase(_, _Cfg) ->
+    ok.
+
 
 -define(NAME, <<"詹姆斯詹姆斯.test"/utf8>>).
 -define(PRE_CLAIM_HEIGHT, 1).
@@ -356,9 +375,34 @@ update_negative(Cfg) ->
 
     TxSpec7 = aens_test_utils:update_tx_spec(PubKey, NHash, S4),
     {ok, Tx7} = aens_update_tx:new(TxSpec7),
-    {error, name_revoked} =
-        aetx:process(Tx7, aens_test_utils:trees(S4), Env),
+    {error, name_revoked} = aetx:process(Tx7, aens_test_utils:trees(S4), Env),
     ok.
+
+update_pointers_negative(Cfg) ->
+    {PubKey, NHash, S1} = claim(Cfg),
+    Height = ?PRE_CLAIM_HEIGHT + 1,
+    Env = aetx_env:tx_env(Height),
+
+    %% Test Tx invalid pointer key
+    Pointers8 = [aens_pointer:new(<<"badkey">>, aeser_id:create(account, <<1:256>>))],
+    TxSpec8 = aens_test_utils:update_tx_spec(PubKey, NHash, #{pointers => Pointers8}, S1),
+    {ok, Tx8} = aens_update_tx:new(TxSpec8),
+    {error, invalid_pointer} = aetx:process(Tx8, aens_test_utils:trees(S1), Env),
+
+    %% Test Tx invalid pointer key & type combination
+    Pointers9 = [aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(account, <<1:256>>))],
+    TxSpec9 = aens_test_utils:update_tx_spec(PubKey, NHash, #{pointers => Pointers9}, S1),
+    {ok, Tx9} = aens_update_tx:new(TxSpec9),
+    {error, invalid_pointer} = aetx:process(Tx9, aens_test_utils:trees(S1), Env),
+
+    %% Test Tx duplicate valid pointers
+    Pointers10 = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)),
+                  aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<2:256>>))],
+    TxSpec10 = aens_test_utils:update_tx_spec(PubKey, NHash, #{pointers => Pointers10}, S1),
+    {ok, Tx10} = aens_update_tx:new(TxSpec10),
+    {error, duplicate_pointer} = aetx:process(Tx10, aens_test_utils:trees(S1), Env),
+    ok.
+
 
 %%%===================================================================
 %%% Transfer
