@@ -3,7 +3,7 @@ version: "{build}-{branch}"
 
 skip_tags: false
 skip_non_tags: false
-skip_branch_with_pr: false
+skip_branch_with_pr: true
 
 shallow_clone: false
 clone_depth: 5
