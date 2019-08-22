@@ -171,6 +171,7 @@ op_call_contract(CallerId, ContractId, ABIVersion, Amount, CallData, CallStack,
                    gas = Gas}.
 
 op_meta(Data) ->
+    true = can_serialize(meta),
     #meta{ data = Data }.
 
 -spec apply_on_trees(aesc_offchain_update:update(), aec_trees:trees(),
@@ -507,3 +508,9 @@ extract_abi_version(#call_contract{abi_version = ABIVersion}) ->
 
 update_error(Err) ->
     error({off_chain_update_error, Err}).
+
+can_serialize(Op) ->
+    can_serialize(Op, get_update_vsn()).
+
+can_serialize(meta, ?UPDATE_VSN_1) -> error(meta_not_allowed);
+can_serialize(_   ,             _) -> true.

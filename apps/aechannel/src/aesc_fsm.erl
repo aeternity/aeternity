@@ -2258,15 +2258,15 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, UOpts, #data{ state = State
                                                               , opts = Opts
                                                               , on_chain_id = ChannelId
                                                               } = D) ->
-    Updates = [aesc_offchain_update:op_transfer(aeser_id:create(account, FromPub),
-                                                aeser_id:create(account, ToPub), Amount)
-              | meta_updates(UOpts)],
     {OnChainEnv, OnChainTrees} = tx_env_and_trees_from_top(aetx_contract),
     Height = aetx_env:height(OnChainEnv),
     %% TODO PT-165214367: maybe set block_hash
     BlockHash = ?NOT_SET_BLOCK_HASH,
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     try
+        Updates = [aesc_offchain_update:op_transfer(aeser_id:create(account, FromPub),
+                                                    aeser_id:create(account, ToPub), Amount)
+                   | meta_updates(UOpts)],
         Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelId, ActiveProtocol,
                                                  OnChainTrees, OnChainEnv, Opts),
         case request_signing(?UPDATE, Tx1, Updates, BlockHash, D, defer) of
