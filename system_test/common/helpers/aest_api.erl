@@ -51,18 +51,20 @@ sc_open(Params, Cfg) ->
     #{ pubkey := RPubKey, privkey := RPrivKey } = RAccount,
 
     {Host, _Port} = node_ws_int_addr(RNodeName, Cfg),
-    Opts = #{
-        protocol => <<"json-rpc">>,
-        host => Host,
-        port => maps:get(responder_port, Params, 9000),
-        initiator_id => aeser_api_encoder:encode(account_pubkey, IPubKey),
-        responder_id => aeser_api_encoder:encode(account_pubkey, RPubKey),
-        lock_period => maps:get(lock_period, Params, 10),
-        push_amount => maps:get(push_amount, Params, 10),
-        initiator_amount => IAmt,
-        responder_amount => RAmt,
-        channel_reserve => maps:get(channel_reserve, Params, 2)
-    },
+    Opts = maps:merge(
+             #{
+               protocol => <<"json-rpc">>,
+               host => Host,
+               port => maps:get(responder_port, Params, 9000),
+               initiator_id => aeser_api_encoder:encode(account_pubkey, IPubKey),
+               responder_id => aeser_api_encoder:encode(account_pubkey, RPubKey),
+               lock_period => maps:get(lock_period, Params, 10),
+               push_amount => maps:get(push_amount, Params, 10),
+               initiator_amount => IAmt,
+               responder_amount => RAmt,
+               channel_reserve => maps:get(channel_reserve, Params, 2)
+              },
+             maps:with([version_offchain_update], Params)),
 
     {ok, IConn} = sc_start_ws(INodeName, initiator, Opts, Cfg),
     ok = ?WS:register_test_for_channel_events(IConn, [info, sign, on_chain_tx]),

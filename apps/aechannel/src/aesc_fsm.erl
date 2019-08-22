@@ -65,6 +65,7 @@
         , record_fields/1
         , report_tags/0
         , timeouts/0
+        , version_tags/0
         ]).
 
 %% Used by noise session
@@ -300,6 +301,9 @@ record_fields(Other) -> aesc_offchain_state:record_fields(Other).
 
 report_tags() ->
     maps:keys(?DEFAULT_REPORT_FLAGS).
+
+version_tags() ->
+    [offchain_update].
 
 timeouts() ->
     maps:keys(?DEFAULT_TIMEOUTS).
@@ -3070,7 +3074,8 @@ init(#{opts := Opts0} = Arg) ->
               fun(O) -> check_minimum_depth_opt(DefMinDepth, Role, O) end,
               fun check_timeout_opt/1,
               fun check_rpt_opt/1,
-              fun check_log_opt/1
+              fun check_log_opt/1,
+              fun check_version_opts/1
              ], Opts2),
     #{initiator := Initiator} = Opts,
     Session = start_session(Arg, Reestablish, Opts#{role => Role}),
@@ -3166,6 +3171,29 @@ check_timeout_opt(#{timeouts := TOs} = Opts) ->
     Opts1;
 check_timeout_opt(Opts) ->
     check_timeout_opt(Opts#{timeouts => #{}}).
+
+check_version_opts(#{versions := S} = Opts) ->
+    case maps:fold(
+           fun(_, _, {error,_} = E) ->
+                   E;
+              (offchain_update = Cat, V, ok) ->
+                   try aesc_offchain_update:set_vsn(V)
+                   catch
+                       error:_ ->
+                           {error, {invalid_vsn, Cat}}
+                   end;
+              (Cat, _V, ok) ->
+                   lager:debug("Unsupported version option ~p - ignoring", [Cat]),
+                   ok
+           end, ok, S) of
+        ok ->
+            Opts;
+        {error, _} = Error ->
+            lager:error("Invalid serialization: ~p", [Error]),
+            maps:remove(versions, Opts)
+    end;
+check_version_opts(Opts) ->
+    Opts.
 
 check_rpt_opt(#{report := R} = Opts) when is_map(R) ->
     L = [{K,V} || {K,V} <- maps:to_list(R),

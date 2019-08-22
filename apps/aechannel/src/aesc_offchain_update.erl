@@ -1,7 +1,8 @@
 -module(aesc_offchain_update).
 
 -define(UPDATE_VSN, 2).
--define(UPDATE_VSN_1_OR_2(V), V =:= 1; V =:= 2).
+-define(UPDATE_VSN_1, 1).
+-define(UPDATE_VSN_1_OR_2(V), V =:= ?UPDATE_VSN_1; V =:= ?UPDATE_VSN).
 
 -record(transfer, {
           from_id      :: aeser_id:id(),
@@ -66,6 +67,8 @@
          deserialize/1,
          for_client/1,
          apply_on_trees/6]).
+
+-export([set_vsn/1]).
 
 -export([is_call/1,
          is_contract_create/1,
@@ -258,11 +261,26 @@ for_client(#meta{data = Data}) ->
     #{<<"op">>   => type2swagger_name(meta),
       <<"data">> => Data}.
 
+update_vsn_key() ->
+    {?MODULE, update_vsn}.
+
+get_update_vsn() ->
+    case get(update_vsn_key()) of
+        undefined ->
+            ?UPDATE_VSN;
+        V ->
+            V
+    end.
+
+set_vsn(V) when ?UPDATE_VSN_1_OR_2(V) ->
+    lager:debug("set serialization vsn to ~p", [V]),
+    put(update_vsn_key(), V),
+    ok.
 
 -spec serialize(update()) -> binary().
 serialize(Update) ->
     Fields = update2fields(Update),
-    Vsn = ?UPDATE_VSN,
+    Vsn = get_update_vsn(),
     UpdateType = record_to_update_type(Update),
     aeser_chain_objects:serialize(
       ut2type(UpdateType),

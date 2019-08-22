@@ -49,6 +49,7 @@ websocket_init(Params) ->
             {stop, undefined};
         {Handler, ChannelOpts} ->
             lager:debug("Starting Channel WS with params ~p", [Params]),
+            lager:debug("ChannelOpts = ~p", [ChannelOpts]),
             case start_link_fsm(Handler, ChannelOpts) of
                 {ok, FsmPid} ->
                     MRef = erlang:monitor(process, FsmPid),
@@ -304,6 +305,8 @@ read_channel_options(Params) ->
                                                      mandatory => false}),
     ReadReport = ReadMap(report, <<"report">>, #{type => boolean,
                                                      mandatory => false}),
+    ReadVsns = ReadMap(versions, <<"version">>, #{type => integer,
+                                                  mandatory => false}),
     OnChainOpts =
         case (sc_ws_utils:read_param(
                 <<"existing_channel_id">>, existing_channel_id,
@@ -347,6 +350,7 @@ read_channel_options(Params) ->
       ++ lists:map(ReadTimeout, aesc_fsm:timeouts() ++ [awaiting_open,
                                                         initialized])
       ++ lists:map(ReadReport, aesc_fsm:report_tags())
+      ++ lists:map(ReadVsns, aesc_fsm:version_tags())
      ).
 
 jobs_ask() ->
