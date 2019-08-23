@@ -5548,7 +5548,7 @@ sophia_payable_entrypoint(_Cfg) ->
 
     {Err1, Gas2} = ?call(call_contract, Acc, C1, bar, bool, {42}, Params#{amount => 50}),
     ?assertMatchVM({error,<<"function_is_not_payable">>},
-                   {error,<<"Function with hash '", _/binary>>}, Err1),
+                   {error,<<"Function with hash <<", _/binary>>}, Err1),
     ?assertEqual(Gas, Gas2),
 
     C2 = ?call(create_contract, Acc, remote_payable, {}, #{amount => 1000}),
@@ -5558,7 +5558,7 @@ sophia_payable_entrypoint(_Cfg) ->
 
     {Err2, Gas4} = ?call(call_contract, Acc, C2, r_bar, bool, {?cid(C1), 42}, Params),
     ?assertMatchVM({error,<<"function_is_not_payable">>},
-                   {error,<<"Function with hash '", _/binary>>}, Err2),
+                   {error,<<"Function with hash <<", _/binary>>}, Err2),
     ?assertEqual(Gas, Gas4),
 
     ok.

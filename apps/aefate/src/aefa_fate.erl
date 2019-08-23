@@ -179,8 +179,6 @@ abort({element_index_out_of_bounds, Index}, ES) ->
     ?t("Bad index argument to element, Index: ~p", [Index], ES);
 abort({bad_arguments_to_element, Index, Tuple}, ES) ->
     ?t("Bad argument to element, Tuple: ~p, Index: ~p", [Tuple, Index], ES);
-abort({bad_element_type, Type, Value}, ES) ->
-    ?t("Type error in element: ~p is not of type ~p", [Value, Type], ES);
 abort({bad_variant_tag, Tag}, ES) ->
     ?t("Type error in switch: tag ~p is larger than switch op", [Tag], ES);
 abort({bad_variant_size, Size}, ES) ->
@@ -216,9 +214,9 @@ abort({value_does_not_match_type, Val, Type}, ES) ->
 abort({trying_to_reach_bb, BB}, ES) ->
     ?t("Trying to jump to non existing bb: ~p", [BB], ES);
 abort({trying_to_call_function, Name}, ES) ->
-    ?t("Trying to call undefined function: ~p", [Name], ES);
+    ?t("Trying to call undefined function: ~w", [Name], ES);
 abort({trying_to_call_contract, Pubkey}, ES) ->
-    ?t("Trying to call invalid contract: ~p", [Pubkey], ES);
+    ?t("Trying to call invalid contract: ~w", [Pubkey], ES);
 abort({not_allowed_in_auth_context, Op}, ES) ->
     ?t("Operation ~p not allowed in GA Authentication context", [Op], ES);
 abort({not_allowed_offchain, Op}, ES) ->
@@ -228,7 +226,7 @@ abort(negative_value_in_call, ES) ->
 abort({call_error, What}, ES) ->
     ?t("Error in call: ~w", [What], ES);
 abort({function_is_not_payable, Fun}, ES) ->
-    ?t("Function with hash '~p' is not payable", [Fun], ES);
+    ?t("Function with hash ~w is not payable", [Fun], ES);
 abort({function_is_private, Fun}, ES) ->
     ?t("Function with hash ~w is private", [Fun], ES);
 abort({primop_error, Which, What}, ES) ->
