@@ -121,6 +121,7 @@
         , sophia_big_map_benchmark/1
         , sophia_pmaps/1
         , sophia_map_of_maps/1
+        , sophia_maps_gc/1
         , sophia_polymorphic_entrypoint/1
         , sophia_arity_check/1
         , sophia_chess/1
@@ -344,6 +345,7 @@ groups() ->
                                  sophia_map_benchmark,
                                  sophia_big_map_benchmark,
                                  sophia_map_of_maps,
+                                 sophia_maps_gc,
                                  sophia_variant_types,
                                  sophia_arity_check,
                                  sophia_chain,
@@ -4087,6 +4089,42 @@ sophia_map_of_maps(_Cfg) ->
                            Good),
     ?assertMatchFATE(Res4, Good),
 
+    ok.
+
+sophia_maps_gc(_Cfg) ->
+    ?skipRest(vm_version() =< ?VM_AEVM_SOPHIA_3, only_lima),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    %% Big to make sure it ends up in the store.
+    InitA = maps:from_list([ {integer_to_binary(I), integer_to_binary(I + 100)}
+                             || I <- lists:seq(1, 100) ]),
+    InitB = #{},
+
+    Prune = fun(M) -> maps:without(maps:keys(InitA), M) end,
+
+    Ct  = ?call(create_contract, Acc, maps_gc, {InitA, InitB}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
+
+    StateT = {tuple, [{map, string, string}, {map, string, string}]},
+
+    KeyA1 = <<"KeyA1">>,
+    KeyA2 = <<"KeyA2">>,
+    ValA  = <<"ValA">>,
+    {} = ?call(call_contract, Acc, Ct, upd_a, {tuple, []}, {KeyA1, KeyA2, ValA}),
+
+    A1 = InitA#{ KeyA1 => ValA },
+    B1 = InitA#{ KeyA2 => ValA },
+    {ResA1, ResB1} = ?call(call_contract, Acc, Ct, get_state, StateT, {}),
+    ?assertEqual({Prune(A1), Prune(B1)}, {Prune(ResA1), Prune(ResB1)}),
+
+    KeyB1 = <<"KeyB1">>,
+    KeyB2 = <<"KeyB2">>,
+    ValB  = <<"ValB">>,
+    {} = ?call(call_contract, Acc, Ct, upd_b, {tuple, []}, {KeyB1, KeyB2, ValB}),
+
+    A2 = B1#{ KeyB1 => ValB },
+    B2 = B1#{ KeyB2 => ValB },
+    {ResA2, ResB2} = ?call(call_contract, Acc, Ct, get_state, StateT, {}),
+    ?assertEqual({Prune(A2), Prune(B2)}, {Prune(ResA2), Prune(ResB2)}),
     ok.
 
 sophia_polymorphic_entrypoint(_Cfg) ->

@@ -1,0 +1,20 @@
+
+// Testing garbage collection and inplace update of maps
+contract MapsGC =
+
+  record state = { a : map(string, string)
+                 , b : map(string, string) }
+
+  entrypoint init(a, b) = {a = a, b = b}
+
+  stateful entrypoint upd_a(k1, k2, v) =
+    let a = state.a{[k1] = v}
+    let b = state.a{[k2] = v}
+    put(state{a = a, b = b})
+
+  stateful entrypoint upd_b(k1, k2, v) =
+    let a = state.b{[k1] = v}
+    let b = state.b{[k2] = v}
+    put(state{a = a, b = b})
+
+  entrypoint get_state() = (state.a, state.b)
