@@ -69,7 +69,7 @@ sc_open(Params, Cfg) ->
                responder_amount => RAmt,
                channel_reserve => maps:get(channel_reserve, Params, 2)
               },
-             version_opts(Params)),
+             maybe_version_opts(Cfg)),
 
     {IConn, RConn} = sc_start_ws_peers(INodeName, RNodeName, Opts, Cfg),
     ok = sc_wait_channel_open(IConn, RConn),
