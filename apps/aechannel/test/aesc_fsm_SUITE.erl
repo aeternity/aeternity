@@ -616,8 +616,8 @@ channel_invalid_state_password(Cfg) ->
                                          ?SLOGAN|Cfg]),
             channel_create_invalid_spec(Params, Error, Debug)
         end,
-    Test("A", weak_password),
-    Test("12345", weak_password),
+    Test("A", invalid_password),
+    Test("12345", invalid_password),
     case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
         true ->
             Test(ignore, password_required_since_lima);

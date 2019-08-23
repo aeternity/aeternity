@@ -74,6 +74,7 @@
 
 %% Used by client
 -export([ signing_response/3          %% (Fsm, Tag, Obj)
+        , check_state_password/1      %% (Map)
         , error_code_to_msg/1]).      %% (Code)
 
 %% Used by min-depth watcher
@@ -4378,7 +4379,7 @@ init_checks(Opts) ->
             ok
     end.
 
--spec check_state_password(map()) -> ok | {error, password_required_since_lima | weak_password}.
+-spec check_state_password(map()) -> ok | {error, password_required_since_lima | invalid_password}.
 check_state_password(#{state_password := StatePassword}) ->
     check_weak_password(StatePassword);
 check_state_password(_Opts) ->

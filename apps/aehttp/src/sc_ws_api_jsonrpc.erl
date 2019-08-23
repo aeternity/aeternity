@@ -157,29 +157,31 @@ error_id(_) ->
 
 %% JSON-RPC error objects. Try to follow
 %% https://github.com/ethereum/wiki/wiki/JSON-RPC-Error-Codes-Improvement-Proposal
-json_rpc_error_object(parse_error         , R) -> error_obj(-32700   , R);
-json_rpc_error_object(invalid_request     , R) -> error_obj(-32000   , R);
-json_rpc_error_object(unhandled           , R) -> error_obj(-32601   , R);
-json_rpc_error_object(not_found           , R) -> error_obj(3, [100] , R);
-json_rpc_error_object(broken_encoding     , R) -> error_obj(3, [104] , R);
-json_rpc_error_object(broken_code         , R) -> error_obj(3, [104] , R);
-json_rpc_error_object(value_too_low       , R) -> error_obj(3, [105] , R);
-json_rpc_error_object(conflict            , R) -> error_obj(3, [107] , R);
-json_rpc_error_object(insufficient_balance, R) -> error_obj(3, [1001], R);
-json_rpc_error_object(negative_amount     , R) -> error_obj(3, [1002], R);
-json_rpc_error_object(invalid_pubkeys     , R) -> error_obj(3, [1003], R);
-json_rpc_error_object(call_not_found      , R) -> error_obj(3, [1004], R);
-json_rpc_error_object(contract_init_failed, R) -> error_obj(3, [1007], R);
-json_rpc_error_object(not_a_number        , R) -> error_obj(3, [1008], R);
-json_rpc_error_object(participant_not_found, R)-> error_obj(3, [1011], R);
-json_rpc_error_object(not_offchain_tx     , R) -> error_obj(2, [1012], R);
-json_rpc_error_object(already_onchain     , R) -> error_obj(3, [1013], R);
-json_rpc_error_object({meta, invalid}     , R) -> error_obj(3, [1014], R);
-json_rpc_error_object(error_code          , R) -> error_obj(3, [1015], R);
-json_rpc_error_object(invalid_password    , R) -> error_obj(3, [1016], R);
+json_rpc_error_object(parse_error          , R) -> error_obj(-32700   , R);
+json_rpc_error_object(invalid_request      , R) -> error_obj(-32000   , R);
+json_rpc_error_object(unhandled            , R) -> error_obj(-32601   , R);
+
+json_rpc_error_object(not_found            , R) -> error_obj(3, [100] , R);
+json_rpc_error_object(broken_encoding      , R) -> error_obj(3, [104] , R);
+json_rpc_error_object(broken_code          , R) -> error_obj(3, [104] , R);
+json_rpc_error_object(value_too_low        , R) -> error_obj(3, [105] , R);
+json_rpc_error_object(conflict             , R) -> error_obj(3, [107] , R);
+json_rpc_error_object(insufficient_balance , R) -> error_obj(3, [1001], R);
+json_rpc_error_object(negative_amount      , R) -> error_obj(3, [1002], R);
+json_rpc_error_object(invalid_pubkeys      , R) -> error_obj(3, [1003], R);
+json_rpc_error_object(call_not_found       , R) -> error_obj(3, [1004], R);
+json_rpc_error_object(contract_init_failed , R) -> error_obj(3, [1007], R);
+json_rpc_error_object(not_a_number         , R) -> error_obj(3, [1008], R);
+json_rpc_error_object(participant_not_found, R) -> error_obj(3, [1011], R);
+json_rpc_error_object(not_offchain_tx      , R) -> error_obj(2, [1012], R);
+json_rpc_error_object(already_onchain      , R) -> error_obj(3, [1013], R);
+json_rpc_error_object({meta, invalid}      , R) -> error_obj(3, [1014], R);
+json_rpc_error_object(invalid_password     , R) -> error_obj(3, [1015], R);
 json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
-json_rpc_error_object(Other               , R) ->
+json_rpc_error_object({What, missing}      , R) ->
+    error_obj(3, [missing_field_code(What)], R);
+json_rpc_error_object(Other                , R) ->
     lager:debug("Unrecognized error reason: ~p", [Other]),
     error_obj(-32603        , R).
 
@@ -252,12 +254,16 @@ error_data_msgs() ->
      , 1014 => <<"Invalid meta object">>
      , 1015 => <<"Invalid error code (expect 1...65535)">>
      , 1016 => <<"Invalid password">>
+     , 1017 => <<"Missing field: state_password">>
      }.
 
 broken_encoding_code(account    ) -> 1005;
 broken_encoding_code(contract   ) -> 1006;
 broken_encoding_code(bytearray  ) -> 1009;
 broken_encoding_code(transaction) -> 1010.
+
+%% TODO: Add more error codes and create a PT for it
+missing_field_code(state_password) -> 1017.
 
 process_incoming(Msg, FsmPid) ->
     ResRev =

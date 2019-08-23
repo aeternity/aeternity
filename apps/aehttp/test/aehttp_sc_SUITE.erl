@@ -3760,7 +3760,7 @@ sc_ws_broken_open_params(Config) ->
     case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
         true ->
             ChannelOpts10 = maps:remove(state_password, ChannelOpts9),
-            Test(ChannelOpts10, <<"Invalid password">>);
+            Test(ChannelOpts10, <<"Missing field: state_password">>);
         false ->
             ok
     end,
