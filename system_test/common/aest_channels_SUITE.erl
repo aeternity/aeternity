@@ -218,8 +218,7 @@ simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, C
     test_offchain_operations(Chan, Cfg),
 
     {ok, LatestState} = sc_leave(Chan),
-    {ok, Chan1} = sc_reestablish(Chan, INodeName, RNodeName, LatestState,
-                                 [{channel_opts, ChannelOpts}|Cfg]),
+    {ok, Chan1} = sc_reestablish(Chan, INodeName, RNodeName, LatestState, Cfg),
 
     test_offchain_operations(Chan1, Cfg),
 
