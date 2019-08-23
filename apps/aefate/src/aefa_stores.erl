@@ -343,7 +343,15 @@ compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) 
               [ CopyOrInplace(MapId, Map) || {MapId, Map} <- maps:to_list(Maps) ] ++
               [ {gc_map, RawId}           || RawId <- Garbage ],
 
-    {Metadata2, Updates}.
+    %% It's important (very!) that copy_map runs before update_map, since
+    %% update map does a destructive update of the store. To make sure this is
+    %% the case we sort the updates.
+    Order = fun(push_term)  -> 0;
+               (copy_map)   -> 1;
+               (update_map) -> 2;
+               (gc_map)     -> 3 end,
+    Compare = fun(A, B) -> Order(element(1, A)) =< Order(element(1, B)) end,
+    {Metadata2, lists:sort(Compare, Updates)}.
 
 perform_store_updates(Updates, Meta, Store) ->
     {Meta1, Store1} = lists:foldl(fun perform_store_update/2, {Meta, Store}, Updates),
