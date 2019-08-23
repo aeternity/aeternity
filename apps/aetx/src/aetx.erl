@@ -45,6 +45,7 @@
                             or (T =:= ga_meta_tx) or (T =:= ga_attach_tx))).
 -define(HAS_GAS_TX(T), (?IS_CONTRACT_TX(T) or (T =:= channel_force_progress_tx))).
 
+-include("../../aecontract/include/hard_forks.hrl").
 
 %%%===================================================================
 %%% Types
@@ -106,7 +107,8 @@
                      | aesc_slash_tx:tx()
                      | aesc_settle_tx:tx()
                      | aesc_snapshot_solo_tx:tx()
-                     | aesc_offchain_tx:tx().
+                     | aesc_offchain_tx:tx()
+                     | aec_paying_for_tx:tx().
 
 -type tx_ttl() :: 0 | aec_blocks:height().
 %% A transaction TTL is either an absolute block height, or the transaction
@@ -183,10 +185,10 @@
 -spec new(CallbackModule :: module(),  Tx :: tx_instance()) ->
     Tx :: tx().
 new(Callback, Tx) ->
-    Type = Callback:type(),
+    Type          = Callback:type(),
     {Vsn, Fields} = Callback:serialize(Tx),
-    Template = Callback:serialization_template(Vsn),
-    Size = byte_size(aeser_chain_objects:serialize(Type, Vsn, Template, Fields)),
+    Template      = Callback:serialization_template(Vsn),
+    Size          = byte_size(aeser_chain_objects:serialize(Type, Vsn, Template, Fields)),
     #aetx{ type = Type, cb = Callback, size = Size, tx = Tx }.
 
 -spec fee(Tx :: tx()) -> Fee :: integer().
@@ -206,6 +208,9 @@ deep_fee_(AeTx, AccFee0) ->
         {ga_meta_tx, MetaTx} ->
             CB = type_to_cb(ga_meta_tx),
             deep_fee_(aetx_sign:tx(CB:tx(MetaTx)), AccFee);
+        {paying_for_tx, PTx} ->
+            CB = type_to_cb(paying_for_tx),
+            deep_fee_(aetx_sign:tx(CB:tx(PTx)), AccFee);
         {_, _} ->
             AccFee
     end.
@@ -228,6 +233,9 @@ deep_fee(AeTx, Trees, AccFee0) ->
                 false ->
                     AccFee
             end;
+        {paying_for_tx, PTx} ->
+            CB = type_to_cb(paying_for_tx),
+            deep_fee(aetx_sign:tx(CB:tx(PTx)), Trees, AccFee);
         {_, _} ->
             AccFee
     end.
@@ -261,6 +269,9 @@ gas_limit(#aetx{type = oracle_response_tx, size = Size, tx = Tx }, Height, Versi
     end;
 gas_limit(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height, Version) ->
     base_gas(ga_meta_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + CB:gas_limit(Tx, Height, Version);
+gas_limit(#aetx{ type = paying_for_tx, cb = CB, size = Size, tx = Tx }, Height, Version) ->
+    InnerTx = #aetx{ size = ISize } = aetx_sign:tx(CB:tx(Tx)),
+    base_gas(paying_for_tx, Version) + size_gas(Size - ISize) + gas_limit(InnerTx, Height, Version);
 gas_limit(#aetx{type = Type, size = Size, cb = CB, tx = Tx}, _Height, Version) when ?IS_CONTRACT_TX(Type) ->
     base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size) + CB:gas(Tx);
 gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height, Version) when
@@ -285,8 +296,23 @@ gas_price(#aetx{}) ->
 
 -spec min_gas_price(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->
                            MinGasPrice :: non_neg_integer().
-min_gas_price(AETx, Height, Version) ->
-    min_gas_price(AETx, Height, outer, Version).
+min_gas_price(AETx, Height, Version) when Version < ?IRIS_PROTOCOL_VSN ->
+    min_gas_price(AETx, Height, outer, Version);
+min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx }, Height, Version) ->
+    FeeGas = fee_gas(AETx, Height, Version),
+    FeeGasPrice = (CB:fee(Tx) + FeeGas - 1) div FeeGas,
+    case Type of
+        ga_meta_tx ->
+            InnerMinGasPrice = min_gas_price(aetx_sign:tx(CB:tx(Tx)), Height, Version),
+            lists:min([CB:gas_price(Tx), FeeGasPrice, InnerMinGasPrice]);
+        paying_for_tx ->
+            InnerMinGasPrice = min_gas_price(aetx_sign:tx(CB:tx(Tx)), Height, Version),
+            min(FeeGasPrice, InnerMinGasPrice);
+        _ when ?HAS_GAS_TX(Type) ->
+            min(CB:gas_price(Tx), FeeGasPrice);
+        _ ->
+            FeeGasPrice
+    end.
 
 min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height, Kind, Version) ->
     %% Compute a fictive gas price from the given Fee
@@ -316,6 +342,14 @@ min_fee(#aetx{} = AeTx, Height, Version) ->
 %% transaction.
 -spec fee_gas(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->
                      Gas :: non_neg_integer().
+fee_gas(#aetx{ type = paying_for_tx, size = Size, cb = CB, tx = Tx }, _Height, Version)
+        when Version >= ?IRIS_PROTOCOL_VSN ->
+    #aetx{ size = ISize } = aetx_sign:tx(CB:tx(Tx)),
+    base_gas(paying_for_tx, Version) + size_gas(Size - ISize);
+fee_gas(#aetx{ type = ga_meta_tx, size = Size, cb = CB, tx = Tx }, _Height, Version)
+        when Version >= ?IRIS_PROTOCOL_VSN ->
+    #aetx{ size = ISize } = aetx_sign:tx(CB:tx(Tx)),
+    base_gas(ga_meta_tx, Version, CB:abi_version(Tx)) + size_gas(Size - ISize);
 fee_gas(#aetx{ type = Type, size = Size, cb = CB, tx = Tx }, _Height, Version) when ?IS_CONTRACT_TX(Type) ->
     base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size);
 fee_gas(#aetx{ type = Type, size = Size }, _Height, Version) when ?HAS_GAS_TX(Type) ->
@@ -414,10 +448,10 @@ check_minimum_fee(AeTx, Env) ->
     Protocol = aetx_env:consensus_version(Env),
     Height = aetx_env:height(Env),
     AeTx1 = case aetx_env:context(Env) of
-                aetx_ga ->
+                aetx_ga when Protocol < ?IRIS_PROTOCOL_VSN ->
                     %% Size is paid for by the outermost meta tx
                     AeTx#aetx{size = 0};
-                Ctx when Ctx =:= aetx_transaction; Ctx =:= aetx_contract ->
+                Ctx when Ctx =:= aetx_transaction; Ctx =:= aetx_contract; Ctx =:= aetx_ga ->
                     AeTx
             end,
     case min_fee(AeTx1, Height, Protocol) of
@@ -527,6 +561,7 @@ type_to_cb(contract_call_tx)            -> aect_call_tx;
 type_to_cb(contract_create_tx)          -> aect_create_tx;
 type_to_cb(ga_attach_tx)                -> aega_attach_tx;
 type_to_cb(ga_meta_tx)                  -> aega_meta_tx;
+type_to_cb(paying_for_tx)               -> aec_paying_for_tx;
 type_to_cb(channel_create_tx)           -> aesc_create_tx;
 type_to_cb(channel_deposit_tx)          -> aesc_deposit_tx;
 type_to_cb(channel_withdraw_tx)         -> aesc_withdraw_tx;
@@ -552,6 +587,7 @@ type_to_swagger_name(contract_call_tx)            -> <<"ContractCallTx">>;
 type_to_swagger_name(contract_create_tx)          -> <<"ContractCreateTx">>;
 type_to_swagger_name(ga_attach_tx)                -> <<"GAAttachTx">>;
 type_to_swagger_name(ga_meta_tx)                  -> <<"GAMetaTx">>;
+type_to_swagger_name(paying_for_tx)               -> <<"PayingForTx">>;
 type_to_swagger_name(channel_create_tx)           -> <<"ChannelCreateTx">>;
 type_to_swagger_name(channel_deposit_tx)          -> <<"ChannelDepositTx">>;
 type_to_swagger_name(channel_withdraw_tx)         -> <<"ChannelWithdrawTx">>;

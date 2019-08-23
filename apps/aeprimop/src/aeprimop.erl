@@ -24,6 +24,7 @@
         , ga_attach_tx_instructions/10
         , ga_meta_tx_instructions/7
         , ga_set_meta_tx_res_instructions/3
+        , paying_for_tx_instructions/3
         , name_claim_tx_instructions/6
         , name_preclaim_tx_instructions/5
         , name_revoke_tx_instructions/4
@@ -223,7 +224,7 @@ oracle_extend_tx_instructions(Pubkey, DeltaTTL, Fee, Nonce) ->
 oracle_query_tx_instructions(OraclePubkey, SenderPubkey, Query,
                              QueryFee, QTTL, RTTL, TxFee, Nonce) ->
     [ force_inc_account_nonce_op(SenderPubkey, Nonce)
-    , spend_fee_op(SenderPubkey, TxFee + QueryFee)
+    , spend_fee_op(SenderPubkey, TxFee, QueryFee)
     , oracle_query_op(OraclePubkey, SenderPubkey, Nonce,
                       Query, QueryFee, QTTL, RTTL, false)
     ].
@@ -308,6 +309,12 @@ ga_meta_tx_instructions(OwnerPubkey, AuthData, ABIVersion,
 ga_set_meta_tx_res_instructions(OwnerPubkey, AuthData, Result) ->
     [ ga_set_meta_res_op(OwnerPubkey, AuthData, Result) ].
 
+-spec paying_for_tx_instructions(pubkey(), nonce(), amount()) -> [op()].
+paying_for_tx_instructions(Payer, Nonce, Fee) ->
+    [ inc_account_nonce_op(Payer, Nonce)
+    , spend_fee_op(Payer, Fee)
+    ].
+
 -spec contract_create_tx_instructions(pubkey(), amount(), amount(),
                                       non_neg_integer(), non_neg_integer(),
                                       abi_version(), vm_version(),
@@ -358,8 +365,8 @@ channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
     %% The force is not strictly necessary since this cannot be made
     %% from a contract.
     [ force_inc_account_nonce_op(InitiatorPubkey, Nonce)
-    , spend_fee_op(InitiatorPubkey, Fee + InitiatorAmount)
-    , spend_fee_op(ResponderPubkey, ResponderAmount)
+    , spend_fee_op(InitiatorPubkey, Fee, InitiatorAmount)
+    , spend_fee_op(ResponderPubkey, 0, ResponderAmount)
     , channel_create_op(InitiatorPubkey, InitiatorAmount,
                         ResponderPubkey, ResponderAmount,
                         ReserveAmount, DelegatePubkeys,
@@ -373,7 +380,7 @@ channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
 channel_deposit_tx_instructions(FromPubkey, ChannelPubkey, Amount, StateHash,
                                 Round, Fee, Nonce) ->
     [ inc_account_nonce_op(FromPubkey, Nonce)
-    , spend_fee_op(FromPubkey, Fee + Amount)
+    , spend_fee_op(FromPubkey, Fee, Amount)
     , channel_deposit_op(FromPubkey, ChannelPubkey, Amount, StateHash, Round)
     , tx_event_op({channel, ChannelPubkey})
     ].
@@ -494,7 +501,12 @@ force_inc_account_nonce_op(Pubkey, Nonce) when ?IS_HASH(Pubkey),
     {inc_account_nonce, {Pubkey, Nonce, true}}.
 
 inc_account_nonce({Pubkey, Nonce, Force}, #state{ tx_env = Env } = S) ->
-    {Account, S1} = get_account(Pubkey, S),
+    %% If someone else is paying the Tx can be performed by a
+    %% non-existing account - thus `ensure_account` in this case.
+    {Account, S1} = case aetx_env:payer(Env) of
+                        undefined -> get_account(Pubkey, S);
+                        _         -> ensure_account(Pubkey, S)
+                    end,
     DryRun  = aetx_env:dry_run(Env),
     AccType = aec_accounts:type(Account),
     case lists:member(Pubkey, aetx_env:ga_auth_ids(Env)) of
@@ -572,13 +584,31 @@ lock_namefee(Kind, From, Amount, #state{protocol = Protocol} = S) ->
 
 spend_fee_op(From, Amount) when ?IS_HASH(From),
                                 ?IS_NON_NEG_INTEGER(Amount) ->
-    {spend_fee, {From, Amount}}.
+    {spend_fee, {From, Amount, 0}}.
 
-spend_fee({From, Amount}, #state{} = S) when is_integer(Amount), Amount >= 0 ->
-    {Sender1, S1}   = get_account(From, S),
-    assert_account_balance(Sender1, Amount),
-    {ok, Sender2}   = aec_accounts:spend_without_nonce_bump(Sender1, Amount),
-    put_account(Sender2, S1).
+spend_fee_op(From, DelegatedAmount, Amount)
+        when ?IS_HASH(From), ?IS_NON_NEG_INTEGER(DelegatedAmount + Amount) ->
+    {spend_fee, {From, DelegatedAmount, Amount}}.
+
+spend_fee({From, DelegatedAmount, Amount}, #state{} = S)
+        when ?IS_NON_NEG_INTEGER(DelegatedAmount + Amount) ->
+    Delegated = establish_payer(From, S),
+    spend_fee(From, Delegated, Amount, DelegatedAmount, S).
+
+spend_fee(From, From, Amount, DelegatedAmount, S) ->
+    spend_fee(From, Amount + DelegatedAmount, S);
+spend_fee(From, _, Amount, 0, S) ->
+    spend_fee(From, Amount, S);
+spend_fee(_, Delegated, 0, DelegatedAmount, S) ->
+    spend_fee(Delegated, DelegatedAmount, S);
+spend_fee(From, Delegated, Amount, DelegatedAmount, S) ->
+    S1 = spend_fee(From, Amount, S),
+    spend_fee(Delegated, DelegatedAmount, S1).
+
+spend_fee(From, Amount, S) ->
+    {Spender1, S1} = get_account(From, S),
+    assert_account_balance(Spender1, Amount),
+    account_spend(Spender1, Amount, S1).
 
 %%%-------------------------------------------------------------------
 
@@ -1119,12 +1149,24 @@ contract_call_op(CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
     {contract_call, {CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
                      Amount, ABIVersion, Origin, CallStack, Fee, Nonce}}.
 
+split_payment(TotalAmount, Amount, S) ->
+    PayerAmount = TotalAmount - Amount,
+    case aetx_env:payer(S#state.tx_env) of
+        PayerPubKey when is_binary(PayerPubKey), PayerAmount > 0 ->
+            {PayerAccount, S1} = get_account(PayerPubKey, S),
+            assert_account_balance(PayerAccount, PayerAmount),
+            {Amount, account_spend(PayerAccount, PayerAmount, S1)};
+        _ ->
+            {TotalAmount, S}
+    end.
+
 contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
                Amount, ABIVersion, Origin, CallStack, Fee, Nonce}, S) ->
     {CallerId, TotalAmount} = get_call_env_specific(CallerPubKey, GasLimit,
                                                     GasPrice, Amount, Fee, S),
-    {CallerAccount, S1} = get_account(CallerPubKey, S),
-    assert_account_balance(CallerAccount, TotalAmount),
+    {CallerAmount, S0}  = split_payment(TotalAmount, Amount, S),
+    {CallerAccount, S1} = get_account(CallerPubKey, S0),
+    assert_account_balance(CallerAccount, CallerAmount),
     assert_contract_call_version(ContractPubkey, ABIVersion, S),
     assert_contract_call_stack(CallStack, S),
     Context = aetx_env:context(S#state.tx_env),
@@ -1134,9 +1176,9 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
                  %% For consensus compatibility.
                  assert_account_nonce(CallerAccount, Nonce),
                  CallerAccount1 = aec_accounts:set_nonce(CallerAccount, Nonce),
-                 account_spend(CallerAccount1, TotalAmount, S1);
+                 account_spend(CallerAccount1, CallerAmount, S1);
              Other when Other == aetx_transaction; Other == aetx_ga ->
-                 account_spend(CallerAccount, TotalAmount, S1)
+                 account_spend(CallerAccount, CallerAmount, S1)
          end,
     {ContractAccount, S3} = get_account(ContractPubkey, S2),
     S4 = account_earn(ContractAccount, Amount, S3),
@@ -1190,17 +1232,20 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
            VMVersion, SerializedCode, AuthFun, CallData, Fee, Nonce}, S) ->
     assert_ga_active(S),
     RollbackS = S,
-    TotalAmount    = Fee + GasLimit * GasPrice,
-    {Account, S1}  = get_account(OwnerPubkey, S),
+    TotalAmount       = Fee + GasLimit * GasPrice,
+    {OwnerAmount, S0} = split_payment(TotalAmount, 0, S),
+    {Account, S1}     = get_account(OwnerPubkey, S0),
     assert_basic_account(Account), %% No re-attach
-    assert_account_balance(Account, TotalAmount),
+    assert_account_balance(Account, OwnerAmount),
     assert_ga_create_version(ABIVersion, VMVersion, S),
     Code           = assert_ga_attach_byte_code(ABIVersion, SerializedCode,
                                                 CallData, AuthFun, S),
     %% Charge the fee, the gas (the unused portion will be refunded)
     %% and the deposit (stored in the contract) to the contract owner (caller),
     CTVersion      = #{vm => VMVersion, abi => ABIVersion},
-    S2             = account_spend(Account, TotalAmount, S1),
+    S2             = if OwnerAmount > 0 -> account_spend(Account, OwnerAmount, S1);
+                        true            -> S1
+                     end,
     Contract       = aect_contracts:new(OwnerPubkey, Nonce, CTVersion,
                                         SerializedCode, 0),
     ContractPubkey  = aect_contracts:pubkey(Contract),
@@ -1252,18 +1297,20 @@ ga_meta_op(OwnerPubkey, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx
 
 ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
     assert_ga_active(S),
-    {Account, S1} = get_account(OwnerPK, S),
+    CheckAmount       = Fee + GasLimit * GasPrice,
+    {OwnerAmount, S0} = split_payment(CheckAmount, 0, S),
+    {Account, S1}     = get_account(OwnerPK, S0),
     assert_generalized_account(Account),
     assert_relevant_signature(OwnerPK, InnerTx, S1),
-    CheckAmount = Fee + GasLimit * GasPrice,
-    assert_account_balance(Account, CheckAmount),
+    assert_account_balance(Account, OwnerAmount),
     AuthContract = aec_accounts:ga_contract(Account),
     {contract, AuthContractPK} = aeser_id:specialize(AuthContract),
     AuthFunHash = aec_accounts:ga_auth_fun(Account),
 
     assert_contract_call_version(AuthContractPK, ABIVersion, S),
     assert_auth_data_function(ABIVersion, AuthData, AuthFunHash),
-    S2 = account_spend(Account, CheckAmount, S1),
+    S2 = if OwnerAmount > 0 -> account_spend(Account, OwnerAmount, S1);
+            true            -> S1 end,
     Contract = get_contract_no_cache(AuthContractPK, S2),
     CallerId   = aeser_id:create(account, OwnerPK),
     {Call, S3} = run_contract(CallerId, Contract, GasLimit, GasPrice,
@@ -1272,14 +1319,12 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
         ok ->
             case decode_auth_call_result(ABIVersion, aect_call:return_value(Call)) of
                 {ok, true} ->
-                    Refund = (GasLimit - aect_call:gas_used(Call)) * aect_call:gas_price(Call),
-                    {CallerAccount, S4} = get_account(OwnerPK, S3),
-                    S5 = account_earn(CallerAccount, Refund, S4),
+                    S4 = refund_payer(Call, GasLimit, S3),
                     AuthId = aega_meta_tx:auth_id(OwnerPK, AuthData),
                     AuthCallId = aect_call:ga_id(AuthId, aect_call:contract_pubkey(Call)),
                     Call1 = aect_call:set_id(AuthCallId, Call),
-                    assert_auth_call_object_not_exist(Call1, S5),
-                    put_auth_call(Call1, S5);
+                    assert_auth_call_object_not_exist(Call1, S4),
+                    put_auth_call(Call1, S4);
                 {ok, false} ->
                     runtime_error(authentication_failed);
                 {error, E} ->
@@ -1328,21 +1373,22 @@ contract_create_op(OwnerPubkey, Amount, Deposit, GasLimit,
 contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
                  ABIVersion, VMVersion, SerializedCode, CallData, Fee, Nonce0},
                 S) ->
-    RollbackS = S,
-    TotalAmount    = Amount + Deposit + Fee + GasLimit * GasPrice,
-    {Account, S1}  = get_account(OwnerPubkey, S),
-    assert_account_balance(Account, TotalAmount),
+    RollbackS         = S,
+    TotalAmount       = Amount + Deposit + Fee + GasLimit * GasPrice,
+    {OwnerAmount, S0} = split_payment(TotalAmount, Amount + Deposit, S),
+    {Account, S1}     = get_account(OwnerPubkey, S0),
+    assert_account_balance(Account, OwnerAmount),
     assert_contract_create_version(ABIVersion, VMVersion, S),
-    Code = assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S),
     %% Charge the fee, the gas (the unused portion will be refunded)
     %% and the deposit (stored in the contract) to the contract owner (caller),
     %% and transfer the funds (amount) to the contract account.
+    Code           = assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S),
     CTVersion      = #{vm => VMVersion, abi => ABIVersion},
-    S2             = account_spend(Account, TotalAmount, S1),
-    Nonce = case aetx_env:ga_nonce(S#state.tx_env, OwnerPubkey) of
-                {value, NonceX} -> NonceX;
-                none            -> Nonce0
-            end,
+    S2             = account_spend(Account, OwnerAmount, S1),
+    Nonce          = case aetx_env:ga_nonce(S#state.tx_env, OwnerPubkey) of
+                         {value, NonceX} -> NonceX;
+                         none            -> Nonce0
+                     end,
     Contract       = aect_contracts:new(OwnerPubkey, Nonce, CTVersion,
                                         SerializedCode, Deposit),
     ContractPubkey = aect_contracts:pubkey(Contract),
@@ -1460,11 +1506,21 @@ set_call_object_id(Call, #state{ tx_env = TxEnv }) ->
             Call
     end.
 
-contract_call_success(Call, GasLimit, S) ->
+establish_payer(NormalPayer, S) ->
+    case aetx_env:payer(S#state.tx_env) of
+        undefined -> NormalPayer;
+        X         -> X
+    end.
+
+refund_payer(Call, GasLimit, S) ->
     Refund = (GasLimit - aect_call:gas_used(Call)) * aect_call:gas_price(Call),
-    {CallerAccount, S1} = get_account(aect_call:caller_pubkey(Call), S),
-    S2 = account_earn(CallerAccount, Refund, S1),
-    put_call(set_call_object_id(Call, S2), S2).
+    Payer = establish_payer(aect_call:caller_pubkey(Call), S),
+    {CallerAccount, S1} = get_account(Payer, S),
+    account_earn(CallerAccount, Refund, S1).
+
+contract_call_success(Call, GasLimit, S) ->
+    S1 = refund_payer(Call, GasLimit, S),
+    put_call(set_call_object_id(Call, S1), S1).
 
 contract_call_fail(Call0, Fee, S) ->
     Call1 = set_call_object_id(Call0, S),
@@ -1479,7 +1535,8 @@ contract_call_fail(Call0, Fee, S) ->
                  {_, S20} = ensure_account(aect_call:contract_pubkey(Call), S1),
                  S20
          end,
-    {Account, S3} = get_account(aect_call:caller_pubkey(Call), S2),
+    Payer = establish_payer(aect_call:caller_pubkey(Call), S),
+    {Account, S3} = get_account(Payer, S2),
     account_spend(Account, UsedAmount, S3).
 
 run_contract(CallerId, Contract, GasLimit, GasPrice, CallData,
@@ -1515,12 +1572,12 @@ run_contract(CallerId, Code, Contract, GasLimit, GasPrice, CallData,
     {Call1, S1#state{trees = Trees1, tx_env = Env1}}.
 
 ga_attach_success(Call, GasLimit, AuthFun, S) ->
-    Refund = (GasLimit - aect_call:gas_used(Call)) * aect_call:gas_price(Call),
-    {CallerAccount, S1} = get_account(aect_call:caller_pubkey(Call), S),
+    S1 = refund_payer(Call, GasLimit, S),
+    {CallerAccount, S2} = get_account(aect_call:caller_pubkey(Call), S1),
     Contract = aeser_id:create(contract, aect_call:contract_pubkey(Call)),
     {ok, CallerAccount1} = aec_accounts:attach_ga_contract(CallerAccount, Contract, AuthFun),
-    S2 = account_earn(CallerAccount1, Refund, S1),
-    put_call(set_call_object_id(Call, S2), S2).
+    S3 = put_account(CallerAccount1, S2),
+    put_call(set_call_object_id(Call, S3), S3).
 
 int_lock_amount(0, #state{} = S) ->
     %% Don't risk creating an account for the locked amount if there is none.

@@ -284,7 +284,7 @@ meta_fail(Config) ->
 
     %% Fail inner tx by spending (far) too much
     #{tx_hash := MetaTx} =
-        post_ga_spend_tx(APub, APriv, ["1"], BPub, 1000 * MGP * MGP, MGP * 15000, MetaFee),
+        post_ga_spend_tx(APub, APriv, ["1"], BPub, 1000 * MGP * MGP, MGP * 20000, MetaFee),
 
     ?MINE_TXS([MetaTx]),
 
@@ -361,7 +361,7 @@ meta_meta_fail(Config) ->
     MGP = aec_test_utils:min_gas_price(),
     MetaFee = (5 * 15000 + 30000) * MGP,
 
-    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["4", "5"], BPub, 1000 * MGP * MGP, 15000 * MGP, MetaFee),
+    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["4", "5"], BPub, 1000 * MGP * MGP, 20000 * MGP, MetaFee),
 
     ?MINE_TXS([MetaTx]),
 
@@ -423,7 +423,7 @@ meta_4_fail(Config) ->
     MGP = aec_test_utils:min_gas_price(),
     MetaFee = (5 * 15000 + 30000) * MGP,
 
-    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["8", "9", "10", "12"], APub, 10000, 15000 * MGP, MetaFee),
+    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["8", "9", "10", "12"], APub, 10000, 20000 * MGP, MetaFee),
 
     ?MINE_TXS([MetaTx]),
 
@@ -520,7 +520,13 @@ mempool(Config) ->
                                     MetaFee, aec_tx_pool:maximum_auth_fun_gas() + 1),
 
     %% Test with exactly the lowest possible fee... Note that there isn't any size gas!
-    #{tx_hash := _MetaTx} = post_ga_spend_tx(APub, APriv, ["1"], BPub, 10001, MGP * 15000, MetaFee),
+    %% This only works pre-IRIS
+    case aect_test_utils:latest_protocol_version() of
+        Vsn when Vsn =< ?LIMA_PROTOCOL_VSN ->
+            #{tx_hash := _MetaTx} = post_ga_spend_tx(APub, APriv, ["1"], BPub, 10001, MGP * 15000, MetaFee);
+        _ ->
+            ok
+    end,
 
     ok.
 

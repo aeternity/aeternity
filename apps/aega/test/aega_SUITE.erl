@@ -418,17 +418,23 @@ basic_minimum_fee(_Cfg) ->
                                          recipient_id => aeser_id:create(account, To),
                                          amount       => 4711,
                                          height       => Height,
+                                         fee          => 16700 * MinGP,
                                          nonce        => 0}),
     MinimumSpendFee = aetx:min_fee(DummyTx, Height, Protocol),
 
-    %% When the transaction is wrapped in a meta transaction, the size of the
-    %% inner transaction is paid for by the meta transaction.
+    %% Up until IRIS:
+    %%   When the transaction is wrapped in a meta transaction, the size of
+    %%   the inner transaction is paid for by the meta transaction.
+    %% From IRIS:
+    %%   The inner transaction should cover its own "size-cost"
     SizeFee = aetx:size(DummyTx) * aec_governance:byte_gas() * MinGP,
-    MinimumInnerFee = MinimumSpendFee - SizeFee,
+    MinimumInnerFee = case Protocol =< ?LIMA_PROTOCOL_VSN of
+                        true  -> MinimumSpendFee - SizeFee;
+                        false -> MinimumSpendFee end,
 
     %% Make sure that we actually are setting a fee that is lower than
     %% what should pass if the tx wasn't an inner tx.
-    ?assert(MinimumSpendFee > MinimumInnerFee),
+    ?assert(MinimumSpendFee > MinimumInnerFee orelse Protocol > ?LIMA_PROTOCOL_VSN),
 
     %% Make sure we are right at the limit of the minimum fee for the inner tx.
     SpendTx1 = aega_test_utils:spend_tx(#{sender_id    => aeser_id:create(account, From),

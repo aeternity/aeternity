@@ -158,7 +158,8 @@ tx_base_gas(name_update_tx, _)            -> ?TX_BASE_GAS;
 tx_base_gas(oracle_extend_tx, _)          -> ?TX_BASE_GAS;
 tx_base_gas(oracle_query_tx, _)           -> ?TX_BASE_GAS;
 tx_base_gas(oracle_register_tx, _)        -> ?TX_BASE_GAS;
-tx_base_gas(oracle_response_tx, _)        -> ?TX_BASE_GAS.
+tx_base_gas(oracle_response_tx, _)        -> ?TX_BASE_GAS;
+tx_base_gas(paying_for_tx, _)             -> ?TX_BASE_GAS div 5.
 
 store_byte_gas() ->
     ?STORE_BYTE_GAS.

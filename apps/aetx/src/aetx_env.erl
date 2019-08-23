@@ -35,6 +35,7 @@
         , ga_tx_hash/1
         , height/1
         , key_hash/1
+        , payer/1
         , signed_tx/1
         , time_in_msecs/1
         , events/1
@@ -51,6 +52,7 @@
         , set_dry_run/2
         , set_ga_tx_hash/2
         , set_height/2
+        , set_payer/2
         , set_signed_tx/2
         , tx_event/2
         , set_events/2
@@ -76,6 +78,7 @@
              , ga_auth_ids = []  :: [aec_keys:pubkey()]
              , ga_nonces = []    :: [{aec_keys:pubkey(), binary()}]
              , ga_tx_hash        :: undefined | binary()
+             , payer             :: undefined | aec_keys:pubkey()
              , difficulty        :: aeminer_pow:difficulty()
              , dry_run = false   :: boolean()
              , height            :: aec_blocks:height()
@@ -216,6 +219,14 @@ height(#env{height = X}) -> X.
 
 -spec set_height(env(), aec_blocks:height()) -> env().
 set_height(Env, X) -> Env#env{height = X}.
+
+%%------
+
+-spec payer(env()) -> undefined | aec_keys:pubkey().
+payer(#env{payer = X}) -> X.
+
+-spec set_payer(env(), undefined | aec_keys:pubkey()) -> env().
+set_payer(Env, X) -> Env#env{payer = X}.
 
 %%------
 

@@ -48,7 +48,8 @@
          remote_gas_test_contract/1,
          events_contract/1,
          payable_contract/1,
-         paysplit_contract/1
+         paysplit_contract/1,
+         paying_for_contract/1
         ]).
 
 -define(NODE, dev1).
@@ -88,6 +89,7 @@ all() ->
         , events_contract
         , payable_contract
         , paysplit_contract
+        , paying_for_contract
         ]).
 
 groups() ->
@@ -1234,7 +1236,7 @@ payable_contract(Config) ->
     ok.
 
 paysplit_contract(Config) ->
-    ?skipRest(aect_test_utils:vm_version() =< ?VM_AEVM_SOPHIA_3, payable_not_pre_lima),
+    ?skipRest(aect_test_utils:latest_protocol_version() < ?LIMA_PROTOCOL_VSN, payable_not_pre_lima),
     %% Set an account.
     Node = proplists:get_value(node_name, Config),
     %% Get account information.
@@ -1265,6 +1267,77 @@ paysplit_contract(Config) ->
     force_fun_calls(Node),
 
     ok.
+
+paying_for_contract(Config) ->
+    ?skipRest(aect_test_utils:latest_protocol_version() < ?IRIS_PROTOCOL_VSN, paying_for_not_pre_iris),
+    Node = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APub, priv_key := APriv},
+      acc_b := #{pub_key := BPub, priv_key := BPriv}} = proplists:get_value(accounts, Config),
+
+    {BrokePub1, BrokePriv1} = aecore_suite_utils:generate_key_pair(),
+    %% {BrokePub2, BrokePriv2} = aecore_suite_utils:generate_key_pair(),
+
+    SpendTx = aega_test_utils:spend_tx(#{ sender_id => aeser_id:create(account, BPub)
+                                        , recipient_id => aeser_id:create(account, BrokePub1)
+                                        , nonce => get_online_nonce(BPub) }),
+    SignSpendTx = aec_test_utils:sign_tx(SpendTx, BPriv),
+    {ok, PayingForTx1} = aec_paying_for_tx:new(#{payer_id => aeser_id:create(account, APub),
+                                                 nonce    => get_online_nonce(APub),
+                                                 fee      => 10000 * aec_test_utils:min_gas_price(),
+                                                 tx       => SignSpendTx}),
+    SignPayingForTx1 = aec_test_utils:sign_tx(PayingForTx1, APriv),
+    SerSignPayingForTx1 = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignPayingForTx1)),
+    {ok, 200, #{<<"tx_hash">> := SignPayingForTx1Hash}} = post_tx(SerSignPayingForTx1),
+
+
+    APre = get_balance(APub),
+    BPre = get_balance(BPub),
+
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [SignPayingForTx1Hash], ?MAX_MINED_BLOCKS),
+
+    APost = get_balance(APub),
+    BPost = get_balance(BPub),
+    Broke1Post = get_balance(BrokePub1),
+    ?assertEqual(123456, Broke1Post),
+
+    ct:pal("Spend:\n  APub: ~p ~p\n  BPub: ~p ~p\n  Bro1: ~p", [APre, APost, BPre, BPost, Broke1Post]),
+
+    init_fun_calls(),
+    Payable = compile_test_contract("payable"),
+
+    {_EncCPubP, DecP, _} = create_contract(Node, APub, APriv, Payable, []),
+    force_fun_calls(Node),
+
+    {ok, Calldata1} = aect_test_utils:encode_call_data(maps:get(src, Payable), "foo", ["42"]),
+    CallSpec1 = #{call_data => Calldata1, abi_version => aect_test_utils:abi_version(),
+                  amount => 100,
+                  nonce => get_online_nonce(BrokePub1) },
+    Call1Tx = aect_test_utils:call_tx(BrokePub1, DecP, CallSpec1, #{}),
+
+    SignCall1Tx = aec_test_utils:sign_tx(Call1Tx, BrokePriv1),
+    {ok, PayingForTx2} = aec_paying_for_tx:new(#{payer_id => aeser_id:create(account, APub),
+                                                 nonce    => get_online_nonce(APub),
+                                                 fee      => 10000 * aec_test_utils:min_gas_price(),
+                                                 tx       => SignCall1Tx}),
+    SignPayingForTx2 = aec_test_utils:sign_tx(PayingForTx2, APriv),
+    SerSignPayingForTx2 = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignPayingForTx2)),
+    {ok, 200, #{<<"tx_hash">> := SignPayingForTx2Hash}} = post_tx(SerSignPayingForTx2),
+
+    APre2 = get_balance(APub),
+    Broke1Pre2 = get_balance(BrokePub1),
+
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [SignPayingForTx2Hash], ?MAX_MINED_BLOCKS),
+
+    APost2 = get_balance(APub),
+    Broke1Post2 = get_balance(BrokePub1),
+
+    ct:pal("Spend:\n  APub: ~p ~p\n  Bro1: ~p ~p", [APre2, APost2, Broke1Pre2, Broke1Post2]),
+
+    ?assertEqual(Broke1Post2, Broke1Pre2 - 100),
+
+    ok.
+
 
 %% Internal access functions.
 
@@ -1454,6 +1527,13 @@ call_func(Pub, Priv, EncCPub, Contract, Fun, Args, CallerSet, Check) ->
 
     Calls = get(fun_calls),
     put(fun_calls, Calls ++ [{Tx, Check}]).
+
+get_online_nonce(Pub) ->
+    Address = aeser_api_encoder:encode(account_pubkey, Pub),
+    case get_account_by_pubkey(Address) of
+        {ok,200,#{<<"nonce">> := Nonce}} -> Nonce + 1;
+        {ok, _, _} -> 1
+    end.
 
 get_nonce(Pub) ->
     Address = aeser_api_encoder:encode(account_pubkey, Pub),
