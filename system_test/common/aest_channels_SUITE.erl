@@ -23,7 +23,9 @@
 %% Helpers
 -export([
     create_state_channel_perform_operations_leave/2,
-    reestablish_state_channel_perform_operations/3
+    reestablish_state_channel_perform_operations/3,
+    set_old_update_vsn/1,
+    simulate_fsm_vsn_env/1
 ]).
 
 -import(aest_nodes, [
@@ -149,19 +151,35 @@ test_simple_different_nodes_channel(Cfg) ->
 
 test_compat_with_initiator_node_using_fortuna_major_channel_version(Cfg) ->
     test_different_nodes_channel_(set_genesis_accounts(node_base_spec_with_fortuna_major_channel_version()),
-                                  set_genesis_accounts(#{}), Cfg).
+                                  set_genesis_accounts(#{}),
+                                  set_old_update_vsn(Cfg)).
 
 test_compat_with_responder_node_using_fortuna_major_channel_version(Cfg) ->
     test_different_nodes_channel_(set_genesis_accounts(#{}),
-                                  set_genesis_accounts(node_base_spec_with_fortuna_major_channel_version()), Cfg).
+                                  set_genesis_accounts(node_base_spec_with_fortuna_major_channel_version()),
+                                  set_old_update_vsn(Cfg)).
 
 test_compat_with_initiator_node_using_latest_stable_version(Cfg) ->
     test_different_nodes_channel_(set_genesis_accounts(node_base_spec_with_latest_stable_version()),
-                                  set_genesis_accounts(#{}), Cfg).
+                                  set_genesis_accounts(#{}),
+                                  set_old_update_vsn(Cfg)).
 
 test_compat_with_responder_node_using_latest_stable_version(Cfg) ->
     test_different_nodes_channel_(set_genesis_accounts(#{}),
-                                  set_genesis_accounts(node_base_spec_with_latest_stable_version()), Cfg).
+                                  set_genesis_accounts(node_base_spec_with_latest_stable_version()),
+                                  set_old_update_vsn(Cfg)).
+
+set_old_update_vsn(Cfg) ->
+    [{channel_opts, #{version_offchain_update => 1}}|Cfg].
+
+simulate_fsm_vsn_env(Cfg) ->
+    case lists:keyfind(channel_opts, 1, Cfg) of
+        {_, #{version_offchain_update := V}} ->
+            aesc_offchain_update:set_vsn(V),
+            ok;
+        false ->
+            ok
+    end.
 
 test_different_nodes_channel_(InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg) ->
     ChannelOpts = #{
@@ -171,8 +189,7 @@ test_different_nodes_channel_(InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg)
         responder_node => node2,
         responder_id => ?ALICE,
         responder_amount => 50000 * aest_nodes:gas_price(),
-        push_amount => 2,
-        version_offchain_update => 1
+        push_amount => 2
     },
     simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg).
 

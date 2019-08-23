@@ -69,7 +69,7 @@ sc_open(Params, Cfg) ->
                responder_amount => RAmt,
                channel_reserve => maps:get(channel_reserve, Params, 2)
               },
-             maps:with([version_offchain_update], Params)),
+             maybe_version_opts(Cfg)),
 
     {IConn, RConn} = sc_start_ws_peers(INodeName, RNodeName, Opts, Cfg),
     ok = sc_wait_channel_open(IConn, RConn),
@@ -116,13 +116,14 @@ sc_reestablish(#{ channel_id := ChannelId
                 , responder := {RAccount, _}} = Chan
               , INodeName, RNodeName, LatestState, Cfg) ->
     {Host, _Port} = node_ws_int_addr(RNodeName, Cfg),
-    Opts = #{
-        existing_channel_id => aeser_api_encoder:encode(channel, ChannelId),
-        host => Host,
-        offchain_tx => LatestState,
-        port => 9000,
-        protocol => <<"json-rpc">>
-        },
+    Opts = maps:merge(
+             #{
+               existing_channel_id => aeser_api_encoder:encode(channel, ChannelId),
+               host => Host,
+               offchain_tx => LatestState,
+               port => 9000,
+               protocol => <<"json-rpc">>
+              }, maybe_version_opts(Cfg)),
 
     {IConn, RConn} = sc_start_ws_peers(INodeName, RNodeName, Opts, Cfg),
     {ok, #{ <<"event">> := <<"channel_reestablished">> }} = sc_wait_for_channel_event(IConn, info),
@@ -408,3 +409,16 @@ ws_send(ConnPid, Tag, Data) ->
     ?WS:json_rpc_notify(ConnPid,
         #{ <<"method">> => Method
          , <<"params">> => Data}).
+
+%--- HELPER TO MANAGE ENCODING OPTIONS -----------------------------------------
+
+maybe_version_opts(Cfg) ->
+    case lists:keyfind(channel_opts, 1, Cfg) of
+        {_, Opts} ->
+            version_opts(Opts);
+        false ->
+            #{}
+    end.
+
+version_opts(Params) ->
+    maps:with([version_offchain_update], Params).
