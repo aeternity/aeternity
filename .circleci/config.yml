@@ -1261,7 +1261,12 @@ workflows:
       - deploy_next:
           context: ae-node-builds
           requires:
+            - test_roma
+            - test_minerva
+            - test_fortuna
             - test_lima
+            - test_mnesia_leveled
+            - test_mnesia_rocksdb
             - eunit_roma
             - eunit_minerva
             - eunit_fortuna
@@ -1270,6 +1275,7 @@ workflows:
             - uat_tests
             - static_analysis
             - rebar_lock_check
+            - linux_package
             - linux_package
           filters:
             branches:
