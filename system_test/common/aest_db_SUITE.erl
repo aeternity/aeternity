@@ -3,20 +3,22 @@
 %=== EXPORTS ===================================================================
 
 % Common Test exports
--export([all/0]).
--export([init_per_suite/1]).
--export([init_per_testcase/2]).
--export([end_per_testcase/2]).
--export([end_per_suite/1]).
+-export([ all/0
+        , groups/0
+        , init_per_suite/1
+        , init_per_group/2
+        , init_per_testcase/2
+        , end_per_testcase/2
+        , end_per_group/2
+        , end_per_suite/1]).
 
 % Test cases
--export([
-         node_can_reuse_db_of_other_node/1,
-         node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx/1,
-         %% TODO: Shouldn't the names be longer ;)
-         node_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish/1,
-         node_and_fortuna_release_with_sc_persistance_fix_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish/1,
-         node_can_reuse_state_channel_db_of_node_and_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish/1
+-export([ mining/1
+        , force_progress_mempool/1
+        , sc_leave_upgrade_reestablish_same_node_upgrade/1
+        , sc_leave_upgrade_reestablish_different_nodes_full_upgrade/1
+        , sc_leave_upgrade_reestablish_different_nodes_partial_upgrade/1
+        , sc_leave_upgrade_reestablish_different_nodes_partial_to_full_upgrade/1
         ]).
 
 %=== INCLUDES ==================================================================
@@ -34,8 +36,6 @@
 -record(db_reuse_test_spec, {create,     % Node spec.
                              populate =  % DB insertion.
                                  fun populate_db/2,
-                             pre_reuse = % DB transformation.
-                                 fun(_,_,_) -> ok end,
                              reuse,      % Node spec.
                              assert =    % DB assertion.
                                  fun assert_db_reused/3
@@ -43,15 +43,39 @@
 
 %=== COMMON TEST FUNCTIONS =====================================================
 
-all() -> [
-          node_can_reuse_db_of_other_node,
-          node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx,
-          node_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish,
-          node_and_fortuna_release_with_sc_persistance_fix_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish,
-          node_can_reuse_state_channel_db_of_node_and_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish
+all() -> [{group, minerva_compatibility},
+          {group, fortuna_compatibility},
+          {group, local_compatibility}
          ].
 
+groups() ->
+    [{minerva_compatibility, [sequence], [
+        force_progress_mempool
+    ]},
+    {fortuna_compatibility, [sequence], [
+        {group, leave_upgrade_reestablish}
+    ]},
+    {local_compatibility, [sequence], [
+        mining
+    ]},
+    {leave_upgrade_reestablish, [sequence],
+        [ sc_leave_upgrade_reestablish_same_node_upgrade
+        , sc_leave_upgrade_reestablish_different_nodes_full_upgrade
+        , sc_leave_upgrade_reestablish_different_nodes_partial_upgrade
+        , sc_leave_upgrade_reestablish_different_nodes_partial_to_full_upgrade
+        ]
+    }].
+
 init_per_suite(Config) ->
+    Config.
+
+init_per_group(minerva_compatibility, Config) ->
+    [{tx_mempool_vsn, "v2.3.0"} | Config];
+init_per_group(fortuna_compatibility, Config) ->
+    [{state_channels_vsn, "v4.2.0"} | Config];
+init_per_group(local_compatibility, Config) ->
+    [{block_mining_vsn, "local"} | Config];
+init_per_group(_TG, Config) ->
     Config.
 
 init_per_testcase(_TC, Config) ->
@@ -60,54 +84,51 @@ init_per_testcase(_TC, Config) ->
 end_per_testcase(_TC, Config) ->
     aest_nodes:ct_cleanup(Config).
 
+end_per_group(_TC, _Config) ->
+    ok.
+
 end_per_suite(_Config) -> ok.
 
 %=== TEST CASES ================================================================
 
-node_can_reuse_db_of_other_node(Cfg) ->
+mining(Cfg) ->
+    OldVersion = proplists:get_value(block_mining_vsn, Cfg),
     Test = #db_reuse_test_spec{
-              create = fun node_mining_spec/2,
-              reuse = fun node_spec/2},
+        create = fun(NodeName, DbHostPath) -> node_spec(NodeName, OldVersion, DbHostPath, true) end,
+        reuse = fun(NodeName, DBHostPath) -> node_spec(NodeName, "local", DBHostPath, false) end
+    },
     node_can_reuse_db_of_other_node_(Test, Cfg).
 
-node_can_reuse_db_of_minerva_node_with_channels_update_as_tuple_with_force_progress_tx(Cfg) ->
-    Test = #db_reuse_test_spec{
-              create = fun minerva_node_with_channels_update_as_tuple_spec/2,
-              populate = fun populate_db_with_channels_force_progress_tx/2,
-              reuse = fun node_spec/2,
-              assert = fun assert_db_with_tx_reused/3},
-    node_can_reuse_db_of_other_node_(Test, Cfg).
+force_progress_mempool(Cfg) ->
+    tx_mempool_compatibility(fun populate_db_with_channels_force_progress_tx/2, Cfg).
 
-node_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish(Cfg) ->
-    Test = #db_reuse_test_spec{
-              create = fun fortuna_release_with_sc_persistance_fix_mining_spec/2,
-              populate = fun aest_channels_SUITE:create_state_channel_perform_operations_leave/2,
-              reuse = fun node_mining_spec/2,
-              assert = fun aest_channels_SUITE:reestablish_state_channel_perform_operations/3},
-    node_can_reuse_state_channel_db_of_other_node_(Test, Cfg).
+sc_leave_upgrade_reestablish_same_node_upgrade(Cfg) ->
+    sc_leave_upgrade_reestablish({{node1, old}, {node1, old}}, {{node2, new}, {node2, new}}, Cfg).
 
-node_and_fortuna_release_with_sc_persistance_fix_can_reuse_state_channel_db_of_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish(Cfg) ->
-    Test = #db_reuse_test_spec{
-              create = fun fortuna_release_with_sc_persistance_fix_mining_spec/2,
-              populate = fun aest_channels_SUITE:create_state_channel_perform_operations_leave/2,
-              reuse = fun alice_latest_bob_fortuna_release_with_sc_persistance_fix_mining_spec/2,
-              assert = fun aest_channels_SUITE:reestablish_state_channel_perform_operations/3},
-    node_can_reuse_state_channel_db_of_other_node_(Test, Cfg).
+sc_leave_upgrade_reestablish_different_nodes_full_upgrade(Cfg) ->
+    sc_leave_upgrade_reestablish({{alice1, old}, {bob1, old}}, {{alice2, new}, {bob2, new}}, Cfg).
 
-node_can_reuse_state_channel_db_of_node_and_fortuna_release_with_sc_persistance_fix_with_offchain_and_onchain_updates_using_leave_reestablish(Cfg) ->
-    Test = #db_reuse_test_spec{
-              create = fun alice_latest_bob_fortuna_release_with_sc_persistance_fix_mining_spec/2,
-              populate = fun aest_channels_SUITE:create_state_channel_perform_operations_leave/2,
-              reuse = fun node_mining_spec/2,
-              assert = fun aest_channels_SUITE:reestablish_state_channel_perform_operations/3},
-    node_can_reuse_state_channel_db_of_other_node_(Test, Cfg).
+sc_leave_upgrade_reestablish_different_nodes_partial_upgrade(Cfg) ->
+    sc_leave_upgrade_reestablish({{alice1, old}, {bob1, old}}, {{alice2, old}, {bob2, new}}, Cfg).
+
+sc_leave_upgrade_reestablish_different_nodes_partial_to_full_upgrade(Cfg) ->
+    sc_leave_upgrade_reestablish({{alice1, old}, {bob1, new}}, {{alice2, new}, {bob2, new}}, Cfg).
 
 %=== INTERNAL FUNCTIONS ========================================================
+
+tx_mempool_compatibility(PopulateF, Cfg) ->
+    OldVersion = proplists:get_value(tx_mempool_vsn, Cfg),
+    Test = #db_reuse_test_spec{
+        create = fun(NodeName, DbHostPath) -> node_spec(NodeName, OldVersion, DbHostPath, false) end,
+        populate = PopulateF,
+        reuse = fun(NodeName, DBHostPath) -> node_spec(NodeName, "local", DBHostPath, false) end,
+        assert = fun assert_db_with_tx_reused/3
+    },
+    node_can_reuse_db_of_other_node_(Test, Cfg).
 
 node_can_reuse_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg0)
   when is_function(T#db_reuse_test_spec.create, 2),
        is_function(T#db_reuse_test_spec.populate, 2),
-       is_function(T#db_reuse_test_spec.pre_reuse, 3),
        is_function(T#db_reuse_test_spec.reuse, 2),
        is_function(T#db_reuse_test_spec.assert, 3) ->
     Cfg = aest_channels_SUITE:set_old_update_vsn(Cfg0),
@@ -118,38 +139,62 @@ node_can_reuse_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg0)
     DbFingerprint = (T#db_reuse_test_spec.populate)(node1, Cfg),
     aest_nodes:stop_node(node1, ?GRACEFUL_STOP_TIMEOUT, Cfg),
 
-    ok = (T#db_reuse_test_spec.pre_reuse)(node3, DbHostPath, Cfg),
-
     N2 = (T#db_reuse_test_spec.reuse)(node2, DbHostPath),
     aest_nodes:setup_nodes([N2], Cfg),
     start_and_wait_node(node2, ?STARTUP_TIMEOUT, Cfg),
     ok = (T#db_reuse_test_spec.assert)(node2, DbFingerprint, Cfg),
     ok.
 
-node_can_reuse_state_channel_db_of_other_node_(T = #db_reuse_test_spec{}, Cfg0)
-  when is_function(T#db_reuse_test_spec.create, 2),
-       is_function(T#db_reuse_test_spec.populate, 2),
-       is_function(T#db_reuse_test_spec.reuse, 2),
-       is_function(T#db_reuse_test_spec.assert, 3) ->
+sc_leave_upgrade_reestablish( {{BeforeNodeNameI, BeforeNodeTypeI}, {BeforeNodeNameR, BeforeNodeTypeR}}
+                            , {{AfterNodeNameI, AfterNodeTypeI}, {AfterNodeNameR, AfterNodeTypeR}}
+                            , Cfg0) ->
     Cfg = aest_channels_SUITE:set_old_update_vsn(Cfg0),
-    AliceDbHostPath = node_db_host_path(alice1, Cfg),
-    BobDbHostPath = node_db_host_path(bob1, Cfg),
-    A1 = (T#db_reuse_test_spec.create)(alice1, AliceDbHostPath),
-    B1 = (T#db_reuse_test_spec.create)(bob1, BobDbHostPath),
-    aest_nodes:setup_nodes([A1#{peers => [bob1]}, B1#{peers => [alice1]}], Cfg),
-    start_and_wait_nodes([alice1, bob1], ?STARTUP_TIMEOUT, Cfg),
-    DbFingerprint = (T#db_reuse_test_spec.populate)({alice1, bob1}, Cfg),
-    aest_nodes:stop_node(alice1, ?GRACEFUL_STOP_TIMEOUT, Cfg),
-    aest_nodes:stop_node(bob1, ?GRACEFUL_STOP_TIMEOUT, Cfg),
+    HostPathI = node_db_host_path(BeforeNodeNameI, Cfg),
+    HostPathR = node_db_host_path(BeforeNodeNameR, Cfg),
 
-    %% pre_reuse not used here
+    OldVersion = proplists:get_value(state_channels_vsn, Cfg),
+    OldNodeF = fun(NodeName, DbHostPath) -> node_spec(NodeName, OldVersion, DbHostPath, true) end,
+    NewNodeF = fun(NodeName, DbHostPath) -> node_spec(NodeName, "local", DbHostPath, true) end,
+    SpecF = fun(old) -> OldNodeF; (new) -> NewNodeF end,
 
-    A2 = (T#db_reuse_test_spec.reuse)(alice2, AliceDbHostPath),
-    B2 = (T#db_reuse_test_spec.reuse)(bob2, BobDbHostPath),
-    aest_nodes:setup_nodes([A2#{peers => [bob2]}, B2#{peers => [alice2]}], Cfg),
-    start_and_wait_nodes([alice2, bob2], ?STARTUP_TIMEOUT, Cfg),
-    ok = (T#db_reuse_test_spec.assert)({alice2, bob2}, DbFingerprint, Cfg),
-    ok.
+    %% Create node specs
+    BeforeSpecI = (SpecF(BeforeNodeTypeI))(BeforeNodeNameI, HostPathI),
+    BeforeSpecR = (SpecF(BeforeNodeTypeR))(BeforeNodeNameR, HostPathR),
+    AfterSpecI = (SpecF(AfterNodeTypeI))(AfterNodeNameI, HostPathI),
+    AfterSpecR = (SpecF(AfterNodeTypeR))(AfterNodeNameR, HostPathR),
+    BeforeNames = lists:usort([BeforeNodeNameI, BeforeNodeNameR]),
+    AfterNames = lists:usort([AfterNodeNameI, AfterNodeNameR]),
+
+    %% Setup "Before" nodes
+    case BeforeNodeNameI of
+        BeforeNodeNameR ->
+            HostPathI = HostPathR,
+            BeforeNodeTypeI = BeforeNodeTypeR,
+            AfterNodeNameI = AfterNodeNameR,
+            AfterNodeTypeI = AfterNodeTypeR,
+            true = AfterNodeNameI /= BeforeNodeNameI,
+            aest_nodes:setup_nodes([BeforeSpecI], Cfg);
+        _ ->
+            true = AfterNodeNameI /= AfterNodeNameR,
+            aest_nodes:setup_nodes([BeforeSpecI#{peers => [BeforeNodeNameR]}, BeforeSpecR#{peers => [BeforeNodeNameI]}], Cfg)
+    end,
+
+    %% Create channel and leave
+    start_and_wait_nodes(BeforeNames, ?STARTUP_TIMEOUT, Cfg),
+    ReestablishOpts = aest_channels_SUITE:create_state_channel_perform_operations_leave({BeforeNodeNameI, BeforeNodeNameR}, Cfg),
+    [aest_nodes:stop_node(Node, ?GRACEFUL_STOP_TIMEOUT, Cfg) || Node <- BeforeNames],
+
+    %% Setup "After" nodes
+    case AfterNodeNameI of
+        AfterNodeNameR ->
+            aest_nodes:setup_nodes([AfterSpecI], Cfg);
+        _ ->
+            aest_nodes:setup_nodes([AfterSpecI#{peers => [AfterNodeNameR]}, AfterSpecR#{peers => [AfterNodeNameI]}], Cfg)
+    end,
+
+    %% Try reestablishing
+    start_and_wait_nodes(AfterNames, ?STARTUP_TIMEOUT, Cfg),
+    ok = aest_channels_SUITE:reestablish_state_channel_perform_operations({AfterNodeNameI, AfterNodeNameR}, ReestablishOpts, Cfg).
 
 populate_db(NodeName, Cfg) ->
     TargetHeight = 3,
@@ -187,38 +232,12 @@ node_db_host_path(NodeName, Config) ->
 format(Fmt, Args) ->
     iolist_to_binary(io_lib:format(Fmt, Args)).
 
-node_mining_spec(Name, DbHostPath) ->
-    node_spec(Name, DbHostPath, true).
-node_spec(Name, DbHostPath) ->
-    node_spec(Name, DbHostPath, false).
-node_spec(Name, DbHostPath, Mining) ->
+node_spec(Name, Version, DbHostPath, Mining) ->
     DbGuestPath = "/home/aeternity/node/data/mnesia",
-    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:local"},
+    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:" ++ Version},
                                 db_path => {DbHostPath, DbGuestPath},
                                 mining => #{autostart => Mining},
                                 genesis_accounts => genesis_accounts()}).
-
-minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath) ->
-    minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath, false).
-%% https://github.com/aeternity/aeternity/blob/v2.3.0/apps/aechannel/src/aesc_offchain_update.erl#L15-L17
-minerva_node_with_channels_update_as_tuple_spec(Name, DbHostPath, Mining) ->
-    DbGuestPath = "/home/aeternity/node/data/mnesia",
-    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v2.3.0"},
-                                db_path => {DbHostPath, DbGuestPath},
-                                mining => #{autostart => Mining},
-                                genesis_accounts => genesis_accounts()}).
-
-fortuna_release_with_sc_persistance_fix_mining_spec(Name, DbHostPath) ->
-    DbGuestPath = "/home/aeternity/node/data/mnesia",
-    aest_nodes:spec(Name, [], #{source  => {pull, "aeternity/aeternity:v4.2.0"},
-                                db_path => {DbHostPath, DbGuestPath},
-                                mining => #{autostart => true},
-                                genesis_accounts => genesis_accounts()}).
-
-alice_latest_bob_fortuna_release_with_sc_persistance_fix_mining_spec(Name, DbHostPath) when Name =:= alice1; Name =:= alice2 ->
-    node_mining_spec(Name, DbHostPath);
-alice_latest_bob_fortuna_release_with_sc_persistance_fix_mining_spec(Name, DbHostPath) when Name =:= bob1; Name =:= bob2 ->
-    fortuna_release_with_sc_persistance_fix_mining_spec(Name, DbHostPath).
 
 genesis_accounts() ->
     %% have all nodes share the same accounts_test.json
