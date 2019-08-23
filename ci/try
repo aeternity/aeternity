@@ -4,11 +4,12 @@
 # been reached. In between retries the script waits for
 # (INITIAL_TIMEOUT)^RETRIES , such that the time between retries increases.
 
-MAX_RETRIES=${MAX_RETRIES:-5}
+MAX_RETRIES=${MAX_RETRIES:-2}
 COMMAND="$*"
 
 timeout=${INITIAL_TIMEOUT:-2}
 retry=0
+exit_code=0
 
 if [ "${COMMAND}" = "" ]; then
   echo "ERROR: no command to execute given"
@@ -16,8 +17,11 @@ if [ "${COMMAND}" = "" ]; then
 fi
 
 until [ ${retry} -ge ${MAX_RETRIES} ]; do
-  ${COMMAND} && break
+  ${COMMAND} && exit 0
+  exit_code=$?
   retry=$[${retry}+1]
   sleep ${timeout}
   timeout=$[${timeout}*2]
 done
+
+exit ${exit_code}

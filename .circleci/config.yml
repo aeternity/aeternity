@@ -73,6 +73,8 @@ references:
   install_os_deps: &install_os_deps
     run:
       name: Install OS dependancies
+      environment:
+        MAX_RETRIES: 5
       command: |
         ./ci/try sudo apt-get -qq -y install git curl \
           autoconf build-essential ncurses-dev libssl-dev
@@ -83,6 +85,7 @@ references:
       environment:
         # See minimum_otp_vsn in rebar.config
         OTP_VERSION: "20.1"
+        MAX_RETRIES: 5
       command: |
         # Install OTP package deps
         ./ci/try sudo apt-get -qq -y update
@@ -100,6 +103,7 @@ references:
       name: Install libsodium
       environment:
         LIBSODIUM_VERSION: "1.0.16"
+        MAX_RETRIES: 5
       # source: https://github.com/aeternity/docker-builder/blob/master/Dockerfile#L23
       command: |
         LIBSODIUM_DOWNLOAD_URL="https://github.com/jedisct1/libsodium/releases/download/${LIBSODIUM_VERSION}/libsodium-${LIBSODIUM_VERSION}.tar.gz"
@@ -216,9 +220,9 @@ references:
         PACKAGE_TESTS_DIR: *package_tests_workspace
       command: |
         epmd -daemon
-        ./ci/try make python-env
+        MAX_RETRIES=5 ./ci/try make python-env
         mkdir ${PACKAGE_TESTS_DIR:?}
-        MAX_RETRIES=2 ./ci/try make python-package-win32-test python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} PACKAGE=${PACKAGE_TARBALL:?}
+        ./ci/try make python-package-win32-test python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} PACKAGE=${PACKAGE_TARBALL:?}
 
   test_arch_os_dependencies: &test_arch_os_dependencies
     run:
@@ -318,12 +322,16 @@ references:
   install_system_test_deps: &install_system_test_deps
     run:
       name: Install deps for system tests
+      environment:
+        MAX_RETRIES: 5
       command: |
         ./ci/try make system-test-deps
 
   install_system_smoke_test_deps: &install_system_smoke_test_deps
     run:
       name: Install deps for system smoke tests
+      environment:
+        MAX_RETRIES: 5
       command: |
         ./ci/try make system-smoke-test-deps
 
@@ -355,7 +363,7 @@ references:
         name: Test
         command: |
           epmd -daemon
-          MAX_RETRIES=2 ./ci/try make ${MAKE_TARGET:?} CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
+          ./ci/try make ${MAKE_TARGET:?} CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
     # Isolates the junit.xml report because additional files in _build/test/logs
     # are somehow causing issue with xunit report upload, parsing and merging
     - run:
@@ -378,7 +386,7 @@ references:
         name: Test
         command: |
           epmd -daemon
-          MAX_RETRIES=2 ./ci/try make ${MAKE_TARGET:?}
+          ./ci/try make ${MAKE_TARGET:?}
     - *store_rebar3_crashdump
     - *fail_notification
 
@@ -745,9 +753,9 @@ jobs:
           name: UAT Tests
           command: |
             epmd -daemon
-            ./ci/try make python-env
+            MAX_RETRIES=5 ./ci/try make python-env
             make multi-build
-            MAX_RETRIES=2 ./ci/try make python-uats
+            ./ci/try make python-uats
       - run:
           name: Prepare JUnit Report
           command: mv py/tests/nosetests.xml py/tests/junit.xml
@@ -826,7 +834,7 @@ jobs:
           name: System Tests
           no_output_timeout: 2h
           command: |
-            MAX_RETRIES=2 ./ci/try sudo -u ubuntu -E -H make system-test
+            ./ci/try sudo -u ubuntu -E -H make system-test
       - *collect_system_test_host_logs
       - *fail_notification_system_test
       - *save_machine_build_cache
@@ -853,7 +861,7 @@ jobs:
           name: System Smoke Tests
           no_output_timeout: 1h
           command: |
-            MAX_RETRIES=2 ./ci/try sudo -u ubuntu -E -H make smoke-test-run
+            ./ci/try sudo -u ubuntu -E -H make smoke-test-run
       - *collect_system_test_host_logs
       - *fail_notification_system_test
       - *save_machine_build_cache
@@ -960,6 +968,8 @@ jobs:
       - checkout
       - run:
           name: Install PlantUML dependencies
+          environment:
+            MAX_RETRIES: 5
           command: |
             ./ci/try sudo apt-get -qq -y update
             ./ci/try sudo apt-get -qq -y install graphviz librsvg2-bin
