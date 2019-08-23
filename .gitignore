@@ -63,5 +63,4 @@ eqc-lib
 eqc
 /docs/.tools/
 /docs/state-channels/*.svg
-# The compilation cache is currently immovable - this must be cached in CI
-.contracts_test_cache/aect_test_utils_compilation_cache_*
+.contracts_test_cache
