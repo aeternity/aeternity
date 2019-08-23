@@ -996,8 +996,7 @@ workflows:
                 - *master_branch
 
       - docker_system_smoke_tests:
-          requires:
-            - docker_smoke_tests
+          requires: []
           filters:
             branches:
               ignore:
