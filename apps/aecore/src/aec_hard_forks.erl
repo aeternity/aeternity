@@ -2,14 +2,11 @@
 
 -export([check_env/0]).
 -export([protocols/0,
-         check_protocol_version_validity/2,
          protocol_effective_at_height/1
         ]).
 
 -ifdef(TEST).
--export([check_protocol_version_validity/3,
-         sorted_protocol_versions/0
-        ]).
+-export([sorted_protocol_versions/0]).
 -endif.
 
 -include("blocks.hrl").
@@ -45,13 +42,6 @@ protocols() ->
 -spec check_env() -> ok.
 check_env() ->
     assert_protocols(protocols()).
-
--spec check_protocol_version_validity(version(), aec_blocks:height()) ->
-                                         ok | {error, Reason} when
-    Reason :: unknown_protocol_version
-            | {protocol_version_mismatch, ExpectedVersion::non_neg_integer()}.
-check_protocol_version_validity(Version, Height) ->
-    check_protocol_version_validity(Version, Height, protocols()).
 
 -spec protocol_effective_at_height(aec_blocks:height()) -> version().
 protocol_effective_at_height(H) ->
@@ -101,19 +91,6 @@ protocols_from_network_id(_ID) ->
             maps:fold(fun(K, V, Acc) ->
                               Acc#{binary_to_integer(K) => V}
                       end, #{}, M)
-    end.
-
-
-%% Exported for tests
-check_protocol_version_validity(Version, Height, Protocols) ->
-    case maps:is_key(Version, Protocols) of
-        false ->
-            {error, unknown_protocol_version};
-        true ->
-            case protocol_effective_at_height(Height, Protocols) of
-                Version -> ok;
-                Other   -> {error, {protocol_version_mismatch, Other}}
-            end
     end.
 
 %% Exported for tests

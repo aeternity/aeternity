@@ -255,12 +255,7 @@ validate_test_() ->
               Protocols = #{GV   =>       ?GENESIS_HEIGHT,
                             1+GV => 100 + ?GENESIS_HEIGHT,
                             3+GV => 150 + ?GENESIS_HEIGHT},
-              MockFun =
-                  fun(V, H) ->
-                          aec_hard_forks:check_protocol_version_validity(V, H, Protocols)
-                  end,
-              meck:expect(aec_hard_forks, check_protocol_version_validity,
-                          MockFun),
+
               %% Check for any off-by-one errors around first switch.
               ?assertEqual({error, {protocol_version_mismatch, GV}},
                            ?TEST_MODULE:validate_key_block_header(
