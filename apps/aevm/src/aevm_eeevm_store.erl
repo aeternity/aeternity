@@ -30,6 +30,13 @@
 -define(SOPHIA_STATE_TYPE_KEY, <<1>>).
 -define(SOPHIA_STATE_MAPS_KEY, <<2>>).
 
+%% -define(DEBUG, true).
+-ifdef(DEBUG).
+-define(DEBUG_PRINT(Fmt, Args), io:format(Fmt, Args)).
+-else.
+-define(DEBUG_PRINT(Fmt, Args), ok).
+-endif.
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -111,7 +118,7 @@ from_sophia_state(Version, Data) ->
                                     store_put(?SOPHIA_STATE_KEY,      StateData,
                                     store_put(?SOPHIA_STATE_TYPE_KEY, TypeData,
                                     store_empty()))),
-                    %% io:format("Initial state:\n~s\n", [show_store(Store)]),
+                    ?DEBUG_PRINT("Initial state:\n~s\n", [show_store(Store)]),
                     {ok, Store};
                 E = {error, _} ->
                     E
@@ -169,16 +176,31 @@ next_map_id(#{?SOPHIA_STATE_MAPS_KEY := MapKeys}) ->
     1 + lists:max([-1 | [ Id || <<Id:256>> <= MapKeys ]]);
 next_map_id(_) -> 0.
 
-%% show_store(Store0) ->
-%%     Store = aect_contracts_store:subtree(<<>>, Store0),
-%%     Show = fun(?SOPHIA_STATE_KEY)      -> "?SOPHIA_STATE_KEY";
-%%               (?SOPHIA_STATE_TYPE_KEY) -> "?SOPHIA_STATE_TYPE_KEY";
-%%               (?SOPHIA_STATE_MAPS_KEY) -> "?SOPHIA_STATE_MAPS_KEY";
-%%               (<<Id:256>>)             -> integer_to_list(Id);
-%%               (<<Id:256, Key/binary>>) -> io_lib:format("~p:~p", [Id, aevm_test_utils:dump_words(Key)])
-%%            end,
-%%     io_lib:format("~s\n", [[io_lib:format("  ~s =>\n    ~p\n",
-%%                              [Show(Key), aevm_test_utils:dump_words(Val)]) || {Key, Val} <- maps:to_list(Store)]]).
+-ifdef(DEBUG).
+show_store(Store0) ->
+    Store = aect_contracts_store:subtree(<<>>, Store0),
+    Show = fun(?SOPHIA_STATE_KEY)      -> "?SOPHIA_STATE_KEY";
+              (?SOPHIA_STATE_TYPE_KEY) -> "?SOPHIA_STATE_TYPE_KEY";
+              (?SOPHIA_STATE_MAPS_KEY) -> "?SOPHIA_STATE_MAPS_KEY";
+              (<<Id:256>>)             -> integer_to_list(Id);
+              (<<Id:256, Key/binary>>) -> io_lib:format("~p:~w", [Id, aevm_test_utils:dump_words(Key)])
+           end,
+    ShowAt  = fun(Type, Bin) ->
+                    case aeb_heap:from_binary(Type, Bin) of
+                        {ok, Val} -> io_lib:format("~p", [Val]);
+                        Other -> io_lib:format("(~w : ~p => ~p)", [aevm_test_utils:dump_words(Bin), Type, Other])
+                    end
+              end,
+    ShowVal =
+            fun(?SOPHIA_STATE_TYPE_KEY, Val) -> ShowAt(typerep, Val);
+               (<<_:256>>, ?MapInfo(RealId, RefCount, Size, Bin)) ->
+                    io_lib:format("?MapInfo(~p, ~p, ~p, ~s)",
+                                  [RealId, RefCount, Size, ShowAt({tuple, [typerep, typerep]}, Bin)]);
+               (_, Val) -> io_lib:format("~p", [aevm_test_utils:dump_words(Val)])
+            end,
+    io_lib:format("~s\n", [[io_lib:format("  ~s =>\n    ~s\n",
+                             [Show(Key), ShowVal(Key, Val)]) || {Key, Val} <- maps:to_list(Store)]]).
+-endif.
 
 %% -- Updating Sophia maps --
 
@@ -195,12 +217,13 @@ store_maps(Version, Maps0, Store) ->
     AllMapKeys = lists:usort(NewMapKeys ++ OldMapKeys) -- Garbage,
 
     Updates = compute_map_updates(Garbage, Maps),
+    ?DEBUG_PRINT("Updates: ~p\n", [Updates]),
 
     Store1 = store_put(?SOPHIA_STATE_MAPS_KEY, << <<Id:256>> || Id <- AllMapKeys >>, Store),
     NewRefCounts1 = maps:filter(fun(Id, _) -> lists:member(Id, AllMapKeys) end, NewRefCounts),
     PerformUpdate = fun(Upd, S) -> perform_update(Version, Upd, S) end,
     NewStore = set_ref_counts(NewRefCounts1, lists:foldl(PerformUpdate, Store1, Updates)),
-    %% io:format("NewStore:\n~s\n", [show_store(NewStore)]),
+    ?DEBUG_PRINT("NewStore:\n~s\n", [show_store(NewStore)]),
     NewStore.
 
 perform_update(#{ vm := Version }, {new_inplace, NewId, OldId, Size}, Store) ->
