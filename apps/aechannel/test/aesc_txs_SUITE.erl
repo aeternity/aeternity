@@ -3521,7 +3521,8 @@ fp_insufficent_gas_price(Cfg) ->
     ok.
 
 fp_register_name(Cfg) ->
-    Name = aect_test_utils:fullname(<<"bla">>),
+    %% protocol version in config is latest version w.r.t. 'make' target
+    Name = aens_test_utils:fullname(<<"bla">>),
     Salt = 42,
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash           = address_encode(hash, aens_hash:commitment_hash(NameAscii, Salt)),
@@ -5495,7 +5496,7 @@ fp_sophia_versions(Cfg) ->
             OK          %% Lima
          },
          %% AEVM 2
-         {?VM_AEVM_SOPHIA_2, SophiaVsn1, 
+         {?VM_AEVM_SOPHIA_2, SophiaVsn1,
             ErrUnknown, %% Roma
             OK,         %% Minerva
             OK,         %% Fortuna
