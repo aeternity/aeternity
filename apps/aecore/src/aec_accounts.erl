@@ -19,7 +19,6 @@
 
          attach_ga_contract/3,
          earn/2,
-         is_legal_at_height/2,
          spend/3,
          spend_without_nonce_bump/2,
          set_nonce/2,
@@ -129,14 +128,6 @@ type(#account{ ga_contract = C })         -> contract = aeser_id:specialize_type
 -spec is_payable(account()) -> boolean().
 is_payable(#account{ flags = 0 }) -> true;
 is_payable(#account{ flags = N }) -> not get_flag(non_payable, N).
-
--spec is_legal_at_height(account(), aec_blocks:height()) -> boolean().
-is_legal_at_height(#account{ flags = 0, ga_contract = undefined }, _Height) ->
-    true;
-is_legal_at_height(#account{ flags = 0 }, Height) ->
-    aec_hard_forks:protocol_effective_at_height(Height) >= ?FORTUNA_PROTOCOL_VSN;
-is_legal_at_height(_Account, Height) ->
-    aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN.
 
 -spec serialize(account()) -> deterministic_account_binary_with_pubkey().
 serialize(#account{ flags = 0, ga_contract = undefined } = Account) ->
