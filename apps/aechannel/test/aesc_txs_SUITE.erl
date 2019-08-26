@@ -2678,10 +2678,7 @@ fp_use_onchain_name_resolution(Cfg) ->
     FPRound = 20,
     LockPeriod = 10,
     FPHeight0 = 20,
-    Name = case aect_test_utils:latest_protocol_version() >= ?LIMA_PROTOCOL_VSN of
-               true  -> <<"lorem.aet">>;
-               false -> <<"lorem.test">>
-           end,
+    Name = aens_test_utils:fullname(<<"lorem">>),
     ForceCallCheckName =
         fun(Forcer, K, Found) when is_binary(K) andalso is_boolean(Found) ->
             fun(Props) ->
