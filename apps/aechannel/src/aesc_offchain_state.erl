@@ -94,7 +94,7 @@ recover_from_offchain_tx(#{ existing_channel_id    := ChId
                 aesc_state_cache:reestablish(ChId, MyPubkey)
         end,
     case ReestablishResult of
-        {ok, #state{} = State} ->
+        {ok, #state{} = State, _CachedOpts} ->
             case is_latest_signed_tx(SignedTx, State) of
                 true ->
                     {ok, State};
@@ -164,7 +164,6 @@ check_update_tx(SignedTx, Updates, #state{signed_tx = OldSignedTx}=State,
                 ChannelPubkey,
                 Protocol, OnChainTrees,
                 OnChainEnv, Opts) when OldSignedTx =/= ?NO_TX ->
-    lager:debug("check_update_tx(State = ~p)", [State]),
     {Mod, TxI} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     lager:debug("Tx = ~p", [TxI]),
     case Mod:valid_at_protocol(Protocol, TxI) of

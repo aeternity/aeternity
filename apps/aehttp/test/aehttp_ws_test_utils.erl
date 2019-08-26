@@ -60,7 +60,7 @@
                }).
 
 start_link(Host, Port) ->
-    WsAddress = "ws://" ++ Host ++ ":" ++ integer_to_list(Port) ++ "/websocket",
+    WsAddress = "wss://" ++ Host ++ ":" ++ integer_to_list(Port) ++ "/websocket",
     ct:log("connecting to ~p", [WsAddress]),
     {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self()),
     wait_for_connect(Pid).
