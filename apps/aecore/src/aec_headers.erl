@@ -691,12 +691,11 @@ validate_micro_block_header(Header, Version) ->
     end.
 
 -spec validate_version(header(), aec_hard_forks:protocol_vsn()) ->
-                              ok | {error, Reason} when
-      Reason :: {protocol_version_mismatch, ExpectedVersion::non_neg_integer()}.
+                              ok | {error, protocol_version_mismatch}.
 validate_version(Header, Version) ->
     case version(Header) =:= Version of
         true  -> ok;
-        false -> {error, {protocol_version_mismatch, Version}}
+        false -> {error, protocol_version_mismatch}
     end.
 
 -spec validate_pow(header()) ->
