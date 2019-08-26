@@ -10,6 +10,12 @@
     , offchain_tx
     ]).
 
+-define(CONNECT_OPTS_KEYS,
+    [ host
+    , port
+    , noise
+    ]).
+
 -define(DEFAULT_TIMEOUTS,
     #{ accept         => 120000
      , funding_create => 120000
@@ -150,12 +156,13 @@
               , channel_status                  :: undefined | attached | open | closing
               , cur_statem_state                :: undefined | atom()
               , state                           :: aesc_offchain_state:state() | function()
-              , session                         :: pid()
+              , session                         :: pid() | undefined
               , client                          :: pid() | undefined
               , client_mref                     :: reference() | undefined
               , client_connected = true         :: boolean()
               , client_may_disconnect = false   :: boolean()
               , client_reconnect_nonce = 0      :: non_neg_integer()
+              , peer_connected = false        :: boolean()
               , opts                            :: map()
               , state_password_wrapper          :: undefined | aesc_state_password_wrapper:wrapper()
               , channel_id                      :: undefined | binary()
@@ -256,7 +263,8 @@
                   , data    :: #op_data{}
                   }).
 
--record(op_reestablish, {offchain_tx :: aetx_sign:signed_tx()
+-record(op_reestablish, { offchain_tx :: aetx_sign:signed_tx() | undefined
+                        , mode = restart :: restart | remain
                         }).
 
 -record(op_close, { data :: #op_data{}

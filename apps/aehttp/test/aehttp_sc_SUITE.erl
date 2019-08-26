@@ -30,6 +30,9 @@
     sc_ws_close_solo/1,
     sc_ws_slash/1,
     sc_ws_leave_reestablish/1,
+    sc_ws_leave_reestablish_responder_stays/1,
+    sc_ws_leave_reconnect/1,
+    sc_ws_password_changeable/1,
     sc_ws_ping_pong/1,
     sc_ws_deposit/1,
     sc_ws_withdraw/1,
@@ -120,6 +123,9 @@ groups() ->
         sc_ws_slash,
         %% possible to leave and reestablish channel
         sc_ws_leave_reestablish,
+        sc_ws_leave_reestablish_responder_stays,
+        sc_ws_leave_reconnect,
+        sc_ws_password_changeable,
         {group, with_open_channel},
         {group, client_reconnect}
       ]},
@@ -454,13 +460,14 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine) ->
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, ChannelOpts0, Config),
+    {IChanOpts, RChanOpts} = special_channel_opts(ChannelOpts),
     {ok, IConnPid} = channel_ws_start(initiator,
-                                           maps:put(host, <<"localhost">>, ChannelOpts), Config),
+                                           maps:put(host, <<"localhost">>, IChanOpts), Config),
 
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign,
                                                          on_chain_tx, update]),
 
-    {ok, RConnPid} = channel_ws_start(responder, ChannelOpts, Config),
+    {ok, RConnPid} = channel_ws_start(responder, RChanOpts, Config),
 
     ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign,
                                                          on_chain_tx, update]),
@@ -1101,6 +1108,7 @@ settle_(Config, Closer) when Closer =:= initiator;
     ok.
 
 sc_ws_leave_(Config) ->
+    ResponderLeaves = proplists:get_value(responder_leaves, Config, true),
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [leave, info]),
@@ -1115,9 +1123,18 @@ sc_ws_leave_(Config) ->
     {IDi, IDr} = {IDr, IDi},
     {StI, StR} = {StR, StI},
     {ok, #{<<"event">> := <<"died">>}} = wait_for_channel_event(IConnPid, info, Config),
-    {ok, #{<<"event">> := <<"died">>}} = wait_for_channel_event(RConnPid, info, Config),
+    if ResponderLeaves ->
+            {ok, #{<<"event">> := <<"died">>}} = wait_for_channel_event(RConnPid, info, Config);
+       true ->
+            {ok, #{<<"event">> := <<"peer_disconnected">>}}
+                = wait_for_channel_event(RConnPid, info, Config)
+    end,
     ok = ?WS:wait_for_event(IConnPid, websocket, closed),
-    ok = ?WS:wait_for_event(RConnPid, websocket, closed),
+    if ResponderLeaves ->
+            ok = ?WS:wait_for_event(RConnPid, websocket, closed);
+       true ->
+            ok
+    end,
     %%
     Options = proplists:get_value(channel_options, Config),
     Port = maps:get(port, Options),
@@ -1130,12 +1147,25 @@ sc_ws_leave_(Config) ->
     ReestablishOptions.
 
 
-sc_ws_reestablish_(ReestablishOptions, Config) ->
-    {ok, RrConnPid} = channel_ws_start(responder, ReestablishOptions, Config),
+sc_ws_reestablish_(ReestablOptions, Config) ->
+    ResponderLeaves = proplists:get_value(responder_leaves, Config, true),
+    RrConnPid
+        = if ResponderLeaves ->
+                  {ok, RrCP} = channel_ws_start(responder, ReestablOptions, Config),
+                  RrCP;
+             true ->
+                  %% responder still running
+                  #{responder := RCP} = proplists:get_value(channel_clients, Config),
+                  RCP
+    end,
     {ok, IrConnPid} = channel_ws_start(initiator, maps:put(
                                                     host, <<"localhost">>,
-                                                    ReestablishOptions), Config),
-    ok = ?WS:register_test_for_channel_events(RrConnPid, [info, update]),
+                                                    ReestablOptions), Config),
+    if ResponderLeaves ->
+            ok = ?WS:register_test_for_channel_events(RrConnPid, [info, update]);
+       true ->
+            ok
+    end,
     ok = ?WS:register_test_for_channel_events(IrConnPid, [info, update]),
     {ok, #{<<"event">> := <<"channel_reestablished">>}} =
         wait_for_channel_event(IrConnPid, info, Config),
@@ -3063,6 +3093,46 @@ sc_ws_leave_reestablish(Config0) ->
     ok = sc_ws_update_(Config1),
     ok = sc_ws_close_(Config1).
 
+sc_ws_leave_reestablish_responder_stays(Config0) ->
+    Config = sc_ws_open_(Config0, #{responder_opts => #{keep_running => true}}),
+    Config1 = [{responder_leaves, false}|Config],
+    ReestablOptions = sc_ws_leave_(Config1),
+    Config2 = sc_ws_reestablish_(ReestablOptions, Config1),
+    ok = sc_ws_update_(Config2),
+    ok = sc_ws_close_(Config2).
+
+sc_ws_leave_reconnect(Config0) ->
+    Config = sc_ws_open_(Config0, #{responder_opts => #{keep_running => true}}),
+    #{ initiator := IConnPid } = proplists:get_value(channel_clients, Config),
+    Participants = proplists:get_value(participants, Config),
+    #{ pub_key := Pub, priv_key := Priv } = maps:get(initiator, Participants),
+    ct:log("*** Leaving channel ***", []),
+    #{ existing_channel_id := ChId
+     , offchain_tx         := Tx } = ReestOpts = sc_ws_leave_([{responder_leaves, false}|Config]),
+    ct:log("ReestOpts = ~p", [ReestOpts]),
+    ct:log("*** Reconnecting ... ***", []),
+    reconnect_client_(ChId, initiator, Pub, Priv, Config),
+    ct:log("*** Verifying that channel is operational ***", []),
+    ok = sc_ws_update_(Config),
+    ct:log("*** Closing ... ***", []),
+    ok = sc_ws_close_(Config).
+
+sc_ws_password_changeable(Config0) ->
+    Config = sc_ws_open_(Config0),
+    Options = proplists:get_value(channel_options, Config),
+    StatePasswordOld = maps:get(state_password, Options),
+    Config1 = sc_ws_change_password_(Config),
+    ReestablishOptions = sc_ws_leave_(Config1),
+    ReestablishOptionsOld = ReestablishOptions#{state_password => StatePasswordOld},
+
+    %% Reestablish with old password should fail
+    Roles = [initiator, responder],
+    [sc_ws_test_broken_params(Role, Config, ReestablishOptionsOld, <<"Invalid password">>, Config) || Role <- Roles],
+
+    Config2 = sc_ws_reestablish_(ReestablishOptions, Config1),
+    ok = sc_ws_update_(Config2),
+    ok = sc_ws_close_(Config2).
+
 sc_ws_change_password_(Config) ->
     ct:log("Changing password"),
     #{ initiator := IConnPid
@@ -3137,6 +3207,11 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
                   protocol => sc_ws_protocol(Config),
                   state_password => ?CACHE_DEFAULT_PASSWORD
                 }, Other).
+
+special_channel_opts(Opts) ->
+    Opts1 = maps:without([initiator_opts, responder_opts], Opts),
+    {maps:merge(Opts1, maps:get(initiator_opts, Opts, #{})),
+     maps:merge(Opts1, maps:get(responder_opts, Opts, #{}))}.
 
 reconnect_channel_options(SignedTx, Config) ->
     #{ port => ?config(ws_port, Config)
