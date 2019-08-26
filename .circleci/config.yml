@@ -424,7 +424,7 @@ commands:
       - run:
           name: Start branch docker image
           command: |
-            docker run --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} -network_id ae_test
+            docker run --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} bin/aeternity console -noinput -network_id ae_test
           background: true
       - run:
           name: Health check
