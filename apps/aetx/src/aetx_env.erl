@@ -28,6 +28,7 @@
         , consensus_version/1
         , context/1
         , difficulty/1
+        , dry_run/1
         , ga_auth_ids/1
         , ga_nonce/2
         , ga_tx_hash/1
@@ -45,6 +46,7 @@
         , del_ga_nonce/2
         , set_beneficiary/2
         , set_context/2
+        , set_dry_run/2
         , set_ga_tx_hash/2
         , set_height/2
         , set_signed_tx/2
@@ -73,6 +75,7 @@
              , ga_nonces = []    :: [{aec_keys:pubkey(), binary()}]
              , ga_tx_hash        :: undefined | binary()
              , difficulty        :: aeminer_pow:difficulty()
+             , dry_run = false   :: boolean()
              , height            :: aec_blocks:height()
              , key_hash          :: aec_blocks:block_header_hash()
              , signed_tx         :: wrapped_tx()
@@ -184,6 +187,14 @@ context(#env{context = X}) -> X.
 
 -spec set_context(env(), context()) -> env().
 set_context(Env, X) -> Env#env{context = X}.
+
+%%------
+
+-spec dry_run(env()) -> boolean().
+dry_run(#env{dry_run = X}) -> X.
+
+-spec set_dry_run(env(), boolean()) -> env().
+set_dry_run(Env, X) -> Env#env{dry_run = X}.
 
 %%------
 

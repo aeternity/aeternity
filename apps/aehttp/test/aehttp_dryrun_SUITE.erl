@@ -13,6 +13,7 @@
 
 -export([ spend_txs/1
         , identity_contract/1
+        , authenticate_contract/1
         , accounts/1
         ]).
 
@@ -31,6 +32,7 @@ groups() ->
     [ {dry_run, [],
         [ spend_txs
         , identity_contract
+        , authenticate_contract
         , accounts
         ]}
     ].
@@ -152,6 +154,60 @@ identity_contract(Config) ->
 
     ok.
 
+authenticate_contract(Config) ->
+    #{acc_a := #{pub_key := APub}} = proplists:get_value(accounts, Config),
+    TopHash = proplists:get_value(top_hash, Config),
+
+    {ok, Code}   = aect_test_utils:compile_contract(basic_auth),
+
+    InitCallData = make_call_data(basic_auth, "init", []),
+    CallCallData = make_call_data(basic_auth, "get_auth_tx_hash", []),
+
+    CreateTx  = create_contract_tx(APub, 1, Code, InitCallData),
+    CPub      = contract_id(CreateTx),
+    CallTx    = call_contract_tx(APub, CPub, 2, CallCallData),
+
+    DecodeOption =
+        fun(SerRVal) ->
+            {ok, RValBin} = aeser_api_encoder:safe_decode(contract_bytearray, SerRVal),
+            {ok, RVal} = aeb_heap:from_binary({option, word}, RValBin),
+            RVal
+        end,
+
+    {ok, 200, #{ <<"results">> := [_CreateRes,
+                                   #{ <<"result">> := <<"ok">>,
+                                      <<"type">> := <<"contract_call">>,
+                                      <<"call_obj">> := CallObj }
+                                  ] }} =
+        dry_run(TopHash, [CreateTx, CallTx]),
+
+    ?assertEqual(none, DecodeOption(maps:get(<<"return_value">>, CallObj))),
+
+    CallReq  = #{<<"contract">> => aeser_api_encoder:encode(contract_pubkey, CPub),
+                 <<"calldata">> => aeser_api_encoder:encode(contract_bytearray, CallCallData)},
+    CallReq1 = CallReq#{<<"context">> => #{tx_hash => aeser_api_encoder:encode(tx_hash, <<12345:32/unit:8>>),
+                                           stateful => true}},
+    CallReq2 = CallReq#{<<"context">> => #{tx_hash => aeser_api_encoder:encode(tx_hash, <<12345:32/unit:8>>),
+                                           stateful => false},
+                        <<"nonce">> => 2},
+    {ok, 200, #{ <<"results">> := [_CreateRes,
+                                   #{ <<"result">> := <<"ok">>,
+                                      <<"type">> := <<"contract_call">>,
+                                      <<"call_obj">> := CallObj2 },
+                                   #{ <<"result">> := <<"ok">>,
+                                      <<"type">> := <<"contract_call">>,
+                                      <<"call_obj">> := CallObj3 },
+                                   #{ <<"result">> := <<"ok">>,
+                                      <<"type">> := <<"contract_call">>,
+                                      <<"call_obj">> := CallObj3 }
+                                  ] }} =
+        dry_run(TopHash, [CreateTx, CallReq1, CallReq2, CallReq2]),
+
+    ?assertEqual({some, 12345}, DecodeOption(maps:get(<<"return_value">>, CallObj2))),
+    ?assertEqual({some, 12345}, DecodeOption(maps:get(<<"return_value">>, CallObj3))),
+
+    ok.
+
 accounts(Config) ->
     #{acc_a := #{pub_key := APub}} = proplists:get_value(accounts, Config),
     TopHash = proplists:get_value(top_hash, Config),
@@ -198,11 +254,13 @@ dry_run(TopHash, Txs) ->
     dry_run(TopHash, Txs, []).
 
 dry_run(TopHash, Txs, Accounts) ->
+    EncTx = fun(Tx) -> try aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx))
+                       catch _:_ -> Tx end end,
     http_request(internal_address(), post, "debug/transactions/dry-run",
                  #{ top => aeser_api_encoder:encode(key_block_hash, TopHash),
                     accounts => [ A#{pub_key => aeser_api_encoder:encode(account_pubkey, PK)}
                                   || A = #{pub_key := PK } <- Accounts ],
-                    txs => [aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx)) || Tx <- Txs] }).
+                    txs => [EncTx(Tx) || Tx <- Txs] }).
 
 get_genesis_hash() ->
     {ok, 200, #{<<"genesis_key_block_hash">> := EncGenesisHash}} = get_status(),

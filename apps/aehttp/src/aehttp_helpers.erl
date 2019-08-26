@@ -565,18 +565,22 @@ dry_run_accounts_([Account | Accounts], Acc) ->
 
 dry_run_txs_([], Txs) ->
     {ok, lists:reverse(Txs)};
-dry_run_txs_([ETx | Txs], Acc) ->
+dry_run_txs_([ETx | Txs], Acc) when is_binary(ETx) ->
     case aeser_api_encoder:safe_decode(transaction, ETx) of
         {ok, DTx} ->
             Tx = aetx:deserialize_from_binary(DTx),
             {Type, _} = aetx:specialize_type(Tx),
-            case lists:member(Type, [spend_tx, contract_create_tx, contract_call_tx]) of
-                true  -> dry_run_txs_(Txs, [Tx | Acc]);
+            case lists:member(Type, [spend_tx, contract_create_tx, contract_call_tx,
+                                     ga_attach_tx]) of
+                true  -> dry_run_txs_(Txs, [{tx, Tx} | Acc]);
                 false -> {error, lists:concat(["Unsupported transaction type ", Type])}
             end;
         Err = {error, _Reason} ->
             Err
-    end.
+    end;
+dry_run_txs_([CallReq | Txs], Acc) when is_map(CallReq) ->
+    dry_run_txs_(Txs, [{call_req, CallReq} | Acc]).
+
 
 dry_run_results(Rs) ->
     [dry_run_result(R) || R <- Rs].
@@ -587,7 +591,8 @@ dry_run_result({Type, Res}) ->
 dry_run_result(_Type, {error, Reason}, Res) ->
     Res#{ reason => list_to_binary(lists:concat(["Error: ", Reason])) };
 dry_run_result(Type, {ok, CallObj}, Res) when Type =:= contract_call_tx;
-                                              Type =:= contract_create_tx ->
+                                              Type =:= contract_create_tx;
+                                              Type =:= ga_attach_tx ->
     Res#{ call_obj => aect_call:serialize_for_client(CallObj) };
 dry_run_result(_Type, ok, Res) ->
     Res.
@@ -597,7 +602,8 @@ ok_err(_)          -> <<"ok">>.
 
 type(spend_tx)           -> <<"spend">>;
 type(contract_create_tx) -> <<"contract_create">>;
-type(contract_call_tx)   -> <<"contract_call">>.
+type(contract_call_tx)   -> <<"contract_call">>;
+type(ga_attach_tx)       -> <<"ga_attach">>.
 
 get_transaction(TxKey, TxStateKey) ->
     fun(_Req, State) ->

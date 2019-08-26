@@ -487,15 +487,17 @@ force_inc_account_nonce_op(Pubkey, Nonce) when ?IS_HASH(Pubkey),
                                                ?IS_NON_NEG_INTEGER(Nonce) ->
     {inc_account_nonce, {Pubkey, Nonce, true}}.
 
-inc_account_nonce({Pubkey, Nonce, Force}, #state{} = S) ->
+inc_account_nonce({Pubkey, Nonce, Force}, #state{ tx_env = Env } = S) ->
     {Account, S1} = get_account(Pubkey, S),
-    case lists:member(Pubkey, aetx_env:ga_auth_ids(S#state.tx_env)) of
+    DryRun  = aetx_env:dry_run(Env),
+    AccType = aec_accounts:type(Account),
+    case lists:member(Pubkey, aetx_env:ga_auth_ids(Env)) of
         true ->
             assert_ga_active(S),
             assert_generalized_account(Account),
             assert_ga_env(Pubkey, Nonce, S),
             S1;
-        false ->
+        false when not DryRun orelse AccType == basic ->
             assert_basic_account(Account),
             assert_account_nonce(Account, Nonce),
             case aetx_env:context(S#state.tx_env) of
@@ -507,6 +509,12 @@ inc_account_nonce({Pubkey, Nonce, Force}, #state{} = S) ->
                 _ ->
                     Account1 = aec_accounts:set_nonce(Account, Nonce),
                     put_account(Account1, S1)
+            end;
+        false when DryRun andalso AccType == generalized ->
+            %% Dry run means skip verification, just check nonce is 0
+            case Nonce of
+                0 -> S1;
+                _ -> runtime_error(nonce_in_ga_tx_should_be_zero)
             end
     end.
 
