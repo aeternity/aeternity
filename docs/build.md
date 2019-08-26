@@ -79,16 +79,15 @@ The source code of the Aeternity node can be obtained by cloning the public [Git
 git clone https://github.com/aeternity/aeternity.git aeternity_source && cd aeternity_source
 ```
 
-Identify the version to be built:
-```
-VERSION=5.0.0-rc.1
-```
+**NOTE**: By default git will checkout the `master` (default) branch of the source code.
+To build a particular version it should be checkout first:
 
-Checkout the version to be built:
 
 ```bash
+VERSION=X.Y.Z # set a particular version
 git checkout tags/v${VERSION:?}
 ```
+
 
 ### Production build
 
@@ -118,13 +117,13 @@ Alternatively a production package similar to what is distributed via [GitHub re
 make prod-package
 ```
 
-Once the packaging is done, the package is created in the `_build/prod/rel/aeternity/` directory, e.g. `_build/prod/rel/aeternity/aeternity-${VERSION:?}.tar.gz`.
+Once the packaging is done, the package is created in the `_build/prod/rel/aeternity/` directory, e.g. `_build/prod/rel/aeternity/aeternity-X.Y.Z.tar.gz`.
 
 To deploy the package for example in `~/aeternity/node` one should just unarchive it to that directory:
 
 ```bash
 mkdir -p ~/aeternity/node
-tar xf _build/prod/rel/aeternity/aeternity-${VERSION:?}.tar.gz -C ~/aeternity/node
+tar xf _build/prod/rel/aeternity/aeternity-*.tar.gz -C ~/aeternity/node
 ```
 
 Make sure beneficiary account is set in configuration, as this is mandatory to successfully start a node.
