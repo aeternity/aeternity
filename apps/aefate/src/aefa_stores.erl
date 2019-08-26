@@ -401,7 +401,15 @@ copy_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
     %% First copy the old data, then update with the new
     Store1   = write_bin_data(RawId, maps:to_list(OldMap) ++ NewData, Store),
     Store2   = aect_contracts_store:put(map_data_key(RawId), <<0>>, Store1),
-    {Meta1, Store2}.
+
+    %% We also need to update the refcounts for nested maps. We already added
+    %% refcounts for maps in the Cache, now we have to add refcounts for
+    %% entries copied from the old map (unless they are overwritten by the
+    %% cache).
+    CopiedBin = maps:without([K || {K, _} <- NewData], OldMap),
+    RefCounts = aeb_fate_maps:refcount([ aeb_fate_encoding:deserialize(Val) || Val <- maps:values(CopiedBin) ]),
+    Meta2     = update_refcounts(RefCounts, Meta1),
+    {Meta2, Store2}.
 
 %% In-place update of an existing store map. This happens, for instance, when
 %% you update a map in the state throwing away the old copy of the it.
@@ -413,7 +421,16 @@ update_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
     Store1  = write_bin_data(RawId, NewData, Store),
     Meta1   = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size),
                            remove_map_meta(OldId, Meta)),
-    {Meta1, Store1}.
+
+    %% We also need to update the refcounts for nested maps. We already added
+    %% refcounts for maps in the Cache, now we have to subtract refcounts for
+    %% entries overwritten by the cache.
+    RefCounts = lists:foldl(fun({Key, _}, Count) ->
+                                aeb_fate_maps:refcount_union(refcount_delta(Key, false, Store), %% old store
+                                                             Count)
+                            end, aeb_fate_maps:refcount_zero(), NewData),
+    Meta2     = update_refcounts(RefCounts, Meta1),
+    {Meta2, Store1}.
 
 gc_map(RawId, {Meta, Store}) ->
     %% Only the RawId here, we already removed the MapId from the metadata.
@@ -492,14 +509,14 @@ maps_refcounts(Metadata, Maps, Store) ->
 map_refcounts(_Meta, Map, _Store) when ?IS_FATE_MAP(Map) ->
     %% Fresh map, only adds new references.
     aeb_fate_maps:refcount(Map);
-map_refcounts(Metadata, ?FATE_STORE_MAP(Cache, Id), Store) ->
+map_refcounts(_Meta, ?FATE_STORE_MAP(Cache, _Id), _Store) ->
     %% Note that this does not count as a reference to Id
-    maps:fold(fun(Key, Val, Count) ->
-                %% We need to compute the refcount delta from the updates to
-                %% the store map.
-                ?METADATA(RawId, _, _) = get_map_meta(Id, Metadata),
-                New = refcount_delta(map_data_key(RawId, Key), Val, Store),
-                aeb_fate_maps:refcount_union(New, Count)
+    maps:fold(fun(_Key, Val, Count) ->
+                %% We don't know if this map will be copied or updated in place,
+                %% so we shouldn't compute a refcount delta. Instead we conservatively
+                %% only look at the new value. Once the copy or update happens we'll take
+                %% the delta into account.
+                aeb_fate_maps:refcount_union(aeb_fate_maps:refcount(Val), Count)
               end, #{}, Cache).
 
 %% Compute the difference in reference counts caused by performing a store
