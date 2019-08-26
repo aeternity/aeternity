@@ -136,9 +136,15 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache) ->
        , trace             = []
        }.
 
--spec finalize(state()) -> state().
+-spec finalize(state()) -> {ok, state()} | {error, out_of_gas}.
 finalize(#es{chain_api = API, stores = Stores} = ES) ->
-    ES#es{chain_api = aefa_stores:finalize(API, Stores)}.
+    Gas = gas(ES),
+    case aefa_stores:finalize(API, Gas, Stores) of
+        {ok, Stores1, GasLeft} ->
+            {ok, ES#es{chain_api = Stores1, gas = GasLeft}};
+        {error, out_of_gas} ->
+            {error, out_of_gas}
+    end.
 
 %%%===================================================================
 %%% API

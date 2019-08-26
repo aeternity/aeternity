@@ -12,7 +12,7 @@
 %%%    altered. Both things are expensive as it involves going out to the
 %%%    underlying merkle trees.
 %%%
-%%%    Use finalize/2 to push the stores back to the chain when the
+%%%    Use finalize/3 to push the stores back to the chain when the
 %%%    fate execution is done.
 %%%
 %%%  @end
@@ -22,7 +22,7 @@
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 
--export([ finalize/2
+-export([ finalize/3
         , find_value/3
         , has_contract/2
         , initial_contract_store/0
@@ -277,11 +277,19 @@ map_raw_key(RawId, KeyBin) ->
 %%%===================================================================
 %%% Write through cache to stores
 
--spec finalize(aefa_chain_api:state(), store()) -> aefa_chain_api:state().
-finalize(API, #store{cache = Cache} = _S) ->
+-spec finalize(aefa_chain_api:state(), non_neg_integer(), store()) ->
+                  {ok, aefa_chain_api:state(), non_neg_integer()}
+                | {error, out_of_gas}.
+finalize(API, GasLeft, #store{cache = Cache} = _S) ->
     ?DEBUG_STORE(_S),
-    Stores = maps:fold(fun finalize_entry/3, [], Cache),
-    finalize_stores(Stores, API).
+    try maps:fold(fun finalize_entry/3, {[], GasLeft}, Cache) of
+        {Stores, GasLeft1} ->
+            API1 = finalize_stores(Stores, API),
+            {ok, API1, GasLeft1}
+    catch
+        throw:out_of_gas ->
+            {error, out_of_gas}
+    end.
 
 finalize_stores([{Pubkey, Store}|Left], API) ->
     API1 = aefa_chain_api:set_contract_store(Pubkey, Store, API),
@@ -291,7 +299,7 @@ finalize_stores([], API) ->
 
 finalize_entry(_Pubkey, #cache_entry{dirty = false}, Acc) ->
     Acc;
-finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, Acc) ->
+finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, {Writes, GasLeft}) ->
     {ok, Metadata} = find_meta_data_no_cache(Cache), %% Last access so no need to cache here
     %% Compute which updates need to be performed (see store_update() type
     %% below). This also takes care of updating the metadata with new reference
@@ -301,7 +309,8 @@ finalize_entry(Pubkey, Cache = #cache_entry{store = Store}, Acc) ->
     ?DEBUG_PRINT("Updates\n  ~p\n", [Updates]),
 
     %% Performing the updates writes the necessary changes to the MP trees.
-    [{Pubkey, perform_store_updates(Updates, Metadata1, Store)} | Acc].
+    {Store1, GasLeft1} = perform_store_updates(Updates, Metadata1, GasLeft, Store),
+    {[{Pubkey, Store1} | Writes], GasLeft1}.
 
 %%%===================================================================
 %%% Store updates
@@ -353,15 +362,32 @@ compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) 
     Compare = fun(A, B) -> Order(element(1, A)) =< Order(element(1, B)) end,
     {Metadata2, lists:sort(Compare, Updates)}.
 
-perform_store_updates(Updates, Meta, Store) ->
-    {Meta1, Store1} = lists:foldl(fun perform_store_update/2, {Meta, Store}, Updates),
+perform_store_updates([Update|Left], Meta, GasLeft, Store) ->
+    ?DEBUG_PRINT("Update: ~p\n", [Update]),
+    {Meta1, Bytes, Store1} =  perform_store_update(Update, {Meta, Store}),
+    GasLeft1 = spend_size_gas(GasLeft, Bytes),
+    perform_store_updates(Left, Meta1, GasLeft1, Store1);
+perform_store_updates([], Meta, GasLeft, Store) ->
     %% Save the updated metadata at the end
-    push_term(?META_STORE_POS, Meta1, Store1).
+    {Store1, Bytes} = push_term(?META_STORE_POS, Meta, Store),
+    GasLeft1 = spend_size_gas(GasLeft, Bytes),
+    {Store1, GasLeft1}.
+
+spend_size_gas(GasLeft, Bytes) ->
+    %% TODO: This bytes to gas calculation needs to be discussed
+    ?DEBUG_PRINT("GasLeft: ~w Bytes: ~w\n", [GasLeft, Bytes]),
+    case GasLeft - Bytes * aec_governance:byte_gas() of
+        TooLittle when TooLittle < 0 ->
+            throw(out_of_gas);
+        Enough ->
+            Enough
+    end.
 
 -spec perform_store_update(store_update(), {store_meta(), aect_contracts_store:store()}) ->
-        {store_meta(), aect_contracts_store:store()}.
+        {store_meta(), non_neg_integer(), aect_contracts_store:store()}.
 perform_store_update({push_term, StorePos, FateVal}, {Meta, Store}) ->
-    {Meta, push_term(StorePos, FateVal, Store)};
+    {Store1, Bytes} = push_term(StorePos, FateVal, Store),
+    {Meta, Bytes, Store1};
 perform_store_update({copy_map, MapId, Map}, S) ->
     copy_map(MapId, Map, S);
 perform_store_update({update_map, MapId, Map}, S) ->
@@ -372,7 +398,9 @@ perform_store_update({gc_map, MapId}, S) ->
 %% Write to a store register
 push_term(Pos, FateVal, Store) ->
     Val = aeb_fate_encoding:serialize(FateVal),
-    aect_contracts_store:put(store_key(Pos), Val, Store).
+    Key = store_key(Pos),
+    Bytes = byte_size(Key) + byte_size(Val),
+    {aect_contracts_store:put(Key, Val, Store), Bytes}.
 
 %% Allocate a new map.
 copy_map(MapId, Map, {Meta, Store}) when ?IS_FATE_MAP(Map) ->
@@ -384,10 +412,10 @@ copy_map(MapId, Map, {Meta, Store}) when ?IS_FATE_MAP(Map) ->
     Meta1    = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size), Meta),
     %% Write the data
     BinData  = cache_to_bin_data(?FATE_MAP_VALUE(Map)),  %% A map value is a special case of a cache (no tombstones)
-    Store1   = write_bin_data(RawId, BinData, Store),
+    {Store1, Bytes} = write_bin_data(RawId, BinData, Store),
     %% and the subtree node that allows us to call aect_contracts_store:subtree
     Store2   = aect_contracts_store:put(map_data_key(RawId), <<0>>, Store1),
-    {Meta1, Store2};
+    {Meta1, Bytes, Store2};
 copy_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
     %% In case of a modified store map we need to copy all the entries for the
     %% old map and then update with the new data (Cache).
@@ -399,7 +427,7 @@ copy_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
     Size    = OldSize + size_delta(OldMap, NewData),
     Meta1   = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size), Meta),
     %% First copy the old data, then update with the new
-    Store1   = write_bin_data(RawId, maps:to_list(OldMap) ++ NewData, Store),
+    {Store1, Bytes} = write_bin_data(RawId, maps:to_list(OldMap) ++ NewData, Store),
     Store2   = aect_contracts_store:put(map_data_key(RawId), <<0>>, Store1),
 
     %% We also need to update the refcounts for nested maps. We already added
@@ -409,7 +437,7 @@ copy_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
     CopiedBin = maps:without([K || {K, _} <- NewData], OldMap),
     RefCounts = aeb_fate_maps:refcount([ aeb_fate_encoding:deserialize(Val) || Val <- maps:values(CopiedBin) ]),
     Meta2     = update_refcounts(RefCounts, Meta1),
-    {Meta2, Store2}.
+    {Meta2, Bytes, Store2}.
 
 %% In-place update of an existing store map. This happens, for instance, when
 %% you update a map in the state throwing away the old copy of the it.
@@ -418,7 +446,7 @@ update_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
     ?METADATA(RawId, _RefCount, OldSize) = get_map_meta(OldId, Meta),
     NewData = cache_to_bin_data(Cache),
     Size    = OldSize + size_delta(RawId, Store, NewData),
-    Store1  = write_bin_data(RawId, NewData, Store),
+    {Store1, Bytes} = write_bin_data(RawId, NewData, Store),
     Meta1   = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size),
                            remove_map_meta(OldId, Meta)),
 
@@ -430,7 +458,7 @@ update_map(MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
                                                              Count)
                             end, aeb_fate_maps:refcount_zero(), NewData),
     Meta2     = update_refcounts(RefCounts, Meta1),
-    {Meta2, Store1}.
+    {Meta2, Bytes, Store1}.
 
 gc_map(RawId, {Meta, Store}) ->
     %% Only the RawId here, we already removed the MapId from the metadata.
@@ -438,7 +466,7 @@ gc_map(RawId, {Meta, Store}) ->
     Store1 = maps:fold(fun(Key, _, S) -> aect_contracts_store:remove(map_raw_key(RawId, Key), S) end,
                        aect_contracts_store:remove(map_data_key(RawId), Store), Data),
 
-    {Meta, Store1}.
+    {Meta, _Bytes = 0, Store1}.
 
 -type bin_data()  :: [{binary(), binary() | ?FATE_MAP_TOMBSTONE}].
 -type map_cache() :: #{fate_val() => fate_val() | ?FATE_MAP_TOMBSTONE}.
@@ -453,12 +481,17 @@ cache_to_bin_data(Cache) ->
         {KeyBin, ValBin}
       end || {K, V} <- maps:to_list(Cache) ].
 
--spec write_bin_data(raw_id(), bin_data(), aect_contracts_store:store()) -> aect_contracts_store:store().
+-spec write_bin_data(raw_id(), bin_data(), aect_contracts_store:store()) ->
+                        {aect_contracts_store:store(), non_neg_integer()}.
 write_bin_data(RawId, BinData, Store) ->
     lists:foldl(
-        fun({K, ?FATE_MAP_TOMBSTONE}, S) -> aect_contracts_store:remove(map_raw_key(RawId, K), S);
-           ({K, V}, S)                   -> aect_contracts_store:put(map_raw_key(RawId, K), V, S)
-        end, Store, BinData).
+        fun({K, ?FATE_MAP_TOMBSTONE}, {S, B}) ->
+                {aect_contracts_store:remove(map_raw_key(RawId, K), S),
+                 B};
+           ({K, V}, {S, B}) ->
+                {aect_contracts_store:put(map_raw_key(RawId, K), V, S),
+                 B + byte_size(K) + byte_size(V)}
+        end, {Store, 0}, BinData).
 
 %% Compute the change in size updating an old map with new entries.
 -spec size_delta(#{binary() => binary()}, bin_data()) -> integer().

@@ -31,6 +31,7 @@ contract StateHandling =
   stateful entrypoint update_i(new_i) = put(state{ i = new_i })
   stateful entrypoint update_s(new_s) = put(state{ s = new_s })
   stateful entrypoint update_m(new_m) = put(state{ m = new_m })
+  stateful entrypoint update_mk(k, v) = put(state{ m = state.m{[k] = v}})
 
   entrypoint pass_it(r : Remote) = r.look_at(state)
   stateful entrypoint nop(r : Remote) = put(state{ i = state.i })
