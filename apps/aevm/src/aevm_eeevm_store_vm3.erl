@@ -1,12 +1,13 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
-%%%     Handle store
+%%%     Handle store.
+%%%     Legacy code for VM_AEVM_SOPHIA_3 and earlier. DO NOT CHANGE!
 %%% @end
 %%% Created : 9 Oct 2017
 %%%-------------------------------------------------------------------
 
--module(aevm_eeevm_store).
+-module(aevm_eeevm_store_vm3).
 
 -export([ load/2
         , store/3
@@ -101,8 +102,6 @@ store(Address, Value, State) when is_integer(Value) ->
 %% The argument should be a binary encoding a pair of a typerep and a value of that type.
 -spec from_sophia_state(aect_contracts:version(), aeb_heap:binary_value()) ->
             {ok, aect_contracts:store()} | {error, term()}.
-from_sophia_state(Version = #{vm := VM}, Data) when VM =< ?VM_AEVM_SOPHIA_3 ->
-    aevm_eeevm_store_vm3:from_sophia_state(Version, Data);
 from_sophia_state(Version, Data) ->
     %% TODO: less encoding/decoding
     case aeb_heap:from_binary({tuple, [typerep]}, Data) of
@@ -136,8 +135,6 @@ second_component(<<Ptr:256, Heap/binary>> = Data) ->
     <<Snd:256, Heap/binary>>.
 
 -spec set_sophia_state(aect_contracts:version(), aeb_heap:heap_value(), aect_contracts:store()) -> aect_contracts:store().
-set_sophia_state(Version = #{vm := VM}, Value, Store) when VM =< ?VM_AEVM_SOPHIA_3 ->
-    aevm_eeevm_store_vm3:set_sophia_state(Version, Value, Store);
 set_sophia_state(Version, Value, Store) ->
     Ptr = aeb_heap:heap_value_pointer(Value),
     Mem = aeb_heap:heap_value_heap(Value),
