@@ -67,7 +67,7 @@ groups() ->
 -define(NAME, <<"詹姆斯詹姆斯"/utf8>>).
 -define(PRE_CLAIM_HEIGHT, 1).
 
-init_per_group(Group, Cfg) ->
+init_per_group(_Group, Cfg) ->
     %% dependening on how we call 'make' we get different protocols
     [{protocol, aec_hard_forks:protocol_effective_at_height(1)} | Cfg].
 

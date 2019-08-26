@@ -9,7 +9,7 @@
 
 %% API
 -export([check_name_claimed_and_owned/3,
-         name_parts/1,
+         name_parts/1, name_join/1,
          to_ascii/1]).
 
 %%%===================================================================
@@ -63,6 +63,10 @@ check_claimed_status(Name) ->
 name_parts(Name) ->
     binary:split(Name, ?LABEL_SEPARATOR, [global, trim]).
 
+%% inverse of name_parts
+name_join(List) when is_list(List) ->
+    iolist_to_binary(lists:join(?LABEL_SEPARATOR, List)).
+
 validate_name(Name) ->
     case name_parts(Name) of
         [_Label, RegistrarNS] ->
@@ -81,7 +85,7 @@ name_to_ascii(Name) when is_binary(Name) ->
     try idna:encode(NameUnicodeList, [{uts46, true}, {std3_rules, true}]) of
         NameAscii ->
             %% idna:to_ascii(".aet") returns just "aet"
-            case length(string:split(NameAscii, ".", all)) =:= 1 of
+            case length(string:split(NameAscii, ?LABEL_SEPARATOR, all)) =:= 1 of
                 true  -> {error, no_label_in_registrar};
                 false -> {ok, list_to_binary(NameAscii)}
             end
