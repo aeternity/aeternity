@@ -3,7 +3,7 @@
 
 -export([
           start_link/0
-        , new/3
+        , new/4
         , reestablish/2
         , update/3
         , fetch/2
@@ -36,15 +36,15 @@
              mons_ref  = ets:new(mons_ref, [set]),
              watchers  = ets:new(watchers, [set]),
              min_depth = ?MIN_DEPTH}).
--record(ch, {id, state}).
--record(pch, {id, pubkeys = [], state}).
+-record(ch, {id, state, opts}).
+-record(pch, {id, pubkeys = [], state, opts = #{}}).
 
 -define(SERVER, ?MODULE).
 -define(TAB, aesc_state_cache_ch).
 -define(PTAB, aesc_state_cache).
 
-new(ChId, PubKey, State) ->
-    gen_server:call(?SERVER, {new, ChId, PubKey, self(), State}).
+new(ChId, PubKey, State, Opts) ->
+    gen_server:call(?SERVER, {new, ChId, PubKey, self(), State, Opts}).
 
 reestablish(ChId, PubKey) ->
     gen_server:call(?SERVER, {reestablish, ChId, PubKey, self()}).
@@ -96,8 +96,8 @@ start_link() ->
 init([]) ->
     {ok, #st{}}.
 
-handle_call({new, ChId, PubKey, Pid, State}, _From, St) ->
-    case ets:insert_new(?TAB, #ch{id = key(ChId, PubKey), state = State}) of
+handle_call({new, ChId, PubKey, Pid, State, Opts}, _From, St) ->
+    case ets:insert_new(?TAB, #ch{id = key(ChId, PubKey), state = State, opts = Opts}) of
         true ->
             St1 = monitor_fsm(Pid, ChId, PubKey, St),
             {reply, ok, St1};
@@ -115,8 +115,8 @@ handle_call({reestablish, ChId, PubKey, Pid}, _From, St) ->
     end;
 handle_call({fetch, ChId, PubKey}, _From, St) ->
     case ets:lookup(?TAB, key(ChId, PubKey)) of
-        [#ch{state = State}] ->
-            {reply, {ok, State}, St};
+        [#ch{state = State, opts = Opts}] ->
+            {reply, {ok, State, Opts}, St};
         [] ->
             {reply, error, St}
     end;
@@ -178,9 +178,10 @@ try_reestablish_cached(ChId, PubKey) ->
             {ok, State};
         [] ->
             case read_persistent(ChId) of
-                {ok, Pubkeys, State} ->
+                {ok, Pubkeys, State, Opts} ->
                     ets:insert(
-                      ?TAB, [#ch{id = key(ChId, PK), state = State}
+                      ?TAB, [#ch{id = key(ChId, PK), state = State,
+                                 opts = maps:get(PK, Opts, #{})}
                              || PK <- Pubkeys]),
                     delete_persistent(ChId),
                     {ok, State};
@@ -194,11 +195,15 @@ move_state_to_persistent(ChId) ->
               ?TAB, [{ #ch{id = key(ChId, '_'), _ = '_'}, [], ['$_'] }]),
     case Found of
         [] -> ok;
-        [#ch{id = {_,PKa}, state = A}, #ch{id = {_,PKb}, state = A}] ->
-            Pch = #pch{id = ChId, pubkeys = [PKa, PKb], state = A},
+        [#ch{id = {_,PKa}, state = A, opts = Oa},
+         #ch{id = {_,PKb}, state = A, opts = Ob}] ->
+            Pch = #pch{id = ChId, pubkeys = [PKa, PKb], state = A,
+                       opts = #{ PKa => Oa, PKb => Ob }},
             write_persistent(Pch);
-        [#ch{id = {_,PKa}, state = A}, #ch{id = {_,PKb}, state = B}] ->
-            Pch0 = #pch{id = ChId, pubkeys = [PKa, PKb]},
+        [#ch{id = {_,PKa}, state = A, opts = Oa},
+         #ch{id = {_,PKb}, state = B, opts = Ob}] ->
+            Pch0 = #pch{id = ChId, pubkeys = [PKa, PKb],
+                        opts = #{ PKa => Oa, PKb => Ob }},
             ToSave = case {aesc_offchain_state:get_latest_signed_tx(A),
                            aesc_offchain_state:get_latest_signed_tx(B)} of
                          {{Ra,_}, {Rb,_}} when Ra > Rb ->
@@ -208,8 +213,9 @@ move_state_to_persistent(ChId) ->
                              Pch0#pch{state = B}
                      end,
             write_persistent(ToSave);
-        [#ch{id = {_, PK}, state = State}] ->
-            Pch = #pch{id = ChId, pubkeys = [PK], state = State},
+        [#ch{id = {_, PK}, state = State, opts = O}] ->
+            Pch = #pch{id = ChId, pubkeys = [PK], state = State,
+                       opts = #{PK => O}},
             write_persistent(Pch)
     end,
     ets:select_delete(?TAB, [{ #ch{id = key(ChId,'_'), _ = '_'}, [], [true] }]),
@@ -221,8 +227,8 @@ write_persistent(Pch) ->
 read_persistent(ChId) ->
     activity(fun() ->
                      case mnesia:read(?PTAB, ChId) of
-                         [#pch{pubkeys = PKs, state = State}] ->
-                             {ok, PKs, State};
+                         [#pch{pubkeys = PKs, state = State, opts = O}] ->
+                             {ok, PKs, State, O};
                          [] ->
                              error
                      end

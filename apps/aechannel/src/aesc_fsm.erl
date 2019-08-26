@@ -2659,8 +2659,9 @@ on_chain_id(D, SignedTx) ->
     {PubKey, D#data{on_chain_id = PubKey}}.
 
 initialize_cache(#data{ on_chain_id = ChId
-                      , state       = State } = D) ->
-    aesc_state_cache:new(ChId, my_account(D), State).
+                      , state       = State
+                      , opts        = Opts } = D) ->
+    aesc_state_cache:new(ChId, my_account(D), State, Opts).
 
 cache_state(#data{ on_chain_id = ChId
                  , state       = State } = D) ->
@@ -3489,27 +3490,31 @@ close_(Reason, D) ->
     end,
     {stop, Reason, D}.
 
-handle_call(_, {?RECONNECT_CLIENT, Pid, Tx} = Msg, From,
-            #data{ client_connected = false
-                 , client_mref      = undefined
-                 , client           = undefined } = D0) ->
-    lager:debug("Client reconnect request", []),
-    D = log(rcv, msg_type(Msg), Msg, D0),
-    try check_client_reconnect_tx(Tx, D) of
-        {ok, D1} ->
-            lager:debug("Client reconnect successful; Client = ~p", [Pid]),
-            MRef = erlang:monitor(process, Pid),
-            D2 = D1#data{ client           = Pid
-                        , client_mref      = MRef
-                        , client_connected = true },
-            keep_state(D2, [{reply, From, ok}]);
-        {error, _} = Err ->
-            lager:debug("Request failed: ~p", [Err]),
-            keep_state(D, [{reply, From, Err}])
-    catch
-        error:E ->
-            lager:debug("CAUGHT ~p / ~p", [E, erlang:get_stacktrace()]),
-            keep_state(D, [{reply, From, E}])
+handle_call(_, {?RECONNECT_CLIENT, Pid, Tx} = Msg, From, #data{} = D0) ->
+    case D0 of
+        #data{ client_connected = false
+             , client_mref      = undefined
+             , client           = undefined } ->
+            lager:debug("Client reconnect request", []),
+            D = log(rcv, msg_type(Msg), Msg, D0),
+            try check_client_reconnect_tx(Tx, D) of
+                {ok, D1} ->
+                    lager:debug("Client reconnect successful; Client = ~p", [Pid]),
+                    MRef = erlang:monitor(process, Pid),
+                    D2 = D1#data{ client           = Pid
+                                , client_mref      = MRef
+                                , client_connected = true },
+                    keep_state(D2, [{reply, From, ok}]);
+                {error, _} = Err ->
+                    lager:debug("Request failed: ~p", [Err]),
+                    keep_state(D, [{reply, From, Err}])
+            catch
+                error:E ->
+                    lager:debug("CAUGHT ~p / ~p", [E, erlang:get_stacktrace()]),
+                    keep_state(D, [{reply, From, E}])
+            end;
+        #data{ client = Client } when is_pid(Client) ->
+            keep_state(D0, [{reply, From, {error, {existing_client, Client}}}])
     end;
 handle_call(St, Req, From, #data{} = D) ->
     lager:debug("handle_call(~p, ~p, ~p, ~p)", [St, Req, From, D]),
