@@ -3549,7 +3549,7 @@ sophia_signatures_aens(Cfg) ->
                   VMVersion when ?IS_FATE_SOPHIA(VMVersion) -> Name1
               end,
     NameAccSig      = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
-    {ok, NameHash}  = aens:get_name_hash(aens_test_utils:fullname(<<"bla">>)),
+    {ok, NameHash}  = aens:get_name_hash(Name1),
     NameSig         = sign(<<NameAcc/binary, NameHash/binary, Ct/binary>>, NameAcc),
     AccSig          = sign(<<Acc/binary, NameHash/binary, Ct/binary>>, Acc),
     APubkey  = 1,
