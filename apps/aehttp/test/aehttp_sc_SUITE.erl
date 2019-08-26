@@ -42,6 +42,8 @@
     sc_ws_basic_client_reconnect_i/1,
     sc_ws_basic_client_reconnect_r/1,
     sc_ws_pinned_update/1,
+    sc_ws_pinned_deposit/1,
+    sc_ws_pinned_withdraw/1,
     sc_ws_pinned_error_update/1,
     sc_ws_pinned_error_deposit/1,
     sc_ws_pinned_error_withdraw/1,
@@ -177,6 +179,8 @@ groups() ->
      {pinned_env, [sequence],
       [
         sc_ws_pinned_update,
+        sc_ws_pinned_deposit,
+        sc_ws_pinned_withdraw,
         sc_ws_pinned_error_update,
         sc_ws_pinned_error_deposit,
         sc_ws_pinned_error_withdraw,
@@ -1139,8 +1143,8 @@ sc_ws_reestablish_(ReestablOptions, Config) ->
     [{channel_clients, ChannelClients} | Config].
 
 
-sc_ws_deposit_(Config, Origin) when Origin =:= initiator
-                            orelse Origin =:= responder ->
+sc_ws_deposit_(Config, Origin, XOpts) when Origin =:= initiator
+                                    orelse Origin =:= responder ->
     Participants= proplists:get_value(participants, Config),
     Clients = proplists:get_value(channel_clients, Config),
     {SenderRole, AckRole} =
@@ -1166,7 +1170,7 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
         wait_for_channel_event(SenderConnPid, error, Config),
     make_two_gen_messages_volleys(SenderConnPid, SenderPubkey, AckConnPid,
                                   AckPubkey, Config),
-    ws_send_tagged(SenderConnPid, <<"channels.deposit">>, #{amount => 2}, Config),
+    ws_send_tagged(SenderConnPid, <<"channels.deposit">>, XOpts#{amount => 2}, Config),
     #{tx := UnsignedStateTx,
       updates := Updates} = channel_sign_tx(SenderPubkey, SenderConnPid, SenderPrivkey, <<"channels.deposit_tx">>, Config),
     {ok, #{<<"event">> := <<"deposit_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
@@ -1209,8 +1213,8 @@ sc_ws_deposit_(Config, Origin) when Origin =:= initiator
                                                              error]),
     ok.
 
-sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
-                              orelse Origin =:= responder ->
+sc_ws_withdraw_(Config, Origin, XOpts) when Origin =:= initiator
+                                     orelse Origin =:= responder ->
     ct:log("withdraw test, Origin == ~p", [Origin]),
     Participants = proplists:get_value(participants, Config),
     Clients = proplists:get_value(channel_clients, Config),
@@ -1237,7 +1241,7 @@ sc_ws_withdraw_(Config, Origin) when Origin =:= initiator
         wait_for_channel_event(SenderConnPid, error, Config),
     make_two_gen_messages_volleys(SenderConnPid, SenderPubkey, AckConnPid,
                                   AckPubkey, Config),
-    ws_send_tagged(SenderConnPid, <<"channels.withdraw">>, #{amount => 2}, Config),
+    ws_send_tagged(SenderConnPid, <<"channels.withdraw">>, XOpts#{amount => 2}, Config),
     #{tx := UnsignedStateTx,
       updates := Updates} = channel_sign_tx(SenderPubkey, SenderConnPid, SenderPrivkey, <<"channels.withdraw_tx">>, Config),
     {ok, #{<<"event">> := <<"withdraw_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
@@ -3071,7 +3075,7 @@ sc_ws_ping_pong(Config) ->
 sc_ws_deposit(Config) ->
     lists:foreach(
         fun(Depositor) ->
-            sc_ws_deposit_(Config, Depositor),
+            sc_ws_deposit_(Config, Depositor, #{}),
             ok
         end,
         [initiator, responder]).
@@ -3079,7 +3083,7 @@ sc_ws_deposit(Config) ->
 sc_ws_withdraw(Config) ->
     lists:foreach(
         fun(Depositor) ->
-            sc_ws_withdraw_(Config, Depositor),
+            sc_ws_withdraw_(Config, Depositor, #{}),
             ok
         end,
         [initiator, responder]).
@@ -3723,6 +3727,46 @@ sc_ws_pinned_update(Cfg) ->
             Hash1 = aeser_api_encoder:encode(key_block_hash, HashNOT),
             channel_update(Conns, Sender, Participants, 1, Round,
                            false, Cfg, #{block_hash => Hash1}),
+            Round + 1
+        end,
+        2, % we start from round 2
+        [initiator,
+         responder]),
+    ok = sc_ws_close_(Config).
+
+sc_ws_pinned_deposit(Cfg) ->
+    NOT = 10,
+    NNT = 1,
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                       NOT + 1),
+    Config = sc_ws_open_(Cfg, #{bh_delta_not_older_than => NOT,
+                                bh_delta_not_newer_than => NNT}),
+    lists:foldl(
+        fun(Depositor, Round) ->
+            HashNOT = get_key_hash_by_delta(NOT),
+            Hash1 = aeser_api_encoder:encode(key_block_hash, HashNOT),
+            sc_ws_deposit_(Config, Depositor,
+                           #{block_hash => Hash1}),
+            Round + 1
+        end,
+        2, % we start from round 2
+        [initiator,
+         responder]),
+    ok = sc_ws_close_(Config).
+
+sc_ws_pinned_withdraw(Cfg) ->
+    NOT = 10,
+    NNT = 1,
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                       NOT + 1),
+    Config = sc_ws_open_(Cfg, #{bh_delta_not_older_than => NOT,
+                                bh_delta_not_newer_than => NNT}),
+    lists:foldl(
+        fun(Depositor, Round) ->
+            HashNOT = get_key_hash_by_delta(NOT),
+            Hash1 = aeser_api_encoder:encode(key_block_hash, HashNOT),
+            sc_ws_withdraw_(Config, Depositor,
+                            #{block_hash => Hash1}),
             Round + 1
         end,
         2, % we start from round 2
