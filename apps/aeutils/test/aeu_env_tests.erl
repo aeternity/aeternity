@@ -44,7 +44,7 @@ positive_extra_checks_tests() ->
       fun() ->
               {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
               ok = mock_user_config(UserMap, UserConfig),
-              ?assertEqual(ok, aec_hard_forks:check_env()),
+              ?assertEqual(ok, aec_hard_forks:ensure_env()),
               ?assertEqual(ok, aec_mining:check_env())
       end
      } || Config <- test_data_config_files()].
@@ -68,28 +68,28 @@ invalid_fork_signalling_interval() ->
     Config = filename:join([Dir, DataDir, "epoch_invalid_fork_signalling_interval.yaml"]),
     {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
     ok = mock_user_config(UserMap, UserConfig),
-    ?assertError({illegal_fork_signalling_interval, _, _}, aec_hard_forks:check_env()).
+    ?assertError({illegal_fork_signalling_interval, _, _}, aec_hard_forks:ensure_env()).
 
 invalid_fork_signalling_block_count() ->
     {Dir, DataDir} = get_test_config_base(),
     Config = filename:join([Dir, DataDir, "epoch_invalid_fork_signalling_block_count.yaml"]),
     {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
     ok = mock_user_config(UserMap, UserConfig),
-    ?assertError({illegal_fork_signalling_block_count, _}, aec_hard_forks:check_env()).
+    ?assertError({illegal_fork_signalling_block_count, _}, aec_hard_forks:ensure_env()).
 
 invalid_fork_height() ->
     {Dir, DataDir} = get_test_config_base(),
     Config = filename:join([Dir, DataDir, "epoch_invalid_fork_height.yaml"]),
     {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
     ok = mock_user_config(UserMap, UserConfig),
-    ?assertError({illegal_fork_height, _}, aec_hard_forks:check_env()).
+    ?assertError({illegal_fork_height, _}, aec_hard_forks:ensure_env()).
 
 invalid_fork_version() ->
     {Dir, DataDir} = get_test_config_base(),
     Config = filename:join([Dir, DataDir, "epoch_invalid_fork_version.yaml"]),
     {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
     ok = mock_user_config(UserMap, UserConfig),
-    ?assertError({illegal_fork_version, _}, aec_hard_forks:check_env()).
+    ?assertError({illegal_fork_version, _}, aec_hard_forks:ensure_env()).
 
 %%%===================================================================
 %%% Internal functions

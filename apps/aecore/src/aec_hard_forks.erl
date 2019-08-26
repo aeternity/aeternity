@@ -1,6 +1,6 @@
 -module(aec_hard_forks).
 
--export([check_env/0]).
+-export([ensure_env/0]).
 -export([protocols/0,
          fork/1,
          protocol_effective_at_height/1
@@ -55,10 +55,10 @@ protocols() ->
 fork(Height) ->
     fork_from_height(Height).
 
--spec check_env() -> ok.
-check_env() ->
+-spec ensure_env() -> ok.
+ensure_env() ->
     assert_protocols(protocols()),
-    assert_fork(fork_config()).
+    ensure_fork_env(fork_config()).
 
 -spec protocol_effective_at_height(aec_blocks:height()) -> version().
 protocol_effective_at_height(H) ->
@@ -198,17 +198,18 @@ is_valid_next_protocol({CurV, CurH}, {PrevV, PrevH}) when CurV > PrevV,
 is_valid_next_protocol(_, _) ->
     false.
 
-assert_fork(#{signalling_start_height := SignallingStartHeight,
-              signalling_end_height := SignallingEndHeight,
-              signalling_block_count := SignallingBlockCount,
-              fork_height := ForkHeight, info_field := _InfoField,
-              version := Version}) ->
+ensure_fork_env(#{signalling_start_height := SignallingStartHeight,
+                  signalling_end_height := SignallingEndHeight,
+                  signalling_block_count := SignallingBlockCount,
+                  fork_height := ForkHeight, info_field := _InfoField,
+                  version := Version} = Fork) ->
     assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight),
     SignallingInterval = SignallingEndHeight - SignallingStartHeight,
     assert_fork_signalling_block_count(SignallingInterval, SignallingBlockCount),
     assert_fork_height(SignallingEndHeight, ForkHeight),
-    assert_fork_version(Version);
-assert_fork(undefined) ->
+    assert_fork_version(Version),
+    application:set_env(aecore, fork, Fork);
+ensure_fork_env(undefined) ->
     ok.
 
 assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight)
