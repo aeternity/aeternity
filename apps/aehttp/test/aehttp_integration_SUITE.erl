@@ -2234,10 +2234,11 @@ oracle_transactions(_Config) ->
 %% GET revoke_tx unsigned transaction
 nameservice_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"top_block_height">> := Height}} = get_status_sut(),
     MinerAddress = get_pubkey(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
     nameservice_transaction_preclaim(MinerAddress, MinerPubkey),
-    nameservice_transaction_claim(MinerAddress, MinerPubkey),
+    nameservice_transaction_claim(MinerAddress, MinerPubkey, Height),
     nameservice_transaction_update(MinerAddress, MinerPubkey),
     nameservice_transaction_transfer(MinerAddress, MinerPubkey),
     nameservice_transaction_revoke(MinerAddress, MinerPubkey),
@@ -2294,8 +2295,8 @@ test_missing_address(Key, Encoded, APIFun) ->
         APIFun(maps:put(Key, RandAddress, Encoded)),
     ok.
 
-nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
-    Name = aect_test_utils:fullname(<<"name">>),
+nameservice_transaction_claim(MinerAddress, MinerPubkey, Height) ->
+    Name = aens_test_utils:fullname(<<"name">>, Height),
     Salt = 1234,
 
     {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, Salt),
@@ -3018,9 +3019,12 @@ naming_system_manage_name(_Config) ->
     {PubKey, PrivKey} = initialize_account(1000000000 *
                                            aec_test_utils:min_gas_price()),
     PubKeyEnc   = aeser_api_encoder:encode(account_pubkey, PubKey),
+
+    {ok, 200, #{<<"top_block_height">> := Height}} = get_status_sut(),
+
     %% TODO: find out how to craete HTTP path with unicode chars
     %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
-    Name        = aect_test_utils:fullname(<<"without-unicode">>),
+    Name        = aens_test_utils:fullname(<<"without-unicode">>, Height),
     NameSalt    = 12345,
     NameTTL     = 20000,
     Pointers    = [#{<<"key">> => <<"account_pubkey">>, <<"id">> => PubKeyEnc}],
@@ -3151,7 +3155,8 @@ naming_system_manage_name(_Config) ->
     ok.
 
 naming_system_broken_txs(_Config) ->
-    Name        = aect_test_utils:fullname(<<"fooo">>),
+    %% We reset the chain and hence on latest_protocol_height
+    Name        = aens_test_utils:fullname(<<"fooo">>),
     NameSalt    = 12345,
     {ok, NHash} = aens:get_name_hash(Name),
     CHash       = aens_hash:commitment_hash(Name, NameSalt),
@@ -3899,17 +3904,3 @@ http_datetime_to_unixtime(S) ->
     BaseSecs = calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}}),
     ExpiresDt = httpd_util:convert_request_date(S),
     calendar:datetime_to_gregorian_seconds(ExpiresDt) - BaseSecs.
-
-simple_auth_meta(Owner, Secret, GANonce, InnerTx) ->
-    AuthData = simple_auth(Secret, GANonce),
-    meta(Owner, AuthData, InnerTx).
-
-simple_auth(Secret, Nonce) ->
-    aega_test_utils:make_calldata("simple_auth", "authorize", [Secret, Nonce]).
-
-meta(Owner, AuthData, InnerTx) ->
-    aecore_suite_utils:meta_tx(Owner, #{}, AuthData, InnerTx).
-
-account_type(Pubkey) ->
-    {value, Account} = rpc(aec_chain, get_account, [Pubkey]),
-    aec_accounts:type(Account).

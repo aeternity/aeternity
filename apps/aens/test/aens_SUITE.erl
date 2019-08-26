@@ -9,7 +9,9 @@
 
 %% common_test exports
 -export([all/0,
-         groups/0
+         groups/0,
+         init_per_group/2,
+         end_per_group/2
         ]).
 
 %% test case exports
@@ -30,8 +32,9 @@
          registrar_change/1]).
 
 -include_lib("common_test/include/ct.hrl").
-
 -include("../../aecore/include/blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
+
 
 %%%===================================================================
 %%% Common test framework
@@ -64,6 +67,13 @@ groups() ->
 -define(NAME, <<"詹姆斯詹姆斯"/utf8>>).
 -define(PRE_CLAIM_HEIGHT, 1).
 
+init_per_group(Group, Cfg) ->
+    %% dependening on how we call 'make' we get different protocols
+    [{protocol, aec_hard_forks:protocol_effective_at_height(1)} | Cfg].
+
+end_per_group(_Grp, Cfg) ->
+    Cfg.
+
 %%%===================================================================
 %%% Preclaim
 %%%===================================================================
@@ -77,7 +87,7 @@ preclaim(Cfg) ->
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT,
-    Name = aect_test_utils:fullname(?NAME),
+    Name = aens_test_utils:fullname(?NAME),
     NameSalt = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
@@ -105,7 +115,7 @@ preclaim_negative(Cfg) ->
     Height = 1,
     Env = aetx_env:tx_env(Height),
 
-    {ok, NameAscii} = aens_utils:to_ascii(aect_test_utils:fullname(<<"詹姆斯詹姆斯"/utf8>>)),
+    {ok, NameAscii} = aens_utils:to_ascii(aens_test_utils:fullname(<<"詹姆斯詹姆斯"/utf8>>)),
     CHash = aens_hash:commitment_hash(NameAscii, 123),
 
     %% Test bad account key
@@ -340,7 +350,7 @@ update_negative(Cfg) ->
     {error, account_nonce_too_high} = aetx:process(Tx4, Trees, Env),
 
     %% Test name not present
-    {ok, NHash2} = aens:get_name_hash(aect_test_utils:fullname(<<"othername">>)),
+    {ok, NHash2} = aens:get_name_hash(aens_test_utils:fullname(<<"othername">>)),
     TxSpec5 = aens_test_utils:update_tx_spec(PubKey, NHash2, S1),
     {ok, Tx5} = aens_update_tx:new(TxSpec5),
     {error, name_does_not_exist} = aetx:process(Tx5, Trees, Env),
@@ -417,7 +427,7 @@ transfer_negative(Cfg) ->
     {error, account_nonce_too_high} = aetx:process(Tx3, Trees, Env),
 
     %% Test name not present
-    {ok, NHash2} = aens:get_name_hash(aect_test_utils:fullname(<<"othername">>)),
+    {ok, NHash2} = aens:get_name_hash(aens_test_utils:fullname(<<"othername">>)),
     TxSpec4 = aens_test_utils:transfer_tx_spec(PubKey, NHash2, PubKey, S1),
     {ok, Tx4} = aens_transfer_tx:new(TxSpec4),
     {error, name_does_not_exist} = aetx:process(Tx4, Trees, Env),
@@ -491,7 +501,7 @@ revoke_negative(Cfg) ->
     {error, account_nonce_too_high} = aetx:process(Tx3, Trees, Env),
 
     %% Test name not present
-    {ok, NHash2} = aens:get_name_hash(aect_test_utils:fullname(<<"othername">>)),
+    {ok, NHash2} = aens:get_name_hash(aens_test_utils:fullname(<<"othername">>)),
     TxSpec4 = aens_test_utils:revoke_tx_spec(PubKey, NHash2, S1),
     {ok, Tx4} = aens_revoke_tx:new(TxSpec4),
     {error, name_does_not_exist} = aetx:process(Tx4, Trees, Env),
@@ -567,13 +577,13 @@ do_prune_until(N1, N2, OTree) ->
 %%% Change of registrar
 %%%===================================================================
 
-registrar_change(_Cfg) ->
+registrar_change(Cfg) ->
     State = aens_test_utils:new_state(),
     {PubKey, S1} = aens_test_utils:setup_new_account(State),
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
     NameSalt = rand:uniform(10000),
     %% invalid name for protocol
-    Name = case aect_test_utils:is_post_lima() of
+    Name = case ?config(protocol, Cfg) >= ?LIMA_PROTOCOL_VSN of
                false -> <<"asdf.aet">>; %% we can't claim ".aet" name yet
                true -> <<"asdf.test">> %% we no longer can claim ".test" name
            end,
