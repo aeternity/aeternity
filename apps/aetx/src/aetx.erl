@@ -233,42 +233,50 @@ deep_fee(AeTx, Trees, AccFee0) ->
             AccFee
     end.
 
+-spec gas_limit(Tx :: tx(), Height :: aec_blocks:height()) -> Gas :: non_neg_integer().
+gas_limit(Tx, Height) ->
+    %% This function will be removed later, so there will be just gas_limit/3.
+    Version = aec_hard_forks:protocol_effective_at_height(Height),
+    gas_limit(Tx, Height, Version).
+
 %% In case 0 is returned, the tx will not be included in the micro block
 %% candidate by the mempool.
--spec gas_limit(Tx :: tx(), Height :: aec_blocks:height()) -> Gas :: non_neg_integer().
-gas_limit(#aetx{type = Type, cb = CB, size = Size, tx = Tx }, Height) when
+-spec gas_limit(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->
+                       Gas :: non_neg_integer().
+gas_limit(#aetx{type = Type, cb = CB, size = Size, tx = Tx }, Height, Version) when
       Type =:= oracle_register_tx;
       Type =:= oracle_extend_tx ->
     case ttl_delta(Height, CB:oracle_ttl(Tx)) of
         {delta, _D} = TTL ->
-            base_gas(Type, Height) + size_gas(Size) + state_gas(Type, TTL);
+            base_gas(Type, Version) + size_gas(Size) + state_gas(Type, TTL);
         {error, _Rsn} ->
             0
     end;
-gas_limit(#aetx{type = oracle_query_tx, size = Size, tx = Tx }, Height) ->
+gas_limit(#aetx{type = oracle_query_tx, size = Size, tx = Tx }, Height, Version) ->
     case ttl_delta(Height, aeo_query_tx:query_ttl(Tx)) of
         {delta, _D} = TTL ->
-            base_gas(oracle_query_tx, Height) + size_gas(Size) + state_gas(oracle_query_tx, TTL);
+            base_gas(oracle_query_tx, Version) + size_gas(Size) + state_gas(oracle_query_tx, TTL);
         {error, _Rsn} ->
             0
     end;
-gas_limit(#aetx{type = oracle_response_tx, size = Size, tx = Tx }, Height) ->
+gas_limit(#aetx{type = oracle_response_tx, size = Size, tx = Tx }, Height, Version) ->
     case ttl_delta(Height, aeo_response_tx:response_ttl(Tx)) of
         {delta, _D} = TTL ->
-            base_gas(oracle_response_tx, Height) + size_gas(Size) + state_gas(oracle_response_tx, TTL);
+            base_gas(oracle_response_tx, Version) + size_gas(Size) + state_gas(oracle_response_tx, TTL);
         {error, _Rsn} ->
             0
     end;
-gas_limit(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height) ->
-    base_gas(ga_meta_tx, Height, CB:abi_version(Tx)) + size_gas(Size) + CB:gas_limit(Tx, Height);
-gas_limit(#aetx{type = Type, size = Size, cb = CB, tx = Tx}, Height) when ?IS_CONTRACT_TX(Type) ->
-    base_gas(Type, Height, CB:abi_version(Tx)) + size_gas(Size) + CB:gas(Tx);
-gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, Height) when Type =/= channel_offchain_tx,
-                                                                            Type =/= channel_client_reconnect_tx ->
-    base_gas(Type, Height) + size_gas(Size) + CB:gas(Tx);
-gas_limit(#aetx{ type = channel_offchain_tx }, _Height) ->
+gas_limit(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height, Version) ->
+    base_gas(ga_meta_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + CB:gas_limit(Tx, Height);
+gas_limit(#aetx{type = Type, size = Size, cb = CB, tx = Tx}, _Height, Version) when ?IS_CONTRACT_TX(Type) ->
+    base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size) + CB:gas(Tx);
+gas_limit(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height, Version) when
+      Type =/= channel_offchain_tx,
+      Type =/= channel_client_reconnect_tx ->
+    base_gas(Type, Version) + size_gas(Size) + CB:gas(Tx);
+gas_limit(#aetx{ type = channel_offchain_tx }, _Height, _Version) ->
     0;
-gas_limit(#aetx{ type = channel_client_reconnect_tx }, _Height) ->
+gas_limit(#aetx{ type = channel_client_reconnect_tx }, _Height, _Version) ->
     0.
 
 -spec inner_gas_limit(Tx :: tx(), Height :: aec_blocks:height()) -> Gas :: non_neg_integer().
@@ -307,13 +315,20 @@ min_gas_price(AETx = #aetx{ type = Type, cb = CB, tx = Tx, size = Size }, Height
 min_fee(#aetx{} = AeTx, Height) ->
     min_gas(AeTx, Height) * aec_governance:minimum_gas_price(Height).
 
--spec min_gas(Tx :: tx(), Height :: aec_blocks:height()) -> Gas :: non_neg_integer().
-min_gas(#aetx{ type = Type, size = Size, cb = CB, tx = Tx }, Height) when ?IS_CONTRACT_TX(Type) ->
-    base_gas(Type, Height, CB:abi_version(Tx)) + size_gas(Size);
-min_gas(#aetx{ type = Type, size = Size }, Height) when ?HAS_GAS_TX(Type) ->
-    base_gas(Type, Height) + size_gas(Size);
-min_gas(#aetx{} = Tx, Height) ->
-    gas_limit(Tx, Height).
+-spec min_gas(Tx :: tx(), Height :: aec_blocks:height()) -> MinGasPrice :: non_neg_integer().
+min_gas(Tx, Height) ->
+    %% This function will be removed later, so there will be just min_gas/3.
+    Version = aec_hard_forks:protocol_effective_at_height(Height),
+    min_gas(Tx, Height, Version).
+
+-spec min_gas(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->
+                     Gas :: non_neg_integer().
+min_gas(#aetx{ type = Type, size = Size, cb = CB, tx = Tx }, _Height, Version) when ?IS_CONTRACT_TX(Type) ->
+    base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size);
+min_gas(#aetx{ type = Type, size = Size }, _Height, Version) when ?HAS_GAS_TX(Type) ->
+    base_gas(Type, Version) + size_gas(Size);
+min_gas(#aetx{} = Tx, Height, Version) ->
+    gas_limit(Tx, Height, Version).
 
 -spec nonce(Tx :: tx()) -> Nonce :: non_neg_integer().
 nonce(#aetx{ cb = CB, tx = Tx }) ->
@@ -566,13 +581,11 @@ specialize_callback(#aetx{ cb = CB, tx = Tx }) -> {CB, Tx}.
 update_tx(#aetx{} = Tx, NewTxI) ->
     Tx#aetx{tx = NewTxI}.
 
-base_gas(Type, Height, ABI) ->
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-    aec_governance:tx_base_gas(Type, Protocol, ABI).
+base_gas(Type, Version, ABI) ->
+    aec_governance:tx_base_gas(Type, Version, ABI).
 
-base_gas(Type, Height) ->
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-    aec_governance:tx_base_gas(Type, Protocol).
+base_gas(Type, Version) ->
+    aec_governance:tx_base_gas(Type, Version).
 
 size_gas(Size) ->
     Size * aec_governance:byte_gas().
