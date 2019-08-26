@@ -247,48 +247,45 @@ validate_test_() ->
      end,
      [fun() ->
               Header = ?TEST_MODULE:set_version(raw_key_header(), 736),
-              ?assertEqual({error, {protocol_version_mismatch, 1}},
+              ?assertEqual({error, protocol_version_mismatch},
                            ?TEST_MODULE:validate_key_block_header(Header, 1))
       end,
       fun() ->
               GV = ?GENESIS_VERSION,
-              Protocols = #{GV   =>       ?GENESIS_HEIGHT,
-                            1+GV => 100 + ?GENESIS_HEIGHT,
-                            3+GV => 150 + ?GENESIS_HEIGHT},
 
               %% Check for any off-by-one errors around first switch.
-              ?assertEqual({error, {protocol_version_mismatch, GV}},
+              ?assertEqual({error, protocol_version_mismatch},
                            ?TEST_MODULE:validate_key_block_header(
                               ?TEST_MODULE:set_version_and_height(
                                  raw_key_header(),
                                  1+GV,
                                  99 + ?GENESIS_HEIGHT), GV)),
-              ?assertEqual({error, {protocol_version_mismatch, 1+GV}},
+              ?assertEqual({error, protocol_version_mismatch},
                            ?TEST_MODULE:validate_key_block_header(
                               ?TEST_MODULE:set_version_and_height(
                                  raw_key_header(),
                                  GV,
                                  100 + ?GENESIS_HEIGHT), 1+GV)),
-              ?assertEqual({error, {protocol_version_mismatch, 1+GV}},
+              ?assertEqual({error, protocol_version_mismatch},
                            ?TEST_MODULE:validate_key_block_header(
                               ?TEST_MODULE:set_version_and_height(
                                  raw_key_header(),
                                  3+GV,
                                  101 + ?GENESIS_HEIGHT), 1+GV)),
               %% Check for any off-by-one errors around second switch.
-              ?assertEqual({error, {protocol_version_mismatch, 1+GV}},
+              ?assertEqual({error, protocol_version_mismatch},
                            ?TEST_MODULE:validate_key_block_header(
                               ?TEST_MODULE:set_version_and_height(
                                  raw_key_header(),
                                  3+GV,
                                  149 + ?GENESIS_HEIGHT), 1+GV)),
-              ?assertEqual({error, {protocol_version_mismatch, 3+GV}},
+              ?assertEqual({error, protocol_version_mismatch},
                            ?TEST_MODULE:validate_key_block_header(
                               ?TEST_MODULE:set_version_and_height(
                                  raw_key_header(),
                                  1+GV,
                                  150 + ?GENESIS_HEIGHT), 3+GV)),
-              ?assertEqual({error, {protocol_version_mismatch, 3+GV}},
+              ?assertEqual({error, protocol_version_mismatch},
                            ?TEST_MODULE:validate_key_block_header(
                               ?TEST_MODULE:set_version_and_height(
                                  raw_key_header(),
