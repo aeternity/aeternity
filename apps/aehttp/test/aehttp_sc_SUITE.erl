@@ -42,7 +42,9 @@
     sc_ws_basic_client_reconnect_i/1,
     sc_ws_basic_client_reconnect_r/1,
     sc_ws_pinned_update/1,
-    sc_ws_pinned_error/1,
+    sc_ws_pinned_error_update/1,
+    sc_ws_pinned_error_deposit/1,
+    sc_ws_pinned_error_withdraw/1,
     sc_ws_pinned_contract/1
    ]).
 
@@ -175,7 +177,9 @@ groups() ->
      {pinned_env, [sequence],
       [
         sc_ws_pinned_update,
-        sc_ws_pinned_error,
+        sc_ws_pinned_error_update,
+        sc_ws_pinned_error_deposit,
+        sc_ws_pinned_error_withdraw,
         sc_ws_pinned_contract
       ]}
 
@@ -3726,7 +3730,33 @@ sc_ws_pinned_update(Cfg) ->
          responder]),
     ok = sc_ws_close_(Config).
 
-sc_ws_pinned_error(Cfg) ->
+sc_ws_pinned_error_update(Cfg) ->
+    sc_ws_pinned_error_(
+        <<"channels.update.new">>,
+        fun(SenderPubkey, AckPubkey) ->                
+            #{from => aeser_api_encoder:encode(account_pubkey, SenderPubkey),
+              to => aeser_api_encoder:encode(account_pubkey, AckPubkey),
+              amount => 1}
+        end,
+        <<"channels.update">>, Cfg).
+
+sc_ws_pinned_error_deposit(Cfg) ->
+    sc_ws_pinned_error_(
+        <<"channels.deposit">>,
+        fun(_SenderPubkey, _AckPubkey) ->                
+            #{amount => 1}
+        end,
+        <<"channels.deposit_tx">>, Cfg).
+
+sc_ws_pinned_error_withdraw(Cfg) ->
+    sc_ws_pinned_error_(
+        <<"channels.withdraw">>,
+        fun(_SenderPubkey, _AckPubkey) ->                
+            #{amount => 1}
+        end,
+        <<"channels.withdraw_tx">>, Cfg).
+
+sc_ws_pinned_error_(Tag, XOptsFun, ResponseTag, Cfg) ->
     NOT = 10,
     NNT = 2,
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
@@ -3754,13 +3784,11 @@ sc_ws_pinned_error(Cfg) ->
                     Hash = aeser_api_encoder:encode(key_block_hash, HashBin),
                     SenderConnPid = maps:get(SenderRole, Conns),
                     AckConnPid = maps:get(AckRole, Conns),
-                    ws_send_tagged(SenderConnPid, <<"channels.update.new">>,
-                                  #{from => aeser_api_encoder:encode(account_pubkey, SenderPubkey),
-                                    to => aeser_api_encoder:encode(account_pubkey, AckPubkey),
-                                    block_hash => Hash,
-                                    amount => 1}, Cfg),
+                    XOpts = XOptsFun(SenderPubkey, AckPubkey),
+                    ws_send_tagged(SenderConnPid, Tag,
+                                   XOpts#{block_hash => Hash}, Cfg),
                     channel_sign_tx(SenderPubkey, SenderConnPid, SenderPrivkey,
-                                    <<"channels.update">>, Cfg),
+                                    ResponseTag, Cfg),
                     {ok, _} = wait_for_channel_event(SenderConnPid, conflict, Cfg),
                     {ok, _} = wait_for_channel_event(AckConnPid, conflict, Cfg)
                 end,
