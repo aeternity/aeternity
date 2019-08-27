@@ -325,9 +325,9 @@ try_reestablish_cached(ChId, PubKey, Password) ->
     end.
 
 decrypt_with_key_and_move_to_ram(#pch_encrypted_cache{ cache_id = CacheId
-                                           , nonce = Nonce
-                                           , encrypted_state = EncryptedState
-                                           }, Cache, SessionKey) ->
+                                                     , nonce = Nonce
+                                                     , encrypted_state = EncryptedState
+                                                     }, Cache, SessionKey) ->
     case enacl:secretbox_open(EncryptedState, Nonce, SessionKey) of
         {ok, SerializedState} ->
             State = aesc_offchain_state:deserialize_from_binary(SerializedState),

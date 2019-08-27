@@ -34,7 +34,7 @@
         , poi/2                       %%  (Filter, State) -> {ok, PoI} | {error, not_found}
         , serialize_for_client/1      %%  (State) -> map()
         , serialize_to_binary/1       %%  (State) -> binary()
-        , deserialize_from_binary/1   %% (binary()) -> State
+        , deserialize_from_binary/1   %%  (binary()) -> State
         ]).
 
 -export([get_contract_call/4,

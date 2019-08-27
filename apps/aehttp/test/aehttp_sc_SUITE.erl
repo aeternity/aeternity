@@ -3099,6 +3099,10 @@ sc_ws_change_password_(Config) ->
         ok = ws_send_tagged(Pid, <<"channels.change_state_password">>, #{ <<"state_password">> => "1234" }, Config),
         {ok, #{<<"reason">> := <<"Invalid password">>}} = wait_for_channel_event(Pid, error, Config),
 
+        %% Test no password
+        ok = ws_send_tagged(Pid, <<"channels.change_state_password">>, #{}, Config),
+        {ok, #{<<"reason">> := <<"Missing field: state_password">>}} = wait_for_channel_event(Pid, error, Config),
+
         %% Change password
         ok = ws_send_tagged(Pid, <<"channels.change_state_password">>, #{ <<"state_password">> => StatePassword1 }, Config),
         {ok, #{<<"action">> := <<"password_changed">>}} = wait_for_channel_event(Pid, password_changed, Config),

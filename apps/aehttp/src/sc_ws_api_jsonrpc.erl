@@ -594,6 +594,8 @@ process_request(#{<<"method">> := <<"channels.change_state_password">>,
         ok -> {reply, ok_response(password_changed)};
         {error, invalid_password} -> {error, invalid_password} %% Just let it crash for other error codes
     end;
+process_request(#{<<"method">> := <<"channels.change_state_password">>}, _FsmPid) ->
+    {error, {state_password, missing}};
 process_request(#{<<"method">> := _} = Unhandled, _FsmPid) ->
     lager:warning("Channel WS: unhandled action received ~p", [Unhandled]),
     {error, unhandled};
