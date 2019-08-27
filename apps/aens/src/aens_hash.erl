@@ -2,6 +2,12 @@
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc
 %%%    Naming System hashing functions
+%%%
+%%%    We hash names in .test domain in a legacy format, whereas names
+%%%    in the .aet domain are hashed differently.
+%%%    If additional domains are added, we need to make their hash function
+%%%    explicit in this code.
+%%%
 %%% @end
 %%%=============================================================================
 
@@ -28,14 +34,37 @@
 %%% API
 %%%===================================================================
 
+
 -spec commitment_hash(binary(), integer()) -> commitment_hash().
 commitment_hash(NameAscii, Salt) ->
+    case aens_utils:name_domain(NameAscii) of
+        {ok, Domain} when Domain =:= <<"aet">> ->
+            SaltBin = int_to_bin(Salt),
+            hash(<<NameAscii/binary, SaltBin/binary>>);
+        _ ->
+            %% This could be .test or any other wrong name backward compatible
+            pre_lima_commitment_hash(NameAscii, Salt)
+    end.
+
+-spec name_hash(binary()) -> name_hash().
+name_hash(NameAscii) ->
+    case aens_utils:name_domain(NameAscii) of
+        {ok, Domain} when Domain =:= <<"aet">> ->
+            hash(NameAscii);
+        _ ->
+            %% This could be .test or any other wrong name backward compatible
+            pre_lima_name_hash(NameAscii)
+    end.
+
+
+-spec pre_lima_commitment_hash(binary(), integer()) -> commitment_hash().
+pre_lima_commitment_hash(NameAscii, Salt) ->
     NameHash = name_hash(NameAscii),
     SaltBin = int_to_bin(Salt),
     hash(<<NameHash/binary, SaltBin/binary>>).
 
--spec name_hash(binary()) -> name_hash().
-name_hash(NameAscii) ->
+-spec pre_lima_name_hash(binary()) -> name_hash().
+pre_lima_name_hash(NameAscii) ->
     Labels = binary:split(NameAscii, <<".">>, [global]),
     hash_labels(lists:reverse(Labels)).
 
