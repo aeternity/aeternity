@@ -273,7 +273,7 @@ all() ->
                        ]).
 
 -define(FATE_TODO, [ {group, sophia_oracles_gas_ttl}
-                   , sophia_state_gas
+                   , sophia_state_gas_arguments
                    ]).
 
 groups() ->
@@ -4106,7 +4106,9 @@ sophia_maps_gc(_Cfg) ->
 
     Prune = fun(M) -> maps:without(maps:keys(InitA), M) end,
 
-    Ct  = ?call(create_contract, Acc, maps_gc, {InitA, InitB}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
+    Ct  = ?call(create_contract, Acc, maps_gc, {InitA, InitB},
+                #{fee => 2000000 * aec_test_utils:min_gas_price(),
+                  gas => 200000}),
 
     StateT = {tuple, [{map, string, string}, {map, string, string}]},
 
