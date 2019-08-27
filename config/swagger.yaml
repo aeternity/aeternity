@@ -2792,7 +2792,7 @@ definitions:
         description: The status of the call 'ok | error'.
         type: string
       inner_object:
-         $ref: '#/definitions/TxInfoObject'
+        $ref: '#/definitions/TxInfoObject'
     required:
       - caller_id
       - height

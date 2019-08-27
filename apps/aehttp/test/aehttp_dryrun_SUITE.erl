@@ -2,6 +2,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %% common_test exports
 -export([
@@ -155,6 +156,14 @@ identity_contract(Config) ->
     ok.
 
 authenticate_contract(Config) ->
+    case aect_test_utils:latest_protocol_version() of
+        ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
+        ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
+        ?FORTUNA_PROTOCOL_VSN -> {skip, generalized_accounts_in_dry_run_not_in_fortuna};
+        _ -> authenticate_contract_(Config)
+    end.
+
+authenticate_contract_(Config) ->
     #{acc_a := #{pub_key := APub}} = proplists:get_value(accounts, Config),
     TopHash = proplists:get_value(top_hash, Config),
 
