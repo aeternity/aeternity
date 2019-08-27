@@ -3149,7 +3149,7 @@ check_channel_id(Mod, Tx, ChannelPubkey) ->
     end.
 
 check_state_hash(aesc_close_mutual_tx, _, _) -> ok; %% no hash here
-check_state_hash(aesc_close_mutual_tx, _, _) -> ok; %% no hash here
+check_state_hash(aesc_settle_tx, _, _)       -> ok; %% no hash here
 check_state_hash(Mod, Tx, StateHash) ->
     case Mod:state_hash(Tx) of
         StateHash -> %% expected hash
