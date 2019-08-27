@@ -267,7 +267,7 @@ sleep(T, Ref) ->
 -ifdef(TEST).
 get_reconnect_params() ->
     %% The increased granuality decreases the runtime of some tests by half :)
-    {50, 20}. %% Up to a second in the test environment
+    {50, 100}. %% Up to five seconds in the test environment
 -else.
 get_reconnect_params() ->
     %% {ConnectTimeout, Retries}

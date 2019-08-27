@@ -43,7 +43,8 @@ websocket_init(#{ <<"reconnect_tx">> := _ } = Params) ->
 websocket_init(Params) ->
     case {prepare_handler(Params), read_channel_options(Params)} of
         {{error, Err}, _} ->
-            handler_parsing_error(Err, #handler{}, Params);
+            %% Make dialyzer happy by providing a protocol - the protocol is not relevant here as we will kill this process after sending a error code to the client
+            handler_parsing_error(Err, #handler{protocol = sc_ws_api:protocol(<<"json-rpc">>)}, Params);
         {Handler, {error, Err}} ->
             handler_parsing_error(Err, Handler, Params);
         {Handler, ChannelOpts} ->
