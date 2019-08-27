@@ -199,9 +199,8 @@ attach_account(Pub, Priv, _Config) ->
 
     ct:pal("Cost: ~p", [Bal0 - Bal1]),
     MGP = aec_test_utils:min_gas_price(),
-    AEVMBal = Bal0 - 1000000 * MGP - Gas * MGP,
-    FATEBal = Bal0 - 1000000 * MGP - Gas * MGP,
-    ?assertMatchABI(AEVMBal, FATEBal, Bal1),
+    ExpBal = Bal0 - 1000000 * MGP - Gas * MGP,
+    ?assertEqual(ExpBal, Bal1),
     ok.
 
 attach_fail(Config) ->
@@ -263,9 +262,8 @@ meta_fail(Config) ->
                                   <<"gas_used">> := Gas}}} = get_contract_call_object(MetaTx),
 
     ct:pal("Cost failing inner: ~p", [ABal0 - ABal1]),
-    AEVMBal = ABal0 - (MetaFee + Gas * 1000 * MGP),
-    FATEBal = ABal0 - (MetaFee + Gas * 1000 * MGP),
-    ?assertMatchABI(AEVMBal, FATEBal, ABal1),
+    ExpBal = ABal0 - (MetaFee + Gas * 1000 * MGP),
+    ?assertEqual(ExpBal, ABal1),
     ok.
 
 meta_spend(Config) ->
@@ -290,9 +288,8 @@ meta_spend(Config) ->
         get_contract_call_object(MetaTx),
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
-    AEVMBal = ABal0 - (MetaFee + Gas * 1000 * MGP + 20000 * MGP + 10000),
-    FATEBal = ABal0 - (MetaFee + Gas * 1000 * MGP + 20000 * MGP + 10000),
-    ?assertMatchABI(AEVMBal, FATEBal, ABal1),
+    ExpBal = ABal0 - (MetaFee + Gas * 1000 * MGP + 20000 * MGP + 10000),
+    ?assertEqual(ExpBal, ABal1),
     ok.
 
 meta_meta_fail_auth(Config) ->
@@ -317,9 +314,8 @@ meta_meta_fail_auth(Config) ->
         get_contract_call_object(MetaTx),
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
-    AEVMBal = ABal0 - (MetaFee + Gas * 1000 * MGP),
-    FATEBal = ABal0 - (MetaFee + Gas * 1000 * MGP),
-    ?assertMatchABI(AEVMBal, FATEBal, ABal1),
+    ExpBal = ABal0 - (MetaFee + Gas * 1000 * MGP),
+    ?assertEqual(ExpBal, ABal1),
     ok.
 
 meta_meta_fail(Config) ->
@@ -351,9 +347,8 @@ meta_meta_fail(Config) ->
                          <<"inner_object">> := #{<<"tx_info">> := <<"spend_tx">>}}} = InnerObj,
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
-    AEVMBal = ABal0 - 2 * (MetaFee + Gas * 1000 * MGP),
-    FATEBal = ABal0 - 2 * (MetaFee + Gas * 1000 * MGP),
-    ?assertMatchABI(AEVMBal, FATEBal, ABal1),
+    ExpBal = ABal0 - 2 * (MetaFee + Gas * 1000 * MGP),
+    ?assertEqual(ExpBal, ABal1),
     ok.
 
 meta_meta_spend(Config) ->
@@ -382,9 +377,8 @@ meta_meta_spend(Config) ->
     #{<<"return_type">> := <<"ok">>} = GAInfo,
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
-    AEVMBal = ABal0 - (2 * (MetaFee + Gas * 1000 * MGP) + 20000 * MGP + 10000),
-    FATEBal = ABal0 - (2 * (MetaFee + Gas * 1000 * MGP) + 20000 * MGP + 10000),
-    ?assertMatchABI(AEVMBal, FATEBal, ABal1),
+    ExpBal = ABal0 - (2 * (MetaFee + Gas * 1000 * MGP) + 20000 * MGP + 10000),
+    ?assertEqual(ExpBal, ABal1),
     ok.
 
 meta_4_fail(Config) ->
@@ -414,9 +408,8 @@ meta_4_fail(Config) ->
         #{<<"ga_info">> := #{<<"return_type">> := <<"error">>}}}} = InnerObj,
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
-    AEVMBal = ABal0 - 3 * (MetaFee + Gas * 1000 * MGP),
-    FATEBal = ABal0 - 3 * (MetaFee + Gas * 1000 * MGP),
-    ?assertMatchABI(AEVMBal, FATEBal, ABal1),
+    ExpBal = ABal0 - 3 * (MetaFee + Gas * 1000 * MGP),
+    ?assertEqual(ExpBal, ABal1),
     ok.
 
 %% Test the minimum gas price check
@@ -625,10 +618,4 @@ new_account(Balance) ->
     SignedSpendTx = sign_tx(SpendTx),
     {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_tx(SignedSpendTx),
     {Pubkey, Privkey, SpendTxHash}.
-
-abi_version() ->
-    case get('$abi_version') of
-        undefined -> aect_test_utils:latest_sophia_abi_version();
-        X         -> X
-    end.
 
