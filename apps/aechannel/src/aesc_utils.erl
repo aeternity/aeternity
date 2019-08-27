@@ -29,7 +29,8 @@
          verify_signatures_onchain/3,
          verify_signatures_onchain/4,
          count_authentications/1,
-         channel_pubkey/1
+         channel_pubkey/1,
+         censor_init_opts/1
         ]).
 
 -ifdef(TEST).
@@ -174,6 +175,26 @@ is_payload_valid_at_protocol(Protocol, Payload) ->
         {ok, last_onchain}          -> true; %% using tx already on-chain
         {ok, SignedTx, _OffChainTx} ->
             aetx:valid_at_protocol(Protocol, aetx_sign:tx(SignedTx))
+    end.
+
+-spec censor_init_opts(list() | map()) -> list() | map().
+censor_init_opts(Params) ->
+    ToCensor = [state_password, <<"state_password">>],
+    lists:foldl(fun censor_init_opts/2, Params, ToCensor).
+
+censor_init_opts(ToCensor, #{} = Opts) ->
+    case Opts of
+        #{ToCensor := _} ->
+            Opts#{ToCensor => "REDACTED"};
+        _ ->
+            Opts
+    end;
+censor_init_opts(ToCensor, [_|_] = Proplist) ->
+    case proplists:is_defined(ToCensor, Proplist) of
+        true ->
+            [{ToCensor, "REDACTED"} | proplists:delete(ToCensor, Proplist)];
+        false ->
+            Proplist
     end.
 
 %%%===================================================================

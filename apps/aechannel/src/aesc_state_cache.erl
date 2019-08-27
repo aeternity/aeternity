@@ -135,6 +135,7 @@ table_vsn(pch) -> ?VSN_pch;
 table_vsn(pch_encrypted_cache) -> ?VSN_pch_encrypted_cache.
 
 migrate(?VSN_pch, ?VSN_pch_encrypted_cache) ->
+    %%TODO: Move the migration logic partially to aec_db - this is only here because this is the first migration in the entire codebase :)
     ?VSN_pch = table_vsn(pch),
     ?VSN_pch_encrypted_cache = table_vsn(pch_encrypted_cache),
     lager:debug("Waiting for state cache table to be accesible", []),
@@ -206,7 +207,7 @@ setup_keys_in_cache(Password) ->
     end.
 
 handle_call({new, ChId, PubKey, Pid, State, Password}, _From, St) ->
-    case setup_keys_in_cache(Password) of
+    Resp = case setup_keys_in_cache(Password) of
         {ok, Result} ->
             case ets:insert_new(?TAB, Result#ch_cache{cache_id = key(ChId, PubKey), state = State}) of
                 true ->
@@ -217,16 +218,20 @@ handle_call({new, ChId, PubKey, Pid, State, Password}, _From, St) ->
             end;
         {error, _} = Err ->
             {reply, Err, St}
-    end;
+    end,
+    garbage_collect(),
+    Resp;
 handle_call({reestablish, ChId, PubKey, Pid, Password}, _From, St) ->
-    case try_reestablish_cached(ChId, PubKey, Password) of
+    Resp = case try_reestablish_cached(ChId, PubKey, Password) of
         {ok, Result} ->
             St1 = monitor_fsm(Pid, ChId, PubKey,
                               remove_watcher(ChId, St)),
             {reply, {ok, Result}, St1};
         {error, _} = Error ->
             {reply, Error, St}
-    end;
+    end,
+    garbage_collect(),
+    Resp;
 handle_call({fetch, ChId, PubKey}, _From, St) ->
     case ets:lookup(?TAB, key(ChId, PubKey)) of
         [#ch_cache{state = State}] ->
@@ -236,7 +241,7 @@ handle_call({fetch, ChId, PubKey}, _From, St) ->
     end;
 handle_call({change_state_password, ChId, Pubkey, Password}, _From, St) ->
     lager:debug("Changing state password"),
-    case setup_keys_in_cache(Password) of
+    Resp = case setup_keys_in_cache(Password) of
         {ok, #ch_cache{salt = Salt, session_key = SessionKey}} ->
             case ets:update_element(?TAB, key(ChId, Pubkey),
                 [ {#ch_cache.salt, Salt}
@@ -248,7 +253,9 @@ handle_call({change_state_password, ChId, Pubkey, Password}, _From, St) ->
             end;
         {error, _} = Err ->
             {reply, Err, St}
-    end;
+    end,
+    garbage_collect(),
+    Resp;
 handle_call({min_depth_achieved, ChId, _Watcher}, _From, St) ->
     lager:debug("min_depth_achieved - ~p gone", [ChId]),
     {reply, ok, delete_all_state_for_channel(ChId, St)};

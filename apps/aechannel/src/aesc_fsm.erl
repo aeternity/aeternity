@@ -204,7 +204,7 @@ inband_msg(Fsm, To, Msg) ->
   end.
 
 initiate(Host, Port, #{} = Opts0) ->
-    lager:debug("initiate(~p, ~p, ~p)", [Host, Port, Opts0]),
+    lager:debug("initiate(~p, ~p, ~p)", [Host, Port, aesc_utils:censor_init_opts(Opts0)]),
     Opts = maps:merge(#{client => self(),
                         role   => initiator}, Opts0),
     case init_checks(Opts) of
@@ -220,7 +220,7 @@ leave(Fsm) ->
     gen_statem:call(Fsm, leave).
 
 respond(Port, #{} = Opts0) ->
-    lager:debug("respond(~p, ~p)", [Port, Opts0]),
+    lager:debug("respond(~p, ~p)", [Port, aesc_utils:censor_init_opts(Opts0)]),
     Opts = maps:merge(#{client => self(),
                         role   => responder}, Opts0),
     case init_checks(Opts) of
@@ -742,6 +742,7 @@ awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK, SignedTx} = Msg,
 awaiting_signature(cast, {?SIGNED, ?SHUTDOWN, SignedTx} = Msg,
                    #data{op = #op_sign{ tag = ?SHUTDOWN
                                       , data = OpData0}} = D) ->
+    #op_data{updates = Updates} = OpData0,
     lager:debug("SHUTDOWN signed", []),
     maybe_check_auth(SignedTx, OpData0, not_close_mutual_tx, me,
         fun() ->
@@ -2942,11 +2943,11 @@ on_chain_id(D, SignedTx) ->
     {PubKey, D#data{on_chain_id = PubKey}}.
 
 initialize_cache(#data{ on_chain_id = ChId
-                      , state       = State } = D, not_found) ->
-    aesc_state_cache:new(ChId, my_account(D), State);
+                      , state       = State } = D, {ok, StatePassword}) ->
+    aesc_state_cache:new(ChId, my_account(D), State, StatePassword);
 initialize_cache(#data{ on_chain_id = ChId
-                      , state       = State } = D, StatePassword) ->
-    aesc_state_cache:new(ChId, my_account(D), State, StatePassword).
+                      , state       = State } = D, error) ->
+    aesc_state_cache:new(ChId, my_account(D), State).
 
 cache_state(#data{ on_chain_id = ChId
                  , state       = State } = D) ->
@@ -3400,7 +3401,12 @@ callback_mode() ->
 -spec init(map()) -> {ok, InitialState, data(), [{timeout, Time::pos_integer(),
                                                    InitialState}, ...]}
                           when InitialState :: state_name().
-init(#{opts := Opts0} = Arg) ->
+init(#{opts := Opts00} = Arg) ->
+    %% We must keep the password in the state until we are sure what the channel_id for this fsm should be - after that the password is removed from the state
+    %% The fsm may crash before the password is removed from the state - to make sure that the password doesn't leak in a crash log, wrap the password in a function
+    %% so any crash log or lager:debug call doesn't expose it.
+    StatePassword = maps:find(state_password, Opts00),
+    Opts0 = maps:put(state_password_getter, fun() -> StatePassword end, maps:remove(state_password, Opts00)),
     {Role, Opts1} = maps:take(role, Opts0),
     Client = maps:get(client, Opts1),
     {Reestablish, ReestablishOpts, Opts2} =
@@ -3451,35 +3457,39 @@ init(#{opts := Opts0} = Arg) ->
 		        , opts    = Opts
 		        , state   = State
 		        , log     = aesc_window:new(maps:get(log_keep, Opts)) },
+            DataCensored = Data#data{opts = maps:remove(state_password_getter, Opts)},
 	    lager:debug("Session started, Data = ~p", [Data]),
 	    %% TODO: Amend the fsm above to include this step. We have transport-level
 	    %% connectivity, but not yet agreement on the channel parameters. We will next send
 	    %% a channel_open() message and await a channel_accept().
-	    case {Role, Reestablish} of
-		{initiator, true} ->
-		    ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
-		{initiator, false} ->
-		    ok_next(initialized, send_open_msg(Data));
-		{responder, true} ->
-		    ChanId = maps:get(existing_channel_id, ReestablishOpts),
-		    ok_next(awaiting_reestablish,
-		            Data#data{ channel_id  = ChanId
-		                     , on_chain_id = ChanId });
-		{responder, false} ->
-		    ok_next(awaiting_open, Data)
+           case {Role, Reestablish} of
+               {initiator, true} ->
+                   ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, DataCensored));
+               {initiator, false} ->
+                   ok_next(initialized, send_open_msg(Data));
+               {responder, true} ->
+                   ChanId = maps:get(existing_channel_id, ReestablishOpts),
+                   ok_next(awaiting_reestablish,
+                            DataCensored#data{ channel_id  = ChanId
+                                         , on_chain_id = ChanId });
+               {responder, false} ->
+                   ok_next(awaiting_open, Data)
+           end
 	end,
     StateRaw = case Initiator of
             any -> StateInitF;
             _   -> StateInitF(Initiator)
         end,
-    case StateRaw of
+    InitRes = case StateRaw of
         {ok, State} ->
             SessionEstablishF(State);
         StateFun when is_function(StateFun, 1) ->
             SessionEstablishF(StateFun);
         {error, invalid_password} ->
             {stop, invalid_password}
-    end.
+    end,
+    garbage_collect(), %% Always force garbage collection here - we might need to remove the state password from the memory
+    InitRes.
 
 terminate(Reason, _State, #data{session = Sn} = Data) ->
     lager:debug("terminate(~p, ~p, _)", [Reason, _State]),
@@ -3539,7 +3549,7 @@ check_minimum_depth_opt(DefMinDepth, Role, Opts) ->
 check_timeout_opt(#{timeouts := TOs} = Opts) ->
     TOs1 = maps:merge(?DEFAULT_TIMEOUTS, TOs),
     Opts1 = Opts#{timeouts => TOs1},
-    lager:debug("Timeouts: ~p", [Opts1]),
+    lager:debug("Timeouts: ~p", [aesc_utils:censor_init_opts(Opts1)]),
     Opts1;
 check_timeout_opt(Opts) ->
     check_timeout_opt(Opts#{timeouts => #{}}).
@@ -3827,17 +3837,18 @@ funding_locked_complete(#data{ op = #op_lock{ tag = create
                                             , data = OpData}
                              , create_tx = CreateTx
                              , state = State
-                             , opts = Opts} = D) ->
+                             , opts = #{state_password_getter := StatePasswordF} = Opts} = D) ->
     #op_data{ updates    = Updates
             , block_hash = BlockHash} = OpData,
     {OnChainEnv, OnChainTrees} = load_pinned_env(BlockHash),
     State1 = aesc_offchain_state:set_signed_tx(CreateTx, Updates, State, OnChainTrees,
                                                OnChainEnv, Opts),
-    StatePassword = maps:get(state_password, Opts, not_found),
-    Opts1 = maps:remove(state_password, Opts),
+    Opts1 = maps:remove(state_password_getter, Opts),
     D1 = D#data{state = State1, opts = Opts1},
 
-    initialize_cache(D1, StatePassword),
+    initialize_cache(D1, StatePasswordF()),
+    %% Garbage collecting here won't do anything as the old fsm state still contains the state_password_getter - the password still is in use
+    %% TODO: Add a new state which would force garbage collection of the password
     next_state(open, D1).
 
 close(Reason, D) ->
@@ -3890,6 +3901,18 @@ handle_call(_, {?RECONNECT_CLIENT, Pid, Tx} = Msg, From,
     ?CATCH_LOG(E)
         keep_state(D, [{reply, From, E}])
     end;
+handle_call(_, {change_state_password, StatePassword}, From, #data{channel_status = open, on_chain_id = ChId} = D) ->
+    case check_weak_password(StatePassword) of
+        ok ->
+            case aesc_state_cache:change_state_password(ChId, my_account(D), StatePassword) of
+                ok ->
+                    keep_state(D, [{reply, From, ok}]);
+                {error, _} = Err ->
+                    keep_state(D, [{reply, From, Err}])
+            end;
+        {error, _} = Err ->
+            keep_state(D, [{reply, From, Err}])
+       end;
 handle_call(St, Req, From, #data{} = D) ->
     lager:debug("handle_call(~p, ~p, ~p, ~p)", [St, Req, From, D]),
     try handle_call_(St, Req, From, D)
@@ -4211,18 +4234,6 @@ handle_call_(St, settle, From, D) ->
 handle_call_(_, {strict_checks, Strict}, From, #data{} = D) when
         is_boolean(Strict) ->
     keep_state(D#data{strict_checks = Strict}, [{reply, From, ok}]);
-handle_call_(_, {change_state_password, StatePassword} ,From, #data{channel_status = open, on_chain_id = ChId} = D) ->
-    case check_weak_password(StatePassword) of
-        ok ->
-            case aesc_state_cache:change_state_password(ChId, my_account(D), StatePassword) of
-                ok ->
-                    keep_state(D, [{reply, From, ok}]);
-                {error, _} = Err ->
-                    keep_state(D, [{reply, From, Err}])
-            end;
-        {error, _} = Err ->
-            keep_state(D, [{reply, From, Err}])
-       end;
 handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
     postpone(D);
 handle_call_(_St, _Req, From, D) ->

@@ -26,10 +26,11 @@
 -include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 init(Req, _Opts) ->
-    lager:debug("init(~p, ~p)", [Req, _Opts]),
+    Parsed = cowboy_req:parse_qs(Req),
+    lager:debug("init(~p, ~p), Parsed ~p", [maps:remove(qs, Req), _Opts, aesc_utils:censor_init_opts(Parsed)]),
     process_flag(trap_exit, true),
     {cowboy_websocket, Req,
-     maps:from_list(cowboy_req:parse_qs(Req))}.
+     maps:from_list(Parsed)}.
 
 -spec websocket_init(map()) -> {ok, handler()} | {stop, undefined}.
 websocket_init(#{ <<"reconnect_tx">> := _ } = Params) ->
@@ -46,8 +47,8 @@ websocket_init(Params) ->
         {Handler, {error, Err}} ->
             handler_parsing_error(Err, Handler, Params);
         {Handler, ChannelOpts} ->
-            lager:debug("Starting Channel WS with params ~p", [Params]),
-            lager:debug("ChannelOpts = ~p", [ChannelOpts]),
+            lager:debug("Starting Channel WS with params ~p", [aesc_utils:censor_init_opts(Params)]),
+            lager:debug("ChannelOpts = ~p", [aesc_utils:censor_init_opts(ChannelOpts)]),
             case start_link_fsm(Handler, ChannelOpts) of
                 {ok, FsmPid} ->
                     MRef = erlang:monitor(process, FsmPid),
@@ -93,7 +94,7 @@ handler_parsing_error(Err, Handler, Params) ->
                      {password_required_since_lima, {state_password, missing}}],
     case proplists:get_value(Err, HandledErrors, not_handled_error) of
         not_handled_error ->
-            lager:info("Channel WS failed to start because of ~p; params ~p", [Err, Params]),
+            lager:info("Channel WS failed to start because of ~p; params ~p", [Err, aesc_utils:censor_init_opts(Params)]),
             {stop, undefined};
         ErrKey ->
             %% because of tests' subscription mechanism, we
@@ -262,7 +263,7 @@ reconnect_opts_to_handler(#{ <<"protocol">> := Protocol
             , job_id         = JobId }.
 
 prepare_handler(#{<<"protocol">> := Protocol} = Params) ->
-    lager:debug("prepare_handler() Params = ~p", [Params]),
+    lager:debug("prepare_handler() Params = ~p", [aesc_utils:censor_init_opts(Params)]),
     Read =
         fun(Key, RecordField, Opts) ->
             fun(H) ->

@@ -82,15 +82,16 @@ new_(#{ initiator          := InitiatorPubKey
     Trees = aec_trees:set_accounts(Trees0, Accounts),
     {ok, #state{trees=Trees, calls = aect_call_state_tree:empty()}}.
 
-recover_from_offchain_tx(#{ existing_channel_id := ChId
-                          , offchain_tx         := SignedTx } = Opts) ->
+recover_from_offchain_tx(#{ existing_channel_id   := ChId
+                          , offchain_tx           := SignedTx
+                          , state_password_getter := StatePasswordF} = Opts) ->
     MyPubkey = my_pubkey(Opts),
     ReestablishResult =
-        case maps:get(state_password, Opts, not_found) of
-            not_found ->
-                aesc_state_cache:reestablish(ChId, MyPubkey);
-            StatePassword ->
-                aesc_state_cache:reestablish(ChId, MyPubkey, StatePassword)
+        case StatePasswordF() of
+            {ok, StatePassword} ->
+                aesc_state_cache:reestablish(ChId, MyPubkey, StatePassword);
+            error ->
+                aesc_state_cache:reestablish(ChId, MyPubkey)
         end,
     case ReestablishResult of
         {ok, #state{} = State} ->
