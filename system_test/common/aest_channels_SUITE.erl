@@ -103,8 +103,10 @@
 all() -> [
     test_simple_same_node_channel,
     test_simple_different_nodes_channel,
-    %test_compat_with_initiator_node_using_latest_stable_version,
-    %test_compat_with_responder_node_using_latest_stable_version,
+    %% latest stable version expects not pinned block_hash
+    %% uncomment when updated
+    %%test_compat_with_initiator_node_using_latest_stable_version,
+    %%test_compat_with_responder_node_using_latest_stable_version,
     on_chain_channel
 ].
 
@@ -138,7 +140,9 @@ test_simple_same_node_channel(Cfg) ->
         responder_node => node1,
         responder_id => ?ALICE,
         responder_amount => 50000 * aest_nodes:gas_price(),
-        push_amount => 2 * aest_nodes:gas_price()
+        push_amount => 2 * aest_nodes:gas_price(),
+        bh_delta_not_newer_than => 0,
+        bh_delta_not_older_than => 100
     },
     simple_channel_test(ChannelOpts, #{}, #{}, Cfg).
 
@@ -175,7 +179,9 @@ test_different_nodes_channel_(InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg)
         responder_node => node2,
         responder_id => ?ALICE,
         responder_amount => 50000 * aest_nodes:gas_price(),
-        push_amount => 2
+        push_amount => 2,
+        bh_delta_not_newer_than => 0,
+        bh_delta_not_older_than => 100
     },
     simple_channel_test(ChannelOpts, InitiatorNodeBaseSpec, ResponderNodeBaseSpec, Cfg).
 
@@ -260,7 +266,9 @@ create_state_channel_perform_operations_leave({INodeName, RNodeName}, Config) ->
         responder_node => RNodeName,
         responder_id => ?BOB,
         responder_amount => 50000 * aest_nodes:gas_price(),
-        push_amount => 2
+        push_amount => 2,
+        bh_delta_not_newer_than => 0,
+        bh_delta_not_older_than => 100
     },
     IAccount = maps:get(initiator_id, ChannelOpts),
     RAccount = maps:get(responder_id, ChannelOpts),
@@ -329,9 +337,6 @@ on_chain_channel(Cfg) ->
 
     wait_for_value({balance, maps:get(pubkey, ?BOB), 100}, NodeNames, 5000, []),
     wait_for_value({balance, maps:get(pubkey, ?ALICE), 100}, NodeNames, 5000, []).
-
-node_base_spec_with_fortuna_major_channel_version() ->
-    #{source => {pull, "aeternity/aeternity:v4.0.0"}}.
 
 node_base_spec_with_latest_stable_version() ->
     #{source => {pull, "aeternity/aeternity:latest"}}.

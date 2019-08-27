@@ -1807,11 +1807,16 @@ curr_height() ->
     {_, Height} = curr_hash_and_height(),
     Height.
 
-pick_hash(#data{block_hash_delta = #bh_delta{not_newer_than = NNT}}) ->
+pick_hash(#data{block_hash_delta = #bh_delta{ not_newer_than = NNT
+                                            , not_older_than = NOT}}) ->
+    %% Using the boundary of the range is a bit too risky with regard of
+    %% synking. That's why we use an offset
+    Offset = floor((NOT - NNT) * 0.2),
     TopHeader = aec_chain:top_header(),
     Height = aec_headers:height(TopHeader), 
     %% use upper limit
-    {ok, Header} = aec_chain:get_key_header_by_height(max(Height - NNT, 0)),
+    {ok, Header} = aec_chain:get_key_header_by_height(max(Height - NNT -
+                                                          Offset, 0)),
     {ok, Hash} = aec_headers:hash_header(Header),
     Hash.
 
