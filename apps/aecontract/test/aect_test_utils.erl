@@ -324,13 +324,13 @@ compile(Vsn, File) ->
 compile_(?SOPHIA_LIMA_FATE, File) ->
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
-    case aeso_compiler:from_string(Source, [{backend, fate}, no_implicit_stdlib]) of
+    case aeso_compiler:from_string(Source, [{backend, fate}]) of
         {ok, Map} -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
         {error, E} = Err -> io:format("~s\n", [E]), Err
     end;
 compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_LIMA_AEVM ->
     {ok, ContractBin} = file:read_file(File),
-    case aeso_compiler:from_string(binary_to_list(ContractBin), [no_implicit_stdlib]) of
+    case aeso_compiler:from_string(binary_to_list(ContractBin), []) of
         {ok, Map}        -> {ok, aect_sophia:serialize(Map, latest_sophia_contract_version())};
         {error, _} = Err -> Err
     end;
@@ -412,7 +412,7 @@ encode_call_data(Vsn, Code, Fun, Args) ->
 encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_LIMA_AEVM; Vsn == ?SOPHIA_LIMA_FATE ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
                                       lists:map(fun to_str/1, Args),
-                                      [{backend, Backend}, no_implicit_stdlib])
+                                      [{backend, Backend}])
     catch _T:_E ->
         {error, <<"bad argument">>}
     end;
@@ -459,7 +459,7 @@ decode_call_result(Backend, Code, Fun, Res, EValue = <<"cb_", _/binary>>) ->
     end;
 decode_call_result(Backend, Code, Fun, Res, Value) ->
     {ok, ValExpr} = aeso_compiler:to_sophia_value(to_str(Code), to_str(Fun),
-                                                  Res, Value, [{backend, Backend}, no_implicit_stdlib]),
+                                                  Res, Value, [{backend, Backend}]),
     aeso_aci:json_encode_expr(ValExpr).
 
 decode_data(Type, <<"cb_", _/binary>> = EncData) ->
