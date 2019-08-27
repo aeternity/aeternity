@@ -248,7 +248,10 @@ execute(EngineState) ->
 loop(Instructions, EngineState) ->
     case step(Instructions, EngineState) of
         {stop, FinalState} ->
-            aefa_engine_state:finalize(FinalState);
+            case aefa_engine_state:finalize(FinalState) of
+                {ok, ES} -> ES;
+                {error, What} -> abort(What, FinalState)
+            end;
         {jump, BB, NewState} ->
             {NewInstructions, State2} = jump(BB, NewState),
             loop(NewInstructions, State2)

@@ -134,7 +134,8 @@
         , sophia_aens_transactions/1
         , sophia_state_handling/1
         , sophia_remote_state/1
-        , sophia_state_gas/1
+        , sophia_state_gas_arguments/1
+        , sophia_state_gas_store_size/1
         , sophia_no_callobject_for_remote_calls/1
         , sophia_operators/1
         , sophia_bits/1
@@ -272,7 +273,7 @@ all() ->
                        ]).
 
 -define(FATE_TODO, [ {group, sophia_oracles_gas_ttl}
-                   , sophia_state_gas
+                   , sophia_state_gas_arguments
                    ]).
 
 groups() ->
@@ -357,7 +358,8 @@ groups() ->
                                  sophia_aens_transactions,
                                  sophia_state_handling,
                                  sophia_remote_state,
-                                 sophia_state_gas,
+                                 sophia_state_gas_arguments,
+                                 sophia_state_gas_store_size,
                                  sophia_no_callobject_for_remote_calls,
                                  sophia_operators,
                                  sophia_bits,
@@ -4104,7 +4106,9 @@ sophia_maps_gc(_Cfg) ->
 
     Prune = fun(M) -> maps:without(maps:keys(InitA), M) end,
 
-    Ct  = ?call(create_contract, Acc, maps_gc, {InitA, InitB}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
+    Ct  = ?call(create_contract, Acc, maps_gc, {InitA, InitB},
+                #{fee => 2000000 * aec_test_utils:min_gas_price(),
+                  gas => 200000}),
 
     StateT = {tuple, [{map, string, string}, {map, string, string}]},
 
@@ -5292,7 +5296,7 @@ sophia_state_handling(_Cfg) ->
 
     ok.
 
-sophia_state_gas(_Cfg) ->
+sophia_state_gas_arguments(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     ContractName =
@@ -5339,6 +5343,67 @@ sophia_state_gas(_Cfg) ->
     ?assertMatch(true, Gas9 > Gas8),
     ok.
 
+sophia_state_gas_store_size(_Cfg) ->
+    ?skipRest(not ?IS_FATE_SOPHIA(vm_version()), only_valid_for_fate),
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
+    Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
+    Ct1      = ?call(create_contract, Acc, state_handling, {?cid(Ct0), 1}, #{ amount => 100000 }),
+
+    UnitT    = {tuple, []},
+
+    %% Test that gas usage varies when the state changes size
+    %% Baseline
+    {{}, Gas0} = ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{1 => 1}}, #{ return_gas_used => true }),
+
+    %% Same state size
+    {{}, Gas1} = ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{2 => 2}}, #{ return_gas_used => true }),
+    ?assertEqual(Gas0, Gas1),
+
+    %% Smaller state size
+    {{}, Gas2} = ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{}}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas0, Gas2}, {Gas0 > Gas2, Gas0, Gas2}),
+
+    %% Bigger state size
+    {{}, Gas3} = ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{1 => 1, 2 => 2}}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas0, Gas3}, {Gas0 < Gas3, Gas0, Gas3}),
+
+    %% Create a map that is big enough to end up as a store map.
+    BigMap = maps:from_list([{X, X} || X <- lists:seq(1, 1000)]),
+    {{}, _} = ?call(call_contract, Acc, Ct1, update_m, UnitT, {BigMap}, #{ return_gas_used => true }),
+
+    %% Updating one key in the store map should cost the same even if the old key didn't exist.
+    {{}, Gas4} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {1, 2}, #{ return_gas_used => true }),
+    {{}, Gas5} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {2, 1}, #{ return_gas_used => true }),
+    {{}, Gas6} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {0, 1}, #{ return_gas_used => true }),
+    ?assertEqual(Gas4, Gas5),
+    ?assertEqual(Gas5, Gas6),
+
+    %% Updating one key in the store map should cost more if the value takes up more space
+    {{}, Gas7} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {0, 257}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas6, Gas7}, {Gas6 < Gas7, Gas6, Gas7}),
+
+    %% Updating one key in the store map should cost more if the key takes up more space
+    {{}, Gas8} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {257, 0}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas6, Gas8}, {Gas6 < Gas8, Gas6, Gas8}),
+
+    %% Test that gas usage varies when the state changes size for the integer component
+    %% Baseline
+    {{}, Gas9} = ?call(call_contract, Acc, Ct1, update_i, UnitT, {256}, #{ return_gas_used => true }),
+
+    %% Same state size
+    {{}, Gas10} = ?call(call_contract, Acc, Ct1, update_i, UnitT, {257}, #{ return_gas_used => true }),
+    ?assertEqual(Gas9, Gas10),
+
+    %% Smaller state size
+    {{}, Gas11} = ?call(call_contract, Acc, Ct1, update_i, UnitT, {0}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas10, Gas11}, {Gas10 > Gas11, Gas10, Gas11}),
+
+    %% Bigger state size
+    {{}, Gas12} = ?call(call_contract, Acc, Ct1, update_i, UnitT, {1024}, #{ return_gas_used => true }),
+    ?assertEqual({true, Gas10, Gas12}, {Gas10 < Gas12, Gas10, Gas12}),
+
+    ok.
 
 %%%===================================================================
 %%% Store
