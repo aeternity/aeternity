@@ -176,6 +176,7 @@
 -callback aens_claim_tx(Addr :: pubkey(),
                         Name :: binary(),
                         Salt :: integer(),
+                        NameFee :: integer() | prelima,
                         ChainState :: chain_state()) ->
     {ok, aetx:tx()} | {error, term()}.
 
@@ -246,4 +247,3 @@ return_value(#call_result{ result = Res, type = Type }) ->
 
 -spec gas_spent(call_result()) -> non_neg_integer().
 gas_spent(#call_result{ gas_spent = Gas }) -> Gas.
-

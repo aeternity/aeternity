@@ -14,6 +14,7 @@
          minimum_gas_price/1,
          name_preclaim_expiration/0,
          name_claim_locked_fee/0,
+         name_claim_fee/2,
          name_claim_max_expiration/0,
          name_protection_period/0,
          name_claim_preclaim_delta/0,
@@ -243,6 +244,12 @@ name_protection_period() ->
 
 name_claim_preclaim_delta() ->
     1.
+
+-spec name_claim_fee(binary(), non_neg_integer()) -> non_neg_integer().
+name_claim_fee(Name, Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
+    1000 - size(Name);  %% here we can make a variable fee depending on name
+name_claim_fee(_Name, _Protocol) ->
+    0.
 
 -spec name_registrars(aec_hard_forks:protocol_vsn()) -> list(binary()).
 name_registrars(Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
