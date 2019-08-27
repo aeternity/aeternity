@@ -374,7 +374,6 @@ perform_store_updates([], Meta, GasLeft, Store) ->
     {Store1, GasLeft1}.
 
 spend_size_gas(GasLeft, Bytes) ->
-    %% TODO: This bytes to gas calculation needs to be discussed
     ?DEBUG_PRINT("GasLeft: ~w Bytes: ~w\n", [GasLeft, Bytes]),
     case GasLeft - Bytes * aec_governance:byte_gas() of
         TooLittle when TooLittle < 0 ->
