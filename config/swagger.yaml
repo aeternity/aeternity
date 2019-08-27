@@ -2140,7 +2140,6 @@ definitions:
     required:
       - name
       - name_salt
-      - name_fee
       - fee
       - account_id
   NameUpdateTx:
@@ -3200,4 +3199,3 @@ definitions:
 externalDocs:
   description: Find out more about Aeternity
   url: 'http://www.aeternity.com'
-
