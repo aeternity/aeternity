@@ -417,7 +417,8 @@ handle_request_('GetTransactionInfoByHash', Params, _Config) ->
                     fun(#{info := Info, tx_type := ga_meta_tx}) ->
                             #{<<"ga_info">> => aega_call:serialize_for_client(Info)};
                        (#{info := Info, tx_type := TxType}) when TxType =:= contract_create_tx;
-                                                                 TxType =:= contract_call_tx ->
+                                                                 TxType =:= contract_call_tx;
+                                                                 TxType =:= ga_attach_tx ->
                             #{<<"call_info">> => aect_call:serialize_for_client(Info)};
                        (#{info := Info, tx_type := _}) ->
                             %% info is assumed to be a binary

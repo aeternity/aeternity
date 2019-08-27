@@ -274,7 +274,8 @@ get_info_object_signed_tx(BlockHash, STx) ->
     Tx = aetx_sign:tx(STx),
     case aetx:specialize_type(Tx) of
         {TxType, _} when TxType =:= contract_create_tx;
-                         TxType =:= contract_call_tx ->
+                         TxType =:= contract_call_tx;
+                         TxType =:= ga_attach_tx ->
             {CB, CTx} = aetx:specialize_callback(Tx),
             Contract  = CB:contract_pubkey(CTx),
             CallId    = CB:call_id(CTx),
