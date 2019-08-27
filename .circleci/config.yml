@@ -478,7 +478,7 @@ jobs:
   test_roma:
     executor: builder_container_stable
     <<: *container_config
-    parallelism: 2
+    parallelism: 3
     environment:
       - MAKE_TARGET: ct-roma
     steps: *test_steps
@@ -486,7 +486,7 @@ jobs:
   test_minerva:
     executor: builder_container_stable
     <<: *container_config
-    parallelism: 2
+    parallelism: 3
     environment:
       - MAKE_TARGET: ct-minerva
     steps: *test_steps
@@ -494,7 +494,7 @@ jobs:
   test_fortuna:
     executor: builder_container_stable
     <<: *container_config
-    parallelism: 2
+    parallelism: 3
     environment:
       - MAKE_TARGET: ct-fortuna
     steps: *test_steps
@@ -502,7 +502,7 @@ jobs:
   test_lima:
     executor: builder_container_stable
     <<: *container_config
-    parallelism: 2
+    parallelism: 3
     environment:
       - MAKE_TARGET: ct-lima
     steps: *test_steps
@@ -510,7 +510,7 @@ jobs:
   test_mnesia_leveled:
     executor: builder_container_stable
     <<: *container_config
-    parallelism: 2
+    parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-leveled
     steps: *test_steps
@@ -518,7 +518,7 @@ jobs:
   test_mnesia_rocksdb:
     executor: builder_container_stable
     <<: *container_config
-    parallelism: 2
+    parallelism: 3
     environment:
       - MAKE_TARGET: ct-mnesia-rocksdb
     steps: *test_steps
@@ -996,8 +996,7 @@ workflows:
                 - *master_branch
 
       - docker_system_smoke_tests:
-          requires:
-            - docker_smoke_tests
+          requires: []
           filters:
             branches:
               ignore:
@@ -1261,7 +1260,12 @@ workflows:
       - deploy_next:
           context: ae-node-builds
           requires:
+            - test_roma
+            - test_minerva
+            - test_fortuna
             - test_lima
+            - test_mnesia_leveled
+            - test_mnesia_rocksdb
             - eunit_roma
             - eunit_minerva
             - eunit_fortuna
@@ -1270,6 +1274,7 @@ workflows:
             - uat_tests
             - static_analysis
             - rebar_lock_check
+            - linux_package
             - linux_package
           filters:
             branches:
