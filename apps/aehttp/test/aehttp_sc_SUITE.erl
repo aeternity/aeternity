@@ -177,7 +177,8 @@ init_per_suite(Config) ->
                <<"mining">> =>
                    #{<<"micro_block_cycle">> => 1}},
     {ok, StartedApps} = application:ensure_all_started(gproc),
-    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_sc"}, {test_module, ?MODULE}] ++ Config),
+    Config0 = [{protocol_vsn, aect_test_utils:latest_protocol_version()} | Config],
+    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_sc"}, {test_module, ?MODULE}] ++ Config0),
     start_node([ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
                , {started_apps, StartedApps}
                , {ws_port, 12340}] ++ Config1).
@@ -1634,7 +1635,8 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
     register_name(NamePubkey, NamePrivkey, Name,
                   [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)},
                    {<<"oracle">>, aeser_id:create(oracle, <<2:256>>)},
-                   {<<"unexpected_key">>, aeser_id:create(account, <<3:256>>)}]),
+                   {<<"unexpected_key">>, aeser_id:create(account, <<3:256>>)}],
+                  ?config(protocol_vsn, Config)),
     Test(Name, <<"account_pubkey">>, true),
     Test(Name, <<"oracle">>, true),
     Test(Name, <<"unexpected_key">>, true),
@@ -1810,7 +1812,8 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContra
     {NamePubkey, NamePrivkey} = ?CAROL,
     ok = initialize_account(2000000 * aec_test_utils:min_gas_price(), ?CAROL),
     register_name(NamePubkey, NamePrivkey, Name,
-                  [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)}]),
+                  [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)}],
+                  ?config(protocol_vsn, Config)),
 
     % now the name is on-chain, both must return true:
     Test(CallResolve, Name, <<"account_pubkey">>, true),
@@ -1864,10 +1867,10 @@ sign_post_mine(Tx, Privkey) ->
     ok = post_tx(TxHash, EncodedSerializedSignedTx),
     ok = wait_for_tx_hash_on_chain(TxHash).
 
-register_name(Owner, OwnerPrivKey, Name, Pointers) ->
+register_name(Owner, OwnerPrivKey, Name, Pointers, ProtocolVsn) ->
     Salt = rand:uniform(10000),
     preclaim_name(Owner, OwnerPrivKey, Name, Salt),
-    claim_name(Owner, OwnerPrivKey, Name, Salt),
+    claim_name(Owner, OwnerPrivKey, Name, Salt, ProtocolVsn),
     update_pointers(Owner, OwnerPrivKey, Name, Pointers),
     ok.
 
@@ -1880,12 +1883,16 @@ preclaim_name(Owner, OwnerPrivKey, Name, Salt) ->
     sign_post_mine(Tx, OwnerPrivKey),
     ok.
 
-claim_name(Owner, OwnerPrivKey, Name, Salt) ->
+claim_name(Owner, OwnerPrivKey, Name, Salt, ProtocolVsn) ->
     Delta = aec_governance:name_claim_preclaim_timeout(),
     Node = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:mine_key_blocks(Node, Delta),
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [Owner]),
-    TxSpec = aens_test_utils:claim_tx_spec(Owner, Name, Salt,  #{nonce => Nonce},#{}),
+    NameFee = case ProtocolVsn >= ?LIMA_PROTOCOL_VSN of
+                  true -> aec_governance:name_claim_fee(ProtocolVsn, size(Name));
+                  false -> undefined
+              end,
+    TxSpec = aens_test_utils:claim_tx_spec(Owner, Name, NameFee, Salt, #{nonce => Nonce},#{}),
     {ok, Tx} = aens_claim_tx:new(TxSpec),
     sign_post_mine(Tx, OwnerPrivKey),
     ok.
@@ -3425,4 +3432,3 @@ sc_ws_broken_open_params(Config) ->
                                    #{lock_period => -1}, Config),
     Test(ChannelOpts8, <<"Value too low">>),
     ok.
-
