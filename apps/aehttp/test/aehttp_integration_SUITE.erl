@@ -504,7 +504,8 @@ init_per_suite(Config) ->
                <<"mining">> =>
                    #{<<"micro_block_cycle">> => 1}},
     {ok, StartedApps} = application:ensure_all_started(gproc),
-    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_endpoints"}, {test_module, ?MODULE}] ++ Config),
+    Config0 = [{protocol_vsn, aect_test_utils:latest_protocol_version()} | Config],
+    Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_endpoints"}, {test_module, ?MODULE}] ++ Config0),
     [ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
     , {started_apps, StartedApps} ]  ++ Config1.
 
@@ -698,6 +699,11 @@ end_per_group(oracle_txs, _Config) ->
 end_per_group(Group, Config) ->
     ok = stop_node(Group, Config).
 
+init_per_testcase(naming_system_auction, Config) ->
+    case ?config(protocol_vsn, Config) >= ?LIMA_PROTOCOL_VSN of
+        true -> Config;
+        false -> {skip, requires_lima_or_newer}
+    end;
 init_per_testcase(post_oracle_register, Config) ->
     %% TODO: assert there is enought balance
     {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
@@ -3105,7 +3111,7 @@ naming_system_auction(_Config) ->
     %% The second bidder, PubKey2, is now charged
     ?assertEqual(PubKey2BalPostAuction, PubKey2BalPreAuction - Fee - NextMinPrice).
 
-naming_system_manage_name(_Config) ->
+naming_system_manage_name(Config) ->
     {PubKey, PrivKey} = initialize_account(1000000000 *
                                            aec_test_utils:min_gas_price()),
     PubKeyEnc   = aeser_api_encoder:encode(account_pubkey, PubKey),
@@ -3146,12 +3152,17 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance1, Balance - Fee),
 
     %% Submit name claim tx and check it is in mempool
-    ClaimData = #{account_id => PubKeyEnc,
-                  name       => aeser_api_encoder:encode(name, Name),
-                  name_salt  => NameSalt,
-                  name_fee   => rpc(aec_governance, name_claim_fee,
-                                    [?LIMA_PROTOCOL_VSN, size(Name)]),
-                  fee        => Fee},
+    ClaimData = maps:merge(
+                  #{account_id => PubKeyEnc,
+                    name       => aeser_api_encoder:encode(name, Name),
+                    name_salt  => NameSalt,
+                    fee        => Fee},
+                  case ?config(protocol_vsn, Config) of
+                      Vsn when Vsn >= ?LIMA_PROTOCOL_VSN ->
+                          #{name_fee => rpc(aec_governance, name_claim_fee, [Vsn, size(Name)])};
+                      _ ->
+                          #{}
+                  end),
     {ok, 200, #{<<"tx">> := ClaimTxEnc}} = get_name_claim(ClaimData),
     ClaimTxHash = sign_and_post_tx(ClaimTxEnc, PrivKey),
 
@@ -3162,7 +3173,7 @@ naming_system_manage_name(_Config) ->
     %% Check tx fee taken from account, claim fee locked,
     %% then mine reward and fee added to account
     ClaimLockedFee = rpc(aec_governance, name_claim_fee,
-                         [?LIMA_PROTOCOL_VSN, size(Name)]),
+                         [?config(protocol_vsn, Config), size(Name)]),
     {ok, 200, #{<<"balance">> := Balance2}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     {ok, 200, #{<<"height">> := Height3}} = get_key_blocks_current_sut(),
     ?assertEqual(Balance2, Balance1 - Fee - ClaimLockedFee),
@@ -4011,4 +4022,3 @@ meta(Owner, AuthData, InnerTx) ->
 account_type(Pubkey) ->
     {value, Account} = rpc(aec_chain, get_account, [Pubkey]),
     aec_accounts:type(Account).
-
