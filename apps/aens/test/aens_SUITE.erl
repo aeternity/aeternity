@@ -392,7 +392,7 @@ claim_negative(Cfg) ->
         true ->
             {error, illegal_name_fee} = aetx:process(Tx7, Trees, Env);
         false ->
-            {error, invalid_at_height} = aetx:process(Tx7, Trees, Env)
+            {error, invalid_at_protocol} = aetx:process(Tx7, Trees, Env)
 
     end,
 
@@ -406,7 +406,7 @@ claim_negative(Cfg) ->
         true ->
             {error, invalid_name_fee} = aetx:process(Tx8, Trees, Env);
         false ->
-            {error, invalid_at_height} = aetx:process(Tx8, Trees, Env)
+            {error, invalid_at_protocol} = aetx:process(Tx8, Trees, Env)
 
     end,
     ok.
