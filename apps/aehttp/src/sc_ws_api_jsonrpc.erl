@@ -315,13 +315,13 @@ process_request(#{<<"method">> := <<"channels.update.new_contract">>,
     assert_integer(ABIVersion),
     case {bytearray_decode(CodeE), bytearray_decode(CallDataE)} of
         {{ok, Code}, {ok, CallData}} ->
-            XOpts = maps:merge(
-                maybe_read_bh(Params),
-                #{vm_version  => VmVersion,
-                  abi_version => ABIVersion,
-                  deposit     => Deposit,
-                  code        => Code,
-                  call_data   => CallData}),
+            MandatoryOpts =
+                #{ vm_version  => VmVersion
+                 , abi_version => ABIVersion
+                 , deposit     => Deposit
+                 , code        => Code
+                 , call_data   => CallData},
+            XOpts = maps:merge(maybe_read_bh(Params), MandatoryOpts),
             case aesc_fsm:upd_create_contract(FsmPid, XOpts) of
                 ok -> no_reply;
                 {error, _Reason} = Err -> Err
@@ -338,13 +338,13 @@ process_request(#{<<"method">> := <<"channels.update.new_contract_from_onchain">
         {{ok, OnChainContract}, {ok, CallData}} ->
             case aec_chain:get_contract(OnChainContract) of
                 {ok, Contract} ->
-                    XOpts = maps:merge(
-                        maybe_read_bh(Params),
-                        #{vm_version    => aect_contracts:vm_version(Contract),
-                            abi_version => aect_contracts:abi_version(Contract),
-                            deposit     => Deposit,
-                            code        => aect_contracts:code(Contract),
-                            call_data   => CallData}),
+                    MandatoryOpts =
+                        #{vm_version    => aect_contracts:vm_version(Contract)
+                         , abi_version  => aect_contracts:abi_version(Contract)
+                         ,  deposit     => Deposit
+                         ,  code        => aect_contracts:code(Contract)
+                         , call_data    => CallData},
+                    XOpts = maps:merge(maybe_read_bh(Params), MandatoryOpts),
                     case aesc_fsm:upd_create_contract(FsmPid, XOpts) of
                         ok -> no_reply;
                         {error, _Reason} = Err -> Err
@@ -365,12 +365,12 @@ process_request(#{<<"method">> := <<"channels.update.call_contract">>,
     case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
-            XOpts = maps:merge(
-                maybe_read_bh(Params),
-                #{contract    => Contract,
-                  abi_version => ABIVersion,
-                  amount      => Amount,
-                  call_data   => CallData}),
+            MandatoryOpts =
+                #{ contract    => Contract
+                 , abi_version => ABIVersion
+                 , amount      => Amount
+                 , call_data   => CallData},
+            XOpts = maps:merge(maybe_read_bh(Params), MandatoryOpts),
             case aesc_fsm:upd_call_contract(FsmPid, XOpts) of
                 ok -> no_reply;
                 {error, _Reason} = Err -> Err
@@ -410,12 +410,12 @@ process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
     case {aeser_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
-            XOpts = maps:merge(
-                maybe_read_bh(Params),
-                #{contract    => Contract,
-                  abi_version => ABIVersion,
-                  amount      => Amount,
-                  call_data   => CallData}),
+            MandatoryOpts =
+                #{ contract    => Contract
+                 , abi_version => ABIVersion
+                 , amount      => Amount
+                 , call_data   => CallData},
+            XOpts = maps:merge(maybe_read_bh(Params), MandatoryOpts),
             case aesc_fsm:dry_run_contract(FsmPid, XOpts) of
                 {ok, Call} ->
                   {reply, #{ action     => <<"dry_run">>

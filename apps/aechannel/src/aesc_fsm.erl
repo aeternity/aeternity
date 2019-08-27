@@ -306,12 +306,12 @@ version_tags() ->
     [offchain_update].
 
 bh_deltas() ->
-    [not_older_than, not_newer_than].
+    record_info(fields, bh_delta).
 
 timeouts() ->
     maps:keys(?DEFAULT_TIMEOUTS).
 
-%% Fetch the list of recent fsm events (sliding window)
+%% @doc Fetch the list of recent fsm events (sliding window)
 get_history(Fsm) ->
     lager:debug("get_history(~p)", [Fsm]),
     gen_statem:call(Fsm, get_history).
@@ -324,11 +324,10 @@ change_config(Fsm, Key, Value) ->
             Error
     end.
 
-%% Returns a list of [{Pubkey, Balance}], where keys are ordered the same
-%% way as in Accounts. If a key doesn't correspond to an existing account,
-%% it doesn't show up in the result. Thus, unknown accounts are recognized
-%% by their absense in the response.
-%%
+%% @doc Returns a list of [{Pubkey, Balance}], where keys are ordered the same
+%% way as in Accounts. If a key doesn't correspond to an existing account, it
+%% doesn't show up in the result. Thus, unknown accounts are recognized by
+%% their absense in the response.
 get_balances(Fsm, Accounts) ->
     gen_statem:call(Fsm, {get_balances, Accounts}).
 
@@ -354,8 +353,8 @@ message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
 %% ==================================================================
 %% Used by client
 
-%% Signing requests are sent as plain messages to the Client (normally, the
-%% process starting the fsm.) Messages are on the form
+%% @doc Signing requests are sent as plain messages to the Client (normally,
+%% the process starting the fsm.) Messages are on the form
 %%
 %% {aesc_fsm, Fsm :: pid(), ChanId :: binary(), Msg}
 %%   where Msg :: {sign, Tag :: sign_tag(), Obj :: any()}}.
@@ -364,7 +363,6 @@ message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
 %% ( corresponding to aetx_sign:sign(Obj, [PrivKey]), but likely involving a
 %%   remote client. )
 %% and reply by calling aesc_fsm:signing_response(Fsm, Tag, SignedObj)
-%%
 -spec signing_response(pid(), sign_tag(), any()) -> ok.
 signing_response(Fsm, Tag, Obj) ->
     gen_statem:cast(Fsm, {?SIGNED, Tag, Obj}).
@@ -1415,10 +1413,11 @@ new_onchain_tx_for_signing(Type, Opts, OnErr, D) when OnErr == fail;
 new_onchain_tx_for_signing_(Type, Opts, OnErr, D) ->
     Defaults = tx_defaults(Type, Opts, D),
     Opts1 = maps:merge(Defaults, Opts),
-    {BlockHash, OnChainEnv, OnChainTrees} = pick_pinned_env(Opts, D),
+    {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
     PinnedHeight = aetx_env:height(OnChainEnv),
-    case {new_onchain_tx(Type, Opts1, D, BlockHash, OnChainEnv,
-                         OnChainTrees), OnErr} of
+    TxRes = new_onchain_tx(Type, Opts1, D, BlockHash, OnChainEnv,
+                           OnChainTrees),
+    case {TxRes, OnErr} of
         {{ok, Tx, Updates}, _} ->
             case {aetx:min_fee(Tx, PinnedHeight), aetx:fee(Tx)} of
                 {MinFee, Fee} when MinFee =< Fee ->
@@ -1497,7 +1496,7 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
                #data{on_chain_id = ChanId, state=State} = D,
                BlockHash, OnChainEnv, OnChainTrees) ->
     Updates = [aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)],
-    {BlockHash, OnChainEnv, OnChainTrees} = pick_pinned_env(Opts, D),
+    {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
     Height = aetx_env:height(OnChainEnv),
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
@@ -1641,9 +1640,9 @@ new_onchain_tx_(Mod, Opts, CurrHeight) when Mod =:= aesc_create_tx;
             create_with_minimum_fee(Mod, Opts#{fee => 0}, CurrHeight)
     end.
 
-%% A valid transaction fee is a function on gas required and gas price used
-%% the following function uses the gas price the node would be using if it
-%% were mining
+%% @doc A valid transaction fee is a function on gas required and gas price
+%% used the following function uses the gas price the node would be using if
+%% it were mining
 %% gas required is a funcion of:
 %% * transaction type (base_gas)
 %% * transaction size (size_gas)
@@ -1695,7 +1694,7 @@ close_mutual_tx_for_signing(D) ->
     Account = my_account(D),
     new_close_mutual_tx(#{ acct => Account }, D).
 
-%% The responding side creates a 'throwaway' close_mutual_tx, in order to
+%% @doc The responding side creates a 'throwaway' close_mutual_tx, in order to
 %% validate the tx received from the initiating side. The critical parts to
 %% validate are the state-related ones. Nonce, fee and origin are copied from
 %% the original. Once validated, the 'fake' tx is discarded.
@@ -1775,7 +1774,7 @@ get_nonce(Pubkey) ->
         generalized -> 0
     end.
 
-%% Note that the default fee will be used as a base for adjustment, once
+%% @doc the default fee will be used as a base for adjustment, once
 %% we have an actual transaction record (required by aetx:min_fee/2).
 %% The default should err on the side of being too low.
 default_fee(_Tx) ->
@@ -1826,18 +1825,18 @@ load_pinned_env(BlockHash) ->
     catch error:{badmatch,error} -> erlang:error(unknown_block_hash)
     end.
 
--spec pick_pinned_env(map(), #data{}) ->
+-spec pick_onchain_env(map(), #data{}) ->
     {aec_blocks:block_header_hash(), aetx_env:env(), aec_trees:trees()}. 
-pick_pinned_env(#{block_hash := ?NOT_SET_BLOCK_HASH}, _D) ->
+pick_onchain_env(#{block_hash := ?NOT_SET_BLOCK_HASH}, _D) ->
     {OnChainEnv, OnChainTrees} =
         aetx_env:tx_env_and_trees_from_top(aetx_contract),
     {?NOT_SET_BLOCK_HASH, OnChainEnv, OnChainTrees};
-pick_pinned_env(Opts, D) ->
+pick_onchain_env(Opts, D) ->
     BlockHash =
-        case maps:get(block_hash, Opts, unspecified) of
-            unspecified ->
+        case maps:find(block_hash, Opts) of
+            error ->
                 _BH = pick_hash(D);
-            BH when is_binary(BH) -> %% ?NOT_SET_BLOCK_HASH is handled
+            {ok, BH} when is_binary(BH) -> %% ?NOT_SET_BLOCK_HASH is handled
                 BH
         end,
     {OnChainEnv, OnChainTrees} = load_pinned_env(BlockHash),
@@ -1856,7 +1855,7 @@ new_contract_tx_for_signing(Opts, From, #data{ state = State
     Id = aeser_id:create(account, Owner),
     Updates = [aesc_offchain_update:op_new_contract(Id, VmVersion, ABIVersion, Code,
                                                     Deposit, CallData)],
-    {BlockHash, OnChainEnv, OnChainTrees} = pick_pinned_env(Opts, D),
+    {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
     Height = aetx_env:height(OnChainEnv),
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     try
@@ -2391,7 +2390,7 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, UOpts, #data{ state = State
                                                               , opts = Opts
                                                               , on_chain_id = ChannelId
                                                               } = D) ->
-    {BlockHash, OnChainEnv, OnChainTrees} = pick_pinned_env(UOpts, D),
+    {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(UOpts, D),
     Height = aetx_env:height(OnChainEnv),
     %% off-chain transfers do not need to be pinned as their execution does not
     %% depend on a specific environment
@@ -2723,7 +2722,7 @@ request_signing_(Tag, SignedTx, Updates, BlockHash, #data{client = Client} = D, 
             {error, client_disconnected}
     end.
 
-%% When in a handle_call(), we want to reply to the caller before sending
+%% @doc When in a handle_call(), we want to reply to the caller before sending
 %% it some other message. In Erlang, using selective message reception, this
 %% is irrelevant, but in other environments (at the other end of a websocket)
 %% FIFO message handling can get confusing if we mix up the order. So in this
@@ -2742,7 +2741,7 @@ sig_request_f(Client, Tag, Msg) when is_pid(Client) ->
             lager:debug("signing(~p) requested", [Tag])
     end.
 
-%% Checks if a user had provided authentication but doesn't check the
+%% @doc Checks if a user had provided authentication but doesn't check the
 %% authentication itself
 has_my_signature(Me, SignedTx) ->
     case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of
@@ -3049,9 +3048,9 @@ later_round_than_onchain(ChannelPubkey, Round) ->
     OnChainRound = aesc_channels:round(Channel),
     Round > OnChainRound.
 
-%% check authentication according latest top - although for fork
-%% safety's sake updates can be pinned to older and safer blocks,
-%% validation of authentication must be performed according the latest top
+%% @doc check authentication according latest top - although for fork safety's
+%% sake updates can be pinned to older and safer blocks, validation of
+%% authentication must be performed according the latest top
 authentication_env() ->
     tx_env_and_trees_from_top(aetx_contract).
 
@@ -3123,31 +3122,22 @@ check_tx_if_expected(NewSignedTx, OldSignedTx, WrongMod) ->
         ],
     aeu_validation:run(Checks).
 
-get_round(Mod, Tx) ->
-    case Mod of
-        aesc_close_mutual_tx -> no_round;
-        aesc_settle_tx -> no_round;
-        _ -> Mod:round(Tx)
-    end.
+get_round(aesc_close_mutual_tx, _)  -> no_round;
+get_round(aesc_settle_tx, _)        -> no_round;
+get_round(Mod, Tx)                  -> Mod:round(Tx).
 
-get_state_hash(Mod, Tx) ->
-    case Mod of
-        aesc_close_mutual_tx -> no_state_hash;
-        aesc_settle_tx -> no_state_hash;
-        _ -> Mod:state_hash(Tx)
-    end.
+get_state_hash(aesc_close_mutual_tx, _) -> no_state_hash;
+get_state_hash(aesc_settle_tx, _)       -> no_state_hash;
+get_state_hash(Mod, Tx)                 -> Mod:state_hash(Tx).
 
+check_round(aesc_close_mutual_tx, _, _) -> ok; %% no round here
+check_round(aesc_settle_tx, _, _)       -> ok; %% no round here
 check_round(Mod, Tx, ExpectedRound) ->
-    case Mod of
-        aesc_close_mutual_tx -> ok; %% no round here
-        aesc_settle_tx       -> ok; %% no round here
-        _ ->
-            case Mod:round(Tx) of
-                ExpectedRound ->
-                    ok;
-                _OtherRound ->
-                    {error, wrong_round}
-            end
+    case Mod:round(Tx) of
+        ExpectedRound ->
+            ok;
+        _OtherRound ->
+            {error, wrong_round}
     end.
 
 check_channel_id(Mod, Tx, ChannelPubkey) ->
@@ -3158,17 +3148,14 @@ check_channel_id(Mod, Tx, ChannelPubkey) ->
             {error, different_channel_id}
     end.
 
+check_state_hash(aesc_close_mutual_tx, _, _) -> ok; %% no hash here
+check_state_hash(aesc_close_mutual_tx, _, _) -> ok; %% no hash here
 check_state_hash(Mod, Tx, StateHash) ->
-    case Mod of
-        aesc_close_mutual_tx -> ok; %% no hash here
-        aesc_settle_tx       -> ok; %% no hash here
-        _ ->
-            case Mod:state_hash(Tx) of
-                StateHash -> %% expected hash
-                    ok;
-                _ -> %% unexpected state hash
-                    {error, bad_state_hash}
-            end
+    case Mod:state_hash(Tx) of
+        StateHash -> %% expected hash
+            ok;
+        _ -> %% unexpected state hash
+            {error, bad_state_hash}
     end.
 
 maybe_check_sigs_create(_, _, _, NextState, #data{strict_checks = false}) ->
@@ -3193,9 +3180,10 @@ maybe_check_sigs_create(Tx, Updates, Who, NextState, #data{state = State, opts =
             keep_state(D)
     end.
 
-%% this is a function to be called after this FSM's client had authenticated a
-%% transaction. It uses latest stored transaction that was sent to the client
-%% in order to validate signed transaction without executing updates
+%% @doc this is a function to be called after this FSM's client had
+%% authenticated a transaction. It uses latest stored transaction that was
+%% sent to the client in order to validate signed transaction without
+%% executing updates
 maybe_check_auth(_, _, _, _, NextState, #data{strict_checks = false}) ->
     lager:debug("strict_checks = false", []),
     NextState();
@@ -3237,9 +3225,6 @@ next_round(#data{state = State}) ->
     {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
     Round + 1.
 
-%% %% for tracing only
-%% event(_, _, _) ->
-%%     ok.
 account_type(Pubkey) ->
     case aec_chain:get_account(Pubkey) of
         {value, Account} ->
@@ -3326,11 +3311,12 @@ init(#{opts := Opts0} = Arg) ->
             end,
     ClientMRef = erlang:monitor(process, Client),
     BlockHashDelta =
-        case maps:get(block_hash_delta, Opts, use_defaults) of
-            use_defaults ->
-                #bh_delta{not_newer_than = 0}; %% backwards compatibility
-            #{ not_older_than := NOT
-             , not_newer_than := NNT} ->
+        case maps:find(block_hash_delta, Opts) of
+            error ->
+                #bh_delta{not_newer_than = 0, %% backwards compatibility
+                          not_older_than = 10};
+            {ok, #{ not_older_than := NOT
+                  , not_newer_than := NNT}} ->
                 #bh_delta{ not_older_than = NOT
                          , not_newer_than = NNT}
         end,
@@ -3483,7 +3469,7 @@ check_opts([], Opts) ->
 check_opts([H|T], Opts) ->
     check_opts(T, H(Opts)).
 
-%% As per CHANNELS.md, the responder is regarded as the one typically
+%% @doc As per CHANNELS.md, the responder is regarded as the one typically
 %% providing the service, and the initiator connects.
 start_session(#{ port := Port
                , opts := Opts0 }, Reestablish, #{ role      := responder
@@ -3637,7 +3623,7 @@ withdraw_locked_complete(OpData, #data{state = State, opts = Opts} = D) ->
     next_state(open, D1).
 
 -spec deposit_locked_complete(#op_data{}, #data{}) -> next_fsm_state().
-deposit_locked_complete(OpData, #data{state = State , opts = Opts} = D) ->
+deposit_locked_complete(OpData, #data{state = State, opts = Opts} = D) ->
     #op_data{ signed_tx  = SignedTx
             , updates    = Updates
             , block_hash = BlockHash} = OpData,
@@ -3877,7 +3863,7 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
                                                    ABIVersion, Amount,
                                                    CallData, CallStack),
     Updates = [Update],
-    {BlockHash, OnChainEnv, OnChainTrees} = pick_pinned_env(Opts, D),
+    {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
     Height = aetx_env:height(OnChainEnv),
     ActiveProtocol = aec_hard_forks:protocol_effective_at_height(Height),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
@@ -4130,7 +4116,7 @@ handle_info(Msg, #data{cur_statem_state = St} = D) ->
     lager:debug("Discarding info in ~p state: ~p", [St, Msg]),
     keep_state(log(drop, msg_type(Msg), Msg, D)).
 
-%% A few different modes are specified here:
+%% @doc A few different modes are specified here:
 %% * error_all - all calls and casts not explicitly handled lead to protocol
 %%               error. Used mainly for the open/reestablish handshake.
 %% * error     - try to handle calls, but unknown casts cause protocol error.

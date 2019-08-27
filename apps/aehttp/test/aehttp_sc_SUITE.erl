@@ -705,7 +705,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                                 priv_key := IPrivkey},
                  responder := #{pub_key := RPubkey,
                                 priv_key := RPrivkey}},
-               Amount,_Round,TestErrors,Config, UpdateOpts00) ->
+               Amount,_Round,TestErrors,Config, UpdateOpts0) ->
     true = undefined =/= process_info(IConnPid),
     true = undefined =/= process_info(RConnPid),
     {StarterPid, AcknowledgerPid, StarterPubkey, StarterPrivkey,
@@ -731,15 +731,15 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                       end,
     {ok, {Ba0, Bb0} = Bal0} = GetBothBalances(IConnPid),
     ct:log("Balances before: ~p", [Bal0]),
-    UpdateOpts0 =
-        UpdateOpts00#{from => aeser_api_encoder:encode(account_pubkey, StarterPubkey),
-                      to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
-                      amount => Amount},
+    UpdateOpts1 =
+        UpdateOpts0#{ from => aeser_api_encoder:encode(account_pubkey, StarterPubkey)
+                    , to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey)
+                    , amount => Amount},
     MetaStr = <<"meta 1">>,
     UpdateOpts = if IncludeMeta ->
-                         UpdateOpts0#{ meta => [MetaStr] };
+                         UpdateOpts1#{ meta => [MetaStr] };
                     true ->
-                         UpdateOpts0
+                         UpdateOpts1
                  end,
     if TestErrors ->
             ws_send_tagged(StarterPid, <<"channels.update.new">>,
@@ -2283,10 +2283,10 @@ call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
                 UpdateVolley, Amount, Config, XOpts) ->
     {ok, EncodedMainData} = encode_call_data(Contract, Function, Argument),
     CallOpts =
-        XOpts#{contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
-               abi_version => aect_test_utils:abi_version(),
-               amount      => Amount,
-               call_data   => EncodedMainData},
+        XOpts#{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey)
+              , abi_version => aect_test_utils:abi_version()
+              , amount      => Amount
+              , call_data   => EncodedMainData},
     % invalid call
     ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
                    CallOpts#{amount => <<"1">>}, Config),
@@ -3723,7 +3723,7 @@ sc_ws_pinned_update(Cfg) ->
     Conns = proplists:get_value(channel_clients, Config),
     lists:foldl(
         fun(Sender, Round) ->
-            HashNOT = get_key_hash_by_delta(NOT),
+            HashNOT = aecore_suite_utils:get_key_hash_by_delta(dev1, NOT),
             Hash1 = aeser_api_encoder:encode(key_block_hash, HashNOT),
             channel_update(Conns, Sender, Participants, 1, Round,
                            false, Cfg, #{block_hash => Hash1}),
@@ -3743,7 +3743,7 @@ sc_ws_pinned_deposit(Cfg) ->
                                 bh_delta_not_newer_than => NNT}),
     lists:foldl(
         fun(Depositor, Round) ->
-            HashNOT = get_key_hash_by_delta(NOT),
+            HashNOT = aecore_suite_utils:get_key_hash_by_delta(dev1, NOT),
             Hash1 = aeser_api_encoder:encode(key_block_hash, HashNOT),
             sc_ws_deposit_(Config, Depositor,
                            #{block_hash => Hash1}),
@@ -3763,7 +3763,7 @@ sc_ws_pinned_withdraw(Cfg) ->
                                 bh_delta_not_newer_than => NNT}),
     lists:foldl(
         fun(Depositor, Round) ->
-            HashNOT = get_key_hash_by_delta(NOT),
+            HashNOT = aecore_suite_utils:get_key_hash_by_delta(dev1, NOT),
             Hash1 = aeser_api_encoder:encode(key_block_hash, HashNOT),
             sc_ws_withdraw_(Config, Depositor,
                             #{block_hash => Hash1}),
@@ -3824,7 +3824,7 @@ sc_ws_pinned_error_(Tag, XOptsFun, ResponseTag, Cfg) ->
             #{pub_key := AckPubkey} = maps:get(AckRole, Participants),
             Test =
                 fun(Delta) ->
-                    HashBin = get_key_hash_by_delta(Delta),
+                    HashBin = aecore_suite_utils:get_key_hash_by_delta(dev1, Delta),
                     Hash = aeser_api_encoder:encode(key_block_hash, HashBin),
                     SenderConnPid = maps:get(SenderRole, Conns),
                     AckConnPid = maps:get(AckRole, Conns),
@@ -3901,7 +3901,7 @@ sc_ws_pinned_contract(Cfg) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             Fun = <<"block_height">>,
             ContractPubKey = CreateContract(Who),
-            HashBin = get_key_hash_by_delta(Delta),
+            HashBin = aecore_suite_utils:get_key_hash_by_delta(dev1, Delta),
             Hash = aeser_api_encoder:encode(key_block_hash, HashBin),
             Args = [],
             R0 = dry_call_a_contract(Fun, Args, ContractPubKey,
@@ -3922,11 +3922,4 @@ sc_ws_pinned_contract(Cfg) ->
         || Who   <- [initiator, responder],
            Delta <- [NNT, NOT, NNT + 1]],
     ok = sc_ws_close_(Config).
-
-get_key_hash_by_delta(Delta) ->
-    TopHeader = rpc(dev1, aec_chain, top_header, []),
-    TopHeight = aec_headers:height(TopHeader),
-    {ok, Header} = rpc(dev1, aec_chain, get_key_header_by_height, [TopHeight - Delta]),
-    {ok, Hash} = aec_headers:hash_header(Header),
-    Hash.
 

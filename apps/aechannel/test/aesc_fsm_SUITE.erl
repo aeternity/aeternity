@@ -161,9 +161,8 @@ groups() ->
       ]},
      {errors, [sequence],
       [
-      %  check_mutual_close_with_wrong_amounts
-      %, check_mutual_close_after_close_solo
-       check_mutual_close_after_close_solo
+        check_mutual_close_with_wrong_amounts
+      , check_mutual_close_after_close_solo
       ]},
      {signatures, [sequence], [check_incorrect_create | update_sequence()]
                                ++ [check_incorrect_mutual_close]},
@@ -886,7 +885,7 @@ withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, Round, Debug, Cfg) ->
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
     {IAmt0, RAmt0, _, _Round} = check_fsm_state(FsmI),
     check_info(0),
-    ok = rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => Amount}]),
+    ok = rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, Opts#{amount => Amount}]),
     {I1, _} = await_signing_request(withdraw_tx, I, Cfg),
     {R1, _} = await_signing_request(withdraw_created, R, Cfg),
     SignedTx = await_on_chain_report(I1, ?TIMEOUT),
@@ -2796,7 +2795,7 @@ request_too_new_bh(Cfg) ->
                                         ?SLOGAN|Cfg]),
     #{ initiator := PubI
      , responder := PubR } = Spec,
-    TopHash = get_key_hash_by_delta(NNT - 1), %% actually uses Top Hash
+    TopHash = aecore_suite_utils:get_key_hash_by_delta(dev1, NNT - 1), %% actually uses Top Hash
     TryTooNew =
         fun({#{fsm := Fsm} = Participant, OtherP}, Function, Args0, TxType) ->
             Args =
@@ -2834,7 +2833,7 @@ request_too_old_bh(Cfg) ->
     mine_key_blocks(dev1, NOT + 2), % do not rely on min depth
     #{ initiator := PubI
      , responder := PubR } = Spec,
-    OldHash = get_key_hash_by_delta(NOT + 1),
+    OldHash = aecore_suite_utils:get_key_hash_by_delta(dev1, NOT + 1),
     TryTooNew =
         fun({#{fsm := Fsm} = Participant, OtherP}, Function, Args0, TxType) ->
             Args =
@@ -2876,7 +2875,8 @@ positive_bh(Cfg) ->
             lists:foldl(
                 fun(Fun, {I0, R0}) ->
                     {_IAmt0, _RAmt0, _, Round} = check_fsm_state(FsmI),
-                    BlockHash = get_key_hash_by_delta(Delta),
+                    BlockHash = aecore_suite_utils:get_key_hash_by_delta(dev1,
+                                                                        Delta),
                     {ok, I1, R1} = Fun(I0, R0, #{block_hash => BlockHash}, Round),
                     {I1, R1}
                 end,
@@ -2900,9 +2900,3 @@ positive_bh(Cfg) ->
     shutdown_(IFinal, RFinal, Cfg),
     ok.
 
-get_key_hash_by_delta(Delta) ->
-    TopHeader = rpc(dev1, aec_chain, top_header, []),
-    TopHeight = aec_headers:height(TopHeader),
-    {ok, Header} = rpc(dev1, aec_chain, get_key_header_by_height, [TopHeight - Delta]),
-    {ok, Hash} = aec_headers:hash_header(Header),
-    Hash.

@@ -125,36 +125,36 @@
 
 
 
--record(bh_delta, { not_older_than = 5  :: integer()
-                  , not_newer_than = 3  :: integer()
+-record(bh_delta, { not_older_than  :: integer()
+                  , not_newer_than  :: integer()
                   }).
 
 %% ==================================================================
 %% Records and Types
 
--record(data, { role                          :: role()
-              , channel_status                :: undefined | attached | open | closing
-              , cur_statem_state              :: undefined | atom()
-              , state                         :: aesc_offchain_state:state() | function()
-              , session                       :: pid()
-              , client                        :: pid() | undefined
-              , client_mref                   :: reference() | undefined
-              , client_connected = true       :: boolean()
-              , client_may_disconnect = false :: boolean()
-              , client_reconnect_nonce = 0    :: non_neg_integer()
-              , opts                          :: map()
-              , channel_id                    :: undefined | binary()
-              , on_chain_id                   :: undefined | binary()
-              , create_tx                     :: undefined | any()
-              , watcher                       :: undefined | pid()
-              , block_hash_delta = #bh_delta{}:: #bh_delta{} 
+-record(data, { role                            :: role()
+              , channel_status                  :: undefined | attached | open | closing
+              , cur_statem_state                :: undefined | atom()
+              , state                           :: aesc_offchain_state:state() | function()
+              , session                         :: pid()
+              , client                          :: pid() | undefined
+              , client_mref                     :: reference() | undefined
+              , client_connected = true         :: boolean()
+              , client_may_disconnect = false   :: boolean()
+              , client_reconnect_nonce = 0      :: non_neg_integer()
+              , opts                            :: map()
+              , channel_id                      :: undefined | binary()
+              , on_chain_id                     :: undefined | binary()
+              , create_tx                       :: undefined | any()
+              , watcher                         :: undefined | pid()
+              , block_hash_delta = #bh_delta{}  :: #bh_delta{} 
               %% we keep the latest operation so we can perform according
               %% checks
-              , op = ?NO_OP                   :: latest_op()
-              , ongoing_update = false        :: boolean()
-              , last_reported_update          :: undefined | non_neg_integer()
-              , log                           :: log()
-              , strict_checks = true          :: boolean()
+              , op = ?NO_OP                     :: latest_op()
+              , ongoing_update = false          :: boolean()
+              , last_reported_update            :: undefined | non_neg_integer()
+              , log                             :: log()
+              , strict_checks = true            :: boolean()
               }).
 
 -opaque data() :: #data{ opts :: opts() }.
