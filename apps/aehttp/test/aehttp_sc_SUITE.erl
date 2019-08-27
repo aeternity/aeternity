@@ -2336,10 +2336,10 @@ dry_call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
     {ok, EncodedMainData} = encode_call_data(Contract, Function, Argument),
     ok = ?WS:register_test_for_channel_event(SenderConnPid, dry_run),
     CallOpts =
-        XOpts#{contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey),
-               abi_version => aect_test_utils:abi_version(),
-               amount      => Amount,
-               call_data   => EncodedMainData},
+        XOpts#{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey)
+              , abi_version => aect_test_utils:abi_version()
+              , amount      => Amount
+              , call_data   => EncodedMainData},
     % invalid call
     ws_send_tagged(SenderConnPid, <<"channels.dry_run.call_contract">>,
                    CallOpts#{amount => <<"1">>}, Config),

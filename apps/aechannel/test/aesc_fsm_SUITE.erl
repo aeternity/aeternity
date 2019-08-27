@@ -187,8 +187,7 @@ groups() ->
       , client_reconnect_responder
       ]},
      {pinned_env, [sequence],
-      [
-        request_unknown_bh
+      [ request_unknown_bh
       , request_too_new_bh
       , request_too_old_bh
       , positive_bh
@@ -2767,7 +2766,7 @@ request_unknown_bh(Cfg) ->
                                         ?SLOGAN|Cfg]),
     #{ initiator := PubI
      , responder := PubR } = Spec,
-    TryTooNew =
+    TryUnknown =
         fun(#{fsm := Fsm}, Function, Args0) ->
             Args =
                 case is_list(Args0) of
@@ -2780,8 +2779,8 @@ request_unknown_bh(Cfg) ->
            , {upd_withdraw, #{amount => 1}}
            , {upd_transfer, [PubI, PubR, 1]}
            ],
-    [TryTooNew(Who, Fun, Args) || Who <- [I, R],
-                                  {Fun, Args} <- Funs],
+    [TryUnknown(Who, Fun, Args) || Who <- [I, R],
+                                   {Fun, Args} <- Funs],
     shutdown_(I, R, Cfg),
     ok.
 
@@ -2835,7 +2834,7 @@ request_too_old_bh(Cfg) ->
     #{ initiator := PubI
      , responder := PubR } = Spec,
     OldHash = aecore_suite_utils:get_key_hash_by_delta(dev1, NOT + 1),
-    TryTooNew =
+    TryTooOld =
         fun({#{fsm := Fsm} = Participant, OtherP}, Function, Args0, TxType) ->
             Args =
                 case is_list(Args0) of
@@ -2855,7 +2854,7 @@ request_too_old_bh(Cfg) ->
            , {upd_withdraw, #{amount => 1}, withdraw_tx}
            , {upd_transfer, [PubI, PubR, 1], update}
            ],
-    [TryTooNew(Who, Fun, Args, TxType) || Who <- [{I, R}, {R, I}],
+    [TryTooOld(Who, Fun, Args, TxType) || Who <- [{I, R}, {R, I}],
                                           {Fun, Args, TxType} <- Funs],
     shutdown_(I, R, Cfg),
     ok.
