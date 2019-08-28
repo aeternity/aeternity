@@ -73,15 +73,15 @@ check_balance(Account, Amount) ->
     end.
 
 -spec check_nonce(aec_accounts:account(), non_neg_integer(), aetx_env:env()) ->
-        ok | {error, account_nonce_too_high | account_nonce_too_low}.
+        ok | {error, atom()}.
 check_nonce(Account, Nonce, Env) ->
     case aec_accounts:type(Account) of
         basic ->
-            AccountNonce = aec_accounts:nonce(Account),
+            ANonce = aec_accounts:nonce(Account),
             if
-                Nonce =:= (AccountNonce + 1) -> ok;
-                Nonce =< AccountNonce -> {error, account_nonce_too_high};
-                Nonce > AccountNonce -> {error, account_nonce_too_low}
+                Nonce == (ANonce + 1) -> ok;
+                Nonce =< ANonce       -> {error, tx_nonce_already_used_for_account};
+                Nonce >  ANonce       -> {error, tx_nonce_too_high_for_account}
             end;
         generalized ->
             GANonce = aetx_env:ga_nonce(Env, aec_accounts:pubkey(Account)),

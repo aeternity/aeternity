@@ -82,7 +82,7 @@ check_test_() ->
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 1000000, nonce => AccountNonce}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               Env = aetx_env:tx_env(20),
-              ?assertEqual({error, account_nonce_too_high},
+              ?assertEqual({error, tx_nonce_already_used_for_account},
                            aetx:process(SpendTx, StateTree, Env))
       end},
       {"TX TTL is too small",

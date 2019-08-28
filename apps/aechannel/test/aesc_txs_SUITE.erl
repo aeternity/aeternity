@@ -587,9 +587,9 @@ create_wrong_nonce(_Cfg) ->
             Env = aetx_env:set_signed_tx(Env0, {value, SignedTx}),
             {error, Err} = aetx:process(Tx, Trees, Env)
         end,
-    Test(Nonce - 1, account_nonce_too_high),
-    Test(Nonce, account_nonce_too_high),
-    Test(Nonce + 2, account_nonce_too_low),
+    Test(Nonce - 1, tx_nonce_already_used_for_account),
+    Test(Nonce, tx_nonce_already_used_for_account),
+    Test(Nonce + 2, tx_nonce_too_high_for_account),
     ok.
 
 create_exsisting(Cfg) ->
@@ -880,9 +880,9 @@ close_mutual_wrong_nonce(Cfg) ->
                  prepare_balances_for_mutual_close(),
                  negative(fun close_mutual_/2, {error, Error})])
         end,
-    Test(InitiatorNonce - 1,  account_nonce_too_high),
-    Test(InitiatorNonce,      account_nonce_too_high),
-    Test(InitiatorNonce + 2,  account_nonce_too_low),
+    Test(InitiatorNonce - 1,  tx_nonce_already_used_for_account),
+    Test(InitiatorNonce,      tx_nonce_already_used_for_account),
+    Test(InitiatorNonce + 2,  tx_nonce_too_high_for_account),
     ok.
 
 
@@ -957,7 +957,7 @@ reject_old_offchain_tx_vsn(Cfg) ->
                 set_prop(height, RomaHeight),
                 create_payload(),
                 set_prop(height, LimaHeight),
-                %% it fails after Lima 
+                %% it fails after Lima
                 negative(fun close_solo_/2, {error, invalid_at_height})
                 ])
         end,
@@ -1608,9 +1608,9 @@ settle_wrong_nonce(Cfg) ->
     % settle tx amounts must be equal to the last on-chain tx
     ActualTest =
         fun(Closer, Setler) ->
-            Test(Closer, Setler, Nonce - 1,  account_nonce_too_high),
-            Test(Closer, Setler, Nonce    ,  account_nonce_too_high),
-            Test(Closer, Setler, Nonce + 2,  account_nonce_too_low)
+            Test(Closer, Setler, Nonce - 1,  tx_nonce_already_used_for_account),
+            Test(Closer, Setler, Nonce    ,  tx_nonce_already_used_for_account),
+            Test(Closer, Setler, Nonce + 2,  tx_nonce_too_high_for_account)
         end,
     [ActualTest(Closer, Setler) ||  Closer <- ?ROLES,
                                     Setler <- RolesWithKeys],
@@ -4441,7 +4441,7 @@ create_payload() ->
 
 reuse_or_create_payload(Key, Props) ->
     case maps:get(Key, Props, not_specified) of
-        not_specified -> 
+        not_specified ->
             CreateFun = create_payload(Key),
             Props1 = CreateFun(Props),
             maps:get(Key, Props1);
@@ -4959,9 +4959,9 @@ test_both_wrong_nonce(Cfg, Fun, InitProps) ->
         end,
     lists:foreach(
         fun(Poster) ->
-            Test(Poster, AccountNonce - 1,  account_nonce_too_high),
-            Test(Poster, AccountNonce,      account_nonce_too_high),
-            Test(Poster, AccountNonce + 2,  account_nonce_too_low)
+            Test(Poster, AccountNonce - 1,  tx_nonce_already_used_for_account),
+            Test(Poster, AccountNonce,      tx_nonce_already_used_for_account),
+            Test(Poster, AccountNonce + 2,  tx_nonce_too_high_for_account)
         end,
         ?ROLES),
     ok.
@@ -5492,7 +5492,7 @@ fp_sophia_versions(Cfg) ->
             OK          %% Lima
          },
          %% AEVM 2
-         {?VM_AEVM_SOPHIA_2, SophiaVsn1, 
+         {?VM_AEVM_SOPHIA_2, SophiaVsn1,
             ErrUnknown, %% Roma
             OK,         %% Minerva
             OK,         %% Fortuna
