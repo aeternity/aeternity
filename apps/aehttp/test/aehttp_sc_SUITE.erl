@@ -734,7 +734,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     UpdateOpts1 =
         UpdateOpts0#{ from => aeser_api_encoder:encode(account_pubkey, StarterPubkey)
                     , to => aeser_api_encoder:encode(account_pubkey, AcknowledgerPubkey)
-                    , amount => Amount},
+                    , amount => Amount },
     MetaStr = <<"meta 1">>,
     UpdateOpts = if IncludeMeta ->
                          UpdateOpts1#{ meta => [MetaStr] };
