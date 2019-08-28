@@ -307,7 +307,7 @@ read_channel_options(Params) ->
                                                      mandatory => false}),
     ReadVsns = ReadMap(versions, <<"version">>, #{type => integer,
                                                   mandatory => false}),
-    ReadBHDelta = ReadMap(block_hash_delta, <<"bh_delta">>, #{type => integer,
+    ReadBHDelta = ReadMap(block_hash_delta, <<"bh_delta">>, #{ type => integer
                                                             , mandatory => false }),
     OnChainOpts =
         case (sc_ws_utils:read_param(
