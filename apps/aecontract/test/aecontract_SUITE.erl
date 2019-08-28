@@ -8,6 +8,8 @@
 %% common_test exports
 -export([ all/0
         , groups/0
+        , init_per_suite/1
+        , end_per_suite/1
         , init_per_group/2
         , end_per_group/2
         , init_per_testcase/2
@@ -424,6 +426,11 @@ init_tests(Release, VMName) ->
     Cfg = [{sophia_version, Sophia}, {vm_version, VM},
            {abi_version, ABI}, {protocol, Release}],
     init_per_testcase_common(interactive, Cfg).
+
+init_per_suite(Cfg) ->
+    [{protocol_vsn, aect_test_utils:latest_protocol_version()} | Cfg].
+end_per_suite(_) ->
+    ok.
 
 init_per_group(aevm, Cfg) ->
     aect_test_utils:init_per_group(aevm, Cfg, fun(X) -> X end);
@@ -3474,7 +3481,8 @@ sophia_signatures_aens(Cfg) ->
     Ct              = ?call(create_contract, NameAcc, aens, {}, #{ amount => 100000 }),
     LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
     Name1           = <<LongPrefix/binary, "bla.test">>,
-    NameFee         = aec_governance:name_claim_fee(aens_commitments:name_length(Name1)),
+    NameFee         = aec_governance:name_claim_fee(?config(protocol_vsn, Cfg),
+                                                    aens_commitments:name_length(Name1)),
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
