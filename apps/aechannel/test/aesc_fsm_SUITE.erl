@@ -57,6 +57,7 @@
         , responder_spend/1
         , client_reconnect_initiator/1
         , client_reconnect_responder/1
+        , fail_fast/1
         ]).
 
 %% exports for aehttp_integration_SUITE
@@ -127,6 +128,7 @@ groups() ->
      {transactions, [sequence],
       [
         create_channel
+      , fail_fast
       , multiple_responder_keys_per_port
       , channel_insufficent_tokens
       , inband_msgs
@@ -1613,6 +1615,9 @@ client_reconnect_initiator(Cfg) ->
 
 client_reconnect_responder(Cfg) ->
     client_reconnect_(responder, Cfg).
+
+fail_fast(Cfg) ->
+    ct:fail("Forced fail").
 
 client_reconnect_(Role, Cfg) ->
     Debug = get_debug(Cfg),
