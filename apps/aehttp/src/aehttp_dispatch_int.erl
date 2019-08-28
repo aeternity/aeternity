@@ -149,7 +149,7 @@ handle_request_('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
 handle_request_('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account_id, name, name_salt, fee]),
-                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 read_optional_params([{ttl, ttl, '$no_value'}, {name_fee, name_fee, prelima}]),
                  api_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
                                 {name, name, name}]),
                  get_nonce_from_account_id(account_id),
