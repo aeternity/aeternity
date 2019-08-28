@@ -414,7 +414,7 @@ process_request(#{<<"method">> := <<"channels.dry_run.call_contract">>,
                 #{ contract    => Contract
                  , abi_version => ABIVersion
                  , amount      => Amount
-                 , call_data   => CallData},
+                 , call_data   => CallData },
             XOpts = maps:merge(maybe_read_bh(Params), MandatoryOpts),
             case aesc_fsm:dry_run_contract(FsmPid, XOpts) of
                 {ok, Call} ->
