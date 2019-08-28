@@ -31,12 +31,16 @@ extra_checks_test_() ->
        fun deprecated_miner_section_conflicting_with_miners/0},
       {"User configuration cannot contain 'fork_management > fork > signalling_start_height' greater or equal to 'fork_management > fork > signalling_end_height'",
        fun invalid_fork_signalling_interval/0},
+      {"User configuration cannot containt 'fork_management > fork > signalling_start_height' lower or equal to the last scheduled hard fork height",
+       fun invalid_fork_signalling_start_height/0},
       {"User configuration cannot contain 'fork_management > fork > signalling_block_count' greater than signalling interval",
        fun invalid_fork_signalling_block_count/0},
       {"User configuration cannot contain 'fork_management > fork > fork_height' lower or equal to 'fork_management > fork > signalling_end_height'",
        fun invalid_fork_height/0},
       {"User configuration cannot contain 'fork_management > fork > version' lower or equal to Minerva protocol version (2)",
-       fun invalid_fork_version/0}]
+       fun invalid_fork_version/0},
+      {"User configuration cannot contain 'fork_management > fork > version' lower or equal to the last scheduled hard fork version",
+       fun invalid_fork_version2/0}]
      ++ positive_extra_checks_tests()}.
 
 positive_extra_checks_tests() ->
@@ -70,6 +74,18 @@ invalid_fork_signalling_interval() ->
     ok = mock_user_config(UserMap, UserConfig),
     ?assertError({illegal_fork_signalling_interval, _, _}, aec_hard_forks:ensure_env()).
 
+invalid_fork_signalling_start_height() ->
+    case aec_governance:get_network_id() of
+        <<"local_roma_testnet">> ->
+            ok;
+        _Other ->
+            {Dir, DataDir} = get_test_config_base(),
+            Config = filename:join([Dir, DataDir, "epoch_invalid_fork_signalling_start_height.yaml"]),
+            {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
+            ok = mock_user_config(UserMap, UserConfig),
+            ?assertError({illegal_fork_signalling_interval, _, _}, aec_hard_forks:ensure_env())
+    end.
+
 invalid_fork_signalling_block_count() ->
     {Dir, DataDir} = get_test_config_base(),
     Config = filename:join([Dir, DataDir, "epoch_invalid_fork_signalling_block_count.yaml"]),
@@ -90,6 +106,18 @@ invalid_fork_version() ->
     {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
     ok = mock_user_config(UserMap, UserConfig),
     ?assertError({illegal_fork_version, _}, aec_hard_forks:ensure_env()).
+
+invalid_fork_version2() ->
+    case aec_governance:get_network_id() of
+        <<"local_lima_testnet">> ->
+            {Dir, DataDir} = get_test_config_base(),
+            Config = filename:join([Dir, DataDir, "epoch_invalid_fork_version2.yaml"]),
+            {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
+            ok = mock_user_config(UserMap, UserConfig),
+            ?assertError({illegal_fork_version, _}, aec_hard_forks:ensure_env());
+        _Other ->
+            ok
+    end.
 
 %%%===================================================================
 %%% Internal functions

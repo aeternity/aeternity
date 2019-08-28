@@ -57,8 +57,10 @@ fork(Height) ->
 
 -spec ensure_env() -> ok.
 ensure_env() ->
-    assert_protocols(protocols()),
-    ensure_fork_env(fork_config()).
+    Protocols = protocols(),
+    ForkConfig = fork_config(),
+    assert_protocols(Protocols),
+    ensure_fork_env(ForkConfig, Protocols).
 
 -spec protocol_effective_at_height(aec_blocks:height()) -> version().
 protocol_effective_at_height(H) ->
@@ -202,20 +204,23 @@ ensure_fork_env(#{signalling_start_height := SignallingStartHeight,
                   signalling_end_height := SignallingEndHeight,
                   signalling_block_count := SignallingBlockCount,
                   fork_height := ForkHeight, info_field := _InfoField,
-                  version := Version} = Fork) ->
-    assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight),
+                  version := Version} = Fork, Protocols) ->
+    SortedProtocols = protocols_sorted_by_version(Protocols),
+    {PrevVersion, PrevForkHeight} = lists:last(SortedProtocols),
+    assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight, PrevForkHeight),
     SignallingInterval = SignallingEndHeight - SignallingStartHeight,
     assert_fork_signalling_block_count(SignallingInterval, SignallingBlockCount),
     assert_fork_height(SignallingEndHeight, ForkHeight),
-    assert_fork_version(Version),
+    assert_fork_version(Version, PrevVersion),
     application:set_env(aecore, fork, Fork);
-ensure_fork_env(undefined) ->
+ensure_fork_env(undefined, _Protocols) ->
     ok.
 
-assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight)
-  when SignallingStartHeight < SignallingEndHeight ->
+assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight, PrevForkHeight)
+  when (PrevForkHeight < SignallingStartHeight) andalso
+       (SignallingStartHeight < SignallingEndHeight) ->
     ok;
-assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight) ->
+assert_fork_signalling_interval(SignallingStartHeight, SignallingEndHeight, _PrevForkHeight) ->
     error({illegal_fork_signalling_interval, SignallingStartHeight, SignallingEndHeight}).
 
 assert_fork_signalling_block_count(SignallingInterval, SignallingBlockCount)
@@ -230,7 +235,9 @@ assert_fork_height(SignallingEndHeight, ForkHeight)
 assert_fork_height(_SignallingEndHeight, ForkHeight) ->
     error({illegal_fork_height, ForkHeight}).
 
-assert_fork_version(Version) when Version > ?MINERVA_PROTOCOL_VSN ->
+assert_fork_version(Version, PrevVersion)
+  when (Version > ?MINERVA_PROTOCOL_VSN) andalso
+       (Version > PrevVersion) ->
     ok;
-assert_fork_version(Version) ->
+assert_fork_version(Version, _PrevVersion) ->
     error({illegal_fork_version, Version}).
