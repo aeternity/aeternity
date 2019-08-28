@@ -3532,8 +3532,8 @@ sophia_signatures_oracles(_Cfg) ->
 sophia_signatures_aens(Cfg) ->
     state(aect_test_utils:new_state()),
     %% AENS transactions from contract - using 3rd party account
-    Acc             = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
-    NameAcc         = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
+    Acc             = ?call(new_account, 30000000 * aec_test_utils:min_gas_price()),
+    NameAcc         = ?call(new_account, 30000000 * aec_test_utils:min_gas_price()),
     Ct              = ?call(create_contract, NameAcc, aens, {}, #{ amount => 100000 }),
     Name1           = aens_test_utils:fullname(<<"bla">>),
     Salt1           = rand:uniform(10000),
@@ -5057,9 +5057,12 @@ aens_preclaim(PubKey, Name, Options, S) ->
     {Salt, S1}.
 
 aens_claim(PubKey, Name, Salt, S) ->
-    aens_claim(PubKey, Name, Salt, #{}, S).
+    aens_claim(PubKey, Name, Salt, prelima, #{}, S).
 
-aens_claim(PubKey, Name, Salt, Options, S) ->
+aens_claim(PubKey, Name, Salt, NameFee, S) ->
+    aens_claim(PubKey, Name, Salt, NameFee, #{}, S).
+
+aens_claim(PubKey, Name, Salt, NameFee, Options, S) ->
     Nonce  = aect_test_utils:next_nonce(PubKey, S),
     Height = maps:get(height, Options, 2),
     Fee    = maps:get(fee, Options, 50000 * aec_test_utils:min_gas_price()),
@@ -5070,6 +5073,7 @@ aens_claim(PubKey, Name, Salt, Options, S) ->
                                     nonce      => Nonce,
                                     name       => Name,
                                     name_salt  => Salt,
+                                    name_fee   => NameFee,
                                     fee        => Fee,
                                     ttl        => TTL }),
     PrivKey  = aect_test_utils:priv_key(PubKey, S),
@@ -5115,7 +5119,7 @@ aens_update(PubKey, NameHash, Pointers, Options, S) ->
     {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
     {ok, S1}.
 
-sophia_aens_resolve(_Cfg) ->
+sophia_aens_resolve(Cfg) ->
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
@@ -5130,7 +5134,12 @@ sophia_aens_resolve(_Cfg) ->
                ],
 
     Salt  = ?call(aens_preclaim, Acc, Name),
-    Hash  = ?call(aens_claim, Acc, Name, Salt),
+    NameFee = 3400000,
+    Hash  = case ?config(vm_version, Cfg) of
+                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_4 -> ?call(aens_claim, Acc, Name, Salt, NameFee);
+                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ?call(aens_claim, Acc, Name, Salt);
+                  VMVersion when ?IS_FATE_SOPHIA(VMVersion) -> ?call(aens_claim, Acc, Name, Salt, NameFee)
+            end,
     ok    = ?call(aens_update, Acc, Hash, Pointers),
 
     {some, Account} = ?call(call_contract, Acc, Ct, resolve_account, {option, word},   {Name, <<"account_pubkey">>}),
@@ -5170,8 +5179,8 @@ sophia_aens_resolve(_Cfg) ->
 sophia_aens_transactions(Cfg) ->
     %% AENS transactions from contract
     state(aect_test_utils:new_state()),
-    Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
-    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
+    Acc      = ?call(new_account, 40000000 * aec_test_utils:min_gas_price()),
+    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 20000000 * aec_test_utils:min_gas_price() }),
 
     APubkey  = 1,
     OPubkey  = 2,
