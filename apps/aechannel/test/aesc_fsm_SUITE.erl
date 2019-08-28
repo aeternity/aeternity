@@ -184,7 +184,8 @@ groups() ->
      {both_are_ga, [sequence], ga_sequence()},
      {client_reconnect, [sequence],
       [ client_reconnect_initiator
-      , client_reconnect_responder ]},
+      , client_reconnect_responder
+      ]},
      {pinned_env, [sequence],
       [
         request_unknown_bh
