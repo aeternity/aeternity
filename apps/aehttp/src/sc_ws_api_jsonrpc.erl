@@ -637,7 +637,7 @@ check_params(<<"channels.update.new">>, Params) when is_map(Params) ->
       [Read(<<"meta">>, meta, #{ type => {list, #{type => binary}}
                                , mandatory => false }),
        Read(<<"block_hash">>, block_hash, #{ type => {hash, block_hash}
-                                           , mandatory => false})]);
+                                           , mandatory => false })]);
 check_params(Method, Params) ->
     {error, {unknown, Method, Params}}.
 
