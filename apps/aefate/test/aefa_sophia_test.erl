@@ -60,11 +60,11 @@ expect(Chain, Contract, Function, Arguments, Expect) ->
 
 %% For now, implement pipeline here.
 compile_contract(Code) ->
-    compile_contract(Code, [{debug, [scode, opt, opt_rules, compile]}, pp_fcode]).
+    compile_contract(Code, [{debug, [scode, opt, opt_rules, compile]}, pp_fcode, {include, {file_system, ["."]}}]).
 
 compile_contract(Code, Options) ->
     try
-        {ok, Ast} = aeso_parser:string(Code),
+        {ok, Ast} = aeso_parser:string(Code, Options),
         TypedAst  = aeso_ast_infer_types:infer(Ast, Options),
         FCode     = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
         Fate      = aeso_fcode_to_fate:compile(FCode, Options),

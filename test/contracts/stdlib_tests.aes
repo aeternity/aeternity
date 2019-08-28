@@ -39,7 +39,7 @@ contract StdTest =
     , (Func.tuplify2((a, b) => a + b)((2, 3)) == 5, "tuplify")
 
     , (List.is_empty([]), "empty")
-    , (option_int_cmp(List.first([1,2,3,4]), Some(1)), "list first")
+    , (option_int_cmp(List.first([1..4]), Some(1)), "list first")
     , (option_int_cmp(List.find((x) => x > 0, [-1, -2, 3, -1]), Some(3)), "find")
     , (list_int_cmp(List.replace_at(2, 0, [1,1,1,1,1]), [1,1,0,1,1]), "replace at")
     // following test seems to break the FATE runtime. It definitely SHOULD work.
@@ -47,7 +47,7 @@ contract StdTest =
     , (List.foldl((a, x) => a - x, 0, [1,2,3]) == -6, "foldl")
     , (list_int_cmp(List.reverse([1,2,3]), [3,2,1]), "reverse")
     , (list_int_cmp(List.filter((x) => x > 0, [-1,1,0,-2,2]), [1,2]), "filter")
-    , (list_int_cmp(List.take(2, List.drop(2, [1,2,3,4,5,6])), [3,4]), "drop&take")
+    , (list_int_cmp(List.take(2, List.drop(2, [1..6])), [3,4]), "drop&take")
     , (list_int_cmp(List.take_while(
          (x) => x > 0,
          List.drop_while(
