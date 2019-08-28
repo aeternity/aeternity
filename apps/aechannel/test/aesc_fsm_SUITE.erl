@@ -883,7 +883,7 @@ withdraw(Cfg) ->
 
 withdraw_(#{fsm := FsmI} = I, R, Amount, Opts, Round, Debug, Cfg) ->
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
-    {IAmt0, RAmt0, _, _Round} = check_fsm_state(FsmI),
+    {IAmt0, RAmt0, _, Round} = check_fsm_state(FsmI),
     check_info(0),
     ok = rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, Opts#{amount => Amount}]),
     {I1, _} = await_signing_request(withdraw_tx, I, Cfg),
