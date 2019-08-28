@@ -705,7 +705,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                                 priv_key := IPrivkey},
                  responder := #{pub_key := RPubkey,
                                 priv_key := RPrivkey}},
-               Amount,_Round,TestErrors,Config, UpdateOpts0) ->
+               Amount, _Round, TestErrors, Config, UpdateOpts0) ->
     true = undefined =/= process_info(IConnPid),
     true = undefined =/= process_info(RConnPid),
     {StarterPid, AcknowledgerPid, StarterPubkey, StarterPrivkey,
