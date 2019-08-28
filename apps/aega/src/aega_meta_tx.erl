@@ -204,11 +204,15 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
 
 set_meta_result(ok, _Tx, Trees, _Env) ->
     Trees;
-set_meta_result(Err = {error, _}, Tx, Trees, Env) ->
-    %% ct:pal("Setting error: ~p\n", [Err]),
-    SetInstructions =
-        aeprimop:ga_set_meta_tx_res_instructions(
-            ga_pubkey(Tx), auth_data(Tx), Err),
+set_meta_result({error, Reason0}, Tx, Trees, Env) ->
+    Reason =
+        case aec_hard_forks:protocol_effective_at_height(aetx_env:height(Env)) of
+            P when P < ?LIMA_PROTOCOL_VSN -> check_error_reason(Reason0);
+            _P                            -> inner_transaction_failed
+        end,
+
+    SetInstructions = aeprimop:ga_set_meta_tx_res_instructions(
+                          ga_pubkey(Tx), auth_data(Tx), {error, Reason}),
     {ok, Trees1, _Env} = aeprimop:eval(SetInstructions, Trees, Env),
     Trees1.
 
@@ -323,3 +327,6 @@ reset_ga_context(Env0, Tx, OldEnv) ->
     Env1 = aetx_env:set_context(Env0, aetx_env:context(OldEnv)),
     Env2 = aetx_env:del_ga_auth_id(Env1, ga_pubkey(Tx)),
     aetx_env:del_ga_nonce(Env2, ga_pubkey(Tx)).
+
+%% Backwards compatibility for error reasons
+check_error_reason(R) -> R.
