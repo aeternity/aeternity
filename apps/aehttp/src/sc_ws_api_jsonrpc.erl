@@ -320,7 +320,7 @@ process_request(#{<<"method">> := <<"channels.update.new_contract">>,
                  , abi_version => ABIVersion
                  , deposit     => Deposit
                  , code        => Code
-                 , call_data   => CallData},
+                 , call_data   => CallData },
             XOpts = maps:merge(maybe_read_bh(Params), MandatoryOpts),
             case aesc_fsm:upd_create_contract(FsmPid, XOpts) of
                 ok -> no_reply;
