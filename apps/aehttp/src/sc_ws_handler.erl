@@ -308,7 +308,7 @@ read_channel_options(Params) ->
     ReadVsns = ReadMap(versions, <<"version">>, #{type => integer,
                                                   mandatory => false}),
     ReadBHDelta = ReadMap(block_hash_delta, <<"bh_delta">>, #{type => integer,
-                                                              mandatory => false}),
+                                                            , mandatory => false }),
     OnChainOpts =
         case (sc_ws_utils:read_param(
                 <<"existing_channel_id">>, existing_channel_id,
