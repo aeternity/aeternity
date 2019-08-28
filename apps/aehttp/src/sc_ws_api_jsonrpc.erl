@@ -339,7 +339,7 @@ process_request(#{<<"method">> := <<"channels.update.new_contract_from_onchain">
             case aec_chain:get_contract(OnChainContract) of
                 {ok, Contract} ->
                     MandatoryOpts =
-                        #{vm_version    => aect_contracts:vm_version(Contract)
+                        #{ vm_version    => aect_contracts:vm_version(Contract)
                          , abi_version  => aect_contracts:abi_version(Contract)
                          ,  deposit     => Deposit
                          ,  code        => aect_contracts:code(Contract)
