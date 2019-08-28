@@ -2130,6 +2130,8 @@ definitions:
         type: string
       name_salt:
         $ref: '#/definitions/UInt'
+      name_fee:
+        $ref: '#/definitions/UInt'
       fee:
         $ref: '#/definitions/UInt'
       ttl:
@@ -3277,8 +3279,7 @@ definitions:
       - fee
       - auth_data
       - tx
-    
+
 externalDocs:
   description: Find out more about Aeternity
   url: 'http://www.aeternity.com'
-
