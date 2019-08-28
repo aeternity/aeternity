@@ -272,8 +272,7 @@ all() ->
                        , sophia_polymorphic_entrypoint
                        ]).
 
--define(FATE_TODO, [ {group, sophia_oracles_gas_ttl}
-                   , sophia_state_gas_arguments
+-define(FATE_TODO, [sophia_state_gas_arguments
                    ]).
 
 groups() ->
@@ -3359,8 +3358,9 @@ sophia_oracles_gas_ttl__oracle_registration(_Cfg) ->
     ?assert(RelGas < AbsGas + 10),
     ?assert(AbsGas < RelGas + 10),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
-    ?assertMatch(
+    ?assertMatchVM(
        {{error, <<"out_of_gas">>}, _},
+       {{error, <<"Out of gas">>}, _},
        MM(H,
           ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1 + Whole),
           G(Rel(H, 1))
@@ -3391,8 +3391,9 @@ sophia_oracles_gas_ttl__oracle_extension(_Cfg) ->
     ?assertEqual(Part + G(Rel(H, 1 +   Whole)), G(Rel(H, 1 + 2*Whole))),
     ?assertEqual(Part + G(Rel(H, 1 + 2*Whole)), G(Rel(H, 1 + 3*Whole))),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
-    ?assertMatch(
+    ?assertMatchVM(
        {{error, <<"out_of_gas">>}, _},
+       {{error, <<"Out of gas">>}, _},
        MM(H,
           ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1 + Whole),
           G(Rel(H, 1))
@@ -3429,8 +3430,9 @@ sophia_oracles_gas_ttl__query(_Cfg) ->
     ?assert(RelGas < AbsGas + 10),
     ?assert(AbsGas < RelGas + 10),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
-    ?assertMatch(
+    ?assertMatchVM(
        {{error, <<"out_of_gas">>}, _},
+       {{error, <<"Out of gas">>}, _},
        MM(H,
           ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1 + Whole),
           G(Rel(H, 1))
@@ -3461,8 +3463,9 @@ sophia_oracles_gas_ttl__response(_Cfg) ->
     ?assertEqual(Part + G(Rel(H, 1 +   Whole)), G(Rel(H, 1 + 2*Whole))),
     ?assertEqual(Part + G(Rel(H, 1 + 2*Whole)), G(Rel(H, 1 + 3*Whole))),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
-    ?assertMatch(
+    ?assertMatchVM(
        {{error, <<"out_of_gas">>}, _},
+       {{error, <<"Out of gas">>}, _},
        MM(H,
           ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1 + Whole),
           G(Rel(H, 1))
