@@ -17,8 +17,8 @@
          revoke_name/2,
          preclaim_tx_spec/3,
          preclaim_tx_spec/4,
-         claim_tx_spec/4,
          claim_tx_spec/5,
+         claim_tx_spec/6,
          update_tx_spec/3,
          update_tx_spec/4,
          transfer_tx_spec/4,
@@ -153,15 +153,16 @@ preclaim_tx_default_spec(PubKey, State) ->
 %%% Claim tx
 %%%===================================================================
 
-claim_tx_spec(PubKey, Name, NameSalt, State) ->
-    claim_tx_spec(PubKey, Name, NameSalt, #{}, State).
+claim_tx_spec(PubKey, Name, NameSalt, NameFee, State) ->
+    claim_tx_spec(PubKey, Name, NameSalt, NameFee, #{}, State).
 
-claim_tx_spec(PubKey, Name, NameSalt, Spec0, State) ->
+claim_tx_spec(PubKey, Name, NameSalt, NameFee, Spec0, State) ->
     Spec = maps:merge(claim_tx_default_spec(PubKey, State), Spec0),
     #{account_id => aeser_id:create(account, PubKey),
       nonce      => maps:get(nonce, Spec),
       name       => Name,
       name_salt  => NameSalt,
+      name_fee   => NameFee,
       fee        => maps:get(fee, Spec),
       ttl        => maps:get(ttl, Spec, 0)}.
 
