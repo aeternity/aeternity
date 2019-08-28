@@ -2301,7 +2301,7 @@ call_a_contract(Function, Argument, ContractPubKey, Contract, SenderConnPid,
         XOpts#{ contract_id => aeser_api_encoder:encode(contract_pubkey, ContractPubKey)
               , abi_version => aect_test_utils:abi_version()
               , amount      => Amount
-              , call_data   => EncodedMainData},
+              , call_data   => EncodedMainData },
     % invalid call
     ws_send_tagged(SenderConnPid, <<"channels.update.call_contract">>,
                    CallOpts#{amount => <<"1">>}, Config),
