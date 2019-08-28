@@ -231,8 +231,9 @@ new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
                 version      = Version
                }.
 
+
 default_info_field(Vsn) when Vsn >= ?MINERVA_PROTOCOL_VSN ->
-    <<?KEY_HEADER_INFO_PRE_FORTUNA_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>;
+    <<?KEY_HEADER_INFO_FORTUNA_POINT_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>;
 default_info_field(_Vsn) ->
     <<>>.
 
