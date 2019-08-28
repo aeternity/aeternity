@@ -4,7 +4,7 @@
 # been reached. In between retries the script waits for
 # (INITIAL_TIMEOUT)^RETRIES , such that the time between retries increases.
 
-MAX_RETRIES=${MAX_RETRIES:-2}
+MAX_RETRIES=${MAX_RETRIES:-3}
 COMMAND="$*"
 
 timeout=${INITIAL_TIMEOUT:-2}
