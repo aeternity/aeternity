@@ -635,7 +635,7 @@ check_params(<<"channels.update.new">>, Params) when is_map(Params) ->
     Read = sc_ws_utils:read_f(Params),
     sc_ws_utils:check_params(
       [Read(<<"meta">>, meta, #{ type => {list, #{type => binary}}
-                               , mandatory => false}),
+                               , mandatory => false }),
        Read(<<"block_hash">>, block_hash, #{ type => {hash, block_hash}
                                            , mandatory => false})]);
 check_params(Method, Params) ->
