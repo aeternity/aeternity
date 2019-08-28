@@ -612,7 +612,6 @@ registrar_change(Cfg) ->
 
 
 namefee(Cfg) ->
-    ct:pal("namefee context ~p", [Cfg]),
     case ?config(protocol, Cfg) >= ?LIMA_PROTOCOL_VSN of
         true -> 340000;
         false -> prelima
