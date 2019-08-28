@@ -121,7 +121,7 @@ type() ->
 fee(#ns_claim_tx{fee = Fee}) ->
     Fee.
 
--spec name_fee(tx()) -> integer().
+-spec name_fee(tx()) -> integer() | prelima.
 name_fee(#ns_claim_tx{name_fee = Fee}) ->
     Fee.
 
@@ -244,8 +244,14 @@ serialization_template(?NAME_CLAIM_TX_VSN_1) ->
     , {ttl, int}
     ];
 serialization_template(?NAME_CLAIM_TX_VSN_2) ->
-    serialization_template(?NAME_CLAIM_TX_VSN_1) ++
-        [{name_fee, int}].
+    [ {account_id, id}
+    , {nonce, int}
+    , {name, binary}
+    , {name_salt, int}
+    , {name_fee, int}
+    , {fee, int}
+    , {ttl, int}
+    ].
 
 -spec for_client(tx()) -> map().
 for_client(#ns_claim_tx{account_id = AccountId,
@@ -254,13 +260,15 @@ for_client(#ns_claim_tx{account_id = AccountId,
                         name_salt  = NameSalt,
                         name_fee   = NameFee,
                         fee        = Fee,
-                        ttl        = TTL} = Tx) ->
-    #{<<"account_id">> => aeser_api_encoder:encode(id_hash, AccountId),
-      <<"nonce">>      => Nonce,
-      <<"name">>       => Name,
-      <<"name_salt">>  => NameSalt,
-      <<"fee">>        => Fee,
-      <<"ttl">>        => TTL}.
+                        ttl        = TTL}) ->
+    NameFeeMap = maps:from_list([{<<"name_fee">>, NameFee} || is_integer(NameFee)]),
+    maps:merge(NameFeeMap,
+               #{<<"account_id">> => aeser_api_encoder:encode(id_hash, AccountId),
+                 <<"nonce">>      => Nonce,
+                 <<"name">>       => Name,
+                 <<"name_salt">>  => NameSalt,
+                 <<"fee">>        => Fee,
+                 <<"ttl">>        => TTL}).
 
 %%%===================================================================
 %%% Getters
