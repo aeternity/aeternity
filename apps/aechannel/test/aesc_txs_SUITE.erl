@@ -5215,8 +5215,13 @@ register_name(Name, Pointers0) ->
                 Delta = aec_governance:name_claim_preclaim_timeout(),
                 %% INFO: aeprimop checks what protocol we run
                 %%       checking the fee at Lima then
-                NameFee = aec_governance:name_claim_fee(?LIMA_PROTOCOL_VSN,
-                                                        aens_commitments:name_length(Name)),
+                NameFee = case aect_test_utils:latest_protocol_version() of
+                              Vsn when Vsn >= ?LIMA_PROTOCOL_VSN ->
+                                  aec_governance:name_claim_fee(
+                                    Vsn, aens_commitments:name_length(Name));
+                              _ ->
+                                  undefined
+                          end,
                 TxSpec = aens_test_utils:claim_tx_spec(NameOwner, Name, NameFee, NameSalt, S),
                 {ok, Tx} = aens_claim_tx:new(TxSpec),
                 SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
@@ -5483,4 +5488,3 @@ aevm_type(Type) -> Type.
 encode_sig(Sig) ->
     <<"0x", Hex/binary>> = aeu_hex:hexstring_encode(Sig),
     binary_to_list(<<"#", Hex/binary>>).
-
