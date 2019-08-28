@@ -645,4 +645,4 @@ maybe_read_bh(Params) ->
     Read = sc_ws_utils:read_f(Params),
     sc_ws_utils:check_params(
       [Read(<<"block_hash">>, block_hash, #{ type => {hash, block_hash}
-                                           , mandatory => false})]).
+                                           , mandatory => false })]).
