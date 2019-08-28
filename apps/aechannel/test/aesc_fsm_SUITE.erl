@@ -993,8 +993,11 @@ do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
         ok ->
             {I1, _} = await_signing_request(update, I, Debug, Cfg),
             {R1, _} = await_signing_request(update_ack, R, Debug, Cfg),
-            check_info(if_debug(Debug, 20, 0), Debug),
-            {I1, R1}
+            %% TODO: Refactor remaining check_info calls - this one needed to be refactored together with state cache encryption because the tests failed randomly because of it
+            await_update_report(R1, ?TIMEOUT, Debug),
+            I2 = await_update(I1, ?TIMEOUT, Debug),
+            R2 = await_update(R1, ?TIMEOUT, Debug),
+            {I2, R2}
     end.
 
 msg_volley(#{fsm := FsmI, pub := PubI} = I, #{fsm := FsmR, pub := PubR} = R, _) ->
@@ -1465,7 +1468,7 @@ check_incorrect_update(Cfg) ->
             ok = gen_statem:stop(AliveFsm),
             receive_dying_declaration(AliveFsm, OtherFsm, Debug),
             bump_idx(),
-            CurPort + 1
+            CurPort
           end,
     Roles = [initiator, responder],
     Combinations = [{Depositor, Malicious} || Depositor <- Roles,
@@ -2365,9 +2368,8 @@ create_channel_from_spec(I, R, Spec, Port, UseAny, Debug, Cfg) ->
     ct:log("=== Update reports received ===", []),
     I5 = await_open_report(I4, ?TIMEOUT, Debug),
     R5 = await_open_report(R4, ?TIMEOUT, Debug),
-    ct:log("=== Open reports received ===", []),
-    ct:log("=== Message Q: ~p", [element(2,process_info(self(), messages))]),
-    [] = check_info(0, Debug),
+    SignedTx = await_on_chain_report(I5, #{info => channel_changed}, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R5, #{info => channel_changed}, ?TIMEOUT),
     #{i => I5, r => R5, spec => Spec}.
 
 spawn_responder(Port, Spec, R, UseAny, Debug) ->
@@ -2726,6 +2728,13 @@ await_open_report(#{fsm := Fsm} = R, Timeout, _Debug) ->
     receive {aesc_fsm, Fsm, #{type := report, tag := info, info := open} = Msg} ->
                 {ok, ChannelId} = maps:find(channel_id, Msg),
                 R#{channel_id => ChannelId}
+    after Timeout ->
+              error(timeout)
+    end.
+
+await_update_report(#{fsm := Fsm, channel_id := ChannelId}, Timeout, _Debug) ->
+    receive {aesc_fsm, Fsm, #{type := report, tag := info, info := update} = Msg} ->
+            {ok, ChannelId} = maps:find(channel_id, Msg)
     after Timeout ->
               error(timeout)
     end.
