@@ -2314,14 +2314,15 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey, Height) ->
     %% Mine a block and check mempool empty again
     ok = wait_for_tx_hash_on_chain(PreclaimTxHash),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
 
     Encoded =
-        case aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN of
+        case Protocol >= ?LIMA_PROTOCOL_VSN of
             true ->
                 #{account_id => MinerAddress,
                   name => aeser_api_encoder:encode(name, Name),
                   name_salt => Salt,
-                  name_fee => 340000,
+                  name_fee => 34000,  %% This is a negative test
                   fee => 100000 * aec_test_utils:min_gas_price()};
             false ->
                 #{account_id => MinerAddress,
@@ -2332,7 +2333,6 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey, Height) ->
     Decoded = maps:merge(Encoded,
                         #{account_id => aeser_id:create(account, MinerPubkey),
                           name => Name}),
-    ct:pal("Tx ~p and encoded ~p", [Decoded, Encoded]),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_name_claim/1,
                                fun aens_claim_tx:new/1, MinerPubkey),
@@ -3029,8 +3029,9 @@ peer_pub_key(_Config) ->
     ok.
 
 naming_system_manage_name(_Config) ->
-    {PubKey, PrivKey} = initialize_account(1000000000 *
+    {PubKey, PrivKey} = initialize_account(100000000 *
                                            aec_test_utils:min_gas_price()),
+    ok = give_tokens(PubKey, 8000000000000000000),
     PubKeyEnc   = aeser_api_encoder:encode(account_pubkey, PubKey),
 
     {ok, 200, #{<<"top_block_height">> := Height}} = get_status_sut(),
@@ -3071,14 +3072,15 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance1, Balance - Fee),
 
     %% Submit name claim tx and check it is in mempool
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
     {ClaimData, NameFee} =
-        case aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN of
+        case Protocol >= ?LIMA_PROTOCOL_VSN of
             true ->
                 {#{account_id => PubKeyEnc,
                   name       => aeser_api_encoder:encode(name, Name),
                   name_salt  => NameSalt,
-                  name_fee   => 340000,
-                  fee        => Fee}, 340000};
+                  name_fee   => aec_governance:name_claim_fee(Name, Protocol),
+                  fee        => Fee}, aec_governance:name_claim_fee(Name, Protocol)};
             false ->
                 {#{account_id => PubKeyEnc,
                   name       => aeser_api_encoder:encode(name, Name),
