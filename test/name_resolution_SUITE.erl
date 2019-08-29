@@ -50,7 +50,7 @@ init_state(N) ->
     Trees0 = aec_trees:new_without_backend(),
     ATrees = lists:foldl(fun(#{public := Pubkey}, AccTrees) ->
                                  Account = aec_accounts:new(Pubkey,
-                                                            100000 * aec_test_utils:min_gas_price()),
+                                                            400000000000000000000 * aec_test_utils:min_gas_price()),
                                  aec_accounts_trees:enter(Account, AccTrees)
                          end,
                          aec_trees:accounts(Trees0),
@@ -123,9 +123,10 @@ register_name(Pubkey, Name, #{height := Height} = S) ->
                     , nonce => 1
                     },
     {ok, Preclaim} = aens_preclaim_tx:new(PreclaimSpec),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
     NameFee =
-        case aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN of
-            true -> 3400000;
+        case Protocol >= ?LIMA_PROTOCOL_VSN of
+            true -> aec_governance:name_claim_fee(Name, Protocol);
             false -> prelima
         end,
     ClaimSpec  = #{ account_id => account_id(Pubkey)

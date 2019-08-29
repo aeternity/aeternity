@@ -40,7 +40,7 @@ contract AENSTest =
                                 name : string,
                                 salt : int,
                                 sign : signature) : unit =
-    AENS.claim(addr, name, salt, 3400000, signature = sign)
+    AENS.claim(addr, name, salt, 360000000000000000000, signature = sign)
 
   // TODO: update() -- how to handle pointers?
 

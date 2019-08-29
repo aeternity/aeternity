@@ -743,7 +743,7 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, DeltaTTL, PreclaimDelta
     assert_preclaim_delta(Commitment, PreclaimDelta, S1#state.height),
     %% here assert that an .aes name is pre-claimed after Lime height
     NameHash = aens_hash:name_hash(NameAscii),
-    assert_not_name(NameHash, S1),   %% what is the likelyhood of a collision old hash and new hash of different names?
+    assert_not_name(NameHash, S1),
     assert_name_registrar(NameRegistrar, S1#state.height),
     assert_name_bid_fee(NameAscii, NameFee, S1#state.height),  %% always ok pre Lima.
     Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),

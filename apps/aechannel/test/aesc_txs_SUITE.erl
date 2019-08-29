@@ -957,7 +957,7 @@ reject_old_offchain_tx_vsn(Cfg) ->
                 set_prop(height, RomaHeight),
                 create_payload(),
                 set_prop(height, LimaHeight),
-                %% it fails after Lima 
+                %% it fails after Lima
                 negative(fun close_solo_/2, {error, invalid_at_height})
                 ])
         end,
@@ -1140,9 +1140,7 @@ slash_not_participant(Cfg) ->
                  set_prop(round, 5),
                  positive(fun close_solo_/2),
                  fun(#{state := S0} = Props) ->
-                    {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                    S1 = aesc_test_utils:set_account_balance(NewAcc,
-                                                             500000 * aec_test_utils:min_gas_price(), S),
+                    {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
                     Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                  end,
@@ -1675,9 +1673,7 @@ settle_not_participant(Cfg) ->
                 positive(fun close_solo_/2),
                 set_prop(height, 21),
                 fun(#{state := S0} = Props) ->
-                    {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                    S1 = aesc_test_utils:set_account_balance(NewAcc,
-                                                             100000 * aec_test_utils:min_gas_price(), S),
+                    {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
                     Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                 end,
@@ -3013,10 +3009,8 @@ fp_not_participant(Cfg) ->
                 end,
                 set_prop(fee, 100000 * aec_test_utils:min_gas_price()),
                 fun(#{state := S0} = Props) ->
-                    {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                    S1 = aesc_test_utils:set_account_balance(NewAcc,
-                                                             1000000 * aec_test_utils:min_gas_price(), S),
-                    PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
+                    {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
+                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
                     Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                 end,
                 negative(fun force_progress_/2, {error, account_not_peer})])
@@ -3546,8 +3540,7 @@ fp_register_name(Cfg) ->
         [ % create account for being contract owner
           fun(#{} = Props) ->
               S0 = aesc_test_utils:new_state(),
-              {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-              S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000 * aec_test_utils:min_gas_price(), S),
+              {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
               PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
               ?TEST_LOG("Owner: pubkey ~p, privkey: ~p", [NewAcc, PrivKey]),
               Props#{state => S1, onchain_contract_owner_pubkey => NewAcc,
@@ -3862,8 +3855,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
           set_prop(height, 10),
           fun(#{} = Props) ->
               S0 = aesc_test_utils:new_state(),
-              {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-              S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000 * aec_test_utils:min_gas_price(), S),
+              {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
               PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
               ?TEST_LOG("Owner: pubkey ~p, privkey: ~p", [NewAcc, PrivKey]),
               Props#{state => S1, onchain_contract_owner_pubkey => NewAcc,
@@ -4057,8 +4049,7 @@ fp_register_oracle(Cfg) ->
         [ % create account for being contract owner
           fun(#{} = Props) ->
               S0 = aesc_test_utils:new_state(),
-              {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-              S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000 * aec_test_utils:min_gas_price(), S),
+              {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
               PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
               ?TEST_LOG("Owner: pubkey ~p, privkey: ~p", [NewAcc, PrivKey]),
               Props#{state => S1, onchain_contract_owner_pubkey => NewAcc,
@@ -4442,7 +4433,7 @@ create_payload() ->
 
 reuse_or_create_payload(Key, Props) ->
     case maps:get(Key, Props, not_specified) of
-        not_specified -> 
+        not_specified ->
             CreateFun = create_payload(Key),
             Props1 = CreateFun(Props),
             maps:get(Key, Props1);
@@ -5145,10 +5136,7 @@ test_not_participant(Cfg, Fun, InitProps) ->
     run(InitProps#{cfg => Cfg},
         [positive(fun create_channel_/2),
          fun(#{state := S0} = Props) ->
-            {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-            S1 = aesc_test_utils:set_account_balance(NewAcc,
-                                                     500000 * aec_test_utils:min_gas_price(),
-                                                     S),
+            {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
             PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
             Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
          end,
@@ -5159,8 +5147,7 @@ register_new_oracle(QFormat, RFormat, QueryFee) ->
     fun(Props0) ->
         run(Props0,
            [fun(#{state := S0} = Props) ->
-                {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                S1 = aesc_test_utils:set_account_balance(NewAcc, 500000 * aec_test_utils:min_gas_price(), S),
+                {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
                 Props#{state => S1, oracle => NewAcc}
             end,
             fun(#{state := S, oracle := Oracle} = Props) ->
@@ -5217,8 +5204,7 @@ register_name(Name, Pointers0) ->
         run(Props0,
            [% create dummy account to hold the name
             fun(#{state := S0} = Props) ->
-                {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                S1 = aesc_test_utils:set_account_balance(NewAcc, 1000000 * aec_test_utils:min_gas_price(), S),
+                {NewAcc, S1} = aesc_test_utils:setup_new_account(S0),
                 Props#{state => S1, name_owner => NewAcc}
             end,
             % preclaim
@@ -5235,9 +5221,10 @@ register_name(Name, Pointers0) ->
             fun(#{state := S, name_owner := NameOwner, height := Height0} = Props) ->
                 PrivKey = aesc_test_utils:priv_key(NameOwner, S),
                 Delta = aec_governance:name_claim_preclaim_delta(),
+                Protocol = aec_hard_forks:protocol_effective_at_height(Height0),
                 NameFee =
-                        case aec_hard_forks:protocol_effective_at_height(Height0) >= ?LIMA_PROTOCOL_VSN of
-                            true -> 3400000;
+                        case Protocol >= ?LIMA_PROTOCOL_VSN of
+                            true -> aec_governance:name_claim_fee(Name, Protocol);
                             false -> prelima
                         end,
                 TxSpec = aens_test_utils:claim_tx_spec(NameOwner, Name, NameSalt, NameFee, S),
