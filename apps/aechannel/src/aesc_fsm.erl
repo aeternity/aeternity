@@ -850,7 +850,7 @@ awaiting_update_ack(Type, Msg, D) ->
     handle_common_event(Type, Msg, postpone, D).
 
 channel_closed(enter, _OldSt, D) ->
-    keep_state(D#data{ongoing_update = false});
+    keep_state(clear_ongoing(D));
 channel_closed(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_CLOSED, TxHash},
                #data{ on_chain_id = ChainId
                     , op = #op_min_depth{ tag = ?WATCH_CLOSED
@@ -873,7 +873,7 @@ channel_closing(enter, _OldSt, D) ->
             true ->
                  report_update(D)
          end,
-    keep_state(D1#data{ongoing_update = false});
+    keep_state(clear_ongoing(D1));
 channel_closing(cast, {?CHANNEL_UNLOCKED, #{chan_id := ChId}} = Msg,
                 #data{ on_chain_id = ChId
                      , op = #op_watch{ type =  unlock
@@ -1015,14 +1015,14 @@ open(enter, _OldSt, D) ->
             true ->
                  report_update(D)
          end,
-    keep_state(D1#data{ongoing_update = false});
+    keep_state(clear_ongoing(D1));
 open(cast, {?UPDATE, Msg}, D) ->
     case check_update_msg(normal, Msg, D) of
         {ok, SignedTx, Updates, BlockHash, D1} ->
             report(info, update, D1),
             case request_signing_(?UPDATE_ACK, SignedTx, Updates, BlockHash, D1) of
                 {ok, D2, Actions} ->
-                    next_state(awaiting_signature, set_ongoing(D2), Actions);
+                    next_state(awaiting_signature, set_ongoing(?UPDATE, D2), Actions);
                 {error, _} = Error ->
                     lager:debug("Error = ~p", [Error]),
                     %% TODO: This is not strictly a conflict
@@ -1044,7 +1044,7 @@ open(cast, {?DEP_CREATED, Msg}, D) ->
             lager:debug("deposit_created: ~p", [SignedTx]),
             case request_signing_(?DEP_CREATED, SignedTx, Updates, BlockHash, D1) of
                 {ok, D2, Actions} ->
-                    next_state(awaiting_signature, set_ongoing(D2), Actions);
+                    next_state(awaiting_signature, set_ongoing(?DEP_CREATED, D2), Actions);
                 {error, _} = Error ->
                     lager:debug("Error = ~p", [Error]),
                     %% TODO: should be a different error response
@@ -1061,7 +1061,7 @@ open(cast, {?WDRAW_CREATED, Msg}, D) ->
             case request_signing_(?WDRAW_CREATED, SignedTx, Updates,
                                   BlockHash, D1) of
                 {ok, D2, Actions} ->
-                    next_state(awaiting_signature, set_ongoing(D2), Actions);
+                    next_state(awaiting_signature, set_ongoing(?WDRAW_CREATED, D2), Actions);
                 {error, _} = Error ->
                     lager:debug("Error = ~p", [Error]),
                     %% TODO: Should be a different error response
@@ -2460,10 +2460,14 @@ send_update_ack_msg(SignedTx, #data{ on_chain_id = OnChainId
     aesc_session_noise:update_ack(Sn, Msg),
     log(snd, ?UPDATE_ACK, Msg, Data).
 
-handle_update_conflict(Req, D) ->
-    lager:debug("handle_update_conflict(~p, D)", [Req]),
+handle_update_conflict(Op, D) ->
+    handle_recoverable_error(#{ code => ?ERR_CONFLICT
+                              , msg_type => Op }, D).
+
+handle_recoverable_error(ErrorInfo, D) ->
+    lager:debug("handle_update_conflict(~p, D)", [ErrorInfo]),
     try
-        D1 = send_conflict_err_msg(Req, fallback_to_stable_state(D)),
+        D1 = send_recoverable_error_msg(ErrorInfo, fallback_to_stable_state(D)),
         lager:debug("conflict_err_msg sent", []),
         next_state(open, D1)
     catch
@@ -2472,27 +2476,37 @@ handle_update_conflict(Req, D) ->
             erlang:error(Err)
     end.
 
-send_conflict_err_msg(Req, #data{ state = State
-                                , on_chain_id = ChanId
-                                , session     = Sn } = Data) ->
+send_recoverable_error_msg(#{code := ErrorCode} = Info, #data{ state = State
+                                                             , on_chain_id = ChanId
+                                                             , session     = Sn } = Data) ->
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
     Round = tx_round(aetx_sign:innermost_tx(SignedTx)),
     Msg = #{ channel_id => ChanId
            , round      => Round
-           , error_code => ?ERR_CONFLICT },
-    Type = conflict_msg_type(Req),
+           , error_code => ErrorCode },
+    Type = case maps:find(msg_type, Info) of
+               error ->
+                   Data#data.error_msg_type;
+               {ok, MsgType} ->
+                   error_msg_type(MsgType)
+           end,
     send_conflict_msg(Type, Sn, Msg),
     report(conflict, Msg, Data),
-    log(snd, conflict_msg_type(Req), Msg, Data).
+    log(snd, Type, Msg, Data).
 
-conflict_msg_type(?UPDATE)        -> ?UPDATE_ERR;
-conflict_msg_type(?UPDATE_ACK)    -> ?UPDATE_ERR;
-conflict_msg_type(?DEP_CREATED)   -> ?DEP_ERR;
-conflict_msg_type(?DEP_SIGNED)    -> ?DEP_ERR;
-conflict_msg_type(deposit_tx)     -> ?DEP_ERR;
-conflict_msg_type(?WDRAW_CREATED) -> ?WDRAW_ERR;
-conflict_msg_type(?WDRAW_SIGNED)  -> ?WDRAW_ERR;
-conflict_msg_type(withdraw_tx)    -> ?WDRAW_ERR.
+error_msg_type(Msg) when is_tuple(Msg) ->
+    error_msg_type(element(1, Msg));
+error_msg_type(?UPDATE)         -> ?UPDATE_ERR;
+error_msg_type(?UPDATE_ACK)     -> ?UPDATE_ERR;
+error_msg_type(?DEP_CREATED)    -> ?DEP_ERR;
+error_msg_type(?DEP_SIGNED)     -> ?DEP_ERR;
+error_msg_type(deposit_tx)      -> ?DEP_ERR;
+error_msg_type(?WDRAW_CREATED)  -> ?WDRAW_ERR;
+error_msg_type(?WDRAW_SIGNED)   -> ?WDRAW_ERR;
+error_msg_type(withdraw_tx)     -> ?WDRAW_ERR;
+error_msg_type(A) when is_atom(A) ->
+    lager:debug("No error_msg_type(~p); reusing ~p", [A, ?UPDATE_ERR]),
+    ?UPDATE_ERR.  % TODO: error msg types for other sequences?
 
 send_conflict_msg(?UPDATE_ERR, Sn, Msg) ->
     lager:debug("send update_error: ~p", [Msg]),
@@ -3284,7 +3298,15 @@ timer_for_state(St, #data{opts = #{timeouts := TOs}} = D) ->
     end.
 
 set_ongoing(D) ->
-    D#data{ongoing_update = true}.
+    set_ongoing(?UPDATE_ERR, D).
+
+set_ongoing(Msg, D) ->
+    D#data{ ongoing_update = true
+          , error_msg_type = error_msg_type(Msg) }.
+
+clear_ongoing(D) ->
+    D#data{ ongoing_update = false
+          , error_msg_type = undefined }.
 
 error_binary(E) when is_atom(E) ->
     atom_to_binary(E, latin1).
@@ -3529,15 +3551,15 @@ handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
         _ ->
             keep_state(D, [{reply, From, {error, unknown_recipient}}])
     end;
-handle_call_(open, {upd_transfer, FromPub, ToPub, Amount, Opts}, From,
+handle_call_(open, {upd_transfer, FromPub, ToPub, Amount, Opts} = Msg, From,
             #data{opts = #{initiator := I, responder := R}} = D) ->
     case FromPub =/= ToPub andalso ([] == [FromPub, ToPub] -- [I, R]) of
         true ->
-            handle_upd_transfer(FromPub, ToPub, Amount, From, Opts, set_ongoing(D));
+            handle_upd_transfer(FromPub, ToPub, Amount, From, Opts, set_ongoing(?UPDATE, D));
         false ->
-            keep_state(set_ongoing(D), [{reply, From, {error, invalid_pubkeys}}])
+            keep_state(D, [{reply, From, {error, invalid_pubkeys}}])
     end;
-handle_call_(open, {upd_deposit, #{amount := Amt} = Opts}, From,
+handle_call_(open, {upd_deposit, #{amount := Amt} = Opts} = Msg, From,
              #data{} = D) when is_integer(Amt), Amt > 0 ->
     FromPub = my_account(D),
     case maps:find(from, Opts) of
@@ -3551,12 +3573,12 @@ handle_call_(open, {upd_deposit, #{amount := Amt} = Opts}, From,
             %% reply before sending sig request
             gen_statem:reply(From, ok),
             Send(),
-            next_state(awaiting_signature, set_ongoing(D1), Actions);
+            next_state(awaiting_signature, set_ongoing(?DEP_CREATED, D1), Actions);
         {error, _} = Error ->
             gen_statem:reply(From, Error),
             keep_state(D)
     end;
-handle_call_(open, {upd_withdraw, #{amount := Amt} = Opts}, From,
+handle_call_(open, {upd_withdraw, #{amount := Amt} = Opts} = Msg, From,
              #data{} = D) when is_integer(Amt), Amt > 0 ->
     ToPub = my_account(D),
     case maps:find(to, Opts) of
@@ -3570,7 +3592,7 @@ handle_call_(open, {upd_withdraw, #{amount := Amt} = Opts}, From,
             %% reply before sending sig request
             gen_statem:reply(From, ok),
             Send(),
-            next_state(awaiting_signature, set_ongoing(D1), Actions);
+            next_state(awaiting_signature, set_ongoing(?WDRAW_CREATED, D1), Actions);
         {error, _} = Error ->
             gen_statem:reply(From, Error),
             keep_state(D)
@@ -3587,7 +3609,7 @@ handle_call_(open, {upd_create_contract, Opts}, From, #data{} = D) ->
         error         -> ok
     end,
     new_contract_tx_for_signing(Opts#{owner => FromPub}, From, D);
-handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
+handle_call_(open, {upd_call_contract, Opts, ExecType} = Msg, From,
              #data{state=State, opts = ChannelOpts,
                    on_chain_id = ChannelId} = D) when ChannelId =/= undefined ->
     FromPub = my_account(D),
@@ -3634,7 +3656,7 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
                         %% reply before sending sig request
                         gen_statem:reply(From, ok),
                         Send(),
-                        next_state(awaiting_signature, set_ongoing(D1), Actions);
+                        next_state(awaiting_signature, set_ongoing(?UPDATE, D1), Actions);
                     {error, _} = Error ->
                         gen_statem:reply(From, Error),
                         keep_state(D)
@@ -3668,7 +3690,7 @@ handle_call_(open, shutdown, From, D) ->
             %% reply before sending sig request
             gen_statem:reply(From, ok),
             Send(),
-            next_state(awaiting_signature, set_ongoing(D1), Actions);
+            next_state(awaiting_signature, set_ongoing(?SHUTDOWN, D1), Actions);
         {error, _} = Error ->
             gen_statem:reply(From, Error),
             keep_state(D)
@@ -3683,7 +3705,7 @@ handle_call_(channel_closing, shutdown, From, #data{strict_checks = Strict} = D)
                     %% reply before sending sig request
                     gen_statem:reply(From, ok),
                     Send(),
-                    next_state(awaiting_signature, set_ongoing(D1), Actions);
+                    next_state(awaiting_signature, set_ongoing(?SHUTDOWN, D1), Actions);
                 {error, _} = Error ->
                     gen_statem:reply(From, Error),
                     keep_state(D)
@@ -3774,7 +3796,7 @@ handle_call_(St, close_solo, From, D) ->
                     %% reply before sending sig request
                     gen_statem:reply(From, ok),
                     Send(),
-                    next_state(awaiting_signature, set_ongoing(D1), Actions);
+                    next_state(awaiting_signature, set_ongoing(close_solo, D1), Actions);
                 {error, _} = Error ->
                     gen_statem:reply(From, Error),
                     keep_state(D)
@@ -3875,6 +3897,9 @@ handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
     lager:debug("handle_common_event(~p, ~p, ~p, ~p, D)", [E, Msg, St, M]),
     handle_common_event_(E, Msg, St, M, D).
 
+handle_common_event_(timeout, Info, _St, _M, D) when D#data.ongoing_update == true ->
+    lager:debug("timeout (~p) - recovering (~p)", [Info, D#data.error_msg_type]),
+    handle_recoverable_error(#{code => ?ERR_TIMEOUT}, D);
 handle_common_event_(timeout, St = T, St, _, D) ->
     close({timeout, T}, D);
 handle_common_event_(cast, {?DISCONNECT, _} = Msg, _St, _, D) ->

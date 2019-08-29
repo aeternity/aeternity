@@ -145,6 +145,7 @@
               %% checks
               , op = ?NO_OP                   :: latest_op()
               , ongoing_update = false        :: boolean()
+              , error_msg_type = undefined    :: undefined | error_msg_type()
               , last_reported_update          :: undefined | non_neg_integer()
               , log                           :: log()
               , strict_checks = true          :: boolean()
@@ -190,6 +191,10 @@
                   | ?UPDATE_ACK
                   | ?SHUTDOWN
                   | ?SHUTDOWN_ACK.
+
+-type error_msg_type() :: ?UPDATE_ERR
+                        | ?DEP_ERR
+                        | ?WDRAW_ERR.
 
 -opaque opts() :: #{ minimum_depth => non_neg_integer() %% Defaulted for responder, not for initiator.
                    , timeouts := #{state_name() := pos_integer()

@@ -172,6 +172,7 @@ json_rpc_error_object({broken_encoding,What}, R) ->
     error_obj(3, [broken_encoding_code(W) || W <- What], R);
 json_rpc_error_object({meta, invalid}     , R) -> error_obj(3     , [1014], R);
 json_rpc_error_object(not_found           , R) -> error_obj(3     , [100] , R);
+json_rpc_error_object(error_code          , R) -> error_obj(3     , [1015], R);
 json_rpc_error_object(Other               , R) ->
     lager:debug("Unrecognized error reason: ~p", [Other]),
     error_obj(-32603        , R).
@@ -243,6 +244,7 @@ error_data_msgs() ->
      , 1012 => <<"Offchain tx expected">>
      , 1013 => <<"Tx already on-chain">>
      , 1014 => <<"Invalid meta object">>
+     , 1015 => <<"Invalid error code (expect 1...65535)">>
      }.
 
 broken_encoding_code(account    ) -> 1005;
@@ -537,6 +539,16 @@ process_request(#{<<"method">> := <<"channels.withdraw">>,
         {error, _Reason} = Err -> Err
     end;
 process_request(#{<<"method">> := Method,
+                  <<"params">> := #{<<"error">> := ErrorCode}}, FsmPid)
+  when ?METHOD_SIGNED(Method) ->
+    Tag = ?METHOD_TAG(Method),
+    case valid_error_code(ErrorCode) of
+        true ->
+            aesc_fsm:signing_response(FsmPid, Tag, {error, ErrorCode});
+        false ->
+            {error, error_code}
+    end;
+process_request(#{<<"method">> := Method,
                   <<"params">> := #{<<"signed_tx">> := EncodedTx}}, FsmPid)
     when ?METHOD_SIGNED(Method) ->
     Tag = ?METHOD_TAG(Method),
@@ -629,3 +641,14 @@ check_params(<<"channels.update.new">>, Params) when is_map(Params) ->
                                , mandatory => false})]);
 check_params(Method, Params) ->
     {error, {unknown, Method, Params}}.
+
+valid_error_code(ErrorCode) when is_integer(ErrorCode) ->
+    ErrorCode >= 1 andalso ErrorCode =< 16#ffFF;
+valid_error_code(ErrorCode) when is_binary(ErrorCode) ->
+    try valid_error_code(binary_to_integer(ErrorCode))
+    catch
+        error:_ ->
+            false
+    end;
+valid_error_code(_) ->
+    false.
