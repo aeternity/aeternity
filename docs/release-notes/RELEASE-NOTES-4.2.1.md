@@ -4,6 +4,7 @@
 It includes the following changes:
 * Change to a generic error message for the inner transaction of a GAMetaTX.
 * Long overdue bump of info-field in key block header from pre-fortuna value.
+* Improves State Channels tests to cover `Call.origin` and `Call.caller`
 
 [this-release]: https://github.com/aeternity/aeternity/releases/tag/v4.2.1
 
