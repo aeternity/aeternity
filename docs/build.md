@@ -3,31 +3,34 @@
 This document describes how to build an Aeternity node from source on current Ubuntu 16.04.4 LTS, Ubuntu 18.04 LTS and MacOS (latest).
 The commands below assume you are logged in with `sudo` user.
 
+The node have couple of main dependencies that have to be install to build it from source:
+
+- [Erlang/OTP](http://erlang.org/doc/installation_guide/INSTALL.html)
+- [Libsodium](https://download.libsodium.org/doc/installation/)
+
 ## Dependencies
 
-### Ubuntu
-#### Common tools and libraries
+### Ubuntu 18.04
 
-Make sure your Ubuntu version and it's packages are up to date, then install required tools and libraries:
+Update package database, packages and install the common tools and libraries:
+
+```bash
+sudo apt-get -qq update \
+&& sudo apt-get -y upgrade \
+&& sudo apt-get -qq -y install git autoconf build-essential erlang libsodium-dev
+```
+
+### Ubuntu 16.04
+
+Update package database, packages and install the common tools and libraries:
+
 ```bash
 sudo apt-get -qq update \
 && sudo apt-get -y upgrade \
 && sudo apt-get -qq -y install git curl autoconf build-essential ncurses-dev libssl-dev
 ```
 
-#### OTP install
-
-Required Erlang OTP version is `20.1`.
-
-##### Ubuntu 18.04
-
-```bash
-sudo apt-get install erlang
-```
-
-##### Ubuntu 16.04
-
-Ubuntu 16.04 ships with outdated erlang version. Version 20 can be installed from source:
+As Ubuntu 16.04 ships with outdated erlang and libsodium versions, they have to be installed from source:
 
 ```bash
 OTP_VERSION="20.2.3"
@@ -40,22 +43,6 @@ curl -fsSL -o otp-src.tar.gz "$OTP_DOWNLOAD_URL" \
 && ./otp_build autoconf && ./configure && make -j$(nproc) && sudo make install \
 && cd ..
 ```
-
-#### Libsodium install
-
-Required Libsodium version is `1.0.16`.
-
-##### Ubuntu 18.04
-
-Since Ubuntu 18.04 ships with libsodium version 1.0.16 it can be installed from apt package:
-
-```bash
-sudo apt-get install libsodium-dev
-```
-
-##### Ubuntu 16.04
-
-Ubuntu 16.04 ships with older than required version of libsodium thus it must be installed from source running below commands:
 
 ```bash
 LIBSODIUM_VERSION="1.0.16"
@@ -72,19 +59,17 @@ curl -fsSL -o libsodium-src.tar.gz "$LIBSODIUM_DOWNLOAD_URL" \
 
 ### MacOS
 
-Install `brew` if not done yet:
-```
+The easiest way to install package on MacOS is Homebrew, it can be installed by running:
+
+```bash
 /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
 ```
-Also, install dependencies:
+
+Then install the build dependencies using the `brew` command:
 ```
 brew update
-brew install erlang
-brew install openssl libsodium
-brew install autoconf
+brew install erlang openssl libsodium autoconf
 ```
-
-For more details read the [dedicated Libsodium documentation](https://download.libsodium.org/doc/installation/).
 
 ## Building
 
@@ -94,16 +79,15 @@ The source code of the Aeternity node can be obtained by cloning the public [Git
 git clone https://github.com/aeternity/aeternity.git aeternity_source && cd aeternity_source
 ```
 
-Identify the version to be built:
-```
-VERSION=5.0.0-rc.1
-```
+**NOTE**: By default git will checkout the `master` (default) branch of the source code.
+To build a particular version it should be checkout first:
 
-Checkout the version to be built:
 
 ```bash
+VERSION=X.Y.Z # set a particular version
 git checkout tags/v${VERSION:?}
 ```
+
 
 ### Production build
 
@@ -133,13 +117,13 @@ Alternatively a production package similar to what is distributed via [GitHub re
 make prod-package
 ```
 
-Once the packaging is done, the package is created in the `_build/prod/rel/aeternity/` directory, e.g. `_build/prod/rel/aeternity/aeternity-${VERSION:?}.tar.gz`.
+Once the packaging is done, the package is created in the `_build/prod/rel/aeternity/` directory, e.g. `_build/prod/rel/aeternity/aeternity-X.Y.Z.tar.gz`.
 
 To deploy the package for example in `~/aeternity/node` one should just unarchive it to that directory:
 
 ```bash
 mkdir -p ~/aeternity/node
-tar xf _build/prod/rel/aeternity/aeternity-${VERSION:?}.tar.gz -C ~/aeternity/node
+tar xf _build/prod/rel/aeternity/aeternity-*.tar.gz -C ~/aeternity/node
 ```
 
 Make sure beneficiary account is set in configuration, as this is mandatory to successfully start a node.
