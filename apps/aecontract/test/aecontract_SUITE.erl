@@ -5206,7 +5206,12 @@ sophia_aens_transactions(Cfg) ->
     NonceBeforePreclaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, ?hsh(CHash)},        #{ height => 10 }),
     NonceBeforeClaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
-    {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1}, #{ height => 11 }),
+    {} = case ?config(vm_version, Cfg) of
+             VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 ->
+                 ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1}, #{ height => 11 });
+             _ ->
+                 ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1, 340000}, #{ height => 11 })
+         end,
     NonceBeforeTransfer = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     StateBeforeTransfer = state(),
     {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, NameArg},   #{ height => 12 }),
