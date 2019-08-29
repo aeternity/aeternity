@@ -64,3 +64,6 @@
 %% Error codes
 -define(ERR_VALIDATION, 1).
 -define(ERR_CONFLICT  , 2).
+-define(ERR_TIMEOUT   , 3).
+-define(ERR_ABORT     , 4).
+-define(ERR_USER      , 128).  % anything >= 128 is a user error
