@@ -11,7 +11,7 @@
 
 %% API
 -export([resolve/3,
-         resolve_from_name_object/2,
+         resolve_pointer/2,
          get_commitment_hash/2,
          get_name_entry/2,
          get_name_hash/1,
@@ -39,14 +39,11 @@ resolve(Key, Name, NSTree) when is_binary(Key), is_binary(Name) ->
             aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, Name)
     end.
 
-
--spec resolve_from_name_object(binary(), aens_names:name() | aens_subnames:subname()) ->
+-spec resolve_pointer(binary(), aens_names:name() | aens_subnames:subname()) ->
     {ok, aeser_id:id()} | {error, atom()}.
-resolve_from_name_object(Key, Name) when is_binary(Key) ->
-    case name_entry(Name) of
-        {ok, #{pointers := Pointers}} -> find_pointer_id(Key, Pointers);
-        {error, _Rsn} = Error -> Error
-    end.
+resolve_pointer(Key, Obj) when is_binary(Key) ->
+    Mod = object_module(Obj),
+    find_pointer_id(Key, Mod:pointers(Obj)).
 
 -spec get_commitment_hash(binary(), integer()) ->
     {ok, aens_hash:commitment_hash()} | {error, atom()}.

@@ -81,6 +81,7 @@ assert_recipient(Id) ->
     case aeser_id:specialize_type(Id) of
         account  -> ok;
         name     -> ok;
+        subname  -> ok;
         oracle   -> ok;
         contract -> ok;
         Other   -> error({illegal_id_type, Other})
@@ -178,6 +179,7 @@ deserialize(?SPEND_TX_VSN,
     case aeser_id:specialize_type(RecipientId) of
         account  -> ok;
         name     -> ok;
+        subname  -> ok;
         oracle   -> ok;
         contract -> ok
     end,
@@ -221,4 +223,3 @@ version(_) ->
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(_, _) ->
     true.
-

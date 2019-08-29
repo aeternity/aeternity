@@ -67,6 +67,7 @@
                         , find_channel/2
                         , find_commitment/2
                         , find_name/2
+                        , find_subname/2
                         , find_oracle/2
                         , find_oracle_query/3
                         , get_account/2
@@ -77,6 +78,7 @@
                         , get_contract_no_cache/2
                         , get_contract_without_store/2
                         , get_name/2
+                        , get_subname/2
                         , get_oracle/3
                         , get_oracle_query/3
                         , get_var/3
@@ -113,6 +115,7 @@
 -include("../../aecontract/include/aecontract.hrl").
 
 -define(IS_HASH(_X_), (is_binary(_X_) andalso byte_size(_X_) =:= ?HASH_BYTES)).
+-define(IS_SUBNAME_HASH(_X_), (is_binary(_X_) andalso byte_size(_X_) =:= ?SUBNAME_HASH_BYTES)).
 -define(IS_VAR(_X_), (is_tuple(_X_)
                       andalso tuple_size(_X_) =:= 2
                       andalso var =:= element(1, _X_)
@@ -121,7 +124,8 @@
 -define(IS_VAR_OR_HASH(_X_), (?IS_HASH(_X_) orelse ?IS_VAR(_X_))).
 -define(IS_NON_NEG_INTEGER(_X_), (is_integer(_X_) andalso _X_ >= 0)).
 -define(IS_NAME_RESOLVE_TYPE(_X_), (_X_ =:= account
-                                    orelse _X_ =:= name)).
+                                    orelse _X_ =:= name
+                                    orelse _X_ =:= subname)).
 
 -opaque op() :: {atom(), tuple()}.
 
@@ -578,14 +582,17 @@ spend_fee({From, Amount}, #state{} = S) when is_integer(Amount), Amount >= 0 ->
 resolve_account_op(GivenType, Hash, Var) when ?IS_NAME_RESOLVE_TYPE(GivenType),
                                               ?IS_HASH(Hash),
                                               ?IS_VAR(Var) ->
-    {resolve_account, {GivenType, Hash, Var}}.
+    {resolve_account, {GivenType, Hash, Var}};
+resolve_account_op(subname, Hash, Var) when ?IS_SUBNAME_HASH(Hash), ?IS_VAR(Var) ->
+    {resolve_account, {subname, Hash, Var}}.
+
 
 resolve_account({GivenType, Hash, Var}, S) ->
     resolve_name(account, GivenType, Hash, Var, S).
 
 resolve_name(account, account, Pubkey, Var, S) ->
     aeprimop_state:set_var(Var, account, Pubkey, S);
-resolve_name(account, name, NameHash, Var, S) ->
+resolve_name(account, Type, NameHash, Var, S) when Type == name orelse Type == subname ->
     {Pubkey, S1} = int_resolve_name(NameHash, S),
     aeprimop_state:set_var(Var, account, Pubkey, S1).
 
@@ -1420,7 +1427,7 @@ int_resolve_name(NameHash, S) ->
         {_Obj, revoked, _S1} ->
             runtime_error(name_revoked);
         {Obj, claimed, S1} ->
-            {ok, Id} = aens:resolve_from_name_object(Key, Obj),
+            {ok, Id} = aens:resolve_pointer(Key, Obj),
             %% Intentionally admissive to allow for all kinds of IDs for
             %% backwards compatibility.
             {_Tag, Pubkey} = aeser_id:specialize(Id),
@@ -1438,7 +1445,7 @@ find_name_status_from_hash(NameHash, S) ->
             case find_name(TopParentHash, S) of
                 none -> {none, S};
                 {Name, S1} ->
-                    case find_name(NameHash, S1) of
+                    case find_subname(NameHash, S1) of
                         none -> {none, S1};
                         {Subname, S2} ->
                             {Subname, aens_names:status(Name), S2}
@@ -1456,10 +1463,11 @@ account_spend(Account, Amount, S) ->
 
 specialize_account(RecipientID) ->
     case aeser_id:specialize(RecipientID) of
-        {name, NameHash}   -> {name, NameHash};
-        {oracle, Pubkey}   -> {account, Pubkey};
-        {contract, Pubkey} -> {account, Pubkey};
-        {account, Pubkey}  -> {account, Pubkey}
+        {name, NameHash}       -> {name, NameHash};
+        {subname, SubnameHash} -> {subname, SubnameHash};
+        {oracle, Pubkey}       -> {account, Pubkey};
+        {contract, Pubkey}     -> {account, Pubkey};
+        {account, Pubkey}      -> {account, Pubkey}
     end.
 
 assert(ok) -> ok;

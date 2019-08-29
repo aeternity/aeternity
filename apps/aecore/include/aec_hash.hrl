@@ -1,1 +1,2 @@
 -define(HASH_BYTES, 32).
+-define(SUBNAME_HASH_BYTES, 64).

@@ -15,6 +15,7 @@
         , find_commitment/2
         , find_contract_without_store/2
         , find_name/2
+        , find_subname/2
         , find_oracle/2
         , find_oracle_query/3
         , get_account/2
@@ -25,6 +26,7 @@
         , get_contract_no_cache/2
         , get_contract_without_store/2
         , get_name/2
+        , get_subname/2
         , get_oracle/3
         , get_oracle_query/3
         , get_var/3
@@ -166,8 +168,14 @@ get_contract_without_store(Pubkey, S) ->
 find_name(Key, S) ->
     find_x(name, Key, S).
 
+find_subname(Key, S) ->
+    find_x(subname, Key, S).
+
 get_name(Key, S) ->
     get_x(name, Key, name_does_not_exist, S).
+
+get_subname(Key, S) ->
+    get_x(subname, Key, subname_does_not_exist, S).
 
 put_name(Object, S) ->
     cache_put(name, Object, S).
@@ -264,6 +272,9 @@ trees_find(commitment, Key, #state{trees = Trees} = S) ->
 trees_find(name, Key, #state{trees = Trees} = S) ->
     NTree = aec_trees:ns(Trees),
     aens_state_tree:lookup_name(get_var(Key, name, S), NTree);
+trees_find(subname, Key, #state{trees = Trees} = S) ->
+    NTree = aec_trees:ns(Trees),
+    aens_state_tree:lookup_name(get_var(Key, subname, S), NTree);
 trees_find(oracle, Key, #state{trees = Trees} = S) ->
     OTree = aec_trees:oracles(Trees),
     aeo_state_tree:lookup_oracle(get_var(Key, oracle, S), OTree);

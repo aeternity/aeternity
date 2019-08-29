@@ -604,7 +604,7 @@ aens_resolve_from_pstate(NameString, Key, PState) ->
                 {_, revoked, _} ->
                     none;
                 {Obj, claimed, PState1} ->
-                    case aens:resolve_from_name_object(Key, Obj) of
+                    case aens:resolve_pointer(Key, Obj) of
                         {ok, Id} ->
                             {Tag, Pubkey} = aeser_id:specialize(Id),
                             {ok, Tag, Pubkey, PState1};
