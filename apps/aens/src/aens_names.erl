@@ -16,7 +16,8 @@
          deserialize/2,
          deserialize_from_fields/3,
          serialization_type/0,
-         serialization_template/1
+         serialization_template/1,
+         is_name/1
         ]).
 
 %% Getters
@@ -132,6 +133,9 @@ serialization_template(?NAME_VSN) ->
     ].
 
 serialization_type() -> ?NAME_TYPE.
+
+is_name(#name{}) -> true;
+is_name(_) -> false.
 
 %%%===================================================================
 %%% Getters

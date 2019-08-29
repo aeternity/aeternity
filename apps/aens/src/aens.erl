@@ -129,3 +129,10 @@ find_pointer_id(Key, [Pointer | Rest]) ->
     end;
 find_pointer_id(_Key, []) ->
     {error, pointer_id_not_found}.
+
+
+object_module(Obj) ->
+    case {aens_names:is_name(Obj), aens_subnames:is_subname(Obj)} of
+        {true, false} -> aens_names;
+        {false, true} -> aens_subnames
+    end.

@@ -16,7 +16,8 @@
          deserialize/2,
          deserialize_from_fields/3,
          serialization_type/0,
-         serialization_template/1
+         serialization_template/1,
+         is_subname/1
         ]).
 
 %% Getters
@@ -86,6 +87,9 @@ serialization_template(?SUBNAME_VSN) ->
     [{pointers, [{binary, id}]}].
 
 serialization_type() -> ?SUBNAME_TYPE.
+
+is_subname(#subname{}) -> true;
+is_subname(_) -> false.
 
 %%%===================================================================
 %%% Getters
