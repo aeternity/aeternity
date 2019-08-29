@@ -85,6 +85,8 @@
 -export([type2swagger_name/1]).
 -endif.
 
+-include_lib("aecontract/include/hard_forks.hrl").
+
 -spec from_db_format(update() | tuple()) -> update().
 from_db_format(#transfer{} = U) ->
     U;
@@ -208,15 +210,28 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
                        abi_version = ABIVersion, amount = Amount,
                        call_data = CallData, call_stack = CallStack,
                        gas_price = GasPrice, gas = Gas} ->
-            Caller = account_pubkey(CallerId),
+            Height = aetx_env:height(OnChainEnv),
             ContractPubKey = contract_pubkey(ContractId),
-            Trees1 = remove_tokens(Caller, Amount, Trees0, Reserve),
+            Trees1 = remove_tokens(account_pubkey(CallerId), Amount, Trees0, Reserve),
             Trees2 = add_tokens(ContractPubKey, Amount, Trees1),
             Call = aect_call:new(CallerId, Round, ContractId, Round, GasPrice),
+            PostLima =
+                aec_hard_forks:protocol_effective_at_height(Height) >= ?LIMA_PROTOCOL_VSN,
+            Caller = %% due to a bug, this might not be CallerId
+                case PostLima of
+                    true ->
+                        account_pubkey(CallerId);
+                    false ->
+                        ContractsTree  = aec_trees:contracts(Trees0),
+                        Contract = aect_state_tree:get_contract(ContractPubKey,
+                                                                ContractsTree),
+                        aect_contracts:owner_pubkey(Contract)
+                end,
             _Trees = aect_channel_contract:run(ContractPubKey, ABIVersion, Call,
                                                CallData, CallStack,
                                                Trees2, Amount, GasPrice, Gas,
-                                               OnChainTrees, OnChainEnv);
+                                               OnChainTrees, OnChainEnv,
+                                               Caller);
         #meta{} ->
             Trees0
     end.

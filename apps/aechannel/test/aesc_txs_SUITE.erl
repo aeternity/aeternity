@@ -2739,8 +2739,12 @@ fp_use_onchain_enviroment(Cfg) ->
     Timestamp1 = 654321,
     BeneficiaryInt = 42,
     Beneficiary = <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>>,
-    ExpBeneficiary = ?IF_AEVM(BeneficiaryInt,
-                              aeb_fate_data:make_address(Beneficiary)),
+    EncAddress =
+        fun(<<AddressInt:32/unit:8>> = Address) ->
+            ?IF_AEVM(AddressInt, aeb_fate_data:make_address(Address))
+        end,
+
+    ExpBeneficiary = EncAddress(Beneficiary), 
 
     Height2 = Height1 + LockPeriod + 1,
     Height3 = Height2 + LockPeriod + 1,
@@ -2775,7 +2779,23 @@ fp_use_onchain_enviroment(Cfg) ->
                 set_tx_env(Height3, Timestamp1, Beneficiary),
                 ForceCall(Forcer, <<"coinbase">>, word, ExpBeneficiary),
                 set_tx_env(Height4, Timestamp1, Beneficiary),
-                ForceCall(Forcer, <<"timestamp">>, word, Timestamp1)
+                ForceCall(Forcer, <<"timestamp">>, word, Timestamp1),
+                set_from(Forcer),
+                fun(#{ owner       := OwnerPubkey
+                     , from_pubkey := ForcerPubkey} = Props) ->
+                    CPubkey =
+                        case aect_test_utils:latest_protocol_version() of
+                            PreLima when PreLima < ?LIMA_PROTOCOL_VSN ->
+                                OwnerPubkey;
+                            _LimaOn ->
+                                ForcerPubkey
+                        end,
+                    ExpectedCaller = EncAddress(CPubkey),
+                    run(Props,
+                        [ ForceCall(Forcer, <<"caller">>, word, ExpectedCaller)
+                        , ForceCall(Forcer, <<"origin">>, word, ExpectedCaller)
+                        ])
+                end
                ])
         end,
     [CallOnChain(Owner, Forcer) || Owner  <- ?ROLES,

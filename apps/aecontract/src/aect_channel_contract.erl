@@ -4,7 +4,7 @@
 
 -export([new/6,
          run_new/6,
-         run/11,
+         run/12,
          get_call/4,
          insert_failed_call/6
         ]).
@@ -105,12 +105,11 @@ assert_init_function(CallData, VMVersion, SerializedCode) when ?IS_AEVM_SOPHIA(V
 -spec run(aect_contracts:pubkey(), aect_contracts:abi_version(), aect_call:call(),
           binary(), [non_neg_integer()], aec_trees:trees(),
           non_neg_integer(), non_neg_integer(), non_neg_integer(),
-          aec_trees:trees(), aetx_env:env()) -> aec_trees:trees().
+          aec_trees:trees(), aetx_env:env(), aec_keys:pubkey()) -> aec_trees:trees().
 run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
-    Amount, GasPrice, Gas, OnChainTrees, OnChainEnv) ->
+    Amount, GasPrice, Gas, OnChainTrees, OnChainEnv, Caller) ->
     ContractsTree  = aec_trees:contracts(Trees0),
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
-    OwnerPubKey = aect_contracts:owner_pubkey(Contract),
     Code = aect_contracts:code(Contract),
     Store = aect_contracts:state(Contract),
     VmVersion = aect_contracts:vm_version(Contract),
@@ -120,7 +119,7 @@ run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
         true                                 -> erlang:error(wrong_vm_version);
         false                                -> erlang:error(wrong_abi_version)
     end,
-    CallDef = make_call_def(OwnerPubKey, ContractPubKey, Gas, GasPrice, Amount,
+    CallDef = make_call_def(Caller, ContractPubKey, Gas, GasPrice, Amount,
               CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
     {CallRes, Trees, _} = aect_dispatch:run(#{vm => VmVersion, abi => ABIVersion}, CallDef),
     UpdatedTrees = aect_utils:insert_call_in_trees(CallRes, Trees),
