@@ -12,6 +12,7 @@
 %% test case exports
 -export([ spend_to_name/1
         , spend_to_name_when_multiple_pointer_entries/1
+        , spend_to_subname/1
         %% , query_oracle/1
         %% , query_named_oracle/1
         , transfer_name_to_named_account/1
@@ -33,6 +34,7 @@
 all() ->
     [ spend_to_name
     , spend_to_name_when_multiple_pointer_entries
+    , spend_to_subname
     , transfer_name_to_named_account
     , transfer_name_to_named_account_when_multiple_pointer_entries
     ].
@@ -90,6 +92,9 @@ account_id(Pubkey) ->
 name_id(NameHash) ->
     aeser_id:create(name, NameHash).
 
+subname_id(SubnameHash) ->
+    aeser_id:create(subname, SubnameHash).
+
 name_from_id(NameID) ->
     {name, NameHash} = aeser_id:specialize(NameID),
     NameHash.
@@ -130,6 +135,24 @@ register_name(Pubkey, Name, S) ->
                   },
     {ok, Claim} = aens_claim_tx:new(ClaimSpec),
     {apply_txs([Claim], apply_txs([Preclaim], S)), name_id(Hash)}.
+
+register_subname(Pubkey, Subname, Pointers, S) ->
+    {ok, SubnameAscii} = aens_utils:to_ascii(Subname),
+    {ok, subname, [SubnamePrefix, TopName, Registrar]} =
+        aens_utils:check_split_name(Subname),
+    {ok, SubnamePrefixAsciiList} = aens_utils:ascii_encode(SubnamePrefix),
+    SubnamePrefixAscii = list_to_binary(SubnamePrefixAsciiList),
+    Name = <<TopName/binary, ".", Registrar/binary>>,
+    {S1, _NameHashId} = register_name(Pubkey, Name, S),
+    SubnameSpec = #{account_id => account_id(Pubkey),
+                    nonce      => 3,
+                    name_id    => aeser_id:create(name, Name),
+                    definition => #{SubnamePrefixAscii => Pointers},
+                    fee        => 20000 * aec_test_utils:min_gas_price()},
+    {ok, SubnameTx} = aens_subname_tx:new(SubnameSpec),
+    SubnameHash = aens_hash:name_hash(SubnameAscii),
+    {apply_txs([SubnameTx], S1), subname_id(SubnameHash)}.
+
 
 pointers(Tag, ToPubkey) ->
     IdType = type2id(Tag),
@@ -204,6 +227,32 @@ spend_to_name_(PointersFun) ->
                  balance(Pubkey1, S4)),
     ok.
 
+
+spend_to_subname(_Cfg) ->
+    case aect_test_utils:is_post_lima() of
+        true -> spend_to_subname_();
+        false -> {skip, subname_transaction_is_from_lima_or_never}
+    end.
+
+spend_to_subname_() ->
+    {[Pubkey1, Pubkey2], S1} = init_state(2),
+    Amount = 100,
+    Fee    = 20000 * aec_test_utils:min_gas_price(),
+    Subname = aect_test_utils:fullname(<<"sub.top">>),
+    Pointers = #{<<"account_pubkey">> => aeser_id:create(account, Pubkey2)},
+    {S2, SubnameId} = register_subname(Pubkey2, Subname, Pointers, S1),
+    {ok, Spend} = aec_spend_tx:new(#{ sender_id    => account_id(Pubkey1)
+                                    , recipient_id => SubnameId
+                                    , amount       => Amount
+                                    , fee          => Fee
+                                    , nonce        => 1
+                                    , payload      => <<>>}),
+    S3 = apply_txs([Spend], S2),
+    ?assertEqual(balance(Pubkey2, S2) + Amount,
+                 balance(Pubkey2, S3)),
+    ?assertEqual(balance(Pubkey1, S2) - Amount - Fee,
+                 balance(Pubkey1, S3)),
+    ok.
 
 %%%===================================================================
 %%% Name tests
