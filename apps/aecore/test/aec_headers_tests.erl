@@ -188,7 +188,7 @@ info_test_() ->
                              ?TEST_MODULE:nonce(RawKey),
                              ?TEST_MODULE:time_in_msecs(RawKey),
                              ?MINERVA_PROTOCOL_VSN),
-               Info = <<?KEY_HEADER_INFO_PRE_FORTUNA_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>,
+               Info = <<?KEY_HEADER_INFO_FORTUNA_POINT_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>,
                ?assertEqual(Info, ?TEST_MODULE:info(WithInfo))
        end},
       {"Default value of the info field in the pre release of Fortuna: Roma protocol",
@@ -224,7 +224,7 @@ info_test_() ->
                              ?TEST_MODULE:nonce(RawKey),
                              ?TEST_MODULE:time_in_msecs(RawKey),
                              ?FORTUNA_PROTOCOL_VSN),
-               Info = <<?KEY_HEADER_INFO_PRE_FORTUNA_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>,
+               Info = <<?KEY_HEADER_INFO_FORTUNA_POINT_RELEASE:?OPTIONAL_INFO_BYTES/unit:8>>,
                ?assertEqual(Info, ?TEST_MODULE:info(WithInfo))
        end}
      ]}.
