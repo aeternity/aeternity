@@ -1200,8 +1200,9 @@ aens_claim(Arg0, Arg1, Arg2, Arg3, EngineState) ->
             SaltInt = ?FATE_INTEGER_VALUE(Salt),
             API = aefa_engine_state:chain_api(ES2),
             case aefa_chain_api:aens_claim(Pubkey, NameBin, SaltInt, API) of
-                {ok, API1} ->
-                    aefa_engine_state:set_chain_api(API1, ES2);
+                {ok, DynamicGas, API1} ->
+                    ES3 = spend_gas(DynamicGas, ES2),
+                    aefa_engine_state:set_chain_api(API1, ES3);
                 {error, What} ->
                     aefa_fate:abort({primop_error, aens_claim, What}, ES2)
             end

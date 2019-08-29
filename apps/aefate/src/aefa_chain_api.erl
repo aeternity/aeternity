@@ -642,7 +642,7 @@ aens_claim(Pubkey, NameBin, SaltInt, #state{} = S) when ?IS_ONCHAIN(S) ->
                    , aeprimop:name_claim_op(Pubkey, NameBin, SaltInt,
                                             DeltaTTL, PreclaimDelta)
                    ],
-    eval_primops(Instructions, S).
+    eval_primops(Instructions, S, size_gas([NameBin])).
 
 aens_transfer(FromPubkey, HashBin, ToPubkey, #state{} = S) when ?IS_ONCHAIN(S) ->
     Instructions = [aeprimop:name_transfer_op(FromPubkey, account, ToPubkey, HashBin)
