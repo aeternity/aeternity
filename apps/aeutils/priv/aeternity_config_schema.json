@@ -462,6 +462,12 @@
                     "default": 180,
                     "minimum" : 2
                 },
+                "name_claim_bid_timeout" : {
+                    "description" : "Blocks to wait until auction closes. Used in governance.",
+                    "type" : "integer",
+                    "default": 480,
+                    "minimum" : 0
+                },
                 "cuckoo" : {
                     "type" : "object",
                     "additionalProperties" : false,
