@@ -267,11 +267,12 @@ name_claim_size(Name) ->
 
 %% Give possibility to have the actual name under consensus,
 %% possible to define different bid times for different names.
+%% No auction for names of 32 characters or longer
 -spec name_claim_bid_timeout(binary(), non_neg_integer()) -> non_neg_integer().
 name_claim_bid_timeout(Name, Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
     NameSize = name_claim_size(Name),
     BidTimeout =
-        if NameSize > 32 -> 1;
+        if NameSize > 31 -> 0;
            NameSize > 8  -> 1 * ?MULTIPLIER_DAY;  %% 480 blocks
            NameSize > 4  -> 31 * ?MULTIPLIER_DAY; %% 14880 blocks
            true          -> 62 * ?MULTIPLIER_DAY %% 29760 blocks
