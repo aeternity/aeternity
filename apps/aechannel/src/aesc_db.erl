@@ -13,7 +13,9 @@ check_tables(Acc) ->
               M:check_tables(Acc1)
       end, Acc, modules()),
 
-    [ok = M:migrate(From, To) || {vsn_fail, M, [{expected, From}, {got, To}]} = Error <- Errors, filter_migrations(Error)],
+    [  ok = M:migrate(From, To)
+    || {vsn_fail, M, [{expected, From}, {got, To}]} = Error <- Errors
+    ,  filter_migrations(Error)],
     [Error || Error <- Errors, not filter_migrations(Error)].
 
 modules() ->

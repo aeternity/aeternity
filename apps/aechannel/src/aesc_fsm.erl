@@ -2095,8 +2095,6 @@ send_deposit_signed_msg(SignedTx, #data{ on_chain_id = Ch
     log(snd, ?DEP_SIGNED, Msg, Data).
 
 check_deposit_signed_msg(#{ channel_id := ChanId
-                          %% since it is co-authenticated already, we ignore
-                          %% the block hash being reported
                           , block_hash := _BlockHash
                           , data       := #{tx := TxBin}} = Msg
                           , #data{ on_chain_id = ChanId
@@ -3402,11 +3400,13 @@ callback_mode() ->
                                                    InitialState}, ...]}
                           when InitialState :: state_name().
 init(#{opts := Opts00} = Arg) ->
-    %% We must keep the password in the state until we are sure what the channel_id for this fsm should be - after that the password is removed from the state
-    %% The fsm may crash before the password is removed from the state - to make sure that the password doesn't leak in a crash log, wrap the password in a function
-    %% so any crash log or lager:debug call doesn't expose it.
+    %% We must keep the password in the state until we are sure what the channel_id for this fsm should be
+    %% after that the password is removed from the state. The fsm may crash before the password is removed
+    %% from the state - to make sure that the password doesn't leak in a crash log, wrap the password in a
+    %% function so any crash log or lager:debug call doesn't expose it.
     StatePassword = maps:find(state_password, Opts00),
-    Opts0 = maps:put(state_password_getter, fun() -> StatePassword end, maps:remove(state_password, Opts00)),
+    Opts0 = maps:put(state_password_getter,
+        fun() -> StatePassword end, maps:remove(state_password, Opts00)),
     {Role, Opts1} = maps:take(role, Opts0),
     Client = maps:get(client, Opts1),
     {Reestablish, ReestablishOpts, Opts2} =
@@ -3429,53 +3429,55 @@ init(#{opts := Opts00} = Arg) ->
                           CheckedOpts = maps:merge(Opts#{role => Role}, ReestablishOpts),
                           aesc_offchain_state:new(CheckedOpts#{initiator => NewI})
                   end,
-    State = case Initiator of
-                any -> StateInitF;
-                _   -> StateInitF(Initiator)
-            end,
     SessionEstablishF = fun(State) ->
-	    ClientMRef = erlang:monitor(process, Client),
-	    BlockHashDelta =
-		case maps:find(block_hash_delta, Opts) of
-		    error ->
-		        #bh_delta{ not_newer_than = 0 %% backwards compatibility
-		                 , not_older_than = 10
-		                 , pick           = 0}; %% backwards compatibility
-		    {ok, #{ not_older_than := NOT
-		          , not_newer_than := NNT
-		          , pick           := Pick}} ->
-		        #bh_delta{ not_older_than = NOT
-		                 , not_newer_than = NNT
-		                 , pick           = Pick}
-		end,
-	    Data = #data{ role             = Role
-		        , client           = Client
-		        , client_mref      = ClientMRef
-		        , client_connected = true
-		        , block_hash_delta = BlockHashDelta
-		        , session = Session
-		        , opts    = Opts
-		        , state   = State
-		        , log     = aesc_window:new(maps:get(log_keep, Opts)) },
-            DataCensored = Data#data{opts = maps:remove(state_password_getter, Opts)},
-	    lager:debug("Session started, Data = ~p", [Data]),
-	    %% TODO: Amend the fsm above to include this step. We have transport-level
-	    %% connectivity, but not yet agreement on the channel parameters. We will next send
-	    %% a channel_open() message and await a channel_accept().
-           case {Role, Reestablish} of
-               {initiator, true} ->
-                   ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, DataCensored));
-               {initiator, false} ->
-                   ok_next(initialized, send_open_msg(Data));
-               {responder, true} ->
-                   ChanId = maps:get(existing_channel_id, ReestablishOpts),
-                   ok_next(awaiting_reestablish,
-                            DataCensored#data{ channel_id  = ChanId
-                                         , on_chain_id = ChanId });
-               {responder, false} ->
-                   ok_next(awaiting_open, Data)
-           end
+        ClientMRef = erlang:monitor(process, Client),
+    BlockHashDelta =
+	case maps:find(block_hash_delta, Opts) of
+	    error ->
+	        #bh_delta{ not_newer_than = 0 %% backwards compatibility
+	                 , not_older_than = 10
+	                 , pick           = 0}; %% backwards compatibility
+	    {ok, #{ not_older_than := NOT
+	          , not_newer_than := NNT
+	          , pick           := Pick}} ->
+	        #bh_delta{ not_older_than = NOT
+	                 , not_newer_than = NNT
+	                 , pick           = Pick}
 	end,
+        %% In case of reestablish we can garbage collect the password when exiting from this function
+        DataOpts = case Reestablish of
+                       true ->
+                           maps:remove(state_password_getter, Opts);
+                       false ->
+                           Opts
+                   end,
+        Data = #data{ role             = Role
+                    , client           = Client
+                    , client_mref      = ClientMRef
+                    , client_connected = true
+	            , block_hash_delta = BlockHashDelta
+                    , session = Session
+                    , opts    = DataOpts
+                    , state   = State
+                    , log     = aesc_window:new(maps:get(log_keep, DataOpts)) },
+        lager:debug("Session started, Data = ~p", [Data]),
+        %% TODO: Amend the fsm above to include this step. We have transport-level
+        %% connectivity, but not yet agreement on the channel parameters. We will next send
+        %% a channel_open() message and await a channel_accept().
+        case {Role, Reestablish} of
+            {initiator, true} ->
+                ok_next(reestablish_init, send_reestablish_msg(ReestablishOpts, Data));
+            {initiator, false} ->
+                ok_next(initialized, send_open_msg(Data));
+            {responder, true} ->
+                ChanId = maps:get(existing_channel_id, ReestablishOpts),
+                ok_next(awaiting_reestablish,
+                        Data#data{ channel_id  = ChanId
+                                 , on_chain_id = ChanId });
+            {responder, false} ->
+                ok_next(awaiting_open, Data)
+        end
+    end,
     StateRaw = case Initiator of
             any -> StateInitF;
             _   -> StateInitF(Initiator)
@@ -3488,7 +3490,8 @@ init(#{opts := Opts00} = Arg) ->
         {error, invalid_password} ->
             {stop, invalid_password}
     end,
-    garbage_collect(), %% Always force garbage collection here - we might need to remove the state password from the memory
+    %% Always force garbage collection here, when reestablishing the password will be removed here
+    garbage_collect(),
     InitRes.
 
 terminate(Reason, _State, #data{session = Sn} = Data) ->
@@ -3549,7 +3552,7 @@ check_minimum_depth_opt(DefMinDepth, Role, Opts) ->
 check_timeout_opt(#{timeouts := TOs} = Opts) ->
     TOs1 = maps:merge(?DEFAULT_TIMEOUTS, TOs),
     Opts1 = Opts#{timeouts => TOs1},
-    lager:debug("Timeouts: ~p", [aesc_utils:censor_init_opts(Opts1)]),
+    lager:debug("Timeouts: ~p", [Opts1]),
     Opts1;
 check_timeout_opt(Opts) ->
     check_timeout_opt(Opts#{timeouts => #{}}).
@@ -3847,7 +3850,8 @@ funding_locked_complete(#data{ op = #op_lock{ tag = create
     D1 = D#data{state = State1, opts = Opts1},
 
     initialize_cache(D1, StatePasswordF()),
-    %% Garbage collecting here won't do anything as the old fsm state still contains the state_password_getter - the password still is in use
+    %% Garbage collecting here won't do anything as the old fsm state still
+    %% contains the state_password_getter - the password still is in use
     %% TODO: Add a new state which would force garbage collection of the password
     next_state(open, D1).
 

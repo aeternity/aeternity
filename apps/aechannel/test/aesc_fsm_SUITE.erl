@@ -993,7 +993,8 @@ do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug, Cfg) ->
         ok ->
             {I1, _} = await_signing_request(update, I, Debug, Cfg),
             {R1, _} = await_signing_request(update_ack, R, Debug, Cfg),
-            %% TODO: Refactor remaining check_info calls - this one needed to be refactored together with state cache encryption because the tests failed randomly because of it
+            %% TODO: Refactor remaining check_info calls - this one needed to be refactored together
+            %% TODO: with state cache encryption because the tests failed randomly because of it
             await_update_report(R1, ?TIMEOUT, Debug),
             I2 = await_update(I1, ?TIMEOUT, Debug),
             R2 = await_update(R1, ?TIMEOUT, Debug),

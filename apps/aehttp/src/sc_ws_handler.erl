@@ -27,7 +27,8 @@
 
 init(Req, _Opts) ->
     Parsed = cowboy_req:parse_qs(Req),
-    lager:debug("init(~p, ~p), Parsed ~p", [maps:remove(qs, Req), _Opts, aesc_utils:censor_init_opts(Parsed)]),
+    lager:debug("init(~p, ~p), Parsed ~p",
+        [maps:remove(qs, Req), _Opts, aesc_utils:censor_init_opts(Parsed)]),
     process_flag(trap_exit, true),
     {cowboy_websocket, Req,
      maps:from_list(Parsed)}.
@@ -43,12 +44,14 @@ websocket_init(#{ <<"reconnect_tx">> := _ } = Params) ->
 websocket_init(Params) ->
     case {prepare_handler(Params), read_channel_options(Params)} of
         {{error, Err}, _} ->
-            %% Make dialyzer happy by providing a protocol - the protocol is not relevant here as we will kill this process after sending a error code to the client
+            %% Make dialyzer happy by providing a protocol - the protocol is not
+            %% relevant here as we will kill this process after sending a error code to the client
             handler_parsing_error(Err, #handler{protocol = sc_ws_api:protocol(<<"json-rpc">>)}, Params);
         {Handler, {error, Err}} ->
             handler_parsing_error(Err, Handler, Params);
         {Handler, ChannelOpts} ->
-            lager:debug("Starting Channel WS with params ~p", [aesc_utils:censor_init_opts(Params)]),
+            lager:debug("Starting Channel WS with params ~p",
+                [aesc_utils:censor_init_opts(Params)]),
             lager:debug("ChannelOpts = ~p", [aesc_utils:censor_init_opts(ChannelOpts)]),
             case start_link_fsm(Handler, ChannelOpts) of
                 {ok, FsmPid} ->
@@ -95,7 +98,8 @@ handler_parsing_error(Err, Handler, Params) ->
                      {password_required_since_lima, {state_password, missing}}],
     case proplists:get_value(Err, HandledErrors, not_handled_error) of
         not_handled_error ->
-            lager:info("Channel WS failed to start because of ~p; params ~p", [Err, aesc_utils:censor_init_opts(Params)]),
+            lager:info("Channel WS failed to start because of ~p; params ~p",
+                [Err, aesc_utils:censor_init_opts(Params)]),
             {stop, undefined};
         ErrKey ->
             %% because of tests' subscription mechanism, we

@@ -1,11 +1,13 @@
 %%%=============================================================================
-%%% @copyright 2018, Aeternity Anstalt
+%%% @copyright 2018-19, Aeternity Anstalt
 %%% @doc
-%%%    Module monitoring the FSM's used for SC. After each state update in a given FSM/SC
-%%%    the offchain state is saved in ETS in order for the user to be able to leave and then reestablish
-%%%    the channel. In case of an unexpected FSM crash the state is encrypted with an user provided password
-%%%    and saved in persistent storage. Please note that it is impossible to reestablish a channel without the state.
-%%%    TODO: Protect the state in case of an unexpected power failure - for instance allow the user or a delegate to provide the missing state
+%%%    Module monitoring the FSMs used for SC. After each state update in a given FSM/SC
+%%%    the offchain state is saved in ETS in order for the user to be able to leave and then
+%%%    reestablish the channel. In case of an unexpected FSM crash the state is encrypted with
+%%%    a user-provided password and saved in persistent storage.
+%%%    Please note that it is impossible to reestablish a channel without the state.
+%%%    TODO: Protect the state in case of an unexpected power failure
+%%%    TODO: for instance allow the user or a delegate to provide the missing state
 %%% @end
 %%%=============================================================================
 -module(aesc_state_cache).
@@ -135,7 +137,8 @@ table_vsn(pch) -> ?VSN_pch;
 table_vsn(pch_encrypted_cache) -> ?VSN_pch_encrypted_cache.
 
 migrate(?VSN_pch, ?VSN_pch_encrypted_cache) ->
-    %%TODO: Move the migration logic partially to aec_db - this is only here because this is the first migration in the entire codebase :)
+    %% TODO: Move the migration logic partially to aec_db
+    %% TODO: this is only here because this is the first migration in the entire codebase :)
     ?VSN_pch = table_vsn(pch),
     ?VSN_pch_encrypted_cache = table_vsn(pch_encrypted_cache),
     lager:debug("Waiting for state cache table to be accesible", []),
