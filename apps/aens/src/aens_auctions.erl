@@ -2,13 +2,23 @@
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc
 %%%    ADT for names auction objects
+%%%    Idea: whenever a new claim comes in within auction period,
+%%%          then - if namefee too low, just charge for transaction, but not the fee
+%%%               - if namefee exceeds previous bid with right margin
+%%%                 then we end up here and create a new auction object,
+%%%                 the previous highest bidder should get its namefee unlocked and
+%%%                 the new one get it locked.
+%%%          Invariant: we can only start claiming names when name is not claimed
+%%%          hence, we cannot start an auction before the name is available
+%%%          We delete all auction objects after the auction, therefore no
+%%%          risk ??? that previous name holder get returned name fee when new auction starts.
 %%% @end
 %%%=============================================================================
 
 -module(aens_auctions).
 
 %% API
--export([new/4,
+-export([new/5,
          serialize/1,
          deserialize/2,
          deserialize_from_fields/3,
@@ -17,12 +27,10 @@
         ]).
 
 %% Getters
--export([hash/1,
-         owner_pubkey/1,
+-export([name_hash/1,
+         bidder_pubkey/1,
          ttl/1,
          name_fee/1,
-         name_hash/1,
-         name/1,
          started/1]).
 
 -behavior(aens_cache).
@@ -30,93 +38,102 @@
 %%% Types
 %%%===================================================================
 -record(auction,
-        {id       :: aeser_id:id(),
-         owner_id :: aeser_id:id(),
-         started  :: aec_blocks:height(),
-         ttl      :: aec_blocks:height()
+        {id        :: aeser_id:id(),
+         started   :: aec_blocks:height(),
+         bidder_id :: aeser_id:id(),      %% should there be a preclaim for second bidder?? No.
+                                          %% Preclaim owner can start auction by a claim, nobody else
+                                          %% Having a second preclaim for same name won't restart auction
+         bid       :: non_neg_integer(),  %% the name_fee provided
+         ttl       :: aec_blocks:height()
          }).
 
--opaque commitment() :: #commitment{}.
+-opaque auction() :: #auction{}.
 
 -type id() :: aeser_id:id().
--type hash() :: aens_hash:name_hash().
 -type pubkey() :: aec_keys:pubkey().
 -type serialized() :: binary().
 
 -export_type([id/0,
-              commitment/0,
+              auction/0,
               serialized/0]).
 
--define(COMMITMENT_TYPE, name_commitment).
--define(COMMITMENT_VSN, 1).
+-define(AUCTION_TYPE, name_auction).
+-define(AUCTION_VSN, 1).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
--spec new(aeser_id:id(), aeser_id:id(), non_neg_integer(), aec_blocks:height()) -> commitment().
-new(Id, OwnerId, NameFee, DeltaTTL, BlockHeight) ->
-    name       = aeser_id:specialize_type(Id),
-    account    = aeser_id:specialize_type(OwnerId),
-    #commitment{id       = Id,
-                owner_id = OwnerId,
-                started  = BlockHeight,
-                namefee  = NameFee
-                ttl      = BlockHeight + DeltaTTL}.
+-spec new(aens_hash:name_hash(), aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), aec_blocks:height()) -> auction().
+new(NameHash, BidderId, NameFee, DeltaTTL, BlockHeight) ->
+    #auction{id        = aeser_id:create(name, NameHash),
+             bidder_id = aeser_id:create(account, BidderId),
+             started   = BlockHeight,
+             bid       = NameFee,
+             ttl       = BlockHeight + DeltaTTL}.
 
--spec serialize(commitment()) -> serialized().
-serialize(#commitment{owner_id = OwnerId,
-                      created  = Created,
-                      ttl      = TTL}) ->
+-spec serialize(auction()) -> serialized().
+serialize(#auction{id        = Id,
+                   bidder_id = BidderId,
+                   bid       = NameFee,
+                   started  = Started,
+                   ttl      = TTL}) ->
     aeser_chain_objects:serialize(
-      ?COMMITMENT_TYPE,
-      ?COMMITMENT_VSN,
-      serialization_template(?COMMITMENT_VSN),
-      [ {owner_id, OwnerId}
-      , {created, Created}
+      ?AUCTION_TYPE,
+      ?AUCTION_VSN,
+      serialization_template(?AUCTION_VSN),
+      [ {bidder_id, BidderId}
+      , {bid, NameFee}
+      , {started, Started}
       , {ttl, TTL}]).
 
--spec deserialize(hash(), binary()) -> commitment().
-deserialize(CommitmentHash, Bin) ->
+-spec deserialize(aens_hash:name_hash(), binary()) -> auction().
+deserialize(NameHash, Bin) ->
     Fields = aeser_chain_objects:deserialize(
-                  ?COMMITMENT_TYPE,
-                  ?COMMITMENT_VSN,
-                  serialization_template(?COMMITMENT_VSN),
+                  ?AUCTION_TYPE,
+                  ?AUCTION_VSN,
+                  serialization_template(?AUCTION_VSN),
                   Bin),
-    deserialize_from_fields(?COMMITMENT_VSN, CommitmentHash, Fields).
+    deserialize_from_fields(?AUCTION_VSN, NameHash, Fields).
 
-deserialize_from_fields(?COMMITMENT_VSN, CommitmentHash,
-    [ {owner_id, OwnerId}
-    , {created, Created}
-    , {ttl, TTL}]) ->
-    #commitment{id       = aeser_id:create(commitment, CommitmentHash),
-                owner_id = OwnerId,
-                created  = Created,
-                ttl      = TTL}.
+deserialize_from_fields(?AUCTION_VSN, NameHash,
+    [ {bidder_id, BidderId}
+    , {bid, NameFee}
+    , {started, Started}
+    , {ttl, TTL} ]) ->
+    #auction{id        = aeser_id:create(name, NameHash),
+             bidder_id = BidderId,
+             bid       = NameFee,
+             started   = Started,
+             ttl       = TTL}.
 
-serialization_template(?COMMITMENT_VSN) ->
-    [ {owner_id, id}
-    , {created, int}
-    , {ttl, int}
-    ].
+serialization_template(?AUCTION_VSN) ->
+    [ {bidder_id, id}
+    , {bid, int}
+    , {started, int}
+    , {ttl, int}].
 
-serialization_type() -> ?COMMITMENT_TYPE.
+serialization_type() -> ?AUCTION_TYPE.
 %%%===================================================================
 %%% Getters
 %%%===================================================================
 
--spec hash(commitment()) -> hash().
-hash(#commitment{id = Id}) ->
-    aeser_id:specialize(Id, commitment).
+-spec name_hash(auction()) -> aens_hash:name_hash().
+name_hash(#auction{id = Id}) ->
+    aeser_id:specialize(Id, name).
 
--spec owner_pubkey(commitment()) -> pubkey().
-owner_pubkey(#commitment{owner_id = OwnerId}) ->
-    aeser_id:specialize(OwnerId, account).
+-spec bidder_pubkey(auction()) -> pubkey().
+bidder_pubkey(#auction{bidder_id = BidderId}) ->
+    aeser_id:specialize(BidderId, account).
 
--spec ttl(commitment()) -> aec_blocks:height().
-ttl(#commitment{ttl = TTL}) ->
+-spec name_fee(auction()) -> non_neg_integer().
+name_fee(#auction{bid = NameFee}) ->
+    NameFee.
+
+-spec ttl(auction()) -> aec_blocks:height().
+ttl(#auction{ttl = TTL}) ->
     TTL.
 
--spec created(commitment()) -> aec_blocks:height().
-created(#commitment{created = Created}) ->
-    Created.
+-spec started(auction()) -> aec_blocks:height().
+started(#auction{started = Started}) ->
+    Started.
